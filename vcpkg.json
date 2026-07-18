@@ -1,0 +1,23 @@
+{
+  "name": "openstitch-studio",
+  "version": "0.1.0",
+  "description": "Logiciel libre de numérisation pour broderie machine (nom temporaire)",
+  "builtin-baseline": "4e82e29f14eac2b3422f18f72c7524d04f19924e",
+  "dependencies": [
+    "fmt",
+    "spdlog",
+    "cli11",
+    {
+      "name": "opencv4",
+      "default-features": false,
+      "features": ["png", "jpeg", "tiff"]
+    }
+  ],
+  "features": {
+    "tests": {
+      "description": "Build unit tests",
+      "dependencies": ["catch2"]
+    }
+  },
+  "default-features": ["tests"]
+}

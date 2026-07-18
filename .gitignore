@@ -1,0 +1,16 @@
+# Build
+build/
+out/
+CMakeUserPresets.json
+
+# IDE
+.vs/
+.vscode/
+*.user
+
+# vcpkg local
+vcpkg_installed/
+
+# OS
+Thumbs.db
+Desktop.ini
