@@ -2,17 +2,22 @@
 #include "main_window.hpp"
 
 #include <QAction>
+#include <QColorDialog>
+#include <QDialogButtonBox>
 #include <QFileDialog>
 #include <QFileInfo>
+#include <QFormLayout>
 #include <QGraphicsPixmapItem>
 #include <QGraphicsScene>
 #include <QGridLayout>
+#include <QGuiApplication>
 #include <QImage>
 #include <QInputDialog>
 #include <QLabel>
 #include <QMenuBar>
 #include <QMessageBox>
 #include <QPixmap>
+#include <QSpinBox>
 #include <QStatusBar>
 
 #include <filesystem>
@@ -62,6 +67,8 @@ MainWindow::MainWindow() {
             tr("x : %1 mm   y : %2 mm").arg(mm.x(), 0, 'f', 1).arg(mm.y(), 0, 'f', 1));
     });
     connect(view_, &CanvasView::cropSelectedMm, this, &MainWindow::onCropSelected);
+
+    connect(view_, &CanvasView::canvasClickedMm, this, &MainWindow::onCanvasClicked);
 
     statusBar()->showMessage(tr("Ouvrez une image (PNG, JPEG, BMP, TIFF) pour commencer."));
     view_->fitCanvas();
@@ -118,6 +125,30 @@ void MainWindow::buildMenus() {
     cropAct_->setCheckable(true);
     connect(cropAct_, &QAction::toggled, view_, &CanvasView::setCropMode);
     imageActions_.append(cropAct_);
+
+    auto* segMenu = menuBar()->addMenu(tr("&Segmentation"));
+    auto* segAct = segMenu->addAction(tr("&Segmenter l'image…"));
+    connect(segAct, &QAction::triggered, this, &MainWindow::segmentImage);
+    imageActions_.append(segAct);
+
+    showSegAct_ = segMenu->addAction(tr("&Afficher la carte des régions"));
+    showSegAct_->setCheckable(true);
+    connect(showSegAct_, &QAction::toggled, this, [this] { displayImage(processed_); });
+
+    segMenu->addSeparator();
+    mergeAct_ = segMenu->addAction(tr("&Fusionner avec… (cliquer la région cible)"));
+    mergeAct_->setCheckable(true);
+    connect(mergeAct_, &QAction::toggled, this, [this](bool on) { mergeMode_ = on; });
+    regionActions_.append(mergeAct_);
+
+    auto* delRegionAct = segMenu->addAction(tr("&Supprimer la région sélectionnée"));
+    delRegionAct->setShortcut(QKeySequence::Delete);
+    connect(delRegionAct, &QAction::triggered, this, &MainWindow::deleteSelectedRegion);
+    regionActions_.append(delRegionAct);
+
+    auto* recolorAct = segMenu->addAction(tr("&Recolorer la région sélectionnée…"));
+    connect(recolorAct, &QAction::triggered, this, &MainWindow::recolorSelectedRegion);
+    regionActions_.append(recolorAct);
 
     auto* viewMenu = menuBar()->addMenu(tr("&Affichage"));
     auto* zoomInAct = viewMenu->addAction(tr("Zoom &avant"));
@@ -255,6 +286,12 @@ void MainWindow::refreshImage() {
         processed_ = {};
         return;
     }
+    // Une sélection qui ne correspond plus à une région vivante est annulée
+    // (undo/redo, nouvelle segmentation, suppression…).
+    if (selectedRegion_ &&
+        (!project_.segmentation || project_.segmentation->find(*selectedRegion_) == nullptr)) {
+        selectedRegion_.reset();
+    }
     const auto result = image::apply_pipeline(project_.original, project_.ops);
     if (!result) {
         QMessageBox::warning(this, tr("Erreur"), QString::fromStdString(result.error().message));
@@ -279,12 +316,155 @@ void MainWindow::displayImage(const image::Image& img) {
     const double hMm = img.height * mmPerPx;
     item->setTransform(QTransform::fromScale(mmPerPx, mmPerPx));
     item->setPos(-wMm / 2.0, -hMm / 2.0);
+
+    // Carte des régions par-dessus l'image (mode d'affichage segmentation).
+    if (showSegAct_ != nullptr && showSegAct_->isChecked() && project_.segmentation) {
+        const auto map = segmentation::render_map(*project_.segmentation, selectedRegion_);
+        const QImage mapImg(map.rgba.data(), map.width, map.height, map.width * 4,
+                            QImage::Format_RGBA8888);
+        auto* mapItem = scene_->addPixmap(QPixmap::fromImage(mapImg.copy()));
+        mapItem->setTransform(QTransform::fromScale(mmPerPx, mmPerPx));
+        mapItem->setPos(-map.width * mmPerPx / 2.0, -map.height * mmPerPx / 2.0);
+        mapItem->setOpacity(0.9);
+    }
+}
+
+std::optional<QPoint> MainWindow::mmToImagePixel(QPointF mm) const {
+    if (processed_.empty()) {
+        return std::nullopt;
+    }
+    const double mmPerPx = project_.mm_per_px.value;
+    const double left = -processed_.width * mmPerPx / 2.0;
+    const double top = -processed_.height * mmPerPx / 2.0;
+    const int x = static_cast<int>(std::floor((mm.x() - left) / mmPerPx));
+    const int y = static_cast<int>(std::floor((mm.y() - top) / mmPerPx));
+    if (x < 0 || y < 0 || x >= processed_.width || y >= processed_.height) {
+        return std::nullopt;
+    }
+    return QPoint(x, y);
+}
+
+void MainWindow::segmentImage() {
+    if (!project_.hasImage() || processed_.empty()) {
+        return;
+    }
+    QDialog dialog(this);
+    dialog.setWindowTitle(tr("Segmenter l'image"));
+    auto* layout = new QFormLayout(&dialog);
+    auto* colorsSpin = new QSpinBox(&dialog);
+    colorsSpin->setRange(2, 64);
+    colorsSpin->setValue(8);
+    auto* minSizeSpin = new QSpinBox(&dialog);
+    minSizeSpin->setRange(1, 100'000);
+    minSizeSpin->setValue(16);
+    minSizeSpin->setSuffix(tr(" px"));
+    layout->addRow(tr("Nombre maximal de couleurs :"), colorsSpin);
+    layout->addRow(tr("Taille minimale de région :"), minSizeSpin);
+    auto* buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dialog);
+    connect(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
+    connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
+    layout->addRow(buttons);
+    if (dialog.exec() != QDialog::Accepted) {
+        return;
+    }
+
+    // Calcul synchrone (curseur d'attente) : le passage en tâche de fond est
+    // prévu quand les images de travail deviendront grandes.
+    QGuiApplication::setOverrideCursor(Qt::WaitCursor);
+    auto seg = segmentation::segment(
+        processed_, {.max_colors = colorsSpin->value(), .min_region_px = minSizeSpin->value()});
+    QGuiApplication::restoreOverrideCursor();
+    if (!seg) {
+        QMessageBox::warning(this, tr("Segmentation impossible"),
+                             QString::fromStdString(seg.error().message));
+        return;
+    }
+    const auto regionCount = seg->region_count();
+    undoStack_.execute(std::make_unique<commands::SetSegmentationCommand>(std::move(*seg)),
+                       project_);
+    selectedRegion_.reset();
+    showSegAct_->setChecked(true);
+    refreshImage();
+    updateActions();
+    statusBar()->showMessage(tr("Segmentation : %1 régions").arg(regionCount));
+}
+
+void MainWindow::onCanvasClicked(QPointF posMm) {
+    if (!showSegAct_->isChecked() || !project_.segmentation) {
+        return;
+    }
+    const auto px = mmToImagePixel(posMm);
+    const auto clicked =
+        px ? segmentation::region_at(*project_.segmentation, px->x(), px->y()) : std::nullopt;
+
+    if (mergeMode_ && selectedRegion_ && clicked && *clicked != *selectedRegion_) {
+        undoStack_.execute(
+            std::make_unique<commands::MergeRegionsCommand>(*selectedRegion_, *clicked), project_);
+        mergeAct_->setChecked(false);
+        refreshImage();
+        updateActions();
+        return;
+    }
+
+    selectedRegion_ = clicked;
+    if (clicked) {
+        const auto* region = project_.segmentation->find(*clicked);
+        const double mm2 = static_cast<double>(region->pixel_count) * project_.mm_per_px.value *
+                           project_.mm_per_px.value;
+        statusBar()->showMessage(tr("Région %1 — %2 px (%3 mm²) — RGB(%4, %5, %6)")
+                                     .arg(region->id.value)
+                                     .arg(region->pixel_count)
+                                     .arg(mm2, 0, 'f', 1)
+                                     .arg(region->rgb[0])
+                                     .arg(region->rgb[1])
+                                     .arg(region->rgb[2]));
+    }
+    displayImage(processed_);
+    updateActions();
+}
+
+void MainWindow::deleteSelectedRegion() {
+    if (!selectedRegion_ || !project_.segmentation) {
+        return;
+    }
+    undoStack_.execute(std::make_unique<commands::RemoveRegionCommand>(*selectedRegion_), project_);
+    selectedRegion_.reset();
+    refreshImage();
+    updateActions();
+}
+
+void MainWindow::recolorSelectedRegion() {
+    if (!selectedRegion_ || !project_.segmentation) {
+        return;
+    }
+    const auto* region = project_.segmentation->find(*selectedRegion_);
+    const QColor initial(region->rgb[0], region->rgb[1], region->rgb[2]);
+    const QColor color = QColorDialog::getColor(initial, this, tr("Couleur de la région"));
+    if (!color.isValid()) {
+        return;
+    }
+    undoStack_.execute(
+        std::make_unique<commands::RecolorRegionCommand>(
+            *selectedRegion_, std::array<std::uint8_t, 3>{static_cast<std::uint8_t>(color.red()),
+                                                          static_cast<std::uint8_t>(color.green()),
+                                                          static_cast<std::uint8_t>(color.blue())}),
+        project_);
+    refreshImage();
+    updateActions();
 }
 
 void MainWindow::updateActions() {
     const bool hasImage = project_.hasImage();
     for (QAction* act : imageActions_) {
         act->setEnabled(hasImage);
+    }
+    showSegAct_->setEnabled(project_.segmentation.has_value());
+    const bool hasSelection = selectedRegion_.has_value() && project_.segmentation.has_value();
+    for (QAction* act : regionActions_) {
+        act->setEnabled(hasSelection);
+    }
+    if (!mergeAct_->isEnabled()) {
+        mergeAct_->setChecked(false);
     }
     undoAct_->setEnabled(undoStack_.canUndo());
     redoAct_->setEnabled(undoStack_.canRedo());

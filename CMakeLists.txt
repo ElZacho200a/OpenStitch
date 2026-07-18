@@ -30,6 +30,7 @@ endif()
 
 add_subdirectory(libs/core)
 add_subdirectory(libs/image)
+add_subdirectory(libs/segmentation)
 add_subdirectory(libs/document)
 add_subdirectory(libs/commands)
 add_subdirectory(apps/cli)

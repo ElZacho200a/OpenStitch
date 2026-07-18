@@ -101,6 +101,13 @@ void CanvasView::wheelEvent(QWheelEvent* event) {
     event->accept();
 }
 
+void CanvasView::mousePressEvent(QMouseEvent* event) {
+    if (event->button() == Qt::LeftButton && !cropMode_) {
+        emit canvasClickedMm(mapToScene(event->position().toPoint()));
+    }
+    QGraphicsView::mousePressEvent(event);
+}
+
 void CanvasView::mouseMoveEvent(QMouseEvent* event) {
     QGraphicsView::mouseMoveEvent(event);
     const QPointF scenePos = mapToScene(event->position().toPoint());

@@ -32,6 +32,10 @@ private slots:
     void adjustBrightnessContrast();
     void quantizeColors();
     void onCropSelected(QRectF rectMm);
+    void segmentImage();
+    void onCanvasClicked(QPointF posMm);
+    void deleteSelectedRegion();
+    void recolorSelectedRegion();
 
 private:
     void buildMenus();
@@ -50,7 +54,16 @@ private:
     QAction* undoAct_{nullptr};
     QAction* redoAct_{nullptr};
     QAction* cropAct_{nullptr};
+    QAction* showSegAct_{nullptr};
+    QAction* mergeAct_{nullptr};
     QList<QAction*> imageActions_;
+    QList<QAction*> regionActions_;  // nécessitent une région sélectionnée
+
+    std::optional<RegionId> selectedRegion_;
+    bool mergeMode_{false};
+
+    // Conversion coordonnées scène (mm) -> pixel de l'image de travail.
+    [[nodiscard]] std::optional<QPoint> mmToImagePixel(QPointF mm) const;
 };
 
 }  // namespace openstitch::desktop

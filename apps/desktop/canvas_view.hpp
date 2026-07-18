@@ -36,9 +36,12 @@ signals:
     void cursorMovedMm(QPointF posMm);
     // Rectangle sélectionné en mode recadrage (coordonnées scène, mm).
     void cropSelectedMm(QRectF rectMm);
+    // Clic gauche sur le canevas (coordonnées scène, mm) — hors mode recadrage.
+    void canvasClickedMm(QPointF posMm);
 
 protected:
     void wheelEvent(QWheelEvent* event) override;
+    void mousePressEvent(QMouseEvent* event) override;
     void mouseMoveEvent(QMouseEvent* event) override;
     void mouseReleaseEvent(QMouseEvent* event) override;
     void resizeEvent(QResizeEvent* event) override;
