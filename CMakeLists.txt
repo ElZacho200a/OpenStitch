@@ -30,6 +30,7 @@ endif()
 
 add_subdirectory(libs/core)
 add_subdirectory(libs/image)
+add_subdirectory(libs/document)
 add_subdirectory(apps/cli)
 
 if(OPENSTITCH_BUILD_DESKTOP)

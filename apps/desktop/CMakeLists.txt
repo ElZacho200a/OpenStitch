@@ -12,9 +12,16 @@ add_executable(openstitch WIN32
     main.cpp
     main_window.cpp
     main_window.hpp
+    canvas_view.cpp
+    canvas_view.hpp
+    ruler.cpp
+    ruler.hpp
+    import_dialog.cpp
+    import_dialog.hpp
 )
 target_link_libraries(openstitch
-    PRIVATE Qt6::Widgets openstitch::core openstitch::image openstitch::warnings
+    PRIVATE Qt6::Widgets openstitch::core openstitch::image openstitch::document
+            openstitch::warnings
 )
 
 # Copie les DLL Qt à côté de l'exécutable pour pouvoir le lancer directement.

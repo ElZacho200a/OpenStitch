@@ -4,13 +4,15 @@
 #include <QMainWindow>
 
 class QGraphicsScene;
-class QGraphicsView;
+class QLabel;
 
 namespace openstitch::desktop {
 
+class CanvasView;
+
 // Fenêtre principale. Règle du projet : aucune logique métier dans les
-// widgets — le chargement d'image passe par libs/image ; cette classe ne
-// fait que de l'affichage et du câblage d'actions.
+// widgets — chargement (libs/image) et placement physique (libs/document)
+// viennent des bibliothèques cœur ; cette classe câble et affiche.
 class MainWindow : public QMainWindow {
     Q_OBJECT
 
@@ -22,7 +24,8 @@ private slots:
 
 private:
     QGraphicsScene* scene_{nullptr};
-    QGraphicsView* view_{nullptr};
+    CanvasView* view_{nullptr};
+    QLabel* cursorLabel_{nullptr};
 };
 
 }  // namespace openstitch::desktop
