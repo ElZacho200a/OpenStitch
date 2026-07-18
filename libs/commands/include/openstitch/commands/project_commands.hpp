@@ -156,6 +156,23 @@ private:
     document::VectorObject object_;
 };
 
+// Ajoute un objet de broderie (id généré par l'appelant, comme pour
+// AddVectorObjectCommand).
+class AddEmbroideryObjectCommand final : public ICommand {
+public:
+    explicit AddEmbroideryObjectCommand(document::EmbroideryObject object)
+        : object_(std::move(object)) {}
+
+    void apply(document::Project& project) override {
+        project.embroidery_objects.push_back(object_);
+    }
+    void revert(document::Project& project) override { project.embroidery_objects.pop_back(); }
+    [[nodiscard]] std::string name() const override { return "Objet de broderie"; }
+
+private:
+    document::EmbroideryObject object_;
+};
+
 // Déplace un nœud d'un objet vectoriel.
 class MoveNodeCommand final : public ICommand {
 public:

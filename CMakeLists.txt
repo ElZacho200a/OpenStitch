@@ -34,6 +34,8 @@ add_subdirectory(libs/image)
 add_subdirectory(libs/segmentation)
 add_subdirectory(libs/vectorization)
 add_subdirectory(libs/document)
+add_subdirectory(libs/stitch)
+add_subdirectory(libs/stitch_generation)
 add_subdirectory(libs/commands)
 add_subdirectory(apps/cli)
 

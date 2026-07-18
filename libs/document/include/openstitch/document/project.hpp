@@ -6,6 +6,7 @@
 
 #include "openstitch/core/ids.hpp"
 #include "openstitch/core/units.hpp"
+#include "openstitch/document/embroidery_object.hpp"
 #include "openstitch/document/vector_object.hpp"
 #include "openstitch/image/image.hpp"
 #include "openstitch/image/ops.hpp"
@@ -30,11 +31,26 @@ struct Project {
     // Objets vectoriels (Phase 5). Contrairement à la segmentation, ils
     // survivent aux retouches d'image : leur géométrie est indépendante.
     std::vector<VectorObject> vector_objects;
-    IdGenerator<ObjectId> object_ids;
+
+    // Objets de broderie (Phase 6), dans l'ordre de couture.
+    std::vector<EmbroideryObject> embroidery_objects;
+
+    IdGenerator<ObjectId> object_ids;  // partagé par tous les types d'objets
 
     [[nodiscard]] bool hasImage() const { return !original.empty(); }
     [[nodiscard]] VectorObject* findObject(ObjectId id) {
         for (auto& object : vector_objects) {
+            if (object.id == id) {
+                return &object;
+            }
+        }
+        return nullptr;
+    }
+    [[nodiscard]] const VectorObject* findObject(ObjectId id) const {
+        return const_cast<Project*>(this)->findObject(id);
+    }
+    [[nodiscard]] EmbroideryObject* findEmbroidery(ObjectId id) {
+        for (auto& object : embroidery_objects) {
             if (object.id == id) {
                 return &object;
             }

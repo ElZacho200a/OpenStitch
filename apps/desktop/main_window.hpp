@@ -6,6 +6,7 @@
 
 #include "openstitch/commands/undo_stack.hpp"
 #include "openstitch/document/project.hpp"
+#include "openstitch/stitch/sequence.hpp"
 
 class QGraphicsScene;
 class QLabel;
@@ -37,6 +38,8 @@ private slots:
     void deleteSelectedRegion();
     void recolorSelectedRegion();
     void vectorizeSelectedRegion();
+    void createRunningStitchObject();
+    void showStatistics();
 
 private:
     void buildMenus();
@@ -58,8 +61,15 @@ private:
     QAction* showSegAct_{nullptr};
     QAction* mergeAct_{nullptr};
     QAction* showVectorsAct_{nullptr};
+    QAction* showStitchesAct_{nullptr};
+    QAction* createStitchAct_{nullptr};
+    QAction* statsAct_{nullptr};
     QList<QAction*> imageActions_;
     QList<QAction*> regionActions_;  // nécessitent une région sélectionnée
+
+    // Cache des points générés — recalculé à chaque modification du document
+    // (jamais une vérité stockée, ADR-014).
+    std::optional<stitch::StitchSequence> sequence_;
 
     std::optional<RegionId> selectedRegion_;
     std::optional<ObjectId> selectedObject_;

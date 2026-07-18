@@ -27,7 +27,9 @@
 #include "canvas_view.hpp"
 #include "import_dialog.hpp"
 #include "node_handle.hpp"
+#include "openstitch/stitch_generation/generate.hpp"
 #include "openstitch/vectorization/vectorize.hpp"
+#include <QComboBox>
 #include "openstitch/commands/project_commands.hpp"
 #include "openstitch/core/app_info.hpp"
 #include "openstitch/document/canvas.hpp"
@@ -158,7 +160,17 @@ void MainWindow::buildMenus() {
     connect(vectorizeAct, &QAction::triggered, this, &MainWindow::vectorizeSelectedRegion);
     regionActions_.append(vectorizeAct);
 
+    auto* embMenu = menuBar()->addMenu(tr("&Broderie"));
+    createStitchAct_ = embMenu->addAction(tr("Créer un objet de &point de contour…"));
+    connect(createStitchAct_, &QAction::triggered, this, &MainWindow::createRunningStitchObject);
+    statsAct_ = embMenu->addAction(tr("&Statistiques…"));
+    connect(statsAct_, &QAction::triggered, this, &MainWindow::showStatistics);
+
     auto* viewMenu = menuBar()->addMenu(tr("&Affichage"));
+    showStitchesAct_ = viewMenu->addAction(tr("Afficher les &points"));
+    showStitchesAct_->setCheckable(true);
+    showStitchesAct_->setChecked(true);
+    connect(showStitchesAct_, &QAction::toggled, this, [this] { displayImage(processed_); });
     showVectorsAct_ = viewMenu->addAction(tr("Afficher les &vecteurs"));
     showVectorsAct_->setCheckable(true);
     showVectorsAct_->setChecked(true);
@@ -314,6 +326,18 @@ void MainWindow::refreshImage() {
         return;
     }
     processed_ = *result;
+
+    // Régénération des points depuis le document (fonction pure).
+    sequence_.reset();
+    if (!project_.embroidery_objects.empty()) {
+        if (auto seq = stitch_generation::generate_sequence(project_)) {
+            sequence_ = std::move(*seq);
+        } else {
+            statusBar()->showMessage(
+                tr("Génération des points impossible : %1")
+                    .arg(QString::fromStdString(seq.error().message)));
+        }
+    }
     displayImage(processed_);
 }
 
@@ -386,6 +410,51 @@ void MainWindow::displayImage(const image::Image& img) {
                 }
             }
         }
+    }
+
+    // Points générés : trait continu pour la couture, pointillés pour les
+    // sauts, pastilles aux pénétrations d'aiguille.
+    if (showStitchesAct_ != nullptr && showStitchesAct_->isChecked() && sequence_) {
+        QPainterPath sewPath;
+        QPainterPath jumpPath;
+        QPainterPath dots;
+        bool hasPos = false;
+        QPointF last;
+        for (const auto& cmd : sequence_->commands) {
+            const QPointF p(to_millimeters(cmd.pos.x).value, -to_millimeters(cmd.pos.y).value);
+            switch (cmd.type) {
+            case stitch::CommandType::Stitch:
+                if (hasPos) {
+                    sewPath.moveTo(last);
+                    sewPath.lineTo(p);
+                }
+                dots.addEllipse(p, 0.15, 0.15);
+                last = p;
+                hasPos = true;
+                break;
+            case stitch::CommandType::Jump:
+                if (hasPos) {
+                    jumpPath.moveTo(last);
+                    jumpPath.lineTo(p);
+                }
+                last = p;
+                hasPos = true;
+                break;
+            default:
+                break;
+            }
+        }
+        QPen sewPen(QColor(25, 25, 45));
+        sewPen.setCosmetic(true);
+        sewPen.setWidth(2);
+        scene_->addPath(sewPath, sewPen)->setZValue(20);
+
+        QPen jumpPen(QColor(200, 120, 30));
+        jumpPen.setCosmetic(true);
+        jumpPen.setStyle(Qt::DashLine);
+        scene_->addPath(jumpPath, jumpPen)->setZValue(20);
+
+        scene_->addPath(dots, Qt::NoPen, QBrush(QColor(25, 25, 45)))->setZValue(21);
     }
 
     // Carte des régions par-dessus l'image (mode d'affichage segmentation).
@@ -517,6 +586,78 @@ void MainWindow::vectorizeSelectedRegion() {
     statusBar()->showMessage(tr("Objet vectoriel créé — cliquez-le pour éditer ses nœuds"));
 }
 
+void MainWindow::createRunningStitchObject() {
+    if (!selectedObject_) {
+        return;
+    }
+    const auto* source = project_.findObject(*selectedObject_);
+    if (source == nullptr) {
+        return;
+    }
+
+    QDialog dialog(this);
+    dialog.setWindowTitle(tr("Objet de point de contour"));
+    auto* layout = new QFormLayout(&dialog);
+    auto* lengthSpin = new QDoubleSpinBox(&dialog);
+    lengthSpin->setRange(0.5, 12.0);
+    lengthSpin->setValue(3.0);
+    lengthSpin->setDecimals(1);
+    lengthSpin->setSuffix(tr(" mm"));
+    auto* typeCombo = new QComboBox(&dialog);
+    typeCombo->addItem(tr("Point simple"), 1);
+    typeCombo->addItem(tr("Aller-retour (double)"), 2);
+    typeCombo->addItem(tr("Point triple"), 3);
+    layout->addRow(tr("Longueur de point :"), lengthSpin);
+    layout->addRow(tr("Type :"), typeCombo);
+    auto* buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dialog);
+    connect(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
+    connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
+    layout->addRow(buttons);
+    if (dialog.exec() != QDialog::Accepted) {
+        return;
+    }
+
+    document::EmbroideryObject object;
+    object.id = project_.object_ids.next();
+    object.name = tr("Contour de %1").arg(QString::fromStdString(source->name)).toStdString();
+    object.source_vector = source->id;
+    object.rgb = source->rgb;
+    object.params.stitch_length = to_micrometers(Millimeters{lengthSpin->value()});
+    object.params.repeats = typeCombo->currentData().toInt();
+
+    undoStack_.execute(std::make_unique<commands::AddEmbroideryObjectCommand>(std::move(object)),
+                       project_);
+    showStitchesAct_->setChecked(true);
+    refreshImage();
+    updateActions();
+    if (sequence_) {
+        const auto stats = stitch::compute_stats(*sequence_);
+        statusBar()->showMessage(tr("Points générés : %1 points, %2 saut(s)")
+                                     .arg(stats.stitches)
+                                     .arg(stats.jumps));
+    }
+}
+
+void MainWindow::showStatistics() {
+    if (!sequence_) {
+        return;
+    }
+    const auto stats = stitch::compute_stats(*sequence_);
+    const double wMm = to_millimeters(stats.bounds.max.x - stats.bounds.min.x).value;
+    const double hMm = to_millimeters(stats.bounds.max.y - stats.bounds.min.y).value;
+    QMessageBox::information(
+        this, tr("Statistiques de broderie"),
+        tr("Points : %1\nSauts : %2\nCoupes : %3\nChangements de couleur : %4\n"
+           "Dimensions : %5 × %6 mm\nFil cousu estimé : %7 m")
+            .arg(stats.stitches)
+            .arg(stats.jumps)
+            .arg(stats.trims)
+            .arg(stats.color_changes)
+            .arg(wMm, 0, 'f', 1)
+            .arg(hMm, 0, 'f', 1)
+            .arg(stats.thread_length_um / 1e9, 0, 'f', 2));
+}
+
 void MainWindow::onCanvasClicked(QPointF posMm) {
     // Priorité aux objets vectoriels lorsqu'ils sont affichés (hors fusion).
     if (showVectorsAct_->isChecked() && !mergeMode_) {
@@ -613,6 +754,9 @@ void MainWindow::updateActions() {
     }
     showSegAct_->setEnabled(project_.segmentation.has_value());
     showVectorsAct_->setEnabled(!project_.vector_objects.empty());
+    showStitchesAct_->setEnabled(!project_.embroidery_objects.empty());
+    createStitchAct_->setEnabled(selectedObject_.has_value());
+    statsAct_->setEnabled(sequence_.has_value());
     const bool hasSelection = selectedRegion_.has_value() && project_.segmentation.has_value();
     for (QAction* act : regionActions_) {
         act->setEnabled(hasSelection);
