@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+﻿// SPDX-License-Identifier: Apache-2.0
 #include <catch2/catch_test_macros.hpp>
 
 #include <type_traits>
@@ -9,7 +9,7 @@ using namespace openstitch;
 
 static_assert(!std::is_same_v<ObjectId, RegionId>, "les identifiants doivent être des types distincts");
 
-TEST_CASE("id par défaut invalide, générateur monotone") {
+TEST_CASE("id par defaut invalide, generateur monotone") {
     CHECK_FALSE(ObjectId{}.valid());
 
     IdGenerator<ObjectId> gen;
@@ -20,7 +20,7 @@ TEST_CASE("id par défaut invalide, générateur monotone") {
     CHECK(a.value < b.value);
 }
 
-TEST_CASE("reprise après désérialisation") {
+TEST_CASE("reprise apres deserialisation") {
     IdGenerator<ObjectId> gen;
     gen.reset(41);
     CHECK(gen.next().value == 42);

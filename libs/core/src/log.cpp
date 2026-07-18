@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 #include "openstitch/core/log.hpp"
 
-#include <spdlog/sinks/stderr_color_sinks.h>
+#include <spdlog/sinks/stdout_color_sinks.h>
 
 namespace openstitch {
 

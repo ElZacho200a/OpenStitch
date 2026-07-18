@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+﻿// SPDX-License-Identifier: Apache-2.0
 #include <catch2/catch_test_macros.hpp>
 
 #include <opencv2/core.hpp>
@@ -27,7 +27,7 @@ fs::path write_test_png(bool with_alpha) {
 
 }  // namespace
 
-TEST_CASE("métadonnées d'un PNG RGB") {
+TEST_CASE("metadonnees d'un PNG RGB") {
     const auto p = write_test_png(false);
     const auto info = read_image_info(p);
     REQUIRE(info.has_value());

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+﻿// SPDX-License-Identifier: Apache-2.0
 #include <catch2/catch_test_macros.hpp>
 
 #include "openstitch/core/units.hpp"
@@ -13,18 +13,18 @@ TEST_CASE("conversion mm <-> um exacte") {
     CHECK(to_millimeters(to_micrometers(Millimeters{42.0})).value == 42.0);
 }
 
-TEST_CASE("arrondi au micromètre le plus proche") {
+TEST_CASE("arrondi au micrometre le plus proche") {
     CHECK(to_micrometers(Millimeters{0.0004}).value == 0);
     CHECK(to_micrometers(Millimeters{0.0006}).value == 1);
     CHECK(to_micrometers(Millimeters{-0.0006}).value == -1);
 }
 
-TEST_CASE("pixels vers micromètres via résolution explicite") {
+TEST_CASE("pixels vers micrometres via resolution explicite") {
     // 100 px à 0,5 mm/px = 50 mm = 50 000 um
     CHECK(to_micrometers(Pixels{100.0}, Millimeters{0.5}).value == 50000);
 }
 
-TEST_CASE("arithmétique des unités et vecteurs") {
+TEST_CASE("arithmetique des unites et vecteurs") {
     CHECK(Micrometers{300} + Micrometers{-100} == Micrometers{200});
     CHECK(-Micrometers{5} == Micrometers{-5});
 
