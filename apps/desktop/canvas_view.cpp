@@ -34,6 +34,20 @@ CanvasView::CanvasView(QGraphicsScene* scene, QWidget* parent) : QGraphicsView(s
     setFrameShape(QFrame::NoFrame);  // le viewport s'aligne avec les règles
     setMouseTracking(true);
     setBackgroundBrush(QColor(235, 235, 238));
+
+    connect(this, &QGraphicsView::rubberBandChanged, this,
+            [this](QRect viewportRect, QPointF fromScene, QPointF toScene) {
+                if (!viewportRect.isNull()) {
+                    lastRubberBandMm_ = QRectF(fromScene, toScene).normalized();
+                }
+            });
+}
+
+void CanvasView::setCropMode(bool enabled) {
+    cropMode_ = enabled;
+    lastRubberBandMm_ = QRectF();
+    setDragMode(enabled ? QGraphicsView::RubberBandDrag : QGraphicsView::ScrollHandDrag);
+    setCursor(enabled ? Qt::CrossCursor : Qt::ArrowCursor);
 }
 
 void CanvasView::setCanvasSizeMm(QSizeF sizeMm) {
@@ -92,6 +106,15 @@ void CanvasView::mouseMoveEvent(QMouseEvent* event) {
     const QPointF scenePos = mapToScene(event->position().toPoint());
     // Passage scène (Y bas) -> repère physique (Y haut).
     emit cursorMovedMm(QPointF(scenePos.x(), -scenePos.y()));
+}
+
+void CanvasView::mouseReleaseEvent(QMouseEvent* event) {
+    QGraphicsView::mouseReleaseEvent(event);
+    if (cropMode_ && lastRubberBandMm_.isValid() && !lastRubberBandMm_.isEmpty()) {
+        const QRectF rect = lastRubberBandMm_;
+        lastRubberBandMm_ = QRectF();
+        emit cropSelectedMm(rect);
+    }
 }
 
 void CanvasView::resizeEvent(QResizeEvent* event) {

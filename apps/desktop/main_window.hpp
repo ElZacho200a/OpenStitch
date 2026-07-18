@@ -1,18 +1,24 @@
 // SPDX-License-Identifier: Apache-2.0
 #pragma once
 
+#include <QList>
 #include <QMainWindow>
+
+#include "openstitch/commands/undo_stack.hpp"
+#include "openstitch/document/project.hpp"
 
 class QGraphicsScene;
 class QLabel;
+class QAction;
 
 namespace openstitch::desktop {
 
 class CanvasView;
 
 // Fenêtre principale. Règle du projet : aucune logique métier dans les
-// widgets — chargement (libs/image) et placement physique (libs/document)
-// viennent des bibliothèques cœur ; cette classe câble et affiche.
+// widgets — chargement (libs/image), placement (libs/document), transformations
+// (libs/image::ops) et undo/redo (libs/commands) viennent des bibliothèques
+// cœur ; cette classe câble, affiche et recalcule l'aperçu.
 class MainWindow : public QMainWindow {
     Q_OBJECT
 
@@ -21,11 +27,30 @@ public:
 
 private slots:
     void openImage();
+    void undo();
+    void redo();
+    void adjustBrightnessContrast();
+    void quantizeColors();
+    void onCropSelected(QRectF rectMm);
 
 private:
+    void buildMenus();
+    void executeOp(image::ImageOp op);
+    void refreshImage();
+    void displayImage(const image::Image& img);
+    void updateActions();
+
+    document::Project project_;
+    commands::UndoStack undoStack_;
+    image::Image processed_;  // dernier résultat du pipeline (pour l'affichage)
+
     QGraphicsScene* scene_{nullptr};
     CanvasView* view_{nullptr};
     QLabel* cursorLabel_{nullptr};
+    QAction* undoAct_{nullptr};
+    QAction* redoAct_{nullptr};
+    QAction* cropAct_{nullptr};
+    QList<QAction*> imageActions_;
 };
 
 }  // namespace openstitch::desktop

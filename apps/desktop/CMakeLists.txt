@@ -18,10 +18,12 @@ add_executable(openstitch WIN32
     ruler.hpp
     import_dialog.cpp
     import_dialog.hpp
+    brightness_dialog.cpp
+    brightness_dialog.hpp
 )
 target_link_libraries(openstitch
     PRIVATE Qt6::Widgets openstitch::core openstitch::image openstitch::document
-            openstitch::warnings
+            openstitch::commands openstitch::warnings
 )
 
 # Copie les DLL Qt à côté de l'exécutable pour pouvoir le lancer directement.
