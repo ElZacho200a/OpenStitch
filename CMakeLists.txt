@@ -36,6 +36,7 @@ add_subdirectory(libs/vectorization)
 add_subdirectory(libs/document)
 add_subdirectory(libs/stitch)
 add_subdirectory(libs/stitch_generation)
+add_subdirectory(libs/formats)
 add_subdirectory(libs/commands)
 add_subdirectory(apps/cli)
 

@@ -40,6 +40,8 @@ private slots:
     void vectorizeSelectedRegion();
     void createRunningStitchObject();
     void showStatistics();
+    void exportDst();
+    void importDst();
 
 private:
     void buildMenus();
@@ -68,8 +70,11 @@ private:
     QList<QAction*> regionActions_;  // nécessitent une région sélectionnée
 
     // Cache des points générés — recalculé à chaque modification du document
-    // (jamais une vérité stockée, ADR-014).
+    // (jamais une vérité stockée, ADR-014). Exception : une séquence importée
+    // d'un DST est la vérité (le DST ne contient pas d'objets, §17).
     std::optional<stitch::StitchSequence> sequence_;
+    bool sequenceImported_{false};
+    QAction* exportDstAct_{nullptr};
 
     std::optional<RegionId> selectedRegion_;
     std::optional<ObjectId> selectedObject_;

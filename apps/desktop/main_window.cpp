@@ -27,6 +27,7 @@
 #include "canvas_view.hpp"
 #include "import_dialog.hpp"
 #include "node_handle.hpp"
+#include "openstitch/formats/dst.hpp"
 #include "openstitch/stitch_generation/generate.hpp"
 #include "openstitch/vectorization/vectorize.hpp"
 #include <QComboBox>
@@ -85,6 +86,11 @@ void MainWindow::buildMenus() {
     auto* openAct = fileMenu->addAction(tr("&Ouvrir une image…"));
     openAct->setShortcut(QKeySequence::Open);
     connect(openAct, &QAction::triggered, this, &MainWindow::openImage);
+    fileMenu->addSeparator();
+    exportDstAct_ = fileMenu->addAction(tr("&Exporter en DST…"));
+    connect(exportDstAct_, &QAction::triggered, this, &MainWindow::exportDst);
+    auto* importDstAct = fileMenu->addAction(tr("&Importer un DST…"));
+    connect(importDstAct, &QAction::triggered, this, &MainWindow::importDst);
     fileMenu->addSeparator();
     auto* quitAct = fileMenu->addAction(tr("&Quitter"));
     quitAct->setShortcut(QKeySequence::Quit);
@@ -211,10 +217,14 @@ void MainWindow::openImage() {
         return;
     }
 
+    project_ = document::Project{};
     project_.mm_per_px = document::mm_per_pixel(*placement, loaded->width);
     project_.original = std::move(*loaded);
-    project_.ops.clear();
     undoStack_.clear();
+    sequence_.reset();
+    sequenceImported_ = false;
+    selectedRegion_.reset();
+    selectedObject_.reset();
 
     refreshImage();
     view_->fitCanvas();
@@ -307,8 +317,8 @@ void MainWindow::onCropSelected(QRectF rectMm) {
 
 void MainWindow::refreshImage() {
     if (!project_.hasImage()) {
-        scene_->clear();
         processed_ = {};
+        displayImage(processed_);  // affiche quand même une séquence importée
         return;
     }
     // Une sélection qui ne correspond plus à une région ou un objet vivant
@@ -327,35 +337,36 @@ void MainWindow::refreshImage() {
     }
     processed_ = *result;
 
-    // Régénération des points depuis le document (fonction pure).
-    sequence_.reset();
-    if (!project_.embroidery_objects.empty()) {
-        if (auto seq = stitch_generation::generate_sequence(project_)) {
-            sequence_ = std::move(*seq);
-        } else {
-            statusBar()->showMessage(
-                tr("Génération des points impossible : %1")
-                    .arg(QString::fromStdString(seq.error().message)));
+    // Régénération des points depuis le document (fonction pure). Une
+    // séquence importée d'un DST n'est pas régénérable : elle est conservée.
+    if (!sequenceImported_) {
+        sequence_.reset();
+        if (!project_.embroidery_objects.empty()) {
+            if (auto seq = stitch_generation::generate_sequence(project_)) {
+                sequence_ = std::move(*seq);
+            } else {
+                statusBar()->showMessage(
+                    tr("Génération des points impossible : %1")
+                        .arg(QString::fromStdString(seq.error().message)));
+            }
         }
     }
     displayImage(processed_);
 }
 
 void MainWindow::displayImage(const image::Image& img) {
-    if (img.empty()) {
-        return;
-    }
-    const QImage qimg(img.rgba.data(), img.width, img.height, img.width * 4,
-                      QImage::Format_RGBA8888);
-    const QPixmap pixmap = QPixmap::fromImage(qimg.copy());
-
     scene_->clear();
-    auto* item = scene_->addPixmap(pixmap);
-    const double mmPerPx = project_.mm_per_px.value;
-    const double wMm = img.width * mmPerPx;
-    const double hMm = img.height * mmPerPx;
-    item->setTransform(QTransform::fromScale(mmPerPx, mmPerPx));
-    item->setPos(-wMm / 2.0, -hMm / 2.0);
+    if (!img.empty()) {
+        const QImage qimg(img.rgba.data(), img.width, img.height, img.width * 4,
+                          QImage::Format_RGBA8888);
+        const QPixmap pixmap = QPixmap::fromImage(qimg.copy());
+        auto* item = scene_->addPixmap(pixmap);
+        const double mmPerPx = project_.mm_per_px.value;
+        const double wMm = img.width * mmPerPx;
+        const double hMm = img.height * mmPerPx;
+        item->setTransform(QTransform::fromScale(mmPerPx, mmPerPx));
+        item->setPos(-wMm / 2.0, -hMm / 2.0);
+    }
 
     // Objets vectoriels (remplissage translucide + contour).
     if (showVectorsAct_ != nullptr && showVectorsAct_->isChecked()) {
@@ -459,6 +470,7 @@ void MainWindow::displayImage(const image::Image& img) {
 
     // Carte des régions par-dessus l'image (mode d'affichage segmentation).
     if (showSegAct_ != nullptr && showSegAct_->isChecked() && project_.segmentation) {
+        const double mmPerPx = project_.mm_per_px.value;
         const auto map = segmentation::render_map(*project_.segmentation, selectedRegion_);
         const QImage mapImg(map.rgba.data(), map.width, map.height, map.width * 4,
                             QImage::Format_RGBA8888);
@@ -658,6 +670,72 @@ void MainWindow::showStatistics() {
             .arg(stats.thread_length_um / 1e9, 0, 'f', 2));
 }
 
+void MainWindow::exportDst() {
+    if (!sequence_) {
+        return;
+    }
+    const QString file = QFileDialog::getSaveFileName(this, tr("Exporter en DST"), QString(),
+                                                      tr("Broderie Tajima (*.dst)"));
+    if (file.isEmpty()) {
+        return;
+    }
+    // Rappel honnête (§17) : le DST ne conserve ni objets ni couleurs réelles.
+    const auto written = formats::write_dst_file(std::filesystem::path(file.toStdWString()),
+                                                 *sequence_);
+    if (!written) {
+        QMessageBox::warning(this, tr("Export impossible"),
+                             QString::fromStdString(written.error().message));
+        return;
+    }
+    const auto stats = stitch::compute_stats(*sequence_);
+    statusBar()->showMessage(
+        tr("DST exporté : %1 (%2 points). Le DST ne conserve pas les objets éditables — "
+           "gardez aussi le projet.")
+            .arg(QFileInfo(file).fileName())
+            .arg(stats.stitches));
+}
+
+void MainWindow::importDst() {
+    const QString file = QFileDialog::getOpenFileName(this, tr("Importer un DST"), QString(),
+                                                      tr("Broderie Tajima (*.dst)"));
+    if (file.isEmpty()) {
+        return;
+    }
+    if (project_.hasImage() || sequence_) {
+        const auto answer = QMessageBox::question(
+            this, tr("Importer un DST"),
+            tr("L'import remplace le document en cours. Continuer ?"));
+        if (answer != QMessageBox::Yes) {
+            return;
+        }
+    }
+    auto seq = formats::read_dst_file(std::filesystem::path(file.toStdWString()));
+    if (!seq) {
+        QMessageBox::warning(this, tr("Import impossible"),
+                             QString::fromStdString(seq.error().message));
+        return;
+    }
+
+    project_ = document::Project{};
+    undoStack_.clear();
+    processed_ = {};
+    selectedRegion_.reset();
+    selectedObject_.reset();
+    sequence_ = std::move(*seq);
+    sequenceImported_ = true;
+    showStitchesAct_->setChecked(true);
+    displayImage(processed_);
+    view_->fitCanvas();
+    updateActions();
+
+    const auto stats = stitch::compute_stats(*sequence_);
+    statusBar()->showMessage(tr("%1 — %2 points, %3 saut(s), %4 changement(s) de fil")
+                                 .arg(QFileInfo(file).fileName())
+                                 .arg(stats.stitches)
+                                 .arg(stats.jumps)
+                                 .arg(stats.color_changes));
+}
+
 void MainWindow::onCanvasClicked(QPointF posMm) {
     // Priorité aux objets vectoriels lorsqu'ils sont affichés (hors fusion).
     if (showVectorsAct_->isChecked() && !mergeMode_) {
@@ -757,6 +835,7 @@ void MainWindow::updateActions() {
     showStitchesAct_->setEnabled(!project_.embroidery_objects.empty());
     createStitchAct_->setEnabled(selectedObject_.has_value());
     statsAct_->setEnabled(sequence_.has_value());
+    exportDstAct_->setEnabled(sequence_.has_value());
     const bool hasSelection = selectedRegion_.has_value() && project_.segmentation.has_value();
     for (QAction* act : regionActions_) {
         act->setEnabled(hasSelection);
