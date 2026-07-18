@@ -112,6 +112,45 @@ TEST_CASE("SetSegmentationCommand : apply/revert echangent les etats") {
     CHECK(project.segmentation.has_value());
 }
 
+TEST_CASE("AddVectorObject et MoveNode : undo/redo coherents") {
+    document::Project project;
+    UndoStack stack;
+
+    document::VectorObject object;
+    object.id = project.object_ids.next();
+    object.name = "test";
+    geometry::Path square;
+    square.closed = true;
+    square.nodes.push_back(geometry::PathNode{Vec2um{Micrometers{0}, Micrometers{0}},
+                                              geometry::NodeType::Corner, std::nullopt,
+                                              std::nullopt});
+    square.nodes.push_back(geometry::PathNode{Vec2um{Micrometers{1000}, Micrometers{0}},
+                                              geometry::NodeType::Corner, std::nullopt,
+                                              std::nullopt});
+    square.nodes.push_back(geometry::PathNode{Vec2um{Micrometers{0}, Micrometers{1000}},
+                                              geometry::NodeType::Corner, std::nullopt,
+                                              std::nullopt});
+    object.paths.push_back(geometry::PathSet{square, {}});
+
+    stack.execute(std::make_unique<AddVectorObjectCommand>(object), project);
+    REQUIRE(project.vector_objects.size() == 1);
+    const ObjectId id = project.vector_objects[0].id;
+
+    const Vec2um oldPos{Micrometers{0}, Micrometers{0}};
+    const Vec2um newPos{Micrometers{500}, Micrometers{500}};
+    stack.execute(std::make_unique<MoveNodeCommand>(id, document::NodeRef{0, 0, 0}, oldPos, newPos),
+                  project);
+    CHECK(project.findObject(id)->paths[0].outer.nodes[0].pos == newPos);
+
+    CHECK(stack.undo(project));
+    CHECK(project.findObject(id)->paths[0].outer.nodes[0].pos == oldPos);
+    CHECK(stack.undo(project));
+    CHECK(project.vector_objects.empty());
+    CHECK(stack.redo(project));
+    CHECK(stack.redo(project));
+    CHECK(project.findObject(id)->paths[0].outer.nodes[0].pos == newPos);
+}
+
 TEST_CASE("une nouvelle commande invalide la branche redo") {
     document::Project project;
     UndoStack stack;

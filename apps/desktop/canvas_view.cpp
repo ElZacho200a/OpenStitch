@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 #include "canvas_view.hpp"
 
+#include <QGraphicsItem>
 #include <QMouseEvent>
 #include <QPainter>
 #include <QWheelEvent>
@@ -102,7 +103,12 @@ void CanvasView::wheelEvent(QWheelEvent* event) {
 }
 
 void CanvasView::mousePressEvent(QMouseEvent* event) {
-    if (event->button() == Qt::LeftButton && !cropMode_) {
+    // Un clic sur un élément interactif (poignée de nœud) ne doit pas
+    // déclencher la sélection : la scène serait reconstruite en plein drag.
+    QGraphicsItem* item = itemAt(event->position().toPoint());
+    const bool onInteractiveItem =
+        item != nullptr && (item->flags() & QGraphicsItem::ItemIsMovable);
+    if (event->button() == Qt::LeftButton && !cropMode_ && !onInteractiveItem) {
         emit canvasClickedMm(mapToScene(event->position().toPoint()));
     }
     QGraphicsView::mousePressEvent(event);

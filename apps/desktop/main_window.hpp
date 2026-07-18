@@ -36,6 +36,7 @@ private slots:
     void onCanvasClicked(QPointF posMm);
     void deleteSelectedRegion();
     void recolorSelectedRegion();
+    void vectorizeSelectedRegion();
 
 private:
     void buildMenus();
@@ -56,14 +57,18 @@ private:
     QAction* cropAct_{nullptr};
     QAction* showSegAct_{nullptr};
     QAction* mergeAct_{nullptr};
+    QAction* showVectorsAct_{nullptr};
     QList<QAction*> imageActions_;
     QList<QAction*> regionActions_;  // nécessitent une région sélectionnée
 
     std::optional<RegionId> selectedRegion_;
+    std::optional<ObjectId> selectedObject_;
     bool mergeMode_{false};
 
     // Conversion coordonnées scène (mm) -> pixel de l'image de travail.
     [[nodiscard]] std::optional<QPoint> mmToImagePixel(QPointF mm) const;
+    // Chemin Qt (scène, mm, Y vers le bas) d'un objet vectoriel.
+    [[nodiscard]] static QPainterPath objectPainterPath(const document::VectorObject& object);
 };
 
 }  // namespace openstitch::desktop

@@ -16,6 +16,7 @@
 #include <QLabel>
 #include <QMenuBar>
 #include <QMessageBox>
+#include <QPainterPath>
 #include <QPixmap>
 #include <QSpinBox>
 #include <QStatusBar>
@@ -25,6 +26,8 @@
 #include "brightness_dialog.hpp"
 #include "canvas_view.hpp"
 #include "import_dialog.hpp"
+#include "node_handle.hpp"
+#include "openstitch/vectorization/vectorize.hpp"
 #include "openstitch/commands/project_commands.hpp"
 #include "openstitch/core/app_info.hpp"
 #include "openstitch/document/canvas.hpp"
@@ -150,7 +153,17 @@ void MainWindow::buildMenus() {
     connect(recolorAct, &QAction::triggered, this, &MainWindow::recolorSelectedRegion);
     regionActions_.append(recolorAct);
 
+    segMenu->addSeparator();
+    auto* vectorizeAct = segMenu->addAction(tr("Convertir la région en objet &vectoriel"));
+    connect(vectorizeAct, &QAction::triggered, this, &MainWindow::vectorizeSelectedRegion);
+    regionActions_.append(vectorizeAct);
+
     auto* viewMenu = menuBar()->addMenu(tr("&Affichage"));
+    showVectorsAct_ = viewMenu->addAction(tr("Afficher les &vecteurs"));
+    showVectorsAct_->setCheckable(true);
+    showVectorsAct_->setChecked(true);
+    connect(showVectorsAct_, &QAction::toggled, this, [this] { displayImage(processed_); });
+    viewMenu->addSeparator();
     auto* zoomInAct = viewMenu->addAction(tr("Zoom &avant"));
     zoomInAct->setShortcut(QKeySequence::ZoomIn);
     connect(zoomInAct, &QAction::triggered, view_, &CanvasView::zoomIn);
@@ -286,11 +299,14 @@ void MainWindow::refreshImage() {
         processed_ = {};
         return;
     }
-    // Une sélection qui ne correspond plus à une région vivante est annulée
-    // (undo/redo, nouvelle segmentation, suppression…).
+    // Une sélection qui ne correspond plus à une région ou un objet vivant
+    // est annulée (undo/redo, nouvelle segmentation, suppression…).
     if (selectedRegion_ &&
         (!project_.segmentation || project_.segmentation->find(*selectedRegion_) == nullptr)) {
         selectedRegion_.reset();
+    }
+    if (selectedObject_ && project_.findObject(*selectedObject_) == nullptr) {
+        selectedObject_.reset();
     }
     const auto result = image::apply_pipeline(project_.original, project_.ops);
     if (!result) {
@@ -316,6 +332,61 @@ void MainWindow::displayImage(const image::Image& img) {
     const double hMm = img.height * mmPerPx;
     item->setTransform(QTransform::fromScale(mmPerPx, mmPerPx));
     item->setPos(-wMm / 2.0, -hMm / 2.0);
+
+    // Objets vectoriels (remplissage translucide + contour).
+    if (showVectorsAct_ != nullptr && showVectorsAct_->isChecked()) {
+        for (const auto& object : project_.vector_objects) {
+            if (!object.visible) {
+                continue;
+            }
+            const bool selected = selectedObject_ && object.id == *selectedObject_;
+            const QColor color(object.rgb[0], object.rgb[1], object.rgb[2]);
+            QPen pen(selected ? QColor(30, 90, 200) : color.darker(150));
+            pen.setCosmetic(true);
+            pen.setWidth(selected ? 3 : 2);
+            auto* pathItem = scene_->addPath(objectPainterPath(object), pen,
+                                             QBrush(QColor(color.red(), color.green(),
+                                                           color.blue(), 90)));
+            pathItem->setZValue(10);
+        }
+        // Poignées de nœuds de l'objet sélectionné.
+        if (selectedObject_) {
+            if (const auto* object = project_.findObject(*selectedObject_)) {
+                for (std::size_t s = 0; s < object->paths.size(); ++s) {
+                    const auto& set = object->paths[s];
+                    const auto addHandles = [&](const geometry::Path& path, std::size_t pathIdx) {
+                        for (std::size_t n = 0; n < path.nodes.size(); ++n) {
+                            const Vec2um pos = path.nodes[n].pos;
+                            const QPointF sceneMm(to_millimeters(pos.x).value,
+                                                  -to_millimeters(pos.y).value);
+                            const ObjectId objectId = object->id;
+                            const document::NodeRef ref{s, pathIdx, n};
+                            auto* handle = new NodeHandleItem(
+                                sceneMm, [this, objectId, ref, pos](QPointF newSceneMm) {
+                                    const Vec2um newPos{
+                                        to_micrometers(Millimeters{newSceneMm.x()}),
+                                        to_micrometers(Millimeters{-newSceneMm.y()})};
+                                    if (newPos == pos) {
+                                        return;
+                                    }
+                                    undoStack_.execute(
+                                        std::make_unique<commands::MoveNodeCommand>(objectId, ref,
+                                                                                    pos, newPos),
+                                        project_);
+                                    refreshImage();
+                                    updateActions();
+                                });
+                            scene_->addItem(handle);
+                        }
+                    };
+                    addHandles(set.outer, 0);
+                    for (std::size_t h = 0; h < set.holes.size(); ++h) {
+                        addHandles(set.holes[h], h + 1);
+                    }
+                }
+            }
+        }
+    }
 
     // Carte des régions par-dessus l'image (mode d'affichage segmentation).
     if (showSegAct_ != nullptr && showSegAct_->isChecked() && project_.segmentation) {
@@ -389,7 +460,89 @@ void MainWindow::segmentImage() {
     statusBar()->showMessage(tr("Segmentation : %1 régions").arg(regionCount));
 }
 
+QPainterPath MainWindow::objectPainterPath(const document::VectorObject& object) {
+    QPainterPath painterPath;
+    painterPath.setFillRule(Qt::OddEvenFill);
+    const auto addPath = [&painterPath](const geometry::Path& path) {
+        if (path.nodes.empty()) {
+            return;
+        }
+        // Scène en mm, Y vers le bas : inversion du repère physique.
+        painterPath.moveTo(to_millimeters(path.nodes[0].pos.x).value,
+                           -to_millimeters(path.nodes[0].pos.y).value);
+        for (std::size_t i = 1; i < path.nodes.size(); ++i) {
+            painterPath.lineTo(to_millimeters(path.nodes[i].pos.x).value,
+                               -to_millimeters(path.nodes[i].pos.y).value);
+        }
+        painterPath.closeSubpath();
+    };
+    for (const auto& set : object.paths) {
+        addPath(set.outer);
+        for (const auto& hole : set.holes) {
+            addPath(hole);
+        }
+    }
+    return painterPath;
+}
+
+void MainWindow::vectorizeSelectedRegion() {
+    if (!selectedRegion_ || !project_.segmentation) {
+        return;
+    }
+    const auto* region = project_.segmentation->find(*selectedRegion_);
+    QGuiApplication::setOverrideCursor(Qt::WaitCursor);
+    auto sets = vectorization::vectorize_region(
+        *project_.segmentation, *selectedRegion_,
+        {.mm_per_px = project_.mm_per_px, .simplify_tolerance = Micrometers{200}});
+    QGuiApplication::restoreOverrideCursor();
+    if (!sets) {
+        QMessageBox::warning(this, tr("Vectorisation impossible"),
+                             QString::fromStdString(sets.error().message));
+        return;
+    }
+
+    document::VectorObject object;
+    object.id = project_.object_ids.next();
+    object.name = tr("Région %1").arg(selectedRegion_->value).toStdString();
+    object.source_region = *selectedRegion_;
+    object.rgb = region->rgb;
+    object.paths = std::move(*sets);
+
+    undoStack_.execute(std::make_unique<commands::AddVectorObjectCommand>(std::move(object)),
+                       project_);
+    selectedObject_ = project_.vector_objects.back().id;
+    showVectorsAct_->setChecked(true);
+    refreshImage();
+    updateActions();
+    statusBar()->showMessage(tr("Objet vectoriel créé — cliquez-le pour éditer ses nœuds"));
+}
+
 void MainWindow::onCanvasClicked(QPointF posMm) {
+    // Priorité aux objets vectoriels lorsqu'ils sont affichés (hors fusion).
+    if (showVectorsAct_->isChecked() && !mergeMode_) {
+        std::optional<ObjectId> hit;
+        for (const auto& object : project_.vector_objects) {
+            if (object.visible && objectPainterPath(object).contains(posMm)) {
+                hit = object.id;  // le dernier dessiné (au-dessus) gagne
+            }
+        }
+        if (hit) {
+            selectedObject_ = hit;
+            selectedRegion_.reset();
+            const auto* object = project_.findObject(*hit);
+            statusBar()->showMessage(tr("Objet « %1 » — %2 morceau(x), nœuds déplaçables")
+                                         .arg(QString::fromStdString(object->name))
+                                         .arg(object->paths.size()));
+            displayImage(processed_);
+            updateActions();
+            return;
+        }
+        if (selectedObject_) {
+            selectedObject_.reset();
+            displayImage(processed_);
+        }
+    }
+
     if (!showSegAct_->isChecked() || !project_.segmentation) {
         return;
     }
@@ -459,6 +612,7 @@ void MainWindow::updateActions() {
         act->setEnabled(hasImage);
     }
     showSegAct_->setEnabled(project_.segmentation.has_value());
+    showVectorsAct_->setEnabled(!project_.vector_objects.empty());
     const bool hasSelection = selectedRegion_.has_value() && project_.segmentation.has_value();
     for (QAction* act : regionActions_) {
         act->setEnabled(hasSelection);

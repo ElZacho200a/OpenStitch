@@ -1,5 +1,7 @@
 add_subdirectory(core)
+add_subdirectory(geometry)
 add_subdirectory(image)
+add_subdirectory(vectorization)
 add_subdirectory(document)
 add_subdirectory(commands)
 add_subdirectory(segmentation)

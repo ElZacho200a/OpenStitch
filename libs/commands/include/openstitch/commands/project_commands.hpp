@@ -141,4 +141,46 @@ private:
     std::array<std::uint8_t, 3> oldRgb_{};
 };
 
+// Ajoute un objet vectoriel (déjà construit — l'id est généré par l'appelant
+// via project.object_ids AVANT la création de la commande, pour que redo
+// réutilise le même id).
+class AddVectorObjectCommand final : public ICommand {
+public:
+    explicit AddVectorObjectCommand(document::VectorObject object) : object_(std::move(object)) {}
+
+    void apply(document::Project& project) override { project.vector_objects.push_back(object_); }
+    void revert(document::Project& project) override { project.vector_objects.pop_back(); }
+    [[nodiscard]] std::string name() const override { return "Objet vectoriel"; }
+
+private:
+    document::VectorObject object_;
+};
+
+// Déplace un nœud d'un objet vectoriel.
+class MoveNodeCommand final : public ICommand {
+public:
+    MoveNodeCommand(ObjectId object, document::NodeRef ref, Vec2um oldPos, Vec2um newPos)
+        : object_(object), ref_(ref), oldPos_(oldPos), newPos_(newPos) {}
+
+    void apply(document::Project& project) override { setPos(project, newPos_); }
+    void revert(document::Project& project) override { setPos(project, oldPos_); }
+    [[nodiscard]] std::string name() const override { return "Déplacement de nœud"; }
+
+private:
+    void setPos(document::Project& project, Vec2um pos) {
+        if (auto* object = project.findObject(object_)) {
+            if (auto* path = document::path_in(*object, ref_.set, ref_.path)) {
+                if (ref_.node < path->nodes.size()) {
+                    path->nodes[ref_.node].pos = pos;
+                }
+            }
+        }
+    }
+
+    ObjectId object_;
+    document::NodeRef ref_;
+    Vec2um oldPos_;
+    Vec2um newPos_;
+};
+
 }  // namespace openstitch::commands
