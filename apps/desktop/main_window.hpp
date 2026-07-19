@@ -44,6 +44,8 @@ private slots:
     void showStatistics();
     void exportDst();
     void importDst();
+    void saveProject();
+    void loadProject();
 
 private:
     void buildMenus();

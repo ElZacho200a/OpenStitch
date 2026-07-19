@@ -10,6 +10,8 @@ Ce fichier est mis à jour à **chaque** ajout ou retrait de dépendance.
 | OpenCV (core, imgproc, imgcodecs) | via vcpkg | Apache-2.0 | Chargement et traitement d'images | https://opencv.org |
 | libpng, libjpeg-turbo, libtiff, zlib | transitives (OpenCV) | zlib / IJG / libtiff / zlib | Codecs d'images | — |
 | Clipper2 | via vcpkg | BSL-1.0 | Opérations booléennes et offsets de polygones (encapsulée dans libs/geometry) | https://github.com/AngusJohnson/Clipper2 |
+| nlohmann/json | via vcpkg | MIT | Sérialisation du format projet (encapsulée dans libs/project_io) | https://github.com/nlohmann/json |
+| minizip-ng | via vcpkg | zlib | Archive ZIP du format projet .osp (encapsulée dans libs/project_io) | https://github.com/zlib-ng/minizip-ng |
 | Catch2 v3 | via vcpkg | BSL-1.0 | Tests (dev uniquement) | https://github.com/catchorg/Catch2 |
 | Qt 6.8 LTS (Widgets, Gui, Core) | binaires officiels | **LGPL-3.0** | Interface graphique | https://www.qt.io |
 
@@ -23,7 +25,4 @@ Qt est utilisé en **liaison dynamique** avec les DLL officielles non modifiées
 
 ## Dépendances prévues (non encore intégrées)
 
-| Dépendance | Licence | Phase |
-|---|---|---|
-| nlohmann/json | MIT | 10 (format projet) |
-| minizip-ng | zlib | 10 (format projet) |
+_(Toutes les dépendances prévues en Phase 0 sont désormais intégrées.)_

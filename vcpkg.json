@@ -8,6 +8,8 @@
     "spdlog",
     "cli11",
     "clipper2",
+    "nlohmann-json",
+    "minizip-ng",
     {
       "name": "opencv4",
       "default-features": false,

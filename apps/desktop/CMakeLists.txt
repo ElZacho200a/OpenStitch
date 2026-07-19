@@ -25,7 +25,8 @@ add_executable(openstitch WIN32
 target_link_libraries(openstitch
     PRIVATE Qt6::Widgets openstitch::core openstitch::image openstitch::document
             openstitch::commands openstitch::vectorization openstitch::stitch
-            openstitch::stitch_generation openstitch::formats openstitch::warnings
+            openstitch::stitch_generation openstitch::formats openstitch::project_io
+            openstitch::warnings
 )
 
 # Copie les DLL Qt à côté de l'exécutable pour pouvoir le lancer directement.

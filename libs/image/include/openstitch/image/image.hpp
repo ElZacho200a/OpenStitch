@@ -3,6 +3,7 @@
 
 #include <cstdint>
 #include <filesystem>
+#include <span>
 #include <string>
 #include <vector>
 
@@ -32,5 +33,9 @@ struct Image {
 
 [[nodiscard]] Result<ImageInfo> read_image_info(const std::filesystem::path& path);
 [[nodiscard]] Result<Image> load_image(const std::filesystem::path& path);
+
+// Encode/décode en mémoire (format projet : image intégrée en PNG).
+[[nodiscard]] Result<std::vector<std::uint8_t>> encode_png(const Image& image);
+[[nodiscard]] Result<Image> decode_image(std::span<const std::uint8_t> bytes);
 
 }  // namespace openstitch::image

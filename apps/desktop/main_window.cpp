@@ -29,6 +29,7 @@
 #include "import_dialog.hpp"
 #include "node_handle.hpp"
 #include "openstitch/formats/dst.hpp"
+#include "openstitch/project_io/project_io.hpp"
 #include "openstitch/stitch_generation/generate.hpp"
 #include "openstitch/stitch_generation/satin.hpp"
 #include "openstitch/vectorization/vectorize.hpp"
@@ -89,6 +90,12 @@ void MainWindow::buildMenus() {
     auto* openAct = fileMenu->addAction(tr("&Ouvrir une image…"));
     openAct->setShortcut(QKeySequence::Open);
     connect(openAct, &QAction::triggered, this, &MainWindow::openImage);
+    fileMenu->addSeparator();
+    auto* saveProjectAct = fileMenu->addAction(tr("&Enregistrer le projet…"));
+    saveProjectAct->setShortcut(QKeySequence::Save);
+    connect(saveProjectAct, &QAction::triggered, this, &MainWindow::saveProject);
+    auto* loadProjectAct = fileMenu->addAction(tr("Ou&vrir un projet…"));
+    connect(loadProjectAct, &QAction::triggered, this, &MainWindow::loadProject);
     fileMenu->addSeparator();
     exportDstAct_ = fileMenu->addAction(tr("&Exporter en DST…"));
     connect(exportDstAct_, &QAction::triggered, this, &MainWindow::exportDst);
@@ -827,6 +834,55 @@ void MainWindow::showStatistics() {
             .arg(wMm, 0, 'f', 1)
             .arg(hMm, 0, 'f', 1)
             .arg(stats.thread_length_um / 1e9, 0, 'f', 2));
+}
+
+void MainWindow::saveProject() {
+    if (!project_.hasImage() && project_.vector_objects.empty()) {
+        QMessageBox::information(this, tr("Rien à enregistrer"),
+                                 tr("Ouvrez une image et créez des objets d'abord."));
+        return;
+    }
+    const QString file = QFileDialog::getSaveFileName(this, tr("Enregistrer le projet"), QString(),
+                                                      tr("Projet OpenStitch (*.osp)"));
+    if (file.isEmpty()) {
+        return;
+    }
+    const auto written = project_io::save_project(std::filesystem::path(file.toStdWString()),
+                                                  project_);
+    if (!written) {
+        QMessageBox::warning(this, tr("Enregistrement impossible"),
+                             QString::fromStdString(written.error().message));
+        return;
+    }
+    statusBar()->showMessage(tr("Projet enregistré : %1").arg(QFileInfo(file).fileName()));
+}
+
+void MainWindow::loadProject() {
+    const QString file = QFileDialog::getOpenFileName(this, tr("Ouvrir un projet"), QString(),
+                                                      tr("Projet OpenStitch (*.osp)"));
+    if (file.isEmpty()) {
+        return;
+    }
+    auto loaded = project_io::load_project(std::filesystem::path(file.toStdWString()));
+    if (!loaded) {
+        QMessageBox::warning(this, tr("Ouverture impossible"),
+                             QString::fromStdString(loaded.error().message));
+        return;
+    }
+    project_ = std::move(*loaded);
+    undoStack_.clear();
+    sequence_.reset();
+    sequenceImported_ = false;
+    selectedRegion_.reset();
+    selectedObject_.reset();
+    refreshImage();
+    view_->fitCanvas();
+    updateActions();
+    statusBar()->showMessage(tr("Projet ouvert : %1 — %2 objet(s) vectoriel(s), %3 objet(s) de "
+                                "broderie")
+                                 .arg(QFileInfo(file).fileName())
+                                 .arg(project_.vector_objects.size())
+                                 .arg(project_.embroidery_objects.size()));
 }
 
 void MainWindow::exportDst() {

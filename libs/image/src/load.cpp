@@ -105,6 +105,51 @@ Result<ImageInfo> read_image_info(const std::filesystem::path& path) {
     return info;
 }
 
+Result<std::vector<std::uint8_t>> encode_png(const Image& image) {
+    if (image.empty()) {
+        return fail(ErrorCategory::Internal, "Image vide : rien à encoder");
+    }
+    // Image interne RGBA -> BGRA pour OpenCV, puis imencode en PNG.
+    const cv::Mat rgba(image.height, image.width, CV_8UC4,
+                       const_cast<std::uint8_t*>(image.rgba.data()));
+    cv::Mat bgra;
+    cv::cvtColor(rgba, bgra, cv::COLOR_RGBA2BGRA);
+    std::vector<std::uint8_t> out;
+    if (!cv::imencode(".png", bgra, out)) {
+        return fail(ErrorCategory::Internal, "Échec de l'encodage PNG");
+    }
+    return out;
+}
+
+Result<Image> decode_image(std::span<const std::uint8_t> bytes) {
+    if (bytes.empty()) {
+        return fail(ErrorCategory::InvalidFile, "Données d'image vides");
+    }
+    const cv::Mat raw(1, static_cast<int>(bytes.size()), CV_8U,
+                      const_cast<std::uint8_t*>(bytes.data()));
+    cv::Mat mat = cv::imdecode(raw, cv::IMREAD_UNCHANGED);
+    if (mat.empty()) {
+        return fail(ErrorCategory::InvalidFile, "Image intégrée illisible");
+    }
+    const bool had_alpha = (mat.channels() == 4 || mat.channels() == 2);
+    auto rgba = to_rgba8(mat);
+    if (!rgba) {
+        return std::unexpected(rgba.error());
+    }
+    Image img;
+    img.width = rgba->cols;
+    img.height = rgba->rows;
+    img.source_had_alpha = had_alpha;
+    img.rgba.resize(static_cast<std::size_t>(rgba->cols) * static_cast<std::size_t>(rgba->rows) * 4);
+    for (int row = 0; row < rgba->rows; ++row) {
+        const auto* src = rgba->ptr<std::uint8_t>(row);
+        std::copy_n(src, static_cast<std::size_t>(rgba->cols) * 4,
+                    img.rgba.data() +
+                        static_cast<std::size_t>(row) * static_cast<std::size_t>(rgba->cols) * 4);
+    }
+    return img;
+}
+
 Result<Image> load_image(const std::filesystem::path& path) {
     auto mat = decode_file(path);
     if (!mat) {
