@@ -29,6 +29,7 @@
 #include "import_dialog.hpp"
 #include "node_handle.hpp"
 #include "openstitch/formats/dst.hpp"
+#include "openstitch/optimization/order.hpp"
 #include "openstitch/project_io/project_io.hpp"
 #include "openstitch/stitch_analysis/analyze.hpp"
 #include "openstitch/stitch_generation/generate.hpp"
@@ -37,10 +38,14 @@
 #include <QCheckBox>
 #include <QComboBox>
 #include <QDockWidget>
+#include <QHBoxLayout>
+#include <QIcon>
 #include <QListWidget>
+#include <QPushButton>
 #include <QSlider>
 #include <QTimer>
 #include <QToolBar>
+#include <QVBoxLayout>
 #include "openstitch/commands/project_commands.hpp"
 #include "openstitch/core/app_info.hpp"
 #include "openstitch/document/canvas.hpp"
@@ -75,6 +80,7 @@ MainWindow::MainWindow() {
 
     buildMenus();
     buildAnalysisPanel();
+    buildOrderPanel();
     buildSimulationToolbar();
 
     cursorLabel_ = new QLabel(this);
@@ -375,6 +381,9 @@ void MainWindow::refreshImage() {
     }
     if (simToolbar_ != nullptr) {
         updateSimulationRange();
+    }
+    if (orderDock_ != nullptr) {
+        refreshOrderPanel();
     }
     displayImage(processed_);
 }
@@ -898,6 +907,191 @@ void MainWindow::runAnalysis() {
     analysisDock_->show();
     analysisDock_->raise();
     statusBar()->showMessage(tr("Analyse : %1 problème(s) détecté(s)").arg(findings.size()));
+}
+
+Vec2um MainWindow::embroideryCentroid(const document::EmbroideryObject& object) const {
+    // Satin : moyenne des nœuds des deux rails. Autres : centre du contour
+    // extérieur du premier morceau de l'objet vectoriel source.
+    std::int64_t sx = 0;
+    std::int64_t sy = 0;
+    std::int64_t n = 0;
+    const auto accumulate = [&](const geometry::Path& path) {
+        for (const auto& node : path.nodes) {
+            sx += node.pos.x.value;
+            sy += node.pos.y.value;
+            ++n;
+        }
+    };
+    if (const auto* satin = std::get_if<document::SatinParams>(&object.params)) {
+        accumulate(satin->rail_a);
+        accumulate(satin->rail_b);
+    } else {
+        for (const auto& vec : project_.vector_objects) {
+            if (vec.id == object.source_vector && !vec.paths.empty()) {
+                accumulate(vec.paths.front().outer);
+                break;
+            }
+        }
+    }
+    if (n == 0) {
+        return {};
+    }
+    return Vec2um{Micrometers{static_cast<std::int32_t>(sx / n)},
+                  Micrometers{static_cast<std::int32_t>(sy / n)}};
+}
+
+void MainWindow::buildOrderPanel() {
+    orderDock_ = new QDockWidget(tr("Ordre de couture"), this);
+    orderDock_->setAllowedAreas(Qt::LeftDockWidgetArea | Qt::RightDockWidgetArea);
+    auto* panel = new QWidget(orderDock_);
+    auto* layout = new QVBoxLayout(panel);
+
+    orderList_ = new QListWidget(panel);
+    layout->addWidget(orderList_, 1);
+    connect(orderList_, &QListWidget::currentRowChanged, this, [this](int row) {
+        if (row >= 0 && row < static_cast<int>(project_.embroidery_objects.size())) {
+            selectedObject_.reset();  // sélection d'objet vectoriel distincte
+            displayImage(processed_);
+        }
+    });
+
+    auto* buttons = new QHBoxLayout();
+    auto* upBtn = new QPushButton(tr("↑ Monter"), panel);
+    auto* downBtn = new QPushButton(tr("↓ Descendre"), panel);
+    auto* lockBtn = new QPushButton(tr("🔒 Verrou"), panel);
+    connect(upBtn, &QPushButton::clicked, this, &MainWindow::moveObjectUp);
+    connect(downBtn, &QPushButton::clicked, this, &MainWindow::moveObjectDown);
+    connect(lockBtn, &QPushButton::clicked, this, &MainWindow::toggleObjectLock);
+    buttons->addWidget(upBtn);
+    buttons->addWidget(downBtn);
+    buttons->addWidget(lockBtn);
+    layout->addLayout(buttons);
+
+    orderStrategyCombo_ = new QComboBox(panel);
+    orderStrategyCombo_->addItem(tr("Par couleur"),
+                                 static_cast<int>(optimization::OrderStrategy::ByColor));
+    orderStrategyCombo_->addItem(tr("Par proximité"),
+                                 static_cast<int>(optimization::OrderStrategy::ByProximity));
+    orderStrategyCombo_->addItem(tr("Couleur puis proximité"),
+                                 static_cast<int>(optimization::OrderStrategy::ColorThenProximity));
+    layout->addWidget(orderStrategyCombo_);
+    auto* applyBtn = new QPushButton(tr("Optimiser l'ordre"), panel);
+    connect(applyBtn, &QPushButton::clicked, this, &MainWindow::applyOrderStrategy);
+    layout->addWidget(applyBtn);
+
+    orderCostLabel_ = new QLabel(panel);
+    layout->addWidget(orderCostLabel_);
+
+    orderDock_->setWidget(panel);
+    addDockWidget(Qt::LeftDockWidgetArea, orderDock_);
+    orderDock_->hide();
+}
+
+void MainWindow::refreshOrderPanel() {
+    if (orderList_ == nullptr) {
+        return;
+    }
+    const int previousRow = orderList_->currentRow();
+    orderList_->clear();
+    std::vector<optimization::OrderItem> items;
+    for (const auto& obj : project_.embroidery_objects) {
+        QString label = QString::fromStdString(obj.name);
+        if (obj.locked) {
+            label = tr("🔒 ") + label;
+        }
+        auto* item = new QListWidgetItem(label);
+        QPixmap swatch(12, 12);
+        swatch.fill(QColor(obj.rgb[0], obj.rgb[1], obj.rgb[2]));
+        item->setIcon(QIcon(swatch));
+        orderList_->addItem(item);
+        items.push_back({obj.id, obj.rgb, embroideryCentroid(obj), obj.locked});
+    }
+    if (previousRow >= 0 && previousRow < orderList_->count()) {
+        orderList_->setCurrentRow(previousRow);
+    }
+
+    const auto cost = optimization::compute_cost(items);
+    orderCostLabel_->setText(tr("Trajet : %1 mm — %2 changement(s) de fil")
+                                 .arg(cost.travel_um / 1000.0, 0, 'f', 1)
+                                 .arg(cost.color_changes));
+    orderDock_->setVisible(!project_.embroidery_objects.empty());
+}
+
+void MainWindow::moveObjectUp() {
+    const int row = orderList_->currentRow();
+    if (row <= 0) {
+        return;
+    }
+    std::vector<ObjectId> order;
+    for (const auto& obj : project_.embroidery_objects) {
+        order.push_back(obj.id);
+    }
+    std::swap(order[static_cast<std::size_t>(row)], order[static_cast<std::size_t>(row - 1)]);
+    undoStack_.execute(std::make_unique<commands::ReorderEmbroideryCommand>(order), project_);
+    refreshImage();
+    refreshOrderPanel();
+    orderList_->setCurrentRow(row - 1);
+    updateActions();
+}
+
+void MainWindow::moveObjectDown() {
+    const int row = orderList_->currentRow();
+    if (row < 0 || row >= static_cast<int>(project_.embroidery_objects.size()) - 1) {
+        return;
+    }
+    std::vector<ObjectId> order;
+    for (const auto& obj : project_.embroidery_objects) {
+        order.push_back(obj.id);
+    }
+    std::swap(order[static_cast<std::size_t>(row)], order[static_cast<std::size_t>(row + 1)]);
+    undoStack_.execute(std::make_unique<commands::ReorderEmbroideryCommand>(order), project_);
+    refreshImage();
+    refreshOrderPanel();
+    orderList_->setCurrentRow(row + 1);
+    updateActions();
+}
+
+void MainWindow::toggleObjectLock() {
+    const int row = orderList_->currentRow();
+    if (row < 0 || row >= static_cast<int>(project_.embroidery_objects.size())) {
+        return;
+    }
+    const auto& obj = project_.embroidery_objects[static_cast<std::size_t>(row)];
+    undoStack_.execute(
+        std::make_unique<commands::SetEmbroideryLockCommand>(obj.id, !obj.locked), project_);
+    refreshOrderPanel();
+    updateActions();
+}
+
+void MainWindow::applyOrderStrategy() {
+    if (project_.embroidery_objects.size() < 2) {
+        return;
+    }
+    std::vector<optimization::OrderItem> items;
+    for (const auto& obj : project_.embroidery_objects) {
+        items.push_back({obj.id, obj.rgb, embroideryCentroid(obj), obj.locked});
+    }
+    const auto strategy = static_cast<optimization::OrderStrategy>(
+        orderStrategyCombo_->currentData().toInt());
+    const auto before = optimization::compute_cost(items);
+    const auto order = optimization::optimize_order(items, strategy);
+
+    undoStack_.execute(std::make_unique<commands::ReorderEmbroideryCommand>(order), project_);
+    refreshImage();
+    refreshOrderPanel();
+    updateActions();
+
+    // Coût après (recalculé sur le nouvel ordre).
+    std::vector<optimization::OrderItem> reordered;
+    for (const auto& obj : project_.embroidery_objects) {
+        reordered.push_back({obj.id, obj.rgb, embroideryCentroid(obj), obj.locked});
+    }
+    const auto after = optimization::compute_cost(reordered);
+    statusBar()->showMessage(tr("Ordre optimisé : trajet %1 → %2 mm, changements de fil %3 → %4")
+                                 .arg(before.travel_um / 1000.0, 0, 'f', 1)
+                                 .arg(after.travel_um / 1000.0, 0, 'f', 1)
+                                 .arg(before.color_changes)
+                                 .arg(after.color_changes));
 }
 
 void MainWindow::buildSimulationToolbar() {

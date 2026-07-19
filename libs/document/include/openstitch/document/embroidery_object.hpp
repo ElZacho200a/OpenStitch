@@ -52,6 +52,7 @@ struct EmbroideryObject {
     std::array<std::uint8_t, 3> rgb{};  // couleur de fil (palette réelle : Phase 10)
     StitchParams params{RunningStitchParams{}};
     bool visible{true};
+    bool locked{false};  // l'optimisation d'ordre ne déplace pas un objet verrouillé
 
     [[nodiscard]] bool is_tatami() const {
         return std::holds_alternative<TatamiParams>(params);

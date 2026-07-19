@@ -16,6 +16,7 @@ class QDockWidget;
 class QSlider;
 class QTimer;
 class QToolBar;
+class QComboBox;
 
 namespace openstitch::desktop {
 
@@ -55,12 +56,20 @@ private slots:
     void toggleSimulation();
     void onSimSliderMoved(int value);
     void onSimTick();
+    void moveObjectUp();
+    void moveObjectDown();
+    void toggleObjectLock();
+    void applyOrderStrategy();
 
 private:
     void buildMenus();
     void buildAnalysisPanel();
     void buildSimulationToolbar();
+    void buildOrderPanel();
+    void refreshOrderPanel();
     void updateSimulationRange();
+    // Centre représentatif d'un objet de broderie (pour l'estimation du coût).
+    [[nodiscard]] Vec2um embroideryCentroid(const document::EmbroideryObject& object) const;
     void executeOp(image::ImageOp op);
     void refreshImage();
     void displayImage(const image::Image& img);
@@ -102,6 +111,12 @@ private:
     QDockWidget* analysisDock_{nullptr};
     QListWidget* analysisList_{nullptr};
     QAction* analyzeAct_{nullptr};
+
+    // Ordre de couture.
+    QDockWidget* orderDock_{nullptr};
+    QListWidget* orderList_{nullptr};
+    QLabel* orderCostLabel_{nullptr};
+    QComboBox* orderStrategyCombo_{nullptr};
 
     // Simulation de couture. Quand active (simStep_ >= 0), l'affichage ne
     // montre les points que jusqu'à cet index.

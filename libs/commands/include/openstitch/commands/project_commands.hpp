@@ -200,4 +200,64 @@ private:
     Vec2um newPos_;
 };
 
+// Réordonne les objets de broderie selon une permutation d'ObjectId.
+class ReorderEmbroideryCommand final : public ICommand {
+public:
+    explicit ReorderEmbroideryCommand(std::vector<ObjectId> newOrder)
+        : newOrder_(std::move(newOrder)) {}
+
+    void apply(document::Project& project) override {
+        oldOrder_.clear();
+        for (const auto& obj : project.embroidery_objects) {
+            oldOrder_.push_back(obj.id);
+        }
+        reorder(project, newOrder_);
+    }
+    void revert(document::Project& project) override { reorder(project, oldOrder_); }
+    [[nodiscard]] std::string name() const override { return "Réordonner la couture"; }
+
+private:
+    static void reorder(document::Project& project, const std::vector<ObjectId>& order) {
+        std::vector<document::EmbroideryObject> next;
+        next.reserve(project.embroidery_objects.size());
+        for (const ObjectId id : order) {
+            if (auto* obj = project.findEmbroidery(id)) {
+                next.push_back(*obj);
+            }
+        }
+        if (next.size() == project.embroidery_objects.size()) {
+            project.embroidery_objects = std::move(next);
+        }
+    }
+
+    std::vector<ObjectId> newOrder_;
+    std::vector<ObjectId> oldOrder_;
+};
+
+// Verrouille/déverrouille un objet de broderie (position figée à l'optimisation).
+class SetEmbroideryLockCommand final : public ICommand {
+public:
+    SetEmbroideryLockCommand(ObjectId id, bool locked) : id_(id), locked_(locked) {}
+
+    void apply(document::Project& project) override {
+        if (auto* obj = project.findEmbroidery(id_)) {
+            previous_ = obj->locked;
+            obj->locked = locked_;
+        }
+    }
+    void revert(document::Project& project) override {
+        if (auto* obj = project.findEmbroidery(id_)) {
+            obj->locked = previous_;
+        }
+    }
+    [[nodiscard]] std::string name() const override {
+        return locked_ ? "Verrouiller l'objet" : "Déverrouiller l'objet";
+    }
+
+private:
+    ObjectId id_;
+    bool locked_;
+    bool previous_{false};
+};
+
 }  // namespace openstitch::commands
