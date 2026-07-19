@@ -30,7 +30,9 @@
 #include "node_handle.hpp"
 #include "openstitch/formats/dst.hpp"
 #include "openstitch/stitch_generation/generate.hpp"
+#include "openstitch/stitch_generation/satin.hpp"
 #include "openstitch/vectorization/vectorize.hpp"
+#include <QCheckBox>
 #include <QComboBox>
 #include "openstitch/commands/project_commands.hpp"
 #include "openstitch/core/app_info.hpp"
@@ -172,6 +174,8 @@ void MainWindow::buildMenus() {
     connect(createStitchAct_, &QAction::triggered, this, &MainWindow::createRunningStitchObject);
     createTatamiAct_ = embMenu->addAction(tr("Créer un remplissage &tatami…"));
     connect(createTatamiAct_, &QAction::triggered, this, &MainWindow::createTatamiObject);
+    createSatinAct_ = embMenu->addAction(tr("Créer une colonne &satin…"));
+    connect(createSatinAct_, &QAction::triggered, this, &MainWindow::createSatinObject);
     statsAct_ = embMenu->addAction(tr("&Statistiques…"));
     connect(statsAct_, &QAction::triggered, this, &MainWindow::showStatistics);
 
@@ -716,6 +720,95 @@ void MainWindow::createTatamiObject() {
     }
 }
 
+void MainWindow::createSatinObject() {
+    if (!selectedObject_) {
+        return;
+    }
+    const auto* source = project_.findObject(*selectedObject_);
+    if (source == nullptr || source->paths.empty()) {
+        return;
+    }
+
+    // Découpe le contour extérieur du premier morceau en deux rails.
+    const auto rails = stitch_generation::rails_from_contour(source->paths.front().outer);
+    if (!rails) {
+        QMessageBox::warning(this, tr("Satin impossible"),
+                             tr("La forme est trop petite ou trop complexe pour une colonne "
+                                "satin. Essayez un remplissage tatami."));
+        return;
+    }
+
+    QDialog dialog(this);
+    dialog.setWindowTitle(tr("Colonne satin"));
+    auto* layout = new QFormLayout(&dialog);
+    auto* densitySpin = new QDoubleSpinBox(&dialog);
+    densitySpin->setRange(0.1, 1.5);
+    densitySpin->setValue(0.4);
+    densitySpin->setDecimals(2);
+    densitySpin->setSuffix(tr(" mm"));
+    auto* compSpin = new QDoubleSpinBox(&dialog);
+    compSpin->setRange(0.0, 1.0);
+    compSpin->setValue(0.0);
+    compSpin->setDecimals(2);
+    compSpin->setSuffix(tr(" mm"));
+    auto* underlayCheck = new QCheckBox(tr("Sous-couche centrale"), &dialog);
+    underlayCheck->setChecked(true);
+    layout->addRow(tr("Densité (écart) :"), densitySpin);
+    layout->addRow(tr("Compensation de tirage :"), compSpin);
+    layout->addRow(underlayCheck);
+    auto* buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dialog);
+    connect(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
+    connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
+    layout->addRow(buttons);
+    if (dialog.exec() != QDialog::Accepted) {
+        return;
+    }
+
+    document::SatinParams params;
+    params.rail_a = rails->first;
+    params.rail_b = rails->second;
+    params.density = to_micrometers(Millimeters{densitySpin->value()});
+    params.pull_compensation = to_micrometers(Millimeters{compSpin->value()});
+    params.center_underlay = underlayCheck->isChecked();
+
+    // Avertissement de largeur excessive (§5.3) : ne masque jamais la limite
+    // physique — on prévient et on suggère le tatami.
+    stitch_generation::SatinConfig probe;
+    probe.density = params.density;
+    const double maxWidth =
+        stitch_generation::fill_satin(params.rail_a, params.rail_b, probe).max_width_um;
+    if (maxWidth > static_cast<double>(params.max_width.value)) {
+        const auto answer = QMessageBox::warning(
+            this, tr("Satin large"),
+            tr("La colonne atteint %1 mm de large — au-delà de la limite recommandée "
+               "(%2 mm), le fil risque d'accrocher. Un remplissage tatami serait plus "
+               "solide. Créer quand même le satin ?")
+                .arg(maxWidth / 1000.0, 0, 'f', 1)
+                .arg(params.max_width.value / 1000.0, 0, 'f', 1),
+            QMessageBox::Yes | QMessageBox::No);
+        if (answer != QMessageBox::Yes) {
+            return;
+        }
+    }
+
+    document::EmbroideryObject object;
+    object.id = project_.object_ids.next();
+    object.name = tr("Satin de %1").arg(QString::fromStdString(source->name)).toStdString();
+    object.source_vector = source->id;
+    object.rgb = source->rgb;
+    object.params = params;
+
+    undoStack_.execute(std::make_unique<commands::AddEmbroideryObjectCommand>(std::move(object)),
+                       project_);
+    showStitchesAct_->setChecked(true);
+    refreshImage();
+    updateActions();
+    if (sequence_) {
+        const auto stats = stitch::compute_stats(*sequence_);
+        statusBar()->showMessage(tr("Colonne satin générée : %1 points").arg(stats.stitches));
+    }
+}
+
 void MainWindow::showStatistics() {
     if (!sequence_) {
         return;
@@ -901,6 +994,7 @@ void MainWindow::updateActions() {
     showStitchesAct_->setEnabled(!project_.embroidery_objects.empty());
     createStitchAct_->setEnabled(selectedObject_.has_value());
     createTatamiAct_->setEnabled(selectedObject_.has_value());
+    createSatinAct_->setEnabled(selectedObject_.has_value());
     statsAct_->setEnabled(sequence_.has_value());
     exportDstAct_->setEnabled(sequence_.has_value());
     const bool hasSelection = selectedRegion_.has_value() && project_.segmentation.has_value();

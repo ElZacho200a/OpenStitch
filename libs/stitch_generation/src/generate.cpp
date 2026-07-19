@@ -5,6 +5,7 @@
 
 #include "openstitch/geometry/offset.hpp"
 #include "openstitch/stitch_generation/running_stitch.hpp"
+#include "openstitch/stitch_generation/satin.hpp"
 #include "openstitch/stitch_generation/tatami.hpp"
 
 namespace openstitch::stitch_generation {
@@ -40,6 +41,17 @@ void generate_running(stitch::StitchSequence& sequence, const document::VectorOb
     }
 }
 
+void generate_satin(stitch::StitchSequence& sequence, const document::EmbroideryObject& object,
+                    const document::SatinParams& params) {
+    SatinConfig config;
+    config.density = params.density;
+    config.pull_compensation = params.pull_compensation;
+    config.center_underlay = params.center_underlay;
+    const SatinResult result = fill_satin(params.rail_a, params.rail_b, config);
+    emit_polyline(sequence, result.underlay, object.id);
+    emit_polyline(sequence, result.satin, object.id);
+}
+
 void generate_tatami(stitch::StitchSequence& sequence, const document::VectorObject& source,
                      const document::EmbroideryObject& object,
                      const document::TatamiParams& params) {
@@ -71,17 +83,20 @@ Result<stitch::StitchSequence> generate_sequence(const document::Project& projec
         if (!object.visible) {
             continue;
         }
+        // Le satin porte sa géométrie ; les autres types suivent un vecteur.
         const document::VectorObject* source = nullptr;
-        for (const auto& vec : project.vector_objects) {
-            if (vec.id == object.source_vector) {
-                source = &vec;
-                break;
+        if (!object.is_satin()) {
+            for (const auto& vec : project.vector_objects) {
+                if (vec.id == object.source_vector) {
+                    source = &vec;
+                    break;
+                }
             }
-        }
-        if (source == nullptr) {
-            return fail(ErrorCategory::Internal,
-                        "Objet vectoriel source introuvable pour « " + object.name + " »",
-                        "source_vector=" + std::to_string(object.source_vector.value));
+            if (source == nullptr) {
+                return fail(ErrorCategory::Internal,
+                            "Objet vectoriel source introuvable pour « " + object.name + " »",
+                            "source_vector=" + std::to_string(object.source_vector.value));
+            }
         }
 
         if (previous != nullptr && previous->rgb != object.rgb && !sequence.commands.empty()) {
@@ -96,6 +111,8 @@ Result<stitch::StitchSequence> generate_sequence(const document::Project& projec
                     generate_running(sequence, *source, object, params);
                 } else if constexpr (std::is_same_v<T, document::TatamiParams>) {
                     generate_tatami(sequence, *source, object, params);
+                } else if constexpr (std::is_same_v<T, document::SatinParams>) {
+                    generate_satin(sequence, object, params);
                 }
             },
             object.params);

@@ -40,6 +40,7 @@ private slots:
     void vectorizeSelectedRegion();
     void createRunningStitchObject();
     void createTatamiObject();
+    void createSatinObject();
     void showStatistics();
     void exportDst();
     void importDst();
@@ -67,6 +68,7 @@ private:
     QAction* showStitchesAct_{nullptr};
     QAction* createStitchAct_{nullptr};
     QAction* createTatamiAct_{nullptr};
+    QAction* createSatinAct_{nullptr};
     QAction* statsAct_{nullptr};
     QList<QAction*> imageActions_;
     QList<QAction*> regionActions_;  // nécessitent une région sélectionnée

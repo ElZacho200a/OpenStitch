@@ -7,6 +7,7 @@
 
 #include "openstitch/core/ids.hpp"
 #include "openstitch/core/units.hpp"
+#include "openstitch/geometry/path.hpp"
 
 namespace openstitch::document {
 
@@ -26,11 +27,23 @@ struct TatamiParams {
     int stagger{2};                    // rangées avant répétition de la phase des pénétrations
 };
 
+// Paramètres d'une colonne satin (§5.3). Contrairement aux autres types, le
+// satin porte sa propre géométrie (deux rails éditables), car il ne se déduit
+// pas d'un simple contour — il naît d'un contour découpé ou de deux chemins.
+struct SatinParams {
+    geometry::Path rail_a;
+    geometry::Path rail_b;
+    Micrometers density{400};
+    Micrometers pull_compensation{0};
+    bool center_underlay{true};
+    Micrometers max_width{9'000};  // au-delà, avertissement (satin trop large -> tatami)
+};
+
 // Un objet de broderie porte un TYPE de point sous forme de variant. Chaque
 // type suit la géométrie d'un objet vectoriel source (contour pour running,
-// région pleine pour tatami). La séparation intention/points (ADR-014) tient :
-// les points sont régénérés à la demande, jamais stockés comme vérité.
-using StitchParams = std::variant<RunningStitchParams, TatamiParams>;
+// région pleine pour tatami) ou porte la sienne (satin). La séparation
+// intention/points (ADR-014) tient : les points sont régénérés à la demande.
+using StitchParams = std::variant<RunningStitchParams, TatamiParams, SatinParams>;
 
 struct EmbroideryObject {
     ObjectId id;
@@ -42,6 +55,9 @@ struct EmbroideryObject {
 
     [[nodiscard]] bool is_tatami() const {
         return std::holds_alternative<TatamiParams>(params);
+    }
+    [[nodiscard]] bool is_satin() const {
+        return std::holds_alternative<SatinParams>(params);
     }
 };
 
