@@ -11,6 +11,11 @@
 class QGraphicsScene;
 class QLabel;
 class QAction;
+class QListWidget;
+class QDockWidget;
+class QSlider;
+class QTimer;
+class QToolBar;
 
 namespace openstitch::desktop {
 
@@ -46,9 +51,16 @@ private slots:
     void importDst();
     void saveProject();
     void loadProject();
+    void runAnalysis();
+    void toggleSimulation();
+    void onSimSliderMoved(int value);
+    void onSimTick();
 
 private:
     void buildMenus();
+    void buildAnalysisPanel();
+    void buildSimulationToolbar();
+    void updateSimulationRange();
     void executeOp(image::ImageOp op);
     void refreshImage();
     void displayImage(const image::Image& img);
@@ -85,6 +97,22 @@ private:
     std::optional<RegionId> selectedRegion_;
     std::optional<ObjectId> selectedObject_;
     bool mergeMode_{false};
+
+    // Analyse.
+    QDockWidget* analysisDock_{nullptr};
+    QListWidget* analysisList_{nullptr};
+    QAction* analyzeAct_{nullptr};
+
+    // Simulation de couture. Quand active (simStep_ >= 0), l'affichage ne
+    // montre les points que jusqu'à cet index.
+    QToolBar* simToolbar_{nullptr};
+    QSlider* simSlider_{nullptr};
+    QLabel* simLabel_{nullptr};
+    QAction* simPlayAct_{nullptr};
+    QTimer* simTimer_{nullptr};
+    int simStep_{-1};  // -1 = simulation inactive (tout affiché)
+
+    [[nodiscard]] bool simulating() const { return simStep_ >= 0; }
 
     // Conversion coordonnées scène (mm) -> pixel de l'image de travail.
     [[nodiscard]] std::optional<QPoint> mmToImagePixel(QPointF mm) const;

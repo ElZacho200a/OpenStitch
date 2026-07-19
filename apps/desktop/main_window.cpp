@@ -30,11 +30,17 @@
 #include "node_handle.hpp"
 #include "openstitch/formats/dst.hpp"
 #include "openstitch/project_io/project_io.hpp"
+#include "openstitch/stitch_analysis/analyze.hpp"
 #include "openstitch/stitch_generation/generate.hpp"
 #include "openstitch/stitch_generation/satin.hpp"
 #include "openstitch/vectorization/vectorize.hpp"
 #include <QCheckBox>
 #include <QComboBox>
+#include <QDockWidget>
+#include <QListWidget>
+#include <QSlider>
+#include <QTimer>
+#include <QToolBar>
 #include "openstitch/commands/project_commands.hpp"
 #include "openstitch/core/app_info.hpp"
 #include "openstitch/document/canvas.hpp"
@@ -68,6 +74,8 @@ MainWindow::MainWindow() {
     setCentralWidget(central);
 
     buildMenus();
+    buildAnalysisPanel();
+    buildSimulationToolbar();
 
     cursorLabel_ = new QLabel(this);
     cursorLabel_->setMinimumWidth(180);
@@ -365,6 +373,9 @@ void MainWindow::refreshImage() {
             }
         }
     }
+    if (simToolbar_ != nullptr) {
+        updateSimulationRange();
+    }
     displayImage(processed_);
 }
 
@@ -438,14 +449,20 @@ void MainWindow::displayImage(const image::Image& img) {
     }
 
     // Points générés : trait continu pour la couture, pointillés pour les
-    // sauts, pastilles aux pénétrations d'aiguille.
+    // sauts, pastilles aux pénétrations d'aiguille. En simulation, seules les
+    // commandes jusqu'à simStep_ sont dessinées, avec un repère d'aiguille.
     if (showStitchesAct_ != nullptr && showStitchesAct_->isChecked() && sequence_) {
         QPainterPath sewPath;
         QPainterPath jumpPath;
         QPainterPath dots;
         bool hasPos = false;
         QPointF last;
-        for (const auto& cmd : sequence_->commands) {
+        QPointF needle;
+        bool hasNeedle = false;
+        const int limit =
+            simulating() ? simStep_ : static_cast<int>(sequence_->commands.size());
+        for (int i = 0; i < static_cast<int>(sequence_->commands.size()) && i <= limit; ++i) {
+            const auto& cmd = sequence_->commands[static_cast<std::size_t>(i)];
             const QPointF p(to_millimeters(cmd.pos.x).value, -to_millimeters(cmd.pos.y).value);
             switch (cmd.type) {
             case stitch::CommandType::Stitch:
@@ -456,6 +473,8 @@ void MainWindow::displayImage(const image::Image& img) {
                 dots.addEllipse(p, 0.15, 0.15);
                 last = p;
                 hasPos = true;
+                needle = p;
+                hasNeedle = true;
                 break;
             case stitch::CommandType::Jump:
                 if (hasPos) {
@@ -464,6 +483,8 @@ void MainWindow::displayImage(const image::Image& img) {
                 }
                 last = p;
                 hasPos = true;
+                needle = p;
+                hasNeedle = true;
                 break;
             default:
                 break;
@@ -480,6 +501,12 @@ void MainWindow::displayImage(const image::Image& img) {
         scene_->addPath(jumpPath, jumpPen)->setZValue(20);
 
         scene_->addPath(dots, Qt::NoPen, QBrush(QColor(25, 25, 45)))->setZValue(21);
+
+        if (simulating() && hasNeedle) {
+            auto* marker = scene_->addEllipse(needle.x() - 0.6, needle.y() - 0.6, 1.2, 1.2,
+                                              QPen(Qt::NoPen), QBrush(QColor(220, 40, 40)));
+            marker->setZValue(30);
+        }
     }
 
     // Carte des régions par-dessus l'image (mode d'affichage segmentation).
@@ -816,6 +843,154 @@ void MainWindow::createSatinObject() {
     }
 }
 
+void MainWindow::buildAnalysisPanel() {
+    analysisDock_ = new QDockWidget(tr("Analyse"), this);
+    analysisDock_->setAllowedAreas(Qt::RightDockWidgetArea | Qt::LeftDockWidgetArea);
+    analysisList_ = new QListWidget(analysisDock_);
+    analysisDock_->setWidget(analysisList_);
+    addDockWidget(Qt::RightDockWidgetArea, analysisDock_);
+    analysisDock_->hide();
+
+    // Double-clic sur un problème : centre la vue sur sa localisation.
+    connect(analysisList_, &QListWidget::itemDoubleClicked, this, [this](QListWidgetItem* item) {
+        const QPointF mm = item->data(Qt::UserRole).toPointF();
+        if (!mm.isNull()) {
+            view_->centerOn(mm);
+        }
+    });
+
+    auto* analyseMenu = menuBar()->addMenu(tr("A&nalyse"));
+    analyzeAct_ = analyseMenu->addAction(tr("&Analyser le motif"));
+    analyzeAct_->setShortcut(QKeySequence(Qt::Key_F5));
+    connect(analyzeAct_, &QAction::triggered, this, &MainWindow::runAnalysis);
+}
+
+void MainWindow::runAnalysis() {
+    if (!sequence_) {
+        QMessageBox::information(this, tr("Analyse"),
+                                 tr("Générez d'abord des points de broderie."));
+        return;
+    }
+    stitch_analysis::AnalysisOptions opts;
+    const document::Canvas canvas;  // cadre courant (100 x 100 mm par défaut)
+    opts.hoop = stitch::BoundsUm{Vec2um{Micrometers{-canvas.width.value / 2},
+                                        Micrometers{-canvas.height.value / 2}},
+                                 Vec2um{Micrometers{canvas.width.value / 2},
+                                        Micrometers{canvas.height.value / 2}}};
+    const auto findings = stitch_analysis::analyze(*sequence_, opts);
+
+    analysisList_->clear();
+    if (findings.empty()) {
+        analysisList_->addItem(tr("✓ Aucun problème détecté."));
+    } else {
+        for (const auto& f : findings) {
+            const QString prefix = f.severity == stitch_analysis::Severity::Error ? tr("⛔ ")
+                                   : f.severity == stitch_analysis::Severity::Warning
+                                       ? tr("⚠ ")
+                                       : tr("ℹ ");
+            auto* item = new QListWidgetItem(prefix + QString::fromStdString(f.message));
+            item->setData(Qt::UserRole,
+                          QPointF(to_millimeters(f.location.x).value,
+                                  -to_millimeters(f.location.y).value));
+            analysisList_->addItem(item);
+        }
+    }
+    analysisDock_->show();
+    analysisDock_->raise();
+    statusBar()->showMessage(tr("Analyse : %1 problème(s) détecté(s)").arg(findings.size()));
+}
+
+void MainWindow::buildSimulationToolbar() {
+    simToolbar_ = addToolBar(tr("Simulation"));
+    simToolbar_->setMovable(false);
+
+    simPlayAct_ = simToolbar_->addAction(tr("▶ Lecture"));
+    simPlayAct_->setCheckable(true);
+    connect(simPlayAct_, &QAction::toggled, this, &MainWindow::toggleSimulation);
+
+    simSlider_ = new QSlider(Qt::Horizontal, simToolbar_);
+    simSlider_->setMinimum(0);
+    simSlider_->setEnabled(false);
+    connect(simSlider_, &QSlider::valueChanged, this, &MainWindow::onSimSliderMoved);
+    simToolbar_->addWidget(simSlider_);
+
+    simLabel_ = new QLabel(tr("— / —"), simToolbar_);
+    simLabel_->setMinimumWidth(120);
+    simToolbar_->addWidget(simLabel_);
+
+    simTimer_ = new QTimer(this);
+    simTimer_->setInterval(16);  // ~60 pas/seconde
+    connect(simTimer_, &QTimer::timeout, this, &MainWindow::onSimTick);
+
+    simToolbar_->hide();  // visible uniquement quand des points existent
+}
+
+void MainWindow::updateSimulationRange() {
+    const bool hasSeq = sequence_ && !sequence_->commands.empty();
+    simToolbar_->setVisible(hasSeq);
+    if (!hasSeq) {
+        simTimer_->stop();
+        simPlayAct_->setChecked(false);
+        simStep_ = -1;
+        return;
+    }
+    const int n = static_cast<int>(sequence_->commands.size()) - 1;
+    simSlider_->blockSignals(true);
+    simSlider_->setMaximum(n);
+    simSlider_->setEnabled(true);
+    if (simStep_ > n || simStep_ < 0) {
+        simStep_ = -1;  // hors simulation : tout affiché
+        simSlider_->setValue(n);
+    }
+    simSlider_->blockSignals(false);
+    simLabel_->setText(tr("%1 / %2").arg(simulating() ? simStep_ : n).arg(n));
+}
+
+void MainWindow::toggleSimulation(/* play */) {
+    if (!sequence_ || sequence_->commands.empty()) {
+        simPlayAct_->setChecked(false);
+        return;
+    }
+    if (simPlayAct_->isChecked()) {
+        // Démarre (ou redémarre depuis le début si on était à la fin).
+        if (!simulating() || simStep_ >= static_cast<int>(sequence_->commands.size()) - 1) {
+            simStep_ = 0;
+        }
+        simPlayAct_->setText(tr("⏸ Pause"));
+        simTimer_->start();
+    } else {
+        simPlayAct_->setText(tr("▶ Lecture"));
+        simTimer_->stop();
+    }
+}
+
+void MainWindow::onSimTick() {
+    if (!sequence_) {
+        simTimer_->stop();
+        return;
+    }
+    const int n = static_cast<int>(sequence_->commands.size()) - 1;
+    // Avance proportionnellement à la taille (motif long = plus rapide).
+    simStep_ = std::min(n, simStep_ + std::max(1, (n + 1) / 400));
+    simSlider_->blockSignals(true);
+    simSlider_->setValue(simStep_);
+    simSlider_->blockSignals(false);
+    simLabel_->setText(tr("%1 / %2").arg(simStep_).arg(n));
+    displayImage(processed_);
+    if (simStep_ >= n) {
+        simTimer_->stop();
+        simPlayAct_->setChecked(false);
+        simPlayAct_->setText(tr("▶ Lecture"));
+    }
+}
+
+void MainWindow::onSimSliderMoved(int value) {
+    simStep_ = value;
+    const int n = static_cast<int>(sequence_ ? sequence_->commands.size() : 1) - 1;
+    simLabel_->setText(tr("%1 / %2").arg(value).arg(n));
+    displayImage(processed_);
+}
+
 void MainWindow::showStatistics() {
     if (!sequence_) {
         return;
@@ -939,6 +1114,7 @@ void MainWindow::importDst() {
     sequence_ = std::move(*seq);
     sequenceImported_ = true;
     showStitchesAct_->setChecked(true);
+    updateSimulationRange();
     displayImage(processed_);
     view_->fitCanvas();
     updateActions();
