@@ -1,9 +1,67 @@
 // SPDX-License-Identifier: Apache-2.0
 #include "openstitch/stitch_generation/generate.hpp"
 
+#include <variant>
+
+#include "openstitch/geometry/offset.hpp"
 #include "openstitch/stitch_generation/running_stitch.hpp"
+#include "openstitch/stitch_generation/tatami.hpp"
 
 namespace openstitch::stitch_generation {
+
+namespace {
+
+// Ajoute une polyligne à la séquence : un saut vers son premier point, puis
+// les points cousus. Ignore les tracés dégénérés.
+void emit_polyline(stitch::StitchSequence& sequence, const std::vector<Vec2um>& points,
+                   ObjectId source) {
+    if (points.size() < 2) {
+        return;
+    }
+    sequence.commands.push_back({points.front(), stitch::CommandType::Jump, source});
+    for (const Vec2um& p : points) {
+        sequence.commands.push_back({p, stitch::CommandType::Stitch, source});
+    }
+}
+
+void generate_running(stitch::StitchSequence& sequence, const document::VectorObject& source,
+                      const document::EmbroideryObject& object,
+                      const document::RunningStitchParams& params) {
+    const auto stitchContour = [&](const geometry::Path& path) {
+        const auto sampled = sample_path(path, params.stitch_length, params.min_length);
+        const auto points = apply_repeats(sampled, params.repeats);
+        emit_polyline(sequence, points, object.id);
+    };
+    for (const geometry::PathSet& set : source.paths) {
+        stitchContour(set.outer);
+        for (const geometry::Path& hole : set.holes) {
+            stitchContour(hole);
+        }
+    }
+}
+
+void generate_tatami(stitch::StitchSequence& sequence, const document::VectorObject& source,
+                     const document::EmbroideryObject& object,
+                     const document::TatamiParams& params) {
+    for (const geometry::PathSet& set : source.paths) {
+        // Retrait de bord (compensation de contour). Si le retrait fait
+        // disparaître la forme, on remplit la forme brute.
+        std::vector<geometry::PathSet> filled;
+        if (params.inset.value > 0) {
+            if (auto inset = geometry::inset_path_set(set, params.inset); inset && !inset->empty()) {
+                filled = std::move(*inset);
+            }
+        }
+        if (filled.empty()) {
+            filled.push_back(set);
+        }
+        for (const geometry::PathSet& region : filled) {
+            emit_polyline(sequence, fill_tatami(region, params), object.id);
+        }
+    }
+}
+
+}  // namespace
 
 Result<stitch::StitchSequence> generate_sequence(const document::Project& project) {
     stitch::StitchSequence sequence;
@@ -27,35 +85,25 @@ Result<stitch::StitchSequence> generate_sequence(const document::Project& projec
         }
 
         if (previous != nullptr && previous->rgb != object.rgb && !sequence.commands.empty()) {
-            sequence.commands.push_back({sequence.commands.back().pos,
-                                         stitch::CommandType::ColorChange, object.id});
+            sequence.commands.push_back(
+                {sequence.commands.back().pos, stitch::CommandType::ColorChange, object.id});
         }
 
-        const auto stitchContour = [&](const geometry::Path& path) {
-            const auto sampled =
-                sample_path(path, object.params.stitch_length, object.params.min_length);
-            const auto points = apply_repeats(sampled, object.params.repeats);
-            if (points.size() < 2) {
-                return;  // contour dégénéré : rien à coudre
-            }
-            sequence.commands.push_back({points[0], stitch::CommandType::Jump, object.id});
-            for (const Vec2um& p : points) {
-                sequence.commands.push_back({p, stitch::CommandType::Stitch, object.id});
-            }
-        };
-
-        for (const geometry::PathSet& set : source->paths) {
-            stitchContour(set.outer);
-            for (const geometry::Path& hole : set.holes) {
-                stitchContour(hole);
-            }
-        }
+        std::visit(
+            [&](const auto& params) {
+                using T = std::decay_t<decltype(params)>;
+                if constexpr (std::is_same_v<T, document::RunningStitchParams>) {
+                    generate_running(sequence, *source, object, params);
+                } else if constexpr (std::is_same_v<T, document::TatamiParams>) {
+                    generate_tatami(sequence, *source, object, params);
+                }
+            },
+            object.params);
         previous = &object;
     }
 
     if (sequence.commands.empty()) {
-        return fail(ErrorCategory::UserInput,
-                    "Aucun objet de broderie visible : rien à générer");
+        return fail(ErrorCategory::UserInput, "Aucun objet de broderie visible : rien à générer");
     }
     sequence.commands.push_back(
         {sequence.commands.back().pos, stitch::CommandType::End, ObjectId{}});

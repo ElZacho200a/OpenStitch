@@ -22,6 +22,7 @@
 #include <QStatusBar>
 
 #include <filesystem>
+#include <numbers>
 
 #include "brightness_dialog.hpp"
 #include "canvas_view.hpp"
@@ -169,6 +170,8 @@ void MainWindow::buildMenus() {
     auto* embMenu = menuBar()->addMenu(tr("&Broderie"));
     createStitchAct_ = embMenu->addAction(tr("Créer un objet de &point de contour…"));
     connect(createStitchAct_, &QAction::triggered, this, &MainWindow::createRunningStitchObject);
+    createTatamiAct_ = embMenu->addAction(tr("Créer un remplissage &tatami…"));
+    connect(createTatamiAct_, &QAction::triggered, this, &MainWindow::createTatamiObject);
     statsAct_ = embMenu->addAction(tr("&Statistiques…"));
     connect(statsAct_, &QAction::triggered, this, &MainWindow::showStatistics);
 
@@ -629,13 +632,16 @@ void MainWindow::createRunningStitchObject() {
         return;
     }
 
+    document::RunningStitchParams params;
+    params.stitch_length = to_micrometers(Millimeters{lengthSpin->value()});
+    params.repeats = typeCombo->currentData().toInt();
+
     document::EmbroideryObject object;
     object.id = project_.object_ids.next();
     object.name = tr("Contour de %1").arg(QString::fromStdString(source->name)).toStdString();
     object.source_vector = source->id;
     object.rgb = source->rgb;
-    object.params.stitch_length = to_micrometers(Millimeters{lengthSpin->value()});
-    object.params.repeats = typeCombo->currentData().toInt();
+    object.params = params;
 
     undoStack_.execute(std::make_unique<commands::AddEmbroideryObjectCommand>(std::move(object)),
                        project_);
@@ -647,6 +653,66 @@ void MainWindow::createRunningStitchObject() {
         statusBar()->showMessage(tr("Points générés : %1 points, %2 saut(s)")
                                      .arg(stats.stitches)
                                      .arg(stats.jumps));
+    }
+}
+
+void MainWindow::createTatamiObject() {
+    if (!selectedObject_) {
+        return;
+    }
+    const auto* source = project_.findObject(*selectedObject_);
+    if (source == nullptr) {
+        return;
+    }
+
+    QDialog dialog(this);
+    dialog.setWindowTitle(tr("Remplissage tatami"));
+    auto* layout = new QFormLayout(&dialog);
+    auto* densitySpin = new QDoubleSpinBox(&dialog);
+    densitySpin->setRange(0.1, 2.0);
+    densitySpin->setValue(0.4);
+    densitySpin->setDecimals(2);
+    densitySpin->setSuffix(tr(" mm"));
+    auto* lengthSpin = new QDoubleSpinBox(&dialog);
+    lengthSpin->setRange(1.0, 8.0);
+    lengthSpin->setValue(3.0);
+    lengthSpin->setDecimals(1);
+    lengthSpin->setSuffix(tr(" mm"));
+    auto* angleSpin = new QSpinBox(&dialog);
+    angleSpin->setRange(0, 179);
+    angleSpin->setValue(0);
+    angleSpin->setSuffix(tr(" °"));
+    layout->addRow(tr("Espacement des rangées :"), densitySpin);
+    layout->addRow(tr("Longueur de point :"), lengthSpin);
+    layout->addRow(tr("Angle :"), angleSpin);
+    auto* buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dialog);
+    connect(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
+    connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
+    layout->addRow(buttons);
+    if (dialog.exec() != QDialog::Accepted) {
+        return;
+    }
+
+    document::TatamiParams params;
+    params.row_spacing = to_micrometers(Millimeters{densitySpin->value()});
+    params.stitch_length = to_micrometers(Millimeters{lengthSpin->value()});
+    params.angle = Angle{angleSpin->value() * std::numbers::pi / 180.0};
+
+    document::EmbroideryObject object;
+    object.id = project_.object_ids.next();
+    object.name = tr("Remplissage de %1").arg(QString::fromStdString(source->name)).toStdString();
+    object.source_vector = source->id;
+    object.rgb = source->rgb;
+    object.params = params;
+
+    undoStack_.execute(std::make_unique<commands::AddEmbroideryObjectCommand>(std::move(object)),
+                       project_);
+    showStitchesAct_->setChecked(true);
+    refreshImage();
+    updateActions();
+    if (sequence_) {
+        const auto stats = stitch::compute_stats(*sequence_);
+        statusBar()->showMessage(tr("Remplissage généré : %1 points").arg(stats.stitches));
     }
 }
 
@@ -834,6 +900,7 @@ void MainWindow::updateActions() {
     showVectorsAct_->setEnabled(!project_.vector_objects.empty());
     showStitchesAct_->setEnabled(!project_.embroidery_objects.empty());
     createStitchAct_->setEnabled(selectedObject_.has_value());
+    createTatamiAct_->setEnabled(selectedObject_.has_value());
     statsAct_->setEnabled(sequence_.has_value());
     exportDstAct_->setEnabled(sequence_.has_value());
     const bool hasSelection = selectedRegion_.has_value() && project_.segmentation.has_value();
