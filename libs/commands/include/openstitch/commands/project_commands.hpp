@@ -200,6 +200,34 @@ private:
     Vec2um newPos_;
 };
 
+// Ajoute en une seule opération plusieurs objets vectoriels et de broderie
+// (résultat de l'autonumérisation). L'annulation retire exactement ce lot.
+class AddObjectBatchCommand final : public ICommand {
+public:
+    AddObjectBatchCommand(std::vector<document::VectorObject> vectors,
+                          std::vector<document::EmbroideryObject> embroideries)
+        : vectors_(std::move(vectors)), embroideries_(std::move(embroideries)) {}
+
+    void apply(document::Project& project) override {
+        for (const auto& v : vectors_) {
+            project.vector_objects.push_back(v);
+        }
+        for (const auto& e : embroideries_) {
+            project.embroidery_objects.push_back(e);
+        }
+    }
+    void revert(document::Project& project) override {
+        project.vector_objects.resize(project.vector_objects.size() - vectors_.size());
+        project.embroidery_objects.resize(project.embroidery_objects.size() -
+                                          embroideries_.size());
+    }
+    [[nodiscard]] std::string name() const override { return "Numérisation automatique"; }
+
+private:
+    std::vector<document::VectorObject> vectors_;
+    std::vector<document::EmbroideryObject> embroideries_;
+};
+
 // Réordonne les objets de broderie selon une permutation d'ObjectId.
 class ReorderEmbroideryCommand final : public ICommand {
 public:

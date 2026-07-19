@@ -44,6 +44,7 @@ private slots:
     void deleteSelectedRegion();
     void recolorSelectedRegion();
     void vectorizeSelectedRegion();
+    void autoDigitize();
     void createRunningStitchObject();
     void createTatamiObject();
     void createSatinObject();

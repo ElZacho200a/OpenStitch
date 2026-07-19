@@ -28,6 +28,7 @@
 #include "canvas_view.hpp"
 #include "import_dialog.hpp"
 #include "node_handle.hpp"
+#include "openstitch/autodigitize/autodigitize.hpp"
 #include "openstitch/formats/dst.hpp"
 #include "openstitch/optimization/order.hpp"
 #include "openstitch/project_io/project_io.hpp"
@@ -191,6 +192,9 @@ void MainWindow::buildMenus() {
     regionActions_.append(vectorizeAct);
 
     auto* embMenu = menuBar()->addMenu(tr("&Broderie"));
+    auto* autoAct = embMenu->addAction(tr("Numérisation &automatique"));
+    connect(autoAct, &QAction::triggered, this, &MainWindow::autoDigitize);
+    embMenu->addSeparator();
     createStitchAct_ = embMenu->addAction(tr("Créer un objet de &point de contour…"));
     connect(createStitchAct_, &QAction::triggered, this, &MainWindow::createRunningStitchObject);
     createTatamiAct_ = embMenu->addAction(tr("Créer un remplissage &tatami…"));
@@ -761,6 +765,49 @@ void MainWindow::createTatamiObject() {
         const auto stats = stitch::compute_stats(*sequence_);
         statusBar()->showMessage(tr("Remplissage généré : %1 points").arg(stats.stitches));
     }
+}
+
+void MainWindow::autoDigitize() {
+    if (!project_.segmentation) {
+        QMessageBox::information(
+            this, tr("Numérisation automatique"),
+            tr("Segmentez d'abord l'image (menu Segmentation), puis relancez."));
+        return;
+    }
+    if (!project_.embroidery_objects.empty() || !project_.vector_objects.empty()) {
+        const auto answer = QMessageBox::question(
+            this, tr("Numérisation automatique"),
+            tr("Des objets existent déjà ; la numérisation ajoute de nouveaux objets. "
+               "Continuer ?"));
+        if (answer != QMessageBox::Yes) {
+            return;
+        }
+    }
+
+    autodigitize::AutoOptions opts;
+    opts.mm_per_px = project_.mm_per_px;
+    QGuiApplication::setOverrideCursor(Qt::WaitCursor);
+    auto result = autodigitize::auto_digitize(*project_.segmentation, project_.object_ids, opts);
+    QGuiApplication::restoreOverrideCursor();
+    if (!result) {
+        QMessageBox::warning(this, tr("Numérisation impossible"),
+                             QString::fromStdString(result.error().message));
+        return;
+    }
+    const std::size_t vecCount = result->vectors.size();
+    const std::size_t embCount = result->embroideries.size();
+
+    undoStack_.execute(std::make_unique<commands::AddObjectBatchCommand>(
+                           std::move(result->vectors), std::move(result->embroideries)),
+                       project_);
+    showStitchesAct_->setChecked(true);
+    refreshImage();
+    updateActions();
+    statusBar()->showMessage(
+        tr("Numérisation automatique : %1 objet(s) vectoriel(s), %2 objet(s) de broderie — "
+           "tous éditables")
+            .arg(vecCount)
+            .arg(embCount));
 }
 
 void MainWindow::createSatinObject() {
