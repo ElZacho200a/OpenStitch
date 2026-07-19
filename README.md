@@ -12,7 +12,24 @@ Logiciel de bureau **libre et gratuit** de numérisation pour broderie machine :
 
 ## État du projet
 
-**Phase 1 — socle.** Rien d'utilisable pour broder encore. Voir la [roadmap](docs/phase0/08-roadmap-adr.md) et l'[étude de cadrage](docs/phase0/README.md).
+**Chaîne complète fonctionnelle (phases 1 à 13 implémentées).** De l'image au fichier DST brodable, avec contrôle manuel à chaque étape :
+
+1. import PNG/JPEG/BMP/TIFF, taille physique en millimètres ;
+2. prétraitement non destructif (recadrage, symétries, rotations, luminosité/contraste, débruitage, quantification) ;
+3. segmentation perceptuelle (CIELAB) en régions éditables (fusion, suppression, recoloration) ;
+4. vectorisation (contours, trous, simplification, édition de nœuds) ;
+5. objets de broderie : **point droit/triple, remplissage tatami, colonne satin** ;
+6. **numérisation automatique** (image → objets éditables selon la forme des régions) ;
+7. ordre de couture manuel et optimisé (par couleur / proximité, verrous) ;
+8. analyse pré-export (points trop courts/longs, sauts, hors cadre) et simulation de couture animée ;
+9. export/import **DST**, export SVG de diagnostic ;
+10. format de projet **`.osp`** (sauvegarde/chargement complet).
+
+Undo/redo sur toutes les opérations. 121 tests unitaires et d'intégration.
+
+Voir la [roadmap](docs/phase0/08-roadmap-adr.md) et l'[étude de cadrage](docs/phase0/README.md).
+
+> **Note honnête** : ce socle est complet et testé, mais n'a pas encore été validé sur une machine à broder réelle. Les heuristiques de compensation (tirage, densité) et les conventions DST de certaines machines demandent des essais terrain avant un usage en production.
 
 ## Compilation (Windows)
 
@@ -32,11 +49,27 @@ ctest --preset msvc-debug
 
 ```
 apps/desktop   Application Qt (seule cible dépendant de Qt)
-apps/cli       openstitch-cli : pipeline et inspection sans interface graphique
-libs/          Bibliothèques cœur (core, image, …) — voir docs/phase0/02-architecture.md
-tests/         Tests unitaires, d'intégration et golden
+apps/cli       openstitch-cli : info / stats / dst2svg (sans interface graphique)
+libs/
+  core            unités fortes (µm/mm/px), ids, Result, logging
+  geometry        chemins, simplification (Douglas-Peucker), booléens/offsets (Clipper2)
+  image           chargement + prétraitement non destructif (OpenCV encapsulé)
+  segmentation    quantification CIELAB, régions connexes à ids stables
+  vectorization   régions → contours vectoriels propres
+  document        modèle métier (projet, objets vectoriels et de broderie)
+  stitch          commandes machine, statistiques
+  stitch_generation  point droit/triple, tatami, satin
+  stitch_analysis    moteur de règles de validation
+  optimization    ordre de couture (coût, stratégies)
+  autodigitize    image → objets éditables automatiquement
+  commands        undo/redo (Command pattern)
+  formats         codec DST maison, SVG de diagnostic
+  project_io      format projet .osp (JSON + ZIP)
+tests/         121 tests unitaires et d'intégration
 docs/          Documentation (cadrage, architecture, formats, guides)
 ```
+
+Le cœur (tout sauf `apps/desktop`) ne dépend jamais de Qt — vérifiable en compilant la CLI et via le job Linux de la CI.
 
 ## Contribuer
 
