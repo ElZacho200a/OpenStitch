@@ -3,6 +3,8 @@
 
 #include <algorithm>
 #include <cmath>
+#include <limits>
+#include <map>
 
 namespace openstitch::stitch_generation {
 
@@ -39,47 +41,6 @@ void scan_polygon(const std::vector<PointD>& poly, double scanY, std::vector<dou
 Vec2um to_um(PointD p) {
     return Vec2um{Micrometers{static_cast<std::int32_t>(std::lround(p.x))},
                   Micrometers{static_cast<std::int32_t>(std::lround(p.y))}};
-}
-
-// Point dans polygone (lancer de rayon horizontal, règle pair-impair).
-bool point_in_poly(const std::vector<PointD>& poly, PointD p) {
-    bool inside = false;
-    const std::size_t n = poly.size();
-    for (std::size_t i = 0, j = n - 1; i < n; j = i++) {
-        const PointD a = poly[i];
-        const PointD b = poly[j];
-        if (((a.y > p.y) != (b.y > p.y)) &&
-            (p.x < (b.x - a.x) * (p.y - a.y) / (b.y - a.y) + a.x)) {
-            inside = !inside;
-        }
-    }
-    return inside;
-}
-
-// Dans la région = dans l'extérieur (polys[0]) ET hors de tous les trous.
-bool in_region(const std::vector<std::vector<PointD>>& polys, PointD p) {
-    if (polys.empty() || !point_in_poly(polys[0], p)) {
-        return false;
-    }
-    for (std::size_t i = 1; i < polys.size(); ++i) {
-        if (point_in_poly(polys[i], p)) {
-            return false;
-        }
-    }
-    return true;
-}
-
-// Le segment [a,b] reste-t-il intégralement dans la région ? (échantillonnage)
-bool connector_inside(const std::vector<std::vector<PointD>>& polys, PointD a, PointD b) {
-    constexpr int samples = 10;
-    for (int k = 1; k < samples; ++k) {
-        const double t = static_cast<double>(k) / samples;
-        const PointD p{a.x + (b.x - a.x) * t, a.y + (b.y - a.y) * t};
-        if (!in_region(polys, p)) {
-            return false;
-        }
-    }
-    return true;
 }
 
 }  // namespace
@@ -128,68 +89,146 @@ std::vector<FillStitch> fill_tatami(const geometry::PathSet& region,
         }
     }
 
-    // Génère les rangées ; chaque rangée est une liste de segments [x0,x1].
-    // `prev` (repère rangées) suit la dernière pénétration émise : la liaison
-    // vers le début du segment suivant est classée couture ou déplacement.
-    bool hasPrev = false;
-    PointD prev{};
+    // 1) Construit les SEGMENTS de rangée (un par intervalle intérieur), avec
+    //    leurs pénétrations d'aiguille. Les segments sont les nœuds d'un graphe.
+    struct Segment {
+        int row{0};
+        double y{0.0};
+        double lo{0.0};
+        double hi{0.0};
+        std::vector<double> pens;  // pénétrations, ordonnées lo -> hi
+    };
+    std::vector<Segment> segs;
+    std::map<int, std::vector<int>> byRow;
     int rowIndex = 0;
-    bool reverse = false;
     for (double y = minY + spacing / 2.0; y < maxY; y += spacing, ++rowIndex) {
         std::vector<double> xs;
         for (const auto& poly : polys) {
             scan_polygon(poly, y, xs);
         }
         std::sort(xs.begin(), xs.end());
-
-        // Décalage de phase des pénétrations : les rangées ne s'alignent pas.
         const double phase = stitchLen * (static_cast<double>(rowIndex % stagger) /
                                           static_cast<double>(stagger));
-
-        // Paires d'intersections = segments intérieurs (règle pair-impair).
-        std::vector<std::pair<double, double>> spans;
         for (std::size_t i = 0; i + 1 < xs.size(); i += 2) {
-            spans.emplace_back(xs[i], xs[i + 1]);
-        }
-        if (reverse) {
-            std::reverse(spans.begin(), spans.end());
-        }
-
-        for (const auto& [xa, xb] : spans) {
-            const double lo = std::min(xa, xb);
-            const double hi = std::max(xa, xb);
-
-            // Pénétrations d'aiguille : les deux bords + les points d'une grille
-            // fixe de pas `stitchLen` ancrée sur `phase`. La grille absolue fait
-            // que deux rangées de phases différentes ne s'alignent pas.
-            std::vector<double> penetrations;
-            penetrations.push_back(lo);
+            const double lo = xs[i];
+            const double hi = xs[i + 1];
+            if (hi <= lo) {
+                continue;
+            }
+            Segment s;
+            s.row = rowIndex;
+            s.y = y;
+            s.lo = lo;
+            s.hi = hi;
+            s.pens.push_back(lo);
             const double firstK = std::ceil((lo - phase) / stitchLen);
             for (double x = phase + firstK * stitchLen; x < hi; x += stitchLen) {
                 if (x > lo) {
-                    penetrations.push_back(x);
+                    s.pens.push_back(x);
                 }
             }
-            penetrations.push_back(hi);
-            if (reverse) {
-                std::reverse(penetrations.begin(), penetrations.end());
-            }
+            s.pens.push_back(hi);
+            byRow[rowIndex].push_back(static_cast<int>(segs.size()));
+            segs.push_back(std::move(s));
+        }
+    }
+    const int n = static_cast<int>(segs.size());
+    if (n == 0) {
+        return out;
+    }
 
-            for (std::size_t p = 0; p < penetrations.size(); ++p) {
-                const PointD rp{penetrations[p], y};
-                bool travel = false;
-                if (p == 0) {
-                    // Début de segment : approche par déplacement si la liaison
-                    // depuis la dernière pénétration sort de la région/trou
-                    // (ou tout premier point du remplissage).
-                    travel = !hasPrev || !connector_inside(polys, prev, rp);
+    // 2) ADJACENCE : deux segments de rangées consécutives qui se chevauchent en
+    //    x sont voisins — la bande entre eux est intérieure à la région, donc
+    //    une liaison entre eux ne traverse jamais un trou (le trou aurait coupé
+    //    la rangée). C'est ce qui permet de contourner les trous (§15.5).
+    std::vector<std::vector<int>> adj(static_cast<std::size_t>(n));
+    for (const auto& [row, ids] : byRow) {
+        const auto it = byRow.find(row + 1);
+        if (it == byRow.end()) {
+            continue;
+        }
+        for (const int i : ids) {
+            for (const int j : it->second) {
+                const double ov = std::min(segs[i].hi, segs[j].hi) -
+                                  std::max(segs[i].lo, segs[j].lo);
+                if (ov > 0.0) {
+                    adj[i].push_back(j);
+                    adj[j].push_back(i);
                 }
-                out.push_back({to_um(rotate(rp, cosB, sinB)), travel});
-                prev = rp;
-                hasPrev = true;
             }
         }
-        reverse = !reverse;
+    }
+
+    // 3) PARCOURS glouton du graphe : on suit toujours un voisin non visité (la
+    //    liaison reste dans la région) ; à défaut, on saute (déplacement) vers le
+    //    segment non visité le plus proche. On entre chaque segment par l'extrémité
+    //    la plus proche du point courant. Déterministe (tie-break par index).
+    const auto dist2 = [](PointD a, PointD b) {
+        const double dx = a.x - b.x;
+        const double dy = a.y - b.y;
+        return dx * dx + dy * dy;
+    };
+    std::vector<int> order(static_cast<std::size_t>(n));
+    for (int i = 0; i < n; ++i) {
+        order[static_cast<std::size_t>(i)] = i;
+    }
+    std::sort(order.begin(), order.end(), [&](int a, int b) {
+        if (segs[a].row != segs[b].row) return segs[a].row < segs[b].row;
+        return segs[a].lo < segs[b].lo;
+    });
+
+    std::vector<char> visited(static_cast<std::size_t>(n), 0);
+    bool hasPrev = false;
+    PointD prev{};
+    int visitedCount = 0;
+    int current = -1;
+    bool jumpStart = true;  // true = on ARRIVE sur ce segment par un déplacement
+    std::size_t orderCursor = 0;
+
+    while (visitedCount < n) {
+        if (current == -1) {
+            while (orderCursor < order.size() && visited[static_cast<std::size_t>(order[orderCursor])]) {
+                ++orderCursor;
+            }
+            current = order[orderCursor];
+            jumpStart = true;  // segment atteint par saut (nouvelle composante)
+        }
+        const Segment& s = segs[static_cast<std::size_t>(current)];
+        const PointD endLo{s.lo, s.y};
+        const PointD endHi{s.hi, s.y};
+        const bool forward = !hasPrev || dist2(prev, endLo) <= dist2(prev, endHi);
+        const int m = static_cast<int>(s.pens.size());
+        for (int k = 0; k < m; ++k) {
+            const double x = forward ? s.pens[static_cast<std::size_t>(k)]
+                                     : s.pens[static_cast<std::size_t>(m - 1 - k)];
+            const PointD rp{x, s.y};
+            // Le premier point est un déplacement seulement si on n'est PAS arrivé
+            // par une arête du graphe : une arête relie deux segments de rangées
+            // voisines qui se chevauchent, donc la liaison reste dans la région.
+            const bool travel = (k == 0) && (jumpStart || !hasPrev);
+            out.push_back({to_um(rotate(rp, cosB, sinB)), travel});
+            prev = rp;
+            hasPrev = true;
+        }
+        visited[static_cast<std::size_t>(current)] = 1;
+        ++visitedCount;
+
+        // Prochain voisin non visité, le plus proche d'une extrémité.
+        int next = -1;
+        double best = std::numeric_limits<double>::max();
+        for (const int j : adj[static_cast<std::size_t>(current)]) {
+            if (visited[static_cast<std::size_t>(j)]) {
+                continue;
+            }
+            const double d = std::min(dist2(prev, {segs[j].lo, segs[j].y}),
+                                      dist2(prev, {segs[j].hi, segs[j].y}));
+            if (d < best || (d == best && (next == -1 || j < next))) {
+                best = d;
+                next = j;
+            }
+        }
+        current = next;
+        jumpStart = false;  // atteint par une arête du graphe -> couture
     }
     return out;
 }

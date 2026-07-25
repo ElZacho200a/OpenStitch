@@ -133,8 +133,12 @@ TEST_CASE("tatami : AUCUN point cousu ne traverse le trou (routage)") {
         }
     }
     CHECK(crossings == 0);
-    // Et il existe bien au moins un deplacement (contournement du trou).
-    CHECK(std::any_of(fill.begin(), fill.end(), [](const FillStitch& f) { return f.travel; }));
+    // Le routage contourne le trou avec TRES PEU de deplacements (pas un
+    // eventail de sauts a travers le trou) : quelques-uns suffisent.
+    const auto travels = static_cast<std::size_t>(
+        std::count_if(fill.begin(), fill.end(), [](const FillStitch& f) { return f.travel; }));
+    CHECK(travels >= 1);
+    CHECK(travels <= 6);
 }
 
 TEST_CASE("tatami : longueur de point respectee le long des rangees") {

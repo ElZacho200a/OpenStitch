@@ -14,8 +14,11 @@
 #include "openstitch/formats/svg.hpp"
 #include "openstitch/geometry/path.hpp"
 #include "openstitch/image/image.hpp"
+#include "openstitch/document/embroidery_object.hpp"
+#include "openstitch/geometry/path.hpp"
 #include "openstitch/stitch/sequence.hpp"
 #include "openstitch/stitch_generation/running_stitch.hpp"
+#include "openstitch/stitch_generation/tatami.hpp"
 
 #ifdef _WIN32
 #include <windows.h>
@@ -118,9 +121,74 @@ openstitch::geometry::Path debug_shape(const std::string& name) {
     return p;
 }
 
+// Remplissage tatami d'un anneau (extérieur 40 mm, trou central 16 mm) pour
+// inspecter le routage autour d'un trou. Retourne la séquence + un compte des
+// coutures qui traverseraient le trou (doit être 0).
+int run_filldebug(double lengthMm, const std::string& outSvg) {
+    using namespace openstitch;
+    using geometry::NodeType;
+    const auto corner = [](std::int32_t x, std::int32_t y) {
+        return geometry::PathNode{Vec2um{Micrometers{x}, Micrometers{y}}, NodeType::Corner,
+                                  std::nullopt, std::nullopt};
+    };
+    geometry::PathSet ring;
+    ring.outer.closed = true;
+    ring.outer.nodes = {corner(0, 0), corner(40'000, 0), corner(40'000, 40'000),
+                        corner(0, 40'000)};
+    geometry::Path hole;
+    hole.closed = true;
+    hole.nodes = {corner(12'000, 12'000), corner(28'000, 12'000), corner(28'000, 28'000),
+                  corner(12'000, 28'000)};
+    ring.holes.push_back(hole);
+
+    document::TatamiParams tp;
+    tp.row_spacing = Micrometers{1'000};
+    tp.stitch_length = to_micrometers(Millimeters{lengthMm});
+    tp.inset = Micrometers{0};
+    const auto fill = stitch_generation::fill_tatami(ring, tp);
+
+    stitch::StitchSequence seq;
+    bool started = false;
+    int sewnCrossingHole = 0;
+    Vec2um prev{};
+    for (const auto& fs : fill) {
+        const bool sew = started && !fs.travel;
+        seq.commands.push_back(
+            {fs.pos, sew ? stitch::CommandType::Stitch : stitch::CommandType::Jump, ObjectId{}});
+        if (sew) {
+            const Vec2um mid{Micrometers{(prev.x.value + fs.pos.x.value) / 2},
+                             Micrometers{(prev.y.value + fs.pos.y.value) / 2}};
+            if (mid.x.value > 12'500 && mid.x.value < 27'500 && mid.y.value > 12'500 &&
+                mid.y.value < 27'500) {
+                ++sewnCrossingHole;
+            }
+        }
+        prev = fs.pos;
+        started = true;
+    }
+    seq.commands.push_back({prev, stitch::CommandType::End, ObjectId{}});
+    const auto stats = stitch::compute_stats(seq);
+
+    fmt::print("Anneau tatami (trou central)\n");
+    fmt::print("Points cousus : {}  |  déplacements : {}\n", stats.stitches, stats.jumps);
+    fmt::print("Coutures traversant le trou : {}  (doit être 0)\n", sewnCrossingHole);
+    if (!outSvg.empty()) {
+        const auto w = formats::write_svg_file(std::filesystem::path(outSvg), seq);
+        if (!w) {
+            fmt::print(stderr, "Erreur : {}\n", w.error().message);
+            return 1;
+        }
+        fmt::print("SVG écrit : {}\n", outSvg);
+    }
+    return sewnCrossingHole == 0 ? 0 : 2;
+}
+
 int run_stitchdebug(const std::string& shape, double lengthMm, int repeats,
                     const std::string& outSvg) {
     using namespace openstitch;
+    if (shape == "ring") {
+        return run_filldebug(lengthMm, outSvg);
+    }
     const auto path = debug_shape(shape);
 
     stitch_generation::RunningConfig cfg;
@@ -197,8 +265,8 @@ int main(int argc, char** argv) {
     std::string sd_out;
     auto* sd_cmd = app.add_subcommand(
         "stitchdebug", "Inspecte le moteur de points sur une forme de référence");
-    sd_cmd->add_option("--shape", sd_shape, "line|corner|circle|bezier|star")
-        ->check(CLI::IsMember({"line", "corner", "circle", "bezier", "star"}));
+    sd_cmd->add_option("--shape", sd_shape, "line|corner|circle|bezier|star|ring")
+        ->check(CLI::IsMember({"line", "corner", "circle", "bezier", "star", "ring"}));
     sd_cmd->add_option("--length", sd_length, "Longueur de point en mm")
         ->check(CLI::PositiveNumber);
     sd_cmd->add_option("--repeats", sd_repeats, "1 simple, 2 aller-retour, 3 bean");
