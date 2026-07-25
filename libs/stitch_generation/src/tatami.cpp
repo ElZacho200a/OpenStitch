@@ -41,11 +41,52 @@ Vec2um to_um(PointD p) {
                   Micrometers{static_cast<std::int32_t>(std::lround(p.y))}};
 }
 
+// Point dans polygone (lancer de rayon horizontal, règle pair-impair).
+bool point_in_poly(const std::vector<PointD>& poly, PointD p) {
+    bool inside = false;
+    const std::size_t n = poly.size();
+    for (std::size_t i = 0, j = n - 1; i < n; j = i++) {
+        const PointD a = poly[i];
+        const PointD b = poly[j];
+        if (((a.y > p.y) != (b.y > p.y)) &&
+            (p.x < (b.x - a.x) * (p.y - a.y) / (b.y - a.y) + a.x)) {
+            inside = !inside;
+        }
+    }
+    return inside;
+}
+
+// Dans la région = dans l'extérieur (polys[0]) ET hors de tous les trous.
+bool in_region(const std::vector<std::vector<PointD>>& polys, PointD p) {
+    if (polys.empty() || !point_in_poly(polys[0], p)) {
+        return false;
+    }
+    for (std::size_t i = 1; i < polys.size(); ++i) {
+        if (point_in_poly(polys[i], p)) {
+            return false;
+        }
+    }
+    return true;
+}
+
+// Le segment [a,b] reste-t-il intégralement dans la région ? (échantillonnage)
+bool connector_inside(const std::vector<std::vector<PointD>>& polys, PointD a, PointD b) {
+    constexpr int samples = 10;
+    for (int k = 1; k < samples; ++k) {
+        const double t = static_cast<double>(k) / samples;
+        const PointD p{a.x + (b.x - a.x) * t, a.y + (b.y - a.y) * t};
+        if (!in_region(polys, p)) {
+            return false;
+        }
+    }
+    return true;
+}
+
 }  // namespace
 
-std::vector<Vec2um> fill_tatami(const geometry::PathSet& region,
-                                const document::TatamiParams& params) {
-    std::vector<Vec2um> out;
+std::vector<FillStitch> fill_tatami(const geometry::PathSet& region,
+                                    const document::TatamiParams& params) {
+    std::vector<FillStitch> out;
     const double spacing = static_cast<double>(std::max<std::int32_t>(1, params.row_spacing.value));
     const double stitchLen =
         static_cast<double>(std::max<std::int32_t>(1, params.stitch_length.value));
@@ -88,6 +129,10 @@ std::vector<Vec2um> fill_tatami(const geometry::PathSet& region,
     }
 
     // Génère les rangées ; chaque rangée est une liste de segments [x0,x1].
+    // `prev` (repère rangées) suit la dernière pénétration émise : la liaison
+    // vers le début du segment suivant est classée couture ou déplacement.
+    bool hasPrev = false;
+    PointD prev{};
     int rowIndex = 0;
     bool reverse = false;
     for (double y = minY + spacing / 2.0; y < maxY; y += spacing, ++rowIndex) {
@@ -126,12 +171,22 @@ std::vector<Vec2um> fill_tatami(const geometry::PathSet& region,
                 }
             }
             penetrations.push_back(hi);
-            // Sens de couture (serpentin).
             if (reverse) {
                 std::reverse(penetrations.begin(), penetrations.end());
             }
-            for (const double x : penetrations) {
-                out.push_back(to_um(rotate({x, y}, cosB, sinB)));
+
+            for (std::size_t p = 0; p < penetrations.size(); ++p) {
+                const PointD rp{penetrations[p], y};
+                bool travel = false;
+                if (p == 0) {
+                    // Début de segment : approche par déplacement si la liaison
+                    // depuis la dernière pénétration sort de la région/trou
+                    // (ou tout premier point du remplissage).
+                    travel = !hasPrev || !connector_inside(polys, prev, rp);
+                }
+                out.push_back({to_um(rotate(rp, cosB, sinB)), travel});
+                prev = rp;
+                hasPrev = true;
             }
         }
         reverse = !reverse;

@@ -25,6 +25,20 @@ void emit_polyline(stitch::StitchSequence& sequence, const std::vector<Vec2um>& 
     }
 }
 
+// Émet un remplissage : chaque point marqué `travel` devient un déplacement
+// (Jump, aiguille relevée), les autres des points cousus. Garantit qu'aucune
+// couture ne traverse un trou ou ne sort de la région (routage du tatami).
+void emit_fill(stitch::StitchSequence& sequence, const std::vector<FillStitch>& fill,
+               ObjectId source) {
+    bool started = false;
+    for (const FillStitch& fs : fill) {
+        const auto type = (fs.travel || !started) ? stitch::CommandType::Jump
+                                                   : stitch::CommandType::Stitch;
+        sequence.commands.push_back({fs.pos, type, source});
+        started = true;
+    }
+}
+
 void generate_running(stitch::StitchSequence& sequence, const document::VectorObject& source,
                       const document::EmbroideryObject& object,
                       const document::RunningStitchParams& params) {
@@ -68,7 +82,7 @@ void generate_tatami(stitch::StitchSequence& sequence, const document::VectorObj
             filled.push_back(set);
         }
         for (const geometry::PathSet& region : filled) {
-            emit_polyline(sequence, fill_tatami(region, params), object.id);
+            emit_fill(sequence, fill_tatami(region, params), object.id);
         }
     }
 }

@@ -4,6 +4,7 @@
 #include <opencv2/core.hpp>
 #include <opencv2/imgproc.hpp>
 
+#include <algorithm>
 #include <cmath>
 
 #include "openstitch/geometry/clean.hpp"
@@ -70,7 +71,18 @@ Result<std::vector<geometry::PathSet>> vectorize_region(const segmentation::Segm
         for (const cv::Point& pt : contour) {
             path.nodes.push_back(to_model(pt, seg.width, seg.height, options.mm_per_px.value));
         }
-        raw.push_back(geometry::simplify(path, options.simplify_tolerance));
+        // Tolérance de simplification ADAPTATIVE : un petit contour (typiquement
+        // un trou fin — mât, cordage traversant une voile) ne doit pas être
+        // aplati au point de disparaître, sinon le remplissage déborde par
+        // dessus l'élément qui devrait rester au-dessus. On borne la tolérance à
+        // une fraction du périmètre du contour.
+        double perim = 0.0;
+        for (std::size_t i = 0; i < path.nodes.size(); ++i) {
+            perim += length_um(path.nodes[(i + 1) % path.nodes.size()].pos - path.nodes[i].pos);
+        }
+        const auto adaptiveTol = Micrometers{static_cast<std::int32_t>(
+            std::min<double>(static_cast<double>(options.simplify_tolerance.value), perim / 16.0))};
+        raw.push_back(geometry::simplify(path, adaptiveTol));
     }
 
     auto sets = geometry::clean_to_path_sets(raw);
