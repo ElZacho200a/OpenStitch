@@ -35,6 +35,11 @@ CanvasView::CanvasView(QGraphicsScene* scene, QWidget* parent) : QGraphicsView(s
     setFrameShape(QFrame::NoFrame);  // le viewport s'aligne avec les règles
     setMouseTracking(true);
     setBackgroundBrush(QColor(235, 235, 238));
+    // Rendu de gros motifs : ne pas sauvegarder l'état du peintre entre items,
+    // et ne repeindre que la zone modifiée plutôt que tout le viewport.
+    setOptimizationFlag(QGraphicsView::DontSavePainterState, true);
+    setViewportUpdateMode(QGraphicsView::SmartViewportUpdate);
+    setCacheMode(QGraphicsView::CacheBackground);
 
     connect(this, &QGraphicsView::rubberBandChanged, this,
             [this](QRect viewportRect, QPointF fromScene, QPointF toScene) {

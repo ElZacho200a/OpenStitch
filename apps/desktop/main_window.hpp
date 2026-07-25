@@ -9,6 +9,7 @@
 #include "openstitch/stitch/sequence.hpp"
 
 class QGraphicsScene;
+class QGraphicsItem;
 class QLabel;
 class QAction;
 class QListWidget;
@@ -74,6 +75,11 @@ private:
     void executeOp(image::ImageOp op);
     void refreshImage();
     void displayImage(const image::Image& img);
+    // Rendu en deux couches persistantes : la couche « base » (image, vecteurs,
+    // poignées, régions) n'est reconstruite qu'à l'édition ; la couche « points »
+    // est la seule reconstruite pendant la simulation.
+    void renderBase(const image::Image& img);
+    void renderStitches();
     void updateActions();
 
     document::Project project_;
@@ -83,6 +89,8 @@ private:
     QGraphicsScene* scene_{nullptr};
     CanvasView* view_{nullptr};
     QLabel* cursorLabel_{nullptr};
+    QList<QGraphicsItem*> baseItems_;    // couche image/vecteurs/régions
+    QList<QGraphicsItem*> stitchItems_;  // couche points (reconstruite seule en simu)
     QAction* undoAct_{nullptr};
     QAction* redoAct_{nullptr};
     QAction* cropAct_{nullptr};

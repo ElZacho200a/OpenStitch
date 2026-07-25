@@ -393,7 +393,18 @@ void MainWindow::refreshImage() {
 }
 
 void MainWindow::displayImage(const image::Image& img) {
-    scene_->clear();
+    renderBase(img);
+    renderStitches();
+}
+
+void MainWindow::renderBase(const image::Image& img) {
+    // Retire uniquement la couche base ; la couche points est gérée à part.
+    for (QGraphicsItem* it : baseItems_) {
+        scene_->removeItem(it);
+        delete it;
+    }
+    baseItems_.clear();
+
     if (!img.empty()) {
         const QImage qimg(img.rgba.data(), img.width, img.height, img.width * 4,
                           QImage::Format_RGBA8888);
@@ -404,6 +415,7 @@ void MainWindow::displayImage(const image::Image& img) {
         const double hMm = img.height * mmPerPx;
         item->setTransform(QTransform::fromScale(mmPerPx, mmPerPx));
         item->setPos(-wMm / 2.0, -hMm / 2.0);
+        baseItems_.append(item);
     }
 
     // Objets vectoriels (remplissage translucide + contour).
@@ -421,6 +433,7 @@ void MainWindow::displayImage(const image::Image& img) {
                                              QBrush(QColor(color.red(), color.green(),
                                                            color.blue(), 90)));
             pathItem->setZValue(10);
+            baseItems_.append(pathItem);
         }
         // Poignées de nœuds de l'objet sélectionné.
         if (selectedObject_) {
@@ -450,6 +463,7 @@ void MainWindow::displayImage(const image::Image& img) {
                                     updateActions();
                                 });
                             scene_->addItem(handle);
+                            baseItems_.append(handle);
                         }
                     };
                     addHandles(set.outer, 0);
@@ -458,67 +472,6 @@ void MainWindow::displayImage(const image::Image& img) {
                     }
                 }
             }
-        }
-    }
-
-    // Points générés : trait continu pour la couture, pointillés pour les
-    // sauts, pastilles aux pénétrations d'aiguille. En simulation, seules les
-    // commandes jusqu'à simStep_ sont dessinées, avec un repère d'aiguille.
-    if (showStitchesAct_ != nullptr && showStitchesAct_->isChecked() && sequence_) {
-        QPainterPath sewPath;
-        QPainterPath jumpPath;
-        QPainterPath dots;
-        bool hasPos = false;
-        QPointF last;
-        QPointF needle;
-        bool hasNeedle = false;
-        const int limit =
-            simulating() ? simStep_ : static_cast<int>(sequence_->commands.size());
-        for (int i = 0; i < static_cast<int>(sequence_->commands.size()) && i <= limit; ++i) {
-            const auto& cmd = sequence_->commands[static_cast<std::size_t>(i)];
-            const QPointF p(to_millimeters(cmd.pos.x).value, -to_millimeters(cmd.pos.y).value);
-            switch (cmd.type) {
-            case stitch::CommandType::Stitch:
-                if (hasPos) {
-                    sewPath.moveTo(last);
-                    sewPath.lineTo(p);
-                }
-                dots.addEllipse(p, 0.15, 0.15);
-                last = p;
-                hasPos = true;
-                needle = p;
-                hasNeedle = true;
-                break;
-            case stitch::CommandType::Jump:
-                if (hasPos) {
-                    jumpPath.moveTo(last);
-                    jumpPath.lineTo(p);
-                }
-                last = p;
-                hasPos = true;
-                needle = p;
-                hasNeedle = true;
-                break;
-            default:
-                break;
-            }
-        }
-        QPen sewPen(QColor(25, 25, 45));
-        sewPen.setCosmetic(true);
-        sewPen.setWidth(2);
-        scene_->addPath(sewPath, sewPen)->setZValue(20);
-
-        QPen jumpPen(QColor(200, 120, 30));
-        jumpPen.setCosmetic(true);
-        jumpPen.setStyle(Qt::DashLine);
-        scene_->addPath(jumpPath, jumpPen)->setZValue(20);
-
-        scene_->addPath(dots, Qt::NoPen, QBrush(QColor(25, 25, 45)))->setZValue(21);
-
-        if (simulating() && hasNeedle) {
-            auto* marker = scene_->addEllipse(needle.x() - 0.6, needle.y() - 0.6, 1.2, 1.2,
-                                              QPen(Qt::NoPen), QBrush(QColor(220, 40, 40)));
-            marker->setZValue(30);
         }
     }
 
@@ -532,6 +485,91 @@ void MainWindow::displayImage(const image::Image& img) {
         mapItem->setTransform(QTransform::fromScale(mmPerPx, mmPerPx));
         mapItem->setPos(-map.width * mmPerPx / 2.0, -map.height * mmPerPx / 2.0);
         mapItem->setOpacity(0.9);
+        baseItems_.append(mapItem);
+    }
+}
+
+void MainWindow::renderStitches() {
+    for (QGraphicsItem* it : stitchItems_) {
+        scene_->removeItem(it);
+        delete it;
+    }
+    stitchItems_.clear();
+
+    if (showStitchesAct_ == nullptr || !showStitchesAct_->isChecked() || !sequence_) {
+        return;
+    }
+
+    const int total = static_cast<int>(sequence_->commands.size());
+    const int limit = simulating() ? simStep_ : total;
+    // Les pastilles de pénétration (une ellipse par point) coûtent cher : on
+    // ne les dessine que pour les petits motifs et hors simulation.
+    const bool drawDots = !simulating() && total <= 4000;
+
+    QPainterPath sewPath;
+    QPainterPath jumpPath;
+    QPainterPath dots;
+    bool hasPos = false;
+    QPointF last;
+    QPointF needle;
+    bool hasNeedle = false;
+    for (int i = 0; i < total && i <= limit; ++i) {
+        const auto& cmd = sequence_->commands[static_cast<std::size_t>(i)];
+        const QPointF p(to_millimeters(cmd.pos.x).value, -to_millimeters(cmd.pos.y).value);
+        switch (cmd.type) {
+        case stitch::CommandType::Stitch:
+            if (hasPos) {
+                sewPath.moveTo(last);
+                sewPath.lineTo(p);
+            }
+            if (drawDots) {
+                dots.addEllipse(p, 0.15, 0.15);
+            }
+            last = p;
+            hasPos = true;
+            needle = p;
+            hasNeedle = true;
+            break;
+        case stitch::CommandType::Jump:
+            if (hasPos) {
+                jumpPath.moveTo(last);
+                jumpPath.lineTo(p);
+            }
+            last = p;
+            hasPos = true;
+            needle = p;
+            hasNeedle = true;
+            break;
+        default:
+            break;
+        }
+    }
+
+    QPen sewPen(QColor(25, 25, 45));
+    sewPen.setCosmetic(true);
+    sewPen.setWidth(2);
+    auto* sewItem = scene_->addPath(sewPath, sewPen);
+    sewItem->setZValue(20);
+    stitchItems_.append(sewItem);
+
+    QPen jumpPen(QColor(200, 120, 30));
+    jumpPen.setCosmetic(true);
+    jumpPen.setStyle(Qt::DashLine);
+    auto* jumpItem = scene_->addPath(jumpPath, jumpPen);
+    jumpItem->setZValue(20);
+    stitchItems_.append(jumpItem);
+
+    if (drawDots) {
+        auto* dotsItem = scene_->addPath(dots, Qt::NoPen, QBrush(QColor(25, 25, 45)));
+        dotsItem->setZValue(21);
+        stitchItems_.append(dotsItem);
+    }
+
+    if (simulating() && hasNeedle) {
+        auto* marker = scene_->addEllipse(needle.x() - 0.6, needle.y() - 0.6, 1.2, 1.2,
+                                          QPen(Qt::NoPen), QBrush(QColor(220, 40, 40)));
+        marker->setZValue(30);
+        stitchItems_.append(marker);
     }
 }
 
@@ -1217,7 +1255,7 @@ void MainWindow::onSimTick() {
     simSlider_->setValue(simStep_);
     simSlider_->blockSignals(false);
     simLabel_->setText(tr("%1 / %2").arg(simStep_).arg(n));
-    displayImage(processed_);
+    renderStitches();  // seule la couche points change pendant la simulation
     if (simStep_ >= n) {
         simTimer_->stop();
         simPlayAct_->setChecked(false);
@@ -1229,7 +1267,7 @@ void MainWindow::onSimSliderMoved(int value) {
     simStep_ = value;
     const int n = static_cast<int>(sequence_ ? sequence_->commands.size() : 1) - 1;
     simLabel_->setText(tr("%1 / %2").arg(value).arg(n));
-    displayImage(processed_);
+    renderStitches();
 }
 
 void MainWindow::showStatistics() {
