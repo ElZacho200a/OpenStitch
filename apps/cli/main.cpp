@@ -5,11 +5,17 @@
 #include <filesystem>
 #include <string>
 
+#include <cmath>
+#include <numbers>
+
 #include "openstitch/core/app_info.hpp"
 #include "openstitch/core/log.hpp"
 #include "openstitch/formats/dst.hpp"
 #include "openstitch/formats/svg.hpp"
+#include "openstitch/geometry/path.hpp"
 #include "openstitch/image/image.hpp"
+#include "openstitch/stitch/sequence.hpp"
+#include "openstitch/stitch_generation/running_stitch.hpp"
 
 #ifdef _WIN32
 #include <windows.h>
@@ -69,6 +75,92 @@ int run_dst2svg(const std::string& input, const std::string& output) {
     return 0;
 }
 
+// Formes de référence procédurales pour inspecter le moteur (§34-35).
+openstitch::geometry::Path debug_shape(const std::string& name) {
+    using namespace openstitch;
+    using geometry::NodeType;
+    const auto corner = [](std::int32_t x, std::int32_t y) {
+        return geometry::PathNode{Vec2um{Micrometers{x}, Micrometers{y}}, NodeType::Corner,
+                                  std::nullopt, std::nullopt};
+    };
+    geometry::Path p;
+    if (name == "line") {
+        p.closed = false;
+        p.nodes = {corner(0, 0), corner(40'000, 0)};
+    } else if (name == "corner") {
+        p.closed = false;
+        p.nodes = {corner(0, 0), corner(30'000, 0), corner(30'000, 30'000)};
+    } else if (name == "circle") {
+        p.closed = true;
+        const int sides = 64;
+        for (int i = 0; i < sides; ++i) {
+            const double a = 2.0 * std::numbers::pi * i / sides;
+            p.nodes.push_back(corner(static_cast<std::int32_t>(std::lround(20'000 * std::cos(a))),
+                                     static_cast<std::int32_t>(std::lround(20'000 * std::sin(a)))));
+        }
+    } else if (name == "bezier") {
+        p.closed = false;
+        geometry::PathNode a = corner(0, 0);
+        a.tan_out = Vec2um{Micrometers{15'000}, Micrometers{30'000}};
+        geometry::PathNode b = corner(40'000, 0);
+        b.tan_in = Vec2um{Micrometers{-15'000}, Micrometers{30'000}};
+        p.nodes = {a, b};
+    } else {  // "star" : coins vifs
+        p.closed = true;
+        const int pts = 5;
+        for (int i = 0; i < pts * 2; ++i) {
+            const double a = std::numbers::pi * i / pts - std::numbers::pi / 2.0;
+            const double r = (i % 2 == 0) ? 22'000.0 : 9'000.0;
+            p.nodes.push_back(corner(static_cast<std::int32_t>(std::lround(r * std::cos(a))),
+                                     static_cast<std::int32_t>(std::lround(r * std::sin(a)))));
+        }
+    }
+    return p;
+}
+
+int run_stitchdebug(const std::string& shape, double lengthMm, int repeats,
+                    const std::string& outSvg) {
+    using namespace openstitch;
+    const auto path = debug_shape(shape);
+
+    stitch_generation::RunningConfig cfg;
+    cfg.target_length = to_micrometers(Millimeters{lengthMm});
+    const auto result = stitch_generation::run_stitch(path, cfg);
+    const auto points = stitch_generation::apply_repeats(result.points, repeats);
+
+    stitch::StitchSequence seq;
+    if (!points.empty()) {
+        seq.commands.push_back({points.front(), stitch::CommandType::Jump, ObjectId{}});
+        for (const Vec2um& p : points) {
+            seq.commands.push_back({p, stitch::CommandType::Stitch, ObjectId{}});
+        }
+        seq.commands.push_back({points.back(), stitch::CommandType::End, ObjectId{}});
+    }
+    const auto stats = stitch::compute_stats(seq);
+
+    fmt::print("Forme       : {}\n", shape);
+    fmt::print("Longueur    : {:g} mm  |  répétitions : {}\n", lengthMm, repeats);
+    fmt::print("Points      : {}\n", stats.stitches);
+    fmt::print("Longueur fil : {:.1f} mm\n", stats.thread_length_um / 1000.0);
+    if (result.stats.stitches >= 2) {
+        fmt::print("Segment min/max : {:.2f} / {:.2f} mm\n", result.stats.min_segment_um / 1000.0,
+                   result.stats.max_segment_um / 1000.0);
+    }
+    for (const auto& w : result.warnings) {
+        fmt::print("  ! {}\n", w.message);
+    }
+
+    if (!outSvg.empty()) {
+        const auto written = formats::write_svg_file(std::filesystem::path(outSvg), seq);
+        if (!written) {
+            fmt::print(stderr, "Erreur : {}\n", written.error().message);
+            return 1;
+        }
+        fmt::print("SVG écrit : {}\n", outSvg);
+    }
+    return 0;
+}
+
 }  // namespace
 
 int main(int argc, char** argv) {
@@ -99,6 +191,19 @@ int main(int argc, char** argv) {
     svg_cmd->add_option("entree", svg_in, "Fichier .dst source")->required();
     svg_cmd->add_option("sortie", svg_out, "Fichier .svg à produire")->required();
 
+    std::string sd_shape = "circle";
+    double sd_length = 3.0;
+    int sd_repeats = 1;
+    std::string sd_out;
+    auto* sd_cmd = app.add_subcommand(
+        "stitchdebug", "Inspecte le moteur de points sur une forme de référence");
+    sd_cmd->add_option("--shape", sd_shape, "line|corner|circle|bezier|star")
+        ->check(CLI::IsMember({"line", "corner", "circle", "bezier", "star"}));
+    sd_cmd->add_option("--length", sd_length, "Longueur de point en mm")
+        ->check(CLI::PositiveNumber);
+    sd_cmd->add_option("--repeats", sd_repeats, "1 simple, 2 aller-retour, 3 bean");
+    sd_cmd->add_option("--output-svg", sd_out, "Fichier SVG de diagnostic à produire");
+
     CLI11_PARSE(app, argc, argv);
 
     if (info_cmd->parsed()) {
@@ -109,6 +214,9 @@ int main(int argc, char** argv) {
     }
     if (svg_cmd->parsed()) {
         return run_dst2svg(svg_in, svg_out);
+    }
+    if (sd_cmd->parsed()) {
+        return run_stitchdebug(sd_shape, sd_length, sd_repeats, sd_out);
     }
     return 0;
 }
