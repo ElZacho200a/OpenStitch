@@ -293,18 +293,14 @@ Result<std::pair<RegionId, std::vector<std::uint32_t>>> remove_region(Segmentati
         return fail(ErrorCategory::Internal, "Région introuvable",
                     "remove id=" + std::to_string(id.value));
     }
+    // Supprimer = faire disparaître la région : ses pixels retournent au fond
+    // (label 0), la région ne colore plus rien. On NE l'absorbe PAS dans une
+    // voisine — cela ressemblerait à une fusion involontaire. Pour transférer
+    // une région à une autre, l'utilisateur dispose de la fusion explicite.
     const std::uint32_t label = static_cast<std::uint32_t>(id.value);
-    const auto neighbor = majority_neighbor(seg, label);
-    if (neighbor) {
-        auto changed = merge_regions(seg, id_of_slot(*neighbor - 1), id);
-        if (!changed) {
-            return std::unexpected(changed.error());
-        }
-        return std::pair{id_of_slot(*neighbor - 1), std::move(*changed)};
-    }
-    // Région isolée : absorbée par le fond.
     auto changed = relabel(seg, label, 0);
     seg.region_slots[slot_of(id)].reset();
+    // absorbeur invalide : les pixels sont allés au fond, pas à une région.
     return std::pair{RegionId{}, std::move(changed)};
 }
 

@@ -137,17 +137,21 @@ TEST_CASE("fusion : ids stables, comptes corrects, indices renvoyes") {
     CHECK_FALSE(merge_regions(*seg, a, b).has_value());  // b n'existe plus
 }
 
-TEST_CASE("suppression : absorption par la voisine majoritaire") {
+TEST_CASE("suppression : la region disparait (retour au fond, pas de fusion)") {
     auto seg = segment(quadrants(), {.max_colors = 4, .min_region_px = 1});
     REQUIRE(seg.has_value());
     const auto a = *region_at(*seg, 1, 1);
+    const auto voisine = *region_at(*seg, 6, 1);
 
     const auto result = remove_region(*seg, a);
     REQUIRE(result.has_value());
-    CHECK(result->first.valid());  // absorbee par une voisine, pas par le fond
+    CHECK_FALSE(result->first.valid());  // pixels renvoyes au fond, pas a une region
     CHECK(result->second.size() == 16);
     CHECK(seg->region_count() == 3);
-    CHECK(region_at(*seg, 1, 1) == result->first);
+    // Le quadrant supprime est desormais du fond (aucune region).
+    CHECK_FALSE(region_at(*seg, 1, 1).has_value());
+    // Les voisines ne recuperent PAS ses pixels : leur taille est inchangee.
+    CHECK(seg->find(voisine)->pixel_count == 16);
 }
 
 TEST_CASE("recoloration") {

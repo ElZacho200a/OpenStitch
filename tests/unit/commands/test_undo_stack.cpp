@@ -85,6 +85,27 @@ TEST_CASE("MergeRegionsCommand : undo restaure labels et comptes exactement") {
     CHECK(project.segmentation->region_count() == 1);
 }
 
+TEST_CASE("RemoveRegionCommand : la region disparait, undo la restaure") {
+    auto project = project_with_segmentation();  // labels {1,1,2,2}, deux regions
+    UndoStack stack;
+
+    stack.execute(std::make_unique<RemoveRegionCommand>(RegionId{1}), project);
+    // Region 1 supprimee : ses pixels reviennent au fond (0), sans fusion.
+    CHECK(project.segmentation->region_count() == 1);
+    CHECK(project.segmentation->find(RegionId{1}) == nullptr);
+    CHECK(project.segmentation->labels == std::vector<std::uint32_t>{0, 0, 2, 2});
+    // La region 2 n'a PAS recupere les pixels supprimes.
+    CHECK(project.segmentation->find(RegionId{2})->pixel_count == 2);
+
+    CHECK(stack.undo(project));
+    CHECK(project.segmentation->region_count() == 2);
+    CHECK(project.segmentation->find(RegionId{1})->pixel_count == 2);
+    CHECK(project.segmentation->labels == std::vector<std::uint32_t>{1, 1, 2, 2});
+
+    CHECK(stack.redo(project));
+    CHECK(project.segmentation->labels == std::vector<std::uint32_t>{0, 0, 2, 2});
+}
+
 TEST_CASE("RecolorRegionCommand : aller-retour exact") {
     auto project = project_with_segmentation();
     UndoStack stack;
