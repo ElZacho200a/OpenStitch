@@ -9,13 +9,18 @@
 
 namespace openstitch::stitch_generation {
 
-// Un point de remplissage : sa position et s'il est atteint par un DÉPLACEMENT
-// (aiguille relevée) ou par un point COUSU. Le routage (§15) garantit qu'aucun
-// point cousu ne traverse un trou ni ne sort de la région : les liaisons
-// invalides deviennent des déplacements.
+// Un point de remplissage : sa position et s'il est atteint par un SAUT
+// (aiguille levée, sans couture — un « jump » machine) ou par un point COUSU.
+// Chaque trajet cousu est validé géométriquement contre la région et ses trous ;
+// à défaut de trajet intérieur valide, la liaison est un saut.
+//
+// Terminologie : ce drapeau distingue Stitch (cousu) de Jump (aiguille levée).
+// Le vrai « travel stitch » de broderie — un déplacement COUSU caché sous la
+// couche supérieure (underpath) — n'est PAS implémenté : les liaisons non
+// cousables sont donc des sauts, pas des sous-chemins cachés.
 struct FillStitch {
     Vec2um pos{};
-    bool travel{false};  // true = déplacement vers ce point ; false = point cousu
+    bool jump{false};  // true = saut (aiguille levée) ; false = point cousu
 
     bool operator==(const FillStitch&) const = default;
 };

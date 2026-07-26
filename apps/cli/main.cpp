@@ -152,7 +152,7 @@ int run_filldebug(double lengthMm, const std::string& outSvg) {
     int sewnCrossingHole = 0;
     Vec2um prev{};
     for (const auto& fs : fill) {
-        const bool sew = started && !fs.travel;
+        const bool sew = started && !fs.jump;
         seq.commands.push_back(
             {fs.pos, sew ? stitch::CommandType::Stitch : stitch::CommandType::Jump, ObjectId{}});
         if (sew) {

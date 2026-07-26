@@ -32,8 +32,8 @@ void emit_fill(stitch::StitchSequence& sequence, const std::vector<FillStitch>& 
                ObjectId source) {
     bool started = false;
     for (const FillStitch& fs : fill) {
-        const auto type = (fs.travel || !started) ? stitch::CommandType::Jump
-                                                   : stitch::CommandType::Stitch;
+        const auto type = (fs.jump || !started) ? stitch::CommandType::Jump
+                                                : stitch::CommandType::Stitch;
         sequence.commands.push_back({fs.pos, type, source});
         started = true;
     }

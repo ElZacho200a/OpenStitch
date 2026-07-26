@@ -119,8 +119,8 @@ TEST_CASE("tatami : AUCUN point cousu ne traverse le trou (routage)") {
     REQUIRE(fill.size() >= 2);
     int crossings = 0;
     for (std::size_t i = 1; i < fill.size(); ++i) {
-        if (fill[i].travel) {
-            continue;  // deplacement : autorise a traverser
+        if (fill[i].jump) {
+            continue;  // saut (aiguille levee) : autorise a traverser
         }
         const Vec2um a = fill[i - 1].pos;
         const Vec2um b = fill[i].pos;
@@ -133,12 +133,47 @@ TEST_CASE("tatami : AUCUN point cousu ne traverse le trou (routage)") {
         }
     }
     CHECK(crossings == 0);
-    // Le routage contourne le trou avec TRES PEU de deplacements (pas un
-    // eventail de sauts a travers le trou) : quelques-uns suffisent.
-    const auto travels = static_cast<std::size_t>(
-        std::count_if(fill.begin(), fill.end(), [](const FillStitch& f) { return f.travel; }));
-    CHECK(travels >= 1);
-    CHECK(travels <= 6);
+    // Le routage contourne le trou avec TRES PEU de sauts (pas un eventail de
+    // sauts a travers le trou) : quelques-uns suffisent.
+    const auto jumps = static_cast<std::size_t>(
+        std::count_if(fill.begin(), fill.end(), [](const FillStitch& f) { return f.jump; }));
+    CHECK(jumps >= 1);
+    CHECK(jumps <= 8);
+}
+
+TEST_CASE("tatami : forme concave U, aucune couture ne sort du polygone") {
+    // Un « U » : le pont entre les deux branches se ferait en traversant l'exterieur
+    // si le routage se fiait au seul chevauchement des rangees. La validation
+    // geometrique doit l'empecher (le trajet devient un saut).
+    geometry::Path u;
+    u.closed = true;
+    const auto c = [](std::int32_t x, std::int32_t y) {
+        return geometry::PathNode{Vec2um{Micrometers{x}, Micrometers{y}}, geometry::NodeType::Corner,
+                                  {}, {}};
+    };
+    // U ouvert vers le haut : encoche centrale de y=6000 a y=20000.
+    u.nodes = {c(0, 0),      c(20'000, 0),      c(20'000, 20'000), c(13'000, 20'000),
+               c(13'000, 6'000), c(7'000, 6'000), c(7'000, 20'000), c(0, 20'000)};
+
+    const auto fill = fill_tatami({u, {}}, params(1'000, 4'000));
+    REQUIRE_FALSE(fill.empty());
+
+    // Aucune COUTURE ne doit traverser l'encoche centrale (la poche exterieure
+    // du U) : x dans (7000,13000), y dans (6000,20000). Un routage naif fonde sur
+    // le seul chevauchement des rangees relierait les deux branches a travers.
+    int through_notch = 0;
+    for (std::size_t i = 1; i < fill.size(); ++i) {
+        if (fill[i].jump) {
+            continue;
+        }
+        const Vec2um mid{Micrometers{(fill[i - 1].pos.x.value + fill[i].pos.x.value) / 2},
+                         Micrometers{(fill[i - 1].pos.y.value + fill[i].pos.y.value) / 2}};
+        if (mid.x.value > 7'300 && mid.x.value < 12'700 && mid.y.value > 6'300 &&
+            mid.y.value < 19'700) {
+            ++through_notch;
+        }
+    }
+    CHECK(through_notch == 0);
 }
 
 TEST_CASE("tatami : longueur de point respectee le long des rangees") {

@@ -43,6 +43,84 @@ Vec2um to_um(PointD p) {
                   Micrometers{static_cast<std::int32_t>(std::lround(p.y))}};
 }
 
+// Orientation du triplet (a, b, c) : > 0 gauche, < 0 droite, 0 colinéaire.
+double orient(PointD a, PointD b, PointD c) {
+    return (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x);
+}
+
+// Intersection PROPRE de deux segments (ils se croisent transversalement).
+// Exclut les cas colinéaires et les contacts par extrémité/sommet (orient == 0),
+// ce qui est exactement ce qu'il faut : une liaison qui longe un bord (colinéaire)
+// est autorisée ; une liaison qui coupe franchement un bord ne l'est pas.
+bool proper_intersect(PointD a, PointD b, PointD c, PointD d) {
+    const double o1 = orient(a, b, c);
+    const double o2 = orient(a, b, d);
+    const double o3 = orient(c, d, a);
+    const double o4 = orient(c, d, b);
+    return (o1 > 0.0) != (o2 > 0.0) && (o3 > 0.0) != (o4 > 0.0) && o1 != 0.0 && o2 != 0.0 &&
+           o3 != 0.0 && o4 != 0.0;
+}
+
+// Point dans polygone (lancer de rayon horizontal, règle pair-impair).
+bool point_in_poly(const std::vector<PointD>& poly, PointD p) {
+    bool inside = false;
+    const std::size_t n = poly.size();
+    for (std::size_t i = 0, j = n - 1; i < n; j = i++) {
+        const PointD a = poly[i];
+        const PointD b = poly[j];
+        if (((a.y > p.y) != (b.y > p.y)) &&
+            (p.x < (b.x - a.x) * (p.y - a.y) / (b.y - a.y) + a.x)) {
+            inside = !inside;
+        }
+    }
+    return inside;
+}
+
+// p est-il dans la région = dans l'extérieur ET hors de tous les trous ?
+bool in_region(const std::vector<std::vector<PointD>>& polys, PointD p) {
+    if (polys.empty() || !point_in_poly(polys[0], p)) {
+        return false;
+    }
+    for (std::size_t i = 1; i < polys.size(); ++i) {
+        if (point_in_poly(polys[i], p)) {
+            return false;
+        }
+    }
+    return true;
+}
+
+// La liaison [a,b] (dans le repère des rangées) est-elle un trajet cousu
+// INVALIDE ? `spacing` est l'écart entre rangées. Une liaison légitime entre
+// deux rangées voisines est quasi VERTICALE (petit écart en x, ~spacing en y)
+// et longe éventuellement un bord — elle est autorisée. Une liaison INVALIDE
+// enjambe un vide : c'est soit un croisement franc d'une arête, soit un
+// connecteur DIAGONAL LARGE (grand écart en x) dont un point intérieur sort de
+// la région (encoche, poche concave, pont au-dessus d'un trou — cas où les
+// extrémités reposent sur les bords, que le seul test de croisement manque).
+bool connector_invalid(const std::vector<std::vector<PointD>>& polys, PointD a, PointD b,
+                       double spacing) {
+    for (const auto& poly : polys) {
+        const std::size_t n = poly.size();
+        for (std::size_t i = 0; i < n; ++i) {
+            if (proper_intersect(a, b, poly[i], poly[(i + 1) % n])) {
+                return true;
+            }
+        }
+    }
+    // Seuls les connecteurs LARGES en x peuvent enjamber un vide ; les
+    // connecteurs quasi-verticaux (le long d'un bord) sont légitimes.
+    if (std::abs(b.x - a.x) > 2.0 * spacing) {
+        for (int k = 1; k <= 3; ++k) {
+            const double t = static_cast<double>(k) / 4.0;
+            const PointD p{a.x + (b.x - a.x) * t, a.y + (b.y - a.y) * t};
+            if (!in_region(polys, p)) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
 }  // namespace
 
 std::vector<FillStitch> fill_tatami(const geometry::PathSet& region,
@@ -202,11 +280,15 @@ std::vector<FillStitch> fill_tatami(const geometry::PathSet& region,
             const double x = forward ? s.pens[static_cast<std::size_t>(k)]
                                      : s.pens[static_cast<std::size_t>(m - 1 - k)];
             const PointD rp{x, s.y};
-            // Le premier point est un déplacement seulement si on n'est PAS arrivé
-            // par une arête du graphe : une arête relie deux segments de rangées
-            // voisines qui se chevauchent, donc la liaison reste dans la région.
-            const bool travel = (k == 0) && (jumpStart || !hasPrev);
-            out.push_back({to_um(rotate(rp, cosB, sinB)), travel});
+            // La liaison vers le premier point d'un segment est un SAUT (aiguille
+            // levée) si l'on n'y est pas arrivé par une arête du graphe, OU si le
+            // trajet cousu couperait un bord de la région ou d'un trou. Le
+            // chevauchement des rangées ne donne que des candidats ; la validation
+            // géométrique (connector_crosses) tranche.
+            const bool jump =
+                (k == 0) &&
+                (jumpStart || !hasPrev || connector_invalid(polys, prev, rp, spacing));
+            out.push_back({to_um(rotate(rp, cosB, sinB)), jump});
             prev = rp;
             hasPrev = true;
         }
