@@ -16,4 +16,10 @@ namespace openstitch::geometry {
 // ou aucun si tout est dégénéré.
 [[nodiscard]] Result<std::vector<PathSet>> clean_to_path_sets(const std::vector<Path>& raw);
 
+// Union NON-ZERO de contours fermés : contrairement à `clean_to_path_sets`
+// (règle pair-impair, adaptée aux contours issus de la vectorisation avec
+// trous), cette union fusionne des polygones qui se CHEVAUCHENT sans créer de
+// trou au recouvrement. Utile pour composer des formes (bandes, branches).
+[[nodiscard]] Result<std::vector<PathSet>> union_nonzero(const std::vector<Path>& raw);
+
 }  // namespace openstitch::geometry

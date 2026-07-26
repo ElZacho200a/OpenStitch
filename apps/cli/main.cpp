@@ -14,10 +14,14 @@
 #include "openstitch/formats/svg.hpp"
 #include "openstitch/geometry/path.hpp"
 #include "openstitch/image/image.hpp"
+#include "openstitch/auto_satin/auto_satin.hpp"
+#include "openstitch/auto_satin/debug_export.hpp"
+#include "openstitch/auto_satin/shapes.hpp"
 #include "openstitch/document/embroidery_object.hpp"
 #include "openstitch/geometry/path.hpp"
 #include "openstitch/stitch/sequence.hpp"
 #include "openstitch/stitch_generation/running_stitch.hpp"
+#include "openstitch/stitch_generation/satin.hpp"
 #include "openstitch/stitch_generation/tatami.hpp"
 
 #ifdef _WIN32
@@ -229,6 +233,51 @@ int run_stitchdebug(const std::string& shape, double lengthMm, int repeats,
     return 0;
 }
 
+int run_auto_satin_debug(const std::string& shape, double pixelMm, const std::string& outSvg) {
+    using namespace openstitch;
+    const auto region = auto_satin::make_shape(shape);
+    if (!region) {
+        fmt::print(stderr, "Forme inconnue : {}\n", shape);
+        return 1;
+    }
+    auto_satin::AutoSatinParameters params;
+    params.raster.pixel_size = to_micrometers(Millimeters{pixelMm});
+    const auto res = auto_satin::analyze_region(*region, params);
+    if (!res) {
+        fmt::print(stderr, "Erreur : {}\n", res.error().message);
+        return 1;
+    }
+    const auto& r = res->report;
+    fmt::print("Forme            : {}\n", shape);
+    fmt::print("Satinabilité     : {} (confiance {:.2f})\n", auto_satin::to_string(r.status),
+               r.confidence);
+    fmt::print("Aire / périmètre : {:.1f} mm² / {:.1f} mm\n", r.area_mm2, r.perimeter_mm);
+    fmt::print("Largeur moy/min/max : {:.2f} / {:.2f} / {:.2f} mm\n", r.mean_width_mm,
+               r.minimum_width_mm, r.maximum_width_mm);
+    fmt::print("Longueur d'axe   : {:.1f} mm  (allongée : {})\n", r.estimated_length_mm,
+               r.is_elongated ? "oui" : "non");
+    fmt::print("Squelette (brut) : {} arêtes | (élagué) {} arêtes, {} extrémités, {} jonctions\n",
+               res->debug.raw_graph.edges.size(), r.branch_count, r.endpoint_count,
+               r.junction_count);
+    fmt::print("Branches élaguées : {}\n", res->debug.removed_branches.size());
+    fmt::print("Trous            : {}\n", r.hole_count);
+    for (const auto& iss : r.issues) {
+        fmt::print("  ! {}\n", iss.message);
+    }
+    if (!outSvg.empty()) {
+        const auto rails = stitch_generation::rails_from_contour(region->outer);
+        const auto svg = auto_satin::to_debug_svg(*region, *res, rails);
+        std::ofstream f(std::filesystem::path(outSvg), std::ios::binary | std::ios::trunc);
+        if (!f) {
+            fmt::print(stderr, "Impossible d'écrire {}\n", outSvg);
+            return 1;
+        }
+        f << svg;
+        fmt::print("SVG écrit : {}\n", outSvg);
+    }
+    return 0;
+}
+
 }  // namespace
 
 int main(int argc, char** argv) {
@@ -272,6 +321,17 @@ int main(int argc, char** argv) {
     sd_cmd->add_option("--repeats", sd_repeats, "1 simple, 2 aller-retour, 3 bean");
     sd_cmd->add_option("--output-svg", sd_out, "Fichier SVG de diagnostic à produire");
 
+    std::string as_shape = "rectangle";
+    double as_pixel = 0.05;
+    std::string as_out;
+    auto* as_cmd = app.add_subcommand(
+        "auto-satin-debug", "Analyse de satinabilité et squelette d'une forme de référence");
+    as_cmd->add_option("--shape", as_shape,
+                       "rectangle|capsule|ribbon|s|y|t|cross|circle|ring|wide|tiny");
+    as_cmd->add_option("--pixel-size", as_pixel, "Taille de pixel de calcul en mm")
+        ->check(CLI::PositiveNumber);
+    as_cmd->add_option("--output-svg", as_out, "SVG de diagnostic à produire");
+
     CLI11_PARSE(app, argc, argv);
 
     if (info_cmd->parsed()) {
@@ -285,6 +345,9 @@ int main(int argc, char** argv) {
     }
     if (sd_cmd->parsed()) {
         return run_stitchdebug(sd_shape, sd_length, sd_repeats, sd_out);
+    }
+    if (as_cmd->parsed()) {
+        return run_auto_satin_debug(as_shape, as_pixel, as_out);
     }
     return 0;
 }

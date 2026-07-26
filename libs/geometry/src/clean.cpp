@@ -48,7 +48,10 @@ void collect(const Clipper2Lib::PolyPath64& outer, std::vector<PathSet>& out) {
 
 }  // namespace
 
-Result<std::vector<PathSet>> clean_to_path_sets(const std::vector<Path>& raw) {
+namespace {
+
+Result<std::vector<PathSet>> union_with(const std::vector<Path>& raw,
+                                        Clipper2Lib::FillRule rule) {
     Clipper2Lib::Paths64 subject;
     for (const Path& path : raw) {
         if (path.nodes.size() >= 3) {
@@ -62,16 +65,25 @@ Result<std::vector<PathSet>> clean_to_path_sets(const std::vector<Path>& raw) {
     Clipper2Lib::Clipper64 clipper;
     clipper.AddSubject(subject);
     Clipper2Lib::PolyTree64 tree;
-    if (!clipper.Execute(Clipper2Lib::ClipType::Union, Clipper2Lib::FillRule::EvenOdd, tree)) {
+    if (!clipper.Execute(Clipper2Lib::ClipType::Union, rule, tree)) {
         return fail(ErrorCategory::Internal, "Échec du nettoyage géométrique",
                     "Clipper64::Execute a renvoyé false");
     }
-
     std::vector<PathSet> out;
     for (const auto& top : tree) {
         collect(*top, out);
     }
     return out;
+}
+
+}  // namespace
+
+Result<std::vector<PathSet>> clean_to_path_sets(const std::vector<Path>& raw) {
+    return union_with(raw, Clipper2Lib::FillRule::EvenOdd);
+}
+
+Result<std::vector<PathSet>> union_nonzero(const std::vector<Path>& raw) {
+    return union_with(raw, Clipper2Lib::FillRule::NonZero);
 }
 
 }  // namespace openstitch::geometry
