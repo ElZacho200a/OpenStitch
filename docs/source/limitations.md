@@ -14,9 +14,9 @@ fonctionnalité, vérifié dans le code.
 | Vectorisation | Implémenté | Segmentation | vectorization | oui | — |
 | Édition de nœuds | Partiel | canevas | document | — | déplacement seul |
 | Point droit/double/triple | Implémenté | Broderie | stitch_generation | oui | — |
-| Tatami | Implémenté | Broderie | stitch_generation | oui | pas de sous-couche, pas d'underpath caché |
-| Satin | Implémenté | Broderie | stitch_generation | oui | pas d'axe médian ni barreaux |
-| Auto-numérisation | Implémenté | Segmentation | autodigitize | (intégration) | heuristique de type |
+| Tatami | **Partiel** | Broderie | stitch_generation | oui | pas de sous-couche, pas d'underpath caché, entrée/sortie non gérées |
+| Satin | **Expérimental** | Broderie | stitch_generation | oui | densité le long du rail, pas d'axe médian/barreaux/sections/split, points courts en virage non gérés |
+| Classification auto des régions | **Expérimental** | Segmentation | autodigitize | (intégration) | heuristique de largeur, pas une vraie auto-numérisation |
 | Ordre de couture | Implémenté | dock | optimization | oui | 2-opt non implémenté |
 | Analyse | Implémenté | Analyse | stitch_analysis | oui | pas de carte de densité |
 | Simulation | Implémenté | barre | desktop | — | pas de réglage de vitesse |
@@ -39,12 +39,30 @@ fonctionnalité, vérifié dans le code.
   et le running stitch ; satin/tatami avancés restent à reprendre.
 - Aucune validation sur machine à broder réelle.
 
+## Niveaux de validation
+
+« Implémenté » signifie ici *présent et testé logiciellement* — pas *prêt pour
+la production*. Pour un logiciel de broderie, il faut distinguer :
+
+| Niveau | Signification | État du projet |
+|---|---|---|
+| Présent | le code existe | oui (pipeline complet) |
+| Testé numériquement | les invariants logiciels passent | oui (140 tests) |
+| Validé visuellement | les trajectoires paraissent cohérentes | partiel (SVG de diagnostic, aperçu) |
+| Validé sur simulateur | vérifié dans un visualiseur tiers | non |
+| Validé physiquement | broderies réelles examinées | **non** |
+
+Un générateur peut passer 140 tests sans produire une bonne broderie : les tests
+vérifient des **invariants** (pas de couture dans un trou, espacement par
+longueur d'arc, aller-retour DST exact…), pas la **qualité textile**.
+
 ## Statut de validation
 
-Le logiciel est **validé numériquement** (139 tests) et **visuellement** (SVG de
-diagnostic, aperçu). Il n'est **pas** validé sur simulateur tiers ni
-physiquement. Ne pas considérer les résultats comme prêts pour la production sans
-essais machine.
+Le logiciel constitue un **prototype fonctionnel** couvrant l'ensemble du
+pipeline principal. Ses composants sont **testés logiciellement** et vérifiés
+**visuellement** (SVG de diagnostic), mais la **qualité de broderie produite
+n'est pas encore validée sur machine réelle**. Ne pas considérer les résultats
+comme prêts pour la production sans essais machine.
 
 ## Implémentation associée
 

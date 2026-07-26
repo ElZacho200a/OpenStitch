@@ -8,11 +8,20 @@ OpenStitch Studio est distribué sous **Apache-2.0** (permissive, avec clause de
 brevets). Fichier : `LICENSE`. Chaque fichier source porte
 `// SPDX-License-Identifier: Apache-2.0`.
 
-Conséquence importante : le code sous licence **copyleft** (GPL, notamment
-Ink/Stitch) **ne peut pas** être copié, traduit ou adapté dans ce dépôt sans
-faire basculer le projet sous GPL. Seuls sont réutilisables les **algorithmes
-publiés** (méthodes classiques non protégeables) et les **bibliothèques
-permissives**. Voir `docs/stitch-engine-research.md`.
+Conséquence importante, formulée avec prudence : intégrer directement du code
+sous licence **copyleft** (comme la GPL) dans ce projet imposerait
+vraisemblablement de distribuer l'ensemble dérivé sous une licence compatible
+avec cette licence copyleft, ce qui empêcherait probablement de conserver le
+tout **uniquement** sous Apache-2.0. La compatibilité exacte dépend de la
+version de la licence et de la manière dont le code est combiné.
+
+En pratique, pour **conserver la distribution du projet sous Apache-2.0**, aucun
+code sous licence copyleft incompatible avec cet objectif ne doit être intégré
+directement. Les **idées algorithmiques** peuvent être réimplémentées
+indépendamment à partir de sources publiques, sans reprise de code ni de
+structure expressive protégée. **Toute réutilisation de code tiers doit faire
+l'objet d'une vérification de licence spécifique.** Voir
+`docs/stitch-engine-research.md`.
 
 ## Dépendances externes
 

@@ -11,9 +11,11 @@ chapitre indique clairement à qui il s'adresse en priorité.
 
 ## Principe de véracité
 
-Toutes les affirmations sur le fonctionnement du logiciel sont vérifiées dans le
-code réel du dépôt. Lorsqu'une capacité était prévue mais n'est pas encore
-disponible, elle est marquée explicitement :
+Les descriptions de fonctionnalités ont été **rapprochées du code et des tests**
+présents dans le dépôt (lire le code confirme qu'une fonction existe et ce
+qu'elle fait, mais ne garantit pas que son résultat est de qualité — d'où la
+distinction des niveaux de validation, voir *Limitations*). Lorsqu'une capacité
+était prévue mais n'est pas encore disponible, elle est marquée explicitement :
 
 - **Implémenté** : disponible et testé ;
 - **Partiellement implémenté** : présent mais incomplet ;

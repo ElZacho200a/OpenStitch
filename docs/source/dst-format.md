@@ -59,9 +59,10 @@ est **subdivisé** en sauts intermédiaires. La sortie est **déterministe**.
 ## Décodage (tolérant)
 
 `decode_dst` lit l'en-tête de façon **laxiste** (la vérité est le corps),
-décode chaque enregistrement, réinterprète une rafale de sauts nuls en `Trim`, et
-**ne plante jamais** : un fichier tronqué ou sans marqueur de fin renvoie une
-erreur claire.
+décode chaque enregistrement, et réinterprète une rafale de sauts nuls en `Trim`.
+Les cas d'erreur **couverts par les tests** (fichier vide, tronqué, sans
+marqueur de fin) renvoient une erreur structurée au lieu de provoquer un arrêt
+du programme.
 
 ## Exemple interprété (motif minimal)
 

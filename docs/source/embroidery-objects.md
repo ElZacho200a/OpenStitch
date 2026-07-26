@@ -25,20 +25,31 @@ Le satin est particulier : il **porte sa propre géométrie** (deux rails
 
 ## Tableau récapitulatif
 
-| Objet | Générateur | Paramètres clés | État |
+| Objet | Générateur | Paramètres clés | Statut recommandé |
 |---|---|---|---|
 | Running (simple/double/triple) | `run_stitch` + `apply_repeats` | `stitch_length`, `min_length`, `repeats` | Implémenté |
-| Tatami | `fill_tatami` | `row_spacing`, `stitch_length`, `angle`, `inset`, `stagger` | Implémenté |
-| Satin | `fill_satin` | `density`, `pull_compensation`, `center_underlay` | Implémenté |
+| Tatami | `fill_tatami` | `row_spacing`, `stitch_length`, `angle`, `inset`, `stagger` | Partiel |
+| Satin | `fill_satin` | `density`, `pull_compensation`, `center_underlay` | Expérimental |
+
+Le tableau reflète la **qualité métier**, pas seulement la présence de code : le
+running stitch est solide ; le tatami est fonctionnel mais sans sous-couche ni
+underpath caché ; le satin est une génération simple à deux rails (voir les
+chapitres dédiés). Aucun n'est validé sur machine réelle.
 
 ## Création
 
 Depuis l'interface (menu Broderie) sur un objet vectoriel sélectionné, ou en lot
-par la **numérisation automatique** qui choisit le type selon la forme :
+par la **classification automatique expérimentale des régions** (voir
+*Limitations*) qui choisit le type selon la forme :
 
 - bande **fine** satinable → satin ;
 - zone **large** → tatami ;
 - petite forme ou satin impossible → **contour** cousu (point triple).
+
+Limitation : cette classification est une heuristique simple (largeur moyenne
+= 2·aire/périmètre) ; ce n'est pas un moteur d'auto-numérisation robuste
+comparable à un logiciel commercial. Elle produit des objets **éditables** qu'il
+faut vérifier et retoucher.
 
 ## Régénération
 

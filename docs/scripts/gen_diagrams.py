@@ -217,4 +217,15 @@ sequence(
      ("encode_dst", "fichier .dst", "512 o + records + 0x00 00 F3", False)],
 )
 
+# Copie des SVG de diagnostic RÉELS du moteur (trajectoires produites par le code
+# et versionnées comme golden). Ce sont de vraies figures, pas des schémas.
+import shutil
+GOLDEN = os.path.join(os.path.dirname(__file__), "..", "..", "tests", "golden",
+                      "stitch-generation")
+for src, dst in [("circle.svg", "running-circle.svg"), ("ring-fill.svg", "tatami-ring.svg"),
+                 ("star.svg", "running-star.svg")]:
+    sp = os.path.join(GOLDEN, src)
+    if os.path.exists(sp):
+        shutil.copyfile(sp, os.path.join(OUT, dst))
+
 print("Diagrammes générés dans", os.path.normpath(OUT))

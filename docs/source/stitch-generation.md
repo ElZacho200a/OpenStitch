@@ -1,7 +1,11 @@
 # Génération de points — point droit et fondations
 
-Public : utilisateur avancé, développeur. État : **Implémenté** (reconstruit sur
-des fondations de longueur d'arc).
+Public : utilisateur avancé, développeur.
+
+> État : Présent dans le code : oui · Tests unitaires : oui · Tests visuels :
+> oui (SVG golden) · Import/export DST : oui · Test sur machine réelle : **non**
+> · **Statut recommandé : implémenté** — reconstruit sur des fondations de
+> longueur d'arc, c'est le générateur le plus solide du projet.
 
 ![Séquence de génération des points](../assets/generated/seq-stitchgen.svg)
 
@@ -20,6 +24,14 @@ Avant tout type de point, deux primitives (dans `geometry`) :
   L est divisé en `n = ceil(L / cible)` parts **égales**, donc chaque point est
   ≤ la longueur cible et il n'y a pas de segment résiduel minuscule.
 
+Sémantique du paramètre : avec `ceil`, `stitch_length` est traité comme une
+**longueur maximale** (les points ne la dépassent jamais, mais peuvent être plus
+courts). Si on voulait une longueur *souhaitée* dont l'espacement colle au plus
+près de la consigne, `round(L / cible)` serait plus adapté. Le nom
+`stitch_length` est donc ici à comprendre comme un **maximum**, pas une cible
+exacte — un point d'ambiguïté à clarifier dans une future version (distinguer
+`target_length` de `maximum_length`).
+
 ## Point droit (running stitch)
 
 `run_stitch(path, config)` :
@@ -32,6 +44,11 @@ Avant tout type de point, deux primitives (dans `geometry`) :
 Résultat : les coins sont des pénétrations **exactes** ; les portions lisses ont
 un espacement **régulier**. Un cercle finement facetté ne produit donc plus un
 point par facette, mais des points espacés de la longueur cible.
+
+![Running stitch sur un cercle](../assets/generated/running-circle.svg)
+
+*Figure — Trajectoire réelle produite par le moteur (SVG de diagnostic) : cercle
+de rayon 20 mm, longueur cible 3 mm. Trait = couture, orange pointillé = sauts.*
 
 Le résultat est structuré : `RunningResult { points, warnings, stats }`. Il ne
 plante jamais et renvoie un avertissement (chemin vide, trop court, point trop
@@ -55,6 +72,23 @@ boucle fermée revient à son point de départ sans doublon minuscule.
 | `Backstitch` | progression avec recouvrement |
 
 Les mouvements nuls sont supprimés ; le nombre exact de traversées est testé.
+
+## Traitement des points courts
+
+Le running stitch **ne supprime pas** aveuglément les points sous une longueur
+minimale (cela déplacerait un sommet ou détruirait un détail). À la place, les
+**vrais coins** (angle de rotation > seuil) sont préservés comme pénétrations
+exactes, et chaque tronçon lisse est ré-échantillonné indépendamment par
+longueur d'arc — ce qui évite les rafales de micro-points sur les courbes
+finement facettées. Un point plus court que `min_length` peut subsister à un
+**coin serré** (deux coins proches) ; il est alors **signalé** par un
+avertissement, pas supprimé.
+
+Limitation : ce traitement fin s'applique au running stitch. Aux **fins de
+rangée** du tatami et surtout aux **extrémités pointues** d'un satin, des
+pénétrations peuvent se rapprocher voire s'empiler ; la gestion dédiée (retrait,
+redistribution, terminaisons) n'est **pas** implémentée. C'est une des raisons du
+statut *expérimental* du satin.
 
 ## Outil de diagnostic
 

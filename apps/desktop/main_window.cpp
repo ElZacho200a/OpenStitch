@@ -869,6 +869,13 @@ void MainWindow::createSatinObject() {
     QDialog dialog(this);
     dialog.setWindowTitle(tr("Colonne satin"));
     auto* layout = new QFormLayout(&dialog);
+    auto* warn = new QLabel(
+        tr("⚠ Le satin automatique est expérimental. Vérifiez impérativement le "
+           "résultat (densité, virages, extrémités) avant tout passage sur machine."),
+        &dialog);
+    warn->setWordWrap(true);
+    warn->setStyleSheet("color:#8a5a00;");
+    layout->addRow(warn);
     auto* densitySpin = new QDoubleSpinBox(&dialog);
     densitySpin->setRange(0.1, 1.5);
     densitySpin->setValue(0.4);

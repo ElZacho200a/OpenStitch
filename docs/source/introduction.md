@@ -55,10 +55,13 @@ les objets éditables (voir le chapitre *Format DST*).
 
 ## Limites générales
 
-Le logiciel est un socle complet et testé, mais **il n'a pas été validé sur une
-machine à broder réelle**. Les heuristiques physiques (compensation de tirage,
-densité) sont paramétrables mais approximatives, et certaines conventions DST
-varient selon les machines. Voir le chapitre *Limitations et roadmap*.
+Le logiciel constitue un **prototype fonctionnel** couvrant l'ensemble du
+pipeline principal. Ses composants sont **testés logiciellement**, mais la
+**qualité de broderie produite n'a pas encore été validée sur une machine à
+broder réelle**. Les heuristiques physiques (compensation de tirage, densité)
+sont paramétrables mais approximatives, le satin est **expérimental** et le
+tatami **partiel** (voir *Limitations et roadmap*). Certaines conventions DST
+varient aussi selon les machines.
 
 Limitation : Certaines fonctionnalités décrites dans l'étude de cadrage
 initiale (palette de fils réelle, remplissages courbes, profils machine
@@ -67,11 +70,12 @@ Elles sont signalées comme telles tout au long du document.
 
 ## Philosophie open source
 
-Le projet est sous licence **Apache-2.0** (permissive avec clause de brevets). Ce
-choix a une conséquence importante : le code sous licence copyleft (par exemple
-Ink/Stitch, en GPL) **ne peut pas** être copié dans ce dépôt ; seuls les
-algorithmes publiés et les bibliothèques permissives sont réutilisables. Voir
-*Licences*.
+Le projet est sous licence **Apache-2.0** (permissive avec clause de brevets).
+Pour conserver cette distribution, aucun code sous licence copyleft incompatible
+(par exemple la GPL d'Ink/Stitch) ne doit être intégré directement — cela
+imposerait vraisemblablement une redistribution sous licence copyleft. Les idées
+algorithmiques restent réimplémentables indépendamment à partir de sources
+publiques. Voir *Licences* pour la formulation complète et les précautions.
 
 ## Implémentation associée
 

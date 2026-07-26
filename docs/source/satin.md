@@ -1,7 +1,13 @@
 # Colonne satin
 
-Public : utilisateur avancé, développeur. État : **Implémenté** (base) ;
-auto-satin **partiel**.
+Public : utilisateur avancé, développeur.
+
+> État : Présent dans le code : oui · Tests unitaires : oui · Tests visuels :
+> partiels · Import/export DST : oui · Test sur machine réelle : **non** ·
+> **Statut recommandé : expérimental** — génération satin simple à deux rails.
+> Plusieurs propriétés d'un générateur satin correct manquent (voir
+> *Limitations* ci-dessous). Vérifiez impérativement le résultat avant tout
+> passage sur machine.
 
 ## Définition
 
@@ -22,14 +28,35 @@ d'une sous-couche centrale (`center_underlay`).
 1. ré-échantillonne **les deux rails** par fraction d'abscisse curviligne (les
    rails peuvent avoir des longueurs et courbures différentes) ;
 2. produit un **zigzag alterné** d'un bord à l'autre (L0, R0, L1, R1, …) ;
-3. la **densité** fixe le pas le long de la colonne ;
+3. la **densité** fixe le pas d'avancement le long de la colonne (mesuré **le
+   long du rail**, par fraction d'abscisse curviligne) ;
 4. la **compensation de tirage** écarte les deux rails le long de leur
    médiatrice, pour compenser le resserrement du fil ;
 5. la **sous-couche centrale** (optionnelle) est un point droit grossier sur
    l'axe, cousu avant le zigzag.
 
+Avertissement : la densité est mesurée **le long du rail**, pas
+perpendiculairement aux fils. Dans les sections **inclinées ou courbes**,
+l'espacement visuel réel entre fils diffère alors de la consigne (les fils se
+resserrent ou s'écartent selon l'angle). Une mesure correcte projetterait
+l'avancement sur la normale aux fils ; ce n'est pas encore le cas.
+
 Le résultat (`SatinResult`) fournit les points de sous-couche, du satin, et la
 **largeur maximale** rencontrée (pour l'avertissement).
+
+## Paramètres
+
+Valeurs par défaut lues dans `SatinParams`.
+
+| Paramètre | Unité | Défaut | Effet |
+|---|---|---|---|
+| `density` | mm | 0,4 | pas d'avancement le long de la colonne (plus petit = plus dense) |
+| `pull_compensation` | mm | 0 | élargit la colonne (compense la traction du fil) |
+| `center_underlay` | bool | vrai | ajoute une sous-couche centrale (point droit sur l'axe) |
+| `max_width` | mm | 9 | seuil d'avertissement de largeur excessive |
+
+> Validation physique : non effectuée. La densité satin devrait idéalement se
+> mesurer perpendiculairement au fil (voir l'avertissement ci-dessus).
 
 ## Colonne trop large
 

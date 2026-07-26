@@ -50,23 +50,27 @@ CSS = """
   @frame footer { -pdf-frame-content: footerContent; bottom: 1cm; margin-left: 2cm; margin-right: 2cm; height: 1cm; }
   @frame header { -pdf-frame-content: headerContent; top: 1cm; margin-left: 2cm; margin-right: 2cm; height: 1cm; }
 }
-body { font-family: Helvetica, Arial, sans-serif; font-size: 10.5pt; color: #1c2733; line-height: 1.42; }
-h1 { font-size: 20pt; color: #234; border-bottom: 2pt solid #3a5a8c; padding-bottom: 3pt; margin-top: 4pt; -pdf-outline: true; -pdf-outline-level: 0; -pdf-keep-with-next: true; }
-h2 { font-size: 15pt; color: #2b4870; margin-top: 14pt; -pdf-outline: true; -pdf-outline-level: 1; -pdf-keep-with-next: true; }
-h3 { font-size: 12.5pt; color: #33475b; margin-top: 10pt; -pdf-outline: true; -pdf-outline-level: 2; -pdf-keep-with-next: true; }
-h4 { font-size: 11pt; color: #445; margin-top: 8pt; }
-p { margin: 4pt 0; }
+body { font-family: Helvetica, Arial, sans-serif; font-size: 10pt; color: #1c2733; line-height: 1.32; }
+h1 { font-size: 17pt; color: #234; border-bottom: 1.5pt solid #3a5a8c; padding-bottom: 2pt; margin-top: 2pt; margin-bottom: 4pt; -pdf-outline: true; -pdf-outline-level: 0; -pdf-keep-with-next: true; }
+h2 { font-size: 13pt; color: #2b4870; margin-top: 9pt; margin-bottom: 2pt; -pdf-outline: true; -pdf-outline-level: 1; -pdf-keep-with-next: true; }
+h3 { font-size: 11pt; color: #33475b; margin-top: 6pt; margin-bottom: 1pt; -pdf-outline: true; -pdf-outline-level: 2; -pdf-keep-with-next: true; }
+h4 { font-size: 10pt; color: #445; margin-top: 5pt; }
+p { margin: 2.5pt 0; }
 a { color: #2b4870; text-decoration: none; }
 code { font-family: "Courier New", monospace; font-size: 9pt; background: #f2f4f7; color: #223; }
 pre { font-family: "Courier New", monospace; font-size: 8.6pt; background: #f6f8fa; border: 0.6pt solid #d8dee6; padding: 5pt; color: #182430; -pdf-keep-in-frame-mode: shrink; }
 table { -pdf-keep-in-frame-mode: shrink; border-collapse: collapse; margin: 6pt 0; width: 100%; }
 th { background: #e9eef7; border: 0.6pt solid #b9c4d4; padding: 3pt 5pt; font-size: 9pt; text-align: left; }
 td { border: 0.6pt solid #cdd6e2; padding: 3pt 5pt; font-size: 9pt; vertical-align: top; }
-blockquote { border-left: 3pt solid #b9c4d4; margin: 6pt 0; padding: 3pt 8pt; background: #f6f8fa; color: #33475b; }
-ul, ol { margin: 4pt 0 4pt 14pt; }
-li { margin: 1.5pt 0; }
+blockquote { border-left: 3pt solid #b9c4d4; margin: 4pt 0; padding: 2pt 8pt; background: #f6f8fa; color: #33475b; }
+ul, ol { margin: 2.5pt 0 2.5pt 14pt; }
+li { margin: 1pt 0; }
 img { -pdf-keep-in-frame-mode: shrink; }
 .chapter { page-break-before: always; }
+.part { page-break-before: always; }
+.partpage { background: #234; color: white; padding: 3cm 1.5cm; }
+.partpage h1 { color: white; border: none; font-size: 24pt; }
+.partpage p { color: #cdd9ee; font-size: 12pt; }
 .note, .warning, .tip, .limit { padding: 6pt 8pt; margin: 8pt 0; border: 0.6pt solid; border-radius: 3pt; font-size: 9.5pt; }
 .note { background: #eef4fb; border-color: #7fa5d6; }
 .tip { background: #eef7ee; border-color: #7cbf88; }
@@ -138,17 +142,35 @@ Les affirmations techniques sont tracées vers le code réel dans chaque section
 """
 
 
-def toc_html(titles):
+# Dividers de parties : (titre, sous-titre) inséré AVANT le chapitre nommé.
+PARTS = {
+    "index": ("Partie I", "Présentation et manuel utilisateur"),
+    "dst-format": ("Partie II", "Formats, architecture et développement"),
+}
+
+
+def part_divider(name):
+    if name not in PARTS:
+        return ""
+    t, sub = PARTS[name]
+    return (f'<div class="part partpage"><h1>{t}</h1><p>{sub}</p></div>')
+
+
+def toc_html(titles, pages=None):
     rows = []
     for cid, title in titles:
-        rows.append(f'<div style="margin:2.5pt 0;"><a href="#{cid}">{title}</a></div>')
+        num = ""
+        if pages and cid in pages:
+            num = (f'<span style="float:right;color:#5b6b82;">{pages[cid]}</span>')
+        rows.append(
+            f'<div style="margin:1.5pt 0;">{num}<a href="#{cid}">{title}</a></div>')
     body = "".join(rows)
     return (
         '<div class="chapter"></div>'
         '<h1>Table des matières</h1>'
-        '<p style="color:#66707d;font-size:9pt;">Les titres sont cliquables. '
-        'Les lecteurs PDF affichent aussi les signets (panneau latéral) pour une '
-        'navigation détaillée par chapitre et section.</p>'
+        '<p style="color:#66707d;font-size:9pt;">Les titres sont cliquables et '
+        'les numéros de page indiqués. Les lecteurs PDF affichent aussi les '
+        'signets (panneau latéral) pour une navigation détaillée par section.</p>'
         f'{body}'
     )
 
@@ -202,28 +224,67 @@ def build():
         html = markdown.markdown(text, extensions=MD_EXT, output_format="html5")
         # Transforme les blockquotes commençant par un mot-clé en encadrés stylés
         html = style_admonitions(html)
-        cls = "chapter" if i > 0 else ""
+        chapter_html.append(part_divider(name))
+        cls = "chapter" if (i > 0 and name not in PARTS) else ""
         chapter_html.append(f'<div class="{cls}" id="{cid}">{html}</div>')
 
     # 3) Scan de secrets / chemins sensibles sur le HTML assemblé
     assembled_text = "\n".join(chapter_html)
     secret_scan(assembled_text, warnings, problems)
 
-    # 4) Assemblage du document
-    doc = (
-        "<html><head><meta charset='utf-8'><style>" + CSS + "</style></head><body>"
-        + HEADER + FOOTER
-        + cover_html()
-        + editorial_html()
-        + toc_html(titles)
-        + "".join(chapter_html)
-        + "</body></html>"
-    )
+    # 4) Assemblage + rendu en DEUX passes (pour les numéros de page de la TOC)
+    chapters_joined = "".join(chapter_html)
+
+    def assemble(toc_pages):
+        return (
+            "<html><head><meta charset='utf-8'><style>" + CSS + "</style></head><body>"
+            + HEADER + FOOTER
+            + cover_html()
+            + editorial_html()
+            + toc_html(titles, toc_pages)
+            + chapters_joined
+            + "</body></html>"
+        )
+
+    def render(html, dest):
+        with open(dest, "wb") as f:
+            return pisa.CreatePDF(html, dest=f, encoding="utf-8",
+                                  link_callback=lambda uri, rel: link_cb(uri))
 
     out = os.path.join(BUILD, PDF_NAME)
-    with open(out, "wb") as f:
-        res = pisa.CreatePDF(doc, dest=f, encoding="utf-8",
-                             link_callback=lambda uri, rel: link_cb(uri))
+
+    # Passe 1 : sans numéros de page, pour découvrir la pagination.
+    tmp = os.path.join(BUILD, "_pass1.pdf")
+    render(assemble(None), tmp)
+
+    toc_pages = {}
+    try:
+        from pypdf import PdfReader
+        reader1 = PdfReader(tmp)
+        title_to_page = {}
+
+        def walk(items):
+            for it in items:
+                if isinstance(it, list):
+                    walk(it)
+                else:
+                    try:
+                        title_to_page[str(it.title)] = reader1.get_destination_page_number(it) + 1
+                    except Exception:  # noqa: BLE001
+                        pass
+        walk(reader1.outline)
+        for cid, title in titles:
+            if title in title_to_page:
+                toc_pages[cid] = title_to_page[title]
+    except Exception as e:  # noqa: BLE001
+        warnings.append(f"Numéros de page de la TOC indisponibles : {e}")
+
+    # Passe 2 : rendu final avec numéros de page.
+    res = render(assemble(toc_pages), out)
+    try:
+        os.remove(tmp)
+    except OSError:
+        pass
     if res.err:
         problems.append("xhtml2pdf a signalé des erreurs de rendu.")
 

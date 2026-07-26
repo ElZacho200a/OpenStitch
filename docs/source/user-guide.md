@@ -114,7 +114,10 @@ points existe.
 
 Les opérations impossibles (recadrage hors image, satin non constructible,
 export d'une séquence vide…) affichent un message clair et **n'appliquent rien**.
-Aucune entrée utilisateur incorrecte ne fait planter l'application.
+Les erreurs connues et les entrées invalides **couvertes par les tests**
+renvoient une erreur structurée au lieu de provoquer un arrêt du programme.
+Aucun plantage n'a été observé dans le corpus de tests actuel — ce qui ne
+constitue pas une garantie absolue en version 0.1.0.
 
 Note : Les raccourcis proviennent des séquences standard de Qt
 (`QKeySequence::Open`, `Save`, `Undo`, `Redo`, `Delete`, `ZoomIn`, `ZoomOut`,
