@@ -1,0 +1,7 @@
+# Chaîne documentaire OpenStitch Studio — 100 % pip, sans dépendance système.
+# Markdown -> HTML (markdown) -> PDF (xhtml2pdf/reportlab). SVG vectoriel via svglib.
+markdown==3.10.2
+xhtml2pdf==0.2.17
+Pillow>=10
+svglib>=1.5
+pypdf>=4.0

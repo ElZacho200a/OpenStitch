@@ -1,6 +1,6 @@
-# Build
-build/
-out/
+# Build (racine uniquement — ne pas ignorer docs/build/ qui contient le PDF)
+/build/
+/out/
 CMakeUserPresets.json
 
 # IDE
@@ -10,6 +10,11 @@ CMakeUserPresets.json
 
 # vcpkg local
 vcpkg_installed/
+
+# Documentation : environnement Python local et caches (générés)
+docs/.venv/
+__pycache__/
+*.pyc
 
 # OS
 Thumbs.db
