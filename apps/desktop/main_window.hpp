@@ -11,6 +11,7 @@
 #include "openstitch/commands/undo_stack.hpp"
 #include "openstitch/document/project.hpp"
 #include "openstitch/stitch/sequence.hpp"
+#include "tools.hpp"
 
 class QGraphicsScene;
 class QGraphicsItem;
@@ -79,6 +80,11 @@ private slots:
 
 private:
     void buildMenus();
+    void buildMainToolbar();
+    void buildToolPalette();
+    // Change le mode d'interaction du canevas (Sélection / Déplacer / Rectangle),
+    // synchronise les cases d'outils, le curseur et la barre d'état.
+    void setTool(Tool tool);
     void buildAnalysisPanel();
     void buildSimulationToolbar();
     void buildOrderPanel();
@@ -140,6 +146,16 @@ private:
     QAction* fillAngleAct_{nullptr};
     QAction* convertSatinAct_{nullptr};
     QAction* statsAct_{nullptr};
+
+    // Barres d'outils et modes d'interaction.
+    QToolBar* mainToolbar_{nullptr};
+    QToolBar* toolPalette_{nullptr};
+    QAction* toolSelectAct_{nullptr};
+    QAction* toolPanAct_{nullptr};
+    QAction* toolRectAct_{nullptr};
+    QLabel* toolLabel_{nullptr};
+    Tool currentTool_{Tool::Select};
+
     QList<QAction*> imageActions_;
     QList<QAction*> regionActions_;  // nécessitent une région sélectionnée
 

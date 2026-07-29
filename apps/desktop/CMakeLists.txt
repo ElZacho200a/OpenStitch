@@ -20,6 +20,9 @@ add_executable(openstitch WIN32
     canvas_view.hpp
     properties_panel.cpp
     properties_panel.hpp
+    tools.hpp
+    ui_icons.cpp
+    ui_icons.hpp
     ruler.cpp
     ruler.hpp
     import_dialog.cpp

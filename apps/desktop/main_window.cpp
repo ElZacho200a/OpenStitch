@@ -37,6 +37,9 @@
 #include "import_dialog.hpp"
 #include "node_handle.hpp"
 #include "properties_panel.hpp"
+#include "ui_icons.hpp"
+#include <QShortcut>
+#include <QToolBar>
 #include "openstitch/autodigitize/autodigitize.hpp"
 #include "openstitch/formats/dst.hpp"
 #include "openstitch/optimization/order.hpp"
@@ -93,11 +96,17 @@ MainWindow::MainWindow() {
     buildAnalysisPanel();
     buildOrderPanel();
     buildFilterPanel();
+    buildMainToolbar();
+    buildToolPalette();
+    addToolBarBreak();  // la barre de simulation occupe sa propre rangée
     buildSimulationToolbar();
 
+    toolLabel_ = new QLabel(this);
+    statusBar()->addPermanentWidget(toolLabel_);
     cursorLabel_ = new QLabel(this);
     cursorLabel_->setMinimumWidth(180);
     statusBar()->addPermanentWidget(cursorLabel_);
+    setTool(Tool::Select);
     connect(view_, &CanvasView::cursorMovedMm, this, [this](QPointF mm) {
         cursorLabel_->setText(
             tr("x : %1 mm   y : %2 mm").arg(mm.x(), 0, 'f', 1).arg(mm.y(), 0, 'f', 1));
@@ -173,7 +182,8 @@ void MainWindow::buildMenus() {
     imageMenu->addSeparator();
     cropAct_ = imageMenu->addAction(tr("&Recadrer (sélection)"));
     cropAct_->setCheckable(true);
-    connect(cropAct_, &QAction::toggled, view_, &CanvasView::setCropMode);
+    connect(cropAct_, &QAction::toggled, this,
+            [this](bool on) { setTool(on ? Tool::Rect : Tool::Select); });
     imageActions_.append(cropAct_);
 
     auto* segMenu = menuBar()->addMenu(tr("&Segmentation"));
@@ -1290,6 +1300,107 @@ void MainWindow::onCanvasContextMenu(QPointF posMm, QPoint globalPos) {
     menu.exec(globalPos);
 }
 
+void MainWindow::buildMainToolbar() {
+    mainToolbar_ = addToolBar(tr("Barre principale"));
+    mainToolbar_->setObjectName(QStringLiteral("mainToolbar"));
+    mainToolbar_->setMovable(false);
+    mainToolbar_->setIconSize(QSize(18, 18));
+
+    const auto add = [this](const QIcon& icon, const QString& text, auto slot) {
+        auto* act = mainToolbar_->addAction(icon, text);
+        act->setToolTip(text);
+        connect(act, &QAction::triggered, this, slot);
+        return act;
+    };
+    add(icons::openImage(), tr("Ouvrir une image"), &MainWindow::openImage);
+    add(icons::openProject(), tr("Ouvrir un projet"), &MainWindow::loadProject);
+    add(icons::save(), tr("Enregistrer le projet"), &MainWindow::saveProject);
+    mainToolbar_->addSeparator();
+    undoAct_->setIcon(icons::undo());
+    redoAct_->setIcon(icons::redo());
+    mainToolbar_->addAction(undoAct_);
+    mainToolbar_->addAction(redoAct_);
+    mainToolbar_->addSeparator();
+    add(icons::zoomOut(), tr("Zoom arrière"), [this] { view_->zoomOut(); });
+    add(icons::fit(), tr("Ajuster au canevas"), [this] { view_->fitCanvas(); });
+    add(icons::zoomIn(), tr("Zoom avant"), [this] { view_->zoomIn(); });
+    mainToolbar_->addSeparator();
+    analyzeAct_->setIcon(icons::analyze());
+    mainToolbar_->addAction(analyzeAct_);
+    showStitchesAct_->setIcon(icons::stitches());
+    mainToolbar_->addAction(showStitchesAct_);
+    exportDstAct_->setIcon(icons::exportDst());
+    mainToolbar_->addAction(exportDstAct_);
+}
+
+void MainWindow::buildToolPalette() {
+    toolPalette_ = new QToolBar(tr("Outils"), this);
+    toolPalette_->setObjectName(QStringLiteral("toolPalette"));
+    toolPalette_->setMovable(false);
+    toolPalette_->setIconSize(QSize(20, 20));
+    addToolBar(Qt::LeftToolBarArea, toolPalette_);
+
+    auto* group = new QActionGroup(this);
+    const auto addTool = [&](const QIcon& icon, const QString& text, Tool tool,
+                             const QKeySequence& key) {
+        auto* act = toolPalette_->addAction(icon, text);
+        act->setCheckable(true);
+        act->setToolTip(tr("%1 (%2)").arg(text, key.toString()));
+        act->setShortcut(key);
+        group->addAction(act);
+        connect(act, &QAction::triggered, this, [this, tool] { setTool(tool); });
+        return act;
+    };
+    toolSelectAct_ = addTool(icons::select(), tr("Sélection"), Tool::Select,
+                             QKeySequence(Qt::Key_V));
+    toolPanAct_ = addTool(icons::pan(), tr("Déplacer la vue"), Tool::Pan, QKeySequence(Qt::Key_H));
+    toolRectAct_ = addTool(icons::rect(), tr("Rectangle / Recadrage"), Tool::Rect,
+                           QKeySequence(Qt::Key_M));
+    toolSelectAct_->setChecked(true);
+
+    // Échap : revient à la Sélection et annule le mode fusion en cours.
+    auto* escape = new QShortcut(QKeySequence(Qt::Key_Escape), this);
+    connect(escape, &QShortcut::activated, this, [this] {
+        if (mergeAct_->isChecked()) {
+            mergeAct_->setChecked(false);
+        }
+        setTool(Tool::Select);
+    });
+}
+
+void MainWindow::setTool(Tool tool) {
+    currentTool_ = tool;
+
+    // Synchronise les cases d'outils (sans réémettre).
+    const auto sync = [](QAction* act, bool on) {
+        if (act == nullptr) return;
+        QSignalBlocker block(act);
+        act->setChecked(on);
+    };
+    sync(toolSelectAct_, tool == Tool::Select);
+    sync(toolPanAct_, tool == Tool::Pan);
+    sync(toolRectAct_, tool == Tool::Rect);
+    if (cropAct_ != nullptr) {
+        QSignalBlocker block(cropAct_);
+        cropAct_->setChecked(tool == Tool::Rect);
+    }
+
+    // Applique au canevas : Rectangle = recadrage ; sinon vue libre.
+    view_->setCropMode(tool == Tool::Rect);
+    if (tool == Tool::Pan) {
+        view_->setCursor(Qt::OpenHandCursor);
+    } else if (tool == Tool::Select) {
+        view_->setCursor(Qt::ArrowCursor);
+    }
+
+    if (toolLabel_ != nullptr) {
+        const QString name = tool == Tool::Select ? tr("Sélection")
+                             : tool == Tool::Pan  ? tr("Déplacer la vue")
+                                                  : tr("Rectangle");
+        toolLabel_->setText(tr("Outil : %1").arg(name));
+    }
+}
+
 void MainWindow::buildPropertiesPanel() {
     propertiesDock_ = new QDockWidget(tr("Propriétés"), this);
     propertiesDock_->setAllowedAreas(Qt::LeftDockWidgetArea | Qt::RightDockWidgetArea);
@@ -1993,6 +2104,10 @@ void MainWindow::importDst() {
 }
 
 void MainWindow::onCanvasClicked(QPointF posMm) {
+    // En mode « Déplacer la vue », un clic ne sélectionne rien.
+    if (currentTool_ == Tool::Pan) {
+        return;
+    }
     // Priorité aux objets vectoriels lorsqu'ils sont affichés (hors fusion).
     if (showVectorsAct_->isChecked() && !mergeMode_) {
         std::optional<ObjectId> hit;
