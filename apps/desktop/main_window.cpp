@@ -14,6 +14,7 @@
 #include <QImage>
 #include <QInputDialog>
 #include <QLabel>
+#include <QMenu>
 #include <QMenuBar>
 #include <QMessageBox>
 #include <QPainterPath>
@@ -21,8 +22,11 @@
 #include <QSpinBox>
 #include <QStatusBar>
 
+#include <algorithm>
+#include <cmath>
 #include <filesystem>
 #include <numbers>
+#include <variant>
 
 #include "brightness_dialog.hpp"
 #include "canvas_view.hpp"
@@ -94,6 +98,7 @@ MainWindow::MainWindow() {
     connect(view_, &CanvasView::cropSelectedMm, this, &MainWindow::onCropSelected);
 
     connect(view_, &CanvasView::canvasClickedMm, this, &MainWindow::onCanvasClicked);
+    connect(view_, &CanvasView::canvasContextMenu, this, &MainWindow::onCanvasContextMenu);
 
     statusBar()->showMessage(tr("Ouvrez une image (PNG, JPEG, BMP, TIFF) pour commencer."));
     view_->fitCanvas();
@@ -201,18 +206,37 @@ void MainWindow::buildMenus() {
     connect(createTatamiAct_, &QAction::triggered, this, &MainWindow::createTatamiObject);
     createSatinAct_ = embMenu->addAction(tr("Créer une colonne &satin…"));
     connect(createSatinAct_, &QAction::triggered, this, &MainWindow::createSatinObject);
+    embMenu->addSeparator();
+    fillAngleAct_ = embMenu->addAction(tr("&Orientation du remplissage…"));
+    fillAngleAct_->setToolTip(
+        tr("Change l'angle des fils du remplissage tatami sélectionné (clic sur la forme "
+           "ou dans l'ordre de couture)."));
+    connect(fillAngleAct_, &QAction::triggered, this, &MainWindow::changeFillAngle);
+    convertSatinAct_ = embMenu->addAction(tr("Convertir les satins auto en &tatami"));
+    convertSatinAct_->setToolTip(
+        tr("Remplace les colonnes satin automatiques (qui débordent sur les formes "
+           "concaves) par des remplissages tatami découpés sur la région."));
+    connect(convertSatinAct_, &QAction::triggered, this, &MainWindow::convertSatinsToTatami);
+    embMenu->addSeparator();
     statsAct_ = embMenu->addAction(tr("&Statistiques…"));
     connect(statsAct_, &QAction::triggered, this, &MainWindow::showStatistics);
 
     auto* viewMenu = menuBar()->addMenu(tr("&Affichage"));
-    showStitchesAct_ = viewMenu->addAction(tr("Afficher les &points"));
-    showStitchesAct_->setCheckable(true);
-    showStitchesAct_->setChecked(true);
-    connect(showStitchesAct_, &QAction::toggled, this, [this] { displayImage(processed_); });
-    showVectorsAct_ = viewMenu->addAction(tr("Afficher les &vecteurs"));
+    auto* layersMenu = viewMenu->addMenu(tr("&Calques"));
+    showImageAct_ = layersMenu->addAction(tr("&Image"));
+    showImageAct_->setCheckable(true);
+    showImageAct_->setChecked(true);
+    connect(showImageAct_, &QAction::toggled, this, [this] { displayImage(processed_); });
+    // La carte des régions (segmentation) : action partagée avec le menu Segmentation.
+    layersMenu->addAction(showSegAct_);
+    showVectorsAct_ = layersMenu->addAction(tr("&Vecteurs"));
     showVectorsAct_->setCheckable(true);
     showVectorsAct_->setChecked(true);
     connect(showVectorsAct_, &QAction::toggled, this, [this] { displayImage(processed_); });
+    showStitchesAct_ = layersMenu->addAction(tr("&Broderie (points)"));
+    showStitchesAct_->setCheckable(true);
+    showStitchesAct_->setChecked(true);
+    connect(showStitchesAct_, &QAction::toggled, this, [this] { displayImage(processed_); });
     viewMenu->addSeparator();
     auto* zoomInAct = viewMenu->addAction(tr("Zoom &avant"));
     zoomInAct->setShortcut(QKeySequence::ZoomIn);
@@ -405,7 +429,7 @@ void MainWindow::renderBase(const image::Image& img) {
     }
     baseItems_.clear();
 
-    if (!img.empty()) {
+    if (!img.empty() && (showImageAct_ == nullptr || showImageAct_->isChecked())) {
         const QImage qimg(img.rgba.data(), img.width, img.height, img.width * 4,
                           QImage::Format_RGBA8888);
         const QPixmap pixmap = QPixmap::fromImage(qimg.copy());
@@ -473,6 +497,49 @@ void MainWindow::renderBase(const image::Image& img) {
                 }
             }
         }
+    }
+
+    // Poignée de rotation du remplissage tatami sélectionné : un axe montrant
+    // l'orientation des fils, avec un bouton à faire glisser. Le nouvel angle est
+    // validé au relâchement (commande annulable) — pas de recalcul par pixel.
+    if (auto* fill = currentFillObject()) {
+        const auto& tatami = std::get<document::TatamiParams>(fill->params);
+        const Vec2um cUm = embroideryCentroid(*fill);
+        const QPointF c(to_millimeters(cUm.x).value, -to_millimeters(cUm.y).value);
+        double radius = 12.0;  // mm
+        if (const auto* vec = project_.findObject(fill->source_vector)) {
+            const QRectF bb = objectPainterPath(*vec).boundingRect();
+            radius = std::clamp(0.45 * std::min(bb.width(), bb.height()), 6.0, 60.0);
+        }
+        const double theta = tatami.angle.radians;  // repère physique (Y haut)
+        const double dx = radius * std::cos(theta);
+        const double dy = -radius * std::sin(theta);  // scène : Y vers le bas
+        QPen axisPen(QColor(30, 90, 200));
+        axisPen.setCosmetic(true);
+        axisPen.setWidth(2);
+        auto* axis = scene_->addLine(QLineF(c.x() - dx, c.y() - dy, c.x() + dx, c.y() + dy), axisPen);
+        axis->setZValue(98);
+        baseItems_.append(axis);
+
+        const ObjectId fillId = fill->id;
+        auto* knob = new NodeHandleItem(
+            QPointF(c.x() + dx, c.y() + dy), [this, fillId, c](QPointF released) {
+                double angle = std::atan2(-(released.y() - c.y()), released.x() - c.x());
+                angle = std::fmod(angle, std::numbers::pi);
+                if (angle < 0.0) {
+                    angle += std::numbers::pi;
+                }
+                undoStack_.execute(
+                    std::make_unique<commands::SetFillAngleCommand>(fillId, Angle{angle}), project_);
+                refreshImage();
+                updateActions();
+            });
+        knob->setPen(QPen(QColor(30, 90, 200), 1.5));
+        knob->setBrush(QBrush(QColor(120, 180, 255)));
+        knob->setCursor(Qt::CrossCursor);
+        knob->setToolTip(tr("Glisser pour tourner l'orientation des fils"));
+        scene_->addItem(knob);
+        baseItems_.append(knob);
     }
 
     // Carte des régions par-dessus l'image (mode d'affichage segmentation).
@@ -794,6 +861,9 @@ void MainWindow::createTatamiObject() {
     object.rgb = source->rgb;
     object.params = params;
 
+    // Sélectionne le nouveau remplissage pour que « Orientation du remplissage… »
+    // s'applique directement à lui.
+    selectedEmbroidery_ = object.id;
     undoStack_.execute(std::make_unique<commands::AddEmbroideryObjectCommand>(std::move(object)),
                        project_);
     showStitchesAct_->setChecked(true);
@@ -944,6 +1014,201 @@ void MainWindow::createSatinObject() {
     }
 }
 
+document::EmbroideryObject* MainWindow::currentFillObject() {
+    if (selectedEmbroidery_) {
+        if (auto* emb = project_.findEmbroidery(*selectedEmbroidery_);
+            emb != nullptr && emb->is_tatami()) {
+            return emb;
+        }
+    }
+    if (selectedObject_) {
+        for (auto& emb : project_.embroidery_objects) {
+            if (emb.source_vector == *selectedObject_ && emb.is_tatami()) {
+                return &emb;
+            }
+        }
+    }
+    return nullptr;
+}
+
+std::optional<ObjectId> MainWindow::objectAt(QPointF posMm) const {
+    std::optional<ObjectId> hit;
+    for (const auto& object : project_.vector_objects) {
+        if (object.visible && objectPainterPath(object).contains(posMm)) {
+            hit = object.id;  // le dernier dessiné (au-dessus) gagne
+        }
+    }
+    return hit;
+}
+
+document::EmbroideryObject* MainWindow::embroideryForVector(ObjectId vectorId) {
+    for (auto& emb : project_.embroidery_objects) {
+        if (emb.source_vector == vectorId) {
+            return &emb;
+        }
+    }
+    return nullptr;
+}
+
+void MainWindow::changeFillAngle() {
+    auto* object = currentFillObject();
+    if (object == nullptr) {
+        return;
+    }
+    const auto& tatami = std::get<document::TatamiParams>(object->params);
+
+    // Angle stocké en radians ; présenté en degrés. C'est l'orientation d'une
+    // droite, donc modulo 180° (0° = rangées horizontales).
+    const double currentDeg = tatami.angle.radians * 180.0 / std::numbers::pi;
+    int startDeg = ((static_cast<int>(std::lround(currentDeg)) % 180) + 180) % 180;
+
+    bool ok = false;
+    const int deg = QInputDialog::getInt(this, tr("Orientation du remplissage"),
+                                         tr("Angle des fils (°) :"), startDeg, 0, 179, 1, &ok);
+    if (!ok) {
+        return;
+    }
+
+    const Angle next{deg * std::numbers::pi / 180.0};
+    undoStack_.execute(std::make_unique<commands::SetFillAngleCommand>(object->id, next), project_);
+    refreshImage();
+    updateActions();
+    if (sequence_) {
+        const auto stats = stitch::compute_stats(*sequence_);
+        statusBar()->showMessage(
+            tr("Orientation du remplissage : %1° — %2 points").arg(deg).arg(stats.stitches));
+    }
+}
+
+void MainWindow::convertSatinsToTatami() {
+    std::vector<ObjectId> satins;
+    for (const auto& emb : project_.embroidery_objects) {
+        if (emb.is_satin()) {
+            satins.push_back(emb.id);
+        }
+    }
+    if (satins.empty()) {
+        return;
+    }
+    const auto answer = QMessageBox::question(
+        this, tr("Convertir en tatami"),
+        tr("%1 colonne(s) satin automatique(s) vont devenir des remplissages tatami "
+           "(découpés sur leur région, sans débordement). L'orientation restera réglable. "
+           "Continuer ?")
+            .arg(satins.size()));
+    if (answer != QMessageBox::Yes) {
+        return;
+    }
+    undoStack_.execute(std::make_unique<commands::ConvertFillsToTatamiCommand>(std::move(satins)),
+                       project_);
+    refreshImage();
+    updateActions();
+    if (sequence_) {
+        const auto stats = stitch::compute_stats(*sequence_);
+        statusBar()->showMessage(tr("Satins convertis en tatami : %1 points").arg(stats.stitches));
+    }
+}
+
+void MainWindow::setStitchType(ObjectId embroideryId, int type) {
+    auto* emb = project_.findEmbroidery(embroideryId);
+    if (emb == nullptr) {
+        return;
+    }
+    document::StitchParams params;
+    std::string label;
+    switch (type) {
+    case 0: {  // contour cousu
+        document::RunningStitchParams rp;
+        rp.repeats = 3;
+        params = rp;
+        label = "Type : contour";
+        break;
+    }
+    case 1:  // tatami
+        params = document::TatamiParams{};
+        label = "Type : tatami";
+        break;
+    case 2: {  // satin : exige deux rails, construits depuis le contour source
+        const auto* source = project_.findObject(emb->source_vector);
+        if (source == nullptr || source->paths.empty()) {
+            QMessageBox::warning(this, tr("Satin impossible"),
+                                 tr("Aucun contour source pour construire les rails."));
+            return;
+        }
+        auto rails = stitch_generation::rails_from_contour(source->paths.front().outer);
+        if (!rails) {
+            QMessageBox::warning(this, tr("Satin impossible"),
+                                 tr("La forme est trop petite ou trop complexe pour une colonne "
+                                    "satin. Essayez un tatami."));
+            return;
+        }
+        document::SatinParams sp;
+        sp.rail_a = rails->first;
+        sp.rail_b = rails->second;
+        params = sp;
+        label = "Type : satin";
+        break;
+    }
+    default:
+        return;
+    }
+    undoStack_.execute(std::make_unique<commands::SetStitchTypeCommand>(embroideryId, std::move(params),
+                                                                        std::move(label)),
+                       project_);
+    showStitchesAct_->setChecked(true);
+    refreshImage();
+    updateActions();
+}
+
+void MainWindow::onCanvasContextMenu(QPointF posMm, QPoint globalPos) {
+    const auto hit = objectAt(posMm);
+    QMenu menu(this);
+
+    if (hit) {
+        selectedObject_ = hit;
+        selectedRegion_.reset();
+        selectedEmbroidery_.reset();
+        const auto* vec = project_.findObject(*hit);
+        auto* emb = embroideryForVector(*hit);
+        if (vec != nullptr) {
+            auto* title = menu.addAction(QString::fromStdString(vec->name));
+            title->setEnabled(false);
+            menu.addSeparator();
+        }
+        if (emb != nullptr) {
+            const ObjectId embId = emb->id;
+            auto* typeMenu = menu.addMenu(tr("Type de points"));
+            const int current = emb->is_tatami() ? 1 : emb->is_satin() ? 2 : 0;
+            const char* labels[] = {"Contour cousu", "Remplissage tatami", "Colonne satin"};
+            for (int t = 0; t < 3; ++t) {
+                auto* act = typeMenu->addAction(tr(labels[t]));
+                act->setCheckable(true);
+                act->setChecked(t == current);
+                connect(act, &QAction::triggered, this, [this, embId, t] { setStitchType(embId, t); });
+            }
+            if (emb->is_tatami()) {
+                auto* rot = menu.addAction(tr("Orientation du remplissage…"));
+                connect(rot, &QAction::triggered, this, &MainWindow::changeFillAngle);
+            }
+        }
+    }
+
+    if (!menu.isEmpty()) {
+        menu.addSeparator();
+    }
+    // Calques accessibles partout (même sans objet sous le curseur).
+    auto* layers = menu.addMenu(tr("Calques"));
+    for (QAction* act : {showImageAct_, showSegAct_, showVectorsAct_, showStitchesAct_}) {
+        if (act != nullptr) {
+            layers->addAction(act);
+        }
+    }
+
+    displayImage(processed_);  // reflète la sélection éventuelle
+    updateActions();
+    menu.exec(globalPos);
+}
+
 void MainWindow::buildAnalysisPanel() {
     analysisDock_ = new QDockWidget(tr("Analyse"), this);
     analysisDock_->setAllowedAreas(Qt::RightDockWidgetArea | Qt::LeftDockWidgetArea);
@@ -1043,7 +1308,12 @@ void MainWindow::buildOrderPanel() {
     connect(orderList_, &QListWidget::currentRowChanged, this, [this](int row) {
         if (row >= 0 && row < static_cast<int>(project_.embroidery_objects.size())) {
             selectedObject_.reset();  // sélection d'objet vectoriel distincte
+            selectedEmbroidery_ = project_.embroidery_objects[static_cast<std::size_t>(row)].id;
+            updateActions();
             displayImage(processed_);
+        } else {
+            selectedEmbroidery_.reset();
+            updateActions();
         }
     });
 
@@ -1425,6 +1695,7 @@ void MainWindow::onCanvasClicked(QPointF posMm) {
         if (hit) {
             selectedObject_ = hit;
             selectedRegion_.reset();
+            selectedEmbroidery_.reset();  // la sélection au canevas prime
             const auto* object = project_.findObject(*hit);
             statusBar()->showMessage(tr("Objet « %1 » — %2 morceau(x), nœuds déplaçables")
                                          .arg(QString::fromStdString(object->name))
@@ -1513,6 +1784,10 @@ void MainWindow::updateActions() {
     createStitchAct_->setEnabled(selectedObject_.has_value());
     createTatamiAct_->setEnabled(selectedObject_.has_value());
     createSatinAct_->setEnabled(selectedObject_.has_value());
+    fillAngleAct_->setEnabled(currentFillObject() != nullptr);
+    convertSatinAct_->setEnabled(std::any_of(project_.embroidery_objects.begin(),
+                                             project_.embroidery_objects.end(),
+                                             [](const auto& e) { return e.is_satin(); }));
     statsAct_->setEnabled(sequence_.has_value());
     exportDstAct_->setEnabled(sequence_.has_value());
     const bool hasSelection = selectedRegion_.has_value() && project_.segmentation.has_value();

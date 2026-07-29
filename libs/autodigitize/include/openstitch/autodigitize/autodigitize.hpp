@@ -21,6 +21,12 @@ struct AutoOptions {
     double min_fill_area_mm2{4.0};
     // Ignore la plus grande région (souvent le fond).
     bool skip_largest_region{false};
+    // Satin automatique NAÏF (rails_from_contour) : désactivé par défaut. Ses
+    // deux rails « bouts les plus éloignés » débordent sur les formes concaves
+    // ou branchues (les rungs enjambent les creux). Tant que le vrai moteur
+    // auto-satin (squelette) ne génère pas la géométrie, on remplit ces zones
+    // en tatami — découpé proprement sur la région, donc sans débordement.
+    bool use_naive_satin{false};
 };
 
 // Objets produits par l'autonumérisation : toujours ÉDITABLES (§13). Le type

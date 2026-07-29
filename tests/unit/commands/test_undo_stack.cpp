@@ -1,5 +1,8 @@
 ﻿// SPDX-License-Identifier: Apache-2.0
+#include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
+
+#include <variant>
 
 #include "openstitch/commands/project_commands.hpp"
 #include "openstitch/commands/undo_stack.hpp"
@@ -170,6 +173,99 @@ TEST_CASE("AddVectorObject et MoveNode : undo/redo coherents") {
     CHECK(stack.redo(project));
     CHECK(stack.redo(project));
     CHECK(project.findObject(id)->paths[0].outer.nodes[0].pos == newPos);
+}
+
+TEST_CASE("SetFillAngleCommand : reoriente le tatami, undo/redo exacts") {
+    document::Project project;
+    UndoStack stack;
+
+    document::EmbroideryObject fill;
+    fill.id = project.object_ids.next();
+    fill.name = "remplissage";
+    document::TatamiParams tatami;
+    tatami.angle = Angle{0.0};
+    fill.params = tatami;
+    stack.execute(std::make_unique<AddEmbroideryObjectCommand>(fill), project);
+    const ObjectId id = project.embroidery_objects[0].id;
+
+    stack.execute(std::make_unique<SetFillAngleCommand>(id, Angle{1.0}), project);
+    REQUIRE(project.findEmbroidery(id)->is_tatami());
+    CHECK(std::get<document::TatamiParams>(project.findEmbroidery(id)->params).angle.radians ==
+          Catch::Approx(1.0));
+
+    CHECK(stack.undo(project));
+    CHECK(std::get<document::TatamiParams>(project.findEmbroidery(id)->params).angle.radians ==
+          Catch::Approx(0.0));
+    CHECK(stack.redo(project));
+    CHECK(std::get<document::TatamiParams>(project.findEmbroidery(id)->params).angle.radians ==
+          Catch::Approx(1.0));
+}
+
+TEST_CASE("SetFillAngleCommand : sans effet sur un objet non-tatami") {
+    document::Project project;
+    UndoStack stack;
+
+    document::EmbroideryObject running;
+    running.id = project.object_ids.next();
+    running.params = document::RunningStitchParams{};
+    stack.execute(std::make_unique<AddEmbroideryObjectCommand>(running), project);
+    const ObjectId id = project.embroidery_objects[0].id;
+
+    // La commande ne doit ni jeter ni altérer le type de point.
+    stack.execute(std::make_unique<SetFillAngleCommand>(id, Angle{1.0}), project);
+    CHECK(std::holds_alternative<document::RunningStitchParams>(project.findEmbroidery(id)->params));
+    CHECK(stack.undo(project));
+    CHECK(std::holds_alternative<document::RunningStitchParams>(project.findEmbroidery(id)->params));
+}
+
+TEST_CASE("ConvertFillsToTatamiCommand : satin -> tatami, undo restaure le satin") {
+    document::Project project;
+    UndoStack stack;
+
+    document::EmbroideryObject sat;
+    sat.id = project.object_ids.next();
+    document::SatinParams sp;
+    sp.density = Micrometers{321};  // marqueur pour verifier la restauration exacte
+    sat.params = sp;
+    stack.execute(std::make_unique<AddEmbroideryObjectCommand>(sat), project);
+    const ObjectId id = project.embroidery_objects[0].id;
+    REQUIRE(project.findEmbroidery(id)->is_satin());
+
+    stack.execute(std::make_unique<ConvertFillsToTatamiCommand>(std::vector<ObjectId>{id}), project);
+    CHECK(project.findEmbroidery(id)->is_tatami());
+
+    CHECK(stack.undo(project));
+    REQUIRE(project.findEmbroidery(id)->is_satin());
+    CHECK(std::get<document::SatinParams>(project.findEmbroidery(id)->params).density ==
+          Micrometers{321});
+
+    CHECK(stack.redo(project));
+    CHECK(project.findEmbroidery(id)->is_tatami());
+}
+
+TEST_CASE("SetStitchTypeCommand : change de type, undo restaure l'exact") {
+    document::Project project;
+    UndoStack stack;
+
+    document::EmbroideryObject e;
+    e.id = project.object_ids.next();
+    document::RunningStitchParams rp;
+    rp.repeats = 3;
+    e.params = rp;
+    stack.execute(std::make_unique<AddEmbroideryObjectCommand>(e), project);
+    const ObjectId id = project.embroidery_objects[0].id;
+
+    stack.execute(
+        std::make_unique<SetStitchTypeCommand>(id, document::TatamiParams{}, "tatami"), project);
+    CHECK(project.findEmbroidery(id)->is_tatami());
+
+    CHECK(stack.undo(project));
+    REQUIRE(
+        std::holds_alternative<document::RunningStitchParams>(project.findEmbroidery(id)->params));
+    CHECK(std::get<document::RunningStitchParams>(project.findEmbroidery(id)->params).repeats == 3);
+
+    CHECK(stack.redo(project));
+    CHECK(project.findEmbroidery(id)->is_tatami());
 }
 
 TEST_CASE("une nouvelle commande invalide la branche redo") {

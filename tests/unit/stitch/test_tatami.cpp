@@ -48,7 +48,118 @@ std::vector<Vec2um> positions(const std::vector<FillStitch>& f) {
     return out;
 }
 
+// Point dans polygone (rayon horizontal, pair-impair) — repere modele en um.
+bool point_in_poly(const geometry::Path& poly, Vec2um p) {
+    bool inside = false;
+    const auto& n = poly.nodes;
+    const std::size_t m = n.size();
+    for (std::size_t i = 0, j = m - 1; i < m; j = i++) {
+        const auto ax = n[i].pos.x.value, ay = n[i].pos.y.value;
+        const auto bx = n[j].pos.x.value, by = n[j].pos.y.value;
+        if (((ay > p.y.value) != (by > p.y.value)) &&
+            (static_cast<double>(p.x.value) <
+             static_cast<double>(bx - ax) * static_cast<double>(p.y.value - ay) /
+                     static_cast<double>(by - ay) +
+                 static_cast<double>(ax))) {
+            inside = !inside;
+        }
+    }
+    return inside;
+}
+
+// p est dans la region = dans l'exterieur ET hors de tous les trous.
+bool in_region(const geometry::PathSet& region, Vec2um p) {
+    if (!point_in_poly(region.outer, p)) {
+        return false;
+    }
+    for (const auto& hole : region.holes) {
+        if (point_in_poly(hole, p)) {
+            return false;
+        }
+    }
+    return true;
+}
+
+// p est-il FRANCHEMENT hors de la region ? Un point sur un bord (une couture qui
+// longe le contour, cas parfaitement legitime) est ambigu pour le test pair-impair :
+// on ne le compte comme debordement que si lui ET tout son voisinage (± tol) sont
+// dehors. Seuls les vrais debordements (loin dans l'exterieur) sont retenus.
+bool strictly_outside(const geometry::PathSet& region, Vec2um p, std::int32_t tol) {
+    if (in_region(region, p)) {
+        return false;
+    }
+    for (const std::int32_t dx : {-tol, 0, tol}) {
+        for (const std::int32_t dy : {-tol, 0, tol}) {
+            if (in_region(region, {Micrometers{p.x.value + dx}, Micrometers{p.y.value + dy}})) {
+                return false;
+            }
+        }
+    }
+    return true;
+}
+
+// Forme en L (concave) : un routage naif relierait les deux branches a travers
+// le coin manquant.
+geometry::PathSet l_shape() {
+    geometry::Path p;
+    p.closed = true;
+    const auto c = [](std::int32_t x, std::int32_t y) {
+        return geometry::PathNode{Vec2um{Micrometers{x}, Micrometers{y}}, geometry::NodeType::Corner,
+                                  {}, {}};
+    };
+    p.nodes = {c(0, 0),         c(20'000, 0),     c(20'000, 8'000),
+               c(8'000, 8'000), c(8'000, 20'000), c(0, 20'000)};
+    return {p, {}};
+}
+
 }  // namespace
+
+// --- NON-REGRESSION DEBORDEMENT ---------------------------------------------
+// Garde-fou central : sur une forme concave, a n'importe quel angle, AUCUNE
+// couture (segment non-saut) ne doit sortir de la region. C'est exactement le
+// mecanisme du debordement observe (les satins naifs sortaient jusqu'a 57 %).
+TEST_CASE("tatami : aucune couture hors region (L concave, tous angles)") {
+    const auto region = l_shape();
+    const double pi = std::acos(-1.0);
+    for (const double deg : {0.0, 20.0, 45.0, 90.0, 135.0}) {
+        const auto fill = fill_tatami(region, params(1'000, 3'000, deg * pi / 180.0));
+        REQUIRE_FALSE(fill.empty());
+        int outside = 0;
+        for (std::size_t i = 1; i < fill.size(); ++i) {
+            if (fill[i].jump) {
+                continue;  // saut : autorise a traverser le vide
+            }
+            // Points interieurs du segment cousu : aucun ne doit franchement
+            // sortir de la region (tolerance ± 150 um pour les coutures de bord).
+            for (const double t : {0.2, 0.4, 0.5, 0.6, 0.8}) {
+                const auto a = fill[i - 1].pos;
+                const auto b = fill[i].pos;
+                const Vec2um s{
+                    Micrometers{static_cast<std::int32_t>(a.x.value + (b.x.value - a.x.value) * t)},
+                    Micrometers{static_cast<std::int32_t>(a.y.value + (b.y.value - a.y.value) * t)}};
+                if (strictly_outside(region, s, 150)) {
+                    ++outside;
+                }
+            }
+        }
+        INFO("angle = " << deg << " deg");
+        CHECK(outside == 0);
+    }
+}
+
+TEST_CASE("tatami : toutes les penetrations dans la region (L concave)") {
+    const auto region = l_shape();
+    const auto pts = positions(fill_tatami(region, params(1'000, 3'000, 0.6)));
+    REQUIRE_FALSE(pts.empty());
+    int outside = 0;
+    for (const Vec2um& p : pts) {
+        // Une penetration peut tomber sur le bord (arrondi um) : tolerance.
+        if (strictly_outside(region, p, 150)) {
+            ++outside;
+        }
+    }
+    CHECK(outside == 0);
+}
 
 TEST_CASE("tatami : rectangle rempli, points dans la forme") {
     // 20x10 mm, rangées tous les 1 mm -> ~10 rangees.

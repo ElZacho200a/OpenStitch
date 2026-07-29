@@ -42,6 +42,7 @@ private slots:
     void onCropSelected(QRectF rectMm);
     void segmentImage();
     void onCanvasClicked(QPointF posMm);
+    void onCanvasContextMenu(QPointF posMm, QPoint globalPos);
     void deleteSelectedRegion();
     void recolorSelectedRegion();
     void vectorizeSelectedRegion();
@@ -49,6 +50,11 @@ private slots:
     void createRunningStitchObject();
     void createTatamiObject();
     void createSatinObject();
+    void changeFillAngle();
+    void convertSatinsToTatami();
+    // Change le type de points d'un objet de broderie (contour/tatami/satin).
+    // Le type satin exige des rails, construits depuis le contour source.
+    void setStitchType(ObjectId embroideryId, int type);
     void showStatistics();
     void exportDst();
     void importDst();
@@ -70,6 +76,14 @@ private:
     void buildOrderPanel();
     void refreshOrderPanel();
     void updateSimulationRange();
+    // Remplissage tatami dont l'orientation est éditable : celui choisi dans
+    // l'ordre de couture, ou à défaut le tatami rattaché à l'objet vectoriel
+    // sélectionné au canevas. nullptr si aucun tatami n'est visé.
+    [[nodiscard]] document::EmbroideryObject* currentFillObject();
+    // Objet vectoriel visible sous un point (mm, scène). Le dernier dessiné gagne.
+    [[nodiscard]] std::optional<ObjectId> objectAt(QPointF posMm) const;
+    // Objet de broderie rattaché à un objet vectoriel (nullptr si aucun).
+    [[nodiscard]] document::EmbroideryObject* embroideryForVector(ObjectId vectorId);
     // Centre représentatif d'un objet de broderie (pour l'estimation du coût).
     [[nodiscard]] Vec2um embroideryCentroid(const document::EmbroideryObject& object) const;
     void executeOp(image::ImageOp op);
@@ -97,10 +111,13 @@ private:
     QAction* showSegAct_{nullptr};
     QAction* mergeAct_{nullptr};
     QAction* showVectorsAct_{nullptr};
+    QAction* showImageAct_{nullptr};
     QAction* showStitchesAct_{nullptr};
     QAction* createStitchAct_{nullptr};
     QAction* createTatamiAct_{nullptr};
     QAction* createSatinAct_{nullptr};
+    QAction* fillAngleAct_{nullptr};
+    QAction* convertSatinAct_{nullptr};
     QAction* statsAct_{nullptr};
     QList<QAction*> imageActions_;
     QList<QAction*> regionActions_;  // nécessitent une région sélectionnée
@@ -114,6 +131,7 @@ private:
 
     std::optional<RegionId> selectedRegion_;
     std::optional<ObjectId> selectedObject_;
+    std::optional<ObjectId> selectedEmbroidery_;  // objet de broderie choisi dans l'ordre de couture
     bool mergeMode_{false};
 
     // Analyse.

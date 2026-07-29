@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 #include "canvas_view.hpp"
 
+#include <QContextMenuEvent>
 #include <QGraphicsItem>
 #include <QMouseEvent>
 #include <QPainter>
@@ -117,6 +118,14 @@ void CanvasView::mousePressEvent(QMouseEvent* event) {
         emit canvasClickedMm(mapToScene(event->position().toPoint()));
     }
     QGraphicsView::mousePressEvent(event);
+}
+
+void CanvasView::contextMenuEvent(QContextMenuEvent* event) {
+    if (cropMode_) {
+        return;  // pas de menu contextuel pendant un recadrage
+    }
+    emit canvasContextMenu(mapToScene(event->pos()), event->globalPos());
+    event->accept();
 }
 
 void CanvasView::mouseMoveEvent(QMouseEvent* event) {

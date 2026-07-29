@@ -58,8 +58,9 @@ TEST_CASE("grande zone pleine -> tatami editable") {
     CHECK(result->embroideries[0].source_vector == result->vectors[0].id);
 }
 
-TEST_CASE("bande fine -> satin") {
-    // Bande 40x3 mm : largeur moyenne ~3 mm < 6 mm -> satin.
+TEST_CASE("bande fine -> tatami par defaut (satin naif desactive)") {
+    // Bande 40x3 mm. Par defaut, le satin naif est desactive : la bande
+    // remplissable devient un tatami (decoupe sur la region, sans debordement).
     image::Image img = blank(44, 8);
     for (int y = 2; y < 5; ++y) {
         for (int x = 2; x < 42; ++x) {
@@ -71,12 +72,34 @@ TEST_CASE("bande fine -> satin") {
     IdGenerator<ObjectId> ids;
     const auto result = auto_digitize(*seg, ids, opts());
     REQUIRE(result.has_value());
-    // La bande bleue doit devenir un satin.
+    bool anySatin = false;
+    bool anyTatami = false;
+    for (const auto& e : result->embroideries) {
+        anySatin = anySatin || e.is_satin();
+        anyTatami = anyTatami || e.is_tatami();
+    }
+    CHECK_FALSE(anySatin);
+    CHECK(anyTatami);
+}
+
+TEST_CASE("bande fine -> satin quand use_naive_satin est active") {
+    // Meme bande, mais on reactive explicitement le satin naif.
+    image::Image img = blank(44, 8);
+    for (int y = 2; y < 5; ++y) {
+        for (int x = 2; x < 42; ++x) {
+            set_px(img, x, y, 30, 30, 220);
+        }
+    }
+    const auto seg = segmentation::segment(img, {.max_colors = 2, .min_region_px = 1});
+    REQUIRE(seg.has_value());
+    IdGenerator<ObjectId> ids;
+    AutoOptions o = opts();
+    o.use_naive_satin = true;
+    const auto result = auto_digitize(*seg, ids, o);
+    REQUIRE(result.has_value());
     bool anySatin = false;
     for (const auto& e : result->embroideries) {
-        if (e.is_satin()) {
-            anySatin = true;
-        }
+        anySatin = anySatin || e.is_satin();
     }
     CHECK(anySatin);
 }

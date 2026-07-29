@@ -3,6 +3,7 @@
 
 #include <optional>
 #include <utility>
+#include <variant>
 
 #include "openstitch/commands/command.hpp"
 #include "openstitch/image/ops.hpp"
@@ -286,6 +287,97 @@ private:
     ObjectId id_;
     bool locked_;
     bool previous_{false};
+};
+
+// Convertit des objets de broderie en remplissage tatami (conserve id, source,
+// couleur, nom). Sert à réparer les satins automatiques naïfs qui débordent :
+// le tatami est découpé sur la région, donc ne sort jamais du contour. Chaque
+// paramètre d'origine est mémorisé pour un retour exact.
+class ConvertFillsToTatamiCommand final : public ICommand {
+public:
+    explicit ConvertFillsToTatamiCommand(std::vector<ObjectId> targets)
+        : targets_(std::move(targets)) {}
+
+    void apply(document::Project& project) override {
+        previous_.clear();
+        for (const ObjectId id : targets_) {
+            if (auto* obj = project.findEmbroidery(id)) {
+                previous_.emplace_back(id, obj->params);
+                obj->params = document::TatamiParams{};
+            }
+        }
+    }
+    void revert(document::Project& project) override {
+        for (const auto& [id, params] : previous_) {
+            if (auto* obj = project.findEmbroidery(id)) {
+                obj->params = params;
+            }
+        }
+        previous_.clear();
+    }
+    [[nodiscard]] std::string name() const override { return "Conversion en tatami"; }
+
+private:
+    std::vector<ObjectId> targets_;
+    std::vector<std::pair<ObjectId, document::StitchParams>> previous_;
+};
+
+// Remplace le TYPE de points d'un objet de broderie (contour / tatami / satin).
+// Les nouveaux paramètres sont construits par l'appelant (le satin exige des
+// rails, calculés avant la commande). L'annulation restaure les paramètres exacts.
+class SetStitchTypeCommand final : public ICommand {
+public:
+    SetStitchTypeCommand(ObjectId id, document::StitchParams params, std::string label)
+        : id_(id), params_(std::move(params)), label_(std::move(label)) {}
+
+    void apply(document::Project& project) override {
+        if (auto* obj = project.findEmbroidery(id_)) {
+            previous_ = obj->params;
+            obj->params = params_;
+        }
+    }
+    void revert(document::Project& project) override {
+        if (auto* obj = project.findEmbroidery(id_)) {
+            obj->params = previous_;
+        }
+    }
+    [[nodiscard]] std::string name() const override { return label_; }
+
+private:
+    ObjectId id_;
+    document::StitchParams params_;
+    std::string label_;
+    document::StitchParams previous_{document::RunningStitchParams{}};
+};
+
+// Change l'orientation des fils (angle des rangées) d'un remplissage tatami.
+// Les points sont régénérés depuis les paramètres (ADR-014), donc modifier
+// l'angle suffit à réorienter la couture ; l'annulation restaure l'angle.
+class SetFillAngleCommand final : public ICommand {
+public:
+    SetFillAngleCommand(ObjectId id, Angle angle) : id_(id), angle_(angle) {}
+
+    void apply(document::Project& project) override {
+        if (auto* obj = project.findEmbroidery(id_)) {
+            if (auto* tatami = std::get_if<document::TatamiParams>(&obj->params)) {
+                previous_ = tatami->angle;
+                tatami->angle = angle_;
+            }
+        }
+    }
+    void revert(document::Project& project) override {
+        if (auto* obj = project.findEmbroidery(id_)) {
+            if (auto* tatami = std::get_if<document::TatamiParams>(&obj->params)) {
+                tatami->angle = previous_;
+            }
+        }
+    }
+    [[nodiscard]] std::string name() const override { return "Orientation du remplissage"; }
+
+private:
+    ObjectId id_;
+    Angle angle_;
+    Angle previous_{0.0};
 };
 
 }  // namespace openstitch::commands

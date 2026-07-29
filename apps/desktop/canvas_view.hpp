@@ -38,10 +38,13 @@ signals:
     void cropSelectedMm(QRectF rectMm);
     // Clic gauche sur le canevas (coordonnées scène, mm) — hors mode recadrage.
     void canvasClickedMm(QPointF posMm);
+    // Clic droit : position scène (mm) et position écran (pour placer le menu).
+    void canvasContextMenu(QPointF posMm, QPoint globalPos);
 
 protected:
     void wheelEvent(QWheelEvent* event) override;
     void mousePressEvent(QMouseEvent* event) override;
+    void contextMenuEvent(QContextMenuEvent* event) override;
     void mouseMoveEvent(QMouseEvent* event) override;
     void mouseReleaseEvent(QMouseEvent* event) override;
     void resizeEvent(QResizeEvent* event) override;

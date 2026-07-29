@@ -94,13 +94,13 @@ Result<AutoResult> auto_digitize(const segmentation::Segmentation& seg,
         emb.rgb = region->rgb;
 
         const bool bigEnoughToFill = areaMm2 >= options.min_fill_area_mm2;
-        // Bande FINE : sa largeur moyenne tient sous la limite satin. Une telle
-        // forme ne doit PAS devenir un bloc tatami (débordements, aspect sale) :
-        // satin si possible, sinon simple contour cousu.
+        // Bande FINE : largeur moyenne sous la limite satin. Candidate au satin
+        // NAÏF uniquement si l'option est explicitement activée (débordant sur les
+        // formes concaves/branchues, cf. AutoOptions::use_naive_satin).
         const bool isThin =
             meanWidthUm > 0.0 && meanWidthUm <= static_cast<double>(options.satin_max_width.value);
         bool madeSatin = false;
-        if (bigEnoughToFill && isThin && main.holes.empty()) {
+        if (options.use_naive_satin && bigEnoughToFill && isThin && main.holes.empty()) {
             if (auto rails = stitch_generation::rails_from_contour(main.outer)) {
                 document::SatinParams sp;
                 sp.rail_a = rails->first;
@@ -111,13 +111,14 @@ Result<AutoResult> auto_digitize(const segmentation::Segmentation& seg,
             }
         }
         if (!madeSatin) {
-            if (bigEnoughToFill && !isThin) {
-                // Zone réellement large : remplissage tatami.
+            if (bigEnoughToFill) {
+                // Toute zone remplissable -> tatami (découpé sur la région, sans
+                // débordement). L'orientation des fils reste éditable ensuite.
                 document::TatamiParams tp;
                 emb.params = tp;
                 emb.name = "Remplissage région " + std::to_string(id.value);
             } else {
-                // Fine (satin impossible) ou petite : contour cousu, pas de bloc.
+                // Trop petite pour un bloc : simple contour cousu.
                 document::RunningStitchParams rp;
                 rp.repeats = 3;
                 emb.params = rp;
