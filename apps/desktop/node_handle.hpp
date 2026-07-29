@@ -10,6 +10,8 @@
 #include <functional>
 #include <utility>
 
+#include "app_theme.hpp"
+
 namespace openstitch::desktop {
 
 // Poignée de nœud : cercle de taille constante à l'écran, déplaçable.
@@ -21,8 +23,8 @@ public:
         setPos(sceneMm);
         setFlag(ItemIgnoresTransformations);
         setFlag(ItemIsMovable);
-        setBrush(QBrush(QColor(255, 255, 255)));
-        setPen(QPen(QColor(30, 90, 200), 1.5));
+        setBrush(QBrush(AppTheme::instance().tokens().canvasSelectionHalo));
+        setPen(QPen(AppTheme::instance().tokens().canvasNode, 1.5));
         setZValue(100);
         setCursor(Qt::SizeAllCursor);
     }

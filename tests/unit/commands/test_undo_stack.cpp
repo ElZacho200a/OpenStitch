@@ -268,6 +268,32 @@ TEST_CASE("SetStitchTypeCommand : change de type, undo restaure l'exact") {
     CHECK(project.findEmbroidery(id)->is_tatami());
 }
 
+TEST_CASE("SetStitchParamsCommand : edite les parametres, undo restaure exact") {
+    document::Project project;
+    UndoStack stack;
+
+    document::EmbroideryObject e;
+    e.id = project.object_ids.next();
+    document::TatamiParams tp;
+    tp.row_spacing = Micrometers{400};
+    e.params = tp;
+    stack.execute(std::make_unique<AddEmbroideryObjectCommand>(e), project);
+    const ObjectId id = project.embroidery_objects[0].id;
+
+    document::TatamiParams edited;
+    edited.row_spacing = Micrometers{800};
+    stack.execute(std::make_unique<SetStitchParamsCommand>(id, edited), project);
+    CHECK(std::get<document::TatamiParams>(project.findEmbroidery(id)->params).row_spacing ==
+          Micrometers{800});
+
+    CHECK(stack.undo(project));
+    CHECK(std::get<document::TatamiParams>(project.findEmbroidery(id)->params).row_spacing ==
+          Micrometers{400});
+    CHECK(stack.redo(project));
+    CHECK(std::get<document::TatamiParams>(project.findEmbroidery(id)->params).row_spacing ==
+          Micrometers{800});
+}
+
 TEST_CASE("une nouvelle commande invalide la branche redo") {
     document::Project project;
     UndoStack stack;

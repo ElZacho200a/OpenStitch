@@ -4,6 +4,10 @@
 #include <QList>
 #include <QMainWindow>
 
+#include <array>
+#include <cstdint>
+#include <set>
+
 #include "openstitch/commands/undo_stack.hpp"
 #include "openstitch/document/project.hpp"
 #include "openstitch/stitch/sequence.hpp"
@@ -18,10 +22,14 @@ class QSlider;
 class QTimer;
 class QToolBar;
 class QComboBox;
+class QCheckBox;
+class QVBoxLayout;
+class QDoubleSpinBox;
 
 namespace openstitch::desktop {
 
 class CanvasView;
+class PropertiesPanel;
 
 // Fenêtre principale. Règle du projet : aucune logique métier dans les
 // widgets — chargement (libs/image), placement (libs/document), transformations
@@ -75,6 +83,19 @@ private:
     void buildSimulationToolbar();
     void buildOrderPanel();
     void refreshOrderPanel();
+    void buildFilterPanel();
+    void refreshFilterPanel();
+    void buildPropertiesPanel();
+    // Met l'inspecteur en phase avec la sélection courante (broderie > vecteur >
+    // région). Ne reconstruit le formulaire que si la sélection a changé, pour ne
+    // pas interrompre une édition en cours.
+    void updateInspector();
+    // Un objet passe-t-il les filtres d'affichage (type, couleur, taille) ?
+    [[nodiscard]] bool objectPassesFilter(const document::EmbroideryObject& object) const;
+    // Aire de la région source d'un objet (mm²) ; 0 si introuvable.
+    [[nodiscard]] double regionAreaMm2(const document::EmbroideryObject& object) const;
+    // Index de type : 0 contour, 1 tatami, 2 satin.
+    [[nodiscard]] static int stitchTypeIndex(const document::EmbroideryObject& object);
     void updateSimulationRange();
     // Remplissage tatami dont l'orientation est éditable : celui choisi dans
     // l'ordre de couture, ou à défaut le tatami rattaché à l'objet vectoriel
@@ -139,11 +160,26 @@ private:
     QListWidget* analysisList_{nullptr};
     QAction* analyzeAct_{nullptr};
 
+    // Inspecteur de propriétés.
+    QDockWidget* propertiesDock_{nullptr};
+    PropertiesPanel* propertiesPanel_{nullptr};
+    int inspectedKind_{-1};        // -1 rien, 0 broderie, 1 vecteur, 2 région
+    std::uint64_t inspectedId_{0};
+
     // Ordre de couture.
     QDockWidget* orderDock_{nullptr};
     QListWidget* orderList_{nullptr};
     QLabel* orderCostLabel_{nullptr};
     QComboBox* orderStrategyCombo_{nullptr};
+
+    // Filtres d'affichage de la broderie.
+    QDockWidget* filterDock_{nullptr};
+    std::array<QCheckBox*, 3> typeChecks_{nullptr, nullptr, nullptr};  // contour/tatami/satin
+    QVBoxLayout* colorFilterLayout_{nullptr};
+    QDoubleSpinBox* minAreaSpin_{nullptr};
+    std::array<bool, 3> showType_{true, true, true};
+    std::set<std::uint32_t> hiddenColors_;  // 0xRRGGBB masqués
+    double minAreaMm2_{0.0};
 
     // Simulation de couture. Quand active (simStep_ >= 0), l'affichage ne
     // montre les points que jusqu'à cet index.

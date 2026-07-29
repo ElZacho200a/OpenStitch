@@ -12,8 +12,14 @@ add_executable(openstitch WIN32
     main.cpp
     main_window.cpp
     main_window.hpp
+    app_theme.cpp
+    app_theme.hpp
+    design_tokens.cpp
+    design_tokens.hpp
     canvas_view.cpp
     canvas_view.hpp
+    properties_panel.cpp
+    properties_panel.hpp
     ruler.cpp
     ruler.hpp
     import_dialog.cpp

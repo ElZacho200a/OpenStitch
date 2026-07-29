@@ -9,6 +9,8 @@
 
 #include <cmath>
 
+#include "app_theme.hpp"
+
 namespace openstitch::desktop {
 
 namespace {
@@ -35,12 +37,18 @@ CanvasView::CanvasView(QGraphicsScene* scene, QWidget* parent) : QGraphicsView(s
     setTransformationAnchor(QGraphicsView::AnchorUnderMouse);
     setFrameShape(QFrame::NoFrame);  // le viewport s'aligne avec les règles
     setMouseTracking(true);
-    setBackgroundBrush(QColor(235, 235, 238));
     // Rendu de gros motifs : ne pas sauvegarder l'état du peintre entre items,
     // et ne repeindre que la zone modifiée plutôt que tout le viewport.
     setOptimizationFlag(QGraphicsView::DontSavePainterState, true);
     setViewportUpdateMode(QGraphicsView::SmartViewportUpdate);
     setCacheMode(QGraphicsView::CacheBackground);
+    setBackgroundBrush(AppTheme::instance().tokens().canvasBackground);
+    // Rejoue le fond et le contenu quand le thème change.
+    connect(&AppTheme::instance(), &AppTheme::changed, this, [this] {
+        setBackgroundBrush(AppTheme::instance().tokens().canvasBackground);
+        resetCachedContent();
+        viewport()->update();
+    });
 
     connect(this, &QGraphicsView::rubberBandChanged, this,
             [this](QRect viewportRect, QPointF fromScene, QPointF toScene) {
@@ -180,11 +188,14 @@ void CanvasView::drawBackground(QPainter* painter, const QRectF& rect) {
             painter->drawLine(QLineF(rect.left(), y, rect.right(), y));
         }
     };
-    drawGrid(fine, QColor(0, 0, 0, 18));
-    drawGrid(major, QColor(0, 0, 0, 40));
+    const QColor gridMajor = AppTheme::instance().tokens().canvasGrid;
+    QColor gridFine = gridMajor;
+    gridFine.setAlpha(gridMajor.alpha() / 2);
+    drawGrid(fine, gridFine);
+    drawGrid(major, gridMajor);
 
     // Axes du repère (origine au centre du canevas).
-    QPen axisPen(QColor(120, 120, 160, 120));
+    QPen axisPen(AppTheme::instance().tokens().canvasAxis);
     axisPen.setCosmetic(true);
     painter->setPen(axisPen);
     painter->drawLine(QLineF(rect.left(), 0.0, rect.right(), 0.0));
@@ -197,7 +208,7 @@ void CanvasView::drawForeground(QPainter* painter, const QRectF& rect) {
     // Cadre (limite physique de broderie), toujours visible au-dessus du contenu.
     const QRectF canvas(-canvasMm_.width() / 2.0, -canvasMm_.height() / 2.0, canvasMm_.width(),
                         canvasMm_.height());
-    QPen pen(QColor(200, 60, 60));
+    QPen pen(AppTheme::instance().tokens().canvasHoop);
     pen.setCosmetic(true);
     pen.setWidth(2);
     pen.setStyle(Qt::DashLine);

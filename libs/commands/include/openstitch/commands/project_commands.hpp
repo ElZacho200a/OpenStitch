@@ -350,6 +350,33 @@ private:
     document::StitchParams previous_{document::RunningStitchParams{}};
 };
 
+// Modifie les PARAMÈTRES de couture d'un objet (même type de point), depuis
+// l'inspecteur. Remplace les `StitchParams` et mémorise les précédents pour un
+// retour exact. Généralise `SetFillAngleCommand` à tous les champs.
+class SetStitchParamsCommand final : public ICommand {
+public:
+    SetStitchParamsCommand(ObjectId id, document::StitchParams params)
+        : id_(id), params_(std::move(params)) {}
+
+    void apply(document::Project& project) override {
+        if (auto* obj = project.findEmbroidery(id_)) {
+            previous_ = obj->params;
+            obj->params = params_;
+        }
+    }
+    void revert(document::Project& project) override {
+        if (auto* obj = project.findEmbroidery(id_)) {
+            obj->params = previous_;
+        }
+    }
+    [[nodiscard]] std::string name() const override { return "Paramètres de couture"; }
+
+private:
+    ObjectId id_;
+    document::StitchParams params_;
+    document::StitchParams previous_{document::RunningStitchParams{}};
+};
+
 // Change l'orientation des fils (angle des rangées) d'un remplissage tatami.
 // Les points sont régénérés depuis les paramètres (ADR-014), donc modifier
 // l'angle suffit à réorienter la couture ; l'annulation restaure l'angle.

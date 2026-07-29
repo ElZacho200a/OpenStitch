@@ -2,6 +2,7 @@
 #include "main_window.hpp"
 
 #include <QAction>
+#include <QActionGroup>
 #include <QColorDialog>
 #include <QDialogButtonBox>
 #include <QFileDialog>
@@ -25,13 +26,17 @@
 #include <algorithm>
 #include <cmath>
 #include <filesystem>
+#include <map>
 #include <numbers>
+#include <unordered_map>
 #include <variant>
 
+#include "app_theme.hpp"
 #include "brightness_dialog.hpp"
 #include "canvas_view.hpp"
 #include "import_dialog.hpp"
 #include "node_handle.hpp"
+#include "properties_panel.hpp"
 #include "openstitch/autodigitize/autodigitize.hpp"
 #include "openstitch/formats/dst.hpp"
 #include "openstitch/optimization/order.hpp"
@@ -84,8 +89,10 @@ MainWindow::MainWindow() {
     setCentralWidget(central);
 
     buildMenus();
+    buildPropertiesPanel();
     buildAnalysisPanel();
     buildOrderPanel();
+    buildFilterPanel();
     buildSimulationToolbar();
 
     cursorLabel_ = new QLabel(this);
@@ -99,6 +106,8 @@ MainWindow::MainWindow() {
 
     connect(view_, &CanvasView::canvasClickedMm, this, &MainWindow::onCanvasClicked);
     connect(view_, &CanvasView::canvasContextMenu, this, &MainWindow::onCanvasContextMenu);
+    // Un changement de thème redessine les couches (couleurs des points, repères).
+    connect(&AppTheme::instance(), &AppTheme::changed, this, [this] { displayImage(processed_); });
 
     statusBar()->showMessage(tr("Ouvrez une image (PNG, JPEG, BMP, TIFF) pour commencer."));
     view_->fitCanvas();
@@ -247,6 +256,31 @@ void MainWindow::buildMenus() {
     auto* fitAct = viewMenu->addAction(tr("A&juster au canevas"));
     fitAct->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_0));
     connect(fitAct, &QAction::triggered, view_, &CanvasView::fitCanvas);
+
+    viewMenu->addSeparator();
+    auto* themeMenu = viewMenu->addMenu(tr("&Thème"));
+    auto* themeGroup = new QActionGroup(this);
+    const auto addThemeAct = [&](const QString& label, ThemeMode m) {
+        auto* act = themeMenu->addAction(label);
+        act->setCheckable(true);
+        act->setChecked(AppTheme::instance().mode() == m);
+        themeGroup->addAction(act);
+        connect(act, &QAction::triggered, this, [m] { AppTheme::instance().setMode(m); });
+    };
+    addThemeAct(tr("Clair"), ThemeMode::Light);
+    addThemeAct(tr("Sombre"), ThemeMode::Dark);
+
+    auto* densityMenu = viewMenu->addMenu(tr("&Densité"));
+    auto* densityGroup = new QActionGroup(this);
+    const auto addDensityAct = [&](const QString& label, Density d) {
+        auto* act = densityMenu->addAction(label);
+        act->setCheckable(true);
+        act->setChecked(AppTheme::instance().density() == d);
+        densityGroup->addAction(act);
+        connect(act, &QAction::triggered, this, [d] { AppTheme::instance().setDensity(d); });
+    };
+    addDensityAct(tr("Confortable"), Density::Comfortable);
+    addDensityAct(tr("Compact"), Density::Compact);
 }
 
 void MainWindow::openImage() {
@@ -413,6 +447,9 @@ void MainWindow::refreshImage() {
     if (orderDock_ != nullptr) {
         refreshOrderPanel();
     }
+    if (filterDock_ != nullptr) {
+        refreshFilterPanel();
+    }
     displayImage(processed_);
 }
 
@@ -450,7 +487,8 @@ void MainWindow::renderBase(const image::Image& img) {
             }
             const bool selected = selectedObject_ && object.id == *selectedObject_;
             const QColor color(object.rgb[0], object.rgb[1], object.rgb[2]);
-            QPen pen(selected ? QColor(30, 90, 200) : color.darker(150));
+            QPen pen(selected ? AppTheme::instance().tokens().canvasSelectionLine
+                              : color.darker(150));
             pen.setCosmetic(true);
             pen.setWidth(selected ? 3 : 2);
             auto* pathItem = scene_->addPath(objectPainterPath(object), pen,
@@ -479,12 +517,16 @@ void MainWindow::renderBase(const image::Image& img) {
                                     if (newPos == pos) {
                                         return;
                                     }
-                                    undoStack_.execute(
-                                        std::make_unique<commands::MoveNodeCommand>(objectId, ref,
-                                                                                    pos, newPos),
-                                        project_);
-                                    refreshImage();
-                                    updateActions();
+                                    // Diffère : refreshImage() détruirait cette poignée
+                                    // pendant son propre événement souris (crash).
+                                    QTimer::singleShot(0, this, [this, objectId, ref, pos, newPos] {
+                                        undoStack_.execute(
+                                            std::make_unique<commands::MoveNodeCommand>(
+                                                objectId, ref, pos, newPos),
+                                            project_);
+                                        refreshImage();
+                                        updateActions();
+                                    });
                                 });
                             scene_->addItem(handle);
                             baseItems_.append(handle);
@@ -514,7 +556,7 @@ void MainWindow::renderBase(const image::Image& img) {
         const double theta = tatami.angle.radians;  // repère physique (Y haut)
         const double dx = radius * std::cos(theta);
         const double dy = -radius * std::sin(theta);  // scène : Y vers le bas
-        QPen axisPen(QColor(30, 90, 200));
+        QPen axisPen(AppTheme::instance().tokens().canvasHandle);
         axisPen.setCosmetic(true);
         axisPen.setWidth(2);
         auto* axis = scene_->addLine(QLineF(c.x() - dx, c.y() - dy, c.x() + dx, c.y() + dy), axisPen);
@@ -529,13 +571,19 @@ void MainWindow::renderBase(const image::Image& img) {
                 if (angle < 0.0) {
                     angle += std::numbers::pi;
                 }
-                undoStack_.execute(
-                    std::make_unique<commands::SetFillAngleCommand>(fillId, Angle{angle}), project_);
-                refreshImage();
-                updateActions();
+                // Diffère la commande : refreshImage() reconstruit la scène et
+                // détruirait cette poignée pendant son propre événement souris
+                // (usage après libération → crash).
+                QTimer::singleShot(0, this, [this, fillId, angle] {
+                    undoStack_.execute(
+                        std::make_unique<commands::SetFillAngleCommand>(fillId, Angle{angle}),
+                        project_);
+                    refreshImage();
+                    updateActions();
+                });
             });
-        knob->setPen(QPen(QColor(30, 90, 200), 1.5));
-        knob->setBrush(QBrush(QColor(120, 180, 255)));
+        knob->setPen(QPen(AppTheme::instance().tokens().canvasHandle, 1.5));
+        knob->setBrush(QBrush(AppTheme::instance().tokens().canvasHandle.lighter(160)));
         knob->setCursor(Qt::CrossCursor);
         knob->setToolTip(tr("Glisser pour tourner l'orientation des fils"));
         scene_->addItem(knob);
@@ -573,53 +621,86 @@ void MainWindow::renderStitches() {
     // ne les dessine que pour les petits motifs et hors simulation.
     const bool drawDots = !simulating() && total <= 4000;
 
-    QPainterPath sewPath;
+    // Visibilité (filtres) et couleur de fil par objet de broderie.
+    std::unordered_map<std::uint64_t, bool> visible;
+    std::unordered_map<std::uint64_t, QRgb> colorOf;
+    for (const auto& emb : project_.embroidery_objects) {
+        visible[emb.id.value] = objectPassesFilter(emb);
+        colorOf[emb.id.value] = qRgb(emb.rgb[0], emb.rgb[1], emb.rgb[2]);
+    }
+    const auto isVisible = [&](std::uint64_t src) {
+        const auto it = visible.find(src);
+        return it != visible.end() && it->second;
+    };
+
+    // Un tracé cousu par couleur de fil (pour afficher la broderie en couleur).
+    std::map<QRgb, QPainterPath> sewByColor;
     QPainterPath jumpPath;
     QPainterPath dots;
     bool hasPos = false;
     QPointF last;
+    std::uint64_t lastSource = 0;
     QPointF needle;
     bool hasNeedle = false;
     for (int i = 0; i < total && i <= limit; ++i) {
         const auto& cmd = sequence_->commands[static_cast<std::size_t>(i)];
         const QPointF p(to_millimeters(cmd.pos.x).value, -to_millimeters(cmd.pos.y).value);
+        const std::uint64_t src = cmd.source.value;
+        const bool vis = isVisible(src);
         switch (cmd.type) {
         case stitch::CommandType::Stitch:
-            if (hasPos) {
-                sewPath.moveTo(last);
-                sewPath.lineTo(p);
+            // On ne relie que deux points du MÊME objet (jamais entre objets).
+            if (vis && hasPos && lastSource == src) {
+                QPainterPath& path = sewByColor[colorOf[src]];
+                path.moveTo(last);
+                path.lineTo(p);
             }
-            if (drawDots) {
+            if (vis && drawDots) {
                 dots.addEllipse(p, 0.15, 0.15);
             }
             last = p;
             hasPos = true;
-            needle = p;
-            hasNeedle = true;
+            lastSource = src;
+            if (vis) {
+                needle = p;
+                hasNeedle = true;
+            }
             break;
         case stitch::CommandType::Jump:
-            if (hasPos) {
+            if (vis && hasPos && lastSource == src) {
                 jumpPath.moveTo(last);
                 jumpPath.lineTo(p);
             }
             last = p;
             hasPos = true;
-            needle = p;
-            hasNeedle = true;
+            lastSource = src;
+            if (vis) {
+                needle = p;
+                hasNeedle = true;
+            }
             break;
         default:
+            hasPos = false;  // ColorChange / End : rompt la continuité
             break;
         }
     }
 
-    QPen sewPen(QColor(25, 25, 45));
-    sewPen.setCosmetic(true);
-    sewPen.setWidth(2);
-    auto* sewItem = scene_->addPath(sewPath, sewPen);
-    sewItem->setZValue(20);
-    stitchItems_.append(sewItem);
+    for (const auto& [rgb, path] : sewByColor) {
+        QColor c = QColor::fromRgb(rgb);
+        // Un fil très clair serait invisible sur fond blanc : on l'assombrit un peu.
+        if (c.lightnessF() > 0.85) {
+            c = c.darker(140);
+        }
+        QPen sewPen(c);
+        sewPen.setCosmetic(true);
+        sewPen.setWidth(2);
+        auto* sewItem = scene_->addPath(path, sewPen);
+        sewItem->setZValue(20);
+        stitchItems_.append(sewItem);
+    }
 
-    QPen jumpPen(QColor(200, 120, 30));
+    const Tokens& tk = AppTheme::instance().tokens();
+    QPen jumpPen(tk.canvasJump);
     jumpPen.setCosmetic(true);
     jumpPen.setStyle(Qt::DashLine);
     auto* jumpItem = scene_->addPath(jumpPath, jumpPen);
@@ -627,14 +708,14 @@ void MainWindow::renderStitches() {
     stitchItems_.append(jumpItem);
 
     if (drawDots) {
-        auto* dotsItem = scene_->addPath(dots, Qt::NoPen, QBrush(QColor(25, 25, 45)));
+        auto* dotsItem = scene_->addPath(dots, Qt::NoPen, QBrush(tk.canvasStitch));
         dotsItem->setZValue(21);
         stitchItems_.append(dotsItem);
     }
 
     if (simulating() && hasNeedle) {
         auto* marker = scene_->addEllipse(needle.x() - 0.6, needle.y() - 0.6, 1.2, 1.2,
-                                          QPen(Qt::NoPen), QBrush(QColor(220, 40, 40)));
+                                          QPen(Qt::NoPen), QBrush(tk.error));
         marker->setZValue(30);
         stitchItems_.append(marker);
     }
@@ -1209,6 +1290,98 @@ void MainWindow::onCanvasContextMenu(QPointF posMm, QPoint globalPos) {
     menu.exec(globalPos);
 }
 
+void MainWindow::buildPropertiesPanel() {
+    propertiesDock_ = new QDockWidget(tr("Propriétés"), this);
+    propertiesDock_->setAllowedAreas(Qt::LeftDockWidgetArea | Qt::RightDockWidgetArea);
+    propertiesPanel_ = new PropertiesPanel(propertiesDock_);
+    propertiesDock_->setWidget(propertiesPanel_);
+    addDockWidget(Qt::RightDockWidgetArea, propertiesDock_);
+
+    // Édition d'un paramètre -> commande annulable -> régénération.
+    connect(propertiesPanel_, &PropertiesPanel::paramsEdited, this,
+            [this](ObjectId id, document::StitchParams params) {
+                undoStack_.execute(
+                    std::make_unique<commands::SetStitchParamsCommand>(id, std::move(params)),
+                    project_);
+                refreshImage();
+                // Ne pas reconstruire l'inspecteur : la sélection n'a pas changé,
+                // les valeurs qu'il affiche sont déjà celles qu'on vient d'écrire.
+            });
+}
+
+void MainWindow::updateInspector() {
+    if (propertiesPanel_ == nullptr) {
+        return;
+    }
+    // Cible : objet de broderie (dock Ordre) > remplissage rattaché à l'objet
+    // vectoriel sélectionné > objet vectoriel > région > rien.
+    const document::EmbroideryObject* emb = nullptr;
+    if (selectedEmbroidery_) {
+        emb = project_.findEmbroidery(*selectedEmbroidery_);
+    }
+    if (emb == nullptr && selectedObject_) {
+        emb = embroideryForVector(*selectedObject_);
+    }
+
+    int kind = -1;
+    std::uint64_t id = 0;
+    if (emb != nullptr) {
+        kind = 0;
+        id = emb->id.value;
+    } else if (selectedObject_) {
+        kind = 1;
+        id = selectedObject_->value;
+    } else if (selectedRegion_ && project_.segmentation) {
+        kind = 2;
+        id = selectedRegion_->value;
+    }
+
+    // Ne reconstruit que si la sélection a changé (n'interrompt pas une édition).
+    if (kind == inspectedKind_ && id == inspectedId_) {
+        return;
+    }
+    inspectedKind_ = kind;
+    inspectedId_ = id;
+
+    if (kind == 0) {
+        propertiesPanel_->showEmbroidery(*emb);
+    } else if (kind == 1) {
+        const auto* vec = project_.findObject(*selectedObject_);
+        int nodes = 0;
+        if (vec != nullptr) {
+            for (const auto& set : vec->paths) {
+                nodes += static_cast<int>(set.outer.nodes.size());
+                for (const auto& h : set.holes) nodes += static_cast<int>(h.nodes.size());
+            }
+        }
+        propertiesPanel_->showInfo(
+            vec != nullptr ? QString::fromStdString(vec->name) : tr("Objet vectoriel"),
+            tr("Objet vectoriel — %1 morceau(x), %2 nœud(s).\n"
+               "Créez un objet de broderie (menu Broderie) pour régler la couture.")
+                .arg(vec != nullptr ? vec->paths.size() : 0)
+                .arg(nodes));
+    } else if (kind == 2) {
+        const auto* region = project_.segmentation->find(*selectedRegion_);
+        if (region != nullptr) {
+            const double mmPerPx = project_.mm_per_px.value;
+            const double areaMm2 =
+                region->pixel_count * mmPerPx * mmPerPx;
+            propertiesPanel_->showInfo(
+                tr("Région %1").arg(region->id.value),
+                tr("Aire : %1 mm²   ·   %2 pixels\nCouleur : #%3%4%5")
+                    .arg(areaMm2, 0, 'f', 1)
+                    .arg(region->pixel_count)
+                    .arg(region->rgb[0], 2, 16, QLatin1Char('0'))
+                    .arg(region->rgb[1], 2, 16, QLatin1Char('0'))
+                    .arg(region->rgb[2], 2, 16, QLatin1Char('0')));
+        }
+    } else {
+        propertiesPanel_->showInfo(
+            tr("Aucune sélection"),
+            tr("Sélectionnez une région, un objet vectoriel ou un objet de broderie."));
+    }
+}
+
 void MainWindow::buildAnalysisPanel() {
     analysisDock_ = new QDockWidget(tr("Analyse"), this);
     analysisDock_->setAllowedAreas(Qt::RightDockWidgetArea | Qt::LeftDockWidgetArea);
@@ -1377,6 +1550,142 @@ void MainWindow::refreshOrderPanel() {
                                  .arg(cost.travel_um / 1000.0, 0, 'f', 1)
                                  .arg(cost.color_changes));
     orderDock_->setVisible(!project_.embroidery_objects.empty());
+}
+
+int MainWindow::stitchTypeIndex(const document::EmbroideryObject& object) {
+    return object.is_tatami() ? 1 : object.is_satin() ? 2 : 0;
+}
+
+double MainWindow::regionAreaMm2(const document::EmbroideryObject& object) const {
+    const auto* vec = project_.findObject(object.source_vector);
+    if (vec == nullptr) {
+        return 0.0;
+    }
+    const auto shoelace_um2 = [](const geometry::Path& path) {
+        double a = 0.0;
+        const auto& n = path.nodes;
+        for (std::size_t i = 0; i < n.size(); ++i) {
+            const auto& p0 = n[i].pos;
+            const auto& p1 = n[(i + 1) % n.size()].pos;
+            a += static_cast<double>(p0.x.value) * p1.y.value -
+                 static_cast<double>(p1.x.value) * p0.y.value;
+        }
+        return std::abs(a) / 2.0;
+    };
+    double area_um2 = 0.0;
+    for (const auto& set : vec->paths) {
+        area_um2 += shoelace_um2(set.outer);
+        for (const auto& hole : set.holes) {
+            area_um2 -= shoelace_um2(hole);
+        }
+    }
+    return std::max(0.0, area_um2) / 1e6;
+}
+
+bool MainWindow::objectPassesFilter(const document::EmbroideryObject& object) const {
+    if (!object.visible) {
+        return false;
+    }
+    if (!showType_[static_cast<std::size_t>(stitchTypeIndex(object))]) {
+        return false;
+    }
+    const std::uint32_t key = (static_cast<std::uint32_t>(object.rgb[0]) << 16) |
+                              (static_cast<std::uint32_t>(object.rgb[1]) << 8) |
+                              static_cast<std::uint32_t>(object.rgb[2]);
+    if (hiddenColors_.count(key) != 0) {
+        return false;
+    }
+    if (minAreaMm2_ > 0.0 && regionAreaMm2(object) < minAreaMm2_) {
+        return false;
+    }
+    return true;
+}
+
+void MainWindow::buildFilterPanel() {
+    filterDock_ = new QDockWidget(tr("Filtres d'affichage"), this);
+    filterDock_->setAllowedAreas(Qt::LeftDockWidgetArea | Qt::RightDockWidgetArea);
+    auto* panel = new QWidget(filterDock_);
+    auto* layout = new QVBoxLayout(panel);
+
+    layout->addWidget(new QLabel(tr("Types de points :"), panel));
+    const QString names[] = {tr("Contour"), tr("Tatami"), tr("Satin")};
+    for (int t = 0; t < 3; ++t) {
+        auto* check = new QCheckBox(names[t], panel);
+        check->setChecked(true);
+        connect(check, &QCheckBox::toggled, this, [this, t](bool on) {
+            showType_[static_cast<std::size_t>(t)] = on;
+            displayImage(processed_);
+        });
+        typeChecks_[static_cast<std::size_t>(t)] = check;
+        layout->addWidget(check);
+    }
+
+    layout->addSpacing(6);
+    layout->addWidget(new QLabel(tr("Taille min. des zones :"), panel));
+    minAreaSpin_ = new QDoubleSpinBox(panel);
+    minAreaSpin_->setRange(0.0, 10'000.0);
+    minAreaSpin_->setDecimals(1);
+    minAreaSpin_->setSuffix(tr(" mm²"));
+    minAreaSpin_->setValue(0.0);
+    connect(minAreaSpin_, &QDoubleSpinBox::valueChanged, this, [this](double v) {
+        minAreaMm2_ = v;
+        displayImage(processed_);
+    });
+    layout->addWidget(minAreaSpin_);
+
+    layout->addSpacing(6);
+    layout->addWidget(new QLabel(tr("Couleurs de fil :"), panel));
+    auto* colorContainer = new QWidget(panel);
+    colorFilterLayout_ = new QVBoxLayout(colorContainer);
+    colorFilterLayout_->setContentsMargins(0, 0, 0, 0);
+    layout->addWidget(colorContainer);
+
+    layout->addStretch(1);
+    filterDock_->setWidget(panel);
+    addDockWidget(Qt::RightDockWidgetArea, filterDock_);
+    filterDock_->hide();
+}
+
+void MainWindow::refreshFilterPanel() {
+    if (colorFilterLayout_ == nullptr) {
+        return;
+    }
+    // Vide la liste de couleurs.
+    while (QLayoutItem* item = colorFilterLayout_->takeAt(0)) {
+        delete item->widget();
+        delete item;
+    }
+    // Couleurs distinctes (ordre stable : première apparition).
+    std::vector<std::array<std::uint8_t, 3>> colors;
+    for (const auto& emb : project_.embroidery_objects) {
+        if (std::find(colors.begin(), colors.end(), emb.rgb) == colors.end()) {
+            colors.push_back(emb.rgb);
+        }
+    }
+    for (const auto& rgb : colors) {
+        const std::uint32_t key = (static_cast<std::uint32_t>(rgb[0]) << 16) |
+                                  (static_cast<std::uint32_t>(rgb[1]) << 8) |
+                                  static_cast<std::uint32_t>(rgb[2]);
+        auto* check = new QCheckBox();
+        check->setChecked(hiddenColors_.count(key) == 0);
+        QPixmap swatch(12, 12);
+        swatch.fill(QColor(rgb[0], rgb[1], rgb[2]));
+        check->setIcon(QIcon(swatch));
+        check->setText(QStringLiteral("#%1%2%3")
+                           .arg(rgb[0], 2, 16, QLatin1Char('0'))
+                           .arg(rgb[1], 2, 16, QLatin1Char('0'))
+                           .arg(rgb[2], 2, 16, QLatin1Char('0')));
+        connect(check, &QCheckBox::toggled, this, [this, key](bool on) {
+            if (on) {
+                hiddenColors_.erase(key);
+            } else {
+                hiddenColors_.insert(key);
+            }
+            displayImage(processed_);
+        });
+        colorFilterLayout_->addWidget(check);
+    }
+    filterDock_->setVisible(!project_.embroidery_objects.empty());
 }
 
 void MainWindow::moveObjectUp() {
@@ -1805,6 +2114,8 @@ void MainWindow::updateActions() {
     redoAct_->setText(undoStack_.canRedo()
                           ? tr("&Rétablir %1").arg(QString::fromStdString(undoStack_.redoName()))
                           : tr("&Rétablir"));
+
+    updateInspector();
 }
 
 }  // namespace openstitch::desktop
