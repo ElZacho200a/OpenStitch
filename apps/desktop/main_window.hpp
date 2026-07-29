@@ -32,6 +32,7 @@ namespace openstitch::desktop {
 class CanvasView;
 class PropertiesPanel;
 class DocumentPanel;
+class WorkflowPanel;
 
 // Fenêtre principale. Règle du projet : aucune logique métier dans les
 // widgets — chargement (libs/image), placement (libs/document), transformations
@@ -95,6 +96,8 @@ private:
     void refreshOrderPanel();
     void buildFilterPanel();
     void refreshFilterPanel();
+    void buildWorkflowPanel();
+    void refreshWorkflow();
     void buildDocumentPanel();
     void refreshDocumentPanel();
     // Reflète la sélection courante (broderie/région) dans le panneau Document.
@@ -189,6 +192,10 @@ private:
     // Structure du document (Objets / Régions).
     QDockWidget* documentDock_{nullptr};
     DocumentPanel* documentPanel_{nullptr};
+
+    // Indicateur de workflow.
+    QDockWidget* workflowDock_{nullptr};
+    WorkflowPanel* workflowPanel_{nullptr};
 
     // Inspecteur de propriétés.
     QDockWidget* propertiesDock_{nullptr};

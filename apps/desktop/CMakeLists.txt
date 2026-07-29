@@ -22,6 +22,8 @@ add_executable(openstitch WIN32
     properties_panel.hpp
     document_panel.cpp
     document_panel.hpp
+    workflow_panel.cpp
+    workflow_panel.hpp
     tools.hpp
     ui_icons.cpp
     ui_icons.hpp

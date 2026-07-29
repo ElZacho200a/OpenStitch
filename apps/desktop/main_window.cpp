@@ -39,6 +39,7 @@
 #include "node_handle.hpp"
 #include "properties_panel.hpp"
 #include "ui_icons.hpp"
+#include "workflow_panel.hpp"
 #include <QShortcut>
 #include <QToolBar>
 #include <QToolButton>
@@ -98,6 +99,7 @@ MainWindow::MainWindow() {
     buildAnalysisPanel();
     buildOrderPanel();
     buildDocumentPanel();
+    buildWorkflowPanel();
     buildFilterPanel();
     buildMainToolbar();
     addToolBarBreak();  // la barre contextuelle sur sa propre rangée
@@ -1506,6 +1508,51 @@ void MainWindow::setTool(Tool tool) {
     }
 }
 
+void MainWindow::buildWorkflowPanel() {
+    workflowDock_ = new QDockWidget(tr("Workflow"), this);
+    workflowDock_->setObjectName(QStringLiteral("workflowDock"));
+    workflowDock_->setAllowedAreas(Qt::LeftDockWidgetArea | Qt::RightDockWidgetArea);
+    workflowPanel_ = new WorkflowPanel(workflowDock_);
+    workflowDock_->setWidget(workflowPanel_);
+    if (documentDock_ != nullptr) {
+        splitDockWidget(documentDock_, workflowDock_, Qt::Vertical);  // sous Document
+    } else {
+        addDockWidget(Qt::LeftDockWidgetArea, workflowDock_);
+    }
+    connect(&AppTheme::instance(), &AppTheme::changed, workflowPanel_, &WorkflowPanel::applyTheme);
+    connect(workflowPanel_, &WorkflowPanel::stepClicked, this, [this](int step) {
+        static const char* hints[] = {
+            QT_TR_NOOP("Menu Fichier ▸ Ouvrir une image pour commencer."),
+            QT_TR_NOOP("Menu Segmentation ▸ Segmenter l'image."),
+            QT_TR_NOOP("Sélectionnez une région, puis Segmentation ▸ Vectoriser."),
+            QT_TR_NOOP("Menu Broderie ▸ Numérisation automatique, ou créez un objet."),
+            QT_TR_NOOP("Appuyez sur F5 (Analyse) pour vérifier le motif."),
+            QT_TR_NOOP("Menu Fichier ▸ Exporter en DST.")};
+        statusBar()->showMessage(tr(hints[step]), 6000);
+    });
+}
+
+void MainWindow::refreshWorkflow() {
+    if (workflowPanel_ == nullptr) {
+        return;
+    }
+    using S = WorkflowPanel::State;
+    std::array<S, WorkflowPanel::kStepCount> st{};
+    const bool img = project_.hasImage();
+    const bool seg = project_.segmentation.has_value();
+    const bool vec = !project_.vector_objects.empty();
+    const bool emb = !project_.embroidery_objects.empty();
+    const bool seq = sequence_.has_value();
+
+    st[0] = img ? S::Done : S::NotStarted;
+    st[1] = !img ? S::NotStarted : (seg ? S::Done : S::Available);
+    st[2] = !seg ? S::NotStarted : (vec ? S::Done : S::Available);
+    st[3] = emb ? S::Done : ((vec || seg) ? S::Available : S::NotStarted);
+    st[4] = seq ? S::Available : S::NotStarted;
+    st[5] = seq ? S::Available : S::NotStarted;
+    workflowPanel_->setStates(st);
+}
+
 void MainWindow::buildDocumentPanel() {
     documentDock_ = new QDockWidget(tr("Document"), this);
     documentDock_->setObjectName(QStringLiteral("documentDock"));
@@ -2400,6 +2447,7 @@ void MainWindow::updateActions() {
     updateInspector();
     syncDocumentSelection();
     updateContextToolbar();
+    refreshWorkflow();
 }
 
 }  // namespace openstitch::desktop
