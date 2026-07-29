@@ -34,6 +34,7 @@
 #include "app_theme.hpp"
 #include "brightness_dialog.hpp"
 #include "canvas_view.hpp"
+#include "document_panel.hpp"
 #include "import_dialog.hpp"
 #include "node_handle.hpp"
 #include "properties_panel.hpp"
@@ -95,6 +96,7 @@ MainWindow::MainWindow() {
     buildPropertiesPanel();
     buildAnalysisPanel();
     buildOrderPanel();
+    buildDocumentPanel();
     buildFilterPanel();
     buildMainToolbar();
     buildToolPalette();
@@ -460,6 +462,7 @@ void MainWindow::refreshImage() {
     if (filterDock_ != nullptr) {
         refreshFilterPanel();
     }
+    refreshDocumentPanel();
     displayImage(processed_);
 }
 
@@ -1401,6 +1404,68 @@ void MainWindow::setTool(Tool tool) {
     }
 }
 
+void MainWindow::buildDocumentPanel() {
+    documentDock_ = new QDockWidget(tr("Document"), this);
+    documentDock_->setObjectName(QStringLiteral("documentDock"));
+    documentDock_->setAllowedAreas(Qt::LeftDockWidgetArea | Qt::RightDockWidgetArea);
+    documentPanel_ = new DocumentPanel(documentDock_);
+    documentDock_->setWidget(documentPanel_);
+    addDockWidget(Qt::LeftDockWidgetArea, documentDock_);
+    if (orderDock_ != nullptr) {
+        tabifyDockWidget(documentDock_, orderDock_);  // Document et Ordre en onglets
+        documentDock_->raise();
+    }
+
+    connect(documentPanel_, &DocumentPanel::embroiderySelected, this, [this](ObjectId id) {
+        selectedEmbroidery_ = id;
+        selectedRegion_.reset();
+        if (const auto* e = project_.findEmbroidery(id);
+            e != nullptr && project_.findObject(e->source_vector) != nullptr) {
+            selectedObject_ = e->source_vector;  // met en évidence la forme au canevas
+        } else {
+            selectedObject_.reset();
+        }
+        displayImage(processed_);
+        updateActions();
+    });
+    connect(documentPanel_, &DocumentPanel::regionSelected, this, [this](RegionId id) {
+        selectedRegion_ = id;
+        selectedObject_.reset();
+        selectedEmbroidery_.reset();
+        displayImage(processed_);
+        updateActions();
+    });
+}
+
+void MainWindow::refreshDocumentPanel() {
+    if (documentPanel_ == nullptr) {
+        return;
+    }
+    documentPanel_->refresh(project_);
+    documentDock_->setVisible(project_.hasImage() || !project_.embroidery_objects.empty());
+    syncDocumentSelection();
+}
+
+void MainWindow::syncDocumentSelection() {
+    if (documentPanel_ == nullptr) {
+        return;
+    }
+    const document::EmbroideryObject* emb = nullptr;
+    if (selectedEmbroidery_) {
+        emb = project_.findEmbroidery(*selectedEmbroidery_);
+    }
+    if (emb == nullptr && selectedObject_) {
+        emb = embroideryForVector(*selectedObject_);
+    }
+    if (emb != nullptr) {
+        documentPanel_->syncSelection(DocumentPanel::Kind::Embroidery, emb->id.value);
+    } else if (selectedRegion_) {
+        documentPanel_->syncSelection(DocumentPanel::Kind::Region, selectedRegion_->value);
+    } else {
+        documentPanel_->syncSelection(DocumentPanel::Kind::None, 0);
+    }
+}
+
 void MainWindow::buildPropertiesPanel() {
     propertiesDock_ = new QDockWidget(tr("Propriétés"), this);
     propertiesDock_->setAllowedAreas(Qt::LeftDockWidgetArea | Qt::RightDockWidgetArea);
@@ -2231,6 +2296,7 @@ void MainWindow::updateActions() {
                           : tr("&Rétablir"));
 
     updateInspector();
+    syncDocumentSelection();
 }
 
 }  // namespace openstitch::desktop

@@ -31,6 +31,7 @@ namespace openstitch::desktop {
 
 class CanvasView;
 class PropertiesPanel;
+class DocumentPanel;
 
 // Fenêtre principale. Règle du projet : aucune logique métier dans les
 // widgets — chargement (libs/image), placement (libs/document), transformations
@@ -91,6 +92,10 @@ private:
     void refreshOrderPanel();
     void buildFilterPanel();
     void refreshFilterPanel();
+    void buildDocumentPanel();
+    void refreshDocumentPanel();
+    // Reflète la sélection courante (broderie/région) dans le panneau Document.
+    void syncDocumentSelection();
     void buildPropertiesPanel();
     // Met l'inspecteur en phase avec la sélection courante (broderie > vecteur >
     // région). Ne reconstruit le formulaire que si la sélection a changé, pour ne
@@ -175,6 +180,10 @@ private:
     QDockWidget* analysisDock_{nullptr};
     QListWidget* analysisList_{nullptr};
     QAction* analyzeAct_{nullptr};
+
+    // Structure du document (Objets / Régions).
+    QDockWidget* documentDock_{nullptr};
+    DocumentPanel* documentPanel_{nullptr};
 
     // Inspecteur de propriétés.
     QDockWidget* propertiesDock_{nullptr};
