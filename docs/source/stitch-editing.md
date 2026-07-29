@@ -10,6 +10,8 @@ Public : utilisateur avancé, développeur.
 | Segmentation | fusion, suppression, recoloration | Implémenté |
 | Vecteurs | **déplacement** de nœuds | Implémenté |
 | Objets de broderie | paramètres (longueur, densité, angle, type) | Implémenté |
+| Objets de broderie | **changer le type** (contour/tatami/satin), clic droit | Implémenté |
+| Objets de broderie | **orientation** des fils (poignée dans la scène) | Implémenté |
 | Ordre de couture | monter/descendre, verrouiller | Implémenté |
 | Points générés | — | Non implémenté |
 
@@ -34,8 +36,28 @@ tout objet de broderie qui suit cet objet.
 Limitation : l'ajout/suppression de nœuds, la conversion anguleux/lisse et
 l'édition de tangentes ne sont pas exposés (voir *Vectorisation*).
 
+## Changer le type de points (clic droit)
+
+Un **clic droit** sur une forme ouvre un menu contextuel *Type de points* :
+Contour cousu / Remplissage tatami / Colonne satin (le type courant est coché).
+Le changement passe par `SetStitchTypeCommand` (annulable) ; pour le satin, les
+rails sont reconstruits depuis le contour source (`rails_from_contour`). Le menu
+donne aussi accès à l'orientation (si tatami) et aux calques.
+
+## Orientation des fils dans la scène
+
+Quand un remplissage tatami est sélectionné, une **poignée de rotation** (axe
+bleu) s'affiche à son centre. La faire glisser réoriente les fils ; l'angle est
+validé au relâchement (`SetFillAngleCommand`, annulable). Détail d'ergonomie
+important : la commande est **différée** d'un tour de boucle d'événements, car
+`refreshImage()` reconstruit la scène et détruirait la poignée pendant son propre
+événement souris (le même soin s'applique aux poignées de nœuds).
+
 ## Implémentation associée
 
-- `apps/desktop/node_handle.hpp` — poignée de nœud.
-- `apps/desktop/main_window.cpp` — sélection d'objet, affichage des poignées.
-- `libs/commands/.../project_commands.hpp` — `MoveNodeCommand`.
+- `apps/desktop/node_handle.hpp` — poignée de nœud (réutilisée pour la rotation).
+- `apps/desktop/main_window.cpp` — sélection, poignées, menu contextuel, poignée
+  de rotation.
+- `apps/desktop/canvas_view.cpp` — signal `canvasContextMenu` (clic droit).
+- `libs/commands/.../project_commands.hpp` — `MoveNodeCommand`, `SetFillAngleCommand`,
+  `SetStitchTypeCommand`, `ConvertFillsToTatamiCommand`.

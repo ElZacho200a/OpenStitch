@@ -22,7 +22,7 @@ Public : développeur, mainteneur.
 - **Applications** : `apps/desktop` (Qt), `apps/cli`.
 - **Métier / génération** : `document`, `commands`, `project_io`,
   `stitch_generation`, `stitch`, `stitch_analysis`, `optimization`,
-  `autodigitize`, `formats`.
+  `autodigitize`, `auto_satin`, `formats`.
 - **Traitement** : `image`, `segmentation`, `vectorization`, `geometry`.
 - **Socle** : `core` (unités, ids, `Result`, logging).
 

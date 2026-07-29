@@ -67,15 +67,33 @@ masquée.
 ## Rails automatiques
 
 `rails_from_contour(contour)` découpe un contour fermé en deux rails, coupé aux
-**deux sommets les plus éloignés** (les « bouts » de la colonne). Cela convient
-aux formes allongées ; l'auto-numérisation l'utilise pour proposer un satin.
+**deux sommets les plus éloignés** (les « bouts » de la colonne).
 
-Limitation : c'est une heuristique. Il n'y a **pas** d'axe médian (medial axis /
-straight skeleton), pas de barreaux de direction, pas de correspondance par
-sections, pas de gestion fine des points courts dans les virages, ni de split
-stitch pour les colonnes très larges. Ces éléments (§12 de l'étude de cadrage)
-sont **prévus**. La densité est mesurée le long du rail, pas encore strictement
-perpendiculairement au fil.
+**Débordement — désactivé par défaut.** Cette heuristique ne connaît pas l'axe
+de la forme : sur un contour **concave ou branchu**, les deux rails traversent
+l'intérieur et les barreaux (rungs) enjambent les creux, ce qui fait **sortir
+les points de la région**. Mesuré sur un projet réel, jusqu'à **57 % des
+barreaux d'une colonne hors de sa région**. En conséquence :
+
+- l'auto-numérisation **n'utilise plus** le satin naïf par défaut ; toute zone
+  remplissable devient un **tatami** (découpé au scanline sur la région, donc
+  sans débordement). L'option `AutoOptions::use_naive_satin` (défaut `false`)
+  permet de le réactiver pour essais/tests ;
+- l'action **Broderie ▸ Convertir les satins auto en tatami** répare un projet
+  qui contient déjà des satins débordants ;
+- le satin reste créable **manuellement** (menu Broderie, ou clic droit ▸ *Type
+  de points ▸ Colonne satin*) — à vérifier visuellement, c'est la même
+  heuristique de rails.
+
+Limitation : `rails_from_contour` reste une heuristique. Il n'y a **pas** d'axe
+médian (medial axis / straight skeleton), pas de barreaux de direction, pas de
+correspondance par sections, pas de gestion fine des points courts dans les
+virages, ni de split stitch pour les colonnes très larges. Ces éléments (§12 de
+l'étude de cadrage) sont **prévus** : le module `auto_satin` (squelette,
+distance, satinabilité) en pose déjà les fondations, et générera des rails qui
+**se terminent sur le contour** — donc structurellement sans débordement. La
+densité est mesurée le long du rail, pas encore strictement perpendiculairement
+au fil.
 
 ## Implémentation associée
 

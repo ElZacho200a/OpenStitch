@@ -44,6 +44,7 @@ Chaque dossier de `libs/` est une cible CMake `openstitch::<nom>` :
 | `stitch_analysis` | moteur de règles de validation | core, stitch | — |
 | `optimization` | ordre de couture (coût, stratégies) | core | — |
 | `autodigitize` | image → objets éditables | vectorization, stitch_generation | — |
+| `auto_satin` | squelette → satinabilité (rails/rungs à venir) | core, geometry | OpenCV |
 | `commands` | undo/redo (Command pattern) | document | — |
 | `formats` | codec DST maison, SVG de diagnostic | core, stitch | fmt |
 | `project_io` | format projet `.osp` | core, document, image | nlohmann/json, minizip-ng |
@@ -109,8 +110,8 @@ codec DST (`formats/dst.cpp`).
 
 ## Tests présents
 
-24 fichiers `test_*.cpp` sous `tests/unit/<lib>/` et un test d'intégration
-`tests/integration/test_pipeline.cpp`. Total : **139 tests** au dernier passage
+25 fichiers `test_*.cpp` sous `tests/unit/<lib>/` et un test d'intégration
+`tests/integration/test_pipeline.cpp`. Total : **161 tests** au dernier passage
 (`ctest`). Framework : Catch2 v3. Voir le chapitre *Tests*.
 
 ## Exemples et ressources
@@ -125,16 +126,20 @@ codec DST (`formats/dst.cpp`).
 - **Prévu (architecture mentionnée, non implémenté)** : palette de fils réelle
   (`thread_palette`), profils de machine/cadres avancés, remplissages courbes /
   radiaux / spirale / motifs, sous-couches tatami, édition manuelle des points.
-- **Partiel** : auto-satin (heuristique de largeur, pas d'axe médian) ;
-  compensation (satin uniquement) ; routage tatami (parcours par graphe présent,
-  underpath caché non implémenté — les liaisons hors-région sont des sauts).
-- **Expérimental** : `openstitch-cli stitchdebug` (outil de diagnostic du moteur).
+- **Partiel** : classification auto des régions (heuristique de largeur) — route
+  désormais vers le **tatami** ; le satin **automatique** naïf débordait et est
+  désactivé par défaut (`use_naive_satin`). Le module `auto_satin` pose les
+  fondations du vrai satin par squelette (rails/rungs à venir). Compensation
+  (satin uniquement) ; routage tatami (graphe + validation géométrique, underpath
+  caché non implémenté — les liaisons hors-région sont des sauts).
+- **Expérimental** : `openstitch-cli stitchdebug` / `auto-satin-debug` (outils de
+  diagnostic du moteur).
 
 ## Marqueurs, incohérences
 
-- Aucun `FIXME` critique repéré ; le `README.md` mentionne « 121 tests » alors
-  que le compte réel est 139 (le README a été écrit à un jalon antérieur) —
-  incohérence mineure, corrigée dans la présente documentation.
+- Aucun `FIXME` critique repéré ; le `README.md` mentionne un compte de tests
+  d'un jalon antérieur alors que le compte réel est **161** — incohérence mineure,
+  à resynchroniser dans le README.
 - Documents de conception : `docs/phase0/` (étude de cadrage, 14 ADR),
   `docs/stitch-engine-audit.md` et `docs/stitch-engine-research.md` (refonte du
   moteur de points).

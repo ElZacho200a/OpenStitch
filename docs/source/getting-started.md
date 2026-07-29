@@ -60,9 +60,11 @@ Sur un objet vectoriel sélectionné, menu **Broderie** :
 - **Créer une colonne satin…** (densité, compensation, sous-couche) — avec un
   avertissement si la colonne est trop large.
 
-Alternative rapide : **Segmentation → Numériser automatiquement** crée des objets
-pour toutes les régions selon leur forme (satin pour les bandes fines, tatami
-pour les zones larges, contour pour les petites).
+Alternative rapide : **Broderie → Numérisation automatique** crée des objets pour
+toutes les régions : **tatami** pour les zones remplissables, **contour** cousu
+pour les petites (le satin automatique naïf, qui débordait, est désactivé par
+défaut). On change ensuite le type d'une forme par **clic droit ▸ Type de
+points**, et on règle l'orientation d'un tatami à la souris (poignée de rotation).
 
 ## 8. Régler les points et les couleurs
 

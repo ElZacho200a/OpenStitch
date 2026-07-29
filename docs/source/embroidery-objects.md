@@ -42,9 +42,14 @@ Depuis l'interface (menu Broderie) sur un objet vectoriel sélectionné, ou en l
 par la **classification automatique expérimentale des régions** (voir
 *Limitations*) qui choisit le type selon la forme :
 
-- bande **fine** satinable → satin ;
-- zone **large** → tatami ;
-- petite forme ou satin impossible → **contour** cousu (point triple).
+- zone **remplissable** → **tatami** (par défaut) ;
+- petite forme → **contour** cousu (point triple) ;
+- satin **automatique** naïf : désactivé par défaut car il débordait sur les
+  formes concaves/branchues (`AutoOptions::use_naive_satin` pour le réactiver).
+
+Le **type se change ensuite** à tout moment (clic droit sur la forme ▸ *Type de
+points* ▸ contour / tatami / satin) via `SetStitchTypeCommand` (annulable) ;
+l'action **Convertir les satins auto en tatami** répare en lot un projet importé.
 
 Limitation : cette classification est une heuristique simple (largeur moyenne
 = 2·aire/périmètre) ; ce n'est pas un moteur d'auto-numérisation robuste
@@ -56,7 +61,9 @@ faut vérifier et retoucher.
 `generate_sequence(project)` parcourt les objets **visibles** dans l'ordre,
 insère un changement de couleur entre deux objets de couleurs différentes, et
 appelle le générateur adapté à chaque type via `std::visit`. Le résultat est une
-`StitchSequence`.
+`StitchSequence`. Chaque commande porte l'`ObjectId` de sa source : l'interface
+s'en sert pour afficher la broderie **dans la couleur de chaque fil** et pour
+**filtrer** l'affichage (par type, couleur ou taille de zone).
 
 ## Implémentation associée
 

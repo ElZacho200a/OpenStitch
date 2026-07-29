@@ -39,7 +39,8 @@ d'autre part) pour rester fluide sur de gros motifs.
 
 L'annulation couvre les opérations d'image, la segmentation (segmenter, fusionner,
 supprimer, recolorer), la création et le déplacement de nœuds vectoriels, la
-création d'objets de broderie et le réordonnancement.
+création d'objets de broderie, le **changement de type**, l'**orientation** d'un
+remplissage, la conversion satin→tatami et le réordonnancement.
 
 ## Menu Image
 
@@ -67,10 +68,16 @@ Sélection : cliquez une région ; ses statistiques (pixels, mm², RGB) s'affich
 
 ## Menu Broderie
 
-- Numérisation automatique — crée des objets pour toutes les régions ;
+- Numérisation automatique — crée des objets pour toutes les régions. Les zones
+  remplissables deviennent des **tatami** (le satin automatique naïf, qui
+  débordait, est désactivé par défaut) ;
 - Créer un objet de point de contour… (longueur, type simple/double/triple) ;
 - Créer un remplissage tatami… (espacement, longueur, angle) ;
 - Créer une colonne satin… (densité, compensation, sous-couche centrale) ;
+- **Orientation du remplissage…** — change l'angle des fils du tatami sélectionné
+  (aussi réglable à la souris, voir *poignée de rotation* plus bas) ;
+- **Convertir les satins auto en tatami** — répare un projet dont les satins
+  automatiques débordent ;
 - Statistiques… (points, sauts, coupes, changements de couleur, dimensions,
   longueur de fil).
 
@@ -79,17 +86,53 @@ propose de continuer ou de préférer un remplissage tatami.
 
 ## Menu Affichage
 
+Le sous-menu **Calques** regroupe des interrupteurs indépendants :
+
+| Calque | Effet |
+|---|---|
+| Image | Affiche/masque l'image de travail |
+| Carte des régions | Affiche/masque la segmentation |
+| Vecteurs | Affiche/masque les objets vectoriels |
+| Broderie (points) | Affiche/masque les points générés |
+
 | Action | Raccourci | Effet |
 |---|---|---|
-| Afficher les points | — | Bascule l'affichage des points générés |
-| Afficher les vecteurs | — | Bascule l'affichage des objets vectoriels |
 | Zoom avant | Ctrl++ | Agrandit |
 | Zoom arrière | Ctrl+- | Réduit |
 | Ajuster au canevas | Ctrl+0 | Cadre la vue sur le canevas |
 
-Les points cousus sont tracés en trait continu foncé ; les **sauts** en
+Les points cousus sont tracés **dans la couleur de fil de chaque objet** (un fil
+très clair est légèrement assombri pour rester visible) ; les **sauts** en
 pointillés orange ; des pastilles marquent les pénétrations (masquées au-delà de
 4000 points pour la fluidité, et pendant la simulation).
+
+## Menu contextuel (clic droit)
+
+Un **clic droit** sur une forme ouvre un menu :
+
+- **Type de points** ▸ Contour cousu / Remplissage tatami / Colonne satin (le
+  type courant est coché) — bascule instantanée et annulable ;
+- **Orientation du remplissage…** (si la forme est un tatami) ;
+- **Calques** — les mêmes interrupteurs que le menu Affichage.
+
+## Poignée de rotation (orientation à la souris)
+
+Quand un remplissage tatami est sélectionné, un **axe bleu avec une poignée**
+apparaît en son centre. Faites glisser la poignée pour tourner l'orientation des
+fils ; l'angle est appliqué au relâchement (annulable). C'est l'équivalent
+visuel de *Orientation du remplissage…*.
+
+## Panneau Filtres d'affichage
+
+Dock (à droite, dès qu'il existe des objets) pour **isoler** ce qu'on regarde :
+
+- **Types de points** : cases Contour / Tatami / Satin ;
+- **Taille min. des zones** : masque les zones dont l'aire source est sous le
+  seuil (mm²) — utile pour cacher les micro-régions ;
+- **Couleurs de fil** : une case par couleur distincte, pour n'afficher que
+  certains fils.
+
+Ces filtres n'affectent que **l'affichage** (pas l'export ni les points générés).
 
 ## Menu Analyse et panneau
 

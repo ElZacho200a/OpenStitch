@@ -26,6 +26,11 @@ et des fonctionnalités manquantes identifiables. **Aucune date n'est annoncée.
 ## Long terme (avancé)
 
 - **Auto-satin** par axe médian / straight skeleton et décomposition en colonnes.
+  Fondations **déjà en place** (module `auto_satin` : rasterisation, transformée
+  de distance, squelette Zhang-Suen, graphe, satinabilité) ; reste à générer les
+  rails/barreaux (qui se terminent sur le contour, donc sans débordement) et à
+  les brancher sur la génération. En attendant, l'auto-numérisation route les
+  zones vers le **tatami** (le satin naïf, qui débordait, est désactivé).
 - **Remplissages avancés** : concentrique, spirale, radial, guidé (champ de
   direction), motifs.
 - **Autres formats** : PES, JEF, EXP, VP3.

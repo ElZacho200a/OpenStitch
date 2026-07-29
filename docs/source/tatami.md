@@ -55,8 +55,18 @@ Note : Ce comportement corrige deux défauts successifs signalés en revue (les
 remplissages débordaient sur les régions à trou ; puis la justification
 « chevauchement ⇒ liaison intérieure » était trop optimiste). Vérification via
 `openstitch-cli stitchdebug --shape ring` : sur un anneau, 0 couture traverse le
-trou et le contournement ne coûte que ~2 sauts. Un test couvre aussi une forme
-concave en U (aucune couture ne traverse l'encoche).
+trou et le contournement ne coûte que ~2 sauts. Des tests couvrent aussi une
+forme concave en **U** (aucune couture ne traverse l'encoche) et une forme en
+**L**, où l'on échantillonne chaque segment cousu à **cinq angles** (0/20/45/90/135°)
+pour vérifier qu'**aucun ne sort de la région** (le test tolère les coutures qui
+*longent* le bord). C'est ce filet qui garantit que router les zones vers le
+tatami — plutôt que vers le satin naïf — supprime le débordement (voir *Colonne
+satin*).
+
+Choix de l'auto-numérisation : comme le satin naïf déborde, **toute zone
+remplissable est désormais numérisée en tatami** par défaut (fines bandes
+comprises). Le tatami est le remplissage sûr tant que le vrai moteur satin
+(squelette) n'est pas branché.
 
 Limitation : `jump` désigne un **saut machine** (aiguille levée), pas un
 véritable *travel stitch* cousu-caché (underpath). Le routage par déplacements
@@ -85,6 +95,15 @@ Le paramètre principal de **densité** est `row_spacing` (entre rangées) — �
 pas confondre avec `stitch_length` (le long d'une rangée). Le retrait de bord
 est appliqué **en amont** (offset intérieur du polygone) par `generate_tatami`.
 
+### Orientation éditable (angle des fils)
+
+L'`angle` se règle à la création, puis se **modifie après coup** : soit
+numériquement (menu *Broderie ▸ Orientation du remplissage…*, ou clic droit sur
+la forme), soit **directement dans la scène** en faisant glisser une **poignée de
+rotation** (un axe bleu au centre du remplissage). Le nouvel angle est appliqué
+au relâchement via une commande annulable (`SetFillAngleCommand`) ; les points
+sont régénérés (ADR-014). L'angle est modulo 180° (orientation d'une droite).
+
 > Validation physique : non effectuée. Ces valeurs sont des points de départ
 > logiciels, pas des réglages éprouvés sur machine.
 
@@ -101,5 +120,8 @@ imposés et les motifs de phase avancés sont **prévus**, non implémentés.
   `connector_invalid` (validation géométrique des trajets cousus).
 - `libs/stitch_generation/src/generate.cpp` — `generate_tatami`, `emit_fill`.
 - `libs/geometry/src/offset.cpp` — `inset_path_set` (retrait de bord).
-- Tests : `tests/unit/stitch/test_tatami.cpp` (invariant : aucune couture dans le
-  trou), `tests/unit/geometry/test_offset.cpp`.
+- Tests : `tests/unit/stitch/test_tatami.cpp` (invariants : aucune couture dans
+  le trou ; aucune couture hors région sur une forme en L à tous les angles),
+  `tests/unit/geometry/test_offset.cpp`.
+- `libs/commands/.../project_commands.hpp` — `SetFillAngleCommand` (orientation),
+  `ConvertFillsToTatamiCommand`, `SetStitchTypeCommand`.
