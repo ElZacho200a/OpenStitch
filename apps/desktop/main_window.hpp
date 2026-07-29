@@ -82,6 +82,9 @@ private slots:
 private:
     void buildMenus();
     void buildMainToolbar();
+    void buildContextToolbar();
+    // Reconstruit la barre contextuelle selon la sélection (actions rapides).
+    void updateContextToolbar();
     void buildToolPalette();
     // Change le mode d'interaction du canevas (Sélection / Déplacer / Rectangle),
     // synchronise les cases d'outils, le curseur et la barre d'état.
@@ -154,6 +157,8 @@ private:
 
     // Barres d'outils et modes d'interaction.
     QToolBar* mainToolbar_{nullptr};
+    QToolBar* contextToolbar_{nullptr};
+    QString contextSig_;  // signature de l'état affiché (évite les reconstructions)
     QToolBar* toolPalette_{nullptr};
     QAction* toolSelectAct_{nullptr};
     QAction* toolPanAct_{nullptr};

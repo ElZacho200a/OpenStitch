@@ -41,6 +41,7 @@
 #include "ui_icons.hpp"
 #include <QShortcut>
 #include <QToolBar>
+#include <QToolButton>
 #include "openstitch/autodigitize/autodigitize.hpp"
 #include "openstitch/formats/dst.hpp"
 #include "openstitch/optimization/order.hpp"
@@ -99,6 +100,8 @@ MainWindow::MainWindow() {
     buildDocumentPanel();
     buildFilterPanel();
     buildMainToolbar();
+    addToolBarBreak();  // la barre contextuelle sur sa propre rangée
+    buildContextToolbar();
     buildToolPalette();
     addToolBarBreak();  // la barre de simulation occupe sa propre rangée
     buildSimulationToolbar();
@@ -1336,6 +1339,105 @@ void MainWindow::buildMainToolbar() {
     mainToolbar_->addAction(exportDstAct_);
 }
 
+void MainWindow::buildContextToolbar() {
+    contextToolbar_ = addToolBar(tr("Barre contextuelle"));
+    contextToolbar_->setObjectName(QStringLiteral("contextToolbar"));
+    contextToolbar_->setMovable(false);
+    updateContextToolbar();
+}
+
+void MainWindow::updateContextToolbar() {
+    if (contextToolbar_ == nullptr) {
+        return;
+    }
+    const document::EmbroideryObject* emb = nullptr;
+    if (selectedEmbroidery_) {
+        emb = project_.findEmbroidery(*selectedEmbroidery_);
+    }
+    if (emb == nullptr && selectedObject_) {
+        emb = embroideryForVector(*selectedObject_);
+    }
+    const bool hasVec = selectedObject_.has_value();
+    const bool hasReg = selectedRegion_ && project_.segmentation;
+    const int pts = sequence_ ? static_cast<int>(sequence_->commands.size()) : 0;
+
+    // Signature de l'état : évite de reconstruire (et de faire clignoter) la barre
+    // quand rien de pertinent n'a changé.
+    QString sig;
+    if (emb != nullptr) {
+        sig = QStringLiteral("E%1t%2").arg(emb->id.value).arg(stitchTypeIndex(*emb));
+    } else if (hasVec) {
+        sig = QStringLiteral("V%1").arg(selectedObject_->value);
+    } else if (hasReg) {
+        sig = QStringLiteral("R%1").arg(selectedRegion_->value);
+    } else {
+        sig = QStringLiteral("N%1").arg(pts);
+    }
+    if (sig == contextSig_) {
+        return;
+    }
+    contextSig_ = sig;
+    contextToolbar_->clear();
+
+    if (emb != nullptr) {
+        const ObjectId id = emb->id;
+        contextToolbar_->addWidget(new QLabel(tr("Type de points :  "), contextToolbar_));
+        const int current = stitchTypeIndex(*emb);
+        const QString names[] = {tr("Contour"), tr("Tatami"), tr("Satin")};
+        for (int t = 0; t < 3; ++t) {
+            auto* btn = new QToolButton(contextToolbar_);
+            btn->setText(names[t]);
+            btn->setCheckable(true);
+            btn->setChecked(t == current);
+            connect(btn, &QToolButton::clicked, this, [this, id, t] { setStitchType(id, t); });
+            contextToolbar_->addWidget(btn);
+        }
+        if (emb->is_tatami()) {
+            contextToolbar_->addSeparator();
+            auto* rot = contextToolbar_->addAction(tr("Orientation…"));
+            connect(rot, &QAction::triggered, this, &MainWindow::changeFillAngle);
+        }
+    } else if (hasVec) {
+        contextToolbar_->addWidget(
+            new QLabel(tr("Objet vectoriel  ·  créer un objet de broderie :  "), contextToolbar_));
+        const auto addCreate = [this](const QString& text, void (MainWindow::*slot)()) {
+            auto* act = contextToolbar_->addAction(text);
+            connect(act, &QAction::triggered, this, slot);
+        };
+        addCreate(tr("Contour"), &MainWindow::createRunningStitchObject);
+        addCreate(tr("Tatami"), &MainWindow::createTatamiObject);
+        addCreate(tr("Satin"), &MainWindow::createSatinObject);
+    } else if (hasReg) {
+        const auto* region = project_.segmentation->find(*selectedRegion_);
+        if (region != nullptr) {
+            const double mmPerPx = project_.mm_per_px.value;
+            const double areaMm2 = region->pixel_count * mmPerPx * mmPerPx;
+            contextToolbar_->addWidget(new QLabel(
+                tr("Région %1  ·  %2 mm²    ").arg(region->id.value).arg(areaMm2, 0, 'f', 1),
+                contextToolbar_));
+        }
+        contextToolbar_->addAction(mergeAct_);  // Fusionner (mode)
+        auto* del = contextToolbar_->addAction(tr("Supprimer"));
+        connect(del, &QAction::triggered, this, &MainWindow::deleteSelectedRegion);
+        auto* vec = contextToolbar_->addAction(tr("Vectoriser"));
+        connect(vec, &QAction::triggered, this, &MainWindow::vectorizeSelectedRegion);
+    } else if (project_.hasImage() && sequence_) {
+        const auto st = stitch::compute_stats(*sequence_);
+        const double w = to_millimeters(st.bounds.max.x - st.bounds.min.x).value;
+        const double h = to_millimeters(st.bounds.max.y - st.bounds.min.y).value;
+        contextToolbar_->addWidget(new QLabel(
+            tr("Motif : %1 × %2 mm   ·   %3 points   ·   %4 changement(s) de couleur")
+                .arg(w, 0, 'f', 1)
+                .arg(h, 0, 'f', 1)
+                .arg(st.stitches)
+                .arg(st.color_changes),
+            contextToolbar_));
+    } else {
+        contextToolbar_->addWidget(new QLabel(
+            tr("Ouvrez une image, ou sélectionnez une région ou un objet."), contextToolbar_));
+    }
+}
+
 void MainWindow::buildToolPalette() {
     toolPalette_ = new QToolBar(tr("Outils"), this);
     toolPalette_->setObjectName(QStringLiteral("toolPalette"));
@@ -2297,6 +2399,7 @@ void MainWindow::updateActions() {
 
     updateInspector();
     syncDocumentSelection();
+    updateContextToolbar();
 }
 
 }  // namespace openstitch::desktop
