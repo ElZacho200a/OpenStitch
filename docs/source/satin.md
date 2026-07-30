@@ -196,9 +196,39 @@ Vérifié : center/edge/zigzag = 4 passes distinctes ordonnées, pull élargit *
 seul côté** (asymétrique), push étend le bout, déterminisme, aller-retour `.osp`
 (SVG `tests/golden/auto-satin/lot4-*.svg` : sous-couches en vert).
 
-Reste (lots suivants) : entrée/sortie + lock stitches (Lot 5), routage
-multi-colonnes (Lot 6), tatami avancé (Lot 7). Voir
-`docs/stitch-feature-gap-audit.md`.
+Reste (lots suivants) : routage multi-colonnes (Lot 6), tatami avancé (Lot 7).
+Voir `docs/stitch-feature-gap-audit.md`.
+
+## Entrée/sortie et points de fixation (Lot 5)
+
+*État : Présent · Testé numériquement · Validé visuellement (SVG).* Éditables
+(inspecteur) et persistés (`.osp`).
+
+**Points d'entrée/sortie** (§12) : `entry_point` et `exit_point` (optionnels)
+orientent la couture. Le satin est **retourné** si son extrémité de départ est
+plus proche du point de sortie que du point d'entrée (coût = somme des distances
+extrémités↔points) — jamais de réordonnancement partiel, seulement le sens. Sans
+point, l'orientation issue du générateur est conservée.
+
+**Points de fixation** (`SatinLock`, émis en passe `Lock` uniquement) : ancrent
+le fil au **début** et à la **fin** de l'objet, jamais par sous-passe (un lock au
+départ, un à l'arrivée). Chaque bout se règle indépendamment
+(`lock_start`/`lock_end`), avec longueur (`lock_length`) et nombre de passages
+(`lock_passes`) communs.
+
+- **`None`** : aucun point de fixation.
+- **`BackAndForth`** : aller-retour court le long du premier/dernier point.
+- **`Triangle`** : petit triangle d'ancrage.
+- **`MicroZigzag`** : micro-zigzag progressant dans l'axe de couture.
+
+Toutes les formes sont **bornées** (`lock_length`, défaut 0,8 mm) et ancrées à
+l'extrémité exacte du satin (continuité : pas de saut parasite grâce à
+l'enchaînement de passes à position identique).
+
+Vérifié : `None` → vide ; les autres progressent dans l'axe de couture et restent
+bornés ; le point d'entrée fait démarrer la couture à la bonne extrémité ; locks
+en passe `Lock`, exactement deux groupes (début/fin) ; aller-retour `.osp` des
+champs Lot 5 (SVG `tests/golden/auto-satin/lot5-lock-*.svg` : fixations en rouge).
 
 ## Implémentation associée
 
@@ -206,7 +236,9 @@ multi-colonnes (Lot 6), tatami avancé (Lot 7). Voir
 - `libs/stitch_generation/src/satin.cpp` — `fill_satin`, `fill_satin_columns`
   (par barreaux), `rails_from_contour`.
 - `libs/stitch_generation/src/generate.cpp` — `generate_satin` (route vers
-  `fill_satin_columns` si barreaux présents).
+  `fill_satin_columns` si barreaux présents, oriente par entrée/sortie, émet les
+  locks).
+- `libs/stitch_generation/src/lock.cpp` — `lock_stitches`, `LockType` (Lot 5).
 - `libs/auto_satin/.../satin_column.hpp` + `src/satin_column.cpp` —
   `build_satin_columns`, `SatinColumnGeometry`, `SatinRung` (moteur géométrique).
 - `libs/auto_satin/src/debug_export.cpp` — `columns_to_svg`.

@@ -44,7 +44,8 @@ fonctionnalité, vérifié dans le code.
   (`auto_satin::build_satin_columns`, Lot 1) et d'une **génération par barreaux**
   (`fill_satin_columns`, Lot 2), points courts / split / terminaisons (Lot 3) et
   **sous-couches (center/edge/zigzag) + compensation pull/push** (Lot 4, passes
-  distinctes). Restent lock (Lot 5), routage (Lot 6). Le satin **auto naïf** reste désactivé.
+  distinctes), **points d'entrée/sortie + points de fixation (lock)** (Lot 5).
+  Reste le routage multi-colonnes (Lot 6). Le satin **auto naïf** reste désactivé.
   Le **tatami** reste une version de base (sous-couches/underpath à venir).
 - Aucune validation sur machine à broder réelle.
 

@@ -29,7 +29,10 @@ labels peut faire plusieurs mégaoctets).
 - `embroideryObjects` : id, nom, couleur, visibilité, vecteur source, et
   `params` (variant `running` | `tatami` | `satin`). Le `satin` porte ses deux
   rails et, depuis le schéma v2, ses **barreaux** (`rungs` : liste de segments
-  `{ax, ay, bx, by}` en µm) — optionnels et rétrocompatibles.
+  `{ax, ay, bx, by}` en µm), ses réglages de finition (points courts, split,
+  terminaisons), de sous-couche/compensation, et de **fixation/entrée-sortie**
+  (`lockStart`/`lockEnd`, `lockLength`, `lockPasses`, `entryPoint`/`exitPoint`) —
+  tous **optionnels** et rétrocompatibles (clés absentes → valeurs par défaut).
 
 ## Versionnement et validation
 
