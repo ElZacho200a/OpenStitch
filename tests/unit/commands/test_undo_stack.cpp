@@ -294,6 +294,25 @@ TEST_CASE("SetStitchParamsCommand : edite les parametres, undo restaure exact") 
           Micrometers{800});
 }
 
+TEST_CASE("SetCanvasCommand : change la taille du cadre, undo restaure") {
+    document::Project project;
+    UndoStack stack;
+    REQUIRE(project.canvas.width == Micrometers{100'000});
+
+    document::Canvas c;
+    c.width = Micrometers{160'000};
+    c.height = Micrometers{260'000};
+    stack.execute(std::make_unique<SetCanvasCommand>(c), project);
+    CHECK(project.canvas.width == Micrometers{160'000});
+    CHECK(project.canvas.height == Micrometers{260'000});
+
+    CHECK(stack.undo(project));
+    CHECK(project.canvas.width == Micrometers{100'000});
+    CHECK(project.canvas.height == Micrometers{100'000});
+    CHECK(stack.redo(project));
+    CHECK(project.canvas.width == Micrometers{160'000});
+}
+
 TEST_CASE("une nouvelle commande invalide la branche redo") {
     document::Project project;
     UndoStack stack;

@@ -6,6 +6,7 @@
 
 #include "openstitch/core/ids.hpp"
 #include "openstitch/core/units.hpp"
+#include "openstitch/document/canvas.hpp"
 #include "openstitch/document/embroidery_object.hpp"
 #include "openstitch/document/vector_object.hpp"
 #include "openstitch/image/image.hpp"
@@ -22,6 +23,7 @@ namespace openstitch::document {
 struct Project {
     image::Image original;                    // jamais modifiée après l'import
     Millimeters mm_per_px{25.4 / 96.0};       // résolution de travail
+    Canvas canvas;                            // cadre de broderie (défaut 100x100 mm)
     std::vector<image::ImageOp> ops;          // pile de prétraitements
 
     // Segmentation de l'image de travail. Invalidée (remise à nullopt) par

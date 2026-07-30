@@ -216,6 +216,7 @@ json project_to_json(const document::Project& project) {
     json j;
     j["mmPerPx"] = project.mm_per_px.value;
     j["objectIdLast"] = project.object_ids.last();
+    j["canvas"] = {{"width", project.canvas.width.value}, {"height", project.canvas.height.value}};
 
     j["ops"] = json::array();
     for (const auto& op : project.ops) {
@@ -277,6 +278,12 @@ Result<document::Project> project_from_json(const json& j) {
     try {
         project.mm_per_px = Millimeters{j.at("mmPerPx").get<double>()};
         project.object_ids.reset(j.value("objectIdLast", std::uint64_t{0}));
+        // Cadre : optionnel (les projets antérieurs n'en avaient pas -> 100x100).
+        if (j.contains("canvas")) {
+            const auto& c = j.at("canvas");
+            project.canvas.width = Micrometers{c.value("width", 100'000)};
+            project.canvas.height = Micrometers{c.value("height", 100'000)};
+        }
 
         for (const auto& op : j.at("ops")) {
             auto parsed = op_from_json(op);

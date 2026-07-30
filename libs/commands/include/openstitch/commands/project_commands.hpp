@@ -350,6 +350,24 @@ private:
     document::StitchParams previous_{document::RunningStitchParams{}};
 };
 
+// Change la taille du cadre de broderie (persistée dans le .osp). L'analyse
+// « hors cadre » et l'affichage du cadre s'y réfèrent.
+class SetCanvasCommand final : public ICommand {
+public:
+    explicit SetCanvasCommand(document::Canvas canvas) : canvas_(canvas) {}
+
+    void apply(document::Project& project) override {
+        previous_ = project.canvas;
+        project.canvas = canvas_;
+    }
+    void revert(document::Project& project) override { project.canvas = previous_; }
+    [[nodiscard]] std::string name() const override { return "Taille du cadre"; }
+
+private:
+    document::Canvas canvas_;
+    document::Canvas previous_{};
+};
+
 // Modifie les PARAMÈTRES de couture d'un objet (même type de point), depuis
 // l'inspecteur. Remplace les `StitchParams` et mémorise les précédents pour un
 // retour exact. Généralise `SetFillAngleCommand` à tous les champs.

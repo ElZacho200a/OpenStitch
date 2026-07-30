@@ -29,6 +29,8 @@ geometry::Path square_path() {
 document::Project rich_project() {
     document::Project project;
     project.mm_per_px = Millimeters{0.25};
+    project.canvas.width = Micrometers{180'000};
+    project.canvas.height = Micrometers{130'000};
 
     project.original.width = 4;
     project.original.height = 2;
@@ -110,6 +112,8 @@ TEST_CASE("projet complet : save puis load = memes donnees") {
 
     CHECK(loaded->mm_per_px.value == original.mm_per_px.value);
     CHECK(loaded->object_ids.last() == original.object_ids.last());
+    CHECK(loaded->canvas.width == original.canvas.width);
+    CHECK(loaded->canvas.height == original.canvas.height);
 
     // Image restauree (PNG sans perte).
     CHECK(loaded->original.width == 4);

@@ -67,6 +67,7 @@ private slots:
     // Le type satin exige des rails, construits depuis le contour source.
     void setStitchType(ObjectId embroideryId, int type);
     void showStatistics();
+    void setHoopSize();
     void exportDst();
     void importDst();
     void saveProject();
@@ -125,6 +126,8 @@ private:
     // Centre représentatif d'un objet de broderie (pour l'estimation du coût).
     [[nodiscard]] Vec2um embroideryCentroid(const document::EmbroideryObject& object) const;
     void executeOp(image::ImageOp op);
+    // Applique la taille du cadre du document à la vue (si elle a changé).
+    void applyCanvasToView();
     void refreshImage();
     void displayImage(const image::Image& img);
     // Rendu en deux couches persistantes : la couche « base » (image, vecteurs,

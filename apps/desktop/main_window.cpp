@@ -78,9 +78,7 @@ MainWindow::MainWindow() {
     scene_ = new QGraphicsScene(this);
     view_ = new CanvasView(scene_, this);
 
-    const document::Canvas canvas;
-    view_->setCanvasSizeMm(
-        QSizeF(to_millimeters(canvas.width).value, to_millimeters(canvas.height).value));
+    applyCanvasToView();
 
     auto* central = new QWidget(this);
     auto* grid = new QGridLayout(central);
@@ -275,6 +273,11 @@ void MainWindow::buildMenus() {
     connect(fitAct, &QAction::triggered, view_, &CanvasView::fitCanvas);
 
     viewMenu->addSeparator();
+    auto* hoopAct = viewMenu->addAction(tr("Taille du &cadre…"));
+    hoopAct->setToolTip(tr("Définit la zone physique de broderie (cadre)."));
+    connect(hoopAct, &QAction::triggered, this, &MainWindow::setHoopSize);
+
+    viewMenu->addSeparator();
     auto* themeMenu = viewMenu->addMenu(tr("&Thème"));
     auto* themeGroup = new QActionGroup(this);
     const auto addThemeAct = [&](const QString& label, ThemeMode m) {
@@ -372,6 +375,52 @@ void MainWindow::redo() {
     }
 }
 
+void MainWindow::applyCanvasToView() {
+    const QSizeF want(to_millimeters(project_.canvas.width).value,
+                      to_millimeters(project_.canvas.height).value);
+    if (view_->canvasSizeMm() != want) {
+        view_->setCanvasSizeMm(want);
+    }
+}
+
+void MainWindow::setHoopSize() {
+    QDialog dialog(this);
+    dialog.setWindowTitle(tr("Taille du cadre de broderie"));
+    auto* layout = new QFormLayout(&dialog);
+    layout->addRow(new QLabel(
+        tr("Zone physique dans laquelle le motif doit tenir.\n"
+           "L'analyse signale les points hors de ce cadre."),
+        &dialog));
+    const auto makeSpin = [&](double valueMm) {
+        auto* spin = new QDoubleSpinBox(&dialog);
+        spin->setRange(10.0, 500.0);
+        spin->setDecimals(1);
+        spin->setSuffix(tr(" mm"));
+        spin->setValue(valueMm);
+        return spin;
+    };
+    auto* w = makeSpin(to_millimeters(project_.canvas.width).value);
+    auto* h = makeSpin(to_millimeters(project_.canvas.height).value);
+    layout->addRow(tr("Largeur :"), w);
+    layout->addRow(tr("Hauteur :"), h);
+    auto* buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dialog);
+    connect(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
+    connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
+    layout->addRow(buttons);
+    if (dialog.exec() != QDialog::Accepted) {
+        return;
+    }
+    document::Canvas c;
+    c.width = to_micrometers(Millimeters{w->value()});
+    c.height = to_micrometers(Millimeters{h->value()});
+    undoStack_.execute(std::make_unique<commands::SetCanvasCommand>(c), project_);
+    applyCanvasToView();
+    refreshImage();
+    updateActions();
+    statusBar()->showMessage(
+        tr("Cadre : %1 × %2 mm").arg(w->value(), 0, 'f', 1).arg(h->value(), 0, 'f', 1));
+}
+
 void MainWindow::adjustBrightnessContrast() {
     if (!project_.hasImage()) {
         return;
@@ -423,6 +472,7 @@ void MainWindow::onCropSelected(QRectF rectMm) {
 }
 
 void MainWindow::refreshImage() {
+    applyCanvasToView();  // taille du cadre (peut avoir changé : réglage, undo, chargement)
     if (!project_.hasImage()) {
         processed_ = {};
         displayImage(processed_);  // affiche quand même une séquence importée
@@ -1373,7 +1423,10 @@ void MainWindow::updateContextToolbar() {
     } else if (hasReg) {
         sig = QStringLiteral("R%1").arg(selectedRegion_->value);
     } else {
-        sig = QStringLiteral("N%1").arg(pts);
+        sig = QStringLiteral("N%1_%2x%3")
+                  .arg(pts)
+                  .arg(project_.canvas.width.value)
+                  .arg(project_.canvas.height.value);
     }
     if (sig == contextSig_) {
         return;
@@ -1423,20 +1476,28 @@ void MainWindow::updateContextToolbar() {
         connect(del, &QAction::triggered, this, &MainWindow::deleteSelectedRegion);
         auto* vec = contextToolbar_->addAction(tr("Vectoriser"));
         connect(vec, &QAction::triggered, this, &MainWindow::vectorizeSelectedRegion);
-    } else if (project_.hasImage() && sequence_) {
-        const auto st = stitch::compute_stats(*sequence_);
-        const double w = to_millimeters(st.bounds.max.x - st.bounds.min.x).value;
-        const double h = to_millimeters(st.bounds.max.y - st.bounds.min.y).value;
-        contextToolbar_->addWidget(new QLabel(
-            tr("Motif : %1 × %2 mm   ·   %3 points   ·   %4 changement(s) de couleur")
-                .arg(w, 0, 'f', 1)
-                .arg(h, 0, 'f', 1)
-                .arg(st.stitches)
-                .arg(st.color_changes),
-            contextToolbar_));
     } else {
-        contextToolbar_->addWidget(new QLabel(
-            tr("Ouvrez une image, ou sélectionnez une région ou un objet."), contextToolbar_));
+        if (project_.hasImage() && sequence_) {
+            const auto st = stitch::compute_stats(*sequence_);
+            const double w = to_millimeters(st.bounds.max.x - st.bounds.min.x).value;
+            const double h = to_millimeters(st.bounds.max.y - st.bounds.min.y).value;
+            contextToolbar_->addWidget(new QLabel(
+                tr("Motif : %1 × %2 mm   ·   %3 points   ·   %4 changement(s) de couleur    ")
+                    .arg(w, 0, 'f', 1)
+                    .arg(h, 0, 'f', 1)
+                    .arg(st.stitches)
+                    .arg(st.color_changes),
+                contextToolbar_));
+        } else {
+            contextToolbar_->addWidget(new QLabel(
+                tr("Ouvrez une image, ou sélectionnez une région ou un objet.    "),
+                contextToolbar_));
+        }
+        auto* hoop = contextToolbar_->addAction(
+            tr("Cadre : %1 × %2 mm…")
+                .arg(to_millimeters(project_.canvas.width).value, 0, 'f', 0)
+                .arg(to_millimeters(project_.canvas.height).value, 0, 'f', 0));
+        connect(hoop, &QAction::triggered, this, &MainWindow::setHoopSize);
     }
 }
 
@@ -1736,7 +1797,7 @@ void MainWindow::runAnalysis() {
         return;
     }
     stitch_analysis::AnalysisOptions opts;
-    const document::Canvas canvas;  // cadre courant (100 x 100 mm par défaut)
+    const document::Canvas& canvas = project_.canvas;  // cadre défini par l'utilisateur
     opts.hoop = stitch::BoundsUm{Vec2um{Micrometers{-canvas.width.value / 2},
                                         Micrometers{-canvas.height.value / 2}},
                                  Vec2um{Micrometers{canvas.width.value / 2},
