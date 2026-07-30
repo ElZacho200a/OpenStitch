@@ -143,9 +143,35 @@ Vérifié : espacement médian régulier, barreaux exacts, rails de longueurs
 différentes, déterminisme (`tests/unit/stitch/test_satin.cpp`) ; zigzag superposé
 dans les SVG `tests/golden/auto-satin/`.
 
-Reste (lots suivants) : short stitches (Lot 3), split stitches (Lot 4),
-terminaisons (Lot 5), sous-couches détaillées et compensation
-push/pull (Lots 6-7). Voir `docs/stitch-feature-gap-audit.md`.
+## Finitions : points courts, split, terminaisons (Lot 3)
+
+*État : Présent · Testé numériquement · Validé visuellement (SVG).* Toutes ces
+options sont **désactivées par défaut** (comportement inchangé) et éditables dans
+l'inspecteur (section satin) ; elles sont persistées dans le `.osp`.
+
+- **Points courts** (`ShortStitchMode`) : dans un virage serré (le rail intérieur
+  avance beaucoup moins que l'extérieur), les pénétrations intérieures sont
+  *rentrées* vers l'axe (`SingleInset`, `MultiLevelInset` = motif triangulaire de
+  profondeurs) pour ne pas s'entasser sur le bord, ou allégées
+  (`RemoveAndRedistribute` : un fil serré sur deux, jamais un barreau, jamais deux
+  d'affilée).
+- **Split** (`SplitStitchMode`) : une traversée plus longue que `max_stitch_length`
+  reçoit des pénétrations intermédiaires. `Simple` (colinéaire régulier),
+  `Staggered` (décalage cyclique) et `DeterministicJitter` (variation
+  **reproductible**, graine = identifiant de l'objet) évitent une **ligne centrale**
+  visible. Jamais d'aléa non déterministe.
+- **Terminaisons** (`SatinCapType`) : `Flat` (barreau final), `Rounded` (réduction
+  arrondie de largeur), `Tapered` (effilé vers une pointe **sans** empiler sur une
+  coordonnée unique — largeur minimale ~18 %), `Automatic`.
+
+Vérifié : inset modifie le rail intérieur en virage, `RemoveAndRedistribute`
+réduit les pénétrations, split ajoute des points décalés (staggered ≠ ligne
+centrale ; jitter déterministe), taper réduit la largeur au bout sans l'annuler
+(SVG `tests/golden/auto-satin/lot3-*.svg` : effilé 5,00 → 0,91 mm).
+
+Reste (lots suivants) : sous-couches détaillées + compensation push/pull (Lot 4),
+entrée/sortie + lock stitches (Lot 5), routage multi-colonnes (Lot 6). Voir
+`docs/stitch-feature-gap-audit.md`.
 
 ## Implémentation associée
 
