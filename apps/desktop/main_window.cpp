@@ -42,6 +42,7 @@
 #include "properties_panel.hpp"
 #include "ui_icons.hpp"
 #include "workflow_panel.hpp"
+#include <QSettings>
 #include <QShortcut>
 #include <QToolBar>
 #include <QToolButton>
@@ -117,6 +118,19 @@ MainWindow::MainWindow() {
                     analysisDock_}) {
         if (d != nullptr) {
             d->setAccessibleName(d->windowTitle());
+        }
+    }
+
+    // Restaure la disposition de l'interface (préférences UI, pas de données
+    // métier — celles-ci restent dans le .osp). Les panneaux vides seront
+    // masqués ensuite par les refresh.
+    {
+        QSettings s(QStringLiteral("OpenStitch"), QStringLiteral("OpenStitch Studio"));
+        if (s.contains(QStringLiteral("ui/geometry"))) {
+            restoreGeometry(s.value(QStringLiteral("ui/geometry")).toByteArray());
+        }
+        if (s.contains(QStringLiteral("ui/windowState"))) {
+            restoreState(s.value(QStringLiteral("ui/windowState")).toByteArray());
         }
     }
 
@@ -454,6 +468,12 @@ void MainWindow::updateEmptyState() {
 }
 
 void MainWindow::closeEvent(QCloseEvent* event) {
+    // Sauve les préférences d'interface (géométrie + disposition des panneaux).
+    {
+        QSettings s(QStringLiteral("OpenStitch"), QStringLiteral("OpenStitch Studio"));
+        s.setValue(QStringLiteral("ui/geometry"), saveGeometry());
+        s.setValue(QStringLiteral("ui/windowState"), saveState());
+    }
     if (!isWindowModified()) {
         event->accept();
         return;
@@ -1819,6 +1839,7 @@ void MainWindow::syncDocumentSelection() {
 
 void MainWindow::buildPropertiesPanel() {
     propertiesDock_ = new QDockWidget(tr("Propriétés"), this);
+    propertiesDock_->setObjectName(QStringLiteral("propertiesDock"));
     propertiesDock_->setAllowedAreas(Qt::LeftDockWidgetArea | Qt::RightDockWidgetArea);
     propertiesPanel_ = new PropertiesPanel(propertiesDock_);
     propertiesDock_->setWidget(propertiesPanel_);
@@ -1911,6 +1932,7 @@ void MainWindow::updateInspector() {
 
 void MainWindow::buildAnalysisPanel() {
     analysisDock_ = new QDockWidget(tr("Analyse"), this);
+    analysisDock_->setObjectName(QStringLiteral("analysisDock"));
     analysisDock_->setAllowedAreas(Qt::RightDockWidgetArea | Qt::LeftDockWidgetArea);
     analysisList_ = new QListWidget(analysisDock_);
     analysisDock_->setWidget(analysisList_);
@@ -1999,6 +2021,7 @@ Vec2um MainWindow::embroideryCentroid(const document::EmbroideryObject& object) 
 
 void MainWindow::buildOrderPanel() {
     orderDock_ = new QDockWidget(tr("Ordre de couture"), this);
+    orderDock_->setObjectName(QStringLiteral("orderDock"));
     orderDock_->setAllowedAreas(Qt::LeftDockWidgetArea | Qt::RightDockWidgetArea);
     auto* panel = new QWidget(orderDock_);
     auto* layout = new QVBoxLayout(panel);
@@ -2130,6 +2153,7 @@ bool MainWindow::objectPassesFilter(const document::EmbroideryObject& object) co
 
 void MainWindow::buildFilterPanel() {
     filterDock_ = new QDockWidget(tr("Filtres d'affichage"), this);
+    filterDock_->setObjectName(QStringLiteral("filterDock"));
     filterDock_->setAllowedAreas(Qt::LeftDockWidgetArea | Qt::RightDockWidgetArea);
     auto* panel = new QWidget(filterDock_);
     auto* layout = new QVBoxLayout(panel);
@@ -2294,6 +2318,7 @@ void MainWindow::applyOrderStrategy() {
 
 void MainWindow::buildSimulationToolbar() {
     simToolbar_ = addToolBar(tr("Simulation"));
+    simToolbar_->setObjectName(QStringLiteral("simToolbar"));
     simToolbar_->setMovable(false);
 
     simPlayAct_ = simToolbar_->addAction(tr("▶ Lecture"));
