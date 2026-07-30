@@ -555,11 +555,22 @@ void MainWindow::renderBase(const image::Image& img) {
             }
             const bool selected = selectedObject_ && object.id == *selectedObject_;
             const QColor color(object.rgb[0], object.rgb[1], object.rgb[2]);
+            const QPainterPath outline = objectPainterPath(object);
+            // Sélection à DOUBLE contraste : un halo clair sous un trait d'accent,
+            // lisible quel que soit le fond du canevas.
+            if (selected) {
+                QPen halo(AppTheme::instance().tokens().canvasSelectionHalo);
+                halo.setCosmetic(true);
+                halo.setWidth(6);
+                auto* haloItem = scene_->addPath(outline, halo, Qt::NoBrush);
+                haloItem->setZValue(9);
+                baseItems_.append(haloItem);
+            }
             QPen pen(selected ? AppTheme::instance().tokens().canvasSelectionLine
                               : color.darker(150));
             pen.setCosmetic(true);
             pen.setWidth(selected ? 3 : 2);
-            auto* pathItem = scene_->addPath(objectPainterPath(object), pen,
+            auto* pathItem = scene_->addPath(outline, pen,
                                              QBrush(QColor(color.red(), color.green(),
                                                            color.blue(), 90)));
             pathItem->setZValue(10);
@@ -649,6 +660,15 @@ void MainWindow::renderBase(const image::Image& img) {
                     refreshImage();
                     updateActions();
                 });
+            },
+            [this, c](QPointF moved) {  // aperçu : angle affiché pendant le glisser
+                double angle = std::atan2(-(moved.y() - c.y()), moved.x() - c.x());
+                angle = std::fmod(angle, std::numbers::pi);
+                if (angle < 0.0) {
+                    angle += std::numbers::pi;
+                }
+                statusBar()->showMessage(
+                    tr("Orientation : %1°").arg(angle * 180.0 / std::numbers::pi, 0, 'f', 0));
             });
         knob->setPen(QPen(AppTheme::instance().tokens().canvasHandle, 1.5));
         knob->setBrush(QBrush(AppTheme::instance().tokens().canvasHandle.lighter(160)));
@@ -2173,16 +2193,20 @@ void MainWindow::buildSimulationToolbar() {
     simTimer_->setInterval(16);  // ~60 pas/seconde
     connect(simTimer_, &QTimer::timeout, this, &MainWindow::onSimTick);
 
-    simToolbar_->hide();  // visible uniquement quand des points existent
+    // Zone réservée : la barre reste visible (contrôles grisés sans séquence)
+    // pour ne pas faire sauter la mise en page à l'apparition des points.
+    updateSimulationRange();
 }
 
 void MainWindow::updateSimulationRange() {
     const bool hasSeq = sequence_ && !sequence_->commands.empty();
-    simToolbar_->setVisible(hasSeq);
+    simPlayAct_->setEnabled(hasSeq);
+    simSlider_->setEnabled(hasSeq);
     if (!hasSeq) {
         simTimer_->stop();
         simPlayAct_->setChecked(false);
         simStep_ = -1;
+        simLabel_->setText(tr("— / —"));
         return;
     }
     const int n = static_cast<int>(sequence_->commands.size()) - 1;
