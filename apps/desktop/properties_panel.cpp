@@ -175,6 +175,14 @@ void PropertiesPanel::showEmbroidery(const document::EmbroideryObject& object) {
                 zigU->setChecked(p.underlay_zigzag);
                 auto* pullL = mmSpin(to_millimeters(p.pull_left).value, 3.0);
                 auto* pullR = mmSpin(to_millimeters(p.pull_right).value, 3.0);
+                const QStringList lockItems{tr("Aucun"), tr("Aller-retour"), tr("Triangle"),
+                                            tr("Micro-zigzag")};
+                auto* lockStart = new QComboBox(body_);
+                lockStart->addItems(lockItems);
+                lockStart->setCurrentIndex(static_cast<int>(p.lock_start));
+                auto* lockEnd = new QComboBox(body_);
+                lockEnd->addItems(lockItems);
+                lockEnd->setCurrentIndex(static_cast<int>(p.lock_end));
                 form->addRow(tr("Densité :"), density);
                 form->addRow(tr("Compensation de tirage :"), comp);
                 form->addRow(QString(), underlay);
@@ -186,8 +194,11 @@ void PropertiesPanel::showEmbroidery(const document::EmbroideryObject& object) {
                 form->addRow(tr("Fractionnement :"), splitCombo);
                 form->addRow(tr("Longueur max de point :"), maxLen);
                 form->addRow(tr("Terminaison (fin) :"), capCombo);
+                form->addRow(tr("Fixation (début) :"), lockStart);
+                form->addRow(tr("Fixation (fin) :"), lockEnd);
                 const auto emitEdit = [this, id, base, density, comp, underlay, shortCombo,
-                                       splitCombo, capCombo, maxLen, edgeU, zigU, pullL, pullR] {
+                                       splitCombo, capCombo, maxLen, edgeU, zigU, pullL, pullR,
+                                       lockStart, lockEnd] {
                     if (building_) return;
                     document::SatinParams s = base;  // conserve rails + barreaux
                     s.density = to_um(density->value());
@@ -202,6 +213,8 @@ void PropertiesPanel::showEmbroidery(const document::EmbroideryObject& object) {
                     s.split_stitch = static_cast<document::SatinSplit>(splitCombo->currentIndex());
                     s.cap_end = static_cast<document::SatinCap>(capCombo->currentIndex());
                     s.max_stitch_length = to_um(maxLen->value());
+                    s.lock_start = static_cast<document::SatinLock>(lockStart->currentIndex());
+                    s.lock_end = static_cast<document::SatinLock>(lockEnd->currentIndex());
                     emit paramsEdited(id, s);
                 };
                 connect(density, &QDoubleSpinBox::valueChanged, this, emitEdit);
@@ -215,6 +228,8 @@ void PropertiesPanel::showEmbroidery(const document::EmbroideryObject& object) {
                 connect(splitCombo, &QComboBox::currentIndexChanged, this, emitEdit);
                 connect(capCombo, &QComboBox::currentIndexChanged, this, emitEdit);
                 connect(maxLen, &QDoubleSpinBox::valueChanged, this, emitEdit);
+                connect(lockStart, &QComboBox::currentIndexChanged, this, emitEdit);
+                connect(lockEnd, &QComboBox::currentIndexChanged, this, emitEdit);
             }
         },
         object.params);

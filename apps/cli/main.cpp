@@ -21,6 +21,7 @@
 #include "openstitch/document/embroidery_object.hpp"
 #include "openstitch/geometry/path.hpp"
 #include "openstitch/stitch/sequence.hpp"
+#include "openstitch/stitch_generation/lock.hpp"
 #include "openstitch/stitch_generation/running_stitch.hpp"
 #include "openstitch/stitch_generation/satin.hpp"
 #include "openstitch/stitch_generation/tatami.hpp"
@@ -235,7 +236,7 @@ int run_stitchdebug(const std::string& shape, double lengthMm, int repeats,
 }
 
 int run_auto_satin_debug(const std::string& shape, double pixelMm, const std::string& outSvg,
-                         int capEnd, int shortMode, int splitMode, int underlayMask) {
+                         int capEnd, int shortMode, int splitMode, int underlayMask, int lockMode) {
     using namespace openstitch;
     const auto region = auto_satin::make_shape(shape);
     if (!region) {
@@ -303,6 +304,17 @@ int run_auto_satin_debug(const std::string& shape, double pixelMm, const std::st
                 polylineSvg(u.points, "#0a9", 0.05);  // sous-couches (vert)
             }
             polylineSvg(sat.satin, "#333", 0.06);  // couche supérieure
+            // Points de fixation (Lot 5) : ancrés aux extrémités du satin, rouge.
+            if (lockMode > 0 && sat.satin.size() >= 2) {
+                const auto type = static_cast<stitch_generation::LockType>(lockMode);
+                const std::size_t n = sat.satin.size();
+                polylineSvg(stitch_generation::lock_stitches(sat.satin.front(), sat.satin[1], type,
+                                                             Micrometers{800}, 2),
+                            "#c00", 0.06);
+                polylineSvg(stitch_generation::lock_stitches(sat.satin[n - 1], sat.satin[n - 2],
+                                                             type, Micrometers{800}, 2),
+                            "#c00", 0.06);
+            }
         }
         if (const auto pos = svg.rfind("</svg>"); pos != std::string::npos) {
             svg.insert(pos, overlay);
@@ -377,6 +389,9 @@ int main(int argc, char** argv) {
     as_cmd->add_option("--split", as_split, "Split : 0 off, 1 simple, 2 décalé, 3 jitter");
     int as_underlay = 0;
     as_cmd->add_option("--underlay", as_underlay, "Sous-couches (masque : 1 center, 2 edge, 4 zigzag)");
+    int as_lock = 0;
+    as_cmd->add_option("--lock", as_lock,
+                       "Fixation : 0 off, 1 aller-retour, 2 triangle, 3 micro-zigzag");
 
     CLI11_PARSE(app, argc, argv);
 
@@ -394,7 +409,7 @@ int main(int argc, char** argv) {
     }
     if (as_cmd->parsed()) {
         return run_auto_satin_debug(as_shape, as_pixel, as_out, as_cap, as_short, as_split,
-                                    as_underlay);
+                                    as_underlay, as_lock);
     }
     return 0;
 }

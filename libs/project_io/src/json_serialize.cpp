@@ -191,7 +191,17 @@ json params_to_json(const document::StitchParams& params) {
                      {"pullLeft", p.pull_left.value},
                      {"pullRight", p.pull_right.value},
                      {"pushStart", p.push_start.value},
-                     {"pushEnd", p.push_end.value}};
+                     {"pushEnd", p.push_end.value},
+                     {"lockStart", static_cast<int>(p.lock_start)},
+                     {"lockEnd", static_cast<int>(p.lock_end)},
+                     {"lockLength", p.lock_length.value},
+                     {"lockPasses", p.lock_passes}};
+                if (p.entry_point) {
+                    j["entryPoint"] = {{"x", p.entry_point->x.value}, {"y", p.entry_point->y.value}};
+                }
+                if (p.exit_point) {
+                    j["exitPoint"] = {{"x", p.exit_point->x.value}, {"y", p.exit_point->y.value}};
+                }
             }
             return j;
         },
@@ -244,6 +254,18 @@ Result<document::StitchParams> params_from_json(const json& j) {
         p.pull_right = Micrometers{j.value("pullRight", 0)};
         p.push_start = Micrometers{j.value("pushStart", 0)};
         p.push_end = Micrometers{j.value("pushEnd", 0)};
+        p.lock_start = static_cast<document::SatinLock>(j.value("lockStart", 0));
+        p.lock_end = static_cast<document::SatinLock>(j.value("lockEnd", 0));
+        p.lock_length = Micrometers{j.value("lockLength", 800)};
+        p.lock_passes = j.value("lockPasses", 2);
+        if (j.contains("entryPoint")) {
+            p.entry_point = Vec2um{Micrometers{j.at("entryPoint").at("x")},
+                                   Micrometers{j.at("entryPoint").at("y")}};
+        }
+        if (j.contains("exitPoint")) {
+            p.exit_point = Vec2um{Micrometers{j.at("exitPoint").at("x")},
+                                  Micrometers{j.at("exitPoint").at("y")}};
+        }
         return document::StitchParams{p};
     }
     return fail(ErrorCategory::InvalidFile, "Type de point inconnu : " + type);

@@ -2,6 +2,7 @@ add_library(openstitch_stitch_generation
     src/running_stitch.cpp
     src/tatami.cpp
     src/satin.cpp
+    src/lock.cpp
     src/generate.cpp
 )
 add_library(openstitch::stitch_generation ALIAS openstitch_stitch_generation)

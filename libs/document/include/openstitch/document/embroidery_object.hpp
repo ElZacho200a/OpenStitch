@@ -2,6 +2,7 @@
 #pragma once
 
 #include <array>
+#include <optional>
 #include <string>
 #include <variant>
 #include <vector>
@@ -41,6 +42,7 @@ struct SatinRung {
 enum class SatinShortStitch { Disabled, RemoveAndRedistribute, SingleInset, MultiLevelInset };
 enum class SatinSplit { Disabled, Simple, Staggered, DeterministicJitter };
 enum class SatinCap { Flat, Rounded, Tapered, Automatic };
+enum class SatinLock { None, BackAndForth, Triangle, MicroZigzag };
 
 // Paramètres d'une colonne satin (§5.3). Contrairement aux autres types, le
 // satin porte sa propre géométrie (deux rails éditables), car il ne se déduit
@@ -68,6 +70,14 @@ struct SatinParams {
     Micrometers pull_right{0};       // (côté B)
     Micrometers push_start{0};       // extension longitudinale au départ
     Micrometers push_end{0};         // extension longitudinale à la fin
+
+    // Lot 5 — entrée/sortie et points de fixation (défauts = inchangé).
+    SatinLock lock_start{SatinLock::None};
+    SatinLock lock_end{SatinLock::None};
+    Micrometers lock_length{800};
+    int lock_passes{2};
+    std::optional<Vec2um> entry_point;  // début de couture souhaité (projeté)
+    std::optional<Vec2um> exit_point;   // fin de couture souhaitée
 };
 
 // Un objet de broderie porte un TYPE de point sous forme de variant. Chaque

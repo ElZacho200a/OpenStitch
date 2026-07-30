@@ -102,6 +102,10 @@ document::Project rich_project() {
     sp.underlay_zigzag = true;
     sp.pull_left = Micrometers{120};
     sp.push_end = Micrometers{900};
+    sp.lock_start = document::SatinLock::BackAndForth;
+    sp.lock_end = document::SatinLock::MicroZigzag;
+    sp.lock_passes = 3;
+    sp.entry_point = Vec2um{Micrometers{1'234}, Micrometers{5'678}};
     sat.params = sp;
     project.embroidery_objects.push_back(sat);
 
@@ -172,6 +176,12 @@ TEST_CASE("projet complet : save puis load = memes donnees") {
     CHECK(loadedSatin.underlay_zigzag);
     CHECK(loadedSatin.pull_left == Micrometers{120});
     CHECK(loadedSatin.push_end == Micrometers{900});
+    CHECK(loadedSatin.lock_start == document::SatinLock::BackAndForth);
+    CHECK(loadedSatin.lock_end == document::SatinLock::MicroZigzag);
+    CHECK(loadedSatin.lock_passes == 3);
+    REQUIRE(loadedSatin.entry_point.has_value());
+    CHECK(*loadedSatin.entry_point == Vec2um{Micrometers{1'234}, Micrometers{5'678}});
+    CHECK_FALSE(loadedSatin.exit_point.has_value());
 
     fs::remove(path);
 }

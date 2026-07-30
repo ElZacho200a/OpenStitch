@@ -1,9 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 #include "openstitch/stitch_generation/generate.hpp"
 
+#include <algorithm>
 #include <variant>
 
 #include "openstitch/geometry/offset.hpp"
+#include "openstitch/stitch_generation/lock.hpp"
 #include "openstitch/stitch_generation/running_stitch.hpp"
 #include "openstitch/stitch_generation/satin.hpp"
 #include "openstitch/stitch_generation/tatami.hpp"
@@ -19,8 +21,17 @@ void emit_polyline(stitch::StitchSequence& sequence, const std::vector<Vec2um>& 
     if (points.size() < 2) {
         return;
     }
-    sequence.commands.push_back({points.front(), stitch::CommandType::Jump, source,
-                                 stitch::StitchPass::Travel});
+    // Un saut vers le premier point, sauf si l'on enchaîne directement depuis un
+    // point cousu situé à la même position (passe précédente du même objet :
+    // sous-couche -> lock -> satin). On saute toujours après un ColorChange, un
+    // Jump ou une frontière d'objet, même à position identique.
+    const bool chained = !sequence.commands.empty() &&
+                         sequence.commands.back().type == stitch::CommandType::Stitch &&
+                         sequence.commands.back().pos == points.front();
+    if (!chained) {
+        sequence.commands.push_back({points.front(), stitch::CommandType::Jump, source,
+                                     stitch::StitchPass::Travel});
+    }
     for (const Vec2um& p : points) {
         sequence.commands.push_back({p, stitch::CommandType::Stitch, source, pass});
     }
@@ -90,12 +101,45 @@ void generate_satin(stitch::StitchSequence& sequence, const document::Embroidery
     } else {
         result = fill_satin(params.rail_a, params.rail_b, config);
     }
-    // Sous-couches d'abord (passes distinctes, ordre center -> edge -> zigzag),
-    // puis la couche supérieure.
+    // Entrée/sortie (§12) : oriente le satin pour démarrer près de l'entrée et
+    // finir près de la sortie (projection = point le plus proche des extrémités).
+    if ((params.entry_point || params.exit_point) && result.satin.size() >= 2) {
+        const Vec2um s = result.satin.front();
+        const Vec2um e = result.satin.back();
+        double normal = 0.0;
+        double reversed = 0.0;
+        if (params.entry_point) {
+            normal += length_um(*params.entry_point - s);
+            reversed += length_um(*params.entry_point - e);
+        }
+        if (params.exit_point) {
+            normal += length_um(*params.exit_point - e);
+            reversed += length_um(*params.exit_point - s);
+        }
+        if (reversed < normal) {
+            std::reverse(result.satin.begin(), result.satin.end());
+        }
+    }
+
+    // Sous-couches d'abord (passes distinctes), puis lock d'entrée, couche
+    // supérieure, lock de sortie. Un seul lock par bout (jamais par sous-passe).
     for (const auto& u : result.underlays) {
         emit_polyline(sequence, u.points, object.id, stitch::StitchPass::Underlay);
     }
+    if (params.lock_start != document::SatinLock::None && result.satin.size() >= 2) {
+        const auto lk = lock_stitches(result.satin.front(), result.satin[1],
+                                      static_cast<LockType>(static_cast<int>(params.lock_start)),
+                                      params.lock_length, params.lock_passes);
+        emit_polyline(sequence, lk, object.id, stitch::StitchPass::Lock);
+    }
     emit_polyline(sequence, result.satin, object.id, stitch::StitchPass::TopStitch);
+    if (params.lock_end != document::SatinLock::None && result.satin.size() >= 2) {
+        const std::size_t n = result.satin.size();
+        const auto lk = lock_stitches(result.satin[n - 1], result.satin[n - 2],
+                                      static_cast<LockType>(static_cast<int>(params.lock_end)),
+                                      params.lock_length, params.lock_passes);
+        emit_polyline(sequence, lk, object.id, stitch::StitchPass::Lock);
+    }
 }
 
 void generate_tatami(stitch::StitchSequence& sequence, const document::VectorObject& source,

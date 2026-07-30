@@ -3,6 +3,7 @@
 
 #include <cmath>
 
+#include "openstitch/stitch_generation/lock.hpp"
 #include "openstitch/stitch_generation/satin.hpp"
 
 using namespace openstitch;
@@ -258,6 +259,33 @@ TEST_CASE("caps : flat garde la pleine largeur au bout") {
     const auto r = fill_satin_columns(railA, railB, rungs, cfg);
     const std::size_t nThreads = r.satin.size() / 2;
     CHECK(thread_width(r.satin, nThreads - 1) > 5'000.0);
+}
+
+// --- Lot 5 : lock stitches ---------------------------------------------------
+
+TEST_CASE("lock : None -> vide ; sinon ancre au point et de taille bornee") {
+    const Vec2um anchor = v(1'000, 1'000);
+    const Vec2um toward = v(3'000, 1'000);  // vers +x
+    CHECK(lock_stitches(anchor, toward, LockType::None, Micrometers{800}, 2).empty());
+    for (auto type : {LockType::BackAndForth, LockType::Triangle, LockType::MicroZigzag}) {
+        const auto pts = lock_stitches(anchor, toward, type, Micrometers{800}, 2);
+        REQUIRE(pts.size() >= 3);
+        CHECK(pts.front() == anchor);  // commence à l'ancre
+        // Reste proche de l'ancre (quelques taille de lock).
+        for (const auto& p : pts) {
+            CHECK(length_um(p - anchor) <= 2'000.0);
+        }
+        // Le lock progresse dans la direction de couture (+x).
+        std::int32_t maxX = anchor.x.value;
+        for (const auto& p : pts) maxX = std::max(maxX, p.x.value);
+        CHECK(maxX >= anchor.x.value + 600);
+    }
+}
+
+TEST_CASE("lock : deterministe") {
+    const auto a = lock_stitches(v(0, 0), v(0, 5'000), LockType::MicroZigzag, Micrometers{600}, 3);
+    const auto b = lock_stitches(v(0, 0), v(0, 5'000), LockType::MicroZigzag, Micrometers{600}, 3);
+    CHECK(a == b);
 }
 
 // --- Lot 4 : sous-couches + compensation -------------------------------------

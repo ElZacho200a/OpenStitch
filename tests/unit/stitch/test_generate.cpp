@@ -79,10 +79,9 @@ TEST_CASE("source vectorielle manquante -> erreur interne") {
     CHECK_FALSE(generate_sequence(project).has_value());
 }
 
-TEST_CASE("satin : les sous-couches sont taggees Underlay, le satin TopStitch") {
-    document::Project project;
-    document::EmbroideryObject emb;
-    emb.id = project.object_ids.next();
+namespace {
+// Objet satin colonne droite (rails y=0/5000, x 0..20000, deux barreaux).
+document::SatinParams straight_satin() {
     document::SatinParams sp;
     sp.rail_a.closed = false;
     sp.rail_a.nodes = {{Vec2um{Micrometers{0}, Micrometers{0}}, geometry::NodeType::Corner, {}, {}},
@@ -93,11 +92,22 @@ TEST_CASE("satin : les sous-couches sont taggees Underlay, le satin TopStitch") 
     sp.rungs = {{Vec2um{Micrometers{0}, Micrometers{0}}, Vec2um{Micrometers{0}, Micrometers{5'000}}},
                 {Vec2um{Micrometers{20'000}, Micrometers{0}},
                  Vec2um{Micrometers{20'000}, Micrometers{5'000}}}};
-    sp.center_underlay = true;
+    return sp;
+}
+document::Project satin_project(const document::SatinParams& sp) {
+    document::Project project;
+    document::EmbroideryObject emb;
+    emb.id = project.object_ids.next();
     emb.params = sp;
     project.embroidery_objects.push_back(emb);
+    return project;
+}
+}  // namespace
 
-    const auto seq = generate_sequence(project);
+TEST_CASE("satin : les sous-couches sont taggees Underlay, le satin TopStitch") {
+    auto sp = straight_satin();
+    sp.center_underlay = true;
+    const auto seq = generate_sequence(satin_project(sp));
     REQUIRE(seq.has_value());
     int underlay = 0, top = 0;
     for (const auto& c : seq->commands) {
@@ -106,6 +116,55 @@ TEST_CASE("satin : les sous-couches sont taggees Underlay, le satin TopStitch") 
     }
     CHECK(underlay > 0);
     CHECK(top > 0);
+}
+
+TEST_CASE("satin : locks d'entree et de sortie en passe Lock, aux extremites") {
+    auto sp = straight_satin();
+    sp.center_underlay = true;
+    sp.underlay_edge = true;
+    sp.lock_start = document::SatinLock::BackAndForth;
+    sp.lock_end = document::SatinLock::Triangle;
+    const auto seq = generate_sequence(satin_project(sp));
+    REQUIRE(seq.has_value());
+
+    int lockStitches = 0;
+    int lockRuns = 0;  // groupes contigus de passe Lock (doit rester <= 2)
+    bool inLock = false;
+    int firstTop = -1, i = 0;
+    for (const auto& c : seq->commands) {
+        if (c.type != stitch::CommandType::Stitch) {
+            ++i;
+            continue;
+        }
+        if (c.pass == stitch::StitchPass::Lock) {
+            ++lockStitches;
+            if (!inLock) ++lockRuns;
+            inLock = true;
+        } else {
+            inLock = false;
+        }
+        if (c.pass == stitch::StitchPass::TopStitch && firstTop < 0) firstTop = i;
+        ++i;
+    }
+    CHECK(lockStitches > 0);
+    CHECK(lockRuns == 2);  // un lock au début, un à la fin — jamais par sous-passe
+}
+
+TEST_CASE("satin : le point d'entree oriente la couture") {
+    // Entrée placée près de l'extrémité x=20000 : le satin doit démarrer là.
+    const auto without = generate_sequence(satin_project(straight_satin()));
+    auto sp = straight_satin();
+    sp.entry_point = Vec2um{Micrometers{20'000}, Micrometers{2'500}};
+    const auto with = generate_sequence(satin_project(sp));
+    REQUIRE((without.has_value() && with.has_value()));
+    const auto firstTop = [](const auto& seq) {
+        for (const auto& c : seq->commands)
+            if (c.type == stitch::CommandType::Stitch && c.pass == stitch::StitchPass::TopStitch)
+                return c.pos;
+        return Vec2um{};
+    };
+    CHECK(firstTop(without).x.value < 5'000);   // sans entrée : démarre à x~0
+    CHECK(firstTop(with).x.value > 15'000);     // avec entrée : démarre à x~20000
 }
 
 TEST_CASE("la sequence est deterministe") {
