@@ -87,6 +87,7 @@ private slots:
 
 private:
     void buildMenus();
+    void buildHelpMenu();
     void buildMainToolbar();
     void buildContextToolbar();
     // Reconstruit la barre contextuelle selon la sélection (actions rapides).
@@ -161,6 +162,7 @@ private:
     QAction* showVectorsAct_{nullptr};
     QAction* showImageAct_{nullptr};
     QAction* showStitchesAct_{nullptr};
+    std::vector<QDockWidget*> panelsToRestore_;  // docks masqués par « Masquer les panneaux »
     QAction* createStitchAct_{nullptr};
     QAction* createTatamiAct_{nullptr};
     QAction* createSatinAct_{nullptr};

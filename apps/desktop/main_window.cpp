@@ -108,6 +108,18 @@ MainWindow::MainWindow() {
     addToolBarBreak();  // la barre de simulation occupe sa propre rangée
     buildSimulationToolbar();
 
+    buildHelpMenu();
+
+    // Noms accessibles (lecteurs d'écran) sur les grandes zones.
+    view_->setAccessibleName(tr("Canevas"));
+    view_->setAccessibleDescription(tr("Zone de travail du motif, en millimètres."));
+    for (auto* d : {documentDock_, propertiesDock_, workflowDock_, orderDock_, filterDock_,
+                    analysisDock_}) {
+        if (d != nullptr) {
+            d->setAccessibleName(d->windowTitle());
+        }
+    }
+
     toolLabel_ = new QLabel(this);
     statusBar()->addPermanentWidget(toolLabel_);
     cursorLabel_ = new QLabel(this);
@@ -310,6 +322,32 @@ void MainWindow::buildMenus() {
     };
     addDensityAct(tr("Confortable"), Density::Comfortable);
     addDensityAct(tr("Compact"), Density::Compact);
+
+    viewMenu->addSeparator();
+    auto* hidePanelsAct = viewMenu->addAction(tr("&Masquer les panneaux"));
+    hidePanelsAct->setCheckable(true);
+    hidePanelsAct->setShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_P));
+    hidePanelsAct->setToolTip(tr("Mode canevas : masque tous les panneaux."));
+    connect(hidePanelsAct, &QAction::toggled, this, [this](bool hide) {
+        const std::vector<QDockWidget*> docks{documentDock_,  propertiesDock_, workflowDock_,
+                                              orderDock_,     filterDock_,     analysisDock_};
+        if (hide) {
+            panelsToRestore_.clear();
+            for (auto* d : docks) {
+                if (d != nullptr && d->isVisible()) {
+                    panelsToRestore_.push_back(d);
+                    d->hide();
+                }
+            }
+        } else {
+            for (auto* d : panelsToRestore_) {
+                if (d != nullptr) {
+                    d->show();
+                }
+            }
+            panelsToRestore_.clear();
+        }
+    });
 }
 
 void MainWindow::openImage() {
@@ -1428,6 +1466,37 @@ void MainWindow::onCanvasContextMenu(QPointF posMm, QPoint globalPos) {
     displayImage(processed_);  // reflète la sélection éventuelle
     updateActions();
     menu.exec(globalPos);
+}
+
+void MainWindow::buildHelpMenu() {
+    // « Ajuster au canevas » aussi sur la touche F (en plus de Ctrl+0). On
+    // n'intercepte PAS Tab (réservé à la navigation clavier, accessibilité).
+    auto* fitShortcut = new QShortcut(QKeySequence(Qt::Key_F), this);
+    connect(fitShortcut, &QShortcut::activated, view_, &CanvasView::fitCanvas);
+
+    auto* helpMenu = menuBar()->addMenu(tr("Aid&e"));
+    auto* shortcutsAct = helpMenu->addAction(tr("&Raccourcis clavier…"));
+    connect(shortcutsAct, &QAction::triggered, this, [this] {
+        QMessageBox::information(
+            this, tr("Raccourcis clavier"),
+            tr("Ctrl+O   Ouvrir une image\n"
+               "Ctrl+S   Enregistrer le projet\n"
+               "Ctrl+Z / Ctrl+Y   Annuler / Rétablir\n"
+               "Suppr   Supprimer la région sélectionnée\n"
+               "Ctrl++ / Ctrl+- / Ctrl+0   Zoom avant / arrière / ajuster\n"
+               "F   Ajuster au canevas\n"
+               "F5   Analyser le motif\n"
+               "V / H / M   Outils : Sélection / Déplacer la vue / Rectangle\n"
+               "Échap   Revenir à la Sélection\n"
+               "Ctrl+Shift+P   Masquer / afficher les panneaux"));
+    });
+    auto* aboutAct = helpMenu->addAction(tr("À &propos"));
+    connect(aboutAct, &QAction::triggered, this, [this] {
+        QMessageBox::about(
+            this, tr("À propos"),
+            tr("%1 %2\nNumérisation de broderie machine, logiciel libre (Apache-2.0).")
+                .arg(QString::fromUtf8(kAppName), QString::fromUtf8(kAppVersion)));
+    });
 }
 
 void MainWindow::buildMainToolbar() {
