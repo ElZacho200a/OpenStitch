@@ -317,7 +317,11 @@ void MainWindow::openImage() {
         return;
     }
 
-    ImportDialog dialog(loaded->width, loaded->height, this);
+    const QImage preview(loaded->rgba.data(), loaded->width, loaded->height, loaded->width * 4,
+                         QImage::Format_RGBA8888);
+    const QSizeF hoop(to_millimeters(project_.canvas.width).value,
+                      to_millimeters(project_.canvas.height).value);
+    ImportDialog dialog(loaded->width, loaded->height, preview.copy(), hoop, this);
     if (dialog.exec() != QDialog::Accepted) {
         return;
     }
@@ -2344,6 +2348,47 @@ void MainWindow::exportDst() {
     if (file.isEmpty()) {
         return;
     }
+
+    // Résumé pré-export : décision réelle -> dialogue de confirmation.
+    const auto stats = stitch::compute_stats(*sequence_);
+    const double wMm = to_millimeters(stats.bounds.max.x - stats.bounds.min.x).value;
+    const double hMm = to_millimeters(stats.bounds.max.y - stats.bounds.min.y).value;
+    const auto& cv = project_.canvas;
+    const bool overflow = stats.bounds.min.x.value < -cv.width.value / 2 ||
+                          stats.bounds.max.x.value > cv.width.value / 2 ||
+                          stats.bounds.min.y.value < -cv.height.value / 2 ||
+                          stats.bounds.max.y.value > cv.height.value / 2;
+    QString summary =
+        tr("Dimensions : %1 × %2 mm\nPoints : %3\nSauts : %4\nCoupes : %5\n"
+           "Changements de couleur : %6\nFil estimé : %7 m\nCadre : %8 × %9 mm\nFichier : %10")
+            .arg(wMm, 0, 'f', 1)
+            .arg(hMm, 0, 'f', 1)
+            .arg(stats.stitches)
+            .arg(stats.jumps)
+            .arg(stats.trims)
+            .arg(stats.color_changes)
+            .arg(stats.thread_length_um / 1e9, 0, 'f', 2)
+            .arg(to_millimeters(cv.width).value, 0, 'f', 0)
+            .arg(to_millimeters(cv.height).value, 0, 'f', 0)
+            .arg(QFileInfo(file).fileName());
+    if (overflow) {
+        summary += tr("\n\nAttention : le motif dépasse le cadre.");
+    }
+    summary += tr("\n\nLe DST ne conserve pas les objets éditables.");
+    if (!project_.embroidery_objects.empty()) {
+        summary += tr(" Pensez à enregistrer aussi le projet (.osp).");
+    }
+    QMessageBox box(this);
+    box.setWindowTitle(tr("Exporter en DST"));
+    box.setText(tr("Résumé de l'export"));
+    box.setInformativeText(summary);
+    box.setIcon(overflow ? QMessageBox::Warning : QMessageBox::Information);
+    box.setStandardButtons(QMessageBox::Ok | QMessageBox::Cancel);
+    box.setDefaultButton(QMessageBox::Ok);
+    if (box.exec() != QMessageBox::Ok) {
+        return;
+    }
+
     // Rappel honnête (§17) : le DST ne conserve ni objets ni couleurs réelles.
     const auto written = formats::write_dst_file(std::filesystem::path(file.toStdWString()),
                                                  *sequence_);
@@ -2352,12 +2397,9 @@ void MainWindow::exportDst() {
                              QString::fromStdString(written.error().message));
         return;
     }
-    const auto stats = stitch::compute_stats(*sequence_);
-    statusBar()->showMessage(
-        tr("DST exporté : %1 (%2 points). Le DST ne conserve pas les objets éditables — "
-           "gardez aussi le projet.")
-            .arg(QFileInfo(file).fileName())
-            .arg(stats.stitches));
+    statusBar()->showMessage(tr("DST exporté : %1 (%2 points).")
+                                 .arg(QFileInfo(file).fileName())
+                                 .arg(stats.stitches));
 }
 
 void MainWindow::importDst() {
