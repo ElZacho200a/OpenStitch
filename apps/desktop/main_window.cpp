@@ -35,7 +35,9 @@
 #include "brightness_dialog.hpp"
 #include "canvas_view.hpp"
 #include "document_panel.hpp"
+#include "empty_state_widget.hpp"
 #include "import_dialog.hpp"
+#include <QCloseEvent>
 #include "node_handle.hpp"
 #include "properties_panel.hpp"
 #include "ui_icons.hpp"
@@ -72,7 +74,7 @@
 namespace openstitch::desktop {
 
 MainWindow::MainWindow() {
-    setWindowTitle(QString::fromUtf8(kAppName));
+    setWindowTitle(QStringLiteral("%1 [*]").arg(QString::fromUtf8(kAppName)));
     resize(1100, 800);
 
     scene_ = new QGraphicsScene(this);
@@ -122,6 +124,13 @@ MainWindow::MainWindow() {
     connect(view_, &CanvasView::canvasContextMenu, this, &MainWindow::onCanvasContextMenu);
     // Un changement de thème redessine les couches (couleurs des points, repères).
     connect(&AppTheme::instance(), &AppTheme::changed, this, [this] { displayImage(processed_); });
+
+    // État d'accueil, flottant au centre du canevas tant qu'aucun document.
+    emptyState_ = new EmptyStateWidget(view_);
+    connect(emptyState_, &EmptyStateWidget::openImageRequested, this, &MainWindow::openImage);
+    connect(emptyState_, &EmptyStateWidget::openProjectRequested, this, &MainWindow::loadProject);
+    connect(emptyState_, &EmptyStateWidget::importDstRequested, this, &MainWindow::importDst);
+    connect(view_, &CanvasView::viewChanged, this, &MainWindow::positionEmptyState);
 
     statusBar()->showMessage(tr("Ouvrez une image (PNG, JPEG, BMP, TIFF) pour commencer."));
     view_->fitCanvas();
@@ -347,6 +356,7 @@ void MainWindow::openImage() {
                                  .arg(project_.original.width)
                                  .arg(project_.original.height));
     updateActions();
+    setWindowModified(false);  // nouveau document propre
 }
 
 void MainWindow::executeOp(image::ImageOp op) {
@@ -384,6 +394,43 @@ void MainWindow::applyCanvasToView() {
                       to_millimeters(project_.canvas.height).value);
     if (view_->canvasSizeMm() != want) {
         view_->setCanvasSizeMm(want);
+    }
+}
+
+void MainWindow::positionEmptyState() {
+    if (emptyState_ == nullptr || !emptyState_->isVisible()) {
+        return;
+    }
+    emptyState_->adjustSize();
+    const QSize s = emptyState_->size();
+    const QRect vr = view_->rect();
+    emptyState_->move(vr.center().x() - s.width() / 2, vr.center().y() - s.height() / 2);
+}
+
+void MainWindow::updateEmptyState() {
+    if (emptyState_ == nullptr) {
+        return;
+    }
+    emptyState_->setVisible(!project_.hasImage());
+    positionEmptyState();
+}
+
+void MainWindow::closeEvent(QCloseEvent* event) {
+    if (!isWindowModified()) {
+        event->accept();
+        return;
+    }
+    const auto answer = QMessageBox::warning(
+        this, tr("Modifications non enregistrées"),
+        tr("Le projet a été modifié. Enregistrer avant de quitter ?"),
+        QMessageBox::Save | QMessageBox::Discard | QMessageBox::Cancel);
+    if (answer == QMessageBox::Save) {
+        saveProject();
+        event->setAccepted(!isWindowModified());  // annulé dans le dialogue -> reste ouvert
+    } else if (answer == QMessageBox::Discard) {
+        event->accept();
+    } else {
+        event->ignore();
     }
 }
 
@@ -477,6 +524,7 @@ void MainWindow::onCropSelected(QRectF rectMm) {
 
 void MainWindow::refreshImage() {
     applyCanvasToView();  // taille du cadre (peut avoir changé : réglage, undo, chargement)
+    setWindowModified(true);  // toute régénération suit une mutation du document
     if (!project_.hasImage()) {
         processed_ = {};
         displayImage(processed_);  // affiche quand même une séquence importée
@@ -2309,6 +2357,7 @@ void MainWindow::saveProject() {
         return;
     }
     statusBar()->showMessage(tr("Projet enregistré : %1").arg(QFileInfo(file).fileName()));
+    setWindowModified(false);
 }
 
 void MainWindow::loadProject() {
@@ -2337,6 +2386,7 @@ void MainWindow::loadProject() {
                                  .arg(QFileInfo(file).fileName())
                                  .arg(project_.vector_objects.size())
                                  .arg(project_.embroidery_objects.size()));
+    setWindowModified(false);  // projet fraîchement chargé = propre
 }
 
 void MainWindow::exportDst() {
@@ -2575,6 +2625,7 @@ void MainWindow::updateActions() {
     syncDocumentSelection();
     updateContextToolbar();
     refreshWorkflow();
+    updateEmptyState();
 }
 
 }  // namespace openstitch::desktop

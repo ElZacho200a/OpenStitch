@@ -33,6 +33,7 @@ class CanvasView;
 class PropertiesPanel;
 class DocumentPanel;
 class WorkflowPanel;
+class EmptyStateWidget;
 
 // Fenêtre principale. Règle du projet : aucune logique métier dans les
 // widgets — chargement (libs/image), placement (libs/document), transformations
@@ -43,6 +44,9 @@ class MainWindow : public QMainWindow {
 
 public:
     MainWindow();
+
+protected:
+    void closeEvent(QCloseEvent* event) override;
 
 private slots:
     void openImage();
@@ -126,6 +130,8 @@ private:
     // Centre représentatif d'un objet de broderie (pour l'estimation du coût).
     [[nodiscard]] Vec2um embroideryCentroid(const document::EmbroideryObject& object) const;
     void executeOp(image::ImageOp op);
+    void positionEmptyState();  // centre l'accueil dans la vue
+    void updateEmptyState();    // affiche l'accueil quand aucun document
     // Applique la taille du cadre du document à la vue (si elle a changé).
     void applyCanvasToView();
     void refreshImage();
@@ -143,6 +149,7 @@ private:
 
     QGraphicsScene* scene_{nullptr};
     CanvasView* view_{nullptr};
+    EmptyStateWidget* emptyState_{nullptr};
     QLabel* cursorLabel_{nullptr};
     QList<QGraphicsItem*> baseItems_;    // couche image/vecteurs/régions
     QList<QGraphicsItem*> stitchItems_;  // couche points (reconstruite seule en simu)
