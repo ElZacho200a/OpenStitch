@@ -61,6 +61,13 @@ void generate_satin(stitch::StitchSequence& sequence, const document::Embroidery
     config.density = params.density;
     config.pull_compensation = params.pull_compensation;
     config.center_underlay = params.center_underlay;
+    // Finitions (Lot 3) : mêmes valeurs d'énumération, graine = id objet.
+    config.short_stitch = static_cast<ShortStitchMode>(static_cast<int>(params.short_stitch));
+    config.split_stitch = static_cast<SplitStitchMode>(static_cast<int>(params.split_stitch));
+    config.cap_start = static_cast<SatinCapType>(static_cast<int>(params.cap_start));
+    config.cap_end = static_cast<SatinCapType>(static_cast<int>(params.cap_end));
+    config.max_stitch_length = params.max_stitch_length;
+    config.split_seed = object.id.value;
     // Avec barreaux (satin auto) : correspondance par sections + espacement
     // perpendiculaire. Sans barreaux (satin manuel/legacy) : ré-échantillonnage
     // par fraction d'abscisse.

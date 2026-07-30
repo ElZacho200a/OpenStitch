@@ -234,7 +234,8 @@ int run_stitchdebug(const std::string& shape, double lengthMm, int repeats,
     return 0;
 }
 
-int run_auto_satin_debug(const std::string& shape, double pixelMm, const std::string& outSvg) {
+int run_auto_satin_debug(const std::string& shape, double pixelMm, const std::string& outSvg,
+                         int capEnd, int shortMode, int splitMode) {
     using namespace openstitch;
     const auto region = auto_satin::make_shape(shape);
     if (!region) {
@@ -278,7 +279,12 @@ int run_auto_satin_debug(const std::string& shape, double pixelMm, const std::st
             for (const auto& r : col.rungs) {
                 rungs.emplace_back(r.a, r.b);
             }
-            const auto sat = stitch_generation::fill_satin_columns(col.rail_a, col.rail_b, rungs, {});
+            stitch_generation::SatinConfig scfg;
+            scfg.cap_end = static_cast<stitch_generation::SatinCapType>(capEnd);
+            scfg.short_stitch = static_cast<stitch_generation::ShortStitchMode>(shortMode);
+            scfg.split_stitch = static_cast<stitch_generation::SplitStitchMode>(splitMode);
+            const auto sat =
+                stitch_generation::fill_satin_columns(col.rail_a, col.rail_b, rungs, scfg);
             if (sat.satin.size() < 2) {
                 continue;
             }
@@ -349,6 +355,7 @@ int main(int argc, char** argv) {
     std::string as_shape = "rectangle";
     double as_pixel = 0.05;
     std::string as_out;
+    int as_cap = 0, as_short = 0, as_split = 0;
     auto* as_cmd = app.add_subcommand(
         "auto-satin-debug", "Analyse de satinabilité et squelette d'une forme de référence");
     as_cmd->add_option("--shape", as_shape,
@@ -356,6 +363,9 @@ int main(int argc, char** argv) {
     as_cmd->add_option("--pixel-size", as_pixel, "Taille de pixel de calcul en mm")
         ->check(CLI::PositiveNumber);
     as_cmd->add_option("--output-svg", as_out, "SVG de diagnostic à produire");
+    as_cmd->add_option("--cap-end", as_cap, "Terminaison fin : 0 plat, 1 arrondi, 2 effilé");
+    as_cmd->add_option("--short", as_short, "Points courts : 0 off, 2 inset, 3 multi-niveaux");
+    as_cmd->add_option("--split", as_split, "Split : 0 off, 1 simple, 2 décalé, 3 jitter");
 
     CLI11_PARSE(app, argc, argv);
 
@@ -372,7 +382,7 @@ int main(int argc, char** argv) {
         return run_stitchdebug(sd_shape, sd_length, sd_repeats, sd_out);
     }
     if (as_cmd->parsed()) {
-        return run_auto_satin_debug(as_shape, as_pixel, as_out);
+        return run_auto_satin_debug(as_shape, as_pixel, as_out, as_cap, as_short, as_split);
     }
     return 0;
 }

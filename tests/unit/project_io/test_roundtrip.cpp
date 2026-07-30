@@ -94,6 +94,10 @@ document::Project rich_project() {
                         Vec2um{Micrometers{700}, Micrometers{800}}});
     sp.density = Micrometers{350};
     sp.center_underlay = true;
+    sp.short_stitch = document::SatinShortStitch::MultiLevelInset;
+    sp.split_stitch = document::SatinSplit::Staggered;
+    sp.cap_end = document::SatinCap::Tapered;
+    sp.max_stitch_length = Micrometers{5'500};
     sat.params = sp;
     project.embroidery_objects.push_back(sat);
 
@@ -156,6 +160,10 @@ TEST_CASE("projet complet : save puis load = memes donnees") {
     REQUIRE(loadedSatin.rungs.size() == 2);
     CHECK(loadedSatin.rungs[0].a == Vec2um{Micrometers{100}, Micrometers{200}});
     CHECK(loadedSatin.rungs[1].b == Vec2um{Micrometers{700}, Micrometers{800}});
+    CHECK(loadedSatin.short_stitch == document::SatinShortStitch::MultiLevelInset);
+    CHECK(loadedSatin.split_stitch == document::SatinSplit::Staggered);
+    CHECK(loadedSatin.cap_end == document::SatinCap::Tapered);
+    CHECK(loadedSatin.max_stitch_length == Micrometers{5'500});
 
     fs::remove(path);
 }

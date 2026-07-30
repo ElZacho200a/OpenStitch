@@ -115,6 +115,151 @@ TEST_CASE("satin colonnes : deterministe") {
           fill_satin_columns(railA, railB, rungs, cfg).satin);
 }
 
+// --- Lot 3 : points courts (virages) -----------------------------------------
+
+namespace {
+// Colonne à virage : rail A intérieur (droit, court), rail B extérieur (détour).
+struct Column {
+    geometry::Path a;
+    geometry::Path b;
+    std::vector<SatinRungSeg> rungs;
+};
+Column curved_column() {
+    Column c;
+    c.a = open_path({{0, 0}, {20'000, 0}});
+    c.b = open_path({{0, 6'000}, {5'000, 20'000}, {15'000, 20'000}, {20'000, 6'000}});
+    c.rungs = {rung(0, 0, 0, 6'000), rung(10'000, 0, 10'000, 20'000),
+               rung(20'000, 0, 20'000, 6'000)};
+    return c;
+}
+SatinConfig short_cfg(ShortStitchMode mode) {
+    SatinConfig cfg;
+    cfg.density = Micrometers{1'000};
+    cfg.short_stitch = mode;
+    cfg.short_stitch_min_gap = Micrometers{900};  // force l'action sur ce virage modéré
+    return cfg;
+}
+}  // namespace
+
+TEST_CASE("short stitches : inset modifie le rail interieur en virage") {
+    const Column c = curved_column();
+    const auto off = fill_satin_columns(c.a, c.b, c.rungs, short_cfg(ShortStitchMode::Disabled));
+    const auto multi = fill_satin_columns(c.a, c.b, c.rungs, short_cfg(ShortStitchMode::MultiLevelInset));
+    const auto single = fill_satin_columns(c.a, c.b, c.rungs, short_cfg(ShortStitchMode::SingleInset));
+    // Les points courts changent le tracé (rail intérieur rentré) mais gardent
+    // le même nombre de pénétrations (inset, pas suppression).
+    CHECK(multi.satin != off.satin);
+    CHECK(single.satin != off.satin);
+    CHECK(multi.satin.size() == off.satin.size());
+}
+
+TEST_CASE("short stitches : remove-and-redistribute reduit les penetrations") {
+    const Column c = curved_column();
+    const auto off = fill_satin_columns(c.a, c.b, c.rungs, short_cfg(ShortStitchMode::Disabled));
+    const auto rem = fill_satin_columns(c.a, c.b, c.rungs,
+                                        short_cfg(ShortStitchMode::RemoveAndRedistribute));
+    CHECK(rem.satin.size() < off.satin.size());
+    CHECK(rem.satin.size() >= 4);  // ne vide jamais la colonne
+}
+
+TEST_CASE("short stitches : deterministe") {
+    const Column c = curved_column();
+    for (auto m : {ShortStitchMode::SingleInset, ShortStitchMode::MultiLevelInset,
+                   ShortStitchMode::RemoveAndRedistribute}) {
+        CHECK(fill_satin_columns(c.a, c.b, c.rungs, short_cfg(m)).satin ==
+              fill_satin_columns(c.a, c.b, c.rungs, short_cfg(m)).satin);
+    }
+}
+
+// --- Lot 3 : split stitches (traversées longues) -----------------------------
+
+namespace {
+Column wide_column() {
+    Column c;
+    c.a = open_path({{0, 0}, {20'000, 0}});
+    c.b = open_path({{0, 10'000}, {20'000, 10'000}});  // 10 mm de large
+    c.rungs = {rung(0, 0, 0, 10'000), rung(10'000, 0, 10'000, 10'000),
+               rung(20'000, 0, 20'000, 10'000)};
+    return c;
+}
+SatinConfig split_cfg(SplitStitchMode mode) {
+    SatinConfig cfg;
+    cfg.density = Micrometers{1'000};
+    cfg.split_stitch = mode;
+    cfg.max_stitch_length = Micrometers{4'000};  // 10 mm > 4 mm -> 2 splits par fil
+    return cfg;
+}
+}  // namespace
+
+TEST_CASE("split : traversee longue subdivisee") {
+    const Column c = wide_column();
+    const auto off = fill_satin_columns(c.a, c.b, c.rungs, split_cfg(SplitStitchMode::Disabled));
+    const auto simple = fill_satin_columns(c.a, c.b, c.rungs, split_cfg(SplitStitchMode::Simple));
+    CHECK(simple.satin.size() > off.satin.size());  // pénétrations intermédiaires ajoutées
+    // Chaque fil = 4 points (a, s1, s2, b) : des points strictement entre 0 et 10 mm.
+    int between = 0;
+    for (const auto& p : simple.satin) {
+        if (p.y.value > 100 && p.y.value < 9'900) ++between;
+    }
+    CHECK(between > 0);
+}
+
+TEST_CASE("split : staggered decale les points (pas de ligne centrale)") {
+    const Column c = wide_column();
+    const auto simple = fill_satin_columns(c.a, c.b, c.rungs, split_cfg(SplitStitchMode::Simple));
+    const auto stag = fill_satin_columns(c.a, c.b, c.rungs, split_cfg(SplitStitchMode::Staggered));
+    // Simple : 1er point de split identique d'un fil à l'autre (ligne centrale).
+    CHECK(simple.satin[1].y == simple.satin[5].y);
+    // Staggered : décalé.
+    CHECK(stag.satin[1].y != stag.satin[5].y);
+}
+
+TEST_CASE("split : jitter deterministe et reproductible") {
+    const Column c = wide_column();
+    const auto j1 = fill_satin_columns(c.a, c.b, c.rungs, split_cfg(SplitStitchMode::DeterministicJitter));
+    const auto j2 = fill_satin_columns(c.a, c.b, c.rungs, split_cfg(SplitStitchMode::DeterministicJitter));
+    CHECK(j1.satin == j2.satin);
+    const auto simple = fill_satin_columns(c.a, c.b, c.rungs, split_cfg(SplitStitchMode::Simple));
+    CHECK(j1.satin != simple.satin);  // varie autour des positions régulières
+}
+
+// --- Lot 3 : terminaisons -----------------------------------------------------
+
+namespace {
+double thread_width(const std::vector<Vec2um>& satin, std::size_t thread) {
+    return length_um(satin[2 * thread] - satin[2 * thread + 1]);
+}
+}  // namespace
+
+TEST_CASE("caps : tapered reduit la largeur au bout sans l'annuler") {
+    const auto railA = open_path({{0, 0}, {20'000, 0}});
+    const auto railB = open_path({{0, 6'000}, {20'000, 6'000}});
+    const std::vector<SatinRungSeg> rungs{rung(0, 0, 0, 6'000), rung(20'000, 0, 20'000, 6'000)};
+    SatinConfig cfg;
+    cfg.density = Micrometers{1'000};
+    cfg.cap_end = SatinCapType::Tapered;
+    cfg.cap_length = 4;
+    const auto r = fill_satin_columns(railA, railB, rungs, cfg);
+    const std::size_t nThreads = r.satin.size() / 2;
+    REQUIRE(nThreads >= 8);
+    const double last = thread_width(r.satin, nThreads - 1);
+    const double middle = thread_width(r.satin, nThreads / 2);
+    CHECK(last < middle * 0.5);  // effilé
+    CHECK(last > 0.0);           // jamais un point unique
+    CHECK(middle > 5'000.0);     // milieu à pleine largeur (~6 mm)
+}
+
+TEST_CASE("caps : flat garde la pleine largeur au bout") {
+    const auto railA = open_path({{0, 0}, {20'000, 0}});
+    const auto railB = open_path({{0, 6'000}, {20'000, 6'000}});
+    const std::vector<SatinRungSeg> rungs{rung(0, 0, 0, 6'000), rung(20'000, 0, 20'000, 6'000)};
+    SatinConfig cfg;
+    cfg.density = Micrometers{1'000};  // cap_end = Flat par défaut
+    const auto r = fill_satin_columns(railA, railB, rungs, cfg);
+    const std::size_t nThreads = r.satin.size() / 2;
+    CHECK(thread_width(r.satin, nThreads - 1) > 5'000.0);
+}
+
 TEST_CASE("satin : colonne droite, zigzag entre les deux rails") {
     // Deux rails horizontaux, longueur 20 mm, ecartes de 4 mm.
     const auto railA = open_path({{0, 0}, {20'000, 0}});

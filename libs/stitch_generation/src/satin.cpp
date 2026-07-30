@@ -101,6 +101,44 @@ double project_arclen(const std::vector<PointD>& pts, const std::vector<double>&
     return bestS;
 }
 
+// Hachage déterministe (splitmix64) -> [0,1). Aucun aléa non reproductible.
+double jitter01(std::uint64_t x) {
+    x += 0x9E3779B97F4A7C15ull;
+    x = (x ^ (x >> 30)) * 0xBF58476D1CE4E5B9ull;
+    x = (x ^ (x >> 27)) * 0x94D049BB133111EBull;
+    x = x ^ (x >> 31);
+    return static_cast<double>(x >> 11) / static_cast<double>(1ull << 53);
+}
+
+PointD lerpP(PointD a, PointD b, double t) { return {a.x + (b.x - a.x) * t, a.y + (b.y - a.y) * t}; }
+PointD midP(PointD a, PointD b) { return {(a.x + b.x) / 2.0, (a.y + b.y) / 2.0}; }
+
+// Fil satin : deux extrémités + drapeau « barreau » (ne pas retirer/altérer).
+struct Thread {
+    PointD a;
+    PointD b;
+    bool anchor{false};
+    bool dropped{false};
+};
+
+// Profil de réduction de largeur d'une terminaison (0 = point, 1 = pleine
+// largeur), sur `len` fils depuis le bout.
+double cap_factor(SatinCapType type, int stepsFromEnd, int len) {
+    if (len <= 0 || stepsFromEnd >= len) {
+        return 1.0;
+    }
+    const double u = static_cast<double>(stepsFromEnd) / static_cast<double>(len);  // 0 au bout
+    constexpr double kMin = 0.18;  // jamais 0 : évite d'empiler sur un point unique
+    switch (type) {
+    case SatinCapType::Tapered:
+        return kMin + (1.0 - kMin) * u;  // linéaire -> pointe
+    case SatinCapType::Rounded:
+        return kMin + (1.0 - kMin) * std::sin(u * std::acos(-1.0) / 2.0);  // arrondi
+    default:
+        return 1.0;  // Flat : inchangé
+    }
+}
+
 }  // namespace
 
 SatinResult fill_satin_columns(const geometry::Path& rail_a, const geometry::Path& rail_b,
@@ -144,17 +182,14 @@ SatinResult fill_satin_columns(const geometry::Path& rail_a, const geometry::Pat
 
     // Fils : abscisses (sa, sb) + point exact aux barreaux. Espacement mesuré sur
     // la ligne médiane (≈ perpendiculaire aux fils).
-    std::vector<std::pair<PointD, PointD>> threads;
+    std::vector<Thread> threads;
     const auto midOf = [&](double sa, double sb) {
-        const PointD pa = point_at(a, cumA, sa);
-        const PointD pb = point_at(b, cumB, sb);
-        return PointD{(pa.x + pb.x) / 2.0, (pa.y + pb.y) / 2.0};
+        return midP(point_at(a, cumA, sa), point_at(b, cumB, sb));
     };
-    threads.push_back({anchors.front().pa, anchors.front().pb});
+    threads.push_back({anchors.front().pa, anchors.front().pb, true, false});
     for (std::size_t k = 0; k + 1 < anchors.size(); ++k) {
         const Anchor& a0 = anchors[k];
         const Anchor& a1 = anchors[k + 1];
-        // Échantillonnage fin de la ligne médiane de l'intervalle -> longueur réelle.
         constexpr int kSub = 48;
         std::vector<double> us(kSub + 1);
         std::vector<double> cumM(kSub + 1, 0.0);
@@ -172,7 +207,6 @@ SatinResult fill_satin_columns(const geometry::Path& rail_a, const geometry::Pat
         const double total = cumM.back();
         const int n = std::max(1, static_cast<int>(std::lround(total / density)));
         const double step = total / n;
-        // Fils intermédiaires (j=1..n-1) à espacement médian régulier.
         for (int jj = 1; jj < n; ++jj) {
             const double target = jj * step;
             const auto it = std::lower_bound(cumM.begin(), cumM.end(), target);
@@ -183,30 +217,117 @@ SatinResult fill_satin_columns(const geometry::Path& rail_a, const geometry::Pat
             const double f = segLen > 1e-9 ? (target - cumM[lo]) / segLen : 0.0;
             const double u = us[lo] + (us[idx] - us[lo]) * f;
             threads.push_back({point_at(a, cumA, a0.sa + (a1.sa - a0.sa) * u),
-                               point_at(b, cumB, a0.sb + (a1.sb - a0.sb) * u)});
+                               point_at(b, cumB, a0.sb + (a1.sb - a0.sb) * u), false, false});
         }
-        threads.push_back({a1.pa, a1.pb});  // barreau traversé exactement
+        threads.push_back({a1.pa, a1.pb, true, false});  // barreau traversé exactement
+    }
+    const int nThreads = static_cast<int>(threads.size());
+
+    // --- Terminaisons (§9) : réduit la largeur des fils aux deux bouts. ---
+    for (int i = 0; i < nThreads; ++i) {
+        const double fStart = cap_factor(config.cap_start, i, config.cap_length);
+        const double fEnd = cap_factor(config.cap_end, nThreads - 1 - i, config.cap_length);
+        const double f = std::min(fStart, fEnd);
+        if (f < 1.0) {
+            const PointD m = midP(threads[static_cast<std::size_t>(i)].a,
+                                  threads[static_cast<std::size_t>(i)].b);
+            threads[static_cast<std::size_t>(i)].a = lerpP(m, threads[static_cast<std::size_t>(i)].a, f);
+            threads[static_cast<std::size_t>(i)].b = lerpP(m, threads[static_cast<std::size_t>(i)].b, f);
+        }
     }
 
-    // Émission zigzag L0,R0,L1,R1,… (chaque point cousu traverse la colonne).
-    for (auto& [pa, pb] : threads) {
+    // --- Points courts (§7) : dans un virage serré, le rail intérieur reçoit
+    // des pénétrations rentrées (inset), ou est allégé (remove/redistribute). ---
+    if (config.short_stitch != ShortStitchMode::Disabled) {
+        const double minGap = static_cast<double>(config.short_stitch_min_gap.value);
+        const int levels = std::max(1, config.short_stitch_levels);
+        bool prevDropped = false;
+        for (int i = 1; i < nThreads; ++i) {
+            auto& t = threads[static_cast<std::size_t>(i)];
+            auto& p = threads[static_cast<std::size_t>(i - 1)];
+            const double advA = dist(t.a, p.a);
+            const double advB = dist(t.b, p.b);
+            const double lo = std::min(advA, advB);
+            const double hi = std::max(advA, advB);
+            const bool tight = hi > 1e-6 && (lo / hi) < config.short_stitch_curvature;
+            if (!tight || lo >= minGap || t.anchor) {
+                prevDropped = false;
+                continue;
+            }
+            const bool innerIsA = advA < advB;
+            if (config.short_stitch == ShortStitchMode::RemoveAndRedistribute) {
+                // Retire un fil serré sur deux (jamais deux d'affilée, jamais un
+                // barreau) : le voisin couvre.
+                if (!prevDropped) {
+                    t.dropped = true;
+                    prevDropped = true;
+                } else {
+                    prevDropped = false;
+                }
+                continue;
+            }
+            // Inset : profondeur selon le niveau (triangulaire en MultiLevel).
+            double frac = config.short_stitch_inset;
+            if (config.short_stitch == ShortStitchMode::MultiLevelInset) {
+                const int period = 2 * levels;
+                const int ph = i % period;
+                const int tri = ph <= levels ? ph : period - ph;  // 0..levels..0
+                frac = config.short_stitch_inset * static_cast<double>(tri) / levels;
+            }
+            const PointD m = midP(t.a, t.b);
+            if (innerIsA) {
+                t.a = lerpP(t.a, m, frac);
+            } else {
+                t.b = lerpP(t.b, m, frac);
+            }
+            prevDropped = false;
+        }
+    }
+
+    // --- Émission zigzag L0,R0,L1,R1,… avec split (§8) des traversées longues. ---
+    const double maxLen = static_cast<double>(std::max<std::int32_t>(1, config.max_stitch_length.value));
+    int emitted = 0;
+    for (int i = 0; i < nThreads; ++i) {
+        const auto& t = threads[static_cast<std::size_t>(i)];
+        if (t.dropped) {
+            continue;
+        }
+        PointD pa = t.a;
+        PointD pb = t.b;
         result.max_width_um = std::max(result.max_width_um, dist(pa, pb));
         std::tie(pa, pb) = compensate(pa, pb, comp);
         result.satin.push_back(toUm(pa));
+        // Split : pénétrations intermédiaires le long de la traversée pa->pb.
+        const double len = dist(pa, pb);
+        if (config.split_stitch != SplitStitchMode::Disabled && len > maxLen) {
+            const int nsplit = std::max(1, static_cast<int>(std::ceil(len / maxLen)) - 1);
+            for (int s = 1; s <= nsplit; ++s) {
+                double frac = static_cast<double>(s) / (nsplit + 1);
+                const double amp = 0.35 / (nsplit + 1);  // amplitude du décalage
+                if (config.split_stitch == SplitStitchMode::Staggered) {
+                    frac += (emitted % 2 == 0 ? amp : -amp);
+                } else if (config.split_stitch == SplitStitchMode::DeterministicJitter) {
+                    const std::uint64_t h = config.split_seed * 1000003ull +
+                                            static_cast<std::uint64_t>(emitted) * 97ull +
+                                            static_cast<std::uint64_t>(s);
+                    frac += (jitter01(h) * 2.0 - 1.0) * amp;
+                }
+                frac = std::clamp(frac, 0.05, 0.95);
+                result.satin.push_back(toUm(lerpP(pa, pb, frac)));
+            }
+        }
         result.satin.push_back(toUm(pb));
+        ++emitted;
     }
 
     // Sous-couche centrale optionnelle (point droit sur la médiane).
     if (config.center_underlay) {
         const double uspace =
             static_cast<double>(std::max<std::int32_t>(1, config.underlay_spacing.value));
-        for (std::size_t i = 0; i < threads.size(); ++i) {
-            // Réutilise les positions des fils, sous-échantillonnées.
-            if (i % std::max<std::size_t>(1, static_cast<std::size_t>(uspace / density)) == 0) {
-                const auto& t = threads[i];
-                result.underlay.push_back(toUm({(t.first.x + t.second.x) / 2.0,
-                                                (t.first.y + t.second.y) / 2.0}));
-            }
+        const std::size_t stride = std::max<std::size_t>(1, static_cast<std::size_t>(uspace / density));
+        for (std::size_t i = 0; i < threads.size(); i += stride) {
+            result.underlay.push_back(
+                toUm(midP(threads[i].a, threads[i].b)));
         }
     }
     return result;

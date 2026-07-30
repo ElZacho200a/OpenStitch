@@ -180,7 +180,12 @@ json params_to_json(const document::StitchParams& params) {
                      {"density", p.density.value},
                      {"pullCompensation", p.pull_compensation.value},
                      {"centerUnderlay", p.center_underlay},
-                     {"maxWidth", p.max_width.value}};
+                     {"maxWidth", p.max_width.value},
+                     {"shortStitch", static_cast<int>(p.short_stitch)},
+                     {"splitStitch", static_cast<int>(p.split_stitch)},
+                     {"capStart", static_cast<int>(p.cap_start)},
+                     {"capEnd", static_cast<int>(p.cap_end)},
+                     {"maxStitchLength", p.max_stitch_length.value}};
             }
             return j;
         },
@@ -221,6 +226,12 @@ Result<document::StitchParams> params_from_json(const json& j) {
         p.pull_compensation = Micrometers{j.at("pullCompensation")};
         p.center_underlay = j.at("centerUnderlay");
         p.max_width = Micrometers{j.at("maxWidth")};
+        // Finitions Lot 3 : optionnelles (projets antérieurs -> défauts).
+        p.short_stitch = static_cast<document::SatinShortStitch>(j.value("shortStitch", 0));
+        p.split_stitch = static_cast<document::SatinSplit>(j.value("splitStitch", 0));
+        p.cap_start = static_cast<document::SatinCap>(j.value("capStart", 0));
+        p.cap_end = static_cast<document::SatinCap>(j.value("capEnd", 0));
+        p.max_stitch_length = Micrometers{j.value("maxStitchLength", 7'000)};
         return document::StitchParams{p};
     }
     return fail(ErrorCategory::InvalidFile, "Type de point inconnu : " + type);

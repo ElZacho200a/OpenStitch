@@ -2,6 +2,7 @@
 #include "properties_panel.hpp"
 
 #include <QCheckBox>
+#include <QComboBox>
 #include <QDoubleSpinBox>
 #include <QFormLayout>
 #include <QFrame>
@@ -157,20 +158,45 @@ void PropertiesPanel::showEmbroidery(const document::EmbroideryObject& object) {
                 auto* comp = mmSpin(to_millimeters(p.pull_compensation).value, 2.0);
                 auto* underlay = new QCheckBox(tr("Sous-couche centrale"), body_);
                 underlay->setChecked(p.center_underlay);
+                auto* shortCombo = new QComboBox(body_);
+                shortCombo->addItems({tr("Désactivés"), tr("Retirer/redistribuer"),
+                                      tr("Inset simple"), tr("Inset multi-niveaux")});
+                shortCombo->setCurrentIndex(static_cast<int>(p.short_stitch));
+                auto* splitCombo = new QComboBox(body_);
+                splitCombo->addItems({tr("Désactivé"), tr("Simple"), tr("Décalé"), tr("Jitter")});
+                splitCombo->setCurrentIndex(static_cast<int>(p.split_stitch));
+                auto* capCombo = new QComboBox(body_);
+                capCombo->addItems({tr("Plat"), tr("Arrondi"), tr("Effilé"), tr("Auto")});
+                capCombo->setCurrentIndex(static_cast<int>(p.cap_end));
+                auto* maxLen = mmSpin(to_millimeters(p.max_stitch_length).value, 15.0);
                 form->addRow(tr("Densité :"), density);
                 form->addRow(tr("Compensation de tirage :"), comp);
                 form->addRow(QString(), underlay);
-                const auto emitEdit = [this, id, base, density, comp, underlay] {
+                form->addRow(tr("Points courts (virages) :"), shortCombo);
+                form->addRow(tr("Fractionnement :"), splitCombo);
+                form->addRow(tr("Longueur max de point :"), maxLen);
+                form->addRow(tr("Terminaison (fin) :"), capCombo);
+                const auto emitEdit = [this, id, base, density, comp, underlay, shortCombo,
+                                       splitCombo, capCombo, maxLen] {
                     if (building_) return;
-                    document::SatinParams s = base;  // conserve rails + max_width
+                    document::SatinParams s = base;  // conserve rails + barreaux
                     s.density = to_um(density->value());
                     s.pull_compensation = to_um(comp->value());
                     s.center_underlay = underlay->isChecked();
+                    s.short_stitch =
+                        static_cast<document::SatinShortStitch>(shortCombo->currentIndex());
+                    s.split_stitch = static_cast<document::SatinSplit>(splitCombo->currentIndex());
+                    s.cap_end = static_cast<document::SatinCap>(capCombo->currentIndex());
+                    s.max_stitch_length = to_um(maxLen->value());
                     emit paramsEdited(id, s);
                 };
                 connect(density, &QDoubleSpinBox::valueChanged, this, emitEdit);
                 connect(comp, &QDoubleSpinBox::valueChanged, this, emitEdit);
                 connect(underlay, &QCheckBox::toggled, this, emitEdit);
+                connect(shortCombo, &QComboBox::currentIndexChanged, this, emitEdit);
+                connect(splitCombo, &QComboBox::currentIndexChanged, this, emitEdit);
+                connect(capCombo, &QComboBox::currentIndexChanged, this, emitEdit);
+                connect(maxLen, &QDoubleSpinBox::valueChanged, this, emitEdit);
             }
         },
         object.params);

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 #pragma once
 
+#include <cstdint>
 #include <optional>
 #include <utility>
 #include <vector>
@@ -14,12 +15,40 @@ namespace openstitch::stitch_generation {
 // Il définit une correspondance EXACTE entre les deux rails à cette station.
 using SatinRungSeg = std::pair<Vec2um, Vec2um>;
 
+// Points courts dans les virages : le rail intérieur reçoit des pénétrations
+// rentrées (inset) pour ne pas s'entasser sur le bord (§7).
+enum class ShortStitchMode { Disabled, RemoveAndRedistribute, SingleInset, MultiLevelInset };
+
+// Points de fractionnement pour les traversées trop longues (§8). Le point
+// intermédiaire est décalé (staggered/jitter) pour éviter une ligne centrale.
+enum class SplitStitchMode { Disabled, Simple, Staggered, DeterministicJitter };
+
+// Terminaisons de colonne (§9).
+enum class SatinCapType { Flat, Rounded, Tapered, Automatic };
+
 // Paramètres d'une colonne satin (§5.3).
 struct SatinConfig {
     Micrometers density{400};            // écart entre pénétrations le long d'un rail (0,4 mm)
     Micrometers pull_compensation{0};    // élargit la colonne pour compenser la traction du fil
     bool center_underlay{false};         // sous-couche : point droit sur l'axe central
     Micrometers underlay_spacing{2'000}; // longueur de point de la sous-couche centrale
+
+    // --- Points courts (virages) ---
+    ShortStitchMode short_stitch{ShortStitchMode::Disabled};
+    double short_stitch_curvature{0.55};    // ratio avance intérieure/extérieure sous lequel c'est serré
+    Micrometers short_stitch_min_gap{250};  // avance intérieure mini avant d'agir
+    double short_stitch_inset{0.35};        // profondeur d'inset (fraction de demi-largeur)
+    int short_stitch_levels{2};             // nombre de niveaux (mode MultiLevel)
+
+    // --- Split (traversées longues) ---
+    SplitStitchMode split_stitch{SplitStitchMode::Disabled};
+    Micrometers max_stitch_length{7'000};   // au-delà, on fractionne la traversée
+    std::uint64_t split_seed{1};            // graine déterministe (jitter)
+
+    // --- Terminaisons ---
+    SatinCapType cap_start{SatinCapType::Flat};
+    SatinCapType cap_end{SatinCapType::Flat};
+    int cap_length{4};                      // nombre de fils effilés/arrondis au bout
 };
 
 // Résultat d'une génération satin.

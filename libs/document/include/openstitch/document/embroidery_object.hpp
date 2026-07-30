@@ -37,6 +37,11 @@ struct SatinRung {
     constexpr bool operator==(const SatinRung&) const = default;
 };
 
+// Modes du satin (mêmes valeurs/ordre que `stitch_generation::*`, cf. generate).
+enum class SatinShortStitch { Disabled, RemoveAndRedistribute, SingleInset, MultiLevelInset };
+enum class SatinSplit { Disabled, Simple, Staggered, DeterministicJitter };
+enum class SatinCap { Flat, Rounded, Tapered, Automatic };
+
 // Paramètres d'une colonne satin (§5.3). Contrairement aux autres types, le
 // satin porte sa propre géométrie (deux rails éditables), car il ne se déduit
 // pas d'un simple contour — il naît d'un contour découpé ou de deux chemins.
@@ -48,6 +53,13 @@ struct SatinParams {
     Micrometers pull_compensation{0};
     bool center_underlay{true};
     Micrometers max_width{9'000};  // au-delà, avertissement (satin trop large -> tatami)
+
+    // Lot 3 — finitions (défauts = comportement inchangé).
+    SatinShortStitch short_stitch{SatinShortStitch::Disabled};
+    SatinSplit split_stitch{SatinSplit::Disabled};
+    SatinCap cap_start{SatinCap::Flat};
+    SatinCap cap_end{SatinCap::Flat};
+    Micrometers max_stitch_length{7'000};
 };
 
 // Un objet de broderie porte un TYPE de point sous forme de variant. Chaque
