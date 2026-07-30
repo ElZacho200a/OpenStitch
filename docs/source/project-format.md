@@ -27,13 +27,17 @@ labels peut faire plusieurs mégaoctets).
 - `vectorObjects` : id, nom, couleur, visibilité, région source, `paths`
   (chemins avec nœuds et tangentes optionnelles) ;
 - `embroideryObjects` : id, nom, couleur, visibilité, vecteur source, et
-  `params` (variant `running` | `tatami` | `satin`).
+  `params` (variant `running` | `tatami` | `satin`). Le `satin` porte ses deux
+  rails et, depuis le schéma v2, ses **barreaux** (`rungs` : liste de segments
+  `{ax, ay, bx, by}` en µm) — optionnels et rétrocompatibles.
 
 ## Versionnement et validation
 
-`schemaVersion` vaut actuellement **1**. À la lecture, une version inconnue ou
-supérieure est **refusée** proprement (`UnsupportedFormat`) ; un JSON invalide ou
-une carte de labels incohérente avec ses dimensions renvoie une erreur.
+`schemaVersion` vaut **2** (v1 → v2 : cadre `canvas` et barreaux satin `rungs`).
+La lecture est **rétrocompatible** : un fichier v1 se charge (cadre 100×100 par
+défaut, aucun barreau). Une version **supérieure** à celle du binaire est refusée
+proprement (`UnsupportedFormat`) ; un JSON invalide ou une carte de labels
+incohérente renvoie une erreur.
 
 ## Sauvegarde atomique
 

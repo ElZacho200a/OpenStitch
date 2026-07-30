@@ -85,20 +85,54 @@ barreaux d'une colonne hors de sa région**. En conséquence :
   de points ▸ Colonne satin*) — à vérifier visuellement, c'est la même
   heuristique de rails.
 
-Limitation : `rails_from_contour` reste une heuristique. Il n'y a **pas** d'axe
-médian (medial axis / straight skeleton), pas de barreaux de direction, pas de
-correspondance par sections, pas de gestion fine des points courts dans les
-virages, ni de split stitch pour les colonnes très larges. Ces éléments (§12 de
-l'étude de cadrage) sont **prévus** : le module `auto_satin` (squelette,
-distance, satinabilité) en pose déjà les fondations, et générera des rails qui
-**se terminent sur le contour** — donc structurellement sans débordement. La
-densité est mesurée le long du rail, pas encore strictement perpendiculairement
-au fil.
+Limitation : `rails_from_contour` reste une heuristique (utilisée seulement pour
+la création **manuelle** de satin). La bonne méthode est le moteur géométrique
+ci-dessous.
+
+## Colonnes automatiques par squelette (`build_satin_columns`)
+
+*État : Présent · Testé numériquement · Validé visuellement (SVG) · non validé
+simulateur/physique.*
+
+`auto_satin::build_satin_columns(region, params)` construit une ou plusieurs
+**colonnes éditables** (`SatinColumnGeometry` : deux rails + **barreaux**) depuis
+une région, via le pipeline : rasterisation → transformée de distance → squelette
+(Zhang-Suen) → graphe élagué → satinabilité → **sections transversales** →
+rails → barreaux → validation.
+
+Pour chaque branche du squelette : l'axe est lissé (Chaikin) et ré-échantillonné
+par longueur d'arc ; à chaque station on calcule la tangente puis la **normale**,
+on l'intersecte avec le contour et on retient l'**intervalle intérieur encadrant
+l'axe** (jamais la bounding box, jamais une association par index). Les deux
+extrémités donnent les rails ; la stabilité gauche/droite vient du signe de la
+normale (le rail A est toujours à gauche du sens de parcours). Les barreaux sont
+posés aux extrémités, aux virages, aux changements de largeur et à intervalle
+maximal. Un nettoyage anti-croisement retire les stations qui replieraient la
+colonne. Les rails **se terminent sur le contour** → pas de débordement structurel.
+
+Décision : `Suitable` → une colonne (axe principal) ; `RequiresDecomposition`
+(Y/T) → une colonne par branche menant à une extrémité ; `Ambiguous` (quasi
+circulaire), `Unsuitable` (trou, trop large/étroite) → **refus explicite**.
+Déterministe. Vérifié visuellement via `openstitch-cli auto-satin-debug --shape
+<forme> --output-svg` (SVG dans `tests/golden/auto-satin/`).
+
+Intégration : **Broderie ▸ Convertir automatiquement en satin…** affiche la
+satinabilité (statut, confiance, largeurs, branches, colonnes) puis crée les
+objets satin (annulable). Les **barreaux sont stockés** dans `SatinParams.rungs`
+et sérialisés (`.osp` schéma v2, rétrocompatible).
+
+Limite du Lot 1 : la **génération de points** utilise encore `fill_satin` sur ces
+rails (bien meilleurs). L'exploitation des barreaux (correspondance par sections,
+espacement perpendiculaire, short/split, terminaisons, sous-couches) est le
+**Lot 2** — pas encore fait. Voir `docs/stitch-feature-gap-audit.md`.
 
 ## Implémentation associée
 
-- `libs/document/.../embroidery_object.hpp` — `SatinParams`.
-- `libs/stitch_generation/include/openstitch/stitch_generation/satin.hpp`
+- `libs/document/.../embroidery_object.hpp` — `SatinParams`, `SatinRung`.
 - `libs/stitch_generation/src/satin.cpp` — `fill_satin`, `rails_from_contour`.
 - `libs/stitch_generation/src/generate.cpp` — `generate_satin`.
-- Tests : `tests/unit/stitch/test_satin.cpp`.
+- `libs/auto_satin/.../satin_column.hpp` + `src/satin_column.cpp` —
+  `build_satin_columns`, `SatinColumnGeometry`, `SatinRung` (moteur géométrique).
+- `libs/auto_satin/src/debug_export.cpp` — `columns_to_svg`.
+- Tests : `tests/unit/stitch/test_satin.cpp`,
+  `tests/unit/auto_satin/test_columns.cpp`.

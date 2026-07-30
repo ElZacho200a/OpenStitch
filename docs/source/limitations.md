@@ -17,7 +17,8 @@ fonctionnalité, vérifié dans le code.
 | Interface (thème, panneaux, workflow) | Implémenté | desktop | desktop | (vue) | thème clair/sombre + densité, inspecteur, panneau Document, workflow, état d'accueil, persistance UI (QSettings) |
 | Point droit/double/triple | Implémenté | Broderie | stitch_generation | oui | — |
 | Tatami | **Partiel** | Broderie | stitch_generation | oui | pas de sous-couche, pas d'underpath caché, entrée/sortie non gérées ; orientation éditable |
-| Satin | **Expérimental** | Broderie | stitch_generation | oui | densité le long du rail, pas d'axe médian/barreaux/sections/split, points courts en virage non gérés ; **auto désactivé par défaut** (débordait), création manuelle seulement |
+| Satin (génération) | **Expérimental** | Broderie | stitch_generation | oui | densité le long du rail, pas encore de correspondance par barreaux/short/split/terminaisons |
+| Auto-satin géométrique (rails+barreaux) | Présent · testé · SVG | Broderie ▸ Convertir en satin | auto_satin | oui | `build_satin_columns` : formes simples + Y ; cercle/anneau/large refusés ; **génération encore via `fill_satin`** (Lot 2 à venir) |
 | Classification auto des régions | **Expérimental** | Segmentation | autodigitize | oui | zones remplissables → **tatami** (satin naïf désactivé, `use_naive_satin`) ; heuristique, pas une vraie auto-numérisation |
 | Filtres d'affichage / calques | Implémenté | Affichage | desktop | (vue) | affichage seulement (couleur, type, taille ; image/régions/vecteurs/broderie) |
 | Ordre de couture | Implémenté | dock | optimization | oui | 2-opt non implémenté |
@@ -37,7 +38,7 @@ fonctionnalité, vérifié dans le code.
 ## Dette technique connue
 
 - `README.md` mentionne un compte de tests d'un jalon antérieur ; le compte réel
-  est **163** — à resynchroniser dans le README.
+  est **171** — à resynchroniser dans le README.
 - Le satin et le tatami restent des versions de base ; la refonte du moteur de
   points (documentée dans `docs/stitch-engine-audit.md`) a traité les fondations
   et le running stitch. Le satin **automatique** naïf débordait et est désactivé
@@ -53,12 +54,12 @@ la production*. Pour un logiciel de broderie, il faut distinguer :
 | Niveau | Signification | État du projet |
 |---|---|---|
 | Présent | le code existe | oui (pipeline complet) |
-| Testé numériquement | les invariants logiciels passent | oui (163 tests) |
+| Testé numériquement | les invariants logiciels passent | oui (171 tests) |
 | Validé visuellement | les trajectoires paraissent cohérentes | partiel (SVG de diagnostic, aperçu) |
 | Validé sur simulateur | vérifié dans un visualiseur tiers | non |
 | Validé physiquement | broderies réelles examinées | **non** |
 
-Un générateur peut passer 163 tests sans produire une bonne broderie : les tests
+Un générateur peut passer 171 tests sans produire une bonne broderie : les tests
 vérifient des **invariants** (pas de couture dans un trou, espacement par
 longueur d'arc, aller-retour DST exact…), pas la **qualité textile**.
 
