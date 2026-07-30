@@ -270,7 +270,28 @@ int run_auto_satin_debug(const std::string& shape, double pixelMm, const std::st
         fmt::print("  ! {}\n", w);
     }
     if (!outSvg.empty()) {
-        const auto svg = auto_satin::columns_to_svg(*region, result);
+        std::string svg = auto_satin::columns_to_svg(*region, result);
+        // Superpose le zigzag satin généré (fil réel) pour inspection visuelle.
+        std::string overlay;
+        for (const auto& col : result.columns) {
+            std::vector<stitch_generation::SatinRungSeg> rungs;
+            for (const auto& r : col.rungs) {
+                rungs.emplace_back(r.a, r.b);
+            }
+            const auto sat = stitch_generation::fill_satin_columns(col.rail_a, col.rail_b, rungs, {});
+            if (sat.satin.size() < 2) {
+                continue;
+            }
+            overlay += "<path d=\"M";
+            for (std::size_t i = 0; i < sat.satin.size(); ++i) {
+                overlay += fmt::format("{}{:.3f} {:.3f} ", i ? "L" : "",
+                                       sat.satin[i].x.value / 1000.0, -sat.satin[i].y.value / 1000.0);
+            }
+            overlay += "\" fill=\"none\" stroke=\"#333\" stroke-width=\"0.06\"/>\n";
+        }
+        if (const auto pos = svg.rfind("</svg>"); pos != std::string::npos) {
+            svg.insert(pos, overlay);
+        }
         std::ofstream f(std::filesystem::path(outSvg), std::ios::binary | std::ios::trunc);
         if (!f) {
             fmt::print(stderr, "Impossible d'écrire {}\n", outSvg);

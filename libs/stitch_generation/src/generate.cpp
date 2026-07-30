@@ -61,7 +61,20 @@ void generate_satin(stitch::StitchSequence& sequence, const document::Embroidery
     config.density = params.density;
     config.pull_compensation = params.pull_compensation;
     config.center_underlay = params.center_underlay;
-    const SatinResult result = fill_satin(params.rail_a, params.rail_b, config);
+    // Avec barreaux (satin auto) : correspondance par sections + espacement
+    // perpendiculaire. Sans barreaux (satin manuel/legacy) : ré-échantillonnage
+    // par fraction d'abscisse.
+    SatinResult result;
+    if (params.rungs.size() >= 2) {
+        std::vector<SatinRungSeg> rungs;
+        rungs.reserve(params.rungs.size());
+        for (const auto& r : params.rungs) {
+            rungs.emplace_back(r.a, r.b);
+        }
+        result = fill_satin_columns(params.rail_a, params.rail_b, rungs, config);
+    } else {
+        result = fill_satin(params.rail_a, params.rail_b, config);
+    }
     emit_polyline(sequence, result.underlay, object.id);
     emit_polyline(sequence, result.satin, object.id);
 }

@@ -78,7 +78,139 @@ std::pair<PointD, PointD> compensate(PointD a, PointD b, double comp) {
     return {{a.x + ux * comp, a.y + uy * comp}, {b.x - ux * comp, b.y - uy * comp}};
 }
 
+// Abscisse curviligne du point de `pts` le plus proche de P (projection).
+double project_arclen(const std::vector<PointD>& pts, const std::vector<double>& cum, PointD P) {
+    double best = 1e30;
+    double bestS = 0.0;
+    for (std::size_t i = 0; i + 1 < pts.size(); ++i) {
+        const double sx = pts[i + 1].x - pts[i].x;
+        const double sy = pts[i + 1].y - pts[i].y;
+        const double segLen2 = sx * sx + sy * sy;
+        double t = 0.0;
+        if (segLen2 > 1e-9) {
+            t = ((P.x - pts[i].x) * sx + (P.y - pts[i].y) * sy) / segLen2;
+            t = std::clamp(t, 0.0, 1.0);
+        }
+        const PointD proj{pts[i].x + t * sx, pts[i].y + t * sy};
+        const double dd = dist(P, proj);
+        if (dd < best) {
+            best = dd;
+            bestS = cum[i] + t * std::sqrt(segLen2);
+        }
+    }
+    return bestS;
+}
+
 }  // namespace
+
+SatinResult fill_satin_columns(const geometry::Path& rail_a, const geometry::Path& rail_b,
+                               const std::vector<SatinRungSeg>& rungs, const SatinConfig& config) {
+    if (rungs.size() < 2) {
+        return fill_satin(rail_a, rail_b, config);  // satin manuel / legacy
+    }
+    SatinResult result;
+    const auto a = to_points(rail_a);
+    const auto b = to_points(rail_b);
+    if (a.size() < 2 || b.size() < 2) {
+        return result;
+    }
+    const auto cumA = cumulative(a);
+    const auto cumB = cumulative(b);
+    const double density = static_cast<double>(std::max<std::int32_t>(1, config.density.value));
+    const double comp = static_cast<double>(config.pull_compensation.value);
+
+    // Ancres = barreaux projetés sur les deux rails (abscisses curvilignes),
+    // gardées strictement croissantes sur les DEUX rails (correspondance saine).
+    struct Anchor {
+        double sa{0.0};
+        double sb{0.0};
+        PointD pa{};
+        PointD pb{};
+    };
+    std::vector<Anchor> anchors;
+    for (const auto& r : rungs) {
+        Anchor an;
+        an.pa = toD(r.first);
+        an.pb = toD(r.second);
+        an.sa = project_arclen(a, cumA, an.pa);
+        an.sb = project_arclen(b, cumB, an.pb);
+        if (anchors.empty() || (an.sa > anchors.back().sa && an.sb > anchors.back().sb)) {
+            anchors.push_back(an);
+        }
+    }
+    if (anchors.size() < 2) {
+        return fill_satin(rail_a, rail_b, config);
+    }
+
+    // Fils : abscisses (sa, sb) + point exact aux barreaux. Espacement mesuré sur
+    // la ligne médiane (≈ perpendiculaire aux fils).
+    std::vector<std::pair<PointD, PointD>> threads;
+    const auto midOf = [&](double sa, double sb) {
+        const PointD pa = point_at(a, cumA, sa);
+        const PointD pb = point_at(b, cumB, sb);
+        return PointD{(pa.x + pb.x) / 2.0, (pa.y + pb.y) / 2.0};
+    };
+    threads.push_back({anchors.front().pa, anchors.front().pb});
+    for (std::size_t k = 0; k + 1 < anchors.size(); ++k) {
+        const Anchor& a0 = anchors[k];
+        const Anchor& a1 = anchors[k + 1];
+        // Échantillonnage fin de la ligne médiane de l'intervalle -> longueur réelle.
+        constexpr int kSub = 48;
+        std::vector<double> us(kSub + 1);
+        std::vector<double> cumM(kSub + 1, 0.0);
+        PointD prevM = midOf(a0.sa, a0.sb);
+        for (int j = 0; j <= kSub; ++j) {
+            const double u = static_cast<double>(j) / kSub;
+            us[static_cast<std::size_t>(j)] = u;
+            const PointD m = midOf(a0.sa + (a1.sa - a0.sa) * u, a0.sb + (a1.sb - a0.sb) * u);
+            if (j > 0) {
+                cumM[static_cast<std::size_t>(j)] =
+                    cumM[static_cast<std::size_t>(j - 1)] + dist(prevM, m);
+            }
+            prevM = m;
+        }
+        const double total = cumM.back();
+        const int n = std::max(1, static_cast<int>(std::lround(total / density)));
+        const double step = total / n;
+        // Fils intermédiaires (j=1..n-1) à espacement médian régulier.
+        for (int jj = 1; jj < n; ++jj) {
+            const double target = jj * step;
+            const auto it = std::lower_bound(cumM.begin(), cumM.end(), target);
+            const std::size_t idx =
+                std::min<std::size_t>(static_cast<std::size_t>(it - cumM.begin()), kSub);
+            const std::size_t lo = idx == 0 ? 0 : idx - 1;
+            const double segLen = cumM[idx] - cumM[lo];
+            const double f = segLen > 1e-9 ? (target - cumM[lo]) / segLen : 0.0;
+            const double u = us[lo] + (us[idx] - us[lo]) * f;
+            threads.push_back({point_at(a, cumA, a0.sa + (a1.sa - a0.sa) * u),
+                               point_at(b, cumB, a0.sb + (a1.sb - a0.sb) * u)});
+        }
+        threads.push_back({a1.pa, a1.pb});  // barreau traversé exactement
+    }
+
+    // Émission zigzag L0,R0,L1,R1,… (chaque point cousu traverse la colonne).
+    for (auto& [pa, pb] : threads) {
+        result.max_width_um = std::max(result.max_width_um, dist(pa, pb));
+        std::tie(pa, pb) = compensate(pa, pb, comp);
+        result.satin.push_back(toUm(pa));
+        result.satin.push_back(toUm(pb));
+    }
+
+    // Sous-couche centrale optionnelle (point droit sur la médiane).
+    if (config.center_underlay) {
+        const double uspace =
+            static_cast<double>(std::max<std::int32_t>(1, config.underlay_spacing.value));
+        for (std::size_t i = 0; i < threads.size(); ++i) {
+            // Réutilise les positions des fils, sous-échantillonnées.
+            if (i % std::max<std::size_t>(1, static_cast<std::size_t>(uspace / density)) == 0) {
+                const auto& t = threads[i];
+                result.underlay.push_back(toUm({(t.first.x + t.second.x) / 2.0,
+                                                (t.first.y + t.second.y) / 2.0}));
+            }
+        }
+    }
+    return result;
+}
 
 SatinResult fill_satin(const geometry::Path& rail_a, const geometry::Path& rail_b,
                        const SatinConfig& config) {

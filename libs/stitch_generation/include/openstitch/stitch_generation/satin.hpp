@@ -2,12 +2,17 @@
 #pragma once
 
 #include <optional>
+#include <utility>
 #include <vector>
 
 #include "openstitch/core/units.hpp"
 #include "openstitch/geometry/path.hpp"
 
 namespace openstitch::stitch_generation {
+
+// Barreau : segment transversal reliant un point du rail A à un point du rail B.
+// Il définit une correspondance EXACTE entre les deux rails à cette station.
+using SatinRungSeg = std::pair<Vec2um, Vec2um>;
 
 // Paramètres d'une colonne satin (§5.3).
 struct SatinConfig {
@@ -30,6 +35,18 @@ struct SatinResult {
 // et le fil zigzague d'un bord à l'autre. Densité = pas le long de la colonne.
 [[nodiscard]] SatinResult fill_satin(const geometry::Path& rail_a, const geometry::Path& rail_b,
                                      const SatinConfig& config);
+
+// Génère une colonne satin en respectant des BARREAUX (correspondance par
+// sections, cf. auto-satin). Chaque paire de barreaux consécutifs découpe les
+// rails en intervalles correspondants, interpolés selon LEUR propre abscisse
+// curviligne (rails de longueurs/courbures différentes autorisés). L'espacement
+// est mesuré PERPENDICULAIREMENT (avance de la ligne médiane), pas le long d'un
+// rail. Les barreaux sont traversés exactement. Séquence L0,R0,L1,R1,…
+// déterministe. Si `rungs` a moins de 2 éléments, retombe sur `fill_satin`.
+[[nodiscard]] SatinResult fill_satin_columns(const geometry::Path& rail_a,
+                                             const geometry::Path& rail_b,
+                                             const std::vector<SatinRungSeg>& rungs,
+                                             const SatinConfig& config);
 
 // Découpe un contour fermé en deux rails, coupé aux deux sommets les plus
 // éloignés (les « bouts » de la colonne). Convient aux formes allongées.

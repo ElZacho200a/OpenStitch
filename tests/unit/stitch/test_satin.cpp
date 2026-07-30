@@ -20,7 +20,100 @@ geometry::Path open_path(std::initializer_list<std::pair<std::int32_t, std::int3
     return p;
 }
 
+Vec2um v(std::int32_t x, std::int32_t y) { return {Micrometers{x}, Micrometers{y}}; }
+SatinRungSeg rung(std::int32_t ax, std::int32_t ay, std::int32_t bx, std::int32_t by) {
+    return {v(ax, ay), v(bx, by)};
+}
+Vec2um mid(Vec2um a, Vec2um b) {
+    return {Micrometers{(a.x.value + b.x.value) / 2}, Micrometers{(a.y.value + b.y.value) / 2}};
+}
+
 }  // namespace
+
+// --- Lot 2 : générateur satin par barreaux -----------------------------------
+
+TEST_CASE("satin colonnes : espacement median regulier (colonne droite)") {
+    const auto railA = open_path({{0, 0}, {20'000, 0}});
+    const auto railB = open_path({{0, 4'000}, {20'000, 4'000}});
+    const std::vector<SatinRungSeg> rungs{rung(0, 0, 0, 4'000), rung(10'000, 0, 10'000, 4'000),
+                                          rung(20'000, 0, 20'000, 4'000)};
+    SatinConfig cfg;
+    cfg.density = Micrometers{1'000};
+    const auto r = fill_satin_columns(railA, railB, rungs, cfg);
+    REQUIRE(r.satin.size() >= 6);
+    REQUIRE(r.satin.size() % 2 == 0);
+
+    // Ligne médiane à y = 2000 ; espacement perpendiculaire ~1 mm, régulier.
+    double maxGap = 0.0;
+    Vec2um prev = mid(r.satin[0], r.satin[1]);
+    CHECK(prev.y.value == 2'000);
+    for (std::size_t i = 2; i < r.satin.size(); i += 2) {
+        const Vec2um m = mid(r.satin[i], r.satin[i + 1]);
+        CHECK(m.y.value == 2'000);
+        maxGap = std::max(maxGap, length_um(m - prev));
+        prev = m;
+    }
+    CHECK(maxGap <= 1'250.0);  // aucun écart ne dépasse nettement la densité
+}
+
+TEST_CASE("satin colonnes : barreaux traverses exactement") {
+    const auto railA = open_path({{0, 0}, {20'000, 0}});
+    const auto railB = open_path({{0, 4'000}, {20'000, 4'000}});
+    const std::vector<SatinRungSeg> rungs{rung(0, 0, 0, 4'000), rung(10'000, 0, 10'000, 4'000),
+                                          rung(20'000, 0, 20'000, 4'000)};
+    SatinConfig cfg;
+    cfg.density = Micrometers{1'000};
+    const auto r = fill_satin_columns(railA, railB, rungs, cfg);
+    // Un fil passe EXACTEMENT par le barreau central (10000,0)-(10000,4000).
+    bool found = false;
+    for (std::size_t i = 0; i + 1 < r.satin.size(); i += 2) {
+        if (r.satin[i] == v(10'000, 0) && r.satin[i + 1] == v(10'000, 4'000)) {
+            found = true;
+        }
+    }
+    CHECK(found);
+}
+
+TEST_CASE("satin colonnes : rails de longueurs differentes") {
+    // Rail A courbe (plus long) ; rail B droit (plus court). Doit rester cohérent.
+    const auto railA = open_path({{0, 0}, {10'000, 3'000}, {20'000, 0}});
+    const auto railB = open_path({{0, 6'000}, {20'000, 6'000}});
+    const std::vector<SatinRungSeg> rungs{rung(0, 0, 0, 6'000), rung(10'000, 3'000, 10'000, 6'000),
+                                          rung(20'000, 0, 20'000, 6'000)};
+    SatinConfig cfg;
+    cfg.density = Micrometers{800};
+    const auto r = fill_satin_columns(railA, railB, rungs, cfg);
+    REQUIRE(r.satin.size() >= 6);
+    CHECK(r.max_width_um > 0.0);
+    // Espacement médian borné (pas de saut géant malgré la différence de longueur).
+    Vec2um prev = mid(r.satin[0], r.satin[1]);
+    double maxGap = 0.0;
+    for (std::size_t i = 2; i < r.satin.size(); i += 2) {
+        const Vec2um m = mid(r.satin[i], r.satin[i + 1]);
+        maxGap = std::max(maxGap, length_um(m - prev));
+        prev = m;
+    }
+    CHECK(maxGap <= 1'100.0);
+}
+
+TEST_CASE("satin colonnes : moins de deux barreaux -> repli fill_satin") {
+    const auto railA = open_path({{0, 0}, {10'000, 0}});
+    const auto railB = open_path({{0, 3'000}, {10'000, 3'000}});
+    SatinConfig cfg;
+    cfg.density = Micrometers{1'000};
+    const std::vector<SatinRungSeg> one{rung(0, 0, 0, 3'000)};
+    CHECK(fill_satin_columns(railA, railB, one, cfg).satin == fill_satin(railA, railB, cfg).satin);
+}
+
+TEST_CASE("satin colonnes : deterministe") {
+    const auto railA = open_path({{0, 0}, {15'000, 1'000}});
+    const auto railB = open_path({{0, 5'000}, {15'000, 6'000}});
+    const std::vector<SatinRungSeg> rungs{rung(0, 0, 0, 5'000), rung(15'000, 1'000, 15'000, 6'000)};
+    SatinConfig cfg;
+    cfg.density = Micrometers{600};
+    CHECK(fill_satin_columns(railA, railB, rungs, cfg).satin ==
+          fill_satin_columns(railA, railB, rungs, cfg).satin);
+}
 
 TEST_CASE("satin : colonne droite, zigzag entre les deux rails") {
     // Deux rails horizontaux, longueur 20 mm, ecartes de 4 mm.
