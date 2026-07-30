@@ -8,20 +8,20 @@ Public : développeur, mainteneur.
 - **Tests unitaires** : `tests/unit/<lib>/test_*.cpp` (un exécutable par lib).
 - **Test d'intégration** : `tests/integration/test_pipeline.cpp` (chaîne complète).
 - **Golden (SVG de diagnostic)** : `tests/golden/stitch-generation/`.
-- Total au dernier passage vérifié : **184 tests CTest**, 100 % réussis.
+- Total au dernier passage vérifié : **190 tests CTest**, 100 % réussis.
 
 ## Encadré de traçabilité (dernier passage vérifié)
 
-Un simple « 184/184 » devient vite périmé ; voici le contexte exact du dernier
+Un simple « 190/190 » devient vite périmé ; voici le contexte exact du dernier
 passage vérifié manuellement. Régénérez ces valeurs avant toute publication.
 
 | Élément | Valeur |
 |---|---|
-| Commit (état du code testé) | `beea608` |
+| Commit (état du code testé) | `2e79159` |
 | Compilateur | MSVC toolset 14.50 (Visual Studio 2026) |
 | CMake | 4.4.0-rc3 |
 | Configurations | Debug **et** Release |
-| Résultat CTest | 184 / 184 réussis |
+| Résultat CTest | 190 / 190 réussis |
 | Tests désactivés | 0 |
 | Fichiers de tests d'intégration | 1 (`tests/integration/test_pipeline.cpp`) |
 | Tests sur machine réelle | 0 |
@@ -29,7 +29,7 @@ passage vérifié manuellement. Régénérez ces valeurs avant toute publication
 
 Note : chaque `TEST_CASE` Catch2 est enregistré comme un test CTest (via
 `catch_discover_tests`) ; le nombre d'**assertions** Catch2 est supérieur. Le
-chiffre 184 compte les cas de test, pas les assertions.
+chiffre 190 compte les cas de test, pas les assertions.
 
 ## Exécution
 
@@ -78,6 +78,10 @@ build\msvc\tests\unit\stitch\Debug\test_stitch.exe "[nom]"   # un exécutable
   remove réduit les pénétrations), split (staggered ≠ ligne centrale, jitter
   déterministe), terminaisons (taper réduit la largeur au bout sans l'annuler) ;
   aller-retour `.osp` des modes.
+- **Satin — sous-couches + compensation (Lot 4)** : center/edge/zigzag = 4 passes
+  distinctes ordonnées ; pull élargit **un seul côté** (asymétrique) ; push étend
+  le bout ; le générateur tague les sous-couches `Underlay` et le satin
+  `TopStitch` ; aller-retour `.osp`.
 - **Running** : espacement par longueur d'arc (cercle), coins préservés, courbes
   Bézier suivies, résultats déterministes.
 - **Undo/redo** : « undo total = état initial », restauration exacte des labels ;

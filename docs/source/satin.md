@@ -169,8 +169,35 @@ réduit les pénétrations, split ajoute des points décalés (staggered ≠ lig
 centrale ; jitter déterministe), taper réduit la largeur au bout sans l'annuler
 (SVG `tests/golden/auto-satin/lot3-*.svg` : effilé 5,00 → 0,91 mm).
 
-Reste (lots suivants) : sous-couches détaillées + compensation push/pull (Lot 4),
-entrée/sortie + lock stitches (Lot 5), routage multi-colonnes (Lot 6). Voir
+## Sous-couches et compensation (Lot 4)
+
+*État : Présent · Testé numériquement · Validé visuellement (SVG).* Toutes
+désactivées par défaut, éditables (inspecteur) et persistées (`.osp`).
+
+**Modèle de passes** (§4) : chaque commande de la séquence porte une `StitchPass`
+(`Underlay`, `TopStitch`, `Travel`, `Lock`, `Manual`) — non sérialisée (la
+séquence est régénérée), qui permet d'**identifier, filtrer et analyser** les
+passes séparément. Les sous-couches sont émises **avant** la couche supérieure.
+
+- **Center walk** : point droit sur la médiane (retrait aux extrémités).
+- **Edge walk** : deux chemins internes rentrés des rails (`underlay_edge_inset`).
+- **Zigzag underlay** : satin léger (largeur réduite, pas plus grand).
+- Ordre : **center → edge → zigzag → satin** (recommandé).
+
+**Compensation** (§11), appliquée à la géométrie des paires avant génération :
+
+- **Pull latérale asymétrique** : décalage par côté = base symétrique
+  (`pull_compensation`) + fixe gauche/droite (`pull_left`/`pull_right`) +
+  proportionnel à la largeur, borné (`pull_max`).
+- **Push longitudinale** : `push_start`/`push_end` étendent (ou rétractent) la
+  colonne aux extrémités le long de l'axe.
+
+Vérifié : center/edge/zigzag = 4 passes distinctes ordonnées, pull élargit **un
+seul côté** (asymétrique), push étend le bout, déterminisme, aller-retour `.osp`
+(SVG `tests/golden/auto-satin/lot4-*.svg` : sous-couches en vert).
+
+Reste (lots suivants) : entrée/sortie + lock stitches (Lot 5), routage
+multi-colonnes (Lot 6), tatami avancé (Lot 7). Voir
 `docs/stitch-feature-gap-audit.md`.
 
 ## Implémentation associée

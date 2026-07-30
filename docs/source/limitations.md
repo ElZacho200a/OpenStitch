@@ -17,7 +17,8 @@ fonctionnalité, vérifié dans le code.
 | Interface (thème, panneaux, workflow) | Implémenté | desktop | desktop | (vue) | thème clair/sombre + densité, inspecteur, panneau Document, workflow, état d'accueil, persistance UI (QSettings) |
 | Point droit/double/triple | Implémenté | Broderie | stitch_generation | oui | — |
 | Tatami | **Partiel** | Broderie | stitch_generation | oui | pas de sous-couche, pas d'underpath caché, entrée/sortie non gérées ; orientation éditable |
-| Satin (génération par barreaux) | Présent · testé · SVG | Broderie / inspecteur | stitch_generation | oui | `fill_satin_columns` : correspondance par sections, espacement **perpendiculaire**, **points courts / split / terminaisons** (Lot 3, éditables) ; sous-couches détaillées + compensation (Lot 4), lock (Lot 5), routage (Lot 6) à venir |
+| Satin (génération par barreaux) | Présent · testé · SVG | Broderie / inspecteur | stitch_generation | oui | `fill_satin_columns` : sections, espacement **perpendiculaire**, points courts / split / terminaisons (Lot 3), **sous-couches (center/edge/zigzag) + compensation pull/push** (Lot 4, passes distinctes) ; lock (Lot 5), routage (Lot 6) à venir |
+| Modèle de passes | Présent · testé | (générateur) | stitch | oui | `StitchPass` par commande (Underlay/TopStitch/Travel/Lock/Manual) ; affichage/toggle par passe dans l'UI à venir |
 | Auto-satin géométrique (rails+barreaux) | Présent · testé · SVG | Broderie ▸ Convertir en satin | auto_satin | oui | `build_satin_columns` : formes simples + Y ; cercle/anneau/large refusés |
 | Classification auto des régions | **Expérimental** | Segmentation | autodigitize | oui | zones remplissables → **tatami** (satin naïf désactivé, `use_naive_satin`) ; heuristique, pas une vraie auto-numérisation |
 | Filtres d'affichage / calques | Implémenté | Affichage | desktop | (vue) | affichage seulement (couleur, type, taille ; image/régions/vecteurs/broderie) |
@@ -38,12 +39,12 @@ fonctionnalité, vérifié dans le code.
 ## Dette technique connue
 
 - `README.md` mentionne un compte de tests d'un jalon antérieur ; le compte réel
-  est **184** — à resynchroniser dans le README.
+  est **190** — à resynchroniser dans le README.
 - Le satin dispose désormais d'un moteur géométrique par **squelette**
   (`auto_satin::build_satin_columns`, Lot 1) et d'une **génération par barreaux**
-  (`fill_satin_columns`, Lot 2), avec **points courts / split / terminaisons**
-  (Lot 3, éditables et persistés). Restent sous-couches détaillées + compensation
-  (Lot 4), lock (Lot 5), routage (Lot 6). Le satin **automatique naïf** reste désactivé.
+  (`fill_satin_columns`, Lot 2), points courts / split / terminaisons (Lot 3) et
+  **sous-couches (center/edge/zigzag) + compensation pull/push** (Lot 4, passes
+  distinctes). Restent lock (Lot 5), routage (Lot 6). Le satin **auto naïf** reste désactivé.
   Le **tatami** reste une version de base (sous-couches/underpath à venir).
 - Aucune validation sur machine à broder réelle.
 
@@ -55,12 +56,12 @@ la production*. Pour un logiciel de broderie, il faut distinguer :
 | Niveau | Signification | État du projet |
 |---|---|---|
 | Présent | le code existe | oui (pipeline complet) |
-| Testé numériquement | les invariants logiciels passent | oui (184 tests) |
+| Testé numériquement | les invariants logiciels passent | oui (190 tests) |
 | Validé visuellement | les trajectoires paraissent cohérentes | partiel (SVG de diagnostic, aperçu) |
 | Validé sur simulateur | vérifié dans un visualiseur tiers | non |
 | Validé physiquement | broderies réelles examinées | **non** |
 
-Un générateur peut passer 184 tests sans produire une bonne broderie : les tests
+Un générateur peut passer 190 tests sans produire une bonne broderie : les tests
 vérifient des **invariants** (pas de couture dans un trou, espacement par
 longueur d'arc, aller-retour DST exact…), pas la **qualité textile**.
 
