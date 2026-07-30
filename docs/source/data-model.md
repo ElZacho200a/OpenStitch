@@ -34,6 +34,7 @@ Fichier : `core/ids.hpp`.
 |---|---|---|
 | `original` | `image::Image` | image source intacte |
 | `mm_per_px` | `Millimeters` | résolution de travail |
+| `canvas` | `Canvas` | cadre de broderie (largeur/hauteur, défaut 100×100 mm) |
 | `ops` | `vector<ImageOp>` | pile de prétraitements |
 | `segmentation` | `optional<Segmentation>` | carte de régions |
 | `vector_objects` | `vector<VectorObject>` | géométrie éditable |
@@ -62,9 +63,10 @@ binaire), sauf les points générés (recalculés).
 
 ## Éléments non présents dans le modèle
 
-Limitation : `profil machine`, `cadre` paramétrable riche, `fil`/`palette`,
-`avertissement` persistant et `commande undo` sérialisée ne sont pas (ou peu)
-présents. Le `Canvas` existe mais reste minimal (taille du cadre).
+Limitation : `profil machine`, `cadre` paramétrable riche (formes, marges),
+`fil`/`palette`, `avertissement` persistant et `commande undo` sérialisée ne sont
+pas (ou peu) présents. Le `Canvas` porte la **taille du cadre**, réglable et
+persistée, mais reste un simple rectangle.
 
 ## Implémentation associée
 

@@ -1,23 +1,52 @@
 # Guide utilisateur détaillé
 
 Public : utilisateur débutant et avancé. Ce chapitre documente chaque menu,
-outil et raccourci **réellement présents** dans `apps/desktop/main_window.cpp`.
+outil et raccourci **réellement présents** dans `apps/desktop/`.
+
+## Disposition générale
+
+L'interface place le **canevas au centre** et l'entoure de zones fonctionnelles :
+
+```
+Menus
+Barre d'outils principale
+Barre contextuelle (suit la sélection)
+[Palette d'outils] [ CANEVAS ] [ Inspecteur ]
+[Document / Ordre] [ Workflow ]
+Barre de simulation (zone réservée)
+Barre d'état
+```
+
+Tous les panneaux sont des **docks** redimensionnables, déplaçables et masquables
+(**Ctrl+Shift+P** = mode canevas). Leur disposition, la géométrie de la fenêtre,
+le **thème** et la **densité** sont mémorisés d'une session à l'autre (préférences
+d'interface, distinctes du projet `.osp`).
+
+## État d'accueil
+
+Tant qu'aucun document n'est ouvert, le centre du canevas propose **Ouvrir une
+image**, **Ouvrir un projet** et **Importer un DST**, avec une courte explication.
 
 ## Le canevas
 
 La zone centrale est un canevas dont l'unité est le **millimètre** (origine au
 centre, Y vers le haut). Des **règles** graduées en mm bordent le haut et la
-gauche ; une **grille** adaptative et un **cadre** de broderie (rectangle rouge,
-100 × 100 mm par défaut) sont dessinés. La position du curseur en mm apparaît
-dans la barre d'état.
+gauche ; une **grille** adaptative et le **cadre** de broderie (rectangle rouge,
+défini par l'utilisateur, cf. *Taille du cadre*) sont dessinés. La position du
+curseur en mm apparaît dans la barre d'état.
 
-- **Zoom** : molette (ancrée sous le curseur) ou menu Affichage.
-- **Déplacement** : cliquer-glisser (main).
-- **Recadrage/sélection** : bascule en mode rectangle quand l'outil de recadrage
-  est actif.
+Le **mode d'interaction** vient de la palette d'outils (à gauche) :
 
-Le rendu est organisé en deux couches (image/vecteurs/régions d'une part, points
-d'autre part) pour rester fluide sur de gros motifs.
+- **Sélection** (`V`) : sélectionner une région/un objet ; le glisser déplace la vue.
+- **Déplacer la vue** (`H`) : déplacement pur (le clic ne sélectionne pas).
+- **Rectangle / Recadrage** (`M`) : sélection rectangulaire pour recadrer l'image.
+- **Zoom** : molette (ancrée sous le curseur) ou barre d'outils / menu Affichage.
+- **Échap** : revient à la Sélection et annule le mode fusion en cours.
+
+La sélection d'un objet est tracée en **double contraste** (halo clair + trait
+d'accent), lisible sur tout fond. Le rendu est organisé en deux couches
+(image/vecteurs/régions d'une part, points d'autre part) pour rester fluide sur
+de gros motifs.
 
 ## Menu Fichier
 
@@ -29,6 +58,15 @@ d'autre part) pour rester fluide sur de gros motifs.
 | Exporter en DST… | — | Écrit un fichier `.dst` (points uniquement) |
 | Importer un DST… | — | Relit un `.dst` comme séquence de points |
 | Quitter | Ctrl+Q | Ferme l'application |
+
+**Import** : le dialogue affiche un aperçu, les dimensions en pixels, la
+résolution **mm/pixel** en direct, la taille du cadre, et **alerte si l'image
+dépasse le cadre**. **Export DST** : un **résumé** (dimensions, points, sauts,
+coupes, changements de couleur, fil estimé, cadre, dépassement éventuel) est
+présenté avant écriture, avec un rappel que le DST ne conserve pas les objets.
+
+Le titre de la fenêtre affiche un indicateur **modifié** (`*`) ; quitter avec des
+modifications non enregistrées propose **Enregistrer / Ignorer / Annuler**.
 
 ## Menu Édition
 
@@ -99,7 +137,16 @@ Le sous-menu **Calques** regroupe des interrupteurs indépendants :
 |---|---|---|
 | Zoom avant | Ctrl++ | Agrandit |
 | Zoom arrière | Ctrl+- | Réduit |
-| Ajuster au canevas | Ctrl+0 | Cadre la vue sur le canevas |
+| Ajuster au canevas | Ctrl+0 ou F | Cadre la vue sur le canevas |
+| Taille du cadre… | — | Définit la zone physique de broderie (voir ci-dessous) |
+| Thème | — | Clair / Sombre |
+| Densité | — | Confortable / Compact |
+| Masquer les panneaux | Ctrl+Shift+P | Mode canevas (masque puis restaure les docks) |
+
+**Taille du cadre** : largeur/hauteur en mm (10–500). Le cadre est une donnée du
+projet (persistée dans le `.osp`, annulable) ; l'analyse « hors cadre » et le
+rectangle rouge s'y réfèrent. Accessible aussi via le bouton **« Cadre : W×H
+mm… »** de la barre contextuelle quand rien n'est sélectionné.
 
 Les points cousus sont tracés **dans la couleur de fil de chaque objet** (un fil
 très clair est légèrement assombri pour rester visible) ; les **sauts** en
@@ -134,6 +181,45 @@ Dock (à droite, dès qu'il existe des objets) pour **isoler** ce qu'on regarde 
 
 Ces filtres n'affectent que **l'affichage** (pas l'export ni les points générés).
 
+## Barre d'outils principale
+
+Actions fréquentes, icônes monochromes avec infobulle : ouvrir image/projet,
+enregistrer, annuler/rétablir, zoom −/ajuster/+, analyser, aperçu des points,
+exporter DST. Les actions indisponibles dans le contexte courant sont désactivées.
+
+## Barre d'outils contextuelle
+
+Sous la barre principale, son contenu **suit la sélection** :
+
+- **objet de broderie** : bascule rapide du type (Contour/Tatami/Satin) +
+  *Orientation…* si tatami ;
+- **objet vectoriel** : boutons de création rapide (Contour/Tatami/Satin) ;
+- **région** : aire + *Fusionner* / *Supprimer* / *Vectoriser* ;
+- **aucune sélection** : résumé du motif + bouton *Cadre…*.
+
+## Inspecteur de propriétés
+
+Dock (droite) affichant l'élément sélectionné. Pour un **objet de broderie**, il
+expose ses **paramètres de couture éditables après création** (contour :
+longueur/min/passages ; tatami : espacement/longueur/angle/retrait/décalage ;
+satin : densité/compensation/sous-couche). Chaque changement passe par une
+commande **annulable** et régénère les points. Une région ou un objet vectoriel
+y affiche ses informations en lecture seule.
+
+## Panneau Document
+
+Dock (gauche) à deux onglets, **Objets** et **Régions**, tabifié avec l'**Ordre
+de couture**. Sélectionner une ligne met l'élément en évidence au canevas et dans
+l'inspecteur ; une sélection au canevas surligne la ligne correspondante
+(synchronisation bidirectionnelle).
+
+## Indicateur de workflow
+
+Bandeau (sous Document) listant les étapes **Image → Régions → Vecteurs →
+Broderie → Vérification → Export**. L'état de chaque étape (à faire / disponible /
+en cours / terminé / attention) est déduit du document et rendu par pastille +
+libellé + mot d'état. Un clic rappelle en barre d'état l'action à faire.
+
 ## Menu Analyse et panneau
 
 **Analyser le motif** (F5) remplit le panneau *Analyse* (dock) avec les problèmes
@@ -142,16 +228,17 @@ localisation.
 
 ## Panneau Ordre de couture
 
-Dock listant les objets de broderie dans l'ordre. Vous pouvez monter/descendre un
-objet, le verrouiller (il ne bougera plus lors de l'optimisation), et appliquer
-une stratégie (ordre du document, par couleur, par proximité, couleur puis
-proximité). Un libellé affiche le coût estimé.
+Onglet du panneau Document listant les objets de broderie dans l'ordre. Vous
+pouvez monter/descendre un objet, le verrouiller (il ne bougera plus lors de
+l'optimisation), et appliquer une stratégie (ordre du document, par couleur, par
+proximité, couleur puis proximité). Un libellé affiche le coût estimé.
 
 ## Barre de simulation
 
 Boutons de lecture/pause et un curseur qui révèle la couture jusqu'à un index de
-point, avec un repère d'aiguille. La barre n'apparaît que lorsqu'une séquence de
-points existe.
+point, avec un repère d'aiguille. La barre occupe une **zone réservée** (toujours
+visible, contrôles grisés tant qu'aucune séquence n'existe) pour ne pas faire
+sauter la mise en page.
 
 ## Erreurs et messages
 
@@ -162,13 +249,37 @@ renvoient une erreur structurée au lieu de provoquer un arrêt du programme.
 Aucun plantage n'a été observé dans le corpus de tests actuel — ce qui ne
 constitue pas une garantie absolue en version 0.1.0.
 
-Note : Les raccourcis proviennent des séquences standard de Qt
-(`QKeySequence::Open`, `Save`, `Undo`, `Redo`, `Delete`, `ZoomIn`, `ZoomOut`,
-`Quit`) et de `Ctrl+0`, `F5` définis explicitement.
+## Menu Aide
+
+- **Raccourcis clavier…** : la liste ci-dessous.
+- **À propos** : nom, version, licence.
+
+## Raccourcis
+
+| Raccourci | Action |
+|---|---|
+| Ctrl+O / Ctrl+S | Ouvrir une image / Enregistrer le projet |
+| Ctrl+Z / Ctrl+Y | Annuler / Rétablir |
+| Suppr | Supprimer la région sélectionnée |
+| Ctrl++ / Ctrl+- / Ctrl+0 | Zoom avant / arrière / ajuster |
+| F | Ajuster au canevas |
+| F5 | Analyser le motif |
+| V / H / M | Outils : Sélection / Déplacer la vue / Rectangle |
+| Échap | Revenir à la Sélection (annule la fusion) |
+| Ctrl+Shift+P | Masquer / afficher les panneaux |
+| Ctrl+Q | Quitter |
+
+Les raccourcis standard proviennent des séquences Qt ; `Ctrl+0`, `F5`, `F`,
+`V/H/M`, `Ctrl+Shift+P` sont définis explicitement, sans conflit avec la
+navigation clavier (Tab reste réservé au parcours des contrôles).
 
 ## Implémentation associée
 
-- `apps/desktop/main_window.cpp` — construction des menus, actions, docks, barre.
+- `apps/desktop/main_window.cpp/.hpp` — menus, barres, docks, sélection, cadre.
+- `apps/desktop/app_theme.*`, `design_tokens.*` — thème et tokens.
+- `apps/desktop/properties_panel.*`, `document_panel.*`, `workflow_panel.*`,
+  `empty_state_widget.*` — panneaux.
+- `apps/desktop/tools.hpp`, `ui_icons.*` — modes d'interaction et icônes.
 - `apps/desktop/canvas_view.cpp` — zoom, déplacement, grille, cadre, rendu points.
 - `apps/desktop/ruler.cpp` — règles en mm.
 - `apps/desktop/import_dialog.cpp`, `brightness_dialog.cpp` — dialogues.

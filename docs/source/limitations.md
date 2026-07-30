@@ -13,7 +13,8 @@ fonctionnalité, vérifié dans le code.
 | Édition de régions | Implémenté | Segmentation | segmentation | oui | — |
 | Vectorisation | Implémenté | Segmentation | vectorization | oui | — |
 | Édition de nœuds | Partiel | canevas | document | — | déplacement seul |
-| Édition d'objets broderie | Implémenté | canevas/clic droit | commands | oui | changer le type, orientation du tatami (poignée dans la scène) |
+| Édition d'objets broderie | Implémenté | inspecteur/clic droit | commands | oui | changer le type et **tous les paramètres** après création ; orientation à la poignée |
+| Interface (thème, panneaux, workflow) | Implémenté | desktop | desktop | (vue) | thème clair/sombre + densité, inspecteur, panneau Document, workflow, état d'accueil, persistance UI (QSettings) |
 | Point droit/double/triple | Implémenté | Broderie | stitch_generation | oui | — |
 | Tatami | **Partiel** | Broderie | stitch_generation | oui | pas de sous-couche, pas d'underpath caché, entrée/sortie non gérées ; orientation éditable |
 | Satin | **Expérimental** | Broderie | stitch_generation | oui | densité le long du rail, pas d'axe médian/barreaux/sections/split, points courts en virage non gérés ; **auto désactivé par défaut** (débordait), création manuelle seulement |
@@ -24,18 +25,19 @@ fonctionnalité, vérifié dans le code.
 | Simulation | Implémenté | barre | desktop | — | pas de réglage de vitesse |
 | Export/Import DST | Implémenté | Fichier/CLI | formats | oui | limites du format |
 | Export SVG diagnostic | Implémenté | CLI | formats | oui | — |
-| Format projet `.osp` | Implémenté | Fichier | project_io | oui | pas d'autosave/migration |
+| Format projet `.osp` | Implémenté | Fichier | project_io | oui | suivi « modifié » + garde à la fermeture ; pas d'autosave |
+| Cadre de broderie | Implémenté | Affichage | document | oui | taille réglable et persistée ; rectangle simple (pas de profils/formes) |
 | Palette de fils | Non implémenté | — | (thread_palette absent) | — | RGB par objet uniquement |
 | Édition manuelle des points | Non implémenté | — | — | — | régénération uniquement |
 | Remplissages courbe/radial/spirale/motif | Non implémenté | — | — | — | prévus |
-| Profils machine/cadres avancés | Non implémenté | — | — | — | cadre fixe 100×100 mm |
+| Profils machine/cadres avancés | Non implémenté | — | — | — | cadre = rectangle simple (taille réglable) |
 | Compensation directionnelle | Partiel | — | — | — | satin uniquement |
 | Tâches asynchrones | Non implémenté | — | — | — | traitements synchrones |
 
 ## Dette technique connue
 
 - `README.md` mentionne un compte de tests d'un jalon antérieur ; le compte réel
-  est **161** — à resynchroniser dans le README.
+  est **163** — à resynchroniser dans le README.
 - Le satin et le tatami restent des versions de base ; la refonte du moteur de
   points (documentée dans `docs/stitch-engine-audit.md`) a traité les fondations
   et le running stitch. Le satin **automatique** naïf débordait et est désactivé
@@ -51,12 +53,12 @@ la production*. Pour un logiciel de broderie, il faut distinguer :
 | Niveau | Signification | État du projet |
 |---|---|---|
 | Présent | le code existe | oui (pipeline complet) |
-| Testé numériquement | les invariants logiciels passent | oui (161 tests) |
+| Testé numériquement | les invariants logiciels passent | oui (163 tests) |
 | Validé visuellement | les trajectoires paraissent cohérentes | partiel (SVG de diagnostic, aperçu) |
 | Validé sur simulateur | vérifié dans un visualiseur tiers | non |
 | Validé physiquement | broderies réelles examinées | **non** |
 
-Un générateur peut passer 161 tests sans produire une bonne broderie : les tests
+Un générateur peut passer 163 tests sans produire une bonne broderie : les tests
 vérifient des **invariants** (pas de couture dans un trou, espacement par
 longueur d'arc, aller-retour DST exact…), pas la **qualité textile**.
 
