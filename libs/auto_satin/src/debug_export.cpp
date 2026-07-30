@@ -86,4 +86,42 @@ std::string to_debug_svg(
     return o.str();
 }
 
+std::string columns_to_svg(const geometry::PathSet& region, const SatinColumnsResult& result) {
+    double minx = 1e18, miny = 1e18, maxx = -1e18, maxy = -1e18;
+    for (const auto& n : region.outer.nodes) {
+        minx = std::min(minx, mmx(n.pos));
+        maxx = std::max(maxx, mmx(n.pos));
+        miny = std::min(miny, mmy(n.pos));
+        maxy = std::max(maxy, mmy(n.pos));
+    }
+    const double m = 3.0;
+    std::ostringstream o;
+    o << "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"" << (minx - m) << " " << (miny - m)
+      << " " << (maxx - minx + 2 * m) << " " << (maxy - miny + 2 * m) << "\">\n";
+    o << "<!-- statut: " << to_string(result.status) << " colonnes=" << result.columns.size();
+    if (!result.refusal.empty()) {
+        o << " REFUS: " << result.refusal;
+    }
+    o << " -->\n";
+
+    poly(o, nodes_of(region.outer), "#111", 0.15, true);
+    for (const auto& h : region.holes) {
+        poly(o, nodes_of(h), "#c22", 0.15, true);
+    }
+    for (const auto& e : result.debug.graph.edges) {
+        poly(o, e.centerline, "#8c8", 0.12, false, "0.5 0.4");
+    }
+    for (const auto& col : result.columns) {
+        // Barreaux d'abord (dessous).
+        for (const auto& r : col.rungs) {
+            o << "<line x1=\"" << mmx(r.a) << "\" y1=\"" << mmy(r.a) << "\" x2=\"" << mmx(r.b)
+              << "\" y2=\"" << mmy(r.b) << "\" stroke=\"#999\" stroke-width=\"0.12\"/>\n";
+        }
+        poly(o, nodes_of(col.rail_a), "#1560c8", 0.2, false);
+        poly(o, nodes_of(col.rail_b), "#e07000", 0.2, false);
+    }
+    o << "</svg>\n";
+    return o.str();
+}
+
 }  // namespace openstitch::auto_satin

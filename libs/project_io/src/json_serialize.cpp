@@ -166,9 +166,17 @@ json params_to_json(const document::StitchParams& params) {
                      {"inset", p.inset.value},
                      {"stagger", p.stagger}};
             } else if constexpr (std::is_same_v<T, document::SatinParams>) {
+                json rungs = json::array();
+                for (const auto& r : p.rungs) {
+                    rungs.push_back({{"ax", r.a.x.value},
+                                     {"ay", r.a.y.value},
+                                     {"bx", r.b.x.value},
+                                     {"by", r.b.y.value}});
+                }
                 j = {{"type", "satin"},
                      {"railA", path_to_json(p.rail_a)},
                      {"railB", path_to_json(p.rail_b)},
+                     {"rungs", std::move(rungs)},
                      {"density", p.density.value},
                      {"pullCompensation", p.pull_compensation.value},
                      {"centerUnderlay", p.center_underlay},
@@ -201,6 +209,14 @@ Result<document::StitchParams> params_from_json(const json& j) {
         document::SatinParams p;
         p.rail_a = path_from_json(j.at("railA"));
         p.rail_b = path_from_json(j.at("railB"));
+        // Barreaux : optionnels (projets antérieurs au schéma v2 -> aucun).
+        if (j.contains("rungs")) {
+            for (const auto& r : j.at("rungs")) {
+                p.rungs.push_back(
+                    document::SatinRung{Vec2um{Micrometers{r.at("ax")}, Micrometers{r.at("ay")}},
+                                        Vec2um{Micrometers{r.at("bx")}, Micrometers{r.at("by")}}});
+            }
+        }
         p.density = Micrometers{j.at("density")};
         p.pull_compensation = Micrometers{j.at("pullCompensation")};
         p.center_underlay = j.at("centerUnderlay");

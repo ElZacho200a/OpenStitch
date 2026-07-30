@@ -9,7 +9,9 @@
 namespace openstitch::project_io {
 
 // Version courante du schéma du format projet .osp (ADR-009).
-inline constexpr int kSchemaVersion = 1;
+// v1 -> v2 : le satin porte des barreaux (rungs) et le projet un cadre (canvas).
+// Lecture rétrocompatible : un fichier v1 se charge (barreaux/cadre par défaut).
+inline constexpr int kSchemaVersion = 2;
 
 // Enregistre le projet dans une archive .osp (ZIP : project.json + image
 // originale PNG + carte de segmentation binaire). Écriture atomique :

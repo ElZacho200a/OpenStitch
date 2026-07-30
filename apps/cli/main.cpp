@@ -16,6 +16,7 @@
 #include "openstitch/image/image.hpp"
 #include "openstitch/auto_satin/auto_satin.hpp"
 #include "openstitch/auto_satin/debug_export.hpp"
+#include "openstitch/auto_satin/satin_column.hpp"
 #include "openstitch/auto_satin/shapes.hpp"
 #include "openstitch/document/embroidery_object.hpp"
 #include "openstitch/geometry/path.hpp"
@@ -240,14 +241,10 @@ int run_auto_satin_debug(const std::string& shape, double pixelMm, const std::st
         fmt::print(stderr, "Forme inconnue : {}\n", shape);
         return 1;
     }
-    auto_satin::AutoSatinParameters params;
-    params.raster.pixel_size = to_micrometers(Millimeters{pixelMm});
-    const auto res = auto_satin::analyze_region(*region, params);
-    if (!res) {
-        fmt::print(stderr, "Erreur : {}\n", res.error().message);
-        return 1;
-    }
-    const auto& r = res->report;
+    auto_satin::SatinColumnsParameters params;
+    params.analysis.raster.pixel_size = to_micrometers(Millimeters{pixelMm});
+    const auto result = auto_satin::build_satin_columns(*region, params);
+    const auto& r = result.report;
     fmt::print("Forme            : {}\n", shape);
     fmt::print("Satinabilité     : {} (confiance {:.2f})\n", auto_satin::to_string(r.status),
                r.confidence);
@@ -256,17 +253,24 @@ int run_auto_satin_debug(const std::string& shape, double pixelMm, const std::st
                r.minimum_width_mm, r.maximum_width_mm);
     fmt::print("Longueur d'axe   : {:.1f} mm  (allongée : {})\n", r.estimated_length_mm,
                r.is_elongated ? "oui" : "non");
-    fmt::print("Squelette (brut) : {} arêtes | (élagué) {} arêtes, {} extrémités, {} jonctions\n",
-               res->debug.raw_graph.edges.size(), r.branch_count, r.endpoint_count,
-               r.junction_count);
-    fmt::print("Branches élaguées : {}\n", res->debug.removed_branches.size());
+    fmt::print("Squelette (élagué) : {} arêtes, {} extrémités, {} jonctions\n", r.branch_count,
+               r.endpoint_count, r.junction_count);
     fmt::print("Trous            : {}\n", r.hole_count);
-    for (const auto& iss : r.issues) {
-        fmt::print("  ! {}\n", iss.message);
+    fmt::print("Colonnes satin   : {}\n", result.columns.size());
+    for (std::size_t i = 0; i < result.columns.size(); ++i) {
+        const auto& c = result.columns[i];
+        fmt::print("  colonne {} : {} stations, {} barreaux, largeur moy {:.2f} mm, long {:.1f} mm\n",
+                   i, c.rail_a.nodes.size(), c.rungs.size(), c.mean_width_um / 1000.0,
+                   c.length_um / 1000.0);
+    }
+    if (!result.refusal.empty()) {
+        fmt::print("Refus            : {}\n", result.refusal);
+    }
+    for (const auto& w : result.warnings) {
+        fmt::print("  ! {}\n", w);
     }
     if (!outSvg.empty()) {
-        const auto rails = stitch_generation::rails_from_contour(region->outer);
-        const auto svg = auto_satin::to_debug_svg(*region, *res, rails);
+        const auto svg = auto_satin::columns_to_svg(*region, result);
         std::ofstream f(std::filesystem::path(outSvg), std::ios::binary | std::ios::trunc);
         if (!f) {
             fmt::print(stderr, "Impossible d'écrire {}\n", outSvg);

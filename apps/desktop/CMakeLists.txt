@@ -42,7 +42,7 @@ target_link_libraries(openstitch
             openstitch::commands openstitch::vectorization openstitch::stitch
             openstitch::stitch_generation openstitch::formats openstitch::project_io
             openstitch::stitch_analysis openstitch::optimization openstitch::autodigitize
-            openstitch::warnings
+            openstitch::auto_satin openstitch::warnings
 )
 
 # Copie les DLL Qt à côté de l'exécutable pour pouvoir le lancer directement.

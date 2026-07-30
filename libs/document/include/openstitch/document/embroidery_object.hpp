@@ -4,6 +4,7 @@
 #include <array>
 #include <string>
 #include <variant>
+#include <vector>
 
 #include "openstitch/core/ids.hpp"
 #include "openstitch/core/units.hpp"
@@ -27,12 +28,22 @@ struct TatamiParams {
     int stagger{2};                    // rangées avant répétition de la phase des pénétrations
 };
 
+// Barreau (rung) : segment transversal reliant les deux rails, qui les découpe
+// en intervalles correspondants. Produit par l'auto-satin (squelette) ; stocké
+// dans le document (éditable, sérialisé), pas seulement utilisé à la génération.
+struct SatinRung {
+    Vec2um a{};  // côté rail A
+    Vec2um b{};  // côté rail B
+    constexpr bool operator==(const SatinRung&) const = default;
+};
+
 // Paramètres d'une colonne satin (§5.3). Contrairement aux autres types, le
 // satin porte sa propre géométrie (deux rails éditables), car il ne se déduit
 // pas d'un simple contour — il naît d'un contour découpé ou de deux chemins.
 struct SatinParams {
     geometry::Path rail_a;
     geometry::Path rail_b;
+    std::vector<SatinRung> rungs;  // barreaux (vide = satin manuel/legacy)
     Micrometers density{400};
     Micrometers pull_compensation{0};
     bool center_underlay{true};

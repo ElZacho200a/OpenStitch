@@ -88,6 +88,10 @@ document::Project rich_project() {
     document::SatinParams sp;
     sp.rail_a = square_path();
     sp.rail_b = square_path();
+    sp.rungs.push_back({Vec2um{Micrometers{100}, Micrometers{200}},
+                        Vec2um{Micrometers{300}, Micrometers{400}}});
+    sp.rungs.push_back({Vec2um{Micrometers{500}, Micrometers{600}},
+                        Vec2um{Micrometers{700}, Micrometers{800}}});
     sp.density = Micrometers{350};
     sp.center_underlay = true;
     sat.params = sp;
@@ -147,8 +151,11 @@ TEST_CASE("projet complet : save puis load = memes donnees") {
     CHECK(std::get<document::TatamiParams>(loaded->embroidery_objects[1].params).row_spacing.value ==
           450);
     CHECK(loaded->embroidery_objects[2].is_satin());
-    CHECK(std::get<document::SatinParams>(loaded->embroidery_objects[2].params).rail_a.nodes.size() ==
-          4);
+    const auto& loadedSatin = std::get<document::SatinParams>(loaded->embroidery_objects[2].params);
+    CHECK(loadedSatin.rail_a.nodes.size() == 4);
+    REQUIRE(loadedSatin.rungs.size() == 2);
+    CHECK(loadedSatin.rungs[0].a == Vec2um{Micrometers{100}, Micrometers{200}});
+    CHECK(loadedSatin.rungs[1].b == Vec2um{Micrometers{700}, Micrometers{800}});
 
     fs::remove(path);
 }

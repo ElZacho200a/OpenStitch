@@ -46,6 +46,7 @@
 #include <QShortcut>
 #include <QToolBar>
 #include <QToolButton>
+#include "openstitch/auto_satin/satin_column.hpp"
 #include "openstitch/autodigitize/autodigitize.hpp"
 #include "openstitch/formats/dst.hpp"
 #include "openstitch/optimization/order.hpp"
@@ -265,6 +266,10 @@ void MainWindow::buildMenus() {
     connect(createTatamiAct_, &QAction::triggered, this, &MainWindow::createTatamiObject);
     createSatinAct_ = embMenu->addAction(tr("Créer une colonne &satin…"));
     connect(createSatinAct_, &QAction::triggered, this, &MainWindow::createSatinObject);
+    autoSatinAct_ = embMenu->addAction(tr("Convertir automatiquement en satin…"));
+    autoSatinAct_->setToolTip(
+        tr("Construit des colonnes satin (rails + barreaux) depuis le squelette de la forme."));
+    connect(autoSatinAct_, &QAction::triggered, this, &MainWindow::autoConvertToSatin);
     embMenu->addSeparator();
     fillAngleAct_ = embMenu->addAction(tr("&Orientation du remplissage…"));
     fillAngleAct_->setToolTip(
@@ -1327,6 +1332,74 @@ document::EmbroideryObject* MainWindow::embroideryForVector(ObjectId vectorId) {
         }
     }
     return nullptr;
+}
+
+void MainWindow::autoConvertToSatin() {
+    if (!selectedObject_) {
+        return;
+    }
+    const auto* source = project_.findObject(*selectedObject_);
+    if (source == nullptr || source->paths.empty()) {
+        return;
+    }
+
+    const auto result = auto_satin::build_satin_columns(source->paths.front(), {});
+    const auto& rep = result.report;
+    QString info = tr("Satinabilité : %1 (confiance %2)\n"
+                      "Largeur min / moy / max : %3 / %4 / %5 mm\n"
+                      "Branches : %6   ·   Colonnes proposées : %7")
+                       .arg(QString::fromUtf8(auto_satin::to_string(rep.status)))
+                       .arg(rep.confidence, 0, 'f', 2)
+                       .arg(rep.minimum_width_mm, 0, 'f', 2)
+                       .arg(rep.mean_width_mm, 0, 'f', 2)
+                       .arg(rep.maximum_width_mm, 0, 'f', 2)
+                       .arg(rep.branch_count)
+                       .arg(result.columns.size());
+    for (const auto& w : result.warnings) {
+        info += tr("\nAttention : %1").arg(QString::fromStdString(w));
+    }
+
+    if (result.columns.empty()) {
+        QMessageBox::information(
+            this, tr("Conversion en satin"),
+            tr("Conversion impossible : %1\n\n%2")
+                .arg(QString::fromStdString(result.refusal), info));
+        return;
+    }
+    const auto answer = QMessageBox::question(
+        this, tr("Convertir en satin"),
+        tr("%1\n\nCréer %2 colonne(s) satin ? (annulable)").arg(info).arg(result.columns.size()));
+    if (answer != QMessageBox::Yes) {
+        return;
+    }
+
+    std::vector<document::EmbroideryObject> objects;
+    int idx = 0;
+    for (const auto& col : result.columns) {
+        document::SatinParams sp;
+        sp.rail_a = col.rail_a;
+        sp.rail_b = col.rail_b;
+        for (const auto& r : col.rungs) {
+            sp.rungs.push_back(document::SatinRung{r.a, r.b});
+        }
+        document::EmbroideryObject emb;
+        emb.id = project_.object_ids.next();
+        emb.name = tr("Satin auto de %1 (%2)")
+                       .arg(QString::fromStdString(source->name))
+                       .arg(++idx)
+                       .toStdString();
+        emb.source_vector = source->id;
+        emb.rgb = source->rgb;
+        emb.params = sp;
+        objects.push_back(std::move(emb));
+    }
+    undoStack_.execute(std::make_unique<commands::AddObjectBatchCommand>(
+                           std::vector<document::VectorObject>{}, std::move(objects)),
+                       project_);
+    showStitchesAct_->setChecked(true);
+    refreshImage();
+    updateActions();
+    statusBar()->showMessage(tr("%1 colonne(s) satin créée(s).").arg(result.columns.size()));
 }
 
 void MainWindow::changeFillAngle() {
@@ -2693,6 +2766,7 @@ void MainWindow::updateActions() {
     createStitchAct_->setEnabled(selectedObject_.has_value());
     createTatamiAct_->setEnabled(selectedObject_.has_value());
     createSatinAct_->setEnabled(selectedObject_.has_value());
+    autoSatinAct_->setEnabled(selectedObject_.has_value());
     fillAngleAct_->setEnabled(currentFillObject() != nullptr);
     convertSatinAct_->setEnabled(std::any_of(project_.embroidery_objects.begin(),
                                              project_.embroidery_objects.end(),

@@ -65,6 +65,7 @@ private slots:
     void createRunningStitchObject();
     void createTatamiObject();
     void createSatinObject();
+    void autoConvertToSatin();
     void changeFillAngle();
     void convertSatinsToTatami();
     // Change le type de points d'un objet de broderie (contour/tatami/satin).
@@ -166,6 +167,7 @@ private:
     QAction* createStitchAct_{nullptr};
     QAction* createTatamiAct_{nullptr};
     QAction* createSatinAct_{nullptr};
+    QAction* autoSatinAct_{nullptr};
     QAction* fillAngleAct_{nullptr};
     QAction* convertSatinAct_{nullptr};
     QAction* statsAct_{nullptr};
