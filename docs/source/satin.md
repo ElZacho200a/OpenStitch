@@ -121,16 +121,39 @@ satinabilité (statut, confiance, largeurs, branches, colonnes) puis crée les
 objets satin (annulable). Les **barreaux sont stockés** dans `SatinParams.rungs`
 et sérialisés (`.osp` schéma v2, rétrocompatible).
 
-Limite du Lot 1 : la **génération de points** utilise encore `fill_satin` sur ces
-rails (bien meilleurs). L'exploitation des barreaux (correspondance par sections,
-espacement perpendiculaire, short/split, terminaisons, sous-couches) est le
-**Lot 2** — pas encore fait. Voir `docs/stitch-feature-gap-audit.md`.
+## Génération par barreaux (`fill_satin_columns`, Lot 2)
+
+*État : Présent · Testé numériquement · Validé visuellement (SVG) · non validé
+simulateur/physique.*
+
+Quand un satin porte des **barreaux** (`SatinParams.rungs` ≥ 2), la génération
+utilise `fill_satin_columns` au lieu de `fill_satin` :
+
+- **Correspondance par sections** : chaque paire de barreaux consécutifs découpe
+  les rails en intervalles correspondants, interpolés selon **leur propre
+  abscisse curviligne** (rails de longueurs, nombres de nœuds et courbures
+  différents autorisés). Les barreaux sont **traversés exactement**.
+- **Espacement perpendiculaire** : le pas n'est plus mesuré le long d'un rail
+  mais sur la **ligne médiane** (≈ perpendiculaire aux fils) — on ré-échantillonne
+  la médiane de chaque intervalle par la densité demandée.
+- **Séquence** L0, R0, L1, R1, … déterministe (chaque point cousu traverse la
+  colonne). Un satin **sans barreaux** (manuel/legacy) retombe sur `fill_satin`.
+
+Vérifié : espacement médian régulier, barreaux exacts, rails de longueurs
+différentes, déterminisme (`tests/unit/stitch/test_satin.cpp`) ; zigzag superposé
+dans les SVG `tests/golden/auto-satin/`.
+
+Reste (lots suivants) : short stitches (Lot 3), split stitches (Lot 4),
+terminaisons (Lot 5), sous-couches détaillées et compensation
+push/pull (Lots 6-7). Voir `docs/stitch-feature-gap-audit.md`.
 
 ## Implémentation associée
 
 - `libs/document/.../embroidery_object.hpp` — `SatinParams`, `SatinRung`.
-- `libs/stitch_generation/src/satin.cpp` — `fill_satin`, `rails_from_contour`.
-- `libs/stitch_generation/src/generate.cpp` — `generate_satin`.
+- `libs/stitch_generation/src/satin.cpp` — `fill_satin`, `fill_satin_columns`
+  (par barreaux), `rails_from_contour`.
+- `libs/stitch_generation/src/generate.cpp` — `generate_satin` (route vers
+  `fill_satin_columns` si barreaux présents).
 - `libs/auto_satin/.../satin_column.hpp` + `src/satin_column.cpp` —
   `build_satin_columns`, `SatinColumnGeometry`, `SatinRung` (moteur géométrique).
 - `libs/auto_satin/src/debug_export.cpp` — `columns_to_svg`.
