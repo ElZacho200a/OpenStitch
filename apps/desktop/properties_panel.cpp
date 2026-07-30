@@ -169,20 +169,34 @@ void PropertiesPanel::showEmbroidery(const document::EmbroideryObject& object) {
                 capCombo->addItems({tr("Plat"), tr("Arrondi"), tr("Effilé"), tr("Auto")});
                 capCombo->setCurrentIndex(static_cast<int>(p.cap_end));
                 auto* maxLen = mmSpin(to_millimeters(p.max_stitch_length).value, 15.0);
+                auto* edgeU = new QCheckBox(tr("Sous-couche de bord"), body_);
+                edgeU->setChecked(p.underlay_edge);
+                auto* zigU = new QCheckBox(tr("Sous-couche zigzag"), body_);
+                zigU->setChecked(p.underlay_zigzag);
+                auto* pullL = mmSpin(to_millimeters(p.pull_left).value, 3.0);
+                auto* pullR = mmSpin(to_millimeters(p.pull_right).value, 3.0);
                 form->addRow(tr("Densité :"), density);
                 form->addRow(tr("Compensation de tirage :"), comp);
                 form->addRow(QString(), underlay);
+                form->addRow(QString(), edgeU);
+                form->addRow(QString(), zigU);
+                form->addRow(tr("Compensation gauche :"), pullL);
+                form->addRow(tr("Compensation droite :"), pullR);
                 form->addRow(tr("Points courts (virages) :"), shortCombo);
                 form->addRow(tr("Fractionnement :"), splitCombo);
                 form->addRow(tr("Longueur max de point :"), maxLen);
                 form->addRow(tr("Terminaison (fin) :"), capCombo);
                 const auto emitEdit = [this, id, base, density, comp, underlay, shortCombo,
-                                       splitCombo, capCombo, maxLen] {
+                                       splitCombo, capCombo, maxLen, edgeU, zigU, pullL, pullR] {
                     if (building_) return;
                     document::SatinParams s = base;  // conserve rails + barreaux
                     s.density = to_um(density->value());
                     s.pull_compensation = to_um(comp->value());
                     s.center_underlay = underlay->isChecked();
+                    s.underlay_edge = edgeU->isChecked();
+                    s.underlay_zigzag = zigU->isChecked();
+                    s.pull_left = to_um(pullL->value());
+                    s.pull_right = to_um(pullR->value());
                     s.short_stitch =
                         static_cast<document::SatinShortStitch>(shortCombo->currentIndex());
                     s.split_stitch = static_cast<document::SatinSplit>(splitCombo->currentIndex());
@@ -193,6 +207,10 @@ void PropertiesPanel::showEmbroidery(const document::EmbroideryObject& object) {
                 connect(density, &QDoubleSpinBox::valueChanged, this, emitEdit);
                 connect(comp, &QDoubleSpinBox::valueChanged, this, emitEdit);
                 connect(underlay, &QCheckBox::toggled, this, emitEdit);
+                connect(edgeU, &QCheckBox::toggled, this, emitEdit);
+                connect(zigU, &QCheckBox::toggled, this, emitEdit);
+                connect(pullL, &QDoubleSpinBox::valueChanged, this, emitEdit);
+                connect(pullR, &QDoubleSpinBox::valueChanged, this, emitEdit);
                 connect(shortCombo, &QComboBox::currentIndexChanged, this, emitEdit);
                 connect(splitCombo, &QComboBox::currentIndexChanged, this, emitEdit);
                 connect(capCombo, &QComboBox::currentIndexChanged, this, emitEdit);

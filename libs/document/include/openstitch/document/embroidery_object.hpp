@@ -60,6 +60,14 @@ struct SatinParams {
     SatinCap cap_start{SatinCap::Flat};
     SatinCap cap_end{SatinCap::Flat};
     Micrometers max_stitch_length{7'000};
+
+    // Lot 4 — sous-couches et compensation (défauts = inchangé).
+    bool underlay_edge{false};       // sous-couche de bord (deux chemins internes)
+    bool underlay_zigzag{false};     // sous-couche zigzag légère
+    Micrometers pull_left{0};        // compensation latérale fixe (côté A)
+    Micrometers pull_right{0};       // (côté B)
+    Micrometers push_start{0};       // extension longitudinale au départ
+    Micrometers push_end{0};         // extension longitudinale à la fin
 };
 
 // Un objet de broderie porte un TYPE de point sous forme de variant. Chaque

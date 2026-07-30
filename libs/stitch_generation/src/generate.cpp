@@ -15,13 +15,14 @@ namespace {
 // Ajoute une polyligne à la séquence : un saut vers son premier point, puis
 // les points cousus. Ignore les tracés dégénérés.
 void emit_polyline(stitch::StitchSequence& sequence, const std::vector<Vec2um>& points,
-                   ObjectId source) {
+                   ObjectId source, stitch::StitchPass pass = stitch::StitchPass::TopStitch) {
     if (points.size() < 2) {
         return;
     }
-    sequence.commands.push_back({points.front(), stitch::CommandType::Jump, source});
+    sequence.commands.push_back({points.front(), stitch::CommandType::Jump, source,
+                                 stitch::StitchPass::Travel});
     for (const Vec2um& p : points) {
-        sequence.commands.push_back({p, stitch::CommandType::Stitch, source});
+        sequence.commands.push_back({p, stitch::CommandType::Stitch, source, pass});
     }
 }
 
@@ -68,6 +69,13 @@ void generate_satin(stitch::StitchSequence& sequence, const document::Embroidery
     config.cap_end = static_cast<SatinCapType>(static_cast<int>(params.cap_end));
     config.max_stitch_length = params.max_stitch_length;
     config.split_seed = object.id.value;
+    // Sous-couches + compensation (Lot 4).
+    config.underlay_edge = params.underlay_edge;
+    config.underlay_zigzag = params.underlay_zigzag;
+    config.pull_left = params.pull_left;
+    config.pull_right = params.pull_right;
+    config.push_start = params.push_start;
+    config.push_end = params.push_end;
     // Avec barreaux (satin auto) : correspondance par sections + espacement
     // perpendiculaire. Sans barreaux (satin manuel/legacy) : ré-échantillonnage
     // par fraction d'abscisse.
@@ -82,8 +90,12 @@ void generate_satin(stitch::StitchSequence& sequence, const document::Embroidery
     } else {
         result = fill_satin(params.rail_a, params.rail_b, config);
     }
-    emit_polyline(sequence, result.underlay, object.id);
-    emit_polyline(sequence, result.satin, object.id);
+    // Sous-couches d'abord (passes distinctes, ordre center -> edge -> zigzag),
+    // puis la couche supérieure.
+    for (const auto& u : result.underlays) {
+        emit_polyline(sequence, u.points, object.id, stitch::StitchPass::Underlay);
+    }
+    emit_polyline(sequence, result.satin, object.id, stitch::StitchPass::TopStitch);
 }
 
 void generate_tatami(stitch::StitchSequence& sequence, const document::VectorObject& source,

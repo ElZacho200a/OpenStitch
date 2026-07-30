@@ -260,6 +260,95 @@ TEST_CASE("caps : flat garde la pleine largeur au bout") {
     CHECK(thread_width(r.satin, nThreads - 1) > 5'000.0);
 }
 
+// --- Lot 4 : sous-couches + compensation -------------------------------------
+
+namespace {
+Column straight6() {
+    Column c;
+    c.a = open_path({{0, 0}, {20'000, 0}});
+    c.b = open_path({{0, 6'000}, {20'000, 6'000}});
+    c.rungs = {rung(0, 0, 0, 6'000), rung(10'000, 0, 10'000, 6'000),
+               rung(20'000, 0, 20'000, 6'000)};
+    return c;
+}
+std::int32_t minY(const std::vector<Vec2um>& v) {
+    std::int32_t m = INT32_MAX;
+    for (auto p : v) m = std::min(m, p.y.value);
+    return m;
+}
+std::int32_t maxY(const std::vector<Vec2um>& v) {
+    std::int32_t m = INT32_MIN;
+    for (auto p : v) m = std::max(m, p.y.value);
+    return m;
+}
+std::int32_t maxX(const std::vector<Vec2um>& v) {
+    std::int32_t m = INT32_MIN;
+    for (auto p : v) m = std::max(m, p.x.value);
+    return m;
+}
+}  // namespace
+
+TEST_CASE("underlays : center, edge et zigzag = passes distinctes ordonnees") {
+    const Column c = straight6();
+    SatinConfig cfg;
+    cfg.density = Micrometers{1'000};
+    cfg.center_underlay = true;
+    cfg.underlay_edge = true;
+    cfg.underlay_zigzag = true;
+    const auto r = fill_satin_columns(c.a, c.b, c.rungs, cfg);
+    REQUIRE(r.underlays.size() == 4);  // center, edge A, edge B, zigzag
+    // Center : sur l'axe (y ~ 3000).
+    for (auto p : r.underlays[0].points) CHECK(std::abs(p.y.value - 3'000) < 50);
+    // Edge A : rentré du rail A (y=0) de ~0,6 mm.
+    for (auto p : r.underlays[1].points) CHECK(std::abs(p.y.value - 600) < 100);
+    // Edge B : rentré du rail B (y=6000).
+    for (auto p : r.underlays[2].points) CHECK(std::abs(p.y.value - 5'400) < 100);
+    CHECK(r.underlays[3].points.size() >= 2);  // zigzag présent
+}
+
+TEST_CASE("underlays : desactivees par defaut") {
+    const Column c = straight6();
+    SatinConfig cfg;  // tout désactivé
+    CHECK(fill_satin_columns(c.a, c.b, c.rungs, cfg).underlays.empty());
+}
+
+TEST_CASE("compensation pull : elargit un seul cote (asymetrique)") {
+    const Column c = straight6();
+    SatinConfig cfg;
+    cfg.density = Micrometers{1'000};
+    cfg.pull_left = Micrometers{800};  // côté A (rail à y=0) uniquement
+    const auto r = fill_satin_columns(c.a, c.b, c.rungs, cfg);
+    CHECK(minY(r.satin) <= -750);   // côté A poussé au-delà de y=0
+    CHECK(maxY(r.satin) <= 6'050);  // côté B inchangé (~6000)
+    CHECK(maxY(r.satin) >= 5'950);
+}
+
+TEST_CASE("compensation push : etend la colonne au bout") {
+    const Column c = straight6();
+    SatinConfig base;
+    base.density = Micrometers{1'000};
+    SatinConfig ext = base;
+    ext.push_end = Micrometers{2'000};
+    CHECK(maxX(fill_satin_columns(c.a, c.b, c.rungs, ext).satin) >
+          maxX(fill_satin_columns(c.a, c.b, c.rungs, base).satin) + 1'500);
+}
+
+TEST_CASE("underlays + compensation : deterministe") {
+    const Column c = straight6();
+    SatinConfig cfg;
+    cfg.density = Micrometers{1'000};
+    cfg.underlay_edge = true;
+    cfg.pull_left = Micrometers{300};
+    cfg.push_end = Micrometers{1'000};
+    const auto x = fill_satin_columns(c.a, c.b, c.rungs, cfg);
+    const auto y = fill_satin_columns(c.a, c.b, c.rungs, cfg);
+    CHECK(x.satin == y.satin);
+    REQUIRE(x.underlays.size() == y.underlays.size());
+    for (std::size_t i = 0; i < x.underlays.size(); ++i) {
+        CHECK(x.underlays[i].points == y.underlays[i].points);
+    }
+}
+
 TEST_CASE("satin : colonne droite, zigzag entre les deux rails") {
     // Deux rails horizontaux, longueur 20 mm, ecartes de 4 mm.
     const auto railA = open_path({{0, 0}, {20'000, 0}});
@@ -313,9 +402,9 @@ TEST_CASE("satin : sous-couche centrale sur l'axe") {
     cfg.center_underlay = true;
     cfg.underlay_spacing = Micrometers{3'000};
     const auto result = fill_satin(railA, railB, cfg);
-    REQUIRE_FALSE(result.underlay.empty());
+    REQUIRE(result.underlays.size() == 1);
     // Axe central : y = 2000.
-    for (const Vec2um& p : result.underlay) {
+    for (const Vec2um& p : result.underlays.front().points) {
         CHECK(p.y.value == 2'000);
     }
 }

@@ -235,7 +235,7 @@ int run_stitchdebug(const std::string& shape, double lengthMm, int repeats,
 }
 
 int run_auto_satin_debug(const std::string& shape, double pixelMm, const std::string& outSvg,
-                         int capEnd, int shortMode, int splitMode) {
+                         int capEnd, int shortMode, int splitMode, int underlayMask) {
     using namespace openstitch;
     const auto region = auto_satin::make_shape(shape);
     if (!region) {
@@ -283,17 +283,26 @@ int run_auto_satin_debug(const std::string& shape, double pixelMm, const std::st
             scfg.cap_end = static_cast<stitch_generation::SatinCapType>(capEnd);
             scfg.short_stitch = static_cast<stitch_generation::ShortStitchMode>(shortMode);
             scfg.split_stitch = static_cast<stitch_generation::SplitStitchMode>(splitMode);
+            scfg.center_underlay = (underlayMask & 1) != 0;
+            scfg.underlay_edge = (underlayMask & 2) != 0;
+            scfg.underlay_zigzag = (underlayMask & 4) != 0;
             const auto sat =
                 stitch_generation::fill_satin_columns(col.rail_a, col.rail_b, rungs, scfg);
-            if (sat.satin.size() < 2) {
-                continue;
+            const auto polylineSvg = [&](const std::vector<Vec2um>& pts, const char* stroke,
+                                         double w) {
+                if (pts.size() < 2) return;
+                overlay += "<path d=\"M";
+                for (std::size_t i = 0; i < pts.size(); ++i) {
+                    overlay += fmt::format("{}{:.3f} {:.3f} ", i ? "L" : "", pts[i].x.value / 1000.0,
+                                           -pts[i].y.value / 1000.0);
+                }
+                overlay += fmt::format("\" fill=\"none\" stroke=\"{}\" stroke-width=\"{}\"/>\n",
+                                       stroke, w);
+            };
+            for (const auto& u : sat.underlays) {
+                polylineSvg(u.points, "#0a9", 0.05);  // sous-couches (vert)
             }
-            overlay += "<path d=\"M";
-            for (std::size_t i = 0; i < sat.satin.size(); ++i) {
-                overlay += fmt::format("{}{:.3f} {:.3f} ", i ? "L" : "",
-                                       sat.satin[i].x.value / 1000.0, -sat.satin[i].y.value / 1000.0);
-            }
-            overlay += "\" fill=\"none\" stroke=\"#333\" stroke-width=\"0.06\"/>\n";
+            polylineSvg(sat.satin, "#333", 0.06);  // couche supérieure
         }
         if (const auto pos = svg.rfind("</svg>"); pos != std::string::npos) {
             svg.insert(pos, overlay);
@@ -366,6 +375,8 @@ int main(int argc, char** argv) {
     as_cmd->add_option("--cap-end", as_cap, "Terminaison fin : 0 plat, 1 arrondi, 2 effilé");
     as_cmd->add_option("--short", as_short, "Points courts : 0 off, 2 inset, 3 multi-niveaux");
     as_cmd->add_option("--split", as_split, "Split : 0 off, 1 simple, 2 décalé, 3 jitter");
+    int as_underlay = 0;
+    as_cmd->add_option("--underlay", as_underlay, "Sous-couches (masque : 1 center, 2 edge, 4 zigzag)");
 
     CLI11_PARSE(app, argc, argv);
 
@@ -382,7 +393,8 @@ int main(int argc, char** argv) {
         return run_stitchdebug(sd_shape, sd_length, sd_repeats, sd_out);
     }
     if (as_cmd->parsed()) {
-        return run_auto_satin_debug(as_shape, as_pixel, as_out, as_cap, as_short, as_split);
+        return run_auto_satin_debug(as_shape, as_pixel, as_out, as_cap, as_short, as_split,
+                                    as_underlay);
     }
     return 0;
 }

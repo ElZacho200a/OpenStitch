@@ -98,6 +98,10 @@ document::Project rich_project() {
     sp.split_stitch = document::SatinSplit::Staggered;
     sp.cap_end = document::SatinCap::Tapered;
     sp.max_stitch_length = Micrometers{5'500};
+    sp.underlay_edge = true;
+    sp.underlay_zigzag = true;
+    sp.pull_left = Micrometers{120};
+    sp.push_end = Micrometers{900};
     sat.params = sp;
     project.embroidery_objects.push_back(sat);
 
@@ -164,6 +168,10 @@ TEST_CASE("projet complet : save puis load = memes donnees") {
     CHECK(loadedSatin.split_stitch == document::SatinSplit::Staggered);
     CHECK(loadedSatin.cap_end == document::SatinCap::Tapered);
     CHECK(loadedSatin.max_stitch_length == Micrometers{5'500});
+    CHECK(loadedSatin.underlay_edge);
+    CHECK(loadedSatin.underlay_zigzag);
+    CHECK(loadedSatin.pull_left == Micrometers{120});
+    CHECK(loadedSatin.push_end == Micrometers{900});
 
     fs::remove(path);
 }

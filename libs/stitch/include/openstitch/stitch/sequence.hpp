@@ -20,13 +20,25 @@ enum class CommandType : std::uint8_t {
     End,          // fin du motif
 };
 
+// Passe logique de couture (§4) : permet d'afficher, d'analyser et de filtrer
+// les sous-couches indépendamment de la couche supérieure. Non sérialisée (la
+// séquence est régénérée) ; le DST l'ignore.
+enum class StitchPass : std::uint8_t {
+    Underlay,   // sous-couche (center/edge/zigzag)
+    TopStitch,  // couche supérieure (satin, tatami, contour)
+    Travel,     // déplacement caché
+    Lock,       // point de fixation
+    Manual,     // édité à la main
+};
+
 // Position ABSOLUE en micromètres : les deltas sont un détail des codecs
 // de format (ADR-003/008). `source` relie chaque commande à l'objet qui l'a
-// générée (0 = manuel/importé).
+// générée (0 = manuel/importé). `pass` identifie la passe logique.
 struct StitchCommand {
     Vec2um pos{};
     CommandType type{CommandType::Stitch};
     ObjectId source{};
+    StitchPass pass{StitchPass::TopStitch};
 
     bool operator==(const StitchCommand&) const = default;
 };

@@ -284,8 +284,86 @@ SatinResult fill_satin_columns(const geometry::Path& rail_a, const geometry::Pat
         }
     }
 
-    // --- Émission zigzag L0,R0,L1,R1,… avec split (§8) des traversées longues. ---
+    // --- Push (§11) : étend/rétracte la colonne aux extrémités le long de l'axe. ---
+    const auto shiftEnd = [&](int idx, int nb, double amount) {
+        if (amount == 0.0 || idx < 0 || nb < 0 || idx >= nThreads || nb >= nThreads) {
+            return;
+        }
+        auto& t = threads[static_cast<std::size_t>(idx)];
+        const PointD mi = midP(t.a, t.b);
+        const PointD mn = midP(threads[static_cast<std::size_t>(nb)].a,
+                              threads[static_cast<std::size_t>(nb)].b);
+        const double n = dist(mi, mn);
+        if (n < 1e-6) {
+            return;
+        }
+        const PointD d{(mi.x - mn.x) / n * amount, (mi.y - mn.y) / n * amount};
+        t.a = {t.a.x + d.x, t.a.y + d.y};
+        t.b = {t.b.x + d.x, t.b.y + d.y};
+    };
+    shiftEnd(0, 1, static_cast<double>(config.push_start.value));
+    shiftEnd(nThreads - 1, nThreads - 2, static_cast<double>(config.push_end.value));
+
+    // Milieux + retrait aux extrémités (pour center/edge underlay).
+    std::vector<PointD> mids(static_cast<std::size_t>(nThreads));
+    for (int i = 0; i < nThreads; ++i) {
+        mids[static_cast<std::size_t>(i)] = midP(threads[static_cast<std::size_t>(i)].a,
+                                                 threads[static_cast<std::size_t>(i)].b);
+    }
+    std::vector<double> cumMid(static_cast<std::size_t>(nThreads), 0.0);
+    for (int i = 1; i < nThreads; ++i) {
+        cumMid[static_cast<std::size_t>(i)] =
+            cumMid[static_cast<std::size_t>(i - 1)] +
+            dist(mids[static_cast<std::size_t>(i)], mids[static_cast<std::size_t>(i - 1)]);
+    }
+    const double totalMid = cumMid.back();
+    const double retract = static_cast<double>(config.underlay_end_retract.value);
+    const auto keepEnd = [&](int i) {
+        return nThreads <= 2 || (cumMid[static_cast<std::size_t>(i)] >= retract &&
+                                 cumMid[static_cast<std::size_t>(i)] <= totalMid - retract);
+    };
+
+    // --- Sous-couches (§10) : passes distinctes, ordre center -> edge -> zigzag. ---
+    if (config.center_underlay) {
+        SatinPass center;
+        for (int i = 0; i < nThreads; ++i) {
+            if (keepEnd(i)) center.points.push_back(toUm(mids[static_cast<std::size_t>(i)]));
+        }
+        if (center.points.size() >= 2) result.underlays.push_back(std::move(center));
+    }
+    if (config.underlay_edge) {
+        SatinPass ea;
+        SatinPass eb;
+        for (int i = 0; i < nThreads; ++i) {
+            if (!keepEnd(i)) continue;
+            const auto& t = threads[static_cast<std::size_t>(i)];
+            const double half = dist(t.a, t.b) * 0.5;
+            const double ins = std::min(static_cast<double>(config.underlay_edge_inset.value),
+                                        half * 0.9);
+            const double f = half > 1e-6 ? ins / (2.0 * half) : 0.0;  // fraction a->b
+            ea.points.push_back(toUm(lerpP(t.a, t.b, f)));
+            eb.points.push_back(toUm(lerpP(t.b, t.a, f)));
+        }
+        if (ea.points.size() >= 2) result.underlays.push_back(std::move(ea));
+        if (eb.points.size() >= 2) result.underlays.push_back(std::move(eb));
+    }
+    if (config.underlay_zigzag) {
+        const double zs =
+            static_cast<double>(std::max<std::int32_t>(1, config.underlay_zigzag_spacing.value));
+        const int stride = std::max(1, static_cast<int>(std::lround(zs / density)));
+        const double wf = std::clamp(config.underlay_zigzag_width, 0.1, 1.0);
+        SatinPass zz;
+        for (int i = 0; i < nThreads; i += stride) {
+            const PointD m = mids[static_cast<std::size_t>(i)];
+            zz.points.push_back(toUm(lerpP(m, threads[static_cast<std::size_t>(i)].a, wf)));
+            zz.points.push_back(toUm(lerpP(m, threads[static_cast<std::size_t>(i)].b, wf)));
+        }
+        if (zz.points.size() >= 2) result.underlays.push_back(std::move(zz));
+    }
+
+    // --- Émission couche supérieure : zigzag + split + compensation asym. ---
     const double maxLen = static_cast<double>(std::max<std::int32_t>(1, config.max_stitch_length.value));
+    const double pmax = static_cast<double>(config.pull_max.value);
     int emitted = 0;
     for (int i = 0; i < nThreads; ++i) {
         const auto& t = threads[static_cast<std::size_t>(i)];
@@ -294,16 +372,26 @@ SatinResult fill_satin_columns(const geometry::Path& rail_a, const geometry::Pat
         }
         PointD pa = t.a;
         PointD pb = t.b;
-        result.max_width_um = std::max(result.max_width_um, dist(pa, pb));
-        std::tie(pa, pb) = compensate(pa, pb, comp);
+        const double w = dist(pa, pb);
+        result.max_width_um = std::max(result.max_width_um, w);
+        // Pull latérale : base symétrique (pull_compensation) + fixe + proportionnelle par côté.
+        const double offA =
+            std::clamp(comp + config.pull_left.value + config.pull_left_prop * w, 0.0, pmax);
+        const double offB =
+            std::clamp(comp + config.pull_right.value + config.pull_right_prop * w, 0.0, pmax);
+        if (w > 1e-6) {
+            const double ux = (pa.x - pb.x) / w;
+            const double uy = (pa.y - pb.y) / w;
+            pa = {pa.x + ux * offA, pa.y + uy * offA};
+            pb = {pb.x - ux * offB, pb.y - uy * offB};
+        }
         result.satin.push_back(toUm(pa));
-        // Split : pénétrations intermédiaires le long de la traversée pa->pb.
         const double len = dist(pa, pb);
         if (config.split_stitch != SplitStitchMode::Disabled && len > maxLen) {
             const int nsplit = std::max(1, static_cast<int>(std::ceil(len / maxLen)) - 1);
             for (int s = 1; s <= nsplit; ++s) {
                 double frac = static_cast<double>(s) / (nsplit + 1);
-                const double amp = 0.35 / (nsplit + 1);  // amplitude du décalage
+                const double amp = 0.35 / (nsplit + 1);
                 if (config.split_stitch == SplitStitchMode::Staggered) {
                     frac += (emitted % 2 == 0 ? amp : -amp);
                 } else if (config.split_stitch == SplitStitchMode::DeterministicJitter) {
@@ -318,17 +406,6 @@ SatinResult fill_satin_columns(const geometry::Path& rail_a, const geometry::Pat
         }
         result.satin.push_back(toUm(pb));
         ++emitted;
-    }
-
-    // Sous-couche centrale optionnelle (point droit sur la médiane).
-    if (config.center_underlay) {
-        const double uspace =
-            static_cast<double>(std::max<std::int32_t>(1, config.underlay_spacing.value));
-        const std::size_t stride = std::max<std::size_t>(1, static_cast<std::size_t>(uspace / density));
-        for (std::size_t i = 0; i < threads.size(); i += stride) {
-            result.underlay.push_back(
-                toUm(midP(threads[i].a, threads[i].b)));
-        }
     }
     return result;
 }
@@ -353,6 +430,7 @@ SatinResult fill_satin(const geometry::Path& rail_a, const geometry::Path& rail_
 
     // Sous-couche : point droit sur l'axe central (aller simple, pas grossier).
     if (config.center_underlay) {
+        SatinPass center;
         const double uspace =
             static_cast<double>(std::max<std::int32_t>(1, config.underlay_spacing.value));
         const int usteps = std::max(1, static_cast<int>(std::ceil(columnLen / uspace)));
@@ -360,8 +438,9 @@ SatinResult fill_satin(const geometry::Path& rail_a, const geometry::Path& rail_
             const double f = static_cast<double>(i) / static_cast<double>(usteps);
             const PointD pa = point_at(a, cumA, f * lenA);
             const PointD pb = point_at(b, cumB, f * lenB);
-            result.underlay.push_back(toUm({(pa.x + pb.x) / 2.0, (pa.y + pb.y) / 2.0}));
+            center.points.push_back(toUm({(pa.x + pb.x) / 2.0, (pa.y + pb.y) / 2.0}));
         }
+        result.underlays.push_back(std::move(center));
     }
 
     // Satin : zigzag A0, B0, A1, B1, … en avançant par fraction d'abscisse.

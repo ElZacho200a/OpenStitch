@@ -79,6 +79,35 @@ TEST_CASE("source vectorielle manquante -> erreur interne") {
     CHECK_FALSE(generate_sequence(project).has_value());
 }
 
+TEST_CASE("satin : les sous-couches sont taggees Underlay, le satin TopStitch") {
+    document::Project project;
+    document::EmbroideryObject emb;
+    emb.id = project.object_ids.next();
+    document::SatinParams sp;
+    sp.rail_a.closed = false;
+    sp.rail_a.nodes = {{Vec2um{Micrometers{0}, Micrometers{0}}, geometry::NodeType::Corner, {}, {}},
+                       {Vec2um{Micrometers{20'000}, Micrometers{0}}, geometry::NodeType::Corner, {}, {}}};
+    sp.rail_b.closed = false;
+    sp.rail_b.nodes = {{Vec2um{Micrometers{0}, Micrometers{5'000}}, geometry::NodeType::Corner, {}, {}},
+                       {Vec2um{Micrometers{20'000}, Micrometers{5'000}}, geometry::NodeType::Corner, {}, {}}};
+    sp.rungs = {{Vec2um{Micrometers{0}, Micrometers{0}}, Vec2um{Micrometers{0}, Micrometers{5'000}}},
+                {Vec2um{Micrometers{20'000}, Micrometers{0}},
+                 Vec2um{Micrometers{20'000}, Micrometers{5'000}}}};
+    sp.center_underlay = true;
+    emb.params = sp;
+    project.embroidery_objects.push_back(emb);
+
+    const auto seq = generate_sequence(project);
+    REQUIRE(seq.has_value());
+    int underlay = 0, top = 0;
+    for (const auto& c : seq->commands) {
+        if (c.type == stitch::CommandType::Stitch && c.pass == stitch::StitchPass::Underlay) ++underlay;
+        if (c.type == stitch::CommandType::Stitch && c.pass == stitch::StitchPass::TopStitch) ++top;
+    }
+    CHECK(underlay > 0);
+    CHECK(top > 0);
+}
+
 TEST_CASE("la sequence est deterministe") {
     const auto a = generate_sequence(make_project(2));
     const auto b = generate_sequence(make_project(2));

@@ -49,13 +49,36 @@ struct SatinConfig {
     SatinCapType cap_start{SatinCapType::Flat};
     SatinCapType cap_end{SatinCapType::Flat};
     int cap_length{4};                      // nombre de fils effilés/arrondis au bout
+
+    // --- Sous-couches (Lot 4) : passes distinctes, ordre center -> edge -> zigzag ---
+    bool underlay_edge{false};              // deux chemins internes près des rails
+    bool underlay_zigzag{false};            // satin léger (largeur réduite, pas plus grand)
+    Micrometers underlay_edge_inset{600};   // retrait des rails
+    Micrometers underlay_end_retract{600};  // retrait aux extrémités (center/edge)
+    Micrometers underlay_zigzag_spacing{1'500};
+    double underlay_zigzag_width{0.65};     // fraction de la largeur
+
+    // --- Compensation (Lot 4) : pull latérale asymétrique + push longitudinale ---
+    Micrometers pull_left{0};
+    Micrometers pull_right{0};
+    double pull_left_prop{0.0};              // fraction de la largeur locale
+    double pull_right_prop{0.0};
+    Micrometers pull_max{5'000};             // borne de l'offset par côté
+    Micrometers push_start{0};               // >0 étend la colonne au départ
+    Micrometers push_end{0};                 // >0 étend la colonne à la fin
 };
 
-// Résultat d'une génération satin.
+// Une passe de couture (polyligne) — sous-couche ou trajet.
+struct SatinPass {
+    std::vector<Vec2um> points;
+};
+
+// Résultat d'une génération satin : sous-couches (dans l'ordre) + couche
+// supérieure. Chaque passe est distincte (affichable/analysable séparément).
 struct SatinResult {
-    std::vector<Vec2um> underlay;  // vide si pas de sous-couche
-    std::vector<Vec2um> satin;     // points du zigzag principal
-    double max_width_um{0.0};      // largeur maximale (pour l'avertissement)
+    std::vector<SatinPass> underlays;  // center, edge A, edge B, zigzag (selon config)
+    std::vector<Vec2um> satin;         // points du zigzag principal
+    double max_width_um{0.0};          // largeur maximale (pour l'avertissement)
 };
 
 // Génère les points d'une colonne satin à partir de deux rails (polylignes

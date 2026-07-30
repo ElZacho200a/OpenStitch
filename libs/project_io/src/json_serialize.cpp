@@ -185,7 +185,13 @@ json params_to_json(const document::StitchParams& params) {
                      {"splitStitch", static_cast<int>(p.split_stitch)},
                      {"capStart", static_cast<int>(p.cap_start)},
                      {"capEnd", static_cast<int>(p.cap_end)},
-                     {"maxStitchLength", p.max_stitch_length.value}};
+                     {"maxStitchLength", p.max_stitch_length.value},
+                     {"underlayEdge", p.underlay_edge},
+                     {"underlayZigzag", p.underlay_zigzag},
+                     {"pullLeft", p.pull_left.value},
+                     {"pullRight", p.pull_right.value},
+                     {"pushStart", p.push_start.value},
+                     {"pushEnd", p.push_end.value}};
             }
             return j;
         },
@@ -232,6 +238,12 @@ Result<document::StitchParams> params_from_json(const json& j) {
         p.cap_start = static_cast<document::SatinCap>(j.value("capStart", 0));
         p.cap_end = static_cast<document::SatinCap>(j.value("capEnd", 0));
         p.max_stitch_length = Micrometers{j.value("maxStitchLength", 7'000)};
+        p.underlay_edge = j.value("underlayEdge", false);
+        p.underlay_zigzag = j.value("underlayZigzag", false);
+        p.pull_left = Micrometers{j.value("pullLeft", 0)};
+        p.pull_right = Micrometers{j.value("pullRight", 0)};
+        p.push_start = Micrometers{j.value("pushStart", 0)};
+        p.push_end = Micrometers{j.value("pushEnd", 0)};
         return document::StitchParams{p};
     }
     return fail(ErrorCategory::InvalidFile, "Type de point inconnu : " + type);
