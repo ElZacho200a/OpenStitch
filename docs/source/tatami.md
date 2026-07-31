@@ -40,28 +40,54 @@ qu'une liaison entre les extrémités des deux segments reste dans la région. U
 corde entre deux points posés sur les bords peut longer l'extérieur (encoche,
 poche concave d'une forme en U, pont au-dessus d'un trou). **Chaque trajet cousu
 est donc validé géométriquement** contre la région et ses trous
-(`connector_invalid`) :
+(`connector_invalid`) : le connecteur `[a,b]` est **découpé** à chaque
+intersection paramétrique avec une arête (extérieur ou trou) — y compris un
+contact **dégénéré par un sommet** (le connecteur touche exactement un coin
+sans « croiser » franchement une arête) — puis le **milieu de chaque
+sous-segment** ainsi obtenu doit rester dans la région :
 
-- s'il **croise franchement** une arête (extérieur ou trou) → saut ;
-- s'il s'agit d'un **connecteur diagonal large** dont un point intérieur sort de
-  la région → saut ;
-- les connecteurs **quasi-verticaux le long d'un bord** restent cousus.
+- une arête **colinéaire** au connecteur (suivi de bord/frontière) ne produit
+  aucune découpe → le suivi de bord reste cousu, quelle que soit son
+  orientation ;
+- toute autre intersection (croisement franc, **ou simple contact par un
+  sommet**) découpe le connecteur ; si un sous-segment tombe hors de la région
+  → saut. Ce test est **indépendant de l'écart en x** du connecteur : un
+  connecteur **parfaitement vertical** qui traverse un trou de part en part en
+  touchant exactement ses deux sommets (haut et bas) est donc détecté, alors
+  qu'une version antérieure de `connector_invalid` — qui excluait les contacts
+  sommet/extrémité du test de croisement **et** ne sondait l'intérieur que si
+  l'écart en x dépassait `2 × row_spacing` — le laissait passer à tort (corrigé
+  courant Lot 7, cf. `segment_stays_in_region` pour la validation exposée).
 
 En l'absence de trajet intérieur valide, le moteur utilise un **saut**. Chaque
 point est un `FillStitch { pos, jump }` (`jump = true` = aiguille levée). Ainsi
 aucune couture ne traverse un trou ni ne sort de la région.
 
-Note : Ce comportement corrige deux défauts successifs signalés en revue (les
-remplissages débordaient sur les régions à trou ; puis la justification
-« chevauchement ⇒ liaison intérieure » était trop optimiste). Vérification via
+Note : Ce comportement corrige plusieurs défauts successifs signalés en revue
+(les remplissages débordaient sur les régions à trou ; puis la justification
+« chevauchement ⇒ liaison intérieure » était trop optimiste ; puis les contacts
+par sommet échappaient à la validation géométrique). Vérification via
 `openstitch-cli stitchdebug --shape ring` : sur un anneau, 0 couture traverse le
 trou et le contournement ne coûte que ~2 sauts. Des tests couvrent aussi une
-forme concave en **U** (aucune couture ne traverse l'encoche) et une forme en
-**L**, où l'on échantillonne chaque segment cousu à **cinq angles** (0/20/45/90/135°)
-pour vérifier qu'**aucun ne sort de la région** (le test tolère les coutures qui
-*longent* le bord). C'est ce filet qui garantit que router les zones vers le
-tatami — plutôt que vers le satin naïf — supprime le débordement (voir *Colonne
-satin*).
+forme concave en **U** (aucune couture ne traverse l'encoche), une forme en
+**L** — où l'on échantillonne chaque segment cousu à **cinq angles**
+(0/20/45/90/135°) pour vérifier qu'**aucun ne sort de la région** (le test
+tolère les coutures qui *longent* le bord) et où l'on vérifie spécifiquement
+qu'un contact au **coin rentrant** ne laisse pas passer une couture vers
+l'encoche —, et des trous en **losange** (sommets alignés verticalement,
+pluralité de trous) qui exercent précisément le cas des contacts sommet. C'est
+ce filet qui garantit que router les zones vers le tatami — plutôt que vers le
+satin naïf — supprime le débordement (voir *Colonne satin*).
+
+Point subtil de `in_region` : le test pair-impair est ambigu **exactement sur
+une frontière**. Pour un point sur le bord de l'**extérieur**, il se résout
+correctement en « intérieur » ; pour un point sur le bord d'un **trou**, une
+implémentation naïve le classerait à tort « dans le trou » (parité déclenchée
+par l'arête opposée du trou), ce qui rejetterait un suivi de bord pourtant
+légitime. `in_region` traite donc explicitement tout point **sur** une
+frontière (distance quasi nulle à une arête, tolérance ~0,01 µm — une marge
+numérique, pas géométrique) comme faisant partie de la région, avant le test
+pair-impair.
 
 Choix de l'auto-numérisation : comme le satin naïf déborde, **toute zone
 remplissable est désormais numérisée en tatami** par défaut (fines bandes
@@ -80,7 +106,14 @@ rétrocompatible). Chaque commande porte une `StitchPass` (§4) : sous-couches
 - **Contour rentré** (`underlay_edge`) : running le long du bord **extérieur**,
   retrait `underlay_inset`. Les **bords de trous ne sont pas** longés (l'inset
   d'un trou le rétrécit vers son centre ; en longer le bord ferait passer la
-  sous-couche au-dessus du trou — sûreté).
+  sous-couche au-dessus du trou — sûreté). **Politique sûre explicite** si le
+  retrait échoue ou fait disparaître la forme (pièce trop petite pour
+  `underlay_inset`) : **aucune** sous-couche de contour n'est émise pour cette
+  forme — jamais de repli silencieux sur le bord **brut** (coudre exactement
+  sur l'arête finale n'offre aucune marge de stabilisation et peut déborder une
+  fois la compensation de bord de la couche supérieure appliquée par-dessus).
+  Un retrait **explicitement nul** (`underlay_inset` = 0) est une intention
+  distincte, pas un échec : le bord brut est alors bien celui voulu.
 - **Rangées parallèles espacées** (`underlay_parallel`) : balayage tatami
   **perpendiculaire** aux rangées supérieures, pas `underlay_spacing`. Réutilise
   le routage (contourne les trous). Évite l'affaissement de la surface.
@@ -100,7 +133,9 @@ le segment non visité le plus proche.
 Vérifié : sous-couche de contour rentrée dans la forme ; sous-couche parallèle
 espacée ; underpath convertit au moins un saut en trajet cousu **sans jamais**
 traverser le trou (invariant préservé) ; déterminisme ; l'entrée oriente le
-démarrage ; aller-retour `.osp`. SVG :
+démarrage ; aller-retour `.osp` ; retrait de contour impossible (pièce trop
+petite) → aucune sous-couche émise (pas de repli sur le bord brut) ; retrait
+explicitement nul → bord brut (intention voulue). SVG :
 `openstitch-cli stitchdebug --shape ring --underlay 3 --underpath` (contour et
 parallèle en vert, couche supérieure en gris, underpath en bleu, sauts en rouge).
 
@@ -123,6 +158,7 @@ Valeurs par défaut lues dans `TatamiParams`
 | `inset` (retrait de bord) | mm | 0,2 | remplissage plus rentré | remplissage plus au bord (risque de débord) |
 | `stagger` | rangées | 2 | pénétrations décalées sur plus de rangées | sillon plus visible |
 | `underlay_edge` | bool | off | sous-couche de contour (Lot 7) | — |
+| `underlay_inset` | mm | 0,6 | contour de sous-couche plus rentré (échec/disparition → aucune sous-couche émise, jamais le bord brut ; 0 = bord brut voulu) | contour plus proche du bord final |
 | `underlay_parallel` | bool | off | sous-couche perpendiculaire espacée (Lot 7) | — |
 | `underlay_spacing` | mm | 2,0 | rangées de sous-couche plus espacées | plus denses |
 | `hidden_underpath` | bool | off | coud et cache les liaisons courtes (Lot 7) | plus de sauts |
@@ -131,6 +167,9 @@ Valeurs par défaut lues dans `TatamiParams`
 Le paramètre principal de **densité** est `row_spacing` (entre rangées) — à ne
 pas confondre avec `stitch_length` (le long d'une rangée). Le retrait de bord
 est appliqué **en amont** (offset intérieur du polygone) par `generate_tatami`.
+Tous ces paramètres, y compris `underlay_inset` et `underlay_spacing`, sont
+éditables dans l'inspecteur (`PropertiesPanel`), avec undo/redo générique
+(`SetStitchParamsCommand`).
 
 ### Orientation éditable (angle des fils)
 
@@ -144,21 +183,28 @@ sont régénérés (ADR-014). L'angle est modulo 180° (orientation d'une droite
 > Validation physique : non effectuée. Ces valeurs sont des points de départ
 > logiciels, pas des réglages éprouvés sur machine.
 
-Limitation : la **sous-couche tatami**, l'**underpath caché** (déplacements
-cousus sous la couche supérieure au lieu de sauts), les points d'**entrée/sortie**
-imposés et les motifs de phase avancés sont **prévus**, non implémentés.
+Limitation réelle (au-delà du Lot 7, cf. ci-dessus qui **est** implémenté) :
+les **motifs de phase avancés** (staggering non uniforme, densité variable)
+restent **prévus, non implémentés**.
 
 ## Implémentation associée
 
 - `libs/document/.../embroidery_object.hpp` — `TatamiParams`.
 - `libs/stitch_generation/include/openstitch/stitch_generation/tatami.hpp` —
-  `FillStitch`, `fill_tatami`.
+  `FillStitch`, `fill_tatami`, `tatami_underlay`, `segment_stays_in_region`
+  (validation géométrique exposée pour test).
 - `libs/stitch_generation/src/tatami.cpp` — scanline, graphe de routage,
-  `connector_invalid` (validation géométrique des trajets cousus).
+  `connector_invalid` (validation géométrique des trajets cousus, découpe
+  paramétrique robuste aux contacts sommet), `in_region` (frontière traitée
+  comme intérieure, tolérance numérique).
 - `libs/stitch_generation/src/generate.cpp` — `generate_tatami`, `emit_fill`.
 - `libs/geometry/src/offset.cpp` — `inset_path_set` (retrait de bord).
+- `apps/desktop/properties_panel.cpp` — inspecteur : tous les champs
+  `TatamiParams`, y compris `underlay_inset`/`underlay_spacing`.
 - Tests : `tests/unit/stitch/test_tatami.cpp` (invariants : aucune couture dans
-  le trou ; aucune couture hors région sur une forme en L à tous les angles),
+  le trou ; aucune couture hors région sur une forme en L à tous les angles ;
+  contacts sommet — trou en losange, multi-trous, coin rentrant d'un L ;
+  politique sûre de `tatami_underlay` sur retrait impossible/nul),
   `tests/unit/geometry/test_offset.cpp`.
 - `libs/commands/.../project_commands.hpp` — `SetFillAngleCommand` (orientation),
   `ConvertFillsToTatamiCommand`, `SetStitchTypeCommand`.

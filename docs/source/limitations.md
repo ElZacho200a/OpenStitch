@@ -39,7 +39,7 @@ fonctionnalité, vérifié dans le code.
 ## Dette technique connue
 
 - `README.md` mentionne un compte de tests d'un jalon antérieur ; le compte réel
-  est **209** — à resynchroniser dans le README.
+  est **217** — à resynchroniser dans le README.
 - Le satin dispose désormais d'un moteur géométrique par **squelette**
   (`auto_satin::build_satin_columns`, Lot 1) et d'une **génération par barreaux**
   (`fill_satin_columns`, Lot 2), points courts / split / terminaisons (Lot 3) et
@@ -48,6 +48,15 @@ fonctionnalité, vérifié dans le code.
   **routage multi-colonnes** (Lot 6 : ordre/orientation + trajets cachés). Le
   **tatami** reçoit ses **sous-couches (contour + parallèle), l'underpath caché et
   le point d'entrée** (Lot 7). Le satin **auto naïf** reste désactivé.
+- **Correctif Lot 7** : `connector_invalid` ignorait les contacts sommet/extrémité
+  et ne sondait l'intérieur d'un connecteur que si l'écart en x dépassait
+  `2 × row_spacing`, laissant passer un connecteur quasi vertical traversant un
+  trou de part en part en touchant exactement ses sommets. Corrigé par une
+  découpe paramétrique du segment à chaque intersection (`segment_stays_in_region`
+  exposé pour test). `tatami_underlay` retombait aussi silencieusement sur le
+  bord **brut** si le retrait de contour échouait/disparaissait ; politique sûre
+  désormais : aucune sous-couche de contour dans ce cas. `underlay_inset` et
+  `underlay_spacing` sont exposés dans l'inspecteur (`PropertiesPanel`).
 - Aucune validation sur machine à broder réelle.
 
 ## Niveaux de validation
@@ -58,12 +67,12 @@ la production*. Pour un logiciel de broderie, il faut distinguer :
 | Niveau | Signification | État du projet |
 |---|---|---|
 | Présent | le code existe | oui (pipeline complet) |
-| Testé numériquement | les invariants logiciels passent | oui (209 tests) |
+| Testé numériquement | les invariants logiciels passent | oui (217 tests) |
 | Validé visuellement | les trajectoires paraissent cohérentes | partiel (SVG de diagnostic, aperçu) |
 | Validé sur simulateur | vérifié dans un visualiseur tiers | non |
 | Validé physiquement | broderies réelles examinées | **non** |
 
-Un générateur peut passer 209 tests sans produire une bonne broderie : les tests
+Un générateur peut passer 217 tests sans produire une bonne broderie : les tests
 vérifient des **invariants** (pas de couture dans un trou, espacement par
 longueur d'arc, aller-retour DST exact…), pas la **qualité textile**.
 

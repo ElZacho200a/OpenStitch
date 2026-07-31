@@ -8,7 +8,7 @@ Public : développeur, mainteneur.
 - **Tests unitaires** : `tests/unit/<lib>/test_*.cpp` (un exécutable par lib).
 - **Test d'intégration** : `tests/integration/test_pipeline.cpp` (chaîne complète).
 - **Golden (SVG de diagnostic)** : `tests/golden/stitch-generation/`.
-- Total au dernier passage vérifié : **209 tests CTest**, 100 % réussis.
+- Total au dernier passage vérifié : **217 tests CTest**, 100 % réussis.
 
 ## Encadré de traçabilité (dernier passage vérifié)
 
@@ -17,11 +17,11 @@ passage vérifié manuellement. Régénérez ces valeurs avant toute publication
 
 | Élément | Valeur |
 |---|---|
-| Commit (état du code testé) | `1b74f13` |
+| Commit (état du code testé) | `4b29e99` |
 | Compilateur | MSVC toolset 14.50 (Visual Studio 2026) |
 | CMake | 4.4.0-rc3 |
 | Configurations | Debug **et** Release |
-| Résultat CTest | 209 / 209 réussis |
+| Résultat CTest | 217 / 217 réussis |
 | Tests désactivés | 0 |
 | Fichiers de tests d'intégration | 1 (`tests/integration/test_pipeline.cpp`) |
 | Tests sur machine réelle | 0 |
@@ -29,7 +29,7 @@ passage vérifié manuellement. Régénérez ces valeurs avant toute publication
 
 Note : chaque `TEST_CASE` Catch2 est enregistré comme un test CTest (via
 `catch_discover_tests`) ; le nombre d'**assertions** Catch2 est supérieur. Le
-chiffre 209 compte les cas de test, pas les assertions.
+chiffre 217 compte les cas de test, pas les assertions.
 
 ## Exécution
 
@@ -98,6 +98,18 @@ build\msvc\tests\unit\stitch\Debug\test_stitch.exe "[nom]"   # un exécutable
   l'augmente jamais ; déterminisme ; le point d'entrée oriente le démarrage ; le
   générateur tague la sous-couche `Underlay` et le remplissage `TopStitch` ;
   aller-retour `.osp` des champs Lot 7.
+- **Tatami — correctif contacts sommet** : `segment_stays_in_region` détecte un
+  connecteur **parfaitement vertical** traversant un trou en losange de part en
+  part en touchant exactement ses deux sommets (défaut qu'une version antérieure
+  laissait passer, faute de sonder l'intérieur pour un petit écart en x) ; même
+  vérification avec **deux trous** (le couloir entre eux reste cousable) et sur
+  le **coin rentrant** d'une forme en L (contact sommet vers l'encoche rejeté) ;
+  non-régression : un suivi de bord colinéaire reste cousu ; `fill_tatami` sur
+  un trou en losange ne produit aucun point cousu à l'intérieur.
+- **Tatami — politique sûre de `tatami_underlay`** : un retrait de contour
+  (`underlay_inset`) impossible (pièce trop petite) ne produit **aucune**
+  sous-couche de contour (jamais de repli silencieux sur le bord brut) ; un
+  retrait **explicitement nul** longe bien le bord brut (intention distincte).
 - **Running** : espacement par longueur d'arc (cercle), coins préservés, courbes
   Bézier suivies, résultats déterministes.
 - **Undo/redo** : « undo total = état initial », restauration exacte des labels ;
