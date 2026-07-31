@@ -225,10 +225,11 @@ Result<stitch::StitchSequence> decode_dst(std::span<const std::uint8_t> bytes) {
                     "Fichier DST trop court (en-tête de 512 octets attendu)",
                     fmt::format("taille = {} octets", bytes.size()));
     }
-    if ((bytes.size() - kHeaderSize) % 3 != 0) {
-        return fail(ErrorCategory::InvalidFile,
-                    fmt::format("Fichier DST tronqué à l'octet {}", bytes.size()));
-    }
+    // La zone des points doit contenir des enregistrements de 3 octets, mais on
+    // ne rejette PAS un reliquat : certains logiciels (p. ex. Hatch) ajoutent un
+    // octet de fin DOS (0x1A) après le marqueur `00 00 F3`. La boucle s'arrête au
+    // marqueur de fin ; tout ce qui suit est ignoré. L'absence de marqueur (vrai
+    // fichier tronqué) est détectée plus bas via `ended`.
 
     stitch::StitchSequence sequence;
     DstPoint pos{0, 0};

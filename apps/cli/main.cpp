@@ -66,7 +66,7 @@ int run_stats(const std::string& path) {
     fmt::print("Coupes             : {}\n", stats.trims);
     fmt::print("Changements de fil : {}\n", stats.color_changes);
     fmt::print("Dimensions         : {:.1f} x {:.1f} mm\n", wMm, hMm);
-    fmt::print("Fil cousu estimé   : {:.2f} m\n", stats.thread_length_um / 1e9);
+    fmt::print("Fil cousu estimé   : {:.2f} m\n", stats.thread_length_um / 1e6);
     return 0;
 }
 

@@ -158,6 +158,21 @@ TEST_CASE("fichiers invalides refuses proprement, sans crash") {
     CHECK_FALSE(decode_dst(noEnd).has_value());
 }
 
+TEST_CASE("octets en trop apres le marqueur de fin ignores (Hatch: 0x1A)") {
+    // Certains logiciels ajoutent un octet de fin DOS (0x1A), voire du padding,
+    // apres `00 00 F3`. Le decodage doit reussir et donner le meme resultat.
+    const auto clean = *encode_dst(simple_square());
+    const auto ref = decode_dst(clean);
+    REQUIRE(ref.has_value());
+
+    auto withTail = clean;
+    withTail.push_back(0x1A);                      // marqueur EOF DOS
+    withTail.insert(withTail.end(), {0x00, 0x7F});  // + reliquat quelconque
+    const auto got = decode_dst(withTail);
+    REQUIRE(got.has_value());
+    CHECK(got->commands == ref->commands);
+}
+
 TEST_CASE("sequence vide refusee a l'export") {
     CHECK_FALSE(encode_dst(stitch::StitchSequence{}).has_value());
 }
