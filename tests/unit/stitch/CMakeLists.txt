@@ -5,6 +5,7 @@ add_executable(test_stitch
     test_tatami.cpp
     test_satin.cpp
     test_routing.cpp
+    test_overrides.cpp
 )
 target_link_libraries(test_stitch
     PRIVATE openstitch::stitch openstitch::stitch_generation Catch2::Catch2WithMain

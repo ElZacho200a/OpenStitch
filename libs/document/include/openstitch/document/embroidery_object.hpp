@@ -2,6 +2,8 @@
 #pragma once
 
 #include <array>
+#include <cstddef>
+#include <cstdint>
 #include <optional>
 #include <string>
 #include <variant>
@@ -93,6 +95,26 @@ struct SatinParams {
 // intention/points (ADR-014) tient : les points sont régénérés à la demande.
 using StitchParams = std::variant<RunningStitchParams, TatamiParams, SatinParams>;
 
+// Type de point autorisé après retouche manuelle (Lot 8 MVP, §2 du cadrage) :
+// seule transition permise, Stitch <-> Jump — pas de Trim/ColorChange/Stop,
+// qui ont une sémantique machine distincte gérée par `trim_after` séparément.
+enum class StitchPointType : std::uint8_t { Stitch, Jump };
+
+// Retouche ponctuelle d'un point généré (ADR-014 : jamais stocké comme la
+// séquence elle-même, seulement le delta). `base_index` désigne une position
+// dans la vue brute de l'objet (`stitch_generation::raw_slice`), toutes passes
+// confondues ; seules les entrées `pass == StitchPass::TopStitch` de type
+// `Stitch` y sont éligibles en MVP (appliqué par
+// `stitch_generation::apply_manual_overrides`, cf. cadrage Lot 8 §1-§2).
+struct StitchOverride {
+    std::size_t base_index{};
+    std::optional<Vec2um> moved_to;              // nullopt = position générée
+    std::optional<StitchPointType> forced_type;   // nullopt = type généré
+    bool trim_after{false};                       // insère un Trim juste après ce point
+
+    constexpr bool operator==(const StitchOverride&) const = default;
+};
+
 struct EmbroideryObject {
     ObjectId id;
     std::string name;
@@ -101,6 +123,14 @@ struct EmbroideryObject {
     StitchParams params{RunningStitchParams{}};
     bool visible{true};
     bool locked{false};  // l'optimisation d'ordre ne déplace pas un objet verrouillé
+
+    // Retouches manuelles (Lot 8 MVP) — deltas épars, jamais O(nombre de
+    // points). Vide = comportement actuel inchangé (Clean, rétrocompatible).
+    std::vector<StitchOverride> overrides;
+    // Empreinte/compteur de `raw_slice` au moment de la dernière édition
+    // réussie ; ne sont significatifs que si `overrides` n'est pas vide.
+    std::uint64_t edited_fingerprint{0};
+    std::uint32_t edited_point_count{0};
 
     [[nodiscard]] bool is_tatami() const {
         return std::holds_alternative<TatamiParams>(params);

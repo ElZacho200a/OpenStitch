@@ -5,6 +5,7 @@ add_library(openstitch_stitch_generation
     src/lock.cpp
     src/routing.cpp
     src/generate.cpp
+    src/overrides.cpp
 )
 add_library(openstitch::stitch_generation ALIAS openstitch_stitch_generation)
 
