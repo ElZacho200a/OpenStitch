@@ -196,8 +196,8 @@ Vérifié : center/edge/zigzag = 4 passes distinctes ordonnées, pull élargit *
 seul côté** (asymétrique), push étend le bout, déterminisme, aller-retour `.osp`
 (SVG `tests/golden/auto-satin/lot4-*.svg` : sous-couches en vert).
 
-Reste (lots suivants) : routage multi-colonnes (Lot 6), tatami avancé (Lot 7).
-Voir `docs/stitch-feature-gap-audit.md`.
+Reste (lots suivants) : tatami avancé (Lot 7). Voir
+`docs/stitch-feature-gap-audit.md`.
 
 ## Entrée/sortie et points de fixation (Lot 5)
 
@@ -230,6 +230,43 @@ bornés ; le point d'entrée fait démarrer la couture à la bonne extrémité ;
 en passe `Lock`, exactement deux groupes (début/fin) ; aller-retour `.osp` des
 champs Lot 5 (SVG `tests/golden/auto-satin/lot5-lock-*.svg` : fixations en rouge).
 
+## Routage multi-colonnes (Lot 6)
+
+*État : Présent · Testé numériquement · Validé visuellement (SVG).* Automatique
+à la génération ; aucun réglage persisté.
+
+Une forme décomposée (Y, T, croix…) devient **plusieurs colonnes satin** de même
+couleur et même source. Sans routage, elles seraient cousues dans l'ordre du
+document, avec de longs sauts. §13 les ordonne et les oriente ensemble
+(`route_columns`) :
+
+- **Ordre** : glouton plus proche voisin depuis la position courante de
+  l'aiguille (on entre par l'extrémité la plus proche), puis amélioration
+  **2-opt**. Déterministe.
+- **Orientation** : pour un ordre donné, le sens de chaque colonne est résolu
+  **exactement** par programmation dynamique sur ses deux extrémités
+  (l'orientation choisie est imposée à `generate_satin` via entrée/sortie).
+- **Liaisons** : une transition courte (≤ `underpath_max`, défaut 8 mm) est
+  cousue en **trajet caché** (passe `Travel`, running stitch — pas de coupe) ;
+  au-delà, elle reste un **saut**. Minimise les coupes et les déplacements à
+  découvert.
+
+Le groupe routé est **contigu** et limité aux colonnes auto (porteuses de
+barreaux) de couleur et source identiques : l'ordre inter-groupes et le reste du
+document sont préservés. Un satin manuel isolé n'est pas réordonné.
+
+Vérifié : liste vide → plan vide ; une colonne → liaison de départ, aucun saut ;
+réordonnancement minimisant le déplacement ; orientation par l'extrémité proche ;
+liaison longue → saut, liaison courte → trajet caché ; à la génération, un groupe
+adjacent n'émet qu'un saut initial (le reste cousu), un groupe éloigné conserve
+ses sauts (SVG `tests/golden/auto-satin/lot6-route-*.svg` : trajets cachés en
+bleu, sauts en rouge pointillé).
+
+Limite : le trajet caché est un segment **direct** (échantillonné en points
+cousus) ; il n'est garanti *sous* la broderie que pour des colonnes adjacentes
+(le seuil `underpath_max` bascule les liaisons douteuses en sauts). Un routage
+suivant réellement la matière viendra avec le tatami avancé (Lot 7).
+
 ## Implémentation associée
 
 - `libs/document/.../embroidery_object.hpp` — `SatinParams`, `SatinRung`.
@@ -239,6 +276,9 @@ champs Lot 5 (SVG `tests/golden/auto-satin/lot5-lock-*.svg` : fixations en rouge
   `fill_satin_columns` si barreaux présents, oriente par entrée/sortie, émet les
   locks).
 - `libs/stitch_generation/src/lock.cpp` — `lock_stitches`, `LockType` (Lot 5).
+- `libs/stitch_generation/src/routing.cpp` — `route_columns`, `RoutePlan`
+  (ordre/orientation/liaisons, Lot 6) ; `generate_satin_group` dans
+  `generate.cpp` (émission des groupes routés).
 - `libs/auto_satin/.../satin_column.hpp` + `src/satin_column.cpp` —
   `build_satin_columns`, `SatinColumnGeometry`, `SatinRung` (moteur géométrique).
 - `libs/auto_satin/src/debug_export.cpp` — `columns_to_svg`.
