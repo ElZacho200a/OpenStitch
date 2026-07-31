@@ -8,7 +8,7 @@ Public : développeur, mainteneur.
 - **Tests unitaires** : `tests/unit/<lib>/test_*.cpp` (un exécutable par lib).
 - **Test d'intégration** : `tests/integration/test_pipeline.cpp` (chaîne complète).
 - **Golden (SVG de diagnostic)** : `tests/golden/stitch-generation/`.
-- Total au dernier passage vérifié : **217 tests CTest**, 100 % réussis.
+- Total au dernier passage vérifié : **243 tests CTest**, 100 % réussis.
 
 ## Encadré de traçabilité (dernier passage vérifié)
 
@@ -17,11 +17,11 @@ passage vérifié manuellement. Régénérez ces valeurs avant toute publication
 
 | Élément | Valeur |
 |---|---|
-| Commit (état du code testé) | `4b29e99` |
+| Commit (état du code testé) | `cdaf773` |
 | Compilateur | MSVC toolset 14.50 (Visual Studio 2026) |
 | CMake | 4.4.0-rc3 |
 | Configurations | Debug **et** Release |
-| Résultat CTest | 217 / 217 réussis |
+| Résultat CTest | 243 / 243 réussis |
 | Tests désactivés | 0 |
 | Fichiers de tests d'intégration | 1 (`tests/integration/test_pipeline.cpp`) |
 | Tests sur machine réelle | 0 |
@@ -29,7 +29,7 @@ passage vérifié manuellement. Régénérez ces valeurs avant toute publication
 
 Note : chaque `TEST_CASE` Catch2 est enregistré comme un test CTest (via
 `catch_discover_tests`) ; le nombre d'**assertions** Catch2 est supérieur. Le
-chiffre 217 compte les cas de test, pas les assertions.
+chiffre 243 compte les cas de test, pas les assertions.
 
 ## Exécution
 
@@ -48,7 +48,7 @@ build\msvc\tests\unit\stitch\Debug\test_stitch.exe "[nom]"   # un exécutable
 | image | `test_image_load.cpp`, `test_ops.cpp` |
 | segmentation | `test_segmentation.cpp` |
 | vectorization | `test_vectorize.cpp` |
-| stitch / stitch_generation | `test_stats.cpp`, `test_running_stitch.cpp`, `test_generate.cpp`, `test_tatami.cpp`, `test_satin.cpp`, `test_routing.cpp` |
+| stitch / stitch_generation | `test_stats.cpp`, `test_running_stitch.cpp`, `test_generate.cpp`, `test_tatami.cpp`, `test_satin.cpp`, `test_routing.cpp`, `test_overrides.cpp` |
 | autodigitize | `test_autodigitize.cpp` |
 | auto_satin | `tests/unit/auto_satin/test_pipeline.cpp`, `test_columns.cpp` |
 | stitch_analysis | `test_analyze.cpp` |
@@ -98,6 +98,21 @@ build\msvc\tests\unit\stitch\Debug\test_stitch.exe "[nom]"   # un exécutable
   l'augmente jamais ; déterminisme ; le point d'entrée oriente le démarrage ; le
   générateur tague la sous-couche `Underlay` et le remplissage `TopStitch` ;
   aller-retour `.osp` des champs Lot 7.
+- **Retouches manuelles — cœur pur (Lot 8.0)** : `fingerprint` (FNV-1a 64 bits)
+  stable pour une vue brute identique, sensible à la position, au type de
+  commande, à la passe et à l'ordre pris séparément ; `raw_slice` reconstruit
+  correctement un objet sur une séquence contiguë et sur une séquence
+  entrelacée (synthétique, et via un routage satin réel à trajet caché) ;
+  `apply_manual_overrides` applique déplacement/conversion Stitch↔Jump/Trim
+  uniquement sur des entrées `TopStitch`/`Stitch` valides, laisse un objet
+  `Dirty` strictement inchangé (par empreinte **et**, indépendamment, par
+  compteur de points), isole chaque objet retouché des autres, résout
+  déterministement les doublons d'overrides (dernière entrée du vecteur,
+  en bloc), les overrides vides et les index hors bornes ; déterminisme du
+  résultat (séquence patchée et liste d'objets `Dirty` triée) vérifié sur
+  deux exécutions indépendantes. Aucune commande undo/redo, aucune
+  persistance `.osp`, aucune UI dans ce sous-lot (cf.
+  `docs/lot8-manual-editing-design.md`).
 - **Tatami — correctif contacts sommet** : `segment_stays_in_region` détecte un
   connecteur **parfaitement vertical** traversant un trou en losange de part en
   part en touchant exactement ses deux sommets (défaut qu'une version antérieure
