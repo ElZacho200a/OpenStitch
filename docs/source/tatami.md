@@ -5,8 +5,8 @@ Public : utilisateur avancé, développeur.
 > État : Présent dans le code : oui · Tests unitaires : oui (invariants de
 > routage) · Tests visuels : partiels (SVG de diagnostic) · Import/export DST :
 > oui · Test sur machine réelle : **non** · **Statut recommandé : partiel**
-> (scanline + routage validé géométriquement ; sous-couche, underpath caché,
-> entrée/sortie et motifs de phase avancés non implémentés).
+> (scanline + routage validé géométriquement ; **sous-couches, underpath caché et
+> entrée** ajoutés au Lot 7 ; motifs de phase avancés non implémentés).
 
 ## Définition
 
@@ -68,9 +68,41 @@ remplissable est désormais numérisée en tatami** par défaut (fines bandes
 comprises). Le tatami est le remplissage sûr tant que le vrai moteur satin
 (squelette) n'est pas branché.
 
-Limitation : `jump` désigne un **saut machine** (aiguille levée), pas un
-véritable *travel stitch* cousu-caché (underpath). Le routage par déplacements
-cachés sous la couche supérieure n'est pas implémenté.
+## Tatami avancé (Lot 7)
+
+*État : Présent · Testé numériquement · Validé visuellement (SVG).* Tout est
+**désactivé par défaut**, éditable (inspecteur) et persisté (`.osp`,
+rétrocompatible). Chaque commande porte une `StitchPass` (§4) : sous-couches
+`Underlay`, couche supérieure `TopStitch`, trajet caché `Travel`.
+
+**Sous-couches** (`tatami_underlay`), cousues **avant** la couche supérieure :
+
+- **Contour rentré** (`underlay_edge`) : running le long du bord **extérieur**,
+  retrait `underlay_inset`. Les **bords de trous ne sont pas** longés (l'inset
+  d'un trou le rétrécit vers son centre ; en longer le bord ferait passer la
+  sous-couche au-dessus du trou — sûreté).
+- **Rangées parallèles espacées** (`underlay_parallel`) : balayage tatami
+  **perpendiculaire** aux rangées supérieures, pas `underlay_spacing`. Réutilise
+  le routage (contourne les trous). Évite l'affaissement de la surface.
+
+**Underpath caché** (`hidden_underpath`) : au lieu de sauter, une liaison est
+**cousue et cachée** quand un trajet valide existe — soit **direct** (s'il reste
+intérieur et court), soit **le long du contour extérieur rentré** (« autoroute »
+qui **contourne les trous**). Les pénétrations intermédiaires sont taguées
+`Travel`. Au-delà d'un plafond de longueur (`max(6·pas, 8 mm)`), on **saute**
+(un déplacement à découvert long serait pire qu'une coupe). Toujours borné par la
+validation géométrique : **jamais** de trajet caché à travers un trou.
+
+**Entrée** (`entry_point`, optionnel) : le remplissage démarre par le segment le
+plus proche du point d'entrée, puis chaque nouvelle composante est atteinte par
+le segment non visité le plus proche.
+
+Vérifié : sous-couche de contour rentrée dans la forme ; sous-couche parallèle
+espacée ; underpath convertit au moins un saut en trajet cousu **sans jamais**
+traverser le trou (invariant préservé) ; déterminisme ; l'entrée oriente le
+démarrage ; aller-retour `.osp`. SVG :
+`openstitch-cli stitchdebug --shape ring --underlay 3 --underpath` (contour et
+parallèle en vert, couche supérieure en gris, underpath en bleu, sauts en rouge).
 
 ![Tatami d'un anneau](../assets/generated/tatami-ring.svg)
 
@@ -90,6 +122,11 @@ Valeurs par défaut lues dans `TatamiParams`
 | `angle` | ° (rad interne) | 0 | oriente les rangées | — |
 | `inset` (retrait de bord) | mm | 0,2 | remplissage plus rentré | remplissage plus au bord (risque de débord) |
 | `stagger` | rangées | 2 | pénétrations décalées sur plus de rangées | sillon plus visible |
+| `underlay_edge` | bool | off | sous-couche de contour (Lot 7) | — |
+| `underlay_parallel` | bool | off | sous-couche perpendiculaire espacée (Lot 7) | — |
+| `underlay_spacing` | mm | 2,0 | rangées de sous-couche plus espacées | plus denses |
+| `hidden_underpath` | bool | off | coud et cache les liaisons courtes (Lot 7) | plus de sauts |
+| `entry_point` | µm | — | démarre le remplissage près de ce point (Lot 7) | — |
 
 Le paramètre principal de **densité** est `row_spacing` (entre rangées) — à ne
 pas confondre avec `stitch_length` (le long d'une rangée). Le retrait de bord

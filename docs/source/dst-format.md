@@ -60,9 +60,12 @@ est **subdivisé** en sauts intermédiaires. La sortie est **déterministe**.
 
 `decode_dst` lit l'en-tête de façon **laxiste** (la vérité est le corps),
 décode chaque enregistrement, et réinterprète une rafale de sauts nuls en `Trim`.
-Les cas d'erreur **couverts par les tests** (fichier vide, tronqué, sans
-marqueur de fin) renvoient une erreur structurée au lieu de provoquer un arrêt
-du programme.
+La lecture **s'arrête au marqueur de fin `00 00 F3`** et **ignore tout octet
+suivant** : certains logiciels (p. ex. **Hatch**) ajoutent un octet de fin DOS
+`0x1A` — voire du padding — après le marqueur, ce qui ne doit pas faire échouer
+l'import. Les cas d'erreur **couverts par les tests** (fichier vide, tronqué,
+sans marqueur de fin, octets en trop après `F3`) renvoient une erreur structurée
+(ou décodent proprement) au lieu de provoquer un arrêt du programme.
 
 ## Exemple interprété (motif minimal)
 

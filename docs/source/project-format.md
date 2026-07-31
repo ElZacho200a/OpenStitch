@@ -33,6 +33,9 @@ labels peut faire plusieurs mégaoctets).
   terminaisons), de sous-couche/compensation, et de **fixation/entrée-sortie**
   (`lockStart`/`lockEnd`, `lockLength`, `lockPasses`, `entryPoint`/`exitPoint`) —
   tous **optionnels** et rétrocompatibles (clés absentes → valeurs par défaut).
+  Le `tatami` porte de même ses réglages avancés (Lot 7) : `underlayEdge`,
+  `underlayParallel`, `underlayInset`, `underlaySpacing`, `hiddenUnderpath` et
+  `entryPoint` — optionnels et rétrocompatibles.
 
 ## Versionnement et validation
 

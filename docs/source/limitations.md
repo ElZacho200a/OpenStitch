@@ -16,8 +16,8 @@ fonctionnalité, vérifié dans le code.
 | Édition d'objets broderie | Implémenté | inspecteur/clic droit | commands | oui | changer le type et **tous les paramètres** après création ; orientation à la poignée |
 | Interface (thème, panneaux, workflow) | Implémenté | desktop | desktop | (vue) | thème clair/sombre + densité, inspecteur, panneau Document, workflow, état d'accueil, persistance UI (QSettings) |
 | Point droit/double/triple | Implémenté | Broderie | stitch_generation | oui | — |
-| Tatami | **Partiel** | Broderie | stitch_generation | oui | pas de sous-couche, pas d'underpath caché, entrée/sortie non gérées ; orientation éditable |
-| Satin (génération par barreaux) | Présent · testé · SVG | Broderie / inspecteur | stitch_generation | oui | `fill_satin_columns` : sections, espacement **perpendiculaire**, points courts / split / terminaisons (Lot 3), **sous-couches (center/edge/zigzag) + compensation pull/push** (Lot 4, passes distinctes) ; lock (Lot 5), routage (Lot 6) à venir |
+| Tatami | Présent · testé · SVG | Broderie | stitch_generation | oui | scanline + routage ; **sous-couches (contour + parallèle), underpath caché, entrée** (Lot 7) ; orientation éditable |
+| Satin (génération par barreaux) | Présent · testé · SVG | Broderie / inspecteur | stitch_generation | oui | `fill_satin_columns` : sections, espacement **perpendiculaire**, points courts / split / terminaisons (Lot 3), **sous-couches (center/edge/zigzag) + compensation pull/push** (Lot 4, passes distinctes), **lock + entrée/sortie** (Lot 5), **routage multi-colonnes** (Lot 6) |
 | Modèle de passes | Présent · testé | (générateur) | stitch | oui | `StitchPass` par commande (Underlay/TopStitch/Travel/Lock/Manual) ; affichage/toggle par passe dans l'UI à venir |
 | Auto-satin géométrique (rails+barreaux) | Présent · testé · SVG | Broderie ▸ Convertir en satin | auto_satin | oui | `build_satin_columns` : formes simples + Y ; cercle/anneau/large refusés |
 | Classification auto des régions | **Expérimental** | Segmentation | autodigitize | oui | zones remplissables → **tatami** (satin naïf désactivé, `use_naive_satin`) ; heuristique, pas une vraie auto-numérisation |
@@ -39,15 +39,15 @@ fonctionnalité, vérifié dans le code.
 ## Dette technique connue
 
 - `README.md` mentionne un compte de tests d'un jalon antérieur ; le compte réel
-  est **190** — à resynchroniser dans le README.
+  est **209** — à resynchroniser dans le README.
 - Le satin dispose désormais d'un moteur géométrique par **squelette**
   (`auto_satin::build_satin_columns`, Lot 1) et d'une **génération par barreaux**
   (`fill_satin_columns`, Lot 2), points courts / split / terminaisons (Lot 3) et
   **sous-couches (center/edge/zigzag) + compensation pull/push** (Lot 4, passes
   distinctes), **points d'entrée/sortie + points de fixation (lock)** (Lot 5) et
-  **routage multi-colonnes** (Lot 6 : ordre/orientation + trajets cachés). Reste
-  le tatami avancé (Lot 7). Le satin **auto naïf** reste désactivé.
-  Le **tatami** reste une version de base (sous-couches/underpath à venir).
+  **routage multi-colonnes** (Lot 6 : ordre/orientation + trajets cachés). Le
+  **tatami** reçoit ses **sous-couches (contour + parallèle), l'underpath caché et
+  le point d'entrée** (Lot 7). Le satin **auto naïf** reste désactivé.
 - Aucune validation sur machine à broder réelle.
 
 ## Niveaux de validation
@@ -58,12 +58,12 @@ la production*. Pour un logiciel de broderie, il faut distinguer :
 | Niveau | Signification | État du projet |
 |---|---|---|
 | Présent | le code existe | oui (pipeline complet) |
-| Testé numériquement | les invariants logiciels passent | oui (190 tests) |
+| Testé numériquement | les invariants logiciels passent | oui (209 tests) |
 | Validé visuellement | les trajectoires paraissent cohérentes | partiel (SVG de diagnostic, aperçu) |
 | Validé sur simulateur | vérifié dans un visualiseur tiers | non |
 | Validé physiquement | broderies réelles examinées | **non** |
 
-Un générateur peut passer 190 tests sans produire une bonne broderie : les tests
+Un générateur peut passer 209 tests sans produire une bonne broderie : les tests
 vérifient des **invariants** (pas de couture dans un trou, espacement par
 longueur d'arc, aller-retour DST exact…), pas la **qualité textile**.
 
