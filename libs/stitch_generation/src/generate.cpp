@@ -6,6 +6,7 @@
 
 #include "openstitch/geometry/offset.hpp"
 #include "openstitch/stitch_generation/lock.hpp"
+#include "openstitch/stitch_generation/routing.hpp"
 #include "openstitch/stitch_generation/running_stitch.hpp"
 #include "openstitch/stitch_generation/satin.hpp"
 #include "openstitch/stitch_generation/tatami.hpp"
@@ -142,6 +143,86 @@ void generate_satin(stitch::StitchSequence& sequence, const document::Embroidery
     }
 }
 
+// Extrémités représentatives d'une colonne satin, pour le routage (§13) :
+// milieux des barreaux d'about, sinon extrémités du rail A.
+std::pair<Vec2um, Vec2um> column_endpoints(const document::SatinParams& p) {
+    const auto mid = [](Vec2um a, Vec2um b) {
+        return Vec2um{Micrometers{(a.x.value + b.x.value) / 2}, Micrometers{(a.y.value + b.y.value) / 2}};
+    };
+    if (p.rungs.size() >= 2) {
+        return {mid(p.rungs.front().a, p.rungs.front().b), mid(p.rungs.back().a, p.rungs.back().b)};
+    }
+    if (p.rail_a.nodes.size() >= 2) {
+        return {p.rail_a.nodes.front().pos, p.rail_a.nodes.back().pos};
+    }
+    return {Vec2um{}, Vec2um{}};
+}
+
+// Route un groupe de colonnes satin de même couleur (§13) : ordre et
+// orientation minimisant les déplacements, liaisons courtes cousues en trajet
+// caché (passe Travel, pas de coupe) plutôt qu'en sauts.
+void generate_satin_group(stitch::StitchSequence& sequence,
+                          const std::vector<const document::EmbroideryObject*>& group) {
+    std::vector<RouteColumn> cols;
+    cols.reserve(group.size());
+    for (const auto* obj : group) {
+        const auto& sp = std::get<document::SatinParams>(obj->params);
+        const auto [s, e] = column_endpoints(sp);
+        cols.push_back(RouteColumn{obj->id, s, e});
+    }
+    const Vec2um origin =
+        sequence.commands.empty() ? cols.front().start : sequence.commands.back().pos;
+    const RoutePlan plan = route_columns(cols, origin, RoutingConfig{});
+
+    for (const RouteStep& step : plan.steps) {
+        const document::EmbroideryObject& obj = *group[step.column_index];
+        document::SatinParams sp = std::get<document::SatinParams>(obj.params);
+        const auto [s, e] = column_endpoints(sp);
+        // L'orientation décidée par le routage est imposée via entrée/sortie
+        // (chemin déjà testé dans generate_satin).
+        sp.entry_point = step.reversed ? e : s;
+        sp.exit_point = step.reversed ? s : e;
+
+        stitch::StitchSequence tmp;
+        generate_satin(tmp, obj, sp);
+        if (tmp.commands.empty()) {
+            continue;
+        }
+        // Position de la première pénétration de la colonne (cible de liaison).
+        Vec2um firstStitch = tmp.commands.front().pos;
+        for (const auto& c : tmp.commands) {
+            if (c.type == stitch::CommandType::Stitch) {
+                firstStitch = c.pos;
+                break;
+            }
+        }
+        if (step.connector == ConnectorKind::Underpath && !sequence.commands.empty()) {
+            // Trajet caché : running stitch de la position courante vers l'entrée,
+            // cousu (passe Travel) — remplace un saut, sans coupe.
+            geometry::Path link;
+            link.closed = false;
+            link.nodes = {{sequence.commands.back().pos, geometry::NodeType::Corner, {}, {}},
+                          {firstStitch, geometry::NodeType::Corner, {}, {}}};
+            const auto up = sample_path(link, Micrometers{2'500}, Micrometers{500});
+            // On saute up[0] (== position courante) et up[dernier] (== firstStitch,
+            // fourni par la colonne) pour n'ajouter que les pénétrations cachées.
+            for (std::size_t i = 1; i + 1 < up.size(); ++i) {
+                sequence.commands.push_back(
+                    {up[i], stitch::CommandType::Stitch, obj.id, stitch::StitchPass::Travel});
+            }
+            // On enchaîne la colonne sans son saut de tête (index 0).
+            for (std::size_t i = 1; i < tmp.commands.size(); ++i) {
+                sequence.commands.push_back(tmp.commands[i]);
+            }
+        } else {
+            // Début de groupe ou liaison trop longue : on garde le saut de tête.
+            for (const auto& c : tmp.commands) {
+                sequence.commands.push_back(c);
+            }
+        }
+    }
+}
+
 void generate_tatami(stitch::StitchSequence& sequence, const document::VectorObject& source,
                      const document::EmbroideryObject& object,
                      const document::TatamiParams& params) {
@@ -165,12 +246,28 @@ void generate_tatami(stitch::StitchSequence& sequence, const document::VectorObj
 
 }  // namespace
 
+namespace {
+
+// Une colonne satin auto route avec ses voisines : elle porte des barreaux
+// (issue de `build_satin_columns`), par opposition à un satin manuel/legacy.
+bool is_routable_satin(const document::EmbroideryObject& o) {
+    if (!o.is_satin()) {
+        return false;
+    }
+    return std::get<document::SatinParams>(o.params).rungs.size() >= 2;
+}
+
+}  // namespace
+
 Result<stitch::StitchSequence> generate_sequence(const document::Project& project) {
     stitch::StitchSequence sequence;
+    const auto& objects = project.embroidery_objects;
     const document::EmbroideryObject* previous = nullptr;
 
-    for (const document::EmbroideryObject& object : project.embroidery_objects) {
+    for (std::size_t idx = 0; idx < objects.size();) {
+        const document::EmbroideryObject& object = objects[idx];
         if (!object.visible) {
+            ++idx;
             continue;
         }
         // Le satin porte sa géométrie ; les autres types suivent un vecteur.
@@ -194,6 +291,29 @@ Result<stitch::StitchSequence> generate_sequence(const document::Project& projec
                 {sequence.commands.back().pos, stitch::CommandType::ColorChange, object.id});
         }
 
+        // Routage (§13) : un groupe **contigu** de colonnes satin auto de même
+        // couleur et même source est ordonné/orienté ensemble, liaisons cachées.
+        if (is_routable_satin(object)) {
+            std::vector<const document::EmbroideryObject*> group{&object};
+            std::size_t j = idx + 1;
+            for (; j < objects.size(); ++j) {
+                const auto& o = objects[j];
+                if (!o.visible || !is_routable_satin(o) || o.rgb != object.rgb ||
+                    o.source_vector != object.source_vector) {
+                    break;
+                }
+                group.push_back(&o);
+            }
+            if (group.size() >= 2) {
+                generate_satin_group(sequence, group);
+            } else {
+                generate_satin(sequence, object, std::get<document::SatinParams>(object.params));
+            }
+            previous = group.back();
+            idx = j;
+            continue;
+        }
+
         std::visit(
             [&](const auto& params) {
                 using T = std::decay_t<decltype(params)>;
@@ -207,6 +327,7 @@ Result<stitch::StitchSequence> generate_sequence(const document::Project& projec
             },
             object.params);
         previous = &object;
+        ++idx;
     }
 
     if (sequence.commands.empty()) {

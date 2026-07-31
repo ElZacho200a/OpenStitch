@@ -19,8 +19,10 @@
 #include "openstitch/auto_satin/satin_column.hpp"
 #include "openstitch/auto_satin/shapes.hpp"
 #include "openstitch/document/embroidery_object.hpp"
+#include "openstitch/document/project.hpp"
 #include "openstitch/geometry/path.hpp"
 #include "openstitch/stitch/sequence.hpp"
+#include "openstitch/stitch_generation/generate.hpp"
 #include "openstitch/stitch_generation/lock.hpp"
 #include "openstitch/stitch_generation/running_stitch.hpp"
 #include "openstitch/stitch_generation/satin.hpp"
@@ -236,7 +238,8 @@ int run_stitchdebug(const std::string& shape, double lengthMm, int repeats,
 }
 
 int run_auto_satin_debug(const std::string& shape, double pixelMm, const std::string& outSvg,
-                         int capEnd, int shortMode, int splitMode, int underlayMask, int lockMode) {
+                         int capEnd, int shortMode, int splitMode, int underlayMask, int lockMode,
+                         bool route) {
     using namespace openstitch;
     const auto region = auto_satin::make_shape(shape);
     if (!region) {
@@ -316,6 +319,50 @@ int run_auto_satin_debug(const std::string& shape, double pixelMm, const std::st
                             "#c00", 0.06);
             }
         }
+        // Routage multi-colonnes (Lot 6) : construit un projet à partir des
+        // colonnes (même couleur/source), génère la séquence et superpose les
+        // liaisons — trajets cachés (bleu) vs sauts (rouge pointillé).
+        if (route && result.columns.size() >= 2) {
+            document::Project project;
+            document::VectorObject vec;
+            vec.id = project.object_ids.next();
+            project.vector_objects.push_back(vec);
+            for (const auto& col : result.columns) {
+                document::SatinParams sp;
+                sp.rail_a = col.rail_a;
+                sp.rail_b = col.rail_b;
+                sp.center_underlay = false;  // lisibilité : une passe par colonne
+                for (const auto& rr : col.rungs) {
+                    sp.rungs.push_back(document::SatinRung{rr.a, rr.b});
+                }
+                document::EmbroideryObject emb;
+                emb.id = project.object_ids.next();
+                emb.source_vector = vec.id;
+                emb.rgb = {10, 20, 30};
+                emb.params = sp;
+                project.embroidery_objects.push_back(emb);
+            }
+            if (const auto seq = stitch_generation::generate_sequence(project)) {
+                const auto pt = [](Vec2um p) {
+                    return fmt::format("{:.3f} {:.3f}", p.x.value / 1000.0, -p.y.value / 1000.0);
+                };
+                // Une liaison = changement de colonne source. Saut (coupe) en
+                // rouge pointillé, trajet caché (cousu) en bleu.
+                for (std::size_t i = 1; i < seq->commands.size(); ++i) {
+                    const auto& prev = seq->commands[i - 1];
+                    const auto& cur = seq->commands[i];
+                    if (cur.source == prev.source || prev.source.value == 0 ||
+                        cur.source.value == 0 || cur.type == stitch::CommandType::End) {
+                        continue;
+                    }
+                    const bool jump = cur.type == stitch::CommandType::Jump;
+                    overlay += fmt::format(
+                        "<path d=\"M{} L{}\" fill=\"none\" stroke=\"{}\" stroke-width=\"0.15\"{}/>\n",
+                        pt(prev.pos), pt(cur.pos), jump ? "#e00" : "#06c",
+                        jump ? " stroke-dasharray=\"0.4 0.3\"" : "");
+                }
+            }
+        }
         if (const auto pos = svg.rfind("</svg>"); pos != std::string::npos) {
             svg.insert(pos, overlay);
         }
@@ -392,6 +439,9 @@ int main(int argc, char** argv) {
     int as_lock = 0;
     as_cmd->add_option("--lock", as_lock,
                        "Fixation : 0 off, 1 aller-retour, 2 triangle, 3 micro-zigzag");
+    bool as_route = false;
+    as_cmd->add_flag("--route", as_route,
+                     "Superpose le routage multi-colonnes (liaisons cachées bleu / sauts rouge)");
 
     CLI11_PARSE(app, argc, argv);
 
@@ -409,7 +459,7 @@ int main(int argc, char** argv) {
     }
     if (as_cmd->parsed()) {
         return run_auto_satin_debug(as_shape, as_pixel, as_out, as_cap, as_short, as_split,
-                                    as_underlay, as_lock);
+                                    as_underlay, as_lock, as_route);
     }
     return 0;
 }
