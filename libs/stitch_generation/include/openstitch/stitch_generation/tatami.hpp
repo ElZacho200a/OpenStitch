@@ -41,12 +41,28 @@ struct FillStitch {
                                                   const document::TatamiParams& params);
 
 // Sous-couches de remplissage (§15), à coudre AVANT la couche supérieure :
-// - contour rentré (`underlay_edge`) : running le long du bord et des trous,
-//   retrait `underlay_inset` — stabilise les bords ;
+// - contour rentré (`underlay_edge`) : running le long du bord EXTÉRIEUR
+//   uniquement (retrait `underlay_inset`) — stabilise les bords. Les bords de
+//   TROUS ne reçoivent jamais de sous-couche de contour (l'inset d'un trou le
+//   rétrécit vers son intérieur ; le longer ferait passer la sous-couche
+//   au-dessus du trou). Politique sûre si le retrait échoue ou fait disparaître
+//   la forme (pièce trop petite) : AUCUNE sous-couche de contour n'est émise
+//   pour cette forme — jamais de repli silencieux sur le bord brut (sans
+//   marge). Un retrait explicitement nul (`underlay_inset` == 0) est une
+//   intention distincte : le bord brut est alors bien celui voulu.
 // - rangées parallèles espacées (`underlay_parallel`) : balayage perpendiculaire
 //   aux rangées supérieures, pas `underlay_spacing` — évite l'affaissement.
 // Chaque passe est une polyligne cousue. Vide si aucune sous-couche activée.
 [[nodiscard]] std::vector<std::vector<Vec2um>> tatami_underlay(
     const geometry::PathSet& region, const document::TatamiParams& params);
+
+// Le segment [a,b] reste-t-il ENTIÈREMENT dans la région (extérieur moins les
+// trous) ? Indépendant de l'orientation du segment ; un suivi de frontière
+// (segment colinéaire à un bord) est autorisé, mais toute portion tombant
+// dans un trou ou hors de l'extérieur est rejetée — y compris lorsque le
+// segment ne fait que TOUCHER un sommet du trou sans le « croiser »
+// franchement. C'est la validation utilisée par `fill_tatami` pour décider
+// liaison cousue vs saut ; exposée pour test.
+[[nodiscard]] bool segment_stays_in_region(const geometry::PathSet& region, Vec2um a, Vec2um b);
 
 }  // namespace openstitch::stitch_generation

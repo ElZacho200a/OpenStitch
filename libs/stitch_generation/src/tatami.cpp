@@ -47,24 +47,6 @@ Vec2um to_um(PointD p) {
                   Micrometers{static_cast<std::int32_t>(std::lround(p.y))}};
 }
 
-// Orientation du triplet (a, b, c) : > 0 gauche, < 0 droite, 0 colinéaire.
-double orient(PointD a, PointD b, PointD c) {
-    return (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x);
-}
-
-// Intersection PROPRE de deux segments (ils se croisent transversalement).
-// Exclut les cas colinéaires et les contacts par extrémité/sommet (orient == 0),
-// ce qui est exactement ce qu'il faut : une liaison qui longe un bord (colinéaire)
-// est autorisée ; une liaison qui coupe franchement un bord ne l'est pas.
-bool proper_intersect(PointD a, PointD b, PointD c, PointD d) {
-    const double o1 = orient(a, b, c);
-    const double o2 = orient(a, b, d);
-    const double o3 = orient(c, d, a);
-    const double o4 = orient(c, d, b);
-    return (o1 > 0.0) != (o2 > 0.0) && (o3 > 0.0) != (o4 > 0.0) && o1 != 0.0 && o2 != 0.0 &&
-           o3 != 0.0 && o4 != 0.0;
-}
-
 // Point dans polygone (lancer de rayon horizontal, règle pair-impair).
 bool point_in_poly(const std::vector<PointD>& poly, PointD p) {
     bool inside = false;
@@ -80,9 +62,51 @@ bool point_in_poly(const std::vector<PointD>& poly, PointD p) {
     return inside;
 }
 
+// Distance au carré de p au segment [c,d].
+double point_seg_dist2(PointD p, PointD c, PointD d) {
+    const double dx = d.x - c.x;
+    const double dy = d.y - c.y;
+    const double len2 = dx * dx + dy * dy;
+    if (len2 < 1e-12) {
+        const double ex = p.x - c.x;
+        const double ey = p.y - c.y;
+        return ex * ex + ey * ey;
+    }
+    double t = ((p.x - c.x) * dx + (p.y - c.y) * dy) / len2;
+    t = std::clamp(t, 0.0, 1.0);
+    const double fx = p.x - (c.x + t * dx);
+    const double fy = p.y - (c.y + t * dy);
+    return fx * fx + fy * fy;
+}
+
+// p est-il (quasi) SUR une arête d'un des polygones (extérieur ou trou) ? Le
+// test pair-impair est ambigu pile sur une frontière — pour un trou, il classe
+// même le point comme « dans le trou » (cf. arête opposée qui bascule seule la
+// parité), ce qui rejetterait à tort un suivi de bord légitime. On traite donc
+// tout point sur une frontière comme faisant partie de la région, AVANT le
+// test pair-impair.
+bool point_on_boundary(const std::vector<std::vector<PointD>>& polys, PointD p) {
+    constexpr double kEps2 = 1e-4;  // 0,01 µm : marge numérique, pas une tolérance géométrique
+    for (const auto& poly : polys) {
+        const std::size_t n = poly.size();
+        for (std::size_t i = 0; i < n; ++i) {
+            if (point_seg_dist2(p, poly[i], poly[(i + 1) % n]) < kEps2) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
 // p est-il dans la région = dans l'extérieur ET hors de tous les trous ?
 bool in_region(const std::vector<std::vector<PointD>>& polys, PointD p) {
-    if (polys.empty() || !point_in_poly(polys[0], p)) {
+    if (polys.empty()) {
+        return false;
+    }
+    if (point_on_boundary(polys, p)) {
+        return true;
+    }
+    if (!point_in_poly(polys[0], p)) {
         return false;
     }
     for (std::size_t i = 1; i < polys.size(); ++i) {
@@ -94,32 +118,49 @@ bool in_region(const std::vector<std::vector<PointD>>& polys, PointD p) {
 }
 
 // La liaison [a,b] (dans le repère des rangées) est-elle un trajet cousu
-// INVALIDE ? `spacing` est l'écart entre rangées. Une liaison légitime entre
-// deux rangées voisines est quasi VERTICALE (petit écart en x, ~spacing en y)
-// et longe éventuellement un bord — elle est autorisée. Une liaison INVALIDE
-// enjambe un vide : c'est soit un croisement franc d'une arête, soit un
-// connecteur DIAGONAL LARGE (grand écart en x) dont un point intérieur sort de
-// la région (encoche, poche concave, pont au-dessus d'un trou — cas où les
-// extrémités reposent sur les bords, que le seul test de croisement manque).
-bool connector_invalid(const std::vector<std::vector<PointD>>& polys, PointD a, PointD b,
-                       double spacing) {
+// INVALIDE ? Robuste à l'orientation du segment et aux contacts par
+// sommet/extrémité : on découpe [a,b] à CHAQUE intersection paramétrique avec
+// une arête d'un polygone (extérieur ou trou), y COMPRIS les contacts
+// dégénérés (le segment passe exactement par un sommet), puis on vérifie que
+// le MILIEU de chaque sous-segment ainsi obtenu reste dans la région. Une
+// arête colinéaire au segment (suivi de bord/frontière) ne produit aucune
+// découpe : longer un bord reste autorisé. Ce test ne dépend d'aucun seuil sur
+// l'écart en x — un connecteur parfaitement vertical qui traverse un trou de
+// part en part (même en touchant ses sommets, sans jamais le « croiser »
+// franchement) est donc détecté.
+bool connector_invalid(const std::vector<std::vector<PointD>>& polys, PointD a, PointD b) {
+    const double abx = b.x - a.x;
+    const double aby = b.y - a.y;
+    const double abLen = std::sqrt(abx * abx + aby * aby);
+    if (abLen < 1e-6) {
+        return !in_region(polys, a);
+    }
+    std::vector<double> ts{0.0, 1.0};
     for (const auto& poly : polys) {
         const std::size_t n = poly.size();
         for (std::size_t i = 0; i < n; ++i) {
-            if (proper_intersect(a, b, poly[i], poly[(i + 1) % n])) {
-                return true;
+            const PointD c = poly[i];
+            const PointD d = poly[(i + 1) % n];
+            const double dcx = d.x - c.x;
+            const double dcy = d.y - c.y;
+            const double cdLen = std::sqrt(dcx * dcx + dcy * dcy);
+            const double denom = abx * dcy - aby * dcx;
+            if (std::abs(denom) < 1e-9 * abLen * cdLen) {
+                continue;  // parallèle/colinéaire : suivi de bord, pas de découpe
+            }
+            const double t = ((c.x - a.x) * dcy - (c.y - a.y) * dcx) / denom;
+            const double s = ((c.x - a.x) * aby - (c.y - a.y) * abx) / denom;
+            if (t > 1e-9 && t < 1.0 - 1e-9 && s >= -1e-9 && s <= 1.0 + 1e-9) {
+                ts.push_back(t);
             }
         }
     }
-    // Seuls les connecteurs LARGES en x peuvent enjamber un vide ; les
-    // connecteurs quasi-verticaux (le long d'un bord) sont légitimes.
-    if (std::abs(b.x - a.x) > 2.0 * spacing) {
-        for (int k = 1; k <= 3; ++k) {
-            const double t = static_cast<double>(k) / 4.0;
-            const PointD p{a.x + (b.x - a.x) * t, a.y + (b.y - a.y) * t};
-            if (!in_region(polys, p)) {
-                return true;
-            }
+    std::sort(ts.begin(), ts.end());
+    for (std::size_t i = 0; i + 1 < ts.size(); ++i) {
+        const double tm = (ts[i] + ts[i + 1]) / 2.0;
+        const PointD p{a.x + abx * tm, a.y + aby * tm};
+        if (!in_region(polys, p)) {
+            return true;
         }
     }
     return false;
@@ -335,7 +376,7 @@ std::vector<FillStitch> fill_tatami(const geometry::PathSet& region,
             bool ok = true;
             for (std::size_t k = 1; k < v.size(); ++k) {
                 L += seglen(v[k - 1], v[k]);
-                if (L > bestLen || connector_invalid(polys, v[k - 1], v[k], spacing)) {
+                if (L > bestLen || connector_invalid(polys, v[k - 1], v[k])) {
                     ok = false;
                     break;
                 }
@@ -386,7 +427,7 @@ std::vector<FillStitch> fill_tatami(const geometry::PathSet& region,
             // trajet cousu couperait un bord de la région ou d'un trou. Le
             // chevauchement des rangées ne donne que des candidats ; la validation
             // géométrique (connector_invalid) tranche.
-            const bool cross = hasPrev && connector_invalid(polys, prev, rp, spacing);
+            const bool cross = hasPrev && connector_invalid(polys, prev, rp);
             bool jump = (k == 0) && (jumpStart || !hasPrev || cross);
             // Underpath caché (§15) : au lieu d'un saut, on coud un trajet caché.
             // Émet des pénétrations intermédiaires taguées `travel` le long du
@@ -449,16 +490,21 @@ std::vector<std::vector<Vec2um>> tatami_underlay(const geometry::PathSet& region
     std::vector<std::vector<Vec2um>> passes;
 
     // 1) Contour rentré : running le long du bord (et des trous), retrait
-    //    `underlay_inset`. Si le retrait fait disparaître la forme, on longe le
-    //    bord brut.
+    //    `underlay_inset`. Politique sûre EXPLICITE : si un retrait est demandé
+    //    (`underlay_inset` > 0) mais échoue ou fait disparaître la forme (pièce
+    //    trop petite pour ce retrait), on N'ÉMET AUCUNE sous-couche de contour
+    //    pour cette forme — jamais de repli silencieux sur le bord BRUT. Coudre
+    //    exactement sur l'arête finale n'offrirait aucune marge de stabilisation
+    //    et risquerait de déborder une fois la compensation de bord de la couche
+    //    supérieure appliquée par-dessus. Un retrait NUL est une intention
+    //    explicite distincte (pas un échec) : le bord brut est alors voulu.
     if (params.underlay_edge) {
         std::vector<geometry::PathSet> shells;
         if (params.underlay_inset.value > 0) {
             if (auto r = geometry::inset_path_set(region, params.underlay_inset); r && !r->empty()) {
                 shells = std::move(*r);
             }
-        }
-        if (shells.empty()) {
+        } else {
             shells.push_back(region);
         }
         // On ne longe que le contour EXTÉRIEUR rentré : l'inset d'un trou le
@@ -502,6 +548,31 @@ std::vector<std::vector<Vec2um>> tatami_underlay(const geometry::PathSet& region
     }
 
     return passes;
+}
+
+bool segment_stays_in_region(const geometry::PathSet& region, Vec2um a, Vec2um b) {
+    std::vector<std::vector<PointD>> polys;
+    const auto addPoly = [&](const geometry::Path& path) {
+        std::vector<PointD> poly;
+        poly.reserve(path.nodes.size());
+        for (const auto& node : path.nodes) {
+            poly.push_back({static_cast<double>(node.pos.x.value),
+                            static_cast<double>(node.pos.y.value)});
+        }
+        if (poly.size() >= 3) {
+            polys.push_back(std::move(poly));
+        }
+    };
+    addPoly(region.outer);
+    for (const auto& hole : region.holes) {
+        addPoly(hole);
+    }
+    if (polys.empty()) {
+        return false;
+    }
+    const PointD pa{static_cast<double>(a.x.value), static_cast<double>(a.y.value)};
+    const PointD pb{static_cast<double>(b.x.value), static_cast<double>(b.y.value)};
+    return !connector_invalid(polys, pa, pb);
 }
 
 }  // namespace openstitch::stitch_generation

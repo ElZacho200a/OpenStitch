@@ -350,6 +350,46 @@ TEST_CASE("tatami : aucune sous-couche par defaut") {
     CHECK(tatami_underlay({rect(20'000, 10'000), {}}, params(1'000, 3'000)).empty());
 }
 
+// --- POLITIQUE SURE : PAS DE REPLI SILENCIEUX SUR LE BORD BRUT ---------------
+// Bug corrige : si le retrait de la sous-couche de contour echouait ou faisait
+// disparaitre la forme (piece trop petite pour underlay_inset), le code cousait
+// silencieusement sur le bord BRUT (sans marge de stabilisation, risque de
+// deborder sous la compensation de la couche superieure). La politique sure :
+// aucune sous-couche de contour n'est emise dans ce cas.
+
+TEST_CASE("tatami : retrait de contour impossible (piece trop petite) -> aucune sous-couche, pas de repli sur le bord brut") {
+    auto p = params(400, 1'000);
+    p.underlay_edge = true;
+    p.underlay_inset = Micrometers{2'000};  // > moitie du cote (2 mm de large)
+    const auto u = tatami_underlay({rect(2'000, 2'000), {}}, p);
+    CHECK(u.empty());  // aucun repli sur le bord brut : silence, pas de couture non stabilisante
+}
+
+TEST_CASE("tatami : retrait de contour nul explicite -> longe bien le bord brut (intention voulue)") {
+    auto p = params(1'000, 3'000);
+    p.underlay_edge = true;
+    p.underlay_inset = Micrometers{0};  // intention explicite : pas de retrait
+    const auto u = tatami_underlay({rect(20'000, 10'000), {}}, p);
+    REQUIRE_FALSE(u.empty());
+    for (const auto& pass : u) {
+        for (const Vec2um& pt : pass) {
+            CHECK(inside_rect(pt, 20'000, 10'000, 50));
+        }
+    }
+}
+
+TEST_CASE("tatami : retrait de contour qui echoue sur un trou d'un anneau -> sous-couche exterieure seule, jamais sur le trou") {
+    // Le contour exterieur (grande forme) s'insete normalement ; seul le bord de
+    // TROU n'est de toute facon jamais suivi (deja le cas), et un retrait
+    // degenerant l'exterieur (piece globalement trop petite) doit rester silencieux.
+    auto p = params(400, 1'000);
+    p.underlay_edge = true;
+    p.underlay_inset = Micrometers{50'000};  // bien plus grand que la forme entiere
+    auto ring = ring_shape();
+    const auto u = tatami_underlay(ring, p);
+    CHECK(u.empty());
+}
+
 TEST_CASE("tatami : underpath cache coud une liaison au lieu de sauter") {
     const auto ring = ring_shape();
     auto p = params(2'000, 4'000);
@@ -386,6 +426,106 @@ TEST_CASE("tatami : underpath deterministe") {
     auto p = params(2'000, 4'000);
     p.hidden_underpath = true;
     CHECK(fill_tatami(ring_shape(), p) == fill_tatami(ring_shape(), p));
+}
+
+// --- CONNECTOR_INVALID : ROBUSTESSE AUX CONTACTS SOMMETS ---------------------
+// Bug corrige : connector_invalid ignorait tout contact sommet/extremite
+// (proper_intersect excluait orient == 0) et ne sondait l'interieur du
+// connecteur que si |dx| > 2*spacing. Un connecteur QUASI VERTICAL (petit dx)
+// dont les extremites touchent un trou EXACTEMENT a ses sommets pouvait ainsi
+// traverser le trou de part en part sans jamais etre detecte : ni par le test
+// de croisement (les contacts sont degeneres), ni par l'echantillonnage
+// (dx trop petit pour l'activer). segment_stays_in_region corrige ceci : la
+// decoupe parametrique du segment a CHAQUE intersection (y compris degeneree)
+// rend la detection independante de dx et de l'orientation.
+
+namespace {
+geometry::Path diamond_hole(std::int32_t cx, std::int32_t cy, std::int32_t r) {
+    geometry::Path p;
+    p.closed = true;
+    const auto c = [](std::int32_t x, std::int32_t y) {
+        return geometry::PathNode{Vec2um{Micrometers{x}, Micrometers{y}}, geometry::NodeType::Corner,
+                                  {}, {}};
+    };
+    p.nodes = {c(cx, cy - r), c(cx + r, cy), c(cx, cy + r), c(cx - r, cy)};
+    return p;
+}
+}  // namespace
+
+TEST_CASE("segment_stays_in_region : accord vertical a travers un trou losange (contacts sommets)") {
+    // Losange centre (10,10 mm), rayon 1 mm : sommets a (10,9), (11,10), (10,11), (9,10).
+    // La ligne verticale x=10mm passe EXACTEMENT par les sommets haut et bas :
+    // aucune arete n'est franchie « proprement », seuls des sommets sont touches.
+    geometry::PathSet region{rect(20'000, 20'000), {diamond_hole(10'000, 10'000, 1'000)}};
+
+    // Traverse le trou de part en part (touche les deux sommets, coupe l'interieur entre eux).
+    CHECK_FALSE(segment_stays_in_region(region, Vec2um{Micrometers{10'000}, Micrometers{7'000}},
+                                        Vec2um{Micrometers{10'000}, Micrometers{13'000}}));
+
+    // Reste strictement au-dessus du trou : valide.
+    CHECK(segment_stays_in_region(region, Vec2um{Micrometers{10'000}, Micrometers{1'000}},
+                                  Vec2um{Micrometers{10'000}, Micrometers{7'000}}));
+
+    // Part EXACTEMENT du sommet haut et plonge dans le trou : invalide (contact sommet unique).
+    CHECK_FALSE(segment_stays_in_region(region, Vec2um{Micrometers{10'000}, Micrometers{9'000}},
+                                        Vec2um{Micrometers{10'000}, Micrometers{9'500}}));
+}
+
+TEST_CASE("segment_stays_in_region : anneau multi-trous, seul le trou traverse est rejete") {
+    geometry::PathSet region{rect(30'000, 20'000),
+                             {diamond_hole(8'000, 10'000, 1'000), diamond_hole(22'000, 10'000, 1'000)}};
+
+    // Traverse le second trou de part en part (contacts sommets).
+    CHECK_FALSE(segment_stays_in_region(region, Vec2um{Micrometers{22'000}, Micrometers{7'000}},
+                                        Vec2um{Micrometers{22'000}, Micrometers{13'000}}));
+    // Le couloir entre les deux trous (tissu plein) reste valide.
+    CHECK(segment_stays_in_region(region, Vec2um{Micrometers{15'000}, Micrometers{4'000}},
+                                  Vec2um{Micrometers{15'000}, Micrometers{16'000}}));
+    // Une couture pres du PREMIER trou (mais qui ne le traverse pas) reste valide.
+    CHECK(segment_stays_in_region(region, Vec2um{Micrometers{8'000}, Micrometers{1'000}},
+                                  Vec2um{Micrometers{8'000}, Micrometers{8'800}}));
+}
+
+TEST_CASE("segment_stays_in_region : coin rentrant d'un L, contact sommet vers l'encoche") {
+    // l_shape() : coin rentrant en (8,8 mm). Une diagonale a 45 deg par ce sommet
+    // (petit dx = 1mm, donc sous l'ancien seuil de declenchement de l'echantillonnage)
+    // touche le sommet SANS le croiser franchement puis plonge dans l'encoche manquante.
+    const auto region = l_shape();
+    CHECK_FALSE(segment_stays_in_region(region, Vec2um{Micrometers{7'500}, Micrometers{7'500}},
+                                        Vec2um{Micrometers{8'500}, Micrometers{8'500}}));
+    // La meme diagonale, arretee AVANT le sommet, reste entierement dans le bras vertical : valide.
+    CHECK(segment_stays_in_region(region, Vec2um{Micrometers{6'000}, Micrometers{6'000}},
+                                  Vec2um{Micrometers{7'500}, Micrometers{7'500}}));
+}
+
+TEST_CASE("segment_stays_in_region : suivi de bord colineaire reste autorise (non-regression)") {
+    // Le long du bord gauche du rectangle : colineaire a l'arete, aucune decoupe attendue.
+    const geometry::PathSet region{rect(20'000, 10'000), {}};
+    CHECK(segment_stays_in_region(region, Vec2um{Micrometers{0}, Micrometers{1'000}},
+                                  Vec2um{Micrometers{0}, Micrometers{9'000}}));
+}
+
+TEST_CASE("tatami : trou losange, aucune couture ne le traverse (fill_tatami)") {
+    // Filet de securite de bout en bout : un trou dont les sommets s'alignent
+    // verticalement (cas degenere ci-dessus) ne doit produire AUCUN point cousu
+    // a l'interieur, quelle que soit la maniere dont fill_tatami route les liaisons.
+    geometry::PathSet region{rect(20'000, 20'000), {diamond_hole(10'000, 10'000, 1'000)}};
+    const auto fill = fill_tatami(region, params(500, 3'000));
+    REQUIRE_FALSE(fill.empty());
+    int crossings = 0;
+    for (std::size_t i = 1; i < fill.size(); ++i) {
+        if (fill[i].jump) continue;
+        const Vec2um a = fill[i - 1].pos;
+        const Vec2um b = fill[i].pos;
+        for (const double t : {0.25, 0.5, 0.75}) {
+            const Vec2um s{Micrometers{static_cast<std::int32_t>(a.x.value + (b.x.value - a.x.value) * t)},
+                          Micrometers{static_cast<std::int32_t>(a.y.value + (b.y.value - a.y.value) * t)}};
+            const bool strictlyInHole =
+                std::abs(s.x.value - 10'000) + std::abs(s.y.value - 10'000) < 900;  // sous le losange, marge
+            if (strictlyInHole) ++crossings;
+        }
+    }
+    CHECK(crossings == 0);
 }
 
 TEST_CASE("tatami : le point d'entree oriente le demarrage") {
