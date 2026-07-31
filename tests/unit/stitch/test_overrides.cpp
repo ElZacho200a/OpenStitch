@@ -402,10 +402,13 @@ TEST_CASE("apply_manual_overrides : cible hors TopStitch (Underlay) refusee") {
     CHECK(seq.commands[0].pass == Pass::Underlay);
 }
 
-TEST_CASE("apply_manual_overrides : cible de type Jump en passe TopStitch refusee") {
-    // Cas de bord qui n'est pas produit par le generateur actuel (une entree
-    // TopStitch y est toujours un Stitch), mais l'eligibilite doit rester
-    // stricte sur (pass ET type), pas seulement la passe.
+TEST_CASE("apply_manual_overrides : deplacer une cible Jump en passe TopStitch refuse") {
+    // `moved_to` reste reserve aux points Stitch (cadrage Lot 8 SS2.1) : un
+    // saut n'a pas de position a "deplacer" independamment de ses voisins de
+    // trajet. Cas de bord qui n'est pas produit par le generateur actuel
+    // (une entree TopStitch y est toujours un Stitch), mais l'eligibilite de
+    // `moved_to` doit rester stricte sur (pass ET type), pas seulement la
+    // passe.
     const ObjectId oid{1};
     stitch::StitchSequence seq;
     seq.commands = {
@@ -423,6 +426,89 @@ TEST_CASE("apply_manual_overrides : cible de type Jump en passe TopStitch refuse
     const auto dirty = apply_manual_overrides(seq, project);
     CHECK(dirty.empty());
     CHECK(seq.commands[0].pos == (Vec2um{Micrometers{0}, Micrometers{0}}));  // override ignore
+}
+
+TEST_CASE("apply_manual_overrides : convertit Jump en Stitch (direction inverse)") {
+    // Regression : `is_overridable_entry` n'acceptait auparavant qu'une cible
+    // de type Stitch, rendant Jump->Stitch impossible alors que le cadrage
+    // (SS2.2) et le rapport de Lot 8.0 annoncent explicitement une transition
+    // bidirectionnelle Stitch<->Jump.
+    const ObjectId oid{1};
+    stitch::StitchSequence seq;
+    seq.commands = {
+        mk(0, 0, CmdType::Jump, oid, Pass::TopStitch),
+        mk(1'000, 0, CmdType::Stitch, oid, Pass::TopStitch),
+    };
+    document::Project project;
+    document::EmbroideryObject obj;
+    obj.id = oid;
+    document::StitchOverride ov;
+    ov.base_index = 0;
+    ov.forced_type = document::StitchPointType::Stitch;
+    make_manually_edited(project, obj, seq, {ov});
+
+    const auto dirty = apply_manual_overrides(seq, project);
+    CHECK(dirty.empty());
+    CHECK(seq.commands[0].type == CmdType::Stitch);
+    CHECK(seq.commands[0].pass == Pass::Manual);
+    CHECK(seq.commands[0].pos == (Vec2um{Micrometers{0}, Micrometers{0}}));  // position inchangee
+}
+
+TEST_CASE("apply_manual_overrides : trim apres une cible Jump accepte") {
+    // `trim_after` n'est pas restreint aux points Stitch (cadrage SS2.3) : un
+    // Trim est une commande machine independante de la geometrie du point.
+    const ObjectId oid{1};
+    stitch::StitchSequence seq;
+    seq.commands = {
+        mk(0, 0, CmdType::Jump, oid, Pass::TopStitch),
+        mk(1'000, 0, CmdType::Stitch, oid, Pass::TopStitch),
+    };
+    document::Project project;
+    document::EmbroideryObject obj;
+    obj.id = oid;
+    document::StitchOverride ov;
+    ov.base_index = 0;
+    ov.trim_after = true;
+    make_manually_edited(project, obj, seq, {ov});
+
+    const auto dirty = apply_manual_overrides(seq, project);
+    CHECK(dirty.empty());
+    REQUIRE(seq.commands.size() == 3);
+    CHECK(seq.commands[0].type == CmdType::Jump);  // point cible inchange
+    CHECK(seq.commands[1].type == CmdType::Trim);
+    CHECK(seq.commands[1].pos == seq.commands[0].pos);
+}
+
+TEST_CASE("apply_manual_overrides : override combine sur cible Jump -- moved_to ignore, forced_type applique") {
+    // Validation par champ (cadrage : "un override combinant plusieurs champs
+    // doit valider chaque champ separement, pas rejeter tout le bloc selon
+    // une regle unique trop restrictive") : sur une cible Jump, `moved_to`
+    // est invalide (reserve a Stitch) mais `forced_type` (Jump->Stitch) et
+    // `trim_after` restent valides dans le meme override.
+    const ObjectId oid{1};
+    stitch::StitchSequence seq;
+    seq.commands = {
+        mk(0, 0, CmdType::Jump, oid, Pass::TopStitch),
+        mk(1'000, 0, CmdType::Stitch, oid, Pass::TopStitch),
+    };
+    document::Project project;
+    document::EmbroideryObject obj;
+    obj.id = oid;
+    document::StitchOverride ov;
+    ov.base_index = 0;
+    ov.moved_to = Vec2um{Micrometers{9'999}, Micrometers{9'999}};  // invalide sur cible Jump
+    ov.forced_type = document::StitchPointType::Stitch;             // valide : Jump->Stitch
+    ov.trim_after = true;                                           // valide sur cible Jump/Stitch
+    make_manually_edited(project, obj, seq, {ov});
+
+    const auto dirty = apply_manual_overrides(seq, project);
+    CHECK(dirty.empty());
+    CHECK(seq.commands[0].pos == (Vec2um{Micrometers{0}, Micrometers{0}}));  // moved_to ignore
+    CHECK(seq.commands[0].type == CmdType::Stitch);                          // forced_type applique
+    CHECK(seq.commands[0].pass == Pass::Manual);
+    REQUIRE(seq.commands.size() == 3);
+    CHECK(seq.commands[1].type == CmdType::Trim);  // trim_after applique
+    CHECK(seq.commands[1].pos == (Vec2um{Micrometers{0}, Micrometers{0}}));
 }
 
 TEST_CASE("apply_manual_overrides : index invalide ignore sans plantage") {

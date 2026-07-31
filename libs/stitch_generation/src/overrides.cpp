@@ -33,17 +33,42 @@ std::uint64_t hash_u64(std::uint64_t hash, std::uint64_t v) {
     return hash;
 }
 
-// Cible éligible à une retouche en MVP (cadrage Lot 8 §2) : une entrée
-// TopStitch de type Stitch. Dans le générateur actuel, une entrée `pass ==
-// TopStitch` est toujours une commande `Stitch` (running/tatami/satin
-// n'émettent jamais de Jump/ColorChange en TopStitch) -- sauf un cas de bord
-// vérifié dans le code : le `ColorChange` inséré par `generate_sequence` avant
-// un objet porte `source = <objet suivant>` et hérite du défaut de structure
-// `pass == TopStitch` (jamais positionné explicitement). Ce contrôle exclut
-// donc explicitement ce cas plutôt que de supposer que toute entrée TopStitch
-// est un point de couture.
-bool is_overridable_entry(const stitch::StitchCommand& cmd) {
-    return cmd.pass == stitch::StitchPass::TopStitch && cmd.type == stitch::CommandType::Stitch;
+// Filtre commun aux trois opérations MVP (cadrage Lot 8 §2, restriction
+// d'ouverture) : seules les entrées de passe TopStitch sont éligibles.
+// Underlay/Travel/Lock restent entièrement régénérées, non éditables.
+bool is_topstitch_entry(const stitch::StitchCommand& cmd) {
+    return cmd.pass == stitch::StitchPass::TopStitch;
+}
+
+// Un point de couture "réel" au sens du cadrage : Stitch ou Jump. Exclut
+// explicitement un cas de bord vérifié dans le code : le `ColorChange` inséré
+// par `generate_sequence` avant un objet porte `source = <objet suivant>` et
+// hérite du défaut de structure `pass == TopStitch` (jamais positionné
+// explicitement) -- ce n'est pas un point généré, il ne doit être la cible
+// d'aucune des trois opérations.
+bool is_stitch_or_jump(stitch::CommandType type) {
+    return type == stitch::CommandType::Stitch || type == stitch::CommandType::Jump;
+}
+
+// `moved_to` (cadrage §2.1) : "uniquement des commandes Stitch" -- déplacer
+// une position n'a de sens que pour un point de couture réel, pas pour un
+// saut (dont la position est déterminée par ses deux voisins de trajet).
+bool can_move(const stitch::StitchCommand& cmd) {
+    return is_topstitch_entry(cmd) && cmd.type == stitch::CommandType::Stitch;
+}
+
+// `forced_type` (cadrage §2.2) : "seule transition permise : Stitch <-> Jump"
+// -- bidirectionnel, donc éligible depuis une cible Stitch OU Jump (pas
+// seulement Stitch, contrairement à `can_move`).
+bool can_force_type(const stitch::StitchCommand& cmd) {
+    return is_topstitch_entry(cmd) && is_stitch_or_jump(cmd.type);
+}
+
+// `trim_after` (cadrage §2.3) : insère une commande machine supplémentaire
+// après le point, sans toucher à sa géométrie -- aucune restriction de type
+// au-delà "point de couture réel" (Stitch ou Jump), comme `forced_type`.
+bool can_trim_after(const stitch::StitchCommand& cmd) {
+    return is_topstitch_entry(cmd) && is_stitch_or_jump(cmd.type);
 }
 
 stitch::CommandType to_command_type(document::StitchPointType t) {
@@ -156,19 +181,21 @@ std::vector<ObjectId> apply_manual_overrides(stitch::StitchSequence& sequence,
             }
             const std::size_t seq_index = idxs[base_index];
             const stitch::StitchCommand original = sequence.commands[seq_index];
-            if (!is_overridable_entry(original)) {
-                continue;  // cible hors TopStitch/Stitch : interdit en MVP
-            }
+            // Chaque champ est validé indépendamment, y compris la passe
+            // TopStitch (cadrage §2.1-§2.3) : un override combinant plusieurs
+            // champs applique ceux qui sont valides pour la cible et ignore
+            // silencieusement les autres, plutôt que de rejeter tout le bloc
+            // sur une règle unique trop restrictive.
             stitch::StitchCommand& cmd = sequence.commands[seq_index];
-            if (ov->moved_to) {
+            if (ov->moved_to && can_move(original)) {
                 cmd.pos = *ov->moved_to;
                 cmd.pass = stitch::StitchPass::Manual;
             }
-            if (ov->forced_type) {
+            if (ov->forced_type && can_force_type(original)) {
                 cmd.type = to_command_type(*ov->forced_type);
                 cmd.pass = stitch::StitchPass::Manual;
             }
-            if (ov->trim_after) {
+            if (ov->trim_after && can_trim_after(original)) {
                 trims.push_back({seq_index, cmd.pos, obj.id});
             }
         }

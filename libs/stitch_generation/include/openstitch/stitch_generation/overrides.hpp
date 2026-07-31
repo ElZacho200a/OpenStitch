@@ -39,6 +39,11 @@ enum class ObjectEditState : std::uint8_t { Clean, ManuallyEdited, Dirty };
 // restent inchangés (séquence brute conservée) ; leurs identifiants sont
 // retournés, triés pour un résultat déterministe. N'a aucun effet observable
 // si aucun objet n'a d'`overrides` (rétrocompatibilité, cf. cadrage Lot 8 §1).
+// Chaque champ d'un `StitchOverride` est validé indépendamment contre la
+// cible : `moved_to` exige une entrée TopStitch de type `Stitch` ; `forced_type`
+// (Stitch<->Jump, bidirectionnel) et `trim_after` acceptent une entrée
+// TopStitch de type `Stitch` OU `Jump`. Un champ invalide pour sa cible est
+// ignoré silencieusement, sans rejeter les autres champs du même override.
 [[nodiscard]] std::vector<ObjectId> apply_manual_overrides(stitch::StitchSequence& sequence,
                                                             const document::Project& project);
 

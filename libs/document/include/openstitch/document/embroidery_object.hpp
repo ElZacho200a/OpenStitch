@@ -103,9 +103,12 @@ enum class StitchPointType : std::uint8_t { Stitch, Jump };
 // Retouche ponctuelle d'un point généré (ADR-014 : jamais stocké comme la
 // séquence elle-même, seulement le delta). `base_index` désigne une position
 // dans la vue brute de l'objet (`stitch_generation::raw_slice`), toutes passes
-// confondues ; seules les entrées `pass == StitchPass::TopStitch` de type
-// `Stitch` y sont éligibles en MVP (appliqué par
-// `stitch_generation::apply_manual_overrides`, cf. cadrage Lot 8 §1-§2).
+// confondues ; seules les entrées `pass == StitchPass::TopStitch` y sont
+// éligibles en MVP, avec une restriction de type par champ (chacun validé
+// indépendamment par `stitch_generation::apply_manual_overrides`, cf. cadrage
+// Lot 8 §1-§2) : `moved_to` exige une cible `Stitch` ; `forced_type` et
+// `trim_after` acceptent une cible `Stitch` OU `Jump` (Stitch<->Jump est
+// bidirectionnel).
 struct StitchOverride {
     std::size_t base_index{};
     std::optional<Vec2um> moved_to;              // nullopt = position générée
