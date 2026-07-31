@@ -319,3 +319,82 @@ TEST_CASE("tatami : deterministe") {
     const auto b = fill_tatami({rect(20'000, 10'000), {}}, params(700, 3'000));
     CHECK(a == b);
 }
+
+TEST_CASE("tatami : sous-couche de contour longe le bord, rentree dans la forme") {
+    auto p = params(1'000, 3'000);
+    p.underlay_edge = true;
+    const auto u = tatami_underlay({rect(20'000, 10'000), {}}, p);
+    REQUIRE_FALSE(u.empty());
+    CHECK(u.front().size() >= 4);  // le contour rentré = plusieurs pénétrations
+    for (const auto& pass : u) {
+        for (const Vec2um& pt : pass) {
+            CHECK(inside_rect(pt, 20'000, 10'000, 50));
+        }
+    }
+}
+
+TEST_CASE("tatami : sous-couche parallele = rangees espacees, dans la forme") {
+    auto p = params(400, 3'000);  // remplissage dense 0,4 mm
+    p.underlay_parallel = true;
+    p.underlay_spacing = Micrometers{3'000};  // sous-couche très espacée
+    const auto u = tatami_underlay({rect(20'000, 20'000), {}}, p);
+    REQUIRE_FALSE(u.empty());
+    for (const auto& pass : u) {
+        for (const Vec2um& pt : pass) {
+            CHECK(inside_rect(pt, 20'000, 20'000, 200));
+        }
+    }
+}
+
+TEST_CASE("tatami : aucune sous-couche par defaut") {
+    CHECK(tatami_underlay({rect(20'000, 10'000), {}}, params(1'000, 3'000)).empty());
+}
+
+TEST_CASE("tatami : underpath cache coud une liaison au lieu de sauter") {
+    const auto ring = ring_shape();
+    auto p = params(2'000, 4'000);
+    const auto off = fill_tatami(ring, p);
+    p.hidden_underpath = true;
+    const auto on = fill_tatami(ring, p);
+
+    const auto jumps = [](const std::vector<FillStitch>& f) {
+        return std::count_if(f.begin(), f.end(), [](const FillStitch& s) { return s.jump; });
+    };
+    const auto travels = [](const std::vector<FillStitch>& f) {
+        return std::count_if(f.begin(), f.end(), [](const FillStitch& s) { return s.travel; });
+    };
+    // Au moins un saut devient un trajet cousu caché ; jamais l'inverse.
+    CHECK(travels(on) > 0);
+    CHECK(jumps(on) < jumps(off));
+    CHECK(travels(off) == 0);
+
+    // SÛRETÉ : aucun point cousu (couche sup. OU trajet caché) ne traverse le trou.
+    int crossings = 0;
+    for (std::size_t i = 1; i < on.size(); ++i) {
+        if (on[i].jump) continue;
+        const Vec2um mid{Micrometers{(on[i - 1].pos.x.value + on[i].pos.x.value) / 2},
+                         Micrometers{(on[i - 1].pos.y.value + on[i].pos.y.value) / 2}};
+        if (mid.x.value > 6'200 && mid.x.value < 13'800 && mid.y.value > 6'200 &&
+            mid.y.value < 13'800) {
+            ++crossings;
+        }
+    }
+    CHECK(crossings == 0);
+}
+
+TEST_CASE("tatami : underpath deterministe") {
+    auto p = params(2'000, 4'000);
+    p.hidden_underpath = true;
+    CHECK(fill_tatami(ring_shape(), p) == fill_tatami(ring_shape(), p));
+}
+
+TEST_CASE("tatami : le point d'entree oriente le demarrage") {
+    auto p = params(1'000, 3'000);
+    const auto base = fill_tatami({rect(20'000, 10'000), {}}, p);
+    p.entry_point = Vec2um{Micrometers{20'000}, Micrometers{10'000}};  // coin haut-droit
+    const auto withEntry = fill_tatami({rect(20'000, 10'000), {}}, p);
+    REQUIRE_FALSE(base.empty());
+    REQUIRE_FALSE(withEntry.empty());
+    CHECK(base.front().pos.x.value < 5'000);        // sans entrée : démarre à gauche
+    CHECK(withEntry.front().pos.x.value > 15'000);  // avec entrée : démarre à droite
+}

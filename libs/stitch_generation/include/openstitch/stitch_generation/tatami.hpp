@@ -20,7 +20,8 @@ namespace openstitch::stitch_generation {
 // cousables sont donc des sauts, pas des sous-chemins cachés.
 struct FillStitch {
     Vec2um pos{};
-    bool jump{false};  // true = saut (aiguille levée) ; false = point cousu
+    bool jump{false};    // true = saut (aiguille levée) ; false = point cousu
+    bool travel{false};  // true = déplacement COUSU caché (underpath, §15) ; jump alors false
 
     bool operator==(const FillStitch&) const = default;
 };
@@ -38,5 +39,14 @@ struct FillStitch {
 // Le retrait de bord (`inset`) est appliqué par l'appelant en amont.
 [[nodiscard]] std::vector<FillStitch> fill_tatami(const geometry::PathSet& region,
                                                   const document::TatamiParams& params);
+
+// Sous-couches de remplissage (§15), à coudre AVANT la couche supérieure :
+// - contour rentré (`underlay_edge`) : running le long du bord et des trous,
+//   retrait `underlay_inset` — stabilise les bords ;
+// - rangées parallèles espacées (`underlay_parallel`) : balayage perpendiculaire
+//   aux rangées supérieures, pas `underlay_spacing` — évite l'affaissement.
+// Chaque passe est une polyligne cousue. Vide si aucune sous-couche activée.
+[[nodiscard]] std::vector<std::vector<Vec2um>> tatami_underlay(
+    const geometry::PathSet& region, const document::TatamiParams& params);
 
 }  // namespace openstitch::stitch_generation

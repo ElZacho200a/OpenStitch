@@ -130,9 +130,10 @@ openstitch::geometry::Path debug_shape(const std::string& name) {
 }
 
 // Remplissage tatami d'un anneau (extérieur 40 mm, trou central 16 mm) pour
-// inspecter le routage autour d'un trou. Retourne la séquence + un compte des
-// coutures qui traverseraient le trou (doit être 0).
-int run_filldebug(double lengthMm, const std::string& outSvg) {
+// inspecter le routage autour d'un trou, les sous-couches et l'underpath (Lot 7).
+// Passe par generate_sequence (passes taguées). Compte les coutures qui
+// traverseraient le trou (doit être 0). `underlayMask` : 1 contour, 2 parallèle.
+int run_filldebug(double lengthMm, const std::string& outSvg, int underlayMask, bool underpath) {
     using namespace openstitch;
     using geometry::NodeType;
     const auto corner = [](std::int32_t x, std::int32_t y) {
@@ -141,61 +142,109 @@ int run_filldebug(double lengthMm, const std::string& outSvg) {
     };
     geometry::PathSet ring;
     ring.outer.closed = true;
-    ring.outer.nodes = {corner(0, 0), corner(40'000, 0), corner(40'000, 40'000),
-                        corner(0, 40'000)};
+    ring.outer.nodes = {corner(0, 0), corner(20'000, 0), corner(20'000, 20'000),
+                        corner(0, 20'000)};
     geometry::Path hole;
     hole.closed = true;
-    hole.nodes = {corner(12'000, 12'000), corner(28'000, 12'000), corner(28'000, 28'000),
-                  corner(12'000, 28'000)};
+    hole.nodes = {corner(6'000, 6'000), corner(14'000, 6'000), corner(14'000, 14'000),
+                  corner(6'000, 14'000)};
     ring.holes.push_back(hole);
 
+    document::Project project;
+    document::VectorObject vec;
+    vec.id = project.object_ids.next();
+    vec.paths.push_back(geometry::PathSet{ring.outer, ring.holes});
+    project.vector_objects.push_back(vec);
+    document::EmbroideryObject emb;
+    emb.id = project.object_ids.next();
+    emb.source_vector = vec.id;
     document::TatamiParams tp;
-    tp.row_spacing = Micrometers{1'000};
+    tp.row_spacing = Micrometers{2'000};
     tp.stitch_length = to_micrometers(Millimeters{lengthMm});
     tp.inset = Micrometers{0};
-    const auto fill = stitch_generation::fill_tatami(ring, tp);
+    tp.underlay_edge = (underlayMask & 1) != 0;
+    tp.underlay_parallel = (underlayMask & 2) != 0;
+    tp.hidden_underpath = underpath;
+    emb.params = tp;
+    project.embroidery_objects.push_back(emb);
 
-    stitch::StitchSequence seq;
-    bool started = false;
-    int sewnCrossingHole = 0;
-    Vec2um prev{};
-    for (const auto& fs : fill) {
-        const bool sew = started && !fs.jump;
-        seq.commands.push_back(
-            {fs.pos, sew ? stitch::CommandType::Stitch : stitch::CommandType::Jump, ObjectId{}});
-        if (sew) {
-            const Vec2um mid{Micrometers{(prev.x.value + fs.pos.x.value) / 2},
-                             Micrometers{(prev.y.value + fs.pos.y.value) / 2}};
-            if (mid.x.value > 12'500 && mid.x.value < 27'500 && mid.y.value > 12'500 &&
-                mid.y.value < 27'500) {
-                ++sewnCrossingHole;
-            }
-        }
-        prev = fs.pos;
-        started = true;
+    const auto seq = stitch_generation::generate_sequence(project);
+    if (!seq) {
+        fmt::print(stderr, "Erreur : {}\n", seq.error().message);
+        return 1;
     }
-    seq.commands.push_back({prev, stitch::CommandType::End, ObjectId{}});
-    const auto stats = stitch::compute_stats(seq);
+    const auto stats = stitch::compute_stats(*seq);
 
+    int sewnCrossingHole = 0;
+    for (std::size_t i = 1; i < seq->commands.size(); ++i) {
+        const auto& c = seq->commands[i];
+        if (c.type != stitch::CommandType::Stitch) continue;
+        const Vec2um a = seq->commands[i - 1].pos;
+        const Vec2um mid{Micrometers{(a.x.value + c.pos.x.value) / 2},
+                         Micrometers{(a.y.value + c.pos.y.value) / 2}};
+        if (mid.x.value > 6'500 && mid.x.value < 13'500 && mid.y.value > 6'500 &&
+            mid.y.value < 13'500) {
+            ++sewnCrossingHole;
+        }
+    }
+
+    int under = 0, travel = 0;
+    for (const auto& c : seq->commands) {
+        if (c.type == stitch::CommandType::Stitch && c.pass == stitch::StitchPass::Underlay) ++under;
+        if (c.type == stitch::CommandType::Stitch && c.pass == stitch::StitchPass::Travel) ++travel;
+    }
     fmt::print("Anneau tatami (trou central)\n");
     fmt::print("Points cousus : {}  |  déplacements : {}\n", stats.stitches, stats.jumps);
+    fmt::print("Sous-couche : {}  |  underpath (Travel) : {}\n", under, travel);
     fmt::print("Coutures traversant le trou : {}  (doit être 0)\n", sewnCrossingHole);
+
     if (!outSvg.empty()) {
-        const auto w = formats::write_svg_file(std::filesystem::path(outSvg), seq);
-        if (!w) {
-            fmt::print(stderr, "Erreur : {}\n", w.error().message);
+        // SVG maison : chaque liaison colorée par passe (contour vert, couche sup.
+        // gris, underpath bleu, saut rouge pointillé).
+        const auto pt = [](Vec2um p) {
+            return fmt::format("{:.3f} {:.3f}", p.x.value / 1000.0, -p.y.value / 1000.0);
+        };
+        std::string body;
+        for (std::size_t i = 1; i < seq->commands.size(); ++i) {
+            const auto& prev = seq->commands[i - 1];
+            const auto& cur = seq->commands[i];
+            if (cur.type == stitch::CommandType::End) continue;
+            const char* stroke = nullptr;
+            const char* dash = "";
+            if (cur.type == stitch::CommandType::Jump) {
+                stroke = "#e00";
+                dash = " stroke-dasharray=\"0.6 0.4\"";
+            } else if (cur.pass == stitch::StitchPass::Underlay) {
+                stroke = "#0a9";
+            } else if (cur.pass == stitch::StitchPass::Travel) {
+                stroke = "#06c";
+            } else {
+                stroke = "#333";
+            }
+            body += fmt::format(
+                "<path d=\"M{} L{}\" fill=\"none\" stroke=\"{}\" stroke-width=\"0.18\"{}/>\n",
+                pt(prev.pos), pt(cur.pos), stroke, dash);
+        }
+        std::string svg =
+            "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"-2 -22 24 24\" width=\"800\">\n"
+            "<rect x=\"-2\" y=\"-22\" width=\"24\" height=\"24\" fill=\"#fff\"/>\n" +
+            body + "</svg>\n";
+        std::ofstream f(std::filesystem::path(outSvg), std::ios::binary | std::ios::trunc);
+        if (!f) {
+            fmt::print(stderr, "Impossible d'écrire {}\n", outSvg);
             return 1;
         }
+        f << svg;
         fmt::print("SVG écrit : {}\n", outSvg);
     }
     return sewnCrossingHole == 0 ? 0 : 2;
 }
 
 int run_stitchdebug(const std::string& shape, double lengthMm, int repeats,
-                    const std::string& outSvg) {
+                    const std::string& outSvg, int underlayMask, bool underpath) {
     using namespace openstitch;
     if (shape == "ring") {
-        return run_filldebug(lengthMm, outSvg);
+        return run_filldebug(lengthMm, outSvg, underlayMask, underpath);
     }
     const auto path = debug_shape(shape);
 
@@ -419,6 +468,11 @@ int main(int argc, char** argv) {
         ->check(CLI::PositiveNumber);
     sd_cmd->add_option("--repeats", sd_repeats, "1 simple, 2 aller-retour, 3 bean");
     sd_cmd->add_option("--output-svg", sd_out, "Fichier SVG de diagnostic à produire");
+    int sd_underlay = 0;
+    bool sd_underpath = false;
+    sd_cmd->add_option("--underlay", sd_underlay,
+                       "Tatami (ring) : sous-couches (masque : 1 contour, 2 parallèle)");
+    sd_cmd->add_flag("--underpath", sd_underpath, "Tatami (ring) : liaisons cousues cachées");
 
     std::string as_shape = "rectangle";
     double as_pixel = 0.05;
@@ -455,7 +509,7 @@ int main(int argc, char** argv) {
         return run_dst2svg(svg_in, svg_out);
     }
     if (sd_cmd->parsed()) {
-        return run_stitchdebug(sd_shape, sd_length, sd_repeats, sd_out);
+        return run_stitchdebug(sd_shape, sd_length, sd_repeats, sd_out, sd_underlay, sd_underpath);
     }
     if (as_cmd->parsed()) {
         return run_auto_satin_debug(as_shape, as_pixel, as_out, as_cap, as_short, as_split,

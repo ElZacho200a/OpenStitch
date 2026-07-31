@@ -167,6 +167,23 @@ TEST_CASE("satin : le point d'entree oriente la couture") {
     CHECK(firstTop(with).x.value > 15'000);     // avec entrée : démarre à x~20000
 }
 
+TEST_CASE("tatami : sous-couche taggee Underlay, remplissage TopStitch") {
+    auto project = make_project(1);
+    document::TatamiParams tp;
+    tp.row_spacing = Micrometers{1'000};
+    tp.underlay_edge = true;
+    project.embroidery_objects[0].params = tp;
+    const auto seq = generate_sequence(project);
+    REQUIRE(seq.has_value());
+    int under = 0, top = 0;
+    for (const auto& c : seq->commands) {
+        if (c.type == stitch::CommandType::Stitch && c.pass == stitch::StitchPass::Underlay) ++under;
+        if (c.type == stitch::CommandType::Stitch && c.pass == stitch::StitchPass::TopStitch) ++top;
+    }
+    CHECK(under > 0);
+    CHECK(top > 0);
+}
+
 TEST_CASE("la sequence est deterministe") {
     const auto a = generate_sequence(make_project(2));
     const auto b = generate_sequence(make_project(2));

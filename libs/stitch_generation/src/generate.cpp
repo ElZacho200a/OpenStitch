@@ -38,16 +38,24 @@ void emit_polyline(stitch::StitchSequence& sequence, const std::vector<Vec2um>& 
     }
 }
 
-// Émet un remplissage : chaque point marqué `travel` devient un déplacement
-// (Jump, aiguille relevée), les autres des points cousus. Garantit qu'aucune
-// couture ne traverse un trou ou ne sort de la région (routage du tatami).
+// Émet un remplissage : un point `jump` (ou le tout premier) devient un
+// déplacement (Jump, aiguille relevée, passe Travel), un point `travel` une
+// pénétration cachée (Stitch, passe Travel), les autres la couche supérieure
+// (Stitch, TopStitch). Garantit qu'aucune couture ne traverse un trou.
 void emit_fill(stitch::StitchSequence& sequence, const std::vector<FillStitch>& fill,
                ObjectId source) {
     bool started = false;
     for (const FillStitch& fs : fill) {
-        const auto type = (fs.jump || !started) ? stitch::CommandType::Jump
-                                                : stitch::CommandType::Stitch;
-        sequence.commands.push_back({fs.pos, type, source});
+        if (!started || fs.jump) {
+            sequence.commands.push_back(
+                {fs.pos, stitch::CommandType::Jump, source, stitch::StitchPass::Travel});
+        } else if (fs.travel) {
+            sequence.commands.push_back(
+                {fs.pos, stitch::CommandType::Stitch, source, stitch::StitchPass::Travel});
+        } else {
+            sequence.commands.push_back(
+                {fs.pos, stitch::CommandType::Stitch, source, stitch::StitchPass::TopStitch});
+        }
         started = true;
     }
 }
@@ -239,6 +247,10 @@ void generate_tatami(stitch::StitchSequence& sequence, const document::VectorObj
             filled.push_back(set);
         }
         for (const geometry::PathSet& region : filled) {
+            // Sous-couches d'abord (§15), puis couche supérieure.
+            for (const auto& up : tatami_underlay(region, params)) {
+                emit_polyline(sequence, up, object.id, stitch::StitchPass::Underlay);
+            }
             emit_fill(sequence, fill_tatami(region, params), object.id);
         }
     }

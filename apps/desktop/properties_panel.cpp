@@ -131,19 +131,34 @@ void PropertiesPanel::showEmbroidery(const document::EmbroideryObject& object) {
                 auto* stagger = new QSpinBox(body_);
                 stagger->setRange(1, 8);
                 stagger->setValue(p.stagger);
+                // Tatami avancé (Lot 7).
+                const document::TatamiParams tbase = p;
+                auto* uEdge = new QCheckBox(tr("Sous-couche de contour"), body_);
+                uEdge->setChecked(p.underlay_edge);
+                auto* uPar = new QCheckBox(tr("Sous-couche parallèle"), body_);
+                uPar->setChecked(p.underlay_parallel);
+                auto* underpath = new QCheckBox(tr("Liaisons cousues cachées"), body_);
+                underpath->setChecked(p.hidden_underpath);
                 form->addRow(tr("Espacement des rangées :"), spacing);
                 form->addRow(tr("Longueur de point :"), len);
                 form->addRow(tr("Angle (orientation) :"), angle);
                 form->addRow(tr("Retrait de bord :"), inset);
                 form->addRow(tr("Décalage (stagger) :"), stagger);
-                const auto emitEdit = [this, id, spacing, len, angle, inset, stagger] {
+                form->addRow(QString(), uEdge);
+                form->addRow(QString(), uPar);
+                form->addRow(QString(), underpath);
+                const auto emitEdit = [this, id, tbase, spacing, len, angle, inset, stagger, uEdge,
+                                       uPar, underpath] {
                     if (building_) return;
-                    document::TatamiParams t;
+                    document::TatamiParams t = tbase;  // conserve sous-couche fine + entrée
                     t.row_spacing = to_um(spacing->value());
                     t.stitch_length = to_um(len->value());
                     t.angle = Angle{angle->value() * std::numbers::pi / 180.0};
                     t.inset = to_um(inset->value());
                     t.stagger = stagger->value();
+                    t.underlay_edge = uEdge->isChecked();
+                    t.underlay_parallel = uPar->isChecked();
+                    t.hidden_underpath = underpath->isChecked();
                     emit paramsEdited(id, t);
                 };
                 connect(spacing, &QDoubleSpinBox::valueChanged, this, emitEdit);
@@ -151,6 +166,9 @@ void PropertiesPanel::showEmbroidery(const document::EmbroideryObject& object) {
                 connect(angle, &QSpinBox::valueChanged, this, emitEdit);
                 connect(inset, &QDoubleSpinBox::valueChanged, this, emitEdit);
                 connect(stagger, &QSpinBox::valueChanged, this, emitEdit);
+                connect(uEdge, &QCheckBox::toggled, this, emitEdit);
+                connect(uPar, &QCheckBox::toggled, this, emitEdit);
+                connect(underpath, &QCheckBox::toggled, this, emitEdit);
             } else if constexpr (std::is_same_v<T, document::SatinParams>) {
                 // Les rails ne sont pas édités ici ; on les conserve tels quels.
                 const document::SatinParams base = p;

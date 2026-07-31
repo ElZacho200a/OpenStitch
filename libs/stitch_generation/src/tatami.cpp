@@ -5,6 +5,10 @@
 #include <cmath>
 #include <limits>
 #include <map>
+#include <numbers>
+
+#include "openstitch/geometry/offset.hpp"
+#include "openstitch/stitch_generation/running_stitch.hpp"
 
 namespace openstitch::stitch_generation {
 
@@ -263,12 +267,109 @@ std::vector<FillStitch> fill_tatami(const geometry::PathSet& region,
     bool jumpStart = true;  // true = on ARRIVE sur ce segment par un déplacement
     std::size_t orderCursor = 0;
 
+    // Entrée (§15) : on démarre depuis ce point (repère des rangées) et l'on
+    // choisit à chaque nouvelle composante le segment non visité le plus proche.
+    const bool hasEntry = params.entry_point.has_value();
+    if (hasEntry) {
+        prev = rotate({static_cast<double>(params.entry_point->x.value),
+                       static_cast<double>(params.entry_point->y.value)},
+                      cosA, sinA);
+        hasPrev = true;
+    }
+    // Cap du trajet cousu caché : au-delà, on saute (déplacement à découvert).
+    const double underpathCap = std::max(6.0 * spacing, 8'000.0);
+
+    // Autoroute d'underpath (§15) : contour extérieur RENTRÉ (repère des rangées).
+    // Relier deux composantes en longeant ce contour reste intérieur et contourne
+    // les trous (le contour encercle la région). Régions sans contour : pas
+    // d'underpath (on saute).
+    std::vector<PointD> hw;
+    if (params.hidden_underpath) {
+        if (auto r = geometry::inset_path_set(geometry::PathSet{region.outer, {}},
+                                              params.underlay_inset);
+            r && !r->empty() && r->front().outer.nodes.size() >= 3) {
+            for (const auto& nd : r->front().outer.nodes) {
+                hw.push_back(rotate({static_cast<double>(nd.pos.x.value),
+                                     static_cast<double>(nd.pos.y.value)},
+                                    cosA, sinA));
+            }
+        }
+    }
+    const auto seglen = [](PointD a, PointD b) {
+        return std::sqrt((a.x - b.x) * (a.x - b.x) + (a.y - b.y) * (a.y - b.y));
+    };
+    // Trajet le long de l'autoroute entre a et b : renvoie [a, sommets…, b] pour
+    // la direction VALIDE (aucun segment ne coupe un bord/trou) la plus courte
+    // sous `underpathCap`, sinon vide.
+    const auto routeHighway = [&](PointD a, PointD b) -> std::vector<PointD> {
+        const int H = static_cast<int>(hw.size());
+        if (H < 3) {
+            return {};
+        }
+        const auto nearest = [&](PointD p) {
+            int bi = 0;
+            double bd = std::numeric_limits<double>::max();
+            for (int i = 0; i < H; ++i) {
+                const double d = seglen(p, hw[static_cast<std::size_t>(i)]);
+                if (d < bd) {
+                    bd = d;
+                    bi = i;
+                }
+            }
+            return bi;
+        };
+        const int ia = nearest(a);
+        const int ib = nearest(b);
+        std::vector<PointD> bestPath;
+        double bestLen = underpathCap;
+        for (const bool fwd : {true, false}) {
+            std::vector<PointD> v{a};
+            int i = ia;
+            for (int guard = 0; guard <= H; ++guard) {
+                v.push_back(hw[static_cast<std::size_t>(i)]);
+                if (i == ib) break;
+                i = fwd ? (i + 1) % H : (i - 1 + H) % H;
+            }
+            v.push_back(b);
+            double L = 0.0;
+            bool ok = true;
+            for (std::size_t k = 1; k < v.size(); ++k) {
+                L += seglen(v[k - 1], v[k]);
+                if (L > bestLen || connector_invalid(polys, v[k - 1], v[k], spacing)) {
+                    ok = false;
+                    break;
+                }
+            }
+            if (ok && L <= bestLen) {
+                bestLen = L;
+                bestPath = std::move(v);
+            }
+        }
+        return bestPath;
+    };
+
     while (visitedCount < n) {
         if (current == -1) {
-            while (orderCursor < order.size() && visited[static_cast<std::size_t>(order[orderCursor])]) {
-                ++orderCursor;
+            if (hasEntry) {
+                int best = -1;
+                double bd = std::numeric_limits<double>::max();
+                for (int j = 0; j < n; ++j) {
+                    if (visited[static_cast<std::size_t>(j)]) continue;
+                    const double d = std::min(dist2(prev, {segs[j].lo, segs[j].y}),
+                                              dist2(prev, {segs[j].hi, segs[j].y}));
+                    if (d < bd || (d == bd && (best == -1 || j < best))) {
+                        bd = d;
+                        best = j;
+                    }
+                }
+                current = best;
+            } else {
+                while (orderCursor < order.size() &&
+                       visited[static_cast<std::size_t>(order[orderCursor])]) {
+                    ++orderCursor;
+                }
+                current = order[orderCursor];
             }
-            current = order[orderCursor];
             jumpStart = true;  // segment atteint par saut (nouvelle composante)
         }
         const Segment& s = segs[static_cast<std::size_t>(current)];
@@ -284,11 +385,39 @@ std::vector<FillStitch> fill_tatami(const geometry::PathSet& region,
             // levée) si l'on n'y est pas arrivé par une arête du graphe, OU si le
             // trajet cousu couperait un bord de la région ou d'un trou. Le
             // chevauchement des rangées ne donne que des candidats ; la validation
-            // géométrique (connector_crosses) tranche.
-            const bool jump =
-                (k == 0) &&
-                (jumpStart || !hasPrev || connector_invalid(polys, prev, rp, spacing));
-            out.push_back({to_um(rotate(rp, cosB, sinB)), jump});
+            // géométrique (connector_invalid) tranche.
+            const bool cross = hasPrev && connector_invalid(polys, prev, rp, spacing);
+            bool jump = (k == 0) && (jumpStart || !hasPrev || cross);
+            // Underpath caché (§15) : au lieu d'un saut, on coud un trajet caché.
+            // Émet des pénétrations intermédiaires taguées `travel` le long du
+            // trajet, `rp` restant une pénétration normale. `emitTravel` échantillonne
+            // une polyligne (repère des rangées) sans son dernier point (== rp).
+            const auto emitTravel = [&](const std::vector<PointD>& poly) {
+                for (std::size_t s = 1; s < poly.size(); ++s) {
+                    const double d = seglen(poly[s - 1], poly[s]);
+                    const int steps = std::max(1, static_cast<int>(std::ceil(d / stitchLen)));
+                    const bool lastSeg = (s + 1 == poly.size());
+                    for (int t = 1; t <= steps; ++t) {
+                        if (lastSeg && t == steps) break;  // dernier point == rp
+                        const double f = static_cast<double>(t) / steps;
+                        const PointD ip{poly[s - 1].x + (poly[s].x - poly[s - 1].x) * f,
+                                        poly[s - 1].y + (poly[s].y - poly[s - 1].y) * f};
+                        out.push_back({to_um(rotate(ip, cosB, sinB)), false, true});
+                    }
+                }
+            };
+            if (jump && params.hidden_underpath && hasPrev) {
+                // 1) trajet DIRECT s'il reste intérieur et court ;
+                if (!cross && seglen(prev, rp) <= underpathCap) {
+                    emitTravel({prev, rp});
+                    jump = false;
+                } else if (auto route = routeHighway(prev, rp); !route.empty()) {
+                    // 2) sinon on longe le contour rentré (contourne les trous).
+                    emitTravel(route);
+                    jump = false;
+                }
+            }
+            out.push_back({to_um(rotate(rp, cosB, sinB)), jump, false});
             prev = rp;
             hasPrev = true;
         }
@@ -313,6 +442,66 @@ std::vector<FillStitch> fill_tatami(const geometry::PathSet& region,
         jumpStart = false;  // atteint par une arête du graphe -> couture
     }
     return out;
+}
+
+std::vector<std::vector<Vec2um>> tatami_underlay(const geometry::PathSet& region,
+                                                 const document::TatamiParams& params) {
+    std::vector<std::vector<Vec2um>> passes;
+
+    // 1) Contour rentré : running le long du bord (et des trous), retrait
+    //    `underlay_inset`. Si le retrait fait disparaître la forme, on longe le
+    //    bord brut.
+    if (params.underlay_edge) {
+        std::vector<geometry::PathSet> shells;
+        if (params.underlay_inset.value > 0) {
+            if (auto r = geometry::inset_path_set(region, params.underlay_inset); r && !r->empty()) {
+                shells = std::move(*r);
+            }
+        }
+        if (shells.empty()) {
+            shells.push_back(region);
+        }
+        // On ne longe que le contour EXTÉRIEUR rentré : l'inset d'un trou le
+        // rétrécit (vers l'intérieur du trou), si bien qu'en longer le bord
+        // ferait passer la sous-couche AU-DESSUS du trou. Les bords de trous ne
+        // reçoivent donc pas de sous-couche de contour (sûreté).
+        for (const auto& shell : shells) {
+            if (shell.outer.nodes.size() < 2) {
+                continue;
+            }
+            auto pts = sample_path(shell.outer, params.stitch_length, Micrometers{500});
+            if (pts.size() >= 2) {
+                passes.push_back(std::move(pts));
+            }
+        }
+    }
+
+    // 2) Rangées perpendiculaires espacées : on réutilise le balayage tatami avec
+    //    un angle à +90° et un grand pas, puis on découpe en trajets cousus (on
+    //    ignore les sauts). Les options avancées sont neutralisées pour éviter
+    //    toute récursion.
+    if (params.underlay_parallel) {
+        document::TatamiParams up = params;
+        up.angle = Angle{params.angle.radians + std::numbers::pi / 2.0};
+        up.row_spacing = Micrometers{std::max(params.underlay_spacing.value, params.row_spacing.value)};
+        up.inset = Micrometers{0};
+        up.underlay_edge = false;
+        up.underlay_parallel = false;
+        up.hidden_underpath = false;
+        up.entry_point.reset();
+        const auto fill = fill_tatami(region, up);
+        std::vector<Vec2um> run;
+        for (const auto& fs : fill) {
+            if (fs.jump) {
+                if (run.size() >= 2) passes.push_back(run);
+                run.clear();
+            }
+            run.push_back(fs.pos);
+        }
+        if (run.size() >= 2) passes.push_back(std::move(run));
+    }
+
+    return passes;
 }
 
 }  // namespace openstitch::stitch_generation

@@ -78,6 +78,11 @@ document::Project rich_project() {
     document::TatamiParams tat;
     tat.angle = Angle{0.7};
     tat.row_spacing = Micrometers{450};
+    tat.underlay_edge = true;
+    tat.underlay_parallel = true;
+    tat.underlay_spacing = Micrometers{2'500};
+    tat.hidden_underpath = true;
+    tat.entry_point = Vec2um{Micrometers{321}, Micrometers{654}};
     fill.params = tat;
     project.embroidery_objects.push_back(fill);
 
@@ -160,8 +165,14 @@ TEST_CASE("projet complet : save puis load = memes donnees") {
     CHECK(std::get<document::RunningStitchParams>(loaded->embroidery_objects[0].params).repeats ==
           3);
     CHECK(loaded->embroidery_objects[1].is_tatami());
-    CHECK(std::get<document::TatamiParams>(loaded->embroidery_objects[1].params).row_spacing.value ==
-          450);
+    const auto& loadedTat = std::get<document::TatamiParams>(loaded->embroidery_objects[1].params);
+    CHECK(loadedTat.row_spacing.value == 450);
+    CHECK(loadedTat.underlay_edge);
+    CHECK(loadedTat.underlay_parallel);
+    CHECK(loadedTat.underlay_spacing == Micrometers{2'500});
+    CHECK(loadedTat.hidden_underpath);
+    REQUIRE(loadedTat.entry_point.has_value());
+    CHECK(*loadedTat.entry_point == Vec2um{Micrometers{321}, Micrometers{654}});
     CHECK(loaded->embroidery_objects[2].is_satin());
     const auto& loadedSatin = std::get<document::SatinParams>(loaded->embroidery_objects[2].params);
     CHECK(loadedSatin.rail_a.nodes.size() == 4);

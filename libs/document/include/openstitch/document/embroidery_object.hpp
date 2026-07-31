@@ -20,13 +20,20 @@ struct RunningStitchParams {
     int repeats{1};                    // 1 simple, 2 aller-retour, 3 point triple
 };
 
-// Paramètres du remplissage tatami (§5.4).
+// Paramètres du remplissage tatami (§5.4, §15).
 struct TatamiParams {
     Angle angle{0.0};                  // orientation des rangées (radians)
     Micrometers row_spacing{400};      // écart entre rangées (densité) — 0,4 mm
     Micrometers stitch_length{3'000};  // longueur de point le long d'une rangée
     Micrometers inset{200};            // retrait du bord (compensation de contour)
     int stagger{2};                    // rangées avant répétition de la phase des pénétrations
+    // Tatami avancé (Lot 7) — désactivé par défaut, rétrocompatible.
+    bool underlay_edge{false};         // sous-couche de contour (running rentré)
+    bool underlay_parallel{false};     // sous-couche de rangées perpendiculaires espacées
+    Micrometers underlay_inset{600};   // retrait de la sous-couche de contour
+    Micrometers underlay_spacing{2'000};  // écart des rangées de sous-couche
+    bool hidden_underpath{false};      // liaisons cousues cachées (au lieu de sauts) si trajet valide
+    std::optional<Vec2um> entry_point;    // démarre le remplissage près de ce point
 };
 
 // Barreau (rung) : segment transversal reliant les deux rails, qui les découpe

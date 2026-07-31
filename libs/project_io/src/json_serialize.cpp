@@ -164,7 +164,15 @@ json params_to_json(const document::StitchParams& params) {
                      {"rowSpacing", p.row_spacing.value},
                      {"stitchLength", p.stitch_length.value},
                      {"inset", p.inset.value},
-                     {"stagger", p.stagger}};
+                     {"stagger", p.stagger},
+                     {"underlayEdge", p.underlay_edge},
+                     {"underlayParallel", p.underlay_parallel},
+                     {"underlayInset", p.underlay_inset.value},
+                     {"underlaySpacing", p.underlay_spacing.value},
+                     {"hiddenUnderpath", p.hidden_underpath}};
+                if (p.entry_point) {
+                    j["entryPoint"] = {{"x", p.entry_point->x.value}, {"y", p.entry_point->y.value}};
+                }
             } else if constexpr (std::is_same_v<T, document::SatinParams>) {
                 json rungs = json::array();
                 for (const auto& r : p.rungs) {
@@ -224,6 +232,16 @@ Result<document::StitchParams> params_from_json(const json& j) {
         p.stitch_length = Micrometers{j.at("stitchLength")};
         p.inset = Micrometers{j.at("inset")};
         p.stagger = j.at("stagger");
+        // Tatami avancé (Lot 7) : clés optionnelles, rétrocompatibles.
+        p.underlay_edge = j.value("underlayEdge", false);
+        p.underlay_parallel = j.value("underlayParallel", false);
+        p.underlay_inset = Micrometers{j.value("underlayInset", 600)};
+        p.underlay_spacing = Micrometers{j.value("underlaySpacing", 2'000)};
+        p.hidden_underpath = j.value("hiddenUnderpath", false);
+        if (j.contains("entryPoint")) {
+            p.entry_point = Vec2um{Micrometers{j.at("entryPoint").at("x")},
+                                   Micrometers{j.at("entryPoint").at("y")}};
+        }
         return document::StitchParams{p};
     }
     if (type == "satin") {
