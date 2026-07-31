@@ -20,14 +20,20 @@ l'utilisateur avant tout début d'implémentation.
 
 ## Constats et contradictions documentaires relevés
 
-1. **« ADR-014 » n'existe pas comme document.** Il est cité dans
-   `docs/source/tatami.md:181` et `docs/stitch-engine-audit.md:80` comme s'il
-   référençait une décision d'architecture numérotée, mais aucun fichier ADR
-   n'est présent dans le dépôt (`docs/phase0/08-roadmap-adr.md` ne le liste
-   pas). C'est en réalité un **principe**, pas un ADR écrit : « les points
-   sont une fonction pure de l'intention (objets + paramètres), jamais stockés
-   ». Ce cadrage le nomme *principe de régénération* et recommande soit de
-   rédiger l'ADR-014 manquant, soit de cesser d'y référer comme à un document.
+1. **Correction (constat initial erroné) : ADR-014 existe bel et bien**, mais
+   pas encore comme fichier séparé. `docs/phase0/08-roadmap-adr.md:43` le
+   liste explicitement : « 014 \| États de génération
+   Clean/Dirty/ManuallyEdited ; jamais d'écrasement silencieux de retouches \|
+   Proposé ». C'est un statut **« Proposé »**, pas encore **« Accepté »**
+   (cf. ADR-002 qui l'est), et aucun fichier `docs/adr/014-*.md` au format
+   MADR n'a encore été rédigé — seule la ligne de synthèse existe. Les
+   citations dans `docs/source/tatami.md:181` et
+   `docs/stitch-engine-audit.md:80` (« les points sont une fonction pure de
+   l'intention, jamais stockés ») en sont un corollaire, pas une
+   contradiction : la régénération pure est le cas par défaut (`Clean`) du
+   même modèle d'états que celui que ce cadrage détaille. **Autrement dit,
+   Lot 8 est l'implémentation concrète d'ADR-014** — voir *Décisions
+   ouvertes* pour la formalisation du fichier ADR et le passage de statut.
 2. **Le point le plus contraignant pour ce lot n'est pas documenté** :
    `generate_satin_group` (`generate.cpp:172-232`) peut **réordonner et
    inverser** les points d'une colonne satin routée en fonction de ses
@@ -80,9 +86,28 @@ raw_slice(project, object_id) = [c ∈ generate_sequence(project).commands
 
 C'est la **vue brute** de l'objet, dans l'ordre où il apparaît dans la
 séquence finale — qu'il soit contigu (cas général) ou entrelacé avec des
-trajets cachés (satin routé). Une empreinte entière et déterministe (FNV-1a ou
-équivalent) est calculée sur cette vue (positions en µm entiers + type de
-commande) : `fingerprint(raw_slice)`. Comme les coordonnées sont des `int32`
+trajets cachés (satin routé). **Domaine indexé précis : `raw_slice` couvre
+toutes les passes de l'objet (`Underlay`/`TopStitch`/`Travel`/`Lock`), pas
+seulement `TopStitch`.** Bien que les retouches MVP ne portent que sur des
+entrées `pass == StitchPass::TopStitch` (§2), `base_index` numérote sa
+position dans cette vue **complète**, et l'empreinte est calculée sur la vue
+**complète** également. Conséquence recherchée : toute évolution des
+sous-couches ou des trajets cachés de l'objet (nombre de points d'underlay,
+insertion d'un travel supplémentaire, etc.) modifie le contenu ou la longueur
+de `raw_slice` **avant** les entrées `TopStitch` qui suivent, donc change
+`fingerprint(raw_slice)` — la retouche passe `Dirty` au lieu de rester
+silencieusement alignée sur un `base_index` qui désignerait désormais un
+point différent. C'est une détection délibérément prudente (elle déclenche
+aussi `Dirty` pour des changements d'underlay qui, par coïncidence, ne
+décaleraient aucun point `TopStitch`), préférée à une indexation
+`TopStitch`-only qui serait plus fine mais reposerait sur l'hypothèse
+non vérifiée que rien en dehors du `TopStitch` ne peut influencer sa position
+relative dans la séquence finale — hypothèse qu'aucune commande n'est en
+mesure de garantir aujourd'hui (voir constat n°2, satin routé).
+
+Une empreinte entière et déterministe (FNV-1a ou équivalent) est calculée sur
+cette vue (positions en µm entiers + type de commande) : `fingerprint(raw_slice)`.
+Comme les coordonnées sont des `int32`
 (µm), l'empreinte est reproductible bit à bit — pas d'instabilité liée aux
 flottants (seul `TatamiParams.angle` est un `double`, mais il n'est jamais
 recalculé avant hachage : c'est la valeur exacte posée par l'utilisateur qui
@@ -102,7 +127,9 @@ oublis.
 enum class StitchPointType { Stitch, Jump };  // seules transitions permises (MVP)
 
 struct StitchOverride {
-    std::size_t base_index{};                  // index dans raw_slice(object)
+    std::size_t base_index{};                  // index dans raw_slice(object), toutes passes
+                                                 // confondues ; doit désigner une entrée
+                                                 // pass == StitchPass::TopStitch en MVP (§2)
     std::optional<Vec2um> moved_to;             // nullopt = position générée
     std::optional<StitchPointType> forced_type; // nullopt = type généré
     bool trim_after{false};                     // insère un Trim juste après ce point
@@ -112,12 +139,14 @@ struct EmbroideryObject {
     // ... champs existants inchangés ...
     std::vector<StitchOverride> overrides;      // vide = comportement actuel (rétrocompatible)
     std::uint64_t edited_fingerprint{0};        // fingerprint(raw_slice) au moment de la dernière édition réussie
+    std::uint32_t edited_point_count{0};        // raw_slice.size() au même moment — vérif rapide
+                                                 // indépendante du hachage, voir §1 "collisions"
 };
 ```
 
 Pas de duplication de la séquence : les overrides sont des **deltas épars**
-(quelques entrées, jamais O(nombre de points)). `edited_fingerprint` n'est
-significatif que si `overrides` n'est pas vide.
+(quelques entrées, jamais O(nombre de points)). `edited_fingerprint` et
+`edited_point_count` ne sont significatifs que si `overrides` n'est pas vide.
 
 ### États Clean / ManuallyEdited / Dirty — dérivés, pas stockés
 
@@ -127,8 +156,8 @@ L'état n'est **pas** un champ à synchroniser (source d'incohérence), il se
 | État | Condition | Comportement de génération |
 |---|---|---|
 | `Clean` | `overrides.empty()` | Séquence brute, inchangé (comportement actuel) |
-| `ManuallyEdited` | `!overrides.empty() && fingerprint(raw_slice) == edited_fingerprint` | Séquence brute **patchée** par les overrides (positions, type, trims insérés) |
-| `Dirty` | `!overrides.empty() && fingerprint(raw_slice) != edited_fingerprint` | Séquence brute **non patchée**, overrides conservés tels quels, avertissement persistant |
+| `ManuallyEdited` | `!overrides.empty() && raw_slice.size() == edited_point_count && fingerprint(raw_slice) == edited_fingerprint` | Séquence brute **patchée** par les overrides (positions, type, trims insérés) |
+| `Dirty` | `!overrides.empty() && (raw_slice.size() != edited_point_count \|\| fingerprint(raw_slice) != edited_fingerprint)` | Séquence brute **non patchée**, overrides conservés tels quels, avertissement persistant |
 
 ### Transitions exhaustives
 
@@ -146,32 +175,108 @@ L'état n'est **pas** un champ à synchroniser (source d'incohérence), il se
    edited_fingerprint`. Aucune donnée n'est perdue : `overrides` reste intact,
    seulement non appliqué tant que non résolu.
 5. `Dirty → Clean` : action explicite « Abandonner les retouches » (même
-   commande qu'en 3 ; toujours proposée depuis Dirty).
-6. `Dirty → ManuallyEdited` : action explicite « Considérer comme la nouvelle
-   référence » — `edited_fingerprint` est recalculé sur le `raw_slice` actuel
-   ; les `base_index` des overrides restent tels quels (ils ne sont
-   **réinterprétés** contre la nouvelle vue que si l'utilisateur les
-   ré-applique un par un — voir *Décisions ouvertes*, aucune tentative de
-   « recalage automatique par proximité » n'est proposée en MVP : un recalage
-   géométrique heuristique pourrait replacer silencieusement une retouche au
-   mauvais endroit, ce qui est justement le risque à éviter).
-7. `Dirty` sans action : reste `Dirty` indéfiniment ; c'est un état stable et
+   commande qu'en 3 ; toujours proposée depuis Dirty). **C'est en MVP la
+   seule sortie de l'état `Dirty`** — voir ci-dessous pourquoi il n'existe
+   volontairement **aucune** transition `Dirty → ManuallyEdited`.
+6. `Dirty` sans action : reste `Dirty` indéfiniment ; c'est un état stable et
    sûr, pas une erreur bloquante.
-8. `Clean` face à un changement de géométrie/paramètres : **inchangé**,
+7. `Clean` face à un changement de géométrie/paramètres : **inchangé**,
    comportement actuel (régénération pure, aucune notion d'override en jeu).
-9. Suppression de l'objet : ses overrides disparaissent avec lui, aucun état
+8. Suppression de l'objet : ses overrides disparaissent avec lui, aucun état
    orphelin possible (pas de table d'overrides séparée du document).
-10. Undo/redo de n'importe quelle commande d'édition manuelle : restaure
-    exactement `overrides` et `edited_fingerprint` (même discipline que
-    `SetStitchTypeCommand`/`SetStitchParamsCommand` existants, qui mémorisent
-    déjà l'état précédent complet pour un retour exact).
+9. Undo/redo de n'importe quelle commande d'édition manuelle : restaure
+   exactement `overrides` et `edited_fingerprint`/`edited_point_count` (même
+   discipline que `SetStitchTypeCommand`/`SetStitchParamsCommand` existants,
+   qui mémorisent déjà l'état précédent complet pour un retour exact).
+
+### Pas de transition `Dirty → ManuallyEdited` : pourquoi
+
+Une version antérieure de ce cadrage proposait une action « Considérer comme
+la nouvelle référence » qui se contentait de recalculer `edited_fingerprint`
+(et maintenant `edited_point_count`) sur le `raw_slice` actuel, en laissant
+les `base_index` des overrides inchangés. **C'est incohérent avec le reste du
+modèle et a été retiré** : dès la régénération suivante, l'état recalculé
+serait `ManuallyEdited` (les compteurs correspondent de nouveau), donc
+`apply_manual_overrides` réappliquerait automatiquement chaque override à
+l'index `base_index` de la **nouvelle** `raw_slice` — qui, après le
+changement ayant causé le passage à `Dirty`, ne désigne en général plus le
+même point (positions décalées, points insérés/supprimés, satin réordonné).
+Concrètement : un déplacement, une conversion de type ou un trim posés sur un
+point précis pourraient se retrouver appliqués **silencieusement** à un autre
+point, sans aucun avertissement — exactement la perte/altération silencieuse
+que ce cadrage doit exclure (cf. ADR-014, constat n°1).
+
+Deux façons saines de sortir de `Dirty` ont été considérées :
+
+- **Abandon explicite, annulable** (transition 5, retenue pour le MVP) :
+  `overrides.clear()`, l'utilisateur ré-édite au besoin sur la géométrie
+  actuelle. Aucun remapping, aucune heuristique — le comportement est
+  entièrement prévisible et déjà couvert par `DiscardOverridesCommand` (§3).
+- **Réconciliation explicite point par point, avec aperçu avant validation**
+  (non retenue pour le MVP, cf. *Décisions ouvertes*) : afficher à
+  l'utilisateur, pour chaque override existant, sa position/valeur d'origine
+  superposée à la `raw_slice` actuelle, et lui faire confirmer ou réassigner
+  **individuellement** chaque retouche avant qu'elle redevienne active — donc
+  sans jamais réactiver un `base_index` par un simple remplacement
+  d'empreinte. Plus coûteux à concevoir et à tester (UI de comparaison,
+  atomicité du lot de confirmations) qu'un gain net incertain avant retour
+  d'usage réel.
+
+**Recommandation : abandon explicite uniquement pour le MVP** (option la plus
+simple et la plus sûre) ; la réconciliation point par point reste une piste
+pour un sous-lot ultérieur si l'usage la justifie, mais n'est pas
+prérequise et ne doit pas être confondue avec un « rebaseline » automatique.
 
 ### Pourquoi aucune perte silencieuse
 
 Le seul moment où `overrides` est vidé est une action **explicite** (transition
 3/5), toujours annulable via l'`UndoStack`. Un changement de géométrie ou de
 paramètres, ailleurs ou sur l'objet lui-même, ne fait jamais que **désactiver
-temporairement** l'application des retouches (`Dirty`) — jamais les effacer.
+temporairement** l'application des retouches (`Dirty`) — jamais les effacer,
+et jamais les réappliquer à un point différent sans confirmation explicite
+(voir ci-dessus).
+
+### Limite honnête : collision de l'empreinte 64 bits
+
+Le titre ci-dessus ne doit pas être lu comme une garantie mathématique. La
+détection `Clean`/`ManuallyEdited` vs `Dirty` repose sur une comparaison
+d'empreinte 64 bits : deux `raw_slice` **différentes** qui produiraient la
+même valeur de `fingerprint` (et, désormais, la même longueur —
+`edited_point_count`) ne seraient pas distinguées, et une retouche resterait
+appliquée à des points qui ont pourtant changé. C'est une collision de
+hachage, dont la probabilité n'est jamais nulle pour un espace de sortie
+fini. Ce risque n'est donc pas mathématiquement exclu — seulement rendu
+négligeable en pratique :
+
+- La probabilité de collision d'un bon hachage 64 bits, même sur les
+  quelques dizaines/centaines de comparaisons que subit un objet retouché
+  au cours d'une session, reste de l'ordre de 10⁻¹⁵–10⁻¹⁷ (borne
+  anniversaire) — très inférieure à d'autres risques déjà acceptés ailleurs
+  dans la chaîne (arrondi machine DST ±50 µm, corruption disque non
+  détectée, etc.).
+- **Protection proportionnée retenue** : `edited_point_count` (longueur de
+  `raw_slice`) est stockée et comparée **avant** le hachage, en plus du
+  `fingerprint`. C'est un contrôle indépendant du hachage — toute
+  insertion/suppression de point (le cas le plus fréquent en pratique :
+  ajout/retrait de points d'underlay, changement de densité tatami/satin,
+  etc.) est détectée à coup sûr par ce seul compteur, sans dépendre de la
+  qualité du hachage. Seule une modification qui **préserve exactement** le
+  nombre de points repose sur le hachage seul.
+- Coût de cette protection : 4 octets par objet retouché (`std::uint32_t`),
+  négligeable devant les overrides eux-mêmes (§9) — pas de compromis mémoire
+  réel à faire.
+- Alternative examinée et écartée pour le MVP : stocker une signature plus
+  forte (128/256 bits) ou la `raw_slice` complète pour comparaison exacte.
+  Rejetée : coût mémoire proportionnel au nombre de points (contraire à
+  l'objectif « deltas épars », §1) pour un gain de fiabilité qui, empreinte
+  64 bits + longueur combinées, est déjà hors de proportion avec les autres
+  sources d'erreur du logiciel. À reconsidérer seulement si un cas réel de
+  collision est un jour observé.
+
+En résumé : la détection est **fiable en pratique, pas garantie en théorie**
+— ce cadrage préfère le dire explicitement plutôt que de promettre une
+absence de perte silencieuse qu'aucune empreinte de taille finie ne peut
+réellement garantir.
 
 ---
 
@@ -183,7 +288,13 @@ régénérées, non éditables en Lot 8. Justification : ce sont des points
 intermédiaires synthétiques (sous-couches, trajets cachés, fixations) dont la
 sémantique dépend étroitement de l'algorithme qui les a produits ; les
 exposer à l'édition démultiplierait les cas particuliers sans bénéfice net
-pour un MVP. À reconsidérer plus tard si le besoin est confirmé.
+pour un MVP. À reconsidérer plus tard si le besoin est confirmé. Cette
+restriction porte sur les entrées **éligibles** à un override (`pass ==
+TopStitch`), pas sur le domaine indexé par `base_index`/`fingerprint`, qui
+couvre toujours l'objet entier toutes passes confondues (§1) — c'est ce qui
+garantit qu'une évolution de l'`Underlay`/`Travel` de l'objet fait aussi
+passer `Dirty` les retouches `TopStitch` qui suivent, au lieu de les laisser
+pointer, sans le savoir, sur un index décalé.
 
 1. **Déplacer un point** (`moved_to`) : uniquement des commandes `Stitch`. Un
    avertissement (réutilise `stitch_generation::WarningCode::StitchTooLong` /
@@ -226,14 +337,12 @@ class MoveStitchPointCommand final : public ICommand {
 class SetStitchPointTypeCommand final : public ICommand { /* même schéma, forced_type */ };
 class SetStitchTrimCommand final : public ICommand { /* même schéma, trim_after (bool) */ };
 
-// Résolution explicite d'un état Dirty — pas de commande "automatique" :
+// Résolution explicite d'un état Dirty — seule sortie de Dirty en MVP (§1) :
+// pas de commande "rebaseline"/"considérer comme référence" qui réactiverait
+// silencieusement d'anciens base_index contre une raw_slice différente.
 class DiscardOverridesCommand final : public ICommand {
-    // apply()  : sauvegarde overrides + edited_fingerprint, les vide.
+    // apply()  : sauvegarde overrides + edited_fingerprint + edited_point_count, les vide.
     // revert() : les restaure tels quels.
-};
-class RebaselineOverridesCommand final : public ICommand {
-    // apply()  : sauvegarde l'ancien edited_fingerprint, le recalcule sur raw_slice actuel.
-    // revert() : restaure l'ancien edited_fingerprint.
 };
 ```
 
@@ -250,11 +359,11 @@ vérifié par des tests dédiés (§8). Aucune de ces commandes ne touche à
 ### Rétrocompatibilité
 
 Suivant la convention déjà en usage pour les champs des Lots 3–7 (finitions
-satin, sous-couches tatami, etc.) : `overrides` et `edited_fingerprint` sont
-des champs **optionnels** de `embroideryObjects[i]` dans `project.json`. Un
-fichier sans ces clés se charge avec `overrides = []` (état `Clean`), donc
-sans bascule de `schemaVersion` requise pour rester compatible avec la
-convention existante.
+satin, sous-couches tatami, etc.) : `overrides`, `edited_fingerprint` et
+`edited_point_count` sont des champs **optionnels** de `embroideryObjects[i]`
+dans `project.json`. Un fichier sans ces clés se charge avec `overrides = []`
+(état `Clean`), donc sans bascule de `schemaVersion` requise pour rester
+compatible avec la convention existante.
 
 ```json
 "overrides": [
@@ -262,7 +371,8 @@ convention existante.
   { "index": 57, "type": "jump" },
   { "index": 57, "trimAfter": true }
 ],
-"editedFingerprint": 9814772034551998211
+"editedFingerprint": 9814772034551998211,
+"editedPointCount": 214
 ```
 
 ### Ouvert : faut-il quand même bumper `schemaVersion` (2 → 3) ?
@@ -315,28 +425,43 @@ caché ni cache de session :
   [[nodiscard]] std::uint64_t fingerprint(const stitch::StitchSequence& raw_slice);
   [[nodiscard]] std::vector<stitch::StitchCommand>
       raw_slice(const stitch::StitchSequence& full, ObjectId object);
-  // Applique les overrides valides (fingerprint à jour) ; les objets Dirty
-  // restent tels quels dans `sequence`. Retourne les ObjectId Dirty détectés.
+  // Applique les overrides valides (fingerprint + point_count à jour) ; les
+  // objets Dirty restent tels quels dans `sequence`. Retourne les ObjectId
+  // Dirty détectés. Bloc de construction interne — non appelé directement
+  // par desktop/CLI/export (voir effective_sequence ci-dessous).
   [[nodiscard]] std::vector<ObjectId>
       apply_manual_overrides(stitch::StitchSequence& sequence, const document::Project& project);
+
+  // Point d'entrée UNIQUE pour tout consommateur (desktop, CLI, export,
+  // simulation, tests) : enchaîne generate_sequence + apply_manual_overrides.
+  // Aucun appelant ne doit composer les deux passes lui-même — imposer cette
+  // discipline à chaque site d'appel serait fragile (un seul oubli suffit à
+  // faire fuiter la séquence brute non patchée vers un export). Signature
+  // volontairement identique à l'actuel generate_sequence(project) pour que
+  // les appelants existants n'aient qu'à substituer l'appel.
+  [[nodiscard]] stitch::StitchSequence effective_sequence(const document::Project& project);
   ```
-  `generate_sequence` (inchangé) produit toujours la séquence brute pure ;
-  `apply_manual_overrides` est un **second passage** séparé, appliqué par
-  l'appelant. Aucun état caché : rejouable à l'identique par le desktop, la
-  CLI, et les tests — **c'est la séquence qui fait foi pour analyse, export
-  et simulation** (point 7), unique chemin, pas de divergence possible entre
-  « ce qu'on voit » et « ce qu'on exporte ».
-- `libs/commands/.../project_commands.hpp` : les cinq commandes du §3, aucune
+  `generate_sequence` (inchangé) produit toujours la séquence brute pure.
+  `apply_manual_overrides` reste un **second passage** séparé et testable
+  indépendamment (§8), mais `effective_sequence` est la **seule** fonction
+  que desktop/CLI/export/simulation sont autorisés à appeler pour obtenir la
+  séquence à afficher/exporter/simuler — remplace tous les appels actuels à
+  `generate_sequence(project)` dans ces couches. Aucun état caché : rejouable
+  à l'identique par le desktop, la CLI, et les tests — **c'est la séquence
+  qui fait foi pour analyse, export et simulation** (point 7), unique chemin,
+  pas de divergence possible entre « ce qu'on voit » et « ce qu'on exporte ».
+- `libs/commands/.../project_commands.hpp` : les quatre commandes du §3, aucune
   dépendance Qt.
-- `libs/project_io` : sérialisation/désérialisation des deux nouveaux champs
+- `libs/project_io` : sérialisation/désérialisation des trois nouveaux champs
   JSON — pur, déjà le cas pour tous les autres champs.
 - **Qt (`apps/desktop`)** ne fait que : (a) construire les commandes à partir
   d'un geste utilisateur (glisser une poignée de point → `MoveStitchPointCommand`),
   (b) afficher l'état dérivé (`Clean`/`ManuallyEdited`/`Dirty`) calculé par le
-  cœur, (c) proposer les actions de résolution (`Discard`/`Rebaseline`)
-  quand Dirty. **Aucune règle métier dans les widgets** — la fonction
-  `fingerprint`/`apply_manual_overrides` est la seule source de vérité sur
-  l'état, jamais recalculée à la main côté UI.
+  cœur, (c) proposer l'action de résolution (`Discard`) quand Dirty, (d)
+  appeler `effective_sequence(project)` — jamais `generate_sequence` seul —
+  pour tout affichage/export. **Aucune règle métier dans les widgets** — la
+  fonction `fingerprint`/`apply_manual_overrides`/`effective_sequence` est la
+  seule source de vérité sur l'état, jamais recalculée à la main côté UI.
 
 ### Architecture A vs B — cache de session
 
@@ -401,13 +526,17 @@ ajoutée uniquement côté application, sans remettre en cause le modèle cœur.
 Chaîne unique, identique pour tous les consommateurs (desktop, CLI, tests) :
 
 ```
-generate_sequence(project)            // pur, existant, inchangé
-    -> apply_manual_overrides(seq, project)   // pur, nouveau (§5)
-    -> seq                                    // AUTHENTIQUE pour analyse/export/simulation
+effective_sequence(project)           // point d'entrée unique (§5) :
+    = apply_manual_overrides(generate_sequence(project), project)
+                                       // AUTHENTIQUE pour analyse/export/simulation
 ```
 
-Aucune divergence possible entre l'aperçu affiché et ce qui est exporté :
-c'est la même séquence, calculée par le même appel.
+`generate_sequence` et `apply_manual_overrides` restent des blocs de
+construction internes, appelables séparément en test ; desktop, CLI, export
+et simulation n'appellent, eux, que `effective_sequence`. Aucune divergence
+possible entre l'aperçu affiché et ce qui est exporté : c'est la même
+séquence, calculée par le même appel — et aucun site d'appel ne peut
+« oublier » le second passage puisqu'il n'existe qu'un seul appel à faire.
 
 ### Validation points longs/courts
 
@@ -433,26 +562,40 @@ sortie de `apply_manual_overrides`.
   move/type/trim par index, laisse un objet Dirty inchangé, ne touche jamais
   aux autres objets.
 - **Unitaires (`libs/commands`)** : chaque commande, `apply`/`revert` exact
-  (position/overrides/`edited_fingerprint` avant/après identiques à l'état
-  initial) ; transition 1 (Clean→ManuallyEdited) et son annulation exacte
-  (retour à `overrides` vide) ; `DiscardOverridesCommand`/
-  `RebaselineOverridesCommand` aller-retour.
+  (position/overrides/`edited_fingerprint`/`edited_point_count` avant/après
+  identiques à l'état initial) ; transition 1 (Clean→ManuallyEdited) et son
+  annulation exacte (retour à `overrides` vide) ; `DiscardOverridesCommand`
+  aller-retour ; **absence** de toute commande capable de faire redevenir
+  `ManuallyEdited` un objet `Dirty` sans passer par une nouvelle édition
+  explicite (test négatif garantissant qu'aucun ancien `base_index` ne se
+  réactive par simple remplacement d'empreinte, cf. §1).
 - **Intégration** : scénario « éditer un point → modifier un paramètre d'un
   **autre** objet → l'objet retouché reste `ManuallyEdited` (fingerprint
   inchangé) » ; scénario « éditer un point d'une colonne satin routée →
   changer la couleur d'une colonne voisine du même groupe → l'objet retouché
   passe `Dirty` » (vérifie que le mécanisme capture bien les effets de
-  voisinage, cf. constat n°2) ; résolution Dirty dans les deux sens.
+  voisinage, cf. constat n°2) ; scénario « objet Dirty → Abandonner les
+  retouches → ré-éditer sur la géométrie actuelle » (seul chemin de
+  résolution testé, §1) ; scénario « objet Dirty non résolu → `edited_point_count`
+  change seul (insertion/suppression d'un point de sous-couche) sans que
+  `fingerprint` change par ailleurs → toujours détecté `Dirty` » (couvre la
+  protection §1 indépendante du hachage).
 - **Round-trip `.osp`** (`tests/unit/project_io/test_roundtrip.cpp`) :
-  `overrides` + `edited_fingerprint` survivent à save/load, y compris état
-  Dirty (recalculé au chargement, pas stocké) ; fichier sans ces champs
-  charge en `Clean`.
+  `overrides` + `edited_fingerprint` + `edited_point_count` survivent à
+  save/load, y compris état Dirty (recalculé au chargement, pas stocké) ;
+  fichier sans ces champs charge en `Clean`.
 - **Non-perte** : suite de scénarios qui appliquent des séquences de
   commandes arbitraires (y compris réordre de couture, changement de type,
   suppression d'objets voisins) sur un objet retouché et vérifient à chaque
   étape : soit `overrides` est intact et appliqué (ManuallyEdited), soit
-  intact et non appliqué (Dirty) — **jamais** vidé sans commande explicite de
-  résolution.
+  intact et non appliqué (Dirty) — **jamais** vidé, et **jamais** réappliqué
+  à un `base_index` différent de celui posé par l'utilisateur, sans commande
+  explicite de résolution.
+- **`effective_sequence`** (§5/§7) : `effective_sequence(project) ==
+  apply_manual_overrides(generate_sequence(project), project)` sur un jeu de
+  projets de test ; vérifie que desktop/CLI/export appellent bien cette seule
+  fonction (revue de code / grep CI sur les appels directs à
+  `generate_sequence` hors `libs/stitch_generation` et tests).
 
 ### Critères d'acceptation mesurables
 
@@ -461,8 +604,8 @@ sortie de `apply_manual_overrides`.
 - Aucune suite de commandes automatisée (fuzz sur permutations de commandes
   existantes + une des trois commandes d'édition) ne vide `overrides` en
   dehors d'un appel explicite à `DiscardOverridesCommand`.
-- Round-trip `.osp` byte-exact sur `overrides`/`edited_fingerprint` (comme
-  pour les autres champs, cf. `testing.md`).
+- Round-trip `.osp` byte-exact sur `overrides`/`edited_fingerprint`/
+  `edited_point_count` (comme pour les autres champs, cf. `testing.md`).
 - Régression zéro sur les 217 tests existants (aucune modification des
   générateurs `running`/`tatami`/`satin`/`routing`).
 
@@ -490,11 +633,12 @@ sortie de `apply_manual_overrides`.
 | Sous-lot | Contenu | Risque | Bénéfice | Décision utilisateur requise |
 |---|---|---|---|---|
 | **8.0** | `StitchOverride`, `fingerprint`, `raw_slice`, `apply_manual_overrides` — cœur pur, **aucune UI**, testé unitairement uniquement | Faible : aucun changement de comportement observable (overrides toujours vides en pratique) | Valide le mécanisme d'identité (le point le plus incertain du cadrage) avant tout investissement UI | Valider le choix « empreinte de sortie » du §1 avant de coder |
-| **8.1** | Les 5 commandes (§3) + persistance `.osp` (§4, hors option DST-importé) + tests d'intégration/round-trip | Moyen : touche le format de fichier (même sans bump de version) | Le modèle est complet et testable en CLI/tests, sans dépendance Qt | Trancher schemaVersion 2 vs 3 (§4) |
-| **8.2** | UI desktop minimale : mode édition, déplacement d'**un** point, indicateurs Clean/ManuallyEdited/Dirty, résolution Dirty (Discard/Rebaseline) | Élevé : premier contact utilisateur réel avec le concept, ergonomie à valider | Rend le Lot 8 réellement utilisable | Point de décision UX majeur : valider le mode d'édition dédié et le wording des avertissements avant généralisation |
+| **8.1** | Les 4 commandes (§3) + persistance `.osp` (§4, hors option DST-importé) + `effective_sequence` (§5) + tests d'intégration/round-trip | Moyen : touche le format de fichier (même sans bump de version) | Le modèle est complet et testable en CLI/tests, sans dépendance Qt | Trancher schemaVersion 2 vs 3 (§4) |
+| **8.2** | UI desktop minimale : mode édition, déplacement d'**un** point, indicateurs Clean/ManuallyEdited/Dirty, résolution Dirty (Discard uniquement, §1) | Élevé : premier contact utilisateur réel avec le concept, ergonomie à valider | Rend le Lot 8 réellement utilisable | Point de décision UX majeur : valider le mode d'édition dédié et le wording des avertissements avant généralisation |
 | **8.3** | Stitch/Jump + Trim dans l'UI (réutilise 8.1/8.2) | Faible, une fois 8.2 acquis | Complète les 3 opérations MVP | — |
 | **8.4** (optionnel) | Sélection/édition multi-points | Faible techniquement, mais scope creep possible | Confort si l'usage réel le demande | À ouvrir seulement si demandé après usage de 8.1–8.3 |
 | **8.5** (scope séparé) | Généraliser aux séquences DST importées (option B, §4) + correction du bug de sauvegarde latent (constat n°3) | Moyen : touche `document::Project`, indépendant du reste | Corrige un bug réel, unifie le modèle | Décider si ce correctif est rattaché au Lot 8 ou traité comme correctif indépendant, avant ou après 8.0–8.3 |
+| **8.6** (optionnel, non MVP) | Réconciliation Dirty point par point avec aperçu (§1, alternative écartée pour le MVP) | Élevé : UI de comparaison + atomicité du lot de confirmations, risque de scope creep | Évite de perdre les retouches en cas de changement de forme mineur | À n'ouvrir que si le simple « Abandonner + ré-éditer » (8.2) s'avère trop coûteux à l'usage |
 
 ---
 
@@ -503,10 +647,14 @@ sortie de `apply_manual_overrides`.
 1. Le mécanisme d'identité par **empreinte de la vue brute par objet**
    (`raw_slice` + `fingerprint`, §1) est-il validé comme fondation, avant tout
    codage ? C'est le choix le plus structurant de ce cadrage.
-2. Le refus explicite de tout **recalage automatique** d'un objet Dirty (pas
-   de remise en correspondance par proximité géométrique) est-il accepté,
-   sachant qu'il impose à l'utilisateur de ré-éditer manuellement après un
-   changement de forme important ?
+2. Ce cadrage **retient déjà** l'abandon explicite comme seule sortie de
+   `Dirty` en MVP (§1) — aucune transition `Dirty → ManuallyEdited`, aucun
+   recalage automatique ou par proximité géométrique, qui réappliquerait
+   silencieusement d'anciens `base_index` à une `raw_slice` différente. Ce
+   choix est-il accepté tel quel, sachant qu'il impose à l'utilisateur de
+   ré-éditer manuellement après un changement de forme important ? Sinon,
+   faut-il ouvrir dès maintenant le sous-lot 8.6 (réconciliation point par
+   point avec aperçu, §1) plutôt que de le différer ?
 3. `schemaVersion` : rester à 2 (convention actuelle, champs optionnels) ou
    bumper à 3 pour documenter le changement de nature du fichier (§4) ?
 4. Le périmètre DST importé (option A « hors périmètre » vs B « généraliser
@@ -517,19 +665,22 @@ sortie de `apply_manual_overrides`.
    Lot 4/5/7 ?
 6. Édition multi-points (8.4) : à exclure du Lot 8 entièrement, ou à garder
    en sous-lot ouvert soumis à retour d'usage ?
-7. Faut-il rédiger l'ADR-014 manquant (constat n°1) à l'occasion de ce lot,
-   pour que les références existantes cessent de pointer vers un document
-   inexistant ?
+7. ADR-014 est déjà annoncé (statut « Proposé ») dans
+   `docs/phase0/08-roadmap-adr.md:43` (constat n°1) mais n'a pas de fichier
+   `docs/adr/` dédié. Faut-il le rédiger formellement (format MADR) à
+   l'occasion de ce lot et passer son statut à « Accepté » une fois le
+   modèle §1 validé, ou différer cette formalisation ?
 
 ## Implémentation associée (une fois les décisions ci-dessus tranchées)
 
 - `libs/document/include/openstitch/document/embroidery_object.hpp` —
-  `StitchOverride`, champs `overrides`/`edited_fingerprint`.
+  `StitchOverride`, champs `overrides`/`edited_fingerprint`/`edited_point_count`.
 - `libs/stitch_generation/include/.../generate.hpp` (+ nouveau fichier
-  `overrides.hpp`) — `fingerprint`, `raw_slice`, `apply_manual_overrides`.
-- `libs/commands/include/openstitch/commands/project_commands.hpp` — 5
+  `overrides.hpp`) — `fingerprint`, `raw_slice`, `apply_manual_overrides`,
+  `effective_sequence` (§5).
+- `libs/commands/include/openstitch/commands/project_commands.hpp` — 4
   nouvelles commandes (§3).
-- `libs/project_io` — sérialisation des deux champs (§4).
+- `libs/project_io` — sérialisation des trois champs (§4).
 - `apps/desktop/main_window.cpp`, `canvas_view.cpp`, `properties_panel.cpp` —
   mode d'édition, poignées, indicateurs (§6), aucune logique métier au-delà
   de la construction des commandes.
