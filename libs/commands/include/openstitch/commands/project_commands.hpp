@@ -496,10 +496,25 @@ struct StitchEditContext {
     return &obj->overrides.back();
 }
 
+// Une entree sans aucune modification effective (ni position, ni type force,
+// ni coupe demandee) : jamais un etat valide a persister (cf. validation
+// stricte a la lecture, `json_serialize.cpp::overrides_from_json`, revue
+// corrective 8.1 point 4). `SetStitchTrimCommand` est la seule commande qui
+// peut y ramener une entree existante (poser trim_after=false efface son
+// seul champ effectif) -- Move/SetType posent toujours un champ a valeur non
+// vide, jamais de retour a l'etat vide par ce chemin.
+[[nodiscard]] inline bool is_override_empty(const document::StitchOverride& o) {
+    return !o.moved_to.has_value() && !o.forced_type.has_value() && !o.trim_after;
+}
+
 // Annule exactement l'effet de `begin_stitch_edit` (entree restauree ou
 // retiree, `edited_fingerprint`/`edited_point_count` restaures si la
 // transition Clean->ManuallyEdited avait eu lieu). No-op si `apply()` n'avait
-// rien modifie (`ctx.valid == false`).
+// rien modifie (`ctx.valid == false`). Gere aussi le cas ou `apply()` a videe
+// puis retiree une entree PREEXISTANTE (`SetStitchTrimCommand`, cf.
+// `is_override_empty`) : l'entree n'est alors plus trouvable par
+// `base_index`, il faut la reinserer depuis `ctx.previousEntry` plutot que de
+// ne rien faire.
 inline void end_stitch_edit(document::Project& project, ObjectId id, std::size_t base_index,
                             const StitchEditContext& ctx) {
     if (!ctx.valid) {
@@ -512,13 +527,14 @@ inline void end_stitch_edit(document::Project& project, ObjectId id, std::size_t
     auto it = std::find_if(
         obj->overrides.begin(), obj->overrides.end(),
         [base_index](const document::StitchOverride& o) { return o.base_index == base_index; });
-    if (it == obj->overrides.end()) {
-        return;
-    }
     if (ctx.createdEntry) {
-        obj->overrides.erase(it);
-    } else {
+        if (it != obj->overrides.end()) {
+            obj->overrides.erase(it);
+        }
+    } else if (it != obj->overrides.end()) {
         *it = ctx.previousEntry;
+    } else {
+        obj->overrides.push_back(ctx.previousEntry);
     }
     if (ctx.wasClean) {
         obj->edited_fingerprint = ctx.previousFingerprint;
@@ -610,9 +626,45 @@ public:
           raw_point_count_(raw_point_count) {}
 
     void apply(document::Project& project) override {
+        if (!trim_after_) {
+            // Retirer un Trim qui n'existe deja pas est un no-op : ne jamais
+            // creer d'entree vide via begin_stitch_edit, ni faire passer
+            // l'objet de Clean a ManuallyEdited pour rien (revue corrective
+            // 8.1, point 5). Ne s'applique qu'a trim_after_ == false : poser
+            // trim_after_ == true est toujours une modification effective,
+            // meme sur un index sans entree prealable.
+            auto* obj = project.findEmbroidery(id_);
+            const bool hasEntry =
+                obj != nullptr &&
+                std::any_of(obj->overrides.begin(), obj->overrides.end(),
+                           [this](const document::StitchOverride& o) {
+                               return o.base_index == base_index_;
+                           });
+            if (!hasEntry) {
+                return;
+            }
+        }
         if (auto* entry = detail::begin_stitch_edit(project, id_, base_index_, raw_fingerprint_,
                                                     raw_point_count_, ctx_)) {
             entry->trim_after = trim_after_;
+            if (detail::is_override_empty(*entry)) {
+                // trim_after etait le seul champ effectif de cette entree
+                // PREEXISTANTE (sinon `ctx_.createdEntry` serait vrai et le
+                // garde-fou ci-dessus l'aurait empechee d'exister) : la
+                // retirer plutot que de laisser une entree vide, invalide a
+                // la relecture (`json_serialize.cpp`). `end_stitch_edit` sait
+                // la reinserer depuis `ctx_.previousEntry` si `revert()` est
+                // appele ensuite.
+                if (auto* obj = project.findEmbroidery(id_)) {
+                    auto it = std::find_if(obj->overrides.begin(), obj->overrides.end(),
+                                           [this](const document::StitchOverride& o) {
+                                               return o.base_index == base_index_;
+                                           });
+                    if (it != obj->overrides.end()) {
+                        obj->overrides.erase(it);
+                    }
+                }
+            }
         }
     }
     void revert(document::Project& project) override {

@@ -409,6 +409,97 @@ TEST_CASE("SetStitchTrimCommand : bascule trim_after, undo exact") {
     CHECK(obj->overrides[0].trim_after);
 }
 
+// ---------------------------------------------------------------------------
+// Revue corrective 8.1, point 5 : SetStitchTrimCommand(false) sans override
+// existant ne doit ni creer d'entree vide, ni transitionner Clean ->
+// ManuallyEdited.
+// ---------------------------------------------------------------------------
+
+TEST_CASE("SetStitchTrimCommand(false) sur un index sans override existant : no-op exact, reste Clean") {
+    auto project = project_with_embroidery();
+    const ObjectId id = project.embroidery_objects[0].id;
+    UndoStack stack;
+
+    stack.execute(std::make_unique<SetStitchTrimCommand>(id, std::size_t{2}, false, 1, 4), project);
+
+    auto* obj = project.findEmbroidery(id);
+    REQUIRE(obj != nullptr);
+    CHECK(obj->overrides.empty());
+    CHECK(obj->edited_fingerprint == 0);
+    CHECK(obj->edited_point_count == 0);
+
+    // undo() sur une commande qui n'a rien modifie doit rester un no-op --
+    // pas de transition fantome, pas de plantage.
+    CHECK(stack.undo(project));
+    obj = project.findEmbroidery(id);
+    CHECK(obj->overrides.empty());
+    CHECK(obj->edited_fingerprint == 0);
+
+    CHECK(stack.redo(project));
+    obj = project.findEmbroidery(id);
+    CHECK(obj->overrides.empty());
+}
+
+TEST_CASE("SetStitchTrimCommand(false) sur un index sans override, avec d'autres index deja retouches : n'ajoute rien") {
+    auto project = project_with_embroidery();
+    const ObjectId id = project.embroidery_objects[0].id;
+    auto* obj = project.findEmbroidery(id);
+    document::StitchOverride existing;
+    existing.base_index = 0;
+    existing.trim_after = true;
+    obj->overrides = {existing};
+    obj->edited_fingerprint = 1;
+    obj->edited_point_count = 4;
+
+    UndoStack stack;
+    // index 2 n'a pas d'override : trim_after(false) doit rester un no-op,
+    // sans toucher a l'entree existante de l'index 0.
+    stack.execute(std::make_unique<SetStitchTrimCommand>(id, std::size_t{2}, false, 1, 4), project);
+
+    obj = project.findEmbroidery(id);
+    REQUIRE(obj->overrides.size() == 1);
+    CHECK(obj->overrides[0].base_index == 0);
+    CHECK(obj->overrides[0].trim_after);
+
+    CHECK(stack.undo(project));
+    obj = project.findEmbroidery(id);
+    REQUIRE(obj->overrides.size() == 1);
+    CHECK(obj->overrides[0].base_index == 0);
+}
+
+TEST_CASE("SetStitchTrimCommand(false) efface le dernier champ effectif d'une entree existante : l'entree est retiree, undo la restaure exacte") {
+    auto project = project_with_embroidery();
+    const ObjectId id = project.embroidery_objects[0].id;
+    auto* obj = project.findEmbroidery(id);
+    document::StitchOverride existing;
+    existing.base_index = 2;
+    existing.trim_after = true;  // seul champ effectif de cette entree
+    obj->overrides = {existing};
+    obj->edited_fingerprint = 42;
+    obj->edited_point_count = 4;
+
+    UndoStack stack;
+    stack.execute(std::make_unique<SetStitchTrimCommand>(id, std::size_t{2}, false, 42, 4), project);
+
+    obj = project.findEmbroidery(id);
+    // L'entree n'avait plus aucun champ effectif une fois trim_after efface
+    // -- retiree plutot que laissee vide (invalide a la relecture .osp).
+    CHECK(obj->overrides.empty());
+    // L'objet reste par ailleurs "retouche" au sens metadonnees (d'autres
+    // commandes ont pu deja poser fingerprint/count) : ce test ne verifie que
+    // l'absence d'entree fantome, pas une remise a Clean totale.
+
+    CHECK(stack.undo(project));
+    obj = project.findEmbroidery(id);
+    REQUIRE(obj->overrides.size() == 1);
+    CHECK(obj->overrides[0].base_index == 2);
+    CHECK(obj->overrides[0].trim_after);
+
+    CHECK(stack.redo(project));
+    obj = project.findEmbroidery(id);
+    CHECK(obj->overrides.empty());
+}
+
 TEST_CASE("Deux commandes sur le meme base_index partagent une seule entree, undo la seconde seule") {
     auto project = project_with_embroidery();
     const ObjectId id = project.embroidery_objects[0].id;

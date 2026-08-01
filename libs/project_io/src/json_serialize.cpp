@@ -324,13 +324,24 @@ Result<std::int32_t> strict_int32(const json& j, const char* field) {
 }
 
 Result<std::size_t> strict_index(const json& j) {
+    // Verifie explicitement la borne avant cast : sur une plateforme ou
+    // size_t < uint64_t (32 bits), un index JSON valide en uint64 pourrait
+    // sinon tronquer silencieusement lors du static_cast.
+    constexpr auto kMaxIndex = static_cast<std::uint64_t>(std::numeric_limits<std::size_t>::max());
     if (j.is_number_unsigned()) {
-        return static_cast<std::size_t>(j.get<std::uint64_t>());
+        const auto v = j.get<std::uint64_t>();
+        if (v > kMaxIndex) {
+            return fail(ErrorCategory::InvalidFile, "Retouche invalide : index hors limites");
+        }
+        return static_cast<std::size_t>(v);
     }
     if (j.is_number_integer()) {
         const auto v = j.get<std::int64_t>();
         if (v < 0) {
             return fail(ErrorCategory::InvalidFile, "Retouche invalide : index négatif");
+        }
+        if (static_cast<std::uint64_t>(v) > kMaxIndex) {
+            return fail(ErrorCategory::InvalidFile, "Retouche invalide : index hors limites");
         }
         return static_cast<std::size_t>(v);
     }
@@ -391,17 +402,21 @@ json override_to_json(const document::StitchOverride& ov) {
     return j;
 }
 
-// Fusionne par `index` : le cadrage Lot 8 (SS4) autorise plusieurs entrées
-// JSON pour le même `base_index` (un outil tiers ou une écriture manuelle
-// pourrait scinder les champs). `apply_manual_overrides` ne fusionne PAS les
-// doublons (la dernière entrée du vecteur l'emporte EN BLOC, cf.
-// `test_overrides.cpp`) : fusionner ici, à la lecture, est donc nécessaire
-// pour ne perdre aucun champ silencieusement -- sans quoi une deuxième entrée
-// ne portant que `trimAfter` écraserait un `pos`/`type` déjà lu pour le même
-// index une fois appliqué à la séquence.
+// Un `index` en double dans le tableau JSON est refusé (InvalidFile), il
+// n'est PAS fusionné champ à champ avec l'entrée déjà lue. Décision revue
+// (2026-08-01, audit) : le cadrage Lot 8 (SS4) proposait initialement de
+// fusionner pour tolérer un outil tiers scindant les champs d'un même
+// `base_index` sur plusieurs entrées JSON -- mais aucun producteur réel de ce
+// format ne fait ça : les commandes (`begin_stitch_edit`,
+// `project_commands.hpp`) et `override_to_json` ci-dessus garantissent chacun
+// UNE seule entrée JSON par `base_index`. Un doublon ne peut donc venir que
+// d'une écriture manuelle ou d'une corruption -- le rejeter explicitement
+// suit la même politique de validation stricte que le reste de ce fichier
+// (jamais de réinterprétation silencieuse d'un JSON suspect). Voir
+// `docs/lot8-manual-editing-design.md` §4 (exemple mis à jour en conséquence).
 Result<std::vector<document::StitchOverride>> overrides_from_json(const json& arr) {
     std::vector<document::StitchOverride> result;
-    std::unordered_map<std::size_t, std::size_t> slot_by_index;
+    std::unordered_map<std::size_t, bool> seen_index;
 
     for (const auto& entry : arr) {
         if (!entry.is_object() || !entry.contains("index")) {
@@ -411,18 +426,13 @@ Result<std::vector<document::StitchOverride>> overrides_from_json(const json& ar
         if (!idx) {
             return std::unexpected(idx.error());
         }
-
-        std::size_t slot;
-        if (const auto found = slot_by_index.find(*idx); found != slot_by_index.end()) {
-            slot = found->second;
-        } else {
-            slot = result.size();
-            slot_by_index.emplace(*idx, slot);
-            document::StitchOverride fresh;
-            fresh.base_index = *idx;
-            result.push_back(fresh);
+        if (!seen_index.emplace(*idx, true).second) {
+            return fail(ErrorCategory::InvalidFile,
+                       "Retouche invalide : index en double (" + std::to_string(*idx) + ")");
         }
-        document::StitchOverride& ov = result[slot];
+
+        document::StitchOverride ov;
+        ov.base_index = *idx;
 
         if (entry.contains("pos")) {
             auto pos = override_pos_from_json(entry.at("pos"));
@@ -452,6 +462,19 @@ Result<std::vector<document::StitchOverride>> overrides_from_json(const json& ar
             }
             ov.trim_after = ta.get<bool>();
         }
+
+        // Une entrée qui ne porte aucune modification effective (ni position,
+        // ni type forcé, ni coupe demandée) est un no-op déguisé en retouche :
+        // aucune commande du Lot 8.1 n'en produit (cf. Point 5,
+        // `SetStitchTrimCommand`), donc seul un JSON malformé/hand-écrit peut
+        // en contenir un -- refusé plutôt que silencieusement absorbé.
+        if (!ov.moved_to.has_value() && !ov.forced_type.has_value() && !ov.trim_after) {
+            return fail(ErrorCategory::InvalidFile,
+                       "Retouche invalide : entrée sans modification effective (index " +
+                           std::to_string(*idx) + ")");
+        }
+
+        result.push_back(ov);
     }
     return result;
 }
@@ -598,17 +621,34 @@ Result<document::Project> project_from_json(const json& j) {
             // Retouches manuelles (Lot 8.1) : champs absents = Clean, comportement
             // v1/v2 inchangé (overrides vide, fingerprint/compteur à zéro).
             if (eo.contains("overrides")) {
-                auto overrides = overrides_from_json(eo.at("overrides"));
+                const auto& overridesJson = eo.at("overrides");
+                if (!overridesJson.is_array()) {
+                    return fail(ErrorCategory::InvalidFile,
+                               "Retouche invalide : overrides doit être un tableau");
+                }
+                auto overrides = overrides_from_json(overridesJson);
                 if (!overrides) {
                     return std::unexpected(overrides.error());
                 }
                 e.overrides = std::move(*overrides);
                 if (!e.overrides.empty()) {
-                    auto fp = strict_uint64(eo.value("editedFingerprint", json(0)), "editedFingerprint");
+                    // Présence explicite exigée : un tableau non vide sans ces
+                    // deux clés est un document malformé (une empreinte/compteur
+                    // à zéro par défaut masquerait la corruption au lieu de la
+                    // signaler -- cf. §1 de la revue). Contraste volontaire avec
+                    // le tableau vide (Clean), où ces mêmes clés sont ignorées
+                    // sans erreur si présentes (normalisation Clean déterministe,
+                    // voir test dédié).
+                    if (!eo.contains("editedFingerprint") || !eo.contains("editedPointCount")) {
+                        return fail(ErrorCategory::InvalidFile,
+                                   "Retouche invalide : editedFingerprint/editedPointCount "
+                                   "manquant pour un tableau overrides non vide");
+                    }
+                    auto fp = strict_uint64(eo.at("editedFingerprint"), "editedFingerprint");
                     if (!fp) {
                         return std::unexpected(fp.error());
                     }
-                    auto count = strict_uint32(eo.value("editedPointCount", json(0)), "editedPointCount");
+                    auto count = strict_uint32(eo.at("editedPointCount"), "editedPointCount");
                     if (!count) {
                         return std::unexpected(count.error());
                     }

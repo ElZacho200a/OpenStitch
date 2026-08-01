@@ -11,6 +11,7 @@
 
 #include <cstdint>
 #include <filesystem>
+#include <limits>
 #include <map>
 #include <string>
 
@@ -76,7 +77,8 @@ TEST_CASE("v3 : retouches manuelles d'un objet round-trip exactement (index/pos/
     ov1.trim_after = true;
     document::StitchOverride ov2;
     ov2.base_index = 5;
-    ov2.trim_after = false;  // valeur par defaut explicite : ne doit rien casser
+    ov2.moved_to = um(1, 1);
+    ov2.trim_after = false;  // valeur par defaut explicite : ne doit pas devenir true
     e.overrides = {ov1, ov2};
     // Empreinte au-dela de 2^53 : verifie l'absence de perte de bits par
     // passage en `double` (JSON standard) -- nlohmann conserve un entier
@@ -217,8 +219,152 @@ TEST_CASE("overrides corrompues : entree sans index refusee") {
 
 TEST_CASE("overrides corrompues : editedPointCount au-dela de uint32 refuse") {
     const auto path = write_raw_osp("openstitch_overflow_count.osp",
-        minimal_document_json(3, R"(,"overrides":[{"index":0,"trimAfter":true}],"editedPointCount":4294967296)"));
+        minimal_document_json(3, R"(,"overrides":[{"index":0,"trimAfter":true}],)"
+                                 R"("editedFingerprint":0,"editedPointCount":4294967296)"));
     const auto loaded = project_io::load_project(path);
     REQUIRE_FALSE(loaded.has_value());
     CHECK(loaded.error().category == ErrorCategory::InvalidFile);
+}
+
+// ---------------------------------------------------------------------------
+// Revue corrective 8.1 : overrides doit etre un tableau, metadonnees
+// explicites pour un tableau non vide (point 1).
+// ---------------------------------------------------------------------------
+
+TEST_CASE("overrides corrompues : overrides objet (pas tableau) refuse") {
+    const auto path = write_raw_osp("openstitch_overrides_not_array.osp",
+        minimal_document_json(3, R"(,"overrides":{}, "editedFingerprint":0,"editedPointCount":0)"));
+    const auto loaded = project_io::load_project(path);
+    REQUIRE_FALSE(loaded.has_value());
+    CHECK(loaded.error().category == ErrorCategory::InvalidFile);
+    fs::remove(path);
+}
+
+TEST_CASE("overrides corrompues : overrides scalaire (pas tableau) refuse") {
+    const auto path = write_raw_osp("openstitch_overrides_scalar.osp",
+        minimal_document_json(3, R"(,"overrides":42)"));
+    const auto loaded = project_io::load_project(path);
+    REQUIRE_FALSE(loaded.has_value());
+    CHECK(loaded.error().category == ErrorCategory::InvalidFile);
+    fs::remove(path);
+}
+
+TEST_CASE("overrides corrompues : tableau non vide sans editedFingerprint refuse (pas de zero implicite)") {
+    const auto path = write_raw_osp("openstitch_missing_fp.osp",
+        minimal_document_json(3, R"(,"overrides":[{"index":0,"trimAfter":true}],"editedPointCount":4)"));
+    const auto loaded = project_io::load_project(path);
+    REQUIRE_FALSE(loaded.has_value());
+    CHECK(loaded.error().category == ErrorCategory::InvalidFile);
+    fs::remove(path);
+}
+
+TEST_CASE("overrides corrompues : tableau non vide sans editedPointCount refuse (pas de zero implicite)") {
+    const auto path = write_raw_osp("openstitch_missing_count.osp",
+        minimal_document_json(3, R"(,"overrides":[{"index":0,"trimAfter":true}],"editedFingerprint":7)"));
+    const auto loaded = project_io::load_project(path);
+    REQUIRE_FALSE(loaded.has_value());
+    CHECK(loaded.error().category == ErrorCategory::InvalidFile);
+    fs::remove(path);
+}
+
+TEST_CASE("overrides : tableau vide avec editedFingerprint/editedPointCount presents -> normalise en Clean, sans erreur") {
+    // Metadonnees orphelines (fichier ecrit/modifie a la main) sur un tableau
+    // overrides vide : ignorees plutot que rejetees -- Clean est deja
+    // entierement determine par `overrides.empty()`
+    // (`classify_edit_state`), ces champs n'ont alors aucune signification a
+    // valider. Normalisation deterministe documentee dans
+    // `docs/lot8-manual-editing-design.md` §4.
+    const auto path = write_raw_osp("openstitch_empty_overrides_with_metadata.osp",
+        minimal_document_json(3, R"(,"overrides":[],"editedFingerprint":9999,"editedPointCount":4)"));
+    const auto loaded = project_io::load_project(path);
+    REQUIRE(loaded.has_value());
+    REQUIRE(loaded->embroidery_objects.size() == 1);
+    CHECK(loaded->embroidery_objects[0].overrides.empty());
+    CHECK(loaded->embroidery_objects[0].edited_fingerprint == 0);
+    CHECK(loaded->embroidery_objects[0].edited_point_count == 0);
+    fs::remove(path);
+}
+
+// ---------------------------------------------------------------------------
+// Revue corrective 8.1 : un `index` en double dans le tableau JSON est
+// refuse, pas fusionne champ a champ (point 2).
+// ---------------------------------------------------------------------------
+
+TEST_CASE("overrides corrompues : index en double refuse (pas de fusion champ a champ)") {
+    const auto path = write_raw_osp("openstitch_dup_index.osp",
+        minimal_document_json(3, R"(,"overrides":[{"index":57,"type":"jump"},)"
+                                 R"({"index":57,"trimAfter":true}],)"
+                                 R"("editedFingerprint":1,"editedPointCount":4)"));
+    const auto loaded = project_io::load_project(path);
+    REQUIRE_FALSE(loaded.has_value());
+    CHECK(loaded.error().category == ErrorCategory::InvalidFile);
+    fs::remove(path);
+}
+
+// ---------------------------------------------------------------------------
+// Revue corrective 8.1 : `strict_index` refuse toute valeur au-dela de
+// `numeric_limits<size_t>::max()` avant cast (point 3).
+// ---------------------------------------------------------------------------
+
+TEST_CASE("overrides : index egal a SIZE_MAX accepte (limite exacte, pas de rejet par exces)") {
+    const auto maxIndex = std::numeric_limits<std::size_t>::max();
+    const auto path = write_raw_osp("openstitch_index_size_max.osp",
+        minimal_document_json(3, R"(,"overrides":[{"index":)" + std::to_string(maxIndex) +
+                                 R"(,"trimAfter":true}],"editedFingerprint":1,"editedPointCount":4)"));
+    const auto loaded = project_io::load_project(path);
+    REQUIRE(loaded.has_value());
+    REQUIRE(loaded->embroidery_objects.size() == 1);
+    REQUIRE(loaded->embroidery_objects[0].overrides.size() == 1);
+    CHECK(loaded->embroidery_objects[0].overrides[0].base_index == maxIndex);
+    fs::remove(path);
+}
+
+TEST_CASE("overrides corrompues : index au-dela de SIZE_MAX refuse (portable 32/64 bits)") {
+#if SIZE_MAX < UINT64_MAX
+    // Plateforme 32 bits : une valeur JSON representable en uint64 peut
+    // depasser size_t -- c'est exactement le cas que `strict_index` doit
+    // intercepter avant le static_cast.
+    const auto tooLarge = static_cast<std::uint64_t>(std::numeric_limits<std::size_t>::max()) + 1;
+    const auto path = write_raw_osp("openstitch_index_over_size_max.osp",
+        minimal_document_json(3, R"(,"overrides":[{"index":)" + std::to_string(tooLarge) +
+                                 R"(,"trimAfter":true}],"editedFingerprint":1,"editedPointCount":4)"));
+    const auto loaded = project_io::load_project(path);
+    REQUIRE_FALSE(loaded.has_value());
+    CHECK(loaded.error().category == ErrorCategory::InvalidFile);
+    fs::remove(path);
+#else
+    // Plateforme 64 bits (msvc2022_64, cible du projet) : size_t == uint64_t,
+    // aucune valeur JSON (bornee par nlohmann a std::uint64_t) ne peut donc
+    // jamais depasser SIZE_MAX -- la branche est inatteignable ici. Le test
+    // de la limite exacte ci-dessus couvre le comportement observable sur
+    // cette plateforme ; celui-ci documente pourquoi le cas "depassement" ne
+    // s'exerce pas.
+    SUCCEED("index > SIZE_MAX inatteignable en 64 bits (size_t == uint64_t) ; "
+            "voir le test de la limite exacte ci-dessus.");
+#endif
+}
+
+// ---------------------------------------------------------------------------
+// Revue corrective 8.1 : une entree d'override sans modification effective
+// (ni pos, ni type, ni trimAfter vrai) est refusee (point 4).
+// ---------------------------------------------------------------------------
+
+TEST_CASE("overrides corrompues : entree sans aucun champ effectif refusee") {
+    const auto path = write_raw_osp("openstitch_noop_entry.osp",
+        minimal_document_json(3, R"(,"overrides":[{"index":0}],)"
+                                 R"("editedFingerprint":1,"editedPointCount":4)"));
+    const auto loaded = project_io::load_project(path);
+    REQUIRE_FALSE(loaded.has_value());
+    CHECK(loaded.error().category == ErrorCategory::InvalidFile);
+    fs::remove(path);
+}
+
+TEST_CASE("overrides corrompues : entree avec seulement trimAfter:false refusee (pas de modification effective)") {
+    const auto path = write_raw_osp("openstitch_noop_trim_false.osp",
+        minimal_document_json(3, R"(,"overrides":[{"index":0,"trimAfter":false}],)"
+                                 R"("editedFingerprint":1,"editedPointCount":4)"));
+    const auto loaded = project_io::load_project(path);
+    REQUIRE_FALSE(loaded.has_value());
+    CHECK(loaded.error().category == ErrorCategory::InvalidFile);
+    fs::remove(path);
 }
