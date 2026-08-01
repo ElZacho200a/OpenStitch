@@ -341,12 +341,13 @@ l'action de suppression sont désactivées. Le générateur ne couvre que
 l'intervalle compris entre ses guides extrêmes ; déplacer ou supprimer ce guide
 pourrait donc raccourcir une section et créer un vide ou un repli à la jonction.
 Quand ce guide verrouillé est sélectionné, **Ajouter un guide satin** crée un
-guide interne dans chacune des sections incidentes. L'opération est globale :
-si le réseau est incomplet, une section dupliquée ou un intervalle inadmissible,
-aucun guide n'est ajouté. Une seule commande undo/redo couvre toutes les
-sections. Chaque guide interne reste ensuite déplaçable section par section ;
-ce mécanisme amorce l'orientation de toutes les branches sans déplacer la
-jonction structurelle. Celle-ci est reconnue par l'ordre géométrique des
+guide interne dans l'intervalle directement adjacent de chacune des sections
+incidentes — jamais dans un grand vide éloigné de la jonction. L'opération est
+globale : si le réseau est incomplet, une section dupliquée ou un intervalle
+inadmissible, aucun guide n'est ajouté. Une seule commande undo/redo couvre
+toutes les sections. Chaque guide interne reste ensuite déplaçable section par
+section ; ce mécanisme amorce l'orientation de toutes les branches sans déplacer
+la jonction structurelle. Celle-ci est reconnue par l'ordre géométrique des
 stations projetées sur les deux rails, et non par son index de stockage, y
 compris après un import aux barreaux inversés ou désordonnés.
 

@@ -30,11 +30,11 @@ et des fonctionnalités manquantes identifiables. **Aucune date n'est annoncée.
   de toutes les extrémités partageant une jonction, plus commande multi-objet
   tout-ou-rien avec undo/redo unique. **Septième incrément livré** : sélectionner
   un guide structurel puis ajouter un guide crée, en une transaction, un guide
-  interne dans chaque section incidente ; si une seule section est invalide,
-  rien n'est modifié. Restent la propagation géométrique coordonnée des angles
-  et déplacements, puis les retours textiles suivant le réseau plutôt qu'un
-  segment direct. Ne jamais accepter silencieusement une gerbe ou un croisement
-  comme satin valide.
+  interne dans l'intervalle directement adjacent de chaque section incidente ;
+  si une seule section est invalide, rien n'est modifié. Restent la propagation
+  géométrique coordonnée des angles et déplacements, puis les retours textiles
+  suivant le réseau plutôt qu'un segment direct. Ne jamais accepter
+  silencieusement une gerbe ou un croisement comme satin valide.
 
 - Refonte avancée du **satin** (§12 de l'étude) : correspondance par sections,
   barreaux de direction, densité perpendiculaire au fil, gestion des points

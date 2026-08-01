@@ -15,7 +15,7 @@ Public : développeur, mainteneur.
   (invoquée via `add_test`, cf. Lot 8.1) — échoue si un site de production
   hors `libs/stitch_generation/` appelle `generate_sequence()` directement
   sans annotation `raw-sequence-ok:`, contournant les retouches manuelles.
-- Total au dernier passage vérifié : **340 tests CTest**, 100 % réussis.
+- Total au dernier passage vérifié : **342 tests CTest**, 100 % réussis.
 
 ## Encadré de traçabilité (dernier passage vérifié)
 
@@ -24,11 +24,11 @@ passage vérifié manuellement. Régénérez ces valeurs avant toute publication
 
 | Élément | Valeur |
 |---|---|
-| Commit (état du code testé) | `df48ca6` — ajout atomique de guides internes par jonction |
+| Commit (état du code testé) | `9c7b0f9` — insertion de guides dans l'intervalle adjacent aux jonctions |
 | Compilateur | MSVC toolset 14.50 (Visual Studio 2026) |
 | CMake | 4.4.0-rc3 |
 | Configurations | Debug **et** Release |
-| Résultat CTest | 340 / 340 réussis |
+| Résultat CTest | 342 / 342 réussis |
 | Tests désactivés | 0 |
 | Fichiers de tests d'intégration | 1 (`tests/integration/test_pipeline.cpp`) |
 | Suites Qt (UI desktop) | 5 exécutables CTest (`tests/unit/desktop/`), 37 fonctions de test QTest |
@@ -37,7 +37,7 @@ passage vérifié manuellement. Régénérez ces valeurs avant toute publication
 
 Note : chaque `TEST_CASE` Catch2 (ou fonction de test QTest) est enregistré
 comme un test CTest (via `catch_discover_tests` côté Catch2, `add_test` par
-suite côté QTest) ; le nombre d'**assertions** est supérieur. Le chiffre 340
+suite côté QTest) ; le nombre d'**assertions** est supérieur. Le chiffre 342
 compte les cas de test (dont la garde structurelle CI), pas les assertions.
 
 ## Exécution
@@ -292,8 +292,10 @@ But visé par l'utilisateur, dans l'ordre de valeur/risque :
   et le refus d'un réseau incomplet ; la commande coordonnée vérifie undo/redo et
   l'absence de mutation partielle avec cible obsolète ou dupliquée. Un parcours
   QTest clique réellement le guide structurel, ajoute un guide interne aux deux
-  branches, puis vérifie l'undo/redo unique sans temporisation ni comparaison de
-  pixels.
+  branches dans leur intervalle adjacent (fixture asymétrique 0/2/10 mm), puis
+  vérifie l'undo/redo unique sans temporisation ni comparaison de pixels. Deux
+  tests cœur couvrent aussi l'ordre inverse, le guide non structurel et
+  l'intervalle trop court.
 - **Satin — finitions (Lot 3)** : points courts (inset modifie le rail intérieur,
   remove réduit les pénétrations), split (staggered ≠ ligne centrale, jitter
   déterministe), terminaisons (taper réduit la largeur au bout sans l'annuler) ;
