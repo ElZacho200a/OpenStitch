@@ -1,6 +1,9 @@
 ﻿// SPDX-License-Identifier: Apache-2.0
 #pragma once
 
+#include <algorithm>
+#include <cstddef>
+#include <cstdint>
 #include <optional>
 #include <utility>
 #include <variant>
@@ -423,6 +426,241 @@ private:
     ObjectId id_;
     Angle angle_;
     Angle previous_{0.0};
+};
+
+// Retouches manuelles de points generes (Lot 8.1, cf. docs/lot8-manual-editing-design.md
+// SS3). `raw_fingerprint`/`raw_point_count` sont le fingerprint/la taille de
+// `stitch_generation::raw_slice(objet)` sur la sequence ACTUELLE, calcules par
+// l'appelant AVANT de construire la commande (meme convention que
+// `SetSegmentationCommand` : un calcul faillible/couteux a lieu hors de la
+// commande). Ce choix evite une dependance circulaire libs/commands ->
+// libs/stitch_generation (qui depend deja de libs/document, jamais l'inverse) :
+// la commande ne connait que document::Project, jamais generate_sequence.
+namespace detail {
+
+// Etat memorise par une commande d'edition de point pour un revert exact.
+struct StitchEditContext {
+    bool valid{false};          // apply() a reellement modifie le document
+    bool createdEntry{false};   // l'entree base_index n'existait pas avant
+    bool wasClean{false};       // overrides etait vide avant (transition Clean->ManuallyEdited)
+    document::StitchOverride previousEntry{};
+    std::uint64_t previousFingerprint{0};
+    std::uint32_t previousPointCount{0};
+};
+
+// Localise (en la creant si besoin) l'entree `overrides[base_index]` de
+// l'objet `id`, prete a recevoir la mutation du champ specifique de
+// l'appelant (moved_to/forced_type/trim_after). Refuse (retourne nullptr,
+// aucune mutation) si l'objet est introuvable, si `base_index` deborde la vue
+// brute actuelle (`raw_point_count`), ou si l'objet est deja `Dirty` --
+// aucune commande ne doit faire revivre un objet Dirty sans passage explicite
+// par `DiscardOverridesCommand` (cadrage SS1, "pas de transition Dirty ->
+// ManuallyEdited").
+[[nodiscard]] inline document::StitchOverride* begin_stitch_edit(
+    document::Project& project, ObjectId id, std::size_t base_index,
+    std::uint64_t raw_fingerprint, std::uint32_t raw_point_count, StitchEditContext& ctx) {
+    ctx = StitchEditContext{};
+
+    auto* obj = project.findEmbroidery(id);
+    if (obj == nullptr || base_index >= raw_point_count) {
+        return nullptr;
+    }
+    const bool wasEmpty = obj->overrides.empty();
+    const bool dirty = !wasEmpty && (obj->edited_point_count != raw_point_count ||
+                                     obj->edited_fingerprint != raw_fingerprint);
+    if (dirty) {
+        return nullptr;
+    }
+
+    ctx.wasClean = wasEmpty;
+    ctx.previousFingerprint = obj->edited_fingerprint;
+    ctx.previousPointCount = obj->edited_point_count;
+    if (wasEmpty) {
+        obj->edited_fingerprint = raw_fingerprint;
+        obj->edited_point_count = raw_point_count;
+    }
+
+    auto it = std::find_if(
+        obj->overrides.begin(), obj->overrides.end(),
+        [base_index](const document::StitchOverride& o) { return o.base_index == base_index; });
+    ctx.valid = true;
+    if (it != obj->overrides.end()) {
+        ctx.createdEntry = false;
+        ctx.previousEntry = *it;
+        return &*it;
+    }
+    ctx.createdEntry = true;
+    document::StitchOverride fresh;
+    fresh.base_index = base_index;
+    obj->overrides.push_back(fresh);
+    return &obj->overrides.back();
+}
+
+// Annule exactement l'effet de `begin_stitch_edit` (entree restauree ou
+// retiree, `edited_fingerprint`/`edited_point_count` restaures si la
+// transition Clean->ManuallyEdited avait eu lieu). No-op si `apply()` n'avait
+// rien modifie (`ctx.valid == false`).
+inline void end_stitch_edit(document::Project& project, ObjectId id, std::size_t base_index,
+                            const StitchEditContext& ctx) {
+    if (!ctx.valid) {
+        return;
+    }
+    auto* obj = project.findEmbroidery(id);
+    if (obj == nullptr) {
+        return;
+    }
+    auto it = std::find_if(
+        obj->overrides.begin(), obj->overrides.end(),
+        [base_index](const document::StitchOverride& o) { return o.base_index == base_index; });
+    if (it == obj->overrides.end()) {
+        return;
+    }
+    if (ctx.createdEntry) {
+        obj->overrides.erase(it);
+    } else {
+        *it = ctx.previousEntry;
+    }
+    if (ctx.wasClean) {
+        obj->edited_fingerprint = ctx.previousFingerprint;
+        obj->edited_point_count = ctx.previousPointCount;
+    }
+}
+
+}  // namespace detail
+
+// Deplace un point genere (`StitchOverride::moved_to`). Seule la position est
+// posee ; l'eligibilite de la cible (Stitch en passe TopStitch) est validee
+// plus tard par `stitch_generation::apply_manual_overrides`, pas ici (le
+// coeur pur reste l'unique source de verite sur l'eligibilite, cf. cadrage
+// SS1).
+class MoveStitchPointCommand final : public ICommand {
+public:
+    MoveStitchPointCommand(ObjectId id, std::size_t base_index, Vec2um new_pos,
+                           std::uint64_t raw_fingerprint, std::uint32_t raw_point_count)
+        : id_(id),
+          base_index_(base_index),
+          new_pos_(new_pos),
+          raw_fingerprint_(raw_fingerprint),
+          raw_point_count_(raw_point_count) {}
+
+    void apply(document::Project& project) override {
+        if (auto* entry = detail::begin_stitch_edit(project, id_, base_index_, raw_fingerprint_,
+                                                    raw_point_count_, ctx_)) {
+            entry->moved_to = new_pos_;
+        }
+    }
+    void revert(document::Project& project) override {
+        detail::end_stitch_edit(project, id_, base_index_, ctx_);
+    }
+    [[nodiscard]] std::string name() const override { return "Déplacement de point"; }
+
+private:
+    ObjectId id_;
+    std::size_t base_index_;
+    Vec2um new_pos_;
+    std::uint64_t raw_fingerprint_;
+    std::uint32_t raw_point_count_;
+    detail::StitchEditContext ctx_;
+};
+
+// Force le type d'un point genere (`StitchOverride::forced_type`) : seule
+// transition permise en MVP, Stitch<->Jump (cadrage SS2.2).
+class SetStitchPointTypeCommand final : public ICommand {
+public:
+    SetStitchPointTypeCommand(ObjectId id, std::size_t base_index,
+                              document::StitchPointType forced_type,
+                              std::uint64_t raw_fingerprint, std::uint32_t raw_point_count)
+        : id_(id),
+          base_index_(base_index),
+          forced_type_(forced_type),
+          raw_fingerprint_(raw_fingerprint),
+          raw_point_count_(raw_point_count) {}
+
+    void apply(document::Project& project) override {
+        if (auto* entry = detail::begin_stitch_edit(project, id_, base_index_, raw_fingerprint_,
+                                                    raw_point_count_, ctx_)) {
+            entry->forced_type = forced_type_;
+        }
+    }
+    void revert(document::Project& project) override {
+        detail::end_stitch_edit(project, id_, base_index_, ctx_);
+    }
+    [[nodiscard]] std::string name() const override { return "Type de point"; }
+
+private:
+    ObjectId id_;
+    std::size_t base_index_;
+    document::StitchPointType forced_type_;
+    std::uint64_t raw_fingerprint_;
+    std::uint32_t raw_point_count_;
+    detail::StitchEditContext ctx_;
+};
+
+// Ajoute/retire un `Trim` juste apres un point genere
+// (`StitchOverride::trim_after`, cadrage SS2.3). N'ajoute ni ne supprime de
+// point de couture : une commande machine supplementaire seulement.
+class SetStitchTrimCommand final : public ICommand {
+public:
+    SetStitchTrimCommand(ObjectId id, std::size_t base_index, bool trim_after,
+                         std::uint64_t raw_fingerprint, std::uint32_t raw_point_count)
+        : id_(id),
+          base_index_(base_index),
+          trim_after_(trim_after),
+          raw_fingerprint_(raw_fingerprint),
+          raw_point_count_(raw_point_count) {}
+
+    void apply(document::Project& project) override {
+        if (auto* entry = detail::begin_stitch_edit(project, id_, base_index_, raw_fingerprint_,
+                                                    raw_point_count_, ctx_)) {
+            entry->trim_after = trim_after_;
+        }
+    }
+    void revert(document::Project& project) override {
+        detail::end_stitch_edit(project, id_, base_index_, ctx_);
+    }
+    [[nodiscard]] std::string name() const override { return "Coupe de fil"; }
+
+private:
+    ObjectId id_;
+    std::size_t base_index_;
+    bool trim_after_;
+    std::uint64_t raw_fingerprint_;
+    std::uint32_t raw_point_count_;
+    detail::StitchEditContext ctx_;
+};
+
+// Abandonne les retouches manuelles d'un objet (seule sortie de l'etat Dirty
+// en MVP, cadrage SS1/SS3) : vide `overrides` et remet le
+// fingerprint/compteur a zero. Toujours annulable, meme depuis Dirty (aucune
+// perte : l'ancien contenu est memorise pour le revert).
+class DiscardOverridesCommand final : public ICommand {
+public:
+    explicit DiscardOverridesCommand(ObjectId id) : id_(id) {}
+
+    void apply(document::Project& project) override {
+        if (auto* obj = project.findEmbroidery(id_)) {
+            previousOverrides_ = obj->overrides;
+            previousFingerprint_ = obj->edited_fingerprint;
+            previousPointCount_ = obj->edited_point_count;
+            obj->overrides.clear();
+            obj->edited_fingerprint = 0;
+            obj->edited_point_count = 0;
+        }
+    }
+    void revert(document::Project& project) override {
+        if (auto* obj = project.findEmbroidery(id_)) {
+            obj->overrides = previousOverrides_;
+            obj->edited_fingerprint = previousFingerprint_;
+            obj->edited_point_count = previousPointCount_;
+        }
+    }
+    [[nodiscard]] std::string name() const override { return "Abandonner les retouches"; }
+
+private:
+    ObjectId id_;
+    std::vector<document::StitchOverride> previousOverrides_;
+    std::uint64_t previousFingerprint_{0};
+    std::uint32_t previousPointCount_{0};
 };
 
 }  // namespace openstitch::commands

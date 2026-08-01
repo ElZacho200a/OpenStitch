@@ -313,6 +313,232 @@ TEST_CASE("SetCanvasCommand : change la taille du cadre, undo restaure") {
     CHECK(project.canvas.width == Micrometers{160'000});
 }
 
+// ---------------------------------------------------------------------------
+// Retouches manuelles de points (Lot 8.1)
+// ---------------------------------------------------------------------------
+
+namespace {
+
+Vec2um um(std::int32_t x, std::int32_t y) { return Vec2um{Micrometers{x}, Micrometers{y}}; }
+
+document::Project project_with_embroidery() {
+    document::Project project;
+    document::EmbroideryObject e;
+    e.id = project.object_ids.next();
+    e.params = document::RunningStitchParams{};
+    project.embroidery_objects.push_back(e);
+    return project;
+}
+
+}  // namespace
+
+TEST_CASE("MoveStitchPointCommand : transitionne Clean -> ManuallyEdited, undo restaure Clean exact") {
+    auto project = project_with_embroidery();
+    const ObjectId id = project.embroidery_objects[0].id;
+    UndoStack stack;
+    constexpr std::uint64_t fp = 0xABCDEFu;
+    constexpr std::uint32_t count = 4;
+
+    stack.execute(
+        std::make_unique<MoveStitchPointCommand>(id, std::size_t{1}, um(500, 500), fp, count),
+        project);
+
+    auto* obj = project.findEmbroidery(id);
+    REQUIRE(obj != nullptr);
+    REQUIRE(obj->overrides.size() == 1);
+    CHECK(obj->overrides[0].base_index == 1);
+    REQUIRE(obj->overrides[0].moved_to.has_value());
+    CHECK(*obj->overrides[0].moved_to == um(500, 500));
+    CHECK(obj->edited_fingerprint == fp);
+    CHECK(obj->edited_point_count == count);
+
+    CHECK(stack.undo(project));
+    obj = project.findEmbroidery(id);
+    CHECK(obj->overrides.empty());
+    CHECK(obj->edited_fingerprint == 0);
+    CHECK(obj->edited_point_count == 0);
+
+    CHECK(stack.redo(project));
+    obj = project.findEmbroidery(id);
+    REQUIRE(obj->overrides.size() == 1);
+    CHECK(*obj->overrides[0].moved_to == um(500, 500));
+}
+
+TEST_CASE("SetStitchPointTypeCommand : force Stitch<->Jump, undo exact") {
+    auto project = project_with_embroidery();
+    const ObjectId id = project.embroidery_objects[0].id;
+    UndoStack stack;
+
+    stack.execute(std::make_unique<SetStitchPointTypeCommand>(
+                      id, std::size_t{3}, document::StitchPointType::Jump, 1, 4),
+                  project);
+
+    auto* obj = project.findEmbroidery(id);
+    REQUIRE(obj->overrides.size() == 1);
+    REQUIRE(obj->overrides[0].forced_type.has_value());
+    CHECK(*obj->overrides[0].forced_type == document::StitchPointType::Jump);
+
+    CHECK(stack.undo(project));
+    obj = project.findEmbroidery(id);
+    CHECK(obj->overrides.empty());
+
+    CHECK(stack.redo(project));
+    obj = project.findEmbroidery(id);
+    REQUIRE(obj->overrides.size() == 1);
+    CHECK(*obj->overrides[0].forced_type == document::StitchPointType::Jump);
+}
+
+TEST_CASE("SetStitchTrimCommand : bascule trim_after, undo exact") {
+    auto project = project_with_embroidery();
+    const ObjectId id = project.embroidery_objects[0].id;
+    UndoStack stack;
+
+    stack.execute(std::make_unique<SetStitchTrimCommand>(id, std::size_t{0}, true, 1, 4), project);
+
+    auto* obj = project.findEmbroidery(id);
+    REQUIRE(obj->overrides.size() == 1);
+    CHECK(obj->overrides[0].trim_after);
+
+    CHECK(stack.undo(project));
+    obj = project.findEmbroidery(id);
+    CHECK(obj->overrides.empty());
+
+    CHECK(stack.redo(project));
+    obj = project.findEmbroidery(id);
+    REQUIRE(obj->overrides.size() == 1);
+    CHECK(obj->overrides[0].trim_after);
+}
+
+TEST_CASE("Deux commandes sur le meme base_index partagent une seule entree, undo la seconde seule") {
+    auto project = project_with_embroidery();
+    const ObjectId id = project.embroidery_objects[0].id;
+    UndoStack stack;
+    constexpr std::uint64_t fp = 111;
+    constexpr std::uint32_t count = 4;
+
+    stack.execute(
+        std::make_unique<MoveStitchPointCommand>(id, std::size_t{2}, um(10, 10), fp, count),
+        project);
+    // La vue brute n'a pas change entre les deux commandes (aucun point genere
+    // n'a ete ajoute/retire) : meme fp/count, l'objet reste ManuallyEdited (pas
+    // Dirty) pour la deuxieme commande.
+    stack.execute(std::make_unique<SetStitchPointTypeCommand>(
+                      id, std::size_t{2}, document::StitchPointType::Jump, fp, count),
+                  project);
+
+    auto* obj = project.findEmbroidery(id);
+    REQUIRE(obj->overrides.size() == 1);  // une seule entree, pas deux
+    REQUIRE(obj->overrides[0].moved_to.has_value());
+    CHECK(*obj->overrides[0].moved_to == um(10, 10));
+    REQUIRE(obj->overrides[0].forced_type.has_value());
+    CHECK(*obj->overrides[0].forced_type == document::StitchPointType::Jump);
+
+    CHECK(stack.undo(project));  // annule seulement SetStitchPointTypeCommand
+    obj = project.findEmbroidery(id);
+    REQUIRE(obj->overrides.size() == 1);
+    CHECK(*obj->overrides[0].moved_to == um(10, 10));       // toujours present
+    CHECK_FALSE(obj->overrides[0].forced_type.has_value());  // type restaure
+    CHECK(obj->edited_fingerprint == fp);  // deja pose par la 1ere commande
+
+    CHECK(stack.undo(project));  // annule MoveStitchPointCommand -> Clean total
+    obj = project.findEmbroidery(id);
+    CHECK(obj->overrides.empty());
+    CHECK(obj->edited_fingerprint == 0);
+    CHECK(obj->edited_point_count == 0);
+}
+
+TEST_CASE("commande d'edition de point refusee sur un objet Dirty : aucune mutation, undo neutre") {
+    auto project = project_with_embroidery();
+    const ObjectId id = project.embroidery_objects[0].id;
+    auto* obj = project.findEmbroidery(id);
+    document::StitchOverride existing;
+    existing.base_index = 0;
+    existing.trim_after = true;
+    obj->overrides = {existing};
+    obj->edited_fingerprint = 999;
+    obj->edited_point_count = 4;
+
+    UndoStack stack;
+    // raw_fingerprint/raw_point_count (vue brute ACTUELLE) different de ceux
+    // memorises sur l'objet -> Dirty, aucune commande ne doit rouvrir l'edition.
+    stack.execute(
+        std::make_unique<MoveStitchPointCommand>(id, std::size_t{1}, um(1, 1), 1'000, 4), project);
+
+    obj = project.findEmbroidery(id);
+    REQUIRE(obj->overrides.size() == 1);
+    CHECK(obj->overrides[0].base_index == 0);
+    CHECK_FALSE(obj->overrides[0].moved_to.has_value());
+    CHECK(obj->edited_fingerprint == 999);
+
+    CHECK(stack.undo(project));
+    obj = project.findEmbroidery(id);
+    REQUIRE(obj->overrides.size() == 1);
+    CHECK(obj->overrides[0].base_index == 0);
+    CHECK(obj->edited_fingerprint == 999);
+}
+
+TEST_CASE("MoveStitchPointCommand : base_index hors bornes de la vue brute -- aucune mutation") {
+    auto project = project_with_embroidery();
+    const ObjectId id = project.embroidery_objects[0].id;
+    UndoStack stack;
+
+    stack.execute(
+        std::make_unique<MoveStitchPointCommand>(id, std::size_t{10}, um(1, 1), 1, 4), project);
+
+    auto* obj = project.findEmbroidery(id);
+    CHECK(obj->overrides.empty());
+    CHECK(stack.undo(project));
+    obj = project.findEmbroidery(id);
+    CHECK(obj->overrides.empty());
+}
+
+TEST_CASE("MoveStitchPointCommand : objet introuvable -- aucune mutation, aucun plantage") {
+    document::Project project;
+    UndoStack stack;
+    stack.execute(std::make_unique<MoveStitchPointCommand>(ObjectId{999}, std::size_t{0}, um(1, 1),
+                                                            1, 4),
+                  project);
+    CHECK(project.embroidery_objects.empty());
+    CHECK(stack.undo(project));
+}
+
+TEST_CASE("DiscardOverridesCommand : vide les retouches (y compris Dirty), undo restaure exactement") {
+    auto project = project_with_embroidery();
+    const ObjectId id = project.embroidery_objects[0].id;
+    auto* obj = project.findEmbroidery(id);
+    document::StitchOverride ov;
+    ov.base_index = 1;
+    ov.moved_to = um(7, 7);
+    obj->overrides = {ov};
+    obj->edited_fingerprint = 555;  // volontairement incoherent (simule Dirty) :
+    obj->edited_point_count = 4;    // Discard reste valable dans tous les cas.
+
+    UndoStack stack;
+    stack.execute(std::make_unique<DiscardOverridesCommand>(id), project);
+    obj = project.findEmbroidery(id);
+    CHECK(obj->overrides.empty());
+    CHECK(obj->edited_fingerprint == 0);
+    CHECK(obj->edited_point_count == 0);
+
+    CHECK(stack.undo(project));
+    obj = project.findEmbroidery(id);
+    REQUIRE(obj->overrides.size() == 1);
+    CHECK(*obj->overrides[0].moved_to == um(7, 7));
+    CHECK(obj->edited_fingerprint == 555);
+    CHECK(obj->edited_point_count == 4);
+
+    CHECK(stack.redo(project));
+    obj = project.findEmbroidery(id);
+    CHECK(obj->overrides.empty());
+}
+
+TEST_CASE("DiscardOverridesCommand : objet introuvable -- aucune mutation, aucun plantage") {
+    document::Project project;
+    UndoStack stack;
+    stack.execute(std::make_unique<DiscardOverridesCommand>(ObjectId{999}), project);
+    CHECK(stack.undo(project));
+}
+
 TEST_CASE("une nouvelle commande invalide la branche redo") {
     document::Project project;
     UndoStack stack;

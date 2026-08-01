@@ -4,6 +4,8 @@
 #include <algorithm>
 #include <unordered_map>
 
+#include "openstitch/stitch_generation/generate.hpp"
+
 namespace openstitch::stitch_generation {
 
 namespace {
@@ -212,6 +214,19 @@ std::vector<ObjectId> apply_manual_overrides(stitch::StitchSequence& sequence,
 
     std::sort(dirty.begin(), dirty.end());  // résultat déterministe (ordre d'itération de la map non garanti)
     return dirty;
+}
+
+Result<stitch::StitchSequence> effective_sequence(const document::Project& project) {
+    auto sequence = generate_sequence(project);
+    if (!sequence) {
+        return sequence;
+    }
+    // Liste des objets Dirty volontairement ignorée ici : effective_sequence
+    // est un point d'entree "au mieux" (apercu/export/...), pas un canal de
+    // notification -- un consommateur qui a besoin de detecter/signaler l'etat
+    // Dirty doit appeler apply_manual_overrides directement (UI, hors Lot 8.1).
+    (void)apply_manual_overrides(*sequence, project);
+    return sequence;
 }
 
 }  // namespace openstitch::stitch_generation

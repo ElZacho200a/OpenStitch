@@ -654,3 +654,105 @@ TEST_CASE("classify_edit_state : Dirty quand la vue brute a change") {
     const std::vector<stitch::StitchCommand> changed = {mk(1, 0, CmdType::Stitch, obj.id)};
     CHECK(classify_edit_state(obj, changed) == ObjectEditState::Dirty);
 }
+
+// ---------------------------------------------------------------------------
+// effective_sequence : point d'entree unique de production (Lot 8.1)
+// ---------------------------------------------------------------------------
+
+namespace {
+
+// Projet minimal : un carre vectoriel de 10 mm et un objet de contour
+// (RunningStitchParams par defaut) -- meme forme que make_project() dans
+// test_generate.cpp (non partageable, anonyme a la TU), pour exercer
+// effective_sequence via le VRAI generateur plutot qu'une sequence
+// synthetique.
+document::Project make_running_square_project() {
+    document::Project project;
+    geometry::Path square;
+    square.closed = true;
+    const std::int32_t s = 10'000;
+    square.nodes = {
+        {Vec2um{Micrometers{0}, Micrometers{0}}, geometry::NodeType::Corner, {}, {}},
+        {Vec2um{Micrometers{s}, Micrometers{0}}, geometry::NodeType::Corner, {}, {}},
+        {Vec2um{Micrometers{s}, Micrometers{s}}, geometry::NodeType::Corner, {}, {}},
+        {Vec2um{Micrometers{0}, Micrometers{s}}, geometry::NodeType::Corner, {}, {}},
+    };
+    document::VectorObject vec;
+    vec.id = project.object_ids.next();
+    vec.paths.push_back(geometry::PathSet{square, {}});
+    project.vector_objects.push_back(vec);
+
+    document::EmbroideryObject emb;
+    emb.id = project.object_ids.next();
+    emb.source_vector = vec.id;
+    project.embroidery_objects.push_back(emb);
+    return project;
+}
+
+}  // namespace
+
+TEST_CASE("effective_sequence : identique au brut quand l'objet est Clean") {
+    const auto project = make_running_square_project();
+    const auto raw = generate_sequence(project);
+    const auto effective = effective_sequence(project);
+    REQUIRE(raw.has_value());
+    REQUIRE(effective.has_value());
+    CHECK(effective->commands == raw->commands);
+}
+
+TEST_CASE("effective_sequence : applique les retouches quand l'objet est ManuallyEdited") {
+    auto project = make_running_square_project();
+    const ObjectId oid = project.embroidery_objects[0].id;
+
+    const auto raw = generate_sequence(project);
+    REQUIRE(raw.has_value());
+    const auto slice = raw_slice(*raw, oid);
+    REQUIRE(slice.size() > 2);
+    REQUIRE(slice[1].type == CmdType::Stitch);
+    REQUIRE(slice[1].pass == Pass::TopStitch);
+
+    document::StitchOverride ov;
+    ov.base_index = 1;
+    ov.moved_to = Vec2um{Micrometers{123}, Micrometers{456}};
+    project.embroidery_objects[0].overrides = {ov};
+    project.embroidery_objects[0].edited_point_count = static_cast<std::uint32_t>(slice.size());
+    project.embroidery_objects[0].edited_fingerprint = fingerprint(slice);
+
+    const auto effective = effective_sequence(project);
+    REQUIRE(effective.has_value());
+    REQUIRE(effective->commands.size() == raw->commands.size());  // aucun Trim insere ici
+    CHECK(effective->commands[1].pos == (Vec2um{Micrometers{123}, Micrometers{456}}));
+    CHECK(effective->commands[1].pass == Pass::Manual);
+    // Les points non cibles restent ceux du brut.
+    CHECK(effective->commands[2].pos == raw->commands[2].pos);
+    CHECK(effective->commands.front() == raw->commands.front());  // Jump initial inchange
+}
+
+TEST_CASE("effective_sequence : propage l'erreur de generate_sequence sans plantage") {
+    auto project = make_running_square_project();
+    project.embroidery_objects[0].visible = false;  // aucun objet visible -> erreur
+    const auto effective = effective_sequence(project);
+    REQUIRE_FALSE(effective.has_value());
+    CHECK(effective.error().category == ErrorCategory::UserInput);
+}
+
+TEST_CASE("effective_sequence : deterministe sur deux appels independants") {
+    auto project = make_running_square_project();
+    const ObjectId oid = project.embroidery_objects[0].id;
+    const auto raw = generate_sequence(project);
+    REQUIRE(raw.has_value());
+    const auto slice = raw_slice(*raw, oid);
+
+    document::StitchOverride ov;
+    ov.base_index = 1;
+    ov.trim_after = true;
+    project.embroidery_objects[0].overrides = {ov};
+    project.embroidery_objects[0].edited_point_count = static_cast<std::uint32_t>(slice.size());
+    project.embroidery_objects[0].edited_fingerprint = fingerprint(slice);
+
+    const auto e1 = effective_sequence(project);
+    const auto e2 = effective_sequence(project);
+    REQUIRE(e1.has_value());
+    REQUIRE(e2.has_value());
+    CHECK(e1->commands == e2->commands);
+}

@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <vector>
 
+#include "openstitch/core/error.hpp"
 #include "openstitch/core/ids.hpp"
 #include "openstitch/document/project.hpp"
 #include "openstitch/stitch/sequence.hpp"
@@ -46,5 +47,15 @@ enum class ObjectEditState : std::uint8_t { Clean, ManuallyEdited, Dirty };
 // ignoré silencieusement, sans rejeter les autres champs du même override.
 [[nodiscard]] std::vector<ObjectId> apply_manual_overrides(stitch::StitchSequence& sequence,
                                                             const document::Project& project);
+
+// Point d'entree UNIQUE pour tout consommateur de production (desktop, CLI,
+// export, simulation) : enchaine generate_sequence + apply_manual_overrides.
+// Signature volontairement identique a generate_sequence(project) (cadrage
+// Lot 8 SS5) pour que les appelants existants n'aient qu'a substituer l'appel.
+// `generate_sequence` et `apply_manual_overrides` restent des blocs de
+// construction internes, appelables separement en test/generateur -- mais
+// aucun consommateur de production ne doit composer les deux passes
+// lui-meme (voir tests/check_no_raw_sequence_bypass.cmake).
+[[nodiscard]] Result<stitch::StitchSequence> effective_sequence(const document::Project& project);
 
 }  // namespace openstitch::stitch_generation

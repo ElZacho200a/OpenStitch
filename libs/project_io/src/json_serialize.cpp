@@ -2,6 +2,8 @@
 #include "json_serialize.hpp"
 
 #include <array>
+#include <limits>
+#include <unordered_map>
 
 namespace openstitch::project_io::detail {
 
@@ -289,6 +291,171 @@ Result<document::StitchParams> params_from_json(const json& j) {
     return fail(ErrorCategory::InvalidFile, "Type de point inconnu : " + type);
 }
 
+// --- Retouches manuelles (Lot 8.1, ADR-014) ----------------------------------
+//
+// Validation stricte : un JSON malformé ou hors bornes renvoie une erreur
+// utile (`ErrorCategory::InvalidFile`), jamais un comportement indéfini
+// (troncature silencieuse d'un entier hors plage, par exemple). `nlohmann`
+// stocke un entier positif dépassant l'`int64` comme `number_unsigned`
+// (`std::uint64_t` exact, pas de conversion par `double`) : `editedFingerprint`
+// peut donc dépasser 2^53 sans perte de bits, comme les `ObjectId`/`RegionId`
+// existants (cf. `vo["id"]`/`ObjectId{...get<std::uint64_t>()}` ci-dessus).
+
+Result<std::int32_t> strict_int32(const json& j, const char* field) {
+    if (j.is_number_unsigned()) {
+        const auto v = j.get<std::uint64_t>();
+        if (v > static_cast<std::uint64_t>(std::numeric_limits<std::int32_t>::max())) {
+            return fail(ErrorCategory::InvalidFile,
+                        std::string("Retouche invalide : coordonnée hors limites (") + field + ")");
+        }
+        return static_cast<std::int32_t>(v);
+    }
+    if (j.is_number_integer()) {
+        const auto v = j.get<std::int64_t>();
+        if (v < std::numeric_limits<std::int32_t>::min() ||
+            v > std::numeric_limits<std::int32_t>::max()) {
+            return fail(ErrorCategory::InvalidFile,
+                        std::string("Retouche invalide : coordonnée hors limites (") + field + ")");
+        }
+        return static_cast<std::int32_t>(v);
+    }
+    return fail(ErrorCategory::InvalidFile,
+               std::string("Retouche invalide : coordonnée non entière (") + field + ")");
+}
+
+Result<std::size_t> strict_index(const json& j) {
+    if (j.is_number_unsigned()) {
+        return static_cast<std::size_t>(j.get<std::uint64_t>());
+    }
+    if (j.is_number_integer()) {
+        const auto v = j.get<std::int64_t>();
+        if (v < 0) {
+            return fail(ErrorCategory::InvalidFile, "Retouche invalide : index négatif");
+        }
+        return static_cast<std::size_t>(v);
+    }
+    return fail(ErrorCategory::InvalidFile, "Retouche invalide : index non entier");
+}
+
+Result<std::uint64_t> strict_uint64(const json& j, const char* field) {
+    if (j.is_number_unsigned()) {
+        return j.get<std::uint64_t>();
+    }
+    if (j.is_number_integer()) {
+        const auto v = j.get<std::int64_t>();
+        if (v < 0) {
+            return fail(ErrorCategory::InvalidFile,
+                        std::string("Champ invalide (négatif) : ") + field);
+        }
+        return static_cast<std::uint64_t>(v);
+    }
+    return fail(ErrorCategory::InvalidFile, std::string("Champ non entier : ") + field);
+}
+
+Result<std::uint32_t> strict_uint32(const json& j, const char* field) {
+    auto v = strict_uint64(j, field);
+    if (!v) {
+        return std::unexpected(v.error());
+    }
+    if (*v > std::numeric_limits<std::uint32_t>::max()) {
+        return fail(ErrorCategory::InvalidFile, std::string("Champ hors limites : ") + field);
+    }
+    return static_cast<std::uint32_t>(*v);
+}
+
+Result<Vec2um> override_pos_from_json(const json& j) {
+    if (!j.is_object() || !j.contains("x") || !j.contains("y")) {
+        return fail(ErrorCategory::InvalidFile, "Retouche invalide : position malformée");
+    }
+    auto x = strict_int32(j.at("x"), "x");
+    if (!x) {
+        return std::unexpected(x.error());
+    }
+    auto y = strict_int32(j.at("y"), "y");
+    if (!y) {
+        return std::unexpected(y.error());
+    }
+    return Vec2um{Micrometers{*x}, Micrometers{*y}};
+}
+
+json override_to_json(const document::StitchOverride& ov) {
+    json j;
+    j["index"] = static_cast<std::uint64_t>(ov.base_index);
+    if (ov.moved_to) {
+        j["pos"] = {{"x", ov.moved_to->x.value}, {"y", ov.moved_to->y.value}};
+    }
+    if (ov.forced_type) {
+        j["type"] = (*ov.forced_type == document::StitchPointType::Jump) ? "jump" : "stitch";
+    }
+    j["trimAfter"] = ov.trim_after;
+    return j;
+}
+
+// Fusionne par `index` : le cadrage Lot 8 (SS4) autorise plusieurs entrées
+// JSON pour le même `base_index` (un outil tiers ou une écriture manuelle
+// pourrait scinder les champs). `apply_manual_overrides` ne fusionne PAS les
+// doublons (la dernière entrée du vecteur l'emporte EN BLOC, cf.
+// `test_overrides.cpp`) : fusionner ici, à la lecture, est donc nécessaire
+// pour ne perdre aucun champ silencieusement -- sans quoi une deuxième entrée
+// ne portant que `trimAfter` écraserait un `pos`/`type` déjà lu pour le même
+// index une fois appliqué à la séquence.
+Result<std::vector<document::StitchOverride>> overrides_from_json(const json& arr) {
+    std::vector<document::StitchOverride> result;
+    std::unordered_map<std::size_t, std::size_t> slot_by_index;
+
+    for (const auto& entry : arr) {
+        if (!entry.is_object() || !entry.contains("index")) {
+            return fail(ErrorCategory::InvalidFile, "Retouche invalide : index manquant");
+        }
+        auto idx = strict_index(entry.at("index"));
+        if (!idx) {
+            return std::unexpected(idx.error());
+        }
+
+        std::size_t slot;
+        if (const auto found = slot_by_index.find(*idx); found != slot_by_index.end()) {
+            slot = found->second;
+        } else {
+            slot = result.size();
+            slot_by_index.emplace(*idx, slot);
+            document::StitchOverride fresh;
+            fresh.base_index = *idx;
+            result.push_back(fresh);
+        }
+        document::StitchOverride& ov = result[slot];
+
+        if (entry.contains("pos")) {
+            auto pos = override_pos_from_json(entry.at("pos"));
+            if (!pos) {
+                return std::unexpected(pos.error());
+            }
+            ov.moved_to = *pos;
+        }
+        if (entry.contains("type")) {
+            const auto& t = entry.at("type");
+            if (!t.is_string()) {
+                return fail(ErrorCategory::InvalidFile, "Retouche invalide : type non textuel");
+            }
+            const std::string ts = t.get<std::string>();
+            if (ts == "stitch") {
+                ov.forced_type = document::StitchPointType::Stitch;
+            } else if (ts == "jump") {
+                ov.forced_type = document::StitchPointType::Jump;
+            } else {
+                return fail(ErrorCategory::InvalidFile, "Retouche invalide : type inconnu (" + ts + ")");
+            }
+        }
+        if (entry.contains("trimAfter")) {
+            const auto& ta = entry.at("trimAfter");
+            if (!ta.is_boolean()) {
+                return fail(ErrorCategory::InvalidFile, "Retouche invalide : trimAfter non booléen");
+            }
+            ov.trim_after = ta.get<bool>();
+        }
+    }
+    return result;
+}
+
 }  // namespace
 
 json project_to_json(const document::Project& project) {
@@ -346,6 +513,14 @@ json project_to_json(const document::Project& project) {
         eo["rgb"] = rgb_to_json(e.rgb);
         eo["visible"] = e.visible;
         eo["params"] = params_to_json(e.params);
+        if (!e.overrides.empty()) {
+            eo["overrides"] = json::array();
+            for (const auto& ov : e.overrides) {
+                eo["overrides"].push_back(override_to_json(ov));
+            }
+            eo["editedFingerprint"] = e.edited_fingerprint;
+            eo["editedPointCount"] = e.edited_point_count;
+        }
         j["embroideryObjects"].push_back(eo);
     }
 
@@ -419,6 +594,29 @@ Result<document::Project> project_from_json(const json& j) {
                 return std::unexpected(params.error());
             }
             e.params = std::move(*params);
+
+            // Retouches manuelles (Lot 8.1) : champs absents = Clean, comportement
+            // v1/v2 inchangé (overrides vide, fingerprint/compteur à zéro).
+            if (eo.contains("overrides")) {
+                auto overrides = overrides_from_json(eo.at("overrides"));
+                if (!overrides) {
+                    return std::unexpected(overrides.error());
+                }
+                e.overrides = std::move(*overrides);
+                if (!e.overrides.empty()) {
+                    auto fp = strict_uint64(eo.value("editedFingerprint", json(0)), "editedFingerprint");
+                    if (!fp) {
+                        return std::unexpected(fp.error());
+                    }
+                    auto count = strict_uint32(eo.value("editedPointCount", json(0)), "editedPointCount");
+                    if (!count) {
+                        return std::unexpected(count.error());
+                    }
+                    e.edited_fingerprint = *fp;
+                    e.edited_point_count = *count;
+                }
+            }
+
             project.embroidery_objects.push_back(std::move(e));
         }
     } catch (const json::exception& ex) {

@@ -168,6 +168,8 @@ int run_filldebug(double lengthMm, const std::string& outSvg, int underlayMask, 
     emb.params = tp;
     project.embroidery_objects.push_back(emb);
 
+    // Projet synthetique construit ici meme, jamais charge/sauvegarde, aucune
+    // retouche manuelle possible. raw-sequence-ok: generateur de debug.
     const auto seq = stitch_generation::generate_sequence(project);
     if (!seq) {
         fmt::print(stderr, "Erreur : {}\n", seq.error().message);
@@ -391,6 +393,8 @@ int run_auto_satin_debug(const std::string& shape, double pixelMm, const std::st
                 emb.params = sp;
                 project.embroidery_objects.push_back(emb);
             }
+            // Projet synthetique construit ici meme, jamais charge/sauvegarde,
+            // aucune retouche manuelle possible. raw-sequence-ok: generateur.
             if (const auto seq = stitch_generation::generate_sequence(project)) {
                 const auto pt = [](Vec2um p) {
                     return fmt::format("{:.3f} {:.3f}", p.x.value / 1000.0, -p.y.value / 1000.0);

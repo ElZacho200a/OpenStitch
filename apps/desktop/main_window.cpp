@@ -53,6 +53,7 @@
 #include "openstitch/project_io/project_io.hpp"
 #include "openstitch/stitch_analysis/analyze.hpp"
 #include "openstitch/stitch_generation/generate.hpp"
+#include "openstitch/stitch_generation/overrides.hpp"
 #include "openstitch/stitch_generation/satin.hpp"
 #include "openstitch/vectorization/vectorize.hpp"
 #include <QCheckBox>
@@ -622,7 +623,10 @@ void MainWindow::refreshImage() {
     if (!sequenceImported_) {
         sequence_.reset();
         if (!project_.embroidery_objects.empty()) {
-            if (auto seq = stitch_generation::generate_sequence(project_)) {
+            // effective_sequence (pas generate_sequence) : seul point d'entree
+            // qui applique aussi les retouches manuelles (Lot 8.1) -- voir
+            // tests/check_no_raw_sequence_bypass.cmake.
+            if (auto seq = stitch_generation::effective_sequence(project_)) {
                 sequence_ = std::move(*seq);
             } else {
                 statusBar()->showMessage(
