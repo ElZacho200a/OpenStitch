@@ -2,6 +2,7 @@ add_library(openstitch_stitch_generation
     src/running_stitch.cpp
     src/tatami.cpp
     src/satin.cpp
+    src/satin_guides.cpp
     src/lock.cpp
     src/routing.cpp
     src/generate.cpp

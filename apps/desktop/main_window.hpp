@@ -51,6 +51,7 @@ class MainWindow : public QMainWindow {
 
 public:
     MainWindow();
+    ~MainWindow() override;
 
 protected:
     void closeEvent(QCloseEvent* event) override;
@@ -97,6 +98,7 @@ private slots:
     // en cache), jamais de mutation du document ici (une seule commande par
     // glisser, construite ailleurs — cf. renderBase).
     void onStitchEditModeToggled(bool on);
+    void onSatinGuideModeToggled(bool on);
     // Abandonne les retouches manuelles d'un objet (confirmation explicite,
     // DiscardOverridesCommand annulable) — appelée depuis l'inspecteur ou la
     // barre contextuelle, jamais de mutation directe hors commande.
@@ -238,6 +240,10 @@ private:
     QAction* stitchEditModeAct_{nullptr};
     std::optional<ObjectId> stitchEditTarget_;
     std::optional<stitch_generation::ObjectEditView> stitchEditView_;
+    // Édition paramétrique des barreaux satin : contrairement au mode 8.2,
+    // ces poignées régénèrent la colonne et restent donc dans le modèle.
+    QAction* satinGuideModeAct_{nullptr};
+    std::optional<ObjectId> satinGuideTarget_;
     // État Clean/ManuallyEdited/Dirty des objets retouchés (absents = Clean),
     // recalculé à chaque `refreshImage()` (cf. `classify_all_edit_states`) —
     // jamais recalculé ailleurs (panneau Document, inspecteur, barre

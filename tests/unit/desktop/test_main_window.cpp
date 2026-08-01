@@ -14,6 +14,9 @@
 #include <QTest>
 #include <QTimer>
 
+#include <algorithm>
+#include <cmath>
+
 #include "canvas_view.hpp"
 #include "document_panel.hpp"
 #include "main_window.hpp"
@@ -149,6 +152,34 @@ Fixture buildRunningSquareFixture() {
     return fx;
 }
 
+Fixture buildSatinGuideFixture() {
+    Fixture fx;
+    fx.project.original.width = 2;
+    fx.project.original.height = 2;
+    fx.project.original.rgba.assign(2 * 2 * 4, 255);
+
+    openstitch::document::SatinParams satin;
+    satin.rail_a.closed = false;
+    satin.rail_b.closed = false;
+    satin.rail_a.nodes = {{{Micrometers{0}, Micrometers{0}}},
+                          {{Micrometers{10'000}, Micrometers{0}}}};
+    satin.rail_b.nodes = {{{Micrometers{0}, Micrometers{4'000}}},
+                          {{Micrometers{10'000}, Micrometers{4'000}}}};
+    satin.rungs = {{{Micrometers{0}, Micrometers{0}},
+                    {Micrometers{0}, Micrometers{4'000}}},
+                   {{Micrometers{5'000}, Micrometers{0}},
+                    {Micrometers{5'000}, Micrometers{4'000}}},
+                   {{Micrometers{10'000}, Micrometers{0}},
+                    {Micrometers{10'000}, Micrometers{4'000}}}};
+    openstitch::document::EmbroideryObject emb;
+    emb.id = fx.project.object_ids.next();
+    emb.name = "Satin guides";
+    emb.params = satin;
+    fx.embroideryId = emb.id;
+    fx.project.embroidery_objects.push_back(std::move(emb));
+    return fx;
+}
+
 // Seule poignée trouvée parmi les items de la couche de base : valable quand
 // aucun objet vectoriel n'est sélectionné en parallèle (cf. tests ci-dessous,
 // qui sélectionnent l'objet de broderie via selectedEmbroidery_ seul, jamais
@@ -212,6 +243,7 @@ private slots:
     void draggingHandleThenLoadingNewProjectDoesNotMutateIt();
     void discardingOverridesOnDirtyObjectIsUndoable();
     void stitchEditModeRefusesWhenTooManyMovablePoints();
+    void satinGuideModeMovesEndpointOnRailAndUndoRestoresIt();
 
 private:
     // Active le mode d'édition (sélection directe via selectedEmbroidery_,
@@ -428,6 +460,78 @@ void MainWindowTest::stitchEditModeGatingTracksSelectionAndDirtyState() {
     QVERIFY(!editAct->isChecked());   // sorti proprement, sans action utilisateur
     QVERIFY(!editAct->isEnabled());   // reste désactivé tant que Dirty
     QVERIFY(!window.stitchEditTarget_.has_value());
+}
+
+void MainWindowTest::satinGuideModeMovesEndpointOnRailAndUndoRestoresIt() {
+    MainWindow window;
+    const Fixture fx = buildSatinGuideFixture();
+    window.applyLoadedProject(fx.project);
+    window.resize(900, 700);
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+
+    auto* action = window.findChild<QAction*>(QStringLiteral("action_satinGuideMode"));
+    QVERIFY(action != nullptr);
+    QVERIFY(!action->isEnabled());
+    window.selectedEmbroidery_ = fx.embroideryId;
+    window.updateActions();
+    QVERIFY(action->isEnabled());
+    action->setChecked(true);
+    QVERIFY(action->isChecked());
+    QCOMPARE(window.satinGuideTarget_->value, fx.embroideryId.value);
+
+    QList<NodeHandleItem*> handles;
+    for (QGraphicsItem* item : window.baseItems_) {
+        if (auto* handle = dynamic_cast<NodeHandleItem*>(item)) {
+            handles.push_back(handle);
+        }
+    }
+    QCOMPARE(handles.size(), 6);  // deux extrémités pour chacun des trois guides
+    // Cadre de vue déterministe : la minuscule image factice ferait sinon
+    // arrondir 1 mm à 0 px selon la géométrie de fenêtre restaurée.
+    window.view_->resetTransform();
+    window.view_->scale(40.0, 40.0);
+    window.view_->centerOn(QPointF(5.0, -2.0));
+    auto it = std::find_if(handles.begin(), handles.end(), [](const NodeHandleItem* handle) {
+        return std::abs(handle->scenePos().x() - 5.0) < 0.01 &&
+               std::abs(handle->scenePos().y()) < 0.01;
+    });
+    QVERIFY(it != handles.end());
+    auto* first = *it;  // extrémité A du guide central, loin des bords de vue
+    const QPoint start = window.view_->mapFromScene(first->scenePos());
+    const int availableRight = window.view_->viewport()->width() - 1 - start.x();
+    const int availableLeft = start.x();
+    const int direction = availableRight >= availableLeft ? 1 : -1;
+    const int movement = std::min(40, std::max(availableRight, availableLeft));
+    const QPoint end = start + QPoint(movement * direction, 0);
+    const QPoint middle = (start + end) / 2;
+    QVERIFY(window.view_->viewport()->rect().contains(start));
+    QVERIFY(window.view_->viewport()->rect().contains(end));
+    QVERIFY2((end - start).manhattanLength() >= QApplication::startDragDistance(),
+             qPrintable(QStringLiteral("déplacement écran insuffisant: %1 px")
+                            .arg((end - start).manhattanLength())));
+    QCOMPARE(dynamic_cast<NodeHandleItem*>(window.view_->itemAt(start)), first);
+    QTest::mousePress(window.view_->viewport(), Qt::LeftButton, Qt::NoModifier, start);
+    QTest::mouseMove(window.view_->viewport(), middle);
+    QTest::mouseMove(window.view_->viewport(), end);
+    QTest::mouseRelease(window.view_->viewport(), Qt::LeftButton, Qt::NoModifier, end);
+
+    QTRY_VERIFY_WITH_TIMEOUT(window.undoStack_.canUndo(), 1000);
+    const auto& moved = std::get<openstitch::document::SatinParams>(
+        window.project_.findEmbroidery(fx.embroideryId)->params);
+    QVERIFY(moved.rungs[1].a.x.value != 5'000);
+    QCOMPARE(moved.rungs[1].a.y.value, 0);
+    QCOMPARE(QString::fromStdString(window.undoStack_.undoName()),
+             QStringLiteral("Déplacer un guide satin"));
+
+    window.undo();
+    const auto& restored = std::get<openstitch::document::SatinParams>(
+        window.project_.findEmbroidery(fx.embroideryId)->params);
+    QCOMPARE(restored.rungs[1].a.x.value, 5'000);
+    QCOMPARE(restored.rungs[1].a.y.value, 0);
+    action->setChecked(false);
+    QVERIFY(!window.satinGuideTarget_.has_value());
+    QCoreApplication::processEvents();
 }
 
 void MainWindowTest::dragFirstStitchHandle(MainWindow& window, ObjectId embroideryId, QPoint delta) {

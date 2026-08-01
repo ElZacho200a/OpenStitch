@@ -4,6 +4,7 @@ add_executable(test_stitch
     test_generate.cpp
     test_tatami.cpp
     test_satin.cpp
+    test_satin_guides.cpp
     test_satin_pairing_metrics.cpp
     test_routing.cpp
     test_overrides.cpp
