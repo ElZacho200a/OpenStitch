@@ -113,6 +113,159 @@ double jitter01(std::uint64_t x) {
 PointD lerpP(PointD a, PointD b, double t) { return {a.x + (b.x - a.x) * t, a.y + (b.y - a.y) * t}; }
 PointD midP(PointD a, PointD b) { return {(a.x + b.x) / 2.0, (a.y + b.y) / 2.0}; }
 
+// --- Correspondance locale rail A <-> rail B (appariement, cf. audit satin) ---
+//
+// Défaut corrigé ici : l'ancien code appariait les deux rails par la MÊME
+// fraction d'abscisse curviligne appliquée indépendamment à chacun (ou, avec
+// barreaux, la même fraction `u` sur tout un intervalle entre deux barreaux).
+// Dès que les deux rails ont des longueurs/courbures différentes dans un
+// virage, cette hypothèse de proportionnalité est fausse : les fils cessent
+// d'être localement perpendiculaires au ruban (éventails, quasi-croisements,
+// densité visuelle irrégulière). Remplacé par une correspondance "ladder"
+// (triangulation de bande par diagonale la plus courte, technique classique
+// indépendante de tout logiciel de broderie) : monotone par construction (les
+// indices n'avancent jamais en arrière -> jamais d'inversion/croisement
+// structurel), stable aux différences d'échantillonnage des deux rails,
+// O(nA + nB) par intervalle (linéaire).
+
+double cross2(PointD o, PointD a, PointD b) {
+    return (a.x - o.x) * (b.y - o.y) - (a.y - o.y) * (b.x - o.x);
+}
+
+// Intersection PROPRE de deux segments (croisement transversal strict).
+bool segments_cross_strict(PointD a, PointD b, PointD c, PointD d) {
+    const double o1 = cross2(a, b, c);
+    const double o2 = cross2(a, b, d);
+    const double o3 = cross2(c, d, a);
+    const double o4 = cross2(c, d, b);
+    return (o1 > 0) != (o2 > 0) && (o3 > 0) != (o4 > 0) && o1 != 0 && o2 != 0 && o3 != 0 && o4 != 0;
+}
+
+// Un point de correspondance locale rail A <-> rail B (une "diagonale").
+struct CorrespondencePoint {
+    double sa{0.0};
+    double sb{0.0};
+    PointD pa{};
+    PointD pb{};
+};
+
+// Grille d'abscisses entre s0 et s1, résolution bornée par `maxStep` : donne à
+// l'algorithme de correspondance assez de détail même si les sommets d'origine
+// du rail sont épars (rail dessiné à la main, contour simplifié).
+std::vector<double> fine_s_grid(double s0, double s1, double maxStep) {
+    const double len = s1 - s0;
+    if (len <= 1e-9) {
+        return {s0, s1};
+    }
+    const int n = std::max(1, static_cast<int>(std::ceil(len / std::max(1e-6, maxStep))));
+    std::vector<double> ss;
+    ss.reserve(static_cast<std::size_t>(n) + 1);
+    for (int i = 0; i <= n; ++i) {
+        ss.push_back(s0 + len * static_cast<double>(i) / n);
+    }
+    return ss;
+}
+
+// Correspondance locale monotone entre deux rails sur un intervalle borné par
+// deux ancres EXACTES (barreaux ou extrémités de colonne). À chaque pas,
+// avance sur le rail dont le prochain sommet forme la diagonale la plus
+// courte avec le point courant de l'autre rail (ties : alterne, pour ne pas
+// épuiser un rail avant l'autre sur un cas symétrique). Garde-fou : si
+// l'avance choisie croiserait la diagonale précédente, tente l'autre côté.
+std::vector<CorrespondencePoint> ladder_correspondence(const std::vector<PointD>& a,
+                                                       const std::vector<double>& cumA, double sa0,
+                                                       PointD pa0, double sa1, PointD pa1,
+                                                       const std::vector<PointD>& b,
+                                                       const std::vector<double>& cumB, double sb0,
+                                                       PointD pb0, double sb1, PointD pb1,
+                                                       double maxStep) {
+    const auto ssa = fine_s_grid(sa0, sa1, maxStep);
+    const auto ssb = fine_s_grid(sb0, sb1, maxStep);
+    std::vector<PointD> chainA(ssa.size());
+    std::vector<PointD> chainB(ssb.size());
+    for (std::size_t i = 0; i < ssa.size(); ++i) {
+        chainA[i] = (i == 0) ? pa0 : (i + 1 == ssa.size() ? pa1 : point_at(a, cumA, ssa[i]));
+    }
+    for (std::size_t i = 0; i < ssb.size(); ++i) {
+        chainB[i] = (i == 0) ? pb0 : (i + 1 == ssb.size() ? pb1 : point_at(b, cumB, ssb[i]));
+    }
+    const std::size_t lastA = chainA.size() - 1;
+    const std::size_t lastB = chainB.size() - 1;
+    std::vector<CorrespondencePoint> out;
+    out.reserve(lastA + lastB + 1);
+    out.push_back({ssa[0], ssb[0], chainA[0], chainB[0]});
+    std::size_t ia = 0;
+    std::size_t ib = 0;
+    bool lastWasA = true;
+    while (ia < lastA || ib < lastB) {
+        const bool canA = ia < lastA;
+        const bool canB = ib < lastB;
+        bool advanceA;
+        if (canA && canB) {
+            const double diagA = dist(chainA[ia + 1], chainB[ib]);
+            const double diagB = dist(chainA[ia], chainB[ib + 1]);
+            const double eps = 1e-6 * std::max({1.0, diagA, diagB});
+            advanceA = std::abs(diagA - diagB) < eps ? !lastWasA : diagA < diagB;
+            const CorrespondencePoint& prev = out.back();
+            if (advanceA && segments_cross_strict(prev.pa, prev.pb, chainA[ia + 1], chainB[ib]) &&
+                !segments_cross_strict(prev.pa, prev.pb, chainA[ia], chainB[ib + 1])) {
+                advanceA = false;
+            } else if (!advanceA && segments_cross_strict(prev.pa, prev.pb, chainA[ia], chainB[ib + 1]) &&
+                      !segments_cross_strict(prev.pa, prev.pb, chainA[ia + 1], chainB[ib])) {
+                advanceA = true;
+            }
+        } else {
+            advanceA = canA;
+        }
+        if (advanceA) {
+            ++ia;
+        } else {
+            ++ib;
+        }
+        lastWasA = advanceA;
+        out.push_back({ssa[ia], ssb[ib], chainA[ia], chainB[ib]});
+    }
+    return out;
+}
+
+// Ré-échantillonne une correspondance locale par pas fixe le long de sa ligne
+// médiane (~perpendiculaire aux fils) : (sa, sb) sont interpolés dans le PAS
+// LOCAL du ladder qui encadre la cible, jamais sur tout l'intervalle -> erreur
+// bornée par la résolution du ladder (maxStep), pas par la longueur totale de
+// l'intervalle. `ladder` doit contenir au moins un point.
+std::vector<CorrespondencePoint> resample_by_medial_spacing(const std::vector<CorrespondencePoint>& ladder,
+                                                             const std::vector<PointD>& a,
+                                                             const std::vector<double>& cumA,
+                                                             const std::vector<PointD>& b,
+                                                             const std::vector<double>& cumB,
+                                                             double spacing) {
+    std::vector<double> cumM(ladder.size(), 0.0);
+    for (std::size_t i = 1; i < ladder.size(); ++i) {
+        cumM[i] =
+            cumM[i - 1] + dist(midP(ladder[i - 1].pa, ladder[i - 1].pb), midP(ladder[i].pa, ladder[i].pb));
+    }
+    const double total = cumM.back();
+    const int n = std::max(1, static_cast<int>(std::lround(total / spacing)));
+    const double step = total / n;
+    std::vector<CorrespondencePoint> out;
+    out.reserve(static_cast<std::size_t>(n) + 1);
+    out.push_back(ladder.front());
+    for (int jj = 1; jj < n; ++jj) {
+        const double target = jj * step;
+        const auto it = std::lower_bound(cumM.begin(), cumM.end(), target);
+        const std::size_t idx =
+            std::min<std::size_t>(static_cast<std::size_t>(it - cumM.begin()), ladder.size() - 1);
+        const std::size_t lo = idx == 0 ? 0 : idx - 1;
+        const double segLen = cumM[idx] - cumM[lo];
+        const double f = segLen > 1e-9 ? (target - cumM[lo]) / segLen : 0.0;
+        const double sa = ladder[lo].sa + (ladder[idx].sa - ladder[lo].sa) * f;
+        const double sb = ladder[lo].sb + (ladder[idx].sb - ladder[lo].sb) * f;
+        out.push_back({sa, sb, point_at(a, cumA, sa), point_at(b, cumB, sb)});
+    }
+    out.push_back(ladder.back());
+    return out;
+}
+
 // Fil satin : deux extrémités + drapeau « barreau » (ne pas retirer/altérer).
 struct Thread {
     PointD a;
@@ -180,44 +333,22 @@ SatinResult fill_satin_columns(const geometry::Path& rail_a, const geometry::Pat
         return fill_satin(rail_a, rail_b, config);
     }
 
-    // Fils : abscisses (sa, sb) + point exact aux barreaux. Espacement mesuré sur
-    // la ligne médiane (≈ perpendiculaire aux fils).
+    // Fils : correspondance locale monotone (ladder, voir plus haut) entre
+    // barreaux consécutifs, ré-échantillonnée par pas fixe sur la ligne
+    // médiane (≈ perpendiculaire aux fils). Remplace l'ancienne interpolation
+    // par fraction d'abscisse UNIQUE sur tout l'intervalle (source
+    // d'éventails/quasi-croisements en virage).
     std::vector<Thread> threads;
-    const auto midOf = [&](double sa, double sb) {
-        return midP(point_at(a, cumA, sa), point_at(b, cumB, sb));
-    };
+    const double maxStep = std::clamp(density / 4.0, 100.0, 500.0);
     threads.push_back({anchors.front().pa, anchors.front().pb, true, false});
     for (std::size_t k = 0; k + 1 < anchors.size(); ++k) {
         const Anchor& a0 = anchors[k];
         const Anchor& a1 = anchors[k + 1];
-        constexpr int kSub = 48;
-        std::vector<double> us(kSub + 1);
-        std::vector<double> cumM(kSub + 1, 0.0);
-        PointD prevM = midOf(a0.sa, a0.sb);
-        for (int j = 0; j <= kSub; ++j) {
-            const double u = static_cast<double>(j) / kSub;
-            us[static_cast<std::size_t>(j)] = u;
-            const PointD m = midOf(a0.sa + (a1.sa - a0.sa) * u, a0.sb + (a1.sb - a0.sb) * u);
-            if (j > 0) {
-                cumM[static_cast<std::size_t>(j)] =
-                    cumM[static_cast<std::size_t>(j - 1)] + dist(prevM, m);
-            }
-            prevM = m;
-        }
-        const double total = cumM.back();
-        const int n = std::max(1, static_cast<int>(std::lround(total / density)));
-        const double step = total / n;
-        for (int jj = 1; jj < n; ++jj) {
-            const double target = jj * step;
-            const auto it = std::lower_bound(cumM.begin(), cumM.end(), target);
-            const std::size_t idx =
-                std::min<std::size_t>(static_cast<std::size_t>(it - cumM.begin()), kSub);
-            const std::size_t lo = idx == 0 ? 0 : idx - 1;
-            const double segLen = cumM[idx] - cumM[lo];
-            const double f = segLen > 1e-9 ? (target - cumM[lo]) / segLen : 0.0;
-            const double u = us[lo] + (us[idx] - us[lo]) * f;
-            threads.push_back({point_at(a, cumA, a0.sa + (a1.sa - a0.sa) * u),
-                               point_at(b, cumB, a0.sb + (a1.sb - a0.sb) * u), false, false});
+        const auto ladder = ladder_correspondence(a, cumA, a0.sa, a0.pa, a1.sa, a1.pa, b, cumB, a0.sb,
+                                                   a0.pb, a1.sb, a1.pb, maxStep);
+        const auto resampled = resample_by_medial_spacing(ladder, a, cumA, b, cumB, density);
+        for (std::size_t j = 1; j + 1 < resampled.size(); ++j) {
+            threads.push_back({resampled[j].pa, resampled[j].pb, false, false});
         }
         threads.push_back({a1.pa, a1.pb, true, false});  // barreau traversé exactement
     }
@@ -422,32 +553,35 @@ SatinResult fill_satin(const geometry::Path& rail_a, const geometry::Path& rail_
     const auto cumB = cumulative(b);
     const double lenA = cumA.back();
     const double lenB = cumB.back();
-    const double columnLen = std::max(lenA, lenB);
     const double density = static_cast<double>(std::max<std::int32_t>(1, config.density.value));
     const double comp = static_cast<double>(config.pull_compensation.value);
 
-    const int steps = std::max(1, static_cast<int>(std::ceil(columnLen / density)));
+    // Correspondance locale monotone (ladder, cf. fill_satin_columns) sur tout
+    // le rail : remplace l'ancien appariement par fraction d'abscisse
+    // identique sur les deux rails (source d'éventails/croisements dès que les
+    // rails divergent en longueur ou en courbure, p. ex. virage/coude).
+    const double maxStep = std::clamp(density / 4.0, 100.0, 500.0);
+    const auto ladder = ladder_correspondence(a, cumA, 0.0, a.front(), lenA, a.back(), b, cumB, 0.0,
+                                              b.front(), lenB, b.back(), maxStep);
 
     // Sous-couche : point droit sur l'axe central (aller simple, pas grossier).
     if (config.center_underlay) {
-        SatinPass center;
         const double uspace =
             static_cast<double>(std::max<std::int32_t>(1, config.underlay_spacing.value));
-        const int usteps = std::max(1, static_cast<int>(std::ceil(columnLen / uspace)));
-        for (int i = 0; i <= usteps; ++i) {
-            const double f = static_cast<double>(i) / static_cast<double>(usteps);
-            const PointD pa = point_at(a, cumA, f * lenA);
-            const PointD pb = point_at(b, cumB, f * lenB);
-            center.points.push_back(toUm({(pa.x + pb.x) / 2.0, (pa.y + pb.y) / 2.0}));
+        const auto resampled = resample_by_medial_spacing(ladder, a, cumA, b, cumB, uspace);
+        SatinPass center;
+        center.points.reserve(resampled.size());
+        for (const auto& cp : resampled) {
+            center.points.push_back(toUm(midP(cp.pa, cp.pb)));
         }
         result.underlays.push_back(std::move(center));
     }
 
-    // Satin : zigzag A0, B0, A1, B1, … en avançant par fraction d'abscisse.
-    for (int i = 0; i <= steps; ++i) {
-        const double f = static_cast<double>(i) / static_cast<double>(steps);
-        PointD pa = point_at(a, cumA, f * lenA);
-        PointD pb = point_at(b, cumB, f * lenB);
+    // Satin : zigzag A0, B0, B1, A1, A2, B2, … en avançant sur la correspondance.
+    const auto resampled = resample_by_medial_spacing(ladder, a, cumA, b, cumB, density);
+    for (std::size_t i = 0; i < resampled.size(); ++i) {
+        PointD pa = resampled[i].pa;
+        PointD pb = resampled[i].pb;
         result.max_width_um = std::max(result.max_width_um, dist(pa, pb));
         std::tie(pa, pb) = compensate(pa, pb, comp);
         // Alternance du bord de départ pour former le zigzag.
