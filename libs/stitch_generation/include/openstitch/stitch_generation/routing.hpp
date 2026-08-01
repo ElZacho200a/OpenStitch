@@ -2,6 +2,8 @@
 #pragma once
 
 #include <cstddef>
+#include <cstdint>
+#include <optional>
 #include <vector>
 
 #include "openstitch/core/ids.hpp"
@@ -11,11 +13,14 @@ namespace openstitch::stitch_generation {
 
 // Une colonne satin réduite à ses deux extrémités (centres des barreaux
 // d'about), pour le routage (§13). L'ordre et l'orientation de couture sont
-// choisis pour minimiser les déplacements ; la géométrie reste inchangée.
+// choisis d'abord pour conserver le maximum de jonctions explicites valides,
+// puis pour minimiser les déplacements ; la géométrie reste inchangée.
 struct RouteColumn {
     ObjectId id{};
     Vec2um start{};  // extrémité « début » naturelle
     Vec2um end{};    // extrémité « fin » naturelle
+    std::optional<std::uint32_t> start_junction;
+    std::optional<std::uint32_t> end_junction;
 };
 
 // Nature d'une liaison entre deux colonnes consécutives.
@@ -31,6 +36,9 @@ struct RouteStep {
     std::size_t column_index{0};  // index dans le vecteur d'entrée
     bool reversed{false};         // true = coudre end -> start
     ConnectorKind connector{ConnectorKind::Start};
+    // Jonction logique commune à la sortie précédente et à cette entrée. Elle
+    // n'est retenue que si l'écart géométrique reste sous `underpath_max`.
+    std::optional<std::uint32_t> junction;
 };
 
 struct RoutePlan {
@@ -38,6 +46,7 @@ struct RoutePlan {
     double travel_um{0.0};    // somme des déplacements entre colonnes
     std::size_t jumps{0};     // liaisons de type Jump (coupes)
     std::size_t underpaths{0};  // liaisons cachées
+    std::size_t junction_links{0};  // liaisons validées par une jonction commune
 };
 
 struct RoutingConfig {
@@ -47,8 +56,9 @@ struct RoutingConfig {
     bool two_opt{true};  // amélioration 2-opt de l'ordre après le glouton
 };
 
-// Ordonne et oriente les colonnes pour minimiser le déplacement total à partir
-// de `origin` (position courante de l'aiguille). Glouton plus proche voisin
+// Ordonne et oriente les colonnes pour conserver les jonctions explicites puis
+// minimiser le déplacement total à partir de `origin`. Une jonction éloignée
+// de plus de `underpath_max` est ignorée comme incohérente. Glouton plus proche voisin
 // (entrée par l'extrémité la plus proche), puis 2-opt ; l'orientation optimale
 // d'un ordre donné est résolue exactement par programmation dynamique sur les
 // deux extrémités. Déterministe. Vecteur vide -> plan vide.

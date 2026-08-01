@@ -176,7 +176,12 @@ void generate_satin_group(stitch::StitchSequence& sequence,
     for (const auto* obj : group) {
         const auto& sp = std::get<document::SatinParams>(obj->params);
         const auto [s, e] = column_endpoints(sp);
-        cols.push_back(RouteColumn{obj->id, s, e});
+        RouteColumn route{obj->id, s, e};
+        if (sp.topology) {
+            route.start_junction = sp.topology->start_junction;
+            route.end_junction = sp.topology->end_junction;
+        }
+        cols.push_back(route);
     }
     const Vec2um origin =
         sequence.commands.empty() ? cols.front().start : sequence.commands.back().pos;

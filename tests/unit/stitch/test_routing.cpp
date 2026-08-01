@@ -17,6 +17,12 @@ RouteColumn col(ObjectId id, Vec2um s, Vec2um e) {
     return RouteColumn{id, s, e};
 }
 
+RouteColumn network_col(ObjectId id, Vec2um s, Vec2um e,
+                        std::optional<std::uint32_t> startJunction,
+                        std::optional<std::uint32_t> endJunction) {
+    return RouteColumn{id, s, e, startJunction, endJunction};
+}
+
 // Colonne satin droite horizontale [x0..x1], hauteur 5 mm, deux barreaux.
 document::SatinParams straight_column(std::int32_t x0, std::int32_t x1) {
     document::SatinParams sp;
@@ -105,6 +111,32 @@ TEST_CASE("routage : liaison longue -> saut (coupe), pas de trajet cache") {
     CHECK(plan.underpaths == 0);
 }
 
+TEST_CASE("routage : une jonction commune admissible prime sur une proximite fortuite") {
+    // Après A, C est plus proche géométriquement mais seule B partage la
+    // jonction 7. La topologie doit donc conserver A -> B.
+    std::vector<RouteColumn> cols = {
+        network_col(ObjectId{1}, P(0, 0), P(10'000, 0), std::nullopt, 7),
+        network_col(ObjectId{2}, P(12'000, 0), P(30'000, 0), 7, std::nullopt),
+        network_col(ObjectId{3}, P(10'500, 0), P(40'000, 0), 9, std::nullopt)};
+    const auto plan = route_columns(cols, P(0, 0), RoutingConfig{});
+    REQUIRE(plan.steps.size() == 3);
+    CHECK(plan.steps[0].column_index == 0);
+    CHECK(plan.steps[1].column_index == 1);
+    CHECK(plan.steps[1].junction == std::optional<std::uint32_t>{7});
+    CHECK(plan.junction_links == 1);
+}
+
+TEST_CASE("routage : une jonction incoherente et trop distante ne force pas un underpath") {
+    std::vector<RouteColumn> cols = {
+        network_col(ObjectId{1}, P(0, 0), P(10'000, 0), std::nullopt, 7),
+        network_col(ObjectId{2}, P(100'000, 0), P(120'000, 0), 7, std::nullopt)};
+    const auto plan = route_columns(cols, P(0, 0), RoutingConfig{});
+    REQUIRE(plan.steps.size() == 2);
+    CHECK_FALSE(plan.steps[1].junction.has_value());
+    CHECK(plan.steps[1].connector == ConnectorKind::Jump);
+    CHECK(plan.junction_links == 0);
+}
+
 TEST_CASE("generation : un groupe satin adjacent enchaine par trajets caches") {
     // Trois colonnes adjacentes (1 mm) : un seul saut initial, le reste cousu.
     auto project = group_project({straight_column(0, 20'000), straight_column(21'000, 41'000),
@@ -119,6 +151,33 @@ TEST_CASE("generation : un groupe satin adjacent enchaine par trajets caches") {
     }
     CHECK(jumps == 1);    // seule la pose initiale saute
     CHECK(travel > 0);    // liaisons cousues (passe Travel)
+}
+
+TEST_CASE("generation : la topologie SatinParams atteint le routage du groupe") {
+    auto a = straight_column(0, 10'000);
+    auto b = straight_column(12'000, 30'000);
+    auto c = straight_column(10'500, 40'000);  // plus proche de A mais sans jonction commune
+    a.topology = document::SatinSectionTopology{0, 3, std::nullopt, 7};
+    b.topology = document::SatinSectionTopology{1, 3, 7, std::nullopt};
+    c.topology = document::SatinSectionTopology{2, 3, 9, std::nullopt};
+    auto project = group_project({a, b, c});
+
+    const auto seq = generate_sequence(project);
+    REQUIRE(seq.has_value());
+    std::vector<ObjectId> topStitchOrder;
+    for (const auto& command : seq->commands) {
+        if (command.type != stitch::CommandType::Stitch ||
+            command.pass != stitch::StitchPass::TopStitch) {
+            continue;
+        }
+        if (topStitchOrder.empty() || topStitchOrder.back() != command.source) {
+            topStitchOrder.push_back(command.source);
+        }
+    }
+    REQUIRE(topStitchOrder.size() == 3);
+    CHECK(topStitchOrder[0] == project.embroidery_objects[0].id);
+    CHECK(topStitchOrder[1] == project.embroidery_objects[1].id);
+    CHECK(topStitchOrder[2] == project.embroidery_objects[2].id);
 }
 
 TEST_CASE("generation : un groupe eloigne conserve des sauts") {
