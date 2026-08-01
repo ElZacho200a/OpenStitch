@@ -347,8 +347,13 @@ barreaux inversés ou désordonnés.
 
 Limite actuelle : les guides s'éditent section par section sur les
 `SatinParams` ouverts issus du réseau topologique. Les sections et leurs
-jonctions sont maintenant identifiées explicitement, mais l'édition coordonnée
-d'un guide à travers une jonction multi-rail reste à implémenter.
+jonctions sont maintenant identifiées explicitement. Le cœur sait retrouver,
+dans un ordre déterministe, toutes les extrémités d'une jonction appartenant au
+même objet vectoriel source et dispose d'une commande multi-objet atomique
+(tout ou rien, undo/redo unique). Il refuse un réseau incomplet, des indices de
+section dupliqués ou une extrémité annoncée mais introuvable. Le calcul
+géométrique des nouvelles positions et son interaction dans l'UI restent à
+implémenter avant de déverrouiller ces guides structurels.
 
 ## Finitions : points courts, split, terminaisons (Lot 3)
 

@@ -26,9 +26,12 @@ et des fonctionnalités manquantes identifiables. **Aucune date n'est annoncée.
   géométriquement incohérente. **Cinquième incrément livré** : les guides
   terminaux porteurs d'une jonction sont détectés par stations projetées et
   verrouillés dans le cœur et l'UI afin qu'une édition locale ne raccourcisse pas
-  la section. Restent la propagation coordonnée des guides et les retours
-  textiles suivant le réseau plutôt qu'un segment direct. Ne jamais accepter
-  silencieusement une gerbe ou un croisement comme satin valide.
+  la section. **Sixième incrément livré** : découverte déterministe et stricte
+  de toutes les extrémités partageant une jonction, plus commande multi-objet
+  tout-ou-rien avec undo/redo unique. Restent le calcul géométrique et l'UI de
+  propagation coordonnée, puis les retours textiles suivant le réseau plutôt
+  qu'un segment direct. Ne jamais accepter silencieusement une gerbe ou un
+  croisement comme satin valide.
 
 - Refonte avancée du **satin** (§12 de l'étude) : correspondance par sections,
   barreaux de direction, densité perpendiculaire au fil, gestion des points

@@ -38,7 +38,7 @@ fonctionnalité, vérifié dans le code.
 
 ## Dette technique connue
 
-- Le compte CTest courant est **336** en Debug et Release ; éviter de figer ce
+- Le compte CTest courant est **339** en Debug et Release ; éviter de figer ce
   nombre dans les pages d'introduction sans le mettre à jour avec la CI.
 - Le satin dispose désormais d'un moteur géométrique par **squelette**
   (`auto_satin::build_satin_columns`, Lot 1) et d'une **génération par barreaux**
@@ -51,10 +51,11 @@ fonctionnalité, vérifié dans le code.
   moteur topologique est désormais celui essayé par défaut dans `autodigitize`.
 - Les sections d'un réseau satin portent maintenant des indices et identifiants
   de jonction explicites, déterministes et persistés. Le routage privilégie ces
-  jonctions quand l'écart reste compatible avec un trajet caché ; les guides ne
-  se coordonnent toutefois pas encore entre sections. Les guides terminaux de
-  jonction sont verrouillés pour éviter de raccourcir une section ; l'orientation
-  se règle provisoirement par des guides internes. De plus, un retour textile vers
+  jonctions quand l'écart reste compatible avec un trajet caché. La collecte
+  déterministe des extrémités et la transaction multi-section atomique sont
+  présentes, mais le calcul géométrique et l'interaction UI coordonnée ne le sont
+  pas encore. Les guides terminaux restent donc verrouillés ; l'orientation se
+  règle provisoirement par des guides internes. De plus, un retour textile vers
   une jonction reste rectiligne au lieu de retracer le centre d'une branche.
 - **Correctif Lot 7** : `connector_invalid` ignorait les contacts sommet/extrémité
   et ne sondait l'intérieur d'un connecteur que si l'écart en x dépassait
