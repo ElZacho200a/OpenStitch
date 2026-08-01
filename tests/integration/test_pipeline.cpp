@@ -2,10 +2,12 @@
 // Test d'intégration : la chaîne complète, d'une image à un DST relu.
 #include <catch2/catch_test_macros.hpp>
 
+#include <algorithm>
 #include <filesystem>
 
 #include "openstitch/autodigitize/autodigitize.hpp"
 #include "openstitch/formats/dst.hpp"
+#include "openstitch/image/image.hpp"
 #include "openstitch/project_io/project_io.hpp"
 #include "openstitch/segmentation/segmentation.hpp"
 #include "openstitch/stitch_generation/generate.hpp"
@@ -38,6 +40,26 @@ image::Image make_logo() {
         }
     }
     return img;
+}
+
+// Réduction déterministe réservée au test : l'original complet reste versionné
+// comme oracle, mais sa segmentation (>1,5 Mpx) rendrait la suite courante trop
+// lente. Un pixel sur huit dans chaque axe conserve spirale, trous et branches
+// tout en divisant le travail d'environ soixante-quatre fois.
+image::Image subsample(const image::Image& source, int factor) {
+    image::Image out;
+    out.width = source.width / factor;
+    out.height = source.height / factor;
+    out.rgba.resize(static_cast<std::size_t>(out.width) * out.height * 4);
+    for (int y = 0; y < out.height; ++y) {
+        for (int x = 0; x < out.width; ++x) {
+            const auto src = (static_cast<std::size_t>(y * factor) * source.width + x * factor) * 4;
+            const auto dst = (static_cast<std::size_t>(y) * out.width + x) * 4;
+            std::copy_n(source.rgba.begin() + static_cast<std::ptrdiff_t>(src), 4,
+                        out.rgba.begin() + static_cast<std::ptrdiff_t>(dst));
+        }
+    }
+    return out;
 }
 
 }  // namespace
@@ -114,4 +136,41 @@ TEST_CASE("chaine complete : projet sauvegarde, recharge, regenere a l'identique
     const auto afterStats = stitch::compute_stats(*after);
     CHECK(afterStats.stitches == before.stitches);
     CHECK(afterStats.color_changes == before.color_changes);
+}
+
+TEST_CASE("fixture tentabrode : pipeline complexe deterministe et sans geometrie invalide") {
+    const fs::path fixture = fs::path{OPENSTITCH_TEST_SOURCE_DIR} / "tests" / "fixtures" /
+                             "tentabrode.png";
+    const auto loaded = image::load_image(fixture);
+    REQUIRE(loaded.has_value());
+    REQUIRE(loaded->width > 1000);
+    REQUIRE(loaded->height > 1300);
+
+    document::Project project;
+    project.original = subsample(*loaded, 8);
+    project.mm_per_px = Millimeters{0.8};
+    auto segmented = segmentation::segment(project.original, {.max_colors = 8, .min_region_px = 24});
+    REQUIRE(segmented.has_value());
+    REQUIRE(segmented->region_count() > 10);
+    project.segmentation = std::move(*segmented);
+
+    const auto options = autodigitize::AutoOptions{.mm_per_px = project.mm_per_px};
+    auto digitized = autodigitize::auto_digitize(*project.segmentation, project.object_ids, options);
+    REQUIRE(digitized.has_value());
+    REQUIRE_FALSE(digitized->embroideries.empty());
+    for (auto& vector : digitized->vectors) project.vector_objects.push_back(std::move(vector));
+    for (auto& embroidery : digitized->embroideries)
+        project.embroidery_objects.push_back(std::move(embroidery));
+
+    const auto first = stitch_generation::generate_sequence(project);
+    const auto second = stitch_generation::generate_sequence(project);
+    REQUIRE(first.has_value());
+    REQUIRE(second.has_value());
+    REQUIRE_FALSE(first->commands.empty());
+    CHECK(first->commands == second->commands);
+
+    const auto stats = stitch::compute_stats(*first);
+    CHECK(stats.stitches > 1000);
+    CHECK(stats.bounds.min.x.value <= stats.bounds.max.x.value);
+    CHECK(stats.bounds.min.y.value <= stats.bounds.max.y.value);
 }
