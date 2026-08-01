@@ -604,6 +604,13 @@ void MainWindow::removeSelectedSatinGuide() {
     if (satin == nullptr || satin->rungs.size() <= 2 || *selectedSatinGuide_ >= satin->rungs.size()) {
         return;
     }
+    if (const auto junction = stitch_generation::satin_guide_junction(
+            *satin, *selectedSatinGuide_)) {
+        statusBar()->showMessage(
+            tr("Guide de jonction #%1 verrouillé : ajoutez un guide interne pour orienter la section.")
+                .arg(*junction));
+        return;
+    }
     undoStack_.execute(std::make_unique<commands::RemoveSatinGuideCommand>(
                            obj->id, *selectedSatinGuide_),
                        project_);
@@ -1011,8 +1018,10 @@ void MainWindow::renderBase(const image::Image& img) {
             if (const auto* satin = std::get_if<document::SatinParams>(&obj->params)) {
                 const ObjectId targetId = obj->id;
                 const std::uint64_t generation = documentGeneration_;
+                const auto guideJunctions = stitch_generation::satin_guide_junctions(*satin);
                 for (std::size_t i = 0; i < satin->rungs.size(); ++i) {
                     const auto rung = satin->rungs[i];
+                    const auto junction = guideJunctions[i];
                     const QPointF a(to_millimeters(rung.a.x).value,
                                     -to_millimeters(rung.a.y).value);
                     const QPointF b(to_millimeters(rung.b.x).value,
@@ -1037,7 +1046,10 @@ void MainWindow::renderBase(const image::Image& img) {
                     });
                     line->setPen(guidePen);
                     line->setZValue(99);
-                    line->setToolTip(tr("Guide satin #%1 — cliquer pour sélectionner").arg(i + 1));
+                    line->setToolTip(
+                        junction ? tr("Guide satin #%1 — jonction structurelle verrouillée")
+                                       .arg(i + 1)
+                                 : tr("Guide satin #%1 — cliquer pour sélectionner").arg(i + 1));
                     scene_->addItem(line);
                     baseItems_.append(line);
 
@@ -1092,8 +1104,10 @@ void MainWindow::renderBase(const image::Image& img) {
                         scene_->addItem(handle);
                         baseItems_.append(handle);
                     };
-                    addEndpoint(a, stitch_generation::SatinGuideSide::RailA);
-                    addEndpoint(b, stitch_generation::SatinGuideSide::RailB);
+                    if (!junction) {
+                        addEndpoint(a, stitch_generation::SatinGuideSide::RailA);
+                        addEndpoint(b, stitch_generation::SatinGuideSide::RailB);
+                    }
                 }
             }
         }
@@ -3336,8 +3350,12 @@ void MainWindow::updateActions() {
     }
     const bool satinGuideEditing = satinGuideModeAct_->isChecked() && satinGuideContext;
     addSatinGuideAct_->setEnabled(satinGuideEditing);
+    const bool structuralJunctionGuide =
+        satinGuideEditing && selectedSatinGuide_ &&
+        stitch_generation::satin_guide_junction(*selectedSatin, *selectedSatinGuide_).has_value();
     removeSatinGuideAct_->setEnabled(satinGuideEditing && selectedSatinGuide_.has_value() &&
-                                     selectedSatin->rungs.size() > 2);
+                                     selectedSatin->rungs.size() > 2 &&
+                                     !structuralJunctionGuide);
 
     undoAct_->setEnabled(undoStack_.canUndo());
     redoAct_->setEnabled(undoStack_.canRedo());

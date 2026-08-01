@@ -61,10 +61,64 @@ bool opposite_orientation(const std::vector<Vec2um>& a, const std::vector<Vec2um
 
 }  // namespace
 
+std::vector<std::optional<std::uint32_t>> satin_guide_junctions(
+    const document::SatinParams& satin, Micrometers flatten_tolerance) {
+    std::vector<std::optional<std::uint32_t>> junctions(satin.rungs.size());
+    if (!satin.topology || satin.rungs.size() < 2) {
+        return junctions;
+    }
+    auto railA = geometry::flatten(satin.rail_a, flatten_tolerance).points;
+    auto railB = geometry::flatten(satin.rail_b, flatten_tolerance).points;
+    if (railA.size() < 2 || railB.size() < 2) {
+        return junctions;
+    }
+    if (opposite_orientation(railA, railB)) {
+        std::reverse(railB.begin(), railB.end());
+    }
+    const auto cumulativeA = geometry::cumulative_lengths(railA);
+    const auto cumulativeB = geometry::cumulative_lengths(railB);
+    struct Anchor {
+        double station_sum{};
+        std::size_t original_index{};
+    };
+    std::vector<Anchor> anchors;
+    anchors.reserve(satin.rungs.size());
+    for (std::size_t i = 0; i < satin.rungs.size(); ++i) {
+        const auto pa = project(railA, cumulativeA, satin.rungs[i].a);
+        const auto pb = project(railB, cumulativeB, satin.rungs[i].b);
+        if (!pa || !pb) {
+            return junctions;
+        }
+        anchors.push_back({pa->station + pb->station, i});
+    }
+    std::stable_sort(anchors.begin(), anchors.end(), [](const Anchor& lhs, const Anchor& rhs) {
+        return lhs.station_sum < rhs.station_sum;
+    });
+    if (satin.topology->start_junction) {
+        junctions[anchors.front().original_index] = satin.topology->start_junction;
+    }
+    if (satin.topology->end_junction) {
+        junctions[anchors.back().original_index] = satin.topology->end_junction;
+    }
+    return junctions;
+}
+
+std::optional<std::uint32_t> satin_guide_junction(const document::SatinParams& satin,
+                                                  std::size_t guide_index,
+                                                  Micrometers flatten_tolerance) {
+    if (guide_index >= satin.rungs.size()) {
+        return std::nullopt;
+    }
+    return satin_guide_junctions(satin, flatten_tolerance)[guide_index];
+}
+
 std::optional<document::SatinRung> move_satin_guide_endpoint(
     const document::SatinParams& satin, std::size_t guide_index, SatinGuideSide side,
     Vec2um desired, Micrometers flatten_tolerance) {
     if (guide_index >= satin.rungs.size() || satin.rungs.size() < 2) {
+        return std::nullopt;
+    }
+    if (satin_guide_junction(satin, guide_index, flatten_tolerance)) {
         return std::nullopt;
     }
     auto railA = geometry::flatten(satin.rail_a, flatten_tolerance).points;

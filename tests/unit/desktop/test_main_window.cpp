@@ -154,7 +154,7 @@ Fixture buildRunningSquareFixture() {
     return fx;
 }
 
-Fixture buildSatinGuideFixture() {
+Fixture buildSatinGuideFixture(bool withStartJunction = false) {
     Fixture fx;
     fx.project.original.width = 2;
     fx.project.original.height = 2;
@@ -173,6 +173,10 @@ Fixture buildSatinGuideFixture() {
                     {Micrometers{5'000}, Micrometers{4'000}}},
                    {{Micrometers{10'000}, Micrometers{0}},
                     {Micrometers{10'000}, Micrometers{4'000}}}};
+    if (withStartJunction) {
+        satin.topology = openstitch::document::SatinSectionTopology{
+            0, 3, std::uint32_t{7}, std::nullopt};
+    }
     openstitch::document::EmbroideryObject emb;
     emb.id = fx.project.object_ids.next();
     emb.name = "Satin guides";
@@ -247,6 +251,7 @@ private slots:
     void stitchEditModeRefusesWhenTooManyMovablePoints();
     void satinGuideModeMovesEndpointOnRailAndUndoRestoresIt();
     void satinGuideSelectionAddsAndRemovesWithUndoRedo();
+    void satinJunctionGuideIsLockedInUi();
 
 private:
     // Active le mode d'édition (sélection directe via selectedEmbroidery_,
@@ -616,6 +621,60 @@ void MainWindowTest::satinGuideSelectionAddsAndRemovesWithUndoRedo() {
     const auto* afterAddRedo = window.project_.findEmbroidery(fx.embroideryId);
     QCOMPARE(std::get<openstitch::document::SatinParams>(afterAddRedo->params).rungs.size(),
              std::size_t{4});
+    mode->setChecked(false);
+    QCoreApplication::processEvents();
+}
+
+void MainWindowTest::satinJunctionGuideIsLockedInUi() {
+    MainWindow window;
+    const Fixture fx = buildSatinGuideFixture(true);
+    window.applyLoadedProject(fx.project);
+    window.resize(900, 700);
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+
+    auto* mode = window.findChild<QAction*>(QStringLiteral("action_satinGuideMode"));
+    auto* remove = window.findChild<QAction*>(QStringLiteral("action_removeSatinGuide"));
+    QVERIFY(mode != nullptr);
+    QVERIFY(remove != nullptr);
+    window.selectedEmbroidery_ = fx.embroideryId;
+    window.updateActions();
+    mode->setChecked(true);
+
+    int handleCount = 0;
+    SatinGuideItem* junctionGuide = nullptr;
+    for (QGraphicsItem* item : window.baseItems_) {
+        if (dynamic_cast<NodeHandleItem*>(item) != nullptr) {
+            ++handleCount;
+        }
+        auto* guide = dynamic_cast<SatinGuideItem*>(item);
+        if (guide != nullptr && std::abs(guide->line().p1().x()) < 0.01) {
+            junctionGuide = guide;
+        }
+    }
+    QCOMPARE(handleCount, 4);  // aucun handle sur le guide structurel de départ
+    QVERIFY(junctionGuide != nullptr);
+
+    window.view_->resetTransform();
+    window.view_->scale(40.0, 40.0);
+    window.scene_->setSceneRect(QRectF(-5.0, -10.0, 20.0, 20.0));
+    window.view_->centerOn(junctionGuide->line().center());
+    const QPoint guidePoint = window.view_->mapFromScene(junctionGuide->line().center());
+    QVERIFY(window.view_->viewport()->rect().contains(guidePoint));
+    QCOMPARE(dynamic_cast<SatinGuideItem*>(window.view_->itemAt(guidePoint)), junctionGuide);
+    QTest::mouseClick(window.view_->viewport(), Qt::LeftButton, Qt::NoModifier, guidePoint);
+    QTRY_COMPARE(window.selectedSatinGuide_, std::optional<std::size_t>{0});
+    QVERIFY(!remove->isEnabled());
+
+    const auto before = std::get<openstitch::document::SatinParams>(
+                            window.project_.findEmbroidery(fx.embroideryId)->params)
+                            .rungs;
+    remove->trigger();
+    const auto after = std::get<openstitch::document::SatinParams>(
+                           window.project_.findEmbroidery(fx.embroideryId)->params)
+                           .rungs;
+    QCOMPARE(after, before);
+    QVERIFY(!window.undoStack_.canUndo());
     mode->setChecked(false);
     QCoreApplication::processEvents();
 }

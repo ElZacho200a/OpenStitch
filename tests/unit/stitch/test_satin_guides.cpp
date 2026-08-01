@@ -79,3 +79,22 @@ TEST_CASE("un nouveau guide satin preserve un ordre de guides inverse") {
     CHECK(p.rungs[0].a.x.value > p.rungs[1].a.x.value);
     CHECK(p.rungs[1].a.x.value > p.rungs[2].a.x.value);
 }
+
+TEST_CASE("un guide terminal de jonction est structurel meme si les rungs sont inverses") {
+    auto p = satin();
+    p.topology = document::SatinSectionTopology{0, 3, 7, std::nullopt};
+    CHECK(satin_guide_junction(p, 0) == std::optional<std::uint32_t>{7});
+    CHECK_FALSE(satin_guide_junction(p, 1).has_value());
+    CHECK_FALSE(move_satin_guide_endpoint(
+                    p, 0, SatinGuideSide::RailA,
+                    {Micrometers{1'000}, Micrometers{0}})
+                    .has_value());
+    CHECK(move_satin_guide_endpoint(
+              p, 1, SatinGuideSide::RailA,
+              {Micrometers{6'000}, Micrometers{0}})
+              .has_value());
+
+    std::reverse(p.rungs.begin(), p.rungs.end());
+    CHECK(satin_guide_junction(p, 2) == std::optional<std::uint32_t>{7});
+    CHECK_FALSE(satin_guide_junction(p, 0).has_value());
+}
