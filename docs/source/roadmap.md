@@ -21,8 +21,10 @@ et des fonctionnalités manquantes identifiables. **Aucune date n'est annoncée.
   deux guides, ordre de routage préservé et parcours QTest complet. **Troisième
   incrément livré** : chaque section persiste son index, le nombre de sections
   et ses identifiants de jonction déterministes, avec lecture des anciens `.osp`
-  inchangée. Restent la propagation coordonnée des guides et le routage textile
-  fondé sur ces jonctions du réseau multi-rail. Ne jamais accepter
+  inchangée. **Quatrième incrément livré** : le routage maximise les transitions
+  par jonction admissible avant de minimiser la distance et ignore une jonction
+  géométriquement incohérente. Restent la propagation coordonnée des guides et
+  les retours textiles suivant le réseau plutôt qu'un segment direct. Ne jamais accepter
   silencieusement une gerbe ou un croisement comme satin valide.
 
 - Refonte avancée du **satin** (§12 de l'étude) : correspondance par sections,

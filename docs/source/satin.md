@@ -437,16 +437,24 @@ couleur et même source. Sans routage, elles seraient cousues dans l'ordre du
 document, avec de longs sauts. §13 les ordonne et les oriente ensemble
 (`route_columns`) :
 
-- **Ordre** : glouton plus proche voisin depuis la position courante de
-  l'aiguille (on entre par l'extrémité la plus proche), puis amélioration
-  **2-opt**. Déterministe.
+- **Ordre** : une jonction explicite commune et géométriquement admissible
+  prime sur une proximité fortuite ; à égalité, glouton plus proche voisin
+  depuis la position courante de l'aiguille, puis amélioration **2-opt**.
+  Déterministe.
 - **Orientation** : pour un ordre donné, le sens de chaque colonne est résolu
-  **exactement** par programmation dynamique sur ses deux extrémités
+  **exactement** par programmation dynamique sur ses deux extrémités : maximum
+  de liaisons par jonction, puis distance minimale
   (l'orientation choisie est imposée à `generate_satin` via entrée/sortie).
 - **Liaisons** : une transition courte (≤ `underpath_max`, défaut 8 mm) est
   cousue en **trajet caché** (passe `Travel`, running stitch — pas de coupe) ;
   au-delà, elle reste un **saut**. Minimise les coupes et les déplacements à
   découvert.
+
+Une jonction déclarée mais séparée de plus de `underpath_max` est traitée comme
+incohérente et n'influence ni l'ordre ni le type de liaison. Cette garde évite
+qu'un `.osp` altéré force un trajet caché arbitraire. Limite actuelle : le trajet
+entre deux sections reste un segment échantillonné ; il ne suit pas encore le
+centre d'une branche déjà cousue lors d'un retour vers une jonction.
 
 Le groupe routé est **contigu** et limité aux colonnes auto (porteuses de
 barreaux) de couleur et source identiques : l'ordre inter-groupes et le reste du

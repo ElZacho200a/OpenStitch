@@ -15,7 +15,7 @@ Public : développeur, mainteneur.
   (invoquée via `add_test`, cf. Lot 8.1) — échoue si un site de production
   hors `libs/stitch_generation/` appelle `generate_sequence()` directement
   sans annotation `raw-sequence-ok:`, contournant les retouches manuelles.
-- Total au dernier passage vérifié : **332 tests CTest**, 100 % réussis.
+- Total au dernier passage vérifié : **335 tests CTest**, 100 % réussis.
 
 ## Encadré de traçabilité (dernier passage vérifié)
 
@@ -24,11 +24,11 @@ passage vérifié manuellement. Régénérez ces valeurs avant toute publication
 
 | Élément | Valeur |
 |---|---|
-| Commit (état du code testé) | `fd16e97` — topologie satin persistée |
+| Commit (état du code testé) | `b360441` — routage satin guidé par jonctions |
 | Compilateur | MSVC toolset 14.50 (Visual Studio 2026) |
 | CMake | 4.4.0-rc3 |
 | Configurations | Debug **et** Release |
-| Résultat CTest | 332 / 332 réussis |
+| Résultat CTest | 335 / 335 réussis |
 | Tests désactivés | 0 |
 | Fichiers de tests d'intégration | 1 (`tests/integration/test_pipeline.cpp`) |
 | Suites Qt (UI desktop) | 5 exécutables CTest (`tests/unit/desktop/`), 35 fonctions de test QTest |
@@ -37,7 +37,7 @@ passage vérifié manuellement. Régénérez ces valeurs avant toute publication
 
 Note : chaque `TEST_CASE` Catch2 (ou fonction de test QTest) est enregistré
 comme un test CTest (via `catch_discover_tests` côté Catch2, `add_test` par
-suite côté QTest) ; le nombre d'**assertions** est supérieur. Le chiffre 332
+suite côté QTest) ; le nombre d'**assertions** est supérieur. Le chiffre 335
 compte les cas de test (dont la garde structurelle CI), pas les assertions.
 
 ## Exécution
@@ -302,8 +302,11 @@ But visé par l'utilisateur, dans l'ordre de valeur/risque :
 - **Satin — routage multi-colonnes (Lot 6)** : `route_columns` (liste vide → plan
   vide, une colonne → départ sans saut, réordonnancement minimisant le
   déplacement, orientation par l'extrémité proche, liaison courte → trajet caché /
-  longue → saut) ; à la génération, un groupe adjacent n'émet qu'un saut initial
-  (le reste cousu en passe `Travel`), un groupe éloigné conserve ses sauts.
+  longue → saut) ; une jonction commune admissible prime sur une extrémité plus
+  proche sans relation topologique, tandis qu'une jonction trop distante est
+  ignorée ; le test de génération vérifie que `SatinParams.topology` atteint le
+  plan. Un groupe adjacent n'émet qu'un saut initial (le reste cousu en passe
+  `Travel`), un groupe éloigné conserve ses sauts.
 - **Tatami avancé (Lot 7)** : sous-couche de contour rentrée dans la forme ;
   sous-couche parallèle espacée ; underpath caché convertit au moins un saut en
   trajet cousu **sans jamais** traverser le trou (invariant préservé) et ne
