@@ -40,7 +40,7 @@ Chaque phase se termine par : build vert, tests verts, démo reproductible, doc 
 | 011 | Erreurs par `Result`/`std::expected` aux frontières de lib ; exceptions confinées | Proposé |
 | 012 | Catch2 v3 + CTest ; golden avec DST octet-à-octet + SVG diagnostic | Proposé |
 | 013 | CI : MSVC Debug/Release + build Linux du cœur (garde-fou portabilité) + lint | Proposé |
-| 014 | États de génération Clean/Dirty/ManuallyEdited ; jamais d'écrasement silencieux de retouches | Proposé |
+| 014 | États de génération Clean/Dirty/ManuallyEdited ; jamais d'écrasement silencieux de retouches | **Accepté** — implémenté Lot 8.0/8.1 (états dérivés d'une empreinte, jamais stockés ; sortie de `Dirty` par abandon explicite uniquement en MVP, cf. `docs/lot8-manual-editing-design.md`) |
 
 ## 3. Critères précis pour démarrer la Phase 1
 

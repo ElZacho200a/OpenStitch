@@ -37,8 +37,16 @@ modules sans Qt.
 ## Modèle de document et rendu
 
 Le `document::Project` est la source de vérité (voir *Modèle de données*). Les
-**points** ne sont pas stockés : ils sont recalculés par `generate_sequence`. Le
-rendu (côté desktop) est organisé en **deux couches** persistantes — base
+**points** ne sont pas stockés : ils sont recalculés par `generate_sequence`,
+puis patchés par les **retouches manuelles** de l'objet le cas échéant (Lot
+8.1, ADR-014). `stitch_generation::effective_sequence(project)` est le
+**point d'entrée unique** que tout consommateur de production (aperçu,
+export, analyse, simulation) doit utiliser — il enchaîne les deux passes ;
+`generate_sequence` reste appelable séparément (implémentation interne,
+tests, générateurs synthétiques). Une garde CTest structurelle
+(`tests/check_no_raw_sequence_bypass.cmake`) échoue si un nouveau site de
+production appelle `generate_sequence` directement sans annotation explicite.
+Le rendu (côté desktop) est organisé en **deux couches** persistantes — base
 (image/vecteurs/régions) et points — pour ne reconstruire que le nécessaire,
 notamment pendant la simulation.
 

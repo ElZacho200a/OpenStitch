@@ -375,16 +375,16 @@ compatible avec la convention existante.
 "editedPointCount": 214
 ```
 
-### Ouvert : faut-il quand même bumper `schemaVersion` (2 → 3) ?
+### Tranché (2026-08-01) : `schemaVersion` bumpé à 3
 
 Les Lots 3–7 n'ont bumpé la version qu'une fois (v1→v2, cadre + barreaux
 satin), tous les champs suivants sont restés « optionnels sous v2 ». Ce lot
 introduit cependant une **sémantique** nouvelle (des points ne sont plus
 *purement* dérivés), ce qui est un changement plus structurant qu'un champ de
-finition. Recommandation : bumper à **v3** malgré la compatibilité technique,
-pour que la version documente honnêtement « ce fichier peut contenir des
-retouches manuelles » — à trancher avec l'utilisateur (voir *Décisions
-ouvertes*), car cela reste un choix éditorial, pas une nécessité technique.
+finition. Décision retenue : bumper à **v3** malgré la compatibilité
+technique, pour que la version documente honnêtement « ce fichier peut
+contenir des retouches manuelles ». La lecture reste rétrocompatible v1/v2
+(voir « Suivi » en tête de section).
 
 ### DST importé comme vérité
 
@@ -633,7 +633,7 @@ sortie de `apply_manual_overrides`.
 | Sous-lot | Contenu | Risque | Bénéfice | Décision utilisateur requise |
 |---|---|---|---|---|
 | **8.0** | `StitchOverride`, `fingerprint`, `raw_slice`, `apply_manual_overrides` — cœur pur, **aucune UI**, testé unitairement uniquement | Faible : aucun changement de comportement observable (overrides toujours vides en pratique) | Valide le mécanisme d'identité (le point le plus incertain du cadrage) avant tout investissement UI | Valider le choix « empreinte de sortie » du §1 avant de coder |
-| **8.1** | Les 4 commandes (§3) + persistance `.osp` (§4, hors option DST-importé) + `effective_sequence` (§5) + tests d'intégration/round-trip | Moyen : touche le format de fichier (même sans bump de version) | Le modèle est complet et testable en CLI/tests, sans dépendance Qt | Trancher schemaVersion 2 vs 3 (§4) |
+| **8.1** — **FAIT** (2026-08-01) | Les 4 commandes (§3) + persistance `.osp` (§4, hors option DST-importé) + `effective_sequence` (§5) + tests d'intégration/round-trip | Moyen : touche le format de fichier (bump schemaVersion → 3) | Le modèle est complet et testable en CLI/tests, sans dépendance Qt | Tranché : schemaVersion **3** (voir « Suivi » ci-dessus) |
 | **8.2** | UI desktop minimale : mode édition, déplacement d'**un** point, indicateurs Clean/ManuallyEdited/Dirty, résolution Dirty (Discard uniquement, §1) | Élevé : premier contact utilisateur réel avec le concept, ergonomie à valider | Rend le Lot 8 réellement utilisable | Point de décision UX majeur : valider le mode d'édition dédié et le wording des avertissements avant généralisation |
 | **8.3** | Stitch/Jump + Trim dans l'UI (réutilise 8.1/8.2) | Faible, une fois 8.2 acquis | Complète les 3 opérations MVP | — |
 | **8.4** (optionnel) | Sélection/édition multi-points | Faible techniquement, mais scope creep possible | Confort si l'usage réel le demande | À ouvrir seulement si demandé après usage de 8.1–8.3 |
@@ -641,6 +641,36 @@ sortie de `apply_manual_overrides`.
 | **8.6** (optionnel, non MVP) | Réconciliation Dirty point par point avec aperçu (§1, alternative écartée pour le MVP) | Élevé : UI de comparaison + atomicité du lot de confirmations, risque de scope creep | Évite de perdre les retouches en cas de changement de forme mineur | À n'ouvrir que si le simple « Abandonner + ré-éditer » (8.2) s'avère trop coûteux à l'usage |
 
 ---
+
+## Suivi (2026-08-01) — décisions tranchées pour 8.0/8.1
+
+- **8.0 FAIT** (cœur pur `StitchOverride`/`fingerprint`/`raw_slice`/
+  `apply_manual_overrides`, corrigé pour Stitch↔Jump bidirectionnel).
+- **8.1 FAIT** : les 4 commandes undo/redo (§3), la persistance `.osp` (§4,
+  hors option DST importé), `effective_sequence` comme point d'entrée unique
+  de production (§5, avec garde CTest anti-contournement) et les tests
+  associés. Décisions tranchées pour ce sous-lot (numérotation ci-dessous) :
+  - **(3) schemaVersion → 3**, pas 2 : le changement de nature du fichier
+    (des points cessent d'être purement dérivés pour un objet retouché)
+    justifie le bump plutôt qu'un simple champ optionnel de plus.
+  - **(2) Dirty** : l'abandon explicite (`DiscardOverridesCommand`) reste la
+    **seule** sortie en MVP ; le sous-lot 8.6 (réconciliation) n'est pas
+    ouvert.
+  - **(4) DST importé** : option A, hors périmètre — reste le sous-lot 8.5
+    séparé, aucun changement dans 8.1.
+  - **(5) Restriction `TopStitch`** : conservée telle quelle (inchangée
+    depuis 8.0), aucune extension aux passes sous-couche/lock.
+  - **(6) Édition multi-points (8.4)** : non ouvert, reste hors périmètre de
+    8.1.
+  - **(7) ADR-014** : rédigée (statut **Accepté** dans
+    `docs/phase0/08-roadmap-adr.md`), pas de fichier `docs/adr/` dédié créé
+    (aucune autre ADR du projet n'en a — convention du dépôt : statut suivi
+    dans le tableau `08-roadmap-adr.md`).
+  - **(1) Identité par empreinte de la vue brute** : confirmée par
+    l'implémentation et les tests (8.0/8.1), aucun changement de fondation.
+- **8.2 et suivants (UI d'édition)** : toujours **non commencés**. Aucune
+  poignée, aucun mode d'édition, aucun indicateur `Clean`/`Dirty`/
+  `ManuallyEdited` dans le canevas — voir `docs/source/stitch-editing.md`.
 
 ## Décisions ouvertes à soumettre à l'utilisateur
 

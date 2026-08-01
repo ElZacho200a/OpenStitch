@@ -11,7 +11,11 @@ Public : développeur, mainteneur.
 - **Tests unitaires** : `tests/unit/<lib>/test_*.cpp` (un exécutable par lib).
 - **Test d'intégration** : `tests/integration/test_pipeline.cpp` (chaîne complète).
 - **Golden (SVG de diagnostic)** : `tests/golden/stitch-generation/`.
-- Total au dernier passage vérifié : **251 tests CTest**, 100 % réussis.
+- **Garde structurelle CI** : `tests/check_no_raw_sequence_bypass.cmake`
+  (invoquée via `add_test`, cf. Lot 8.1) — échoue si un site de production
+  hors `libs/stitch_generation/` appelle `generate_sequence()` directement
+  sans annotation `raw-sequence-ok:`, contournant les retouches manuelles.
+- Total au dernier passage vérifié : **277 tests CTest**, 100 % réussis.
 
 ## Encadré de traçabilité (dernier passage vérifié)
 
@@ -20,11 +24,11 @@ passage vérifié manuellement. Régénérez ces valeurs avant toute publication
 
 | Élément | Valeur |
 |---|---|
-| Commit (état du code testé) | `261bbf7` |
+| Commit (état du code testé) | `c1ede21` |
 | Compilateur | MSVC toolset 14.50 (Visual Studio 2026) |
 | CMake | 4.4.0-rc3 |
 | Configurations | Debug **et** Release |
-| Résultat CTest | 251 / 251 réussis |
+| Résultat CTest | 277 / 277 réussis |
 | Tests désactivés | 0 |
 | Fichiers de tests d'intégration | 1 (`tests/integration/test_pipeline.cpp`) |
 | Suites Qt (UI desktop) | 5 exécutables CTest (`tests/unit/desktop/`), 17 fonctions de test QTest |
@@ -33,8 +37,8 @@ passage vérifié manuellement. Régénérez ces valeurs avant toute publication
 
 Note : chaque `TEST_CASE` Catch2 (ou fonction de test QTest) est enregistré
 comme un test CTest (via `catch_discover_tests` côté Catch2, `add_test` par
-suite côté QTest) ; le nombre d'**assertions** est supérieur. Le chiffre 251
-compte les cas de test, pas les assertions.
+suite côté QTest) ; le nombre d'**assertions** est supérieur. Le chiffre 277
+compte les cas de test (dont la garde structurelle CI), pas les assertions.
 
 ## Exécution
 
@@ -60,7 +64,7 @@ build\msvc\tests\unit\stitch\Debug\test_stitch.exe "[nom]"   # un exécutable
 | optimization | `test_order.cpp` |
 | commands | `test_undo_stack.cpp` |
 | formats | `test_dst.cpp`, `test_svg.cpp` |
-| project_io | `test_roundtrip.cpp` |
+| project_io | `test_roundtrip.cpp`, `test_overrides_persistence.cpp` |
 | desktop (UI, Qt) | `tests/unit/desktop/test_canvas_view.cpp`, `test_node_handle.cpp`, `test_document_panel.cpp`, `test_properties_panel.cpp`, `test_main_window.cpp` |
 | intégration | `tests/integration/test_pipeline.cpp` |
 
@@ -311,6 +315,30 @@ But visé par l'utilisateur, dans l'ordre de valeur/risque :
   patchée et liste d'objets `Dirty` triée) vérifié sur deux exécutions
   indépendantes. Aucune commande undo/redo, aucune persistance `.osp`,
   aucune UI dans ce sous-lot (cf. `docs/lot8-manual-editing-design.md`).
+- **Retouches manuelles — commandes, persistance, point d'entrée unique
+  (Lot 8.1)** : les 4 commandes (`MoveStitchPointCommand`,
+  `SetStitchPointTypeCommand`, `SetStitchTrimCommand`,
+  `DiscardOverridesCommand`) valident `ObjectId`/`base_index`/état avant toute
+  mutation, refusent un objet déjà `Dirty` sans y toucher, restaurent
+  exactement l'entrée précédente au `revert` (y compris la transition
+  `Clean → ManuallyEdited` et son annulation), et partagent une seule entrée
+  d'`overrides` quand deux commandes ciblent le même `base_index` (chaque
+  `revert` ne restaure que son propre champ). Persistance `.osp` v3 :
+  `overrides`/`editedFingerprint`/`editedPointCount` survivent à un
+  aller-retour exact, y compris un `editedFingerprint` **au-delà de 2⁵³**
+  (aucune perte de bits via `double` — nlohmann conserve un entier positif en
+  `number_unsigned`) ; un fichier v1/v2 sans ces champs charge un objet
+  `Clean` ; un index négatif/non entier, une coordonnée au-delà d'un
+  `int32`, un compteur au-delà d'un `uint32`, un type de point inconnu ou une
+  entrée sans `index` renvoient une erreur `InvalidFile`, jamais une
+  troncature silencieuse ou un plantage. `effective_sequence` (enchaîne
+  `generate_sequence` puis `apply_manual_overrides`) est vérifiée identique
+  au brut pour un objet `Clean`, patchée pour un objet `ManuallyEdited`,
+  déterministe sur deux appels indépendants, et propage sans plantage une
+  erreur de génération (projet sans objet visible). Une garde CTest
+  structurelle (`check_no_raw_sequence_bypass`) fait échouer la suite si un
+  nouveau site de production appelle `generate_sequence()` sans passer par
+  `effective_sequence()`. Toujours aucune UI dans ce sous-lot.
 - **Tatami — correctif contacts sommet** : `segment_stays_in_region` détecte un
   connecteur **parfaitement vertical** traversant un trou en losange de part en
   part en touchant exactement ses deux sommets (défaut qu'une version antérieure

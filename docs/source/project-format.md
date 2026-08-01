@@ -35,15 +35,27 @@ labels peut faire plusieurs mégaoctets).
   tous **optionnels** et rétrocompatibles (clés absentes → valeurs par défaut).
   Le `tatami` porte de même ses réglages avancés (Lot 7) : `underlayEdge`,
   `underlayParallel`, `underlayInset`, `underlaySpacing`, `hiddenUnderpath` et
-  `entryPoint` — optionnels et rétrocompatibles.
+  `entryPoint` — optionnels et rétrocompatibles. Depuis le schéma v3, un objet
+  peut aussi porter ses **retouches manuelles** (Lot 8.1, ADR-014) :
+  `overrides` (liste de `{index, pos?, type?, trimAfter}` — `index` désigne une
+  position dans la vue brute de l'objet, `pos` un déplacement `{x, y}` en µm,
+  `type` `"stitch"` ou `"jump"`), `editedFingerprint` (empreinte FNV-1a 64 bits
+  de la vue brute au moment de la dernière édition, entier **exact**, jamais
+  passé par un `double`) et `editedPointCount`. Absents ou `overrides` vide →
+  objet `Clean` (comportement actuel inchangé).
 
 ## Versionnement et validation
 
-`schemaVersion` vaut **2** (v1 → v2 : cadre `canvas` et barreaux satin `rungs`).
-La lecture est **rétrocompatible** : un fichier v1 se charge (cadre 100×100 par
-défaut, aucun barreau). Une version **supérieure** à celle du binaire est refusée
-proprement (`UnsupportedFormat`) ; un JSON invalide ou une carte de labels
-incohérente renvoie une erreur.
+`schemaVersion` vaut **3** (v1 → v2 : cadre `canvas` et barreaux satin
+`rungs` ; v2 → v3 : retouches manuelles `overrides`/`editedFingerprint`/
+`editedPointCount` par objet de broderie, Lot 8.1). La lecture est
+**rétrocompatible** : un fichier v1 ou v2 se charge (cadre 100×100 par défaut
+si absent, aucun barreau, aucune retouche → état `Clean`). Une version
+**supérieure** à celle du binaire est refusée proprement (`UnsupportedFormat`) ;
+un JSON invalide, une valeur hors bornes (index négatif, coordonnée au-delà
+d'un `int32`, compteur au-delà d'un `uint32`, type de point inconnu) ou une
+carte de labels incohérente renvoie une erreur utile (`InvalidFile`), jamais
+une troncature silencieuse.
 
 ## Sauvegarde atomique
 
@@ -67,4 +79,6 @@ Le cache des points générés n'est pas stocké (il est recalculé au chargemen
 - `libs/project_io/src/json_serialize.cpp` — sérialisation du document.
 - `libs/project_io/src/archive.cpp` — lecture/écriture ZIP (minizip-ng encapsulé).
 - `libs/project_io/src/project_io.cpp` — orchestration, écriture atomique.
-- Tests : `tests/unit/project_io/test_roundtrip.cpp`.
+- Tests : `tests/unit/project_io/test_roundtrip.cpp`,
+  `tests/unit/project_io/test_overrides_persistence.cpp` (retouches v3,
+  migration v1/v2, validation stricte).

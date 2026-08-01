@@ -13,15 +13,22 @@ Public : utilisateur avancé, développeur.
 | Objets de broderie | **changer le type** (contour/tatami/satin), clic droit | Implémenté |
 | Objets de broderie | **orientation** des fils (poignée dans la scène) | Implémenté |
 | Ordre de couture | monter/descendre, verrouiller | Implémenté |
-| Points générés | — | Non implémenté |
+| Points générés | modèle + commandes (cœur), aucune UI | Partiel (Lot 8.1) |
 
 ## Régénération vs édition manuelle
 
-Les points sont **régénérés** à chaque modification du document (fonction pure).
-Il n'existe **pas** d'édition manuelle des points générés (déplacer un point,
-convertir un point en saut, ajouter une coupe). Le modèle prévoit cette
-distinction (états `Clean`/`Dirty`/`ManuallyEdited` décrits dans l'étude de
-cadrage) mais elle n'est pas exposée.
+Les points sont **régénérés** à chaque modification du document (fonction pure),
+puis patchés par les retouches manuelles éventuelles de l'objet
+(`stitch_generation::effective_sequence`, ADR-014). Le **cœur** (Lot 8.0/8.1)
+implémente le modèle complet : déplacer un point, convertir Stitch↔Jump,
+ajouter/retirer une coupe de fil, abandonner les retouches d'un objet — quatre
+commandes annulables (`MoveStitchPointCommand`, `SetStitchPointTypeCommand`,
+`SetStitchTrimCommand`, `DiscardOverridesCommand`) et une persistance `.osp`
+(schéma v3). **Aucune UI ne les expose encore** : pas de mode d'édition, pas de
+poignée sur un point généré, pas d'indicateur `Clean`/`Dirty`/`ManuallyEdited`
+dans le canevas — prévu au sous-lot 8.2 (voir
+`docs/lot8-manual-editing-design.md`). Seuls les tests et un usage
+programmatique (CLI, tests) exercent ces commandes aujourd'hui.
 
 Cas particulier : une séquence **importée d'un DST** est traitée comme la vérité
 (le DST n'a pas d'objets), elle n'est donc pas régénérée tant qu'aucune image
@@ -60,4 +67,10 @@ important : la commande est **différée** d'un tour de boucle d'événements, c
   de rotation.
 - `apps/desktop/canvas_view.cpp` — signal `canvasContextMenu` (clic droit).
 - `libs/commands/.../project_commands.hpp` — `MoveNodeCommand`, `SetFillAngleCommand`,
-  `SetStitchTypeCommand`, `ConvertFillsToTatamiCommand`.
+  `SetStitchTypeCommand`, `ConvertFillsToTatamiCommand`, et (Lot 8.1, cœur
+  sans UI) `MoveStitchPointCommand`, `SetStitchPointTypeCommand`,
+  `SetStitchTrimCommand`, `DiscardOverridesCommand`.
+- `libs/stitch_generation/include/.../overrides.hpp` — `effective_sequence`,
+  `apply_manual_overrides`, `raw_slice`, `fingerprint`, `classify_edit_state`.
+- `libs/document/include/.../embroidery_object.hpp` — `StitchOverride`,
+  `StitchPointType`, champs `overrides`/`edited_fingerprint`/`edited_point_count`.
