@@ -332,6 +332,72 @@ TEST_CASE("guides satin : ajout deplacement suppression sont annulables exacteme
     CHECK(std::get<document::SatinParams>(project.findEmbroidery(id)->params).rungs[1] == added);
 }
 
+TEST_CASE("guides satin coordonnes : plusieurs sections forment une seule commande undo redo") {
+    document::Project project;
+    UndoStack stack;
+    document::SatinParams params;
+    params.rungs = {{{Micrometers{0}, Micrometers{0}},
+                     {Micrometers{0}, Micrometers{4'000}}},
+                    {{Micrometers{10'000}, Micrometers{0}},
+                     {Micrometers{10'000}, Micrometers{4'000}}}};
+    document::EmbroideryObject first;
+    first.id = project.object_ids.next();
+    first.params = params;
+    document::EmbroideryObject second;
+    second.id = project.object_ids.next();
+    second.params = params;
+    project.embroidery_objects = {first, second};
+
+    const document::SatinRung movedFirst{{Micrometers{500}, Micrometers{0}},
+                                          {Micrometers{500}, Micrometers{4'000}}};
+    const document::SatinRung movedSecond{{Micrometers{9'500}, Micrometers{0}},
+                                           {Micrometers{9'500}, Micrometers{4'000}}};
+    stack.execute(std::make_unique<MoveSatinGuidesCommand>(std::vector<SatinGuideEdit>{
+                      {first.id, 0, movedFirst}, {second.id, 1, movedSecond}}),
+                  project);
+    CHECK(std::get<document::SatinParams>(project.findEmbroidery(first.id)->params).rungs[0] ==
+          movedFirst);
+    CHECK(std::get<document::SatinParams>(project.findEmbroidery(second.id)->params).rungs[1] ==
+          movedSecond);
+    CHECK(stack.undoName() == "Déplacer des guides satin coordonnés");
+
+    REQUIRE(stack.undo(project));
+    CHECK(std::get<document::SatinParams>(project.findEmbroidery(first.id)->params).rungs ==
+          params.rungs);
+    CHECK(std::get<document::SatinParams>(project.findEmbroidery(second.id)->params).rungs ==
+          params.rungs);
+    REQUIRE(stack.redo(project));
+    CHECK(std::get<document::SatinParams>(project.findEmbroidery(first.id)->params).rungs[0] ==
+          movedFirst);
+    CHECK(std::get<document::SatinParams>(project.findEmbroidery(second.id)->params).rungs[1] ==
+          movedSecond);
+}
+
+TEST_CASE("guides satin coordonnes : une cible obsolete interdit toute mutation partielle") {
+    document::Project project;
+    document::SatinParams params;
+    params.rungs = {{{Micrometers{0}, Micrometers{0}},
+                     {Micrometers{0}, Micrometers{4'000}}},
+                    {{Micrometers{10'000}, Micrometers{0}},
+                     {Micrometers{10'000}, Micrometers{4'000}}}};
+    document::EmbroideryObject object;
+    object.id = project.object_ids.next();
+    object.params = params;
+    project.embroidery_objects.push_back(object);
+    const document::SatinRung moved{{Micrometers{500}, Micrometers{0}},
+                                     {Micrometers{500}, Micrometers{4'000}}};
+
+    MoveSatinGuidesCommand stale({{object.id, 0, moved}, {ObjectId{999}, 0, moved}});
+    stale.apply(project);
+    CHECK(std::get<document::SatinParams>(project.findEmbroidery(object.id)->params).rungs ==
+          params.rungs);
+
+    MoveSatinGuidesCommand duplicate({{object.id, 0, moved}, {object.id, 0, moved}});
+    duplicate.apply(project);
+    CHECK(std::get<document::SatinParams>(project.findEmbroidery(object.id)->params).rungs ==
+          params.rungs);
+}
+
 TEST_CASE("SetCanvasCommand : change la taille du cadre, undo restaure") {
     document::Project project;
     UndoStack stack;

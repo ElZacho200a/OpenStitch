@@ -98,3 +98,37 @@ TEST_CASE("un guide terminal de jonction est structurel meme si les rungs sont i
     CHECK(satin_guide_junction(p, 2) == std::optional<std::uint32_t>{7});
     CHECK_FALSE(satin_guide_junction(p, 0).has_value());
 }
+
+TEST_CASE("les guides d'une jonction sont retrouves par reseau et tries par section") {
+    document::Project project;
+    const ObjectId source{42};
+    const auto addSection = [&](std::uint32_t section, std::uint32_t junction,
+                                ObjectId sectionSource, bool reverse) {
+        document::EmbroideryObject object;
+        object.id = project.object_ids.next();
+        object.source_vector = sectionSource;
+        auto params = satin();
+        params.topology = document::SatinSectionTopology{
+            section, 3, junction, std::nullopt};
+        if (reverse) {
+            std::reverse(params.rungs.begin(), params.rungs.end());
+        }
+        object.params = std::move(params);
+        project.embroidery_objects.push_back(std::move(object));
+        return project.embroidery_objects.back().id;
+    };
+
+    const ObjectId section2 = addSection(2, 7, source, false);
+    addSection(1, 7, ObjectId{99}, false);  // même ID de jonction, autre réseau
+    const ObjectId section0 = addSection(0, 7, source, true);
+    addSection(1, 8, source, false);  // même réseau, autre jonction
+
+    const auto refs = satin_junction_guides(project, source, 7);
+    REQUIRE(refs.size() == 2);
+    CHECK(refs[0] == SatinJunctionGuideRef{section0, 2, 0});
+    CHECK(refs[1] == SatinJunctionGuideRef{section2, 0, 2});
+    CHECK(satin_junction_guides(project, ObjectId{}, 7).empty());
+
+    project.embroidery_objects.pop_back();  // section 1 du réseau absente
+    CHECK(satin_junction_guides(project, source, 7).empty());
+}

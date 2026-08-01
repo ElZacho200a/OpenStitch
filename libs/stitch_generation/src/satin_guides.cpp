@@ -112,6 +112,68 @@ std::optional<std::uint32_t> satin_guide_junction(const document::SatinParams& s
     return satin_guide_junctions(satin, flatten_tolerance)[guide_index];
 }
 
+std::vector<SatinJunctionGuideRef> satin_junction_guides(
+    const document::Project& project, ObjectId source_vector, std::uint32_t junction_id,
+    Micrometers flatten_tolerance) {
+    std::vector<SatinJunctionGuideRef> result;
+    if (!source_vector.valid()) {
+        return result;
+    }
+    std::optional<std::uint32_t> sectionCount;
+    std::vector<std::uint32_t> sectionIndices;
+    for (const auto& object : project.embroidery_objects) {
+        if (object.source_vector != source_vector) {
+            continue;
+        }
+        const auto* satin = std::get_if<document::SatinParams>(&object.params);
+        if (satin == nullptr || !satin->topology) {
+            continue;
+        }
+        const auto& topology = *satin->topology;
+        if (!sectionCount) {
+            sectionCount = topology.section_count;
+        }
+        if (topology.section_count == 0 || topology.section_count != *sectionCount ||
+            topology.section_index >= topology.section_count ||
+            std::find(sectionIndices.begin(), sectionIndices.end(), topology.section_index) !=
+                sectionIndices.end()) {
+            return {};
+        }
+        sectionIndices.push_back(topology.section_index);
+        const std::size_t expectedEnds =
+            static_cast<std::size_t>(topology.start_junction == junction_id) +
+            static_cast<std::size_t>(topology.end_junction == junction_id);
+        if (expectedEnds == 0) {
+            continue;
+        }
+        const auto junctions = satin_guide_junctions(*satin, flatten_tolerance);
+        std::size_t foundEnds = 0;
+        for (std::size_t i = 0; i < junctions.size(); ++i) {
+            if (junctions[i] == junction_id) {
+                result.push_back(
+                    {object.id, i, topology.section_index});
+                ++foundEnds;
+            }
+        }
+        if (foundEnds != expectedEnds) {
+            return {};
+        }
+    }
+    if (!sectionCount || sectionIndices.size() != *sectionCount) {
+        return {};
+    }
+    std::sort(result.begin(), result.end(), [](const auto& lhs, const auto& rhs) {
+        if (lhs.section_index != rhs.section_index) {
+            return lhs.section_index < rhs.section_index;
+        }
+        if (lhs.embroidery_id != rhs.embroidery_id) {
+            return lhs.embroidery_id < rhs.embroidery_id;
+        }
+        return lhs.guide_index < rhs.guide_index;
+    });
+    return result;
+}
+
 std::optional<document::SatinRung> move_satin_guide_endpoint(
     const document::SatinParams& satin, std::size_t guide_index, SatinGuideSide side,
     Vec2um desired, Micrometers flatten_tolerance) {

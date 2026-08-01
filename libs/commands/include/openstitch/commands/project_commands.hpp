@@ -7,6 +7,7 @@
 #include <optional>
 #include <utility>
 #include <variant>
+#include <vector>
 
 #include "openstitch/commands/command.hpp"
 #include "openstitch/image/ops.hpp"
@@ -785,6 +786,81 @@ private:
     std::size_t index_{};
     document::SatinRung guide_;
     document::SatinRung previous_{};
+    bool applied_{false};
+};
+
+struct SatinGuideEdit {
+    ObjectId id{};
+    std::size_t index{};
+    document::SatinRung guide{};
+};
+
+// Applique plusieurs guides comme une seule transaction undo/redo. Les cibles
+// sont toutes validées avant la première mutation : une section supprimée,
+// devenue non-satin ou un doublon rend l'ensemble neutre, sans état partiel.
+// La projection et la monotonie restent validées par stitch_generation avant
+// la construction de la commande, comme pour MoveSatinGuideCommand.
+class MoveSatinGuidesCommand final : public ICommand {
+public:
+    explicit MoveSatinGuidesCommand(std::vector<SatinGuideEdit> edits)
+        : edits_(std::move(edits)) {}
+
+    void apply(document::Project& project) override {
+        applied_ = false;
+        previous_.clear();
+        if (!targetsAreValid(project)) {
+            return;
+        }
+        previous_.reserve(edits_.size());
+        for (const auto& edit : edits_) {
+            auto* object = project.findEmbroidery(edit.id);
+            auto& satin = std::get<document::SatinParams>(object->params);
+            previous_.push_back(satin.rungs[edit.index]);
+        }
+        for (const auto& edit : edits_) {
+            auto* object = project.findEmbroidery(edit.id);
+            std::get<document::SatinParams>(object->params).rungs[edit.index] = edit.guide;
+        }
+        applied_ = true;
+    }
+
+    void revert(document::Project& project) override {
+        if (!applied_ || previous_.size() != edits_.size() || !targetsAreValid(project)) {
+            return;
+        }
+        for (std::size_t i = 0; i < edits_.size(); ++i) {
+            auto* object = project.findEmbroidery(edits_[i].id);
+            std::get<document::SatinParams>(object->params).rungs[edits_[i].index] = previous_[i];
+        }
+        applied_ = false;
+    }
+
+    [[nodiscard]] std::string name() const override {
+        return "Déplacer des guides satin coordonnés";
+    }
+
+private:
+    [[nodiscard]] bool targetsAreValid(document::Project& project) const {
+        if (edits_.empty()) {
+            return false;
+        }
+        std::vector<std::pair<std::uint64_t, std::size_t>> keys;
+        keys.reserve(edits_.size());
+        for (const auto& edit : edits_) {
+            auto* object = project.findEmbroidery(edit.id);
+            const auto* satin =
+                object != nullptr ? std::get_if<document::SatinParams>(&object->params) : nullptr;
+            if (satin == nullptr || edit.index >= satin->rungs.size()) {
+                return false;
+            }
+            keys.emplace_back(edit.id.value, edit.index);
+        }
+        std::sort(keys.begin(), keys.end());
+        return std::adjacent_find(keys.begin(), keys.end()) == keys.end();
+    }
+
+    std::vector<SatinGuideEdit> edits_;
+    std::vector<document::SatinRung> previous_;
     bool applied_{false};
 };
 
