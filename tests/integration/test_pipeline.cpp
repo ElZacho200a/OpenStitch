@@ -158,6 +158,13 @@ TEST_CASE("fixture tentabrode : pipeline complexe deterministe et sans geometrie
     auto digitized = autodigitize::auto_digitize(*project.segmentation, project.object_ids, options);
     REQUIRE(digitized.has_value());
     REQUIRE_FALSE(digitized->embroideries.empty());
+    bool hasTopologicalSatin = false;
+    for (const auto& embroidery : digitized->embroideries) {
+        if (!embroidery.is_satin()) continue;
+        const auto& satin = std::get<document::SatinParams>(embroidery.params);
+        hasTopologicalSatin = hasTopologicalSatin || satin.rungs.size() >= 2;
+    }
+    REQUIRE(hasTopologicalSatin);
     for (auto& vector : digitized->vectors) project.vector_objects.push_back(std::move(vector));
     for (auto& embroidery : digitized->embroideries)
         project.embroidery_objects.push_back(std::move(embroidery));

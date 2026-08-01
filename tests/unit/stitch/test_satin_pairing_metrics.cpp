@@ -179,6 +179,9 @@ struct PairingMetrics {
     int crossings_total{0};          // toute paire de fils qui se croise
     bool monotoneA{true};            // abscisse sur le rail A non-decroissante
     bool monotoneB{true};            // abscisse sur le rail B non-decroissante
+    int max_station_stagnation_a{0}; // transitions consecutives sans avance sur A
+    int max_station_stagnation_b{0}; // transitions consecutives sans avance sur B
+    double max_normalized_skew{0.0}; // ecart maximal de progression relative A/B
     double max_angle_to_normal_deg{0.0};  // pire écart fil/normale locale
     double mean_angle_to_normal_deg{0.0};
     double max_angular_jump_deg{0.0};     // pire saut de direction entre fils consecutifs
@@ -224,9 +227,23 @@ PairingMetrics measure(const std::vector<std::pair<P, P>>& threads, const geomet
 
     // Monotonie (tolérance résiduelle liée à l'arrondi micromètre entier).
     constexpr double kTol = 5.0;
+    int stagnationA = 0;
+    int stagnationB = 0;
     for (std::size_t k = 1; k < threads.size(); ++k) {
         if (sa[k] < sa[k - 1] - kTol) m.monotoneA = false;
         if (sb[k] < sb[k - 1] - kTol) m.monotoneB = false;
+        stagnationA = sa[k] - sa[k - 1] <= kTol ? stagnationA + 1 : 0;
+        stagnationB = sb[k] - sb[k - 1] <= kTol ? stagnationB + 1 : 0;
+        m.max_station_stagnation_a = std::max(m.max_station_stagnation_a, stagnationA);
+        m.max_station_stagnation_b = std::max(m.max_station_stagnation_b, stagnationB);
+    }
+    const double lenA = cumA.back();
+    const double lenB = cumB.back();
+    if (lenA > kTol && lenB > kTol) {
+        for (std::size_t k = 0; k < threads.size(); ++k) {
+            m.max_normalized_skew =
+                std::max(m.max_normalized_skew, std::abs(sa[k] / lenA - sb[k] / lenB));
+        }
     }
 
     // Croisements.
@@ -423,6 +440,20 @@ Ribbon hairpin_ribbon() {
             return P{r * std::sin(ang), r * (1.0 - std::cos(ang))};
         },
         [](double) { return 1500.0; }, 100);
+}
+
+// 7. Long arc en spirale, proche du tentacule signale par l'utilisateur :
+// deux rails valides mais de rayons/longueurs nettement differents. Le ladder
+// glouton ne doit pas epuiser localement un rail pendant que l'autre stagne,
+// faute de quoi les fils se regroupent en gerbe au lieu de suivre le ruban.
+Ribbon long_spiral_ribbon() {
+    return offset_ribbon(
+        [](double t) {
+            const double angle = t * 1.65 * std::numbers::pi;
+            const double radius = 30'000.0 - 13'000.0 * t;
+            return P{radius * std::cos(angle), radius * std::sin(angle)};
+        },
+        [](double t) { return 2'200.0 - 500.0 * t; }, 220);
 }
 
 SatinConfig cfg_for(double density_um) {
@@ -658,6 +689,11 @@ TEST_CASE("appariement satin : longueurs tres differentes + largeur quasi nulle"
     const auto second = fill_satin(railA, railB, cfg);
     const auto m = measure(threads_from_satin(result.satin), railA, railB);
 
+    WARN("Rails asymetriques : stagnation A=" << m.max_station_stagnation_a
+                                               << ", B=" << m.max_station_stagnation_b
+                                               << ", skew=" << m.max_normalized_skew
+                                               << ", angle max=" << m.max_angle_to_normal_deg);
+
     CHECK(result.satin == second.satin);
     CHECK(m.crossings_adjacent == 0);
     CHECK(m.crossings_total == 0);
@@ -684,6 +720,27 @@ TEST_CASE("appariement satin : epingle a cheveux -- pas de croisement non adjace
     CHECK(m.crossings_total == 0);
     CHECK(m.monotoneA);
     CHECK(m.monotoneB);
+}
+
+TEST_CASE("appariement satin : long arc -- progression bilaterale sans gerbe") {
+    const auto ribbon = long_spiral_ribbon();
+    const auto cfg = cfg_for(650.0);
+    const auto result = fill_satin(ribbon.rail_a, ribbon.rail_b, cfg);
+    const auto second = fill_satin(ribbon.rail_a, ribbon.rail_b, cfg);
+    const auto m = measure(threads_from_satin(result.satin), ribbon.rail_a, ribbon.rail_b);
+
+    WARN("Long arc : stagnation A=" << m.max_station_stagnation_a
+                                     << ", B=" << m.max_station_stagnation_b
+                                     << ", skew=" << m.max_normalized_skew
+                                     << ", angle max=" << m.max_angle_to_normal_deg);
+    CHECK(result.satin == second.satin);
+    CHECK(m.crossings_adjacent == 0);
+    CHECK(m.crossings_total == 0);
+    CHECK(m.monotoneA);
+    CHECK(m.monotoneB);
+    CHECK(m.max_station_stagnation_a <= 2);
+    CHECK(m.max_station_stagnation_b <= 2);
+    CHECK(m.max_normalized_skew < 0.08);
 }
 
 TEST_CASE("appariement satin : barreaux desordonnes -- ordre du vecteur sans effet") {

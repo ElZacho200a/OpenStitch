@@ -21,6 +21,9 @@ struct AutoOptions {
     double min_fill_area_mm2{4.0};
     // Ignore la plus grande région (souvent le fond).
     bool skip_largest_region{false};
+    // Moteur topologique : squelette, decomposition en sections ouvertes,
+    // barreaux et routage par source commune. Active par defaut.
+    bool use_auto_satin{true};
     // Satin automatique NAÏF (rails_from_contour) : désactivé par défaut. Ses
     // deux rails « bouts les plus éloignés » débordent sur les formes concaves
     // ou branchues (les rungs enjambent les creux). Tant que le vrai moteur

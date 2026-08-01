@@ -188,6 +188,178 @@ bool segments_cross(P2 a, P2 b, P2 c, P2 d) {
     return (o1 > 0) != (o2 > 0) && (o3 > 0) != (o4 > 0) && o1 != 0 && o2 != 0 && o3 != 0 && o4 != 0;
 }
 
+double signed_area(const Poly& poly) {
+    double area = 0.0;
+    for (std::size_t i = 0; i < poly.size(); ++i) {
+        area += cross(poly[i], poly[(i + 1) % poly.size()]);
+    }
+    return area * 0.5;
+}
+
+Poly open_at_rightmost(Poly poly, double seamY) {
+    if (poly.empty()) return {};
+    std::size_t seamEdge = 0;
+    P2 seam = poly.front();
+    double rightmostX = -std::numeric_limits<double>::infinity();
+    for (std::size_t i = 0; i < poly.size(); ++i) {
+        const P2 a = poly[i];
+        const P2 b = poly[(i + 1) % poly.size()];
+        if ((a.y <= seamY && seamY <= b.y) || (b.y <= seamY && seamY <= a.y)) {
+            double x = std::max(a.x, b.x);
+            if (std::abs(b.y - a.y) > 1e-9) {
+                const double t = (seamY - a.y) / (b.y - a.y);
+                x = a.x + t * (b.x - a.x);
+            }
+            if (x > rightmostX) {
+                rightmostX = x;
+                seamEdge = i;
+                seam = {x, seamY};
+            }
+        }
+    }
+    if (!std::isfinite(rightmostX)) {
+        const auto vertex = std::max_element(poly.begin(), poly.end(), [](P2 a, P2 b) {
+            return a.x < b.x;
+        });
+        seamEdge = static_cast<std::size_t>(vertex - poly.begin());
+        seam = *vertex;
+    }
+    Poly open;
+    open.reserve(poly.size() + 2);
+    open.push_back(seam);
+    for (std::size_t i = 1; i <= poly.size(); ++i) {
+        const P2 point = poly[(seamEdge + i) % poly.size()];
+        if (norm(point - open.back()) > 1e-9) open.push_back(point);
+    }
+    if (norm(seam - open.back()) > 1e-9) open.push_back(seam);
+    return open;
+}
+
+double polyline_length(const Poly& points) {
+    double length = 0.0;
+    for (std::size_t i = 1; i < points.size(); ++i) length += norm(points[i] - points[i - 1]);
+    return length;
+}
+
+// Un anneau est un satin ferme, donc un petit reseau cyclique et non une
+// colonne ouverte. On ouvre deterministement les deux contours au point le
+// plus a droite, les oriente dans le meme sens, puis les decompose en quatre
+// sections ouvertes raccordees bout a bout. Les validations ci-dessous
+// interdisent de recreer une gerbe ou un noeud papillon sur un anneau trop
+// irregulier pour cet appariement automatique.
+std::optional<std::vector<SatinColumnGeometry>> build_annular_sections(
+    const geometry::PathSet& region, const SatinColumnsParameters& params, std::string& refusal) {
+    if (region.holes.size() != 1 || region.outer.nodes.size() < 4 ||
+        region.holes.front().nodes.size() < 4) {
+        refusal = "contours incomplets";
+        return std::nullopt;
+    }
+    const auto polys = region_polys(region);
+    Poly outer = polys[0];
+    Poly inner = polys[1];
+    const double outerArea = signed_area(outer);
+    const double innerArea = signed_area(inner);
+    if (outerArea * innerArea < 0.0) std::reverse(inner.begin(), inner.end());
+    const auto [innerMinY, innerMaxY] =
+        std::minmax_element(inner.begin(), inner.end(), [](P2 a, P2 b) { return a.y < b.y; });
+    const double seamY = (innerMinY->y + innerMaxY->y) * 0.5;
+    outer = open_at_rightmost(std::move(outer), seamY);
+    inner = open_at_rightmost(std::move(inner), seamY);
+
+    const double outerLength = polyline_length(outer);
+    const double innerLength = polyline_length(inner);
+    if (outerLength <= 1e-6 || innerLength <= 1e-6) {
+        refusal = "perimetre nul";
+        return std::nullopt;
+    }
+    const double stationSpacing =
+        static_cast<double>(std::max<std::int32_t>(1, params.station_spacing.value));
+    int intervals = std::max(4, static_cast<int>(std::ceil(std::max(outerLength, innerLength) /
+                                                           stationSpacing)));
+    intervals = ((intervals + 3) / 4) * 4;
+    outer = resample_arc(outer, outerLength / intervals);
+    inner = resample_arc(inner, innerLength / intervals);
+    if (outer.size() != static_cast<std::size_t>(intervals + 1) || outer.size() != inner.size()) {
+        refusal = "reechantillonnage incomplet";
+        return std::nullopt;
+    }
+
+    const double minWidth =
+        static_cast<double>(params.analysis.thresholds.min_satin_width.value);
+    const double maxWidth =
+        static_cast<double>(params.analysis.thresholds.max_satin_width.value);
+    for (std::size_t i = 0; i < outer.size(); ++i) {
+        const double width = norm(outer[i] - inner[i]);
+        if (width < minWidth || width > maxWidth) {
+            refusal = "largeur hors plage a la station " + std::to_string(i) + " (" +
+                      std::to_string(width) + " um)";
+            return std::nullopt;
+        }
+        for (double t : {0.2, 0.4, 0.6, 0.8}) {
+            const P2 sample = outer[i] + (inner[i] - outer[i]) * t;
+            if (!in_region(polys, sample)) {
+                refusal = "barreau hors region a la station " + std::to_string(i);
+                return std::nullopt;
+            }
+        }
+        if (i > 0 &&
+            (segments_cross(outer[i - 1], inner[i - 1], outer[i], inner[i]) ||
+             segments_cross(outer[i - 1], outer[i], inner[i - 1], inner[i]))) {
+            refusal = "croisement local a la station " + std::to_string(i);
+            return std::nullopt;
+        }
+    }
+    for (std::size_t i = 0; i + 2 < outer.size(); ++i) {
+        for (std::size_t j = i + 2; j < outer.size(); ++j) {
+            if (i == 0 && j + 1 == outer.size()) continue;
+            if (segments_cross(outer[i], inner[i], outer[j], inner[j])) {
+                refusal = "croisement global des barreaux " + std::to_string(i) + "/" +
+                          std::to_string(j);
+                return std::nullopt;
+            }
+        }
+    }
+
+    std::vector<SatinColumnGeometry> columns;
+    columns.reserve(4);
+    const int perSection = intervals / 4;
+    const double actualSpacing = std::max(outerLength, innerLength) / intervals;
+    const int rungStride = std::max(
+        1, static_cast<int>(std::lround(params.rung_max_spacing.value / actualSpacing)));
+    for (int section = 0; section < 4; ++section) {
+        const int begin = section * perSection;
+        const int end = begin + perSection;
+        std::vector<P2> railA;
+        std::vector<P2> railB;
+        railA.reserve(static_cast<std::size_t>(perSection + 1));
+        railB.reserve(static_cast<std::size_t>(perSection + 1));
+        SatinColumnGeometry column;
+        column.min_width_um = std::numeric_limits<double>::max();
+        for (int i = begin; i <= end; ++i) {
+            const auto index = static_cast<std::size_t>(i);
+            railA.push_back(outer[index]);
+            railB.push_back(inner[index]);
+            const double width = norm(outer[index] - inner[index]);
+            column.mean_width_um += width;
+            column.min_width_um = std::min(column.min_width_um, width);
+            column.max_width_um = std::max(column.max_width_um, width);
+            if (i == begin || i == end || (i - begin) % rungStride == 0) {
+                column.rungs.push_back({to_um(outer[index]), to_um(inner[index])});
+            }
+            if (i > begin) {
+                const P2 previousMid = (outer[index - 1] + inner[index - 1]) * 0.5;
+                const P2 currentMid = (outer[index] + inner[index]) * 0.5;
+                column.length_um += norm(currentMid - previousMid);
+            }
+        }
+        column.mean_width_um /= static_cast<double>(perSection + 1);
+        column.rail_a = rail_path(railA);
+        column.rail_b = rail_path(railB);
+        columns.push_back(std::move(column));
+    }
+    return columns;
+}
+
 struct Station {
     P2 axis;
     P2 railA;  // côté +N (gauche)
@@ -324,6 +496,23 @@ SatinColumnsResult build_satin_columns(const geometry::PathSet& region,
     r.report = analysis->report;
     r.debug = analysis->debug;
     r.status = analysis->report.status;
+
+    if (region.holes.size() == 1) {
+        std::string annularRefusal;
+        auto sections = build_annular_sections(region, params, annularRefusal);
+        if (!sections) {
+            r.refusal = "anneau non appariable sans croisement : " + annularRefusal;
+            return r;
+        }
+        r.columns = std::move(*sections);
+        r.status = SatinabilityStatus::RequiresDecomposition;
+        r.report.status = r.status;
+        r.report.issues.clear();
+        r.report.issues.push_back(
+            {"Anneau decompose en quatre sections satin ouvertes raccordees."});
+        r.warnings.push_back("couture fermee : routage cyclique de quatre sections");
+        return r;
+    }
 
     const auto& graph = analysis->debug.graph;
     const std::vector<Poly> polys = region_polys(region);

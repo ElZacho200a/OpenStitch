@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 #include <catch2/catch_test_macros.hpp>
 
+#include "openstitch/auto_satin/satin_column.hpp"
 #include "openstitch/autodigitize/autodigitize.hpp"
 
 using namespace openstitch;
@@ -58,9 +59,9 @@ TEST_CASE("grande zone pleine -> tatami editable") {
     CHECK(result->embroideries[0].source_vector == result->vectors[0].id);
 }
 
-TEST_CASE("bande fine -> tatami par defaut (satin naif desactive)") {
-    // Bande 40x3 mm. Par defaut, le satin naif est desactive : la bande
-    // remplissable devient un tatami (decoupe sur la region, sans debordement).
+TEST_CASE("bande fine -> satin topologique par defaut") {
+    // Bande 40x3 mm. Le moteur topologique doit construire deux rails et des
+    // barreaux editables sans recourir au decoupage naif du contour.
     image::Image img = blank(44, 8);
     for (int y = 2; y < 5; ++y) {
         for (int x = 2; x < 42; ++x) {
@@ -73,13 +74,14 @@ TEST_CASE("bande fine -> tatami par defaut (satin naif desactive)") {
     const auto result = auto_digitize(*seg, ids, opts());
     REQUIRE(result.has_value());
     bool anySatin = false;
-    bool anyTatami = false;
     for (const auto& e : result->embroideries) {
         anySatin = anySatin || e.is_satin();
-        anyTatami = anyTatami || e.is_tatami();
+        if (e.is_satin()) {
+            const auto& satin = std::get<document::SatinParams>(e.params);
+            CHECK(satin.rungs.size() >= 2);
+        }
     }
-    CHECK_FALSE(anySatin);
-    CHECK(anyTatami);
+    CHECK(anySatin);
 }
 
 TEST_CASE("bande fine -> satin quand use_naive_satin est active") {
@@ -94,6 +96,7 @@ TEST_CASE("bande fine -> satin quand use_naive_satin est active") {
     REQUIRE(seg.has_value());
     IdGenerator<ObjectId> ids;
     AutoOptions o = opts();
+    o.use_auto_satin = false;
     o.use_naive_satin = true;
     const auto result = auto_digitize(*seg, ids, o);
     REQUIRE(result.has_value());
@@ -102,6 +105,92 @@ TEST_CASE("bande fine -> satin quand use_naive_satin est active") {
         anySatin = anySatin || e.is_satin();
     }
     CHECK(anySatin);
+}
+
+TEST_CASE("bande fine -> tatami si les deux moteurs satin sont desactives") {
+    image::Image img = blank(44, 8);
+    for (int y = 2; y < 5; ++y) {
+        for (int x = 2; x < 42; ++x) {
+            set_px(img, x, y, 30, 30, 220);
+        }
+    }
+    const auto seg = segmentation::segment(img, {.max_colors = 2, .min_region_px = 1});
+    REQUIRE(seg.has_value());
+    IdGenerator<ObjectId> ids;
+    AutoOptions o = opts();
+    o.use_auto_satin = false;
+    o.use_naive_satin = false;
+    const auto result = auto_digitize(*seg, ids, o);
+    REQUIRE(result.has_value());
+    REQUIRE(result->embroideries.size() == 1);
+    CHECK(result->embroideries.front().is_tatami());
+}
+
+TEST_CASE("reseau en T -> plusieurs sections satin compatibles deux rails") {
+    image::Image img = blank(64, 64);
+    for (int y = 8; y < 58; ++y) {
+        for (int x = 29; x < 35; ++x) set_px(img, x, y, 25, 180, 110);
+    }
+    for (int y = 8; y < 14; ++y) {
+        for (int x = 8; x < 56; ++x) set_px(img, x, y, 25, 180, 110);
+    }
+    const auto seg = segmentation::segment(img, {.max_colors = 2, .min_region_px = 1});
+    REQUIRE(seg.has_value());
+    IdGenerator<ObjectId> ids;
+    AutoOptions o = opts();
+    o.satin_max_width = Micrometers{8'000};
+    const auto result = auto_digitize(*seg, ids, o);
+    REQUIRE(result.has_value());
+    REQUIRE(result->vectors.size() == 1);
+
+    std::size_t satinSections = 0;
+    for (const auto& e : result->embroideries) {
+        if (!e.is_satin()) continue;
+        ++satinSections;
+        CHECK(e.source_vector == result->vectors.front().id);
+        const auto& satin = std::get<document::SatinParams>(e.params);
+        CHECK_FALSE(satin.rail_a.closed);
+        CHECK_FALSE(satin.rail_b.closed);
+        CHECK(satin.rungs.size() >= 2);
+    }
+    CHECK(satinSections >= 3);
+}
+
+TEST_CASE("anneau fin -> quatre sections satin et trou preserve") {
+    image::Image img = blank(64, 64);
+    constexpr int center = 32;
+    for (int y = 0; y < 64; ++y) {
+        for (int x = 0; x < 64; ++x) {
+            const int dx = x - center;
+            const int dy = y - center;
+            const int radiusSquared = dx * dx + dy * dy;
+            if (radiusSquared <= 24 * 24 && radiusSquared >= 18 * 18) {
+                set_px(img, x, y, 230, 205, 90);
+            }
+        }
+    }
+    const auto seg = segmentation::segment(img, {.max_colors = 2, .min_region_px = 1});
+    REQUIRE(seg.has_value());
+    IdGenerator<ObjectId> ids;
+    AutoOptions o = opts();
+    o.satin_max_width = Micrometers{12'000};
+    const auto result = auto_digitize(*seg, ids, o);
+    REQUIRE(result.has_value());
+    REQUIRE(result->vectors.size() == 1);
+    REQUIRE(result->vectors.front().paths.size() == 1);
+    auto_satin::SatinColumnsParameters satinOptions;
+    satinOptions.analysis.thresholds.max_satin_width = o.satin_max_width;
+    const auto direct =
+        auto_satin::build_satin_columns(result->vectors.front().paths.front(), satinOptions);
+    INFO("refus anneau: " << direct.refusal);
+    INFO("trous: " << result->vectors.front().paths.front().holes.size());
+    REQUIRE(direct.columns.size() == 4);
+
+    std::size_t satinSections = 0;
+    for (const auto& e : result->embroideries) {
+        if (e.is_satin()) ++satinSections;
+    }
+    CHECK(satinSections == 4);
 }
 
 TEST_CASE("petite region -> contour (point triple)") {

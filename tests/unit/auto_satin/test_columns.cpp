@@ -120,10 +120,20 @@ TEST_CASE("colonnes : cercle refuse (direction ambigue)") {
     CHECK_FALSE(r.refusal.empty());
 }
 
-TEST_CASE("colonnes : anneau refuse (trou)") {
+TEST_CASE("colonnes : anneau decompose en quatre sections ouvertes raccordees") {
     const auto r = columns_of("ring");
-    CHECK(r.columns.empty());
-    CHECK_FALSE(r.refusal.empty());
+    REQUIRE(r.refusal.empty());
+    REQUIRE(r.status == SatinabilityStatus::RequiresDecomposition);
+    REQUIRE(r.columns.size() == 4);
+    for (std::size_t i = 0; i < r.columns.size(); ++i) {
+        const auto& current = r.columns[i];
+        const auto& next = r.columns[(i + 1) % r.columns.size()];
+        REQUIRE_FALSE(current.rail_a.closed);
+        REQUIRE_FALSE(current.rail_b.closed);
+        REQUIRE(current.rungs.size() >= 2);
+        CHECK(current.rail_a.nodes.back().pos == next.rail_a.nodes.front().pos);
+        CHECK(current.rail_b.nodes.back().pos == next.rail_b.nodes.front().pos);
+    }
 }
 
 TEST_CASE("colonnes : forme large refusee") {
