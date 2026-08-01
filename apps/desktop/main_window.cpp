@@ -2555,14 +2555,11 @@ void MainWindow::applyLoadedProject(document::Project project) {
     sequenceImported_ = false;
     selectedRegion_.reset();
     selectedObject_.reset();
+    selectedEmbroidery_.reset();
     refreshImage();
     view_->fitCanvas();
     updateActions();
     setWindowModified(false);  // projet fraîchement chargé = propre
-}
-
-void MainWindow::loadProjectForTests(document::Project project) {
-    applyLoadedProject(std::move(project));
 }
 
 void MainWindow::exportDst() {

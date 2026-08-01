@@ -96,13 +96,18 @@ QListWidget* regionsList(DocumentPanel& panel) {
 
 }  // namespace
 
-// Couvre trois comportements de MainWindow laissés non testés par la
-// fondation QTest (commit 0e396ab) : mise à jour des actions/menus selon le
-// contexte, synchronisation canevas -> panneau Document -> inspecteur, et
-// rafraîchissement de l'UI après undo/redo. MainWindow est instanciable en
-// test grâce à deux seams minimaux : QSettings() par défaut (redirigée ici
-// vers un fichier temporaire, jamais le registre réel) et
-// loadProjectForTests() (applique un projet sans QFileDialog).
+namespace openstitch::desktop {
+
+// Couvre des comportements de MainWindow laissés non testés par la fondation
+// QTest (commit 0e396ab) : mise à jour des actions/menus selon le contexte,
+// synchronisation canevas -> panneau Document -> inspecteur, rafraîchissement
+// de l'UI après undo/redo, et non-fuite de sélection entre deux chargements
+// de projet. MainWindow est instanciable en test grâce à deux seams
+// minimaux : QSettings() par défaut (redirigée ici vers un fichier temporaire,
+// jamais le registre réel) et applyLoadedProject() (applique un projet sans
+// QFileDialog) — privée en production, accessible ici via `friend class
+// MainWindowTest` (déclaré dans main_window.hpp) plutôt que par une méthode
+// publique ajoutée uniquement pour les tests.
 class MainWindowTest : public QObject {
     Q_OBJECT
 
@@ -112,6 +117,7 @@ private slots:
     void clickingVectorObjectSyncsDocumentPanelAndInspector();
     void regionAndVectorSelectionToggleContextActionsOppositely();
     void undoRedoRestoresDeletedRegionAndRefreshesDocumentPanel();
+    void embroiderySelectionDoesNotLeakAcrossProjectLoadWithReusedId();
 
 private:
     QTemporaryDir settingsDir_;
@@ -126,12 +132,16 @@ void MainWindowTest::initTestCase() {
     QCoreApplication::setApplicationName(QStringLiteral("MainWindowTest"));
     QSettings::setDefaultFormat(QSettings::IniFormat);
     QSettings::setPath(QSettings::IniFormat, QSettings::UserScope, settingsDir_.path());
+    // Le stockage réel utilisé par QSettings() appartient bien au répertoire
+    // temporaire (pas au profil utilisateur) : on le prouve en le lisant.
+    QSettings probe;
+    QVERIFY(probe.fileName().startsWith(settingsDir_.path()));
 }
 
 void MainWindowTest::clickingVectorObjectSyncsDocumentPanelAndInspector() {
     MainWindow window;
     const Fixture fx = buildFixture();
-    window.loadProjectForTests(fx.project);
+    window.applyLoadedProject(fx.project);
 
     auto* view = window.findChild<CanvasView*>();
     auto* docPanel = window.findChild<DocumentPanel*>();
@@ -160,7 +170,7 @@ void MainWindowTest::clickingVectorObjectSyncsDocumentPanelAndInspector() {
 void MainWindowTest::regionAndVectorSelectionToggleContextActionsOppositely() {
     MainWindow window;
     const Fixture fx = buildFixture();
-    window.loadProjectForTests(fx.project);
+    window.applyLoadedProject(fx.project);
 
     auto* docPanel = window.findChild<DocumentPanel*>();
     auto* view = window.findChild<CanvasView*>();
@@ -186,7 +196,7 @@ void MainWindowTest::regionAndVectorSelectionToggleContextActionsOppositely() {
 void MainWindowTest::undoRedoRestoresDeletedRegionAndRefreshesDocumentPanel() {
     MainWindow window;
     const Fixture fx = buildFixture();
-    window.loadProjectForTests(fx.project);
+    window.applyLoadedProject(fx.project);
 
     auto* docPanel = window.findChild<DocumentPanel*>();
     auto* deleteRegion = window.findChild<QAction*>(QStringLiteral("action_deleteRegion"));
@@ -216,5 +226,37 @@ void MainWindowTest::undoRedoRestoresDeletedRegionAndRefreshesDocumentPanel() {
     QCOMPARE(regionsList(*docPanel)->count(), 0);
 }
 
-QTEST_MAIN(MainWindowTest)
+// Régression : applyLoadedProject() n'oubliait de réinitialiser que
+// selectedEmbroidery_ (selectedRegion_ et selectedObject_ l'étaient déjà).
+// Deux projets construits par buildFixture() partent chacun d'un
+// document::Project{} par défaut, donc allouent les mêmes ObjectId — le cas
+// piège où un ID de broderie est recyclé entre deux documents distincts.
+void MainWindowTest::embroiderySelectionDoesNotLeakAcrossProjectLoadWithReusedId() {
+    MainWindow window;
+    const Fixture fx1 = buildFixture();
+    window.applyLoadedProject(fx1.project);
+
+    auto* docPanel = window.findChild<DocumentPanel*>();
+    auto* propsPanel = window.findChild<PropertiesPanel*>();
+    QVERIFY(docPanel != nullptr);
+    QVERIFY(propsPanel != nullptr);
+
+    docPanel->embroiderySelected(fx1.embroideryId);
+    QCOMPARE(objectsList(*docPanel)->currentRow(), 0);
+    QVERIFY(!propsPanel->findChildren<QDoubleSpinBox*>().isEmpty());  // inspecteur montre la broderie
+
+    const Fixture fx2 = buildFixture();
+    QCOMPARE(fx2.embroideryId.value, fx1.embroideryId.value);  // même ID recyclé, autre document
+    window.applyLoadedProject(fx2.project);
+
+    // Rien n'a été sélectionné explicitement dans le nouveau projet : ni le
+    // panneau Document ni l'inspecteur ne doivent refléter la broderie
+    // choisie dans le projet précédent.
+    QCOMPARE(objectsList(*docPanel)->currentRow(), -1);
+    QVERIFY(propsPanel->findChildren<QDoubleSpinBox*>().isEmpty());
+}
+
+}  // namespace openstitch::desktop
+
+QTEST_MAIN(openstitch::desktop::MainWindowTest)
 #include "test_main_window.moc"

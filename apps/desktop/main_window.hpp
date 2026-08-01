@@ -34,6 +34,11 @@ class PropertiesPanel;
 class DocumentPanel;
 class WorkflowPanel;
 class EmptyStateWidget;
+// Seam de test unique (déclaré ici pour le friend ci-dessous) : donne à
+// MainWindowTest (tests/unit/desktop/test_main_window.cpp) accès à
+// applyLoadedProject() sans exposer de méthode de chargement dans l'API
+// publique de production.
+class MainWindowTest;
 
 // Fenêtre principale. Règle du projet : aucune logique métier dans les
 // widgets — chargement (libs/image), placement (libs/document), transformations
@@ -41,14 +46,10 @@ class EmptyStateWidget;
 // cœur ; cette classe câble, affiche et recalcule l'aperçu.
 class MainWindow : public QMainWindow {
     Q_OBJECT
+    friend class MainWindowTest;
 
 public:
     MainWindow();
-
-    // Point d'entrée réservé aux tests automatisés : applique un projet déjà
-    // construit, sans dialogue modal (loadProject() passe par QFileDialog en
-    // production, ce qui bloquerait un test QTest offscreen).
-    void loadProjectForTests(document::Project project);
 
 protected:
     void closeEvent(QCloseEvent* event) override;
