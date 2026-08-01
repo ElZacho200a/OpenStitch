@@ -335,6 +335,16 @@ commandes distinctes et sont entièrement annulables/rétablissables. L'insertio
 préserve aussi l'ordre de progression croissant ou décroissant des guides, afin
 que les extrémités employées par le routage textile restent exactes.
 
+Le guide terminal qui porte une **jonction de réseau** est structurel : il reste
+sélectionnable et explicitement marqué comme verrouillé, mais ses poignées et
+l'action de suppression sont désactivées. Le générateur ne couvre que
+l'intervalle compris entre ses guides extrêmes ; déplacer ou supprimer ce guide
+pourrait donc raccourcir une section et créer un vide ou un repli à la jonction.
+Pour modifier l'orientation, ajouter puis déplacer un guide interne. Le guide
+structurel est reconnu par l'ordre géométrique des stations projetées sur les
+deux rails, et non par son index de stockage, y compris après un import aux
+barreaux inversés ou désordonnés.
+
 Limite actuelle : les guides s'éditent section par section sur les
 `SatinParams` ouverts issus du réseau topologique. Les sections et leurs
 jonctions sont maintenant identifiées explicitement, mais l'édition coordonnée

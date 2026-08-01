@@ -23,8 +23,11 @@ et des fonctionnalités manquantes identifiables. **Aucune date n'est annoncée.
   et ses identifiants de jonction déterministes, avec lecture des anciens `.osp`
   inchangée. **Quatrième incrément livré** : le routage maximise les transitions
   par jonction admissible avant de minimiser la distance et ignore une jonction
-  géométriquement incohérente. Restent la propagation coordonnée des guides et
-  les retours textiles suivant le réseau plutôt qu'un segment direct. Ne jamais accepter
+  géométriquement incohérente. **Cinquième incrément livré** : les guides
+  terminaux porteurs d'une jonction sont détectés par stations projetées et
+  verrouillés dans le cœur et l'UI afin qu'une édition locale ne raccourcisse pas
+  la section. Restent la propagation coordonnée des guides et les retours
+  textiles suivant le réseau plutôt qu'un segment direct. Ne jamais accepter
   silencieusement une gerbe ou un croisement comme satin valide.
 
 - Refonte avancée du **satin** (§12 de l'étude) : correspondance par sections,
