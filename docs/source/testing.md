@@ -15,7 +15,7 @@ Public : développeur, mainteneur.
   (invoquée via `add_test`, cf. Lot 8.1) — échoue si un site de production
   hors `libs/stitch_generation/` appelle `generate_sequence()` directement
   sans annotation `raw-sequence-ok:`, contournant les retouches manuelles.
-- Total au dernier passage vérifié : **311 tests CTest**, 100 % réussis.
+- Total au dernier passage vérifié : **317 tests CTest**, 100 % réussis.
 
 ## Encadré de traçabilité (dernier passage vérifié)
 
@@ -24,11 +24,11 @@ passage vérifié manuellement. Régénérez ces valeurs avant toute publication
 
 | Élément | Valeur |
 |---|---|
-| Commit (état du code testé) | `51e7d7f` |
+| Commit (état du code testé) | `<à renseigner après le commit code — voir revue corrective ladder_correspondence 2026-08-01>` |
 | Compilateur | MSVC toolset 14.50 (Visual Studio 2026) |
 | CMake | 4.4.0-rc3 |
 | Configurations | Debug **et** Release |
-| Résultat CTest | 311 / 311 réussis |
+| Résultat CTest | 317 / 317 réussis |
 | Tests désactivés | 0 |
 | Fichiers de tests d'intégration | 1 (`tests/integration/test_pipeline.cpp`) |
 | Suites Qt (UI desktop) | 5 exécutables CTest (`tests/unit/desktop/`), 35 fonctions de test QTest |
@@ -37,7 +37,7 @@ passage vérifié manuellement. Régénérez ces valeurs avant toute publication
 
 Note : chaque `TEST_CASE` Catch2 (ou fonction de test QTest) est enregistré
 comme un test CTest (via `catch_discover_tests` côté Catch2, `add_test` par
-suite côté QTest) ; le nombre d'**assertions** est supérieur. Le chiffre 311
+suite côté QTest) ; le nombre d'**assertions** est supérieur. Le chiffre 317
 compte les cas de test (dont la garde structurelle CI), pas les assertions.
 
 ## Exécution

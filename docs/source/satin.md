@@ -117,20 +117,90 @@ unique (pas d'éventail étendu sur plusieurs fils) et aucun croisement
 n'apparaît.
 
 **Fixtures et métriques** (`tests/unit/stitch/test_satin_pairing_metrics.cpp`,
-7 tests, indépendants des tests de non-régression `test_satin.cpp`) : ruban
+13 tests, indépendants des tests de non-régression `test_satin.cpp`) : ruban
 droit (cas trivial), ruban en S, coude à 90° franc, largeur variable, cas
 combiné courbe+coude+largeur (inspiré d'un ruban capturé par l'utilisateur),
-plus la même correspondance via `fill_satin_columns` (barreaux). Chaque test
-mesure croisements (adjacents et toute paire), monotonie sur les deux rails,
-angle fil/normale locale (moyenne + pire cas), continuité angulaire entre
-fils consécutifs, régularité de la densité médiane, longueurs min/max, et
-déterminisme. Une réplique isolée de l'ancien algorithme (jamais utilisée en
-production) sert de référence comparative dans les mêmes tests. Résultats
-mesurés : ruban en S, angle max fil/normale 2,7° (nouveau) contre 58,4°
-(ancien), angle moyen 1,2° contre 33,5° ; coude à 90°, 0 croisement (nouveau)
-contre 3 (ancien) ; cas combiné, angle max 4,9° contre 44,3°, 0 croisement
-dans les deux cas sur cette fixture précise mais éventail moyen réduit d'un
-facteur 12 (2,0° contre 24,0°).
+plus la même correspondance via `fill_satin_columns` (barreaux), et 7 fixtures
+adverses (revue corrective ci-dessous). Chaque test mesure croisements
+(adjacents et toute paire), monotonie sur les deux rails, angle fil/normale
+locale (moyenne + pire cas), continuité angulaire entre fils consécutifs,
+régularité de la densité médiane, longueurs min/max, et déterminisme. Une
+réplique isolée de l'ancien algorithme (jamais utilisée en production) sert
+de référence comparative dans les mêmes tests. Résultats mesurés : ruban en
+S, angle max fil/normale 2,7° (nouveau) contre 58,4° (ancien), angle moyen
+1,2° contre 33,5° ; coude à 90°, 0 croisement (nouveau) contre 3 (ancien) ;
+cas combiné, angle max 4,9° contre 44,3°, 0 croisement dans les deux cas sur
+cette fixture précise mais éventail moyen réduit d'un facteur 12 (2,0° contre
+24,0°).
+
+### Revue corrective (audit adverse, 2026-08-01)
+
+*État : Présent · Testé numériquement (fixtures adverses dédiées) · non
+validé simulateur/physique.*
+
+Audit ciblé de `ladder_correspondence` avec des fixtures délibérément
+défavorables (rails tête-bêche, échantillonnage très asymétrique avec
+doublons/segments nuls, longueurs très différentes + largeur quasi nulle,
+épingle à cheveux ~170°, barreaux désordonnés/dupliqués). Deux défauts réels
+trouvés et corrigés, un comportement clarifié :
+
+- **Rails fournis tête-bêche** (bout 0 de A proche du bout N de B) : le
+  commentaire de `fill_satin` exigeait déjà des rails « orientés dans le même
+  sens », mais rien ne le vérifiait — un appel avec des rails inversés
+  produisait un nœud papillon (chaque fil tend vers la diagonale opposée,
+  croisements en O(n²)) au lieu d'un ruban. Aucun chemin de production
+  actuel ne peut produire ce cas (`rails_from_contour` et
+  `auto_satin::build_satin_columns` garantissent déjà le même sens), mais
+  c'est une précondition silencieuse d'une fonction de bibliothèque publique
+  — risquée pour un futur appelant (import, script, saisie manuelle). Corrigé
+  par une détection bon marché (`opposite_orientation` : compare la somme des
+  distances bout-à-bout dans les deux sens possibles) et une ré-orientation
+  interne automatique, dans `fill_satin` et `fill_satin_columns`.
+- **Barreaux non triés** : `fill_satin_columns` ne gardait un barreau que si
+  sa projection avançait sur les deux rails par rapport au **dernier barreau
+  GARDÉ dans l'ORDRE DU VECTEUR D'ENTRÉE** — un barreau placé en tête du
+  vecteur mais loin le long de la colonne verrouillait cette référence et
+  faisait rejeter silencieusement tous les barreaux suivants, repliant sur
+  `fill_satin` sans barreaux (alors que la doc promet des barreaux toujours
+  traversés exactement). Un barreau est une station transversale, pas un
+  élément de séquence : il n'y a aucune raison que son ordre dans le vecteur
+  soit signifiant. Corrigé par un tri par position projetée avant le filtre
+  anti-croisement — le résultat ne dépend plus de l'ordre d'entrée des
+  barreaux (vérifié : résultat bit-à-bit identique entre un vecteur trié et
+  le même mélangé).
+- **Barreaux dupliqués/quasi-dupliqués** : deux barreaux dont la projection
+  n'avance que d'une quantité minuscule (mais non nulle) sur les deux rails
+  créaient un intervalle dégénéré. Comme le garde-fou anti-croisement de
+  `ladder_correspondence` n'agit qu'À L'INTÉRIEUR d'un intervalle (jamais
+  entre deux intervalles voisins), les deux fils-ancres qui encadraient cet
+  intervalle dégénéré n'étaient jamais comparés l'un à l'autre — s'il tombait
+  près d'un virage serré, ils pouvaient se croiser (reproduit et corrigé,
+  fixture "barreau dupliqué/quasi-dupliqué"). Corrigé en fusionnant (après
+  tri) tout barreau dont la projection avance de moins de la moitié du pas de
+  densité (`anchorMinGap = density / 2`) par rapport au dernier barreau
+  gardé — élimine la cause (l'intervalle dégénéré) plutôt que de tenter de
+  détecter le croisement a posteriori.
+- **Échantillonnage très asymétrique / segments nuls / longueurs très
+  différentes / largeur quasi nulle / épingle à cheveux serrée (~170°)** :
+  déjà robustes sans modification — aucun croisement, monotonie et
+  déterminisme préservés, aucune coordonnée dégénérée (vérifié par bornes
+  larges plutôt que `isfinite` sur les micromètres entiers, qui ne peuvent
+  pas représenter NaN).
+
+**Complexité vérifiée** : le tri des barreaux ajouté est O(m log m) avec `m`
+= nombre de barreaux (petit, jamais lié à la résolution des rails) — ne
+change pas la complexité globale. Mesure empirique (release, ruban sinusoïdal
+8 périodes, densité fixe) : temps de `fill_satin` stable (~6 ms) et nombre de
+fils constant pour un nombre de sommets d'entrée par rail variant de 500 à
+8000 — confirme l'absence de comportement quadratique cachée dans le nombre
+de sommets d'origine.
+
+**Fixtures ajoutées** (mêmes métriques que ci-dessus) : rails tête-bêche,
+longueurs très différentes + largeur quasi nulle, épingle à cheveux (mesure
+`crossings_total`, pas seulement `crossings_adjacent`, pour couvrir un
+croisement non adjacent), barreaux désordonnés (comparaison bit-à-bit avec la
+version triée), barreau dupliqué/quasi-dupliqué. S'ajoutent à la fixture
+d'échantillonnage asymétrique avec doublons/segments nuls déjà présente.
 
 ## Colonne trop large
 

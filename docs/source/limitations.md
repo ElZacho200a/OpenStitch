@@ -70,7 +70,23 @@ fonctionnalité, vérifié dans le code.
   sommet d'un coude C0 franc (sans congé), un seul fil absorbe nécessairement
   une déviation angulaire importante (mitre/congé = `ShortStitchMode`, hors
   périmètre). Fixtures et métriques dédiées :
-  `tests/unit/stitch/test_satin_pairing_metrics.cpp` (7 tests).
+  `tests/unit/stitch/test_satin_pairing_metrics.cpp` (13 tests).
+- **Revue corrective ladder_correspondence, audit adverse (2026-08-01)** :
+  fixtures délibérément défavorables (rails tête-bêche, échantillonnage très
+  asymétrique/segments nuls, longueurs très différentes + largeur quasi
+  nulle, épingle à cheveux ~170°, barreaux désordonnés/dupliqués). Deux
+  défauts réels corrigés : rails fournis tête-bêche (précondition non
+  vérifiée, nœud papillon en O(n²)) → détection + ré-orientation interne
+  automatique ; barreaux dépendants de l'ordre du vecteur d'entrée (un
+  barreau en tête mais loin le long de la colonne faisait rejeter
+  silencieusement tous les suivants, repli sans barreaux) → tri par position
+  projetée avant filtrage, plus fusion des barreaux quasi-dupliqués (source
+  d'un croisement isolé près d'un virage serré, faute de garde-fou entre deux
+  intervalles voisins). Voir `docs/source/satin.md` § *Revue corrective
+  (audit adverse)*. Aucun chemin de production actuel n'atteint le cas
+  tête-bêche (`rails_from_contour`/`build_satin_columns` garantissent déjà le
+  même sens) ni les barreaux désordonnés (aucune UI d'édition de barreaux) —
+  corrections préventives sur une fonction de bibliothèque publique.
 - Aucune validation sur machine à broder réelle.
 
 ## Niveaux de validation
