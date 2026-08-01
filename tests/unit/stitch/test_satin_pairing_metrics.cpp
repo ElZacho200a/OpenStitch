@@ -408,6 +408,23 @@ Ribbon hook_ribbon() {
         [](double t) { return 1800.0 - 1200.0 * t; }, 80);
 }
 
+// 6. Coude serre en "epingle a cheveux" (~170 degres, C1 continu) : deux
+// branches quasi paralleles reliees par un demi-tour serre. Plus severe que
+// corner_ribbon (qui est un seul virage a 90 degres) : verifie qu'aucun fil
+// pres du demi-tour ne croise un fil NON adjacent situe plus loin sur une
+// branche (le garde-fou de ladder_correspondence ne compare qu'a la diagonale
+// PRECEDENTE -- un hairpin est le cas plausible ou une regression pourrait
+// laisser passer un croisement non-adjacent).
+Ribbon hairpin_ribbon() {
+    return offset_ribbon(
+        [](double t) {
+            const double ang = t * (170.0 * std::numbers::pi / 180.0);
+            const double r = 6000.0;
+            return P{r * std::sin(ang), r * (1.0 - std::cos(ang))};
+        },
+        [](double) { return 1500.0; }, 100);
+}
+
 SatinConfig cfg_for(double density_um) {
     SatinConfig cfg;
     cfg.density = Micrometers{static_cast<std::int32_t>(density_um)};
@@ -569,4 +586,162 @@ TEST_CASE("appariement satin : determinisme sur toutes les fixtures") {
         const auto r2 = fill_satin(r.rail_a, r.rail_b, cfg);
         CHECK(r1.satin == r2.satin);
     }
+}
+
+TEST_CASE("appariement satin : echantillonnage asymetrique et segments nuls") {
+    // Même ruban droit, mais le rail A est sur-échantillonné et contient des
+    // doublons tandis que le rail B ne comporte que ses extrémités. Ces
+    // segments de longueur nulle apparaissent après simplification/import et
+    // ne doivent ni casser la monotonie ni produire de pénétration dégénérée.
+    const auto railA = path_from({{0, 0}, {0, 0}, {500, 0}, {1000, 0}, {1000, 0},
+                                  {4000, 0}, {9000, 0}, {15000, 0}, {20000, 0}});
+    const auto railB = path_from({{0, 4000}, {20000, 4000}});
+    const auto cfg = cfg_for(650.0);
+
+    const auto first = fill_satin(railA, railB, cfg);
+    const auto second = fill_satin(railA, railB, cfg);
+    const auto m = measure(threads_from_satin(first.satin), railA, railB);
+
+    CHECK(first.satin == second.satin);
+    CHECK(m.crossings_adjacent == 0);
+    CHECK(m.crossings_total == 0);
+    CHECK(m.monotoneA);
+    CHECK(m.monotoneB);
+    CHECK(m.min_length > 3900.0);
+    CHECK(m.max_length < 4100.0);
+}
+
+TEST_CASE("appariement satin : rails tete-beche -- normalises, pas de noeud papillon") {
+    // Meme ruban droit, mais rail_b est fourni dans le sens OPPOSE de rail_a
+    // (bout 0 de A pres du bout N de B). C'est le contrat viole : le
+    // commentaire de fill_satin exige des rails "orientes dans le meme sens".
+    // Avant normalisation, ladder_correspondence demarre sur l'ancre
+    // (A.front(), B.front()=B "physiquement a l'autre bout") -- un noeud
+    // papillon ou pratiquement tous les fils se croisent pres du centre.
+    // opposite_orientation() doit detecter ce cas et retourner b en interne.
+    const auto railA = path_from({{0, 0}, {5000, 0}, {10000, 0}, {15000, 0}, {20000, 0}});
+    const auto railB = path_from({{20000, 4000}, {15000, 4000}, {10000, 4000}, {5000, 4000}, {0, 4000}});
+    const auto cfg = cfg_for(1000.0);
+
+    const auto result = fill_satin(railA, railB, cfg);
+    const auto second = fill_satin(railA, railB, cfg);
+    const auto m = measure(threads_from_satin(result.satin), railA, railB);
+
+    CHECK(result.satin == second.satin);
+    CHECK(m.crossings_adjacent == 0);
+    CHECK(m.crossings_total == 0);
+    CHECK(m.max_angle_to_normal_deg < 1.0);
+    CHECK(m.min_length > 3900.0);
+    CHECK(m.max_length < 4100.0);
+}
+
+TEST_CASE("appariement satin : longueurs tres differentes + largeur quasi nulle") {
+    // Rail A long (30 mm) et tres courbe, rail B court (4 mm) et quasi droit,
+    // les deux se rapprochant a moins de 10 um a une extremite (largeur quasi
+    // nulle) -- combinaison de deux cas limites du meme coup : ratio de
+    // longueur extreme (les grilles fine_s_grid des deux rails ont des
+    // nombres de pas tres differents) et division potentielle par une largeur
+    // proche de zero (compensate()/pull, gardees par un epsilon dans le code
+    // de production).
+    std::vector<P> a;
+    for (int i = 0; i <= 60; ++i) {
+        const double t = static_cast<double>(i) / 60.0;
+        const double ang = t * std::numbers::pi * 0.5;
+        a.push_back({30000.0 * std::sin(ang), 30000.0 * (1.0 - std::cos(ang))});
+    }
+    const std::vector<P> b{{0.0, 5.0}, {2000.0, 5.0}, {4000.0, 5.0}};
+    const auto railA = path_from(a);
+    const auto railB = path_from(b);
+    const auto cfg = cfg_for(600.0);
+
+    const auto result = fill_satin(railA, railB, cfg);
+    const auto second = fill_satin(railA, railB, cfg);
+    const auto m = measure(threads_from_satin(result.satin), railA, railB);
+
+    CHECK(result.satin == second.satin);
+    CHECK(m.crossings_adjacent == 0);
+    CHECK(m.crossings_total == 0);
+    CHECK(m.monotoneA);
+    CHECK(m.monotoneB);
+    // Aucun point degenere malgre la largeur quasi nulle sur B : chaque fil
+    // garde une longueur finie non-NaN.
+    for (const auto& t : threads_from_satin(result.satin)) {
+        CHECK(std::isfinite(t.first.x));
+        CHECK(std::isfinite(t.first.y));
+        CHECK(std::isfinite(t.second.x));
+        CHECK(std::isfinite(t.second.y));
+    }
+}
+
+TEST_CASE("appariement satin : epingle a cheveux -- pas de croisement non adjacent") {
+    const auto ribbon = hairpin_ribbon();
+    const auto cfg = cfg_for(700.0);
+    const auto result = fill_satin(ribbon.rail_a, ribbon.rail_b, cfg);
+    const auto threads = threads_from_satin(result.satin);
+    const auto m = measure(threads, ribbon.rail_a, ribbon.rail_b);
+
+    CHECK(m.crossings_adjacent == 0);
+    CHECK(m.crossings_total == 0);
+    CHECK(m.monotoneA);
+    CHECK(m.monotoneB);
+}
+
+TEST_CASE("appariement satin : barreaux desordonnes -- ordre du vecteur sans effet") {
+    // Meme fixture "crochet" et memes barreaux que le test barreaux existant,
+    // mais MELANGES dans le vecteur d'entree (ordre non trie le long de la
+    // colonne). Un barreau est une station transversale, pas un element de
+    // sequence : le resultat doit etre identique a la version triee, pas un
+    // repli silencieux sur fill_satin (qui produirait un resultat different,
+    // sans barreaux traverses exactement).
+    const auto ribbon = hook_ribbon();
+    const auto cfg = cfg_for(700.0);
+    const auto rungAt = [&](int i) {
+        return SatinRungSeg{ribbon.rail_a.nodes[static_cast<std::size_t>(i)].pos,
+                            ribbon.rail_b.nodes[static_cast<std::size_t>(i)].pos};
+    };
+    const std::vector<SatinRungSeg> sorted{rungAt(0), rungAt(20), rungAt(40), rungAt(60), rungAt(80)};
+    const std::vector<SatinRungSeg> shuffled{rungAt(60), rungAt(0), rungAt(80), rungAt(20), rungAt(40)};
+
+    const auto resultSorted = fill_satin_columns(ribbon.rail_a, ribbon.rail_b, sorted, cfg);
+    const auto resultShuffled = fill_satin_columns(ribbon.rail_a, ribbon.rail_b, shuffled, cfg);
+
+    CHECK(resultSorted.satin == resultShuffled.satin);
+    CHECK(resultSorted.satin.size() > 10);  // pas le repli fill_satin (barreaux ignores)
+
+    const auto m = measure(threads_from_satin(resultShuffled.satin), ribbon.rail_a, ribbon.rail_b);
+    CHECK(m.crossings_adjacent == 0);
+    CHECK(m.crossings_total == 0);
+    CHECK(m.monotoneA);
+    CHECK(m.monotoneB);
+}
+
+TEST_CASE("appariement satin : barreau duplique/quasi-duplique -- filtre sans crash") {
+    // Deux barreaux projetes a (quasi) la meme station sur les deux rails :
+    // le garde-fou "strictement croissant" doit en ecarter un sans produire
+    // d'intervalle degenere (division par une longueur nulle) ni de fil
+    // NaN/infini.
+    const auto ribbon = hook_ribbon();
+    const auto cfg = cfg_for(700.0);
+    const auto rungAt = [&](int i) {
+        return SatinRungSeg{ribbon.rail_a.nodes[static_cast<std::size_t>(i)].pos,
+                            ribbon.rail_b.nodes[static_cast<std::size_t>(i)].pos};
+    };
+    const std::vector<SatinRungSeg> rungs{rungAt(0), rungAt(40), rungAt(40), rungAt(41), rungAt(80)};
+
+    const auto result = fill_satin_columns(ribbon.rail_a, ribbon.rail_b, rungs, cfg);
+    const auto second = fill_satin_columns(ribbon.rail_a, ribbon.rail_b, rungs, cfg);
+    CHECK(result.satin == second.satin);
+    // Le ruban tient dans [-2000, 20000] x [-2000, 28000] um ; un intervalle
+    // degenere (division par une longueur de station quasi nulle) produirait
+    // des coordonnees demesurees plutot que NaN (converties en int32 par
+    // std::lround), donc une simple borne large suffit a le detecter.
+    for (const auto& v : result.satin) {
+        CHECK(std::abs(v.x.value) < 100'000);
+        CHECK(std::abs(v.y.value) < 100'000);
+    }
+    const auto m = measure(threads_from_satin(result.satin), ribbon.rail_a, ribbon.rail_b);
+    CHECK(m.crossings_adjacent == 0);
+    CHECK(m.crossings_total == 0);
+    CHECK(m.monotoneA);
+    CHECK(m.monotoneB);
 }

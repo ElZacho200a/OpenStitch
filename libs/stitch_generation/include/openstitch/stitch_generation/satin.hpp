@@ -82,9 +82,15 @@ struct SatinResult {
 };
 
 // Génère les points d'une colonne satin à partir de deux rails (polylignes
-// ouvertes, orientées dans le même sens). Les deux rails sont ré-échantillonnés
-// par fraction d'abscisse curviligne : à chaque pas, un point sur chaque rail,
-// et le fil zigzague d'un bord à l'autre. Densité = pas le long de la colonne.
+// ouvertes, censées être orientées dans le même sens : bout 0 <-> bout 0,
+// bout N <-> bout N). Fournies tête-bêche, elles sont détectées et l'une des
+// deux est ré-orientée en interne (cf. audit rails 2026-08-01) — l'appelant
+// n'a pas à s'en soucier, mais orienter correctement en amont reste la voie
+// normale (l'heuristique de détection n'est pas une garantie géométrique
+// générale). Les rails sont appariés par une correspondance locale monotone,
+// puis ré-échantillonnés selon l'avance de la ligne médiane : à chaque station,
+// un point sur chaque rail et le fil zigzague d'un bord à l'autre. Densité =
+// pas le long de la colonne.
 [[nodiscard]] SatinResult fill_satin(const geometry::Path& rail_a, const geometry::Path& rail_b,
                                      const SatinConfig& config);
 
@@ -94,7 +100,13 @@ struct SatinResult {
 // curviligne (rails de longueurs/courbures différentes autorisés). L'espacement
 // est mesuré PERPENDICULAIREMENT (avance de la ligne médiane), pas le long d'un
 // rail. Les barreaux sont traversés exactement. Séquence L0,R0,L1,R1,…
-// déterministe. Si `rungs` a moins de 2 éléments, retombe sur `fill_satin`.
+// déterministe. `rungs` n'a pas besoin d'être trié par l'appelant (chaque
+// barreau est une station transversale, pas un élément de séquence — trié en
+// interne par position projetée) ; deux barreaux dont la projection sur les
+// deux rails est distante de moins de la moitié de `density` sont fusionnés
+// (le premier après tri gagne), pour éviter un intervalle dégénéré entre eux.
+// Si `rungs` a moins de 2 éléments (ou moins de 2 après fusion), retombe sur
+// `fill_satin`.
 [[nodiscard]] SatinResult fill_satin_columns(const geometry::Path& rail_a,
                                              const geometry::Path& rail_b,
                                              const std::vector<SatinRungSeg>& rungs,

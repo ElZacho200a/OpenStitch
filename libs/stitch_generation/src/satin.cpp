@@ -63,6 +63,22 @@ std::vector<PointD> to_points(const geometry::Path& path) {
     return pts;
 }
 
+// Contrat de fill_satin/fill_satin_columns : les deux rails doivent être
+// orientés dans le même sens (bout 0 <-> bout 0, bout N <-> bout N). Fourni
+// tête-bêche, `ladder_correspondence` produit un nœud papillon (chaque fil
+// tend vers la diagonale opposée, croisements en O(n²)) au lieu d'un ruban.
+// `rails_from_contour` et `auto_satin::build_satin_columns` garantissent déjà
+// ce sens ; ce recalage protège les appelants futurs (import, script, saisie
+// manuelle) qui ne le garantiraient pas. Heuristique bon marché plutôt qu'une
+// garantie géométrique générale : les deux bouts d'un ruban valide sont par
+// construction proches d'un côté ou de l'autre, donc comparer les deux
+// appariements bout-à-bout possibles suffit à détecter l'inversion.
+bool opposite_orientation(const std::vector<PointD>& a, const std::vector<PointD>& b) {
+    const double sameOrder = dist(a.front(), b.front()) + dist(a.back(), b.back());
+    const double reversed = dist(a.front(), b.back()) + dist(a.back(), b.front());
+    return reversed < sameOrder;
+}
+
 // Applique la compensation de tirage : éloigne a de b (et inversement) de
 // `comp` micromètres le long de leur médiatrice.
 std::pair<PointD, PointD> compensate(PointD a, PointD b, double comp) {
@@ -301,17 +317,41 @@ SatinResult fill_satin_columns(const geometry::Path& rail_a, const geometry::Pat
     }
     SatinResult result;
     const auto a = to_points(rail_a);
-    const auto b = to_points(rail_b);
+    auto b = to_points(rail_b);
     if (a.size() < 2 || b.size() < 2) {
         return result;
+    }
+    if (opposite_orientation(a, b)) {
+        std::reverse(b.begin(), b.end());
     }
     const auto cumA = cumulative(a);
     const auto cumB = cumulative(b);
     const double density = static_cast<double>(std::max<std::int32_t>(1, config.density.value));
     const double comp = static_cast<double>(config.pull_compensation.value);
 
-    // Ancres = barreaux projetés sur les deux rails (abscisses curvilignes),
-    // gardées strictement croissantes sur les DEUX rails (correspondance saine).
+    // Ancres = barreaux projetés sur les deux rails (abscisses curvilignes).
+    // Un barreau est une station transversale, pas un élément de séquence :
+    // `rungs` n'est pas garanti trié par l'appelant (édition manuelle future,
+    // import). Trié ici par station projetée AVANT le filtre anti-croisement
+    // -- sans ce tri, un rung placé en tête de vecteur mais loin le long de la
+    // colonne verrouillait `anchors.back()` et faisait rejeter silencieusement
+    // tous les rungs suivants (repli sur `fill_satin` sans barreaux, alors que
+    // la doc promet des barreaux toujours traversés exactement).
+    //
+    // Après tri, deux ancres gardées doivent avancer d'au moins `anchorMinGap`
+    // (la moitié du pas de densité) sur LES DEUX rails, pas juste `> 0` : un écart
+    // non nul mais minuscule (barreaux quasi-dupliqués, ou dupliqués après
+    // arrondi micromètre) crée un intervalle dégénéré entre deux ancres —
+    // aucun point ré-échantillonné n'y trouve place
+    // (resample_by_medial_spacing replie alors sur les deux seules bornes), et
+    // les deux fils-ancres consécutifs qui l'encadrent se retrouvent soudés
+    // sans le filtrage habituel de `ladder_correspondence` (le garde-fou anti-
+    // croisement n'agit qu'À L'INTÉRIEUR d'un intervalle, jamais entre deux
+    // intervalles adjacents). Si ce point dégénéré tombe près d'un virage
+    // serré, les deux fils-ancres peuvent alors se croiser (reproduit par le
+    // test "barreau dupliqué/quasi-dupliqué"). Fusionner (garder le premier
+    // rencontré après tri, donc le plus proche du début de colonne) élimine
+    // la cause plutôt que le symptôme.
     struct Anchor {
         double sa{0.0};
         double sb{0.0};
@@ -319,16 +359,27 @@ SatinResult fill_satin_columns(const geometry::Path& rail_a, const geometry::Pat
         PointD pb{};
     };
     std::vector<Anchor> anchors;
+    anchors.reserve(rungs.size());
     for (const auto& r : rungs) {
         Anchor an;
         an.pa = toD(r.first);
         an.pb = toD(r.second);
         an.sa = project_arclen(a, cumA, an.pa);
         an.sb = project_arclen(b, cumB, an.pb);
-        if (anchors.empty() || (an.sa > anchors.back().sa && an.sb > anchors.back().sb)) {
-            anchors.push_back(an);
+        anchors.push_back(an);
+    }
+    std::stable_sort(anchors.begin(), anchors.end(),
+                     [](const Anchor& x, const Anchor& y) { return x.sa + x.sb < y.sa + y.sb; });
+    const double anchorMinGap = density * 0.5;
+    std::vector<Anchor> kept;
+    kept.reserve(anchors.size());
+    for (const auto& an : anchors) {
+        if (kept.empty() ||
+            (an.sa > kept.back().sa + anchorMinGap && an.sb > kept.back().sb + anchorMinGap)) {
+            kept.push_back(an);
         }
     }
+    anchors = std::move(kept);
     if (anchors.size() < 2) {
         return fill_satin(rail_a, rail_b, config);
     }
@@ -545,9 +596,12 @@ SatinResult fill_satin(const geometry::Path& rail_a, const geometry::Path& rail_
                        const SatinConfig& config) {
     SatinResult result;
     const auto a = to_points(rail_a);
-    const auto b = to_points(rail_b);
+    auto b = to_points(rail_b);
     if (a.size() < 2 || b.size() < 2) {
         return result;
+    }
+    if (opposite_orientation(a, b)) {
+        std::reverse(b.begin(), b.end());
     }
     const auto cumA = cumulative(a);
     const auto cumB = cumulative(b);
