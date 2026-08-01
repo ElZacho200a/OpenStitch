@@ -715,4 +715,110 @@ private:
     std::uint32_t previousPointCount_{0};
 };
 
+// Édition atomique des guides transversaux d'une colonne satin. La validation
+// géométrique (projection sur les deux rails et monotonie) est effectuée avant
+// construction par l'outil interactif ; ces commandes protègent néanmoins le
+// document contre un identifiant/type/index devenu obsolète entre le geste et
+// son commit (changement de sélection ou de projet).
+class AddSatinGuideCommand final : public ICommand {
+public:
+    AddSatinGuideCommand(ObjectId id, document::SatinRung guide, std::size_t index)
+        : id_(id), guide_(guide), index_(index) {}
+
+    void apply(document::Project& project) override {
+        applied_ = false;
+        if (auto* obj = project.findEmbroidery(id_)) {
+            if (auto* satin = std::get_if<document::SatinParams>(&obj->params);
+                satin != nullptr && index_ <= satin->rungs.size()) {
+                satin->rungs.insert(satin->rungs.begin() + static_cast<std::ptrdiff_t>(index_), guide_);
+                applied_ = true;
+            }
+        }
+    }
+    void revert(document::Project& project) override {
+        if (!applied_) return;
+        if (auto* obj = project.findEmbroidery(id_)) {
+            if (auto* satin = std::get_if<document::SatinParams>(&obj->params);
+                satin != nullptr && index_ < satin->rungs.size()) {
+                satin->rungs.erase(satin->rungs.begin() + static_cast<std::ptrdiff_t>(index_));
+            }
+        }
+    }
+    [[nodiscard]] std::string name() const override { return "Ajouter un guide satin"; }
+
+private:
+    ObjectId id_;
+    document::SatinRung guide_;
+    std::size_t index_{};
+    bool applied_{false};
+};
+
+class MoveSatinGuideCommand final : public ICommand {
+public:
+    MoveSatinGuideCommand(ObjectId id, std::size_t index, document::SatinRung guide)
+        : id_(id), index_(index), guide_(guide) {}
+
+    void apply(document::Project& project) override {
+        applied_ = false;
+        if (auto* obj = project.findEmbroidery(id_)) {
+            if (auto* satin = std::get_if<document::SatinParams>(&obj->params);
+                satin != nullptr && index_ < satin->rungs.size()) {
+                previous_ = satin->rungs[index_];
+                satin->rungs[index_] = guide_;
+                applied_ = true;
+            }
+        }
+    }
+    void revert(document::Project& project) override {
+        if (!applied_) return;
+        if (auto* obj = project.findEmbroidery(id_)) {
+            if (auto* satin = std::get_if<document::SatinParams>(&obj->params);
+                satin != nullptr && index_ < satin->rungs.size()) {
+                satin->rungs[index_] = previous_;
+            }
+        }
+    }
+    [[nodiscard]] std::string name() const override { return "Déplacer un guide satin"; }
+
+private:
+    ObjectId id_;
+    std::size_t index_{};
+    document::SatinRung guide_;
+    document::SatinRung previous_{};
+    bool applied_{false};
+};
+
+class RemoveSatinGuideCommand final : public ICommand {
+public:
+    RemoveSatinGuideCommand(ObjectId id, std::size_t index) : id_(id), index_(index) {}
+
+    void apply(document::Project& project) override {
+        applied_ = false;
+        if (auto* obj = project.findEmbroidery(id_)) {
+            if (auto* satin = std::get_if<document::SatinParams>(&obj->params);
+                satin != nullptr && index_ < satin->rungs.size()) {
+                removed_ = satin->rungs[index_];
+                satin->rungs.erase(satin->rungs.begin() + static_cast<std::ptrdiff_t>(index_));
+                applied_ = true;
+            }
+        }
+    }
+    void revert(document::Project& project) override {
+        if (!applied_) return;
+        if (auto* obj = project.findEmbroidery(id_)) {
+            if (auto* satin = std::get_if<document::SatinParams>(&obj->params);
+                satin != nullptr && index_ <= satin->rungs.size()) {
+                satin->rungs.insert(satin->rungs.begin() + static_cast<std::ptrdiff_t>(index_), removed_);
+            }
+        }
+    }
+    [[nodiscard]] std::string name() const override { return "Supprimer un guide satin"; }
+
+private:
+    ObjectId id_;
+    std::size_t index_{};
+    document::SatinRung removed_{};
+    bool applied_{false};
+};
+
 }  // namespace openstitch::commands

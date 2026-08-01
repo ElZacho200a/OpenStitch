@@ -294,6 +294,44 @@ TEST_CASE("SetStitchParamsCommand : edite les parametres, undo restaure exact") 
           Micrometers{800});
 }
 
+TEST_CASE("guides satin : ajout deplacement suppression sont annulables exactement") {
+    document::Project project;
+    UndoStack stack;
+    document::EmbroideryObject object;
+    object.id = project.object_ids.next();
+    document::SatinParams params;
+    params.rungs = {{{Micrometers{0}, Micrometers{0}},
+                     {Micrometers{0}, Micrometers{4'000}}},
+                    {{Micrometers{10'000}, Micrometers{0}},
+                     {Micrometers{10'000}, Micrometers{4'000}}}};
+    object.params = params;
+    project.embroidery_objects.push_back(object);
+    const ObjectId id = object.id;
+
+    const document::SatinRung added{{Micrometers{5'000}, Micrometers{0}},
+                                    {Micrometers{5'000}, Micrometers{4'000}}};
+    stack.execute(std::make_unique<AddSatinGuideCommand>(id, added, 1), project);
+    REQUIRE(std::get<document::SatinParams>(project.findEmbroidery(id)->params).rungs.size() == 3);
+    CHECK(std::get<document::SatinParams>(project.findEmbroidery(id)->params).rungs[1] == added);
+    CHECK(stack.undoName() == "Ajouter un guide satin");
+    CHECK(stack.undo(project));
+    CHECK(std::get<document::SatinParams>(project.findEmbroidery(id)->params).rungs == params.rungs);
+    CHECK(stack.redo(project));
+
+    const document::SatinRung moved{{Micrometers{6'000}, Micrometers{100}},
+                                    {Micrometers{6'000}, Micrometers{3'900}}};
+    stack.execute(std::make_unique<MoveSatinGuideCommand>(id, 1, moved), project);
+    CHECK(std::get<document::SatinParams>(project.findEmbroidery(id)->params).rungs[1] == moved);
+    CHECK(stack.undo(project));
+    CHECK(std::get<document::SatinParams>(project.findEmbroidery(id)->params).rungs[1] == added);
+
+    stack.execute(std::make_unique<RemoveSatinGuideCommand>(id, 1), project);
+    CHECK(std::get<document::SatinParams>(project.findEmbroidery(id)->params).rungs == params.rungs);
+    CHECK(stack.undoName() == "Supprimer un guide satin");
+    CHECK(stack.undo(project));
+    CHECK(std::get<document::SatinParams>(project.findEmbroidery(id)->params).rungs[1] == added);
+}
+
 TEST_CASE("SetCanvasCommand : change la taille du cadre, undo restaure") {
     document::Project project;
     UndoStack stack;
