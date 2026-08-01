@@ -359,6 +359,18 @@ volontairement verrouillé ; le déverrouiller exigerait un calcul garantissant
 simultanément la couverture, la monotonie et l'absence de repli dans toutes les
 sections incidentes.
 
+Chaque groupe de guides internes créés ensemble par un ajout coordonné à une
+jonction porte un `link_id` (`SatinRung.link_id`, optionnel) — un identifiant
+local au réseau (`source_vector`), alloué de façon déterministe et monotone par
+`next_satin_guide_link_id` (échoue explicitement si les identifiants uint32 du
+réseau sont épuisés plutôt que d'en réémettre un déjà utilisé). Un guide ajouté
+indépendamment n'a pas de `link_id` ; les projets historiques n'en ont jamais.
+Persisté dans le `.osp` (`rungs[].linkId`, validation stricte : entier `uint32`
+exact, aucune troncature silencieuse d'une valeur négative/flottante/hors
+bornes). Ce lot pose l'identité partagée nécessaire à une future édition
+groupée ; il ne modifie pas encore le comportement de déplacement/suppression
+individuel d'un guide.
+
 ## Finitions : points courts, split, terminaisons (Lot 3)
 
 *État : Présent · Testé numériquement · Validé visuellement (SVG).* Toutes ces
