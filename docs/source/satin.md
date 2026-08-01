@@ -340,20 +340,23 @@ sélectionnable et explicitement marqué comme verrouillé, mais ses poignées e
 l'action de suppression sont désactivées. Le générateur ne couvre que
 l'intervalle compris entre ses guides extrêmes ; déplacer ou supprimer ce guide
 pourrait donc raccourcir une section et créer un vide ou un repli à la jonction.
-Pour modifier l'orientation, ajouter puis déplacer un guide interne. Le guide
-structurel est reconnu par l'ordre géométrique des stations projetées sur les
-deux rails, et non par son index de stockage, y compris après un import aux
-barreaux inversés ou désordonnés.
+Quand ce guide verrouillé est sélectionné, **Ajouter un guide satin** crée un
+guide interne dans chacune des sections incidentes. L'opération est globale :
+si le réseau est incomplet, une section dupliquée ou un intervalle inadmissible,
+aucun guide n'est ajouté. Une seule commande undo/redo couvre toutes les
+sections. Chaque guide interne reste ensuite déplaçable section par section ;
+ce mécanisme amorce l'orientation de toutes les branches sans déplacer la
+jonction structurelle. Celle-ci est reconnue par l'ordre géométrique des
+stations projetées sur les deux rails, et non par son index de stockage, y
+compris après un import aux barreaux inversés ou désordonnés.
 
-Limite actuelle : les guides s'éditent section par section sur les
-`SatinParams` ouverts issus du réseau topologique. Les sections et leurs
-jonctions sont maintenant identifiées explicitement. Le cœur sait retrouver,
-dans un ordre déterministe, toutes les extrémités d'une jonction appartenant au
-même objet vectoriel source et dispose d'une commande multi-objet atomique
-(tout ou rien, undo/redo unique). Il refuse un réseau incomplet, des indices de
-section dupliqués ou une extrémité annoncée mais introuvable. Le calcul
-géométrique des nouvelles positions et son interaction dans l'UI restent à
-implémenter avant de déverrouiller ces guides structurels.
+Limite actuelle : l'ajout est coordonné à travers la jonction, mais l'angle et
+le déplacement des guides internes s'éditent encore section par section sur les
+`SatinParams` ouverts issus du réseau topologique. Il n'existe donc pas encore
+de propagation géométrique d'un geste entre branches. Le guide structurel reste
+volontairement verrouillé ; le déverrouiller exigerait un calcul garantissant
+simultanément la couverture, la monotonie et l'absence de repli dans toutes les
+sections incidentes.
 
 ## Finitions : points courts, split, terminaisons (Lot 3)
 
