@@ -2,6 +2,8 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include <algorithm>
+#include <limits>
+#include <optional>
 
 #include "openstitch/stitch_generation/satin_guides.hpp"
 
@@ -159,4 +161,27 @@ TEST_CASE("les guides d'une jonction sont retrouves par reseau et tries par sect
 
     project.embroidery_objects.pop_back();  // section 1 du réseau absente
     CHECK(satin_junction_guides(project, source, 7).empty());
+}
+
+TEST_CASE("les identifiants de guides lies sont locaux au reseau et monotones") {
+    document::Project project;
+    const ObjectId source{42};
+    const auto addSection = [&](ObjectId sectionSource, std::optional<std::uint32_t> link) {
+        document::EmbroideryObject object;
+        object.id = project.object_ids.next();
+        object.source_vector = sectionSource;
+        auto params = satin();
+        params.rungs[1].link_id = link;
+        object.params = std::move(params);
+        project.embroidery_objects.push_back(std::move(object));
+    };
+    addSection(source, 2);
+    addSection(source, std::nullopt);
+    addSection(ObjectId{99}, 200);
+    CHECK(next_satin_guide_link_id(project, source) == std::optional<std::uint32_t>{3});
+    CHECK_FALSE(next_satin_guide_link_id(project, ObjectId{}).has_value());
+
+    auto& linked = std::get<document::SatinParams>(project.embroidery_objects[1].params);
+    linked.rungs[1].link_id = std::numeric_limits<std::uint32_t>::max();
+    CHECK_FALSE(next_satin_guide_link_id(project, source).has_value());
 }

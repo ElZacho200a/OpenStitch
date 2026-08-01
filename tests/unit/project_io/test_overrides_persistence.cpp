@@ -9,11 +9,13 @@
 // migration v1/v2 sans reconstruire tout le pipeline d'ecriture normal.
 #include <catch2/catch_test_macros.hpp>
 
+#include <array>
 #include <cstdint>
 #include <filesystem>
 #include <limits>
 #include <map>
 #include <string>
+#include <string_view>
 
 #include "archive.hpp"
 #include "openstitch/project_io/project_io.hpp"
@@ -153,6 +155,46 @@ TEST_CASE("topologie satin invalide : index de section hors reseau refuse") {
     REQUIRE_FALSE(loaded.has_value());
     CHECK(loaded.error().category == ErrorCategory::InvalidFile);
     fs::remove(path);
+}
+
+TEST_CASE("liaison de guide satin invalide : aucune troncature silencieuse") {
+    const std::array invalidLinks{"-1", "1.5", "4294967296"};
+    std::size_t caseIndex = 0;
+    for (const std::string_view value : invalidLinks) {
+        const std::string rungs =
+            R"(,"rungs":[{"ax":0,"ay":0,"bx":0,"by":1000,"linkId":)" +
+            std::string(value) + "}]";
+        const auto path = write_raw_osp(
+            "openstitch_satin_invalid_link_" + std::to_string(caseIndex++) + ".osp",
+            minimal_satin_document_json(rungs));
+        const auto loaded = project_io::load_project(path);
+        CHECK_FALSE(loaded.has_value());
+        if (!loaded) {
+            CHECK(loaded.error().category == ErrorCategory::InvalidFile);
+        }
+        fs::remove(path);
+    }
+}
+
+TEST_CASE("topologie satin numerique invalide : aucune troncature silencieuse") {
+    const std::array invalidTopologies{
+        R"({"sectionIndex":-1,"sectionCount":2})",
+        R"({"sectionIndex":0,"sectionCount":1.5})",
+        R"({"sectionIndex":0,"sectionCount":4294967296})",
+        R"({"sectionIndex":0,"sectionCount":1,"startJunction":-1})",
+        R"({"sectionIndex":0,"sectionCount":1,"endJunction":1.5})"};
+    std::size_t caseIndex = 0;
+    for (const std::string_view topology : invalidTopologies) {
+        const auto path = write_raw_osp(
+            "openstitch_satin_invalid_numeric_topology_" + std::to_string(caseIndex++) + ".osp",
+            minimal_satin_document_json(",\"topology\":" + std::string(topology)));
+        const auto loaded = project_io::load_project(path);
+        CHECK_FALSE(loaded.has_value());
+        if (!loaded) {
+            CHECK(loaded.error().category == ErrorCategory::InvalidFile);
+        }
+        fs::remove(path);
+    }
 }
 
 // ---------------------------------------------------------------------------

@@ -44,6 +44,10 @@ struct TatamiParams {
 struct SatinRung {
     Vec2um a{};  // côté rail A
     Vec2um b{};  // côté rail B
+    // Identité optionnelle, locale au réseau `source_vector`, partagée par les
+    // guides créés ensemble dans plusieurs sections. Absente pour les projets
+    // historiques et les guides indépendants.
+    std::optional<std::uint32_t> link_id;
     constexpr bool operator==(const SatinRung&) const = default;
 };
 

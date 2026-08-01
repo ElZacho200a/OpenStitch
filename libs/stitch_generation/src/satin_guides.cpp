@@ -174,6 +174,33 @@ std::vector<SatinJunctionGuideRef> satin_junction_guides(
     return result;
 }
 
+std::optional<std::uint32_t> next_satin_guide_link_id(const document::Project& project,
+                                                      ObjectId source_vector) {
+    if (!source_vector.valid()) {
+        return std::nullopt;
+    }
+    std::uint32_t next = 0;
+    for (const auto& object : project.embroidery_objects) {
+        if (object.source_vector != source_vector) {
+            continue;
+        }
+        const auto* satin = std::get_if<document::SatinParams>(&object.params);
+        if (satin == nullptr) {
+            continue;
+        }
+        for (const auto& rung : satin->rungs) {
+            if (!rung.link_id) {
+                continue;
+            }
+            if (*rung.link_id == std::numeric_limits<std::uint32_t>::max()) {
+                return std::nullopt;
+            }
+            next = std::max(next, static_cast<std::uint32_t>(*rung.link_id + 1));
+        }
+    }
+    return next;
+}
+
 std::optional<document::SatinRung> move_satin_guide_endpoint(
     const document::SatinParams& satin, std::size_t guide_index, SatinGuideSide side,
     Vec2um desired, Micrometers flatten_tolerance) {

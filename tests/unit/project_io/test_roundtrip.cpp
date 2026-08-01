@@ -95,6 +95,7 @@ document::Project rich_project() {
     sp.rail_b = square_path();
     sp.rungs.push_back({Vec2um{Micrometers{100}, Micrometers{200}},
                         Vec2um{Micrometers{300}, Micrometers{400}}});
+    sp.rungs.back().link_id = 12;
     sp.rungs.push_back({Vec2um{Micrometers{500}, Micrometers{600}},
                         Vec2um{Micrometers{700}, Micrometers{800}}});
     sp.topology = document::SatinSectionTopology{2, 4, 7, 9};
@@ -180,6 +181,8 @@ TEST_CASE("projet complet : save puis load = memes donnees") {
     REQUIRE(loadedSatin.rungs.size() == 2);
     CHECK(loadedSatin.rungs[0].a == Vec2um{Micrometers{100}, Micrometers{200}});
     CHECK(loadedSatin.rungs[1].b == Vec2um{Micrometers{700}, Micrometers{800}});
+    CHECK(loadedSatin.rungs[0].link_id == std::optional<std::uint32_t>{12});
+    CHECK_FALSE(loadedSatin.rungs[1].link_id.has_value());
     REQUIRE(loadedSatin.topology.has_value());
     CHECK(*loadedSatin.topology == document::SatinSectionTopology{2, 4, 7, 9});
     CHECK(loadedSatin.short_stitch == document::SatinShortStitch::MultiLevelInset);

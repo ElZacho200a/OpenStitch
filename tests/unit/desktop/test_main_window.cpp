@@ -752,6 +752,8 @@ void MainWindowTest::satinJunctionAddsInternalGuidesToEveryBranchAtomically() {
     };
     QCOMPARE(guideAt(fx.embroideryId, 1).a.x, Micrometers{1'000});
     QCOMPARE(guideAt(fx.embroideryId2, 1).a.x, Micrometers{1'000});
+    QCOMPARE(guideAt(fx.embroideryId, 1).link_id, std::optional<std::uint32_t>{0});
+    QCOMPARE(guideAt(fx.embroideryId2, 1).link_id, std::optional<std::uint32_t>{0});
     QTRY_COMPARE(window.selectedSatinGuide_, std::optional<std::size_t>{1});
     QCOMPARE(QString::fromStdString(window.undoStack_.undoName()),
              QStringLiteral("Ajouter des guides satin coordonnés"));

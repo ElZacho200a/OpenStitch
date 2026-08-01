@@ -585,6 +585,13 @@ void MainWindow::addSatinGuide() {
                 *satin, *selectedSatinGuide_)) {
             const auto refs = stitch_generation::satin_junction_guides(
                 project_, obj->source_vector, *junction);
+            const auto linkId =
+                stitch_generation::next_satin_guide_link_id(project_, obj->source_vector);
+            if (!linkId) {
+                statusBar()->showMessage(
+                    tr("Impossible d'ajouter les guides : identifiants de liaison épuisés."));
+                return;
+            }
             std::vector<commands::SatinGuideAddition> additions;
             additions.reserve(refs.size());
             std::optional<std::size_t> selected;
@@ -613,8 +620,10 @@ void MainWindow::addSatinGuide() {
                            "aucun intervalle admissible."));
                     return;
                 }
+                auto linkedGuide = insertion->guide;
+                linkedGuide.link_id = *linkId;
                 additions.push_back(
-                    {ref.embroidery_id, insertion->guide, insertion->index});
+                    {ref.embroidery_id, std::move(linkedGuide), insertion->index});
                 if (ref.embroidery_id == obj->id) {
                     selected = insertion->index;
                 }

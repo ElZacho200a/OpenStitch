@@ -45,6 +45,11 @@ struct SatinJunctionGuideRef {
     const document::Project& project, ObjectId source_vector, std::uint32_t junction_id,
     Micrometers flatten_tolerance = Micrometers{100});
 
+// Alloue déterministement l'identité suivante des guides liés dans un réseau.
+// Aucun identifiant n'est produit sans source valide ou après saturation uint32.
+[[nodiscard]] std::optional<std::uint32_t> next_satin_guide_link_id(
+    const document::Project& project, ObjectId source_vector);
+
 // Projette l'extrémité déplacée sur son rail et refuse une disposition qui ne
 // progresse plus strictement sur les deux rails. Le même demi-pas de densité
 // que fill_satin_columns est utilisé : une poignée acceptée ne pourra donc pas

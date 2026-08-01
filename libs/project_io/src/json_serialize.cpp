@@ -11,6 +11,8 @@ namespace {
 
 using nlohmann::json;
 
+Result<std::uint32_t> strict_uint32(const json& j, const char* field);
+
 // --- Types géométriques ------------------------------------------------------
 
 json vec_to_json(Vec2um v) {
@@ -178,10 +180,14 @@ json params_to_json(const document::StitchParams& params) {
             } else if constexpr (std::is_same_v<T, document::SatinParams>) {
                 json rungs = json::array();
                 for (const auto& r : p.rungs) {
-                    rungs.push_back({{"ax", r.a.x.value},
-                                     {"ay", r.a.y.value},
-                                     {"bx", r.b.x.value},
-                                     {"by", r.b.y.value}});
+                    json rung = {{"ax", r.a.x.value},
+                                 {"ay", r.a.y.value},
+                                 {"bx", r.b.x.value},
+                                 {"by", r.b.y.value}};
+                    if (r.link_id) {
+                        rung["linkId"] = *r.link_id;
+                    }
+                    rungs.push_back(std::move(rung));
                 }
                 j = {{"type", "satin"},
                      {"railA", path_to_json(p.rail_a)},
@@ -264,9 +270,17 @@ Result<document::StitchParams> params_from_json(const json& j) {
         // Barreaux : optionnels (projets antérieurs au schéma v2 -> aucun).
         if (j.contains("rungs")) {
             for (const auto& r : j.at("rungs")) {
-                p.rungs.push_back(
-                    document::SatinRung{Vec2um{Micrometers{r.at("ax")}, Micrometers{r.at("ay")}},
-                                        Vec2um{Micrometers{r.at("bx")}, Micrometers{r.at("by")}}});
+                document::SatinRung rung{
+                    Vec2um{Micrometers{r.at("ax")}, Micrometers{r.at("ay")}},
+                    Vec2um{Micrometers{r.at("bx")}, Micrometers{r.at("by")}}};
+                if (r.contains("linkId")) {
+                    auto linkId = strict_uint32(r.at("linkId"), "linkId");
+                    if (!linkId) {
+                        return std::unexpected(linkId.error());
+                    }
+                    rung.link_id = *linkId;
+                }
+                p.rungs.push_back(std::move(rung));
             }
         }
         p.density = Micrometers{j.at("density")};
@@ -300,17 +314,33 @@ Result<document::StitchParams> params_from_json(const json& j) {
         if (j.contains("topology")) {
             const auto& topology = j.at("topology");
             document::SatinSectionTopology section;
-            section.section_index = topology.at("sectionIndex").get<std::uint32_t>();
-            section.section_count = topology.at("sectionCount").get<std::uint32_t>();
+            auto sectionIndex = strict_uint32(topology.at("sectionIndex"), "sectionIndex");
+            auto sectionCount = strict_uint32(topology.at("sectionCount"), "sectionCount");
+            if (!sectionIndex) {
+                return std::unexpected(sectionIndex.error());
+            }
+            if (!sectionCount) {
+                return std::unexpected(sectionCount.error());
+            }
+            section.section_index = *sectionIndex;
+            section.section_count = *sectionCount;
             if (section.section_count == 0 || section.section_index >= section.section_count) {
                 return fail(ErrorCategory::InvalidFile,
                             "Topologie satin invalide : index de section hors réseau");
             }
             if (topology.contains("startJunction")) {
-                section.start_junction = topology.at("startJunction").get<std::uint32_t>();
+                auto start = strict_uint32(topology.at("startJunction"), "startJunction");
+                if (!start) {
+                    return std::unexpected(start.error());
+                }
+                section.start_junction = *start;
             }
             if (topology.contains("endJunction")) {
-                section.end_junction = topology.at("endJunction").get<std::uint32_t>();
+                auto end = strict_uint32(topology.at("endJunction"), "endJunction");
+                if (!end) {
+                    return std::unexpected(end.error());
+                }
+                section.end_junction = *end;
             }
             p.topology = section;
         }
