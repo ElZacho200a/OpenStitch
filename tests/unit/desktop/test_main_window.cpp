@@ -193,6 +193,8 @@ Fixture buildSatinJunctionFixture() {
     auto& first = fx.project.embroidery_objects.front();
     first.source_vector = source;
     auto& firstSatin = std::get<openstitch::document::SatinParams>(first.params);
+    firstSatin.rungs[1].a.x = Micrometers{2'000};
+    firstSatin.rungs[1].b.x = Micrometers{2'000};
     firstSatin.topology = openstitch::document::SatinSectionTopology{
         0, 2, std::uint32_t{7}, std::nullopt};
 
@@ -743,6 +745,13 @@ void MainWindowTest::satinJunctionAddsInternalGuidesToEveryBranchAtomically() {
     };
     QCOMPARE(rungCount(fx.embroideryId), std::size_t{4});
     QCOMPARE(rungCount(fx.embroideryId2), std::size_t{4});
+    const auto guideAt = [&](ObjectId id, std::size_t index) {
+        return std::get<openstitch::document::SatinParams>(
+                   window.project_.findEmbroidery(id)->params)
+            .rungs[index];
+    };
+    QCOMPARE(guideAt(fx.embroideryId, 1).a.x, Micrometers{1'000});
+    QCOMPARE(guideAt(fx.embroideryId2, 1).a.x, Micrometers{1'000});
     QTRY_COMPARE(window.selectedSatinGuide_, std::optional<std::size_t>{1});
     QCOMPARE(QString::fromStdString(window.undoStack_.undoName()),
              QStringLiteral("Ajouter des guides satin coordonnés"));

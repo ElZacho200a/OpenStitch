@@ -80,6 +80,34 @@ TEST_CASE("un nouveau guide satin preserve un ordre de guides inverse") {
     CHECK(p.rungs[1].a.x.value > p.rungs[2].a.x.value);
 }
 
+TEST_CASE("un guide ajoute depuis une jonction reste dans son intervalle adjacent") {
+    auto p = satin();
+    p.rungs[1].a.x = Micrometers{2'000};
+    p.rungs[1].b.x = Micrometers{2'000};
+    p.topology = document::SatinSectionTopology{0, 2, 7, std::nullopt};
+
+    const auto insertion = make_satin_guide_next_to_junction(p, 0);
+    REQUIRE(insertion.has_value());
+    CHECK(insertion->index == 1);
+    CHECK(insertion->guide.a == Vec2um{Micrometers{1'000}, Micrometers{0}});
+    CHECK(insertion->guide.b == Vec2um{Micrometers{1'000}, Micrometers{4'000}});
+
+    std::reverse(p.rungs.begin(), p.rungs.end());
+    const auto reversed = make_satin_guide_next_to_junction(p, 2);
+    REQUIRE(reversed.has_value());
+    CHECK(reversed->index == 2);
+    CHECK(reversed->guide == insertion->guide);
+}
+
+TEST_CASE("un ajout adjacent exige une jonction et une progression bilaterale suffisante") {
+    auto p = satin();
+    CHECK_FALSE(make_satin_guide_next_to_junction(p, 0).has_value());
+    p.topology = document::SatinSectionTopology{0, 2, 7, std::nullopt};
+    CHECK_FALSE(make_satin_guide_next_to_junction(p, 1).has_value());
+    p.density = Micrometers{6'000};
+    CHECK_FALSE(make_satin_guide_next_to_junction(p, 0).has_value());
+}
+
 TEST_CASE("un guide terminal de jonction est structurel meme si les rungs sont inverses") {
     auto p = satin();
     p.topology = document::SatinSectionTopology{0, 3, 7, std::nullopt};

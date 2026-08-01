@@ -604,7 +604,8 @@ void MainWindow::addSatinGuide() {
                         : nullptr;
                 const auto insertion =
                     sectionSatin != nullptr
-                        ? stitch_generation::make_satin_guide_in_largest_gap(*sectionSatin)
+                        ? stitch_generation::make_satin_guide_next_to_junction(
+                              *sectionSatin, ref.guide_index)
                         : std::nullopt;
                 if (!insertion) {
                     statusBar()->showMessage(

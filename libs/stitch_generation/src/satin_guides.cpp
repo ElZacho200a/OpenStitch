@@ -300,4 +300,63 @@ std::optional<SatinGuideInsertion> make_satin_guide_in_largest_gap(
         insertionIndex};
 }
 
+std::optional<SatinGuideInsertion> make_satin_guide_next_to_junction(
+    const document::SatinParams& satin, std::size_t junction_guide_index,
+    Micrometers flatten_tolerance) {
+    if (satin.rungs.size() < 2 || junction_guide_index >= satin.rungs.size() ||
+        !satin_guide_junction(satin, junction_guide_index, flatten_tolerance)) {
+        return std::nullopt;
+    }
+    auto railA = geometry::flatten(satin.rail_a, flatten_tolerance).points;
+    auto railB = geometry::flatten(satin.rail_b, flatten_tolerance).points;
+    if (railA.size() < 2 || railB.size() < 2) {
+        return std::nullopt;
+    }
+    if (opposite_orientation(railA, railB)) {
+        std::reverse(railB.begin(), railB.end());
+    }
+    const auto cumulativeA = geometry::cumulative_lengths(railA);
+    const auto cumulativeB = geometry::cumulative_lengths(railB);
+    struct Anchor {
+        double sa{};
+        double sb{};
+        std::size_t original_index{};
+    };
+    std::vector<Anchor> anchors;
+    anchors.reserve(satin.rungs.size());
+    for (std::size_t i = 0; i < satin.rungs.size(); ++i) {
+        const auto pa = project(railA, cumulativeA, satin.rungs[i].a);
+        const auto pb = project(railB, cumulativeB, satin.rungs[i].b);
+        if (!pa || !pb) {
+            return std::nullopt;
+        }
+        anchors.push_back({pa->station, pb->station, i});
+    }
+    std::stable_sort(anchors.begin(), anchors.end(), [](const Anchor& lhs, const Anchor& rhs) {
+        return lhs.sa + lhs.sb < rhs.sa + rhs.sb;
+    });
+    const auto junction = std::find_if(anchors.begin(), anchors.end(), [&](const Anchor& anchor) {
+        return anchor.original_index == junction_guide_index;
+    });
+    if (junction == anchors.end() ||
+        (junction != anchors.begin() && junction + 1 != anchors.end())) {
+        return std::nullopt;
+    }
+    const Anchor& adjacent =
+        junction == anchors.begin() ? anchors[1] : anchors[anchors.size() - 2];
+    const Anchor& first = junction == anchors.begin() ? *junction : adjacent;
+    const Anchor& second = junction == anchors.begin() ? adjacent : *junction;
+    const double minimumGap = std::max(1.0, static_cast<double>(satin.density.value) * 0.5);
+    if (second.sa - first.sa <= 2.0 * minimumGap ||
+        second.sb - first.sb <= 2.0 * minimumGap) {
+        return std::nullopt;
+    }
+    const double sa = 0.5 * (first.sa + second.sa);
+    const double sb = 0.5 * (first.sb + second.sb);
+    return SatinGuideInsertion{
+        document::SatinRung{geometry::point_at_length(railA, cumulativeA, sa),
+                            geometry::point_at_length(railB, cumulativeB, sb)},
+        std::max(first.original_index, second.original_index)};
+}
+
 }  // namespace openstitch::stitch_generation

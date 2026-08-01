@@ -60,4 +60,11 @@ struct SatinJunctionGuideRef {
     const document::SatinParams& satin,
     Micrometers flatten_tolerance = Micrometers{100});
 
+// Construit un guide dans l'intervalle directement adjacent à un guide
+// structurel de jonction. L'intervalle doit progresser strictement sur les deux
+// rails et conserver le même demi-pas minimal que le générateur.
+[[nodiscard]] std::optional<SatinGuideInsertion> make_satin_guide_next_to_junction(
+    const document::SatinParams& satin, std::size_t junction_guide_index,
+    Micrometers flatten_tolerance = Micrometers{100});
+
 }  // namespace openstitch::stitch_generation
