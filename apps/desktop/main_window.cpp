@@ -126,7 +126,11 @@ MainWindow::MainWindow() {
     // métier — celles-ci restent dans le .osp). Les panneaux vides seront
     // masqués ensuite par les refresh.
     {
-        QSettings s(QStringLiteral("OpenStitch"), QStringLiteral("OpenStitch Studio"));
+        // QSettings() par défaut : lit l'organisation/application déjà posées sur
+        // QCoreApplication (main.cpp). Un test peut ainsi rediriger vers un fichier
+        // temporaire (QCoreApplication::setOrganizationName + QSettings::setPath)
+        // sans jamais toucher au registre réel de l'utilisateur.
+        QSettings s;
         if (s.contains(QStringLiteral("ui/geometry"))) {
             restoreGeometry(s.value(QStringLiteral("ui/geometry")).toByteArray());
         }
@@ -187,9 +191,11 @@ void MainWindow::buildMenus() {
 
     auto* editMenu = menuBar()->addMenu(tr("&Édition"));
     undoAct_ = editMenu->addAction(tr("&Annuler"));
+    undoAct_->setObjectName(QStringLiteral("action_undo"));
     undoAct_->setShortcut(QKeySequence::Undo);
     connect(undoAct_, &QAction::triggered, this, &MainWindow::undo);
     redoAct_ = editMenu->addAction(tr("&Rétablir"));
+    redoAct_->setObjectName(QStringLiteral("action_redo"));
     redoAct_->setShortcut(QKeySequence::Redo);
     connect(redoAct_, &QAction::triggered, this, &MainWindow::redo);
 
@@ -243,6 +249,7 @@ void MainWindow::buildMenus() {
     regionActions_.append(mergeAct_);
 
     auto* delRegionAct = segMenu->addAction(tr("&Supprimer la région sélectionnée"));
+    delRegionAct->setObjectName(QStringLiteral("action_deleteRegion"));
     delRegionAct->setShortcut(QKeySequence::Delete);
     connect(delRegionAct, &QAction::triggered, this, &MainWindow::deleteSelectedRegion);
     regionActions_.append(delRegionAct);
@@ -261,6 +268,7 @@ void MainWindow::buildMenus() {
     connect(autoAct, &QAction::triggered, this, &MainWindow::autoDigitize);
     embMenu->addSeparator();
     createStitchAct_ = embMenu->addAction(tr("Créer un objet de &point de contour…"));
+    createStitchAct_->setObjectName(QStringLiteral("action_createStitch"));
     connect(createStitchAct_, &QAction::triggered, this, &MainWindow::createRunningStitchObject);
     createTatamiAct_ = embMenu->addAction(tr("Créer un remplissage &tatami…"));
     connect(createTatamiAct_, &QAction::triggered, this, &MainWindow::createTatamiObject);
@@ -475,7 +483,7 @@ void MainWindow::updateEmptyState() {
 void MainWindow::closeEvent(QCloseEvent* event) {
     // Sauve les préférences d'interface (géométrie + disposition des panneaux).
     {
-        QSettings s(QStringLiteral("OpenStitch"), QStringLiteral("OpenStitch Studio"));
+        QSettings s;
         s.setValue(QStringLiteral("ui/geometry"), saveGeometry());
         s.setValue(QStringLiteral("ui/windowState"), saveState());
     }
@@ -1632,17 +1640,22 @@ void MainWindow::buildContextToolbar() {
     updateContextToolbar();
 }
 
-void MainWindow::updateContextToolbar() {
-    if (contextToolbar_ == nullptr) {
-        return;
-    }
-    const document::EmbroideryObject* emb = nullptr;
+document::EmbroideryObject* MainWindow::resolveSelectedEmbroidery() {
+    document::EmbroideryObject* emb = nullptr;
     if (selectedEmbroidery_) {
         emb = project_.findEmbroidery(*selectedEmbroidery_);
     }
     if (emb == nullptr && selectedObject_) {
         emb = embroideryForVector(*selectedObject_);
     }
+    return emb;
+}
+
+void MainWindow::updateContextToolbar() {
+    if (contextToolbar_ == nullptr) {
+        return;
+    }
+    const document::EmbroideryObject* emb = resolveSelectedEmbroidery();
     const bool hasVec = selectedObject_.has_value();
     const bool hasReg = selectedRegion_ && project_.segmentation;
     const int pts = sequence_ ? static_cast<int>(sequence_->commands.size()) : 0;
@@ -1894,13 +1907,7 @@ void MainWindow::syncDocumentSelection() {
     if (documentPanel_ == nullptr) {
         return;
     }
-    const document::EmbroideryObject* emb = nullptr;
-    if (selectedEmbroidery_) {
-        emb = project_.findEmbroidery(*selectedEmbroidery_);
-    }
-    if (emb == nullptr && selectedObject_) {
-        emb = embroideryForVector(*selectedObject_);
-    }
+    const document::EmbroideryObject* emb = resolveSelectedEmbroidery();
     if (emb != nullptr) {
         documentPanel_->syncSelection(DocumentPanel::Kind::Embroidery, emb->id.value);
     } else if (selectedRegion_) {
@@ -1936,13 +1943,7 @@ void MainWindow::updateInspector() {
     }
     // Cible : objet de broderie (dock Ordre) > remplissage rattaché à l'objet
     // vectoriel sélectionné > objet vectoriel > région > rien.
-    const document::EmbroideryObject* emb = nullptr;
-    if (selectedEmbroidery_) {
-        emb = project_.findEmbroidery(*selectedEmbroidery_);
-    }
-    if (emb == nullptr && selectedObject_) {
-        emb = embroideryForVector(*selectedObject_);
-    }
+    const document::EmbroideryObject* emb = resolveSelectedEmbroidery();
 
     int kind = -1;
     std::uint64_t id = 0;
@@ -2539,7 +2540,16 @@ void MainWindow::loadProject() {
                              QString::fromStdString(loaded.error().message));
         return;
     }
-    project_ = std::move(*loaded);
+    applyLoadedProject(std::move(*loaded));
+    statusBar()->showMessage(tr("Projet ouvert : %1 — %2 objet(s) vectoriel(s), %3 objet(s) de "
+                                "broderie")
+                                 .arg(QFileInfo(file).fileName())
+                                 .arg(project_.vector_objects.size())
+                                 .arg(project_.embroidery_objects.size()));
+}
+
+void MainWindow::applyLoadedProject(document::Project project) {
+    project_ = std::move(project);
     undoStack_.clear();
     sequence_.reset();
     sequenceImported_ = false;
@@ -2548,12 +2558,11 @@ void MainWindow::loadProject() {
     refreshImage();
     view_->fitCanvas();
     updateActions();
-    statusBar()->showMessage(tr("Projet ouvert : %1 — %2 objet(s) vectoriel(s), %3 objet(s) de "
-                                "broderie")
-                                 .arg(QFileInfo(file).fileName())
-                                 .arg(project_.vector_objects.size())
-                                 .arg(project_.embroidery_objects.size()));
     setWindowModified(false);  // projet fraîchement chargé = propre
+}
+
+void MainWindow::loadProjectForTests(document::Project project) {
+    applyLoadedProject(std::move(project));
 }
 
 void MainWindow::exportDst() {

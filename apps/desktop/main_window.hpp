@@ -45,6 +45,11 @@ class MainWindow : public QMainWindow {
 public:
     MainWindow();
 
+    // Point d'entrée réservé aux tests automatisés : applique un projet déjà
+    // construit, sans dialogue modal (loadProject() passe par QFileDialog en
+    // production, ce qui bloquerait un test QTest offscreen).
+    void loadProjectForTests(document::Project project);
+
 protected:
     void closeEvent(QCloseEvent* event) override;
 
@@ -87,6 +92,14 @@ private slots:
     void applyOrderStrategy();
 
 private:
+    // Applique un projet déjà construit (charge depuis un fichier ou fixture
+    // de test) : remplace le document, réinitialise undo/sélection, rafraîchit.
+    void applyLoadedProject(document::Project project);
+    // Objet de broderie ciblé par la sélection courante (broderie choisie
+    // dans l'ordre de couture, sinon remplissage rattaché à l'objet vectoriel
+    // sélectionné au canevas ; nullptr sinon). Résolution partagée par
+    // updateContextToolbar/updateInspector/syncDocumentSelection.
+    [[nodiscard]] document::EmbroideryObject* resolveSelectedEmbroidery();
     void buildMenus();
     void buildHelpMenu();
     void buildMainToolbar();
