@@ -15,7 +15,7 @@ Public : développeur, mainteneur.
   (invoquée via `add_test`, cf. Lot 8.1) — échoue si un site de production
   hors `libs/stitch_generation/` appelle `generate_sequence()` directement
   sans annotation `raw-sequence-ok:`, contournant les retouches manuelles.
-- Total au dernier passage vérifié : **304 tests CTest**, 100 % réussis.
+- Total au dernier passage vérifié : **311 tests CTest**, 100 % réussis.
 
 ## Encadré de traçabilité (dernier passage vérifié)
 
@@ -24,11 +24,11 @@ passage vérifié manuellement. Régénérez ces valeurs avant toute publication
 
 | Élément | Valeur |
 |---|---|
-| Commit (état du code testé) | `7cb6c5f` |
+| Commit (état du code testé) | `51e7d7f` |
 | Compilateur | MSVC toolset 14.50 (Visual Studio 2026) |
 | CMake | 4.4.0-rc3 |
 | Configurations | Debug **et** Release |
-| Résultat CTest | 304 / 304 réussis |
+| Résultat CTest | 311 / 311 réussis |
 | Tests désactivés | 0 |
 | Fichiers de tests d'intégration | 1 (`tests/integration/test_pipeline.cpp`) |
 | Suites Qt (UI desktop) | 5 exécutables CTest (`tests/unit/desktop/`), 35 fonctions de test QTest |
@@ -37,7 +37,7 @@ passage vérifié manuellement. Régénérez ces valeurs avant toute publication
 
 Note : chaque `TEST_CASE` Catch2 (ou fonction de test QTest) est enregistré
 comme un test CTest (via `catch_discover_tests` côté Catch2, `add_test` par
-suite côté QTest) ; le nombre d'**assertions** est supérieur. Le chiffre 304
+suite côté QTest) ; le nombre d'**assertions** est supérieur. Le chiffre 311
 compte les cas de test (dont la garde structurelle CI), pas les assertions.
 
 ## Exécution
@@ -57,7 +57,7 @@ build\msvc\tests\unit\stitch\Debug\test_stitch.exe "[nom]"   # un exécutable
 | image | `test_image_load.cpp`, `test_ops.cpp` |
 | segmentation | `test_segmentation.cpp` |
 | vectorization | `test_vectorize.cpp` |
-| stitch / stitch_generation | `test_stats.cpp`, `test_running_stitch.cpp`, `test_generate.cpp`, `test_tatami.cpp`, `test_satin.cpp`, `test_routing.cpp`, `test_overrides.cpp` |
+| stitch / stitch_generation | `test_stats.cpp`, `test_running_stitch.cpp`, `test_generate.cpp`, `test_tatami.cpp`, `test_satin.cpp`, `test_satin_pairing_metrics.cpp`, `test_routing.cpp`, `test_overrides.cpp` |
 | autodigitize | `test_autodigitize.cpp` |
 | auto_satin | `tests/unit/auto_satin/test_pipeline.cpp`, `test_columns.cpp` |
 | stitch_analysis | `test_analyze.cpp` |
@@ -268,6 +268,13 @@ But visé par l'utilisateur, dans l'ordre de valeur/risque :
   une colonne, milieu des barreaux **intérieur à la région**, Y → plusieurs
   colonnes, cercle/anneau/large **refusés**, déterminisme des rails ; SVG dans
   `tests/golden/auto-satin/`.
+- **Appariement rail gauche/rail droit (audit rails, 2026-08-01)** :
+  fixtures géométriques dédiées (ruban droit, S, coude 90°, largeur variable,
+  cas combiné) mesurant croisements, monotonie sur les deux rails, angle
+  fil/normale locale, continuité angulaire, régularité de densité,
+  déterminisme — avec comparaison chiffrée à l'ancien algorithme (réplique
+  isolée, test uniquement). Voir `docs/source/satin.md` § *Correction de
+  l'appariement*.
 - **Satin par barreaux** (`fill_satin_columns`) : espacement **médian régulier**
   (colonne droite), barreaux **traversés exactement**, rails de longueurs
   différentes, repli sur `fill_satin` si < 2 barreaux, déterminisme.

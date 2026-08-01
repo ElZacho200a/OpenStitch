@@ -25,21 +25,20 @@ d'une sous-couche centrale (`center_underlay`).
 
 `fill_satin(rail_a, rail_b, config)` :
 
-1. ré-échantillonne **les deux rails** par fraction d'abscisse curviligne (les
-   rails peuvent avoir des longueurs et courbures différentes) ;
-2. produit un **zigzag alterné** d'un bord à l'autre (L0, R0, L1, R1, …) ;
-3. la **densité** fixe le pas d'avancement le long de la colonne (mesuré **le
-   long du rail**, par fraction d'abscisse curviligne) ;
+1. calcule une **correspondance locale monotone** entre les deux rails
+   (`ladder_correspondence`, voir *Correction de l'appariement* ci-dessous) —
+   les rails peuvent avoir des longueurs, courbures et échantillonnages
+   différents ;
+2. ré-échantillonne cette correspondance par pas fixe le long de sa **ligne
+   médiane** (≈ perpendiculaire aux fils), et produit un **zigzag alterné**
+   d'un bord à l'autre (L0, R0, L1, R1, …) ;
+3. la **densité** fixe ce pas d'avancement, mesuré sur la ligne médiane (donc
+   proche de la perpendiculaire aux fils, y compris en section inclinée ou
+   courbe) ;
 4. la **compensation de tirage** écarte les deux rails le long de leur
    médiatrice, pour compenser le resserrement du fil ;
 5. la **sous-couche centrale** (optionnelle) est un point droit grossier sur
-   l'axe, cousu avant le zigzag.
-
-Avertissement : la densité est mesurée **le long du rail**, pas
-perpendiculairement aux fils. Dans les sections **inclinées ou courbes**,
-l'espacement visuel réel entre fils diffère alors de la consigne (les fils se
-resserrent ou s'écartent selon l'angle). Une mesure correcte projetterait
-l'avancement sur la normale aux fils ; ce n'est pas encore le cas.
+   l'axe, cousu avant le zigzag, dérivée de la même correspondance.
 
 Le résultat (`SatinResult`) fournit les points de sous-couche, du satin, et la
 **largeur maximale** rencontrée (pour l'avertissement).
@@ -57,6 +56,81 @@ Valeurs par défaut lues dans `SatinParams`.
 
 > Validation physique : non effectuée. La densité satin devrait idéalement se
 > mesurer perpendiculairement au fil (voir l'avertissement ci-dessus).
+
+## Correction de l'appariement rail gauche / rail droit (audit rails, 2026-08-01)
+
+*État : Présent · Testé numériquement (fixtures géométriques dédiées) · non
+validé simulateur/physique.*
+
+**Défaut trouvé.** L'ancien appariement (`fill_satin` sans barreaux, et
+l'interpolation à l'intérieur d'un intervalle entre deux barreaux dans
+`fill_satin_columns`) associait les deux rails par la **même fraction
+d'abscisse curviligne** appliquée indépendamment à chacun (ou, avec barreaux,
+la même fraction `u` sur tout l'intervalle). Dès que les deux rails divergent
+en longueur ou en courbure — virage, coude, largeur variable — cette
+hypothèse de proportionnalité est fausse : les fils cessent d'être localement
+perpendiculaires au ruban. Symptôme observé : orientation des points en
+retard sur la direction locale des rails, éventails, quasi-croisements et
+densité visuelle irrégulière dans un ruban courbe ou anguleux.
+
+**Correction.** Remplacé par une correspondance locale **"ladder"**
+(triangulation de bande par la diagonale la plus courte entre deux chaînes —
+technique classique de géométrie algorithmique, indépendante de tout logiciel
+de broderie) :
+
+1. chaque rail est sous-échantillonné entre deux ancres exactes (barreaux, ou
+   les deux extrémités de colonne si aucun barreau) à une résolution bornée
+   (`maxStep`, fonction de la densité) — donne assez de détail même si les
+   sommets d'origine sont épars (rail dessiné à la main, contour simplifié) ;
+2. à chaque pas, la correspondance avance sur le rail dont le **prochain
+   sommet forme la diagonale la plus courte** avec le point courant de
+   l'autre rail (`ladder_correspondence`) — un garde-fou rejette une avance
+   qui croiserait la diagonale précédente et force l'autre côté ;
+3. cette correspondance dense est ré-échantillonnée par pas fixe le long de
+   sa **ligne médiane** (`resample_by_medial_spacing`) : l'interpolation de
+   (sa, sb) se fait dans le pas LOCAL du ladder qui encadre chaque cible,
+   jamais sur tout l'intervalle — l'erreur reste bornée par la résolution du
+   ladder, pas par la longueur de l'intervalle.
+
+**Invariants garantis** (vérifiés par fixtures, voir ci-dessous) :
+
+- **Monotonie** : les indices/abscisses avancent sur chaque rail dans le même
+  sens que le parcours, jamais en arrière.
+- **Absence de croisement** : deux fils consécutifs (et, mesuré sur les
+  fixtures, deux fils quelconques) ne se croisent jamais.
+- **Stabilité à l'échantillonnage** : la correspondance ne dépend pas du
+  nombre de sommets d'origine de chaque rail (rails de résolutions très
+  différentes acceptés).
+- **Déterminisme** : aucune donnée non déterministe, résultat identique à
+  entrée identique.
+- **Complexité** : O(nA + nB) par intervalle entre deux barreaux (linéaire) —
+  la ladder ne revisite jamais un sommet, comme la triangulation de bande
+  classique dont elle s'inspire.
+
+**Limite assumée** : à un coude **C0 franc** (angle vif sans congé), la
+notion de « normale locale » est elle-même discontinue ; un seul fil au
+sommet du coude absorbe nécessairement une déviation angulaire importante.
+Aucun appariement ne peut faire autrement sans mitre/congé explicite (relève
+de `ShortStitchMode`, hors périmètre de l'appariement de base). Ce que la
+correction garantit dans ce cas : la déviation reste localisée à ce fil
+unique (pas d'éventail étendu sur plusieurs fils) et aucun croisement
+n'apparaît.
+
+**Fixtures et métriques** (`tests/unit/stitch/test_satin_pairing_metrics.cpp`,
+7 tests, indépendants des tests de non-régression `test_satin.cpp`) : ruban
+droit (cas trivial), ruban en S, coude à 90° franc, largeur variable, cas
+combiné courbe+coude+largeur (inspiré d'un ruban capturé par l'utilisateur),
+plus la même correspondance via `fill_satin_columns` (barreaux). Chaque test
+mesure croisements (adjacents et toute paire), monotonie sur les deux rails,
+angle fil/normale locale (moyenne + pire cas), continuité angulaire entre
+fils consécutifs, régularité de la densité médiane, longueurs min/max, et
+déterminisme. Une réplique isolée de l'ancien algorithme (jamais utilisée en
+production) sert de référence comparative dans les mêmes tests. Résultats
+mesurés : ruban en S, angle max fil/normale 2,7° (nouveau) contre 58,4°
+(ancien), angle moyen 1,2° contre 33,5° ; coude à 90°, 0 croisement (nouveau)
+contre 3 (ancien) ; cas combiné, angle max 4,9° contre 44,3°, 0 croisement
+dans les deux cas sur cette fixture précise mais éventail moyen réduit d'un
+facteur 12 (2,0° contre 24,0°).
 
 ## Colonne trop large
 
@@ -130,9 +204,10 @@ Quand un satin porte des **barreaux** (`SatinParams.rungs` ≥ 2), la générati
 utilise `fill_satin_columns` au lieu de `fill_satin` :
 
 - **Correspondance par sections** : chaque paire de barreaux consécutifs découpe
-  les rails en intervalles correspondants, interpolés selon **leur propre
-  abscisse curviligne** (rails de longueurs, nombres de nœuds et courbures
-  différents autorisés). Les barreaux sont **traversés exactement**.
+  les rails en intervalles correspondants, appariés par correspondance locale
+  **ladder** (voir *Correction de l'appariement* plus haut — rails de
+  longueurs, nombres de nœuds et courbures différents autorisés, sans
+  éventail). Les barreaux sont **traversés exactement**.
 - **Espacement perpendiculaire** : le pas n'est plus mesuré le long d'un rail
   mais sur la **ligne médiane** (≈ perpendiculaire aux fils) — on ré-échantillonne
   la médiane de chaque intervalle par la densité demandée.
@@ -271,7 +346,9 @@ suivant réellement la matière viendra avec le tatami avancé (Lot 7).
 
 - `libs/document/.../embroidery_object.hpp` — `SatinParams`, `SatinRung`.
 - `libs/stitch_generation/src/satin.cpp` — `fill_satin`, `fill_satin_columns`
-  (par barreaux), `rails_from_contour`.
+  (par barreaux), `rails_from_contour`, `ladder_correspondence` +
+  `resample_by_medial_spacing` (correspondance locale rail A/rail B, audit
+  rails 2026-08-01).
 - `libs/stitch_generation/src/generate.cpp` — `generate_satin` (route vers
   `fill_satin_columns` si barreaux présents, oriente par entrée/sortie, émet les
   locks).
@@ -283,4 +360,6 @@ suivant réellement la matière viendra avec le tatami avancé (Lot 7).
   `build_satin_columns`, `SatinColumnGeometry`, `SatinRung` (moteur géométrique).
 - `libs/auto_satin/src/debug_export.cpp` — `columns_to_svg`.
 - Tests : `tests/unit/stitch/test_satin.cpp`,
+  `tests/unit/stitch/test_satin_pairing_metrics.cpp` (fixtures et métriques de
+  l'appariement, audit rails 2026-08-01),
   `tests/unit/auto_satin/test_columns.cpp`.

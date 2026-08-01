@@ -57,6 +57,20 @@ fonctionnalité, vérifié dans le code.
   bord **brut** si le retrait de contour échouait/disparaissait ; politique sûre
   désormais : aucune sous-couche de contour dans ce cas. `underlay_inset` et
   `underlay_spacing` sont exposés dans l'inspecteur (`PropertiesPanel`).
+- **Correction de l'appariement rail gauche/rail droit (2026-08-01)** :
+  l'ancien appariement (`fill_satin` sans barreaux, et l'interpolation
+  intra-intervalle de `fill_satin_columns`) associait les deux rails par la
+  même fraction d'abscisse curviligne appliquée indépendamment à chacun —
+  faux dès que les rails divergent en longueur/courbure (virage, coude,
+  largeur variable), causant éventails, quasi-croisements et densité
+  irrégulière sur un ruban courbe ou anguleux. Remplacé par une
+  correspondance locale monotone (« ladder », diagonale la plus courte,
+  garde-fou anti-croisement, O(n) par intervalle) — voir
+  `docs/source/satin.md` § *Correction de l'appariement*. Limite assumée : au
+  sommet d'un coude C0 franc (sans congé), un seul fil absorbe nécessairement
+  une déviation angulaire importante (mitre/congé = `ShortStitchMode`, hors
+  périmètre). Fixtures et métriques dédiées :
+  `tests/unit/stitch/test_satin_pairing_metrics.cpp` (7 tests).
 - Aucune validation sur machine à broder réelle.
 
 ## Niveaux de validation
