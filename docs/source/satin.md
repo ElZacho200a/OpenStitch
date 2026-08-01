@@ -271,6 +271,15 @@ traite donc comme un groupe multi-rail. Chaque objet reste un `SatinParams`
 historique à deux rails : aucune rupture du format. Les **barreaux sont stockés**
 dans `SatinParams.rungs` et sérialisés (`.osp` schéma v2, rétrocompatible).
 
+Chaque section générée porte désormais une topologie explicite et déterministe :
+`section_index`/`section_count`, plus `start_junction` et `end_junction` quand
+l'extrémité touche une jonction du squelette. Les anneaux forment un cycle de
+quatre jonctions ; les réseaux Y/T réutilisent le même identifiant au point
+partagé. Ces métadonnées deviennent le bloc `SatinParams.topology` optionnel
+dans le document et le `.osp`. Un ancien satin sans ce bloc reste une colonne
+isolée. Ce lot fournit une identité de jonction fiable ; il ne modifie pas encore
+le routage ni l'édition coordonnée des guides.
+
 Régressions couvertes : bande simple, réseau en T (au moins trois sections),
 anneau rasterisé (quatre sections, trou préservé) et pipeline complet sur
 `tests/fixtures/tentabrode.png`, en Debug et Release. Cette validation reste
@@ -327,8 +336,9 @@ préserve aussi l'ordre de progression croissant ou décroissant des guides, afi
 que les extrémités employées par le routage textile restent exactes.
 
 Limite actuelle : les guides s'éditent section par section sur les
-`SatinParams` ouverts issus du réseau topologique ; l'édition coordonnée d'un
-guide à travers une jonction multi-rail reste à concevoir.
+`SatinParams` ouverts issus du réseau topologique. Les sections et leurs
+jonctions sont maintenant identifiées explicitement, mais l'édition coordonnée
+d'un guide à travers une jonction multi-rail reste à implémenter.
 
 ## Finitions : points courts, split, terminaisons (Lot 3)
 

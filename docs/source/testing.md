@@ -15,7 +15,7 @@ Public : développeur, mainteneur.
   (invoquée via `add_test`, cf. Lot 8.1) — échoue si un site de production
   hors `libs/stitch_generation/` appelle `generate_sequence()` directement
   sans annotation `raw-sequence-ok:`, contournant les retouches manuelles.
-- Total au dernier passage vérifié : **317 tests CTest**, 100 % réussis.
+- Total au dernier passage vérifié : **332 tests CTest**, 100 % réussis.
 
 ## Encadré de traçabilité (dernier passage vérifié)
 
@@ -24,11 +24,11 @@ passage vérifié manuellement. Régénérez ces valeurs avant toute publication
 
 | Élément | Valeur |
 |---|---|
-| Commit (état du code testé) | `<à renseigner après le commit code — voir revue corrective ladder_correspondence 2026-08-01>` |
+| Commit (état du code testé) | `fd16e97` — topologie satin persistée |
 | Compilateur | MSVC toolset 14.50 (Visual Studio 2026) |
 | CMake | 4.4.0-rc3 |
 | Configurations | Debug **et** Release |
-| Résultat CTest | 317 / 317 réussis |
+| Résultat CTest | 332 / 332 réussis |
 | Tests désactivés | 0 |
 | Fichiers de tests d'intégration | 1 (`tests/integration/test_pipeline.cpp`) |
 | Suites Qt (UI desktop) | 5 exécutables CTest (`tests/unit/desktop/`), 35 fonctions de test QTest |
@@ -37,7 +37,7 @@ passage vérifié manuellement. Régénérez ces valeurs avant toute publication
 
 Note : chaque `TEST_CASE` Catch2 (ou fonction de test QTest) est enregistré
 comme un test CTest (via `catch_discover_tests` côté Catch2, `add_test` par
-suite côté QTest) ; le nombre d'**assertions** est supérieur. Le chiffre 317
+suite côté QTest) ; le nombre d'**assertions** est supérieur. Le chiffre 332
 compte les cas de test (dont la garde structurelle CI), pas les assertions.
 
 ## Exécution
@@ -265,9 +265,13 @@ But visé par l'utilisateur, dans l'ordre de valeur/risque :
 - **Auto-numérisation** : une bande fine devient un **tatami** par défaut (satin
   naïf désactivé), et un satin uniquement si `use_naive_satin` est activé.
 - **Auto-satin géométrique** (`build_satin_columns`) : formes simples produisent
-  une colonne, milieu des barreaux **intérieur à la région**, Y → plusieurs
-  colonnes, cercle/anneau/large **refusés**, déterminisme des rails ; SVG dans
-  `tests/golden/auto-satin/`.
+  une colonne, milieu des barreaux **intérieur à la région**, Y/T → plusieurs
+  sections portant un identifiant de jonction commun, anneau fin → quatre
+  sections formant un cycle, cercle plein/forme large refusés, déterminisme des
+  rails et de la topologie ; SVG dans `tests/golden/auto-satin/`.
+- **Persistance des réseaux satin** : aller-retour exact de l'index/nombre de
+  sections et des jonctions, ancien satin sans `topology` encore lisible, index
+  hors réseau refusé proprement.
 - **Appariement rail gauche/rail droit (audit rails, 2026-08-01)** :
   fixtures géométriques dédiées (ruban droit, S, coude 90°, largeur variable,
   cas combiné) mesurant croisements, monotonie sur les deux rails, angle

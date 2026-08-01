@@ -33,6 +33,10 @@ labels peut faire plusieurs mégaoctets).
   terminaisons), de sous-couche/compensation, et de **fixation/entrée-sortie**
   (`lockStart`/`lockEnd`, `lockLength`, `lockPasses`, `entryPoint`/`exitPoint`) —
   tous **optionnels** et rétrocompatibles (clés absentes → valeurs par défaut).
+  Une section issue d'un réseau multi-rail peut aussi porter `topology` :
+  `sectionIndex`, `sectionCount` et les identifiants optionnels
+  `startJunction`/`endJunction`. Ces identifiants sont locaux au réseau défini
+  par `sourceVector`; l'absence de `topology` désigne un satin isolé/historique.
   Le `tatami` porte de même ses réglages avancés (Lot 7) : `underlayEdge`,
   `underlayParallel`, `underlayInset`, `underlaySpacing`, `hiddenUnderpath` et
   `entryPoint` — optionnels et rétrocompatibles. Depuis le schéma v3, un objet
@@ -57,7 +61,8 @@ labels peut faire plusieurs mégaoctets).
 **rétrocompatible** : un fichier v1 ou v2 se charge (cadre 100×100 par défaut
 si absent, aucun barreau, aucune retouche → état `Clean`). Une version
 **supérieure** à celle du binaire est refusée proprement (`UnsupportedFormat`) ;
-un JSON invalide, une valeur hors bornes (index négatif, non entier, ou
+  un JSON invalide, une topologie satin incohérente (`sectionCount == 0` ou
+  `sectionIndex >= sectionCount`), une valeur hors bornes (index négatif, non entier, ou
 au-delà de `numeric_limits<size_t>::max()`, coordonnée au-delà d'un `int32`,
 compteur au-delà d'un `uint32`, type de point inconnu), un `overrides` qui
 n'est pas un tableau, un `index` en double, une entrée sans modification
@@ -89,4 +94,5 @@ Le cache des points générés n'est pas stocké (il est recalculé au chargemen
 - `libs/project_io/src/project_io.cpp` — orchestration, écriture atomique.
 - Tests : `tests/unit/project_io/test_roundtrip.cpp`,
   `tests/unit/project_io/test_overrides_persistence.cpp` (retouches v3,
-  migration v1/v2, validation stricte).
+  migration v1/v2, topologie satin optionnelle/rétrocompatible, validation
+  stricte).

@@ -18,8 +18,11 @@ et des fonctionnalités manquantes identifiables. **Aucune date n'est annoncée.
   extrémités avec projection/validation monotone, undo/redo et test Qt de
   glisser. **Deuxième incrément livré** : sélection explicite sur le canevas,
   ajout dans le plus grand intervalle admissible, suppression avec plancher de
-  deux guides, ordre de routage préservé et parcours QTest complet. Restent les
-  guides coordonnés aux jonctions du réseau multi-rail. Ne jamais accepter
+  deux guides, ordre de routage préservé et parcours QTest complet. **Troisième
+  incrément livré** : chaque section persiste son index, le nombre de sections
+  et ses identifiants de jonction déterministes, avec lecture des anciens `.osp`
+  inchangée. Restent la propagation coordonnée des guides et le routage textile
+  fondé sur ces jonctions du réseau multi-rail. Ne jamais accepter
   silencieusement une gerbe ou un croisement comme satin valide.
 
 - Refonte avancée du **satin** (§12 de l'étude) : correspondance par sections,
