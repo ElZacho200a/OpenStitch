@@ -50,12 +50,17 @@ CanvasView::CanvasView(QGraphicsScene* scene, QWidget* parent) : QGraphicsView(s
         viewport()->update();
     });
 
-    connect(this, &QGraphicsView::rubberBandChanged, this,
-            [this](QRect viewportRect, QPointF fromScene, QPointF toScene) {
-                if (!viewportRect.isNull()) {
-                    lastRubberBandMm_ = QRectF(fromScene, toScene).normalized();
-                }
-            });
+    // Note : fromScenePoint/toScenePoint (paramètres du signal) accusent un
+    // retard d'une étape sur viewportRect — ils reflètent la position du
+    // glisser précédent, pas la courante (constaté par test, invisible en
+    // usage réel où les mouvements sont pixel à pixel, mais faux pour un
+    // glisser rapide à peu d'évènements). On reconvertit donc viewportRect
+    // lui-même, toujours à jour.
+    connect(this, &QGraphicsView::rubberBandChanged, this, [this](QRect viewportRect) {
+        if (!viewportRect.isNull()) {
+            lastRubberBandMm_ = mapToScene(viewportRect).boundingRect();
+        }
+    });
 }
 
 void CanvasView::setCropMode(bool enabled) {

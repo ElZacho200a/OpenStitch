@@ -8,8 +8,11 @@ endif()
 
 set(CMAKE_AUTOMOC ON)
 
-add_executable(openstitch WIN32
-    main.cpp
+# Bibliothèque des widgets desktop (tout sauf main()) : permet de lier les
+# mêmes sources dans l'exécutable et dans les tests Qt (tests/unit/desktop),
+# sans dupliquer la compilation ni exposer de membres publics rien que pour
+# les tests.
+add_library(openstitch_desktop_widgets STATIC
     main_window.cpp
     main_window.hpp
     app_theme.cpp
@@ -37,13 +40,19 @@ add_executable(openstitch WIN32
     brightness_dialog.hpp
     node_handle.hpp
 )
-target_link_libraries(openstitch
-    PRIVATE Qt6::Widgets openstitch::core openstitch::image openstitch::document
-            openstitch::commands openstitch::vectorization openstitch::stitch
-            openstitch::stitch_generation openstitch::formats openstitch::project_io
-            openstitch::stitch_analysis openstitch::optimization openstitch::autodigitize
-            openstitch::auto_satin openstitch::warnings
+add_library(openstitch::desktop_widgets ALIAS openstitch_desktop_widgets)
+target_include_directories(openstitch_desktop_widgets PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
+target_link_libraries(openstitch_desktop_widgets
+    PUBLIC Qt6::Widgets openstitch::core openstitch::image openstitch::document
+           openstitch::commands openstitch::vectorization openstitch::stitch
+           openstitch::stitch_generation openstitch::formats openstitch::project_io
+           openstitch::stitch_analysis openstitch::optimization openstitch::autodigitize
+           openstitch::auto_satin
+    PRIVATE openstitch::warnings
 )
+
+add_executable(openstitch WIN32 main.cpp)
+target_link_libraries(openstitch PRIVATE openstitch_desktop_widgets openstitch::warnings)
 
 # Copie les DLL Qt à côté de l'exécutable pour pouvoir le lancer directement.
 # (Les DLL vcpkg — OpenCV, etc. — sont déjà copiées par VCPKG_APPLOCAL_DEPS.)
