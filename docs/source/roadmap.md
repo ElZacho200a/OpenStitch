@@ -6,6 +6,16 @@ et des fonctionnalités manquantes identifiables. **Aucune date n'est annoncée.
 
 ## Court terme (dette et robustesse)
 
+- **Priorité immédiate après le Lot 8.2 — qualité satin et orientation guidée** :
+  corriger la correspondance locale entre les deux rails afin que les points
+  suivent la normale locale de la colonne dans les virages, sans croisements,
+  éventails excessifs ni dérive de densité. Ajouter ensuite plusieurs guides
+  de direction éditables par zone satin : chaque guide relie les deux rails et
+  impose une orientation locale, interpolée continûment entre guides. Prévoir
+  aperçu, validation des guides, undo/redo et tests géométriques déterministes
+  (ruban droit, courbe en S, angles, variation de largeur, absence de
+  croisements, continuité angulaire et longueur de point bornée).
+
 - Refonte avancée du **satin** (§12 de l'étude) : correspondance par sections,
   barreaux de direction, densité perpendiculaire au fil, gestion des points
   courts dans les virages, split stitch pour les colonnes larges, terminaisons.
