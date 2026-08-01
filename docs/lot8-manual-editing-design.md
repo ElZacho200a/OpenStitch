@@ -647,7 +647,7 @@ sortie de `apply_manual_overrides`.
 |---|---|---|---|---|
 | **8.0** | `StitchOverride`, `fingerprint`, `raw_slice`, `apply_manual_overrides` — cœur pur, **aucune UI**, testé unitairement uniquement | Faible : aucun changement de comportement observable (overrides toujours vides en pratique) | Valide le mécanisme d'identité (le point le plus incertain du cadrage) avant tout investissement UI | Valider le choix « empreinte de sortie » du §1 avant de coder |
 | **8.1** — **FAIT** (2026-08-01) | Les 4 commandes (§3) + persistance `.osp` (§4, hors option DST-importé) + `effective_sequence` (§5) + tests d'intégration/round-trip | Moyen : touche le format de fichier (bump schemaVersion → 3) | Le modèle est complet et testable en CLI/tests, sans dépendance Qt | Tranché : schemaVersion **3** (voir « Suivi » ci-dessus) |
-| **8.2** | UI desktop minimale : mode édition, déplacement d'**un** point, indicateurs Clean/ManuallyEdited/Dirty, résolution Dirty (Discard uniquement, §1) | Élevé : premier contact utilisateur réel avec le concept, ergonomie à valider | Rend le Lot 8 réellement utilisable | Point de décision UX majeur : valider le mode d'édition dédié et le wording des avertissements avant généralisation |
+| **8.2** — **FAIT** (2026-08-01) | UI desktop minimale : mode édition, déplacement d'**un** point, indicateurs Clean/ManuallyEdited/Dirty, résolution Dirty (Discard uniquement, §1) | Élevé : premier contact utilisateur réel avec le concept, ergonomie à valider | Rend le Lot 8 réellement utilisable | Tranché : mode d'édition dédié (raccourci E, exclusif), voir « Suivi » ci-dessous |
 | **8.3** | Stitch/Jump + Trim dans l'UI (réutilise 8.1/8.2) | Faible, une fois 8.2 acquis | Complète les 3 opérations MVP | — |
 | **8.4** (optionnel) | Sélection/édition multi-points | Faible techniquement, mais scope creep possible | Confort si l'usage réel le demande | À ouvrir seulement si demandé après usage de 8.1–8.3 |
 | **8.5** (scope séparé) | Généraliser aux séquences DST importées (option B, §4) + correction du bug de sauvegarde latent (constat n°3) | Moyen : touche `document::Project`, indépendant du reste | Corrige un bug réel, unifie le modèle | Décider si ce correctif est rattaché au Lot 8 ou traité comme correctif indépendant, avant ou après 8.0–8.3 |
@@ -681,9 +681,36 @@ sortie de `apply_manual_overrides`.
     dans le tableau `08-roadmap-adr.md`).
   - **(1) Identité par empreinte de la vue brute** : confirmée par
     l'implémentation et les tests (8.0/8.1), aucun changement de fondation.
-- **8.2 et suivants (UI d'édition)** : toujours **non commencés**. Aucune
-  poignée, aucun mode d'édition, aucun indicateur `Clean`/`Dirty`/
-  `ManuallyEdited` dans le canevas — voir `docs/source/stitch-editing.md`.
+- **8.2 FAIT** (2026-08-01) : mode d'édition des points dans le canevas
+  (déplacement seul — Stitch↔Jump et coupe de fil restent 8.3), poignées,
+  indicateurs `Clean`/`ManuallyEdited`/`Dirty` (panneau Document, inspecteur,
+  barre contextuelle), abandon des retouches annulable — voir
+  `docs/source/stitch-editing.md`. **Revue corrective** (même date, avant
+  validation finale) :
+  - Le seuil de poignées (2000) comparait `raw_slice(objet).size()` au lieu
+    des seuls points réellement déplaçables (`is_movable_point`) : un objet
+    dense pouvait dépasser le seuil sans jamais l'atteindre selon le calcul,
+    ou l'inverse. Corrigé ; l'activation est désormais refusée avec un
+    message explicite plutôt que de laisser le mode actif sans aucune
+    poignée.
+  - `renderBase` rescannait `overrides` pour chaque poignée (O(points ×
+    overrides)) ; indexé une fois par `base_index` avant la boucle.
+  - La commande de glisser est différée d'un tour de boucle d'événements
+    (`QTimer::singleShot(0)`, nécessaire pour ne pas détruire sa propre
+    poignée) : si un nouveau document/projet était chargé dans cette fenêtre
+    de temps, la commande pouvait s'exécuter sur, voire muter, un projet qui
+    n'était plus le bon (identifiants d'objet recyclés d'un document à
+    l'autre). Corrigé par un compteur `documentGeneration_` incrémenté à
+    chaque remplacement intégral du projet et capturé par la commande
+    différée, qui s'abandonne si la génération ne correspond plus.
+  - `MainWindow::refreshImage` appelait jusqu'à trois fois `generate_sequence`
+    par rafraîchissement (`effective_sequence` + `classify_all_edit_states` +
+    `edit_view`, chacun régénérant indépendamment). Consolidé dans
+    `stitch_generation::refresh_context` (§5, cœur) : un seul
+    `generate_sequence`, sans jamais contourner `effective_sequence` pour le
+    contenu affiché/exporté (même garde `check_no_raw_sequence_bypass`).
+  - Tests Qt ajoutés (`tests/unit/desktop/test_main_window.cpp`) : voir
+    `docs/source/testing.md` §Lot 8.2.
 
 ## Décisions ouvertes à soumettre à l'utilisateur
 

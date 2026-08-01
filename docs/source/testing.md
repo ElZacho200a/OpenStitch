@@ -15,7 +15,7 @@ Public : développeur, mainteneur.
   (invoquée via `add_test`, cf. Lot 8.1) — échoue si un site de production
   hors `libs/stitch_generation/` appelle `generate_sequence()` directement
   sans annotation `raw-sequence-ok:`, contournant les retouches manuelles.
-- Total au dernier passage vérifié : **290 tests CTest**, 100 % réussis.
+- Total au dernier passage vérifié : **304 tests CTest**, 100 % réussis.
 
 ## Encadré de traçabilité (dernier passage vérifié)
 
@@ -24,20 +24,20 @@ passage vérifié manuellement. Régénérez ces valeurs avant toute publication
 
 | Élément | Valeur |
 |---|---|
-| Commit (état du code testé) | `99dfb0b` |
+| Commit (état du code testé) | `7cb6c5f` |
 | Compilateur | MSVC toolset 14.50 (Visual Studio 2026) |
 | CMake | 4.4.0-rc3 |
 | Configurations | Debug **et** Release |
-| Résultat CTest | 290 / 290 réussis |
+| Résultat CTest | 304 / 304 réussis |
 | Tests désactivés | 0 |
 | Fichiers de tests d'intégration | 1 (`tests/integration/test_pipeline.cpp`) |
-| Suites Qt (UI desktop) | 5 exécutables CTest (`tests/unit/desktop/`), 17 fonctions de test QTest |
+| Suites Qt (UI desktop) | 5 exécutables CTest (`tests/unit/desktop/`), 35 fonctions de test QTest |
 | Tests sur machine réelle | 0 |
 | Couverture de code | non mesurée |
 
 Note : chaque `TEST_CASE` Catch2 (ou fonction de test QTest) est enregistré
 comme un test CTest (via `catch_discover_tests` côté Catch2, `add_test` par
-suite côté QTest) ; le nombre d'**assertions** est supérieur. Le chiffre 290
+suite côté QTest) ; le nombre d'**assertions** est supérieur. Le chiffre 304
 compte les cas de test (dont la garde structurelle CI), pas les assertions.
 
 ## Exécution
@@ -356,6 +356,30 @@ But visé par l'utilisateur, dans l'ordre de valeur/risque :
   structurelle (`check_no_raw_sequence_bypass`) fait échouer la suite si un
   nouveau site de production appelle `generate_sequence()` sans passer par
   `effective_sequence()`. Toujours aucune UI dans ce sous-lot.
+- **Retouches manuelles — mode d'édition des points, UI desktop (Lot 8.2)** :
+  côté cœur, `is_movable_point` (prédicat d'éligibilité exporté, plus de
+  duplication dans l'UI), `edit_view`/`classify_all_edit_states` (état dérivé
+  + vue brute/empreinte/compteur pour un objet) et `refresh_context` (un seul
+  `generate_sequence` interne pour produire à la fois la séquence effective —
+  contenu **identique** à `effective_sequence`, mêmes deux passes —, les états
+  par objet et la vue d'édition d'une cible optionnelle) sont vérifiés
+  cohérents entre eux et propagent sans plantage une erreur de génération.
+  Côté UI (QTest, offscreen, événements souris réels sur poignées visibles à
+  deux niveaux de zoom, `QSignalSpy`) : activation/désactivation du mode
+  selon la sélection et l'état `Dirty` (aucun second signal `toggled` émis
+  par une sortie forcée, garde-fou vérifié via `QSignalSpy`) ; glisser une
+  poignée exécute **une seule** `MoveStitchPointCommand` (undo ramène
+  `canUndo()` à faux) dont l'annulation/le rétablissement restaurent
+  exactement la même entrée d'override ; un clic sans déplacement ne crée
+  aucune commande ; un changement de document pendant la fenêtre où la
+  commande différée (`QTimer::singleShot(0)`, nécessaire pour ne pas détruire
+  sa propre poignée) est en file d'attente fait abandonner cette commande
+  sans muter le nouveau projet (régression du compteur `documentGeneration_`) ;
+  abandonner les retouches d'un objet `Dirty` (confirmation auto-acceptée) est
+  annulable et restaure exactement l'état antérieur ; un objet dont le nombre
+  de points déplaçables dépasse le seuil d'affichage refuse proprement
+  l'activation, avec message explicite en barre de statut, plutôt que de
+  laisser le mode actif sans aucune poignée.
 - **Tatami — correctif contacts sommet** : `segment_stays_in_region` détecte un
   connecteur **parfaitement vertical** traversant un trou en losange de part en
   part en touchant exactement ses deux sommets (défaut qu'une version antérieure
