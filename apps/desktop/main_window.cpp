@@ -1782,6 +1782,10 @@ void MainWindow::autoConvertToSatin() {
         for (const auto& r : col.rungs) {
             sp.rungs.push_back(document::SatinRung{r.a, r.b});
         }
+        if (col.section_count > 1 || col.start_junction || col.end_junction) {
+            sp.topology = document::SatinSectionTopology{
+                col.section_index, col.section_count, col.start_junction, col.end_junction};
+        }
         document::EmbroideryObject emb;
         emb.id = project_.object_ids.next();
         emb.name = tr("Satin auto de %1 (%2)")

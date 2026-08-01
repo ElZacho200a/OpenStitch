@@ -54,6 +54,17 @@ std::string minimal_document_json(int schema_version, const std::string& extra_f
 })";
 }
 
+std::string minimal_satin_document_json(const std::string& extra_params) {
+    const std::string rail =
+        R"({"closed":false,"nodes":[{"pos":[0,0],"smooth":false},{"pos":[10000,0],"smooth":false}]})";
+    return R"({"schemaVersion":3,"document":{"mmPerPx":0.5,"objectIdLast":1,"ops":[],)"
+           R"("vectorObjects":[],"embroideryObjects":[{"id":1,"name":"s","sourceVector":0,)"
+           R"("rgb":[1,2,3],"visible":true,"params":{"type":"satin","railA":)" + rail +
+           R"(,"railB":)" + rail +
+           R"(,"density":400,"pullCompensation":0,"centerUnderlay":true,"maxWidth":9000)" +
+           extra_params + R"(}}]}})";
+}
+
 }  // namespace
 
 // ---------------------------------------------------------------------------
@@ -118,6 +129,29 @@ TEST_CASE("v3 : objet Clean (overrides vide) round-trip sans champ superflu") {
     CHECK(loaded->embroidery_objects[0].overrides.empty());
     CHECK(loaded->embroidery_objects[0].edited_fingerprint == 0);
     CHECK(loaded->embroidery_objects[0].edited_point_count == 0);
+    fs::remove(path);
+}
+
+TEST_CASE("topologie satin optionnelle : un projet historique reste lisible") {
+    const auto path = write_raw_osp("openstitch_satin_without_topology.osp",
+                                    minimal_satin_document_json(""));
+    const auto loaded = project_io::load_project(path);
+    REQUIRE(loaded.has_value());
+    REQUIRE(loaded->embroidery_objects.size() == 1);
+    const auto& satin =
+        std::get<document::SatinParams>(loaded->embroidery_objects.front().params);
+    CHECK_FALSE(satin.topology.has_value());
+    fs::remove(path);
+}
+
+TEST_CASE("topologie satin invalide : index de section hors reseau refuse") {
+    const auto path = write_raw_osp(
+        "openstitch_satin_invalid_topology.osp",
+        minimal_satin_document_json(
+            R"(,"topology":{"sectionIndex":2,"sectionCount":2,"startJunction":7})"));
+    const auto loaded = project_io::load_project(path);
+    REQUIRE_FALSE(loaded.has_value());
+    CHECK(loaded.error().category == ErrorCategory::InvalidFile);
     fs::remove(path);
 }
 

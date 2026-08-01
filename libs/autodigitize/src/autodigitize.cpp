@@ -124,6 +124,12 @@ Result<AutoResult> auto_digitize(const segmentation::Segmentation& seg,
                     for (const auto& rung : column.rungs) {
                         sp.rungs.push_back({rung.a, rung.b});
                     }
+                    if (column.section_count > 1 || column.start_junction ||
+                        column.end_junction) {
+                        sp.topology = document::SatinSectionTopology{
+                            column.section_index, column.section_count,
+                            column.start_junction, column.end_junction};
+                    }
                     section.params = std::move(sp);
                     result.embroideries.push_back(std::move(section));
                 }

@@ -97,6 +97,7 @@ document::Project rich_project() {
                         Vec2um{Micrometers{300}, Micrometers{400}}});
     sp.rungs.push_back({Vec2um{Micrometers{500}, Micrometers{600}},
                         Vec2um{Micrometers{700}, Micrometers{800}}});
+    sp.topology = document::SatinSectionTopology{2, 4, 7, 9};
     sp.density = Micrometers{350};
     sp.center_underlay = true;
     sp.short_stitch = document::SatinShortStitch::MultiLevelInset;
@@ -179,6 +180,8 @@ TEST_CASE("projet complet : save puis load = memes donnees") {
     REQUIRE(loadedSatin.rungs.size() == 2);
     CHECK(loadedSatin.rungs[0].a == Vec2um{Micrometers{100}, Micrometers{200}});
     CHECK(loadedSatin.rungs[1].b == Vec2um{Micrometers{700}, Micrometers{800}});
+    REQUIRE(loadedSatin.topology.has_value());
+    CHECK(*loadedSatin.topology == document::SatinSectionTopology{2, 4, 7, 9});
     CHECK(loadedSatin.short_stitch == document::SatinShortStitch::MultiLevelInset);
     CHECK(loadedSatin.split_stitch == document::SatinSplit::Staggered);
     CHECK(loadedSatin.cap_end == document::SatinCap::Tapered);

@@ -2,6 +2,7 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include <cmath>
+#include <set>
 
 #include "openstitch/auto_satin/satin_column.hpp"
 #include "openstitch/auto_satin/shapes.hpp"
@@ -114,6 +115,22 @@ TEST_CASE("colonnes : Y produit plusieurs colonnes (decomposition)") {
     CHECK((r.columns.size() >= 2 || !r.refusal.empty()));
 }
 
+TEST_CASE("colonnes : un reseau Y identifie ses sections et sa jonction") {
+    const auto r = columns_of("y");
+    REQUIRE(r.refusal.empty());
+    REQUIRE(r.columns.size() >= 2);
+    std::set<std::uint32_t> junctions;
+    for (std::size_t i = 0; i < r.columns.size(); ++i) {
+        const auto& column = r.columns[i];
+        CHECK(column.section_index == i);
+        CHECK(column.section_count == r.columns.size());
+        CHECK(column.start_junction.has_value() != column.end_junction.has_value());
+        if (column.start_junction) junctions.insert(*column.start_junction);
+        if (column.end_junction) junctions.insert(*column.end_junction);
+    }
+    CHECK(junctions.size() == 1);
+}
+
 TEST_CASE("colonnes : cercle refuse (direction ambigue)") {
     const auto r = columns_of("circle");
     CHECK(r.columns.empty());
@@ -131,6 +148,12 @@ TEST_CASE("colonnes : anneau decompose en quatre sections ouvertes raccordees") 
         REQUIRE_FALSE(current.rail_a.closed);
         REQUIRE_FALSE(current.rail_b.closed);
         REQUIRE(current.rungs.size() >= 2);
+        CHECK(current.section_index == i);
+        CHECK(current.section_count == 4);
+        REQUIRE(current.start_junction.has_value());
+        REQUIRE(current.end_junction.has_value());
+        CHECK(*current.start_junction == i);
+        CHECK(*current.end_junction == (i + 1) % 4);
         CHECK(current.rail_a.nodes.back().pos == next.rail_a.nodes.front().pos);
         CHECK(current.rail_b.nodes.back().pos == next.rail_b.nodes.front().pos);
     }

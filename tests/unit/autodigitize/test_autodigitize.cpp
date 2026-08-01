@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 #include <catch2/catch_test_macros.hpp>
 
+#include <set>
+
 #include "openstitch/auto_satin/satin_column.hpp"
 #include "openstitch/autodigitize/autodigitize.hpp"
 
@@ -143,17 +145,27 @@ TEST_CASE("reseau en T -> plusieurs sections satin compatibles deux rails") {
     REQUIRE(result.has_value());
     REQUIRE(result->vectors.size() == 1);
 
-    std::size_t satinSections = 0;
+    std::vector<const document::SatinParams*> satinSections;
     for (const auto& e : result->embroideries) {
         if (!e.is_satin()) continue;
-        ++satinSections;
         CHECK(e.source_vector == result->vectors.front().id);
         const auto& satin = std::get<document::SatinParams>(e.params);
+        satinSections.push_back(&satin);
         CHECK_FALSE(satin.rail_a.closed);
         CHECK_FALSE(satin.rail_b.closed);
         CHECK(satin.rungs.size() >= 2);
     }
-    CHECK(satinSections >= 3);
+    REQUIRE(satinSections.size() >= 3);
+    std::set<std::uint32_t> junctions;
+    for (std::size_t i = 0; i < satinSections.size(); ++i) {
+        const auto& topology = satinSections[i]->topology;
+        REQUIRE(topology.has_value());
+        CHECK(topology->section_index == i);
+        CHECK(topology->section_count == satinSections.size());
+        if (topology->start_junction) junctions.insert(*topology->start_junction);
+        if (topology->end_junction) junctions.insert(*topology->end_junction);
+    }
+    CHECK(junctions.size() == 1);
 }
 
 TEST_CASE("anneau fin -> quatre sections satin et trou preserve") {
@@ -186,11 +198,23 @@ TEST_CASE("anneau fin -> quatre sections satin et trou preserve") {
     INFO("trous: " << result->vectors.front().paths.front().holes.size());
     REQUIRE(direct.columns.size() == 4);
 
-    std::size_t satinSections = 0;
+    std::vector<const document::SatinParams*> satinSections;
     for (const auto& e : result->embroideries) {
-        if (e.is_satin()) ++satinSections;
+        if (e.is_satin()) {
+            satinSections.push_back(&std::get<document::SatinParams>(e.params));
+        }
     }
-    CHECK(satinSections == 4);
+    REQUIRE(satinSections.size() == 4);
+    for (std::size_t i = 0; i < satinSections.size(); ++i) {
+        const auto& topology = satinSections[i]->topology;
+        REQUIRE(topology.has_value());
+        CHECK(topology->section_index == i);
+        CHECK(topology->section_count == 4);
+        CHECK(topology->start_junction ==
+              std::optional<std::uint32_t>{static_cast<std::uint32_t>(i)});
+        CHECK(topology->end_junction ==
+              std::optional<std::uint32_t>{static_cast<std::uint32_t>((i + 1) % 4)});
+    }
 }
 
 TEST_CASE("petite region -> contour (point triple)") {

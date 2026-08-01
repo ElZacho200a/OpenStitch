@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 #pragma once
 
+#include <cstdint>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -25,6 +27,10 @@ struct SatinColumnGeometry {
     geometry::Path rail_a;
     geometry::Path rail_b;
     std::vector<SatinRung> rungs;
+    std::uint32_t section_index{0};
+    std::uint32_t section_count{1};
+    std::optional<std::uint32_t> start_junction;
+    std::optional<std::uint32_t> end_junction;
     double length_um{0.0};
     double mean_width_um{0.0};
     double min_width_um{0.0};

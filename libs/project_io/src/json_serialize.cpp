@@ -212,6 +212,17 @@ json params_to_json(const document::StitchParams& params) {
                 if (p.exit_point) {
                     j["exitPoint"] = {{"x", p.exit_point->x.value}, {"y", p.exit_point->y.value}};
                 }
+                if (p.topology) {
+                    json topology = {{"sectionIndex", p.topology->section_index},
+                                     {"sectionCount", p.topology->section_count}};
+                    if (p.topology->start_junction) {
+                        topology["startJunction"] = *p.topology->start_junction;
+                    }
+                    if (p.topology->end_junction) {
+                        topology["endJunction"] = *p.topology->end_junction;
+                    }
+                    j["topology"] = std::move(topology);
+                }
             }
             return j;
         },
@@ -285,6 +296,23 @@ Result<document::StitchParams> params_from_json(const json& j) {
         if (j.contains("exitPoint")) {
             p.exit_point = Vec2um{Micrometers{j.at("exitPoint").at("x")},
                                   Micrometers{j.at("exitPoint").at("y")}};
+        }
+        if (j.contains("topology")) {
+            const auto& topology = j.at("topology");
+            document::SatinSectionTopology section;
+            section.section_index = topology.at("sectionIndex").get<std::uint32_t>();
+            section.section_count = topology.at("sectionCount").get<std::uint32_t>();
+            if (section.section_count == 0 || section.section_index >= section.section_count) {
+                return fail(ErrorCategory::InvalidFile,
+                            "Topologie satin invalide : index de section hors réseau");
+            }
+            if (topology.contains("startJunction")) {
+                section.start_junction = topology.at("startJunction").get<std::uint32_t>();
+            }
+            if (topology.contains("endJunction")) {
+                section.end_junction = topology.at("endJunction").get<std::uint32_t>();
+            }
+            p.topology = section;
         }
         return document::StitchParams{p};
     }

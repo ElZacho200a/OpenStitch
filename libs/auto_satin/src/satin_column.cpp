@@ -334,6 +334,10 @@ std::optional<std::vector<SatinColumnGeometry>> build_annular_sections(
         railA.reserve(static_cast<std::size_t>(perSection + 1));
         railB.reserve(static_cast<std::size_t>(perSection + 1));
         SatinColumnGeometry column;
+        column.section_index = static_cast<std::uint32_t>(section);
+        column.section_count = 4;
+        column.start_junction = static_cast<std::uint32_t>(section);
+        column.end_junction = static_cast<std::uint32_t>((section + 1) % 4);
         column.min_width_um = std::numeric_limits<double>::max();
         for (int i = begin; i <= end; ++i) {
             const auto index = static_cast<std::size_t>(i);
@@ -496,6 +500,13 @@ SatinColumnsResult build_satin_columns(const geometry::PathSet& region,
     r.report = analysis->report;
     r.debug = analysis->debug;
     r.status = analysis->report.status;
+    const auto finalize_sections = [&r] {
+        const auto count = static_cast<std::uint32_t>(r.columns.size());
+        for (std::size_t i = 0; i < r.columns.size(); ++i) {
+            r.columns[i].section_index = static_cast<std::uint32_t>(i);
+            r.columns[i].section_count = count;
+        }
+    };
 
     if (region.holes.size() == 1) {
         std::string annularRefusal;
@@ -511,6 +522,7 @@ SatinColumnsResult build_satin_columns(const geometry::PathSet& region,
         r.report.issues.push_back(
             {"Anneau decompose en quatre sections satin ouvertes raccordees."});
         r.warnings.push_back("couture fermee : routage cyclique de quatre sections");
+        finalize_sections();
         return r;
     }
 
@@ -519,6 +531,12 @@ SatinColumnsResult build_satin_columns(const geometry::PathSet& region,
 
     const auto try_edge = [&](const SkeletonEdge& e) {
         if (auto col = build_column(e.centerline, polys, params)) {
+            if (graph.nodes[e.from].type == SkeletonNodeType::Junction) {
+                col->start_junction = e.from;
+            }
+            if (graph.nodes[e.to].type == SkeletonNodeType::Junction) {
+                col->end_junction = e.to;
+            }
             r.columns.push_back(std::move(*col));
         } else {
             r.warnings.push_back("branche ignorée (section transversale instable)");
@@ -548,6 +566,7 @@ SatinColumnsResult build_satin_columns(const geometry::PathSet& region,
         if (r.columns.empty()) {
             r.refusal = "aucune branche exploitable";
         }
+        finalize_sections();
         return r;
     }
     case SatinabilityStatus::Suitable:
@@ -564,6 +583,7 @@ SatinColumnsResult build_satin_columns(const geometry::PathSet& region,
         if (r.columns.empty()) {
             r.refusal = "axe principal inexploitable";
         }
+        finalize_sections();
         return r;
     }
     }

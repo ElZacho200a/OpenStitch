@@ -47,6 +47,19 @@ struct SatinRung {
     constexpr bool operator==(const SatinRung&) const = default;
 };
 
+// Identité d'une section dans un réseau satin décomposé. Les identifiants de
+// jonction sont locaux au réseau porté par `source_vector` ; leur absence
+// signifie une extrémité libre. Le bloc entier est optionnel afin que les
+// colonnes historiques à deux rails restent strictement valides.
+struct SatinSectionTopology {
+    std::uint32_t section_index{};  // zéro-based, déterministe dans le réseau
+    std::uint32_t section_count{1};
+    std::optional<std::uint32_t> start_junction;
+    std::optional<std::uint32_t> end_junction;
+
+    constexpr bool operator==(const SatinSectionTopology&) const = default;
+};
+
 // Modes du satin (mêmes valeurs/ordre que `stitch_generation::*`, cf. generate).
 enum class SatinShortStitch { Disabled, RemoveAndRedistribute, SingleInset, MultiLevelInset };
 enum class SatinSplit { Disabled, Simple, Staggered, DeterministicJitter };
@@ -60,6 +73,7 @@ struct SatinParams {
     geometry::Path rail_a;
     geometry::Path rail_b;
     std::vector<SatinRung> rungs;  // barreaux (vide = satin manuel/legacy)
+    std::optional<SatinSectionTopology> topology;  // absent = colonne indépendante/legacy
     Micrometers density{400};
     Micrometers pull_compensation{0};
     bool center_underlay{true};
