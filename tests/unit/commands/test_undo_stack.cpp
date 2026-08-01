@@ -373,6 +373,51 @@ TEST_CASE("guides satin coordonnes : plusieurs sections forment une seule comman
           movedSecond);
 }
 
+TEST_CASE("guides satin coordonnes : ajout multi-section atomique et annulable") {
+    document::Project project;
+    UndoStack stack;
+    document::SatinParams params;
+    params.rungs = {{{Micrometers{0}, Micrometers{0}},
+                     {Micrometers{0}, Micrometers{4'000}}},
+                    {{Micrometers{10'000}, Micrometers{0}},
+                     {Micrometers{10'000}, Micrometers{4'000}}}};
+    document::EmbroideryObject first;
+    first.id = project.object_ids.next();
+    first.params = params;
+    document::EmbroideryObject second;
+    second.id = project.object_ids.next();
+    second.params = params;
+    project.embroidery_objects = {first, second};
+    const document::SatinRung guide{{Micrometers{5'000}, Micrometers{0}},
+                                     {Micrometers{5'000}, Micrometers{4'000}}};
+
+    stack.execute(std::make_unique<AddSatinGuidesCommand>(
+                      std::vector<SatinGuideAddition>{{first.id, guide, 1},
+                                                       {second.id, guide, 1}}),
+                  project);
+    CHECK(std::get<document::SatinParams>(project.findEmbroidery(first.id)->params).rungs.size() ==
+          3);
+    CHECK(std::get<document::SatinParams>(project.findEmbroidery(second.id)->params).rungs.size() ==
+          3);
+    CHECK(stack.undoName() == "Ajouter des guides satin coordonnés");
+    REQUIRE(stack.undo(project));
+    CHECK(std::get<document::SatinParams>(project.findEmbroidery(first.id)->params).rungs ==
+          params.rungs);
+    CHECK(std::get<document::SatinParams>(project.findEmbroidery(second.id)->params).rungs ==
+          params.rungs);
+    REQUIRE(stack.redo(project));
+    CHECK(std::get<document::SatinParams>(project.findEmbroidery(first.id)->params).rungs[1] ==
+          guide);
+    CHECK(std::get<document::SatinParams>(project.findEmbroidery(second.id)->params).rungs[1] ==
+          guide);
+
+    AddSatinGuidesCommand stale(
+        {{first.id, guide, 1}, {ObjectId{999}, guide, 0}});
+    stale.apply(project);
+    CHECK(std::get<document::SatinParams>(project.findEmbroidery(first.id)->params).rungs.size() ==
+          3);
+}
+
 TEST_CASE("guides satin coordonnes : une cible obsolete interdit toute mutation partielle") {
     document::Project project;
     document::SatinParams params;

@@ -45,6 +45,7 @@ struct Fixture {
     openstitch::document::Project project;
     ObjectId vectorId{};
     ObjectId embroideryId{};
+    ObjectId embroideryId2{};
     RegionId regionId{};
 };
 
@@ -186,6 +187,26 @@ Fixture buildSatinGuideFixture(bool withStartJunction = false) {
     return fx;
 }
 
+Fixture buildSatinJunctionFixture() {
+    Fixture fx = buildSatinGuideFixture(true);
+    constexpr ObjectId source{77};
+    auto& first = fx.project.embroidery_objects.front();
+    first.source_vector = source;
+    auto& firstSatin = std::get<openstitch::document::SatinParams>(first.params);
+    firstSatin.topology = openstitch::document::SatinSectionTopology{
+        0, 2, std::uint32_t{7}, std::nullopt};
+
+    auto second = first;
+    second.id = fx.project.object_ids.next();
+    second.name = "Satin guides - branche 2";
+    auto& secondSatin = std::get<openstitch::document::SatinParams>(second.params);
+    secondSatin.topology = openstitch::document::SatinSectionTopology{
+        1, 2, std::uint32_t{7}, std::nullopt};
+    fx.embroideryId2 = second.id;
+    fx.project.embroidery_objects.push_back(std::move(second));
+    return fx;
+}
+
 // Seule poignée trouvée parmi les items de la couche de base : valable quand
 // aucun objet vectoriel n'est sélectionné en parallèle (cf. tests ci-dessous,
 // qui sélectionnent l'objet de broderie via selectedEmbroidery_ seul, jamais
@@ -252,6 +273,7 @@ private slots:
     void satinGuideModeMovesEndpointOnRailAndUndoRestoresIt();
     void satinGuideSelectionAddsAndRemovesWithUndoRedo();
     void satinJunctionGuideIsLockedInUi();
+    void satinJunctionAddsInternalGuidesToEveryBranchAtomically();
 
 private:
     // Active le mode d'édition (sélection directe via selectedEmbroidery_,
@@ -675,6 +697,63 @@ void MainWindowTest::satinJunctionGuideIsLockedInUi() {
                            .rungs;
     QCOMPARE(after, before);
     QVERIFY(!window.undoStack_.canUndo());
+    mode->setChecked(false);
+    QCoreApplication::processEvents();
+}
+
+void MainWindowTest::satinJunctionAddsInternalGuidesToEveryBranchAtomically() {
+    MainWindow window;
+    const Fixture fx = buildSatinJunctionFixture();
+    window.applyLoadedProject(fx.project);
+    window.resize(900, 700);
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+
+    auto* mode = window.findChild<QAction*>(QStringLiteral("action_satinGuideMode"));
+    auto* add = window.findChild<QAction*>(QStringLiteral("action_addSatinGuide"));
+    QVERIFY(mode != nullptr);
+    QVERIFY(add != nullptr);
+    window.selectedEmbroidery_ = fx.embroideryId;
+    window.updateActions();
+    mode->setChecked(true);
+
+    SatinGuideItem* junctionGuide = nullptr;
+    for (QGraphicsItem* item : window.baseItems_) {
+        auto* guide = dynamic_cast<SatinGuideItem*>(item);
+        if (guide != nullptr && std::abs(guide->line().p1().x()) < 0.01) {
+            junctionGuide = guide;
+            break;
+        }
+    }
+    QVERIFY(junctionGuide != nullptr);
+    window.view_->resetTransform();
+    window.view_->scale(40.0, 40.0);
+    window.scene_->setSceneRect(QRectF(-5.0, -10.0, 20.0, 20.0));
+    window.view_->centerOn(junctionGuide->line().center());
+    const QPoint guidePoint = window.view_->mapFromScene(junctionGuide->line().center());
+    QVERIFY(window.view_->viewport()->rect().contains(guidePoint));
+    QTest::mouseClick(window.view_->viewport(), Qt::LeftButton, Qt::NoModifier, guidePoint);
+    QTRY_COMPARE(window.selectedSatinGuide_, std::optional<std::size_t>{0});
+
+    add->trigger();
+    const auto rungCount = [&](ObjectId id) {
+        return std::get<openstitch::document::SatinParams>(
+                   window.project_.findEmbroidery(id)->params)
+            .rungs.size();
+    };
+    QCOMPARE(rungCount(fx.embroideryId), std::size_t{4});
+    QCOMPARE(rungCount(fx.embroideryId2), std::size_t{4});
+    QTRY_COMPARE(window.selectedSatinGuide_, std::optional<std::size_t>{1});
+    QCOMPARE(QString::fromStdString(window.undoStack_.undoName()),
+             QStringLiteral("Ajouter des guides satin coordonnés"));
+    QVERIFY(window.statusBar()->currentMessage().contains(QStringLiteral("2 guides")));
+
+    window.undo();
+    QCOMPARE(rungCount(fx.embroideryId), std::size_t{3});
+    QCOMPARE(rungCount(fx.embroideryId2), std::size_t{3});
+    window.redo();
+    QCOMPARE(rungCount(fx.embroideryId), std::size_t{4});
+    QCOMPARE(rungCount(fx.embroideryId2), std::size_t{4});
     mode->setChecked(false);
     QCoreApplication::processEvents();
 }

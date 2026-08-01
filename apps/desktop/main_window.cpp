@@ -580,6 +580,63 @@ void MainWindow::addSatinGuide() {
     if (satin == nullptr) {
         return;
     }
+    if (selectedSatinGuide_) {
+        if (const auto junction = stitch_generation::satin_guide_junction(
+                *satin, *selectedSatinGuide_)) {
+            const auto refs = stitch_generation::satin_junction_guides(
+                project_, obj->source_vector, *junction);
+            std::vector<commands::SatinGuideAddition> additions;
+            additions.reserve(refs.size());
+            std::optional<std::size_t> selected;
+            for (const auto& ref : refs) {
+                if (std::any_of(additions.begin(), additions.end(), [&](const auto& addition) {
+                        return addition.id == ref.embroidery_id;
+                    })) {
+                    statusBar()->showMessage(
+                        tr("Impossible d'ajouter les guides : une section boucle sur la même "
+                           "jonction."));
+                    return;
+                }
+                const auto* section = project_.findEmbroidery(ref.embroidery_id);
+                const auto* sectionSatin =
+                    section != nullptr
+                        ? std::get_if<document::SatinParams>(&section->params)
+                        : nullptr;
+                const auto insertion =
+                    sectionSatin != nullptr
+                        ? stitch_generation::make_satin_guide_in_largest_gap(*sectionSatin)
+                        : std::nullopt;
+                if (!insertion) {
+                    statusBar()->showMessage(
+                        tr("Impossible d'ajouter les guides de jonction : une section n'a "
+                           "aucun intervalle admissible."));
+                    return;
+                }
+                additions.push_back(
+                    {ref.embroidery_id, insertion->guide, insertion->index});
+                if (ref.embroidery_id == obj->id) {
+                    selected = insertion->index;
+                }
+            }
+            if (additions.empty() || !selected) {
+                statusBar()->showMessage(
+                    tr("Impossible d'ajouter les guides : réseau de jonction incomplet."));
+                return;
+            }
+            const auto branchCount = additions.size();
+            undoStack_.execute(
+                std::make_unique<commands::AddSatinGuidesCommand>(std::move(additions)),
+                project_);
+            selectedSatinGuide_ = selected;
+            refreshImage();
+            updateActions();
+            statusBar()->showMessage(
+                tr("%1 guides internes ajoutés autour de la jonction #%2.")
+                    .arg(branchCount)
+                    .arg(*junction));
+            return;
+        }
+    }
     const auto insertion = stitch_generation::make_satin_guide_in_largest_gap(*satin);
     if (!insertion) {
         statusBar()->showMessage(

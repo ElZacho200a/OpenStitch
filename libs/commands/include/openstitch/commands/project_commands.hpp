@@ -754,6 +754,87 @@ private:
     bool applied_{false};
 };
 
+struct SatinGuideAddition {
+    ObjectId id{};
+    document::SatinRung guide{};
+    std::size_t index{};
+};
+
+// Ajoute exactement un guide interne par section comme une transaction unique.
+// Toutes les sections sont validées avant la première insertion ; les objets
+// dupliqués sont refusés car une section de réseau correspond à un objet satin.
+class AddSatinGuidesCommand final : public ICommand {
+public:
+    explicit AddSatinGuidesCommand(std::vector<SatinGuideAddition> additions)
+        : additions_(std::move(additions)) {}
+
+    void apply(document::Project& project) override {
+        applied_ = false;
+        if (!targetsAreValid(project)) {
+            return;
+        }
+        for (const auto& addition : additions_) {
+            auto* object = project.findEmbroidery(addition.id);
+            auto& rungs = std::get<document::SatinParams>(object->params).rungs;
+            rungs.insert(rungs.begin() + static_cast<std::ptrdiff_t>(addition.index),
+                         addition.guide);
+        }
+        applied_ = true;
+    }
+
+    void revert(document::Project& project) override {
+        if (!applied_ || !insertionsAreIntact(project)) {
+            return;
+        }
+        for (const auto& addition : additions_) {
+            auto* object = project.findEmbroidery(addition.id);
+            auto& rungs = std::get<document::SatinParams>(object->params).rungs;
+            rungs.erase(rungs.begin() + static_cast<std::ptrdiff_t>(addition.index));
+        }
+        applied_ = false;
+    }
+
+    [[nodiscard]] std::string name() const override {
+        return "Ajouter des guides satin coordonnés";
+    }
+
+private:
+    [[nodiscard]] bool targetsAreValid(document::Project& project) const {
+        if (additions_.empty()) {
+            return false;
+        }
+        std::vector<std::uint64_t> ids;
+        ids.reserve(additions_.size());
+        for (const auto& addition : additions_) {
+            auto* object = project.findEmbroidery(addition.id);
+            const auto* satin =
+                object != nullptr ? std::get_if<document::SatinParams>(&object->params) : nullptr;
+            if (satin == nullptr || addition.index > satin->rungs.size()) {
+                return false;
+            }
+            ids.push_back(addition.id.value);
+        }
+        std::sort(ids.begin(), ids.end());
+        return std::adjacent_find(ids.begin(), ids.end()) == ids.end();
+    }
+
+    [[nodiscard]] bool insertionsAreIntact(document::Project& project) const {
+        for (const auto& addition : additions_) {
+            auto* object = project.findEmbroidery(addition.id);
+            const auto* satin =
+                object != nullptr ? std::get_if<document::SatinParams>(&object->params) : nullptr;
+            if (satin == nullptr || addition.index >= satin->rungs.size() ||
+                satin->rungs[addition.index] != addition.guide) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    std::vector<SatinGuideAddition> additions_;
+    bool applied_{false};
+};
+
 class MoveSatinGuideCommand final : public ICommand {
 public:
     MoveSatinGuideCommand(ObjectId id, std::size_t index, document::SatinRung guide)
