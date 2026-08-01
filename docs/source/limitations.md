@@ -19,8 +19,8 @@ fonctionnalité, vérifié dans le code.
 | Tatami | Présent · testé · SVG | Broderie | stitch_generation | oui | scanline + routage ; **sous-couches (contour + parallèle), underpath caché, entrée** (Lot 7) ; orientation éditable |
 | Satin (génération par barreaux) | Présent · testé · SVG | Broderie / inspecteur | stitch_generation | oui | `fill_satin_columns` : sections, espacement **perpendiculaire**, points courts / split / terminaisons (Lot 3), **sous-couches (center/edge/zigzag) + compensation pull/push** (Lot 4, passes distinctes), **lock + entrée/sortie** (Lot 5), **routage multi-colonnes** (Lot 6) |
 | Modèle de passes | Présent · testé | (générateur) | stitch | oui | `StitchPass` par commande (Underlay/TopStitch/Travel/Lock/Manual) ; affichage/toggle par passe dans l'UI à venir |
-| Auto-satin géométrique (rails+barreaux) | Présent · testé · SVG | Broderie ▸ Convertir en satin | auto_satin | oui | `build_satin_columns` : formes simples + Y ; cercle/anneau/large refusés |
-| Classification auto des régions | **Expérimental** | Segmentation | autodigitize | oui | zones remplissables → **tatami** (satin naïf désactivé, `use_naive_satin`) ; heuristique, pas une vraie auto-numérisation |
+| Auto-satin géométrique (rails+barreaux) | Présent · testé · SVG | Auto + Broderie ▸ Convertir en satin | auto_satin | oui | formes simples, Y/T multi-sections et anneau fin en 4 sections ; cercle plein/forme large refusés |
+| Classification auto des régions | **Expérimental** | Segmentation | autodigitize | oui | bandes fines → moteur topologique par défaut (`use_auto_satin`) ; refus → tatami ; moteur naïf désactivé |
 | Filtres d'affichage / calques | Implémenté | Affichage | desktop | (vue) | affichage seulement (couleur, type, taille ; image/régions/vecteurs/broderie) |
 | Ordre de couture | Implémenté | dock | optimization | oui | 2-opt non implémenté |
 | Analyse | Implémenté | Analyse | stitch_analysis | oui | pas de carte de densité |
@@ -30,7 +30,7 @@ fonctionnalité, vérifié dans le code.
 | Format projet `.osp` | Implémenté | Fichier | project_io | oui | suivi « modifié » + garde à la fermeture ; pas d'autosave |
 | Cadre de broderie | Implémenté | Affichage | document | oui | taille réglable et persistée ; rectangle simple (pas de profils/formes) |
 | Palette de fils | Non implémenté | — | (thread_palette absent) | — | RGB par objet uniquement |
-| Édition manuelle des points | Non implémenté | — | — | — | régénération uniquement |
+| Édition manuelle des points | Partiel (Lot 8.2) | canevas | desktop/commands | QTest | déplacement d'un point + undo/redo ; Stitch/Jump/Trim UI restent à faire |
 | Remplissages courbe/radial/spirale/motif | Non implémenté | — | — | — | prévus |
 | Profils machine/cadres avancés | Non implémenté | — | — | — | cadre = rectangle simple (taille réglable) |
 | Compensation directionnelle | Partiel | — | — | — | satin uniquement |
@@ -38,8 +38,8 @@ fonctionnalité, vérifié dans le code.
 
 ## Dette technique connue
 
-- `README.md` mentionne un compte de tests d'un jalon antérieur ; le compte réel
-  est **217** — à resynchroniser dans le README.
+- Le compte CTest courant est **323** en Debug et Release ; éviter de figer ce
+  nombre dans les pages d'introduction sans le mettre à jour avec la CI.
 - Le satin dispose désormais d'un moteur géométrique par **squelette**
   (`auto_satin::build_satin_columns`, Lot 1) et d'une **génération par barreaux**
   (`fill_satin_columns`, Lot 2), points courts / split / terminaisons (Lot 3) et
@@ -47,7 +47,8 @@ fonctionnalité, vérifié dans le code.
   distinctes), **points d'entrée/sortie + points de fixation (lock)** (Lot 5) et
   **routage multi-colonnes** (Lot 6 : ordre/orientation + trajets cachés). Le
   **tatami** reçoit ses **sous-couches (contour + parallèle), l'underpath caché et
-  le point d'entrée** (Lot 7). Le satin **auto naïf** reste désactivé.
+  le point d'entrée** (Lot 7). Le satin **auto naïf** reste désactivé ; le vrai
+  moteur topologique est désormais celui essayé par défaut dans `autodigitize`.
 - **Correctif Lot 7** : `connector_invalid` ignorait les contacts sommet/extrémité
   et ne sondait l'intérieur d'un connecteur que si l'écart en x dépassait
   `2 × row_spacing`, laissant passer un connecteur quasi vertical traversant un

@@ -61,10 +61,11 @@ Sur un objet vectoriel sélectionné, menu **Broderie** :
   avertissement si la colonne est trop large.
 
 Alternative rapide : **Broderie → Numérisation automatique** crée des objets pour
-toutes les régions : **tatami** pour les zones remplissables, **contour** cousu
-pour les petites (le satin automatique naïf, qui débordait, est désactivé par
-défaut). On change ensuite le type d'une forme par **clic droit ▸ Type de
-points**, et on règle l'orientation d'un tatami à la souris (poignée de rotation).
+toutes les régions : **satin topologique** pour les bandes fines compatibles,
+**tatami** si le moteur satin refuse la forme, **contour** cousu pour les petites.
+Le satin automatique naïf qui débordait reste désactivé. On change ensuite le
+type d'une forme par **clic droit ▸ Type de points**, et on règle l'orientation
+d'un tatami à la souris (poignée de rotation).
 
 ## 8. Régler les points et les couleurs
 

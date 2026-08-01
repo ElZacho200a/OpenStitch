@@ -126,10 +126,11 @@ codec DST (`formats/dst.cpp`).
 - **Prévu (architecture mentionnée, non implémenté)** : palette de fils réelle
   (`thread_palette`), profils de machine/cadres avancés, remplissages courbes /
   radiaux / spirale / motifs, sous-couches tatami, édition manuelle des points.
-- **Partiel** : classification auto des régions (heuristique de largeur) — route
-  désormais vers le **tatami** ; le satin **automatique** naïf débordait et est
-  désactivé par défaut (`use_naive_satin`). Le module `auto_satin` pose les
-  fondations du vrai satin par squelette (rails/rungs à venir). Compensation
+- **Partiel** : classification auto des régions (heuristique de largeur) — essaie
+  désormais le vrai moteur `auto_satin` par squelette puis retombe sur le
+  **tatami** ; le satin **automatique** naïf reste désactivé par défaut
+  (`use_naive_satin`). Rails, barreaux et décomposition multi-sections sont
+  présents. Compensation
   (satin uniquement) ; routage tatami (graphe + validation géométrique, underpath
   caché non implémenté — les liaisons hors-région sont des sauts).
 - **Expérimental** : `openstitch-cli stitchdebug` / `auto-satin-debug` (outils de

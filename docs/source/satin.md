@@ -219,10 +219,11 @@ l'intérieur et les barreaux (rungs) enjambent les creux, ce qui fait **sortir
 les points de la région**. Mesuré sur un projet réel, jusqu'à **57 % des
 barreaux d'une colonne hors de sa région**. En conséquence :
 
-- l'auto-numérisation **n'utilise plus** le satin naïf par défaut ; toute zone
-  remplissable devient un **tatami** (découpé au scanline sur la région, donc
-  sans débordement). L'option `AutoOptions::use_naive_satin` (défaut `false`)
-  permet de le réactiver pour essais/tests ;
+- l'auto-numérisation **n'utilise plus** le satin naïf par défaut. Elle essaie
+  d'abord `auto_satin::build_satin_columns` (`use_auto_satin`, défaut `true`) ;
+  une forme refusée retombe sur le **tatami**. L'option
+  `AutoOptions::use_naive_satin` (défaut `false`) ne subsiste que comme repli
+  explicite pour essais/tests ;
 - l'action **Broderie ▸ Convertir les satins auto en tatami** répare un projet
   qui contient déjà des satins débordants ;
 - le satin reste créable **manuellement** (menu Broderie, ou clic droit ▸ *Type
@@ -255,15 +256,26 @@ maximal. Un nettoyage anti-croisement retire les stations qui replieraient la
 colonne. Les rails **se terminent sur le contour** → pas de débordement structurel.
 
 Décision : `Suitable` → une colonne (axe principal) ; `RequiresDecomposition`
-(Y/T) → une colonne par branche menant à une extrémité ; `Ambiguous` (quasi
-circulaire), `Unsuitable` (trou, trop large/étroite) → **refus explicite**.
+(Y/T) → une colonne par branche menant à une extrémité. Un anneau fin à un
+trou est ouvert sur une couture déterministe puis décomposé en quatre sections
+cycliques ; ses barreaux sont contrôlés sur plusieurs échantillons et contre
+les croisements locaux/globaux. `Ambiguous` (quasi circulaire sans trou) et les
+formes trop larges/étroites ou non appariables → **refus explicite**.
 Déterministe. Vérifié visuellement via `openstitch-cli auto-satin-debug --shape
 <forme> --output-svg` (SVG dans `tests/golden/auto-satin/`).
 
-Intégration : **Broderie ▸ Convertir automatiquement en satin…** affiche la
-satinabilité (statut, confiance, largeurs, branches, colonnes) puis crée les
-objets satin (annulable). Les **barreaux sont stockés** dans `SatinParams.rungs`
-et sérialisés (`.osp` schéma v2, rétrocompatible).
+Intégration : la numérisation automatique et **Broderie ▸ Convertir
+automatiquement en satin…** créent une `EmbroideryObject` par section. Toutes
+les sections d'un réseau gardent la même source/couleur ; le routage Lot 6 les
+traite donc comme un groupe multi-rail. Chaque objet reste un `SatinParams`
+historique à deux rails : aucune rupture du format. Les **barreaux sont stockés**
+dans `SatinParams.rungs` et sérialisés (`.osp` schéma v2, rétrocompatible).
+
+Régressions couvertes : bande simple, réseau en T (au moins trois sections),
+anneau rasterisé (quatre sections, trou préservé) et pipeline complet sur
+`tests/fixtures/tentabrode.png`, en Debug et Release. Cette validation reste
+logicielle ; la qualité textile et les cas très concaves demandent encore un
+contrôle visuel puis machine.
 
 ## Génération par barreaux (`fill_satin_columns`, Lot 2)
 

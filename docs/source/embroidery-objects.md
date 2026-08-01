@@ -42,7 +42,8 @@ Depuis l'interface (menu Broderie) sur un objet vectoriel sélectionné, ou en l
 par la **classification automatique expérimentale des régions** (voir
 *Limitations*) qui choisit le type selon la forme :
 
-- zone **remplissable** → **tatami** (par défaut) ;
+- bande fine compatible → une ou plusieurs sections de **satin topologique** ;
+- autre zone **remplissable** → **tatami** ;
 - petite forme → **contour** cousu (point triple) ;
 - satin **automatique** naïf : désactivé par défaut car il débordait sur les
   formes concaves/branchues (`AutoOptions::use_naive_satin` pour le réactiver).
@@ -52,7 +53,8 @@ points* ▸ contour / tatami / satin) via `SetStitchTypeCommand` (annulable) ;
 l'action **Convertir les satins auto en tatami** répare en lot un projet importé.
 
 Limitation : cette classification est une heuristique simple (largeur moyenne
-= 2·aire/périmètre) ; ce n'est pas un moteur d'auto-numérisation robuste
+= 2·aire/périmètre total) autour d'un moteur géométrique ; ce n'est pas encore
+un moteur d'auto-numérisation robuste
 comparable à un logiciel commercial. Elle produit des objets **éditables** qu'il
 faut vérifier et retoucher.
 

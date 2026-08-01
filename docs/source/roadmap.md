@@ -7,9 +7,11 @@ et des fonctionnalités manquantes identifiables. **Aucune date n'est annoncée.
 ## Court terme (dette et robustesse)
 
 - **Priorité immédiate après le Lot 8.2 — qualité satin et orientation guidée** :
-  corriger la correspondance locale entre les deux rails afin que les points
-  suivent la normale locale de la colonne dans les virages, sans croisements,
-  éventails excessifs ni dérive de densité. Ajouter ensuite plusieurs guides
+  le pipeline utilise maintenant le moteur topologique et représente les Y/T
+  et anneaux comme un réseau de sections `SatinParams` rétrocompatibles. Les
+  fixtures bande/T/anneau/tentabrode verrouillent cette base. Continuer à
+  durcir les arcs très asymétriques (progression bilatérale et métriques de
+  stagnation), puis ajouter plusieurs guides
   de direction éditables par zone satin : chaque guide relie les deux rails et
   impose une orientation locale, interpolée continûment entre guides. Prévoir
   aperçu, validation des guides, undo/redo et tests géométriques déterministes
@@ -35,12 +37,10 @@ et des fonctionnalités manquantes identifiables. **Aucune date n'est annoncée.
 
 ## Long terme (avancé)
 
-- **Auto-satin** par axe médian / straight skeleton et décomposition en colonnes.
-  Fondations **déjà en place** (module `auto_satin` : rasterisation, transformée
-  de distance, squelette Zhang-Suen, graphe, satinabilité) ; reste à générer les
-  rails/barreaux (qui se terminent sur le contour, donc sans débordement) et à
-  les brancher sur la génération. En attendant, l'auto-numérisation route les
-  zones vers le **tatami** (le satin naïf, qui débordait, est désactivé).
+- **Auto-satin** : poursuivre au-delà du réseau de sections maintenant branché
+  dans l'auto-numérisation (jonctions textiles avancées, réseaux à plusieurs
+  trous, validation machine, guides d'orientation par section). Les formes
+  refusées retombent sur le tatami ; le satin naïf reste désactivé.
 - **Remplissages avancés** : concentrique, spirale, radial, guidé (champ de
   direction), motifs.
 - **Autres formats** : PES, JEF, EXP, VP3.

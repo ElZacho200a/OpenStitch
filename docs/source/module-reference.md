@@ -18,7 +18,7 @@ fonctionnalité. Chaque module est une cible `openstitch::<nom>` sous `libs/`.
 | `stitch_analysis` | règles de validation | core, stitch | `tests/unit/stitch_analysis` |
 | `optimization` | ordre de couture | core | `tests/unit/optimization` |
 | `autodigitize` | image → objets éditables | vectorization, stitch_generation | `tests/unit/autodigitize` |
-| `auto_satin` | squelette → satinabilité (rails/rungs à venir) | core, geometry (+OpenCV) | `tests/unit/auto_satin` |
+| `auto_satin` | squelette → satinabilité → rails/barreaux multi-sections | core, geometry (+OpenCV) | `tests/unit/auto_satin` |
 | `commands` | undo/redo | document | `tests/unit/commands` |
 | `formats` | codec DST, SVG diagnostic | core, stitch | `tests/unit/formats` |
 | `project_io` | format `.osp` | core, document, image | `tests/unit/project_io` |
@@ -42,7 +42,7 @@ fonctionnalité. Chaque module est une cible `openstitch::<nom>` sous `libs/`.
 | l'échantillonnage des points | `libs/stitch_generation/src/running_stitch.cpp`, `polyline.cpp` |
 | le remplissage/routage tatami | `libs/stitch_generation/src/tatami.cpp` |
 | la colonne satin | `libs/stitch_generation/src/satin.cpp` |
-| le futur satin par squelette | `libs/auto_satin/src/` |
+| le satin par squelette et ses sections | `libs/auto_satin/src/` |
 | le choix de type auto (tatami/satin) | `libs/autodigitize/src/autodigitize.cpp` |
 | l'édition (type, orientation, filtres, calques) | `apps/desktop/main_window.cpp` |
 | l'encodage DST | `libs/formats/src/dst.cpp` |

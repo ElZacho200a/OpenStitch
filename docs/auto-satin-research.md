@@ -71,5 +71,6 @@ chemins de décision.
 - **Squelette bruité** : les branches parasites sont élaguées par score
   (longueur × rayon local) — implémenté en mission ultérieure ; pour l'instant le
   graphe brut est exposé et diagnostiqué.
-- **Formes ambiguës** (cercle, anneau, très large) : refusées proprement par
-  l'analyse de satinabilité.
+- **Formes ambiguës** : cercle plein et formes très larges refusés proprement.
+  Un anneau fin à un trou est désormais décomposé en quatre sections ouvertes
+  raccordées ; un anneau non appariable reste refusé.
