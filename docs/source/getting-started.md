@@ -67,6 +67,11 @@ Le satin automatique naïf qui débordait reste désactivé. On change ensuite l
 type d'une forme par **clic droit ▸ Type de points**, et on règle l'orientation
 d'un tatami à la souris (poignée de rotation).
 
+Pour une colonne satin sélectionnée, **Broderie ▸ Éditer les guides satin…**
+(`G`) affiche les barreaux d'orientation. Glissez une extrémité le long de son
+rail pour infléchir localement les points ; plusieurs barreaux pilotent des
+orientations successives et chaque geste est annulable avec `Ctrl+Z`.
+
 ## 8. Régler les points et les couleurs
 
 Les points se régénèrent automatiquement à chaque changement. La couleur d'un

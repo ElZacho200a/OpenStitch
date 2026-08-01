@@ -300,6 +300,26 @@ Vérifié : espacement médian régulier, barreaux exacts, rails de longueurs
 différentes, déterminisme (`tests/unit/stitch/test_satin.cpp`) ; zigzag superposé
 dans les SVG `tests/golden/auto-satin/`.
 
+### Édition interactive de plusieurs guides
+
+Sélectionner une colonne satin puis activer **Broderie ▸ Éditer les guides
+satin…** (raccourci `G`) affiche chaque barreau et deux poignées. Une extrémité
+peut être glissée indépendamment : elle est projetée exactement sur son rail et
+la colonne est régénérée. Plusieurs guides successifs imposent donc plusieurs
+orientations locales ; `fill_satin_columns` interpole la correspondance de
+façon monotone entre chaque paire de guides.
+
+Un geste est refusé s'il ferait franchir deux guides sur un seul rail ou les
+rapprocherait de moins d'un demi-pas de densité. Cette validation partage
+l'invariant du générateur, ce qui évite qu'un guide visible soit ensuite ignoré
+silencieusement. Chaque glisser produit une seule commande annulable
+**Déplacer un guide satin**. Les guides restent les `SatinParams.rungs`
+historiques : la persistance `.osp` demeure rétrocompatible.
+
+Limite actuelle : ce premier outil déplace les guides produits par
+l'auto-satin ; l'ajout et la suppression interactifs (les commandes cœur
+existent déjà) restent à brancher à une sélection de guide explicite.
+
 ## Finitions : points courts, split, terminaisons (Lot 3)
 
 *État : Présent · Testé numériquement · Validé visuellement (SVG).* Toutes ces
@@ -431,6 +451,8 @@ suivant réellement la matière viendra avec le tatami avancé (Lot 7).
   (par barreaux), `rails_from_contour`, `ladder_correspondence` +
   `resample_by_medial_spacing` (correspondance locale rail A/rail B, audit
   rails 2026-08-01).
+- `libs/stitch_generation/src/satin_guides.cpp` — projection sur rail et
+  validation monotone partagées par l'éditeur de guides.
 - `libs/stitch_generation/src/generate.cpp` — `generate_satin` (route vers
   `fill_satin_columns` si barreaux présents, oriente par entrée/sortie, émet les
   locks).

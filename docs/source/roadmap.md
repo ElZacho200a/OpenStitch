@@ -13,10 +13,12 @@ et des fonctionnalités manquantes identifiables. **Aucune date n'est annoncée.
   durcir les arcs très asymétriques (progression bilatérale et métriques de
   stagnation), puis ajouter plusieurs guides
   de direction éditables par zone satin : chaque guide relie les deux rails et
-  impose une orientation locale, interpolée continûment entre guides. Prévoir
-  aperçu, validation des guides, undo/redo et tests géométriques déterministes
-  (ruban droit, courbe en S, angles, variation de largeur, absence de
-  croisements, continuité angulaire et longueur de point bornée).
+  impose une orientation locale, interpolée continûment entre guides. **Premier
+  incrément livré** : affichage des guides, déplacement indépendant des deux
+  extrémités avec projection/validation monotone, undo/redo et test Qt de
+  glisser. Restent la sélection explicite d'un guide, l'ajout/suppression depuis
+  le canevas et les guides aux jonctions du réseau multi-rail. Ne jamais
+  accepter silencieusement une gerbe ou un croisement comme satin valide.
 
 - Refonte avancée du **satin** (§12 de l'étude) : correspondance par sections,
   barreaux de direction, densité perpendiculaire au fil, gestion des points
