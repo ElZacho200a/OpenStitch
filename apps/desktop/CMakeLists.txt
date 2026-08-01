@@ -39,6 +39,7 @@ add_library(openstitch_desktop_widgets STATIC
     brightness_dialog.cpp
     brightness_dialog.hpp
     node_handle.hpp
+    satin_guide_item.hpp
 )
 add_library(openstitch::desktop_widgets ALIAS openstitch_desktop_widgets)
 target_include_directories(openstitch_desktop_widgets PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})

@@ -5,6 +5,7 @@
 #include <QMainWindow>
 
 #include <array>
+#include <cstddef>
 #include <cstdint>
 #include <set>
 
@@ -99,6 +100,8 @@ private slots:
     // glisser, construite ailleurs — cf. renderBase).
     void onStitchEditModeToggled(bool on);
     void onSatinGuideModeToggled(bool on);
+    void addSatinGuide();
+    void removeSelectedSatinGuide();
     // Abandonne les retouches manuelles d'un objet (confirmation explicite,
     // DiscardOverridesCommand annulable) — appelée depuis l'inspecteur ou la
     // barre contextuelle, jamais de mutation directe hors commande.
@@ -243,7 +246,10 @@ private:
     // Édition paramétrique des barreaux satin : contrairement au mode 8.2,
     // ces poignées régénèrent la colonne et restent donc dans le modèle.
     QAction* satinGuideModeAct_{nullptr};
+    QAction* addSatinGuideAct_{nullptr};
+    QAction* removeSatinGuideAct_{nullptr};
     std::optional<ObjectId> satinGuideTarget_;
+    std::optional<std::size_t> selectedSatinGuide_;
     // État Clean/ManuallyEdited/Dirty des objets retouchés (absents = Clean),
     // recalculé à chaque `refreshImage()` (cf. `classify_all_edit_states`) —
     // jamais recalculé ailleurs (panneau Document, inspecteur, barre

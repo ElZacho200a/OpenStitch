@@ -39,6 +39,7 @@
 #include "import_dialog.hpp"
 #include <QCloseEvent>
 #include "node_handle.hpp"
+#include "satin_guide_item.hpp"
 #include "properties_panel.hpp"
 #include "ui_icons.hpp"
 #include "workflow_panel.hpp"
@@ -327,6 +328,14 @@ void MainWindow::buildMenus() {
         tr("Afficher les guides transversaux du satin et glisser leurs extrémités le long "
            "des rails (G). Plusieurs guides peuvent orienter une même colonne."));
     connect(satinGuideModeAct_, &QAction::toggled, this, &MainWindow::onSatinGuideModeToggled);
+    addSatinGuideAct_ = embMenu->addAction(tr("Ajouter un guide satin"));
+    addSatinGuideAct_->setObjectName(QStringLiteral("action_addSatinGuide"));
+    addSatinGuideAct_->setShortcut(QKeySequence(Qt::SHIFT | Qt::Key_G));
+    connect(addSatinGuideAct_, &QAction::triggered, this, &MainWindow::addSatinGuide);
+    removeSatinGuideAct_ = embMenu->addAction(tr("Supprimer le guide satin sélectionné"));
+    removeSatinGuideAct_->setObjectName(QStringLiteral("action_removeSatinGuide"));
+    connect(removeSatinGuideAct_, &QAction::triggered, this,
+            &MainWindow::removeSelectedSatinGuide);
     embMenu->addSeparator();
     statsAct_ = embMenu->addAction(tr("&Statistiques…"));
     connect(statsAct_, &QAction::triggered, this, &MainWindow::showStatistics);
@@ -539,6 +548,7 @@ void MainWindow::onStitchEditModeToggled(bool on) {
 
 void MainWindow::onSatinGuideModeToggled(bool on) {
     satinGuideTarget_.reset();
+    selectedSatinGuide_.reset();
     if (on) {
         if (stitchEditModeAct_ != nullptr && stitchEditModeAct_->isChecked()) {
             stitchEditModeAct_->setChecked(false);
@@ -558,6 +568,47 @@ void MainWindow::onSatinGuideModeToggled(bool on) {
         }
     }
     displayImage(processed_);
+    updateActions();
+}
+
+void MainWindow::addSatinGuide() {
+    if (!satinGuideTarget_) {
+        return;
+    }
+    auto* obj = project_.findEmbroidery(*satinGuideTarget_);
+    auto* satin = obj != nullptr ? std::get_if<document::SatinParams>(&obj->params) : nullptr;
+    if (satin == nullptr) {
+        return;
+    }
+    const auto insertion = stitch_generation::make_satin_guide_in_largest_gap(*satin);
+    if (!insertion) {
+        statusBar()->showMessage(
+            tr("Impossible d'ajouter un guide : aucun intervalle assez large."));
+        return;
+    }
+    const std::size_t selected = insertion->index;
+    undoStack_.execute(std::make_unique<commands::AddSatinGuideCommand>(
+                           obj->id, insertion->guide, insertion->index),
+                       project_);
+    selectedSatinGuide_ = selected;
+    refreshImage();
+    updateActions();
+}
+
+void MainWindow::removeSelectedSatinGuide() {
+    if (!satinGuideTarget_ || !selectedSatinGuide_) {
+        return;
+    }
+    auto* obj = project_.findEmbroidery(*satinGuideTarget_);
+    auto* satin = obj != nullptr ? std::get_if<document::SatinParams>(&obj->params) : nullptr;
+    if (satin == nullptr || satin->rungs.size() <= 2 || *selectedSatinGuide_ >= satin->rungs.size()) {
+        return;
+    }
+    undoStack_.execute(std::make_unique<commands::RemoveSatinGuideCommand>(
+                           obj->id, *selectedSatinGuide_),
+                       project_);
+    selectedSatinGuide_.reset();
+    refreshImage();
     updateActions();
 }
 
@@ -968,9 +1019,26 @@ void MainWindow::renderBase(const image::Image& img) {
                                     -to_millimeters(rung.b.y).value);
                     QPen guidePen(AppTheme::instance().tokens().accent);
                     guidePen.setCosmetic(true);
-                    guidePen.setWidthF(1.5);
-                    auto* line = scene_->addLine(QLineF(a, b), guidePen);
+                    const bool selected = selectedSatinGuide_ && *selectedSatinGuide_ == i;
+                    guidePen.setWidthF(selected ? 3.0 : 1.5);
+                    if (selected) {
+                        guidePen.setColor(AppTheme::instance().tokens().accent.lighter(150));
+                    }
+                    auto* line = new SatinGuideItem(QLineF(a, b), [this, targetId, i, generation] {
+                        QTimer::singleShot(0, this, [this, targetId, i, generation] {
+                            if (generation != documentGeneration_ || !satinGuideTarget_ ||
+                                *satinGuideTarget_ != targetId) {
+                                return;
+                            }
+                            selectedSatinGuide_ = i;
+                            displayImage(processed_);
+                            updateActions();
+                        });
+                    });
+                    line->setPen(guidePen);
                     line->setZValue(99);
+                    line->setToolTip(tr("Guide satin #%1 — cliquer pour sélectionner").arg(i + 1));
+                    scene_->addItem(line);
                     baseItems_.append(line);
 
                     const auto addEndpoint = [this, targetId, i, rung, generation](
@@ -2000,11 +2068,13 @@ void MainWindow::updateContextToolbar() {
         // Etat retouche (Lot 8.2) et mode d'edition inclus dans la signature :
         // sans eux, la barre ne se reconstruirait pas quand seul l'un des deux
         // change (meme objet/type toujours selectionne).
-        sig = QStringLiteral("E%1t%2s%3m%4")
+        sig = QStringLiteral("E%1t%2s%3m%4g%5i%6")
                   .arg(emb->id.value)
                   .arg(stitchTypeIndex(*emb))
                   .arg(static_cast<int>(editStateOf(emb->id)))
-                  .arg(stitchEditModeAct_->isChecked() ? 1 : 0);
+                  .arg(stitchEditModeAct_->isChecked() ? 1 : 0)
+                  .arg(satinGuideModeAct_->isChecked() ? 1 : 0)
+                  .arg(selectedSatinGuide_ ? static_cast<qlonglong>(*selectedSatinGuide_) : -1);
     } else if (hasVec) {
         sig = QStringLiteral("V%1").arg(selectedObject_->value);
     } else if (hasReg) {
@@ -2043,6 +2113,10 @@ void MainWindow::updateContextToolbar() {
         contextToolbar_->addAction(stitchEditModeAct_);
         if (emb->is_satin()) {
             contextToolbar_->addAction(satinGuideModeAct_);
+            if (satinGuideModeAct_->isChecked()) {
+                contextToolbar_->addAction(addSatinGuideAct_);
+                contextToolbar_->addAction(removeSatinGuideAct_);
+            }
         }
         const auto editState = editStateOf(id);
         if (editState == stitch_generation::ObjectEditState::ManuallyEdited) {
@@ -3248,9 +3322,18 @@ void MainWindow::updateActions() {
         QSignalBlocker block(satinGuideModeAct_);
         satinGuideModeAct_->setChecked(false);
         satinGuideTarget_.reset();
+        selectedSatinGuide_.reset();
         displayImage(processed_);
     }
     satinGuideModeAct_->setEnabled(satinGuideContext);
+    if (selectedSatin != nullptr && selectedSatinGuide_ &&
+        *selectedSatinGuide_ >= selectedSatin->rungs.size()) {
+        selectedSatinGuide_.reset();
+    }
+    const bool satinGuideEditing = satinGuideModeAct_->isChecked() && satinGuideContext;
+    addSatinGuideAct_->setEnabled(satinGuideEditing);
+    removeSatinGuideAct_->setEnabled(satinGuideEditing && selectedSatinGuide_.has_value() &&
+                                     selectedSatin->rungs.size() > 2);
 
     undoAct_->setEnabled(undoStack_.canUndo());
     redoAct_->setEnabled(undoStack_.canRedo());

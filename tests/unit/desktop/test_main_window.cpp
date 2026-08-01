@@ -25,6 +25,7 @@
 #include "openstitch/document/project.hpp"
 #include "openstitch/stitch_generation/overrides.hpp"
 #include "properties_panel.hpp"
+#include "satin_guide_item.hpp"
 
 using openstitch::Micrometers;
 using openstitch::ObjectId;
@@ -35,6 +36,7 @@ using openstitch::desktop::DocumentPanel;
 using openstitch::desktop::MainWindow;
 using openstitch::desktop::NodeHandleItem;
 using openstitch::desktop::PropertiesPanel;
+using openstitch::desktop::SatinGuideItem;
 using openstitch::stitch_generation::ObjectEditState;
 
 namespace {
@@ -244,6 +246,7 @@ private slots:
     void discardingOverridesOnDirtyObjectIsUndoable();
     void stitchEditModeRefusesWhenTooManyMovablePoints();
     void satinGuideModeMovesEndpointOnRailAndUndoRestoresIt();
+    void satinGuideSelectionAddsAndRemovesWithUndoRedo();
 
 private:
     // Active le mode d'édition (sélection directe via selectedEmbroidery_,
@@ -531,6 +534,89 @@ void MainWindowTest::satinGuideModeMovesEndpointOnRailAndUndoRestoresIt() {
     QCOMPARE(restored.rungs[1].a.y.value, 0);
     action->setChecked(false);
     QVERIFY(!window.satinGuideTarget_.has_value());
+    QCoreApplication::processEvents();
+}
+
+void MainWindowTest::satinGuideSelectionAddsAndRemovesWithUndoRedo() {
+    MainWindow window;
+    const Fixture fx = buildSatinGuideFixture();
+    window.applyLoadedProject(fx.project);
+    window.resize(900, 700);
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+
+    auto* mode = window.findChild<QAction*>(QStringLiteral("action_satinGuideMode"));
+    auto* add = window.findChild<QAction*>(QStringLiteral("action_addSatinGuide"));
+    auto* remove = window.findChild<QAction*>(QStringLiteral("action_removeSatinGuide"));
+    QVERIFY(mode != nullptr);
+    QVERIFY(add != nullptr);
+    QVERIFY(remove != nullptr);
+
+    window.selectedEmbroidery_ = fx.embroideryId;
+    window.updateActions();
+    mode->setChecked(true);
+    QVERIFY(mode->isChecked());
+    QVERIFY(add->isEnabled());
+    QVERIFY(!remove->isEnabled());
+
+    // Sélectionne le guide central par le même hit-test que l'utilisateur. Le
+    // repère de vue explicite évite toute dépendance à la résolution ou aux
+    // QSettings de géométrie de fenêtre.
+    window.view_->resetTransform();
+    window.view_->scale(40.0, 40.0);
+    window.view_->centerOn(QPointF(5.0, -2.0));
+    SatinGuideItem* middleGuide = nullptr;
+    for (QGraphicsItem* item : window.baseItems_) {
+        auto* guide = dynamic_cast<SatinGuideItem*>(item);
+        if (guide != nullptr && std::abs(guide->line().p1().x() - 5.0) < 0.01) {
+            middleGuide = guide;
+            break;
+        }
+    }
+    QVERIFY(middleGuide != nullptr);
+    const QPoint guidePoint = window.view_->mapFromScene(middleGuide->line().center());
+    QVERIFY(window.view_->viewport()->rect().contains(guidePoint));
+    QCOMPARE(dynamic_cast<SatinGuideItem*>(window.view_->itemAt(guidePoint)), middleGuide);
+    QTest::mouseClick(window.view_->viewport(), Qt::LeftButton, Qt::NoModifier, guidePoint);
+    QTRY_COMPARE(window.selectedSatinGuide_, std::optional<std::size_t>{1});
+    QVERIFY(remove->isEnabled());
+
+    remove->trigger();
+    const auto* afterRemove = window.project_.findEmbroidery(fx.embroideryId);
+    QVERIFY(afterRemove != nullptr);
+    QCOMPARE(std::get<openstitch::document::SatinParams>(afterRemove->params).rungs.size(),
+             std::size_t{2});
+    QCOMPARE(QString::fromStdString(window.undoStack_.undoName()),
+             QStringLiteral("Supprimer un guide satin"));
+    QVERIFY(!remove->isEnabled());
+
+    window.undo();
+    const auto* afterRemoveUndo = window.project_.findEmbroidery(fx.embroideryId);
+    QCOMPARE(std::get<openstitch::document::SatinParams>(afterRemoveUndo->params).rungs,
+             std::get<openstitch::document::SatinParams>(
+                 fx.project.findEmbroidery(fx.embroideryId)->params)
+                 .rungs);
+
+    add->trigger();
+    const auto* afterAdd = window.project_.findEmbroidery(fx.embroideryId);
+    const auto& added = std::get<openstitch::document::SatinParams>(afterAdd->params);
+    QCOMPARE(added.rungs.size(), std::size_t{4});
+    QCOMPARE(added.rungs[1].a.x.value, 2'500);
+    QCOMPARE(added.rungs[1].b.x.value, 2'500);
+    QTRY_COMPARE(window.selectedSatinGuide_, std::optional<std::size_t>{1});
+    QCOMPARE(QString::fromStdString(window.undoStack_.undoName()),
+             QStringLiteral("Ajouter un guide satin"));
+    QVERIFY(remove->isEnabled());
+
+    window.undo();
+    const auto* afterAddUndo = window.project_.findEmbroidery(fx.embroideryId);
+    QCOMPARE(std::get<openstitch::document::SatinParams>(afterAddUndo->params).rungs.size(),
+             std::size_t{3});
+    window.redo();
+    const auto* afterAddRedo = window.project_.findEmbroidery(fx.embroideryId);
+    QCOMPARE(std::get<openstitch::document::SatinParams>(afterAddRedo->params).rungs.size(),
+             std::size_t{4});
+    mode->setChecked(false);
     QCoreApplication::processEvents();
 }
 
