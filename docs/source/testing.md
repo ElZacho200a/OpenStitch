@@ -11,7 +11,7 @@ Public : développeur, mainteneur.
 - **Tests unitaires** : `tests/unit/<lib>/test_*.cpp` (un exécutable par lib).
 - **Test d'intégration** : `tests/integration/test_pipeline.cpp` (chaîne complète).
 - **Golden (SVG de diagnostic)** : `tests/golden/stitch-generation/`.
-- Total au dernier passage vérifié : **250 tests CTest**, 100 % réussis.
+- Total au dernier passage vérifié : **251 tests CTest**, 100 % réussis.
 
 ## Encadré de traçabilité (dernier passage vérifié)
 
@@ -20,20 +20,20 @@ passage vérifié manuellement. Régénérez ces valeurs avant toute publication
 
 | Élément | Valeur |
 |---|---|
-| Commit (état du code testé) | `0e396ab` |
+| Commit (état du code testé) | `d49e660` |
 | Compilateur | MSVC toolset 14.50 (Visual Studio 2026) |
 | CMake | 4.4.0-rc3 |
 | Configurations | Debug **et** Release |
-| Résultat CTest | 250 / 250 réussis |
+| Résultat CTest | 251 / 251 réussis |
 | Tests désactivés | 0 |
 | Fichiers de tests d'intégration | 1 (`tests/integration/test_pipeline.cpp`) |
-| Suites Qt (UI desktop) | 4 exécutables CTest (`tests/unit/desktop/`), 13 fonctions de test QTest |
+| Suites Qt (UI desktop) | 5 exécutables CTest (`tests/unit/desktop/`), 16 fonctions de test QTest |
 | Tests sur machine réelle | 0 |
 | Couverture de code | non mesurée |
 
 Note : chaque `TEST_CASE` Catch2 (ou fonction de test QTest) est enregistré
 comme un test CTest (via `catch_discover_tests` côté Catch2, `add_test` par
-suite côté QTest) ; le nombre d'**assertions** est supérieur. Le chiffre 250
+suite côté QTest) ; le nombre d'**assertions** est supérieur. Le chiffre 251
 compte les cas de test, pas les assertions.
 
 ## Exécution
@@ -61,7 +61,7 @@ build\msvc\tests\unit\stitch\Debug\test_stitch.exe "[nom]"   # un exécutable
 | commands | `test_undo_stack.cpp` |
 | formats | `test_dst.cpp`, `test_svg.cpp` |
 | project_io | `test_roundtrip.cpp` |
-| desktop (UI, Qt) | `tests/unit/desktop/test_canvas_view.cpp`, `test_node_handle.cpp`, `test_document_panel.cpp`, `test_properties_panel.cpp` |
+| desktop (UI, Qt) | `tests/unit/desktop/test_canvas_view.cpp`, `test_node_handle.cpp`, `test_document_panel.cpp`, `test_properties_panel.cpp`, `test_main_window.cpp` |
 | intégration | `tests/integration/test_pipeline.cpp` |
 
 ## Tests UI (Qt, desktop)
@@ -75,9 +75,21 @@ canevas/liste/inspecteur, sans jamais comparer de pixels ni dépendre d'un
 
 `apps/desktop/CMakeLists.txt` sépare les sources en une bibliothèque statique
 `openstitch_desktop_widgets` (tout sauf `main.cpp`), liée à la fois par
-l'exécutable `openstitch` et par les tests — c'est la seule refactorisation
-faite pour la testabilité (aucun membre rendu public, aucune logique
-déplacée). Chaque suite est un exécutable QTest (`QTEST_MAIN`), exécuté par
+l'exécutable `openstitch` et par les tests. Pour rendre `MainWindow`
+elle-même instanciable en test (deuxième tranche, voir plus bas), trois seams
+minimaux s'y ajoutent, sans changer son comportement en production :
+`QSettings()` par défaut (au lieu d'une organisation/application codées en
+dur) lit l'organisation/application déjà posées sur `QCoreApplication` dans
+`main.cpp` — un test peut donc les rediriger vers un fichier `.ini` temporaire
+avant de construire `MainWindow`, sans jamais toucher au registre Windows
+réel ; `MainWindow::loadProjectForTests(Project)` (publique) applique un
+projet déjà construit en réutilisant exactement la logique de fin de
+`loadProject()` (`applyLoadedProject`, extraite), sans passer par
+`QFileDialog` ; `QAction::setObjectName(...)` sur une poignée d'actions
+(`action_undo`, `action_redo`, `action_deleteRegion`, `action_createStitch`)
+pour les retrouver par `findChild` sans dépendre du texte traduit. Aucun
+membre n'est rendu public au-delà de ces trois points d'entrée explicites.
+Chaque suite est un exécutable QTest (`QTEST_MAIN`), exécuté par
 CTest avec `QT_QPA_PLATFORM=offscreen` (propriété `ENVIRONMENT`) et le
 dossier `bin` de Qt ajouté au `PATH` (propriété `ENVIRONMENT_MODIFICATION` —
 Qt n'est pas déployé à côté de chaque exécutable de test comme il l'est pour
@@ -103,6 +115,9 @@ reste utilisé pour les signaux à types Qt natifs (`QPointF`, `QRectF`).
 | `PropertiesPanel` | `showEmbroidery` | formulaire peuplé aux bonnes valeurs, **aucun** `paramsEdited` pendant la construction |
 | `PropertiesPanel` | éditer un champ du formulaire | `paramsEdited` émis avec le champ modifié à jour, les autres champs préservés |
 | `PropertiesPanel` | changer de sélection (`showInfo` après `showEmbroidery`) | l'ancien formulaire est bien détruit (pas de contrôles fantômes) |
+| `MainWindow` | clic canevas sur un objet vectoriel | `DocumentPanel` (liste Objets) et `PropertiesPanel` (spin boxes) se synchronisent sur le point de contour rattaché ; `action_createStitch` s'active |
+| `MainWindow` | sélection région (liste) puis sélection objet (canevas) | `action_deleteRegion`/`action_createStitch` s'activent et se désactivent en opposition, selon la priorité de `resolveSelectedEmbroidery`/`onCanvasClicked` |
+| `MainWindow` | suppression d'une région (`action_deleteRegion`, sans dialogue) puis undo/redo (`action_undo`/`action_redo`) | la liste Régions de `DocumentPanel` reflète la suppression **et** sa restauration (pas seulement `undoStack_`/le modèle) ; les actions annuler/rétablir s'activent en conséquence |
 
 `MoveNodeCommand` (la commande undo/redo réellement appliquée quand une
 poignée est relâchée) est déjà couverte côté cœur, sans Qt, par
@@ -123,63 +138,73 @@ sub-pixel), mais faux pour un glisser rapide à peu d'évènements
 lui-même (`mapToScene(viewportRect).boundingRect()`), toujours à jour.
 Test de régression : `cropModeRubberBandEmitsCropSelectedMm`.
 
-### Obstacles de testabilité identifiés (non résolus dans ce lot)
+### Obstacles de testabilité identifiés
 
-- **`MainWindow` est un god-object non testable en l'état** : constructeur de
-  ~250 lignes construisant menus/docks/barres d'outils/panneaux en bloc,
-  logique de sélection/filtre/simulation imbriquée dans des lambdas privées
-  (`updateInspector`, `objectPassesFilter`, `embroideryCentroid`…), et surtout
-  un effet de bord réel au **premier appel du constructeur** : `QSettings
-  ("OpenStitch", "OpenStitch Studio")` lit/écrit la **même clé de registre
-  Windows** que l'application réelle (`ui/geometry`, `ui/windowState`), donc
-  un test qui instancierait `MainWindow` directement serait non déterministe
-  (dépend de l'état laissé par une session utilisateur réelle) et polluerait
-  ce registre. Aucun test de ce lot n'instancie `MainWindow`.
+- **`MainWindow` reste un god-object** : constructeur de ~250 lignes
+  construisant menus/docks/barres d'outils/panneaux en bloc, logique de
+  sélection/filtre/simulation imbriquée dans des lambdas privées
+  (`objectPassesFilter`, `embroideryCentroid`…). La deuxième tranche (voir
+  ci-dessous) n'a **pas** décomposé la classe — elle a percé trois seams
+  minimaux (QSettings injectable, `loadProjectForTests`, `objectName` sur
+  quelques actions) qui suffisent à instancier `MainWindow` et à observer son
+  état sans dialogue modal. Toute action qui ouvre une boîte de dialogue
+  (`QFileDialog`, `QMessageBox`, `QInputDialog`, `QColorDialog`, `QMenu::exec`
+  — `openImage`, `saveProject`, `segmentImage`, `onCanvasContextMenu`…) reste
+  hors de portée d'un test QTest offscreen automatisé.
 - **Sélection rectangulaire d'objets métier absente** : le `RubberBandDrag`
   actuel de `CanvasView` ne sert **que** le mode recadrage
   (`cropSelectedMm` → recadre l'image). Il n'existe aucun mécanisme qui
   sélectionne les objets vectoriels/de broderie contenus dans un rectangle
-  glissé — fonctionnalité demandée par l'utilisateur mais pas encore codée.
-  Rien n'a donc pu être testé « avec succès » sur ce point ; c'est une
-  fonctionnalité **manquante**, pas un test manquant.
+  glissé — fonctionnalité demandée par l'utilisateur mais pas encore codée
+  (hors périmètre de la deuxième tranche, sur consigne explicite). Rien n'a
+  donc pu être testé « avec succès » sur ce point ; c'est une fonctionnalité
+  **manquante**, pas un test manquant.
 - **Déplacement global d'un objet absent** : seul le déplacement d'un nœud
   individuel existe (`NodeHandleItem` → `MoveNodeCommand`, testé). Il n'y a
   pas de commande ni d'interaction pour translater un objet entier (tous ses
-  nœuds à la fois) ; pas de `MoveObjectCommand` dans `libs/commands`.
-- **Actions contextuelles (`updateContextToolbar`, `updateActions`)** : câblées
-  uniquement dans `MainWindow`, sur des `QAction*` membres privés sans
-  `objectName`. Testables sans construire `MainWindow` en entier seulement
-  après une extraction (ex. fonctions pures `objectPassesFilter`,
-  `stitchTypeIndex`, `regionAreaMm2` déjà `static`/`const` — candidates à
-  sortir dans un petit contrôleur non-Qt testable en Catch2).
+  nœuds à la fois) ; pas de `MoveObjectCommand` dans `libs/commands` (hors
+  périmètre de la deuxième tranche, sur consigne explicite).
+
+### Deuxième tranche (`MainWindow` — actions/menus, synchronisation, undo/redo)
+
+Les trois points de la roadmap ci-dessous marqués **fait** ont été couverts
+sans instancier `MainWindow` via un scénario nécessitant un dialogue modal :
+mutation via `action_deleteRegion` (`RemoveRegionCommand`, aucune boîte de
+dialogue) sur un document minimal construit directement en mémoire
+(`loadProjectForTests`, pas de fichier `.osp` ni d'image chargée depuis le
+disque).
 
 ### Roadmap (scénarios non automatisables aujourd'hui)
 
 But visé par l'utilisateur, dans l'ordre de valeur/risque :
 
-1. **Sélection rectangulaire d'objets** (prérequis produit avant tout test) :
-   ajouter un mode canevas dédié (distinct du recadrage) qui émet les
-   `ObjectId`/`RegionId` sous le rectangle ; puis test QTest reprenant le
-   même schéma que `cropModeRubberBandEmitsCropSelectedMm`.
-2. **Déplacement global d'un objet** : `MoveObjectCommand` (cœur, Catch2,
-   translation de tous les nœuds + undo/redo — même schéma que
-   `MoveNodeCommand`), puis interaction canevas (glisser l'intérieur d'un
-   objet sélectionné) testée en QTest comme `NodeHandleItem`.
-3. **Synchronisation sélection canevas ↔ liste ↔ inspecteur bout en bout** :
-   aujourd'hui seule la synchronisation **descendante** (`DocumentPanel` :
-   liste → signal, `syncSelection` sans réémission) est testée en isolation.
-   Le cycle complet (clic canevas → `MainWindow::syncDocumentSelection` →
-   `DocumentPanel::syncSelection` → `PropertiesPanel::showEmbroidery`)
-   suppose d'extraire cette orchestration de `MainWindow` vers une classe
-   testable (le god-object ci-dessus est le blocage).
-4. **Undo/redo restaure modèle et UI** : le modèle est déjà couvert (Catch2,
-   `test_undo_stack.cpp`) ; il manque la vérification que l'UI (inspecteur,
-   liste, canevas) se **rafraîchit** correctement après un undo déclenché
-   depuis le menu — bloqué par le même god-object `MainWindow`.
-5. **Menus/actions selon l'état** (`updateActions`) : nécessite soit
-   d'instancier `MainWindow` (obstacle `QSettings` ci-dessus à lever d'abord
-   — ex. permettre d'injecter un nom d'organisation/application différent en
-   test), soit d'extraire la logique d'activation dans un contrôleur pur.
+1. **Sélection rectangulaire d'objets** (prérequis produit avant tout test,
+   toujours non codé) : ajouter un mode canevas dédié (distinct du
+   recadrage) qui émet les `ObjectId`/`RegionId` sous le rectangle ; puis
+   test QTest reprenant le même schéma que `cropModeRubberBandEmitsCropSelectedMm`.
+2. **Déplacement global d'un objet** (toujours non codé) :
+   `MoveObjectCommand` (cœur, Catch2, translation de tous les nœuds +
+   undo/redo — même schéma que `MoveNodeCommand`), puis interaction canevas
+   (glisser l'intérieur d'un objet sélectionné) testée en QTest comme
+   `NodeHandleItem`.
+3. **fait** — **Synchronisation sélection canevas ↔ liste ↔ inspecteur** :
+   clic canevas (`CanvasView::canvasClickedMm` appelé directement, sans
+   simulation souris pixel-exacte — déjà couverte par `test_canvas_view.cpp`)
+   → `MainWindow::onCanvasClicked` → `resolveSelectedEmbroidery` (logique de
+   priorité broderie > vecteur, extraite de la triple duplication
+   `updateContextToolbar`/`updateInspector`/`syncDocumentSelection`) →
+   `DocumentPanel::syncSelection` + `PropertiesPanel::showEmbroidery`.
+4. **fait** — **Undo/redo restaure modèle et UI** : le modèle était déjà
+   couvert (Catch2, `test_undo_stack.cpp`) ; on vérifie maintenant que la
+   liste `DocumentPanel` (pas seulement `project_`/`undoStack_`) se
+   **rafraîchit** après un undo puis un redo déclenchés depuis
+   `action_undo`/`action_redo`.
+5. **fait** — **Menus/actions selon l'état** (`updateActions`) :
+   `action_createStitch` (dépend de la sélection d'un objet vectoriel) et
+   `action_deleteRegion`/région (dépend de la sélection d'une région **et**
+   d'une segmentation présente) togglent correctement, y compris quand une
+   sélection en chasse une autre (priorité canevas > liste, cf.
+   `onCanvasClicked`).
 
 ## Types de vérifications notables
 
