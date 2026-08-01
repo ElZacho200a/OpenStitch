@@ -316,9 +316,19 @@ silencieusement. Chaque glisser produit une seule commande annulable
 **Déplacer un guide satin**. Les guides restent les `SatinParams.rungs`
 historiques : la persistance `.osp` demeure rétrocompatible.
 
-Limite actuelle : ce premier outil déplace les guides produits par
-l'auto-satin ; l'ajout et la suppression interactifs (les commandes cœur
-existent déjà) restent à brancher à une sélection de guide explicite.
+Un clic sur le segment d'un guide le sélectionne et le met en évidence. La
+commande **Ajouter un guide satin** (`Maj+G`) partage automatiquement le plus
+grand intervalle disponible sur les deux rails ; elle est refusée si le nouveau
+guide serait trop proche de ses voisins. **Supprimer le guide satin
+sélectionné** conserve toujours au moins deux guides, seuil nécessaire à une
+colonne paramétrique. Ajout, suppression et déplacement utilisent trois
+commandes distinctes et sont entièrement annulables/rétablissables. L'insertion
+préserve aussi l'ordre de progression croissant ou décroissant des guides, afin
+que les extrémités employées par le routage textile restent exactes.
+
+Limite actuelle : les guides s'éditent section par section sur les
+`SatinParams` ouverts issus du réseau topologique ; l'édition coordonnée d'un
+guide à travers une jonction multi-rail reste à concevoir.
 
 ## Finitions : points courts, split, terminaisons (Lot 3)
 

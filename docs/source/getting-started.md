@@ -70,7 +70,10 @@ d'un tatami à la souris (poignée de rotation).
 Pour une colonne satin sélectionnée, **Broderie ▸ Éditer les guides satin…**
 (`G`) affiche les barreaux d'orientation. Glissez une extrémité le long de son
 rail pour infléchir localement les points ; plusieurs barreaux pilotent des
-orientations successives et chaque geste est annulable avec `Ctrl+Z`.
+orientations successives. Cliquez sur un barreau pour le sélectionner, utilisez
+**Ajouter un guide satin** (`Maj+G`) pour partager le plus grand intervalle ou
+**Supprimer le guide satin sélectionné** pour l'enlever. Le logiciel conserve
+toujours au moins deux guides et chaque geste est annulable avec `Ctrl+Z`.
 
 ## 8. Régler les points et les couleurs
 

@@ -16,9 +16,11 @@ et des fonctionnalités manquantes identifiables. **Aucune date n'est annoncée.
   impose une orientation locale, interpolée continûment entre guides. **Premier
   incrément livré** : affichage des guides, déplacement indépendant des deux
   extrémités avec projection/validation monotone, undo/redo et test Qt de
-  glisser. Restent la sélection explicite d'un guide, l'ajout/suppression depuis
-  le canevas et les guides aux jonctions du réseau multi-rail. Ne jamais
-  accepter silencieusement une gerbe ou un croisement comme satin valide.
+  glisser. **Deuxième incrément livré** : sélection explicite sur le canevas,
+  ajout dans le plus grand intervalle admissible, suppression avec plancher de
+  deux guides, ordre de routage préservé et parcours QTest complet. Restent les
+  guides coordonnés aux jonctions du réseau multi-rail. Ne jamais accepter
+  silencieusement une gerbe ou un croisement comme satin valide.
 
 - Refonte avancée du **satin** (§12 de l'étude) : correspondance par sections,
   barreaux de direction, densité perpendiculaire au fil, gestion des points

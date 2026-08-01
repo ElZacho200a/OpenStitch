@@ -17,7 +17,7 @@ fonctionnalité, vérifié dans le code.
 | Interface (thème, panneaux, workflow) | Implémenté | desktop | desktop | (vue) | thème clair/sombre + densité, inspecteur, panneau Document, workflow, état d'accueil, persistance UI (QSettings) |
 | Point droit/double/triple | Implémenté | Broderie | stitch_generation | oui | — |
 | Tatami | Présent · testé · SVG | Broderie | stitch_generation | oui | scanline + routage ; **sous-couches (contour + parallèle), underpath caché, entrée** (Lot 7) ; orientation éditable |
-| Satin (génération par barreaux) | Présent · testé · SVG | Broderie / inspecteur | stitch_generation | oui | `fill_satin_columns` : sections, espacement **perpendiculaire**, points courts / split / terminaisons (Lot 3), **sous-couches (center/edge/zigzag) + compensation pull/push** (Lot 4, passes distinctes), **lock + entrée/sortie** (Lot 5), **routage multi-colonnes** (Lot 6) |
+| Satin (génération par barreaux) | Présent · testé · SVG | Broderie / inspecteur | stitch_generation | oui | `fill_satin_columns` : sections, espacement **perpendiculaire**, guides sélectionnables/ajoutables/supprimables/déplaçables avec undo/redo, points courts / split / terminaisons (Lot 3), **sous-couches (center/edge/zigzag) + compensation pull/push** (Lot 4, passes distinctes), **lock + entrée/sortie** (Lot 5), **routage multi-colonnes** (Lot 6) |
 | Modèle de passes | Présent · testé | (générateur) | stitch | oui | `StitchPass` par commande (Underlay/TopStitch/Travel/Lock/Manual) ; affichage/toggle par passe dans l'UI à venir |
 | Auto-satin géométrique (rails+barreaux) | Présent · testé · SVG | Auto + Broderie ▸ Convertir en satin | auto_satin | oui | formes simples, Y/T multi-sections et anneau fin en 4 sections ; cercle plein/forme large refusés |
 | Classification auto des régions | **Expérimental** | Segmentation | autodigitize | oui | bandes fines → moteur topologique par défaut (`use_auto_satin`) ; refus → tatami ; moteur naïf désactivé |
@@ -38,7 +38,7 @@ fonctionnalité, vérifié dans le code.
 
 ## Dette technique connue
 
-- Le compte CTest courant est **323** en Debug et Release ; éviter de figer ce
+- Le compte CTest courant est **329** en Debug et Release ; éviter de figer ce
   nombre dans les pages d'introduction sans le mettre à jour avec la CI.
 - Le satin dispose désormais d'un moteur géométrique par **squelette**
   (`auto_satin::build_satin_columns`, Lot 1) et d'une **génération par barreaux**
@@ -86,8 +86,10 @@ fonctionnalité, vérifié dans le code.
   intervalles voisins). Voir `docs/source/satin.md` § *Revue corrective
   (audit adverse)*. Aucun chemin de production actuel n'atteint le cas
   tête-bêche (`rails_from_contour`/`build_satin_columns` garantissent déjà le
-  même sens) ni les barreaux désordonnés (aucune UI d'édition de barreaux) —
-  corrections préventives sur une fonction de bibliothèque publique.
+  même sens). L'UI édite désormais les barreaux, mais maintient leur progression
+  monotone et leur écart minimal ; les imports désordonnés restent acceptés et
+  triés à la génération. Ces gardes défensives restent nécessaires à la
+  fonction de bibliothèque publique.
 - Aucune validation sur machine à broder réelle.
 
 ## Niveaux de validation

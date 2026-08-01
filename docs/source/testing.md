@@ -278,6 +278,10 @@ But visé par l'utilisateur, dans l'ordre de valeur/risque :
 - **Satin par barreaux** (`fill_satin_columns`) : espacement **médian régulier**
   (colonne droite), barreaux **traversés exactement**, rails de longueurs
   différentes, repli sur `fill_satin` si < 2 barreaux, déterminisme.
+- **Édition des guides satin** : QTest headless sur le clic de sélection, l'ajout
+  au plus grand intervalle, la suppression avec plancher de deux guides, le
+  glisser d'une extrémité projetée sur son rail et les parcours undo/redo ; tests
+  cœur sur l'espacement minimal et les ordres de guides croissant/décroissant.
 - **Satin — finitions (Lot 3)** : points courts (inset modifie le rail intérieur,
   remove réduit les pénétrations), split (staggered ≠ ligne centrale, jitter
   déterministe), terminaisons (taper réduit la largeur au bout sans l'annuler) ;
