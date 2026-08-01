@@ -37,12 +37,17 @@ labels peut faire plusieurs mégaoctets).
   `underlayParallel`, `underlayInset`, `underlaySpacing`, `hiddenUnderpath` et
   `entryPoint` — optionnels et rétrocompatibles. Depuis le schéma v3, un objet
   peut aussi porter ses **retouches manuelles** (Lot 8.1, ADR-014) :
-  `overrides` (liste de `{index, pos?, type?, trimAfter}` — `index` désigne une
-  position dans la vue brute de l'objet, `pos` un déplacement `{x, y}` en µm,
-  `type` `"stitch"` ou `"jump"`), `editedFingerprint` (empreinte FNV-1a 64 bits
-  de la vue brute au moment de la dernière édition, entier **exact**, jamais
-  passé par un `double`) et `editedPointCount`. Absents ou `overrides` vide →
-  objet `Clean` (comportement actuel inchangé).
+  `overrides` (**tableau** JSON obligatoire de `{index, pos?, type?, trimAfter}`
+  — `index` désigne une position dans la vue brute de l'objet et doit être
+  **unique** dans le tableau, `pos` un déplacement `{x, y}` en µm, `type`
+  `"stitch"` ou `"jump"` ; chaque entrée doit porter au moins une modification
+  effective — `pos`, `type`, ou `trimAfter: true`), `editedFingerprint`
+  (empreinte FNV-1a 64 bits de la vue brute au moment de la dernière édition,
+  entier **exact**, jamais passé par un `double`) et `editedPointCount` —
+  **obligatoires et explicites** dès que `overrides` n'est pas vide (aucune
+  valeur zéro implicite). Absents, ou `overrides` vide (métadonnées
+  éventuellement présentes mais alors ignorées) → objet `Clean` (comportement
+  actuel inchangé).
 
 ## Versionnement et validation
 
@@ -52,10 +57,13 @@ labels peut faire plusieurs mégaoctets).
 **rétrocompatible** : un fichier v1 ou v2 se charge (cadre 100×100 par défaut
 si absent, aucun barreau, aucune retouche → état `Clean`). Une version
 **supérieure** à celle du binaire est refusée proprement (`UnsupportedFormat`) ;
-un JSON invalide, une valeur hors bornes (index négatif, coordonnée au-delà
-d'un `int32`, compteur au-delà d'un `uint32`, type de point inconnu) ou une
-carte de labels incohérente renvoie une erreur utile (`InvalidFile`), jamais
-une troncature silencieuse.
+un JSON invalide, une valeur hors bornes (index négatif, non entier, ou
+au-delà de `numeric_limits<size_t>::max()`, coordonnée au-delà d'un `int32`,
+compteur au-delà d'un `uint32`, type de point inconnu), un `overrides` qui
+n'est pas un tableau, un `index` en double, une entrée sans modification
+effective, des métadonnées `editedFingerprint`/`editedPointCount` manquantes
+pour un tableau non vide, ou une carte de labels incohérente renvoie une
+erreur utile (`InvalidFile`), jamais une troncature silencieuse.
 
 ## Sauvegarde atomique
 

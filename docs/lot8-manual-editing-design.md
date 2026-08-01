@@ -365,11 +365,24 @@ dans `project.json`. Un fichier sans ces clés se charge avec `overrides = []`
 (état `Clean`), donc sans bascule de `schemaVersion` requise pour rester
 compatible avec la convention existante.
 
+### Révision (2026-08-01, revue corrective 8.1) : un seul `index` par entrée
+
+Ce document proposait initialement de tolérer plusieurs entrées JSON pour un
+même `base_index` (un outil tiers pouvait scinder les champs), fusionnées à la
+lecture. Revu après audit : aucun producteur réel n'écrit jamais deux entrées
+pour le même index (`project_commands.hpp`/`override_to_json` garantissent
+chacun une entrée unique par `base_index`), donc un doublon ne peut venir
+que d'un JSON corrompu ou modifié à la main. `overrides_from_json`
+(`json_serialize.cpp`) **refuse** désormais un `index` en double avec
+`InvalidFile`, au lieu de fusionner champ à champ. Une entrée qui ne porte
+aucune modification effective (ni `pos`, ni `type`, ni `trimAfter: true`) est
+également refusée -- ce n'est jamais l'état produit par une commande légitime
+(cf. §2.3, correctif `SetStitchTrimCommand`).
+
 ```json
 "overrides": [
   { "index": 42, "pos": { "x": 12000, "y": -4300 } },
-  { "index": 57, "type": "jump" },
-  { "index": 57, "trimAfter": true }
+  { "index": 57, "type": "jump", "trimAfter": true }
 ],
 "editedFingerprint": 9814772034551998211,
 "editedPointCount": 214

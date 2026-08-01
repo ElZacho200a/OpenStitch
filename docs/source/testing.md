@@ -15,7 +15,7 @@ Public : développeur, mainteneur.
   (invoquée via `add_test`, cf. Lot 8.1) — échoue si un site de production
   hors `libs/stitch_generation/` appelle `generate_sequence()` directement
   sans annotation `raw-sequence-ok:`, contournant les retouches manuelles.
-- Total au dernier passage vérifié : **277 tests CTest**, 100 % réussis.
+- Total au dernier passage vérifié : **290 tests CTest**, 100 % réussis.
 
 ## Encadré de traçabilité (dernier passage vérifié)
 
@@ -24,11 +24,11 @@ passage vérifié manuellement. Régénérez ces valeurs avant toute publication
 
 | Élément | Valeur |
 |---|---|
-| Commit (état du code testé) | `c1ede21` |
+| Commit (état du code testé) | `99dfb0b` |
 | Compilateur | MSVC toolset 14.50 (Visual Studio 2026) |
 | CMake | 4.4.0-rc3 |
 | Configurations | Debug **et** Release |
-| Résultat CTest | 277 / 277 réussis |
+| Résultat CTest | 290 / 290 réussis |
 | Tests désactivés | 0 |
 | Fichiers de tests d'intégration | 1 (`tests/integration/test_pipeline.cpp`) |
 | Suites Qt (UI desktop) | 5 exécutables CTest (`tests/unit/desktop/`), 17 fonctions de test QTest |
@@ -37,7 +37,7 @@ passage vérifié manuellement. Régénérez ces valeurs avant toute publication
 
 Note : chaque `TEST_CASE` Catch2 (ou fonction de test QTest) est enregistré
 comme un test CTest (via `catch_discover_tests` côté Catch2, `add_test` par
-suite côté QTest) ; le nombre d'**assertions** est supérieur. Le chiffre 277
+suite côté QTest) ; le nombre d'**assertions** est supérieur. Le chiffre 290
 compte les cas de test (dont la garde structurelle CI), pas les assertions.
 
 ## Exécution
@@ -323,15 +323,32 @@ But visé par l'utilisateur, dans l'ordre de valeur/risque :
   exactement l'entrée précédente au `revert` (y compris la transition
   `Clean → ManuallyEdited` et son annulation), et partagent une seule entrée
   d'`overrides` quand deux commandes ciblent le même `base_index` (chaque
-  `revert` ne restaure que son propre champ). Persistance `.osp` v3 :
-  `overrides`/`editedFingerprint`/`editedPointCount` survivent à un
+  `revert` ne restaure que son propre champ). `SetStitchTrimCommand(false)`
+  sur un index sans override existant est un no-op exact (aucune entrée vide
+  créée, aucune transition `Clean → ManuallyEdited` fantôme) ; si elle efface
+  le dernier champ effectif d'une entrée préexistante (`trim_after` était son
+  seul champ posé), l'entrée est retirée plutôt que laissée vide, et `revert`
+  la réinsère exactement (`end_stitch_edit` gère ce cas). Persistance `.osp`
+  v3 : `overrides`/`editedFingerprint`/`editedPointCount` survivent à un
   aller-retour exact, y compris un `editedFingerprint` **au-delà de 2⁵³**
   (aucune perte de bits via `double` — nlohmann conserve un entier positif en
   `number_unsigned`) ; un fichier v1/v2 sans ces champs charge un objet
-  `Clean` ; un index négatif/non entier, une coordonnée au-delà d'un
-  `int32`, un compteur au-delà d'un `uint32`, un type de point inconnu ou une
-  entrée sans `index` renvoient une erreur `InvalidFile`, jamais une
-  troncature silencieuse ou un plantage. `effective_sequence` (enchaîne
+  `Clean` ; un index négatif/non entier ou au-delà de
+  `numeric_limits<size_t>::max()`, une coordonnée au-delà d'un `int32`, un
+  compteur au-delà d'un `uint32`, un type de point inconnu ou une entrée sans
+  `index` renvoient une erreur `InvalidFile`, jamais une troncature
+  silencieuse ou un plantage. **Revue corrective (2026-08-01)** : `overrides`
+  doit être un tableau JSON (objet/scalaire refusé) ; un tableau non vide
+  exige la présence **explicite** d'`editedFingerprint`/`editedPointCount`
+  (plus de valeur zéro implicite sur un document malformé) ; un tableau vide
+  accompagné de ces mêmes clés est normalisé en `Clean` sans erreur
+  (métadonnées orphelines ignorées, non significatives quand `overrides` est
+  vide) ; un `index` en double dans le tableau est refusé (`InvalidFile`) au
+  lieu d'être fusionné champ à champ (le cadrage initial l'autorisait,
+  décision revue — aucun producteur réel n'écrit jamais deux entrées pour le
+  même index, cf. `docs/lot8-manual-editing-design.md` §4) ; une entrée sans
+  aucune modification effective (ni `pos`, ni `type`, ni `trimAfter: true`)
+  est également refusée. `effective_sequence` (enchaîne
   `generate_sequence` puis `apply_manual_overrides`) est vérifiée identique
   au brut pour un objet `Clean`, patchée pour un objet `ManuallyEdited`,
   déterministe sur deux appels indépendants, et propage sans plantage une
