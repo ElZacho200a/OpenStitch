@@ -23,5 +23,6 @@ namespace openstitch::desktop::icons {
 [[nodiscard]] QIcon analyze();
 [[nodiscard]] QIcon stitches();
 [[nodiscard]] QIcon exportDst();
+[[nodiscard]] QIcon editPoints();
 
 }  // namespace openstitch::desktop::icons

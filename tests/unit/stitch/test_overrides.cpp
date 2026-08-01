@@ -756,3 +756,227 @@ TEST_CASE("effective_sequence : deterministe sur deux appels independants") {
     REQUIRE(e2.has_value());
     CHECK(e1->commands == e2->commands);
 }
+
+// ---------------------------------------------------------------------------
+// is_movable_point (Lot 8.2 : predicat expose pour le placement des poignees)
+// ---------------------------------------------------------------------------
+
+TEST_CASE("is_movable_point : vrai pour un Stitch en passe TopStitch") {
+    const ObjectId o{1};
+    CHECK(is_movable_point(mk(0, 0, CmdType::Stitch, o, Pass::TopStitch)));
+}
+
+TEST_CASE("is_movable_point : faux pour un Jump en passe TopStitch") {
+    const ObjectId o{1};
+    CHECK_FALSE(is_movable_point(mk(0, 0, CmdType::Jump, o, Pass::TopStitch)));
+}
+
+TEST_CASE("is_movable_point : faux pour un Stitch hors passe TopStitch") {
+    const ObjectId o{1};
+    CHECK_FALSE(is_movable_point(mk(0, 0, CmdType::Stitch, o, Pass::Underlay)));
+    CHECK_FALSE(is_movable_point(mk(0, 0, CmdType::Stitch, o, Pass::Travel)));
+    CHECK_FALSE(is_movable_point(mk(0, 0, CmdType::Stitch, o, Pass::Lock)));
+}
+
+// ---------------------------------------------------------------------------
+// edit_view (Lot 8.2 : bloc de construction unique pour le mode edition UI)
+// ---------------------------------------------------------------------------
+
+TEST_CASE("edit_view : Clean, vue brute et fingerprint coherents avec generate_sequence") {
+    const auto project = make_running_square_project();
+    const ObjectId oid = project.embroidery_objects[0].id;
+
+    const auto raw = generate_sequence(project);
+    REQUIRE(raw.has_value());
+    const auto expectedSlice = raw_slice(*raw, oid);
+
+    const auto view = edit_view(project, oid);
+    REQUIRE(view.has_value());
+    CHECK(view->state == ObjectEditState::Clean);
+    CHECK(view->raw == expectedSlice);
+    CHECK(view->point_count == static_cast<std::uint32_t>(expectedSlice.size()));
+    CHECK(view->fingerprint == fingerprint(expectedSlice));
+}
+
+TEST_CASE("edit_view : ManuallyEdited une fois l'objet retouche") {
+    auto project = make_running_square_project();
+    const ObjectId oid = project.embroidery_objects[0].id;
+    const auto raw = generate_sequence(project);
+    REQUIRE(raw.has_value());
+    const auto slice = raw_slice(*raw, oid);
+    REQUIRE(slice.size() > 1);
+
+    document::StitchOverride ov;
+    ov.base_index = 1;
+    ov.moved_to = Vec2um{Micrometers{111}, Micrometers{222}};
+    project.embroidery_objects[0].overrides = {ov};
+    project.embroidery_objects[0].edited_point_count = static_cast<std::uint32_t>(slice.size());
+    project.embroidery_objects[0].edited_fingerprint = fingerprint(slice);
+
+    const auto view = edit_view(project, oid);
+    REQUIRE(view.has_value());
+    CHECK(view->state == ObjectEditState::ManuallyEdited);
+}
+
+TEST_CASE("edit_view : Dirty quand l'empreinte stockee ne correspond plus") {
+    auto project = make_running_square_project();
+    const ObjectId oid = project.embroidery_objects[0].id;
+    const auto raw = generate_sequence(project);
+    REQUIRE(raw.has_value());
+    const auto slice = raw_slice(*raw, oid);
+
+    document::StitchOverride ov;
+    ov.base_index = 0;
+    ov.trim_after = true;
+    project.embroidery_objects[0].overrides = {ov};
+    project.embroidery_objects[0].edited_point_count = static_cast<std::uint32_t>(slice.size());
+    project.embroidery_objects[0].edited_fingerprint = fingerprint(slice) + 1;  // corrompue
+
+    const auto view = edit_view(project, oid);
+    REQUIRE(view.has_value());
+    CHECK(view->state == ObjectEditState::Dirty);
+    // La vue brute reste fidele malgre l'etat Dirty (rien n'est masque a l'UI).
+    CHECK(view->raw == slice);
+}
+
+TEST_CASE("edit_view : Clean pour un objet absent du projet, sans plantage") {
+    const auto project = make_running_square_project();
+    const auto view = edit_view(project, ObjectId{999'999});
+    REQUIRE(view.has_value());
+    CHECK(view->state == ObjectEditState::Clean);
+    CHECK(view->raw.empty());
+    CHECK(view->point_count == 0);
+}
+
+TEST_CASE("edit_view : propage l'erreur de generate_sequence sans plantage") {
+    auto project = make_running_square_project();
+    const ObjectId oid = project.embroidery_objects[0].id;
+    project.embroidery_objects[0].visible = false;  // aucun objet visible -> erreur
+    const auto view = edit_view(project, oid);
+    REQUIRE_FALSE(view.has_value());
+    CHECK(view.error().category == ErrorCategory::UserInput);
+}
+
+// ---------------------------------------------------------------------------
+// classify_all_edit_states (Lot 8.2 : indicateurs par objet)
+// ---------------------------------------------------------------------------
+
+TEST_CASE("classify_all_edit_states : vide et sans appel a generate_sequence si aucun objet retouche") {
+    auto project = make_running_square_project();
+    // Rendrait generate_sequence en erreur si jamais invoque -- prouve le
+    // court-circuit "aucun objet retouche" avant tout calcul de sequence.
+    project.embroidery_objects[0].visible = false;
+
+    const auto states = classify_all_edit_states(project);
+    REQUIRE(states.has_value());
+    CHECK(states->empty());
+}
+
+TEST_CASE("classify_all_edit_states : objets Clean absents, ManuallyEdited/Dirty presents") {
+    auto project = make_running_square_project();
+    const ObjectId cleanId = project.object_ids.next();
+    {
+        // Deuxieme objet, jamais retouche : doit rester absent du resultat.
+        document::EmbroideryObject clean;
+        clean.id = cleanId;
+        clean.source_vector = project.vector_objects[0].id;
+        project.embroidery_objects.push_back(clean);
+    }
+    const ObjectId editedId = project.embroidery_objects[0].id;
+
+    const auto raw = generate_sequence(project);
+    REQUIRE(raw.has_value());
+    const auto slice = raw_slice(*raw, editedId);
+    REQUIRE(slice.size() > 1);
+
+    document::StitchOverride ov;
+    ov.base_index = 1;
+    ov.moved_to = Vec2um{Micrometers{50}, Micrometers{60}};
+    project.embroidery_objects[0].overrides = {ov};
+    project.embroidery_objects[0].edited_point_count = static_cast<std::uint32_t>(slice.size());
+    project.embroidery_objects[0].edited_fingerprint = fingerprint(slice) + 1;  // Dirty
+
+    const auto states = classify_all_edit_states(project);
+    REQUIRE(states.has_value());
+    REQUIRE(states->size() == 1);  // l'objet Clean n'apparait pas
+    CHECK((*states)[0].first == editedId);
+    CHECK((*states)[0].second == ObjectEditState::Dirty);
+}
+
+// ---------------------------------------------------------------------------
+// refresh_context (Lot 8.2, revue corrective point 1 : un seul
+// generate_sequence pour effective/edit_states/target_view a la fois)
+// ---------------------------------------------------------------------------
+
+TEST_CASE("refresh_context : effective identique a effective_sequence, sans cible") {
+    auto project = make_running_square_project();
+    const ObjectId oid = project.embroidery_objects[0].id;
+    const auto raw = generate_sequence(project);
+    REQUIRE(raw.has_value());
+    const auto slice = raw_slice(*raw, oid);
+
+    document::StitchOverride ov;
+    ov.base_index = 1;
+    ov.moved_to = Vec2um{Micrometers{123}, Micrometers{456}};
+    project.embroidery_objects[0].overrides = {ov};
+    project.embroidery_objects[0].edited_point_count = static_cast<std::uint32_t>(slice.size());
+    project.embroidery_objects[0].edited_fingerprint = fingerprint(slice);
+
+    const auto expected = effective_sequence(project);
+    REQUIRE(expected.has_value());
+
+    const auto ctx = refresh_context(project, std::nullopt);
+    REQUIRE(ctx.has_value());
+    CHECK(ctx->effective.commands == expected->commands);
+    CHECK_FALSE(ctx->target_view.has_value());  // aucune cible demandee
+    REQUIRE(ctx->edit_states.size() == 1);
+    CHECK(ctx->edit_states[0].first == oid);
+    CHECK(ctx->edit_states[0].second == ObjectEditState::ManuallyEdited);
+}
+
+TEST_CASE("refresh_context : target_view identique a edit_view pour la meme cible") {
+    const auto project = make_running_square_project();
+    const ObjectId oid = project.embroidery_objects[0].id;
+
+    const auto expectedView = edit_view(project, oid);
+    REQUIRE(expectedView.has_value());
+
+    const auto ctx = refresh_context(project, oid);
+    REQUIRE(ctx.has_value());
+    REQUIRE(ctx->target_view.has_value());
+    CHECK(ctx->target_view->state == expectedView->state);
+    CHECK(ctx->target_view->raw == expectedView->raw);
+    CHECK(ctx->target_view->fingerprint == expectedView->fingerprint);
+    CHECK(ctx->target_view->point_count == expectedView->point_count);
+}
+
+TEST_CASE("refresh_context : target_view present et Dirty quand l'empreinte ne correspond plus") {
+    auto project = make_running_square_project();
+    const ObjectId oid = project.embroidery_objects[0].id;
+    const auto raw = generate_sequence(project);
+    REQUIRE(raw.has_value());
+    const auto slice = raw_slice(*raw, oid);
+
+    document::StitchOverride ov;
+    ov.base_index = 0;
+    ov.trim_after = true;
+    project.embroidery_objects[0].overrides = {ov};
+    project.embroidery_objects[0].edited_point_count = static_cast<std::uint32_t>(slice.size());
+    project.embroidery_objects[0].edited_fingerprint = fingerprint(slice) + 1;  // corrompue
+
+    const auto ctx = refresh_context(project, oid);
+    REQUIRE(ctx.has_value());
+    REQUIRE(ctx->target_view.has_value());
+    CHECK(ctx->target_view->state == ObjectEditState::Dirty);  // jamais filtre ici : a l'appelant de le faire
+    // effective conserve la sequence brute pour l'objet Dirty (jamais reappliquee).
+    CHECK(raw_slice(ctx->effective, oid) == slice);
+}
+
+TEST_CASE("refresh_context : propage l'erreur de generate_sequence sans plantage") {
+    auto project = make_running_square_project();
+    const ObjectId oid = project.embroidery_objects[0].id;
+    project.embroidery_objects[0].visible = false;  // aucun objet visible -> erreur
+    const auto ctx = refresh_context(project, oid);
+    REQUIRE_FALSE(ctx.has_value());
+    CHECK(ctx.error().category == ErrorCategory::UserInput);
+}

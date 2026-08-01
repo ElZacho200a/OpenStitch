@@ -76,6 +76,12 @@
 
 namespace openstitch::desktop {
 
+// Mode d'édition des points générés (Lot 8.2) : au-delà de ce nombre de
+// points déplaçables (is_movable_point), aucune poignée n'est proposée --
+// un GraphicsItem par poignée coûte trop cher sur un motif dense. Partagé
+// entre renderBase (rendu) et updateActions (gating/sortie de mode + message).
+constexpr std::size_t kMaxEditableStitchHandles = 2000;
+
 MainWindow::MainWindow() {
     setWindowTitle(QStringLiteral("%1 [*]").arg(QString::fromUtf8(kAppName)));
     resize(1100, 800);
@@ -291,6 +297,19 @@ void MainWindow::buildMenus() {
            "concaves) par des remplissages tatami découpés sur la région."));
     connect(convertSatinAct_, &QAction::triggered, this, &MainWindow::convertSatinsToTatami);
     embMenu->addSeparator();
+    // Mode d'édition des points générés (Lot 8.2). Mode exclusif : activable
+    // seulement dans un contexte valide (objet de broderie sélectionné, non
+    // Dirty -- cf. updateActions), désactivé/décoché sinon.
+    stitchEditModeAct_ = embMenu->addAction(icons::editPoints(), tr("&Éditer les points…"));
+    stitchEditModeAct_->setObjectName(QStringLiteral("action_stitchEditMode"));
+    stitchEditModeAct_->setCheckable(true);
+    stitchEditModeAct_->setShortcut(QKeySequence(Qt::Key_E));
+    stitchEditModeAct_->setToolTip(
+        tr("Déplacer un à un les points de couture générés de l'objet sélectionné (E). "
+           "Distinct de l'édition des nœuds vectoriels : ici, seul le point cousu bouge, "
+           "pas la forme source."));
+    connect(stitchEditModeAct_, &QAction::toggled, this, &MainWindow::onStitchEditModeToggled);
+    embMenu->addSeparator();
     statsAct_ = embMenu->addAction(tr("&Statistiques…"));
     connect(statsAct_, &QAction::triggered, this, &MainWindow::showStatistics);
 
@@ -407,6 +426,7 @@ void MainWindow::openImage() {
     }
 
     project_ = document::Project{};
+    ++documentGeneration_;  // nouveau document : invalide les commandes différées en vol
     project_.mm_per_px = document::mm_per_pixel(*placement, loaded->width);
     project_.original = std::move(*loaded);
     undoStack_.clear();
@@ -414,6 +434,16 @@ void MainWindow::openImage() {
     sequenceImported_ = false;
     selectedRegion_.reset();
     selectedObject_.reset();
+    // Nouveau document : sortie propre du mode d'édition des points (Lot 8.2),
+    // sans passer par onStitchEditModeToggled (project_ n'est pas encore
+    // rafraîchi -- displayImage() y serait prématuré, refreshImage() ci-dessous
+    // s'en charge).
+    if (stitchEditModeAct_ != nullptr) {
+        QSignalBlocker block(stitchEditModeAct_);
+        stitchEditModeAct_->setChecked(false);
+    }
+    stitchEditTarget_.reset();
+    stitchEditView_.reset();
 
     refreshImage();
     view_->fitCanvas();
@@ -453,6 +483,55 @@ void MainWindow::redo() {
         refreshImage();
         updateActions();
     }
+}
+
+// Entrée/sortie du mode d'édition des points (Lot 8.2). L'action n'est
+// activable (cf. updateActions -> stitchEditModeAct_->setEnabled) que pour un
+// objet de broderie sélectionné et non Dirty ; ce garde-fou reste néanmoins
+// revérifié ici (défense en profondeur : un déclenchement programmatique ou
+// une course sélection/activation ne doit jamais laisser le mode actif sans
+// cible valide).
+void MainWindow::onStitchEditModeToggled(bool on) {
+    stitchEditTarget_.reset();
+    stitchEditView_.reset();
+    if (on) {
+        if (const auto* emb = resolveSelectedEmbroidery()) {
+            if (auto view = stitch_generation::edit_view(project_, emb->id);
+                view && view->state != stitch_generation::ObjectEditState::Dirty) {
+                stitchEditTarget_ = emb->id;
+                stitchEditView_ = std::move(*view);
+            }
+        }
+        if (!stitchEditTarget_) {
+            // Contexte devenu invalide entre le clic et ce traitement (perte de
+            // sélection, objet Dirty) : on annule silencieusement l'activation.
+            QSignalBlocker block(stitchEditModeAct_);
+            stitchEditModeAct_->setChecked(false);
+        } else {
+            statusBar()->showMessage(
+                tr("Édition des points : glissez un point pour le déplacer. Échap pour quitter."));
+        }
+    }
+    displayImage(processed_);  // fait apparaître/disparaître les poignées
+    updateActions();
+}
+
+void MainWindow::discardOverrides(ObjectId id) {
+    const auto* obj = project_.findEmbroidery(id);
+    if (obj == nullptr) {
+        return;
+    }
+    const auto answer = QMessageBox::question(
+        this, tr("Abandonner les retouches"),
+        tr("Abandonner définitivement les retouches manuelles de « %1 » ? Les points "
+           "reviendront à la géométrie générée. Cette action reste annulable (Ctrl+Z).")
+            .arg(QString::fromStdString(obj->name)));
+    if (answer != QMessageBox::Yes) {
+        return;
+    }
+    undoStack_.execute(std::make_unique<commands::DiscardOverridesCommand>(id), project_);
+    refreshImage();
+    updateActions();
 }
 
 void MainWindow::applyCanvasToView() {
@@ -620,19 +699,41 @@ void MainWindow::refreshImage() {
 
     // Régénération des points depuis le document (fonction pure). Une
     // séquence importée d'un DST n'est pas régénérable : elle est conservée.
+    // État Clean/ManuallyEdited/Dirty par objet retouché (Lot 8.2) et vue
+    // brute de l'objet en cours d'édition (Lot 8.2, source unique pour le
+    // placement des poignées dans renderBase et la construction des
+    // commandes) : tenus à jour ici. Ni displayImage() ni updateActions() ne
+    // les recalculent : ils lisent editStates_/stitchEditView_.
+    editStates_.clear();
     if (!sequenceImported_) {
         sequence_.reset();
-        if (!project_.embroidery_objects.empty()) {
-            // effective_sequence (pas generate_sequence) : seul point d'entree
-            // qui applique aussi les retouches manuelles (Lot 8.1) -- voir
-            // tests/check_no_raw_sequence_bypass.cmake.
-            if (auto seq = stitch_generation::effective_sequence(project_)) {
-                sequence_ = std::move(*seq);
-            } else {
-                statusBar()->showMessage(
-                    tr("Génération des points impossible : %1")
-                        .arg(QString::fromStdString(seq.error().message)));
+    }
+    stitchEditView_.reset();
+    if (!sequenceImported_ && !project_.embroidery_objects.empty()) {
+        // refresh_context (pas effective_sequence + classify_all_edit_states +
+        // edit_view séparément) : un seul appel interne à generate_sequence
+        // produit à la fois la séquence effective -- retouches appliquées,
+        // contenu identique à effective_sequence(project), seul point d'entree
+        // autorise pour l'affichage/export (cf.
+        // tests/check_no_raw_sequence_bypass.cmake) --, les états par objet et
+        // la vue d'édition de l'objet ciblé, au lieu de jusqu'à trois
+        // régénérations indépendantes après chaque glisser sur un motif dense.
+        // stitchEditTarget_ ne peut être défini que sur un objet du document
+        // (cf. onStitchEditModeToggled/resolveSelectedEmbroidery) : inutile de
+        // rien calculer ici quand embroidery_objects est vide ou qu'une
+        // séquence importée est affichée -- editStates_/stitchEditView_
+        // resteraient de toute façon vides/absents dans ces cas.
+        if (auto ctx = stitch_generation::refresh_context(project_, stitchEditTarget_)) {
+            sequence_ = std::move(ctx->effective);
+            editStates_ = std::move(ctx->edit_states);
+            if (ctx->target_view &&
+                ctx->target_view->state != stitch_generation::ObjectEditState::Dirty) {
+                stitchEditView_ = std::move(*ctx->target_view);
             }
+        } else {
+            statusBar()->showMessage(
+                tr("Génération des points impossible : %1")
+                    .arg(QString::fromStdString(ctx.error().message)));
         }
     }
     if (simToolbar_ != nullptr) {
@@ -803,6 +904,100 @@ void MainWindow::renderBase(const image::Image& img) {
         knob->setToolTip(tr("Glisser pour tourner l'orientation des fils"));
         scene_->addItem(knob);
         baseItems_.append(knob);
+    }
+
+    // Poignées de points de couture (Lot 8.2, mode d'édition des points) :
+    // un point déplaçable par entrée TopStitch/Stitch de la vue brute de
+    // l'objet ciblé (stitchEditView_, tenu à jour par refreshImage). Visuellement
+    // et conceptuellement distinctes des poignées de nœuds vectoriels
+    // ci-dessus (couleur dédiée) : ici on déplace le point COUSU (retouche
+    // locale), pas le nœud source (qui régénère tout).
+    if (stitchEditModeAct_ != nullptr && stitchEditModeAct_->isChecked() && stitchEditView_ &&
+        stitchEditTarget_) {
+        // Un GraphicsItem par poignée coûte cher (mémoire + événements) : au-delà
+        // de ce seuil, le mode reste actif mais n'affiche aucune poignée plutôt
+        // que de dégrader l'interface (même logique que `drawDots` ci-dessous
+        // pour la broderie complète). `updateActions()` (appelé juste après
+        // tout `refreshImage()`) sort proprement du mode et l'explique en barre
+        // de statut dès qu'il détecte ce dépassement — ce garde-fou ici couvre
+        // seulement le tout premier rendu, avant qu'`updateActions()` ait pu
+        // tourner (cf. son bloc `stitchEditTooManyPoints`).
+        const auto& view = *stitchEditView_;
+        const ObjectId targetId = *stitchEditTarget_;
+        // Le seuil porte sur les points RÉELLEMENT déplaçables (une passe
+        // TopStitch/Stitch), pas sur `view.raw.size()` qui compte aussi les
+        // sauts/points de sous-couche jamais dotés d'une poignée.
+        const auto movableCount = std::count_if(view.raw.begin(), view.raw.end(),
+                                                 stitch_generation::is_movable_point);
+        if (const auto* obj = project_.findEmbroidery(targetId);
+            obj != nullptr &&
+            static_cast<std::size_t>(movableCount) <= kMaxEditableStitchHandles) {
+            // Overrides indexés une fois par `base_index` : la boucle sur les
+            // poignées ci-dessous ne doit pas redevenir O(points*overrides) en
+            // rescannant `obj->overrides` pour chaque point (motif dense).
+            std::unordered_map<std::size_t, Vec2um> movedOverrides;
+            movedOverrides.reserve(obj->overrides.size());
+            for (const auto& ov : obj->overrides) {
+                if (ov.moved_to) {
+                    movedOverrides.emplace(ov.base_index, *ov.moved_to);
+                }
+            }
+            for (std::size_t i = 0; i < view.raw.size(); ++i) {
+                const auto& cmd = view.raw[i];
+                if (!stitch_generation::is_movable_point(cmd)) {
+                    continue;
+                }
+                Vec2um pos = cmd.pos;  // position affichée : retouche existante sinon brute
+                if (auto it = movedOverrides.find(i); it != movedOverrides.end()) {
+                    pos = it->second;
+                }
+                const QPointF sceneMm(to_millimeters(pos.x).value, -to_millimeters(pos.y).value);
+                const std::size_t baseIndex = i;
+                const std::uint64_t rawFingerprint = view.fingerprint;
+                const std::uint32_t rawPointCount = view.point_count;
+                // Génération du document au moment où la poignée est construite :
+                // si elle a changé quand le QTimer différé ci-dessous se déclenche,
+                // `project_` a été intégralement remplacé entretemps (nouveau
+                // document/projet chargé/import DST) -- abandonner plutôt que de
+                // muter un projet qui n'est plus celui visé par ce glisser.
+                const std::uint64_t generation = documentGeneration_;
+                auto* handle = new NodeHandleItem(
+                    sceneMm, [this, targetId, baseIndex, pos, rawFingerprint, rawPointCount,
+                              generation](QPointF newSceneMm) {
+                        const Vec2um newPos{to_micrometers(Millimeters{newSceneMm.x()}),
+                                            to_micrometers(Millimeters{-newSceneMm.y()})};
+                        if (newPos == pos) {
+                            return;  // pas de mouvement : aucune commande (pas de pollution undo)
+                        }
+                        // Diffère : refreshImage() détruirait cette poignée pendant
+                        // son propre événement souris (même précaution que les
+                        // poignées de nœuds/rotation ci-dessus).
+                        QTimer::singleShot(
+                            0, this,
+                            [this, targetId, baseIndex, newPos, rawFingerprint, rawPointCount,
+                             generation] {
+                                if (generation != documentGeneration_) {
+                                    return;  // document remplacé pendant le délai : commande abandonnée
+                                }
+                                undoStack_.execute(
+                                    std::make_unique<commands::MoveStitchPointCommand>(
+                                        targetId, baseIndex, newPos, rawFingerprint,
+                                        rawPointCount),
+                                    project_);
+                                refreshImage();
+                                updateActions();
+                            });
+                    },
+                    [this](QPointF) {
+                        statusBar()->showMessage(tr("Glisser pour déplacer le point de couture."));
+                    });
+                handle->setPen(QPen(AppTheme::instance().tokens().accent, 1.5));
+                handle->setBrush(QBrush(AppTheme::instance().tokens().accent.lighter(150)));
+                handle->setToolTip(tr("Point de couture #%1 — glisser pour déplacer").arg(i));
+                scene_->addItem(handle);
+                baseItems_.append(handle);
+            }
+        }
     }
 
     // Carte des régions par-dessus l'image (mode d'affichage segmentation).
@@ -1655,6 +1850,15 @@ document::EmbroideryObject* MainWindow::resolveSelectedEmbroidery() {
     return emb;
 }
 
+stitch_generation::ObjectEditState MainWindow::editStateOf(ObjectId id) const {
+    for (const auto& [candidate, state] : editStates_) {
+        if (candidate == id) {
+            return state;
+        }
+    }
+    return stitch_generation::ObjectEditState::Clean;  // absent du cache = Clean (jamais retouché)
+}
+
 void MainWindow::updateContextToolbar() {
     if (contextToolbar_ == nullptr) {
         return;
@@ -1668,7 +1872,14 @@ void MainWindow::updateContextToolbar() {
     // quand rien de pertinent n'a changé.
     QString sig;
     if (emb != nullptr) {
-        sig = QStringLiteral("E%1t%2").arg(emb->id.value).arg(stitchTypeIndex(*emb));
+        // Etat retouche (Lot 8.2) et mode d'edition inclus dans la signature :
+        // sans eux, la barre ne se reconstruirait pas quand seul l'un des deux
+        // change (meme objet/type toujours selectionne).
+        sig = QStringLiteral("E%1t%2s%3m%4")
+                  .arg(emb->id.value)
+                  .arg(stitchTypeIndex(*emb))
+                  .arg(static_cast<int>(editStateOf(emb->id)))
+                  .arg(stitchEditModeAct_->isChecked() ? 1 : 0);
     } else if (hasVec) {
         sig = QStringLiteral("V%1").arg(selectedObject_->value);
     } else if (hasReg) {
@@ -1702,6 +1913,22 @@ void MainWindow::updateContextToolbar() {
             contextToolbar_->addSeparator();
             auto* rot = contextToolbar_->addAction(tr("Orientation…"));
             connect(rot, &QAction::triggered, this, &MainWindow::changeFillAngle);
+        }
+        contextToolbar_->addSeparator();
+        contextToolbar_->addAction(stitchEditModeAct_);
+        const auto editState = editStateOf(id);
+        if (editState == stitch_generation::ObjectEditState::ManuallyEdited) {
+            contextToolbar_->addWidget(new QLabel(tr("  ✎ retouché  "), contextToolbar_));
+        } else if (editState == stitch_generation::ObjectEditState::Dirty) {
+            auto* warn = new QLabel(tr("  ⚠ retouches obsolètes  "), contextToolbar_);
+            warn->setToolTip(
+                tr("La géométrie ou l'ordre de couture a changé depuis les dernières "
+                   "retouches : elles ne sont plus appliquées."));
+            contextToolbar_->addWidget(warn);
+        }
+        if (editState != stitch_generation::ObjectEditState::Clean) {
+            auto* discard = contextToolbar_->addAction(tr("Abandonner les retouches"));
+            connect(discard, &QAction::triggered, this, [this, id] { discardOverrides(id); });
         }
     } else if (hasVec) {
         contextToolbar_->addWidget(
@@ -1777,11 +2004,18 @@ void MainWindow::buildToolPalette() {
                            QKeySequence(Qt::Key_M));
     toolSelectAct_->setChecked(true);
 
-    // Échap : revient à la Sélection et annule le mode fusion en cours.
+    // Échap : revient à la Sélection, annule le mode fusion en cours et
+    // quitte le mode d'édition des points (Lot 8.2) s'il est actif -- pas
+    // d'annulation du glisser en cours (l'architecture ne le permet pas
+    // proprement : les poignées sont détruites/reconstruites à chaque
+    // rafraîchissement, cf. renderBase), seulement une sortie propre du mode.
     auto* escape = new QShortcut(QKeySequence(Qt::Key_Escape), this);
     connect(escape, &QShortcut::activated, this, [this] {
         if (mergeAct_->isChecked()) {
             mergeAct_->setChecked(false);
+        }
+        if (stitchEditModeAct_->isChecked()) {
+            stitchEditModeAct_->setChecked(false);
         }
         setTool(Tool::Select);
     });
@@ -1902,7 +2136,7 @@ void MainWindow::refreshDocumentPanel() {
     if (documentPanel_ == nullptr) {
         return;
     }
-    documentPanel_->refresh(project_);
+    documentPanel_->refresh(project_, editStates_);
     documentDock_->setVisible(project_.hasImage() || !project_.embroidery_objects.empty());
     syncDocumentSelection();
 }
@@ -1936,9 +2170,18 @@ void MainWindow::buildPropertiesPanel() {
                     std::make_unique<commands::SetStitchParamsCommand>(id, std::move(params)),
                     project_);
                 refreshImage();
-                // Ne pas reconstruire l'inspecteur : la sélection n'a pas changé,
-                // les valeurs qu'il affiche sont déjà celles qu'on vient d'écrire.
+                // updateActions() (pas updateInspector() seul) : un changement de
+                // paramètres peut faire passer un objet retouché à Dirty (Lot 8.2)
+                // -- undo/redo, mode d'édition des points et indicateurs doivent
+                // suivre. Ne reconstruit PAS le formulaire de paramètres (qui
+                // perdrait le focus en cours de frappe) : le garde-fou
+                // kind==inspectedKind_/id==inspectedId_ dans updateInspector()
+                // s'applique toujours, seul l'état Clean/ManuallyEdited/Dirty
+                // (mis à jour avant ce garde-fou) peut changer ici.
+                updateActions();
             });
+    connect(propertiesPanel_, &PropertiesPanel::discardOverridesRequested, this,
+            &MainWindow::discardOverrides);
 }
 
 void MainWindow::updateInspector() {
@@ -1961,6 +2204,15 @@ void MainWindow::updateInspector() {
         kind = 2;
         id = selectedRegion_->value;
     }
+
+    // Indicateur Clean/ManuallyEdited/Dirty (Lot 8.2) : mis à jour à CHAQUE
+    // appel, y compris quand kind/id n'ont pas changé (une retouche/undo/redo
+    // peut faire évoluer l'état sans changer la sélection) -- volontairement
+    // AVANT le "ne reconstruit que si la sélection a changé" ci-dessous, pour
+    // ne jamais dépendre de lui.
+    propertiesPanel_->setEditState(emb != nullptr ? std::optional<ObjectId>(emb->id) : std::nullopt,
+                                   emb != nullptr ? editStateOf(emb->id)
+                                                  : stitch_generation::ObjectEditState::Clean);
 
     // Ne reconstruit que si la sélection a changé (n'interrompt pas une édition).
     if (kind == inspectedKind_ && id == inspectedId_) {
@@ -2554,12 +2806,21 @@ void MainWindow::loadProject() {
 
 void MainWindow::applyLoadedProject(document::Project project) {
     project_ = std::move(project);
+    ++documentGeneration_;  // projet remplacé : invalide les commandes différées en vol
     undoStack_.clear();
     sequence_.reset();
     sequenceImported_ = false;
     selectedRegion_.reset();
     selectedObject_.reset();
     selectedEmbroidery_.reset();
+    // Nouveau projet chargé : sortie propre du mode d'édition des points
+    // (Lot 8.2), même raison que openImage() ci-dessus.
+    if (stitchEditModeAct_ != nullptr) {
+        QSignalBlocker block(stitchEditModeAct_);
+        stitchEditModeAct_->setChecked(false);
+    }
+    stitchEditTarget_.reset();
+    stitchEditView_.reset();
     refreshImage();
     view_->fitCanvas();
     updateActions();
@@ -2651,6 +2912,7 @@ void MainWindow::importDst() {
     }
 
     project_ = document::Project{};
+    ++documentGeneration_;  // document remplacé : invalide les commandes différées en vol
     undoStack_.clear();
     processed_ = {};
     selectedRegion_.reset();
@@ -2699,6 +2961,11 @@ void MainWindow::onCanvasClicked(QPointF posMm) {
         if (selectedObject_) {
             selectedObject_.reset();
             displayImage(processed_);
+            // updateActions() manquait ici (contrairement aux autres chemins de
+            // sélection) : nécessaire pour que le mode d'édition des points
+            // (Lot 8.2) sorte proprement quand la sélection est perdue par un
+            // clic dans le vide plutôt que reportée sur un autre objet.
+            updateActions();
         }
     }
 
@@ -2790,6 +3057,52 @@ void MainWindow::updateActions() {
     if (!mergeAct_->isEnabled()) {
         mergeAct_->setChecked(false);
     }
+
+    // Mode d'édition des points (Lot 8.2) : sortie propre dès que le contexte
+    // qui l'a activé n'est plus valide -- sélection perdue, objet différent
+    // sélectionné, ou objet devenu Dirty entre-temps (satin routé voisin,
+    // suppression d'un objet adjacent…). `editStates_` est déjà à jour (calculé
+    // par le refreshImage() qui précède systématiquement cet appel), donc
+    // aucun appel au cœur ici : uniquement des lectures.
+    document::EmbroideryObject* stitchEditEmb = resolveSelectedEmbroidery();
+    const stitch_generation::ObjectEditState stitchEditState =
+        stitchEditEmb != nullptr ? editStateOf(stitchEditEmb->id)
+                                 : stitch_generation::ObjectEditState::Clean;
+    const bool stitchEditSameTarget = stitchEditTarget_.has_value() && stitchEditEmb != nullptr &&
+                                      *stitchEditTarget_ == stitchEditEmb->id;
+    // Trop de points déplaçables (cf. kMaxEditableStitchHandles, renderBase) :
+    // le mode ne doit jamais rester actif sans aucune poignée visible --
+    // sortie propre + explication, plutôt qu'un mode "actif" muet.
+    const bool stitchEditTooManyPoints =
+        stitchEditView_.has_value() &&
+        static_cast<std::size_t>(std::count_if(stitchEditView_->raw.begin(),
+                                                stitchEditView_->raw.end(),
+                                                stitch_generation::is_movable_point)) >
+            kMaxEditableStitchHandles;
+    bool stitchEditNeedsRerender = false;
+    if (stitchEditModeAct_->isChecked() &&
+        (stitchEditEmb == nullptr || !stitchEditSameTarget ||
+         stitchEditState == stitch_generation::ObjectEditState::Dirty ||
+         stitchEditTooManyPoints)) {
+        if (stitchEditTooManyPoints) {
+            statusBar()->showMessage(
+                tr("Édition des points désactivée : cet objet compte plus de %1 points de "
+                   "couture déplaçables. Réduisez la densité ou la longueur de point pour "
+                   "l'éditer point par point.")
+                    .arg(kMaxEditableStitchHandles));
+        }
+        QSignalBlocker block(stitchEditModeAct_);
+        stitchEditModeAct_->setChecked(false);
+        stitchEditTarget_.reset();
+        stitchEditView_.reset();
+        stitchEditNeedsRerender = true;
+    }
+    stitchEditModeAct_->setEnabled(stitchEditEmb != nullptr &&
+                                   stitchEditState != stitch_generation::ObjectEditState::Dirty);
+    if (stitchEditNeedsRerender) {
+        displayImage(processed_);  // retire les poignées de l'objet quitté
+    }
+
     undoAct_->setEnabled(undoStack_.canUndo());
     redoAct_->setEnabled(undoStack_.canRedo());
     undoAct_->setText(undoStack_.canUndo()

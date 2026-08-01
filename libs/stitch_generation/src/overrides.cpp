@@ -52,13 +52,6 @@ bool is_stitch_or_jump(stitch::CommandType type) {
     return type == stitch::CommandType::Stitch || type == stitch::CommandType::Jump;
 }
 
-// `moved_to` (cadrage §2.1) : "uniquement des commandes Stitch" -- déplacer
-// une position n'a de sens que pour un point de couture réel, pas pour un
-// saut (dont la position est déterminée par ses deux voisins de trajet).
-bool can_move(const stitch::StitchCommand& cmd) {
-    return is_topstitch_entry(cmd) && cmd.type == stitch::CommandType::Stitch;
-}
-
 // `forced_type` (cadrage §2.2) : "seule transition permise : Stitch <-> Jump"
 // -- bidirectionnel, donc éligible depuis une cible Stitch OU Jump (pas
 // seulement Stitch, contrairement à `can_move`).
@@ -79,6 +72,10 @@ stitch::CommandType to_command_type(document::StitchPointType t) {
 }
 
 }  // namespace
+
+bool is_movable_point(const stitch::StitchCommand& cmd) {
+    return is_topstitch_entry(cmd) && cmd.type == stitch::CommandType::Stitch;
+}
 
 std::vector<stitch::StitchCommand> raw_slice(const stitch::StitchSequence& full, ObjectId object) {
     std::vector<stitch::StitchCommand> result;
@@ -189,7 +186,7 @@ std::vector<ObjectId> apply_manual_overrides(stitch::StitchSequence& sequence,
             // silencieusement les autres, plutôt que de rejeter tout le bloc
             // sur une règle unique trop restrictive.
             stitch::StitchCommand& cmd = sequence.commands[seq_index];
-            if (ov->moved_to && can_move(original)) {
+            if (ov->moved_to && is_movable_point(original)) {
                 cmd.pos = *ov->moved_to;
                 cmd.pass = stitch::StitchPass::Manual;
             }
@@ -227,6 +224,79 @@ Result<stitch::StitchSequence> effective_sequence(const document::Project& proje
     // Dirty doit appeler apply_manual_overrides directement (UI, hors Lot 8.1).
     (void)apply_manual_overrides(*sequence, project);
     return sequence;
+}
+
+// Corps de `edit_view`/`classify_all_edit_states`, factorisés pour opérer sur
+// une séquence déjà générée : `refresh_context` les réutilise tels quels sur
+// UNE séquence partagée, au lieu que chacun des trois consommateurs
+// (effective/edit_states/target_view) appelle `generate_sequence` séparément.
+namespace {
+
+ObjectEditView edit_view_from_sequence(const document::Project& project, ObjectId object,
+                                        const stitch::StitchSequence& sequence) {
+    ObjectEditView view;
+    view.raw = raw_slice(sequence, object);
+    view.point_count = static_cast<std::uint32_t>(view.raw.size());
+    view.fingerprint = fingerprint(view.raw);
+    const auto* obj = project.findEmbroidery(object);
+    view.state = obj != nullptr ? classify_edit_state(*obj, view.raw) : ObjectEditState::Clean;
+    return view;
+}
+
+std::vector<std::pair<ObjectId, ObjectEditState>> classify_all_from_sequence(
+    const document::Project& project, const stitch::StitchSequence& sequence) {
+    std::vector<std::pair<ObjectId, ObjectEditState>> result;
+    result.reserve(project.embroidery_objects.size());
+    for (const auto& obj : project.embroidery_objects) {
+        if (obj.overrides.empty()) {
+            continue;  // Clean implicite : absent du resultat
+        }
+        result.emplace_back(obj.id, classify_edit_state(obj, raw_slice(sequence, obj.id)));
+    }
+    return result;
+}
+
+}  // namespace
+
+Result<ObjectEditView> edit_view(const document::Project& project, ObjectId object) {
+    auto sequence = generate_sequence(project);
+    if (!sequence) {
+        return std::unexpected(sequence.error());
+    }
+    return edit_view_from_sequence(project, object, *sequence);
+}
+
+Result<std::vector<std::pair<ObjectId, ObjectEditState>>> classify_all_edit_states(
+    const document::Project& project) {
+    const bool any_edited = std::any_of(
+        project.embroidery_objects.begin(), project.embroidery_objects.end(),
+        [](const document::EmbroideryObject& o) { return !o.overrides.empty(); });
+    if (!any_edited) {
+        return std::vector<std::pair<ObjectId, ObjectEditState>>{};  // aucun objet retouche : aucun appel a generate_sequence necessaire
+    }
+    auto sequence = generate_sequence(project);
+    if (!sequence) {
+        return std::unexpected(sequence.error());
+    }
+    return classify_all_from_sequence(project, *sequence);
+}
+
+Result<RefreshContext> refresh_context(const document::Project& project, std::optional<ObjectId> target) {
+    auto sequence = generate_sequence(project);
+    if (!sequence) {
+        return std::unexpected(sequence.error());
+    }
+    RefreshContext ctx;
+    ctx.edit_states = classify_all_from_sequence(project, *sequence);
+    if (target) {
+        ctx.target_view = edit_view_from_sequence(project, *target, *sequence);
+    }
+    // Mêmes deux passes, dans le même ordre, que `effective_sequence` : ne
+    // JAMAIS diverger de ce que produirait `effective_sequence(project)` pour
+    // le contenu affiché/exporté (cf. tests/check_no_raw_sequence_bypass.cmake).
+    (void)apply_manual_overrides(*sequence, project);
+    ctx.effective = std::move(*sequence);
+    return ctx;
 }
 
 }  // namespace openstitch::stitch_generation

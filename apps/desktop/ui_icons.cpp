@@ -174,6 +174,22 @@ QIcon stitches() {
     });
 }
 
+QIcon editPoints() {
+    return make([](QPainter& p) {
+        // Crayon en diagonale (retouche) pointant vers un point de couture
+        // (petit cercle plein) : distinct du crayon seul (pas d'icône de
+        // dessin vectoriel dans ce jeu) et du zigzag de « stitches ».
+        QPolygonF pencil({{9, 25}, {7, 26}, {8, 24}, {21, 11}, {23, 13}});
+        p.setBrush(kInk);
+        p.drawPolygon(pencil);
+        p.drawLine(21, 11, 25, 7);
+        p.setBrush(Qt::NoBrush);
+        p.drawEllipse(QPointF(25, 25), 3.0, 3.0);
+        p.setBrush(kInk);
+        p.drawEllipse(QPointF(25, 25), 1.1, 1.1);
+    });
+}
+
 QIcon exportDst() {
     return make([](QPainter& p) {
         p.drawLine(16, 6, 16, 19);

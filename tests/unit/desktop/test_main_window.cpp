@@ -1,16 +1,26 @@
 // SPDX-License-Identifier: Apache-2.0
+#include <QAbstractButton>
+#include <QApplication>
 #include <QCoreApplication>
 #include <QDoubleSpinBox>
+#include <QGraphicsItem>
 #include <QListWidget>
+#include <QMessageBox>
 #include <QSettings>
+#include <QSignalSpy>
+#include <QStatusBar>
 #include <QTabWidget>
 #include <QTemporaryDir>
 #include <QTest>
+#include <QTimer>
 
 #include "canvas_view.hpp"
 #include "document_panel.hpp"
 #include "main_window.hpp"
+#include "node_handle.hpp"
+#include "openstitch/commands/project_commands.hpp"
 #include "openstitch/document/project.hpp"
+#include "openstitch/stitch_generation/overrides.hpp"
 #include "properties_panel.hpp"
 
 using openstitch::Micrometers;
@@ -20,7 +30,9 @@ using openstitch::Vec2um;
 using openstitch::desktop::CanvasView;
 using openstitch::desktop::DocumentPanel;
 using openstitch::desktop::MainWindow;
+using openstitch::desktop::NodeHandleItem;
 using openstitch::desktop::PropertiesPanel;
+using openstitch::stitch_generation::ObjectEditState;
 
 namespace {
 
@@ -94,6 +106,78 @@ QListWidget* regionsList(DocumentPanel& panel) {
     return qobject_cast<QListWidget*>(tabs->widget(1));
 }
 
+// Carré de 10 mm (mêmes dimensions que make_running_square_project dans
+// tests/unit/stitch/test_overrides.cpp) : contrairement au triangle de
+// buildFixture() (1 mm de côté, sous la longueur de point par défaut), son
+// périmètre produit plusieurs points TopStitch déplaçables — nécessaire pour
+// exercer le mode d'édition des points (Lot 8.2), qui a besoin d'au moins une
+// poignée réelle à glisser.
+Fixture buildRunningSquareFixture() {
+    Fixture fx;
+    fx.project.original.width = 2;
+    fx.project.original.height = 2;
+    fx.project.original.rgba.assign(2 * 2 * 4, 255);
+
+    openstitch::document::VectorObject vec;
+    vec.id = fx.project.object_ids.next();
+    vec.name = "Square";
+    openstitch::geometry::Path square;
+    square.closed = true;
+    constexpr std::int32_t s = 10'000;  // 10 mm
+    square.nodes = {
+        {Vec2um{Micrometers{0}, Micrometers{0}}, openstitch::geometry::NodeType::Corner,
+         std::nullopt, std::nullopt},
+        {Vec2um{Micrometers{s}, Micrometers{0}}, openstitch::geometry::NodeType::Corner,
+         std::nullopt, std::nullopt},
+        {Vec2um{Micrometers{s}, Micrometers{s}}, openstitch::geometry::NodeType::Corner,
+         std::nullopt, std::nullopt},
+        {Vec2um{Micrometers{0}, Micrometers{s}}, openstitch::geometry::NodeType::Corner,
+         std::nullopt, std::nullopt},
+    };
+    vec.paths.push_back(openstitch::geometry::PathSet{square, {}});
+    fx.vectorId = vec.id;
+    fx.project.vector_objects.push_back(vec);
+
+    openstitch::document::EmbroideryObject emb;
+    emb.id = fx.project.object_ids.next();
+    emb.name = "Square - contour";
+    emb.source_vector = vec.id;
+    emb.params = openstitch::document::RunningStitchParams{};
+    fx.embroideryId = emb.id;
+    fx.project.embroidery_objects.push_back(emb);
+
+    return fx;
+}
+
+// Seule poignée trouvée parmi les items de la couche de base : valable quand
+// aucun objet vectoriel n'est sélectionné en parallèle (cf. tests ci-dessous,
+// qui sélectionnent l'objet de broderie via selectedEmbroidery_ seul, jamais
+// selectedObject_) -- sinon les poignées de nœuds vectoriels (même classe
+// NodeHandleItem) s'y mêleraient. Prend la liste par valeur (pas MainWindow&) :
+// baseItems_ est privé, seul MainWindowTest (friend) peut le lire ; cette
+// fonction libre n'a pas besoin d'un accès privilégié une fois la liste en main.
+NodeHandleItem* firstHandle(const QList<QGraphicsItem*>& items) {
+    for (QGraphicsItem* item : items) {
+        if (auto* handle = dynamic_cast<NodeHandleItem*>(item)) {
+            return handle;
+        }
+    }
+    return nullptr;
+}
+
+// Premier index de `view.raw` réellement déplaçable (entrée TopStitch/Stitch,
+// cf. is_movable_point) : utilisé quand une commande d'édition de point est
+// construite directement (sans passer par un vrai glisser QTest), pour ne
+// jamais cibler par erreur un Jump/point de sous-couche.
+std::size_t firstMovableIndex(const openstitch::stitch_generation::ObjectEditView& view) {
+    for (std::size_t i = 0; i < view.raw.size(); ++i) {
+        if (openstitch::stitch_generation::is_movable_point(view.raw[i])) {
+            return i;
+        }
+    }
+    return 0;
+}
+
 }  // namespace
 
 namespace openstitch::desktop {
@@ -119,7 +203,27 @@ private slots:
     void undoRedoRestoresDeletedRegionAndRefreshesDocumentPanel();
     void embroiderySelectionDoesNotLeakAcrossProjectLoadWithReusedId();
 
+    // Lot 8.2 (mode d'édition des points) — revue corrective.
+    void stitchEditModeGatingTracksSelectionAndDirtyState();
+    void draggingStitchHandleAtDefaultZoomMovesPointOnce();
+    void draggingStitchHandleAfterZoomingInMovesPointOnce();
+    void clickingStitchHandleWithoutMovingCreatesNoCommand();
+    void loadingNewProjectExitsStitchEditModeAndBumpsGeneration();
+    void draggingHandleThenLoadingNewProjectDoesNotMutateIt();
+    void discardingOverridesOnDirtyObjectIsUndoable();
+    void stitchEditModeRefusesWhenTooManyMovablePoints();
+
 private:
+    // Active le mode d'édition (sélection directe via selectedEmbroidery_,
+    // pas via le signal DocumentPanel::embroiderySelected -- qui sélectionne
+    // aussi l'objet vectoriel source et ferait apparaître les poignées de
+    // nœuds vectoriels, une classe NodeHandleItem elle aussi, dans la même
+    // couche), glisse la première poignée trouvée d'un décalage donné en
+    // pixels vue, et attend l'exécution de la commande différée
+    // (QTimer::singleShot). Partagée par les deux tests de glisser (deux
+    // niveaux de zoom) pour ne pas dupliquer la mécanique QTest.
+    void dragFirstStitchHandle(MainWindow& window, ObjectId embroideryId, QPoint delta);
+
     QTemporaryDir settingsDir_;
 };
 
@@ -254,6 +358,354 @@ void MainWindowTest::embroiderySelectionDoesNotLeakAcrossProjectLoadWithReusedId
     // choisie dans le projet précédent.
     QCOMPARE(objectsList(*docPanel)->currentRow(), -1);
     QVERIFY(propsPanel->findChildren<QDoubleSpinBox*>().isEmpty());
+}
+
+// ---------------------------------------------------------------------------
+// Lot 8.2 : mode d'édition des points générés (revue corrective)
+// ---------------------------------------------------------------------------
+
+void MainWindowTest::stitchEditModeGatingTracksSelectionAndDirtyState() {
+    MainWindow window;
+    const Fixture fx = buildRunningSquareFixture();
+    window.applyLoadedProject(fx.project);
+
+    auto* editAct = window.findChild<QAction*>(QStringLiteral("action_stitchEditMode"));
+    QVERIFY(editAct != nullptr);
+    QSignalSpy toggledSpy(editAct, &QAction::toggled);
+
+    QVERIFY(!editAct->isEnabled());  // rien de sélectionné au départ
+    QVERIFY(!editAct->isChecked());
+
+    window.selectedEmbroidery_ = fx.embroideryId;
+    window.updateActions();
+    QVERIFY(editAct->isEnabled());
+
+    editAct->setChecked(true);
+    QCOMPARE(toggledSpy.count(), 1);
+    QVERIFY(editAct->isChecked());
+    QVERIFY(window.stitchEditTarget_.has_value());
+    QCOMPARE(window.stitchEditTarget_->value, fx.embroideryId.value);
+    QVERIFY(window.stitchEditView_.has_value());
+
+    // Perte de sélection : sortie propre (updateActions) via QSignalBlocker
+    // côté production -- aucun second toggled() émis, seulement des lectures.
+    window.selectedEmbroidery_.reset();
+    window.updateActions();
+    QCOMPARE(toggledSpy.count(), 1);
+    QVERIFY(!editAct->isChecked());
+    QVERIFY(!editAct->isEnabled());
+    QVERIFY(!window.stitchEditTarget_.has_value());
+    QVERIFY(!window.stitchEditView_.has_value());
+
+    // Réactiver, retoucher un point, puis rendre l'objet Dirty par un
+    // changement de paramètres (sans toucher à la sélection) : le mode doit
+    // ressortir de lui-même.
+    window.selectedEmbroidery_ = fx.embroideryId;
+    window.updateActions();
+    editAct->setChecked(true);
+    QVERIFY(editAct->isChecked());
+    QVERIFY(window.stitchEditView_.has_value());
+
+    const auto baseIndex = firstMovableIndex(*window.stitchEditView_);
+    window.undoStack_.execute(
+        std::make_unique<openstitch::commands::MoveStitchPointCommand>(
+            fx.embroideryId, baseIndex, Vec2um{Micrometers{1'234}, Micrometers{5'678}},
+            window.stitchEditView_->fingerprint, window.stitchEditView_->point_count),
+        window.project_);
+    window.refreshImage();
+    window.updateActions();
+    QCOMPARE(window.editStateOf(fx.embroideryId), ObjectEditState::ManuallyEdited);
+    QVERIFY(editAct->isChecked());  // ManuallyEdited reste éditable
+
+    window.undoStack_.execute(
+        std::make_unique<openstitch::commands::SetStitchParamsCommand>(
+            fx.embroideryId, openstitch::document::RunningStitchParams{Micrometers{500}}),
+        window.project_);
+    window.refreshImage();
+    window.updateActions();
+
+    QCOMPARE(window.editStateOf(fx.embroideryId), ObjectEditState::Dirty);
+    QVERIFY(!editAct->isChecked());   // sorti proprement, sans action utilisateur
+    QVERIFY(!editAct->isEnabled());   // reste désactivé tant que Dirty
+    QVERIFY(!window.stitchEditTarget_.has_value());
+}
+
+void MainWindowTest::dragFirstStitchHandle(MainWindow& window, ObjectId embroideryId, QPoint delta) {
+    window.selectedEmbroidery_ = embroideryId;
+    window.updateActions();
+
+    auto* editAct = window.findChild<QAction*>(QStringLiteral("action_stitchEditMode"));
+    QVERIFY(editAct != nullptr);
+    QVERIFY(editAct->isEnabled());
+    editAct->setChecked(true);
+    QVERIFY(editAct->isChecked());
+    QVERIFY(window.stitchEditView_.has_value());
+
+    auto* handle = firstHandle(window.baseItems_);
+    QVERIFY(handle != nullptr);
+
+    const QPoint startVp = window.view_->mapFromScene(handle->pos());
+    const QPoint endVp = startVp + delta;
+
+    QVERIFY(!window.undoStack_.canUndo());
+    QTest::mousePress(window.view_->viewport(), Qt::LeftButton, Qt::NoModifier, startVp);
+    QTest::mouseMove(window.view_->viewport(), endVp);
+    QTest::mouseRelease(window.view_->viewport(), Qt::LeftButton, Qt::NoModifier, endVp);
+
+    // La commande est différée (QTimer::singleShot(0), cf. renderBase) pour ne
+    // pas détruire la poignée pendant son propre événement souris.
+    QTRY_VERIFY(window.undoStack_.canUndo());
+    QCOMPARE(window.undoStack_.undoName(), std::string("Déplacement de point"));
+
+    const auto* obj = window.project_.findEmbroidery(embroideryId);
+    QVERIFY(obj != nullptr);
+    QCOMPARE(obj->overrides.size(), std::size_t(1));  // une seule commande pour tout le glisser
+    QVERIFY(obj->overrides[0].moved_to.has_value());
+    const auto droppedOverride = obj->overrides[0];  // copie : comparée après undo/redo
+
+    auto* docPanel = window.findChild<DocumentPanel*>();
+    QVERIFY(docPanel != nullptr);
+    QVERIFY(objectsList(*docPanel)->item(0)->toolTip().contains(QStringLiteral("Retouché")));
+
+    // Undo/redo exact : annuler retire la retouche entièrement (aucun résidu
+    // partiel), rétablir restaure très exactement la même entrée.
+    QVERIFY(window.undoStack_.undo(window.project_));
+    window.refreshImage();
+    window.updateActions();
+    const auto* objAfterUndo = window.project_.findEmbroidery(embroideryId);
+    QVERIFY(objAfterUndo != nullptr);
+    QVERIFY(objAfterUndo->overrides.empty());
+    QVERIFY(!window.undoStack_.canUndo());  // une seule commande existait
+    QVERIFY(window.undoStack_.canRedo());
+    QCOMPARE(window.editStateOf(embroideryId), ObjectEditState::Clean);
+
+    QVERIFY(window.undoStack_.redo(window.project_));
+    window.refreshImage();
+    window.updateActions();
+    const auto* objAfterRedo = window.project_.findEmbroidery(embroideryId);
+    QVERIFY(objAfterRedo != nullptr);
+    QCOMPARE(objAfterRedo->overrides.size(), std::size_t(1));
+    QCOMPARE(objAfterRedo->overrides[0].base_index, droppedOverride.base_index);
+    QVERIFY(objAfterRedo->overrides[0].moved_to.has_value());
+    QVERIFY(*objAfterRedo->overrides[0].moved_to == *droppedOverride.moved_to);  // exact, pas approx
+    QCOMPARE(window.editStateOf(embroideryId), ObjectEditState::ManuallyEdited);
+}
+
+void MainWindowTest::draggingStitchHandleAtDefaultZoomMovesPointOnce() {
+    MainWindow window;
+    const Fixture fx = buildRunningSquareFixture();
+    window.applyLoadedProject(fx.project);
+    window.view_->fitCanvas();
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+
+    dragFirstStitchHandle(window, fx.embroideryId, QPoint(20, 15));
+    QVERIFY(!QTest::currentTestFailed());
+}
+
+void MainWindowTest::draggingStitchHandleAfterZoomingInMovesPointOnce() {
+    MainWindow window;
+    const Fixture fx = buildRunningSquareFixture();
+    window.applyLoadedProject(fx.project);
+    window.view_->fitCanvas();
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+    // Second niveau de zoom : la conversion écran <-> mm change d'échelle,
+    // seule façon de distinguer un bug de placement/mapping d'un hasard au
+    // niveau de zoom par défaut.
+    window.view_->zoomIn();
+    window.view_->zoomIn();
+
+    dragFirstStitchHandle(window, fx.embroideryId, QPoint(20, 15));
+    QVERIFY(!QTest::currentTestFailed());
+}
+
+void MainWindowTest::clickingStitchHandleWithoutMovingCreatesNoCommand() {
+    MainWindow window;
+    const Fixture fx = buildRunningSquareFixture();
+    window.applyLoadedProject(fx.project);
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+
+    window.selectedEmbroidery_ = fx.embroideryId;
+    window.updateActions();
+    auto* editAct = window.findChild<QAction*>(QStringLiteral("action_stitchEditMode"));
+    QVERIFY(editAct != nullptr);
+    editAct->setChecked(true);
+    QVERIFY(window.stitchEditView_.has_value());
+
+    auto* handle = firstHandle(window.baseItems_);
+    QVERIFY(handle != nullptr);
+    const QPoint clickVp = window.view_->mapFromScene(handle->pos());
+
+    QVERIFY(!window.undoStack_.canUndo());
+    QTest::mouseClick(window.view_->viewport(), Qt::LeftButton, Qt::NoModifier, clickVp);
+    // Rien à attendre : le callback de relâchement retourne avant même de
+    // programmer un QTimer quand la position n'a pas changé (cf. renderBase,
+    // garde `newPos == pos`) -- aucune commande différée en vol ici.
+    QTest::qWait(20);
+    QVERIFY(!window.undoStack_.canUndo());
+}
+
+void MainWindowTest::loadingNewProjectExitsStitchEditModeAndBumpsGeneration() {
+    MainWindow window;
+    const Fixture fx = buildRunningSquareFixture();
+    window.applyLoadedProject(fx.project);
+    const auto generationAfterFirstLoad = window.documentGeneration_;
+
+    window.selectedEmbroidery_ = fx.embroideryId;
+    window.updateActions();
+    auto* editAct = window.findChild<QAction*>(QStringLiteral("action_stitchEditMode"));
+    QVERIFY(editAct != nullptr);
+    editAct->setChecked(true);
+    QVERIFY(editAct->isChecked());
+    QVERIFY(window.stitchEditTarget_.has_value());
+
+    const Fixture fx2 = buildRunningSquareFixture();
+    window.applyLoadedProject(fx2.project);
+
+    QVERIFY(window.documentGeneration_ != generationAfterFirstLoad);
+    QVERIFY(!editAct->isChecked());
+    QVERIFY(!window.stitchEditTarget_.has_value());
+    QVERIFY(!window.stitchEditView_.has_value());
+}
+
+// Régression (revue corrective Lot 8.2, point 2) : la commande de glisser est
+// différée d'un cycle d'événements (QTimer::singleShot(0)) pour ne pas
+// détruire sa propre poignée. Si un nouveau projet est chargé dans cette
+// fenêtre pendant cette fenêtre de temps, la commande différée doit être
+// abandonnée -- jamais exécutée sur, ni pire mutant, un projet qui n'est plus
+// celui pour lequel elle a été construite.
+void MainWindowTest::draggingHandleThenLoadingNewProjectDoesNotMutateIt() {
+    MainWindow window;
+    const Fixture fx1 = buildRunningSquareFixture();
+    window.applyLoadedProject(fx1.project);
+    window.view_->fitCanvas();
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+
+    window.selectedEmbroidery_ = fx1.embroideryId;
+    window.updateActions();
+    auto* editAct = window.findChild<QAction*>(QStringLiteral("action_stitchEditMode"));
+    QVERIFY(editAct != nullptr);
+    editAct->setChecked(true);
+    QVERIFY(window.stitchEditView_.has_value());
+
+    auto* handle = firstHandle(window.baseItems_);
+    QVERIFY(handle != nullptr);
+    const QPoint startVp = window.view_->mapFromScene(handle->pos());
+    const QPoint endVp = startVp + QPoint(20, 15);
+
+    QTest::mousePress(window.view_->viewport(), Qt::LeftButton, Qt::NoModifier, startVp);
+    QTest::mouseMove(window.view_->viewport(), endVp);
+    QTest::mouseRelease(window.view_->viewport(), Qt::LeftButton, Qt::NoModifier, endVp);
+    // À cet instant, la commande différée est en file d'attente mais ne s'est
+    // pas encore exécutée : on simule ici un changement de projet, avant
+    // qu'elle ait pu tourner.
+    const Fixture fx2 = buildRunningSquareFixture();
+    QCOMPARE(fx2.embroideryId.value, fx1.embroideryId.value);  // même id recyclé, autre document
+    window.applyLoadedProject(fx2.project);
+
+    QTest::qWait(50);  // laisse le QTimer(0) en file se déclencher s'il le peut
+
+    const auto* obj = window.project_.findEmbroidery(fx2.embroideryId);
+    QVERIFY(obj != nullptr);
+    QVERIFY(obj->overrides.empty());        // la commande différée a été abandonnée
+    QVERIFY(!window.undoStack_.canUndo());  // aucune commande fantôme empilée
+}
+
+void MainWindowTest::discardingOverridesOnDirtyObjectIsUndoable() {
+    MainWindow window;
+    const Fixture fx = buildRunningSquareFixture();
+    window.applyLoadedProject(fx.project);
+
+    window.selectedEmbroidery_ = fx.embroideryId;
+    window.updateActions();
+    auto* editAct = window.findChild<QAction*>(QStringLiteral("action_stitchEditMode"));
+    QVERIFY(editAct != nullptr);
+    editAct->setChecked(true);
+    QVERIFY(window.stitchEditView_.has_value());
+
+    const auto baseIndex = firstMovableIndex(*window.stitchEditView_);
+    const Vec2um droppedPos{Micrometers{1'234}, Micrometers{5'678}};
+    window.undoStack_.execute(
+        std::make_unique<openstitch::commands::MoveStitchPointCommand>(
+            fx.embroideryId, baseIndex, droppedPos, window.stitchEditView_->fingerprint,
+            window.stitchEditView_->point_count),
+        window.project_);
+    window.refreshImage();
+    window.updateActions();
+    QCOMPARE(window.editStateOf(fx.embroideryId), ObjectEditState::ManuallyEdited);
+
+    // Changement de paramètres : invalide l'empreinte stockée -> Dirty.
+    window.undoStack_.execute(
+        std::make_unique<openstitch::commands::SetStitchParamsCommand>(
+            fx.embroideryId, openstitch::document::RunningStitchParams{Micrometers{500}}),
+        window.project_);
+    window.refreshImage();
+    window.updateActions();
+    QCOMPARE(window.editStateOf(fx.embroideryId), ObjectEditState::Dirty);
+
+    // « Abandonner les retouches » demande confirmation (QMessageBox modale) :
+    // on l'auto-accepte, comme le ferait un utilisateur cliquant Oui --
+    // programmé avant l'appel, puisque exec() pompe la boucle d'événements en
+    // interne.
+    QTimer::singleShot(0, &window, [] {
+        if (auto* box = qobject_cast<QMessageBox*>(QApplication::activeModalWidget())) {
+            box->button(QMessageBox::Yes)->click();
+        }
+    });
+    window.discardOverrides(fx.embroideryId);
+
+    const auto* objAfterDiscard = window.project_.findEmbroidery(fx.embroideryId);
+    QVERIFY(objAfterDiscard != nullptr);
+    QVERIFY(objAfterDiscard->overrides.empty());
+    QCOMPARE(window.editStateOf(fx.embroideryId), ObjectEditState::Clean);
+    QVERIFY(window.undoStack_.canUndo());
+    QCOMPARE(window.undoStack_.undoName(), std::string("Abandonner les retouches"));
+
+    // Annuler l'abandon restaure exactement les retouches et l'état Dirty
+    // d'avant (aucune perte : c'est le contrat de DiscardOverridesCommand).
+    QVERIFY(window.undoStack_.undo(window.project_));
+    window.refreshImage();
+    window.updateActions();
+    const auto* objAfterUndo = window.project_.findEmbroidery(fx.embroideryId);
+    QVERIFY(objAfterUndo != nullptr);
+    QCOMPARE(objAfterUndo->overrides.size(), std::size_t(1));
+    QCOMPARE(objAfterUndo->overrides[0].base_index, baseIndex);
+    QVERIFY(objAfterUndo->overrides[0].moved_to.has_value());
+    QVERIFY(*objAfterUndo->overrides[0].moved_to == droppedPos);
+    QCOMPARE(window.editStateOf(fx.embroideryId), ObjectEditState::Dirty);
+}
+
+// Régression (revue corrective Lot 8.2, point 3) : le seuil doit porter sur
+// les points réellement déplaçables, pas sur la taille totale de la vue
+// brute -- ce test l'exerce avec un objet bien au-delà de la limite.
+void MainWindowTest::stitchEditModeRefusesWhenTooManyMovablePoints() {
+    MainWindow window;
+    Fixture fx = buildRunningSquareFixture();
+    // Densité extrême (10 µm/point, fusion désactivée) sur un périmètre de
+    // 40 mm : plusieurs milliers de points, bien au-delà de
+    // kMaxEditableStitchHandles (2000).
+    fx.project.embroidery_objects[0].params =
+        openstitch::document::RunningStitchParams{Micrometers{10}, Micrometers{1}};
+    window.applyLoadedProject(fx.project);
+
+    window.selectedEmbroidery_ = fx.embroideryId;
+    window.updateActions();
+    auto* editAct = window.findChild<QAction*>(QStringLiteral("action_stitchEditMode"));
+    QVERIFY(editAct != nullptr);
+    QVERIFY(editAct->isEnabled());  // Clean, sélectionné : activable a priori
+
+    editAct->setChecked(true);
+
+    // Refusé avec explication (barre de statut), jamais laissé actif sans
+    // aucune poignée -- cf. updateActions, bloc stitchEditTooManyPoints.
+    QVERIFY(!editAct->isChecked());
+    QVERIFY(!window.stitchEditTarget_.has_value());
+    QVERIFY(!window.stitchEditView_.has_value());
+    QVERIFY(window.statusBar()->currentMessage().contains(QStringLiteral("2000")));
+    QVERIFY(firstHandle(window.baseItems_) == nullptr);  // aucune poignée affichée
 }
 
 }  // namespace openstitch::desktop

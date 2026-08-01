@@ -11,6 +11,7 @@
 #include "openstitch/commands/undo_stack.hpp"
 #include "openstitch/document/project.hpp"
 #include "openstitch/stitch/sequence.hpp"
+#include "openstitch/stitch_generation/overrides.hpp"
 #include "tools.hpp"
 
 class QGraphicsScene;
@@ -91,6 +92,15 @@ private slots:
     void moveObjectDown();
     void toggleObjectLock();
     void applyOrderStrategy();
+    // Bascule le mode d'édition des points générés (Lot 8.2) : entrée/sortie
+    // propre (capture/relâche l'objet cible, purge l'aperçu de vue brute mis
+    // en cache), jamais de mutation du document ici (une seule commande par
+    // glisser, construite ailleurs — cf. renderBase).
+    void onStitchEditModeToggled(bool on);
+    // Abandonne les retouches manuelles d'un objet (confirmation explicite,
+    // DiscardOverridesCommand annulable) — appelée depuis l'inspecteur ou la
+    // barre contextuelle, jamais de mutation directe hors commande.
+    void discardOverrides(ObjectId id);
 
 private:
     // Applique un projet déjà construit (charge depuis un fichier ou fixture
@@ -101,6 +111,12 @@ private:
     // sélectionné au canevas ; nullptr sinon). Résolution partagée par
     // updateContextToolbar/updateInspector/syncDocumentSelection.
     [[nodiscard]] document::EmbroideryObject* resolveSelectedEmbroidery();
+    // Etat Clean/ManuallyEdited/Dirty (Lot 8.2) de l'objet `id`, depuis le
+    // cache `editStates_` rafraîchi à chaque `refreshImage()` (Clean si absent
+    // du cache : c'est l'état implicite, cf. `classify_all_edit_states`).
+    // Ne recalcule jamais rien elle-même (pas de logique métier ici) — lecture
+    // seule d'un résultat déjà produit par le cœur.
+    [[nodiscard]] stitch_generation::ObjectEditState editStateOf(ObjectId id) const;
     void buildMenus();
     void buildHelpMenu();
     void buildMainToolbar();
@@ -211,6 +227,31 @@ private:
     std::optional<ObjectId> selectedObject_;
     std::optional<ObjectId> selectedEmbroidery_;  // objet de broderie choisi dans l'ordre de couture
     bool mergeMode_{false};
+
+    // Mode d'édition des points générés (Lot 8.2, cf. docs/lot8-manual-editing-design.md §6) :
+    // mode exclusif, lié à UN SEUL objet capturé à l'activation
+    // (`stitchEditTarget_`), jamais suivi automatiquement d'un changement de
+    // sélection (sortie propre exigée -- cf. updateActions). `stitchEditView_`
+    // est la vue brute/fingerprint/compteur de cet objet au moment du dernier
+    // rafraîchissement : source unique pour placer les poignées ET construire
+    // MoveStitchPointCommand, jamais recalculée à la main ailleurs.
+    QAction* stitchEditModeAct_{nullptr};
+    std::optional<ObjectId> stitchEditTarget_;
+    std::optional<stitch_generation::ObjectEditView> stitchEditView_;
+    // État Clean/ManuallyEdited/Dirty des objets retouchés (absents = Clean),
+    // recalculé à chaque `refreshImage()` (cf. `classify_all_edit_states`) —
+    // jamais recalculé ailleurs (panneau Document, inspecteur, barre
+    // contextuelle et gating du mode d'édition en lisent tous la même copie).
+    std::vector<std::pair<ObjectId, stitch_generation::ObjectEditState>> editStates_;
+    // Incrémenté à chaque remplacement intégral de `project_` (nouveau
+    // document, projet chargé, import DST -- jamais sur une mutation en place
+    // via l'undo stack). Capturé par valeur par les commandes différées
+    // (QTimer::singleShot, cf. renderBase/MoveStitchPointCommand) : si la
+    // génération a changé au moment où le timer se déclenche, le document a
+    // été remplacé entre-temps et la commande différée est abandonnée plutôt
+    // que d'exécuter sur -- ou pire, muter -- un projet qui n'est plus celui
+    // pour lequel elle a été construite.
+    std::uint64_t documentGeneration_{0};
 
     // Analyse.
     QDockWidget* analysisDock_{nullptr};

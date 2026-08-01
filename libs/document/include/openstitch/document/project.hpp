@@ -59,6 +59,9 @@ struct Project {
         }
         return nullptr;
     }
+    [[nodiscard]] const EmbroideryObject* findEmbroidery(ObjectId id) const {
+        return const_cast<Project*>(this)->findEmbroidery(id);
+    }
 };
 
 }  // namespace openstitch::document

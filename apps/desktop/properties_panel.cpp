@@ -7,6 +7,7 @@
 #include <QFormLayout>
 #include <QFrame>
 #include <QLabel>
+#include <QPushButton>
 #include <QSpinBox>
 #include <QVBoxLayout>
 
@@ -35,6 +36,24 @@ PropertiesPanel::PropertiesPanel(QWidget* parent) : QWidget(parent) {
     header_->setFont(hf);
     header_->setWordWrap(true);
     root_->addWidget(header_);
+
+    // Indicateur Clean/ManuallyEdited/Dirty (Lot 8.2) : toujours présent,
+    // masqué quand non pertinent — mis à jour indépendamment du corps du
+    // formulaire (cf. setEditState).
+    editStateLabel_ = new QLabel(this);
+    editStateLabel_->setWordWrap(true);
+    editStateLabel_->setVisible(false);
+    root_->addWidget(editStateLabel_);
+    discardButton_ = new QPushButton(tr("Abandonner les retouches"), this);
+    discardButton_->setToolTip(
+        tr("Revient à la géométrie générée pour cet objet (annulable, Ctrl+Z)."));
+    discardButton_->setVisible(false);
+    connect(discardButton_, &QPushButton::clicked, this, [this] {
+        if (editStateId_) {
+            emit discardOverridesRequested(*editStateId_);
+        }
+    });
+    root_->addWidget(discardButton_);
 
     auto* line = new QFrame(this);
     line->setFrameShape(QFrame::HLine);
@@ -78,6 +97,43 @@ void PropertiesPanel::showInfo(const QString& title, const QString& details) {
     label->setWordWrap(true);
     label->setTextInteractionFlags(Qt::TextSelectableByMouse);
     body_->layout()->addWidget(label);
+    setEditState(std::nullopt, stitch_generation::ObjectEditState::Clean);
+}
+
+void PropertiesPanel::setEditState(std::optional<ObjectId> id,
+                                   stitch_generation::ObjectEditState state) {
+    editStateId_ = id;
+    if (!id) {
+        editStateLabel_->setVisible(false);
+        discardButton_->setVisible(false);
+        return;
+    }
+    using stitch_generation::ObjectEditState;
+    switch (state) {
+    case ObjectEditState::Clean:
+        editStateLabel_->setVisible(false);
+        discardButton_->setVisible(false);
+        break;
+    case ObjectEditState::ManuallyEdited:
+        editStateLabel_->setText(tr("✎ Retouché manuellement"));
+        editStateLabel_->setToolTip(
+            tr("Un ou plusieurs points ont été déplacés/modifiés à la main. Toute "
+               "modification ultérieure de la forme ou des paramètres de cet objet "
+               "devra être reconfirmée."));
+        editStateLabel_->setVisible(true);
+        discardButton_->setVisible(true);
+        break;
+    case ObjectEditState::Dirty:
+        editStateLabel_->setText(tr("⚠ Retouches obsolètes"));
+        editStateLabel_->setToolTip(
+            tr("La géométrie ou l'ordre de couture de cet objet a changé depuis les "
+               "dernières retouches manuelles : elles ne sont plus appliquées "
+               "(la couture générée est utilisée telle quelle). Abandonnez les "
+               "retouches pour ré-éditer sur la forme actuelle."));
+        editStateLabel_->setVisible(true);
+        discardButton_->setVisible(true);
+        break;
+    }
 }
 
 void PropertiesPanel::showEmbroidery(const document::EmbroideryObject& object) {

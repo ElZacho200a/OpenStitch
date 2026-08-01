@@ -23,6 +23,23 @@ QString type_label(const document::EmbroideryObject& e) {
                           : QObject::tr("Contour");
 }
 
+// Suffixe + infobulle d'état (Lot 8.2) : "" / tooltip vide pour Clean, l'état
+// implicite le plus fréquent (aucun bruit visuel sur la majorité des objets).
+std::pair<QString, QString> edit_state_suffix(stitch_generation::ObjectEditState state) {
+    using stitch_generation::ObjectEditState;
+    switch (state) {
+    case ObjectEditState::ManuallyEdited:
+        return {QObject::tr("  ✎"), QObject::tr("Retouché manuellement")};
+    case ObjectEditState::Dirty:
+        return {QObject::tr("  ⚠"),
+                QObject::tr("Retouches obsolètes : la géométrie source a changé, elles "
+                            "ne sont plus appliquées.")};
+    case ObjectEditState::Clean:
+    default:
+        return {QString(), QString()};
+    }
+}
+
 }  // namespace
 
 DocumentPanel::DocumentPanel(QWidget* parent) : QWidget(parent) {
@@ -49,18 +66,31 @@ DocumentPanel::DocumentPanel(QWidget* parent) : QWidget(parent) {
             });
 }
 
-void DocumentPanel::refresh(const document::Project& project) {
+void DocumentPanel::refresh(
+    const document::Project& project,
+    const std::vector<std::pair<ObjectId, stitch_generation::ObjectEditState>>& editStates) {
     syncing_ = true;
 
     objectsList_->clear();
     for (const auto& e : project.embroidery_objects) {
         const QString vis = e.visible ? QString() : tr("  (masqué)");
         const QString lock = e.locked ? tr("  [verrouillé]") : QString();
+        stitch_generation::ObjectEditState state = stitch_generation::ObjectEditState::Clean;
+        for (const auto& [id, s] : editStates) {
+            if (id == e.id) {
+                state = s;
+                break;
+            }
+        }
+        const auto [suffix, tooltip] = edit_state_suffix(state);
         auto* item = new QListWidgetItem(
             swatch(e.rgb),
-            tr("%1 — %2%3%4")
-                .arg(type_label(e), QString::fromStdString(e.name), vis, lock));
+            tr("%1 — %2%3%4%5")
+                .arg(type_label(e), QString::fromStdString(e.name), vis, lock, suffix));
         item->setData(Qt::UserRole, static_cast<qulonglong>(e.id.value));
+        if (!tooltip.isEmpty()) {
+            item->setToolTip(tooltip);
+        }
         objectsList_->addItem(item);
     }
 
