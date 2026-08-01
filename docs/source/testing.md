@@ -20,14 +20,14 @@ passage vérifié manuellement. Régénérez ces valeurs avant toute publication
 
 | Élément | Valeur |
 |---|---|
-| Commit (état du code testé) | `d49e660` |
+| Commit (état du code testé) | `261bbf7` |
 | Compilateur | MSVC toolset 14.50 (Visual Studio 2026) |
 | CMake | 4.4.0-rc3 |
 | Configurations | Debug **et** Release |
 | Résultat CTest | 251 / 251 réussis |
 | Tests désactivés | 0 |
 | Fichiers de tests d'intégration | 1 (`tests/integration/test_pipeline.cpp`) |
-| Suites Qt (UI desktop) | 5 exécutables CTest (`tests/unit/desktop/`), 16 fonctions de test QTest |
+| Suites Qt (UI desktop) | 5 exécutables CTest (`tests/unit/desktop/`), 17 fonctions de test QTest |
 | Tests sur machine réelle | 0 |
 | Couverture de code | non mesurée |
 
@@ -82,13 +82,16 @@ minimaux s'y ajoutent, sans changer son comportement en production :
 dur) lit l'organisation/application déjà posées sur `QCoreApplication` dans
 `main.cpp` — un test peut donc les rediriger vers un fichier `.ini` temporaire
 avant de construire `MainWindow`, sans jamais toucher au registre Windows
-réel ; `MainWindow::loadProjectForTests(Project)` (publique) applique un
-projet déjà construit en réutilisant exactement la logique de fin de
-`loadProject()` (`applyLoadedProject`, extraite), sans passer par
-`QFileDialog` ; `QAction::setObjectName(...)` sur une poignée d'actions
-(`action_undo`, `action_redo`, `action_deleteRegion`, `action_createStitch`)
-pour les retrouver par `findChild` sans dépendre du texte traduit. Aucun
-membre n'est rendu public au-delà de ces trois points d'entrée explicites.
+réel ; `MainWindow::applyLoadedProject(Project)` (**privée**, appelée depuis
+`loadProject()` et réutilisée telle quelle) applique un projet déjà construit
+sans passer par `QFileDialog` — accessible aux tests via `friend class
+MainWindowTest` (déclaré dans `main_window.hpp`, `MainWindowTest` vit dans
+`openstitch::desktop`), pas via une méthode publique ajoutée uniquement pour
+les tests (revue corrective, voir plus bas) ; `QAction::setObjectName(...)`
+sur une poignée d'actions (`action_undo`, `action_redo`,
+`action_deleteRegion`, `action_createStitch`) pour les retrouver par
+`findChild` sans dépendre du texte traduit. Aucun membre n'est rendu public
+au-delà de l'API de production existante.
 Chaque suite est un exécutable QTest (`QTEST_MAIN`), exécuté par
 CTest avec `QT_QPA_PLATFORM=offscreen` (propriété `ENVIRONMENT`) et le
 dossier `bin` de Qt ajouté au `PATH` (propriété `ENVIRONMENT_MODIFICATION` —
@@ -118,11 +121,52 @@ reste utilisé pour les signaux à types Qt natifs (`QPointF`, `QRectF`).
 | `MainWindow` | clic canevas sur un objet vectoriel | `DocumentPanel` (liste Objets) et `PropertiesPanel` (spin boxes) se synchronisent sur le point de contour rattaché ; `action_createStitch` s'active |
 | `MainWindow` | sélection région (liste) puis sélection objet (canevas) | `action_deleteRegion`/`action_createStitch` s'activent et se désactivent en opposition, selon la priorité de `resolveSelectedEmbroidery`/`onCanvasClicked` |
 | `MainWindow` | suppression d'une région (`action_deleteRegion`, sans dialogue) puis undo/redo (`action_undo`/`action_redo`) | la liste Régions de `DocumentPanel` reflète la suppression **et** sa restauration (pas seulement `undoStack_`/le modèle) ; les actions annuler/rétablir s'activent en conséquence |
+| `MainWindow` | sélection d'une broderie dans un projet, puis chargement d'un second projet (`applyLoadedProject`) réutilisant le même `ObjectId` de broderie (régression, voir plus bas) | ni `DocumentPanel` (sélection liste Objets) ni `PropertiesPanel` (formulaire) ne montrent la broderie du projet précédent tant qu'aucune sélection explicite n'a été faite dans le nouveau |
 
 `MoveNodeCommand` (la commande undo/redo réellement appliquée quand une
 poignée est relâchée) est déjà couverte côté cœur, sans Qt, par
 `tests/unit/commands/test_undo_stack.cpp` (cas « AddVectorObject et
 MoveNode ») — non dupliqué ici.
+
+### Revue corrective de la deuxième tranche (2026-08-01)
+
+Deux défauts trouvés indépendamment sur les commits `d49e660`/`37ffc27`,
+corrigés sans toucher au reste du périmètre de la deuxième tranche :
+
+1. **Seam de test dans l'API publique de production.**
+   `MainWindow::loadProjectForTests(Project)` avait été ajouté **public**
+   uniquement pour les tests, ce qui contredit la règle du projet (aucune
+   API de production élargie pour le seul bénéfice des tests). Corrigé :
+   `applyLoadedProject` (déjà privée) reste privée ; `MainWindowTest` est
+   forward-déclarée dans `main_window.hpp` et déclarée `friend` de
+   `MainWindow`, et vit dans `openstitch::desktop` (comme `MainWindow`
+   elle-même) pour que le friend s'applique. Aucune donnée interne
+   supplémentaire n'est exposée ; `loadProjectForTests` a été supprimée.
+2. **Fuite de sélection de broderie entre deux projets.** `applyLoadedProject`
+   réinitialisait `selectedRegion_` et `selectedObject_` mais oubliait
+   `selectedEmbroidery_` — défaut déjà présent avant la deuxième tranche (queue
+   de l'ancien `loadProject()`, seulement déplacée telle quelle dans
+   `applyLoadedProject`). Si le nouveau projet réutilise le même `ObjectId`
+   qu'une broderie sélectionnée dans l'ancien (cas réaliste : les projets de
+   test allouent des ID déterministes à partir d'un compteur remis à zéro),
+   `resolveSelectedEmbroidery()` la retrouvait silencieusement dans le
+   nouveau document — l'inspecteur, la sélection dans `DocumentPanel` et la
+   barre contextuelle affichaient alors une broderie jamais choisie
+   explicitement par l'utilisateur. Corrigé par un `selectedEmbroidery_.reset()`
+   ajouté à côté des deux autres réinitialisations. Test de régression :
+   `embroiderySelectionDoesNotLeakAcrossProjectLoadWithReusedId` — vérifié en
+   retirant temporairement la ligne corrigée : le test échoue bien sans le
+   correctif (`objectsList(*docPanel)->currentRow()` reste à `0` et le
+   formulaire de l'inspecteur reste peuplé au lieu de revenir à « Aucune
+   sélection »).
+
+Audit ciblé du reste de l'état de session réinitialisé par
+`applyLoadedProject` : `undoStack_.clear()`, `sequence_.reset()` et
+`sequenceImported_ = false` étaient déjà corrects. Les filtres d'affichage
+temporaires (`hiddenColors_`, `showType_`, `minAreaMm2_`) et `contextSig_`
+persistent délibérément d'un chargement à l'autre (préférences d'affichage de
+session, pas des données de document) ; aucun défaut démontré à leur sujet,
+donc non modifiés.
 
 ### Bug découvert et corrigé par ce lot
 
@@ -145,9 +189,10 @@ Test de régression : `cropModeRubberBandEmitsCropSelectedMm`.
   sélection/filtre/simulation imbriquée dans des lambdas privées
   (`objectPassesFilter`, `embroideryCentroid`…). La deuxième tranche (voir
   ci-dessous) n'a **pas** décomposé la classe — elle a percé trois seams
-  minimaux (QSettings injectable, `loadProjectForTests`, `objectName` sur
-  quelques actions) qui suffisent à instancier `MainWindow` et à observer son
-  état sans dialogue modal. Toute action qui ouvre une boîte de dialogue
+  minimaux (QSettings injectable, `applyLoadedProject` accessible par
+  `friend class MainWindowTest`, `objectName` sur quelques actions) qui
+  suffisent à instancier `MainWindow` et à observer son état sans dialogue
+  modal. Toute action qui ouvre une boîte de dialogue
   (`QFileDialog`, `QMessageBox`, `QInputDialog`, `QColorDialog`, `QMenu::exec`
   — `openImage`, `saveProject`, `segmentImage`, `onCanvasContextMenu`…) reste
   hors de portée d'un test QTest offscreen automatisé.
@@ -171,7 +216,7 @@ Les trois points de la roadmap ci-dessous marqués **fait** ont été couverts
 sans instancier `MainWindow` via un scénario nécessitant un dialogue modal :
 mutation via `action_deleteRegion` (`RemoveRegionCommand`, aucune boîte de
 dialogue) sur un document minimal construit directement en mémoire
-(`loadProjectForTests`, pas de fichier `.osp` ni d'image chargée depuis le
+(`applyLoadedProject`, pas de fichier `.osp` ni d'image chargée depuis le
 disque).
 
 ### Roadmap (scénarios non automatisables aujourd'hui)
