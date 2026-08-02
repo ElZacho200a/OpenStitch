@@ -443,6 +443,153 @@ TEST_CASE("guides satin coordonnes : une cible obsolete interdit toute mutation 
           params.rungs);
 }
 
+TEST_CASE("guides satin coordonnes : suppression de groupe atomique et annulable") {
+    document::Project project;
+    UndoStack stack;
+    document::SatinParams params;
+    params.rungs = {
+        {{Micrometers{0}, Micrometers{0}}, {Micrometers{0}, Micrometers{4'000}}},
+        {{Micrometers{5'000}, Micrometers{0}},
+         {Micrometers{5'000}, Micrometers{4'000}},
+         std::uint32_t{2}},
+        {{Micrometers{10'000}, Micrometers{0}}, {Micrometers{10'000}, Micrometers{4'000}}}};
+    document::EmbroideryObject first;
+    first.id = project.object_ids.next();
+    first.params = params;
+    document::EmbroideryObject second;
+    second.id = project.object_ids.next();
+    second.params = params;
+    project.embroidery_objects = {first, second};
+
+    stack.execute(std::make_unique<RemoveSatinGuidesCommand>(
+                      std::vector<SatinGuideRemoval>{{first.id, 1}, {second.id, 1}}),
+                  project);
+    CHECK(std::get<document::SatinParams>(project.findEmbroidery(first.id)->params).rungs.size() ==
+          2);
+    CHECK(std::get<document::SatinParams>(project.findEmbroidery(second.id)->params).rungs.size() ==
+          2);
+    CHECK(stack.undoName() == "Supprimer des guides satin coordonnés");
+
+    REQUIRE(stack.undo(project));
+    CHECK(std::get<document::SatinParams>(project.findEmbroidery(first.id)->params).rungs ==
+          params.rungs);
+    CHECK(std::get<document::SatinParams>(project.findEmbroidery(second.id)->params).rungs ==
+          params.rungs);
+    REQUIRE(stack.redo(project));
+    CHECK(std::get<document::SatinParams>(project.findEmbroidery(first.id)->params).rungs.size() ==
+          2);
+    CHECK(std::get<document::SatinParams>(project.findEmbroidery(second.id)->params).rungs.size() ==
+          2);
+}
+
+TEST_CASE("guides satin coordonnes : une suppression obsolete interdit toute mutation partielle") {
+    document::Project project;
+    document::SatinParams params;
+    params.rungs = {
+        {{Micrometers{0}, Micrometers{0}}, {Micrometers{0}, Micrometers{4'000}}},
+        {{Micrometers{10'000}, Micrometers{0}}, {Micrometers{10'000}, Micrometers{4'000}}}};
+    document::EmbroideryObject object;
+    object.id = project.object_ids.next();
+    object.params = params;
+    project.embroidery_objects.push_back(object);
+
+    // Index hors bornes sur une cible : rejet total, l'objet valide n'est pas
+    // touché non plus.
+    RemoveSatinGuidesCommand outOfRange({{object.id, 0}, {ObjectId{999}, 0}});
+    outOfRange.apply(project);
+    CHECK(std::get<document::SatinParams>(project.findEmbroidery(object.id)->params).rungs ==
+          params.rungs);
+
+    // Doublon (meme objet, meme index) : rejet total plutot qu'une suppression
+    // simple silencieuse.
+    RemoveSatinGuidesCommand duplicate({{object.id, 0}, {object.id, 0}});
+    duplicate.apply(project);
+    CHECK(std::get<document::SatinParams>(project.findEmbroidery(object.id)->params).rungs ==
+          params.rungs);
+
+    // Liste vide : rejet (aucune suppression n'a de sens).
+    RemoveSatinGuidesCommand empty(std::vector<SatinGuideRemoval>{});
+    empty.apply(project);
+    CHECK(std::get<document::SatinParams>(project.findEmbroidery(object.id)->params).rungs ==
+          params.rungs);
+
+    // Une commande directe ne peut pas réduire une colonne sous les deux
+    // guides terminaux minimaux, même si l'UI a déjà son propre garde-fou.
+    RemoveSatinGuidesCommand tooFew({{object.id, 0}});
+    tooFew.apply(project);
+    CHECK(std::get<document::SatinParams>(project.findEmbroidery(object.id)->params).rungs ==
+          params.rungs);
+}
+
+TEST_CASE("guides satin coordonnes : suppression de plusieurs guides dans le meme objet") {
+    // Cas défensif non produit par l'éditeur actuel (un groupe lié compte un
+    // guide par section/objet) mais que RemoveSatinGuidesCommand doit traiter
+    // sans corrompre les index : suppression descendante puis ré-insertion
+    // ascendante doit restaurer exactement l'ordre d'origine.
+    document::Project project;
+    UndoStack stack;
+    document::SatinParams params;
+    params.rungs = {
+        {{Micrometers{0}, Micrometers{0}}, {Micrometers{0}, Micrometers{4'000}}},
+        {{Micrometers{2'500}, Micrometers{0}}, {Micrometers{2'500}, Micrometers{4'000}}},
+        {{Micrometers{5'000}, Micrometers{0}}, {Micrometers{5'000}, Micrometers{4'000}}},
+        {{Micrometers{10'000}, Micrometers{0}}, {Micrometers{10'000}, Micrometers{4'000}}}};
+    document::EmbroideryObject object;
+    object.id = project.object_ids.next();
+    object.params = params;
+    project.embroidery_objects.push_back(object);
+
+    stack.execute(std::make_unique<RemoveSatinGuidesCommand>(
+                      std::vector<SatinGuideRemoval>{{object.id, 1}, {object.id, 2}}),
+                  project);
+    const auto& afterRemove =
+        std::get<document::SatinParams>(project.findEmbroidery(object.id)->params).rungs;
+    REQUIRE(afterRemove.size() == 2);
+    CHECK(afterRemove[0] == params.rungs[0]);
+    CHECK(afterRemove[1] == params.rungs[3]);
+
+    REQUIRE(stack.undo(project));
+    CHECK(std::get<document::SatinParams>(project.findEmbroidery(object.id)->params).rungs ==
+          params.rungs);
+}
+
+TEST_CASE("guides satin coordonnes : le document change entre apply et revert interdit la "
+          "restauration partielle") {
+    document::Project project;
+    document::SatinParams params;
+    params.rungs = {
+        {{Micrometers{0}, Micrometers{0}}, {Micrometers{0}, Micrometers{4'000}}},
+        {{Micrometers{5'000}, Micrometers{0}}, {Micrometers{5'000}, Micrometers{4'000}}},
+        {{Micrometers{10'000}, Micrometers{0}}, {Micrometers{10'000}, Micrometers{4'000}}}};
+    document::EmbroideryObject first;
+    first.id = project.object_ids.next();
+    first.params = params;
+    document::EmbroideryObject second;
+    second.id = project.object_ids.next();
+    second.params = params;
+    project.embroidery_objects = {first, second};
+
+    RemoveSatinGuidesCommand command({{first.id, 1}, {second.id, 1}});
+    command.apply(project);
+    REQUIRE(
+        std::get<document::SatinParams>(project.findEmbroidery(first.id)->params).rungs.size() ==
+        2);
+    REQUIRE(
+        std::get<document::SatinParams>(project.findEmbroidery(second.id)->params).rungs.size() ==
+        2);
+
+    // Entre apply et revert, `second` perd toute sa géométrie satin (édité
+    // ailleurs) : son index d'insertion d'origine n'est plus valide.
+    std::get<document::SatinParams>(project.findEmbroidery(second.id)->params).rungs.clear();
+
+    command.revert(project);
+    // Tout ou rien : `first` n'est PAS restauré non plus, même si sa propre
+    // cible était encore valide à elle seule.
+    CHECK(std::get<document::SatinParams>(project.findEmbroidery(first.id)->params).rungs.size() ==
+          2);
+    CHECK(std::get<document::SatinParams>(project.findEmbroidery(second.id)->params).rungs.empty());
+}
+
 TEST_CASE("SetCanvasCommand : change la taille du cadre, undo restaure") {
     document::Project project;
     UndoStack stack;
@@ -589,7 +736,8 @@ TEST_CASE("SetStitchTrimCommand(false) sur un index sans override existant : no-
     CHECK(obj->overrides.empty());
 }
 
-TEST_CASE("SetStitchTrimCommand(false) sur un index sans override, avec d'autres index deja retouches : n'ajoute rien") {
+TEST_CASE("SetStitchTrimCommand(false) sur un index sans override, avec d'autres index deja "
+          "retouches : n'ajoute rien") {
     auto project = project_with_embroidery();
     const ObjectId id = project.embroidery_objects[0].id;
     auto* obj = project.findEmbroidery(id);
@@ -616,7 +764,8 @@ TEST_CASE("SetStitchTrimCommand(false) sur un index sans override, avec d'autres
     CHECK(obj->overrides[0].base_index == 0);
 }
 
-TEST_CASE("SetStitchTrimCommand(false) efface le dernier champ effectif d'une entree existante : l'entree est retiree, undo la restaure exacte") {
+TEST_CASE("SetStitchTrimCommand(false) efface le dernier champ effectif d'une entree existante : "
+          "l'entree est retiree, undo la restaure exacte") {
     auto project = project_with_embroidery();
     const ObjectId id = project.embroidery_objects[0].id;
     auto* obj = project.findEmbroidery(id);

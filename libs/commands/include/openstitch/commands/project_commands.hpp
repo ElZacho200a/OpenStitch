@@ -5,6 +5,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <optional>
+#include <unordered_map>
 #include <utility>
 #include <variant>
 #include <vector>
@@ -975,6 +976,135 @@ private:
     ObjectId id_;
     std::size_t index_{};
     document::SatinRung removed_{};
+    bool applied_{false};
+};
+
+struct SatinGuideRemoval {
+    ObjectId id{};
+    std::size_t index{};
+};
+
+// Supprime plusieurs guides comme une seule transaction undo/redo (groupe lié
+// par link_id, cf. RemoveSatinGuidesCommand::apply). Toutes les cibles sont
+// validées avant la première suppression, même logique tout-ou-rien que
+// MoveSatinGuidesCommand/AddSatinGuidesCommand.
+class RemoveSatinGuidesCommand final : public ICommand {
+public:
+    explicit RemoveSatinGuidesCommand(std::vector<SatinGuideRemoval> removals)
+        : removals_(std::move(removals)) {}
+
+    void apply(document::Project& project) override {
+        applied_ = false;
+        removed_.clear();
+        if (!targetsAreValid(project)) {
+            return;
+        }
+        // Retire chaque objet de l'index le plus haut vers le plus bas afin
+        // qu'une suppression n'invalide pas l'index d'une autre cible du même
+        // objet (rare — un groupe lié compte en pratique un guide par
+        // section/objet, mais rien ne l'impose structurellement).
+        auto ordered = removals_;
+        std::sort(ordered.begin(), ordered.end(), [](const auto& lhs, const auto& rhs) {
+            if (lhs.id != rhs.id)
+                return lhs.id.value < rhs.id.value;
+            return lhs.index > rhs.index;
+        });
+        removed_.reserve(ordered.size());
+        for (const auto& target : ordered) {
+            auto* object = project.findEmbroidery(target.id);
+            auto& rungs = std::get<document::SatinParams>(object->params).rungs;
+            removed_.push_back({target.id, target.index, rungs[target.index]});
+            rungs.erase(rungs.begin() + static_cast<std::ptrdiff_t>(target.index));
+        }
+        applied_ = true;
+    }
+
+    void revert(document::Project& project) override {
+        if (!applied_ || !revertTargetsAreValid(project)) {
+            return; // état divergent depuis apply() : reste "appliqué", jamais de restauration
+                    // partielle
+        }
+        // removed_ est trié index décroissant par objet (ordre de suppression) ;
+        // le rejouer en sens inverse réinsère chaque objet index croissant afin
+        // que les positions retrouvent exactement leur état d'origine.
+        for (auto it = removed_.rbegin(); it != removed_.rend(); ++it) {
+            auto* object = project.findEmbroidery(it->id);
+            auto* satin = std::get_if<document::SatinParams>(&object->params);
+            satin->rungs.insert(satin->rungs.begin() + static_cast<std::ptrdiff_t>(it->index),
+                                it->guide);
+        }
+        applied_ = false;
+        removed_.clear();
+    }
+
+    [[nodiscard]] std::string name() const override {
+        return "Supprimer des guides satin coordonnés";
+    }
+
+private:
+    // Simule la séquence d'insertion (même ordre que revert()) sur la taille
+    // courante de chaque objet, sans muter le projet : garantit que la
+    // restauration sera tout-ou-rien même si le document a changé entre
+    // apply() et revert() (objet supprimé, redevenu non-satin, etc.).
+    [[nodiscard]] bool revertTargetsAreValid(document::Project& project) const {
+        std::unordered_map<std::uint64_t, std::size_t> sizes;
+        for (auto it = removed_.rbegin(); it != removed_.rend(); ++it) {
+            auto* object = project.findEmbroidery(it->id);
+            const auto* satin =
+                object != nullptr ? std::get_if<document::SatinParams>(&object->params) : nullptr;
+            if (satin == nullptr) {
+                return false;
+            }
+            auto [entry, inserted] = sizes.try_emplace(it->id.value, satin->rungs.size());
+            if (it->index > entry->second) {
+                return false;
+            }
+            ++entry->second;
+        }
+        return true;
+    }
+
+    [[nodiscard]] bool targetsAreValid(document::Project& project) const {
+        if (removals_.empty()) {
+            return false;
+        }
+        std::vector<std::pair<std::uint64_t, std::size_t>> keys;
+        std::unordered_map<std::uint64_t, std::size_t> removalsPerObject;
+        keys.reserve(removals_.size());
+        for (const auto& target : removals_) {
+            auto* object = project.findEmbroidery(target.id);
+            const auto* satin =
+                object != nullptr ? std::get_if<document::SatinParams>(&object->params) : nullptr;
+            if (satin == nullptr || target.index >= satin->rungs.size()) {
+                return false;
+            }
+            keys.emplace_back(target.id.value, target.index);
+            ++removalsPerObject[target.id.value];
+        }
+        std::sort(keys.begin(), keys.end());
+        if (std::adjacent_find(keys.begin(), keys.end()) != keys.end()) {
+            return false;
+        }
+        for (const auto& [id, count] : removalsPerObject) {
+            const auto* object = project.findEmbroidery(ObjectId{id});
+            const auto* satin =
+                object != nullptr ? std::get_if<document::SatinParams>(&object->params) : nullptr;
+            if (satin == nullptr || count > satin->rungs.size() ||
+                satin->rungs.size() - count < 2) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    struct Removed {
+        ObjectId id{};
+        std::size_t index{};
+        document::SatinRung guide{};
+    };
+
+    std::vector<SatinGuideRemoval> removals_;
+    std::vector<Removed> removed_;
     bool applied_{false};
 };
 

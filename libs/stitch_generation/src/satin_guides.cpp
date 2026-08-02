@@ -174,6 +174,63 @@ std::vector<SatinJunctionGuideRef> satin_junction_guides(
     return result;
 }
 
+std::vector<SatinJunctionGuideRef> satin_linked_guides(const document::Project& project,
+                                                       ObjectId source_vector,
+                                                       std::uint32_t link_id) {
+    std::vector<SatinJunctionGuideRef> result;
+    if (!source_vector.valid()) {
+        return result;
+    }
+    std::optional<std::uint32_t> sectionCount;
+    std::vector<std::uint32_t> sectionIndices;
+    for (const auto& object : project.embroidery_objects) {
+        if (object.source_vector != source_vector) {
+            continue;
+        }
+        const auto* satin = std::get_if<document::SatinParams>(&object.params);
+        if (satin == nullptr || !satin->topology) {
+            continue;
+        }
+        const auto& topology = *satin->topology;
+        if (!sectionCount) {
+            sectionCount = topology.section_count;
+        }
+        if (topology.section_count == 0 || topology.section_count != *sectionCount ||
+            topology.section_index >= topology.section_count ||
+            std::find(sectionIndices.begin(), sectionIndices.end(), topology.section_index) !=
+                sectionIndices.end()) {
+            return {};
+        }
+        std::optional<std::size_t> matchIndex;
+        for (std::size_t i = 0; i < satin->rungs.size(); ++i) {
+            if (satin->rungs[i].link_id == link_id) {
+                if (matchIndex) {
+                    return {}; // deux guides du meme link_id dans une section : corrompu
+                }
+                matchIndex = i;
+            }
+        }
+        sectionIndices.push_back(topology.section_index);
+        if (!matchIndex) {
+            continue;
+        }
+        result.push_back({object.id, *matchIndex, topology.section_index});
+    }
+    if (!sectionCount || sectionIndices.size() != *sectionCount || result.size() < 2) {
+        return {}; // un groupe lie relie au moins deux sections
+    }
+    std::sort(result.begin(), result.end(), [](const auto& lhs, const auto& rhs) {
+        if (lhs.section_index != rhs.section_index) {
+            return lhs.section_index < rhs.section_index;
+        }
+        if (lhs.embroidery_id != rhs.embroidery_id) {
+            return lhs.embroidery_id < rhs.embroidery_id;
+        }
+        return lhs.guide_index < rhs.guide_index;
+    });
+    return result;
+}
+
 std::optional<std::uint32_t> next_satin_guide_link_id(const document::Project& project,
                                                       ObjectId source_vector) {
     if (!source_vector.valid()) {
@@ -384,6 +441,214 @@ std::optional<SatinGuideInsertion> make_satin_guide_next_to_junction(
         document::SatinRung{geometry::point_at_length(railA, cumulativeA, sa),
                             geometry::point_at_length(railB, cumulativeB, sb)},
         std::max(first.original_index, second.original_index)};
+}
+
+namespace {
+
+struct GroupAnchor {
+    double sa{};
+    double sb{};
+    std::size_t original_index{};
+};
+
+struct GroupInterval {
+    GroupAnchor junction;
+    GroupAnchor other;
+    std::uint32_t junction_id{};
+};
+
+// Un guide de groupe est toujours créé collé à un guide de jonction (extrémité
+// du tableau trié) : son intervalle admissible est donc borné par cette
+// jonction d'un côté et par son unique voisin de l'autre, exactement comme au
+// moment de sa création (make_satin_guide_next_to_junction). Si la topologie a
+// bougé depuis (un autre guide inséré entre les deux, jonction disparue), le
+// guide n'a plus de voisin de jonction univoque : on refuse plutôt que de
+// deviner un intervalle arbitraire.
+std::optional<GroupInterval> find_group_interval(const document::SatinParams& satin,
+                                                 std::size_t guide_index,
+                                                 const std::vector<GroupAnchor>& anchors,
+                                                 Micrometers flatten_tolerance) {
+    if (anchors.size() < 3) {
+        return std::nullopt;
+    }
+    const auto pos = std::find_if(anchors.begin(), anchors.end(), [&](const GroupAnchor& anchor) {
+        return anchor.original_index == guide_index;
+    });
+    if (pos == anchors.end()) {
+        return std::nullopt;
+    }
+    const auto idx = static_cast<std::size_t>(pos - anchors.begin());
+    if (idx == 1) {
+        if (const auto junction =
+                satin_guide_junction(satin, anchors.front().original_index, flatten_tolerance)) {
+            return GroupInterval{anchors.front(), anchors[idx + 1], *junction};
+        }
+    }
+    if (idx + 2 == anchors.size()) {
+        if (const auto junction =
+                satin_guide_junction(satin, anchors.back().original_index, flatten_tolerance)) {
+            return GroupInterval{anchors.back(), anchors[idx - 1], *junction};
+        }
+    }
+    return std::nullopt;
+}
+
+struct GroupContext {
+    std::vector<Vec2um> railA;
+    std::vector<Vec2um> railB;
+    std::vector<double> cumulativeA;
+    std::vector<double> cumulativeB;
+    GroupInterval interval;
+};
+
+std::optional<GroupContext> resolve_group_context(const document::SatinParams& satin,
+                                                  std::size_t guide_index,
+                                                  Micrometers flatten_tolerance) {
+    if (satin.rungs.size() < 3 || guide_index >= satin.rungs.size()) {
+        return std::nullopt;
+    }
+    auto railA = geometry::flatten(satin.rail_a, flatten_tolerance).points;
+    auto railB = geometry::flatten(satin.rail_b, flatten_tolerance).points;
+    if (railA.size() < 2 || railB.size() < 2) {
+        return std::nullopt;
+    }
+    if (opposite_orientation(railA, railB)) {
+        std::reverse(railB.begin(), railB.end());
+    }
+    auto cumulativeA = geometry::cumulative_lengths(railA);
+    auto cumulativeB = geometry::cumulative_lengths(railB);
+    std::vector<GroupAnchor> anchors;
+    anchors.reserve(satin.rungs.size());
+    for (std::size_t i = 0; i < satin.rungs.size(); ++i) {
+        const auto pa = project(railA, cumulativeA, satin.rungs[i].a);
+        const auto pb = project(railB, cumulativeB, satin.rungs[i].b);
+        if (!pa || !pb) {
+            return std::nullopt;
+        }
+        anchors.push_back({pa->station, pb->station, i});
+    }
+    std::stable_sort(anchors.begin(), anchors.end(),
+                     [](const GroupAnchor& lhs, const GroupAnchor& rhs) {
+                         return lhs.sa + lhs.sb < rhs.sa + rhs.sb;
+                     });
+    for (std::size_t i = 1; i < anchors.size(); ++i) {
+        if (anchors[i].sa <= anchors[i - 1].sa || anchors[i].sb <= anchors[i - 1].sb) {
+            return std::nullopt; // ordre croisé, replié ou station dupliquée
+        }
+    }
+    auto interval = find_group_interval(satin, guide_index, anchors, flatten_tolerance);
+    if (!interval) {
+        return std::nullopt;
+    }
+    return GroupContext{std::move(railA), std::move(railB), std::move(cumulativeA),
+                        std::move(cumulativeB), *interval};
+}
+
+} // namespace
+
+std::optional<std::vector<SatinGuideGroupEdit>>
+move_satin_guide_group(const document::Project& doc, ObjectId source_vector, std::uint32_t link_id,
+                       ObjectId dragged_id, SatinGuideSide dragged_side, Vec2um desired,
+                       Micrometers flatten_tolerance) {
+    const auto refs = satin_linked_guides(doc, source_vector, link_id);
+    if (refs.size() < 2) {
+        return std::nullopt;
+    }
+
+    struct SectionState {
+        ObjectId id{};
+        std::size_t guide_index{};
+        GroupContext context;
+        double currentTA{};
+        double currentTB{};
+        double minimumGap{};
+    };
+    std::vector<SectionState> sections;
+    sections.reserve(refs.size());
+    std::optional<double> deltaT;
+    std::optional<std::uint32_t> sharedJunction;
+
+    for (const auto& ref : refs) {
+        const auto* object = doc.findEmbroidery(ref.embroidery_id);
+        const auto* satin =
+            object != nullptr ? std::get_if<document::SatinParams>(&object->params) : nullptr;
+        if (satin == nullptr || ref.guide_index >= satin->rungs.size()) {
+            return std::nullopt;
+        }
+        auto context = resolve_group_context(*satin, ref.guide_index, flatten_tolerance);
+        if (!context) {
+            return std::nullopt;
+        }
+        if (!sharedJunction) {
+            sharedJunction = context->interval.junction_id;
+        } else if (*sharedJunction != context->interval.junction_id) {
+            return std::nullopt; // link_id corrompu : jonctions différentes
+        }
+        const auto& rung = satin->rungs[ref.guide_index];
+        const auto currentA = project(context->railA, context->cumulativeA, rung.a);
+        const auto currentB = project(context->railB, context->cumulativeB, rung.b);
+        if (!currentA || !currentB) {
+            return std::nullopt;
+        }
+        const double spanA = context->interval.other.sa - context->interval.junction.sa;
+        const double spanB = context->interval.other.sb - context->interval.junction.sb;
+        const double minimumGap = std::max(1.0, static_cast<double>(satin->density.value) * 0.5);
+        if (std::abs(spanA) <= 2.0 * minimumGap || std::abs(spanB) <= 2.0 * minimumGap) {
+            return std::nullopt; // intervalle degenere ou trop court
+        }
+        const double tA = (currentA->station - context->interval.junction.sa) / spanA;
+        const double tB = (currentB->station - context->interval.junction.sb) / spanB;
+
+        if (ref.embroidery_id == dragged_id) {
+            // Seule donnée géométrique brute qui traverse la frontière de
+            // section : la position glissée projetée sur SON PROPRE rail,
+            // convertie en un delta normalisé partagé (jamais une coordonnée
+            // recopiée telle quelle vers les autres sections).
+            const auto& dragRail =
+                dragged_side == SatinGuideSide::RailA ? context->railA : context->railB;
+            const auto& dragCumulative =
+                dragged_side == SatinGuideSide::RailA ? context->cumulativeA : context->cumulativeB;
+            const double junctionStation = dragged_side == SatinGuideSide::RailA
+                                               ? context->interval.junction.sa
+                                               : context->interval.junction.sb;
+            const double span = dragged_side == SatinGuideSide::RailA ? spanA : spanB;
+            const double currentT = dragged_side == SatinGuideSide::RailA ? tA : tB;
+            const auto desiredProjection = project(dragRail, dragCumulative, desired);
+            if (!desiredProjection) {
+                return std::nullopt;
+            }
+            deltaT = (desiredProjection->station - junctionStation) / span - currentT;
+        }
+        sections.push_back(
+            {ref.embroidery_id, ref.guide_index, std::move(*context), tA, tB, minimumGap});
+    }
+    if (!deltaT) {
+        return std::nullopt; // la section glissée n'appartient pas au groupe
+    }
+
+    std::vector<SatinGuideGroupEdit> edits;
+    edits.reserve(sections.size());
+    for (const auto& section : sections) {
+        const double spanA =
+            section.context.interval.other.sa - section.context.interval.junction.sa;
+        const double spanB =
+            section.context.interval.other.sb - section.context.interval.junction.sb;
+        const double boundA = section.minimumGap / std::abs(spanA);
+        const double boundB = section.minimumGap / std::abs(spanB);
+        const double newTA = section.currentTA + *deltaT;
+        const double newTB = section.currentTB + *deltaT;
+        if (newTA <= boundA || newTA >= 1.0 - boundA || newTB <= boundB || newTB >= 1.0 - boundB) {
+            return std::nullopt; // sortirait de l'intervalle admissible : rejet total
+        }
+        const double sa = section.context.interval.junction.sa + newTA * spanA;
+        const double sb = section.context.interval.junction.sb + newTB * spanB;
+        document::SatinRung candidate{
+            geometry::point_at_length(section.context.railA, section.context.cumulativeA, sa),
+            geometry::point_at_length(section.context.railB, section.context.cumulativeB, sb)};
+        candidate.link_id = link_id;
+        edits.push_back({section.id, section.guide_index, candidate});
+    }
+    return edits;
 }
 
 }  // namespace openstitch::stitch_generation

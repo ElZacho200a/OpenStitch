@@ -37,44 +37,44 @@
 #include "document_panel.hpp"
 #include "empty_state_widget.hpp"
 #include "import_dialog.hpp"
-#include <QCloseEvent>
 #include "node_handle.hpp"
-#include "satin_guide_item.hpp"
-#include "properties_panel.hpp"
-#include "ui_icons.hpp"
-#include "workflow_panel.hpp"
-#include <QSettings>
-#include <QShortcut>
-#include <QToolBar>
-#include <QToolButton>
+
 #include "openstitch/auto_satin/satin_column.hpp"
 #include "openstitch/autodigitize/autodigitize.hpp"
+#include "openstitch/commands/project_commands.hpp"
+#include "openstitch/core/app_info.hpp"
+#include "openstitch/document/canvas.hpp"
+#include "openstitch/document/image_placement.hpp"
 #include "openstitch/formats/dst.hpp"
+#include "openstitch/image/image.hpp"
 #include "openstitch/optimization/order.hpp"
 #include "openstitch/project_io/project_io.hpp"
 #include "openstitch/stitch_analysis/analyze.hpp"
 #include "openstitch/stitch_generation/generate.hpp"
 #include "openstitch/stitch_generation/overrides.hpp"
-#include "openstitch/stitch_generation/satin_guides.hpp"
 #include "openstitch/stitch_generation/satin.hpp"
+#include "openstitch/stitch_generation/satin_guides.hpp"
 #include "openstitch/vectorization/vectorize.hpp"
+#include "properties_panel.hpp"
+#include "ruler.hpp"
+#include "satin_guide_item.hpp"
+#include "ui_icons.hpp"
+#include "workflow_panel.hpp"
 #include <QCheckBox>
+#include <QCloseEvent>
 #include <QComboBox>
 #include <QDockWidget>
 #include <QHBoxLayout>
 #include <QIcon>
 #include <QListWidget>
 #include <QPushButton>
+#include <QSettings>
+#include <QShortcut>
 #include <QSlider>
 #include <QTimer>
 #include <QToolBar>
+#include <QToolButton>
 #include <QVBoxLayout>
-#include "openstitch/commands/project_commands.hpp"
-#include "openstitch/core/app_info.hpp"
-#include "openstitch/document/canvas.hpp"
-#include "openstitch/document/image_placement.hpp"
-#include "openstitch/image/image.hpp"
-#include "ruler.hpp"
 
 namespace openstitch::desktop {
 
@@ -564,7 +564,8 @@ void MainWindow::onSatinGuideModeToggled(bool on) {
             satinGuideModeAct_->setChecked(false);
         } else {
             statusBar()->showMessage(
-                tr("Guides satin : glissez une extrémité le long de son rail. Échap pour quitter."));
+                tr("Guides satin : glissez une extrémité le long de son rail (Maj+glisser un "
+                   "guide lié déplace tout le groupe). Échap pour quitter."));
         }
     }
     displayImage(processed_);
@@ -673,9 +674,44 @@ void MainWindow::removeSelectedSatinGuide() {
     }
     if (const auto junction = stitch_generation::satin_guide_junction(
             *satin, *selectedSatinGuide_)) {
-        statusBar()->showMessage(
-            tr("Guide de jonction #%1 verrouillé : ajoutez un guide interne pour orienter la section.")
-                .arg(*junction));
+        statusBar()->showMessage(tr("Guide de jonction #%1 verrouillé : ajoutez un guide interne "
+                                    "pour orienter la section.")
+                                     .arg(*junction));
+        return;
+    }
+    // Un guide lié (link_id) représente une identité logique unique répartie
+    // sur plusieurs sections : le supprimer d'une seule section laisserait les
+    // autres avec un lien orphelin. On supprime donc le groupe entier comme
+    // une transaction atomique unique, ou on refuse en totalité.
+    if (const auto linkId = satin->rungs[*selectedSatinGuide_].link_id) {
+        const auto refs =
+            stitch_generation::satin_linked_guides(project_, obj->source_vector, *linkId);
+        if (refs.size() < 2) {
+            statusBar()->showMessage(
+                tr("Impossible de supprimer le groupe : identifiants de liaison incohérents."));
+            return;
+        }
+        std::vector<commands::SatinGuideRemoval> removals;
+        removals.reserve(refs.size());
+        for (const auto& ref : refs) {
+            const auto* section = project_.findEmbroidery(ref.embroidery_id);
+            const auto* sectionSatin =
+                section != nullptr ? std::get_if<document::SatinParams>(&section->params) : nullptr;
+            if (sectionSatin == nullptr || sectionSatin->rungs.size() <= 2) {
+                statusBar()->showMessage(
+                    tr("Impossible de supprimer le groupe : une section perdrait tous ses "
+                       "guides internes."));
+                return;
+            }
+            removals.push_back({ref.embroidery_id, ref.guide_index});
+        }
+        const auto groupCount = removals.size();
+        undoStack_.execute(
+            std::make_unique<commands::RemoveSatinGuidesCommand>(std::move(removals)), project_);
+        selectedSatinGuide_.reset();
+        refreshImage();
+        updateActions();
+        statusBar()->showMessage(tr("Groupe de %1 guides liés supprimé.").arg(groupCount));
         return;
     }
     undoStack_.execute(std::make_unique<commands::RemoveSatinGuideCommand>(
@@ -1114,12 +1150,23 @@ void MainWindow::renderBase(const image::Image& img) {
                     line->setPen(guidePen);
                     line->setZValue(99);
                     line->setToolTip(
-                        junction ? tr("Guide satin #%1 — jonction structurelle verrouillée")
-                                       .arg(i + 1)
-                                 : tr("Guide satin #%1 — cliquer pour sélectionner").arg(i + 1));
+                        junction
+                            ? tr("Guide satin #%1 — jonction structurelle verrouillée").arg(i + 1)
+                        : rung.link_id
+                            ? tr("Guide satin #%1 — lié : Maj+glisser une extrémité déplace tout "
+                                 "le groupe, glisser seul ne modifie que cette section")
+                                  .arg(i + 1)
+                            : tr("Guide satin #%1 — cliquer pour sélectionner").arg(i + 1));
                     scene_->addItem(line);
                     baseItems_.append(line);
 
+                    // Geste explicite du groupe lié (§ guides liés) : Maj+glisser une
+                    // extrémité d'un guide portant un link_id déplace TOUT le groupe
+                    // (une section par jonction) en préservant, pour chaque section,
+                    // sa position normalisée entre la jonction et son propre voisin —
+                    // jamais de coordonnée/angle recopié d'une section à l'autre. Un
+                    // glisser sans Maj reste un geste local (édition d'angle) qui ne
+                    // touche que cette section, comme avant.
                     const auto addEndpoint = [this, targetId, i, rung, generation](
                                                  QPointF scenePos,
                                                  stitch_generation::SatinGuideSide side) {
@@ -1134,11 +1181,66 @@ void MainWindow::renderBase(const image::Image& img) {
                                     current != nullptr
                                         ? std::get_if<document::SatinParams>(&current->params)
                                         : nullptr;
-                                const auto moved =
-                                    satinNow != nullptr
-                                        ? stitch_generation::move_satin_guide_endpoint(
-                                              *satinNow, i, side, desired)
-                                        : std::nullopt;
+                                if (satinNow == nullptr) {
+                                    return;
+                                }
+                                const bool groupGesture =
+                                    rung.link_id.has_value() &&
+                                    (QGuiApplication::keyboardModifiers() & Qt::ShiftModifier);
+                                if (groupGesture) {
+                                    const auto edits = stitch_generation::move_satin_guide_group(
+                                        project_, current->source_vector, *rung.link_id, targetId,
+                                        side, desired);
+                                    if (!edits) {
+                                        statusBar()->showMessage(
+                                            tr("Déplacement du groupe refusé : intervalle "
+                                               "épuisé ou jonction modifiée entretemps."));
+                                        displayImage(processed_);
+                                        return;
+                                    }
+                                    const bool changed = std::any_of(
+                                        edits->begin(), edits->end(), [this](const auto& edit) {
+                                            const auto* section =
+                                                project_.findEmbroidery(edit.embroidery_id);
+                                            const auto* sectionSatin =
+                                                section != nullptr
+                                                    ? std::get_if<document::SatinParams>(
+                                                          &section->params)
+                                                    : nullptr;
+                                            return sectionSatin == nullptr ||
+                                                   edit.guide_index >= sectionSatin->rungs.size() ||
+                                                   sectionSatin->rungs[edit.guide_index] !=
+                                                       edit.guide;
+                                        });
+                                    if (!changed) {
+                                        return; // Maj+clic sans mouvement : aucun historique
+                                                // fantôme
+                                    }
+                                    QTimer::singleShot(0, this, [this, edits = *edits, generation] {
+                                        if (generation != documentGeneration_) {
+                                            return;
+                                        }
+                                        std::vector<commands::SatinGuideEdit> commandEdits;
+                                        commandEdits.reserve(edits.size());
+                                        for (const auto& edit : edits) {
+                                            commandEdits.push_back(
+                                                {edit.embroidery_id, edit.guide_index, edit.guide});
+                                        }
+                                        const auto groupCount = commandEdits.size();
+                                        undoStack_.execute(
+                                            std::make_unique<commands::MoveSatinGuidesCommand>(
+                                                std::move(commandEdits)),
+                                            project_);
+                                        refreshImage();
+                                        updateActions();
+                                        statusBar()->showMessage(
+                                            tr("%1 guides liés déplacés ensemble.")
+                                                .arg(groupCount));
+                                    });
+                                    return;
+                                }
+                                const auto moved = stitch_generation::move_satin_guide_endpoint(
+                                    *satinNow, i, side, desired);
                                 if (!moved) {
                                     statusBar()->showMessage(tr(
                                         "Guide refusé : il doit rester ordonné sur les deux rails."));
@@ -1251,7 +1353,8 @@ void MainWindow::renderBase(const image::Image& img) {
                             [this, targetId, baseIndex, newPos, rawFingerprint, rawPointCount,
                              generation] {
                                 if (generation != documentGeneration_) {
-                                    return;  // document remplacé pendant le délai : commande abandonnée
+                                    return; // document remplacé pendant le délai : commande
+                                            // abandonnée
                                 }
                                 undoStack_.execute(
                                     std::make_unique<commands::MoveStitchPointCommand>(

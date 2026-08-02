@@ -50,6 +50,43 @@ struct SatinJunctionGuideRef {
 [[nodiscard]] std::optional<std::uint32_t> next_satin_guide_link_id(
     const document::Project& project, ObjectId source_vector);
 
+// Retrouve tous les guides internes partageant `link_id` dans le réseau
+// identifié par `source_vector`. Comme satin_junction_guides, le résultat est
+// trié (section, objet, index) pour une édition groupée déterministe et vide
+// dès qu'une section porte plusieurs guides du même link_id (donnée corrompue)
+// ou que la topologie est incohérente. Contrairement aux guides de jonction
+// (verrouillés, un par extrémité de section), un groupe lié n'a pas besoin de
+// couvrir toutes les sections du réseau — seulement celles qui touchaient la
+// jonction où le groupe a été créé — donc au moins deux membres suffisent.
+[[nodiscard]] std::vector<SatinJunctionGuideRef>
+satin_linked_guides(const document::Project& project, ObjectId source_vector,
+                    std::uint32_t link_id);
+
+// Édition atomique d'un guide au sein d'un groupe lié (id d'objet + index +
+// nouveau barreau), produite par move_satin_guide_group pour une seule section
+// du groupe.
+struct SatinGuideGroupEdit {
+    ObjectId embroidery_id{};
+    std::size_t guide_index{};
+    document::SatinRung guide{};
+};
+
+// Déplace longitudinalement tout un groupe de guides liés en préservant, pour
+// chaque section, sa position normalisée entre le guide de jonction voisin et
+// son propre voisin suivant (distance normalisée à la jonction partagée). Le
+// point `desired` est projeté UNIQUEMENT sur le rail `dragged_side` de la
+// section `dragged_id` : c'est la seule donnée géométrique brute qui traverse
+// une frontière de section, convertie immédiatement en un delta normalisé
+// partagé — jamais une coordonnée ou un angle recopié d'une section à l'autre.
+// Tout ou rien : nullopt si une section n'est plus adjacente à sa jonction
+// (topologie modifiée entretemps), si le delta ferait sortir un guide de son
+// intervalle local, ou si l'espacement minimal (densité) ne serait plus
+// respecté sur une section — jamais de mutation partielle.
+[[nodiscard]] std::optional<std::vector<SatinGuideGroupEdit>>
+move_satin_guide_group(const document::Project& doc, ObjectId source_vector, std::uint32_t link_id,
+                       ObjectId dragged_id, SatinGuideSide dragged_side, Vec2um desired,
+                       Micrometers flatten_tolerance = Micrometers{100});
+
 // Projette l'extrémité déplacée sur son rail et refuse une disposition qui ne
 // progresse plus strictement sur les deux rails. Le même demi-pas de densité
 // que fill_satin_columns est utilisé : une poignée acceptée ne pourra donc pas

@@ -277,6 +277,11 @@ private slots:
     void satinJunctionGuideIsLockedInUi();
     void satinJunctionAddsInternalGuidesToEveryBranchAtomically();
 
+    void satinLinkedGuideGroupMoveShiftDragUpdatesBothSectionsAtomically();
+    void satinLinkedGuideShiftClickCreatesNoUndoCommand();
+    void satinLinkedGuideGroupRemoveDeletesBothSectionsAtomically();
+    void satinLinkedGuideEndpointDragWithoutShiftStaysLocal();
+
 private:
     // Active le mode d'édition (sélection directe via selectedEmbroidery_,
     // pas via le signal DocumentPanel::embroiderySelected -- qui sélectionne
@@ -287,6 +292,12 @@ private:
     // (QTimer::singleShot). Partagée par les deux tests de glisser (deux
     // niveaux de zoom) pour ne pas dupliquer la mécanique QTest.
     void dragFirstStitchHandle(MainWindow& window, ObjectId embroideryId, QPoint delta);
+
+    // Sélectionne la jonction structurelle du guide de section 0, déclenche
+    // l'ajout coordonné (comme satinJunctionAddsInternalGuidesToEveryBranchAtomically),
+    // et laisse le guide lié fraîchement créé (index 1, link_id 0) sélectionné.
+    // Point de départ partagé par les tests de groupe lié ci-dessous.
+    void selectJunctionAndAddLinkedGuides(MainWindow& window, const Fixture& fx);
 
     QTemporaryDir settingsDir_;
 };
@@ -765,6 +776,264 @@ void MainWindowTest::satinJunctionAddsInternalGuidesToEveryBranchAtomically() {
     window.redo();
     QCOMPARE(rungCount(fx.embroideryId), std::size_t{4});
     QCOMPARE(rungCount(fx.embroideryId2), std::size_t{4});
+    mode->setChecked(false);
+    QCoreApplication::processEvents();
+}
+
+void MainWindowTest::selectJunctionAndAddLinkedGuides(MainWindow& window, const Fixture& fx) {
+    auto* mode = window.findChild<QAction*>(QStringLiteral("action_satinGuideMode"));
+    auto* add = window.findChild<QAction*>(QStringLiteral("action_addSatinGuide"));
+    QVERIFY(mode != nullptr);
+    QVERIFY(add != nullptr);
+    window.selectedEmbroidery_ = fx.embroideryId;
+    window.updateActions();
+    mode->setChecked(true);
+
+    window.view_->resetTransform();
+    window.view_->scale(40.0, 40.0);
+    window.scene_->setSceneRect(QRectF(-5.0, -10.0, 20.0, 20.0));
+
+    SatinGuideItem* junctionGuide = nullptr;
+    for (QGraphicsItem* item : window.baseItems_) {
+        auto* guide = dynamic_cast<SatinGuideItem*>(item);
+        if (guide != nullptr && std::abs(guide->line().p1().x()) < 0.01) {
+            junctionGuide = guide;
+            break;
+        }
+    }
+    QVERIFY(junctionGuide != nullptr);
+    window.view_->centerOn(junctionGuide->line().center());
+    const QPoint guidePoint = window.view_->mapFromScene(junctionGuide->line().center());
+    QVERIFY(window.view_->viewport()->rect().contains(guidePoint));
+    QTest::mouseClick(window.view_->viewport(), Qt::LeftButton, Qt::NoModifier, guidePoint);
+    QTRY_COMPARE(window.selectedSatinGuide_, std::optional<std::size_t>{0});
+
+    add->trigger();
+    QTRY_COMPARE(window.selectedSatinGuide_, std::optional<std::size_t>{1});
+}
+
+void MainWindowTest::satinLinkedGuideGroupMoveShiftDragUpdatesBothSectionsAtomically() {
+    MainWindow window;
+    const Fixture fx = buildSatinJunctionFixture();
+    window.applyLoadedProject(fx.project);
+    window.resize(900, 700);
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+
+    selectJunctionAndAddLinkedGuides(window, fx);
+
+    const auto rungAt = [&](ObjectId id, std::size_t index) {
+        return std::get<openstitch::document::SatinParams>(
+                   window.project_.findEmbroidery(id)->params)
+            .rungs[index];
+    };
+    QCOMPARE(rungAt(fx.embroideryId, 1).link_id, std::optional<std::uint32_t>{0});
+    QCOMPARE(rungAt(fx.embroideryId2, 1).link_id, std::optional<std::uint32_t>{0});
+
+    window.view_->centerOn(QPointF(1.0, -2.0));
+    QList<NodeHandleItem*> handles;
+    for (QGraphicsItem* item : window.baseItems_) {
+        if (auto* handle = dynamic_cast<NodeHandleItem*>(item)) {
+            handles.push_back(handle);
+        }
+    }
+    auto it = std::find_if(handles.begin(), handles.end(), [](const NodeHandleItem* handle) {
+        return std::abs(handle->scenePos().x() - 1.0) < 0.01 &&
+               std::abs(handle->scenePos().y()) < 0.01;
+    });
+    QVERIFY(it != handles.end());
+    auto* handle = *it; // extrémité rail A du guide lié (index 1)
+
+    const QPoint start = window.view_->mapFromScene(handle->scenePos());
+    const int availableRight = window.view_->viewport()->width() - 1 - start.x();
+    const int availableLeft = start.x();
+    const int direction = availableRight >= availableLeft ? 1 : -1;
+    const int movement = std::min(24, std::max(availableRight, availableLeft));
+    const QPoint end = start + QPoint(movement * direction, 0);
+    const QPoint middle = (start + end) / 2;
+    QVERIFY(window.view_->viewport()->rect().contains(start));
+    QVERIFY(window.view_->viewport()->rect().contains(end));
+    QVERIFY2((end - start).manhattanLength() >= QApplication::startDragDistance(),
+             qPrintable(QStringLiteral("déplacement écran insuffisant: %1 px")
+                            .arg((end - start).manhattanLength())));
+    QCOMPARE(dynamic_cast<NodeHandleItem*>(window.view_->itemAt(start)), handle);
+
+    // Maj+glisser : geste explicite du groupe lié (documenté dans le statut du
+    // mode et l'infobulle du guide) — un glisser SANS Maj resterait local.
+    QTest::mousePress(window.view_->viewport(), Qt::LeftButton, Qt::ShiftModifier, start);
+    QTest::mouseMove(window.view_->viewport(), middle);
+    QTest::mouseMove(window.view_->viewport(), end);
+    QTest::mouseRelease(window.view_->viewport(), Qt::LeftButton, Qt::ShiftModifier, end);
+
+    // canUndo() est déjà vrai (commande "Ajouter" du setup partagé) : on
+    // attend le NOM de la commande, pas juste canUndo(), pour laisser le
+    // QTimer::singleShot du glisser différé s'exécuter.
+    QTRY_COMPARE(QString::fromStdString(window.undoStack_.undoName()),
+                 QStringLiteral("Déplacer des guides satin coordonnés"));
+    const auto movedX = rungAt(fx.embroideryId, 1).a.x;
+    QVERIFY(movedX.value != 1'000); // a bougé
+    // Même géométrie de section -> même delta normalisé -> même résultat exact
+    // dans les deux sections (groupe déplacé de façon cohérente, pas juste la
+    // section glissée).
+    QCOMPARE(rungAt(fx.embroideryId2, 1).a.x, movedX);
+    QCOMPARE(rungAt(fx.embroideryId, 1).a.y, Micrometers{0});
+    QVERIFY(window.statusBar()->currentMessage().contains(QStringLiteral("2 guides")));
+
+    window.undo();
+    QCOMPARE(rungAt(fx.embroideryId, 1).a.x, Micrometers{1'000});
+    QCOMPARE(rungAt(fx.embroideryId2, 1).a.x, Micrometers{1'000});
+    window.redo();
+    QCOMPARE(rungAt(fx.embroideryId, 1).a.x, movedX);
+    QCOMPARE(rungAt(fx.embroideryId2, 1).a.x, movedX);
+
+    auto* mode = window.findChild<QAction*>(QStringLiteral("action_satinGuideMode"));
+    mode->setChecked(false);
+    QCoreApplication::processEvents();
+}
+
+void MainWindowTest::satinLinkedGuideShiftClickCreatesNoUndoCommand() {
+    MainWindow window;
+    const Fixture fx = buildSatinJunctionFixture();
+    window.applyLoadedProject(fx.project);
+    window.resize(900, 700);
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+
+    selectJunctionAndAddLinkedGuides(window, fx);
+    const auto undoNameBefore = window.undoStack_.undoName();
+    window.view_->centerOn(QPointF(1.0, -2.0));
+    NodeHandleItem* handle = nullptr;
+    for (QGraphicsItem* item : window.baseItems_) {
+        auto* candidate = dynamic_cast<NodeHandleItem*>(item);
+        if (candidate != nullptr && std::abs(candidate->scenePos().x() - 1.0) < 0.01 &&
+            std::abs(candidate->scenePos().y()) < 0.01) {
+            handle = candidate;
+            break;
+        }
+    }
+    QVERIFY(handle != nullptr);
+    const QPoint point = window.view_->mapFromScene(handle->scenePos());
+    QTest::mouseClick(window.view_->viewport(), Qt::LeftButton, Qt::ShiftModifier, point);
+    QCoreApplication::processEvents();
+
+    QCOMPARE(window.undoStack_.undoName(), undoNameBefore);
+    QCOMPARE(std::get<openstitch::document::SatinParams>(
+                 window.project_.findEmbroidery(fx.embroideryId)->params)
+                 .rungs[1]
+                 .a.x,
+             Micrometers{1'000});
+
+    auto* mode = window.findChild<QAction*>(QStringLiteral("action_satinGuideMode"));
+    mode->setChecked(false);
+    QCoreApplication::processEvents();
+}
+
+void MainWindowTest::satinLinkedGuideGroupRemoveDeletesBothSectionsAtomically() {
+    MainWindow window;
+    const Fixture fx = buildSatinJunctionFixture();
+    window.applyLoadedProject(fx.project);
+    window.resize(900, 700);
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+
+    selectJunctionAndAddLinkedGuides(window, fx);
+    auto* remove = window.findChild<QAction*>(QStringLiteral("action_removeSatinGuide"));
+    QVERIFY(remove != nullptr);
+    QVERIFY(remove->isEnabled());
+
+    const auto rungCount = [&](ObjectId id) {
+        return std::get<openstitch::document::SatinParams>(
+                   window.project_.findEmbroidery(id)->params)
+            .rungs.size();
+    };
+    QCOMPARE(rungCount(fx.embroideryId), std::size_t{4});
+    QCOMPARE(rungCount(fx.embroideryId2), std::size_t{4});
+
+    remove->trigger();
+    QCOMPARE(rungCount(fx.embroideryId), std::size_t{3});
+    QCOMPARE(rungCount(fx.embroideryId2), std::size_t{3});
+    QCOMPARE(QString::fromStdString(window.undoStack_.undoName()),
+             QStringLiteral("Supprimer des guides satin coordonnés"));
+    QVERIFY(window.statusBar()->currentMessage().contains(QStringLiteral("2 guides")));
+    QVERIFY(!window.selectedSatinGuide_.has_value());
+
+    window.undo();
+    QCOMPARE(rungCount(fx.embroideryId), std::size_t{4});
+    QCOMPARE(rungCount(fx.embroideryId2), std::size_t{4});
+    const auto guideAt = [&](ObjectId id, std::size_t index) {
+        return std::get<openstitch::document::SatinParams>(
+                   window.project_.findEmbroidery(id)->params)
+            .rungs[index];
+    };
+    QCOMPARE(guideAt(fx.embroideryId, 1).link_id, std::optional<std::uint32_t>{0});
+    QCOMPARE(guideAt(fx.embroideryId2, 1).link_id, std::optional<std::uint32_t>{0});
+
+    window.redo();
+    QCOMPARE(rungCount(fx.embroideryId), std::size_t{3});
+    QCOMPARE(rungCount(fx.embroideryId2), std::size_t{3});
+
+    auto* mode = window.findChild<QAction*>(QStringLiteral("action_satinGuideMode"));
+    mode->setChecked(false);
+    QCoreApplication::processEvents();
+}
+
+// Régression : un guide lié glissé SANS Maj reste un geste local (édition
+// d'angle propre à cette section) — seule la section 0 doit bouger, la
+// section 1 doit rester intacte. Couvre la non-régression du comportement
+// pré-existant (guides non liés / édition locale) une fois le geste de groupe
+// introduit.
+void MainWindowTest::satinLinkedGuideEndpointDragWithoutShiftStaysLocal() {
+    MainWindow window;
+    const Fixture fx = buildSatinJunctionFixture();
+    window.applyLoadedProject(fx.project);
+    window.resize(900, 700);
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+
+    selectJunctionAndAddLinkedGuides(window, fx);
+    const auto rungAt = [&](ObjectId id, std::size_t index) {
+        return std::get<openstitch::document::SatinParams>(
+                   window.project_.findEmbroidery(id)->params)
+            .rungs[index];
+    };
+
+    window.view_->centerOn(QPointF(1.0, -2.0));
+    QList<NodeHandleItem*> handles;
+    for (QGraphicsItem* item : window.baseItems_) {
+        if (auto* handle = dynamic_cast<NodeHandleItem*>(item)) {
+            handles.push_back(handle);
+        }
+    }
+    auto it = std::find_if(handles.begin(), handles.end(), [](const NodeHandleItem* handle) {
+        return std::abs(handle->scenePos().x() - 1.0) < 0.01 &&
+               std::abs(handle->scenePos().y()) < 0.01;
+    });
+    QVERIFY(it != handles.end());
+    auto* handle = *it;
+
+    const QPoint start = window.view_->mapFromScene(handle->scenePos());
+    const int availableRight = window.view_->viewport()->width() - 1 - start.x();
+    const int availableLeft = start.x();
+    const int direction = availableRight >= availableLeft ? 1 : -1;
+    const int movement = std::min(24, std::max(availableRight, availableLeft));
+    const QPoint end = start + QPoint(movement * direction, 0);
+    QVERIFY2((end - start).manhattanLength() >= QApplication::startDragDistance(),
+             qPrintable(QStringLiteral("déplacement écran insuffisant: %1 px")
+                            .arg((end - start).manhattanLength())));
+
+    QTest::mousePress(window.view_->viewport(), Qt::LeftButton, Qt::NoModifier, start);
+    QTest::mouseMove(window.view_->viewport(), (start + end) / 2);
+    QTest::mouseMove(window.view_->viewport(), end);
+    QTest::mouseRelease(window.view_->viewport(), Qt::LeftButton, Qt::NoModifier, end);
+
+    // canUndo() est déjà vrai (commande "Ajouter" du setup partagé) : on
+    // attend le NOM de la commande pour laisser le glisser différé s'exécuter.
+    QTRY_COMPARE(QString::fromStdString(window.undoStack_.undoName()),
+                 QStringLiteral("Déplacer un guide satin"));
+    QVERIFY(rungAt(fx.embroideryId, 1).a.x.value != 1'000);
+    QCOMPARE(rungAt(fx.embroideryId2, 1).a.x, Micrometers{1'000}); // section 1 intacte
+
+    auto* mode = window.findChild<QAction*>(QStringLiteral("action_satinGuideMode"));
     mode->setChecked(false);
     QCoreApplication::processEvents();
 }
