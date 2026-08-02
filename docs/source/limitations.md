@@ -19,7 +19,7 @@ fonctionnalité, vérifié dans le code.
 | Tatami | Présent · testé · SVG | Broderie | stitch_generation | oui | scanline + routage ; **sous-couches (contour + parallèle), underpath caché, entrée** (Lot 7) ; orientation éditable |
 | Satin (génération par barreaux) | Présent · testé · SVG | Broderie / inspecteur | stitch_generation | oui | `fill_satin_columns` : sections, espacement **perpendiculaire**, guides sélectionnables/ajoutables/supprimables/déplaçables avec undo/redo, points courts / split / terminaisons (Lot 3), **sous-couches (center/edge/zigzag) + compensation pull/push** (Lot 4, passes distinctes), **lock + entrée/sortie** (Lot 5), **routage multi-colonnes** (Lot 6) |
 | Modèle de passes | Présent · testé | (générateur) | stitch | oui | `StitchPass` par commande (Underlay/TopStitch/Travel/Lock/Manual) ; affichage/toggle par passe dans l'UI à venir |
-| Auto-satin géométrique (rails+barreaux) | Présent · testé · SVG | Auto + Broderie ▸ Convertir en satin | auto_satin | oui | formes simples, Y/T multi-sections et anneau fin en 4 sections ; cercle plein/forme large refusés |
+| Auto-satin géométrique (rails+barreaux) | Présent · testé · SVG | Auto + Broderie ▸ Convertir en satin | auto_satin | oui | formes simples, Y/T multi-sections et anneau fin en 4 sections ; **bouts ouverts étendus jusqu'au bord réel** (embouts arrondis/carrés, mission « auto-satin béton ») ; cercle plein/forme large refusés |
 | Classification auto des régions | **Expérimental** | Segmentation | autodigitize | oui | bandes fines → moteur topologique par défaut (`use_auto_satin`) ; refus → tatami ; moteur naïf désactivé |
 | Filtres d'affichage / calques | Implémenté | Affichage | desktop | (vue) | affichage seulement (couleur, type, taille ; image/régions/vecteurs/broderie) |
 | Ordre de couture | Implémenté | dock | optimization | oui | 2-opt non implémenté |
@@ -38,7 +38,7 @@ fonctionnalité, vérifié dans le code.
 
 ## Dette technique connue
 
-- Le compte CTest courant est **358** en Debug et Release ; éviter de figer ce
+- Le compte CTest courant est **364** en Debug et Release ; éviter de figer ce
   nombre dans les pages d'introduction sans le mettre à jour avec la CI.
 - Le satin dispose désormais d'un moteur géométrique par **squelette**
   (`auto_satin::build_satin_columns`, Lot 1) et d'une **génération par barreaux**
@@ -78,6 +78,16 @@ fonctionnalité, vérifié dans le code.
   bord **brut** si le retrait de contour échouait/disparaissait ; politique sûre
   désormais : aucune sous-couche de contour dans ce cas. `underlay_inset` et
   `underlay_spacing` sont exposés dans l'inspecteur (`PropertiesPanel`).
+- **Correctif « auto-satin béton » — extension des bouts ouverts** : un bout de
+  colonne sans jonction s'arrêtait, par artefact générique de l'amincissement
+  (Zhang-Suen), sensiblement avant le bord réel — un embout arrondi restait
+  entièrement hors couture (~11 % de la longueur d'une capsule de test), un bout
+  carré retractait aussi (~2,55 mm). Corrigé (`extend_tip`, activé par défaut) :
+  marche le long de la tangente sortante en ré-évaluant des sections
+  transversales réelles tant qu'elles rétrécissent, fermeture par bissection
+  (largeur plancher non nulle). Voir `docs/source/satin.md` § *Extension des
+  bouts ouverts*, sources (brevet Pulse Microsystems, littérature d'élagage de
+  squelette) citées dans ce même paragraphe.
 - **Correction de l'appariement rail gauche/rail droit (2026-08-01)** :
   l'ancien appariement (`fill_satin` sans barreaux, et l'interpolation
   intra-intervalle de `fill_satin_columns`) associait les deux rails par la

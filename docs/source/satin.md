@@ -253,7 +253,74 @@ extrémités donnent les rails ; la stabilité gauche/droite vient du signe de l
 normale (le rail A est toujours à gauche du sens de parcours). Les barreaux sont
 posés aux extrémités, aux virages, aux changements de largeur et à intervalle
 maximal. Un nettoyage anti-croisement retire les stations qui replieraient la
-colonne. Les rails **se terminent sur le contour** → pas de débordement structurel.
+colonne.
+
+### Extension des bouts ouverts jusqu'au bord réel
+
+*État : Présent · Testé numériquement · Validé visuellement (SVG).* Activé par
+défaut (`SatinColumnsParameters::extend_open_ends`), rétrocompatible.
+
+**Défaut trouvé par revue** (mission « auto-satin béton », audit du squelette
+existant confronté à la littérature — voir *Sources* ci-dessous) : un bout
+**ouvert** du squelette (sans jonction) s'arrête, par construction de
+l'amincissement (Zhang-Suen érode la forme progressivement depuis le bord),
+sensiblement **avant** le bord réel de la région. Démontré visuellement sur
+`capsule` (rectangle de 40 mm + deux demi-cercles de rayon 2,5 mm, longueur
+bout-à-bout réelle 45 mm) : avant correction, la colonne s'arrêtait à ~38,8 mm
+— les deux embouts arrondis (≈ 11 % de la longueur totale) restaient **entièrement
+hors couture**, un rectangle purement rendu vide au bout de chaque colonne. Le
+même retrait (proportionnel à la demi-largeur locale) affecte aussi un bout
+**carré** : sur `rectangle` (bouts plats, 40 mm), le retrait mesuré est de
+~2,55 mm par bout — un défaut générique de l'amincissement, pas spécifique aux
+formes arrondies.
+
+**Correction** (`extend_tip` dans `satin_column.cpp`) : pour chaque bout
+**sans jonction** (un bout de jonction reste inchangé — il doit rester
+exactement au nœud du squelette pour la reconciliation multi-sections), on
+marche depuis la dernière station le long de la tangente sortante par pas de
+`station_spacing`, en ré-évaluant une section transversale réelle (intersection
+avec le contour, pas une approximation) à chaque pas tant qu'elle continue de
+**rétrécir** (tolérance 5 % contre une marche qui déborderait dans une autre
+partie de la forme). La fermeture finale est localisée par **bissection** sur
+un test point-dans-région pur (robuste même quand la section transversale
+devient numériquement dégénérée tout près du bord), avec une marge de sûreté de
+quelques µm avant l'arrondi final en micromètres entiers — sans cette marge, la
+bissection converge si près du bord analytique que l'arrondi peut faire
+retomber le point de l'autre côté du polygone discrétisé (trouvé par un test
+en échec, corrigé avant commit). Le point de fermeture reçoit une **largeur
+plancher non nulle** (`tip_min_width`, 0,05 mm par défaut) plutôt qu'un barreau
+littéralement nul, pour rester exploitable tel quel par `fill_satin_columns`.
+Marche et bissection sont toutes deux **bornées** (200 pas / 24 bissections) :
+jamais de boucle infinie, même sur une géométrie pathologique. Les rails
+**se terminent désormais sur le contour réel** → plus de débordement structurel
+ET plus de zone non couverte.
+
+Vérifié : la longueur bout-à-bout d'une colonne `capsule` passe de ~38,8 mm à
+45,0 mm (±1 mm) — la valeur géométrique exacte ; un bout carré (`rectangle`)
+est également corrigé (40,0 mm au lieu de ~34,9 mm) ; les bouts de jonction
+d'un réseau Y restent géométriquement identiques désactivé/activé (seuls les
+bouts ouverts s'allongent) ; aucun barreau dégénéré après extension ; extension
+déterministe ; le bascule `extend_open_ends=false` restaure l'ancien
+comportement (SVG avant/après dans `tests/golden/auto-satin/columns-*.svg`).
+
+**Sources.** Ce mécanisme reprend, en le réimplémentant intégralement à partir
+des principes documentés (aucun code tiers consulté ni copié — projet
+Apache-2.0, jamais de dépendance à du code GPL) : le brevet Pulse Microsystems
+US6804573B2 *« Automatically generating embroidery designs from a scanned
+image »* ([Google Patents](https://patents.google.com/patent/US6804573)), qui
+décrit l'extension du nœud terminal du squelette « dans la direction de la
+branche squelettique entrante », proportionnellement à l'épaisseur locale, pour
+que le tracé final couvre l'embout entier d'un objet fin. Le même brevet motive
+deux pistes non retenues dans ce lot (portée limitée à la couverture des bouts) :
+la classification fin/épais par statistiques de transformée de distance
+(max/moyenne/écart-type le long du squelette, plus riche que nos seuils actuels
+largeur min/max) et l'ancrage des jonctions sur les concavités réelles du
+contour plutôt que sur la seule topologie du squelette. Voir aussi Bai, Latecki
+& Liu, *« Skeleton Pruning by Contour Partitioning with Discrete Curve
+Evolution »*, IEEE TPAMI 2007
+([PDF](https://cis.temple.edu/~latecki/Papers/skeletonPAMI06.pdf)) pour un
+élagage de squelette plus fidèle à la forme que notre seuil longueur/rayon
+actuel (`graph_cleanup.cpp`) — piste de travail future, non implémentée ici.
 
 Décision : `Suitable` → une colonne (axe principal) ; `RequiresDecomposition`
 (Y/T) → une colonne par branche menant à une extrémité. Un anneau fin à un

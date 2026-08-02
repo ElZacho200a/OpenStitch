@@ -15,20 +15,20 @@ Public : développeur, mainteneur.
   (invoquée via `add_test`, cf. Lot 8.1) — échoue si un site de production
   hors `libs/stitch_generation/` appelle `generate_sequence()` directement
   sans annotation `raw-sequence-ok:`, contournant les retouches manuelles.
-- Total au dernier passage vérifié : **358 tests CTest**, 100 % réussis.
+- Total au dernier passage vérifié : **364 tests CTest**, 100 % réussis.
 
 ## Encadré de traçabilité (dernier passage vérifié)
 
-Un simple « 358/358 » devient vite périmé ; voici le contexte exact du dernier
+Un simple « 364/364 » devient vite périmé ; voici le contexte exact du dernier
 passage vérifié manuellement. Régénérez ces valeurs avant toute publication.
 
 | Élément | Valeur |
 |---|---|
-| Commit (état du code testé) | `81af156` — édition atomique des groupes de guides liés (déplacement/suppression) |
+| Commit (état du code testé) | `25d28a4` — auto-satin : extension des bouts ouverts jusqu'au bord réel |
 | Compilateur | MSVC toolset 14.50 (Visual Studio 2026) |
 | CMake | 4.4.0-rc3 |
 | Configurations | Debug **et** Release |
-| Résultat CTest | 358 / 358 réussis |
+| Résultat CTest | 364 / 364 réussis |
 | Tests désactivés | 0 |
 | Fichiers de tests d'intégration | 1 (`tests/integration/test_pipeline.cpp`) |
 | Suites Qt (UI desktop) | 5 exécutables CTest (`tests/unit/desktop/`), 43 fonctions de test QTest |
@@ -38,7 +38,7 @@ passage vérifié manuellement. Régénérez ces valeurs avant toute publication
 Note : chaque `TEST_CASE` Catch2 est enregistré séparément par
 `catch_discover_tests`. Côté Qt, chaque exécutable QTest est un seul test CTest
 (`add_test`) qui contient plusieurs fonctions. Le nombre d'**assertions** est
-supérieur au nombre de tests CTest (358, garde structurelle CI incluse).
+supérieur au nombre de tests CTest (364, garde structurelle CI incluse).
 
 ## Exécution
 
@@ -269,6 +269,13 @@ But visé par l'utilisateur, dans l'ordre de valeur/risque :
   sections portant un identifiant de jonction commun, anneau fin → quatre
   sections formant un cycle, cercle plein/forme large refusés, déterminisme des
   rails et de la topologie ; SVG dans `tests/golden/auto-satin/`.
+- **Extension des bouts ouverts** (`extend_tip`, mission « auto-satin béton ») :
+  un bout arrondi (`capsule`) atteint le bord réel (longueur bout-à-bout 45 mm
+  ±1 mm, contre ~38,8 mm avant) ; un bout carré (`rectangle`) aussi (40 mm
+  contre ~34,9 mm) ; les jonctions d'un réseau Y restent géométriquement
+  identiques bascule activée/désactivée (seuls les bouts ouverts s'allongent) ;
+  aucun barreau dégénéré après extension ; déterminisme ; le bascule
+  `extend_open_ends=false` restaure l'ancien comportement.
 - **Persistance des réseaux satin** : aller-retour exact de l'index/nombre de
   sections et des jonctions, ancien satin sans `topology` encore lisible, index
   hors réseau refusé proprement.
