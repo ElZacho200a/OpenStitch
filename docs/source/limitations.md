@@ -12,6 +12,7 @@ fonctionnalité, vérifié dans le code.
 | Segmentation CIELAB + régions | Implémenté | Segmentation | segmentation | oui | 4-connexité |
 | Édition de régions | Implémenté | Segmentation | segmentation | oui | — |
 | Vectorisation | Implémenté | Segmentation | vectorization | oui | — |
+| Formes dessinées à la main (rectangle/ellipse/polygone) | Présent · testé | palette d'outils | geometry/desktop | QTest | pas de capture d'écran manuelle possible dans cet environnement de dev |
 | Édition de nœuds | Partiel | canevas | document | — | déplacement seul |
 | Édition d'objets broderie | Implémenté | inspecteur/clic droit | commands | oui | changer le type et **tous les paramètres** après création ; orientation à la poignée |
 | Interface (thème, panneaux, workflow) | Implémenté | desktop | desktop | (vue) | thème clair/sombre + densité, inspecteur, panneau Document, workflow, état d'accueil, persistance UI (QSettings) |
@@ -38,7 +39,7 @@ fonctionnalité, vérifié dans le code.
 
 ## Dette technique connue
 
-- Le compte CTest courant est **369** en Debug et Release ; éviter de figer ce
+- Le compte CTest courant est **379** en Debug et Release ; éviter de figer ce
   nombre dans les pages d'introduction sans le mettre à jour avec la CI.
 - Le satin dispose désormais d'un moteur géométrique par **squelette**
   (`auto_satin::build_satin_columns`, Lot 1) et d'une **génération par barreaux**
@@ -103,6 +104,19 @@ fonctionnalité, vérifié dans le code.
   contour*. Limite connue non corrigée : la forme "croix" (4 branches) a une
   topologie de squelette incorrecte (nœud de degré 2 au lieu de degré 4),
   défaut distinct situé dans `skeleton_graph.cpp`.
+- **Formes dessinées à la main (rectangle/ellipse/polygone)** : demande
+  utilisateur en cours de mission « auto-satin béton » — jusqu'ici, la seule
+  façon d'obtenir un `VectorObject` était de vectoriser une région depuis une
+  image importée, comme dans un logiciel de digitalisation classique (Hatch et
+  équivalents) qui permet aussi de dessiner directement une forme de base.
+  Trois outils dans la palette (rectangle glissé, ellipse glissée avec Maj =
+  cercle, polygone à clics successifs fermé par double-clic) créent un
+  `VectorObject` sans région source, immédiatement sélectionné : l'utilisateur
+  enchaîne avec les actions **Créer un…** existantes, sans nouveau chemin côté
+  broderie. Voir `docs/source/vectorization.md` § *Formes dessinées à la main*.
+  Testé par QTest (création, undo/redo, cadre dégénéré, tracé de polygone,
+  annulation) ; **pas de validation visuelle manuelle** dans cet environnement
+  de développement (capture d'écran de l'application non disponible).
 - **Correction de l'appariement rail gauche/rail droit (2026-08-01)** :
   l'ancien appariement (`fill_satin` sans barreaux, et l'interpolation
   intra-intervalle de `fill_satin_columns`) associait les deux rails par la

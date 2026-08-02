@@ -30,6 +30,46 @@ Un `document::VectorObject` contient un ou plusieurs `geometry::PathSet`
 (`outer` + `holes`), garde la couleur de la région et un lien vers la
 `RegionId` d'origine.
 
+## Formes dessinées à la main
+
+*État : Présent · Testé (QTest headless) · Validé visuellement : non (capture
+d'écran non disponible dans cet environnement — voir *Limitations*).* Activé
+par défaut, aucun réglage.
+
+Second chemin de création d'un `VectorObject`, indépendant de toute image :
+avant cette fonctionnalité, la seule façon d'obtenir un objet vectoriel était
+de vectoriser une région segmentée depuis une image importée — un logiciel de
+digitalisation classique (Hatch et équivalents) permet aussi de dessiner
+directement une forme de base sur le canevas. Trois outils dans la palette
+(barre d'outils gauche) :
+
+- **Rectangle** (`R`) : glisser un cadre élastique → rectangle à 4 coins droits.
+- **Ellipse** (`O`, Maj = cercle) : glisser un cadre élastique englobant →
+  ellipse à 4 nœuds **lisses** (tangentes de Bézier, constante de Kappa
+  ≈ 0,5523 — approximation standard, erreur radiale relative maximale
+  ~0,027 %). Maj enfoncée pendant le glisser : le côté le plus petit du cadre
+  contraint l'autre → cercle.
+- **Polygone** (`P`) : clics successifs posent les sommets (aperçu élastique
+  jusqu'au curseur) ; double-clic pour fermer (minimum 3 sommets, sinon le
+  tracé est abandonné sans rien créer) ; Échap annule le tracé en cours à tout
+  moment, y compris en changeant d'outil.
+
+La forme créée est un `VectorObject` **sans région source**
+(`source_region = std::nullopt` — le champ est optionnel précisément pour ce
+cas), automatiquement sélectionné : l'utilisateur enchaîne avec les actions
+**Créer un…** existantes (menu Broderie) pour la convertir en objet de
+broderie, exactement comme pour une forme vectorisée depuis une image. Aucun
+nouveau chemin de création côté broderie : le pipeline aval (génération,
+routage, export DST) est intégralement réutilisé.
+
+Géométrie construite par `libs/geometry/src/primitives.cpp`
+(`rectangle_path`/`ellipse_path`/`polygon_path`, testés indépendamment de Qt) ;
+`MainWindow` ne fait que router le geste souris (glisser pour
+rectangle/ellipse — mécanique de cadre élastique déjà utilisée pour le
+recadrage image, généralisée ; clics successifs pour le polygone) vers ces
+fonctions puis vers `AddVectorObjectCommand` (annulable, comme la
+vectorisation). Un cadre trop petit (glisser quasi nul) ne crée rien.
+
 ## Édition de nœuds
 
 Les nœuds de l'objet sélectionné s'affichent (poignées de taille constante) et se
@@ -55,5 +95,14 @@ observé : des trous trop simplifiés faisaient déborder les remplissages (voir
   `NodeRef`.
 - `libs/commands/.../project_commands.hpp` — `AddVectorObjectCommand`,
   `MoveNodeCommand`.
+- `libs/geometry/include/openstitch/geometry/primitives.hpp` + `src/primitives.cpp` —
+  `rectangle_path`, `ellipse_path`, `polygon_path` (formes dessinées à la main).
+- `apps/desktop/main_window.cpp` — `addVectorPrimitive`, `onBoxDrawn`,
+  `onCanvasDoubleClicked`, `updatePolygonPreview`/`finishPolygon`/
+  `cancelPolygonDraw` ; `apps/desktop/canvas_view.hpp/.cpp` — modes
+  `setBoxDrawMode`/`setPolygonDrawMode` (généralisation du cadre élastique de
+  recadrage).
 - Tests : `tests/unit/vectorization/test_vectorize.cpp`,
-  `tests/unit/geometry/test_simplify.cpp`, `test_clean.cpp`.
+  `tests/unit/geometry/test_simplify.cpp`, `test_clean.cpp`,
+  `test_primitives.cpp` ; `tests/unit/desktop/test_main_window.cpp` (création,
+  undo/redo, cadre dégénéré, tracé de polygone, annulation).
