@@ -207,12 +207,25 @@ RoutePlan route_columns(const std::vector<RouteColumn>& columns, Vec2um origin,
         }
         if (i == 0) {
             step.connector = ConnectorKind::Start;
-        } else if (gap <= static_cast<double>(config.underpath_max.value)) {
-            step.connector = ConnectorKind::Underpath;
-            ++plan.underpaths;
         } else {
-            step.connector = ConnectorKind::Jump;
-            ++plan.jumps;
+            // Une jonction commune validée garantit que l'espace entre les
+            // deux colonnes appartient au même réseau (tissu réel) : le
+            // trajet caché tolère alors jusqu'à `underpath_max`. Sans elle,
+            // aucune garantie géométrique n'existe — une simple proximité
+            // peut être fortuite (deux formes disjointes rapprochées par
+            // hasard) — le trajet caché n'est accordé que pour un quasi-contact
+            // (`underpath_max_without_junction`, bien plus strict).
+            const double limit = step.junction.has_value()
+                                     ? static_cast<double>(config.underpath_max.value)
+                                     : static_cast<double>(
+                                           config.underpath_max_without_junction.value);
+            if (gap <= limit) {
+                step.connector = ConnectorKind::Underpath;
+                ++plan.underpaths;
+            } else {
+                step.connector = ConnectorKind::Jump;
+                ++plan.jumps;
+            }
         }
         plan.steps.push_back(step);
         cur = exit_of(col, rev);

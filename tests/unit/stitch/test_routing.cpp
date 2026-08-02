@@ -111,6 +111,54 @@ TEST_CASE("routage : liaison longue -> saut (coupe), pas de trajet cache") {
     CHECK(plan.underpaths == 0);
 }
 
+// --- Trajet caché non justifié par une jonction (défaut trouvé par revue) ---
+//
+// Avant correction, seule `underpath_max` (8 mm) décidait d'un trajet caché,
+// sans jamais regarder si la liaison était justifiée par une jonction
+// commune. Deux colonnes SANS AUCUN lien topologique mais distantes de 5 à
+// 8 mm (deux lettres rapprochées, une forme en C dont les deux bouts se
+// frôlent sans être reliés) étaient donc cousues en ligne droite à travers un
+// espace dont rien ne garantit qu'il est couvert de tissu.
+
+TEST_CASE("routage : proche mais sans jonction commune -> desormais un saut") {
+    std::vector<RouteColumn> cols = {col(ObjectId{1}, P(0, 0), P(10'000, 0)),
+                                     col(ObjectId{2}, P(15'000, 0), P(25'000, 0))};
+    const auto plan = route_columns(cols, P(0, 0), RoutingConfig{});
+    REQUIRE(plan.steps.size() == 2);
+    // Gap = 5 mm : sous l'ancien seuil unique (8 mm), sous l'ancien code un
+    // trajet caché aurait été accepté ; au-dessus du nouveau seuil sans
+    // jonction (1,5 mm) -> saut.
+    CHECK(plan.steps[1].connector == ConnectorKind::Jump);
+    CHECK(plan.jumps == 1);
+    CHECK(plan.underpaths == 0);
+}
+
+TEST_CASE("routage : quasi en contact sans jonction -> trajet cache tolere") {
+    std::vector<RouteColumn> cols = {col(ObjectId{1}, P(0, 0), P(10'000, 0)),
+                                     col(ObjectId{2}, P(11'000, 0), P(20'000, 0))};
+    const auto plan = route_columns(cols, P(0, 0), RoutingConfig{});
+    REQUIRE(plan.steps.size() == 2);
+    // Gap = 1 mm < underpath_max_without_junction (1,5 mm) : un quasi-contact
+    // reste toléré, la borne stricte ne pénalise pas les cas légitimes.
+    CHECK(plan.steps[1].connector == ConnectorKind::Underpath);
+    CHECK(plan.underpaths == 1);
+}
+
+TEST_CASE("routage : jonction commune valide reste toleree au-dela du seuil strict") {
+    // Même écart (5 mm) que le premier test ci-dessus, mais justifié cette
+    // fois par une jonction partagée : le trajet caché reste autorisé jusqu'à
+    // underpath_max (8 mm), la jonction n'est pas pénalisée par le nouveau
+    // seuil strict réservé aux liaisons NON justifiées.
+    std::vector<RouteColumn> cols = {
+        network_col(ObjectId{1}, P(0, 0), P(10'000, 0), std::nullopt, 7),
+        network_col(ObjectId{2}, P(15'000, 0), P(25'000, 0), 7, std::nullopt)};
+    const auto plan = route_columns(cols, P(0, 0), RoutingConfig{});
+    REQUIRE(plan.steps.size() == 2);
+    CHECK(plan.steps[1].junction == std::optional<std::uint32_t>{7});
+    CHECK(plan.steps[1].connector == ConnectorKind::Underpath);
+    CHECK(plan.underpaths == 1);
+}
+
 TEST_CASE("routage : une jonction commune admissible prime sur une proximite fortuite") {
     // Après A, C est plus proche géométriquement mais seule B partage la
     // jonction 7. La topologie doit donc conserver A -> B.
@@ -178,6 +226,24 @@ TEST_CASE("generation : la topologie SatinParams atteint le routage du groupe") 
     CHECK(topStitchOrder[0] == project.embroidery_objects[0].id);
     CHECK(topStitchOrder[1] == project.embroidery_objects[1].id);
     CHECK(topStitchOrder[2] == project.embroidery_objects[2].id);
+}
+
+TEST_CASE("generation : deux sections sans jonction a 5mm ne sont plus cousues a travers le vide") {
+    // Même écart (5 mm) que "un groupe satin adjacent" (1 mm, toléré), mais
+    // sans aucune information de jonction/topologie : avant correction, le
+    // seuil unique (8 mm) aurait accepté un trajet caché ici aussi. Ces deux
+    // colonnes ne partagent aucun réseau connu -- la liaison doit rester un
+    // saut, jamais un fil cousu à travers un espace non garanti couvert.
+    auto project = group_project({straight_column(0, 20'000), straight_column(25'000, 45'000)});
+    const auto seq = generate_sequence(project);
+    REQUIRE(seq.has_value());
+    int jumps = 0, travel = 0;
+    for (const auto& c : seq->commands) {
+        if (c.type == stitch::CommandType::Jump) ++jumps;
+        if (c.type == stitch::CommandType::Stitch && c.pass == stitch::StitchPass::Travel) ++travel;
+    }
+    CHECK(jumps == 2);   // pose initiale + saut de liaison (non justifiee)
+    CHECK(travel == 0);  // aucun trajet cache sans jonction validee
 }
 
 TEST_CASE("generation : un groupe eloigne conserve des sauts") {
