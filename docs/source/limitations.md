@@ -39,7 +39,7 @@ fonctionnalité, vérifié dans le code.
 
 ## Dette technique connue
 
-- Le compte CTest courant est **379** en Debug et Release ; éviter de figer ce
+- Le compte CTest courant est **383** en Debug et Release ; éviter de figer ce
   nombre dans les pages d'introduction sans le mettre à jour avec la CI.
 - Le satin dispose désormais d'un moteur géométrique par **squelette**
   (`auto_satin::build_satin_columns`, Lot 1) et d'une **génération par barreaux**
@@ -104,6 +104,22 @@ fonctionnalité, vérifié dans le code.
   contour*. Limite connue non corrigée : la forme "croix" (4 branches) a une
   topologie de squelette incorrecte (nœud de degré 2 au lieu de degré 4),
   défaut distinct situé dans `skeleton_graph.cpp`.
+- **Correctif « auto-satin béton » (suite) — trajet caché non validé** :
+  `route_columns` décidait un trajet caché (`ConnectorKind::Underpath`, fil
+  caché sous la broderie, sans coupe) sur la seule distance (`gap ≤
+  underpath_max`, 8 mm), sans jamais regarder si `step.junction` — déjà
+  calculé juste au-dessus pour ce même pas — avait une valeur : deux colonnes
+  satin géométriquement proches mais **sans aucun lien topologique réel**
+  (deux lettres rapprochées, une forme en C dont les deux bouts se frôlent
+  sans être reliés) pouvaient donc être cousues en ligne droite à travers un
+  espace dont rien ne garantissait qu'il était couvert de tissu. Corrigé par
+  un seuil à deux paliers : `underpath_max` (8 mm, inchangé) ne s'applique
+  plus que si `step.junction` a une valeur — désormais fiable grâce à
+  l'ancrage exact des jonctions ci-dessus — sinon un nouveau seuil, bien plus
+  strict, `underpath_max_without_junction` (1,5 mm) ne tolère qu'un
+  quasi-contact (arrondi de rastérisation, extrémités coïncidentes) ; au-delà,
+  la liaison redevient un saut. Voir `docs/source/satin.md` § *Routage
+  multi-colonnes*.
 - **Formes dessinées à la main (rectangle/ellipse/polygone)** : demande
   utilisateur en cours de mission « auto-satin béton » — jusqu'ici, la seule
   façon d'obtenir un `VectorObject` était de vectoriser une région depuis une

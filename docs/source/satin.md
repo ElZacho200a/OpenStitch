@@ -644,10 +644,12 @@ document, avec de longs sauts. §13 les ordonne et les oriente ensemble
   **exactement** par programmation dynamique sur ses deux extrémités : maximum
   de liaisons par jonction, puis distance minimale
   (l'orientation choisie est imposée à `generate_satin` via entrée/sortie).
-- **Liaisons** : une transition courte (≤ `underpath_max`, défaut 8 mm) est
-  cousue en **trajet caché** (passe `Travel`, running stitch — pas de coupe) ;
-  au-delà, elle reste un **saut**. Minimise les coupes et les déplacements à
-  découvert.
+- **Liaisons** : une transition **justifiée par une jonction commune validée**
+  tolère jusqu'à `underpath_max` (défaut 8 mm) en **trajet caché** (passe
+  `Travel`, running stitch — pas de coupe) ; **sans** jonction, seul un
+  quasi-contact (`underpath_max_without_junction`, défaut 1,5 mm — bien plus
+  strict) l'autorise. Au-delà de la borne applicable, la liaison reste un
+  **saut**. Minimise les coupes et les déplacements à découvert.
 
 Une jonction déclarée mais séparée de plus de `underpath_max` est traitée comme
 incohérente et n'influence ni l'ordre ni le type de liaison. Cette garde évite
@@ -655,21 +657,37 @@ qu'un `.osp` altéré force un trajet caché arbitraire. Limite actuelle : le tr
 entre deux sections reste un segment échantillonné ; il ne suit pas encore le
 centre d'une branche déjà cousue lors d'un retour vers une jonction.
 
+**Correctif « auto-satin béton » (suite)** : `route_columns` ne regardait la
+jonction que pour l'ORDRE et l'ORIENTATION ; le TYPE de liaison (trajet caché ou
+saut) ne dépendait que de la distance, sans jamais vérifier qu'elle était
+justifiée par cette même jonction. Deux colonnes **sans aucun lien
+topologique** mais distantes de 5 à 8 mm — deux lettres rapprochées, une forme
+en C dont les deux bouts se frôlent sans être reliés — étaient donc cousues en
+trajet caché à travers un espace dont rien ne garantissait qu'il était couvert
+de tissu. Corrigé : le type de liaison distingue désormais explicitement les
+deux cas (jonction validée vs proximité seule), chacun avec sa propre borne.
+Une jonction reste géométriquement anchrée exactement (§ ancrage des jonctions
+ci-dessus), donc digne de confiance jusqu'à 8 mm ; une simple proximité, sans
+cette garantie, ne l'est que jusqu'à 1,5 mm.
+
 Le groupe routé est **contigu** et limité aux colonnes auto (porteuses de
 barreaux) de couleur et source identiques : l'ordre inter-groupes et le reste du
 document sont préservés. Un satin manuel isolé n'est pas réordonné.
 
 Vérifié : liste vide → plan vide ; une colonne → liaison de départ, aucun saut ;
 réordonnancement minimisant le déplacement ; orientation par l'extrémité proche ;
-liaison longue → saut, liaison courte → trajet caché ; à la génération, un groupe
-adjacent n'émet qu'un saut initial (le reste cousu), un groupe éloigné conserve
-ses sauts (SVG `tests/golden/auto-satin/lot6-route-*.svg` : trajets cachés en
-bleu, sauts en rouge pointillé).
+liaison longue → saut, liaison courte → trajet caché ; **liaison proche (5 mm)
+SANS jonction commune → désormais un saut** (défaut corrigé) ; la même liaison
+justifiée par une jonction reste un trajet caché ; un quasi-contact (1 mm) sans
+jonction reste toléré ; à la génération, un groupe adjacent n'émet qu'un saut
+initial (le reste cousu), un groupe éloigné **ou sans jonction commune**
+conserve ses sauts (SVG `tests/golden/auto-satin/lot6-route-*.svg` : trajets
+cachés en bleu, sauts en rouge pointillé).
 
 Limite : le trajet caché est un segment **direct** (échantillonné en points
-cousus) ; il n'est garanti *sous* la broderie que pour des colonnes adjacentes
-(le seuil `underpath_max` bascule les liaisons douteuses en sauts). Un routage
-suivant réellement la matière viendra avec le tatami avancé (Lot 7).
+cousus) ; il n'est garanti *sous* la broderie que pour des colonnes reliées par
+une jonction (ou en quasi-contact). Un routage suivant réellement la matière
+viendra avec le tatami avancé (Lot 7).
 
 ## Implémentation associée
 

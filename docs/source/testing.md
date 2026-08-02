@@ -15,20 +15,20 @@ Public : développeur, mainteneur.
   (invoquée via `add_test`, cf. Lot 8.1) — échoue si un site de production
   hors `libs/stitch_generation/` appelle `generate_sequence()` directement
   sans annotation `raw-sequence-ok:`, contournant les retouches manuelles.
-- Total au dernier passage vérifié : **379 tests CTest**, 100 % réussis.
+- Total au dernier passage vérifié : **383 tests CTest**, 100 % réussis.
 
 ## Encadré de traçabilité (dernier passage vérifié)
 
-Un simple « 379/379 » devient vite périmé ; voici le contexte exact du dernier
+Un simple « 383/383 » devient vite périmé ; voici le contexte exact du dernier
 passage vérifié manuellement. Régénérez ces valeurs avant toute publication.
 
 | Élément | Valeur |
 |---|---|
-| Commit (état du code testé) | `716df1f` — desktop : formes dessinees a la main (rectangle/ellipse/polygone) |
+| Commit (état du code testé) | `533d027` — routage : trajet cache non valide par une jonction |
 | Compilateur | MSVC toolset 14.50 (Visual Studio 2026) |
 | CMake | 4.4.0-rc3 |
 | Configurations | Debug **et** Release |
-| Résultat CTest | 379 / 379 réussis |
+| Résultat CTest | 383 / 383 réussis |
 | Tests désactivés | 0 |
 | Fichiers de tests d'intégration | 1 (`tests/integration/test_pipeline.cpp`) |
 | Suites Qt (UI desktop) | 5 exécutables CTest (`tests/unit/desktop/`), 50 fonctions de test QTest |
@@ -38,7 +38,7 @@ passage vérifié manuellement. Régénérez ces valeurs avant toute publication
 Note : chaque `TEST_CASE` Catch2 est enregistré séparément par
 `catch_discover_tests`. Côté Qt, chaque exécutable QTest est un seul test CTest
 (`add_test`) qui contient plusieurs fonctions. Le nombre d'**assertions** est
-supérieur au nombre de tests CTest (379, garde structurelle CI incluse).
+supérieur au nombre de tests CTest (383, garde structurelle CI incluse).
 
 ## Exécution
 
@@ -371,7 +371,22 @@ But visé par l'utilisateur, dans l'ordre de valeur/risque :
   proche sans relation topologique, tandis qu'une jonction trop distante est
   ignorée ; le test de génération vérifie que `SatinParams.topology` atteint le
   plan. Un groupe adjacent n'émet qu'un saut initial (le reste cousu en passe
-  `Travel`), un groupe éloigné conserve ses sauts.
+  `Travel`), un groupe éloigné **ou sans jonction commune** conserve ses sauts.
+- **Routage — trajet caché non validé (correctif, revue « auto-satin béton »
+  (suite))** : avant correction, seule la distance (`underpath_max`, 8 mm)
+  décidait d'un trajet caché, sans jamais vérifier `step.junction` — deux
+  colonnes proches (5 mm) mais **sans aucune jonction commune** auraient été
+  cousues en trajet caché à travers un espace non garanti couvert. Quatre
+  tests verrouillent le correctif (seuil à deux paliers, `underpath_max` si
+  `step.junction` a une valeur, `underpath_max_without_junction` sinon) :
+  liaison à 5 mm sans jonction → **saut** (avant : trajet caché, défaut) ;
+  quasi-contact à 1 mm sans jonction → trajet caché toujours toléré (seuil
+  strict non pénalisant) ; la même liaison à 5 mm **avec** jonction commune
+  validée reste un trajet caché jusqu'à 8 mm (jonction non pénalisée par le
+  nouveau seuil strict) ; au niveau génération, deux sections à 5 mm sans
+  jonction ne produisent plus aucun point `Travel` (0 trajet caché, 2 sauts).
+  Aucun test préexistant modifié : tous leurs écarts étaient déjà soit
+  quasi-contact, soit jonction-justifiés, soit très supérieurs à 8 mm.
 - **Tatami avancé (Lot 7)** : sous-couche de contour rentrée dans la forme ;
   sous-couche parallèle espacée ; underpath caché convertit au moins un saut en
   trajet cousu **sans jamais** traverser le trou (invariant préservé) et ne
