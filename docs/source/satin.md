@@ -375,12 +375,113 @@ section ; déterminisme ; le bascule `anchor_junction_ends=false` restaure
 l'ancienne dérive (régression volontairement reproduite pour prouver que le
 bascule agit réellement).
 
-**Limite connue, non corrigée ici** : la forme `cross` (croix à 4 branches)
-produit actuellement une topologie de squelette différente de l'attendu (un
-nœud de degré 2 au lieu d'un nœud de jonction unique de degré 4, stable sur
-toutes les résolutions de rasterisation testées) — un défaut distinct, situé
-dans l'extraction du graphe de squelette (`skeleton_graph.cpp`), pas dans
-l'ancrage des rails documenté ici. Non instruit dans ce lot.
+### Traçage du graphe de squelette : priorité aux nœuds, exclusion de l'origine
+
+*État : Présent · Testé numériquement.* Correctif de revue, `skeleton_graph.cpp`.
+
+**Défaut trouvé par revue** (deux symptômes distincts, même cause racine). Le
+traçage d'une arête (`build_skeleton_graph`) suit une chaîne de pixels de
+degré 2 depuis un pixel-nœud jusqu'au prochain pixel-nœud, en choisissant à
+chaque pas le **prochain voisin** parmi les 8 directions. L'ancien code
+s'arrêtait sur le **premier candidat rencontré** dans l'ordre fixe des 8
+directions, qu'il s'agisse d'un vrai nœud ou d'un simple pixel de
+continuation — alors qu'un pixel juste avant une jonction a souvent, en plus
+de la jonction elle-même, un pixel de degré 2 d'une **autre branche** dans
+son 8-voisinage (les branches se recouvrent physiquement près d'une
+confluence, cf. section précédente).
+
+1. **Jonction "croix" ramenée à un degré 2 au lieu de 4** (le défaut
+   initialement identifié, stable sur toutes les résolutions testées) : deux
+   bras opposés étaient fusionnés en une seule arête traversante quand le
+   pixel de l'un d'eux apparaissait avant le pixel de la jonction elle-même
+   dans l'ordre de balayage.
+2. **Branche entière perdue sur un réseau "y" avec arête parasite en boucle**
+   (défaut distinct, non documenté avant cette revue) : le pixel d'**origine**
+   de la trace pouvait être ré-atteint par un chemin de 2 pas différent de
+   celui emprunté au départ — seul le pixel immédiatement précédent était
+   exclu des candidats, pas le pixel d'origine de toute la trace. La tige du
+   "y" (une branche entière) disparaissait alors du graphe, remplacée par une
+   arête `from == to` de quelques centaines de µm sur la jonction, sans aucune
+   arête ni diagnostic pour l'utilisateur.
+
+**Correction** : priorité **absolue** à un nœud sur tout le 8-voisinage
+(balayage complet des 8 directions pour un nœud avant de retomber sur un
+pixel de continuation, au lieu du premier candidat rencontré), et exclusion
+du pixel d'**origine** de la trace (pas seulement le pixel précédent) pendant
+toute la marche.
+
+Vérifié : la jonction d'une `cross` a désormais un degré réel de 4 dans le
+graphe élagué (4 arêtes, 4 extrémités, 1 jonction) ; un réseau `y` conserve
+ses 3 branches (aucune arête `from == to`) ; aucune régression sur les formes
+déjà testées (`rectangle`, `t`, `capsule`, `ribbon`, `s`, `ring`, `wide`,
+`circle`).
+
+### Contrat de `graph_cleanup.cpp` : aucune suppression silencieuse
+
+*État : Présent · Testé numériquement.* Correctif de revue.
+
+**Défaut trouvé par revue** : `graph_cleanup.hpp` documente explicitement
+« ne supprime rien silencieusement (chaque suppression est diagnostiquée) »,
+mais `prune_graph` ne réinsérait un nœud dans le graphe élagué que s'il était
+référencé par au moins une arête vivante — un nœud du graphe brut **sans
+aucune arête** (isolé dès le départ, comme le point unique auquel se réduit
+le squelette d'un disque plein, ou devenu orphelin après élagage d'une arête
+terminale courte) disparaissait donc du résultat sans jamais apparaître dans
+`removed`, contredisant le contrat documenté.
+
+**Correction** : tout nœud du graphe d'origine non repris dans le graphe
+élagué (aucune arête vivante incidente, quelle qu'en soit la raison) est
+désormais systématiquement ajouté à `removed`, avec un motif explicite.
+Vérifié sur `circle` (squelette réduit à un point isolé) : le graphe élagué
+reste vide, mais le nœud isolé apparaît dans le diagnostic.
+
+### Arête Jonction-Jonction (pont d'un "H") convertie en colonne
+
+*État : Présent · Testé numériquement.* Correctif de revue, `satin_column.cpp`.
+
+**Défaut trouvé par revue** : `build_satin_columns` (cas `RequiresDecomposition`)
+ne convertissait en colonne que les arêtes du squelette élagué touchant au
+moins une **extrémité** (« une colonne par branche menant à une extrémité, bras
+du Y/T »). Une arête reliant **deux jonctions** — le pont horizontal d'un "H",
+topologie absente des formes de test précédentes (Y/T/croix n'ont qu'une seule
+jonction) — n'était donc jamais essayée : `r.columns` restait non vide (les
+bras des deux barres verticales étaient bien produits) et `r.refusal` restait
+vide (aucun signal d'erreur), mais le pont lui-même — une portion entière et
+visible de la région — ne recevait **aucun point de broderie**.
+
+**Correction** : toutes les arêtes du graphe élagué sont désormais essayées,
+sans distinction sur le type de leurs deux extrémités — `try_edge` gère déjà
+chaque bout indépendamment selon son type (extension si extrémité ouverte,
+ancrage si jonction), aucune branche de code particulière n'était nécessaire.
+Vérifié sur une fixture "H" dédiée (deux barres verticales de 40 mm reliées
+par un pont horizontal de 5 mm) : 5 colonnes produites (les 4 demi-barres +
+le pont), aucune collision aux deux jonctions, aucun barreau dégénéré.
+
+### Amputation de la queue instable : décroissance stricte, pas un seuil fixe
+
+*État : Présent · Testé numériquement.* Correctif de revue, `satin_column.cpp`.
+
+**Défaut trouvé par revue**, révélé par le correctif de traçage ci-dessus (la
+branche "y" auparavant perdue expose maintenant ce second défaut, jusque-là
+invisible faute d'atteindre `satin_column.cpp`). L'étape 1 de l'ancrage des
+jonctions (§ précédente) amputait la queue instable en comparant chaque
+station à sa **seule voisine immédiate** (seuil relatif fixe, +10 %) : ce
+critère suppose que le bourrelet de confluence retombe en un seul saut net.
+Mesuré sur la tige du "y" : la largeur décroît **progressivement** sur
+plusieurs stations (9200 → 8586 → 7576 → 6566 → 5554 → 5000 µm, stable),
+où **chaque écart pris isolément reste sous 10 %** (le premier, 9200 vs 8586,
+n'est que 7 %) mais la dérive cumulée atteint +72 % — l'ancien critère
+s'arrêtait dès le tout premier écart local insuffisant, laissant la
+quasi-totalité du bourrelet en place.
+
+**Correction** : le critère devient une décroissance **stricte** (avec une
+tolérance de 1 µm pour le bruit flottant) au lieu d'un seuil relatif fixe —
+toute décroissance signale qu'on est encore dans la zone d'influence de la
+confluence, sans hypothèse sur l'ampleur du saut d'une station à l'autre.
+Vérifié : la largeur de la tige du "y" (résolution 0,1 mm, où les 3 branches
+survivent désormais grâce au correctif de traçage) reste sous 1,2× la médiane
+sur toutes les stations, y compris celles immédiatement après la jonction ;
+aucune régression sur les cas déjà couverts (Y symétrique à 50 µm, T).
 
 Décision : `Suitable` → une colonne (axe principal) ; `RequiresDecomposition`
 (Y/T) → une colonne par branche menant à une extrémité. Un anneau fin à un
@@ -435,6 +536,41 @@ utilise `fill_satin_columns` au lieu de `fill_satin` :
 Vérifié : espacement médian régulier, barreaux exacts, rails de longueurs
 différentes, déterminisme (`tests/unit/stitch/test_satin.cpp`) ; zigzag superposé
 dans les SVG `tests/golden/auto-satin/`.
+
+### Barreaux par défaut pour un satin manuel (`default_rungs`)
+
+*État : Présent · Testé numériquement.* Correctif de revue.
+
+**Défaut trouvé par revue** : un satin créé **manuellement** (deux rails
+seuls, `MainWindow::createSatinObject` via **Broderie ▸ Colonne satin…**, cf.
+`rails_from_contour`) n'avait jamais de barreau, et retombait donc sur
+`fill_satin` — qui n'implémente qu'un **sous-ensemble** de `SatinConfig`
+(densité, compensation pull symétrique, sous-couche centrale). Les autres
+réglages Lot 3/4 (terminaisons, split, sous-couches de bord/zigzag,
+compensation push/pull asymétrique) restaient **silencieusement sans effet**,
+alors que l'inspecteur les expose et les laisse éditer sans aucune
+distinction ni avertissement pour ce type de satin : un utilisateur pouvait
+activer « Terminaison : Effilée » sur un satin manuel, voir le champ persister
+dans le `.osp`, sans jamais observer le moindre changement dans le résultat
+cousu.
+
+**Correction** : `default_rungs(rail_a, rail_b, spacing)` (nouvelle fonction
+publique de `satin.hpp`) génère des barreaux par défaut en réutilisant **la
+même correspondance ladder** que `fill_satin` (aucun nouvel algorithme de
+correspondance, aucun risque de régression géométrique), à l'espacement
+`density`. `createSatinObject` les assigne à `SatinParams.rungs`, ce qui fait
+désormais passer **tout nouveau satin manuel** par `fill_satin_columns` — le
+seul chemin implémentant l'intégralité de `SatinConfig`. Portée volontairement
+restreinte à ce seul point d'entrée : un projet historique chargé depuis un
+`.osp` sans barreaux continue de suivre `fill_satin` sans changement de
+comportement (rétrocompatibilité), et `fill_satin` lui-même n'est pas modifié.
+
+Vérifié : `default_rungs` produit au moins deux barreaux sur une colonne
+simple (vide sur des rails dégénérés) ; avec `cap_end = Tapered`, le même
+rail/config produit un bout à pleine largeur via `fill_satin` (réglage
+ignoré, ancien comportement) contre un bout réellement effilé via
+`fill_satin_columns` + `default_rungs` (réglage appliqué) — démontre que le
+défaut est bien corrigé, pas seulement que des barreaux existent.
 
 ### Édition interactive de plusieurs guides
 
@@ -588,6 +724,21 @@ passes séparément. Les sous-couches sont émises **avant** la couche supérieu
 - **Push longitudinale** : `push_start`/`push_end` étendent (ou rétractent) la
   colonne aux extrémités le long de l'axe.
 
+**Correctif de revue — rétraction bornée.** Contrairement à la compensation
+pull (bornée par `pull_max`), `push_start`/`push_end` n'avaient **aucune
+borne** : une rétraction excessive (`push` très négatif, p. ex. une valeur
+saisie par erreur en mm au lieu de µm) faisait passer le premier (ou dernier)
+fil de la colonne **de l'autre côté** de son voisin, inversant leur ordre le
+long de l'axe — un point auto-croisé visible en tout début/fin de colonne, la
+sous-couche `mids`/`cumMid` étant elle-même calculée **après** ce décalage
+(§ sous-couches ci-dessus, potentiellement corrompue en cascade). Corrigé :
+une rétraction ne dépasse désormais jamais la station voisine (borne dérivée,
+pas un seuil arbitraire — la même logique que l'exclusion des rails à
+l'ancrage des jonctions plus haut). Une extension (push positif) reste
+volontairement non bornée : elle éloigne le fil sans jamais croiser un autre
+point. Vérifié : une rétraction demandée de −50 mm sur une colonne de 1 mm de
+densité reste proche de son point d'origine (`tests/unit/stitch/test_satin.cpp`).
+
 Vérifié : center/edge/zigzag = 4 passes distinctes ordonnées, pull élargit **un
 seul côté** (asymétrique), push étend le bout, déterminisme, aller-retour `.osp`
 (SVG `tests/golden/auto-satin/lot4-*.svg` : sous-couches en vert).
@@ -620,6 +771,20 @@ départ, un à l'arrivée). Chaque bout se règle indépendamment
 Toutes les formes sont **bornées** (`lock_length`, défaut 0,8 mm) et ancrées à
 l'extrémité exacte du satin (continuité : pas de saut parasite grâce à
 l'enchaînement de passes à position identique).
+
+**Correctif de revue — borne réelle, pas seulement nominale.** `lock_length`
+n'était en réalité **jamais comparée** à la distance disponible : `toward`
+(le point voisin qui donne la direction du lock) est le point du rail
+**opposé** — donc la largeur locale du barreau, pas un point lointain le long
+de la couture. Sur une colonne fine (largeur < `lock_length`, cas courant
+pour du texte fin ou un petit motif), le lock piquait **hors de la matière
+déjà cousue**, dans du tissu vierge, sans qu'aucune borne ne l'en empêche.
+Corrigé : la longueur effective du lock ne dépasse désormais jamais la
+distance réelle vers `toward` (repli sur la longueur demandée uniquement
+dans le cas dégénéré où `toward == anchor`, sans référence géométrique
+fiable). Vérifié : sur une colonne de 0,3 mm de large avec `lock_length` par
+défaut (0,8 mm), tous les points du lock restent dans la largeur réelle,
+quel que soit le type (`tests/unit/stitch/test_satin.cpp`).
 
 Vérifié : `None` → vide ; les autres progressent dans l'axe de couture et restent
 bornés ; le point d'entrée fait démarrer la couture à la bonne extrémité ; locks
@@ -673,6 +838,25 @@ cette garantie, ne l'est que jusqu'à 1,5 mm.
 Le groupe routé est **contigu** et limité aux colonnes auto (porteuses de
 barreaux) de couleur et source identiques : l'ordre inter-groupes et le reste du
 document sont préservés. Un satin manuel isolé n'est pas réordonné.
+
+**Correctif de revue — le point de décision doit être le point réellement
+cousu.** `column_endpoints` (extrémités représentatives d'une colonne pour le
+routage) utilisait le milieu **brut** des barreaux d'about, alors que la
+génération réelle (`fill_satin_columns`) peut **décaler** ces mêmes extrémités
+via `push_start`/`push_end` (§ sous-couches et compensation, Lot 4) avant de
+coudre. La décision Underpath/saut se fondait donc sur un point différent de
+celui effectivement cousu : un écart évalué juste sous le seuil pouvait, une
+fois le décalage réel appliqué, le dépasser (trajet caché accordé à travers un
+espace non garanti couvert — précisément le défaut visé par le correctif
+« auto-satin béton (suite) » ci-dessus, réintroduit par un chemin différent),
+ou inversement imposer un saut évitable. Corrigé : `column_endpoints`
+reproduit désormais le même décalage (et la même borne de rétraction, § Lot 4)
+que celui réellement appliqué à la génération. Vérifié : deux colonnes dont
+l'écart **brut** entre barreaux (900 µm, sous le seuil sans jonction de
+1,5 mm) aurait autorisé un trajet caché, mais dont l'écart **réel** une fois
+`push_end` (rétraction de 700 µm) appliqué dépasse ce seuil (1,6 mm),
+produisent désormais un saut — pas un trajet caché injustifié
+(`tests/unit/stitch/test_routing.cpp`).
 
 Vérifié : liste vide → plan vide ; une colonne → liaison de départ, aucun saut ;
 réordonnancement minimisant le déplacement ; orientation par l'extrémité proche ;

@@ -15,20 +15,20 @@ Public : développeur, mainteneur.
   (invoquée via `add_test`, cf. Lot 8.1) — échoue si un site de production
   hors `libs/stitch_generation/` appelle `generate_sequence()` directement
   sans annotation `raw-sequence-ok:`, contournant les retouches manuelles.
-- Total au dernier passage vérifié : **383 tests CTest**, 100 % réussis.
+- Total au dernier passage vérifié : **394 tests CTest**, 100 % réussis.
 
 ## Encadré de traçabilité (dernier passage vérifié)
 
-Un simple « 383/383 » devient vite périmé ; voici le contexte exact du dernier
+Un simple « 394/394 » devient vite périmé ; voici le contexte exact du dernier
 passage vérifié manuellement. Régénérez ces valeurs avant toute publication.
 
 | Élément | Valeur |
 |---|---|
-| Commit (état du code testé) | `533d027` — routage : trajet cache non valide par une jonction |
+| Commit (état du code testé) | `47e1016` — audit satin adversarial : 8 defauts corriges |
 | Compilateur | MSVC toolset 14.50 (Visual Studio 2026) |
 | CMake | 4.4.0-rc3 |
 | Configurations | Debug **et** Release |
-| Résultat CTest | 383 / 383 réussis |
+| Résultat CTest | 394 / 394 réussis |
 | Tests désactivés | 0 |
 | Fichiers de tests d'intégration | 1 (`tests/integration/test_pipeline.cpp`) |
 | Suites Qt (UI desktop) | 5 exécutables CTest (`tests/unit/desktop/`), 50 fonctions de test QTest |
@@ -38,7 +38,7 @@ passage vérifié manuellement. Régénérez ces valeurs avant toute publication
 Note : chaque `TEST_CASE` Catch2 est enregistré séparément par
 `catch_discover_tests`. Côté Qt, chaque exécutable QTest est un seul test CTest
 (`add_test`) qui contient plusieurs fonctions. Le nombre d'**assertions** est
-supérieur au nombre de tests CTest (383, garde structurelle CI incluse).
+supérieur au nombre de tests CTest (394, garde structurelle CI incluse).
 
 ## Exécution
 
@@ -387,6 +387,36 @@ But visé par l'utilisateur, dans l'ordre de valeur/risque :
   jonction ne produisent plus aucun point `Travel` (0 trajet caché, 2 sauts).
   Aucun test préexistant modifié : tous leurs écarts étaient déjà soit
   quasi-contact, soit jonction-justifiés, soit très supérieurs à 8 mm.
+- **Audit satin adversarial (2026-08-02)** : 11 nouveaux tests verrouillant les
+  8 défauts trouvés par 4 audits indépendants du pipeline complet.
+  - `tests/unit/auto_satin/test_pipeline.cpp` : jonction d'une `cross`
+    correctement détectée à degré 4 réel dans le graphe élagué (comptage
+    d'arêtes incidentes, pas seulement le type déclaré du nœud) ; réseau `y`
+    conserve ses 3 branches, aucune arête `from == to` (auparavant : une
+    branche entière disparaissait) ; nœud isolé d'un `circle` (squelette réduit
+    à un point) apparaît dans `removed_branches` au lieu de disparaître
+    silencieusement.
+  - `tests/unit/auto_satin/test_columns.cpp` : nouvelle fixture `"h"`
+    (`shapes.cpp` — deux barres verticales reliées par un pont horizontal, 2
+    jonctions dont une arête Jonction-Jonction) — le pont est bien converti en
+    colonne (5 colonnes au total), aucune collision aux deux jonctions, aucun
+    barreau dégénéré ; jonction à 4 branches (`cross`, désormais correctement
+    détectée) — aucune collision de sommet reflex entre les 4 colonnes.
+  - `tests/unit/stitch/test_satin.cpp` : `default_rungs` produit au moins deux
+    barreaux sur une colonne simple (vide sur des rails dégénérés) et débloque
+    un réglage ignoré par `fill_satin` (`cap_end = Tapered` sans effet sans
+    barreaux, effectif avec) ; rétraction `push_start` demandée à −50 mm reste
+    bornée près de son origine (pas d'auto-croisement) ; lock sur une colonne
+    de 0,3 mm avec `lock_length` par défaut (0,8 mm) reste dans la largeur
+    réelle, quel que soit le type.
+  - `tests/unit/stitch/test_routing.cpp` : un écart brut de 900 µm (sous le
+    seuil sans jonction) devient un saut une fois le `push_end` (rétraction de
+    700 µm) réellement appliqué pris en compte (écart réel 1,6 mm, au-dessus
+    du seuil) — plus aucun trajet caché fondé sur un point non réellement
+    cousu.
+  Aucun test préexistant modifié dans cette revue (seules des fixtures/tests
+  nouveaux) — voir `docs/source/satin.md` pour le détail de chaque défaut et
+  son correctif.
 - **Tatami avancé (Lot 7)** : sous-couche de contour rentrée dans la forme ;
   sous-couche parallèle espacée ; underpath caché convertit au moins un saut en
   trajet cousu **sans jamais** traverser le trou (invariant préservé) et ne

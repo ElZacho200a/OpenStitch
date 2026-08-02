@@ -20,7 +20,7 @@ fonctionnalité, vérifié dans le code.
 | Tatami | Présent · testé · SVG | Broderie | stitch_generation | oui | scanline + routage ; **sous-couches (contour + parallèle), underpath caché, entrée** (Lot 7) ; orientation éditable |
 | Satin (génération par barreaux) | Présent · testé · SVG | Broderie / inspecteur | stitch_generation | oui | `fill_satin_columns` : sections, espacement **perpendiculaire**, guides sélectionnables/ajoutables/supprimables/déplaçables avec undo/redo, points courts / split / terminaisons (Lot 3), **sous-couches (center/edge/zigzag) + compensation pull/push** (Lot 4, passes distinctes), **lock + entrée/sortie** (Lot 5), **routage multi-colonnes** (Lot 6) |
 | Modèle de passes | Présent · testé | (générateur) | stitch | oui | `StitchPass` par commande (Underlay/TopStitch/Travel/Lock/Manual) ; affichage/toggle par passe dans l'UI à venir |
-| Auto-satin géométrique (rails+barreaux) | Présent · testé · SVG | Auto + Broderie ▸ Convertir en satin | auto_satin | oui | formes simples, Y/T multi-sections et anneau fin en 4 sections ; **bouts ouverts étendus jusqu'au bord réel** et **bouts de jonction ancrés sur les sommets reflex du contour** (mission « auto-satin béton ») ; cercle plein/forme large refusés ; croix à 4 branches : topologie de squelette incorrecte (défaut distinct, non corrigé) |
+| Auto-satin géométrique (rails+barreaux) | Présent · testé · SVG | Auto + Broderie ▸ Convertir en satin | auto_satin | oui | formes simples, Y/T multi-sections, croix à 4 branches (jonction degré 4 correctement détectée) et anneau fin en 4 sections ; **bouts ouverts étendus jusqu'au bord réel** et **bouts de jonction ancrés sur les sommets reflex du contour** (mission « auto-satin béton ») ; pont Jonction-Jonction (ex. un "H") converti en colonne ; cercle plein/forme large refusés |
 | Classification auto des régions | **Expérimental** | Segmentation | autodigitize | oui | bandes fines → moteur topologique par défaut (`use_auto_satin`) ; refus → tatami ; moteur naïf désactivé |
 | Filtres d'affichage / calques | Implémenté | Affichage | desktop | (vue) | affichage seulement (couleur, type, taille ; image/régions/vecteurs/broderie) |
 | Ordre de couture | Implémenté | dock | optimization | oui | 2-opt non implémenté |
@@ -39,7 +39,7 @@ fonctionnalité, vérifié dans le code.
 
 ## Dette technique connue
 
-- Le compte CTest courant est **383** en Debug et Release ; éviter de figer ce
+- Le compte CTest courant est **394** en Debug et Release ; éviter de figer ce
   nombre dans les pages d'introduction sans le mettre à jour avec la CI.
 - Le satin dispose désormais d'un moteur géométrique par **squelette**
   (`auto_satin::build_satin_columns`, Lot 1) et d'une **génération par barreaux**
@@ -101,9 +101,9 @@ fonctionnalité, vérifié dans le code.
   le plus proche, avec exclusion mutuelle si les deux rails d'une branche
   convoitent le même sommet (défaut réel trouvé sur "T", corrigé avant commit).
   Voir `docs/source/satin.md` § *Ancrage des jonctions sur les sommets reflex du
-  contour*. Limite connue non corrigée : la forme "croix" (4 branches) a une
-  topologie de squelette incorrecte (nœud de degré 2 au lieu de degré 4),
-  défaut distinct situé dans `skeleton_graph.cpp`.
+  contour*. La limite alors non corrigée (topologie de squelette incorrecte
+  sur la forme "croix", nœud de degré 2 au lieu de degré 4) a depuis été
+  corrigée — voir le correctif « audit satin adversarial » plus bas.
 - **Correctif « auto-satin béton » (suite) — trajet caché non validé** :
   `route_columns` décidait un trajet caché (`ConnectorKind::Underpath`, fil
   caché sous la broderie, sans coupe) sur la seule distance (`gap ≤
@@ -120,6 +120,47 @@ fonctionnalité, vérifié dans le code.
   quasi-contact (arrondi de rastérisation, extrémités coïncidentes) ; au-delà,
   la liaison redevient un saut. Voir `docs/source/satin.md` § *Routage
   multi-colonnes*.
+- **Audit satin adversarial (2026-08-02)** : revue systématique de tout le
+  pipeline satin (squelette, colonnes, remplissage, guides, routage, lock),
+  demandée explicitement par l'utilisateur (« vraiment check et recheck »).
+  Quatre audits indépendants ont trouvé 8 défauts réels, tous corrigés et
+  verrouillés par test :
+  - **`skeleton_graph.cpp`** : le traçage d'arête s'arrêtait sur le premier
+    voisin rencontré au lieu de prioriser un nœud sur tout le 8-voisinage —
+    cause racine du bug "croix" (degré 2 au lieu de 4) **et** d'un second
+    défaut non documenté (une branche entière de "y" disparaissait avec une
+    arête parasite en boucle sur la jonction, faute d'exclure le pixel
+    d'origine de la trace, pas seulement le précédent). Les deux corrigés.
+  - **`graph_cleanup.cpp`** violait son propre contrat (« ne supprime rien
+    silencieusement ») : un nœud sans aucune arête (isolé dès le départ)
+    disparaissait sans apparaître dans `removed`. Corrigé.
+  - **`satin_column.cpp`** : une arête reliant deux jonctions (le pont d'un
+    "H") n'était jamais convertie en colonne — zone non cousue, aucun
+    avertissement. Corrigé (toutes les arêtes sont désormais essayées).
+  - **`satin_column.cpp`** : l'amputation de la queue instable à l'ancrage
+    d'une jonction comparait chaque station à sa seule voisine immédiate
+    (+10 %), insuffisant si le bourrelet décroît progressivement sur
+    plusieurs stations (mesuré : +72 % cumulé, chaque écart local restant
+    sous 10 %). Corrigé par un critère de décroissance stricte.
+  - **`satin.cpp`** : tout satin créé manuellement (sans barreaux) retombait
+    sur `fill_satin`, qui n'implémente qu'un sous-ensemble de `SatinConfig` —
+    terminaisons/split/sous-couches de bord/compensation asymétrique restaient
+    silencieusement sans effet malgré l'inspecteur. Corrigé par
+    `default_rungs` (barreaux par défaut, même correspondance ladder),
+    appliqué à la création manuelle (`createSatinObject`).
+  - **`satin.cpp`** : `push_start`/`push_end` n'avaient aucune borne
+    (contrairement à `pull_max`) — une rétraction excessive croisait le
+    premier fil de la colonne sur lui-même. Corrigé (borné à la station
+    voisine).
+  - **`lock.cpp`** : la longueur du lock n'était jamais comparée à la
+    distance réelle disponible — sur une colonne fine, l'aiguille piquait
+    hors de la matière cousue. Corrigé.
+  - **`generate.cpp`** : la décision de routage (trajet caché/saut) se
+    fondait sur le milieu brut des barreaux, pas sur le point réellement
+    cousu une fois `push_start`/`push_end` appliqué — pouvait réintroduire le
+    défaut du correctif précédent par un chemin différent. Corrigé.
+  Détails et preuves de test pour chacun dans `docs/source/satin.md`.
+  **394 tests CTest** verts Debug/Release (383 avant + 11).
 - **Formes dessinées à la main (rectangle/ellipse/polygone)** : demande
   utilisateur en cours de mission « auto-satin béton » — jusqu'ici, la seule
   façon d'obtenir un `VectorObject` était de vectoriser une région depuis une
