@@ -495,22 +495,30 @@ std::vector<Station> extend_tip(const std::vector<Poly>& polys, P2 base, P2 marc
 // la ceinture réelle de CETTE branche — dès qu'on approche du nœud du
 // squelette ; démontré empiriquement : largeur stable ~5,0 mm loin de la
 // jonction, dérivant jusqu'à ~9,2 mm sur la dernière station). On retire les
-// stations terminales tant que leur largeur dépasse celle de leur voisine plus
-// intérieure de plus de 10 % (motif observé : croissance nette et soudaine, à
-// distinguer d'une variation progressive légitime ailleurs dans la forme —
-// cette fonction n'agit QUE sur un bout de jonction, jamais un bout ouvert).
-// Ancre ensuite CHAQUE rail, indépendamment, sur le sommet reflex du contour
-// le plus proche dans `searchRadius` : les deux rails d'une branche touchent
-// généralement DEUX encoches distinctes de la confluence (jamais le même
-// point). Sans ancre à portée pour un rail, sa dernière position calculée est
-// conservée (repli sans erreur).
+// stations terminales tant que leur largeur DÉCROÎT strictement vers
+// l'intérieur (motif observé : le bourrelet ne retombe pas toujours d'un seul
+// saut net, il peut décroître progressivement sur plusieurs stations — ex.
+// mesuré sur "y" : 9200 → 8586 → 7576 → 6566 → 5554 → 5000(stable), où CHAQUE
+// écart pris isolément reste sous 10 %, mais la dérive cumulée atteint +72 %.
+// Un ancien critère à seuil relatif fixe comparant seulement une station à sa
+// voisine immédiate s'arrêtait dès le premier écart local < 10 % — souvent le
+// tout premier, laissant la quasi-totalité du bourrelet en place — défaut
+// trouvé par revue. Toute décroissance stricte signale qu'on est encore dans
+// la zone d'influence de la confluence ; une variation progressive légitime
+// ailleurs dans la forme ne s'applique jamais ici, cette fonction n'agissant
+// QUE sur un bout de jonction, jamais un bout ouvert). Ancre ensuite CHAQUE
+// rail, indépendamment, sur le sommet reflex du contour le plus proche dans
+// `searchRadius` : les deux rails d'une branche touchent généralement DEUX
+// encoches distinctes de la confluence (jamais le même point). Sans ancre à
+// portée pour un rail, sa dernière position calculée est conservée (repli
+// sans erreur).
 void trim_and_anchor_junction_end(std::vector<Station>& st, bool atEnd,
                                   const std::vector<P2>& anchors, double searchRadius) {
-    constexpr double kGrowthFactor = 1.10;
+    constexpr double kEpsilon = 1.0;  // tolérance bruit flottant, en µm
     while (st.size() >= 3) {
         const Station& last = atEnd ? st.back() : st.front();
         const Station& prev = atEnd ? st[st.size() - 2] : st[1];
-        if (last.width > prev.width * kGrowthFactor) {
+        if (last.width > prev.width + kEpsilon) {
             if (atEnd) {
                 st.pop_back();
             } else {
@@ -801,13 +809,18 @@ SatinColumnsResult build_satin_columns(const geometry::PathSet& region,
             r.refusal = "trop de jonctions pour une décomposition fiable";
             return r;
         }
-        // Une colonne par branche menant à une extrémité (bras du Y/T).
+        // Une colonne par ARÊTE du squelette élagué, sans distinction sur le
+        // type de ses deux extrémités : une arête reliant deux jonctions (le
+        // pont d'un "H", ou plus généralement tout segment entre deux
+        // confluences) est un bras aussi réel que ceux menant à une extrémité
+        // — la restreindre aux arêtes touchant au moins une extrémité (ancien
+        // comportement) laissait ce pont totalement non converti en colonne,
+        // sans aucune couture ni avertissement (défaut trouvé par revue :
+        // `try_edge` gère déjà indépendamment chaque bout selon son type via
+        // `startIsJunction`/`endIsJunction`, donc aucune branche particulière
+        // n'était nécessaire ici).
         for (const auto& e : graph.edges) {
-            const bool armFrom = graph.nodes[e.from].type == SkeletonNodeType::Endpoint;
-            const bool armTo = graph.nodes[e.to].type == SkeletonNodeType::Endpoint;
-            if (armFrom || armTo) {
-                try_edge(e);
-            }
+            try_edge(e);
         }
         if (r.columns.empty()) {
             r.refusal = "aucune branche exploitable";

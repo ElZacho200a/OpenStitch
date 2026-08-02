@@ -9,7 +9,7 @@
 namespace openstitch::auto_satin {
 
 // Corpus de formes procédurales pour le diagnostic et les tests (§29).
-// Noms : rectangle, capsule, ribbon, s, y, t, cross, circle, ring,
+// Noms : rectangle, capsule, ribbon, s, y, t, cross, h, circle, ring,
 // wide, tiny. Renvoie nullopt si le nom est inconnu.
 [[nodiscard]] std::optional<geometry::PathSet> make_shape(const std::string& name);
 

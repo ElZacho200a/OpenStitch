@@ -134,23 +134,56 @@ SkeletonGraph build_skeleton_graph(const RasterMask& s, const DistanceField& d) 
                     used[idx(cx, cy)] = 1;
                     line.push_back(s.transform.to_um(cx, cy));
                     radii.push_back(radius_at(d, cx, cy));
-                    // Prochain voisin de degré 2 différent de celui d'où l'on vient.
+                    // Un nœud voisin est TOUJOURS prioritaire sur un pixel de
+                    // degré 2, quel que soit l'ordre de balayage des 8 directions :
+                    // un pixel juste avant une jonction peut avoir, en plus de la
+                    // jonction elle-même, un pixel de degré 2 d'une AUTRE branche
+                    // dans son 8-voisinage (branches proches à la jonction). Ne
+                    // s'arrêter sur le premier candidat rencontré (ancien
+                    // comportement) pouvait donc sauter la jonction et fusionner
+                    // deux branches en une seule arête si ce pixel d'une autre
+                    // branche apparaissait plus tôt dans l'ordre fixe des
+                    // directions — défaut trouvé par revue (jonction de "croix"
+                    // ramenée à un degré 2 au lieu de 4).
+                    //
+                    // Le pixel d'ORIGINE de la trace (x, y, pas seulement le
+                    // précédent px, py) est exclu de tout candidat : près d'une
+                    // jonction, l'amincissement (Zhang-Suen) laisse souvent un
+                    // petit amas de plusieurs pixels allumés autour du pixel-nœud
+                    // réel (un « hub » de 2-3 px de large), dont certains
+                    // touchent directement le pixel d'origine par un chemin de 2
+                    // pas différent de celui emprunté au départ. Sans cette
+                    // exclusion, la trace pouvait boucler sur son propre nœud de
+                    // départ (arête parasite `from == to`, quelques centaines de
+                    // µm) en consommant au passage le seul pixel d'accès vers une
+                    // branche réelle plus loin, qui disparaissait alors du graphe
+                    // sans aucune arête ni diagnostic — défaut trouvé par revue
+                    // (branche sud entière perdue sur un réseau "y").
                     int nx = -1, ny = -1;
                     for (int m = 0; m < 8; ++m) {
                         const int tx = cx + DX[static_cast<std::size_t>(m)];
                         const int ty = cy + DY[static_cast<std::size_t>(m)];
-                        if ((tx == px && ty == py) || !s.at(tx, ty)) {
+                        if ((tx == px && ty == py) || (tx == x && ty == y) || !s.at(tx, ty)) {
                             continue;
                         }
                         if (node_at[idx(tx, ty)] != 0) {
                             nx = tx;
                             ny = ty;
-                            break;  // atteint un nœud : on s'arrête
+                            break;  // atteint un nœud : priorité absolue.
                         }
-                        if (!used[idx(tx, ty)]) {
-                            nx = tx;
-                            ny = ty;
-                            break;
+                    }
+                    if (nx < 0) {
+                        for (int m = 0; m < 8; ++m) {
+                            const int tx = cx + DX[static_cast<std::size_t>(m)];
+                            const int ty = cy + DY[static_cast<std::size_t>(m)];
+                            if ((tx == px && ty == py) || (tx == x && ty == y) || !s.at(tx, ty)) {
+                                continue;
+                            }
+                            if (!used[idx(tx, ty)]) {
+                                nx = tx;
+                                ny = ty;
+                                break;
+                            }
                         }
                     }
                     if (nx < 0) {

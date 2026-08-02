@@ -256,3 +256,27 @@ TEST_CASE("generation : un groupe eloigne conserve des sauts") {
     }
     CHECK(jumps == 2);  // pose initiale + saut de liaison (trop long pour cacher)
 }
+
+TEST_CASE("generation : push_end deplace le point reellement couse, la decision de routage en tient compte") {
+    // Colonne A [0..10000] avec push_end negatif (retraction reelle du bout de
+    // 700 um, cf. satin.cpp) : son dernier point reellement couse est donc a
+    // x=9300, pas x=10000. Colonne B commence a x=10900. Ecart BRUT (barreaux,
+    // avant decalage) = 900 um (< seuil sans jonction 1500 um -> aurait ete
+    // Underpath avant correction). Ecart REEL une fois le decalage applique =
+    // 1600 um (> 1500 -> doit devenir un saut). Avant le correctif de
+    // `column_endpoints` (defaut trouve par revue), la decision de routage se
+    // fondait sur le barreau brut et aurait accorde un trajet cache a travers
+    // un espace en realite non couvert (au-dela du bout reellement cousu).
+    auto a = straight_column(0, 10'000);
+    a.push_end = Micrometers{-700};
+    auto project = group_project({a, straight_column(10'900, 30'000)});
+    const auto seq = generate_sequence(project);
+    REQUIRE(seq.has_value());
+    int jumps = 0, travel = 0;
+    for (const auto& c : seq->commands) {
+        if (c.type == stitch::CommandType::Jump) ++jumps;
+        if (c.type == stitch::CommandType::Stitch && c.pass == stitch::StitchPass::Travel) ++travel;
+    }
+    CHECK(jumps == 2);   // pose initiale + saut de liaison (ecart reel > seuil)
+    CHECK(travel == 0);  // aucun trajet cache : l'espace reel n'est pas garanti couvert
+}

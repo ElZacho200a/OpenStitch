@@ -140,6 +140,15 @@ std::optional<geometry::PathSet> make_shape(const std::string& name) {
         std::vector<Path> parts{rect(-20'000, -W, 20'000, W), rect(-W, -20'000, W, 20'000)};
         return from_union(parts);
     }
+    if (name == "h") {
+        // Deux barres verticales (40 mm) reliees par un pont horizontal (5 mm)
+        // a mi-hauteur : 2 jonctions T, dont une arete de squelette Jonction-
+        // Jonction (le pont lui-meme) -- topologie absente des autres fixtures.
+        std::vector<Path> parts{rect(-20'000 - W, -20'000, -20'000 + W, 20'000),
+                                rect(20'000 - W, -20'000, 20'000 + W, 20'000),
+                                rect(-20'000, -W, 20'000, W)};
+        return from_union(parts);
+    }
     if (name == "circle") {
         return single(circle(0, 0, 15'000));
     }

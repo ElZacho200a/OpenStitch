@@ -112,6 +112,23 @@ struct SatinResult {
                                              const std::vector<SatinRungSeg>& rungs,
                                              const SatinConfig& config);
 
+// Génère des barreaux par défaut (correspondance ladder), à l'espacement
+// donné, entre deux rails sans barreaux explicites — pour amener un satin créé
+// manuellement (deux rails seuls, cf. `rails_from_contour`) sur le MÊME chemin
+// de génération que le satin auto (barreaux) : seul `fill_satin_columns`
+// implémente l'intégralité de `SatinConfig` (sous-couches de bord/zigzag,
+// terminaisons, split, compensation push/pull asymétrique) ; `fill_satin`
+// (utilisé quand `rungs` a moins de 2 éléments) n'en implémente qu'un
+// sous-ensemble (densité, compensation symétrique, sous-couche centrale) —
+// défaut trouvé par revue : l'inspecteur exposait ces réglages pour TOUT
+// satin, y compris manuel, sans avertissement ni effet réel sur le résultat
+// cousu dans ce cas. Retourne un vecteur vide si les rails sont trop
+// courts/dégénérés (l'appelant retombe alors sur `fill_satin`, comportement
+// inchangé).
+[[nodiscard]] std::vector<SatinRungSeg> default_rungs(const geometry::Path& rail_a,
+                                                       const geometry::Path& rail_b,
+                                                       Micrometers spacing);
+
 // Découpe un contour fermé en deux rails, coupé aux deux sommets les plus
 // éloignés (les « bouts » de la colonne). Convient aux formes allongées.
 // Renvoie nullopt si le contour est trop petit.

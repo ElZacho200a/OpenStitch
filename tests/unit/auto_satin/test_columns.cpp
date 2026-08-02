@@ -384,6 +384,76 @@ TEST_CASE("colonnes : jonction Y symetrique - trois sommets partages exactement"
     }
 }
 
+// --- Arête Jonction-Jonction (pont d'un "H") ---------------------------------
+//
+// Défaut trouvé par revue : `build_satin_columns` ne convertissait en colonne
+// que les arêtes du squelette touchant au moins une EXTRÉMITÉ (bras du Y/T).
+// Une arête reliant deux jonctions (le pont horizontal d'un "H", topologie
+// absente des fixtures précédentes) n'était donc jamais essayée : `r.columns`
+// restait non vide (les bras des deux barres verticales étaient bien produits)
+// et `r.refusal` restait vide (aucun signal d'erreur), mais le pont lui-même —
+// une portion entière, visible, de la région — ne recevait aucun point de
+// broderie. Corrigé en traitant TOUTES les arêtes du graphe élagué, sans
+// distinction sur le type de leurs extrémités (`try_edge` gère déjà chaque
+// bout indépendamment selon son type).
+
+TEST_CASE("colonnes : pont Jonction-Jonction d'un H converti en colonne") {
+    const auto r = columns_of("h");
+    REQUIRE(r.refusal.empty());
+    // 5 arêtes de squelette attendues : 2 demi-barres par branche verticale
+    // (haut/bas de chaque jonction) + le pont horizontal lui-même.
+    REQUIRE(r.columns.size() == 5);
+
+    const auto bridge = std::find_if(r.columns.begin(), r.columns.end(), [](const auto& c) {
+        return c.start_junction.has_value() && c.end_junction.has_value();
+    });
+    REQUIRE(bridge != r.columns.end());
+    CHECK(*bridge->start_junction != *bridge->end_junction);
+    CHECK_FALSE(bridge->rungs.empty());
+    for (const auto& rung : bridge->rungs) {
+        CHECK(length_um(rung.a - rung.b) > 0.0);
+    }
+
+    std::set<std::uint32_t> junctions;
+    for (const auto& c : r.columns) {
+        if (c.start_junction) junctions.insert(*c.start_junction);
+        if (c.end_junction) junctions.insert(*c.end_junction);
+    }
+    REQUIRE(junctions.size() == 2);
+    for (auto j : junctions) {
+        check_junction_no_collision(r, j);
+    }
+}
+
+// --- Jonction a 4 branches (croix) -------------------------------------------
+//
+// L'exclusion de sommet reflex (`nearestExcluding`) n'est garantie que DANS un
+// même appel de `trim_and_anchor_junction_end` (les deux rails d'une même
+// station), jamais explicitement ENTRE les colonnes de branches différentes
+// convergeant vers la même jonction à haut degré. Non corrigé (latent, jamais
+// démontré défaillant) : verrouille le comportement actuel par un test dédié,
+// utile en particulier maintenant que le correctif du squelette (voir
+// skeleton_graph.cpp) rend la jonction de "croix" enfin correctement détectée
+// à degré 4 (elle retombait auparavant à degré 2 par un bug distinct).
+
+TEST_CASE("colonnes : jonction a 4 branches (croix) - aucune collision") {
+    const auto r = columns_of("cross");
+    REQUIRE(r.refusal.empty());
+    REQUIRE(r.columns.size() == 4);
+    std::set<std::uint32_t> junctions;
+    for (const auto& c : r.columns) {
+        if (c.start_junction) junctions.insert(*c.start_junction);
+        if (c.end_junction) junctions.insert(*c.end_junction);
+    }
+    REQUIRE(junctions.size() == 1);
+    check_junction_no_collision(r, *junctions.begin());
+    for (const auto& col : r.columns) {
+        for (const auto& rung : col.rungs) {
+            CHECK(length_um(rung.a - rung.b) > 0.0);
+        }
+    }
+}
+
 TEST_CASE("colonnes : jonction T - aucune collision (barreau degenere)") {
     // Le "T" (cf. shapes.cpp) n'a que DEUX encoches reelles pour trois
     // branches : le sommet de la branche verticale est exactement au ras du

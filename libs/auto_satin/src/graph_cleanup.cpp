@@ -102,6 +102,20 @@ GraphCleanupResult prune_graph(const SkeletonGraph& graph, const GraphCleanupPar
         e.to = remap[e.to];
         result.graph.edges.push_back(std::move(e));
     }
+
+    // Un nœud du graphe d'origine sans AUCUNE arête vivante incidente (isolé dès
+    // le départ, ou devenu orphelin après élagage d'une arête terminale courte)
+    // n'est référencé par aucune paire (from, to) ci-dessus et disparaîtrait donc
+    // du graphe résultat sans jamais apparaître dans `remap` ni dans `removed` —
+    // violation du contrat documenté (« ne supprime rien silencieusement »).
+    // Défaut trouvé par revue. Diagnostiqué ici explicitement.
+    for (std::size_t nid = 0; nid < graph.nodes.size(); ++nid) {
+        if (remap[nid] != 0xFFFFFFFF) {
+            continue;
+        }
+        result.removed.push_back({0.0, graph.nodes[nid].local_radius_um,
+                                   "noeud sans arete vivante (isole ou orphelin apres elagage)"});
+    }
     return result;
 }
 

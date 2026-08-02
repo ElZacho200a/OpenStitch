@@ -261,6 +261,61 @@ TEST_CASE("caps : flat garde la pleine largeur au bout") {
     CHECK(thread_width(r.satin, nThreads - 1) > 5'000.0);
 }
 
+// --- Barreaux par défaut (satin manuel) --------------------------------------
+//
+// Défaut trouvé par revue : un satin créé sans barreaux explicites (deux
+// rails seuls, cf. `rails_from_contour`) retombe sur `fill_satin`, qui
+// n'implémente qu'un sous-ensemble de `SatinConfig` (densité, compensation
+// symétrique, sous-couche centrale) — tous les autres réglages (terminaisons,
+// split, sous-couches de bord/zigzag, compensation push/pull asymétrique)
+// restent silencieusement sans effet. `default_rungs` produit des barreaux
+// (par la même correspondance ladder que `fill_satin`) pour amener ce cas sur
+// le chemin `fill_satin_columns`, qui les implémente tous.
+
+TEST_CASE("barreaux par defaut : au moins deux barreaux sur une colonne simple") {
+    const auto railA = open_path({{0, 0}, {20'000, 0}});
+    const auto railB = open_path({{0, 5'000}, {20'000, 5'000}});
+    const auto rungs = default_rungs(railA, railB, Micrometers{2'000});
+    REQUIRE(rungs.size() >= 2);
+    // Chaque barreau relie effectivement un point du rail A à un point du rail B.
+    for (const auto& r : rungs) {
+        CHECK(r.first.y.value == 0);
+        CHECK(r.second.y.value == 5'000);
+    }
+}
+
+TEST_CASE("barreaux par defaut : vide sur des rails degeneres") {
+    const auto railA = open_path({{0, 0}});  // un seul point
+    const auto railB = open_path({{0, 5'000}, {20'000, 5'000}});
+    CHECK(default_rungs(railA, railB, Micrometers{2'000}).empty());
+}
+
+TEST_CASE("barreaux par defaut : debloque les reglages ignores par fill_satin (terminaison effilee)") {
+    // Même colonne, même config (cap_end = Tapered), UNE FOIS sans barreaux
+    // (fill_satin, l'ancien comportement pour un satin manuel -- Tapered SANS
+    // EFFET) et une fois avec les barreaux par défaut (fill_satin_columns,
+    // Tapered rétrécit réellement le bout) -- démontre que le défaut est
+    // réellement corrigé, pas seulement que `default_rungs` produit des
+    // barreaux.
+    const auto railA = open_path({{0, 0}, {20'000, 0}});
+    const auto railB = open_path({{0, 6'000}, {20'000, 6'000}});
+    SatinConfig cfg;
+    cfg.density = Micrometers{1'000};
+    cfg.cap_end = SatinCapType::Tapered;
+
+    const auto withoutRungs = fill_satin(railA, railB, cfg);
+    const std::size_t nBare = withoutRungs.satin.size() / 2;
+    REQUIRE(nBare >= 2);
+    CHECK(thread_width(withoutRungs.satin, nBare - 1) > 5'500.0);  // pleine largeur : Tapered ignoré
+
+    const auto rungs = default_rungs(railA, railB, cfg.density);
+    REQUIRE(rungs.size() >= 2);
+    const auto withRungs = fill_satin_columns(railA, railB, rungs, cfg);
+    const std::size_t nCols = withRungs.satin.size() / 2;
+    REQUIRE(nCols >= 2);
+    CHECK(thread_width(withRungs.satin, nCols - 1) < 5'500.0);  // effilé : Tapered appliqué
+}
+
 // --- Lot 5 : lock stitches ---------------------------------------------------
 
 TEST_CASE("lock : None -> vide ; sinon ancre au point et de taille bornee") {
@@ -279,6 +334,22 @@ TEST_CASE("lock : None -> vide ; sinon ancre au point et de taille bornee") {
         std::int32_t maxX = anchor.x.value;
         for (const auto& p : pts) maxX = std::max(maxX, p.x.value);
         CHECK(maxX >= anchor.x.value + 600);
+    }
+}
+
+TEST_CASE("lock : jamais au-dela du point voisin (colonne fine)") {
+    // Défaut trouvé par revue : `length` (souvent la valeur par défaut,
+    // 800 µm) n'était jamais comparée à la distance réelle vers `toward` (le
+    // point du rail OPPOSÉ, donc la largeur locale du barreau) — sur une
+    // colonne fine (largeur < `length`, cas courant pour du texte fin),
+    // l'aiguille piquait hors de la matière déjà cousue.
+    const Vec2um anchor = v(0, 0);
+    const Vec2um toward = v(300, 0);  // rail opposé très proche (colonne 0,3 mm)
+    for (auto type : {LockType::BackAndForth, LockType::Triangle, LockType::MicroZigzag}) {
+        const auto pts = lock_stitches(anchor, toward, type, Micrometers{800}, 2);
+        for (const auto& p : pts) {
+            CHECK(p.x.value <= 300);  // jamais au-delà de `toward` le long de l'axe
+        }
     }
 }
 
@@ -312,6 +383,11 @@ std::int32_t maxY(const std::vector<Vec2um>& v) {
 std::int32_t maxX(const std::vector<Vec2um>& v) {
     std::int32_t m = INT32_MIN;
     for (auto p : v) m = std::max(m, p.x.value);
+    return m;
+}
+std::int32_t minX(const std::vector<Vec2um>& v) {
+    std::int32_t m = INT32_MAX;
+    for (auto p : v) m = std::min(m, p.x.value);
     return m;
 }
 }  // namespace
@@ -359,6 +435,26 @@ TEST_CASE("compensation push : etend la colonne au bout") {
     ext.push_end = Micrometers{2'000};
     CHECK(maxX(fill_satin_columns(c.a, c.b, c.rungs, ext).satin) >
           maxX(fill_satin_columns(c.a, c.b, c.rungs, base).satin) + 1'500);
+}
+
+TEST_CASE("compensation push : retraction bornee, jamais au-dela de la station voisine") {
+    // Défaut trouvé par revue : contrairement à `pull_left`/`pull_right`
+    // (bornés par `pull_max`), `push_start`/`push_end` n'avaient aucune borne.
+    // Une rétraction excessive (`push_start` très négatif) faisait passer le
+    // premier fil de la colonne DE L'AUTRE CÔTÉ du second, inversant leur
+    // ordre le long de l'axe (auto-croisement au tout début de la colonne).
+    // La rétraction est désormais bornée pour ne jamais dépasser la station
+    // voisine (colonne `straight6()` : premier barreau à x=0, voisin ~x=1000).
+    const Column c = straight6();
+    SatinConfig cfg;
+    cfg.density = Micrometers{1'000};
+    cfg.push_start = Micrometers{-50'000};  // rétraction demandée très excessive
+    const auto r = fill_satin_columns(c.a, c.b, c.rungs, cfg);
+    REQUIRE(r.satin.size() >= 4);
+    // Sans borne, le premier fil se retrouverait vers x=-50000 (auto-croisement
+    // massif avec tout le reste de la colonne). Avec la borne, il reste proche
+    // de x=0, jamais au-delà de la station voisine dans le sens négatif.
+    CHECK(minX(r.satin) > -1'000);
 }
 
 TEST_CASE("underlays + compensation : deterministe") {

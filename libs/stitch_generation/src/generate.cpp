@@ -2,6 +2,7 @@
 #include "openstitch/stitch_generation/generate.hpp"
 
 #include <algorithm>
+#include <cmath>
 #include <variant>
 
 #include "openstitch/geometry/offset.hpp"
@@ -157,8 +158,36 @@ std::pair<Vec2um, Vec2um> column_endpoints(const document::SatinParams& p) {
     const auto mid = [](Vec2um a, Vec2um b) {
         return Vec2um{Micrometers{(a.x.value + b.x.value) / 2}, Micrometers{(a.y.value + b.y.value) / 2}};
     };
+    // Reproduit le décalage longitudinal (`push_start`/`push_end`) réellement
+    // appliqué par `fill_satin_columns` (`shiftEnd`, satin.cpp) — même borne
+    // (jamais au-delà du barreau voisin). Sans cela, la décision de routage
+    // (§ trajet caché / saut) se fonderait sur le milieu du barreau BRUT, pas
+    // sur le point réellement cousu une fois la colonne décalée : un écart
+    // évalué à quelques mm près du seuil pourrait, une fois le décalage réel
+    // appliqué, dépasser le seuil (trajet caché non garanti par un fil traversant
+    // un espace non couvert) ou, symétriquement, imposer un saut évitable —
+    // défaut trouvé par revue.
+    const auto shifted = [](Vec2um at, Vec2um away, Micrometers push) -> Vec2um {
+        if (push.value == 0) {
+            return at;
+        }
+        const double dx = static_cast<double>(at.x.value - away.x.value);
+        const double dy = static_cast<double>(at.y.value - away.y.value);
+        const double n = std::hypot(dx, dy);
+        if (n < 1e-6) {
+            return at;
+        }
+        const double amount = std::max(static_cast<double>(push.value), -(n - 1.0));
+        return Vec2um{
+            Micrometers{static_cast<std::int32_t>(std::lround(at.x.value + dx / n * amount))},
+            Micrometers{static_cast<std::int32_t>(std::lround(at.y.value + dy / n * amount))}};
+    };
     if (p.rungs.size() >= 2) {
-        return {mid(p.rungs.front().a, p.rungs.front().b), mid(p.rungs.back().a, p.rungs.back().b)};
+        const Vec2um s = mid(p.rungs.front().a, p.rungs.front().b);
+        const Vec2um e = mid(p.rungs.back().a, p.rungs.back().b);
+        const Vec2um sNext = mid(p.rungs[1].a, p.rungs[1].b);
+        const Vec2um eNext = mid(p.rungs[p.rungs.size() - 2].a, p.rungs[p.rungs.size() - 2].b);
+        return {shifted(s, sNext, p.push_start), shifted(e, eNext, p.push_end)};
     }
     if (p.rail_a.nodes.size() >= 2) {
         return {p.rail_a.nodes.front().pos, p.rail_a.nodes.back().pos};

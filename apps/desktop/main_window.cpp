@@ -1963,6 +1963,16 @@ void MainWindow::createSatinObject() {
     params.density = to_micrometers(Millimeters{densitySpin->value()});
     params.pull_compensation = to_micrometers(Millimeters{compSpin->value()});
     params.center_underlay = underlayCheck->isChecked();
+    // Barreaux par défaut (correspondance ladder) : sans eux, la génération
+    // retombe sur `fill_satin`, qui n'implémente qu'un sous-ensemble des
+    // réglages exposés dans l'inspecteur (défaut trouvé par revue — voir
+    // `default_rungs`). Avec des barreaux, même par défaut, la génération
+    // passe par `fill_satin_columns` et l'intégralité des réglages s'applique
+    // réellement.
+    for (const auto& seg : stitch_generation::default_rungs(params.rail_a, params.rail_b,
+                                                             params.density)) {
+        params.rungs.push_back({seg.first, seg.second, std::nullopt});
+    }
 
     // Avertissement de largeur excessive (§5.3) : ne masque jamais la limite
     // physique — on prévient et on suggère le tatami.

@@ -479,7 +479,16 @@ SatinResult fill_satin_columns(const geometry::Path& rail_a, const geometry::Pat
         if (n < 1e-6) {
             return;
         }
-        const PointD d{(mi.x - mn.x) / n * amount, (mi.y - mn.y) / n * amount};
+        // Une rétraction (amount < 0) ne doit jamais dépasser la station
+        // voisine : au-delà, le premier (ou dernier) fil de la colonne se
+        // retrouverait de l'AUTRE côté de son voisin, inversant leur ordre le
+        // long de l'axe et produisant un point auto-croisé en tout début/fin
+        // de colonne — défaut trouvé par revue (contrairement à la
+        // compensation pull, bornée par `pull_max`, push n'avait aucune
+        // borne). Une extension (amount > 0) reste volontairement non bornée :
+        // elle éloigne le fil de la colonne sans jamais croiser un autre point.
+        const double clamped = std::max(amount, -(n - 1.0));
+        const PointD d{(mi.x - mn.x) / n * clamped, (mi.y - mn.y) / n * clamped};
         t.a = {t.a.x + d.x, t.a.y + d.y};
         t.b = {t.b.x + d.x, t.b.y + d.y};
     };
@@ -648,6 +657,33 @@ SatinResult fill_satin(const geometry::Path& rail_a, const geometry::Path& rail_
         }
     }
     return result;
+}
+
+std::vector<SatinRungSeg> default_rungs(const geometry::Path& rail_a, const geometry::Path& rail_b,
+                                        Micrometers spacing) {
+    std::vector<SatinRungSeg> out;
+    const auto a = to_points(rail_a);
+    auto b = to_points(rail_b);
+    if (a.size() < 2 || b.size() < 2) {
+        return out;
+    }
+    if (opposite_orientation(a, b)) {
+        std::reverse(b.begin(), b.end());
+    }
+    const auto cumA = cumulative(a);
+    const auto cumB = cumulative(b);
+    const double lenA = cumA.back();
+    const double lenB = cumB.back();
+    const double sp = static_cast<double>(std::max<std::int32_t>(1, spacing.value));
+    const double maxStep = std::clamp(sp / 4.0, 100.0, 500.0);
+    const auto ladder = ladder_correspondence(a, cumA, 0.0, a.front(), lenA, a.back(), b, cumB, 0.0,
+                                              b.front(), lenB, b.back(), maxStep);
+    const auto resampled = resample_by_medial_spacing(ladder, a, cumA, b, cumB, sp);
+    out.reserve(resampled.size());
+    for (const auto& cp : resampled) {
+        out.emplace_back(toUm(cp.pa), toUm(cp.pb));
+    }
+    return out;
 }
 
 std::optional<std::pair<geometry::Path, geometry::Path>> rails_from_contour(
