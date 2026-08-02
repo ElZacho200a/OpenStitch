@@ -11,6 +11,9 @@ namespace openstitch::desktop::icons {
 [[nodiscard]] QIcon select();
 [[nodiscard]] QIcon pan();
 [[nodiscard]] QIcon rect();
+[[nodiscard]] QIcon drawRect();
+[[nodiscard]] QIcon ellipse();
+[[nodiscard]] QIcon polygon();
 
 [[nodiscard]] QIcon openImage();
 [[nodiscard]] QIcon openProject();

@@ -17,6 +17,7 @@
 
 class QGraphicsScene;
 class QGraphicsItem;
+class QGraphicsPathItem;
 class QLabel;
 class QAction;
 class QListWidget;
@@ -67,6 +68,11 @@ private slots:
     void segmentImage();
     void onCanvasClicked(QPointF posMm);
     void onCanvasContextMenu(QPointF posMm, QPoint globalPos);
+    // Rectangle/ellipse dessiné (outils DrawRectangle/DrawEllipse) : interprété
+    // selon `currentTool_`. Maj enfoncée + DrawEllipse = cercle contraint.
+    void onBoxDrawn(QRectF rectMm);
+    // Double-clic : clôt un polygone en cours de tracé (outil DrawPolygon).
+    void onCanvasDoubleClicked(QPointF posMm);
     void deleteSelectedRegion();
     void recolorSelectedRegion();
     void vectorizeSelectedRegion();
@@ -166,6 +172,19 @@ private:
     [[nodiscard]] document::EmbroideryObject* embroideryForVector(ObjectId vectorId);
     // Centre représentatif d'un objet de broderie (pour l'estimation du coût).
     [[nodiscard]] Vec2um embroideryCentroid(const document::EmbroideryObject& object) const;
+    // Création manuelle de formes (rectangle/ellipse/polygone), en écho au
+    // dessin de formes de base dans les logiciels de digitalisation du
+    // marché : crée un `VectorObject` autonome (sans région source) que
+    // l'utilisateur convertit ensuite en objet de broderie via les actions
+    // « Créer un… » existantes — aucun nouveau chemin de création côté
+    // broderie, tout le pipeline aval est réutilisé tel quel.
+    void addVectorPrimitive(geometry::Path path, const QString& name);
+    // Suit le tracé d'un polygone en cours (poignée sur le curseur -> aperçu
+    // mis à jour) ; ferme (>= 3 sommets), sinon annule silencieusement.
+    void updatePolygonPreview(QPointF cursorSceneMm);
+    void finishPolygon();
+    void cancelPolygonDraw();
+
     void executeOp(image::ImageOp op);
     void positionEmptyState();  // centre l'accueil dans la vue
     void updateEmptyState();    // affiche l'accueil quand aucun document
@@ -215,8 +234,17 @@ private:
     QAction* toolSelectAct_{nullptr};
     QAction* toolPanAct_{nullptr};
     QAction* toolRectAct_{nullptr};
+    QAction* toolDrawRectAct_{nullptr};
+    QAction* toolDrawEllipseAct_{nullptr};
+    QAction* toolDrawPolygonAct_{nullptr};
     QLabel* toolLabel_{nullptr};
     Tool currentTool_{Tool::Select};
+
+    // Polygone en cours de tracé (outil DrawPolygon) : sommets déjà posés
+    // (repère modèle, µm) + aperçu élastique (détruit à la fermeture, à
+    // l'annulation, ou reconstruit à chaque `renderBase`/changement d'outil).
+    std::vector<Vec2um> pendingPolygonVertices_;
+    QGraphicsPathItem* polygonPreviewItem_{nullptr};
 
     QList<QAction*> imageActions_;
     QList<QAction*> regionActions_;  // nécessitent une région sélectionnée

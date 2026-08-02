@@ -282,6 +282,16 @@ private slots:
     void satinLinkedGuideGroupRemoveDeletesBothSectionsAtomically();
     void satinLinkedGuideEndpointDragWithoutShiftStaysLocal();
 
+    // Création manuelle de formes (mission « auto-satin béton », suite : le
+    // pipeline ne savait créer un VectorObject que depuis une image importée).
+    void drawRectangleToolCreatesUndoableVectorObject();
+    void drawEllipseToolCreatesUndoableVectorObject();
+    void drawingTooSmallABoxCreatesNoObject();
+    void drawPolygonAccumulatesVerticesAndClosesOnDoubleClick();
+    void drawPolygonWithFewerThanThreeVerticesCancelsOnDoubleClick();
+    void switchingToolDuringPolygonDrawCancelsIt();
+    void polygonDoubleClickDoesNotAddADuplicateVertex();
+
 private:
     // Active le mode d'édition (sélection directe via selectedEmbroidery_,
     // pas via le signal DocumentPanel::embroiderySelected -- qui sélectionne
@@ -1314,6 +1324,166 @@ void MainWindowTest::stitchEditModeRefusesWhenTooManyMovablePoints() {
     QVERIFY(!window.stitchEditView_.has_value());
     QVERIFY(window.statusBar()->currentMessage().contains(QStringLiteral("2000")));
     QVERIFY(firstHandle(window.baseItems_) == nullptr);  // aucune poignée affichée
+}
+
+// --- Création manuelle de formes (mission « auto-satin béton », suite) ------
+
+void MainWindowTest::drawRectangleToolCreatesUndoableVectorObject() {
+    MainWindow window;
+    const Fixture fx = buildFixture();
+    window.applyLoadedProject(fx.project);
+    auto* view = window.findChild<CanvasView*>();
+    QVERIFY(view != nullptr);
+
+    const std::size_t before = window.project_.vector_objects.size();
+    window.setTool(Tool::DrawRectangle);
+    // Scène Y vers le bas (ADR-003) : cadre 5 x 3 mm.
+    view->boxDrawnMm(QRectF(10.0, -5.0, 5.0, 3.0));
+
+    QCOMPARE(window.project_.vector_objects.size(), before + 1);
+    const auto& obj = window.project_.vector_objects.back();
+    QCOMPARE(obj.paths.size(), std::size_t{1});
+    QCOMPARE(obj.paths[0].outer.nodes.size(), std::size_t{4});
+    QVERIFY(obj.paths[0].outer.closed);
+    for (const auto& n : obj.paths[0].outer.nodes) {
+        QVERIFY(n.type == openstitch::geometry::NodeType::Corner);
+    }
+    QVERIFY(window.selectedObject_.has_value());
+    QCOMPARE(*window.selectedObject_, obj.id);
+
+    // Aire exacte : 5 x 3 mm = 15 000 000 µm².
+    QCOMPARE(std::abs(openstitch::geometry::signed_area_um2(obj.paths[0].outer)), 15'000'000.0);
+
+    // Annulable : undo retire l'objet, redo le restaure.
+    window.undo();
+    QCOMPARE(window.project_.vector_objects.size(), before);
+    window.redo();
+    QCOMPARE(window.project_.vector_objects.size(), before + 1);
+}
+
+void MainWindowTest::drawEllipseToolCreatesUndoableVectorObject() {
+    MainWindow window;
+    const Fixture fx = buildFixture();
+    window.applyLoadedProject(fx.project);
+    auto* view = window.findChild<CanvasView*>();
+    QVERIFY(view != nullptr);
+
+    const std::size_t before = window.project_.vector_objects.size();
+    window.setTool(Tool::DrawEllipse);
+    view->boxDrawnMm(QRectF(0.0, -10.0, 20.0, 10.0));  // 20 x 10 mm -> rx=10, ry=5 mm
+
+    QCOMPARE(window.project_.vector_objects.size(), before + 1);
+    const auto& obj = window.project_.vector_objects.back();
+    QCOMPARE(obj.paths[0].outer.nodes.size(), std::size_t{4});
+    for (const auto& n : obj.paths[0].outer.nodes) {
+        QVERIFY(n.type == openstitch::geometry::NodeType::Smooth);
+        QVERIFY(n.tan_in.has_value());
+        QVERIFY(n.tan_out.has_value());
+    }
+}
+
+void MainWindowTest::drawingTooSmallABoxCreatesNoObject() {
+    MainWindow window;
+    const Fixture fx = buildFixture();
+    window.applyLoadedProject(fx.project);
+    auto* view = window.findChild<CanvasView*>();
+    QVERIFY(view != nullptr);
+
+    const std::size_t before = window.project_.vector_objects.size();
+    window.setTool(Tool::DrawRectangle);
+    view->boxDrawnMm(QRectF(0.0, 0.0, 0.05, 0.05));  // très en dessous du seuil minimal
+
+    QCOMPARE(window.project_.vector_objects.size(), before);
+    QVERIFY(!window.undoStack_.canUndo());
+}
+
+void MainWindowTest::drawPolygonAccumulatesVerticesAndClosesOnDoubleClick() {
+    MainWindow window;
+    const Fixture fx = buildFixture();
+    window.applyLoadedProject(fx.project);
+    auto* view = window.findChild<CanvasView*>();
+    QVERIFY(view != nullptr);
+
+    const std::size_t before = window.project_.vector_objects.size();
+    window.setTool(Tool::DrawPolygon);
+    view->canvasClickedMm(QPointF(0.0, 0.0));
+    QCOMPARE(window.pendingPolygonVertices_.size(), std::size_t{1});
+    view->canvasClickedMm(QPointF(10.0, 0.0));
+    view->canvasClickedMm(QPointF(10.0, -10.0));
+    QCOMPARE(window.pendingPolygonVertices_.size(), std::size_t{3});
+    QVERIFY(window.polygonPreviewItem_ != nullptr);
+
+    view->canvasDoubleClickedMm(QPointF(10.0, -10.0));
+
+    QCOMPARE(window.project_.vector_objects.size(), before + 1);
+    const auto& obj = window.project_.vector_objects.back();
+    QCOMPARE(obj.paths[0].outer.nodes.size(), std::size_t{3});
+    QVERIFY(obj.paths[0].outer.closed);
+    QVERIFY(window.pendingPolygonVertices_.empty());
+    QVERIFY(window.polygonPreviewItem_ == nullptr);
+
+    window.undo();
+    QCOMPARE(window.project_.vector_objects.size(), before);
+}
+
+void MainWindowTest::drawPolygonWithFewerThanThreeVerticesCancelsOnDoubleClick() {
+    MainWindow window;
+    const Fixture fx = buildFixture();
+    window.applyLoadedProject(fx.project);
+    auto* view = window.findChild<CanvasView*>();
+    QVERIFY(view != nullptr);
+
+    const std::size_t before = window.project_.vector_objects.size();
+    window.setTool(Tool::DrawPolygon);
+    view->canvasClickedMm(QPointF(0.0, 0.0));
+    view->canvasClickedMm(QPointF(5.0, 0.0));  // seulement deux sommets
+    view->canvasDoubleClickedMm(QPointF(5.0, 0.0));
+
+    QCOMPARE(window.project_.vector_objects.size(), before);  // rien créé
+    QVERIFY(window.pendingPolygonVertices_.empty());          // état nettoyé quand même
+    QVERIFY(window.polygonPreviewItem_ == nullptr);
+}
+
+void MainWindowTest::switchingToolDuringPolygonDrawCancelsIt() {
+    MainWindow window;
+    const Fixture fx = buildFixture();
+    window.applyLoadedProject(fx.project);
+    auto* view = window.findChild<CanvasView*>();
+    QVERIFY(view != nullptr);
+
+    window.setTool(Tool::DrawPolygon);
+    view->canvasClickedMm(QPointF(0.0, 0.0));
+    view->canvasClickedMm(QPointF(5.0, 0.0));
+    QCOMPARE(window.pendingPolygonVertices_.size(), std::size_t{2});
+    QVERIFY(window.polygonPreviewItem_ != nullptr);
+
+    window.setTool(Tool::Select);  // simule Échap / changement d'outil
+
+    QVERIFY(window.pendingPolygonVertices_.empty());
+    QVERIFY(window.polygonPreviewItem_ == nullptr);
+}
+
+void MainWindowTest::polygonDoubleClickDoesNotAddADuplicateVertex() {
+    MainWindow window;
+    const Fixture fx = buildFixture();
+    window.applyLoadedProject(fx.project);
+    auto* view = window.findChild<CanvasView*>();
+    QVERIFY(view != nullptr);
+
+    const std::size_t before = window.project_.vector_objects.size();
+    window.setTool(Tool::DrawPolygon);
+    view->canvasClickedMm(QPointF(0.0, 0.0));
+    view->canvasClickedMm(QPointF(10.0, 0.0));
+    view->canvasClickedMm(QPointF(10.0, -10.0));
+    // Séquence Qt réelle d'un double-clic : la 2e pression émet AUSSI un clic
+    // simple, quasi au même point que le dernier sommet posé -- doit être
+    // ignoré (cf. onCanvasClicked) pour ne pas poser un sommet fantôme.
+    view->canvasClickedMm(QPointF(10.0, -10.0));
+    QCOMPARE(window.pendingPolygonVertices_.size(), std::size_t{3});  // pas 4
+    view->canvasDoubleClickedMm(QPointF(10.0, -10.0));
+
+    QCOMPARE(window.project_.vector_objects.size(), before + 1);
+    QCOMPARE(window.project_.vector_objects.back().paths[0].outer.nodes.size(), std::size_t{3});
 }
 
 }  // namespace openstitch::desktop

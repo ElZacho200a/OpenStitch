@@ -5,6 +5,7 @@ add_library(openstitch_geometry
     src/clean.cpp
     src/offset.cpp
     src/polyline.cpp
+    src/primitives.cpp
 )
 add_library(openstitch::geometry ALIAS openstitch_geometry)
 

@@ -68,6 +68,21 @@ QIcon rect() {
     });
 }
 
+QIcon drawRect() {
+    return make([](QPainter& p) { p.drawRect(6, 8, 20, 16); });
+}
+
+QIcon ellipse() {
+    return make([](QPainter& p) { p.drawEllipse(QRectF(5, 7, 22, 18)); });
+}
+
+QIcon polygon() {
+    return make([](QPainter& p) {
+        QPolygonF poly({{16, 5}, {27, 13}, {23, 26}, {9, 26}, {5, 13}});
+        p.drawPolygon(poly);
+    });
+}
+
 QIcon openImage() {
     return make([](QPainter& p) {
         p.drawRect(6, 9, 20, 15);

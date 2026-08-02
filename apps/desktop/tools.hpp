@@ -7,9 +7,12 @@ namespace openstitch::desktop {
 // que fait un clic / glisser dans la vue. La logique fine de sélection reste
 // dans MainWindow ; ce type ne fait que nommer le mode.
 enum class Tool {
-    Select,  // sélectionner région/objet (défaut) ; le glisser déplace la vue
-    Pan,     // déplacer la vue uniquement (pas de sélection)
-    Rect,    // sélection rectangulaire / recadrage image
+    Select,        // sélectionner région/objet (défaut) ; le glisser déplace la vue
+    Pan,           // déplacer la vue uniquement (pas de sélection)
+    Rect,          // sélection rectangulaire / recadrage image
+    DrawRectangle,  // dessine un nouvel objet vectoriel rectangulaire (glisser)
+    DrawEllipse,    // dessine un nouvel objet vectoriel elliptique (glisser ; Maj = cercle)
+    DrawPolygon,    // dessine un nouvel objet vectoriel polygonal (clics successifs)
 };
 
 }  // namespace openstitch::desktop

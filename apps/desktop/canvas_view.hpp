@@ -29,6 +29,17 @@ public:
     void setCropMode(bool enabled);
     [[nodiscard]] bool cropMode() const { return cropMode_; }
 
+    // Mode dessin par rectangle élastique (rectangle/ellipse) : même mécanique
+    // que le recadrage (glisser un cadre), mais émet `boxDrawnMm` au lieu de
+    // `cropSelectedMm` — l'appelant interprète le cadre selon l'outil actif.
+    void setBoxDrawMode(bool enabled);
+    [[nodiscard]] bool boxDrawMode() const { return boxDrawMode_; }
+
+    // Mode dessin par clics successifs (polygone) : désactive le glisser de
+    // vue (un clic ne doit jamais faire défiler le canevas pendant le tracé).
+    void setPolygonDrawMode(bool enabled);
+    [[nodiscard]] bool polygonDrawMode() const { return polygonDrawMode_; }
+
 signals:
     // Zoom ou défilement : les règles doivent se redessiner.
     void viewChanged();
@@ -36,14 +47,20 @@ signals:
     void cursorMovedMm(QPointF posMm);
     // Rectangle sélectionné en mode recadrage (coordonnées scène, mm).
     void cropSelectedMm(QRectF rectMm);
+    // Rectangle dessiné en mode dessin par cadre (coordonnées scène, mm).
+    void boxDrawnMm(QRectF rectMm);
     // Clic gauche sur le canevas (coordonnées scène, mm) — hors mode recadrage.
     void canvasClickedMm(QPointF posMm);
+    // Double-clic gauche (coordonnées scène, mm) — hors mode recadrage ; sert
+    // à clore un polygone en cours de tracé.
+    void canvasDoubleClickedMm(QPointF posMm);
     // Clic droit : position scène (mm) et position écran (pour placer le menu).
     void canvasContextMenu(QPointF posMm, QPoint globalPos);
 
 protected:
     void wheelEvent(QWheelEvent* event) override;
     void mousePressEvent(QMouseEvent* event) override;
+    void mouseDoubleClickEvent(QMouseEvent* event) override;
     void contextMenuEvent(QContextMenuEvent* event) override;
     void mouseMoveEvent(QMouseEvent* event) override;
     void mouseReleaseEvent(QMouseEvent* event) override;
@@ -57,6 +74,8 @@ private:
 
     QSizeF canvasMm_{100.0, 100.0};
     bool cropMode_{false};
+    bool boxDrawMode_{false};
+    bool polygonDrawMode_{false};
     QRectF lastRubberBandMm_;
 };
 

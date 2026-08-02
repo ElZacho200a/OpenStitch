@@ -70,6 +70,19 @@ void CanvasView::setCropMode(bool enabled) {
     setCursor(enabled ? Qt::CrossCursor : Qt::ArrowCursor);
 }
 
+void CanvasView::setBoxDrawMode(bool enabled) {
+    boxDrawMode_ = enabled;
+    lastRubberBandMm_ = QRectF();
+    setDragMode(enabled ? QGraphicsView::RubberBandDrag : QGraphicsView::ScrollHandDrag);
+    setCursor(enabled ? Qt::CrossCursor : Qt::ArrowCursor);
+}
+
+void CanvasView::setPolygonDrawMode(bool enabled) {
+    polygonDrawMode_ = enabled;
+    setDragMode(enabled ? QGraphicsView::NoDrag : QGraphicsView::ScrollHandDrag);
+    setCursor(enabled ? Qt::CrossCursor : Qt::ArrowCursor);
+}
+
 void CanvasView::setCanvasSizeMm(QSizeF sizeMm) {
     canvasMm_ = sizeMm;
     // Marge de travail autour du canevas : la moitié de sa taille de chaque côté.
@@ -127,15 +140,22 @@ void CanvasView::mousePressEvent(QMouseEvent* event) {
     QGraphicsItem* item = itemAt(event->position().toPoint());
     const bool onInteractiveItem =
         item != nullptr && (item->flags() & QGraphicsItem::ItemIsMovable);
-    if (event->button() == Qt::LeftButton && !cropMode_ && !onInteractiveItem) {
+    if (event->button() == Qt::LeftButton && !cropMode_ && !boxDrawMode_ && !onInteractiveItem) {
         emit canvasClickedMm(mapToScene(event->position().toPoint()));
     }
     QGraphicsView::mousePressEvent(event);
 }
 
+void CanvasView::mouseDoubleClickEvent(QMouseEvent* event) {
+    if (event->button() == Qt::LeftButton && !cropMode_ && !boxDrawMode_) {
+        emit canvasDoubleClickedMm(mapToScene(event->position().toPoint()));
+    }
+    QGraphicsView::mouseDoubleClickEvent(event);
+}
+
 void CanvasView::contextMenuEvent(QContextMenuEvent* event) {
-    if (cropMode_) {
-        return;  // pas de menu contextuel pendant un recadrage
+    if (cropMode_ || boxDrawMode_ || polygonDrawMode_) {
+        return;  // pas de menu contextuel pendant un recadrage/dessin
     }
     emit canvasContextMenu(mapToScene(event->pos()), event->globalPos());
     event->accept();
@@ -150,10 +170,14 @@ void CanvasView::mouseMoveEvent(QMouseEvent* event) {
 
 void CanvasView::mouseReleaseEvent(QMouseEvent* event) {
     QGraphicsView::mouseReleaseEvent(event);
-    if (cropMode_ && lastRubberBandMm_.isValid() && !lastRubberBandMm_.isEmpty()) {
+    if ((cropMode_ || boxDrawMode_) && lastRubberBandMm_.isValid() && !lastRubberBandMm_.isEmpty()) {
         const QRectF rect = lastRubberBandMm_;
         lastRubberBandMm_ = QRectF();
-        emit cropSelectedMm(rect);
+        if (cropMode_) {
+            emit cropSelectedMm(rect);
+        } else {
+            emit boxDrawnMm(rect);
+        }
     }
 }
 

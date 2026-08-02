@@ -46,6 +46,7 @@
 #include "openstitch/document/canvas.hpp"
 #include "openstitch/document/image_placement.hpp"
 #include "openstitch/formats/dst.hpp"
+#include "openstitch/geometry/primitives.hpp"
 #include "openstitch/image/image.hpp"
 #include "openstitch/optimization/order.hpp"
 #include "openstitch/project_io/project_io.hpp"
@@ -64,6 +65,7 @@
 #include <QCloseEvent>
 #include <QComboBox>
 #include <QDockWidget>
+#include <QGraphicsPathItem>
 #include <QHBoxLayout>
 #include <QIcon>
 #include <QListWidget>
@@ -83,6 +85,22 @@ namespace openstitch::desktop {
 // un GraphicsItem par poignée coûte trop cher sur un motif dense. Partagé
 // entre renderBase (rendu) et updateActions (gating/sortie de mode + message).
 constexpr std::size_t kMaxEditableStitchHandles = 2000;
+
+// Repère scène (mm, Y vers le bas, Qt) <-> repère modèle (µm, Y vers le haut,
+// ADR-003). Conversion utilisée partout où une géométrie est construite
+// depuis un geste souris (rectangle/ellipse/polygone dessinés à la main).
+Vec2um sceneMmToModel(QPointF sceneMm) {
+    return Vec2um{to_micrometers(Millimeters{sceneMm.x()}),
+                 to_micrometers(Millimeters{-sceneMm.y()})};
+}
+QPointF modelToSceneMm(Vec2um pos) {
+    return QPointF(to_millimeters(pos.x).value, -to_millimeters(pos.y).value);
+}
+
+// Minimum non dégénéré (en mm de scène) pour qu'un rectangle/ellipse dessiné
+// à la main produise une forme exploitable — un simple clic sans glisser ne
+// doit pas créer un objet plat invisible.
+constexpr double kMinDrawExtentMm = 0.5;
 
 MainWindow::MainWindow() {
     setWindowTitle(QStringLiteral("%1 [*]").arg(QString::fromUtf8(kAppName)));
@@ -159,6 +177,15 @@ MainWindow::MainWindow() {
             tr("x : %1 mm   y : %2 mm").arg(mm.x(), 0, 'f', 1).arg(mm.y(), 0, 'f', 1));
     });
     connect(view_, &CanvasView::cropSelectedMm, this, &MainWindow::onCropSelected);
+    connect(view_, &CanvasView::boxDrawnMm, this, &MainWindow::onBoxDrawn);
+    connect(view_, &CanvasView::canvasDoubleClickedMm, this, &MainWindow::onCanvasDoubleClicked);
+    connect(view_, &CanvasView::cursorMovedMm, this, [this](QPointF physicalMm) {
+        if (currentTool_ == Tool::DrawPolygon && !pendingPolygonVertices_.empty()) {
+            // physicalMm est déjà Y-haut (cf. CanvasView::mouseMoveEvent) ; on
+            // revient au repère scène (Y-bas) pour l'aperçu QGraphicsItem.
+            updatePolygonPreview(QPointF(physicalMm.x(), -physicalMm.y()));
+        }
+    });
 
     connect(view_, &CanvasView::canvasClickedMm, this, &MainWindow::onCanvasClicked);
     connect(view_, &CanvasView::canvasContextMenu, this, &MainWindow::onCanvasContextMenu);
@@ -877,6 +904,99 @@ void MainWindow::onCropSelected(QRectF rectMm) {
     op.width = static_cast<int>(std::lround(rectMm.width() / mmPerPx));
     op.height = static_cast<int>(std::lround(rectMm.height() / mmPerPx));
     executeOp(op);
+}
+
+void MainWindow::onBoxDrawn(QRectF rectMm) {
+    if (currentTool_ != Tool::DrawRectangle && currentTool_ != Tool::DrawEllipse) {
+        return;  // sécurité : signal reçu hors mode dessin (ne devrait pas arriver)
+    }
+    if (rectMm.width() < kMinDrawExtentMm || rectMm.height() < kMinDrawExtentMm) {
+        statusBar()->showMessage(tr("Forme trop petite — glissez davantage."));
+        return;
+    }
+    QRectF box = rectMm;
+    if (currentTool_ == Tool::DrawEllipse &&
+        (QGuiApplication::keyboardModifiers() & Qt::ShiftModifier)) {
+        // Maj enfoncée : contraint à un cercle (côté = le plus petit des deux).
+        const double side = std::min(box.width(), box.height());
+        box.setWidth(side);
+        box.setHeight(side);
+    }
+    const Vec2um c1 = sceneMmToModel(box.topLeft());
+    const Vec2um c2 = sceneMmToModel(box.bottomRight());
+    if (currentTool_ == Tool::DrawRectangle) {
+        addVectorPrimitive(geometry::rectangle_path(c1, c2), tr("Rectangle"));
+    } else {
+        addVectorPrimitive(geometry::ellipse_path(c1, c2), tr("Ellipse"));
+    }
+}
+
+void MainWindow::onCanvasDoubleClicked(QPointF /*posMm*/) {
+    if (currentTool_ == Tool::DrawPolygon) {
+        finishPolygon();
+    }
+}
+
+void MainWindow::updatePolygonPreview(QPointF cursorSceneMm) {
+    if (pendingPolygonVertices_.empty()) {
+        return;
+    }
+    if (polygonPreviewItem_ == nullptr) {
+        polygonPreviewItem_ = new QGraphicsPathItem();
+        QPen pen(QColor(80, 120, 200));
+        pen.setWidthF(0.15);
+        pen.setStyle(Qt::DashLine);
+        polygonPreviewItem_->setPen(pen);
+        polygonPreviewItem_->setZValue(1000.0);  // toujours au-dessus du reste
+        scene_->addItem(polygonPreviewItem_);
+    }
+    QPainterPath path;
+    path.moveTo(modelToSceneMm(pendingPolygonVertices_.front()));
+    for (std::size_t i = 1; i < pendingPolygonVertices_.size(); ++i) {
+        path.lineTo(modelToSceneMm(pendingPolygonVertices_[i]));
+    }
+    path.lineTo(cursorSceneMm);  // segment élastique jusqu'au curseur
+    polygonPreviewItem_->setPath(path);
+}
+
+void MainWindow::finishPolygon() {
+    if (pendingPolygonVertices_.size() >= 3) {
+        addVectorPrimitive(geometry::polygon_path(pendingPolygonVertices_), tr("Polygone"));
+    } else {
+        statusBar()->showMessage(tr("Polygone : au moins 3 sommets requis."));
+    }
+    cancelPolygonDraw();  // nettoie l'état de tracé, succès ou échec
+}
+
+void MainWindow::cancelPolygonDraw() {
+    pendingPolygonVertices_.clear();
+    if (polygonPreviewItem_ != nullptr) {
+        scene_->removeItem(polygonPreviewItem_);
+        delete polygonPreviewItem_;
+        polygonPreviewItem_ = nullptr;
+    }
+}
+
+void MainWindow::addVectorPrimitive(geometry::Path path, const QString& name) {
+    if (path.nodes.empty()) {
+        return;  // dégénéré (ex. polygone à moins de 3 sommets) : rien à créer
+    }
+    document::VectorObject object;
+    object.id = project_.object_ids.next();
+    object.name = name.toStdString();
+    object.rgb = {80, 120, 200};
+    object.paths.push_back(geometry::PathSet{std::move(path), {}});
+
+    undoStack_.execute(std::make_unique<commands::AddVectorObjectCommand>(std::move(object)),
+                       project_);
+    selectedObject_ = project_.vector_objects.back().id;
+    selectedRegion_.reset();
+    selectedEmbroidery_.reset();
+    showVectorsAct_->setChecked(true);
+    refreshImage();
+    updateActions();
+    statusBar()->showMessage(
+        tr("Forme créée — menu Broderie pour la convertir en points de couture"));
 }
 
 void MainWindow::refreshImage() {
@@ -2392,6 +2512,13 @@ void MainWindow::buildToolPalette() {
     toolPanAct_ = addTool(icons::pan(), tr("Déplacer la vue"), Tool::Pan, QKeySequence(Qt::Key_H));
     toolRectAct_ = addTool(icons::rect(), tr("Rectangle / Recadrage"), Tool::Rect,
                            QKeySequence(Qt::Key_M));
+    toolDrawRectAct_ = addTool(icons::drawRect(), tr("Dessiner un rectangle"),
+                               Tool::DrawRectangle, QKeySequence(Qt::Key_R));
+    toolDrawEllipseAct_ =
+        addTool(icons::ellipse(), tr("Dessiner une ellipse (Maj = cercle)"), Tool::DrawEllipse,
+               QKeySequence(Qt::Key_O));
+    toolDrawPolygonAct_ = addTool(icons::polygon(), tr("Dessiner un polygone"), Tool::DrawPolygon,
+                                  QKeySequence(Qt::Key_P));
     toolSelectAct_->setChecked(true);
 
     // Échap : revient à la Sélection, annule le mode fusion en cours et
@@ -2415,6 +2542,12 @@ void MainWindow::buildToolPalette() {
 }
 
 void MainWindow::setTool(Tool tool) {
+    // Quitter l'outil Polygone en cours de tracé annule proprement le tracé
+    // (aperçu détruit, sommets oubliés) — jamais de polygone à moitié posé
+    // qui survivrait à un changement d'outil.
+    if (currentTool_ == Tool::DrawPolygon && tool != Tool::DrawPolygon) {
+        cancelPolygonDraw();
+    }
     currentTool_ = tool;
 
     // Synchronise les cases d'outils (sans réémettre).
@@ -2426,13 +2559,19 @@ void MainWindow::setTool(Tool tool) {
     sync(toolSelectAct_, tool == Tool::Select);
     sync(toolPanAct_, tool == Tool::Pan);
     sync(toolRectAct_, tool == Tool::Rect);
+    sync(toolDrawRectAct_, tool == Tool::DrawRectangle);
+    sync(toolDrawEllipseAct_, tool == Tool::DrawEllipse);
+    sync(toolDrawPolygonAct_, tool == Tool::DrawPolygon);
     if (cropAct_ != nullptr) {
         QSignalBlocker block(cropAct_);
         cropAct_->setChecked(tool == Tool::Rect);
     }
 
-    // Applique au canevas : Rectangle = recadrage ; sinon vue libre.
+    // Applique au canevas : Rectangle = recadrage ; Rectangle/Ellipse dessinés
+    // = cadre élastique générique ; Polygone = clics successifs ; sinon vue libre.
     view_->setCropMode(tool == Tool::Rect);
+    view_->setBoxDrawMode(tool == Tool::DrawRectangle || tool == Tool::DrawEllipse);
+    view_->setPolygonDrawMode(tool == Tool::DrawPolygon);
     if (tool == Tool::Pan) {
         view_->setCursor(Qt::OpenHandCursor);
     } else if (tool == Tool::Select) {
@@ -2440,9 +2579,12 @@ void MainWindow::setTool(Tool tool) {
     }
 
     if (toolLabel_ != nullptr) {
-        const QString name = tool == Tool::Select ? tr("Sélection")
-                             : tool == Tool::Pan  ? tr("Déplacer la vue")
-                                                  : tr("Rectangle");
+        const QString name = tool == Tool::Select        ? tr("Sélection")
+                             : tool == Tool::Pan          ? tr("Déplacer la vue")
+                             : tool == Tool::Rect          ? tr("Rectangle")
+                             : tool == Tool::DrawRectangle ? tr("Dessiner un rectangle")
+                             : tool == Tool::DrawEllipse   ? tr("Dessiner une ellipse")
+                                                           : tr("Dessiner un polygone");
         toolLabel_->setText(tr("Outil : %1").arg(name));
     }
 }
@@ -3329,6 +3471,27 @@ void MainWindow::importDst() {
 void MainWindow::onCanvasClicked(QPointF posMm) {
     // En mode « Déplacer la vue », un clic ne sélectionne rien.
     if (currentTool_ == Tool::Pan) {
+        return;
+    }
+    if (currentTool_ == Tool::DrawPolygon) {
+        const Vec2um v = sceneMmToModel(posMm);
+        if (!pendingPolygonVertices_.empty()) {
+            // Séquence Qt d'un double-clic : press/release/DOUBLECLICK/release —
+            // la seconde pression émet aussi un clic simple, quasi au même
+            // point que le dernier sommet posé. Ignoré ici pour ne pas poser
+            // un sommet fantôme juste avant la fermeture (onCanvasDoubleClicked).
+            const auto& last = pendingPolygonVertices_.back();
+            const double dx = static_cast<double>(v.x.value - last.x.value);
+            const double dy = static_cast<double>(v.y.value - last.y.value);
+            if (dx * dx + dy * dy < 4.0) {  // < 2 µm de l'un à l'autre
+                return;
+            }
+        }
+        pendingPolygonVertices_.push_back(v);
+        updatePolygonPreview(posMm);
+        statusBar()->showMessage(
+            tr("Polygone : %1 sommet(s) — double-clic pour fermer, Échap pour annuler")
+                .arg(pendingPolygonVertices_.size()));
         return;
     }
     // Priorité aux objets vectoriels lorsqu'ils sont affichés (hors fusion).
