@@ -372,10 +372,106 @@ struct Station {
     double width{0.0};
 };
 
+// Étend un bout OUVERT de colonne jusqu'au bord réel de la région (§ audit
+// auto-satin : le squelette aminci s'arrête avant un embout arrondi/pointu,
+// laissant l'embout entier hors couverture). Marche depuis `base` le long de
+// `marchDir` (tangente SORTANTE, unitaire) par pas de `stepLen`, ré-évalue une
+// section transversale à chaque pas avec la normale dérivée de `orientTan`
+// (tangente d'ORIENTATION, PAS la direction de marche — cette distinction
+// compte côté « début » où l'on marche en arrière tout en gardant le même
+// repère gauche/droite que le reste de la colonne, sous peine de croisement à
+// la jonction entre stations réelles et étendues). S'arrête dès que la section
+// échoue, sort de la région, ou cesse de rétrécir (tolérance 5 % — protège
+// contre une marche qui déborderait dans une tout autre partie de la forme).
+// Referme ensuite par bissection sur `in_region` seul (robuste même quand la
+// section transversale devient numériquement dégénérée tout près du bord) :
+// le point de fermeture reçoit une largeur PLANCHER non nulle (`tipMinWidth`)
+// plutôt qu'un barreau littéralement nul, pour rester exploitable telle
+// quelle par `fill_satin_columns` (qui suppose toujours un barreau non
+// dégénéré). Bornée (200 pas de marche, 24 de bissection) ; jamais de boucle
+// infinie même sur une géométrie pathologique.
+std::vector<Station> extend_tip(const std::vector<Poly>& polys, P2 base, P2 marchDir, P2 orientTan,
+                                double lastWidth, double maxWidth, double stepLen,
+                                double tipMinWidth) {
+    std::vector<Station> ext;
+    if (stepLen <= 0.0) {
+        return ext;
+    }
+    const P2 nrm{-orientTan.y, orientTan.x};
+    double prevWidth = lastWidth;
+    P2 prevPoint = base;
+    constexpr int kMaxSteps = 200;
+    int stepsTaken = 0;
+    for (int k = 1; k <= kMaxSteps; ++k) {
+        const P2 p = base + marchDir * (static_cast<double>(k) * stepLen);
+        if (!in_region(polys, p)) {
+            break;
+        }
+        const auto sec = cross_section(polys, p, nrm, maxWidth);
+        if (!sec) {
+            break;
+        }
+        const double width = sec->second - sec->first;
+        if (width > prevWidth * 1.05 + 1.0) {
+            break;  // ne rétrécit plus : on a dépassé la pointe (forme non convexe)
+        }
+        Station st;
+        st.axis = p;
+        st.tangent = orientTan;
+        st.railA = p + nrm * sec->second;
+        st.railB = p + nrm * sec->first;
+        st.width = width;
+        ext.push_back(st);
+        prevPoint = p;
+        prevWidth = width;
+        stepsTaken = k;
+        if (width <= tipMinWidth) {
+            return ext;  // déjà assez fin : la fermeture par bissection n'apporterait rien
+        }
+    }
+    // Bissection entre le dernier point intérieur connu et un point hors-région
+    // pour localiser le bord réel le long de la tangente.
+    double sGood = static_cast<double>(stepsTaken) * stepLen;
+    double sBad = sGood + stepLen;
+    for (int guard = 0; guard < 8 && in_region(polys, base + marchDir * sBad); ++guard) {
+        sBad += stepLen;
+    }
+    for (int it = 0; it < 24; ++it) {
+        const double sMid = (sGood + sBad) * 0.5;
+        if (in_region(polys, base + marchDir * sMid)) {
+            sGood = sMid;
+        } else {
+            sBad = sMid;
+        }
+    }
+    // Marge de sûreté : la bissection converge à une précision sub-µm du bord
+    // ANALYTIQUE, mais `to_um` arrondit au µm le plus proche — sans recul, ce
+    // dernier arrondi peut faire retomber le point de l'autre côté du polygone
+    // DISCRÉTISÉ (approximation à segments d'un contour courbe). Un recul de
+    // quelques µm vers l'intérieur reste invisible à l'échelle broderie (pas
+    // DST = 100 µm) et garantit un point robustement intérieur après arrondi.
+    const double margin = std::max(2.0, tipMinWidth * 0.1);
+    const P2 tip = base + marchDir * std::max(0.0, sGood - margin);
+    if (norm(tip - prevPoint) > 1.0) {  // évite un point quasi dupliqué (< 1 µm)
+        Station closing;
+        closing.axis = tip;
+        closing.tangent = orientTan;
+        const double half = std::max(tipMinWidth * 0.5, 1.0);
+        closing.railA = tip + nrm * half;
+        closing.railB = tip - nrm * half;
+        closing.width = half * 2.0;
+        ext.push_back(closing);
+    }
+    return ext;
+}
+
 // Construit une colonne depuis une centerline (axe) et les polygones de région.
+// `extendStart`/`extendEnd` : true si ce bout est OUVERT (pas de jonction) et
+// doit donc être étendu jusqu'au bord réel — cf. `extend_tip`.
 std::optional<SatinColumnGeometry> build_column(const std::vector<Vec2um>& centerline,
                                                 const std::vector<Poly>& polys,
-                                                const SatinColumnsParameters& params) {
+                                                const SatinColumnsParameters& params,
+                                                bool extendStart, bool extendEnd) {
     std::vector<P2> axis;
     axis.reserve(centerline.size());
     for (const Vec2um& v : centerline) {
@@ -437,6 +533,31 @@ std::optional<SatinColumnGeometry> build_column(const std::vector<Vec2um>& cente
     }
     if (st.size() < 2) {
         return std::nullopt;
+    }
+
+    // Étend les bouts OUVERTS (sans jonction) jusqu'au bord réel de la région
+    // (embout arrondi/pointu) — cf. `extend_tip`. Un bout de jonction reste
+    // inchangé : il doit rester exactement au nœud du squelette pour la
+    // reconciliation multi-sections (guides liés, routage).
+    if (params.extend_open_ends) {
+        const double stepLen = static_cast<double>(params.station_spacing.value);
+        const double tipMin =
+            static_cast<double>(std::max<std::int32_t>(1, params.tip_min_width.value));
+        if (extendEnd) {
+            const Station& last = st.back();
+            auto tail = extend_tip(polys, last.axis, last.tangent, last.tangent, last.width,
+                                   maxWidth, stepLen, tipMin);
+            for (auto& s : tail) {
+                st.push_back(std::move(s));
+            }
+        }
+        if (extendStart) {
+            const Station& first = st.front();
+            auto head = extend_tip(polys, first.axis, first.tangent * -1.0, first.tangent,
+                                   first.width, maxWidth, stepLen, tipMin);
+            std::reverse(head.begin(), head.end());
+            st.insert(st.begin(), head.begin(), head.end());
+        }
     }
 
     // Rails.
@@ -530,11 +651,15 @@ SatinColumnsResult build_satin_columns(const geometry::PathSet& region,
     const std::vector<Poly> polys = region_polys(region);
 
     const auto try_edge = [&](const SkeletonEdge& e) {
-        if (auto col = build_column(e.centerline, polys, params)) {
-            if (graph.nodes[e.from].type == SkeletonNodeType::Junction) {
+        const bool startIsJunction = graph.nodes[e.from].type == SkeletonNodeType::Junction;
+        const bool endIsJunction = graph.nodes[e.to].type == SkeletonNodeType::Junction;
+        // Un bout de jonction ne doit jamais être étendu (il doit rester
+        // exactement au nœud du squelette) ; seul un bout OUVERT l'est.
+        if (auto col = build_column(e.centerline, polys, params, !startIsJunction, !endIsJunction)) {
+            if (startIsJunction) {
                 col->start_junction = e.from;
             }
-            if (graph.nodes[e.to].type == SkeletonNodeType::Junction) {
+            if (endIsJunction) {
                 col->end_junction = e.to;
             }
             r.columns.push_back(std::move(*col));

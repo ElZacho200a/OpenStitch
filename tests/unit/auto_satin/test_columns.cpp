@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 #include <catch2/catch_test_macros.hpp>
 
+#include <algorithm>
 #include <cmath>
 #include <set>
 
@@ -103,6 +104,135 @@ TEST_CASE("colonnes : rails et barreaux finis, non degeneres") {
         for (const auto& rung : col.rungs) {
             CHECK(length_um(rung.a - rung.b) > 0.0);  // largeur non nulle
         }
+    }
+}
+
+// --- Extension des bouts ouverts jusqu'au bord réel ---------------------------
+//
+// Défaut trouvé par revue (mission « auto-satin béton ») : un bout OUVERT du
+// squelette (sans jonction) s'arrête, par construction de l'amincissement,
+// sensiblement avant le bord réel de la région — un embout arrondi ou pointu
+// n'était pas couvert du tout par le satin, et même un bout CARRÉ retracte
+// (retrait générique proche de la demi-largeur locale, artefact connu de
+// l'amincissement). Démontré visuellement sur « capsule » (rect 40 mm + deux
+// demi-cercles de rayon 2,5 mm, longueur totale bout-à-bout 45 mm) : avant
+// correction, la colonne s'arrêtait à ~38,8 mm ; les deux embouts (2,5 mm de
+// rayon chacun, ~11 % de la longueur totale) restaient entièrement hors
+// couture. Confirmé aussi sur un bout plat (« rectangle », retrait ~2,55 mm
+// par bout avant correction).
+
+TEST_CASE("colonnes : bout ouvert (capsule) atteint le bord reel") {
+    const auto r = columns_of("capsule");
+    REQUIRE(r.refusal.empty());
+    REQUIRE(r.columns.size() == 1);
+    const auto& c = r.columns.front();
+    // Longueur bout-a-bout reelle = 45 mm (40 mm de corps + 2 x 2,5 mm de
+    // demi-cercle). Avant correction : ~38,8 mm (embouts non couverts).
+    CHECK(std::abs(c.length_um - 45'000.0) < 1'000.0);
+    // Les rails atteignent la pointe reelle de chaque demi-cercle : x = -2500
+    // (gauche) et x = 42500 (droite), rayon W = 2500 depuis les centres
+    // x=0/x=40000 (cf. shapes.cpp). Marge large : rasterisation 0,1 mm +
+    // pas d'echantillonnage 0,5 mm.
+    const auto firstX = c.rail_a.nodes.front().pos.x.value;
+    const auto lastX = c.rail_a.nodes.back().pos.x.value;
+    const auto [minX, maxX] = std::minmax(firstX, lastX);
+    CHECK(minX < -1'800);
+    CHECK(maxX > 41'800);
+}
+
+TEST_CASE("colonnes : extend_open_ends=false conserve l'ancien comportement") {
+    const auto region = make_shape("capsule");
+    REQUIRE(region.has_value());
+    SatinColumnsParameters params;
+    params.analysis.raster.pixel_size = Micrometers{100};
+    params.extend_open_ends = false;
+    const auto r = build_satin_columns(*region, params);
+    REQUIRE(r.columns.size() == 1);
+    // Sans extension, la colonne s'arrete nettement avant le bord reel
+    // (~38,8 mm avant correction) : verifie que le bascule desactive bien le
+    // nouveau comportement plutot que de toujours l'appliquer.
+    CHECK(r.columns.front().length_um < 40'000.0);
+}
+
+TEST_CASE("colonnes : bout carre (rectangle) atteint aussi le bord reel") {
+    // Un bout CARRE (perpendiculaire, sans arrondi) souffre du meme defaut :
+    // l'amincissement retracte generiquement le squelette d'un bout plat
+    // avant le coin reel (d'environ la demi-largeur locale). Mesure sur
+    // "rectangle" (40 mm, bouts plats) : sans extension, la colonne s'arrete a
+    // ~34,9 mm (retrait ~2,55 mm par bout, proche de la demi-largeur 2,5 mm) ;
+    // l'extension corrige aussi ce cas, pas seulement les embouts arrondis.
+    const auto region = make_shape("rectangle");
+    REQUIRE(region.has_value());
+    SatinColumnsParameters withExt;
+    withExt.analysis.raster.pixel_size = Micrometers{100};
+    SatinColumnsParameters noExt = withExt;
+    noExt.extend_open_ends = false;
+    const auto a = build_satin_columns(*region, withExt);
+    const auto b = build_satin_columns(*region, noExt);
+    REQUIRE(a.columns.size() == 1);
+    REQUIRE(b.columns.size() == 1);
+    // Longueur reelle bout-a-bout = 40 mm (x de 0 a 40000, cf. shapes.cpp).
+    CHECK(std::abs(a.columns.front().length_um - 40'000.0) < 1'000.0);
+    // Sans extension, retrait mesurable (regression du defaut d'origine).
+    CHECK(a.columns.front().length_um - b.columns.front().length_um > 2'000.0);
+}
+
+TEST_CASE("colonnes : bouts de jonction (Y) jamais etendus, arretes ouverts allonges") {
+    SatinColumnsParameters withExt;
+    withExt.analysis.raster.pixel_size = Micrometers{100};
+    SatinColumnsParameters noExt = withExt;
+    noExt.extend_open_ends = false;
+    const auto region = make_shape("y");
+    REQUIRE(region.has_value());
+    const auto a = build_satin_columns(*region, withExt);
+    const auto b = build_satin_columns(*region, noExt);
+    REQUIRE(a.refusal.empty());
+    REQUIRE(b.refusal.empty());
+    REQUIRE(a.columns.size() == b.columns.size());
+    REQUIRE(a.columns.size() >= 2);
+    // La jonction partagee reste geometriquement identique (non affectee par
+    // l'extension, qui ne touche que le bout SANS jonction de chaque bras).
+    std::set<std::uint32_t> junctionsA, junctionsB;
+    for (const auto& c : a.columns) {
+        if (c.start_junction) junctionsA.insert(*c.start_junction);
+        if (c.end_junction) junctionsA.insert(*c.end_junction);
+    }
+    for (const auto& c : b.columns) {
+        if (c.start_junction) junctionsB.insert(*c.start_junction);
+        if (c.end_junction) junctionsB.insert(*c.end_junction);
+    }
+    CHECK(junctionsA.size() == 1);
+    CHECK(junctionsB.size() == 1);
+    // Chaque bras s'est allonge (bout ouvert etendu jusqu'au bord reel).
+    for (std::size_t i = 0; i < a.columns.size(); ++i) {
+        CHECK(a.columns[i].length_um > b.columns[i].length_um);
+    }
+}
+
+TEST_CASE("colonnes : extension deterministe") {
+    const auto region = make_shape("capsule");
+    REQUIRE(region.has_value());
+    SatinColumnsParameters params;
+    params.analysis.raster.pixel_size = Micrometers{100};
+    const auto a = build_satin_columns(*region, params);
+    const auto b = build_satin_columns(*region, params);
+    REQUIRE(a.columns.size() == b.columns.size());
+    for (std::size_t i = 0; i < a.columns.size(); ++i) {
+        CHECK(a.columns[i].rail_a == b.columns[i].rail_a);
+        CHECK(a.columns[i].rail_b == b.columns[i].rail_b);
+        REQUIRE(a.columns[i].rungs.size() == b.columns[i].rungs.size());
+        for (std::size_t j = 0; j < a.columns[i].rungs.size(); ++j) {
+            CHECK(a.columns[i].rungs[j].a == b.columns[i].rungs[j].a);
+            CHECK(a.columns[i].rungs[j].b == b.columns[i].rungs[j].b);
+        }
+    }
+}
+
+TEST_CASE("colonnes : aucun barreau degenere apres extension (capsule)") {
+    const auto r = columns_of("capsule");
+    REQUIRE(r.columns.size() == 1);
+    for (const auto& rung : r.columns.front().rungs) {
+        CHECK(length_um(rung.a - rung.b) > 0.0);
     }
 }
 

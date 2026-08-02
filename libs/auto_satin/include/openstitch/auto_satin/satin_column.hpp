@@ -45,6 +45,13 @@ struct SatinColumnsParameters {
     double rung_width_ratio{0.30};           // barreau si la largeur varie au-delà
     int axis_smoothing_iterations{2};        // lissage Chaikin de l'axe
     int max_junctions{2};                    // au-delà : refus (trop complexe)
+    // Un bout OUVERT (sans jonction) du squelette s'arrête, par construction du
+    // transformée de distance/amincissement, sensiblement avant le bord réel de
+    // la région (un embout arrondi ou pointu n'est pas couvert). Étend chaque
+    // bout ouvert en ré-échantillonnant des sections transversales le long de la
+    // tangente sortante tant qu'elles rétrécissent, jusqu'au bord réel (bissection).
+    bool extend_open_ends{true};
+    Micrometers tip_min_width{50};  // largeur plancher du dernier barreau (jamais nul)
 };
 
 struct SatinColumnsResult {
