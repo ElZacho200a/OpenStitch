@@ -322,6 +322,66 @@ Evolution »*, IEEE TPAMI 2007
 élagage de squelette plus fidèle à la forme que notre seuil longueur/rayon
 actuel (`graph_cleanup.cpp`) — piste de travail future, non implémentée ici.
 
+### Ancrage des jonctions sur les sommets reflex du contour
+
+*État : Présent · Testé numériquement · Validé visuellement (SVG).* Activé par
+défaut (`SatinColumnsParameters::anchor_junction_ends`), rétrocompatible.
+
+**Défaut trouvé par revue** (suite de la mission « auto-satin béton », piste
+« ancrage des jonctions » du même brevet). Mesuré précisément sur `y` : la
+largeur d'une branche reste stable (~5,0 mm) loin de sa jonction, mais **dérive
+nettement** sur les toutes dernières stations avant le nœud du squelette —
+jusqu'à ~9,2 mm sur la dernière station de la branche principale, une
+croissance quasi linéaire station après station. Cause : la section
+transversale d'une branche est calculée depuis sa **seule tangente locale** ;
+près d'une confluence, plusieurs branches se recouvrent physiquement, et le
+rayon perpendiculaire balaie alors ce **bourrelet de la confluence** — pas la
+ceinture réelle de cette branche seule. Conséquence démontrée : les 3 sections
+d'un Y ne se rejoignaient PAS au même point — jusqu'à **~5 mm d'écart** entre
+deux rails censés coïncider exactement à la confluence, laissant un vide ou un
+repli selon les branches.
+
+**Correction** (`trim_and_anchor_junction_end` dans `satin_column.cpp`) en
+deux temps, pour chaque bout de JONCTION (jamais un bout ouvert — traité par
+l'extension des bouts ouverts, § précédente) :
+
+1. **Amputation** de la queue instable : les stations terminales sont retirées
+   tant que leur largeur dépasse de plus de 10 % celle de leur voisine plus
+   intérieure — signature précise de la dérive mesurée (croissance nette et
+   soudaine, à distinguer d'une variation progressive légitime ailleurs dans
+   la colonne, jamais touchée par cette règle).
+2. **Ancrage** indépendant de chaque rail sur le **sommet reflex** (concave) du
+   contour le plus proche, dans un rayon borné
+   (`junction_anchor_radius`, 6 mm par défaut) : les sommets reflex sont
+   exactement les « encoches » où le contour réel bascule d'une branche à sa
+   voisine. Les deux rails d'une même branche touchent généralement **deux
+   encoches distinctes** — jamais ancrés au même point. Si les deux rails
+   convoitent le même sommet (cas réel trouvé sur un « T » où une moitié de
+   barre n'a qu'un seul côté avec une vraie encoche voisine), seul le plus
+   proche le garde ; l'autre cherche son propre sommet **distinct** ou renonce
+   — sans cette règle d'exclusion, les deux rails convergeaient par erreur
+   vers l'unique encoche, créant un barreau de largeur nulle. Sans ancre à
+   portée, un rail conserve sa position amputée (repli sans erreur — toutes
+   les jonctions ne sont pas des étoiles symétriques à *n* encoches pour *n*
+   branches).
+
+Vérifié : sur un Y symétrique (3 branches), les 6 extrémités de rail touchant
+la jonction se regroupent en **exactement 3 sommets, chacun partagé par
+exactement 2 rails** de sections différentes (`length_um` < 5 µm entre les
+deux) ; sur un T (topologie asymétrique, 2 encoches réelles pour 3 branches),
+**aucune collision** (jamais 3 rails ou plus au même sommet) et aucun barreau
+dégénéré ; aucune dérive de largeur résiduelle (> 1,2× la médiane) sur aucune
+section ; déterminisme ; le bascule `anchor_junction_ends=false` restaure
+l'ancienne dérive (régression volontairement reproduite pour prouver que le
+bascule agit réellement).
+
+**Limite connue, non corrigée ici** : la forme `cross` (croix à 4 branches)
+produit actuellement une topologie de squelette différente de l'attendu (un
+nœud de degré 2 au lieu d'un nœud de jonction unique de degré 4, stable sur
+toutes les résolutions de rasterisation testées) — un défaut distinct, situé
+dans l'extraction du graphe de squelette (`skeleton_graph.cpp`), pas dans
+l'ancrage des rails documenté ici. Non instruit dans ce lot.
+
 Décision : `Suitable` → une colonne (axe principal) ; `RequiresDecomposition`
 (Y/T) → une colonne par branche menant à une extrémité. Un anneau fin à un
 trou est ouvert sur une couture déterministe puis décomposé en quatre sections
@@ -628,7 +688,9 @@ suivant réellement la matière viendra avec le tatami avancé (Lot 7).
   (ordre/orientation/liaisons, Lot 6) ; `generate_satin_group` dans
   `generate.cpp` (émission des groupes routés).
 - `libs/auto_satin/.../satin_column.hpp` + `src/satin_column.cpp` —
-  `build_satin_columns`, `SatinColumnGeometry`, `SatinRung` (moteur géométrique).
+  `build_satin_columns`, `SatinColumnGeometry`, `SatinRung` (moteur géométrique) ;
+  `extend_tip` (bouts ouverts) et `reflex_vertices`/`trim_and_anchor_junction_end`
+  (bouts de jonction, mission « auto-satin béton »).
 - `libs/auto_satin/src/debug_export.cpp` — `columns_to_svg`.
 - Tests : `tests/unit/stitch/test_satin.cpp`,
   `tests/unit/stitch/test_satin_pairing_metrics.cpp` (fixtures et métriques de

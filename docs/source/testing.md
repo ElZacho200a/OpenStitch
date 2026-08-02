@@ -15,20 +15,20 @@ Public : développeur, mainteneur.
   (invoquée via `add_test`, cf. Lot 8.1) — échoue si un site de production
   hors `libs/stitch_generation/` appelle `generate_sequence()` directement
   sans annotation `raw-sequence-ok:`, contournant les retouches manuelles.
-- Total au dernier passage vérifié : **364 tests CTest**, 100 % réussis.
+- Total au dernier passage vérifié : **369 tests CTest**, 100 % réussis.
 
 ## Encadré de traçabilité (dernier passage vérifié)
 
-Un simple « 364/364 » devient vite périmé ; voici le contexte exact du dernier
+Un simple « 369/369 » devient vite périmé ; voici le contexte exact du dernier
 passage vérifié manuellement. Régénérez ces valeurs avant toute publication.
 
 | Élément | Valeur |
 |---|---|
-| Commit (état du code testé) | `25d28a4` — auto-satin : extension des bouts ouverts jusqu'au bord réel |
+| Commit (état du code testé) | `3f12585` — auto-satin : ancrage des jonctions sur les sommets reflex |
 | Compilateur | MSVC toolset 14.50 (Visual Studio 2026) |
 | CMake | 4.4.0-rc3 |
 | Configurations | Debug **et** Release |
-| Résultat CTest | 364 / 364 réussis |
+| Résultat CTest | 369 / 369 réussis |
 | Tests désactivés | 0 |
 | Fichiers de tests d'intégration | 1 (`tests/integration/test_pipeline.cpp`) |
 | Suites Qt (UI desktop) | 5 exécutables CTest (`tests/unit/desktop/`), 43 fonctions de test QTest |
@@ -38,7 +38,7 @@ passage vérifié manuellement. Régénérez ces valeurs avant toute publication
 Note : chaque `TEST_CASE` Catch2 est enregistré séparément par
 `catch_discover_tests`. Côté Qt, chaque exécutable QTest est un seul test CTest
 (`add_test`) qui contient plusieurs fonctions. Le nombre d'**assertions** est
-supérieur au nombre de tests CTest (364, garde structurelle CI incluse).
+supérieur au nombre de tests CTest (369, garde structurelle CI incluse).
 
 ## Exécution
 
@@ -276,6 +276,15 @@ But visé par l'utilisateur, dans l'ordre de valeur/risque :
   identiques bascule activée/désactivée (seuls les bouts ouverts s'allongent) ;
   aucun barreau dégénéré après extension ; déterminisme ; le bascule
   `extend_open_ends=false` restaure l'ancien comportement.
+- **Ancrage des jonctions** (`trim_and_anchor_junction_end`, mission « auto-satin
+  béton ») : sur un Y symétrique (résolution où les 3 branches survivent), les
+  6 extrémités de rail touchant la jonction se regroupent en **exactement 3
+  sommets partagés par exactement 2 rails chacun** ; sur un T (topologie
+  asymétrique, 2 encoches réelles pour 3 branches) **aucune collision** (jamais
+  3+ rails au même sommet) et aucun barreau dégénéré ; aucune dérive de largeur
+  résiduelle (> 1,2× la médiane) sur aucune section ; déterminisme ; le bascule
+  `anchor_junction_ends=false` restaure la dérive (régression reproduite pour
+  prouver que le bascule agit réellement).
 - **Persistance des réseaux satin** : aller-retour exact de l'index/nombre de
   sections et des jonctions, ancien satin sans `topology` encore lisible, index
   hors réseau refusé proprement.

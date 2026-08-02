@@ -19,7 +19,7 @@ fonctionnalité, vérifié dans le code.
 | Tatami | Présent · testé · SVG | Broderie | stitch_generation | oui | scanline + routage ; **sous-couches (contour + parallèle), underpath caché, entrée** (Lot 7) ; orientation éditable |
 | Satin (génération par barreaux) | Présent · testé · SVG | Broderie / inspecteur | stitch_generation | oui | `fill_satin_columns` : sections, espacement **perpendiculaire**, guides sélectionnables/ajoutables/supprimables/déplaçables avec undo/redo, points courts / split / terminaisons (Lot 3), **sous-couches (center/edge/zigzag) + compensation pull/push** (Lot 4, passes distinctes), **lock + entrée/sortie** (Lot 5), **routage multi-colonnes** (Lot 6) |
 | Modèle de passes | Présent · testé | (générateur) | stitch | oui | `StitchPass` par commande (Underlay/TopStitch/Travel/Lock/Manual) ; affichage/toggle par passe dans l'UI à venir |
-| Auto-satin géométrique (rails+barreaux) | Présent · testé · SVG | Auto + Broderie ▸ Convertir en satin | auto_satin | oui | formes simples, Y/T multi-sections et anneau fin en 4 sections ; **bouts ouverts étendus jusqu'au bord réel** (embouts arrondis/carrés, mission « auto-satin béton ») ; cercle plein/forme large refusés |
+| Auto-satin géométrique (rails+barreaux) | Présent · testé · SVG | Auto + Broderie ▸ Convertir en satin | auto_satin | oui | formes simples, Y/T multi-sections et anneau fin en 4 sections ; **bouts ouverts étendus jusqu'au bord réel** et **bouts de jonction ancrés sur les sommets reflex du contour** (mission « auto-satin béton ») ; cercle plein/forme large refusés ; croix à 4 branches : topologie de squelette incorrecte (défaut distinct, non corrigé) |
 | Classification auto des régions | **Expérimental** | Segmentation | autodigitize | oui | bandes fines → moteur topologique par défaut (`use_auto_satin`) ; refus → tatami ; moteur naïf désactivé |
 | Filtres d'affichage / calques | Implémenté | Affichage | desktop | (vue) | affichage seulement (couleur, type, taille ; image/régions/vecteurs/broderie) |
 | Ordre de couture | Implémenté | dock | optimization | oui | 2-opt non implémenté |
@@ -38,7 +38,7 @@ fonctionnalité, vérifié dans le code.
 
 ## Dette technique connue
 
-- Le compte CTest courant est **364** en Debug et Release ; éviter de figer ce
+- Le compte CTest courant est **369** en Debug et Release ; éviter de figer ce
   nombre dans les pages d'introduction sans le mettre à jour avec la CI.
 - Le satin dispose désormais d'un moteur géométrique par **squelette**
   (`auto_satin::build_satin_columns`, Lot 1) et d'une **génération par barreaux**
@@ -88,6 +88,21 @@ fonctionnalité, vérifié dans le code.
   (largeur plancher non nulle). Voir `docs/source/satin.md` § *Extension des
   bouts ouverts*, sources (brevet Pulse Microsystems, littérature d'élagage de
   squelette) citées dans ce même paragraphe.
+- **Correctif « auto-satin béton » — ancrage des jonctions** : le défaut
+  inverse du précédent. La section transversale d'une branche, calculée depuis
+  sa seule tangente, dérive nettement en approchant d'une jonction (jusqu'à
+  ~9,2 mm mesuré sur "y" contre ~5,0 mm nominal) car le rayon balaie le
+  bourrelet de la confluence, pas la ceinture réelle de la branche — les
+  sections d'un Y ne se rejoignaient pas au même point (jusqu'à ~5 mm d'écart).
+  Corrigé (`trim_and_anchor_junction_end`, activé par défaut) : amputation de
+  la queue instable (croissance > 10 % par rapport à la station voisine) puis
+  ancrage indépendant de chaque rail sur le sommet reflex (concave) du contour
+  le plus proche, avec exclusion mutuelle si les deux rails d'une branche
+  convoitent le même sommet (défaut réel trouvé sur "T", corrigé avant commit).
+  Voir `docs/source/satin.md` § *Ancrage des jonctions sur les sommets reflex du
+  contour*. Limite connue non corrigée : la forme "croix" (4 branches) a une
+  topologie de squelette incorrecte (nœud de degré 2 au lieu de degré 4),
+  défaut distinct situé dans `skeleton_graph.cpp`.
 - **Correction de l'appariement rail gauche/rail droit (2026-08-01)** :
   l'ancien appariement (`fill_satin` sans barreaux, et l'interpolation
   intra-intervalle de `fill_satin_columns`) associait les deux rails par la
