@@ -196,6 +196,30 @@ double signed_area(const Poly& poly) {
     return area * 0.5;
 }
 
+// Sommets REFLEX (concaves) d'un polygone fermé, indépendant du sens de
+// parcours (le signe de l'aire signée détermine le sens ; un sommet est
+// reflex si son virage local est de signe OPPOSÉ à ce sens). Ce sont les
+// « encoches » d'une jonction en Y/T/croix — les points où le contour réel
+// bascule d'une branche à sa voisine (§ ancrage des jonctions).
+std::vector<P2> reflex_vertices(const Poly& poly) {
+    std::vector<P2> out;
+    const std::size_t n = poly.size();
+    if (n < 3) {
+        return out;
+    }
+    const double orientSign = signed_area(poly) >= 0.0 ? 1.0 : -1.0;
+    for (std::size_t i = 0; i < n; ++i) {
+        const P2& prev = poly[(i + n - 1) % n];
+        const P2& cur = poly[i];
+        const P2& next = poly[(i + 1) % n];
+        const double turn = cross(cur - prev, next - cur);
+        if (turn * orientSign < 0.0) {
+            out.push_back(cur);
+        }
+    }
+    return out;
+}
+
 Poly open_at_rightmost(Poly poly, double seamY) {
     if (poly.empty()) return {};
     std::size_t seamEdge = 0;
@@ -465,13 +489,91 @@ std::vector<Station> extend_tip(const std::vector<Poly>& polys, P2 base, P2 marc
     return ext;
 }
 
+// Ampute la queue d'une extrémité de JONCTION dont la largeur mesurée dérive
+// (§ ancrage des jonctions : la section transversale d'une branche, calculée
+// depuis sa seule tangente locale, balaie le bourrelet de la confluence — pas
+// la ceinture réelle de CETTE branche — dès qu'on approche du nœud du
+// squelette ; démontré empiriquement : largeur stable ~5,0 mm loin de la
+// jonction, dérivant jusqu'à ~9,2 mm sur la dernière station). On retire les
+// stations terminales tant que leur largeur dépasse celle de leur voisine plus
+// intérieure de plus de 10 % (motif observé : croissance nette et soudaine, à
+// distinguer d'une variation progressive légitime ailleurs dans la forme —
+// cette fonction n'agit QUE sur un bout de jonction, jamais un bout ouvert).
+// Ancre ensuite CHAQUE rail, indépendamment, sur le sommet reflex du contour
+// le plus proche dans `searchRadius` : les deux rails d'une branche touchent
+// généralement DEUX encoches distinctes de la confluence (jamais le même
+// point). Sans ancre à portée pour un rail, sa dernière position calculée est
+// conservée (repli sans erreur).
+void trim_and_anchor_junction_end(std::vector<Station>& st, bool atEnd,
+                                  const std::vector<P2>& anchors, double searchRadius) {
+    constexpr double kGrowthFactor = 1.10;
+    while (st.size() >= 3) {
+        const Station& last = atEnd ? st.back() : st.front();
+        const Station& prev = atEnd ? st[st.size() - 2] : st[1];
+        if (last.width > prev.width * kGrowthFactor) {
+            if (atEnd) {
+                st.pop_back();
+            } else {
+                st.erase(st.begin());
+            }
+        } else {
+            break;
+        }
+    }
+    if (anchors.empty()) {
+        return;
+    }
+    // Recherche du sommet le plus proche, en excluant optionnellement UN
+    // sommet déjà attribué (évite qu'un rail sans véritable encoche voisine ne
+    // se rabatte, par défaut, sur le sommet légitimement pris par l'autre
+    // rail — cas réel observé sur une jonction en T où un seul côté d'une
+    // branche touche une encoche : sans exclusion, les DEUX rails de cette
+    // branche convergeaient vers le MÊME sommet, créant un barreau dégénéré).
+    const auto nearestExcluding = [&](P2 p, const std::optional<P2>& exclude) -> std::optional<P2> {
+        double best = searchRadius;
+        std::optional<P2> found;
+        for (const P2& a : anchors) {
+            if (exclude && norm(a - *exclude) < 1.0) {
+                continue;
+            }
+            const double d = norm(a - p);
+            if (d < best) {
+                best = d;
+                found = a;
+            }
+        }
+        return found;
+    };
+    Station& s = atEnd ? st.back() : st.front();
+    auto aTarget = nearestExcluding(s.railA, std::nullopt);
+    auto bTarget = nearestExcluding(s.railB, std::nullopt);
+    if (aTarget && bTarget && norm(*aTarget - *bTarget) < 1.0) {
+        // Les deux rails convoitent le MÊME sommet : seul le plus proche le
+        // garde ; l'autre cherche son propre sommet DISTINCT (ou renonce).
+        if (norm(*aTarget - s.railA) <= norm(*bTarget - s.railB)) {
+            bTarget = nearestExcluding(s.railB, aTarget);
+        } else {
+            aTarget = nearestExcluding(s.railA, bTarget);
+        }
+    }
+    if (aTarget) {
+        s.railA = *aTarget;
+    }
+    if (bTarget) {
+        s.railB = *bTarget;
+    }
+}
+
 // Construit une colonne depuis une centerline (axe) et les polygones de région.
 // `extendStart`/`extendEnd` : true si ce bout est OUVERT (pas de jonction) et
-// doit donc être étendu jusqu'au bord réel — cf. `extend_tip`.
+// doit donc être étendu jusqu'au bord réel — cf. `extend_tip`. Un bout de
+// jonction (`!extendStart`/`!extendEnd`) est traité par
+// `trim_and_anchor_junction_end` via `junctionAnchors`.
 std::optional<SatinColumnGeometry> build_column(const std::vector<Vec2um>& centerline,
                                                 const std::vector<Poly>& polys,
                                                 const SatinColumnsParameters& params,
-                                                bool extendStart, bool extendEnd) {
+                                                bool extendStart, bool extendEnd,
+                                                const std::vector<P2>& junctionAnchors) {
     std::vector<P2> axis;
     axis.reserve(centerline.size());
     for (const Vec2um& v : centerline) {
@@ -536,27 +638,38 @@ std::optional<SatinColumnGeometry> build_column(const std::vector<Vec2um>& cente
     }
 
     // Étend les bouts OUVERTS (sans jonction) jusqu'au bord réel de la région
-    // (embout arrondi/pointu) — cf. `extend_tip`. Un bout de jonction reste
-    // inchangé : il doit rester exactement au nœud du squelette pour la
-    // reconciliation multi-sections (guides liés, routage).
-    if (params.extend_open_ends) {
+    // (embout arrondi/pointu) — cf. `extend_tip`. Un bout de JONCTION est
+    // traité à l'inverse : sa queue instable est amputée puis chaque rail est
+    // ancré sur le sommet reflex du contour le plus proche — cf.
+    // `trim_and_anchor_junction_end`. Les deux traitements sont mutuellement
+    // exclusifs par bout (un bout est soit ouvert, soit de jonction).
+    {
         const double stepLen = static_cast<double>(params.station_spacing.value);
         const double tipMin =
             static_cast<double>(std::max<std::int32_t>(1, params.tip_min_width.value));
+        const double anchorRadius = static_cast<double>(params.junction_anchor_radius.value);
         if (extendEnd) {
-            const Station& last = st.back();
-            auto tail = extend_tip(polys, last.axis, last.tangent, last.tangent, last.width,
-                                   maxWidth, stepLen, tipMin);
-            for (auto& s : tail) {
-                st.push_back(std::move(s));
+            if (params.extend_open_ends) {
+                const Station& last = st.back();
+                auto tail = extend_tip(polys, last.axis, last.tangent, last.tangent, last.width,
+                                       maxWidth, stepLen, tipMin);
+                for (auto& s : tail) {
+                    st.push_back(std::move(s));
+                }
             }
+        } else if (params.anchor_junction_ends) {
+            trim_and_anchor_junction_end(st, /*atEnd=*/true, junctionAnchors, anchorRadius);
         }
         if (extendStart) {
-            const Station& first = st.front();
-            auto head = extend_tip(polys, first.axis, first.tangent * -1.0, first.tangent,
-                                   first.width, maxWidth, stepLen, tipMin);
-            std::reverse(head.begin(), head.end());
-            st.insert(st.begin(), head.begin(), head.end());
+            if (params.extend_open_ends) {
+                const Station& first = st.front();
+                auto head = extend_tip(polys, first.axis, first.tangent * -1.0, first.tangent,
+                                       first.width, maxWidth, stepLen, tipMin);
+                std::reverse(head.begin(), head.end());
+                st.insert(st.begin(), head.begin(), head.end());
+            }
+        } else if (params.anchor_junction_ends) {
+            trim_and_anchor_junction_end(st, /*atEnd=*/false, junctionAnchors, anchorRadius);
         }
     }
 
@@ -649,13 +762,21 @@ SatinColumnsResult build_satin_columns(const geometry::PathSet& region,
 
     const auto& graph = analysis->debug.graph;
     const std::vector<Poly> polys = region_polys(region);
+    // Sommets reflex (concaves) du CONTOUR EXTÉRIEUR : les « encoches » d'une
+    // confluence Y/T/croix, utilisées pour ancrer chaque rail de branche
+    // indépendamment (§ ancrage des jonctions). Les trous n'ont pas de
+    // jonction satin dans les formes actuelles ; non pris en compte ici.
+    const std::vector<P2> junctionAnchors =
+        polys.empty() ? std::vector<P2>{} : reflex_vertices(polys.front());
 
     const auto try_edge = [&](const SkeletonEdge& e) {
         const bool startIsJunction = graph.nodes[e.from].type == SkeletonNodeType::Junction;
         const bool endIsJunction = graph.nodes[e.to].type == SkeletonNodeType::Junction;
-        // Un bout de jonction ne doit jamais être étendu (il doit rester
-        // exactement au nœud du squelette) ; seul un bout OUVERT l'est.
-        if (auto col = build_column(e.centerline, polys, params, !startIsJunction, !endIsJunction)) {
+        // Un bout de jonction n'est jamais ÉTENDU (il doit rester exactement
+        // au nœud du squelette) ; seul un bout OUVERT l'est. Un bout de
+        // jonction est en revanche ampute+ancré (cf. `junctionAnchors`).
+        if (auto col = build_column(e.centerline, polys, params, !startIsJunction, !endIsJunction,
+                                    junctionAnchors)) {
             if (startIsJunction) {
                 col->start_junction = e.from;
             }

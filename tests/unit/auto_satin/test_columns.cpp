@@ -56,6 +56,62 @@ Vec2um mid(Vec2um a, Vec2um b) {
     return {Micrometers{(a.x.value + b.x.value) / 2}, Micrometers{(a.y.value + b.y.value) / 2}};
 }
 
+// Rassemble toutes les extrémités de rail (A et B) des sections touchant
+// `junctionId` et les regroupe par position quasi identique (tolérance 5 µm).
+// Invariant vérifié : aucun groupe de PLUS DE DEUX membres — un sommet de
+// confluence appartient au maximum à deux rails de sections différentes.
+// Un groupe de 3+ signale une collision (deux rails DIFFÉRENTS convergeant
+// par erreur vers le même sommet, créant un barreau dégénéré). Un groupe de 1
+// est légitime : toutes les jonctions ne sont pas des étoiles symétriques
+// (une branche de T peut n'avoir qu'un seul côté touchant une vraie encoche,
+// l'autre suit simplement le bord plat de la forme — cf. test dédié "Y" pour
+// l'invariant plus fort applicable aux confluences symétriques).
+void check_junction_no_collision(const SatinColumnsResult& r, std::uint32_t junctionId) {
+    std::vector<Vec2um> endpoints;
+    for (const auto& col : r.columns) {
+        if (col.start_junction && *col.start_junction == junctionId) {
+            REQUIRE_FALSE(col.rail_a.nodes.empty());
+            endpoints.push_back(col.rail_a.nodes.front().pos);
+            endpoints.push_back(col.rail_b.nodes.front().pos);
+        }
+        if (col.end_junction && *col.end_junction == junctionId) {
+            REQUIRE_FALSE(col.rail_a.nodes.empty());
+            endpoints.push_back(col.rail_a.nodes.back().pos);
+            endpoints.push_back(col.rail_b.nodes.back().pos);
+        }
+    }
+    std::vector<std::pair<Vec2um, int>> groups;
+    for (const auto& p : endpoints) {
+        bool found = false;
+        for (auto& [gp, count] : groups) {
+            if (length_um(gp - p) < 5.0) {
+                ++count;
+                found = true;
+                break;
+            }
+        }
+        if (!found) {
+            groups.push_back({p, 1});
+        }
+    }
+    INFO("endpoints = " << endpoints.size() << " groupes = " << groups.size());
+    for (const auto& [gp, count] : groups) {
+        CHECK(count <= 2);
+    }
+}
+
+// Largeur maximale mesurée le long d'un rail (distance rail_a[i]<->rail_b[i]) :
+// sert à détecter une dérive de section transversale près d'une jonction (le
+// défaut corrigé par l'ancrage — cf. test dédié).
+double max_station_width(const SatinColumnGeometry& col) {
+    double w = 0.0;
+    const std::size_t n = std::min(col.rail_a.nodes.size(), col.rail_b.nodes.size());
+    for (std::size_t i = 0; i < n; ++i) {
+        w = std::max(w, length_um(col.rail_a.nodes[i].pos - col.rail_b.nodes[i].pos));
+    }
+    return w;
+}
+
 }  // namespace
 
 // --- Formes simples : colonnes cohérentes ------------------------------------
@@ -259,6 +315,164 @@ TEST_CASE("colonnes : un reseau Y identifie ses sections et sa jonction") {
         if (column.end_junction) junctions.insert(*column.end_junction);
     }
     CHECK(junctions.size() == 1);
+}
+
+// --- Ancrage des jonctions sur les sommets reflex du contour -----------------
+//
+// Défaut trouvé par revue (mission « auto-satin béton », piste jonctions du
+// brevet Pulse Microsystems) : la section transversale d'une branche, calculée
+// depuis sa seule tangente locale, reste fiable loin d'une jonction mais
+// dérive nettement en approchant du nœud du squelette : le rayon perpendiculaire
+// balaie alors le bourrelet de la CONFLUENCE (où plusieurs branches se
+// recouvrent), pas la ceinture réelle de cette branche seule. Mesuré sur "y" :
+// largeur stable ~5,0 mm loin de la jonction, dérivant jusqu'à ~9,2 mm sur la
+// dernière station avant correction. Résultat : les 3 sections d'un Y ne se
+// rejoignaient pas au même point (jusqu'à ~5 mm d'écart entre deux rails
+// censés coïncider exactement), laissant un vide ou un repli à la confluence.
+
+TEST_CASE("colonnes : jonction Y symetrique - trois sommets partages exactement") {
+    // La rasterisation par defaut des autres tests (0,1 mm) elague parfois une
+    // des trois branches du Y (defaut PREEXISTANT de sensibilite du squelette
+    // a la resolution, sans rapport avec l'ancrage — non corrige ici). On
+    // verifie donc l'ancrage a une resolution ou les 3 branches survivent
+    // (confirme empiriquement) pour tester l'invariant fort applicable a une
+    // confluence symetrique a 3 branches : CHAQUE sommet est partage par
+    // EXACTEMENT deux rails, aucun rail isole.
+    const auto region = make_shape("y");
+    REQUIRE(region.has_value());
+    SatinColumnsParameters params;
+    params.analysis.raster.pixel_size = Micrometers{50};
+    const auto r = build_satin_columns(*region, params);
+    REQUIRE(r.refusal.empty());
+    REQUIRE(r.columns.size() == 3);
+    std::set<std::uint32_t> junctions;
+    for (const auto& c : r.columns) {
+        if (c.start_junction) junctions.insert(*c.start_junction);
+        if (c.end_junction) junctions.insert(*c.end_junction);
+    }
+    REQUIRE(junctions.size() == 1);
+
+    std::vector<Vec2um> endpoints;
+    for (const auto& col : r.columns) {
+        if (col.start_junction) {
+            endpoints.push_back(col.rail_a.nodes.front().pos);
+            endpoints.push_back(col.rail_b.nodes.front().pos);
+        }
+        if (col.end_junction) {
+            endpoints.push_back(col.rail_a.nodes.back().pos);
+            endpoints.push_back(col.rail_b.nodes.back().pos);
+        }
+    }
+    REQUIRE(endpoints.size() == 6);
+    std::vector<std::pair<Vec2um, int>> groups;
+    for (const auto& p : endpoints) {
+        bool found = false;
+        for (auto& [gp, count] : groups) {
+            if (length_um(gp - p) < 5.0) {
+                ++count;
+                found = true;
+                break;
+            }
+        }
+        if (!found) {
+            groups.push_back({p, 1});
+        }
+    }
+    CHECK(groups.size() == 3);
+    for (const auto& [gp, count] : groups) {
+        CHECK(count == 2);
+    }
+}
+
+TEST_CASE("colonnes : jonction T - aucune collision (barreau degenere)") {
+    // Le "T" (cf. shapes.cpp) n'a que DEUX encoches reelles pour trois
+    // branches : le sommet de la branche verticale est exactement au ras du
+    // sommet de la barre horizontale (pas de troisieme encoche « en haut »
+    // comme sur un Y symetrique). Chaque moitie de barre ne touche donc
+    // qu'UNE seule encoche par son cote interne ; son cote externe n'a
+    // legitimement aucune ancre a proximite. Verifie l'absence de collision
+    // (deux rails DIFFERENTS convergeant a tort vers le meme sommet), le vrai
+    // defaut trouve : avant le correctif d'exclusion, les DEUX rails d'une
+    // meme demi-barre convergeaient vers l'unique encoche voisine, creant un
+    // barreau de largeur nulle a cette station.
+    const auto r = columns_of("t");
+    REQUIRE(r.refusal.empty());
+    std::set<std::uint32_t> junctions;
+    for (const auto& c : r.columns) {
+        if (c.start_junction) junctions.insert(*c.start_junction);
+        if (c.end_junction) junctions.insert(*c.end_junction);
+    }
+    REQUIRE(junctions.size() == 1);
+    check_junction_no_collision(r, *junctions.begin());
+    for (const auto& col : r.columns) {
+        for (const auto& rung : col.rungs) {
+            CHECK(length_um(rung.a - rung.b) > 0.0);
+        }
+    }
+}
+
+TEST_CASE("colonnes : aucune derive de largeur pres d'une jonction (Y)") {
+    const auto r = columns_of("y");
+    REQUIRE(r.refusal.empty());
+    for (const auto& col : r.columns) {
+        // Largeur mediane comme reference (robuste aux quelques stations de
+        // bord) ; aucune station ne doit depasser 1,2x cette reference apres
+        // correction (avant correction : jusqu'a ~1,85x sur "y").
+        std::vector<double> widths;
+        const std::size_t n = std::min(col.rail_a.nodes.size(), col.rail_b.nodes.size());
+        widths.reserve(n);
+        for (std::size_t i = 0; i < n; ++i) {
+            widths.push_back(length_um(col.rail_a.nodes[i].pos - col.rail_b.nodes[i].pos));
+        }
+        REQUIRE_FALSE(widths.empty());
+        std::sort(widths.begin(), widths.end());
+        const double median = widths[widths.size() / 2];
+        CHECK(max_station_width(col) <= median * 1.2);
+    }
+}
+
+TEST_CASE("colonnes : anchor_junction_ends=false desactive l'ancrage") {
+    const auto region = make_shape("y");
+    REQUIRE(region.has_value());
+    SatinColumnsParameters withAnchor;
+    withAnchor.analysis.raster.pixel_size = Micrometers{100};
+    SatinColumnsParameters noAnchor = withAnchor;
+    noAnchor.anchor_junction_ends = false;
+    const auto a = build_satin_columns(*region, withAnchor);
+    const auto b = build_satin_columns(*region, noAnchor);
+    REQUIRE(a.refusal.empty());
+    REQUIRE(b.refusal.empty());
+    REQUIRE(a.columns.size() == b.columns.size());
+    // Bascule desactivee : la derive de largeur pres de la jonction reapparait
+    // (aucune borne 1,2x garantie) sur au moins une colonne.
+    bool anyDrift = false;
+    for (const auto& col : b.columns) {
+        std::vector<double> widths;
+        const std::size_t n = std::min(col.rail_a.nodes.size(), col.rail_b.nodes.size());
+        for (std::size_t i = 0; i < n; ++i) {
+            widths.push_back(length_um(col.rail_a.nodes[i].pos - col.rail_b.nodes[i].pos));
+        }
+        std::sort(widths.begin(), widths.end());
+        const double median = widths[widths.size() / 2];
+        if (max_station_width(col) > median * 1.2) {
+            anyDrift = true;
+        }
+    }
+    CHECK(anyDrift);
+}
+
+TEST_CASE("colonnes : ancrage des jonctions deterministe") {
+    const auto region = make_shape("y");
+    REQUIRE(region.has_value());
+    SatinColumnsParameters params;
+    params.analysis.raster.pixel_size = Micrometers{100};
+    const auto a = build_satin_columns(*region, params);
+    const auto b = build_satin_columns(*region, params);
+    REQUIRE(a.columns.size() == b.columns.size());
+    for (std::size_t i = 0; i < a.columns.size(); ++i) {
+        CHECK(a.columns[i].rail_a == b.columns[i].rail_a);
+        CHECK(a.columns[i].rail_b == b.columns[i].rail_b);
+    }
 }
 
 TEST_CASE("colonnes : cercle refuse (direction ambigue)") {

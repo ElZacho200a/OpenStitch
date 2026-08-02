@@ -52,6 +52,15 @@ struct SatinColumnsParameters {
     // tangente sortante tant qu'elles rétrécissent, jusqu'au bord réel (bissection).
     bool extend_open_ends{true};
     Micrometers tip_min_width{50};  // largeur plancher du dernier barreau (jamais nul)
+    // Un bout de JONCTION (Y/T/croix) souffre du défaut inverse : la section
+    // transversale d'une branche, calculée depuis sa seule tangente locale,
+    // balaie le bourrelet de la confluence (pas la ceinture réelle de CETTE
+    // branche) dès qu'on approche du nœud du squelette — la largeur mesurée
+    // dérive alors nettement. On ampute cette queue instable puis on ancre
+    // chaque rail (indépendamment) sur le sommet REFLEX (concave) du contour
+    // le plus proche, dans ce rayon de recherche.
+    bool anchor_junction_ends{true};
+    Micrometers junction_anchor_radius{6'000};  // 6 mm : porte les encoches usuelles
 };
 
 struct SatinColumnsResult {
