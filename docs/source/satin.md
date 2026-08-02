@@ -351,14 +351,6 @@ la jonction structurelle. Celle-ci est reconnue par l'ordre géométrique des
 stations projetées sur les deux rails, et non par son index de stockage, y
 compris après un import aux barreaux inversés ou désordonnés.
 
-Limite actuelle : l'ajout est coordonné à travers la jonction, mais l'angle et
-le déplacement des guides internes s'éditent encore section par section sur les
-`SatinParams` ouverts issus du réseau topologique. Il n'existe donc pas encore
-de propagation géométrique d'un geste entre branches. Le guide structurel reste
-volontairement verrouillé ; le déverrouiller exigerait un calcul garantissant
-simultanément la couverture, la monotonie et l'absence de repli dans toutes les
-sections incidentes.
-
 Chaque groupe de guides internes créés ensemble par un ajout coordonné à une
 jonction porte un `link_id` (`SatinRung.link_id`, optionnel) — un identifiant
 local au réseau (`source_vector`), alloué de façon déterministe et monotone par
@@ -367,9 +359,58 @@ réseau sont épuisés plutôt que d'en réémettre un déjà utilisé). Un guid
 indépendamment n'a pas de `link_id` ; les projets historiques n'en ont jamais.
 Persisté dans le `.osp` (`rungs[].linkId`, validation stricte : entier `uint32`
 exact, aucune troncature silencieuse d'une valeur négative/flottante/hors
-bornes). Ce lot pose l'identité partagée nécessaire à une future édition
-groupée ; il ne modifie pas encore le comportement de déplacement/suppression
-individuel d'un guide.
+bornes).
+
+**Invariant central** : un groupe lié est identifié par la paire
+`(source_vector, link_id)` — jamais par le seul `link_id`, qui n'est pas
+globalement unique entre réseaux distincts. `satin_linked_guides` énumère les
+membres d'un groupe (un guide par section touchée par la jonction d'origine,
+jamais plus), rejette la totalité si une section porte deux guides du même
+`link_id` (donnée corrompue), si une section déclarée manque, si les membres ne
+touchent pas la même jonction ou si leur progression n'est pas strictement
+monotone sur les deux rails, et
+trie le résultat par `(section_index, embroidery_id, guide_index)` — mutation
+et énumération restent donc déterministes indépendamment de l'ordre des objets
+dans le document, et un même identifiant numérique réutilisé dans un autre
+réseau (`source_vector` différent) n'est jamais confondu avec le groupe.
+
+**Suppression de groupe atomique.** Supprimer un guide lié (`Broderie ▸
+Supprimer le guide satin sélectionné`) supprime désormais l'identité logique
+entière : tous les guides du groupe, dans toutes leurs sections, en une seule
+commande **Supprimer des guides satin coordonnés** (`RemoveSatinGuidesCommand`)
+annulable/rétablissable comme un tout. Refusée en bloc — aucune section n'est
+touchée — si une section tomberait à moins de deux guides restants.
+
+**Déplacement de groupe atomique — geste explicite.** Un glisser ordinaire
+d'une extrémité de guide (sans modificateur) reste **local** : il ne modifie
+que l'angle de cette section, comme avant (édition d'angle intrinsèquement
+locale — deux sections d'un même réseau peuvent légitimement avoir des largeurs
+et orientations différentes). Pour déplacer tout le groupe de façon cohérente,
+l'utilisateur maintient **Maj** en glissant une extrémité d'un guide lié :
+`move_satin_guide_group` calcule, pour la section glissée, sa position
+normalisée `t` dans l'intervalle `[station de la jonction, station du voisin
+suivant]` (sur chaque rail), en déduit un delta normalisé unique à partir du
+point relâché, puis applique **ce même delta** à `t` dans **chaque** section du
+groupe — recalculée entièrement à partir de la géométrie propre de cette
+section (ses propres rails, sa propre densité). Aucune coordonnée ni angle brut
+n'est jamais recopié d'une section à l'autre ; seul le delta normalisé
+traverse la frontière. Le résultat est appliqué par une seule commande **Déplacer
+des guides satin coordonnés** (réutilise `MoveSatinGuidesCommand`), tout ou
+rien : si une seule section sortirait de son intervalle admissible (moins d'un
+demi-pas de densité de sa marge, ou guide plus adjacent à sa jonction — topologie
+modifiée entretemps), aucune section n'est mutée et un message explique le refus.
+Un Maj+clic sans déplacement est un no-op exact et ne crée pas d'entrée dans
+l'historique. L'infobulle du guide et le message de statut du mode documentent
+ce geste.
+
+Limite actuelle : le déplacement de groupe ne s'applique qu'aux guides internes
+directement adjacents à leur jonction (ceux créés par l'ajout coordonné) — un
+guide qui aurait perdu cette adjacence (un autre guide inséré entre lui et la
+jonction) redevient local et refuse le geste de groupe plutôt que de deviner un
+intervalle arbitraire. Le guide structurel de jonction lui-même reste
+volontairement verrouillé (ni déplaçable ni supprimable) ; le déverrouiller
+exigerait un calcul garantissant simultanément la couverture, la monotonie et
+l'absence de repli dans toutes les sections incidentes.
 
 ## Finitions : points courts, split, terminaisons (Lot 3)
 

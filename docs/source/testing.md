@@ -15,30 +15,30 @@ Public : développeur, mainteneur.
   (invoquée via `add_test`, cf. Lot 8.1) — échoue si un site de production
   hors `libs/stitch_generation/` appelle `generate_sequence()` directement
   sans annotation `raw-sequence-ok:`, contournant les retouches manuelles.
-- Total au dernier passage vérifié : **345 tests CTest**, 100 % réussis.
+- Total au dernier passage vérifié : **358 tests CTest**, 100 % réussis.
 
 ## Encadré de traçabilité (dernier passage vérifié)
 
-Un simple « 209/209 » devient vite périmé ; voici le contexte exact du dernier
+Un simple « 358/358 » devient vite périmé ; voici le contexte exact du dernier
 passage vérifié manuellement. Régénérez ces valeurs avant toute publication.
 
 | Élément | Valeur |
 |---|---|
-| Commit (état du code testé) | `2ea34ca` — persistance des groupes de guides liés (`link_id`) |
+| Commit (état du code testé) | `81af156` — édition atomique des groupes de guides liés (déplacement/suppression) |
 | Compilateur | MSVC toolset 14.50 (Visual Studio 2026) |
 | CMake | 4.4.0-rc3 |
 | Configurations | Debug **et** Release |
-| Résultat CTest | 345 / 345 réussis |
+| Résultat CTest | 358 / 358 réussis |
 | Tests désactivés | 0 |
 | Fichiers de tests d'intégration | 1 (`tests/integration/test_pipeline.cpp`) |
-| Suites Qt (UI desktop) | 5 exécutables CTest (`tests/unit/desktop/`), 37 fonctions de test QTest |
+| Suites Qt (UI desktop) | 5 exécutables CTest (`tests/unit/desktop/`), 43 fonctions de test QTest |
 | Tests sur machine réelle | 0 |
 | Couverture de code | non mesurée |
 
-Note : chaque `TEST_CASE` Catch2 (ou fonction de test QTest) est enregistré
-comme un test CTest (via `catch_discover_tests` côté Catch2, `add_test` par
-suite côté QTest) ; le nombre d'**assertions** est supérieur. Le chiffre 342
-compte les cas de test (dont la garde structurelle CI), pas les assertions.
+Note : chaque `TEST_CASE` Catch2 est enregistré séparément par
+`catch_discover_tests`. Côté Qt, chaque exécutable QTest est un seul test CTest
+(`add_test`) qui contient plusieurs fonctions. Le nombre d'**assertions** est
+supérieur au nombre de tests CTest (358, garde structurelle CI incluse).
 
 ## Exécution
 
@@ -296,6 +296,33 @@ But visé par l'utilisateur, dans l'ordre de valeur/risque :
   vérifie l'undo/redo unique sans temporisation ni comparaison de pixels. Deux
   tests cœur couvrent aussi l'ordre inverse, le guide non structurel et
   l'intervalle trop court.
+- **Groupes de guides liés — édition atomique** (`satin_linked_guides`,
+  `move_satin_guide_group`, `RemoveSatinGuidesCommand`) : tests cœur sur
+  l'énumération triée et déterministe d'un groupe, l'isolation par réseau
+  (même `link_id` numérique réutilisé dans un `source_vector` différent, aucune
+  fuite), le refus d'un `link_id` dupliqué dans une même section (donnée
+  corrompue), le rejet total hors de l'intervalle admissible (marge de densité),
+  le rejet d'une section glissée hors du groupe, le rejet d'un guide qui a perdu
+  l'adjacence à sa jonction (topologie modifiée entretemps), le rejet d'un réseau
+  incomplet, de membres liés à des jonctions différentes et d'une progression
+  croisée entre rails, ainsi que le calcul exact du
+  delta normalisé partagé sur deux sections aux géométries de rail
+  **différentes** (longueurs 10 mm/20 mm) — vérifie que le résultat de chaque
+  section vient bien de sa propre géométrie (2 mm vs 6 mm) et non d'une
+  coordonnée recopiée. Côté commandes : suppression de groupe tout-ou-rien avec
+  undo/redo exact, rejet d'une cible obsolète/dupliquée/vide, réinsertion
+  correcte de plusieurs guides dans un même objet (ordre descendant à la
+  suppression puis ascendant à la restauration), et un test de revue corrective
+  vérifiant qu'un document modifié entre `apply()` et `revert()` (section ayant
+  perdu sa géométrie satin) interdit une restauration partielle — la première
+  section reste elle aussi non restaurée même si sa propre cible était encore
+  valide. Côté UI : Maj+glisser une extrémité d'un guide lié déplace les deux
+  sections d'un coup (même résultat exact dans les deux, géométrie identique) en
+  une seule commande annulable, supprimer un guide lié supprime le groupe entier
+  en une seule commande, et un glisser SANS Maj sur le même guide reste local
+  (seule la section glissée bouge) — non-régression du comportement d'édition
+  d'angle pré-existant. Un Maj+clic sans mouvement ne crée aucune commande undo.
+  Aucune temporisation, aucune comparaison de pixels.
 - **Satin — finitions (Lot 3)** : points courts (inset modifie le rail intérieur,
   remove réduit les pénétrations), split (staggered ≠ ligne centrale, jitter
   déterministe), terminaisons (taper réduit la largeur au bout sans l'annuler) ;

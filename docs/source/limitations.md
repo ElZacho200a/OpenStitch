@@ -38,7 +38,7 @@ fonctionnalité, vérifié dans le code.
 
 ## Dette technique connue
 
-- Le compte CTest courant est **342** en Debug et Release ; éviter de figer ce
+- Le compte CTest courant est **358** en Debug et Release ; éviter de figer ce
   nombre dans les pages d'introduction sans le mettre à jour avec la CI.
 - Le satin dispose désormais d'un moteur géométrique par **squelette**
   (`auto_satin::build_satin_columns`, Lot 1) et d'une **génération par barreaux**
@@ -53,11 +53,22 @@ fonctionnalité, vérifié dans le code.
   de jonction explicites, déterministes et persistés. Le routage privilégie ces
   jonctions quand l'écart reste compatible avec un trajet caché. La collecte
   déterministe des extrémités, la transaction multi-section atomique et l'ajout
-  UI d'un guide interne dans chaque branche incidente sont présents. L'angle et
-  le déplacement de ces guides ne se propagent toutefois pas encore entre les
-  branches. Les guides terminaux restent donc verrouillés. De plus, un retour
-  textile vers une jonction reste rectiligne au lieu de retracer le centre d'une
-  branche.
+  UI d'un guide interne dans chaque branche incidente sont présents. Les guides
+  ainsi liés (`link_id`, scopé par `(source_vector, link_id)`) se déplacent et se
+  suppriment désormais en **groupe atomique** : Maj+glisser une extrémité déplace
+  toute l'identité logique (delta normalisé partagé, jamais de coordonnée/angle
+  recopié entre sections) et supprimer un guide lié supprime le groupe entier,
+  chacun via une seule commande undo/redo tout-ou-rien (`move_satin_guide_group`,
+  `RemoveSatinGuidesCommand`). Un glisser SANS Maj reste un geste local (édition
+  d'angle propre à une section, toujours possible et volontairement non propagé).
+  Un groupe incomplet, associé à des identifiants de jonction différents ou dont
+  la progression se croise entre les deux rails est refusé en bloc. Un Maj+clic
+  sans déplacement ne crée aucune commande d'historique.
+  Les guides terminaux de jonction restent verrouillés (ni déplaçables ni
+  supprimables). Un guide lié qui perdrait son adjacence à sa jonction (un autre
+  guide inséré entre les deux) refuse le geste de groupe plutôt que de deviner un
+  intervalle. De plus, un retour textile vers une jonction reste rectiligne au
+  lieu de retracer le centre d'une branche.
 - **Correctif Lot 7** : `connector_invalid` ignorait les contacts sommet/extrémité
   et ne sondait l'intérieur d'un connecteur que si l'écart en x dépassait
   `2 × row_spacing`, laissant passer un connecteur quasi vertical traversant un
