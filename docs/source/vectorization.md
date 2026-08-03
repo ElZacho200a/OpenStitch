@@ -40,7 +40,7 @@ Second chemin de création d'un `VectorObject`, indépendant de toute image :
 avant cette fonctionnalité, la seule façon d'obtenir un objet vectoriel était
 de vectoriser une région segmentée depuis une image importée — un logiciel de
 digitalisation classique (Hatch et équivalents) permet aussi de dessiner
-directement une forme de base sur le canevas. Trois outils dans la palette
+directement une forme de base sur le canevas. Quatre outils dans la palette
 (barre d'outils gauche) :
 
 - **Rectangle** (`R`) : glisser un cadre élastique → rectangle à 4 coins droits.
@@ -53,6 +53,14 @@ directement une forme de base sur le canevas. Trois outils dans la palette
   jusqu'au curseur) ; double-clic pour fermer (minimum 3 sommets, sinon le
   tracé est abandonné sans rien créer) ; Échap annule le tracé en cours à tout
   moment, y compris en changeant d'outil.
+- **Forme libre / lasso** (`L`) : glisser en continu → un point par évènement
+  de déplacement souris pendant que le bouton reste enfoncé (aperçu élastique
+  mis à jour à chaque point) ; au relâchement, le tracé brut est **simplifié**
+  (Douglas-Peucker, tolérance 0,3 mm — cf. *Vectorisation*, même algorithme que
+  la simplification des contours vectorisés) pour ne garder qu'un contour à
+  angles droits exploitable, sans lissage. Moins de 3 sommets après
+  simplification (tracé trop court, ou entièrement colinéaire) → rien n'est
+  créé, message en barre de statut.
 
 La forme créée est un `VectorObject` **sans région source**
 (`source_region = std::nullopt` — le champ est optionnel précisément pour ce
@@ -63,12 +71,26 @@ nouveau chemin de création côté broderie : le pipeline aval (génération,
 routage, export DST) est intégralement réutilisé.
 
 Géométrie construite par `libs/geometry/src/primitives.cpp`
-(`rectangle_path`/`ellipse_path`/`polygon_path`, testés indépendamment de Qt) ;
-`MainWindow` ne fait que router le geste souris (glisser pour
-rectangle/ellipse — mécanique de cadre élastique déjà utilisée pour le
-recadrage image, généralisée ; clics successifs pour le polygone) vers ces
-fonctions puis vers `AddVectorObjectCommand` (annulable, comme la
-vectorisation). Un cadre trop petit (glisser quasi nul) ne crée rien.
+(`rectangle_path`/`ellipse_path`/`polygon_path`/`freeform_path`, testés
+indépendamment de Qt) ; `MainWindow` ne fait que router le geste souris
+(glisser pour rectangle/ellipse — mécanique de cadre élastique déjà utilisée
+pour le recadrage image, généralisée ; clics successifs pour le polygone ;
+glisser continu pour la forme libre) vers ces fonctions puis vers
+`AddVectorObjectCommand` (annulable, comme la vectorisation). Un cadre trop
+petit (glisser quasi nul) ne crée rien.
+
+**Correctif de revue — Maj = cercle, désormais testable et fiable.** La
+détection de Maj (contrainte cercle sur l'ellipse) interrogeait
+`QGuiApplication::keyboardModifiers()` (état clavier **global**) au moment de
+traiter le signal de fin de glisser — fonctionnellement correct en usage réel
+(même thread, traitement synchrone), mais impossible à couvrir par un test
+QTest **offscreen** (`QTest::keyPress` sur une fenêtre non affichée ne met pas
+à jour cet état de façon fiable), donc jamais réellement vérifié bout en bout.
+Corrigé : les modificateurs sont désormais capturés directement sur
+l'évènement Qt de relâchement qui termine le glisser
+(`CanvasView::mouseReleaseEvent`) et transmis par le signal `boxDrawnMm` —
+plus de dépendance à un état global, testable en passant directement
+`Qt::ShiftModifier`.
 
 ## Édition de nœuds
 
@@ -96,12 +118,15 @@ observé : des trous trop simplifiés faisaient déborder les remplissages (voir
 - `libs/commands/.../project_commands.hpp` — `AddVectorObjectCommand`,
   `MoveNodeCommand`.
 - `libs/geometry/include/openstitch/geometry/primitives.hpp` + `src/primitives.cpp` —
-  `rectangle_path`, `ellipse_path`, `polygon_path` (formes dessinées à la main).
+  `rectangle_path`, `ellipse_path`, `polygon_path`, `freeform_path` (formes
+  dessinées à la main).
 - `apps/desktop/main_window.cpp` — `addVectorPrimitive`, `onBoxDrawn`,
   `onCanvasDoubleClicked`, `updatePolygonPreview`/`finishPolygon`/
-  `cancelPolygonDraw` ; `apps/desktop/canvas_view.hpp/.cpp` — modes
-  `setBoxDrawMode`/`setPolygonDrawMode` (généralisation du cadre élastique de
-  recadrage).
+  `cancelPolygonDraw`, `onFreeformPointAdded`/`finishFreeform`/
+  `cancelFreeformDraw` ; `apps/desktop/canvas_view.hpp/.cpp` — modes
+  `setBoxDrawMode`/`setPolygonDrawMode`/`setFreeformDrawMode` (généralisation
+  du cadre élastique de recadrage) ; `apps/desktop/ui_icons.hpp/.cpp` —
+  `icons::freeform`.
 - Tests : `tests/unit/vectorization/test_vectorize.cpp`,
   `tests/unit/geometry/test_simplify.cpp`, `test_clean.cpp`,
   `test_primitives.cpp` ; `tests/unit/desktop/test_main_window.cpp` (création,

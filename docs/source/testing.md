@@ -15,30 +15,30 @@ Public : développeur, mainteneur.
   (invoquée via `add_test`, cf. Lot 8.1) — échoue si un site de production
   hors `libs/stitch_generation/` appelle `generate_sequence()` directement
   sans annotation `raw-sequence-ok:`, contournant les retouches manuelles.
-- Total au dernier passage vérifié : **394 tests CTest**, 100 % réussis.
+- Total au dernier passage vérifié : **398 tests CTest**, 100 % réussis.
 
 ## Encadré de traçabilité (dernier passage vérifié)
 
-Un simple « 394/394 » devient vite périmé ; voici le contexte exact du dernier
+Un simple « 398/398 » devient vite périmé ; voici le contexte exact du dernier
 passage vérifié manuellement. Régénérez ces valeurs avant toute publication.
 
 | Élément | Valeur |
 |---|---|
-| Commit (état du code testé) | `47e1016` — audit satin adversarial : 8 defauts corriges |
+| Commit (état du code testé) | `e4ceaa2` — formes dessinees a la main : forme libre + correctif Maj=cercle |
 | Compilateur | MSVC toolset 14.50 (Visual Studio 2026) |
 | CMake | 4.4.0-rc3 |
 | Configurations | Debug **et** Release |
-| Résultat CTest | 394 / 394 réussis |
+| Résultat CTest | 398 / 398 réussis |
 | Tests désactivés | 0 |
 | Fichiers de tests d'intégration | 1 (`tests/integration/test_pipeline.cpp`) |
-| Suites Qt (UI desktop) | 5 exécutables CTest (`tests/unit/desktop/`), 50 fonctions de test QTest |
+| Suites Qt (UI desktop) | 5 exécutables CTest (`tests/unit/desktop/`), 54 fonctions de test QTest |
 | Tests sur machine réelle | 0 |
 | Couverture de code | non mesurée |
 
 Note : chaque `TEST_CASE` Catch2 est enregistré séparément par
 `catch_discover_tests`. Côté Qt, chaque exécutable QTest est un seul test CTest
 (`add_test`) qui contient plusieurs fonctions. Le nombre d'**assertions** est
-supérieur au nombre de tests CTest (394, garde structurelle CI incluse).
+supérieur au nombre de tests CTest (398, garde structurelle CI incluse).
 
 ## Exécution
 
@@ -285,18 +285,30 @@ But visé par l'utilisateur, dans l'ordre de valeur/risque :
   résiduelle (> 1,2× la médiane) sur aucune section ; déterminisme ; le bascule
   `anchor_junction_ends=false` restaure la dérive (régression reproduite pour
   prouver que le bascule agit réellement).
-- **Formes dessinées à la main** (`rectangle_path`/`ellipse_path`/`polygon_path`,
+- **Formes dessinées à la main**
+  (`rectangle_path`/`ellipse_path`/`polygon_path`/`freeform_path`,
   `tests/unit/geometry/test_primitives.cpp`) : rectangle d'aire exacte quels
   que soient les coins fournis (ordre indifférent) ; ellipse à 4 nœuds lisses,
   aire aplatie proche de π·rx·ry (< 1 % d'écart), cercle quand les côtés sont
   égaux ; polygone reliant les sommets dans l'ordre, chemin vide si moins de
-  3 sommets ; cas dégénérés (largeur/rayon nul) sans crash ; déterminisme. Côté
-  UI (`tests/unit/desktop/test_main_window.cpp`) : les trois outils créent un
-  `VectorObject` annulable (undo/redo exact) ; un cadre trop petit ne crée
-  rien ; le tracé d'un polygone accumule les sommets (aperçu élastique tenu à
-  jour), se ferme au double-clic (≥ 3 sommets, sinon abandon propre) sans
-  ajouter de sommet fantôme pour la seconde pression du double-clic, et
-  s'annule proprement en changeant d'outil.
+  3 sommets ; forme libre (`freeform_path`) simplifie un tracé bruité
+  (20 points colinéaires par bord d'un carré) en un contour exploitable d'aire
+  correcte, chemin vide si moins de 3 points bruts OU si le tracé simplifié
+  retombe sous 3 sommets (points colinéaires) ; cas dégénérés (largeur/rayon
+  nul) sans crash ; déterminisme. Côté UI (`tests/unit/desktop/test_main_window.cpp`) :
+  les quatre outils créent un `VectorObject` annulable (undo/redo exact) ; un
+  cadre trop petit ne crée rien ; le tracé d'un polygone accumule les sommets
+  (aperçu élastique tenu à jour), se ferme au double-clic (≥ 3 sommets, sinon
+  abandon propre) sans ajouter de sommet fantôme pour la seconde pression du
+  double-clic, et s'annule proprement en changeant d'outil ; le tracé d'une
+  forme libre accumule les points captés pendant le glisser (aperçu tenu à
+  jour), se ferme au relâchement du bouton (< 3 points → message clair, rien
+  créé) et s'annule proprement en changeant d'outil ; **Maj = cercle sur
+  l'ellipse est désormais directement testable** (modificateurs passés en
+  paramètre du signal `boxDrawnMm`, capturés sur l'évènement Qt réel plutôt
+  que relus depuis un état clavier global non fiable en QTest offscreen —
+  correctif de revue, l'ancien test avait dû être écarté à la création de la
+  fonctionnalité).
 - **Persistance des réseaux satin** : aller-retour exact de l'index/nombre de
   sections et des jonctions, ancien satin sans `topology` encore lisible, index
   hors réseau refusé proprement.
