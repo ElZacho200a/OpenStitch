@@ -4,6 +4,8 @@
 #include <algorithm>
 #include <cmath>
 
+#include "openstitch/geometry/simplify.hpp"
+
 namespace openstitch::geometry {
 
 namespace {
@@ -71,6 +73,23 @@ Path polygon_path(const std::vector<Vec2um>& vertices) {
         path.nodes.push_back(corner(v));
     }
     return path;
+}
+
+Path freeform_path(const std::vector<Vec2um>& points, Micrometers tolerance) {
+    if (points.size() < 3) {
+        return Path{};
+    }
+    Path raw;
+    raw.closed = true;
+    raw.nodes.reserve(points.size());
+    for (const Vec2um& p : points) {
+        raw.nodes.push_back(corner(p));
+    }
+    Path result = simplify(raw, tolerance);
+    if (result.nodes.size() < 3) {
+        return Path{};
+    }
+    return result;
 }
 
 }  // namespace openstitch::geometry

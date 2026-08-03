@@ -286,11 +286,15 @@ private slots:
     // pipeline ne savait créer un VectorObject que depuis une image importée).
     void drawRectangleToolCreatesUndoableVectorObject();
     void drawEllipseToolCreatesUndoableVectorObject();
+    void drawEllipseWithShiftConstrainsToCircle();
     void drawingTooSmallABoxCreatesNoObject();
     void drawPolygonAccumulatesVerticesAndClosesOnDoubleClick();
     void drawPolygonWithFewerThanThreeVerticesCancelsOnDoubleClick();
     void switchingToolDuringPolygonDrawCancelsIt();
     void polygonDoubleClickDoesNotAddADuplicateVertex();
+    void drawFreeformCreatesUndoableVectorObject();
+    void drawFreeformWithTooFewPointsCancelsOnRelease();
+    void switchingToolDuringFreeformDrawCancelsIt();
 
 private:
     // Active le mode d'édition (sélection directe via selectedEmbroidery_,
@@ -1338,7 +1342,7 @@ void MainWindowTest::drawRectangleToolCreatesUndoableVectorObject() {
     const std::size_t before = window.project_.vector_objects.size();
     window.setTool(Tool::DrawRectangle);
     // Scène Y vers le bas (ADR-003) : cadre 5 x 3 mm.
-    view->boxDrawnMm(QRectF(10.0, -5.0, 5.0, 3.0));
+    view->boxDrawnMm(QRectF(10.0, -5.0, 5.0, 3.0), Qt::NoModifier);
 
     QCOMPARE(window.project_.vector_objects.size(), before + 1);
     const auto& obj = window.project_.vector_objects.back();
@@ -1370,7 +1374,7 @@ void MainWindowTest::drawEllipseToolCreatesUndoableVectorObject() {
 
     const std::size_t before = window.project_.vector_objects.size();
     window.setTool(Tool::DrawEllipse);
-    view->boxDrawnMm(QRectF(0.0, -10.0, 20.0, 10.0));  // 20 x 10 mm -> rx=10, ry=5 mm
+    view->boxDrawnMm(QRectF(0.0, -10.0, 20.0, 10.0), Qt::NoModifier);  // 20 x 10 mm -> rx=10, ry=5 mm
 
     QCOMPARE(window.project_.vector_objects.size(), before + 1);
     const auto& obj = window.project_.vector_objects.back();
@@ -1382,6 +1386,49 @@ void MainWindowTest::drawEllipseToolCreatesUndoableVectorObject() {
     }
 }
 
+void MainWindowTest::drawEllipseWithShiftConstrainsToCircle() {
+    // Défaut trouvé par revue : le test « Maj = cercle » avait dû être écarté
+    // à la création de cette fonctionnalité (QTest::keyPress sur une fenêtre
+    // non affichée ne met pas à jour QGuiApplication::keyboardModifiers() de
+    // façon fiable en offscreen). Corrigé en capturant les modificateurs
+    // directement sur l'évènement de relâchement qui termine le glisser
+    // (CanvasView::mouseReleaseEvent), transmis par `boxDrawnMm` — plus de
+    // dépendance à l'état clavier global, donc testable directement en
+    // passant Qt::ShiftModifier.
+    MainWindow window;
+    const Fixture fx = buildFixture();
+    window.applyLoadedProject(fx.project);
+    auto* view = window.findChild<CanvasView*>();
+    QVERIFY(view != nullptr);
+
+    window.setTool(Tool::DrawEllipse);
+    // Cadre non carré (20 x 6 mm) : sans Maj -> ellipse ; avec Maj -> cercle
+    // (côté = le plus petit des deux, 6 mm).
+    view->boxDrawnMm(QRectF(0.0, -10.0, 20.0, 6.0), Qt::ShiftModifier);
+
+    const auto& obj = window.project_.vector_objects.back();
+    const auto& nodes = obj.paths[0].outer.nodes;
+    QCOMPARE(nodes.size(), std::size_t{4});
+    // Les 4 sommets (est/nord/ouest/sud) doivent être équidistants du centre :
+    // un cercle, pas une ellipse.
+    Vec2um sum{Micrometers{0}, Micrometers{0}};
+    for (const auto& n : nodes) {
+        sum = Vec2um{Micrometers{sum.x.value + n.pos.x.value},
+                     Micrometers{sum.y.value + n.pos.y.value}};
+    }
+    const Vec2um center{Micrometers{sum.x.value / 4}, Micrometers{sum.y.value / 4}};
+    double first = -1.0;
+    for (const auto& n : nodes) {
+        const double d = openstitch::length_um(n.pos - center);
+        if (first < 0.0) {
+            first = d;
+        } else {
+            QVERIFY(std::abs(d - first) < 5.0);  // tolérance arrondi µm
+        }
+    }
+    QVERIFY(first > 2'900.0 && first < 3'100.0);  // rayon attendu ~3 mm
+}
+
 void MainWindowTest::drawingTooSmallABoxCreatesNoObject() {
     MainWindow window;
     const Fixture fx = buildFixture();
@@ -1391,7 +1438,7 @@ void MainWindowTest::drawingTooSmallABoxCreatesNoObject() {
 
     const std::size_t before = window.project_.vector_objects.size();
     window.setTool(Tool::DrawRectangle);
-    view->boxDrawnMm(QRectF(0.0, 0.0, 0.05, 0.05));  // très en dessous du seuil minimal
+    view->boxDrawnMm(QRectF(0.0, 0.0, 0.05, 0.05), Qt::NoModifier);  // très en dessous du seuil minimal
 
     QCOMPARE(window.project_.vector_objects.size(), before);
     QVERIFY(!window.undoStack_.canUndo());
@@ -1484,6 +1531,100 @@ void MainWindowTest::polygonDoubleClickDoesNotAddADuplicateVertex() {
 
     QCOMPARE(window.project_.vector_objects.size(), before + 1);
     QCOMPARE(window.project_.vector_objects.back().paths[0].outer.nodes.size(), std::size_t{3});
+}
+
+// --- Tracé à main levée (lasso) -----------------------------------------
+//
+// Complète la fonctionnalité « formes dessinées à la main » (rectangle/
+// ellipse/polygone) : un quatrième outil, capturant un tracé continu au
+// glisser plutôt qu'un cadre élastique ou des clics successifs, simplifié
+// (Douglas-Peucker) à la fermeture pour rester exploitable.
+
+void MainWindowTest::drawFreeformCreatesUndoableVectorObject() {
+    MainWindow window;
+    const Fixture fx = buildFixture();
+    window.applyLoadedProject(fx.project);
+    auto* view = window.findChild<CanvasView*>();
+    QVERIFY(view != nullptr);
+
+    const std::size_t before = window.project_.vector_objects.size();
+    window.setTool(Tool::DrawFreeform);
+
+    // Trace approximativement un carré de 10 x 10 mm, avec plusieurs points
+    // intermédiaires colinéaires sur chaque bord (comme le ferait un glisser
+    // souris réel, un point par évènement de déplacement) : la simplification
+    // doit les absorber et ne garder que les coins.
+    const std::vector<QPointF> stroke = {
+        {0, 0},   {2, 0},   {4, 0},   {6, 0},   {8, 0},   {10, 0},
+        {10, -2}, {10, -4}, {10, -6}, {10, -8}, {10, -10},
+        {8, -10}, {6, -10}, {4, -10}, {2, -10}, {0, -10},
+        {0, -8},  {0, -6},  {0, -4},  {0, -2},
+    };
+    for (const auto& p : stroke) {
+        view->freeformPointMm(p);
+    }
+    QCOMPARE(window.pendingFreeformPoints_.size(), stroke.size());
+    QVERIFY(window.freeformPreviewItem_ != nullptr);
+
+    view->freeformStrokeFinished();
+
+    QCOMPARE(window.project_.vector_objects.size(), before + 1);
+    const auto& obj = window.project_.vector_objects.back();
+    QVERIFY(obj.paths[0].outer.closed);
+    // Simplifié : nettement moins que les 20 points bruts, mais un contour
+    // exploitable (>= 3 sommets).
+    QVERIFY(obj.paths[0].outer.nodes.size() >= 3);
+    QVERIFY(obj.paths[0].outer.nodes.size() < stroke.size());
+    // Aire proche de 10 x 10 mm = 100 000 000 µm² (tolérance : arrondi de
+    // simplification près des coins).
+    const double area = std::abs(openstitch::geometry::signed_area_um2(obj.paths[0].outer));
+    QVERIFY(area > 90'000'000.0 && area < 110'000'000.0);
+    QVERIFY(window.selectedObject_.has_value());
+    QCOMPARE(*window.selectedObject_, obj.id);
+    QVERIFY(window.pendingFreeformPoints_.empty());
+    QVERIFY(window.freeformPreviewItem_ == nullptr);
+
+    window.undo();
+    QCOMPARE(window.project_.vector_objects.size(), before);
+    window.redo();
+    QCOMPARE(window.project_.vector_objects.size(), before + 1);
+}
+
+void MainWindowTest::drawFreeformWithTooFewPointsCancelsOnRelease() {
+    MainWindow window;
+    const Fixture fx = buildFixture();
+    window.applyLoadedProject(fx.project);
+    auto* view = window.findChild<CanvasView*>();
+    QVERIFY(view != nullptr);
+
+    const std::size_t before = window.project_.vector_objects.size();
+    window.setTool(Tool::DrawFreeform);
+    view->freeformPointMm(QPointF(0.0, 0.0));
+    view->freeformPointMm(QPointF(1.0, 0.0));  // seulement deux points
+    view->freeformStrokeFinished();
+
+    QCOMPARE(window.project_.vector_objects.size(), before);  // rien créé
+    QVERIFY(window.pendingFreeformPoints_.empty());           // état nettoyé quand même
+    QVERIFY(window.freeformPreviewItem_ == nullptr);
+}
+
+void MainWindowTest::switchingToolDuringFreeformDrawCancelsIt() {
+    MainWindow window;
+    const Fixture fx = buildFixture();
+    window.applyLoadedProject(fx.project);
+    auto* view = window.findChild<CanvasView*>();
+    QVERIFY(view != nullptr);
+
+    window.setTool(Tool::DrawFreeform);
+    view->freeformPointMm(QPointF(0.0, 0.0));
+    view->freeformPointMm(QPointF(5.0, 0.0));
+    QCOMPARE(window.pendingFreeformPoints_.size(), std::size_t{2});
+    QVERIFY(window.freeformPreviewItem_ != nullptr);
+
+    window.setTool(Tool::Select);  // simule Échap / changement d'outil
+
+    QVERIFY(window.pendingFreeformPoints_.empty());
+    QVERIFY(window.freeformPreviewItem_ == nullptr);
 }
 
 }  // namespace openstitch::desktop

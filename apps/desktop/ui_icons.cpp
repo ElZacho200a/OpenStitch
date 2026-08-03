@@ -83,6 +83,21 @@ QIcon polygon() {
     });
 }
 
+QIcon freeform() {
+    return make([](QPainter& p) {
+        // Contour organique (courbes), pour distinguer du polygone à angles
+        // droits : symbolise un tracé « à main levée » (lasso).
+        QPainterPath path;
+        path.moveTo(16, 5);
+        path.cubicTo(24, 4, 28, 12, 24, 16);
+        path.cubicTo(29, 20, 24, 27, 17, 26);
+        path.cubicTo(10, 29, 4, 22, 7, 16);
+        path.cubicTo(3, 10, 9, 3, 16, 5);
+        path.closeSubpath();
+        p.drawPath(path);
+    });
+}
+
 QIcon openImage() {
     return make([](QPainter& p) {
         p.drawRect(6, 9, 20, 15);

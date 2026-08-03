@@ -25,4 +25,12 @@ namespace openstitch::geometry {
 // (rien à fermer), à l'appelant de refuser.
 [[nodiscard]] Path polygon_path(const std::vector<Vec2um>& vertices);
 
+// Forme dessinée à main levée (lasso) : ferme un tracé continu de points
+// bruts (un par évènement de déplacement souris pendant le glisser, donc
+// potentiellement très dense) puis le simplifie par Douglas-Peucker
+// (`tolerance`, cf. `simplify`) pour ne garder qu'un contour à angles droits
+// exploitable, sans lissage. Moins de 3 sommets après simplification ->
+// chemin vide (rien à fermer), à l'appelant de refuser, comme `polygon_path`.
+[[nodiscard]] Path freeform_path(const std::vector<Vec2um>& points, Micrometers tolerance);
+
 }  // namespace openstitch::geometry

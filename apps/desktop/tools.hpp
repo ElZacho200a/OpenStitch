@@ -13,6 +13,7 @@ enum class Tool {
     DrawRectangle,  // dessine un nouvel objet vectoriel rectangulaire (glisser)
     DrawEllipse,    // dessine un nouvel objet vectoriel elliptique (glisser ; Maj = cercle)
     DrawPolygon,    // dessine un nouvel objet vectoriel polygonal (clics successifs)
+    DrawFreeform,   // dessine un nouvel objet vectoriel à main levée (glisser continu)
 };
 
 }  // namespace openstitch::desktop

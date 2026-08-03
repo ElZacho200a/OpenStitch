@@ -40,6 +40,12 @@ public:
     void setPolygonDrawMode(bool enabled);
     [[nodiscard]] bool polygonDrawMode() const { return polygonDrawMode_; }
 
+    // Mode dessin à main levée (lasso) : capture un tracé continu pendant le
+    // glisser (contrairement au cadre élastique ou aux clics successifs) ;
+    // désactive le glisser de vue, comme le mode polygone.
+    void setFreeformDrawMode(bool enabled);
+    [[nodiscard]] bool freeformDrawMode() const { return freeformDrawMode_; }
+
 signals:
     // Zoom ou défilement : les règles doivent se redessiner.
     void viewChanged();
@@ -47,13 +53,22 @@ signals:
     void cursorMovedMm(QPointF posMm);
     // Rectangle sélectionné en mode recadrage (coordonnées scène, mm).
     void cropSelectedMm(QRectF rectMm);
-    // Rectangle dessiné en mode dessin par cadre (coordonnées scène, mm).
-    void boxDrawnMm(QRectF rectMm);
+    // Rectangle dessiné en mode dessin par cadre (coordonnées scène, mm) et les
+    // modificateurs clavier tels qu'observés sur l'évènement de relâchement qui
+    // termine le geste (pas une relecture différée de l'état clavier global,
+    // qui n'est pas fiable à rejouer dans un test — cf. Maj = cercle).
+    void boxDrawnMm(QRectF rectMm, Qt::KeyboardModifiers modifiers);
     // Clic gauche sur le canevas (coordonnées scène, mm) — hors mode recadrage.
     void canvasClickedMm(QPointF posMm);
     // Double-clic gauche (coordonnées scène, mm) — hors mode recadrage ; sert
     // à clore un polygone en cours de tracé.
     void canvasDoubleClickedMm(QPointF posMm);
+    // Point ajouté au tracé à main levée (coordonnées scène, mm) : émis à
+    // l'appui initial puis à chaque déplacement tant que le bouton reste
+    // enfoncé en mode dessin freeform.
+    void freeformPointMm(QPointF posMm);
+    // Fin du tracé à main levée (relâchement du bouton gauche).
+    void freeformStrokeFinished();
     // Clic droit : position scène (mm) et position écran (pour placer le menu).
     void canvasContextMenu(QPointF posMm, QPoint globalPos);
 
@@ -76,6 +91,8 @@ private:
     bool cropMode_{false};
     bool boxDrawMode_{false};
     bool polygonDrawMode_{false};
+    bool freeformDrawMode_{false};
+    bool freeformActive_{false};
     QRectF lastRubberBandMm_;
 };
 

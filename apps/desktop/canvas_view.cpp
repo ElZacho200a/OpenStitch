@@ -83,6 +83,13 @@ void CanvasView::setPolygonDrawMode(bool enabled) {
     setCursor(enabled ? Qt::CrossCursor : Qt::ArrowCursor);
 }
 
+void CanvasView::setFreeformDrawMode(bool enabled) {
+    freeformDrawMode_ = enabled;
+    freeformActive_ = false;
+    setDragMode(enabled ? QGraphicsView::NoDrag : QGraphicsView::ScrollHandDrag);
+    setCursor(enabled ? Qt::CrossCursor : Qt::ArrowCursor);
+}
+
 void CanvasView::setCanvasSizeMm(QSizeF sizeMm) {
     canvasMm_ = sizeMm;
     // Marge de travail autour du canevas : la moitié de sa taille de chaque côté.
@@ -135,6 +142,12 @@ void CanvasView::wheelEvent(QWheelEvent* event) {
 }
 
 void CanvasView::mousePressEvent(QMouseEvent* event) {
+    if (event->button() == Qt::LeftButton && freeformDrawMode_) {
+        freeformActive_ = true;
+        emit freeformPointMm(mapToScene(event->position().toPoint()));
+        QGraphicsView::mousePressEvent(event);
+        return;
+    }
     // Un clic sur un élément interactif (poignée de nœud) ne doit pas
     // déclencher la sélection : la scène serait reconstruite en plein drag.
     QGraphicsItem* item = itemAt(event->position().toPoint());
@@ -154,7 +167,7 @@ void CanvasView::mouseDoubleClickEvent(QMouseEvent* event) {
 }
 
 void CanvasView::contextMenuEvent(QContextMenuEvent* event) {
-    if (cropMode_ || boxDrawMode_ || polygonDrawMode_) {
+    if (cropMode_ || boxDrawMode_ || polygonDrawMode_ || freeformDrawMode_) {
         return;  // pas de menu contextuel pendant un recadrage/dessin
     }
     emit canvasContextMenu(mapToScene(event->pos()), event->globalPos());
@@ -166,17 +179,30 @@ void CanvasView::mouseMoveEvent(QMouseEvent* event) {
     const QPointF scenePos = mapToScene(event->position().toPoint());
     // Passage scène (Y bas) -> repère physique (Y haut).
     emit cursorMovedMm(QPointF(scenePos.x(), -scenePos.y()));
+    if (freeformActive_) {
+        emit freeformPointMm(scenePos);
+    }
 }
 
 void CanvasView::mouseReleaseEvent(QMouseEvent* event) {
+    // Capturé AVANT QGraphicsView::mouseReleaseEvent (qui peut, selon le mode
+    // de glisser, déclencher un traitement interne) : les modificateurs de CET
+    // évènement, pas une relecture différée de QGuiApplication::keyboardModifiers()
+    // (défaut trouvé par revue — pas fiable à rejouer dans un test QTest
+    // offscreen, cf. Maj = cercle).
+    const Qt::KeyboardModifiers modifiers = event->modifiers();
     QGraphicsView::mouseReleaseEvent(event);
+    if (freeformActive_ && event->button() == Qt::LeftButton) {
+        freeformActive_ = false;
+        emit freeformStrokeFinished();
+    }
     if ((cropMode_ || boxDrawMode_) && lastRubberBandMm_.isValid() && !lastRubberBandMm_.isEmpty()) {
         const QRectF rect = lastRubberBandMm_;
         lastRubberBandMm_ = QRectF();
         if (cropMode_) {
             emit cropSelectedMm(rect);
         } else {
-            emit boxDrawnMm(rect);
+            emit boxDrawnMm(rect, modifiers);
         }
     }
 }

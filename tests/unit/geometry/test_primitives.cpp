@@ -122,3 +122,50 @@ TEST_CASE("polygon_path : deterministe") {
                                        p(-5'000, 5'000)};
     CHECK(polygon_path(verts).nodes == polygon_path(verts).nodes);
 }
+
+// --- Forme libre (main levee / lasso) ----------------------------------------
+
+TEST_CASE("freeform_path : simplifie un trace bruite en contour exploitable") {
+    // Trace approximatif d'un carre 10 x 10 mm, avec plusieurs points
+    // colineaires intermediaires sur chaque bord (comme un glisser souris
+    // reel, un point par evenement de deplacement).
+    const std::vector<Vec2um> stroke = {
+        p(0, 0),     p(2'000, 0),     p(4'000, 0),     p(6'000, 0),
+        p(8'000, 0), p(10'000, 0),    p(10'000, 2'000), p(10'000, 4'000),
+        p(10'000, 6'000), p(10'000, 8'000), p(10'000, 10'000),
+        p(8'000, 10'000), p(6'000, 10'000), p(4'000, 10'000), p(2'000, 10'000),
+        p(0, 10'000), p(0, 8'000), p(0, 6'000), p(0, 4'000), p(0, 2'000),
+    };
+    const auto path = freeform_path(stroke, Micrometers{300});
+    REQUIRE(path.nodes.size() >= 3);
+    CHECK(path.nodes.size() < stroke.size());  // simplification reelle
+    CHECK(path.closed);
+    for (const auto& n : path.nodes) {
+        CHECK(n.type == NodeType::Corner);
+    }
+    // Aire proche de 10 x 10 mm = 100 000 000 um^2 (tolerance : arrondi de
+    // simplification pres des coins).
+    const double area = std::abs(signed_area_um2(path));
+    CHECK(area > 90'000'000.0);
+    CHECK(area < 110'000'000.0);
+}
+
+TEST_CASE("freeform_path : moins de trois points -> chemin vide") {
+    CHECK(freeform_path({}, Micrometers{300}).nodes.empty());
+    CHECK(freeform_path({p(0, 0)}, Micrometers{300}).nodes.empty());
+    CHECK(freeform_path({p(0, 0), p(1'000, 0)}, Micrometers{300}).nodes.empty());
+}
+
+TEST_CASE("freeform_path : points colineaires -> chemin vide apres simplification") {
+    // Trois points alignes (et plus) ne forment jamais une forme fermee
+    // exploitable : la simplification les reduit a moins de 3 sommets.
+    const std::vector<Vec2um> collinear = {p(0, 0), p(1'000, 0), p(2'000, 0), p(3'000, 0)};
+    CHECK(freeform_path(collinear, Micrometers{300}).nodes.empty());
+}
+
+TEST_CASE("freeform_path : deterministe") {
+    const std::vector<Vec2um> stroke = {p(0, 0), p(5'000, 100), p(10'000, 0), p(10'000, 10'000),
+                                        p(5'000, 9'900), p(0, 10'000)};
+    CHECK(freeform_path(stroke, Micrometers{300}).nodes ==
+          freeform_path(stroke, Micrometers{300}).nodes);
+}

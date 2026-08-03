@@ -102,6 +102,13 @@ QPointF modelToSceneMm(Vec2um pos) {
 // doit pas créer un objet plat invisible.
 constexpr double kMinDrawExtentMm = 0.5;
 
+// Tolérance de simplification (Douglas-Peucker) du tracé à main levée : lisse
+// le tremblement de la souris/main sans effacer l'intention du tracé. Même
+// ordre de grandeur que la densité satin par défaut (0,4 mm) — assez fin pour
+// rester fidèle, assez grossier pour ne pas garder des centaines de points
+// bruts (un évènement de déplacement souris par pixel).
+constexpr Micrometers kFreeformSimplifyTolerance{300};
+
 MainWindow::MainWindow() {
     setWindowTitle(QStringLiteral("%1 [*]").arg(QString::fromUtf8(kAppName)));
     resize(1100, 800);
@@ -186,6 +193,9 @@ MainWindow::MainWindow() {
             updatePolygonPreview(QPointF(physicalMm.x(), -physicalMm.y()));
         }
     });
+
+    connect(view_, &CanvasView::freeformPointMm, this, &MainWindow::onFreeformPointAdded);
+    connect(view_, &CanvasView::freeformStrokeFinished, this, &MainWindow::finishFreeform);
 
     connect(view_, &CanvasView::canvasClickedMm, this, &MainWindow::onCanvasClicked);
     connect(view_, &CanvasView::canvasContextMenu, this, &MainWindow::onCanvasContextMenu);
@@ -906,7 +916,7 @@ void MainWindow::onCropSelected(QRectF rectMm) {
     executeOp(op);
 }
 
-void MainWindow::onBoxDrawn(QRectF rectMm) {
+void MainWindow::onBoxDrawn(QRectF rectMm, Qt::KeyboardModifiers modifiers) {
     if (currentTool_ != Tool::DrawRectangle && currentTool_ != Tool::DrawEllipse) {
         return;  // sécurité : signal reçu hors mode dessin (ne devrait pas arriver)
     }
@@ -915,8 +925,7 @@ void MainWindow::onBoxDrawn(QRectF rectMm) {
         return;
     }
     QRectF box = rectMm;
-    if (currentTool_ == Tool::DrawEllipse &&
-        (QGuiApplication::keyboardModifiers() & Qt::ShiftModifier)) {
+    if (currentTool_ == Tool::DrawEllipse && (modifiers & Qt::ShiftModifier)) {
         // Maj enfoncée : contraint à un cercle (côté = le plus petit des deux).
         const double side = std::min(box.width(), box.height());
         box.setWidth(side);
@@ -974,6 +983,55 @@ void MainWindow::cancelPolygonDraw() {
         scene_->removeItem(polygonPreviewItem_);
         delete polygonPreviewItem_;
         polygonPreviewItem_ = nullptr;
+    }
+}
+
+void MainWindow::onFreeformPointAdded(QPointF posMm) {
+    if (currentTool_ != Tool::DrawFreeform) {
+        return;  // sécurité : signal reçu hors mode dessin (ne devrait pas arriver)
+    }
+    pendingFreeformPoints_.push_back(sceneMmToModel(posMm));
+    if (freeformPreviewItem_ == nullptr) {
+        freeformPreviewItem_ = new QGraphicsPathItem();
+        QPen pen(QColor(80, 120, 200));
+        pen.setWidthF(0.15);
+        pen.setStyle(Qt::DashLine);
+        freeformPreviewItem_->setPen(pen);
+        freeformPreviewItem_->setZValue(1000.0);  // toujours au-dessus du reste
+        scene_->addItem(freeformPreviewItem_);
+    }
+    QPainterPath path;
+    path.moveTo(modelToSceneMm(pendingFreeformPoints_.front()));
+    for (std::size_t i = 1; i < pendingFreeformPoints_.size(); ++i) {
+        path.lineTo(modelToSceneMm(pendingFreeformPoints_[i]));
+    }
+    freeformPreviewItem_->setPath(path);
+}
+
+void MainWindow::finishFreeform() {
+    // La simplification (Douglas-Peucker) peut retomber sous 3 sommets même
+    // avec un tracé brut suffisant (points quasi colinéaires, jitter sous la
+    // tolérance) : on vérifie le résultat RÉEL, pas seulement le nombre de
+    // points bruts, pour toujours donner un message clair plutôt qu'un
+    // échec silencieux.
+    geometry::Path path = pendingFreeformPoints_.size() >= 3
+                              ? geometry::freeform_path(pendingFreeformPoints_,
+                                                        kFreeformSimplifyTolerance)
+                              : geometry::Path{};
+    if (!path.nodes.empty()) {
+        addVectorPrimitive(std::move(path), tr("Forme libre"));
+    } else {
+        statusBar()->showMessage(tr("Forme libre : tracé trop court."));
+    }
+    cancelFreeformDraw();  // nettoie l'état de tracé, succès ou échec
+}
+
+void MainWindow::cancelFreeformDraw() {
+    pendingFreeformPoints_.clear();
+    if (freeformPreviewItem_ != nullptr) {
+        scene_->removeItem(freeformPreviewItem_);
+        delete freeformPreviewItem_;
+        freeformPreviewItem_ = nullptr;
     }
 }
 
@@ -2529,6 +2587,8 @@ void MainWindow::buildToolPalette() {
                QKeySequence(Qt::Key_O));
     toolDrawPolygonAct_ = addTool(icons::polygon(), tr("Dessiner un polygone"), Tool::DrawPolygon,
                                   QKeySequence(Qt::Key_P));
+    toolDrawFreeformAct_ = addTool(icons::freeform(), tr("Dessiner à main levée (lasso)"),
+                                   Tool::DrawFreeform, QKeySequence(Qt::Key_L));
     toolSelectAct_->setChecked(true);
 
     // Échap : revient à la Sélection, annule le mode fusion en cours et
@@ -2558,6 +2618,9 @@ void MainWindow::setTool(Tool tool) {
     if (currentTool_ == Tool::DrawPolygon && tool != Tool::DrawPolygon) {
         cancelPolygonDraw();
     }
+    if (currentTool_ == Tool::DrawFreeform && tool != Tool::DrawFreeform) {
+        cancelFreeformDraw();
+    }
     currentTool_ = tool;
 
     // Synchronise les cases d'outils (sans réémettre).
@@ -2572,16 +2635,19 @@ void MainWindow::setTool(Tool tool) {
     sync(toolDrawRectAct_, tool == Tool::DrawRectangle);
     sync(toolDrawEllipseAct_, tool == Tool::DrawEllipse);
     sync(toolDrawPolygonAct_, tool == Tool::DrawPolygon);
+    sync(toolDrawFreeformAct_, tool == Tool::DrawFreeform);
     if (cropAct_ != nullptr) {
         QSignalBlocker block(cropAct_);
         cropAct_->setChecked(tool == Tool::Rect);
     }
 
     // Applique au canevas : Rectangle = recadrage ; Rectangle/Ellipse dessinés
-    // = cadre élastique générique ; Polygone = clics successifs ; sinon vue libre.
+    // = cadre élastique générique ; Polygone = clics successifs ; Main levée =
+    // glisser continu ; sinon vue libre.
     view_->setCropMode(tool == Tool::Rect);
     view_->setBoxDrawMode(tool == Tool::DrawRectangle || tool == Tool::DrawEllipse);
     view_->setPolygonDrawMode(tool == Tool::DrawPolygon);
+    view_->setFreeformDrawMode(tool == Tool::DrawFreeform);
     if (tool == Tool::Pan) {
         view_->setCursor(Qt::OpenHandCursor);
     } else if (tool == Tool::Select) {
@@ -2594,7 +2660,8 @@ void MainWindow::setTool(Tool tool) {
                              : tool == Tool::Rect          ? tr("Rectangle")
                              : tool == Tool::DrawRectangle ? tr("Dessiner un rectangle")
                              : tool == Tool::DrawEllipse   ? tr("Dessiner une ellipse")
-                                                           : tr("Dessiner un polygone");
+                             : tool == Tool::DrawPolygon   ? tr("Dessiner un polygone")
+                                                           : tr("Dessiner à main levée");
         toolLabel_->setText(tr("Outil : %1").arg(name));
     }
 }

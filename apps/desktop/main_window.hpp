@@ -70,7 +70,7 @@ private slots:
     void onCanvasContextMenu(QPointF posMm, QPoint globalPos);
     // Rectangle/ellipse dessiné (outils DrawRectangle/DrawEllipse) : interprété
     // selon `currentTool_`. Maj enfoncée + DrawEllipse = cercle contraint.
-    void onBoxDrawn(QRectF rectMm);
+    void onBoxDrawn(QRectF rectMm, Qt::KeyboardModifiers modifiers);
     // Double-clic : clôt un polygone en cours de tracé (outil DrawPolygon).
     void onCanvasDoubleClicked(QPointF posMm);
     void deleteSelectedRegion();
@@ -184,6 +184,13 @@ private:
     void updatePolygonPreview(QPointF cursorSceneMm);
     void finishPolygon();
     void cancelPolygonDraw();
+    // Miroir de ce qui précède pour le tracé à main levée (outil
+    // DrawFreeform) : un point par évènement CanvasView::freeformPointMm
+    // (pas de segment élastique jusqu'au curseur, contrairement au polygone —
+    // chaque position déjà captée EST le tracé).
+    void onFreeformPointAdded(QPointF posMm);
+    void finishFreeform();
+    void cancelFreeformDraw();
 
     void executeOp(image::ImageOp op);
     void positionEmptyState();  // centre l'accueil dans la vue
@@ -237,6 +244,7 @@ private:
     QAction* toolDrawRectAct_{nullptr};
     QAction* toolDrawEllipseAct_{nullptr};
     QAction* toolDrawPolygonAct_{nullptr};
+    QAction* toolDrawFreeformAct_{nullptr};
     QLabel* toolLabel_{nullptr};
     Tool currentTool_{Tool::Select};
 
@@ -245,6 +253,12 @@ private:
     // l'annulation, ou reconstruit à chaque `renderBase`/changement d'outil).
     std::vector<Vec2um> pendingPolygonVertices_;
     QGraphicsPathItem* polygonPreviewItem_{nullptr};
+
+    // Tracé à main levée en cours (outil DrawFreeform) : points bruts captés
+    // pendant le glisser (repère modèle, µm) + aperçu (même cycle de vie que
+    // le polygone). Simplifié (Douglas-Peucker) seulement à la fermeture.
+    std::vector<Vec2um> pendingFreeformPoints_;
+    QGraphicsPathItem* freeformPreviewItem_{nullptr};
 
     QList<QAction*> imageActions_;
     QList<QAction*> regionActions_;  // nécessitent une région sélectionnée
