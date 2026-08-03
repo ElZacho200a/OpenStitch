@@ -29,6 +29,10 @@ ctest --preset msvc-debug                 # run all tests (Debug)
 ctest --preset msvc-release               # run all tests (Release)
 ```
 
+`scripts/build.ps1` wraps the above (configure + build Debug and/or Release,
+optional `-Test`): `.\scripts\build.ps1 -Test` builds everything and runs the
+full suite in one command.
+
 Build/test a single library or its test target directly (faster than a full
 build during iteration):
 

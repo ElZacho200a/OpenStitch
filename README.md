@@ -45,6 +45,14 @@ cmake --build --preset msvc-debug
 ctest --preset msvc-debug
 ```
 
+Ou, en une commande (configure + compile Debug **et** Release) :
+
+```powershell
+.\scripts\build.ps1              # tout compiler
+.\scripts\build.ps1 -Test        # tout compiler puis lancer les tests
+.\scripts\build.ps1 -Configuration Debug -Test   # Debug seulement
+```
+
 ## Structure
 
 ```

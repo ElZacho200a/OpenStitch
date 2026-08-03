@@ -165,6 +165,53 @@ std::optional<geometry::PathSet> make_shape(const std::string& name) {
     if (name == "tiny") {
         return single(rect(0, -300, 4'000, 300));  // 0,6 mm de large
     }
+    if (name == "notch") {
+        // Bande de 40 x 5 mm entaillée d'une profonde encoche en V sur le bord
+        // haut (creux jusqu'a 1 mm du bord bas au point le plus etroit) :
+        // regression pour l'audit "generation partielle des colonnes auto-satin
+        // sur formes concaves" (rails discontinus / stations ignorees en
+        // silence pres d'une forte variation de largeur locale).
+        Path p;
+        p.closed = true;
+        p.nodes = {node(0, -W), node(40'000, -W), node(40'000, W), node(25'000, W),
+                  node(20'000, -1'500), node(15'000, W), node(0, W)};
+        return single(p);
+    }
+    if (name == "pinch") {
+        // Variante plus severe de "notch" : l'encoche descend a moins de
+        // 0,3 mm du bord oppose (quasi-contact), pour stresser davantage la
+        // section transversale pres du point le plus etroit.
+        Path p;
+        p.closed = true;
+        p.nodes = {node(0, -W), node(40'000, -W), node(40'000, W), node(25'000, W),
+                  node(20'000, -2'200), node(15'000, W), node(0, W)};
+        return single(p);
+    }
+    if (name == "trident") {
+        // Jonction concave ASYMÉTRIQUE à 3 branches très inégales, régression
+        // pour l'audit « raccord de jonction sur formes branchées/concaves » :
+        // une grande branche verticale épaisse (8 mm), une branche interne
+        // POINTUE (triangle effilé, pas une bande à largeur constante) partant
+        // à angle aigu, et une branche latérale étroite (2 mm) quasi
+        // perpendiculaire aux deux autres. Les trois se rejoignent près de
+        // l'origine avec une confluence délibérément non étoilée (aucune
+        // symétrie n'aide un ancrage indépendant par branche à deviner la
+        // bonne encoche partagée).
+        std::vector<Path> parts;
+        // Grande branche verticale (6 mm de large), du bas vers la confluence
+        // (léger débord au-dessus de l'origine, juste assez pour la fusion).
+        parts.push_back(rect(-3'000, -25'000, 3'000, 1'200));
+        // Branche latérale étroite (1,2 mm), quasi horizontale vers la droite.
+        parts.push_back(rect(-1'500, -600, 16'000, 600));
+        // Branche interne pointue : triangle effilé partant vers le haut-gauche,
+        // base 1,2 mm à la confluence, pointe nette à l'autre bout (pas de
+        // largeur constante comme les deux autres branches).
+        Path wedge;
+        wedge.closed = true;
+        wedge.nodes = {node(-600, 0), node(600, 0), node(-6'000, 9'000)};
+        parts.push_back(wedge);
+        return from_union(parts);
+    }
     return std::nullopt;
 }
 

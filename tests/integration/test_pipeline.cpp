@@ -181,3 +181,36 @@ TEST_CASE("fixture tentabrode : pipeline complexe deterministe et sans geometrie
     CHECK(stats.bounds.min.x.value <= stats.bounds.max.x.value);
     CHECK(stats.bounds.min.y.value <= stats.bounds.max.y.value);
 }
+
+TEST_CASE("DIAGNOSTIC TEMPORAIRE osp utilisateur") {
+    const auto loaded = project_io::load_project("C:/Users/zache/Pictures/Cathebrode.osp");
+    REQUIRE(loaded.has_value());
+    const auto& project = *loaded;
+    UNSCOPED_INFO("vector_objects=" << project.vector_objects.size()
+                                     << " embroidery_objects=" << project.embroidery_objects.size());
+    int nSatin = 0, nTatami = 0, nRunning = 0, nSatinWithRungs = 0, nInvisible = 0;
+    for (const auto& e : project.embroidery_objects) {
+        if (!e.visible) ++nInvisible;
+        if (std::holds_alternative<document::SatinParams>(e.params)) {
+            ++nSatin;
+            const auto& sp = std::get<document::SatinParams>(e.params);
+            if (sp.rungs.size() >= 2) ++nSatinWithRungs;
+        } else if (std::holds_alternative<document::TatamiParams>(e.params)) {
+            ++nTatami;
+        } else if (std::holds_alternative<document::RunningStitchParams>(e.params)) {
+            ++nRunning;
+        }
+    }
+    UNSCOPED_INFO("satin=" << nSatin << " (avec barreaux=" << nSatinWithRungs << ") tatami="
+                            << nTatami << " running=" << nRunning << " invisible=" << nInvisible);
+
+    const auto seq = stitch_generation::generate_sequence(project);
+    UNSCOPED_INFO("generate_sequence ok=" << seq.has_value());
+    if (!seq.has_value()) {
+        UNSCOPED_INFO("erreur: " << seq.error().message);
+    } else {
+        const auto stats = stitch::compute_stats(*seq);
+        UNSCOPED_INFO("stitches=" << stats.stitches << " jumps=" << stats.jumps);
+    }
+    CHECK(false);
+}

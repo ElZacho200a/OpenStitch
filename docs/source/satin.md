@@ -375,6 +375,88 @@ section ; déterminisme ; le bascule `anchor_junction_ends=false` restaure
 l'ancienne dérive (régression volontairement reproduite pour prouver que le
 bascule agit réellement).
 
+### Amas de pixels de jonction et ancrage indépendant par branche (audit jonctions branchées/concaves, 2026-08-03)
+
+*État : Présent · Testé numériquement.* Correctif de revue,
+`skeleton_graph.cpp` + `satin_column.cpp`.
+
+**Défaut trouvé par revue** (capture d'une forme branchée/concave réelle,
+suite de la mission « ancrage des jonctions » ci-dessus). Deux causes
+distinctes, une même conséquence visible : les rails venant de deux branches
+angulairement voisines d'une même confluence ne se raccordent pas exactement
+— derniers barreaux en éventail, rails terminaux qui ne partagent pas le même
+point, zone triangulaire mal couverte près du centre.
+
+1. **`build_skeleton_graph` ne consolidait pas les amas de pixels de
+   jonction.** Sur une confluence à 3+ branches — surtout asymétrique —,
+   l'amincissement Zhang-Suen laisse souvent un petit amas de PLUSIEURS
+   pixels adjacents ayant chacun un nombre de croisement ≥ 3, plutôt qu'un
+   unique pixel net. L'ancien code créait un `SkeletonNode` **par pixel** de
+   cet amas, reliés entre eux par des micro-arêtes internes (`length_um` de
+   quelques dizaines de µm) que `graph_cleanup.cpp` ne pouvait pas élaguer
+   (son seuil ne s'applique qu'aux arêtes **terminales**, degré 1 — une
+   micro-arête entre deux pixels de jonction a ses deux extrémités de degré
+   ≥ 3). Chaque branche incidente se retrouvait donc ancrée sur un nœud
+   légèrement différent selon le pixel de l'amas par lequel son tracé y
+   entrait.
+2. **`trim_and_anchor_junction_end` ancrait chaque rail indépendamment**, y
+   compris après la consolidation ci-dessus : chaque rail de chaque branche
+   cherchait pour son propre compte le sommet reflex le plus proche
+   (`reflex_vertices`, liste globale du contour), sans aucune coordination
+   avec les rails des branches VOISINES de la même confluence. Deux branches
+   angulairement adjacentes pouvaient donc élire des sommets différents pour
+   ce qui est géométriquement la MÊME encoche.
+
+**Correction**, deux volets :
+
+1. `build_skeleton_graph` regroupe désormais les pixels de jonction
+   8-connexes (union-find) en un seul amas logique avant de créer les
+   `SkeletonNode` : position stable = le pixel de plus grand rayon dans le
+   `DistanceField` au sein de l'amas (départagé par (y, x) croissants pour le
+   déterminisme — toujours un pixel réel, jamais un barycentre flottant),
+   toutes les branches incidentes pointent vers ce même identifiant, et toute
+   micro-arête interne à l'amas (`from == to` après consolidation) est
+   rejetée sans condition.
+2. L'ancrage sur sommet reflex est sorti de `build_column` (qui ne fait plus
+   que l'AMPUTATION de la queue instable, `trim_unstable_junction_tail`) et
+   devient une résolution **globale par jonction**
+   (`resolve_junction_anchors`, `satin_column.cpp`), appelée une fois toutes
+   les colonnes construites : les branches incidentes à une jonction sont
+   triées par angle autour de son centre, et chaque ESPACE ANGULAIRE entre
+   deux branches adjacentes reçoit au plus une ancre (le sommet reflex le
+   plus proche du centre dans ce secteur), appliquée **identiquement** aux
+   deux rails qui se font face — le rail gauche (A) de la branche « avant »
+   dans l'ordre angulaire et le rail droit (B) de la branche « après ».
+   Une branche sans encoche à portée dans son secteur garde sa position brute
+   (repli, comme avant — toutes les confluences n'ont pas autant d'encoches
+   que de branches, cf. le T ci-dessus). Défaut annexe trouvé en cours
+   d'audit : la section transversale brute d'une branche rétrécit
+   naturellement vers zéro du côté qui longe une encoche (géométrie réelle,
+   pas une erreur) ; quand seul le côté OPPOSÉ de cette branche reçoit une
+   ancre partagée, le côté non ancré restait à cette position quasi nulle —
+   barreau terminal dégénéré. Corrigé par un plancher de largeur
+   (`tip_min_width`, même paramètre que la fermeture de `extend_tip`) qui ne
+   déplace QUE le côté non ancré, jamais le côté ancré (qui doit rester
+   exactement coïncident avec la branche voisine).
+
+Une validation finale par jonction (`validate_junctions`, appelée après la
+résolution des ancres) refuse proprement la génération de TOUTE la région
+plutôt que de renvoyer un raccord incohérent : arêtes incidentes manquantes
+(une branche non construite sur une confluence sinon partiellement ancrée),
+rails terminaux qui ne coïncident pas et s'éloignent trop du centre (éventail
+non résolu), croisement entre barreaux terminaux de branches voisines, ou
+secteur angulaire anormalement large sans aucune ancre commune (trou
+triangulaire). `extend_tip` reste structurellement impossible côté jonction
+(un bout de jonction n'emprunte jamais ce chemin, inchangé par cet audit).
+
+Vérifié : suite `test_auto_satin` complète inchangée (`y`, `t`, `cross`, `h`
+toujours sans collision ni barreau dégénéré) ; nouvelle fixture `trident`
+(grande branche verticale épaisse, branche interne pointue — triangle effilé,
+pas une bande à largeur constante — et branche latérale étroite, confluence
+délibérément non étoilée) : raccord cohérent, aucune collision à 3+ rails,
+aucun barreau dégénéré, aucun croisement entre les trois barreaux terminaux,
+tous les barreaux dans la région ; déterminisme.
+
 ### Traçage du graphe de squelette : priorité aux nœuds, exclusion de l'origine
 
 *État : Présent · Testé numériquement.* Correctif de revue, `skeleton_graph.cpp`.
@@ -513,6 +595,87 @@ anneau rasterisé (quatre sections, trou préservé) et pipeline complet sur
 `tests/fixtures/tentabrode.png`, en Debug et Release. Cette validation reste
 logicielle ; la qualité textile et les cas très concaves demandent encore un
 contrôle visuel puis machine.
+
+### Génération partielle sur formes concaves : trous silencieux dans `build_column`
+
+*État : Présent · Testé numériquement.* Correctif de revue, `satin_column.cpp`
+(audit 2026-08-03).
+
+**Défaut trouvé par revue.** `build_column` échantillonne l'axe (squelette
+lissé) station par station et calcule à chaque point une section transversale
+(`cross_section`, intersection de la normale locale avec le contour). Sur une
+forme **concave ou très large**, cette section transversale peut légitimement
+échouer pour certaines stations (normale qui rase une encoche voisine, section
+plus large que `max_satin_width`, milieu de l'intervalle retombant hors
+région) — un cas déjà connu et documenté (§ *Rails automatiques* plus haut, à
+propos de l'heuristique naïve). Le code de `build_column`, lui, traitait cet
+échec par un simple `continue` : la station disparaissait de l'axe **sans
+aucune trace**, et les deux stations valides encadrant le trou se retrouvaient
+reconnectées directement, quelle que soit la distance réelle entre elles. Le
+nettoyage anti-croisement qui suit (retrait d'une station dont le quadrilatère
+avec la précédente s'auto-intersecte) souffrait du même défaut : les stations
+retirées n'étaient jamais comptées ni bornées. Sur un projet réel présentant
+une échancrure prononcée, ceci produisait — selon la forme — de larges zones
+de la région sans aucun point de broderie, des rails visiblement discontinus,
+des éventails ou pointes artificielles à l'endroit de la reconnexion, ou une
+colonne partiellement construite là où un refus propre aurait été attendu.
+
+**Correction**, entièrement dans `build_column` (le squelette Zhang-Suen et le
+graphe de squelette ne sont pas en cause — le défaut est postérieur, dans la
+conversion centerline → rails) :
+
+1. `cross_section` retourne désormais un `std::expected<..., CrossSectionFailure>`
+   au lieu d'un `std::optional` indifférencié : la raison exacte de l'échec
+   (axe hors région, intersection négative/positive manquante, largeur
+   supérieure à `max_satin_width`, intervalle invalide) est conservée et
+   propagée jusqu'aux diagnostics (`SatinColumnsResult::warnings`).
+2. Chaque échantillon d'axe garde son indice et son résultat (succès ou
+   échec) avant tout filtrage. Un échec **isolé** (une seule station,
+   encadrée de deux succès) est comblé par **interpolation linéaire** des
+   rails voisins, acceptée seulement si le résultat reste géométriquement
+   plausible (intérieur à la région, largeur non aberrante, aucun croisement
+   avec les deux stations voisines) — sinon il est traité comme un trou
+   irrésolu. Des échecs en tête ou en queue d'axe restent un bord légitime
+   (comportement inchangé, absorbé silencieusement comme avant : ce n'est pas
+   un trou interne).
+3. Tout trou interne non résolu par interpolation (échecs consécutifs, ou
+   isolé mais géométriquement invalide) **refuse la colonne entière**
+   plutôt que de la reconnecter à travers le trou. Le nettoyage anti-croisement
+   applique le même principe : retirer une ou quelques stations sur un virage
+   serré reste toléré (comportement préexistant, nécessaire sur `ribbon`/`y`),
+   mais si la distance d'axe réellement pontée dépasse
+   `max_station_gap_ratio × station_spacing`, la colonne est refusée.
+4. Parce qu'un trou interne irrésolu refuse systématiquement la colonne plutôt
+   que de conserver le plus long fragment, `st.front()`/`st.back()` restent
+   toujours de vrais bouts d'axe au moment d'appeler `extend_tip` : aucune
+   extrémité artificielle issue d'une coupure interne n'est jamais étendue
+   comme s'il s'agissait d'un vrai bout du squelette.
+5. Une validation finale (sur le cœur de l'axe, **avant** extension des bouts
+   et ancrage de jonction — ces deux étapes ont leurs propres tolérances déjà
+   testées, notamment le saut de largeur délibéré du point de fermeture
+   `tip_min_width`) vérifie l'absence de trou résiduel, l'absence de saut de
+   largeur incohérent entre stations adjacentes, et une couverture minimale
+   (`min_axis_coverage_ratio`) de la longueur d'axe réellement convertie en
+   stations. Une dernière passe, une fois les barreaux posés, rejette tout
+   barreau retombant hors région ou toute paire de barreaux qui se croisent.
+
+Calibration : les trois nouveaux seuils (`max_station_gap_ratio` = 5,0 ×
+`station_spacing`, `min_axis_coverage_ratio` = 85 %, `max_adjacent_width_jump_ratio`
+= 75 %) ont été choisis pour ne régresser aucune fixture existante — `ribbon`
+et `y`, sur des virages serrés, écartent normalement 1 à 3 stations d'affilée
+lors du nettoyage anti-croisement, et une jonction à haut degré (`cross`, `h`)
+peut légitimement voir sa couverture chuter autour de 80 % tout près du nœud du
+squelette (bourrelet de confluence, cf. *Ancrage des jonctions* plus haut).
+
+Vérifié : suite complète `test_auto_satin` inchangée (aucune régression sur
+`rectangle`, `capsule`, `ribbon`, `s`, `y`, `t`, `cross`, `h`, `ring`, `wide`) ;
+nouvelle fixture `notch` (bande de 40 × 5 mm entaillée d'une encoche en V
+profonde sur un bord, resserrant la largeur locale à 1 mm) et sa variante plus
+sévère `pinch` (resserrement à 0,3 mm) produisent, à chaque exécution, **soit**
+un refus explicite (`refusal` non vide, aucune colonne), **soit** une colonne
+complète sans trou entre stations consécutives, avec tous les barreaux dans la
+région et aucun croisement entre barreaux — jamais un résultat partiel ;
+déterminisme vérifié (mêmes rails à chaque exécution sur les deux fixtures).
 
 ## Génération par barreaux (`fill_satin_columns`, Lot 2)
 
@@ -891,10 +1054,25 @@ viendra avec le tatami avancé (Lot 7).
   `generate.cpp` (émission des groupes routés).
 - `libs/auto_satin/.../satin_column.hpp` + `src/satin_column.cpp` —
   `build_satin_columns`, `SatinColumnGeometry`, `SatinRung` (moteur géométrique) ;
-  `extend_tip` (bouts ouverts) et `reflex_vertices`/`trim_and_anchor_junction_end`
-  (bouts de jonction, mission « auto-satin béton »).
+  `extend_tip` (bouts ouverts) et `reflex_vertices`/`trim_unstable_junction_tail`
+  (amputation de la queue instable d'un bout de jonction) ; `cross_section`/
+  `CrossSectionFailure`, `interpolate_station`/`interpolated_station_valid`
+  (assemblage des stations tolérant aux trous, audit génération partielle
+  2026-08-03) ; `resolve_junction_anchors`/`validate_junctions`/
+  `collect_junction_branches` (résolution globale des ancres de jonction par
+  espace angulaire entre branches adjacentes, audit jonctions
+  branchées/concaves, 2026-08-03).
+- `libs/auto_satin/src/skeleton_graph.cpp` — `build_skeleton_graph` :
+  consolidation des amas de pixels de jonction 8-connexes en un seul
+  `SkeletonNode` (`DisjointSet`), suppression des micro-arêtes internes à
+  l'amas (audit jonctions branchées/concaves, 2026-08-03).
 - `libs/auto_satin/src/debug_export.cpp` — `columns_to_svg`.
+- `libs/auto_satin/.../shapes.hpp` + `src/shapes.cpp` — corpus de formes de
+  test (`make_shape`), dont `notch`/`pinch` (encoche concave, audit génération
+  partielle 2026-08-03) et `trident` (jonction concave asymétrique à 3
+  branches inégales, audit jonctions branchées/concaves, 2026-08-03).
 - Tests : `tests/unit/stitch/test_satin.cpp`,
   `tests/unit/stitch/test_satin_pairing_metrics.cpp` (fixtures et métriques de
   l'appariement, audit rails 2026-08-01),
-  `tests/unit/auto_satin/test_columns.cpp`.
+  `tests/unit/auto_satin/test_columns.cpp`,
+  `tests/unit/auto_satin/test_pipeline.cpp`.

@@ -112,6 +112,22 @@ double max_station_width(const SatinColumnGeometry& col) {
     return w;
 }
 
+// Intersection propre de deux segments (croisement transversal), coordonnées
+// µm. Copie locale volontaire du test de `satin_column.cpp` (interne, non
+// exposé) : sert uniquement à vérifier qu'aucun barreau ne croise un autre
+// dans les tests de non-régression ci-dessous.
+bool segments_cross_2d(Vec2um a, Vec2um b, Vec2um c, Vec2um d) {
+    const auto cross2 = [](double ax, double ay, double bx, double by) { return ax * by - ay * bx; };
+    const auto orient = [&](Vec2um p, Vec2um q, Vec2um r) {
+        return cross2(static_cast<double>(q.x.value - p.x.value),
+                      static_cast<double>(q.y.value - p.y.value),
+                      static_cast<double>(r.x.value - p.x.value),
+                      static_cast<double>(r.y.value - p.y.value));
+    };
+    const double o1 = orient(a, b, c), o2 = orient(a, b, d), o3 = orient(c, d, a), o4 = orient(c, d, b);
+    return (o1 > 0) != (o2 > 0) && (o3 > 0) != (o4 > 0) && o1 != 0 && o2 != 0 && o3 != 0 && o4 != 0;
+}
+
 }  // namespace
 
 // --- Formes simples : colonnes cohérentes ------------------------------------
@@ -481,6 +497,100 @@ TEST_CASE("colonnes : jonction T - aucune collision (barreau degenere)") {
     }
 }
 
+// --- Résolution globale des ancres sur une jonction concave asymétrique ------
+//
+// Défaut trouvé par revue (capture fournie) : sur une confluence branchée/
+// concave, la colonne venant d'une branche et celle venant d'une autre
+// branche voisine ne se raccordaient pas exactement — chaque bout de
+// jonction cherchait indépendamment son sommet reflex le plus proche
+// (`trim_and_anchor_junction_end`), sans coordination entre branches
+// ANGULAIREMENT ADJACENTES. Symptômes observés : rails terminaux qui ne
+// partagent pas exactement le même point, derniers barreaux en éventail,
+// zone triangulaire mal couverte près du centre. La fixture "trident"
+// (cf. shapes.cpp) reproduit précisément le cas de la capture : une grande
+// branche verticale épaisse, une branche interne POINTUE (triangle effilé,
+// pas une bande à largeur constante) partant à angle aigu, et une branche
+// latérale étroite quasi perpendiculaire — une confluence délibérément non
+// étoilée, sans symétrie qui aiderait un ancrage indépendant à deviner la
+// bonne encoche partagée par accident.
+TEST_CASE("colonnes : jonction concave asymetrique (trident) - raccord coherent, pas d'eventail") {
+    const auto region = make_shape("trident");
+    REQUIRE(region.has_value());
+    SatinColumnsParameters params;
+    params.analysis.raster.pixel_size = Micrometers{100};
+    // La confluence à 3 branches très inégales (6 mm / 1,2 mm / pointe) crée
+    // un bourrelet de recouvrement plus large qu'une jonction Y/T symétrique
+    // à branches égales : seuils desserrés pour isoler ici la question
+    // testée (cohérence du raccord), déjà couverte séparément par les tests
+    // de seuils sur `notch`/`pinch`.
+    params.analysis.thresholds.max_satin_width = Micrometers{30'000};
+    params.max_adjacent_width_jump_ratio = 5.0;
+    params.min_axis_coverage_ratio = 0.7;
+    const auto r = build_satin_columns(*region, params);
+    INFO("refus = " << r.refusal);
+    REQUIRE(r.refusal.empty());
+    REQUIRE(r.columns.size() == 3);
+
+    std::set<std::uint32_t> junctions;
+    for (const auto& c : r.columns) {
+        if (c.start_junction) junctions.insert(*c.start_junction);
+        if (c.end_junction) junctions.insert(*c.end_junction);
+    }
+    REQUIRE(junctions.size() == 1);
+    const std::uint32_t junctionId = *junctions.begin();
+
+    // Aucune collision à 3+ rails sur un même point (éventail / ancres
+    // indépendantes divergentes) et aucun barreau dégénéré (largeur nulle),
+    // y compris sur le côté qui n'a naturellement aucune encoche à portée.
+    check_junction_no_collision(r, junctionId);
+    for (const auto& col : r.columns) {
+        for (const auto& rung : col.rungs) {
+            CHECK(length_um(rung.a - rung.b) > 0.0);
+        }
+    }
+
+    // Aucun trou triangulaire : chaque barreau (y compris les terminaux)
+    // reste dans la région, et les barreaux terminaux des trois branches ne
+    // se croisent pas entre eux (raccord en éventail détecté).
+    std::vector<SatinRung> terminalRungs;
+    for (const auto& col : r.columns) {
+        REQUIRE_FALSE(col.rungs.empty());
+        for (const auto& rung : col.rungs) {
+            CHECK(in_region(*region, mid(rung.a, rung.b)));
+        }
+        if (col.start_junction && *col.start_junction == junctionId) {
+            terminalRungs.push_back(col.rungs.front());
+        }
+        if (col.end_junction && *col.end_junction == junctionId) {
+            terminalRungs.push_back(col.rungs.back());
+        }
+    }
+    REQUIRE(terminalRungs.size() == 3);
+    for (std::size_t i = 0; i + 1 < terminalRungs.size(); ++i) {
+        for (std::size_t j = i + 1; j < terminalRungs.size(); ++j) {
+            CHECK_FALSE(segments_cross_2d(terminalRungs[i].a, terminalRungs[i].b, terminalRungs[j].a,
+                                          terminalRungs[j].b));
+        }
+    }
+}
+
+TEST_CASE("colonnes : jonction concave asymetrique (trident) - deterministe") {
+    SatinColumnsParameters params;
+    params.analysis.raster.pixel_size = Micrometers{100};
+    params.analysis.thresholds.max_satin_width = Micrometers{30'000};
+    params.max_adjacent_width_jump_ratio = 5.0;
+    params.min_axis_coverage_ratio = 0.7;
+    const auto region = make_shape("trident");
+    REQUIRE(region.has_value());
+    const auto a = build_satin_columns(*region, params);
+    const auto b = build_satin_columns(*region, params);
+    REQUIRE(a.columns.size() == b.columns.size());
+    for (std::size_t i = 0; i < a.columns.size(); ++i) {
+        CHECK(a.columns[i].rail_a == b.columns[i].rail_a);
+        CHECK(a.columns[i].rail_b == b.columns[i].rail_b);
+    }
+}
+
 TEST_CASE("colonnes : aucune derive de largeur pres d'une jonction (Y)") {
     const auto r = columns_of("y");
     REQUIRE(r.refusal.empty());
@@ -577,6 +687,87 @@ TEST_CASE("colonnes : forme large refusee") {
     const auto r = columns_of("wide");
     CHECK(r.columns.empty());
     CHECK_FALSE(r.refusal.empty());
+}
+
+// --- Génération partielle sur formes concaves (audit) ------------------------
+//
+// Défaut trouvé par revue : dans `build_column`, un échec isolé de
+// `cross_section` (ou une station retirée par le nettoyage anti-croisement)
+// était ignoré par un simple `continue` — la station disparaissait en silence
+// et les deux stations valides encadrant le trou se retrouvaient reconnectées
+// directement. Sur une forme concave, ceci produisait de larges zones non
+// couvertes, des rails discontinus, des éventails/pointes artificielles, ou
+// des morceaux partiels au lieu d'un refus propre. Après correctif : soit la
+// colonne est refusée explicitement (aucune colonne produite, `refusal` non
+// vide), soit elle est complète et géométriquement saine (aucun grand trou
+// entre stations consécutives, tous les barreaux dans la région, aucun
+// croisement entre barreaux) — jamais un résultat partiel.
+
+namespace {
+
+// Invariant central de l'audit : jamais de résultat "partiel". Vérifie que
+// SOIT la colonne est proprement refusée (aucune colonne, refus non vide),
+// SOIT elle est complète : aucun grand trou le long des rails, tous les
+// barreaux dans la région, aucun croisement entre barreaux.
+void check_no_partial_generation(const SatinColumnsResult& r, const geometry::PathSet& region) {
+    INFO("refus = " << r.refusal << " colonnes = " << r.columns.size());
+    if (r.columns.empty()) {
+        CHECK_FALSE(r.refusal.empty());
+        return;
+    }
+    CHECK(r.refusal.empty());
+    // Seuil large (6x le pas d'echantillonnage par defaut, 500 um) : couvre
+    // a la fois le coeur de l'axe et les stations ajoutees par extend_tip
+    // (pas = station_spacing), tout en restant strictement en dessous d'une
+    // reconnexion a travers un trou reel (des dizaines de stations).
+    constexpr double kMaxGapUm = 3'000.0;
+    for (const auto& col : r.columns) {
+        REQUIRE(col.rail_a.nodes.size() == col.rail_b.nodes.size());
+        REQUIRE(col.rail_a.nodes.size() >= 2);
+        for (std::size_t i = 1; i < col.rail_a.nodes.size(); ++i) {
+            const double gapA = length_um(col.rail_a.nodes[i].pos - col.rail_a.nodes[i - 1].pos);
+            const double gapB = length_um(col.rail_b.nodes[i].pos - col.rail_b.nodes[i - 1].pos);
+            CHECK(gapA < kMaxGapUm);
+            CHECK(gapB < kMaxGapUm);
+        }
+        for (const auto& rung : col.rungs) {
+            CHECK(length_um(rung.a - rung.b) > 0.0);
+            CHECK(in_region(region, mid(rung.a, rung.b)));
+        }
+        for (std::size_t i = 0; i + 1 < col.rungs.size(); ++i) {
+            for (std::size_t j = i + 1; j < col.rungs.size(); ++j) {
+                const bool crosses = segments_cross_2d(col.rungs[i].a, col.rungs[i].b,
+                                                       col.rungs[j].a, col.rungs[j].b);
+                CHECK_FALSE(crosses);
+            }
+        }
+    }
+}
+
+}  // namespace
+
+TEST_CASE("colonnes : forme concave (encoche profonde) - jamais de generation partielle") {
+    for (const char* s : {"notch", "pinch"}) {
+        const auto region = make_shape(s);
+        REQUIRE(region.has_value());
+        SatinColumnsParameters params;
+        params.analysis.raster.pixel_size = Micrometers{100};
+        const auto r = build_satin_columns(*region, params);
+        INFO("forme = " << s);
+        check_no_partial_generation(r, *region);
+    }
+}
+
+TEST_CASE("colonnes : forme concave (encoche profonde) - deterministe") {
+    for (const char* s : {"notch", "pinch"}) {
+        const auto a = columns_of(s);
+        const auto b = columns_of(s);
+        REQUIRE(a.columns.size() == b.columns.size());
+        for (std::size_t i = 0; i < a.columns.size(); ++i) {
+            CHECK(a.columns[i].rail_a == b.columns[i].rail_a);
+            CHECK(a.columns[i].rail_b == b.columns[i].rail_b);
+        }
+    }
 }
 
 // --- Déterminisme ------------------------------------------------------------

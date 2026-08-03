@@ -61,6 +61,24 @@ struct SatinColumnsParameters {
     // le plus proche, dans ce rayon de recherche.
     bool anchor_junction_ends{true};
     Micrometers junction_anchor_radius{6'000};  // 6 mm : porte les encoches usuelles
+
+    // § audit génération partielle (formes concaves/larges, `build_column`) :
+    // ces trois seuils bornent à quel point un trou ou une irrégularité
+    // locale peut être toléré avant de refuser la colonne entière plutôt que
+    // de produire un fragment (rails discontinus, éventails/pointes
+    // artificielles, zones non couvertes).
+    //
+    // Trou (entre deux stations valides consécutives, avant ou après le
+    // nettoyage anti-croisement) au-delà duquel la colonne est refusée,
+    // exprimé en multiple de `station_spacing`.
+    double max_station_gap_ratio{5.0};
+    // Fraction minimale de la longueur d'axe rééchantillonné qui doit être
+    // effectivement convertie en stations valides (avant extension des
+    // bouts) ; en dessous, trop de petits trous isolés se sont accumulés.
+    double min_axis_coverage_ratio{0.85};
+    // Saut de largeur maximal toléré entre deux stations adjacentes du
+    // résultat final, en fraction de la plus grande des deux largeurs.
+    double max_adjacent_width_jump_ratio{0.75};
 };
 
 struct SatinColumnsResult {
