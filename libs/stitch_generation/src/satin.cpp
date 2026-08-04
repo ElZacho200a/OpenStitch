@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 #include "openstitch/stitch_generation/satin.hpp"
 
+#include "openstitch/geometry/polyline.hpp"
+
 #include <algorithm>
 #include <cmath>
 
@@ -54,11 +56,23 @@ PointD point_at(const std::vector<PointD>& pts, const std::vector<double>& cum, 
             pts[i - 1].y + t * (pts[i].y - pts[i - 1].y)};
 }
 
+// Aplatit `path` avant de le convertir en points de travail : un rail
+// paramétrique (§ refonte auto-satin) est une courbe de Bézier ÉPARSE
+// (quelques `PathNode` à tangentes `tan_in`/`tan_out`), jamais une
+// polyligne dense — la lire nœud par nœud sans passer par
+// `geometry::flatten` ignorerait purement et simplement la courbure et
+// reconnecterait les poignées de contrôle par des cordes. Un rail SANS
+// tangente (legacy, `rails_from_contour`, saisie manuelle) traverse
+// `flatten` inchangé (chaque segment reste une droite), donc ce changement
+// est un sur-ensemble strict du comportement précédent.
+constexpr Micrometers kRailFlattenTolerance{30};  // 0,03 mm : sous la résolution DST (0,1 mm)
+
 std::vector<PointD> to_points(const geometry::Path& path) {
+    const auto flat = geometry::flatten(path, kRailFlattenTolerance);
     std::vector<PointD> pts;
-    pts.reserve(path.nodes.size());
-    for (const auto& node : path.nodes) {
-        pts.push_back(toD(node.pos));
+    pts.reserve(flat.points.size());
+    for (const auto& p : flat.points) {
+        pts.push_back(toD(p));
     }
     return pts;
 }

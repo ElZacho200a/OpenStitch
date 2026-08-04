@@ -290,18 +290,22 @@ int run_stitchdebug(const std::string& shape, double lengthMm, int repeats,
 
 int run_auto_satin_debug(const std::string& shape, double pixelMm, const std::string& outSvg,
                          int capEnd, int shortMode, int splitMode, int underlayMask, int lockMode,
-                         bool route) {
+                         bool route, const std::string& geometryMode) {
     using namespace openstitch;
     const auto region = auto_satin::make_shape(shape);
     if (!region) {
         fmt::print(stderr, "Forme inconnue : {}\n", shape);
         return 1;
     }
+    const bool parametric = geometryMode == "parametric";
     auto_satin::SatinColumnsParameters params;
     params.analysis.raster.pixel_size = to_micrometers(Millimeters{pixelMm});
+    params.geometry_mode =
+        parametric ? auto_satin::SatinGeometryMode::Parametric : auto_satin::SatinGeometryMode::Legacy;
     const auto result = auto_satin::build_satin_columns(*region, params);
     const auto& r = result.report;
     fmt::print("Forme            : {}\n", shape);
+    fmt::print("Geometrie        : {}\n", geometryMode);
     fmt::print("Satinabilité     : {} (confiance {:.2f})\n", auto_satin::to_string(r.status),
                r.confidence);
     fmt::print("Aire / périmètre : {:.1f} mm² / {:.1f} mm\n", r.area_mm2, r.perimeter_mm);
@@ -312,12 +316,32 @@ int run_auto_satin_debug(const std::string& shape, double pixelMm, const std::st
     fmt::print("Squelette (élagué) : {} arêtes, {} extrémités, {} jonctions\n", r.branch_count,
                r.endpoint_count, r.junction_count);
     fmt::print("Trous            : {}\n", r.hole_count);
-    fmt::print("Colonnes satin   : {}\n", result.columns.size());
-    for (std::size_t i = 0; i < result.columns.size(); ++i) {
-        const auto& c = result.columns[i];
-        fmt::print("  colonne {} : {} stations, {} barreaux, largeur moy {:.2f} mm, long {:.1f} mm\n",
-                   i, c.rail_a.nodes.size(), c.rungs.size(), c.mean_width_um / 1000.0,
-                   c.length_um / 1000.0);
+    if (parametric) {
+        fmt::print("Objets satin     : {}\n", result.parametric_columns.size());
+        for (std::size_t i = 0; i < result.parametric_columns.size(); ++i) {
+            const auto& c = result.parametric_columns[i];
+            fmt::print("  objet {} : {} stations brutes -> {} paires structurantes, {} segments "
+                      "bezier, erreur max {:.3f} mm, largeur moy {:.2f} mm, long {:.1f} mm\n",
+                      i, c.raw_station_count, c.control_pairs.size(),
+                      c.rail_a.nodes.empty() ? 0 : c.rail_a.nodes.size() - 1,
+                      c.max_fit_error_um / 1000.0, c.mean_width_um / 1000.0, c.length_um / 1000.0);
+        }
+        for (const auto& plan : result.junction_plans) {
+            fmt::print("  jonction {} : ordre de couture =", plan.junction_id);
+            for (auto idx : plan.stitch_order) {
+                fmt::print(" {}", idx);
+            }
+            fmt::print("\n");
+        }
+    } else {
+        fmt::print("Colonnes satin   : {}\n", result.columns.size());
+        for (std::size_t i = 0; i < result.columns.size(); ++i) {
+            const auto& c = result.columns[i];
+            fmt::print(
+                "  colonne {} : {} stations, {} barreaux, largeur moy {:.2f} mm, long {:.1f} mm\n",
+                i, c.rail_a.nodes.size(), c.rungs.size(), c.mean_width_um / 1000.0,
+                c.length_um / 1000.0);
+        }
     }
     if (!result.refusal.empty()) {
         fmt::print("Refus            : {}\n", result.refusal);
@@ -325,14 +349,59 @@ int run_auto_satin_debug(const std::string& shape, double pixelMm, const std::st
     for (const auto& w : result.warnings) {
         fmt::print("  ! {}\n", w);
     }
+    if (!outSvg.empty() && parametric) {
+        std::string svg = auto_satin::parametric_to_svg(*region, result);
+        std::string overlay;
+        for (const auto& obj : result.parametric_columns) {
+            std::vector<stitch_generation::SatinRungSeg> rungs;
+            for (const auto& rr : obj.rungs) {
+                rungs.emplace_back(rr.a, rr.b);
+            }
+            stitch_generation::SatinConfig scfg;
+            scfg.cap_end = static_cast<stitch_generation::SatinCapType>(capEnd);
+            scfg.short_stitch = static_cast<stitch_generation::ShortStitchMode>(shortMode);
+            scfg.split_stitch = static_cast<stitch_generation::SplitStitchMode>(splitMode);
+            scfg.center_underlay = (underlayMask & 1) != 0;
+            scfg.underlay_edge = (underlayMask & 2) != 0;
+            scfg.underlay_zigzag = (underlayMask & 4) != 0;
+            const auto sat =
+                stitch_generation::fill_satin_columns(obj.rail_a, obj.rail_b, rungs, scfg);
+            const auto polylineSvg = [&](const std::vector<Vec2um>& pts, const char* stroke,
+                                        double w) {
+                if (pts.size() < 2) return;
+                overlay += "<path d=\"M";
+                for (std::size_t i = 0; i < pts.size(); ++i) {
+                    overlay += fmt::format("{}{:.3f} {:.3f} ", i ? "L" : "", pts[i].x.value / 1000.0,
+                                           -pts[i].y.value / 1000.0);
+                }
+                overlay += fmt::format("\" fill=\"none\" stroke=\"{}\" stroke-width=\"{}\"/>\n",
+                                       stroke, w);
+            };
+            for (const auto& u : sat.underlays) {
+                polylineSvg(u.points, "#0a9", 0.05);
+            }
+            polylineSvg(sat.satin, "#333", 0.06);
+        }
+        if (const auto pos = svg.rfind("</svg>"); pos != std::string::npos) {
+            svg.insert(pos, overlay);
+        }
+        std::ofstream f(std::filesystem::path(outSvg), std::ios::binary | std::ios::trunc);
+        if (!f) {
+            fmt::print(stderr, "Impossible d'écrire {}\n", outSvg);
+            return 1;
+        }
+        f << svg;
+        fmt::print("SVG écrit : {}\n", outSvg);
+        return 0;
+    }
     if (!outSvg.empty()) {
         std::string svg = auto_satin::columns_to_svg(*region, result);
         // Superpose le zigzag satin généré (fil réel) pour inspection visuelle.
         std::string overlay;
         for (const auto& col : result.columns) {
             std::vector<stitch_generation::SatinRungSeg> rungs;
-            for (const auto& r : col.rungs) {
-                rungs.emplace_back(r.a, r.b);
+            for (const auto& rung : col.rungs) {
+                rungs.emplace_back(rung.a, rung.b);
             }
             stitch_generation::SatinConfig scfg;
             scfg.cap_end = static_cast<stitch_generation::SatinCapType>(capEnd);
@@ -485,7 +554,8 @@ int main(int argc, char** argv) {
     auto* as_cmd = app.add_subcommand(
         "auto-satin-debug", "Analyse de satinabilité et squelette d'une forme de référence");
     as_cmd->add_option("--shape", as_shape,
-                       "rectangle|capsule|ribbon|s|y|t|cross|circle|ring|wide|tiny");
+                       "rectangle|capsule|ribbon|s|y|t|cross|h|circle|ring|wide|tiny|notch|pinch|"
+                       "trident");
     as_cmd->add_option("--pixel-size", as_pixel, "Taille de pixel de calcul en mm")
         ->check(CLI::PositiveNumber);
     as_cmd->add_option("--output-svg", as_out, "SVG de diagnostic à produire");
@@ -500,6 +570,11 @@ int main(int argc, char** argv) {
     bool as_route = false;
     as_cmd->add_flag("--route", as_route,
                      "Superpose le routage multi-colonnes (liaisons cachées bleu / sauts rouge)");
+    std::string as_geometry = "legacy";
+    as_cmd->add_option("--satin-geometry", as_geometry,
+                       "legacy (rails polyligne denses) | parametric (objets satin "
+                       "parametriques, rails Bezier epars)")
+        ->check(CLI::IsMember({"legacy", "parametric"}));
 
     CLI11_PARSE(app, argc, argv);
 
@@ -517,7 +592,7 @@ int main(int argc, char** argv) {
     }
     if (as_cmd->parsed()) {
         return run_auto_satin_debug(as_shape, as_pixel, as_out, as_cap, as_short, as_split,
-                                    as_underlay, as_lock, as_route);
+                                    as_underlay, as_lock, as_route, as_geometry);
     }
     return 0;
 }

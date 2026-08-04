@@ -3,10 +3,12 @@
 
 #include <algorithm>
 #include <cmath>
+#include <limits>
 #include <set>
 
 #include "openstitch/auto_satin/satin_column.hpp"
 #include "openstitch/auto_satin/shapes.hpp"
+#include "openstitch/geometry/polyline.hpp"
 
 using namespace openstitch;
 using namespace openstitch::auto_satin;
@@ -54,6 +56,39 @@ bool in_region(const geometry::PathSet& region, Vec2um p) {
 
 Vec2um mid(Vec2um a, Vec2um b) {
     return {Micrometers{(a.x.value + b.x.value) / 2}, Micrometers{(a.y.value + b.y.value) / 2}};
+}
+
+double length_of(double x, double y) { return std::sqrt(x * x + y * y); }
+
+// Distance minimale (µm) d'un point au segment [a,b].
+double distance_to_segment(Vec2um p, Vec2um a, Vec2um b) {
+    const double px = static_cast<double>(p.x.value), py = static_cast<double>(p.y.value);
+    const double ax = static_cast<double>(a.x.value), ay = static_cast<double>(a.y.value);
+    const double bx = static_cast<double>(b.x.value), by = static_cast<double>(b.y.value);
+    const double dx = bx - ax, dy = by - ay;
+    const double len2 = dx * dx + dy * dy;
+    const double t =
+        len2 > 1e-9 ? std::clamp(((px - ax) * dx + (py - ay) * dy) / len2, 0.0, 1.0) : 0.0;
+    return length_of(px - (ax + dx * t), py - (ay + dy * t));
+}
+
+// Distance minimale (µm) d'un point au contour (polyligne fermée) d'une
+// région : sert à vérifier qu'un rail suit réellement le bord de la forme
+// (§ rails inchangés, construits sur le contour réel).
+double distance_to_contour(const geometry::PathSet& region, Vec2um p) {
+    double best = std::numeric_limits<double>::max();
+    const auto scan = [&](const geometry::Path& poly) {
+        const std::size_t n = poly.nodes.size();
+        for (std::size_t i = 0; i < n; ++i) {
+            best = std::min(best,
+                            distance_to_segment(p, poly.nodes[i].pos, poly.nodes[(i + 1) % n].pos));
+        }
+    };
+    scan(region.outer);
+    for (const auto& h : region.holes) {
+        scan(h);
+    }
+    return best;
 }
 
 // Rassemble toutes les extrémités de rail (A et B) des sections touchant
@@ -333,27 +368,27 @@ TEST_CASE("colonnes : un reseau Y identifie ses sections et sa jonction") {
     CHECK(junctions.size() == 1);
 }
 
-// --- Ancrage des jonctions sur les sommets reflex du contour -----------------
+// --- Bridges de jonction, sans ancrage force (remplace l'ancien ancrage) -----
 //
-// Défaut trouvé par revue (mission « auto-satin béton », piste jonctions du
-// brevet Pulse Microsystems) : la section transversale d'une branche, calculée
-// depuis sa seule tangente locale, reste fiable loin d'une jonction mais
-// dérive nettement en approchant du nœud du squelette : le rayon perpendiculaire
-// balaie alors le bourrelet de la CONFLUENCE (où plusieurs branches se
-// recouvrent), pas la ceinture réelle de cette branche seule. Mesuré sur "y" :
-// largeur stable ~5,0 mm loin de la jonction, dérivant jusqu'à ~9,2 mm sur la
-// dernière station avant correction. Résultat : les 3 sections d'un Y ne se
-// rejoignaient pas au même point (jusqu'à ~5 mm d'écart entre deux rails
-// censés coïncider exactement), laissant un vide ou un repli à la confluence.
-
-TEST_CASE("colonnes : jonction Y symetrique - trois sommets partages exactement") {
+// Défaut d'origine trouvé par revue (mission « auto-satin béton », piste
+// jonctions du brevet Pulse Microsystems) : la section transversale d'une
+// branche dérive en approchant du nœud du squelette (balaie le bourrelet de
+// la confluence). La correction d'ALORS forçait chaque paire de rails
+// adjacents à coïncider EXACTEMENT sur une ancre partagée (sommet reflex, ou
+// un rayon de secours) — ce qui déplaçait le dernier nœud de chaque rail en
+// ligne droite vers ce point, produisant de grandes diagonales sur des
+// confluences asymétriques (fixture "trident", cf. tests dédiés plus bas).
+// Le modèle actuel (`JunctionBridge`, § remplacement de l'ancrage) ne déplace
+// plus jamais un rail : chaque branche garde sa PROPRE dernière section
+// transversale stable, verrouillée telle quelle. Sur une confluence
+// symétrique, les trois bridges restent proches (petit noyau résiduel,
+// exposé via `junction_cores`) mais ne sont plus forcés à coïncider au micron
+// près.
+TEST_CASE("colonnes : jonction Y symetrique - bridges locaux, sans ancre partagee forcee") {
     // La rasterisation par defaut des autres tests (0,1 mm) elague parfois une
     // des trois branches du Y (defaut PREEXISTANT de sensibilite du squelette
-    // a la resolution, sans rapport avec l'ancrage — non corrige ici). On
-    // verifie donc l'ancrage a une resolution ou les 3 branches survivent
-    // (confirme empiriquement) pour tester l'invariant fort applicable a une
-    // confluence symetrique a 3 branches : CHAQUE sommet est partage par
-    // EXACTEMENT deux rails, aucun rail isole.
+    // a la resolution, sans rapport avec les bridges). On verifie donc a une
+    // resolution ou les 3 branches survivent (confirme empiriquement).
     const auto region = make_shape("y");
     REQUIRE(region.has_value());
     SatinColumnsParameters params;
@@ -367,6 +402,13 @@ TEST_CASE("colonnes : jonction Y symetrique - trois sommets partages exactement"
         if (c.end_junction) junctions.insert(*c.end_junction);
     }
     REQUIRE(junctions.size() == 1);
+    const std::uint32_t junctionId = *junctions.begin();
+    check_junction_no_collision(r, junctionId);
+
+    const auto junctionNode =
+        std::find_if(r.debug.graph.nodes.begin(), r.debug.graph.nodes.end(),
+                     [&](const auto& n) { return n.id == junctionId; });
+    REQUIRE(junctionNode != r.debug.graph.nodes.end());
 
     std::vector<Vec2um> endpoints;
     for (const auto& col : r.columns) {
@@ -380,23 +422,19 @@ TEST_CASE("colonnes : jonction Y symetrique - trois sommets partages exactement"
         }
     }
     REQUIRE(endpoints.size() == 6);
-    std::vector<std::pair<Vec2um, int>> groups;
+    // Chaque bridge reste LOCAL a la confluence (aucun rail egare loin du
+    // noeud du squelette).
+    const double localityBound = static_cast<double>(params.junction_anchor_radius.value) * 2.0;
     for (const auto& p : endpoints) {
-        bool found = false;
-        for (auto& [gp, count] : groups) {
-            if (length_um(gp - p) < 5.0) {
-                ++count;
-                found = true;
-                break;
-            }
-        }
-        if (!found) {
-            groups.push_back({p, 1});
-        }
+        CHECK(length_um(p - junctionNode->position) < localityBound);
     }
-    CHECK(groups.size() == 3);
-    for (const auto& [gp, count] : groups) {
-        CHECK(count == 2);
+
+    // Le noyau central residuel (§7) est expose en diagnostic et reste petit
+    // sur une confluence symetrique (les trois bridges se rejoignent presque).
+    const auto core = std::find_if(r.junction_cores.begin(), r.junction_cores.end(),
+                                   [&](const auto& c) { return c.junction_id == junctionId; });
+    if (core != r.junction_cores.end()) {
+        CHECK(core->area_um2 < 50.0 * 1'000'000.0);  // < 50 mm^2 (bandes de 5 mm de large)
     }
 }
 
@@ -591,6 +629,141 @@ TEST_CASE("colonnes : jonction concave asymetrique (trident) - deterministe") {
     }
 }
 
+// --- Géométrie des rails près d'une jonction (remplace la diagonale d'ancrage) ---
+//
+// L'invariant central de ce correctif : un bout de jonction ne doit plus
+// JAMAIS produire un grand segment rectiligne artificiel (l'ancien
+// `set_terminal_point` déplaçait le dernier nœud vers une ancre, créant une
+// corde entre la dernière station stable et un point potentiellement
+// éloigné). Puisque les stations consécutives d'un rail viennent toujours
+// d'échantillons d'axe adjacents (pas `station_spacing`), un segment terminal
+// anormalement long est la signature directe de ce défaut.
+TEST_CASE("colonnes : jonction concave asymetrique (trident) - pas de segment "
+         "rectiligne artificiel pres de la jonction") {
+    const auto region = make_shape("trident");
+    REQUIRE(region.has_value());
+    SatinColumnsParameters params;
+    params.analysis.raster.pixel_size = Micrometers{100};
+    params.analysis.thresholds.max_satin_width = Micrometers{30'000};
+    params.max_adjacent_width_jump_ratio = 5.0;
+    params.min_axis_coverage_ratio = 0.7;
+    const auto r = build_satin_columns(*region, params);
+    INFO("refus = " << r.refusal);
+    REQUIRE(r.refusal.empty());  // aucune zone non couturee ne bloque la generation
+    REQUIRE(r.columns.size() == 3);
+
+    // Rails inchanges : deterministes, et chaque noeud reste sur le contour
+    // reel de la region (tolerance generreuse pour le leger recul volontaire
+    // de fermeture de `extend_tip`, tres inferieure a un defaut de plusieurs mm).
+    const auto again = build_satin_columns(*region, params);
+    REQUIRE(again.columns.size() == r.columns.size());
+    constexpr double kOnContourToleranceUm = 200.0;  // 0,2 mm
+    for (std::size_t ci = 0; ci < r.columns.size(); ++ci) {
+        CHECK(again.columns[ci].rail_a == r.columns[ci].rail_a);
+        CHECK(again.columns[ci].rail_b == r.columns[ci].rail_b);
+        for (const auto& n : r.columns[ci].rail_a.nodes) {
+            CHECK(distance_to_contour(*region, n.pos) < kOnContourToleranceUm);
+        }
+        for (const auto& n : r.columns[ci].rail_b.nodes) {
+            CHECK(distance_to_contour(*region, n.pos) < kOnContourToleranceUm);
+        }
+    }
+
+    // Segment terminal borné à quelques stations d'axe (jamais un saut de
+    // plusieurs millimetres traversant la confluence).
+    const double bound = static_cast<double>(params.station_spacing.value) * 4.0;
+    for (const auto& col : r.columns) {
+        const std::size_t n = col.rail_a.nodes.size();
+        REQUIRE(n == col.rail_b.nodes.size());
+        REQUIRE(n >= 2);
+        if (col.start_junction) {
+            CHECK(length_um(col.rail_a.nodes[0].pos - col.rail_a.nodes[1].pos) < bound);
+            CHECK(length_um(col.rail_b.nodes[0].pos - col.rail_b.nodes[1].pos) < bound);
+        }
+        if (col.end_junction) {
+            CHECK(length_um(col.rail_a.nodes[n - 1].pos - col.rail_a.nodes[n - 2].pos) < bound);
+            CHECK(length_um(col.rail_b.nodes[n - 1].pos - col.rail_b.nodes[n - 2].pos) < bound);
+        }
+        // Progression curviligne monotone : chaque station d'axe successive
+        // avance (jamais un rail qui rebrousse chemin sur lui-meme).
+        for (std::size_t i = 1; i + 1 < n; ++i) {
+            const double prevStep = length_um(col.rail_a.nodes[i].pos - col.rail_a.nodes[i - 1].pos);
+            CHECK(prevStep > 0.0);
+        }
+    }
+
+    // Identifie la jonction unique J1 de "trident".
+    std::set<std::uint32_t> junctionIds;
+    for (const auto& c : r.columns) {
+        if (c.start_junction) junctionIds.insert(*c.start_junction);
+        if (c.end_junction) junctionIds.insert(*c.end_junction);
+    }
+    REQUIRE(junctionIds.size() == 1);
+    const std::uint32_t j1 = *junctionIds.begin();
+    const auto j1Node = std::find_if(r.debug.graph.nodes.begin(), r.debug.graph.nodes.end(),
+                                     [&](const auto& n) { return n.id == j1; });
+    REQUIRE(j1Node != r.debug.graph.nodes.end());
+
+    // 3 secteurs de jonction (§ StableBranchEnd/JunctionSeparator), un par branche.
+    std::vector<JunctionSectorInfo> sectorsJ1;
+    for (const auto& s : r.junction_sectors) {
+        if (s.junction_id == j1) sectorsJ1.push_back(s);
+    }
+    REQUIRE(sectorsJ1.size() == 3);
+    for (const auto& s : sectorsJ1) {
+        REQUIRE(s.boundary.size() >= 4);  // separateur, ..., trailing, leading, ..., separateur
+    }
+
+    // 3 JunctionSeparator (un par espace angulaire entre 2 des 3 branches),
+    // chacun PARTAGE EXACTEMENT par les deux secteurs qu'il borde : son point
+    // doit apparaitre comme premier OU dernier sommet des deux secteurs
+    // concernes (§4 -- construction de `build_sector`).
+    std::vector<JunctionSeparatorInfo> separatorsJ1;
+    for (const auto& s : r.junction_separators) {
+        if (s.junction_id == j1) separatorsJ1.push_back(s);
+    }
+    REQUIRE(separatorsJ1.size() == 3);
+    const auto sectorForColumn = [&](std::size_t columnIndex) -> const JunctionSectorInfo* {
+        for (const auto& s : sectorsJ1) {
+            if (s.column_index == columnIndex) return &s;
+        }
+        return nullptr;
+    };
+    for (const auto& sep : separatorsJ1) {
+        const auto* before = sectorForColumn(sep.column_index_before);
+        const auto* after = sectorForColumn(sep.column_index_after);
+        REQUIRE(before != nullptr);
+        REQUIRE(after != nullptr);
+        CHECK((before->boundary.front() == sep.point || before->boundary.back() == sep.point));
+        CHECK((after->boundary.front() == sep.point || after->boundary.back() == sep.point));
+    }
+
+    // Le JunctionCore résiduel : local à J1 (aucun point au-delà du rayon
+    // local RÉELLEMENT calculé -- jamais un rayon fixe de 8 mm), petit,
+    // et surtout NETTEMENT plus petit que l'ancien résultat invalide
+    // (22,1266 mm² -- un polygone auto-croisé issu du modèle "dernière
+    // section stable connectée directement à sa voisine", désormais
+    // remplacé par la partition StableBranchEnd/JunctionSeparator/secteurs).
+    bool sawJ1Core = false;
+    for (const auto& core : r.junction_cores) {
+        if (core.junction_id != j1) {
+            continue;
+        }
+        sawJ1Core = true;
+        INFO("aire mm2 = " << core.area_um2 / 1'000'000.0);
+        INFO("local_radius mm = " << core.local_radius_um / 1000.0);
+        INFO("actual_max_radius mm = " << core.actual_max_radius_um / 1000.0);
+        CHECK(core.area_um2 >= 0.0);
+        CHECK(core.area_um2 < 22'126'600.0 / 4.0);  // nettement < 22,1266 mm^2 (ancien resultat invalide)
+        CHECK(core.local_radius_um <= core.configured_radius_um + 1.0);
+        CHECK(core.actual_max_radius_um <= core.local_radius_um + 1.0);
+        for (const auto& p : core.boundary) {
+            CHECK(length_um(p - j1Node->position) <= core.local_radius_um + 1.0);
+        }
+    }
+    CHECK(sawJ1Core);
+}
+
 TEST_CASE("colonnes : aucune derive de largeur pres d'une jonction (Y)") {
     const auto r = columns_of("y");
     REQUIRE(r.refusal.empty());
@@ -779,4 +952,204 @@ TEST_CASE("colonnes : deterministe (memes rails a chaque execution)") {
     REQUIRE(a.columns.size() >= 1);
     CHECK(a.columns.front().rail_a == b.columns.front().rail_a);
     CHECK(a.columns.front().rail_b == b.columns.front().rail_b);
+}
+
+// --- § refonte auto-satin paramétrique (mode `Parametric`) ------------------
+//
+// Remplace les rails polyligne denses (une station = un nœud) par quelques
+// paires structurantes couplant deux rails Bézier épars, des lignes d'angle
+// explicites, et un recouvrement local borné aux jonctions -- jamais une
+// ancre centrale partagée. Voir `docs/source/satin.md`.
+
+namespace {
+
+SatinColumnsResult parametric_columns_of(const std::string& shape) {
+    const auto region = make_shape(shape);
+    REQUIRE(region.has_value());
+    SatinColumnsParameters params;
+    params.analysis.raster.pixel_size = Micrometers{100};
+    params.geometry_mode = SatinGeometryMode::Parametric;
+    return build_satin_columns(*region, params);
+}
+
+// Aplatit chaque objet en une polyligne par rail, pour les vérifications
+// géométriques (croisement, distance au contour) qui doivent porter sur la
+// courbe RÉELLE, jamais sur les seuls nœuds de contrôle Bézier.
+std::pair<std::vector<Vec2um>, std::vector<Vec2um>> flatten_object(const ParametricSatinObject& obj) {
+    const auto a = geometry::flatten(obj.rail_a, Micrometers{30});
+    const auto b = geometry::flatten(obj.rail_b, Micrometers{30});
+    return {a.points, b.points};
+}
+
+bool segments_cross(Vec2um a, Vec2um b, Vec2um c, Vec2um d) {
+    const auto cross = [](double ax, double ay, double bx, double by) { return ax * by - ay * bx; };
+    const auto o = [&](Vec2um p, Vec2um q, Vec2um r) {
+        return cross(static_cast<double>(q.x.value - p.x.value),
+                     static_cast<double>(q.y.value - p.y.value),
+                     static_cast<double>(r.x.value - p.x.value),
+                     static_cast<double>(r.y.value - p.y.value));
+    };
+    const double o1 = o(a, b, c), o2 = o(a, b, d), o3 = o(c, d, a), o4 = o(c, d, b);
+    return (o1 > 0) != (o2 > 0) && (o3 > 0) != (o4 > 0) && o1 != 0 && o2 != 0 && o3 != 0 && o4 != 0;
+}
+
+bool polylines_cross(const std::vector<Vec2um>& a, const std::vector<Vec2um>& b) {
+    for (std::size_t i = 0; i + 1 < a.size(); ++i) {
+        for (std::size_t j = 0; j + 1 < b.size(); ++j) {
+            if (segments_cross(a[i], a[i + 1], b[j], b[j + 1])) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+}  // namespace
+
+TEST_CASE("parametrique : rectangle -> un objet, rails Bezier epars (pas une station = un noeud)") {
+    const auto r = parametric_columns_of("rectangle");
+    REQUIRE(r.refusal.empty());
+    REQUIRE(r.parametric_columns.size() == 1);
+    const auto& obj = r.parametric_columns.front();
+    REQUIRE(obj.rail_a.nodes.size() >= 2);
+    REQUIRE(obj.rail_b.nodes.size() >= 2);
+    // La simplification doit être réelle : très en dessous du nombre de
+    // stations denses observées (pas un segment dégénéré par station).
+    CHECK(obj.rail_a.nodes.size() < obj.raw_station_count / 3);
+    CHECK(obj.control_pairs.size() == obj.rail_a.nodes.size());
+    CHECK(obj.angle_guides.size() == obj.control_pairs.size());
+    // Au moins un nœud interne porte une tangente (Bézier réel, pas une
+    // simple polyligne rebaptisée).
+    bool anyTangent = false;
+    for (const auto& n : obj.rail_a.nodes) {
+        anyTangent = anyTangent || n.tan_in.has_value() || n.tan_out.has_value();
+    }
+    CHECK(anyTangent);
+}
+
+TEST_CASE("parametrique : capsule -> rails Bezier restent dans la region, embouts arrondis") {
+    const auto r = parametric_columns_of("capsule");
+    const auto region = make_shape("capsule");
+    REQUIRE(region.has_value());
+    REQUIRE(r.refusal.empty());
+    REQUIRE(r.parametric_columns.size() == 1);
+    const auto [flatA, flatB] = flatten_object(r.parametric_columns.front());
+    constexpr double kToleranceUm = 250.0;  // generreuse : tolerance de fit + aplatissement
+    for (const auto& p : flatA) {
+        CHECK(distance_to_contour(*region, p) < kToleranceUm);
+    }
+    for (const auto& p : flatB) {
+        CHECK(distance_to_contour(*region, p) < kToleranceUm);
+    }
+}
+
+TEST_CASE("parametrique : trident -> exactement 3 objets independants, un par branche") {
+    const auto r = parametric_columns_of("trident");
+    REQUIRE(r.refusal.empty());
+    REQUIRE(r.parametric_columns.size() == 3);
+
+    // Chaque objet garde peu de paires structurantes (simplification réelle).
+    for (const auto& obj : r.parametric_columns) {
+        CHECK(obj.control_pairs.size() >= 2);
+        CHECK(obj.control_pairs.size() <= 16);
+    }
+
+    // Aucun rail (courbe RÉELLE, aplatie) ne croise le rail d'une AUTRE
+    // branche -- un léger recouvrement de LARGEUR près du nœud est attendu et
+    // toléré (§ étape 9), mais jamais un rail qui traverse une branche
+    // voisine de part en part.
+    std::vector<std::pair<std::vector<Vec2um>, std::vector<Vec2um>>> flat;
+    for (const auto& obj : r.parametric_columns) {
+        flat.push_back(flatten_object(obj));
+    }
+    for (std::size_t i = 0; i < flat.size(); ++i) {
+        for (std::size_t j = i + 1; j < flat.size(); ++j) {
+            CHECK_FALSE(polylines_cross(flat[i].first, flat[j].first));
+            CHECK_FALSE(polylines_cross(flat[i].first, flat[j].second));
+            CHECK_FALSE(polylines_cross(flat[i].second, flat[j].first));
+            CHECK_FALSE(polylines_cross(flat[i].second, flat[j].second));
+        }
+    }
+
+    // Un seul plan de jonction, couvrant les 3 branches exactement une fois.
+    REQUIRE(r.junction_plans.size() == 1);
+    CHECK(r.junction_plans.front().stitch_order.size() == 3);
+    std::set<std::uint32_t> distinctOrder(r.junction_plans.front().stitch_order.begin(),
+                                          r.junction_plans.front().stitch_order.end());
+    CHECK(distinctOrder.size() == 3);
+
+    // Déterminisme.
+    const auto again = parametric_columns_of("trident");
+    REQUIRE(again.parametric_columns.size() == 3);
+    for (std::size_t i = 0; i < 3; ++i) {
+        CHECK(r.parametric_columns[i].rail_a == again.parametric_columns[i].rail_a);
+        CHECK(r.parametric_columns[i].rail_b == again.parametric_columns[i].rail_b);
+    }
+}
+
+TEST_CASE("parametrique : recouvrement de jonction borne, jamais loin dans la branche voisine") {
+    // "t"/"cross" : branches perpendiculaires de MÊME largeur -- rien n'est
+    // amputé par `trim_unstable_junction_tail` (aucun bourrelet à détecter),
+    // donc chaque rail atteint déjà le bord de la confluence par son propre
+    // corps. Y prolonger davantage échouerait de toute façon : une section
+    // transversale prise DANS le carré de confluence, perpendiculaire à CETTE
+    // branche, balaie alors le long de la branche perpendiculaire et dépasse
+    // `max_satin_width` dès le premier pas -- recouvrement nul, légitimement.
+    // "y"/"trident" : branches à angle, largeurs différentes -- une queue
+    // instable est amputée, donc un recouvrement réel doit apparaître.
+    for (const char* shape : {"y", "t", "cross", "trident"}) {
+        const auto r = parametric_columns_of(shape);
+        INFO("forme = " << shape);
+        REQUIRE(r.refusal.empty());
+        SatinColumnsParameters defaults;
+        for (const auto& obj : r.parametric_columns) {
+            CHECK(obj.start_overlap_um >= 0.0);
+            CHECK(obj.end_overlap_um >= 0.0);
+            CHECK(obj.start_overlap_um <=
+                 static_cast<double>(defaults.junction_overlap_max.value) + 1.0);
+            CHECK(obj.end_overlap_um <=
+                 static_cast<double>(defaults.junction_overlap_max.value) + 1.0);
+        }
+        const std::string s = shape;
+        if (s == "y" || s == "trident") {
+            bool anyOverlap = false;
+            for (const auto& obj : r.parametric_columns) {
+                anyOverlap = anyOverlap || obj.start_overlap_um > 0.0 || obj.end_overlap_um > 0.0;
+            }
+            CHECK(anyOverlap);
+        }
+    }
+}
+
+TEST_CASE("parametrique : lignes d'angle -- correspondance strictement monotone sur les deux rails") {
+    for (const char* shape : {"rectangle", "capsule", "y", "t", "cross", "trident"}) {
+        const auto r = parametric_columns_of(shape);
+        INFO("forme = " << shape);
+        REQUIRE(r.refusal.empty());
+        for (const auto& obj : r.parametric_columns) {
+            for (std::size_t i = 0; i + 1 < obj.angle_guides.size(); ++i) {
+                CHECK(obj.angle_guides[i + 1].rail_a_arc_um > obj.angle_guides[i].rail_a_arc_um);
+                CHECK(obj.angle_guides[i + 1].rail_b_arc_um > obj.angle_guides[i].rail_b_arc_um);
+            }
+        }
+    }
+}
+
+TEST_CASE("parametrique : aucune ligne d'angle croisee, largeur toujours positive") {
+    for (const char* shape : {"y", "t", "cross", "trident"}) {
+        const auto r = parametric_columns_of(shape);
+        INFO("forme = " << shape);
+        REQUIRE(r.refusal.empty());
+        for (const auto& obj : r.parametric_columns) {
+            for (const auto& g : obj.angle_guides) {
+                CHECK(length_um(g.rail_a_point - g.rail_b_point) > 0.0);
+            }
+            for (std::size_t i = 0; i + 1 < obj.angle_guides.size(); ++i) {
+                CHECK_FALSE(segments_cross(obj.angle_guides[i].rail_a_point,
+                                          obj.angle_guides[i].rail_b_point,
+                                          obj.angle_guides[i + 1].rail_a_point,
+                                          obj.angle_guides[i + 1].rail_b_point));
+            }
+        }
+    }
 }

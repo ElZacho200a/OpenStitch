@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 #include "openstitch/auto_satin/satin_column.hpp"
 
+#include "openstitch/geometry/polyline.hpp"
+#include "openstitch/geometry/simplify.hpp"
+
 #include <algorithm>
 #include <array>
 #include <cmath>
@@ -9,6 +12,7 @@
 #include <map>
 #include <numbers>
 #include <optional>
+#include <set>
 #include <string>
 
 namespace openstitch::auto_satin {
@@ -89,6 +93,26 @@ bool in_region(const std::vector<Poly>& polys, P2 p) {
         }
     }
     return true;
+}
+
+// Distance de `p` au bord le plus proche (tous polygones confondus) — utilisé
+// pour tolérer un point de rail exactement SUR le contour (§ validation
+// paramétrique, étape 12) : `in_region` seul est ambigu pile sur une arête.
+double distance_to_polys(const std::vector<Poly>& polys, P2 p) {
+    double best = std::numeric_limits<double>::max();
+    for (const auto& poly : polys) {
+        const std::size_t n = poly.size();
+        for (std::size_t i = 0; i < n; ++i) {
+            const P2 a = poly[i];
+            const P2 b = poly[(i + 1) % n];
+            const P2 ab = b - a;
+            const double len2 = dot(ab, ab);
+            const double t = len2 > 1e-12 ? std::clamp(dot(p - a, ab) / len2, 0.0, 1.0) : 0.0;
+            const P2 proj = a + ab * t;
+            best = std::min(best, norm(p - proj));
+        }
+    }
+    return best;
 }
 
 // Raison d'échec explicite d'une section transversale (§ audit génération
@@ -254,26 +278,141 @@ double signed_area(const Poly& poly) {
     return area * 0.5;
 }
 
-// Sommets REFLEX (concaves) d'un polygone fermé, indépendant du sens de
-// parcours (le signe de l'aire signée détermine le sens ; un sommet est
-// reflex si son virage local est de signe OPPOSÉ à ce sens). Ce sont les
-// « encoches » d'une jonction en Y/T/croix — les points où le contour réel
-// bascule d'une branche à sa voisine (§ ancrage des jonctions).
-std::vector<P2> reflex_vertices(const Poly& poly) {
-    std::vector<P2> out;
-    const std::size_t n = poly.size();
-    if (n < 3) {
-        return out;
+// --- Représentation paramétrique du contour extérieur -----------------------
+//
+// Utilisée UNIQUEMENT en diagnostic (calcul de `JunctionCore`, rendu SVG) :
+// jamais pour construire ou déplacer un rail. Un polygone fermé + longueur
+// curviligne cumulée à chaque sommet, permettant de projeter un point
+// quelconque sur le contour et d'en extraire un arc entre deux abscisses.
+struct ContourPolyline {
+    Poly points;                  // sommets du polygone, dans leur ordre d'origine
+    std::vector<double> cumulative;  // longueur cumulée jusqu'au sommet i (cumulative[0] = 0)
+    double total_length{0.0};
+};
+
+ContourPolyline make_contour_polyline(const Poly& poly) {
+    ContourPolyline c;
+    c.points = poly;
+    c.cumulative.assign(poly.size(), 0.0);
+    double acc = 0.0;
+    for (std::size_t i = 0; i < poly.size(); ++i) {
+        c.cumulative[i] = acc;
+        acc += norm(poly[(i + 1) % poly.size()] - poly[i]);
     }
-    const double orientSign = signed_area(poly) >= 0.0 ? 1.0 : -1.0;
+    c.total_length = acc;
+    return c;
+}
+
+struct ContourProjection {
+    std::size_t segment_index{0};  // arête [i, i+1) du polygone
+    double segment_t{0.0};         // 0..1 le long de cette arête
+    double arc_length{0.0};        // abscisse curviligne du point projeté
+    P2 point{};
+    double distance{0.0};          // distance point -> contour
+};
+
+// Projette `p` sur le contour : plus proche point parmi tous les segments.
+ContourProjection project_to_contour(const ContourPolyline& contour, P2 p) {
+    ContourProjection best;
+    best.distance = std::numeric_limits<double>::max();
+    const std::size_t n = contour.points.size();
     for (std::size_t i = 0; i < n; ++i) {
-        const P2& prev = poly[(i + n - 1) % n];
-        const P2& cur = poly[i];
-        const P2& next = poly[(i + 1) % n];
-        const double turn = cross(cur - prev, next - cur);
-        if (turn * orientSign < 0.0) {
-            out.push_back(cur);
+        const P2 a = contour.points[i];
+        const P2 b = contour.points[(i + 1) % n];
+        const P2 ab = b - a;
+        const double len2 = dot(ab, ab);
+        const double t = len2 > 1e-12 ? std::clamp(dot(p - a, ab) / len2, 0.0, 1.0) : 0.0;
+        const P2 proj = a + ab * t;
+        const double d = norm(p - proj);
+        if (d < best.distance) {
+            best.distance = d;
+            best.segment_index = i;
+            best.segment_t = t;
+            best.point = proj;
+            const double segLen = norm(ab);
+            best.arc_length = contour.cumulative[i] + t * segLen;
         }
+    }
+    return best;
+}
+
+enum class ContourDirection { Forward, Backward, Shortest };
+
+// Longueur de l'arc de `from` à `to` (abscisses curvilignes) dans le sens
+// donné, avec rebouclage sur `total_length` pour Forward/Backward.
+double contour_arc_span(double fromArc, double toArc, double totalLength, ContourDirection dir) {
+    double fwd = toArc - fromArc;
+    while (fwd < 0.0) fwd += totalLength;
+    while (fwd > totalLength) fwd -= totalLength;
+    const double bwd = totalLength - fwd;
+    switch (dir) {
+    case ContourDirection::Forward:
+        return fwd;
+    case ContourDirection::Backward:
+        return bwd;
+    case ContourDirection::Shortest:
+        return std::min(fwd, bwd);
+    }
+    return fwd;
+}
+
+// Segment [i, i+1) contenant l'abscisse `arc` (déjà ramenée dans [0, total)),
+// et le point interpolé correspondant.
+std::pair<std::size_t, P2> locate_arc(const ContourPolyline& contour, double arc) {
+    const std::size_t n = contour.points.size();
+    const double total = contour.total_length;
+    for (std::size_t i = 0; i < n; ++i) {
+        const double segStart = contour.cumulative[i];
+        const double segEnd = (i + 1 < n) ? contour.cumulative[i + 1] : total;
+        if (arc <= segEnd + 1e-9 || i + 1 == n) {
+            const double segLen = segEnd - segStart;
+            const double t = segLen > 1e-9 ? std::clamp((arc - segStart) / segLen, 0.0, 1.0) : 0.0;
+            return {i, contour.points[i] + (contour.points[(i + 1) % n] - contour.points[i]) * t};
+        }
+    }
+    return {0, contour.points.front()};
+}
+
+// Extrait la polyligne du contour entre deux abscisses curvilignes, dans le
+// sens indiqué (`Shortest` choisit l'arc le plus court des deux possibles sur
+// un contour fermé). Les deux extrémités sont incluses, dans l'ordre de
+// parcours choisi (donc éventuellement inversé par rapport à l'indexation du
+// polygone d'origine).
+Poly extract_contour_arc(const ContourPolyline& contour, double fromArc, double toArc,
+                         ContourDirection dir) {
+    const double total = contour.total_length;
+    const std::size_t n = contour.points.size();
+    if (total <= 1e-9 || n == 0) {
+        return {};
+    }
+    double a = std::fmod(fromArc, total);
+    if (a < 0.0) a += total;
+    double b = std::fmod(toArc, total);
+    if (b < 0.0) b += total;
+
+    bool forward = dir != ContourDirection::Backward;
+    if (dir == ContourDirection::Shortest) {
+        double fwd = b - a;
+        while (fwd < 0.0) fwd += total;
+        forward = fwd <= total - fwd;
+    }
+    if (!forward) {
+        std::swap(a, b);
+    }
+
+    const auto [segA, pointA] = locate_arc(contour, a);
+    const auto [segB, pointB] = locate_arc(contour, b);
+
+    Poly out;
+    out.push_back(pointA);
+    // Sommets du polygone strictement entre `a` et `b`, dans l'ordre croissant
+    // d'indexation (= ordre d'abscisse croissante puisqu'on parcourt vers l'avant).
+    for (std::size_t k = segA + 1; k <= segB; ++k) {
+        out.push_back(contour.points[k % n]);
+    }
+    out.push_back(pointB);
+    if (!forward) {
+        std::reverse(out.begin(), out.end());
     }
     return out;
 }
@@ -596,70 +735,118 @@ std::vector<Station> extend_tip(const std::vector<Poly>& polys, P2 base, P2 marc
     return ext;
 }
 
+// Largeur typique (stable) d'une branche : médiane du TIERS MÉDIAN de ses
+// stations, en excluant délibérément le premier et le dernier tiers.
+//
+// Un bourrelet de confluence ne peut que GONFLER la largeur mesurée près
+// d'un bout de JONCTION (la normale locale s'écarte alors de la ceinture
+// réelle de la branche pour balayer la confluence) — un simple minimum
+// global y résiste bien (démontré sur un réseau en T issu d'une image
+// segmentée : la médiane globale d'une moitié de barre coupée court par le
+// pied vertical était déjà gonflée par la confluence, contrairement au
+// minimum). MAIS un bout OUVERT peut à l'inverse RÉTRÉCIR légitimement
+// jusqu'à un point (branche effilée en triangle, fixture "trident" :
+// largeur ~1200 µm à la base, tendant vers 0 à la pointe) — un minimum
+// global capte alors cette pointe et la référence devient quasi nulle,
+// faisant paradoxalement tout retirer côté jonction (`limit` minuscule,
+// jamais atteint par une largeur de base normale). Exclure le premier et le
+// dernier tiers retire à la fois la queue de bourrelet ÉVENTUELLE côté
+// jonction et la pointe ÉVENTUELLE côté bout ouvert, quel que soit lequel
+// des deux bouts (ou les deux) est concerné, sans avoir à le savoir ici.
+double representative_station_width(const std::vector<Station>& st) {
+    const std::size_t n = st.size();
+    if (n == 0) {
+        return 0.0;
+    }
+    const std::size_t lo = n / 3;
+    const std::size_t hi = n - n / 3;
+    std::vector<double> widths;
+    widths.reserve(n);
+    for (std::size_t i = (lo < hi ? lo : 0); i < (lo < hi ? hi : n); ++i) {
+        widths.push_back(st[i].width);
+    }
+    if (widths.empty()) {
+        for (const Station& s : st) {
+            widths.push_back(s.width);
+        }
+    }
+    std::nth_element(widths.begin(), widths.begin() + widths.size() / 2, widths.end());
+    return widths[widths.size() / 2];
+}
+
 // Ampute la queue d'une extrémité de JONCTION dont la largeur mesurée dérive
 // (§ ancrage des jonctions : la section transversale d'une branche, calculée
 // depuis sa seule tangente locale, balaie le bourrelet de la confluence — pas
 // la ceinture réelle de CETTE branche — dès qu'on approche du nœud du
-// squelette ; démontré empiriquement : largeur stable ~5,0 mm loin de la
-// jonction, dérivant jusqu'à ~9,2 mm sur la dernière station). On retire les
-// stations terminales tant que leur largeur DÉCROÎT strictement vers
-// l'intérieur (motif observé : le bourrelet ne retombe pas toujours d'un seul
-// saut net, il peut décroître progressivement sur plusieurs stations — ex.
-// mesuré sur "y" : 9200 → 8586 → 7576 → 6566 → 5554 → 5000(stable), où CHAQUE
-// écart pris isolément reste sous 10 %, mais la dérive cumulée atteint +72 %.
-// Un ancien critère à seuil relatif fixe comparant seulement une station à sa
-// voisine immédiate s'arrêtait dès le premier écart local < 10 % — souvent le
-// tout premier, laissant la quasi-totalité du bourrelet en place — défaut
-// trouvé par revue. Toute décroissance stricte signale qu'on est encore dans
-// la zone d'influence de la confluence ; une variation progressive légitime
-// ailleurs dans la forme ne s'applique jamais ici, cette fonction n'agissant
-// QUE sur un bout de jonction, jamais un bout ouvert).
+// squelette). On retire les stations terminales tant que leur largeur dépasse
+// nettement `referenceWidth` (la largeur typique de LA BRANCHE ELLE-MÊME,
+// loin de toute jonction — cf. `representative_station_width`), pas seulement tant
+// qu'elle décroît d'une station à la suivante : un bourrelet peut retomber en
+// PALIER (plusieurs stations consécutives à une largeur quasi identique,
+// démontré sur la fixture "trident" — branche latérale : ...1200,1200,26200,
+// 26200 — les deux dernières stations sont à peine différentes l'une de
+// l'autre bien qu'ÉNORMES par rapport à la branche) ; un critère qui ne
+// compare qu'au voisin immédiat s'arrête dès la première paire quasi égale,
+// laissant tout le palier en place. Comparer à la largeur typique de la
+// branche entière détecte ce palier comme un seul bloc instable.
 //
-// N'ANCRE PLUS le rail terminal sur un sommet reflex (§ audit jonctions
-// branchées/concaves) : cette étape se faisait auparavant ICI, de façon
-// totalement indépendante pour chaque branche/rail — deux branches
-// angulairement adjacentes à la MÊME confluence pouvaient donc choisir des
-// sommets reflex différents (ou le même par accident), sans aucune garantie
-// de coïncidence exacte au raccord. La résolution des ancres est désormais
-// globale par jonction (`resolve_junction_anchors`, après que toutes les
-// colonnes ont été construites) : elle trie les branches par angle autour du
-// centre de la confluence et impose qu'une même encoche serve d'ancre
-// commune aux deux rails qui se font face de part et d'autre. Cette fonction
-// se limite donc à la seule amputation ; le rail terminal (post-amputation)
-// reste à sa position brute calculée par `cross_section`, en attente de
-// résolution globale.
-void trim_unstable_junction_tail(std::vector<Station>& st, bool atEnd) {
-    constexpr double kEpsilon = 1.0; // tolérance bruit flottant, en µm
+// N'ANCRE PLUS le rail terminal sur un sommet reflex ni sur aucune ancre
+// partagée (§ remplacement de l'ancrage par bridges) : le rail terminal
+// (post-amputation) reste à sa position brute calculée par `cross_section`,
+// verrouillée telle quelle comme `StableBranchEnd` de la colonne — jamais
+// déplacée. Cette fonction se limite à trouver la dernière section
+// RÉELLEMENT stable. Pas de budget de distance fixe non plus : un ancien
+// plafond (lié à `junction_anchor_radius`, qui ne bornait à l'origine que le
+// RAYON DE RECHERCHE d'une ancre — une notion qui n'existe plus) arrêtait
+// parfois l'amputation alors que la largeur mesurée était encore en pleine
+// dérive. Le plancher `st.size() >= 3` reste l'unique garde-fou ; les
+// validations de couverture d'axe en aval (`min_axis_coverage_ratio`)
+// refusent la colonne si la portion retirée devient excessive.
+void trim_unstable_junction_tail(std::vector<Station>& st, bool atEnd, double referenceWidth) {
+    constexpr double kToleranceRatio = 1.3;  // 30% au-dessus du gabarit habituel : encore le bourrelet
+
+    if (st.size() < 3 || referenceWidth <= 0.0) {
+        return;
+    }
+    const double limit = referenceWidth * kToleranceRatio;
+
     while (st.size() >= 3) {
-        const Station& last = atEnd ? st.back() : st.front();
-        const Station& prev = atEnd ? st[st.size() - 2] : st[1];
-        if (last.width > prev.width + kEpsilon) {
-            if (atEnd) {
-                st.pop_back();
-            } else {
-                st.erase(st.begin());
-            }
-        } else {
+        const Station& terminal = atEnd ? st.back() : st.front();
+        if (terminal.width <= limit) {
             break;
+        }
+        if (atEnd) {
+            st.pop_back();
+        } else {
+            st.erase(st.begin());
         }
     }
 }
 
-// Construit une colonne depuis une centerline (axe) et les polygones de région.
-// `extendStart`/`extendEnd` : true si ce bout est OUVERT (pas de jonction) et
-// doit donc être étendu jusqu'au bord réel — cf. `extend_tip`. Un bout de
-// jonction (`!extendStart`/`!extendEnd`) est amputé par
-// `trim_unstable_junction_tail` seulement ; son ancrage sur une encoche
-// partagée avec la branche voisine se fait après coup, globalement par
-// jonction (`resolve_junction_anchors`), pas ici. `warnings` reçoit un
-// diagnostic explicite à chaque station corrigée ou refus (§ audit génération
-// partielle sur formes concaves/larges : plus aucune station ni aucun trou
-// n'est ignoré en silence — voir les commentaires ci-dessous pour chaque
-// étape).
-std::optional<SatinColumnGeometry>
-build_column(const std::vector<Vec2um>& centerline, const std::vector<Poly>& polys,
-             const SatinColumnsParameters& params, bool extendStart, bool extendEnd,
-             std::vector<std::string>& warnings) {
+// Calcule la série DENSE de stations candidates d'une branche (§ étape 3 :
+// « conserver les sections comme données d'analyse ») depuis une centerline
+// (axe) et les polygones de région : lissage, rééchantillonnage, section
+// transversale par station (échec conservé avec sa raison explicite,
+// interpolation des échecs isolés sûrs, refus des trous internes), nettoyage
+// anti-croisement, amputation de la queue instable de confluence
+// (`trim_unstable_junction_tail`), validations de continuité/couverture,
+// extension des bouts ouverts jusqu'au bord réel (`extend_tip`).
+//
+// Partagée par LES DEUX finalisations (`build_column` legacy et
+// `build_parametric_object`) : c'est la même observation géométrique dense,
+// seule la façon d'en tirer une représentation finale diffère. `extendStart`/
+// `extendEnd` : true si ce bout est OUVERT (pas de jonction) et doit donc
+// être étendu jusqu'au bord réel ; un bout de jonction est amputé seulement
+// (son traitement ultérieur — ancrage legacy ou recouvrement paramétrique —
+// est de la responsabilité de l'appelant). `warnings` reçoit un diagnostic
+// explicite à chaque station corrigée ou refus (§ audit génération partielle
+// sur formes concaves/larges : plus aucune station ni aucun trou n'est
+// ignoré en silence — voir les commentaires ci-dessous pour chaque étape).
+std::optional<std::vector<Station>> compute_column_stations(const std::vector<Vec2um>& centerline,
+                                                             const std::vector<Poly>& polys,
+                                                             const SatinColumnsParameters& params,
+                                                             bool extendStart, bool extendEnd,
+                                                             std::vector<std::string>& warnings) {
     std::vector<P2> axis;
     axis.reserve(centerline.size());
     for (const Vec2um& v : centerline) {
@@ -782,10 +969,34 @@ build_column(const std::vector<Vec2um>& centerline, const std::vector<Poly>& pol
                 }
             }
             if (!bridged) {
+                // Un groupe d'échecs situé tout près d'un bout de jonction n'est pas
+                // nécessairement un vrai trou interne. La normale locale peut traverser
+                // tout le bourrelet de confluence et dépasser max_width, puis redevenir
+                // artificiellement valide au niveau du centre du nœud.
+                //
+                // Dans ce cas, on arrête la branche à la dernière station valide avant
+                // le bourrelet. L'extrémité sera ensuite traitée par l'amputation et
+                // l'ancrage global de la jonction.
+                const double junctionRadius =
+                    static_cast<double>(params.junction_anchor_radius.value);
+
+                const bool nearEndJunction =
+                    !extendEnd && norm(axis[i] - axis.back()) <= junctionRadius;
+
+                if (nearEndJunction) {
+                    warnings.push_back("queue de jonction amputee avant stations axe #" +
+                                       std::to_string(i) + ".." + std::to_string(j - 1) + " (" +
+                                       describe(firstFailure) + ")");
+
+                    lastIdx = i - 1;
+                    break;
+                }
+
                 warnings.push_back("colonne refusee : trou de " +
                                    std::to_string(static_cast<long>(gap)) +
                                    " um entre stations axe #" + std::to_string(i - 1) + " et #" +
                                    std::to_string(j) + " (" + describe(firstFailure) + ")");
+
                 return std::nullopt;
             }
             i = j;
@@ -837,9 +1048,26 @@ build_column(const std::vector<Vec2um>& centerline, const std::vector<Poly>& pol
         st.push_back(cur);
         droppedSinceKept = 0;
     }
+    // Retire la zone instable de confluence AVANT les validations génériques.
+    // Les dernières sections proches d'une jonction balayent souvent le bourrelet
+    // commun à plusieurs branches : leur largeur peut donc dériver fortement sans
+    // que la branche elle-même soit invalide. Si on valide avant cette amputation,
+    // on refuse la branche sur un faux saut de largeur et la jonction devient
+    // artificiellement incomplète.
+    if (params.anchor_junction_ends) {
+        // Référence calculée UNE FOIS, avant toute amputation, pour que
+        // trimmer un bout n'affecte pas la référence utilisée par l'autre.
+        const double referenceWidth = representative_station_width(st);
+        if (!extendStart) {
+            trim_unstable_junction_tail(st, /*atEnd=*/false, referenceWidth);
+        }
+        if (!extendEnd) {
+            trim_unstable_junction_tail(st, /*atEnd=*/true, referenceWidth);
+        }
+    }
+
     if (st.size() < 2) {
-        warnings.push_back(
-            "colonne refusee : moins de 2 stations valides apres nettoyage anti-croisement");
+        warnings.push_back("colonne refusee : moins de 2 stations apres amputation de jonction");
         return std::nullopt;
     }
 
@@ -849,7 +1077,7 @@ build_column(const std::vector<Vec2um>& centerline, const std::vector<Poly>& pol
     // impose 5 % de rétrécissement maximum par pas mais introduit
     // délibérément un grand saut de largeur au tout dernier point de fermeture
     // — largeur PLANCHER `tip_min_width` contre la largeur réelle voisine —
-    // et `trim_and_anchor_junction_end` ampute justement la queue dont la
+    // et `trim_unstable_junction_tail` ampute justement la queue dont la
     // largeur dérive) ; les appliquer après leur passage produirait de faux
     // refus sur des formes parfaitement valides. Ici, sur le cœur seul :
     // aucun grand trou résiduel, aucun saut de largeur incohérent entre
@@ -863,9 +1091,11 @@ build_column(const std::vector<Vec2um>& centerline, const std::vector<Poly>& pol
     // des échecs en tête/queue (bord légitime, avant `firstIdx`/après
     // `lastIdx` — p. ex. le bourrelet d'une confluence juste au nœud du
     // squelette) ne doivent pas compter contre la couverture.
+    // Après l’amputation d’une queue de jonction, la référence de couverture
+    // doit être la portion réellement conservée, et non l’axe complet avant trim.
     double coreAxisLength = 0.0;
-    for (std::size_t idx = firstIdx + 1; idx <= lastIdx; ++idx) {
-        coreAxisLength += norm(axis[idx] - axis[idx - 1]);
+    for (std::size_t k = 1; k < st.size(); ++k) {
+        coreAxisLength += norm(st[k].axis - st[k - 1].axis);
     }
     double coreCoveredLength = 0.0;
     for (std::size_t k = 1; k < st.size(); ++k) {
@@ -911,28 +1141,21 @@ build_column(const std::vector<Vec2um>& centerline, const std::vector<Poly>& pol
         const double stepLen = static_cast<double>(params.station_spacing.value);
         const double tipMin =
             static_cast<double>(std::max<std::int32_t>(1, params.tip_min_width.value));
-        if (extendEnd) {
-            if (params.extend_open_ends) {
-                const Station& last = st.back();
-                auto tail = extend_tip(polys, last.axis, last.tangent, last.tangent, last.width,
-                                       maxWidth, stepLen, tipMin);
-                for (auto& s : tail) {
-                    st.push_back(std::move(s));
-                }
+        if (extendEnd && params.extend_open_ends) {
+            const Station& last = st.back();
+            auto tail = extend_tip(polys, last.axis, last.tangent, last.tangent, last.width,
+                                   maxWidth, stepLen, tipMin);
+            for (auto& s : tail) {
+                st.push_back(std::move(s));
             }
-        } else if (params.anchor_junction_ends) {
-            trim_unstable_junction_tail(st, /*atEnd=*/true);
         }
-        if (extendStart) {
-            if (params.extend_open_ends) {
-                const Station& first = st.front();
-                auto head = extend_tip(polys, first.axis, first.tangent * -1.0, first.tangent,
-                                       first.width, maxWidth, stepLen, tipMin);
-                std::reverse(head.begin(), head.end());
-                st.insert(st.begin(), head.begin(), head.end());
-            }
-        } else if (params.anchor_junction_ends) {
-            trim_unstable_junction_tail(st, /*atEnd=*/false);
+
+        if (extendStart && params.extend_open_ends) {
+            const Station& first = st.front();
+            auto head = extend_tip(polys, first.axis, first.tangent * -1.0, first.tangent,
+                                   first.width, maxWidth, stepLen, tipMin);
+            std::reverse(head.begin(), head.end());
+            st.insert(st.begin(), head.begin(), head.end());
         }
     }
 
@@ -940,6 +1163,25 @@ build_column(const std::vector<Vec2um>& centerline, const std::vector<Poly>& pol
         warnings.push_back("colonne refusee : moins de 2 stations valides apres extension/ancrage");
         return std::nullopt;
     }
+
+    return st;
+}
+
+// Finalisation LEGACY (§ pipeline historique, inchangée) : une station dense
+// devient directement un nœud de rail et, sous condition de virage/saut de
+// largeur/espacement max, un barreau. Produit des rails à polyligne dense —
+// c'est cette représentation que le mode `Parametric` remplace (§ étape 2).
+std::optional<SatinColumnGeometry> build_column(const std::vector<Vec2um>& centerline,
+                                                const std::vector<Poly>& polys,
+                                                const SatinColumnsParameters& params,
+                                                bool extendStart, bool extendEnd,
+                                                std::vector<std::string>& warnings) {
+    auto stationsOpt =
+        compute_column_stations(centerline, polys, params, extendStart, extendEnd, warnings);
+    if (!stationsOpt) {
+        return std::nullopt;
+    }
+    std::vector<Station>& st = *stationsOpt;
 
     // Rails.
     std::vector<P2> ra;
@@ -1021,6 +1263,844 @@ build_column(const std::vector<Vec2um>& centerline, const std::vector<Poly>& pol
     return col;
 }
 
+// =============================================================================
+// § objets satin paramétriques (mode `Parametric`) — refonte auto-satin.
+//
+// La couche d'analyse (`compute_column_stations`) est INCHANGÉE et PARTAGÉE
+// avec le mode legacy : ce qui suit ne fait que la CONSOMMER différemment.
+// Au lieu de convertir chaque station en nœud de rail (une station = un
+// nœud), on sélectionne un petit nombre de stations « structurantes »
+// (§ étape 4), on ajuste une courbe de Bézier par rail entre elles
+// (§ étape 5, moindres carrés à tangentes fixées + subdivision adaptative
+// sur erreur), et les stations structurantes deviennent les
+// `SatinControlPair`/`SatinAngleGuide` qui pilotent ensuite
+// `stitch_generation::fill_satin_columns` (déjà écrit pour avancer par
+// longueur d'arc entre guides, § étape 11 — aucune modification requise
+// côté génération de points au-delà d'aplatir les rails, cf. `satin.cpp`).
+// =============================================================================
+
+// --- Évaluation Bézier cubique (De Casteljau) et distance point->courbe ---
+
+P2 cubic_eval(P2 p0, P2 p1, P2 p2, P2 p3, double t) {
+    const double u = 1.0 - t;
+    const double b0 = u * u * u;
+    const double b1 = 3.0 * u * u * t;
+    const double b2 = 3.0 * u * t * t;
+    const double b3 = t * t * t;
+    return p0 * b0 + p1 * b1 + p2 * b2 + p3 * b3;
+}
+
+// Distance (approx.) d'un point à la courbe cubique, par échantillonnage
+// dense en t — suffisant ici (l'appelant ne cherche que l'erreur MAXIMALE
+// sur un petit nombre de stations denses, pas une projection exacte).
+double cubic_point_distance(P2 p0, P2 p1, P2 p2, P2 p3, P2 pt) {
+    double best = std::numeric_limits<double>::max();
+    constexpr int kSamples = 24;
+    for (int i = 0; i <= kSamples; ++i) {
+        const double t = static_cast<double>(i) / kSamples;
+        best = std::min(best, norm(cubic_eval(p0, p1, p2, p3, t) - pt));
+    }
+    return best;
+}
+
+// Résultat de l'ajustement d'un segment cubique entre deux stations
+// d'ancrage (§ étape 5) : les deux poignées et l'erreur maximale mesurée sur
+// les stations denses de l'intervalle.
+struct CubicFit {
+    P2 p1;  // poignée sortante de l'ancrage de départ
+    P2 p2;  // poignée entrante de l'ancrage d'arrivée
+    double maxError{0.0};
+};
+
+// Ajuste UN segment cubique entre `p0` (tangente sortante `t0`, unitaire) et
+// `p3` (tangente sortante `t1`, ATTENTION : orientée vers l'AVANT du rail
+// comme `t0`, donc la poignée entrante utilise `-t1`) aux points denses
+// `pts` (incluant p0 et p3), par moindres carrés à directions FIXÉES —
+// méthode classique (Schneider, « Graphics Gems », single-pass, sans
+// reparamétrisation itérative : suffisant ici car les points d'ancrage sont
+// déjà choisis pour borner l'erreur, cf. `select_structural_indices`).
+// Repli sur des poignées à 1/3 de la corde si le système est dégénéré
+// (points quasi confondus, tangentes nulles) ou si la solution donnerait une
+// longueur de poignée négative (courbe qui rebrousserait chemin).
+CubicFit fit_cubic_segment(const std::vector<P2>& pts, P2 t0, P2 t1) {
+    const P2 p0 = pts.front();
+    const P2 p3 = pts.back();
+    const double chord = norm(p3 - p0);
+    const P2 fallbackT0 = norm(t0) > 1e-9 ? t0 : unit(p3 - p0);
+    const P2 fallbackT1 = norm(t1) > 1e-9 ? t1 : unit(p3 - p0);
+    // Longueur d'échelle des poignées = PROJECTION de la corde sur chaque
+    // tangente, jamais la longueur de corde brute. Sur un « coin structurel »
+    // (§ étape 5) où la tangente fixée est quasi PERPENDICULAIRE à la corde —
+    // p. ex. la station de fermeture d'un bout OUVERT à plat, dont le rail
+    // saute presque uniquement en LARGEUR sur une distance d'axe minime —
+    // utiliser la corde brute comme longueur de poignée produit une poignée
+    // qui pointe très loin dans la direction de la tangente avant de devoir
+    // rebrousser vers `p3`, débordant largement hors de la forme. La
+    // projection ramène naturellement la poignée à une longueur courte dans
+    // ce cas (rendu proche d'un coin, cf. étape 5 : « discontinuité de
+    // tangente sur un coin structurel »), sans code spécial pour détecter
+    // « est-ce une pointe » : la géométrie seule tranche.
+    const double scale0 = std::max(1.0, std::abs(dot(p3 - p0, fallbackT0)));
+    const double scale1 = std::max(1.0, std::abs(dot(p3 - p0, fallbackT1)));
+    const P2 fallbackP1 = p0 + fallbackT0 * (scale0 / 3.0);
+    const P2 fallbackP2 = p3 - fallbackT1 * (scale1 / 3.0);
+
+    if (pts.size() < 3 || chord < 1e-6) {
+        CubicFit fit;
+        fit.p1 = fallbackP1;
+        fit.p2 = fallbackP2;
+        for (const P2& p : pts) {
+            fit.maxError = std::max(fit.maxError, cubic_point_distance(p0, fit.p1, fit.p2, p3, p));
+        }
+        return fit;
+    }
+
+    // Paramétrisation par longueur de corde cumulée, normalisée sur [0, 1].
+    std::vector<double> u(pts.size(), 0.0);
+    {
+        double acc = 0.0;
+        for (std::size_t i = 1; i < pts.size(); ++i) {
+            acc += norm(pts[i] - pts[i - 1]);
+            u[i] = acc;
+        }
+        const double total = u.back();
+        if (total > 1e-9) {
+            for (double& v : u) {
+                v /= total;
+            }
+        }
+    }
+
+    // Système normal 2x2 pour les longueurs de poignée (alpha0, alpha1) —
+    // cf. commentaire de la fonction.
+    double a11 = 0.0, a12 = 0.0, a22 = 0.0, b1 = 0.0, b2 = 0.0;
+    for (std::size_t i = 0; i < pts.size(); ++i) {
+        const double ui = u[i];
+        const double uu = 1.0 - ui;
+        const double b1c = 3.0 * uu * uu * ui;
+        const double b2c = 3.0 * uu * ui * ui;
+        const P2 x0 = fallbackT0 * b1c;
+        const P2 x1 = fallbackT1 * (-b2c);
+        const P2 known = p0 * (uu * uu * uu + b1c) + p3 * (b2c + ui * ui * ui);
+        const P2 c = pts[i] - known;
+        a11 += dot(x0, x0);
+        a12 += dot(x0, x1);
+        a22 += dot(x1, x1);
+        b1 += dot(x0, c);
+        b2 += dot(x1, c);
+    }
+    const double det = a11 * a22 - a12 * a12;
+    double alpha0 = scale0 / 3.0;
+    double alpha1 = scale1 / 3.0;
+    if (std::abs(det) > 1e-9) {
+        const double cand0 = (b1 * a22 - b2 * a12) / det;
+        const double cand1 = (a11 * b2 - a12 * b1) / det;
+        // Poignée négative ou disproportionnée (> 2x sa longueur d'échelle
+        // PROJETÉE, pas la corde brute — cf. `scale0`/`scale1` ci-dessus) :
+        // repli — une solution moindres-carrés dégénérée produirait une
+        // boucle locale ou un débordement hors forme, exactement ce que
+        // l'énoncé interdit (§ étape 5 : « la convergence ne doit pas créer
+        // de boucle ni d'inversion »).
+        if (cand0 > 1e-6 && cand0 < scale0 * 2.0) {
+            alpha0 = cand0;
+        }
+        if (cand1 > 1e-6 && cand1 < scale1 * 2.0) {
+            alpha1 = cand1;
+        }
+    }
+
+    CubicFit fit;
+    fit.p1 = p0 + fallbackT0 * alpha0;
+    fit.p2 = p3 - fallbackT1 * alpha1;
+    for (const P2& p : pts) {
+        fit.maxError = std::max(fit.maxError, cubic_point_distance(p0, fit.p1, fit.p2, p3, p));
+    }
+    return fit;
+}
+
+// Indices REFLEX de la séquence de largeurs (§ étape 4 : « ajouter les
+// extrema de largeur ») : un indice i (0 < i < n-1) est retenu si sa largeur
+// est un maximum ou minimum local dépassant `minRelChange` par rapport à ses
+// deux voisins immédiats.
+std::vector<std::size_t> width_extrema_indices(const std::vector<Station>& st,
+                                               double minRelChange) {
+    std::vector<std::size_t> out;
+    for (std::size_t i = 1; i + 1 < st.size(); ++i) {
+        const double w0 = st[i - 1].width;
+        const double w1 = st[i].width;
+        const double w2 = st[i + 1].width;
+        const bool isMax = w1 > w0 && w1 > w2;
+        const bool isMin = w1 < w0 && w1 < w2;
+        if (!isMax && !isMin) {
+            continue;
+        }
+        const double ref = std::max({w0, w1, w2, 1.0});
+        if (std::abs(w1 - w0) / ref > minRelChange || std::abs(w1 - w2) / ref > minRelChange) {
+            out.push_back(i);
+        }
+    }
+    return out;
+}
+
+// Indices de SAUT de largeur entre deux stations ADJACENTES (§ étape 4 :
+// « changement important de largeur »), complémentaire de
+// `width_extrema_indices` : un saut brusque suivi d'un PALIER (pas un
+// pic/creux local) n'est pas un extremum — c'est pourtant exactement la
+// signature d'une station de fermeture (`extend_tip`, plancher
+// `tip_min_width`) collée à la première vraie station de corps, ou d'une
+// queue de jonction juste avant amputation. Sans ce détecteur, un tel saut
+// est absorbé dans un grand intervalle et force une poignée Bézier à
+// « rattraper » une largeur qui change de 100x sur une seule station,
+// produisant un débordement hors forme (cf. commentaire de
+// `fit_cubic_segment`). Retient LES DEUX indices de la paire en saut : le
+// segment [i-1, i] qui en résulte est court et quasi dégénéré PAR
+// CONSTRUCTION, exactement le comportement voulu pour un coin structurel.
+std::vector<std::size_t> adjacent_width_jump_indices(const std::vector<Station>& st,
+                                                      double minRelChange) {
+    std::vector<std::size_t> out;
+    for (std::size_t i = 1; i < st.size(); ++i) {
+        const double w0 = st[i - 1].width;
+        const double w1 = st[i].width;
+        const double ref = std::max({w0, w1, 1.0});
+        if (std::abs(w1 - w0) / ref > minRelChange) {
+            out.push_back(i - 1);
+            out.push_back(i);
+        }
+    }
+    return out;
+}
+
+// Indices de courbure maximale locale (§ étape 4) : angle entre tangentes
+// consécutives, maximum local dépassant `minAngleRad`.
+std::vector<std::size_t> curvature_maxima_indices(const std::vector<Station>& st,
+                                                   double minAngleRad) {
+    std::vector<std::size_t> out;
+    if (st.size() < 3) {
+        return out;
+    }
+    std::vector<double> turn(st.size(), 0.0);
+    for (std::size_t i = 1; i + 1 < st.size(); ++i) {
+        const double c = std::clamp(dot(st[i - 1].tangent, st[i + 1].tangent), -1.0, 1.0);
+        turn[i] = std::acos(c);
+    }
+    for (std::size_t i = 1; i + 1 < st.size(); ++i) {
+        if (turn[i] < minAngleRad) {
+            continue;
+        }
+        if (turn[i] >= turn[i - 1] && turn[i] >= turn[i + 1]) {
+            out.push_back(i);
+        }
+    }
+    return out;
+}
+
+// Indices retenus par Douglas-Peucker sur `pts`, en RÉUTILISANT
+// `geometry::simplify` (§ étape 1 : « réutilise les primitives existantes »)
+// plutôt que de réécrire l'algorithme : on construit un `Path` ouvert à
+// partir de `pts`, on simplifie, puis on retrouve les indices d'origine par
+// correspondance exacte de position (simplify ne DÉPLACE jamais un nœud
+// conservé, il ne fait qu'en retirer).
+std::vector<std::size_t> douglas_peucker_indices(const std::vector<P2>& pts,
+                                                 Micrometers tolerance) {
+    std::vector<std::size_t> out;
+    if (pts.size() < 3) {
+        for (std::size_t i = 0; i < pts.size(); ++i) {
+            out.push_back(i);
+        }
+        return out;
+    }
+    geometry::Path path;
+    path.closed = false;
+    path.nodes.reserve(pts.size());
+    for (const P2& p : pts) {
+        path.nodes.push_back({to_um(p), geometry::NodeType::Corner, std::nullopt, std::nullopt});
+    }
+    const geometry::Path simplified = geometry::simplify(path, tolerance);
+    std::size_t searchFrom = 0;
+    for (const auto& node : simplified.nodes) {
+        for (std::size_t i = searchFrom; i < pts.size(); ++i) {
+            if (path.nodes[i].pos == node.pos) {
+                out.push_back(i);
+                searchFrom = i + 1;
+                break;
+            }
+        }
+    }
+    if (out.empty() || out.front() != 0) {
+        out.insert(out.begin(), 0);
+    }
+    if (out.back() != pts.size() - 1) {
+        out.push_back(pts.size() - 1);
+    }
+    return out;
+}
+
+// Sélectionne les stations STRUCTURANTES (§ étape 4) : union des extrémités,
+// extrema de largeur, maxima de courbure, et simplification Douglas-Peucker
+// des DEUX rails (chacun vote ses propres indices importants). Le résultat
+// est ensuite raffiné pour respecter `minimum_control_pair_spacing` (fusion
+// des indices trop proches) — `maximum_control_pair_spacing` et l'erreur de
+// reconstruction sont appliqués séparément par `fit_rail` (§ subdivision
+// adaptative), qui peut réinsérer des indices ici absents.
+std::vector<std::size_t> select_structural_indices(const std::vector<Station>& st,
+                                                    const SatinColumnsParameters& params) {
+    std::set<std::size_t> chosen;
+    chosen.insert(0);
+    chosen.insert(st.size() - 1);
+
+    for (std::size_t i : width_extrema_indices(st, 0.15)) {
+        chosen.insert(i);
+    }
+    for (std::size_t i : adjacent_width_jump_indices(st, 0.25)) {
+        chosen.insert(i);
+    }
+    constexpr double kCurvatureThresholdRad = 12.0 * std::numbers::pi / 180.0;
+    for (std::size_t i : curvature_maxima_indices(st, kCurvatureThresholdRad)) {
+        chosen.insert(i);
+    }
+    std::vector<P2> railA, railB;
+    railA.reserve(st.size());
+    railB.reserve(st.size());
+    for (const Station& s : st) {
+        railA.push_back(s.railA);
+        railB.push_back(s.railB);
+    }
+    for (std::size_t i : douglas_peucker_indices(railA, params.bezier_fit_tolerance)) {
+        chosen.insert(i);
+    }
+    for (std::size_t i : douglas_peucker_indices(railB, params.bezier_fit_tolerance)) {
+        chosen.insert(i);
+    }
+
+    // Fusionne les indices trop rapprochés (§ minimum_control_pair_spacing) :
+    // parcours croissant, un indice n'est gardé que si son abscisse d'axe
+    // dépasse le précédent gardé de la marge minimale (les deux extrémités
+    // sont toujours gardées, quelle que soit leur proximité — un objet trop
+    // court pour respecter l'espacement minimal reste représenté par ses
+    // deux seules extrémités).
+    std::vector<std::size_t> sorted(chosen.begin(), chosen.end());
+    std::vector<double> axisArc(st.size(), 0.0);
+    for (std::size_t i = 1; i < st.size(); ++i) {
+        axisArc[i] = axisArc[i - 1] + norm(st[i].axis - st[i - 1].axis);
+    }
+    const double minSpacing = static_cast<double>(params.minimum_control_pair_spacing.value);
+    std::vector<std::size_t> merged;
+    merged.push_back(sorted.front());
+    for (std::size_t k = 1; k + 1 < sorted.size(); ++k) {
+        if (axisArc[sorted[k]] - axisArc[merged.back()] >= minSpacing) {
+            merged.push_back(sorted[k]);
+        }
+    }
+    if (sorted.size() > 1) {
+        merged.push_back(sorted.back());
+    }
+    return merged;
+}
+
+// Ajuste conjointement les DEUX rails entre `fromIdx`/`toIdx` (§ étape 6 :
+// une même paire structurante doit correspondre EXACTEMENT à une paire de
+// points sur les deux rails — donc un seul ensemble d'ancrages, partagé,
+// jamais deux subdivisions indépendantes qui dériveraient l'une de l'autre).
+// Subdivise ADAPTATIVEMENT tant que L'UN OU L'AUTRE rail dépasse
+// `bezier_fit_tolerance` (distance), `maximum_tangent_error_deg` (tangente,
+// mesurée à l'ancrage retenu contre la tangente réelle de station), ou que
+// l'intervalle dépasse `maximum_control_pair_spacing` — bornée par
+// `minimum_control_pair_spacing` et par une profondeur de récursion
+// (garantit la terminaison, § étape 5).
+struct JointRailSegment {
+    std::size_t fromIdx{0};
+    std::size_t toIdx{0};
+    P2 aP1, aP2;  // poignées rail A
+    P2 bP1, bP2;  // poignées rail B
+    double maxError{0.0};
+};
+
+void fit_both_rails_recursive(const std::vector<Station>& st, std::size_t fromIdx,
+                              std::size_t toIdx, const SatinColumnsParameters& params, int depth,
+                              std::vector<JointRailSegment>& out) {
+    std::vector<P2> ptsA, ptsB;
+    ptsA.reserve(toIdx - fromIdx + 1);
+    ptsB.reserve(toIdx - fromIdx + 1);
+    for (std::size_t i = fromIdx; i <= toIdx; ++i) {
+        ptsA.push_back(st[i].railA);
+        ptsB.push_back(st[i].railB);
+    }
+    const CubicFit fitA = fit_cubic_segment(ptsA, st[fromIdx].tangent, st[toIdx].tangent);
+    const CubicFit fitB = fit_cubic_segment(ptsB, st[fromIdx].tangent, st[toIdx].tangent);
+
+    const double tolerance = static_cast<double>(params.bezier_fit_tolerance.value);
+    const double maxSpacingUm = static_cast<double>(params.maximum_control_pair_spacing.value);
+    const double minSpacingUm = static_cast<double>(params.minimum_control_pair_spacing.value);
+    const double tangentTolRad = params.maximum_tangent_error_deg * std::numbers::pi / 180.0;
+    double axisSpan = 0.0;
+    for (std::size_t i = fromIdx + 1; i <= toIdx; ++i) {
+        axisSpan += norm(st[i].axis - st[i - 1].axis);
+    }
+    // Erreur de tangente (§ étape 4) : angle entre la tangente d'AXE réelle
+    // à la station médiane et la tangente de la corde reliant les deux
+    // ancrages -- un proxy simple de « la courbe garde la bonne direction »,
+    // peu coûteux (pas de dérivée analytique de Bézier nécessaire ici).
+    double tangentError = 0.0;
+    {
+        const std::size_t midIdx = fromIdx + (toIdx - fromIdx) / 2;
+        const P2 chord = unit(st[toIdx].axis - st[fromIdx].axis);
+        if (norm(chord) > 1e-9) {
+            const double c = std::clamp(dot(chord, st[midIdx].tangent), -1.0, 1.0);
+            tangentError = std::acos(c);
+        }
+    }
+
+    constexpr int kMaxDepth = 10;
+    const bool tooLong = axisSpan > maxSpacingUm;
+    const bool tooImprecise =
+        fitA.maxError > tolerance || fitB.maxError > tolerance || tangentError > tangentTolRad;
+    if ((tooLong || tooImprecise) && depth < kMaxDepth && toIdx > fromIdx + 1) {
+        // Point de coupure partagé : la station la plus déviante (sur l'un
+        // ou l'autre rail), ou le milieu par longueur d'axe (dépassement
+        // d'espacement pur, courbes déjà fidèles).
+        std::size_t splitIdx = fromIdx;
+        if (tooImprecise) {
+            double worst = -1.0;
+            for (std::size_t i = fromIdx + 1; i < toIdx; ++i) {
+                const double dA =
+                    cubic_point_distance(ptsA.front(), fitA.p1, fitA.p2, ptsA.back(), st[i].railA);
+                const double dB =
+                    cubic_point_distance(ptsB.front(), fitB.p1, fitB.p2, ptsB.back(), st[i].railB);
+                const double d = std::max(dA, dB);
+                if (d > worst) {
+                    worst = d;
+                    splitIdx = i;
+                }
+            }
+        }
+        if (!tooImprecise || splitIdx == fromIdx) {
+            double target = axisSpan * 0.5;
+            double acc = 0.0;
+            splitIdx = toIdx - 1;
+            for (std::size_t i = fromIdx + 1; i <= toIdx; ++i) {
+                acc += norm(st[i].axis - st[i - 1].axis);
+                if (acc >= target) {
+                    splitIdx = i;
+                    break;
+                }
+            }
+        }
+        splitIdx = std::clamp(splitIdx, fromIdx + 1, toIdx - 1);
+        double leftLen = 0.0;
+        for (std::size_t i = fromIdx + 1; i <= splitIdx; ++i) {
+            leftLen += norm(st[i].axis - st[i - 1].axis);
+        }
+        double rightLen = axisSpan - leftLen;
+        // Le point de coupure « idéal » (pire erreur, ou milieu) peut violer
+        // `minimum_control_pair_spacing` -- typiquement un SAUT abrupt collé
+        // au tout premier/dernier point (station de fermeture d'un bout
+        // ouvert, cf. `adjacent_width_jump_indices`). Plutôt que d'abandonner
+        // toute subdivision (et garder un unique segment très imprécis, donc
+        // potentiellement débordant), on cherche le point valide le PLUS
+        // PROCHE de la coupure idéale qui respecte l'espacement des deux
+        // côtés -- seul un intervalle réellement trop court pour contenir
+        // DEUX espacements minimaux reste non subdivisé.
+        if (!(leftLen >= minSpacingUm && rightLen >= minSpacingUm)) {
+            std::size_t bestIdx = 0;
+            double bestDelta = std::numeric_limits<double>::max();
+            double accLeft = 0.0;
+            for (std::size_t i = fromIdx + 1; i < toIdx; ++i) {
+                accLeft += norm(st[i].axis - st[i - 1].axis);
+                const double accRight = axisSpan - accLeft;
+                if (accLeft >= minSpacingUm && accRight >= minSpacingUm) {
+                    const double delta = std::abs(static_cast<double>(i) -
+                                                  static_cast<double>(splitIdx));
+                    if (delta < bestDelta) {
+                        bestDelta = delta;
+                        bestIdx = i;
+                        leftLen = accLeft;
+                        rightLen = accRight;
+                    }
+                }
+            }
+            if (bestDelta < std::numeric_limits<double>::max()) {
+                splitIdx = bestIdx;
+            } else {
+                leftLen = rightLen = -1.0;  // aucune coupure valide : intervalle trop court.
+            }
+        }
+        if (leftLen >= minSpacingUm && rightLen >= minSpacingUm) {
+            fit_both_rails_recursive(st, fromIdx, splitIdx, params, depth + 1, out);
+            fit_both_rails_recursive(st, splitIdx, toIdx, params, depth + 1, out);
+            return;
+        }
+    }
+    JointRailSegment seg;
+    seg.fromIdx = fromIdx;
+    seg.toIdx = toIdx;
+    seg.aP1 = fitA.p1;
+    seg.aP2 = fitA.p2;
+    seg.bP1 = fitB.p1;
+    seg.bP2 = fitB.p2;
+    seg.maxError = std::max(fitA.maxError, fitB.maxError);
+    out.push_back(seg);
+}
+
+// Résultat de l'ajustement conjoint des deux rails : la séquence d'indices
+// d'ancrage PARTAGÉE effectivement retenue après subdivision adaptative
+// (peut contenir plus d'indices que `select_structural_indices` initial),
+// et les poignées Bézier de chaque segment, pour chaque rail.
+struct RailFit {
+    std::vector<std::size_t> anchors;  // indices dans `st`, triés, PARTAGÉS par les deux rails
+    std::vector<P2> aTanOut, aTanIn;   // poignées rail A (taille anchors.size()-1 chacune)
+    std::vector<P2> bTanOut, bTanIn;   // poignées rail B
+    double maxError{0.0};
+};
+
+RailFit fit_both_rails(const std::vector<Station>& st, const std::vector<std::size_t>& initialAnchors,
+                       const SatinColumnsParameters& params) {
+    std::vector<JointRailSegment> segments;
+    for (std::size_t k = 0; k + 1 < initialAnchors.size(); ++k) {
+        fit_both_rails_recursive(st, initialAnchors[k], initialAnchors[k + 1], params, 0, segments);
+    }
+    std::sort(segments.begin(), segments.end(), [](const JointRailSegment& a,
+                                                    const JointRailSegment& b) {
+        return a.fromIdx < b.fromIdx;
+    });
+
+    RailFit fit;
+    fit.anchors.push_back(segments.front().fromIdx);
+    for (const auto& seg : segments) {
+        fit.anchors.push_back(seg.toIdx);
+        fit.aTanOut.push_back(seg.aP1);
+        fit.aTanIn.push_back(seg.aP2);
+        fit.bTanOut.push_back(seg.bP1);
+        fit.bTanIn.push_back(seg.bP2);
+        fit.maxError = std::max(fit.maxError, seg.maxError);
+    }
+    return fit;
+}
+
+// Construit un `geometry::Path` Bézier épars depuis un `RailFit` : un
+// `PathNode` par ancrage PARTAGÉ, `tan_out`/`tan_in` = poignée moins position
+// (convention `PathNode`, offset relatif). Le premier ancrage n'a pas de
+// `tan_in`, le dernier pas de `tan_out` (bout de l'objet). `pickA` sélectionne
+// les poignées du rail A ou B — mêmes ancrages pour les deux (§ étape 6).
+geometry::Path rail_bezier_path(const std::vector<Station>& st, bool pickA, const RailFit& fit) {
+    geometry::Path path;
+    path.closed = false;
+    const auto point = [&](std::size_t i) { return pickA ? st[i].railA : st[i].railB; };
+    const auto& tanOut = pickA ? fit.aTanOut : fit.bTanOut;
+    const auto& tanIn = pickA ? fit.aTanIn : fit.bTanIn;
+    path.nodes.reserve(fit.anchors.size());
+    for (std::size_t k = 0; k < fit.anchors.size(); ++k) {
+        geometry::PathNode node;
+        node.pos = to_um(point(fit.anchors[k]));
+        node.type = geometry::NodeType::Smooth;
+        if (k > 0) {
+            node.tan_in = to_um(tanIn[k - 1]) - node.pos;
+        }
+        if (k + 1 < fit.anchors.size()) {
+            node.tan_out = to_um(tanOut[k]) - node.pos;
+        }
+        path.nodes.push_back(node);
+    }
+    return path;
+}
+
+// Construit les `SatinControlPair`/`SatinAngleGuide`/`SatinRung` depuis un
+// `RailFit` conjoint : une paire par ancrage partagé (§ étape 4 et 7 — les
+// deux notions coïncident tant qu'aucune édition manuelle ne les dissocie).
+// Les tangentes exposées sont celles de la STATION dense correspondante
+// (déjà unitaires, orientées le long de l'axe), pas les poignées Bézier
+// (qui peuvent être asymétriques entre segments adjacents).
+void build_control_pairs_and_guides(const std::vector<Station>& st, const RailFit& fit,
+                                    ParametricSatinObject& obj) {
+    obj.control_pairs.reserve(fit.anchors.size());
+    obj.angle_guides.reserve(fit.anchors.size());
+    obj.rungs.reserve(fit.anchors.size());
+    double arcA = 0.0, arcB = 0.0;
+    for (std::size_t k = 0; k < fit.anchors.size(); ++k) {
+        const std::size_t idx = fit.anchors[k];
+        if (k > 0) {
+            arcA += norm(st[idx].railA - st[fit.anchors[k - 1]].railA);
+            arcB += norm(st[idx].railB - st[fit.anchors[k - 1]].railB);
+        }
+        SatinControlPair pair;
+        pair.axis_point = to_um(st[idx].axis);
+        pair.rail_a_point = to_um(st[idx].railA);
+        pair.rail_b_point = to_um(st[idx].railB);
+        pair.tangent = to_um(st[idx].axis + st[idx].tangent * 1000.0) - pair.axis_point;
+        pair.width_um = st[idx].width;
+        pair.structural = true;
+        obj.control_pairs.push_back(pair);
+
+        SatinAngleGuide guide;
+        guide.rail_a_point = pair.rail_a_point;
+        guide.rail_b_point = pair.rail_b_point;
+        guide.rail_a_arc_um = arcA;
+        guide.rail_b_arc_um = arcB;
+        guide.structural = true;
+        obj.angle_guides.push_back(guide);
+
+        obj.rungs.push_back({pair.rail_a_point, pair.rail_b_point});
+    }
+}
+
+// --- § jonctions paramétriques (étape 9) : recouvrement local, sans ancre --
+//
+// PAS d'ancre centrale commune, pas de sommet de bissectrice, pas de
+// déplacement du dernier nœud, pas de séparateur/secteur/noyau résiduel
+// (§ interdictions explicites). Chaque branche reste un objet INDÉPENDANT ;
+// à un bout de jonction, on la prolonge simplement un peu plus loin qu'elle
+// ne l'aurait été si ce bout était refusé/tronqué — en ré-échantillonnant
+// quelques sections transversales RÉELLES (mêmes primitives que
+// `extend_tip`), jusqu'à une distance bornée. Contrairement à `extend_tip`
+// (bout ouvert, s'arrête quand la largeur cesse de rétrécir), on avance ici
+// jusqu'à une DISTANCE cible : la largeur peut légitimement croître en
+// entrant dans le bourrelet de confluence, ce n'est pas une erreur, c'est le
+// recouvrement voulu.
+std::vector<Station> extend_into_confluence(const std::vector<Poly>& polys, P2 base, P2 marchDir,
+                                            P2 orientTan, double maxWidth, double stepLen,
+                                            double overlapUm) {
+    std::vector<Station> ext;
+    if (stepLen <= 0.0 || overlapUm <= 0.0) {
+        return ext;
+    }
+    const P2 nrm{-orientTan.y, orientTan.x};
+    double advanced = 0.0;
+    const int maxSteps = std::max(1, static_cast<int>(std::ceil(overlapUm / stepLen)) + 1);
+    for (int k = 1; k <= maxSteps && advanced < overlapUm; ++k) {
+        const double s = std::min(static_cast<double>(k) * stepLen, overlapUm);
+        const P2 p = base + marchDir * s;
+        if (!in_region(polys, p)) {
+            break;
+        }
+        const auto sec = cross_section(polys, p, nrm, maxWidth);
+        if (!sec) {
+            break;
+        }
+        Station st;
+        st.axis = p;
+        st.tangent = orientTan;
+        st.railA = p + nrm * sec->second;
+        st.railB = p + nrm * sec->first;
+        st.width = sec->second - sec->first;
+        ext.push_back(st);
+        advanced = s;
+    }
+    return ext;
+}
+
+// Recouvrement RÉELLEMENT applicable à un bout de jonction : fraction de la
+// largeur locale (`junction_overlap_ratio`), bornée par un plancher/plafond
+// absolu (§ étape 9 : « jamais prolonger un objet très loin dans une branche
+// voisine »).
+double junction_overlap_target(double referenceWidth, const SatinColumnsParameters& params) {
+    const double raw = referenceWidth * params.junction_overlap_ratio;
+    return std::clamp(raw, static_cast<double>(params.junction_overlap_min.value),
+                      static_cast<double>(params.junction_overlap_max.value));
+}
+
+// Finalisation PARAMÉTRIQUE (§ refonte auto-satin) : sélectionne les paires
+// structurantes, ajuste les deux rails en Bézier épars, construit les
+// guides/barreaux, et prolonge chaque bout de JONCTION d'un recouvrement
+// local borné (jamais un bout OUVERT — celui-ci est déjà étendu jusqu'au
+// bord réel par `compute_column_stations`/`extend_tip`, en amont, exactement
+// comme en mode legacy).
+std::optional<ParametricSatinObject> build_parametric_object(
+    const std::vector<Vec2um>& centerline, const std::vector<Poly>& polys,
+    const SatinColumnsParameters& params, bool extendStart, bool extendEnd,
+    std::vector<std::string>& warnings) {
+    auto stationsOpt =
+        compute_column_stations(centerline, polys, params, extendStart, extendEnd, warnings);
+    if (!stationsOpt) {
+        return std::nullopt;
+    }
+    std::vector<Station> st = std::move(*stationsOpt);
+
+    const double maxWidth = static_cast<double>(params.analysis.thresholds.max_satin_width.value);
+    const double stepLen = static_cast<double>(params.station_spacing.value);
+    const double referenceWidth = representative_station_width(st);
+
+    ParametricSatinObject obj;
+    obj.raw_station_count = st.size();
+
+    // Recouvrement de jonction (§ étape 9) : appliqué APRÈS
+    // `compute_column_stations` (qui a déjà amputé la queue instable côté
+    // jonction via `trim_unstable_junction_tail`), en repartant du dernier
+    // point stable vers l'intérieur de la confluence -- jamais vers un point
+    // partagé avec une autre branche.
+    if (!extendEnd && params.anchor_junction_ends && st.size() >= 2) {
+        const double overlapUm = junction_overlap_target(referenceWidth, params);
+        const Station& last = st.back();
+        auto tail =
+            extend_into_confluence(polys, last.axis, last.tangent, last.tangent, maxWidth, stepLen,
+                                   overlapUm);
+        if (!tail.empty()) {
+            obj.end_overlap_um = norm(tail.back().axis - last.axis);
+            for (auto& s : tail) {
+                st.push_back(std::move(s));
+            }
+        }
+    }
+    if (!extendStart && params.anchor_junction_ends && st.size() >= 2) {
+        const double overlapUm = junction_overlap_target(referenceWidth, params);
+        const Station& first = st.front();
+        auto head = extend_into_confluence(polys, first.axis, first.tangent * -1.0, first.tangent,
+                                           maxWidth, stepLen, overlapUm);
+        if (!head.empty()) {
+            obj.start_overlap_um = norm(head.back().axis - first.axis);
+            std::reverse(head.begin(), head.end());
+            st.insert(st.begin(), head.begin(), head.end());
+        }
+    }
+
+    const auto initialAnchors = select_structural_indices(st, params);
+    const RailFit fit = fit_both_rails(st, initialAnchors, params);
+    obj.max_fit_error_um = fit.maxError;
+
+    obj.rail_a = rail_bezier_path(st, true, fit);
+    obj.rail_b = rail_bezier_path(st, false, fit);
+    build_control_pairs_and_guides(st, fit, obj);
+
+    // Marque les paires terminales (§ étape 4 : `junction_pair`/`open_tip_pair`).
+    if (!obj.control_pairs.empty()) {
+        if (!extendStart) {
+            obj.control_pairs.front().junction_pair = true;
+        } else {
+            obj.control_pairs.front().open_tip_pair = true;
+        }
+        if (!extendEnd) {
+            obj.control_pairs.back().junction_pair = true;
+        } else {
+            obj.control_pairs.back().open_tip_pair = true;
+        }
+    }
+
+    double wMean = 0.0, wMin = std::numeric_limits<double>::max(), wMax = 0.0, length = 0.0;
+    for (std::size_t i = 0; i < st.size(); ++i) {
+        wMean += st[i].width;
+        wMin = std::min(wMin, st[i].width);
+        wMax = std::max(wMax, st[i].width);
+        if (i > 0) {
+            length += norm(st[i].axis - st[i - 1].axis);
+        }
+    }
+    obj.mean_width_um = wMean / static_cast<double>(st.size());
+    obj.min_width_um = wMin;
+    obj.max_width_um = wMax;
+    obj.length_um = length;
+
+    return obj;
+}
+
+// Validation géométrique d'un `ParametricSatinObject` (§ étape 12), par
+// échantillonnage dense des rails Bézier APLATIS (`geometry::flatten`) --
+// jamais sur les seuls nœuds de contrôle, qui ne disent rien de la courbe
+// réelle entre eux. Renvoie un message d'échec explicite, ou `nullopt` si
+// l'objet est valide.
+std::optional<std::string> validate_parametric_object(const ParametricSatinObject& obj,
+                                                       const std::vector<Poly>& polys,
+                                                       const SatinColumnsParameters& params) {
+    if (obj.rail_a.nodes.size() < 2 || obj.rail_b.nodes.size() < 2) {
+        return "rail trop court";
+    }
+    const Micrometers flattenTol{50};
+    const auto flatA = geometry::flatten(obj.rail_a, flattenTol);
+    const auto flatB = geometry::flatten(obj.rail_b, flattenTol);
+    if (flatA.points.size() < 2 || flatB.points.size() < 2) {
+        return "rail aplati degenere";
+    }
+    const auto toP2 = [](Vec2um v) {
+        return P2{static_cast<double>(v.x.value), static_cast<double>(v.y.value)};
+    };
+    Poly polyA, polyB;
+    polyA.reserve(flatA.points.size());
+    polyB.reserve(flatB.points.size());
+    for (const auto& p : flatA.points) polyA.push_back(toP2(p));
+    for (const auto& p : flatB.points) polyB.push_back(toP2(p));
+
+    const double maxWidthLimit =
+        static_cast<double>(params.analysis.thresholds.max_satin_width.value) * 1.5;
+    // Un rail satin trace le CONTOUR par construction (`cross_section`
+    // intersecte exactement le bord) : un point de rail est donc légitimement
+    // ON THE BOUNDARY, pas strictement à l'intérieur. `in_region` (test de
+    // parité par lancer de rayon) est ambigu pile sur une arête — l'arrondi
+    // au µm d'un point déjà quasi-tangent peut le faire retomber du mauvais
+    // côté sans qu'aucune géométrie ne soit réellement en cause. `fit_cubic_segment`
+    // ne mesure l'erreur qu'aux stations DENSES (échantillons discrets) :
+    // entre deux stations, la courbe continue peut légèrement déborder sans
+    // qu'aucun échantillon ne l'ait détecté. La tolérance de validation doit
+    // donc rester cohérente avec la tolérance de FIT elle-même
+    // (`bezier_fit_tolerance`, déjà le budget d'imprécision explicitement
+    // accepté) plutôt qu'une constante arbitraire indépendante — un facteur
+    // 1,5 absorbe cet écart résiduel entre stations sans jamais masquer un
+    // VRAI débordement (poignée Bézier qui bombe hors la forme), qui reste
+    // d'un tout autre ordre de grandeur (plusieurs dixièmes de mm au moins).
+    const double boundaryToleranceUm =
+        std::max(25.0, static_cast<double>(params.bezier_fit_tolerance.value) * 1.5);
+    const auto onBoundaryOrInside = [&](P2 p) {
+        return in_region(polys, p) || distance_to_polys(polys, p) <= boundaryToleranceUm;
+    };
+    for (const P2& p : polyA) {
+        if (!onBoundaryOrInside(p)) {
+            return "rail A hors region";
+        }
+    }
+    for (const P2& p : polyB) {
+        if (!onBoundaryOrInside(p)) {
+            return "rail B hors region";
+        }
+    }
+    for (std::size_t i = 0; i + 1 < polyA.size(); ++i) {
+        for (std::size_t j = i + 2; j + 1 < polyA.size(); ++j) {
+            if (segments_cross(polyA[i], polyA[i + 1], polyA[j], polyA[j + 1])) {
+                return "rail A auto-croise";
+            }
+        }
+    }
+    for (std::size_t i = 0; i + 1 < polyB.size(); ++i) {
+        for (std::size_t j = i + 2; j + 1 < polyB.size(); ++j) {
+            if (segments_cross(polyB[i], polyB[i + 1], polyB[j], polyB[j + 1])) {
+                return "rail B auto-croise";
+            }
+        }
+    }
+    for (std::size_t i = 0; i + 1 < polyA.size(); ++i) {
+        for (std::size_t j = 0; j + 1 < polyB.size(); ++j) {
+            if (segments_cross(polyA[i], polyA[i + 1], polyB[j], polyB[j + 1])) {
+                return "rails A/B se croisent";
+            }
+        }
+    }
+    for (const auto& guide : obj.angle_guides) {
+        const P2 a = toP2(guide.rail_a_point);
+        const P2 b = toP2(guide.rail_b_point);
+        const double width = norm(a - b);
+        if (!(width > 0.0)) {
+            return "ligne d'angle degeneree (largeur nulle)";
+        }
+        if (width > maxWidthLimit) {
+            return "ligne d'angle trop large";
+        }
+        if (!in_region(polys, (a + b) * 0.5)) {
+            return "ligne d'angle hors region";
+        }
+    }
+    for (std::size_t i = 0; i + 1 < obj.angle_guides.size(); ++i) {
+        const auto& g0 = obj.angle_guides[i];
+        const auto& g1 = obj.angle_guides[i + 1];
+        if (g1.rail_a_arc_um <= g0.rail_a_arc_um || g1.rail_b_arc_um <= g0.rail_b_arc_um) {
+            return "correspondance non monotone entre lignes d'angle";
+        }
+    }
+    for (std::size_t i = 0; i + 1 < obj.angle_guides.size(); ++i) {
+        if (segments_cross(toP2(obj.angle_guides[i].rail_a_point),
+                           toP2(obj.angle_guides[i].rail_b_point),
+                           toP2(obj.angle_guides[i + 1].rail_a_point),
+                           toP2(obj.angle_guides[i + 1].rail_b_point))) {
+            return "lignes d'angle croisees";
+        }
+    }
+    return std::nullopt;
+}
+
 // --- Résolution globale des ancres de jonction (§ audit jonctions
 // branchées/concaves) -------------------------------------------------------
 //
@@ -1041,19 +2121,24 @@ build_column(const std::vector<Vec2um>& centerline, const std::vector<Poly>& pol
 
 P2 rail_point(const geometry::Path& rail, std::size_t i) {
     return {static_cast<double>(rail.nodes[i].pos.x.value),
-           static_cast<double>(rail.nodes[i].pos.y.value)};
+            static_cast<double>(rail.nodes[i].pos.y.value)};
 }
 
 P2 terminal_point(const geometry::Path& rail, bool atEnd) {
     return atEnd ? rail_point(rail, rail.nodes.size() - 1) : rail_point(rail, 0);
 }
 
-void set_terminal_point(geometry::Path& rail, bool atEnd, P2 p) {
-    if (atEnd) {
-        rail.nodes.back().pos = to_um(p);
-    } else {
-        rail.nodes.front().pos = to_um(p);
+// Point de rail à `offset` stations en retrait du bout `atEnd` (offset=0 =
+// le tout dernier nœud, comme `terminal_point` ; offset croissant = on
+// s'éloigne encore plus de la jonction). Saturé au premier/dernier nœud
+// disponible.
+P2 station_point(const geometry::Path& rail, bool atEnd, std::size_t offset) {
+    const std::size_t n = rail.nodes.size();
+    if (n == 0) {
+        return {0.0, 0.0};
     }
+    const std::size_t capped = std::min(offset, n - 1);
+    return atEnd ? rail_point(rail, n - 1 - capped) : rail_point(rail, capped);
 }
 
 // Direction SORTANTE de la jonction le long de la branche (du centre vers
@@ -1072,6 +2157,24 @@ P2 outward_tangent(const geometry::Path& railA, const geometry::Path& railB, boo
     return unit(nextMid - termMid);
 }
 
+// Variante de `outward_tangent` à `offset` stations en retrait (voir
+// `station_point`) : nécessaire pour ré-évaluer la tangente d'une
+// `StableBranchEnd` reculée par `resolve_junction`.
+P2 outward_tangent_at(const geometry::Path& railA, const geometry::Path& railB, bool atEnd,
+                      std::size_t offset) {
+    const std::size_t n = railA.nodes.size();
+    if (n < 2) {
+        return {0.0, 0.0};
+    }
+    const std::size_t maxOffset = n - 2;
+    const std::size_t o = std::min(offset, maxOffset);
+    const std::size_t termIdx = atEnd ? n - 1 - o : o;
+    const std::size_t nextIdx = atEnd ? termIdx - 1 : termIdx + 1;
+    const P2 termMid = (rail_point(railA, termIdx) + rail_point(railB, termIdx)) * 0.5;
+    const P2 nextMid = (rail_point(railA, nextIdx) + rail_point(railB, nextIdx)) * 0.5;
+    return unit(nextMid - termMid);
+}
+
 // Une branche incidente à une jonction, vue depuis cette jonction : quelle
 // colonne, quel bout (`atEnd`), et sous quel angle elle en repart.
 struct JunctionBranch {
@@ -1083,9 +2186,13 @@ struct JunctionBranch {
 // Regroupe toutes les branches par jonction (`graph.nodes[id]`), triées par
 // angle croissant autour du centre — ordre exploité tel quel par
 // `resolve_junction_anchors` et `validate_junctions` pour parcourir les
-// espaces angulaires entre branches adjacentes.
+// espaces angulaires entre branches adjacentes. Template sur le type de
+// colonne : `SatinColumnGeometry` (legacy) et `ParametricSatinObject`
+// partagent les champs `rail_a`/`rail_b`/`start_junction`/`end_junction`
+// exploités ici.
+template <typename ColumnT>
 std::map<std::uint32_t, std::vector<JunctionBranch>>
-collect_junction_branches(const std::vector<SatinColumnGeometry>& columns) {
+collect_junction_branches(const std::vector<ColumnT>& columns) {
     std::map<std::uint32_t, std::vector<JunctionBranch>> byJunction;
     for (std::size_t ci = 0; ci < columns.size(); ++ci) {
         const auto& col = columns[ci];
@@ -1103,236 +2210,509 @@ collect_junction_branches(const std::vector<SatinColumnGeometry>& columns) {
         }
     }
     for (auto& [id, branches] : byJunction) {
-        std::sort(branches.begin(), branches.end(),
-                  [](const JunctionBranch& a, const JunctionBranch& b) { return a.angle < b.angle; });
+        std::sort(
+            branches.begin(), branches.end(),
+            [](const JunctionBranch& a, const JunctionBranch& b) { return a.angle < b.angle; });
     }
     return byJunction;
 }
 
-// Sommet reflex le plus proche du centre parmi ceux dont l'angle (relatif au
-// centre) tombe dans le secteur [lo, hi) (`hi` peut dépasser 2π : la
-// comparaison ramène l'angle du candidat dans la bonne branche de 2π pour
-// gérer le rebouclage du dernier secteur sur le premier).
-std::optional<P2> best_anchor_in_sector(const std::vector<P2>& reflexVertices, P2 center, double lo,
-                                        double hi, double radius) {
-    constexpr double kTwoPi = 2.0 * std::numbers::pi;
+// --- StableBranchEnd + JunctionSeparator + secteurs de jonction (§ suite) ---
+//
+// L'ancienne résolution (`resolve_junction_anchors`, supprimée) cherchait un
+// sommet reflex ou une intersection de contour PARTAGÉE entre deux branches
+// adjacentes, puis déplaçait le dernier nœud de chaque rail vers ce point
+// (`set_terminal_point`) — la diagonale/l'éventail observés sur "trident".
+//
+// Une deuxième correction (toujours sans déplacer aucun rail) capturait la
+// DERNIÈRE section transversale stable de chaque branche comme bridge, puis
+// cherchait par optimisation combinatoire, PARMI PLUSIEURS candidates de ce
+// type (reculs variés le long de la même branche), celle qui minimisait
+// l'aire du `JunctionCore`. Toujours insuffisant sur "trident" : reculer une
+// section transversale NE CHANGE PAS où se trouve la véritable frontière
+// géométrique entre deux branches (l'encoche réelle du contour) — seule la
+// combinatoire sur les sections transversales ne peut donc pas la trouver, le
+// noyau résiduel restait grand (~22 mm²) et couvrait presque toute la
+// confluence.
+//
+// Défaut architectural identifié : une dernière section transversale stable
+// n'a AUCUNE raison d'être la frontière définitive entre deux branches. Ce
+// qui suit sépare donc explicitement deux concepts :
+//
+// 1. `StableBranchEnd` : la dernière VRAIE section transversale stable d'une
+//    branche (ce qu'on appelait jusqu'ici le « bridge ») — marque la fin de
+//    son corps régulier, point d'entrée du traitement de jonction. Unique
+//    par branche (fini la recherche combinatoire sur plusieurs reculs).
+// 2. `JunctionSeparator` : la frontière locale PARTAGÉE entre deux branches
+//    angulairement adjacentes, construite DANS la zone de confluence — un
+//    sommet reflex local du contour (l'encoche réelle), ou à défaut
+//    l'intersection de la bissectrice angulaire avec le contour. Ce n'est
+//    PAS une section transversale classique, et ce n'est jamais un point
+//    sur un rail.
+//
+// La région locale de jonction (disque de rayon MINIMAL — la distance à la
+// plus proche `StableBranchEnd`, jamais une constante arbitraire — autour du
+// nœud) est partitionnée en un secteur par branche, chacun bordé par ses deux
+// `JunctionSeparator` voisins et l'arc de contour réel jusqu'à son propre
+// `StableBranchEnd`. Le `JunctionCore` résiduel est le polygone des
+// `JunctionSeparator` eux-mêmes (simple par construction : sommets triés par
+// angle autour d'un centre commun = polygone en étoile) — jamais calculé
+// comme « région entière moins colonnes ». AUCUN rail n'est jamais modifié :
+// StableBranchEnd/JunctionSeparator/secteurs sont des constructions purement
+// diagnostiques qui n'affectent ni ne déplacent la moindre station de rail.
+
+// Sommets REFLEX (concaves) d'un polygone fermé, indépendant du sens de
+// parcours (le signe de l'aire signée détermine le sens ; un sommet est
+// reflex si son virage local est de signe OPPOSÉ à ce sens). Ce sont les
+// « encoches » d'une jonction en Y/T/croix — les points où le contour réel
+// bascule d'une branche à sa voisine ; le candidat naturel pour un
+// `JunctionSeparator`.
+std::vector<P2> reflex_vertices(const Poly& poly) {
+    std::vector<P2> out;
+    const std::size_t n = poly.size();
+    if (n < 3) {
+        return out;
+    }
+    const double orientSign = signed_area(poly) >= 0.0 ? 1.0 : -1.0;
+    for (std::size_t i = 0; i < n; ++i) {
+        const P2& prev = poly[(i + n - 1) % n];
+        const P2& cur = poly[i];
+        const P2& next = poly[(i + 1) % n];
+        const double turn = cross(cur - prev, next - cur);
+        if (turn * orientSign < 0.0) {
+            out.push_back(cur);
+        }
+    }
+    return out;
+}
+
+// Dernière section transversale RÉELLEMENT stable d'une branche à une
+// jonction (§ StableBranchEnd) : capture telle quelle une station déjà
+// présente dans le rail (`trim_unstable_junction_tail` l'a déjà amenée à sa
+// position finale dans `build_column`) — jamais déplacée.
+struct StableBranchEnd {
+    std::size_t columnIndex{0};
+    bool atEnd{false};
+    P2 rail_a_point{};
+    P2 rail_b_point{};
+    P2 axis_point{};
+    P2 tangent{};
+    double width_um{0.0};
+    // Côté qui fait face à la branche SUIVANTE (angle croissant autour de la
+    // jonction) / PRÉCÉDENTE. Attention : ce n'est PAS toujours
+    // `rail_a`/`rail_b` respectivement — la convention gauche/droite d'un
+    // rail est relative au sens de parcours de SON PROPRE axe interne
+    // (`build_column`), qui va tantôt de la jonction vers le bout ouvert,
+    // tantôt l'inverse selon l'orientation de l'arête du squelette
+    // (`atEnd`) ; `tangent` (`outward_tangent`, toujours orienté
+    // correctement VERS l'intérieur de la branche quel que soit `atEnd`)
+    // sert de référence fiable pour déterminer lequel des deux est
+    // réellement le côté « suivant ».
+    P2 leading_point{};
+    P2 trailing_point{};
+};
+
+// `offset` : nombre de stations en retrait du bout de rail (0 = la toute
+// dernière, comme avant). `resolve_junction` l'augmente pour une branche
+// dont la coupe, bien que déjà stable en LARGEUR (`trim_unstable_junction_tail`),
+// s'avère encore géométriquement incompatible avec une branche voisine
+// (croise son rail) — un signal de position que le seul critère de largeur
+// ne peut pas détecter (cf. commentaire de `build_separator`).
+StableBranchEnd make_stable_branch_end(const SatinColumnGeometry& col, const JunctionBranch& b,
+                                       std::size_t offset = 0) {
+    StableBranchEnd e;
+    e.columnIndex = b.columnIndex;
+    e.atEnd = b.atEnd;
+    e.rail_a_point = station_point(col.rail_a, b.atEnd, offset);
+    e.rail_b_point = station_point(col.rail_b, b.atEnd, offset);
+    e.axis_point = (e.rail_a_point + e.rail_b_point) * 0.5;
+    e.tangent = outward_tangent_at(col.rail_a, col.rail_b, b.atEnd, offset);
+    e.width_um = norm(e.rail_a_point - e.rail_b_point);
+
+    const P2 leadingNormal{-e.tangent.y, e.tangent.x};
+    const bool aIsLeading = dot(e.rail_a_point - e.axis_point, leadingNormal) >= 0.0;
+    e.leading_point = aIsLeading ? e.rail_a_point : e.rail_b_point;
+    e.trailing_point = aIsLeading ? e.rail_b_point : e.rail_a_point;
+    return e;
+}
+
+// Construit le `JunctionSeparator` entre deux branches angulairement
+// adjacentes (§ JunctionSeparator). Le découpage par SECTEUR ANGULAIRE
+// (angle du rayon squelette de chaque branche) a été essayé puis abandonné :
+// une branche large (dont les deux points `leading`/`trailing` peuvent
+// s'écarter de plus de 90° autour du nœud) fait que l'encoche réelle entre
+// elle et sa voisine tombe, en angle pur, du côté de l'AUTRE secteur — sur
+// "trident", l'encoche entre la branche verticale (6 mm) et la branche fine
+// horizontale se retrouvait ainsi classée dans le secteur horizontale/
+// diagonale, laissant les deux secteurs qui en avaient réellement besoin
+// sans aucun candidat et repliés sur un rayon arbitraire qui pouvait heurter
+// le mur d'une branche sans rapport (noyau résiduel ~14 mm², bien trop grand).
+//
+// Le repère fiable est la CONTIGUÏTÉ SUR LE CONTOUR, pas l'angle depuis le
+// nœud : l'encoche entre la branche `i` et la branche `i+1` est nécessairement
+// sur l'arc de contour reliant leur point `leading`/`trailing` respectif (le
+// plus court des deux, `ContourDirection::Shortest`). On y cherche le sommet
+// reflex le plus profond (le plus proche du nœud) parmi ceux qui appartiennent
+// réellement à CET arc ; à défaut (encoche non anguleuse), on replie sur le
+// milieu curviligne du même arc — qui reste, par construction, dans la bonne
+// zone (contrairement à un rayon lancé depuis le nœud).
+std::optional<P2> build_separator(const std::vector<P2>& reflexVertices,
+                                  const ContourPolyline& contour, P2 leadPoint, P2 trailPoint,
+                                  P2 center, double radius) {
+    const auto projLead = project_to_contour(contour, leadPoint);
+    const auto projTrail = project_to_contour(contour, trailPoint);
+    const Poly arc = extract_contour_arc(contour, projLead.arc_length, projTrail.arc_length,
+                                         ContourDirection::Shortest);
+    if (arc.size() < 2) {
+        return std::nullopt;
+    }
+
     std::optional<P2> best;
     double bestDist = radius;
-    for (const P2& v : reflexVertices) {
-        const P2 rel = v - center;
-        const double d = norm(rel);
+    for (const P2& rv : reflexVertices) {
+        bool onArc = false;
+        for (const P2& p : arc) {
+            if (norm(p - rv) < 1.0) {
+                onArc = true;
+                break;
+            }
+        }
+        if (!onArc) {
+            continue;
+        }
+        const double d = norm(rv - center);
         if (d < 1e-6 || d > bestDist) {
             continue;
         }
-        double a = std::atan2(rel.y, rel.x);
-        while (a < lo) {
-            a += kTwoPi;
-        }
-        if (a > hi + 1e-9) {
-            continue;
-        }
         bestDist = d;
-        best = v;
+        best = rv;
     }
-    return best;
+    if (best) {
+        return best;
+    }
+
+    const double span =
+        contour_arc_span(projLead.arc_length, projTrail.arc_length, contour.total_length,
+                         ContourDirection::Shortest);
+    if (span > radius * 3.0) {
+        return std::nullopt;  // les deux branches ne sont pas des voisines locales plausibles.
+    }
+    const P2 mid = arc[arc.size() / 2];
+    return norm(mid - center) <= radius * 1.5 ? std::optional<P2>{mid} : std::nullopt;
 }
 
-// Met à jour le barreau terminal (premier/dernier de `col.rungs`) correspondant
-// au bout `atEnd` d'une colonne, pour qu'il reflète les positions courantes
-// des rails terminaux — appelé après toute mutation de `rail_a`/`rail_b`.
-void sync_terminal_rung(SatinColumnGeometry& col, bool atEnd) {
-    if (col.rungs.empty()) {
-        return;
+// `true` si le polygone `boundary` (fermé) s'auto-intersecte : deux arêtes
+// NON adjacentes qui se croisent. Un `JunctionCore` replié sur lui-même
+// calculerait une aire (formule du lacet) artificiellement petite par
+// annulation partielle — un faux minimum géométriquement invalide.
+bool polygon_self_intersects(const Poly& boundary) {
+    const std::size_t m = boundary.size();
+    if (m < 4) {
+        return false;
     }
-    auto& rung = atEnd ? col.rungs.back() : col.rungs.front();
-    rung.a = to_um(terminal_point(col.rail_a, atEnd));
-    rung.b = to_um(terminal_point(col.rail_b, atEnd));
+    for (std::size_t i = 0; i < m; ++i) {
+        const P2 a0 = boundary[i];
+        const P2 a1 = boundary[(i + 1) % m];
+        for (std::size_t j = i + 2; j < m; ++j) {
+            if (i == 0 && j + 1 == m) {
+                continue; // arêtes adjacentes par bouclage (partagent boundary[0])
+            }
+            const P2 b0 = boundary[j];
+            const P2 b1 = boundary[(j + 1) % m];
+            if (segments_cross(a0, a1, b0, b1)) {
+                return true;
+            }
+        }
+    }
+    return false;
 }
 
-// Applique la résolution globale : pour chaque jonction, pour chaque espace
-// angulaire entre deux branches adjacentes, pose (si trouvée) une ancre
-// PARTAGÉE sur les deux rails qui se font face — le rail A (gauche, cf.
-// convention `+N = gauche`) de la branche « avant » dans l'ordre angulaire,
-// et le rail B (droite) de la branche « après ». Une station sans ancre à
-// portée garde sa position brute post-amputation (repli, comme avant l'audit
-// — toutes les jonctions ne sont pas des étoiles symétriques à n encoches
-// pour n branches).
+// Première paire de StableBranchEnd dont les coupes transversales se
+// croisent (index dans `ends`), ou `nullopt` si aucune ne se croise. Un
+// croisement direct ici signale un rail déjà incohérent — aucune
+// construction de séparateur ne peut réparer ça.
+std::optional<std::pair<std::size_t, std::size_t>>
+find_crossing_end_pair(const std::vector<StableBranchEnd>& ends) {
+    const std::size_t n = ends.size();
+    for (std::size_t i = 0; i < n; ++i) {
+        for (std::size_t j = i + 1; j < n; ++j) {
+            if (segments_cross(ends[i].rail_a_point, ends[i].rail_b_point, ends[j].rail_a_point,
+                               ends[j].rail_b_point)) {
+                return std::pair{i, j};
+            }
+        }
+    }
+    return std::nullopt;
+}
+
+// `true` si le SEGMENT transversal de `e` traverse l'un des deux rails de
+// `other` (§ invariant « aucun rail ne traverse la confluence ») : une
+// StableBranchEnd est une coupe LOCALE de sa propre branche, elle ne doit
+// jamais couper à travers le corps d'une branche voisine.
+bool end_crosses_other_rail(const StableBranchEnd& e, const SatinColumnGeometry& other) {
+    const auto crossesPolyline = [&](const geometry::Path& rail) {
+        for (std::size_t k = 0; k + 1 < rail.nodes.size(); ++k) {
+            const P2 p0 = rail_point(rail, k);
+            const P2 p1 = rail_point(rail, k + 1);
+            if (segments_cross(e.rail_a_point, e.rail_b_point, p0, p1)) {
+                return true;
+            }
+        }
+        return false;
+    };
+    return crossesPolyline(other.rail_a) || crossesPolyline(other.rail_b);
+}
+
+// Résultat complet de la résolution d'une jonction : une `StableBranchEnd`
+// et un secteur par branche (même ordre que les `JunctionBranch` fournies en
+// entrée), un `JunctionSeparator` optionnel par espace angulaire (index i =
+// entre la branche i et la branche (i+1) mod n), et le `JunctionCore`
+// résiduel qui en découle.
+struct JunctionResolution {
+    std::vector<StableBranchEnd> ends;
+    std::vector<std::optional<P2>> separators;
+    std::vector<Poly> sectors;
+    Poly coreBoundary;
+    double coreArea{0.0};
+    double localRadius{0.0};
+    double actualMaxRadius{0.0};
+};
+
+// Construit le secteur local d'une branche (§4) : borné par le séparateur
+// PRÉCÉDENT (arc de contour jusqu'au côté `trailing` de la branche), le
+// segment transversal `trailing -> leading` de sa `StableBranchEnd`, puis
+// l'arc de contour du côté `leading` jusqu'au séparateur SUIVANT. Un
+// séparateur manquant (aucune encoche ni intersection de bissectrice
+// trouvée dans le rayon local) laisse ce côté du secteur ouvert — repli
+// géré par l'appelant lors de la construction du `JunctionCore`.
+Poly build_sector(const StableBranchEnd& e, const std::optional<P2>& sepPrev,
+                  const std::optional<P2>& sepNext, const ContourPolyline& contour) {
+    Poly boundary;
+    if (sepPrev) {
+        boundary.push_back(*sepPrev);
+        const auto projSep = project_to_contour(contour, *sepPrev);
+        const auto projTrail = project_to_contour(contour, e.trailing_point);
+        Poly arc = extract_contour_arc(contour, projSep.arc_length, projTrail.arc_length,
+                                       ContourDirection::Shortest);
+        for (std::size_t k = 1; k + 1 < arc.size(); ++k) {
+            boundary.push_back(arc[k]);
+        }
+    }
+    boundary.push_back(e.trailing_point);
+    boundary.push_back(e.leading_point);
+    if (sepNext) {
+        const auto projLead = project_to_contour(contour, e.leading_point);
+        const auto projSep = project_to_contour(contour, *sepNext);
+        Poly arc = extract_contour_arc(contour, projLead.arc_length, projSep.arc_length,
+                                       ContourDirection::Shortest);
+        for (std::size_t k = 1; k + 1 < arc.size(); ++k) {
+            boundary.push_back(arc[k]);
+        }
+        boundary.push_back(*sepNext);
+    }
+    return boundary;
+}
+
+// Résout une jonction complète (§ StableBranchEnd / JunctionSeparator ci-
+// dessus) : `nullopt` si un défaut structurel réel rend la confluence
+// géométriquement incohérente (StableBranchEnd égarée, secteur qui traverse
+// une branche voisine, ou — cas limite — noyau qui s'auto-croise malgré
+// tout), auquel cas l'appelant refuse proprement la génération.
+std::optional<JunctionResolution>
+resolve_junction(const std::vector<SatinColumnGeometry>& columns,
+                 const std::vector<JunctionBranch>& branches,
+                 const std::vector<ContourPolyline>& contours, const std::vector<Poly>& polys,
+                 const std::vector<P2>& reflexVertices, P2 center, double configuredRadius) {
+    const std::size_t n = branches.size();
+    if (n < 2) {
+        return std::nullopt;
+    }
+
+    JunctionResolution res;
+    res.ends.reserve(n);
+    for (const auto& b : branches) {
+        res.ends.push_back(make_stable_branch_end(columns[b.columnIndex], b));
+    }
+
+    // `trim_unstable_junction_tail` (dans `build_column`) ne détecte que la
+    // DÉRIVE DE LARGEUR du bourrelet de confluence — pas sa forme. Sur une
+    // jonction en T très asymétrique (bras large, branche fine), la toute
+    // première section d'un bras peut avoir une largeur déjà plausible tout
+    // en étant positionnée dans le corridor de la branche voisine (son axe
+    // n'a pas encore quitté le bourrelet commun) : sa coupe transversale
+    // croise alors le rail de cette voisine, ce qui prouve — largeur ou pas —
+    // qu'elle n'est PAS réellement stable. On recule encore d'une station la
+    // ou les `StableBranchEnd` impliquées dans un tel croisement, jusqu'à ce
+    // que la confluence soit géométriquement cohérente ou qu'il n'y ait plus
+    // aucune station disponible (refus propre, comme avant).
+    std::vector<std::size_t> offsets(n, 0);
+    constexpr std::size_t kMaxIterations = 200;
+    for (std::size_t iter = 0; iter < kMaxIterations; ++iter) {
+        std::optional<std::pair<std::size_t, std::size_t>> bad = find_crossing_end_pair(res.ends);
+        if (!bad) {
+            for (std::size_t i = 0; i < n && !bad; ++i) {
+                for (std::size_t j = 0; j < n; ++j) {
+                    if (i != j &&
+                        end_crosses_other_rail(res.ends[i], columns[branches[j].columnIndex])) {
+                        bad = std::pair{i, j};
+                        break;
+                    }
+                }
+            }
+        }
+        if (!bad) {
+            break;
+        }
+        const auto retract = [&](std::size_t idx) {
+            const auto& col = columns[branches[idx].columnIndex];
+            const std::size_t nodeCount = col.rail_a.nodes.size();
+            const std::size_t maxOffset = nodeCount < 2 ? 0 : nodeCount - 2;
+            if (offsets[idx] >= maxOffset) {
+                return false;
+            }
+            ++offsets[idx];
+            res.ends[idx] = make_stable_branch_end(col, branches[idx], offsets[idx]);
+            return true;
+        };
+        const bool retractedFirst = retract(bad->first);
+        const bool retractedSecond = retract(bad->second);
+        if (!retractedFirst && !retractedSecond) {
+            return std::nullopt;
+        }
+    }
+    if (find_crossing_end_pair(res.ends)) {
+        return std::nullopt;
+    }
+    for (std::size_t i = 0; i < n; ++i) {
+        for (std::size_t j = 0; j < n; ++j) {
+            if (i != j && end_crosses_other_rail(res.ends[i], columns[branches[j].columnIndex])) {
+                return std::nullopt;
+            }
+        }
+    }
+
+    // Rayon local (§2) : dérivé des données réelles — jamais une constante
+    // arbitraire. Doit être assez grand pour CONTENIR la `StableBranchEnd`
+    // la plus éloignée (sinon son propre secteur ne pourrait pas la
+    // rejoindre) : la distance MAXIMALE, pas minimale — une branche dont la
+    // fin stable se trouve déjà (sans recul) exactement au nœud (largeur
+    // stable dès la première station, aucune instabilité à amputer — cas
+    // réel sur "trident", branche verticale bien plus large que ses deux
+    // voisines) a une distance nulle et ne doit PAS, à elle seule,
+    // effondrer le rayon de toute la jonction. Petite marge (`kRadiusMargin`)
+    // pour que la recherche de séparateur (sommet reflex / bissectrice)
+    // puisse dépasser légèrement la plus éloignée des `StableBranchEnd` sans
+    // être coupée court. `configuredRadius` reste un plafond de sécurité
+    // (formes dégénérées), jamais la valeur reportée comme rayon réel.
+    constexpr double kRadiusMargin = 1.2;
+    double farthest = 0.0;
+    for (const auto& e : res.ends) {
+        farthest = std::max(farthest, norm(e.axis_point - center));
+    }
+    const double localRadius = std::min(farthest * kRadiusMargin, configuredRadius);
+    if (!(localRadius > 0.0)) {
+        return std::nullopt;
+    }
+    res.localRadius = localRadius;
+
+    // Contour porteur de cette jonction (toutes ses branches touchent le
+    // même contour en pratique — les anneaux, seul cas à plusieurs contours
+    // pertinents, sont traités séparément par `build_annular_sections`).
+    std::size_t contourIndex = 0;
+    {
+        double best = std::numeric_limits<double>::max();
+        for (std::size_t ci = 0; ci < contours.size(); ++ci) {
+            const double d = project_to_contour(contours[ci], res.ends.front().leading_point).distance;
+            if (d < best) {
+                best = d;
+                contourIndex = ci;
+            }
+        }
+    }
+    const ContourPolyline& contour = contours[contourIndex];
+
+    // JunctionSeparator (§3) : un par paire de branches angulairement
+    // adjacentes, cherché sur l'arc de contour qui les relie réellement
+    // (contiguïté de contour, pas secteur angulaire — cf. commentaire de
+    // `build_separator`).
+    res.separators.resize(n);
+    for (std::size_t i = 0; i < n; ++i) {
+        res.separators[i] = build_separator(reflexVertices, contour, res.ends[i].leading_point,
+                                            res.ends[(i + 1) % n].trailing_point, center,
+                                            localRadius);
+    }
+
+    // Secteurs (§4).
+    res.sectors.resize(n);
+    for (std::size_t i = 0; i < n; ++i) {
+        const auto& sepPrev = res.separators[(i + n - 1) % n];
+        const auto& sepNext = res.separators[i];
+        res.sectors[i] = build_sector(res.ends[i], sepPrev, sepNext, contour);
+    }
+
+    // JunctionCore (§6) : le polygone des `JunctionSeparator` trouvés, dans
+    // l'ordre angulaire — simple PAR CONSTRUCTION (sommets triés par angle
+    // autour d'un centre commun = polygone en étoile, jamais auto-croisé).
+    // Repli explicite pour un espace angulaire SANS séparateur (aucune
+    // encoche ni bissectrice n'a atteint le contour dans le rayon local,
+    // cas limite) : relie directement les deux `StableBranchEnd` voisines
+    // par l'arc de contour réel — dégradé mais jamais invalide.
+    Poly core;
+    for (std::size_t i = 0; i < n; ++i) {
+        if (res.separators[i]) {
+            core.push_back(*res.separators[i]);
+            continue;
+        }
+        const auto& cur = res.ends[i];
+        const auto& nxt = res.ends[(i + 1) % n];
+        const auto projLead = project_to_contour(contour, cur.leading_point);
+        const auto projTrail = project_to_contour(contour, nxt.trailing_point);
+        Poly arc = extract_contour_arc(contour, projLead.arc_length, projTrail.arc_length,
+                                       ContourDirection::Shortest);
+        for (const P2& p : arc) {
+            core.push_back(p);
+        }
+    }
+    if (polygon_self_intersects(core)) {
+        return std::nullopt;
+    }
+    res.coreBoundary = core;
+    res.coreArea = core.size() >= 3 ? std::abs(signed_area(core)) : 0.0;
+    res.actualMaxRadius = 0.0;
+    for (const P2& p : core) {
+        res.actualMaxRadius = std::max(res.actualMaxRadius, norm(p - center));
+    }
+    return res;
+}
+
+// --- § étape 10 : ordre de couture à une jonction --------------------------
 //
-// Défaut trouvé en cours d'audit : la section transversale brute d'une
-// branche, tout près d'un sommet reflex (encoche), rétrécit naturellement
-// vers zéro du côté qui longe l'encoche — c'est la géométrie réelle, pas une
-// erreur de calcul. Quand SEUL le côté opposé de cette branche reçoit une
-// ancre partagée (l'autre gap, côté encoche, n'en trouvant aucune — cas
-// légitime d'une confluence asymétrique à moins d'encoches que de branches,
-// cf. jonction en T), le rail non ancré restait à cette position brute
-// quasi nulle : le barreau terminal de la branche devenait dégénéré (largeur
-// ~0), régression sur l'invariant « aucun barreau dégénéré » déjà couvert par
-// les tests existants. Correction : une fois toutes les ancres partagées
-// posées, toute branche dont la largeur terminale finale reste sous
-// `tip_min_width` est repoussée à cette largeur plancher — en ne déplaçant
-// QUE le côté non ancré (le côté ancré doit rester EXACTEMENT à l'ancre
-// partagée, sous peine de rouvrir le défaut que l'ancrage corrige), le long
-// de la normale locale (perpendiculaire à la tangente sortante de la
-// branche). Si aucun des deux côtés n'a d'ancre, les deux sont écartés
-// symétriquement autour de leur position brute — même principe que le
-// bissection de `extend_tip`.
-void resolve_junction_anchors(std::vector<SatinColumnGeometry>& columns, const SkeletonGraph& graph,
-                              const std::vector<P2>& reflexVertices, double anchorRadius,
-                              double tipMinWidth, std::vector<std::string>& warnings) {
-    constexpr double kTwoPi = 2.0 * std::numbers::pi;
-    const auto byJunction = collect_junction_branches(columns);
-    for (const auto& [junctionId, branches] : byJunction) {
-        if (junctionId >= graph.nodes.size() || branches.size() < 2) {
-            continue;
-        }
-        const auto& node = graph.nodes[junctionId];
-        const P2 center{static_cast<double>(node.position.x.value),
-                        static_cast<double>(node.position.y.value)};
-        const std::size_t n = branches.size();
-        std::map<std::size_t, std::array<bool, 2>> anchoredSides; // index dans `branches` -> {A, B}
-        for (std::size_t i = 0; i < n; ++i) {
-            const JunctionBranch& cur = branches[i];
-            const JunctionBranch& nxt = branches[(i + 1) % n];
-            double hi = nxt.angle;
-            while (hi <= cur.angle) {
-                hi += kTwoPi;
-            }
-            const auto anchor = best_anchor_in_sector(reflexVertices, center, cur.angle, hi, anchorRadius);
-            if (!anchor) {
-                continue;
-            }
-            set_terminal_point(columns[cur.columnIndex].rail_a, cur.atEnd, *anchor);
-            sync_terminal_rung(columns[cur.columnIndex], cur.atEnd);
-            anchoredSides[i][0] = true;
-            set_terminal_point(columns[nxt.columnIndex].rail_b, nxt.atEnd, *anchor);
-            sync_terminal_rung(columns[nxt.columnIndex], nxt.atEnd);
-            anchoredSides[(i + 1) % n][1] = true;
-            warnings.push_back("jonction " + std::to_string(junctionId) +
-                               " : ancre partagee entre colonnes " + std::to_string(cur.columnIndex) +
-                               " et " + std::to_string(nxt.columnIndex));
-        }
-        // Plancher de largeur : ne touche que les branches dont le côté
-        // NON ancré a naturellement collapsé sous `tip_min_width`.
-        for (std::size_t i = 0; i < n; ++i) {
-            const JunctionBranch& b = branches[i];
-            SatinColumnGeometry& col = columns[b.columnIndex];
-            const P2 a = terminal_point(col.rail_a, b.atEnd);
-            const P2 bb = terminal_point(col.rail_b, b.atEnd);
-            const double width = norm(a - bb);
-            if (width >= tipMinWidth) {
-                continue;
-            }
-            const auto flags = anchoredSides[i];
-            if (flags[0] && flags[1]) {
-                continue; // les deux côtés ancrés au même point : légitime (étoile symétrique).
-            }
-            const P2 tangent{std::cos(b.angle), std::sin(b.angle)};
-            const P2 leftNormal{-tangent.y, tangent.x}; // vers rail A
-            if (flags[0] && !flags[1]) {
-                set_terminal_point(col.rail_b, b.atEnd, a - leftNormal * tipMinWidth);
-            } else if (flags[1] && !flags[0]) {
-                set_terminal_point(col.rail_a, b.atEnd, bb + leftNormal * tipMinWidth);
-            } else {
-                const P2 mid = (a + bb) * 0.5;
-                set_terminal_point(col.rail_a, b.atEnd, mid + leftNormal * (tipMinWidth * 0.5));
-                set_terminal_point(col.rail_b, b.atEnd, mid - leftNormal * (tipMinWidth * 0.5));
-            }
-            sync_terminal_rung(col, b.atEnd);
-            warnings.push_back("jonction " + std::to_string(junctionId) + " : colonne " +
-                               std::to_string(b.columnIndex) +
-                               " largeur terminale plancher appliquee (repli quasi degenere)");
-        }
-    }
-}
-
-// Validation finale par jonction (point 5 de l'audit) : après résolution des
-// ancres partagées, vérifie que chaque confluence forme un raccord cohérent
-// plutôt que de laisser passer un éventail ou un trou triangulaire. Retourne
-// un message de refus explicite au premier problème trouvé (chaîne vide si
-// tout est cohérent).
-std::string validate_junctions(const std::vector<SatinColumnGeometry>& columns,
-                               const SkeletonGraph& graph, double anchorRadius) {
-    constexpr double kTwoPi = 2.0 * std::numbers::pi;
-    constexpr double kCoincidenceEpsilonUm = 5.0;
-    const auto byJunction = collect_junction_branches(columns);
-    for (const auto& [junctionId, branches] : byJunction) {
-        if (junctionId >= graph.nodes.size()) {
-            continue;
-        }
-        // 1) Toutes les arêtes du graphe incidentes à cette jonction ont bien
-        // produit une branche (aucune ambiguïté d'un raccord amputé).
-        std::size_t expectedEnds = 0;
-        for (const auto& e : graph.edges) {
-            if (e.from == junctionId) ++expectedEnds;
-            if (e.to == junctionId) ++expectedEnds;
-        }
-        if (branches.size() != expectedEnds) {
-            return "jonction " + std::to_string(junctionId) + " incomplete (" +
-                   std::to_string(branches.size()) + "/" + std::to_string(expectedEnds) +
-                   " branches disponibles)";
-        }
+// Heuristique déterministe (première version, cf. `docs/source/satin.md`) :
+// branche la plus large en premier (cousue dessous), branches secondaires
+// ensuite par largeur décroissante, branche la plus fine en dernier (cousue
+// dessus, masque les transitions des précédentes). Ne modifie AUCUNE
+// géométrie -- ordonne seulement les index déjà construits.
+std::vector<SatinJunctionPlan> plan_junction_stitch_order(
+    const std::vector<ParametricSatinObject>& columns,
+    const std::map<std::uint32_t, std::vector<JunctionBranch>>& junctionBranches) {
+    std::vector<SatinJunctionPlan> plans;
+    for (const auto& [junctionId, branches] : junctionBranches) {
         if (branches.size() < 2) {
             continue;
         }
-        const auto& node = graph.nodes[junctionId];
-        const P2 center{static_cast<double>(node.position.x.value),
-                        static_cast<double>(node.position.y.value)};
-        const std::size_t n = branches.size();
-        for (std::size_t i = 0; i < n; ++i) {
-            const JunctionBranch& cur = branches[i];
-            const JunctionBranch& nxt = branches[(i + 1) % n];
-            const auto& curCol = columns[cur.columnIndex];
-            const auto& nxtCol = columns[nxt.columnIndex];
-            const P2 curPoint = terminal_point(curCol.rail_a, cur.atEnd);
-            const P2 nxtPoint = terminal_point(nxtCol.rail_b, nxt.atEnd);
-            // 2/3) Ancre partagée exacte, ou repli légitime mais borné : les
-            // deux côtés d'un espace angulaire sans encoche à portée doivent
-            // rester proches du centre (jamais une pointe libre qui se serait
-            // échappée loin de la confluence — signature d'un éventail).
-            const double gap = norm(curPoint - nxtPoint);
-            if (gap > kCoincidenceEpsilonUm) {
-                const double curDist = norm(curPoint - center);
-                const double nxtDist = norm(nxtPoint - center);
-                if (curDist > anchorRadius * 1.5 || nxtDist > anchorRadius * 1.5) {
-                    return "jonction " + std::to_string(junctionId) +
-                           " : rails terminaux incoherents entre colonnes " +
-                           std::to_string(cur.columnIndex) + " et " + std::to_string(nxt.columnIndex) +
-                           " (ecart " + std::to_string(static_cast<long>(gap)) + " um)";
-                }
-            }
-            // 4) Aucun croisement entre les barreaux terminaux des deux
-            // branches adjacentes.
-            if (!curCol.rungs.empty() && !nxtCol.rungs.empty()) {
-                const auto& rc = cur.atEnd ? curCol.rungs.back() : curCol.rungs.front();
-                const auto& rn = nxt.atEnd ? nxtCol.rungs.back() : nxtCol.rungs.front();
-                const P2 ra{static_cast<double>(rc.a.x.value), static_cast<double>(rc.a.y.value)};
-                const P2 rb{static_cast<double>(rc.b.x.value), static_cast<double>(rc.b.y.value)};
-                const P2 na{static_cast<double>(rn.a.x.value), static_cast<double>(rn.a.y.value)};
-                const P2 nb{static_cast<double>(rn.b.x.value), static_cast<double>(rn.b.y.value)};
-                if (segments_cross(ra, rb, na, nb)) {
-                    return "jonction " + std::to_string(junctionId) +
-                           " : croisement entre barreaux terminaux des colonnes " +
-                           std::to_string(cur.columnIndex) + " et " + std::to_string(nxt.columnIndex);
-                }
-            }
-            // 5) Couverture locale : un secteur angulaire anormalement large
-            // sans aucune ancre commune (repli des deux côtés) signale une
-            // zone potentiellement non couverte autour du centre plutôt
-            // qu'une vraie encoche absente (celles-ci restent étroites en
-            // pratique, cf. jonction en T testée plus haut).
-            double hi = nxt.angle;
-            while (hi <= cur.angle) {
-                hi += kTwoPi;
-            }
-            constexpr double kMaxUncoveredSectorRad = 2.6; // ~149 deg
-            if (gap > kCoincidenceEpsilonUm && (hi - cur.angle) > kMaxUncoveredSectorRad) {
-                return "jonction " + std::to_string(junctionId) +
-                       " : secteur non couvert entre colonnes " + std::to_string(cur.columnIndex) +
-                       " et " + std::to_string(nxt.columnIndex);
-            }
+        SatinJunctionPlan plan;
+        plan.junction_id = junctionId;
+        std::vector<std::uint32_t> order;
+        for (const auto& b : branches) {
+            order.push_back(static_cast<std::uint32_t>(b.columnIndex));
         }
+        std::stable_sort(order.begin(), order.end(), [&](std::uint32_t a, std::uint32_t b) {
+            return columns[a].mean_width_um > columns[b].mean_width_um;
+        });
+        plan.stitch_order = std::move(order);
+        plans.push_back(std::move(plan));
     }
-    return {};
+    return plans;
 }
 
 } // namespace
@@ -1377,29 +2757,115 @@ SatinColumnsResult build_satin_columns(const geometry::PathSet& region,
     const auto& graph = analysis->debug.graph;
     const std::vector<Poly> polys = region_polys(region);
 
-    // Résolution globale des ancres de jonction (point 3 de l'audit
-    // « jonctions branchées/concaves ») puis validation par jonction
-    // (point 5) : appelée une fois TOUTES les colonnes construites, quel que
-    // soit le statut (`RequiresDecomposition` ou `Suitable` avec un bout
-    // touchant tout de même une jonction). En cas d'incohérence détectée
-    // (raccord ambigu, éventail, trou triangulaire...), refuse proprement la
-    // génération plutôt que de renvoyer des colonnes mal raccordées.
+    // Validation par jonction (§5/§10) puis résolution StableBranchEnd /
+    // JunctionSeparator / secteurs / JunctionCore (§ suite) : appelé une fois
+    // TOUTES les colonnes construites, quel que soit le statut
+    // (`RequiresDecomposition` ou `Suitable` avec un bout touchant tout de
+    // même une jonction). AUCUNE mutation de rail ici : `resolve_junction` ne
+    // fait que LIRE les rails déjà produits par `build_column`. Une
+    // incohérence géométrique réelle (StableBranchEnd égarée/traversante,
+    // noyau auto-croisé) refuse proprement la génération ; un simple vide
+    // résiduel entre branches ne refuse rien, il est exposé via
+    // `r.junction_cores`.
     const auto resolve_and_validate_junctions = [&] {
         if (!params.anchor_junction_ends || r.columns.empty()) {
             return;
         }
-        const double anchorRadius = static_cast<double>(params.junction_anchor_radius.value);
-        const double tipMinWidth =
-            static_cast<double>(std::max<std::int32_t>(1, params.tip_min_width.value));
-        const std::vector<P2> reflexVertices =
-            polys.empty() ? std::vector<P2>{} : reflex_vertices(polys.front());
-        resolve_junction_anchors(r.columns, graph, reflexVertices, anchorRadius, tipMinWidth,
-                                 r.warnings);
-        const std::string problem = validate_junctions(r.columns, graph, anchorRadius);
-        if (!problem.empty()) {
-            r.warnings.push_back("refus : " + problem);
-            r.columns.clear();
-            r.refusal = "jonction incoherente : " + problem;
+        const double configuredRadius = static_cast<double>(params.junction_core_radius.value);
+        std::vector<ContourPolyline> contours;
+        contours.reserve(polys.size());
+        for (const auto& p : polys) {
+            contours.push_back(make_contour_polyline(p));
+        }
+        const std::vector<P2> reflexVertices = polys.empty() ? std::vector<P2>{}
+                                                              : reflex_vertices(polys.front());
+        const auto junctionBranches = collect_junction_branches(r.columns);
+
+        for (const auto& [junctionId, branches] : junctionBranches) {
+            if (junctionId >= graph.nodes.size()) {
+                continue;
+            }
+            std::size_t expectedEnds = 0;
+            for (const auto& e : graph.edges) {
+                if (e.from == junctionId) ++expectedEnds;
+                if (e.to == junctionId) ++expectedEnds;
+            }
+            if (branches.size() != expectedEnds) {
+                const std::string problem =
+                    "jonction " + std::to_string(junctionId) + " incomplete (" +
+                    std::to_string(branches.size()) + "/" + std::to_string(expectedEnds) +
+                    " branches disponibles)";
+                r.warnings.push_back("refus : " + problem);
+                r.columns.clear();
+                r.refusal = "jonction incoherente : " + problem;
+                return;
+            }
+            if (branches.size() < 2) {
+                continue; // rien a resoudre : un seul bout touche ce noeud.
+            }
+            const auto& node = graph.nodes[junctionId];
+            const P2 center{static_cast<double>(node.position.x.value),
+                            static_cast<double>(node.position.y.value)};
+            auto resolved = resolve_junction(r.columns, branches, contours, polys, reflexVertices,
+                                             center, configuredRadius);
+            if (!resolved) {
+                const std::string problem =
+                    "jonction " + std::to_string(junctionId) +
+                    " : confluence geometriquement incoherente (StableBranchEnd egaree/"
+                    "traversante, ou noyau auto-croise)";
+                r.warnings.push_back("refus : " + problem);
+                r.columns.clear();
+                r.refusal = "jonction incoherente : " + problem;
+                return;
+            }
+            // Expose StableBranchEnd / JunctionSeparator / secteurs (diagnostic SVG/tests).
+            for (std::size_t bi = 0; bi < branches.size(); ++bi) {
+                const auto& e = resolved->ends[bi];
+                StableBranchEndInfo endInfo;
+                endInfo.junction_id = junctionId;
+                endInfo.column_index = e.columnIndex;
+                endInfo.at_end = e.atEnd;
+                endInfo.rail_a_point = to_um(e.rail_a_point);
+                endInfo.rail_b_point = to_um(e.rail_b_point);
+                r.stable_branch_ends.push_back(endInfo);
+
+                if (resolved->separators[bi]) {
+                    JunctionSeparatorInfo sepInfo;
+                    sepInfo.junction_id = junctionId;
+                    sepInfo.point = to_um(*resolved->separators[bi]);
+                    sepInfo.column_index_before = resolved->ends[bi].columnIndex;
+                    sepInfo.column_index_after = resolved->ends[(bi + 1) % branches.size()].columnIndex;
+                    r.junction_separators.push_back(sepInfo);
+                }
+
+                JunctionSectorInfo sectorInfo;
+                sectorInfo.junction_id = junctionId;
+                sectorInfo.column_index = e.columnIndex;
+                sectorInfo.boundary.reserve(resolved->sectors[bi].size());
+                for (const P2& p : resolved->sectors[bi]) {
+                    sectorInfo.boundary.push_back(to_um(p));
+                }
+                r.junction_sectors.push_back(std::move(sectorInfo));
+            }
+            JunctionCore pub;
+            pub.junction_id = junctionId;
+            pub.area_um2 = resolved->coreArea;
+            pub.configured_radius_um = configuredRadius;
+            pub.local_radius_um = resolved->localRadius;
+            pub.actual_max_radius_um = resolved->actualMaxRadius;
+            pub.requires_fill = pub.area_um2 > params.junction_core_significant_area_um2;
+            pub.boundary.reserve(resolved->coreBoundary.size());
+            for (const P2& p : resolved->coreBoundary) {
+                pub.boundary.push_back(to_um(p));
+            }
+            if (pub.requires_fill) {
+                r.warnings.push_back(
+                    "jonction " + std::to_string(junctionId) +
+                    " : zone centrale significative (" +
+                    std::to_string(pub.area_um2 / 1'000'000.0) +
+                    " mm2) -- necessite un objet de remplissage separe");
+            }
+            r.junction_cores.push_back(std::move(pub));
         }
     };
 
@@ -1409,8 +2875,8 @@ SatinColumnsResult build_satin_columns(const geometry::PathSet& region,
         // Un bout de jonction n'est jamais ÉTENDU (il doit rester exactement
         // au nœud du squelette) ; seul un bout OUVERT l'est. Un bout de
         // jonction est en revanche ampute (`trim_unstable_junction_tail`
-        // dans `build_column`) puis ancré GLOBALEMENT par jonction, une fois
-        // toutes les colonnes construites — cf.
+        // dans `build_column`) puis verrouillé tel quel comme `JunctionBridge`
+        // de la colonne, une fois toutes les colonnes construites — cf.
         // `resolve_and_validate_junctions` ci-dessus.
         if (auto col = build_column(e.centerline, polys, params, !startIsJunction, !endIsJunction,
                                     r.warnings)) {
@@ -1426,6 +2892,46 @@ SatinColumnsResult build_satin_columns(const geometry::PathSet& region,
                                  ") : voir le diagnostic ci-dessus");
         }
     };
+
+    // --- § mode Parametric : une arête = un objet paramétrique INDÉPENDANT
+    // (§ étape 9 — jamais fusionné avec ses voisins à une jonction). Le
+    // recouvrement local est déjà appliqué DANS `build_parametric_object` ;
+    // ici on ne fait que collecter, valider, et planifier l'ordre de couture
+    // (§ étape 10) — aucune mutation géométrique après coup.
+    const auto try_edge_parametric = [&](const SkeletonEdge& e) {
+        const bool startIsJunction = graph.nodes[e.from].type == SkeletonNodeType::Junction;
+        const bool endIsJunction = graph.nodes[e.to].type == SkeletonNodeType::Junction;
+        if (auto obj = build_parametric_object(e.centerline, polys, params, !startIsJunction,
+                                               !endIsJunction, r.warnings)) {
+            if (startIsJunction) {
+                obj->start_junction = e.from;
+            }
+            if (endIsJunction) {
+                obj->end_junction = e.to;
+            }
+            if (auto problem = validate_parametric_object(*obj, polys, params)) {
+                r.warnings.push_back("objet paramétrique refuse (arete " + std::to_string(e.id) +
+                                     ") : " + *problem);
+                return;
+            }
+            r.parametric_columns.push_back(std::move(*obj));
+        } else {
+            r.warnings.push_back("branche ignoree (arete " + std::to_string(e.id) +
+                                 ") : voir le diagnostic ci-dessus");
+        }
+    };
+    const auto finalize_parametric_sections = [&r] {
+        const auto count = static_cast<std::uint32_t>(r.parametric_columns.size());
+        for (std::size_t i = 0; i < r.parametric_columns.size(); ++i) {
+            r.parametric_columns[i].section_index = static_cast<std::uint32_t>(i);
+            r.parametric_columns[i].section_count = count;
+        }
+        r.junction_plans =
+            plan_junction_stitch_order(r.parametric_columns,
+                                       collect_junction_branches(r.parametric_columns));
+    };
+
+    const bool parametric = params.geometry_mode == SatinGeometryMode::Parametric;
 
     switch (r.status) {
     case SatinabilityStatus::Unsuitable:
@@ -1449,6 +2955,16 @@ SatinColumnsResult build_satin_columns(const geometry::PathSet& region,
         // `try_edge` gère déjà indépendamment chaque bout selon son type via
         // `startIsJunction`/`endIsJunction`, donc aucune branche particulière
         // n'était nécessaire ici).
+        if (parametric) {
+            for (const auto& e : graph.edges) {
+                try_edge_parametric(e);
+            }
+            if (r.parametric_columns.empty()) {
+                r.refusal = "aucune branche exploitable";
+            }
+            finalize_parametric_sections();
+            return r;
+        }
         for (const auto& e : graph.edges) {
             try_edge(e);
         }
@@ -1469,6 +2985,14 @@ SatinColumnsResult build_satin_columns(const geometry::PathSet& region,
         const auto longest = std::max_element(
             graph.edges.begin(), graph.edges.end(),
             [](const SkeletonEdge& a, const SkeletonEdge& b) { return a.length_um < b.length_um; });
+        if (parametric) {
+            try_edge_parametric(*longest);
+            if (r.parametric_columns.empty()) {
+                r.refusal = "axe principal inexploitable";
+            }
+            finalize_parametric_sections();
+            return r;
+        }
         try_edge(*longest);
         if (r.columns.empty()) {
             r.refusal = "axe principal inexploitable";

@@ -457,6 +457,273 @@ délibérément non étoilée) : raccord cohérent, aucune collision à 3+ rails
 aucun barreau dégénéré, aucun croisement entre les trois barreaux terminaux,
 tous les barreaux dans la région ; déterminisme.
 
+### Remplacement de l'ancrage par des bridges verrouillés, sans mutation de rail (2026-08-03, suite)
+
+*État : Présent · Testé numériquement.* Remplacement architectural,
+`satin_column.cpp` + `satin_column.hpp` + `debug_export.cpp`.
+
+**Défaut trouvé en usage réel sur `trident`** (confluence à 3 branches très
+inégales — 6 mm / 1,2 mm / pointe effilée) : `resolve_junction_anchors`
+(§ ci-dessus) reste correct sur les confluences symétriques ou peu contrastées
+(`y`, `t`, `cross`, `h`), mais sur `trident`, l'ancre trouvée pour un espace
+angulaire pouvait se situer à plusieurs millimètres de la dernière station
+réellement stable de la branche. `set_terminal_point` déplaçait alors le
+dernier nœud du rail **en ligne droite** jusqu'à cette ancre — une corde
+artificielle traversant l'intérieur de la confluence au lieu de suivre le bord
+réel de la forme, visible comme une grande diagonale dans le SVG de
+diagnostic. Le même mécanisme (`tip_min_width` plancher, repli symétrique)
+souffrait du même défaut de principe : déplacer un point plutôt que construire
+la géométrie.
+
+**Correction : suppression complète de la mutation.** `resolve_junction_anchors`,
+`best_anchor_in_sector`, `boundary_anchor_on_sector_bisector`,
+`set_terminal_point` et `reflex_vertices` sont retirés. Un bout de jonction
+n'est plus jamais déplacé après coup : la dernière station stable que
+`trim_unstable_junction_tail` (inchangée dans son principe) laisse en place
+devient directement le **`JunctionBridge`** verrouillé de la colonne —
+`rail_a_point`/`rail_b_point` (déjà des points réels du contour, `cross_section`
+les calcule par intersection avec le bord), `axis_point`, `tangent`,
+`width_um`. Deux branches angulairement adjacentes ne sont plus forcées à
+coïncider : le petit vide géométrique qui peut subsister entre leurs bridges
+respectifs (`JunctionCore`, exposé dans `SatinColumnsResult::junction_cores`,
+jamais dissimulé) est calculé séparément et n'entraîne PAS de refus — seul un
+défaut structurel réel (bridge égaré, croisement) refuse encore la génération
+(`validate_junction_bridges`).
+
+Deux effets de bord de la suppression de l'ancrage, trouvés en generalisant
+sur `trident` puis sur un réseau en T issu d'une image segmentée réelle :
+
+1. **Le critère de stabilité de `trim_unstable_junction_tail` devait devenir
+   plus robuste.** L'ancien plafond de distance (lié à `junction_anchor_radius`,
+   qui ne bornait à l'origine que le rayon de recherche d'une ancre — notion
+   disparue) arrêtait parfois l'amputation alors que la largeur était encore en
+   pleine dérive (bourrelet de `trident` dépassant 6 mm d'abscisse curviligne) ;
+   supprimé, plus aucun plafond de distance. Le critère de largeur lui-même
+   (décroissance stricte station à station) échouait sur un PALIER de largeur
+   (deux stations quasi égales mais toutes deux énormes) — remplacé par une
+   comparaison à `representative_station_width` : la médiane du **tiers
+   médian** des stations de la branche (ni le premier tiers, qui peut être
+   contaminé par un bout OUVERT qui rétrécit légitimement vers une pointe —
+   `trident`, branche interne effilée — ni le dernier, potentiellement gonflé
+   par le bourrelet de jonction).
+2. **Un bridge peut légitimement croiser celui d'une branche voisine sans
+   dérive de largeur mesurable**, si l'angle entre les deux branches est
+   proche de 90° et que l'une d'elles est nettement plus large que l'autre (la
+   coupe transversale, perpendiculaire à la branche fine, atteint alors le
+   bord de la branche large sans que sa PROPRE largeur ait significativement
+   augmenté). `resolve_and_validate_junctions` recule alors itérativement
+   d'une station RÉELLE supplémentaire (`retract_bridge_station`, jamais un
+   déplacement) sur les deux branches en conflit, jusqu'à ce que le croisement
+   disparaisse ou que le plancher de stations soit atteint.
+
+Nouvelles primitives internes (diagnostic uniquement, jamais utilisées pour
+construire ou déplacer un rail) : `ContourPolyline`/`project_to_contour`/
+`extract_contour_arc` (polygone fermé, abscisse curviligne, projection,
+extraction d'arc) — utilisées par `compute_junction_core` pour approximer le
+bord réel du noyau central entre deux bridges, et par `columns_to_svg` pour
+l'afficher (remplissage magenta pointillé) aux côtés des bridges terminaux
+(barreaux rouges épais) et des identifiants de colonne/jonction.
+
+Vérifié : suite `test_auto_satin` complète (44 cas) ; nouveau test dédié
+`trident` sur la géométrie des rails (aucun segment terminal excédant 4×
+`station_spacing`, progression curviligne strictement monotone,
+`junction_cores` non vide et borné) ; test `y` symétrique réécrit (l'ancienne
+coïncidence exacte forcée n'est plus un invariant recherché — remplacé par
+« bridges locaux au centre de confluence, noyau résiduel petit ») ; suite
+`test_autodigitize` (réseau en T issu d'image segmentée, régression trouvée et
+corrigée par la retractation itérative ci-dessus) ; suite d'intégration
+complète (`tentabrode`) ; déterminisme.
+
+**Limite connue** : la décomposition d'une branche en sous-région fermée
+propre (rail A + bridge + rail B inversé + autre bridge, comme dans Ink/Stitch)
+et le remplissage explicite du `JunctionCore` par un objet tatami distinct ne
+sont pas implémentés — le noyau reste un diagnostic (aire + contour approximatif)
+non cousu. Les corps de branche restent construits par échantillonnage de
+sections transversales le long de l'axe du squelette (inchangé), pas par une
+paire d'arcs de contour indépendants.
+
+### Optimisation globale des bridges de jonction + correctif d'un polygone auto-croisé (suite)
+
+*État : Présent · Testé numériquement.* Remplacement de `resolve_
+junction_anchors`/`retract_bridge_station` par une recherche combinatoire,
+`satin_column.cpp` + `satin_column.hpp` + `debug_export.cpp`.
+
+**Défaut signalé en usage réel sur `trident`** : la capture indépendante « une
+seule candidate par branche » (§ ci-dessus) choisissait toujours la toute
+dernière station de chaque branche comme bridge, sans coordination avec ses
+voisines — sur une confluence aussi asymétrique que `trident`, ces bridges
+restaient parfois francs millimètres les uns des autres, et le `JunctionCore`
+qui en résultait apparaissait comme un grand polygone concave recouvrant
+toute la confluence.
+
+**Deux défauts distincts corrigés, pas un seul** :
+
+1. **Optimisation combinatoire des bridges (la demande initiale).** Chaque
+   branche conserve désormais plusieurs sections transversales CANDIDATES
+   (`collect_bridge_candidates`) — des stations déjà présentes dans son rail,
+   jamais un point fabriqué — prises dans un rayon local
+   (`junction_core_radius`, nouveau paramètre, 4 mm par défaut) autour du nœud
+   de squelette. `optimize_junction_bridges` évalue toutes les combinaisons
+   raisonnables (une candidate par branche, budget total borné quel que soit
+   le degré de la jonction) et retient celle de coût minimal — aire du
+   `JunctionCore`, distance maximale au centre, recul total le long des
+   branches, discontinuités de largeur — parmi celles qui interdisent tout
+   croisement bridge/bridge (`find_crossing_bridge_pair`) et toute traversée
+   d'une branche voisine (`bridge_crosses_other_rail`). **Aucun rail n'est
+   modifié** : seul l'index de la station retenue varie d'une combinaison à
+   l'autre. `retract_bridge_station` (qui tronquait réellement les rails) est
+   supprimé — l'invariant « les rails restent ceux produits par
+   `build_column` » est désormais strict, plus seulement documenté.
+
+2. **Bug préexistant trouvé EN OPTIMISANT, indépendant du point 1 : l'ordre
+   des sommets de `compute_junction_core` reliait les mauvais côtés.** `rail_a`
+   (+N) n'est PAS toujours le côté qui fait face à la branche suivante dans
+   l'ordre angulaire : sa convention gauche/droite est relative au sens de
+   parcours interne du rail (`build_column`), qui va tantôt de la jonction
+   vers le bout ouvert, tantôt l'inverse, selon l'orientation de l'arête de
+   squelette (`atEnd`) — alors que `tangent` (`outward_tangent`) pointe
+   toujours correctement vers l'intérieur de la branche, quel que soit
+   `atEnd`. L'ancien code connectait systématiquement `rail_b(cur)` à
+   `rail_a(next)` : sur une branche où `atEnd` inverse la convention (le cas
+   des deux bras courts de `trident`), ce n'était PAS le côté qui fait
+   réellement face au voisin. L'arc de contour « le plus court » entre deux
+   points qui ne se font pas face part alors dans une direction non
+   pertinente, et le polygone assemblé s'auto-croise — la formule du lacet
+   annule alors une partie de l'aire réelle par recouvrement, produisant un
+   nombre artificiellement PETIT (le fameux 3,24 mm² observé) pour un
+   polygone géométriquement INVALIDE. Corrigé par un calcul explicite,
+   `leading_point`/`trailing_point`, dérivé de `tangent` tourné de +90°
+   (fiable quel que soit `atEnd`) plutôt que des labels `rail_a`/`rail_b` bruts.
+
+**Garde-fous ajoutés une fois le bug de connexion corrigé** :
+`polygon_self_intersects` détecte tout polygone auto-croisé restant ;
+`compute_junction_core` construit désormais le noyau en DEUX PASSES — d'abord
+la version repli (segments droits uniquement entre bridges successifs ; si
+elle-même s'auto-croise, la combinaison entière est invalide) puis, pour
+chaque connecteur, un remplacement par l'arc de contour réel UNIQUEMENT s'il
+garde le polygone simple ET ne fait pas grossir son aire (sur une confluence
+où 3+ branches se chevauchent mutuellement, l'arc « le plus court » au sens
+de la longueur de contour peut rester simple tout en empruntant un grand
+détour convexe).
+
+**Résultat mesuré** : une fois le polygone correctement calculé (simple, non
+auto-croisé), l'aire réelle du noyau de `trident` est de l'ordre de 22 à
+23,5 mm² selon les seuils — **plus grande**, pas plus petite, que l'ancien
+3,24 mm² invalide. Ceci n'est PAS une régression : `y`, `t`, `cross` et `h`
+donnent des noyaux carrés/triangulaires parfaitement simples de 20 à 30 mm²
+une fois rendus en SVG et inspectés visuellement (bandes de test larges de
+5 mm, donc recouvrement mutuel substantiel aux confluences par construction),
+confirmant que ces ordres de grandeur sont réalistes pour ces fixtures, pas
+un artefact. `JunctionCore::requires_fill` (nouveau champ, seuil
+`junction_core_significant_area_um2` = 0,5 mm² par défaut) signale qu'un
+noyau de cette taille appelle un objet de remplissage séparé plutôt qu'une
+zone non couturée silencieuse — la synthèse de cet objet reste hors périmètre
+(diagnostic seul, cf. limite connue ci-dessus).
+
+Diagnostic enrichi : `SatinColumnsResult::junction_bridge_candidates`
+(nouveau, toutes les candidates évaluées par branche + laquelle est retenue)
+et `JunctionCore::radius_um` sont exposés et affichés par `columns_to_svg`
+(candidates en gris pointillé fin, bridge retenu en vert, disque de
+recherche/contenance en pointillé gris autour du nœud de squelette).
+
+Vérifié : suite `test_auto_satin` complète (44 cas, déterminisme inclus) ;
+test `trident` étendu (rails inchangés — déterminisme + chaque nœud à moins de
+0,2 mm du contour réel —, noyau local à J1 au rayon `core.radius_um` près,
+aire bornée à une valeur réaliste et documentée comme telle) ; inspection
+visuelle des SVG rendus (`y`, `cross`, `h`, `trident`) confirmant des noyaux
+simples, bien formés, sans auto-croisement ni grand polygone parasite.
+
+### Séparation StableBranchEnd / JunctionSeparator : le noyau n'est plus « région entière moins colonnes » (suite)
+
+*État : Présent · Testé numériquement.* Remplacement de l'optimisation
+combinatoire de bridges (§ ci-dessus) par une partition explicite,
+`satin_column.cpp` + `satin_column.hpp` + `debug_export.cpp`.
+
+**Défaut architectural signalé en usage réel sur `trident`** : la recherche
+combinatoire (§ précédente) choisit, PARMI plusieurs reculs candidats d'une
+même branche, celui qui minimise l'aire du `JunctionCore` — mais reculer une
+section transversale ne change pas où se trouve la vraie frontière
+géométrique entre deux branches (l'encoche réelle du contour). Sur `trident`,
+aucune combinaison de reculs ne pouvait donc produire un noyau petit ; le
+résultat mesuré (22 à 23,5 mm², quasiment toute la confluence) était réel,
+pas un artefact — mais architecturalement le mauvais résultat.
+
+**Correction : séparer deux notions jusqu'ici confondues.**
+
+1. **`StableBranchEnd`** — la dernière section transversale RÉELLEMENT
+   stable d'une branche (ce qu'on appelait le « bridge »), inchangée dans son
+   principe (`trim_unstable_junction_tail`) : point d'entrée du traitement de
+   jonction, jamais déplacée.
+2. **`JunctionSeparator`** — la frontière locale PARTAGÉE entre deux branches
+   angulairement adjacentes, construite DANS la zone de confluence (sommet
+   reflex du contour le plus profond, ou repli sur le milieu curviligne de
+   l'arc de contour reliant les deux branches) : ce n'est ni une section
+   transversale, ni jamais un point sur un rail.
+
+La région locale de jonction (disque de rayon adaptatif — `1,2 ×` la plus
+éloignée des `StableBranchEnd` au nœud, jamais une constante fixe, plafonné
+par `junction_core_radius`) est partitionnée en un secteur par branche
+(bordé par ses deux `JunctionSeparator` voisins, l'arc de contour réel, et sa
+propre `StableBranchEnd`). Le `JunctionCore` résiduel est calculé **comme
+`local_region − union(secteurs)`**, jamais comme « région entière moins
+colonnes » : concrètement, le polygone des `JunctionSeparator` eux-mêmes,
+simple par construction (sommets triés par angle autour d'un centre commun =
+polygone en étoile).
+
+**Deux bugs trouvés en généralisant, tous deux avec un symptôme identique
+(noyau anormalement grand) mais des causes distinctes :**
+
+1. **Recherche de séparateur par SECTEUR ANGULAIRE au lieu de CONTIGUÏTÉ DE
+   CONTOUR.** La première implémentation cherchait le sommet reflex d'un
+   espace angulaire `[angle(branche i), angle(branche i+1)]`, basé sur
+   l'angle du rayon squelette de chaque branche. Sur `trident`, la branche
+   verticale (6 mm) a ses points `leading`/`trailing` écartés de plus de 90°
+   autour du nœud : l'encoche réelle entre elle et sa voisine fine tombait
+   alors, en angle pur, dans le secteur voisin — laissant DEUX des trois
+   espaces sans aucun candidat, repliés sur un rayon lancé depuis le nœud qui
+   pouvait heurter le mur d'une branche sans rapport (noyau mesuré : 14,4 mm²,
+   toujours trop grand). Corrigé en cherchant plutôt sur l'arc de contour qui
+   relie réellement `leading_point(branche i)` à `trailing_point(branche
+   i+1)` (`ContourDirection::Shortest`) : la contiguïté de contour reflète la
+   vraie adjacence géométrique, pas l'angle depuis un centre qui peut être
+   trompeur pour une branche large. Résultat après correction : 0,94 mm².
+2. **Une `StableBranchEnd` peut être stable en LARGEUR tout en restant
+   géométriquement dans le corridor d'une voisine.** `trim_unstable_junction_tail`
+   ne détecte que la dérive de largeur du bourrelet — pas sa position. Sur un
+   réseau en T très asymétrique (bras large, branche fine, régression trouvée
+   par `test_autodigitize`), la toute première section d'un bras pouvait avoir
+   une largeur déjà plausible (donc jamais amputée) tout en croisant le rail
+   de la branche voisine, un défaut que le seul critère de largeur ne peut pas
+   voir. Corrigé par une retractation itérative bornée dans `resolve_junction`
+   (jamais dans `build_column`) : toute paire de `StableBranchEnd` dont les
+   coupes se croisent (`find_crossing_end_pair`/`end_crosses_other_rail`) fait
+   reculer les deux branches impliquées d'une station réelle supplémentaire
+   (`make_stable_branch_end` généralisé avec un paramètre `offset`), jusqu'à
+   ce que la confluence soit cohérente ou qu'il n'y ait plus de station
+   disponible (refus propre, comme avant).
+
+**Diagnostic enrichi** : `SatinColumnsResult` expose désormais
+`stable_branch_ends`, `junction_separators` et `junction_sectors` (en plus de
+`junction_cores`, dont les champs `radius_um` unique est remplacé par
+`configured_radius_um`/`local_radius_um`/`actual_max_radius_um` — le premier
+est un plafond de sécurité, jamais le rayon réel). `columns_to_svg` affiche
+les `StableBranchEnd` en rouge, les `JunctionSeparator` en vert, un secteur
+par branche en teinte translucide distincte, le noyau en magenta, et le
+disque de région locale en pointillé — avec les trois rayons étiquetés
+séparément pour ne plus jamais laisser croire que le plafond configuré est
+une mesure.
+
+Vérifié : suite `test_auto_satin` complète (44 cas) ; test `trident` étendu
+(3 secteurs, 3 séparateurs partagés exactement entre secteurs adjacents,
+aire du noyau très inférieure à l'ancien résultat invalide, aucun point du
+noyau au-delà du rayon local réellement calculé) ; suite `test_autodigitize`
+complète (réseau en T, régression trouvée et corrigée par la retractation
+itérative ci-dessus) ; inspection visuelle des SVG rendus (`trident`, `y`,
+`t`, `cross`, `h`) : noyaux petits et centrés sur `trident`/`y` (encoches
+réelles présentes), noyaux carrés honnêtes sur `t`/`cross`/`h` (branches de
+même largeur se croisant à angle droit sans aucune encoche — un noyau non
+trivial y est le résultat géométriquement correct, pas un défaut).
+
 ### Traçage du graphe de squelette : priorité aux nœuds, exclusion de l'origine
 
 *État : Présent · Testé numériquement.* Correctif de revue, `skeleton_graph.cpp`.
@@ -676,6 +943,172 @@ un refus explicite (`refusal` non vide, aucune colonne), **soit** une colonne
 complète sans trou entre stations consécutives, avec tous les barreaux dans la
 région et aucun croisement entre barreaux — jamais un résultat partiel ;
 déterminisme vérifié (mêmes rails à chaque exécution sur les deux fixtures).
+
+## Objets satin paramétriques (mode `Parametric`, refonte 2026-08-04)
+
+*État : Présent, activable par `SatinColumnsParameters::geometry_mode` (CLI :
+`--satin-geometry=parametric`) · Mode par défaut toujours `Legacy` · Testé
+numériquement (44 cas legacy inchangés + 6 nouveaux cas parametric) · Validé
+visuellement (SVG) sur `rectangle`, `capsule`, `y`, `t`, `cross`, `trident`.*
+
+**Défaut architectural du pipeline `Legacy`.** `build_column` convertit
+chaque station dense (une tous les `station_spacing` = 500 µm) directement en
+un nœud de rail `Corner` (`rail_path`) et un barreau (`SatinRung`) — alors
+que `geometry::PathNode` porte déjà `tan_in`/`tan_out` (Bézier, cf.
+`polyline.hpp::flatten`, De Casteljau adaptatif) et que
+`stitch_generation::fill_satin_columns` implémente déjà l'essentiel de
+l'étape « génération par longueur d'arc entre guides » (`ladder_correspondence`
+et `resample_by_medial_spacing`, § section suivante). Le vrai problème n'était
+donc pas une architecture Bézier manquante, mais que **rien ne l'utilisait** :
+même en y injectant des `tan_in`/`tan_out`, `to_points` (dans `satin.cpp`)
+lisait `node.pos` brut sans jamais appeler `flatten` — corrigé (§ plus bas).
+Les jonctions (`StableBranchEnd`/`JunctionSeparator`/secteurs/`JunctionCore`)
+opéraient sur ces nœuds denses avec une contrainte de partition exacte —
+fragile par construction : c'est cette contrainte de partition, pas le
+nombre de nœuds en soi, qui produisait la parade de défauts historiques
+(ancre centrale, diagonale, éventail, noyau énorme, bridges égarés).
+
+**Principe du mode `Parametric`** : au lieu d'une polyligne dense, un objet
+satin devient `ParametricSatinObject` — deux rails Bézier ÉPARS
+(`geometry::Path`, quelques `PathNode` à tangentes) couplés par un petit
+nombre de `SatinControlPair`/`SatinAngleGuide`. Les points de couture ne
+font PAS partie de cette représentation : ils sont dérivés à la demande par
+`fill_satin_columns`, qui aplatit `rail_a`/`rail_b` avant de les parcourir.
+La couche d'analyse dense (`compute_column_stations`, extraite de l'ancien
+`build_column` sans changement de comportement) reste PARTAGÉE par les deux
+modes — seule la finalisation diffère.
+
+1. **Sélection des paires structurantes** (`select_structural_indices`) :
+   union de critères déterministes — les deux extrémités, les extrema de
+   largeur (`width_extrema_indices`), les sauts de largeur ADJACENTS
+   (`adjacent_width_jump_indices` — cf. bug ci-dessous), les maxima de
+   courbure (`curvature_maxima_indices`), et une simplification
+   Douglas-Peucker de CHAQUE rail en réutilisant `geometry::simplify`
+   (indices retrouvés par correspondance exacte de position, jamais une
+   réimplémentation de l'algorithme). Fusion des indices trop proches
+   (`minimum_control_pair_spacing`).
+2. **Ajustement Bézier conjoint** (`fit_both_rails`/`fit_both_rails_recursive`) :
+   un seul ensemble d'ancrages PARTAGÉ par les deux rails (jamais deux
+   subdivisions indépendantes qui dériveraient l'une de l'autre — § étape 6,
+   chaque paire structurante correspond exactement à une paire de points sur
+   les deux rails). Par intervalle, `fit_cubic_segment` résout un cubique
+   simple (Schneider, moindres carrés à tangentes fixées, sans
+   reparamétrisation itérative) ; subdivision ADAPTATIVE (station la plus
+   déviante, ou milieu si dépassement pur d'espacement) tant que l'erreur
+   (distance OU tangente) ou l'espacement dépasse les seuils configurés,
+   bornée par `minimum_control_pair_spacing` et une profondeur maximale.
+3. **Lignes d'angle** (`SatinAngleGuide`) : une par paire structurante, avec
+   son abscisse curviligne sur chaque rail APLATI (pas un paramètre Bézier
+   brut) — consommées telles quelles par `fill_satin_columns`.
+
+**Deux bugs de fit trouvés en généralisant sur les six formes cibles, tous
+deux avec un symptôme identique (rail sortant de la région) mais des causes
+distinctes :**
+
+1. **Longueur de poignée = corde brute, pas sa PROJECTION sur la tangente.**
+   Sur un bout OUVERT à plat (`extend_tip`, plancher `tip_min_width`), la
+   station de fermeture saute presque uniquement en LARGEUR sur une distance
+   d'axe minime — sa tangente fixée (avant/horizontale) est alors quasi
+   PERPENDICULAIRE à la corde réelle. `fallbackP1 = p0 + tangente ×
+   (corde/3)` utilisait la longueur de corde totale (dominée par le saut
+   perpendiculaire) comme échelle de poignée le long d'une direction
+   quasi-orthogonale — la poignée partait très loin dans le mauvais axe avant
+   de devoir rebrousser chemin, débordant largement hors la forme (démontré :
+   rectangle, poignée à x=40775 pour un bord à x=39995, soit +780 µm de
+   débordement). Corrigé : la longueur d'échelle des poignées est la
+   PROJECTION de la corde sur la tangente (`scale0`/`scale1` =
+   `|dot(p3-p0, tangente)|`), jamais la corde brute — sur un coin quasi
+   perpendiculaire, la projection est naturellement courte, produisant une
+   poignée courte proche d'un coin SANS code spécial pour détecter « est-ce
+   une pointe » (§ étape 5 : « discontinuité de tangente sur un coin
+   structurel » — la géométrie seule tranche).
+2. **`width_extrema_indices` ne détecte que les pics/creux LOCAUX, pas un
+   SAUT suivi d'un PALIER.** Une station de fermeture (largeur plancher)
+   collée à la première vraie station de corps (largeur pleine) n'est ni un
+   maximum ni un minimum local (elle est suivie d'un PALIER à largeur pleine,
+   pas d'une redescente) — ce schéma passait inaperçu, laissant un seul
+   intervalle couvrir un saut de largeur de 100×, avec la même conséquence
+   que le bug précédent. Ajouté `adjacent_width_jump_indices` : détecte tout
+   saut relatif entre deux stations ADJACENTES (pas seulement les extrema),
+   complémentaire et nécessaire.
+
+**Robustesse de la subdivision adaptative** : le point de coupure « idéal »
+(pire erreur, ou milieu) peut violer `minimum_control_pair_spacing` — typiquement
+collé au tout premier/dernier point d'un intervalle contenant un saut de
+largeur en bordure. Plutôt que d'abandonner toute subdivision (et garder un
+segment unique très imprécis, potentiellement débordant), le point valide le
+plus proche de la coupure idéale est recherché.
+
+**Validation** (`validate_parametric_object`, § étape 12) : échantillonnage
+dense des rails APLATIS (jamais les seuls nœuds de contrôle) — région
+(tolérance dérivée de `bezier_fit_tolerance` : un rail trace le contour PAR
+CONSTRUCTION donc est légitimement sur le bord, `in_region` seul est ambigu
+pile sur une arête discrétisée), auto-intersection, croisement entre les
+deux rails, lignes d'angle non dégénérées et non croisées, correspondance
+monotone. Un objet refusé n'écarte QUE cette branche (`warnings`), jamais la
+génération entière.
+
+### Jonctions : recouvrement local, sans ancre (remplace StableBranchEnd/JunctionSeparator/secteurs/JunctionCore en mode `Parametric`)
+
+Une branche = un `ParametricSatinObject` INDÉPENDANT (déjà vrai
+structurellement : `build_satin_columns` construit une colonne par arête de
+squelette). Aucune ancre centrale commune, aucun sommet de bissectrice,
+aucun déplacement de nœud terminal, aucune diagonale, aucune rampe, aucun
+noyau résiduel calculé par soustraction globale — l'apparat entier
+`StableBranchEnd`/`JunctionSeparator`/secteurs/`JunctionCore` (toujours
+présent et actif en mode `Legacy`) est simplement absent du chemin
+`Parametric`.
+
+À la place : après amputation de la queue instable
+(`trim_unstable_junction_tail`, inchangée), `extend_into_confluence`
+(variante de `extend_tip` sans critère de convergence — la largeur PEUT
+légitimement croître en entrant dans le bourrelet, c'est le recouvrement
+voulu) ré-échantillonne quelques sections transversales réelles au-delà du
+dernier point stable, jusqu'à une distance bornée
+(`junction_overlap_target` = fraction `junction_overlap_ratio` de la largeur
+locale, bornée par `junction_overlap_min`/`junction_overlap_max`). S'arrête
+dès que `cross_section` échoue (bord réel atteint, ou — cas `t`/`cross`,
+voir plus bas — section perpendiculaire qui balaie la branche voisine).
+
+**Cas `t`/`cross` (branches perpendiculaires de même largeur) : recouvrement
+mesuré = 0, et c'est correct.** Rien n'est amputé par
+`trim_unstable_junction_tail` (aucun bourrelet à détecter sur une confluence
+symétrique à largeur constante), donc chaque rail atteint déjà le bord de la
+confluence par son propre corps — la couverture visuelle de la confluence
+est déjà complète sans extension. Y prolonger échouerait de toute façon dès
+le premier pas : une section transversale prise DANS le carré de confluence,
+perpendiculaire à cette branche, balaie alors la longueur de la branche
+perpendiculaire et dépasse `max_satin_width` immédiatement. **Cas
+`y`/`trident`** (branches à angle, largeurs différentes) : une queue
+instable est réellement amputée, et le recouvrement mesuré est non nul
+(0,3 à 2,5 mm selon la largeur locale).
+
+**Ordre de couture** (`SatinJunctionPlan`, `plan_junction_stitch_order`) :
+heuristique déterministe — branche la plus large en premier (cousue
+dessous), branches plus fines ensuite par largeur décroissante (cousues
+dessus, masquent les transitions des précédentes). Ne modifie aucune
+géométrie, ordonne seulement les indices déjà construits.
+
+**Résultat mesuré sur `trident`** (critère explicite : 3 objets, un par
+branche, aucune diagonale, aucun rail traversant la confluence, aucun
+éventail, recouvrements locaux visibles et bornés, déterministe) : 3 objets
+indépendants (17/27/48 stations denses → 5/3/10 paires structurantes),
+aucun croisement de rail entre branches (vérifié sur les rails APLATIS, pas
+les seuls nœuds de contrôle), recouvrement 0,3–1 mm sur les deux branches
+fines, ordre de couture `[large, moyenne, fine]`. Inspection visuelle
+(`trident-parametric.svg`) : rails visuellement lisses (courbure Bézier, pas
+une succession de petits segments), zone de recouvrement visible en jaune
+translucide, aucune grande diagonale, aucun grand trou central.
+
+**Limites connues** : le mode `Parametric` n'est pas encore branché dans
+`autodigitize.cpp` (Phase B de la migration, § étape 14 — le pipeline de
+production reste `Legacy` par défaut) ; les anneaux (`region.holes.size()==1`)
+restent exclusivement `Legacy` même en mode `Parametric` demandé
+(`parametric_columns` vide, `columns` peuplé comme avant) ; aucune
+intégration éditeur (déplacer une paire de contrôle, verrouiller une ligne
+d'angle) n'est implémentée côté `apps/desktop` — la structure de données le
+permet (mêmes `geometry::Path`/`PathNode` déjà éditables ailleurs dans
+l'éditeur), le câblage UI reste à faire.
 
 ## Génération par barreaux (`fill_satin_columns`, Lot 2)
 
@@ -1053,26 +1486,64 @@ viendra avec le tatami avancé (Lot 7).
   (ordre/orientation/liaisons, Lot 6) ; `generate_satin_group` dans
   `generate.cpp` (émission des groupes routés).
 - `libs/auto_satin/.../satin_column.hpp` + `src/satin_column.cpp` —
-  `build_satin_columns`, `SatinColumnGeometry`, `SatinRung` (moteur géométrique) ;
-  `extend_tip` (bouts ouverts) et `reflex_vertices`/`trim_unstable_junction_tail`
-  (amputation de la queue instable d'un bout de jonction) ; `cross_section`/
-  `CrossSectionFailure`, `interpolate_station`/`interpolated_station_valid`
-  (assemblage des stations tolérant aux trous, audit génération partielle
-  2026-08-03) ; `resolve_junction_anchors`/`validate_junctions`/
-  `collect_junction_branches` (résolution globale des ancres de jonction par
-  espace angulaire entre branches adjacentes, audit jonctions
-  branchées/concaves, 2026-08-03).
+  `build_satin_columns`, `SatinColumnGeometry`, `SatinRung`, `JunctionCore`
+  (moteur géométrique) ; `extend_tip` (bouts ouverts) et
+  `trim_unstable_junction_tail`/`representative_station_width` (amputation de
+  la queue instable d'un bout de jonction jusqu'à sa dernière section
+  réellement stable) ; `cross_section`/`CrossSectionFailure`,
+  `interpolate_station`/`interpolated_station_valid` (assemblage des stations
+  tolérant aux trous, audit génération partielle 2026-08-03) ;
+  `collect_junction_branches`/`StableBranchEnd`/`make_stable_branch_end`/
+  `reflex_vertices`/`build_separator`/`build_sector`/`resolve_junction`
+  (partition StableBranchEnd/JunctionSeparator/secteurs par jonction, sans
+  mutation de rail, noyau calculé comme `local_region − union(secteurs)` —
+  remplace l'optimisation combinatoire de bridges, 2026-08-04) ;
+  `station_point`/`outward_tangent_at` (variantes à `offset` de
+  `terminal_point`/`outward_tangent`, retractation itérative d'une
+  `StableBranchEnd` qui croise une branche voisine) ; `polygon_self_intersects` ;
+  `ContourPolyline`/`project_to_contour`/`extract_contour_arc` (utilitaires de
+  contour, diagnostic uniquement, aussi utilisés pour la recherche de
+  séparateur par contiguïté de contour). Tout ce paragraphe est le moteur
+  `Legacy` (`SatinGeometryMode::Legacy`, mode par défaut), inchangé.
+- `libs/auto_satin/.../satin_column.hpp` + `src/satin_column.cpp` — mode
+  `Parametric` (refonte 2026-08-04) : `ParametricSatinObject`,
+  `SatinControlPair`, `SatinAngleGuide`, `SatinJunctionPlan`,
+  `SatinGeometryMode` ; `compute_column_stations` (couche d'analyse dense
+  PARTAGÉE avec `Legacy`, extraite de l'ancien `build_column`) ;
+  `select_structural_indices`/`width_extrema_indices`/
+  `adjacent_width_jump_indices`/`curvature_maxima_indices`/
+  `douglas_peucker_indices` (sélection des paires structurantes) ;
+  `fit_cubic_segment`/`cubic_eval`/`cubic_point_distance` (moindres carrés à
+  tangentes fixées, longueur de poignée = projection de la corde sur la
+  tangente) ; `fit_both_rails`/`fit_both_rails_recursive`/`JointRailSegment`/
+  `RailFit` (ajustement conjoint des deux rails, ancrages partagés,
+  subdivision adaptative) ; `rail_bezier_path`/`build_control_pairs_and_guides` ;
+  `build_parametric_object` (finalisation paramétrique complète d'une
+  branche) ; `extend_into_confluence`/`junction_overlap_target` (recouvrement
+  local de jonction, remplace `resolve_junction` pour ce mode) ;
+  `plan_junction_stitch_order` (§ étape 10) ;
+  `validate_parametric_object`/`distance_to_polys` (§ étape 12).
 - `libs/auto_satin/src/skeleton_graph.cpp` — `build_skeleton_graph` :
   consolidation des amas de pixels de jonction 8-connexes en un seul
   `SkeletonNode` (`DisjointSet`), suppression des micro-arêtes internes à
   l'amas (audit jonctions branchées/concaves, 2026-08-03).
-- `libs/auto_satin/src/debug_export.cpp` — `columns_to_svg`.
+- `libs/auto_satin/src/debug_export.cpp` — `columns_to_svg` (mode `Legacy`) ;
+  `parametric_to_svg` (mode `Parametric`, 2026-08-04 : rails aplatis,
+  poignées Bézier, paires structurantes, recouvrement, ordre de couture,
+  statistiques par objet en commentaire).
 - `libs/auto_satin/.../shapes.hpp` + `src/shapes.cpp` — corpus de formes de
   test (`make_shape`), dont `notch`/`pinch` (encoche concave, audit génération
   partielle 2026-08-03) et `trident` (jonction concave asymétrique à 3
   branches inégales, audit jonctions branchées/concaves, 2026-08-03).
-- Tests : `tests/unit/stitch/test_satin.cpp`,
+- `apps/cli/main.cpp` — `run_auto_satin_debug` : option `--satin-geometry=
+  legacy|parametric` (2026-08-04, défaut `legacy`).
+- Tests : `tests/unit/stitch/test_satin.cpp` (dont « rail Bezier eparse ->
+  points suivent la courbe, pas la corde », 2026-08-04 — vérifie que
+  `fill_satin_columns`/`to_points` aplatit réellement un rail à tangentes),
   `tests/unit/stitch/test_satin_pairing_metrics.cpp` (fixtures et métriques de
   l'appariement, audit rails 2026-08-01),
-  `tests/unit/auto_satin/test_columns.cpp`,
+  `tests/unit/auto_satin/test_columns.cpp` (§ « parametrique : ... », six
+  nouveaux cas 2026-08-04 : simplification réelle, embouts arrondis dans la
+  région, trident à 3 objets sans croisement, recouvrement borné,
+  correspondance monotone, lignes d'angle non croisées),
   `tests/unit/auto_satin/test_pipeline.cpp`.

@@ -24,4 +24,13 @@ namespace openstitch::auto_satin {
 [[nodiscard]] std::string columns_to_svg(const geometry::PathSet& region,
                                          const SatinColumnsResult& result);
 
+// SVG des objets satin PARAMÉTRIQUES (§ étape 15, mode `Parametric`) :
+// contour, squelette, rails Bézier APLATIS (lisses, pas les nœuds de
+// contrôle bruts), poignées Bézier, paires structurantes, lignes d'angle,
+// recouvrement de jonction, identifiant d'objet, ordre de couture. Statistiques
+// (stations brutes, paires retenues, erreur d'ajustement max, recouvrement)
+// en commentaire, une ligne par objet, lisibles en ouvrant le SVG en texte.
+[[nodiscard]] std::string parametric_to_svg(const geometry::PathSet& region,
+                                            const SatinColumnsResult& result);
+
 }  // namespace openstitch::auto_satin

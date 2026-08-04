@@ -75,6 +75,72 @@ TEST_CASE("satin colonnes : barreaux traverses exactement") {
     CHECK(found);
 }
 
+// --- § refonte auto-satin paramétrique : rails Bézier épars -----------------
+//
+// `fill_satin_columns` doit aplatir (`geometry::flatten`) un rail Bézier
+// épars (quelques `PathNode` à `tan_in`/`tan_out`) avant d'en tirer les
+// points de couture -- sinon la courbure serait ignorée et les poignées de
+// contrôle reconnectées par des cordes (§ étape 11 : « avancer selon la
+// longueur d'arc... pas selon le paramètre Bézier brut »).
+TEST_CASE("satin colonnes : rail Bezier eparse -> points suivent la courbe, pas la corde") {
+    // Un seul segment cubique en arc de cercle grossier : les deux rails
+    // s'arquent vers le haut (poignées verticales), tout en restant
+    // parallèles (même déplacement de poignée), pour une largeur constante.
+    geometry::Path railA;
+    railA.closed = false;
+    {
+        geometry::PathNode a;
+        a.pos = v(0, 0);
+        a.type = geometry::NodeType::Smooth;
+        a.tan_out = Vec2um{Micrometers{6'667}, Micrometers{0}};
+        geometry::PathNode b;
+        b.pos = v(20'000, 0);
+        b.type = geometry::NodeType::Smooth;
+        b.tan_in = Vec2um{Micrometers{-6'667}, Micrometers{0}};
+        railA.nodes = {a, b};
+    }
+    geometry::Path railB;
+    railB.closed = false;
+    {
+        geometry::PathNode a;
+        a.pos = v(0, 4'000);
+        a.type = geometry::NodeType::Smooth;
+        a.tan_out = Vec2um{Micrometers{6'667}, Micrometers{0}};
+        geometry::PathNode b;
+        b.pos = v(20'000, 4'000);
+        b.type = geometry::NodeType::Smooth;
+        b.tan_in = Vec2um{Micrometers{-6'667}, Micrometers{0}};
+        railB.nodes = {a, b};
+    }
+    // Fait bomber la courbe hors de la corde : poignées perpendiculaires au
+    // segment direct, donc le point médian de la courbe s'écarte largement
+    // de y=0 (rail A) / y=4000 (rail B) si (et seulement si) la courbure est
+    // effectivement suivie.
+    railA.nodes[0].tan_out = Vec2um{Micrometers{5'000}, Micrometers{8'000}};
+    railA.nodes[1].tan_in = Vec2um{Micrometers{-5'000}, Micrometers{8'000}};
+    railB.nodes[0].tan_out = Vec2um{Micrometers{5'000}, Micrometers{8'000}};
+    railB.nodes[1].tan_in = Vec2um{Micrometers{-5'000}, Micrometers{8'000}};
+
+    const std::vector<SatinRungSeg> rungs{rung(0, 0, 0, 4'000), rung(20'000, 0, 20'000, 4'000)};
+    SatinConfig cfg;
+    cfg.density = Micrometers{500};
+    const auto r = fill_satin_columns(railA, railB, rungs, cfg);
+    REQUIRE(r.satin.size() >= 4);
+
+    // Si les rails étaient traités comme leurs seuls nœuds de contrôle
+    // (corde directe, l'ancien comportement), tout point de couture aurait
+    // y == 0 ou y == 4000 exactement. La courbure du milieu du rail A doit
+    // dépasser nettement cette corde -- la géométrie prouve que `flatten` a
+    // bien été appelé, pas seulement que le test l'espère.
+    double maxYAboveChordA = 0.0;
+    for (const auto& p : r.satin) {
+        if (p.y.value < 2'000) {  // du côté du rail A (sous le milieu)
+            maxYAboveChordA = std::max(maxYAboveChordA, static_cast<double>(p.y.value));
+        }
+    }
+    CHECK(maxYAboveChordA > 500.0);  // largement au-dessus de la corde y=0
+}
+
 TEST_CASE("satin colonnes : rails de longueurs differentes") {
     // Rail A courbe (plus long) ; rail B droit (plus court). Doit rester cohérent.
     const auto railA = open_path({{0, 0}, {10'000, 3'000}, {20'000, 0}});
