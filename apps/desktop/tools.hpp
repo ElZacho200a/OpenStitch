@@ -12,8 +12,10 @@ enum class Tool {
     Rect,          // sélection rectangulaire / recadrage image
     DrawRectangle,  // dessine un nouvel objet vectoriel rectangulaire (glisser)
     DrawEllipse,    // dessine un nouvel objet vectoriel elliptique (glisser ; Maj = cercle)
-    DrawPolygon,    // dessine un nouvel objet vectoriel polygonal (clics successifs)
+    DrawPolygon,    // dessine un nouvel objet vectoriel polygonal (clics successifs, segments droits)
+    DrawBezier,     // dessine un nouvel objet vectoriel en courbes (clic = coin, clic-glisser = nœud lisse)
     DrawFreeform,   // dessine un nouvel objet vectoriel à main levée (glisser continu)
+    DrawSatinColumn,  // colonne satin manuelle (clics alternés rail A / rail B)
 };
 
 }  // namespace openstitch::desktop

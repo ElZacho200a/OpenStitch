@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 #pragma once
 
+#include <cstddef>
 #include <optional>
 #include <vector>
 
@@ -46,5 +47,15 @@ struct PathSet {
 // formes). Positive si le chemin tourne en sens antihoraire dans le repère
 // Y vers le haut.
 [[nodiscard]] double signed_area_um2(const Path& path);
+
+// Insère un nouveau nœud sur le segment [segment_index, segment_index+1]
+// (ou [n-1, 0] si `path.closed`) à l'abscisse curviligne locale t (dans
+// [0,1], clampé). Si le segment porte des tangentes (cubique), la
+// subdivision est EXACTE (De Casteljau) : les deux moitiés recousent une
+// courbe identique au segment d'origine, jamais une approximation — le
+// nouveau nœud est alors Lisse (tangente-continu par construction). Segment
+// sans tangente : insertion linéaire, nœud Coin. `segment_index` hors bornes
+// (ou chemin à moins de 2 nœuds) renvoie `path` inchangé.
+[[nodiscard]] Path insert_node_on_segment(const Path& path, std::size_t segment_index, double t);
 
 }  // namespace openstitch::geometry

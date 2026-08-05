@@ -7,6 +7,7 @@
 #include <QListWidget>
 #include <QMessageBox>
 #include <QSettings>
+#include <QShortcut>
 #include <QSignalSpy>
 #include <QStatusBar>
 #include <QTabWidget>
@@ -295,6 +296,25 @@ private slots:
     void drawFreeformCreatesUndoableVectorObject();
     void drawFreeformWithTooFewPointsCancelsOnRelease();
     void switchingToolDuringFreeformDrawCancelsIt();
+
+    // Colonne satin manuelle (outil DrawSatinColumn) : création par paires
+    // alternées, rejet propre d'un point orphelin, annulation par changement
+    // d'outil, remodelage d'un nœud de rail.
+    void manualSatinColumnCreatesRailsAndRungsFromAlternatingPairs();
+    void manualSatinColumnDropsOrphanPointOnOddCountAtFinish();
+    void switchingToolDuringSatinColumnDrawCancelsIt();
+    void satinRailEditModeDragsNodeAndUndoRestoresIt();
+
+    // Réponses à l'audit UI (boutons "ne faisant rien", pas de courbes de
+    // Bézier, menu contextuel pauvre, mode satin confus) : outil Bézier réel
+    // (clic + clic-glisser), bouton/touche Entrée pour terminer un tracé,
+    // suppression/duplication depuis le menu contextuel, mode satin unifié.
+    void bezierToolClickCreatesCornerNodes();
+    void bezierToolDragCreatesSmoothNodeWithSymmetricHandles();
+    void finishDrawActionAndEnterKeyBothClosePolygon();
+    void deleteVectorObjectRemovesShapeAndDependentEmbroidery();
+    void duplicateVectorObjectOffsetsCopyAndIsUndoable();
+    void satinEditModeTogglesBothUnderlyingModes();
 
 private:
     // Active le mode d'édition (sélection directe via selectedEmbroidery_,
@@ -1625,6 +1645,385 @@ void MainWindowTest::switchingToolDuringFreeformDrawCancelsIt() {
 
     QVERIFY(window.pendingFreeformPoints_.empty());
     QVERIFY(window.freeformPreviewItem_ == nullptr);
+}
+
+// ---------------------------------------------------------------------------
+// Colonne satin manuelle (outil DrawSatinColumn)
+// ---------------------------------------------------------------------------
+
+void MainWindowTest::manualSatinColumnCreatesRailsAndRungsFromAlternatingPairs() {
+    MainWindow window;
+    const Fixture fx = buildFixture();
+    window.applyLoadedProject(fx.project);
+    auto* view = window.findChild<CanvasView*>();
+    QVERIFY(view != nullptr);
+
+    const std::size_t embBefore = window.project_.embroidery_objects.size();
+    const std::size_t vecBefore = window.project_.vector_objects.size();
+    window.setTool(Tool::DrawSatinColumn);
+
+    // Deux paires A/B (scène Y vers le bas -> modèle Y vers le haut, ADR-003) :
+    // A1(0,0) B1(0,4) A2(10,0) B2(10,4) en mm modèle.
+    view->canvasClickedMm(QPointF(0.0, 0.0));
+    QCOMPARE(window.pendingSatinPoints_.size(), std::size_t{1});
+    view->canvasClickedMm(QPointF(0.0, -4.0));
+    view->canvasClickedMm(QPointF(10.0, 0.0));
+    view->canvasClickedMm(QPointF(10.0, -4.0));
+    QCOMPARE(window.pendingSatinPoints_.size(), std::size_t{4});
+    QVERIFY(window.satinPreviewItem_ != nullptr);
+
+    view->canvasDoubleClickedMm(QPointF(10.0, -4.0));
+
+    QCOMPARE(window.project_.embroidery_objects.size(), embBefore + 1);
+    QCOMPARE(window.project_.vector_objects.size(), vecBefore + 1);  // contour source synthétique
+    QVERIFY(window.pendingSatinPoints_.empty());
+    QVERIFY(window.satinPreviewItem_ == nullptr);
+
+    const auto& obj = window.project_.embroidery_objects.back();
+    QVERIFY(obj.is_satin());
+    const auto& satin = std::get<openstitch::document::SatinParams>(obj.params);
+    QCOMPARE(satin.rail_a.nodes.size(), std::size_t{2});
+    QCOMPARE(satin.rail_b.nodes.size(), std::size_t{2});
+    QVERIFY(!satin.rail_a.closed);
+    QCOMPARE(satin.rail_a.nodes[0].pos, (Vec2um{Micrometers{0}, Micrometers{0}}));
+    QCOMPARE(satin.rail_a.nodes[1].pos, (Vec2um{Micrometers{10'000}, Micrometers{0}}));
+    QCOMPARE(satin.rail_b.nodes[0].pos, (Vec2um{Micrometers{0}, Micrometers{4'000}}));
+    QCOMPARE(satin.rail_b.nodes[1].pos, (Vec2um{Micrometers{10'000}, Micrometers{4'000}}));
+    QCOMPARE(satin.rungs.size(), std::size_t{2});
+    QCOMPARE(satin.rungs[0].a, (Vec2um{Micrometers{0}, Micrometers{0}}));
+    QCOMPARE(satin.rungs[0].b, (Vec2um{Micrometers{0}, Micrometers{4'000}}));
+    QCOMPARE(satin.rungs[1].a, (Vec2um{Micrometers{10'000}, Micrometers{0}}));
+    QCOMPARE(satin.rungs[1].b, (Vec2um{Micrometers{10'000}, Micrometers{4'000}}));
+
+    QVERIFY(window.selectedEmbroidery_.has_value());
+    QCOMPARE(window.selectedEmbroidery_->value, obj.id.value);
+    QCOMPARE(QString::fromStdString(window.undoStack_.undoName()),
+             QStringLiteral("Colonne satin (création manuelle)"));
+
+    window.undo();
+    QCOMPARE(window.project_.embroidery_objects.size(), embBefore);
+    QCOMPARE(window.project_.vector_objects.size(), vecBefore);
+    window.redo();
+    QCOMPARE(window.project_.embroidery_objects.size(), embBefore + 1);
+}
+
+void MainWindowTest::manualSatinColumnDropsOrphanPointOnOddCountAtFinish() {
+    MainWindow window;
+    const Fixture fx = buildFixture();
+    window.applyLoadedProject(fx.project);
+    auto* view = window.findChild<CanvasView*>();
+    QVERIFY(view != nullptr);
+
+    const std::size_t embBefore = window.project_.embroidery_objects.size();
+    window.setTool(Tool::DrawSatinColumn);
+
+    // Deux paires completes + un point orphelin (A3 sans B3) : la finalisation
+    // doit abandonner ce dernier point plutôt que planter ou bloquer, et créer
+    // l'objet avec les deux paires complètes seulement.
+    view->canvasClickedMm(QPointF(0.0, 0.0));
+    view->canvasClickedMm(QPointF(0.0, -4.0));
+    view->canvasClickedMm(QPointF(10.0, 0.0));
+    view->canvasClickedMm(QPointF(10.0, -4.0));
+    view->canvasClickedMm(QPointF(20.0, 0.0));  // A3 orphelin
+    QCOMPARE(window.pendingSatinPoints_.size(), std::size_t{5});
+
+    window.finishSatinColumn();
+
+    QCOMPARE(window.project_.embroidery_objects.size(), embBefore + 1);
+    const auto& satin =
+        std::get<openstitch::document::SatinParams>(window.project_.embroidery_objects.back().params);
+    QCOMPARE(satin.rungs.size(), std::size_t{2});  // le point orphelin n'a pas créé de 3e paire
+    QVERIFY(window.pendingSatinPoints_.empty());
+}
+
+void MainWindowTest::switchingToolDuringSatinColumnDrawCancelsIt() {
+    MainWindow window;
+    const Fixture fx = buildFixture();
+    window.applyLoadedProject(fx.project);
+    auto* view = window.findChild<CanvasView*>();
+    QVERIFY(view != nullptr);
+
+    window.setTool(Tool::DrawSatinColumn);
+    view->canvasClickedMm(QPointF(0.0, 0.0));
+    view->canvasClickedMm(QPointF(0.0, -4.0));
+    QCOMPARE(window.pendingSatinPoints_.size(), std::size_t{2});
+    QVERIFY(window.satinPreviewItem_ != nullptr);
+
+    window.setTool(Tool::Select);  // simule Échap / changement d'outil
+
+    QVERIFY(window.pendingSatinPoints_.empty());
+    QVERIFY(window.satinPreviewItem_ == nullptr);
+    QVERIFY(!window.undoStack_.canUndo());  // rien n'a été créé
+}
+
+void MainWindowTest::satinRailEditModeDragsNodeAndUndoRestoresIt() {
+    MainWindow window;
+    const Fixture fx = buildSatinGuideFixture();
+    window.applyLoadedProject(fx.project);
+    window.resize(900, 700);
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+
+    auto* action = window.findChild<QAction*>(QStringLiteral("action_satinRailEditMode"));
+    QVERIFY(action != nullptr);
+    QVERIFY(!action->isEnabled());
+    window.selectedEmbroidery_ = fx.embroideryId;
+    window.updateActions();
+    QVERIFY(action->isEnabled());
+    action->setChecked(true);
+    QVERIFY(action->isChecked());
+    QCOMPARE(window.railEditTarget_->value, fx.embroideryId.value);
+
+    // Rail A (2 noeuds) + rail B (2 noeuds) : 4 poignées.
+    QList<NodeHandleItem*> handles;
+    for (QGraphicsItem* item : window.baseItems_) {
+        if (auto* handle = dynamic_cast<NodeHandleItem*>(item)) {
+            handles.push_back(handle);
+        }
+    }
+    QCOMPARE(handles.size(), 4);
+
+    window.view_->resetTransform();
+    window.view_->scale(40.0, 40.0);
+    window.view_->centerOn(QPointF(0.0, 0.0));
+    auto it = std::find_if(handles.begin(), handles.end(), [](const NodeHandleItem* handle) {
+        return std::abs(handle->scenePos().x()) < 0.01 && std::abs(handle->scenePos().y()) < 0.01;
+    });
+    QVERIFY(it != handles.end());
+    auto* first = *it;  // noeud de départ du rail A, en (0,0)
+
+    const QPoint start = window.view_->mapFromScene(first->scenePos());
+    const int availableRight = window.view_->viewport()->width() - 1 - start.x();
+    const int availableLeft = start.x();
+    const int direction = availableRight >= availableLeft ? 1 : -1;
+    const int movement = std::min(40, std::max(availableRight, availableLeft));
+    const QPoint end = start + QPoint(movement * direction, 0);
+    const QPoint middle = (start + end) / 2;
+    QVERIFY(window.view_->viewport()->rect().contains(start));
+    QVERIFY(window.view_->viewport()->rect().contains(end));
+    QVERIFY2((end - start).manhattanLength() >= QApplication::startDragDistance(),
+             qPrintable(QStringLiteral("déplacement écran insuffisant: %1 px")
+                            .arg((end - start).manhattanLength())));
+    QCOMPARE(dynamic_cast<NodeHandleItem*>(window.view_->itemAt(start)), first);
+    QTest::mousePress(window.view_->viewport(), Qt::LeftButton, Qt::NoModifier, start);
+    QTest::mouseMove(window.view_->viewport(), middle);
+    QTest::mouseMove(window.view_->viewport(), end);
+    QTest::mouseRelease(window.view_->viewport(), Qt::LeftButton, Qt::NoModifier, end);
+
+    QTRY_VERIFY_WITH_TIMEOUT(window.undoStack_.canUndo(), 1000);
+    QCOMPARE(QString::fromStdString(window.undoStack_.undoName()),
+             QStringLiteral("Déplacement de nœud de rail satin"));
+    const auto& moved = std::get<openstitch::document::SatinParams>(
+        window.project_.findEmbroidery(fx.embroideryId)->params);
+    QVERIFY(moved.rail_a.nodes[0].pos.x.value != 0);
+
+    window.undo();
+    const auto& restored = std::get<openstitch::document::SatinParams>(
+        window.project_.findEmbroidery(fx.embroideryId)->params);
+    QCOMPARE(restored.rail_a.nodes[0].pos, (Vec2um{Micrometers{0}, Micrometers{0}}));
+
+    action->setChecked(false);
+    QVERIFY(!window.railEditTarget_.has_value());
+    QCoreApplication::processEvents();
+}
+
+// ---------------------------------------------------------------------------
+// Réponses à l'audit UI (retour utilisateur en usage réel)
+// ---------------------------------------------------------------------------
+
+void MainWindowTest::bezierToolClickCreatesCornerNodes() {
+    MainWindow window;
+    const Fixture fx = buildFixture();
+    window.applyLoadedProject(fx.project);
+    auto* view = window.findChild<CanvasView*>();
+    QVERIFY(view != nullptr);
+    window.resize(900, 700);
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+
+    const std::size_t before = window.project_.vector_objects.size();
+    window.setTool(Tool::DrawBezier);
+    view->resetTransform();
+    view->scale(4.0, 4.0);
+    view->centerOn(QPointF(0.0, 0.0));
+
+    // Trois clics NETS (pas de glisser) : trois nœuds Coin, sans poignées.
+    const auto clickAt = [&](QPointF sceneMm) {
+        const QPoint vp = view->mapFromScene(sceneMm);
+        QTest::mousePress(view->viewport(), Qt::LeftButton, Qt::NoModifier, vp);
+        QTest::mouseRelease(view->viewport(), Qt::LeftButton, Qt::NoModifier, vp);
+    };
+    clickAt(QPointF(0.0, 0.0));
+    QCOMPARE(window.pendingBezierNodes_.size(), std::size_t{1});
+    clickAt(QPointF(20.0, 0.0));
+    clickAt(QPointF(20.0, -20.0));
+    QCOMPARE(window.pendingBezierNodes_.size(), std::size_t{3});
+    for (const auto& node : window.pendingBezierNodes_) {
+        QVERIFY(node.type == openstitch::geometry::NodeType::Corner);
+        QVERIFY(!node.tan_in.has_value());
+        QVERIFY(!node.tan_out.has_value());
+    }
+
+    window.finishBezier();
+    QCOMPARE(window.project_.vector_objects.size(), before + 1);
+    const auto& obj = window.project_.vector_objects.back();
+    QCOMPARE(obj.paths[0].outer.nodes.size(), std::size_t{3});
+    QVERIFY(obj.paths[0].outer.closed);
+    QVERIFY(window.pendingBezierNodes_.empty());
+
+    window.undo();
+    QCOMPARE(window.project_.vector_objects.size(), before);
+}
+
+void MainWindowTest::bezierToolDragCreatesSmoothNodeWithSymmetricHandles() {
+    MainWindow window;
+    const Fixture fx = buildFixture();
+    window.applyLoadedProject(fx.project);
+    auto* view = window.findChild<CanvasView*>();
+    QVERIFY(view != nullptr);
+    window.resize(900, 700);
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+
+    window.setTool(Tool::DrawBezier);
+    view->resetTransform();
+    view->scale(4.0, 4.0);
+    view->centerOn(QPointF(0.0, 0.0));
+
+    const QPoint anchorVp = view->mapFromScene(QPointF(0.0, 0.0));
+    const QPoint handleVp = anchorVp + QPoint(40, 0);  // glisser net, bien au-dessus du seuil
+    QTest::mousePress(view->viewport(), Qt::LeftButton, Qt::NoModifier, anchorVp);
+    QTest::mouseMove(view->viewport(), anchorVp + QPoint(20, 0));
+    QTest::mouseMove(view->viewport(), handleVp);
+    QTest::mouseRelease(view->viewport(), Qt::LeftButton, Qt::NoModifier, handleVp);
+
+    QCOMPARE(window.pendingBezierNodes_.size(), std::size_t{1});
+    const auto& node = window.pendingBezierNodes_[0];
+    QVERIFY(node.type == openstitch::geometry::NodeType::Smooth);
+    QVERIFY(node.tan_out.has_value());
+    QVERIFY(node.tan_in.has_value());
+    // Poignées symétriques : tan_in = -tan_out exactement.
+    QCOMPARE(node.tan_in->x.value, -node.tan_out->x.value);
+    QCOMPARE(node.tan_in->y.value, -node.tan_out->y.value);
+    QVERIFY(node.tan_out->x.value > 0);  // glissé vers la droite
+
+    window.cancelBezierDraw();
+    QVERIFY(window.pendingBezierNodes_.empty());
+}
+
+void MainWindowTest::finishDrawActionAndEnterKeyBothClosePolygon() {
+    MainWindow window;
+    const Fixture fx = buildFixture();
+    window.applyLoadedProject(fx.project);
+    auto* view = window.findChild<CanvasView*>();
+    QVERIFY(view != nullptr);
+    QVERIFY(window.finishDrawAct_ != nullptr);
+
+    const std::size_t before = window.project_.vector_objects.size();
+    window.setTool(Tool::DrawPolygon);
+    QVERIFY(!window.finishDrawAct_->isEnabled());  // rien tracé encore
+
+    view->canvasClickedMm(QPointF(0.0, 0.0));
+    view->canvasClickedMm(QPointF(10.0, 0.0));
+    view->canvasClickedMm(QPointF(10.0, -10.0));
+    QVERIFY(window.finishDrawAct_->isEnabled());
+
+    // Le bouton Terminer clôt le polygone -- pas seulement le double-clic
+    // (défaut remonté en usage réel : aucun moyen visible de valider la forme).
+    window.finishDrawAct_->trigger();
+    QCOMPARE(window.project_.vector_objects.size(), before + 1);
+    QVERIFY(window.pendingPolygonVertices_.empty());
+    QVERIFY(!window.finishDrawAct_->isEnabled());
+    window.undo();
+    QCOMPARE(window.project_.vector_objects.size(), before);
+
+    // Le raccourci Entrée (QShortcut dédié) fait de même -- déclenché via le
+    // système de méta-objets Qt plutôt qu'un évènement clavier synthétique :
+    // QTest::keyPress n'est pas fiable en offscreen pour les raccourcis
+    // fenêtre (cf. commentaire de drawEllipseWithShiftConstrainsToCircle).
+    window.setTool(Tool::DrawPolygon);
+    view->canvasClickedMm(QPointF(0.0, 0.0));
+    view->canvasClickedMm(QPointF(10.0, 0.0));
+    view->canvasClickedMm(QPointF(10.0, -10.0));
+    QShortcut* enterShortcut = nullptr;
+    for (auto* sc : window.findChildren<QShortcut*>()) {
+        if (sc->key() == QKeySequence(Qt::Key_Return)) {
+            enterShortcut = sc;
+            break;
+        }
+    }
+    QVERIFY(enterShortcut != nullptr);
+    QMetaObject::invokeMethod(enterShortcut, "activated");
+    QCOMPARE(window.project_.vector_objects.size(), before + 1);
+    QVERIFY(window.pendingPolygonVertices_.empty());
+}
+
+void MainWindowTest::deleteVectorObjectRemovesShapeAndDependentEmbroidery() {
+    MainWindow window;
+    const Fixture fx = buildFixture();
+    window.applyLoadedProject(fx.project);
+
+    const std::size_t vecBefore = window.project_.vector_objects.size();
+    const std::size_t embBefore = window.project_.embroidery_objects.size();
+    window.deleteVectorObject(fx.vectorId);
+
+    QCOMPARE(window.project_.vector_objects.size(), vecBefore - 1);
+    QCOMPARE(window.project_.embroidery_objects.size(), embBefore - 1);  // broderie liee partie aussi
+    QVERIFY(window.project_.findObject(fx.vectorId) == nullptr);
+    QVERIFY(window.project_.findEmbroidery(fx.embroideryId) == nullptr);
+    QCOMPARE(QString::fromStdString(window.undoStack_.undoName()),
+             QStringLiteral("Supprimer l'objet vectoriel"));
+
+    window.undo();
+    QCOMPARE(window.project_.vector_objects.size(), vecBefore);
+    QCOMPARE(window.project_.embroidery_objects.size(), embBefore);
+    QVERIFY(window.project_.findObject(fx.vectorId) != nullptr);
+    QVERIFY(window.project_.findEmbroidery(fx.embroideryId) != nullptr);
+}
+
+void MainWindowTest::duplicateVectorObjectOffsetsCopyAndIsUndoable() {
+    MainWindow window;
+    const Fixture fx = buildFixture();
+    window.applyLoadedProject(fx.project);
+
+    const std::size_t before = window.project_.vector_objects.size();
+    const auto* original = window.project_.findObject(fx.vectorId);
+    QVERIFY(original != nullptr);
+    const Vec2um originalFirstNode = original->paths[0].outer.nodes[0].pos;
+
+    window.duplicateVectorObject(fx.vectorId);
+    QCOMPARE(window.project_.vector_objects.size(), before + 1);
+    const auto& copy = window.project_.vector_objects.back();
+    QVERIFY(copy.id.value != fx.vectorId.value);
+    QVERIFY(copy.paths[0].outer.nodes[0].pos != originalFirstNode);  // décalée, pas superposée
+    QVERIFY(window.selectedObject_.has_value());
+    QCOMPARE(window.selectedObject_->value, copy.id.value);
+
+    window.undo();
+    QCOMPARE(window.project_.vector_objects.size(), before);
+}
+
+void MainWindowTest::satinEditModeTogglesBothUnderlyingModes() {
+    MainWindow window;
+    const Fixture fx = buildSatinGuideFixture();
+    window.applyLoadedProject(fx.project);
+
+    QVERIFY(window.satinEditModeAct_ != nullptr);
+    window.selectedEmbroidery_ = fx.embroideryId;
+    window.updateActions();
+    QVERIFY(window.satinEditModeAct_->isEnabled());
+    QVERIFY(!window.satinGuideModeAct_->isChecked());
+    QVERIFY(!window.railEditModeAct_->isChecked());
+
+    window.satinEditModeAct_->setChecked(true);
+    QVERIFY(window.satinGuideModeAct_->isChecked());
+    QVERIFY(window.railEditModeAct_->isChecked());
+    QVERIFY(window.satinGuideTarget_.has_value());
+    QVERIFY(window.railEditTarget_.has_value());
+
+    window.satinEditModeAct_->setChecked(false);
+    QVERIFY(!window.satinGuideModeAct_->isChecked());
+    QVERIFY(!window.railEditModeAct_->isChecked());
 }
 
 }  // namespace openstitch::desktop

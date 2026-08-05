@@ -63,31 +63,51 @@ CanvasView::CanvasView(QGraphicsScene* scene, QWidget* parent) : QGraphicsView(s
     });
 }
 
+void CanvasView::applyModeCursor(Qt::CursorShape shape) {
+    setCursor(shape);
+    if (viewport() != nullptr) {
+        viewport()->setCursor(shape);
+    }
+}
+
 void CanvasView::setCropMode(bool enabled) {
     cropMode_ = enabled;
     lastRubberBandMm_ = QRectF();
     setDragMode(enabled ? QGraphicsView::RubberBandDrag : QGraphicsView::ScrollHandDrag);
-    setCursor(enabled ? Qt::CrossCursor : Qt::ArrowCursor);
+    applyModeCursor(enabled ? Qt::CrossCursor : Qt::ArrowCursor);
 }
 
 void CanvasView::setBoxDrawMode(bool enabled) {
     boxDrawMode_ = enabled;
     lastRubberBandMm_ = QRectF();
     setDragMode(enabled ? QGraphicsView::RubberBandDrag : QGraphicsView::ScrollHandDrag);
-    setCursor(enabled ? Qt::CrossCursor : Qt::ArrowCursor);
+    applyModeCursor(enabled ? Qt::CrossCursor : Qt::ArrowCursor);
 }
 
 void CanvasView::setPolygonDrawMode(bool enabled) {
     polygonDrawMode_ = enabled;
     setDragMode(enabled ? QGraphicsView::NoDrag : QGraphicsView::ScrollHandDrag);
-    setCursor(enabled ? Qt::CrossCursor : Qt::ArrowCursor);
+    applyModeCursor(enabled ? Qt::CrossCursor : Qt::ArrowCursor);
 }
 
 void CanvasView::setFreeformDrawMode(bool enabled) {
     freeformDrawMode_ = enabled;
     freeformActive_ = false;
     setDragMode(enabled ? QGraphicsView::NoDrag : QGraphicsView::ScrollHandDrag);
-    setCursor(enabled ? Qt::CrossCursor : Qt::ArrowCursor);
+    applyModeCursor(enabled ? Qt::CrossCursor : Qt::ArrowCursor);
+}
+
+void CanvasView::setSatinPairDrawMode(bool enabled) {
+    satinPairDrawMode_ = enabled;
+    setDragMode(enabled ? QGraphicsView::NoDrag : QGraphicsView::ScrollHandDrag);
+    applyModeCursor(enabled ? Qt::CrossCursor : Qt::ArrowCursor);
+}
+
+void CanvasView::setBezierDrawMode(bool enabled) {
+    bezierDrawMode_ = enabled;
+    bezierPressActive_ = false;
+    setDragMode(enabled ? QGraphicsView::NoDrag : QGraphicsView::ScrollHandDrag);
+    applyModeCursor(enabled ? Qt::CrossCursor : Qt::ArrowCursor);
 }
 
 void CanvasView::setCanvasSizeMm(QSizeF sizeMm) {
@@ -148,6 +168,12 @@ void CanvasView::mousePressEvent(QMouseEvent* event) {
         QGraphicsView::mousePressEvent(event);
         return;
     }
+    if (event->button() == Qt::LeftButton && bezierDrawMode_) {
+        bezierPressActive_ = true;
+        bezierAnchorMm_ = mapToScene(event->position().toPoint());
+        QGraphicsView::mousePressEvent(event);
+        return;
+    }
     // Un clic sur un élément interactif (poignée de nœud) ne doit pas
     // déclencher la sélection : la scène serait reconstruite en plein drag.
     QGraphicsItem* item = itemAt(event->position().toPoint());
@@ -167,7 +193,8 @@ void CanvasView::mouseDoubleClickEvent(QMouseEvent* event) {
 }
 
 void CanvasView::contextMenuEvent(QContextMenuEvent* event) {
-    if (cropMode_ || boxDrawMode_ || polygonDrawMode_ || freeformDrawMode_) {
+    if (cropMode_ || boxDrawMode_ || polygonDrawMode_ || freeformDrawMode_ || satinPairDrawMode_ ||
+        bezierDrawMode_) {
         return;  // pas de menu contextuel pendant un recadrage/dessin
     }
     emit canvasContextMenu(mapToScene(event->pos()), event->globalPos());
@@ -182,6 +209,9 @@ void CanvasView::mouseMoveEvent(QMouseEvent* event) {
     if (freeformActive_) {
         emit freeformPointMm(scenePos);
     }
+    if (bezierPressActive_) {
+        emit bezierPointDraggingMm(bezierAnchorMm_, scenePos);
+    }
 }
 
 void CanvasView::mouseReleaseEvent(QMouseEvent* event) {
@@ -195,6 +225,10 @@ void CanvasView::mouseReleaseEvent(QMouseEvent* event) {
     if (freeformActive_ && event->button() == Qt::LeftButton) {
         freeformActive_ = false;
         emit freeformStrokeFinished();
+    }
+    if (bezierPressActive_ && event->button() == Qt::LeftButton) {
+        bezierPressActive_ = false;
+        emit bezierPointCommittedMm(bezierAnchorMm_, mapToScene(event->position().toPoint()));
     }
     if ((cropMode_ || boxDrawMode_) && lastRubberBandMm_.isValid() && !lastRubberBandMm_.isEmpty()) {
         const QRectF rect = lastRubberBandMm_;

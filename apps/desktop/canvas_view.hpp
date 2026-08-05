@@ -46,6 +46,19 @@ public:
     void setFreeformDrawMode(bool enabled);
     [[nodiscard]] bool freeformDrawMode() const { return freeformDrawMode_; }
 
+    // Mode dessin par paires alternées (colonne satin manuelle) : mêmes
+    // mécaniques que le mode polygone (clics successifs, pas de glisser de
+    // vue) ; l'appelant interprète chaque clic comme un point de rail A ou B
+    // selon la parité déjà posée.
+    void setSatinPairDrawMode(bool enabled);
+    [[nodiscard]] bool satinPairDrawMode() const { return satinPairDrawMode_; }
+
+    // Mode dessin en courbes de Bézier (outil plume) : clics successifs comme
+    // le mode polygone, mais chaque point peut être glissé au moment de sa
+    // pose pour poser un nœud lisse (poignées symétriques) au lieu d'un coin.
+    void setBezierDrawMode(bool enabled);
+    [[nodiscard]] bool bezierDrawMode() const { return bezierDrawMode_; }
+
 signals:
     // Zoom ou défilement : les règles doivent se redessiner.
     void viewChanged();
@@ -71,6 +84,14 @@ signals:
     void freeformStrokeFinished();
     // Clic droit : position scène (mm) et position écran (pour placer le menu).
     void canvasContextMenu(QPointF posMm, QPoint globalPos);
+    // Glisser en cours pendant la pose d'un nœud Bézier (outil plume) :
+    // ancre (point pressé) et position courante du curseur, coordonnées
+    // scène (mm) — sert à prévisualiser la poignée avant relâchement.
+    void bezierPointDraggingMm(QPointF anchorMm, QPointF currentMm);
+    // Nœud Bézier posé (relâchement du bouton) : ancre et position de
+    // relâchement. Poignée nulle (== ancre) -> nœud Coin ; sinon -> nœud
+    // Lisse dont les tangentes symétriques dérivent du vecteur de glisser.
+    void bezierPointCommittedMm(QPointF anchorMm, QPointF handleMm);
 
 protected:
     void wheelEvent(QWheelEvent* event) override;
@@ -86,13 +107,23 @@ protected:
 
 private:
     void applyZoom(double factor, bool anchorUnderMouse);
+    // Applique le curseur à LA FOIS sur la vue et sur son viewport : c'est le
+    // viewport qui reçoit réellement les évènements souris affichés à
+    // l'écran, et QGraphicsView ne propage pas toujours automatiquement le
+    // curseur de la vue vers lui (défaut trouvé par revue — le curseur de
+    // survol ne changeait pas de façon fiable selon l'outil actif).
+    void applyModeCursor(Qt::CursorShape shape);
 
     QSizeF canvasMm_{100.0, 100.0};
     bool cropMode_{false};
     bool boxDrawMode_{false};
     bool polygonDrawMode_{false};
     bool freeformDrawMode_{false};
+    bool satinPairDrawMode_{false};
+    bool bezierDrawMode_{false};
     bool freeformActive_{false};
+    bool bezierPressActive_{false};
+    QPointF bezierAnchorMm_;
     QRectF lastRubberBandMm_;
 };
 

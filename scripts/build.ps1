@@ -61,7 +61,9 @@ $configs = if ($Configuration -eq 'Both') { @('Debug', 'Release') } else { @($Co
 foreach ($cfg in $configs) {
     $preset = "msvc-$($cfg.ToLower())"
 
-    Write-Host "== Compilation ($preset) ==" -ForegroundColor Cyan
+    # Sans --target : construit TOUT (cible par defaut du generateur), pas
+    # seulement l'executable desktop -- comprend aussi CLI, libs et tests.
+    Write-Host "== Compilation ($preset) : tout (aucune cible restreinte) ==" -ForegroundColor Cyan
     cmake --build --preset $preset
     if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
@@ -71,5 +73,24 @@ foreach ($cfg in $configs) {
         if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
     }
 }
+
+# Recapitulatif explicite des executables desktop produits : la confusion
+# vecue en pratique n'etait pas un defaut de build, mais de savoir QUEL
+# .exe (parmi Debug/Release, ou un autre repertoire build\* jamais touche
+# par ce script) un raccourci lance reellement. Afficher chemin + date de
+# derniere ecriture ici rend la fraicheur immediatement verifiable, sans
+# devoir comparer manuellement des horodatages dans l'explorateur.
+Write-Host "== Executables desktop produits ==" -ForegroundColor Cyan
+foreach ($cfg in $configs) {
+    $exePath = "build\msvc\apps\desktop\$cfg\openstitch.exe"
+    if (Test-Path $exePath) {
+        $item = Get-Item $exePath
+        Write-Host "  $exePath  (modifie le $($item.LastWriteTime))" -ForegroundColor Gray
+    } else {
+        Write-Host "  $exePath  -- INTROUVABLE (echec de compilation ?)" -ForegroundColor Red
+    }
+}
+Write-Host "  Astuce : verifiez la cible reelle de vos raccourcis (clic droit > Proprietes)" -ForegroundColor DarkGray
+Write-Host "  pour confirmer qu'ils pointent bien vers l'un des chemins ci-dessus." -ForegroundColor DarkGray
 
 Write-Host "== Termine ($Configuration) ==" -ForegroundColor Green

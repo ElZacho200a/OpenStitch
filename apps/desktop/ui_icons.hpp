@@ -15,6 +15,10 @@ namespace openstitch::desktop::icons {
 [[nodiscard]] QIcon ellipse();
 [[nodiscard]] QIcon polygon();
 [[nodiscard]] QIcon freeform();
+[[nodiscard]] QIcon bezierCurve();
+[[nodiscard]] QIcon satinColumn();
+[[nodiscard]] QIcon checkmark();
+[[nodiscard]] QIcon cancelDraw();
 
 [[nodiscard]] QIcon openImage();
 [[nodiscard]] QIcon openProject();

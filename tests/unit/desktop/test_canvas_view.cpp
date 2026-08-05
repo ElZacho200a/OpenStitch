@@ -31,6 +31,7 @@ private slots:
     void leftClickOutsideCropModeEmitsCanvasClickedMmAtSceneCoordinates();
     void cropModeSuppressesCanvasClicked();
     void cropModeRubberBandEmitsCropSelectedMm();
+    void boxDrawModeRubberBandEmitsBoxDrawnMm();
 };
 
 void CanvasViewTest::zoomInThenOutChangesScaleAndEmitsViewChanged() {
@@ -129,6 +130,39 @@ void CanvasViewTest::cropModeRubberBandEmitsCropSelectedMm() {
 
     QCOMPARE(cropSpy.count(), 1);
     const QRectF rectMm = cropSpy.at(0).at(0).toRectF();
+    QVERIFY(std::abs(rectMm.left() - expected.left()) < 1.0);
+    QVERIFY(std::abs(rectMm.top() - expected.top()) < 1.0);
+    QVERIFY(std::abs(rectMm.right() - expected.right()) < 1.0);
+    QVERIFY(std::abs(rectMm.bottom() - expected.bottom()) < 1.0);
+}
+
+// Régression : setBoxDrawMode (outils Rectangle/Ellipse) partage tout le
+// mécanisme de glisser élastique de setCropMode -- vérifié séparément (pas
+// seulement en émettant boxDrawnMm directement, cf. test_main_window.cpp)
+// pour couvrir la mécanique souris réelle spécifique à CE mode, jamais
+// exercée par une injection directe du signal.
+void CanvasViewTest::boxDrawModeRubberBandEmitsBoxDrawnMm() {
+    QGraphicsScene scene;
+    CanvasView view(&scene);
+    view.setCanvasSizeMm(QSizeF(100.0, 100.0));
+    exposeView(view);
+    view.setBoxDrawMode(true);
+    QVERIFY(view.boxDrawMode());
+
+    QSignalSpy boxSpy(&view, &CanvasView::boxDrawnMm);
+
+    const QPoint from(60, 60);
+    const QPoint mid(140, 140);
+    const QPoint to(230, 200);
+    const QRectF expected = view.mapToScene(QRect(from, to).normalized()).boundingRect();
+
+    QTest::mousePress(view.viewport(), Qt::LeftButton, Qt::NoModifier, from);
+    QTest::mouseMove(view.viewport(), mid);
+    QTest::mouseMove(view.viewport(), to);
+    QTest::mouseRelease(view.viewport(), Qt::LeftButton, Qt::NoModifier, to);
+
+    QCOMPARE(boxSpy.count(), 1);
+    const QRectF rectMm = boxSpy.at(0).at(0).toRectF();
     QVERIFY(std::abs(rectMm.left() - expected.left()) < 1.0);
     QVERIFY(std::abs(rectMm.top() - expected.top()) < 1.0);
     QVERIFY(std::abs(rectMm.right() - expected.right()) < 1.0);

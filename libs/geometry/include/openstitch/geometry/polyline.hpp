@@ -44,4 +44,12 @@ struct Polyline {
 [[nodiscard]] std::vector<Vec2um> resample_run(const std::vector<Vec2um>& points,
                                                Micrometers target);
 
+// Vrai si les deux polylignes se croisent réellement (segment à segment, test
+// d'orientation). Un point de contact EXACT partagé entre les deux (ex. les
+// deux rails d'une colonne satin convergeant à une extrémité commune) n'est
+// jamais un croisement : c'est un cas légitime, courant aux bouts d'une
+// colonne. Utilisé pour valider que les deux rails d'un satin manuel restent
+// géométriquement séparés.
+[[nodiscard]] bool polylines_cross(const std::vector<Vec2um>& a, const std::vector<Vec2um>& b);
+
 }  // namespace openstitch::geometry

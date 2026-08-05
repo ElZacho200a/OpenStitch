@@ -11,6 +11,7 @@
 #include <vector>
 
 #include "openstitch/commands/command.hpp"
+#include "openstitch/geometry/path.hpp"
 #include "openstitch/image/ops.hpp"
 #include "openstitch/segmentation/segmentation.hpp"
 
@@ -179,6 +180,107 @@ private:
     document::EmbroideryObject object_;
 };
 
+// Supprime un objet de broderie seul (garde l'objet vectoriel source, qui
+// reste convertible en un autre type). Undo réinsère à l'index d'origine.
+class RemoveEmbroideryObjectCommand final : public ICommand {
+public:
+    explicit RemoveEmbroideryObjectCommand(ObjectId id) : id_(id) {}
+
+    void apply(document::Project& project) override {
+        applied_ = false;
+        auto& objs = project.embroidery_objects;
+        for (std::size_t i = 0; i < objs.size(); ++i) {
+            if (objs[i].id == id_) {
+                index_ = i;
+                removed_ = objs[i];
+                objs.erase(objs.begin() + static_cast<std::ptrdiff_t>(i));
+                applied_ = true;
+                return;
+            }
+        }
+    }
+    void revert(document::Project& project) override {
+        if (!applied_) {
+            return;
+        }
+        const std::size_t pos = std::min(index_, project.embroidery_objects.size());
+        project.embroidery_objects.insert(
+            project.embroidery_objects.begin() + static_cast<std::ptrdiff_t>(pos), removed_);
+        applied_ = false;
+    }
+    [[nodiscard]] std::string name() const override { return "Supprimer l'objet de broderie"; }
+
+private:
+    ObjectId id_;
+    std::size_t index_{};
+    document::EmbroideryObject removed_{};
+    bool applied_{false};
+};
+
+// Supprime un objet vectoriel ET tout objet de broderie qui en dépend
+// (source_vector == id) en une seule transaction : sans cela, un objet de
+// broderie se retrouverait avec un source_vector orphelin, jamais un état
+// valide dans ce document. Undo restaure les deux exactement à leurs index
+// d'origine.
+class RemoveVectorObjectCommand final : public ICommand {
+public:
+    explicit RemoveVectorObjectCommand(ObjectId id) : id_(id) {}
+
+    void apply(document::Project& project) override {
+        applied_ = false;
+        removedEmbroideries_.clear();
+        auto& vecs = project.vector_objects;
+        std::size_t vecIndex = vecs.size();
+        for (std::size_t i = 0; i < vecs.size(); ++i) {
+            if (vecs[i].id == id_) {
+                vecIndex = i;
+                break;
+            }
+        }
+        if (vecIndex == vecs.size()) {
+            return;  // introuvable : no-op
+        }
+        removedVector_ = vecs[vecIndex];
+        vectorIndex_ = vecIndex;
+        vecs.erase(vecs.begin() + static_cast<std::ptrdiff_t>(vecIndex));
+
+        auto& embs = project.embroidery_objects;
+        for (std::size_t i = 0; i < embs.size();) {
+            if (embs[i].source_vector == id_) {
+                removedEmbroideries_.emplace_back(i, embs[i]);
+                embs.erase(embs.begin() + static_cast<std::ptrdiff_t>(i));
+            } else {
+                ++i;
+            }
+        }
+        applied_ = true;
+    }
+    void revert(document::Project& project) override {
+        if (!applied_) {
+            return;
+        }
+        const std::size_t vecPos = std::min(vectorIndex_, project.vector_objects.size());
+        project.vector_objects.insert(
+            project.vector_objects.begin() + static_cast<std::ptrdiff_t>(vecPos), removedVector_);
+        // Ordre croissant d'index d'origine : réinsérer dans cet ordre
+        // reproduit exactement la disposition initiale.
+        for (const auto& [index, emb] : removedEmbroideries_) {
+            const std::size_t pos = std::min(index, project.embroidery_objects.size());
+            project.embroidery_objects.insert(
+                project.embroidery_objects.begin() + static_cast<std::ptrdiff_t>(pos), emb);
+        }
+        applied_ = false;
+    }
+    [[nodiscard]] std::string name() const override { return "Supprimer l'objet vectoriel"; }
+
+private:
+    ObjectId id_;
+    document::VectorObject removedVector_{};
+    std::size_t vectorIndex_{};
+    std::vector<std::pair<std::size_t, document::EmbroideryObject>> removedEmbroideries_;
+    bool applied_{false};
+};
+
 // Déplace un nœud d'un objet vectoriel.
 class MoveNodeCommand final : public ICommand {
 public:
@@ -206,13 +308,79 @@ private:
     Vec2um newPos_;
 };
 
+// Déplace une poignée Bézier (tan_in ou tan_out, relative au nœud) d'un objet
+// vectoriel. `std::nullopt` efface la poignée (le segment concerné redevient
+// droit) — miroir de MoveSatinRailHandleCommand (rails satin), adressé par
+// NodeRef comme MoveNodeCommand ci-dessus.
+class SetNodeHandleCommand final : public ICommand {
+public:
+    SetNodeHandleCommand(ObjectId object, document::NodeRef ref, bool isOut,
+                         std::optional<Vec2um> oldHandle, std::optional<Vec2um> newHandle)
+        : object_(object), ref_(ref), isOut_(isOut), oldHandle_(oldHandle), newHandle_(newHandle) {}
+
+    void apply(document::Project& project) override { setHandle(project, newHandle_); }
+    void revert(document::Project& project) override { setHandle(project, oldHandle_); }
+    [[nodiscard]] std::string name() const override { return "Poignée Bézier"; }
+
+private:
+    void setHandle(document::Project& project, std::optional<Vec2um> handle) {
+        if (auto* object = project.findObject(object_)) {
+            if (auto* path = document::path_in(*object, ref_.set, ref_.path);
+                path != nullptr && ref_.node < path->nodes.size()) {
+                (isOut_ ? path->nodes[ref_.node].tan_out : path->nodes[ref_.node].tan_in) = handle;
+            }
+        }
+    }
+
+    ObjectId object_;
+    document::NodeRef ref_;
+    bool isOut_;
+    std::optional<Vec2um> oldHandle_;
+    std::optional<Vec2um> newHandle_;
+};
+
+// Bascule le type (Coin/Lisse) d'un nœud d'objet vectoriel.
+class SetNodeTypeCommand final : public ICommand {
+public:
+    SetNodeTypeCommand(ObjectId object, document::NodeRef ref, geometry::NodeType type)
+        : object_(object), ref_(ref), type_(type) {}
+
+    void apply(document::Project& project) override {
+        if (auto* object = project.findObject(object_)) {
+            if (auto* path = document::path_in(*object, ref_.set, ref_.path);
+                path != nullptr && ref_.node < path->nodes.size()) {
+                previous_ = path->nodes[ref_.node].type;
+                path->nodes[ref_.node].type = type_;
+            }
+        }
+    }
+    void revert(document::Project& project) override {
+        if (auto* object = project.findObject(object_)) {
+            if (auto* path = document::path_in(*object, ref_.set, ref_.path);
+                path != nullptr && ref_.node < path->nodes.size()) {
+                path->nodes[ref_.node].type = previous_;
+            }
+        }
+    }
+    [[nodiscard]] std::string name() const override { return "Type de nœud"; }
+
+private:
+    ObjectId object_;
+    document::NodeRef ref_;
+    geometry::NodeType type_;
+    geometry::NodeType previous_{geometry::NodeType::Corner};
+};
+
 // Ajoute en une seule opération plusieurs objets vectoriels et de broderie
 // (résultat de l'autonumérisation). L'annulation retire exactement ce lot.
 class AddObjectBatchCommand final : public ICommand {
 public:
     AddObjectBatchCommand(std::vector<document::VectorObject> vectors,
-                          std::vector<document::EmbroideryObject> embroideries)
-        : vectors_(std::move(vectors)), embroideries_(std::move(embroideries)) {}
+                          std::vector<document::EmbroideryObject> embroideries,
+                          std::string label = "Numérisation automatique")
+        : vectors_(std::move(vectors)),
+          embroideries_(std::move(embroideries)),
+          label_(std::move(label)) {}
 
     void apply(document::Project& project) override {
         for (const auto& v : vectors_) {
@@ -227,11 +395,12 @@ public:
         project.embroidery_objects.resize(project.embroidery_objects.size() -
                                           embroideries_.size());
     }
-    [[nodiscard]] std::string name() const override { return "Numérisation automatique"; }
+    [[nodiscard]] std::string name() const override { return label_; }
 
 private:
     std::vector<document::VectorObject> vectors_;
     std::vector<document::EmbroideryObject> embroideries_;
+    std::string label_;
 };
 
 // Réordonne les objets de broderie selon une permutation d'ObjectId.
@@ -1105,6 +1274,196 @@ private:
 
     std::vector<SatinGuideRemoval> removals_;
     std::vector<Removed> removed_;
+    bool applied_{false};
+};
+
+// Côté d'un rail satin (A ou B), adressé indépendamment des barreaux/guides
+// ci-dessus : les rails ne sont pas des `VectorObject::paths` (`NodeRef` ne
+// s'y applique pas), ils portent leur propre géométrie éditable dans
+// `SatinParams` (§ colonne satin manuelle).
+enum class SatinRailSide { RailA, RailB };
+
+namespace detail {
+[[nodiscard]] inline geometry::Path* satin_rail(document::EmbroideryObject& obj,
+                                                 SatinRailSide side) {
+    auto* satin = std::get_if<document::SatinParams>(&obj.params);
+    if (satin == nullptr) {
+        return nullptr;
+    }
+    return side == SatinRailSide::RailA ? &satin->rail_a : &satin->rail_b;
+}
+}  // namespace detail
+
+// Déplace un nœud d'un rail satin (mode remodelage). Miroir de MoveNodeCommand
+// pour les objets vectoriels.
+class MoveSatinRailNodeCommand final : public ICommand {
+public:
+    MoveSatinRailNodeCommand(ObjectId id, SatinRailSide side, std::size_t node, Vec2um oldPos,
+                             Vec2um newPos)
+        : id_(id), side_(side), node_(node), oldPos_(oldPos), newPos_(newPos) {}
+
+    void apply(document::Project& project) override { setPos(project, newPos_); }
+    void revert(document::Project& project) override { setPos(project, oldPos_); }
+    [[nodiscard]] std::string name() const override { return "Déplacement de nœud de rail satin"; }
+
+private:
+    void setPos(document::Project& project, Vec2um pos) {
+        if (auto* obj = project.findEmbroidery(id_)) {
+            if (auto* rail = detail::satin_rail(*obj, side_); rail != nullptr && node_ < rail->nodes.size()) {
+                rail->nodes[node_].pos = pos;
+            }
+        }
+    }
+
+    ObjectId id_;
+    SatinRailSide side_;
+    std::size_t node_{};
+    Vec2um oldPos_;
+    Vec2um newPos_;
+};
+
+// Déplace une poignée Bézier (tan_in ou tan_out, relative au nœud) d'un rail
+// satin. `std::nullopt` efface la poignée (le segment concerné redevient droit).
+class MoveSatinRailHandleCommand final : public ICommand {
+public:
+    MoveSatinRailHandleCommand(ObjectId id, SatinRailSide side, std::size_t node, bool isOut,
+                               std::optional<Vec2um> oldHandle, std::optional<Vec2um> newHandle)
+        : id_(id),
+          side_(side),
+          node_(node),
+          isOut_(isOut),
+          oldHandle_(oldHandle),
+          newHandle_(newHandle) {}
+
+    void apply(document::Project& project) override { setHandle(project, newHandle_); }
+    void revert(document::Project& project) override { setHandle(project, oldHandle_); }
+    [[nodiscard]] std::string name() const override { return "Poignée de rail satin"; }
+
+private:
+    void setHandle(document::Project& project, std::optional<Vec2um> handle) {
+        if (auto* obj = project.findEmbroidery(id_)) {
+            if (auto* rail = detail::satin_rail(*obj, side_); rail != nullptr && node_ < rail->nodes.size()) {
+                (isOut_ ? rail->nodes[node_].tan_out : rail->nodes[node_].tan_in) = handle;
+            }
+        }
+    }
+
+    ObjectId id_;
+    SatinRailSide side_;
+    std::size_t node_{};
+    bool isOut_;
+    std::optional<Vec2um> oldHandle_;
+    std::optional<Vec2um> newHandle_;
+};
+
+// Bascule le type (Coin/Lisse) d'un nœud de rail satin.
+class SetSatinRailNodeTypeCommand final : public ICommand {
+public:
+    SetSatinRailNodeTypeCommand(ObjectId id, SatinRailSide side, std::size_t node,
+                                geometry::NodeType type)
+        : id_(id), side_(side), node_(node), type_(type) {}
+
+    void apply(document::Project& project) override {
+        if (auto* obj = project.findEmbroidery(id_)) {
+            if (auto* rail = detail::satin_rail(*obj, side_); rail != nullptr && node_ < rail->nodes.size()) {
+                previous_ = rail->nodes[node_].type;
+                rail->nodes[node_].type = type_;
+            }
+        }
+    }
+    void revert(document::Project& project) override {
+        if (auto* obj = project.findEmbroidery(id_)) {
+            if (auto* rail = detail::satin_rail(*obj, side_); rail != nullptr && node_ < rail->nodes.size()) {
+                rail->nodes[node_].type = previous_;
+            }
+        }
+    }
+    [[nodiscard]] std::string name() const override { return "Type de nœud de rail satin"; }
+
+private:
+    ObjectId id_;
+    SatinRailSide side_;
+    std::size_t node_{};
+    geometry::NodeType type_;
+    geometry::NodeType previous_{geometry::NodeType::Corner};
+};
+
+// Insère un nœud sur un segment de rail satin par subdivision De Casteljau
+// EXACTE (cf. geometry::insert_node_on_segment) : la forme du rail ne change
+// pas, seul un nœud supplémentaire apparaît.
+class InsertSatinRailNodeCommand final : public ICommand {
+public:
+    InsertSatinRailNodeCommand(ObjectId id, SatinRailSide side, std::size_t segmentIndex,
+                               double t)
+        : id_(id), side_(side), segmentIndex_(segmentIndex), t_(t) {}
+
+    void apply(document::Project& project) override {
+        applied_ = false;
+        if (auto* obj = project.findEmbroidery(id_)) {
+            if (auto* rail = detail::satin_rail(*obj, side_)) {
+                before_ = *rail;
+                *rail = geometry::insert_node_on_segment(*rail, segmentIndex_, t_);
+                applied_ = rail->nodes.size() == before_.nodes.size() + 1;
+            }
+        }
+    }
+    void revert(document::Project& project) override {
+        if (!applied_) {
+            return;
+        }
+        if (auto* obj = project.findEmbroidery(id_)) {
+            if (auto* rail = detail::satin_rail(*obj, side_)) {
+                *rail = before_;
+            }
+        }
+    }
+    [[nodiscard]] std::string name() const override { return "Ajouter un nœud de rail satin"; }
+
+private:
+    ObjectId id_;
+    SatinRailSide side_;
+    std::size_t segmentIndex_{};
+    double t_{};
+    geometry::Path before_;
+    bool applied_{false};
+};
+
+// Supprime un nœud d'un rail satin. Refuse silencieusement (no-op, comme les
+// autres commandes satin ci-dessus) si le rail ne compte plus que deux nœuds :
+// un rail a besoin d'au moins deux nœuds pour rester une géométrie valide.
+class RemoveSatinRailNodeCommand final : public ICommand {
+public:
+    RemoveSatinRailNodeCommand(ObjectId id, SatinRailSide side, std::size_t node)
+        : id_(id), side_(side), node_(node) {}
+
+    void apply(document::Project& project) override {
+        applied_ = false;
+        if (auto* obj = project.findEmbroidery(id_)) {
+            if (auto* rail = detail::satin_rail(*obj, side_);
+                rail != nullptr && node_ < rail->nodes.size() && rail->nodes.size() > 2) {
+                removed_ = rail->nodes[node_];
+                rail->nodes.erase(rail->nodes.begin() + static_cast<std::ptrdiff_t>(node_));
+                applied_ = true;
+            }
+        }
+    }
+    void revert(document::Project& project) override {
+        if (!applied_) {
+            return;
+        }
+        if (auto* obj = project.findEmbroidery(id_)) {
+            if (auto* rail = detail::satin_rail(*obj, side_); rail != nullptr && node_ <= rail->nodes.size()) {
+                rail->nodes.insert(rail->nodes.begin() + static_cast<std::ptrdiff_t>(node_), removed_);
+            }
+        }
+    }
+    [[nodiscard]] std::string name() const override { return "Supprimer un nœud de rail satin"; }
+
+private:
+    ObjectId id_;
+    SatinRailSide side_;
+    std::size_t node_{};
+    geometry::PathNode removed_{};
     bool applied_{false};
 };
 

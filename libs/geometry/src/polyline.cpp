@@ -174,4 +174,56 @@ std::vector<Vec2um> resample_run(const std::vector<Vec2um>& points, Micrometers 
     return out;
 }
 
+namespace {
+
+double cross2(Vec2um o, Vec2um a, Vec2um b) {
+    const double ax = static_cast<double>(a.x.value - o.x.value);
+    const double ay = static_cast<double>(a.y.value - o.y.value);
+    const double bx = static_cast<double>(b.x.value - o.x.value);
+    const double by = static_cast<double>(b.y.value - o.y.value);
+    return ax * by - ay * bx;
+}
+
+bool on_segment(Vec2um p, Vec2um a, Vec2um b) {
+    return std::min(a.x.value, b.x.value) <= p.x.value && p.x.value <= std::max(a.x.value, b.x.value) &&
+           std::min(a.y.value, b.y.value) <= p.y.value && p.y.value <= std::max(a.y.value, b.y.value);
+}
+
+bool segments_intersect(Vec2um p1, Vec2um p2, Vec2um p3, Vec2um p4) {
+    const double d1 = cross2(p3, p4, p1);
+    const double d2 = cross2(p3, p4, p2);
+    const double d3 = cross2(p1, p2, p3);
+    const double d4 = cross2(p1, p2, p4);
+    if (((d1 > 0.0 && d2 < 0.0) || (d1 < 0.0 && d2 > 0.0)) &&
+        ((d3 > 0.0 && d4 < 0.0) || (d3 < 0.0 && d4 > 0.0))) {
+        return true;
+    }
+    if (d1 == 0.0 && on_segment(p1, p3, p4)) return true;
+    if (d2 == 0.0 && on_segment(p2, p3, p4)) return true;
+    if (d3 == 0.0 && on_segment(p3, p1, p2)) return true;
+    if (d4 == 0.0 && on_segment(p4, p1, p2)) return true;
+    return false;
+}
+
+}  // namespace
+
+bool polylines_cross(const std::vector<Vec2um>& a, const std::vector<Vec2um>& b) {
+    if (a.size() < 2 || b.size() < 2) {
+        return false;
+    }
+    for (std::size_t i = 0; i + 1 < a.size(); ++i) {
+        for (std::size_t j = 0; j + 1 < b.size(); ++j) {
+            // Un sommet exactement partagé (bouts de rails convergents) n'est
+            // jamais compté comme un croisement transversal.
+            if (a[i] == b[j] || a[i] == b[j + 1] || a[i + 1] == b[j] || a[i + 1] == b[j + 1]) {
+                continue;
+            }
+            if (segments_intersect(a[i], a[i + 1], b[j], b[j + 1])) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
 }  // namespace openstitch::geometry

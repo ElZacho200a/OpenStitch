@@ -108,6 +108,9 @@ private slots:
     void onSatinGuideModeToggled(bool on);
     void addSatinGuide();
     void removeSelectedSatinGuide();
+    // Mode remodelage des rails d'une colonne satin (nœuds de rail_a/rail_b,
+    // distinct du mode guides ci-dessus qui édite les barreaux).
+    void onSatinRailEditModeToggled(bool on);
     // Abandonne les retouches manuelles d'un objet (confirmation explicite,
     // DiscardOverridesCommand annulable) — appelée depuis l'inspecteur ou la
     // barre contextuelle, jamais de mutation directe hors commande.
@@ -168,6 +171,17 @@ private:
     [[nodiscard]] document::EmbroideryObject* currentFillObject();
     // Objet vectoriel visible sous un point (mm, scène). Le dernier dessiné gagne.
     [[nodiscard]] std::optional<ObjectId> objectAt(QPointF posMm) const;
+    // Objet de broderie satin dont le RUBAN (rail_a + rail_b) contient le
+    // point donné — repli utilisé quand `objectAt` ne trouve rien : un satin
+    // manuel a un objet vectoriel source délibérément invisible (cf. §
+    // colonne satin manuelle), donc pas cliquable via `objectAt` seul.
+    [[nodiscard]] document::EmbroideryObject* satinEmbroideryAt(QPointF posMm);
+    // Formate EXHAUSTIVEMENT les données d'un objet de broderie (identité,
+    // paramètres, géométrie source, séquence générée, retouches, analyse) en
+    // texte lisible — outil de débogage (menu contextuel canevas).
+    [[nodiscard]] QString buildDebugDump(ObjectId embroideryId) const;
+    // Affiche `buildDebugDump` dans une boîte de dialogue (copier/enregistrer).
+    void showDebugDump(ObjectId embroideryId);
     // Objet de broderie rattaché à un objet vectoriel (nullptr si aucun).
     [[nodiscard]] document::EmbroideryObject* embroideryForVector(ObjectId vectorId);
     // Centre représentatif d'un objet de broderie (pour l'estimation du coût).
@@ -184,6 +198,7 @@ private:
     void updatePolygonPreview(QPointF cursorSceneMm);
     void finishPolygon();
     void cancelPolygonDraw();
+    void removeLastPolygonVertex();
     // Miroir de ce qui précède pour le tracé à main levée (outil
     // DrawFreeform) : un point par évènement CanvasView::freeformPointMm
     // (pas de segment élastique jusqu'au curseur, contrairement au polygone —
@@ -191,6 +206,35 @@ private:
     void onFreeformPointAdded(QPointF posMm);
     void finishFreeform();
     void cancelFreeformDraw();
+    // Colonne satin manuelle (outil DrawSatinColumn) : mêmes principes que le
+    // polygone (aperçu élastique, terminé par double-clic/Entrée/bouton,
+    // annulé par Échap, dernier point retirable par Retour arrière), mais
+    // chaque clic alterne entre rail A et rail B (paires Ai-Bi -> barreaux).
+    void updateSatinColumnPreview(QPointF cursorSceneMm);
+    void finishSatinColumn();
+    void cancelSatinColumnDraw();
+    void removeLastSatinColumnPoint();
+    // Courbes de Bézier (outil DrawBezier, "plume") : clics successifs comme
+    // le polygone, mais chaque clic peut être glissé pour poser un nœud Lisse
+    // à poignées symétriques au lieu d'un Coin — mêmes déclencheurs de
+    // finalisation/annulation que le polygone et la colonne satin.
+    void onBezierPointDragging(QPointF anchorMm, QPointF currentMm);
+    void onBezierPointCommitted(QPointF anchorMm, QPointF handleMm);
+    void updateBezierPreview(QPointF cursorSceneMm);
+    void finishBezier();
+    void cancelBezierDraw();
+    void removeLastBezierPoint();
+    // Active/désactive les boutons génériques Terminer/Annuler (barre
+    // d'outils) selon l'outil courant et l'état de son tracé en cours —
+    // un seul point d'entrée partagé par polygone/bézier/satin plutôt que
+    // trois logiques dupliquées.
+    void updateDrawActionsState();
+    // Suppression/duplication d'objets (menu contextuel canevas) : seules
+    // actions destructives ou créatrices déclenchées depuis ce menu, toutes
+    // passent par une commande annulable — jamais de mutation directe.
+    void deleteVectorObject(ObjectId id);
+    void deleteEmbroideryObjectOnly(ObjectId id);
+    void duplicateVectorObject(ObjectId id);
 
     void executeOp(image::ImageOp op);
     void positionEmptyState();  // centre l'accueil dans la vue
@@ -244,7 +288,16 @@ private:
     QAction* toolDrawRectAct_{nullptr};
     QAction* toolDrawEllipseAct_{nullptr};
     QAction* toolDrawPolygonAct_{nullptr};
+    QAction* toolDrawBezierAct_{nullptr};
     QAction* toolDrawFreeformAct_{nullptr};
+    QAction* toolDrawSatinColumnAct_{nullptr};
+    // Boutons génériques partagés par tout outil de tracé multi-clics
+    // (polygone/bézier/satin) : Terminer (Entrée) et Annuler (Échap),
+    // toujours visibles dans la palette d'outils, actifs seulement pendant
+    // un tracé en cours — le double-clic reste disponible mais n'est plus
+    // le SEUL moyen de valider une forme.
+    QAction* finishDrawAct_{nullptr};
+    QAction* cancelDrawAct_{nullptr};
     QLabel* toolLabel_{nullptr};
     Tool currentTool_{Tool::Select};
 
@@ -259,6 +312,22 @@ private:
     // le polygone). Simplifié (Douglas-Peucker) seulement à la fermeture.
     std::vector<Vec2um> pendingFreeformPoints_;
     QGraphicsPathItem* freeformPreviewItem_{nullptr};
+
+    // Colonne satin manuelle en cours de tracé (outil DrawSatinColumn) :
+    // points alternés rail A / rail B (index pair = A, impair = B), repère
+    // modèle µm. Une paire n'est complète qu'à l'index impair suivant —
+    // `finishSatinColumn` gère un dernier point orphelin (cf. son commentaire).
+    std::vector<Vec2um> pendingSatinPoints_;
+    QGraphicsPathItem* satinPreviewItem_{nullptr};        // rails A/B provisoires
+    QGraphicsPathItem* satinConnectorPreviewItem_{nullptr};  // paires déjà posées
+
+    // Courbe de Bézier en cours de tracé (outil DrawBezier) : nœuds déjà
+    // posés (Coin ou Lisse à poignées symétriques, repère modèle) + aperçu
+    // (tracé confirmé + poignée en cours de glisser, détruits comme les
+    // aperçus polygone/satin ci-dessus).
+    std::vector<geometry::PathNode> pendingBezierNodes_;
+    QGraphicsPathItem* bezierPreviewItem_{nullptr};   // tracé confirmé + segment élastique
+    QGraphicsPathItem* bezierHandlePreviewItem_{nullptr};  // poignée en cours de glisser
 
     QList<QAction*> imageActions_;
     QList<QAction*> regionActions_;  // nécessitent une région sélectionnée
@@ -285,6 +354,9 @@ private:
     QAction* stitchEditModeAct_{nullptr};
     std::optional<ObjectId> stitchEditTarget_;
     std::optional<stitch_generation::ObjectEditView> stitchEditView_;
+    // Mode unifié (rails + guides ensemble) — voir buildMenus() pour le
+    // détail ; simple agrégateur au-dessus des deux modes ci-dessous.
+    QAction* satinEditModeAct_{nullptr};
     // Édition paramétrique des barreaux satin : contrairement au mode 8.2,
     // ces poignées régénèrent la colonne et restent donc dans le modèle.
     QAction* satinGuideModeAct_{nullptr};
@@ -292,6 +364,12 @@ private:
     QAction* removeSatinGuideAct_{nullptr};
     std::optional<ObjectId> satinGuideTarget_;
     std::optional<std::size_t> selectedSatinGuide_;
+    // Édition des NŒUDS de rail (mode remodelage) : distinct du mode guides
+    // ci-dessus (qui édite les barreaux transversaux) — ici, les nœuds de
+    // rail_a/rail_b eux-mêmes, déplaçables et scindables (double-clic sur un
+    // segment insère un nœud par subdivision De Casteljau exacte).
+    QAction* railEditModeAct_{nullptr};
+    std::optional<ObjectId> railEditTarget_;
     // État Clean/ManuallyEdited/Dirty des objets retouchés (absents = Clean),
     // recalculé à chaque `refreshImage()` (cf. `classify_all_edit_states`) —
     // jamais recalculé ailleurs (panneau Document, inspecteur, barre

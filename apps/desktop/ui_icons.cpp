@@ -98,6 +98,65 @@ QIcon freeform() {
     });
 }
 
+QIcon bezierCurve() {
+    return make([](QPainter& p) {
+        // Une courbe (deux ancres, poignées visibles) — distincte du polygone
+        // à angles droits : symbolise l'outil plume.
+        QPainterPath path;
+        path.moveTo(6, 22);
+        path.cubicTo(10, 6, 22, 6, 26, 22);
+        p.drawPath(path);
+        QPen thin = p.pen();
+        thin.setWidthF(1.0);
+        thin.setStyle(Qt::DashLine);
+        p.setPen(thin);
+        p.drawLine(QPointF(6, 22), QPointF(10, 6));
+        p.drawLine(QPointF(26, 22), QPointF(22, 6));
+        p.setPen(QPen(p.pen().color(), 2.2));
+        p.setBrush(p.pen().color());
+        p.drawEllipse(QPointF(6, 22), 1.6, 1.6);
+        p.drawEllipse(QPointF(26, 22), 1.6, 1.6);
+        p.drawEllipse(QPointF(10, 6), 1.6, 1.6);
+        p.drawEllipse(QPointF(22, 6), 1.6, 1.6);
+    });
+}
+
+QIcon checkmark() {
+    return make([](QPainter& p) {
+        QPainterPath path;
+        path.moveTo(6, 17);
+        path.lineTo(13, 24);
+        path.lineTo(26, 8);
+        p.drawPath(path);
+    });
+}
+
+QIcon cancelDraw() {
+    return make([](QPainter& p) {
+        p.drawLine(QPointF(8, 8), QPointF(24, 24));
+        p.drawLine(QPointF(24, 8), QPointF(8, 24));
+    });
+}
+
+QIcon satinColumn() {
+    return make([](QPainter& p) {
+        // Deux rails parallèles légèrement courbes reliés par quelques
+        // barreaux transversaux — discret, sans surcharge visuelle.
+        QPainterPath rails;
+        rails.moveTo(8, 8);
+        rails.quadTo(4, 16, 8, 24);
+        rails.moveTo(24, 7);
+        rails.quadTo(28, 16, 24, 25);
+        p.drawPath(rails);
+        QPen thin = p.pen();
+        thin.setWidthF(1.4);
+        p.setPen(thin);
+        p.drawLine(QPointF(8, 10), QPointF(24, 9));
+        p.drawLine(QPointF(6.5, 16), QPointF(25.5, 16));
+        p.drawLine(QPointF(8, 22), QPointF(24, 23));
+    });
+}
+
 QIcon openImage() {
     return make([](QPainter& p) {
         p.drawRect(6, 9, 20, 15);
