@@ -252,6 +252,25 @@ QIcon analyze() {
     });
 }
 
+QIcon aiSegment() {
+    return make([](QPainter& p) {
+        // Image divisée en quelques régions...
+        p.drawRoundedRect(QRectF(5, 8, 20, 16), 2, 2);
+        QPainterPath boundaries;
+        boundaries.moveTo(12, 8);
+        boundaries.quadTo(10, 15, 15, 24);
+        boundaries.moveTo(15, 12);
+        boundaries.lineTo(25, 17);
+        p.drawPath(boundaries);
+        // ...avec un petit indicateur IA discret (étincelle, pas d'emoji).
+        QPen thin = p.pen();
+        thin.setWidthF(1.4);
+        p.setPen(thin);
+        p.drawLine(QPointF(24, 4.5), QPointF(24, 9.5));
+        p.drawLine(QPointF(21.5, 7), QPointF(26.5, 7));
+    });
+}
+
 QIcon stitches() {
     return make([](QPainter& p) {
         QPolygonF zig({{5, 20}, {11, 12}, {17, 20}, {23, 12}, {27, 17}});

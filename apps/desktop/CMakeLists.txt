@@ -40,6 +40,18 @@ add_library(openstitch_desktop_widgets STATIC
     brightness_dialog.hpp
     node_handle.hpp
     satin_guide_item.hpp
+    wsl_path_converter.cpp
+    wsl_path_converter.hpp
+    sam_worker_client.cpp
+    sam_worker_client.hpp
+    sam_model_manager.cpp
+    sam_model_manager.hpp
+    ai_preferences.cpp
+    ai_preferences.hpp
+    ai_preferences_dialog.cpp
+    ai_preferences_dialog.hpp
+    ai_segmentation_dialog.cpp
+    ai_segmentation_dialog.hpp
 )
 add_library(openstitch::desktop_widgets ALIAS openstitch_desktop_widgets)
 target_include_directories(openstitch_desktop_widgets PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
@@ -48,7 +60,7 @@ target_link_libraries(openstitch_desktop_widgets
            openstitch::commands openstitch::vectorization openstitch::stitch
            openstitch::stitch_generation openstitch::formats openstitch::project_io
            openstitch::stitch_analysis openstitch::optimization openstitch::autodigitize
-           openstitch::auto_satin
+           openstitch::auto_satin openstitch::segmentation openstitch::ai_segmentation
     PRIVATE openstitch::warnings
 )
 

@@ -113,6 +113,10 @@ private:
     // curseur de la vue vers lui (défaut trouvé par revue — le curseur de
     // survol ne changeait pas de façon fiable selon l'outil actif).
     void applyModeCursor(Qt::CursorShape shape);
+    // Recalcule dragMode() depuis TOUS les booléens de mode courants —
+    // jamais depuis un seul flag isolé (cf. commentaire détaillé dans
+    // canvas_view.cpp, défaut « rectangle/ellipse ne dessinent rien »).
+    void updateDragMode();
 
     QSizeF canvasMm_{100.0, 100.0};
     bool cropMode_{false};

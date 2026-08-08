@@ -77,6 +77,8 @@ private slots:
     void recolorSelectedRegion();
     void vectorizeSelectedRegion();
     void autoDigitize();
+    void segmentWithAi();
+    void openAiPreferences();
     void createRunningStitchObject();
     void createTatamiObject();
     void createSatinObject();

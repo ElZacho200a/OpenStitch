@@ -32,3 +32,10 @@ openstitch_add_qt_test(test_node_handle test_node_handle.cpp)
 openstitch_add_qt_test(test_document_panel test_document_panel.cpp)
 openstitch_add_qt_test(test_properties_panel test_properties_panel.cpp)
 openstitch_add_qt_test(test_main_window test_main_window.cpp)
+openstitch_add_qt_test(test_wsl_path_converter test_wsl_path_converter.cpp)
+
+# Test d'intégration SamWorkerClient <-> faux worker Python (stdlib only,
+# aucune dépendance à un vrai environnement SAM 2/torch en CI).
+openstitch_add_qt_test(test_sam_worker_client test_sam_worker_client.cpp)
+target_compile_definitions(test_sam_worker_client PRIVATE
+    OPENSTITCH_FIXTURES_DIR="${CMAKE_SOURCE_DIR}/tests/fixtures")

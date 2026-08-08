@@ -29,6 +29,7 @@ namespace openstitch::desktop::icons {
 [[nodiscard]] QIcon zoomOut();
 [[nodiscard]] QIcon fit();
 [[nodiscard]] QIcon analyze();
+[[nodiscard]] QIcon aiSegment();
 [[nodiscard]] QIcon stitches();
 [[nodiscard]] QIcon exportDst();
 [[nodiscard]] QIcon editPoints();

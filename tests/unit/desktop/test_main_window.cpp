@@ -286,6 +286,13 @@ private slots:
     // Création manuelle de formes (mission « auto-satin béton », suite : le
     // pipeline ne savait créer un VectorObject que depuis une image importée).
     void drawRectangleToolCreatesUndoableVectorObject();
+    // Contrairement au test ci-dessus (qui injecte boxDrawnMm directement,
+    // court-circuitant tout le mécanisme de glisser réel), celui-ci simule
+    // un VRAI glisser souris sur la vue réelle de MainWindow, outil choisi
+    // via le bouton de la palette -- le chemin complet emprunté en usage
+    // réel, jamais exercé par les tests existants (retour utilisateur :
+    // « rectangle/ellipse ne fonctionne toujours pas au clic-glisser »).
+    void drawRectangleToolWithRealMouseDragOnMainWindowCreatesObject();
     void drawEllipseToolCreatesUndoableVectorObject();
     void drawEllipseWithShiftConstrainsToCircle();
     void drawingTooSmallABoxCreatesNoObject();
@@ -1383,6 +1390,73 @@ void MainWindowTest::drawRectangleToolCreatesUndoableVectorObject() {
     QCOMPARE(window.project_.vector_objects.size(), before);
     window.redo();
     QCOMPARE(window.project_.vector_objects.size(), before + 1);
+}
+
+void MainWindowTest::drawRectangleToolWithRealMouseDragOnMainWindowCreatesObject() {
+    MainWindow window;
+    const Fixture fx = buildFixture();
+    window.applyLoadedProject(fx.project);
+    auto* view = window.findChild<CanvasView*>();
+    QVERIFY(view != nullptr);
+    // Fenêtre large : à 900x700 (taille utilisée ailleurs dans ce fichier),
+    // les docks (Document/Propriétés/Ordre/Filtres/Workflow) compriment le
+    // viewport du canevas à ~68 px de large -- fenêtre réaliste ici pour ne
+    // pas confondre un artefact de taille de fenêtre avec un vrai bug.
+    window.resize(1600, 1000);
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+
+    // Outil choisi via le VRAI bouton de la palette (pas window.setTool()
+    // appelé directement) : si le déclic du bouton lui-même était en cause,
+    // ce test le révélerait alors que les autres (setTool direct) non.
+    QVERIFY(window.toolDrawRectAct_ != nullptr);
+    window.toolDrawRectAct_->trigger();
+    QCOMPARE(window.currentTool_, Tool::DrawRectangle);
+    QVERIFY(view->boxDrawMode());
+
+    view->resetTransform();
+    view->scale(10.0, 10.0);
+    view->centerOn(QPointF(0.0, 0.0));
+
+    const std::size_t before = window.project_.vector_objects.size();
+    const QPoint from = view->mapFromScene(QPointF(-5.0, -5.0));
+    const QPoint mid = view->mapFromScene(QPointF(0.0, 0.0));
+    const QPoint to = view->mapFromScene(QPointF(10.0, 8.0));
+    QVERIFY2((to - from).manhattanLength() >= QApplication::startDragDistance(),
+             qPrintable(QStringLiteral("déplacement écran insuffisant: %1 px")
+                            .arg((to - from).manhattanLength())));
+    const QRect vpRect = view->viewport()->rect();
+    QVERIFY2(vpRect.contains(from),
+             qPrintable(QStringLiteral("from=(%1,%2) hors du viewport (%3,%4,%5,%6)")
+                            .arg(from.x())
+                            .arg(from.y())
+                            .arg(vpRect.x())
+                            .arg(vpRect.y())
+                            .arg(vpRect.width())
+                            .arg(vpRect.height())));
+    QVERIFY2(vpRect.contains(to),
+             qPrintable(QStringLiteral("to=(%1,%2) hors du viewport (%3,%4,%5,%6)")
+                            .arg(to.x())
+                            .arg(to.y())
+                            .arg(vpRect.x())
+                            .arg(vpRect.y())
+                            .arg(vpRect.width())
+                            .arg(vpRect.height())));
+
+    QSignalSpy boxSpy(view, &CanvasView::boxDrawnMm);
+    QTest::mousePress(view->viewport(), Qt::LeftButton, Qt::NoModifier, from);
+    QTest::mouseMove(view->viewport(), mid);
+    QTest::mouseMove(view->viewport(), to);
+    QTest::mouseRelease(view->viewport(), Qt::LeftButton, Qt::NoModifier, to);
+
+    QVERIFY2(boxSpy.count() >= 1,
+             qPrintable(QStringLiteral("boxDrawnMm jamais emis (count=%1) -- bug dans "
+                                       "CanvasView, pas dans MainWindow::onBoxDrawn")
+                            .arg(boxSpy.count())));
+    QCOMPARE(window.project_.vector_objects.size(), before + 1);
+    const auto& obj = window.project_.vector_objects.back();
+    QCOMPARE(obj.paths[0].outer.nodes.size(), std::size_t{4});
+    QVERIFY(obj.paths[0].outer.closed);
 }
 
 void MainWindowTest::drawEllipseToolCreatesUndoableVectorObject() {

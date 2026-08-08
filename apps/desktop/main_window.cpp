@@ -38,6 +38,9 @@
 #include <unordered_map>
 #include <variant>
 
+#include "ai_preferences.hpp"
+#include "ai_preferences_dialog.hpp"
+#include "ai_segmentation_dialog.hpp"
 #include "app_theme.hpp"
 #include "brightness_dialog.hpp"
 #include "canvas_view.hpp"
@@ -441,6 +444,9 @@ void MainWindow::buildMenus() {
     redoAct_->setObjectName(QStringLiteral("action_redo"));
     redoAct_->setShortcut(QKeySequence::Redo);
     connect(redoAct_, &QAction::triggered, this, &MainWindow::redo);
+    editMenu->addSeparator();
+    auto* aiPrefsAct = editMenu->addAction(tr("Préférences — &Intelligence artificielle…"));
+    connect(aiPrefsAct, &QAction::triggered, this, &MainWindow::openAiPreferences);
 
     auto* imageMenu = menuBar()->addMenu(tr("&Image"));
     const auto addOpAction = [this, imageMenu](const QString& text, image::ImageOp op) {
@@ -509,6 +515,9 @@ void MainWindow::buildMenus() {
     auto* embMenu = menuBar()->addMenu(tr("&Broderie"));
     auto* autoAct = embMenu->addAction(tr("Numérisation &automatique"));
     connect(autoAct, &QAction::triggered, this, &MainWindow::autoDigitize);
+    auto* aiSegmentAct = embMenu->addAction(icons::aiSegment(), tr("Segmenter avec l'&IA…"));
+    aiSegmentAct->setObjectName(QStringLiteral("action_segmentWithAi"));
+    connect(aiSegmentAct, &QAction::triggered, this, &MainWindow::segmentWithAi);
     embMenu->addSeparator();
     createStitchAct_ = embMenu->addAction(tr("Créer un objet de &point de contour…"));
     createStitchAct_->setObjectName(QStringLiteral("action_createStitch"));
@@ -2802,6 +2811,65 @@ void MainWindow::autoDigitize() {
             .arg(embCount));
 }
 
+void MainWindow::segmentWithAi() {
+    if (!project_.hasImage() || processed_.empty()) {
+        QMessageBox::information(this, tr("Segmenter avec l'IA"), tr("Importez d'abord une image."));
+        return;
+    }
+    const AiPreferences prefs = loadAiPreferences();
+    if (!prefs.enabled) {
+        const auto answer = QMessageBox::question(
+            this, tr("Segmenter avec l'IA"),
+            tr("La segmentation par IA n'est pas activée. Ouvrir les préférences maintenant ?"));
+        if (answer == QMessageBox::Yes) {
+            openAiPreferences();
+        }
+        return;
+    }
+
+    AiSegmentationDialog dialog(processed_, project_.mm_per_px, prefs, this);
+    if (dialog.exec() != QDialog::Accepted || !dialog.hasResult()) {
+        return;
+    }
+    auto seg = dialog.takeSegmentation();
+    if (!seg) {
+        return;
+    }
+
+    autodigitize::AutoOptions opts;
+    opts.mm_per_px = project_.mm_per_px;
+    QGuiApplication::setOverrideCursor(Qt::WaitCursor);
+    auto result = autodigitize::auto_digitize(*seg, project_.object_ids, opts);
+    QGuiApplication::restoreOverrideCursor();
+    if (!result) {
+        QMessageBox::warning(this, tr("Numérisation impossible"),
+                             QString::fromStdString(result.error().message));
+        return;
+    }
+    const std::size_t vecCount = result->vectors.size();
+    const std::size_t embCount = result->embroideries.size();
+
+    undoStack_.execute(std::make_unique<commands::AddObjectBatchCommand>(
+                           std::move(result->vectors), std::move(result->embroideries),
+                           "Segmentation IA"),
+                       project_);
+    showStitchesAct_->setChecked(true);
+    refreshImage();
+    updateActions();
+    statusBar()->showMessage(
+        tr("Segmentation IA : %1 objet(s) vectoriel(s), %2 objet(s) de broderie créés.")
+            .arg(vecCount)
+            .arg(embCount));
+}
+
+void MainWindow::openAiPreferences() {
+    AiPreferencesDialog dialog(this);
+    dialog.setPreferences(loadAiPreferences());
+    if (dialog.exec() == QDialog::Accepted) {
+        saveAiPreferences(dialog.preferences());
+    }
+}
+
 void MainWindow::createSatinObject() {
     if (!selectedObject_) {
         return;
@@ -3978,7 +4046,11 @@ void MainWindow::setTool(Tool tool) {
 
     // Applique au canevas : Rectangle = recadrage ; Rectangle/Ellipse dessinés
     // = cadre élastique générique ; Polygone = clics successifs ; Main levée =
-    // glisser continu ; sinon vue libre.
+    // glisser continu ; sinon vue libre. dragMode() est recalculé par
+    // CanvasView lui-même à partir de TOUS ses booléens à chaque appel (cf.
+    // CanvasView::updateDragMode) : ordre d'appel indifférent, plus de
+    // clobbering entre ces six appels (défaut trouvé par revue -- voir le
+    // commentaire détaillé dans canvas_view.cpp).
     view_->setCropMode(tool == Tool::Rect);
     view_->setBoxDrawMode(tool == Tool::DrawRectangle || tool == Tool::DrawEllipse);
     view_->setPolygonDrawMode(tool == Tool::DrawPolygon);

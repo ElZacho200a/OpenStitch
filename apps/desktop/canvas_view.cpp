@@ -70,43 +70,68 @@ void CanvasView::applyModeCursor(Qt::CursorShape shape) {
     }
 }
 
+// Recalcule dragMode() à partir de TOUS les booléens de mode courants (pas
+// seulement celui qu'on vient de changer) : défaut trouvé par revue (retour
+// utilisateur : rectangle/ellipse "ne fonctionnent pas au clic-glisser").
+// MainWindow::setTool() appelle les six méthodes set*Mode ci-dessous à la
+// suite, une seule à `true` (l'outil actif) et les cinq autres à `false` --
+// quand chacune fixait dragMode() en ne regardant QUE son propre booléen
+// (ex. `setDragMode(enabled ? RubberBandDrag : ScrollHandDrag)`), la
+// dernière méthode appelée écrasait systématiquement le mode posé par les
+// précédentes, quel que soit l'outil réellement actif (setBoxDrawMode(true)
+// posait RubberBandDrag, puis setPolygonDrawMode(false) l'écrasait aussitôt
+// en ScrollHandDrag). Aucun test ne l'a repéré car tous injectent
+// directement le signal Qt final (boxDrawnMm, etc.), jamais la mécanique
+// souris réelle bout en bout. En recalculant depuis l'état COMPLET à chaque
+// appel, l'ordre d'appel n'a plus d'importance et chaque méthode reste
+// correcte utilisée seule (comme le font les tests de CanvasView isolé).
+void CanvasView::updateDragMode() {
+    if (cropMode_ || boxDrawMode_) {
+        setDragMode(QGraphicsView::RubberBandDrag);
+    } else if (polygonDrawMode_ || freeformDrawMode_ || satinPairDrawMode_ || bezierDrawMode_) {
+        setDragMode(QGraphicsView::NoDrag);
+    } else {
+        setDragMode(QGraphicsView::ScrollHandDrag);
+    }
+}
+
 void CanvasView::setCropMode(bool enabled) {
     cropMode_ = enabled;
     lastRubberBandMm_ = QRectF();
-    setDragMode(enabled ? QGraphicsView::RubberBandDrag : QGraphicsView::ScrollHandDrag);
+    updateDragMode();
     applyModeCursor(enabled ? Qt::CrossCursor : Qt::ArrowCursor);
 }
 
 void CanvasView::setBoxDrawMode(bool enabled) {
     boxDrawMode_ = enabled;
     lastRubberBandMm_ = QRectF();
-    setDragMode(enabled ? QGraphicsView::RubberBandDrag : QGraphicsView::ScrollHandDrag);
+    updateDragMode();
     applyModeCursor(enabled ? Qt::CrossCursor : Qt::ArrowCursor);
 }
 
 void CanvasView::setPolygonDrawMode(bool enabled) {
     polygonDrawMode_ = enabled;
-    setDragMode(enabled ? QGraphicsView::NoDrag : QGraphicsView::ScrollHandDrag);
+    updateDragMode();
     applyModeCursor(enabled ? Qt::CrossCursor : Qt::ArrowCursor);
 }
 
 void CanvasView::setFreeformDrawMode(bool enabled) {
     freeformDrawMode_ = enabled;
     freeformActive_ = false;
-    setDragMode(enabled ? QGraphicsView::NoDrag : QGraphicsView::ScrollHandDrag);
+    updateDragMode();
     applyModeCursor(enabled ? Qt::CrossCursor : Qt::ArrowCursor);
 }
 
 void CanvasView::setSatinPairDrawMode(bool enabled) {
     satinPairDrawMode_ = enabled;
-    setDragMode(enabled ? QGraphicsView::NoDrag : QGraphicsView::ScrollHandDrag);
+    updateDragMode();
     applyModeCursor(enabled ? Qt::CrossCursor : Qt::ArrowCursor);
 }
 
 void CanvasView::setBezierDrawMode(bool enabled) {
     bezierDrawMode_ = enabled;
     bezierPressActive_ = false;
-    setDragMode(enabled ? QGraphicsView::NoDrag : QGraphicsView::ScrollHandDrag);
+    updateDragMode();
     applyModeCursor(enabled ? Qt::CrossCursor : Qt::ArrowCursor);
 }
 

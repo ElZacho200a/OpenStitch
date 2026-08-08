@@ -1,0 +1,12 @@
+# Worker de segmentation SAM 2 -- processus Python separe, jamais charge
+# en process via pybind11 dans le desktop C++ (cf. CLAUDE.md).
+#
+# torch/sam2 sont volontairement absents ici : leur installation (CPU ou
+# CUDA) depend de la machine cible et se fait suivant la doc officielle
+# SAM 2 (https://github.com/facebookresearch/sam2), avant ou apres ces
+# paquets. Les tests de ce dossier (tests/) ne dependent PAS de torch/sam2 :
+# SamService.load_model/_build_generator sont mockes.
+numpy>=1.26
+opencv-python-headless>=4.9
+pillow>=10.2
+pytest>=8.0
