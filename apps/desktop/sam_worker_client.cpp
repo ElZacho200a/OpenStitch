@@ -273,8 +273,16 @@ void SamWorkerClient::handleMessage(const QJsonObject& message) {
     if (type == QStringLiteral("segment_result")) {
         watchdogTimer_->stop();
         setState(State::Ready);
-        emit segmentResult(message.value(QStringLiteral("id")).toString(),
-                           message.value(QStringLiteral("job_dir")).toString(),
+        // Le worker renvoie `job_dir` tel qu'il l'a reçu (donc un chemin WSL
+        // sous ce runtime) -- jamais exploitable tel quel par QFile côté
+        // Windows. Reconversion ici, au même endroit que l'aller (cf.
+        // translateForWorker()), pour que TOUT consommateur du signal reçoive
+        // déjà un chemin Windows utilisable.
+        QString jobDir = message.value(QStringLiteral("job_dir")).toString();
+        if (config_.runtime == AiRuntimeKind::WslPython) {
+            jobDir = WslPathConverter::toWindows(jobDir);
+        }
+        emit segmentResult(message.value(QStringLiteral("id")).toString(), jobDir,
                            message.value(QStringLiteral("masks_file")).toString(),
                            message.value(QStringLiteral("mask_count")).toInt());
         return;
