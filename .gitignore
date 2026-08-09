@@ -16,8 +16,9 @@ docs/.venv/
 __pycache__/
 *.pyc
 
-# Worker IA : environnement Python local, modeles telecharges (jamais commit)
+# Worker IA : environnements Python locaux, modeles telecharges (jamais commit)
 sam-worker/.venv/
+sam-worker/.venv-wsl/
 sam-worker/models/
 .pytest_cache/
 

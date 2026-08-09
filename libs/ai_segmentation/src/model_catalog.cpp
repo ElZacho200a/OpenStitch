@@ -10,13 +10,22 @@ namespace {
 // Catalogue central : c'est la SEULE association config<->checkpoint de tout
 // le projet (C++ et worker Python). Le worker reçoit `worker_id`, jamais
 // deux chemins choisis indépendamment.
+// Tailles de fichier vérifiées auprès des checkpoints officiels
+// (dl.fbaipublicfiles.com/segment_anything_2/092824/...). `config_name` est
+// le chemin EXACT attendu par `build_sam2()` (relatif à la racine du paquet
+// `sam2`, avec le préfixe "configs/" -- vérifié empiriquement contre le
+// paquet installé : sam2/__init__.py appelle
+// `initialize_config_module("sam2")`, dont la racine de recherche Hydra est
+// la racine du paquet, pas son sous-dossier configs/).
 constexpr std::array<ModelDescriptor, 4> kCatalog{{
-    {ModelId::Tiny, "tiny", "Tiny (rapide)", "sam2.1_hiera_t.yaml", "sam2.1_hiera_tiny.pt", 39.0},
-    {ModelId::Small, "small", "Small", "sam2.1_hiera_s.yaml", "sam2.1_hiera_small.pt", 46.0},
-    {ModelId::BasePlus, "base_plus", "Base+", "sam2.1_hiera_b+.yaml", "sam2.1_hiera_base_plus.pt",
-     81.0},
-    {ModelId::Large, "large", "Large (qualité maximale)", "sam2.1_hiera_l.yaml",
-     "sam2.1_hiera_large.pt", 224.0},
+    {ModelId::Tiny, "tiny", "Tiny (rapide)", "configs/sam2.1/sam2.1_hiera_t.yaml",
+     "sam2.1_hiera_tiny.pt", 149.0},
+    {ModelId::Small, "small", "Small", "configs/sam2.1/sam2.1_hiera_s.yaml",
+     "sam2.1_hiera_small.pt", 176.0},
+    {ModelId::BasePlus, "base_plus", "Base+", "configs/sam2.1/sam2.1_hiera_b+.yaml",
+     "sam2.1_hiera_base_plus.pt", 309.0},
+    {ModelId::Large, "large", "Large (qualité maximale)", "configs/sam2.1/sam2.1_hiera_l.yaml",
+     "sam2.1_hiera_large.pt", 857.0},
 }};
 
 }  // namespace

@@ -8,22 +8,22 @@ using namespace openstitch::ai_segmentation;
 TEST_CASE("model catalog maps every size to its exact config and checkpoint filenames") {
     const auto& tiny = model_descriptor(ModelId::Tiny);
     CHECK(tiny.worker_id == "tiny");
-    CHECK(tiny.config_name == "sam2.1_hiera_t.yaml");
+    CHECK(tiny.config_name == "configs/sam2.1/sam2.1_hiera_t.yaml");
     CHECK(tiny.checkpoint_file == "sam2.1_hiera_tiny.pt");
 
     const auto& small = model_descriptor(ModelId::Small);
     CHECK(small.worker_id == "small");
-    CHECK(small.config_name == "sam2.1_hiera_s.yaml");
+    CHECK(small.config_name == "configs/sam2.1/sam2.1_hiera_s.yaml");
     CHECK(small.checkpoint_file == "sam2.1_hiera_small.pt");
 
     const auto& basePlus = model_descriptor(ModelId::BasePlus);
     CHECK(basePlus.worker_id == "base_plus");
-    CHECK(basePlus.config_name == "sam2.1_hiera_b+.yaml");
+    CHECK(basePlus.config_name == "configs/sam2.1/sam2.1_hiera_b+.yaml");
     CHECK(basePlus.checkpoint_file == "sam2.1_hiera_base_plus.pt");
 
     const auto& large = model_descriptor(ModelId::Large);
     CHECK(large.worker_id == "large");
-    CHECK(large.config_name == "sam2.1_hiera_l.yaml");
+    CHECK(large.config_name == "configs/sam2.1/sam2.1_hiera_l.yaml");
     CHECK(large.checkpoint_file == "sam2.1_hiera_large.pt");
 }
 

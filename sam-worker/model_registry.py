@@ -21,14 +21,21 @@ class ModelDescriptor:
     checkpoint_file: str
 
 
+# config_name est le chemin EXACT attendu par `sam2.build_sam.build_sam2()` :
+# relatif a la racine du paquet `sam2` installe, prefixe "configs/" inclus
+# (verifie empiriquement -- sam2/__init__.py appelle
+# `initialize_config_module("sam2")`, dont la racine de recherche Hydra est
+# la racine du paquet, pas son sous-dossier configs/).
 CATALOG: dict[str, ModelDescriptor] = {
-    "tiny": ModelDescriptor("tiny", "Tiny", "sam2.1_hiera_t.yaml", "sam2.1_hiera_tiny.pt"),
-    "small": ModelDescriptor("small", "Small", "sam2.1_hiera_s.yaml", "sam2.1_hiera_small.pt"),
+    "tiny": ModelDescriptor("tiny", "Tiny", "configs/sam2.1/sam2.1_hiera_t.yaml",
+                           "sam2.1_hiera_tiny.pt"),
+    "small": ModelDescriptor("small", "Small", "configs/sam2.1/sam2.1_hiera_s.yaml",
+                            "sam2.1_hiera_small.pt"),
     "base_plus": ModelDescriptor(
-        "base_plus", "Base+", "sam2.1_hiera_b+.yaml", "sam2.1_hiera_base_plus.pt"
+        "base_plus", "Base+", "configs/sam2.1/sam2.1_hiera_b+.yaml", "sam2.1_hiera_base_plus.pt"
     ),
     "large": ModelDescriptor(
-        "large", "Large", "sam2.1_hiera_l.yaml", "sam2.1_hiera_large.pt"
+        "large", "Large", "configs/sam2.1/sam2.1_hiera_l.yaml", "sam2.1_hiera_large.pt"
     ),
 }
 
