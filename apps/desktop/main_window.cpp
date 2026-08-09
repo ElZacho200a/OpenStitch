@@ -2921,13 +2921,23 @@ void MainWindow::createSatinObject() {
         return;
     }
 
-    // Découpe le contour extérieur du premier morceau en deux rails.
-    const auto rails = stitch_generation::rails_from_contour(source->paths.front().outer);
-    if (!rails) {
-        QMessageBox::warning(this, tr("Satin impossible"),
-                             tr("La forme est trop petite ou trop complexe pour une colonne "
-                                "satin. Essayez un remplissage tatami."));
-        return;
+    // Le moteur squelette (auto_satin::build_satin_columns) gère les formes
+    // concaves/branchues sans faire sortir les barreaux de la région (cf.
+    // docs/source/satin.md, § Rails automatiques : l'heuristique naïve
+    // rails_from_contour — deux sommets les plus éloignés — en fait déborder
+    // jusqu'à 57 % sur une forme réelle). Préféré ici ; l'heuristique naïve ne
+    // sert plus que de repli sur une forme trop simple/dégénérée pour que
+    // l'analyse de squelette produise quoi que ce soit.
+    const auto skeletonResult = auto_satin::build_satin_columns(source->paths.front(), {});
+    std::optional<std::pair<geometry::Path, geometry::Path>> fallbackRails;
+    if (skeletonResult.columns.empty()) {
+        fallbackRails = stitch_generation::rails_from_contour(source->paths.front().outer);
+        if (!fallbackRails) {
+            QMessageBox::warning(this, tr("Satin impossible"),
+                                 tr("La forme est trop petite ou trop complexe pour une colonne "
+                                    "satin. Essayez un remplissage tatami."));
+            return;
+        }
     }
 
     QDialog dialog(this);
@@ -2963,58 +2973,102 @@ void MainWindow::createSatinObject() {
         return;
     }
 
-    document::SatinParams params;
-    params.rail_a = rails->first;
-    params.rail_b = rails->second;
-    params.density = to_micrometers(Millimeters{densitySpin->value()});
-    params.pull_compensation = to_micrometers(Millimeters{compSpin->value()});
-    params.center_underlay = underlayCheck->isChecked();
-    // Barreaux par défaut (correspondance ladder) : sans eux, la génération
-    // retombe sur `fill_satin`, qui n'implémente qu'un sous-ensemble des
-    // réglages exposés dans l'inspecteur (défaut trouvé par revue — voir
-    // `default_rungs`). Avec des barreaux, même par défaut, la génération
-    // passe par `fill_satin_columns` et l'intégralité des réglages s'applique
-    // réellement.
-    for (const auto& seg : stitch_generation::default_rungs(params.rail_a, params.rail_b,
-                                                             params.density)) {
-        params.rungs.push_back({seg.first, seg.second, std::nullopt});
+    const Micrometers density = to_micrometers(Millimeters{densitySpin->value()});
+    const Micrometers compensation = to_micrometers(Millimeters{compSpin->value()});
+    const bool underlay = underlayCheck->isChecked();
+    const document::SatinParams defaults;  // pour le seuil max_width (§5.3)
+
+    std::vector<document::EmbroideryObject> objects;
+    double worstWidthUm = 0.0;
+    if (!skeletonResult.columns.empty()) {
+        int idx = 0;
+        for (const auto& col : skeletonResult.columns) {
+            document::SatinParams sp;
+            sp.rail_a = col.rail_a;
+            sp.rail_b = col.rail_b;
+            sp.density = density;
+            sp.pull_compensation = compensation;
+            sp.center_underlay = underlay;
+            for (const auto& r : col.rungs) {
+                sp.rungs.push_back(document::SatinRung{r.a, r.b});
+            }
+            if (col.section_count > 1 || col.start_junction || col.end_junction) {
+                sp.topology = document::SatinSectionTopology{col.section_index, col.section_count,
+                                                             col.start_junction, col.end_junction};
+            }
+            stitch_generation::SatinConfig probe;
+            probe.density = density;
+            worstWidthUm = std::max(
+                worstWidthUm, stitch_generation::fill_satin(sp.rail_a, sp.rail_b, probe).max_width_um);
+
+            document::EmbroideryObject object;
+            object.id = project_.object_ids.next();
+            object.name = (skeletonResult.columns.size() > 1
+                              ? tr("Satin de %1 (%2)")
+                                    .arg(QString::fromStdString(source->name))
+                                    .arg(++idx)
+                              : tr("Satin de %1").arg(QString::fromStdString(source->name)))
+                             .toStdString();
+            object.source_vector = source->id;
+            object.rgb = source->rgb;
+            object.params = sp;
+            objects.push_back(std::move(object));
+        }
+    } else {
+        document::SatinParams sp;
+        sp.rail_a = fallbackRails->first;
+        sp.rail_b = fallbackRails->second;
+        sp.density = density;
+        sp.pull_compensation = compensation;
+        sp.center_underlay = underlay;
+        // Barreaux par défaut (correspondance ladder) : sans eux, la génération
+        // retombe sur `fill_satin`, qui n'implémente qu'un sous-ensemble des
+        // réglages exposés dans l'inspecteur (défaut trouvé par revue — voir
+        // `default_rungs`).
+        for (const auto& seg : stitch_generation::default_rungs(sp.rail_a, sp.rail_b, sp.density)) {
+            sp.rungs.push_back({seg.first, seg.second, std::nullopt});
+        }
+        stitch_generation::SatinConfig probe;
+        probe.density = density;
+        worstWidthUm = stitch_generation::fill_satin(sp.rail_a, sp.rail_b, probe).max_width_um;
+
+        document::EmbroideryObject object;
+        object.id = project_.object_ids.next();
+        object.name = tr("Satin de %1").arg(QString::fromStdString(source->name)).toStdString();
+        object.source_vector = source->id;
+        object.rgb = source->rgb;
+        object.params = sp;
+        objects.push_back(std::move(object));
     }
 
     // Avertissement de largeur excessive (§5.3) : ne masque jamais la limite
     // physique — on prévient et on suggère le tatami.
-    stitch_generation::SatinConfig probe;
-    probe.density = params.density;
-    const double maxWidth =
-        stitch_generation::fill_satin(params.rail_a, params.rail_b, probe).max_width_um;
-    if (maxWidth > static_cast<double>(params.max_width.value)) {
+    if (worstWidthUm > static_cast<double>(defaults.max_width.value)) {
         const auto answer = QMessageBox::warning(
             this, tr("Satin large"),
             tr("La colonne atteint %1 mm de large — au-delà de la limite recommandée "
                "(%2 mm), le fil risque d'accrocher. Un remplissage tatami serait plus "
                "solide. Créer quand même le satin ?")
-                .arg(maxWidth / 1000.0, 0, 'f', 1)
-                .arg(params.max_width.value / 1000.0, 0, 'f', 1),
+                .arg(worstWidthUm / 1000.0, 0, 'f', 1)
+                .arg(defaults.max_width.value / 1000.0, 0, 'f', 1),
             QMessageBox::Yes | QMessageBox::No);
         if (answer != QMessageBox::Yes) {
             return;
         }
     }
 
-    document::EmbroideryObject object;
-    object.id = project_.object_ids.next();
-    object.name = tr("Satin de %1").arg(QString::fromStdString(source->name)).toStdString();
-    object.source_vector = source->id;
-    object.rgb = source->rgb;
-    object.params = params;
-
-    undoStack_.execute(std::make_unique<commands::AddEmbroideryObjectCommand>(std::move(object)),
+    const std::size_t count = objects.size();
+    undoStack_.execute(std::make_unique<commands::AddObjectBatchCommand>(
+                           std::vector<document::VectorObject>{}, std::move(objects),
+                           "Colonne satin (création manuelle)"),
                        project_);
     showStitchesAct_->setChecked(true);
     refreshImage();
     updateActions();
     if (sequence_) {
         const auto stats = stitch::compute_stats(*sequence_);
-        statusBar()->showMessage(tr("Colonne satin générée : %1 points").arg(stats.stitches));
+        statusBar()->showMessage(
+            tr("%1 colonne(s) satin générée(s) : %2 points").arg(count).arg(stats.stitches));
     }
 }
 
@@ -3239,16 +3293,32 @@ void MainWindow::setStitchType(ObjectId embroideryId, int type) {
                                  tr("Aucun contour source pour construire les rails."));
             return;
         }
-        auto rails = stitch_generation::rails_from_contour(source->paths.front().outer);
-        if (!rails) {
-            QMessageBox::warning(this, tr("Satin impossible"),
-                                 tr("La forme est trop petite ou trop complexe pour une colonne "
-                                    "satin. Essayez un tatami."));
-            return;
-        }
+        // Préfère le moteur squelette (gère les formes concaves/branchues
+        // sans faire déborder les barreaux, cf. docs/source/satin.md, §
+        // Rails automatiques) ; repli sur l'heuristique naïve seulement si le
+        // squelette ne produit aucune colonne UNIQUE exploitable (forme trop
+        // simple, ou décomposée en plusieurs sections — hors du modèle « un
+        // objet, un type » de cette action).
+        const auto skeletonResult = auto_satin::build_satin_columns(source->paths.front(), {});
         document::SatinParams sp;
-        sp.rail_a = rails->first;
-        sp.rail_b = rails->second;
+        if (skeletonResult.columns.size() == 1) {
+            const auto& col = skeletonResult.columns.front();
+            sp.rail_a = col.rail_a;
+            sp.rail_b = col.rail_b;
+            for (const auto& r : col.rungs) {
+                sp.rungs.push_back(document::SatinRung{r.a, r.b});
+            }
+        } else {
+            auto rails = stitch_generation::rails_from_contour(source->paths.front().outer);
+            if (!rails) {
+                QMessageBox::warning(this, tr("Satin impossible"),
+                                     tr("La forme est trop petite ou trop complexe pour une colonne "
+                                        "satin. Essayez un tatami."));
+                return;
+            }
+            sp.rail_a = rails->first;
+            sp.rail_b = rails->second;
+        }
         params = sp;
         label = "Type : satin";
         break;
