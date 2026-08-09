@@ -2,6 +2,7 @@
 #include "ai_segmentation_dialog.hpp"
 
 #include <QAbstractItemView>
+#include <QCheckBox>
 #include <QColor>
 #include <QComboBox>
 #include <QDialogButtonBox>
@@ -17,6 +18,7 @@
 #include <QPixmap>
 #include <QProgressBar>
 #include <QPushButton>
+#include <QSpinBox>
 #include <QStandardPaths>
 #include <QTableWidget>
 #include <QUuid>
@@ -26,6 +28,7 @@
 #include <filesystem>
 #include <functional>
 
+#include "openstitch/ai_segmentation/color_refine.hpp"
 #include "openstitch/ai_segmentation/label_map.hpp"
 #include "openstitch/ai_segmentation/topology_cleanup.hpp"
 
@@ -142,6 +145,28 @@ void AiSegmentationDialog::setupUi() {
     minHoleAreaSpin_->setSuffix(tr(" mm²"));
     thresholdsRow->addRow(tr("Trous comblés sous :"), minHoleAreaSpin_);
     mainLayout->addLayout(thresholdsRow);
+
+    // SAM 2 découpe par forme, jamais par couleur : pour préparer des blocs
+    // de couleur en vue de la numérisation, chaque forme retenue est ici
+    // subdivisée par couleur avec l'algorithme de quantification CIELAB déjà
+    // utilisé par la segmentation classique (menu Segmentation) — coché par
+    // défaut, car c'est l'usage premier de cet outil.
+    colorRefineCheck_ = new QCheckBox(tr("Diviser chaque forme retenue par couleur"), this);
+    colorRefineCheck_->setChecked(true);
+    mainLayout->addWidget(colorRefineCheck_);
+    auto* colorRefineRow = new QFormLayout;
+    colorRefineColorsSpin_ = new QSpinBox(this);
+    colorRefineColorsSpin_->setRange(2, 64);
+    colorRefineColorsSpin_->setValue(8);
+    colorRefineRow->addRow(tr("Nombre maximal de couleurs par forme :"), colorRefineColorsSpin_);
+    colorRefineMinSizeSpin_ = new QSpinBox(this);
+    colorRefineMinSizeSpin_->setRange(1, 100'000);
+    colorRefineMinSizeSpin_->setValue(16);
+    colorRefineMinSizeSpin_->setSuffix(tr(" px"));
+    colorRefineRow->addRow(tr("Taille minimale de bloc de couleur :"), colorRefineMinSizeSpin_);
+    mainLayout->addLayout(colorRefineRow);
+    connect(colorRefineCheck_, &QCheckBox::toggled, colorRefineColorsSpin_, &QWidget::setEnabled);
+    connect(colorRefineCheck_, &QCheckBox::toggled, colorRefineMinSizeSpin_, &QWidget::setEnabled);
 
     buttons_ = new QDialogButtonBox(QDialogButtonBox::Close, this);
     connect(buttons_, &QDialogButtonBox::rejected, this, &QDialog::reject);
@@ -539,8 +564,29 @@ void AiSegmentationDialog::onValidateClicked() {
         return;
     }
 
-    validatedSegmentation_ = std::move(*labelMap);
     validationReport_ = *report;
+
+    // SAM 2 a trouvé des FORMES ; l'usage réel de cet outil est de préparer
+    // des blocs de COULEUR pour la numérisation. Chaque forme retenue est
+    // donc, par défaut, encore subdivisée par couleur (même algorithme que
+    // la segmentation classique). Un échec ici (forme trop petite/uniforme)
+    // ne doit pas bloquer la validation : on retombe sur les formes IA
+    // telles quelles plutôt que de perdre tout le travail de revue.
+    if (colorRefineCheck_->isChecked()) {
+        ai_segmentation::ColorRefineOptions colorOptions;
+        colorOptions.max_colors = colorRefineColorsSpin_->value();
+        colorOptions.min_region_px = colorRefineMinSizeSpin_->value();
+        auto refined = ai_segmentation::refine_label_map_by_color(*labelMap, sourceImage_, colorOptions);
+        if (refined) {
+            validatedSegmentation_ = std::move(*refined);
+            accept();
+            return;
+        }
+        setStatus(tr("Découpage par couleur impossible (%1) : formes IA conservées telles quelles.")
+                      .arg(QString::fromStdString(refined.error().message)));
+    }
+
+    validatedSegmentation_ = std::move(*labelMap);
     accept();
 }
 

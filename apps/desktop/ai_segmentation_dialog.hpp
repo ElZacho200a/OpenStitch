@@ -16,12 +16,14 @@
 #include "openstitch/segmentation/segmentation.hpp"
 #include "sam_worker_client.hpp"
 
+class QCheckBox;
 class QComboBox;
 class QDialogButtonBox;
 class QDoubleSpinBox;
 class QLabel;
 class QProgressBar;
 class QPushButton;
+class QSpinBox;
 class QTableWidget;
 
 namespace openstitch::desktop {
@@ -97,6 +99,15 @@ private:
     QPushButton* mergeButton_{nullptr};
     QDoubleSpinBox* minIslandAreaSpin_{nullptr};
     QDoubleSpinBox* minHoleAreaSpin_{nullptr};
+    // SAM 2 découpe par forme/objet, jamais par couleur (ce n'est pas un
+    // réglage : ce n'est pas ce que fait ce modèle). Pour l'usage réel visé
+    // ici (préparer des blocs de couleur pour la numérisation), chaque forme
+    // retenue est ensuite subdivisée par couleur avec l'algorithme de
+    // quantification CIELAB déjà utilisé par la segmentation classique —
+    // activé par défaut, car c'est le besoin premier de cet outil.
+    QCheckBox* colorRefineCheck_{nullptr};
+    QSpinBox* colorRefineColorsSpin_{nullptr};
+    QSpinBox* colorRefineMinSizeSpin_{nullptr};
     QDialogButtonBox* buttons_{nullptr};
     QPushButton* validateButton_{nullptr};
 
