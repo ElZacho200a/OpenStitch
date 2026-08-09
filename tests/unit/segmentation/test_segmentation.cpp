@@ -171,6 +171,56 @@ TEST_CASE("determinisme : deux segmentations identiques") {
     CHECK(a->labels == b->labels);
 }
 
+TEST_CASE("lissage desactive par defaut : comportement inchange") {
+    const auto seg = segment(quadrants(), {.max_colors = 4, .min_region_px = 1});
+    REQUIRE(seg.has_value());
+    CHECK(seg->region_count() == 4);
+}
+
+TEST_CASE("lissage : bruit poivre-et-sel absorbe par la classe majoritaire locale") {
+    image::Image img = blank(9, 9);
+    for (int y = 0; y < 9; ++y) {
+        for (int x = 0; x < 9; ++x) {
+            set_px(img, x, y, 220, 30, 30);  // rouge partout
+        }
+    }
+    // Quelques pixels de bruit bleu, isoles (aucun voisin bleu adjacent).
+    set_px(img, 1, 1, 30, 30, 220);
+    set_px(img, 4, 2, 30, 30, 220);
+    set_px(img, 7, 4, 30, 30, 220);
+    set_px(img, 2, 6, 30, 30, 220);
+    set_px(img, 6, 7, 30, 30, 220);
+
+    const auto noisy = segment(img, {.max_colors = 2, .min_region_px = 1, .smoothing_radius_px = 0});
+    REQUIRE(noisy.has_value());
+    CHECK(noisy->region_count() > 1);  // le bruit forme des regions bleues isolees
+
+    const auto smoothed = segment(img, {.max_colors = 2, .min_region_px = 1, .smoothing_radius_px = 2});
+    REQUIRE(smoothed.has_value());
+    CHECK(smoothed->region_count() == 1);  // absorbe par le vote majoritaire local (rouge)
+}
+
+TEST_CASE("lissage : determinisme preserve") {
+    image::Image img = quadrants();
+    const auto a = segment(img, {.max_colors = 4, .min_region_px = 1, .smoothing_radius_px = 2});
+    const auto b = segment(img, {.max_colors = 4, .min_region_px = 1, .smoothing_radius_px = 2});
+    REQUIRE((a.has_value() && b.has_value()));
+    CHECK(a->labels == b->labels);
+}
+
+TEST_CASE("lissage : les pixels transparents restent hors de toute region") {
+    image::Image img = quadrants();
+    for (int y = 0; y < 8; ++y) {
+        for (int x = 0; x < 4; ++x) {
+            set_px(img, x, y, 0, 0, 0, 0);
+        }
+    }
+    const auto seg = segment(img, {.max_colors = 4, .min_region_px = 1, .smoothing_radius_px = 2});
+    REQUIRE(seg.has_value());
+    CHECK_FALSE(region_at(*seg, 1, 1).has_value());
+    CHECK(region_at(*seg, 6, 1).has_value());
+}
+
 TEST_CASE("rendu de la carte : fond transparent, selection eclaircie") {
     auto seg = segment(quadrants(), {.max_colors = 4, .min_region_px = 1});
     REQUIRE(seg.has_value());

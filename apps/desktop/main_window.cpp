@@ -1898,7 +1898,8 @@ void MainWindow::renderBase(const image::Image& img) {
                             const ObjectId objectId = object->id;
                             const document::NodeRef ref{s, pathIdx, n};
                             auto* handle = new NodeHandleItem(
-                                sceneMm, [this, objectId, ref, pos](QPointF newSceneMm) {
+                                sceneMm,
+                                [this, objectId, ref, pos](QPointF newSceneMm) {
                                     const Vec2um newPos{
                                         to_micrometers(Millimeters{newSceneMm.x()}),
                                         to_micrometers(Millimeters{-newSceneMm.y()})};
@@ -1915,6 +1916,33 @@ void MainWindow::renderBase(const image::Image& img) {
                                         refreshImage();
                                         updateActions();
                                     });
+                                },
+                                {},
+                                // Clic droit sur un nœud : simplification manuelle d'une
+                                // forme (typiquement après vectorisation d'une région
+                                // segmentée — contour trop détaillé pour être exploitable
+                                // tel quel).
+                                [this, objectId, ref](QPoint globalPos) {
+                                    QMenu nodeMenu(this);
+                                    auto* deleteAct = nodeMenu.addAction(tr("Supprimer le nœud"));
+                                    bool canDelete = false;
+                                    if (auto* obj = project_.findObject(objectId)) {
+                                        if (const auto* path =
+                                                document::path_in(*obj, ref.set, ref.path)) {
+                                            canDelete = path->nodes.size() > 3;
+                                        }
+                                    }
+                                    deleteAct->setEnabled(canDelete);
+                                    connect(deleteAct, &QAction::triggered, this,
+                                           [this, objectId, ref] {
+                                               undoStack_.execute(
+                                                   std::make_unique<commands::RemoveNodeCommand>(
+                                                       objectId, ref),
+                                                   project_);
+                                               refreshImage();
+                                               updateActions();
+                                           });
+                                    nodeMenu.exec(globalPos);
                                 });
                             scene_->addItem(handle);
                             baseItems_.append(handle);
@@ -2546,8 +2574,21 @@ void MainWindow::segmentImage() {
     minSizeSpin->setRange(1, 100'000);
     minSizeSpin->setValue(16);
     minSizeSpin->setSuffix(tr(" px"));
+    // L'affectation pixel-à-pixel au centre de couleur le plus proche est
+    // intrinsèquement bruitée (effet « poivre et sel » sur les photos,
+    // dégradés, artefacts JPEG) : lissée par défaut par vote local
+    // majoritaire (cf. segmentation::segment) pour obtenir des formes
+    // nettes directement exploitables, sans étape de nettoyage manuel.
+    auto* smoothingSpin = new QSpinBox(&dialog);
+    smoothingSpin->setRange(0, 20);
+    smoothingSpin->setValue(3);
+    smoothingSpin->setSuffix(tr(" px"));
+    smoothingSpin->setToolTip(
+        tr("0 = désactivé. Arrondit les frontières et absorbe le bruit pixel à pixel ; "
+           "une valeur trop élevée efface les détails plus fins qu'elle."));
     layout->addRow(tr("Nombre maximal de couleurs :"), colorsSpin);
     layout->addRow(tr("Taille minimale de région :"), minSizeSpin);
+    layout->addRow(tr("Lissage des formes :"), smoothingSpin);
     auto* buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dialog);
     connect(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
     connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
@@ -2559,8 +2600,9 @@ void MainWindow::segmentImage() {
     // Calcul synchrone (curseur d'attente) : le passage en tâche de fond est
     // prévu quand les images de travail deviendront grandes.
     QGuiApplication::setOverrideCursor(Qt::WaitCursor);
-    auto seg = segmentation::segment(
-        processed_, {.max_colors = colorsSpin->value(), .min_region_px = minSizeSpin->value()});
+    auto seg = segmentation::segment(processed_, {.max_colors = colorsSpin->value(),
+                                                  .min_region_px = minSizeSpin->value(),
+                                                  .smoothing_radius_px = smoothingSpin->value()});
     QGuiApplication::restoreOverrideCursor();
     if (!seg) {
         QMessageBox::warning(this, tr("Segmentation impossible"),

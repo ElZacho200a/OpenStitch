@@ -371,6 +371,47 @@ private:
     geometry::NodeType previous_{geometry::NodeType::Corner};
 };
 
+// Supprime un nœud d'un objet vectoriel — simplification manuelle d'une
+// forme (typiquement après vectorisation d'une région segmentée, quand le
+// contour est trop détaillé pour être exploitable tel quel). Refuse de
+// vider un chemin sous 3 nœuds (un polygone a besoin d'au moins un
+// triangle) : no-op silencieux si la précondition n'est pas respectée,
+// l'appelant est censé l'avoir déjà vérifiée avant de pousser la commande.
+class RemoveNodeCommand final : public ICommand {
+public:
+    RemoveNodeCommand(ObjectId object, document::NodeRef ref) : object_(object), ref_(ref) {}
+
+    void apply(document::Project& project) override {
+        if (auto* object = project.findObject(object_)) {
+            if (auto* path = document::path_in(*object, ref_.set, ref_.path);
+                path != nullptr && ref_.node < path->nodes.size() && path->nodes.size() > 3) {
+                removed_ = path->nodes[ref_.node];
+                path->nodes.erase(path->nodes.begin() + static_cast<std::ptrdiff_t>(ref_.node));
+                removedApplied_ = true;
+            }
+        }
+    }
+    void revert(document::Project& project) override {
+        if (!removedApplied_) {
+            return;
+        }
+        if (auto* object = project.findObject(object_)) {
+            if (auto* path = document::path_in(*object, ref_.set, ref_.path);
+                path != nullptr && ref_.node <= path->nodes.size()) {
+                path->nodes.insert(path->nodes.begin() + static_cast<std::ptrdiff_t>(ref_.node), removed_);
+            }
+        }
+        removedApplied_ = false;
+    }
+    [[nodiscard]] std::string name() const override { return "Suppression de nœud"; }
+
+private:
+    ObjectId object_;
+    document::NodeRef ref_;
+    geometry::PathNode removed_{};
+    bool removedApplied_{false};
+};
+
 // Ajoute en une seule opération plusieurs objets vectoriels et de broderie
 // (résultat de l'autonumérisation). L'annulation retire exactement ce lot.
 class AddObjectBatchCommand final : public ICommand {

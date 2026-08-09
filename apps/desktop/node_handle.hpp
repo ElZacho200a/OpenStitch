@@ -4,6 +4,7 @@
 #include <QBrush>
 #include <QCursor>
 #include <QGraphicsEllipseItem>
+#include <QGraphicsSceneContextMenuEvent>
 #include <QGraphicsSceneMouseEvent>
 #include <QPainterPath>
 #include <QPen>
@@ -22,10 +23,12 @@ namespace openstitch::desktop {
 class NodeHandleItem : public QGraphicsEllipseItem {
 public:
     NodeHandleItem(QPointF sceneMm, std::function<void(QPointF)> onReleased,
-                   std::function<void(QPointF)> onMoved = {})
+                   std::function<void(QPointF)> onMoved = {},
+                   std::function<void(QPoint)> onContextMenu = {})
         : QGraphicsEllipseItem(-4.0, -4.0, 8.0, 8.0),
           onReleased_(std::move(onReleased)),
-          onMoved_(std::move(onMoved)) {
+          onMoved_(std::move(onMoved)),
+          onContextMenu_(std::move(onContextMenu)) {
         setPos(sceneMm);
         setFlag(ItemIgnoresTransformations);
         setFlag(ItemIsMovable);
@@ -55,10 +58,21 @@ protected:
             onReleased_(pos());
         }
     }
+    // Clic droit : menu contextuel (ex. « Supprimer le nœud »), optionnel —
+    // sans callback fourni, comportement par défaut de QGraphicsItem (rien).
+    void contextMenuEvent(QGraphicsSceneContextMenuEvent* event) override {
+        if (onContextMenu_) {
+            onContextMenu_(event->screenPos());
+            event->accept();
+        } else {
+            QGraphicsEllipseItem::contextMenuEvent(event);
+        }
+    }
 
 private:
     std::function<void(QPointF)> onReleased_;
     std::function<void(QPointF)> onMoved_;
+    std::function<void(QPoint)> onContextMenu_;
 };
 
 }  // namespace openstitch::desktop

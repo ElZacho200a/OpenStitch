@@ -40,6 +40,15 @@ struct Segmentation {
 struct SegmentationOptions {
     int max_colors{8};      // 2..64
     int min_region_px{16};  // régions plus petites absorbées par leur voisine
+    // Lissage optionnel des frontières : après l'affectation initiale
+    // pixel-à-pixel (au plus proche centre Lab, intrinsèquement bruitée —
+    // effet « poivre et sel » sur les photos/dégradés/artefacts JPEG),
+    // chaque pixel opaque est réaffecté à la couleur majoritaire dans son
+    // voisinage (vote local, fenêtre de côté 2*rayon+1). 0 = désactivé,
+    // comportement strictement identique à avant (déterminisme des tests,
+    // pipelines existants). Un rayon plus grand donne des formes plus
+    // lisses mais efface les détails plus fins que lui.
+    int smoothing_radius_px{0};
 };
 
 // Quantifie l'image en CIELAB (k-means déterministe) puis extrait les

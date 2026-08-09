@@ -349,6 +349,64 @@ TEST_CASE("SetNodeTypeCommand : bascule Coin/Lisse sur un objet vectoriel, undo 
     CHECK(project.findObject(id)->paths[0].outer.nodes[1].type == geometry::NodeType::Smooth);
 }
 
+TEST_CASE("RemoveNodeCommand : supprime un noeud, undo restaure a l'index d'origine") {
+    document::Project project;
+    UndoStack stack;
+
+    document::VectorObject object;
+    object.id = project.object_ids.next();
+    object.name = "carre";
+    geometry::Path square;
+    square.closed = true;
+    square.nodes.push_back(geometry::PathNode{Vec2um{Micrometers{0}, Micrometers{0}},
+                                              geometry::NodeType::Corner, std::nullopt, std::nullopt});
+    square.nodes.push_back(geometry::PathNode{Vec2um{Micrometers{1000}, Micrometers{0}},
+                                              geometry::NodeType::Corner, std::nullopt, std::nullopt});
+    square.nodes.push_back(geometry::PathNode{Vec2um{Micrometers{1000}, Micrometers{1000}},
+                                              geometry::NodeType::Corner, std::nullopt, std::nullopt});
+    square.nodes.push_back(geometry::PathNode{Vec2um{Micrometers{0}, Micrometers{1000}},
+                                              geometry::NodeType::Corner, std::nullopt, std::nullopt});
+    object.paths.push_back(geometry::PathSet{square, {}});
+    stack.execute(std::make_unique<AddVectorObjectCommand>(object), project);
+    const ObjectId id = project.vector_objects[0].id;
+
+    const document::NodeRef ref{0, 0, 1};  // 2e noeud, (1000, 0)
+    stack.execute(std::make_unique<RemoveNodeCommand>(id, ref), project);
+    REQUIRE(project.findObject(id)->paths[0].outer.nodes.size() == 3);
+    CHECK(project.findObject(id)->paths[0].outer.nodes[1].pos ==
+          Vec2um{Micrometers{1000}, Micrometers{1000}});
+
+    CHECK(stack.undo(project));
+    REQUIRE(project.findObject(id)->paths[0].outer.nodes.size() == 4);
+    CHECK(project.findObject(id)->paths[0].outer.nodes[1].pos == Vec2um{Micrometers{1000}, Micrometers{0}});
+
+    CHECK(stack.redo(project));
+    REQUIRE(project.findObject(id)->paths[0].outer.nodes.size() == 3);
+}
+
+TEST_CASE("RemoveNodeCommand : refuse de descendre sous 3 noeuds") {
+    document::Project project;
+    UndoStack stack;
+
+    document::VectorObject object;
+    object.id = project.object_ids.next();
+    object.name = "triangle";
+    geometry::Path triangle;
+    triangle.closed = true;
+    triangle.nodes.push_back(geometry::PathNode{Vec2um{Micrometers{0}, Micrometers{0}},
+                                                geometry::NodeType::Corner, std::nullopt, std::nullopt});
+    triangle.nodes.push_back(geometry::PathNode{Vec2um{Micrometers{1000}, Micrometers{0}},
+                                                geometry::NodeType::Corner, std::nullopt, std::nullopt});
+    triangle.nodes.push_back(geometry::PathNode{Vec2um{Micrometers{0}, Micrometers{1000}},
+                                                geometry::NodeType::Corner, std::nullopt, std::nullopt});
+    object.paths.push_back(geometry::PathSet{triangle, {}});
+    stack.execute(std::make_unique<AddVectorObjectCommand>(object), project);
+    const ObjectId id = project.vector_objects[0].id;
+
+    stack.execute(std::make_unique<RemoveNodeCommand>(id, document::NodeRef{0, 0, 0}), project);
+    CHECK(project.findObject(id)->paths[0].outer.nodes.size() == 3);  // inchange
+}
+
 TEST_CASE("SetFillAngleCommand : reoriente le tatami, undo/redo exacts") {
     document::Project project;
     UndoStack stack;

@@ -182,6 +182,48 @@ Result<Segmentation> segment(const image::Image& img, const SegmentationOptions&
         colorIdx.at<int>(row, col) = best;
     }
 
+    // Lissage optionnel : vote local majoritaire par classe de couleur, pour
+    // absorber le bruit poivre-et-sel de l'affectation pixel-à-pixel
+    // ci-dessus avant l'extraction des composantes connexes (formes plus
+    // lisses, sans laisser de trou : contrairement à une ouverture
+    // morphologique appliquée séparément à chaque masque de couleur, un
+    // pixel réaffecté rejoint toujours une classe existante).
+    if (options.smoothing_radius_px > 0) {
+        const int ksize = 2 * options.smoothing_radius_px + 1;
+        std::vector<cv::Mat> density(static_cast<std::size_t>(k));
+        for (int c = 0; c < k; ++c) {
+            cv::Mat classMask(img.height, img.width, CV_32F, cv::Scalar(0.0f));
+            for (int y = 0; y < img.height; ++y) {
+                for (int x = 0; x < img.width; ++x) {
+                    if (colorIdx.at<int>(y, x) == c) {
+                        classMask.at<float>(y, x) = 1.0f;
+                    }
+                }
+            }
+            cv::boxFilter(classMask, density[static_cast<std::size_t>(c)], CV_32F, cv::Size(ksize, ksize),
+                          cv::Point(-1, -1), false);
+        }
+        cv::Mat smoothedColorIdx = colorIdx.clone();
+        for (int y = 0; y < img.height; ++y) {
+            for (int x = 0; x < img.width; ++x) {
+                if (colorIdx.at<int>(y, x) < 0) {
+                    continue;  // pixel transparent : jamais reclasse
+                }
+                int bestClass = colorIdx.at<int>(y, x);
+                float bestDensity = 0.0f;
+                for (int c = 0; c < k; ++c) {
+                    const float d = density[static_cast<std::size_t>(c)].at<float>(y, x);
+                    if (d > bestDensity) {
+                        bestDensity = d;
+                        bestClass = c;
+                    }
+                }
+                smoothedColorIdx.at<int>(y, x) = bestClass;
+            }
+        }
+        colorIdx = smoothedColorIdx;
+    }
+
     // Composantes connexes (4-connexité) par couleur -> régions à ids stables.
     Segmentation seg;
     seg.width = img.width;
