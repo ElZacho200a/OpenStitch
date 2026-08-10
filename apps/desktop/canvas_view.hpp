@@ -92,6 +92,12 @@ signals:
     // relâchement. Poignée nulle (== ancre) -> nœud Coin ; sinon -> nœud
     // Lisse dont les tangentes symétriques dérivent du vecteur de glisser.
     void bezierPointCommittedMm(QPointF anchorMm, QPointF handleMm);
+    // Flèche du clavier, canevas focus (édition au pixel près impossible à
+    // la souris passé un certain zoom — défaut remonté en usage réel) :
+    // delta en coordonnées scène (mm), déjà dans le sens visuel attendu à
+    // l'écran (haut = y scène décroissant). L'appelant interprète (objet
+    // sélectionné, mode Sélection) et construit la commande d'undo.
+    void nudgeRequestedMm(QPointF deltaMm);
 
 protected:
     void wheelEvent(QWheelEvent* event) override;
@@ -100,6 +106,7 @@ protected:
     void contextMenuEvent(QContextMenuEvent* event) override;
     void mouseMoveEvent(QMouseEvent* event) override;
     void mouseReleaseEvent(QMouseEvent* event) override;
+    void keyPressEvent(QKeyEvent* event) override;
     void resizeEvent(QResizeEvent* event) override;
     void scrollContentsBy(int dx, int dy) override;
     void drawBackground(QPainter* painter, const QRectF& rect) override;

@@ -390,6 +390,19 @@ MainWindow::MainWindow() {
 
     connect(view_, &CanvasView::canvasClickedMm, this, &MainWindow::onCanvasClicked);
     connect(view_, &CanvasView::canvasContextMenu, this, &MainWindow::onCanvasContextMenu);
+    // Flèches clavier : déplace l'objet vectoriel sélectionné (mode Sélection
+    // uniquement) — même commande que le glisser du corps de forme.
+    connect(view_, &CanvasView::nudgeRequestedMm, this, [this](QPointF deltaSceneMm) {
+        if (!selectedObject_ || currentTool_ != Tool::Select) {
+            return;
+        }
+        const Vec2um delta = sceneMmToModel(deltaSceneMm);
+        undoStack_.execute(
+            std::make_unique<commands::TranslateVectorObjectCommand>(*selectedObject_, delta),
+            project_);
+        refreshImage();
+        updateActions();
+    });
     // Un changement de thème redessine les couches (couleurs des points, repères).
     connect(&AppTheme::instance(), &AppTheme::changed, this, [this] { displayImage(processed_); });
 

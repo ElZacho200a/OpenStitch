@@ -3,6 +3,7 @@
 
 #include <QContextMenuEvent>
 #include <QGraphicsItem>
+#include <QKeyEvent>
 #include <QMouseEvent>
 #include <QPainter>
 #include <QWheelEvent>
@@ -37,6 +38,10 @@ CanvasView::CanvasView(QGraphicsScene* scene, QWidget* parent) : QGraphicsView(s
     setTransformationAnchor(QGraphicsView::AnchorUnderMouse);
     setFrameShape(QFrame::NoFrame);  // le viewport s'aligne avec les règles
     setMouseTracking(true);
+    // Sans focus, keyPressEvent ne reçoit jamais les flèches (nudge clavier)
+    // -- StrongFocus inclut le focus au clic, déjà le geste naturel pour
+    // sélectionner une forme avant de la déplacer au clavier.
+    setFocusPolicy(Qt::StrongFocus);
     // Rendu de gros motifs : ne pas sauvegarder l'état du peintre entre items,
     // et ne repeindre que la zone modifiée plutôt que tout le viewport.
     setOptimizationFlag(QGraphicsView::DontSavePainterState, true);
@@ -264,6 +269,33 @@ void CanvasView::mouseReleaseEvent(QMouseEvent* event) {
             emit boxDrawnMm(rect, modifiers);
         }
     }
+}
+
+void CanvasView::keyPressEvent(QKeyEvent* event) {
+    // Pas de coordonnée réelle en jeu (juste un pas fixe), donc pertinent
+    // même hors des modes de dessin où les autres évènements sont filtrés —
+    // seul l'appelant (MainWindow) décide si un objet est sélectionnable au
+    // clavier en ce moment (mode Sélection, un objet sélectionné).
+    constexpr double kStepMm = 0.1;      // pas normal : 0,1 mm
+    constexpr double kBigStepMm = 1.0;   // Maj : 1 mm
+    const double step = (event->modifiers() & Qt::ShiftModifier) ? kBigStepMm : kStepMm;
+    switch (event->key()) {
+    case Qt::Key_Left:
+        emit nudgeRequestedMm(QPointF(-step, 0.0));
+        return;
+    case Qt::Key_Right:
+        emit nudgeRequestedMm(QPointF(step, 0.0));
+        return;
+    case Qt::Key_Up:
+        emit nudgeRequestedMm(QPointF(0.0, -step));
+        return;
+    case Qt::Key_Down:
+        emit nudgeRequestedMm(QPointF(0.0, step));
+        return;
+    default:
+        break;
+    }
+    QGraphicsView::keyPressEvent(event);
 }
 
 void CanvasView::resizeEvent(QResizeEvent* event) {

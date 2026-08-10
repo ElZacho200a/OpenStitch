@@ -327,6 +327,10 @@ private slots:
     // Même retour utilisateur ("manipulation des vecteurs pénible") :
     // redimensionner exigeait aussi de déplacer chaque nœud un par un.
     void draggingResizeHandleWithRealMouseScalesWholeObjectAroundOppositeCorner();
+    // Flèches clavier : déplace l'objet sélectionné d'un pas fixe (0,1 mm ;
+    // 1 mm avec Maj) -- aucune alternative au glisser souris n'existait pour
+    // un ajustement fin, impossible à la souris passé un certain zoom.
+    void arrowKeyNudgesSelectedObjectByFixedStepAndShiftUsesBiggerStep();
 
     // Colonne satin manuelle (outil DrawSatinColumn) : création par paires
     // alternées, rejet propre d'un point orphelin, annulation par changement
@@ -1638,6 +1642,59 @@ void MainWindowTest::draggingResizeHandleWithRealMouseScalesWholeObjectAroundOpp
     window.redo();
     QCOMPARE(window.project_.findObject(squareId)->paths[0].outer.nodes[2].pos,
             (Vec2um{Micrometers{20'000}, Micrometers{20'000}}));
+}
+
+void MainWindowTest::arrowKeyNudgesSelectedObjectByFixedStepAndShiftUsesBiggerStep() {
+    MainWindow window;
+    Fixture fx = buildFixture();
+    document::VectorObject square;
+    square.id = fx.project.object_ids.next();
+    square.name = "Carre";
+    geometry::Path outer;
+    outer.closed = true;
+    outer.nodes.push_back(geometry::PathNode{Vec2um{Micrometers{-5'000}, Micrometers{-5'000}},
+                                             geometry::NodeType::Corner, std::nullopt, std::nullopt});
+    outer.nodes.push_back(geometry::PathNode{Vec2um{Micrometers{5'000}, Micrometers{-5'000}},
+                                             geometry::NodeType::Corner, std::nullopt, std::nullopt});
+    outer.nodes.push_back(geometry::PathNode{Vec2um{Micrometers{5'000}, Micrometers{5'000}},
+                                             geometry::NodeType::Corner, std::nullopt, std::nullopt});
+    outer.nodes.push_back(geometry::PathNode{Vec2um{Micrometers{-5'000}, Micrometers{5'000}},
+                                             geometry::NodeType::Corner, std::nullopt, std::nullopt});
+    square.paths.push_back(geometry::PathSet{outer, {}});
+    const ObjectId squareId = square.id;
+    fx.project.vector_objects.push_back(square);
+
+    window.applyLoadedProject(fx.project);
+    window.selectedObject_ = squareId;
+    window.setTool(Tool::Select);
+    window.refreshImage();
+
+    auto* view = window.findChild<CanvasView*>();
+    QVERIFY(view != nullptr);
+    window.resize(1600, 1000);
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+
+    // Droite, pas normal (0,1 mm) : x scène inchangé -> x modèle +100 µm.
+    QTest::keyClick(view, Qt::Key_Right);
+    QCOMPARE(window.project_.findObject(squareId)->paths[0].outer.nodes[0].pos,
+            (Vec2um{Micrometers{-4'900}, Micrometers{-5'000}}));
+
+    // Haut, pas normal : y scène décroît -> y modèle +100 µm (repère inversé).
+    QTest::keyClick(view, Qt::Key_Up);
+    QCOMPARE(window.project_.findObject(squareId)->paths[0].outer.nodes[0].pos,
+            (Vec2um{Micrometers{-4'900}, Micrometers{-4'900}}));
+
+    // Maj+Bas : grand pas (1 mm) -> y modèle -1000 µm.
+    QTest::keyClick(view, Qt::Key_Down, Qt::ShiftModifier);
+    QCOMPARE(window.project_.findObject(squareId)->paths[0].outer.nodes[0].pos,
+            (Vec2um{Micrometers{-4'900}, Micrometers{-5'900}}));
+
+    // Chaque appui pousse une commande distincte -- annulable individuellement.
+    QVERIFY(window.undoStack_.canUndo());
+    window.undo();
+    QCOMPARE(window.project_.findObject(squareId)->paths[0].outer.nodes[0].pos,
+            (Vec2um{Micrometers{-4'900}, Micrometers{-4'900}}));
 }
 
 void MainWindowTest::drawRectangleToolWithRealMouseDragOnMainWindowCreatesObject() {
