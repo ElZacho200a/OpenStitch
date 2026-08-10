@@ -485,10 +485,19 @@ public:
     void apply(document::Project& project) override {
         if (auto* object = project.findObject(object_)) {
             if (auto* path = document::path_in(*object, ref_.set, ref_.path);
-                path != nullptr && ref_.node < path->nodes.size() && path->nodes.size() > 3) {
-                removed_ = path->nodes[ref_.node];
-                path->nodes.erase(path->nodes.begin() + static_cast<std::ptrdiff_t>(ref_.node));
-                removedApplied_ = true;
+                path != nullptr && ref_.node < path->nodes.size()) {
+                // Minimum valide : 3 nœuds pour un chemin FERMÉ (polygone), 2
+                // pour un chemin OUVERT (segment/ligne, ex. importée en DXF) —
+                // exiger 3 dans tous les cas bloquait à tort la suppression sur
+                // un chemin ouvert de 3 nœuds (défaut remonté en usage réel :
+                // « je ne peux pas supprimer certains points »), cf. la même
+                // distinction déjà correcte dans geometry::simplify.
+                const std::size_t minNodes = path->closed ? 3 : 2;
+                if (path->nodes.size() > minNodes) {
+                    removed_ = path->nodes[ref_.node];
+                    path->nodes.erase(path->nodes.begin() + static_cast<std::ptrdiff_t>(ref_.node));
+                    removedApplied_ = true;
+                }
             }
         }
     }

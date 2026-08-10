@@ -2090,7 +2090,10 @@ void MainWindow::renderBase(const image::Image& img) {
                                     if (auto* obj = project_.findObject(objectId)) {
                                         if (const auto* path =
                                                 document::path_in(*obj, ref.set, ref.path)) {
-                                            canDelete = path->nodes.size() > 3;
+                                            // 3 nœuds min. pour un chemin fermé, 2 pour un
+                                            // chemin ouvert (cf. RemoveNodeCommand::apply).
+                                            const std::size_t minNodes = path->closed ? 3 : 2;
+                                            canDelete = path->nodes.size() > minNodes;
                                         }
                                     }
                                     deleteAct->setEnabled(canDelete);

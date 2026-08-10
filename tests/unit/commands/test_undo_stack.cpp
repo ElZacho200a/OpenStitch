@@ -505,6 +505,51 @@ TEST_CASE("RemoveNodeCommand : refuse de descendre sous 3 noeuds") {
     CHECK(project.findObject(id)->paths[0].outer.nodes.size() == 3);  // inchange
 }
 
+// Defaut trouve en usage reel (retour utilisateur : "je ne peux pas
+// supprimer certains points") : le minimum de 3 noeuds a raison pour un
+// chemin FERME (polygone), mais un chemin OUVERT (ex. LINE importee en DXF,
+// 3 sommets) ne descend valablement qu'a 2 -- l'ancien code exigeait 3 dans
+// tous les cas, bloquant a tort la suppression sur ces chemins ouverts.
+TEST_CASE("RemoveNodeCommand : sur un chemin ouvert, descend jusqu'a 2 noeuds") {
+    document::Project project;
+    UndoStack stack;
+
+    document::VectorObject object;
+    object.id = project.object_ids.next();
+    object.name = "ligne brisee";
+    geometry::Path openPath;
+    openPath.closed = false;
+    openPath.nodes.push_back(geometry::PathNode{Vec2um{Micrometers{0}, Micrometers{0}},
+                                                geometry::NodeType::Corner, std::nullopt, std::nullopt});
+    openPath.nodes.push_back(geometry::PathNode{Vec2um{Micrometers{1000}, Micrometers{500}},
+                                                geometry::NodeType::Corner, std::nullopt, std::nullopt});
+    openPath.nodes.push_back(geometry::PathNode{Vec2um{Micrometers{2000}, Micrometers{0}},
+                                                geometry::NodeType::Corner, std::nullopt, std::nullopt});
+    object.paths.push_back(geometry::PathSet{openPath, {}});
+    stack.execute(std::make_unique<AddVectorObjectCommand>(object), project);
+    const ObjectId id = project.vector_objects[0].id;
+
+    // 3 noeuds -> 2 : autorise (l'ancien code le refusait a tort).
+    stack.execute(std::make_unique<RemoveNodeCommand>(id, document::NodeRef{0, 0, 1}), project);
+    REQUIRE(project.findObject(id)->paths[0].outer.nodes.size() == 2);
+    CHECK(project.findObject(id)->paths[0].outer.nodes[0].pos == Vec2um{Micrometers{0}, Micrometers{0}});
+    CHECK(project.findObject(id)->paths[0].outer.nodes[1].pos ==
+          Vec2um{Micrometers{2000}, Micrometers{0}});
+
+    // Undo de la suppression ci-dessus (avant de tester le refus a 2 noeuds,
+    // qui empilerait sinon une commande no-op et fausserait ce undo).
+    CHECK(stack.undo(project));
+    REQUIRE(project.findObject(id)->paths[0].outer.nodes.size() == 3);
+    CHECK(project.findObject(id)->paths[0].outer.nodes[1].pos ==
+          Vec2um{Micrometers{1000}, Micrometers{500}});
+    CHECK(stack.redo(project));
+    REQUIRE(project.findObject(id)->paths[0].outer.nodes.size() == 2);
+
+    // 2 noeuds : refuse de descendre a 1 (segment degenere).
+    stack.execute(std::make_unique<RemoveNodeCommand>(id, document::NodeRef{0, 0, 0}), project);
+    CHECK(project.findObject(id)->paths[0].outer.nodes.size() == 2);  // inchange
+}
+
 TEST_CASE("SetFillAngleCommand : reoriente le tatami, undo/redo exacts") {
     document::Project project;
     UndoStack stack;
