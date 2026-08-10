@@ -104,34 +104,43 @@ Result<AutoResult> auto_digitize(const segmentation::Segmentation& seg,
         bool madeSatin = false;
         bool emittedSatinNetwork = false;
         if (options.use_auto_satin && bigEnoughToFill && isThin) {
+            // Mode Parametric (rails Bézier épars) préféré : jonctions plus
+            // propres, validé visuellement sur 6 formes (cf.
+            // docs/source/satin.md, § Objets satin paramétriques). Anneaux et
+            // cas refusés retombent automatiquement sur Legacy À L'INTÉRIEUR
+            // de build_satin_columns (`columns` peuplé au lieu de
+            // `parametric_columns`) — on lit simplement celui des deux qui a
+            // été rempli, comme les créations satin manuelles côté
+            // apps/desktop.
             auto_satin::SatinColumnsParameters satinOptions;
             satinOptions.analysis.thresholds.max_satin_width = options.satin_max_width;
+            satinOptions.geometry_mode = auto_satin::SatinGeometryMode::Parametric;
             const auto network = auto_satin::build_satin_columns(main, satinOptions);
-            if (!network.columns.empty()) {
-                const std::size_t sectionCount = network.columns.size();
-                for (std::size_t sectionIndex = 0; sectionIndex < sectionCount; ++sectionIndex) {
-                    const auto& column = network.columns[sectionIndex];
+            const bool useParametric = !network.parametric_columns.empty();
+            const std::size_t sectionCount =
+                useParametric ? network.parametric_columns.size() : network.columns.size();
+            if (sectionCount > 0) {
+                const document::SatinParams defaults;
+                const auto addSection = [&](const auto& column, std::size_t sectionIndex) {
                     document::EmbroideryObject section = emb;
                     section.id = ids.next();
                     section.name = "Satin region " + std::to_string(id.value) + " - section " +
                                    std::to_string(sectionIndex + 1) + "/" +
                                    std::to_string(sectionCount);
-                    document::SatinParams sp;
-                    sp.rail_a = column.rail_a;
-                    sp.rail_b = column.rail_b;
-                    sp.max_width = options.satin_max_width;
-                    sp.rungs.reserve(column.rungs.size());
-                    for (const auto& rung : column.rungs) {
-                        sp.rungs.push_back({rung.a, rung.b});
-                    }
-                    if (column.section_count > 1 || column.start_junction ||
-                        column.end_junction) {
-                        sp.topology = document::SatinSectionTopology{
-                            column.section_index, column.section_count,
-                            column.start_junction, column.end_junction};
-                    }
-                    section.params = std::move(sp);
+                    section.params = satin_params_from_column(column, defaults.density,
+                                                              defaults.pull_compensation,
+                                                              defaults.center_underlay,
+                                                              options.satin_max_width);
                     result.embroideries.push_back(std::move(section));
+                };
+                if (useParametric) {
+                    for (std::size_t i = 0; i < sectionCount; ++i) {
+                        addSection(network.parametric_columns[i], i);
+                    }
+                } else {
+                    for (std::size_t i = 0; i < sectionCount; ++i) {
+                        addSection(network.columns[i], i);
+                    }
                 }
                 madeSatin = true;
                 emittedSatinNetwork = true;

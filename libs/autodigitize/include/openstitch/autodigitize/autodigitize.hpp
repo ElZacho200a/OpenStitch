@@ -46,4 +46,36 @@ struct AutoResult {
                                                IdGenerator<ObjectId>& ids,
                                                const AutoOptions& options);
 
+// Convertit une colonne squelette (`auto_satin::SatinColumnGeometry`, mode
+// Legacy, OU `auto_satin::ParametricSatinObject`, mode Parametric — mêmes
+// noms de champs rail_a/rail_b/rungs/section_*/*_junction, cf.
+// libs/auto_satin/include/openstitch/auto_satin/satin_column.hpp) en
+// `document::SatinParams`. Point de conversion UNIQUE partagé par
+// l'autonumérisation (ci-dessus) et les créations satin manuelles
+// (apps/desktop) — `stitch_generation::fill_satin_columns` aplatit
+// `rail_a`/`rail_b` (Bézier ou polyligne dense indifféremment) à la demande,
+// donc un seul point d'entrée suffit pour les deux modes.
+template <typename ColumnLike>
+[[nodiscard]] document::SatinParams satin_params_from_column(const ColumnLike& col, Micrometers density,
+                                                              Micrometers pull_compensation,
+                                                              bool center_underlay,
+                                                              Micrometers max_width) {
+    document::SatinParams sp;
+    sp.rail_a = col.rail_a;
+    sp.rail_b = col.rail_b;
+    sp.density = density;
+    sp.pull_compensation = pull_compensation;
+    sp.center_underlay = center_underlay;
+    sp.max_width = max_width;
+    sp.rungs.reserve(col.rungs.size());
+    for (const auto& rung : col.rungs) {
+        sp.rungs.push_back(document::SatinRung{rung.a, rung.b});
+    }
+    if (col.section_count > 1 || col.start_junction || col.end_junction) {
+        sp.topology = document::SatinSectionTopology{col.section_index, col.section_count,
+                                                     col.start_junction, col.end_junction};
+    }
+    return sp;
+}
+
 }  // namespace openstitch::autodigitize

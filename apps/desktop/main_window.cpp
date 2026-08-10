@@ -97,31 +97,6 @@ namespace openstitch::desktop {
 // entre renderBase (rendu) et updateActions (gating/sortie de mode + message).
 constexpr std::size_t kMaxEditableStitchHandles = 2000;
 
-// Convertit une colonne squelette (`auto_satin::SatinColumnGeometry`, mode
-// Legacy, OU `auto_satin::ParametricSatinObject`, mode Parametric — mêmes
-// noms de champs rail_a/rail_b/rungs/section_*/*_junction, cf.
-// satin_column.hpp) en `document::SatinParams`, réglages utilisateur
-// (densité/compensation/sous-couche) appliqués par-dessus. `fill_satin_columns`
-// aplatit `rail_a`/`rail_b` (Bézier ou polyligne dense indifféremment) à la
-// demande — un seul et même point d'entrée pour les deux modes.
-document::SatinParams satinParamsFromColumn(const auto& col, Micrometers density,
-                                            Micrometers compensation, bool underlay) {
-    document::SatinParams sp;
-    sp.rail_a = col.rail_a;
-    sp.rail_b = col.rail_b;
-    sp.density = density;
-    sp.pull_compensation = compensation;
-    sp.center_underlay = underlay;
-    for (const auto& r : col.rungs) {
-        sp.rungs.push_back(document::SatinRung{r.a, r.b});
-    }
-    if (col.section_count > 1 || col.start_junction || col.end_junction) {
-        sp.topology = document::SatinSectionTopology{col.section_index, col.section_count,
-                                                     col.start_junction, col.end_junction};
-    }
-    return sp;
-}
-
 // Repère scène (mm, Y vers le bas, Qt) <-> repère modèle (µm, Y vers le haut,
 // ADR-003). Conversion utilisée partout où une géométrie est construite
 // depuis un geste souris (rectangle/ellipse/polygone dessinés à la main).
@@ -3018,7 +2993,8 @@ void MainWindow::createSatinObject() {
     if (skeletonColumnCount > 0) {
         int idx = 0;
         const auto addColumn = [&](const auto& col) {
-            const auto sp = satinParamsFromColumn(col, density, compensation, underlay);
+            const auto sp = autodigitize::satin_params_from_column(col, density, compensation, underlay,
+                                                                    defaults.max_width);
             stitch_generation::SatinConfig probe;
             probe.density = density;
             worstWidthUm = std::max(
@@ -3223,8 +3199,9 @@ void MainWindow::autoConvertToSatin() {
     std::vector<document::EmbroideryObject> objects;
     int idx = 0;
     const auto addColumn = [&](const auto& col) {
-        const auto sp = satinParamsFromColumn(col, defaults.density, defaults.pull_compensation,
-                                              defaults.center_underlay);
+        const auto sp = autodigitize::satin_params_from_column(
+            col, defaults.density, defaults.pull_compensation, defaults.center_underlay,
+            defaults.max_width);
         document::EmbroideryObject emb;
         emb.id = project_.object_ids.next();
         emb.name = tr("Satin auto de %1 (%2)")
@@ -3351,11 +3328,13 @@ void MainWindow::setStitchType(ObjectId embroideryId, int type) {
         const document::SatinParams defaults;  // densité/compensation/sous-couche inchangées ici
         document::SatinParams sp;
         if (skeletonResult.parametric_columns.size() == 1) {
-            sp = satinParamsFromColumn(skeletonResult.parametric_columns.front(), defaults.density,
-                                       defaults.pull_compensation, defaults.center_underlay);
+            sp = autodigitize::satin_params_from_column(
+                skeletonResult.parametric_columns.front(), defaults.density, defaults.pull_compensation,
+                defaults.center_underlay, defaults.max_width);
         } else if (skeletonResult.columns.size() == 1) {
-            sp = satinParamsFromColumn(skeletonResult.columns.front(), defaults.density,
-                                       defaults.pull_compensation, defaults.center_underlay);
+            sp = autodigitize::satin_params_from_column(
+                skeletonResult.columns.front(), defaults.density, defaults.pull_compensation,
+                defaults.center_underlay, defaults.max_width);
         } else {
             auto rails = stitch_generation::rails_from_contour(source->paths.front().outer);
             if (!rails) {
