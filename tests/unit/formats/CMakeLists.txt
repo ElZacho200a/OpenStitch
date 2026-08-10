@@ -1,5 +1,6 @@
 add_executable(test_formats
     test_dst.cpp
+    test_dxf.cpp
     test_svg.cpp
 )
 target_link_libraries(test_formats

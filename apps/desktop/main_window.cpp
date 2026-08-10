@@ -58,6 +58,7 @@
 #include "openstitch/document/canvas.hpp"
 #include "openstitch/document/image_placement.hpp"
 #include "openstitch/formats/dst.hpp"
+#include "openstitch/formats/dxf.hpp"
 #include "openstitch/geometry/polyline.hpp"
 #include "openstitch/geometry/primitives.hpp"
 #include "openstitch/image/image.hpp"
@@ -454,6 +455,11 @@ void MainWindow::buildMenus() {
     connect(exportDstAct_, &QAction::triggered, this, &MainWindow::exportDst);
     auto* importDstAct = fileMenu->addAction(tr("&Importer un DST…"));
     connect(importDstAct, &QAction::triggered, this, &MainWindow::importDst);
+    fileMenu->addSeparator();
+    auto* importDxfAct = fileMenu->addAction(tr("Importer un &DXF…"));
+    connect(importDxfAct, &QAction::triggered, this, &MainWindow::importDxf);
+    auto* exportDxfAct = fileMenu->addAction(tr("Exporter en D&XF…"));
+    connect(exportDxfAct, &QAction::triggered, this, &MainWindow::exportDxf);
     fileMenu->addSeparator();
     auto* quitAct = fileMenu->addAction(tr("&Quitter"));
     quitAct->setShortcut(QKeySequence::Quit);
@@ -5349,6 +5355,70 @@ void MainWindow::importDst() {
                                  .arg(stats.stitches)
                                  .arg(stats.jumps)
                                  .arg(stats.color_changes));
+}
+
+void MainWindow::importDxf() {
+    const QString file = QFileDialog::getOpenFileName(this, tr("Importer un DXF"), QString(),
+                                                      tr("Dessin AutoCAD (*.dxf)"));
+    if (file.isEmpty()) {
+        return;
+    }
+    auto paths = formats::read_dxf_file(std::filesystem::path(file.toStdWString()));
+    if (!paths) {
+        QMessageBox::warning(this, tr("Import impossible"),
+                             QString::fromStdString(paths.error().message));
+        return;
+    }
+
+    std::vector<document::VectorObject> objects;
+    objects.reserve(paths->size());
+    for (auto& path : *paths) {
+        document::VectorObject object;
+        object.id = project_.object_ids.next();
+        object.name = tr("Import DXF %1").arg(objects.size() + 1).toStdString();
+        object.rgb = {80, 120, 200};
+        object.paths.push_back(geometry::PathSet{std::move(path), {}});
+        objects.push_back(std::move(object));
+    }
+    const std::size_t imported = objects.size();
+    undoStack_.execute(
+        std::make_unique<commands::AddObjectBatchCommand>(
+            std::move(objects), std::vector<document::EmbroideryObject>{}, "Import DXF"),
+        project_);
+    showVectorsAct_->setChecked(true);
+    refreshImage();
+    updateActions();
+    statusBar()->showMessage(
+        tr("%1 — %2 tracé(s) importé(s)").arg(QFileInfo(file).fileName()).arg(imported));
+}
+
+void MainWindow::exportDxf() {
+    if (project_.vector_objects.empty()) {
+        QMessageBox::information(this, tr("Exporter en DXF"), tr("Aucun objet vectoriel à exporter."));
+        return;
+    }
+    const QString file = QFileDialog::getSaveFileName(this, tr("Exporter en DXF"), QString(),
+                                                      tr("Dessin AutoCAD (*.dxf)"));
+    if (file.isEmpty()) {
+        return;
+    }
+    std::vector<geometry::Path> paths;
+    for (const auto& object : project_.vector_objects) {
+        for (const auto& pathSet : object.paths) {
+            paths.push_back(pathSet.outer);
+            for (const auto& hole : pathSet.holes) {
+                paths.push_back(hole);
+            }
+        }
+    }
+    const auto result = formats::write_dxf_file(std::filesystem::path(file.toStdWString()), paths);
+    if (!result) {
+        QMessageBox::warning(this, tr("Export impossible"),
+                             QString::fromStdString(result.error().message));
+        return;
+    }
+    statusBar()->showMessage(
+        tr("%1 — %2 tracé(s) exporté(s)").arg(QFileInfo(file).fileName()).arg(paths.size()));
 }
 
 void MainWindow::onCanvasClicked(QPointF posMm) {

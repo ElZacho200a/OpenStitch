@@ -93,6 +93,13 @@ private slots:
     void setHoopSize();
     void exportDst();
     void importDst();
+    // Interopérabilité esquisses avec la CAO tierce (ex. Fusion 360, cf.
+    // openstitch/formats/dxf.hpp) : import AJOUTE des objets vectoriels au
+    // document courant (comme addVectorPrimitive), contrairement à l'import
+    // DST qui REMPLACE tout le document -- un DXF est un tracé éditable à
+    // combiner avec le travail en cours, pas un motif de broderie fini.
+    void importDxf();
+    void exportDxf();
     void saveProject();
     void loadProject();
     void runAnalysis();
