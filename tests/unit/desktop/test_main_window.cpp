@@ -324,6 +324,9 @@ private slots:
     // drawRectangleToolWithRealMouseDragOnMainWindowCreatesObject ci-dessus,
     // pour la même raison : un défaut de dragMode ne se voit qu'ainsi.
     void draggingSelectedShapeBodyWithRealMouseTranslatesWholeObject();
+    // Même retour utilisateur ("manipulation des vecteurs pénible") :
+    // redimensionner exigeait aussi de déplacer chaque nœud un par un.
+    void draggingResizeHandleWithRealMouseScalesWholeObjectAroundOppositeCorner();
 
     // Colonne satin manuelle (outil DrawSatinColumn) : création par paires
     // alternées, rejet propre d'un point orphelin, annulation par changement
@@ -1563,6 +1566,78 @@ void MainWindowTest::draggingSelectedShapeBodyWithRealMouseTranslatesWholeObject
     window.redo();
     QCOMPARE(window.project_.findObject(squareId)->paths[0].outer.nodes[0].pos,
             (Vec2um{Micrometers{-2'000}, Micrometers{-2'000}}));
+}
+
+void MainWindowTest::draggingResizeHandleWithRealMouseScalesWholeObjectAroundOppositeCorner() {
+    MainWindow window;
+    Fixture fx = buildFixture();
+    // Carré 10 x 10 mm, coin bas-gauche à l'origine (pas centré, pour un
+    // ancrage sans ambiguïté) : nœuds à 0/0, 10/0, 10/10, 0/10 mm.
+    document::VectorObject square;
+    square.id = fx.project.object_ids.next();
+    square.name = "Carre";
+    geometry::Path outer;
+    outer.closed = true;
+    outer.nodes.push_back(geometry::PathNode{Vec2um{Micrometers{0}, Micrometers{0}},
+                                             geometry::NodeType::Corner, std::nullopt, std::nullopt});
+    outer.nodes.push_back(geometry::PathNode{Vec2um{Micrometers{10'000}, Micrometers{0}},
+                                             geometry::NodeType::Corner, std::nullopt, std::nullopt});
+    outer.nodes.push_back(geometry::PathNode{Vec2um{Micrometers{10'000}, Micrometers{10'000}},
+                                             geometry::NodeType::Corner, std::nullopt, std::nullopt});
+    outer.nodes.push_back(geometry::PathNode{Vec2um{Micrometers{0}, Micrometers{10'000}},
+                                             geometry::NodeType::Corner, std::nullopt, std::nullopt});
+    square.paths.push_back(geometry::PathSet{outer, {}});
+    const ObjectId squareId = square.id;
+    fx.project.vector_objects.push_back(square);
+
+    window.applyLoadedProject(fx.project);
+    window.selectedObject_ = squareId;  // sélectionné -> poignées de redimensionnement visibles
+    window.setTool(Tool::Select);
+    window.refreshImage();
+
+    auto* view = window.findChild<CanvasView*>();
+    QVERIFY(view != nullptr);
+    window.resize(1600, 1000);
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+
+    view->resetTransform();
+    view->scale(10.0, 10.0);
+    view->centerOn(QPointF(5.0, -5.0));  // centre du carré en scène (Y vers le bas)
+
+    // Poignée au coin (10000,10000)µm = (10,-10) mm scène -- glissée jusqu'à
+    // (20,-20) mm scène : double la taille, ancrée sur le coin opposé (0,0),
+    // qui reste par construction en dehors de toute poignée de nœud
+    // co-localisée grâce au z-order (ResizeHandleItem au-dessus).
+    const QPoint from = view->mapFromScene(QPointF(10.0, -10.0));
+    const QPoint mid = view->mapFromScene(QPointF(15.0, -15.0));
+    const QPoint to = view->mapFromScene(QPointF(20.0, -20.0));
+    const QRect vpRect = view->viewport()->rect();
+    QVERIFY2(vpRect.contains(from), qPrintable(QStringLiteral("from hors du viewport")));
+    QVERIFY2(vpRect.contains(to), qPrintable(QStringLiteral("to hors du viewport")));
+
+    QTest::mousePress(view->viewport(), Qt::LeftButton, Qt::NoModifier, from);
+    QTest::mouseMove(view->viewport(), mid);
+    QTest::mouseMove(view->viewport(), to);
+    QTest::mouseRelease(view->viewport(), Qt::LeftButton, Qt::NoModifier, to);
+
+    // Validation différée (QTimer::singleShot(0, ...)), comme le glisser du
+    // corps entier ci-dessus.
+    QTRY_COMPARE_WITH_TIMEOUT(window.project_.findObject(squareId)->paths[0].outer.nodes[2].pos,
+                              (Vec2um{Micrometers{20'000}, Micrometers{20'000}}), 2000);
+    const auto* scaled = window.project_.findObject(squareId);
+    QVERIFY(scaled != nullptr);
+    QCOMPARE(scaled->paths[0].outer.nodes[0].pos, (Vec2um{Micrometers{0}, Micrometers{0}}));  // ancre fixe
+    QCOMPARE(scaled->paths[0].outer.nodes[1].pos, (Vec2um{Micrometers{20'000}, Micrometers{0}}));
+    QCOMPARE(scaled->paths[0].outer.nodes[3].pos, (Vec2um{Micrometers{0}, Micrometers{20'000}}));
+
+    QVERIFY(window.undoStack_.canUndo());
+    window.undo();
+    QCOMPARE(window.project_.findObject(squareId)->paths[0].outer.nodes[2].pos,
+            (Vec2um{Micrometers{10'000}, Micrometers{10'000}}));
+    window.redo();
+    QCOMPARE(window.project_.findObject(squareId)->paths[0].outer.nodes[2].pos,
+            (Vec2um{Micrometers{20'000}, Micrometers{20'000}}));
 }
 
 void MainWindowTest::drawRectangleToolWithRealMouseDragOnMainWindowCreatesObject() {

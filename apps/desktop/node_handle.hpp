@@ -5,6 +5,7 @@
 #include <QCursor>
 #include <QGraphicsEllipseItem>
 #include <QGraphicsPathItem>
+#include <QGraphicsRectItem>
 #include <QGraphicsSceneContextMenuEvent>
 #include <QGraphicsSceneMouseEvent>
 #include <QPainterPath>
@@ -100,6 +101,45 @@ protected:
     void mouseReleaseEvent(QGraphicsSceneMouseEvent* event) override {
         QGraphicsPathItem::mouseReleaseEvent(event);
         if (onReleased_ && pos() != QPointF(0.0, 0.0)) {
+            onReleased_(pos());
+        }
+    }
+
+private:
+    std::function<void(QPointF)> onReleased_;
+};
+
+// Poignée de redimensionnement : carré (distinct des poignées de nœud,
+// rondes) à l'un des 4 coins de la boîte englobante d'une forme SÉLECTIONNÉE.
+// Glisser un coin redimensionne la forme entière autour du coin OPPOSÉ (fixe
+// par construction — c'est l'appelant qui calcule l'ancrage et les facteurs
+// d'échelle à partir de `pos()` au relâchement, cf. ScaleVectorObjectCommand).
+// Même principe que NodeHandleItem (taille fixe à l'écran, callback au
+// relâchement) mais un carré, pour ne jamais laisser croire qu'on édite un
+// nœud du contour.
+class ResizeHandleItem : public QGraphicsRectItem {
+public:
+    ResizeHandleItem(QPointF sceneMm, std::function<void(QPointF)> onReleased)
+        : QGraphicsRectItem(-4.0, -4.0, 8.0, 8.0), onReleased_(std::move(onReleased)) {
+        setPos(sceneMm);
+        setFlag(ItemIgnoresTransformations);
+        setFlag(ItemIsMovable);
+        setBrush(QBrush(AppTheme::instance().tokens().canvasSelectionHalo));
+        setPen(QPen(AppTheme::instance().tokens().canvasSelectionLine, 1.5));
+        setZValue(101);  // au-dessus des poignées de nœud (100) : jamais masquée par elles
+        setCursor(Qt::SizeFDiagCursor);
+    }
+
+    [[nodiscard]] QPainterPath shape() const override {
+        QPainterPath path;
+        path.addRect(QRectF(-7.0, -7.0, 14.0, 14.0));
+        return path;
+    }
+
+protected:
+    void mouseReleaseEvent(QGraphicsSceneMouseEvent* event) override {
+        QGraphicsRectItem::mouseReleaseEvent(event);
+        if (onReleased_) {
             onReleased_(pos());
         }
     }

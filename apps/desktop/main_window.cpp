@@ -2039,6 +2039,70 @@ void MainWindow::renderBase(const image::Image& img) {
                 }
             }
         }
+
+        // Poignées de redimensionnement (4 coins de la boîte englobante) de
+        // l'objet sélectionné, mode Sélection uniquement : glisser un coin
+        // redimensionne la forme entière autour du coin diagonalement
+        // opposé (fixe) — jusqu'ici, redimensionner exigeait de déplacer
+        // chaque nœud un par un (même défaut remonté que pour le déplacement
+        // de forme entière, § VectorObjectBodyItem plus haut).
+        if (selectedObject_ && currentTool_ == Tool::Select) {
+            if (const auto* object = project_.findObject(*selectedObject_)) {
+                std::optional<Micrometers> minX, maxX, minY, maxY;
+                const auto scan = [&](const geometry::Path& path) {
+                    for (const auto& node : path.nodes) {
+                        if (!minX || node.pos.x < *minX) minX = node.pos.x;
+                        if (!maxX || node.pos.x > *maxX) maxX = node.pos.x;
+                        if (!minY || node.pos.y < *minY) minY = node.pos.y;
+                        if (!maxY || node.pos.y > *maxY) maxY = node.pos.y;
+                    }
+                };
+                for (const auto& set : object->paths) {
+                    scan(set.outer);
+                    for (const auto& hole : set.holes) {
+                        scan(hole);
+                    }
+                }
+                // Boîte dégénérée sur un axe (segment/point) : aucun coin
+                // opposé exploitable comme ancrage sur cet axe, on renonce
+                // plutôt que de diviser par zéro.
+                if (minX && maxX && minY && maxY && *minX != *maxX && *minY != *maxY) {
+                    const ObjectId objectId = object->id;
+                    const Vec2um corners[4] = {
+                        Vec2um{*minX, *minY}, Vec2um{*maxX, *minY}, Vec2um{*maxX, *maxY},
+                        Vec2um{*minX, *maxY}};
+                    for (std::size_t i = 0; i < 4; ++i) {
+                        const Vec2um corner = corners[i];
+                        const Vec2um anchor = corners[(i + 2) % 4];  // coin diagonalement opposé
+                        auto* handle = new ResizeHandleItem(
+                            modelToSceneMm(corner), [this, objectId, corner, anchor](QPointF newSceneMm) {
+                                const Vec2um newCorner = sceneMmToModel(newSceneMm);
+                                if (newCorner == corner) {
+                                    return;
+                                }
+                                const double sx = static_cast<double>((newCorner.x - anchor.x).value) /
+                                                  static_cast<double>((corner.x - anchor.x).value);
+                                const double sy = static_cast<double>((newCorner.y - anchor.y).value) /
+                                                  static_cast<double>((corner.y - anchor.y).value);
+                                // Diffère : refreshImage() détruirait cet item pendant
+                                // son propre événement souris (même défaut que
+                                // NodeHandleItem/VectorObjectBodyItem).
+                                QTimer::singleShot(0, this, [this, objectId, anchor, sx, sy] {
+                                    undoStack_.execute(
+                                        std::make_unique<commands::ScaleVectorObjectCommand>(
+                                            objectId, anchor, sx, sy),
+                                        project_);
+                                    refreshImage();
+                                    updateActions();
+                                });
+                            });
+                        handle->setToolTip(tr("Glisser pour redimensionner (coin opposé fixe)"));
+                        scene_->addItem(handle);
+                        baseItems_.append(handle);
+                    }
+                }
+            }
+        }
     }
 
     // Poignée de rotation du remplissage tatami sélectionné : un axe montrant

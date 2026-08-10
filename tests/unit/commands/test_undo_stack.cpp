@@ -184,6 +184,56 @@ TEST_CASE("TranslateVectorObjectCommand : deplace tous les noeuds (tous morceaux
     CHECK(redone->paths[0].outer.nodes[0].pos == Vec2um{Micrometers{500}, Micrometers{-1200}});
 }
 
+TEST_CASE("ScaleVectorObjectCommand : redimensionne autour d'un ancrage fixe, met a l'echelle les tangentes, undo exact") {
+    document::Project project;
+    UndoStack stack;
+
+    document::VectorObject object;
+    object.id = project.object_ids.next();
+    object.name = "carre a coin ancre";
+    // Carre 10x10mm, coin bas-gauche (0,0) sert d'ancrage (fixe par construction).
+    geometry::Path outer;
+    outer.closed = true;
+    outer.nodes.push_back(geometry::PathNode{Vec2um{Micrometers{0}, Micrometers{0}},
+                                             geometry::NodeType::Corner, std::nullopt, std::nullopt});
+    outer.nodes.push_back(geometry::PathNode{Vec2um{Micrometers{10000}, Micrometers{0}},
+                                             geometry::NodeType::Smooth,
+                                             Vec2um{Micrometers{-1000}, Micrometers{0}},
+                                             Vec2um{Micrometers{1000}, Micrometers{0}}});
+    outer.nodes.push_back(geometry::PathNode{Vec2um{Micrometers{10000}, Micrometers{10000}},
+                                             geometry::NodeType::Corner, std::nullopt, std::nullopt});
+    object.paths.push_back(geometry::PathSet{outer, {}});
+    stack.execute(std::make_unique<AddVectorObjectCommand>(object), project);
+    const ObjectId id = project.vector_objects[0].id;
+
+    const Vec2um anchor{Micrometers{0}, Micrometers{0}};
+    stack.execute(std::make_unique<ScaleVectorObjectCommand>(id, anchor, 2.0, 0.5), project);
+
+    const auto* scaled = project.findObject(id);
+    REQUIRE(scaled != nullptr);
+    CHECK(scaled->paths[0].outer.nodes[0].pos == anchor);  // l'ancrage ne bouge jamais
+    CHECK(scaled->paths[0].outer.nodes[1].pos == Vec2um{Micrometers{20000}, Micrometers{0}});
+    CHECK(scaled->paths[0].outer.nodes[2].pos == Vec2um{Micrometers{20000}, Micrometers{5000}});
+    // Les tangentes (relatives au noeud) suivent la meme mise a l'echelle par axe.
+    REQUIRE(scaled->paths[0].outer.nodes[1].tan_in.has_value());
+    CHECK(*scaled->paths[0].outer.nodes[1].tan_in == Vec2um{Micrometers{-2000}, Micrometers{0}});
+    REQUIRE(scaled->paths[0].outer.nodes[1].tan_out.has_value());
+    CHECK(*scaled->paths[0].outer.nodes[1].tan_out == Vec2um{Micrometers{2000}, Micrometers{0}});
+
+    CHECK(stack.undo(project));
+    const auto* reverted = project.findObject(id);
+    REQUIRE(reverted != nullptr);
+    CHECK(reverted->paths[0].outer.nodes[1].pos == Vec2um{Micrometers{10000}, Micrometers{0}});
+    CHECK(reverted->paths[0].outer.nodes[2].pos == Vec2um{Micrometers{10000}, Micrometers{10000}});
+    REQUIRE(reverted->paths[0].outer.nodes[1].tan_in.has_value());
+    CHECK(*reverted->paths[0].outer.nodes[1].tan_in == Vec2um{Micrometers{-1000}, Micrometers{0}});
+
+    CHECK(stack.redo(project));
+    const auto* redone = project.findObject(id);
+    REQUIRE(redone != nullptr);
+    CHECK(redone->paths[0].outer.nodes[2].pos == Vec2um{Micrometers{20000}, Micrometers{5000}});
+}
+
 TEST_CASE("AddVectorObject et MoveNode : undo/redo coherents") {
     document::Project project;
     UndoStack stack;

@@ -2,6 +2,7 @@
 #pragma once
 
 #include <algorithm>
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <optional>
@@ -315,6 +316,70 @@ private:
 
     ObjectId object_;
     Vec2um delta_;
+};
+
+// Redimensionne un objet vectoriel ENTIER autour d'un point d'ancrage FIXE
+// (le coin opposé à la poignée glissée côté apps/desktop), indépendamment
+// sur chaque axe. Les tangentes Bézier (relatives au nœud) sont mises à
+// l'échelle avec lui pour conserver la forme des courbes. Undo EXACT par
+// instantané (pas une inversion de facteur d'échelle, qui dériverait de
+// quelques µm par l'arrondi entier) — même exigence de précision que le
+// reste du projet (déterminisme, DST bit-à-bit).
+class ScaleVectorObjectCommand final : public ICommand {
+public:
+    ScaleVectorObjectCommand(ObjectId object, Vec2um anchor, double scaleX, double scaleY)
+        : object_(object), anchor_(anchor), scaleX_(scaleX), scaleY_(scaleY) {}
+
+    void apply(document::Project& project) override {
+        auto* object = project.findObject(object_);
+        if (object == nullptr) {
+            return;
+        }
+        before_ = object->paths;
+        for (auto& set : object->paths) {
+            for (auto& node : set.outer.nodes) {
+                scaleNode(node);
+            }
+            for (auto& hole : set.holes) {
+                for (auto& node : hole.nodes) {
+                    scaleNode(node);
+                }
+            }
+        }
+    }
+    void revert(document::Project& project) override {
+        if (auto* object = project.findObject(object_)) {
+            object->paths = before_;
+        }
+    }
+    [[nodiscard]] std::string name() const override { return "Redimensionnement de forme"; }
+
+private:
+    [[nodiscard]] Vec2um scalePoint(Vec2um p) const {
+        const double dx = static_cast<double>((p.x - anchor_.x).value);
+        const double dy = static_cast<double>((p.y - anchor_.y).value);
+        return Vec2um{
+            Micrometers{anchor_.x.value + static_cast<std::int32_t>(std::lround(dx * scaleX_))},
+            Micrometers{anchor_.y.value + static_cast<std::int32_t>(std::lround(dy * scaleY_))}};
+    }
+    [[nodiscard]] std::optional<Vec2um> scaleTangent(std::optional<Vec2um> t) const {
+        if (!t) {
+            return std::nullopt;
+        }
+        return Vec2um{Micrometers{static_cast<std::int32_t>(std::lround(t->x.value * scaleX_))},
+                     Micrometers{static_cast<std::int32_t>(std::lround(t->y.value * scaleY_))}};
+    }
+    void scaleNode(geometry::PathNode& node) const {
+        node.pos = scalePoint(node.pos);
+        node.tan_in = scaleTangent(node.tan_in);
+        node.tan_out = scaleTangent(node.tan_out);
+    }
+
+    ObjectId object_;
+    Vec2um anchor_;
+    double scaleX_;
+    double scaleY_;
+    std::vector<geometry::PathSet> before_;
 };
 
 // Déplace un nœud d'un objet vectoriel.
