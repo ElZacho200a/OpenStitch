@@ -13,6 +13,7 @@
 #include <QFileInfo>
 #include <QFont>
 #include <QFormLayout>
+#include <QGraphicsEllipseItem>
 #include <QGraphicsPixmapItem>
 #include <QGraphicsScene>
 #include <QGridLayout>
@@ -33,6 +34,7 @@
 #include <algorithm>
 #include <cmath>
 #include <filesystem>
+#include <limits>
 #include <map>
 #include <numbers>
 #include <unordered_map>
@@ -370,16 +372,25 @@ MainWindow::MainWindow() {
     connect(view_, &CanvasView::boxDrawnMm, this, &MainWindow::onBoxDrawn);
     connect(view_, &CanvasView::canvasDoubleClickedMm, this, &MainWindow::onCanvasDoubleClicked);
     connect(view_, &CanvasView::cursorMovedMm, this, [this](QPointF physicalMm) {
+        // physicalMm est déjà Y-haut (cf. CanvasView::mouseMoveEvent) ; on
+        // revient au repère scène (Y-bas) pour les aperçus QGraphicsItem.
+        const QPointF sceneMm(physicalMm.x(), -physicalMm.y());
+        // Accroche (façon Fusion 360) : seulement pour les outils où le clic
+        // pose réellement le point prévisualisé ici -- cf. commentaire de
+        // findSnapPointMm (Bézier/rectangle/ellipse exclus).
+        const bool snapEligible =
+            currentTool_ == Tool::DrawPolygon || currentTool_ == Tool::DrawSatinColumn;
+        const std::optional<QPointF> snap = snapEligible ? findSnapPointMm(sceneMm) : std::nullopt;
+        updateSnapIndicator(snap);
+        const QPointF effectiveMm = snap.value_or(sceneMm);
         if (currentTool_ == Tool::DrawPolygon && !pendingPolygonVertices_.empty()) {
-            // physicalMm est déjà Y-haut (cf. CanvasView::mouseMoveEvent) ; on
-            // revient au repère scène (Y-bas) pour l'aperçu QGraphicsItem.
-            updatePolygonPreview(QPointF(physicalMm.x(), -physicalMm.y()));
+            updatePolygonPreview(effectiveMm);
         }
         if (currentTool_ == Tool::DrawSatinColumn && !pendingSatinPoints_.empty()) {
-            updateSatinColumnPreview(QPointF(physicalMm.x(), -physicalMm.y()));
+            updateSatinColumnPreview(effectiveMm);
         }
         if (currentTool_ == Tool::DrawBezier && !pendingBezierNodes_.empty()) {
-            updateBezierPreview(QPointF(physicalMm.x(), -physicalMm.y()));
+            updateBezierPreview(sceneMm);
         }
     });
 
@@ -1199,6 +1210,25 @@ void MainWindow::onBoxDrawn(QRectF rectMm, Qt::KeyboardModifiers modifiers) {
         box.setWidth(side);
         box.setHeight(side);
     }
+    // Accroche des deux coins, indépendamment l'un de l'autre (pas d'aperçu en
+    // cours de glisser ici, contrairement au polygone/satin : le glisser
+    // élastique rectangle/ellipse est le RubberBandDrag natif de Qt, pas un
+    // aperçu personnalisable point par point).
+    QPointF topLeft = box.topLeft();
+    QPointF bottomRight = box.bottomRight();
+    if (const auto snap = findSnapPointMm(topLeft)) {
+        topLeft = *snap;
+    }
+    if (const auto snap = findSnapPointMm(bottomRight)) {
+        bottomRight = *snap;
+    }
+    box = QRectF(topLeft, bottomRight).normalized();
+    if (box.width() < kMinDrawExtentMm || box.height() < kMinDrawExtentMm) {
+        // L'accroche a ramené les deux coins trop près l'un de l'autre : mieux
+        // vaut renoncer que créer une forme dégénérée.
+        statusBar()->showMessage(tr("Forme trop petite après accroche — glissez davantage."));
+        return;
+    }
     const Vec2um c1 = sceneMmToModel(box.topLeft());
     const Vec2um c2 = sceneMmToModel(box.bottomRight());
     if (currentTool_ == Tool::DrawRectangle) {
@@ -1319,6 +1349,96 @@ void MainWindow::removeLastPolygonVertex() {
     updateDrawActionsState();
     statusBar()->showMessage(
         tr("Polygone : %1 sommet(s) restant(s).").arg(pendingPolygonVertices_.size()));
+}
+
+namespace {
+constexpr double kSnapRadiusPx = 10.0;  // rayon d'accroche « visé » à l'écran
+// Borné en mm (pas seulement en pixels écran) : à fort dézoom (grand hoop, ou
+// même la fenêtre pas encore affichée/redimensionnée en test -- pixelsPerMm()
+// alors minuscule), 10 px écran peuvent représenter des dizaines de mm, ce qui
+// accrocherait à des formes sans rapport visuel avec le curseur. 3 mm reste
+// perceptible à l'écran à peu près à tout niveau de zoom réaliste et borne le
+// pire cas (défaut trouvé par test : accroche parasite à plus de 10 mm quand
+// la fenêtre n'a pas encore de taille réelle).
+constexpr double kSnapRadiusMinMm = 0.05;
+constexpr double kSnapRadiusMaxMm = 2.0;
+}  // namespace
+
+std::optional<QPointF> MainWindow::findSnapPointMm(QPointF cursorSceneMm) const {
+    const double radiusMm = std::clamp(kSnapRadiusPx / std::max(view_->pixelsPerMm(), 0.01),
+                                       kSnapRadiusMinMm, kSnapRadiusMaxMm);
+    double bestDistSq = radiusMm * radiusMm;
+    std::optional<QPointF> best;
+    const auto consider = [&](QPointF candidate) {
+        const double dx = candidate.x() - cursorSceneMm.x();
+        const double dy = candidate.y() - cursorSceneMm.y();
+        const double distSq = dx * dx + dy * dy;
+        if (distSq <= bestDistSq) {
+            bestDistSq = distSq;
+            best = candidate;
+        }
+    };
+    // Extrémités, milieux de segment (corde -- pas d'évaluation de courbe pour
+    // les nœuds Lisse : approximation suffisante, la même que l'aperçu élastique
+    // des autres outils) et centre (boîte englobante) des morceaux fermés.
+    for (const auto& object : project_.vector_objects) {
+        if (!object.visible) {
+            continue;
+        }
+        const auto considerPath = [&](const geometry::Path& path) {
+            if (path.nodes.empty()) {
+                return;
+            }
+            double minX = std::numeric_limits<double>::max();
+            double maxX = std::numeric_limits<double>::lowest();
+            double minY = std::numeric_limits<double>::max();
+            double maxY = std::numeric_limits<double>::lowest();
+            for (const auto& node : path.nodes) {
+                const QPointF p = modelToSceneMm(node.pos);
+                consider(p);
+                minX = std::min(minX, p.x());
+                maxX = std::max(maxX, p.x());
+                minY = std::min(minY, p.y());
+                maxY = std::max(maxY, p.y());
+            }
+            const std::size_t count = path.nodes.size();
+            const std::size_t segments = path.closed ? count : (count - 1);
+            for (std::size_t i = 0; i < segments; ++i) {
+                const QPointF a = modelToSceneMm(path.nodes[i].pos);
+                const QPointF b = modelToSceneMm(path.nodes[(i + 1) % count].pos);
+                consider(QPointF((a.x() + b.x()) / 2.0, (a.y() + b.y()) / 2.0));
+            }
+            if (path.closed) {
+                consider(QPointF((minX + maxX) / 2.0, (minY + maxY) / 2.0));
+            }
+        };
+        for (const auto& pathSet : object.paths) {
+            considerPath(pathSet.outer);
+            for (const auto& hole : pathSet.holes) {
+                considerPath(hole);
+            }
+        }
+    }
+    return best;
+}
+
+void MainWindow::updateSnapIndicator(std::optional<QPointF> snapSceneMm) {
+    if (!snapSceneMm) {
+        if (snapIndicatorItem_ != nullptr) {
+            snapIndicatorItem_->setVisible(false);
+        }
+        return;
+    }
+    if (snapIndicatorItem_ == nullptr) {
+        snapIndicatorItem_ = new QGraphicsEllipseItem(-5.0, -5.0, 10.0, 10.0);
+        snapIndicatorItem_->setFlag(QGraphicsItem::ItemIgnoresTransformations);
+        snapIndicatorItem_->setPen(QPen(QColor(255, 140, 0), 2));
+        snapIndicatorItem_->setBrush(Qt::NoBrush);
+        snapIndicatorItem_->setZValue(1002.0);  // au-dessus des aperçus élastiques (1000)
+        scene_->addItem(snapIndicatorItem_);
+    }
+    snapIndicatorItem_->setPos(*snapSceneMm);
+    snapIndicatorItem_->setVisible(true);
 }
 
 void MainWindow::updateSatinColumnPreview(QPointF cursorSceneMm) {
@@ -4260,6 +4380,10 @@ void MainWindow::setTool(Tool tool) {
     if (currentTool_ == Tool::DrawBezier && tool != Tool::DrawBezier) {
         cancelBezierDraw();
     }
+    // Un changement d'outil peut laisser le repère d'accroche affiché à une
+    // position qui ne correspond plus à rien (ex. sorti du mode Polygone
+    // sans bouger la souris) : masqué jusqu'au prochain mouvement pertinent.
+    updateSnapIndicator(std::nullopt);
     currentTool_ = tool;
 
     // Synchronise les cases d'outils (sans réémettre).
@@ -5233,6 +5357,7 @@ void MainWindow::onCanvasClicked(QPointF posMm) {
         return;
     }
     if (currentTool_ == Tool::DrawPolygon) {
+        posMm = findSnapPointMm(posMm).value_or(posMm);
         const Vec2um v = sceneMmToModel(posMm);
         if (!pendingPolygonVertices_.empty()) {
             // Séquence Qt d'un double-clic : press/release/DOUBLECLICK/release —
@@ -5256,6 +5381,7 @@ void MainWindow::onCanvasClicked(QPointF posMm) {
         return;
     }
     if (currentTool_ == Tool::DrawSatinColumn) {
+        posMm = findSnapPointMm(posMm).value_or(posMm);
         const Vec2um v = sceneMmToModel(posMm);
         if (!pendingSatinPoints_.empty()) {
             // Même garde anti-doublon que le polygone : la séquence Qt d'un

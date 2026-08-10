@@ -297,6 +297,12 @@ private slots:
     void drawEllipseToolCreatesUndoableVectorObject();
     void drawEllipseWithShiftConstrainsToCircle();
     void drawingTooSmallABoxCreatesNoObject();
+    // Accroche façon Fusion 360 (audit "outils de sketch") : un clic/survol
+    // proche d'un sommet existant se pose exactement dessus, avec repère
+    // visuel ; loin de tout candidat, la position brute du curseur est
+    // conservée.
+    void drawPolygonSnapsToExistingVertexAndShowsIndicator();
+    void drawRectangleSnapsCornersToExistingVectorVertices();
     void drawPolygonAccumulatesVerticesAndClosesOnDoubleClick();
     void drawPolygonWithFewerThanThreeVerticesCancelsOnDoubleClick();
     void switchingToolDuringPolygonDrawCancelsIt();
@@ -1841,6 +1847,74 @@ void MainWindowTest::drawingTooSmallABoxCreatesNoObject() {
 
     QCOMPARE(window.project_.vector_objects.size(), before);
     QVERIFY(!window.undoStack_.canUndo());
+}
+
+void MainWindowTest::drawPolygonSnapsToExistingVertexAndShowsIndicator() {
+    MainWindow window;
+    const Fixture fx = buildFixture();
+    window.applyLoadedProject(fx.project);
+    auto* view = window.findChild<CanvasView*>();
+    QVERIFY(view != nullptr);
+
+    // Triangle de buildFixture() : sommets modèle (0,0), (1000,0), (0,1000) µm
+    // -> scène mm (Y inversé) (0,0), (1,0), (0,-1). Rayon d'accroche par
+    // défaut (10 px écran / pixelsPerMm() == 1.0 sans zoom appliqué) = 10 mm.
+    window.setTool(Tool::DrawPolygon);
+    QVERIFY(window.snapIndicatorItem_ == nullptr || !window.snapIndicatorItem_->isVisible());
+
+    // Survol proche du sommet scène (1,0) : le repère d'accroche apparaît.
+    view->cursorMovedMm(QPointF(1.05, 0.03));
+    QVERIFY(window.snapIndicatorItem_ != nullptr);
+    QVERIFY(window.snapIndicatorItem_->isVisible());
+
+    // Le clic pose EXACTEMENT le sommet existant, pas la position brute.
+    view->canvasClickedMm(QPointF(1.05, -0.03));
+    QCOMPARE(window.pendingPolygonVertices_.size(), std::size_t{1});
+    QCOMPARE(window.pendingPolygonVertices_.back(),
+            (Vec2um{Micrometers{1000}, Micrometers{0}}));
+
+    // Loin de tout candidat (> 10 mm) : position brute conservée, pas d'accroche.
+    view->canvasClickedMm(QPointF(50.0, 50.0));
+    QCOMPARE(window.pendingPolygonVertices_.size(), std::size_t{2});
+    QCOMPARE(window.pendingPolygonVertices_.back(),
+            (Vec2um{Micrometers{50'000}, Micrometers{-50'000}}));
+
+    // Sortir de l'outil masque le repère, même sans mouvement de souris.
+    window.setTool(Tool::Select);
+    QVERIFY(window.snapIndicatorItem_ == nullptr || !window.snapIndicatorItem_->isVisible());
+}
+
+void MainWindowTest::drawRectangleSnapsCornersToExistingVectorVertices() {
+    MainWindow window;
+    const Fixture fx = buildFixture();
+    window.applyLoadedProject(fx.project);
+    auto* view = window.findChild<CanvasView*>();
+    QVERIFY(view != nullptr);
+
+    const std::size_t before = window.project_.vector_objects.size();
+    window.setTool(Tool::DrawRectangle);
+    // Cadre brut proche des sommets scène (0,-1) et (1,0) du triangle de
+    // buildFixture() : chaque coin s'accroche indépendamment à son sommet le
+    // plus proche plutôt que de garder la position brute du glisser.
+    view->boxDrawnMm(QRectF(QPointF(0.05, -0.95), QPointF(0.95, -0.05)), Qt::NoModifier);
+
+    QCOMPARE(window.project_.vector_objects.size(), before + 1);
+    const auto& nodes = window.project_.vector_objects.back().paths[0].outer.nodes;
+    QVERIFY(!nodes.empty());
+    std::int32_t minX = nodes.front().pos.x.value;
+    std::int32_t maxX = nodes.front().pos.x.value;
+    std::int32_t minY = nodes.front().pos.y.value;
+    std::int32_t maxY = nodes.front().pos.y.value;
+    for (const auto& n : nodes) {
+        minX = std::min(minX, n.pos.x.value);
+        maxX = std::max(maxX, n.pos.x.value);
+        minY = std::min(minY, n.pos.y.value);
+        maxY = std::max(maxY, n.pos.y.value);
+    }
+    QCOMPARE(minX, std::int32_t{0});
+    QCOMPARE(maxX, std::int32_t{1000});
+    QCOMPARE(minY, std::int32_t{0});
+    QCOMPARE(maxY, std::int32_t{1000});
 }
 
 void MainWindowTest::drawPolygonAccumulatesVerticesAndClosesOnDoubleClick() {

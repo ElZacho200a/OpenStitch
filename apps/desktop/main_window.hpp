@@ -18,6 +18,7 @@
 class QGraphicsScene;
 class QGraphicsItem;
 class QGraphicsPathItem;
+class QGraphicsEllipseItem;
 class QLabel;
 class QAction;
 class QListWidget;
@@ -201,6 +202,21 @@ private:
     void finishPolygon();
     void cancelPolygonDraw();
     void removeLastPolygonVertex();
+    // Accroche façon Fusion 360 (audit ergonomie esquisse demandé par
+    // l'utilisateur) : cherche le point le plus proche du curseur parmi les
+    // extrémités/milieux/centres des objets vectoriels existants, dans un
+    // rayon fixe à l'écran (donc constant quel que soit le zoom). Utilisé par
+    // le polygone et la colonne satin manuelle (clic = pose réelle du point,
+    // donc l'accroche affichée correspond exactement à ce qui est posé) ;
+    // délibérément PAS branché sur Bézier (l'ancre y est capturée dans
+    // CanvasView au press, avant que ce code ait pu intervenir — brancher
+    // seulement l'aperçu aurait affiché une accroche qui ne se produit pas
+    // réellement au clic, pire qu'aucune accroche) ni sur le rectangle/ellipse
+    // (glisser natif RubberBandDrag de Qt, pas d'aperçu personnalisable en
+    // cours de glisser ; seuls les coins finaux sont accrochés à la fin).
+    [[nodiscard]] std::optional<QPointF> findSnapPointMm(QPointF cursorSceneMm) const;
+    // Affiche/masque le repère visuel d'accroche (cercle) au point donné.
+    void updateSnapIndicator(std::optional<QPointF> snapSceneMm);
     // Miroir de ce qui précède pour le tracé à main levée (outil
     // DrawFreeform) : un point par évènement CanvasView::freeformPointMm
     // (pas de segment élastique jusqu'au curseur, contrairement au polygone —
@@ -308,6 +324,7 @@ private:
     // l'annulation, ou reconstruit à chaque `renderBase`/changement d'outil).
     std::vector<Vec2um> pendingPolygonVertices_;
     QGraphicsPathItem* polygonPreviewItem_{nullptr};
+    QGraphicsEllipseItem* snapIndicatorItem_{nullptr};  // repère d'accroche (indépendant de baseItems_)
 
     // Tracé à main levée en cours (outil DrawFreeform) : points bruts captés
     // pendant le glisser (repère modèle, µm) + aperçu (même cycle de vie que
