@@ -97,6 +97,31 @@ namespace openstitch::desktop {
 // entre renderBase (rendu) et updateActions (gating/sortie de mode + message).
 constexpr std::size_t kMaxEditableStitchHandles = 2000;
 
+// Convertit une colonne squelette (`auto_satin::SatinColumnGeometry`, mode
+// Legacy, OU `auto_satin::ParametricSatinObject`, mode Parametric — mêmes
+// noms de champs rail_a/rail_b/rungs/section_*/*_junction, cf.
+// satin_column.hpp) en `document::SatinParams`, réglages utilisateur
+// (densité/compensation/sous-couche) appliqués par-dessus. `fill_satin_columns`
+// aplatit `rail_a`/`rail_b` (Bézier ou polyligne dense indifféremment) à la
+// demande — un seul et même point d'entrée pour les deux modes.
+document::SatinParams satinParamsFromColumn(const auto& col, Micrometers density,
+                                            Micrometers compensation, bool underlay) {
+    document::SatinParams sp;
+    sp.rail_a = col.rail_a;
+    sp.rail_b = col.rail_b;
+    sp.density = density;
+    sp.pull_compensation = compensation;
+    sp.center_underlay = underlay;
+    for (const auto& r : col.rungs) {
+        sp.rungs.push_back(document::SatinRung{r.a, r.b});
+    }
+    if (col.section_count > 1 || col.start_junction || col.end_junction) {
+        sp.topology = document::SatinSectionTopology{col.section_index, col.section_count,
+                                                     col.start_junction, col.end_junction};
+    }
+    return sp;
+}
+
 // Repère scène (mm, Y vers le bas, Qt) <-> repère modèle (µm, Y vers le haut,
 // ADR-003). Conversion utilisée partout où une géométrie est construite
 // depuis un geste souris (rectangle/ellipse/polygone dessinés à la main).
@@ -2925,12 +2950,22 @@ void MainWindow::createSatinObject() {
     // concaves/branchues sans faire sortir les barreaux de la région (cf.
     // docs/source/satin.md, § Rails automatiques : l'heuristique naïve
     // rails_from_contour — deux sommets les plus éloignés — en fait déborder
-    // jusqu'à 57 % sur une forme réelle). Préféré ici ; l'heuristique naïve ne
-    // sert plus que de repli sur une forme trop simple/dégénérée pour que
-    // l'analyse de squelette produise quoi que ce soit.
-    const auto skeletonResult = auto_satin::build_satin_columns(source->paths.front(), {});
+    // jusqu'à 57 % sur une forme réelle). Préféré ici, en mode Parametric
+    // (rails Bézier épars, jonctions plus propres — § Objets satin
+    // paramétriques) ; les anneaux et refus retombent automatiquement sur
+    // Legacy À L'INTÉRIEUR de build_satin_columns (`columns` peuplé au lieu
+    // de `parametric_columns`). L'heuristique naïve ne sert plus que de repli
+    // ultime, sur une forme trop simple/dégénérée pour que l'analyse de
+    // squelette produise quoi que ce soit (les deux champs vides).
+    auto_satin::SatinColumnsParameters skeletonParams;
+    skeletonParams.geometry_mode = auto_satin::SatinGeometryMode::Parametric;
+    const auto skeletonResult = auto_satin::build_satin_columns(source->paths.front(), skeletonParams);
+    const bool useParametric = !skeletonResult.parametric_columns.empty();
+    const std::size_t skeletonColumnCount =
+        useParametric ? skeletonResult.parametric_columns.size() : skeletonResult.columns.size();
+
     std::optional<std::pair<geometry::Path, geometry::Path>> fallbackRails;
-    if (skeletonResult.columns.empty()) {
+    if (skeletonColumnCount == 0) {
         fallbackRails = stitch_generation::rails_from_contour(source->paths.front().outer);
         if (!fallbackRails) {
             QMessageBox::warning(this, tr("Satin impossible"),
@@ -2980,22 +3015,10 @@ void MainWindow::createSatinObject() {
 
     std::vector<document::EmbroideryObject> objects;
     double worstWidthUm = 0.0;
-    if (!skeletonResult.columns.empty()) {
+    if (skeletonColumnCount > 0) {
         int idx = 0;
-        for (const auto& col : skeletonResult.columns) {
-            document::SatinParams sp;
-            sp.rail_a = col.rail_a;
-            sp.rail_b = col.rail_b;
-            sp.density = density;
-            sp.pull_compensation = compensation;
-            sp.center_underlay = underlay;
-            for (const auto& r : col.rungs) {
-                sp.rungs.push_back(document::SatinRung{r.a, r.b});
-            }
-            if (col.section_count > 1 || col.start_junction || col.end_junction) {
-                sp.topology = document::SatinSectionTopology{col.section_index, col.section_count,
-                                                             col.start_junction, col.end_junction};
-            }
+        const auto addColumn = [&](const auto& col) {
+            const auto sp = satinParamsFromColumn(col, density, compensation, underlay);
             stitch_generation::SatinConfig probe;
             probe.density = density;
             worstWidthUm = std::max(
@@ -3003,7 +3026,7 @@ void MainWindow::createSatinObject() {
 
             document::EmbroideryObject object;
             object.id = project_.object_ids.next();
-            object.name = (skeletonResult.columns.size() > 1
+            object.name = (skeletonColumnCount > 1
                               ? tr("Satin de %1 (%2)")
                                     .arg(QString::fromStdString(source->name))
                                     .arg(++idx)
@@ -3013,6 +3036,15 @@ void MainWindow::createSatinObject() {
             object.rgb = source->rgb;
             object.params = sp;
             objects.push_back(std::move(object));
+        };
+        if (useParametric) {
+            for (const auto& col : skeletonResult.parametric_columns) {
+                addColumn(col);
+            }
+        } else {
+            for (const auto& col : skeletonResult.columns) {
+                addColumn(col);
+            }
         }
     } else {
         document::SatinParams sp;
@@ -3145,7 +3177,19 @@ void MainWindow::autoConvertToSatin() {
         return;
     }
 
-    const auto result = auto_satin::build_satin_columns(source->paths.front(), {});
+    // Mode Parametric (rails Bézier épars) préféré : jonctions plus propres,
+    // validé visuellement sur 6 formes (cf. docs/source/satin.md, § Objets
+    // satin paramétriques). Les anneaux et cas refusés retombent
+    // automatiquement sur Legacy À L'INTÉRIEUR de build_satin_columns
+    // (`columns` peuplé au lieu de `parametric_columns`) — on lit simplement
+    // celui des deux qui a été rempli.
+    auto_satin::SatinColumnsParameters skeletonParams;
+    skeletonParams.geometry_mode = auto_satin::SatinGeometryMode::Parametric;
+    const auto result = auto_satin::build_satin_columns(source->paths.front(), skeletonParams);
+    const bool useParametric = !result.parametric_columns.empty();
+    const std::size_t columnCount =
+        useParametric ? result.parametric_columns.size() : result.columns.size();
+
     const auto& rep = result.report;
     QString info = tr("Satinabilité : %1 (confiance %2)\n"
                       "Largeur min / moy / max : %3 / %4 / %5 mm\n"
@@ -3156,12 +3200,12 @@ void MainWindow::autoConvertToSatin() {
                        .arg(rep.mean_width_mm, 0, 'f', 2)
                        .arg(rep.maximum_width_mm, 0, 'f', 2)
                        .arg(rep.branch_count)
-                       .arg(result.columns.size());
+                       .arg(columnCount);
     for (const auto& w : result.warnings) {
         info += tr("\nAttention : %1").arg(QString::fromStdString(w));
     }
 
-    if (result.columns.empty()) {
+    if (columnCount == 0) {
         QMessageBox::information(
             this, tr("Conversion en satin"),
             tr("Conversion impossible : %1\n\n%2")
@@ -3170,24 +3214,17 @@ void MainWindow::autoConvertToSatin() {
     }
     const auto answer = QMessageBox::question(
         this, tr("Convertir en satin"),
-        tr("%1\n\nCréer %2 colonne(s) satin ? (annulable)").arg(info).arg(result.columns.size()));
+        tr("%1\n\nCréer %2 colonne(s) satin ? (annulable)").arg(info).arg(columnCount));
     if (answer != QMessageBox::Yes) {
         return;
     }
 
+    const document::SatinParams defaults;
     std::vector<document::EmbroideryObject> objects;
     int idx = 0;
-    for (const auto& col : result.columns) {
-        document::SatinParams sp;
-        sp.rail_a = col.rail_a;
-        sp.rail_b = col.rail_b;
-        for (const auto& r : col.rungs) {
-            sp.rungs.push_back(document::SatinRung{r.a, r.b});
-        }
-        if (col.section_count > 1 || col.start_junction || col.end_junction) {
-            sp.topology = document::SatinSectionTopology{
-                col.section_index, col.section_count, col.start_junction, col.end_junction};
-        }
+    const auto addColumn = [&](const auto& col) {
+        const auto sp = satinParamsFromColumn(col, defaults.density, defaults.pull_compensation,
+                                              defaults.center_underlay);
         document::EmbroideryObject emb;
         emb.id = project_.object_ids.next();
         emb.name = tr("Satin auto de %1 (%2)")
@@ -3198,6 +3235,15 @@ void MainWindow::autoConvertToSatin() {
         emb.rgb = source->rgb;
         emb.params = sp;
         objects.push_back(std::move(emb));
+    };
+    if (useParametric) {
+        for (const auto& col : result.parametric_columns) {
+            addColumn(col);
+        }
+    } else {
+        for (const auto& col : result.columns) {
+            addColumn(col);
+        }
     }
     undoStack_.execute(std::make_unique<commands::AddObjectBatchCommand>(
                            std::vector<document::VectorObject>{}, std::move(objects)),
@@ -3205,7 +3251,7 @@ void MainWindow::autoConvertToSatin() {
     showStitchesAct_->setChecked(true);
     refreshImage();
     updateActions();
-    statusBar()->showMessage(tr("%1 colonne(s) satin créée(s).").arg(result.columns.size()));
+    statusBar()->showMessage(tr("%1 colonne(s) satin créée(s).").arg(columnCount));
 }
 
 void MainWindow::changeFillAngle() {
@@ -3293,21 +3339,23 @@ void MainWindow::setStitchType(ObjectId embroideryId, int type) {
                                  tr("Aucun contour source pour construire les rails."));
             return;
         }
-        // Préfère le moteur squelette (gère les formes concaves/branchues
-        // sans faire déborder les barreaux, cf. docs/source/satin.md, §
-        // Rails automatiques) ; repli sur l'heuristique naïve seulement si le
-        // squelette ne produit aucune colonne UNIQUE exploitable (forme trop
-        // simple, ou décomposée en plusieurs sections — hors du modèle « un
-        // objet, un type » de cette action).
-        const auto skeletonResult = auto_satin::build_satin_columns(source->paths.front(), {});
+        // Préfère le moteur squelette en mode Parametric (gère les formes
+        // concaves/branchues sans faire déborder les barreaux, jonctions plus
+        // propres — cf. docs/source/satin.md) ; repli sur l'heuristique naïve
+        // seulement si le squelette ne produit aucune colonne UNIQUE
+        // exploitable (forme trop simple, ou décomposée en plusieurs sections
+        // — hors du modèle « un objet, un type » de cette action).
+        auto_satin::SatinColumnsParameters skeletonParams;
+        skeletonParams.geometry_mode = auto_satin::SatinGeometryMode::Parametric;
+        const auto skeletonResult = auto_satin::build_satin_columns(source->paths.front(), skeletonParams);
+        const document::SatinParams defaults;  // densité/compensation/sous-couche inchangées ici
         document::SatinParams sp;
-        if (skeletonResult.columns.size() == 1) {
-            const auto& col = skeletonResult.columns.front();
-            sp.rail_a = col.rail_a;
-            sp.rail_b = col.rail_b;
-            for (const auto& r : col.rungs) {
-                sp.rungs.push_back(document::SatinRung{r.a, r.b});
-            }
+        if (skeletonResult.parametric_columns.size() == 1) {
+            sp = satinParamsFromColumn(skeletonResult.parametric_columns.front(), defaults.density,
+                                       defaults.pull_compensation, defaults.center_underlay);
+        } else if (skeletonResult.columns.size() == 1) {
+            sp = satinParamsFromColumn(skeletonResult.columns.front(), defaults.density,
+                                       defaults.pull_compensation, defaults.center_underlay);
         } else {
             auto rails = stitch_generation::rails_from_contour(source->paths.front().outer);
             if (!rails) {

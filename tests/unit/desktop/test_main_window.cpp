@@ -304,6 +304,12 @@ private slots:
     void drawFreeformWithTooFewPointsCancelsOnRelease();
     void switchingToolDuringFreeformDrawCancelsIt();
 
+    // « Créer une colonne satin… » (createSatinObject) : brancher sur le
+    // moteur squelette (auto_satin::build_satin_columns, mode Parametric)
+    // plutôt que sur l'heuristique naïve rails_from_contour (audit satin
+    // demandé par l'utilisateur, § docs/source/satin.md).
+    void createSatinObjectOnSuitableRectangleProducesOneSatinWithStitches();
+
     // Colonne satin manuelle (outil DrawSatinColumn) : création par paires
     // alternées, rejet propre d'un point orphelin, annulation par changement
     // d'outil, remodelage d'un nœud de rail.
@@ -1390,6 +1396,59 @@ void MainWindowTest::drawRectangleToolCreatesUndoableVectorObject() {
     QCOMPARE(window.project_.vector_objects.size(), before);
     window.redo();
     QCOMPARE(window.project_.vector_objects.size(), before + 1);
+}
+
+void MainWindowTest::createSatinObjectOnSuitableRectangleProducesOneSatinWithStitches() {
+    MainWindow window;
+    const Fixture fx = buildFixture();
+    window.applyLoadedProject(fx.project);
+    auto* view = window.findChild<CanvasView*>();
+    QVERIFY(view != nullptr);
+
+    // Rectangle allongé 40 x 5 mm : Suitable côté satinabilité (même forme
+    // que la fixture "rectangle" de libs/auto_satin), une seule colonne
+    // attendue -- ni décomposition en branches, ni refus.
+    window.setTool(Tool::DrawRectangle);
+    view->boxDrawnMm(QRectF(0.0, 0.0, 40.0, 5.0), Qt::NoModifier);
+    QVERIFY(window.selectedObject_.has_value());
+    const ObjectId vectorId = *window.selectedObject_;
+
+    const std::size_t embroideryCountBefore = window.project_.embroidery_objects.size();
+
+    // createSatinObject() ouvre une QDialog modale (densité/compensation/
+    // sous-couche) : programmé avant l'appel, comme les autres tests de ce
+    // fichier qui pilotent une boîte modale (cf. discardOverrides ci-dessus)
+    // -- exec() pompe la boucle d'événements en interne.
+    QTimer::singleShot(0, &window, [] {
+        if (auto* dlg = qobject_cast<QDialog*>(QApplication::activeModalWidget())) {
+            dlg->accept();
+        }
+    });
+    window.createSatinObject();
+
+    QCOMPARE(window.project_.embroidery_objects.size(), embroideryCountBefore + 1);
+    const auto& emb = window.project_.embroidery_objects.back();
+    QCOMPARE(emb.source_vector, vectorId);
+    QVERIFY(emb.is_satin());
+    const auto& satin = std::get<openstitch::document::SatinParams>(emb.params);
+    QVERIFY(satin.rail_a.nodes.size() >= 2);
+    QVERIFY(satin.rail_b.nodes.size() >= 2);
+    // Le moteur squelette pose des barreaux par défaut (correspondance
+    // ladder) : sans eux, la génération retomberait sur fill_satin seul.
+    QVERIFY(!satin.rungs.empty());
+
+    window.refreshImage();
+    QVERIFY(window.sequence_.has_value());
+    const auto stats = openstitch::stitch::compute_stats(*window.sequence_);
+    QVERIFY(stats.stitches > 0);
+
+    // Annulable en un seul geste (AddObjectBatchCommand), comme les autres
+    // créations de forme de ce fichier.
+    QVERIFY(window.undoStack_.canUndo());
+    window.undo();
+    QCOMPARE(window.project_.embroidery_objects.size(), embroideryCountBefore);
+    window.redo();
+    QCOMPARE(window.project_.embroidery_objects.size(), embroideryCountBefore + 1);
 }
 
 void MainWindowTest::drawRectangleToolWithRealMouseDragOnMainWindowCreatesObject() {
