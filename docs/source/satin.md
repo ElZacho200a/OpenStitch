@@ -1100,15 +1100,29 @@ fines, ordre de couture `[large, moyenne, fine]`. Inspection visuelle
 une succession de petits segments), zone de recouvrement visible en jaune
 translucide, aucune grande diagonale, aucun grand trou central.
 
-**Limites connues** : le mode `Parametric` n'est pas encore branché dans
-`autodigitize.cpp` (Phase B de la migration, § étape 14 — le pipeline de
-production reste `Legacy` par défaut) ; les anneaux (`region.holes.size()==1`)
-restent exclusivement `Legacy` même en mode `Parametric` demandé
-(`parametric_columns` vide, `columns` peuplé comme avant) ; aucune
-intégration éditeur (déplacer une paire de contrôle, verrouiller une ligne
-d'angle) n'est implémentée côté `apps/desktop` — la structure de données le
-permet (mêmes `geometry::Path`/`PathNode` déjà éditables ailleurs dans
-l'éditeur), le câblage UI reste à faire.
+**Branché côté `apps/desktop` (audit satin, 2026-08-10).** Les trois chemins
+de création satin manuelle (`autoConvertToSatin`, `createSatinObject`,
+`setStitchType`) demandent désormais `geometry_mode = Parametric` et lisent
+`SatinColumnsResult::parametric_columns` en priorité — repli automatique sur
+`columns` (mode `Legacy`) géré À L'INTÉRIEUR de `build_satin_columns` lui-même
+(anneaux, cas refusés), donc aucun cas ne perd de couverture. Un seul point de
+conversion vers `document::SatinParams` (`satinParamsFromColumn`, template sur
+`SatinColumnGeometry`/`ParametricSatinObject` — mêmes noms de champs) évite de
+dupliquer la logique entre les deux modes. Les commandes d'édition de rail
+satin existantes (`MoveSatinRailNodeCommand`, etc.) opèrent sans modification
+sur les rails `Parametric` : ce sont de simples `geometry::Path`, seulement
+plus épars.
+
+**Limites connues restantes** : le mode `Parametric` n'est toujours pas
+branché dans `autodigitize.cpp` (Phase B de la migration, § étape 14 — la
+numérisation automatique reste `Legacy` par défaut) ; les anneaux
+(`region.holes.size()==1`) restent exclusivement `Legacy` même en mode
+`Parametric` demandé (`parametric_columns` vide, `columns` peuplé comme
+avant) ; aucune intégration éditeur DÉDIÉE (déplacer une `SatinControlPair`
+comme entité propre, verrouiller une `SatinAngleGuide` indépendamment du
+nœud de rail qu'elle partage aujourd'hui) n'est implémentée — seule l'édition
+de nœud de rail générique est disponible, ce qui couvre l'usage courant mais
+pas la manipulation fine des paires structurantes en tant que telles.
 
 ## Génération par barreaux (`fill_satin_columns`, Lot 2)
 
