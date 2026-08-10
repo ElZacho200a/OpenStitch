@@ -4256,8 +4256,9 @@ void MainWindow::buildWorkflowPanel() {
     connect(workflowPanel_, &WorkflowPanel::stepClicked, this, [this](int step) {
         static const char* hints[] = {
             QT_TR_NOOP("Menu Fichier ▸ Ouvrir une image pour commencer."),
-            QT_TR_NOOP("Menu Segmentation ▸ Segmenter l'image."),
-            QT_TR_NOOP("Sélectionnez une région, puis Segmentation ▸ Vectoriser."),
+            QT_TR_NOOP("Menu Segmentation ▸ Segmenter l'image, ou Broderie ▸ Segmenter avec l'IA."),
+            QT_TR_NOOP("Sélectionnez une région, puis Segmentation ▸ Vectoriser (ou passez par "
+                       "l'IA, qui vectorise directement)."),
             QT_TR_NOOP("Menu Broderie ▸ Numérisation automatique, ou créez un objet."),
             QT_TR_NOOP("Appuyez sur F5 (Analyse) pour vérifier le motif."),
             QT_TR_NOOP("Menu Fichier ▸ Exporter en DST.")};
@@ -4276,10 +4277,17 @@ void MainWindow::refreshWorkflow() {
     const bool vec = !project_.vector_objects.empty();
     const bool emb = !project_.embroidery_objects.empty();
     const bool seq = sequence_.has_value();
+    // La segmentation par IA (menu Broderie ▸ Segmenter avec l'IA) vectorise
+    // directement les formes retenues sans jamais passer par
+    // project_.segmentation (cf. AiSegmentationDialog + autodigitize::
+    // auto_digitize) : ne jamais gater « Régions »/« Vecteurs » sur `seg`
+    // seul, sous peine d'afficher « à faire » alors que des objets existent
+    // déjà (défaut trouvé par revue ergonomie).
+    const bool regionsDone = seg || vec;
 
     st[0] = img ? S::Done : S::NotStarted;
-    st[1] = !img ? S::NotStarted : (seg ? S::Done : S::Available);
-    st[2] = !seg ? S::NotStarted : (vec ? S::Done : S::Available);
+    st[1] = !img ? S::NotStarted : (regionsDone ? S::Done : S::Available);
+    st[2] = !regionsDone ? S::NotStarted : (vec ? S::Done : S::Available);
     st[3] = emb ? S::Done : ((vec || seg) ? S::Available : S::NotStarted);
     st[4] = seq ? S::Available : S::NotStarted;
     st[5] = seq ? S::Available : S::NotStarted;

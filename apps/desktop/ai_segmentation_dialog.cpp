@@ -66,6 +66,20 @@ void AiSegmentationDialog::setupUi() {
 
     auto* mainLayout = new QVBoxLayout(this);
 
+    // Confusion réelle rencontrée à l'usage : l'IA détecte des FORMES/OBJETS
+    // (contours, textures), jamais des couleurs — deux zones de la même
+    // couleur mais appartenant à des formes différentes seront séparées, et
+    // inversement. Pour diviser par couleur (préparation de blocs de
+    // couleur), le menu Segmentation classique est le bon outil.
+    auto* explainer = new QLabel(
+        tr("Détecte des formes/objets (contours), pas des couleurs — deux zones "
+           "de même couleur mais de formes différentes seront séparées. Pour "
+           "diviser par couleur, utilisez plutôt le menu Segmentation."),
+        this);
+    explainer->setWordWrap(true);
+    explainer->setEnabled(false);  // texte atténué : information, pas une alerte
+    mainLayout->addWidget(explainer);
+
     auto* topRow = new QHBoxLayout;
     modelCombo_ = new QComboBox(this);
     for (const auto& descriptor : ai_segmentation::all_models()) {

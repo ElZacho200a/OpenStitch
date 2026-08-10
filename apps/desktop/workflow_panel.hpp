@@ -24,6 +24,7 @@ public:
     explicit WorkflowPanel(QWidget* parent = nullptr);
 
     void setStates(const std::array<State, kStepCount>& states);
+    [[nodiscard]] State currentState(int index) const { return current_[index]; }
     void applyTheme();  // recolore les pastilles au changement de thème
 
 signals:

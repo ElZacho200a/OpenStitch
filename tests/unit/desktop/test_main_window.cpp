@@ -25,6 +25,7 @@
 #include "openstitch/commands/project_commands.hpp"
 #include "openstitch/document/project.hpp"
 #include "openstitch/stitch_generation/overrides.hpp"
+#include "workflow_panel.hpp"
 #include "properties_panel.hpp"
 #include "satin_guide_item.hpp"
 
@@ -309,6 +310,12 @@ private slots:
     // plutôt que sur l'heuristique naïve rails_from_contour (audit satin
     // demandé par l'utilisateur, § docs/source/satin.md).
     void createSatinObjectOnSuitableRectangleProducesOneSatinWithStitches();
+
+    // Panneau Workflow (audit ergonomie) : les étapes « Régions »/« Vecteurs »
+    // ne doivent jamais rester « à faire » quand des objets vectoriels
+    // existent déjà via un chemin qui ne remplit jamais project_.segmentation
+    // (Segmenter avec l'IA -> autodigitize::auto_digitize directement).
+    void workflowRegionsAndVectorsStepsReflectVectorObjectsWithoutClassicSegmentation();
 
     // Colonne satin manuelle (outil DrawSatinColumn) : création par paires
     // alternées, rejet propre d'un point orphelin, annulation par changement
@@ -1449,6 +1456,24 @@ void MainWindowTest::createSatinObjectOnSuitableRectangleProducesOneSatinWithSti
     QCOMPARE(window.project_.embroidery_objects.size(), embroideryCountBefore);
     window.redo();
     QCOMPARE(window.project_.embroidery_objects.size(), embroideryCountBefore + 1);
+}
+
+void MainWindowTest::workflowRegionsAndVectorsStepsReflectVectorObjectsWithoutClassicSegmentation() {
+    MainWindow window;
+    Fixture fx = buildFixture();
+    // Simule le chemin « Segmenter avec l'IA » : un objet vectoriel existe
+    // (fx.project.vector_objects contient déjà "Triangle"), mais
+    // project_.segmentation n'a JAMAIS été rempli -- exactement l'état
+    // produit par AiSegmentationDialog + autodigitize::auto_digitize, qui ne
+    // passe jamais par la segmentation classique par pixels.
+    fx.project.segmentation.reset();
+    window.applyLoadedProject(fx.project);
+    window.updateActions();
+
+    auto* workflow = window.findChild<WorkflowPanel*>();
+    QVERIFY(workflow != nullptr);
+    QCOMPARE(workflow->currentState(1), WorkflowPanel::State::Done);  // Régions
+    QCOMPARE(workflow->currentState(2), WorkflowPanel::State::Done);  // Vecteurs
 }
 
 void MainWindowTest::drawRectangleToolWithRealMouseDragOnMainWindowCreatesObject() {
