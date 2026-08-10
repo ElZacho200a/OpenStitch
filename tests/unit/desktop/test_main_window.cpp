@@ -317,6 +317,14 @@ private slots:
     // (Segmenter avec l'IA -> autodigitize::auto_digitize directement).
     void workflowRegionsAndVectorsStepsReflectVectorObjectsWithoutClassicSegmentation();
 
+    // Glisser le CORPS d'une forme sélectionnée la déplace tout entière
+    // (défaut remonté en usage réel : « la manipulation des vecteurs est
+    // pénible » -- seule l'édition nœud par nœud existait). VRAI glisser
+    // souris sur la vue réelle (pas une injection de signal), comme
+    // drawRectangleToolWithRealMouseDragOnMainWindowCreatesObject ci-dessus,
+    // pour la même raison : un défaut de dragMode ne se voit qu'ainsi.
+    void draggingSelectedShapeBodyWithRealMouseTranslatesWholeObject();
+
     // Colonne satin manuelle (outil DrawSatinColumn) : création par paires
     // alternées, rejet propre d'un point orphelin, annulation par changement
     // d'outil, remodelage d'un nœud de rail.
@@ -1474,6 +1482,87 @@ void MainWindowTest::workflowRegionsAndVectorsStepsReflectVectorObjectsWithoutCl
     QVERIFY(workflow != nullptr);
     QCOMPARE(workflow->currentState(1), WorkflowPanel::State::Done);  // Régions
     QCOMPARE(workflow->currentState(2), WorkflowPanel::State::Done);  // Vecteurs
+}
+
+void MainWindowTest::draggingSelectedShapeBodyWithRealMouseTranslatesWholeObject() {
+    MainWindow window;
+    Fixture fx = buildFixture();
+    // Carré 10 x 10 mm centré sur l'origine (le triangle de buildFixture,
+    // 1 mm de côté, est trop petit pour cliquer sûrement en son centre sans
+    // frôler un nœud) : nœuds à -5/-5, 5/-5, 5/5, -5/5 mm.
+    document::VectorObject square;
+    square.id = fx.project.object_ids.next();
+    square.name = "Carre";
+    geometry::Path outer;
+    outer.closed = true;
+    outer.nodes.push_back(geometry::PathNode{Vec2um{Micrometers{-5'000}, Micrometers{-5'000}},
+                                             geometry::NodeType::Corner, std::nullopt, std::nullopt});
+    outer.nodes.push_back(geometry::PathNode{Vec2um{Micrometers{5'000}, Micrometers{-5'000}},
+                                             geometry::NodeType::Corner, std::nullopt, std::nullopt});
+    outer.nodes.push_back(geometry::PathNode{Vec2um{Micrometers{5'000}, Micrometers{5'000}},
+                                             geometry::NodeType::Corner, std::nullopt, std::nullopt});
+    outer.nodes.push_back(geometry::PathNode{Vec2um{Micrometers{-5'000}, Micrometers{5'000}},
+                                             geometry::NodeType::Corner, std::nullopt, std::nullopt});
+    square.paths.push_back(geometry::PathSet{outer, {}});
+    const ObjectId squareId = square.id;
+    fx.project.vector_objects.push_back(square);
+
+    window.applyLoadedProject(fx.project);
+    window.selectedObject_ = squareId;  // sélectionné -> corps glissable (VectorObjectBodyItem)
+    window.setTool(Tool::Select);
+    window.refreshImage();
+
+    auto* view = window.findChild<CanvasView*>();
+    QVERIFY(view != nullptr);
+    window.resize(1600, 1000);
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+
+    view->resetTransform();
+    view->scale(10.0, 10.0);
+    view->centerOn(QPointF(0.0, 0.0));
+
+    // Centre du carré (loin des 4 nœuds, ~7 mm) -> déplacement de 3 mm en
+    // diagonale, largement au-delà de startDragDistance à ce zoom.
+    const QPoint from = view->mapFromScene(QPointF(0.0, 0.0));
+    const QPoint mid = view->mapFromScene(QPointF(1.5, -1.5));
+    const QPoint to = view->mapFromScene(QPointF(3.0, -3.0));
+    const QRect vpRect = view->viewport()->rect();
+    QVERIFY2(vpRect.contains(from), qPrintable(QStringLiteral("from hors du viewport")));
+    QVERIFY2(vpRect.contains(to), qPrintable(QStringLiteral("to hors du viewport")));
+    QVERIFY2((to - from).manhattanLength() >= QApplication::startDragDistance(),
+             qPrintable(QStringLiteral("déplacement écran insuffisant: %1 px")
+                            .arg((to - from).manhattanLength())));
+
+    QCOMPARE(window.project_.findObject(squareId)->paths[0].outer.nodes[0].pos,
+            (Vec2um{Micrometers{-5'000}, Micrometers{-5'000}}));
+
+    QTest::mousePress(view->viewport(), Qt::LeftButton, Qt::NoModifier, from);
+    QTest::mouseMove(view->viewport(), mid);
+    QTest::mouseMove(view->viewport(), to);
+    QTest::mouseRelease(view->viewport(), Qt::LeftButton, Qt::NoModifier, to);
+
+    // Le glisser est validé de façon différée (QTimer::singleShot(0, ...)) :
+    // laisse la boucle d'événements le traiter, comme pour les poignées de
+    // nœud (cf. commentaire dans renderBase/VectorObjectBodyItem). Delta
+    // scène (+3, -3) mm -> delta modèle (+3, +3) mm (sceneMmToModel : x
+    // inchangé, y inversé -- donc -3 devient +3), d'où -5+3=-2 sur les deux
+    // axes du premier nœud.
+    QTRY_COMPARE_WITH_TIMEOUT(window.project_.findObject(squareId)->paths[0].outer.nodes[0].pos,
+                              (Vec2um{Micrometers{-2'000}, Micrometers{-2'000}}), 2000);
+    const auto* moved = window.project_.findObject(squareId);
+    QVERIFY(moved != nullptr);
+    QCOMPARE(moved->paths[0].outer.nodes[1].pos, (Vec2um{Micrometers{8'000}, Micrometers{-2'000}}));
+    QCOMPARE(moved->paths[0].outer.nodes[2].pos, (Vec2um{Micrometers{8'000}, Micrometers{8'000}}));
+    QCOMPARE(moved->paths[0].outer.nodes[3].pos, (Vec2um{Micrometers{-2'000}, Micrometers{8'000}}));
+
+    QVERIFY(window.undoStack_.canUndo());
+    window.undo();
+    QCOMPARE(window.project_.findObject(squareId)->paths[0].outer.nodes[0].pos,
+            (Vec2um{Micrometers{-5'000}, Micrometers{-5'000}}));
+    window.redo();
+    QCOMPARE(window.project_.findObject(squareId)->paths[0].outer.nodes[0].pos,
+            (Vec2um{Micrometers{-2'000}, Micrometers{-2'000}}));
 }
 
 void MainWindowTest::drawRectangleToolWithRealMouseDragOnMainWindowCreatesObject() {

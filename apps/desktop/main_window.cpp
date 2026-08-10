@@ -1867,18 +1867,40 @@ void MainWindow::renderBase(const image::Image& img) {
                               : color.darker(150));
             pen.setCosmetic(true);
             pen.setWidth(selected ? 3 : 2);
-            auto* pathItem = scene_->addPath(outline, pen,
-                                             QBrush(QColor(color.red(), color.green(),
-                                                           color.blue(), 90)));
-            pathItem->setZValue(10);
-            // Curseur contextuel : une main pointeuse au survol d'une forme
-            // cliquable, mais SEULEMENT en mode Sélection — avec un outil de
-            // dessin actif, survoler une forme existante ne doit pas laisser
-            // croire qu'un clic la sélectionnerait (il en dessinerait une
-            // nouvelle) : la croix du mode dessin doit rester seule visible.
-            if (currentTool_ == Tool::Select) {
-                pathItem->setCursor(Qt::PointingHandCursor);
+            const QBrush brush(QColor(color.red(), color.green(), color.blue(), 90));
+            QGraphicsPathItem* pathItem = nullptr;
+            // Forme SÉLECTIONNÉE, mode Sélection : glisser n'importe où sur le
+            // corps la déplace entière (tous nœuds, tous morceaux) au lieu
+            // d'exiger de glisser chaque nœud un par un (défaut remonté en
+            // usage réel — cf. VectorObjectBodyItem).
+            if (selected && currentTool_ == Tool::Select) {
+                const ObjectId objectId = object.id;
+                auto* bodyItem = new VectorObjectBodyItem(outline, pen, brush, [this, objectId](QPointF deltaSceneMm) {
+                    const Vec2um delta = sceneMmToModel(deltaSceneMm);
+                    // Diffère : refreshImage() détruirait cet item pendant son
+                    // propre événement souris (même défaut que NodeHandleItem).
+                    QTimer::singleShot(0, this, [this, objectId, delta] {
+                        undoStack_.execute(
+                            std::make_unique<commands::TranslateVectorObjectCommand>(objectId, delta),
+                            project_);
+                        refreshImage();
+                        updateActions();
+                    });
+                });
+                scene_->addItem(bodyItem);
+                pathItem = bodyItem;
+            } else {
+                pathItem = scene_->addPath(outline, pen, brush);
+                // Curseur contextuel : une main pointeuse au survol d'une forme
+                // cliquable, mais SEULEMENT en mode Sélection — avec un outil de
+                // dessin actif, survoler une forme existante ne doit pas laisser
+                // croire qu'un clic la sélectionnerait (il en dessinerait une
+                // nouvelle) : la croix du mode dessin doit rester seule visible.
+                if (currentTool_ == Tool::Select) {
+                    pathItem->setCursor(Qt::PointingHandCursor);
+                }
             }
+            pathItem->setZValue(10);
             baseItems_.append(pathItem);
         }
         // Poignées de nœuds de l'objet sélectionné (+ poignées Bézier pour les

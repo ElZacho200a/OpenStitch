@@ -4,6 +4,7 @@
 #include <QBrush>
 #include <QCursor>
 #include <QGraphicsEllipseItem>
+#include <QGraphicsPathItem>
 #include <QGraphicsSceneContextMenuEvent>
 #include <QGraphicsSceneMouseEvent>
 #include <QPainterPath>
@@ -73,6 +74,38 @@ private:
     std::function<void(QPointF)> onReleased_;
     std::function<void(QPointF)> onMoved_;
     std::function<void(QPoint)> onContextMenu_;
+};
+
+// Corps d'un objet vectoriel SÉLECTIONNÉ : glisser n'importe où sur la forme
+// (pas seulement un nœud) la déplace tout entière — jusqu'ici, seule
+// l'édition nœud par nœud existait ; recaler une forme entière exigeait de
+// glisser chacun de ses nœuds un par un (défaut remonté en usage réel).
+// Contrairement à NodeHandleItem (taille fixe à l'écran), la forme doit
+// rester à l'échelle du zoom : pas de ItemIgnoresTransformations. Le tracé
+// (`outline`) est en coordonnées scène ABSOLUES (comme construit par
+// `objectPainterPath`) ; `pos()` reste donc (0,0) tant qu'aucun glisser n'a
+// eu lieu, et devient directement le delta de déplacement au relâchement.
+class VectorObjectBodyItem : public QGraphicsPathItem {
+public:
+    VectorObjectBodyItem(const QPainterPath& outline, QPen pen, QBrush brush,
+                         std::function<void(QPointF)> onReleased)
+        : QGraphicsPathItem(outline), onReleased_(std::move(onReleased)) {
+        setPen(pen);
+        setBrush(brush);
+        setFlag(ItemIsMovable);
+        setCursor(Qt::SizeAllCursor);
+    }
+
+protected:
+    void mouseReleaseEvent(QGraphicsSceneMouseEvent* event) override {
+        QGraphicsPathItem::mouseReleaseEvent(event);
+        if (onReleased_ && pos() != QPointF(0.0, 0.0)) {
+            onReleased_(pos());
+        }
+    }
+
+private:
+    std::function<void(QPointF)> onReleased_;
 };
 
 }  // namespace openstitch::desktop

@@ -136,6 +136,54 @@ TEST_CASE("SetSegmentationCommand : apply/revert echangent les etats") {
     CHECK(project.segmentation.has_value());
 }
 
+TEST_CASE("TranslateVectorObjectCommand : deplace tous les noeuds (tous morceaux, tous trous), undo exact") {
+    document::Project project;
+    UndoStack stack;
+
+    document::VectorObject object;
+    object.id = project.object_ids.next();
+    object.name = "carre avec trou";
+    geometry::Path outer;
+    outer.closed = true;
+    outer.nodes.push_back(geometry::PathNode{Vec2um{Micrometers{0}, Micrometers{0}},
+                                             geometry::NodeType::Corner, std::nullopt, std::nullopt});
+    outer.nodes.push_back(geometry::PathNode{Vec2um{Micrometers{10000}, Micrometers{0}},
+                                             geometry::NodeType::Corner, std::nullopt, std::nullopt});
+    outer.nodes.push_back(geometry::PathNode{Vec2um{Micrometers{10000}, Micrometers{10000}},
+                                             geometry::NodeType::Corner, std::nullopt, std::nullopt});
+    geometry::Path hole;
+    hole.closed = true;
+    hole.nodes.push_back(geometry::PathNode{Vec2um{Micrometers{2000}, Micrometers{2000}},
+                                            geometry::NodeType::Corner, std::nullopt, std::nullopt});
+    hole.nodes.push_back(geometry::PathNode{Vec2um{Micrometers{3000}, Micrometers{2000}},
+                                            geometry::NodeType::Corner, std::nullopt, std::nullopt});
+    hole.nodes.push_back(geometry::PathNode{Vec2um{Micrometers{3000}, Micrometers{3000}},
+                                            geometry::NodeType::Corner, std::nullopt, std::nullopt});
+    object.paths.push_back(geometry::PathSet{outer, {hole}});
+    stack.execute(std::make_unique<AddVectorObjectCommand>(object), project);
+    const ObjectId id = project.vector_objects[0].id;
+
+    const Vec2um delta{Micrometers{500}, Micrometers{-1200}};
+    stack.execute(std::make_unique<TranslateVectorObjectCommand>(id, delta), project);
+
+    const auto* moved = project.findObject(id);
+    REQUIRE(moved != nullptr);
+    CHECK(moved->paths[0].outer.nodes[0].pos == Vec2um{Micrometers{500}, Micrometers{-1200}});
+    CHECK(moved->paths[0].outer.nodes[1].pos == Vec2um{Micrometers{10500}, Micrometers{-1200}});
+    CHECK(moved->paths[0].holes[0].nodes[0].pos == Vec2um{Micrometers{2500}, Micrometers{800}});
+
+    CHECK(stack.undo(project));
+    const auto* reverted = project.findObject(id);
+    REQUIRE(reverted != nullptr);
+    CHECK(reverted->paths[0].outer.nodes[0].pos == Vec2um{Micrometers{0}, Micrometers{0}});
+    CHECK(reverted->paths[0].holes[0].nodes[0].pos == Vec2um{Micrometers{2000}, Micrometers{2000}});
+
+    CHECK(stack.redo(project));
+    const auto* redone = project.findObject(id);
+    REQUIRE(redone != nullptr);
+    CHECK(redone->paths[0].outer.nodes[0].pos == Vec2um{Micrometers{500}, Micrometers{-1200}});
+}
+
 TEST_CASE("AddVectorObject et MoveNode : undo/redo coherents") {
     document::Project project;
     UndoStack stack;

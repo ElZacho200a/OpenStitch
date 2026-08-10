@@ -281,6 +281,42 @@ private:
     bool applied_{false};
 };
 
+// Déplace un objet vectoriel ENTIER (tous les morceaux, tous les trous)
+// d'un même delta — glisser la forme au lieu de déplacer chaque nœud un par
+// un (défaut remonté en usage réel : aucune commande n'existait pour ça,
+// seule l'édition nœud par nœud était possible).
+class TranslateVectorObjectCommand final : public ICommand {
+public:
+    TranslateVectorObjectCommand(ObjectId object, Vec2um delta) : object_(object), delta_(delta) {}
+
+    void apply(document::Project& project) override { shift(project, delta_); }
+    void revert(document::Project& project) override {
+        shift(project, Vec2um{-delta_.x, -delta_.y});
+    }
+    [[nodiscard]] std::string name() const override { return "Déplacement de forme"; }
+
+private:
+    void shift(document::Project& project, Vec2um delta) const {
+        auto* object = project.findObject(object_);
+        if (object == nullptr) {
+            return;
+        }
+        for (auto& set : object->paths) {
+            for (auto& node : set.outer.nodes) {
+                node.pos = node.pos + delta;
+            }
+            for (auto& hole : set.holes) {
+                for (auto& node : hole.nodes) {
+                    node.pos = node.pos + delta;
+                }
+            }
+        }
+    }
+
+    ObjectId object_;
+    Vec2um delta_;
+};
+
 // Déplace un nœud d'un objet vectoriel.
 class MoveNodeCommand final : public ICommand {
 public:
