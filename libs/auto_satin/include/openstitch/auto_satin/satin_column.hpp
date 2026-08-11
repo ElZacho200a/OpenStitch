@@ -61,7 +61,19 @@ struct SatinColumnsParameters {
     // bout ouvert en ré-échantillonnant des sections transversales le long de la
     // tangente sortante tant qu'elles rétrécissent, jusqu'au bord réel (bissection).
     bool extend_open_ends{true};
-    Micrometers tip_min_width{50};  // largeur plancher du dernier barreau (jamais nul)
+    // Largeur plancher du dernier barreau (jamais nul) : 300 µm, pas la valeur
+    // d'origine (50 µm). Défaut trouvé sur un projet réel (logo circulaire à
+    // motif de circuit imprimé finement détaillé) : la quasi-totalité des
+    // colonnes satin de l'image ont au moins une extrémité OUVERTE (pointe
+    // de trace, plot de connecteur...), et chacune fermait donc sur un
+    // dernier barreau de ~50 µm -- en-dessous même du pas de quantification
+    // DST (0,1 mm, cf. formats/dst.hpp), donc un point de couture
+    // pratiquement inexploitable par une machine réelle. 300 µm reste
+    // nettement plus étroit que `min_satin_width` (0,8 mm, le seuil « satin
+    // digne de ce nom » pour toute la colonne) -- la pointe reste une
+    // pointe -- tout en dépassant largement le pas DST avec une marge de
+    // sécurité (x3).
+    Micrometers tip_min_width{300};
     // Un bout de JONCTION (Y/T/croix) souffre du défaut inverse : la section
     // transversale d'une branche, calculée depuis sa seule tangente locale,
     // balaie le bourrelet de la confluence (pas la ceinture réelle de CETTE

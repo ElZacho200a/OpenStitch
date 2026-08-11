@@ -3,6 +3,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdio>
 #include <limits>
 #include <set>
 
@@ -56,6 +57,11 @@ bool in_region(const geometry::PathSet& region, Vec2um p) {
 
 Vec2um mid(Vec2um a, Vec2um b) {
     return {Micrometers{(a.x.value + b.x.value) / 2}, Micrometers{(a.y.value + b.y.value) / 2}};
+}
+
+geometry::PathNode node(std::int32_t x, std::int32_t y) {
+    return geometry::PathNode{Vec2um{Micrometers{x}, Micrometers{y}}, geometry::NodeType::Corner,
+                              std::nullopt, std::nullopt};
 }
 
 double length_of(double x, double y) { return std::sqrt(x * x + y * y); }
@@ -860,6 +866,67 @@ TEST_CASE("colonnes : forme large refusee") {
     const auto r = columns_of("wide");
     CHECK(r.columns.empty());
     CHECK_FALSE(r.refusal.empty());
+}
+
+// Défaut trouvé sur un projet réel (logo circulaire "GISTRE" numérisé
+// automatiquement) : géométrie EXACTE de la région en cause (contour à 54
+// sommets, arc fin d'environ 130 mm de long -- vraisemblablement le trait de
+// bordure du sceau capté par la segmentation), recentrée sur l'origine.
+// Avant correctif : railA/railB s'effondraient l'un sur l'autre sur toute la
+// longueur (aucun barreau), `cross_section` n'ayant aucun plancher de
+// largeur -- une station de largeur quasi nulle était acceptée comme
+// valide au lieu de déclencher le refus/l'interpolation déjà en place pour
+// les autres types d'échec (§ audit génération partielle).
+geometry::PathSet real_region_gistre_bordure() {
+    geometry::Path p;
+    p.closed = true;
+    p.nodes = {
+        node(-18606, -58556), node(-27442, -50342), node(-32296, -44243), node(-35407, -39390),
+        node(-38145, -34162), node(-41630, -24953), node(-43746, -15121), node(-44244, -9520),
+        node(-44244, -4044),  node(-43123, 5663),    node(-40634, 14749),  node(-38519, 19976),
+        node(-35158, 26447),  node(-31674, 31799),   node(-28189, 36155),  node(-22464, 41880),
+        node(-18979, 44742),  node(-12134, 49223),   node(-6409, 52210),   node(-1929, 54077),
+        node(5539, 56317),    node(12259, 57561),    node(18109, 58059),   node(25078, 57935),
+        node(30554, 57312),   node(38022, 55694),    node(44120, 53579),   node(44867, 53828),
+        node(43746, 54574),   node(39764, 55943),    node(33914, 57437),   node(27567, 58433),
+        node(16989, 58681),   node(7779, 57561),     node(-1306, 55072),   node(-5662, 53330),
+        node(-11387, 50467),  node(-19228, 45240),   node(-25824, 39391),  node(-29931, 34910),
+        node(-33665, 30057),  node(-38394, 21967),   node(-42003, 12882),  node(-43621, 6659),
+        node(-44741, -684),   node(-44866, -10267),  node(-44119, -17610), node(-41630, -27317),
+        node(-39639, -32544), node(-37150, -37647),  node(-32669, -44741), node(-27069, -51462),
+        node(-22837, -55569), node(-18979, -58680),
+    };
+    return {p, {}};
+}
+
+TEST_CASE("colonnes : bordure fine d'un logo circulaire (projet reel) - jamais de rails "
+         "confondus") {
+    const auto region = real_region_gistre_bordure();
+    SatinColumnsParameters params;  // parametres par defaut, comme autodigitize.cpp (pixel 50 um)
+    params.analysis.thresholds.max_satin_width = Micrometers{6'000};  // options.satin_max_width par defaut
+    const auto r = build_satin_columns(region, params);
+    std::fprintf(stderr, "DIAG status=%d columns=%zu parametric=%zu refusal=%s\n",
+                static_cast<int>(r.status), r.columns.size(), r.parametric_columns.size(),
+                r.refusal.c_str());
+    for (const auto& w : r.warnings) {
+        std::fprintf(stderr, "DIAG warn: %s\n", w.c_str());
+    }
+    for (const auto& col : r.columns) {
+        const auto flatA = geometry::flatten(col.rail_a, Micrometers{30});
+        const auto flatB = geometry::flatten(col.rail_b, Micrometers{30});
+        REQUIRE(flatA.points.size() == flatB.points.size());
+        for (std::size_t i = 0; i < flatA.points.size(); ++i) {
+            CHECK(length_um(flatA.points[i] - flatB.points[i]) >= 800.0);
+        }
+    }
+    for (const auto& col : r.parametric_columns) {
+        const auto flatA = geometry::flatten(col.rail_a, Micrometers{30});
+        const auto flatB = geometry::flatten(col.rail_b, Micrometers{30});
+        REQUIRE(flatA.points.size() == flatB.points.size());
+        for (std::size_t i = 0; i < flatA.points.size(); ++i) {
+            CHECK(length_um(flatA.points[i] - flatB.points[i]) >= 800.0);
+        }
+    }
 }
 
 // --- Génération partielle sur formes concaves (audit) ------------------------

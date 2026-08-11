@@ -130,6 +130,7 @@ enum class CrossSectionFailure {
     MissingNegativeIntersection, // aucune intersection trouvée côté -N
     MissingPositiveIntersection, // aucune intersection trouvée côté +N
     TooWide,               // intervalle plus large que max_width (normale quasi parallèle au bord)
+    TooNarrow,     // intervalle plus étroit que min_satin_width (§ audit anneaux/arcs fins)
     IntervalOutsideRegion, // intervalle trouvé mais son milieu retombe hors région
 };
 
@@ -143,6 +144,8 @@ const char* describe(CrossSectionFailure f) {
         return "intersection positive manquante";
     case CrossSectionFailure::TooWide:
         return "largeur superieure a max_width";
+    case CrossSectionFailure::TooNarrow:
+        return "largeur inferieure a min_satin_width";
     case CrossSectionFailure::IntervalOutsideRegion:
         return "intervalle invalide (milieu hors region)";
     }
@@ -623,8 +626,18 @@ Station interpolate_station(const Station& prev, const Station& next, P2 axisPt)
 // l'appelant doit refuser la colonne plutôt que de conserver un pont
 // géométriquement invalide.
 bool interpolated_station_valid(const std::vector<Poly>& polys, const Station& prev,
-                                const Station& candidate, const Station& next, double maxWidth) {
-    if (!(candidate.width > 0.0) || candidate.width > maxWidth) {
+                                const Station& candidate, const Station& next, double minWidth,
+                                double maxWidth) {
+    // minWidth : même plancher que `cross_section` (§ audit anneaux/arcs fins)
+    // -- sans lui, un échec ISOLÉ « trop étroit » se faisait réaccepter tel
+    // quel par simple interpolation de position, sans jamais revalider la
+    // largeur résultante. Sur un réseau où PLUSIEURS stations isolées sont
+    // trop étroites (motif alterné, bruit de retracé raster), chacune se
+    // faisait ainsi repêcher une par une, produisant une colonne acceptée de
+    // bout en bout avec des rails quasi confondus sur la quasi-totalité de sa
+    // longueur -- exactement le symptôme observé sur un projet réel (logo
+    // circulaire, motif de circuit imprimé finement détaillé).
+    if (!(candidate.width > 0.0) || candidate.width < minWidth || candidate.width > maxWidth) {
         return false;
     }
     if (!in_region(polys, candidate.axis) ||
@@ -685,6 +698,16 @@ std::vector<Station> extend_tip(const std::vector<Poly>& polys, P2 base, P2 marc
         if (width > prevWidth * 1.05 + 1.0) {
             break; // ne rétrécit plus : on a dépassé la pointe (forme non convexe)
         }
+        if (width <= tipMinWidth) {
+            // Déjà assez fin -- ou l'a dépassé en un seul pas de marche (§
+            // défaut trouvé sur un projet réel : un pas grossier peut faire
+            // chuter la largeur BIEN EN DESSOUS de tipMinWidth d'une
+            // itération à l'autre, avant même que cette station soit
+            // écartée). Ne JAMAIS pousser une station dont la largeur est
+            // déjà sous le plancher : la bissection ci-dessous referme
+            // proprement dessus, au plancher exact, à la place.
+            break;
+        }
         Station st;
         st.axis = p;
         st.tangent = orientTan;
@@ -695,9 +718,6 @@ std::vector<Station> extend_tip(const std::vector<Poly>& polys, P2 base, P2 marc
         prevPoint = p;
         prevWidth = width;
         stepsTaken = k;
-        if (width <= tipMinWidth) {
-            return ext; // déjà assez fin : la fermeture par bissection n'apporterait rien
-        }
     }
     // Bissection entre le dernier point intérieur connu et un point hors-région
     // pour localiser le bord réel le long de la tangente.
@@ -865,6 +885,23 @@ std::optional<std::vector<Station>> compute_column_stations(const std::vector<Ve
     }
 
     const double maxWidth = static_cast<double>(params.analysis.thresholds.max_satin_width.value);
+    // Plancher de largeur PAR STATION (§ audit anneaux/arcs fins, projet réel :
+    // un anneau/arc très long et globalement fin passe le test d'éligibilité
+    // (satinability.cpp compare max_satin_width à la largeur MAXIMALE relevée
+    // sur toute la région, qui peut être ponctuellement correcte même si la
+    // quasi-totalité de la forme est un trait quasi nul) puis dégénère ici :
+    // `cross_section` n'avait jusqu'ici AUCUN plancher, donc une largeur locale
+    // proche de zéro était acceptée comme une station valide -- railA/railB
+    // s'effondraient l'un sur l'autre (quasi confondus) sur toute la longueur,
+    // sans le moindre barreau, plutôt que de déclencher le traitement des
+    // échecs déjà en place juste en dessous (interpolation d'un échec isolé,
+    // refus propre de la colonne si l'échec est étendu). Réutilise le même
+    // seuil que le test d'éligibilité global (`min_satin_width`), déjà
+    // calibré, plutôt que d'introduire un nouveau réglage. Les stations proches
+    // d'un bout OUVERT rétrécissant légitimement vers zéro (branche effilée,
+    // ex. fixture "trident") ne sont PAS concernées : ces échecs tombent en
+    // tête/queue de l'axe, déjà traités comme un bord légitime plus bas.
+    const double minWidth = static_cast<double>(params.analysis.thresholds.min_satin_width.value);
     const double stationSpacingUm = static_cast<double>(params.station_spacing.value);
 
     // Section transversale à chaque échantillon d'axe : l'échec est conservé
@@ -897,7 +934,9 @@ std::optional<std::vector<Station>> compute_column_stations(const std::vector<Ve
             tan = unit(tan);
             const P2 nrm{-tan.y, tan.x}; // +90° : +N = gauche
             const auto sec = cross_section(polys, axis[i], nrm, maxWidth);
-            if (sec) {
+            if (sec && sec->second - sec->first < minWidth) {
+                entries[i].failure = CrossSectionFailure::TooNarrow;
+            } else if (sec) {
                 Station st;
                 st.axis = axis[i];
                 st.tangent = tan;
@@ -960,7 +999,7 @@ std::optional<std::vector<Station>> compute_column_stations(const std::vector<Ve
             bool bridged = false;
             if (failLen == 1 && gap <= kMaxIsolatedGapFactor * stationSpacingUm) {
                 const Station candidate = interpolate_station(prevSt, nextSt, axis[i]);
-                if (interpolated_station_valid(polys, prevSt, candidate, nextSt, maxWidth)) {
+                if (interpolated_station_valid(polys, prevSt, candidate, nextSt, minWidth, maxWidth)) {
                     raw.push_back(candidate);
                     warnings.push_back("station axe #" + std::to_string(i) +
                                        " interpolee (echec isole : " + describe(firstFailure) +

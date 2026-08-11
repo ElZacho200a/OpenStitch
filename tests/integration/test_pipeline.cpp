@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <filesystem>
+#include <limits>
 
 #include "openstitch/autodigitize/autodigitize.hpp"
 #include "openstitch/formats/dst.hpp"
@@ -180,6 +181,61 @@ TEST_CASE("fixture tentabrode : pipeline complexe deterministe et sans geometrie
     CHECK(stats.stitches > 1000);
     CHECK(stats.bounds.min.x.value <= stats.bounds.max.x.value);
     CHECK(stats.bounds.min.y.value <= stats.bounds.max.y.value);
+}
+
+// DIAGNOSTIC TEMPORAIRE : vérification du correctif "pointes de colonne
+// satin quasi nulles" (§ audit satin sur logo circulaire GISTRE, projet réel
+// fourni par l'utilisateur — retour : "le satin fait n'importe quoi"). Ré-
+// exécute auto_digitize sur la segmentation RÉELLE déjà stockée dans le
+// .osp (donc la même vectorisation/squelette que la numérisation d'origine)
+// et vérifie qu'aucun barreau de satin n'est plus fin que le plancher voulu
+// (`tip_min_width`). Avant correctif : 178 des 190 satins de cette image
+// (94 %) avaient au moins un barreau sous 50 µm, la marche de `extend_tip`
+// pouvant franchir le plancher en un seul pas avant que la condition d'arrêt
+// n'ait la main (§ satin_column.cpp, `extend_tip`) ; après correctif : 0.
+// CHECK(false) délibéré : force Catch2 à afficher les UNSCOPED_INFO même en
+// cas de succès des autres assertions (même pattern que le diagnostic
+// Cathebrode ci-dessous).
+TEST_CASE("DIAGNOSTIC TEMPORAIRE satin pointes fines (GISTRE)") {
+    const auto loaded = project_io::load_project("C:/Users/zache/Pictures/GISTRE.osp");
+    REQUIRE(loaded.has_value());
+    auto project = *loaded;
+    REQUIRE(project.segmentation.has_value());
+
+    const auto result =
+        autodigitize::auto_digitize(*project.segmentation, project.object_ids, {});
+    REQUIRE(result.has_value());
+
+    int nSatin = 0;
+    int nDegenerate = 0;
+    double worstMinSeparationUm = std::numeric_limits<double>::max();
+    for (const auto& e : result->embroideries) {
+        if (auto* sp = std::get_if<document::SatinParams>(&e.params)) {
+            ++nSatin;
+            // Largeur via les BARREAUX (paires a/b déjà appariées au même
+            // point d'axe) -- comparer deux rails aplatis INDÉPENDAMMENT par
+            // index brut serait invalide (nombre de points différent selon
+            // la courbure locale de chacun : l'index i ne désigne alors pas
+            // la même position le long des deux rails).
+            for (const auto& rung : sp->rungs) {
+                worstMinSeparationUm = std::min(worstMinSeparationUm, length_um(rung.a - rung.b));
+            }
+        }
+    }
+    // Plancher voulu (tip_min_width) : 300 µm. Marge de 10 µm pour le bruit
+    // d'arrondi au µm des positions de rail.
+    for (const auto& e : result->embroideries) {
+        if (auto* sp = std::get_if<document::SatinParams>(&e.params)) {
+            for (const auto& rung : sp->rungs) {
+                if (length_um(rung.a - rung.b) < 290.0) {
+                    ++nDegenerate;
+                }
+            }
+        }
+    }
+    UNSCOPED_INFO("satin objects=" << nSatin << " barreaux sous 0,29 mm=" << nDegenerate
+                                   << " pire separation=" << worstMinSeparationUm << " um");
+    CHECK(false);
 }
 
 TEST_CASE("DIAGNOSTIC TEMPORAIRE osp utilisateur") {

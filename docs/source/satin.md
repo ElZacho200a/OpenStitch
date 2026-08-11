@@ -944,6 +944,104 @@ complète sans trou entre stations consécutives, avec tous les barreaux dans la
 région et aucun croisement entre barreaux — jamais un résultat partiel ;
 déterminisme vérifié (mêmes rails à chaque exécution sur les deux fixtures).
 
+### Pointes de colonne réduites à quelques dizaines de µm : plancher franchi en un seul pas dans `extend_tip`
+
+*État : Présent · Testé numériquement (unitaire + intégration sur projet réel).*
+Correctif d'audit (2026-08-11), retour utilisateur : *« le satin fait
+n'importe quoi »* sur un logo circulaire à motif de circuit imprimé
+finement détaillé (nombreuses formes fines à extrémité OUVERTE — pointe de
+piste, plot de connecteur).
+
+**Défaut trouvé en investiguant le retour utilisateur.** `extend_tip`
+prolonge un bout ouvert de colonne au-delà de ce que le squelette aminci
+couvre, en marchant par pas de `stepLen` le long de la tangente sortante et
+en ré-échantillonnant une section transversale à chaque pas, tant que la
+largeur rétrécit. La boucle **poussait la station dans `ext` avant de
+vérifier** si sa largeur avait déjà atteint le plancher voulu
+(`tip_min_width`) :
+
+```cpp
+Station st;
+st.width = width;
+ext.push_back(st);        // ← poussée d'abord...
+...
+if (width <= tipMinWidth) {
+    return ext;            // ← ...le plancher n'est vérifié qu'ensuite
+}
+```
+
+Or rien ne borne la largeur **au-dessus** du plancher au moment de la
+poussée : si un pas de marche fait chuter la largeur de, disons, 200 µm à
+34 µm en une seule itération (taper serré, pas de marche relativement
+grossier par rapport à la vitesse de rétrécissement — le cas courant pour
+une petite forme pointue), c'est cette station à 34 µm qui se retrouve
+poussée dans `ext`, **avant** que la condition d'arrêt n'ait la main. La
+bissection de fermeture qui suit (laquelle, elle, respecte correctement
+`tipMinWidth` : `half = max(tipMinWidth * 0.5, 1.0)`) n'était alors jamais
+atteinte pour cette extrémité — sa station de tête restait celle,
+sous-plancher, déjà poussée.
+
+Un second facteur amplifiait la fréquence du défaut sans en changer la
+nature : `tip_min_width` valait **50 µm par défaut**, sous le pas de
+quantification DST lui-même (0,1 mm, cf. `formats/dst.hpp`) — un barreau à
+tout juste 50 µm n'aurait de toute façon jamais représenté un point cousu
+exploitable, même sans le défaut d'ordre de poussée ci-dessus.
+
+**Impact mesuré sur un projet réel** (logo circulaire, ~340 régions
+segmentées, `tests/integration/test_pipeline.cpp`, diagnostic
+« satin pointes fines (GISTRE) ») : **178 des 190 colonnes satin (94 %)**
+avaient au moins un barreau sous 0,8 mm, la plupart entre 33 et 51 µm —
+quasiment toute colonne à extrémité ouverte était concernée, puisque
+`extend_tip` s'applique à chacune. Une colonne satin dont le dernier
+barreau mesure quelques dizaines de µm génère, selon la machine et le fil,
+un point quasi nul, un bourrage de fil ou une casse — exactement le
+symptôme rapporté (*« ça fait n'importe quoi »*), et son omniprésence sur
+ce type d'image (nombreuses petites formes en pointe) explique pourquoi il
+n'était pas passé inaperçu plus tôt sur des images plus simples (peu de
+bouts ouverts fins).
+
+**Correction, deux volets indépendants** :
+
+1. **Ordre de la boucle inversé** : la largeur est comparée au plancher
+   *avant* de pousser la station, pas après. Une station déjà sous le
+   plancher n'est jamais poussée — la marche s'arrête un pas plus tôt et
+   laisse la bissection de fermeture (déjà correcte) fermer proprement au
+   plancher exact.
+2. **`tip_min_width` porté de 50 à 300 µm** : reste nettement sous
+   `min_satin_width` (0,8 mm, le seuil « satin digne de ce nom » pour toute
+   la colonne — la pointe reste une pointe, pas un bout à pleine largeur),
+   tout en dépassant largement le pas DST avec une marge de sécurité (×3).
+
+Un défaut apparenté, dans la boucle dense principale de
+`compute_column_stations` (partagée par `build_column` et
+`build_parametric_object`, donc par les deux modes de géométrie) : aucun
+plancher de largeur n'existait pour une station de CORPS (pas de bout),
+qu'elle vienne de l'axe principal ou d'une interpolation comblant un échec
+isolé de `cross_section` (§ *Génération partielle sur formes concaves*
+ci-dessus). Une région globalement fine mais localement très étroite sur
+une portion de son squelette pouvait ainsi passer le test d'éligibilité
+(`satinability.cpp` compare `max_satin_width` à la largeur **maximale**
+relevée sur toute la région, pas à sa largeur typique) puis dégénérer en
+aval. Ajout d'un nouveau cas d'échec `CrossSectionFailure::TooNarrow`
+(largeur sous `min_satin_width`), traité par le mécanisme d'échec déjà en
+place (§ *Génération partielle*) : un échec isolé est comblé par
+interpolation *si l'interpolée elle-même dépasse le plancher* (`minWidth`
+ajouté aux critères de `interpolated_station_valid`, qui ne vérifiait
+jusqu'ici que `maxWidth` — sans quoi une station trop étroite se faisait
+réaccepter telle quelle par simple interpolation de position avec ses
+voisines, sans jamais revalider sa largeur) ; un échec étendu refuse la
+colonne entière plutôt que de produire des rails quasi confondus sur toute
+sa longueur.
+
+Vérifié : suite `test_auto_satin` complète inchangée (1999 assertions, 51
+cas, aucune régression sur les fixtures existantes) ; nouveau cas sur la
+géométrie EXACTE d'une région du projet réel en cause
+(`tests/unit/auto_satin/test_columns.cpp`) ; diagnostic d'intégration sur
+le projet réel complet (`tests/integration/test_pipeline.cpp`, § GISTRE) :
+0 barreau sous 0,29 mm après correctif contre 178/190 colonnes touchées
+avant, pire séparation observée 299 µm (au plancher voulu, à l'arrondi µm
+près).
+
 ## Objets satin paramétriques (mode `Parametric`, refonte 2026-08-04)
 
 *État : Présent, activable par `SatinColumnsParameters::geometry_mode` (CLI :
