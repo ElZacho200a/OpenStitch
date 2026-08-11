@@ -261,6 +261,17 @@ private:
     void deleteVectorObject(ObjectId id);
     void deleteEmbroideryObjectOnly(ObjectId id);
     void duplicateVectorObject(ObjectId id);
+    // Décalage (offset) façon Fusion 360 : crée une NOUVELLE forme, contour
+    // aplati puis décalé via geometry::inset_path_set (Clipper2) -- ne
+    // modifie jamais l'original, comme dupliquer. Les courbes (nœuds Lisses)
+    // sont aplaties d'abord (mêmes raisons qu'à l'export DXF : Clipper2
+    // travaille sur des polygones, pas des tangentes).
+    void offsetVectorObject(ObjectId id);
+    // Cœur de offsetVectorObject, sans QInputDialog (comme applyLoadedProject
+    // pour loadProject) : delta déjà en µm, convention geometry::inset_path_set
+    // (positif = retrait intérieur). Seam de test uniquement -- offsetVectorObject
+    // reste le seul point d'entrée en usage réel.
+    void offsetVectorObjectCore(ObjectId id, Micrometers delta);
 
     void executeOp(image::ImageOp op);
     void positionEmptyState();  // centre l'accueil dans la vue

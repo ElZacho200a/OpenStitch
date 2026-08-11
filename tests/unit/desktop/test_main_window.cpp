@@ -301,6 +301,11 @@ private slots:
     // l'accroche et du DXF) : nombre de côtés réglable dans la palette,
     // inscrit dans le cadre glissé (même mécanique que rectangle/ellipse).
     void drawRegularPolygonToolCreatesUndoableVectorObjectWithConfiguredSides();
+    // Décalage (outil d'édition façon Fusion 360, suite du polygone régulier) :
+    // crée une nouvelle forme rétrécie/agrandie sans toucher l'originale ;
+    // un décalage qui consomme toute la forme ne crée rien.
+    void offsetVectorObjectCoreShrinksIntoNewObjectWithoutTouchingOriginal();
+    void offsetVectorObjectCoreTooLargeCreatesNothing();
     // Accroche façon Fusion 360 (audit "outils de sketch") : un clic/survol
     // proche d'un sommet existant se pose exactement dessus, avec repère
     // visuel ; loin de tout candidat, la position brute du curseur est
@@ -1834,6 +1839,91 @@ void MainWindowTest::drawRegularPolygonToolCreatesUndoableVectorObjectWithConfig
     QVERIFY(window.undoStack_.canUndo());
     window.undo();
     QCOMPARE(window.project_.vector_objects.size(), before);
+}
+
+void MainWindowTest::offsetVectorObjectCoreShrinksIntoNewObjectWithoutTouchingOriginal() {
+    MainWindow window;
+    Fixture fx = buildFixture();
+    document::VectorObject square;
+    square.id = fx.project.object_ids.next();
+    square.name = "Carre";
+    geometry::Path outer;
+    outer.closed = true;
+    outer.nodes.push_back(geometry::PathNode{Vec2um{Micrometers{0}, Micrometers{0}},
+                                             geometry::NodeType::Corner, std::nullopt, std::nullopt});
+    outer.nodes.push_back(geometry::PathNode{Vec2um{Micrometers{10'000}, Micrometers{0}},
+                                             geometry::NodeType::Corner, std::nullopt, std::nullopt});
+    outer.nodes.push_back(geometry::PathNode{Vec2um{Micrometers{10'000}, Micrometers{10'000}},
+                                             geometry::NodeType::Corner, std::nullopt, std::nullopt});
+    outer.nodes.push_back(geometry::PathNode{Vec2um{Micrometers{0}, Micrometers{10'000}},
+                                             geometry::NodeType::Corner, std::nullopt, std::nullopt});
+    square.paths.push_back(geometry::PathSet{outer, {}});
+    const ObjectId squareId = square.id;
+    fx.project.vector_objects.push_back(square);
+    window.applyLoadedProject(fx.project);
+
+    const std::size_t before = window.project_.vector_objects.size();
+    // Retrait de 2 mm (delta positif, convention geometry::inset_path_set) :
+    // carre 10x10 -> 6x6 mm, centre inchange.
+    window.offsetVectorObjectCore(squareId, Micrometers{2'000});
+
+    QCOMPARE(window.project_.vector_objects.size(), before + 1);
+    // L'original n'a pas bouge.
+    const auto* original = window.project_.findObject(squareId);
+    QVERIFY(original != nullptr);
+    QCOMPARE(original->paths[0].outer.nodes[0].pos, (Vec2um{Micrometers{0}, Micrometers{0}}));
+
+    const auto& created = window.project_.vector_objects.back();
+    QVERIFY(created.id != squareId);
+    QCOMPARE(created.paths.size(), std::size_t{1});
+    QCOMPARE(created.paths[0].outer.nodes.size(), std::size_t{4});
+    std::int32_t minX = created.paths[0].outer.nodes[0].pos.x.value;
+    std::int32_t maxX = minX;
+    std::int32_t minY = created.paths[0].outer.nodes[0].pos.y.value;
+    std::int32_t maxY = minY;
+    for (const auto& n : created.paths[0].outer.nodes) {
+        minX = std::min(minX, n.pos.x.value);
+        maxX = std::max(maxX, n.pos.x.value);
+        minY = std::min(minY, n.pos.y.value);
+        maxY = std::max(maxY, n.pos.y.value);
+    }
+    QCOMPARE(minX, std::int32_t{2'000});
+    QCOMPARE(maxX, std::int32_t{8'000});
+    QCOMPARE(minY, std::int32_t{2'000});
+    QCOMPARE(maxY, std::int32_t{8'000});
+
+    QVERIFY(window.undoStack_.canUndo());
+    window.undo();
+    QCOMPARE(window.project_.vector_objects.size(), before);
+}
+
+void MainWindowTest::offsetVectorObjectCoreTooLargeCreatesNothing() {
+    MainWindow window;
+    Fixture fx = buildFixture();
+    document::VectorObject square;
+    square.id = fx.project.object_ids.next();
+    square.name = "Carre";
+    geometry::Path outer;
+    outer.closed = true;
+    outer.nodes.push_back(geometry::PathNode{Vec2um{Micrometers{0}, Micrometers{0}},
+                                             geometry::NodeType::Corner, std::nullopt, std::nullopt});
+    outer.nodes.push_back(geometry::PathNode{Vec2um{Micrometers{10'000}, Micrometers{0}},
+                                             geometry::NodeType::Corner, std::nullopt, std::nullopt});
+    outer.nodes.push_back(geometry::PathNode{Vec2um{Micrometers{10'000}, Micrometers{10'000}},
+                                             geometry::NodeType::Corner, std::nullopt, std::nullopt});
+    outer.nodes.push_back(geometry::PathNode{Vec2um{Micrometers{0}, Micrometers{10'000}},
+                                             geometry::NodeType::Corner, std::nullopt, std::nullopt});
+    square.paths.push_back(geometry::PathSet{outer, {}});
+    const ObjectId squareId = square.id;
+    fx.project.vector_objects.push_back(square);
+    window.applyLoadedProject(fx.project);
+
+    const std::size_t before = window.project_.vector_objects.size();
+    // Retrait de 20 mm sur un carre de 10 mm de cote : consomme toute la forme.
+    window.offsetVectorObjectCore(squareId, Micrometers{20'000});
+
+    QCOMPARE(window.project_.vector_objects.size(), before);  // rien de cree
+    QVERIFY(!window.undoStack_.canUndo());
 }
 
 void MainWindowTest::drawEllipseWithShiftConstrainsToCircle() {

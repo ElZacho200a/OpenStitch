@@ -59,6 +59,7 @@
 #include "openstitch/document/image_placement.hpp"
 #include "openstitch/formats/dst.hpp"
 #include "openstitch/formats/dxf.hpp"
+#include "openstitch/geometry/offset.hpp"
 #include "openstitch/geometry/polyline.hpp"
 #include "openstitch/geometry/primitives.hpp"
 #include "openstitch/image/image.hpp"
@@ -3671,6 +3672,9 @@ void MainWindow::onCanvasContextMenu(QPointF posMm, QPoint globalPos) {
             auto* dupAct = menu.addAction(tr("Dupliquer"));
             connect(dupAct, &QAction::triggered, this,
                     [this, targetVecId] { duplicateVectorObject(targetVecId); });
+            auto* offsetAct = menu.addAction(tr("Décaler…"));
+            connect(offsetAct, &QAction::triggered, this,
+                    [this, targetVecId] { offsetVectorObject(targetVecId); });
         }
         // Pas de raccourci Suppr ici : déjà utilisé par la suppression de
         // région (action toujours active au niveau fenêtre) — un second
@@ -3755,6 +3759,84 @@ void MainWindow::duplicateVectorObject(ObjectId id) {
     refreshImage();
     updateActions();
     statusBar()->showMessage(tr("« %1 » dupliqué.").arg(sourceName));
+}
+
+void MainWindow::offsetVectorObject(ObjectId id) {
+    bool ok = false;
+    const double offsetMm = QInputDialog::getDouble(
+        this, tr("Décaler la forme"),
+        tr("Décalage (mm) — positif : agrandit vers l'extérieur ; négatif : rétrécit vers "
+           "l'intérieur"),
+        2.0, -50.0, 50.0, 2, &ok);
+    if (!ok || offsetMm == 0.0) {
+        return;
+    }
+    // inset_path_set : delta > 0 = retrait intérieur -- convention inverse de
+    // « positif agrandit » côté utilisateur, d'où le signe opposé ici.
+    offsetVectorObjectCore(id, to_micrometers(Millimeters{-offsetMm}));
+}
+
+void MainWindow::offsetVectorObjectCore(ObjectId id, Micrometers delta) {
+    const auto* source = project_.findObject(id);
+    if (source == nullptr) {
+        return;
+    }
+    // Aplatit d'abord les courbes (nœuds Lisses) : Clipper2 (sous
+    // inset_path_set) travaille sur des polygones bruts, sans notion de
+    // tangente -- même raison qu'à l'export DXF (geometry::flatten est la
+    // même fonction, même tolérance).
+    constexpr Micrometers kFlattenTolerance{50};
+    const auto flattenToPath = [](const geometry::Path& path) {
+        const geometry::Polyline flat = geometry::flatten(path, kFlattenTolerance);
+        geometry::Path out;
+        out.closed = flat.closed;
+        out.nodes.reserve(flat.points.size());
+        for (const Vec2um& p : flat.points) {
+            out.nodes.push_back(
+                geometry::PathNode{p, geometry::NodeType::Corner, std::nullopt, std::nullopt});
+        }
+        return out;
+    };
+
+    document::VectorObject result;
+    result.id = project_.object_ids.next();
+    result.name = tr("%1 (décalé)").arg(QString::fromStdString(source->name)).toStdString();
+    result.rgb = source->rgb;
+    for (const auto& set : source->paths) {
+        geometry::PathSet flatSet;
+        flatSet.outer = flattenToPath(set.outer);
+        for (const auto& hole : set.holes) {
+            flatSet.holes.push_back(flattenToPath(hole));
+        }
+        const auto offsetResult = geometry::inset_path_set(flatSet, delta);
+        if (!offsetResult) {
+            QMessageBox::warning(this, tr("Décalage impossible"),
+                                 QString::fromStdString(offsetResult.error().message));
+            return;
+        }
+        for (auto& offsetSet : *offsetResult) {
+            result.paths.push_back(std::move(offsetSet));
+        }
+    }
+    if (result.paths.empty()) {
+        statusBar()->showMessage(tr("Décalage trop important — la forme disparaît complètement."));
+        return;
+    }
+
+    const ObjectId newId = result.id;
+    std::vector<document::VectorObject> batch;
+    batch.push_back(std::move(result));
+    undoStack_.execute(
+        std::make_unique<commands::AddObjectBatchCommand>(
+            std::move(batch), std::vector<document::EmbroideryObject>{}, "Décalage"),
+        project_);
+    selectedObject_ = newId;
+    selectedRegion_.reset();
+    selectedEmbroidery_.reset();
+    showVectorsAct_->setChecked(true);
+    refreshImage();
+    updateActions();
+    statusBar()->showMessage(tr("Forme décalée créée."));
 }
 
 QString MainWindow::buildDebugDump(ObjectId embroideryId) const {
