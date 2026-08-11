@@ -84,6 +84,19 @@ private slots:
     void createRunningStitchObject();
     void createTatamiObject();
     void createSatinObject();
+    // Ligne de coupe (outil DrawSatinCutLine, façon Ink/Stitch "cut line") :
+    // découpe géométriquement `source->paths.front()` en morceaux
+    // (`geometry::cut_path_set`) puis convertit chacun en colonne(s) satin
+    // indépendamment (auto_satin::build_satin_columns par morceau) -- guide
+    // manuel de décomposition aux jonctions difficiles, en complément de la
+    // détection automatique de `createSatinObject()`. `cutA`/`cutB` : les
+    // deux points du glisser, coordonnées modèle. Renvoie `true` si au moins
+    // une colonne satin a été créée (l'appelant repasse alors en outil
+    // Sélection), `false` si la coupe n'a rien produit (reste sur l'outil
+    // pour laisser l'utilisateur réessayer).
+    bool createSatinObjectWithCutLine(Vec2um cutA, Vec2um cutB);
+    void onSatinCutLineDragging(QPointF anchorMm, QPointF currentMm);
+    void onSatinCutLineCommitted(QPointF anchorMm, QPointF handleMm);
     void autoConvertToSatin();
     void changeFillAngle();
     void convertSatinsToTatami();
@@ -333,6 +346,7 @@ private:
     QAction* toolDrawBezierAct_{nullptr};
     QAction* toolDrawFreeformAct_{nullptr};
     QAction* toolDrawSatinColumnAct_{nullptr};
+    QAction* toolDrawSatinCutLineAct_{nullptr};
     // Boutons génériques partagés par tout outil de tracé multi-clics
     // (polygone/bézier/satin) : Terminer (Entrée) et Annuler (Échap),
     // toujours visibles dans la palette d'outils, actifs seulement pendant
@@ -371,6 +385,7 @@ private:
     std::vector<geometry::PathNode> pendingBezierNodes_;
     QGraphicsPathItem* bezierPreviewItem_{nullptr};   // tracé confirmé + segment élastique
     QGraphicsPathItem* bezierHandlePreviewItem_{nullptr};  // poignée en cours de glisser
+    QGraphicsPathItem* cutLinePreviewItem_{nullptr};  // ligne de coupe en cours de glisser
 
     QList<QAction*> imageActions_;
     QList<QAction*> regionActions_;  // nécessitent une région sélectionnée

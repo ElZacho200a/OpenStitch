@@ -173,6 +173,21 @@ QIcon satinColumn() {
     });
 }
 
+QIcon satinCutLine() {
+    return make([](QPainter& p) {
+        // Une forme (contour léger) traversée par une ligne de coupe en
+        // pointillé rouge — distinct de satinColumn() (deux rails pleins).
+        QPainterPath shape;
+        shape.addRoundedRect(QRectF(6, 6, 20, 20), 3, 3);
+        p.drawPath(shape);
+        QPen dashed(QColor(0xB0, 0x30, 0x30));
+        dashed.setWidthF(1.6);
+        dashed.setStyle(Qt::DashLine);
+        p.setPen(dashed);
+        p.drawLine(QPointF(3, 24), QPointF(29, 8));
+    });
+}
+
 QIcon openImage() {
     return make([](QPainter& p) {
         p.drawRect(6, 9, 20, 15);

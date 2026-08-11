@@ -355,6 +355,11 @@ private slots:
     void switchingToolDuringSatinColumnDrawCancelsIt();
     void satinRailEditModeDragsNodeAndUndoRestoresIt();
 
+    // Ligne de coupe satin (outil DrawSatinCutLine, façon Ink/Stitch
+    // "cut line") : glisser réel à travers une forme sélectionnée -> deux
+    // morceaux, chacun converti en colonne satin indépendante.
+    void satinCutLineToolSplitsSelectedShapeIntoTwoSatinColumns();
+
     // Réponses à l'audit UI (boutons "ne faisant rien", pas de courbes de
     // Bézier, menu contextuel pauvre, mode satin confus) : outil Bézier réel
     // (clic + clic-glisser), bouton/touche Entrée pour terminer un tracé,
@@ -2413,6 +2418,84 @@ void MainWindowTest::satinRailEditModeDragsNodeAndUndoRestoresIt() {
     action->setChecked(false);
     QVERIFY(!window.railEditTarget_.has_value());
     QCoreApplication::processEvents();
+}
+
+void MainWindowTest::satinCutLineToolSplitsSelectedShapeIntoTwoSatinColumns() {
+    MainWindow window;
+    Fixture fx = buildFixture();
+
+    // Rectangle allongé 40 x 4 mm centré sur l'origine (même famille que le
+    // rectangle "Suitable" de createSatinObject() ci-dessus, juste assez
+    // court pour que chaque moitié post-coupe (~20 x 4 mm) reste elle-même
+    // sans ambiguïté satinable).
+    document::VectorObject rect;
+    rect.id = fx.project.object_ids.next();
+    rect.name = "Rectangle allonge";
+    geometry::Path outer;
+    outer.closed = true;
+    const auto corner = [](std::int32_t x, std::int32_t y) {
+        return geometry::PathNode{Vec2um{Micrometers{x}, Micrometers{y}}, geometry::NodeType::Corner,
+                                  std::nullopt, std::nullopt};
+    };
+    outer.nodes = {corner(-20'000, -2'000), corner(20'000, -2'000), corner(20'000, 2'000),
+                   corner(-20'000, 2'000)};
+    rect.paths.push_back(geometry::PathSet{outer, {}});
+    const ObjectId rectId = rect.id;
+    fx.project.vector_objects.push_back(rect);
+
+    window.applyLoadedProject(fx.project);
+    window.selectedObject_ = rectId;
+    window.setTool(Tool::DrawSatinCutLine);
+
+    auto* view = window.findChild<CanvasView*>();
+    QVERIFY(view != nullptr);
+    window.resize(900, 700);
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+    view->resetTransform();
+    view->scale(10.0, 10.0);
+    view->centerOn(QPointF(0.0, 0.0));
+
+    // Glisser vertical à x=0, de part et d'autre du rectangle (scène en mm,
+    // Y vers le bas) : traverse toute la largeur, à mi-longueur.
+    const QPoint anchorVp = view->mapFromScene(QPointF(0.0, 3.0));
+    const QPoint midVp = view->mapFromScene(QPointF(0.0, 0.0));
+    const QPoint handleVp = view->mapFromScene(QPointF(0.0, -3.0));
+    QVERIFY(view->viewport()->rect().contains(anchorVp));
+    QVERIFY(view->viewport()->rect().contains(handleVp));
+
+    const std::size_t embBefore = window.project_.embroidery_objects.size();
+
+    // createSatinObjectWithCutLine() ouvre une QDialog modale (densité/
+    // compensation/sous-couche), identique à createSatinObject() : même
+    // mécanisme de pilotage différé (exec() pompe la boucle en interne).
+    QTimer::singleShot(0, &window, [] {
+        if (auto* dlg = qobject_cast<QDialog*>(QApplication::activeModalWidget())) {
+            dlg->accept();
+        }
+    });
+    QTest::mousePress(view->viewport(), Qt::LeftButton, Qt::NoModifier, anchorVp);
+    QTest::mouseMove(view->viewport(), midVp);
+    QTest::mouseRelease(view->viewport(), Qt::LeftButton, Qt::NoModifier, handleVp);
+
+    QCOMPARE(window.project_.embroidery_objects.size(), embBefore + 2);
+    for (std::size_t i = embBefore; i < window.project_.embroidery_objects.size(); ++i) {
+        const auto& emb = window.project_.embroidery_objects[i];
+        QCOMPARE(emb.source_vector, rectId);
+        QVERIFY(emb.is_satin());
+    }
+    QCOMPARE(QString::fromStdString(window.undoStack_.undoName()),
+             QStringLiteral("Colonne satin (ligne de coupe)"));
+
+    // Un seul geste = une seule coupe (v1) : succès -> retour auto sur
+    // Sélection, pour enchaîner naturellement sur la retouche du résultat.
+    QCOMPARE(window.currentTool_, Tool::Select);
+
+    QVERIFY(window.undoStack_.canUndo());
+    window.undo();
+    QCOMPARE(window.project_.embroidery_objects.size(), embBefore);
+    window.redo();
+    QCOMPARE(window.project_.embroidery_objects.size(), embBefore + 2);
 }
 
 // ---------------------------------------------------------------------------

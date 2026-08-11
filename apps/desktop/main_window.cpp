@@ -59,6 +59,7 @@
 #include "openstitch/document/image_placement.hpp"
 #include "openstitch/formats/dst.hpp"
 #include "openstitch/formats/dxf.hpp"
+#include "openstitch/geometry/cut.hpp"
 #include "openstitch/geometry/offset.hpp"
 #include "openstitch/geometry/polyline.hpp"
 #include "openstitch/geometry/primitives.hpp"
@@ -400,6 +401,8 @@ MainWindow::MainWindow() {
     connect(view_, &CanvasView::freeformStrokeFinished, this, &MainWindow::finishFreeform);
     connect(view_, &CanvasView::bezierPointDraggingMm, this, &MainWindow::onBezierPointDragging);
     connect(view_, &CanvasView::bezierPointCommittedMm, this, &MainWindow::onBezierPointCommitted);
+    connect(view_, &CanvasView::bezierPointDraggingMm, this, &MainWindow::onSatinCutLineDragging);
+    connect(view_, &CanvasView::bezierPointCommittedMm, this, &MainWindow::onSatinCutLineCommitted);
 
     connect(view_, &CanvasView::canvasClickedMm, this, &MainWindow::onCanvasClicked);
     connect(view_, &CanvasView::canvasContextMenu, this, &MainWindow::onCanvasContextMenu);
@@ -3356,6 +3359,198 @@ void MainWindow::createSatinObject() {
     }
 }
 
+void MainWindow::onSatinCutLineDragging(QPointF anchorMm, QPointF currentMm) {
+    if (currentTool_ != Tool::DrawSatinCutLine) {
+        return;
+    }
+    if (cutLinePreviewItem_ == nullptr) {
+        cutLinePreviewItem_ = new QGraphicsPathItem();
+        cutLinePreviewItem_->setZValue(1001.0);
+        QPen pen(QColor(0xB0, 0x30, 0x30));
+        pen.setWidthF(0.15);
+        pen.setStyle(Qt::DashLine);
+        cutLinePreviewItem_->setPen(pen);
+        scene_->addItem(cutLinePreviewItem_);
+    }
+    QPainterPath path;
+    path.moveTo(anchorMm);
+    path.lineTo(currentMm);
+    cutLinePreviewItem_->setPath(path);
+    statusBar()->showMessage(
+        tr("Ligne de coupe : relâchez pour séparer la forme sélectionnée en colonnes satin."));
+}
+
+void MainWindow::onSatinCutLineCommitted(QPointF anchorMm, QPointF handleMm) {
+    if (currentTool_ != Tool::DrawSatinCutLine) {
+        return;
+    }
+    if (cutLinePreviewItem_ != nullptr) {
+        cutLinePreviewItem_->setPath(QPainterPath());
+    }
+    // Un seul geste = une seule coupe (v1) : succès -> retour à Sélection
+    // pour enchaîner naturellement sur la retouche du résultat ; échec ->
+    // reste sur l'outil pour laisser l'utilisateur retracer la ligne.
+    if (createSatinObjectWithCutLine(sceneMmToModel(anchorMm), sceneMmToModel(handleMm))) {
+        setTool(Tool::Select);
+    }
+}
+
+bool MainWindow::createSatinObjectWithCutLine(Vec2um cutA, Vec2um cutB) {
+    if (!selectedObject_) {
+        statusBar()->showMessage(
+            tr("Sélectionnez d'abord la forme à découper avant de tracer la ligne de coupe."),
+            4000);
+        return false;
+    }
+    const auto* source = project_.findObject(*selectedObject_);
+    if (source == nullptr || source->paths.empty()) {
+        return false;
+    }
+    // Glisser quasi nul (clic net plutôt que tracé) : probablement
+    // involontaire, on ignore silencieusement plutôt que de découper au
+    // hasard sur un segment dégénéré.
+    constexpr double kMinCutLengthUm = 200.0;
+    if (length_um(cutB - cutA) < kMinCutLengthUm) {
+        return false;
+    }
+
+    const auto cutResult = geometry::cut_path_set(source->paths.front(), cutA, cutB);
+    if (!cutResult || cutResult->size() < 2) {
+        QMessageBox::warning(this, tr("Coupe sans effet"),
+                             tr("La ligne tracée ne sépare pas la forme en deux morceaux. "
+                                "Tracez-la bien d'un bord à l'autre de la forme, à travers "
+                                "la jonction visée."));
+        return false;
+    }
+
+    QDialog dialog(this);
+    dialog.setWindowTitle(tr("Colonnes satin (ligne de coupe)"));
+    auto* layout = new QFormLayout(&dialog);
+    auto* warn = new QLabel(
+        tr("⚠ Le satin automatique est expérimental. Vérifiez impérativement le "
+           "résultat (densité, virages, extrémités) avant tout passage sur machine."),
+        &dialog);
+    warn->setWordWrap(true);
+    warn->setStyleSheet("color:#8a5a00;");
+    layout->addRow(warn);
+    auto* densitySpin = new QDoubleSpinBox(&dialog);
+    densitySpin->setRange(0.1, 1.5);
+    densitySpin->setValue(0.4);
+    densitySpin->setDecimals(2);
+    densitySpin->setSuffix(tr(" mm"));
+    auto* compSpin = new QDoubleSpinBox(&dialog);
+    compSpin->setRange(0.0, 1.0);
+    compSpin->setValue(0.0);
+    compSpin->setDecimals(2);
+    compSpin->setSuffix(tr(" mm"));
+    auto* underlayCheck = new QCheckBox(tr("Sous-couche centrale"), &dialog);
+    underlayCheck->setChecked(true);
+    layout->addRow(tr("Densité (écart) :"), densitySpin);
+    layout->addRow(tr("Compensation de tirage :"), compSpin);
+    layout->addRow(underlayCheck);
+    auto* buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dialog);
+    connect(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
+    connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
+    layout->addRow(buttons);
+    if (dialog.exec() != QDialog::Accepted) {
+        return false;
+    }
+
+    const Micrometers density = to_micrometers(Millimeters{densitySpin->value()});
+    const Micrometers compensation = to_micrometers(Millimeters{compSpin->value()});
+    const bool underlay = underlayCheck->isChecked();
+    const document::SatinParams defaults;  // pour le seuil max_width (§5.3)
+
+    std::vector<document::EmbroideryObject> objects;
+    double worstWidthUm = 0.0;
+    int idx = 0;
+    // Chaque morceau issu de la coupe est traité indépendamment par le même
+    // moteur squelette que createSatinObject() : un morceau qui ne produit
+    // aucune colonne (trop petit/dégénéré) est simplement ignoré plutôt que
+    // d'annuler toute l'opération -- la coupe a pu très bien fonctionner
+    // pour la jonction visée même si un fragment marginal ne l'est pas.
+    for (const auto& piece : *cutResult) {
+        if (piece.outer.nodes.empty()) {
+            continue;
+        }
+        auto_satin::SatinColumnsParameters skeletonParams;
+        skeletonParams.geometry_mode = auto_satin::SatinGeometryMode::Parametric;
+        const auto skeletonResult = auto_satin::build_satin_columns(piece, skeletonParams);
+        const bool useParametric = !skeletonResult.parametric_columns.empty();
+        const std::size_t columnCount =
+            useParametric ? skeletonResult.parametric_columns.size() : skeletonResult.columns.size();
+        if (columnCount == 0) {
+            continue;
+        }
+
+        const auto addColumn = [&](const auto& col) {
+            const auto sp = autodigitize::satin_params_from_column(col, density, compensation, underlay,
+                                                                    defaults.max_width);
+            stitch_generation::SatinConfig probe;
+            probe.density = density;
+            worstWidthUm = std::max(
+                worstWidthUm, stitch_generation::fill_satin(sp.rail_a, sp.rail_b, probe).max_width_um);
+
+            document::EmbroideryObject object;
+            object.id = project_.object_ids.next();
+            object.name = tr("Satin de %1 (%2)")
+                              .arg(QString::fromStdString(source->name))
+                              .arg(++idx)
+                              .toStdString();
+            object.source_vector = source->id;
+            object.rgb = source->rgb;
+            object.params = sp;
+            objects.push_back(std::move(object));
+        };
+        if (useParametric) {
+            for (const auto& col : skeletonResult.parametric_columns) {
+                addColumn(col);
+            }
+        } else {
+            for (const auto& col : skeletonResult.columns) {
+                addColumn(col);
+            }
+        }
+    }
+
+    if (objects.empty()) {
+        QMessageBox::warning(this, tr("Satin impossible"),
+                             tr("Aucun des morceaux issus de la coupe n'est utilisable pour une "
+                                "colonne satin (trop petit ou trop complexe)."));
+        return false;
+    }
+
+    // Avertissement de largeur excessive (§5.3), identique à createSatinObject().
+    if (worstWidthUm > static_cast<double>(defaults.max_width.value)) {
+        const auto answer = QMessageBox::warning(
+            this, tr("Satin large"),
+            tr("La colonne atteint %1 mm de large — au-delà de la limite recommandée "
+               "(%2 mm), le fil risque d'accrocher. Un remplissage tatami serait plus "
+               "solide. Créer quand même le satin ?")
+                .arg(worstWidthUm / 1000.0, 0, 'f', 1)
+                .arg(defaults.max_width.value / 1000.0, 0, 'f', 1),
+            QMessageBox::Yes | QMessageBox::No);
+        if (answer != QMessageBox::Yes) {
+            return false;
+        }
+    }
+
+    const std::size_t count = objects.size();
+    undoStack_.execute(std::make_unique<commands::AddObjectBatchCommand>(
+                           std::vector<document::VectorObject>{}, std::move(objects),
+                           "Colonne satin (ligne de coupe)"),
+                       project_);
+    showStitchesAct_->setChecked(true);
+    refreshImage();
+    updateActions();
+    if (sequence_) {
+        const auto stats = stitch::compute_stats(*sequence_);
+        statusBar()->showMessage(
+            tr("Coupe : %1 colonne(s) satin générée(s) : %2 points").arg(count).arg(stats.stitches));
+    }
+    return true;
+}
+
 document::EmbroideryObject* MainWindow::currentFillObject() {
     if (selectedEmbroidery_) {
         if (auto* emb = project_.findEmbroidery(*selectedEmbroidery_);
@@ -4425,6 +4620,10 @@ void MainWindow::buildToolPalette() {
     toolDrawSatinColumnAct_ =
         addTool(icons::satinColumn(), tr("Colonne satin (clics alternés côté A / côté B)"),
                Tool::DrawSatinColumn, QKeySequence(Qt::Key_S));
+    toolDrawSatinCutLineAct_ = addTool(
+        icons::satinCutLine(),
+        tr("Ligne de coupe satin (découpe la forme sélectionnée pour guider le satin auto)"),
+        Tool::DrawSatinCutLine, QKeySequence(Qt::Key_C));
     toolSelectAct_->setChecked(true);
 
     toolPalette_->addSeparator();
@@ -4527,6 +4726,10 @@ void MainWindow::setTool(Tool tool) {
     if (currentTool_ == Tool::DrawBezier && tool != Tool::DrawBezier) {
         cancelBezierDraw();
     }
+    if (currentTool_ == Tool::DrawSatinCutLine && tool != Tool::DrawSatinCutLine &&
+        cutLinePreviewItem_ != nullptr) {
+        cutLinePreviewItem_->setPath(QPainterPath());
+    }
     // Un changement d'outil peut laisser le repère d'accroche affiché à une
     // position qui ne correspond plus à rien (ex. sorti du mode Polygone
     // sans bouger la souris) : masqué jusqu'au prochain mouvement pertinent.
@@ -4549,6 +4752,7 @@ void MainWindow::setTool(Tool tool) {
     sync(toolDrawBezierAct_, tool == Tool::DrawBezier);
     sync(toolDrawFreeformAct_, tool == Tool::DrawFreeform);
     sync(toolDrawSatinColumnAct_, tool == Tool::DrawSatinColumn);
+    sync(toolDrawSatinCutLineAct_, tool == Tool::DrawSatinCutLine);
     if (cropAct_ != nullptr) {
         QSignalBlocker block(cropAct_);
         cropAct_->setChecked(tool == Tool::Rect);
@@ -4565,7 +4769,7 @@ void MainWindow::setTool(Tool tool) {
     view_->setBoxDrawMode(tool == Tool::DrawRectangle || tool == Tool::DrawEllipse ||
                           tool == Tool::DrawPolygonRegular);
     view_->setPolygonDrawMode(tool == Tool::DrawPolygon);
-    view_->setBezierDrawMode(tool == Tool::DrawBezier);
+    view_->setBezierDrawMode(tool == Tool::DrawBezier || tool == Tool::DrawSatinCutLine);
     view_->setFreeformDrawMode(tool == Tool::DrawFreeform);
     view_->setSatinPairDrawMode(tool == Tool::DrawSatinColumn);
     if (tool == Tool::Pan) {
@@ -4586,6 +4790,7 @@ void MainWindow::setTool(Tool tool) {
                              : tool == Tool::DrawPolygonRegular ? tr("Dessiner un polygone régulier")
                              : tool == Tool::DrawBezier    ? tr("Dessiner une courbe de Bézier")
                              : tool == Tool::DrawFreeform  ? tr("Dessiner à main levée")
+                             : tool == Tool::DrawSatinCutLine ? tr("Ligne de coupe satin")
                                                            : tr("Colonne satin");
         toolLabel_->setText(tr("Outil : %1").arg(name));
     }
@@ -4614,6 +4819,10 @@ void MainWindow::setTool(Tool tool) {
         statusBar()->showMessage(
             tr("Cliquez alternativement côté A puis côté B de chaque paire — Entrée/"
                "double-clic/bouton ✓ pour terminer (2 paires min.), Échap pour annuler."));
+    } else if (tool == Tool::DrawSatinCutLine) {
+        statusBar()->showMessage(
+            tr("Sélectionnez d'abord une forme, puis cliquez-glissez pour tracer la ligne de "
+               "coupe qui la sépare en colonnes satin."));
     }
     updateDrawActionsState();
 }

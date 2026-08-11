@@ -17,6 +17,13 @@ enum class Tool {
     DrawBezier,     // dessine un nouvel objet vectoriel en courbes (clic = coin, clic-glisser = nœud lisse)
     DrawFreeform,   // dessine un nouvel objet vectoriel à main levée (glisser continu)
     DrawSatinColumn,  // colonne satin manuelle (clics alternés rail A / rail B)
+    // Ligne de coupe (façon Ink/Stitch "cut line") : découpe la forme
+    // vectorielle SÉLECTIONNÉE en deux morceaux au clic-glisser tracé, puis
+    // convertit chaque morceau en colonne(s) satin indépendamment -- guide
+    // manuel de décomposition aux jonctions où la détection automatique
+    // (auto_satin, squelette) peine, en complément (pas en remplacement)
+    // d'elle.
+    DrawSatinCutLine,
 };
 
 }  // namespace openstitch::desktop

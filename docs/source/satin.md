@@ -1042,6 +1042,103 @@ le projet réel complet (`tests/integration/test_pipeline.cpp`, § GISTRE) :
 avant, pire séparation observée 299 µm (au plancher voulu, à l'arrondi µm
 près).
 
+## Ligne de coupe manuelle pour les jonctions satin (`geometry::cut_path_set`, 2026-08-12)
+
+*État : Présent (outil `DrawSatinCutLine`) · Complément, pas remplacement, de
+la détection automatique de jonctions ci-dessus.*
+
+### Origine : audit de la pipeline Ink/Stitch
+
+Sur des logos complexes réels (ex. sceau circulaire à motif de circuit
+imprimé), le squelette automatique (`build_satin_columns`) peine parfois sur
+des jonctions ambiguës — nœuds en Y/T proches, branches très courtes,
+squelette bruité par un contour segmenté imparfaitement. Un audit de la
+pipeline auto-satin d'Ink/Stitch (GPL ; documentation publique consultée,
+aucun code repris — implémentation ci-dessous entièrement originale) a montré
+que cet outil ne tente PAS de détecter les jonctions automatiquement : son
+"Stroke to Satin" calcule une ligne centrale puis s'appuie sur des "cut
+lines" tracées à la main par l'utilisateur pour séparer une forme aux
+endroits voulus, avant conversion en colonnes. Le remplissage tatami sur
+formes complexes suit le même principe ("break apart" manuel documenté comme
+solution officielle).
+
+Plutôt que de renoncer à la détection automatique (qui reste supérieure sur
+la majorité des formes — voir toutes les sections ci-dessus), l'outil de
+ligne de coupe est ajouté en complément : un geste manuel simple pour
+les cas où l'automatique reste ambigu, sans jamais devenir la voie par
+défaut.
+
+### Primitive géométrique : `geometry::cut_path_set`
+
+`libs/geometry/include/openstitch/geometry/cut.hpp` /
+`libs/geometry/src/cut.cpp`. Signature :
+
+```cpp
+Result<std::vector<PathSet>> cut_path_set(const PathSet& region, Vec2um a, Vec2um b,
+                                           Micrometers cut_width = Micrometers{20});
+```
+
+Retire une fine bande rectangulaire (`cut_width`, quelques dizaines de µm par
+défaut — négligeable une fois cousu) centrée sur le segment `a`-`b`, prolongée
+très au-delà de la région dans les deux sens pour garantir une traversée
+complète quels que soient les deux points fournis (l'utilisateur n'a donc
+qu'à tracer un segment qui *croise* la jonction visée, pas à viser
+précisément les bords de la forme). Implémentation via une booléenne Clipper2
+`Difference` (même encapsulation par fichier que le reste de `libs/geometry` —
+ADR-005 : aucun type Clipper2 ne sort de `cut.cpp`), qui garantit une vraie
+séparation topologique — une coupe infiniment fine laisserait parfois deux
+morceaux qui se retouchent en un point, toujours une seule composante
+connexe aux yeux d'un traitement ultérieur.
+
+Renvoie un morceau par composante connexe résultante : 1 seul morceau (la
+région quasi inchangée) si la ligne ne traverse pas réellement la région ou
+est dégénérée (`a == b`) — à l'appelant de vérifier `size() >= 2` pour savoir
+si la coupe a réellement séparé quelque chose. Testé
+(`tests/unit/geometry/test_cut.cpp`, 6 cas / 29 assertions) : séparation
+d'un carré, coupe du pont d'un haltère (cas de jonction Y/T), ligne hors
+région sans effet, points confondus sans effet, déterminisme, largeur de
+bande bornée.
+
+### Outil desktop (`Tool::DrawSatinCutLine`)
+
+Réutilise le mécanisme presser-glisser-relâcher déjà en place pour l'outil
+Bézier (`CanvasView::bezierPointDraggingMm`/`bezierPointCommittedMm`) — un
+second couple de connexions sur les mêmes signaux, sans aucune modification
+de `CanvasView` (les gestionnaires Bézier existants font déjà un retour
+anticipé hors de l'outil `DrawBezier`, donc no-op automatique quand l'outil
+actif est `DrawSatinCutLine`).
+
+Séquence (`apps/desktop/main_window.cpp`,
+`createSatinObjectWithCutLine`) :
+
+1. Requiert une forme vectorielle sélectionnée (`selectedObject_`) ; sinon,
+   message dans la barre de statut plutôt qu'une boîte de dialogue bloquante.
+2. Glisser trop court (< 200 µm, clic net) ignoré silencieusement — geste
+   probablement involontaire.
+3. `geometry::cut_path_set` sur `source->paths.front()` ; `< 2` morceaux ->
+   avertissement explicite ("tracez la ligne bien d'un bord à l'autre").
+4. Boîte de dialogue densité/compensation/sous-couche, identique à celle de
+   `createSatinObject()` (création automatique) pour cohérence d'expérience.
+5. Chaque morceau est passé indépendamment à `auto_satin::build_satin_columns`
+   (mode `Parametric`) : un morceau qui ne produit aucune colonne (trop
+   petit/dégénéré) est simplement ignoré plutôt que d'annuler toute
+   l'opération — la coupe a pu réussir pour la jonction visée même si un
+   fragment marginal ne l'est pas.
+6. Avertissement de largeur excessive identique à §*Colonne trop large*.
+7. Un seul `commands::AddObjectBatchCommand` ("Colonne satin (ligne de
+   coupe)"), annulable en un geste comme toutes les créations de forme de
+   cette fenêtre.
+
+Un seul geste = une seule coupe (portée v1, pas d'accumulation
+multi-coupes) : succès -> retour automatique sur l'outil Sélection pour
+enchaîner sur la retouche du résultat ; échec -> reste sur l'outil pour
+retracer.
+
+Testé (`tests/unit/desktop/test_main_window.cpp`,
+`satinCutLineToolSplitsSelectedShapeIntoTwoSatinColumns`) : glisser souris
+réel à travers un rectangle allongé sélectionné -> deux objets satin
+indépendants, undo/redo, retour automatique sur Sélection.
+
 ## Objets satin paramétriques (mode `Parametric`, refonte 2026-08-04)
 
 *État : Présent, activable par `SatinColumnsParameters::geometry_mode` (CLI :

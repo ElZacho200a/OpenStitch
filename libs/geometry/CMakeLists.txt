@@ -3,6 +3,7 @@ find_package(Clipper2 CONFIG REQUIRED)
 add_library(openstitch_geometry
     src/simplify.cpp
     src/clean.cpp
+    src/cut.cpp
     src/offset.cpp
     src/path.cpp
     src/polyline.cpp

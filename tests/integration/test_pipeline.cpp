@@ -6,10 +6,13 @@
 #include <cstdio>
 #include <filesystem>
 #include <limits>
+#include <map>
 
 #include "openstitch/autodigitize/autodigitize.hpp"
 #include "openstitch/formats/dst.hpp"
+#include "openstitch/formats/svg.hpp"
 #include "openstitch/image/image.hpp"
+#include "openstitch/optimization/order.hpp"
 #include "openstitch/project_io/project_io.hpp"
 #include "openstitch/segmentation/segmentation.hpp"
 #include "openstitch/stitch_generation/generate.hpp"
@@ -277,8 +280,123 @@ TEST_CASE("DIAGNOSTIC TEMPORAIRE chaine brute (GISTRE.png)") {
         const auto stats = stitch::compute_stats(*sequence);
         UNSCOPED_INFO("stitches=" << stats.stitches << " jumps=" << stats.jumps
                                   << " color_changes=" << stats.color_changes);
+        const auto svgResult = formats::write_svg_file(
+            "C:/Users/zache/Pictures/GISTRE_result.svg", *sequence);
+        UNSCOPED_INFO("svg ecrit=" << svgResult.has_value());
+
+        // Barres épaisses visibles dans le SVG : objets contribuant le plus de
+        // points, pour identifier si un fill particulier "balaie" mal une
+        // forme large plutôt qu'un problème d'ORDRE entre objets.
+        std::map<std::uint64_t, std::size_t> stitchesPerObject;
+        for (const auto& cmd : sequence->commands) {
+            if (cmd.type == stitch::CommandType::Stitch) {
+                ++stitchesPerObject[cmd.source.value];
+            }
+        }
+        std::vector<std::pair<std::size_t, std::uint64_t>> byCount;
+        for (const auto& [objId, count] : stitchesPerObject) {
+            byCount.emplace_back(count, objId);
+        }
+        std::sort(byCount.begin(), byCount.end(), std::greater<>());
+        for (std::size_t i = 0; i < byCount.size() && i < 8; ++i) {
+            const auto* emb = project.findEmbroidery(ObjectId{byCount[i].second});
+            const char* kind = "?";
+            double areaMm2 = 0.0;
+            double bboxW = 0.0, bboxH = 0.0;
+            if (emb != nullptr) {
+                if (emb->is_satin()) kind = "satin";
+                else if (emb->is_tatami()) kind = "tatami";
+                else kind = "running";
+                if (const auto* vec = project.findObject(emb->source_vector)) {
+                    std::int32_t minx = 0, maxx = 0, miny = 0, maxy = 0;
+                    bool first = true;
+                    for (const auto& set : vec->paths) {
+                        for (const auto& n : set.outer.nodes) {
+                            if (first) { minx = maxx = n.pos.x.value; miny = maxy = n.pos.y.value; first = false; }
+                            minx = std::min(minx, n.pos.x.value);
+                            maxx = std::max(maxx, n.pos.x.value);
+                            miny = std::min(miny, n.pos.y.value);
+                            maxy = std::max(maxy, n.pos.y.value);
+                        }
+                        areaMm2 += std::abs(geometry::signed_area_um2(set.outer)) / 1e6;
+                    }
+                    bboxW = (maxx - minx) / 1000.0;
+                    bboxH = (maxy - miny) / 1000.0;
+                }
+            }
+            std::size_t pieceCount = 0;
+            std::size_t maxNodesInPiece = 0;
+            if (emb != nullptr) {
+                if (const auto* vec = project.findObject(emb->source_vector)) {
+                    pieceCount = vec->paths.size();
+                    for (const auto& set : vec->paths) {
+                        maxNodesInPiece = std::max(maxNodesInPiece, set.outer.nodes.size());
+                    }
+                }
+            }
+            std::fprintf(stderr,
+                        "DIAG top-objet stitch #%zu: id=%llu type=%s stitches=%zu aire=%.1fmm2 "
+                        "bbox=%.1fx%.1fmm morceaux=%zu max_noeuds_par_morceau=%zu\n",
+                        i, static_cast<unsigned long long>(byCount[i].second), kind, byCount[i].first,
+                        areaMm2, bboxW, bboxH, pieceCount, maxNodesInPiece);
+        }
     } else {
         UNSCOPED_INFO("erreur generate_sequence: " << sequence.error().message);
+    }
+
+    // L'ordre des objets est celui de leur création (numérisation automatique,
+    // par région de segmentation -- sans cohérence spatiale). apps/desktop
+    // expose optimize_order comme une étape MANUELLE (bouton "Optimiser
+    // l'ordre de couture") -- jamais appliquée automatiquement. Vérifie ici
+    // l'effet réel d'une telle optimisation sur ce projet, pour juger si le
+    // désordre visible dans le SVG ci-dessus est un défaut du moteur ou
+    // simplement une étape que l'utilisateur n'a pas encore lancée.
+    const auto centroidOf = [&](ObjectId sourceVec) -> Vec2um {
+        const auto* vec = project.findObject(sourceVec);
+        if (vec == nullptr || vec->paths.empty()) return Vec2um{};
+        std::int64_t sx = 0, sy = 0;
+        std::size_t n = 0;
+        for (const auto& node : vec->paths.front().outer.nodes) {
+            sx += node.pos.x.value;
+            sy += node.pos.y.value;
+            ++n;
+        }
+        if (n == 0) return Vec2um{};
+        return Vec2um{Micrometers{static_cast<std::int32_t>(sx / static_cast<std::int64_t>(n))},
+                     Micrometers{static_cast<std::int32_t>(sy / static_cast<std::int64_t>(n))}};
+    };
+    std::vector<optimization::OrderItem> items;
+    for (const auto& obj : project.embroidery_objects) {
+        items.push_back({obj.id, obj.rgb, centroidOf(obj.source_vector), false});
+    }
+    const auto costBefore = optimization::compute_cost(items);
+    const auto order =
+        optimization::optimize_order(items, optimization::OrderStrategy::ColorThenProximity);
+    std::vector<document::EmbroideryObject> reordered;
+    reordered.reserve(project.embroidery_objects.size());
+    for (const ObjectId id : order) {
+        if (const auto* e = project.findEmbroidery(id)) {
+            reordered.push_back(*e);
+        }
+    }
+    project.embroidery_objects = std::move(reordered);
+    std::vector<optimization::OrderItem> itemsAfter;
+    for (const auto& obj : project.embroidery_objects) {
+        itemsAfter.push_back({obj.id, obj.rgb, centroidOf(obj.source_vector), false});
+    }
+    const auto costAfter = optimization::compute_cost(itemsAfter);
+    std::fprintf(stderr,
+                "DIAG ordre optimise (ColorThenProximity) : trajet %.1f -> %.1f mm, "
+                "changements de fil %zu -> %zu\n",
+                costBefore.travel_um / 1000.0, costAfter.travel_um / 1000.0,
+                costBefore.color_changes, costAfter.color_changes);
+
+    const auto sequence2 = stitch_generation::generate_sequence(project);
+    if (sequence2.has_value()) {
+        const auto stats2 = stitch::compute_stats(*sequence2);
+        std::fprintf(stderr, "DIAG apres reordonnancement : stitches=%zu jumps=%zu\n",
+                    stats2.stitches, stats2.jumps);
+        formats::write_svg_file("C:/Users/zache/Pictures/GISTRE_result_ordered.svg", *sequence2);
     }
     CHECK(false);
 }
