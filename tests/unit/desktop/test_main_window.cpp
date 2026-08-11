@@ -297,6 +297,10 @@ private slots:
     void drawEllipseToolCreatesUndoableVectorObject();
     void drawEllipseWithShiftConstrainsToCircle();
     void drawingTooSmallABoxCreatesNoObject();
+    // Polygone régulier (audit "outils de sketch façon Fusion 360", suite de
+    // l'accroche et du DXF) : nombre de côtés réglable dans la palette,
+    // inscrit dans le cadre glissé (même mécanique que rectangle/ellipse).
+    void drawRegularPolygonToolCreatesUndoableVectorObjectWithConfiguredSides();
     // Accroche façon Fusion 360 (audit "outils de sketch") : un clic/survol
     // proche d'un sommet existant se pose exactement dessus, avec repère
     // visuel ; loin de tout candidat, la position brute du curseur est
@@ -1789,6 +1793,47 @@ void MainWindowTest::drawEllipseToolCreatesUndoableVectorObject() {
         QVERIFY(n.tan_in.has_value());
         QVERIFY(n.tan_out.has_value());
     }
+}
+
+void MainWindowTest::drawRegularPolygonToolCreatesUndoableVectorObjectWithConfiguredSides() {
+    MainWindow window;
+    const Fixture fx = buildFixture();
+    window.applyLoadedProject(fx.project);
+    auto* view = window.findChild<CanvasView*>();
+    QVERIFY(view != nullptr);
+
+    const std::size_t before = window.project_.vector_objects.size();
+    window.setTool(Tool::DrawPolygonRegular);
+    QVERIFY(window.polygonSidesSpin_ != nullptr);
+    window.polygonSidesSpin_->setValue(5);  // pentagone, pas la valeur par défaut (6)
+
+    // Cadre 10 x 10 mm, loin du triangle de buildFixture() (rayon d'accroche
+    // max 2 mm, cf. findSnapPointMm) pour ne pas interférer avec les coins.
+    view->boxDrawnMm(QRectF(20.0, -30.0, 10.0, 10.0), Qt::NoModifier);
+
+    QCOMPARE(window.project_.vector_objects.size(), before + 1);
+    const auto& obj = window.project_.vector_objects.back();
+    QCOMPARE(obj.paths[0].outer.nodes.size(), std::size_t{5});
+    QVERIFY(obj.paths[0].outer.closed);
+
+    Vec2um sum{Micrometers{0}, Micrometers{0}};
+    for (const auto& n : obj.paths[0].outer.nodes) {
+        QVERIFY(n.type == openstitch::geometry::NodeType::Corner);
+        sum.x.value += n.pos.x.value;
+        sum.y.value += n.pos.y.value;
+    }
+    const double cx = sum.x.value / 5.0;
+    const double cy = sum.y.value / 5.0;
+    // Rayon = min(largeur, hauteur) / 2 = 5 mm (cadre carré ici).
+    for (const auto& n : obj.paths[0].outer.nodes) {
+        const double dx = n.pos.x.value - cx;
+        const double dy = n.pos.y.value - cy;
+        QVERIFY(std::abs(std::sqrt(dx * dx + dy * dy) - 5'000.0) < 2.0);
+    }
+
+    QVERIFY(window.undoStack_.canUndo());
+    window.undo();
+    QCOMPARE(window.project_.vector_objects.size(), before);
 }
 
 void MainWindowTest::drawEllipseWithShiftConstrainsToCircle() {

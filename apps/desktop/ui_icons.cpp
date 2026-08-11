@@ -5,7 +5,9 @@
 #include <QPainterPath>
 #include <QPixmap>
 
+#include <cmath>
 #include <functional>
+#include <numbers>
 
 namespace openstitch::desktop::icons {
 
@@ -80,6 +82,20 @@ QIcon polygon() {
     return make([](QPainter& p) {
         QPolygonF poly({{16, 5}, {27, 13}, {23, 26}, {9, 26}, {5, 13}});
         p.drawPolygon(poly);
+    });
+}
+
+QIcon regularPolygon() {
+    return make([](QPainter& p) {
+        // Hexagone régulier (distinct du polygone libre, irrégulier ci-dessus) :
+        // symbolise une forme paramétrique (nombre de côtés réglable) plutôt
+        // qu'un tracé au clic.
+        QPolygonF hex;
+        for (int i = 0; i < 6; ++i) {
+            const double a = -std::numbers::pi / 2.0 + i * std::numbers::pi / 3.0;
+            hex << QPointF(16 + 12 * std::cos(a), 16 + 12 * std::sin(a));
+        }
+        p.drawPolygon(hex);
     });
 }
 

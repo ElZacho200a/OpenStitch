@@ -123,6 +123,51 @@ TEST_CASE("polygon_path : deterministe") {
     CHECK(polygon_path(verts).nodes == polygon_path(verts).nodes);
 }
 
+// --- Polygone regulier ---------------------------------------------------
+
+TEST_CASE("regular_polygon_path : hexagone, six sommets tous a distance = rayon") {
+    const auto path = regular_polygon_path(p(0, 0), Micrometers{10'000}, 6);
+    REQUIRE(path.nodes.size() == 6);
+    CHECK(path.closed);
+    for (const auto& n : path.nodes) {
+        CHECK(n.type == NodeType::Corner);
+        const double dx = static_cast<double>(n.pos.x.value);
+        const double dy = static_cast<double>(n.pos.y.value);
+        CHECK(std::abs(std::sqrt(dx * dx + dy * dy) - 10'000.0) < 1.0);
+    }
+}
+
+TEST_CASE("regular_polygon_path : angle de depart par defaut place le premier sommet au nord") {
+    const auto path = regular_polygon_path(p(0, 0), Micrometers{10'000}, 4);
+    REQUIRE(path.nodes.size() == 4);
+    // -pi/2 (nord, repere Y vers le haut) : premier sommet en (0, rayon).
+    CHECK(std::abs(path.nodes.front().pos.x.value) < 1);
+    CHECK(std::abs(path.nodes.front().pos.y.value - 10'000) < 1);
+}
+
+TEST_CASE("regular_polygon_path : angles regulierement espaces") {
+    const auto path = regular_polygon_path(p(0, 0), Micrometers{10'000}, 5, 0.0);
+    REQUIRE(path.nodes.size() == 5);
+    for (std::size_t i = 0; i < path.nodes.size(); ++i) {
+        const double expected = i * 2.0 * std::numbers::pi / 5.0;
+        const double x = 10'000.0 * std::cos(expected);
+        const double y = 10'000.0 * std::sin(expected);
+        CHECK(std::abs(static_cast<double>(path.nodes[i].pos.x.value) - x) < 1.0);
+        CHECK(std::abs(static_cast<double>(path.nodes[i].pos.y.value) - y) < 1.0);
+    }
+}
+
+TEST_CASE("regular_polygon_path : moins de trois cotes ou rayon nul -> chemin vide") {
+    CHECK(regular_polygon_path(p(0, 0), Micrometers{10'000}, 2).nodes.empty());
+    CHECK(regular_polygon_path(p(0, 0), Micrometers{0}, 6).nodes.empty());
+}
+
+TEST_CASE("regular_polygon_path : deterministe") {
+    const auto a = regular_polygon_path(p(1'000, 2'000), Micrometers{7'500}, 8);
+    const auto b = regular_polygon_path(p(1'000, 2'000), Micrometers{7'500}, 8);
+    CHECK(a.nodes == b.nodes);
+}
+
 // --- Forme libre (main levee / lasso) ----------------------------------------
 
 TEST_CASE("freeform_path : simplifie un trace bruite en contour exploitable") {

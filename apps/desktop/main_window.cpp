@@ -1202,7 +1202,8 @@ void MainWindow::onCropSelected(QRectF rectMm) {
 }
 
 void MainWindow::onBoxDrawn(QRectF rectMm, Qt::KeyboardModifiers modifiers) {
-    if (currentTool_ != Tool::DrawRectangle && currentTool_ != Tool::DrawEllipse) {
+    if (currentTool_ != Tool::DrawRectangle && currentTool_ != Tool::DrawEllipse &&
+        currentTool_ != Tool::DrawPolygonRegular) {
         return;  // sécurité : signal reçu hors mode dessin (ne devrait pas arriver)
     }
     if (rectMm.width() < kMinDrawExtentMm || rectMm.height() < kMinDrawExtentMm) {
@@ -1239,8 +1240,21 @@ void MainWindow::onBoxDrawn(QRectF rectMm, Qt::KeyboardModifiers modifiers) {
     const Vec2um c2 = sceneMmToModel(box.bottomRight());
     if (currentTool_ == Tool::DrawRectangle) {
         addVectorPrimitive(geometry::rectangle_path(c1, c2), tr("Rectangle"));
-    } else {
+    } else if (currentTool_ == Tool::DrawEllipse) {
         addVectorPrimitive(geometry::ellipse_path(c1, c2), tr("Ellipse"));
+    } else {
+        // Polygone régulier inscrit dans le cadre glissé (cercle circonscrit
+        // = la moitié du plus petit côté) : même principe que Maj sur
+        // l'ellipse (contrainte au plus petit côté), sans exiger Maj puisque
+        // ce n'est pas un choix optionnel ici mais la définition de l'outil.
+        const Vec2um center{Micrometers{(c1.x.value + c2.x.value) / 2},
+                            Micrometers{(c1.y.value + c2.y.value) / 2}};
+        const std::int32_t w = std::abs(c2.x.value - c1.x.value);
+        const std::int32_t h = std::abs(c2.y.value - c1.y.value);
+        const Micrometers radius{std::min(w, h) / 2};
+        const int sides = polygonSidesSpin_ != nullptr ? polygonSidesSpin_->value() : 6;
+        addVectorPrimitive(geometry::regular_polygon_path(center, radius, sides),
+                           tr("Polygone régulier"));
     }
 }
 
@@ -4278,6 +4292,15 @@ void MainWindow::buildToolPalette() {
     toolDrawPolygonAct_ =
         addTool(icons::polygon(), tr("Dessiner un polygone (segments droits)"), Tool::DrawPolygon,
                QKeySequence(Qt::Key_P));
+    toolDrawPolygonRegularAct_ =
+        addTool(icons::regularPolygon(), tr("Dessiner un polygone régulier (glisser un cadre)"),
+               Tool::DrawPolygonRegular, QKeySequence(Qt::Key_G));
+    polygonSidesSpin_ = new QSpinBox(toolPalette_);
+    polygonSidesSpin_->setRange(3, 12);
+    polygonSidesSpin_->setValue(6);
+    polygonSidesSpin_->setToolTip(tr("Nombre de côtés du polygone régulier"));
+    polygonSidesSpin_->setMaximumWidth(48);
+    toolPalette_->addWidget(polygonSidesSpin_);
     toolDrawBezierAct_ = addTool(
         icons::bezierCurve(),
         tr("Dessiner une courbe de Bézier (clic = coin, clic-glisser = nœud lisse)"),
@@ -4407,6 +4430,7 @@ void MainWindow::setTool(Tool tool) {
     sync(toolDrawRectAct_, tool == Tool::DrawRectangle);
     sync(toolDrawEllipseAct_, tool == Tool::DrawEllipse);
     sync(toolDrawPolygonAct_, tool == Tool::DrawPolygon);
+    sync(toolDrawPolygonRegularAct_, tool == Tool::DrawPolygonRegular);
     sync(toolDrawBezierAct_, tool == Tool::DrawBezier);
     sync(toolDrawFreeformAct_, tool == Tool::DrawFreeform);
     sync(toolDrawSatinColumnAct_, tool == Tool::DrawSatinColumn);
@@ -4423,7 +4447,8 @@ void MainWindow::setTool(Tool tool) {
     // clobbering entre ces six appels (défaut trouvé par revue -- voir le
     // commentaire détaillé dans canvas_view.cpp).
     view_->setCropMode(tool == Tool::Rect);
-    view_->setBoxDrawMode(tool == Tool::DrawRectangle || tool == Tool::DrawEllipse);
+    view_->setBoxDrawMode(tool == Tool::DrawRectangle || tool == Tool::DrawEllipse ||
+                          tool == Tool::DrawPolygonRegular);
     view_->setPolygonDrawMode(tool == Tool::DrawPolygon);
     view_->setBezierDrawMode(tool == Tool::DrawBezier);
     view_->setFreeformDrawMode(tool == Tool::DrawFreeform);
@@ -4443,6 +4468,7 @@ void MainWindow::setTool(Tool tool) {
                              : tool == Tool::DrawRectangle ? tr("Dessiner un rectangle")
                              : tool == Tool::DrawEllipse   ? tr("Dessiner une ellipse")
                              : tool == Tool::DrawPolygon   ? tr("Dessiner un polygone")
+                             : tool == Tool::DrawPolygonRegular ? tr("Dessiner un polygone régulier")
                              : tool == Tool::DrawBezier    ? tr("Dessiner une courbe de Bézier")
                              : tool == Tool::DrawFreeform  ? tr("Dessiner à main levée")
                                                            : tr("Colonne satin");
@@ -4455,6 +4481,10 @@ void MainWindow::setTool(Tool tool) {
     if (tool == Tool::DrawRectangle || tool == Tool::DrawEllipse) {
         statusBar()->showMessage(
             tr("Cliquez-glissez sur le canevas pour dessiner le cadre, puis relâchez."));
+    } else if (tool == Tool::DrawPolygonRegular) {
+        statusBar()->showMessage(
+            tr("Cliquez-glissez pour dessiner le polygone (inscrit dans le cadre) — réglez le "
+               "nombre de côtés dans la palette d'outils."));
     } else if (tool == Tool::DrawPolygon) {
         statusBar()->showMessage(
             tr("Cliquez pour poser chaque sommet — Entrée/double-clic/bouton ✓ pour "

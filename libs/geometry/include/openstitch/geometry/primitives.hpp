@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 #pragma once
 
+#include <numbers>
 #include <vector>
 
 #include "openstitch/geometry/path.hpp"
@@ -24,6 +25,17 @@ namespace openstitch::geometry {
 // (aucun lissage, aucune simplification). Moins de 3 sommets -> chemin vide
 // (rien à fermer), à l'appelant de refuser.
 [[nodiscard]] Path polygon_path(const std::vector<Vec2um>& vertices);
+
+// Polygone RÉGULIER à `sides` côtés, inscrit dans le cercle de centre
+// `center` et de rayon `radius` (chaque sommet est exactement à `radius` du
+// centre — définition par cercle circonscrit, la plus intuitive quand le
+// rayon vient d'un geste de glisser). `start_angle` (radians, sens
+// trigonométrique, 0 = est) place le premier sommet ; par défaut +π/2 (nord
+// -- repère Y vers le haut, ADR-003) pour un rendu visuellement « droit »
+// (ex. hexagone à sommet en haut). Moins de 3 côtés ou rayon nul -> chemin
+// vide, mêmes conventions que `polygon_path`/`ellipse_path`.
+[[nodiscard]] Path regular_polygon_path(Vec2um center, Micrometers radius, int sides,
+                                        double start_angle = std::numbers::pi / 2.0);
 
 // Forme dessinée à main levée (lasso) : ferme un tracé continu de points
 // bruts (un par évènement de déplacement souris pendant le glisser, donc

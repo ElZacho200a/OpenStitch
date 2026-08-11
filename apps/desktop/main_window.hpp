@@ -30,6 +30,7 @@ class QComboBox;
 class QCheckBox;
 class QVBoxLayout;
 class QDoubleSpinBox;
+class QSpinBox;
 
 namespace openstitch::desktop {
 
@@ -313,6 +314,11 @@ private:
     QAction* toolDrawRectAct_{nullptr};
     QAction* toolDrawEllipseAct_{nullptr};
     QAction* toolDrawPolygonAct_{nullptr};
+    QAction* toolDrawPolygonRegularAct_{nullptr};
+    // Nombre de côtés du polygone régulier (3-12) : lu au moment du glisser
+    // (onBoxDrawn), pas seulement à la création de l'outil -- modifiable
+    // sans changer d'outil entre deux formes.
+    QSpinBox* polygonSidesSpin_{nullptr};
     QAction* toolDrawBezierAct_{nullptr};
     QAction* toolDrawFreeformAct_{nullptr};
     QAction* toolDrawSatinColumnAct_{nullptr};

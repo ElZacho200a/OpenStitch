@@ -3,6 +3,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <numbers>
 
 #include "openstitch/geometry/simplify.hpp"
 
@@ -71,6 +72,23 @@ Path polygon_path(const std::vector<Vec2um>& vertices) {
     path.nodes.reserve(vertices.size());
     for (const Vec2um& v : vertices) {
         path.nodes.push_back(corner(v));
+    }
+    return path;
+}
+
+Path regular_polygon_path(Vec2um center, Micrometers radius, int sides, double start_angle) {
+    if (sides < 3 || radius.value <= 0) {
+        return Path{};
+    }
+    Path path;
+    path.closed = true;
+    path.nodes.reserve(static_cast<std::size_t>(sides));
+    const double cx = static_cast<double>(center.x.value);
+    const double cy = static_cast<double>(center.y.value);
+    const double r = static_cast<double>(radius.value);
+    for (int i = 0; i < sides; ++i) {
+        const double a = start_angle + i * 2.0 * std::numbers::pi / sides;
+        path.nodes.push_back(corner(Vec2um{um(cx + r * std::cos(a)), um(cy + r * std::sin(a))}));
     }
     return path;
 }
