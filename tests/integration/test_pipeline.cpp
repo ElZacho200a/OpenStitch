@@ -3,6 +3,7 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include <algorithm>
+#include <cstdio>
 #include <filesystem>
 #include <limits>
 
@@ -181,6 +182,105 @@ TEST_CASE("fixture tentabrode : pipeline complexe deterministe et sans geometrie
     CHECK(stats.stitches > 1000);
     CHECK(stats.bounds.min.x.value <= stats.bounds.max.x.value);
     CHECK(stats.bounds.min.y.value <= stats.bounds.max.y.value);
+}
+
+// DIAGNOSTIC TEMPORAIRE : analyse complète chaîne brute (image -> segmentation
+// -> auto_digitize -> points) sur l'image GISTRE.png ELLE-MÊME, avec les
+// réglages PAR DÉFAUT de la boîte de dialogue Segmenter (main_window.cpp :
+// max_colors=8, min_region_px=16, smoothing_radius_px=3) et le mm_per_px du
+// projet réel de l'utilisateur (0,1245 mm/px, cadre 200x200 mm) -- pas la
+// segmentation déjà stockée dans le .osp, contrairement au diagnostic
+// "pointes fines" ci-dessous : celui-ci rejoue TOUTE la chaîne pour auditer
+// segmentation/vectorisation, pas seulement auto-satin.
+TEST_CASE("DIAGNOSTIC TEMPORAIRE chaine brute (GISTRE.png)") {
+    const auto loaded = image::load_image("C:/Users/zache/Pictures/GISTRE.png");
+    REQUIRE(loaded.has_value());
+    // Alpha d'un pixel de fond (coin haut-gauche, hors du sceau) : si l'image
+    // source n'a pas de canal alpha, OpenCV le remplit à 255 (opaque) --
+    // vérifie si le fond "transparent" attendu par la segmentation
+    // (labels[i]==0 pour alpha==0) existe réellement ou non pour ce fichier.
+    std::fprintf(stderr, "DIAG image: %dx%d source_had_alpha=%d alpha(0,0)=%d\n", loaded->width,
+                loaded->height, loaded->source_had_alpha ? 1 : 0, loaded->rgba[3]);
+
+    auto seg = segmentation::segment(
+        *loaded, {.max_colors = 8, .min_region_px = 16, .smoothing_radius_px = 3});
+    REQUIRE(seg.has_value());
+
+    std::size_t liveRegions = 0;
+    std::size_t totalPixels = 0;
+    std::vector<std::pair<std::size_t, RegionId>> bySize;  // (pixels, id)
+    for (const auto& slot : seg->region_slots) {
+        if (!slot) continue;
+        ++liveRegions;
+        totalPixels += slot->pixel_count;
+        bySize.emplace_back(slot->pixel_count, slot->id);
+    }
+    std::sort(bySize.begin(), bySize.end(), std::greater<>());
+    std::fprintf(stderr, "DIAG regions vivantes=%zu pixels segmentes=%zu image totale=%d\n",
+                liveRegions, totalPixels, loaded->width * loaded->height);
+    for (std::size_t i = 0; i < bySize.size() && i < 10; ++i) {
+        const auto* region = seg->find(bySize[i].second);
+        std::fprintf(stderr, "DIAG top%zu: id=%llu pixels=%zu (%.1f%%) rgb=(%d,%d,%d)\n", i,
+                    static_cast<unsigned long long>(bySize[i].second.value), bySize[i].first,
+                    100.0 * static_cast<double>(bySize[i].first) / static_cast<double>(totalPixels),
+                    region ? region->rgb[0] : -1, region ? region->rgb[1] : -1,
+                    region ? region->rgb[2] : -1);
+    }
+
+    document::Project project;
+    project.mm_per_px = Millimeters{0.12445550715619166};
+    project.original = *loaded;
+    project.segmentation = std::move(*seg);
+
+    // Comme main_window.cpp::autoDigitize() coche desormais par defaut quand
+    // l'image source n'a pas de canal alpha (§ audit ci-dessus).
+    const autodigitize::AutoOptions options{.mm_per_px = project.mm_per_px,
+                                            .skip_largest_region = !loaded->source_had_alpha};
+    const auto result =
+        autodigitize::auto_digitize(*project.segmentation, project.object_ids, options);
+    REQUIRE(result.has_value());
+    for (auto v : result->vectors) project.vector_objects.push_back(std::move(v));
+    for (auto e : result->embroideries) project.embroidery_objects.push_back(std::move(e));
+
+    int nSatin = 0, nTatami = 0, nRunning = 0, nSatinDegenerate = 0;
+    double maxObjectAreaMm2 = 0.0;
+    for (const auto& e : project.embroidery_objects) {
+        if (auto* sp = std::get_if<document::SatinParams>(&e.params)) {
+            ++nSatin;
+            for (const auto& rung : sp->rungs) {
+                if (length_um(rung.a - rung.b) < 290.0) {
+                    ++nSatinDegenerate;
+                    break;
+                }
+            }
+        } else if (std::holds_alternative<document::TatamiParams>(e.params)) {
+            ++nTatami;
+        } else if (std::holds_alternative<document::RunningStitchParams>(e.params)) {
+            ++nRunning;
+        }
+        if (const auto* vec = project.findObject(e.source_vector)) {
+            for (const auto& set : vec->paths) {
+                double area = std::abs(geometry::signed_area_um2(set.outer)) / 1e6;
+                for (const auto& hole : set.holes) area -= std::abs(geometry::signed_area_um2(hole)) / 1e6;
+                maxObjectAreaMm2 = std::max(maxObjectAreaMm2, area);
+            }
+        }
+    }
+    UNSCOPED_INFO("embroidery: satin=" << nSatin << " (dont barreau<0,29mm=" << nSatinDegenerate
+                                       << ") tatami=" << nTatami << " running=" << nRunning);
+    UNSCOPED_INFO("plus grand objet (aire nette): " << maxObjectAreaMm2 << " mm2 (canevas="
+                                                    << (200.0 * 200.0) << " mm2)");
+
+    const auto sequence = stitch_generation::generate_sequence(project);
+    UNSCOPED_INFO("generate_sequence ok=" << sequence.has_value());
+    if (sequence.has_value()) {
+        const auto stats = stitch::compute_stats(*sequence);
+        UNSCOPED_INFO("stitches=" << stats.stitches << " jumps=" << stats.jumps
+                                  << " color_changes=" << stats.color_changes);
+    } else {
+        UNSCOPED_INFO("erreur generate_sequence: " << sequence.error().message);
+    }
+    CHECK(false);
 }
 
 // DIAGNOSTIC TEMPORAIRE : vérification du correctif "pointes de colonne

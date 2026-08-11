@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 #include <catch2/catch_test_macros.hpp>
 
+#include <array>
 #include <set>
 
 #include "openstitch/auto_satin/satin_column.hpp"
@@ -237,6 +238,64 @@ TEST_CASE("petite region -> contour (point triple)") {
         }
     }
     CHECK(anyRunning);
+}
+
+// Défaut trouvé sur un projet réel (logo circulaire sans canal alpha) : le
+// fond se fragmentait en plusieurs régions blanches DISJOINTES (les zones
+// hors d'un motif rond inscrit dans une image carrée). skip_largest_region
+// n'excluait à l'origine que le plus gros MORCEAU -- les autres fragments
+// du même fond se faisaient numériser comme de vrais objets (87,9 % des
+// pixels du projet réel, répartis sur 3 régions blanches, contre 40,9 %
+// pour la plus grosse seule). Corrigé : exclut toute région de la même
+// couleur exacte, pas seulement le plus gros morceau.
+TEST_CASE("fond fragmente en plusieurs regions disjointes -> toutes exclues par skip_largest_region") {
+    // Croix rouge FINE (2 px) sur fond blanc, image 40x40 : les 4 coins
+    // blancs (~19x19 px chacun) sont mutuellement disjoints (la croix les
+    // sépare entièrement) et individuellement PLUS GRANDS que la croix
+    // elle-même (~156 px) -- essentiel pour que le plus gros morceau soit
+    // bien un fragment du fond, pas la croix.
+    image::Image img = blank(40, 40);
+    for (int y = 0; y < 40; ++y) {
+        for (int x = 0; x < 40; ++x) {
+            set_px(img, x, y, 255, 255, 255);
+        }
+    }
+    for (int y = 19; y < 21; ++y) {
+        for (int x = 0; x < 40; ++x) {
+            set_px(img, x, y, 220, 30, 30);  // barre horizontale
+        }
+    }
+    for (int x = 19; x < 21; ++x) {
+        for (int y = 0; y < 40; ++y) {
+            set_px(img, x, y, 220, 30, 30);  // barre verticale
+        }
+    }
+    const auto seg = segmentation::segment(img, {.max_colors = 2, .min_region_px = 1});
+    REQUIRE(seg.has_value());
+
+    // Vérifie l'hypothèse du test : plusieurs régions blanches disjointes,
+    // pas une seule (sinon l'ancien comportement suffisait déjà).
+    constexpr std::array<std::uint8_t, 3> kWhite{255, 255, 255};
+    std::size_t whiteRegions = 0;
+    for (const auto& slot : seg->region_slots) {
+        if (slot && slot->rgb == kWhite) {
+            ++whiteRegions;
+        }
+    }
+    REQUIRE(whiteRegions > 1);
+
+    IdGenerator<ObjectId> ids;
+    AutoOptions o = opts();
+    o.skip_largest_region = true;
+    const auto result = auto_digitize(*seg, ids, o);
+    REQUIRE(result.has_value());
+
+    // Aucun objet blanc ne doit survivre, quel que soit le fragment d'origine.
+    for (const auto& v : result->vectors) {
+        CHECK(v.rgb != kWhite);
+    }
+    // La croix rouge, elle, reste un vrai objet numérisé.
+    CHECK_FALSE(result->vectors.empty());
 }
 
 TEST_CASE("identifiants uniques, objets editables, deterministe") {

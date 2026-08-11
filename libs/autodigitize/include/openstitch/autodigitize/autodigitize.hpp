@@ -19,7 +19,12 @@ struct AutoOptions {
     Micrometers satin_max_width{6'000};
     // Aire min (mm²) pour un remplissage ; en dessous, simple contour.
     double min_fill_area_mm2{4.0};
-    // Ignore la plus grande région (souvent le fond).
+    // Ignore le FOND présumé : la couleur du plus gros morceau segmenté, et
+    // TOUTE autre région de cette même couleur exacte (pas seulement ce
+    // morceau) -- un fond peut se fragmenter en plusieurs régions disjointes
+    // de la même couleur (ex. les zones hors d'un motif rond inscrit dans une
+    // image carrée). Particulièrement utile sur une image SANS canal alpha :
+    // sans transparence, le fond devient une région opaque comme les autres.
     bool skip_largest_region{false};
     // Moteur topologique : squelette, decomposition en sections ouvertes,
     // barreaux et routage par source commune. Active par defaut.

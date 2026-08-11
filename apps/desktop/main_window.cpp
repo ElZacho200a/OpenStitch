@@ -3070,8 +3070,41 @@ void MainWindow::autoDigitize() {
         }
     }
 
+    // Défaut trouvé sur un projet réel (logo circulaire fourni par
+    // l'utilisateur) : une image PNG sans canal alpha (très courant — export
+    // simple, capture d'écran...) n'a, par construction, aucun pixel
+    // transparent (`image::load.cpp` remplit l'alpha à 255 pour toute image
+    // source à 3 canaux) — le fond devient donc une région opaque comme les
+    // autres, souvent la plus grande. Sur ce projet : 40,9 % des pixels
+    // segmentés, 38,8 % de l'aire du canevas numérisés comme UN SEUL objet.
+    // `AutoOptions::skip_largest_region` existe précisément pour ce cas mais
+    // n'était jamais exposé côté interface — silencieusement toujours à
+    // `false`. Coché par défaut seulement quand l'image source n'a pas de
+    // canal alpha (sinon, la transparence réelle exclut déjà le fond
+    // correctement : la plus grande région COULEUR a alors plus de chances
+    // d'être un vrai élément du motif, pas un fond déguisé).
+    QDialog optsDialog(this);
+    optsDialog.setWindowTitle(tr("Numérisation automatique"));
+    auto* optsLayout = new QVBoxLayout(&optsDialog);
+    auto* skipBgCheck = new QCheckBox(
+        tr("Ignorer la plus grande région (probablement le fond)"), &optsDialog);
+    skipBgCheck->setChecked(!project_.original.source_had_alpha);
+    skipBgCheck->setToolTip(
+        tr("Une image sans transparence (canal alpha) numérise aussi son fond comme une "
+           "région ordinaire, souvent la plus grande — cette option l'exclut."));
+    optsLayout->addWidget(skipBgCheck);
+    auto* optsButtons =
+        new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &optsDialog);
+    connect(optsButtons, &QDialogButtonBox::accepted, &optsDialog, &QDialog::accept);
+    connect(optsButtons, &QDialogButtonBox::rejected, &optsDialog, &QDialog::reject);
+    optsLayout->addWidget(optsButtons);
+    if (optsDialog.exec() != QDialog::Accepted) {
+        return;
+    }
+
     autodigitize::AutoOptions opts;
     opts.mm_per_px = project_.mm_per_px;
+    opts.skip_largest_region = skipBgCheck->isChecked();
     QGuiApplication::setOverrideCursor(Qt::WaitCursor);
     auto result = autodigitize::auto_digitize(*project_.segmentation, project_.object_ids, opts);
     QGuiApplication::restoreOverrideCursor();

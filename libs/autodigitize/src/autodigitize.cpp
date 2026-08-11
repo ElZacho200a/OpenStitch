@@ -3,6 +3,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <optional>
 
 #include "openstitch/auto_satin/satin_column.hpp"
 #include "openstitch/geometry/simplify.hpp"
@@ -54,15 +55,29 @@ Result<AutoResult> auto_digitize(const segmentation::Segmentation& seg,
         return fail(ErrorCategory::UserInput, "Aucune région à numériser");
     }
 
+    // Couleur de fond présumée : celle du plus gros morceau (§ audit projet
+    // réel, logo circulaire sans canal alpha — cf. AutoOptions::
+    // skip_largest_region). Un fond peut être fragmenté en PLUSIEURS régions
+    // DISJOINTES de la même couleur (ex. les zones hors d'un motif rond
+    // inscrit dans une image carrée, coupées par le motif lui-même) : sur ce
+    // projet, trois régions blanches distinctes totalisaient 87,9 % des
+    // pixels segmentés, la plus grosse seule n'en représentant que 40,9 %.
+    // Exclure seulement le plus gros MORCEAU laissait les autres fragments du
+    // même fond se faire numériser comme de vrais objets ; exclure toute
+    // région de cette couleur EXACTE couvre le fond dans son ensemble.
+    const std::optional<std::array<std::uint8_t, 3>> backgroundRgb =
+        options.skip_largest_region && seg.region_slots[largestSlot]
+            ? std::optional{seg.region_slots[largestSlot]->rgb}
+            : std::nullopt;
+
     const vectorization::VectorizeOptions vecOpts{options.mm_per_px, options.simplify_tolerance};
 
     for (const RegionId id : regions) {
-        if (options.skip_largest_region && seg.region_slots[id.value - 1] &&
-            (id.value - 1) == largestSlot) {
-            continue;
-        }
         const auto* region = seg.find(id);
         if (region == nullptr) {
+            continue;
+        }
+        if (backgroundRgb && region->rgb == *backgroundRgb) {
             continue;
         }
         auto sets = vectorization::vectorize_region(seg, id, vecOpts);
