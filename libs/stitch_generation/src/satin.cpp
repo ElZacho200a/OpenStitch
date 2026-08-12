@@ -564,9 +564,26 @@ SatinResult fill_satin_columns(const geometry::Path& rail_a, const geometry::Pat
 
     // --- Sous-couches (§10) : passes distinctes, ordre center -> edge -> zigzag. ---
     if (config.center_underlay) {
+        // Ré-échantillonnée à `underlay_spacing`, PAS à la densité du zigzag
+        // principal (`density`, généralement 4-5x plus fine) : la sous-couche
+        // centrale se contentait jusqu'ici de reprendre le milieu de CHAQUE
+        // fil du zigzag (`mids`, un point tous les `density`), produisant des
+        // points d'environ 0,3-0,4 mm au lieu des ~2 mm attendus (défaut
+        // trouvé en usage réel : avertissements `point-court` systématiques
+        // sur la sous-couche de tout satin auto-généré, `underlay_spacing`
+        // étant silencieusement ignoré par ce chemin alors qu'il est
+        // implémenté et utilisé par `fill_satin`, cf. juste plus bas).
+        const double spacing =
+            static_cast<double>(std::max<std::int32_t>(1, config.underlay_spacing.value));
+        const double lo = nThreads <= 2 ? 0.0 : retract;
+        const double hi = nThreads <= 2 ? totalMid : std::max(lo, totalMid - retract);
         SatinPass center;
-        for (int i = 0; i < nThreads; ++i) {
-            if (keepEnd(i)) center.points.push_back(toUm(mids[static_cast<std::size_t>(i)]));
+        if (hi - lo > 1e-6) {
+            const int n = std::max(1, static_cast<int>(std::lround((hi - lo) / spacing)));
+            for (int k = 0; k <= n; ++k) {
+                const double target = lo + (hi - lo) * static_cast<double>(k) / n;
+                center.points.push_back(toUm(point_at(mids, cumMid, target)));
+            }
         }
         if (center.points.size() >= 2) result.underlays.push_back(std::move(center));
     }

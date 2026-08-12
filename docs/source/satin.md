@@ -1665,6 +1665,28 @@ Vérifié : center/edge/zigzag = 4 passes distinctes ordonnées, pull élargit *
 seul côté** (asymétrique), push étend le bout, déterminisme, aller-retour `.osp`
 (SVG `tests/golden/auto-satin/lot4-*.svg` : sous-couches en vert).
 
+**Défaut trouvé en usage réel (2026-08-13)** — sous-couche centrale à la
+densité du zigzag principal au lieu de `underlay_spacing` : sur un satin
+**avec barreaux** (`fill_satin_columns`, auto-satin ou satin manuel avec
+barreaux par défaut — le chemin réellement emprunté par la quasi-totalité des
+satins de l'application), la sous-couche centrale reprenait simplement le
+milieu (`mids`) de **chaque fil** du zigzag principal, lui-même espacé à
+`density` (souvent 0,4 mm) — au lieu d'être ré-échantillonnée à
+`underlay_spacing` (2 mm par défaut). `underlay_spacing` existe et est
+correctement utilisé par `fill_satin` (satin manuel/legacy, sans barreaux) ;
+`fill_satin_columns` l'ignorait silencieusement en réutilisant `mids` tel
+quel. Conséquence concrète : des points de sous-couche de 0,3-0,4 mm au lieu
+de ~2 mm, systématiquement signalés `point-court` par l'analyse (risque de
+casse du fil et de sur-densité) — et un nombre de points de sous-couche
+inutilement élevé (5x plus que nécessaire à densité 0,4 mm). Corrigé en
+ré-échantillonnant `mids`/`cumMid` (déjà calculés pour `keepEnd`) à
+`underlay_spacing` via `point_at` (même primitive que le reste du fichier),
+sur l'intervalle `[retract, totalMid - retract]` — bornes identiques à
+l'ancien filtre par indice `keepEnd`. Vérifié :
+`tests/unit/stitch/test_satin.cpp` (colonne de 20 mm, densité 0,4 mm,
+`underlay_spacing` 2 mm → ~10 points de sous-couche, tous espacés de plus de
+0,5 mm — pas ~50 points à 0,4 mm comme avant le correctif).
+
 Reste (lots suivants) : tatami avancé (Lot 7). Voir
 `docs/stitch-feature-gap-audit.md`.
 

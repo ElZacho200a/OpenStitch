@@ -532,6 +532,33 @@ TEST_CASE("underlays : center, edge et zigzag = passes distinctes ordonnees") {
     CHECK(r.underlays[3].points.size() >= 2);  // zigzag présent
 }
 
+// Défaut trouvé en usage réel (export debug utilisateur, objet satin
+// GISTRE) : la sous-couche centrale reprenait le milieu de CHAQUE fil du
+// zigzag principal (un point tous les `density`, ici 0,4 mm) au lieu d'être
+// ré-échantillonnée à `underlay_spacing` (2 mm par défaut) -- des points de
+// sous-couche à 0,3-0,4 mm au lieu de ~2 mm, systématiquement signalés
+// "point-court" par l'analyse. `underlay_spacing` existait déjà et est
+// utilisé par `fill_satin` (satin manuel/legacy) ; ce chemin (`fill_satin_columns`,
+// satin auto/à barreaux) l'ignorait silencieusement.
+TEST_CASE("underlay centrale : espacee a underlay_spacing, pas a la densite du zigzag") {
+    const Column c = straight6();  // 20 mm de long
+    SatinConfig cfg;
+    cfg.density = Micrometers{400};           // zigzag principal : fin
+    cfg.underlay_spacing = Micrometers{2'000};  // sous-couche : nettement plus large
+    cfg.center_underlay = true;
+    const auto r = fill_satin_columns(c.a, c.b, c.rungs, cfg);
+    REQUIRE(r.underlays.size() == 1);
+    const auto& center = r.underlays[0].points;
+    REQUIRE(center.size() >= 2);
+    // ~20 mm / 2 mm = ~10 segments, très au-dessus du seuil "point-court"
+    // (0,5 mm) -- et loin des ~50 points qu'aurait produit un espacement à
+    // la densité du zigzag (0,4 mm) sur cette même longueur.
+    CHECK(center.size() <= 14);
+    for (std::size_t i = 1; i < center.size(); ++i) {
+        CHECK(length_um(center[i] - center[i - 1]) > 500.0);
+    }
+}
+
 TEST_CASE("underlays : desactivees par defaut") {
     const Column c = straight6();
     SatinConfig cfg;  // tout désactivé
