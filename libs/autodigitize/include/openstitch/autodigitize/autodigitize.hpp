@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 #pragma once
 
+#include <string>
 #include <vector>
 
 #include "openstitch/core/error.hpp"
@@ -43,6 +44,17 @@ struct AutoOptions {
 struct AutoResult {
     std::vector<document::VectorObject> vectors;
     std::vector<document::EmbroideryObject> embroideries;
+    // Avertissements non bloquants du moteur auto-satin (squelette), reportés
+    // ici pour que l'appelant puisse les montrer à l'utilisateur -- sans quoi
+    // une branche de squelette rejetée (ex. trop large pour du satin, aucune
+    // section transversale valide sur son axe) disparaît en silence : le
+    // reste de la région est numérisé normalement (sectionCount > 0 pour les
+    // AUTRES branches), mais la portion couverte par la branche rejetée ne
+    // reçoit AUCUN point (ni satin, ni tatami, ni contour), sans que rien ne
+    // le signale (défaut trouvé en usage réel : lettre en T d'un logo réel,
+    // ~28 mm rejetés en silence). Préfixé par la région source pour
+    // localiser le problème.
+    std::vector<std::string> warnings;
 };
 
 // Construit les objets à partir d'une segmentation. Les identifiants sont

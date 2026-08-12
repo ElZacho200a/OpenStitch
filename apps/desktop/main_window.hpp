@@ -80,6 +80,12 @@ private slots:
     void vectorizeSelectedRegion();
     void autoDigitize();
     void segmentWithAi();
+    // Rend visibles les rejets internes de l'auto-satin (ex. branche de
+    // squelette trop large pour du satin) : sans cet avertissement, la zone
+    // concernée ne reçoit aucun point (ni satin, ni tatami) sans que rien ne
+    // le signale (défaut trouvé en usage réel, cf. autodigitize.hpp
+    // `AutoResult::warnings`).
+    void warnAboutSkippedAutoSatinBranches(const std::vector<std::string>& warnings);
     void openAiPreferences();
     void createRunningStitchObject();
     void createTatamiObject();

@@ -3126,6 +3126,7 @@ void MainWindow::autoDigitize() {
     }
     const std::size_t vecCount = result->vectors.size();
     const std::size_t embCount = result->embroideries.size();
+    const std::vector<std::string> warnings = std::move(result->warnings);
 
     undoStack_.execute(std::make_unique<commands::AddObjectBatchCommand>(
                            std::move(result->vectors), std::move(result->embroideries)),
@@ -3138,6 +3139,7 @@ void MainWindow::autoDigitize() {
            "tous éditables")
             .arg(vecCount)
             .arg(embCount));
+    warnAboutSkippedAutoSatinBranches(warnings);
 }
 
 void MainWindow::segmentWithAi() {
@@ -3177,6 +3179,7 @@ void MainWindow::segmentWithAi() {
     }
     const std::size_t vecCount = result->vectors.size();
     const std::size_t embCount = result->embroideries.size();
+    const std::vector<std::string> warnings = std::move(result->warnings);
 
     undoStack_.execute(std::make_unique<commands::AddObjectBatchCommand>(
                            std::move(result->vectors), std::move(result->embroideries),
@@ -3189,6 +3192,30 @@ void MainWindow::segmentWithAi() {
         tr("Segmentation IA : %1 objet(s) vectoriel(s), %2 objet(s) de broderie créés.")
             .arg(vecCount)
             .arg(embCount));
+    warnAboutSkippedAutoSatinBranches(warnings);
+}
+
+void MainWindow::warnAboutSkippedAutoSatinBranches(const std::vector<std::string>& warnings) {
+    if (warnings.empty()) {
+        return;
+    }
+    // Plafonné à l'affichage (comme les autres listes de diagnostics de cette
+    // fenêtre) : une image très fragmentée peut produire beaucoup de rejets,
+    // une boîte de dialogue interminable serait aussi peu lisible qu'aucun
+    // avertissement du tout.
+    constexpr std::size_t kMaxShown = 12;
+    QString text =
+        tr("Certaines zones n'ont reçu AUCUN point (ni satin, ni tatami) : le squelette "
+           "auto-satin a rejeté une portion de leur forme (souvent trop large pour du "
+           "satin). Vérifiez ces objets, ou redécoupez-les manuellement (ligne de coupe, "
+           "outil Décaler) puis relancez la numérisation sur la zone concernée.\n\n");
+    for (std::size_t i = 0; i < warnings.size() && i < kMaxShown; ++i) {
+        text += QStringLiteral("• ") + QString::fromStdString(warnings[i]) + "\n";
+    }
+    if (warnings.size() > kMaxShown) {
+        text += tr("… et %1 de plus.").arg(warnings.size() - kMaxShown);
+    }
+    QMessageBox::warning(this, tr("Zones non couvertes par l'auto-satin"), text);
 }
 
 void MainWindow::openAiPreferences() {

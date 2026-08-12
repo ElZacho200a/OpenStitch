@@ -131,6 +131,9 @@ Result<AutoResult> auto_digitize(const segmentation::Segmentation& seg,
             satinOptions.analysis.thresholds.max_satin_width = options.satin_max_width;
             satinOptions.geometry_mode = auto_satin::SatinGeometryMode::Parametric;
             const auto network = auto_satin::build_satin_columns(main, satinOptions);
+            for (const auto& w : network.warnings) {
+                result.warnings.push_back("Région " + std::to_string(id.value) + " : " + w);
+            }
             const bool useParametric = !network.parametric_columns.empty();
             const std::size_t sectionCount =
                 useParametric ? network.parametric_columns.size() : network.columns.size();

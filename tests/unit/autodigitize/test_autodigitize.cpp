@@ -1,8 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 #include <catch2/catch_test_macros.hpp>
 
+#include <algorithm>
 #include <array>
 #include <set>
+#include <utility>
 
 #include "openstitch/auto_satin/satin_column.hpp"
 #include "openstitch/autodigitize/autodigitize.hpp"
@@ -328,4 +330,95 @@ TEST_CASE("segmentation vide -> erreur propre") {
     segmentation::Segmentation seg;
     IdGenerator<ObjectId> ids;
     CHECK_FALSE(auto_digitize(seg, ids, opts()).has_value());
+}
+
+// Point dans polygone (pair-impair), coordonnées en mm.
+bool point_in_poly_mm(const std::vector<std::pair<double, double>>& poly, double px, double py) {
+    bool inside = false;
+    const std::size_t n = poly.size();
+    for (std::size_t i = 0, j = n - 1; i < n; j = i++) {
+        const auto& [ax, ay] = poly[i];
+        const auto& [bx, by] = poly[j];
+        if (((ay > py) != (by > py)) && (px < (bx - ax) * (py - ay) / (by - ay) + ax)) {
+            inside = !inside;
+        }
+    }
+    return inside;
+}
+
+// Défaut trouvé sur un projet réel (lettre en T d'un logo, ~28 mm de
+// squelette rejetés en silence) : une branche de squelette individuellement
+// trop large pour du satin (largeur locale > satin_max_width, ici ~8,1 mm)
+// est purement et simplement IGNORÉE par build_satin_columns -- la zone
+// qu'elle couvre ne reçoit alors AUCUN point (ni satin, ni tatami), sans que
+// rien ne le signale, même quand la largeur/aire globale de la région reste
+// dans les clous (ce qui la fait entrer dans le chemin auto-satin en premier
+// lieu, avec statut RequiresDecomposition et 4 des 5 branches du squelette
+// qui réussissent). Géométrie EXACTE de cette lettre (37 sommets, cf.
+// tests/unit/auto_satin/test_columns.cpp § coin intérieur d'une lettre en
+// T), rasterisée ici pour passer par la VRAIE chaîne segmentation ->
+// vectorisation -> auto-satin, comme en usage réel (pas juste
+// build_satin_columns en isolation).
+TEST_CASE("branche squelette localement trop large -> avertissement (jamais silencieux)") {
+    const std::vector<std::pair<double, double>> letterT = {
+        {-101.859, 238.244}, {-89.160, 243.006}, {-87.043, 244.329}, {-87.572, 244.858},
+        {-92.599, 245.123},  {-93.128, 245.652}, {-99.478, 261.526}, {-102.652, 270.786},
+        {-100.801, 271.579}, {-96.832, 271.844}, {-94.715, 270.786}, {-91.541, 268.140},
+        {-89.953, 267.875},  {-89.953, 269.463}, {-90.482, 270.521}, {-90.482, 271.315},
+        {-92.863, 276.342},  {-94.186, 276.342}, {-94.980, 275.812}, {-98.419, 274.754},
+        {-114.293, 268.405}, {-121.966, 264.965}, {-121.437, 262.584}, {-120.114, 259.938},
+        {-120.114, 259.409}, {-118.262, 257.028}, {-117.733, 257.028}, {-116.939, 258.351},
+        {-116.939, 261.261}, {-116.145, 263.907}, {-112.971, 266.553}, {-110.854, 267.346},
+        {-110.325, 266.817}, {-101.859, 245.652}, {-100.536, 241.683}, {-103.711, 239.037},
+        {-104.240, 237.979},
+    };
+    double minX = letterT[0].first, maxX = letterT[0].first;
+    double minY = letterT[0].second, maxY = letterT[0].second;
+    for (const auto& [x, y] : letterT) {
+        minX = std::min(minX, x);
+        maxX = std::max(maxX, x);
+        minY = std::min(minY, y);
+        maxY = std::max(maxY, y);
+    }
+    constexpr double kMmPerPx = 0.5;
+    constexpr int kMargin = 4;
+    const int w = static_cast<int>((maxX - minX) / kMmPerPx) + kMargin * 2;
+    const int h = static_cast<int>((maxY - minY) / kMmPerPx) + kMargin * 2;
+    image::Image img = blank(w, h);
+    for (int y = 0; y < h; ++y) {
+        for (int x = 0; x < w; ++x) {
+            set_px(img, x, y, 255, 255, 255);  // fond blanc
+        }
+    }
+    for (int py = 0; py < h; ++py) {
+        // Modèle Y vers le haut, image Y vers le bas : ligne 0 = maxY.
+        const double my = maxY - (py - kMargin) * kMmPerPx;
+        for (int px = 0; px < w; ++px) {
+            const double mx = minX + (px - kMargin) * kMmPerPx;
+            if (point_in_poly_mm(letterT, mx, my)) {
+                set_px(img, px, py, 220, 30, 30);
+            }
+        }
+    }
+    const auto seg = segmentation::segment(img, {.max_colors = 2, .min_region_px = 1});
+    REQUIRE(seg.has_value());
+    IdGenerator<ObjectId> ids;
+    AutoOptions o = opts();
+    o.mm_per_px = Millimeters{kMmPerPx};
+    o.skip_largest_region = true;  // exclut le fond blanc
+    const auto result = auto_digitize(*seg, ids, o);
+    REQUIRE(result.has_value());
+
+    REQUIRE_FALSE(result->warnings.empty());
+    const bool mentionsRejection = std::any_of(
+        result->warnings.begin(), result->warnings.end(),
+        [](const std::string& w) { return w.find("colonne refusee") != std::string::npos; });
+    CHECK(mentionsRejection);
+
+    // Les autres branches du squelette ont quand même produit du satin (pas
+    // un refus total -- seule la branche trop large est tombée).
+    const std::size_t satinCount =
+        static_cast<std::size_t>(std::count_if(result->embroideries.begin(), result->embroideries.end(),
+                                               [](const auto& e) { return e.is_satin(); }));
+    CHECK(satinCount >= 1);
 }

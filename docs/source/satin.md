@@ -1404,13 +1404,60 @@ dépasse la largeur du plus large barreau RÉEL qui l'encadre (pas "aucun point
 large", qui serait faux pour une jonction légitimement large) ; le mécanisme
 de saut s'engage bien sur cette géométrie réelle (2 des 4 sections).
 
-**Limite connue, non résolue ici** : 2 des 4 sections de cette même lettre ont
-un barreau limitrophe déjà large dès la première/dernière station (pas de
-barreau "avant" pour former une paire à comparer), issu du recouvrement de
-jonction (`extend_into_confluence`) — largeur légitime au sens de la
-conception actuelle, mais dont l'ampleur exacte à la jonction d'une lettre
-fine n'a pas été auditée indépendamment. Distinct du défaut corrigé ici
-(mésappariement entre DEUX barreaux), et non traité dans ce correctif.
+**Précision a posteriori** (audit complémentaire, même jour) : les largeurs
+proches de `max_satin_width` observées sur 2 des 4 sections dès leur première
+station ne sont PAS un artefact de recouvrement de jonction (`extend_into_confluence`)
+comme d'abord supposé — vérifié en dumpant le graphe de squelette brut de
+cette lettre (`SkeletonGraph`, 5 arêtes/6 nœuds) : ces deux sections sont deux
+branches INDÉPENDANTES (aucune jonction), et leur largeur de départ élevée
+reflète simplement la largeur réelle de l'empattement à cet endroit. Le
+squelette complet a en réalité 5 arêtes ; la 5e (~28 mm, reliant le crochet
+latéral gauche à la jonction du bas) est REJETÉE dans son intégralité :
+`compute_column_stations` y mesure une largeur locale >6 mm sur la totalité
+de ses ~54 stations échantillonnées (vérifié : ~8,1 mm à mi-parcours, calcul
+indépendant par intersection de segments) — un empattement réellement trop
+large pour du satin à cet endroit, pas un bug de mesure. Voir *Avertissements
+auto-satin remontés à l'utilisateur* ci-dessous pour la suite donnée à cette
+branche rejetée.
+
+### Avertissements auto-satin remontés à l'utilisateur (2026-08-13)
+
+*État : Présent (`AutoResult::warnings`) · Testé numériquement (chaîne
+complète, géométrie réelle rasterisée) · non validé simulateur/physique.*
+
+**Défaut trouvé en usage réel** (suite directe de l'audit ci-dessus) : quand
+`build_satin_columns` rejette une branche de squelette (ex. trop large,
+comme la 5e arête de la lettre en T ci-dessus), le rejet est bien
+diagnostiqué (`SatinColumnsResult::warnings`) mais **`autodigitize.cpp` ne
+lisait jamais ce champ**. Tant qu'au moins UNE branche de la même région
+réussit (`sectionCount > 0`), la numérisation automatique se poursuit
+normalement, satisfaite d'avoir produit *quelque chose* — la portion couverte
+par la branche rejetée, elle, ne reçoit RIEN (ni satin, ni tatami, ni
+contour), sans le moindre signal dans l'interface. Sur la lettre en T de
+l'audit : ~28 mm de squelette disparaissaient silencieusement à chaque
+numérisation automatique de ce logo.
+
+**Correctif** — portée volontairement limitée à la VISIBILITÉ du problème
+(pas de génération de points de repli — une vraie solution de repli, ex.
+tatami sur la zone rejetée, est un chantier séparé, plus large, non traité
+ici) :
+
+- `AutoResult::warnings` (nouveau champ, `libs/autodigitize`) : les
+  avertissements de `build_satin_columns` sont copiés, préfixés par la
+  région source (`"Région <id> : <message>"`), pour chaque région qui passe
+  par le chemin auto-satin.
+- `apps/desktop/main_window.cpp` : `autoDigitize()` et `segmentWithAi()`
+  affichent désormais une boîte d'avertissement listant ces messages (plafonnée
+  à 12 lignes affichées) quand elle n'est pas vide, avec un conseil concret
+  (retoucher/redécouper la zone concernée, ex. via l'outil de ligne de coupe,
+  puis renumériser).
+
+**Vérifié** : `tests/unit/autodigitize/test_autodigitize.cpp` — géométrie
+EXACTE de la lettre en T (37 sommets, la même que l'audit ci-dessus),
+**rasterisée** et passée par la VRAIE chaîne segmentation → vectorisation →
+auto-satin (pas `build_satin_columns` en isolation) : `AutoResult::warnings`
+non vide, mentionne bien un refus de colonne, et les autres branches de la
+même lettre produisent quand même du satin (pas un refus total).
 
 ### Barreaux par défaut pour un satin manuel (`default_rungs`)
 
