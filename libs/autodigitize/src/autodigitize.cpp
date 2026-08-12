@@ -6,6 +6,9 @@
 #include <optional>
 
 #include "openstitch/auto_satin/satin_column.hpp"
+#include "openstitch/geometry/boolean.hpp"
+#include "openstitch/geometry/offset.hpp"
+#include "openstitch/geometry/polyline.hpp"
 #include "openstitch/geometry/simplify.hpp"
 #include "openstitch/stitch_generation/satin.hpp"
 #include "openstitch/vectorization/vectorize.hpp"
@@ -30,6 +33,60 @@ double net_area_um2(const geometry::PathSet& set) {
         area -= std::abs(geometry::signed_area_um2(hole));
     }
     return std::max(0.0, area);
+}
+
+// Polygone approximatif de la bande couverte par une colonne satin (rail A
+// aller, rail B retour), pour calculer la zone qu'une branche de squelette
+// REJETÉE (§ audit lettres, docs/source/satin.md) laisse sans point. Les
+// rails sont aplatis (`geometry::flatten`) : un rail paramétrique est une
+// courbe de Bézier éparse, jamais une polyligne dense.
+template <typename ColumnLike>
+geometry::Path column_strip(const ColumnLike& column) {
+    constexpr Micrometers kFlattenTolerance{30};  // 0,03 mm : sous la résolution DST
+    const auto flatA = geometry::flatten(column.rail_a, kFlattenTolerance);
+    const auto flatB = geometry::flatten(column.rail_b, kFlattenTolerance);
+    geometry::Path strip;
+    strip.closed = true;
+    strip.nodes.reserve(flatA.points.size() + flatB.points.size());
+    for (const auto& pt : flatA.points) {
+        strip.nodes.push_back({pt, geometry::NodeType::Corner, std::nullopt, std::nullopt});
+    }
+    for (auto it = flatB.points.rbegin(); it != flatB.points.rend(); ++it) {
+        strip.nodes.push_back({*it, geometry::NodeType::Corner, std::nullopt, std::nullopt});
+    }
+    return strip;
+}
+
+// RÉTRÉCIT légèrement chaque bande avant de l'utiliser comme découpe pour le
+// remplissage de repli : le territoire RESTANT (donc rempli en tatami)
+// déborde ainsi délibérément de `kCoverageOverlap` À L'INTÉRIEUR de la bande
+// satin, plutôt que de s'arrêter pile à son bord. Un recouvrement (léger
+// double-point) est anodin ; un interstice ne l'est pas -- au moindre écart
+// d'arrondi entre le contour vectorisé de la région et les rails aplatis
+// d'une section satin, une découpe qui s'arrête PILE au bord de la bande (ou
+// pire, l'élargit avant de la soustraire, ce qui recule le remplissage de
+// repli et élargit l'interstice) laisse une multitude de fins interstices le
+// long de chaque couture satin/tatami (défaut trouvé par revue : la première
+// version de ce correctif élargissait la bande AVANT soustraction, donc
+// RÉTRÉCISSAIT le territoire de repli -- l'inverse de l'effet recherché).
+// Même principe que le recouvrement de jonction (`extend_into_confluence`,
+// libs/auto_satin) et la pratique standard du métier (chevaucher plutôt que
+// raccorder pile, cf. audit Wilcom Hatch — Column B/miter joints, docs/source/satin.md).
+constexpr Micrometers kCoverageOverlap{400};  // 0,4 mm
+
+std::vector<geometry::Path> shrink_strips_for_cutout(const std::vector<geometry::Path>& strips) {
+    std::vector<geometry::Path> out;
+    out.reserve(strips.size());
+    for (const auto& strip : strips) {
+        const auto shrunk =
+            geometry::inset_path_set(geometry::PathSet{strip, {}}, kCoverageOverlap);
+        if (shrunk && !shrunk->empty()) {
+            for (const auto& piece : *shrunk) out.push_back(piece.outer);
+        } else {
+            out.push_back(strip);  // repli : bande non rétrécie plutôt qu'absente
+        }
+    }
+    return out;
 }
 
 }  // namespace
@@ -139,6 +196,8 @@ Result<AutoResult> auto_digitize(const segmentation::Segmentation& seg,
                 useParametric ? network.parametric_columns.size() : network.columns.size();
             if (sectionCount > 0) {
                 const document::SatinParams defaults;
+                std::vector<geometry::Path> strips;
+                strips.reserve(sectionCount);
                 const auto addSection = [&](const auto& column, std::size_t sectionIndex) {
                     document::EmbroideryObject section = emb;
                     section.id = ids.next();
@@ -150,6 +209,7 @@ Result<AutoResult> auto_digitize(const segmentation::Segmentation& seg,
                                                               defaults.center_underlay,
                                                               options.satin_max_width);
                     result.embroideries.push_back(std::move(section));
+                    strips.push_back(column_strip(column));
                 };
                 if (useParametric) {
                     for (std::size_t i = 0; i < sectionCount; ++i) {
@@ -162,6 +222,66 @@ Result<AutoResult> auto_digitize(const segmentation::Segmentation& seg,
                 }
                 madeSatin = true;
                 emittedSatinNetwork = true;
+
+                // Une branche de squelette rejetée (ex. trop large) ne doit
+                // JAMAIS laisser une zone sans le moindre point : comble ce
+                // qui n'est couvert par AUCUNE section satin réussie avec un
+                // remplissage tatami, découpé sur la zone exacte (jamais
+                // tout le contour source, jamais un débordement sur les
+                // sections satin).
+                //
+                // Déclenché seulement si le squelette ÉLAGUÉ compte PLUS
+                // d'arêtes que de sections produites -- signal STRUCTUREL
+                // direct (une arête existait, aucune colonne n'en est
+                // sortie), jamais une correspondance de texte sur
+                // `network.warnings` (qui porte aussi des messages purement
+                // informatifs sans rapport avec une couverture manquante,
+                // ex. "couture fermée : routage cyclique de quatre
+                // sections" sur un anneau déjà parfaitement couvert -- déjà
+                // reproduit : déclencher sur `!warnings.empty()` cassait ce
+                // cas et le réseau en T normal). Un rail satin (surtout en
+                // mode Parametric, ajusté en Bézier épars) approxime
+                // toujours la forme source avec une légère tolérance même
+                // quand TOUT réussit -- calculer le reliquat géométrique
+                // dans CE cas produirait de faux positifs (plusieurs mm² de
+                // reliquat "naturel" aux pointes/jonctions), d'où l'intérêt
+                // du signal structurel plutôt qu'un simple calcul d'aire.
+                if (network.debug.graph.edges.size() > sectionCount) {
+                    // Seuil délibérément bas et INDÉPENDANT de
+                    // `min_fill_area_mm2` (ce dernier répond à "cette région
+                    // entière vaut-elle un remplissage plutôt qu'un simple
+                    // contour ?", pas à "ce reliquat de zone déjà largement
+                    // couverte mérite-t-il d'être comblé ?" -- réutiliser le
+                    // même seuil laissait passer des trous de plusieurs mm²
+                    // sous couvert d'être "trop petits", alors que l'objectif
+                    // explicite est de ne JAMAIS laisser de zone sans point).
+                    constexpr double kMinFallbackAreaMm2 = 0.5;
+                    const auto leftover = geometry::subtract_polygons(main, shrink_strips_for_cutout(strips));
+                    if (leftover) {
+                        for (const auto& piece : *leftover) {
+                            if (net_area_um2(piece) / 1e6 < kMinFallbackAreaMm2) {
+                                continue;  // reliquat négligeable (bruit d'arrondi géométrique)
+                            }
+                            document::VectorObject fallbackVec;
+                            fallbackVec.id = ids.next();
+                            fallbackVec.name = "Région " + std::to_string(id.value) +
+                                               " (zone non couverte par le satin)";
+                            fallbackVec.source_region = id;
+                            fallbackVec.rgb = region->rgb;
+                            fallbackVec.paths = {piece};
+                            const ObjectId fallbackVecId = fallbackVec.id;
+                            result.vectors.push_back(std::move(fallbackVec));
+
+                            document::EmbroideryObject fallback;
+                            fallback.source_vector = fallbackVecId;
+                            fallback.rgb = region->rgb;
+                            fallback.id = ids.next();
+                            fallback.params = document::TatamiParams{};
+                            fallback.name = "Remplissage repli région " + std::to_string(id.value);
+                            result.embroideries.push_back(std::move(fallback));
+                        }
+                    }
+                }
             }
         }
         if (!madeSatin && options.use_naive_satin && bigEnoughToFill && isThin &&

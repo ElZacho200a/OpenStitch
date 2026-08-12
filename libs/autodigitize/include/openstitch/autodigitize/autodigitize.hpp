@@ -45,15 +45,15 @@ struct AutoResult {
     std::vector<document::VectorObject> vectors;
     std::vector<document::EmbroideryObject> embroideries;
     // Avertissements non bloquants du moteur auto-satin (squelette), reportés
-    // ici pour que l'appelant puisse les montrer à l'utilisateur -- sans quoi
-    // une branche de squelette rejetée (ex. trop large pour du satin, aucune
-    // section transversale valide sur son axe) disparaît en silence : le
-    // reste de la région est numérisé normalement (sectionCount > 0 pour les
-    // AUTRES branches), mais la portion couverte par la branche rejetée ne
-    // reçoit AUCUN point (ni satin, ni tatami, ni contour), sans que rien ne
-    // le signale (défaut trouvé en usage réel : lettre en T d'un logo réel,
-    // ~28 mm rejetés en silence). Préfixé par la région source pour
-    // localiser le problème.
+    // ici pour que l'appelant puisse les montrer à l'utilisateur. Quand une
+    // branche de squelette est rejetée (ex. trop large pour du satin, aucune
+    // section transversale valide sur son axe), la zone qu'elle couvrait
+    // reçoit désormais un remplissage tatami de repli (§ ci-dessous, jamais
+    // laissée sans le moindre point) -- ces avertissements restent utiles
+    // pour EXPLIQUER pourquoi cette zone est en tatami plutôt qu'en satin
+    // comme le reste de la région (ex. un empattement trop large, cf.
+    // docs/source/satin.md § lettre en T d'un logo réel). Préfixé par la
+    // région source pour localiser le problème.
     std::vector<std::string> warnings;
 };
 

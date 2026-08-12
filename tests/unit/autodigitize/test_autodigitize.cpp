@@ -8,6 +8,8 @@
 
 #include "openstitch/auto_satin/satin_column.hpp"
 #include "openstitch/autodigitize/autodigitize.hpp"
+#include "openstitch/geometry/boolean.hpp"
+#include "openstitch/geometry/polyline.hpp"
 
 using namespace openstitch;
 using namespace openstitch::autodigitize;
@@ -421,4 +423,74 @@ TEST_CASE("branche squelette localement trop large -> avertissement (jamais sile
         static_cast<std::size_t>(std::count_if(result->embroideries.begin(), result->embroideries.end(),
                                                [](const auto& e) { return e.is_satin(); }));
     CHECK(satinCount >= 1);
+
+    // La zone rejetée doit avoir reçu un remplissage tatami de repli --
+    // jamais laissée sans le moindre point (§ retour utilisateur explicite :
+    // "il faut absolument que ça couvre toute la zone").
+    const auto isFallbackTatami = [](const document::EmbroideryObject& e) {
+        return e.is_tatami() && e.name.find("repli") != std::string::npos;
+    };
+    REQUIRE(std::any_of(result->embroideries.begin(), result->embroideries.end(), isFallbackTatami));
+
+    // Vérifie la couverture géométrique de bout en bout : région source
+    // (le premier objet vectoriel, "Région <id>", pas les objets de repli)
+    // moins (bandes satin des sections réussies + zones de repli tatami) ne
+    // doit rien laisser -- au-delà d'une tolérance d'arrondi de
+    // rasterisation/vectorisation, pas une simple absence d'erreur.
+    const auto sourceVec = std::find_if(result->vectors.begin(), result->vectors.end(),
+                                        [](const document::VectorObject& v) {
+                                            return v.name.find("zone non couverte") == std::string::npos;
+                                        });
+    REQUIRE(sourceVec != result->vectors.end());
+    REQUIRE_FALSE(sourceVec->paths.empty());
+    // Le plus grand morceau par aire nette, PAS le premier : à la résolution
+    // de rasterisation de ce test (0,5 mm/px), un rétrécissement sous 1 px
+    // (la lettre descend à 0,3 mm par endroits) peut fragmenter la région en
+    // plusieurs morceaux disjoints -- exactement le `main` que auto_digitize
+    // choisit en interne (`autodigitize.cpp`, std::max_element sur net_area_um2).
+    const auto& sourceRegion = *std::max_element(
+        sourceVec->paths.begin(), sourceVec->paths.end(), [](const auto& a, const auto& b) {
+            const auto netArea = [](const geometry::PathSet& s) {
+                double area = std::abs(geometry::signed_area_um2(s.outer));
+                for (const auto& h : s.holes) area -= std::abs(geometry::signed_area_um2(h));
+                return area;
+            };
+            return netArea(a) < netArea(b);
+        });
+
+    std::vector<geometry::Path> covering;
+    for (const auto& e : result->embroideries) {
+        if (const auto* sp = std::get_if<document::SatinParams>(&e.params)) {
+            const auto flatA = geometry::flatten(sp->rail_a, Micrometers{30});
+            const auto flatB = geometry::flatten(sp->rail_b, Micrometers{30});
+            geometry::Path strip;
+            strip.closed = true;
+            for (const auto& pt : flatA.points) {
+                strip.nodes.push_back({pt, geometry::NodeType::Corner, std::nullopt, std::nullopt});
+            }
+            for (auto it = flatB.points.rbegin(); it != flatB.points.rend(); ++it) {
+                strip.nodes.push_back({*it, geometry::NodeType::Corner, std::nullopt, std::nullopt});
+            }
+            covering.push_back(std::move(strip));
+        } else if (isFallbackTatami(e)) {
+            const auto fallbackVec = std::find_if(
+                result->vectors.begin(), result->vectors.end(),
+                [&](const document::VectorObject& v) { return v.id == e.source_vector; });
+            REQUIRE(fallbackVec != result->vectors.end());
+            for (const auto& piece : fallbackVec->paths) {
+                covering.push_back(piece.outer);
+            }
+        }
+    }
+    const auto leftover = subtract_polygons(sourceRegion, covering);
+    REQUIRE(leftover.has_value());
+    double leftoverAreaMm2 = 0.0;
+    for (const auto& piece : *leftover) {
+        leftoverAreaMm2 += std::abs(geometry::signed_area_um2(piece.outer)) / 1e6;
+    }
+    // Tolérance = quelques pixels de rasterisation (0,5 mm/px), pas un vrai
+    // trou (~28 mm² de squelette rejeté, avant le correctif ; ~10 mm² de fins
+    // interstices le long de chaque couture satin/tatami avec le premier
+    // correctif, incomplet -- cf. `shrink_strips_for_cutout`).
+    CHECK(leftoverAreaMm2 < 0.5);
 }

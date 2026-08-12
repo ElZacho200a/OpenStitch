@@ -3205,17 +3205,18 @@ void MainWindow::warnAboutSkippedAutoSatinBranches(const std::vector<std::string
     // avertissement du tout.
     constexpr std::size_t kMaxShown = 12;
     QString text =
-        tr("Certaines zones n'ont reçu AUCUN point (ni satin, ni tatami) : le squelette "
-           "auto-satin a rejeté une portion de leur forme (souvent trop large pour du "
-           "satin). Vérifiez ces objets, ou redécoupez-les manuellement (ligne de coupe, "
-           "outil Décaler) puis relancez la numérisation sur la zone concernée.\n\n");
+        tr("Le squelette auto-satin a rejeté une portion de forme sur certaines zones "
+           "(souvent trop large pour du satin) : elles ont reçu un remplissage tatami de "
+           "repli à la place, pour ne rien laisser sans point, mais le résultat mérite "
+           "d'être vérifié (aspect, densité) — ou redécoupé manuellement (ligne de coupe, "
+           "outil Décaler) puis renumérisé si le tatami ne convient pas.\n\n");
     for (std::size_t i = 0; i < warnings.size() && i < kMaxShown; ++i) {
         text += QStringLiteral("• ") + QString::fromStdString(warnings[i]) + "\n";
     }
     if (warnings.size() > kMaxShown) {
         text += tr("… et %1 de plus.").arg(warnings.size() - kMaxShown);
     }
-    QMessageBox::warning(this, tr("Zones non couvertes par l'auto-satin"), text);
+    QMessageBox::warning(this, tr("Zones remplies en tatami de repli"), text);
 }
 
 void MainWindow::openAiPreferences() {

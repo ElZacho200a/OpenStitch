@@ -1420,16 +1420,18 @@ large pour du satin à cet endroit, pas un bug de mesure. Voir *Avertissements
 auto-satin remontés à l'utilisateur* ci-dessous pour la suite donnée à cette
 branche rejetée.
 
-### Avertissements auto-satin remontés à l'utilisateur (2026-08-13)
+### Repli tatami sur une branche auto-satin rejetée, jamais de zone sans point (2026-08-13)
 
-*État : Présent (`AutoResult::warnings`) · Testé numériquement (chaîne
-complète, géométrie réelle rasterisée) · non validé simulateur/physique.*
+*État : Présent (`geometry::subtract_polygons`, `AutoResult::warnings`) ·
+Testé numériquement (chaîne complète, géométrie réelle rasterisée,
+vérification de couverture géométrique de bout en bout) · non validé
+simulateur/physique.*
 
 **Défaut trouvé en usage réel** (suite directe de l'audit ci-dessus) : quand
 `build_satin_columns` rejette une branche de squelette (ex. trop large,
 comme la 5e arête de la lettre en T ci-dessus), le rejet est bien
-diagnostiqué (`SatinColumnsResult::warnings`) mais **`autodigitize.cpp` ne
-lisait jamais ce champ**. Tant qu'au moins UNE branche de la même région
+diagnostiqué (`SatinColumnsResult::warnings`) mais `autodigitize.cpp` ne
+lisait jamais ce champ. Tant qu'au moins UNE branche de la même région
 réussit (`sectionCount > 0`), la numérisation automatique se poursuit
 normalement, satisfaite d'avoir produit *quelque chose* — la portion couverte
 par la branche rejetée, elle, ne reçoit RIEN (ni satin, ni tatami, ni
@@ -1437,27 +1439,80 @@ contour), sans le moindre signal dans l'interface. Sur la lettre en T de
 l'audit : ~28 mm de squelette disparaissaient silencieusement à chaque
 numérisation automatique de ce logo.
 
-**Correctif** — portée volontairement limitée à la VISIBILITÉ du problème
-(pas de génération de points de repli — une vraie solution de repli, ex.
-tatami sur la zone rejetée, est un chantier séparé, plus large, non traité
-ici) :
+**Première itération (incomplète)** : remonter `SatinColumnsResult::warnings`
+jusqu'à une boîte de dialogue utilisateur (`AutoResult::warnings`), sans
+générer de point de repli. Retour utilisateur explicite : *"il faut
+absolument que ça couvre toute la zone"* — un avertissement, aussi visible
+soit-il, laisse toujours un trou physique dans le motif cousu. Étendu en
+repli tatami automatique.
 
-- `AutoResult::warnings` (nouveau champ, `libs/autodigitize`) : les
-  avertissements de `build_satin_columns` sont copiés, préfixés par la
-  région source (`"Région <id> : <message>"`), pour chaque région qui passe
-  par le chemin auto-satin.
-- `apps/desktop/main_window.cpp` : `autoDigitize()` et `segmentWithAi()`
-  affichent désormais une boîte d'avertissement listant ces messages (plafonnée
-  à 12 lignes affichées) quand elle n'est pas vide, avec un conseil concret
-  (retoucher/redécouper la zone concernée, ex. via l'outil de ligne de coupe,
-  puis renumériser).
+**Primitive géométrique** — `geometry::subtract_polygons(base, cutouts)`
+(nouveau, `libs/geometry`) : différence booléenne Clipper2 (règle
+**NonZero**, pas EvenOdd comme `clean.cpp`/`cut.cpp`) entre `base` et l'union
+de `cutouts`. NonZero choisi délibérément : des bandes de colonnes satin
+adjacentes qui se chevauchent légèrement (même barreau partagé) s'annuleraient
+localement sous EvenOdd, laissant un trou parasite au milieu d'une zone
+pourtant couverte. Comme NonZero est sensible à l'orientation (contrairement
+à EvenOdd), `base.outer`/`base.holes`/chaque `cutout` sont renormalisés en
+interne (CCW/CW) avant l'opération — l'orientation d'entrée n'est PAS
+garantie ailleurs dans `geometry/`, qui utilise EvenOdd précisément pour s'en
+affranchir.
 
-**Vérifié** : `tests/unit/autodigitize/test_autodigitize.cpp` — géométrie
-EXACTE de la lettre en T (37 sommets, la même que l'audit ci-dessus),
-**rasterisée** et passée par la VRAIE chaîne segmentation → vectorisation →
-auto-satin (pas `build_satin_columns` en isolation) : `AutoResult::warnings`
-non vide, mentionne bien un refus de colonne, et les autres branches de la
-même lettre produisent quand même du satin (pas un refus total).
+**Détection du besoin de repli** — signal STRUCTUREL, jamais une
+correspondance de texte sur `warnings` : `network.debug.graph.edges.size() >
+sectionCount` (le squelette élagué compte plus d'arêtes que de sections
+produites). Une correspondance sur le texte des avertissements a été tentée
+puis abandonnée : `warnings` porte aussi des messages purement informatifs
+sans rapport avec une couverture manquante (ex. *"couture fermée : routage
+cyclique de quatre sections"* sur un anneau déjà parfaitement couvert), et un
+simple calcul d'aire du reliquat géométrique SANS ce garde-fou déclenchait à
+tort sur des réseaux satin entièrement réussis : un rail satin (surtout en
+mode Parametric, ajusté en Bézier épars) approxime toujours la forme source
+avec une légère tolérance même quand tout réussit, produisant plusieurs mm²
+de reliquat "naturel" aux pointes/jonctions — repérage régressé sur les
+fixtures existantes ("réseau en T", "anneau fin") avant d'ajouter ce
+garde-fou structurel.
+
+**Recouvrement délibéré, pas une couture pile au bord** — `shrink_strips_for_cutout`
+rétrécit chaque bande satin de 0,4 mm avant de la soustraire de la région :
+le territoire de repli déborde ainsi À L'INTÉRIEUR de la bande satin plutôt
+que de s'arrêter exactement à son bord. Défaut trouvé par revue lors du
+premier essai (grandir la bande AVANT soustraction plutôt que la rétrécir) :
+l'effet est inversé — le repli recule et laisse un interstice, pas un
+recouvrement. Un recouvrement (léger double-point) est anodin ; un
+interstice ne l'est pas. Même principe que le recouvrement de jonction
+(`extend_into_confluence` ci-dessus) et la pratique standard du métier
+(chevaucher plutôt que raccorder pile, cf. audit Wilcom Hatch — Column
+B/miter joints : *"les trous ne sont pas des échecs, c'est de la physique
+attendue ; il faut faire disparaître le trou par le recouvrement, pas par la
+géométrie seule"*).
+
+**Mise en œuvre** (`libs/autodigitize/src/autodigitize.cpp`) : pour chaque
+section satin réussie, une bande approximative (rail A aller + rail B
+retour, rails aplatis) ; la région source moins l'union rétrécie de ces
+bandes donne le(s) reliquat(s) ; chaque reliquat ≥ 0,5 mm² (seuil
+délibérément bas et INDÉPENDANT de `min_fill_area_mm2` — ce dernier répond à
+"cette région entière vaut-elle un remplissage ?", pas à "ce reliquat déjà
+largement couvert mérite-t-il d'être comblé ?") devient un nouvel objet
+vectoriel + un objet de broderie tatami, nommés explicitement ("zone non
+couverte par le satin" / "Remplissage repli région"). `AutoResult::warnings`
+reste rempli (préfixé par la région source) : les avertissements expliquent
+maintenant POURQUOI une zone est en tatami plutôt qu'en satin comme le reste
+de la région, la boîte de dialogue desktop (`autoDigitize()`/`segmentWithAi()`)
+étant reformulée en conséquence.
+
+**Vérifié** : `tests/unit/geometry/test_boolean.cpp` (7 cas : trou net,
+recouvrement toute la région, deux cutouts qui se chevauchent avec des
+orientations OPPOSÉES sans trou parasite, déterminisme) ;
+`tests/unit/autodigitize/test_autodigitize.cpp` — géométrie EXACTE de la
+lettre en T (37 sommets, la même que l'audit ci-dessus), **rasterisée** et
+passée par la VRAIE chaîne segmentation → vectorisation → auto-satin (pas
+`build_satin_columns` en isolation) : reconstruction indépendante de la
+couverture (bandes satin des sections réussies + zones de repli tatami) et
+vérification géométrique que la région source moins cette couverture ne
+laisse aucun reliquat significatif ; suite complète (506 cas) sans
+régression, y compris les fixtures "réseau en T" et "anneau fin" qui
+auraient (à tort) déclenché un repli sans le garde-fou structurel.
 
 ### Barreaux par défaut pour un satin manuel (`default_rungs`)
 
