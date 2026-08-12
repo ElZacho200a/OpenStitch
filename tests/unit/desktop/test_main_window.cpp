@@ -20,6 +20,7 @@
 
 #include "canvas_view.hpp"
 #include "document_panel.hpp"
+#include "empty_state_widget.hpp"
 #include "main_window.hpp"
 #include "node_handle.hpp"
 #include "openstitch/commands/project_commands.hpp"
@@ -370,6 +371,12 @@ private slots:
     void deleteVectorObjectRemovesShapeAndDependentEmbroidery();
     void duplicateVectorObjectOffsetsCopyAndIsUndoable();
     void satinEditModeTogglesBothUnderlyingModes();
+    // Retour utilisateur en usage réel : la pastille "Aucun document ouvert"
+    // restait affichée en permanence par-dessus le canevas dès lors qu'aucune
+    // image n'était chargée, même après avoir dessiné des formes -- un flux
+    // purement vectoriel (sans jamais importer d'image) était donc gêné par
+    // une pastille qui ne disparaissait jamais.
+    void emptyStateHidesOnceContentExistsEvenWithoutImage();
 
 private:
     // Active le mode d'édition (sélection directe via selectedEmbroidery_,
@@ -2695,6 +2702,29 @@ void MainWindowTest::satinEditModeTogglesBothUnderlyingModes() {
     window.satinEditModeAct_->setChecked(false);
     QVERIFY(!window.satinGuideModeAct_->isChecked());
     QVERIFY(!window.railEditModeAct_->isChecked());
+}
+
+void MainWindowTest::emptyStateHidesOnceContentExistsEvenWithoutImage() {
+    MainWindow window;
+    window.resize(900, 700);
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+
+    QVERIFY(window.emptyState_ != nullptr);
+    QVERIFY(!window.project_.hasImage());
+    window.updateActions();
+    QVERIFY(window.emptyState_->isVisible());  // aucun contenu -> pastille visible
+
+    // Dessine un rectangle SANS jamais ouvrir d'image : flux purement
+    // vectoriel valide (canevas par défaut 100x100 mm, cf. document::Canvas).
+    auto* view = window.findChild<CanvasView*>();
+    QVERIFY(view != nullptr);
+    window.setTool(Tool::DrawRectangle);
+    view->boxDrawnMm(QRectF(0.0, 0.0, 10.0, 10.0), Qt::NoModifier);
+
+    QVERIFY(!window.project_.vector_objects.empty());
+    QVERIFY(!window.project_.hasImage());  // toujours aucune image
+    QVERIFY(!window.emptyState_->isVisible());  // mais la pastille s'est effacée
 }
 
 }  // namespace openstitch::desktop

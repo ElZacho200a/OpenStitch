@@ -79,6 +79,19 @@ struct SatinResult {
     std::vector<SatinPass> underlays;  // center, edge A, edge B, zigzag (selon config)
     std::vector<Vec2um> satin;         // points du zigzag principal
     double max_width_um{0.0};          // largeur maximale (pour l'avertissement)
+
+    // Indices dans `satin` où le fil doit être LEVÉ (saut) plutôt qu'enchaîné
+    // par un point continu depuis le point précédent -- la couture reprend
+    // normalement à partir de ce point. Rempli par `fill_satin_columns`
+    // quand deux barreaux consécutifs cessent localement de se comporter
+    // comme un ruban (viennent de deux bords qui ne sont plus globalement
+    // parallèles, ex. le coude intérieur d'une lettre en L/T) : plutôt que
+    // de forcer un point continu disproportionné qui traverse visuellement
+    // la forme en diagonale, le fil saute -- pratique standard en broderie
+    // (cf. les logiciels commerciaux du métier) plutôt qu'un artefact à
+    // masquer après coup. Vide dans le cas courant (ruban continu du début
+    // à la fin, la grande majorité des colonnes).
+    std::vector<std::size_t> jump_before;
 };
 
 // Génère les points d'une colonne satin à partir de deux rails (polylignes

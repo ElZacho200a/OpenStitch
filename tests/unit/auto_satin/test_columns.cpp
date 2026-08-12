@@ -10,6 +10,7 @@
 #include "openstitch/auto_satin/satin_column.hpp"
 #include "openstitch/auto_satin/shapes.hpp"
 #include "openstitch/geometry/polyline.hpp"
+#include "openstitch/stitch_generation/satin.hpp"
 
 using namespace openstitch;
 using namespace openstitch::auto_satin;
@@ -927,6 +928,90 @@ TEST_CASE("colonnes : bordure fine d'un logo circulaire (projet reel) - jamais d
             CHECK(length_um(flatA.points[i] - flatB.points[i]) >= 800.0);
         }
     }
+}
+
+// Défaut trouvé sur un projet réel (sceau "GISTRE" numérisé automatiquement,
+// texte en périphérie) : géométrie EXACTE de la région d'une lettre en T
+// (contour à 37 sommets, capturée via l'export debug de l'objet, cf.
+// docs/source/satin.md § Saut plutôt qu'un point disproportionné entre deux
+// barreaux non-ruban). Au coude intérieur du T (jonction barre horizontale /
+// jambage vertical), deux barreaux consécutifs venaient de deux bords quasi
+// perpendiculaires : `fill_satin_columns` forçait un point continu
+// disproportionné (~5 mm) qui traversait visuellement la lettre en diagonale
+// avant le correctif (§ `non_ribbon_interval`, libs/stitch_generation).
+geometry::PathSet real_region_gistre_lettre_t() {
+    geometry::Path p;
+    p.closed = true;
+    p.nodes = {
+        node(-101859, 238244), node(-89160, 243006),  node(-87043, 244329), node(-87572, 244858),
+        node(-92599, 245123),  node(-93128, 245652),  node(-99478, 261526), node(-102652, 270786),
+        node(-100801, 271579), node(-96832, 271844),  node(-94715, 270786), node(-91541, 268140),
+        node(-89953, 267875),  node(-89953, 269463),  node(-90482, 270521), node(-90482, 271315),
+        node(-92863, 276342),  node(-94186, 276342),  node(-94980, 275812), node(-98419, 274754),
+        node(-114293, 268405), node(-121966, 264965), node(-121437, 262584), node(-120114, 259938),
+        node(-120114, 259409), node(-118262, 257028), node(-117733, 257028), node(-116939, 258351),
+        node(-116939, 261261), node(-116145, 263907), node(-112971, 266553), node(-110854, 267346),
+        node(-110325, 266817), node(-101859, 245652),  node(-100536, 241683), node(-103711, 239037),
+        node(-104240, 237979),
+    };
+    return {p, {}};
+}
+
+TEST_CASE("colonnes : coin interieur d'une lettre en T (projet reel) - saut au lieu d'un point "
+         "plus disproportionne qu'aucun barreau reel") {
+    const auto region = real_region_gistre_lettre_t();
+    SatinColumnsParameters params;  // parametres par defaut, comme autodigitize.cpp
+    params.analysis.thresholds.max_satin_width = Micrometers{6'000};  // options.satin_max_width par defaut
+    params.geometry_mode = SatinGeometryMode::Parametric;
+    const auto r = build_satin_columns(region, params);
+    std::fprintf(stderr, "DIAG lettre T: status=%d columns=%zu parametric=%zu refusal=%s\n",
+                static_cast<int>(r.status), r.columns.size(), r.parametric_columns.size(),
+                r.refusal.c_str());
+
+    REQUIRE((!r.parametric_columns.empty() || !r.columns.empty()));
+    // `SatinColumnGeometry` (mode Legacy) et `ParametricSatinObject` (mode
+    // Parametric) sont deux types distincts mais partagent les champs
+    // rail_a/rail_b/rungs utilisés ici -- vérifié via ce lambda générique
+    // plutôt que dupliquer la boucle pour chaque type.
+    //
+    // Certaines des 4 sections de cette lettre touchent une jonction large
+    // (barreau de 5 à 6 mm, cf. §5.3 max_satin_width) : une largeur réelle,
+    // pas un artefact. L'invariant testé n'est donc PAS "aucun point large"
+    // (faux : une jonction large est légitime), mais "le correctif ne CRÉE
+    // jamais un point PLUS large qu'aucun barreau réel de la colonne" — avant
+    // le correctif, l'appariement défaillant produisait un point continu
+    // (~5 mm) qui excédait même le plus large des barreaux explicites.
+    std::size_t totalJumps = 0;
+    const auto checkColumn = [&](const geometry::Path& railA, const geometry::Path& railB,
+                                 const std::vector<SatinRung>& colRungs) {
+        std::vector<stitch_generation::SatinRungSeg> rungs;
+        rungs.reserve(colRungs.size());
+        for (const auto& rg : colRungs) rungs.emplace_back(rg.a, rg.b);
+        double maxRungWidth = 0.0;
+        for (const auto& rg : colRungs) maxRungWidth = std::max(maxRungWidth, length_um(rg.a - rg.b));
+        stitch_generation::SatinConfig cfg;
+        cfg.density = Micrometers{400};
+        const auto fill = stitch_generation::fill_satin_columns(railA, railB, rungs, cfg);
+        totalJumps += fill.jump_before.size();
+
+        std::size_t nextBreak = 0;
+        for (std::size_t i = 1; i < fill.satin.size(); ++i) {
+            const bool isBreak = nextBreak < fill.jump_before.size() && fill.jump_before[nextBreak] == i;
+            if (isBreak) {
+                ++nextBreak;
+                continue;  // saut : aucune contrainte de longueur, le fil est levé
+            }
+            const double segUm = length_um(fill.satin[i] - fill.satin[i - 1]);
+            CHECK(segUm <= maxRungWidth + 50.0);  // tolerance d'arrondi
+        }
+    };
+    for (const auto& col : r.parametric_columns) checkColumn(col.rail_a, col.rail_b, col.rungs);
+    for (const auto& col : r.columns) checkColumn(col.rail_a, col.rail_b, col.rungs);
+
+    // Le mecanisme de saut s'engage bien quelque part sur cette geometrie
+    // reelle -- sinon ce test ne vérifierait rien de plus que la suite
+    // générale (aucune régression du correctif à constater).
+    CHECK(totalJumps >= 1);
 }
 
 // --- Génération partielle sur formes concaves (audit) ------------------------

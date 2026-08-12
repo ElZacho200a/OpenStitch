@@ -75,6 +75,62 @@ TEST_CASE("satin colonnes : barreaux traverses exactement") {
     CHECK(found);
 }
 
+// --- Saut plutôt qu'un point continu disproportionné (§ audit lettres) ------
+//
+// Défaut trouvé sur un projet réel (texte en périphérie d'un sceau, lettre en
+// T) : au coude intérieur d'une lettre, deux barreaux consécutifs venaient de
+// deux bords quasi perpendiculaires (rail A avance ~horizontalement, rail B
+// ~verticalement, sur le même intervalle). `fill_satin_columns` forçait un
+// point continu d'environ 5 mm, une diagonale visible traversant la lettre.
+// Pratique standard en broderie (logiciels commerciaux du métier) : lever le
+// fil plutôt que de forcer un point disproportionné.
+TEST_CASE("satin colonnes : coin quasi perpendiculaire -> saut plutot qu'un point continu") {
+    // Rail A avance surtout en X entre les deux barreaux, rail B surtout en Y
+    // (~85 degres d'ecart) : reproduit la geometrie du coin de lettre en T.
+    // Un tel virage franc implique nécessairement une largeur de barreau qui
+    // varie beaucoup sur l'intervalle (geometrie du ruban, pas un artefact) --
+    // l'invariant testé n'est donc pas "aucun point large" mais "aucun point
+    // PLUS large qu'aucun des deux barreaux réels qui encadrent l'intervalle"
+    // (avant le correctif, l'appariement défaillant produisait un point
+    // continu qui excédait même le plus large des deux).
+    const auto railA = open_path({{0, 0}, {3'600, -200}});
+    const auto railB = open_path({{-200, -50}, {-100, -3'700}});
+    const std::vector<SatinRungSeg> rungs{rung(0, 0, -200, -50), rung(3'600, -200, -100, -3'700)};
+    const double maxRungWidth =
+        std::max(length_um(v(0, 0) - v(-200, -50)), length_um(v(3'600, -200) - v(-100, -3'700)));
+    SatinConfig cfg;
+    cfg.density = Micrometers{400};
+    const auto r = fill_satin_columns(railA, railB, rungs, cfg);
+
+    REQUIRE_FALSE(r.jump_before.empty());
+    // Aucun segment cousu (hors saut) ne dépasse la largeur du plus large des
+    // deux barreaux réels encadrant l'intervalle.
+    std::size_t nextBreak = 0;
+    for (std::size_t i = 1; i < r.satin.size(); ++i) {
+        const bool isBreak = nextBreak < r.jump_before.size() && r.jump_before[nextBreak] == i;
+        if (isBreak) {
+            ++nextBreak;
+            continue;
+        }
+        CHECK(length_um(r.satin[i] - r.satin[i - 1]) <= maxRungWidth + 50.0);
+    }
+}
+
+// Garde-fou anti-faux-positif : une terminaison effilée ORDINAIRE (largeur
+// qui décroît jusqu'à un point, rails toujours co-directionnels) ne doit
+// JAMAIS déclencher de saut -- seul un changement de DIRECTION franc entre
+// deux barreaux consécutifs doit le faire, pas une simple variation de
+// largeur.
+TEST_CASE("satin colonnes : terminaison effilee ordinaire -> aucun saut") {
+    const auto railA = open_path({{0, 0}, {10'000, 0}});
+    const auto railB = open_path({{0, 3'000}, {10'000, 0}});  // converge vers le meme point
+    const std::vector<SatinRungSeg> rungs{rung(0, 0, 0, 3'000), rung(10'000, 0, 10'000, 0)};
+    SatinConfig cfg;
+    cfg.density = Micrometers{400};
+    const auto r = fill_satin_columns(railA, railB, rungs, cfg);
+    CHECK(r.jump_before.empty());
+}
+
 // --- § refonte auto-satin paramétrique : rails Bézier épars -----------------
 //
 // `fill_satin_columns` doit aplatir (`geometry::flatten`) un rail Bézier

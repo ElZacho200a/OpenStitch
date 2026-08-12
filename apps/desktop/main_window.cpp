@@ -1088,7 +1088,15 @@ void MainWindow::updateEmptyState() {
     if (emptyState_ == nullptr) {
         return;
     }
-    emptyState_->setVisible(!project_.hasImage());
+    // N'impose PAS d'ouvrir une image/un projet pour travailler : un motif
+    // purement vectoriel (formes dessinées à la main, sans jamais importer
+    // d'image) est un flux valide (canevas par défaut 100x100 mm, cf.
+    // document::Canvas) -- défaut trouvé en usage réel, la pastille restait
+    // affichée EN PERMANENCE par-dessus le canevas dès lors qu'aucune image
+    // n'était chargée, même après avoir dessiné plusieurs formes.
+    const bool hasContent =
+        project_.hasImage() || !project_.vector_objects.empty() || !project_.embroidery_objects.empty();
+    emptyState_->setVisible(!hasContent);
     positionEmptyState();
 }
 

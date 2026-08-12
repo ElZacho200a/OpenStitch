@@ -39,6 +39,37 @@ void emit_polyline(stitch::StitchSequence& sequence, const std::vector<Vec2um>& 
     }
 }
 
+// Comme `emit_polyline`, mais certains points internes (`jump_before`,
+// indices triés dans `points`) sont eux aussi atteints par un saut plutôt
+// qu'enchaînés depuis le point précédent -- cf. `SatinResult::jump_before` :
+// une colonne satin dont deux barreaux consécutifs cessent de se comporter
+// comme un ruban (coude serré) lève le fil plutôt que de forcer un point
+// continu disproportionné qui traverserait visuellement la forme.
+void emit_polyline_with_breaks(stitch::StitchSequence& sequence, const std::vector<Vec2um>& points,
+                               const std::vector<std::size_t>& jump_before, ObjectId source,
+                               stitch::StitchPass pass = stitch::StitchPass::TopStitch) {
+    if (points.size() < 2) {
+        return;
+    }
+    std::size_t nextBreak = 0;
+    for (std::size_t i = 0; i < points.size(); ++i) {
+        const bool isBreak = i == 0 || (nextBreak < jump_before.size() && jump_before[nextBreak] == i);
+        if (isBreak) {
+            if (nextBreak < jump_before.size() && jump_before[nextBreak] == i) {
+                ++nextBreak;
+            }
+            const bool chained = !sequence.commands.empty() &&
+                                 sequence.commands.back().type == stitch::CommandType::Stitch &&
+                                 sequence.commands.back().pos == points[i];
+            if (!chained) {
+                sequence.commands.push_back(
+                    {points[i], stitch::CommandType::Jump, source, stitch::StitchPass::Travel});
+            }
+        }
+        sequence.commands.push_back({points[i], stitch::CommandType::Stitch, source, pass});
+    }
+}
+
 // Émet un remplissage : un point `jump` (ou le tout premier) devient un
 // déplacement (Jump, aiguille relevée, passe Travel), un point `travel` une
 // pénétration cachée (Stitch, passe Travel), les autres la couche supérieure
@@ -127,7 +158,16 @@ void generate_satin(stitch::StitchSequence& sequence, const document::Embroidery
             reversed += length_um(*params.exit_point - s);
         }
         if (reversed < normal) {
+            const std::size_t n = result.satin.size();
             std::reverse(result.satin.begin(), result.satin.end());
+            // `jump_before[k]` marquait l'arête (i-1, i) comme sautée ; une
+            // fois la séquence inversée, ce même point physique se retrouve
+            // avant la nouvelle position de l'ancien point (i-1), soit
+            // n - i (cf. audit lettres/coude).
+            for (std::size_t& idx : result.jump_before) {
+                idx = n - idx;
+            }
+            std::sort(result.jump_before.begin(), result.jump_before.end());
         }
     }
 
@@ -142,7 +182,8 @@ void generate_satin(stitch::StitchSequence& sequence, const document::Embroidery
                                       params.lock_length, params.lock_passes);
         emit_polyline(sequence, lk, object.id, stitch::StitchPass::Lock);
     }
-    emit_polyline(sequence, result.satin, object.id, stitch::StitchPass::TopStitch);
+    emit_polyline_with_breaks(sequence, result.satin, result.jump_before, object.id,
+                              stitch::StitchPass::TopStitch);
     if (params.lock_end != document::SatinLock::None && result.satin.size() >= 2) {
         const std::size_t n = result.satin.size();
         const auto lk = lock_stitches(result.satin[n - 1], result.satin[n - 2],

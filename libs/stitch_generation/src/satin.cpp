@@ -302,7 +302,34 @@ struct Thread {
     PointD b;
     bool anchor{false};
     bool dropped{false};
+    bool jump_before{false};  // atteint par un saut, pas un point continu depuis le fil précédent
 };
+
+// Écart directionnel entre deux barreaux consécutifs : au-delà de
+// `kJumpCosThreshold` (~75°) entre les deux vecteurs d'avance rail A / rail B,
+// la colonne ne se comporte plus comme un ruban sur cet intervalle -- les deux
+// rails ne progressent plus dans une direction globalement commune (coude
+// serré, jonction mal placée : cf. audit lettres, région d'une lettre en T où
+// un barreau proche de la pointe d'un coin est immédiatement suivi d'un
+// barreau sur le bord perpendiculaire). Un ruban qui rétrécit/s'évase
+// (terminaison en pointe normale) garde des directions colinéaires -- seul un
+// changement de direction franc déclenche le saut, donc aucun faux positif
+// sur une terminaison effilée ordinaire. `kJumpMinSpan` (µm) évite de
+// déclencher sur du bruit sous-résolution entre deux barreaux très proches.
+constexpr double kJumpMinSpan = 800.0;
+constexpr double kJumpCosThreshold = 0.258819045102521;  // cos(75°)
+
+bool non_ribbon_interval(PointD a0, PointD a1, PointD b0, PointD b1) {
+    const double dirAx = a1.x - a0.x, dirAy = a1.y - a0.y;
+    const double dirBx = b1.x - b0.x, dirBy = b1.y - b0.y;
+    const double lenA = std::hypot(dirAx, dirAy);
+    const double lenB = std::hypot(dirBx, dirBy);
+    if (lenA < kJumpMinSpan || lenB < kJumpMinSpan) {
+        return false;
+    }
+    const double cosTheta = (dirAx * dirBx + dirAy * dirBy) / (lenA * lenB);
+    return cosTheta < kJumpCosThreshold;
+}
 
 // Profil de réduction de largeur d'une terminaison (0 = point, 1 = pleine
 // largeur), sur `len` fils depuis le bout.
@@ -405,17 +432,24 @@ SatinResult fill_satin_columns(const geometry::Path& rail_a, const geometry::Pat
     // d'éventails/quasi-croisements en virage).
     std::vector<Thread> threads;
     const double maxStep = std::clamp(density / 4.0, 100.0, 500.0);
-    threads.push_back({anchors.front().pa, anchors.front().pb, true, false});
+    threads.push_back({anchors.front().pa, anchors.front().pb, true, false, false});
     for (std::size_t k = 0; k + 1 < anchors.size(); ++k) {
         const Anchor& a0 = anchors[k];
         const Anchor& a1 = anchors[k + 1];
+        if (non_ribbon_interval(a0.pa, a1.pa, a0.pb, a1.pb)) {
+            // Saut : aucun fil intermédiaire n'a de sens géométrique sur cet
+            // intervalle (les deux rails divergent trop pour former un
+            // ruban) -- le barreau suivant devient le point de reprise.
+            threads.push_back({a1.pa, a1.pb, true, false, true});
+            continue;
+        }
         const auto ladder = ladder_correspondence(a, cumA, a0.sa, a0.pa, a1.sa, a1.pa, b, cumB, a0.sb,
                                                    a0.pb, a1.sb, a1.pb, maxStep);
         const auto resampled = resample_by_medial_spacing(ladder, a, cumA, b, cumB, density);
         for (std::size_t j = 1; j + 1 < resampled.size(); ++j) {
-            threads.push_back({resampled[j].pa, resampled[j].pb, false, false});
+            threads.push_back({resampled[j].pa, resampled[j].pb, false, false, false});
         }
-        threads.push_back({a1.pa, a1.pb, true, false});  // barreau traversé exactement
+        threads.push_back({a1.pa, a1.pb, true, false, false});  // barreau traversé exactement
     }
     const int nThreads = static_cast<int>(threads.size());
 
@@ -574,6 +608,9 @@ SatinResult fill_satin_columns(const geometry::Path& rail_a, const geometry::Pat
         const auto& t = threads[static_cast<std::size_t>(i)];
         if (t.dropped) {
             continue;
+        }
+        if (t.jump_before) {
+            result.jump_before.push_back(result.satin.size());
         }
         PointD pa = t.a;
         PointD pb = t.b;

@@ -1344,6 +1344,74 @@ Vérifié : espacement médian régulier, barreaux exacts, rails de longueurs
 différentes, déterminisme (`tests/unit/stitch/test_satin.cpp`) ; zigzag superposé
 dans les SVG `tests/golden/auto-satin/`.
 
+### Saut plutôt qu'un point continu disproportionné entre deux barreaux non-ruban (audit lettres, 2026-08-12)
+
+*État : Présent (`SatinResult::jump_before`) · Testé numériquement (géométrie
+synthétique + géométrie réelle) · non validé simulateur/physique.*
+
+**Origine** : retour utilisateur sur un projet réel (sceau "GISTRE", texte en
+périphérie) — le satin automatique produisait un résultat visuellement
+incohérent sur les lettres, en particulier au coude intérieur d'une lettre en
+T. Export debug de l'objet en cause (`Satin region 301 - section 1/4`) : deux
+barreaux consécutifs, `rung0` quasi ponctuel (301 µm, une pointe de section)
+immédiatement suivi de `rung1` à 5431 µm — rail A avance presque
+horizontalement entre les deux, rail B presque verticalement (~88° d'écart).
+`fill_satin_columns` interpolait quand même un ruban continu sur cet
+intervalle : la ré-échantillonnage par ligne médiane
+(`resample_by_medial_spacing`) atteint son abscisse cible sur un rail AVANT
+l'autre quand les deux rails divergent autant, produisant un avant-dernier fil
+dont un côté est déjà au barreau cible et l'autre non — un point continu
+d'environ 5 mm, puis le barreau exact lui-même à la même largeur : une
+diagonale visible qui traverse la lettre, suivie d'un aller-retour quasi
+identique.
+
+**Piste écartée** : un seuil de largeur absolue (barreau > X mm ⇒ saut). Les
+sections de lettre touchant une jonction ont légitimement des barreaux larges
+(5 à 6 mm, cf. *Jonctions : recouvrement local* plus haut —
+`extend_into_confluence` fait CROÎTRE la largeur en entrant dans le
+recouvrement, par conception) : un seuil absolu aurait déclenché un saut sur
+un ruban parfaitement valide, juste large.
+
+**Correctif** — `non_ribbon_interval` (`libs/stitch_generation/src/satin.cpp`) :
+compare la DIRECTION d'avance de chaque rail entre deux barreaux consécutifs
+(`a1.pa - a0.pa` vs `a1.pb - a0.pb`), pas leur largeur. Au-delà de ~75°
+d'écart (et seulement si les deux avances dépassent 0,8 mm — sous ce plancher,
+le bruit sous-résolution ne justifie aucun saut), la colonne ne se comporte
+plus comme un ruban sur cet intervalle : aucun fil intermédiaire n'est
+interpolé, le barreau suivant devient un point de reprise après un SAUT
+(aiguille levée) plutôt qu'un point cousu. Une terminaison effilée ORDINAIRE
+(largeur qui décroît jusqu'à un point, rails toujours co-directionnels) garde
+des directions colinéaires et ne déclenche donc jamais de saut — seul un
+changement de direction franc le fait, jamais une simple variation de
+largeur. Pratique standard en broderie (logiciels commerciaux du métier :
+lever le fil plutôt que forcer un point disproportionné) plutôt qu'une
+invention propre au projet.
+
+`SatinResult::jump_before` (indices dans `satin`) porte l'information jusqu'à
+`stitch_generation::generate.cpp`, qui émet un `Jump` (aiguille levée) au lieu
+d'enchaîner un `Stitch` à ces indices (`emit_polyline_with_breaks`, distincte
+d'`emit_polyline` pour ne pas perturber les passes sans saut — sous-couches,
+locks). L'orientation entrée/sortie (§ *Entrée/sortie et points de fixation*)
+inverse `result.satin` : les indices de `jump_before` sont recalculés
+(`idx_after = taille - idx_avant`, l'arête cassée reste la même arête
+physique, cf. commentaire dans `generate.cpp`) puis retriés.
+
+**Vérifié** : `tests/unit/stitch/test_satin.cpp` (coin quasi perpendiculaire →
+saut, garde-fou anti-faux-positif sur une terminaison effilée ordinaire) ;
+`tests/unit/auto_satin/test_columns.cpp`, géométrie EXACTE de la lettre en T
+en cause (contour à 37 sommets) — invariant testé : aucun point cousu ne
+dépasse la largeur du plus large barreau RÉEL qui l'encadre (pas "aucun point
+large", qui serait faux pour une jonction légitimement large) ; le mécanisme
+de saut s'engage bien sur cette géométrie réelle (2 des 4 sections).
+
+**Limite connue, non résolue ici** : 2 des 4 sections de cette même lettre ont
+un barreau limitrophe déjà large dès la première/dernière station (pas de
+barreau "avant" pour former une paire à comparer), issu du recouvrement de
+jonction (`extend_into_confluence`) — largeur légitime au sens de la
+conception actuelle, mais dont l'ampleur exacte à la jonction d'une lettre
+fine n'a pas été auditée indépendamment. Distinct du défaut corrigé ici
+(mésappariement entre DEUX barreaux), et non traité dans ce correctif.
+
 ### Barreaux par défaut pour un satin manuel (`default_rungs`)
 
 *État : Présent · Testé numériquement.* Correctif de revue.
