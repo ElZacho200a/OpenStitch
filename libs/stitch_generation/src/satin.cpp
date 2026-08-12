@@ -5,6 +5,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <numbers>
 
 namespace openstitch::stitch_generation {
 
@@ -305,19 +306,31 @@ struct Thread {
     bool jump_before{false};  // atteint par un saut, pas un point continu depuis le fil précédent
 };
 
-// Écart directionnel entre deux barreaux consécutifs : au-delà de
-// `kJumpCosThreshold` (~75°) entre les deux vecteurs d'avance rail A / rail B,
-// la colonne ne se comporte plus comme un ruban sur cet intervalle -- les deux
-// rails ne progressent plus dans une direction globalement commune (coude
-// serré, jonction mal placée : cf. audit lettres, région d'une lettre en T où
-// un barreau proche de la pointe d'un coin est immédiatement suivi d'un
-// barreau sur le bord perpendiculaire). Un ruban qui rétrécit/s'évase
-// (terminaison en pointe normale) garde des directions colinéaires -- seul un
-// changement de direction franc déclenche le saut, donc aucun faux positif
-// sur une terminaison effilée ordinaire. `kJumpMinSpan` (µm) évite de
-// déclencher sur du bruit sous-résolution entre deux barreaux très proches.
+// Écart directionnel entre deux barreaux consécutifs, PAR MILLIMÈTRE
+// PARCOURU : au-delà de `kJumpDegPerMm` entre les deux vecteurs d'avance
+// rail A / rail B, RAPPORTÉ à la distance moyenne parcourue, la colonne ne se
+// comporte plus comme un ruban sur cet intervalle -- les deux rails divergent
+// trop BRUTALEMENT (coude serré sur une courte distance, jonction mal
+// placée : cf. audit lettres) pour qu'une interpolation continue ait un sens
+// géométrique, même si l'angle brut reste modéré.
+//
+// L'angle brut SEUL s'est révélé un mauvais discriminant (2026-08-13, après
+// deux itérations sur des cas réels) : un virage LÉGITIME et progressif (rail
+// intérieur droit et court, rail extérieur en long détour -- cas de test
+// dédié « virage ») peut présenter un angle bout-à-bout de ~55°, comparable
+// à un vrai défaut à ~68,5° (extrémité de colonne touchant une jonction,
+// barreau large de 3,3 mm juste après un barreau étroit de 1,6 mm, à peine
+// 1,5 mm plus loin) -- la fenêtre de seuil sûre entre les deux était trop
+// étroite (quelques degrés) pour être fiable. Ce qui distingue réellement les
+// deux cas : le RAPPORT angle/distance. Le virage légitime étale son virage
+// sur ~14 mm (≈4°/mm) ; les deux défauts réels observés concentrent un angle
+// comparable sur seulement 3,7 mm (≈24°/mm) et 1,5 mm (≈45°/mm) -- plus d'un
+// ordre de grandeur d'écart, une marge bien plus sûre qu'un seuil d'angle
+// brut. `kJumpMinSpan` (µm) évite de déclencher sur du bruit sous-résolution
+// entre deux barreaux quasi confondus (distance -> écart angulaire non
+// significatif, pas franchement un ruban rompu).
 constexpr double kJumpMinSpan = 800.0;
-constexpr double kJumpCosThreshold = 0.258819045102521;  // cos(75°)
+constexpr double kJumpDegPerMm = 10.0;
 
 bool non_ribbon_interval(PointD a0, PointD a1, PointD b0, PointD b1) {
     const double dirAx = a1.x - a0.x, dirAy = a1.y - a0.y;
@@ -327,8 +340,11 @@ bool non_ribbon_interval(PointD a0, PointD a1, PointD b0, PointD b1) {
     if (lenA < kJumpMinSpan || lenB < kJumpMinSpan) {
         return false;
     }
-    const double cosTheta = (dirAx * dirBx + dirAy * dirBy) / (lenA * lenB);
-    return cosTheta < kJumpCosThreshold;
+    const double cosTheta =
+        std::clamp((dirAx * dirBx + dirAy * dirBy) / (lenA * lenB), -1.0, 1.0);
+    const double angleDeg = std::acos(cosTheta) * 180.0 / std::numbers::pi;
+    const double avgSpanMm = (lenA + lenB) / 2.0 / 1000.0;
+    return angleDeg > kJumpDegPerMm * avgSpanMm;
 }
 
 // Profil de réduction de largeur d'une terminaison (0 = point, 1 = pleine

@@ -2,6 +2,8 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include <cmath>
+#include <optional>
+#include <utility>
 
 #include "openstitch/stitch_generation/lock.hpp"
 #include "openstitch/stitch_generation/satin.hpp"
@@ -129,6 +131,81 @@ TEST_CASE("satin colonnes : terminaison effilee ordinaire -> aucun saut") {
     cfg.density = Micrometers{400};
     const auto r = fill_satin_columns(railA, railB, rungs, cfg);
     CHECK(r.jump_before.empty());
+}
+
+namespace {
+geometry::PathNode smooth_node(std::int32_t x, std::int32_t y, std::optional<std::pair<std::int32_t, std::int32_t>> tin,
+                               std::optional<std::pair<std::int32_t, std::int32_t>> tout) {
+    geometry::PathNode n;
+    n.pos = v(x, y);
+    n.type = geometry::NodeType::Smooth;
+    if (tin) n.tan_in = Vec2um{Micrometers{tin->first}, Micrometers{tin->second}};
+    if (tout) n.tan_out = Vec2um{Micrometers{tout->first}, Micrometers{tout->second}};
+    return n;
+}
+}  // namespace
+
+// Deuxième cas réel (export debug utilisateur, même sceau, section 1/6
+// d'une autre lettre) : le seuil d'angle brut (75°, puis 50°) calibré sur le
+// premier cas (coin de lettre en T, ~88°) manquait celui-ci (~68,5°) --
+// l'extrémité de la colonne touche une jonction (barreau large, ~3,3 mm)
+// juste après un barreau nettement plus étroit (~1,6 mm), à peine 1,5 mm
+// plus loin. Géométrie EXACTE des rails/barreaux du dump (7 nœuds Bézier
+// épars par rail). A motivé le remplacement du seuil d'angle brut par un
+// seuil ANGLE/DISTANCE (§ `non_ribbon_interval`) : ce défaut concentre son
+// virage sur une distance bien plus courte qu'un virage légitime de largeur
+// comparable (cf. cas de test « virage » plus haut, Lot 3).
+TEST_CASE("satin colonnes : jonction serree apres barreau etroit (2e cas reel) -> saut") {
+    geometry::Path railA;
+    railA.closed = false;
+    railA.nodes = {
+        smooth_node(-165485, -29800, std::nullopt, std::pair{69, -173}),
+        smooth_node(-164981, -30203, std::pair{-69, 174}, std::pair{61, -155}),
+        smooth_node(-164652, -30610, std::pair{-62, 155}, std::pair{51, -131}),
+        smooth_node(-164433, -30976, std::pair{-60, 128}, std::pair{72, -152}),
+        smooth_node(-164172, -31411, std::pair{-63, 155}, std::pair{54, -132}),
+        smooth_node(-163822, -31731, std::pair{-60, 132}, std::pair{188, -420}),
+        smooth_node(-162281, -32148, std::pair{-95, 161}, std::nullopt),
+    };
+    geometry::Path railB;
+    railB.closed = false;
+    railB.nodes = {
+        smooth_node(-165763, -29910, std::nullopt, std::pair{68, -174}),
+        smooth_node(-165635, -30462, std::pair{-69, 174}, std::pair{61, -155}),
+        smooth_node(-165635, -31000, std::pair{-61, 155}, std::pair{62, -157}),
+        smooth_node(-165635, -31545, std::pair{-70, 149}, std::pair{62, -131}),
+        smooth_node(-165368, -31902, std::pair{-55, 133}, std::pair{61, -149}),
+        smooth_node(-165313, -32401, std::pair{-65, 146}, std::pair{180, -400}),
+        smooth_node(-165152, -33853, std::pair{-223, 377}, std::nullopt),
+    };
+    const std::vector<SatinRungSeg> rungs{
+        rung(-165485, -29800, -165763, -29910), rung(-164981, -30203, -165635, -30462),
+        rung(-164652, -30610, -165635, -31000),  rung(-164433, -30976, -165635, -31545),
+        rung(-164172, -31411, -165368, -31902),  rung(-163822, -31731, -165313, -32401),
+        rung(-162281, -32148, -165152, -33853),
+    };
+    const double maxRungWidth = std::max(
+        {length_um(v(-165485, -29800) - v(-165763, -29910)),
+         length_um(v(-164981, -30203) - v(-165635, -30462)),
+         length_um(v(-164652, -30610) - v(-165635, -31000)),
+         length_um(v(-164433, -30976) - v(-165635, -31545)),
+         length_um(v(-164172, -31411) - v(-165368, -31902)),
+         length_um(v(-163822, -31731) - v(-165313, -32401)),
+         length_um(v(-162281, -32148) - v(-165152, -33853))});
+    SatinConfig cfg;
+    cfg.density = Micrometers{400};
+    const auto r = fill_satin_columns(railA, railB, rungs, cfg);
+
+    REQUIRE_FALSE(r.jump_before.empty());
+    std::size_t nextBreak = 0;
+    for (std::size_t i = 1; i < r.satin.size(); ++i) {
+        const bool isBreak = nextBreak < r.jump_before.size() && r.jump_before[nextBreak] == i;
+        if (isBreak) {
+            ++nextBreak;
+            continue;
+        }
+        CHECK(length_um(r.satin[i] - r.satin[i - 1]) <= maxRungWidth + 50.0);
+    }
 }
 
 // --- § refonte auto-satin paramétrique : rails Bézier épars -----------------

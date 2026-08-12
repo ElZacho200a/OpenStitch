@@ -1404,6 +1404,38 @@ dépasse la largeur du plus large barreau RÉEL qui l'encadre (pas "aucun point
 large", qui serait faux pour une jonction légitimement large) ; le mécanisme
 de saut s'engage bien sur cette géométrie réelle (2 des 4 sections).
 
+### Seuil angle/distance plutôt qu'angle brut (deuxième cas réel, 2026-08-13)
+
+*État : Présent (`kJumpDegPerMm`) · Testé numériquement (deux cas réels
+distincts + garde-fous synthétiques) · non validé simulateur/physique.*
+
+**Défaut trouvé en usage réel** : un DEUXIÈME export debug (même sceau,
+`Satin region 267 - section 1/6`) montrait le même artefact — un point
+continu d'environ 3,3 mm faisant l'aller-retour — sur un coude à seulement
+**~68,5°**, sous le seuil de 75° calibré sur le premier cas (~88°). Baisser
+le seuil brut à 50° corrigeait ce deuxième cas mais **régressait** le test
+« virage » existant (Lot 3, § *Sous-couches et compensation*) : un virage
+LÉGITIME (rail intérieur droit et court, rail extérieur en long détour)
+présente un angle bout-à-bout de **~55°** — à peine 13° sous le vrai défaut à
+68,5°. La fenêtre de seuil brut sûre entre ces deux cas était trop étroite
+(quelques degrés) pour être fiable face à un futur troisième cas.
+
+**Correctif** — l'angle brut est remplacé par un rapport **angle/distance
+parcourue** (`kJumpDegPerMm = 10°/mm`) : ce qui distingue réellement un
+virage légitime d'un défaut n'est pas l'angle en lui-même, mais la BRUTALITÉ
+du changement de direction. Le virage légitime étale son virage sur ~14 mm
+(≈4°/mm) ; les deux défauts réels observés concentrent un angle comparable
+sur seulement 3,7 mm (≈24°/mm) et 1,5 mm (≈45°/mm) — plus d'un ordre de
+grandeur d'écart entre le cas légitime le plus proche et le défaut le plus
+proche, une marge bien plus sûre qu'un seuil d'angle brut ne pouvait
+l'offrir. `kJumpMinSpan` (0,8 mm) inchangé.
+
+**Vérifié** : nouveau cas dans `tests/unit/stitch/test_satin.cpp`, géométrie
+EXACTE des rails/barreaux du deuxième export debug (7 nœuds Bézier épars par
+rail) ; suite complète de `test_satin.cpp`/`test_satin_pairing_metrics.cpp`
+sans régression, y compris le test « virage » qui avait révélé la limite du
+seuil brut.
+
 **Précision a posteriori** (audit complémentaire, même jour) : les largeurs
 proches de `max_satin_width` observées sur 2 des 4 sections dès leur première
 station ne sont PAS un artefact de recouvrement de jonction (`extend_into_confluence`)
