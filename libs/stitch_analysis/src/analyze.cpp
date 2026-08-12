@@ -78,6 +78,16 @@ std::vector<Finding> analyze(const stitch::StitchSequence& sequence,
                         cmd.pos, cmd.source);
                 }
             }
+            // Un saut lève l'aiguille : le fil n'est plus continu. Sans ce
+            // reset, la prochaine couture (même à la position du saut, donc
+            // distance réelle nulle) se comparait à `prevStitch` D'AVANT le
+            // saut -- un « point-court »/« point-long » fantôme signalant la
+            // distance du SAUT lui-même comme si c'était un unique point cousu
+            // continu (défaut trouvé en usage réel : un saut long légitime
+            // produisait systématiquement AUSSI un « point-long » redondant et
+            // trompeur à la même distance, dès que la couture reprenait juste
+            // après, ce qui est le cas normal — cf. `emit_polyline`).
+            hasPrevStitch = false;
             break;
         }
         default:

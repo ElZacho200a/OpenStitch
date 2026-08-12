@@ -24,6 +24,27 @@ Chaque problème porte une **gravité** (`Info`/`Warning`/`Error`), un **message
 une **localisation** et l'**objet** concerné. Un plafond par catégorie évite
 l'inondation ; le résultat est **déterministe**.
 
+## `point-long` fantôme juste après un saut (2026-08-12)
+
+**Défaut trouvé en usage réel** (export debug utilisateur, objet satin) : la
+règle `point-long` comparait chaque point cousu à `prevStitch`, la position du
+DERNIER point cousu — sans jamais tenir compte d'un `Jump` intercalé entre les
+deux. Un `Jump` lève l'aiguille : le fil n'est plus continu, donc la distance
+entre le point cousu juste avant le saut et celui juste après n'a AUCUN sens en
+tant que « longueur de point cousu ». Or `emit_polyline` (§ *Génération de
+points*) fait systématiquement suivre un `Jump` d'un `Stitch` à la position
+d'atterrissage (point de « pinning », distance nulle) : la comparaison portait
+donc en réalité sur la longueur du SAUT lui-même, rejouée comme un second
+avertissement `point-long` trompeur en plus du `saut-long` déjà émis pour le
+même saut — quasi systématique dès qu'un saut dépassait 7 mm (le seuil
+`point-long`), qui est bien plus bas que le seuil `saut-long` (30 mm).
+
+Corrigé en réinitialisant `hasPrevStitch` sur tout `Jump` : la continuité du
+fil (et donc la comparaison `point-court`/`point-long`) ne traverse plus un
+saut. Vérifié : `tests/unit/stitch_analysis/test_analyze.cpp` (absence de
+`point-long`/`point-court` fantôme après un saut, y compris à distance
+d'atterrissage nulle).
+
 ## Dans l'interface
 
 **Analyse → Analyser le motif** (F5) remplit le dock *Analyse* ; un double-clic

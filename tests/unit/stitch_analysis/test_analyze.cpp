@@ -72,7 +72,36 @@ TEST_CASE("saut trop long detecte") {
         {um(50'000, 0), CommandType::Jump, ObjectId{1}},  // 50 mm > 30 mm
         {um(50'000, 0), CommandType::Stitch, ObjectId{1}},
     };
-    CHECK(has_category(analyze(seq), "saut-long"));
+    const auto f = analyze(seq);
+    CHECK(has_category(f, "saut-long"));
+    // Défaut trouvé en usage réel (export debug utilisateur, objet satin
+    // "GISTRE") : la couture qui reprend juste après un saut (ici à distance
+    // réelle nulle du point d'atterrissage) se comparait encore à la DERNIÈRE
+    // couture D'AVANT le saut -- un « point-long » fantôme signalant la
+    // distance du saut lui-même comme si le fil n'avait jamais été levé.
+    // `hasPrevStitch` doit être réinitialisé par le saut (§ analyze.cpp).
+    CHECK_FALSE(has_category(f, "point-long"));
+}
+
+TEST_CASE("saut suivi d'une reprise a distance nulle -> aucun point-court ni point-long fantome") {
+    // Motif réel : `emit_polyline` saute vers le premier point d'une passe
+    // PUIS coud immédiatement à cette même position (point de « pinning »).
+    // Sans réinitialisation de `prevStitch` au saut, cette couture à distance
+    // nulle se comparait à la dernière couture d'avant le saut, aussi loin
+    // soit-elle -- ni un point trop court (distance nulle < min) ni un point
+    // trop long (distance du saut > max) ne doivent apparaître ici.
+    stitch::StitchSequence seq;
+    seq.commands = {
+        {um(0, 0), CommandType::Stitch, ObjectId{1}},
+        {um(0, 3'000), CommandType::Stitch, ObjectId{1}},
+        {um(51'400, 4'227), CommandType::Jump, ObjectId{1}},  // ~51,4 mm, cf. export debug
+        {um(51'400, 4'227), CommandType::Stitch, ObjectId{1}},  // atterrissage : distance nulle
+        {um(52'400, 4'227), CommandType::Stitch, ObjectId{1}},  // reprise normale (1 mm)
+    };
+    const auto f = analyze(seq);
+    CHECK(has_category(f, "saut-long"));
+    CHECK_FALSE(has_category(f, "point-long"));
+    CHECK_FALSE(has_category(f, "point-court"));
 }
 
 TEST_CASE("point hors cadre detecte") {
