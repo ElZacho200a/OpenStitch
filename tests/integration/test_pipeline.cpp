@@ -7,13 +7,16 @@
 #include <filesystem>
 #include <limits>
 #include <map>
+#include <numeric>
 
 #include "openstitch/autodigitize/autodigitize.hpp"
 #include "openstitch/formats/dst.hpp"
 #include "openstitch/formats/svg.hpp"
+#include "openstitch/geometry/boolean.hpp"
 #include "openstitch/image/image.hpp"
 #include "openstitch/optimization/order.hpp"
 #include "openstitch/project_io/project_io.hpp"
+#include "openstitch/satin_coverage/coverage.hpp"
 #include "openstitch/segmentation/segmentation.hpp"
 #include "openstitch/stitch_generation/generate.hpp"
 
@@ -185,6 +188,122 @@ TEST_CASE("fixture tentabrode : pipeline complexe deterministe et sans geometrie
     CHECK(stats.stitches > 1000);
     CHECK(stats.bounds.min.x.value <= stats.bounds.max.x.value);
     CHECK(stats.bounds.min.y.value <= stats.bounds.max.y.value);
+}
+
+// DIAGNOSTIC TEMPORAIRE : couverture géométrique satin sur une image réelle
+// et complexe (pas une forme synthétique) -- pour le "diagnostic total de
+// l'état de l'Auto-Satin" demandé par l'utilisateur. Rejoue la même chaîne
+// que "fixture tentabrode" ci-dessus (segment -> auto_digitize, mêmes
+// réglages), puis calcule la couverture réelle de CHAQUE région ayant reçu
+// au moins un objet satin, avec satin_coverage::analyze_satin_coverage.
+TEST_CASE("DIAGNOSTIC TEMPORAIRE couverture satin (tentabrode)") {
+    const fs::path fixture = fs::path{OPENSTITCH_TEST_SOURCE_DIR} / "tests" / "fixtures" /
+                             "tentabrode.png";
+    const auto loaded = image::load_image(fixture);
+    REQUIRE(loaded.has_value());
+
+    document::Project project;
+    project.original = subsample(*loaded, 8);
+    project.mm_per_px = Millimeters{0.8};
+    auto segmented = segmentation::segment(project.original, {.max_colors = 8, .min_region_px = 24});
+    REQUIRE(segmented.has_value());
+    project.segmentation = std::move(*segmented);
+
+    const auto options = autodigitize::AutoOptions{.mm_per_px = project.mm_per_px};
+    auto digitized = autodigitize::auto_digitize(*project.segmentation, project.object_ids, options);
+    REQUIRE(digitized.has_value());
+
+    std::map<ObjectId, std::vector<document::SatinParams>> satinBySourceVector;
+    for (const auto& emb : digitized->embroideries) {
+        if (emb.is_satin()) {
+            satinBySourceVector[emb.source_vector].push_back(std::get<document::SatinParams>(emb.params));
+        }
+    }
+    std::fprintf(stderr, "DIAG regions avec satin: %zu / %zu vecteurs\n",
+                satinBySourceVector.size(), digitized->vectors.size());
+
+    // Le repli tatami (§ satin.md, "Repli tatami sur une branche auto-satin
+    // rejetee") cree un vecteur SEPARE (meme source_region, id different) --
+    // la couverture RÉELLEMENT livree pour la region d'origine, c'est satin
+    // + repli combines, jamais le satin seul. Indexe les replis par
+    // source_region pour les recombiner ci-dessous.
+    std::map<RegionId, double> fallbackAreaByRegion;
+    for (const auto& v : digitized->vectors) {
+        if (v.name.find("zone non couverte") != std::string::npos && v.source_region) {
+            fallbackAreaByRegion[*v.source_region] +=
+                v.paths.empty() ? 0.0 : geometry::path_set_area_um2(v.paths.front()) / 1e6;
+        }
+    }
+    std::fprintf(stderr, "DIAG replis tatami declenches: %zu (aire totale %.2fmm2)\n",
+                fallbackAreaByRegion.size(),
+                std::accumulate(fallbackAreaByRegion.begin(), fallbackAreaByRegion.end(), 0.0,
+                                [](double s, const auto& kv) { return s + kv.second; }));
+
+    double sumTargetMm2 = 0.0;
+    double sumSatinCoveredMm2 = 0.0;
+    double sumFallbackMm2 = 0.0;
+    double sumStillMissingMm2 = 0.0;
+    std::size_t regionsPassed = 0;
+    std::size_t regionsFailed = 0;
+    for (const auto& [vecId, satins] : satinBySourceVector) {
+        const auto vecIt = std::find_if(digitized->vectors.begin(), digitized->vectors.end(),
+                                        [&](const document::VectorObject& v) { return v.id == vecId; });
+        if (vecIt == digitized->vectors.end() || vecIt->paths.empty()) continue;
+        const auto& main = *std::max_element(
+            vecIt->paths.begin(), vecIt->paths.end(), [](const auto& a, const auto& b) {
+                return geometry::path_set_area_um2(a) < geometry::path_set_area_um2(b);
+            });
+
+        std::vector<satin_coverage::SatinColumnInput> columns;
+        for (const auto& sp : satins) {
+            satin_coverage::SatinColumnInput in;
+            in.rail_a = sp.rail_a;
+            in.rail_b = sp.rail_b;
+            for (const auto& r : sp.rungs) in.rungs.emplace_back(r.a, r.b);
+            in.density = sp.density;
+            columns.push_back(std::move(in));
+        }
+        const auto report = satin_coverage::analyze_satin_coverage(main, columns);
+        if (!report) {
+            std::fprintf(stderr, "DIAG vecteur %llu : erreur couverture : %s\n",
+                        static_cast<unsigned long long>(vecId.value),
+                        report.error().message.c_str());
+            continue;
+        }
+        const double fallbackMm2 =
+            vecIt->source_region ? fallbackAreaByRegion.count(*vecIt->source_region)
+                                       ? fallbackAreaByRegion.at(*vecIt->source_region)
+                                       : 0.0
+                                 : 0.0;
+        const double trueCoveredMm2 =
+            std::min(report->target_area_mm2, report->covered_area_mm2 + fallbackMm2);
+        const double trueRatio =
+            report->target_area_mm2 > 0.0 ? trueCoveredMm2 / report->target_area_mm2 * 100.0 : 0.0;
+        sumTargetMm2 += report->target_area_mm2;
+        sumSatinCoveredMm2 += report->covered_area_mm2;
+        sumFallbackMm2 += fallbackMm2;
+        sumStillMissingMm2 += std::max(0.0, report->target_area_mm2 - trueCoveredMm2);
+        (trueRatio >= 99.5) ? ++regionsPassed : ++regionsFailed;
+        if (report->target_area_mm2 > 1.0) {  // ignore le bruit sous-mm2
+            std::fprintf(stderr,
+                        "DIAG vecteur %llu : %zu colonne(s), cible=%.2fmm2 satin_seul=%.1f%% "
+                        "repli=%.2fmm2 REEL=%.1f%% (coeur satin seul=%.1f%%, %zu trou(s) satin, "
+                        "plus grand=%.2fmm2)\n",
+                        static_cast<unsigned long long>(vecId.value), columns.size(),
+                        report->target_area_mm2, report->raw_coverage_ratio * 100.0, fallbackMm2,
+                        trueRatio, report->core_coverage_ratio * 100.0, report->missing_regions.size(),
+                        report->largest_missing_area_mm2);
+        }
+    }
+    const double aggSatinOnly = sumTargetMm2 > 0.0 ? sumSatinCoveredMm2 / sumTargetMm2 * 100.0 : 0.0;
+    const double aggTrue =
+        sumTargetMm2 > 0.0 ? (sumTargetMm2 - sumStillMissingMm2) / sumTargetMm2 * 100.0 : 0.0;
+    std::fprintf(stderr,
+                "DIAG agrege : cible totale=%.1fmm2 -- satin seul=%.1f%% -- satin+repli tatami "
+                "(REEL)=%.1f%% -- encore manquant apres repli=%.2fmm2 -- regions (>=99.5%%) "
+                "PASS=%zu FAIL=%zu\n",
+                sumTargetMm2, aggSatinOnly, aggTrue, sumStillMissingMm2, regionsPassed, regionsFailed);
+    CHECK(false);  // toujours en échec : diagnostic uniquement, jamais un test de non-régression
 }
 
 // DIAGNOSTIC TEMPORAIRE : analyse complète chaîne brute (image -> segmentation
