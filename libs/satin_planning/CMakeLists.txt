@@ -1,6 +1,7 @@
 add_library(openstitch_satin_planning
     src/branch_pairing.cpp
     src/region_split.cpp
+    src/region_satinability.cpp
 )
 add_library(openstitch::satin_planning ALIAS openstitch_satin_planning)
 

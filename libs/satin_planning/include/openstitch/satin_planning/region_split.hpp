@@ -15,13 +15,28 @@ struct CutCandidateParams {
     // Plage de distances depuis la jonction, le long de la branche a
     // detacher, ou une coupe est tentee (§11 spec SGSD : jamais exactement
     // au pixel de jonction, rarement la meilleure frontiere physique).
+    // Le maximum est volontairement large : pres d'une confluence ou
+    // plusieurs branches se chevauchent geometriquement (ex. largeur de la
+    // branche voisine comparable a la distance testee), une coupe trop
+    // proche de la jonction peut trancher AUSSI la branche voisine sans que
+    // la verification "exactement 2 morceaux" ne le detecte -- verifie
+    // empiriquement sur `t` (2026-08-13) : une coupe a 300µm laisse une
+    // fausse jonction residuelle dans le morceau isole, resolue seulement a
+    // partir de ~2600µm.
     double search_min_um{300.0};
-    double search_max_um{1500.0};
-    double search_step_um{150.0};
+    double search_max_um{4000.0};
+    double search_step_um{300.0};
     Micrometers cut_width{20};  // meme defaut que geometry::cut_path_set
     // Rejette une coupe qui produirait un fragment plus petit que ce seuil
     // (§13 : "piece extremement petite").
     double min_piece_area_mm2{0.3};
+    // Quand la branche detachee se termine par une vraie extremite (pas une
+    // autre jonction, cf. le pont d'un "H" qui a besoin de deux coupes
+    // successives et resterait legitimement branche apres la premiere) :
+    // reanalyse le morceau isole avec le pipeline de satinabilite complet
+    // (`auto_satin::analyze_region`) et rejette la coupe si une jonction
+    // residuelle subsiste -- c'est le garde-fou qui detecte le cas ci-dessus.
+    bool verify_isolated_endpoint_branches{true};
 };
 
 // Un point de coupe candidat teste geometriquement. `a`/`b` sont le segment
@@ -38,14 +53,17 @@ struct CutCandidate {
     std::string rejection_reason;  // vide si valid
 };
 
-// Genere et evalue geometriquement les coupes candidates permettant de
-// detacher la branche `edgeId` (incidente a `junctionNode`) du reste de
-// `piece`. Balaie `search_min_um..search_max_um` par pas de
-// `search_step_um` ; s'arrete des que la branche est plus courte que la
-// distance testee. Purement geometrique (rejette : pas exactement 2
-// morceaux -- la ligne a traverse une zone sans rapport --, fragment trop
-// petit) ; AUCUN oracle Auto-Satin a ce stade (§13 partiel, cf. phase 5 du
-// plan SGSD). Renvoie tous les candidats testes, dans l'ordre croissant de
+// Genere et evalue les coupes candidates permettant de detacher la branche
+// `edgeId` (incidente a `junctionNode`) du reste de `piece`. Balaie
+// `search_min_um..search_max_um` par pas de `search_step_um` ; s'arrete des
+// que la branche est plus courte que la distance testee. Rejette : pas
+// exactement 2 morceaux (la ligne a traverse une zone sans rapport),
+// fragment trop petit, ET (si `verify_isolated_endpoint_branches` et que le
+// bout distal de la branche est une vraie extremite, pas une jonction) une
+// jonction residuelle dans le morceau isole une fois reanalyse avec le
+// pipeline de satinabilite complet -- un oracle LEGER (statut seulement, pas
+// encore de generation de rails, cf. phase 5 du plan SGSD pour l'oracle
+// complet). Renvoie tous les candidats testes, dans l'ordre croissant de
 // distance -- le premier valide est celui retenu par `split_region`.
 [[nodiscard]] std::vector<CutCandidate> generate_cut_candidates(const geometry::PathSet& piece,
                                                                   const SkeletonGraph& graph,

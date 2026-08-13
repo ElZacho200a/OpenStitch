@@ -6,6 +6,7 @@
 #include <sstream>
 #include <tuple>
 
+#include "openstitch/auto_satin/auto_satin.hpp"
 #include "openstitch/geometry/boolean.hpp"
 #include "openstitch/geometry/cut.hpp"
 
@@ -118,6 +119,11 @@ std::vector<CutCandidate> generate_cut_candidates(const geometry::PathSet& piece
     if (edge == nullptr) return candidates;
     const bool atStart = edge->from == junctionNode;
 
+    const std::uint32_t farNodeId = atStart ? edge->to : edge->from;
+    const SkeletonNode* farNode = find_node(graph, farNodeId);
+    const bool verifySatinability = params.verify_isolated_endpoint_branches && farNode != nullptr &&
+                                     farNode->type == SkeletonNodeType::Endpoint;
+
     for (double d = params.search_min_um; d <= params.search_max_um; d += params.search_step_um) {
         const PointAndTangent sample = point_at_distance(*edge, atStart, d);
         CutCandidate cand;
@@ -155,9 +161,27 @@ std::vector<CutCandidate> generate_cut_candidates(const geometry::PathSet& piece
             continue;
         }
 
+        // Determine lequel des deux morceaux est la branche isolee (contient
+        // le noeud distal) pour renseigner les aires ET, le cas echeant,
+        // pour la verification de satinabilite ci-dessous.
+        std::size_t branchIdx = 0;
+        if (farNode != nullptr && path_set_contains((*cutResult)[1], farNode->position)) branchIdx = 1;
+        const std::size_t remainderIdx = 1 - branchIdx;
+
+        if (verifySatinability) {
+            const auto analysis = auto_satin::analyze_region((*cutResult)[branchIdx], {});
+            const bool clean = analysis.has_value() && analysis->report.junction_count == 0;
+            if (!clean) {
+                cand.rejection_reason = "morceau isole encore branche apres cette coupe (jonction residuelle, "
+                                         "probablement une branche voisine partiellement tranchee)";
+                candidates.push_back(cand);
+                continue;
+            }
+        }
+
         cand.valid = true;
-        cand.branch_piece_area_mm2 = areaA;
-        cand.remainder_piece_area_mm2 = areaB;
+        cand.branch_piece_area_mm2 = geometry::path_set_area_um2((*cutResult)[branchIdx]) / 1e6;
+        cand.remainder_piece_area_mm2 = geometry::path_set_area_um2((*cutResult)[remainderIdx]) / 1e6;
         candidates.push_back(cand);
     }
     return candidates;

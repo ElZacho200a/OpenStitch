@@ -2337,7 +2337,8 @@ soit validée :
    — livrée avec la phase 1, § *Phase 1* ci-dessous.
 3. **Génération de candidats de coupe + découpage réel du polygone en
    `SatinRegion`.**
-4. `SatinabilityAnalyzer` (la région candidate est-elle satinable ?).
+4. **`SatinabilityAnalyzer`** (la région candidate est-elle satinable ?) —
+   livrée, § *Phase 4* ci-dessous.
 5. Auto-Satin par région + Coverage Analyzer comme oracle de sélection.
 6. Recherche à faisceau (*beam search*) sur les découpages candidats.
 7. Passe de fusion (*merge*) post-découpage pour minimiser le nombre de
@@ -2509,11 +2510,109 @@ ici (contrairement à la phase 1, purement topologique) :
   attendus.
 
 Aucune géométrie satin n'est générée à cette phase non plus — c'est un
-découpage de polygone pur, décorrélé du générateur. La prochaine étape
-naturelle (phase 4/5) est de faire tourner `build_satin_columns` sur chaque
-`SatinRegion` obtenue et de mesurer sa couverture avec `satin_coverage`, pour
-la première fois avec un vrai oracle de qualité plutôt qu'une heuristique
-géométrique seule.
+découpage de polygone pur, décorrélé du générateur.
+
+**Mise à jour (phase 4, voir ci-dessous) : la validation purement géométrique
+ci-dessus s'est révélée insuffisante et a été renforcée**, pas remplacée —
+`generate_cut_candidates` intègre désormais un garde-fou de satinabilité
+(§ *Phase 4*) qui a directement corrigé un défaut réel trouvé sur `t`, `y` et
+`cross` : une coupe jugée valide par les seuls critères géométriques
+(exactement 2 morceaux, aucun fragment trop petit) pouvait en réalité trancher
+AUSSI la branche voisine près d'une confluence où plusieurs branches se
+chevauchent géométriquement, laissant une jonction résiduelle bien réelle
+dans le morceau censé être isolé.
+
+### Phase 4 : `SatinabilityAnalyzer` — et un défaut réel trouvé et corrigé dans la phase 3 (`libs/satin_planning/region_satinability`)
+
+*État : Présent, testé, aucune régression.*
+`libs/satin_planning/include/openstitch/satin_planning/region_satinability.hpp`
+et `src/region_satinability.cpp`.
+
+**Bonne surprise, même schéma qu'aux phases précédentes** : la spec SGSD (§14)
+demande de « créer une vraie fonction `analyzeSatinability` » examinant le
+nombre de jonctions/extrémités du squelette, la largeur, la variation de
+largeur, etc. — exactement ce que `auto_satin::evaluate_satinability` /
+`auto_satin::analyze_region` font déjà (§ *Analyse de satinabilité* plus
+haut). Rien à réimplémenter : `check_region_satinability(region, params)`
+fait simplement tourner le VRAI pipeline existant (rasterisation → distance →
+squelette → graphe → `evaluate_satinability`) sur une `SatinRegion` déjà
+découpée, exactement comme le ferait `build_satin_columns` en interne, et
+classe le verdict `ready_for_generation` selon que le statut résultant est
+`Suitable`/`SuitableWithWarnings`. `check_all_regions` applique ça à tout un
+`RegionSplitReport` (phase 3), en reportant aussi automatiquement dans
+`not_ready` les chemins jamais isolés (`unresolved_paths`) — pas de verdict
+sans région, mais pas d'omission silencieuse non plus.
+
+**Défaut réel trouvé en testant bout-en-bout (décompose + découpe + vérifie)
+sur le corpus branché** : chaque `SatinRegion` fraîchement découpée à la
+phase 3 était réanalysée isolément, et le résultat était systématiquement
+`RequiresDecomposition` (une jonction résiduelle) pour `t`, `y`, `cross` ET le
+pont d'un « H » — jamais `Suitable` comme attendu pour une branche qui vient
+d'être proprement détachée. Diagnostic en trois temps (instrumentation
+temporaire, retirée une fois la cause confirmée, même méthode que l'audit
+`trident`/pixel_size) :
+
+1. **D'abord écarté : artefact de rasterisation.** Un balayage de
+   `pixel_size` de 50 à 6,25&nbsp;µm sur la région coupable ne change RIEN au
+   résultat (`junctions=1` à toutes les résolutions) — élimine l'hypothèse
+   d'un escalier de pixellisation au bord de la coupe (contrairement au cas
+   `trident`/pixel_size documenté plus haut, qui LUI dépendait bien de la
+   résolution).
+2. **Cause confirmée : la coupe par défaut (300–1500&nbsp;µm de la jonction)
+   tombe encore dans la zone où les empreintes de deux branches voisines se
+   chevauchent.** Sur `t`, la branche du pied (2,5&nbsp;mm de demi-largeur)
+   est testée à des distances qui restent À L'INTÉRIEUR de l'emprise en X de
+   la barre horizontale (elles se croisent exactement à la jonction) : la
+   ligne de coupe, bien que géométriquement valide au sens « exactement 2
+   morceaux, aucun fragment trop petit », tranche EN RÉALITÉ un peu de la
+   barre en même temps que le pied, laissant un résidu détectable comme une
+   vraie troisième branche. Balayage direct de la distance de coupe
+   (300&nbsp;µm à 7&nbsp;mm) : le morceau isolé reste branché
+   (`RequiresDecomposition`) jusqu'à 2000&nbsp;µm inclus, et devient
+   proprement `Suitable` (0 jonction) à partir de 2600&nbsp;µm — la marge par
+   défaut de la phase 3 (max 1500&nbsp;µm) n'atteignait jamais cette
+   distance.
+3. **Corrigé** : `CutCandidateParams` élargit la plage de recherche par
+   défaut (`search_max_um` 1500→4000&nbsp;µm, `search_step_um`
+   150→300&nbsp;µm) ET `generate_cut_candidates` ajoute un garde-fou —
+   quand le bout distal de la branche détachée est une VRAIE extrémité (pas
+   une autre jonction), le morceau isolé par chaque candidat est réanalysé
+   avec `auto_satin::analyze_region` et le candidat est rejeté si une
+   jonction résiduelle subsiste, avant même de le proposer comme sélection.
+   Le cas d'un bout de jonction (le pont d'un « H », § plus haut) est
+   délibérément EXCLU de ce garde-fou : ce chemin a besoin de DEUX coupes
+   successives, et le vérifier après la première le rejetterait à tort — il
+   est encore légitimement branché à ce stade-là. Documenté comme limite
+   connue plutôt que « corrigé » : une validation correcte du pont
+   demanderait de ne réappliquer le garde-fou qu'après la DERNIÈRE coupe
+   d'un chemin à deux bouts de jonction, une information que
+   `generate_cut_candidates` (qui ne traite qu'un événement de détachement à
+   la fois, sans mémoire du chemin complet) n'a pas.
+
+**Vérifié après correctif** (`tests/unit/satin_planning/test_region_satinability.cpp`,
+5 cas) :
+
+- `rectangle` : déjà simple, prête sans découpe.
+- `t`, `y`, `cross` (branches détachées se terminant toutes par une vraie
+  extrémité) : **100&nbsp;% des régions ressortent propres**
+  (`junction_count == 0`, `ready_for_generation`) — le défaut ci-dessus est
+  bien corrigé pour ces trois formes.
+- `h` : les deux montants (jamais coupés qu'à une seule extrémité chacun)
+  ressortent propres ; le pont (les deux bouts sur une jonction) reste
+  honnêtement classé `not_ready` — limite connue, pas un échec silencieux.
+- `trident` : la branche latérale, étroite et courte, peut ne trouver AUCUNE
+  distance de coupe qui échappe complètement à l'emprise de sa voisine dans
+  la plage testée — le garde-fou rejette alors TOUTES les distances
+  candidates plutôt que d'accepter une coupe défectueuse, et `split_region`
+  reporte honnêtement le chemin en `unresolved_paths` plutôt que de produire
+  une région silencieusement fausse. Vérifié : quand une région EST résolue,
+  elle est toujours effectivement propre (`junction_count == 0`).
+
+Le coût de ce garde-fou est un `analyze_region` complet (rasterisation +
+squelettisation) par candidat testé sur une branche à extrémité réelle — pas
+gratuit, mais borné (13 candidats maximum par branche avec les paramètres par
+défaut) et seulement pendant la planification, jamais pendant la génération
+de points elle-même.
 
 ## Implémentation associée
 
@@ -2629,6 +2728,15 @@ géométrique seule.
   `src/region_split.cpp` — `generate_cut_candidates`, `split_region`,
   `format_region_split_report`, `SatinRegion`, `CutCandidate`, `CutAttempt`
   (SGSD phase 3, candidats de coupe + découpage réel du polygone via
-  `geometry::cut_path_set`, 2026-08-13, § ci-dessus).
+  `geometry::cut_path_set`, 2026-08-13, § ci-dessus) ; garde-fou de
+  satinabilité intégré à `generate_cut_candidates` + plage de recherche
+  élargie (`CutCandidateParams::search_max_um` 1500→4000µm, correctif phase 4,
+  2026-08-13, § ci-dessus).
+- `libs/satin_planning/include/openstitch/satin_planning/region_satinability.hpp`
+  et `src/region_satinability.cpp` — `check_region_satinability`,
+  `check_all_regions`, `format_satinability_report`, `RegionSatinabilityVerdict`
+  (SGSD phase 4, réanalyse de satinabilité d'une `SatinRegion` déjà découpée
+  via `auto_satin::analyze_region`, 2026-08-13, § ci-dessus).
 - Tests : `tests/unit/satin_planning/test_branch_pairing.cpp`,
-  `tests/unit/satin_planning/test_region_split.cpp`.
+  `tests/unit/satin_planning/test_region_split.cpp`,
+  `tests/unit/satin_planning/test_region_satinability.cpp`.
