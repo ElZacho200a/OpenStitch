@@ -388,8 +388,17 @@ int run_auto_satin_debug(const std::string& shape, double pixelMm, const std::st
         fmt::print("  ! {}\n", w);
     }
     if (!coverageSvg.empty()) {
+        // Lit la liste RÉELLEMENT peuplée, pas celle demandée par
+        // `--satin-geometry` : certaines formes (anneaux, cas refusés en
+        // Parametric) retombent automatiquement sur `columns` (Legacy) à
+        // l'intérieur de `build_satin_columns` même quand Parametric est
+        // demandé (§ docs/source/satin.md) -- se fier au seul indicateur
+        // `parametric` ferait lire `parametric_columns` vide dans ce cas et
+        // rapporterait une couverture nulle alors que des colonnes existent
+        // bel et bien côté `columns` (défaut trouvé en balayant le corpus de
+        // formes avec l'analyseur de couverture, 2026-08-13).
         std::vector<satin_coverage::SatinColumnInput> coverageColumns;
-        if (parametric) {
+        if (!result.parametric_columns.empty()) {
             for (const auto& obj : result.parametric_columns) {
                 coverageColumns.push_back(to_coverage_input(obj.rail_a, obj.rail_b, obj.rungs));
             }

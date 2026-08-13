@@ -2158,6 +2158,69 @@ certaines résolutions de raster, en mode Legacy) reste une piste
 d'amélioration future légitime de robustesse — pas urgente, et hors du
 périmètre de cet audit de couverture.
 
+### Balayage du corpus de formes (mode × pixel_size) : deux défauts réels trouvés et corrigés (2026-08-13)
+
+*État : Présent, corrigé.* `geometry::inset_path_set` (`libs/geometry/src/offset.cpp`)
+et le câblage `--coverage-svg` du CLI (`apps/cli/main.cpp`).
+
+Utilisation directe de l'analyseur pour balayer les 15 formes du corpus
+`auto_satin::shapes`, en Legacy ET Parametric, à `pixel_size` 0,05 et 0,1 mm
+(60 exécutions, `openstitch-cli auto-satin-debug --coverage-svg`) — pas
+encore automatisé en test, exploration manuelle guidée par les chiffres bruts.
+Deux défauts RÉELS trouvés, tous deux corrigés séance tenante, vérifiés sans
+régression (517 cas ctest, Debug+Release) :
+
+1. **`geometry::inset_path_set` ne réoriente pas les trous avant Clipper2**
+   (contrairement à `boolean.cpp`, qui le fait déjà pour `subtract_polygons`
+   et pour `intersect_polygons`/`difference_polygons` ajoutés par ce lot).
+   `InflatePaths` offsette chaque contour par rapport à SA PROPRE
+   orientation : un trou de même orientation que son extérieur (au lieu de
+   l'opposée) grandit ou rétrécit à l'envers lors d'une érosion. Repéré sur
+   `ring` (`shapes.cpp`, dont le trou et l'extérieur sont générés par le même
+   parcours d'angle croissant de `circle()`) : couverture brute correcte
+   (99,99 %, les opérations d'union/différence QUE cet audit a ajoutées se
+   réorientent déjà correctement) mais **couverture du cœur mesurée à
+   71,18 %** au lieu d'un ~100 % attendu — rien d'autre dans le pipeline
+   Auto-Satin n'étant sensible à l'orientation d'un trou, ce défaut latent
+   était invisible avant que `core_coverage_ratio` (qui appelle
+   `inset_path_set` sur la région cible) ne l'expose. Corrigé par le même
+   motif `oriented_as` que `boolean.cpp` (dupliqué localement, ADR-005) ;
+   `shapes.cpp` corrigé en complément (trou de `ring` réorienté à la
+   construction) pour que la fixture soit correcte par construction, pas
+   seulement tolérée par une réorientation défensive en aval. Nouveau test
+   dédié (`tests/unit/geometry/test_offset.cpp`, anneau carré dont le trou
+   partage délibérément l'orientation de l'extérieur) vérifiant l'aire nette
+   après érosion. Après correctif : `ring` couverture cœur 100,00 %, PASSED.
+2. **Le câblage `--coverage-svg` du CLI lisait `parametric_columns` sur le
+   seul indicateur `--satin-geometry` demandé**, pas sur la liste
+   RÉELLEMENT peuplée par `build_satin_columns` — alors que certaines formes
+   (anneaux, cas refusés en Parametric) retombent automatiquement sur
+   `columns` (Legacy) À L'INTÉRIEUR de `build_satin_columns` même quand
+   Parametric est demandé (§ *Objets satin paramétriques* plus haut).
+   Symptôme : `ring --satin-geometry=parametric` rapportait 0 colonne, 0 %
+   de couverture, alors que des colonnes existaient bel et bien (côté
+   `columns`, jamais lu). Corrigé en testant `!parametric_columns.empty()`
+   plutôt que l'indicateur demandé — même motif que `autodigitize.cpp`
+   (`useParametric`, déjà correct). Bug de câblage CLI, jamais de défaut
+   Auto-Satin lui-même ; le bloc pré-existant de génération du SVG
+   `--output-svg` (`parametric_to_svg`) partage la même faiblesse mais n'a
+   pas été touché ici (hors périmètre de cet audit, à corriger séparément).
+
+**Piste non investiguée, potentiellement plus significative que les deux
+ci-dessus** : `notch` (bande à encoche en V profonde) montre un écart
+systématique et notable entre modes — couverture brute **~86-87 % en
+Legacy contre ~77-78 % en Parametric**, alors que Parametric est le mode
+utilisé par défaut dans `autodigitize.cpp` (contrairement au cas `trident`
+ci-dessus, aucun filet ne compense ici puisque Parametric produit bien une
+colonne, juste avec une couverture dégradée). Zone manquante la plus grande
+mesurée jusqu'à 39,4 mm² (22 % de la cible) selon la résolution de raster.
+Hypothèse de départ, non vérifiée : l'ajustement Bézier à paires structurantes
+éparses (`select_structural_indices`/`fit_both_rails`) capturerait moins
+fidèlement une encoche concave profonde que l'échantillonnage dense de
+`Legacy`. À investiguer en profondeur dans une prochaine session (tracer
+`fit_both_rails`/l'erreur d'ajustement autour de l'encoche, comme fait ici
+pour `trident`/pixel_size) avant toute tentative de correctif.
+
 ### Visualisation de debug (`coverage_to_svg`)
 
 *État : Présent · Câblé dans `openstitch-cli auto-satin-debug --coverage-svg`.*
@@ -2283,6 +2346,13 @@ effectivement présents pour un cas de couverture partielle connu.
   — `path_set_area_um2`, `intersect_polygons`, `difference_polygons` (booléens
   NonZero généralisés `vector<PathSet> × vector<PathSet>`, trous compris des
   deux côtés, 2026-08-13).
+- `libs/geometry/src/offset.cpp` — `inset_path_set`, réoriente désormais
+  chaque contour (`oriented_as`) avant Clipper2 (correctif balayage
+  auto-satin, 2026-08-13).
+- `libs/auto_satin/src/shapes.cpp` — trou de `ring` réorienté à la
+  construction (2026-08-13).
 - Tests : `tests/unit/satin_coverage/test_coverage.cpp` ;
   `tests/unit/auto_satin/test_coverage_regression.cpp` (non-régression sur le
-  corpus de formes historiques, 2026-08-13).
+  corpus de formes historiques, 2026-08-13) ;
+  `tests/unit/geometry/test_offset.cpp` (érosion d'un trou de même
+  orientation que son extérieur, 2026-08-13).

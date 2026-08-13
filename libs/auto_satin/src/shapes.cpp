@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 #include "openstitch/auto_satin/shapes.hpp"
 
+#include <algorithm>
 #include <cmath>
 #include <functional>
 #include <numbers>
@@ -155,7 +156,18 @@ std::optional<geometry::PathSet> make_shape(const std::string& name) {
     if (name == "ring") {
         PathSet ps;
         ps.outer = circle(0, 0, 15'000);
-        ps.holes.push_back(circle(0, 0, 8'000));
+        // `circle()` parcourt toujours dans le même sens (angle croissant) :
+        // un trou doit être orienté à L'OPPOSÉ de l'extérieur (convention
+        // « région vectorielle », cf. `path.hpp`) pour que les opérations
+        // sensibles à l'orientation (ex. `geometry::inset_path_set`) érodent
+        // le trou dans le bon sens plutôt que de le faire grandir/rétrécir à
+        // l'envers -- trouvé via `satin_coverage::analyze_satin_coverage` sur
+        // cette fixture (couverture cœur mesurée à 71 % au lieu de ~99 %,
+        // alors qu'aucune autre partie du pipeline n'est sensible à
+        // l'orientation d'un trou, ce qui rendait le défaut invisible avant).
+        Path hole = circle(0, 0, 8'000);
+        std::reverse(hole.nodes.begin(), hole.nodes.end());
+        ps.holes.push_back(std::move(hole));
         return ps;
     }
     if (name == "wide") {
