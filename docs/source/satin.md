@@ -2029,13 +2029,35 @@ de surface et non un décompte de branches/stations traitées. Suite complète
 `fill_satin_columns`).
 
 **Portée actuelle et limites assumées** : observateur pur, n'influence encore
-aucune décision de génération ni aucun test de non-régression existant sur
-les fixtures historiques (`y`/`t`/`cross`/`h`/`ring`/`wide` — prochaine
-étape). Pas de second mode « couverture des points finaux » (§16 de la
-demande d'origine). `degenerate_interval_count` reste à 0 sur toutes les
-fixtures testées à ce jour (l'invariant anti-croisement amont tient) ; le
-garde-fou existe pour le jour où ce ne sera plus le cas plutôt que pour un
-défaut déjà observé.
+aucune décision de génération. Pas de second mode « couverture des points
+finaux » (§16 de la demande d'origine). `degenerate_interval_count` reste à 0
+sur toutes les fixtures testées à ce jour (l'invariant anti-croisement amont
+tient) ; le garde-fou existe pour le jour où ce ne sera plus le cas plutôt que
+pour un défaut déjà observé.
+
+### Non-régression sur le corpus de formes historiques
+
+*État : Présent (`tests/unit/auto_satin/test_coverage_regression.cpp`).*
+
+Photographie la couverture géométrique actuelle de dix formes du corpus
+`auto_satin::shapes` (`rectangle`, `capsule`, `ribbon`, `s`, `y`, `t`,
+`cross`, `h`, `ring`, `trident` — `circle`/`tiny`/`notch`/`pinch` exclus,
+testés ailleurs pour leur comportement de refus, pas pour leur couverture) :
+un plancher de couverture brute par forme, mesuré en calibrant ce test puis
+abaissé de quelques points de marge — un vrai plancher de non-régression,
+**pas** un objectif de qualité (les résidus de noyau de jonction sur
+`y`/`t`/`cross`/`h`/`trident`, § *Optimisation globale des bridges...* et §
+*Séparation StableBranchEnd/JunctionSeparator...* plus haut, sont un fait déjà
+documenté, pas un défaut que ce test cherche à faire disparaître). Sans
+surprise, `rectangle`/`ring` sont quasi parfaits (96 %/99,99 %) ; les formes à
+jonction se situent entre 85,8 % (`cross`) et 88,7 % (`t`).
+
+**Trouvaille en calibrant ce test** : `wide` (censée tester une forme large)
+refuse **entièrement** à `pixel_size = 100 µm` avec les paramètres par défaut
+(`« forme non satinable (trou, trop large ou trop étroite) »`) — surprenant
+pour une fixture nommée explicitement pour ce cas. Exclue du corpus de ce
+test pour l'instant ; piste non investiguée pour l'étape de diagnostic
+suivante (§ ci-dessous).
 
 ### Visualisation de debug (`coverage_to_svg`)
 
@@ -2160,4 +2182,6 @@ effectivement présents pour un cas de couverture partielle connu.
   — `path_set_area_um2`, `intersect_polygons`, `difference_polygons` (booléens
   NonZero généralisés `vector<PathSet> × vector<PathSet>`, trous compris des
   deux côtés, 2026-08-13).
-- Tests : `tests/unit/satin_coverage/test_coverage.cpp`.
+- Tests : `tests/unit/satin_coverage/test_coverage.cpp` ;
+  `tests/unit/auto_satin/test_coverage_regression.cpp` (non-régression sur le
+  corpus de formes historiques, 2026-08-13).
