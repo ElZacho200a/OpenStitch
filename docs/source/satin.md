@@ -2350,7 +2350,9 @@ soit validée :
 8. **Recouvrements (*overlaps*) entre régions adjacentes + génération de
    géométrie de couture** — livrée (paires directement adjacentes
    uniquement, § *Phase 8* ci-dessous).
-9. Routage multi-colonnes (continuité directe / travel / jump / trim).
+9. **Routage multi-colonnes (continuité directe / travel / jump / trim)** —
+   livrée, pont vers le moteur `stitch_generation` existant (§ *Phase 9*
+   ci-dessous), toutes les phases du plan sont désormais couvertes.
 
 ### Phase 1 : réutilisation du `SkeletonGraph` existant + appariement de branches (`libs/satin_planning`)
 
@@ -2885,6 +2887,62 @@ périmètre de cette phase, purement géométrique — à traiter quand
   correspondance exacte avec `merge_candidates`.
 - Rendu `format_overlap_report` non vide et contenant les marqueurs attendus.
 
+### Phase 9 : routage multi-régions (`libs/satin_planning/region_routing`)
+
+*État : Présent, testé, aucune régression — pont vers le moteur de routage
+existant, aucune logique de routage réimplémentée. Toutes les phases du plan
+SGSD (1 à 9) sont désormais livrées.*
+`libs/satin_planning/include/openstitch/satin_planning/region_routing.hpp` et
+`src/region_routing.cpp`.
+
+**Encore une bonne surprise, le schéma qui revient tout au long de ce
+chantier** : le moteur de routage que la spec réclame (§20 : continuité
+directe / travel run / jump, le trim comme conséquence du choix plutôt qu'une
+contrainte imposée au générateur) **existait déjà**, complet et testé —
+`stitch_generation::route_columns`/`RoutePlan` (Lot 6, § *Routage
+multi-colonnes* plus haut). Son vocabulaire diffère légèrement de celui de la
+spec (`ConnectorKind::Underpath` pour un trajet caché plutôt que « travel
+run », `Jump` qui porte déjà la coupe — donc le « trim » — dans sa propre
+définition) mais couvre exactement le même problème : ordonner et orienter
+des colonnes pour minimiser le déplacement, en préférant un trajet caché
+quand il est topologiquement justifié, un saut sinon. Rien à réimplémenter :
+la phase 9 est un pont, pas un nouveau moteur.
+
+**Le pont** (`route_regions`) construit réellement une colonne satin par
+`SatinRegion` résolue (même conversion que l'oracle phase 5), la réduit à ses
+deux extrémités (centre des barreaux d'about, `stitch_generation::RouteColumn`)
+et confie l'ensemble à `route_columns`.
+
+**Limite connue, documentée plutôt que masquée** : `RouteColumn::start_junction`/
+`end_junction` ne sont pas renseignés. Dans le cas normal (une seule région
+non décomposée produisant plusieurs colonnes), ces champs portent un
+identifiant de jonction PARTAGÉ entre colonnes, ce qui autorise
+`route_columns` à valider un trajet caché avec une portée généreuse
+(`underpath_max`, 8 mm). Ici, chaque `SatinRegion` est réanalysée
+INDÉPENDAMMENT par `build_satin_columns` (son propre appel interne à
+`analyze_region`), avec sa PROPRE numérotation locale de jonctions — non
+comparable d'une région à l'autre. `route_columns` retombe donc sur son seuil
+de quasi-contact le plus strict (`underpath_max_without_junction`, 1,5 mm)
+pour toutes les liaisons entre régions SGSD : sûr (jamais de trajet caché
+injustifié à travers du vide), mais plus conservateur qu'il ne pourrait
+l'être — l'adjacence RÉELLE entre régions est pourtant déjà connue avec
+certitude via `RegionSplitReport::merge_candidates` (phase 7). Relier cette
+connaissance à la numérotation de jonctions attendue par `route_columns`
+reste un travail futur, qui débloquerait des trajets cachés à la portée
+normale précisément là où on sait déjà que deux régions étaient adjacentes
+avant découpage.
+
+**Testé** (`tests/unit/satin_planning/test_region_routing.cpp`, 3 cas) :
+
+- `rectangle` : une seule région, un seul pas de départ (`ConnectorKind::Start`),
+  aucun saut.
+- `t` : les deux régions sont routées, le plan contient exactement un pas de
+  départ et le reste en trajets cachés/sauts, chaque chemin de la
+  décomposition représenté exactement une fois (aucune région omise ni
+  dupliquée dans le plan).
+- Rendu `format_region_routing_report` non vide et contenant les marqueurs
+  attendus.
+
 ## Implémentation associée
 
 - `libs/document/.../embroidery_object.hpp` — `SatinParams`, `SatinRung`.
@@ -3036,10 +3094,16 @@ périmètre de cette phase, purement géométrique — à traiter quand
   `RegionOverlap`, `OverlapParams` (SGSD phase 8, dilatation
   `geometry::inset_path_set` recadrée dans `MergeCandidate::merged_region`,
   aucune nouvelle primitive géométrique bas niveau, 2026-08-13, § ci-dessus).
+- `libs/satin_planning/include/openstitch/satin_planning/region_routing.hpp`
+  et `src/region_routing.cpp` — `route_regions`, `format_region_routing_report`,
+  `RoutedRegion`, `RegionRoutingReport` (SGSD phase 9, pont vers
+  `stitch_generation::route_columns` existant, aucune logique de routage
+  réimplémentée, 2026-08-13, § ci-dessus).
 - Tests : `tests/unit/satin_planning/test_branch_pairing.cpp`,
   `tests/unit/satin_planning/test_region_split.cpp`,
   `tests/unit/satin_planning/test_region_satinability.cpp`,
   `tests/unit/satin_planning/test_region_oracle.cpp`,
   `tests/unit/satin_planning/test_beam_search.cpp`,
   `tests/unit/satin_planning/test_merge_pass.cpp`,
-  `tests/unit/satin_planning/test_overlap.cpp`.
+  `tests/unit/satin_planning/test_overlap.cpp`,
+  `tests/unit/satin_planning/test_region_routing.cpp`.
