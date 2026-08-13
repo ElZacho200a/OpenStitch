@@ -2221,6 +2221,47 @@ fidèlement une encoche concave profonde que l'échantillonnage dense de
 `fit_both_rails`/l'erreur d'ajustement autour de l'encoche, comme fait ici
 pour `trident`/pixel_size) avant toute tentative de correctif.
 
+### Diagnostic sur image réelle (`tentabrode.png`) : le repli tatami ne protège pas toutes les régions (2026-08-13)
+
+*État : Présent, diagnostic seul (aucun correctif) — test permanent*
+`TEST_CASE("DIAGNOSTIC TEMPORAIRE couverture satin (tentabrode)")`
+(`tests/integration/test_pipeline.cpp`), toujours en échec (`CHECK(false)`),
+même convention que les diagnostics GISTRE existants.
+
+Applique l'analyseur à la sortie réelle d'`autodigitize::auto_digitize` sur
+`tests/fixtures/tentabrode.png` (pas une forme synthétique du corpus), en
+regroupant par `source_region` (`document::VectorObject::source_region`) pour
+combiner chaque vecteur satin avec son éventuel repli tatami — le filet décrit
+plus haut (§ *Repli tatami sur une branche auto-satin rejetée*) ne se déclenche
+QUE sur le signal structurel `network.debug.graph.edges.size() > sectionCount`
+(branche entière rejetée), jamais sur une couverture partielle d'une branche
+par ailleurs acceptée.
+
+Sur les 14 régions satin-portantes de cette image :
+
+- **Couverture satin seule (sans repli), agrégée sur toute l'image : 21,3 %.**
+  Ce chiffre seul est trompeur — il ignore le filet tatami — mais confirme que
+  l'écart entre colonnes générées et surface cible n'est pas anecdotique sur
+  une image réelle.
+- **Couverture réelle (satin + repli tatami combiné par région), agrégée :
+  97,3 %.** Le filet comble donc l'essentiel de l'écart, comme conçu.
+- **Mais 9 des 14 régions restent sous le seuil de 99,5 % même après
+  combinaison**, dont deux sévèrement et **sans aucun repli** (le signal
+  structurel qui déclenche le filet n'a pas été franchi) : un vecteur à
+  **46,6 %** et un autre à **59,3 %** de couverture réelle.
+
+Ce résultat corrobore et QUANTIFIE, sur une image réelle, la même catégorie de
+défaut que la piste `notch`/Parametric non investiguée ci-dessus (écart de
+couverture sur une branche acceptée, pas un rejet structurel) : le filet
+tatami actuel protège contre le cas « branche entièrement refusée » mais pas
+contre le cas « branche acceptée avec une géométrie de colonnes qui ne couvre
+pas fidèlement sa région », qui semble être la situation la plus courante en
+pratique sur des formes réelles bruitées. C'est le constat central qui motive
+la refonte d'architecture décrite ci-dessous (§ *Décomposition guidée par
+squelette*) : plutôt que d'élargir encore le filet de repli, traiter la
+décomposition d'une région branchée en sous-régions satinables comme une étape
+de planification à part entière, en amont du générateur actuel.
+
 ### Visualisation de debug (`coverage_to_svg`)
 
 *État : Présent · Câblé dans `openstitch-cli auto-satin-debug --coverage-svg`.*
@@ -2255,6 +2296,136 @@ en amont de ce chemin CLI brut.
 Testé (`tests/unit/satin_coverage/test_coverage.cpp`) : SVG bien formé
 (`<svg>`…`</svg>`), couleurs de remplissage vert/rouge et rails bleu/orange
 effectivement présents pour un cas de couverture partielle connu.
+
+## Décomposition guidée par squelette (SGSD) : planification globale au-dessus de l'Auto-Satin (2026-08-13)
+
+### Motivation : une forme = une colonne est une hypothèse trop restrictive
+
+*État : En cours — phase 1 sur 9 livrée (planification topologique pure,
+aucune génération de géométrie).*
+
+`build_satin_columns` (§ *Colonnes automatiques par squelette* plus haut)
+traite déjà une région branchée en construisant une colonne par arête du
+squelette, mais TOUJOURS par rapport au contour ORIGINAL non découpé : les
+sections transversales de chaque branche sont mesurées contre la même
+`geometry::PathSet` entière, jamais contre une sous-région dédiée. Les
+jonctions sont donc résolues a posteriori par des heuristiques locales
+(`trim_unstable_junction_tail`, `StableBranchEnd`/`JunctionSeparator` en
+Legacy, recouvrement borné en Parametric) qui amputent ou recouvrent, mais ne
+peuvent jamais réellement replanifier la forme. Le diagnostic `tentabrode.png`
+ci-dessus montre l'impact réel de cette limite : des régions acceptées (pas
+rejetées) dont la couverture reste significativement incomplète, sans qu'aucun
+filet ne s'en aperçoive.
+
+L'objectif de la SGSD (*Skeleton-Guided Satin Decomposition*) est d'introduire
+un étage de PLANIFICATION avant l'Auto-Satin existant, qui devient un solveur
+LOCAL : découper une région branchée en un petit nombre de sous-régions
+simples (chacune proche d'un chemin squelette `endpoint — endpoint`, sans
+jonction interne), construire une colonne satin par sous-région avec le
+générateur actuel INCHANGÉ, mesurer la couverture de chaque sous-région et de
+l'assemblage avec `satin_coverage` (déjà générateur-agnostique, § plus haut),
+puis fusionner/router. L'Auto-Satin existant n'est ni supprimé ni modifié : il
+est réutilisé tel quel comme générateur d'une région simple, et comme oracle
+de qualité pour comparer des découpages candidats.
+
+Déploiement en 9 phases, chacune testable et commitée séparément, sans jamais
+toucher au générateur de rails existant avant que la décomposition elle-même
+soit validée :
+
+1. **Graphe de squelette + appariement de branches (diagnostic seul)** — cette
+   session.
+2. Décomposition du graphe en `SatinPath` (chemins topologiques maximaux).
+3. Génération de candidats de coupe + découpage réel du polygone en
+   `SatinRegion`.
+4. `SatinabilityAnalyzer` (la région candidate est-elle satinable ?).
+5. Auto-Satin par région + Coverage Analyzer comme oracle de sélection.
+6. Recherche à faisceau (*beam search*) sur les découpages candidats.
+7. Passe de fusion (*merge*) post-découpage pour minimiser le nombre de
+   segments.
+8. Recouvrements (*overlaps*) entre régions adjacentes + génération de
+   géométrie de couture.
+9. Routage multi-colonnes (continuité directe / travel / jump / trim).
+
+### Phase 1 : réutilisation du `SkeletonGraph` existant + appariement de branches (`libs/satin_planning`)
+
+*État : Présent, testé, aucune régression.*
+`libs/satin_planning/include/openstitch/satin_planning/branch_pairing.hpp` +
+`src/branch_pairing.cpp` (nouvelle bibliothèque, ne dépend que de
+`openstitch::core` et `openstitch::auto_satin` — jamais l'inverse, la
+couche `auto_satin` reste indépendante de la planification).
+
+Le graphe de squelette voulu par la SGSD (nœuds typés `Endpoint`/`Junction`,
+arêtes portant une centerline et des rayons locaux) EXISTAIT DÉJÀ presque
+intégralement avant cette session :
+`auto_satin::SkeletonGraph`/`SkeletonNode`/`SkeletonEdge`
+(`libs/auto_satin/include/openstitch/auto_satin/skeleton_graph.hpp`),
+construit par `build_skeleton_graph` et élagué par `prune_graph`
+(`graph_cleanup.hpp`), tous deux déjà exposés via
+`auto_satin::analyze_region(region, params).debug.graph` (graphe élagué,
+déterministe). La phase 1 ne réimplémente donc RIEN de cette partie — elle
+consomme directement ce graphe existant. Ce qui manquait réellement : une
+façon de décider, à chaque jonction, quelles branches se prolongent
+naturellement l'une l'autre plutôt que de traiter chaque arête indépendamment.
+
+**Coût de continuation** (`continuation_cost`, `ContinuationCostWeights` —
+poids `angle=1.0`, `width=0.6`, `curvature=0.4`, tout centralisé, aucun
+coefficient dispersé) entre deux arêtes incidentes à une même jonction :
+
+- `angle_cost` = `(1 + cos θ) / 2` où `θ` est l'angle entre les tangentes
+  SORTANTES des deux branches (moyenne pondérée par longueur sur une fenêtre
+  de `tangent_window_um` = 1,5 mm depuis la jonction, cohérent avec
+  `GraphCleanupParameters::minimum_branch_length`) : 0 pour une continuation
+  en ligne droite (tangentes opposées), 1 pour un repli sur soi-même.
+- `width_cost` = `|log(rayonA / rayonB)|` (rayon local moyen sur la même
+  fenêtre) — différence RELATIVE plutôt qu'absolue, pour qu'une transition
+  4,1 mm→4,0 mm coûte presque rien alors qu'une transition 1 mm→8 mm coûte
+  cher.
+- `curvature_cost` = stabilité de la tangente sur la fenêtre (écart entre le
+  premier et le dernier segment échantillonné) — pénalise une branche qui
+  tourne déjà fortement près de la jonction.
+
+**Résolution d'une jonction** (`pair_branches_at_junction`) : toutes les
+paires d'arêtes incidentes sont testées (`C(degré, 2)` candidats, triés par
+coût croissant) et la moins coûteuse devient la continuation principale
+(`selected_pair`) ; les autres arêtes restent `detached` — chacune devient
+l'extrémité d'un `SatinPath` secondaire. Pour un degré 3 (T, Y), c'est un choix
+entre 3 appariements. Pour un degré ≥ 4 (croix), stratégie délibérément
+simple : une seule continuation principale, toutes les autres branches
+détachées individuellement — les appariements multiples simultanés (ex.
+`A↔C` ET `B↔D`) sont reportés à une phase ultérieure car ils peuvent produire
+des colonnes qui se croisent géométriquement au centre de la jonction, ce que
+la phase 1 (aucune géométrie générée) ne peut pas encore vérifier.
+
+**Décomposition complète** (`decompose_into_paths`) : parcourt tous les nœuds
+`Junction`, construit la carte des continuations retenues, puis assemble des
+`SatinPath` maximaux en suivant les appariements de proche en proche —
+partition EXACTE des arêtes du graphe (chaque arête apparaît dans exactement
+un chemin, vérifié par test sur tout le corpus de formes). Un pont
+Jonction-Jonction (le cas `h`, § plus haut) qui continue naturellement aux
+DEUX bouts fusionne les deux montants et le pont en un seul chemin, exactement
+la même intuition que la conversion pont→colonne déjà en place côté
+générateur. `format_decomposition_report` produit un rendu texte structuré
+(jonction par jonction, candidats avec leurs coûts, sélection, chemins
+résultants) pour le debug — aucun `fprintf` direct dans la bibliothèque.
+
+Aucune géométrie n'est générée à cette phase : ni découpage de polygone, ni
+appel à `build_satin_columns`. C'est une étape de planification topologique
+pure, décorrélée du générateur, exactement comme demandé.
+
+**Testé** (`tests/unit/satin_planning/test_branch_pairing.cpp`, 12 cas) :
+
+- Cas synthétique fait main (jonction en T à trois branches, coûts calculés à
+  la main) vérifiant numériquement les trois formules de coût.
+- Formes réelles du corpus `auto_satin::shapes` passées par le VRAI pipeline
+  de rasterisation/squelettisation (`analyze_region`) : `rectangle` (0
+  jonction, 1 chemin), `t` (1 jonction degré 3, 2 chemins), `cross` (1
+  jonction degré 4, 1 continuation + 2 détachées, 3 chemins), `h` (2
+  jonctions, le pont détaché aux deux bouts confirmé par introspection du
+  graphe, 3 chemins), `trident` (1 jonction degré 3, 2 chemins).
+- Propriété de partition (chaque arête dans exactement un chemin) vérifiée
+  génériquement sur 12 formes du corpus.
+- Rendu `format_decomposition_report` non vide et contenant les marqueurs
+  attendus.
 
 ## Implémentation associée
 
@@ -2355,4 +2526,13 @@ effectivement présents pour un cas de couverture partielle connu.
   `tests/unit/auto_satin/test_coverage_regression.cpp` (non-régression sur le
   corpus de formes historiques, 2026-08-13) ;
   `tests/unit/geometry/test_offset.cpp` (érosion d'un trou de même
-  orientation que son extérieur, 2026-08-13).
+  orientation que son extérieur, 2026-08-13) ;
+  `tests/integration/test_pipeline.cpp` (« DIAGNOSTIC TEMPORAIRE couverture
+  satin (tentabrode) », combinaison satin + repli tatami par `source_region`
+  sur une image réelle, 2026-08-13, § ci-dessus).
+- `libs/satin_planning/include/openstitch/satin_planning/branch_pairing.hpp` +
+  `src/branch_pairing.cpp` — `continuation_cost`, `pair_branches_at_junction`,
+  `decompose_into_paths`, `format_decomposition_report`, `SatinPath`,
+  `JunctionPairingReport` (SGSD phase 1, appariement de branches au-dessus du
+  `SkeletonGraph` existant, 2026-08-13, § ci-dessus).
+- Tests : `tests/unit/satin_planning/test_branch_pairing.cpp`.
