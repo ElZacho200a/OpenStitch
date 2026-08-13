@@ -2344,8 +2344,9 @@ soit validée :
 6. **Recherche à faisceau (*beam search*) sur les découpages candidats** —
    livrée (portée réduite à une décision de coupe à la fois, § *Phase 6*
    ci-dessous), aucune recherche combinatoire multi-jonctions.
-7. Passe de fusion (*merge*) post-découpage pour minimiser le nombre de
-   segments.
+7. **Passe de fusion (*merge*) post-découpage pour minimiser le nombre de
+   segments** — livrée (une seule passe, pas de fusion en cascade, § *Phase 7*
+   ci-dessous).
 8. Recouvrements (*overlaps*) entre régions adjacentes + génération de
    géométrie de couture.
 9. Routage multi-colonnes (continuité directe / travel / jump / trim).
@@ -2759,6 +2760,73 @@ CLI de debug, tests), jamais au chemin interactif.
   pont (< 80 % avant, > 85 % après, écart > 10 points) — verrouille la
   découverte ci-dessus.
 
+### Phase 7 : passe de fusion post-découpage (`libs/satin_planning/merge_pass`)
+
+*État : Présent, testé, aucune régression — une seule passe, pas de fusion en
+cascade (voir plus bas).*
+`libs/satin_planning/include/openstitch/satin_planning/merge_pass.hpp` et
+`src/merge_pass.cpp`, plus une extension de `region_split.hpp`/`.cpp`
+(`RegionSplitReport::merge_candidates`, `MergeCandidate`).
+
+**Repérer les candidats de fusion sans reconstruction géométrique
+approximative** — c'est le point délicat de cette phase. Une paire de
+régions adjacentes pourrait sembler se recombiner par une simple union
+Clipper2, mais la bande retirée par chaque coupe (`cut_width`, 20 µm par
+défaut) laisserait un interstice entre les deux morceaux : une union
+classique ne les refusionnerait PAS en un seul contour extérieur. La
+solution retenue évite le problème plutôt que de le contourner&nbsp;:
+`split_region` (phase 3) connaît déjà, à l'instant précis de chaque coupe,
+la géométrie EXACTE du morceau juste avant qu'elle ne soit appliquée —
+c'est littéralement l'union des deux résultats, sans aucun interstice. Il
+suffisait de la conserver. `split_region` trace maintenant, pour chaque
+coupe réussie, un petit arbre de filiation (quel morceau vient d'où) et
+expose `merge_candidates`&nbsp;: une entrée par coupe dont les DEUX
+résultats sont restés des feuilles jusqu'à la fin du découpage (jamais
+redécoupés par un événement ultérieur — cf. `cross`, où une seule des deux
+coupes qualifie, l'autre ayant son « reste » redécoupé ensuite). Chaque
+candidat porte directement la géométrie pré-coupe capturée en mémoire, prête
+à être réanalysée sans recalcul.
+
+**Décision de fusion** (`evaluate_merge_pass`) : pour chaque candidat,
+construit réellement (oracle phase 5) les deux régions séparées ET la région
+fusionnée, compare la couverture obtenue (moyenne pondérée par aire des deux
+séparées, contre la couverture unique de la version fusionnée), et
+recommande la fusion si l'écart ne dépasse pas une tolérance configurable
+(`coverage_tolerance`, 2 points par défaut) — un seul segment vaut une
+petite perte de couverture, l'inverse (fusionner malgré une dégradation
+importante) non.
+
+**Portée volontairement réduite**, même discipline que la phase 6&nbsp;:
+chaque candidat est évalué INDÉPENDAMMENT, sans fusion en cascade (une
+région fusionnée n'est jamais elle-même retestée contre un troisième
+voisin). La spec (§16/§18) avertit explicitement du risque d'explosion
+combinatoire d'une passe itérative « jusqu'à stabilité » sur l'ensemble du
+graphe de décomposition — reportée à un travail futur.
+
+**Résultat vérifié sur `t`** : la fusion est correctement **rejetée**
+(couverture séparée 97,68&nbsp;%, couverture fusionnée 90,32&nbsp;% — la
+version fusionnée réexpose exactement la complexité de jonction que la phase
+3 avait résolue en coupant, un écart de 7,4 points bien au-delà de la
+tolérance). C'est la preuve que la passe ne réduit pas aveuglément le nombre
+de segments&nbsp;: elle mesure réellement, via le même oracle qu'ailleurs
+dans le plan SGSD, et ne fusionne QUE quand la qualité le justifie.
+
+**Testé** (`tests/unit/satin_planning/test_merge_pass.cpp`, 4 cas) :
+
+- `t` : exactement un candidat de fusion exposé, dont la géométrie fusionnée
+  a une aire égale à l'aire d'origine (preuve indirecte qu'aucun interstice
+  de coupe ne subsiste — la reconstruction est exacte, pas une union
+  approximative).
+- `cross` : sur les deux coupes, une seule expose ses deux enfants comme
+  feuilles finales (l'autre a son « reste » redécoupé par l'événement
+  suivant) — exactement un candidat de fusion, comme attendu de l'arbre de
+  décision décrit ci-dessus.
+- `t` : décision de fusion exploitable dans les deux sens (le test ne
+  préjuge pas du sens de la recommandation, seulement de la cohérence des
+  mesures).
+- Rendu `format_merge_pass_report` non vide et contenant les marqueurs
+  attendus.
+
 ## Implémentation associée
 
 - `libs/document/.../embroidery_object.hpp` — `SatinParams`, `SatinRung`.
@@ -2897,8 +2965,17 @@ CLI de debug, tests), jamais au chemin interactif.
   `BeamCandidateScore` (SGSD phase 6, recherche à faisceau locale guidée par
   l'oracle phase 5, gain mesuré de 69,9→92,3 % sur le pont du « H »,
   2026-08-13, § ci-dessus).
+- `libs/satin_planning/include/openstitch/satin_planning/region_split.hpp`
+  — ajoute `MergeCandidate` + `RegionSplitReport::merge_candidates`, tracés
+  par un petit arbre de filiation interne à `split_region` (phase 7,
+  2026-08-13, § ci-dessus).
+- `libs/satin_planning/include/openstitch/satin_planning/merge_pass.hpp`
+  et `src/merge_pass.cpp` — `evaluate_merge_pass`, `format_merge_pass_report`,
+  `MergeDecision`, `MergePassParams` (SGSD phase 7, décision de fusion
+  guidée par l'oracle phase 5, 2026-08-13, § ci-dessus).
 - Tests : `tests/unit/satin_planning/test_branch_pairing.cpp`,
   `tests/unit/satin_planning/test_region_split.cpp`,
   `tests/unit/satin_planning/test_region_satinability.cpp`,
   `tests/unit/satin_planning/test_region_oracle.cpp`,
-  `tests/unit/satin_planning/test_beam_search.cpp`.
+  `tests/unit/satin_planning/test_beam_search.cpp`,
+  `tests/unit/satin_planning/test_merge_pass.cpp`.

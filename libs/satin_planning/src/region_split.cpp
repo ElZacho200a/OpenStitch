@@ -204,6 +204,18 @@ RegionSplitReport split_region(const geometry::PathSet& region, const SkeletonGr
 
     std::vector<geometry::PathSet> pieces{region};
 
+    // Trace de l'arbre de decoupage pour `merge_candidates` (phase 7) :
+    // pour chaque coupe reussie, le slot source (reutilise en place pour le
+    // "reste") et le slot de la branche detachee (nouvellement ajoute), plus
+    // la geometrie du morceau AVANT cette coupe (capturee ici, jamais
+    // reconstruite apres coup).
+    struct EventRecord {
+        std::size_t sourceSlot;
+        std::size_t branchSlot;
+        geometry::PathSet preCutPiece;
+    };
+    std::vector<EventRecord> successfulEvents;
+
     for (const auto& ev : events) {
         CutAttempt attempt;
         attempt.junction = ev.junction;
@@ -263,13 +275,17 @@ RegionSplitReport split_region(const geometry::PathSet& region, const SkeletonGr
 
         geometry::PathSet branchPiece = (*cutResult)[branchIdx];
         geometry::PathSet restPiece = (*cutResult)[restIdx];
+        const geometry::PathSet preCutPiece = pieces[*pieceIdx];
+        const std::size_t branchSlot = pieces.size();
         pieces[*pieceIdx] = std::move(restPiece);
         pieces.push_back(std::move(branchPiece));
+        successfulEvents.push_back({*pieceIdx, branchSlot, preCutPiece});
 
         report.cuts.push_back(std::move(attempt));
     }
 
     std::vector<bool> pieceUsed(pieces.size(), false);
+    std::vector<std::optional<std::size_t>> slotPathIndex(pieces.size());
     for (std::size_t pi = 0; pi < decomposition.paths.size(); ++pi) {
         const Vec2um probe = probe_point(graph, decomposition.paths[pi]);
         std::optional<std::size_t> found;
@@ -284,11 +300,37 @@ RegionSplitReport split_region(const geometry::PathSet& region, const SkeletonGr
             continue;
         }
         pieceUsed[*found] = true;
+        slotPathIndex[*found] = pi;
         SatinRegion region_out;
         region_out.path_index = pi;
         region_out.region = pieces[*found];
         region_out.area_mm2 = geometry::path_set_area_um2(region_out.region) / 1e6;
         report.regions.push_back(std::move(region_out));
+    }
+
+    // Un slot est une feuille finale ssi aucun evenement ULTERIEUR ne l'a
+    // reutilise comme source (le "reste" continue de vivre au meme index a
+    // chaque coupe successive sur la meme lignee -- ex. les deux branches
+    // detachees d'une meme jonction degre 4, cf. `cross`).
+    for (std::size_t i = 0; i < successfulEvents.size(); ++i) {
+        const auto reusedLater = [&](std::size_t slot) {
+            for (std::size_t j = i + 1; j < successfulEvents.size(); ++j) {
+                if (successfulEvents[j].sourceSlot == slot) return true;
+            }
+            return false;
+        };
+        if (reusedLater(successfulEvents[i].sourceSlot) || reusedLater(successfulEvents[i].branchSlot)) continue;
+
+        const auto sourcePath = slotPathIndex[successfulEvents[i].sourceSlot];
+        const auto branchPath = slotPathIndex[successfulEvents[i].branchSlot];
+        if (!sourcePath || !branchPath) continue;  // un des deux cotes non resolu (chemin non isole)
+
+        MergeCandidate candidate;
+        candidate.first_path_index = *sourcePath;
+        candidate.second_path_index = *branchPath;
+        candidate.merged_region = successfulEvents[i].preCutPiece;
+        candidate.merged_area_mm2 = geometry::path_set_area_um2(candidate.merged_region) / 1e6;
+        report.merge_candidates.push_back(std::move(candidate));
     }
 
     return report;

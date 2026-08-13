@@ -108,10 +108,29 @@ struct SatinRegion {
     double area_mm2{0.0};
 };
 
+// Paire de regions finales issues d'une meme coupe (candidat de fusion,
+// phase 7 du plan SGSD) : `first_path_index`/`second_path_index` indexent
+// `DecompositionReport::paths`, `merged_region` est la geometrie EXACTE
+// d'avant cette coupe -- prise directement dans le pool interne de
+// `split_region`, jamais reconstruite par une union Clipper2 (qui laisserait
+// un interstice de `cut_width` entre les deux morceaux). N'est proposee que
+// pour les coupes dont les DEUX morceaux resultants n'ont ete redecoupes par
+// AUCUN evenement ulterieur (deux feuilles de l'arbre de decoupage) : une
+// coupe dont un enfant a ete redecoupe impliquerait de comparer une region a
+// PLUSIEURS descendants, hors perimetre de cette phase (§18 spec SGSD :
+// comparaison par PAIRE, "pour chaque paire : merged = Union(A, B)").
+struct MergeCandidate {
+    std::size_t first_path_index{0};
+    std::size_t second_path_index{0};
+    geometry::PathSet merged_region;
+    double merged_area_mm2{0.0};
+};
+
 struct RegionSplitReport {
     std::vector<SatinRegion> regions;           // une par SatinPath isole avec succes
     std::vector<std::size_t> unresolved_paths;  // index de chemins non isoles (coupe impossible ou assignation ambigue)
     std::vector<CutAttempt> cuts;               // un par evenement de detachement traite, dans l'ordre
+    std::vector<MergeCandidate> merge_candidates;  // paires de regions directement fusionnables (phase 7)
 };
 
 // Decoupe reellement `region` en sous-regions, une par SatinPath de
@@ -127,8 +146,10 @@ struct RegionSplitReport {
 // interieur de son propre trace (un noeud strictement interne au chemin, ou
 // le milieu de ses extremites s'il n'a pas de noeud interne). Une branche
 // qu'aucune coupe valide ne separe reste fusionnee avec son morceau parent
-// et son index est reporte dans `unresolved_paths`. Ne genere aucune
-// geometrie satin : c'est un decoupage de polygone pur.
+// et son index est reporte dans `unresolved_paths`. Peuple aussi
+// `merge_candidates` (phase 7) pour chaque coupe dont les deux resultats
+// sont restes des feuilles jusqu'a la fin. Ne genere aucune geometrie satin :
+// c'est un decoupage de polygone pur.
 [[nodiscard]] RegionSplitReport split_region(const geometry::PathSet& region, const SkeletonGraph& graph,
                                               const DecompositionReport& decomposition,
                                               const CutCandidateParams& params = {});

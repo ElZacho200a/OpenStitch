@@ -4,6 +4,7 @@ add_executable(test_satin_planning
     test_region_satinability.cpp
     test_region_oracle.cpp
     test_beam_search.cpp
+    test_merge_pass.cpp
 )
 target_link_libraries(test_satin_planning
     PRIVATE openstitch::satin_planning openstitch::auto_satin openstitch::satin_coverage

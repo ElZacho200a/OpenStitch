@@ -4,6 +4,7 @@ add_library(openstitch_satin_planning
     src/region_satinability.cpp
     src/region_oracle.cpp
     src/beam_search.cpp
+    src/merge_pass.cpp
 )
 add_library(openstitch::satin_planning ALIAS openstitch_satin_planning)
 
