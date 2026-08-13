@@ -21,6 +21,7 @@
 #include "openstitch/document/embroidery_object.hpp"
 #include "openstitch/document/project.hpp"
 #include "openstitch/geometry/path.hpp"
+#include "openstitch/satin_coverage/coverage.hpp"
 #include "openstitch/stitch/sequence.hpp"
 #include "openstitch/stitch_generation/generate.hpp"
 #include "openstitch/stitch_generation/lock.hpp"
@@ -288,9 +289,46 @@ int run_stitchdebug(const std::string& shape, double lengthMm, int repeats,
     return 0;
 }
 
+openstitch::satin_coverage::SatinColumnInput to_coverage_input(
+    const openstitch::geometry::Path& railA, const openstitch::geometry::Path& railB,
+    const std::vector<openstitch::auto_satin::SatinRung>& rungs) {
+    openstitch::satin_coverage::SatinColumnInput in;
+    in.rail_a = railA;
+    in.rail_b = railB;
+    in.rungs.reserve(rungs.size());
+    for (const auto& r : rungs) {
+        in.rungs.emplace_back(r.a, r.b);
+    }
+    in.density = openstitch::Micrometers{400};
+    return in;
+}
+
+// Calcule et écrit le SVG de couverture géométrique (§ satin_coverage) pour
+// les colonnes déjà construites, en plus du diagnostic texte affiché sur la
+// sortie standard -- ne modifie ni `region` ni `columns`.
+void write_coverage_svg(const openstitch::geometry::PathSet& region,
+                        const std::vector<openstitch::satin_coverage::SatinColumnInput>& columns,
+                        const std::string& path) {
+    using namespace openstitch;
+    const auto report = satin_coverage::analyze_satin_coverage(region, columns);
+    if (!report) {
+        fmt::print(stderr, "Erreur de couverture : {}\n", report.error().message);
+        return;
+    }
+    fmt::print("\n{}\n", report->diagnostic);
+    const std::string svg = satin_coverage::coverage_to_svg(region, columns, *report);
+    std::ofstream f(std::filesystem::path(path), std::ios::binary | std::ios::trunc);
+    if (!f) {
+        fmt::print(stderr, "Impossible d'écrire {}\n", path);
+        return;
+    }
+    f << svg;
+    fmt::print("SVG de couverture écrit : {}\n", path);
+}
+
 int run_auto_satin_debug(const std::string& shape, double pixelMm, const std::string& outSvg,
                          int capEnd, int shortMode, int splitMode, int underlayMask, int lockMode,
-                         bool route, const std::string& geometryMode) {
+                         bool route, const std::string& geometryMode, const std::string& coverageSvg) {
     using namespace openstitch;
     const auto region = auto_satin::make_shape(shape);
     if (!region) {
@@ -348,6 +386,19 @@ int run_auto_satin_debug(const std::string& shape, double pixelMm, const std::st
     }
     for (const auto& w : result.warnings) {
         fmt::print("  ! {}\n", w);
+    }
+    if (!coverageSvg.empty()) {
+        std::vector<satin_coverage::SatinColumnInput> coverageColumns;
+        if (parametric) {
+            for (const auto& obj : result.parametric_columns) {
+                coverageColumns.push_back(to_coverage_input(obj.rail_a, obj.rail_b, obj.rungs));
+            }
+        } else {
+            for (const auto& col : result.columns) {
+                coverageColumns.push_back(to_coverage_input(col.rail_a, col.rail_b, col.rungs));
+            }
+        }
+        write_coverage_svg(*region, coverageColumns, coverageSvg);
     }
     if (!outSvg.empty() && parametric) {
         std::string svg = auto_satin::parametric_to_svg(*region, result);
@@ -575,6 +626,10 @@ int main(int argc, char** argv) {
                        "legacy (rails polyligne denses) | parametric (objets satin "
                        "parametriques, rails Bezier epars)")
         ->check(CLI::IsMember({"legacy", "parametric"}));
+    std::string as_coverage_svg;
+    as_cmd->add_option("--coverage-svg", as_coverage_svg,
+                       "SVG de couverture geometrique a produire (satin_coverage : cible grise, "
+                       "couverture verte, zones manquantes rouges, hors-forme orange)");
 
     CLI11_PARSE(app, argc, argv);
 
@@ -592,7 +647,7 @@ int main(int argc, char** argv) {
     }
     if (as_cmd->parsed()) {
         return run_auto_satin_debug(as_shape, as_pixel, as_out, as_cap, as_short, as_split,
-                                    as_underlay, as_lock, as_route, as_geometry);
+                                    as_underlay, as_lock, as_route, as_geometry, as_coverage_svg);
     }
     return 0;
 }

@@ -2029,12 +2029,46 @@ de surface et non un décompte de branches/stations traitées. Suite complète
 `fill_satin_columns`).
 
 **Portée actuelle et limites assumées** : observateur pur, n'influence encore
-aucune décision de génération ni aucun test de non-régression existant
-(prochaine étape). Pas de second mode « couverture des points finaux » (§16
-de la demande d'origine) ni de visualisation SVG dédiée pour l'instant.
-`degenerate_interval_count` reste à 0 sur toutes les fixtures testées à ce
-jour (l'invariant anti-croisement amont tient) ; le garde-fou existe pour le
-jour où ce ne sera plus le cas plutôt que pour un défaut déjà observé.
+aucune décision de génération ni aucun test de non-régression existant sur
+les fixtures historiques (`y`/`t`/`cross`/`h`/`ring`/`wide` — prochaine
+étape). Pas de second mode « couverture des points finaux » (§16 de la
+demande d'origine). `degenerate_interval_count` reste à 0 sur toutes les
+fixtures testées à ce jour (l'invariant anti-croisement amont tient) ; le
+garde-fou existe pour le jour où ce ne sera plus le cas plutôt que pour un
+défaut déjà observé.
+
+### Visualisation de debug (`coverage_to_svg`)
+
+*État : Présent · Câblé dans `openstitch-cli auto-satin-debug --coverage-svg`.*
+
+`satin_coverage::coverage_to_svg(target, columns, report)` superpose, mêmes
+conventions que `auto_satin::debug_export` (millimètres, Y inversé) : la
+couverture en vert translucide, les zones manquantes en rouge (une par
+composante connexe, `fill-rule="evenodd"` pour respecter leurs propres
+trous), le débordement en orange, le contour de la cible en gris, et pour
+chaque colonne ses deux rails (bleu/orange) et ses stations structurelles
+(points — rouges aux stations atteintes par un saut, cf.
+`SatinStation::jump_before`). Un commentaire d'en-tête résume le rapport en
+texte (aires, ratios, nombre de régions manquantes), lisible sans rendu
+graphique, plus une ligne par région manquante (aire, part de la cible, rayon
+de trou, centroïde).
+
+`openstitch-cli auto-satin-debug --shape <forme> --coverage-svg <fichier>`
+calcule la couverture des colonnes réellement construites (Legacy ou
+Parametric selon `--satin-geometry`) et écrit à la fois le diagnostic texte
+sur la sortie standard et ce SVG. Vérifié en conditions réelles sur `trident` :
+à la résolution de raster par défaut (0,05 mm/px), le mode Legacy REFUSE
+entièrement la forme (« jonction 1 incomplète, 2/3 branches disponibles ») —
+le SVG rend alors 100 % de la cible en rouge, cohérent avec zéro colonne
+produite ; à 0,1 mm/px, 88,14 % de couverture avec quatre composantes
+manquantes (la plus grande, 18,05 mm², est le noyau de jonction déjà
+documenté). Cette sensibilité de `trident` à la résolution de raster en mode
+Legacy n'était pas documentée avant cet outil — piste pour l'étape de
+diagnostic suivante, pas encore investiguée.
+
+Testé (`tests/unit/satin_coverage/test_coverage.cpp`) : SVG bien formé
+(`<svg>`…`</svg>`), couleurs de remplissage vert/rouge et rails bleu/orange
+effectivement présents pour un cas de couverture partielle connu.
 
 ## Implémentation associée
 

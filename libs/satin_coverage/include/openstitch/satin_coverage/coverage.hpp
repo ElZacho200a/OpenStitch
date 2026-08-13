@@ -78,6 +78,13 @@ struct SatinCoverageReport {
     double missing_area_mm2{0.0};  // aire(P \ C)
     double outside_area_mm2{0.0};  // aire(C \ P)
 
+    // Géométrie exacte des trois régions (P ∩ C, C \ P ; la géométrie de
+    // `P \ C` est déjà portée par `missing_regions[i].region`) -- conservée
+    // pour la visualisation de debug (`coverage_to_svg`) et tout diagnostic
+    // ultérieur, jamais recalculée par l'appelant.
+    std::vector<geometry::PathSet> covered_regions;
+    std::vector<geometry::PathSet> outside_regions;
+
     double raw_coverage_ratio{0.0};   // covered / target
     double core_coverage_ratio{0.0};  // 1 - missing(Pcore) / area(Pcore)
     double outside_ratio{0.0};        // outside / target
@@ -122,5 +129,17 @@ struct SatinCoverageReport {
 [[nodiscard]] Result<SatinCoverageReport> analyze_satin_coverage(
     const geometry::PathSet& target, const std::vector<SatinColumnInput>& columns,
     const SatinCoverageConfig& config = {});
+
+// SVG de diagnostic (coordonnées en millimètres, même convention que
+// `auto_satin::debug_export`) superposant : forme cible (contour gris),
+// couverture (remplissage vert), zones manquantes (remplissage rouge, une
+// composante à la fois -- `fill-rule="evenodd"` pour respecter les trous de
+// chaque région), zones hors forme (remplissage orange), rails de chaque
+// colonne (lignes bleu/orange fines) et leurs stations structurelles
+// (points). Un commentaire d'en-tête résume `report` en texte, lisible sans
+// rendu graphique. Ne modifie ni `target`, ni `columns`, ni `report`.
+[[nodiscard]] std::string coverage_to_svg(const geometry::PathSet& target,
+                                          const std::vector<SatinColumnInput>& columns,
+                                          const SatinCoverageReport& report);
 
 }  // namespace openstitch::satin_coverage

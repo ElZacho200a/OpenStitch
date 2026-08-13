@@ -232,3 +232,21 @@ TEST_CASE("couverture satin : trident, branche manquante detectee comme un vrai 
     CHECK(worstLargestMissing > fullReport->largest_missing_area_mm2 + 1.0);
     CHECK_FALSE(worstPassed);
 }
+
+TEST_CASE("couverture satin : SVG de diagnostic bien forme et coherent avec le rapport") {
+    const auto target = rect_target(20'000, 5'000);
+    const std::vector<SatinColumnInput> columns{rect_column(0, 10'000, 0, 5'000)};  // moitie gauche
+    const auto report = analyze_satin_coverage(target, columns);
+    REQUIRE(report.has_value());
+
+    const std::string svg = coverage_to_svg(target, columns, *report);
+    CHECK(svg.starts_with("<svg"));
+    CHECK(svg.find("</svg>") != std::string::npos);
+    // Rempli en vert (couverture) et en rouge (zone manquante), puisque ce
+    // rapport contient les deux.
+    CHECK(svg.find("fill=\"#2a6\"") != std::string::npos);
+    CHECK(svg.find("fill=\"#c22\"") != std::string::npos);
+    // Les deux rails de la colonne sont traces.
+    CHECK(svg.find("stroke=\"#06c\"") != std::string::npos);
+    CHECK(svg.find("stroke=\"#c60\"") != std::string::npos);
+}

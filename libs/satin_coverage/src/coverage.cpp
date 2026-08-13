@@ -152,6 +152,54 @@ double max_inscribed_radius_mm(const geometry::PathSet& region, double resolutio
     return lo;
 }
 
+// --- Rendu SVG de diagnostic (§ coverage_to_svg) : mêmes conventions que
+// `auto_satin::debug_export` (coordonnées millimètres, Y inversé pour SVG). ---
+
+double mmx(Vec2um p) { return static_cast<double>(p.x.value) / 1000.0; }
+double mmy(Vec2um p) { return -static_cast<double>(p.y.value) / 1000.0; }
+
+void extend_bounds(Vec2um p, double& minx, double& miny, double& maxx, double& maxy) {
+    minx = std::min(minx, mmx(p));
+    maxx = std::max(maxx, mmx(p));
+    miny = std::min(miny, mmy(p));
+    maxy = std::max(maxy, mmy(p));
+}
+
+void svg_polyline(std::ostringstream& o, const geometry::Path& path, const char* stroke, double w) {
+    if (path.nodes.size() < 2) {
+        return;
+    }
+    o << "<path d=\"M";
+    for (std::size_t i = 0; i < path.nodes.size(); ++i) {
+        o << (i ? "L" : "") << mmx(path.nodes[i].pos) << " " << mmy(path.nodes[i].pos) << " ";
+    }
+    o << "\" fill=\"none\" stroke=\"" << stroke << "\" stroke-width=\"" << w << "\"/>\n";
+}
+
+// Remplissage d'un PathSet (extérieur + trous) en un seul <path>, un
+// sous-tracé par contour, `fill-rule="evenodd"` -- un trou reste bien un
+// trou quelle que soit l'orientation d'origine de chaque contour.
+void svg_filled_path_set(std::ostringstream& o, const geometry::PathSet& set, const char* fill,
+                         double opacity) {
+    if (set.outer.nodes.size() < 3) {
+        return;
+    }
+    o << "<path fill-rule=\"evenodd\" fill=\"" << fill << "\" fill-opacity=\"" << opacity
+      << "\" stroke=\"none\" d=\"";
+    const auto emit = [&o](const geometry::Path& p) {
+        o << "M";
+        for (std::size_t i = 0; i < p.nodes.size(); ++i) {
+            o << (i ? "L" : "") << mmx(p.nodes[i].pos) << " " << mmy(p.nodes[i].pos) << " ";
+        }
+        o << "Z ";
+    };
+    emit(set.outer);
+    for (const auto& hole : set.holes) {
+        emit(hole);
+    }
+    o << "\"/>\n";
+}
+
 std::string format_diagnostic(const SatinCoverageReport& r, const SatinCoverageConfig& cfg) {
     std::ostringstream os;
     os << std::fixed << std::setprecision(2);
@@ -247,6 +295,8 @@ Result<SatinCoverageReport> analyze_satin_coverage(const geometry::PathSet& targ
 
     SatinCoverageReport report;
     report.target_area_mm2 = geometry::path_set_area_um2(target) / 1e6;
+    report.covered_regions = *insideResult;
+    report.outside_regions = *outsideResult;
     report.covered_area_mm2 = sum_area_mm2(*insideResult);
     report.outside_area_mm2 = sum_area_mm2(*outsideResult);
     report.raw_coverage_ratio =
@@ -307,6 +357,75 @@ Result<SatinCoverageReport> analyze_satin_coverage(const geometry::PathSet& targ
 
     report.diagnostic = format_diagnostic(report, config);
     return report;
+}
+
+std::string coverage_to_svg(const geometry::PathSet& target, const std::vector<SatinColumnInput>& columns,
+                            const SatinCoverageReport& report) {
+    double minx = 1e18;
+    double miny = 1e18;
+    double maxx = -1e18;
+    double maxy = -1e18;
+    for (const auto& n : target.outer.nodes) {
+        extend_bounds(n.pos, minx, miny, maxx, maxy);
+    }
+    const double margin = 3.0;
+    std::ostringstream o;
+    o << "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"" << (minx - margin) << " "
+      << (miny - margin) << " " << (maxx - minx + 2 * margin) << " " << (maxy - miny + 2 * margin)
+      << "\">\n";
+    o << "<!-- AUTO-SATIN COVERAGE " << (report.passed ? "PASSED" : "FAILED") << " target="
+      << report.target_area_mm2 << "mm2 covered=" << report.covered_area_mm2
+      << "mm2 raw=" << (report.raw_coverage_ratio * 100.0)
+      << "% core=" << (report.core_coverage_ratio * 100.0)
+      << "% missing=" << report.missing_area_mm2 << "mm2 (" << report.missing_regions.size()
+      << " region(s)) outside=" << report.outside_area_mm2 << "mm2 -->\n";
+    for (std::size_t i = 0; i < report.missing_regions.size(); ++i) {
+        const auto& mr = report.missing_regions[i];
+        o << "<!-- zone manquante " << i << " : aire=" << mr.area_mm2 << "mm2 ("
+          << (mr.area_ratio * 100.0) << "% de la cible) rayon_max=" << mr.max_gap_radius_mm
+          << "mm centroide=(" << to_millimeters(mr.centroid.x).value << ","
+          << to_millimeters(mr.centroid.y).value << ")mm -->\n";
+    }
+
+    // Couverture (vert) puis hors-forme (orange) sous la cible et les zones
+    // manquantes, pour que le contour cible (gris) et le rouge des trous
+    // restent lisibles par-dessus.
+    for (const auto& region : report.covered_regions) {
+        svg_filled_path_set(o, region, "#2a6", 0.35);
+    }
+    for (const auto& region : report.outside_regions) {
+        svg_filled_path_set(o, region, "#e80", 0.45);
+    }
+    for (const auto& mr : report.missing_regions) {
+        svg_filled_path_set(o, mr.region, "#c22", 0.55);
+    }
+
+    // Forme cible : contour uniquement (le remplissage vert/rouge suffit à
+    // montrer ce qui est couvert/manquant À L'INTÉRIEUR).
+    svg_polyline(o, target.outer, "#333", 0.15);
+    for (const auto& hole : target.holes) {
+        svg_polyline(o, hole, "#333", 0.15);
+    }
+
+    // Rails (bleu/orange) et stations structurelles (points) de chaque
+    // colonne -- même géométrie que celle effectivement utilisée pour le
+    // calcul de couverture (`stitch_generation::satin_stations`), pas les
+    // rails bruts, pour que le SVG explique visuellement le chiffre calculé.
+    for (const auto& col : columns) {
+        svg_polyline(o, col.rail_a, "#06c", 0.12);
+        svg_polyline(o, col.rail_b, "#c60", 0.12);
+        const auto stations = stitch_generation::satin_stations(col.rail_a, col.rail_b, col.rungs, col.density);
+        for (const auto& st : stations) {
+            const char* fillColor = st.jump_before ? "#c22" : "#333";
+            o << "<circle cx=\"" << mmx(st.a) << "\" cy=\"" << mmy(st.a) << "\" r=\"0.25\" fill=\""
+              << fillColor << "\"/>\n";
+            o << "<circle cx=\"" << mmx(st.b) << "\" cy=\"" << mmy(st.b) << "\" r=\"0.25\" fill=\""
+              << fillColor << "\"/>\n";
+        }
+    }
+
+    o << "</svg>\n";
+    return o.str();
 }
 
 }  // namespace openstitch::satin_coverage
