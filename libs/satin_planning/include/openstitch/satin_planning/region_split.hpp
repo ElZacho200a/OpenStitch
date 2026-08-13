@@ -2,6 +2,7 @@
 #pragma once
 
 #include <cstdint>
+#include <functional>
 #include <optional>
 #include <string>
 #include <vector>
@@ -10,6 +11,33 @@
 #include "openstitch/satin_planning/branch_pairing.hpp"
 
 namespace openstitch::satin_planning {
+
+// Un point de coupe candidat teste geometriquement. `a`/`b` sont le segment
+// reellement passe a `geometry::cut_path_set` (direction = normale locale a
+// la branche, a la distance `distance_from_junction_um` de la jonction).
+struct CutCandidate {
+    double distance_from_junction_um{0.0};
+    Vec2um point{};
+    Vec2um a{};
+    Vec2um b{};
+    bool valid{false};
+    double branch_piece_area_mm2{0.0};
+    double remainder_piece_area_mm2{0.0};
+    std::string rejection_reason;  // vide si valid
+};
+
+// Choisit un candidat parmi ceux testes pour un evenement de detachement,
+// ou aucun (`nullopt`) si aucun n'est acceptable. `piece` est le morceau
+// courant sur lequel les candidats ont ete generes (permet a un selecteur
+// de reconstruire lui-meme la coupe via `geometry::cut_path_set(piece,
+// candidates[i].a, candidates[i].b, ...)` pour l'evaluer, ex. avec l'oracle
+// phase 5 -- cf. `satin_planning::beam_search`, qui depend de ce fichier,
+// jamais l'inverse : ce module reste un decoupeur de polygone pur, sans
+// dependance vers la generation/mesure). Par defaut (selecteur absent),
+// `split_region` retient le premier candidat valide (comportement des
+// phases 3/4, le plus proche de la jonction).
+using CutCandidateSelector =
+    std::function<std::optional<std::size_t>(const geometry::PathSet& piece, const std::vector<CutCandidate>& candidates)>;
 
 struct CutCandidateParams {
     // Plage de distances depuis la jonction, le long de la branche a
@@ -37,20 +65,10 @@ struct CutCandidateParams {
     // (`auto_satin::analyze_region`) et rejette la coupe si une jonction
     // residuelle subsiste -- c'est le garde-fou qui detecte le cas ci-dessus.
     bool verify_isolated_endpoint_branches{true};
-};
-
-// Un point de coupe candidat teste geometriquement. `a`/`b` sont le segment
-// reellement passe a `geometry::cut_path_set` (direction = normale locale a
-// la branche, a la distance `distance_from_junction_um` de la jonction).
-struct CutCandidate {
-    double distance_from_junction_um{0.0};
-    Vec2um point{};
-    Vec2um a{};
-    Vec2um b{};
-    bool valid{false};
-    double branch_piece_area_mm2{0.0};
-    double remainder_piece_area_mm2{0.0};
-    std::string rejection_reason;  // vide si valid
+    // Strategie de selection parmi les candidats valides (phase 6, recherche
+    // a faisceau). Vide (par defaut) -> comportement historique des phases
+    // 3/4 : le premier candidat valide (le plus proche de la jonction).
+    CutCandidateSelector selector{};
 };
 
 // Genere et evalue les coupes candidates permettant de detacher la branche
@@ -64,7 +82,8 @@ struct CutCandidate {
 // pipeline de satinabilite complet -- un oracle LEGER (statut seulement, pas
 // encore de generation de rails, cf. phase 5 du plan SGSD pour l'oracle
 // complet). Renvoie tous les candidats testes, dans l'ordre croissant de
-// distance -- le premier valide est celui retenu par `split_region`.
+// distance -- `split_region` retient le premier valide, sauf si
+// `params.selector` (phase 6) en choisit un autre.
 [[nodiscard]] std::vector<CutCandidate> generate_cut_candidates(const geometry::PathSet& piece,
                                                                   const SkeletonGraph& graph,
                                                                   std::uint32_t junctionNode, std::uint32_t edgeId,

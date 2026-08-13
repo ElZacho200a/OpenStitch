@@ -229,15 +229,24 @@ RegionSplitReport split_region(const geometry::PathSet& region, const SkeletonGr
         }
 
         attempt.candidates = generate_cut_candidates(pieces[*pieceIdx], graph, ev.junction, ev.edge, params);
-        const auto validIt =
-            std::find_if(attempt.candidates.begin(), attempt.candidates.end(), [](const CutCandidate& c) { return c.valid; });
-        if (validIt == attempt.candidates.end()) {
-            report.cuts.push_back(std::move(attempt));
-            continue;  // aucune coupe valide : la branche reste fusionnee avec ce morceau
-        }
-        attempt.selected = static_cast<std::size_t>(std::distance(attempt.candidates.begin(), validIt));
 
-        const auto cutResult = geometry::cut_path_set(pieces[*pieceIdx], validIt->a, validIt->b, params.cut_width);
+        std::optional<std::size_t> chosen;
+        if (params.selector) {
+            chosen = params.selector(pieces[*pieceIdx], attempt.candidates);
+        } else {
+            const auto validIt = std::find_if(attempt.candidates.begin(), attempt.candidates.end(),
+                                               [](const CutCandidate& c) { return c.valid; });
+            if (validIt != attempt.candidates.end())
+                chosen = static_cast<std::size_t>(std::distance(attempt.candidates.begin(), validIt));
+        }
+        if (!chosen || *chosen >= attempt.candidates.size()) {
+            report.cuts.push_back(std::move(attempt));
+            continue;  // aucune coupe valide (ou aucune retenue par le selecteur) : la branche reste fusionnee
+        }
+        attempt.selected = *chosen;
+        const CutCandidate& winner = attempt.candidates[*chosen];
+
+        const auto cutResult = geometry::cut_path_set(pieces[*pieceIdx], winner.a, winner.b, params.cut_width);
         if (!cutResult.has_value() || cutResult->size() != 2) {
             report.cuts.push_back(std::move(attempt));
             continue;  // garde-fou : ne devrait pas arriver, deja verifie par generate_cut_candidates

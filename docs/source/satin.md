@@ -2341,7 +2341,9 @@ soit validée :
    livrée, § *Phase 4* ci-dessous.
 5. **Auto-Satin par région + Coverage Analyzer comme oracle de sélection** —
    livrée, § *Phase 5* ci-dessous.
-6. Recherche à faisceau (*beam search*) sur les découpages candidats.
+6. **Recherche à faisceau (*beam search*) sur les découpages candidats** —
+   livrée (portée réduite à une décision de coupe à la fois, § *Phase 6*
+   ci-dessous), aucune recherche combinatoire multi-jonctions.
 7. Passe de fusion (*merge*) post-découpage pour minimiser le nombre de
    segments.
 8. Recouvrements (*overlaps*) entre régions adjacentes + génération de
@@ -2685,6 +2687,78 @@ n'est encore implémentée à ce stade.
 - Rendu `format_generation_report` non vide et contenant les marqueurs
   attendus.
 
+### Phase 6 : recherche à faisceau guidée par l'oracle (`libs/satin_planning/beam_search`)
+
+*État : Présent, testé, aucune régression — portée réduite à une décision de
+coupe à la fois (voir plus bas).*
+`libs/satin_planning/include/openstitch/satin_planning/beam_search.hpp` et
+`src/beam_search.cpp`.
+
+Jusqu'ici, `split_region` retenait toujours le premier candidat
+géométriquement/topologiquement valide (le plus proche de la jonction,
+§ *Phase 3/4*) — un choix arbitraire parmi plusieurs qui passaient déjà les
+garde-fous. La phase 6 remplace ce choix par une vraie décision de qualité,
+en utilisant l'oracle de la phase 5 pour ARBITRER entre plusieurs candidats
+plutôt que d'en accepter un au hasard.
+
+**Portée volontairement réduite** par rapport à la spec (§16) : une recherche
+à faisceau complète explorerait des combinaisons de coupes sur PLUSIEURS
+jonctions simultanément (la spec avertit elle-même du risque d'explosion
+combinatoire). Cette phase se limite à une recherche locale, une décision de
+coupe à la fois — un vrai `beamWidth` (candidats évalués, meilleur retenu),
+mais appliqué indépendamment à chaque événement de détachement plutôt qu'à
+l'arbre complet des décompositions possibles. Une recherche multi-jonctions
+arborescente reste un travail futur, explicitement hors périmètre ici.
+
+**Mécanisme** : `region_split.hpp` gagne un point d'injection,
+`CutCandidateSelector` (`std::function<optional<size_t>(PathSet, vector<CutCandidate>)>`),
+stocké dans `CutCandidateParams::selector` — vide par défaut (comportement
+historique inchangé, aucune régression pour les appelants existants). Ce
+point d'injection permet à `beam_search` de brancher une stratégie de
+sélection SANS que `region_split.hpp`/`.cpp` (qui reste un découpeur de
+polygone pur) n'acquière de dépendance vers `region_oracle.hpp` — c'est
+`beam_search` qui dépend des deux, jamais l'inverse, la même discipline de
+couches que partout ailleurs dans `libs/satin_planning`.
+
+`OracleGuidedSelector` (`operator()` compatible `CutCandidateSelector`, à
+injecter via `std::ref`) matérialise, pour chaque événement de détachement,
+jusqu'à `beam_width` candidats déjà valides (les plus proches de la jonction
+d'abord — le pré-filtrage géométrique/satinabilité de la phase 3/4
+s'applique toujours en amont, ce sélecteur ne peut jamais choisir un
+candidat que ces garde-fous ont déjà rejeté), construit réellement des
+colonnes satin sur chacun et mesure sa couverture (oracle phase 5 complet),
+puis retient celui dont la couverture brute est la meilleure. Chaque décision
+est journalisée (`decisions()`) pour le debug.
+
+**Résultat mesuré sur le pont du « H »** (le cas le plus dégradé identifié en
+phase 5, ~70 % de couverture) : avec `beam_width = 3` et mode `Parametric`,
+sa couverture passe de **69,9 % à 92,3 %** — un gain net de plus de
+20 points, obtenu SANS modifier le générateur de rails ni la logique de
+découpage elle-même, seulement en arbitrant, parmi des positions de coupe
+déjà valides, laquelle produit réellement le meilleur résultat une fois
+générée. Les deux montants (déjà propres à ~98 %) restent globalement stables
+(97,6 % et 98,4 %, les positions de coupe ayant légèrement bougé en
+conséquence).
+
+**Coût** : jusqu'à `beam_width` générations + mesures complètes PAR
+événement de détachement, en plus des analyses de satinabilité déjà faites
+par `generate_cut_candidates` — réservé à un usage hors ligne (planification,
+CLI de debug, tests), jamais au chemin interactif.
+
+**Testé** (`tests/unit/satin_planning/test_beam_search.cpp`, 4 cas) :
+
+- `t` : résout toujours la branche, journalise une décision (au plus
+  `beam_width` candidats évalués).
+- Boucle sur `t`, `y`, `cross`, `h`, `trident` : le nombre de régions
+  résolues avec le sélecteur guidé par l'oracle n'est jamais inférieur au
+  comportement par défaut (le sélecteur ne peut que choisir MIEUX parmi les
+  candidats déjà valides, jamais en révéler de nouveaux).
+- `h` : deux décisions journalisées (les deux bouts du pont), au plus
+  `beam_width` candidats chacune.
+- `h`, non-régression numérique dédiée : confirme le gain de couverture du
+  pont (< 80 % avant, > 85 % après, écart > 10 points) — verrouille la
+  découverte ci-dessus.
+
 ## Implémentation associée
 
 - `libs/document/.../embroidery_object.hpp` — `SatinParams`, `SatinRung`.
@@ -2814,7 +2888,17 @@ n'est encore implémentée à ce stade.
   `RegionGenerationVerdict` (SGSD phase 5, `build_satin_columns` réel +
   `satin_coverage::analyze_satin_coverage` par région, 2026-08-13,
   § ci-dessus).
+- `libs/satin_planning/include/openstitch/satin_planning/region_split.hpp`
+  — ajoute `CutCandidateSelector` + `CutCandidateParams::selector` (point
+  d'injection phase 6, vide par défaut, comportement historique inchangé,
+  2026-08-13, § ci-dessus).
+- `libs/satin_planning/include/openstitch/satin_planning/beam_search.hpp`
+  et `src/beam_search.cpp` — `OracleGuidedSelector`, `BeamSearchParams`,
+  `BeamCandidateScore` (SGSD phase 6, recherche à faisceau locale guidée par
+  l'oracle phase 5, gain mesuré de 69,9→92,3 % sur le pont du « H »,
+  2026-08-13, § ci-dessus).
 - Tests : `tests/unit/satin_planning/test_branch_pairing.cpp`,
   `tests/unit/satin_planning/test_region_split.cpp`,
   `tests/unit/satin_planning/test_region_satinability.cpp`,
-  `tests/unit/satin_planning/test_region_oracle.cpp`.
+  `tests/unit/satin_planning/test_region_oracle.cpp`,
+  `tests/unit/satin_planning/test_beam_search.cpp`.
