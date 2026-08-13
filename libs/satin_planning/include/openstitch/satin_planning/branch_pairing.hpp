@@ -45,6 +45,11 @@ struct ContinuationCost {
     bool valid{false};  // false si l'une des deux branches n'a pas de centerline exploitable
 };
 
+// Recherche par id, O(n) -- graphes de taille modeste (dizaines de noeuds au
+// plus), jamais sur un chemin chaud. Renvoie nullptr si absent.
+[[nodiscard]] const SkeletonEdge* find_edge(const SkeletonGraph& graph, std::uint32_t id);
+[[nodiscard]] const SkeletonNode* find_node(const SkeletonGraph& graph, std::uint32_t id);
+
 [[nodiscard]] ContinuationCost continuation_cost(const SkeletonGraph& graph, std::uint32_t junctionNode,
                                                   std::uint32_t edgeA, std::uint32_t edgeB,
                                                   const ContinuationCostParams& params = {});

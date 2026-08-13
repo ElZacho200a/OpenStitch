@@ -27,17 +27,6 @@ Vec2d normalized(Vec2d a) {
     return n > 1e-9 ? Vec2d{a.x / n, a.y / n} : Vec2d{};
 }
 
-const SkeletonEdge* find_edge(const SkeletonGraph& graph, std::uint32_t id) {
-    const auto it = std::find_if(graph.edges.begin(), graph.edges.end(),
-                                  [id](const SkeletonEdge& e) { return e.id == id; });
-    return it == graph.edges.end() ? nullptr : &*it;
-}
-
-const SkeletonNode* find_node(const SkeletonGraph& graph, std::uint32_t id) {
-    const auto it = std::find_if(graph.nodes.begin(), graph.nodes.end(),
-                                  [id](const SkeletonNode& n) { return n.id == id; });
-    return it == graph.nodes.end() ? nullptr : &*it;
-}
 
 struct EdgeEndSample {
     bool valid{false};
@@ -119,6 +108,18 @@ std::vector<std::uint32_t> incident_edges(const SkeletonGraph& graph, std::uint3
 }
 
 }  // namespace
+
+const SkeletonEdge* find_edge(const SkeletonGraph& graph, std::uint32_t id) {
+    const auto it = std::find_if(graph.edges.begin(), graph.edges.end(),
+                                  [id](const SkeletonEdge& e) { return e.id == id; });
+    return it == graph.edges.end() ? nullptr : &*it;
+}
+
+const SkeletonNode* find_node(const SkeletonGraph& graph, std::uint32_t id) {
+    const auto it = std::find_if(graph.nodes.begin(), graph.nodes.end(),
+                                  [id](const SkeletonNode& n) { return n.id == id; });
+    return it == graph.nodes.end() ? nullptr : &*it;
+}
 
 ContinuationCost continuation_cost(const SkeletonGraph& graph, std::uint32_t junctionNode, std::uint32_t edgeA,
                                     std::uint32_t edgeB, const ContinuationCostParams& params) {

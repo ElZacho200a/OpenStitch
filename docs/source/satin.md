@@ -2332,11 +2332,11 @@ Déploiement en 9 phases, chacune testable et commitée séparément, sans jamai
 toucher au générateur de rails existant avant que la décomposition elle-même
 soit validée :
 
-1. **Graphe de squelette + appariement de branches (diagnostic seul)** — cette
-   session.
-2. Décomposition du graphe en `SatinPath` (chemins topologiques maximaux).
-3. Génération de candidats de coupe + découpage réel du polygone en
-   `SatinRegion`.
+1. **Graphe de squelette + appariement de branches (diagnostic seul).**
+2. **Décomposition du graphe en `SatinPath`** (chemins topologiques maximaux)
+   — livrée avec la phase 1, § *Phase 1* ci-dessous.
+3. **Génération de candidats de coupe + découpage réel du polygone en
+   `SatinRegion`.**
 4. `SatinabilityAnalyzer` (la région candidate est-elle satinable ?).
 5. Auto-Satin par région + Coverage Analyzer comme oracle de sélection.
 6. Recherche à faisceau (*beam search*) sur les découpages candidats.
@@ -2426,6 +2426,94 @@ pure, décorrélée du générateur, exactement comme demandé.
   génériquement sur 12 formes du corpus.
 - Rendu `format_decomposition_report` non vide et contenant les marqueurs
   attendus.
+
+### Phase 3 : candidats de coupe + découpage réel du polygone (`libs/satin_planning/region_split`)
+
+*État : Présent, testé, aucune régression — v1 purement géométrique (pas
+encore d'oracle Auto-Satin, cf. phase 5).*
+`libs/satin_planning/include/openstitch/satin_planning/region_split.hpp` +
+`src/region_split.cpp`.
+
+Cette phase transforme chaque `SatinPath` (chemin topologique, phase 1) en un
+véritable sous-polygone (`SatinRegion`), en réutilisant tel quel l'outil de
+coupe manuelle déjà existant (`geometry::cut_path_set`, § *Ligne de coupe
+manuelle* plus haut) plutôt que d'écrire un nouveau moteur de découpe — la
+seule brique manquante était de choisir AUTOMATIQUEMENT où et dans quelle
+direction couper.
+
+**Un point important sur `cut_path_set`** : ce n'est jamais une entaille
+locale — la coupe est toujours prolongée en une ligne complète qui traverse
+toute la boîte englobante de la région, quels que soient les points fournis
+(pensé pour un geste utilisateur qui vise la jonction sans forcément atteindre
+les bords exacts). Un candidat de coupe automatique doit donc être validé
+géométriquement avant d'être accepté, pas seulement calculé : la ligne peut en
+principe traverser une zone sans rapport si la forme n'est pas localement
+simple près de la jonction.
+
+**Recherche de candidats** (`generate_cut_candidates`) : pour une branche
+détachée (jonction + arête, directement issues de `JunctionPairingReport::detached`),
+balaie des distances croissantes depuis la jonction
+(`search_min_um`=300&nbsp;µm à `search_max_um`=1500&nbsp;µm par pas de
+150&nbsp;µm, §11 spec SGSD — jamais exactement au pixel de jonction). À
+chaque distance, calcule le point et la tangente locale sur la centerline,
+construit la ligne de coupe selon la normale, et appelle `cut_path_set`.
+Rejette immédiatement (§13 spec SGSD, sous-ensemble géométrique — l'oracle
+Auto-Satin complet est phase 5)&nbsp;:
+
+- un résultat qui n'a pas EXACTEMENT 2 morceaux (ligne qui a traversé une zone
+  sans rapport) ;
+- un fragment plus petit que `min_piece_area_mm2` (0,3&nbsp;mm² par défaut).
+
+Le premier candidat valide (le plus proche de la jonction) est retenu — un
+choix délibérément simple pour cette v1 géométrique pure ; la sélection par
+score global (§13 complet, oracle de couverture) est reportée à la phase 5/6,
+une fois `SatinabilityAnalyzer` et l'intégration Auto-Satin par région en
+place.
+
+**Découpage complet** (`split_region`) : traite chaque événement de
+détachement (une jonction, une arête de son `detached`) dans un ordre
+déterministe (jonction puis arête croissantes), en localisant à chaque fois
+le morceau COURANT du pool qui contient le point de jonction (test
+point-dans-polygone par ray casting, implémenté localement — les chemins
+manipulés ici sont toujours polygonaux, jamais des courbes de contrôle) avant
+d'y appliquer la coupe retenue. Le morceau découpé est remplacé par les deux
+résultants dans le pool. **Aucun traitement spécial n'est nécessaire pour une
+branche à deux bouts de jonction** (le pont d'un « H ») : le second événement
+de détachement retrouve naturellement, dans le pool, le morceau laissé par le
+premier — la même mécanique générique s'applique. Assignation finale : chaque
+`SatinPath` reçoit le morceau du pool qui contient un point sonde intérieur à
+son propre tracé (un nœud strictement interne au chemin s'il y en a un, sinon
+le milieu de ses deux extrémités — jamais un point exactement sur une coupe).
+Une branche qu'aucune coupe valide ne sépare reste fusionnée avec son morceau
+parent, reportée dans `unresolved_paths` plutôt que silencieusement ignorée.
+
+**Testé** (`tests/unit/satin_planning/test_region_split.cpp`, 4 cas) contre le
+VRAI pipeline de rasterisation/squelettisation, pas de fixtures synthétiques
+faites main pour cette phase — la géométrie réelle du contour est indispensable
+ici (contrairement à la phase 1, purement topologique) :
+
+- `rectangle` (0 jonction) : aucune coupe tentée, la région ressort inchangée.
+- `t` : une coupe à la distance minimale testée (300&nbsp;µm) isole le pied
+  (100,44&nbsp;mm²) de la barre (238,84&nbsp;mm²) sur les 9 candidats testés,
+  tous valides et croissants avec la distance — confirme que le balayage se
+  comporte de façon monotone et prévisible.
+- Propriété générale sur `t`, `y`, `cross`, `h`, `trident` : **tous les
+  chemins de ces cinq formes sont intégralement résolus** (`unresolved_paths`
+  vide dans les cinq cas), y compris `h` (les deux coupes successives du pont
+  fonctionnent sans logique dédiée) et `cross` (les deux branches détachées
+  de l'unique jonction degré 4 sont isolées l'une après l'autre du même
+  morceau restant). Aire cumulée des régions résolues toujours inférieure à
+  l'aire d'origine (une coupe ne peut que retirer une fine bande, jamais en
+  ajouter), `path_index` assignés uniques.
+- Rendu `format_region_split_report` non vide et contenant les marqueurs
+  attendus.
+
+Aucune géométrie satin n'est générée à cette phase non plus — c'est un
+découpage de polygone pur, décorrélé du générateur. La prochaine étape
+naturelle (phase 4/5) est de faire tourner `build_satin_columns` sur chaque
+`SatinRegion` obtenue et de mesurer sa couverture avec `satin_coverage`, pour
+la première fois avec un vrai oracle de qualité plutôt qu'une heuristique
+géométrique seule.
 
 ## Implémentation associée
 
@@ -2534,5 +2622,13 @@ pure, décorrélée du générateur, exactement comme demandé.
   `src/branch_pairing.cpp` — `continuation_cost`, `pair_branches_at_junction`,
   `decompose_into_paths`, `format_decomposition_report`, `SatinPath`,
   `JunctionPairingReport` (SGSD phase 1, appariement de branches au-dessus du
-  `SkeletonGraph` existant, 2026-08-13, § ci-dessus).
-- Tests : `tests/unit/satin_planning/test_branch_pairing.cpp`.
+  `SkeletonGraph` existant, 2026-08-13, § ci-dessus) ; `find_edge`/`find_node`
+  (recherche par id, exposées publiquement pour réutilisation par
+  `region_split`).
+- `libs/satin_planning/include/openstitch/satin_planning/region_split.hpp` +
+  `src/region_split.cpp` — `generate_cut_candidates`, `split_region`,
+  `format_region_split_report`, `SatinRegion`, `CutCandidate`, `CutAttempt`
+  (SGSD phase 3, candidats de coupe + découpage réel du polygone via
+  `geometry::cut_path_set`, 2026-08-13, § ci-dessus).
+- Tests : `tests/unit/satin_planning/test_branch_pairing.cpp`,
+  `tests/unit/satin_planning/test_region_split.cpp`.
