@@ -2347,8 +2347,9 @@ soit validée :
 7. **Passe de fusion (*merge*) post-découpage pour minimiser le nombre de
    segments** — livrée (une seule passe, pas de fusion en cascade, § *Phase 7*
    ci-dessous).
-8. Recouvrements (*overlaps*) entre régions adjacentes + génération de
-   géométrie de couture.
+8. **Recouvrements (*overlaps*) entre régions adjacentes + génération de
+   géométrie de couture** — livrée (paires directement adjacentes
+   uniquement, § *Phase 8* ci-dessous).
 9. Routage multi-colonnes (continuité directe / travel / jump / trim).
 
 ### Phase 1 : réutilisation du `SkeletonGraph` existant + appariement de branches (`libs/satin_planning`)
@@ -2827,6 +2828,63 @@ dans le plan SGSD, et ne fusionne QUE quand la qualité le justifie.
 - Rendu `format_merge_pass_report` non vide et contenant les marqueurs
   attendus.
 
+### Phase 8 : recouvrements entre régions adjacentes (`libs/satin_planning/overlap`)
+
+*État : Présent, testé, aucune régression — limité aux paires directement
+adjacentes (même restriction qu'à la phase 7, voir plus bas).*
+`libs/satin_planning/include/openstitch/satin_planning/overlap.hpp` et
+`src/overlap.cpp`.
+
+**Le problème** (§19 spec SGSD) : deux régions séparées exactement sur une
+ligne de coupe laisseraient, une fois cousues indépendamment, un interstice
+physique visible — la bande retirée par `cut_width` (20 µm par défaut).
+Il faut une petite extension de chaque région vers l'autre, mais SANS
+modifier les régions structurelles utilisées pour toute mesure de couverture
+(phases 4 à 7) : une géométrie dédiée à la broderie, distincte.
+
+**Méthode, entièrement construite sur des primitives déjà existantes** —
+aucune nouvelle opération géométrique bas niveau n'a été nécessaire.
+Dilater une région de `overlap_distance` est un simple appel à
+`geometry::inset_path_set` avec un delta NÉGATIF (l'outil existant
+d'érosion/dilatation, déjà utilisé pour les sous-couches). Reste à garantir
+que l'extension « reste dans la shape originale » (§19) sans reconstruire une
+ligne de coupe déplacée : la région dilatée est recadrée
+(`geometry::intersect_polygons`) directement dans `MergeCandidate::merged_region`
+— la géométrie EXACTE d'avant coupe, déjà capturée sans interstice à la
+phase 7. Deux appels à des primitives existantes suffisent donc à produire
+une extension géométriquement correcte et bornée.
+
+**Résultat vérifié sur `t`** (`overlap_distance` = 300 µm par défaut) :
+chaque région élargie est strictement plus grande que l'originale, jamais
+au-delà de la géométrie fusionnée de référence, et surtout — la preuve
+centrale de cette phase — **les deux régions élargies se chevauchent
+réellement désormais** (aire d'intersection mesurée : 2,95 mm²), là où les
+régions structurelles d'origine ne se touchaient pas (séparées par
+`cut_width`). L'interstice est fermé.
+
+**Limite connue**, même restriction qu'à la phase 7 et pour la même raison :
+ne couvre que les paires DIRECTEMENT adjacentes dont les deux côtés sont
+restés des feuilles jusqu'à la fin du découpage
+(`RegionSplitReport::merge_candidates`, réutilisé tel quel — c'est déjà
+exactement l'ensemble des paires dont la géométrie exacte d'avant coupe est
+connue). Une couture plus profonde dans l'arbre de décision (un côté
+redécoupé ensuite, ex. le pont d'un « H » vis-à-vis d'un montant) n'a pas
+encore de mécanisme de recouvrement — déterminer l'adjacence finale au-delà
+d'une seule coupe reste un travail futur. La densité de points dans la zone
+de recouvrement (§19 : « ne pas créer une surdensité énorme ») est hors
+périmètre de cette phase, purement géométrique — à traiter quand
+`stitch_generation` consommera cette géométrie dédiée.
+
+**Testé** (`tests/unit/satin_planning/test_overlap.cpp`, 3 cas) :
+
+- `t` : aire élargie strictement supérieure à l'originale pour les deux
+  régions, jamais au-delà de la géométrie fusionnée, ET intersection non
+  vide entre les deux régions élargies (l'invariant central : l'interstice
+  est bien fermé).
+- `cross` : un recouvrement généré par paire directement adjacente, en
+  correspondance exacte avec `merge_candidates`.
+- Rendu `format_overlap_report` non vide et contenant les marqueurs attendus.
+
 ## Implémentation associée
 
 - `libs/document/.../embroidery_object.hpp` — `SatinParams`, `SatinRung`.
@@ -2973,9 +3031,15 @@ dans le plan SGSD, et ne fusionne QUE quand la qualité le justifie.
   et `src/merge_pass.cpp` — `evaluate_merge_pass`, `format_merge_pass_report`,
   `MergeDecision`, `MergePassParams` (SGSD phase 7, décision de fusion
   guidée par l'oracle phase 5, 2026-08-13, § ci-dessus).
+- `libs/satin_planning/include/openstitch/satin_planning/overlap.hpp` et
+  `src/overlap.cpp` — `generate_overlaps`, `format_overlap_report`,
+  `RegionOverlap`, `OverlapParams` (SGSD phase 8, dilatation
+  `geometry::inset_path_set` recadrée dans `MergeCandidate::merged_region`,
+  aucune nouvelle primitive géométrique bas niveau, 2026-08-13, § ci-dessus).
 - Tests : `tests/unit/satin_planning/test_branch_pairing.cpp`,
   `tests/unit/satin_planning/test_region_split.cpp`,
   `tests/unit/satin_planning/test_region_satinability.cpp`,
   `tests/unit/satin_planning/test_region_oracle.cpp`,
   `tests/unit/satin_planning/test_beam_search.cpp`,
-  `tests/unit/satin_planning/test_merge_pass.cpp`.
+  `tests/unit/satin_planning/test_merge_pass.cpp`,
+  `tests/unit/satin_planning/test_overlap.cpp`.
