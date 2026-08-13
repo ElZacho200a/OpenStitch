@@ -24,13 +24,15 @@ Avant tout type de point, deux primitives (dans `geometry`) :
   L est divisé en `n = ceil(L / cible)` parts **égales**, donc chaque point est
   ≤ la longueur cible et il n'y a pas de segment résiduel minuscule.
 
-Sémantique du paramètre : avec `ceil`, `stitch_length` est traité comme une
-**longueur maximale** (les points ne la dépassent jamais, mais peuvent être plus
-courts). Si on voulait une longueur *souhaitée* dont l'espacement colle au plus
-près de la consigne, `round(L / cible)` serait plus adapté. Le nom
-`stitch_length` est donc ici à comprendre comme un **maximum**, pas une cible
-exacte — un point d'ambiguïté à clarifier dans une future version (distinguer
-`target_length` de `maximum_length`).
+Sémantique du paramètre : avec `ceil`, le champ (`RunningConfig::target_length`)
+est traité comme une **longueur maximale** (les points ne la dépassent jamais,
+mais peuvent être plus courts). Si on voulait une longueur *souhaitée* dont
+l'espacement colle au plus près de la consigne, `round(L / cible)` serait plus
+adapté. Ce choix (`ceil` plutôt que `round`) est **assumé explicitement** dans
+le code (`libs/geometry/src/polyline.cpp`, commentaire de `resample_run` :
+« Écart assumé (...) ; `ceil` garantit en plus le respect strict de la longueur
+maximale. ») — ce n'est plus une ambiguïté ouverte, `target_length` se comporte
+délibérément comme un maximum, pas une cible exacte.
 
 ## Point droit (running stitch)
 

@@ -34,7 +34,7 @@ PDF_NAME = "OpenStitch-Studio-Documentation.pdf"
 CHAPTERS = [
     "index", "introduction", "getting-started", "installation", "user-guide",
     "image-processing", "segmentation", "vectorization", "embroidery-objects",
-    "stitch-generation", "satin", "tatami", "stitch-editing",
+    "stitch-generation", "moteur-de-points", "satin", "tatami", "stitch-editing",
     "palettes-and-threads", "simulation", "analysis-and-validation",
     "dst-format", "project-format", "architecture", "module-reference",
     "data-model", "algorithms", "build-system", "developer-guide", "testing",
