@@ -367,24 +367,20 @@ double cap_factor(SatinCapType type, int stepsFromEnd, int len) {
 
 }  // namespace
 
-SatinResult fill_satin_columns(const geometry::Path& rail_a, const geometry::Path& rail_b,
-                               const std::vector<SatinRungSeg>& rungs, const SatinConfig& config) {
-    if (rungs.size() < 2) {
-        return fill_satin(rail_a, rail_b, config);  // satin manuel / legacy
-    }
-    SatinResult result;
+std::vector<SatinStation> satin_stations(const geometry::Path& rail_a, const geometry::Path& rail_b,
+                                         const std::vector<SatinRungSeg>& rungs, Micrometers density) {
+    std::vector<SatinStation> stations;
     const auto a = to_points(rail_a);
     auto b = to_points(rail_b);
     if (a.size() < 2 || b.size() < 2) {
-        return result;
+        return stations;
     }
     if (opposite_orientation(a, b)) {
         std::reverse(b.begin(), b.end());
     }
     const auto cumA = cumulative(a);
     const auto cumB = cumulative(b);
-    const double density = static_cast<double>(std::max<std::int32_t>(1, config.density.value));
-    const double comp = static_cast<double>(config.pull_compensation.value);
+    const double dens = static_cast<double>(std::max<std::int32_t>(1, density.value));
 
     // Ancres = barreaux projetés sur les deux rails (abscisses curvilignes).
     // Un barreau est une station transversale, pas un élément de séquence :
@@ -427,7 +423,7 @@ SatinResult fill_satin_columns(const geometry::Path& rail_a, const geometry::Pat
     }
     std::stable_sort(anchors.begin(), anchors.end(),
                      [](const Anchor& x, const Anchor& y) { return x.sa + x.sb < y.sa + y.sb; });
-    const double anchorMinGap = density * 0.5;
+    const double anchorMinGap = dens * 0.5;
     std::vector<Anchor> kept;
     kept.reserve(anchors.size());
     for (const auto& an : anchors) {
@@ -438,34 +434,53 @@ SatinResult fill_satin_columns(const geometry::Path& rail_a, const geometry::Pat
     }
     anchors = std::move(kept);
     if (anchors.size() < 2) {
-        return fill_satin(rail_a, rail_b, config);
+        return {};
     }
 
-    // Fils : correspondance locale monotone (ladder, voir plus haut) entre
+    // Stations : correspondance locale monotone (ladder, voir plus haut) entre
     // barreaux consécutifs, ré-échantillonnée par pas fixe sur la ligne
     // médiane (≈ perpendiculaire aux fils). Remplace l'ancienne interpolation
     // par fraction d'abscisse UNIQUE sur tout l'intervalle (source
     // d'éventails/quasi-croisements en virage).
-    std::vector<Thread> threads;
-    const double maxStep = std::clamp(density / 4.0, 100.0, 500.0);
-    threads.push_back({anchors.front().pa, anchors.front().pb, true, false, false});
+    const double maxStep = std::clamp(dens / 4.0, 100.0, 500.0);
+    stations.push_back({toUm(anchors.front().pa), toUm(anchors.front().pb), true, false});
     for (std::size_t k = 0; k + 1 < anchors.size(); ++k) {
         const Anchor& a0 = anchors[k];
         const Anchor& a1 = anchors[k + 1];
         if (non_ribbon_interval(a0.pa, a1.pa, a0.pb, a1.pb)) {
-            // Saut : aucun fil intermédiaire n'a de sens géométrique sur cet
-            // intervalle (les deux rails divergent trop pour former un
+            // Saut : aucune station intermédiaire n'a de sens géométrique sur
+            // cet intervalle (les deux rails divergent trop pour former un
             // ruban) -- le barreau suivant devient le point de reprise.
-            threads.push_back({a1.pa, a1.pb, true, false, true});
+            stations.push_back({toUm(a1.pa), toUm(a1.pb), true, true});
             continue;
         }
         const auto ladder = ladder_correspondence(a, cumA, a0.sa, a0.pa, a1.sa, a1.pa, b, cumB, a0.sb,
                                                    a0.pb, a1.sb, a1.pb, maxStep);
-        const auto resampled = resample_by_medial_spacing(ladder, a, cumA, b, cumB, density);
+        const auto resampled = resample_by_medial_spacing(ladder, a, cumA, b, cumB, dens);
         for (std::size_t j = 1; j + 1 < resampled.size(); ++j) {
-            threads.push_back({resampled[j].pa, resampled[j].pb, false, false, false});
+            stations.push_back({toUm(resampled[j].pa), toUm(resampled[j].pb), false, false});
         }
-        threads.push_back({a1.pa, a1.pb, true, false, false});  // barreau traversé exactement
+        stations.push_back({toUm(a1.pa), toUm(a1.pb), true, false});  // barreau traversé exactement
+    }
+    return stations;
+}
+
+SatinResult fill_satin_columns(const geometry::Path& rail_a, const geometry::Path& rail_b,
+                               const std::vector<SatinRungSeg>& rungs, const SatinConfig& config) {
+    if (rungs.size() < 2) {
+        return fill_satin(rail_a, rail_b, config);  // satin manuel / legacy
+    }
+    SatinResult result;
+    const auto stations = satin_stations(rail_a, rail_b, rungs, config.density);
+    if (stations.size() < 2) {
+        return fill_satin(rail_a, rail_b, config);
+    }
+    const double comp = static_cast<double>(config.pull_compensation.value);
+    const double density = static_cast<double>(std::max<std::int32_t>(1, config.density.value));
+    std::vector<Thread> threads;
+    threads.reserve(stations.size());
+    for (const auto& st : stations) {
+        threads.push_back({toD(st.a), toD(st.b), st.anchor, false, st.jump_before});
     }
     const int nThreads = static_cast<int>(threads.size());
 

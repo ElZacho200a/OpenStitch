@@ -4,6 +4,7 @@
 #include <clipper2/clipper.h>
 
 #include <algorithm>
+#include <cmath>
 
 namespace openstitch::geometry {
 
@@ -64,6 +65,73 @@ Path oriented_as(const Path& path, bool wantPositive) {
 }
 
 }  // namespace
+
+double path_set_area_um2(const PathSet& set) {
+    double area = std::abs(signed_area_um2(set.outer));
+    for (const auto& hole : set.holes) {
+        area -= std::abs(signed_area_um2(hole));
+    }
+    return std::max(0.0, area);
+}
+
+namespace {
+
+// Ajoute `set` (extérieur + trous) à `paths`, orienté pour la règle NonZero :
+// extérieur CCW, trous CW -- même convention que `oriented_as` ci-dessus,
+// appliquée ici aux DEUX côtés d'une opération (contrairement à
+// `subtract_polygons`, dont les `cutouts` sont de simples contours sans trou).
+void append_oriented(const PathSet& set, Clipper2Lib::Paths64& paths) {
+    if (set.outer.nodes.size() >= 3) {
+        paths.push_back(to_clipper(oriented_as(set.outer, true)));
+    }
+    for (const auto& hole : set.holes) {
+        if (hole.nodes.size() >= 3) {
+            paths.push_back(to_clipper(oriented_as(hole, false)));
+        }
+    }
+}
+
+Result<std::vector<PathSet>> boolean_op(const std::vector<PathSet>& a, const std::vector<PathSet>& b,
+                                         Clipper2Lib::ClipType op) {
+    Clipper2Lib::Paths64 subject;
+    for (const auto& set : a) {
+        append_oriented(set, subject);
+    }
+    Clipper2Lib::Paths64 clip;
+    for (const auto& set : b) {
+        append_oriented(set, clip);
+    }
+    if (subject.empty()) {
+        return std::vector<PathSet>{};
+    }
+    if (clip.empty()) {
+        return op == Clipper2Lib::ClipType::Intersection ? std::vector<PathSet>{} : a;
+    }
+
+    Clipper2Lib::Clipper64 clipper;
+    clipper.AddSubject(subject);
+    clipper.AddClip(clip);
+    Clipper2Lib::PolyTree64 tree;
+    if (!clipper.Execute(op, Clipper2Lib::FillRule::NonZero, tree)) {
+        return fail(ErrorCategory::Internal, "Échec de l'opération géométrique",
+                    "Clipper64::Execute a renvoyé false");
+    }
+    std::vector<PathSet> out;
+    for (const auto& top : tree) {
+        collect(*top, out);
+    }
+    return out;
+}
+
+}  // namespace
+
+Result<std::vector<PathSet>> intersect_polygons(const std::vector<PathSet>& a, const std::vector<PathSet>& b) {
+    return boolean_op(a, b, Clipper2Lib::ClipType::Intersection);
+}
+
+Result<std::vector<PathSet>> difference_polygons(const std::vector<PathSet>& a, const std::vector<PathSet>& b) {
+    return boolean_op(a, b, Clipper2Lib::ClipType::Difference);
+}
 
 Result<std::vector<PathSet>> subtract_polygons(const PathSet& base, const std::vector<Path>& cutouts) {
     if (cutouts.empty()) {

@@ -1904,6 +1904,138 @@ cousus) ; il n'est garanti *sous* la broderie que pour des colonnes reliées par
 une jonction (ou en quasi-contact). Un routage suivant réellement la matière
 viendra avec le tatami avancé (Lot 7).
 
+## Satin Coverage Analyzer : mesurer objectivement la surface couverte (2026-08-13)
+
+*État : Présent (`satin_coverage::analyze_satin_coverage`) · Testé numériquement
+(7 cas géométriques à résultat connu) · Observateur indépendant, n'influence
+encore aucune décision du générateur.*
+
+### Origine
+
+L'audit des ruptures de ruban (§ *Saut plutôt qu'un point continu...* et
+*Seuil angle/distance...* ci-dessus) et le repli tatami sur branche rejetée
+(§ précédente) partagent un point aveugle commun : aucun des deux ne répond,
+de façon indépendante et vérifiable, à la question « les colonnes générées
+couvrent-elles réellement l'intégralité de la forme d'origine ? ». Les
+validations existantes portent sur la cohérence des rails, du squelette, des
+largeurs ou des jonctions — jamais sur une comparaison de SURFACE entre la
+région source et ce que les colonnes balaient effectivement. Un squelette
+valide, des sections toutes construites sans refus, et pourtant une zone
+entière peut rester sans le moindre point : rien dans les validations
+structurelles précédentes ne le détecte directement.
+
+### Principe : comparer deux surfaces, jamais une heuristique de squelette
+
+`satin_coverage::analyze_satin_coverage(target, columns, config)`
+(`libs/satin_coverage/`, nouvelle bibliothèque, dépend uniquement de `core`,
+`geometry`, `stitch_generation` — jamais de `auto_satin` ni `document`, pour
+rester un **observateur totalement indépendant du générateur**, utilisable
+depuis un test synthétique aussi bien que depuis `autodigitize`) calcule :
+
+1. pour chaque colonne, la suite ordonnée de stations (Lᵢ, Rᵢ) via
+   `stitch_generation::satin_stations` (nouvelle fonction publique, extraite
+   sans changement de comportement de la correspondance ladder déjà utilisée
+   par `fill_satin_columns` — cf. *Correction de l'appariement* plus haut) :
+   la géométrie STRUCTURELLE des rails/barreaux, jamais les points de couture
+   finaux (compensation pull, split-stitch, terminaisons), qui répondent à un
+   besoin de couture et non à la question « les rails couvrent-ils la forme
+   d'origine ? ». Une rupture de ruban (`SatinStation::jump_before`, § audit
+   lettres/seuil angle-distance ci-dessus) coupe la colonne : aucun
+   quadrilatère de couverture ne relie deux stations de part et d'autre d'un
+   saut — le même mécanisme qui empêche un point cousu disproportionné
+   empêche aussi un quadrilatère de couverture artificiel ;
+2. chaque intervalle entre deux stations consécutives devient un quadrilatère
+   (Lᵢ, Rᵢ, Rᵢ₊₁, Lᵢ₊₁), décomposé en DEUX TRIANGLES (diagonale Lᵢ-Rᵢ₊₁) —
+   robuste à un quadrilatère non convexe, et surtout : un garde-fou défensif
+   (`segments_cross_strict` sur Lᵢ-Rᵢ vs Lᵢ₊₁-Rᵢ₊₁) exclut et COMPTE tout
+   intervalle où les deux rails se croiseraient, plutôt que de laisser un
+   quadrilatère dégénéré s'ajouter silencieusement à l'union — l'analyseur ne
+   fait jamais confiance aveuglément à l'invariant anti-croisement de
+   l'appariement amont, même si celui-ci est déjà testé séparément ;
+3. tous les triangles de toutes les colonnes sont réunis par une union
+   booléenne NonZero (`geometry::union_nonzero`) → `C`. Chaque triangle est
+   explicitement réorienté CCW avant l'union : `union_nonzero`, contrairement
+   à `intersect_polygons`/`difference_polygons` (ajoutés par ce lot, voir plus
+   bas), ne renormalise pas l'orientation d'entrée — deux triangles
+   chevauchants d'orientations opposées s'annuleraient localement sous
+   NonZero, créant un trou parasite qui masquerait précisément le genre de
+   défaut que cet outil doit révéler (piège identifié dès la conception, pas
+   trouvé après coup) ;
+4. `C` est comparé à la région cible `P` (`geometry::PathSet`, trous compris)
+   par intersection/différence booléennes NonZero, trous compris DES DEUX
+   CÔTÉS (`geometry::intersect_polygons`/`difference_polygons`, nouvelles
+   primitives de `libs/geometry` — contrairement à `subtract_polygons`
+   existant, dont les `cutouts` sont de simples contours sans trou, ces deux
+   nouvelles fonctions gèrent le cas d'une poche non couverte elle-même
+   entourée de couverture de tous côtés, c'est-à-dire un TROU dans `C`) :
+   `covered = aire(P ∩ C)`, `missing = aire(P \ C)`, `outside = aire(C \ P)`.
+
+### Composantes manquantes et profondeur des trous
+
+Chaque composante connexe de `missing` est déjà un élément distinct du
+`vector<PathSet>` renvoyé par `difference_polygons` (issu directement du
+`PolyTree64` de Clipper2) : aucun algorithme de composantes connexes séparé
+n'est nécessaire. Pour chacune (`MissingRegion`) : aire, part de la cible,
+centroïde/bbox (barycentre des sommets), et un `max_gap_radius_mm` — le rayon
+du plus grand disque inscrit, obtenu par **recherche binaire d'érosions
+successives** (`geometry::inset_path_set`, déjà présent, déjà testé) jusqu'à
+disparition de la région, plutôt qu'un raster + transformée de distance
+OpenCV : précision continue, aucune dépendance nouvelle, et cette bibliothèque
+reste sans dépendance OpenCV. Distingue une frange fine de plusieurs mm² le
+long d'un bord (rayon petit, peu grave) d'une poche ronde de même aire en
+plein milieu (rayon significatif, vrai défaut).
+
+Une **couverture du cœur** (`core_coverage_ratio`) complète la couverture
+brute : `P` est érodé de `boundary_tolerance_mm` (0,1 mm par défaut) avant de
+recalculer le manquant — absorbe les approximations de discrétisation le long
+du bord sans masquer une vraie poche interne. Sur une forme trop fine pour
+survivre à cette érosion, repli documenté sur la couverture brute plutôt
+qu'une division par zéro.
+
+### Rapport et seuils explicites
+
+`SatinCoverageReport` (aires cible/couverte/manquante/hors-forme, ratios brut
+et cœur, régions manquantes triées par aire décroissante, rayon de trou
+maximal, `passed`, message texte diagnostic prêt à logger — jamais un simple
+« couverture insuffisante », toujours les chiffres et la raison précise du
+refus) et `SatinCoverageConfig` (tous les seuils : couverture brute/cœur
+minimales, aire/rayon de trou maximaux, ratio hors-forme maximal, tolérance
+de bord, résolution de la recherche de rayon — valeurs par défaut
+raisonnables, explicitement PAS des constantes universelles du métier,
+ajustables sans toucher au code de l'analyseur).
+
+### Vérifié
+
+Sept cas géométriques à résultat connu (`tests/unit/satin_coverage/test_coverage.cpp`,
+43 assertions) : rectangle entièrement couvert (~100 %, PASS) ; rectangle
+couvert à moitié (~50 %, FAIL, une seule région manquante de l'aire attendue) ;
+trou de la forme source (anneau tuilé par quatre colonnes) jamais compté comme
+manquant ; vraie poche non couverte entourée de matière (FAIL, rayon de trou
+mesuré conforme au rectangle de la poche à 0,05 mm près) ; débordement hors
+cible (`outside_area` > 0, cible elle-même toujours entièrement couverte) ;
+deux colonnes qui se chevauchent (l'union fait foi, aucun double comptage) ;
+et surtout **`trident`** (jonction concave asymétrique à 3 branches inégales,
+forme historiquement problématique pour Auto-Satin, cf. audits ci-dessus) :
+couverture complète (toutes branches) 88,1 %, plus grande zone manquante
+18,0 mm² (le noyau de jonction résiduel déjà documenté § *Optimisation globale
+des bridges...* — un résidu CONNU, pas un défaut de cet audit) ; en retirant
+la branche PRINCIPALE (simulant un rejet amont), couverture 9,4 %, plus grande
+zone manquante 157,8 mm² — démonstration que l'analyseur distingue nettement
+« toutes les branches présentes » de « une branche absente », par une mesure
+de surface et non un décompte de branches/stations traitées. Suite complète
+(514 cas ctest) sans régression, Debug et Release, y compris la suite
+`stitch`/`auto_satin`/`autodigitize` complète après l'extraction de
+`satin_stations` (comportement bit-à-bit identique à l'ancien
+`fill_satin_columns`).
+
+**Portée actuelle et limites assumées** : observateur pur, n'influence encore
+aucune décision de génération ni aucun test de non-régression existant
+(prochaine étape). Pas de second mode « couverture des points finaux » (§16
+de la demande d'origine) ni de visualisation SVG dédiée pour l'instant.
+`degenerate_interval_count` reste à 0 sur toutes les fixtures testées à ce
+jour (l'invariant anti-croisement amont tient) ; le garde-fou existe pour le
+jour où ce ne sera plus le cas plutôt que pour un défaut déjà observé.
+
 ## Implémentation associée
 
 - `libs/document/.../embroidery_object.hpp` — `SatinParams`, `SatinRung`.
@@ -1982,3 +2114,16 @@ viendra avec le tatami avancé (Lot 7).
   région, trident à 3 objets sans croisement, recouvrement borné,
   correspondance monotone, lignes d'angle non croisées),
   `tests/unit/auto_satin/test_pipeline.cpp`.
+- `libs/satin_coverage/include/openstitch/satin_coverage/coverage.hpp` +
+  `src/coverage.cpp` — `analyze_satin_coverage`, `SatinColumnInput`,
+  `SatinCoverageReport`, `MissingRegion`, `SatinCoverageConfig` (Satin
+  Coverage Analyzer, 2026-08-13, § ci-dessus).
+- `libs/stitch_generation/include/openstitch/stitch_generation/satin.hpp` +
+  `src/satin.cpp` — `SatinStation`, `satin_stations` (correspondance
+  structurelle rail A/rail B exposée publiquement, extraite sans changement de
+  comportement de `fill_satin_columns`, 2026-08-13).
+- `libs/geometry/include/openstitch/geometry/boolean.hpp` + `src/boolean.cpp`
+  — `path_set_area_um2`, `intersect_polygons`, `difference_polygons` (booléens
+  NonZero généralisés `vector<PathSet> × vector<PathSet>`, trous compris des
+  deux côtés, 2026-08-13).
+- Tests : `tests/unit/satin_coverage/test_coverage.cpp`.

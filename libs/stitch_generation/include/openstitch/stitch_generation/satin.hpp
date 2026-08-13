@@ -94,6 +94,45 @@ struct SatinResult {
     std::vector<std::size_t> jump_before;
 };
 
+// Station structurelle d'une colonne satin : un couple (point rail A, point
+// rail B) — la « section transversale » de la colonne à cette abscisse, avant
+// toute finition cosmétique (terminaisons, points courts, split, compensation
+// pull/push, cf. `fill_satin_columns`). Utilisé par `satin_stations` pour
+// exposer la correspondance ladder (cf. audit rails 2026-08-01) à des
+// consommateurs externes qui ont besoin de la géométrie BRUTE des rails —
+// notamment `satin_coverage`, qui compare la surface balayée par ces stations
+// à la région source : la compensation pull/les terminaisons effilées
+// répondent à des besoins de couture (physique du fil, esthétique), pas à la
+// question structurelle « les rails couvrent-ils la forme ? ».
+struct SatinStation {
+    Vec2um a;  // point sur rail A
+    Vec2um b;  // point sur rail B
+    bool anchor{false};  // station exacte (barreau), par opposition à interpolée
+    // Vrai si cette station est atteinte par un SAUT (aiguille levée) depuis
+    // la précédente plutôt qu'un fil continu -- cf. `SatinResult::jump_before`.
+    // Aucun quadrilatère de couverture ne doit relier deux stations séparées
+    // par un saut : `non_ribbon_interval` a précisément jugé qu'aucune
+    // interpolation continue n'a de sens géométrique sur cet intervalle.
+    bool jump_before{false};
+};
+
+// Correspondance structurelle rail A <-> rail B (ladder + ré-échantillonnage
+// médian, cf. audit rails 2026-08-01), SANS aucune des finitions cosmétiques
+// appliquées par `fill_satin_columns` (terminaisons, points courts, split,
+// compensation pull/push) : la géométrie brute des rails/barreaux, telle
+// qu'elle définit la colonne -- utile à un consommateur qui a besoin de la
+// forme réelle de la colonne (ex. `satin_coverage`) plutôt que de ce qui sera
+// effectivement cousu. `rungs` suit exactement les mêmes règles que
+// `fill_satin_columns` : non trié accepté, deux barreaux dont la projection
+// avance de moins de la moitié de `density` sur les deux rails sont fusionnés.
+// Même contrat de repli que `fill_satin_columns` : moins de 2 barreaux
+// utilisables après fusion (ou rails trop courts/dégénérés) -> liste vide,
+// l'appelant retombe alors sur `fill_satin`/`default_rungs` selon son besoin.
+[[nodiscard]] std::vector<SatinStation> satin_stations(const geometry::Path& rail_a,
+                                                        const geometry::Path& rail_b,
+                                                        const std::vector<SatinRungSeg>& rungs,
+                                                        Micrometers density);
+
 // Génère les points d'une colonne satin à partir de deux rails (polylignes
 // ouvertes, censées être orientées dans le même sens : bout 0 <-> bout 0,
 // bout N <-> bout N). Fournies tête-bêche, elles sont détectées et l'une des
