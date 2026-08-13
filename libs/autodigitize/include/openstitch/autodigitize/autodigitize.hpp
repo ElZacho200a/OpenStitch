@@ -1,14 +1,17 @@
 // SPDX-License-Identifier: Apache-2.0
 #pragma once
 
+#include <optional>
 #include <string>
 #include <vector>
 
+#include "openstitch/auto_satin/satin_column.hpp"
 #include "openstitch/core/error.hpp"
 #include "openstitch/core/ids.hpp"
 #include "openstitch/core/units.hpp"
 #include "openstitch/document/embroidery_object.hpp"
 #include "openstitch/document/vector_object.hpp"
+#include "openstitch/geometry/path.hpp"
 #include "openstitch/segmentation/segmentation.hpp"
 
 namespace openstitch::autodigitize {
@@ -29,20 +32,22 @@ struct AutoOptions {
     bool skip_largest_region{false};
     // Moteur topologique : squelette, decomposition en sections ouvertes,
     // barreaux et routage par source commune. Active par defaut.
-    bool use_auto_satin{true};
+    //
     // Sur une région dont le squelette est BRANCHÉ (au moins une jonction
-    // réelle), tente d'abord une décomposition guidée par squelette (SGSD :
-    // `libs/satin_planning`, découpage en sous-régions simples + recherche à
-    // faisceau + fusion) avant l'appel direct à `build_satin_columns` sur la
-    // région entière. Gain de couverture réel et mesuré sur le corpus de
-    // test (+4,6 à +7,4 points selon la forme, cf. `openstitch-cli
-    // sgsd-debug` et docs/source/satin.md). Repli INTÉGRAL et silencieux sur
-    // le comportement historique dès que SGSD ne résout rien (région non
-    // branchée, ou cas topologique non couvert comme un anneau — squelette
-    // en boucle fermée sans jonction détectable) : jamais de régression sur
-    // les cas déjà couverts par l'appel direct. Activé par défaut ;
-    // échappatoire pour revenir au comportement précédent si besoin.
-    bool use_sgsd_decomposition{true};
+    // réelle), passe TOUJOURS d'abord par la décomposition guidée par
+    // squelette (SGSD : `libs/satin_planning`, découpage en sous-régions
+    // simples + recherche à faisceau + fusion) — plus d'échappatoire vers
+    // l'ancien appel direct à `build_satin_columns` sur la région entière,
+    // c'est désormais le seul chemin pour une région branchée (gain de
+    // couverture réel et mesuré sur le corpus de test, +4,6 à +7,4 points
+    // selon la forme, cf. `openstitch-cli sgsd-debug` et
+    // docs/source/satin.md). L'appel direct à `build_satin_columns` reste
+    // néanmoins utilisé en INTERNE comme filet de sécurité structurel quand
+    // SGSD ne résout rien (région non branchée dès le départ, ou cas
+    // topologique non couvert comme un anneau — squelette en boucle fermée
+    // sans jonction détectable) : jamais une zone laissée sans le moindre
+    // point, cf. `try_sgsd_decomposition` dans autodigitize.cpp.
+    bool use_auto_satin{true};
     // Satin automatique NAÏF (rails_from_contour) : désactivé par défaut. Ses
     // deux rails « bouts les plus éloignés » débordent sur les formes concaves
     // ou branchues (les rungs enjambent les creux). Tant que le vrai moteur
@@ -107,5 +112,66 @@ template <typename ColumnLike>
     }
     return sp;
 }
+
+// Une section satin déjà convertie en géométrie éditable
+// (`document::SatinParams`) et en bande approximative de la surface qu'elle
+// couvre (utile à l'appelant pour calculer un éventuel repli, ex. tatami sur
+// le reliquat non couvert). Vue UNIFORME sur `auto_satin::SatinColumnGeometry`
+// (Legacy) et `auto_satin::ParametricSatinObject` (Parametric).
+struct BuiltSatinSection {
+    document::SatinParams params;
+    geometry::Path strip;
+};
+
+// Résultat de `build_satin_sections` : les sections construites, plus le
+// contexte nécessaire pour un aperçu ou un message d'erreur côté appelant.
+struct SatinBuildReport {
+    std::vector<BuiltSatinSection> sections;
+    // Vrai si la décomposition guidée par squelette (SGSD) a été utilisée
+    // (région branchée). Faux si l'appel direct historique à
+    // `build_satin_columns` a suffi (région déjà simple) ou si RIEN n'a pu
+    // être construit.
+    bool used_sgsd{false};
+    // Vrai si une partie de la région source pourrait rester non couverte
+    // par les sections ci-dessus (un chemin SGSD non isolé, ou une
+    // sous-région ayant échoué à produire une colonne) -- signal structurel
+    // pour un éventuel remplissage de repli côté appelant, jamais un calcul
+    // géométrique direct (§ docs/source/satin.md : un rail approxime
+    // toujours la forme source avec une tolérance naturelle, même quand tout
+    // réussit).
+    bool structural_gap{false};
+    std::vector<std::string> warnings;
+    // Diagnostic de satinabilité de la région ENTIÈRE, calculé une seule
+    // fois en amont (que SGSD s'engage ou non) -- toujours renseigné sauf
+    // échec d'analyse pur (forme dégénérée). Utile pour un aperçu utilisateur
+    // (statut, largeurs, nombre de branches) même quand la région a ensuite
+    // été décomposée en plusieurs sous-régions.
+    std::optional<auto_satin::SatinabilityReport> whole_region_report;
+    // Message de refus le plus pertinent si `sections` est vide (celui de
+    // l'appel direct, ou un résumé synthétique si SGSD a tout tenté sans
+    // succès) -- vide si `sections` est non vide.
+    std::string refusal;
+};
+
+// Construit réellement les colonnes satin sur `region`, en passant TOUJOURS
+// par la décomposition guidée par squelette (SGSD, `libs/satin_planning`)
+// quand son squelette est BRANCHÉ (au moins une jonction réelle) — gain de
+// couverture réel et mesuré sur le corpus de test (+4,6 à +7,4 points selon
+// la forme, cf. `openstitch-cli sgsd-debug` et docs/source/satin.md). Repli
+// INTERNE sur l'appel direct historique à `build_satin_columns` dès que SGSD
+// ne résout rien (région non branchée dès le départ, ou cas topologique non
+// couvert comme un anneau — squelette en boucle fermée sans jonction
+// détectable) : jamais une zone laissée sans le moindre point.
+//
+// Point d'entrée UNIQUE partagé par l'auto-numérisation (`auto_digitize`
+// ci-dessus) et la création satin manuelle (`apps/desktop/main_window.cpp`)
+// — mêmes garanties de couverture partout, un seul endroit à faire évoluer.
+// `warningLabel`, si non vide, préfixe chaque message de `warnings` (ex.
+// "Région 12" côté auto-numérisation).
+[[nodiscard]] SatinBuildReport build_satin_sections(const geometry::PathSet& region,
+                                                    const auto_satin::SatinColumnsParameters& genParams,
+                                                    Micrometers density, Micrometers pullCompensation,
+                                                    bool centerUnderlay, Micrometers maxWidth,
+                                                    const std::string& warningLabel = {});
 
 }  // namespace openstitch::autodigitize

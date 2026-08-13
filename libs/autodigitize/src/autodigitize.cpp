@@ -92,109 +92,130 @@ std::vector<geometry::Path> shrink_strips_for_cutout(const std::vector<geometry:
     return out;
 }
 
-// Une section satin déjà convertie en géométrie éditable
-// (`document::SatinParams`) et en bande approximative (pour la découpe du
-// repli tatami) -- vue UNIFORME sur `SatinColumnGeometry` (Legacy) et
-// `ParametricSatinObject` (Parametric), pour traiter les deux chemins
-// (appel direct §ci-dessous / décomposition SGSD) avec le même code
-// d'émission plutôt que de le dupliquer.
-struct BuiltSection {
-    document::SatinParams params;
-    geometry::Path strip;
-};
-
 template <typename ColumnLike>
-BuiltSection make_section(const ColumnLike& col, const document::SatinParams& defaults, Micrometers maxWidth) {
-    BuiltSection out;
-    out.params = satin_params_from_column(col, defaults.density, defaults.pull_compensation,
-                                          defaults.center_underlay, maxWidth);
+BuiltSatinSection make_section(const ColumnLike& col, Micrometers density, Micrometers pullCompensation,
+                               bool centerUnderlay, Micrometers maxWidth) {
+    BuiltSatinSection out;
+    out.params = satin_params_from_column(col, density, pullCompensation, centerUnderlay, maxWidth);
     out.strip = column_strip(col);
     return out;
 }
 
-std::vector<BuiltSection> sections_from_result(const auto_satin::SatinColumnsResult& built,
-                                               const document::SatinParams& defaults, Micrometers maxWidth) {
-    std::vector<BuiltSection> out;
+std::vector<BuiltSatinSection> sections_from_result(const auto_satin::SatinColumnsResult& built, Micrometers density,
+                                                    Micrometers pullCompensation, bool centerUnderlay,
+                                                    Micrometers maxWidth) {
+    std::vector<BuiltSatinSection> out;
     if (!built.parametric_columns.empty()) {
         out.reserve(built.parametric_columns.size());
-        for (const auto& c : built.parametric_columns) out.push_back(make_section(c, defaults, maxWidth));
+        for (const auto& c : built.parametric_columns) {
+            out.push_back(make_section(c, density, pullCompensation, centerUnderlay, maxWidth));
+        }
     } else {
         out.reserve(built.columns.size());
-        for (const auto& c : built.columns) out.push_back(make_section(c, defaults, maxWidth));
-    }
-    return out;
-}
-
-// Tente une décomposition guidée par squelette (SGSD, `libs/satin_planning`)
-// de `main` : découpe en sous-régions simples (recherche à faisceau guidée
-// par l'oracle Auto-Satin réel pour le choix de chaque coupe), puis
-// `build_satin_columns` RÉELLEMENT sur chacune. Gain de couverture mesuré
-// sur le corpus de test, cf. `AutoOptions::use_sgsd_decomposition`. Ne
-// s'engage QUE si le squelette de `main` est réellement branché (au moins
-// une jonction) -- sur une région déjà simple, la décomposition ne
-// produirait qu'un appel supplémentaire redondant avec le chemin direct,
-// pour un résultat identique. Renvoie les sections construites (vide si
-// SGSD n'a rien pu résoudre, ex. anneau -- squelette en boucle fermée sans
-// jonction détectable, § docs/source/satin.md) et si un chemin est resté
-// non isolé ou a échoué à produire une section (signal structurel d'un
-// possible trou de couverture, même rôle que le signal `edges > sections`
-// du chemin direct).
-struct SgsdResult {
-    std::vector<BuiltSection> sections;
-    bool structural_gap{false};
-};
-
-SgsdResult try_sgsd_decomposition(const geometry::PathSet& main,
-                                  const auto_satin::SatinColumnsParameters& satinOptions,
-                                  const document::SatinParams& defaults, RegionId id,
-                                  std::vector<std::string>& warnings) {
-    SgsdResult out;
-    const auto analysis = auto_satin::analyze_region(main, satinOptions.analysis);
-    if (!analysis || analysis->debug.graph.junction_count() == 0) {
-        return out;  // non branché : le chemin direct produit un résultat identique
-    }
-
-    const auto decomposition = satin_planning::decompose_into_paths(analysis->debug.graph);
-    satin_planning::BeamSearchParams beamParams;
-    beamParams.beam_width = 3;
-    beamParams.genParams = satinOptions;
-    satin_planning::OracleGuidedSelector selector(beamParams);
-    satin_planning::CutCandidateParams cutParams;
-    cutParams.selector = std::ref(selector);
-    const auto split = satin_planning::split_region(main, analysis->debug.graph, decomposition, cutParams);
-    if (split.regions.empty()) {
-        return out;  // rien d'isolé (ex. anneau) : repli intégral sur le chemin direct
-    }
-
-    out.structural_gap = !split.unresolved_paths.empty();
-    for (const auto& region : split.regions) {
-        const auto built = auto_satin::build_satin_columns(region.region, satinOptions);
-        for (const auto& w : built.warnings) {
-            warnings.push_back("Région " + std::to_string(id.value) + " (SGSD) : " + w);
+        for (const auto& c : built.columns) {
+            out.push_back(make_section(c, density, pullCompensation, centerUnderlay, maxWidth));
         }
-        auto regionSections = sections_from_result(built, defaults, satinOptions.analysis.thresholds.max_satin_width);
-        if (regionSections.empty()) {
-            out.structural_gap = true;
-            // Une sous-région isolée par SGSD peut, seule, ne plus être
-            // "RequiresDecomposition" (elle n'a plus la jonction voisine) et
-            // passer par le chemin "colonne unique" de `build_satin_columns` --
-            // qui ne pousse PAS le même message "colonne refusee" que la
-            // boucle par arête du chemin direct quand il échoue. Sans ce
-            // message explicite, `built.refusal` (toujours renseigné, lui, en
-            // cas de refus) resterait invisible pour l'appelant -- brise la
-            // garantie "jamais silencieux" (§ AutoResult::warnings). Le
-            // remplissage de repli (`structural_gap`) comble déjà la zone,
-            // mais l'utilisateur doit aussi savoir POURQUOI c'est du tatami.
-            warnings.push_back("Région " + std::to_string(id.value) +
-                               " (SGSD) : colonne refusee sur une sous-région isolée" +
-                               (built.refusal.empty() ? "" : (" : " + built.refusal)));
-        }
-        for (auto& s : regionSections) out.sections.push_back(std::move(s));
     }
     return out;
 }
 
 }  // namespace
+
+SatinBuildReport build_satin_sections(const geometry::PathSet& region,
+                                      const auto_satin::SatinColumnsParameters& genParams, Micrometers density,
+                                      Micrometers pullCompensation, bool centerUnderlay, Micrometers maxWidth,
+                                      const std::string& warningLabel) {
+    SatinBuildReport report;
+    const std::string directPrefix = warningLabel.empty() ? std::string() : (warningLabel + " : ");
+    const std::string sgsdPrefix = warningLabel.empty() ? std::string("SGSD : ") : (warningLabel + " (SGSD) : ");
+
+    const auto analysis = auto_satin::analyze_region(region, genParams.analysis);
+    if (analysis) {
+        report.whole_region_report = analysis->report;
+    }
+
+    // Sur une région dont le squelette est BRANCHÉ (au moins une jonction
+    // réelle), passe TOUJOURS par la décomposition guidée par squelette
+    // (SGSD, `libs/satin_planning`) -- gain de couverture réel et mesuré sur
+    // le corpus de test (+4,6 à +7,4 points selon la forme, cf.
+    // `openstitch-cli sgsd-debug`). Sur une région déjà simple, la
+    // décomposition ne produirait qu'un appel supplémentaire redondant avec
+    // le chemin direct ci-dessous, pour un résultat identique -- inutile de
+    // la tenter.
+    if (analysis && analysis->debug.graph.junction_count() > 0) {
+        const auto decomposition = satin_planning::decompose_into_paths(analysis->debug.graph);
+        satin_planning::BeamSearchParams beamParams;
+        beamParams.beam_width = 3;
+        beamParams.genParams = genParams;
+        satin_planning::OracleGuidedSelector selector(beamParams);
+        satin_planning::CutCandidateParams cutParams;
+        cutParams.selector = std::ref(selector);
+        const auto split = satin_planning::split_region(region, analysis->debug.graph, decomposition, cutParams);
+        if (!split.regions.empty()) {
+            bool gap = !split.unresolved_paths.empty();
+            std::vector<BuiltSatinSection> sections;
+            for (const auto& r : split.regions) {
+                const auto built = auto_satin::build_satin_columns(r.region, genParams);
+                for (const auto& w : built.warnings) {
+                    report.warnings.push_back(sgsdPrefix + w);
+                }
+                auto regionSections = sections_from_result(built, density, pullCompensation, centerUnderlay, maxWidth);
+                if (regionSections.empty()) {
+                    gap = true;
+                    // Une sous-région isolée par SGSD peut, seule, ne plus
+                    // être "RequiresDecomposition" (elle n'a plus la
+                    // jonction voisine) et passer par le chemin "colonne
+                    // unique" de `build_satin_columns` -- qui ne pousse PAS
+                    // le même message "colonne refusee" que la boucle par
+                    // arête du chemin direct quand il échoue. Sans ce
+                    // message explicite, `built.refusal` (toujours
+                    // renseigné, lui, en cas de refus) resterait invisible
+                    // pour l'appelant -- brise la garantie "jamais
+                    // silencieux". Le remplissage de repli (`structural_gap`)
+                    // comble déjà la zone côté appelant, mais l'utilisateur
+                    // doit aussi savoir POURQUOI c'est du tatami.
+                    report.warnings.push_back(sgsdPrefix + "colonne refusee sur une sous-région isolée" +
+                                              (built.refusal.empty() ? "" : (" : " + built.refusal)));
+                }
+                for (auto& s : regionSections) sections.push_back(std::move(s));
+            }
+            if (!sections.empty()) {
+                report.sections = std::move(sections);
+                report.used_sgsd = true;
+                report.structural_gap = gap;
+                return report;
+            }
+            // Rien construit malgré une décomposition non vide (chaque
+            // sous-région a refusé) : repli intégral sur l'appel direct
+            // ci-dessous plutôt que de renvoyer un résultat vide.
+        }
+        // `split.regions.empty()` (ex. anneau -- squelette en boucle fermée
+        // sans jonction détectable) : repli intégral sur l'appel direct.
+    }
+
+    const auto network = auto_satin::build_satin_columns(region, genParams);
+    for (const auto& w : network.warnings) {
+        report.warnings.push_back(directPrefix + w);
+    }
+    report.sections = sections_from_result(network, density, pullCompensation, centerUnderlay, maxWidth);
+    // Signal STRUCTUREL (une arête existait, aucune colonne n'en est
+    // sortie), jamais une correspondance de texte sur `network.warnings` (qui
+    // porte aussi des messages purement informatifs sans rapport avec une
+    // couverture manquante, ex. "couture fermée : routage cyclique de quatre
+    // sections" sur un anneau déjà parfaitement couvert). Un rail satin
+    // (surtout en mode Parametric, ajusté en Bézier épars) approxime
+    // toujours la forme source avec une légère tolérance même quand TOUT
+    // réussit -- calculer le reliquat géométrique dans CE cas produirait de
+    // faux positifs (plusieurs mm² de reliquat "naturel" aux
+    // pointes/jonctions), d'où l'intérêt du signal structurel plutôt qu'un
+    // simple calcul d'aire.
+    report.structural_gap = network.debug.graph.edges.size() > report.sections.size();
+    if (report.sections.empty()) {
+        report.refusal =
+            network.refusal.empty() ? std::string("aucune colonne satin n'a pu être construite") : network.refusal;
+    }
+    return report;
+}
 
 Result<AutoResult> auto_digitize(const segmentation::Segmentation& seg,
                                  IdGenerator<ObjectId>& ids, const AutoOptions& options) {
@@ -294,33 +315,18 @@ Result<AutoResult> auto_digitize(const segmentation::Segmentation& seg,
             satinOptions.geometry_mode = auto_satin::SatinGeometryMode::Parametric;
             const document::SatinParams defaults;
 
-            // Sur une région branchée, tente d'abord la décomposition guidée
-            // par squelette (SGSD) : gain de couverture réel mesuré sur le
-            // corpus de test (§ AutoOptions::use_sgsd_decomposition). Repli
-            // intégral sur l'appel direct si SGSD ne résout rien.
-            std::vector<BuiltSection> sections;
-            bool structuralGap = false;
-            bool usedSgsd = false;
-            if (options.use_sgsd_decomposition) {
-                SgsdResult sgsd = try_sgsd_decomposition(main, satinOptions, defaults, id, result.warnings);
-                if (!sgsd.sections.empty()) {
-                    sections = std::move(sgsd.sections);
-                    structuralGap = sgsd.structural_gap;
-                    usedSgsd = true;
-                }
+            // Point d'entrée UNIQUE partagé avec les créations satin
+            // manuelles (apps/desktop/main_window.cpp) : SGSD sur une région
+            // branchée, repli interne sur l'appel direct sinon -- mêmes
+            // garanties de couverture partout (§ build_satin_sections).
+            SatinBuildReport built = build_satin_sections(main, satinOptions, defaults.density,
+                                                          defaults.pull_compensation, defaults.center_underlay,
+                                                          options.satin_max_width, "Région " + std::to_string(id.value));
+            for (auto& w : built.warnings) {
+                result.warnings.push_back(std::move(w));
             }
-            if (!usedSgsd) {
-                const auto network = auto_satin::build_satin_columns(main, satinOptions);
-                for (const auto& w : network.warnings) {
-                    result.warnings.push_back("Région " + std::to_string(id.value) + " : " + w);
-                }
-                sections = sections_from_result(network, defaults, options.satin_max_width);
-                // Signal STRUCTUREL direct (une arête existait, aucune colonne
-                // n'en est sortie), jamais une correspondance de texte sur
-                // `network.warnings` -- cf. commentaire détaillé ci-dessous,
-                // même raisonnement, appliqué ici au chemin direct.
-                structuralGap = network.debug.graph.edges.size() > sections.size();
-            }
+            std::vector<BuiltSatinSection>& sections = built.sections;
+            const bool structuralGap = built.structural_gap;
 
             const std::size_t sectionCount = sections.size();
             if (sectionCount > 0) {

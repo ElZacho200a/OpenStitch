@@ -3042,10 +3042,10 @@ fermé et le traiter comme un cas spécial, à l'image de
 
 ## Intégration production : SGSD dans `autodigitize.cpp` (2026-08-14)
 
-*État : Présent, activé par défaut.* `libs/autodigitize/src/autodigitize.cpp`
-(`try_sgsd_decomposition`) + `AutoOptions::use_sgsd_decomposition`
-(`libs/autodigitize/include/openstitch/autodigitize/autodigitize.hpp`,
-`true` par défaut).
+*État : Présent, seul chemin disponible (§ section suivante — le bascule
+`AutoOptions::use_sgsd_decomposition` mentionné ci-dessous a depuis été
+supprimé).* `libs/autodigitize/src/autodigitize.cpp`
+(`try_sgsd_decomposition` à l'origine).
 
 Le CLI `sgsd-debug` (§ ci-dessus) a permis de MESURER le gain SGSD, mais rien
 ne l'utilisait encore pour de vrai : `autodigitize.cpp` appelait toujours
@@ -3113,16 +3113,118 @@ travail futur.
 
 ### Testé
 
-`tests/unit/autodigitize/test_autodigitize.cpp` : le test historique du
-« réseau en T » (validant la topologie de jonction partagée du chemin direct)
-est conservé tel quel avec `use_sgsd_decomposition = false` explicite ; un
-nouveau test couvre le comportement PAR DÉFAUT sur la même forme (2 sections
-indépendantes au lieu de 3, `topology` absent — état déjà documenté comme
-« colonne indépendante » dans `document::SatinParams`) ; le test de non-
-silence sur une lettre réelle trop large (`tests/unit/autodigitize`, fixture
-GISTRE) confirme le correctif ci-dessus. Suite complète (559 tests,
-Debug + Release) sans régression sur les 4 diagnostics permanents déjà
-connus.
+`tests/unit/autodigitize/test_autodigitize.cpp` : à l'introduction (avec
+bascule encore présente), le test historique du « réseau en T » (validant la
+topologie de jonction partagée du chemin direct) était conservé avec
+`use_sgsd_decomposition = false` explicite, à côté d'un nouveau test
+couvrant le comportement SGSD sur la même forme (2 sections indépendantes au
+lieu de 3, `topology` absent — état déjà documenté comme « colonne
+indépendante » dans `document::SatinParams`) ; le test de non-silence sur
+une lettre réelle trop large (`tests/unit/autodigitize`, fixture GISTRE)
+confirme le correctif ci-dessus. Depuis la suppression du bascule (§ section
+suivante), le test « réseau en T » côté direct pur a été retiré ici — cette
+garantie reste couverte indépendamment par
+`tests/unit/auto_satin/test_columns.cpp`, qui exerce `build_satin_columns`
+directement. Suite complète sans régression sur les 4 diagnostics permanents
+déjà connus.
+
+## SGSD exclusif : suppression du bascule + intégration UI desktop (2026-08-14)
+
+*État : Présent.* SGSD n'est désormais plus une option activable/désactivable
+côté application : `AutoOptions::use_sgsd_decomposition` (§ section
+précédente) a été **supprimé** de
+`libs/autodigitize/include/openstitch/autodigitize/autodigitize.hpp`. Sur une
+région dont le squelette est branché, la décomposition guidée par squelette
+est désormais le SEUL chemin emprunté par l'application — plus d'échappatoire
+côté `AutoOptions`. L'appel direct historique à `build_satin_columns` sur la
+région entière reste utilisé, mais uniquement en INTERNE comme filet de
+sécurité structurel (région non branchée dès le départ, ou anneau — squelette
+en boucle fermée sans jonction détectable) : jamais une zone laissée sans le
+moindre point.
+
+### Point d'entrée unique partagé
+
+Toute la logique auparavant privée à `autodigitize.cpp`
+(`try_sgsd_decomposition` + `sections_from_result`) a été extraite en une
+fonction publique, `autodigitize::build_satin_sections`, déclarée dans
+`autodigitize.hpp` aux côtés de `satin_params_from_column` :
+
+```cpp
+[[nodiscard]] SatinBuildReport build_satin_sections(
+    const geometry::PathSet& region,
+    const auto_satin::SatinColumnsParameters& genParams,
+    Micrometers density, Micrometers pullCompensation,
+    bool centerUnderlay, Micrometers maxWidth,
+    const std::string& warningLabel = {});
+```
+
+`SatinBuildReport` regroupe les sections construites (`BuiltSatinSection`,
+géométrie + `document::SatinParams`), un indicateur `used_sgsd`, un signal
+`structural_gap` (zone potentiellement non couverte, pour un éventuel repli
+tatami côté appelant), les avertissements accumulés, l'analyse de
+satinabilité de la région ENTIÈRE (`whole_region_report`, toujours calculée
+en amont, utile pour un aperçu même quand SGSD décompose ensuite en
+sous-régions) et un message de refus le plus pertinent si rien n'a pu être
+construit.
+
+Ce point d'entrée est désormais utilisé par LES DEUX consommateurs de satin
+automatique de l'application, garantissant les mêmes garanties de couverture
+partout plutôt que de dupliquer la logique de décomposition + repli :
+
+- `auto_digitize()` (`libs/autodigitize/src/autodigitize.cpp`), déjà branché
+  depuis la section précédente ;
+- trois des quatre points d'appel satin manuel de
+  `apps/desktop/main_window.cpp` (§ ci-dessous).
+
+### Migration de l'UI desktop
+
+`apps/desktop/main_window.cpp` appelait `auto_satin::build_satin_columns`
+directement à quatre endroits. Trois sont migrés vers
+`build_satin_sections` :
+
+- **`createSatinObject()`** (« Colonne satin ») : la géométrie des rails ne
+  dépend pas de la densité/compensation/sous-couche choisies dans le
+  dialogue (uniquement des réglages de remplissage des points, appliqués en
+  aval) — `build_satin_sections` est donc appelée UNE SEULE FOIS, avant le
+  dialogue, avec les valeurs par défaut de `document::SatinParams`, puis les
+  champs `density`/`pull_compensation`/`center_underlay` de chaque section
+  sont réécrits avec les valeurs choisies par l'utilisateur une fois le
+  dialogue validé — évite de relancer la recherche à faisceau (potentiellement
+  coûteuse) une seconde fois pour la même forme. Les avertissements SGSD sont
+  désormais remontés via `warnAboutSkippedAutoSatinBranches` (déjà utilisé
+  après la segmentation IA), auparavant silencieux sur ce chemin.
+- **Outil ligne de coupe** (`createSatinObjectWithCutLine`) : le dialogue
+  étant affiché AVANT la boucle sur les morceaux coupés, la densité est déjà
+  connue — chaque morceau appelle `build_satin_sections` directement avec les
+  valeurs finales. Un morceau ne produisant aucune section reste ignoré
+  (comportement inchangé), et les avertissements de tous les morceaux sont
+  accumulés puis remontés en une seule fois en fin d'opération.
+- **`autoConvertToSatin()`** (aperçu + confirmation avant conversion) :
+  l'aperçu de satinabilité (statut, largeurs, nombre de branches) utilise
+  désormais `whole_region_report` — l'analyse de la région ENTIÈRE, calculée
+  une seule fois en amont même quand SGSD décompose ensuite en plusieurs
+  sous-régions — plutôt que `SatinColumnsResult::report`, qui ne portait que
+  sur l'appel direct.
+
+**`setStitchType()` (cas 2, conversion de type d'un objet existant) reste
+INCHANGÉ**, intentionnellement : cette action exige EXACTEMENT une colonne
+unique (modèle « un objet, un type »), un cas explicitement hors du champ de
+la décomposition SGSD — commentaire déjà présent dans le code avant ce
+chantier. Elle continue d'appeler `build_satin_columns` directement.
+
+### Tests
+
+`tests/unit/autodigitize/test_autodigitize.cpp` : le test « réseau en T »
+scindé par bascule (§ section précédente) n'était plus exprimable une fois
+`use_sgsd_decomposition` supprimé — la variante « SGSD désactivé » a été
+retirée (garantie du moteur direct seul déjà couverte indépendamment par
+`tests/unit/auto_satin/test_columns.cpp`), la variante SGSD renommée pour ne
+plus référencer un bascule qui n'existe plus. Suite complète (Debug +
+Release) sans régression sur les 4 diagnostics permanents déjà connus.
+Aucun nouveau test desktop ajouté pour la migration UI : le comportement
+géométrique exercé (`build_satin_sections`) est déjà couvert côté
+`autodigitize`, et les trois fonctions migrées n'ont pas de suite Qt dédiée
+préexistante à étendre.
 
 ## Implémentation associée
 
@@ -3299,13 +3401,25 @@ connus.
   chemin unique sans jonction résolu malgré une forte courbure »,
   2026-08-13).
 - `libs/autodigitize/include/openstitch/autodigitize/autodigitize.hpp` —
-  `AutoOptions::use_sgsd_decomposition` (`true` par défaut, 2026-08-14,
-  § *Intégration production* ci-dessus).
-- `libs/autodigitize/src/autodigitize.cpp` — `try_sgsd_decomposition`,
-  `BuiltSection`, `sections_from_result` (branchement SGSD dans le pipeline
-  de numérisation automatique, repli intégral sur l'appel direct si SGSD ne
-  résout rien, 2026-08-14, § ci-dessus).
-- Tests : `tests/unit/autodigitize/test_autodigitize.cpp` (« réseau en T »
-  scindé en variante `use_sgsd_decomposition = false` + nouvelle variante
-  par défaut ; correctif de silence sur refus isolé vérifié par « branche
-  squelette localement trop large », 2026-08-14).
+  `AutoOptions::use_sgsd_decomposition` introduit puis retiré le même jour
+  (2026-08-14, § *Intégration production* puis *SGSD exclusif* ci-dessus) ;
+  remplacé par l'API publique partagée `BuiltSatinSection`,
+  `SatinBuildReport`, `build_satin_sections` (point d'entrée unique pour
+  `auto_digitize()` et les créations satin manuelles côté desktop).
+- `libs/autodigitize/src/autodigitize.cpp` — `try_sgsd_decomposition` +
+  `BuiltSection`/`sections_from_result` privés consolidés dans
+  l'implémentation publique de `build_satin_sections` (branchement SGSD dans
+  le pipeline de numérisation automatique, repli intégral sur l'appel direct
+  si SGSD ne résout rien, 2026-08-14, § ci-dessus).
+- `apps/desktop/main_window.cpp` — `createSatinObject()`,
+  `createSatinObjectWithCutLine()`, `autoConvertToSatin()` migrées vers
+  `autodigitize::build_satin_sections` ; `setStitchType()` (cas 2) laissée
+  inchangée (sémantique « un objet, un type » incompatible avec la
+  décomposition, 2026-08-14, § *SGSD exclusif* ci-dessus).
+- Tests : `tests/unit/autodigitize/test_autodigitize.cpp` — le test
+  « réseau en T » a d'abord été scindé en variante
+  `use_sgsd_decomposition = false` + nouvelle variante par défaut (correctif
+  de silence sur refus isolé vérifié par « branche squelette localement trop
+  large », 2026-08-14), puis la variante « désactivé » a été retirée à la
+  suppression du bascule (garantie équivalente déjà couverte par
+  `tests/unit/auto_satin/test_columns.cpp`).

@@ -3236,23 +3236,27 @@ void MainWindow::createSatinObject() {
         return;
     }
 
-    // Le moteur squelette (auto_satin::build_satin_columns) gère les formes
-    // concaves/branchues sans faire sortir les barreaux de la région (cf.
-    // docs/source/satin.md, § Rails automatiques : l'heuristique naïve
-    // rails_from_contour — deux sommets les plus éloignés — en fait déborder
-    // jusqu'à 57 % sur une forme réelle). Préféré ici, en mode Parametric
-    // (rails Bézier épars, jonctions plus propres — § Objets satin
-    // paramétriques) ; les anneaux et refus retombent automatiquement sur
-    // Legacy À L'INTÉRIEUR de build_satin_columns (`columns` peuplé au lieu
-    // de `parametric_columns`). L'heuristique naïve ne sert plus que de repli
-    // ultime, sur une forme trop simple/dégénérée pour que l'analyse de
-    // squelette produise quoi que ce soit (les deux champs vides).
+    // Décomposition guidée par squelette (SGSD, `libs/satin_planning`) via
+    // `autodigitize::build_satin_sections` — même point d'entrée que
+    // l'auto-numérisation, gère les formes concaves/branchues sans faire
+    // sortir les barreaux de la région (cf. docs/source/satin.md, § Rails
+    // automatiques : l'heuristique naïve rails_from_contour — deux sommets
+    // les plus éloignés — en fait déborder jusqu'à 57 % sur une forme
+    // réelle). Mode Parametric (rails Bézier épars, jonctions plus propres) ;
+    // repli interne automatique (région non branchée, ou anneau) géré par la
+    // fonction partagée. La densité/compensation/sous-couche du dialogue
+    // n'affecte pas la géométrie des rails — construite ici avec les valeurs
+    // par défaut, réappliquée après le dialogue plutôt que de relancer tout
+    // le calcul (potentiellement coûteux : recherche à faisceau). L'heuristique
+    // naïve ne sert plus que de repli ultime, sur une forme trop
+    // simple/dégénérée pour que rien ne soit construit.
     auto_satin::SatinColumnsParameters skeletonParams;
     skeletonParams.geometry_mode = auto_satin::SatinGeometryMode::Parametric;
-    const auto skeletonResult = auto_satin::build_satin_columns(source->paths.front(), skeletonParams);
-    const bool useParametric = !skeletonResult.parametric_columns.empty();
-    const std::size_t skeletonColumnCount =
-        useParametric ? skeletonResult.parametric_columns.size() : skeletonResult.columns.size();
+    const document::SatinParams initialDefaults;
+    autodigitize::SatinBuildReport built = autodigitize::build_satin_sections(
+        source->paths.front(), skeletonParams, initialDefaults.density, initialDefaults.pull_compensation,
+        initialDefaults.center_underlay, initialDefaults.max_width);
+    const std::size_t skeletonColumnCount = built.sections.size();
 
     std::optional<std::pair<geometry::Path, geometry::Path>> fallbackRails;
     if (skeletonColumnCount == 0) {
@@ -3307,13 +3311,15 @@ void MainWindow::createSatinObject() {
     double worstWidthUm = 0.0;
     if (skeletonColumnCount > 0) {
         int idx = 0;
-        const auto addColumn = [&](const auto& col) {
-            const auto sp = autodigitize::satin_params_from_column(col, density, compensation, underlay,
-                                                                    defaults.max_width);
+        for (auto& section : built.sections) {
+            section.params.density = density;
+            section.params.pull_compensation = compensation;
+            section.params.center_underlay = underlay;
             stitch_generation::SatinConfig probe;
             probe.density = density;
-            worstWidthUm = std::max(
-                worstWidthUm, stitch_generation::fill_satin(sp.rail_a, sp.rail_b, probe).max_width_um);
+            worstWidthUm = std::max(worstWidthUm, stitch_generation::fill_satin(section.params.rail_a,
+                                                                                section.params.rail_b, probe)
+                                                       .max_width_um);
 
             document::EmbroideryObject object;
             object.id = project_.object_ids.next();
@@ -3325,17 +3331,8 @@ void MainWindow::createSatinObject() {
                              .toStdString();
             object.source_vector = source->id;
             object.rgb = source->rgb;
-            object.params = sp;
+            object.params = std::move(section.params);
             objects.push_back(std::move(object));
-        };
-        if (useParametric) {
-            for (const auto& col : skeletonResult.parametric_columns) {
-                addColumn(col);
-            }
-        } else {
-            for (const auto& col : skeletonResult.columns) {
-                addColumn(col);
-            }
         }
     } else {
         document::SatinParams sp;
@@ -3393,6 +3390,7 @@ void MainWindow::createSatinObject() {
         statusBar()->showMessage(
             tr("%1 colonne(s) satin générée(s) : %2 points").arg(count).arg(stats.stitches));
     }
+    warnAboutSkippedAutoSatinBranches(built.warnings);
 }
 
 void MainWindow::onSatinCutLineDragging(QPointF anchorMm, QPointF currentMm) {
@@ -3498,34 +3496,34 @@ bool MainWindow::createSatinObjectWithCutLine(Vec2um cutA, Vec2um cutB) {
     const document::SatinParams defaults;  // pour le seuil max_width (§5.3)
 
     std::vector<document::EmbroideryObject> objects;
+    std::vector<std::string> allWarnings;
     double worstWidthUm = 0.0;
     int idx = 0;
-    // Chaque morceau issu de la coupe est traité indépendamment par le même
-    // moteur squelette que createSatinObject() : un morceau qui ne produit
-    // aucune colonne (trop petit/dégénéré) est simplement ignoré plutôt que
-    // d'annuler toute l'opération -- la coupe a pu très bien fonctionner
-    // pour la jonction visée même si un fragment marginal ne l'est pas.
+    // Chaque morceau issu de la coupe est traité indépendamment via le même
+    // point d'entrée partagé que createSatinObject() (SGSD, repli interne
+    // inclus) : un morceau qui ne produit aucune section (trop
+    // petit/dégénéré) est simplement ignoré plutôt que d'annuler toute
+    // l'opération -- la coupe a pu très bien fonctionner pour la jonction
+    // visée même si un fragment marginal ne l'est pas.
     for (const auto& piece : *cutResult) {
         if (piece.outer.nodes.empty()) {
             continue;
         }
         auto_satin::SatinColumnsParameters skeletonParams;
         skeletonParams.geometry_mode = auto_satin::SatinGeometryMode::Parametric;
-        const auto skeletonResult = auto_satin::build_satin_columns(piece, skeletonParams);
-        const bool useParametric = !skeletonResult.parametric_columns.empty();
-        const std::size_t columnCount =
-            useParametric ? skeletonResult.parametric_columns.size() : skeletonResult.columns.size();
-        if (columnCount == 0) {
+        autodigitize::SatinBuildReport pieceBuilt = autodigitize::build_satin_sections(
+            piece, skeletonParams, density, compensation, underlay, defaults.max_width);
+        for (auto& w : pieceBuilt.warnings) allWarnings.push_back(std::move(w));
+        if (pieceBuilt.sections.empty()) {
             continue;
         }
 
-        const auto addColumn = [&](const auto& col) {
-            const auto sp = autodigitize::satin_params_from_column(col, density, compensation, underlay,
-                                                                    defaults.max_width);
+        for (auto& section : pieceBuilt.sections) {
             stitch_generation::SatinConfig probe;
             probe.density = density;
-            worstWidthUm = std::max(
-                worstWidthUm, stitch_generation::fill_satin(sp.rail_a, sp.rail_b, probe).max_width_um);
+            worstWidthUm = std::max(worstWidthUm, stitch_generation::fill_satin(section.params.rail_a,
+                                                                                 section.params.rail_b, probe)
+                                                        .max_width_um);
 
             document::EmbroideryObject object;
             object.id = project_.object_ids.next();
@@ -3535,17 +3533,8 @@ bool MainWindow::createSatinObjectWithCutLine(Vec2um cutA, Vec2um cutB) {
                               .toStdString();
             object.source_vector = source->id;
             object.rgb = source->rgb;
-            object.params = sp;
+            object.params = std::move(section.params);
             objects.push_back(std::move(object));
-        };
-        if (useParametric) {
-            for (const auto& col : skeletonResult.parametric_columns) {
-                addColumn(col);
-            }
-        } else {
-            for (const auto& col : skeletonResult.columns) {
-                addColumn(col);
-            }
         }
     }
 
@@ -3584,6 +3573,7 @@ bool MainWindow::createSatinObjectWithCutLine(Vec2um cutA, Vec2um cutB) {
         statusBar()->showMessage(
             tr("Coupe : %1 colonne(s) satin générée(s) : %2 points").arg(count).arg(stats.stitches));
     }
+    warnAboutSkippedAutoSatinBranches(allWarnings);
     return true;
 }
 
@@ -3660,31 +3650,40 @@ void MainWindow::autoConvertToSatin() {
         return;
     }
 
-    // Mode Parametric (rails Bézier épars) préféré : jonctions plus propres,
-    // validé visuellement sur 6 formes (cf. docs/source/satin.md, § Objets
-    // satin paramétriques). Les anneaux et cas refusés retombent
-    // automatiquement sur Legacy À L'INTÉRIEUR de build_satin_columns
-    // (`columns` peuplé au lieu de `parametric_columns`) — on lit simplement
-    // celui des deux qui a été rempli.
+    // Décomposition guidée par squelette (SGSD) via
+    // `autodigitize::build_satin_sections` — même point d'entrée que
+    // createSatinObject()/l'auto-numérisation. Mode Parametric (rails Bézier
+    // épars) préféré : jonctions plus propres, validé visuellement sur 6
+    // formes (cf. docs/source/satin.md, § Objets satin paramétriques). Repli
+    // interne automatique (région non branchée, ou anneau) géré par la
+    // fonction partagée. L'aperçu de satinabilité utilise l'analyse de la
+    // région ENTIÈRE (`whole_region_report`, toujours calculée en amont même
+    // quand SGSD décompose ensuite en plusieurs sous-régions).
     auto_satin::SatinColumnsParameters skeletonParams;
     skeletonParams.geometry_mode = auto_satin::SatinGeometryMode::Parametric;
-    const auto result = auto_satin::build_satin_columns(source->paths.front(), skeletonParams);
-    const bool useParametric = !result.parametric_columns.empty();
-    const std::size_t columnCount =
-        useParametric ? result.parametric_columns.size() : result.columns.size();
+    const document::SatinParams defaults;
+    autodigitize::SatinBuildReport built = autodigitize::build_satin_sections(
+        source->paths.front(), skeletonParams, defaults.density, defaults.pull_compensation,
+        defaults.center_underlay, defaults.max_width);
+    const std::size_t columnCount = built.sections.size();
 
-    const auto& rep = result.report;
-    QString info = tr("Satinabilité : %1 (confiance %2)\n"
-                      "Largeur min / moy / max : %3 / %4 / %5 mm\n"
-                      "Branches : %6   ·   Colonnes proposées : %7")
-                       .arg(QString::fromUtf8(auto_satin::to_string(rep.status)))
-                       .arg(rep.confidence, 0, 'f', 2)
-                       .arg(rep.minimum_width_mm, 0, 'f', 2)
-                       .arg(rep.mean_width_mm, 0, 'f', 2)
-                       .arg(rep.maximum_width_mm, 0, 'f', 2)
-                       .arg(rep.branch_count)
-                       .arg(columnCount);
-    for (const auto& w : result.warnings) {
+    QString info;
+    if (built.whole_region_report) {
+        const auto& rep = *built.whole_region_report;
+        info = tr("Satinabilité : %1 (confiance %2)\n"
+                  "Largeur min / moy / max : %3 / %4 / %5 mm\n"
+                  "Branches : %6   ·   Colonnes proposées : %7")
+                   .arg(QString::fromUtf8(auto_satin::to_string(rep.status)))
+                   .arg(rep.confidence, 0, 'f', 2)
+                   .arg(rep.minimum_width_mm, 0, 'f', 2)
+                   .arg(rep.mean_width_mm, 0, 'f', 2)
+                   .arg(rep.maximum_width_mm, 0, 'f', 2)
+                   .arg(rep.branch_count)
+                   .arg(columnCount);
+    } else {
+        info = tr("Colonnes proposées : %1").arg(columnCount);
+    }
+    for (const auto& w : built.warnings) {
         info += tr("\nAttention : %1").arg(QString::fromStdString(w));
     }
 
@@ -3692,7 +3691,7 @@ void MainWindow::autoConvertToSatin() {
         QMessageBox::information(
             this, tr("Conversion en satin"),
             tr("Conversion impossible : %1\n\n%2")
-                .arg(QString::fromStdString(result.refusal), info));
+                .arg(QString::fromStdString(built.refusal), info));
         return;
     }
     const auto answer = QMessageBox::question(
@@ -3702,13 +3701,9 @@ void MainWindow::autoConvertToSatin() {
         return;
     }
 
-    const document::SatinParams defaults;
     std::vector<document::EmbroideryObject> objects;
     int idx = 0;
-    const auto addColumn = [&](const auto& col) {
-        const auto sp = autodigitize::satin_params_from_column(
-            col, defaults.density, defaults.pull_compensation, defaults.center_underlay,
-            defaults.max_width);
+    for (auto& section : built.sections) {
         document::EmbroideryObject emb;
         emb.id = project_.object_ids.next();
         emb.name = tr("Satin auto de %1 (%2)")
@@ -3717,17 +3712,8 @@ void MainWindow::autoConvertToSatin() {
                        .toStdString();
         emb.source_vector = source->id;
         emb.rgb = source->rgb;
-        emb.params = sp;
+        emb.params = std::move(section.params);
         objects.push_back(std::move(emb));
-    };
-    if (useParametric) {
-        for (const auto& col : result.parametric_columns) {
-            addColumn(col);
-        }
-    } else {
-        for (const auto& col : result.columns) {
-            addColumn(col);
-        }
     }
     undoStack_.execute(std::make_unique<commands::AddObjectBatchCommand>(
                            std::vector<document::VectorObject>{}, std::move(objects)),
