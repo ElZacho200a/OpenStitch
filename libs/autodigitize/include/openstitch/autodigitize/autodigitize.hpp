@@ -30,6 +30,19 @@ struct AutoOptions {
     // Moteur topologique : squelette, decomposition en sections ouvertes,
     // barreaux et routage par source commune. Active par defaut.
     bool use_auto_satin{true};
+    // Sur une région dont le squelette est BRANCHÉ (au moins une jonction
+    // réelle), tente d'abord une décomposition guidée par squelette (SGSD :
+    // `libs/satin_planning`, découpage en sous-régions simples + recherche à
+    // faisceau + fusion) avant l'appel direct à `build_satin_columns` sur la
+    // région entière. Gain de couverture réel et mesuré sur le corpus de
+    // test (+4,6 à +7,4 points selon la forme, cf. `openstitch-cli
+    // sgsd-debug` et docs/source/satin.md). Repli INTÉGRAL et silencieux sur
+    // le comportement historique dès que SGSD ne résout rien (région non
+    // branchée, ou cas topologique non couvert comme un anneau — squelette
+    // en boucle fermée sans jonction détectable) : jamais de régression sur
+    // les cas déjà couverts par l'appel direct. Activé par défaut ;
+    // échappatoire pour revenir au comportement précédent si besoin.
+    bool use_sgsd_decomposition{true};
     // Satin automatique NAÏF (rails_from_contour) : désactivé par défaut. Ses
     // deux rails « bouts les plus éloignés » débordent sur les formes concaves
     // ou branchues (les rungs enjambent les creux). Tant que le vrai moteur

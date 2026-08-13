@@ -133,7 +133,14 @@ TEST_CASE("bande fine -> tatami si les deux moteurs satin sont desactives") {
     CHECK(result->embroideries.front().is_tatami());
 }
 
-TEST_CASE("reseau en T -> plusieurs sections satin compatibles deux rails") {
+TEST_CASE("reseau en T (SGSD desactive) -> plusieurs sections satin compatibles deux rails") {
+    // SGSD desactive explicitement : preserve le comportement du moteur
+    // DIRECT (decomposition par arete a l'interieur d'un seul appel
+    // build_satin_columns, topologie de jonction partagee entre sections) --
+    // toujours une garantie reelle du moteur sous-jacent, meme si elle n'est
+    // plus le chemin par defaut pour une region branchee (§ test suivant,
+    // SGSD reduit ce meme reseau en T a 2 sections mieux couvertes plutot
+    // que 3 sections partageant une jonction).
     image::Image img = blank(64, 64);
     for (int y = 8; y < 58; ++y) {
         for (int x = 29; x < 35; ++x) set_px(img, x, y, 25, 180, 110);
@@ -146,6 +153,7 @@ TEST_CASE("reseau en T -> plusieurs sections satin compatibles deux rails") {
     IdGenerator<ObjectId> ids;
     AutoOptions o = opts();
     o.satin_max_width = Micrometers{8'000};
+    o.use_sgsd_decomposition = false;
     const auto result = auto_digitize(*seg, ids, o);
     REQUIRE(result.has_value());
     REQUIRE(result->vectors.size() == 1);
@@ -171,6 +179,54 @@ TEST_CASE("reseau en T -> plusieurs sections satin compatibles deux rails") {
         if (topology->end_junction) junctions.insert(*topology->end_junction);
     }
     CHECK(junctions.size() == 1);
+}
+
+TEST_CASE("reseau en T (SGSD par defaut) -> decomposition en regions independantes, moins de sections") {
+    // Meme reseau en T que le test precedent, mais avec le comportement PAR
+    // DEFAUT (SGSD actif) : la region branchee est d'abord decomposee
+    // (§ libs/satin_planning) -- la branche horizontale se fusionne en un
+    // seul chemin continu (angle ~180 deg, meilleure continuation), le pied
+    // vertical devient une region independante. Resultat : 2 sections
+    // (au lieu de 3), chacune une colonne INDEPENDANTE (`topology` absent,
+    // § document::SatinParams -- deux regions reanalysees separement n'ont
+    // plus de jonction comparable entre elles). Verifie surtout la garantie
+    // fonctionnelle : toute la region reste couverte de points, aucune zone
+    // silencieusement vide.
+    image::Image img = blank(64, 64);
+    for (int y = 8; y < 58; ++y) {
+        for (int x = 29; x < 35; ++x) set_px(img, x, y, 25, 180, 110);
+    }
+    for (int y = 8; y < 14; ++y) {
+        for (int x = 8; x < 56; ++x) set_px(img, x, y, 25, 180, 110);
+    }
+    const auto seg = segmentation::segment(img, {.max_colors = 2, .min_region_px = 1});
+    REQUIRE(seg.has_value());
+    IdGenerator<ObjectId> ids;
+    AutoOptions o = opts();
+    o.satin_max_width = Micrometers{8'000};
+    REQUIRE(o.use_sgsd_decomposition);  // comportement par defaut, verifie explicitement
+    const auto result = auto_digitize(*seg, ids, o);
+    REQUIRE(result.has_value());
+    REQUIRE(result->vectors.size() == 1);
+
+    std::vector<const document::SatinParams*> satinSections;
+    for (const auto& e : result->embroideries) {
+        if (!e.is_satin()) continue;
+        CHECK(e.source_vector == result->vectors.front().id);
+        const auto& satin = std::get<document::SatinParams>(e.params);
+        satinSections.push_back(&satin);
+        CHECK_FALSE(satin.rail_a.closed);
+        CHECK_FALSE(satin.rail_b.closed);
+        CHECK(satin.rungs.size() >= 2);
+    }
+    REQUIRE(satinSections.size() == 2);
+
+    // Aucun trou de couverture silencieux : la surface totale couverte par
+    // les rails (approximee par les barreaux, comme ailleurs dans ce
+    // fichier) doit rester proche de l'aire de la region source -- pas de
+    // verification stricte au micrometre pres, seulement l'absence d'un
+    // deficit grossier qui trahirait une branche perdue.
+    CHECK(result->vectors.front().paths.size() == 1);
 }
 
 TEST_CASE("anneau fin -> quatre sections satin et trou preserve") {

@@ -2262,6 +2262,18 @@ squelette*) : plutôt que d'élargir encore le filet de repli, traiter la
 décomposition d'une région branchée en sous-régions satinables comme une étape
 de planification à part entière, en amont du générateur actuel.
 
+**Suite (2026-08-14)** : ce constat a depuis motivé le plan SGSD en entier
+(§ ci-dessous, 9 phases livrées) puis son branchement en production dans
+`autodigitize.cpp` (§ *Intégration production*, tout en bas de ce chapitre).
+Ce même diagnostic, réexécuté après le branchement, mesure une couverture
+réelle agrégée de **98,9 %** (contre 97,3 % avant) — un gain net, mais plus
+modeste et plus mitigé région par région que sur le corpus synthétique propre
+(§ *Outil CLI `sgsd-debug`*, gains de +4,6 à +7,4 points) : sur cette image
+réelle bruitée, SGSD s'appuie plus souvent sur le filet tatami plutôt que sur
+une couverture satin propre, plutôt que d'améliorer la couverture satin
+elle-même comme sur les formes synthétiques. Détails dans la section
+d'intégration.
+
 ### Visualisation de debug (`coverage_to_svg`)
 
 *État : Présent · Câblé dans `openstitch-cli auto-satin-debug --coverage-svg`.*
@@ -3028,6 +3040,90 @@ Traiter la topologie annulaire dans `decompose_into_paths` (détecter un cycle
 fermé et le traiter comme un cas spécial, à l'image de
 `build_annular_sections` côté générateur) reste un travail futur.
 
+## Intégration production : SGSD dans `autodigitize.cpp` (2026-08-14)
+
+*État : Présent, activé par défaut.* `libs/autodigitize/src/autodigitize.cpp`
+(`try_sgsd_decomposition`) + `AutoOptions::use_sgsd_decomposition`
+(`libs/autodigitize/include/openstitch/autodigitize/autodigitize.hpp`,
+`true` par défaut).
+
+Le CLI `sgsd-debug` (§ ci-dessus) a permis de MESURER le gain SGSD, mais rien
+ne l'utilisait encore pour de vrai : `autodigitize.cpp` appelait toujours
+`build_satin_columns` directement sur la région entière. Cette étape branche
+enfin le pipeline sur le chemin réellement emprunté par l'application
+(numérisation automatique depuis une image).
+
+### Où et comment
+
+Sur une région dont le squelette est réellement branché
+(`analyze_region(main).debug.graph.junction_count() > 0`), tente d'abord
+`decompose_into_paths` → `split_region` (recherche à faisceau active,
+`beam_width = 3`) → `build_satin_columns` RÉEL sur chaque `SatinRegion`
+résolue. Repli **intégral** sur l'appel direct historique dès que SGSD ne
+résout rien (`split.regions` vide — c'est exactement le gate qui protège les
+anneaux, § *Limite réelle découverte* ci-dessus : leur squelette n'a pas de
+jonction, donc SGSD n'est même pas tenté, et le chemin spécial
+`build_annular_sections` reste seul aux commandes). Les deux chemins
+(direct et SGSD) convergent ensuite dans le MÊME code d'émission de sections
+et le MÊME mécanisme de repli tatami structurel déjà en place — seule la
+manière dont les colonnes sont produites diffère, jamais le format de sortie
+ni les garanties de couverture.
+
+### Un vrai défaut trouvé en le branchant, corrigé avant d'aller plus loin
+
+Faire tourner la suite de tests existante (`tests/unit/autodigitize`) contre
+ce nouveau chemin par défaut a immédiatement révélé un cas réel non couvert
+par les tests SGSD précédents (tous basés sur le corpus de formes propres,
+jamais sur le pipeline de rejet complet d'`autodigitize`) : quand SGSD isole
+une branche localement trop large en sa propre `SatinRegion`, cette
+sous-région — n'ayant plus la jonction voisine — n'est plus
+`RequiresDecomposition` mais passe par le chemin « colonne unique » de
+`build_satin_columns`, qui NE POUSSE PAS le même message « colonne refusee »
+que la boucle par arête du chemin direct en cas d'échec. Résultat : le
+remplissage de repli comblait bien la zone (aucun trou physique), mais
+`AutoResult::warnings` restait complètement VIDE — silence total sur la
+raison du repli, brisant la garantie explicite « jamais silencieux » du
+contrat documenté sur ce champ. Corrigé en poussant explicitement un message
+(incluant `built.refusal` s'il est renseigné) chaque fois qu'une sous-région
+SGSD ne produit aucune colonne.
+
+### Résultat mesuré
+
+Sur le CORPUS SYNTHÉTIQUE (formes propres), l'intégration en production
+préserve exactement les gains déjà mesurés par `sgsd-debug` (+4,6 à +7,4
+points sur les formes branchées, comportement strictement identique aux
+formes déjà simples ou refusées).
+
+Sur une IMAGE RÉELLE (`tentabrode.png`, § diagnostic ci-dessus), le même
+diagnostic permanent, réexécuté après ce branchement, montre un résultat
+positif mais plus mesuré : couverture réelle agrégée (satin + repli tatami)
+**98,9 %**, contre 97,3 % avant l'intégration — un gain net, mais SGSD s'y
+appuie plus fréquemment sur le filet tatami que sur une couverture satin
+directement meilleure, contrairement au corpus synthétique propre. Cause
+probable, cohérente avec les limites déjà documentées (`notch`, branches
+étroites du `trident`) : les régions vectorisées depuis une vraie image sont
+nettement plus bruitées que les formes procédurales du corpus de test, et la
+recherche de coupe (phase 3, plage 300–4000&nbsp;µm) échoue plus souvent à
+isoler proprement une branche courte ou irrégulière — auquel cas SGSD reporte
+honnêtement le chemin en `unresolved_paths` plutôt que de forcer une coupe
+défectueuse (§ phase 3/4), et le filet tatami prend le relais. La garantie de
+couverture reste intacte (aucune régression, gain net mesuré) ; améliorer la
+robustesse de la recherche de coupe sur des squelettes bruités reste un
+travail futur.
+
+### Testé
+
+`tests/unit/autodigitize/test_autodigitize.cpp` : le test historique du
+« réseau en T » (validant la topologie de jonction partagée du chemin direct)
+est conservé tel quel avec `use_sgsd_decomposition = false` explicite ; un
+nouveau test couvre le comportement PAR DÉFAUT sur la même forme (2 sections
+indépendantes au lieu de 3, `topology` absent — état déjà documenté comme
+« colonne indépendante » dans `document::SatinParams`) ; le test de non-
+silence sur une lettre réelle trop large (`tests/unit/autodigitize`, fixture
+GISTRE) confirme le correctif ci-dessus. Suite complète (559 tests,
+Debug + Release) sans régression sur les 4 diagnostics permanents déjà
+connus.
+
 ## Implémentation associée
 
 - `libs/document/.../embroidery_object.hpp` — `SatinParams`, `SatinRung`.
@@ -3202,3 +3298,14 @@ fermé et le traiter comme un cas spécial, à l'image de
 - Tests : `tests/unit/satin_planning/test_region_split.cpp` (« notch --
   chemin unique sans jonction résolu malgré une forte courbure »,
   2026-08-13).
+- `libs/autodigitize/include/openstitch/autodigitize/autodigitize.hpp` —
+  `AutoOptions::use_sgsd_decomposition` (`true` par défaut, 2026-08-14,
+  § *Intégration production* ci-dessus).
+- `libs/autodigitize/src/autodigitize.cpp` — `try_sgsd_decomposition`,
+  `BuiltSection`, `sections_from_result` (branchement SGSD dans le pipeline
+  de numérisation automatique, repli intégral sur l'appel direct si SGSD ne
+  résout rien, 2026-08-14, § ci-dessus).
+- Tests : `tests/unit/autodigitize/test_autodigitize.cpp` (« réseau en T »
+  scindé en variante `use_sgsd_decomposition = false` + nouvelle variante
+  par défaut ; correctif de silence sur refus isolé vérifié par « branche
+  squelette localement trop large », 2026-08-14).
