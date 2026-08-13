@@ -3,6 +3,7 @@
 #include <fmt/core.h>
 
 #include <filesystem>
+#include <functional>
 #include <string>
 
 #include <cmath>
@@ -22,6 +23,13 @@
 #include "openstitch/document/project.hpp"
 #include "openstitch/geometry/path.hpp"
 #include "openstitch/satin_coverage/coverage.hpp"
+#include "openstitch/satin_planning/beam_search.hpp"
+#include "openstitch/satin_planning/merge_pass.hpp"
+#include "openstitch/satin_planning/overlap.hpp"
+#include "openstitch/satin_planning/region_oracle.hpp"
+#include "openstitch/satin_planning/region_routing.hpp"
+#include "openstitch/satin_planning/region_satinability.hpp"
+#include "openstitch/satin_planning/region_split.hpp"
 #include "openstitch/stitch/sequence.hpp"
 #include "openstitch/stitch_generation/generate.hpp"
 #include "openstitch/stitch_generation/lock.hpp"
@@ -559,6 +567,98 @@ int run_auto_satin_debug(const std::string& shape, double pixelMm, const std::st
     return 0;
 }
 
+// Fait tourner le pipeline SGSD complet (Skeleton-Guided Satin Decomposition,
+// phases 1 à 9, § docs/source/satin.md) sur une forme de référence et
+// affiche le rapport de chaque phase, plus une comparaison de couverture
+// agrégée contre l'appel direct à `build_satin_columns` sur la forme
+// entière (l'approche historique, non décomposée). N'écrit aucune
+// géométrie satin définitive : outil de diagnostic, comme
+// `auto-satin-debug`.
+int run_sgsd_debug(const std::string& shape, double pixelMm, int beamWidth) {
+    using namespace openstitch;
+    const auto region = auto_satin::make_shape(shape);
+    if (!region) {
+        fmt::print(stderr, "Forme inconnue : {}\n", shape);
+        return 1;
+    }
+
+    auto_satin::AutoSatinParameters analysisParams;
+    analysisParams.raster.pixel_size = to_micrometers(Millimeters{pixelMm});
+    const auto analysis = auto_satin::analyze_region(*region, analysisParams);
+    if (!analysis) {
+        fmt::print(stderr, "Erreur d'analyse : {}\n", analysis.error().message);
+        return 1;
+    }
+
+    fmt::print("========== Phases 1-2 : graphe de squelette + décomposition ==========\n");
+    const auto decomposition = satin_planning::decompose_into_paths(analysis->debug.graph);
+    fmt::print("{}\n", satin_planning::format_decomposition_report(analysis->debug.graph, decomposition));
+
+    fmt::print("========== Phase 3/4/6 : découpage (candidats + garde-fou de satinabilité + recherche à faisceau) ==========\n");
+    satin_planning::CutCandidateParams cutParams;
+    satin_planning::BeamSearchParams beamParams;
+    beamParams.beam_width = static_cast<std::size_t>(beamWidth > 0 ? beamWidth : 0);
+    beamParams.genParams.analysis.raster.pixel_size = analysisParams.raster.pixel_size;
+    beamParams.genParams.geometry_mode = auto_satin::SatinGeometryMode::Parametric;
+    satin_planning::OracleGuidedSelector selector(beamParams);
+    if (beamWidth > 0) {
+        cutParams.selector = std::ref(selector);
+        fmt::print("(recherche à faisceau active, largeur={})\n\n", beamWidth);
+    } else {
+        fmt::print("(recherche à faisceau désactivée : premier candidat valide retenu)\n\n");
+    }
+    const auto split = satin_planning::split_region(*region, analysis->debug.graph, decomposition, cutParams);
+    fmt::print("{}\n", satin_planning::format_region_split_report(split, decomposition));
+
+    auto_satin::SatinColumnsParameters genParams;
+    genParams.analysis.raster.pixel_size = analysisParams.raster.pixel_size;
+    genParams.geometry_mode = auto_satin::SatinGeometryMode::Parametric;
+
+    fmt::print("========== Phase 5 : Auto-Satin réel + Coverage Analyzer par région ==========\n");
+    const auto genReport = satin_planning::evaluate_decomposition_generation(split, genParams);
+    fmt::print("{}\n", satin_planning::format_generation_report(genReport));
+
+    fmt::print("========== Phase 7 : passe de fusion ==========\n");
+    satin_planning::MergePassParams mergeParams;
+    mergeParams.genParams = genParams;
+    const auto mergeReport = satin_planning::evaluate_merge_pass(split, mergeParams);
+    fmt::print("{}\n", satin_planning::format_merge_pass_report(mergeReport));
+
+    fmt::print("========== Phase 8 : recouvrements entre régions adjacentes ==========\n");
+    const auto overlapReport = satin_planning::generate_overlaps(split);
+    fmt::print("{}\n", satin_planning::format_overlap_report(overlapReport));
+
+    fmt::print("========== Phase 9 : routage multi-régions ==========\n");
+    satin_planning::RegionRoutingParams routingParams;
+    routingParams.genParams = genParams;
+    const auto routingReport = satin_planning::route_regions(split, routingParams);
+    fmt::print("{}\n", satin_planning::format_region_routing_report(routingReport));
+
+    fmt::print("========== Comparaison : SGSD vs approche directe (build_satin_columns sur la forme entière) ==========\n");
+    const auto direct = auto_satin::build_satin_columns(*region, genParams);
+    std::vector<satin_coverage::SatinColumnInput> directColumns;
+    if (!direct.parametric_columns.empty()) {
+        for (const auto& obj : direct.parametric_columns) {
+            directColumns.push_back(to_coverage_input(obj.rail_a, obj.rail_b, obj.rungs));
+        }
+    } else {
+        for (const auto& col : direct.columns) {
+            directColumns.push_back(to_coverage_input(col.rail_a, col.rail_b, col.rungs));
+        }
+    }
+    double directCoverage = 0.0;
+    if (!directColumns.empty()) {
+        const auto directReport = satin_coverage::analyze_satin_coverage(*region, directColumns);
+        if (directReport) directCoverage = directReport->raw_coverage_ratio * 100.0;
+    }
+    fmt::print("SGSD (agrégé, {} région(s) résolue(s) sur {})   : {:.1f}%\n", split.regions.size(),
+              decomposition.paths.size(), genReport.aggregate_coverage_ratio);
+    fmt::print("Direct (build_satin_columns, non décomposé)     : {:.1f}%{}\n", directCoverage,
+              direct.refusal.empty() ? "" : fmt::format(" (refus : {})", direct.refusal));
+
+    return 0;
+}
+
 }  // namespace
 
 int main(int argc, char** argv) {
@@ -640,6 +740,22 @@ int main(int argc, char** argv) {
                        "SVG de couverture geometrique a produire (satin_coverage : cible grise, "
                        "couverture verte, zones manquantes rouges, hors-forme orange)");
 
+    std::string sg_shape = "trident";
+    double sg_pixel = 0.05;
+    int sg_beam = 3;
+    auto* sg_cmd = app.add_subcommand(
+        "sgsd-debug",
+        "Pipeline complet de decomposition guidee par squelette (SGSD, phases 1-9) sur une forme "
+        "de reference");
+    sg_cmd->add_option("--shape", sg_shape,
+                       "rectangle|capsule|ribbon|s|y|t|cross|h|circle|ring|wide|tiny|notch|pinch|"
+                       "trident");
+    sg_cmd->add_option("--pixel-size", sg_pixel, "Taille de pixel de calcul en mm")
+        ->check(CLI::PositiveNumber);
+    sg_cmd->add_option("--beam-width", sg_beam,
+                       "Largeur de la recherche a faisceau (phase 6) ; 0 = premier candidat valide "
+                       "retenu (comportement par defaut de la phase 3)");
+
     CLI11_PARSE(app, argc, argv);
 
     if (info_cmd->parsed()) {
@@ -657,6 +773,9 @@ int main(int argc, char** argv) {
     if (as_cmd->parsed()) {
         return run_auto_satin_debug(as_shape, as_pixel, as_out, as_cap, as_short, as_split,
                                     as_underlay, as_lock, as_route, as_geometry, as_coverage_svg);
+    }
+    if (sg_cmd->parsed()) {
+        return run_sgsd_debug(sg_shape, sg_pixel, sg_beam);
     }
     return 0;
 }

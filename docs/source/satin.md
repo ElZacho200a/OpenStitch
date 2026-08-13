@@ -2943,6 +2943,91 @@ avant découpage.
 - Rendu `format_region_routing_report` non vide et contenant les marqueurs
   attendus.
 
+## Outil CLI `sgsd-debug` : brancher le pipeline complet, mesurer l'effet réel (2026-08-13)
+
+*État : Présent.* `openstitch-cli sgsd-debug --shape <forme> [--pixel-size mm]
+[--beam-width n]` (`apps/cli/main.cpp`, `run_sgsd_debug`).
+
+Les 9 phases du plan SGSD n'étaient jusqu'ici exercées que par des tests
+unitaires — aucun point d'entrée ne permettait de faire tourner le pipeline
+complet sur une forme et de voir, concrètement, si la décomposition change
+quoi que ce soit pour un utilisateur. `sgsd-debug` fait exactement ça,
+suivant le même modèle que `auto-satin-debug` (outil de diagnostic, aucune
+géométrie satin définitive écrite) : `analyze_region` → `decompose_into_paths`
+→ `split_region` (avec un `OracleGuidedSelector`, phase 6, actif par défaut à
+`--beam-width 3`) → `evaluate_decomposition_generation` (phase 5) →
+`evaluate_merge_pass` (phase 7) → `generate_overlaps` (phase 8) →
+`route_regions` (phase 9), en imprimant le rapport texte de CHAQUE phase (les
+mêmes `format_*` déjà testés unitairement, rien de nouveau à faire confiance
+ici) puis une comparaison chiffrée&nbsp;: couverture agrégée du pipeline SGSD
+contre un appel direct à `build_satin_columns` sur la forme entière, non
+décomposée (l'approche historique).
+
+### Résultat balayé sur tout le corpus de formes
+
+| Forme | SGSD | Direct | Écart |
+|---|---|---|---|
+| `rectangle`, `capsule`, `ribbon`, `s`, `notch` | = Direct | — | 0 (aucune décomposition nécessaire, comportement identique) |
+| `y` | 97,9 % | 92,6 % | **+5,3** |
+| `t` | 97,7 % | 90,3 % | **+7,4** |
+| `cross` | 97,8 % | 90,6 % | **+7,2** |
+| `h` | 94,9 % | 89,5 % | **+5,4** |
+| `trident` | 95,1 % | 90,5 % | **+4,6** |
+| `wide`, `tiny`, `pinch`, `circle` | refus (identique) | refus | 0 (SGSD hérite fidèlement du refus de `build_satin_columns` par région, aucun faux négatif introduit) |
+| `ring` | **0 %** (0 région) | **100 %** | **régression connue, voir ci-dessous** |
+
+Sur toutes les formes BRANCHÉES du corpus historique, la décomposition
+apporte un gain de couverture réel et mesurable (+4,6 à +7,4 points) par
+rapport à l'appel direct non décomposé — la validation concrète, chiffrée,
+que le chantier SGSD visait depuis le début. Sur les formes déjà simples ou
+déjà refusées, SGSD se comporte de façon strictement identique à l'existant
+: aucune régression silencieuse introduite par la décomposition elle-même.
+
+### Défaut réel trouvé et corrigé : `probe_point` sur un chemin sans nœud interne (`notch`)
+
+En balayant le corpus avec cet outil, `notch` (bande à encoche concave
+profonde, § *Diagnostic sur formes concaves* — SANS AUCUNE jonction, un seul
+arc de squelette) ressortait à **0 région résolue sur 1** — un chemin
+pourtant trivialement résolu (aucune coupe nécessaire) rapporté comme
+« jamais isolé ». Cause : `probe_point` (utilisée par `split_region` pour
+retrouver, en fin de découpage, quel morceau du pool appartient à quel
+`SatinPath`) retombait, faute de nœud interne (un seul arc, donc deux nœuds
+seulement), sur le MILIEU DROIT entre les deux extrémités du chemin — une
+corde qui sort de la forme dès que le tracé courbe suffisamment autour d'une
+concavité profonde, faisant échouer l'assignation d'un chemin par ailleurs
+parfaitement valide.
+
+Corrigé en préférant, dans tous les cas, un point pris DIRECTEMENT sur la
+centerline de l'arc médian du chemin — toujours intérieur à la forme par
+construction (c'est l'axe médian lui-même), quelle que soit la courbure ; le
+repli « milieu des extrémités » ne reste qu'un dernier recours théorique.
+Vérifié après correctif : `notch` ressort à 76,6 % de couverture, identique à
+l'appel direct (aucune décomposition n'était de toute façon nécessaire).
+Non-régression dédiée (`tests/unit/satin_planning/test_region_split.cpp`,
+« notch -- chemin unique sans jonction résolu malgré une forte courbure ») ;
+la propriété générale du corpus a aussi été renforcée pour exiger
+`unresolved_paths` vide sur toute forme sans jonction (`s`, `ribbon`, `wide`
+ajoutés au balayage général en plus de `notch`).
+
+### Limite réelle découverte, non corrigée : les anneaux (`ring`)
+
+Le balayage a aussi révélé un vrai trou de couverture fonctionnelle du
+pipeline SGSD, distinct du défaut ci-dessus (pas un bug de bookkeeping, une
+lacune de conception) : **`ring` (anneau) n'est pas décomposé du tout**
+(`decompose_into_paths` renvoie zéro chemin) alors que l'appel direct le
+gère parfaitement via un chemin spécial dédié
+(`build_annular_sections`, § *Colonnes automatiques par squelette*). La
+raison structurelle : le squelette d'un anneau est une boucle fermée sans
+aucune vraie extrémité (`Endpoint`) ni jonction détectable par les règles
+actuelles de classification de `SkeletonGraph` — exactement le même
+mécanisme dégénéré déjà identifié pour `circle` lors de l'inspection initiale
+du code existant (§ *Première mission*), mais jamais quantifié jusqu'ici.
+**Documenté comme limite connue plutôt que masqué** : `sgsd-debug --shape
+ring` rapporte honnêtement 0 région et 0 % plutôt qu'un chiffre trompeur.
+Traiter la topologie annulaire dans `decompose_into_paths` (détecter un cycle
+fermé et le traiter comme un cas spécial, à l'image de
+`build_annular_sections` côté générateur) reste un travail futur.
+
 ## Implémentation associée
 
 - `libs/document/.../embroidery_object.hpp` — `SatinParams`, `SatinRung`.
@@ -3107,3 +3192,13 @@ avant découpage.
   `tests/unit/satin_planning/test_merge_pass.cpp`,
   `tests/unit/satin_planning/test_overlap.cpp`,
   `tests/unit/satin_planning/test_region_routing.cpp`.
+- `apps/cli/main.cpp` — `run_sgsd_debug`, sous-commande
+  `sgsd-debug --shape <forme> [--pixel-size mm] [--beam-width n]` (pipeline
+  SGSD complet 1-9 + comparaison chiffrée contre l'appel direct à
+  `build_satin_columns`, 2026-08-13, § ci-dessus).
+- `libs/satin_planning/src/region_split.cpp` — `probe_point` corrigée
+  (centerline de l'arc médian plutôt que corde droite entre extrémités,
+  défaut réel trouvé sur `notch` via `sgsd-debug`, 2026-08-13, § ci-dessus).
+- Tests : `tests/unit/satin_planning/test_region_split.cpp` (« notch --
+  chemin unique sans jonction résolu malgré une forte courbure »,
+  2026-08-13).

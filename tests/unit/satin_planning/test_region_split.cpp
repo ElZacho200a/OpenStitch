@@ -67,8 +67,33 @@ TEST_CASE("split_region : T -- une coupe separe le pied de la barre") {
     CHECK(split.regions.size() + split.unresolved_paths.size() == decomposition.paths.size());
 }
 
-TEST_CASE("split_region : propriete generale sur le corpus de formes branchees") {
-    for (const std::string& name : {"t", "y", "cross", "h", "trident"}) {
+TEST_CASE("split_region : notch -- chemin unique sans jonction resolu malgre une forte courbure") {
+    // Non-regression (2026-08-13, trouve via la commande CLI sgsd-debug) :
+    // `probe_point` retombait, faute de noeud interne (un seul arc, deux
+    // noeuds), sur le MILIEU DROIT entre les deux extremites du chemin --
+    // une corde qui sort de la forme des que le trace courbe suffisamment
+    // (ici autour d'une entaille concave profonde), faisant echouer
+    // l'assignation d'un chemin pourtant trivialement resolu (aucune
+    // jonction, aucune coupe necessaire). Corrige en prenant le point
+    // directement sur la centerline de l'arc median, toujours interieur par
+    // construction.
+    geometry::PathSet shape;
+    const auto analysis = analyze("notch", shape);
+    const auto& graph = analysis.debug.graph;
+    const DecompositionReport decomposition = decompose_into_paths(graph);
+    REQUIRE(decomposition.paths.size() == 1);
+    REQUIRE(graph.junction_count() == 0);
+
+    const RegionSplitReport split = split_region(shape, graph, decomposition);
+    CHECK(split.cuts.empty());
+    REQUIRE(split.unresolved_paths.empty());
+    REQUIRE(split.regions.size() == 1);
+    const double originalAreaMm2 = geometry::path_set_area_um2(shape) / 1e6;
+    CHECK(split.regions.front().area_mm2 == Catch::Approx(originalAreaMm2).margin(0.01));
+}
+
+TEST_CASE("split_region : propriete generale sur le corpus de formes branchees et courbes") {
+    for (const std::string& name : {"t", "y", "cross", "h", "trident", "s", "ribbon", "notch", "wide"}) {
         INFO("forme = " << name);
         geometry::PathSet shape;
         const auto analysis = analyze(name, shape);
@@ -77,6 +102,10 @@ TEST_CASE("split_region : propriete generale sur le corpus de formes branchees")
         const RegionSplitReport split = split_region(shape, graph, decomposition);
 
         CHECK(split.regions.size() + split.unresolved_paths.size() == decomposition.paths.size());
+        // Sans jonction, aucune coupe n'est jamais tentee : le chemin unique
+        // doit TOUJOURS se resoudre (regle stricte qui aurait attrape le
+        // defaut `notch` ci-dessus si elle avait deja existe).
+        if (graph.junction_count() == 0) CHECK(split.unresolved_paths.empty());
 
         double sumResolved = 0.0;
         for (const auto& r : split.regions) {

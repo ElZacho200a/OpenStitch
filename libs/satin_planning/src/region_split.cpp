@@ -102,6 +102,23 @@ bool path_set_contains(const geometry::PathSet& set, Vec2um p) {
 // noeud median s'il y en a un de strictement interne, sinon le milieu de
 // ses deux extremites.
 Vec2um probe_point(const SkeletonGraph& graph, const SatinPath& path) {
+    // Priorite absolue : un point pris DIRECTEMENT sur la centerline de
+    // l'arc median du chemin -- toujours interieur a la forme par
+    // construction (c'est l'axe median lui-meme), quelle que soit la
+    // courbure du trace. Defaut trouve (2026-08-13, `notch`) : le repli
+    // "milieu de start/end" ci-dessous est une corde DROITE entre les deux
+    // extremites -- pour un chemin qui courbe significativement (ex. autour
+    // d'une entaille concave profonde), cette corde peut sortir de la forme,
+    // faisant echouer l'assignation d'un chemin pourtant parfaitement
+    // resolu (aucune coupe necessaire, un seul arc).
+    if (!path.edges.empty()) {
+        const std::size_t midEdgeIdx = path.edges.size() / 2;
+        if (const SkeletonEdge* edge = find_edge(graph, path.edges[midEdgeIdx]); edge != nullptr && !edge->centerline.empty()) {
+            return edge->centerline[edge->centerline.size() / 2];
+        }
+    }
+    // Repli (ne devrait arriver que si le graphe est incoherent) : noeud
+    // median du chemin, sinon le milieu de ses extremites.
     if (path.nodes.size() >= 3) {
         const std::uint32_t midNodeId = path.nodes[path.nodes.size() / 2];
         if (const SkeletonNode* n = find_node(graph, midNodeId)) return n->position;
