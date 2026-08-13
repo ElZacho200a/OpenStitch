@@ -142,6 +142,7 @@ SatinBuildReport build_satin_sections(const geometry::PathSet& region,
     // décomposition ne produirait qu'un appel supplémentaire redondant avec
     // le chemin direct ci-dessous, pour un résultat identique -- inutile de
     // la tenter.
+    bool builtViaSgsd = false;
     if (analysis && analysis->debug.graph.junction_count() > 0) {
         const auto decomposition = satin_planning::decompose_into_paths(analysis->debug.graph);
         satin_planning::BeamSearchParams beamParams;
@@ -152,7 +153,6 @@ SatinBuildReport build_satin_sections(const geometry::PathSet& region,
         cutParams.selector = std::ref(selector);
         const auto split = satin_planning::split_region(region, analysis->debug.graph, decomposition, cutParams);
         if (!split.regions.empty()) {
-            bool gap = !split.unresolved_paths.empty();
             std::vector<BuiltSatinSection> sections;
             for (const auto& r : split.regions) {
                 const auto built = auto_satin::build_satin_columns(r.region, genParams);
@@ -161,7 +161,6 @@ SatinBuildReport build_satin_sections(const geometry::PathSet& region,
                 }
                 auto regionSections = sections_from_result(built, density, pullCompensation, centerUnderlay, maxWidth);
                 if (regionSections.empty()) {
-                    gap = true;
                     // Une sous-région isolée par SGSD peut, seule, ne plus
                     // être "RequiresDecomposition" (elle n'a plus la
                     // jonction voisine) et passer par le chemin "colonne
@@ -171,9 +170,10 @@ SatinBuildReport build_satin_sections(const geometry::PathSet& region,
                     // message explicite, `built.refusal` (toujours
                     // renseigné, lui, en cas de refus) resterait invisible
                     // pour l'appelant -- brise la garantie "jamais
-                    // silencieux". Le remplissage de repli (`structural_gap`)
-                    // comble déjà la zone côté appelant, mais l'utilisateur
-                    // doit aussi savoir POURQUOI c'est du tatami.
+                    // silencieux". Le remplissage de repli (mesuré ci-dessous,
+                    // § structural_gap) comble déjà la zone côté appelant,
+                    // mais l'utilisateur doit aussi savoir POURQUOI c'est du
+                    // tatami.
                     report.warnings.push_back(sgsdPrefix + "colonne refusee sur une sous-région isolée" +
                                               (built.refusal.empty() ? "" : (" : " + built.refusal)));
                 }
@@ -182,10 +182,9 @@ SatinBuildReport build_satin_sections(const geometry::PathSet& region,
             if (!sections.empty()) {
                 report.sections = std::move(sections);
                 report.used_sgsd = true;
-                report.structural_gap = gap;
-                return report;
+                builtViaSgsd = true;
             }
-            // Rien construit malgré une décomposition non vide (chaque
+            // Sinon (rien construit malgré une décomposition non vide, chaque
             // sous-région a refusé) : repli intégral sur l'appel direct
             // ci-dessous plutôt que de renvoyer un résultat vide.
         }
@@ -193,27 +192,59 @@ SatinBuildReport build_satin_sections(const geometry::PathSet& region,
         // sans jonction détectable) : repli intégral sur l'appel direct.
     }
 
-    const auto network = auto_satin::build_satin_columns(region, genParams);
-    for (const auto& w : network.warnings) {
-        report.warnings.push_back(directPrefix + w);
+    if (!builtViaSgsd) {
+        const auto network = auto_satin::build_satin_columns(region, genParams);
+        for (const auto& w : network.warnings) {
+            report.warnings.push_back(directPrefix + w);
+        }
+        report.sections = sections_from_result(network, density, pullCompensation, centerUnderlay, maxWidth);
+        if (report.sections.empty()) {
+            report.refusal = network.refusal.empty() ? std::string("aucune colonne satin n'a pu être construite")
+                                                      : network.refusal;
+        }
     }
-    report.sections = sections_from_result(network, density, pullCompensation, centerUnderlay, maxWidth);
-    // Signal STRUCTUREL (une arête existait, aucune colonne n'en est
-    // sortie), jamais une correspondance de texte sur `network.warnings` (qui
-    // porte aussi des messages purement informatifs sans rapport avec une
-    // couverture manquante, ex. "couture fermée : routage cyclique de quatre
-    // sections" sur un anneau déjà parfaitement couvert). Un rail satin
-    // (surtout en mode Parametric, ajusté en Bézier épars) approxime
-    // toujours la forme source avec une légère tolérance même quand TOUT
-    // réussit -- calculer le reliquat géométrique dans CE cas produirait de
-    // faux positifs (plusieurs mm² de reliquat "naturel" aux
-    // pointes/jonctions), d'où l'intérêt du signal structurel plutôt qu'un
-    // simple calcul d'aire.
-    report.structural_gap = network.debug.graph.edges.size() > report.sections.size();
-    if (report.sections.empty()) {
-        report.refusal =
-            network.refusal.empty() ? std::string("aucune colonne satin n'a pu être construite") : network.refusal;
+
+    // Mesure RÉELLE du reliquat non couvert (défaut trouvé 2026-08-14, § docs/
+    // source/satin.md « SGSD exclusif ») : une sous-région ACCEPTÉE (au moins
+    // une colonne produite, donc aucun signal structurel de refus) peut quand
+    // même laisser une grande partie de sa propre surface sans le moindre
+    // point si sa forme ne se prêtait pas à une approximation par ruban satin
+    // -- typique d'une boucle/contre-poinçon de lettre (a, b, d, e, g, o, p,
+    // q…) isolée par SGSD mais toujours trop ronde pour un unique ruban.
+    // L'ancien signal (arêtes du squelette vs nombre de sections, ou chemins
+    // non isolés/refusés côté SGSD) ne détecte QUE l'absence totale de
+    // colonne sur une branche -- jamais une colonne acceptée mais mal
+    // ajustée. Calculer le reliquat géométrique réel (région moins bandes
+    // réellement produites) généralise les deux cas dans un seul calcul.
+    // Seuil volontairement mixte (fixe ET proportionnel) pour tolérer le
+    // reliquat NATUREL d'une pointe/jonction (quelques mm² même quand tout
+    // réussit, cf. commentaire historique) sans le confondre avec un vrai
+    // trou structurel, quelle que soit la taille de la région.
+    if (!report.sections.empty()) {
+        std::vector<geometry::Path> strips;
+        strips.reserve(report.sections.size());
+        for (const auto& s : report.sections) strips.push_back(s.strip);
+        // Bandes à leur taille RÉELLE ici, jamais `shrink_strips_for_cutout`
+        // (réservé à la découpe du remplissage de repli lui-même, plus bas
+        // côté appelant) : ce rétrécissement de 0,4 mm par bande sert à faire
+        // légèrement DÉBORDER le repli DANS la bande satin (jamais
+        // d'interstice), mais gonflerait ici artificiellement le reliquat
+        // mesuré d'une valeur proportionnelle au périmètre total des bandes
+        // -- largement plus que quelques mm² sur une décomposition à
+        // plusieurs bandes -- et ferait détecter un trou même sur une
+        // décomposition déjà parfaitement couverte.
+        if (const auto leftover = geometry::subtract_polygons(region, strips)) {
+            double leftoverAreaMm2 = 0.0;
+            for (const auto& piece : *leftover) leftoverAreaMm2 += net_area_um2(piece) / 1e6;
+            const double totalAreaMm2 = net_area_um2(region) / 1e6;
+            constexpr double kGapThresholdFloorMm2 = 1.0;
+            constexpr double kGapThresholdRatio = 0.03;
+            if (leftoverAreaMm2 > std::max(kGapThresholdFloorMm2, kGapThresholdRatio * totalAreaMm2)) {
+                report.structural_gap = true;
+            }
+        }
     }
+
     return report;
 }
 
@@ -344,31 +375,26 @@ Result<AutoResult> auto_digitize(const segmentation::Segmentation& seg,
                 madeSatin = true;
                 emittedSatinNetwork = true;
 
-                // Une branche de squelette rejetée (ex. trop large) ne doit
-                // JAMAIS laisser une zone sans le moindre point : comble ce
-                // qui n'est couvert par AUCUNE section satin réussie avec un
-                // remplissage tatami, découpé sur la zone exacte (jamais
-                // tout le contour source, jamais un débordement sur les
-                // sections satin).
+                // Une branche de squelette rejetée (ex. trop large), ou une
+                // sous-région ACCEPTÉE mais dont la colonne ne couvre qu'une
+                // fraction de sa propre surface (ex. une boucle/contre-poinçon
+                // de lettre trop ronde pour un unique ruban satin, défaut réel
+                // trouvé le 2026-08-14 sur une forme utilisateur -- § docs/
+                // source/satin.md « SGSD exclusif »), ne doit JAMAIS laisser
+                // une zone sans le moindre point : comble ce qui n'est
+                // couvert par AUCUNE section satin réussie avec un
+                // remplissage tatami, découpé sur la zone exacte (jamais tout
+                // le contour source, jamais un débordement sur les sections
+                // satin).
                 //
-                // Déclenché seulement si le squelette ÉLAGUÉ compte PLUS
-                // d'arêtes que de sections produites -- signal STRUCTUREL
-                // direct (une arête existait, aucune colonne n'en est
-                // sortie), jamais une correspondance de texte sur
-                // `network.warnings` (qui porte aussi des messages purement
-                // informatifs sans rapport avec une couverture manquante,
-                // ex. "couture fermée : routage cyclique de quatre
-                // sections" sur un anneau déjà parfaitement couvert -- déjà
-                // reproduit : déclencher sur `!warnings.empty()` cassait ce
-                // cas et le réseau en T normal). Un rail satin (surtout en
-                // mode Parametric, ajusté en Bézier épars) approxime
-                // toujours la forme source avec une légère tolérance même
-                // quand TOUT réussit -- calculer le reliquat géométrique
-                // dans CE cas produirait de faux positifs (plusieurs mm² de
-                // reliquat "naturel" aux pointes/jonctions), d'où l'intérêt
-                // du signal structurel plutôt qu'un simple calcul d'aire
-                // (`structuralGap`, calculé ci-dessus pour chacun des deux
-                // chemins -- direct ou SGSD -- avec le même principe).
+                // `structuralGap` (§ build_satin_sections) mesure désormais le
+                // reliquat géométrique RÉEL (région moins bandes produites),
+                // avec un seuil mixte fixe+proportionnel pour tolérer le
+                // reliquat naturel d'une pointe/jonction sans le confondre
+                // avec un vrai trou -- généralise l'ancien signal purement
+                // structurel (arêtes du squelette vs sections produites), qui
+                // ne détectait que l'absence totale de colonne, jamais une
+                // colonne acceptée mais mal ajustée à sa région.
                 if (structuralGap) {
                     // Seuil délibérément bas et INDÉPENDANT de
                     // `min_fill_area_mm2` (ce dernier répond à "cette région

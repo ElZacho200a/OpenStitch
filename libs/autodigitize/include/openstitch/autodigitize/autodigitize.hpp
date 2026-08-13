@@ -132,13 +132,18 @@ struct SatinBuildReport {
     // `build_satin_columns` a suffi (région déjà simple) ou si RIEN n'a pu
     // être construit.
     bool used_sgsd{false};
-    // Vrai si une partie de la région source pourrait rester non couverte
-    // par les sections ci-dessus (un chemin SGSD non isolé, ou une
-    // sous-région ayant échoué à produire une colonne) -- signal structurel
-    // pour un éventuel remplissage de repli côté appelant, jamais un calcul
-    // géométrique direct (§ docs/source/satin.md : un rail approxime
-    // toujours la forme source avec une tolérance naturelle, même quand tout
-    // réussit).
+    // Vrai si une partie MESURABLE de la région source reste non couverte par
+    // les sections ci-dessus -- calculé géométriquement (région moins bandes
+    // réellement produites), avec un seuil mixte fixe+proportionnel pour
+    // tolérer le reliquat NATUREL d'une pointe/jonction (quelques mm² même
+    // quand tout réussit, § docs/source/satin.md) sans le confondre avec un
+    // vrai trou. Détecte aussi bien un chemin SGSD non isolé/refusé qu'une
+    // sous-région ACCEPTÉE (au moins une colonne produite) mais dont la
+    // géométrie ne couvre qu'une fraction de sa propre surface -- défaut réel
+    // trouvé le 2026-08-14 sur une boucle/contre-poinçon de lettre isolée par
+    // SGSD mais trop ronde pour un unique ruban, invisible à l'ancien signal
+    // purement structurel. Signal pour un éventuel remplissage de repli côté
+    // appelant.
     bool structural_gap{false};
     std::vector<std::string> warnings;
     // Diagnostic de satinabilité de la région ENTIÈRE, calculé une seule

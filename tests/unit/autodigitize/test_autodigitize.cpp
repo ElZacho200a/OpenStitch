@@ -139,15 +139,25 @@ TEST_CASE("bande fine -> tatami si les deux moteurs satin sont desactives") {
 // tests/unit/auto_satin/test_columns.cpp -- SGSD (§ ci-dessous) est desormais
 // le seul chemin pour une region branchee au niveau autodigitize, sans
 // echappatoire cote AutoOptions.
-TEST_CASE("reseau en T -> decomposition SGSD en regions independantes") {
+TEST_CASE("reseau en T -> decomposition SGSD en regions independantes, reliquat comble en tatami") {
     // Region branchee (reseau en T) : decomposee d'abord (§ libs/satin_planning)
     // -- la branche horizontale se fusionne en un seul chemin continu (angle
     // ~180 deg, meilleure continuation), le pied vertical devient une region
     // independante. Resultat : 2 sections, chacune une colonne INDEPENDANTE
     // (`topology` absent, § document::SatinParams -- deux regions reanalysees
-    // separement n'ont plus de jonction comparable entre elles). Verifie
-    // surtout la garantie fonctionnelle : toute la region reste couverte de
-    // points, aucune zone silencieusement vide.
+    // separement n'ont plus de jonction comparable entre elles).
+    //
+    // Ce reseau en T est le MEME cas que celui mesure a 97,7% de couverture
+    // SGSD (§ docs/source/satin.md, sgsd-debug) : les deux sections isolees
+    // ne beneficient plus du recouvrement de jonction qu'aurait appliqué un
+    // decoupage par arete partageant sa jonction (§ Legacy/Parametric,
+    // extend_into_confluence) -- un reliquat NATUREL mais reel subsiste pres
+    // de l'ancienne jonction. Depuis le correctif du 2026-08-14 (mesure
+    // geometrique reelle du reliquat, § build_satin_sections), ce reliquat
+    // est desormais detecte et comble par un remplissage tatami de repli --
+    // avant ce correctif, il restait silencieusement sans le moindre point
+    // (defaut trouve sur une forme utilisateur reelle avec boucle, beaucoup
+    // plus severe : 83% de la surface sans point, cf. le meme correctif).
     image::Image img = blank(64, 64);
     for (int y = 8; y < 58; ++y) {
         for (int x = 29; x < 35; ++x) set_px(img, x, y, 25, 180, 110);
@@ -162,26 +172,26 @@ TEST_CASE("reseau en T -> decomposition SGSD en regions independantes") {
     o.satin_max_width = Micrometers{8'000};
     const auto result = auto_digitize(*seg, ids, o);
     REQUIRE(result.has_value());
-    REQUIRE(result->vectors.size() == 1);
+    // Region principale + le vecteur de repli portant le reliquat non couvert.
+    REQUIRE(result->vectors.size() == 2);
+    CHECK(result->vectors.front().paths.size() == 1);
 
     std::vector<const document::SatinParams*> satinSections;
+    bool sawTatamiFallback = false;
     for (const auto& e : result->embroideries) {
-        if (!e.is_satin()) continue;
-        CHECK(e.source_vector == result->vectors.front().id);
-        const auto& satin = std::get<document::SatinParams>(e.params);
-        satinSections.push_back(&satin);
-        CHECK_FALSE(satin.rail_a.closed);
-        CHECK_FALSE(satin.rail_b.closed);
-        CHECK(satin.rungs.size() >= 2);
+        if (e.is_satin()) {
+            CHECK(e.source_vector == result->vectors.front().id);
+            const auto& satin = std::get<document::SatinParams>(e.params);
+            satinSections.push_back(&satin);
+            CHECK_FALSE(satin.rail_a.closed);
+            CHECK_FALSE(satin.rail_b.closed);
+            CHECK(satin.rungs.size() >= 2);
+        } else if (e.is_tatami()) {
+            sawTatamiFallback = true;
+        }
     }
     REQUIRE(satinSections.size() == 2);
-
-    // Aucun trou de couverture silencieux : la surface totale couverte par
-    // les rails (approximee par les barreaux, comme ailleurs dans ce
-    // fichier) doit rester proche de l'aire de la region source -- pas de
-    // verification stricte au micrometre pres, seulement l'absence d'un
-    // deficit grossier qui trahirait une branche perdue.
-    CHECK(result->vectors.front().paths.size() == 1);
+    CHECK(sawTatamiFallback);
 }
 
 TEST_CASE("anneau fin -> quatre sections satin et trou preserve") {

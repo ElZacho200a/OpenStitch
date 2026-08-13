@@ -3226,6 +3226,96 @@ géométrique exercé (`build_satin_sections`) est déjà couvert côté
 `autodigitize`, et les trois fonctions migrées n'ont pas de suite Qt dédiée
 préexistante à étendre.
 
+## Défaut réel : une sous-région SGSD acceptée peut laisser un reliquat massif non couvert (2026-08-14)
+
+*État : Corrigé.* Signalé par une capture d'écran utilisateur montrant une
+zone visiblement sans le moindre point (ni satin, ni repli tatami) sur une
+grande partie d'une forme réelle (une lettre avec contre-poinçon — un trou
+proche d'une jonction de branches).
+
+### Root cause
+
+`build_satin_sections` (§ *Intégration production* ci-dessus) déterminait
+`structural_gap` — le signal qui déclenche le remplissage tatami de repli —
+à partir de signaux purement STRUCTURELS : un chemin SGSD non isolé
+(`unresolved_paths`), ou une sous-région ayant produit **zéro** colonne. Ce
+signal ne détecte que l'absence totale de colonne sur une branche — jamais
+une colonne **acceptée** (au moins une colonne produite, statut
+`SuitableWithWarnings` ou `RequiresDecomposition`) dont la géométrie
+n'approxime qu'une fraction de la surface de sa propre sous-région.
+
+Rejoué avec les coordonnées exactes exportées par l'utilisateur
+(`tests/unit/satin_planning/test_region_split.cpp`, nouveau test de
+régression) : la région (60,8 mm², un trou/boucle + 3 jonctions) se
+décompose en 4 chemins SGSD, **tous isolés, tous acceptés** (`regions=4,
+non_isoles=0`, chaque sous-région produit au moins une colonne) — succès
+structurel complet, donc `structural_gap` restait `false`. Pourtant, la
+sous-région contenant la boucle (21,2 mm², topologie proche d'un anneau) est
+si mal approximée par un unique ruban satin que le reliquat géométrique réel
+(région moins bandes réellement produites, mesuré par
+`geometry::subtract_polygons`) atteint **31,5 mm² sur 60,8 mm² (52 %)** —
+sans qu'aucun signal structurel n'ait jamais existé pour le détecter. C'est
+la même famille de limite que celle déjà mesurée sur `tentabrode.png`
+(§ *Intégration production* : « une branche **acceptée** dont la géométrie
+de colonne ne couvre pas fidèlement sa région »), mais ici démontrée
+**après** décomposition SGSD, pas seulement sur l'appel direct pré-SGSD.
+
+### Correctif
+
+`structural_gap` est désormais calculé une seule fois, à la fin de
+`build_satin_sections`, à partir d'une mesure géométrique RÉELLE plutôt que
+d'un proxy structurel : `geometry::subtract_polygons(region, bandes des
+sections produites)`, avec un seuil mixte fixe **et** proportionnel
+(`max(1 mm², 3 % de l'aire totale)`) pour tolérer le reliquat NATUREL d'une
+pointe/jonction (quelques mm² même quand tout réussit, § *Intégration
+production*) sans le confondre avec un vrai trou structurel, quelle que soit
+la taille de la région. Ce calcul généralise et remplace les deux anciens
+signaux (arêtes du squelette vs sections produites côté direct ; chemins non
+isolés/refusés côté SGSD) : un chemin jamais isolé ou une sous-région
+refusée n'ont, par construction, aucune bande dans le calcul, donc leur
+surface apparaît déjà dans le reliquat mesuré.
+
+Point de calibration important, trouvé en cours de correctif : la première
+version utilisait `shrink_strips_for_cutout` (le même rétrécissement de
+0,4 mm par bande que la découpe du remplissage de repli lui-même, pour faire
+légèrement déborder le repli DANS la bande satin plutôt que de laisser un
+interstice) pour la MESURE du reliquat — ce qui gonflait artificiellement le
+reliquat mesuré d'une valeur proportionnelle au périmètre total des bandes,
+au point de déclencher un repli même sur le réseau en T et l'anneau fin du
+corpus synthétique (couverture déjà mesurée à 97,7 % et 100 % respectivement,
+§ *Outil CLI `sgsd-debug`*) — un faux positif immédiat sur les deux tests
+existants. Corrigé en mesurant le reliquat sur les bandes à leur taille
+RÉELLE, non rétrécies ; le rétrécissement reste réservé, comme avant, à la
+découpe du polygone de repli lui-même côté appelant (`auto_digitize`).
+
+### Résultat mesuré
+
+Sur le réseau en T (corpus synthétique, jusqu'ici considéré « sans repli
+nécessaire » alors que sa couverture SGSD mesurée était déjà de 97,7 %, pas
+100 %) : le reliquat naturel près de l'ancienne jonction est désormais
+correctement détecté et comblé par un remplissage tatami — comportement
+attendu, test mis à jour en conséquence (`tests/unit/autodigitize/
+test_autodigitize.cpp`). Sur l'anneau fin (couverture 100 % mesurée) : aucun
+repli ne se déclenche, confirmant l'absence de faux positif sur un cas
+réellement complet. Sur la forme utilisateur ayant motivé ce correctif :
+31,5 mm² désormais comblés en tatami plutôt que silencieusement absents.
+
+### Tests
+
+- `tests/unit/satin_planning/test_region_split.cpp` — nouveau test
+  (« région réelle avec boucle -- SGSD accepte chaque sous-région mais
+  laisse un reliquat massif non couvert ») rejouant les coordonnées exactes
+  de la forme utilisateur : vérifie le succès structurel complet
+  (`regions=4, non_isoles=0`, chaque sous-région produit ≥ 1 colonne) **et**
+  le reliquat géométrique réel (> 30 % de l'aire totale) malgré ce succès —
+  la preuve que le signal structurel seul est insuffisant.
+- `tests/unit/autodigitize/test_autodigitize.cpp` — le test « réseau en T »
+  mis à jour pour vérifier explicitement l'apparition du remplissage de
+  repli (`result->vectors.size() == 2`, un objet tatami présent) plutôt que
+  son absence.
+- Suite complète (Debug + Release) sans régression sur les 4 diagnostics
+  permanents déjà connus.
+
 ## Implémentation associée
 
 - `libs/document/.../embroidery_object.hpp` — `SatinParams`, `SatinRung`.
