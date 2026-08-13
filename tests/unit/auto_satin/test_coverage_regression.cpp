@@ -38,13 +38,14 @@ TEST_CASE("couverture satin : non-regression sur le corpus de formes historiques
     // couverture est parfaite (les residus de noyau de jonction sont un fait
     // deja documente, cf. docs/source/satin.md), seulement qu'elle ne se
     // degrade pas SILENCIEUSEMENT sous son niveau actuel. Formes
-    // volontairement exclues : circle/tiny/notch/pinch (peuvent refuser
-    // entierement, testes ailleurs pour ce comportement precis, pas pour
-    // leur couverture) et wide, qui refuse ENTIEREMENT a pixel_size=100um
-    // avec les parametres par defaut ("forme non satinable (trou, trop
-    // large ou trop etroite)", observe en calibrant ce test -- piste pour
-    // l'etape de diagnostic suivante, pas encore investiguee : surprenant
-    // pour une forme nommee explicitement pour tester le cas "large").
+    // volontairement exclues : circle/tiny/notch/pinch/wide, qui refusent
+    // ENTIEREMENT par construction (testees ailleurs pour ce comportement
+    // precis, pas pour leur couverture) -- wide en particulier est un
+    // rectangle 100x20mm delibere ("un vrai cas trop large pour satin",
+    // shapes.cpp) : sa largeur (20mm) depasse max_satin_width (9mm par
+    // defaut, satinability.cpp:76) et declenche `Unsuitable` par conception,
+    // pas un defaut (verifie en calibrant ce test -- l'hypothese initiale
+    // d'un refus surprenant etait une lecture trop rapide de shapes.cpp).
     //
     // Planchers = valeur mesuree lors de la calibration de ce test, moins
     // une marge de securite de quelques points -- un vrai plancher de

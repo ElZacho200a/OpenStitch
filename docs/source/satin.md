@@ -2052,12 +2052,32 @@ documenté, pas un défaut que ce test cherche à faire disparaître). Sans
 surprise, `rectangle`/`ring` sont quasi parfaits (96 %/99,99 %) ; les formes à
 jonction se situent entre 85,8 % (`cross`) et 88,7 % (`t`).
 
-**Trouvaille en calibrant ce test** : `wide` (censée tester une forme large)
-refuse **entièrement** à `pixel_size = 100 µm` avec les paramètres par défaut
-(`« forme non satinable (trou, trop large ou trop étroite) »`) — surprenant
-pour une fixture nommée explicitement pour ce cas. Exclue du corpus de ce
-test pour l'instant ; piste non investiguée pour l'étape de diagnostic
-suivante (§ ci-dessous).
+`wide` (rectangle délibéré 100 × 20 mm, `shapes.cpp` : « un vrai cas trop
+large pour satin ») refuse entièrement dès l'analyse de satinabilité
+(`Unsuitable`, `has_wide_area` : sa largeur de 20 mm dépasse `max_satin_width`,
+9 mm par défaut, `satinability.cpp:76`) — **comportement voulu par
+construction**, pas un défaut. Exclue du corpus de ce test pour la même
+raison que `circle`/`tiny`/`notch`/`pinch`.
+
+### Diagnostic « wide » (2026-08-13) : confirmation, pas de défaut trouvé
+
+*Investigation demandée explicitement pour vérifier l'hypothèse ci-dessus.*
+Trace complète : `evaluate_satinability` (`satinability.cpp:76`) calcule
+`maxWidthUm` à partir de la transformée de distance du raster de la région
+(le rayon maximal du disque inscrit, doublé) ; pour `wide` (100 × 20 mm),
+cette largeur maximale est bien ~20 mm, très au-delà de `max_satin_width`
+(9 mm, `SatinColumnsParameters::analysis.thresholds`) — `has_wide_area` passe
+vrai, `status` devient `Unsuitable`, message « Zone trop large pour un satin
+(envisagez un tatami). », et `build_satin_columns` s'arrête avant toute
+construction de rail (`satin_column.cpp:2977`, refus immédiat sur statut
+`Unsuitable`). Aucune trace d'un défaut de squelette, de section transversale
+ou de jonction : le refus intervient AVANT que le pipeline géométrique ne
+s'exécute, sur un seuil de configuration simple et correctement appliqué.
+**Conclusion : `wide` fonctionne exactement comme conçu** (rediriger une
+forme trop large vers un remplissage tatami, cf. § *Colonne trop large* plus
+haut) ; la note précédente (« surprenant, piste non investiguée ») provenait
+d'une lecture incomplète de `shapes.cpp` avant d'avoir vérifié le seuil
+réellement en cause — corrigée ici plutôt que laissée en l'état.
 
 ### Visualisation de debug (`coverage_to_svg`)
 
