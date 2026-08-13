@@ -2079,6 +2079,85 @@ haut) ; la note précédente (« surprenant, piste non investiguée ») provenai
 d'une lecture incomplète de `shapes.cpp` avant d'avoir vérifié le seuil
 réellement en cause — corrigée ici plutôt que laissée en l'état.
 
+### Diagnostic « trident »/pixel_size (2026-08-13) : pas de perte de couverture réelle, fragilité Legacy documentée
+
+*Investigation demandée explicitement, en plusieurs passes (deux hypothèses
+de correctif tentées et invalidées par la mesure avant la conclusion
+ci-dessous — aucune des deux n'a été committée).*
+
+**Symptôme observé** (`openstitch-cli auto-satin-debug --shape trident`,
+mode Legacy, `--satin-geometry=legacy`) : à `pixel_size = 0,05 mm` (défaut
+CLI), la branche latérale de `trident` échoue («&nbsp;colonne refusée : saut
+de largeur incohérent entre stations finales #1/2&nbsp;»), ce qui fait
+échouer la validation de jonction («&nbsp;jonction 1 incomplète, 2/3 branches
+disponibles&nbsp;») et refuse **toute la région**. À `pixel_size = 0,1 mm`
+(convention des fixtures de test), la même forme réussit (88,1 % de
+couverture).
+
+**Deux hypothèses testées, toutes deux invalidées par instrumentation
+directe** (dump des largeurs de station réelles, `OS_DEBUG_STATIONS`,
+retiré avant commit) :
+
+1. *Pointe effilée mal exemptée près du bout OUVERT.* Correctif tenté :
+   n'appliquer le contrôle de saut de largeur qu'au tiers médian de l'axe
+   (mêmes bornes que `representative_station_width`). **Invalidé** : la
+   branche fautive ne compte que 5 stations après amputation de jonction, un
+   tiers médian trop étroit pour exempter l'intervalle fautif — aucun
+   changement observé après correctif.
+2. *Amputation de jonction qui s'arrête trop tôt faute de palier stable.*
+   Correctif tenté : étendre `trim_unstable_junction_tail` pour continuer
+   d'amputer tant que la frontière reste incohérente avec sa voisine
+   immédiate (même seuil que la validation séparée). **Invalidé** :
+   l'intervalle fautif (stations #1/#2, largeurs 881 µm puis 4393 µm) se
+   situe près du bout **OUVERT**, pas du bout de jonction — `trim_unstable_
+   junction_tail` n'amputant QUE côté jonction par construction, aucune
+   amputation supplémentaire ne pouvait l'atteindre. Widths réelles observées
+   sur cette branche : 807,5 → 881,1 → **4393,0** → 7606,2 → 9423,7 µm — un
+   saut brutal et isolé juste après la pointe, puis une remontée globalement
+   cohérente vers la confluence.
+
+**Cause probable** (non creusée plus loin, cf. portée ci-dessous) : la
+station à 4393 µm correspond à la station d'axe #23, signalée ailleurs comme
+« interpolée » (échec isolé de `cross_section` comblé par interpolation
+linéaire, § *Génération partielle sur formes concaves*). Sur cette branche
+courte et proche d'une confluence très asymétrique, la section transversale
+calculée depuis la seule tangente locale peut basculer brutalement de
+« mesure de cette branche seule » à « balayage de la branche voisine bien
+plus large », dès la station suivant la pointe — un phénomène de bord
+plausible pour une géométrie aussi contrastée, mais dont le mécanisme exact
+dans `cross_section` n'a pas été tracé en détail.
+
+**Conclusion — pas de correctif nécessaire, car pas de perte de couverture
+réelle.** Relecture de `libs/autodigitize/src/autodigitize.cpp` :
+
+1. `autodigitize.cpp` utilise le mode **`Parametric`** par défaut
+   (`geometry_mode = SatinGeometryMode::Parametric`, ligne 189), jamais
+   `Legacy` — alors que le CLI `auto-satin-debug` testé ci-dessus utilise
+   `Legacy` par défaut (`--satin-geometry=legacy`). Le symptôme observé n'a
+   donc jamais été observé dans le chemin réellement emprunté par la
+   numérisation automatique.
+2. Même le mécanisme de refus en cascade (« jonction incohérente ») qui
+   transforme un échec de branche isolé en refus de LA RÉGION ENTIÈRE est
+   spécifique à `Legacy` : le mode `Parametric` n'a « aucune ancre centrale
+   commune, aucun sommet de bissectrice... » (§ *Jonctions : recouvrement
+   local, sans ancre* plus haut) — un échec de branche y resterait
+   individuel, sans faire échouer les deux autres.
+3. Et si malgré tout `build_satin_columns` refusait la totalité (`columns` ET
+   `parametric_columns` vides), `autodigitize.cpp` (ligne 300-315) retombe
+   automatiquement sur un remplissage **tatami de la région entière** dès que
+   `sectionCount == 0` — aucune zone sans point, juste un changement de type
+   de point (satin → tatami).
+
+Trois filets indépendants (mode par défaut différent de celui testé,
+refus non cascadé en mode Parametric, repli tatami région entière en dernier
+recours) protègent donc la couverture livrée à l'utilisateur, même dans le
+pire des cas où cette fragilité de construction de colonne Legacy se
+manifeste. **Rien à corriger côté couverture** ; la fragilité elle-même
+(refus d'une branche courte proche d'une confluence très asymétrique, à
+certaines résolutions de raster, en mode Legacy) reste une piste
+d'amélioration future légitime de robustesse — pas urgente, et hors du
+périmètre de cet audit de couverture.
+
 ### Visualisation de debug (`coverage_to_svg`)
 
 *État : Présent · Câblé dans `openstitch-cli auto-satin-debug --coverage-svg`.*
@@ -2105,8 +2184,10 @@ le SVG rend alors 100 % de la cible en rouge, cohérent avec zéro colonne
 produite ; à 0,1 mm/px, 88,14 % de couverture avec quatre composantes
 manquantes (la plus grande, 18,05 mm², est le noyau de jonction déjà
 documenté). Cette sensibilité de `trident` à la résolution de raster en mode
-Legacy n'était pas documentée avant cet outil — piste pour l'étape de
-diagnostic suivante, pas encore investiguée.
+Legacy n'était pas documentée avant cet outil ; investiguée en profondeur
+ci-dessous (§ *Diagnostic « trident »/pixel_size*) — conclusion : sans impact
+réel sur la couverture livrée à l'utilisateur, grâce aux filets déjà en place
+en amont de ce chemin CLI brut.
 
 Testé (`tests/unit/satin_coverage/test_coverage.cpp`) : SVG bien formé
 (`<svg>`…`</svg>`), couleurs de remplissage vert/rouge et rails bleu/orange
