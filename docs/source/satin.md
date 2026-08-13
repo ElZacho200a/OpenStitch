@@ -2339,7 +2339,8 @@ soit validée :
    `SatinRegion`.**
 4. **`SatinabilityAnalyzer`** (la région candidate est-elle satinable ?) —
    livrée, § *Phase 4* ci-dessous.
-5. Auto-Satin par région + Coverage Analyzer comme oracle de sélection.
+5. **Auto-Satin par région + Coverage Analyzer comme oracle de sélection** —
+   livrée, § *Phase 5* ci-dessous.
 6. Recherche à faisceau (*beam search*) sur les découpages candidats.
 7. Passe de fusion (*merge*) post-découpage pour minimiser le nombre de
    segments.
@@ -2614,6 +2615,76 @@ gratuit, mais borné (13 candidats maximum par branche avec les paramètres par
 défaut) et seulement pendant la planification, jamais pendant la génération
 de points elle-même.
 
+### Phase 5 : Auto-Satin réel par région + Coverage Analyzer comme oracle complet (`libs/satin_planning/region_oracle`)
+
+*État : Présent, testé, aucune régression.*
+`libs/satin_planning/include/openstitch/satin_planning/region_oracle.hpp` et
+`src/region_oracle.cpp`.
+
+Contrairement à la phase 4 (qui ne vérifie que le STATUT de satinabilité
+avant toute génération), cette phase construit réellement les colonnes satin
+sur chaque `SatinRegion` (`auto_satin::build_satin_columns`, mode
+`Parametric` pour reproduire le comportement de production
+d'`autodigitize.cpp` — repli automatique vers `Legacy` déjà géré en interne)
+puis mesure la couverture obtenue avec `satin_coverage::analyze_satin_coverage`
+— exactement l'oracle demandé par la spec SGSD (§15) : « la preuve finale
+reste, est-ce que l'Auto-Satin généré couvre réellement correctement la
+région ? ». `satin_coverage` reste totalement indépendant du décomposeur (ne
+connaît que des rails/barreaux génériques, jamais un type `auto_satin` ou
+`satin_planning`) — même garantie qu'à sa création (§ *Satin Coverage
+Analyzer* plus haut).
+
+`evaluate_region_generation(region, genParams, coverageConfig, density)`
+convertit la sortie de `build_satin_columns` (`parametric_columns` si non
+vide, sinon `columns` — même sélection que `autodigitize.cpp`/le CLI, même
+défaut corrigé cette session, § *Balayage du corpus de formes*) en
+`satin_coverage::SatinColumnInput`, puis appelle l'analyseur.
+`evaluate_decomposition_generation` l'applique à tout un `RegionSplitReport`
+et agrège une couverture globale (aire couverte / aire cible sur toutes les
+régions).
+
+**Résultats mesurés sur le corpus branché** (mode Parametric, seuils par
+défaut de `satin_coverage`, dont `min_core_coverage = 99,5 %`) :
+
+- `t`, `y`, `cross` : chaque région (toutes propres depuis le correctif
+  phase 4) atteint **97–99 % de couverture brute/cœur** — cohérent avec la
+  limite déjà documentée des résidus de noyau de jonction/bouts (§ *Vérifié*,
+  section Satin Coverage Analyzer) : aucune de ces régions ne franchit le
+  seuil strict de 99,5 % (`passed = false` partout), mais ce n'est PAS un
+  défaut nouveau — c'est la même limite connue de l'Auto-Satin actuel,
+  simplement mesurée ici région par région plutôt que sur la forme entière.
+- `h` : les deux montants (jamais coupés qu'à une seule extrémité chacun,
+  propres dès la phase 4) couvrent aussi **~98 %** — mais **le pont (encore
+  branché après découpe, `not_ready` en phase 4) chute à ~70 %** de
+  couverture. L'oracle phase 5 confirme AVEC DES CHIFFRES ce que la phase 4
+  ne pouvait que signaler qualitativement (statut `RequiresDecomposition`) :
+  un écart net et mesurable, pas juste un statut binaire.
+- `trident` : la branche isolée avec succès couvre ~98 % ; la branche non
+  résolue (§ phase 4, aucune coupe n'échappe à sa voisine) reste
+  honnêtement absente du rapport de couverture plutôt que représentée par un
+  chiffre inventé.
+
+Ce résultat borne précisément le périmètre encore à couvrir par les phases
+suivantes : la phase 6 (recherche à faisceau) pourra comparer plusieurs
+découpages candidats en utilisant CET oracle comme fonction de score ; la
+phase 7 (fusion) pourra détecter qu'une paire de régions adjacentes aux
+couvertures individuellement bonnes redeviendrait encore meilleure fusionnée
+(ou, pour le pont du H, qu'une meilleure position de coupe/fusion est
+nécessaire avant que sa couverture ne devienne acceptable) ; aucune des deux
+n'est encore implémentée à ce stade.
+
+**Testé** (`tests/unit/satin_planning/test_region_oracle.cpp`, 4 cas) :
+
+- `rectangle` : couverture > 90 % sans aucune décomposition.
+- Boucle complète sur `t`, `y`, `cross`, `h`, `trident` : chaque région
+  effectivement construite produit un rapport de couverture exploitable
+  (aire cible non nulle), que le seuil strict soit franchi ou non.
+- `h` dédié : vérifie numériquement que le pont couvre nettement moins bien
+  (< 85 %) que le meilleur montant (> 95 %) — non-régression directe sur la
+  découverte ci-dessus.
+- Rendu `format_generation_report` non vide et contenant les marqueurs
+  attendus.
+
 ## Implémentation associée
 
 - `libs/document/.../embroidery_object.hpp` — `SatinParams`, `SatinRung`.
@@ -2737,6 +2808,13 @@ de points elle-même.
   `check_all_regions`, `format_satinability_report`, `RegionSatinabilityVerdict`
   (SGSD phase 4, réanalyse de satinabilité d'une `SatinRegion` déjà découpée
   via `auto_satin::analyze_region`, 2026-08-13, § ci-dessus).
+- `libs/satin_planning/include/openstitch/satin_planning/region_oracle.hpp`
+  et `src/region_oracle.cpp` — `evaluate_region_generation`,
+  `evaluate_decomposition_generation`, `format_generation_report`,
+  `RegionGenerationVerdict` (SGSD phase 5, `build_satin_columns` réel +
+  `satin_coverage::analyze_satin_coverage` par région, 2026-08-13,
+  § ci-dessus).
 - Tests : `tests/unit/satin_planning/test_branch_pairing.cpp`,
   `tests/unit/satin_planning/test_region_split.cpp`,
-  `tests/unit/satin_planning/test_region_satinability.cpp`.
+  `tests/unit/satin_planning/test_region_satinability.cpp`,
+  `tests/unit/satin_planning/test_region_oracle.cpp`.
