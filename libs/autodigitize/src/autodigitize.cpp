@@ -5,14 +5,14 @@
 #include <cmath>
 #include <functional>
 #include <optional>
+#include <sstream>
 
 #include "openstitch/auto_satin/satin_column.hpp"
 #include "openstitch/geometry/boolean.hpp"
 #include "openstitch/geometry/offset.hpp"
 #include "openstitch/geometry/polyline.hpp"
 #include "openstitch/geometry/simplify.hpp"
-#include "openstitch/satin_planning/beam_search.hpp"
-#include "openstitch/satin_planning/region_split.hpp"
+#include "openstitch/satin_planning/satin_plan.hpp"
 #include "openstitch/stitch_generation/satin.hpp"
 #include "openstitch/vectorization/vectorize.hpp"
 
@@ -126,123 +126,67 @@ SatinBuildReport build_satin_sections(const geometry::PathSet& region,
                                       Micrometers pullCompensation, bool centerUnderlay, Micrometers maxWidth,
                                       const std::string& warningLabel) {
     SatinBuildReport report;
-    const std::string directPrefix = warningLabel.empty() ? std::string() : (warningLabel + " : ");
-    const std::string sgsdPrefix = warningLabel.empty() ? std::string("SGSD : ") : (warningLabel + " (SGSD) : ");
+    const std::string prefix = warningLabel.empty() ? std::string() : (warningLabel + " : ");
 
     const auto analysis = auto_satin::analyze_region(region, genParams.analysis);
     if (analysis) {
         report.whole_region_report = analysis->report;
     }
 
-    // Sur une région dont le squelette est BRANCHÉ (au moins une jonction
-    // réelle), passe TOUJOURS par la décomposition guidée par squelette
-    // (SGSD, `libs/satin_planning`) -- gain de couverture réel et mesuré sur
-    // le corpus de test (+4,6 à +7,4 points selon la forme, cf.
-    // `openstitch-cli sgsd-debug`). Sur une région déjà simple, la
-    // décomposition ne produirait qu'un appel supplémentaire redondant avec
-    // le chemin direct ci-dessous, pour un résultat identique -- inutile de
-    // la tenter.
-    bool builtViaSgsd = false;
-    if (analysis && analysis->debug.graph.junction_count() > 0) {
-        const auto decomposition = satin_planning::decompose_into_paths(analysis->debug.graph);
-        satin_planning::BeamSearchParams beamParams;
-        beamParams.beam_width = 3;
-        beamParams.genParams = genParams;
-        satin_planning::OracleGuidedSelector selector(beamParams);
-        satin_planning::CutCandidateParams cutParams;
-        cutParams.selector = std::ref(selector);
-        const auto split = satin_planning::split_region(region, analysis->debug.graph, decomposition, cutParams);
-        if (!split.regions.empty()) {
-            std::vector<BuiltSatinSection> sections;
-            for (const auto& r : split.regions) {
-                const auto built = auto_satin::build_satin_columns(r.region, genParams);
-                for (const auto& w : built.warnings) {
-                    report.warnings.push_back(sgsdPrefix + w);
-                }
-                auto regionSections = sections_from_result(built, density, pullCompensation, centerUnderlay, maxWidth);
-                if (regionSections.empty()) {
-                    // Une sous-région isolée par SGSD peut, seule, ne plus
-                    // être "RequiresDecomposition" (elle n'a plus la
-                    // jonction voisine) et passer par le chemin "colonne
-                    // unique" de `build_satin_columns` -- qui ne pousse PAS
-                    // le même message "colonne refusee" que la boucle par
-                    // arête du chemin direct quand il échoue. Sans ce
-                    // message explicite, `built.refusal` (toujours
-                    // renseigné, lui, en cas de refus) resterait invisible
-                    // pour l'appelant -- brise la garantie "jamais
-                    // silencieux". Le remplissage de repli (mesuré ci-dessous,
-                    // § structural_gap) comble déjà la zone côté appelant,
-                    // mais l'utilisateur doit aussi savoir POURQUOI c'est du
-                    // tatami.
-                    report.warnings.push_back(sgsdPrefix + "colonne refusee sur une sous-région isolée" +
-                                              (built.refusal.empty() ? "" : (" : " + built.refusal)));
-                }
-                for (auto& s : regionSections) sections.push_back(std::move(s));
-            }
-            if (!sections.empty()) {
-                report.sections = std::move(sections);
-                report.used_sgsd = true;
-                builtViaSgsd = true;
-            }
-            // Sinon (rien construit malgré une décomposition non vide, chaque
-            // sous-région a refusé) : repli intégral sur l'appel direct
-            // ci-dessous plutôt que de renvoyer un résultat vide.
-        }
-        // `split.regions.empty()` (ex. anneau -- squelette en boucle fermée
-        // sans jonction détectable) : repli intégral sur l'appel direct.
+    // Planner récursif unifié (§32 du plan de refonte satin, 2026-08-14) :
+    // seul point d'appel restant vers `libs/satin_planning` -- plus de
+    // décomposition à une seule passe ici, `create_satin_plan` gère
+    // lui-même la récursion, la mesure de couverture et la réparation de
+    // résidu.
+    satin_planning::SatinPlanConfig planConfig;
+    planConfig.genParams = genParams;
+    planConfig.density = density;
+    const satin_planning::SatinPlan plan = satin_planning::create_satin_plan(region, planConfig);
+
+    for (const auto& w : plan.warnings) {
+        report.warnings.push_back(prefix + w);
     }
 
-    if (!builtViaSgsd) {
-        const auto network = auto_satin::build_satin_columns(region, genParams);
-        for (const auto& w : network.warnings) {
-            report.warnings.push_back(directPrefix + w);
+    report.sections.reserve(plan.regions.size());
+    for (const auto& r : plan.regions) {
+        if (r.depth > 0 || r.from_residual_repair) {
+            report.used_sgsd = true;
         }
-        report.sections = sections_from_result(network, density, pullCompensation, centerUnderlay, maxWidth);
-        if (report.sections.empty()) {
-            report.refusal = network.refusal.empty() ? std::string("aucune colonne satin n'a pu être construite")
-                                                      : network.refusal;
-        }
+        auto secs = sections_from_result(r.columns, density, pullCompensation, centerUnderlay, maxWidth);
+        for (auto& s : secs) report.sections.push_back(std::move(s));
     }
 
-    // Mesure RÉELLE du reliquat non couvert (défaut trouvé 2026-08-14, § docs/
-    // source/satin.md « SGSD exclusif ») : une sous-région ACCEPTÉE (au moins
-    // une colonne produite, donc aucun signal structurel de refus) peut quand
-    // même laisser une grande partie de sa propre surface sans le moindre
-    // point si sa forme ne se prêtait pas à une approximation par ruban satin
-    // -- typique d'une boucle/contre-poinçon de lettre (a, b, d, e, g, o, p,
-    // q…) isolée par SGSD mais toujours trop ronde pour un unique ruban.
-    // L'ancien signal (arêtes du squelette vs nombre de sections, ou chemins
-    // non isolés/refusés côté SGSD) ne détecte QUE l'absence totale de
-    // colonne sur une branche -- jamais une colonne acceptée mais mal
-    // ajustée. Calculer le reliquat géométrique réel (région moins bandes
-    // réellement produites) généralise les deux cas dans un seul calcul.
-    // Seuil volontairement mixte (fixe ET proportionnel) pour tolérer le
-    // reliquat NATUREL d'une pointe/jonction (quelques mm² même quand tout
-    // réussit, cf. commentaire historique) sans le confondre avec un vrai
-    // trou structurel, quelle que soit la taille de la région.
-    if (!report.sections.empty()) {
-        std::vector<geometry::Path> strips;
-        strips.reserve(report.sections.size());
-        for (const auto& s : report.sections) strips.push_back(s.strip);
-        // Bandes à leur taille RÉELLE ici, jamais `shrink_strips_for_cutout`
-        // (réservé à la découpe du remplissage de repli lui-même, plus bas
-        // côté appelant) : ce rétrécissement de 0,4 mm par bande sert à faire
-        // légèrement DÉBORDER le repli DANS la bande satin (jamais
-        // d'interstice), mais gonflerait ici artificiellement le reliquat
-        // mesuré d'une valeur proportionnelle au périmètre total des bandes
-        // -- largement plus que quelques mm² sur une décomposition à
-        // plusieurs bandes -- et ferait détecter un trou même sur une
-        // décomposition déjà parfaitement couverte.
-        if (const auto leftover = geometry::subtract_polygons(region, strips)) {
-            double leftoverAreaMm2 = 0.0;
-            for (const auto& piece : *leftover) leftoverAreaMm2 += net_area_um2(piece) / 1e6;
-            const double totalAreaMm2 = net_area_um2(region) / 1e6;
-            constexpr double kGapThresholdFloorMm2 = 1.0;
-            constexpr double kGapThresholdRatio = 0.03;
-            if (leftoverAreaMm2 > std::max(kGapThresholdFloorMm2, kGapThresholdRatio * totalAreaMm2)) {
-                report.structural_gap = true;
-            }
-        }
+    // Le résidu reste une géométrie BRUTE, complète et JAMAIS filtrée --
+    // c'est à l'appelant de décider quoi en faire (§12 du plan de refonte :
+    // « aucun fallback silencieux vers tatami »). `create_satin_plan` ne
+    // filtre déjà plus les composantes individuellement négligeables hors de
+    // ce résidu (défaut réel trouvé et corrigé le 2026-08-14 : de nombreux
+    // petits reliquats "négligeables" un par un peuvent s'additionner en un
+    // vrai trou de plusieurs centaines de mm² sur une forme complexe, § docs/
+    // source/satin.md) -- il ne fait plus que décider quelles composantes
+    // méritent une TENTATIVE de réparation individuelle, jamais ce qui est
+    // rapporté.
+    report.unresolved_residual = plan.unresolved_residual;
+    if (plan.aggregate_coverage) {
+        report.aggregate_coverage = *plan.aggregate_coverage;
+    }
+
+    // `structural_gap` est un raccourci booléen pour les appelants qui ne
+    // veulent pas inspecter `unresolved_residual` en détail : significatif
+    // au sens AGRÉGÉ (somme de toutes les composantes manquantes, jamais une
+    // composante isolée), avec le même seuil mixte fixe+proportionnel que le
+    // reste du pipeline (tolère le reliquat naturel d'une pointe/jonction,
+    // même minuscule, sans le confondre avec un vrai trou -- mais une SOMME
+    // de nombreux petits reliquats reste, elle, correctement signalée).
+    double residualAreaMm2 = 0.0;
+    for (const auto& piece : report.unresolved_residual) residualAreaMm2 += net_area_um2(piece) / 1e6;
+    const double totalAreaMm2 = net_area_um2(region) / 1e6;
+    constexpr double kGapThresholdFloorMm2 = 1.0;
+    constexpr double kGapThresholdRatio = 0.03;
+    report.structural_gap = residualAreaMm2 > std::max(kGapThresholdFloorMm2, kGapThresholdRatio * totalAreaMm2);
+
+    if (report.sections.empty()) {
+        report.refusal = "aucune colonne satin n'a pu être construite";
     }
 
     return report;
@@ -378,24 +322,33 @@ Result<AutoResult> auto_digitize(const segmentation::Segmentation& seg,
                 // Une branche de squelette rejetée (ex. trop large), ou une
                 // sous-région ACCEPTÉE mais dont la colonne ne couvre qu'une
                 // fraction de sa propre surface (ex. une boucle/contre-poinçon
-                // de lettre trop ronde pour un unique ruban satin, défaut réel
-                // trouvé le 2026-08-14 sur une forme utilisateur -- § docs/
-                // source/satin.md « SGSD exclusif »), ne doit JAMAIS laisser
-                // une zone sans le moindre point : comble ce qui n'est
-                // couvert par AUCUNE section satin réussie avec un
-                // remplissage tatami, découpé sur la zone exacte (jamais tout
-                // le contour source, jamais un débordement sur les sections
-                // satin).
+                // de lettre trop ronde pour un unique ruban satin), ne doit
+                // JAMAIS laisser une zone sans le moindre point. Ici,
+                // l'auto-numérisation reste la voie « AutoChoice » (§24 du
+                // plan de refonte satin, 2026-08-14) : classification
+                // automatique, sans utilisateur interactif à qui proposer un
+                // choix (§12/§23) -- le repli tatami automatique reste donc
+                // justifié dans CE contexte précis, mais ne doit JAMAIS être
+                // silencieux : un avertissement explicite (aire, pourcentage)
+                // est toujours poussé avant de créer le repli.
                 //
-                // `structuralGap` (§ build_satin_sections) mesure désormais le
-                // reliquat géométrique RÉEL (région moins bandes produites),
-                // avec un seuil mixte fixe+proportionnel pour tolérer le
-                // reliquat naturel d'une pointe/jonction sans le confondre
-                // avec un vrai trou -- généralise l'ancien signal purement
-                // structurel (arêtes du squelette vs sections produites), qui
-                // ne détectait que l'absence totale de colonne, jamais une
-                // colonne acceptée mais mal ajustée à sa région.
+                // `structuralGap`/`built.unresolved_residual` (§ build_satin_
+                // sections, qui délègue désormais à `satin_planning::
+                // create_satin_plan`) mesurent le reliquat géométrique RÉEL
+                // après une décomposition récursive et une réparation de
+                // résidu déjà tentées -- jamais un simple signal structurel.
                 if (structuralGap) {
+                    if (built.aggregate_coverage) {
+                        std::ostringstream diag;
+                        diag.setf(std::ios::fixed);
+                        diag.precision(1);
+                        diag << "Région " << id.value << " : satin incomplet : "
+                             << (built.aggregate_coverage->raw_coverage_ratio * 100.0)
+                             << "% de la région couverte par le satin, "
+                             << built.aggregate_coverage->missing_area_mm2
+                             << " mm² comblés par un remplissage tatami de repli (classification automatique)";
+                        result.warnings.push_back(diag.str());
+                    }
                     // Seuil délibérément bas et INDÉPENDANT de
                     // `min_fill_area_mm2` (ce dernier répond à "cette région
                     // entière vaut-elle un remplissage plutôt qu'un simple

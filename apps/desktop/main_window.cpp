@@ -3219,6 +3219,37 @@ void MainWindow::warnAboutSkippedAutoSatinBranches(const std::vector<std::string
     QMessageBox::warning(this, tr("Zones remplies en tatami de repli"), text);
 }
 
+void MainWindow::warnAboutIncompleteSatinCoverage(const std::vector<geometry::PathSet>& unresolvedResidual,
+                                                  double sourceAreaMm2) {
+    if (unresolvedResidual.empty() || sourceAreaMm2 <= 0.0) {
+        return;
+    }
+    double residualAreaMm2 = 0.0;
+    for (const auto& piece : unresolvedResidual) {
+        residualAreaMm2 += std::abs(geometry::signed_area_um2(piece.outer)) / 1e6;
+    }
+    // Seuil mixte fixe+proportionnel, même calibration que `autodigitize::
+    // build_satin_sections` (2026-08-14) : tolère le reliquat NATUREL d'une
+    // pointe/jonction (quelques mm² même sur une décomposition réussie)
+    // sans en avertir l'utilisateur à chaque colonne créée -- mais jamais
+    // une zone significativement incomplète laissée sans un mot.
+    constexpr double kThresholdFloorMm2 = 1.0;
+    constexpr double kThresholdRatio = 0.03;
+    if (residualAreaMm2 <= std::max(kThresholdFloorMm2, kThresholdRatio * sourceAreaMm2)) {
+        return;
+    }
+    const double coveredPercent = 100.0 * (1.0 - residualAreaMm2 / sourceAreaMm2);
+    QMessageBox::information(
+        this, tr("Satin incomplet"),
+        tr("%1 % de la région a pu être converti en satin. %2 mm² restent sans point "
+           "(satin ni tatami) — la forme comporte une zone que le découpage automatique "
+           "n'a pas su rendre en satin de qualité suffisante.\n\n"
+           "Options : retoucher la coupe manuellement (outil Ligne de coupe), créer un "
+           "remplissage tatami sur cette zone, ou accepter le résultat partiel tel quel.")
+            .arg(coveredPercent, 0, 'f', 1)
+            .arg(residualAreaMm2, 0, 'f', 1));
+}
+
 void MainWindow::openAiPreferences() {
     AiPreferencesDialog dialog(this);
     dialog.setPreferences(loadAiPreferences());
@@ -3391,6 +3422,8 @@ void MainWindow::createSatinObject() {
             tr("%1 colonne(s) satin générée(s) : %2 points").arg(count).arg(stats.stitches));
     }
     warnAboutSkippedAutoSatinBranches(built.warnings);
+    const double sourceAreaMm2 = std::abs(geometry::signed_area_um2(source->paths.front().outer)) / 1e6;
+    warnAboutIncompleteSatinCoverage(built.unresolved_residual, sourceAreaMm2);
 }
 
 void MainWindow::onSatinCutLineDragging(QPointF anchorMm, QPointF currentMm) {
@@ -3497,6 +3530,8 @@ bool MainWindow::createSatinObjectWithCutLine(Vec2um cutA, Vec2um cutB) {
 
     std::vector<document::EmbroideryObject> objects;
     std::vector<std::string> allWarnings;
+    std::vector<geometry::PathSet> allResidual;
+    double totalPieceAreaMm2 = 0.0;
     double worstWidthUm = 0.0;
     int idx = 0;
     // Chaque morceau issu de la coupe est traité indépendamment via le même
@@ -3509,11 +3544,13 @@ bool MainWindow::createSatinObjectWithCutLine(Vec2um cutA, Vec2um cutB) {
         if (piece.outer.nodes.empty()) {
             continue;
         }
+        totalPieceAreaMm2 += std::abs(geometry::signed_area_um2(piece.outer)) / 1e6;
         auto_satin::SatinColumnsParameters skeletonParams;
         skeletonParams.geometry_mode = auto_satin::SatinGeometryMode::Parametric;
         autodigitize::SatinBuildReport pieceBuilt = autodigitize::build_satin_sections(
             piece, skeletonParams, density, compensation, underlay, defaults.max_width);
         for (auto& w : pieceBuilt.warnings) allWarnings.push_back(std::move(w));
+        for (auto& r : pieceBuilt.unresolved_residual) allResidual.push_back(std::move(r));
         if (pieceBuilt.sections.empty()) {
             continue;
         }
@@ -3574,6 +3611,7 @@ bool MainWindow::createSatinObjectWithCutLine(Vec2um cutA, Vec2um cutB) {
             tr("Coupe : %1 colonne(s) satin générée(s) : %2 points").arg(count).arg(stats.stitches));
     }
     warnAboutSkippedAutoSatinBranches(allWarnings);
+    warnAboutIncompleteSatinCoverage(allResidual, totalPieceAreaMm2);
     return true;
 }
 
@@ -3682,6 +3720,26 @@ void MainWindow::autoConvertToSatin() {
                    .arg(columnCount);
     } else {
         info = tr("Colonnes proposées : %1").arg(columnCount);
+    }
+    // Couverture estimée (§23 du plan de refonte satin, 2026-08-14) :
+    // affichée dans l'APERÇU avant toute création, jamais découverte après
+    // coup -- l'utilisateur décide en connaissance de cause plutôt que de
+    // voir une intention SATIN silencieusement réalisée à moitié.
+    if (columnCount > 0) {
+        const double sourceAreaMm2 = std::abs(geometry::signed_area_um2(source->paths.front().outer)) / 1e6;
+        double residualAreaMm2 = 0.0;
+        for (const auto& piece : built.unresolved_residual) {
+            residualAreaMm2 += std::abs(geometry::signed_area_um2(piece.outer)) / 1e6;
+        }
+        if (sourceAreaMm2 > 0.0) {
+            const double coveredPercent = 100.0 * (1.0 - residualAreaMm2 / sourceAreaMm2);
+            info += tr("\nCouverture estimée : %1 %").arg(coveredPercent, 0, 'f', 1);
+            constexpr double kThresholdFloorMm2 = 1.0;
+            constexpr double kThresholdRatio = 0.03;
+            if (residualAreaMm2 > std::max(kThresholdFloorMm2, kThresholdRatio * sourceAreaMm2)) {
+                info += tr("\n⚠ %1 mm² resteraient sans point (satin ni tatami).").arg(residualAreaMm2, 0, 'f', 1);
+            }
+        }
     }
     for (const auto& w : built.warnings) {
         info += tr("\nAttention : %1").arg(QString::fromStdString(w));
@@ -3809,25 +3867,44 @@ void MainWindow::setStitchType(ObjectId embroideryId, int type) {
                                  tr("Aucun contour source pour construire les rails."));
             return;
         }
-        // Préfère le moteur squelette en mode Parametric (gère les formes
-        // concaves/branchues sans faire déborder les barreaux, jonctions plus
-        // propres — cf. docs/source/satin.md) ; repli sur l'heuristique naïve
-        // seulement si le squelette ne produit aucune colonne UNIQUE
-        // exploitable (forme trop simple, ou décomposée en plusieurs sections
-        // — hors du modèle « un objet, un type » de cette action).
+        // `SetStitchTypeCommand` ne sait remplacer qu'UN embroidery object
+        // par UN seul jeu de paramètres (contrainte structurelle de cette
+        // commande d'annulation/rétablissement, pas un choix arbitraire) --
+        // cette action reste donc hors du planner multi-régions complet
+        // (`createSatinObject`/`autoConvertToSatin`, qui créent une VRAIE
+        // décomposition en plusieurs objets). Elle passe néanmoins par le
+        // même point d'entrée unifié (`autodigitize::build_satin_sections`,
+        // § plan de refonte satin 2026-08-14) pour bénéficier de la même
+        // qualité de solveur (récursion, vérification de couverture) sur le
+        // cas courant (une seule section) plutôt que l'ancien appel direct.
         auto_satin::SatinColumnsParameters skeletonParams;
         skeletonParams.geometry_mode = auto_satin::SatinGeometryMode::Parametric;
-        const auto skeletonResult = auto_satin::build_satin_columns(source->paths.front(), skeletonParams);
         const document::SatinParams defaults;  // densité/compensation/sous-couche inchangées ici
+        autodigitize::SatinBuildReport built = autodigitize::build_satin_sections(
+            source->paths.front(), skeletonParams, defaults.density, defaults.pull_compensation,
+            defaults.center_underlay, defaults.max_width);
         document::SatinParams sp;
-        if (skeletonResult.parametric_columns.size() == 1) {
-            sp = autodigitize::satin_params_from_column(
-                skeletonResult.parametric_columns.front(), defaults.density, defaults.pull_compensation,
-                defaults.center_underlay, defaults.max_width);
-        } else if (skeletonResult.columns.size() == 1) {
-            sp = autodigitize::satin_params_from_column(
-                skeletonResult.columns.front(), defaults.density, defaults.pull_compensation,
-                defaults.center_underlay, defaults.max_width);
+        if (built.sections.size() == 1) {
+            sp = std::move(built.sections.front().params);
+        } else if (built.sections.size() > 1) {
+            // Décomposition multi-régions réussie, mais cette action ne peut
+            // représenter qu'UNE section : garde la plus grande (meilleure
+            // approximation locale unique) et le signale explicitement --
+            // jamais une substitution silencieuse par une géométrie de
+            // moindre qualité (§12 du plan de refonte satin).
+            const auto& best = *std::max_element(
+                built.sections.begin(), built.sections.end(), [](const auto& a, const auto& b) {
+                    return std::abs(geometry::signed_area_um2(a.strip)) <
+                           std::abs(geometry::signed_area_um2(b.strip));
+                });
+            sp = best.params;
+            QMessageBox::information(
+                this, tr("Satin partiel"),
+                tr("Cette forme nécessite plusieurs sections satin pour être entièrement "
+                   "représentée (%1 trouvées) ; « Type de points » ne peut convertir qu'un "
+                   "seul objet à la fois et ne conserve donc que la section la plus grande. "
+                   "Utilisez « Colonne satin » (création) pour la décomposition complète.")
+                    .arg(built.sections.size()));
         } else {
             auto rails = stitch_generation::rails_from_contour(source->paths.front().outer);
             if (!rails) {

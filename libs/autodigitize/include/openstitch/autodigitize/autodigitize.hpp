@@ -12,6 +12,7 @@
 #include "openstitch/document/embroidery_object.hpp"
 #include "openstitch/document/vector_object.hpp"
 #include "openstitch/geometry/path.hpp"
+#include "openstitch/satin_coverage/coverage.hpp"
 #include "openstitch/segmentation/segmentation.hpp"
 
 namespace openstitch::autodigitize {
@@ -30,23 +31,14 @@ struct AutoOptions {
     // image carrée). Particulièrement utile sur une image SANS canal alpha :
     // sans transparence, le fond devient une région opaque comme les autres.
     bool skip_largest_region{false};
-    // Moteur topologique : squelette, decomposition en sections ouvertes,
-    // barreaux et routage par source commune. Active par defaut.
-    //
-    // Sur une région dont le squelette est BRANCHÉ (au moins une jonction
-    // réelle), passe TOUJOURS d'abord par la décomposition guidée par
-    // squelette (SGSD : `libs/satin_planning`, découpage en sous-régions
-    // simples + recherche à faisceau + fusion) — plus d'échappatoire vers
-    // l'ancien appel direct à `build_satin_columns` sur la région entière,
-    // c'est désormais le seul chemin pour une région branchée (gain de
-    // couverture réel et mesuré sur le corpus de test, +4,6 à +7,4 points
-    // selon la forme, cf. `openstitch-cli sgsd-debug` et
-    // docs/source/satin.md). L'appel direct à `build_satin_columns` reste
-    // néanmoins utilisé en INTERNE comme filet de sécurité structurel quand
-    // SGSD ne résout rien (région non branchée dès le départ, ou cas
-    // topologique non couvert comme un anneau — squelette en boucle fermée
-    // sans jonction détectable) : jamais une zone laissée sans le moindre
-    // point, cf. `try_sgsd_decomposition` dans autodigitize.cpp.
+    // Active la classification automatique satin/tatami par forme (§24 du
+    // plan de refonte satin, 2026-08-14 : "AutoChoice", une RECOMMANDATION
+    // automatique de l'auto-numérisation, distincte d'un choix satin
+    // explicitement forcé par l'utilisateur ailleurs dans l'application).
+    // Quand une région est classée satin, elle passe TOUJOURS par le planner
+    // récursif unifié (`satin_planning::create_satin_plan`, via
+    // `build_satin_sections` ci-dessous) — jamais un appel direct sur la
+    // région entière ni un refus global : cf. docs/source/satin.md.
     bool use_auto_satin{true};
     // Satin automatique NAÏF (rails_from_contour) : désactivé par défaut. Ses
     // deux rails « bouts les plus éloignés » débordent sur les formes concaves
@@ -124,53 +116,69 @@ struct BuiltSatinSection {
 };
 
 // Résultat de `build_satin_sections` : les sections construites, plus le
-// contexte nécessaire pour un aperçu ou un message d'erreur côté appelant.
+// contexte nécessaire pour un aperçu ou un diagnostic côté appelant.
+//
+// Contrat (§1-33 du plan de refonte satin, 2026-08-14) : quand SATIN est
+// l'intention (forcée par l'utilisateur ou recommandée automatiquement), ce
+// module ne décide JAMAIS de la remplacer par du tatami ni de rien refuser
+// silencieusement. `sections` porte tout ce qui a pu être satisfait ;
+// `unresolved_residual` porte, honnêtement, tout ce qui ne l'a pas été
+// (géométrie brute, jamais transformée) -- c'est à l'APPELANT de décider
+// quoi faire du résidu (proposer un choix à l'utilisateur, ou, pour un
+// pipeline automatique sans utilisateur présent, appliquer une politique de
+// repli explicite et non silencieuse, cf. `auto_digitize` ci-dessus).
 struct SatinBuildReport {
     std::vector<BuiltSatinSection> sections;
-    // Vrai si la décomposition guidée par squelette (SGSD) a été utilisée
-    // (région branchée). Faux si l'appel direct historique à
-    // `build_satin_columns` a suffi (région déjà simple) ou si RIEN n'a pu
-    // être construit.
+    // Vrai si la région a nécessité une décomposition (planner récursif,
+    // `satin_planning::create_satin_plan` -- au moins une région du plan a
+    // une profondeur > 0, ou vient de la réparation de résidu). Faux si le
+    // solveur local a suffi tel quel sur la région entière.
     bool used_sgsd{false};
-    // Vrai si une partie MESURABLE de la région source reste non couverte par
-    // les sections ci-dessus -- calculé géométriquement (région moins bandes
-    // réellement produites), avec un seuil mixte fixe+proportionnel pour
-    // tolérer le reliquat NATUREL d'une pointe/jonction (quelques mm² même
-    // quand tout réussit, § docs/source/satin.md) sans le confondre avec un
-    // vrai trou. Détecte aussi bien un chemin SGSD non isolé/refusé qu'une
-    // sous-région ACCEPTÉE (au moins une colonne produite) mais dont la
-    // géométrie ne couvre qu'une fraction de sa propre surface -- défaut réel
-    // trouvé le 2026-08-14 sur une boucle/contre-poinçon de lettre isolée par
-    // SGSD mais trop ronde pour un unique ruban, invisible à l'ancien signal
-    // purement structurel. Signal pour un éventuel remplissage de repli côté
-    // appelant.
+    // Vrai si `unresolved_residual` est non vide -- conservé pour
+    // compatibilité avec les appelants existants qui ne consultent que ce
+    // booléen ; `unresolved_residual` porte l'information complète.
     bool structural_gap{false};
+    // Composantes manquantes significatives qu'AUCUNE tentative de
+    // réparation récursive n'a pu résoudre (§12/§17/§18 du plan de refonte) :
+    // géométrie brute, jamais convertie en tatami ni en quoi que ce soit par
+    // ce module. Un appelant qui les ignore silencieusement reproduirait
+    // exactement le défaut que ce contrat existe pour éliminer.
+    std::vector<geometry::PathSet> unresolved_residual;
+    // Couverture mesurée sur la région SOURCE entière (union de toutes les
+    // sections produites) -- absent si jamais mesurée (aucune section
+    // produite).
+    std::optional<satin_coverage::SatinCoverageReport> aggregate_coverage;
     std::vector<std::string> warnings;
     // Diagnostic de satinabilité de la région ENTIÈRE, calculé une seule
-    // fois en amont (que SGSD s'engage ou non) -- toujours renseigné sauf
-    // échec d'analyse pur (forme dégénérée). Utile pour un aperçu utilisateur
-    // (statut, largeurs, nombre de branches) même quand la région a ensuite
-    // été décomposée en plusieurs sous-régions.
+    // fois en amont -- toujours renseigné sauf échec d'analyse pur (forme
+    // dégénérée). Utile pour un aperçu utilisateur (statut, largeurs, nombre
+    // de branches) même quand la région a ensuite été décomposée en
+    // plusieurs sous-régions.
     std::optional<auto_satin::SatinabilityReport> whole_region_report;
-    // Message de refus le plus pertinent si `sections` est vide (celui de
-    // l'appel direct, ou un résumé synthétique si SGSD a tout tenté sans
-    // succès) -- vide si `sections` est non vide.
+    // Message de refus si `sections` est vide (rien n'a pu être construit du
+    // tout) -- vide si `sections` est non vide, même si `unresolved_residual`
+    // ne l'est pas (couverture partielle, pas un refus total).
     std::string refusal;
 };
 
-// Construit réellement les colonnes satin sur `region`, en passant TOUJOURS
-// par la décomposition guidée par squelette (SGSD, `libs/satin_planning`)
-// quand son squelette est BRANCHÉ (au moins une jonction réelle) — gain de
-// couverture réel et mesuré sur le corpus de test (+4,6 à +7,4 points selon
-// la forme, cf. `openstitch-cli sgsd-debug` et docs/source/satin.md). Repli
-// INTERNE sur l'appel direct historique à `build_satin_columns` dès que SGSD
-// ne résout rien (région non branchée dès le départ, ou cas topologique non
-// couvert comme un anneau — squelette en boucle fermée sans jonction
-// détectable) : jamais une zone laissée sans le moindre point.
+// Construit réellement les colonnes satin sur `region` en passant par le
+// planner récursif unifié (`satin_planning::create_satin_plan`,
+// `libs/satin_planning`) : tente le solveur local, mesure sa couverture
+// réelle, et décompose puis replanifie RÉCURSIVEMENT chaque sous-région tant
+// que la couverture mesurée ne suffit pas — une région fille encore
+// médiocre peut elle-même être redécoupée (§10 du plan de refonte satin,
+// 2026-08-14), contrairement à l'ancienne décomposition à une seule passe.
+// Une passe de réparation de résidu tente ensuite de replanifier toute
+// composante manquante significative comme une nouvelle région (§17).
+//
+// Ne produit JAMAIS de repli automatique (tatami ou autre) : ce qui reste
+// non résolu après ce processus est exposé tel quel dans
+// `SatinBuildReport::unresolved_residual`, jamais silencieusement comblé
+// (§12 du plan de refonte -- « aucun fallback silencieux vers tatami »).
 //
 // Point d'entrée UNIQUE partagé par l'auto-numérisation (`auto_digitize`
 // ci-dessus) et la création satin manuelle (`apps/desktop/main_window.cpp`)
-// — mêmes garanties de couverture partout, un seul endroit à faire évoluer.
+// — mêmes garanties partout, un seul endroit à faire évoluer.
 // `warningLabel`, si non vide, préfixe chaque message de `warnings` (ex.
 // "Région 12" côté auto-numérisation).
 [[nodiscard]] SatinBuildReport build_satin_sections(const geometry::PathSet& region,

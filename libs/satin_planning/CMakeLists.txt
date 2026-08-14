@@ -7,6 +7,7 @@ add_library(openstitch_satin_planning
     src/merge_pass.cpp
     src/overlap.cpp
     src/region_routing.cpp
+    src/satin_plan.cpp
 )
 add_library(openstitch::satin_planning ALIAS openstitch_satin_planning)
 

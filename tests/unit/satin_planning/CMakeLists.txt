@@ -7,6 +7,7 @@ add_executable(test_satin_planning
     test_merge_pass.cpp
     test_overlap.cpp
     test_region_routing.cpp
+    test_satin_plan.cpp
 )
 target_link_libraries(test_satin_planning
     PRIVATE openstitch::satin_planning openstitch::auto_satin openstitch::satin_coverage

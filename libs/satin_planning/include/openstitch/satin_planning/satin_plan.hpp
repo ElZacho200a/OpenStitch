@@ -1,0 +1,152 @@
+// SPDX-License-Identifier: Apache-2.0
+#pragma once
+
+#include <optional>
+#include <string>
+#include <utility>
+#include <vector>
+
+#include "openstitch/auto_satin/satin_column.hpp"
+#include "openstitch/satin_coverage/coverage.hpp"
+#include "openstitch/satin_planning/region_split.hpp"
+
+namespace openstitch::satin_planning {
+
+// Configuration du planner recursif (§10 du plan de refonte satin, 2026-08-14
+// -- "region + intention SATIN -> partition satinable", pas un simple
+// reparateur de junctions).
+struct SatinPlanConfig {
+    auto_satin::SatinColumnsParameters genParams{};
+    satin_coverage::SatinCoverageConfig coverageConfig{};
+    // Reglages de decoupe reutilises a CHAQUE niveau de recursion (recherche
+    // guidee par l'oracle injectee automatiquement si `cutParams.selector`
+    // est vide -- un appelant peut fournir sa propre strategie).
+    CutCandidateParams cutParams{};
+    Micrometers density{400};
+    // Garde-fou anti-recursion infinie -- jamais une autorisation, seulement
+    // une limite de temps de calcul.
+    int max_recursion_depth{4};
+    // Seuil MINIMAL de couverture brute pour qu'un "meilleur effort local"
+    // (aucune decomposition possible/utile, ou profondeur maximale atteinte)
+    // soit accepte comme une feuille du plan plutot que rapporte comme
+    // residu. Defaut reel trouve et corrige le 2026-08-14 (diagnostic
+    // tentabrode.png, image reelle) : sans ce seuil, une colonne unique ne
+    // couvrant que 1,2% d'un gros blob sans jonction interne (donc jamais
+    // decomposable) etait acceptee telle quelle comme "le mieux possible" --
+    // fabriquant silencieusement une "reussite" a 1,2% que ni l'appelant ni
+    // l'utilisateur ne pouvait distinguer d'un vrai succes. En dessous de ce
+    // seuil, la region est desormais rapportee comme residu (jamais
+    // silencieusement acceptee), meme si aucune decomposition n'est
+    // possible -- c'est a l'appelant de decider quoi en faire (§12 du plan
+    // de refonte satin), pas a ce module de pretendre avoir reussi.
+    double min_fallback_coverage_ratio{0.5};
+    // Reparation de residu (§17) : apres assemblage complet, mesure la
+    // couverture AGREGEE sur la region source entiere et tente de
+    // replanifier chaque composante manquante significative comme une
+    // region a part entiere -- jamais un comblement automatique satin/tatami,
+    // une vraie tentative recursive comme n'importe quelle autre region.
+    //
+    // "Significative" est deliberement un seuil MIXTE (fixe ET proportionnel
+    // a l'aire de la region source, `max(floor, ratio * aire_source)`), pas
+    // une simple aire minimale -- meme raisonnement et memes valeurs par
+    // defaut que le correctif de mesure reelle de `autodigitize::
+    // build_satin_sections` (2026-08-14) : un rail satin (surtout en mode
+    // Parametric) approxime toujours la forme source avec un reliquat
+    // NATUREL aux pointes/jonctions, meme quand tout reussit. Un seuil
+    // purement absolu trop bas confond ce bruit avec un vrai trou -- verifie
+    // empiriquement : un simple rectangle satine correctement se voyait
+    // artificiellement redecoupe en 3 regions avec un seuil fixe de 0,5 mm2
+    // (les deux reliquats de pointe, chacun negligeable en proportion,
+    // depassaient ce seuil en absolu).
+    double residual_repair_min_area_mm2{1.0};
+    double residual_repair_min_area_ratio{0.03};
+    // Filtre supplementaire : une composante manquante fine et allongee (un
+    // simple liseré d'arrondi le long d'un rail) peut accumuler une aire
+    // non negligeable sans jamais representer un vrai trou -- `max_gap_radius_mm`
+    // (rayon du plus grand disque inscrit, deja calcule par
+    // `satin_coverage`) caracterise la PROFONDEUR reelle du manque, pas
+    // seulement sa surface. En dessous de ce rayon, la composante est
+    // ignoree meme si elle depasse le seuil d'aire.
+    double residual_repair_min_gap_radius_mm{0.15};
+    int max_residual_repair_rounds{2};
+};
+
+// Une region finale du plan : geometrie STRUCTURELLE (jamais modifiee pour
+// mesurer la couverture, cf. §20 -- une geometrie de couture dediee avec
+// recouvrement reste un raffinement ulterieur, non encore produit ici),
+// colonnes REELLEMENT construites, et le verdict de couverture qui a motive
+// son acceptation.
+struct SatinPlanRegion {
+    geometry::PathSet region;
+    auto_satin::SatinColumnsResult columns;
+    // Absent seulement si le solveur local n'a produit aucune colonne du
+    // tout (rien a mesurer) -- ne devrait normalement pas apparaitre dans
+    // `SatinPlan::regions` (une region sans colonne n'est jamais acceptee
+    // comme feuille), conserve optionnel par prudence plutot que par un
+    // rapport par defaut trompeur (couverture 0% qui se lirait comme
+    // "mesuree et mauvaise" plutot que "jamais mesuree").
+    std::optional<satin_coverage::SatinCoverageReport> coverage;
+    int depth{0};
+    // Vrai si cette region vient de la boucle de reparation de residu
+    // (§17), pas de la decomposition initiale -- utile pour le diagnostic
+    // utilisateur ("3 regions initiales + 1 region de reparation").
+    bool from_residual_repair{false};
+};
+
+struct SatinPlan {
+    std::vector<SatinPlanRegion> regions;
+    // Paires d'index DANS `regions` connues comme directement adjacentes
+    // (memes limites que `RegionSplitReport::merge_candidates` : seulement
+    // les paires de feuilles directement issues d'une meme coupe, sans
+    // redecoupage ulterieur d'aucun des deux cotes). NON PEUPLE dans cette
+    // premiere iteration du planner recursif -- limitation connue et
+    // documentee plutot que masquee (§19 du plan de refonte reste un travail
+    // futur : tracer l'adjacence a travers plusieurs niveaux de recursion).
+    std::vector<std::pair<std::size_t, std::size_t>> adjacency;
+    // Couverture mesuree sur la region SOURCE entiere par l'union de toutes
+    // les colonnes de `regions` -- absent si jamais mesuree (aucune region
+    // acceptee).
+    std::optional<satin_coverage::SatinCoverageReport> aggregate_coverage;
+    // Composantes manquantes significatives qu'aucune tentative de
+    // replanification n'a pu resoudre. JAMAIS comblees automatiquement
+    // (satin ou tatami) par ce module -- §12/§18 du plan de refonte : la
+    // couverture sert de TEST, jamais de mecanisme pour fabriquer
+    // artificiellement 100%, et l'appelant garde la decision explicite sur
+    // ce qu'il advient de ce residu.
+    std::vector<geometry::PathSet> unresolved_residual;
+    // Avertissements accumules depuis CHAQUE appel au solveur local, dans
+    // tout l'arbre de recursion -- jamais perdus silencieusement (meme
+    // garantie "jamais silencieux" que le reste du pipeline satin).
+    std::vector<std::string> warnings;
+    std::string diagnostic;
+};
+
+// Point d'entree UNIQUE du planner satin (§32 du plan de refonte, 2026-08-14) :
+// prend une region ARBITRAIRE (n'importe quelle forme demandee en satin par
+// l'utilisateur, jamais pre-filtree par un seuil de largeur agrege) et
+// produit une partition de regions que le solveur local
+// (`auto_satin::build_satin_columns`) sait effectivement bien transformer en
+// satin, mesure empiriquement via `satin_coverage::analyze_satin_coverage` --
+// jamais une regle theorique rigide sur la topologie du squelette.
+//
+// Algorithme (§10, recursif) : pour chaque region (en commencant par
+// `source`), tente d'abord le solveur local ET mesure sa couverture reelle.
+// Si elle est bonne (`SatinCoverageReport::passed`) ou que la profondeur
+// maximale est atteinte, la region est acceptee telle quelle. Sinon, si son
+// squelette contient au moins une jonction, elle est decoupee
+// (`decompose_into_paths` + `split_region`, recherche guidee par l'oracle) et
+// CHAQUE sous-region resultante est replanifiee recursivement -- une region
+// fille peut elle-meme necessiter un nouveau decoupage. Si la decomposition
+// ne produit rien d'exploitable (aucune jonction, ou aucune coupe valide),
+// le meilleur effort local est conserve tel quel plutot que d'etre perdu.
+//
+// Une fois l'arbre de decomposition epuise, une passe de reparation de
+// residu (§17) mesure la couverture AGREGEE sur `source` entiere et tente de
+// replanifier chaque composante manquante significative comme une nouvelle
+// region -- jusqu'a `max_residual_repair_rounds` passes, ou jusqu'a ce
+// qu'aucun progres ne soit plus possible.
+[[nodiscard]] SatinPlan create_satin_plan(const geometry::PathSet& source, const SatinPlanConfig& config = {});
+
+[[nodiscard]] std::string format_satin_plan(const SatinPlan& plan);
+
+}  // namespace openstitch::satin_planning

@@ -139,7 +139,7 @@ TEST_CASE("bande fine -> tatami si les deux moteurs satin sont desactives") {
 // tests/unit/auto_satin/test_columns.cpp -- SGSD (§ ci-dessous) est desormais
 // le seul chemin pour une region branchee au niveau autodigitize, sans
 // echappatoire cote AutoOptions.
-TEST_CASE("reseau en T -> decomposition SGSD en regions independantes, reliquat comble en tatami") {
+TEST_CASE("reseau en T -> decomposition en regions independantes via le planner recursif") {
     // Region branchee (reseau en T) : decomposee d'abord (§ libs/satin_planning)
     // -- la branche horizontale se fusionne en un seul chemin continu (angle
     // ~180 deg, meilleure continuation), le pied vertical devient une region
@@ -147,17 +147,13 @@ TEST_CASE("reseau en T -> decomposition SGSD en regions independantes, reliquat 
     // (`topology` absent, § document::SatinParams -- deux regions reanalysees
     // separement n'ont plus de jonction comparable entre elles).
     //
-    // Ce reseau en T est le MEME cas que celui mesure a 97,7% de couverture
-    // SGSD (§ docs/source/satin.md, sgsd-debug) : les deux sections isolees
-    // ne beneficient plus du recouvrement de jonction qu'aurait appliqué un
-    // decoupage par arete partageant sa jonction (§ Legacy/Parametric,
-    // extend_into_confluence) -- un reliquat NATUREL mais reel subsiste pres
-    // de l'ancienne jonction. Depuis le correctif du 2026-08-14 (mesure
-    // geometrique reelle du reliquat, § build_satin_sections), ce reliquat
-    // est desormais detecte et comble par un remplissage tatami de repli --
-    // avant ce correctif, il restait silencieusement sans le moindre point
-    // (defaut trouve sur une forme utilisateur reelle avec boucle, beaucoup
-    // plus severe : 83% de la surface sans point, cf. le meme correctif).
+    // Avec le planner recursif (`satin_planning::create_satin_plan`,
+    // 2026-08-14, § plan de refonte satin), le reliquat NATUREL pres de
+    // l'ancienne jonction (couverture SGSD deja mesuree a 97,7%, pas 100%,
+    // § docs/source/satin.md sgsd-debug) peut etre absorbe directement par
+    // le planner OU rester un tres petit repli tatami cote autodigitize --
+    // les deux sont corrects (§ garantie de couverture ci-dessous, jamais un
+    // compte exact d'objets, sensible aux details de calibration internes).
     image::Image img = blank(64, 64);
     for (int y = 8; y < 58; ++y) {
         for (int x = 29; x < 35; ++x) set_px(img, x, y, 25, 180, 110);
@@ -172,26 +168,47 @@ TEST_CASE("reseau en T -> decomposition SGSD en regions independantes, reliquat 
     o.satin_max_width = Micrometers{8'000};
     const auto result = auto_digitize(*seg, ids, o);
     REQUIRE(result.has_value());
-    // Region principale + le vecteur de repli portant le reliquat non couvert.
-    REQUIRE(result->vectors.size() == 2);
-    CHECK(result->vectors.front().paths.size() == 1);
+    REQUIRE_FALSE(result->vectors.empty());
+    const auto& sourceVec = result->vectors.front();
+    CHECK(sourceVec.paths.size() == 1);
 
     std::vector<const document::SatinParams*> satinSections;
-    bool sawTatamiFallback = false;
+    std::vector<geometry::Path> covering;
     for (const auto& e : result->embroideries) {
         if (e.is_satin()) {
-            CHECK(e.source_vector == result->vectors.front().id);
+            CHECK(e.source_vector == sourceVec.id);
             const auto& satin = std::get<document::SatinParams>(e.params);
             satinSections.push_back(&satin);
             CHECK_FALSE(satin.rail_a.closed);
             CHECK_FALSE(satin.rail_b.closed);
             CHECK(satin.rungs.size() >= 2);
-        } else if (e.is_tatami()) {
-            sawTatamiFallback = true;
+            const auto flatA = geometry::flatten(satin.rail_a, Micrometers{30});
+            const auto flatB = geometry::flatten(satin.rail_b, Micrometers{30});
+            geometry::Path strip;
+            strip.closed = true;
+            for (const auto& pt : flatA.points) strip.nodes.push_back({pt, geometry::NodeType::Corner});
+            for (auto it = flatB.points.rbegin(); it != flatB.points.rend(); ++it) {
+                strip.nodes.push_back({*it, geometry::NodeType::Corner});
+            }
+            covering.push_back(std::move(strip));
+        } else if (e.is_tatami() && e.name.find("repli") != std::string::npos) {
+            const auto fallbackVec = std::find_if(
+                result->vectors.begin(), result->vectors.end(),
+                [&](const document::VectorObject& v) { return v.id == e.source_vector; });
+            REQUIRE(fallbackVec != result->vectors.end());
+            for (const auto& piece : fallbackVec->paths) covering.push_back(piece.outer);
         }
     }
-    REQUIRE(satinSections.size() == 2);
-    CHECK(sawTatamiFallback);
+    CHECK(satinSections.size() >= 2);
+
+    // Garantie qui compte vraiment : la région source est intégralement
+    // couverte (satin seul, ou satin + repli tatami), jamais un compte
+    // précis d'objets qui dépend de détails de calibration internes.
+    const auto leftover = geometry::subtract_polygons(sourceVec.paths.front(), covering);
+    REQUIRE(leftover.has_value());
+    double leftoverAreaMm2 = 0.0;
+    for (const auto& piece : *leftover) leftoverAreaMm2 += std::abs(geometry::signed_area_um2(piece.outer)) / 1e6;
+    CHECK(leftoverAreaMm2 < 0.5);
 }
 
 TEST_CASE("anneau fin -> quatre sections satin et trou preserve") {
@@ -214,7 +231,11 @@ TEST_CASE("anneau fin -> quatre sections satin et trou preserve") {
     o.satin_max_width = Micrometers{12'000};
     const auto result = auto_digitize(*seg, ids, o);
     REQUIRE(result.has_value());
-    REQUIRE(result->vectors.size() == 1);
+    // La région principale reste toujours le premier vecteur émis ; un
+    // éventuel petit repli tatami (§ planner récursif, sensible aux détails
+    // de calibration internes, pas une garantie structurelle de ce test)
+    // apparaîtrait ensuite, jamais avant.
+    REQUIRE_FALSE(result->vectors.empty());
     REQUIRE(result->vectors.front().paths.size() == 1);
     auto_satin::SatinColumnsParameters satinOptions;
     satinOptions.analysis.thresholds.max_satin_width = o.satin_max_width;
@@ -436,22 +457,28 @@ TEST_CASE("branche squelette localement trop large -> avertissement (jamais sile
     const bool mentionsRejection = std::any_of(
         result->warnings.begin(), result->warnings.end(),
         [](const std::string& w) { return w.find("colonne refusee") != std::string::npos; });
+    // Le planner récursif (§10 du plan de refonte satin, 2026-08-14) tente
+    // plusieurs décompositions successives avant d'abandonner une branche :
+    // un message "colonne refusee" peut donc apparaître pour une TENTATIVE
+    // intermédiaire qui échoue, même si la récursion finit par résoudre
+    // entièrement la région par un découpage différent -- ce test vérifie
+    // que ces tentatives intermédiaires restent TRACÉES (jamais un échec
+    // silencieux, même transitoire), pas que la région entière échoue.
     CHECK(mentionsRejection);
 
-    // Les autres branches du squelette ont quand même produit du satin (pas
-    // un refus total -- seule la branche trop large est tombée).
-    const std::size_t satinCount =
-        static_cast<std::size_t>(std::count_if(result->embroideries.begin(), result->embroideries.end(),
-                                               [](const auto& e) { return e.is_satin(); }));
-    CHECK(satinCount >= 1);
+    // Le nombre exact de sections satin n'est plus une garantie testée ici
+    // (§ défaut réel trouvé sur tentabrode.png, 2026-08-14 : un seuil
+    // minimal de couverture, `SatinPlanConfig::min_fallback_coverage_ratio`,
+    // rejette désormais un "meilleur effort" clairement insuffisant plutôt
+    // que de l'accepter silencieusement — sur cette forme précise, cela peut
+    // légitimement mener à 0 section satin acceptée si aucune sous-région
+    // n'atteint une couverture correcte). La garantie qui compte reste la
+    // couverture de bout en bout ci-dessous, satin et/ou tatami confondus.
 
-    // La zone rejetée doit avoir reçu un remplissage tatami de repli --
-    // jamais laissée sans le moindre point (§ retour utilisateur explicite :
-    // "il faut absolument que ça couvre toute la zone").
-    const auto isFallbackTatami = [](const document::EmbroideryObject& e) {
-        return e.is_tatami() && e.name.find("repli") != std::string::npos;
-    };
-    REQUIRE(std::any_of(result->embroideries.begin(), result->embroideries.end(), isFallbackTatami));
+    // Tout objet tatami (repli ciblé sur un résidu SGSD, OU repli générique
+    // sur la région entière si aucune section satin n'a été acceptée,
+    // `autodigitize.cpp` § `if (!madeSatin)`) compte pour la couverture.
+    const auto isFallbackTatami = [](const document::EmbroideryObject& e) { return e.is_tatami(); };
 
     // Vérifie la couverture géométrique de bout en bout : région source
     // (le premier objet vectoriel, "Région <id>", pas les objets de repli)

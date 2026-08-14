@@ -11,6 +11,7 @@
 
 #include "openstitch/commands/undo_stack.hpp"
 #include "openstitch/document/project.hpp"
+#include "openstitch/geometry/path.hpp"
 #include "openstitch/stitch/sequence.hpp"
 #include "openstitch/stitch_generation/overrides.hpp"
 #include "tools.hpp"
@@ -87,6 +88,16 @@ private slots:
     // région (défaut trouvé en usage réel, cf. autodigitize.hpp
     // `AutoResult::warnings`).
     void warnAboutSkippedAutoSatinBranches(const std::vector<std::string>& warnings);
+    // Diagnostic explicite quand une intention SATIN n'a pu être satisfaite
+    // qu'en partie (§12 du plan de refonte satin, 2026-08-14 : « aucun
+    // fallback silencieux vers tatami ») -- jamais de substitution
+    // automatique et invisible, seulement une information claire (surface
+    // couverte, surface manquante) laissant l'utilisateur décider (retoucher
+    // la coupe, créer un tatami sur le reliquat, ou accepter le résultat
+    // partiel tel quel). `sourceAreaMm2` sert à exprimer le reliquat en
+    // pourcentage, pas seulement en mm² brut.
+    void warnAboutIncompleteSatinCoverage(const std::vector<geometry::PathSet>& unresolvedResidual,
+                                          double sourceAreaMm2);
     void openAiPreferences();
     void createRunningStitchObject();
     void createTatamiObject();
