@@ -3316,6 +3316,227 @@ réellement complet. Sur la forme utilisateur ayant motivé ce correctif :
 - Suite complète (Debug + Release) sans régression sur les 4 diagnostics
   permanents déjà connus.
 
+## Refonte du contrat satin : le planner récursif `create_satin_plan` (2026-08-14)
+
+*État : Présent.* Changement de paradigme, pas une nouvelle optimisation
+locale : jusqu'ici, une région trop complexe pouvait se voir répondre
+« pas directement satinable » comme résultat FINAL, avec un repli tatami
+silencieux ou une heuristique naïve dégradée en substitut. Le contrat
+devient désormais&nbsp;: **une intention SATIN explicite (utilisateur ou
+classification automatique) doit toujours déclencher une recherche de
+partition satinable, jamais un refus direct** — `RequiresDecomposition`
+(et tout statut de satinabilité) redevient une information INTERNE au
+planner, jamais une réponse finale à l'utilisateur.
+
+### Le planner : `satin_planning::create_satin_plan`
+
+Nouveau module (`libs/satin_planning/include/openstitch/satin_planning/
+satin_plan.hpp` + `src/satin_plan.cpp`), point d'entrée unique désormais
+partagé par TOUS les chemins de création satin de l'application
+(auto-numérisation, création manuelle, ligne de coupe, conversion de type)
+via `autodigitize::build_satin_sections`, qui n'est plus qu'un mince
+adaptateur document au-dessus de lui.
+
+```cpp
+SatinPlan create_satin_plan(const geometry::PathSet& source,
+                            const SatinPlanConfig& config = {});
+```
+
+Algorithme, réellement récursif (contrairement à l'ancienne décomposition
+SGSD à une seule passe, § sections précédentes) :
+
+1. **Essaie toujours le solveur local d'abord** (`auto_satin::
+   build_satin_columns`, inchangé — jamais patché, exactement l'esprit du
+   chantier SGSD original) sur la région telle quelle.
+2. **Mesure la couverture réellement obtenue** (`satin_coverage::
+   analyze_satin_coverage`, le même oracle indépendant que les phases 5 à 7
+   de SGSD) — jamais une règle théorique sur la topologie du squelette
+   (nombre de jonctions, largeur agrégée…). Si la couverture passe
+   (`SatinCoverageReport::passed`) ou que la profondeur maximale de
+   récursion est atteinte, la région est acceptée telle quelle.
+3. **Sinon, décompose** (réutilise `decompose_into_paths` + `split_region` +
+   `OracleGuidedSelector`, exactement l'infrastructure SGSD existante,
+   jamais réimplémentée) et **replanifie récursivement CHAQUE sous-région**
+   — c'est ici la vraie nouveauté&nbsp;: une région fille encore médiocre
+   peut à son tour être redécoupée, au lieu de s'arrêter après une seule
+   passe.
+4. Si la décomposition ne produit rien de mieux (aucune jonction, ou aucune
+   coupe valide), le meilleur effort local est conservé tel quel plutôt que
+   perdu.
+5. **Réparation de résidu** (une fois l'arbre de récursion épuisé) : mesure
+   la couverture AGRÉGÉE sur la région SOURCE entière et tente de
+   replanifier chaque composante manquante significative comme une nouvelle
+   région à part entière — jusqu'à `max_residual_repair_rounds` passes.
+
+```text
+plan(region):
+    candidate = try_local_satin(region)
+    if candidate.couverture suffisante OU profondeur max atteinte:
+        return candidate
+    decompositions = decompose(region)
+    if rien de mieux:
+        return candidate  (meilleur effort)
+    return concat(plan(sous-région) pour chaque sous-région)
+
+# une fois la racine entièrement planifiée :
+reliquat = couverture_agregee(source) - union(toutes les régions acceptées)
+pour chaque composante significative du reliquat :
+    tenter plan(composante) -- vraie tentative recursive, jamais un remplissage automatique
+```
+
+### Ce que `create_satin_plan` ne fait JAMAIS
+
+Ce module ne connaît même pas `document::TatamiParams` — il ne produit
+QUE de la géométrie satin + un résidu explicite
+(`SatinPlan::unresolved_residual`, une liste de `geometry::PathSet` brute,
+jamais transformée). Aucune décision de repli n'est prise ici&nbsp;: c'est
+strictement à l'appelant (§ section suivante) de décider quoi faire d'un
+résidu non nul — jamais une substitution automatique et silencieuse de
+l'intention SATIN.
+
+### Trois défauts réels trouvés en construisant le planner
+
+**1. Filtrer un reliquat individuellement négligeable peut masquer un vrai
+trou agrégé.** Première version : une composante manquante sous un seuil
+de signifiance (aire, rayon de trou) était simplement écartée du résidu
+rapporté. Sur une forme réelle (lettre T d'un vrai logo, empattement
+large), ce filtrage a d'abord masqué un trou de **384,8&nbsp;mm² sur
+392,3&nbsp;mm² source (98 %)** composé de nombreuses petites composantes
+individuellement sous le seuil. Corrigé en séparant les deux décisions
+que ce seuil confondait&nbsp;: il ne décide plus JAMAIS de ce qui est
+*rapporté* (`unresolved_residual` reste exhaustif, toute composante
+manquante y apparaît), seulement de ce qui mérite une *tentative de
+réparation individuelle* coûteuse (éviter de relancer `build_satin_columns`
+et une mesure de couverture complète sur chaque micro-résidu d'arrondi).
+Le filtrage de signifiance pour la décision finale (« faut-il alerter
+l'utilisateur ? ») vit désormais uniquement chez l'appelant
+(`autodigitize::build_satin_sections`, § section suivante), sur la somme
+totale du résidu — jamais composante par composante.
+
+**2. Une couverture invérifiable n'est pas une réussite.**
+`analyze_satin_coverage` ne peut échouer (une vraie erreur, jamais un
+simple score bas) que sur une région cible dégénérée (moins de 3 sommets)
+— un artefact occasionnel d'un découpage ou d'une réparation de résidu.
+`build_satin_columns` construit parfois quand même des colonnes (souvent
+quasi vides) sur une telle région dégénérée. Accepter cela sans distinction
+d'une vraie réussite mesurée fabriquait une « réussite » invérifiable en
+silence&nbsp;: sur la même forme réelle, un plan se déclarait complet avec
+4 régions acceptées alors que la couverture agrégée RÉELLE n'était que de
+**1,9 %**. Corrigé en routant explicitement ce cas vers le résidu plutôt
+que vers une acceptation aveugle — seule la profondeur de récursion
+maximale (dernier recours documenté, pas un raccourci général) accepte
+encore un résultat non vérifié.
+
+**3. Une couverture mesurée mais dérisoire n'est pas non plus une
+réussite.** Trouvé en rejouant le diagnostic permanent `tentabrode.png`
+(une vraie image, § chapitre *Analyse et validation*) après les deux
+premiers correctifs&nbsp;: la couverture agrégée RÉELLE s'est effondrée à
+**16,0&nbsp;%** (contre 98,9&nbsp;% avant ce chantier), alors que le plan
+se déclarait sans résidu significatif. Cause&nbsp;: sur une région sans
+aucune jonction interne (un gros blob rond, aucune décomposition possible
+par construction), le « meilleur effort local » — une colonne unique
+mesurée à 1,2&nbsp;% de couverture réelle — était accepté SANS aucun seuil
+minimal, simplement parce que sa couverture avait pu être *mesurée* (donc
+distincte du défaut n°2 ci-dessus) et qu'aucune décomposition n'était
+possible pour faire mieux. Corrigé en ajoutant
+`SatinPlanConfig::min_fallback_coverage_ratio` (50&nbsp;% par défaut) : un
+« meilleur effort » en dessous de ce seuil est désormais rapporté comme
+résidu au lieu d'être accepté tel quel — que ce soit au dernier niveau de
+récursion ou après un échec de décomposition. Ce seuil s'applique de la
+même façon à la boucle de réparation de résidu (§ ci-dessus), qui aurait
+sinon pu « réparer » un trou en y empilant plusieurs colonnes toutes
+individuellement dérisoires sans jamais s'apercevoir que la couverture
+agrégée restait mauvaise.
+
+### Intégration : `autodigitize::build_satin_sections` devient un adaptateur mince
+
+`libs/autodigitize/include/openstitch/autodigitize/autodigitize.hpp` —
+`SatinBuildReport` expose désormais `unresolved_residual` (géométrie brute
+complète, jamais filtrée) et `aggregate_coverage`
+(`satin_coverage::SatinCoverageReport` sur la région source entière).
+`structural_gap` reste un raccourci booléen pour les appelants existants,
+mais recalculé à partir de la somme AGRÉGÉE du résidu (seuil mixte, fixe
+et proportionnel, même calibration que le correctif précédent) — jamais
+composante par composante, pour ne pas répéter le premier défaut ci-dessus
+à ce niveau.
+
+### Les deux workflows, distingués comme demandé (§24)
+
+- **`auto_digitize()`** (auto-numérisation, classification automatique
+  « AutoChoice » — aucun utilisateur interactif à qui proposer un choix)
+  reste la seule voie qui crée encore un remplissage tatami de repli
+  automatique sur un résidu significatif — mais plus jamais silencieusement&nbsp;:
+  un avertissement explicite (« satin incomplet : X&nbsp;% de la région
+  couverte, Y&nbsp;mm² comblés par un remplissage tatami de repli
+  (classification automatique) ») est systématiquement poussé dans
+  `AutoResult::warnings` avant toute création.
+- **Les créations satin explicites côté desktop**
+  (`createSatinObject`, l'outil ligne de coupe, `autoConvertToSatin`) ne
+  créent plus JAMAIS de tatami de repli automatiquement. Un nouvel
+  avertisseur partagé, `MainWindow::warnAboutIncompleteSatinCoverage`
+  (`apps/desktop/main_window.cpp`/`.hpp`), informe l'utilisateur (couverture
+  estimée, surface manquante, options — retoucher la coupe, créer un
+  tatami manuellement, ou accepter le résultat partiel) au lieu de décider
+  à sa place. `autoConvertToSatin()` va plus loin&nbsp;: la couverture
+  estimée apparaît directement dans l'aperçu, AVANT la création (§23 du
+  plan de refonte), pas seulement après coup.
+- **`setStitchType()` (conversion de type d'un objet existant, cas satin)**
+  passe désormais par le même point d'entrée unifié
+  (`build_satin_sections`), bénéficiant de la même qualité de solveur
+  récursif — mais reste honnêtement limitée par une contrainte
+  STRUCTURELLE de `SetStitchTypeCommand` (remplace un seul
+  `EmbroideryObject` par un seul jeu de paramètres, pas un lot). Sur une
+  décomposition à plusieurs sections, la plus grande est conservée et
+  l'utilisateur en est explicitement informé (« Cette forme nécessite
+  plusieurs sections… ») plutôt qu'une substitution silencieuse par
+  l'ancienne heuristique naïve dégradée.
+
+### Ce qui reste hors périmètre (limites connues, honnêtement documentées)
+
+- **Une seule famille de coupes candidates** (§14 du plan de refonte) :
+  `generate_cut_candidates` ne produit toujours que des coupes normales au
+  squelette à une distance croissante d'une jonction. C'est la cause
+  directe du résultat mesuré sur la lettre T réelle ci-dessus (1,9 % de
+  couverture agrégée, la quasi-totalité en résidu honnêtement rapporté) —
+  la forme a une topologie que cette seule famille de coupes ne sait pas
+  bien partitionner. Des familles supplémentaires (concavité→concavité,
+  concavité→bord opposé, `JunctionSeparator` déjà calculés par le moteur
+  Legacy, coupe polygonale) restent un travail futur clairement identifié.
+- **Adjacence, overlap (phase 8) et fusion (phase 7) non encore reliés au
+  planner récursif** : `SatinPlan::adjacency` existe dans l'API mais n'est
+  pas encore peuplé ; `satin_planning::generate_overlaps`/
+  `evaluate_merge_pass` restent des modules testés et fonctionnels
+  (§ sections précédentes) mais non appelés par `create_satin_plan`.
+- **Aucune UI de choix multi-boutons** (§23 : « Continuer avec satin
+  partiel / Utiliser tatami pour le reliquat / Annuler ») — remplacée pour
+  l'instant par une information claire sans action directe intégrée
+  (`warnAboutIncompleteSatinCoverage`). Une vraie boîte de dialogue à choix
+  multiples, agissant réellement sur le résidu (création de tatami ciblée,
+  relance avec plus de subdivisions), reste un travail futur.
+- **Pas de champ `EmbroideryIntent`/`ForcedUserChoice` vs `AutoChoice`**
+  dans le modèle de données (§24), ni de regroupement visuel des sections
+  d'un même plan dans le panneau d'objets (§21, `DocumentPanel` reste une
+  liste plate) — la distinction AutoChoice/ForcedChoice décrite ci-dessus
+  reste implicite dans le CODE (quel appelant décide du repli), pas encore
+  un concept explicite du modèle de document.
+
+### Tests
+
+- `tests/unit/satin_planning/test_satin_plan.cpp` (nouveau) — corpus
+  complet (rectangle, T, y/cross/h/trident, anneau), propriété de
+  non-décomposition inutile sur une forme simple, preuve de récursion
+  réelle (profondeur > 1 atteinte sur le corpus branché), garde-fou de
+  profondeur maximale, et régression dédiée sur la lettre T réelle
+  (couverture agrégée mesurée, résidu honnêtement non nul, jamais de
+  région acceptée sans mesure de couverture).
+- `tests/unit/autodigitize/test_autodigitize.cpp` — tests réseau en T et
+  anneau rendus robustes à la présence ou non d'un petit repli tatami
+  (détail de calibration interne, plus un compte exact d'objets) en
+  vérifiant directement la garantie qui compte&nbsp;: couverture de bout en
+  bout (satin seul, ou satin + repli) sans trou résiduel significatif.
+- Suite complète (Debug + Release) sans régression sur les 4 diagnostics
+  permanents déjà connus.
+
 ## Implémentation associée
 
 - `libs/document/.../embroidery_object.hpp` — `SatinParams`, `SatinRung`.
@@ -3513,3 +3734,32 @@ réellement complet. Sur la forme utilisateur ayant motivé ce correctif :
   large », 2026-08-14), puis la variante « désactivé » a été retirée à la
   suppression du bascule (garantie équivalente déjà couverte par
   `tests/unit/auto_satin/test_columns.cpp`).
+- `libs/satin_planning/include/openstitch/satin_planning/satin_plan.hpp` +
+  `src/satin_plan.cpp` (nouveau, 2026-08-14, § *Refonte du contrat satin*
+  ci-dessus) — `SatinPlanConfig`, `SatinPlanRegion`, `SatinPlan`,
+  `create_satin_plan`, `format_satin_plan` : planner récursif unifié,
+  seul point d'appel restant vers ce module depuis `libs/autodigitize`.
+- `libs/autodigitize/include/openstitch/autodigitize/autodigitize.hpp` +
+  `src/autodigitize.cpp` — `build_satin_sections` réécrit pour déléguer
+  entièrement à `create_satin_plan` ; `SatinBuildReport` gagne
+  `unresolved_residual` et `aggregate_coverage`, `structural_gap` recalculé
+  sur la somme agrégée du résidu. `AutoOptions::use_auto_satin` redocumenté
+  comme classification « AutoChoice » (§24 du plan de refonte), distincte
+  d'une intention satin explicitement forcée ailleurs dans l'application.
+- `libs/autodigitize/CMakeLists.txt` — `openstitch::satin_coverage` ajouté
+  en dépendance PUBLIQUE (le header expose désormais
+  `satin_coverage::SatinCoverageReport`).
+- `apps/desktop/main_window.hpp`/`.cpp` — nouvel avertisseur partagé
+  `warnAboutIncompleteSatinCoverage`, appelé par `createSatinObject()`,
+  l'outil ligne de coupe et (sous forme d'aperçu pré-création plutôt que
+  post-création) `autoConvertToSatin()` ; `setStitchType()` (cas satin)
+  migré vers `build_satin_sections`, conserve la plus grande section sur une
+  décomposition multi-régions avec message explicite plutôt qu'un repli
+  silencieux sur `rails_from_contour`.
+- Tests : `tests/unit/satin_planning/test_satin_plan.cpp` (nouveau, corpus
+  complet + régression lettre T réelle) ; `tests/unit/autodigitize/
+  test_autodigitize.cpp` (tests réseau en T et anneau rendus robustes à la
+  présence ou non d'un petit repli tatami, vérifient la couverture de bout
+  en bout plutôt qu'un compte exact d'objets) ; `tests/unit/satin_planning/
+  test_region_split.cpp` (régression région87 mise à jour, seuil de
+  reporting du résidu recalibré).
