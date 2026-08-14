@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <functional>
 #include <sstream>
+#include <unordered_map>
 
 #include "openstitch/auto_satin/auto_satin.hpp"
 #include "openstitch/geometry/boolean.hpp"
@@ -73,6 +74,11 @@ struct RecursionOutcome {
     // Avertissements du solveur local, accumules a travers toute la
     // recursion -- jamais silencieux.
     std::vector<std::string> warnings;
+    // Paires d'index DANS `accepted` (§19) et leur recouvrement associe
+    // (§20) -- TOUJOURS de meme taille, alignes 1:1 par construction (jamais
+    // pousses independamment l'un de l'autre).
+    std::vector<std::pair<std::size_t, std::size_t>> adjacency;
+    std::vector<SatinPlanOverlap> overlaps;
 };
 
 RecursionOutcome plan_recursive(const geometry::PathSet& region, const SatinPlanConfig& config, int depth,
@@ -112,12 +118,56 @@ RecursionOutcome decompose_and_recurse(const geometry::PathSet& region, const Sa
     }
 
     const auto split = split_region(region, graph, decomposition, cutParams);
+
+    // §19 : n'associe l'index de chemin de decomposition (`SatinRegion::
+    // path_index`, meme espace que `MergeCandidate::first/second_path_index`)
+    // a l'index final dans `out.accepted` QUE lorsque la sous-region a ete
+    // acceptee TELLE QUELLE, sans redecoupage ulterieur (une seule feuille en
+    // sortie de recursion) -- sinon son "cote" de l'adjacence n'est plus une
+    // geometrie unique et bien definie.
+    std::unordered_map<std::size_t, std::size_t> leafIndexByPathIndex;
     for (const auto& r : split.regions) {
         RecursionOutcome child = plan_recursive(r.region, config, depth + 1, fromResidualRepair);
+        const std::size_t baseIndex = out.accepted.size();
+        if (child.accepted.size() == 1) {
+            leafIndexByPathIndex[r.path_index] = baseIndex;
+        }
+        for (std::size_t k = 0; k < child.adjacency.size(); ++k) {
+            out.adjacency.emplace_back(child.adjacency[k].first + baseIndex, child.adjacency[k].second + baseIndex);
+            out.overlaps.push_back(std::move(child.overlaps[k]));
+        }
         for (auto& leaf : child.accepted) out.accepted.push_back(std::move(leaf));
         for (auto& piece : child.unresolved) out.unresolved.push_back(std::move(piece));
         for (auto& w : child.warnings) out.warnings.push_back(std::move(w));
     }
+
+    // Recouvrement (§20, phase 8 SGSD deja implementee -- `generate_overlaps`,
+    // simplement jamais appelee depuis le planner recursif avant ce point) :
+    // calcule une seule fois par niveau de recursion, sur les regions
+    // structurelles issues de CE decoupage precis (avant toute recursion
+    // ulterieure d'un cote ou de l'autre).
+    const OverlapReport overlapReport =
+        config.compute_overlaps ? generate_overlaps(split, OverlapParams{config.overlap_distance}) : OverlapReport{};
+
+    for (const auto& mc : split.merge_candidates) {
+        const auto itA = leafIndexByPathIndex.find(mc.first_path_index);
+        const auto itB = leafIndexByPathIndex.find(mc.second_path_index);
+        if (itA == leafIndexByPathIndex.end() || itB == leafIndexByPathIndex.end()) continue;
+
+        SatinPlanOverlap planOverlap;
+        planOverlap.first_extended = out.accepted[itA->second].region;
+        planOverlap.second_extended = out.accepted[itB->second].region;
+        for (const auto& ov : overlapReport.overlaps) {
+            if (ov.first_path_index == mc.first_path_index && ov.second_path_index == mc.second_path_index) {
+                planOverlap.first_extended = ov.first_extended;
+                planOverlap.second_extended = ov.second_extended;
+                break;
+            }
+        }
+        out.adjacency.emplace_back(itA->second, itB->second);
+        out.overlaps.push_back(std::move(planOverlap));
+    }
+
     // Les chemins jamais isoles par `split_region` (`split.unresolved_paths`)
     // n'ont pas de geometrie individuelle recuperable ici : leur surface
     // reste fondue dans un morceau voisin deja traite par la boucle
@@ -203,6 +253,8 @@ SatinPlan create_satin_plan(const geometry::PathSet& source, const SatinPlanConf
     RecursionOutcome top = plan_recursive(source, config, 0, false);
     plan.regions = std::move(top.accepted);
     plan.warnings = std::move(top.warnings);
+    plan.adjacency = std::move(top.adjacency);
+    plan.overlaps = std::move(top.overlaps);
     std::vector<geometry::PathSet> pendingResidual = std::move(top.unresolved);
 
     const double sourceAreaMm2 = geometry::path_set_area_um2(source) / 1e6;
@@ -252,6 +304,12 @@ SatinPlan create_satin_plan(const geometry::PathSet& source, const SatinPlanConf
             RecursionOutcome repaired = plan_recursive(missing.region, config, 0, true);
             for (auto& w : repaired.warnings) plan.warnings.push_back(std::move(w));
             if (!repaired.accepted.empty()) {
+                const std::size_t baseIndex = plan.regions.size();
+                for (std::size_t k = 0; k < repaired.adjacency.size(); ++k) {
+                    plan.adjacency.emplace_back(repaired.adjacency[k].first + baseIndex,
+                                                 repaired.adjacency[k].second + baseIndex);
+                    plan.overlaps.push_back(std::move(repaired.overlaps[k]));
+                }
                 for (auto& leaf : repaired.accepted) plan.regions.push_back(std::move(leaf));
                 anyRepaired = true;
             } else {
@@ -284,6 +342,9 @@ SatinPlan create_satin_plan(const geometry::PathSet& source, const SatinPlanConf
     out.setf(std::ios::fixed);
     out.precision(2);
     out << "[SatinPlan] " << plan.regions.size() << " region(s) acceptee(s)";
+    if (!plan.adjacency.empty()) {
+        out << ", " << plan.adjacency.size() << " adjacence(s)/recouvrement(s) connu(s)";
+    }
     if (plan.aggregate_coverage) {
         out << ", couverture agregee = " << (plan.aggregate_coverage->raw_coverage_ratio * 100.0) << "%";
     }
@@ -316,6 +377,7 @@ std::string format_satin_plan(const SatinPlan& plan) {
         out << "Couverture agregee (region source entiere) : " << (plan.aggregate_coverage->raw_coverage_ratio * 100.0)
             << "% brut, " << (plan.aggregate_coverage->core_coverage_ratio * 100.0) << "% coeur\n";
     }
+    out << "Adjacence(s) connue(s) : " << plan.adjacency.size() << " paire(s)\n";
     out << "Residu non resolu : " << plan.unresolved_residual.size() << " zone(s)\n";
     out << plan.diagnostic << "\n";
     return out.str();

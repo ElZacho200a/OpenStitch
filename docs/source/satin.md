@@ -3491,6 +3491,44 @@ composante par composante, pour ne pas répéter le premier défaut ci-dessus
   plusieurs sections… ») plutôt qu'une substitution silencieuse par
   l'ancienne heuristique naïve dégradée.
 
+### Adjacence et recouvrement reliés au planner (§19/§20, 2026-08-14)
+
+`satin_planning::generate_overlaps` (phase 8 du plan SGSD) existait déjà,
+testé et fonctionnel, depuis une phase antérieure du chantier — mais rien ne
+l'appelait depuis `create_satin_plan`, et `SatinPlan::adjacency` restait un
+vecteur systématiquement vide. Corrigé&nbsp;: `decompose_and_recurse` calcule
+maintenant, à chaque niveau de récursion, l'adjacence directe entre les
+sous-régions issues d'une même coupe (`RegionSplitReport::merge_candidates`)
+ET leur recouvrement de couture (`generate_overlaps`), puis réindexe ces
+paires vers leur position finale dans `SatinPlan::regions` au fur et à mesure
+que les résultats remontent la récursion (et, séparément, à travers la
+boucle de réparation de résidu, §17).
+
+Deux nouveaux champs sur `SatinPlan`&nbsp;:
+
+- `adjacency` — paires d'index dans `regions` connues comme directement
+  adjacentes (une même coupe, les deux côtés restés des feuilles).
+- `overlaps` — aligné 1:1 sur `adjacency` : la géométrie de couture dédiée
+  (chaque côté élargi vers l'autre, `SatinPlanConfig::overlap_distance`,
+  300&nbsp;µm par défaut) — repli sur la région non modifiée si le calcul
+  échoue ou si `SatinPlanConfig::compute_overlaps` est désactivé, jamais un
+  vecteur désaligné ou plus court.
+
+**Limite assumée, héritée de `generate_overlaps` lui-même**&nbsp;: une paire
+dont un côté a été redécoupé ultérieurement (donc devenu plusieurs feuilles)
+n'est pas rapportée — déterminer l'adjacence à travers un redécoupage plus
+profond reste un travail futur. Le module continue de ne faire QUE calculer
+cette géométrie&nbsp;: aucune fusion ni génération de points n'y est reliée
+ici — c'est à un futur consommateur (génération de points, §20) d'en faire
+usage.
+
+Tests dédiés dans `tests/unit/satin_planning/test_satin_plan.cpp`&nbsp;:
+vérifient sur le réseau en T que `adjacency`/`overlaps` sont bien peuplés,
+alignés en taille, que chaque extension de recouvrement ne rétrécit jamais la
+région d'origine, et que désactiver `compute_overlaps` laisse `adjacency`
+intact (deux informations indépendantes) tout en retombant proprement sur la
+géométrie identité.
+
 ### Ce qui reste hors périmètre (limites connues, honnêtement documentées)
 
 - **Une seule famille de coupes candidates** (§14 du plan de refonte) :
@@ -3502,11 +3540,19 @@ composante par composante, pour ne pas répéter le premier défaut ci-dessus
   bien partitionner. Des familles supplémentaires (concavité→concavité,
   concavité→bord opposé, `JunctionSeparator` déjà calculés par le moteur
   Legacy, coupe polygonale) restent un travail futur clairement identifié.
-- **Adjacence, overlap (phase 8) et fusion (phase 7) non encore reliés au
-  planner récursif** : `SatinPlan::adjacency` existe dans l'API mais n'est
-  pas encore peuplé ; `satin_planning::generate_overlaps`/
-  `evaluate_merge_pass` restent des modules testés et fonctionnels
-  (§ sections précédentes) mais non appelés par `create_satin_plan`.
+- **Fusion (phase 7, `evaluate_merge_pass`) non encore reliée au planner
+  récursif** : reste un module testé et fonctionnel (§ sections
+  précédentes) mais non appelé par `create_satin_plan` — la sélection de
+  coupe (recherche à faisceau guidée par l'oracle) choisit déjà le
+  découpage jugé le plus favorable, mais ne reconsidère jamais après coup
+  si NE PAS couper aurait donné un résultat comparable avec moins de
+  segments (§18 : « le plus petit nombre de segments »).
+- **Adjacence/overlap non exploités en aval** : `SatinPlan::adjacency`/
+  `overlaps` sont maintenant peuplés (ci-dessus), mais rien dans la
+  génération de points ne les consomme encore — les colonnes satin de
+  chaque `SatinPlanRegion` restent générées sur la géométrie structurelle
+  seule, sans utiliser le recouvrement pour fermer visuellement
+  l'interstice de coupe entre deux régions voisines.
 - **Aucune UI de choix multi-boutons** (§23 : « Continuer avec satin
   partiel / Utiliser tatami pour le reliquat / Annuler ») — remplacée pour
   l'instant par une information claire sans action directe intégrée

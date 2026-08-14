@@ -68,6 +68,57 @@ TEST_CASE("create_satin_plan : reseau en T -- decomposition automatique, intenti
     CHECK(plan.aggregate_coverage->raw_coverage_ratio > 0.90);
 }
 
+TEST_CASE("create_satin_plan : reseau en T -- adjacence et recouvrement peuples") {
+    // Regression pour le wiring §19/§20 (2026-08-14) : `split_region` produit
+    // deja `merge_candidates` et `overlap.cpp`/`merge_pass.cpp` existaient
+    // depuis la phase 7/8 du plan SGSD, mais rien ne reliait cette
+    // information au planner recursif -- `SatinPlan::adjacency` restait un
+    // vecteur toujours vide. Le T a une seule jonction : une seule coupe
+    // separe le barreau de la tige, donc au moins une paire adjacente
+    // attendue.
+    const auto plan = create_satin_plan(shape("t"), prod_config());
+    REQUIRE(plan.regions.size() >= 2);
+    REQUIRE_FALSE(plan.adjacency.empty());
+    // Alignement 1:1 impose par construction (jamais l'un sans l'autre).
+    REQUIRE(plan.overlaps.size() == plan.adjacency.size());
+    for (std::size_t i = 0; i < plan.adjacency.size(); ++i) {
+        const auto& [a, b] = plan.adjacency[i];
+        CHECK(a < plan.regions.size());
+        CHECK(b < plan.regions.size());
+        CHECK(a != b);
+        const auto& overlap = plan.overlaps[i];
+        const double firstOrigMm2 = geometry::path_set_area_um2(plan.regions[a].region) / 1e6;
+        const double secondOrigMm2 = geometry::path_set_area_um2(plan.regions[b].region) / 1e6;
+        const double firstExtMm2 = geometry::path_set_area_um2(overlap.first_extended) / 1e6;
+        const double secondExtMm2 = geometry::path_set_area_um2(overlap.second_extended) / 1e6;
+        // La geometrie de recouvrement (§20) elargit chaque cote vers
+        // l'autre pour fermer l'interstice de coupe -- son aire ne doit
+        // jamais etre plus petite que la region structurelle d'origine
+        // (repli identite en cas d'echec de dilatation, jamais un
+        // retrecissement).
+        CHECK(firstExtMm2 >= firstOrigMm2 - 0.01);
+        CHECK(secondExtMm2 >= secondOrigMm2 - 0.01);
+    }
+}
+
+TEST_CASE("create_satin_plan : recouvrement desactivable sans perdre l'adjacence (compute_overlaps=false)") {
+    auto config = prod_config();
+    config.compute_overlaps = false;
+    const auto plan = create_satin_plan(shape("t"), config);
+    REQUIRE(plan.regions.size() >= 2);
+    // L'adjacence (§19, simple index bookkeeping issu de `merge_candidates`)
+    // reste peuplee meme quand le calcul geometrique du recouvrement (§20,
+    // plus couteux -- dilatation + recadrage par paire) est desactive : ce
+    // sont deux informations independantes.
+    CHECK_FALSE(plan.adjacency.empty());
+    REQUIRE(plan.overlaps.size() == plan.adjacency.size());
+    for (const auto& overlap : plan.overlaps) {
+        // Repli "identite" garanti : geometrie valide, jamais vide.
+        CHECK(geometry::path_set_area_um2(overlap.first_extended) > 0.0);
+        CHECK(geometry::path_set_area_um2(overlap.second_extended) > 0.0);
+    }
+}
+
 TEST_CASE("create_satin_plan : formes branchees du corpus -- jamais de refus global, couverture agregee elevee") {
     for (const std::string& name : {"y", "cross", "h", "trident"}) {
         INFO("forme = " << name);

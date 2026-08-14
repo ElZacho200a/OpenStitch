@@ -8,6 +8,7 @@
 
 #include "openstitch/auto_satin/satin_column.hpp"
 #include "openstitch/satin_coverage/coverage.hpp"
+#include "openstitch/satin_planning/overlap.hpp"
 #include "openstitch/satin_planning/region_split.hpp"
 
 namespace openstitch::satin_planning {
@@ -69,6 +70,12 @@ struct SatinPlanConfig {
     // ignoree meme si elle depasse le seuil d'aire.
     double residual_repair_min_gap_radius_mm{0.15};
     int max_residual_repair_rounds{2};
+    // Recouvrement de couture entre paires adjacentes (§19/§20 du plan de
+    // refonte, phase 8 SGSD deja implementee -- `generate_overlaps` --
+    // simplement jamais reliee au planner recursif jusqu'ici). Desactivable
+    // pour un appelant qui ne veut que la geometrie structurelle brute.
+    bool compute_overlaps{true};
+    Micrometers overlap_distance{300};
 };
 
 // Une region finale du plan : geometrie STRUCTURELLE (jamais modifiee pour
@@ -93,16 +100,41 @@ struct SatinPlanRegion {
     bool from_residual_repair{false};
 };
 
+// Geometrie de couture DEDIEE (§19/§20) pour une paire de `SatinPlan::adjacency` --
+// chaque cote elargi vers l'autre pour fermer l'interstice physique laisse
+// par la coupe qui les a separes, puis recadre dans la geometrie exacte
+// d'avant-coupe (cf. `overlap.hpp`). Distincte de `SatinPlanRegion::region`
+// (jamais modifiee, reste la reference pour toute mesure de couverture) --
+// c'est une geometrie A USAGE DE GENERATION DE POINTS uniquement. Repli sur
+// la region non modifiee (pas d'agrandissement) si le recouvrement n'a pas pu
+// etre calcule -- toujours alignee 1:1 sur `SatinPlan::adjacency`, jamais un
+// vecteur plus court qui desynchroniserait les deux.
+struct SatinPlanOverlap {
+    geometry::PathSet first_extended;
+    geometry::PathSet second_extended;
+};
+
 struct SatinPlan {
     std::vector<SatinPlanRegion> regions;
-    // Paires d'index DANS `regions` connues comme directement adjacentes
-    // (memes limites que `RegionSplitReport::merge_candidates` : seulement
-    // les paires de feuilles directement issues d'une meme coupe, sans
-    // redecoupage ulterieur d'aucun des deux cotes). NON PEUPLE dans cette
-    // premiere iteration du planner recursif -- limitation connue et
-    // documentee plutot que masquee (§19 du plan de refonte reste un travail
-    // futur : tracer l'adjacence a travers plusieurs niveaux de recursion).
+    // Paires d'index DANS `regions` connues comme directement adjacentes :
+    // deux regions finales (feuilles du plan, eventuellement issues de
+    // profondeurs de recursion differentes) separees par une seule et meme
+    // coupe, ET restees toutes deux des feuilles jusqu'a la fin de LEUR
+    // propre sous-arbre de decomposition. Peuple depuis le 2026-08-14 (§19) :
+    // chaque niveau de recursion (initial ET reparation de residu, §17)
+    // rapporte ses propres paires, reindexees a la volee vers l'index final
+    // dans ce vecteur. Limite connue : une paire dont un cote a ete
+    // redecoupe ulterieurement (donc devenu plusieurs feuilles) n'est PAS
+    // rapportee -- meme restriction que `RegionSplitReport::merge_candidates`
+    // en amont ; determiner l'adjacence a travers un redecoupage reste un
+    // travail futur.
     std::vector<std::pair<std::size_t, std::size_t>> adjacency;
+    // Alignee 1:1 sur `adjacency` (memes indices) : la geometrie de
+    // recouvrement de chaque paire, si `SatinPlanConfig::compute_overlaps`
+    // est actif. Le module ne fait QUE calculer cette geometrie -- il ne
+    // fusionne, ne route, ni ne genere de points dessus : c'est a
+    // l'appelant (generation de points, §20) d'en faire usage.
+    std::vector<SatinPlanOverlap> overlaps;
     // Couverture mesuree sur la region SOURCE entiere par l'union de toutes
     // les colonnes de `regions` -- absent si jamais mesuree (aucune region
     // acceptee).
