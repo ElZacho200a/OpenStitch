@@ -3589,6 +3589,46 @@ un séparateur d'une autre jonction, ou trop éloigné perpendiculairement,
 est correctement ignoré. Suite complète (satin_planning, autodigitize,
 desktop) sans régression après le fix de calibration ci-dessus.
 
+### Passe de fusion reliée au planner (§18, phase 7 SGSD, 2026-08-14)
+
+`evaluate_merge_pass` existait déjà, testé et fonctionnel, depuis la phase 7
+du chantier SGSD — mais comme `generate_overlaps` avant lui, rien ne
+l'appelait depuis `create_satin_plan`. La sélection de coupe (recherche à
+faisceau guidée par l'oracle) choisit déjà le découpage jugé le plus
+favorable au moment de couper, mais ne reconsidérait jamais après coup si NE
+PAS couper aurait donné un résultat comparable avec moins de segments (§18 :
+« le plus petit nombre de segments permettant une couverture et un satin
+corrects »).
+
+**Le principe** : dans `decompose_and_recurse`, juste après `split_region`,
+`evaluate_merge_pass` est appelé sur le rapport de découpage complet. Pour
+chaque paire recommandée à la fusion, les deux régions ne sont PAS recousues
+individuellement — une seule récursion est lancée sur la géométrie fusionnée
+exacte (`MergeCandidate::merged_region`) à leur place. Chaque région issue de
+`split_region` participe à au plus un `merge_candidates` (celui de la coupe
+qui l'a créée), donc aucune ambiguïté sur quelles paires fusionner.
+Nouveau `SatinPlanConfig::use_merge_pass` (`true` par défaut) et
+`merge_pass_coverage_tolerance` (2&nbsp;%, même défaut que `MergePassParams`).
+
+**Effet mesuré, honnêtement rapporté** : sur tout le corpus de formes
+délibérément branchées (`t`/`y`/`cross`/`h`/`trident`), §18 ne recommande
+**aucune** fusion — le nombre de régions final est strictement identique
+avec ou sans la passe. Attendu : ces formes sont conçues pour nécessiter
+réellement une découpe, donc défusionner dégraderait la couverture au-delà
+de la tolérance. Le chemin « fusion appliquée » du wiring restait donc
+totalement inexercé par le corpus existant — pour le tester honnêtement
+(plutôt que de le laisser sans preuve), le test dédié force la
+recommandation via une tolérance de 100&nbsp;% (`merge_recommended` devient
+vrai dès que la région fusionnée construit ne serait-ce qu'une colonne,
+indépendamment de la comparaison réelle de couverture) : confirme que le
+nombre de régions diminue réellement (2→1 sur `t`) quand la recommandation
+est positive — sans dépendre d'une forme du corpus où §18 gagnerait par
+hasard.
+
+Testé (`tests/unit/satin_planning/test_satin_plan.cpp`) : fusion forcée
+réduit réellement le nombre de régions ; suite complète (satin_planning,
+autodigitize, desktop) sans régression.
+
 ### Ce qui reste hors périmètre (limites connues, honnêtement documentées)
 
 - **Coupes concavité→concavité, concavité→bord opposé, polygonales**
@@ -3597,13 +3637,6 @@ desktop) sans régression après le fix de calibration ci-dessus.
   mais pas une entaille sans jonction, ni une coupe reliant deux points de
   concavité qui ne partagent aucune confluence de squelette — ces familles
   restent un travail futur clairement identifié.
-- **Fusion (phase 7, `evaluate_merge_pass`) non encore reliée au planner
-  récursif** : reste un module testé et fonctionnel (§ sections
-  précédentes) mais non appelé par `create_satin_plan` — la sélection de
-  coupe (recherche à faisceau guidée par l'oracle) choisit déjà le
-  découpage jugé le plus favorable, mais ne reconsidère jamais après coup
-  si NE PAS couper aurait donné un résultat comparable avec moins de
-  segments (§18 : « le plus petit nombre de segments »).
 - **Adjacence/overlap non exploités en aval** : `SatinPlan::adjacency`/
   `overlaps` sont maintenant peuplés (ci-dessus), mais rien dans la
   génération de points ne les consomme encore — les colonnes satin de

@@ -85,6 +85,18 @@ struct SatinPlanConfig {
     // supplementaire par niveau de recursion, ou pour isoler l'ancienne
     // seule famille (tests de non-regression, comparaison A/B).
     bool use_junction_separator_cuts{true};
+    // §18 du plan de refonte satin (phase 7 SGSD, 2026-08-14) : reconsidere
+    // CHAQUE coupe reussie a posteriori (`satin_planning::evaluate_merge_pass`,
+    // deja teste et fonctionnel, simplement jamais appele par le planner
+    // recursif jusqu'ici) -- si les deux regions separees ne font pas
+    // mieux (au-dela de `merge_pass_coverage_tolerance`) que leur union,
+    // prefere le SEUL segment fusionne : "le plus petit nombre de segments
+    // permettant une couverture et un satin corrects" plutot que la
+    // premiere partition valide trouvee par le beam search. Desactivable
+    // pour eviter le cout d'une evaluation de fusion supplementaire par
+    // coupe, ou pour isoler le comportement "garder toute coupe reussie".
+    bool use_merge_pass{true};
+    double merge_pass_coverage_tolerance{0.02};
 };
 
 // Une region finale du plan : geometrie STRUCTURELLE (jamais modifiee pour

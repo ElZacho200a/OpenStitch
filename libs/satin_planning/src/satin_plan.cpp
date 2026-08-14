@@ -9,6 +9,7 @@
 #include "openstitch/auto_satin/auto_satin.hpp"
 #include "openstitch/geometry/boolean.hpp"
 #include "openstitch/satin_planning/beam_search.hpp"
+#include "openstitch/satin_planning/merge_pass.hpp"
 
 namespace openstitch::satin_planning {
 
@@ -140,18 +141,58 @@ RecursionOutcome decompose_and_recurse(const geometry::PathSet& region, const Sa
 
     const auto split = split_region(region, graph, decomposition, cutParams);
 
+    // §18 (phase 7 SGSD, merge pass, 2026-08-14) : reconsidere CHAQUE coupe
+    // reussie A POSTERIORI -- si les deux regions separees ne font pas mieux
+    // (au-dela de `merge_pass_coverage_tolerance`) que leur union, prefere
+    // le SEUL segment fusionne ("le plus petit nombre de segments", §18)
+    // plutot que la premiere partition valide trouvee par le beam search.
+    // `evaluate_merge_pass` existait deja, testee et fonctionnelle, mais
+    // n'etait jamais appelee par le planner recursif -- simple reutilisation,
+    // aucune nouvelle regle de decision reimplementee ici. Chaque region de
+    // `split.regions` participe a AU PLUS un `merge_candidates` (celui de la
+    // coupe qui l'a creee) : les deux cotes fusionnes sont donc exclus de la
+    // recursion individuelle ci-dessous, remplaces par UNE recursion sur la
+    // geometrie fusionnee.
+    std::unordered_map<std::size_t, std::size_t> pathIndexToRegionSlot;
+    for (std::size_t i = 0; i < split.regions.size(); ++i) pathIndexToRegionSlot[split.regions[i].path_index] = i;
+
+    std::vector<bool> mergedAway(split.regions.size(), false);
+    std::vector<geometry::PathSet> mergedGroups;
+    if (config.use_merge_pass && !split.merge_candidates.empty()) {
+        MergePassParams mergeParams;
+        mergeParams.genParams = config.genParams;
+        mergeParams.coverageConfig = config.coverageConfig;
+        mergeParams.density = config.density;
+        mergeParams.coverage_tolerance = config.merge_pass_coverage_tolerance;
+        const auto mergeReport = evaluate_merge_pass(split, mergeParams);
+        for (std::size_t i = 0; i < mergeReport.decisions.size() && i < split.merge_candidates.size(); ++i) {
+            if (!mergeReport.decisions[i].merge_recommended) continue;
+            const auto& candidate = split.merge_candidates[i];
+            const auto firstIt = pathIndexToRegionSlot.find(candidate.first_path_index);
+            const auto secondIt = pathIndexToRegionSlot.find(candidate.second_path_index);
+            if (firstIt == pathIndexToRegionSlot.end() || secondIt == pathIndexToRegionSlot.end()) continue;
+            mergedAway[firstIt->second] = true;
+            mergedAway[secondIt->second] = true;
+            mergedGroups.push_back(candidate.merged_region);
+        }
+    }
+
     // §19 : n'associe l'index de chemin de decomposition (`SatinRegion::
     // path_index`, meme espace que `MergeCandidate::first/second_path_index`)
     // a l'index final dans `out.accepted` QUE lorsque la sous-region a ete
     // acceptee TELLE QUELLE, sans redecoupage ulterieur (une seule feuille en
     // sortie de recursion) -- sinon son "cote" de l'adjacence n'est plus une
-    // geometrie unique et bien definie.
+    // geometrie unique et bien definie. Une region fusionnee ci-dessus n'a
+    // volontairement PAS d'entree ici : elle n'est plus l'un ou l'autre
+    // `path_index` d'origine, donc plus de paire adjacente a rapporter pour
+    // ce `merge_candidates` -- la boucle qui suit `continue` naturellement
+    // pour elle (aucune entree trouvee).
     std::unordered_map<std::size_t, std::size_t> leafIndexByPathIndex;
-    for (const auto& r : split.regions) {
-        RecursionOutcome child = plan_recursive(r.region, config, depth + 1, fromResidualRepair);
+    const auto absorb_child = [&](const geometry::PathSet& childRegion, std::optional<std::size_t> pathIndexForMapping) {
+        RecursionOutcome child = plan_recursive(childRegion, config, depth + 1, fromResidualRepair);
         const std::size_t baseIndex = out.accepted.size();
-        if (child.accepted.size() == 1) {
-            leafIndexByPathIndex[r.path_index] = baseIndex;
+        if (pathIndexForMapping && child.accepted.size() == 1) {
+            leafIndexByPathIndex[*pathIndexForMapping] = baseIndex;
         }
         for (std::size_t k = 0; k < child.adjacency.size(); ++k) {
             out.adjacency.emplace_back(child.adjacency[k].first + baseIndex, child.adjacency[k].second + baseIndex);
@@ -160,6 +201,13 @@ RecursionOutcome decompose_and_recurse(const geometry::PathSet& region, const Sa
         for (auto& leaf : child.accepted) out.accepted.push_back(std::move(leaf));
         for (auto& piece : child.unresolved) out.unresolved.push_back(std::move(piece));
         for (auto& w : child.warnings) out.warnings.push_back(std::move(w));
+    };
+    for (std::size_t i = 0; i < split.regions.size(); ++i) {
+        if (mergedAway[i]) continue;
+        absorb_child(split.regions[i].region, split.regions[i].path_index);
+    }
+    for (const auto& mergedRegion : mergedGroups) {
+        absorb_child(mergedRegion, std::nullopt);
     }
 
     // Recouvrement (§20, phase 8 SGSD deja implementee -- `generate_overlaps`,

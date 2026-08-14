@@ -29,6 +29,32 @@ geometry::PathSet shape(const std::string& name) {
 
 }  // namespace
 
+TEST_CASE("create_satin_plan : use_merge_pass force -- une fusion recommandee reduit reellement le nombre de regions") {
+    // Sur le corpus de formes deliberement branchees (t/y/cross/h/trident),
+    // §18 ne recommande naturellement AUCUNE fusion (verifie empiriquement :
+    // memes nombres de regions avec et sans passe de fusion) -- attendu,
+    // puisque ces formes sont concues pour necessiter reellement une
+    // decoupe. Pour exercer honnetement le chemin "fusion appliquee" du
+    // wiring (jamais teste sinon), on force la recommandation via une
+    // tolerance de 100% : `merge_recommended = merged_build_succeeded &&
+    // merged_coverage >= separate_coverage - tolerance` devient vrai des que
+    // la region fusionnee construit ne serait-ce qu'une seule colonne,
+    // independamment de la comparaison reelle de couverture -- un
+    // declenchement deterministe du code, pas une forme geometrique gagnee
+    // par hasard.
+    auto forcedMerge = prod_config();
+    forcedMerge.merge_pass_coverage_tolerance = 1.0;
+    auto noMerge = prod_config();
+    noMerge.use_merge_pass = false;
+
+    const auto planForced = create_satin_plan(shape("t"), forcedMerge);
+    const auto planNoMerge = create_satin_plan(shape("t"), noMerge);
+
+    REQUIRE_FALSE(planForced.regions.empty());
+    REQUIRE_FALSE(planNoMerge.regions.empty());
+    CHECK(planForced.regions.size() < planNoMerge.regions.size());
+}
+
 TEST_CASE("create_satin_plan : rectangle simple -- aucune decomposition inutile") {
     const auto plan = create_satin_plan(shape("rectangle"), prod_config());
     // Region deja simple : une seule region acceptee, jamais decoupee sans
