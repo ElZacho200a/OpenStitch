@@ -158,6 +158,81 @@ Fixture buildRunningSquareFixture() {
     return fx;
 }
 
+// Réseau en T (barre horizontale 30x4 mm + pied vertical 4x26 mm) : même
+// forme branchée que "reseau en T" dans tests/unit/autodigitize/
+// test_autodigitize.cpp, exprimée directement en µm plutôt qu'en pixels
+// rasterisés -- assez pour exercer la décomposition récursive du planner
+// satin (au moins une jonction réelle, deux branches distinctes).
+Fixture buildTShapeFixture() {
+    Fixture fx;
+    fx.project.original.width = 2;
+    fx.project.original.height = 2;
+    fx.project.original.rgba.assign(2 * 2 * 4, 255);
+
+    openstitch::document::VectorObject vec;
+    vec.id = fx.project.object_ids.next();
+    vec.name = "T";
+    openstitch::geometry::Path t;
+    t.closed = true;
+    const std::vector<std::pair<std::int32_t, std::int32_t>> pts = {
+        {13'000, 0},      {17'000, 0},      {17'000, 26'000}, {30'000, 26'000},
+        {30'000, 30'000}, {0, 30'000},      {0, 26'000},      {13'000, 26'000},
+    };
+    for (const auto& [x, y] : pts) {
+        t.nodes.push_back(openstitch::geometry::PathNode{
+            Vec2um{Micrometers{x}, Micrometers{y}}, openstitch::geometry::NodeType::Corner,
+            std::nullopt, std::nullopt});
+    }
+    vec.paths.push_back(openstitch::geometry::PathSet{t, {}});
+    fx.vectorId = vec.id;
+    fx.project.vector_objects.push_back(vec);
+    return fx;
+}
+
+// Rectangle allongé 40x5 mm (même forme que le test createSatinObject sur
+// rectangle "Suitable" ci-dessous -- une élongation d'au moins 2,5 est
+// nécessaire pour une direction de rail non ambiguë, cf. docs/source/
+// satin.md § Analyse de satinabilité ; un simple carré, comme
+// buildRunningSquareFixture(), a une élongation de 1,0 et produirait un
+// statut Ambiguous plutôt qu'une vraie colonne satin).
+Fixture buildRunningRectangleFixture() {
+    Fixture fx;
+    fx.project.original.width = 2;
+    fx.project.original.height = 2;
+    fx.project.original.rgba.assign(2 * 2 * 4, 255);
+
+    openstitch::document::VectorObject vec;
+    vec.id = fx.project.object_ids.next();
+    vec.name = "Rectangle";
+    openstitch::geometry::Path rect;
+    rect.closed = true;
+    constexpr std::int32_t w = 40'000;  // 40 mm
+    constexpr std::int32_t h = 5'000;   // 5 mm
+    rect.nodes = {
+        {Vec2um{Micrometers{0}, Micrometers{0}}, openstitch::geometry::NodeType::Corner, std::nullopt,
+         std::nullopt},
+        {Vec2um{Micrometers{w}, Micrometers{0}}, openstitch::geometry::NodeType::Corner, std::nullopt,
+         std::nullopt},
+        {Vec2um{Micrometers{w}, Micrometers{h}}, openstitch::geometry::NodeType::Corner, std::nullopt,
+         std::nullopt},
+        {Vec2um{Micrometers{0}, Micrometers{h}}, openstitch::geometry::NodeType::Corner, std::nullopt,
+         std::nullopt},
+    };
+    vec.paths.push_back(openstitch::geometry::PathSet{rect, {}});
+    fx.vectorId = vec.id;
+    fx.project.vector_objects.push_back(vec);
+
+    openstitch::document::EmbroideryObject emb;
+    emb.id = fx.project.object_ids.next();
+    emb.name = "Rectangle - contour";
+    emb.source_vector = vec.id;
+    emb.params = openstitch::document::RunningStitchParams{};
+    fx.embroideryId = emb.id;
+    fx.project.embroidery_objects.push_back(emb);
+
+    return fx;
+}
+
 Fixture buildSatinGuideFixture(bool withStartJunction = false) {
     Fixture fx;
     fx.project.original.width = 2;
@@ -210,6 +285,29 @@ Fixture buildSatinJunctionFixture() {
     fx.embroideryId2 = second.id;
     fx.project.embroidery_objects.push_back(std::move(second));
     return fx;
+}
+
+// Accepte automatiquement jusqu'à `maxDialogs` boîtes modales successives
+// (QDialog ou QMessageBox) au fur et à mesure qu'elles apparaissent, en se
+// réarmant après chacune -- nécessaire depuis que certains chemins peuvent
+// en ouvrir plusieurs à la suite (ex. createSatinObject() suivi de
+// warnAboutIncompleteSatinCoverage() si la couverture est incomplète, § plan
+// de refonte satin 2026-08-14), contrairement au singleShot unique utilisé
+// jusqu'ici pour une seule boîte garantie.
+void autoDismissModalDialogs(QWidget* parent, int maxDialogs = 4) {
+    if (maxDialogs <= 0) {
+        return;
+    }
+    QTimer::singleShot(0, parent, [parent, maxDialogs] {
+        if (auto* widget = QApplication::activeModalWidget()) {
+            if (auto* box = qobject_cast<QMessageBox*>(widget)) {
+                box->accept();
+            } else if (auto* dlg = qobject_cast<QDialog*>(widget)) {
+                dlg->accept();
+            }
+        }
+        autoDismissModalDialogs(parent, maxDialogs - 1);
+    });
 }
 
 // Seule poignée trouvée parmi les items de la couche de base : valable quand
@@ -326,6 +424,17 @@ private slots:
     // plutôt que sur l'heuristique naïve rails_from_contour (audit satin
     // demandé par l'utilisateur, § docs/source/satin.md).
     void createSatinObjectOnSuitableRectangleProducesOneSatinWithStitches();
+    // Planner satin récursif (`satin_planning::create_satin_plan`, § plan de
+    // refonte satin 2026-08-14) : sur une forme BRANCHÉE, createSatinObject()
+    // doit produire plusieurs sections satin (jamais un refus, jamais une
+    // seule colonne dégradée) — bout en bout depuis le VRAI chemin UI, pas
+    // seulement les tests de bibliothèque de libs/satin_planning.
+    void createSatinObjectOnBranchedShapeProducesMultipleSatinSectionsViaPlanner();
+    // setStitchType() (conversion de type, cas satin) passe désormais par le
+    // même point d'entrée unifié (autodigitize::build_satin_sections) que
+    // les créations manuelles — vérifie que le résultat porte de vrais
+    // rails/barreaux (pas un objet SatinParams vide) et reste annulable.
+    void setStitchTypeSatinCaseProducesRealRailsAndIsUndoable();
 
     // Panneau Workflow (audit ergonomie) : les étapes « Régions »/« Vecteurs »
     // ne doivent jamais rester « à faire » quand des objets vectoriels
@@ -1498,6 +1607,75 @@ void MainWindowTest::createSatinObjectOnSuitableRectangleProducesOneSatinWithSti
     QCOMPARE(window.project_.embroidery_objects.size(), embroideryCountBefore);
     window.redo();
     QCOMPARE(window.project_.embroidery_objects.size(), embroideryCountBefore + 1);
+}
+
+void MainWindowTest::createSatinObjectOnBranchedShapeProducesMultipleSatinSectionsViaPlanner() {
+    MainWindow window;
+    const Fixture fx = buildTShapeFixture();
+    window.applyLoadedProject(fx.project);
+    window.selectedObject_ = fx.vectorId;
+    window.updateActions();
+
+    const std::size_t embroideryCountBefore = window.project_.embroidery_objects.size();
+
+    // createSatinObject() ouvre la QDialog densité/compensation/sous-couche,
+    // et potentiellement UNE SECONDE boîte modale ensuite
+    // (warnAboutIncompleteSatinCoverage()) si le planner récursif laisse un
+    // résidu significatif sur cette forme -- les deux sont acceptées au fur
+    // et à mesure qu'elles apparaissent.
+    autoDismissModalDialogs(&window);
+    window.createSatinObject();
+
+    // Intention SATIN sur une forme branchée : le planner récursif doit
+    // produire PLUSIEURS sections plutôt que refuser ou dégrader en une
+    // seule colonne (§7-8 du plan de refonte satin -- RequiresDecomposition
+    // reste une information interne, jamais une réponse finale « pas
+    // satinable »). C'est le VRAI chemin UI (MainWindow::createSatinObject),
+    // pas seulement satin_planning::create_satin_plan appelé directement.
+    const std::size_t createdCount = window.project_.embroidery_objects.size() - embroideryCountBefore;
+    QVERIFY2(createdCount >= 2, qPrintable(QStringLiteral("attendu >= 2 sections satin, obtenu %1").arg(createdCount)));
+    for (std::size_t i = embroideryCountBefore; i < window.project_.embroidery_objects.size(); ++i) {
+        const auto& emb = window.project_.embroidery_objects[i];
+        QCOMPARE(emb.source_vector, fx.vectorId);
+        QVERIFY(emb.is_satin());
+        const auto& satin = std::get<openstitch::document::SatinParams>(emb.params);
+        QVERIFY(satin.rail_a.nodes.size() >= 2);
+        QVERIFY(satin.rail_b.nodes.size() >= 2);
+        QVERIFY(!satin.rungs.empty());
+    }
+
+    // Toute la décomposition arrive en un seul geste annulable
+    // (AddObjectBatchCommand), comme sur la forme simple.
+    QVERIFY(window.undoStack_.canUndo());
+    window.undo();
+    QCOMPARE(window.project_.embroidery_objects.size(), embroideryCountBefore);
+}
+
+void MainWindowTest::setStitchTypeSatinCaseProducesRealRailsAndIsUndoable() {
+    MainWindow window;
+    const Fixture fx = buildRunningRectangleFixture();  // 40x5 mm, embroidery en contour
+    window.applyLoadedProject(fx.project);
+
+    window.setStitchType(fx.embroideryId, /*type=*/2);  // 2 = satin
+
+    const auto* emb = window.project_.findEmbroidery(fx.embroideryId);
+    QVERIFY(emb != nullptr);
+    QVERIFY(emb->is_satin());
+    const auto& satin = std::get<openstitch::document::SatinParams>(emb->params);
+    // Le point clé de cette migration (§ plan de refonte satin, 2026-08-14) :
+    // passe par autodigitize::build_satin_sections (planner unifié), jamais
+    // l'ancien appel direct à build_satin_columns -- vérifié indirectement
+    // par la présence de rails/barreaux RÉELS (une géométrie vide ou
+    // dégénérée trahirait un chemin cassé), pas seulement le type du variant.
+    QVERIFY(satin.rail_a.nodes.size() >= 2);
+    QVERIFY(satin.rail_b.nodes.size() >= 2);
+    QVERIFY(!satin.rungs.empty());
+
+    QVERIFY(window.undoStack_.canUndo());
+    window.undo();
+    const auto* restored = window.project_.findEmbroidery(fx.embroideryId);
+    QVERIFY(restored != nullptr);
+    QVERIFY(!restored->is_satin());
 }
 
 void MainWindowTest::workflowRegionsAndVectorsStepsReflectVectorObjectsWithoutClassicSegmentation() {
