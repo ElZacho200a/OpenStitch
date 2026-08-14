@@ -119,6 +119,18 @@ TEST_CASE("create_satin_plan : recouvrement desactivable sans perdre l'adjacence
     }
 }
 
+TEST_CASE("create_satin_plan : use_junction_separator_cuts desactivable, plan toujours valide") {
+    // Ancre de non-regression pour le nouveau bouton -- desactiver la
+    // famille de coupes §14 (JunctionSeparatorInfo) doit rester sur du
+    // balayage regulier seul, jamais un plan invalide ou vide.
+    auto config = prod_config();
+    config.use_junction_separator_cuts = false;
+    const auto plan = create_satin_plan(shape("t"), config);
+    CHECK_FALSE(plan.regions.empty());
+    REQUIRE(plan.aggregate_coverage.has_value());
+    CHECK(plan.aggregate_coverage->raw_coverage_ratio > 0.80);
+}
+
 TEST_CASE("create_satin_plan : formes branchees du corpus -- jamais de refus global, couverture agregee elevee") {
     for (const std::string& name : {"y", "cross", "h", "trident"}) {
         INFO("forme = " << name);
@@ -159,6 +171,14 @@ TEST_CASE("create_satin_plan : recursion reelle -- une region fille encore medio
     for (const std::string& name : {"h", "trident", "cross"}) {
         auto config = prod_config();
         config.max_recursion_depth = 6;
+        // La famille §14 (JunctionSeparatorInfo, 2026-08-14) ameliore la
+        // premiere passe de decoupe au point que ce corpus n'a plus jamais
+        // besoin d'une deuxieme passe -- ce qui est un progres reel, mais
+        // masque la propriete testee ICI (le MECANISME de recursion, pas la
+        // qualite d'une famille de coupes particuliere). Desactivee pour
+        // isoler la propriete structurelle : avec le seul balayage regulier
+        // (comportement d'origine du test), une redecoupe reste necessaire.
+        config.use_junction_separator_cuts = false;
         const auto plan = create_satin_plan(shape(name), config);
         for (const auto& r : plan.regions) {
             if (r.depth > 1) sawDepthBeyondOne = true;

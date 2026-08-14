@@ -3529,17 +3529,74 @@ région d'origine, et que désactiver `compute_overlaps` laisse `adjacency`
 intact (deux informations indépendantes) tout en retombant proprement sur la
 géométrie identité.
 
+### Deuxieme famille de coupes candidates : JunctionSeparator reutilise (§14, 2026-08-14)
+
+`generate_cut_candidates` ne produisait qu'une seule famille (normale au
+squelette, distance croissante depuis la jonction) — la cause directe du
+résultat catastrophique mesuré sur la lettre T réelle (1,9&nbsp;% de
+couverture agrégée). Le plan de refonte demandait explicitement de
+réutiliser les `JunctionSeparatorInfo` déjà calculés par le moteur
+Legacy (`resolve_junction`, sommet reflex du contour à chaque confluence, ou
+à défaut intersection de bissectrice) plutôt que de deviner une position par
+balayage — c'est fait, sans réimplémenter la moindre géométrie de détection
+d'encoche.
+
+**Le principe** : avant `split_region`, `decompose_and_recurse` appelle une
+fois `auto_satin::build_satin_columns` en mode Legacy FORCÉ (indépendamment
+du mode réellement utilisé pour la génération de rails) sur la région
+entière, uniquement pour récolter `junction_separators` — un appel
+diagnostique, jamais utilisé pour la géométrie satin produite. Pour chaque
+événement de détachement, `generate_cut_candidates` projette chaque
+séparateur de la même jonction sur la centerline de l'arête testée (distance
+d'arc + distance perpendiculaire) ; un séparateur suffisamment proche
+(`junction_separator_max_perpendicular_um`, 6&nbsp;mm par défaut — calibré
+empiriquement sur `t`, où les vrais séparateurs mesurent 2,5 à 3,5&nbsp;mm
+depuis la centerline, une tolérance de 2&nbsp;mm initiale les rejetait tous
+à tort) devient une distance de coupe candidate **testée en premier**, avant
+le balayage régulier.
+
+**Ordre critique** : `OracleGuidedSelector` (phase 6, beam search) n'évalue
+que les `beam_width` premiers candidats VALIDES du vecteur retourné (3 par
+défaut) — ajouter les candidats §14 en fin de vecteur les aurait
+pratiquement condamnés à ne jamais être évalués. Testés en premier, ils
+concourent en priorité pour le budget du beam search, cohérent avec le fait
+que ce sont les candidats les mieux motivés géométriquement.
+
+**Effet mesuré** : sur le corpus synthétique branché (`y`/`cross`/`h`/
+`trident`), la couverture agrégée est passée à 95–98&nbsp;% (bien au-delà du
+seuil de test à 75&nbsp;%). Sur la lettre T réelle en revanche, aucun
+changement — le moteur Legacy lui-même échoue à résoudre les mêmes jonctions
+incohérentes sur cette forme pathologique, donc `junction_separators` reste
+vide et la famille supplémentaire n'a simplement rien à proposer : dégradation
+honnête, jamais un crash ni une fabrication.
+
+**Effet de bord découvert en testant** : le corpus `h`/`trident`/`cross`
+n'a plus jamais besoin d'une deuxième passe de récursion — la première
+décomposition, désormais meilleure, suffit. Bon signe de qualité, mais cela
+invalidait la prémisse du test dédié à la PROPRIÉTÉ de récursion (`create_
+satin_plan : recursion reelle...`, qui vérifiait `depth > 1` quelque part
+dans ce corpus) : corrigé en désactivant `use_junction_separator_cuts` dans
+ce test spécifique — il isole désormais le mécanisme de récursion, pas la
+qualité d'une famille de coupes particulière.
+
+Nouveau `SatinPlanConfig::use_junction_separator_cuts` (`true` par défaut) —
+désactivable pour éviter le coût d'un appel Legacy supplémentaire par niveau
+de récursion, ou pour isoler l'ancienne seule famille en test.
+
+Testé (`tests/unit/satin_planning/test_region_split.cpp`) : la famille
+apparaît bien en premier et priorise le budget du beam search sur `t` ;
+un séparateur d'une autre jonction, ou trop éloigné perpendiculairement,
+est correctement ignoré. Suite complète (satin_planning, autodigitize,
+desktop) sans régression après le fix de calibration ci-dessus.
+
 ### Ce qui reste hors périmètre (limites connues, honnêtement documentées)
 
-- **Une seule famille de coupes candidates** (§14 du plan de refonte) :
-  `generate_cut_candidates` ne produit toujours que des coupes normales au
-  squelette à une distance croissante d'une jonction. C'est la cause
-  directe du résultat mesuré sur la lettre T réelle ci-dessus (1,9 % de
-  couverture agrégée, la quasi-totalité en résidu honnêtement rapporté) —
-  la forme a une topologie que cette seule famille de coupes ne sait pas
-  bien partitionner. Des familles supplémentaires (concavité→concavité,
-  concavité→bord opposé, `JunctionSeparator` déjà calculés par le moteur
-  Legacy, coupe polygonale) restent un travail futur clairement identifié.
+- **Coupes concavité→concavité, concavité→bord opposé, polygonales**
+  (§14 du plan de refonte, suite) : la famille JunctionSeparator ci-dessus
+  couvre le cas « encoche réelle entre deux branches d'une même jonction »,
+  mais pas une entaille sans jonction, ni une coupe reliant deux points de
+  concavité qui ne partagent aucune confluence de squelette — ces familles
+  restent un travail futur clairement identifié.
 - **Fusion (phase 7, `evaluate_merge_pass`) non encore reliée au planner
   récursif** : reste un module testé et fonctionnel (§ sections
   précédentes) mais non appelé par `create_satin_plan` — la sélection de

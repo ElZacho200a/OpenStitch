@@ -3,6 +3,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <limits>
 #include <sstream>
 #include <tuple>
 
@@ -97,6 +98,51 @@ bool path_set_contains(const geometry::PathSet& set, Vec2um p) {
     return true;
 }
 
+// Projection de `point` sur la centerline de `edge` (meme convention
+// `atStart` que `point_at_distance`) : distance d'arc depuis l'extremite
+// jonction jusqu'au point de la centerline le plus proche, et la distance
+// perpendiculaire a ce point le plus proche -- utilise par la famille §14
+// (JunctionSeparatorInfo) pour convertir un point de CONTOUR (jamais
+// exactement sur la centerline) en une distance de coupe candidate.
+struct EdgeProjection {
+    double distance_along_edge_um{0.0};
+    double perpendicular_distance_um{0.0};
+    bool valid{false};
+};
+
+EdgeProjection project_onto_edge(const SkeletonEdge& edge, bool atStart, Vec2d point) {
+    EdgeProjection out;
+    const std::size_t n = edge.centerline.size();
+    if (n < 2) return out;
+    auto pointAt = [&](std::size_t i) { return atStart ? edge.centerline[i] : edge.centerline[n - 1 - i]; };
+
+    double accumulated = 0.0;
+    double bestPerp = std::numeric_limits<double>::max();
+    double bestDistance = 0.0;
+    for (std::size_t i = 0; i + 1 < n; ++i) {
+        const Vec2d p0 = to_vec2d(pointAt(i));
+        const Vec2d p1 = to_vec2d(pointAt(i + 1));
+        const Vec2d seg = sub(p1, p0);
+        const double segLen = norm(seg);
+        if (segLen < 1e-9) continue;
+        const Vec2d toPoint = sub(point, p0);
+        double t = (toPoint.x * seg.x + toPoint.y * seg.y) / (segLen * segLen);
+        t = std::clamp(t, 0.0, 1.0);
+        const Vec2d closest = add(p0, scale(seg, t));
+        const double perp = norm(sub(point, closest));
+        if (perp < bestPerp) {
+            bestPerp = perp;
+            bestDistance = accumulated + t * segLen;
+        }
+        accumulated += segLen;
+    }
+    if (bestPerp == std::numeric_limits<double>::max()) return out;
+    out.distance_along_edge_um = bestDistance;
+    out.perpendicular_distance_um = bestPerp;
+    out.valid = true;
+    return out;
+}
+
 // Point sonde interieur au trace d'un SatinPath, robuste aux coupes qui ont
 // pu servir a l'isoler (celles-ci n'affectent que ses deux extremites) : le
 // noeud median s'il y en a un de strictement interne, sinon le milieu de
@@ -141,14 +187,21 @@ std::vector<CutCandidate> generate_cut_candidates(const geometry::PathSet& piece
     const bool verifySatinability = params.verify_isolated_endpoint_branches && farNode != nullptr &&
                                      farNode->type == SkeletonNodeType::Endpoint;
 
-    for (double d = params.search_min_um; d <= params.search_max_um; d += params.search_step_um) {
+    // Construit et evalue un candidat a la distance `d` (memes regles de
+    // rejet, quelle que soit la famille qui a propose `d`). Renvoie `false`
+    // seulement quand la branche est plus courte que `d` -- le seul cas ou
+    // continuer le balayage regulier n'a plus de sens (monotone en distance) ;
+    // toute autre issue (candidat valide OU rejete pour une autre raison)
+    // renvoie `true`.
+    const auto try_distance = [&](double d, bool fromSeparator) {
         const PointAndTangent sample = point_at_distance(*edge, atStart, d);
         CutCandidate cand;
         cand.distance_from_junction_um = d;
+        cand.from_junction_separator = fromSeparator;
         if (!sample.valid) {
             cand.rejection_reason = "branche plus courte que la distance testee";
             candidates.push_back(cand);
-            break;  // aucune distance plus grande ne sera valide non plus
+            return false;
         }
         cand.point = to_vec2um(sample.point);
         // Normale locale : rotation 90 deg de la tangente. `cut_path_set`
@@ -162,20 +215,20 @@ std::vector<CutCandidate> generate_cut_candidates(const geometry::PathSet& piece
         if (!cutResult.has_value()) {
             cand.rejection_reason = "echec de la decoupe geometrique";
             candidates.push_back(cand);
-            continue;
+            return true;
         }
         if (cutResult->size() != 2) {
             cand.rejection_reason = "coupe n'a pas produit exactement 2 morceaux (" +
                                      std::to_string(cutResult->size()) + " -- traverse une zone sans rapport)";
             candidates.push_back(cand);
-            continue;
+            return true;
         }
         const double areaA = geometry::path_set_area_um2((*cutResult)[0]) / 1e6;
         const double areaB = geometry::path_set_area_um2((*cutResult)[1]) / 1e6;
         if (areaA < params.min_piece_area_mm2 || areaB < params.min_piece_area_mm2) {
             cand.rejection_reason = "fragment trop petit";
             candidates.push_back(cand);
-            continue;
+            return true;
         }
 
         // Determine lequel des deux morceaux est la branche isolee (contient
@@ -192,7 +245,7 @@ std::vector<CutCandidate> generate_cut_candidates(const geometry::PathSet& piece
                 cand.rejection_reason = "morceau isole encore branche apres cette coupe (jonction residuelle, "
                                          "probablement une branche voisine partiellement tranchee)";
                 candidates.push_back(cand);
-                continue;
+                return true;
             }
         }
 
@@ -200,6 +253,31 @@ std::vector<CutCandidate> generate_cut_candidates(const geometry::PathSet& piece
         cand.branch_piece_area_mm2 = geometry::path_set_area_um2((*cutResult)[branchIdx]) / 1e6;
         cand.remainder_piece_area_mm2 = geometry::path_set_area_um2((*cutResult)[remainderIdx]) / 1e6;
         candidates.push_back(cand);
+        return true;
+    };
+
+    // §14 : encoches reelles connues (JunctionSeparatorInfo, moteur Legacy),
+    // testees EN PREMIER -- priorite dans le budget du beam search (§16) sur
+    // le balayage regulier ci-dessous, qui reste un pur repli geometrique
+    // quand aucun separateur n'est fourni ou n'est exploitable ici.
+    std::vector<double> separatorDistances;
+    for (const auto& sep : params.junction_separators) {
+        if (sep.junction_id != junctionNode) continue;
+        const EdgeProjection proj = project_onto_edge(*edge, atStart, to_vec2d(sep.point));
+        if (!proj.valid || proj.perpendicular_distance_um > params.junction_separator_max_perpendicular_um) continue;
+        if (proj.distance_along_edge_um < params.search_min_um || proj.distance_along_edge_um > params.search_max_um)
+            continue;
+        separatorDistances.push_back(proj.distance_along_edge_um);
+    }
+    std::sort(separatorDistances.begin(), separatorDistances.end());
+    separatorDistances.erase(
+        std::unique(separatorDistances.begin(), separatorDistances.end(),
+                    [](double a, double b) { return std::abs(a - b) < 1.0; }),
+        separatorDistances.end());
+    for (double d : separatorDistances) try_distance(d, true);
+
+    for (double d = params.search_min_um; d <= params.search_max_um; d += params.search_step_um) {
+        if (!try_distance(d, false)) break;  // aucune distance plus grande ne sera valide non plus
     }
     return candidates;
 }
@@ -364,7 +442,7 @@ std::string format_region_split_report(const RegionSplitReport& report, const De
         for (std::size_t i = 0; i < attempt.candidates.size(); ++i) {
             const auto& c = attempt.candidates[i];
             const bool selected = attempt.selected.has_value() && *attempt.selected == i;
-            out << "    d=" << c.distance_from_junction_um << "um : ";
+            out << "    d=" << c.distance_from_junction_um << "um" << (c.from_junction_separator ? " [SEP]" : "") << " : ";
             if (c.valid) {
                 out << "valide (branche=" << c.branch_piece_area_mm2 << "mm2, reste=" << c.remainder_piece_area_mm2 << "mm2)";
             } else {

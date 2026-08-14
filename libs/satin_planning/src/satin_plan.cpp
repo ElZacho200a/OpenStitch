@@ -117,6 +117,27 @@ RecursionOutcome decompose_and_recurse(const geometry::PathSet& region, const Sa
         cutParams.selector = std::ref(selector);
     }
 
+    // §14 : recolte les JunctionSeparatorInfo DEJA calcules par le moteur
+    // Legacy (sommet reflex du contour a chaque confluence -- cf.
+    // `auto_satin::satin_column.cpp`, `resolve_junction`) pour enrichir
+    // `generate_cut_candidates` d'une famille de coupes ancree sur une
+    // encoche REELLE, plutot que sur une distance devinee par le seul
+    // balayage regulier. Mode Legacy FORCE ici (independamment de
+    // `config.genParams.geometry_mode`) -- seul mode qui resout
+    // StableBranchEnd/JunctionSeparator -- pour cette extraction
+    // diagnostique uniquement : n'affecte jamais la geometrie satin
+    // reellement produite par `try_local_satin` (le solveur local reste
+    // inchange). Repli silencieux sur une liste vide si le moteur Legacy
+    // refuse (ex. jonction incoherente) : la famille supplementaire est
+    // simplement absente pour cette region, jamais une erreur -- le
+    // balayage regulier reste disponible.
+    if (config.use_junction_separator_cuts && cutParams.junction_separators.empty()) {
+        auto_satin::SatinColumnsParameters legacyParams = config.genParams;
+        legacyParams.geometry_mode = auto_satin::SatinGeometryMode::Legacy;
+        const auto legacyResult = auto_satin::build_satin_columns(region, legacyParams);
+        cutParams.junction_separators = legacyResult.junction_separators;
+    }
+
     const auto split = split_region(region, graph, decomposition, cutParams);
 
     // §19 : n'associe l'index de chemin de decomposition (`SatinRegion::

@@ -76,6 +76,15 @@ struct SatinPlanConfig {
     // pour un appelant qui ne veut que la geometrie structurelle brute.
     bool compute_overlaps{true};
     Micrometers overlap_distance{300};
+    // §14 du plan de refonte satin (deuxieme famille de coupes candidates,
+    // 2026-08-14) : reutilise les `JunctionSeparatorInfo` DEJA calcules par
+    // un appel Legacy dedie (cf. `CutCandidateParams::junction_separators`,
+    // region_split.hpp) comme distances de coupe candidates supplementaires,
+    // prioritaires sur le balayage regulier existant. Desactivable pour
+    // eviter le cout d'un appel `build_satin_columns` (mode Legacy force)
+    // supplementaire par niveau de recursion, ou pour isoler l'ancienne
+    // seule famille (tests de non-regression, comparaison A/B).
+    bool use_junction_separator_cuts{true};
 };
 
 // Une region finale du plan : geometrie STRUCTURELLE (jamais modifiee pour

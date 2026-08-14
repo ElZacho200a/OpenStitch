@@ -7,6 +7,7 @@
 #include <string>
 #include <vector>
 
+#include "openstitch/auto_satin/satin_column.hpp"
 #include "openstitch/geometry/path.hpp"
 #include "openstitch/satin_planning/branch_pairing.hpp"
 
@@ -24,6 +25,12 @@ struct CutCandidate {
     double branch_piece_area_mm2{0.0};
     double remainder_piece_area_mm2{0.0};
     std::string rejection_reason;  // vide si valid
+    // Vrai si `distance_from_junction_um` vient de la famille §14
+    // (JunctionSeparatorInfo, cf. `CutCandidateParams::junction_separators`)
+    // plutot que du balayage regulier -- diagnostic uniquement (pour
+    // `format_region_split_report` et les tests), ne change aucune regle de
+    // rejet.
+    bool from_junction_separator{false};
 };
 
 // Choisit un candidat parmi ceux testes pour un evenement de detachement,
@@ -69,6 +76,39 @@ struct CutCandidateParams {
     // a faisceau). Vide (par defaut) -> comportement historique des phases
     // 3/4 : le premier candidat valide (le plus proche de la jonction).
     CutCandidateSelector selector{};
+
+    // §14 du plan de refonte satin (2026-08-14) : deuxieme famille de coupes
+    // candidates, reutilisant les `JunctionSeparatorInfo` DEJA calcules par
+    // le moteur Legacy (sommet reflex du contour, ou a defaut intersection
+    // de bissectrice -- cf. `auto_satin::satin_column.cpp`, `resolve_junction`)
+    // plutot que de re-deviner une position par le balayage regulier
+    // ci-dessus. Vide par defaut -- aucun cout impose a un appelant qui n'en
+    // fournit pas ; peuple par `satin_planning::create_satin_plan`
+    // (`decompose_and_recurse`, satin_plan.cpp) via un appel Legacy dedie sur
+    // la region entiere, une seule fois par niveau de recursion, jamais par
+    // evenement de detachement. Pour un evenement donne, un separateur dont
+    // `junction_id` correspond ET dont le point se projette suffisamment
+    // PRES de l'arete testee (perpendiculairement, cf.
+    // `junction_separator_max_perpendicular_um`) devient une distance de
+    // coupe candidate testee EN PREMIER, avant le balayage regulier -- c'est
+    // la position empiriquement connue de l'encoche reelle entre cette
+    // branche et sa voisine angulaire, pas une distance devinee. Ordre
+    // important : le selecteur guide par faisceau (`OracleGuidedSelector`,
+    // beam_search.hpp) n'evalue que les `beam_width` premiers candidats
+    // VALIDES du vecteur retourne -- tester cette famille en premier lui
+    // donne la priorite sur le beam, pas seulement une chance egale.
+    std::vector<auto_satin::JunctionSeparatorInfo> junction_separators;
+    // Tolerance perpendiculaire (depuis l'arete testee) pour associer un
+    // separateur a CETTE branche plutot qu'a une autre branche voisine de la
+    // meme jonction -- un separateur est un point de CONTOUR, jamais
+    // exactement sur la centerline du squelette : il siege naturellement a
+    // peu pres a la demi-largeur de la branche VOISINE depuis cette
+    // centerline, pas au ras de zero. Calibre empiriquement sur le corpus
+    // (`t`, bras de ~5-6mm) : une tolerance de 2mm rejetait a tort les trois
+    // separateurs reels de la jonction (2,5 a 3,5mm mesures) -- 6mm couvre ce
+    // cas avec marge sans devenir une association a l'aveugle sur une forme
+    // a tres larges branches.
+    double junction_separator_max_perpendicular_um{6'000.0};
 };
 
 // Genere et evalue les coupes candidates permettant de detacher la branche

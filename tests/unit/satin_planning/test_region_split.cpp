@@ -2,6 +2,7 @@
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 
+#include <algorithm>
 #include <functional>
 #include <numeric>
 #include <string>
@@ -234,6 +235,85 @@ TEST_CASE("region reelle avec boucle -- SGSD accepte chaque sous-region mais lai
     for (const auto& piece : *leftover) leftoverAreaMm2 += geometry::path_set_area_um2(piece) / 1e6;
     INFO("aire totale=" << originalAreaMm2 << "mm2 -- reliquat non couvert=" << leftoverAreaMm2 << "mm2");
     CHECK(leftoverAreaMm2 > 0.3 * originalAreaMm2);
+}
+
+TEST_CASE("generate_cut_candidates : reutilise les JunctionSeparatorInfo Legacy comme famille supplementaire") {
+    // Regression pour le wiring §14 (2026-08-14) : `JunctionSeparatorInfo`
+    // (reflex vertex du contour a la confluence, deja calcule par le moteur
+    // Legacy -- cf. `auto_satin::satin_column.cpp`, `resolve_junction`)
+    // devient une distance de coupe candidate supplementaire, testee EN
+    // PREMIER -- necessaire pour qu'elle beneficie d'une place dans le
+    // budget du beam search (`OracleGuidedSelector`, qui ne teste que les
+    // `beam_width` premiers candidats VALIDES du vecteur).
+    geometry::PathSet shape;
+    const auto analysis = analyze("t", shape);
+    const auto& graph = analysis.debug.graph;
+    const DecompositionReport decomposition = decompose_into_paths(graph);
+    REQUIRE(decomposition.junctions.size() == 1);
+    REQUIRE(decomposition.junctions.front().detached.size() == 1);
+    const std::uint32_t junctionNode = decomposition.junctions.front().node;
+    const std::uint32_t edgeId = decomposition.junctions.front().detached.front();
+
+    auto_satin::SatinColumnsParameters legacyParams;
+    legacyParams.geometry_mode = auto_satin::SatinGeometryMode::Legacy;
+    const auto legacyResult = auto_satin::build_satin_columns(shape, legacyParams);
+    REQUIRE_FALSE(legacyResult.junction_separators.empty());
+
+    CutCandidateParams params;
+    params.junction_separators = legacyResult.junction_separators;
+    const auto candidates = generate_cut_candidates(shape, graph, junctionNode, edgeId, params);
+
+    REQUIRE_FALSE(candidates.empty());
+    const auto firstSeparatorIt = std::find_if(candidates.begin(), candidates.end(),
+                                                [](const CutCandidate& c) { return c.from_junction_separator; });
+    REQUIRE(firstSeparatorIt != candidates.end());
+    CHECK(firstSeparatorIt->valid);
+    const auto firstSweepIt = std::find_if(candidates.begin(), candidates.end(),
+                                            [](const CutCandidate& c) { return !c.from_junction_separator; });
+    REQUIRE(firstSweepIt != candidates.end());
+    CHECK(std::distance(candidates.begin(), firstSeparatorIt) < std::distance(candidates.begin(), firstSweepIt));
+
+    // Et la coupe qu'elle propose reste correcte au sens des regles
+    // existantes : reutilisees TELLES QUELLES (pas de nouvelle regle de
+    // rejet propre a cette famille).
+    CHECK(firstSeparatorIt->branch_piece_area_mm2 > 0.0);
+    CHECK(firstSeparatorIt->remainder_piece_area_mm2 > 0.0);
+}
+
+TEST_CASE("generate_cut_candidates : un separateur d'une autre jonction ou trop eloigne perpendiculairement est ignore") {
+    geometry::PathSet shape;
+    const auto analysis = analyze("t", shape);
+    const auto& graph = analysis.debug.graph;
+    const DecompositionReport decomposition = decompose_into_paths(graph);
+    const std::uint32_t junctionNode = decomposition.junctions.front().node;
+    const std::uint32_t edgeId = decomposition.junctions.front().detached.front();
+
+    SECTION("junction_id different -- jamais associe") {
+        auto_satin::JunctionSeparatorInfo wrongJunction;
+        wrongJunction.junction_id = 999'999;
+        wrongJunction.point = graph.nodes.front().position;
+
+        CutCandidateParams params;
+        params.junction_separators.push_back(wrongJunction);
+        const auto candidates = generate_cut_candidates(shape, graph, junctionNode, edgeId, params);
+        CHECK_FALSE(std::any_of(candidates.begin(), candidates.end(),
+                                 [](const CutCandidate& c) { return c.from_junction_separator; }));
+    }
+
+    SECTION("bonne jonction mais point trop eloigne perpendiculairement -- rejete par la tolerance") {
+        auto_satin::JunctionSeparatorInfo farPoint;
+        farPoint.junction_id = junctionNode;
+        const Vec2um junctionPos = graph.nodes[junctionNode].position;
+        // 50mm perpendiculaire : tres au-dela de la tolerance par defaut
+        // (2mm), quelle que soit l'orientation reelle de la branche.
+        farPoint.point = Vec2um{junctionPos.x + Micrometers{50'000}, junctionPos.y + Micrometers{50'000}};
+
+        CutCandidateParams params;
+        params.junction_separators.push_back(farPoint);
+        const auto candidates = generate_cut_candidates(shape, graph, junctionNode, edgeId, params);
+        CHECK_FALSE(std::any_of(candidates.begin(), candidates.end(),
+                                 [](const CutCandidate& c) { return c.from_junction_separator; }));
+    }
 }
 
 TEST_CASE("format_region_split_report : rendu textuel exploitable pour le debug") {
