@@ -3629,14 +3629,94 @@ Testé (`tests/unit/satin_planning/test_satin_plan.cpp`) : fusion forcée
 réduit réellement le nombre de régions ; suite complète (satin_planning,
 autodigitize, desktop) sans régression.
 
+### Coupes concavité→concavité et concavité→bord opposé (§14, suite, 2026-08-14)
+
+Les deux familles précédentes (normale au squelette, JunctionSeparator) sont
+toutes deux ancrées sur un événement de détachement à une JONCTION du
+squelette. Une région SANS jonction interne — un seul chemin topologique,
+comme `notch`/`pinch` du corpus (bande entaillée d'un profond V) — n'avait
+donc **rien** à quoi elles puissent s'accrocher : `decompose_and_recurse`
+renonçait immédiatement dès que `junction_count() == 0`, même quand le
+solveur local échouait clairement.
+
+**Le principe** (nouveau module `libs/satin_planning/concavity_cuts`) :
+pure géométrie de CONTOUR, sans aucun graphe de squelette.
+- `concavité→concavité` : chaque PAIRE de sommets reflex (concaves) du
+  contour extérieur, coupée en ligne droite entre les deux — le cas d'un
+  sablier (deux entailles se faisant face).
+- `concavité→bord opposé` : chaque sommet reflex seul, coupé selon la
+  direction perpendiculaire moyenne des deux arêtes qui s'y rejoignent —
+  orientée **empiriquement** vers l'intérieur de la matière (testée
+  point par point via un test point-dans-polygone, jamais supposée depuis
+  le sens de parcours du contour, qui peut différer d'une concavité à
+  l'autre sur une forme non convexe) — le cas d'une entaille unique.
+
+Chaque candidat est filtré par les mêmes règles que les familles
+précédentes (exactement 2 morceaux, aucun trop petit), puis le meilleur est
+choisi en construisant réellement les deux moitiés et en mesurant leur
+couverture combinée (même principe que le beam search phase 6).
+
+**Effet mesuré, honnêtement rapporté** :
+
+| Forme | Avant | Après |
+|---|---|---|
+| `pinch` (encoche à 0,3mm du bord opposé) | 0 région, **0%** (échec total) | 4 régions, **86,5%** |
+| `notch` (encoche à 1mm du bord opposé) | 1 région, 76,6% (repli dégradé) | 3 régions, **79,9%** |
+
+**Deux garde-fous trouvés par des régressions réelles** en construisant
+cette famille (`tests/unit/autodigitize/test_autodigitize.cpp`) :
+1. **Jamais pendant la réparation de résidu** (`fromResidualRepair`) : un
+   fragment de résidu est une géométrie de DÉCOUPE (Clipper2,
+   `subtract_polygons` sur la couverture déjà produite), souvent petite et
+   irrégulière par construction — un sommet reflex « parasite » issu de ce
+   bruit géométrique fragmentait le résidu en éclats au lieu de le laisser
+   honnêtement rapporté (le réseau en T voyait son reliquat mesuré
+   augmenter malgré l'« acceptation » de ces éclats).
+2. **Jamais sur une région avec un trou** : un anneau a déjà son propre
+   solveur local dédié et excellent (`build_annular_sections`, appelé
+   inconditionnellement dès qu'il y a exactement un trou) — la famille
+   concavité ne considère que le contour EXTÉRIEUR, jamais les trous, donc
+   une coupe rectiligne y ignore complètement la topologie du trou. Sur un
+   anneau réel (segmentation → vectorisation, contour légèrement
+   irrégulier), un sommet reflex marginal du contour tranchait l'anneau en
+   9 fragments au lieu des 4 sections annulaires propres — préféré
+   inconditionnellement (même règle que le chemin basé sur le squelette :
+   la décomposition l'emporte sans comparaison de qualité dès qu'elle
+   produit quoi que ce soit).
+
+Nouveau `SatinPlanConfig::use_concavity_cuts` (`true` par défaut),
+`concavityCutParams`, `concavity_cut_beam_width` (6 par défaut).
+
+**Troisième défaut trouvé, en validation manuelle après les deux
+garde-fous ci-dessus** : la famille concavité→concavité génère une paire de
+candidats par PAIRE de sommets reflex (O(n²)), chacune une vraie coupe
+Clipper2 — un contour issu de vectorisation réelle peut compter des
+dizaines de sommets « reflex » au sens strict mais géométriquement
+négligeables (quasi rectilignes, bruit de tracé), faisant exploser le temps
+de calcul sans qu'aucun ne représente une vraie encoche. Corrigé par un
+filtre d'angle minimal (`min_reflex_turn_deg`, 15° par défaut) appliqué
+AVANT toute construction de candidat, plus une borne dure de défense en
+profondeur (`max_reflex_vertices`, 12 par défaut — garde les concavités les
+plus prononcées, triées par magnitude de virage).
+
+Testé (`tests/unit/satin_planning/test_concavity_cuts.cpp`, nouveau
+fichier) : aucune concavité sur un rectangle convexe ; `notch` n'a qu'**une
+seule** concavité réelle (contrairement à l'intuition visuelle — vérifié
+empiriquement : les « épaules » du V sont convexes, pas concaves, seule la
+pointe l'est) donc seule la famille bord-opposé s'y applique ; une forme
+« sablier » construite à la main (deux notches en vis-à-vis) exerce
+spécifiquement concavité→concavité. Suite complète (satin_planning,
+autodigitize, desktop) sans régression après les deux garde-fous ci-dessus.
+
 ### Ce qui reste hors périmètre (limites connues, honnêtement documentées)
 
-- **Coupes concavité→concavité, concavité→bord opposé, polygonales**
-  (§14 du plan de refonte, suite) : la famille JunctionSeparator ci-dessus
-  couvre le cas « encoche réelle entre deux branches d'une même jonction »,
-  mais pas une entaille sans jonction, ni une coupe reliant deux points de
-  concavité qui ne partagent aucune confluence de squelette — ces familles
-  restent un travail futur clairement identifié.
+- **Coupes polygonales** (§14 du plan de refonte, dernier élément) : les
+  quatre familles désormais actives (normale au squelette, JunctionSeparator,
+  concavité→concavité, concavité→bord opposé) couvrent la majorité des cas
+  observés sur le corpus de test, mais aucune ne gère une coupe suivant un
+  tracé polygonal (plusieurs segments) plutôt qu'une ligne droite — reste un
+  travail futur clairement identifié, non nécessaire pour une v1 (§14 du
+  plan de refonte le notait déjà explicitement).
 - **Adjacence/overlap non exploités en aval** : `SatinPlan::adjacency`/
   `overlaps` sont maintenant peuplés (ci-dessus), mais rien dans la
   génération de points ne les consomme encore — les colonnes satin de

@@ -8,6 +8,7 @@
 
 #include "openstitch/auto_satin/satin_column.hpp"
 #include "openstitch/satin_coverage/coverage.hpp"
+#include "openstitch/satin_planning/concavity_cuts.hpp"
 #include "openstitch/satin_planning/overlap.hpp"
 #include "openstitch/satin_planning/region_split.hpp"
 
@@ -97,6 +98,16 @@ struct SatinPlanConfig {
     // coupe, ou pour isoler le comportement "garder toute coupe reussie".
     bool use_merge_pass{true};
     double merge_pass_coverage_tolerance{0.02};
+    // §14 du plan de refonte satin, suite (2026-08-14) : quand une region
+    // n'a AUCUNE jonction de squelette (donc rien pour les deux familles de
+    // coupe precedentes) et que le solveur local echoue quand meme, tente
+    // une coupe ancree sur une concavite du CONTOUR lui-meme
+    // (`generate_concavity_cut_candidates`) avant de renoncer -- cible le
+    // cas d'une entaille profonde ou d'un sablier sans topologie de
+    // squelette exploitable (ex. `notch`/`pinch` du corpus de test).
+    bool use_concavity_cuts{true};
+    ConcavityCutParams concavityCutParams{};
+    std::size_t concavity_cut_beam_width{6};
 };
 
 // Une region finale du plan : geometrie STRUCTURELLE (jamais modifiee pour

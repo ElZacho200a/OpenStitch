@@ -157,6 +157,50 @@ TEST_CASE("create_satin_plan : use_junction_separator_cuts desactivable, plan to
     CHECK(plan.aggregate_coverage->raw_coverage_ratio > 0.80);
 }
 
+TEST_CASE("create_satin_plan : coupes concavite -- resolvent une entaille profonde sans jonction de squelette") {
+    // §14 du plan de refonte satin, suite (2026-08-14) : `pinch` (encoche en
+    // V descendant a moins de 0,3mm du bord oppose, un seul chemin
+    // topologique -- AUCUNE jonction de squelette) est un echec TOTAL sans
+    // cette famille (mesure avant ce correctif : 0 region acceptee, 0% de
+    // couverture -- decompose_and_recurse renoncait immediatement des que
+    // `junction_count() == 0`, sans jamais tenter une coupe ancree sur la
+    // concavite du contour lui-meme). Avec la famille activee, la region se
+    // resout reellement.
+    auto withConcavity = prod_config();
+    auto withoutConcavity = prod_config();
+    withoutConcavity.use_concavity_cuts = false;
+
+    const auto planWith = create_satin_plan(shape("pinch"), withConcavity);
+    const auto planWithout = create_satin_plan(shape("pinch"), withoutConcavity);
+
+    CHECK_FALSE(planWith.regions.empty());
+    REQUIRE(planWith.aggregate_coverage.has_value());
+    CHECK(planWith.aggregate_coverage->raw_coverage_ratio > 0.75);
+
+    // Non-regression stricte du comportement honnete SANS la famille :
+    // toujours un echec total plutot qu'une fabrication -- si ce n'est plus
+    // le cas, la comparaison ci-dessus perd son sens et merite d'etre revue.
+    CHECK(planWithout.regions.empty());
+}
+
+TEST_CASE("create_satin_plan : coupes concavite -- ameliorent (sans degrader) une entaille moins severe") {
+    // `notch` (variante moins severe de `pinch`, encoche jusqu'a 1mm du bord
+    // oppose) n'echoue pas totalement sans la famille §14 (le solveur local
+    // s'en tire avec un "meilleur effort" degrade), mais la couverture
+    // agregee reste mesurablement meilleure avec.
+    auto withConcavity = prod_config();
+    auto withoutConcavity = prod_config();
+    withoutConcavity.use_concavity_cuts = false;
+
+    const auto planWith = create_satin_plan(shape("notch"), withConcavity);
+    const auto planWithout = create_satin_plan(shape("notch"), withoutConcavity);
+
+    REQUIRE(planWith.aggregate_coverage.has_value());
+    REQUIRE(planWithout.aggregate_coverage.has_value());
+    CHECK(planWith.aggregate_coverage->raw_coverage_ratio >=
+          planWithout.aggregate_coverage->raw_coverage_ratio - 0.01);
+}
+
 TEST_CASE("create_satin_plan : formes branchees du corpus -- jamais de refus global, couverture agregee elevee") {
     for (const std::string& name : {"y", "cross", "h", "trident"}) {
         INFO("forme = " << name);

@@ -9,6 +9,7 @@
 #include "openstitch/auto_satin/auto_satin.hpp"
 #include "openstitch/geometry/boolean.hpp"
 #include "openstitch/satin_planning/beam_search.hpp"
+#include "openstitch/satin_planning/concavity_cuts.hpp"
 #include "openstitch/satin_planning/merge_pass.hpp"
 
 namespace openstitch::satin_planning {
@@ -85,6 +86,44 @@ struct RecursionOutcome {
 RecursionOutcome plan_recursive(const geometry::PathSet& region, const SatinPlanConfig& config, int depth,
                                 bool fromResidualRepair);
 
+// §14 du plan de refonte satin, suite (2026-08-14) : quand `region` n'a
+// AUCUNE jonction de squelette (donc rien pour les deux familles de coupe
+// ancrees sur un evenement de detachement), tente une coupe ancree sur une
+// concavite du CONTOUR lui-meme -- `generate_concavity_cut_candidates`,
+// purement geometrique, sans graphe. Meme structure de recursion que
+// `decompose_and_recurse` (chaque moitie replanifiee recursivement), mais
+// exactement DEUX enfants fixes (une seule coupe) plutot qu'une boucle sur
+// des evenements de detachement. Limite assumee et documentee : contrairement
+// au chemin base sur le squelette, aucune adjacence n'est rapportee entre
+// les deux moities issues d'ici (§19/§20 restent un travail futur pour cette
+// famille -- pas de `RegionSplitReport::merge_candidates` equivalent).
+RecursionOutcome try_concavity_decomposition(const geometry::PathSet& region, const SatinPlanConfig& config, int depth,
+                                             bool fromResidualRepair) {
+    RecursionOutcome out;
+    const auto candidates = generate_concavity_cut_candidates(region, config.concavityCutParams);
+    const auto chosen = select_best_concavity_cut(candidates, config.genParams, config.coverageConfig, config.density,
+                                                   config.concavity_cut_beam_width);
+    if (!chosen) {
+        out.unresolved.push_back(region);
+        return out;
+    }
+    const auto& winner = candidates[*chosen];
+    const auto absorb = [&](const geometry::PathSet& piece) {
+        RecursionOutcome child = plan_recursive(piece, config, depth + 1, fromResidualRepair);
+        const std::size_t baseIndex = out.accepted.size();
+        for (std::size_t k = 0; k < child.adjacency.size(); ++k) {
+            out.adjacency.emplace_back(child.adjacency[k].first + baseIndex, child.adjacency[k].second + baseIndex);
+            out.overlaps.push_back(std::move(child.overlaps[k]));
+        }
+        for (auto& leaf : child.accepted) out.accepted.push_back(std::move(leaf));
+        for (auto& p : child.unresolved) out.unresolved.push_back(std::move(p));
+        for (auto& w : child.warnings) out.warnings.push_back(std::move(w));
+    };
+    absorb(winner.first_piece);
+    absorb(winner.second_piece);
+    return out;
+}
+
 // Tente de decomposer `region` (au moins une jonction requise dans son
 // propre squelette) et replanifie RECURSIVEMENT chaque sous-region
 // resultante -- c'est cette recursion, absente de l'ancien
@@ -95,12 +134,47 @@ RecursionOutcome decompose_and_recurse(const geometry::PathSet& region, const Sa
     RecursionOutcome out;
     const auto analysis = auto_satin::analyze_region(region, config.genParams.analysis);
     if (!analysis || analysis->debug.graph.junction_count() == 0) {
-        // Rien a decomposer (echec d'analyse, ou squelette sans jonction --
-        // ex. un anneau pur ou une entaille : famille de coupes actuelle,
-        // uniquement normale au squelette a une distance d'une jonction,
-        // n'a rien a quoi s'accrocher). Le meilleur effort local a deja ete
-        // tente par l'appelant avant ce point ; ici il n'y a plus rien a
-        // essayer, seulement a signaler honnetement.
+        // Rien a decomposer via le squelette (echec d'analyse, ou squelette
+        // sans jonction -- ex. un anneau pur ou une entaille). Avant de
+        // renoncer, tente la famille de coupes qui ne depend d'AUCUNE
+        // jonction (§14 suite) : concavite du contour -- cible exactement ce
+        // cas (une entaille profonde, un sablier). Deux garde-fous trouves
+        // par des regressions REELLES (test_autodigitize.cpp) en construisant
+        // cette famille :
+        //  - JAMAIS pendant la reparation de residu (`fromResidualRepair`) :
+        //    un fragment de residu est une geometrie de DECOUPE (Clipper2,
+        //    `subtract_polygons` sur la couverture deja produite), souvent
+        //    petite et irreguliere par construction -- pas la forme voulue
+        //    par l'utilisateur. Un sommet reflex "spurieux" issu de ce bruit
+        //    geometrique peut y fabriquer une coupe qui fragmente le residu
+        //    en plusieurs eclats au lieu de le laisser honnetement rapporte
+        //    (defaut trouve sur le reseau en T : reliquat mesure EN HAUSSE
+        //    malgre l'"acceptation" de ces eclats).
+        //  - JAMAIS sur une region AVEC UN TROU : un anneau/une region
+        //    perforee a deja son propre solveur local dedie et excellent
+        //    (`build_annular_sections`, appele inconditionnellement des que
+        //    `region.holes.size()==1`, quel que soit le statut de
+        //    satinabilite) -- strictement meilleur qu'une coupe rectiligne
+        //    qui ignore la topologie du trou (cette famille ne considere
+        //    QUE le contour EXTERIEUR, jamais les trous). Defaut trouve sur
+        //    un anneau reel (segmentation -> vectorisation, contour legerement
+        //    irregulier) : une coupe concavite trouvee sur un sommet reflex
+        //    marginal du contour tranchait l'anneau en fragments (9 sections
+        //    au lieu des 4 sections annulaires propres), inconditionnellement
+        //    preferee a la bonne solution locale simplement parce qu'elle
+        //    produisait ELLE AUSSI un resultat "accepte" (meme regle deja
+        //    presente pour le chemin base sur le squelette : la decomposition
+        //    l'emporte sans comparaison de qualite des qu'elle produit quoi
+        //    que ce soit).
+        if (config.use_concavity_cuts && !fromResidualRepair && region.holes.empty()) {
+            RecursionOutcome concavityOutcome = try_concavity_decomposition(region, config, depth, fromResidualRepair);
+            if (!concavityOutcome.accepted.empty()) {
+                return concavityOutcome;
+            }
+        }
+        // Ni le squelette ni une concavite exploitable : le meilleur effort
+        // local a deja ete tente par l'appelant avant ce point ; ici il n'y
+        // a plus rien a essayer, seulement a signaler honnetement.
         out.unresolved.push_back(region);
         return out;
     }
