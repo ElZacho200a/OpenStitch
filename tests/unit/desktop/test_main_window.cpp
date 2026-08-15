@@ -6,6 +6,7 @@
 #include <QGraphicsItem>
 #include <QListWidget>
 #include <QMessageBox>
+#include <QPushButton>
 #include <QSettings>
 #include <QShortcut>
 #include <QSignalSpy>
@@ -189,6 +190,41 @@ Fixture buildTShapeFixture() {
     return fx;
 }
 
+// Bande 40x5 mm entaillée d'une encoche en V quasi traversante (même
+// géométrie que la fixture "pinch" de libs/auto_satin/src/shapes.cpp) :
+// AUCUNE jonction de squelette (chemin topologique unique), un cas que le
+// solveur local échoue clairement à couvrir entièrement même après la
+// famille de coupes concavité (§14 suite, 2026-08-14 -- ~86 % de couverture
+// mesurée dans tests/unit/satin_planning, un reliquat largement au-dessus du
+// seuil de significativité) -- fixture dédiée pour exercer le dialogue à
+// choix multiples §23 (askAboutIncompleteSatinCoverage), qui ne s'affiche
+// QUE quand le reliquat est réellement significatif.
+Fixture buildPinchShapeFixture() {
+    Fixture fx;
+    fx.project.original.width = 2;
+    fx.project.original.height = 2;
+    fx.project.original.rgba.assign(2 * 2 * 4, 255);
+
+    openstitch::document::VectorObject vec;
+    vec.id = fx.project.object_ids.next();
+    vec.name = "Pinch";
+    openstitch::geometry::Path p;
+    p.closed = true;
+    constexpr std::int32_t w = 2'500;
+    const std::vector<std::pair<std::int32_t, std::int32_t>> pts = {
+        {0, -w}, {40'000, -w}, {40'000, w}, {25'000, w}, {20'000, -2'200}, {15'000, w}, {0, w},
+    };
+    for (const auto& [x, y] : pts) {
+        p.nodes.push_back(openstitch::geometry::PathNode{
+            Vec2um{Micrometers{x}, Micrometers{y}}, openstitch::geometry::NodeType::Corner,
+            std::nullopt, std::nullopt});
+    }
+    vec.paths.push_back(openstitch::geometry::PathSet{p, {}});
+    fx.vectorId = vec.id;
+    fx.project.vector_objects.push_back(vec);
+    return fx;
+}
+
 // Rectangle allongé 40x5 mm (même forme que le test createSatinObject sur
 // rectangle "Suitable" ci-dessous -- une élongation d'au moins 2,5 est
 // nécessaire pour une direction de rail non ambiguë, cf. docs/source/
@@ -301,12 +337,65 @@ void autoDismissModalDialogs(QWidget* parent, int maxDialogs = 4) {
     QTimer::singleShot(0, parent, [parent, maxDialogs] {
         if (auto* widget = QApplication::activeModalWidget()) {
             if (auto* box = qobject_cast<QMessageBox*>(widget)) {
-                box->accept();
+                // Clique RÉELLEMENT le bouton par défaut (comme un Entrée
+                // utilisateur) plutôt que d'appeler accept() directement :
+                // askAboutIncompleteSatinCoverage() (§23) n'utilise QUE des
+                // boutons personnalisés (addButton(text, role), aucun
+                // QMessageBox::StandardButton) -- accept() seul ne route
+                // jamais par la machinerie de clic de Qt et laisse
+                // clickedButton() à nullptr, ce qui se lirait à tort comme
+                // "Annuler" côté MainWindow. Cliquer le bouton par défaut
+                // (`partialButton`, "Continuer avec satin partiel") reste le
+                // choix le plus sûr pour un test qui ne teste pas
+                // spécifiquement ce dialogue -- jamais une fabrication
+                // silencieuse de tatami, jamais une annulation surprise.
+                if (auto* def = box->defaultButton()) {
+                    def->click();
+                } else {
+                    box->accept();
+                }
             } else if (auto* dlg = qobject_cast<QDialog*>(widget)) {
                 dlg->accept();
             }
         }
         autoDismissModalDialogs(parent, maxDialogs - 1);
+    });
+}
+
+// Ferme chaque boîte modale successive en cliquant, SI PRÉSENT, le bouton
+// dont le texte CONTIENT `buttonText` (recherche insensible à la casse) --
+// sinon clique le bouton par défaut pour passer à la suivante, et se réarme.
+// Nécessaire pour choisir explicitement "Utiliser tatami" ou "Annuler" dans
+// le dialogue §23 (`askAboutIncompleteSatinCoverage`), qui n'apparaît
+// qu'APRÈS une première QDialog densité/compensation sans rapport (aucun
+// bouton "tatami"/"Annuler" personnalisé à y trouver) -- une seule séquence
+// gère les deux dialogues plutôt que deux helpers à orchestrer à la main.
+void clickModalDialogButton(QWidget* parent, const QString& buttonText, int maxDialogs = 4) {
+    if (maxDialogs <= 0) {
+        return;
+    }
+    QTimer::singleShot(0, parent, [parent, buttonText, maxDialogs] {
+        if (auto* widget = QApplication::activeModalWidget()) {
+            QAbstractButton* target = nullptr;
+            for (QAbstractButton* button : widget->findChildren<QAbstractButton*>()) {
+                if (button->text().contains(buttonText, Qt::CaseInsensitive)) {
+                    target = button;
+                    break;
+                }
+            }
+            if (target != nullptr) {
+                target->click();
+            } else if (auto* box = qobject_cast<QMessageBox*>(widget)) {
+                if (auto* def = box->defaultButton()) {
+                    def->click();
+                } else {
+                    box->accept();
+                }
+            } else if (auto* dlg = qobject_cast<QDialog*>(widget)) {
+                dlg->accept();
+            }
+        }
+        clickModalDialogButton(parent, buttonText, maxDialogs - 1);
     });
 }
 
@@ -435,6 +524,14 @@ private slots:
     // les créations manuelles — vérifie que le résultat porte de vrais
     // rails/barreaux (pas un objet SatinParams vide) et reste annulable.
     void setStitchTypeSatinCaseProducesRealRailsAndIsUndoable();
+    // §23 du plan de refonte satin (2026-08-14) : le dialogue à choix
+    // multiples (askAboutIncompleteSatinCoverage) remplace l'ancienne
+    // information à sens unique -- un test par choix réel, bout en bout
+    // depuis createSatinObject() sur une forme dont le reliquat est
+    // significatif (buildPinchShapeFixture()).
+    void createSatinObjectContinuePartialLeavesResidualUncovered();
+    void createSatinObjectUseTatamiFillsResidualWithFallback();
+    void createSatinObjectCancelLeavesDocumentUnchanged();
 
     // Panneau Workflow (audit ergonomie) : les étapes « Régions »/« Vecteurs »
     // ne doivent jamais rester « à faire » quand des objets vectoriels
@@ -1676,6 +1773,94 @@ void MainWindowTest::setStitchTypeSatinCaseProducesRealRailsAndIsUndoable() {
     const auto* restored = window.project_.findEmbroidery(fx.embroideryId);
     QVERIFY(restored != nullptr);
     QVERIFY(!restored->is_satin());
+}
+
+void MainWindowTest::createSatinObjectContinuePartialLeavesResidualUncovered() {
+    MainWindow window;
+    const Fixture fx = buildPinchShapeFixture();
+    window.applyLoadedProject(fx.project);
+    window.selectedObject_ = fx.vectorId;
+    window.updateActions();
+
+    const std::size_t embroideryCountBefore = window.project_.embroidery_objects.size();
+    const std::size_t vectorCountBefore = window.project_.vector_objects.size();
+
+    // Ferme la QDialog densité (bouton par défaut = Ok), PUIS le dialogue
+    // §23 avec son propre bouton par défaut ("Continuer avec satin
+    // partiel") -- le choix testé ici.
+    autoDismissModalDialogs(&window);
+    window.createSatinObject();
+
+    // Satin créé (au moins une section), mais AUCUN objet tatami de repli :
+    // le résidu reste honnêtement non couvert, comme le choix le demande.
+    const std::size_t createdCount = window.project_.embroidery_objects.size() - embroideryCountBefore;
+    QVERIFY(createdCount >= 1);
+    for (std::size_t i = embroideryCountBefore; i < window.project_.embroidery_objects.size(); ++i) {
+        QVERIFY(window.project_.embroidery_objects[i].is_satin());
+    }
+    QCOMPARE(window.project_.vector_objects.size(), vectorCountBefore);  // aucun VectorObject de repli
+
+    QVERIFY(window.undoStack_.canUndo());
+    window.undo();
+    QCOMPARE(window.project_.embroidery_objects.size(), embroideryCountBefore);
+}
+
+void MainWindowTest::createSatinObjectUseTatamiFillsResidualWithFallback() {
+    MainWindow window;
+    const Fixture fx = buildPinchShapeFixture();
+    window.applyLoadedProject(fx.project);
+    window.selectedObject_ = fx.vectorId;
+    window.updateActions();
+
+    const std::size_t embroideryCountBefore = window.project_.embroidery_objects.size();
+    const std::size_t vectorCountBefore = window.project_.vector_objects.size();
+
+    // Une seule séquence gère la QDialog densité (pas de bouton "tatami",
+    // donc son bouton par défaut est cliqué) PUIS le dialogue §23 (où
+    // "Utiliser tatami pour le reliquat" EST trouvé et cliqué).
+    clickModalDialogButton(&window, "tatami");
+    window.createSatinObject();
+
+    // Attend À LA FOIS du satin ET au moins un remplissage tatami de repli
+    // (VectorObject + EmbroideryObject, même schéma que autodigitize.cpp).
+    bool sawSatin = false;
+    bool sawTatami = false;
+    for (std::size_t i = embroideryCountBefore; i < window.project_.embroidery_objects.size(); ++i) {
+        const auto& emb = window.project_.embroidery_objects[i];
+        if (emb.is_satin()) sawSatin = true;
+        if (emb.is_tatami()) sawTatami = true;
+    }
+    QVERIFY(sawSatin);
+    QVERIFY(sawTatami);
+    QVERIFY(window.project_.vector_objects.size() > vectorCountBefore);  // le VectorObject de repli existe
+
+    // Un seul geste annulable : satin + tatami de repli disparaissent ensemble.
+    QVERIFY(window.undoStack_.canUndo());
+    window.undo();
+    QCOMPARE(window.project_.embroidery_objects.size(), embroideryCountBefore);
+    QCOMPARE(window.project_.vector_objects.size(), vectorCountBefore);
+}
+
+void MainWindowTest::createSatinObjectCancelLeavesDocumentUnchanged() {
+    MainWindow window;
+    const Fixture fx = buildPinchShapeFixture();
+    window.applyLoadedProject(fx.project);
+    window.selectedObject_ = fx.vectorId;
+    window.updateActions();
+
+    const std::size_t embroideryCountBefore = window.project_.embroidery_objects.size();
+    const std::size_t vectorCountBefore = window.project_.vector_objects.size();
+    const bool couldUndoBefore = window.undoStack_.canUndo();
+
+    clickModalDialogButton(&window, "Annuler");
+    window.createSatinObject();
+
+    // Document totalement inchangé : "Annuler" doit rester possible SANS
+    // avoir rien créé (§23), pas un "undo" après coup sur quelque chose de
+    // déjà committé.
+    QCOMPARE(window.project_.embroidery_objects.size(), embroideryCountBefore);
+    QCOMPARE(window.project_.vector_objects.size(), vectorCountBefore);
+    QCOMPARE(window.undoStack_.canUndo(), couldUndoBefore);
 }
 
 void MainWindowTest::workflowRegionsAndVectorsStepsReflectVectorObjectsWithoutClassicSegmentation() {

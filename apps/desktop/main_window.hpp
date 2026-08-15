@@ -61,6 +61,19 @@ public:
 protected:
     void closeEvent(QCloseEvent* event) override;
 
+private:
+    // Réponse de l'utilisateur au choix multiple §23 du plan de refonte
+    // satin (2026-08-14 : « Continuer avec satin partiel / Utiliser tatami
+    // pour le reliquat / Annuler »). `Cancel` doit rester possible SANS
+    // avoir encore rien committé au document -- c'est pourquoi ce choix est
+    // demandé AVANT `undoStack_.execute(...)`, jamais après (contrairement à
+    // l'ancienne information post-hoc qu'il remplace). Déclaré ici (avant
+    // `private slots:`) : un type utilisé comme retour d'une declaration
+    // doit être visible textuellement avant cette declaration -- moc peine
+    // en plus a parser une declaration de type au milieu d'une liste de
+    // slots.
+    enum class SatinCoverageChoice { ContinuePartial, UseTatami, Cancel };
+
 private slots:
     void openImage();
     void undo();
@@ -88,16 +101,24 @@ private slots:
     // région (défaut trouvé en usage réel, cf. autodigitize.hpp
     // `AutoResult::warnings`).
     void warnAboutSkippedAutoSatinBranches(const std::vector<std::string>& warnings);
-    // Diagnostic explicite quand une intention SATIN n'a pu être satisfaite
-    // qu'en partie (§12 du plan de refonte satin, 2026-08-14 : « aucun
-    // fallback silencieux vers tatami ») -- jamais de substitution
-    // automatique et invisible, seulement une information claire (surface
-    // couverte, surface manquante) laissant l'utilisateur décider (retoucher
-    // la coupe, créer un tatami sur le reliquat, ou accepter le résultat
-    // partiel tel quel). `sourceAreaMm2` sert à exprimer le reliquat en
-    // pourcentage, pas seulement en mm² brut.
-    void warnAboutIncompleteSatinCoverage(const std::vector<geometry::PathSet>& unresolvedResidual,
-                                          double sourceAreaMm2);
+    // Choix explicite quand une intention SATIN n'a pu être satisfaite qu'en
+    // partie (§12/§23 du plan de refonte satin, 2026-08-14 : « aucun
+    // fallback silencieux vers tatami », mais un VRAI choix actionnable
+    // plutôt qu'une simple information). Retourne `ContinuePartial`
+    // directement, sans dialogue, si le reliquat est négligeable (bruit de
+    // pointe/jonction, même seuil que l'ancienne fonction). `sourceAreaMm2`
+    // sert à exprimer le reliquat en pourcentage, pas seulement en mm² brut.
+    SatinCoverageChoice askAboutIncompleteSatinCoverage(const std::vector<geometry::PathSet>& unresolvedResidual,
+                                                        double sourceAreaMm2);
+    // Construit un remplissage tatami (VectorObject + EmbroideryObject,
+    // même schéma que le repli automatique de `autodigitize.cpp`, jamais
+    // réimplémenté différemment ici) pour chaque morceau de `residual` dont
+    // l'aire dépasse un seuil de bruit géométrique -- réponse concrète au
+    // choix "Utiliser tatami pour le reliquat" ci-dessus.
+    void appendTatamiFallbackObjects(const std::vector<geometry::PathSet>& residual,
+                                     const document::VectorObject& source,
+                                     std::vector<document::VectorObject>& vectorsOut,
+                                     std::vector<document::EmbroideryObject>& embroideriesOut);
     void openAiPreferences();
     void createRunningStitchObject();
     void createTatamiObject();

@@ -3219,10 +3219,10 @@ void MainWindow::warnAboutSkippedAutoSatinBranches(const std::vector<std::string
     QMessageBox::warning(this, tr("Zones remplies en tatami de repli"), text);
 }
 
-void MainWindow::warnAboutIncompleteSatinCoverage(const std::vector<geometry::PathSet>& unresolvedResidual,
-                                                  double sourceAreaMm2) {
+MainWindow::SatinCoverageChoice MainWindow::askAboutIncompleteSatinCoverage(
+    const std::vector<geometry::PathSet>& unresolvedResidual, double sourceAreaMm2) {
     if (unresolvedResidual.empty() || sourceAreaMm2 <= 0.0) {
-        return;
+        return SatinCoverageChoice::ContinuePartial;
     }
     double residualAreaMm2 = 0.0;
     for (const auto& piece : unresolvedResidual) {
@@ -3231,23 +3231,83 @@ void MainWindow::warnAboutIncompleteSatinCoverage(const std::vector<geometry::Pa
     // Seuil mixte fixe+proportionnel, même calibration que `autodigitize::
     // build_satin_sections` (2026-08-14) : tolère le reliquat NATUREL d'une
     // pointe/jonction (quelques mm² même sur une décomposition réussie)
-    // sans en avertir l'utilisateur à chaque colonne créée -- mais jamais
-    // une zone significativement incomplète laissée sans un mot.
+    // sans interrompre l'utilisateur à chaque colonne créée -- mais jamais
+    // une zone significativement incomplète acceptée sans un vrai choix.
     constexpr double kThresholdFloorMm2 = 1.0;
     constexpr double kThresholdRatio = 0.03;
     if (residualAreaMm2 <= std::max(kThresholdFloorMm2, kThresholdRatio * sourceAreaMm2)) {
-        return;
+        return SatinCoverageChoice::ContinuePartial;
     }
     const double coveredPercent = 100.0 * (1.0 - residualAreaMm2 / sourceAreaMm2);
-    QMessageBox::information(
-        this, tr("Satin incomplet"),
-        tr("%1 % de la région a pu être converti en satin. %2 mm² restent sans point "
-           "(satin ni tatami) — la forme comporte une zone que le découpage automatique "
-           "n'a pas su rendre en satin de qualité suffisante.\n\n"
-           "Options : retoucher la coupe manuellement (outil Ligne de coupe), créer un "
-           "remplissage tatami sur cette zone, ou accepter le résultat partiel tel quel.")
-            .arg(coveredPercent, 0, 'f', 1)
-            .arg(residualAreaMm2, 0, 'f', 1));
+
+    // §23 du plan de refonte satin (2026-08-14) : un VRAI choix actionnable
+    // ("Continuer avec satin partiel / Utiliser tatami pour le reliquat /
+    // Annuler"), remplaçant l'ancienne information à sens unique --
+    // `Annuler` doit rester possible sans avoir déjà créé quoi que ce soit,
+    // donc cette boîte de dialogue est appelée AVANT `undoStack_.execute(...)`
+    // par chaque appelant, jamais après.
+    QMessageBox box(this);
+    box.setIcon(QMessageBox::Warning);
+    box.setWindowTitle(tr("Satin incomplet"));
+    box.setText(tr("%1 % de la région a pu être converti en satin. %2 mm² restent sans point "
+                    "(satin ni tatami) — la forme comporte une zone que le découpage automatique "
+                    "n'a pas su rendre en satin de qualité suffisante.")
+                    .arg(coveredPercent, 0, 'f', 1)
+                    .arg(residualAreaMm2, 0, 'f', 1));
+    QString detail = tr("Zone(s) non résolue(s) (%1) :\n").arg(unresolvedResidual.size());
+    for (const auto& piece : unresolvedResidual) {
+        const double pieceAreaMm2 = std::abs(geometry::signed_area_um2(piece.outer)) / 1e6;
+        detail += QStringLiteral("• %1 mm²\n").arg(pieceAreaMm2, 0, 'f', 2);
+    }
+    box.setDetailedText(detail);  // "Voir le problème" -- bouton "Détails" ajouté automatiquement par Qt
+    auto* partialButton = box.addButton(tr("Continuer avec satin partiel"), QMessageBox::AcceptRole);
+    auto* tatamiButton = box.addButton(tr("Utiliser tatami pour le reliquat"), QMessageBox::ActionRole);
+    box.addButton(tr("Annuler"), QMessageBox::RejectRole);
+    box.setDefaultButton(partialButton);
+    box.exec();
+
+    if (box.clickedButton() == tatamiButton) {
+        return SatinCoverageChoice::UseTatami;
+    }
+    if (box.clickedButton() == partialButton) {
+        return SatinCoverageChoice::ContinuePartial;
+    }
+    return SatinCoverageChoice::Cancel;
+}
+
+void MainWindow::appendTatamiFallbackObjects(const std::vector<geometry::PathSet>& residual,
+                                             const document::VectorObject& source,
+                                             std::vector<document::VectorObject>& vectorsOut,
+                                             std::vector<document::EmbroideryObject>& embroideriesOut) {
+    // Même schéma que le repli automatique de `autodigitize.cpp` (§ AutoChoice,
+    // 2026-08-14) : une paire VectorObject+EmbroideryObject par morceau, le
+    // remplissage tatami suivant `source_vector` (`TatamiParams` ne porte
+    // aucune géométrie propre, cf. embroidery_object.hpp) -- jamais
+    // réimplémenté différemment ici, seulement rejoué côté desktop pour un
+    // choix EXPLICITE de l'utilisateur plutôt qu'une classification
+    // automatique.
+    constexpr double kMinFallbackAreaMm2 = 0.5;
+    for (const auto& piece : residual) {
+        const double areaMm2 = std::abs(geometry::signed_area_um2(piece.outer)) / 1e6;
+        if (areaMm2 < kMinFallbackAreaMm2) {
+            continue;  // reliquat négligeable (bruit d'arrondi géométrique)
+        }
+        document::VectorObject fallbackVec;
+        fallbackVec.id = project_.object_ids.next();
+        fallbackVec.name = tr("Reliquat de %1 (tatami)").arg(QString::fromStdString(source.name)).toStdString();
+        fallbackVec.rgb = source.rgb;
+        fallbackVec.paths = {piece};
+        const ObjectId fallbackVecId = fallbackVec.id;
+        vectorsOut.push_back(std::move(fallbackVec));
+
+        document::EmbroideryObject fallback;
+        fallback.id = project_.object_ids.next();
+        fallback.source_vector = fallbackVecId;
+        fallback.rgb = source.rgb;
+        fallback.params = document::TatamiParams{};
+        fallback.name = tr("Tatami de repli (%1)").arg(QString::fromStdString(source.name)).toStdString();
+        embroideriesOut.push_back(std::move(fallback));
+    }
 }
 
 void MainWindow::openAiPreferences() {
@@ -3408,9 +3468,23 @@ void MainWindow::createSatinObject() {
         }
     }
 
-    const std::size_t count = objects.size();
+    // §23 du plan de refonte satin : le choix (partiel / tatami / annuler)
+    // est demandé AVANT toute création, jamais après -- `Annuler` doit
+    // pouvoir laisser le document totalement inchangé.
+    const double sourceAreaMm2 = std::abs(geometry::signed_area_um2(source->paths.front().outer)) / 1e6;
+    const SatinCoverageChoice coverageChoice =
+        askAboutIncompleteSatinCoverage(built.unresolved_residual, sourceAreaMm2);
+    if (coverageChoice == SatinCoverageChoice::Cancel) {
+        return;
+    }
+    const std::size_t satinCount = objects.size();
+    std::vector<document::VectorObject> extraVectors;
+    if (coverageChoice == SatinCoverageChoice::UseTatami) {
+        appendTatamiFallbackObjects(built.unresolved_residual, *source, extraVectors, objects);
+    }
+
     undoStack_.execute(std::make_unique<commands::AddObjectBatchCommand>(
-                           std::vector<document::VectorObject>{}, std::move(objects),
+                           std::move(extraVectors), std::move(objects),
                            "Colonne satin (création manuelle)"),
                        project_);
     showStitchesAct_->setChecked(true);
@@ -3418,12 +3492,13 @@ void MainWindow::createSatinObject() {
     updateActions();
     if (sequence_) {
         const auto stats = stitch::compute_stats(*sequence_);
-        statusBar()->showMessage(
-            tr("%1 colonne(s) satin générée(s) : %2 points").arg(count).arg(stats.stitches));
+        QString msg = tr("%1 colonne(s) satin générée(s) : %2 points").arg(satinCount).arg(stats.stitches);
+        if (coverageChoice == SatinCoverageChoice::UseTatami) {
+            msg += tr(" (+ remplissage tatami pour le reliquat)");
+        }
+        statusBar()->showMessage(msg);
     }
     warnAboutSkippedAutoSatinBranches(built.warnings);
-    const double sourceAreaMm2 = std::abs(geometry::signed_area_um2(source->paths.front().outer)) / 1e6;
-    warnAboutIncompleteSatinCoverage(built.unresolved_residual, sourceAreaMm2);
 }
 
 void MainWindow::onSatinCutLineDragging(QPointF anchorMm, QPointF currentMm) {
@@ -3597,9 +3672,21 @@ bool MainWindow::createSatinObjectWithCutLine(Vec2um cutA, Vec2um cutB) {
         }
     }
 
-    const std::size_t count = objects.size();
+    // §23 du plan de refonte satin : même choix explicite qu'`createSatinObject()`,
+    // demandé AVANT creation -- `Annuler` laisse le document inchangé malgré
+    // la découpe géométrique déjà calculée localement (jamais committée).
+    const SatinCoverageChoice coverageChoice = askAboutIncompleteSatinCoverage(allResidual, totalPieceAreaMm2);
+    if (coverageChoice == SatinCoverageChoice::Cancel) {
+        return false;
+    }
+    const std::size_t satinCount = objects.size();
+    std::vector<document::VectorObject> extraVectors;
+    if (coverageChoice == SatinCoverageChoice::UseTatami) {
+        appendTatamiFallbackObjects(allResidual, *source, extraVectors, objects);
+    }
+
     undoStack_.execute(std::make_unique<commands::AddObjectBatchCommand>(
-                           std::vector<document::VectorObject>{}, std::move(objects),
+                           std::move(extraVectors), std::move(objects),
                            "Colonne satin (ligne de coupe)"),
                        project_);
     showStitchesAct_->setChecked(true);
@@ -3607,11 +3694,13 @@ bool MainWindow::createSatinObjectWithCutLine(Vec2um cutA, Vec2um cutB) {
     updateActions();
     if (sequence_) {
         const auto stats = stitch::compute_stats(*sequence_);
-        statusBar()->showMessage(
-            tr("Coupe : %1 colonne(s) satin générée(s) : %2 points").arg(count).arg(stats.stitches));
+        QString msg = tr("Coupe : %1 colonne(s) satin générée(s) : %2 points").arg(satinCount).arg(stats.stitches);
+        if (coverageChoice == SatinCoverageChoice::UseTatami) {
+            msg += tr(" (+ remplissage tatami pour le reliquat)");
+        }
+        statusBar()->showMessage(msg);
     }
     warnAboutSkippedAutoSatinBranches(allWarnings);
-    warnAboutIncompleteSatinCoverage(allResidual, totalPieceAreaMm2);
     return true;
 }
 
@@ -3725,20 +3814,21 @@ void MainWindow::autoConvertToSatin() {
     // affichée dans l'APERÇU avant toute création, jamais découverte après
     // coup -- l'utilisateur décide en connaissance de cause plutôt que de
     // voir une intention SATIN silencieusement réalisée à moitié.
-    if (columnCount > 0) {
-        const double sourceAreaMm2 = std::abs(geometry::signed_area_um2(source->paths.front().outer)) / 1e6;
-        double residualAreaMm2 = 0.0;
-        for (const auto& piece : built.unresolved_residual) {
-            residualAreaMm2 += std::abs(geometry::signed_area_um2(piece.outer)) / 1e6;
-        }
-        if (sourceAreaMm2 > 0.0) {
-            const double coveredPercent = 100.0 * (1.0 - residualAreaMm2 / sourceAreaMm2);
-            info += tr("\nCouverture estimée : %1 %").arg(coveredPercent, 0, 'f', 1);
-            constexpr double kThresholdFloorMm2 = 1.0;
-            constexpr double kThresholdRatio = 0.03;
-            if (residualAreaMm2 > std::max(kThresholdFloorMm2, kThresholdRatio * sourceAreaMm2)) {
-                info += tr("\n⚠ %1 mm² resteraient sans point (satin ni tatami).").arg(residualAreaMm2, 0, 'f', 1);
-            }
+    const double sourceAreaMm2 = std::abs(geometry::signed_area_um2(source->paths.front().outer)) / 1e6;
+    double residualAreaMm2 = 0.0;
+    for (const auto& piece : built.unresolved_residual) {
+        residualAreaMm2 += std::abs(geometry::signed_area_um2(piece.outer)) / 1e6;
+    }
+    constexpr double kThresholdFloorMm2 = 1.0;
+    constexpr double kThresholdRatio = 0.03;
+    const bool residualSignificant =
+        columnCount > 0 && sourceAreaMm2 > 0.0 &&
+        residualAreaMm2 > std::max(kThresholdFloorMm2, kThresholdRatio * sourceAreaMm2);
+    if (columnCount > 0 && sourceAreaMm2 > 0.0) {
+        const double coveredPercent = 100.0 * (1.0 - residualAreaMm2 / sourceAreaMm2);
+        info += tr("\nCouverture estimée : %1 %").arg(coveredPercent, 0, 'f', 1);
+        if (residualSignificant) {
+            info += tr("\n⚠ %1 mm² resteraient sans point (satin ni tatami).").arg(residualAreaMm2, 0, 'f', 1);
         }
     }
     for (const auto& w : built.warnings) {
@@ -3752,11 +3842,23 @@ void MainWindow::autoConvertToSatin() {
                 .arg(QString::fromStdString(built.refusal), info));
         return;
     }
-    const auto answer = QMessageBox::question(
-        this, tr("Convertir en satin"),
-        tr("%1\n\nCréer %2 colonne(s) satin ? (annulable)").arg(info).arg(columnCount));
-    if (answer != QMessageBox::Yes) {
-        return;
+
+    // §23 : quand le reliquat est significatif, le VRAI choix à trois voies
+    // remplace le simple Oui/Non -- sinon (conversion propre) la question
+    // Oui/Non habituelle reste le geste de confirmation le plus léger.
+    SatinCoverageChoice coverageChoice = SatinCoverageChoice::ContinuePartial;
+    if (residualSignificant) {
+        coverageChoice = askAboutIncompleteSatinCoverage(built.unresolved_residual, sourceAreaMm2);
+        if (coverageChoice == SatinCoverageChoice::Cancel) {
+            return;
+        }
+    } else {
+        const auto answer = QMessageBox::question(
+            this, tr("Convertir en satin"),
+            tr("%1\n\nCréer %2 colonne(s) satin ? (annulable)").arg(info).arg(columnCount));
+        if (answer != QMessageBox::Yes) {
+            return;
+        }
     }
 
     std::vector<document::EmbroideryObject> objects;
@@ -3773,13 +3875,21 @@ void MainWindow::autoConvertToSatin() {
         emb.params = std::move(section.params);
         objects.push_back(std::move(emb));
     }
+    std::vector<document::VectorObject> extraVectors;
+    if (coverageChoice == SatinCoverageChoice::UseTatami) {
+        appendTatamiFallbackObjects(built.unresolved_residual, *source, extraVectors, objects);
+    }
     undoStack_.execute(std::make_unique<commands::AddObjectBatchCommand>(
-                           std::vector<document::VectorObject>{}, std::move(objects)),
+                           std::move(extraVectors), std::move(objects)),
                        project_);
     showStitchesAct_->setChecked(true);
     refreshImage();
     updateActions();
-    statusBar()->showMessage(tr("%1 colonne(s) satin créée(s).").arg(columnCount));
+    QString msg = tr("%1 colonne(s) satin créée(s).").arg(columnCount);
+    if (coverageChoice == SatinCoverageChoice::UseTatami) {
+        msg += tr(" (+ remplissage tatami pour le reliquat)");
+    }
+    statusBar()->showMessage(msg);
 }
 
 void MainWindow::changeFillAngle() {

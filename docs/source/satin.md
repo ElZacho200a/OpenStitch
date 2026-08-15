@@ -3708,6 +3708,57 @@ pointe l'est) donc seule la famille bord-opposé s'y applique ; une forme
 spécifiquement concavité→concavité. Suite complète (satin_planning,
 autodigitize, desktop) sans régression après les deux garde-fous ci-dessus.
 
+### Dialogue à choix multiples pour un satin incomplet (§23, 2026-08-15)
+
+`warnAboutIncompleteSatinCoverage` était une simple `QMessageBox::information`
+— un résumé en prose des options (« retoucher la coupe, créer un tatami, ou
+accepter tel quel ») dont AUCUNE n'était réellement actionnable depuis la
+boîte elle-même. Remplacée par `askAboutIncompleteSatinCoverage`, qui
+retourne un choix réel (`ContinuePartial` / `UseTatami` / `Cancel`) via une
+`QMessageBox` à boutons personnalisés (« Continuer avec satin partiel » /
+« Utiliser tatami pour le reliquat » / « Annuler »), le détail par zone
+disponible via le bouton « Détails » que Qt ajoute automatiquement
+(`setDetailedText`) — couvrant « Voir le problème » sans un quatrième bouton
+dédié.
+
+**Changement d'architecture nécessaire** : les deux appelants historiques
+(`createSatinObject`, `createSatinObjectWithCutLine`) committaient déjà
+l'`AddObjectBatchCommand` AVANT d'afficher l'ancien avertissement — un
+« Annuler » n'aurait donc pu qu'annuler une commande déjà appliquée. Le choix
+est désormais demandé AVANT toute création ; `Cancel` retourne sans avoir
+rien muté ; `UseTatami` construit des paires `VectorObject`+`EmbroideryObject`
+supplémentaires (même schéma que le repli automatique d'`autodigitize.cpp`,
+`appendTatamiFallbackObjects`, jamais réimplémenté différemment) et les
+inclut dans le MÊME `AddObjectBatchCommand` que les sections satin — un seul
+geste annulable, satin et repli tatami ensemble.
+
+`autoConvertToSatin()` avait déjà son propre gate Oui/Non pré-création avec
+un aperçu de couverture, mais pas d'option tatami — unifié pour utiliser le
+même dialogue quand le reliquat est significatif (le Oui/Non simple reste le
+geste de confirmation le plus léger pour une conversion propre, sans
+interrompre inutilement l'utilisateur).
+
+**Défaut trouvé en écrivant les tests** : le helper de test existant
+(`autoDismissModalDialogs`) appelait `QDialog::accept()` directement plutôt
+que de cliquer un bouton — invisible pour une `QMessageBox` à boutons
+`QDialogButtonBox::Ok`/`Yes` standards (accept() en est l'équivalent), mais
+`askAboutIncompleteSatinCoverage` n'utilise QUE des boutons personnalisés
+(`addButton(text, role)`) : `clickedButton()` restait `nullptr` après
+`accept()`, lu à tort comme « Annuler ». Corrigé en cliquant réellement le
+bouton par défaut (`QMessageBox::defaultButton()->click()`), routant par la
+vraie machinerie de clic de Qt comme un appui sur Entrée. Nouveau
+`clickModalDialogButton(widget, texte)` pour choisir explicitement un bouton
+par son texte à travers plusieurs boîtes modales successives (densité puis
+§23) dans un test.
+
+Testé (`tests/unit/desktop/test_main_window.cpp`, fixture `buildPinchShapeFixture`
+— encoche en V sans jonction de squelette, ~86 % de couverture réelle après
+§14, un reliquat largement significatif) : les trois choix bout en bout
+depuis `createSatinObject()` — satin seul sans tatami, satin + tatami de
+repli (un seul geste annulable), et document totalement inchangé sur
+annulation. Suite complète (61 tests desktop, +3) + Debug/Release (582
+tests, mêmes 4 diagnostics permanents connus, aucune régression).
+
 ### Ce qui reste hors périmètre (limites connues, honnêtement documentées)
 
 - **Coupes polygonales** (§14 du plan de refonte, dernier élément) : les
@@ -3723,12 +3774,6 @@ autodigitize, desktop) sans régression après les deux garde-fous ci-dessus.
   chaque `SatinPlanRegion` restent générées sur la géométrie structurelle
   seule, sans utiliser le recouvrement pour fermer visuellement
   l'interstice de coupe entre deux régions voisines.
-- **Aucune UI de choix multi-boutons** (§23 : « Continuer avec satin
-  partiel / Utiliser tatami pour le reliquat / Annuler ») — remplacée pour
-  l'instant par une information claire sans action directe intégrée
-  (`warnAboutIncompleteSatinCoverage`). Une vraie boîte de dialogue à choix
-  multiples, agissant réellement sur le résidu (création de tatami ciblée,
-  relance avec plus de subdivisions), reste un travail futur.
 - **Pas de champ `EmbroideryIntent`/`ForcedUserChoice` vs `AutoChoice`**
   dans le modèle de données (§24), ni de regroupement visuel des sections
   d'un même plan dans le panneau d'objets (§21, `DocumentPanel` reste une
