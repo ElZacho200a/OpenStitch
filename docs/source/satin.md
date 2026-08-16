@@ -3774,12 +3774,58 @@ tests, mêmes 4 diagnostics permanents connus, aucune régression).
   chaque `SatinPlanRegion` restent générées sur la géométrie structurelle
   seule, sans utiliser le recouvrement pour fermer visuellement
   l'interstice de coupe entre deux régions voisines.
-- **Pas de champ `EmbroideryIntent`/`ForcedUserChoice` vs `AutoChoice`**
-  dans le modèle de données (§24), ni de regroupement visuel des sections
-  d'un même plan dans le panneau d'objets (§21, `DocumentPanel` reste une
-  liste plate) — la distinction AutoChoice/ForcedChoice décrite ci-dessus
-  reste implicite dans le CODE (quel appelant décide du repli), pas encore
-  un concept explicite du modèle de document.
+
+### Champ EmbroideryIntent et regroupement du panneau d'objets (§21/§24, 2026-08-16)
+
+La distinction AutoChoice/ForcedUserChoice (§24) restait implicite dans le
+CODE (quel chemin d'appel a créé l'objet), jamais un concept explicite du
+modèle de document — et les sections d'un même plan satin multi-régions
+apparaissaient en liste plate dans le panneau d'objets (§21), sans
+regroupement visuel.
+
+**Modèle de données** : nouveau `document::EmbroideryIntent` (`AutoChoice` /
+`ForcedUserChoice`) sur `EmbroideryObject::intent`, `AutoChoice` par défaut
+(comportement historique, absent d'un `.osp` antérieur ⇒ `AutoChoice`, jamais
+une supposition différente — champ purement additif, aucun bump de
+`kSchemaVersion` nécessaire, même convention que `overrides`/`topology`).
+Fixé à chaque site de construction : `AutoChoice` dans `autodigitize.cpp`
+(classification automatique, sans utilisateur interactif à qui proposer un
+choix) ; `ForcedUserChoice` dans les trois créations satin manuelles côté
+desktop (`createSatinObject`, `createSatinObjectWithCutLine`,
+`autoConvertToSatin`), le repli tatami explicite du dialogue §23
+(`appendTatamiFallbackObjects`), et les créations manuelles de contour/tatami
+(`createRunningStitchObject`/`createTatamiObject`). `SetStitchTypeCommand`
+marque `ForcedUserChoice` à `apply()` (toute conversion de type via cette
+commande est une action explicite de l'utilisateur, menu contextuel ou
+inspecteur) et restaure l'intention précédente à `revert()` — undo/redo
+exacts, comme `params_`.
+
+**Regroupement du panneau d'objets** : `DocumentPanel::objectsList_` migré
+de `QListWidget` à `QTreeWidget` — les `EmbroideryObject` partageant le même
+`source_vector` (les sections d'un plan satin) sont regroupées sous un nœud
+parent, mais SEULEMENT quand il y en a plus d'une ; un objet seul reste un
+simple item de premier niveau, visuellement identique à l'ancienne liste
+plate. API publique (`refresh`/`syncSelection`/signaux) inchangée — migration
+contenue entièrement dans `document_panel.hpp/.cpp`.
+
+**Défaut trouvé en écrivant les tests** : `source_vector.value == 0` est la
+valeur *invalide* de `ObjectId` (`Id::valid()`, `ids.hpp`) — grouper
+naïvement par `source_vector` aurait mélangé à tort tous les objets qui n'en
+ont jamais reçu (ex. les deux objets indépendants de la fixture historique de
+`test_document_panel.cpp`, tous deux à `source_vector` par défaut). Corrigé
+en ne comptant/regroupant QUE les `source_vector` valides.
+
+Testé (`tests/unit/desktop/test_document_panel.cpp`, 4 nouveaux cas ;
+`tests/unit/project_io/test_intent_persistence.cpp`, nouveau fichier ;
+`tests/unit/commands/test_undo_stack.cpp`) : regroupement correct (3 sections
+plus 1 objet autonome ⇒ 1 groupe plus 1 item de premier niveau, jamais 4
+items plats) ; sélectionner une section groupée émet son propre id ; sélectionner
+le nœud de groupe lui-même n'émet rien (aucun ObjectId propre) ;
+`syncSelection` retrouve un enfant groupé en descendant dans l'arbre ; round-trip
+exact de `intent` (API publique) et absence ⇒ `AutoChoice` (fichier forgé à la
+main) ; `SetStitchTypeCommand` marque/restaure `intent` sur undo/redo. Suite
+complète (desktop, project_io, commands, autodigitize) + Debug/Release (585
+tests, mêmes 4 diagnostics permanents connus, aucune régression).
 
 ### Tests
 

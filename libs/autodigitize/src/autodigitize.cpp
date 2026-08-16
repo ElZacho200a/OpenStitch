@@ -266,6 +266,10 @@ Result<AutoResult> auto_digitize(const segmentation::Segmentation& seg,
         document::EmbroideryObject emb;
         emb.source_vector = vecId;
         emb.rgb = region->rgb;
+        // §21/§24 : classification AUTOMATIQUE, sans utilisateur interactif
+        // à qui proposer un choix -- déjà la valeur par défaut, fixée ici
+        // explicitement plutôt que silencieusement héritée.
+        emb.intent = document::EmbroideryIntent::AutoChoice;
 
         const bool bigEnoughToFill = areaMm2 >= options.min_fill_area_mm2;
         // Bande fine : largeur moyenne sous la limite satin. Le moteur
@@ -379,6 +383,7 @@ Result<AutoResult> auto_digitize(const segmentation::Segmentation& seg,
                             fallback.rgb = region->rgb;
                             fallback.id = ids.next();
                             fallback.params = document::TatamiParams{};
+                            fallback.intent = document::EmbroideryIntent::AutoChoice;
                             fallback.name = "Remplissage repli région " + std::to_string(id.value);
                             result.embroideries.push_back(std::move(fallback));
                         }

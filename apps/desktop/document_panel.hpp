@@ -11,6 +11,7 @@
 
 class QListWidget;
 class QTabWidget;
+class QTreeWidget;
 
 namespace openstitch::desktop {
 
@@ -44,7 +45,13 @@ signals:
 
 private:
     QTabWidget* tabs_{nullptr};
-    QListWidget* objectsList_{nullptr};
+    // Arbre plutôt que liste plate (§21 du plan de refonte satin,
+    // 2026-08-14) : les EmbroideryObject partageant le même `source_vector`
+    // (les sections d'un même plan satin, cf. `satin_planning::create_satin_plan`)
+    // sont regroupées sous un nœud parent -- mais SEULEMENT quand il y en a
+    // plus d'une ; un objet seul reste un simple item de premier niveau,
+    // visuellement identique à l'ancienne liste plate.
+    QTreeWidget* objectsList_{nullptr};
     QListWidget* regionsList_{nullptr};
     bool syncing_{false};  // évite la boucle sélection -> signal -> sélection
 };

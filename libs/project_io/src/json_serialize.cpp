@@ -593,6 +593,10 @@ json project_to_json(const document::Project& project) {
         eo["sourceVector"] = e.source_vector.value;
         eo["rgb"] = rgb_to_json(e.rgb);
         eo["visible"] = e.visible;
+        // §21/§24 du plan de refonte satin (2026-08-14) : AutoChoice=0,
+        // ForcedUserChoice=1 -- même convention que les autres enums de ce
+        // fichier (int brut, jamais une table de correspondance texte).
+        eo["intent"] = static_cast<int>(e.intent);
         eo["params"] = params_to_json(e.params);
         if (!e.overrides.empty()) {
             eo["overrides"] = json::array();
@@ -670,6 +674,9 @@ Result<document::Project> project_from_json(const json& j) {
             e.source_vector = ObjectId{eo.at("sourceVector").get<std::uint64_t>()};
             e.rgb = rgb_from_json(eo.at("rgb"));
             e.visible = eo.value("visible", true);
+            // Absent (projets antérieurs au §21/§24, 2026-08-14) -> AutoChoice
+            // (valeur 0, comportement historique implicite désormais explicite).
+            e.intent = static_cast<document::EmbroideryIntent>(eo.value("intent", 0));
             auto params = params_from_json(eo.at("params"));
             if (!params) {
                 return std::unexpected(params.error());

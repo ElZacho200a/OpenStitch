@@ -649,7 +649,12 @@ private:
 
 // Remplace le TYPE de points d'un objet de broderie (contour / tatami / satin).
 // Les nouveaux paramètres sont construits par l'appelant (le satin exige des
-// rails, calculés avant la commande). L'annulation restaure les paramètres exacts.
+// rails, calculés avant la commande). L'annulation restaure les paramètres
+// exacts. Marque aussi `intent` à `ForcedUserChoice` (§21/§24 du plan de
+// refonte satin, 2026-08-14) -- une conversion de type via cette commande
+// est TOUJOURS une action explicite de l'utilisateur (menu contextuel /
+// inspecteur), jamais une classification automatique ; l'intention
+// PRÉCÉDENTE est restaurée à l'identique par `revert`, comme `params_`.
 class SetStitchTypeCommand final : public ICommand {
 public:
     SetStitchTypeCommand(ObjectId id, document::StitchParams params, std::string label)
@@ -658,12 +663,15 @@ public:
     void apply(document::Project& project) override {
         if (auto* obj = project.findEmbroidery(id_)) {
             previous_ = obj->params;
+            previousIntent_ = obj->intent;
             obj->params = params_;
+            obj->intent = document::EmbroideryIntent::ForcedUserChoice;
         }
     }
     void revert(document::Project& project) override {
         if (auto* obj = project.findEmbroidery(id_)) {
             obj->params = previous_;
+            obj->intent = previousIntent_;
         }
     }
     [[nodiscard]] std::string name() const override { return label_; }
@@ -673,6 +681,7 @@ private:
     document::StitchParams params_;
     std::string label_;
     document::StitchParams previous_{document::RunningStitchParams{}};
+    document::EmbroideryIntent previousIntent_{document::EmbroideryIntent::AutoChoice};
 };
 
 // Change la taille du cadre de broderie (persistée dans le .osp). L'analyse

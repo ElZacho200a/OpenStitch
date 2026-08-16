@@ -136,6 +136,17 @@ struct StitchOverride {
     constexpr bool operator==(const StitchOverride&) const = default;
 };
 
+// §21/§24 du plan de refonte satin (2026-08-14) : distingue une
+// classification AUTOMATIQUE (auto-numérisation, décision algorithmique
+// sans utilisateur interactif à qui proposer un choix) d'un choix EXPLICITE
+// de l'utilisateur (créer/convertir manuellement un objet) -- jusqu'ici
+// implicite dans le CODE (quel chemin d'appel a créé l'objet), jamais un
+// concept explicite du modèle de document. `AutoChoice` reste la valeur par
+// défaut (comportement historique, aucune régression sur les projets
+// existants qui n'avaient pas ce concept -- absent d'un .osp ancien ⇒
+// `AutoChoice`, jamais une supposition différente).
+enum class EmbroideryIntent : std::uint8_t { AutoChoice, ForcedUserChoice };
+
 struct EmbroideryObject {
     ObjectId id;
     std::string name;
@@ -144,6 +155,7 @@ struct EmbroideryObject {
     StitchParams params{RunningStitchParams{}};
     bool visible{true};
     bool locked{false};  // l'optimisation d'ordre ne déplace pas un objet verrouillé
+    EmbroideryIntent intent{EmbroideryIntent::AutoChoice};
 
     // Retouches manuelles (Lot 8 MVP) — deltas épars, jamais O(nombre de
     // points). Vide = comportement actuel inchangé (Clean, rétrocompatible).

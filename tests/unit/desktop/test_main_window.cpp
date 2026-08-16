@@ -15,6 +15,7 @@
 #include <QTemporaryDir>
 #include <QTest>
 #include <QTimer>
+#include <QTreeWidget>
 
 #include <algorithm>
 #include <cmath>
@@ -106,10 +107,12 @@ Fixture buildFixture() {
 
 // tabs_/objectsList_/regionsList_ sont privés (comme dans test_document_panel.cpp) :
 // on retrouve les listes par leur ordre d'ajout, seul contrat stable observé
-// depuis l'extérieur.
-QListWidget* objectsList(DocumentPanel& panel) {
+// depuis l'extérieur. objectsList_ est un QTreeWidget depuis §21 (regroupement
+// des sections d'un même plan satin, 2026-08-15) -- regionsList_ reste un
+// QListWidget (aucun regroupement là).
+QTreeWidget* objectsList(DocumentPanel& panel) {
     auto* tabs = panel.findChild<QTabWidget*>();
-    return qobject_cast<QListWidget*>(tabs->widget(0));
+    return qobject_cast<QTreeWidget*>(tabs->widget(0));
 }
 QListWidget* regionsList(DocumentPanel& panel) {
     auto* tabs = panel.findChild<QTabWidget*>();
@@ -640,7 +643,7 @@ void MainWindowTest::clickingVectorObjectSyncsDocumentPanelAndInspector() {
 
     // Le clic sélectionne l'objet vectoriel ; MainWindow retrouve le point de
     // contour qui lui est rattaché et synchronise liste + inspecteur dessus.
-    QCOMPARE(objectsList(*docPanel)->currentRow(), 0);
+    QCOMPARE(objectsList(*docPanel)->currentItem(), objectsList(*docPanel)->topLevelItem(0));
     QVERIFY(!propsPanel->findChildren<QDoubleSpinBox*>().isEmpty());
 
     auto* createStitch = window.findChild<QAction*>(QStringLiteral("action_createStitch"));
@@ -723,7 +726,7 @@ void MainWindowTest::embroiderySelectionDoesNotLeakAcrossProjectLoadWithReusedId
     QVERIFY(propsPanel != nullptr);
 
     docPanel->embroiderySelected(fx1.embroideryId);
-    QCOMPARE(objectsList(*docPanel)->currentRow(), 0);
+    QCOMPARE(objectsList(*docPanel)->currentItem(), objectsList(*docPanel)->topLevelItem(0));
     QVERIFY(!propsPanel->findChildren<QDoubleSpinBox*>().isEmpty());  // inspecteur montre la broderie
 
     const Fixture fx2 = buildFixture();
@@ -733,7 +736,7 @@ void MainWindowTest::embroiderySelectionDoesNotLeakAcrossProjectLoadWithReusedId
     // Rien n'a été sélectionné explicitement dans le nouveau projet : ni le
     // panneau Document ni l'inspecteur ne doivent refléter la broderie
     // choisie dans le projet précédent.
-    QCOMPARE(objectsList(*docPanel)->currentRow(), -1);
+    QCOMPARE(objectsList(*docPanel)->currentItem(), nullptr);
     QVERIFY(propsPanel->findChildren<QDoubleSpinBox*>().isEmpty());
 }
 
@@ -1375,7 +1378,7 @@ void MainWindowTest::dragFirstStitchHandle(MainWindow& window, ObjectId embroide
 
     auto* docPanel = window.findChild<DocumentPanel*>();
     QVERIFY(docPanel != nullptr);
-    QVERIFY(objectsList(*docPanel)->item(0)->toolTip().contains(QStringLiteral("Retouché")));
+    QVERIFY(objectsList(*docPanel)->topLevelItem(0)->toolTip(0).contains(QStringLiteral("Retouché")));
 
     // Undo/redo exact : annuler retire la retouche entièrement (aucun résidu
     // partiel), rétablir restaure très exactement la même entrée.

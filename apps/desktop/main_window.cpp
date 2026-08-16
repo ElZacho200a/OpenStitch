@@ -2987,6 +2987,7 @@ void MainWindow::createRunningStitchObject() {
     object.source_vector = source->id;
     object.rgb = source->rgb;
     object.params = params;
+    object.intent = document::EmbroideryIntent::ForcedUserChoice;
 
     undoStack_.execute(std::make_unique<commands::AddEmbroideryObjectCommand>(std::move(object)),
                        project_);
@@ -3049,6 +3050,7 @@ void MainWindow::createTatamiObject() {
     object.source_vector = source->id;
     object.rgb = source->rgb;
     object.params = params;
+    object.intent = document::EmbroideryIntent::ForcedUserChoice;
 
     // Sélectionne le nouveau remplissage pour que « Orientation du remplissage… »
     // s'applique directement à lui.
@@ -3305,6 +3307,10 @@ void MainWindow::appendTatamiFallbackObjects(const std::vector<geometry::PathSet
         fallback.source_vector = fallbackVecId;
         fallback.rgb = source.rgb;
         fallback.params = document::TatamiParams{};
+        // §21/§24 : l'utilisateur a EXPLICITEMENT choisi "Utiliser tatami
+        // pour le reliquat" (§23) -- jamais une classification automatique,
+        // même si le résultat ressemble au repli d'autodigitize.cpp.
+        fallback.intent = document::EmbroideryIntent::ForcedUserChoice;
         fallback.name = tr("Tatami de repli (%1)").arg(QString::fromStdString(source.name)).toStdString();
         embroideriesOut.push_back(std::move(fallback));
     }
@@ -3423,6 +3429,9 @@ void MainWindow::createSatinObject() {
             object.source_vector = source->id;
             object.rgb = source->rgb;
             object.params = std::move(section.params);
+            // §21/§24 : choix EXPLICITE de l'utilisateur (action "Colonne
+            // satin"), jamais une classification automatique.
+            object.intent = document::EmbroideryIntent::ForcedUserChoice;
             objects.push_back(std::move(object));
         }
     } else {
@@ -3449,6 +3458,7 @@ void MainWindow::createSatinObject() {
         object.source_vector = source->id;
         object.rgb = source->rgb;
         object.params = sp;
+        object.intent = document::EmbroideryIntent::ForcedUserChoice;
         objects.push_back(std::move(object));
     }
 
@@ -3646,6 +3656,7 @@ bool MainWindow::createSatinObjectWithCutLine(Vec2um cutA, Vec2um cutB) {
             object.source_vector = source->id;
             object.rgb = source->rgb;
             object.params = std::move(section.params);
+            object.intent = document::EmbroideryIntent::ForcedUserChoice;
             objects.push_back(std::move(object));
         }
     }
@@ -3873,6 +3884,11 @@ void MainWindow::autoConvertToSatin() {
         emb.source_vector = source->id;
         emb.rgb = source->rgb;
         emb.params = std::move(section.params);
+        // §21/§24 : l'utilisateur a explicitement déclenché la conversion
+        // (action "Convertir en satin") -- "auto" dans le nom qualifie la
+        // génération des rails (automatique, pas de retouche manuelle),
+        // jamais l'intention, qui reste EXPLICITE.
+        emb.intent = document::EmbroideryIntent::ForcedUserChoice;
         objects.push_back(std::move(emb));
     }
     std::vector<document::VectorObject> extraVectors;

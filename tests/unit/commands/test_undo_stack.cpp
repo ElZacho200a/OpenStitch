@@ -643,6 +643,33 @@ TEST_CASE("SetStitchTypeCommand : change de type, undo restaure l'exact") {
     CHECK(project.findEmbroidery(id)->is_tatami());
 }
 
+TEST_CASE("SetStitchTypeCommand : marque ForcedUserChoice, undo restaure l'intention precedente") {
+    // Une conversion de type via cette commande est TOUJOURS une action
+    // explicite de l'utilisateur (menu contextuel/inspecteur) -- jamais une
+    // classification automatique, meme si l'objet avait ete cree par
+    // l'auto-numerisation (AutoChoice) au depart.
+    document::Project project;
+    UndoStack stack;
+
+    document::EmbroideryObject e;
+    e.id = project.object_ids.next();
+    e.params = document::RunningStitchParams{};
+    e.intent = document::EmbroideryIntent::AutoChoice;
+    stack.execute(std::make_unique<AddEmbroideryObjectCommand>(e), project);
+    const ObjectId id = project.embroidery_objects[0].id;
+    REQUIRE(project.findEmbroidery(id)->intent == document::EmbroideryIntent::AutoChoice);
+
+    stack.execute(
+        std::make_unique<SetStitchTypeCommand>(id, document::TatamiParams{}, "tatami"), project);
+    CHECK(project.findEmbroidery(id)->intent == document::EmbroideryIntent::ForcedUserChoice);
+
+    CHECK(stack.undo(project));
+    CHECK(project.findEmbroidery(id)->intent == document::EmbroideryIntent::AutoChoice);
+
+    CHECK(stack.redo(project));
+    CHECK(project.findEmbroidery(id)->intent == document::EmbroideryIntent::ForcedUserChoice);
+}
+
 TEST_CASE("SetStitchParamsCommand : edite les parametres, undo restaure exact") {
     document::Project project;
     UndoStack stack;

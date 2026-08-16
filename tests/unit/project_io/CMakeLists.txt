@@ -1,6 +1,7 @@
 add_executable(test_project_io
     test_roundtrip.cpp
     test_overrides_persistence.cpp
+    test_intent_persistence.cpp
 )
 target_link_libraries(test_project_io
     PRIVATE openstitch::project_io Catch2::Catch2WithMain openstitch::warnings)
