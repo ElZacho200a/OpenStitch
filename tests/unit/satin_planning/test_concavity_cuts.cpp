@@ -61,6 +61,37 @@ geometry::PathSet hourglass_shape() {
     return geometry::PathSet{outer, {}};
 }
 
+// Rectangle 100x8mm (meme gabarit exterieur que `hourglass_shape`) entaille
+// de DEUX notches pointus (~143 degres de virage) sur les bords OPPOSES --
+// un en bas pres de x=54mm, un en haut pres de x=61mm -- assez espaces pour
+// que la ligne DROITE entre les deux pointes ne soit plus verticale mais
+// nettement diagonale, PLUS une troisieme entaille RECTANGULAIRE (coins a
+// 90 degres, filtree par `min_reflex_turn_deg`) creusee depuis le bord
+// haut entre les deux, assez profonde (jusqu'a y=-1500) pour physiquement
+// obstruer cette diagonale (qui passe par (57500,0), a l'interieur meme de
+// l'obstruction) sans toucher aux deux notches pointus. La ligne droite
+// echoue donc necessairement (point median hors de la region -- litteralement
+// dans le trou de l'obstruction), alors qu'un chemin en coude passant sous
+// l'obstruction (matiere restante entre y=-4000 et y=-1500 sur toute sa
+// largeur) reste entierement dans la matiere. Construite specifiquement pour
+// exercer honnetement le mecanisme de coupe polygonale (§14, dernier
+// element) -- aucune forme du corpus reel ne le declenche a ce jour ;
+// dimensions et positions verifiees empiriquement (plusieurs iterations,
+// cf. historique de developpement) pour que le point de coude trouve par
+// `find_elbow_waypoint` reste a bonne distance de l'obstruction et des
+// epaules des notches.
+geometry::PathSet elbow_obstructed_hourglass_shape() {
+    geometry::Path outer;
+    outer.closed = true;
+    outer.nodes = {
+        node(0, -4'000),      node(53'000, -4'000), node(54'000, -1'000), node(55'000, -4'000),
+        node(100'000, -4'000), node(100'000, 4'000), node(62'000, 4'000), node(61'000, 1'000),
+        node(60'000, 4'000),  node(58'500, 4'000),   node(58'500, -1'500), node(56'500, -1'500),
+        node(56'500, 4'000),  node(0, 4'000),
+    };
+    return geometry::PathSet{outer, {}};
+}
+
 }  // namespace
 
 TEST_CASE("generate_concavity_cut_candidates : rectangle -- aucune concavite, aucun candidat") {
@@ -146,6 +177,66 @@ TEST_CASE("select_best_concavity_cut : aucun candidat -- renvoie nullopt proprem
     const std::vector<ConcavityCutCandidate> empty;
     const auto chosen = select_best_concavity_cut(empty, parametric_params(), {}, Micrometers{400});
     CHECK_FALSE(chosen.has_value());
+}
+
+TEST_CASE(
+    "generate_concavity_cut_candidates : sablier obstrue -- ligne droite hors de la region, coude reussit la "
+    "separation") {
+    const auto region = elbow_obstructed_hourglass_shape();
+    ConcavityCutParams params;
+    params.min_reflex_turn_deg = 120.0;  // filtre les coins a 90 degres de l'obstruction
+    const auto candidates = generate_concavity_cut_candidates(region, params);
+    INFO(format_concavity_cut_candidates(candidates));
+    REQUIRE_FALSE(candidates.empty());
+
+    const auto polygonal = std::find_if(candidates.begin(), candidates.end(), [](const ConcavityCutCandidate& c) {
+        return c.family == "concavite->concavite (polygonale)";
+    });
+    REQUIRE(polygonal != candidates.end());
+    CHECK(polygonal->valid);
+    CHECK(polygonal->waypoint.has_value());
+
+    // Coupe reellement en deux moities comparables, pas un fragment degenere
+    // -- la meme regle de sante que le sablier droit.
+    const double originalAreaMm2 = geometry::path_set_area_um2(region) / 1e6;
+    CHECK(polygonal->first_piece_area_mm2 > 0.2 * originalAreaMm2);
+    CHECK(polygonal->second_piece_area_mm2 > 0.2 * originalAreaMm2);
+    CHECK(polygonal->first_piece_area_mm2 + polygonal->second_piece_area_mm2 <= originalAreaMm2 + 0.5);
+
+    // Aucune famille "concavite->concavite" DROITE (non polygonale) ne doit
+    // avoir reussi pour cette paire -- la separation VIENT du coude, pas
+    // d'un hasard de tolerance geometrique. `generate_concavity_cut_candidates`
+    // bascule vers la variante polygonale des qu'un point median est hors de
+    // la region, donc aucune entree "concavite->concavite" pure n'apparait
+    // meme dans les candidats REJETES pour cette paire.
+    CHECK_FALSE(std::any_of(candidates.begin(), candidates.end(),
+                             [](const ConcavityCutCandidate& c) { return c.family == "concavite->concavite"; }));
+}
+
+TEST_CASE(
+    "generate_concavity_cut_candidates : sablier obstrue, try_elbow_cuts=false -- rejet propre sans tenter de "
+    "coude") {
+    // Meme forme, mecanisme desactive explicitement (cf. doc de
+    // `ConcavityCutParams::try_elbow_cuts`) : ancre de non-regression pour
+    // le comportement "lignes droites seules" -- la paire doit alors etre
+    // rejetee proprement (point median hors de la region), sans qu'aucune
+    // entree "(polygonale)" n'apparaisse.
+    const auto region = elbow_obstructed_hourglass_shape();
+    ConcavityCutParams params;
+    params.min_reflex_turn_deg = 120.0;
+    params.try_elbow_cuts = false;
+    const auto candidates = generate_concavity_cut_candidates(region, params);
+    INFO(format_concavity_cut_candidates(candidates));
+
+    const auto straight = std::find_if(candidates.begin(), candidates.end(), [](const ConcavityCutCandidate& c) {
+        return c.family == "concavite->concavite";
+    });
+    REQUIRE(straight != candidates.end());
+    CHECK_FALSE(straight->valid);
+    CHECK(straight->rejection_reason == "point median hors de la region");
+    CHECK_FALSE(std::any_of(candidates.begin(), candidates.end(), [](const ConcavityCutCandidate& c) {
+        return c.family == "concavite->concavite (polygonale)";
+    }));
 }
 
 TEST_CASE("format_concavity_cut_candidates : rendu textuel exploitable pour le debug") {

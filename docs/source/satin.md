@@ -3802,13 +3802,8 @@ recouvrement est réellement consommé et non un no-op. Suite complète
 
 ### Ce qui reste hors périmètre (limites connues, honnêtement documentées)
 
-- **Coupes polygonales** (§14 du plan de refonte, dernier élément) : les
-  quatre familles désormais actives (normale au squelette, JunctionSeparator,
-  concavité→concavité, concavité→bord opposé) couvrent la majorité des cas
-  observés sur le corpus de test, mais aucune ne gère une coupe suivant un
-  tracé polygonal (plusieurs segments) plutôt qu'une ligne droite — reste un
-  travail futur clairement identifié, non nécessaire pour une v1 (§14 du
-  plan de refonte le notait déjà explicitement).
+*(Néant à ce jour — la dernière limite connue, l'absence de coupe
+polygonale, a été comblée le 2026-08-16, cf. section dédiée plus bas.)*
 
 ### Champ EmbroideryIntent et regroupement du panneau d'objets (§21/§24, 2026-08-16)
 
@@ -3862,6 +3857,82 @@ main) ; `SetStitchTypeCommand` marque/restaure `intent` sur undo/redo. Suite
 complète (desktop, project_io, commands, autodigitize) + Debug/Release (585
 tests, mêmes 4 diagnostics permanents connus, aucune régression).
 
+### Coupes polygonales (§14, dernier élément, 2026-08-16)
+
+Dernière limite honnêtement documentée du plan de refonte (§14) : les
+quatre familles de coupe candidates (normale au squelette, JunctionSeparator,
+concavité→concavité, concavité→bord opposé) ne suivent qu'une ligne DROITE
+entre leurs deux extrémités — aucune ne gère une coupe en plusieurs segments
+(un « coude »). Contrairement aux trois familles précédentes, chacune motivée
+par un cas RÉEL en échec dans le corpus de test, **aucune forme du corpus
+connu ne déclenche ce besoin à ce jour** : les coupes polygonales ont donc
+été implémentées et validées sur une forme synthétique construite
+spécifiquement pour exercer honnêtement le mécanisme, pas sur une régression
+de corpus. Travail repris à ce stade précis après plusieurs tours explicites
+de validation de la portée (l'équipe a confirmé vouloir ce dernier élément
+malgré l'absence de cas réel connu).
+
+**Le principe** : quand la coupe DROITE entre deux concavités (famille
+concavité→concavité) échoue parce que son point médian tombe hors de la
+région — la ligne « coupe dans le vide » plutôt qu'à travers la matière —,
+`find_elbow_waypoint` cherche un point de passage intérieur (recherche bornée,
+12 pas le long de la perpendiculaire au segment direct depuis son milieu,
+deux sens) tel que les deux segments obtenus (concavité→coude,
+coude→concavité) restent chacun entièrement dans la région (vérifié par
+échantillonnage : le point de passage et le milieu de chaque sous-segment).
+Si un tel point existe, `try_polyline` construit et mesure la coupe en coude
+exactement comme `try_segment` le fait pour une ligne droite (mêmes règles
+d'acceptation : deux morceaux exactement, aucun trop petit) ; sinon,
+comportement inchangé (rejet « point médian hors de la région »).
+Désactivable via `ConcavityCutParams::try_elbow_cuts` pour isoler le
+comportement lignes-droites seul (comparaison A/B, non-régression).
+
+**Trois défauts géométriques réels trouvés en construisant la forme de
+preuve** (aucun n'était visible sur le corpus existant, puisque cette
+famille n'y était jamais exercée) :
+
+1. *Coin non coupé côté extérieur du coude* — les deux quadrilatères de coupe
+   (un par segment) ne se touchaient qu'en un seul point exact (le coude),
+   laissant un triangle de matière intacte du côté convexe du virage dès que
+   l'angle n'était pas parfaitement rectiligne. Corrigé par un petit carré
+   centré au point de coude (`make_square`, 3× la demi-largeur de coupe) qui
+   referme ce coin quel que soit l'angle, sans mitre à calculer.
+2. *Extension trop longue aux deux extrémités* — les segments d'entrée/sortie
+   étaient prolongés très au-delà de la région (même marge que la famille
+   concavité→bord opposé, 1&nbsp;m) dans la direction du segment ENTRANT ;
+   pour un coude, cette direction n'a aucun rapport avec la géométrie locale
+   de la concavité visée et pouvait raser l'épaule voisine de la même
+   encoche avant de ressortir par un bord sans rapport, y découpant un
+   fragment parasite. Corrigé en réutilisant la bissectrice locale déjà
+   calculée par la famille concavité→bord opposé (`inward_bisector`,
+   extraite en fonction partagée) — la seule direction garantissant de
+   « sortir proprement » de la matière près de ce sommet précis — avec une
+   marge courte (200&nbsp;µm) au lieu d'une extension arbitrairement longue.
+3. *Sens de l'extension inversé* — première tentative de correctif du point
+   précédent : la bissectrice pointe VERS L'INTÉRIEUR de la matière (c'est
+   sa définition), mais le quadrilatère doit au contraire dépasser LÉGÈREMENT
+   dans le VIDE de l'encoche pour que la soustraction traverse réellement le
+   contour au lieu d'y être tangente (sans quoi la coupe ne sépare rien du
+   tout — constaté empiriquement : un seul morceau en sortie). Corrigé en
+   inversant le signe (`sub` plutôt que `add`).
+
+Testé (`tests/unit/satin_planning/test_concavity_cuts.cpp`) : une forme
+synthétique dédiée (`elbow_obstructed_hourglass_shape`, un ruban 100×8&nbsp;mm
+entaillé de deux notches pointus sur des bords opposés mais désalignés, plus
+une obstruction rectangulaire physique entre les deux qui bloque
+spécifiquement la ligne droite sans toucher aux notches) prouve que (a) la
+coupe droite échoue bien pour cette paire (point médian dans le trou de
+l'obstruction), (b) la coupe polygonale réussit et sépare la région en deux
+moitiés comparables, (c) avec `try_elbow_cuts=false`, la même paire est
+rejetée proprement sans qu'aucun candidat « (polygonale) » n'apparaisse
+(ancre de non-régression pour le comportement lignes-droites seul). Suite
+`test_satin_planning` complète (695 assertions, 67 cas), suites
+`test_autodigitize` et `test_main_window`, et Debug/Release complets (mêmes 4
+diagnostics permanents connus, aucune régression) : le mécanisme est inerte
+sur tout le corpus existant (aucune forme ne le déclenche), confirmant qu'il
+s'agit d'un ajout pur, pas d'un changement de comportement pour les formes
+déjà gérées.
+
 ### Tests
 
 - `tests/unit/satin_planning/test_satin_plan.cpp` (nouveau) — corpus
@@ -3876,6 +3947,10 @@ tests, mêmes 4 diagnostics permanents connus, aucune régression).
   (détail de calibration interne, plus un compte exact d'objets) en
   vérifiant directement la garantie qui compte&nbsp;: couverture de bout en
   bout (satin seul, ou satin + repli) sans trou résiduel significatif.
+- `tests/unit/satin_planning/test_concavity_cuts.cpp` — forme synthétique
+  dédiée aux coupes polygonales (§14, dernier élément) : succès du coude
+  là où la ligne droite échoue, et ancre de non-régression pour
+  `try_elbow_cuts=false`.
 - Suite complète (Debug + Release) sans régression sur les 4 diagnostics
   permanents déjà connus.
 

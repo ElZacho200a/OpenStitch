@@ -51,6 +51,17 @@ struct ConcavityCutParams {
     // max_reflex_vertices*(max_reflex_vertices-1)/2 dans le pire cas, quelle
     // que soit la complexite reelle du contour.
     std::size_t max_reflex_vertices{12};
+    // §14, dernier element (coupes polygonales, 2026-08-16) : quand la coupe
+    // DROITE entre deux concavites echoue geometriquement (son point median
+    // tombe hors de la region -- la ligne "coupe dans le vide"), tente une
+    // coupe en COUDE via un point de passage intermediaire avant de
+    // renoncer. Desactivable pour isoler le comportement lignes-droites
+    // seul (comparaison A/B, tests de non-regression) -- aucune forme du
+    // corpus de test connu n'en a besoin aujourd'hui (contrairement aux
+    // trois familles precedentes, chacune motivee par un cas reel en
+    // echec) ; validee uniquement sur une forme "sablier courbe" construite
+    // a la main pour exercer honnetement le mecanisme.
+    bool try_elbow_cuts{true};
 };
 
 // Un candidat de coupe ancre sur une ou deux concavites (sommets reflex) du
@@ -61,6 +72,12 @@ struct ConcavityCutParams {
 struct ConcavityCutCandidate {
     Vec2um a{};
     Vec2um b{};
+    // Present UNIQUEMENT pour une coupe polygonale (§14, dernier element) :
+    // la coupe suit alors a->waypoint->b (deux segments) au lieu de la
+    // ligne droite a->b -- construite par union de deux quadrilateres
+    // (un par segment) plutot que `geometry::cut_path_set`, qui ne sait
+    // couper qu'une seule ligne droite infinie.
+    std::optional<Vec2um> waypoint;
     bool valid{false};
     geometry::PathSet first_piece;
     geometry::PathSet second_piece;
