@@ -388,6 +388,46 @@ RecursionOutcome plan_recursive(const geometry::PathSet& region, const SatinPlan
     return adequateFallback ? accept_as_leaf() : report_as_residual();
 }
 
+// §20 du plan de refonte satin (2026-08-16) : ferme visuellement
+// l'interstice de coupe entre deux regions adjacentes en reconstruisant
+// leurs colonnes sur la geometrie de recouvrement DEDIEE (`SatinPlan::
+// overlaps`, deja calculee depuis §19/§20 mais jusqu'ici jamais consommee)
+// plutot que la geometrie structurelle brute -- jamais l'inverse : la
+// mesure de couverture continue TOUJOURS de se faire sur `SatinPlanRegion::
+// region` (structurelle, inchangee), la geometrie d'overlap ne sert qu'A LA
+// GENERATION. Repli sur les colonnes d'origine si la reconstruction echoue
+// ou couvre moins bien la region structurelle que la version d'origine --
+// jamais un resultat degrade accepte au nom de fermer un interstice (meme
+// regle "jamais de degradation silencieuse" que le reste du planificateur).
+// Chaque region participe a au plus UNE paire d'adjacence (§19 : issue de
+// l'unique coupe qui l'a creee), donc aucun risque de double reconstruction
+// incoherente ici.
+void extend_columns_into_known_overlaps(SatinPlan& plan, const SatinPlanConfig& config) {
+    for (std::size_t i = 0; i < plan.adjacency.size(); ++i) {
+        const auto [a, b] = plan.adjacency[i];
+        const auto& overlap = plan.overlaps[i];
+
+        const auto try_extend = [&](std::size_t regionIdx, const geometry::PathSet& extendedGeom) {
+            SatinPlanRegion& target = plan.regions[regionIdx];
+            if (!target.coverage) return;  // rien de fiable a comparer, ne rien risquer
+
+            auto rebuilt = auto_satin::build_satin_columns(extendedGeom, config.genParams);
+            const auto inputs = to_coverage_inputs(rebuilt, config.density);
+            if (inputs.empty()) return;  // reconstruction refusee : repli silencieux sur l'original
+            const auto newCoverage =
+                satin_coverage::analyze_satin_coverage(target.region, inputs, config.coverageConfig);
+            if (!newCoverage) return;
+            if (newCoverage->raw_coverage_ratio + 1e-9 < target.coverage->raw_coverage_ratio) return;
+
+            target.columns = std::move(rebuilt);
+            target.coverage = *newCoverage;
+        };
+
+        try_extend(a, overlap.first_extended);
+        try_extend(b, overlap.second_extended);
+    }
+}
+
 }  // namespace
 
 SatinPlan create_satin_plan(const geometry::PathSet& source, const SatinPlanConfig& config) {
@@ -463,6 +503,13 @@ SatinPlan create_satin_plan(const geometry::PathSet& source, const SatinPlanConf
         if (!anyRepaired) {
             break;  // plus aucun progres possible, inutile de reboucler
         }
+    }
+
+    // §20 : ferme les interstices de coupe connus AVANT la mesure finale,
+    // pour qu'`aggregate_coverage` reflete l'etat REELLEMENT emis (colonnes
+    // eventuellement etendues), pas un etat intermediaire.
+    if (config.extend_columns_into_overlap) {
+        extend_columns_into_known_overlaps(plan, config);
     }
 
     // Mesure finale (apres toute reparation) pour que `aggregate_coverage`

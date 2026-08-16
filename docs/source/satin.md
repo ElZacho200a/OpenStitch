@@ -3759,6 +3759,47 @@ repli (un seul geste annulable), et document totalement inchangé sur
 annulation. Suite complète (61 tests desktop, +3) + Debug/Release (582
 tests, mêmes 4 diagnostics permanents connus, aucune régression).
 
+### Recouvrement consommé par la génération de points (§20, 2026-08-16)
+
+`generate_overlaps` (phase 8 SGSD) était relié au planner depuis le
+2026-08-14 (`SatinPlan::adjacency`/`overlaps` peuplés) mais rien n'utilisait
+encore cette géométrie — les colonnes de chaque `SatinPlanRegion` restaient
+générées sur la géométrie structurelle seule, laissant l'interstice de
+coupe entre deux régions voisines visuellement ouvert malgré l'information
+déjà calculée.
+
+**Le principe** : après la réparation de résidu (§17) et juste avant la
+mesure finale d'`aggregate_coverage`, `extend_columns_into_known_overlaps`
+reconstruit les colonnes de chaque région ayant un voisin direct connu
+(`SatinPlan::adjacency`) sur sa géométrie de recouvrement DÉDIÉE
+(`SatinPlan::overlaps`, jamais la géométrie structurelle — qui reste
+inchangée, seule référence pour toute mesure de couverture, comme documenté
+dès la création de ce champ). Garde-fou central : la reconstruction n'est
+acceptée que si la couverture mesurée sur la région STRUCTURELLE ne se
+dégrade pas par rapport aux colonnes d'origine — repli automatique et
+silencieux sur les colonnes d'origine sinon (échec de construction sur la
+géométrie étendue, ou couverture moindre) — jamais une dégradation acceptée
+au nom de fermer un interstice.
+
+**Effet mesuré, honnêtement rapporté** : sur le réseau en T, la couverture
+d'une des deux régions passe de 98,3&nbsp;% à 99,8&nbsp;% (l'autre reste
+inchangée — son extension n'a simplement rien apporté), la couverture
+agrégée de 98,3&nbsp;% à 99,0&nbsp;%. Une amélioration réelle mais modeste,
+cohérente avec ce que fait la fonctionnalité&nbsp;: fermer un interstice de
+`cut_width` (20&nbsp;µm) déjà petit, pas résoudre un déficit de couverture
+majeur (ça, c'est le rôle des quatre familles de coupes et de la réparation
+de résidu).
+
+Nouveau `SatinPlanConfig::extend_columns_into_overlap` (`true` par défaut,
+sans effet si `compute_overlaps` est désactivé).
+
+Testé (`tests/unit/satin_planning/test_satin_plan.cpp`) : garde-fou —
+chaque région couvre au moins autant avec l'extension qu'sans elle, jamais
+moins ; et effet réel — la couverture agrégée s'améliore réellement sur le
+réseau en T (pas seulement « ne se dégrade pas »), preuve que le
+recouvrement est réellement consommé et non un no-op. Suite complète
+(satin_planning, autodigitize, desktop) + Debug/Release sans régression.
+
 ### Ce qui reste hors périmètre (limites connues, honnêtement documentées)
 
 - **Coupes polygonales** (§14 du plan de refonte, dernier élément) : les
@@ -3768,12 +3809,6 @@ tests, mêmes 4 diagnostics permanents connus, aucune régression).
   tracé polygonal (plusieurs segments) plutôt qu'une ligne droite — reste un
   travail futur clairement identifié, non nécessaire pour une v1 (§14 du
   plan de refonte le notait déjà explicitement).
-- **Adjacence/overlap non exploités en aval** : `SatinPlan::adjacency`/
-  `overlaps` sont maintenant peuplés (ci-dessus), mais rien dans la
-  génération de points ne les consomme encore — les colonnes satin de
-  chaque `SatinPlanRegion` restent générées sur la géométrie structurelle
-  seule, sans utiliser le recouvrement pour fermer visuellement
-  l'interstice de coupe entre deux régions voisines.
 
 ### Champ EmbroideryIntent et regroupement du panneau d'objets (§21/§24, 2026-08-16)
 

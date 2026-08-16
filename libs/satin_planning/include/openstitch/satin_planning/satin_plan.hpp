@@ -77,6 +77,17 @@ struct SatinPlanConfig {
     // pour un appelant qui ne veut que la geometrie structurelle brute.
     bool compute_overlaps{true};
     Micrometers overlap_distance{300};
+    // §20 du plan de refonte satin (2026-08-16) : consomme reellement
+    // `SatinPlan::overlaps` (ci-dessus, calcule mais jusqu'ici jamais
+    // utilise) -- reconstruit les colonnes de chaque region sur sa
+    // geometrie de recouvrement DEDIEE quand un voisin direct est connu,
+    // pour fermer visuellement l'interstice de coupe entre les deux.
+    // N'affecte JAMAIS la mesure de couverture (toujours sur la geometrie
+    // structurelle) : repli automatique sur les colonnes d'origine si la
+    // reconstruction echoue ou couvre moins bien la region structurelle que
+    // la version d'origine. Sans effet si `compute_overlaps` est desactive
+    // (rien a consommer).
+    bool extend_columns_into_overlap{true};
     // §14 du plan de refonte satin (deuxieme famille de coupes candidates,
     // 2026-08-14) : reutilise les `JunctionSeparatorInfo` DEJA calcules par
     // un appel Legacy dedie (cf. `CutCandidateParams::junction_separators`,

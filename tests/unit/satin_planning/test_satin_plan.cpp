@@ -348,3 +348,39 @@ TEST_CASE("create_satin_plan : profondeur maximale respectee -- pas de recursion
         CHECK(r.depth <= 1);
     }
 }
+
+TEST_CASE("create_satin_plan : extend_columns_into_overlap ferme reellement l'interstice (couverture en hausse, jamais en baisse)") {
+    // §20 du plan de refonte satin (2026-08-16) : SatinPlan::overlaps
+    // (§19/§20) etait calcule mais jamais consomme -- ce test verifie que
+    // le consommer change reellement quelque chose (pas seulement que le
+    // code ne plante pas), sur une forme reelle du corpus plutot qu'un cas
+    // synthetique force.
+    auto withExt = prod_config();
+    auto withoutExt = prod_config();
+    withoutExt.extend_columns_into_overlap = false;
+
+    const auto planWith = create_satin_plan(shape("t"), withExt);
+    const auto planWithout = create_satin_plan(shape("t"), withoutExt);
+
+    REQUIRE(planWith.regions.size() == planWithout.regions.size());
+    REQUIRE(planWith.aggregate_coverage.has_value());
+    REQUIRE(planWithout.aggregate_coverage.has_value());
+
+    // Garde-fou central (§20, "jamais une degradation silencieuse") : chaque
+    // region individuelle ne couvre jamais MOINS avec l'extension activee
+    // qu'avec elle desactivee -- le repli automatique sur les colonnes
+    // d'origine doit garantir cette propriete meme si l'extension echoue
+    // pour une paire donnee.
+    for (std::size_t i = 0; i < planWith.regions.size(); ++i) {
+        REQUIRE(planWith.regions[i].coverage.has_value());
+        REQUIRE(planWithout.regions[i].coverage.has_value());
+        CHECK(planWith.regions[i].coverage->raw_coverage_ratio + 1e-9 >=
+              planWithout.regions[i].coverage->raw_coverage_ratio);
+    }
+
+    // Et l'effet reel mesure sur cette forme (§ diagnostic) : la couverture
+    // agregee s'ameliore reellement, pas seulement "ne se degrade pas" --
+    // preuve que l'extension est reellement consommee, pas un no-op.
+    CHECK(planWith.aggregate_coverage->raw_coverage_ratio >
+          planWithout.aggregate_coverage->raw_coverage_ratio);
+}
