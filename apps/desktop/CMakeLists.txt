@@ -56,11 +56,20 @@ add_library(openstitch_desktop_widgets STATIC
 add_library(openstitch::desktop_widgets ALIAS openstitch_desktop_widgets)
 target_include_directories(openstitch_desktop_widgets PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(openstitch_desktop_widgets
+    # `satin_planning` en dependance DIRECTE depuis le 2026-08-17 (mission de
+    # durcissement du contrat SatinPlanner, §4) : les creations satin
+    # manuelles/conversions de type/ligne de coupe appellent desormais
+    # `satin_planning::build_satin_sections` directement (deplace depuis
+    # `autodigitize`, qui n'a plus de raison architecturale d'etre sur ce
+    # chemin) -- `autodigitize` reste lie separement pour sa PROPRE
+    # fonctionnalite (auto-numerisation), pas comme detour obligatoire vers
+    # un adaptateur generique.
     PUBLIC Qt6::Widgets openstitch::core openstitch::image openstitch::document
            openstitch::commands openstitch::vectorization openstitch::stitch
            openstitch::stitch_generation openstitch::formats openstitch::project_io
            openstitch::stitch_analysis openstitch::optimization openstitch::autodigitize
-           openstitch::auto_satin openstitch::segmentation openstitch::ai_segmentation
+           openstitch::auto_satin openstitch::satin_planning openstitch::segmentation
+           openstitch::ai_segmentation
     PRIVATE openstitch::warnings
 )
 

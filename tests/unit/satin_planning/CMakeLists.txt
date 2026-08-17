@@ -9,6 +9,7 @@ add_executable(test_satin_planning
     test_region_routing.cpp
     test_concavity_cuts.cpp
     test_satin_plan.cpp
+    test_torture_corpus.cpp
 )
 target_link_libraries(test_satin_planning
     PRIVATE openstitch::satin_planning openstitch::auto_satin openstitch::satin_coverage

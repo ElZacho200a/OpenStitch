@@ -3802,8 +3802,11 @@ recouvrement est réellement consommé et non un no-op. Suite complète
 
 ### Ce qui reste hors périmètre (limites connues, honnêtement documentées)
 
-*(Néant à ce jour — la dernière limite connue, l'absence de coupe
-polygonale, a été comblée le 2026-08-16, cf. section dédiée plus bas.)*
+*(État au 2026-08-16 : aucune limite logicielle connue à cette date. Voir
+la section « Durcissement du contrat du SatinPlanner » plus bas, datée du
+2026-08-17, pour un audit délibérément adverse qui en a trouvé plusieurs —
+la philosophie de documentation change à partir de là : une liste vide
+n'est plus le but recherché, cf. §26 de cette mission.)*
 
 ### Champ EmbroideryIntent et regroupement du panneau d'objets (§21/§24, 2026-08-16)
 
@@ -3953,6 +3956,423 @@ déjà gérées.
   `try_elbow_cuts=false`.
 - Suite complète (Debug + Release) sans régression sur les 4 diagnostics
   permanents déjà connus.
+
+## Durcissement du contrat du SatinPlanner (mission adverse, 2026-08-17)
+
+*État : Présent, partiellement.* Le chantier précédent (§1-33) a livré
+l'architecture — `create_satin_plan` comme cœur récursif commun. Cette
+mission repart du principe inverse&nbsp;: « l'implémentation existe, donc
+il faut essayer de démontrer qu'elle NE respecte PAS encore son contrat »,
+pas la considérer terminée parce que les tests passent. Elle a
+délibérément cherché des contre-exemples plutôt que d'ajouter de la
+couverture de tests pour la forme.
+
+### Phase 1 — Audit architectural (aucune modification de code)
+
+Traçage des points d'entrée réels (pas la documentation) sur
+`desktop → autodigitize → satin_planning → auto_satin`. Quatre réponses,
+avec preuves de call sites&nbsp;:
+
+- **`create_satin_plan` a un unique appelant** en tout et pour tout dans le
+  code de production&nbsp;: `build_satin_sections` (alors dans
+  `libs/autodigitize`). Le binaire desktop devait donc lier `autodigitize`
+  — et transitivement `segmentation`/`vectorization`, deux bibliothèques
+  d'auto-classification d'image — uniquement pour créer un satin MANUEL.
+- **`build_satin_sections` était localisée dans `autodigitize` par accident
+  historique** confirmé par son propre commentaire de tête (« seul point
+  d'appel restant vers `libs/satin_planning` ») — écrite pour
+  l'auto-numérisation, réutilisée telle quelle par le desktop, jamais
+  déplacée vers une couche neutre alors qu'elle ne dépend d'aucune
+  primitive d'auto-classification.
+- **Deux workflows contournaient réellement `create_satin_plan`**&nbsp;:
+  `createSatinObject()` et `setStitchType()` (cas satin) basculaient sur
+  `stitch_generation::rails_from_contour` — une heuristique naïve,
+  documentée ailleurs comme débordante sur les formes concaves/branchues et
+  **désactivée par défaut** côté auto-numérisation (`AutoOptions::
+  use_naive_satin{false}`) — dès que le planner renvoyait zéro section, sans
+  garde-fou équivalent sur les chemins `ForcedUserChoice`. Le résidu
+  affiché dans le dialogue §23 pouvait de plus devenir obsolète après cette
+  bascule (calculé avant, jamais recalculé après).
+- **La conversion de type (`setStitchType`) utilise le même planner en
+  RECHERCHE, mais pas en RESTITUTION**&nbsp;: `SetStitchTypeCommand` ne sait
+  porter qu'UN seul `StitchParams` (contrainte du modèle de commande, pas du
+  planner) — une décomposition multi-régions réussie était donc tronquée à
+  la plus grande section, avec avertissement explicite mais perte réelle de
+  territoire déjà résolu.
+
+### Phase 2 — Contrat de résultat explicite
+
+`SatinPlan` gagne un champ `status` (`SatinPlanStatus::Complete`/
+`Incomplete`/`Impossible`) calculé une seule fois en fin de
+`create_satin_plan`, jamais à déduire de `regions.empty()`. Critères A-E&nbsp;:
+
+- **A** (résidu) — aucune pièce d'`unresolved_residual` ne dépasse le même
+  seuil de significativité que la réparation de résidu.
+- **B** (colonnes) — déjà garanti par construction (`accept_as_leaf`
+  n'accepte jamais une région sans colonnes), re-vérifié explicitement
+  (diagnostic `RegionWithoutColumns` si jamais violé).
+- **C** (couverture globale) — **délibérément distincte** du seuil strict
+  de l'analyseur de couverture (`coverageConfig.min_core_coverage`, 99,5&nbsp;%,
+  calibré pour la décision interne « redécouper ou accepter » PENDANT la
+  récursion). Défaut réel trouvé en écrivant le tout premier test&nbsp;: un
+  simple RECTANGLE, sans aucun défaut de génération, ne franchissait pas ce
+  seuil (0,98995 mesuré — résidu naturel aux coins). Nouveau seuil dédié
+  `SatinPlanConfig::complete_min_raw_coverage` (0,95, couverture BRUTE,
+  moins sensible à ce bruit ponctuel).
+- **D** (trou local) — `max_gap_radius_mm` de la couverture agrégée contre
+  le seuil de l'analyseur.
+- **E** (géométrie invalide) — réutilise `degenerate_interval_count` déjà
+  calculé par l'analyseur de couverture indépendant (rails croisés).
+
+Budgets d'exploration explicites (§18)&nbsp;: `max_total_regions`,
+`max_planning_iterations`, et un filet de sécurité **wall-clock**
+supplémentaire (`max_planning_wall_clock_ms`) — nécessaire en pratique, cf.
+Phase 7. Toute limite atteinte produit `Incomplete`/`Impossible` avec
+diagnostic `SearchBudgetExceeded`, jamais un faux `Complete`.
+
+### Phase 3 — Extraction de l'adaptateur générique, suppression des bypass
+
+`BuiltSatinSection`/`SatinBuildReport`/`build_satin_sections` déplacés vers
+`libs/satin_planning` (`satin_sections.hpp/.cpp`) — `satin_planning` gagne
+`document` en dépendance PUBLIQUE (aucun cycle&nbsp;: `document` ne dépend
+d'aucun module de planification). `autodigitize` appelle désormais
+`satin_planning::build_satin_sections` comme n'importe quel autre
+consommateur ; le desktop lie `openstitch::satin_planning` directement et
+n'a plus besoin d'`autodigitize` pour créer un satin manuel (il le lie
+séparément, pour SA fonctionnalité propre&nbsp;: l'auto-numérisation).
+
+Les deux bascules `rails_from_contour` (Phase 1) sont **supprimées** sur
+les chemins `ForcedUserChoice`&nbsp;: un plan sans la moindre section
+déclenche désormais un dialogue honnête (statut du planificateur affiché,
+choix tatami-ou-annuler), jamais une substitution silencieuse par une
+géométrie de moindre qualité.
+
+### Phase 4-5 — Corpus de torture et tests bout en bout
+
+Douze nouvelles fixtures (`libs/auto_satin/shapes.cpp`)&nbsp;: `star5`,
+`asymmetric_star`, `comb`, `E`, `deep_recursive`, `multi_neck`, `dumbbell`,
+`deep_channel`, `two_holes`, `ring_branch`, `junction_with_hole`,
+`polygonal_cut_fixture` (portage exact de la forme qui a validé les coupes
+polygonales, exposée ici pour un test bout en bout du planner COMPLET).
+Nouveau fichier `tests/unit/satin_planning/test_torture_corpus.cpp`&nbsp;:
+invariants génériques sur tout le corpus (source jamais modifiée, aucune
+région n'explique une surface hors source, chaque feuille produit des
+colonnes, `Complete` implique l'absence de résidu significatif), preuve de
+récursion réelle à profondeur ≥ 3 (`deep_recursive`), déterminisme (§19,
+répétitions), invariance à la translation (§20).
+
+### Phase 7 — Défauts réels trouvés (et sort de chacun)
+
+Le corpus de torture a immédiatement trouvé plus de défauts que
+l'architecture précédente n'en avait révélé en plusieurs semaines de
+corpus stable — signe que la philosophie « chercher activement les
+contre-exemples » fonctionne.
+
+1. **Rectangle jamais `Complete`** (Phase 2, ci-dessus) — corrigé (seuil de
+   complétude dédié, distinct du seuil interne strict).
+2. **`comb` (6 jonctions en série) et `star5` (une jonction à 5 branches)
+   prenaient chacun 16 à 44 secondes** pour une seule tentative de
+   décomposition (mesures Debug, cf. mise en garde ci-dessous). Isolé
+   précisément (§33&nbsp;: diagnostic avant correctif)&nbsp;:
+   le solveur local seul (`auto_satin::build_satin_columns`) reste rapide
+   (moins d'une seconde, refuse ou réussit proprement) — c'est la
+   génération de candidats de décomposition de `satin_planning` qui est
+   coûteuse PAR ITÉRATION sur ces topologies. Cause probable&nbsp;:
+   `OracleGuidedSelector`, le sélecteur PAR DÉFAUT de chaque décomposition,
+   est documenté par son propre fichier source comme « réservé à un usage
+   hors ligne (CLI de debug, tests), jamais au chemin interactif » — utilisé
+   pourtant sans amortissement par `create_satin_plan`. Corrigé
+   **partiellement**&nbsp;: `beam_width` effectif réduit à 1 au-delà d'un seuil
+   de complexité locale ET d'un budget global d'évaluations à pleine
+   qualité (`SatinPlanConfig::beam_width`, `max_junctions_for_full_beam_
+   search`, `max_oracle_evaluations_at_full_beam_width`) — a réduit le
+   coût sans l'éliminer (le vrai goulot, la génération de candidats de
+   `split_region` elle-même sur une jonction à haut degré, est identifié
+   mais délibérément NON corrigé, cf. §33 : pas de patch opportuniste du
+   générateur/planner sous la pression d'une seule fixture). Le filet de
+   sécurité wall-clock (Phase 2) borne le nombre d'ITÉRATIONS de la
+   récursion, mais **ne préempte pas un appel unique** à
+   `split_region`/`generate_concavity_cut_candidates` déjà en cours&nbsp;: le
+   budget n'est revérifié qu'au retour de cet appel, pas pendant. Sur une
+   jonction pathologique où une seule génération de candidats prend déjà
+   plusieurs dizaines de secondes (mesuré isolément, ci-dessus), le
+   dépassement réel du budget configuré peut donc être largement supérieur
+   à `max_planning_wall_clock_ms` avant que le plan ne s'arrête. Constaté
+   concrètement en exécutant la suite `test_satin_planning` complète
+   (nombreux appels à `create_satin_plan` sur les formes lentes, cumulés
+   par les tests d'invariants qui parcourent tout le corpus) : durée totale
+   de plusieurs dizaines de minutes, très supérieure à la simple somme des
+   budgets configurés. Le filet garantit la terminaison EN NOMBRE
+   D'ITÉRATIONS, pas un plafond de temps strict par appel — nuance
+   importante que la Phase 2 avait sous-estimée.
+
+   **Mise en garde vérifiée, pas supposée (§37) : ceci mélange DEUX
+   limitations distinctes que les mesures Debug seules ne permettent pas de
+   séparer.** Un test Release identique (2026-08-17) montre que `star5`,
+   `comb` et `E` terminent tous les trois **sans jamais toucher le budget
+   wall-clock** (aucun diagnostic `SearchBudgetExceeded`) — la génération de
+   candidats, en code optimisé, va assez vite pour que la récursion
+   s'achève naturellement. Et pourtant, aucun des trois n'atteint
+   `Complete` même dans ce cas : la couverture/le résidu agrégés restent
+   insuffisants, une limitation de QUALITÉ de la famille de coupes actuelle
+   sur les jonctions à haut degré/branches nombreuses — indépendante de la
+   vitesse, et donc réelle en production (Release), pas seulement un
+   artefact de test. Les deux observations (lenteur Debug, qualité
+   insuffisante même rapide) partagent la même cause structurelle
+   (génération de candidats de coupe pas assez raffinée sur ces
+   topologies), mais seule la seconde est une limitation logicielle de
+   production à documenter comme telle ; la première n'est qu'un
+   ralentissement de build à ne jamais coder en dur dans un test (cf. point
+   7 ci-dessous, où l'inverse se produit : une lenteur Debug PURE, sans
+   aucune limitation de qualité réelle en Release).
+3. **`E`, `multi_neck`, `deep_channel`, `asymmetric_star` partagent la même
+   limitation** que `comb`/`star5` (branches ou concavités multiples) —
+   trouvés en élargissant le corpus, pas corrigés individuellement (même
+   cause racine).
+4. **Régions à 2+ trous sans AUCUNE stratégie de décomposition**
+   (`two_holes`) — ni le solveur annulaire dédié (`build_annular_sections`,
+   qui ne gère qu'EXACTEMENT un trou) ni la famille concavité (gardée par
+   `region.holes.empty()`) ne s'appliquaient. Corrigé **partiellement**&nbsp;:
+   le garde-fou concavité passe de `holes.empty()` à `holes.size() != 1`
+   (n'exclut plus que le cas où le solveur annulaire dédié, strictement
+   meilleur, s'applique déjà) — insuffisant pour la fixture `two_holes`
+   elle-même, dont le contour EXTÉRIEUR est un simple rectangle convexe
+   sans sommet reflex à exploiter (aucune famille de coupe actuelle ne peut
+   agir sur un contour convexe) : une vraie famille « couper ENTRE deux
+   trous » resterait à écrire, hors de portée de cette mission.
+5. **`polygonal_cut_fixture` échoue en bout en bout malgré une coupe
+   valide** — le mécanisme géométrique fonctionne (`generate_concavity_
+   cut_candidates` trouve un candidat polygonal valide, prouvé en moins
+   d'une milliseconde), mais `select_best_concavity_cut` (qui CHOISIT en
+   construisant et mesurant réellement des colonnes sur chaque morceau)
+   échoue à construire une colonne satisfaisante sur les morceaux résultant
+   de cette géométrie précise — défaut déjà connu et volontairement
+   descopé plus tôt dans le développement des coupes polygonales (couche
+   `satin_coverage`/`auto_satin`, pas la coupe elle-même), maintenant
+   redécouvert par un test bout en bout plutôt que caché par un test isolé.
+6. **Double comptage d'aire entre régions lors de la réparation de résidu**
+   (`notch`, `pinch`, `deep_recursive`, `junction_with_hole`) — trouvé par
+   le tout premier lancement complet du nouveau test d'invariant « aucune
+   région n'explique une surface arbitrairement extérieure » (§8/§23) :
+   jusqu'à 9&nbsp;% de surface source en trop dans la somme des régions.
+   Cause : la géométrie « manquante » (`missing.region`, issue de
+   `source \ colonnes-émises`) peut recouper le territoire STRUCTUREL d'une
+   région déjà acceptée dès que cette dernière a une couverture interne
+   imparfaite — normal, jamais 100&nbsp;% (cf. `complete_min_raw_coverage`)
+   — et se retrouvait replanifiée telle quelle comme une NOUVELLE région
+   structurellement chevauchante. **Corrigé PUIS REVERTÉ** (§37&nbsp;:
+   vérifier qu'un correctif est une amélioration RÉELLE, pas seulement
+   qu'il fait taire un test) — un premier correctif recoupait
+   (`geometry::difference_polygons`) la géométrie manquante contre les
+   régions déjà acceptées avant replanification, ne gardant que le
+   reliquat réellement non revendiqué&nbsp;: l'invariant d'aire passait,
+   mais `test_autodigitize` (réseau en T RÉEL, pas une fixture synthétique)
+   s'est mis à laisser 33,8&nbsp;mm² de tissu réellement non point-piqué
+   (repli tatami compris), contre moins de 0,5&nbsp;mm² avant — recouper
+   produit des lambeaux fins le long des frontières entre régions, bien
+   plus difficiles à point-piquer correctement que la géométrie manquante
+   brute. Un vrai résidu de couverture est un défaut bien plus grave qu'un
+   chevauchement de comptabilité interne entre le polygone structurel d'une
+   région et celui de son patch de réparation — le correctif a donc été
+   **reverté**, et c'est le TEST d'invariant qui a été corrigé à la place&nbsp;:
+   il distingue désormais les régions de la décomposition primaire (dont la
+   somme ne doit jamais déborder la source, vraie partition géométrique)
+   des régions issues de la réparation de résidu (`SatinPlanRegion::
+   from_residual_repair`, chevauchement avec leur parent toléré par
+   conception, borné à une marge large plutôt qu'à zéro).
+7. **Le budget par défaut (calibré pour la réactivité interactive) est trop
+   étroit pour les mêmes formes en build Debug non optimisé** — trouvé sur
+   `cross`, puis `h` (formes ordinaires du corpus, présentes bien avant
+   cette mission) : le test « budget généreux » (censé prouver que le
+   budget par défaut ne se déclenche jamais sur le corpus habituel)
+   échouait de façon parfaitement reproductible en Debug (~10,5 à 11&nbsp;s
+   pour un seul appel de génération de candidats sur une jonction),
+   *alors qu'un test Release identique résout les deux formes en
+   `Complete` net, sans le moindre diagnostic de budget*. Vérifié
+   explicitement avant de conclure (§37&nbsp;: ne pas supposer) plutôt que
+   documenté comme une limitation architecturale de plus — c'est un
+   artefact de configuration de build (code géométrique/Clipper2 non
+   optimisé en Debug), pas une propriété structurelle de `cross`/`h`
+   elles-mêmes. Distinction importante avec le point 2&nbsp;: `star5`/
+   `comb`/`E` ne touchent PAS non plus le budget en Release (même
+   constat), mais eux n'atteignent quand même jamais `Complete` — une
+   limitation de QUALITÉ réelle, indépendante du build. `cross`/`h`
+   n'ont AUCUNE limitation résiduelle en Release (`Complete` net, aucun
+   diagnostic) : leur cas est un pur artefact de vitesse Debug, sans
+   contrepartie de qualité. **Corrigé** en
+   distinguant clairement les deux usages du budget&nbsp;: le défaut de
+   production (`max_planning_wall_clock_ms=10&nbsp;000`, calibré pour
+   l'UI interactive) reste inchangé, mais le test qui vérifie « la
+   décomposition réussit avec des ressources suffisantes » utilise
+   désormais un budget explicitement généreux (120&nbsp;000&nbsp;ms) plutôt
+   que le défaut de production — ce test n'a jamais eu vocation à valider
+   un plafond de temps, seulement la logique de décomposition elle-même.
+8. **`unresolved_residual` pouvait se vider à tort quand le budget
+   s'épuisait PENDANT une réparation de résidu** — trouvé en investiguant le
+   revert du point 6 ci-dessus (`test_autodigitize`, réseau en T réel,
+   33,8&nbsp;mm² non signalés). Hypothèse initiale erronée&nbsp;: supposer
+   que c'était le MÊME artefact Debug que `cross`/`h` (point 7) et
+   simplement remonter `max_planning_wall_clock_ms` à 20&nbsp;000 —
+   invalidée en vérifiant (§37) : le temps écoulé réel à l'échéance SUIT le
+   plafond configuré (~15,4&nbsp;s à 10&nbsp;s de plafond, ~29,6&nbsp;s à
+   20&nbsp;s de plafond) au lieu de se stabiliser, signe d'un coût qui
+   CROÎT avec le budget disponible (même famille que `comb`/`star5`/`E`),
+   pas d'un simple appel ponctuel un peu lent — remonter le plafond global
+   n'aidait donc pas ce cas (juste plus lent avant le même échec) et
+   ralentissait inutilement toute la suite sur les cas déjà pathologiques.
+   Cause racine réelle, isolée par instrumentation directe (`std::cerr`
+   temporaire dans `autodigitize.cpp`, retiré après diagnostic)&nbsp;: quand
+   le budget s'épuise PENDANT un appel de réparation, `plan_recursive`
+   applique délibérément son repli « meilleur effort local »
+   (`adequateFallback`, §7 défaut du 2026-08-14&nbsp;: ne jamais perdre une
+   pièce) et accepte une région dont la couverture interne est à peine
+   au-dessus de `min_fallback_coverage_ratio` — cette acceptation faisait
+   alors disparaître la pièce de la liste de résidu accumulée round par
+   round, sans qu'aucun round suivant n'ait la chance de re-mesurer et
+   re-signaler ce qui restait réellement non couvert À L'INTÉRIEUR de cette
+   région à peine acceptée (le round suivant s'arrête immédiatement sur
+   `budget.exceeded`). Un résidu bien réel disparaissait donc
+   silencieusement du rapport final. **Corrigé** à la source&nbsp;:
+   `create_satin_plan` dérive désormais `unresolved_residual` de la mesure
+   de couverture FINALE (déjà calculée, authoritative, sur l'état
+   réellement émis) plutôt que du bookkeeping accumulé round par round
+   pendant la boucle — qui peut devenir périmé exactement dans ce cas de
+   bord. Le plafond wall-clock par défaut reste à 10&nbsp;000&nbsp;ms
+   (inchangé, l'essai à 20&nbsp;000 n'apportait rien et a été reverté).
+   Non-régression&nbsp;: `test_autodigitize` complet + `test_satin_planning`
+   complet, Debug ET Release.
+
+### Phase 19 — Déterminisme
+
+Répétitions (5×) sur `polygonal_cut_fixture`, `two_holes`&nbsp;: nombre de
+régions, statut, couverture agrégée, `regions_explored`/
+`oracle_evaluations` identiques à chaque exécution. `deep_recursive`
+faisait initialement partie de ce test mais en a été retirée le 2026-08-17
+— mesurée non déterministe de façon reproductible sous charge machine
+soutenue (nombreuses recompilations/exécutions en arrière-plan pendant
+cette session)&nbsp;: assez proche de la limite wall-clock pour que la
+variance de charge ambiante suffise à la faire basculer d'un côté ou de
+l'autre (2 contre 3 régions observées entre deux exécutions consécutives).
+**Compromis assumé** : les formes dont le filet wall-clock (Phase 7,
+point 2) est le facteur limitant (`comb`, `star5`, `deep_recursive`, etc.)
+sont exclues de ce test — le temps écoulé réel varie d'une exécution à
+l'autre par nature, donc leur plan résultant n'est pas garanti identique à
+l'octet près. Compromis documenté (`SatinPlanConfig::
+max_planning_wall_clock_ms`) plutôt que caché&nbsp;: sécurité avant
+déterminisme parfait sur des cas déjà
+pathologiques.
+
+### Limitations connues (honnêtement documentées, trois catégories)
+
+**Limitations logicielles connues et reproduites** (corpus de torture,
+`tests/unit/satin_planning/test_torture_corpus.cpp`)&nbsp;:
+
+- Couverture/résidu agrégés insuffisants pour atteindre `Complete` sur les
+  régions à branches ou concavités nombreuses au-delà de ~4 événements de
+  détachement&nbsp;: `star5`, `asymmetric_star`, `comb`, `E`, `multi_neck`,
+  `deep_channel` — limitation de QUALITÉ de la famille de coupes actuelle,
+  confirmée indépendante du build (Debug ET Release, cf. Phase 7 point 2)
+  : ce n'est jamais un problème de lenteur en soi. En Debug (code
+  géométrique non optimisé), la génération de candidats par itération est
+  de surcroît assez lente pour épuiser le budget wall-clock AVANT même
+  d'atteindre ce plafond de qualité ; en Release, la décomposition va assez
+  vite pour s'achever naturellement, mais le résultat reste `Incomplete`
+  pour la même raison de fond. Cause isolée (génération de candidats de
+  `satin_planning::split_region`/`concavity_cuts`), correctif de fond
+  délibérément reporté (§33).
+- Aucune stratégie de décomposition pour une région à 2+ trous dont le
+  contour extérieur est convexe (`two_holes`).
+- Les coupes polygonales (§13 du plan de refonte précédent) fonctionnent
+  géométriquement mais peuvent échouer à produire des colonnes
+  satisfaisantes sur les morceaux résultants pour certaines géométries
+  (`polygonal_cut_fixture`) — limite de la couche `auto_satin`/
+  `satin_coverage`, pas du mécanisme de coupe.
+
+**Limitations textile/physiques connues**&nbsp;: aucune (ce chantier ne
+touche pas à la génération de points elle-même).
+
+**Zones non encore validées**&nbsp;: **aucun passage sur machine à broder
+réelle** — statut expérimental déjà affiché en tête de ce chapitre,
+inchangé par cette mission. Sensibilité à la résolution de rasterisation
+(§21 de la mission) non explorée faute de temps. Fuzzing procédural (§22)
+non implémenté.
+
+### Tableau de comparaison (corpus complet, 2026-08-17)
+
+Mesures **Release** (données Debug écartées&nbsp;: la Phase 7 a montré qu'un
+sous-ensemble de ces formes a un statut sensible au build — cf. points 2 et
+7 — un tableau Debug aurait donc affiché des `Impossible`/`Incomplete`
+partiellement artefactuels). Machine de développement — les colonnes
+`Régions`/`Explorées` restent indicatives, non comparables à un budget CPU
+de production.
+
+| Forme | Statut | Régions | Explorées |
+|---|---|---|---|
+| rectangle | Complete | 1 | 1 |
+| capsule | Incomplete | 1 | 1 |
+| ribbon | Incomplete | 1 | 1 |
+| s | Incomplete | 1 | 1 |
+| notch | Incomplete | 2 | 3 |
+| pinch | Incomplete | 2 | 3 |
+| t | Complete | 2 | 3 |
+| y | Complete | 2 | 3 |
+| cross | Complete | 3 | 4 |
+| h | Complete | 3 | 4 |
+| trident | Complete | 4 | 7 |
+| ring | Complete | 1 | 1 |
+| star5 | Incomplete¹ | 7 | 13 |
+| asymmetric_star | Incomplete¹ | 6 | 15 |
+| comb | Incomplete¹ | 0 | 10 |
+| E | Incomplete¹ | 0 | 10 |
+| multi_neck | Incomplete¹ | 0 | 4 |
+| deep_recursive | Incomplete (profondeur≥3) | 2 | 6 |
+| dumbbell | Incomplete | 1 | 4 |
+| deep_channel | Incomplete¹ | 0 | 2 |
+| two_holes | Impossible² | 0 | 3 |
+| ring_branch | Complete | 1 | 1 |
+| junction_with_hole | Incomplete | 3 | 8 |
+| polygonal_cut_fixture | Incomplete³ | 0 | 2 |
+
+¹ Limitation de QUALITÉ (couverture/résidu agrégés insuffisants avec la
+famille de coupes actuelle, cf. Phase 7.2-3) — confirmée indépendante du
+build (ni un artefact Debug, ni résolue par plus de budget). `cross`/`h`
+n'apparaissent PLUS dans cette catégorie&nbsp;: leur `Incomplete` mesuré en
+Debug (tableau précédent, avant vérification Release) était un artefact de
+build pur, corrigé en Phase 7 point 7 — les deux atteignent `Complete` net
+dès qu'on mesure correctement. ² Aucune famille de coupe applicable
+(contour convexe, 2+ trous, cf. Phase 7.4). ³ Coupe valide mais
+construction de colonne insatisfaisante sur les morceaux (cf. Phase 7.5).
+
+### Critères de succès de cette mission
+
+**Atteints**&nbsp;: contrat générique unique (A), statut explicite jamais
+confondu avec un succès (F), le planner ne connaît toujours aucun type
+Tatami (G), `ForcedUserChoice::Satin` ne change jamais silencieusement
+d'intention (H, déjà garanti par `SetStitchTypeCommand`), budgets bornés
+avec `Incomplete` honnête plutôt qu'un faux succès (I), corpus adversarial
+qui a réellement trouvé et documenté des limitations (J).
+
+**Partiellement atteints**&nbsp;: tous les workflows explicites passent par
+le contrat commun (B) — vrai pour la recherche, pas pour la restitution
+multi-régions de `setStitchType` (limite structurelle déjà documentée en
+Phase 1, non corrigée — changerait le contrat de `SetStitchTypeCommand`,
+hors périmètre). Récursion réelle jusqu'aux feuilles (C) — prouvée
+(profondeur ≥ 3), mais le budget peut désormais interrompre cette
+récursion avant son terme naturel sur les formes complexes. Coupes
+polygonales exercées bout en bout (D) — le mécanisme l'est, la sélection
+finale échoue sur la fixture dédiée (Phase 7.5). Formes cycliques/trouées
+testées (E) — testées, et une lacune réelle trouvée (2+ trous) plutôt que
+masquée.
+
+### Tests
+
+- `tests/unit/satin_planning/test_torture_corpus.cpp` (nouveau) — corpus
+  de torture complet, invariants génériques, déterminisme, invariance à la
+  translation.
+- `tests/unit/satin_planning/test_satin_plan.cpp` — tests dédiés au
+  contrat de statut (`SatinPlanStatus`, diagnostics, budgets).
+- Suite complète (satin_planning, autodigitize, desktop) + Debug/Release
+  sans régression sur les 4 diagnostics permanents déjà connus.
 
 ## Implémentation associée
 

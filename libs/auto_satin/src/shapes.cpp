@@ -224,6 +224,188 @@ std::optional<geometry::PathSet> make_shape(const std::string& name) {
         parts.push_back(wedge);
         return from_union(parts);
     }
+
+    // ------------------------------------------------------------------
+    // Corpus de torture (mission de durcissement du contrat SatinPlanner,
+    // 2026-08-17, §9-14) : fixtures délibérément difficiles, chacune ciblant
+    // une propriété précise du planner récursif que le corpus ci-dessus
+    // n'exerçait pas encore (5+ branches, asymétrie forte, nombreuses
+    // branches parallèles, récursion prouvée à profondeur >= 3, trous
+    // multiples, trou près d'une jonction, coupe polygonale exercée bout en
+    // bout).
+    // ------------------------------------------------------------------
+
+    if (name == "star5") {
+        // §9.1 : étoile a 5 branches egales rayonnant d'un centre commun --
+        // une seule jonction, mais a 5 voies (aucune autre fixture du corpus
+        // n'en a plus de 3) : teste que le planner produit plusieurs
+        // SatinRegions sans explosion combinatoire des candidats de coupe.
+        std::vector<Path> parts;
+        constexpr int kBranches = 5;
+        constexpr double kArmLen = 20'000.0;
+        constexpr double kHalfW = 1'800.0;
+        for (int i = 0; i < kBranches; ++i) {
+            const double angle = 2.0 * std::numbers::pi * i / kBranches - std::numbers::pi / 2.0;
+            parts.push_back(band(
+                [angle](double t) { return std::pair{kArmLen * t * std::cos(angle), kArmLen * t * std::sin(angle)}; },
+                20, kHalfW));
+        }
+        return from_union(parts);
+    }
+    if (name == "asymmetric_star") {
+        // §9.2 : memes 5 branches, mais chacune d'une longueur/largeur
+        // DIFFERENTE (longue/large, courte/fine, longue/fine, courte/large,
+        // moyenne) -- evite qu'une symetrie implicite rende le test
+        // artificiellement facile (§9.2).
+        struct Arm {
+            double angleDeg;
+            double length;
+            double halfWidth;
+        };
+        const std::vector<Arm> arms = {
+            {0.0, 25'000.0, 3'000.0}, {80.0, 10'000.0, 900.0}, {160.0, 22'000.0, 900.0},
+            {230.0, 9'000.0, 2'600.0}, {300.0, 16'000.0, 1'600.0},
+        };
+        std::vector<Path> parts;
+        for (const auto& arm : arms) {
+            const double angle = arm.angleDeg * std::numbers::pi / 180.0;
+            const double length = arm.length;
+            const double halfWidth = arm.halfWidth;
+            parts.push_back(band(
+                [angle, length](double t) { return std::pair{length * t * std::cos(angle), length * t * std::sin(angle)}; },
+                20, halfWidth));
+        }
+        return from_union(parts);
+    }
+    if (name == "comb") {
+        // §9.3 : tronc horizontal + 6 dents paralleles -- teste la
+        // recursion, le nombre de regions final, la performance, et
+        // l'explosion eventuelle du nombre de coupes candidates sur de
+        // nombreuses branches paralleles attachees au meme tronc.
+        std::vector<Path> parts;
+        constexpr double kTrunkHalfH = 2'000.0;
+        parts.push_back(rect(-2'000, -kTrunkHalfH, 42'000, kTrunkHalfH));
+        constexpr int kTeeth = 6;
+        constexpr double kToothHalfW = 900.0;
+        constexpr double kToothLen = 12'000.0;
+        for (int i = 0; i < kTeeth; ++i) {
+            const double cx = 2'000.0 + i * 7'000.0;
+            parts.push_back(rect(cx - kToothHalfW, kTrunkHalfH - 500.0, cx + kToothHalfW,
+                                 kTrunkHalfH - 500.0 + kToothLen));
+        }
+        return from_union(parts);
+    }
+    if (name == "E") {
+        // §9.4 : meme interet que "comb" mais avec plusieurs branches du
+        // MEME cote d'une colonne verticale (lettre E) -- topologie de
+        // jonctions differente d'un peigne symetrique.
+        std::vector<Path> parts{
+            rect(-2'000, -20'000, 2'000, 20'000),     // colonne verticale
+            rect(-2'000, 16'000, 16'000, 20'000),      // barre haute
+            rect(-2'000, -2'000, 13'000, 2'000),        // barre milieu
+            rect(-2'000, -20'000, 16'000, -16'000),      // barre basse
+        };
+        return from_union(parts);
+    }
+    if (name == "deep_recursive") {
+        // §9.5 : arbre de branches en cascade (tronc -> branche -> sous-
+        // branche -> sous-sous-branche) construit specifiquement pour
+        // PROUVER qu'au moins une region enfant est reellement redecoupee a
+        // son tour -- profondeur de plan >= 3 attendue sur cette fixture.
+        std::vector<Path> parts{
+            rect(0, -2'500, 30'000, 2'500),         // niveau 0 : tronc
+            rect(14'000, 0, 18'000, 20'000),          // niveau 1 : branche
+            rect(16'000, 14'000, 30'000, 18'000),       // niveau 2 : sous-branche
+            rect(26'000, 8'000, 30'000, 14'000),          // niveau 3 : sous-sous-branche
+        };
+        return from_union(parts);
+    }
+    if (name == "multi_neck") {
+        // §11 : trois masses reliees par DEUX etranglements en serie --
+        // le planner doit pouvoir considerer plusieurs coupes, pas
+        // seulement une.
+        std::vector<Path> parts{
+            circle(0, 0, 6'000, 64),      rect(4'000, -600, 16'000, 600),  circle(20'000, 0, 6'000, 64),
+            rect(24'000, -600, 36'000, 600), circle(40'000, 0, 6'000, 64),
+        };
+        return from_union(parts);
+    }
+    if (name == "dumbbell") {
+        // §10 : bras fin (1mm) -> masse large -> bras fin (1mm) -- teste si
+        // une subdivision supplementaire transforme la masse large en
+        // plusieurs regions satinables plutot qu'un simple rejet.
+        std::vector<Path> parts{
+            rect(0, -500, 17'000, 500),
+            circle(22'000, 0, 7'000, 64),
+            rect(27'000, -500, 44'000, 500),
+        };
+        return from_union(parts);
+    }
+    if (name == "deep_channel") {
+        // §12 : concavite tres profonde mais RECTANGULAIRE (un vrai canal a
+        // deux coins reflex, pas une simple pointe en V comme "notch"/
+        // "pinch") -- variante adversariale sans trou reel.
+        Path p;
+        p.closed = true;
+        p.nodes = {node(0, -8'000), node(40'000, -8'000), node(40'000, 8'000), node(24'000, 8'000),
+                  node(24'000, -4'000), node(16'000, -4'000), node(16'000, 8'000), node(0, 8'000)};
+        return single(p);
+    }
+    if (name == "two_holes") {
+        // §14 : rectangle perce de DEUX trous circulaires separes -- ni
+        // trou ne doit jamais etre rempli, traverse par une coupe invalide,
+        // ou compter comme couverture manquante.
+        PathSet ps;
+        ps.outer = rect(0, -15'000, 60'000, 15'000);
+        Path hole1 = circle(15'000, 0, 5'000);
+        std::reverse(hole1.nodes.begin(), hole1.nodes.end());
+        Path hole2 = circle(45'000, 0, 5'000);
+        std::reverse(hole2.nodes.begin(), hole2.nodes.end());
+        ps.holes.push_back(std::move(hole1));
+        ps.holes.push_back(std::move(hole2));
+        return ps;
+    }
+    if (name == "ring_branch") {
+        // §14 : anneau (memes rayons que "ring", deja valide) avec une
+        // branche supplementaire attachee a son bord EXTERIEUR -- le trou
+        // interieur reste entierement a l'ecart de la branche.
+        std::vector<Path> parts{circle(0, 0, 15'000), rect(15'000, -1'500, 30'000, 1'500)};
+        PathSet merged = from_union(parts);
+        Path hole = circle(0, 0, 8'000);
+        std::reverse(hole.nodes.begin(), hole.nodes.end());
+        merged.holes.push_back(std::move(hole));
+        return merged;
+    }
+    if (name == "junction_with_hole") {
+        // §14 : jonction en T (memes proportions que "t") avec un petit
+        // trou PRES de la confluence, pas au milieu d'une branche -- cas le
+        // plus dur pour ne jamais traverser le trou par une coupe.
+        std::vector<Path> parts{rect(-18'000, 12'000, 18'000, 17'000), rect(-2'500, -20'000, 2'500, 17'000)};
+        PathSet merged = from_union(parts);
+        Path hole = circle(0, 13'000, 1'800, 32);
+        std::reverse(hole.nodes.begin(), hole.nodes.end());
+        merged.holes.push_back(std::move(hole));
+        return merged;
+    }
+    if (name == "polygonal_cut_fixture") {
+        // §13 : ruban 100x8mm entaille de deux notches pointus sur des
+        // bords opposes DESALIGNES, obstrue par un bloc rectangulaire qui
+        // bloque specifiquement la coupe DROITE entre les deux concavites
+        // sans toucher les notches -- exact fixture qui a prouve le
+        // mecanisme de coupe polygonale bout en bout
+        // (`tests/unit/satin_planning/test_concavity_cuts.cpp`,
+        // `elbow_obstructed_hourglass_shape`), exposee ici pour qu'un test
+        // end-to-end du planner COMPLET (pas seulement `generate_concavity_
+        // cut_candidates`) puisse aussi l'exercer.
+        Path p;
+        p.closed = true;
+        p.nodes = {node(0, -4'000),      node(53'000, -4'000), node(54'000, -1'000), node(55'000, -4'000),
+                  node(100'000, -4'000), node(100'000, 4'000), node(62'000, 4'000),  node(61'000, 1'000),
+                  node(60'000, 4'000),   node(58'500, 4'000),  node(58'500, -1'500), node(56'500, -1'500),
+                  node(56'500, 4'000),   node(0, 4'000)};
+        return single(p);
+    }
+
     return std::nullopt;
 }
 

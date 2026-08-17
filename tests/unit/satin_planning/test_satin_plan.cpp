@@ -2,6 +2,7 @@
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 
+#include <algorithm>
 #include <string>
 #include <utility>
 #include <vector>
@@ -78,6 +79,99 @@ TEST_CASE("create_satin_plan : rectangle simple -- aucune decomposition inutile"
     for (const auto& r : plan.unresolved_residual) residualAreaMm2 += geometry::path_set_area_um2(r) / 1e6;
     const double sourceAreaMm2 = geometry::path_set_area_um2(shape("rectangle")) / 1e6;
     CHECK(residualAreaMm2 < 0.05 * sourceAreaMm2);
+}
+
+// §7 de la mission de durcissement du contrat (2026-08-17) : le statut
+// explicite est la seule source de verite, jamais a deduire de
+// `regions.empty()`/`unresolved_residual.empty()`.
+TEST_CASE("create_satin_plan : rectangle simple -- statut Complete, aucun diagnostic, exploration mesuree") {
+    const auto plan = create_satin_plan(shape("rectangle"), prod_config());
+    CHECK(plan.status == SatinPlanStatus::Complete);
+    CHECK(to_string(plan.status) == "Complete");
+    CHECK(plan.diagnostics.empty());
+    // Au moins une region tentee (la source elle-meme) et au moins une
+    // evaluation d'oracle -- une region deja simple n'a pas besoin de
+    // decomposition, mais `regions_explored` doit refleter la tentative
+    // reelle du solveur local, jamais rester a zero par omission.
+    CHECK(plan.regions_explored >= 1);
+}
+
+TEST_CASE("create_satin_plan : forme branchee -- statut jamais Impossible, exploration reellement mesuree") {
+    const auto plan = create_satin_plan(shape("t"), prod_config());
+    REQUIRE(plan.aggregate_coverage.has_value());
+    // Une forme du corpus courant, avec un budget par defaut tres large, ne
+    // doit jamais atteindre `Impossible` -- reserve aux cas de budget epuise
+    // ET territoire massivement non couvert (cf. tests dedies au budget
+    // ci-dessous). `aggregate_coverage->passed` utilise les seuils STRICTS
+    // de l'analyseur (calibres pour la decision interne "redecouper ou
+    // accepter" pendant la recursion) -- distinct du critere de completude
+    // du plan (`SatinPlanConfig::complete_min_raw_coverage`, deliberement
+    // plus tolerant a la couverture BRUTE) : le statut peut donc etre
+    // Complete ici meme quand `passed` est faux, precisement parce que les
+    // deux notions sont distinctes par conception.
+    CHECK(plan.status != SatinPlanStatus::Impossible);
+    // Une forme branchee decompose reellement : plus d'une region tentee.
+    CHECK(plan.regions_explored > 1);
+    CHECK(plan.oracle_evaluations >= 1);
+}
+
+TEST_CASE("create_satin_plan : budget d'exploration mineur -- Incomplete ou Impossible, jamais un faux Complete") {
+    // Budget delibrement trop petit pour qu'une forme branchee (au moins
+    // deux niveaux de decoupe necessaires) puisse aboutir -- verifie que le
+    // planner s'arrete PROPREMENT (statut honnete + diagnostic explicite)
+    // plutot que de fabriquer un succes en coupant court silencieusement.
+    auto budgetConfig = prod_config();
+    budgetConfig.max_total_regions = 1;
+    budgetConfig.max_planning_iterations = 1;
+
+    const auto plan = create_satin_plan(shape("trident"), budgetConfig);
+    CHECK(plan.status != SatinPlanStatus::Complete);
+    const bool hasBudgetDiagnostic =
+        std::any_of(plan.diagnostics.begin(), plan.diagnostics.end(),
+                    [](const PlanningDiagnostic& d) { return d.code == "SearchBudgetExceeded"; });
+    CHECK(hasBudgetDiagnostic);
+    CHECK(plan.regions_explored <= budgetConfig.max_planning_iterations);
+}
+
+TEST_CASE("create_satin_plan : budget genereux -- jamais atteint sur le corpus habituel, aucun diagnostic parasite") {
+    // Ancre de non-regression inverse du test precedent : DONNE assez de
+    // ressources, le budget ne doit JAMAIS se declencher sur le corpus de
+    // formes existant -- sinon le mecanisme casserait silencieusement des
+    // plans qui reussissaient deja avant son introduction.
+    //
+    // Defaut reel trouve puis CORRIGE le 2026-08-17 : ce test utilisait
+    // d'abord `prod_config()` telle quelle (budget PAR DEFAUT, calibre pour
+    // la reactivite interactive -- `max_planning_wall_clock_ms=10000`) --
+    // "cross" puis "h" (mesures sur des executions differentes, toutes deux
+    // 100% reproductibles isolement) ont alors declenche le budget en Debug
+    // (~10,5-11s pour un seul appel de generation de candidats sur UNE
+    // jonction), alors qu'un test Release identique les resout tous les
+    // deux en `Complete`, sans le moindre diagnostic de budget. Cause
+    // racine confirmee empiriquement (pas supposee) : la marge du budget
+    // PAR DEFAUT (dimensionnee pour l'usage interactif Release) est trop
+    // etroite face au ralentissement Debug (code geometrique non optimise,
+    // Clipper2 compile sans optimisations) -- un artefact de configuration
+    // de build, PAS une limitation architecturale du planner (a la
+    // difference de star5/comb/E/multi_neck/deep_channel, qui restent
+    // couteuses meme en Release, cf. leurs tests dedies). Corrige en
+    // donnant a CE test precis un budget explicitement genereux, decouple
+    // du defaut de production -- ce test verifie que la DECOMPOSITION
+    // reussit avec des ressources suffisantes, pas que le defaut de
+    // production suffit sur toutes les configurations de build.
+    auto generousConfig = prod_config();
+    generousConfig.max_planning_wall_clock_ms = 120'000;
+    for (const std::string& name : {"rectangle", "t", "y", "cross", "h", "trident", "ring"}) {
+        INFO("forme = " << name);
+        const auto plan = create_satin_plan(shape(name), generousConfig);
+        const bool hasBudgetDiagnostic =
+            std::any_of(plan.diagnostics.begin(), plan.diagnostics.end(),
+                        [](const PlanningDiagnostic& d) { return d.code == "SearchBudgetExceeded"; });
+        INFO("regions_explored=" << plan.regions_explored << " oracle_evaluations=" << plan.oracle_evaluations);
+        std::string diagDump;
+        for (const auto& d : plan.diagnostics) diagDump += d.code + ": " + d.message + " | ";
+        INFO("diagnostics = " << diagDump);
+        CHECK_FALSE(hasBudgetDiagnostic);
+    }
 }
 
 TEST_CASE("create_satin_plan : reseau en T -- decomposition automatique, intention preservee") {

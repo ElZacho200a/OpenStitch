@@ -73,118 +73,17 @@ struct AutoResult {
                                                IdGenerator<ObjectId>& ids,
                                                const AutoOptions& options);
 
-// Convertit une colonne squelette (`auto_satin::SatinColumnGeometry`, mode
-// Legacy, OU `auto_satin::ParametricSatinObject`, mode Parametric — mêmes
-// noms de champs rail_a/rail_b/rungs/section_*/*_junction, cf.
-// libs/auto_satin/include/openstitch/auto_satin/satin_column.hpp) en
-// `document::SatinParams`. Point de conversion UNIQUE partagé par
-// l'autonumérisation (ci-dessus) et les créations satin manuelles
-// (apps/desktop) — `stitch_generation::fill_satin_columns` aplatit
-// `rail_a`/`rail_b` (Bézier ou polyligne dense indifféremment) à la demande,
-// donc un seul point d'entrée suffit pour les deux modes.
-template <typename ColumnLike>
-[[nodiscard]] document::SatinParams satin_params_from_column(const ColumnLike& col, Micrometers density,
-                                                              Micrometers pull_compensation,
-                                                              bool center_underlay,
-                                                              Micrometers max_width) {
-    document::SatinParams sp;
-    sp.rail_a = col.rail_a;
-    sp.rail_b = col.rail_b;
-    sp.density = density;
-    sp.pull_compensation = pull_compensation;
-    sp.center_underlay = center_underlay;
-    sp.max_width = max_width;
-    sp.rungs.reserve(col.rungs.size());
-    for (const auto& rung : col.rungs) {
-        sp.rungs.push_back(document::SatinRung{rung.a, rung.b});
-    }
-    if (col.section_count > 1 || col.start_junction || col.end_junction) {
-        sp.topology = document::SatinSectionTopology{col.section_index, col.section_count,
-                                                     col.start_junction, col.end_junction};
-    }
-    return sp;
-}
-
-// Une section satin déjà convertie en géométrie éditable
-// (`document::SatinParams`) et en bande approximative de la surface qu'elle
-// couvre (utile à l'appelant pour calculer un éventuel repli, ex. tatami sur
-// le reliquat non couvert). Vue UNIFORME sur `auto_satin::SatinColumnGeometry`
-// (Legacy) et `auto_satin::ParametricSatinObject` (Parametric).
-struct BuiltSatinSection {
-    document::SatinParams params;
-    geometry::Path strip;
-};
-
-// Résultat de `build_satin_sections` : les sections construites, plus le
-// contexte nécessaire pour un aperçu ou un diagnostic côté appelant.
-//
-// Contrat (§1-33 du plan de refonte satin, 2026-08-14) : quand SATIN est
-// l'intention (forcée par l'utilisateur ou recommandée automatiquement), ce
-// module ne décide JAMAIS de la remplacer par du tatami ni de rien refuser
-// silencieusement. `sections` porte tout ce qui a pu être satisfait ;
-// `unresolved_residual` porte, honnêtement, tout ce qui ne l'a pas été
-// (géométrie brute, jamais transformée) -- c'est à l'APPELANT de décider
-// quoi faire du résidu (proposer un choix à l'utilisateur, ou, pour un
-// pipeline automatique sans utilisateur présent, appliquer une politique de
-// repli explicite et non silencieuse, cf. `auto_digitize` ci-dessus).
-struct SatinBuildReport {
-    std::vector<BuiltSatinSection> sections;
-    // Vrai si la région a nécessité une décomposition (planner récursif,
-    // `satin_planning::create_satin_plan` -- au moins une région du plan a
-    // une profondeur > 0, ou vient de la réparation de résidu). Faux si le
-    // solveur local a suffi tel quel sur la région entière.
-    bool used_sgsd{false};
-    // Vrai si `unresolved_residual` est non vide -- conservé pour
-    // compatibilité avec les appelants existants qui ne consultent que ce
-    // booléen ; `unresolved_residual` porte l'information complète.
-    bool structural_gap{false};
-    // Composantes manquantes significatives qu'AUCUNE tentative de
-    // réparation récursive n'a pu résoudre (§12/§17/§18 du plan de refonte) :
-    // géométrie brute, jamais convertie en tatami ni en quoi que ce soit par
-    // ce module. Un appelant qui les ignore silencieusement reproduirait
-    // exactement le défaut que ce contrat existe pour éliminer.
-    std::vector<geometry::PathSet> unresolved_residual;
-    // Couverture mesurée sur la région SOURCE entière (union de toutes les
-    // sections produites) -- absent si jamais mesurée (aucune section
-    // produite).
-    std::optional<satin_coverage::SatinCoverageReport> aggregate_coverage;
-    std::vector<std::string> warnings;
-    // Diagnostic de satinabilité de la région ENTIÈRE, calculé une seule
-    // fois en amont -- toujours renseigné sauf échec d'analyse pur (forme
-    // dégénérée). Utile pour un aperçu utilisateur (statut, largeurs, nombre
-    // de branches) même quand la région a ensuite été décomposée en
-    // plusieurs sous-régions.
-    std::optional<auto_satin::SatinabilityReport> whole_region_report;
-    // Message de refus si `sections` est vide (rien n'a pu être construit du
-    // tout) -- vide si `sections` est non vide, même si `unresolved_residual`
-    // ne l'est pas (couverture partielle, pas un refus total).
-    std::string refusal;
-};
-
-// Construit réellement les colonnes satin sur `region` en passant par le
-// planner récursif unifié (`satin_planning::create_satin_plan`,
-// `libs/satin_planning`) : tente le solveur local, mesure sa couverture
-// réelle, et décompose puis replanifie RÉCURSIVEMENT chaque sous-région tant
-// que la couverture mesurée ne suffit pas — une région fille encore
-// médiocre peut elle-même être redécoupée (§10 du plan de refonte satin,
-// 2026-08-14), contrairement à l'ancienne décomposition à une seule passe.
-// Une passe de réparation de résidu tente ensuite de replanifier toute
-// composante manquante significative comme une nouvelle région (§17).
-//
-// Ne produit JAMAIS de repli automatique (tatami ou autre) : ce qui reste
-// non résolu après ce processus est exposé tel quel dans
-// `SatinBuildReport::unresolved_residual`, jamais silencieusement comblé
-// (§12 du plan de refonte -- « aucun fallback silencieux vers tatami »).
-//
-// Point d'entrée UNIQUE partagé par l'auto-numérisation (`auto_digitize`
-// ci-dessus) et la création satin manuelle (`apps/desktop/main_window.cpp`)
-// — mêmes garanties partout, un seul endroit à faire évoluer.
-// `warningLabel`, si non vide, préfixe chaque message de `warnings` (ex.
-// "Région 12" côté auto-numérisation).
-[[nodiscard]] SatinBuildReport build_satin_sections(const geometry::PathSet& region,
-                                                    const auto_satin::SatinColumnsParameters& genParams,
-                                                    Micrometers density, Micrometers pullCompensation,
-                                                    bool centerUnderlay, Micrometers maxWidth,
-                                                    const std::string& warningLabel = {});
+// `satin_params_from_column`, `BuiltSatinSection`, `SatinBuildReport` et
+// `build_satin_sections` vivaient ici jusqu'au 2026-08-17 (§4 de la mission
+// de durcissement du contrat SatinPlanner) : cet adaptateur generique
+// (`SatinPlan` -> sections satin editables) ne dependait d'AUCUNE primitive
+// d'auto-classification d'image, ce qui forçait pourtant tout appelant
+// (notamment les creations satin manuelles du desktop) a lier ce module
+// entier -- accident historique, corrige par le deplacement vers
+// `openstitch::satin_planning` (`openstitch/satin_planning/satin_sections.hpp`,
+// inclus par `autodigitize.cpp`, jamais par ce header -- ce module reste un
+// simple appelant, sans raison d'exposer ce type a SES propres consommateurs).
+// `auto_digitize` reste le seul appelant ICI, au meme titre que n'importe
+// quel autre consommateur desormais.
 
 }  // namespace openstitch::autodigitize

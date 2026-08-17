@@ -10,9 +10,8 @@
 #include "openstitch/auto_satin/satin_column.hpp"
 #include "openstitch/geometry/boolean.hpp"
 #include "openstitch/geometry/offset.hpp"
-#include "openstitch/geometry/polyline.hpp"
 #include "openstitch/geometry/simplify.hpp"
-#include "openstitch/satin_planning/satin_plan.hpp"
+#include "openstitch/satin_planning/satin_sections.hpp"
 #include "openstitch/stitch_generation/satin.hpp"
 #include "openstitch/vectorization/vectorize.hpp"
 
@@ -36,28 +35,6 @@ double net_area_um2(const geometry::PathSet& set) {
         area -= std::abs(geometry::signed_area_um2(hole));
     }
     return std::max(0.0, area);
-}
-
-// Polygone approximatif de la bande couverte par une colonne satin (rail A
-// aller, rail B retour), pour calculer la zone qu'une branche de squelette
-// REJETÉE (§ audit lettres, docs/source/satin.md) laisse sans point. Les
-// rails sont aplatis (`geometry::flatten`) : un rail paramétrique est une
-// courbe de Bézier éparse, jamais une polyligne dense.
-template <typename ColumnLike>
-geometry::Path column_strip(const ColumnLike& column) {
-    constexpr Micrometers kFlattenTolerance{30};  // 0,03 mm : sous la résolution DST
-    const auto flatA = geometry::flatten(column.rail_a, kFlattenTolerance);
-    const auto flatB = geometry::flatten(column.rail_b, kFlattenTolerance);
-    geometry::Path strip;
-    strip.closed = true;
-    strip.nodes.reserve(flatA.points.size() + flatB.points.size());
-    for (const auto& pt : flatA.points) {
-        strip.nodes.push_back({pt, geometry::NodeType::Corner, std::nullopt, std::nullopt});
-    }
-    for (auto it = flatB.points.rbegin(); it != flatB.points.rend(); ++it) {
-        strip.nodes.push_back({*it, geometry::NodeType::Corner, std::nullopt, std::nullopt});
-    }
-    return strip;
 }
 
 // RÉTRÉCIT légèrement chaque bande avant de l'utiliser comme découpe pour le
@@ -92,105 +69,7 @@ std::vector<geometry::Path> shrink_strips_for_cutout(const std::vector<geometry:
     return out;
 }
 
-template <typename ColumnLike>
-BuiltSatinSection make_section(const ColumnLike& col, Micrometers density, Micrometers pullCompensation,
-                               bool centerUnderlay, Micrometers maxWidth) {
-    BuiltSatinSection out;
-    out.params = satin_params_from_column(col, density, pullCompensation, centerUnderlay, maxWidth);
-    out.strip = column_strip(col);
-    return out;
-}
-
-std::vector<BuiltSatinSection> sections_from_result(const auto_satin::SatinColumnsResult& built, Micrometers density,
-                                                    Micrometers pullCompensation, bool centerUnderlay,
-                                                    Micrometers maxWidth) {
-    std::vector<BuiltSatinSection> out;
-    if (!built.parametric_columns.empty()) {
-        out.reserve(built.parametric_columns.size());
-        for (const auto& c : built.parametric_columns) {
-            out.push_back(make_section(c, density, pullCompensation, centerUnderlay, maxWidth));
-        }
-    } else {
-        out.reserve(built.columns.size());
-        for (const auto& c : built.columns) {
-            out.push_back(make_section(c, density, pullCompensation, centerUnderlay, maxWidth));
-        }
-    }
-    return out;
-}
-
 }  // namespace
-
-SatinBuildReport build_satin_sections(const geometry::PathSet& region,
-                                      const auto_satin::SatinColumnsParameters& genParams, Micrometers density,
-                                      Micrometers pullCompensation, bool centerUnderlay, Micrometers maxWidth,
-                                      const std::string& warningLabel) {
-    SatinBuildReport report;
-    const std::string prefix = warningLabel.empty() ? std::string() : (warningLabel + " : ");
-
-    const auto analysis = auto_satin::analyze_region(region, genParams.analysis);
-    if (analysis) {
-        report.whole_region_report = analysis->report;
-    }
-
-    // Planner récursif unifié (§32 du plan de refonte satin, 2026-08-14) :
-    // seul point d'appel restant vers `libs/satin_planning` -- plus de
-    // décomposition à une seule passe ici, `create_satin_plan` gère
-    // lui-même la récursion, la mesure de couverture et la réparation de
-    // résidu.
-    satin_planning::SatinPlanConfig planConfig;
-    planConfig.genParams = genParams;
-    planConfig.density = density;
-    const satin_planning::SatinPlan plan = satin_planning::create_satin_plan(region, planConfig);
-
-    for (const auto& w : plan.warnings) {
-        report.warnings.push_back(prefix + w);
-    }
-
-    report.sections.reserve(plan.regions.size());
-    for (const auto& r : plan.regions) {
-        if (r.depth > 0 || r.from_residual_repair) {
-            report.used_sgsd = true;
-        }
-        auto secs = sections_from_result(r.columns, density, pullCompensation, centerUnderlay, maxWidth);
-        for (auto& s : secs) report.sections.push_back(std::move(s));
-    }
-
-    // Le résidu reste une géométrie BRUTE, complète et JAMAIS filtrée --
-    // c'est à l'appelant de décider quoi en faire (§12 du plan de refonte :
-    // « aucun fallback silencieux vers tatami »). `create_satin_plan` ne
-    // filtre déjà plus les composantes individuellement négligeables hors de
-    // ce résidu (défaut réel trouvé et corrigé le 2026-08-14 : de nombreux
-    // petits reliquats "négligeables" un par un peuvent s'additionner en un
-    // vrai trou de plusieurs centaines de mm² sur une forme complexe, § docs/
-    // source/satin.md) -- il ne fait plus que décider quelles composantes
-    // méritent une TENTATIVE de réparation individuelle, jamais ce qui est
-    // rapporté.
-    report.unresolved_residual = plan.unresolved_residual;
-    if (plan.aggregate_coverage) {
-        report.aggregate_coverage = *plan.aggregate_coverage;
-    }
-
-    // `structural_gap` est un raccourci booléen pour les appelants qui ne
-    // veulent pas inspecter `unresolved_residual` en détail : significatif
-    // au sens AGRÉGÉ (somme de toutes les composantes manquantes, jamais une
-    // composante isolée), avec le même seuil mixte fixe+proportionnel que le
-    // reste du pipeline (tolère le reliquat naturel d'une pointe/jonction,
-    // même minuscule, sans le confondre avec un vrai trou -- mais une SOMME
-    // de nombreux petits reliquats reste, elle, correctement signalée).
-    double residualAreaMm2 = 0.0;
-    for (const auto& piece : report.unresolved_residual) residualAreaMm2 += net_area_um2(piece) / 1e6;
-    const double totalAreaMm2 = net_area_um2(region) / 1e6;
-    constexpr double kGapThresholdFloorMm2 = 1.0;
-    constexpr double kGapThresholdRatio = 0.03;
-    report.structural_gap = residualAreaMm2 > std::max(kGapThresholdFloorMm2, kGapThresholdRatio * totalAreaMm2);
-
-    if (report.sections.empty()) {
-        report.refusal = "aucune colonne satin n'a pu être construite";
-    }
-
-    return report;
-}
 
 Result<AutoResult> auto_digitize(const segmentation::Segmentation& seg,
                                  IdGenerator<ObjectId>& ids, const AutoOptions& options) {
@@ -298,13 +177,13 @@ Result<AutoResult> auto_digitize(const segmentation::Segmentation& seg,
             // manuelles (apps/desktop/main_window.cpp) : SGSD sur une région
             // branchée, repli interne sur l'appel direct sinon -- mêmes
             // garanties de couverture partout (§ build_satin_sections).
-            SatinBuildReport built = build_satin_sections(main, satinOptions, defaults.density,
-                                                          defaults.pull_compensation, defaults.center_underlay,
-                                                          options.satin_max_width, "Région " + std::to_string(id.value));
+            satin_planning::SatinBuildReport built = satin_planning::build_satin_sections(
+                main, satinOptions, defaults.density, defaults.pull_compensation, defaults.center_underlay,
+                options.satin_max_width, "Région " + std::to_string(id.value));
             for (auto& w : built.warnings) {
                 result.warnings.push_back(std::move(w));
             }
-            std::vector<BuiltSatinSection>& sections = built.sections;
+            std::vector<satin_planning::BuiltSatinSection>& sections = built.sections;
             const bool structuralGap = built.structural_gap;
 
             const std::size_t sectionCount = sections.size();

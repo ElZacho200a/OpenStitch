@@ -119,6 +119,165 @@ struct SatinPlanConfig {
     bool use_concavity_cuts{true};
     ConcavityCutParams concavityCutParams{};
     std::size_t concavity_cut_beam_width{6};
+
+    // Budgets d'exploration EXPLICITES (mission de durcissement du contrat,
+    // 2026-08-17, §18) : `max_recursion_depth` ci-dessus borne deja la
+    // PROFONDEUR d'une branche individuelle, mais rien ne bornait jusqu'ici
+    // le VOLUME total de travail sur tout l'arbre de recursion -- une forme
+    // suffisamment pathologique (beaucoup de jonctions, beaucoup de
+    // reparations de residu) pouvait explorer un nombre de regions non
+    // borne. Quand un budget est atteint, le planner s'arrete proprement et
+    // rapporte honnetement `SatinPlanStatus::Incomplete` (raison
+    // `SearchBudgetExceeded` dans `SatinPlan::diagnostics`) -- jamais un
+    // `Complete` fabrique en coupant court silencieusement.
+    // Defauts abaisses (2026-08-17, corpus de torture) : une jonction a
+    // HAUT DEGRE (5+ branches se rejoignant en UN SEUL point, ex. fixture
+    // "star5") s'est reveleee couteuse par ITERATION (generation de
+    // candidats de coupe du planner, plusieurs secondes par tentative,
+    // meme a `beam_width=1`) -- un budget en NOMBRE d'iterations calibre
+    // pour des regions "simples" (§ ancien defaut 500) pouvait donc encore
+    // representer plusieurs MINUTES dans le pire cas. Cause isolee (§33 :
+    // le solveur local seul, `auto_satin::build_satin_columns`, reste
+    // rapide sur la meme forme -- moins d'une seconde) mais NON corrigee a
+    // la racine (generation de candidats de `satin_planning::split_region`
+    // sur une jonction a haut degre) : correctif architectural identifie
+    // mais delibereement reporte, cf. §33 de la mission ("ne pas patcher
+    // opportunement le generateur/le planner sous la pression d'une seule
+    // fixture, sans l'avoir clairement classe"). En attendant, ces defauts
+    // bornent le temps TOTAL raisonnablement, quitte a rapporter Incomplete
+    // plus tot sur les formes a jonction a haut degre -- jamais a laisser
+    // tourner indefiniment.
+    int max_total_regions{40};
+    int max_planning_iterations{60};
+    // Filet de securite EN PLUS des compteurs deterministes ci-dessus
+    // (§18 : "ne pas utiliser le temps wall-clock comme SEULE limite dans
+    // les tests deterministes" -- ceci n'en est PAS la seule limite, juste
+    // une garde-fou supplementaire de defense en profondeur) : borne le
+    // temps mur total d'un appel a `create_satin_plan`, quel que soit le
+    // cout reel par iteration -- jamais de dependance UNIQUE au nombre
+    // d'iterations pour borner le temps, qui s'est reveleee insuffisante en
+    // pratique (cf. commentaire ci-dessus).
+    //
+    // COMPROMIS DE DETERMINISME ASSUME (§19 de la mission) : pour une forme
+    // dont ce filet wall-clock est effectivement le facteur limitant (le
+    // temps ecoule reel varie d'une execution a l'autre, contrairement aux
+    // compteurs deterministes ci-dessus), le plan resultant N'EST PAS
+    // garanti identique a l'octet pres entre deux executions -- compromis
+    // deliberement accepte (securite avant determinisme parfait sur les cas
+    // deja pathologiques), documente honnetement plutot que cache. Les
+    // formes qui NE declenchent JAMAIS ce filet (l'immense majorite du
+    // corpus) restent entierement deterministes.
+    // Essaye brievement a 20'000 le 2026-08-17 (raisonnement initial :
+    // couvrir la marge Debug observee sur "cross"/"h", cf. docs/source/
+    // satin.md) puis REVERTE a 10'000 -- verifie empiriquement (§37, ne pas
+    // supposer) que ce raisonnement ne s'appliquait PAS a toutes les
+    // formes : sur le reseau en T de `test_autodigitize`, le temps ecoule
+    // reel a la limite SUIT le plafond configure (~15,4s a 10s de plafond,
+    // ~29,6s a 20s de plafond) au lieu de se stabiliser -- signe d'un cout
+    // qui CROIT avec le budget disponible (meme famille que comb/star5/E),
+    // pas d'un simple appel ponctuel un peu lent (contrairement a
+    // "cross"/"h", qui eux se stabilisent). Augmenter le plafond global
+    // n'aide donc PAS ce genre de cas (juste plus lent avant le meme
+    // echec), et ralentit inutilement toute la suite de tests sur les cas
+    // deja pathologiques. Le vrai defaut revele par ce cas (`unresolved_
+    // residual` qui peut se vider a tort quand le budget s'epuise PENDANT
+    // une reparation de residu) est corrige a la source (cf. `create_satin_
+    // plan`, derivation de `unresolved_residual` depuis la mesure finale)
+    // plutot que masque en repoussant le plafond.
+    int max_planning_wall_clock_ms{10'000};
+    // §18 de la mission de durcissement du contrat (2026-08-17) : borne le
+    // cout de `OracleGuidedSelector`, le selecteur PAR DEFAUT de chaque
+    // decomposition -- documente lui-meme (beam_search.hpp) comme
+    // "reserve a un usage hors ligne (CLI de debug, tests), jamais au
+    // chemin interactif", car son cout est `beam_width` generations+mesures
+    // COMPLETES PAR evenement de detachement. Defaut reel trouve via le
+    // corpus de torture (2026-08-17, fixture "comb", 6 jonctions) : une
+    // seule tentative de decomposition prenait plusieurs dizaines de
+    // secondes -- ce cout croit avec le nombre d'evenements de detachement,
+    // donc avec le nombre de jonctions de la region, sans jamais avoir ete
+    // borne jusqu'ici. `beam_width` est le reglage utilise quand la region a
+    // PEU de jonctions (qualite de decoupe maximale, cout deja verifie
+    // acceptable sur tout le corpus existant) ; au-dela de
+    // `max_junctions_for_full_beam_search`, le beam_width effectif retombe a
+    // 1 (le premier candidat valide construit, jamais un choix aveugle
+    // avant construction -- seulement moins de candidats compares). Compare
+    // au PLUS GRAND de `graph.junction_count()` (noeuds de jonction) et de
+    // `DecompositionReport::paths.size()` (evenements de detachement
+    // reellement traites) -- une etoile a 5 branches n'a qu'un seul noeud
+    // de jonction mais 5 chemins, donc `junction_count()` seul sous-estime
+    // le cout reel sur cette topologie precise.
+    std::size_t beam_width{3};
+    std::size_t max_junctions_for_full_beam_search{4};
+    // Garde-fou GLOBAL supplementaire (§18) : meme sur une region locale
+    // simple, un plan qui a deja beaucoup decompose (ex. une etoile a 5
+    // branches, decomposee par coupes PAIRE-A-PAIRE successives -- chaque
+    // sous-region issue d'une coupe peut redevenir "simple" localement tout
+    // en faisant partie d'un arbre de decomposition deja couteux) retombe a
+    // `beam_width=1` au-dela de ce nombre total d'evaluations a pleine
+    // qualite deja effectuees DANS CE PLAN -- le seuil local seul
+    // (`max_junctions_for_full_beam_search`) ne suffisait pas a borner le
+    // cout CUMULE sur ce cas reel (fixture "star5", corpus de torture
+    // 2026-08-17 : encore ~16s apres le premier correctif, seule la racine
+    // depassait le seuil local, chaque sous-decomposition ulterieure
+    // redemarrant a beam_width plein).
+    int max_oracle_evaluations_at_full_beam_width{5};
+
+    // Seuil de couverture GLOBALE pour le verdict `SatinPlanStatus::Complete`
+    // (mission de durcissement du contrat, 2026-08-17) -- DELIBEREMENT
+    // DISTINCT de `coverageConfig.min_core_coverage`/`min_raw_coverage`
+    // (utilises pendant la RECURSION pour decider si une region individuelle
+    // merite d'etre acceptee telle quelle ou redecoupee, volontairement
+    // stricts pour encourager une meilleure decomposition tant qu'elle reste
+    // possible). Defaut trouve necessaire empiriquement (2026-08-17) : meme
+    // un rectangle simple, sans aucun defaut de generation, ne franchit pas
+    // le seuil de couverture COEUR de `coverageConfig` (0,98995 mesure contre
+    // 0,995 requis -- residu naturel aux coins, cf. `docs/source/satin.md`,
+    // §13 : "ne jamais considerer 99,5% comme une constante universelle").
+    // Utilise la couverture BRUTE (moins sensible a ce residu ponctuel que la
+    // couverture coeur) sur la region SOURCE entiere.
+    double complete_min_raw_coverage{0.95};
+};
+
+// §6-7 de la mission de durcissement du contrat (2026-08-17) : verdict
+// EXPLICITE du planner, jamais a deduire indirectement de
+// `regions.empty()`/`unresolved_residual.empty()`. Un appelant qui ignore ce
+// champ et ne regarde que `regions` ne peut plus confondre un plan
+// INCOMPLET avec un succes.
+enum class SatinPlanStatus {
+    // Toutes les conditions A-E (cf. `SatinPlan::status`) sont satisfaites :
+    // aucun residu au-dela du seuil de significativite de la reparation
+    // (meme seuil que `residual_repair_min_area_mm2`/`_ratio`, §A), chaque
+    // feuille produit reellement des colonnes (§B), couverture BRUTE globale
+    // suffisante -- `SatinPlanConfig::complete_min_raw_coverage`, mesuree sur
+    // la region SOURCE entiere, jamais une moyenne par region (§C), aucun
+    // trou local disproportionne -- `max_gap_radius_mm` de la couverture
+    // agregee (§D), aucune geometrie invalide detectee -- rails croises
+    // (§E).
+    Complete,
+    // Au moins une condition manque, mais le planner a produit un resultat
+    // partiel exploitable (des `regions` existent, ou existeraient si
+    // l'appelant le souhaite) -- le cas normal d'un territoire trop complexe
+    // pour etre entierement resolu avec les budgets/seuils configures. C'est
+    // a l'appelant de decider (continuer partiel / tatami pour le reliquat /
+    // annuler) -- jamais a ce module.
+    Incomplete,
+    // Extremement rare, cf. mission §6 : budget de recherche EPUISE ET
+    // territoire significatif encore non representable en toute securite.
+    // PAS "le solveur local direct a rejete le polygone d'origine" (ca,
+    // c'est le cas normal qui declenche la decomposition) -- uniquement une
+    // exploration reelle et bornee qui n'a pas suffi.
+    Impossible,
+};
+
+[[nodiscard]] std::string to_string(SatinPlanStatus status);
+
+// Diagnostic structure -- code court + message exploitable, jamais une
+// simple chaine opaque perdue dans `SatinPlan::warnings` (qui reste reservee
+// aux avertissements du solveur local). Codes stables utilises a ce jour :
+// "SearchBudgetExceeded", "InvalidGeometryDetected".
+struct PlanningDiagnostic {
+    std::string code;
+    std::string message;
 };
 
 // Une region finale du plan : geometrie STRUCTURELLE (jamais modifiee pour
@@ -194,6 +353,25 @@ struct SatinPlan {
     // garantie "jamais silencieux" que le reste du pipeline satin).
     std::vector<std::string> warnings;
     std::string diagnostic;
+
+    // §6-7 de la mission de durcissement du contrat (2026-08-17) : verdict
+    // explicite, calcule une seule fois en fin de `create_satin_plan` a
+    // partir des criteres A-E documentes sur `SatinPlanStatus`. Ne JAMAIS
+    // inferer le succes autrement (ex. `regions.empty()`) -- ce champ est la
+    // seule source de verite.
+    SatinPlanStatus status{SatinPlanStatus::Incomplete};
+    std::vector<PlanningDiagnostic> diagnostics;
+
+    // Metriques d'exploration (§25 : rapport de qualite), approximatives par
+    // construction -- `regions_explored` compte chaque appel a
+    // `plan_recursive` (chaque tentative de solveur local sur une region,
+    // acceptee ou non) ; `oracle_evaluations` compte chaque TENTATIVE de
+    // decomposition guidee par l'oracle (un appel a `split_region` avec
+    // beam search, ou a `select_best_concavity_cut`), pas chaque candidat
+    // individuel evalue en son sein (ce compte plus fin resterait interne
+    // au beam search lui-meme).
+    int regions_explored{0};
+    int oracle_evaluations{0};
 };
 
 // Point d'entree UNIQUE du planner satin (§32 du plan de refonte, 2026-08-14) :

@@ -53,6 +53,7 @@
 
 #include "openstitch/auto_satin/satin_column.hpp"
 #include "openstitch/autodigitize/autodigitize.hpp"
+#include "openstitch/satin_planning/satin_sections.hpp"
 #include "openstitch/commands/project_commands.hpp"
 #include "openstitch/core/app_info.hpp"
 #include "openstitch/document/canvas.hpp"
@@ -3334,7 +3335,7 @@ void MainWindow::createSatinObject() {
     }
 
     // Décomposition guidée par squelette (SGSD, `libs/satin_planning`) via
-    // `autodigitize::build_satin_sections` — même point d'entrée que
+    // `satin_planning::build_satin_sections` — même point d'entrée que
     // l'auto-numérisation, gère les formes concaves/branchues sans faire
     // sortir les barreaux de la région (cf. docs/source/satin.md, § Rails
     // automatiques : l'heuristique naïve rails_from_contour — deux sommets
@@ -3344,26 +3345,61 @@ void MainWindow::createSatinObject() {
     // fonction partagée. La densité/compensation/sous-couche du dialogue
     // n'affecte pas la géométrie des rails — construite ici avec les valeurs
     // par défaut, réappliquée après le dialogue plutôt que de relancer tout
-    // le calcul (potentiellement coûteux : recherche à faisceau). L'heuristique
-    // naïve ne sert plus que de repli ultime, sur une forme trop
-    // simple/dégénérée pour que rien ne soit construit.
+    // le calcul (potentiellement coûteux : recherche à faisceau).
+    //
+    // §3/§4 de la mission de durcissement du contrat SatinPlanner
+    // (2026-08-17) : l'ancien repli sur `rails_from_contour` (heuristique
+    // naïve, débordante sur les formes concaves/branchues, cf. commentaire
+    // ci-dessus) a été supprimé sur ce chemin `ForcedUserChoice::Satin` --
+    // il substituait silencieusement une géométrie de qualité inférieure
+    // sans jamais consulter le planner récursif + réparation de résidu (qui
+    // AURAIT dû être la seule tentative). Un plan sans la moindre section
+    // (§6 : cas Incomplete/Impossible) est désormais traité honnêtement,
+    // pas contourné.
     auto_satin::SatinColumnsParameters skeletonParams;
     skeletonParams.geometry_mode = auto_satin::SatinGeometryMode::Parametric;
     const document::SatinParams initialDefaults;
-    autodigitize::SatinBuildReport built = autodigitize::build_satin_sections(
+    satin_planning::SatinBuildReport built = satin_planning::build_satin_sections(
         source->paths.front(), skeletonParams, initialDefaults.density, initialDefaults.pull_compensation,
         initialDefaults.center_underlay, initialDefaults.max_width);
     const std::size_t skeletonColumnCount = built.sections.size();
 
-    std::optional<std::pair<geometry::Path, geometry::Path>> fallbackRails;
     if (skeletonColumnCount == 0) {
-        fallbackRails = stitch_generation::rails_from_contour(source->paths.front().outer);
-        if (!fallbackRails) {
-            QMessageBox::warning(this, tr("Satin impossible"),
-                                 tr("La forme est trop petite ou trop complexe pour une colonne "
-                                    "satin. Essayez un remplissage tatami."));
+        // Le planner récursif (avec réparation de résidu) n'a produit
+        // AUCUNE section exploitable -- honnêtement rapporté (§6/§7), jamais
+        // contourné par une heuristique de moindre qualité. Seul choix
+        // encore actionnable : un remplissage tatami sur la région entière,
+        // ou annuler.
+        const auto answer = QMessageBox::question(
+            this, tr("Satin impossible"),
+            tr("Aucune colonne satin exploitable n'a pu être construite pour cette région "
+               "(statut du planificateur : %1). Utiliser un remplissage tatami à la place ?")
+                .arg(QString::fromStdString(satin_planning::to_string(built.status))),
+            QMessageBox::Yes | QMessageBox::No);
+        if (answer != QMessageBox::Yes) {
             return;
         }
+        std::vector<document::EmbroideryObject> tatamiObjects;
+        std::vector<document::VectorObject> tatamiVectors;
+        appendTatamiFallbackObjects(built.unresolved_residual, *source, tatamiVectors, tatamiObjects);
+        if (tatamiObjects.empty()) {
+            QMessageBox::warning(this, tr("Satin impossible"),
+                                 tr("Le remplissage tatami de repli n'a lui non plus rien pu construire "
+                                    "(région dégénérée)."));
+            return;
+        }
+        undoStack_.execute(std::make_unique<commands::AddObjectBatchCommand>(
+                               std::move(tatamiVectors), std::move(tatamiObjects),
+                               "Remplissage tatami (satin impossible)"),
+                           project_);
+        showStitchesAct_->setChecked(true);
+        refreshImage();
+        updateActions();
+        if (sequence_) {
+            const auto stats = stitch::compute_stats(*sequence_);
+            statusBar()->showMessage(tr("Remplissage tatami de repli : %1 points").arg(stats.stitches));
+        }
+        return;
     }
 
     QDialog dialog(this);
@@ -3406,58 +3442,33 @@ void MainWindow::createSatinObject() {
 
     std::vector<document::EmbroideryObject> objects;
     double worstWidthUm = 0.0;
-    if (skeletonColumnCount > 0) {
-        int idx = 0;
-        for (auto& section : built.sections) {
-            section.params.density = density;
-            section.params.pull_compensation = compensation;
-            section.params.center_underlay = underlay;
-            stitch_generation::SatinConfig probe;
-            probe.density = density;
-            worstWidthUm = std::max(worstWidthUm, stitch_generation::fill_satin(section.params.rail_a,
-                                                                                section.params.rail_b, probe)
-                                                       .max_width_um);
-
-            document::EmbroideryObject object;
-            object.id = project_.object_ids.next();
-            object.name = (skeletonColumnCount > 1
-                              ? tr("Satin de %1 (%2)")
-                                    .arg(QString::fromStdString(source->name))
-                                    .arg(++idx)
-                              : tr("Satin de %1").arg(QString::fromStdString(source->name)))
-                             .toStdString();
-            object.source_vector = source->id;
-            object.rgb = source->rgb;
-            object.params = std::move(section.params);
-            // §21/§24 : choix EXPLICITE de l'utilisateur (action "Colonne
-            // satin"), jamais une classification automatique.
-            object.intent = document::EmbroideryIntent::ForcedUserChoice;
-            objects.push_back(std::move(object));
-        }
-    } else {
-        document::SatinParams sp;
-        sp.rail_a = fallbackRails->first;
-        sp.rail_b = fallbackRails->second;
-        sp.density = density;
-        sp.pull_compensation = compensation;
-        sp.center_underlay = underlay;
-        // Barreaux par défaut (correspondance ladder) : sans eux, la génération
-        // retombe sur `fill_satin`, qui n'implémente qu'un sous-ensemble des
-        // réglages exposés dans l'inspecteur (défaut trouvé par revue — voir
-        // `default_rungs`).
-        for (const auto& seg : stitch_generation::default_rungs(sp.rail_a, sp.rail_b, sp.density)) {
-            sp.rungs.push_back({seg.first, seg.second, std::nullopt});
-        }
+    // `skeletonColumnCount > 0` est garanti ici -- le cas 0 a déjà retourné
+    // plus haut (repli tatami honnête ou annulation), jamais une géométrie
+    // de repli de moindre qualité substituée silencieusement.
+    int idx = 0;
+    for (auto& section : built.sections) {
+        section.params.density = density;
+        section.params.pull_compensation = compensation;
+        section.params.center_underlay = underlay;
         stitch_generation::SatinConfig probe;
         probe.density = density;
-        worstWidthUm = stitch_generation::fill_satin(sp.rail_a, sp.rail_b, probe).max_width_um;
+        worstWidthUm = std::max(
+            worstWidthUm,
+            stitch_generation::fill_satin(section.params.rail_a, section.params.rail_b, probe).max_width_um);
 
         document::EmbroideryObject object;
         object.id = project_.object_ids.next();
-        object.name = tr("Satin de %1").arg(QString::fromStdString(source->name)).toStdString();
+        object.name = (skeletonColumnCount > 1
+                          ? tr("Satin de %1 (%2)")
+                                .arg(QString::fromStdString(source->name))
+                                .arg(++idx)
+                          : tr("Satin de %1").arg(QString::fromStdString(source->name)))
+                         .toStdString();
         object.source_vector = source->id;
         object.rgb = source->rgb;
-        object.params = sp;
+        object.params = std::move(section.params);
+        // §21/§24 : choix EXPLICITE de l'utilisateur (action "Colonne
+        // satin"), jamais une classification automatique.
         object.intent = document::EmbroideryIntent::ForcedUserChoice;
         objects.push_back(std::move(object));
     }
@@ -3632,7 +3643,7 @@ bool MainWindow::createSatinObjectWithCutLine(Vec2um cutA, Vec2um cutB) {
         totalPieceAreaMm2 += std::abs(geometry::signed_area_um2(piece.outer)) / 1e6;
         auto_satin::SatinColumnsParameters skeletonParams;
         skeletonParams.geometry_mode = auto_satin::SatinGeometryMode::Parametric;
-        autodigitize::SatinBuildReport pieceBuilt = autodigitize::build_satin_sections(
+        satin_planning::SatinBuildReport pieceBuilt = satin_planning::build_satin_sections(
             piece, skeletonParams, density, compensation, underlay, defaults.max_width);
         for (auto& w : pieceBuilt.warnings) allWarnings.push_back(std::move(w));
         for (auto& r : pieceBuilt.unresolved_residual) allResidual.push_back(std::move(r));
@@ -3789,7 +3800,7 @@ void MainWindow::autoConvertToSatin() {
     }
 
     // Décomposition guidée par squelette (SGSD) via
-    // `autodigitize::build_satin_sections` — même point d'entrée que
+    // `satin_planning::build_satin_sections` — même point d'entrée que
     // createSatinObject()/l'auto-numérisation. Mode Parametric (rails Bézier
     // épars) préféré : jonctions plus propres, validé visuellement sur 6
     // formes (cf. docs/source/satin.md, § Objets satin paramétriques). Repli
@@ -3800,7 +3811,7 @@ void MainWindow::autoConvertToSatin() {
     auto_satin::SatinColumnsParameters skeletonParams;
     skeletonParams.geometry_mode = auto_satin::SatinGeometryMode::Parametric;
     const document::SatinParams defaults;
-    autodigitize::SatinBuildReport built = autodigitize::build_satin_sections(
+    satin_planning::SatinBuildReport built = satin_planning::build_satin_sections(
         source->paths.front(), skeletonParams, defaults.density, defaults.pull_compensation,
         defaults.center_underlay, defaults.max_width);
     const std::size_t columnCount = built.sections.size();
@@ -3999,14 +4010,14 @@ void MainWindow::setStitchType(ObjectId embroideryId, int type) {
         // cette action reste donc hors du planner multi-régions complet
         // (`createSatinObject`/`autoConvertToSatin`, qui créent une VRAIE
         // décomposition en plusieurs objets). Elle passe néanmoins par le
-        // même point d'entrée unifié (`autodigitize::build_satin_sections`,
+        // même point d'entrée unifié (`satin_planning::build_satin_sections`,
         // § plan de refonte satin 2026-08-14) pour bénéficier de la même
         // qualité de solveur (récursion, vérification de couverture) sur le
         // cas courant (une seule section) plutôt que l'ancien appel direct.
         auto_satin::SatinColumnsParameters skeletonParams;
         skeletonParams.geometry_mode = auto_satin::SatinGeometryMode::Parametric;
         const document::SatinParams defaults;  // densité/compensation/sous-couche inchangées ici
-        autodigitize::SatinBuildReport built = autodigitize::build_satin_sections(
+        satin_planning::SatinBuildReport built = satin_planning::build_satin_sections(
             source->paths.front(), skeletonParams, defaults.density, defaults.pull_compensation,
             defaults.center_underlay, defaults.max_width);
         document::SatinParams sp;
@@ -4032,15 +4043,20 @@ void MainWindow::setStitchType(ObjectId embroideryId, int type) {
                    "Utilisez « Colonne satin » (création) pour la décomposition complète.")
                     .arg(built.sections.size()));
         } else {
-            auto rails = stitch_generation::rails_from_contour(source->paths.front().outer);
-            if (!rails) {
-                QMessageBox::warning(this, tr("Satin impossible"),
-                                     tr("La forme est trop petite ou trop complexe pour une colonne "
-                                        "satin. Essayez un tatami."));
-                return;
-            }
-            sp.rail_a = rails->first;
-            sp.rail_b = rails->second;
+            // §3/§4 de la mission de durcissement du contrat SatinPlanner
+            // (2026-08-17) : l'ancien repli sur `rails_from_contour`
+            // (heuristique naïve, débordante) a été supprimé ici aussi --
+            // le planner récursif + réparation de résidu (déjà tenté
+            // ci-dessus) est la seule tentative légitime pour une intention
+            // `ForcedUserChoice::Satin`. Un plan sans la moindre section est
+            // rapporté honnêtement (statut du planificateur inclus), jamais
+            // contourné par une géométrie de moindre qualité.
+            QMessageBox::warning(
+                this, tr("Satin impossible"),
+                tr("Aucune colonne satin exploitable n'a pu être construite pour cette région "
+                   "(statut du planificateur : %1). Essayez un tatami.")
+                    .arg(QString::fromStdString(satin_planning::to_string(built.status))));
+            return;
         }
         params = sp;
         label = "Type : satin";
