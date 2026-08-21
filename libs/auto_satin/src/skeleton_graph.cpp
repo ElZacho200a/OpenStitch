@@ -6,6 +6,9 @@
 #include <cstdlib>
 #include <map>
 #include <numeric>
+#include <optional>
+#include <utility>
+#include <vector>
 
 namespace openstitch::auto_satin {
 
@@ -228,6 +231,19 @@ SkeletonGraph build_skeleton_graph(const RasterMask& s, const DistanceField& d) 
     std::vector<std::uint8_t> used(static_cast<std::size_t>(w) * static_cast<std::size_t>(h), 0);
     const auto& idx = pixelIdx;
 
+    // Memoisation des impasses par tentative (voir plus bas) : un compteur de
+    // generation partage evite de re-ALLOUER et re-METTRE A ZERO un buffer de
+    // la taille du masque a CHAQUE tentative (jusqu'a 8 par nœud) -- defaut de
+    // PERFORMANCE reel trouve le 2026-08-21 en mesurant apres coup (§37) :
+    // meme des formes triviales devenaient trop lentes des lors que le
+    // buffer etait re-alloue/re-mis-a-zero (cout O(largeur*hauteur)) a
+    // chaque tentative, quel que soit le nombre de pixels reellement
+    // touches. Un pixel est mort POUR LA TENTATIVE COURANTE si sa
+    // generation memorisee est egale a `attemptGeneration` -- aucune
+    // reinitialisation necessaire entre tentatives, seul le compteur avance.
+    std::vector<int> deadGeneration(static_cast<std::size_t>(w) * static_cast<std::size_t>(h), 0);
+    int attemptGeneration = 0;
+
     for (int y = 0; y < h; ++y) {
         for (int x = 0; x < w; ++x) {
             const std::uint32_t nid = node_at[idx(x, y)];
@@ -241,95 +257,172 @@ SkeletonGraph build_skeleton_graph(const RasterMask& s, const DistanceField& d) 
                 if (!s.at(cx, cy) || used[idx(cx, cy)]) {
                     continue;
                 }
-                // Ne pas partir directement vers un autre nœud déjà relié par ce
-                // pixel : on marque le pixel de départ comme utilisé.
+
+                // Un nœud voisin est TOUJOURS prioritaire sur un pixel de
+                // degré 2, quel que soit l'ordre de balayage des 8 directions :
+                // un pixel juste avant une jonction peut avoir, en plus de la
+                // jonction elle-même, un pixel de degré 2 d'une AUTRE branche
+                // dans son 8-voisinage (branches proches à la jonction). Ne
+                // s'arrêter sur le premier candidat rencontré (ancien
+                // comportement) pouvait donc sauter la jonction et fusionner
+                // deux branches en une seule arête si ce pixel d'une autre
+                // branche apparaissait plus tôt dans l'ordre fixe des
+                // directions — défaut trouvé par revue (jonction de "croix"
+                // ramenée à un degré 2 au lieu de 4).
+                //
+                // Le pixel d'ORIGINE de la trace (x, y, pas seulement le
+                // pixel immédiatement précédent) est exclu de tout candidat :
+                // près d'une jonction, l'amincissement (Zhang-Suen) laisse
+                // souvent un petit amas de plusieurs pixels allumés autour du
+                // pixel-nœud réel (un « hub » de 2-3 px de large), dont
+                // certains touchent directement le pixel d'origine par un
+                // chemin de 2 pas différent de celui emprunté au départ. Sans
+                // cette exclusion, la trace pouvait boucler sur son propre
+                // nœud de départ (arête parasite `from == to`, quelques
+                // centaines de µm) en consommant au passage le seul pixel
+                // d'accès vers une branche réelle plus loin, qui disparaissait
+                // alors du graphe sans aucune arête ni diagnostic — défaut
+                // trouvé par revue (branche sud entière perdue sur un réseau
+                // "y").
+                //
+                // Retour arrière (2026-08-21) : sur un « escalier » en
+                // diagonale de 2 px de large (deux pixels valides au même
+                // pas), une marche gloutonne sans retour pouvait s'échouer
+                // dans une impasse après avoir déjà marqué `used` le seul
+                // chemin réellement viable — défaut réel trouvé sur une
+                // région utilisateur convexe dont l'amincissement produisait
+                // un squelette correctement CONNEXE (31 pixels), mais dont la
+                // trace n'aboutissait à AUCUNE arête (deux extrémités
+                // détectées, zéro arête) : les deux pixels marqués `used`
+                // avant l'échec bloquaient aussi toute tentative ultérieure
+                // depuis l'autre extrémité, qui traverse le même territoire.
+                // `used` n'est donc plus marqué QUE pour le chemin actif de
+                // cette recherche en profondeur (retiré au retour arrière) ;
+                // il ne devient définitif que pour les pixels d'un chemin
+                // ayant réellement atteint un nœud.
+                struct Frame {
+                    int x{0};
+                    int y{0};
+                    bool computed{false};
+                    std::vector<std::pair<int, int>> candidates;
+                    std::size_t next{0};
+                };
+                const auto neighbor_ok = [&](int tx, int ty, int prevX, int prevY) {
+                    return !((tx == prevX && ty == prevY) || (tx == x && ty == y)) && s.at(tx, ty);
+                };
+                const auto find_node_neighbor = [&](int fx, int fy, int prevX,
+                                                     int prevY) -> std::optional<std::pair<int, int>> {
+                    for (int m = 0; m < 8; ++m) {
+                        const int tx = fx + DX[static_cast<std::size_t>(m)];
+                        const int ty = fy + DY[static_cast<std::size_t>(m)];
+                        if (!neighbor_ok(tx, ty, prevX, prevY) || node_at[idx(tx, ty)] == 0) {
+                            continue;
+                        }
+                        return std::make_pair(tx, ty);
+                    }
+                    return std::nullopt;
+                };
+
+                // Memoisation des impasses PROUVEES pour cette tentative
+                // (2026-08-21, corrige un defaut de PERFORMANCE introduit par
+                // le retour arriere ci-dessus) : sans elle, un pixel menant a
+                // une impasse peut etre re-explore depuis PLUSIEURS
+                // embranchements freres de la meme marche (chacun redecouvre
+                // la meme sous-arborescence morte depuis zero), un cout qui
+                // se multiplie a chaque ambiguite rencontree le long du
+                // chemin -- mesure : meme des formes triviales ("rectangle")
+                // devenaient inexploitablement lentes. Portee au NIVEAU DE LA
+                // TENTATIVE seulement (compteur de generation avance ici, cf.
+                // `deadGeneration`/`attemptGeneration` declares plus haut) :
+                // un pixel prouve mort ici ne l'est que compte tenu du chemin
+                // (et donc de l'exclusion d'origine/predecesseur) de CETTE
+                // tentative -- jamais partage entre tentatives, pour ne rien
+                // supposer sur une exclusion differente.
+                ++attemptGeneration;
+                const auto is_dead_this_attempt = [&](int tx, int ty) {
+                    return deadGeneration[idx(tx, ty)] == attemptGeneration;
+                };
+
+                std::vector<Frame> stack;
+                Frame startFrame;
+                startFrame.x = cx;
+                startFrame.y = cy;
+                used[idx(cx, cy)] = 1;
+                stack.push_back(startFrame);
+
+                bool reachedNode = false;
+                int finalX = 0, finalY = 0;
+                while (!stack.empty()) {
+                    Frame& top = stack.back();
+                    const int prevX = stack.size() >= 2 ? stack[stack.size() - 2].x : x;
+                    const int prevY = stack.size() >= 2 ? stack[stack.size() - 2].y : y;
+                    if (const auto nodeNb = find_node_neighbor(top.x, top.y, prevX, prevY)) {
+                        reachedNode = true;
+                        finalX = nodeNb->first;
+                        finalY = nodeNb->second;
+                        break;
+                    }
+                    if (!top.computed) {
+                        for (int m = 0; m < 8; ++m) {
+                            const int tx = top.x + DX[static_cast<std::size_t>(m)];
+                            const int ty = top.y + DY[static_cast<std::size_t>(m)];
+                            if (!neighbor_ok(tx, ty, prevX, prevY) || used[idx(tx, ty)] ||
+                                is_dead_this_attempt(tx, ty)) {
+                                continue;
+                            }
+                            top.candidates.emplace_back(tx, ty);
+                        }
+                        top.computed = true;
+                    }
+                    if (top.next < top.candidates.size()) {
+                        const auto [nx, ny] = top.candidates[top.next];
+                        ++top.next;
+                        Frame nextFrame;
+                        nextFrame.x = nx;
+                        nextFrame.y = ny;
+                        used[idx(nx, ny)] = 1;
+                        stack.push_back(nextFrame);
+                        continue;
+                    }
+                    // Impasse PROUVEE sur ce chemin : retour arrière. `used`
+                    // est levé (ce pixel physique redevient disponible pour
+                    // une AUTRE tentative, cf. commentaire plus haut), mais
+                    // marqué mort pour la generation COURANTE (`deadGeneration`)
+                    // : un frère qui l'atteindrait par un autre embranchement
+                    // sait immédiatement que sa sous-arborescence est morte,
+                    // sans la réexplorer entièrement.
+                    used[idx(top.x, top.y)] = 0;
+                    deadGeneration[idx(top.x, top.y)] = attemptGeneration;
+                    stack.pop_back();
+                }
+
+                if (!reachedNode) {
+                    continue;  // aucun chemin possible depuis cette direction de départ.
+                }
+
                 std::vector<Vec2um> line;
                 std::vector<double> radii;
                 line.push_back(s.transform.to_um(x, y));
                 radii.push_back(radius_at(d, x, y));
-                int px = x, py = y;
-                bool ok = true;
-                while (node_at[idx(cx, cy)] == 0) {
-                    used[idx(cx, cy)] = 1;
-                    line.push_back(s.transform.to_um(cx, cy));
-                    radii.push_back(radius_at(d, cx, cy));
-                    // Un nœud voisin est TOUJOURS prioritaire sur un pixel de
-                    // degré 2, quel que soit l'ordre de balayage des 8 directions :
-                    // un pixel juste avant une jonction peut avoir, en plus de la
-                    // jonction elle-même, un pixel de degré 2 d'une AUTRE branche
-                    // dans son 8-voisinage (branches proches à la jonction). Ne
-                    // s'arrêter sur le premier candidat rencontré (ancien
-                    // comportement) pouvait donc sauter la jonction et fusionner
-                    // deux branches en une seule arête si ce pixel d'une autre
-                    // branche apparaissait plus tôt dans l'ordre fixe des
-                    // directions — défaut trouvé par revue (jonction de "croix"
-                    // ramenée à un degré 2 au lieu de 4).
-                    //
-                    // Le pixel d'ORIGINE de la trace (x, y, pas seulement le
-                    // précédent px, py) est exclu de tout candidat : près d'une
-                    // jonction, l'amincissement (Zhang-Suen) laisse souvent un
-                    // petit amas de plusieurs pixels allumés autour du pixel-nœud
-                    // réel (un « hub » de 2-3 px de large), dont certains
-                    // touchent directement le pixel d'origine par un chemin de 2
-                    // pas différent de celui emprunté au départ. Sans cette
-                    // exclusion, la trace pouvait boucler sur son propre nœud de
-                    // départ (arête parasite `from == to`, quelques centaines de
-                    // µm) en consommant au passage le seul pixel d'accès vers une
-                    // branche réelle plus loin, qui disparaissait alors du graphe
-                    // sans aucune arête ni diagnostic — défaut trouvé par revue
-                    // (branche sud entière perdue sur un réseau "y").
-                    int nx = -1, ny = -1;
-                    for (int m = 0; m < 8; ++m) {
-                        const int tx = cx + DX[static_cast<std::size_t>(m)];
-                        const int ty = cy + DY[static_cast<std::size_t>(m)];
-                        if ((tx == px && ty == py) || (tx == x && ty == y) || !s.at(tx, ty)) {
-                            continue;
-                        }
-                        if (node_at[idx(tx, ty)] != 0) {
-                            nx = tx;
-                            ny = ty;
-                            break;  // atteint un nœud : priorité absolue.
-                        }
-                    }
-                    if (nx < 0) {
-                        for (int m = 0; m < 8; ++m) {
-                            const int tx = cx + DX[static_cast<std::size_t>(m)];
-                            const int ty = cy + DY[static_cast<std::size_t>(m)];
-                            if ((tx == px && ty == py) || (tx == x && ty == y) || !s.at(tx, ty)) {
-                                continue;
-                            }
-                            if (!used[idx(tx, ty)]) {
-                                nx = tx;
-                                ny = ty;
-                                break;
-                            }
-                        }
-                    }
-                    if (nx < 0) {
-                        ok = false;
-                        break;
-                    }
-                    px = cx;
-                    py = cy;
-                    cx = nx;
-                    cy = ny;
+                for (const Frame& f : stack) {
+                    line.push_back(s.transform.to_um(f.x, f.y));
+                    radii.push_back(radius_at(d, f.x, f.y));
                 }
-                if (!ok || node_at[idx(cx, cy)] == 0) {
-                    continue;
-                }
-                const std::uint32_t toNode = node_at[idx(cx, cy)] - 1;
+                const std::uint32_t toNode = node_at[idx(finalX, finalY)] - 1;
                 // Micro-arête interne à un amas de jonction consolidé (1b/1c) :
                 // la trace est partie d'un pixel membre du hub `fromNode` et a
                 // atteint un AUTRE pixel membre du MÊME hub logique (pas
                 // nécessairement le pixel d'origine littéral, déjà exclu plus
                 // haut) — ce n'est pas une branche réelle mais une simple
                 // reconnexion interne à l'amas. Rejetée sans condition : ne
-                // jamais produire d'arête `from == to`.
+                // jamais produire d'arête `from == to`. Les pixels du chemin
+                // restent `used` (chemin réellement parcouru jusqu'à un
+                // nœud), seule la création d'une arête est omise.
                 if (toNode == fromNode) {
                     continue;
                 }
-                line.push_back(s.transform.to_um(cx, cy));
-                radii.push_back(radius_at(d, cx, cy));
+                line.push_back(s.transform.to_um(finalX, finalY));
+                radii.push_back(radius_at(d, finalX, finalY));
 
                 SkeletonEdge e;
                 e.id = static_cast<std::uint32_t>(g.edges.size());

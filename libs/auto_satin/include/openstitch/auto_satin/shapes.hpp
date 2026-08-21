@@ -14,8 +14,11 @@ namespace openstitch::auto_satin {
 // durcissement du contrat SatinPlanner, 2026-08-17, §9-14), formes
 // délibérément difficiles : star5, asymmetric_star, comb, E, deep_recursive,
 // multi_neck, dumbbell, deep_channel, two_holes, ring_branch,
-// junction_with_hole, polygonal_cut_fixture. Renvoie nullopt si le nom est
-// inconnu.
+// junction_with_hole, polygonal_cut_fixture. Régression squelette
+// (2026-08-21) : thick_diagonal_blob (géométrie exacte d'une région
+// utilisateur — escalier de squelette à 2 px de large ayant fait échouer
+// la trace d'arête sans retour arrière, cf. skeleton_graph.cpp). Renvoie
+// nullopt si le nom est inconnu.
 [[nodiscard]] std::optional<geometry::PathSet> make_shape(const std::string& name);
 
 }  // namespace openstitch::auto_satin

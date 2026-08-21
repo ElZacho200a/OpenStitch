@@ -405,6 +405,29 @@ std::optional<geometry::PathSet> make_shape(const std::string& name) {
                   node(56'500, 4'000),   node(0, 4'000)};
         return single(p);
     }
+    if (name == "thick_diagonal_blob") {
+        // Defaut reel trouve le 2026-08-21 sur une region exportee par un
+        // utilisateur (decagone convexe, ~4,8x3,7mm) refusee pour le satin
+        // avec un diagnostic "Ambiguous" suspect : squelette CORRECTEMENT
+        // connexe apres amincissement (31 px), mais `build_skeleton_graph`
+        // ne produisait ZERO arete entre les deux extremites detectees --
+        // un "escalier" en diagonale de 2 px de large (deux pixels valides
+        // au meme pas) faisait s'echouer la marche gloutonne sans retour
+        // arriere dans une impasse, apres avoir deja marque `used` (donc
+        // indisponible pour TOUTE tentative ulterieure, y compris depuis
+        // l'autre extremite) le seul chemin reellement viable. Corrige par
+        // un retour arriere explicite dans `skeleton_graph.cpp`. Geometrie
+        // exacte conservee telle quelle (pas de minimisation) : la marche
+        // gloutonne est sensible a l'ordre exact des pixels, une version
+        // "simplifiee a la main" pourrait ne plus reproduire le meme
+        // chemin en impasse.
+        Path p;
+        p.closed = true;
+        p.nodes = {node(44'427, 155'087), node(44'956, 155'881), node(44'956, 156'939), node(43'898, 157'733),
+                  node(42'311, 157'733), node(41'252, 157'204), node(40'194, 155'881), node(40'194, 154'823),
+                  node(40'988, 154'029), node(42'575, 154'029)};
+        return single(p);
+    }
 
     return std::nullopt;
 }

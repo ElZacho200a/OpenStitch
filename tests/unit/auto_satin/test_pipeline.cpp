@@ -210,6 +210,31 @@ TEST_CASE("invariant d'echelle : rectangle a 2 echelles reste Suitable et 2 extr
     CHECK(a.report.is_elongated);
 }
 
+TEST_CASE("regression : squelette diagonal a 2px, aucune arete perdue par la trace") {
+    // Defaut reel trouve le 2026-08-21 (region utilisateur, cf. commentaire
+    // sur "thick_diagonal_blob" dans shapes.cpp) : un amincissement
+    // parfaitement connexe (31 px, 2 extremites) pouvait produire ZERO
+    // arete si la marche gloutonne de `build_skeleton_graph` s'echouait
+    // dans une impasse sur un "escalier" en diagonale de 2 px de large --
+    // corrige par un retour arriere explicite. Pixel_size DELIBEREMENT au
+    // defaut reel de l'application (50 um, pas les 100 um de `analyze()`
+    // ci-dessus) : la geometrie exacte du defaut depend de la rasterisation
+    // precise a cette resolution.
+    const auto region = make_shape("thick_diagonal_blob");
+    REQUIRE(region.has_value());
+    AutoSatinParameters params;  // pixel_size par defaut (50 um), comme l'application reelle
+    const auto analysis = analyze_region(*region, params);
+    REQUIRE(analysis.has_value());
+    CAPTURE(analysis->debug.raw_graph.nodes.size());
+    CHECK(analysis->debug.raw_graph.nodes.size() == 2);
+    CHECK(analysis->debug.raw_graph.edges.size() >= 1);
+    CHECK(analysis->debug.graph.edges.size() >= 1);
+    // Cette forme reste par ailleurs correctement refusee (contour convexe,
+    // quasi circulaire) : ce test ne pretend PAS la rendre satinable, il
+    // verifie seulement que le squelette n'est plus silencieusement vide.
+    CHECK(analysis->report.estimated_length_mm > 0.0);
+}
+
 TEST_CASE("pas de NaN dans les metriques") {
     const auto a = analyze("ribbon");
     CHECK(std::isfinite(a.report.mean_width_mm));

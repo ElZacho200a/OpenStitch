@@ -105,10 +105,29 @@ const std::vector<std::string>& shapes_hitting_known_performance_limit() {
 // Corriger cela demanderait une famille de coupe dediee ("cut BETWEEN two
 // holes"), hors de portee de cette mission (§33 : pas de patch opportuniste
 // du generateur de candidats).
+//
+// "junction_with_hole" est une limitation ENCORE DIFFERENTE, trouvee le
+// 2026-08-21 en corrigeant le defaut de trace d'arete de `skeleton_graph.cpp`
+// (retour arriere, cf. commit correspondant) : `split_region` (region_split.
+// cpp) valide chaque coupe candidate en verifiant que le morceau isole n'a
+// PLUS aucune jonction residuelle (`analysis->report.junction_count == 0`).
+// Avant le correctif, une jonction residuelle authentique mais dont la trace
+// d'arete echouait silencieusement se retrouvait elaguee comme nœud orphelin
+// (aucune arete vivante) -- `junction_count` retombait alors A TORT a zero,
+// validant des coupes qui n'isolaient PAS reellement une branche propre. Le
+// correctif expose donc une limitation reelle deja presente&nbsp;: pour cette
+// geometrie precise (trou pres d'une confluence a 3 jonctions), aucune coupe
+// candidate n'isole en verite un morceau sans jonction residuelle -- la
+// "reussite" precedente (4 regions, 93,93% de couverture) etait construite
+// sur une verification cassee, pas sur une decomposition reellement propre.
+// Non corrige (§33 : pas de patch opportuniste du generateur/de la
+// verification sous la pression d'une seule fixture) -- documente dans
+// `docs/source/satin.md`.
 const std::vector<std::string>& shapes_hitting_known_limitation() {
     static const std::vector<std::string> kNames = [] {
         auto names = shapes_hitting_known_performance_limit();
         names.push_back("two_holes");
+        names.push_back("junction_with_hole");
         return names;
     }();
     return kNames;
@@ -357,10 +376,18 @@ TEST_CASE("create_satin_plan : ring_branch -- anneau plus branche, trou interieu
     CHECK(plan.aggregate_coverage->covered_area_mm2 <= sourceNetAreaMm2 + 0.5);
 }
 
-TEST_CASE("create_satin_plan : junction_with_hole -- trou pres d'une confluence jamais traverse ni compte en manquant") {
+TEST_CASE("create_satin_plan : junction_with_hole -- limitation connue (validation de coupe), jamais de trou traverse") {
+    // Limitation reelle trouvee le 2026-08-21 en corrigeant `skeleton_graph.
+    // cpp` (cf. commentaire detaille sur `shapes_hitting_known_limitation`) :
+    // aucune coupe candidate n'isole en verite un morceau sans jonction
+    // residuelle pour cette geometrie precise -- ce test NE suppose PLUS un
+    // decoupage reussi (contrairement a avant le correctif, ou la
+    // "reussite" reposait sur une verification cassee), seulement que le
+    // planner termine honnetement (jamais de faux `Complete`, jamais un trou
+    // compte comme couvrable meme dans cet echec).
     const auto source = shape("junction_with_hole");
     const auto plan = create_satin_plan(source, prod_config());
-    CHECK_FALSE(plan.regions.empty());
+    CHECK(plan.status != SatinPlanStatus::Complete);
     REQUIRE(plan.aggregate_coverage.has_value());
     const double sourceNetAreaMm2 = geometry::path_set_area_um2(source) / 1e6;
     CHECK(plan.aggregate_coverage->covered_area_mm2 <= sourceNetAreaMm2 + 0.5);

@@ -4600,3 +4600,108 @@ masquée.
   en bout plutôt qu'un compte exact d'objets) ; `tests/unit/satin_planning/
   test_region_split.cpp` (régression région87 mise à jour, seuil de
   reporting du résidu recalibré).
+
+## Correctif « trace d'arête sans retour arrière » (2026-08-21)
+
+Signalement utilisateur&nbsp;: une région convexe (décagone ~4,8×3,7&nbsp;mm)
+refusée pour le satin, dialogue « Satin impossible… statut du
+planificateur&nbsp;: Incomplete ». Vérifié avant de conclure quoi que ce soit
+(§37&nbsp;: calculer les produits vectoriels aux 10 sommets confirme un
+polygone STRICTEMENT CONVEXE — aucun sommet reflex, donc rien à décomposer
+par les familles de coupe existantes) : le refus lui-même s'est avéré
+correct et déjà documenté (« cercle plein/forme large refusés »,
+`limitations.md`) — une forme ronde n'a structurellement pas d'axe satin
+bien défini. Mais l'investigation demandée par l'utilisateur (« il reste des
+bugs sur le satin ») a mis au jour un défaut réel, distinct du refus
+lui-même.
+
+**Défaut trouvé** : rejouer la géométrie exacte à travers
+`auto_satin::analyze_region` montrait un amincissement (Zhang-Suen)
+parfaitement connexe (31 pixels de squelette, deux extrémités détectées),
+mais `build_skeleton_graph` produisait **zéro arête** entre les deux
+nœuds — `estimated_length_mm` retombait à 0 (une valeur factice, jamais
+mesurée), et le diagnostic « Ambiguous » se fondait sur des métriques de
+secours plutôt que sur une vraie mesure. Cause racine, isolée en rejouant
+l'algorithme pixel par pixel contre la grille réelle&nbsp;: sur un
+« escalier » de squelette à 2&nbsp;px de large (deux pixels valides au même
+pas, artefact normal de l'amincissement sur une diagonale), la marche
+gloutonne de `build_skeleton_graph` (aucun retour arrière) pouvait choisir
+le mauvais pixel, s'échouer dans une impasse quelques pas plus loin, et
+laisser les pixels visités marqués `used` **de façon permanente** — bloquant
+au passage toute tentative ultérieure depuis l'AUTRE extrémité, qui
+traverse le même territoire. Un défaut de la même famille que les deux
+défauts de `skeleton_graph.cpp` déjà corrigés lors de l'« audit satin
+adversarial » (voir plus haut, priorité de nœud / boucle sur l'origine),
+mais jamais couvert par ces correctifs-là.
+
+**Impact réel pour CETTE région** : nul — recalculée correctement
+(`estimated_length_mm=1,75&nbsp;mm`, `min_width_mm≈2,77&nbsp;mm`, élongation
+≈0,63, très en dessous du seuil de 2,5), elle reste honnêtement classée
+`Ambiguous`/refusée, exactement comme avant. **Impact réel plus large** :
+ce défaut peut frapper N'IMPORTE QUELLE forme, y compris une forme
+réellement allongée et satinable, dès que son squelette traverse un
+escalier de 2&nbsp;px à un angle défavorable — une classification
+« Ambiguous » ou une arête manquante pouvaient donc être de FAUX négatifs
+géométriques, pas seulement affecter les formes rondes.
+
+**Corrigé** : la marche devient une recherche en profondeur AVEC retour
+arrière explicite (pile de « frames », candidats précalculés par pixel,
+`used` levé et le pixel marqué « mort pour cette tentative » au retour
+arrière plutôt que rendu disponible sans mémoire). Un second défaut,
+DÉCOUVERT EN MESURANT APRÈS COUP plutôt que supposé correct (§37)&nbsp;: la
+toute première version de ce retour arrière allouait un buffer de la
+taille du masque À CHAQUE tentative de direction de départ (jusqu'à 8 par
+nœud), un coût qui semblait plausible mais s'est avéré, une fois mesuré,
+ne PAS être le facteur dominant — un chronométrage isolé de `analyze_region`
+seul, comparé par `git stash` à la version d'avant tout correctif, a montré
+un profil de temps STRICTEMENT IDENTIQUE avec et sans le correctif de
+performance, prouvant que le temps déjà long observé sur certaines formes
+(`t`, `y`, `cross`, `h`… jusqu'à la limite du budget wall-clock en Debug)
+était un comportement PRÉEXISTANT, sans rapport avec ce correctif — la
+même limite Debug-vs-Release déjà documentée en Phase 7 point 7,
+simplement plus répandue qu'établi à l'époque. Le remplacement d'allocation
+(compteur de génération partagé plutôt qu'un buffer réalloué) a été
+conservé malgré son effet mesuré nul&nbsp;: il reste une amélioration
+correcte et sans coût, pas un correctif de performance nécessaire.
+
+**Régression permanente** : nouvelle forme nommée `thick_diagonal_blob`
+dans `auto_satin::make_shape` (géométrie exacte de la région utilisateur,
+volontairement non minimisée — la marche gloutonne est sensible à l'ordre
+exact des pixels), testée dans `tests/unit/auto_satin/test_pipeline.cpp`
+(vérifie `raw_graph.edges.size() >= 1` et `estimated_length_mm > 0`, au
+pixel_size par défaut réel de l'application — 50&nbsp;µm, pas les 100&nbsp;µm
+plus rapides utilisés par le reste de ce fichier de test).
+
+**Un troisième défaut trouvé EN VALIDANT le correctif** (§37&nbsp;: ne jamais
+supposer qu'un correctif est une amélioration nette sans faire tourner tout
+le corpus) — `junction_with_hole` (déjà dans le corpus de torture, un trou
+près d'une confluence à 3 jonctions) passait de 4 régions acceptées/93,93&nbsp;%
+de couverture à **0 région, 0&nbsp;%**, en Debug ET en Release (donc pas
+l'artefact Debug habituel — vérifié explicitement par `git stash` avant de
+conclure). Le graphe de squelette de la région ENTIÈRE s'est avéré
+STRICTEMENT IDENTIQUE avant/après correctif (mêmes 6&nbsp;nœuds, mêmes
+6&nbsp;arêtes, mêmes longueurs) — la régression ne venait donc pas d'un
+changement de topologie au niveau supérieur. Cause racine, isolée en lisant
+`region_split.cpp`&nbsp;: `split_region` valide chaque coupe candidate en
+ré-analysant le morceau isolé et en exigeant `junction_count == 0` (aucune
+jonction résiduelle). Avant le correctif, une jonction résiduelle
+AUTHENTIQUE dont la trace d'arête échouait silencieusement (même défaut
+que ci-dessus) se retrouvait élaguée par `prune_graph` comme nœud orphelin
+sans arête vivante — `junction_count` retombait alors À TORT à zéro,
+validant des coupes qui n'isolaient PAS réellement une branche propre. Le
+correctif expose donc une limitation RÉELLE déjà présente&nbsp;: pour cette
+géométrie précise, aucune coupe candidate n'isole en vérité un morceau
+sans jonction résiduelle — l'ancienne « réussite » (93,93&nbsp;% de
+couverture) était construite sur une vérification cassée, pas sur une
+décomposition réellement propre ; le nouveau résultat (`Incomplete`/
+`Impossible` honnête, jamais un faux `Complete`) est donc le comportement
+CORRECT, même s'il est numériquement moins bon. Non corrigé (§33&nbsp;: pas
+de patch opportuniste du générateur/de la vérification de coupe sous la
+pression d'une seule fixture) — `junction_with_hole` ajoutée à
+`shapes_hitting_known_limitation()` (`test_torture_corpus.cpp`), pour une
+troisième raison distincte de `two_holes` (aucune famille de coupe
+applicable) et des formes à branches nombreuses (limitation de qualité de
+la génération de candidats).
+
+Non-régression&nbsp;: `test_auto_satin` (2235 assertions), `test_satin_
+planning` et `test_autodigitize` complets, Debug ET Release.
