@@ -14,13 +14,28 @@
 namespace openstitch::satin_planning {
 
 // Un point de coupe candidat teste geometriquement. `a`/`b` sont le segment
-// reellement passe a `geometry::cut_path_set` (direction = normale locale a
-// la branche, a la distance `distance_from_junction_um` de la jonction).
+// reellement passe a `geometry::cut_path_set_bounded` (direction = normale
+// locale a la branche, a la distance `distance_from_junction_um` de la
+// jonction) ; `reach_um` est la portee a utiliser avec ce segment (cf.
+// `geometry::cut_path_set_bounded`) -- genereuse par defaut (meme calcul que
+// l'ancien `geometry::cut_path_set` non borne), plafonnee UNIQUEMENT par la
+// distance a une VRAIE branche squelettique voisine (jamais celles incidentes
+// a la MEME jonction) -- defaut reel trouve sur "comb" (2026-08-22, cf.
+// commentaire detaille dans region_split.cpp) : une coupe non plafonnee
+// tranche aussi les branches voisines des qu'elles partagent la meme plage
+// perpendiculaire (plusieurs dents a la meme hauteur sur un peigne). Ce
+// plafond seul sous-estime pres d'une confluence large ou le contour n'est
+// pas localement convexe (defaut reel trouve sur "t", meme date) -- combine
+// avec un plancher par rayon vers le bord exterieur (jamais les trous, cf.
+// region_split.cpp) qui, lui seul, sous-estimait pres d'un trou (defaut reel
+// trouve sur une lettre avec contre-forme, meme date). Les trois defauts
+// reels partagent la meme fixture de non-regression desormais.
 struct CutCandidate {
     double distance_from_junction_um{0.0};
     Vec2um point{};
     Vec2um a{};
     Vec2um b{};
+    double reach_um{0.0};
     bool valid{false};
     double branch_piece_area_mm2{0.0};
     double remainder_piece_area_mm2{0.0};
@@ -62,6 +77,15 @@ struct CutCandidateParams {
     double search_max_um{4000.0};
     double search_step_um{300.0};
     Micrometers cut_width{20};  // meme defaut que geometry::cut_path_set
+    // Marge ajoutee au rayon local (distance field) de la branche, au point
+    // de coupe, pour determiner la portee BORNEE de la coupe (§ defaut reel
+    // trouve sur "comb", 2026-08-22, cf. region_split.cpp) : garantit de
+    // traverser entierement la largeur reelle de la branche (le rayon local
+    // peut legerement sous-estimer la vraie demi-largeur, ou etre gonfle
+    // pres d'une confluence) sans pour autant atteindre une branche VOISINE
+    // -- doit rester petit devant l'espacement typique entre deux branches
+    // paralleles d'une meme region.
+    double local_cut_margin_um{500.0};
     // Rejette une coupe qui produirait un fragment plus petit que ce seuil
     // (§13 : "piece extremement petite").
     double min_piece_area_mm2{0.3};

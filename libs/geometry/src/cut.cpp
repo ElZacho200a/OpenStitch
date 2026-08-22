@@ -50,10 +50,13 @@ void collect(const Clipper2Lib::PolyPath64& outer, std::vector<PathSet>& out) {
     }
 }
 
-}  // namespace
-
-Result<std::vector<PathSet>> cut_path_set(const PathSet& region, Vec2um a, Vec2um b,
-                                          Micrometers cut_width) {
+// Implementation commune a `cut_path_set`/`cut_path_set_bounded` : retire
+// une bande de largeur `cut_width`, perpendiculaire a [a,b], centree sur son
+// milieu, etendue de `reach` de part et d'autre -- seule differe la maniere
+// dont `reach` est determine par chaque appelant public (boite englobante de
+// la region pour l'un, valeur explicite fournie par l'appelant pour l'autre).
+Result<std::vector<PathSet>> cut_band(const PathSet& region, Vec2um a, Vec2um b, double reach,
+                                      Micrometers cut_width) {
     const double ax = static_cast<double>(a.x.value);
     const double ay = static_cast<double>(a.y.value);
     const double bx = static_cast<double>(b.x.value);
@@ -68,31 +71,6 @@ Result<std::vector<PathSet>> cut_path_set(const PathSet& region, Vec2um a, Vec2u
     const double uy = dy / len;
     const double nx = -uy;  // normale (demi-largeur de la bande retirée)
     const double ny = ux;
-
-    // Étend très au-delà de la région (diagonale de sa boîte englobante + 1 mm
-    // de marge) pour garantir une traversée complète quels que soient les
-    // points A/B fournis par l'utilisateur -- l'utilisateur vise la jonction,
-    // pas les bords exacts de la forme.
-    double minX = std::numeric_limits<double>::max();
-    double maxX = std::numeric_limits<double>::lowest();
-    double minY = std::numeric_limits<double>::max();
-    double maxY = std::numeric_limits<double>::lowest();
-    const auto scan = [&](const Path& p) {
-        for (const auto& node : p.nodes) {
-            minX = std::min(minX, static_cast<double>(node.pos.x.value));
-            maxX = std::max(maxX, static_cast<double>(node.pos.x.value));
-            minY = std::min(minY, static_cast<double>(node.pos.y.value));
-            maxY = std::max(maxY, static_cast<double>(node.pos.y.value));
-        }
-    };
-    scan(region.outer);
-    for (const auto& hole : region.holes) {
-        scan(hole);
-    }
-    if (minX > maxX) {
-        return std::vector<PathSet>{region};  // région vide
-    }
-    const double reach = std::hypot(maxX - minX, maxY - minY) + 1000.0;
 
     const double midx = (ax + bx) / 2.0;
     const double midy = (ay + by) / 2.0;
@@ -133,6 +111,41 @@ Result<std::vector<PathSet>> cut_path_set(const PathSet& region, Vec2um a, Vec2u
         collect(*top, out);
     }
     return out;
+}
+
+}  // namespace
+
+Result<std::vector<PathSet>> cut_path_set(const PathSet& region, Vec2um a, Vec2um b, Micrometers cut_width) {
+    // Étend très au-delà de la région (diagonale de sa boîte englobante + 1 mm
+    // de marge) pour garantir une traversée complète quels que soient les
+    // points A/B fournis par l'utilisateur -- l'utilisateur vise la jonction,
+    // pas les bords exacts de la forme.
+    double minX = std::numeric_limits<double>::max();
+    double maxX = std::numeric_limits<double>::lowest();
+    double minY = std::numeric_limits<double>::max();
+    double maxY = std::numeric_limits<double>::lowest();
+    const auto scan = [&](const Path& p) {
+        for (const auto& node : p.nodes) {
+            minX = std::min(minX, static_cast<double>(node.pos.x.value));
+            maxX = std::max(maxX, static_cast<double>(node.pos.x.value));
+            minY = std::min(minY, static_cast<double>(node.pos.y.value));
+            maxY = std::max(maxY, static_cast<double>(node.pos.y.value));
+        }
+    };
+    scan(region.outer);
+    for (const auto& hole : region.holes) {
+        scan(hole);
+    }
+    if (minX > maxX) {
+        return std::vector<PathSet>{region};  // région vide
+    }
+    const double reach = std::hypot(maxX - minX, maxY - minY) + 1000.0;
+    return cut_band(region, a, b, reach, cut_width);
+}
+
+Result<std::vector<PathSet>> cut_path_set_bounded(const PathSet& region, Vec2um a, Vec2um b, double reach_um,
+                                                  Micrometers cut_width) {
+    return cut_band(region, a, b, reach_um, cut_width);
 }
 
 }  // namespace openstitch::geometry

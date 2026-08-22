@@ -4705,3 +4705,127 @@ la génération de candidats).
 
 Non-régression&nbsp;: `test_auto_satin` (2235 assertions), `test_satin_
 planning` et `test_autodigitize` complets, Debug ET Release.
+
+## Portée de coupe automatique bornée au squelette voisin, pas au rayon local (2026-08-22)
+
+Suite directe du signalement utilisateur ci-dessus (« il reste des bugs sur
+le satin, certaines régions restent non satinables ») — mission&nbsp;: pousser
+la promesse centrale de `satin_planning::create_satin_plan` (toute région non
+dégénérée devrait être satinable, via décomposition récursive) au-delà de la
+liste de limitations connues existante, en cherchant activement d'autres
+défauts réels plutôt qu'en acceptant cette liste comme définitive (§37).
+
+**Défaut trouvé (`comb`, fixture du corpus de torture)** : `region_split.cpp`
+détache une branche à une jonction en découpant `piece` avec
+`geometry::cut_path_set(piece, a, b, cut_width)` — une ligne de coupe qui
+s'étend délibérément jusqu'à la diagonale de la boîte englobante de TOUTE la
+région (+1&nbsp;mm de marge), conçue à l'origine pour l'outil MANUEL de
+ligne de coupe (l'utilisateur vise la jonction, pas les bords exacts). Sur
+`comb` (un tronc + 6&nbsp;dents parallèles partageant la même plage en Y),
+cette ligne « infinie » traverse TOUJOURS les 6&nbsp;dents à la fois, quelle
+que soit la distance de coupe testée le long d'une dent — `generate_cut_
+candidates` rejetait donc INCONDITIONNELLEMENT chaque candidat (« la coupe
+n'a pas produit exactement 2 morceaux »), et `comb` restait bloqué à
+`Impossible`/0&nbsp;% de couverture.
+
+**Premier correctif, insuffisant** : nouvelle primitive `geometry::
+cut_path_set_bounded(region, a, b, reach_um, cut_width)` (`cut.cpp` factorisé
+en une fonction commune `cut_band`, `reach` devenant un paramètre au lieu
+d'être calculé en interne), avec `reach_um` déterminé au point de coupe par
+le rayon local du squelette (transformée en distance) + une marge fixe.
+Corrige bien `comb` (0&nbsp;→&nbsp;6/7&nbsp;branches isolées, 93,64&nbsp;% de
+couverture) mais casse silencieusement DEUX autres cas, chacun trouvé en
+faisant tourner le corpus complet plutôt qu'en supposant la correction
+suffisante (§37) :
+
+- **Lettre réelle avec contre-forme** (fixture `tests/unit/satin_planning/
+  test_region_split.cpp`, coordonnées exportées d'une vraie région
+  utilisateur) : le rayon local (plus proche bord dans N'IMPORTE quelle
+  direction) mesurait la distance jusqu'au TROU plutôt que jusqu'au vrai bord
+  EXTÉRIEUR dès que le trou était plus proche — la coupe s'arrêtait donc au
+  bord du trou, laissant non coupée la matière qui continue au-delà, et la
+  pièce restait connexe malgré la coupe (`1 == 4` régions au lieu de `4`, à
+  TOUTES les distances testées).
+- **`t`** (le cas le plus simple du corpus — une seule jonction, un seul
+  barreau) : la coupe réussissait bien géométriquement, mais laissait un
+  sommet reflex parasite sur le morceau « reste » juste au-delà du
+  renflement de la confluence (le bras large de la barre, non atteint par
+  une portée trop courte) — suffisant pour franchir le seuil de 15° de
+  `ConcavityCutParams::min_reflex_turn_deg` et déclencher À TORT une
+  redécomposition par `try_concavity_decomposition`, fragmentant le morceau
+  « reste » en deux pièces à faible couverture (~70&nbsp;% chacune) au lieu
+  d'un seul morceau à 98&nbsp;%. `create_satin_plan(shape("t"))` régressait
+  de couverture agrégée &gt;90&nbsp;% avec adjacence peuplée, à 72&nbsp;%
+  sans aucune adjacence.
+
+**Root cause commune, isolée en comparant explicitement les deux échecs**
+(§37&nbsp;: bissection empirique de la portée plutôt qu'un raisonnement
+géométrique non vérifié — un premier raisonnement « la portée en excès est
+sans effet, `Clipper2::Difference` ne fait qu'écrêter à la matière réelle »
+s'est avéré FAUX, contredit en forçant `reach=100000` sur `t`, qui reproduit
+EXACTEMENT le résultat historique (`179,640&nbsp;mm²`) là où `reach=3000`
+donnait `179,940&nbsp;mm²` avec le sommet reflex parasite) : un simple rayon
+NE PEUT PAS être à la fois assez court pour ne jamais atteindre une branche
+SANS RAPPORT (`comb`) et assez long pour toujours atteindre le vrai bord
+extérieur au-delà d'un renflement de confluence ou d'un trou (`t`, la
+lettre) — ces deux exigences sont directement contradictoires pour une
+distance scalaire unique, quelle que soit la formule (rayon local, rayon
+vers le bord extérieur seul, marge fixe ou proportionnelle — chacune testée
+et chacune cassant l'un des deux cas).
+
+**Correctif retenu** : la portée redevient généreuse PAR DÉFAUT (même calcul
+que l'ancien `cut_path_set` non borné — diagonale de la boîte englobante de
+la pièce), mais plafonnée par la distance au squelette d'une VRAIE branche
+voisine (`distance_to_other_branches`, nouvelle fonction dans
+`region_split.cpp`) — en excluant explicitement les arêtes incidentes à LA
+MÊME jonction que celle traitée. Cette exclusion est la clé&nbsp;: sur `t`,
+les arêtes de la barre partagent la jonction du barreau détaché — jamais des
+« voisines » à éviter, seulement la matière naturelle de la confluence —
+donc rien ne plafonne, et la portée généreuse s'applique sans risque, EXACTEMENT
+comme avant tout ce correctif. Sur `comb`, chaque dent voisine a sa PROPRE
+jonction, à quelques milliers de µm — la distance plafonne donc correctement
+avant d'atteindre la dent suivante, exactement comme le premier correctif
+(rayon local) le faisait, mais sans son défaut de sous-estimation.
+
+Un second plancher reste nécessaire en complément (retrouvé en revalidant le
+cas de la lettre avec ce nouveau plafond seul&nbsp;: régression identique à
+avant, `siblingDistance` plafonnant à ~3400&nbsp;µm quand ~5500-7000&nbsp;µm
+étaient nécessaires pour atteindre le vrai bord extérieur au-delà du trou) —
+`ray_boundary_distance(piece, point, direction)`, un rayon simple vers le
+bord EXTÉRIEUR de la pièce (delibérément PAS les trous, qui ne représentent
+jamais une branche sans rapport). La portée finale combine les trois
+signaux&nbsp;: `reach = min(diagonale_généreuse, max(rayon_extérieur,
+distance_branche_voisine) + marge)` quand une branche voisine existe,
+`diagonale_généreuse` telle quelle sinon. Validé exact (byte-identique aux
+valeurs historiques `179,64&nbsp;mm²`/`98,0-99,8&nbsp;%` de couverture sur
+`t`, `4/4` régions isolées sur la lettre) tout en conservant le gain sur
+`comb` (`Incomplete`/93,64&nbsp;%, jamais `Complete` — cf. `test_torture_
+corpus.cpp`, qui vérifie explicitement que ce statut reste honnête plutôt
+que de forcer un faux succès).
+
+**Propagation** : `CutCandidate::reach_um` (nouveau champ) porte la portée
+choisie jusqu'aux TROIS sites consommateurs de `a`/`b` (`generate_cut_
+candidates` qui la calcule, `OracleGuidedSelector::operator()` dans
+`beam_search.cpp` qui doit ré-évaluer chaque candidat avec la MÊME portée
+que celle qui a servi à le construire, et l'application finale de la coupe
+choisie dans `split_region`) — une incohérence entre ces trois sites
+reproduirait exactement le défaut initial de manière plus subtile (portée
+correcte à la génération, mais différente à l'évaluation ou à l'application).
+
+**Limite assumée** : `libs/satin_planning/src/concavity_cuts.cpp` (famille
+de coupe ancrée sur les sommets reflex du CONTOUR, sans graphe de squelette)
+appelle toujours l'ancien `geometry::cut_path_set` non borné — en principe
+exposée au même défaut que `comb` si une forme cumule plusieurs concavités
+proches partageant la même plage perpendiculaire. Non corrigé ici&nbsp;:
+`star5`/`E`/`multi_neck`/`deep_channel` (`shapes_hitting_known_performance_
+limit()`) restent des limitations DOCUMENTÉES de PERFORMANCE (génération de
+candidats de décomposition coûteuse par itération, avant épuisement du
+budget) plutôt que de correction géométrique — aucune preuve empirique
+(bissection, `git stash`) qu'elles partagent la root cause corrigée ici,
+et §33 de la mission interdit un patch opportuniste du générateur de
+candidats sous la pression d'une fixture non confirmée. À réexaminer si un
+signalement réel implique concrètement `concavity_cuts.cpp`.
+
+Non-régression&nbsp;: `test_satin_planning` (90&nbsp;cas de test, 3825
+assertions en Release, 3819 en Debug) et `test_geometry` (58&nbsp;cas,
+291&nbsp;assertions) complets, Debug ET Release.
