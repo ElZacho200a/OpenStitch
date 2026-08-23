@@ -4798,10 +4798,25 @@ signaux&nbsp;: `reach = min(diagonale_généreuse, max(rayon_extérieur,
 distance_branche_voisine) + marge)` quand une branche voisine existe,
 `diagonale_généreuse` telle quelle sinon. Validé exact (byte-identique aux
 valeurs historiques `179,64&nbsp;mm²`/`98,0-99,8&nbsp;%` de couverture sur
-`t`, `4/4` régions isolées sur la lettre) tout en conservant le gain sur
-`comb` (`Incomplete`/93,64&nbsp;%, jamais `Complete` — cf. `test_torture_
-corpus.cpp`, qui vérifie explicitement que ce statut reste honnête plutôt
-que de forcer un faux succès).
+`t`, `4/4` régions isolées sur la lettre) tout en conservant (et même
+améliorant encore, à 96,17&nbsp;%) le gain sur `comb` (`Incomplete`, jamais
+`Complete` — cf. `test_torture_corpus.cpp`, qui vérifie explicitement que ce
+statut reste honnête plutôt que de forcer un faux succès).
+
+**État mesuré du reste des limitations connues après ce correctif** (§37 :
+revalidé plutôt que supposé stable) — comparaison `git checkout` ciblée entre
+avant/après sur les 6 fixtures de `shapes_hitting_known_performance_limit()`,
+avec `prod_config()` (les mêmes paramètres que les tests dédiés) :
+`star5` (6→9 régions, 92,8&nbsp;%→91,1&nbsp;% — décomposition plus complète,
+couverture globale comparable), `asymmetric_star` (4→9 régions,
+84,1&nbsp;%→92,0&nbsp;% — amélioration nette), `comb` (0→5 régions,
+0&nbsp;%→96,17&nbsp;%, déjà détaillé ci-dessus). `E`/`multi_neck`/
+`deep_channel` restent, AVANT et APRÈS ce correctif, à 0 région acceptée/
+0&nbsp;% de couverture — confirmé identique par la même comparaison ciblée,
+pas seulement supposé : ces trois fixtures ne partagent donc PAS la cause
+corrigée ici, cohérent avec leur documentation existante (limitation de
+PERFORMANCE — génération de candidats coûteuse par itération — plutôt que de
+portée de coupe).
 
 **Propagation** : `CutCandidate::reach_um` (nouveau champ) porte la portée
 choisie jusqu'aux TROIS sites consommateurs de `a`/`b` (`generate_cut_
