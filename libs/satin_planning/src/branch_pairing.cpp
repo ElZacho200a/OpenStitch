@@ -210,6 +210,34 @@ DecompositionReport decompose_into_paths(const SkeletonGraph& graph, const Conti
             continuation[{jr.node, jr.selected_pair[1]}] = jr.selected_pair[0];
         }
     }
+    // Un noeud `Continuation` (degre 2, jamais un vrai point de decision) ne
+    // vient QUE d'une jonction d'origine degradee par `prune_graph` apres
+    // elagage d'une branche voisine trop courte (cf. graph_cleanup.cpp) --
+    // `build_skeleton_graph` ne cree jamais de noeud pour un pixel de simple
+    // continuation (crossing number 2), qui reste un point interne de
+    // `centerline`. Sans appariement explicite ici, la marche ci-dessous
+    // s'arretait a TORT a chaque noeud de ce type (aucune entree dans
+    // `continuation`), coupant un unique chemin physique en deux `SatinPath`
+    // non relies -- sans qu'aucune coupe reelle ne separe jamais la matiere
+    // entre eux (seuls les noeuds `Junction` produisent un evenement de
+    // detachement). `split_region` assignait alors les DEUX chemins au MEME
+    // morceau non coupe (un seul accepte, l'autre marque non isole) -- defaut
+    // reel trouve sur "comb" (2026-08-28) : la dent la plus proche d'un
+    // court renflement de tronc quasi carre restait fusionnee en permanence,
+    // le renflement etant elague par sa propre longueur de squelette
+    // (degenere pour une forme quasi carree) meme s'il represente une aire
+    // non negligeable. Appariement trivial ici (un seul choix possible,
+    // aucun cout a comparer) : les deux aretes incidentes deviennent l'une
+    // l'autre le "partenaire de continuation", exactement comme le
+    // ferait une vraie jonction a degre 2 -- fidele au NOM du type
+    // `Continuation`, jamais un point de coupe.
+    for (const auto& node : graph.nodes) {
+        if (node.type != SkeletonNodeType::Continuation) continue;
+        const std::vector<std::uint32_t> incident = incident_edges(graph, node.id);
+        if (incident.size() != 2) continue;  // degenere (ex. boucle) : jamais suppose, ignore silencieusement
+        continuation[{node.id, incident[0]}] = incident[1];
+        continuation[{node.id, incident[1]}] = incident[0];
+    }
 
     std::unordered_set<std::uint32_t> visited;
 

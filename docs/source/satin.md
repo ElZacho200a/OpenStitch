@@ -4844,3 +4844,52 @@ signalement réel implique concrètement `concavity_cuts.cpp`.
 Non-régression&nbsp;: `test_satin_planning` (90&nbsp;cas de test, 3825
 assertions en Release, 3819 en Debug) et `test_geometry` (58&nbsp;cas,
 291&nbsp;assertions) complets, Debug ET Release.
+
+## Appariement des nœuds Continuation dans `decompose_into_paths` (2026-08-28)
+
+Suite directe de la mesure ci-dessus&nbsp;: `comb` franchit désormais le
+seuil de couverture (96,17&nbsp;%&nbsp;>&nbsp;95&nbsp;%) mais reste
+`Incomplete` pour une raison DIFFÉRENTE — le critère « aucun trou local
+disproportionné » (`max_gap_radius_mm=0,52&nbsp;mm`, seuil `0,50&nbsp;mm`) —
+à cause d'une dent qui reste en permanence fusionnée au tronc. Root cause
+isolée en lisant `graph_cleanup.cpp`/`branch_pairing.cpp` plutôt que
+supposée&nbsp;: le court renflement de tronc à gauche de cette dent (~4&nbsp;mm,
+quasi carré) a un squelette dont la LONGUEUR d'arête est quasi nulle (une
+forme carrée n'a pratiquement pas d'axe médian) malgré une aire non
+négligeable — `prune_graph` l'élague donc comme « branche terminale courte »
+(comportement voulu et documenté, pas un défaut en soi&nbsp;: la longueur de
+squelette reste le bon signal pour la vraie parasite). Cet élagage fait
+retomber le degré de la jonction voisine à 2, et `prune_graph` la reclasse
+alors en `Continuation` (comportement également documenté&nbsp;:
+« les jonctions redevenues de degré 2 deviennent des continuations »).
+
+**Défaut réel, distinct de l'élagage lui-même** : `decompose_into_paths`
+(`branch_pairing.cpp`) ne traite QUE les nœuds `Junction` — il appelle
+`pair_branches_at_junction` pour chacun d'eux et peuple une table `(nœud,
+arête) -> arête partenaire` qui permet à la marche de continuer tout droit
+à travers ce nœud. Pour un nœud `Continuation` (degré 2 par construction,
+puisque c'est la SEULE façon dont ce type existe — `build_skeleton_graph` ne
+crée jamais de nœud pour un pixel de simple continuation), cette table
+restait vide&nbsp;: la marche s'arrêtait donc À TORT à chaque nœud
+`Continuation`, coupant un unique chemin physique continu en DEUX
+`SatinPath` non reliés — sans qu'aucune coupe réelle ne sépare jamais la
+matière entre eux (seuls les nœuds `Junction` produisent un événement de
+détachement dans `region_split.cpp`). `split_region` assignait alors les
+DEUX chemins au MÊME morceau non coupé (un seul accepté, l'autre marqué non
+isolé), et la dent restait fusionnée en permanence — pas parce que la coupe
+échouait, mais parce qu'elle n'était même jamais TENTÉE.
+
+**Corrigé** : `decompose_into_paths` apparie aussi les deux arêtes
+incidentes de chaque nœud `Continuation` (appariement trivial — un seul
+choix possible, aucun coût à comparer, contrairement à
+`pair_branches_at_junction` qui doit choisir entre plusieurs paires
+possibles à une vraie jonction) — fidèle au NOM du type `Continuation`,
+jamais traité comme un point de coupe. Corrige `comb` sans toucher à
+`graph_cleanup.cpp` (l'élagage et sa reclassification par degré restent
+inchangés, comportement voulu conservé) — la portée du correctif reste
+localisée à la façon dont `decompose_into_paths` INTERPRÈTE un nœud déjà
+démoté, pas à la décision de démotion elle-même. Non-régression&nbsp;:
+`test_satin_planning` (90&nbsp;cas, 3824&nbsp;assertions Release,
+3817&nbsp;Debug), `test_auto_satin` (54&nbsp;cas, 2235&nbsp;assertions,
+inchangé — ce module ne dépend pas de `branch_pairing.cpp`) et
+`test_autodigitize` (11&nbsp;cas, 87&nbsp;assertions) complets.
