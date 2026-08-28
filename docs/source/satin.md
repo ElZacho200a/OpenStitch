@@ -4946,14 +4946,29 @@ test dédié réécrit en test de succès.
 **Limite assumée, partielle sur `E`** : le repli débloque bien la
 génération de candidats (7 candidats géométriquement valides trouvés,
 contre zéro avant), mais `E` reste `Incomplete`&nbsp;: `OracleGuidedSelector`
-rejette encore chacun de ces candidats (`build_succeeded=false` sur la
-pièce isolée, une portion rectangulaire propre de la barre du milieu,
-~40&nbsp;mm²) pour une raison de satinabilité qui reste À INVESTIGUER —
-un défaut DISTINCT, en aval de la génération de candidats, non corrigé ici
-(§33&nbsp;: ne pas empiler les correctifs sous la pression d'une seule
-fixture sans preuve empirique de la cause). `E`/`multi_neck`/`deep_channel`
-restent donc des limitations connues, désormais confirmées ne PAS relever
-uniquement de la portée de coupe.
+rejette encore chacun de ces candidats (`build_succeeded=false`).
+
+Root cause identifiée (2026-08-28, poursuite de la même investigation) :
+la pièce isolée à `d=2100`&nbsp;µm (la plus favorable des 7, un rectangle
+PROPRE de 10,89&nbsp;×&nbsp;4&nbsp;mm — vérifié nœud par nœud, aucun
+artefact de coupe) est classée `Ambiguous` par `evaluate_satinability`
+avec le refus « direction ambiguë (forme quasi circulaire) ». Cause&nbsp;:
+l'élongation y est mesurée via la longueur du SQUELETTE (l'axe médian, qui
+exclut les deux embouts de largeur/2 à chaque extrémité) divisée par la
+largeur — soit ≈(10890-4000)/4000&nbsp;=&nbsp;1,72 — plutôt que le ratio
+VISUEL longueur/largeur du rectangle lui-même (2,72&nbsp;:&nbsp;1, nettement
+au-dessus du seuil de satinabilité de 2,5). Les 6 autres candidats, tous
+plus courts (branche décroissante avec `d`), échouent nécessairement au
+même critère. Root cause CONFIRMÉE distincte de tout ce qui précède dans
+cette section — un défaut de calibration de la métrique d'élongation dans
+`evaluate_satinability` (`libs/auto_satin`), pas de la portée de coupe
+(`libs/satin_planning`). Non corrigé ici&nbsp;: modifier ce seuil ou cette
+métrique reclasse potentiellement CHAQUE forme du corpus (portée bien plus
+large qu'un correctif localisé au générateur de candidats de coupe), à
+n'entreprendre qu'avec une preuve empirique sur plusieurs fixtures
+réelles, jamais sous la pression d'une seule (§33). `E`/`multi_neck`/
+`deep_channel` restent donc des limitations connues, désormais confirmées
+ne PAS relever de la portée de coupe.
 
 Le nouveau test dédié à `comb` reçoit un budget wall-clock explicitement
 généreux (`max_planning_wall_clock_ms=120000`, même pattern déjà en place
