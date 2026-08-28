@@ -4893,3 +4893,74 @@ démoté, pas à la décision de démotion elle-même. Non-régression&nbsp;:
 3817&nbsp;Debug), `test_auto_satin` (54&nbsp;cas, 2235&nbsp;assertions,
 inchangé — ce module ne dépend pas de `branch_pairing.cpp`) et
 `test_autodigitize` (11&nbsp;cas, 87&nbsp;assertions) complets.
+
+## Repli de portée sur le bord extérieur réel (2026-08-28)
+
+Troisième et dernier correctif de cette même mission&nbsp;: `comb` était
+désormais `Incomplete` pour une raison RÉSIDUELLE (`max_gap_radius_mm=
+0,52&nbsp;mm`, seuil `0,50&nbsp;mm`) après les deux correctifs précédents.
+Investigation élargie au reste du corpus de limitations connues
+(`E`/`multi_neck`/`deep_channel`) pour comprendre si elles partagent une
+cause commune&nbsp;: `E` (lettre à 3 branches du même côté d'un montant)
+révèle un TROISIÈME défaut distinct dans la formule de portée.
+
+**Défaut trouvé** : le squelette RÉEL de `E` (vérifié dans le graphe AVANT
+tout élagage — pas un artefact de `prune_graph`) n'a qu'UNE seule jonction
+à 3 branches&nbsp;: les montants haut et bas se combinent chacun avec leur
+portion de tronc adjacente en un seul arc continu de ~32&nbsp;mm, et
+rejoignent la barre du milieu au même point. Détacher la barre du milieu
+exige une coupe VERTICALE (perpendiculaire à sa tangente horizontale) — or
+les deux autres branches, elles, s'étendent PRÉCISÉMENT dans cette même
+direction verticale, partageant la MÊME jonction que la barre détachée.
+`distance_to_other_branches` (corrigé le 2026-08-22 pour `comb`/`t`) exclut
+délibérément les arêtes incidentes à LA MÊME jonction — correct pour `t`
+(le renflement à traverser est la matière naturelle de la confluence), mais
+FAUX ici&nbsp;: ces deux arêtes sont des branches à part entière, jamais un
+simple renflement, et la portée généreuse (utilisée faute de toute AUTRE
+jonction dans tout le graphe) les tranchait toutes les deux (« 4 morceaux »
+au lieu de 2) à chaque distance testée au-delà du tronc.
+
+`t` et `E` partagent exactement le même signal topologique observable
+(une seule jonction dans tout le graphe, donc `distance_to_other_branches`
+toujours infinie) tout en exigeant des stratégies de portée OPPOSÉES — un
+rayon simple vers le bord extérieur (`ray_boundary_distance`) aurait
+suffi ici (le vrai bord extérieur, au-delà de la barre du milieu, se trouve
+à quelques millimètres seulement dès qu'on s'éloigne du tronc), mais ce
+même rayon est ce qui, à l'inverse, sous-dimensionnait `t` avant le
+correctif du 2026-08-22.
+
+**Corrigé** : plutôt que de choisir UNE formule de portée, `try_distance`
+tente désormais la portée courante (généreuse/plafonnée par
+`distance_to_other_branches`) EN PREMIER, et seulement si elle est REJETÉE
+(mauvais nombre de morceaux ou jonction résiduelle) retente, pour la MÊME
+distance, avec `ray_boundary_distance` seul (strictement plus court, sinon
+la seconde tentative n'a aucune chance de réussir là où la première a déjà
+échoué). Ne change RIEN pour `t` (sa portée généreuse réussit dès la
+première tentative, jamais de repli déclenché) ni pour `comb` (son plafond
+par squelette voisin réussit déjà). Pour `comb`, ce filet de sécurité
+supplémentaire résout la dernière dent bloquée&nbsp;: **`comb` atteint
+désormais `Complete`** (96,52&nbsp;% brut / 97,16&nbsp;% cœur, cinq régions
+acceptées) — retirée de `shapes_hitting_known_performance_limit()`, son
+test dédié réécrit en test de succès.
+
+**Limite assumée, partielle sur `E`** : le repli débloque bien la
+génération de candidats (7 candidats géométriquement valides trouvés,
+contre zéro avant), mais `E` reste `Incomplete`&nbsp;: `OracleGuidedSelector`
+rejette encore chacun de ces candidats (`build_succeeded=false` sur la
+pièce isolée, une portion rectangulaire propre de la barre du milieu,
+~40&nbsp;mm²) pour une raison de satinabilité qui reste À INVESTIGUER —
+un défaut DISTINCT, en aval de la génération de candidats, non corrigé ici
+(§33&nbsp;: ne pas empiler les correctifs sous la pression d'une seule
+fixture sans preuve empirique de la cause). `E`/`multi_neck`/`deep_channel`
+restent donc des limitations connues, désormais confirmées ne PAS relever
+uniquement de la portée de coupe.
+
+Le nouveau test dédié à `comb` reçoit un budget wall-clock explicitement
+généreux (`max_planning_wall_clock_ms=120000`, même pattern déjà en place
+pour le test "réseau en T") : sans cela, le ralentissement Debug non
+optimisé (déjà documenté ailleurs dans ce fichier) fait basculer `comb` sur
+`SearchBudgetExceeded` avant d'atteindre `Complete` — un artefact de
+configuration de build, pas une régression du correctif lui-même.
+
+Non-régression&nbsp;: `test_satin_planning` (90&nbsp;cas, 3831&nbsp;assertions
+Release, 3813&nbsp;Debug) complet.

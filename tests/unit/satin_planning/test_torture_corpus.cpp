@@ -90,10 +90,11 @@ const std::vector<std::string>& torture_corpus() {
 // original) -- plusieurs fixtures nouvelles epuisent desormais le budget
 // avant d'aboutir. Liste EXPLICITE et honnete (pas une exclusion silencieuse) :
 // cf. `docs/source/satin.md`, section "Limitations connues" pour le detail
-// de chaque cas.
+// de chaque cas. "comb" retiree (2026-08-28) : entierement resolue par le
+// correctif de portee de coupe (repli sur le bord exterieur reel), cf. son
+// test dedie.
 const std::vector<std::string>& shapes_hitting_known_performance_limit() {
-    static const std::vector<std::string> kNames = {"star5", "asymmetric_star", "comb", "E", "multi_neck",
-                                                     "deep_channel"};
+    static const std::vector<std::string> kNames = {"star5", "asymmetric_star", "E", "multi_neck", "deep_channel"};
     return kNames;
 }
 
@@ -273,27 +274,36 @@ TEST_CASE("create_satin_plan : asymmetric_star -- termine proprement (meme limit
     CHECK(plan.status != SatinPlanStatus::Complete);
 }
 
-TEST_CASE("create_satin_plan : comb -- limitation connue (jonction/branches nombreuses), termine dans le budget") {
-    // §33/§37 de la mission : defaut REEL trouve via cette fixture (6
-    // jonctions en serie) -- le solveur local seul (`auto_satin::
-    // build_satin_columns`) reste rapide (< 1s, refuse proprement "trop de
-    // jonctions pour une decomposition fiable"), mais le planner recursif
-    // devient tres couteux PAR ITERATION lors de la decomposition (cause
-    // isolee : generation de candidats de coupe, pas le solveur local --
-    // cf. docs/source/satin.md, limitation documentee honnetement plutot
-    // que masquee). Corrige PARTIELLEMENT ici (budgets par defaut abaisses,
-    // filet de securite wall-clock) : ce test verifie que le planner
-    // TERMINE proprement dans un temps raisonnable et rapporte un statut
-    // honnete (jamais un faux Complete), pas qu'il resout parfaitement
-    // cette forme -- correctif architectural de la cause racine
-    // deliberement reporte (§33 : pas de patch opportuniste du generateur
-    // de candidats sous la pression d'une seule fixture).
+TEST_CASE("create_satin_plan : comb -- resolue completement (ancienne limitation connue, corrigee)") {
+    // §33/§37 de la mission : "comb" (6 jonctions en serie) etait une
+    // limitation reelle documentee (coupe non bornee tranchant les dents
+    // VOISINES, cf. le correctif de portee de coupe -- docs/source/satin.md,
+    // "borne la portee de coupe automatique au squelette voisin") puis, une
+    // fois cette portee corrigee, restait bloquee juste sous le seuil de
+    // "trou max" (0,52mm contre 0,50mm) a cause d'une dent qui restait
+    // fusionnee au tronc -- root cause isolee et corrigee separement
+    // (`decompose_into_paths`, appariement des noeuds `Continuation`, cf.
+    // meme document). Un TROISIEME correctif (repli sur une portee plus
+    // courte -- bornee au bord exterieur reel -- quand la portee genereuse
+    // par defaut echoue a produire exactement 2 morceaux) resout enfin
+    // completement cette forme : `comb` n'est PLUS une limitation connue,
+    // retiree de `shapes_hitting_known_performance_limit()`.
     //
-    // Seul `status != Complete` est verifie ICI (cf. commentaire detaille
-    // sur le test "star5" : le diagnostic `SearchBudgetExceeded` lui-meme
-    // n'est present qu'en Debug non optimise, pas en Release).
-    const auto plan = create_satin_plan(shape("comb"), prod_config());
-    CHECK(plan.status != SatinPlanStatus::Complete);
+    // Budget explicitement genereux (meme pattern que le test "reseau en T",
+    // cf. son commentaire detaille) : la marge PAR DEFAUT (calibree pour
+    // l'usage interactif Release) est trop etroite face au ralentissement
+    // Debug non optimise (code geometrique, Clipper2, compiles sans
+    // optimisations) -- un artefact de configuration de build, pas une
+    // limitation reintroduite. Ce test verifie que la decomposition reussit
+    // COMPLETEMENT avec des ressources suffisantes, pas que le budget par
+    // defaut de production suffit sur toutes les configurations de build.
+    auto generousConfig = prod_config();
+    generousConfig.max_planning_wall_clock_ms = 120'000;
+    const auto plan = create_satin_plan(shape("comb"), generousConfig);
+    INFO(format_satin_plan(plan));
+    CHECK(plan.status == SatinPlanStatus::Complete);
+    REQUIRE(plan.aggregate_coverage.has_value());
+    CHECK(plan.aggregate_coverage->raw_coverage_ratio > 0.95);
 }
 
 TEST_CASE("create_satin_plan : E -- limitation connue (3 branches du meme cote), termine dans le budget") {

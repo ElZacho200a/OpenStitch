@@ -299,6 +299,9 @@ std::vector<CutCandidate> generate_cut_candidates(const geometry::PathSet& piece
         cand.point = to_vec2um(sample.point);
         // Normale locale : rotation 90 deg de la tangente.
         const Vec2d normal{-sample.tangent.y, sample.tangent.x};
+        cand.a = to_vec2um(sub(sample.point, scale(normal, 1000.0)));
+        cand.b = to_vec2um(add(sample.point, scale(normal, 1000.0)));
+
         // Portee = genereuse par defaut (meme calcul que l'ancien
         // `geometry::cut_path_set` non borne -- diagonale de la boite
         // englobante), plafonnee UNIQUEMENT par la distance a une VRAIE
@@ -334,54 +337,78 @@ std::vector<CutCandidate> generate_cut_candidates(const geometry::PathSet& piece
         // court -- les deux corrections cohabitent sans se supplanter.
         const double outerReach = std::max(ray_boundary_distance(piece, sample.point, normal),
                                             ray_boundary_distance(piece, sample.point, {-normal.x, -normal.y}));
-        const double reach = siblingDistance < std::numeric_limits<double>::max()
+        const double primaryReach = siblingDistance < std::numeric_limits<double>::max()
                                   ? std::min(generousReach, std::max(outerReach, siblingDistance) + params.local_cut_margin_um)
                                   : generousReach;
-        cand.reach_um = reach;
-        cand.a = to_vec2um(sub(sample.point, scale(normal, 1000.0)));
-        cand.b = to_vec2um(add(sample.point, scale(normal, 1000.0)));
 
-        const auto cutResult = geometry::cut_path_set_bounded(piece, cand.a, cand.b, reach, params.cut_width);
-        if (!cutResult.has_value()) {
-            cand.rejection_reason = "echec de la decoupe geometrique";
-            candidates.push_back(cand);
-            return true;
-        }
-        if (cutResult->size() != 2) {
-            cand.rejection_reason = "coupe n'a pas produit exactement 2 morceaux (" +
-                                     std::to_string(cutResult->size()) + " -- traverse une zone sans rapport)";
-            candidates.push_back(cand);
-            return true;
-        }
-        const double areaA = geometry::path_set_area_um2((*cutResult)[0]) / 1e6;
-        const double areaB = geometry::path_set_area_um2((*cutResult)[1]) / 1e6;
-        if (areaA < params.min_piece_area_mm2 || areaB < params.min_piece_area_mm2) {
-            cand.rejection_reason = "fragment trop petit";
-            candidates.push_back(cand);
-            return true;
-        }
+        // Tente une coupe a une portee DONNEE et remplit `cand` en
+        // consequence (`valid`/aires si acceptee, sinon `rejection_reason`).
+        // Retourne `true` seulement si la coupe est acceptee -- permet a
+        // l'appelant de retenter une AUTRE portee sans dupliquer toute la
+        // logique de rejet.
+        const auto attempt_reach = [&](double reach) {
+            cand.reach_um = reach;
+            const auto cutResult = geometry::cut_path_set_bounded(piece, cand.a, cand.b, reach, params.cut_width);
+            if (!cutResult.has_value()) {
+                cand.rejection_reason = "echec de la decoupe geometrique";
+                return false;
+            }
+            if (cutResult->size() != 2) {
+                cand.rejection_reason = "coupe n'a pas produit exactement 2 morceaux (" +
+                                         std::to_string(cutResult->size()) + " -- traverse une zone sans rapport)";
+                return false;
+            }
+            const double areaA = geometry::path_set_area_um2((*cutResult)[0]) / 1e6;
+            const double areaB = geometry::path_set_area_um2((*cutResult)[1]) / 1e6;
+            if (areaA < params.min_piece_area_mm2 || areaB < params.min_piece_area_mm2) {
+                cand.rejection_reason = "fragment trop petit";
+                return false;
+            }
 
-        // Determine lequel des deux morceaux est la branche isolee (contient
-        // le noeud distal) pour renseigner les aires ET, le cas echeant,
-        // pour la verification de satinabilite ci-dessous.
-        std::size_t branchIdx = 0;
-        if (farNode != nullptr && path_set_contains((*cutResult)[1], farNode->position)) branchIdx = 1;
-        const std::size_t remainderIdx = 1 - branchIdx;
+            // Determine lequel des deux morceaux est la branche isolee
+            // (contient le noeud distal) pour renseigner les aires ET, le
+            // cas echeant, pour la verification de satinabilite ci-dessous.
+            std::size_t branchIdx = 0;
+            if (farNode != nullptr && path_set_contains((*cutResult)[1], farNode->position)) branchIdx = 1;
+            const std::size_t remainderIdx = 1 - branchIdx;
 
-        if (verifySatinability) {
-            const auto analysis = auto_satin::analyze_region((*cutResult)[branchIdx], {});
-            const bool clean = analysis.has_value() && analysis->report.junction_count == 0;
-            if (!clean) {
-                cand.rejection_reason = "morceau isole encore branche apres cette coupe (jonction residuelle, "
-                                         "probablement une branche voisine partiellement tranchee)";
-                candidates.push_back(cand);
-                return true;
+            if (verifySatinability) {
+                const auto analysis = auto_satin::analyze_region((*cutResult)[branchIdx], {});
+                const bool clean = analysis.has_value() && analysis->report.junction_count == 0;
+                if (!clean) {
+                    cand.rejection_reason = "morceau isole encore branche apres cette coupe (jonction residuelle, "
+                                             "probablement une branche voisine partiellement tranchee)";
+                    return false;
+                }
+            }
+
+            cand.valid = true;
+            cand.branch_piece_area_mm2 = geometry::path_set_area_um2((*cutResult)[branchIdx]) / 1e6;
+            cand.remainder_piece_area_mm2 = geometry::path_set_area_um2((*cutResult)[remainderIdx]) / 1e6;
+            return true;
+        };
+
+        if (!attempt_reach(primaryReach)) {
+            // Repli : la portee "genereuse" (necessaire pres d'une confluence
+            // large comme "t", cf. commentaire ci-dessus) peut a l'inverse
+            // trancher une branche SANS RAPPORT qui partage la meme jonction
+            // sans en etre pour autant un simple renflement -- defaut reel
+            // trouve sur "E" (2026-08-28) : la branche detachee (barre du
+            // milieu) partage sa jonction avec DEUX branches qui s'etendent,
+            // elles, dans la MEME direction que la portee (le montant vertical
+            // du E, de part et d'autre) -- la portee genereuse les tranche
+            // aussi (plus de 2 morceaux), la ou une portee bornee au bord
+            // exterieur REEL (`outerReach`, sans marge speculative) aurait pu
+            // suffire (le trou entre la barre et ses voisines est souvent
+            // proche). Retente donc avec `outerReach` seul si strictement
+            // plus petit que ce qui vient d'echouer -- jamais l'inverse
+            // (naurait aucune chance de reussir la ou la version generreuse a
+            // deja echoue), et jamais un troisieme essai (deux tentatives
+            // suffisent a distinguer les deux limitations reelles connues).
+            if (outerReach + params.local_cut_margin_um < primaryReach) {
+                attempt_reach(outerReach + params.local_cut_margin_um);
             }
         }
-
-        cand.valid = true;
-        cand.branch_piece_area_mm2 = geometry::path_set_area_um2((*cutResult)[branchIdx]) / 1e6;
-        cand.remainder_piece_area_mm2 = geometry::path_set_area_um2((*cutResult)[remainderIdx]) / 1e6;
         candidates.push_back(cand);
         return true;
     };
