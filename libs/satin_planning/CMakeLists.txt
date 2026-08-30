@@ -1,5 +1,6 @@
 add_library(openstitch_satin_planning
     src/branch_pairing.cpp
+    src/topology.cpp
     src/region_split.cpp
     src/region_satinability.cpp
     src/region_oracle.cpp

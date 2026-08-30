@@ -193,11 +193,26 @@ JunctionPairingReport pair_branches_at_junction(const SkeletonGraph& graph, std:
     return report;
 }
 
-DecompositionReport decompose_into_paths(const SkeletonGraph& graph, const ContinuationCostParams& params) {
+DecompositionReport decompose_into_paths(const SkeletonGraph& graph, const ContinuationCostParams& params,
+                                          const std::vector<JunctionOverride>& overrides) {
     DecompositionReport report;
     for (const auto& node : graph.nodes) {
         if (node.type == SkeletonNodeType::Junction) {
             report.junctions.push_back(pair_branches_at_junction(graph, node.id, params));
+        }
+    }
+    // Applique les overrides APRES le calcul normal : `candidates` (cout de
+    // chaque paire) reste peuple pour le diagnostic, seule `selected_pair`/
+    // `detached` est remplacee -- cf. doc de JunctionOverride.
+    for (const auto& ov : overrides) {
+        const auto it = std::find_if(report.junctions.begin(), report.junctions.end(),
+                                      [&](const JunctionPairingReport& jr) { return jr.node == ov.node; });
+        if (it == report.junctions.end()) continue;  // noeud absent ou pas une Junction : ignore silencieusement
+        it->selected_pair = ov.forced_pair;
+        it->detached.clear();
+        for (auto id : incident_edges(graph, ov.node)) {
+            if (it->selected_pair.size() == 2 && (id == it->selected_pair[0] || id == it->selected_pair[1])) continue;
+            it->detached.push_back(id);
         }
     }
 

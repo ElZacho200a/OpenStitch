@@ -1,5 +1,7 @@
 add_executable(test_satin_planning
     test_branch_pairing.cpp
+    test_topology.cpp
+    test_decomposition_candidates.cpp
     test_region_split.cpp
     test_region_satinability.cpp
     test_region_oracle.cpp

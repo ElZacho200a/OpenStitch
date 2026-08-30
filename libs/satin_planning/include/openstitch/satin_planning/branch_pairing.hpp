@@ -104,13 +104,37 @@ struct DecompositionReport {
     std::vector<SatinPath> paths;
 };
 
+// Force l'appariement (ou l'absence d'appariement) retenu a UNE jonction
+// precise, sans changer le comportement de decompose_into_paths PARTOUT
+// ailleurs dans le graphe (§ refonte decomposition topologique,
+// enumerate_decomposition_candidates dans topology.hpp) : permet de generer
+// une variante topologique alternative pour comparaison par cout complet,
+// sans dupliquer la logique de marche/appariement. `forced_pair` vide force
+// TOUTES les aretes incidentes a `node` a rester detachees (variante "aucun
+// trunk", candidat C du brief de refonte) ; `forced_pair` de 2 elements
+// force cette paire precise comme trunk, meme si ce n'est pas l'argmin
+// naturel de `pair_branches_at_junction`. Au plus un override par jonction
+// (comportement indefini si `overrides` en contient deux pour le meme
+// `node` -- l'appelant ne doit jamais le faire).
+struct JunctionOverride {
+    std::uint32_t node{0};
+    std::vector<std::uint32_t> forced_pair;  // vide, ou exactement 2 ids d'arete incidents a `node`
+};
+
 // Decompose l'integralite du graphe de squelette en SatinPath. Ne modifie
 // jamais le graphe et ne genere aucune geometrie (pas de coupe de polygone,
 // pas de rails) : c'est une etape de planification topologique pure, phase 1
 // du plan SGSD. Deterministe (ordre des jonctions et des chemins base sur
 // les ids croissants du graphe, deja deterministe par construction).
+// `overrides` reste vide pour tout appelant historique (comportement
+// exactement inchange) ; utilise uniquement par l'enumeration de candidats
+// de decomposition (§ refonte topologique) pour forcer un choix non-argmin
+// a une jonction ciblee, `JunctionPairingReport::candidates` restant
+// neanmoins peuple normalement (diagnostic/cout inchange, seule la
+// SELECTION differe).
 [[nodiscard]] DecompositionReport decompose_into_paths(const SkeletonGraph& graph,
-                                                        const ContinuationCostParams& params = {});
+                                                        const ContinuationCostParams& params = {},
+                                                        const std::vector<JunctionOverride>& overrides = {});
 
 // Rendu textuel structure d'un rapport de decomposition (format de
 // diagnostic SGSD : jonctions, candidats d'appariement avec leur cout,
