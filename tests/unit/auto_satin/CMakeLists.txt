@@ -2,6 +2,7 @@ add_executable(test_auto_satin
     test_pipeline.cpp
     test_columns.cpp
     test_coverage_regression.cpp
+    test_satin_column_view.cpp
 )
 target_link_libraries(test_auto_satin
     PRIVATE openstitch::auto_satin openstitch::stitch_generation openstitch::satin_coverage

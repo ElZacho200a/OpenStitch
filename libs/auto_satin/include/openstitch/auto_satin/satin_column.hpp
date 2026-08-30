@@ -293,6 +293,56 @@ struct SatinColumnsResult {
     std::vector<JunctionSectorInfo> junction_sectors;       // diagnostic (SVG, tests, Legacy)
 };
 
+// Méthode de construction de rail réellement employée pour UNE colonne
+// (§ refonte décomposition topologique, docs/source/satin.md). `AxisStation`
+// = méthode historique (station sur l'axe -> normale -> intersection du
+// contour, `compute_column_stations`/`cross_section`) : c'est la SEULE
+// méthode existante à ce jour, en mode Legacy comme Parametric — les deux ne
+// diffèrent que par la finalisation dense/Bézier, jamais par la façon dont
+// une section transversale est obtenue. `ContourCorrespondence` est réservée
+// à un futur alignement explicite de deux chaînes de contour (jonctions
+// résiduelles non isolables par une coupe, ex. `comb`/`star5`/`E`) — aucune
+// colonne produite par `build_satin_columns` aujourd'hui n'utilise cette
+// valeur ; le champ existe pour que `satin_planning` puisse déjà distinguer
+// les deux méthodes une fois la seconde implémentée, sans nouveau bris d'API.
+enum class RailConstructionMethod : std::uint8_t { AxisStation, ContourCorrespondence };
+
+// Vue NORMALISÉE et EN LECTURE SEULE d'une colonne satin déjà construite par
+// `build_satin_columns` (§ refonte décomposition topologique). Ne remplace
+// NI `SatinColumnGeometry` NI `ParametricSatinObject` — les deux restent les
+// représentations RÉELLEMENT produites (rails denses vs Bézier épars) ; ceci
+// est une PROJECTION qui élimine la logique "`parametric_columns` si non
+// vide sinon `columns`" dupliquée aujourd'hui dans `region_oracle.cpp`,
+// `region_routing.cpp`, `satin_sections.cpp`, `satin_plan.cpp`. Jamais
+// construite indépendamment (pas de constructeur public autre que
+// `satin_column_view`), jamais consommée par `build_satin_columns`
+// lui-même — uniquement par les appelants de `libs/satin_planning`.
+//
+// `start_width`/`end_width` sont dérivés du premier/dernier barreau réel
+// (longueur du segment `rung.a`-`rung.b`), PAS un champ stocké séparément :
+// aucune des deux représentations sources ne suit la largeur par extrémité,
+// seulement min/max/moyenne sur toute la colonne (`mean_width_um` ci-dessous
+// reste la moyenne globale, copiée telle quelle). Vaut 0 si `rungs` est vide
+// (ne devrait arriver que sur une géométrie dégénérée déjà rejetée ailleurs).
+struct SatinColumn {
+    geometry::Path rail_a;
+    geometry::Path rail_b;
+    std::vector<SatinRung> rungs;
+    Micrometers start_width{0};
+    Micrometers end_width{0};
+    std::optional<std::uint32_t> start_junction;
+    std::optional<std::uint32_t> end_junction;
+    RailConstructionMethod method{RailConstructionMethod::AxisStation};
+    double mean_width_um{0.0};
+    double length_um{0.0};
+};
+
+// Projette `result.parametric_columns` si non vide, sinon `result.columns`
+// (même règle de sélection que partout ailleurs dans `libs/satin_planning`,
+// factorisée ici une seule fois). Ordre préservé. Vecteur vide si `result`
+// ne porte aucune colonne (refus, statut non constructible).
+[[nodiscard]] std::vector<SatinColumn> satin_column_view(const SatinColumnsResult& result);
+
 // Construit une ou plusieurs colonnes satin depuis une région vectorielle.
 // - Suitable          -> une colonne (l'axe principal) ;
 // - RequiresDecomposition (Y/T) -> une colonne par branche menant à une extrémité ;

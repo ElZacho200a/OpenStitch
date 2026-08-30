@@ -2756,6 +2756,53 @@ std::vector<SatinJunctionPlan> plan_junction_stitch_order(
 
 } // namespace
 
+namespace {
+
+// Distance euclidienne entre deux points Vec2um -- meme calcul que `norm`
+// ci-dessus, depuis des coordonnees entieres (barreau reel, jamais une
+// mesure fabriquee).
+double vec2um_distance(Vec2um a, Vec2um b) {
+    const double dx = static_cast<double>(a.x.value) - static_cast<double>(b.x.value);
+    const double dy = static_cast<double>(a.y.value) - static_cast<double>(b.y.value);
+    return std::sqrt(dx * dx + dy * dy);
+}
+
+// Projection commune SatinColumnGeometry/ParametricSatinObject -> SatinColumn
+// (§ satin_column.hpp, RailConstructionMethod) : les deux types partagent
+// exactement les champs copiés ici, seule la finalisation dense/Bezier en
+// amont differe -- rien de plus a normaliser.
+template <typename Column>
+SatinColumn to_satin_column(const Column& col) {
+    SatinColumn out;
+    out.rail_a = col.rail_a;
+    out.rail_b = col.rail_b;
+    out.rungs = col.rungs;
+    out.start_junction = col.start_junction;
+    out.end_junction = col.end_junction;
+    out.mean_width_um = col.mean_width_um;
+    out.length_um = col.length_um;
+    if (!out.rungs.empty()) {
+        const auto toWidth = [](double um) { return Micrometers{static_cast<std::int32_t>(std::lround(um))}; };
+        out.start_width = toWidth(vec2um_distance(out.rungs.front().a, out.rungs.front().b));
+        out.end_width = toWidth(vec2um_distance(out.rungs.back().a, out.rungs.back().b));
+    }
+    return out;
+}
+
+}  // namespace
+
+std::vector<SatinColumn> satin_column_view(const SatinColumnsResult& result) {
+    std::vector<SatinColumn> out;
+    if (!result.parametric_columns.empty()) {
+        out.reserve(result.parametric_columns.size());
+        for (const auto& col : result.parametric_columns) out.push_back(to_satin_column(col));
+    } else {
+        out.reserve(result.columns.size());
+        for (const auto& col : result.columns) out.push_back(to_satin_column(col));
+    }
+    return out;
+}
+
 SatinColumnsResult build_satin_columns(const geometry::PathSet& region,
                                        const SatinColumnsParameters& params) {
     SatinColumnsResult r;
