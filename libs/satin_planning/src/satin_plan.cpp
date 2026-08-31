@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <chrono>
 #include <functional>
+#include <limits>
 #include <sstream>
 #include <unordered_map>
 
@@ -223,7 +224,135 @@ RecursionOutcome decompose_and_recurse(const geometry::PathSet& region, const Sa
         return out;
     }
     const auto& graph = analysis->debug.graph;
-    const auto decomposition = decompose_into_paths(graph);
+
+    // §14 : recolte les JunctionSeparatorInfo DEJA calcules par le moteur
+    // Legacy (sommet reflex du contour a chaque confluence -- cf.
+    // `auto_satin::satin_column.cpp`, `resolve_junction`) pour enrichir
+    // `generate_cut_candidates` d'une famille de coupes ancree sur une
+    // encoche REELLE, plutot que sur une distance devinee par le seul
+    // balayage regulier. Mode Legacy FORCE ici (independamment de
+    // `config.genParams.geometry_mode`) -- seul mode qui resout
+    // StableBranchEnd/JunctionSeparator -- pour cette extraction
+    // diagnostique uniquement : n'affecte jamais la geometrie satin
+    // reellement produite par `try_local_satin` (le solveur local reste
+    // inchange). Repli silencieux sur une liste vide si le moteur Legacy
+    // refuse (ex. jonction incoherente) : la famille supplementaire est
+    // simplement absente pour cette region, jamais une erreur -- le
+    // balayage regulier reste disponible. Calcule ICI (avant le choix de
+    // decomposition ci-dessous) : independant de `decomposition`, et
+    // reutilise tel quel par le chemin multi-candidats (§ refonte
+    // topologique) comme par le chemin historique.
+    CutCandidateParams baseCutParams = config.cutParams;
+    if (config.use_junction_separator_cuts && baseCutParams.junction_separators.empty()) {
+        auto_satin::SatinColumnsParameters legacyParams = config.genParams;
+        legacyParams.geometry_mode = auto_satin::SatinGeometryMode::Legacy;
+        const auto legacyResult = auto_satin::build_satin_columns(region, legacyParams);
+        baseCutParams.junction_separators = legacyResult.junction_separators;
+    }
+
+    // § refonte decomposition topologique (etape 3, docs/source/satin.md) :
+    // pour une region a UNE SEULE jonction de degre EXACTEMENT 3, compare
+    // REELLEMENT plusieurs decompositions candidates (construction+mesure,
+    // jamais un proxy pre-construction seul) plutot que l'argmin de
+    // continuite unique de `decompose_into_paths` -- cf.
+    // `SatinPlanConfig::use_topology_multi_candidate` pour le detail.
+    // Chaque evaluation de candidat compte reellement vers
+    // `budget.oracle_evaluations` (meme discipline que le reste du
+    // planner) ; borne au degre EXACTEMENT 3 pour ne jamais alourdir les
+    // formes deja a la limite du budget (`star5`/`comb`/`E`, toutes de
+    // degre >=4 ou multi-jonctions).
+    //
+    // Defaut REEL trouve en verifiant ce branchement bout en bout
+    // (2026-08-30, `test_satin_plan.cpp`, fixture `y_symmetric`) : le
+    // mecanisme est exerce et corrige reellement l'argmin sur cette
+    // fixture au niveau isole (`test_decomposition_cost.cpp`, sans les
+    // coupes separateur de jonction ci-dessus), mais `baseCutParams`
+    // (deja enrichi par ces memes coupes, calcule juste au-dessus) fait
+    // converger les deux decompositions candidates vers un resultat FINAL
+    // identique une fois passees par `split_region` -- §14 absorbe deja
+    // une bonne part du benefice attendu d'un meilleur choix topologique
+    // sur cette fixture precise. Le mecanisme est donc verifie correct et
+    // sans regression (voir aussi `polygonal_cut_fixture` plus bas), mais
+    // pas encore demontre comme un gain de couverture bout en bout sur le
+    // corpus actuel -- attendu plutot des etapes 4/5 (croix/trident), ou
+    // la topologie choisie influence la construction bien au-dela des
+    // seules coupes de jonction.
+    //
+    // Court-circuit par CLASSIFICATION (defaut reel trouve en integrant ce
+    // chemin, 2026-08-30) : construire+mesurer CHAQUE candidat via
+    // `evaluate_decomposition_cost` reste couteux (un `split_region`+
+    // `evaluate_decomposition_generation` complet par candidat). Le cout de
+    // continuite pre-construction (deja calcule, gratuit) suffit DEJA a
+    // trancher un T clairement asymetrique (§4 du plan de refonte : verifie
+    // sur "t", argmin a cout 0 contre 0,605) -- la mesure reelle n'apporte
+    // quelque chose que lorsqu'aucune paire n'est une continuation naturelle
+    // privilegiee (cf. "y_symmetric", classee `JunctionType::Y`). Un premier
+    // essai avec un simple seuil numerique sur l'ecart des deux meilleurs
+    // couts (au lieu de la classification) declenchait la comparaison
+    // couteuse bien plus souvent que necessaire -- `polygonal_cut_fixture`
+    // (qui traverse de nombreuses sous-regions degre-3 issues de coupes
+    // concavite/polygonales, sans rapport avec un vrai Y symetrique)
+    // epuisait alors le budget wall-clock (14,4s/10s), passant
+    // d'`Incomplete` (53,30%) a `Impossible` (38,70%). D'ou le choix de
+    // `classify_junction(...).type == Y` (etape 2) plutot qu'un seuil isole
+    // sur les deux meilleurs couts seuls -- un signal structurel, pas
+    // arithmetique.
+    DecompositionReport decomposition;
+    if (config.use_topology_multi_candidate && graph.junction_count() == 1) {
+        const auto junctionNodeIt = std::find_if(graph.nodes.begin(), graph.nodes.end(),
+                                                  [](const auto_satin::SkeletonNode& n) {
+                                                      return n.type == auto_satin::SkeletonNodeType::Junction;
+                                                  });
+        const JunctionPairingReport natural =
+            junctionNodeIt != graph.nodes.end() ? pair_branches_at_junction(graph, junctionNodeIt->id)
+                                                 : JunctionPairingReport{};
+        const bool degreeThree = junctionNodeIt != graph.nodes.end() &&
+                                  (natural.selected_pair.size() + natural.detached.size()) == 3;
+        // Gate par CLASSIFICATION (JunctionType::Y), pas par un simple ecart
+        // numerique de cout -- defaut reel trouve en integrant ce chemin
+        // (2026-08-30) : un ecart de cout suffisamment petit se produit
+        // aussi INCIDEMMENT sur des jonctions degre-3 quelconques issues de
+        // coupes concavite/polygonales (`polygonal_cut_fixture`, qui n'a
+        // rien d'un Y symetrique), faisant declencher la comparaison
+        // couteuse bien plus souvent que necessaire et epuisant le budget
+        // wall-clock (mesure : Incomplete/53,30% -> Impossible/38,70% sur
+        // cette fixture avec un simple seuil d'ecart 0,15). `classify_junction`
+        // (etape 2) encode deja le signal structurel voulu -- "aucune paire
+        // n'est une continuation naturelle privilegiee" -- de facon plus
+        // robuste qu'un seuil isole sur les deux meilleurs couts seuls.
+        const bool degreeThreeSymmetric =
+            degreeThree && classify_junction(graph, junctionNodeIt->id).type == JunctionType::Y;
+        if (degreeThreeSymmetric) {
+            const DecompositionCandidateSet candidates = enumerate_decomposition_candidates(graph, junctionNodeIt->id);
+            DecompositionCostParams costParams;
+            costParams.weights = config.topologyCostWeights;
+            // Sans selecteur (premier candidat valide) : la comparaison
+            // reste rapide (degre 3, region simple par construction) --
+            // seule la decomposition FINALEMENT retenue reçoit, plus bas, le
+            // traitement complet (beam search) exactement comme avant cette
+            // refonte.
+            costParams.cutParams = baseCutParams;
+            costParams.genParams = config.genParams;
+            costParams.coverageConfig = config.coverageConfig;
+            costParams.density = config.density;
+
+            std::size_t bestIdx = 0;
+            double bestTotal = std::numeric_limits<double>::max();
+            for (std::size_t i = 0; i < candidates.candidates.size(); ++i) {
+                const DecompositionCost cost = evaluate_decomposition_cost(region, graph, candidates.candidates[i], costParams);
+                ++budget.oracle_evaluations;
+                if (cost.total < bestTotal) {
+                    bestTotal = cost.total;
+                    bestIdx = i;
+                }
+            }
+            decomposition = candidates.candidates[bestIdx].topology;
+        } else {
+            decomposition = decompose_into_paths(graph);
+        }
+    } else {
+        decomposition = decompose_into_paths(graph);
+    }
 
     satin_planning::BeamSearchParams beamParams;
     beamParams.genParams = config.genParams;
@@ -248,30 +377,9 @@ RecursionOutcome decompose_and_recurse(const geometry::PathSet& region, const Sa
     beamParams.beam_width = (localComplexityHigh || globalBudgetSpent) ? std::size_t{1} : config.beam_width;
     satin_planning::OracleGuidedSelector selector(beamParams);
 
-    CutCandidateParams cutParams = config.cutParams;
+    CutCandidateParams cutParams = baseCutParams;
     if (!cutParams.selector) {
         cutParams.selector = std::ref(selector);
-    }
-
-    // §14 : recolte les JunctionSeparatorInfo DEJA calcules par le moteur
-    // Legacy (sommet reflex du contour a chaque confluence -- cf.
-    // `auto_satin::satin_column.cpp`, `resolve_junction`) pour enrichir
-    // `generate_cut_candidates` d'une famille de coupes ancree sur une
-    // encoche REELLE, plutot que sur une distance devinee par le seul
-    // balayage regulier. Mode Legacy FORCE ici (independamment de
-    // `config.genParams.geometry_mode`) -- seul mode qui resout
-    // StableBranchEnd/JunctionSeparator -- pour cette extraction
-    // diagnostique uniquement : n'affecte jamais la geometrie satin
-    // reellement produite par `try_local_satin` (le solveur local reste
-    // inchange). Repli silencieux sur une liste vide si le moteur Legacy
-    // refuse (ex. jonction incoherente) : la famille supplementaire est
-    // simplement absente pour cette region, jamais une erreur -- le
-    // balayage regulier reste disponible.
-    if (config.use_junction_separator_cuts && cutParams.junction_separators.empty()) {
-        auto_satin::SatinColumnsParameters legacyParams = config.genParams;
-        legacyParams.geometry_mode = auto_satin::SatinGeometryMode::Legacy;
-        const auto legacyResult = auto_satin::build_satin_columns(region, legacyParams);
-        cutParams.junction_separators = legacyResult.junction_separators;
     }
 
     const auto split = split_region(region, graph, decomposition, cutParams);

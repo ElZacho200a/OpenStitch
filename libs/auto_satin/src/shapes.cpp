@@ -129,6 +129,31 @@ std::optional<geometry::PathSet> make_shape(const std::string& name) {
             band([](double t) { return std::pair{14'000.0 * t, 14'000.0 * t}; }, 20, W)};
         return from_union(parts);
     }
+    if (name == "y_symmetric") {
+        // § refonte decomposition topologique (docs/source/satin.md) : "y"
+        // ci-dessus est VOLONTAIREMENT asymetrique (bras a 45/135/270 degres,
+        // pas 120 degres) -- son cout de continuite existant favorise deja
+        // nettement une paire (mesure : 0,21 pour le meilleur appariement
+        // contre 0,60/1,00 pour les deux autres), donc ne teste jamais le cas
+        // ou aucune paire n'est une continuation naturelle privilegiee. Cette
+        // variante a trois bras STRICTEMENT identiques (meme largeur, meme
+        // longueur) a exactement 120 degres les uns des autres : les 3
+        // appariements ont RIGOUREUSEMENT le meme cout de continuite par
+        // symetrie, un cas que l'ancien selecteur (argmin, depart de liste)
+        // tranche de facon arbitraire (ordre d'id d'arete) -- exactement le
+        // cas ou une mesure reelle de couverture (§ decomposition_cost.hpp)
+        // a quelque chose a apporter par rapport a un choix pre-construction
+        // seul.
+        std::vector<Path> parts;
+        for (int i = 0; i < 3; ++i) {
+            const double angle = std::numbers::pi / 2.0 + i * (2.0 * std::numbers::pi / 3.0);
+            const double dx = std::cos(angle);
+            const double dy = std::sin(angle);
+            parts.push_back(band(
+                [dx, dy](double t) { return std::pair{dx * 16'000.0 * t, dy * 16'000.0 * t}; }, 20, W));
+        }
+        return from_union(parts);
+    }
     if (name == "t") {
         std::vector<Path> parts{rect(-18'000, W, 18'000, -W + 5'000),
                                 rect(-W, -22'000, W, W)};

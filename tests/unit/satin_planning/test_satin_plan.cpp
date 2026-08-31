@@ -496,3 +496,88 @@ TEST_CASE("create_satin_plan : extend_columns_into_overlap ferme reellement l'in
     CHECK(planWith.aggregate_coverage->raw_coverage_ratio >
           planWithout.aggregate_coverage->raw_coverage_ratio);
 }
+
+// ---------------------------------------------------------------------
+// § refonte decomposition topologique, etape 3 (docs/source/satin.md) :
+// use_topology_multi_candidate, bout en bout via create_satin_plan (pas
+// seulement evaluate_decomposition_cost isolement, deja teste dans
+// test_decomposition_cost.cpp).
+// ---------------------------------------------------------------------
+
+TEST_CASE("create_satin_plan : y_symmetric -- le multi-candidats converge vers le meme resultat que l'ancien defaut") {
+    // Defaut REEL trouve en integrant use_topology_multi_candidate
+    // (2026-08-30) : test_decomposition_cost.cpp demontre qu'AVEC des
+    // CutCandidateParams par defaut (sans les coupes "separateur de
+    // jonction" du §14), le candidat runner-up (aretes 0/2) bat reellement
+    // l'argmin de continuite (aretes 1/2) sur cette fixture -- la fonction
+    // de cout sait donc reellement faire gagner autre chose que l'argmin
+    // pre-construction.
+    //
+    // Mais `decompose_and_recurse` (satin_plan.cpp) n'appelle JAMAIS
+    // `evaluate_decomposition_cost` avec des CutCandidateParams par
+    // defaut : il lui passe TOUJOURS `baseCutParams`, deja enrichi par les
+    // coupes separateur de jonction du moteur Legacy (§14, ancre sur le
+    // sommet reflex REEL du contour a la confluence). Avec ces coupes
+    // reelles, les deux decompositions candidates aboutissent DEJA a des
+    // coupes de qualite quasi identique -- l'argmin de continuite
+    // redevient le meilleur candidat (verifie : couverture=0.136 pour
+    // aretes 1/2 contre 0.081 pour aretes 0/2, mais continuite 0.296 contre
+    // 0.433 fait gagner aretes 1/2 au total, 0.568 contre 0.595). Autrement
+    // dit : le mecanisme multi-candidats est exerce, correct et sans cout
+    // de qualite ici -- mais §14 (deja en production avant cette refonte)
+    // absorbe deja une bonne partie du benefice attendu d'un meilleur choix
+    // topologique, au moins sur cette fixture. Un gain de couverture bout
+    // en bout mesurable est attendu plus tard (etapes 4/5, croix/trident),
+    // pas garanti a chaque etape individuelle.
+    //
+    // Note sur la marge de l'assertion de couverture ci-dessous : confirme
+    // deterministe (identique a 6 decimales) sur >10 executions isolees ET
+    // apres un fort prechauffage dans le meme process (2026-08-30). Une
+    // seule execution en a devie sous CONTENTION CPU reelle (une compilation
+    // Debug concurrente sur la meme machine, pas reproduite depuis) --
+    // rappel attendu de `PlanningBudgetState` (§18, filet de securite
+    // wall-clock reel, `max_planning_wall_clock_ms`), pas un defaut de ce
+    // mecanisme precis. Marge conservee volontairement genereuse (pas
+    // d'egalite stricte) pour rester robuste a ce cas de charge machine.
+    auto withFlag = prod_config();
+    auto withoutFlag = prod_config();
+    withoutFlag.use_topology_multi_candidate = false;
+
+    const auto planWith = create_satin_plan(shape("y_symmetric"), withFlag);
+    const auto planWithout = create_satin_plan(shape("y_symmetric"), withoutFlag);
+
+    CHECK(planWith.status == planWithout.status);
+    // Preuve independante du temps reel : le mecanisme est bien exerce
+    // (candidats construits+mesures) -- un COMPTE, jamais soumis a la
+    // contention CPU contrairement a la couverture mesuree juste apres.
+    CHECK(planWith.oracle_evaluations > planWithout.oracle_evaluations);
+    REQUIRE(planWith.aggregate_coverage.has_value());
+    REQUIRE(planWithout.aggregate_coverage.has_value());
+    CHECK(planWith.aggregate_coverage->raw_coverage_ratio ==
+          Catch::Approx(planWithout.aggregate_coverage->raw_coverage_ratio).margin(0.01));
+}
+
+TEST_CASE("create_satin_plan : polygonal_cut_fixture -- le multi-candidats ne change rien (garde-fou budget)") {
+    // Defaut REEL trouve en integrant use_topology_multi_candidate
+    // (2026-08-30) : un premier court-circuit fonde sur un simple ecart
+    // numerique de cout de continuite se declenchait aussi INCIDEMMENT sur
+    // les sous-regions degre-3 issues des coupes concavite/polygonales de
+    // CETTE forme (sans rapport avec un Y symetrique), epuisant le budget
+    // wall-clock et faisant regresser le statut d'Incomplete (53,30%) a
+    // Impossible (38,70%). Corrige en ne declenchant la comparaison couteuse
+    // que pour une jonction classee JunctionType::Y (etape 2) -- ce test
+    // fige le resultat identique avec/sans le nouveau chemin, comme garde-
+    // fou de non-regression pour CE defaut precis.
+    auto withFlag = prod_config();
+    auto withoutFlag = prod_config();
+    withoutFlag.use_topology_multi_candidate = false;
+
+    const auto planWith = create_satin_plan(shape("polygonal_cut_fixture"), withFlag);
+    const auto planWithout = create_satin_plan(shape("polygonal_cut_fixture"), withoutFlag);
+
+    CHECK(planWith.status == planWithout.status);
+    REQUIRE(planWith.aggregate_coverage.has_value());
+    REQUIRE(planWithout.aggregate_coverage.has_value());
+    CHECK(planWith.aggregate_coverage->raw_coverage_ratio ==
+          Catch::Approx(planWithout.aggregate_coverage->raw_coverage_ratio).margin(0.01));
+}

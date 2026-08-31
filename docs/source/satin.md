@@ -4979,3 +4979,131 @@ configuration de build, pas une régression du correctif lui-même.
 
 Non-régression&nbsp;: `test_satin_planning` (90&nbsp;cas, 3831&nbsp;assertions
 Release, 3813&nbsp;Debug) complet.
+
+## Décomposition topologique : jonctions de première classe, candidats multiples, fonction de coût (2026-08-30)
+
+Refonte demandée explicitement par l'utilisateur&nbsp;: remplacer l'hypothèse
+« une branche de squelette = une colonne satin » par un pipeline « forme →
+analyse topologique → candidats de décomposition multiples → fonction de
+coût explicite → colonnes ». Analyse préalable (exigée avant tout code)&nbsp;:
+la majeure partie de cette architecture existe déjà sous le nom **SGSD**
+(section « Décomposition guidée par squelette » plus haut, 2026-08-13) — ce
+travail est donc une extension ciblée de SGSD, jamais un second moteur de
+décomposition parallèle, déployée en 6 étapes incrémentales (degré&nbsp;≤2 →
+T → Y → X → trident/multi-jonctions → boucles). Ce qui suit couvre les
+étapes 1 à 3.
+
+**Étape 1 — `SatinColumn`/`satin_column_view`** (`libs/auto_satin`)&nbsp;:
+façade en LECTURE SEULE sur `SatinColumnGeometry`/`ParametricSatinObject`,
+qui élimine la logique dupliquée « `parametric_columns` si non vide sinon
+`columns` » déjà présente indépendamment dans `region_oracle.cpp`,
+`satin_sections.cpp` et `region_routing.cpp`. `start_width`/`end_width`
+dérivés de la longueur du premier/dernier barreau RÉEL (jamais fabriqués).
+Vérifié avant implémentation&nbsp;: `stitch_generation::fill_satin_columns`
+ne dépend d'aucun type `SatinColumnGeometry`/`ParametricSatinObject` — zéro
+changement en aval. `SatinColumn` reste une projection pure, jamais
+consommée par `build_satin_columns` lui-même.
+
+**Étape 2 — `topology.hpp`** (`libs/satin_planning`)&nbsp;: `RegionClass`
+(Régulier/Singulier), `JunctionType` (T/Y/X/AcuteFork/Merge/LoopConnection/
+Complex), `SatinJunction`, et surtout `enumerate_decomposition_candidates`
+— généralise `decompose_into_paths` en exposant TOUTES les variantes
+dignes d'être construites+mesurées (jusqu'à `max_candidates_per_junction`,
+défaut 3&nbsp;: chaque paire de `JunctionPairingReport::candidates`, déjà
+calculée mais jusqu'ici jetée sauf l'argmin, plus une variante finale
+« aucun tronc, toutes les branches indépendantes », jamais générée avant
+cette refonte). `classify_junction` (degré 3&nbsp;: écart dominant entre les
+deux meilleurs coûts de continuité → `T`, sinon coûts proches par symétrie
+→ `Y`&nbsp;; degré 4&nbsp;: partition en 2 paires disjointes comparée à la
+paire naturelle → `X` ou `Complex`) sert de signal STRUCTUREL, réutilisé
+comme porte de déclenchement à l'étape 3 (voir plus bas). Non-régression
+propre à cette étape&nbsp;: `t`/`cross`/`rectangle` classés correctement,
+et le candidat&nbsp;0 d'`enumerate_decomposition_candidates` reproduit
+TOUJOURS l'argmin de `decompose_into_paths` (auto-cohérence, jamais un
+second calcul divergent pour le même cas).
+
+**Étape 3 — `decomposition_cost.hpp`** (`libs/satin_planning`)&nbsp;: 8
+termes de coût nommés (`coverage`/`continuity`/`angle`/`width`/`overlap`/
+`density`/`rail_quality`/`routing`, poids explicites dans
+`DecompositionCostWeights`), dont seuls `coverage_cost` et
+`continuity_cost` sont RÉELLEMENT mesurés dans cette première intégration
+— les 6 autres restent à 0,0, documentés comme tels plutôt que simulés.
+`evaluate_decomposition_cost` construit RÉELLEMENT chaque candidat
+(`split_region` puis `evaluate_decomposition_generation`, mêmes fonctions
+que le reste de SGSD) plutôt que d'utiliser un proxy pré-construction seul.
+
+**Défaut trouvé en écrivant cette fonction** : première version calculant
+`coverage_cost = 1 - aggregate_coverage_ratio` produisait des valeurs
+absurdes (jusqu'à -96,68). Cause&nbsp;: `aggregate_coverage_ratio`
+(`region_oracle.cpp`) est un POURCENTAGE 0-100, pas une fraction&nbsp;[0,1].
+Corrigé (`/100.0`), avec un commentaire explicite contre la même confusion.
+
+**Preuve que le mécanisme sait faire gagner autre chose que l'argmin** :
+la fixture `y` existante (bras à 45°/135°/270°) a déjà un appariement
+dominant sous la nouvelle fonction de coût — ne démontre rien de neuf.
+Nouvelle fixture `y_symmetric` (`shapes.cpp`, 3 bras strictement identiques
+à 120°) construite spécifiquement pour ce test&nbsp;: avec des
+`CutCandidateParams` par défaut, les 3 appariements ont un coût de
+continuité quasi identique par symétrie, et le candidat runner-up
+(continuité 0,433, moins bon que l'argmin à 0,296) gagne réellement sur le
+coût total (0,566 contre 0,674) grâce à une meilleure couverture mesurée
+(`test_decomposition_cost.cpp`).
+
+**Branchement production (`decompose_and_recurse`, `satin_plan.cpp`,
+`SatinPlanConfig::use_topology_multi_candidate`)** : pour une région à UNE
+seule jonction de degré EXACTEMENT 3, compare réellement 2-3 décompositions
+candidates au lieu de l'argmin seul. Deux défauts réels trouvés en
+l'intégrant&nbsp;:
+
+1. **Régression de budget** (`polygonal_cut_fixture`&nbsp;: `Incomplete`/
+   53,30&nbsp;% → `Impossible`/38,70&nbsp;%, `SearchBudgetExceeded` à
+   14,4&nbsp;s/10&nbsp;s). Premier essai&nbsp;: déclencher la comparaison
+   coûteuse via un simple écart numérique entre les deux meilleurs coûts de
+   continuité (`< 0,15`) — cet écart se produit aussi INCIDEMMENT sur des
+   jonctions degré-3 issues des coupes concavité/polygonales de cette
+   fixture, sans rapport avec un vrai Y symétrique, déclenchant la
+   comparaison bien plus souvent que nécessaire. Corrigé en remplaçant ce
+   seuil par la classification structurelle de l'étape&nbsp;2&nbsp;:
+   `classify_junction(...).type == JunctionType::Y` — `polygonal_cut_fixture`
+   produit alors un résultat identique avec/sans le nouveau chemin.
+
+2. **`y_symmetric` bout en bout ne gagne PAS de couverture supplémentaire**
+   — contrairement à la mesure isolée ci-dessus. Cause&nbsp;: `decompose_
+   and_recurse` enrichit TOUJOURS ses `CutCandidateParams` des coupes
+   « séparateur de jonction » du moteur Legacy (§14, sommet reflex RÉEL du
+   contour, calculées indépendamment du choix topologique) avant même de
+   comparer les candidats — avec ces coupes réelles, les deux décompositions
+   candidates de `y_symmetric` convergent vers un résultat final identique
+   (couverture=0,136/continuité=0,296 pour l'argmin contre
+   couverture=0,081/continuité=0,433 pour le runner-up, mais 0,568 contre
+   0,595 au total → l'argmin regagne). Le mécanisme est donc vérifié
+   correct et sans régression, mais pas encore démontré comme un gain de
+   couverture bout en bout sur le corpus actuel&nbsp;: attendu plutôt des
+   étapes 4/5 (croix/trident), où le choix topologique influence la
+   construction bien au-delà des seules coupes de jonction. `use_topology_
+   multi_candidate` reste activé par défaut&nbsp;: infrastructure correcte,
+   sans coût de qualité mesuré, posant les bases des étapes suivantes.
+
+**Fausse alerte écartée en validant bout en bout** : une exécution complète
+de `test_satin_planning` a montré `y_symmetric` avec une couverture
+DIFFÉRENTE selon que le drapeau soit actif ou non (0,904 contre 0,928) —
+en apparence une régression réelle. Vérifié AVANT de conclure (§37)&nbsp;:
+5&nbsp;appels isolés répétés dans le même process, puis un fort
+préchauffage (24&nbsp;plans lourds calculés juste avant, dans le même
+process) donnent tous les deux `oracle_evaluations=16` et une couverture
+IDENTIQUE à 6 décimales — ni contamination inter-tests ni non-déterminisme
+du mécanisme lui-même. La seule exécution déviante coïncidait avec une
+compilation Debug lancée en tâche de fond CONCURRENTE sur la même
+machine&nbsp;: le filet de sécurité `PlanningBudgetState::max_planning_
+wall_clock_ms` (§18, déjà réel — cf. `SearchBudgetExceeded` ci-dessus) a
+biaisé la mesure sous contention CPU réelle, un comportement attendu du
+budget existant, pas un défaut de cette étape. Retenu comme rappel&nbsp;:
+même pattern déjà en place pour `comb`/« réseau en T » (budget wall-clock
+explicitement généreux dans les tests dédiés) — un test qui mesure une
+couverture bout en bout doit soit tolérer une marge généreuse, soit
+préférer une preuve indépendante du temps réel (ex&nbsp;:
+`oracle_evaluations`, un compte, jamais soumis à la contention CPU).
+
+Non-régression&nbsp;: `test_satin_planning` (113&nbsp;cas, 3968&nbsp;assertions
+Release, 111&nbsp;cas/3956&nbsp;assertions Debug) et `test_auto_satin`
+(58&nbsp;cas, 2505&nbsp;assertions Release) complets.

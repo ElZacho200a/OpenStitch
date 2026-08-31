@@ -9,6 +9,7 @@
 #include "openstitch/auto_satin/satin_column.hpp"
 #include "openstitch/satin_coverage/coverage.hpp"
 #include "openstitch/satin_planning/concavity_cuts.hpp"
+#include "openstitch/satin_planning/decomposition_cost.hpp"
 #include "openstitch/satin_planning/overlap.hpp"
 #include "openstitch/satin_planning/region_split.hpp"
 
@@ -119,6 +120,51 @@ struct SatinPlanConfig {
     bool use_concavity_cuts{true};
     ConcavityCutParams concavityCutParams{};
     std::size_t concavity_cut_beam_width{6};
+
+    // § refonte decomposition topologique (etape 3, docs/source/satin.md) :
+    // pour une region a UNE SEULE jonction de degre EXACTEMENT 3 (T/Y),
+    // remplace l'argmin de continuite seul (`decompose_into_paths`) par une
+    // comparaison REELLE de plusieurs decompositions candidates
+    // (`enumerate_decomposition_candidates` + `evaluate_decomposition_cost`,
+    // construction+mesure comme le reste du pipeline SGSD, jamais un proxy
+    // pre-construction seul). Preuve du mecanisme (`test_decomposition_cost.cpp`,
+    // fixture `y_symmetric`, 3 branches strictement symetriques) : avec des
+    // CutCandidateParams par defaut, l'argmin de continuite pure ne peut que
+    // departager arbitrairement (les 3 appariements ont un cout de continuite
+    // quasi identique par symetrie), et la mesure reelle fait gagner un
+    // appariement de continuite MOINS bonne qui couvre neanmoins MIEUX la
+    // region une fois reellement construite -- la fonction de cout sait donc
+    // reellement faire gagner autre chose que l'argmin pre-construction.
+    //
+    // Nuance trouvee en verifiant le branchement bout en bout
+    // (`test_satin_plan.cpp`, meme fixture, 2026-08-30) : dans
+    // `decompose_and_recurse`, ce chemin recoit toujours `baseCutParams`,
+    // deja enrichi par les coupes separateur de jonction du §14 (sommet
+    // reflex REEL du contour, calcule independamment du choix topologique).
+    // Avec ces coupes reelles, les deux decompositions candidates de
+    // `y_symmetric` convergent vers un resultat FINAL identique -- §14
+    // absorbe deja une bonne part du benefice attendu ici. Le mecanisme est
+    // donc verifie correct et sans regression sur tout le corpus (y compris
+    // `polygonal_cut_fixture`, cf. son propre test de non-regression), mais
+    // pas encore demontre comme un gain de couverture bout en bout sur le
+    // corpus actuel -- attendu plutot des etapes 4/5 (croix/trident).
+    //
+    // Delibérément borne au degre EXACTEMENT 3 (§ risque budget, plan de
+    // refonte) : une jonction de degre >=4 ou une region a plusieurs
+    // jonctions garde le chemin historique (`decompose_into_paths`, un seul
+    // `split_region`) -- les formes deja a la limite du budget wall-clock
+    // (`star5`/`comb`/`E`, toutes de degre >=4 ou multi-jonctions) ne sont
+    // donc jamais concernees par ce nouveau chemin. Gate par CLASSIFICATION
+    // (`classify_junction(...).type == JunctionType::Y`), pas par un simple
+    // ecart numerique de cout : un premier essai avec un seuil isole
+    // declenchait la comparaison couteuse bien plus souvent que necessaire,
+    // faisant regresser `polygonal_cut_fixture` (Incomplete/53,30% ->
+    // Impossible/38,70%, budget wall-clock epuise) -- cf. le commentaire de
+    // `decompose_and_recurse` pour le detail. Chaque candidat evalue compte
+    // reellement vers `oracle_evaluations` (meme discipline de budget que le
+    // reste du planner).
+    bool use_topology_multi_candidate{true};
+    DecompositionCostWeights topologyCostWeights{};
 
     // Budgets d'exploration EXPLICITES (mission de durcissement du contrat,
     // 2026-08-17, §18) : `max_recursion_depth` ci-dessus borne deja la
