@@ -139,6 +139,62 @@ TEST_CASE("enumerate_decomposition_candidates : determinisme (memes candidats a 
     }
 }
 
+TEST_CASE("decompose_into_paths (JunctionOverride) : forced_secondary_pair -- deux traversees simultanees (§ etape 4, croix)") {
+    const auto analysis = analyze("cross");
+    const auto& graph = analysis.debug.graph;
+    const std::uint32_t junctionId = single_junction_id(graph);
+    const DecompositionReport natural = decompose_into_paths(graph);
+    REQUIRE(natural.junctions.front().selected_pair.size() == 2);
+    const std::uint32_t trunkA = natural.junctions.front().selected_pair[0];
+    const std::uint32_t trunkB = natural.junctions.front().selected_pair[1];
+    REQUIRE(natural.junctions.front().detached.size() == 2);
+    const std::uint32_t otherA = natural.junctions.front().detached[0];
+    const std::uint32_t otherB = natural.junctions.front().detached[1];
+
+    const DecompositionReport forced = decompose_into_paths(
+        graph, {}, {JunctionOverride{junctionId, {trunkA, trunkB}, {otherA, otherB}}});
+    REQUIRE(forced.junctions.size() == 1);
+    CHECK(forced.junctions.front().selected_pair == std::vector<std::uint32_t>{trunkA, trunkB});
+    CHECK(forced.junctions.front().secondary_pair == std::vector<std::uint32_t>{otherA, otherB});
+    CHECK(forced.junctions.front().detached.empty());  // les 4 aretes appartiennent a l'une des deux paires
+    // Les deux paires traversent : 2 chemins (un par paire), jamais 4
+    // chemins independants ni 1 seul chemin fusionnant tout.
+    CHECK(forced.paths.size() == 2);
+}
+
+TEST_CASE("enumerate_decomposition_candidates : cross -- degre 4 genere la variante deux traversees simultanees") {
+    const auto analysis = analyze("cross");
+    const auto& graph = analysis.debug.graph;
+    const std::uint32_t junctionId = single_junction_id(graph);
+    const DecompositionCandidateSet candidates = enumerate_decomposition_candidates(graph, junctionId);
+    // Degre 4, budget par defaut 3 : 1 trunk simple (le meilleur) + 1 variante
+    // "deux traversees simultanees" + 1 variante "aucun trunk" -- jamais un
+    // second trunk simple concurrent (§ etape 4 : la place lui est retiree
+    // pour reserver le slot dual-through).
+    REQUIRE(candidates.candidates.size() == 3);
+    CHECK(candidates.candidates[0].description.find("trunk = aretes") != std::string::npos);
+    CHECK(candidates.candidates[1].description.find("deux traversees simultanees") != std::string::npos);
+    CHECK(candidates.candidates[2].description.find("aucun trunk") != std::string::npos);
+
+    const auto& dualThrough = candidates.candidates[1].topology.junctions.front();
+    CHECK(dualThrough.selected_pair.size() == 2);
+    CHECK(dualThrough.secondary_pair.size() == 2);
+    CHECK(dualThrough.detached.empty());
+    CHECK(candidates.candidates[1].topology.paths.size() == 2);
+    // La paire primaire et la paire secondaire doivent etre disjointes --
+    // ensemble, elles couvrent les 4 aretes incidentes exactement une fois.
+    std::set<std::uint32_t> allEdges(dualThrough.selected_pair.begin(), dualThrough.selected_pair.end());
+    allEdges.insert(dualThrough.secondary_pair.begin(), dualThrough.secondary_pair.end());
+    CHECK(allEdges.size() == 4);
+
+    // Le trunk simple (candidat 0), lui, garde le comportement historique :
+    // 2 aretes detachees, 3 chemins.
+    const auto& singleTrunk = candidates.candidates[0].topology.junctions.front();
+    CHECK(singleTrunk.secondary_pair.empty());
+    CHECK(singleTrunk.detached.size() == 2);
+    CHECK(candidates.candidates[0].topology.paths.size() == 3);
+}
+
 TEST_CASE("format_decomposition_candidates_report : rendu textuel exploitable pour le debug") {
     const auto analysis = analyze("t");
     const auto& graph = analysis.debug.graph;

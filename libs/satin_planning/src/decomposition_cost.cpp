@@ -26,11 +26,24 @@ double continuation_total_of(const JunctionPairingReport& report, std::uint32_t 
 double compute_continuity_cost(const DecompositionReport& topology) {
     if (topology.junctions.empty()) return 0.0;  // aucune jonction : rien a evaluer, continuite parfaite par defaut
     double sum = 0.0;
+    std::size_t count = 0;
     for (const auto& jr : topology.junctions) {
         sum += (jr.selected_pair.size() == 2) ? continuation_total_of(jr, jr.selected_pair[0], jr.selected_pair[1])
                                                : 1.0;  // "aucun trunk" : penalite fixe, jamais gratuit
+        ++count;
+        // § etape 4 (croix) : un second trunk simultane (jamais peuple hors
+        // d'une variante "deux traversees simultanees", cf.
+        // JunctionPairingReport::secondary_pair) compte comme un terme
+        // SUPPLEMENTAIRE, pas a la place du premier -- la moyenne porte alors
+        // sur les DEUX traversees de cette jonction, jamais sur une seule
+        // arbitrairement choisie. N'affecte aucune jonction T/Y existante
+        // (secondary_pair y reste toujours vide).
+        if (jr.secondary_pair.size() == 2) {
+            sum += continuation_total_of(jr, jr.secondary_pair[0], jr.secondary_pair[1]);
+            ++count;
+        }
     }
-    return sum / static_cast<double>(topology.junctions.size());
+    return count > 0 ? sum / static_cast<double>(count) : 0.0;
 }
 
 }  // namespace

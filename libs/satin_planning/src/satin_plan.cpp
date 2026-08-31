@@ -306,8 +306,9 @@ RecursionOutcome decompose_and_recurse(const geometry::PathSet& region, const Sa
         const JunctionPairingReport natural =
             junctionNodeIt != graph.nodes.end() ? pair_branches_at_junction(graph, junctionNodeIt->id)
                                                  : JunctionPairingReport{};
-        const bool degreeThree = junctionNodeIt != graph.nodes.end() &&
-                                  (natural.selected_pair.size() + natural.detached.size()) == 3;
+        const std::size_t junctionDegree =
+            junctionNodeIt != graph.nodes.end() ? natural.selected_pair.size() + natural.detached.size() : 0;
+        const bool degreeThree = junctionDegree == 3;
         // Gate par CLASSIFICATION (JunctionType::Y), pas par un simple ecart
         // numerique de cout -- defaut reel trouve en integrant ce chemin
         // (2026-08-30) : un ecart de cout suffisamment petit se produit
@@ -322,6 +323,35 @@ RecursionOutcome decompose_and_recurse(const geometry::PathSet& region, const Sa
         // robuste qu'un seuil isole sur les deux meilleurs couts seuls.
         const bool degreeThreeSymmetric =
             degreeThree && classify_junction(graph, junctionNodeIt->id).type == JunctionType::Y;
+        // § etape 4 (croix, docs/source/satin.md) : la variante "deux
+        // traversees simultanees" existe desormais au niveau topologique
+        // (`enumerate_decomposition_candidates`, degre 4) et est testee
+        // isolement (`test_decomposition_cost.cpp`), mais N'EST PAS branchee
+        // ici comme le cas Y ci-dessus. Defaut REEL mesure en tentant de le
+        // faire (2026-08-30, fixture "cross") : `split_region` derive ses
+        // coupes UNIQUEMENT de `JunctionPairingReport::detached`
+        // (region_split.cpp) -- un evenement de coupe par arete DETACHEE,
+        // amputee du "reste". Un candidat "deux traversees simultanees" ne
+        // detache RIEN (les 4 aretes appartiennent a l'une des deux paires
+        // retenues) : `split_region` ne genere alors AUCUNE coupe et traite
+        // toute la region comme UNE seule piece indivise, que `try_local_
+        // satin` construit tres mal (un "+" entier comme un seul rail) --
+        // mesure : couverture 4x pire que le trunk unique (candidat 1 a
+        // couverture=0,094/total=0,189 contre couverture=0,021/total=0,043
+        // pour le trunk simple, sur "cross"). Ce n'est pas un defaut de
+        // reglage mais une limite architecturale predite par le commentaire
+        // meme de `decompose_into_paths` ("les colonnes peuvent se croiser
+        // geometriquement au centre de la jonction, ce que la coupe de
+        // polygone ne gere pas") : realiser cette variante correctement
+        // exige que chaque paire devienne sa PROPRE colonne construite sur
+        // la region ENTIERE non coupee, avec un recouvrement DELIBERE au
+        // centre (meme principe que `overlap.hpp`, mais comme strategie de
+        // CONSTRUCTION plutot que de correction a posteriori) -- une
+        // nouvelle `RailConstructionMethod`, hors de portee d'une etape
+        // purement topologique. Deferer a une etape ulterieure (5/6, deja
+        // marquee "singuliere"/recouvrement dans le plan de refonte) plutot
+        // que de brancher une comparaison qui ne peut aujourd'hui QUE perdre
+        // (cout budgetaire pur, aucun benefice possible).
         if (degreeThreeSymmetric) {
             const DecompositionCandidateSet candidates = enumerate_decomposition_candidates(graph, junctionNodeIt->id);
             DecompositionCostParams costParams;

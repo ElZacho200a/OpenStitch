@@ -5107,3 +5107,79 @@ préférer une preuve indépendante du temps réel (ex&nbsp;:
 Non-régression&nbsp;: `test_satin_planning` (113&nbsp;cas, 3968&nbsp;assertions
 Release, 111&nbsp;cas/3956&nbsp;assertions Debug) et `test_auto_satin`
 (58&nbsp;cas, 2505&nbsp;assertions Release) complets.
+
+## Étape 4 (croix) : infrastructure topologique posée, limite architecturale réelle trouvée avant tout branchement (2026-08-30)
+
+Suite directe de l'étape 3 ci-dessus&nbsp;: `decompose_into_paths` documente
+depuis l'étape 2 que, pour une jonction de degré&nbsp;≥4, « les appariements
+multiples (ex&nbsp;: A↔C et B↔D simultanément) sont laissés à une phase
+ultérieure&nbsp;: ils peuvent produire des colonnes qui se croisent
+géométriquement au centre de la jonction, ce que la phase&nbsp;1 ne vérifie
+pas encore ». Cette étape visait à lever cette limitation pour une croix
+(4&nbsp;branches, degré&nbsp;4, classée `JunctionType::X`).
+
+**Infrastructure posée** (correcte et testée, sans changement de
+comportement historique)&nbsp;: `JunctionPairingReport::secondary_pair` et
+`JunctionOverride::forced_secondary_pair` (`branch_pairing.hpp`) —
+généralisent le mécanisme d'override de l'étape&nbsp;2 pour représenter DEUX
+paires simultanées traversant la même jonction, `secondary_pair` restant
+TOUJOURS vide pour tout appelant historique (T/Y, degré&nbsp;3) et pour le
+calcul naturel de `pair_branches_at_junction` lui-même (qui ne retient
+toujours qu'une seule paire — seul un override explicite peut le renseigner).
+`decompose_into_paths` traite `secondary_pair` exactement comme
+`selected_pair` dans sa carte de continuation (la marche produit alors 2
+`SatinPath` au lieu de 3, un par paire traversante). `enumerate_
+decomposition_candidates` génère désormais, pour un nœud de degré EXACTEMENT
+4, une variante supplémentaire « deux traversées simultanées » (la meilleure
+des 3 partitions possibles en 2 paires disjointes, réutilisant le même calcul
+que `classify_junction` — factorisé en `disjoint_pair_partitions`/`best_
+dual_through_partition`), en réduisant d'autant le nombre de variantes
+« un seul trunk » testées pour rester dans le même budget par défaut (3
+candidats&nbsp;: 1&nbsp;trunk simple + 1&nbsp;deux-traversées + 1&nbsp;aucun
+trunk). `compute_continuity_cost` (`decomposition_cost.cpp`) compte
+`secondary_pair`, quand présent, comme un terme SUPPLÉMENTAIRE dans sa
+moyenne, jamais à la place du premier — n'affecte aucune jonction T/Y
+existante.
+
+**Défaut réel trouvé en tentant de brancher cette variante en production**
+(avant d'écrire le moindre test de non-régression prétendant que « la croix
+s'améliore ») : `split_region` (`region_split.cpp`) dérive la TOTALITÉ de ses
+événements de coupe de `JunctionPairingReport::detached` — une coupe par
+arête détachée, amputée du « reste ». Un candidat « deux traversées
+simultanées » ne détache RIEN par construction (les 4&nbsp;arêtes
+appartiennent à l'une des deux paires retenues) : `split_region` ne génère
+alors AUCUNE coupe, et toute la région est traitée comme UNE seule pièce
+indivise que `try_local_satin` construit très mal (un « + » entier comme un
+seul rail). Mesuré sur `cross`&nbsp;: le candidat « deux traversées »
+obtient couverture=0,094/continuité=0/total=0,189, contre
+couverture=0,021/continuité=0/total=0,043 pour le trunk simple — un facteur
+4, pas un cas limite. Ce n'est pas un défaut de réglage mais exactement la
+limite prédite par le commentaire cité en ouverture&nbsp;: réaliser cette
+variante correctement exige que chaque paire devienne sa PROPRE colonne
+construite sur la région ENTIÈRE non coupée, avec un recouvrement DÉLIBÉRÉ
+au centre (même principe que `overlap.hpp`, mais comme stratégie de
+CONSTRUCTION plutôt que de correction a posteriori) — une nouvelle
+`RailConstructionMethod`, hors de portée d'une étape purement topologique.
+
+**Décision** (§33&nbsp;: jamais de patch opportuniste sous la pression d'une
+seule fixture) : la variante « deux traversées simultanées » N'EST PAS
+branchée dans `decompose_and_recurse` — brancher une comparaison qui ne peut
+aujourd'hui QUE perdre serait un coût de budget pur sans aucun bénéfice
+possible, l'inverse de la discipline « construire puis mesurer » de ce
+fichier. `cross` continue de passer par le chemin historique
+(`decompose_into_paths`, argmin de continuité), inchangé&nbsp;: toujours
+`Complete` en Release, marginal en Debug (déjà documenté, cf. le test
+« budget généreux » plus haut). Un test dédié
+(`evaluate_decomposition_cost : cross -- deux traversées simultanées perd`,
+`test_decomposition_cost.cpp`) fige ce résultat comme garde-fou explicite —
+si le trunk simple cessait de gagner nettement sans qu'une vraie méthode de
+construction par recouvrement n'ait été ajoutée, ce serait un signal à
+examiner, pas une amélioration à accepter telle quelle.
+
+**Reporté** : la réalisation réelle de « deux traversées simultanées »
+(construction par recouvrement plutôt que par coupe disjointe) est reportée
+aux étapes 5/6 du plan de refonte, qui anticipent déjà ce même besoin de
+recouvrement délibéré pour les régions singulières (trident/boucles).
+
+Non-régression&nbsp;: `test_satin_planning` (114&nbsp;cas, 3999&nbsp;assertions
+Release, 3989&nbsp;assertions Debug) complet.

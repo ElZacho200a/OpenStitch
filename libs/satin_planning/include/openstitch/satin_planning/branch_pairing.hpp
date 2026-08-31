@@ -78,7 +78,17 @@ struct JunctionPairingReport {
     std::uint32_t node{0};
     std::vector<PairCandidate> candidates;      // toutes les paires evaluees, triees par cout croissant
     std::vector<std::uint32_t> selected_pair;   // 0 ou 2 edge ids
-    std::vector<std::uint32_t> detached;        // arcs incidents non retenus dans la paire principale
+    // Second trunk simultane (0 ou 2 edge ids) -- degre 4 UNIQUEMENT (§ etape
+    // 4 de la refonte topologique, croix). Jamais peuple par
+    // `pair_branches_at_junction` elle-meme (qui ne retient toujours qu'UNE
+    // seule paire, cf. son propre commentaire) : seul un `JunctionOverride`
+    // explicite via `decompose_into_paths` (utilise par
+    // `enumerate_decomposition_candidates`) peut le renseigner, pour comparer
+    // "un trunk + deux aretes independantes" contre "deux traversees
+    // simultanees" par construction+mesure reelle plutot que de choisir cette
+    // strategie par defaut partout.
+    std::vector<std::uint32_t> secondary_pair;
+    std::vector<std::uint32_t> detached;        // arcs incidents non retenus dans une paire (primaire OU secondaire)
 };
 
 // Calcule le rapport d'appariement d'une jonction unique (degre >= 2 requis
@@ -113,12 +123,18 @@ struct DecompositionReport {
 // TOUTES les aretes incidentes a `node` a rester detachees (variante "aucun
 // trunk", candidat C du brief de refonte) ; `forced_pair` de 2 elements
 // force cette paire precise comme trunk, meme si ce n'est pas l'argmin
-// naturel de `pair_branches_at_junction`. Au plus un override par jonction
-// (comportement indefini si `overrides` en contient deux pour le meme
-// `node` -- l'appelant ne doit jamais le faire).
+// naturel de `pair_branches_at_junction`. `forced_secondary_pair` (§ etape 4,
+// croix) : optionnel, 2 elements supplementaires formant un SECOND trunk
+// simultane (les deux paires traversent la jonction en meme temps, jamais
+// generees par le calcul naturel) -- doit rester disjoint de `forced_pair`,
+// comportement indefini sinon (l'appelant, uniquement
+// `enumerate_decomposition_candidates`, ne doit jamais le faire). Au plus un
+// override par jonction (comportement indefini si `overrides` en contient
+// deux pour le meme `node` -- l'appelant ne doit jamais le faire).
 struct JunctionOverride {
     std::uint32_t node{0};
-    std::vector<std::uint32_t> forced_pair;  // vide, ou exactement 2 ids d'arete incidents a `node`
+    std::vector<std::uint32_t> forced_pair;            // vide, ou exactement 2 ids d'arete incidents a `node`
+    std::vector<std::uint32_t> forced_secondary_pair;  // vide (cas courant), ou exactement 2 ids -- degre 4 uniquement
 };
 
 // Decompose l'integralite du graphe de squelette en SatinPath. Ne modifie

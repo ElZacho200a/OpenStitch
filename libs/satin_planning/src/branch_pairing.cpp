@@ -209,9 +209,16 @@ DecompositionReport decompose_into_paths(const SkeletonGraph& graph, const Conti
                                       [&](const JunctionPairingReport& jr) { return jr.node == ov.node; });
         if (it == report.junctions.end()) continue;  // noeud absent ou pas une Junction : ignore silencieusement
         it->selected_pair = ov.forced_pair;
+        it->secondary_pair = ov.forced_secondary_pair;
         it->detached.clear();
+        const auto isRetained = [&](std::uint32_t id) {
+            const bool inPrimary = it->selected_pair.size() == 2 && (id == it->selected_pair[0] || id == it->selected_pair[1]);
+            const bool inSecondary =
+                it->secondary_pair.size() == 2 && (id == it->secondary_pair[0] || id == it->secondary_pair[1]);
+            return inPrimary || inSecondary;
+        };
         for (auto id : incident_edges(graph, ov.node)) {
-            if (it->selected_pair.size() == 2 && (id == it->selected_pair[0] || id == it->selected_pair[1])) continue;
+            if (isRetained(id)) continue;
             it->detached.push_back(id);
         }
     }
@@ -223,6 +230,14 @@ DecompositionReport decompose_into_paths(const SkeletonGraph& graph, const Conti
         if (jr.selected_pair.size() == 2) {
             continuation[{jr.node, jr.selected_pair[0]}] = jr.selected_pair[1];
             continuation[{jr.node, jr.selected_pair[1]}] = jr.selected_pair[0];
+        }
+        // § etape 4 (croix) : un second trunk simultane traverse la jonction
+        // exactement comme le premier -- jamais peuple hors d'un
+        // JunctionOverride explicite (degre 3/T/Y inchanges, secondary_pair
+        // toujours vide pour eux).
+        if (jr.secondary_pair.size() == 2) {
+            continuation[{jr.node, jr.secondary_pair[0]}] = jr.secondary_pair[1];
+            continuation[{jr.node, jr.secondary_pair[1]}] = jr.secondary_pair[0];
         }
     }
     // Un noeud `Continuation` (degre 2, jamais un vrai point de decision) ne
@@ -336,6 +351,10 @@ std::string format_decomposition_report(const SkeletonGraph& graph, const Decomp
             out << "    retenu : arc " << jr.selected_pair[0] << " <-> arc " << jr.selected_pair[1] << "\n";
         } else {
             out << "    retenu : aucun\n";
+        }
+        if (jr.secondary_pair.size() == 2) {
+            out << "    second trunk (croix) : arc " << jr.secondary_pair[0] << " <-> arc " << jr.secondary_pair[1]
+                << "\n";
         }
         out << "    detaches :";
         for (auto id : jr.detached) out << " arc " << id;

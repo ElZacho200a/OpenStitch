@@ -19,6 +19,7 @@ namespace {
 std::vector<std::uint32_t> incident_from_report(const JunctionPairingReport& report) {
     std::vector<std::uint32_t> out = report.detached;
     out.insert(out.end(), report.selected_pair.begin(), report.selected_pair.end());
+    out.insert(out.end(), report.secondary_pair.begin(), report.secondary_pair.end());
     std::sort(out.begin(), out.end());
     return out;
 }
@@ -34,6 +35,42 @@ double angle_cost_of(const JunctionPairingReport& report, std::uint32_t a, std::
         }
     }
     return 1.0;
+}
+
+// Les 3 partitions possibles de 4 aretes en 2 paires disjointes -- factorise
+// entre `classify_junction` et `best_dual_through_partition` (§ etape 4,
+// croix) pour ne jamais dupliquer cette combinatoire. Suppose `e.size()==4`
+// (verifie par les deux appelants).
+using DisjointPartition = std::array<std::pair<std::uint32_t, std::uint32_t>, 2>;
+std::array<DisjointPartition, 3> disjoint_pair_partitions(const std::vector<std::uint32_t>& e) {
+    return {{
+        {{{e[0], e[1]}, {e[2], e[3]}}},
+        {{{e[0], e[2]}, {e[1], e[3]}}},
+        {{{e[0], e[3]}, {e[1], e[2]}}},
+    }};
+}
+
+// Meilleure partition en 2 paires disjointes pour un noeud de degre EXACTEMENT
+// 4, par somme des deux angle_cost -- reutilise par
+// `enumerate_decomposition_candidates` pour generer la variante "deux
+// traversees simultanees" (§ etape 4, croix). `incident` doit avoir
+// exactement 4 elements (verifie par l'appelant) ; `report` doit contenir
+// toutes les C(4,2)=6 paires (calcule par `pair_branches_at_junction` sur ce
+// meme noeud, jamais recalcule ici).
+DisjointPartition best_dual_through_partition(const JunctionPairingReport& report,
+                                               const std::vector<std::uint32_t>& incident) {
+    const auto partitions = disjoint_pair_partitions(incident);
+    std::size_t bestIdx = 0;
+    double bestCost = std::numeric_limits<double>::max();
+    for (std::size_t i = 0; i < partitions.size(); ++i) {
+        const double cost = angle_cost_of(report, partitions[i][0].first, partitions[i][0].second) +
+                             angle_cost_of(report, partitions[i][1].first, partitions[i][1].second);
+        if (cost < bestCost) {
+            bestCost = cost;
+            bestIdx = i;
+        }
+    }
+    return partitions[bestIdx];
 }
 
 }  // namespace
@@ -96,13 +133,7 @@ SatinJunction classify_junction(const SkeletonGraph& graph, std::uint32_t juncti
             out.type = JunctionType::AcuteFork;
         }
     } else if (degree == 4) {
-        const auto& e = out.incident_branches;
-        // Les 3 partitions possibles de 4 aretes en 2 paires disjointes.
-        const std::array<std::array<std::pair<std::uint32_t, std::uint32_t>, 2>, 3> partitions{{
-            {{{e[0], e[1]}, {e[2], e[3]}}},
-            {{{e[0], e[2]}, {e[1], e[3]}}},
-            {{{e[0], e[3]}, {e[1], e[2]}}},
-        }};
+        const auto partitions = disjoint_pair_partitions(out.incident_branches);
         std::array<double, 3> partitionCost{};
         for (std::size_t i = 0; i < 3; ++i) {
             partitionCost[i] = angle_cost_of(report, partitions[i][0].first, partitions[i][0].second) +
@@ -130,14 +161,23 @@ DecompositionCandidateSet enumerate_decomposition_candidates(const SkeletonGraph
     if (max_candidates_per_junction == 0) return out;
 
     const JunctionPairingReport natural = pair_branches_at_junction(graph, junctionNode, params);
+    const std::vector<std::uint32_t> incident = incident_from_report(natural);
     std::uint32_t nextId = 0;
+
+    // § etape 4 (croix) : un noeud de degre EXACTEMENT 4 reserve UNE place
+    // pour la variante "deux traversees simultanees" (jamais generee par
+    // pair_branches_at_junction elle-meme, cf. son propre commentaire dans
+    // branch_pairing.hpp) -- reduit d'autant le nombre de variantes "un seul
+    // trunk" testees plutot que d'augmenter `max_candidates_per_junction` au
+    // cas par cas (le budget total reste celui demande par l'appelant).
+    const bool reserveDualThroughSlot = incident.size() == 4 && max_candidates_per_junction > 1;
 
     // Reserve toujours une place pour la variante "aucun trunk" sauf si le
     // budget ne permet qu'un seul candidat (alors ce candidat unique est
     // l'argmin naturel -- comportement historique de decompose_into_paths,
     // jamais une surprise pour un appelant qui ne demande qu'un candidat).
-    const std::size_t pairBudget =
-        max_candidates_per_junction > 1 ? max_candidates_per_junction - 1 : max_candidates_per_junction;
+    std::size_t pairBudget = max_candidates_per_junction > 1 ? max_candidates_per_junction - 1 : max_candidates_per_junction;
+    if (reserveDualThroughSlot && pairBudget > 1) --pairBudget;
     for (const auto& cand : natural.candidates) {
         if (out.candidates.size() >= pairBudget) break;
         if (!cand.cost.valid) continue;
@@ -152,6 +192,22 @@ DecompositionCandidateSet enumerate_decomposition_candidates(const SkeletonGraph
         dc.description = desc.str();
         out.candidates.push_back(std::move(dc));
         if (max_candidates_per_junction == 1) return out;  // pas de variante independante : un seul candidat demande
+    }
+
+    if (reserveDualThroughSlot && out.candidates.size() < max_candidates_per_junction) {
+        const DisjointPartition partition = best_dual_through_partition(natural, incident);
+        DecompositionCandidate dc;
+        dc.candidate_id = nextId++;
+        dc.topology = decompose_into_paths(
+            graph, params,
+            {JunctionOverride{junctionNode,
+                               {partition[0].first, partition[0].second},
+                               {partition[1].first, partition[1].second}}});
+        std::ostringstream desc;
+        desc << "jonction " << junctionNode << " : deux traversees simultanees, aretes " << partition[0].first << "/"
+             << partition[0].second << " et " << partition[1].first << "/" << partition[1].second;
+        dc.description = desc.str();
+        out.candidates.push_back(std::move(dc));
     }
 
     if (out.candidates.size() < max_candidates_per_junction) {

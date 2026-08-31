@@ -110,6 +110,30 @@ TEST_CASE("evaluate_decomposition_cost : determinisme (meme cout a chaque execut
     }
 }
 
+TEST_CASE("evaluate_decomposition_cost : cross -- deux traversees simultanees perd (limite architecturale connue, § etape 4)") {
+    // Defaut REEL trouve en tentant d'exploiter la variante "deux traversees
+    // simultanees" d'un noeud degre 4 (§ etape 4, docs/source/satin.md) :
+    // `split_region` derive ses coupes UNIQUEMENT de
+    // `JunctionPairingReport::detached` (une coupe par arete detachee).
+    // Le candidat "deux traversees simultanees" ne detache RIEN (les 4
+    // aretes appartiennent a l'une des deux paires retenues) -- aucune
+    // coupe generee, toute la region traitee comme UNE piece indivise, que
+    // `try_local_satin` construit tres mal (un "+" entier comme un seul
+    // rail). Ce test FIGE ce resultat (le trunk simple gagne nettement) comme
+    // garde-fou : si `enumerate_decomposition_candidates`/`evaluate_
+    // decomposition_cost` changeaient un jour de comportement ici sans
+    // qu'une vraie methode de construction par recouvrement (§ plan de
+    // refonte, etapes 5/6) n'ait ete ajoutee, ce serait un signal a
+    // examiner, pas une amelioration a accepter telle quelle.
+    const ScoredCandidates result = score_shape("cross");
+    REQUIRE(result.scored.size() == 3);
+    CHECK(result.best_index == 0);  // le trunk simple (comportement historique) reste gagnant
+    // Pas un ecart marginal : la variante "deux traversees" perd nettement,
+    // preuve qu'il ne s'agit pas d'un cas limite mais d'une impossibilite
+    // de construction avec le mecanisme de coupe actuel.
+    CHECK(result.scored[1].second.total > result.scored[0].second.total * 2.0);
+}
+
 TEST_CASE("format_decomposition_cost_report : rendu textuel exploitable pour le debug") {
     const ScoredCandidates result = score_shape("t");
     const std::string text = format_decomposition_cost_report(result.scored, result.best_index);
