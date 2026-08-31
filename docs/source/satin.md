@@ -5256,3 +5256,61 @@ de refonte).
 
 Non-régression&nbsp;: `test_satin_planning` (116&nbsp;cas, 4024&nbsp;assertions
 Release, 4010&nbsp;assertions Debug) complet.
+
+## Root cause précise du refus total sur « E » : un coude à 90° fait exploser la largeur mesurée, pas une histoire de jonction (2026-08-30)
+
+Poursuite directe de l'investigation ci-dessus. Hypothèse testée
+isolément (§37&nbsp;: mesurer, jamais supposer) avant d'aller plus loin&nbsp;:
+et si le vrai blocage n'était PAS la coupe de la barre du milieu, mais le
+tronc lui-même une fois isolé&nbsp;? Construit directement la forme en
+« &nbsp;] » (montant + barre haute + barre basse de `E`, SANS la barre du
+milieu) et appelé `build_satin_columns` dessus, indépendamment de toute
+coupe ou de tout planificateur.
+
+**Résultat sans appel&nbsp;: refus total, même sans aucune jonction**
+(`jonctions_squelette=0` — un simple ruban courbé n'a pas de nœud de
+squelette). `compute_column_stations` rapporte&nbsp;: `colonne refusee :
+trou de 2471&nbsp;um entre stations axe #23 et #28 (largeur superieure a
+max_width)`. Ce n'est donc PAS un problème de jonction, PAS un problème
+de topologie à 3+&nbsp;branches — c'est un défaut géométrique dans la
+méthode axe→normale→intersection elle-même&nbsp;: `CrossSectionFailure::
+TooWide` est déjà un cas nommé et documenté (« normale quasi parallèle au
+bord ») exactement pour ce scénario. À chaque coude à 90°, la tangente
+locale est calculée par différence centrée
+(`axis[i+1] - axis[i-1]`, `satin_column.cpp`), qui devient une direction
+DIAGONALE quand la fenêtre de calcul chevauche le coude — la normale
+perpendiculaire correspondante balaie alors quasi parallèlement à l'un des
+deux bords, parcourant une distance bien plus grande que la largeur RÉELLE
+de la branche avant de toucher le bord opposé. Le défaut touche
+PLUSIEURS stations consécutives (4 dans le cas mesuré, pas une seule) —
+au-delà de la fenêtre de la différence centrée autour du sommet.
+
+**Pourquoi ce n'est pas corrigé ici.** `compute_column_stations` documente
+déjà, en commentaire, une décision délibérée et déjà coûteuse à
+apprendre&nbsp;: un échec ISOLÉ (une seule station) est comblé par
+interpolation (`interpolate_station`), mais un GROUPE d'échecs consécutifs
+refuse la colonne ENTIÈRE plutôt que de reconnecter silencieusement deux
+stations lointaines — cette reconnexion silencieuse est exactement ce qui
+produisait rails discontinus, éventails et morceaux partiels sur les
+formes concaves lors d'un audit antérieur (cf. plus haut dans ce
+document). Étendre naïvement le pontage à un groupe de plusieurs stations
+reviendrait à défaire ce garde-fou pour TOUTE forme du corpus, pas
+seulement `E` — cette fonction est partagée par absolument tous les
+objets satin, Legacy et Parametric. Le bon correctif ciblé (probablement
+une direction de section transversale en biseau/bissectrice au coude,
+plutôt que la tangente par différence centrée brute) doit être prototypé
+et mesuré isolément contre le corpus complet (`test_columns.cpp`,
+28&nbsp;cas, ET le corpus de torture) avant tout branchement — même
+discipline que la correspondance de contour elle-même (§ risque #1 du
+plan de refonte), pas une correction ponctuelle sous la pression d'une
+seule fixture (§33).
+
+**Portée réelle de cette découverte** : distincte du cas `multi_neck`
+(vérifié séparément&nbsp;: 0 jonction, 1 seul arc de squelette — un pur
+problème de variation de largeur le long d'un ruban simple, 40,69&nbsp;%
+de couverture brute mesurée en isolant `sgsd-debug`, causé par les
+transitions largeur fine/large des étranglements, PAS par un coude) et de
+`two_holes` (aucune famille de coupe applicable à 2+&nbsp;trous, un
+problème encore différent). Les trois formes partagent le même symptôme
+de surface (100&nbsp;% de résidu) mais relèvent de TROIS causes
+distinctes — aucun correctif unique ne les résoudra toutes les trois.
