@@ -59,6 +59,19 @@ struct OverlapReport {
 // seule coupe, hors perimetre de cette phase.
 [[nodiscard]] OverlapReport generate_overlaps(const RegionSplitReport& split, const OverlapParams& params = {});
 
+// Dilate `region` de `overlap_distance` puis la recadre dans `bounds`, avec
+// repli sur `region` inchangee si la dilatation ou le recadrage echoue --
+// le bloc de construction reutilise par `generate_overlaps` ci-dessus
+// (`bounds` = geometrie exacte d'avant coupe, UNE PAIRE) et par
+// `satin_plan.cpp` (§ etape 5, jonctions a plus de 2 branches : `bounds` =
+// la FORME SOURCE entiere, pour un recouvrement qui atteint TOUS les
+// voisins reels pres d'une jonction, pas seulement le partenaire d'une
+// seule coupe). Expose publiquement pour cette reutilisation -- jamais
+// destine a inventer de la matiere hors de `bounds` (le recadrage Clipper2
+// garantit de rester dedans).
+[[nodiscard]] geometry::PathSet extend_toward(const geometry::PathSet& region, const geometry::PathSet& bounds,
+                                               Micrometers overlap_distance);
+
 [[nodiscard]] std::string format_overlap_report(const OverlapReport& report);
 
 }  // namespace openstitch::satin_planning

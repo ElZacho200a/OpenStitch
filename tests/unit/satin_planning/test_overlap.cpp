@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
+#include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 
 #include <string>
@@ -74,6 +75,35 @@ TEST_CASE("generate_overlaps : cross -- un recouvrement par paire directement ad
 
     const OverlapReport report = generate_overlaps(split);
     CHECK(report.overlaps.size() == split.merge_candidates.size());
+}
+
+TEST_CASE("extend_toward : recadre bien dans bounds, jamais au-dela (§ etape 5)") {
+    geometry::PathSet shape;
+    const RegionSplitReport split = split_shape("t", shape);
+    REQUIRE(split.merge_candidates.size() == 1);
+    const auto& candidate = split.merge_candidates.front();
+    const SatinRegion* first = find_region(split, candidate.first_path_index);
+    REQUIRE(first != nullptr);
+
+    // bounds = la FORME SOURCE entiere (§ etape 5, usage par satin_plan.cpp)
+    // plutot que la seule geometrie d'avant-coupe d'un voisin -- doit rester
+    // strictement plus genereux, jamais moins.
+    const auto extendedToSource = extend_toward(first->region, shape, Micrometers{300});
+    const auto extendedToPair = extend_toward(first->region, candidate.merged_region, Micrometers{300});
+    const double areaSource = geometry::path_set_area_um2(extendedToSource) / 1e6;
+    const double areaPair = geometry::path_set_area_um2(extendedToPair) / 1e6;
+    const double areaOriginal = first->area_mm2;
+
+    CHECK(areaSource > areaOriginal);
+    CHECK(areaSource >= areaPair - 0.01);  // source englobe merged_region : jamais plus petit
+    // Jamais d'invention de matiere hors de la forme source (garantie du
+    // recadrage Clipper2, pas juste une propriete supposee).
+    const auto withinSource = geometry::intersect_polygons({extendedToSource}, {shape});
+    REQUIRE(withinSource.has_value());
+    REQUIRE_FALSE(withinSource->empty());
+    double withinSourceArea = 0.0;
+    for (const auto& piece : *withinSource) withinSourceArea += geometry::path_set_area_um2(piece) / 1e6;
+    CHECK(withinSourceArea == Catch::Approx(areaSource).margin(0.01));
 }
 
 TEST_CASE("format_overlap_report : rendu textuel exploitable pour le debug") {

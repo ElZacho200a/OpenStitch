@@ -497,6 +497,33 @@ TEST_CASE("create_satin_plan : extend_columns_into_overlap ferme reellement l'in
           planWithout.aggregate_coverage->raw_coverage_ratio);
 }
 
+TEST_CASE("create_satin_plan : trident/star5/comb -- le recouvrement source-clippe ferme les eclats de jonction (§ etape 5)") {
+    // Defaut REEL mesure (2026-08-30, corpus de torture) : sur une jonction
+    // a 3+ branches, le recouvrement pairwise seul (issu de `merge_
+    // candidates`, une seule coupe binaire) laisse un residu triangulaire
+    // entre des "cousins" du meme noeud -- jamais adjacents par une seule
+    // coupe. `extend_columns_into_known_overlaps` (satin_plan.cpp) tente
+    // desormais, pour CHAQUE region, un recouvrement recadre dans la FORME
+    // SOURCE ENTIERE (pas seulement la geometrie pairwise d'un voisin),
+    // strictement plus genereux (source ⊇ merged_region), jamais une
+    // invention de matiere. Gain mesure sans regression de statut :
+    // trident 95,65%->98,08%, star5 93,50%->95,79%, comb 96,52%->97,33%,
+    // tous deja verifies stables sur le corpus de torture complet.
+    auto withExt = prod_config();
+    auto withoutExt = prod_config();
+    withoutExt.extend_columns_into_overlap = false;
+
+    for (const std::string& name : {"trident", "star5", "comb"}) {
+        INFO("forme = " << name);
+        const auto planWith = create_satin_plan(shape(name), withExt);
+        const auto planWithout = create_satin_plan(shape(name), withoutExt);
+        REQUIRE(planWith.aggregate_coverage.has_value());
+        REQUIRE(planWithout.aggregate_coverage.has_value());
+        CHECK(planWith.aggregate_coverage->raw_coverage_ratio >
+              planWithout.aggregate_coverage->raw_coverage_ratio);
+    }
+}
+
 // ---------------------------------------------------------------------
 // § refonte decomposition topologique, etape 3 (docs/source/satin.md) :
 // use_topology_multi_candidate, bout en bout via create_satin_plan (pas

@@ -5183,3 +5183,76 @@ recouvrement délibéré pour les régions singulières (trident/boucles).
 
 Non-régression&nbsp;: `test_satin_planning` (114&nbsp;cas, 3999&nbsp;assertions
 Release, 3989&nbsp;assertions Debug) complet.
+
+## Étape 5 (trident/multi-jonctions) : le « résidu » recouvre en réalité deux problèmes distincts (2026-08-30)
+
+Avant toute implémentation (§21/§22 du brief de refonte&nbsp;: analyser
+d'abord), mesure de la géométrie RÉELLE du résidu non couvert
+(`SatinPlan::unresolved_residual`, dérivé de la mesure finale de couverture —
+jamais une supposition) sur les formes ciblées par cette étape&nbsp;:
+
+| Forme | Statut | Résidu | Répartition |
+|---|---|---|---|
+| `star5` | Incomplete | 6,5&nbsp;% | 39 éclats, le plus gros 5,3&nbsp;mm² |
+| `comb` | Complete | 3,5&nbsp;% | 12 éclats, le plus gros 2,0&nbsp;mm² |
+| `trident` | Complete | 4,4&nbsp;% | 9 éclats, le plus gros 4,8&nbsp;mm² |
+| `E` | Incomplete | **100&nbsp;%** | 1 pièce — la forme entière, rien construit |
+| `multi_neck` | Incomplete | **100&nbsp;%** | idem |
+| `two_holes` | Impossible | **100&nbsp;%** | idem |
+
+**Deux problèmes différents, pas un seul.** Sur `star5`/`comb`/`trident`, le
+résidu est réel mais MARGINAL (3-6,5&nbsp;% de la surface, jamais une seule
+pièce mais des dizaines de petits éclats ANGULAIRES) — chaque jonction est
+déjà résolue en plusieurs colonnes qui, individuellement, couvrent bien leur
+propre branche ; il ne manque que la matière triangulaire au voisinage
+immédiat de la confluence, là où 3 branches ou plus se rejoignent. Sur
+`E`/`multi_neck`/`two_holes`, RIEN n'est construit du tout&nbsp;: le
+planificateur tente de faire tenir la forme ENTIÈRE (par exemple les 2
+montants + la barre du milieu de `E`) sur une seule interprétation d'axe, ce
+qui échoue catastrophiquement (13&nbsp;% de couverture brute mesurée sur
+`E`, `sgsd-debug --shape E` : aucune coupe de la barre du milieu n'est
+acceptée par le sélecteur, malgré des candidats géométriquement valides).
+La correspondance de contour (DTW) anticipée par le plan de refonte cible
+spécifiquement ce SECOND cas — un travail nettement plus risqué et encore
+non résolu par cette étape (voir « Reporté » plus bas).
+
+**Corrigé ici (premier cas — les éclats de jonction)** : `generate_overlaps`
+(phase&nbsp;8 SGSD) et sa consommation dans `create_satin_plan`
+(`extend_columns_into_known_overlaps`) ne couvraient que les paires de
+régions ISSUES D'UNE MÊME COUPE (`RegionSplitReport::merge_candidates`) —
+une jonction à 3+&nbsp;branches laisse un résidu triangulaire entre des
+« cousins » du même nœud de jonction, jamais adjacents par une seule coupe
+binaire (l'arbre de décomposition est binaire, la jonction ne l'est pas).
+`extend_toward` (déjà le bloc de construction du recouvrement pairwise —
+dilate de `overlap_distance` puis recadre dans `bounds`) est désormais
+exposée publiquement et réutilisée avec `bounds` = la FORME SOURCE ENTIÈRE
+plutôt que la seule géométrie d'avant-coupe d'UN voisin — strictement plus
+généreux (`source` ⊇ `merged_region` d'une paire), jamais une invention de
+matière (le recadrage Clipper2 garantit de rester dans le tissu réel).
+Appliqué à CHAQUE région feuille, après le recouvrement pairwise existant
+(chaque région part de son meilleur état connu), avec la même règle
+« jamais de dégradation silencieuse » (repli sur l'original si la
+reconstruction échoue ou couvre moins bien).
+
+Gain mesuré, sans régression de statut sur le corpus complet (Debug ET
+Release)&nbsp;: `trident` 95,65&nbsp;%→98,08&nbsp;%, `star5`
+93,50&nbsp;%→95,79&nbsp;%, `comb` 96,52&nbsp;%→97,33&nbsp;%. `t`/`y`/`cross`/`h`
+(déjà `Complete`) s'améliorent aussi marginalement, sans effet sur leur
+statut. `polygonal_cut_fixture` (limitation connue, sans rapport avec une
+jonction à haut degré) reste inchangée, comme attendu.
+
+**Reporté** : le second problème (`E`/`multi_neck`/`two_holes`, refus total)
+reste entier — c'est lui la vraie justification de la correspondance de
+contour prévue par le plan de refonte, pas les éclats corrigés ici. Root
+cause partielle déjà isolée (`sgsd-debug`)&nbsp;: sur `E`, la coupe qui isole
+la barre du milieu est rejetée à toute distance courte (jonction
+résiduelle) et, une fois géométriquement valide à distance plus longue,
+rejetée quand même par le sélecteur — la pièce « reste » qui en résulterait
+(le reste de la lettre, toujours pas une géométrie simple) échoue elle
+aussi localement. Nécessite une méthode de construction qui ne suppose
+JAMAIS un axe unique sur la région entière — hors périmètre de cette
+étape, prototypage isolé requis avant tout branchement (§ risque #1 du plan
+de refonte).
+
+Non-régression&nbsp;: `test_satin_planning` (116&nbsp;cas, 4024&nbsp;assertions
+Release, 4010&nbsp;assertions Debug) complet.

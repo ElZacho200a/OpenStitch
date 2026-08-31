@@ -614,30 +614,66 @@ RecursionOutcome plan_recursive(const geometry::PathSet& region, const SatinPlan
 // regle "jamais de degradation silencieuse" que le reste du planificateur).
 // Chaque region participe a au plus UNE paire d'adjacence (§19 : issue de
 // l'unique coupe qui l'a creee), donc aucun risque de double reconstruction
-// incoherente ici.
-void extend_columns_into_known_overlaps(SatinPlan& plan, const SatinPlanConfig& config) {
+// incoherente ici. Deuxieme passe source-clippee ajoutee etape 5 -- voir son
+// propre commentaire plus bas.
+//
+// Tente de reconstruire `target` sur `extendedGeom` (une geometrie DEDIEE A
+// LA GENERATION, jamais `target.region` lui-meme) et ne garde le resultat
+// que s'il mesure une couverture STRUCTURELLE au moins aussi bonne --
+// factorise entre le recouvrement pairwise (adjacence directe, ci-dessous)
+// et le recouvrement source-clippe (§ etape 5, plus bas) : meme regle
+// "jamais de degradation silencieuse" pour les deux.
+bool try_extend_region(SatinPlanRegion& target, const geometry::PathSet& extendedGeom,
+                       const SatinPlanConfig& config) {
+    if (!target.coverage) return false;  // rien de fiable a comparer, ne rien risquer
+
+    auto rebuilt = auto_satin::build_satin_columns(extendedGeom, config.genParams);
+    const auto inputs = to_coverage_inputs(rebuilt, config.density);
+    if (inputs.empty()) return false;  // reconstruction refusee : repli silencieux sur l'original
+    const auto newCoverage = satin_coverage::analyze_satin_coverage(target.region, inputs, config.coverageConfig);
+    if (!newCoverage) return false;
+    if (newCoverage->raw_coverage_ratio + 1e-9 < target.coverage->raw_coverage_ratio) return false;
+
+    target.columns = std::move(rebuilt);
+    target.coverage = *newCoverage;
+    return true;
+}
+
+void extend_columns_into_known_overlaps(SatinPlan& plan, const geometry::PathSet& source,
+                                        const SatinPlanConfig& config) {
     for (std::size_t i = 0; i < plan.adjacency.size(); ++i) {
         const auto [a, b] = plan.adjacency[i];
         const auto& overlap = plan.overlaps[i];
+        try_extend_region(plan.regions[a], overlap.first_extended, config);
+        try_extend_region(plan.regions[b], overlap.second_extended, config);
+    }
 
-        const auto try_extend = [&](std::size_t regionIdx, const geometry::PathSet& extendedGeom) {
-            SatinPlanRegion& target = plan.regions[regionIdx];
-            if (!target.coverage) return;  // rien de fiable a comparer, ne rien risquer
-
-            auto rebuilt = auto_satin::build_satin_columns(extendedGeom, config.genParams);
-            const auto inputs = to_coverage_inputs(rebuilt, config.density);
-            if (inputs.empty()) return;  // reconstruction refusee : repli silencieux sur l'original
-            const auto newCoverage =
-                satin_coverage::analyze_satin_coverage(target.region, inputs, config.coverageConfig);
-            if (!newCoverage) return;
-            if (newCoverage->raw_coverage_ratio + 1e-9 < target.coverage->raw_coverage_ratio) return;
-
-            target.columns = std::move(rebuilt);
-            target.coverage = *newCoverage;
-        };
-
-        try_extend(a, overlap.first_extended);
-        try_extend(b, overlap.second_extended);
+    // § refonte decomposition topologique, etape 5 (docs/source/satin.md) :
+    // le recouvrement pairwise ci-dessus ne couvre que les paires ISSUES
+    // D'UNE MEME COUPE (`RegionSplitReport::merge_candidates`, phase 7) --
+    // une jonction a 3+ branches (star5, comb, trident : 3 a 5 arcs
+    // incidents au meme noeud) laisse un residu triangulaire entre des
+    // "cousins" du meme noeud de jonction, jamais adjacents par une seule
+    // coupe binaire. Defaut REEL mesure (2026-08-30, corpus de torture) :
+    // 3 a 6,5% de la surface source reste non couverte MEME APRES le
+    // recouvrement pairwise ci-dessus, repartie en 9 a 39 petits eclats
+    // (jamais un seul residu massif -- distinct du cas E/multi_neck/
+    // two_holes, ou RIEN n'est construit du tout : deux problemes
+    // differents malgre le meme symptome de surface, cf. commentaire de
+    // `SatinPlanConfig::use_topology_multi_candidate` pour la meme
+    // discipline de mesure avant hypothese).
+    //
+    // Tente, pour CHAQUE region feuille (pas seulement celles avec une
+    // adjacence pairwise), un recouvrement recadre dans la FORME SOURCE
+    // ENTIERE plutot que dans la seule geometrie d'avant-coupe d'UN
+    // voisin -- strictement plus genereux (source ⊇ merged_region d'une
+    // paire), jamais une invention de matiere (le recadrage Clipper2
+    // garantit de rester dans le tissu reel). Applique APRES le
+    // recouvrement pairwise (jamais avant) : chaque region part de son
+    // MEILLEUR etat connu, jamais reevaluee a partir de zero.
+    for (auto& target : plan.regions) {
+        const auto extended = extend_toward(target.region, source, config.overlap_distance);
+        try_extend_region(target, extended, config);
     }
 }
 
@@ -765,7 +801,7 @@ SatinPlan create_satin_plan(const geometry::PathSet& source, const SatinPlanConf
     // pour qu'`aggregate_coverage` reflete l'etat REELLEMENT emis (colonnes
     // eventuellement etendues), pas un etat intermediaire.
     if (config.extend_columns_into_overlap) {
-        extend_columns_into_known_overlaps(plan, config);
+        extend_columns_into_known_overlaps(plan, source, config);
     }
 
     // Mesure finale (apres toute reparation) pour que `aggregate_coverage`

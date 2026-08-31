@@ -17,12 +17,11 @@ const SatinRegion* find_region(const RegionSplitReport& split, std::size_t pathI
     return nullptr;
 }
 
-// Dilate `region` de `overlap_distance` puis la recadre dans `bounds` (la
-// geometrie exacte d'avant coupe, sans interstice). Repli sur `region`
-// inchangee si la dilatation ou le recadrage echoue.
+}  // namespace
+
 geometry::PathSet extend_toward(const geometry::PathSet& region, const geometry::PathSet& bounds,
-                                 Micrometers overlapDistance) {
-    const auto dilated = geometry::inset_path_set(region, -overlapDistance);
+                                 Micrometers overlap_distance) {
+    const auto dilated = geometry::inset_path_set(region, -overlap_distance);
     if (!dilated.has_value() || dilated->empty()) return region;
 
     const auto clamped = geometry::intersect_polygons({(*dilated)[0]}, {bounds});
@@ -30,8 +29,6 @@ geometry::PathSet extend_toward(const geometry::PathSet& region, const geometry:
 
     return (*clamped)[0];
 }
-
-}  // namespace
 
 OverlapReport generate_overlaps(const RegionSplitReport& split, const OverlapParams& params) {
     OverlapReport report;
