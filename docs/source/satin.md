@@ -5314,3 +5314,45 @@ transitions largeur fine/large des étranglements, PAS par un coude) et de
 problème encore différent). Les trois formes partagent le même symptôme
 de surface (100&nbsp;% de résidu) mais relèvent de TROIS causes
 distinctes — aucun correctif unique ne les résoudra toutes les trois.
+
+## Deux hypothèses de correctif pour le coude à 90° testées et REJETÉES (2026-09-01)
+
+Prototypage isolé (§21/§22&nbsp;: mesurer avant de brancher) de deux
+correctifs plausibles pour la root cause ci-dessus, chacun testé
+DIRECTEMENT contre le tronc en «&nbsp;]&nbsp;» isolé de `E` avant tout
+branchement dans `build_satin_columns`.
+
+**Hypothèse 1 — tangente à sens unique en repli** : `station_cross_section`
+tente la tangente par différence centrée (comportement historique)
+puis, uniquement si `TooWide`, retente avec la tangente entrante seule
+puis sortante seule. **Résultat : AUCUN changement** — échec identique à
+l'octet près (« trou de 2471&nbsp;µm entre stations axe #23 et #28 »).
+Les deux tangentes à sens unique échouent elles aussi en `TooWide` à
+CHAQUE station du groupe&nbsp;: le problème n'est donc pas la direction de
+la tangente au point d'échantillonnage.
+
+**Hypothèse 2 — désactiver le lissage Chaikin de l'axe**
+(`axis_smoothing_iterations=0`) : si le lissage étalait le coude sur
+plusieurs échantillons avant même le calcul de section, le désactiver
+devrait révéler un sommet net et resoudre le probleme. **Résultat :
+AUCUN changement non plus** (trou quasi identique, 2468&nbsp;µm). Le
+lissage de l'axe n'est donc pas la cause.
+
+**Ce que ces deux rejets apprennent réellement** : le problème n'est ni
+la tangente locale ni le lissage de l'axe, mais plus probablement une
+propriété structurelle de `cross_section` elle-même près d'une
+transition de largeur en T (spine 4&nbsp;mm → barre 18&nbsp;mm) — le rayon
+perpendiculaire, quelle que soit sa direction locale, traverse
+l'encoche concave interne du coude et ressort loin sur le bord convexe
+externe, mesurant une largeur qui n'a plus de rapport avec la largeur
+réelle du ruban à cet endroit. Une piste plus prometteuse mais non
+testée&nbsp;: plafonner localement `max_width` près d'un coude détecté
+(angle de tangente au-delà d'un seuil) par la largeur des stations
+voisines déjà valides, plutôt que par le plafond global — mais **cela
+reste une hypothèse non vérifiée**, à prototyper isolément comme les
+deux précédentes avant tout branchement. Les deux tentatives ci-dessus
+ont été retirées intégralement (`git checkout`, aucune trace en
+production) — rien n'est resté branché sans preuve de fonctionnement.
+
+Aucune régression possible à signaler (les deux tentatives ont été
+testées puis retirées avant tout commit de code de production).
