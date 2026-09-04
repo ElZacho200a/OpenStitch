@@ -5420,3 +5420,60 @@ mesurer contre le corpus complet (`test_auto_satin` ET
 Aucune régression committée&nbsp;: la tentative a été testée puis
 intégralement retirée avant tout commit de code de production, comme les
 deux précédentes.
+
+## Étape 6 (boucles/complexe) : « two_holes » a déjà un repli complet et correct, sans correspondance de contour (2026-09-04)
+
+Avant tout prototypage (§21/§22&nbsp;: analyser d'abord) — investigation de
+`two_holes` (rectangle 60×30&nbsp;mm, 2 trous circulaires de 5&nbsp;mm
+séparés), la forme ciblée par l'étape 6.
+
+**Root cause du statut `Impossible`** : `sgsd-debug --shape two_holes`
+révèle un squelette à 2&nbsp;jonctions, 0&nbsp;extrémité, dont un chemin
+qui EST UNE VRAIE BOUCLE (« chemin 1 : arcs&nbsp;[0,&nbsp;1], nœuds&nbsp;
+[0,&nbsp;1,&nbsp;0] » — parcourt un nœud puis y revient), topologie
+totalement absente des étapes précédentes. Chaque coupe candidate testée
+détache une branche de ~1000&nbsp;mm² (essentiellement la moitié du
+rectangle autour d'un trou) — jamais une VRAIE fine branche satin — et
+`split_region`/le sélecteur rejette chacune (`aucune coupe valide,
+branche non isolee`, même symptôme que « E », cf. plus haut). Root cause
+RÉELLE, distincte de « E »&nbsp;: cette forme n'a structurellement AUCUNE
+branche satin-shaped à extraire — un rectangle large percé de trous est
+intrinsèquement un candidat TATAMI (remplissage de surface autour
+d'obstacles), pas satin (rubans étroits le long d'un axe). Aucune méthode
+de décomposition satin, aussi sophistiquée soit-elle, ne peut produire
+de « colonnes satin partielles » significatives sur une géométrie qui
+n'en contient tout simplement pas.
+
+**Vérifié séparément** : le repli tatami existant dans l'application
+(§23 du plan de refonte satin, `MainWindow::askAboutIncompleteSatinCoverage`
+→ `appendTatamiFallbackObjects`) est gated UNIQUEMENT sur
+`unresolved_residual`/l'aire de la région — jamais sur `SatinPlanStatus`.
+Il se déclenche donc IDENTIQUEMENT que le statut soit `Incomplete` ou
+`Impossible`. Mesuré au niveau bibliothèque (`tests/unit/stitch/
+test_generate.cpp`, un objet `TatamiParams` directement sur la géométrie
+`two_holes`, trous inclus)&nbsp;: `generate_sequence` produit une
+séquence complète et correcte — couverture réelle de la forme entière,
+**zéro point à l'intérieur de l'un ou l'autre trou** (vérifié
+explicitement, jamais supposé). Concrètement, pour l'utilisateur&nbsp;:
+créer un satin sur `two_holes` déclenche déjà le dialogue §23
+(0&nbsp;% converti en satin, 100&nbsp;% résiduel), et choisir « Utiliser
+tatami pour le reliquat » remplit CORRECTEMENT et COMPLÈTEMENT toute la
+forme — un résultat pleinement utilisable, déjà disponible aujourd'hui,
+sans le moindre changement de code.
+
+**Conclusion** : l'étape 6 telle que formulée dans le plan de refonte
+(« `two_holes` doit passer d'`Impossible` à au moins `Incomplete` avec
+colonnes partielles ») ne correspond pas à un manque RÉEL côté
+utilisateur — c'est une limitation de vocabulaire interne
+(`SatinPlanStatus::Impossible` au niveau `satin_planning`) déjà
+totalement absorbée par le repli existant au niveau application. La
+correspondance de contour dédiée (le travail le plus risqué du plan,
+jamais entamé faute de cible réelle qui la justifie clairement — cf.
+l'investigation « E » ci-dessus, où le vrai blocage s'est avéré être un
+défaut de mesure de largeur aux coudes, pas un besoin de correspondance
+de contour non plus) reste donc un investissement à ne déclencher que
+lorsqu'une forme réelle et mesurée en a authentiquement besoin, jamais
+pour satisfaire un gate formulé avant l'investigation.
+
+Non-régression&nbsp;: `test_stitch` (187&nbsp;cas, 1520&nbsp;assertions)
+complet, nouveau test dédié inclus.

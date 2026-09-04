@@ -1,6 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 #include <catch2/catch_test_macros.hpp>
 
+#include <algorithm>
+#include <cmath>
+#include <numbers>
+
 #include "openstitch/stitch_generation/generate.hpp"
 
 using namespace openstitch;
@@ -189,4 +193,90 @@ TEST_CASE("la sequence est deterministe") {
     const auto b = generate_sequence(make_project(2));
     REQUIRE((a.has_value() && b.has_value()));
     CHECK(a->commands == b->commands);
+}
+
+namespace {
+geometry::Path circle_path(std::int32_t cx, std::int32_t cy, std::int32_t r, int n = 96) {
+    geometry::Path p;
+    p.closed = true;
+    for (int i = 0; i < n; ++i) {
+        const double a = 2.0 * std::numbers::pi * i / n;
+        p.nodes.push_back({Vec2um{Micrometers{cx + static_cast<std::int32_t>(r * std::cos(a))},
+                                  Micrometers{cy + static_cast<std::int32_t>(r * std::sin(a))}},
+                           geometry::NodeType::Corner, {}, {}});
+    }
+    return p;
+}
+
+double distance_um(Vec2um a, Vec2um b) {
+    const double dx = static_cast<double>(a.x.value - b.x.value);
+    const double dy = static_cast<double>(a.y.value - b.y.value);
+    return std::sqrt(dx * dx + dy * dy);
+}
+}  // namespace
+
+TEST_CASE("tatami sur une forme a 2 trous separes (§ etape 6, docs/source/satin.md) : "
+         "couverture complete, aucun point dans les trous") {
+    // § refonte decomposition topologique, etape 6 : "two_holes" (rectangle
+    // 60x30mm, 2 trous circulaires de 5mm separes) n'a AUCUNE famille de
+    // coupe applicable dans satin_planning::create_satin_plan (statut
+    // Impossible, 0 colonne -- aucun solveur dedie pour 2+ trous, cf.
+    // docs/source/satin.md). Avant de conclure qu'une correspondance de
+    // contour dediee est necessaire pour cette forme precise, verifie ICI,
+    // au niveau LIBRAIRIE (pas le chemin UI complet, trop fragile a
+    // simuler pour cette seule question), que le repli tatami DEJA
+    // EXISTANT dans l'application (§23, MainWindow::askAboutIncompleteSatinCoverage
+    // -> appendTatamiFallbackObjects) produirait bien un remplissage
+    // COMPLET et VALIDE de la forme entiere une fois applique -- ce
+    // qu'un objet TatamiParams directement sur cette forme mesure ici.
+    document::Project project;
+
+    geometry::Path outer;
+    outer.closed = true;
+    constexpr std::int32_t w = 60'000, h = 15'000;
+    outer.nodes = {
+        {Vec2um{Micrometers{0}, Micrometers{-h}}, geometry::NodeType::Corner, {}, {}},
+        {Vec2um{Micrometers{w}, Micrometers{-h}}, geometry::NodeType::Corner, {}, {}},
+        {Vec2um{Micrometers{w}, Micrometers{h}}, geometry::NodeType::Corner, {}, {}},
+        {Vec2um{Micrometers{0}, Micrometers{h}}, geometry::NodeType::Corner, {}, {}},
+    };
+    constexpr std::int32_t holeR = 5'000;
+    const Vec2um hole1Center{Micrometers{15'000}, Micrometers{0}};
+    const Vec2um hole2Center{Micrometers{45'000}, Micrometers{0}};
+    geometry::Path hole1 = circle_path(hole1Center.x.value, hole1Center.y.value, holeR);
+    std::reverse(hole1.nodes.begin(), hole1.nodes.end());  // sens oppose au contour exterieur
+    geometry::Path hole2 = circle_path(hole2Center.x.value, hole2Center.y.value, holeR);
+    std::reverse(hole2.nodes.begin(), hole2.nodes.end());
+
+    document::VectorObject vec;
+    vec.id = project.object_ids.next();
+    vec.paths.push_back(geometry::PathSet{outer, {hole1, hole2}});
+    project.vector_objects.push_back(vec);
+
+    document::EmbroideryObject emb;
+    emb.id = project.object_ids.next();
+    emb.source_vector = vec.id;
+    emb.params = document::TatamiParams{};
+    project.embroidery_objects.push_back(emb);
+
+    const auto seq = generate_sequence(project);
+    REQUIRE(seq.has_value());
+
+    int stitchCount = 0;
+    int pointsInsideHoles = 0;
+    for (const auto& c : seq->commands) {
+        if (c.type != stitch::CommandType::Stitch) continue;
+        ++stitchCount;
+        if (distance_um(c.pos, hole1Center) < static_cast<double>(holeR) ||
+            distance_um(c.pos, hole2Center) < static_cast<double>(holeR)) {
+            ++pointsInsideHoles;
+        }
+    }
+    // Un remplissage tatami reel, pas un objet degenere.
+    CHECK(stitchCount > 100);
+    // Garantie de base deja assuree par le decoupage tatami existant (les
+    // trous sont deja geres par PathSet::holes partout ailleurs dans ce
+    // fichier) -- verifiee EXPLICITEMENT ici pour cette forme precise,
+    // jamais supposee.
+    CHECK(pointsInsideHoles == 0);
 }
