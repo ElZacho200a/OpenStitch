@@ -245,15 +245,31 @@ public:
         vectorIndex_ = vecIndex;
         vecs.erase(vecs.begin() + static_cast<std::ptrdiff_t>(vecIndex));
 
+        // Deux passes (defaut reel trouve le 2026-09-04 en corrigeant
+        // ConvertFillGroupCommand, meme pattern) : un unique passage avant
+        // qui erase() au fil de l'eau enregistre l'index COURANT
+        // (post-retrait) au lieu de l'index D'ORIGINE des qu'au moins DEUX
+        // broderies dependantes CONSECUTIVES partagent ce meme
+        // source_vector -- exactement le cas d'un reseau satin
+        // auto-genere en plusieurs sections (cf. docs/source/satin.md) --
+        // inversant leur ordre a la reinsertion. Retirer en ordre
+        // DECROISSANT d'index preserve la validite de tous les index
+        // D'ORIGINE deja releves.
         auto& embs = project.embroidery_objects;
-        for (std::size_t i = 0; i < embs.size();) {
+        std::vector<std::size_t> dependentIndices;
+        for (std::size_t i = 0; i < embs.size(); ++i) {
             if (embs[i].source_vector == id_) {
-                removedEmbroideries_.emplace_back(i, embs[i]);
-                embs.erase(embs.begin() + static_cast<std::ptrdiff_t>(i));
-            } else {
-                ++i;
+                dependentIndices.push_back(i);
             }
         }
+        for (auto it = dependentIndices.rbegin(); it != dependentIndices.rend(); ++it) {
+            removedEmbroideries_.emplace_back(*it, embs[*it]);
+            embs.erase(embs.begin() + static_cast<std::ptrdiff_t>(*it));
+        }
+        // Reinsertion (`revert` ci-dessous) exige l'ordre CROISSANT d'index
+        // d'origine -- le retrait ci-dessus les a collectes en ordre
+        // DECROISSANT.
+        std::reverse(removedEmbroideries_.begin(), removedEmbroideries_.end());
         applied_ = true;
     }
     void revert(document::Project& project) override {
@@ -682,6 +698,112 @@ private:
     std::string label_;
     document::StitchParams previous_{document::RunningStitchParams{}};
     document::EmbroideryIntent previousIntent_{document::EmbroideryIntent::AutoChoice};
+};
+
+// Change le type de points d'un GROUPE d'objets de broderie partageant le
+// même `source_vector` -- défaut réel signalé par l'utilisateur (2026-09-04,
+// « résidu de satin qui reste même en revenant en tatami ») : un réseau
+// satin auto-généré en plusieurs sections (`createSatinObject`/
+// `autoConvertToSatin`/autodigitize, cf. docs/source/satin.md, "le moteur
+// topologique peut produire plusieurs sections ouvertes partageant la même
+// source") est plusieurs `EmbroideryObject` distincts pour UN seul
+// `source_vector`. `SetStitchTypeCommand` (ci-dessus) ne touche qu'UN seul
+// de ces objets -- celui trouvé par `MainWindow::embroideryForVector`, qui
+// ne renvoie que le premier. Les autres sections restent inchangées :
+// toujours du satin RÉEL, généré et affiché normalement -- pas un artefact
+// de rendu, un vrai objet de broderie non converti. Contrairement au satin
+// (qui ne remplit QUE sa propre section), tatami et contour cousu remplissent
+// TOUJOURS la totalité de `source_vector` : les sections satin restantes
+// sont donc à la fois visuellement un résidu ET géométriquement redondantes
+// une fois qu'un objet du groupe couvre déjà tout le contour.
+//
+// Cette commande convertit l'objet ANCRE (`anyMemberId`, résolu par
+// l'appelant exactement comme avant) au nouveau type, puis RETIRE tous les
+// autres objets du même `source_vector` -- jamais une conversion en masse
+// (qui dupliquerait le remplissage tatami/contour N fois sur la même
+// surface, cf. docs/source/satin.md pour cette limitation connexe). Sans
+// sections sœurs (cas courant, un seul objet par `source_vector`), se
+// comporte exactement comme `SetStitchTypeCommand`. Annulation : restaure
+// l'objet ancre et réinsère les sections retirées à leurs index d'origine
+// exacts, en ordre croissant (même garantie que `RemoveVectorObjectCommand`
+// ci-dessus).
+class ConvertFillGroupCommand final : public ICommand {
+public:
+    ConvertFillGroupCommand(ObjectId anyMemberId, document::StitchParams params, std::string label)
+        : anyMemberId_(anyMemberId), params_(std::move(params)), label_(std::move(label)) {}
+
+    void apply(document::Project& project) override {
+        applied_ = false;
+        removedSiblings_.clear();
+        auto& embs = project.embroidery_objects;
+        const auto anchorIt =
+            std::find_if(embs.begin(), embs.end(), [&](const document::EmbroideryObject& e) { return e.id == anyMemberId_; });
+        if (anchorIt == embs.end()) {
+            return;  // objet ancre introuvable : no-op, comme les autres commandes de ce fichier
+        }
+        const ObjectId sourceVector = anchorIt->source_vector;
+        primaryId_ = anchorIt->id;
+        previousParams_ = anchorIt->params;
+        previousIntent_ = anchorIt->intent;
+        anchorIt->params = params_;
+        anchorIt->intent = document::EmbroideryIntent::ForcedUserChoice;
+
+        // Deux passes : d'abord repere les INDICES D'ORIGINE de toutes les
+        // sections soeurs SANS muter `embs`, puis les retire en partant de
+        // l'index le plus haut. Erreur reelle trouvee en ecrivant le test
+        // de cette commande (2026-09-04) : un unique passage avant qui
+        // erase() au fil de l'eau enregistre l'index COURANT (post-retrait)
+        // au lieu de l'index D'ORIGINE des qu'au moins DEUX sections
+        // consecutives partagent le meme source_vector -- exactement le cas
+        // typique d'un reseau satin auto-genere -- inversant leur ordre a
+        // la reinsertion. Retirer en ordre DECROISSANT d'index preserve la
+        // validite de tous les index D'ORIGINE deja releves (aucun decalage
+        // en amont d'un retrait).
+        std::vector<std::size_t> siblingIndices;
+        for (std::size_t i = 0; i < embs.size(); ++i) {
+            if (embs[i].id != primaryId_ && embs[i].source_vector == sourceVector) {
+                siblingIndices.push_back(i);
+            }
+        }
+        for (auto it = siblingIndices.rbegin(); it != siblingIndices.rend(); ++it) {
+            removedSiblings_.emplace_back(*it, embs[*it]);
+            embs.erase(embs.begin() + static_cast<std::ptrdiff_t>(*it));
+        }
+        // `removedSiblings_` est ici en ordre DECROISSANT d'index d'origine
+        // (retrait de la fin vers le debut) -- `revert` a besoin de l'ordre
+        // CROISSANT pour reinserer correctement (cf. son propre commentaire).
+        std::reverse(removedSiblings_.begin(), removedSiblings_.end());
+        applied_ = true;
+    }
+    void revert(document::Project& project) override {
+        if (!applied_) {
+            return;
+        }
+        if (auto* obj = project.findEmbroidery(primaryId_)) {
+            obj->params = previousParams_;
+            obj->intent = previousIntent_;
+        }
+        // Ordre croissant d'index d'origine (déjà l'ordre de collecte,
+        // scan avant) : réinsérer dans cet ordre reproduit exactement la
+        // disposition initiale, même garantie que `RemoveVectorObjectCommand`.
+        for (const auto& [index, emb] : removedSiblings_) {
+            const std::size_t pos = std::min(index, project.embroidery_objects.size());
+            project.embroidery_objects.insert(project.embroidery_objects.begin() + static_cast<std::ptrdiff_t>(pos), emb);
+        }
+        removedSiblings_.clear();
+        applied_ = false;
+    }
+    [[nodiscard]] std::string name() const override { return label_; }
+
+private:
+    ObjectId anyMemberId_;
+    document::StitchParams params_;
+    std::string label_;
+    ObjectId primaryId_{};
+    document::StitchParams previousParams_{document::RunningStitchParams{}};
+    document::EmbroideryIntent previousIntent_{document::EmbroideryIntent::AutoChoice};
+    std::vector<std::pair<std::size_t, document::EmbroideryObject>> removedSiblings_;
+    bool applied_{false};
 };
 
 // Change la taille du cadre de broderie (persistée dans le .osp). L'analyse

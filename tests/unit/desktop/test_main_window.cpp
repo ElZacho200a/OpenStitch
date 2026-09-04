@@ -527,6 +527,14 @@ private slots:
     // les créations manuelles — vérifie que le résultat porte de vrais
     // rails/barreaux (pas un objet SatinParams vide) et reste annulable.
     void setStitchTypeSatinCaseProducesRealRailsAndIsUndoable();
+    // Défaut réel signalé par l'utilisateur (2026-09-04, « résidu de satin
+    // qui reste même en revenant en tatami ») : un réseau satin
+    // auto-généré en plusieurs sections (buildTShapeFixture + createSatin
+    // Object, comme le test ci-dessus) partage un seul source_vector entre
+    // plusieurs EmbroideryObject. setStitchType() ne doit JAMAIS laisser
+    // les autres sections en satin réel une fois qu'une seule est
+    // convertie -- bout en bout depuis le VRAI chemin UI.
+    void setStitchTypeOnMultiSectionSatinNetworkRemovesSiblingsInsteadOfLeavingResidue();
     // §23 du plan de refonte satin (2026-08-14) : le dialogue à choix
     // multiples (askAboutIncompleteSatinCoverage) remplace l'ancienne
     // information à sens unique -- un test par choix réel, bout en bout
@@ -1776,6 +1784,65 @@ void MainWindowTest::setStitchTypeSatinCaseProducesRealRailsAndIsUndoable() {
     const auto* restored = window.project_.findEmbroidery(fx.embroideryId);
     QVERIFY(restored != nullptr);
     QVERIFY(!restored->is_satin());
+}
+
+void MainWindowTest::setStitchTypeOnMultiSectionSatinNetworkRemovesSiblingsInsteadOfLeavingResidue() {
+    MainWindow window;
+    const Fixture fx = buildTShapeFixture();
+    window.applyLoadedProject(fx.project);
+    window.selectedObject_ = fx.vectorId;
+    window.updateActions();
+
+    autoDismissModalDialogs(&window);
+    window.createSatinObject();
+
+    // Même garde-fou que le test de création ci-dessus : au moins 2
+    // sections satin partageant fx.vectorId, sinon ce test ne prouve rien.
+    std::vector<ObjectId> sectionIds;
+    for (const auto& emb : window.project_.embroidery_objects) {
+        if (emb.source_vector == fx.vectorId) {
+            sectionIds.push_back(emb.id);
+        }
+    }
+    QVERIFY2(sectionIds.size() >= 2,
+             qPrintable(QStringLiteral("attendu >= 2 sections satin, obtenu %1").arg(sectionIds.size())));
+    const std::size_t totalEmbroideryBefore = window.project_.embroidery_objects.size();
+
+    // `setStitchType` résout l'objet cible via `embroideryForVector` (le
+    // premier trouvé) exactement comme le VRAI menu contextuel "Type de
+    // points" -- même chemin que l'utilisateur emprunte.
+    window.setStitchType(sectionIds.front(), /*type=*/1);  // 1 = tatami
+
+    // Plus AUCUNE section satin ne doit rester pour ce vecteur -- c'est
+    // exactement le résidu signalé par l'utilisateur.
+    std::size_t remainingForVector = 0;
+    for (const auto& emb : window.project_.embroidery_objects) {
+        if (emb.source_vector == fx.vectorId) {
+            ++remainingForVector;
+            QVERIFY2(emb.is_tatami(), "aucune section satin residuelle attendue apres conversion");
+        }
+    }
+    QCOMPARE(remainingForVector, std::size_t{1});
+    // Les sections supprimées ont bien disparu du document (pas seulement
+    // masquées) -- vérifie qu'aucun autre objet du projet ne pointe
+    // dessus non plus (source_vector orphelin), même garde-fou que
+    // RemoveVectorObjectCommand.
+    QCOMPARE(window.project_.embroidery_objects.size(),
+             totalEmbroideryBefore - (sectionIds.size() - 1));
+
+    // Annulation : reconstitue le réseau satin complet, section par
+    // section, dans l'ordre d'origine.
+    QVERIFY(window.undoStack_.canUndo());
+    window.undo();
+    QCOMPARE(window.project_.embroidery_objects.size(), totalEmbroideryBefore);
+    std::size_t satinCountAfterUndo = 0;
+    for (const auto& emb : window.project_.embroidery_objects) {
+        if (emb.source_vector == fx.vectorId) {
+            QVERIFY(emb.is_satin());
+            ++satinCountAfterUndo;
+        }
+    }
+    QCOMPARE(satinCountAfterUndo, sectionIds.size());
 }
 
 void MainWindowTest::createSatinObjectContinuePartialLeavesResidualUncovered() {

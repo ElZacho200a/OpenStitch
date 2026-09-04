@@ -352,6 +352,44 @@ TEST_CASE("RemoveVectorObjectCommand : supprime l'objet ET les broderies qui en 
     CHECK(project.embroidery_objects[0].id == unrelated.id);
 }
 
+TEST_CASE("RemoveVectorObjectCommand : plusieurs broderies dependantes CONSECUTIVES, "
+         "undo restaure leur ordre exact (reseau satin multi-sections)") {
+    // Defaut reel trouve le 2026-09-04 (meme pattern que ConvertFillGroupCommand,
+    // ci-dessous) : un reseau satin auto-genere en plusieurs sections
+    // (createSatinObject/autoConvertToSatin/autodigitize) laisse plusieurs
+    // EmbroideryObject CONSECUTIFS partager le meme source_vector -- un
+    // seul passage avant qui erase() au fil de l'eau enregistrait l'index
+    // COURANT (post-retrait) plutot que l'index D'ORIGINE, inversant
+    // l'ordre des sections a la reinsertion (jamais une perte de donnees,
+    // mais un ordre incorrect).
+    document::Project project;
+    UndoStack stack;
+
+    document::VectorObject vec;
+    vec.id = project.object_ids.next();
+    project.vector_objects = {vec};
+
+    document::EmbroideryObject section0;
+    section0.id = project.object_ids.next();
+    section0.source_vector = vec.id;
+    document::EmbroideryObject section1;
+    section1.id = project.object_ids.next();
+    section1.source_vector = vec.id;
+    document::EmbroideryObject section2;
+    section2.id = project.object_ids.next();
+    section2.source_vector = vec.id;
+    project.embroidery_objects = {section0, section1, section2};
+
+    stack.execute(std::make_unique<RemoveVectorObjectCommand>(vec.id), project);
+    REQUIRE(project.embroidery_objects.empty());
+
+    CHECK(stack.undo(project));
+    REQUIRE(project.embroidery_objects.size() == 3);
+    CHECK(project.embroidery_objects[0].id == section0.id);
+    CHECK(project.embroidery_objects[1].id == section1.id);
+    CHECK(project.embroidery_objects[2].id == section2.id);
+}
+
 TEST_CASE("RemoveVectorObjectCommand : id introuvable -- aucune mutation") {
     document::Project project;
     UndoStack stack;
@@ -668,6 +706,110 @@ TEST_CASE("SetStitchTypeCommand : marque ForcedUserChoice, undo restaure l'inten
 
     CHECK(stack.redo(project));
     CHECK(project.findEmbroidery(id)->intent == document::EmbroideryIntent::ForcedUserChoice);
+}
+
+TEST_CASE("ConvertFillGroupCommand : sans sections soeurs, se comporte comme SetStitchTypeCommand") {
+    document::Project project;
+    UndoStack stack;
+
+    document::EmbroideryObject e;
+    e.id = project.object_ids.next();
+    document::RunningStitchParams rp;
+    rp.repeats = 3;
+    e.params = rp;
+    e.source_vector = project.object_ids.next();
+    stack.execute(std::make_unique<AddEmbroideryObjectCommand>(e), project);
+    const ObjectId id = project.embroidery_objects[0].id;
+
+    stack.execute(
+        std::make_unique<ConvertFillGroupCommand>(id, document::TatamiParams{}, "tatami"), project);
+    CHECK(project.embroidery_objects.size() == 1);
+    CHECK(project.findEmbroidery(id)->is_tatami());
+
+    CHECK(stack.undo(project));
+    REQUIRE(project.embroidery_objects.size() == 1);
+    REQUIRE(
+        std::holds_alternative<document::RunningStitchParams>(project.findEmbroidery(id)->params));
+    CHECK(std::get<document::RunningStitchParams>(project.findEmbroidery(id)->params).repeats == 3);
+
+    CHECK(stack.redo(project));
+    CHECK(project.findEmbroidery(id)->is_tatami());
+}
+
+TEST_CASE("ConvertFillGroupCommand : reseau satin multi-sections -- retire les sections soeurs, "
+         "jamais de residu (defaut reel signale par l'utilisateur, 2026-09-04)") {
+    // Un reseau satin auto-genere en plusieurs sections (createSatinObject/
+    // autoConvertToSatin/autodigitize, cf. docs/source/satin.md) partage un
+    // SEUL source_vector entre plusieurs EmbroideryObject. Convertir l'un
+    // d'eux en tatami ne doit JAMAIS laisser les autres sections en satin
+    // reel -- c'est exactement le residu signale ("il reste des bouts de
+    // satin meme en revenant en tatami").
+    document::Project project;
+    UndoStack stack;
+    const ObjectId sharedSource = project.object_ids.next();
+
+    document::EmbroideryObject section0;
+    section0.id = project.object_ids.next();
+    section0.source_vector = sharedSource;
+    section0.params = document::SatinParams{};
+    stack.execute(std::make_unique<AddEmbroideryObjectCommand>(section0), project);
+
+    document::EmbroideryObject section1;
+    section1.id = project.object_ids.next();
+    section1.source_vector = sharedSource;
+    section1.params = document::SatinParams{};
+    stack.execute(std::make_unique<AddEmbroideryObjectCommand>(section1), project);
+
+    document::EmbroideryObject section2;
+    section2.id = project.object_ids.next();
+    section2.source_vector = sharedSource;
+    section2.params = document::SatinParams{};
+    stack.execute(std::make_unique<AddEmbroideryObjectCommand>(section2), project);
+
+    // Un objet SANS rapport (source_vector different) ne doit jamais etre
+    // touche par la conversion -- garde-fou contre une portee trop large.
+    document::EmbroideryObject unrelated;
+    unrelated.id = project.object_ids.next();
+    unrelated.source_vector = project.object_ids.next();
+    unrelated.params = document::SatinParams{};
+    stack.execute(std::make_unique<AddEmbroideryObjectCommand>(unrelated), project);
+
+    REQUIRE(project.embroidery_objects.size() == 4);
+
+    stack.execute(std::make_unique<ConvertFillGroupCommand>(section0.id, document::TatamiParams{},
+                                                            "Type : tatami"),
+                 project);
+
+    // Plus qu'une section du groupe partage : l'ancre (tatami) + l'objet
+    // sans rapport (inchange).
+    REQUIRE(project.embroidery_objects.size() == 2);
+    REQUIRE(project.findEmbroidery(section0.id) != nullptr);
+    CHECK(project.findEmbroidery(section0.id)->is_tatami());
+    CHECK(project.findEmbroidery(section1.id) == nullptr);  // retiree, plus de residu satin
+    CHECK(project.findEmbroidery(section2.id) == nullptr);
+    REQUIRE(project.findEmbroidery(unrelated.id) != nullptr);
+    CHECK(project.findEmbroidery(unrelated.id)->is_satin());  // jamais touche
+
+    // Annulation : reconstitue le groupe EXACT (3 sections satin + l'objet
+    // sans rapport), dans le meme ordre.
+    CHECK(stack.undo(project));
+    REQUIRE(project.embroidery_objects.size() == 4);
+    REQUIRE(project.findEmbroidery(section0.id) != nullptr);
+    CHECK(project.findEmbroidery(section0.id)->is_satin());
+    REQUIRE(project.findEmbroidery(section1.id) != nullptr);
+    CHECK(project.findEmbroidery(section1.id)->is_satin());
+    REQUIRE(project.findEmbroidery(section2.id) != nullptr);
+    CHECK(project.findEmbroidery(section2.id)->is_satin());
+    CHECK(project.embroidery_objects[0].id == section0.id);
+    CHECK(project.embroidery_objects[1].id == section1.id);
+    CHECK(project.embroidery_objects[2].id == section2.id);
+    CHECK(project.embroidery_objects[3].id == unrelated.id);
+
+    CHECK(stack.redo(project));
+    REQUIRE(project.embroidery_objects.size() == 2);
+    CHECK(project.findEmbroidery(section0.id)->is_tatami());
+    CHECK(project.findEmbroidery(section1.id) == nullptr);
+    CHECK(project.findEmbroidery(section2.id) == nullptr);
 }
 
 TEST_CASE("SetStitchParamsCommand : edite les parametres, undo restaure exact") {

@@ -4065,8 +4065,17 @@ void MainWindow::setStitchType(ObjectId embroideryId, int type) {
     default:
         return;
     }
-    undoStack_.execute(std::make_unique<commands::SetStitchTypeCommand>(embroideryId, std::move(params),
-                                                                        std::move(label)),
+    // `ConvertFillGroupCommand` (pas `SetStitchTypeCommand` seule) : un
+    // réseau satin auto-généré en plusieurs sections partage un seul
+    // `source_vector` entre plusieurs `EmbroideryObject` -- `embroideryId`
+    // ici n'en désigne qu'UN (le premier trouvé par `embroideryForVector`).
+    // Sans ce garde-fou, changer de type ne convertirait que cette
+    // première section et laisserait les autres en satin réel, inchangées
+    // -- exactement le défaut réel signalé (« résidu de satin qui reste
+    // même en revenant en tatami », 2026-09-04, cf. le commentaire de la
+    // commande pour le détail complet).
+    undoStack_.execute(std::make_unique<commands::ConvertFillGroupCommand>(embroideryId, std::move(params),
+                                                                           std::move(label)),
                        project_);
     showStitchesAct_->setChecked(true);
     refreshImage();
