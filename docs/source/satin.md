@@ -5356,3 +5356,67 @@ production) — rien n'est resté branché sans preuve de fonctionnement.
 
 Aucune régression possible à signaler (les deux tentatives ont été
 testées puis retirées avant tout commit de code de production).
+
+## Troisième hypothèse : elle RÉSOUT « E » mais casse « trident » (2026-09-04)
+
+Troisième prototype isolé, suite directe des deux rejets ci-dessus.
+Constat qui a orienté cette hypothèse&nbsp;: dans les deux tentatives
+précédentes, la normale reste PERPENDICULAIRE À LA TANGENTE (qu'elle
+soit calculée par différence centrée ou à sens unique) — jamais remise en
+cause elle-même. Or `cross_section` cherche l'intersection la PLUS
+PROCHE de chaque côté sur toute la droite portée par cette normale ; si
+cette droite précise traverse l'encoche concave du coude avant de
+ressortir sur le bord convexe externe de l'autre bras, AUCUN choix de
+tangente ne change la droite qui échoue — il faut changer l'ANGLE de
+la normale elle-même.
+
+**`station_cross_section`, v3** : sur un échec `TooWide` de la normale
+stricte, teste une série d'angles voisins (±5° à ±40° par pas de 5°,
+16&nbsp;candidats) et garde le résultat le plus ÉTROIT parmi tous les
+succès (pas le premier) — la mesure la plus proche de la largeur locale
+réelle est la plus plausible. `st.tangent` suit la normale réellement
+retenue (cohérence railA/railB/barreaux en aval).
+
+**Résultat sur le tronc isolé de « E »&nbsp;: succès complet.** Plus
+aucun refus — 1 objet construit. `create_satin_plan("E")` complet passe
+de 100&nbsp;% de résidu à **`Complete`, 98,03&nbsp;% de couverture**.
+Progression mesurée en resserrant le pas angulaire&nbsp;: à ±10/20/30°
+(6 candidats), le trou residuel tombe de 2471&nbsp;µm (rejet total) à
+2572&nbsp;µm après nettoyage anti-croisement — juste AU-DESSUS du seuil
+`max_station_gap_ratio&nbsp;×&nbsp;station_spacing` (2500&nbsp;µm par
+défaut) ; resserrer à ±5° passe sous ce seuil et la colonne entière
+passe.
+
+**Mais régression réelle sur `trident`** (`test_auto_satin`, corpus
+complet) — 3&nbsp;échecs sur 58&nbsp;cas, tous sur la même forme&nbsp;:
+`satin_column_view` (mode Legacy), `test_columns.cpp` (« exactement
+3&nbsp;objets independants »), `test_coverage_regression.cpp`. Message
+Legacy&nbsp;: `colonne refusee : trou de 5260 um entre stations axe #11
+et #22 (largeur inferieure a min_satin_width)` — un refus `TooNarrow`,
+PAS `TooWide` (`station_cross_section` ne déclenche sa recherche
+d'angles voisins que sur `TooWide`, jamais directement sur `TooNarrow`)&nbsp;:
+la régression est donc un effet de bord INDIRECT — choisir un angle
+différent à une station donne des rails positionnés différemment, ce qui
+change la forme du quadrilatère avec la station suivante et peut
+déclencher `TooNarrow` ou le nettoyage anti-croisement plus loin sur
+l'axe, sur une branche qui s'effile légitimement vers une pointe
+(exactement le cas de `trident`, cf. le commentaire existant sur le
+plancher `min_satin_width` : « les stations proches d'un bout OUVERT
+rétrécissant légitimement vers zéro… ne sont PAS concernées », sauf que
+cette hypothèse-ci les concerne bel et bien indirectement).
+
+**Décision** : retirée intégralement (`git checkout`, aucune trace en
+production) — `trident` est un garde-fou explicite du plan de refonte
+(« doit rester Complete »), une régression dessus n'est jamais
+acceptable même pour résoudre une limitation connue ailleurs. Piste
+retenue pour une suite éventuelle&nbsp;: restreindre la recherche
+d'angles voisins aux stations dont le VOISINAGE (avant/après) a une
+tangente stable (pas de rétrécissement en cours) — distinguerait un
+vrai coude à angle droit (E) d'un effilement légitime en pointe
+(trident), mais **reste une hypothèse non vérifiée**, à prototyper et
+mesurer contre le corpus complet (`test_auto_satin` ET
+`test_satin_planning`, Debug ET Release) avant tout nouveau branchement.
+
+Aucune régression committée&nbsp;: la tentative a été testée puis
+intégralement retirée avant tout commit de code de production, comme les
+deux précédentes.
