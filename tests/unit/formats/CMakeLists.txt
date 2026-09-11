@@ -2,6 +2,7 @@ add_executable(test_formats
     test_dst.cpp
     test_dxf.cpp
     test_svg.cpp
+    test_svg_import.cpp
 )
 target_link_libraries(test_formats
     PRIVATE openstitch::formats openstitch::stitch_generation Catch2::Catch2WithMain

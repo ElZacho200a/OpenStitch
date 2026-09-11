@@ -101,6 +101,11 @@ private slots:
     // région (défaut trouvé en usage réel, cf. autodigitize.hpp
     // `AutoResult::warnings`).
     void warnAboutSkippedAutoSatinBranches(const std::vector<std::string>& warnings);
+    // Même principe pour l'import SVG (openSvg) : fonctionnalités
+    // rencontrées mais non prises en charge (texte, dégradés, filtres...) --
+    // jamais silencieuses (openstitch/formats/svg_import.hpp), jamais non
+    // plus bloquantes pour le reste de l'import.
+    void warnAboutSkippedSvgFeatures(const std::vector<std::string>& warnings);
     // Choix explicite quand une intention SATIN n'a pu être satisfaite qu'en
     // partie (§12/§23 du plan de refonte satin, 2026-08-14 : « aucun
     // fallback silencieux vers tatami », mais un VRAI choix actionnable
@@ -247,6 +252,15 @@ private:
     void showDebugDump(ObjectId embroideryId);
     // Objet de broderie rattaché à un objet vectoriel (nullptr si aucun).
     [[nodiscard]] document::EmbroideryObject* embroideryForVector(ObjectId vectorId);
+    // Ouverture d'un SVG comme NOUVEAU document, directement en objets
+    // vectoriels éditables -- saute entièrement image/segmentation/
+    // vectorisation (demande utilisateur, 2026-09-11 : "évite la
+    // segmentation" quand le tracé existe déjà). Même point d'entrée que
+    // `openImage()` (menu "Ouvrir une image", état vide) -- branché sur
+    // l'extension du fichier choisi, jamais une action séparée : ce qui
+    // compte pour l'utilisateur est "ouvrir mon dessin", pas la distinction
+    // interne image/vecteur.
+    void openSvg(const QString& file);
     // Centre représentatif d'un objet de broderie (pour l'estimation du coût).
     [[nodiscard]] Vec2um embroideryCentroid(const document::EmbroideryObject& object) const;
     // Création manuelle de formes (rectangle/ellipse/polygone), en écho au

@@ -3,6 +3,7 @@
 #include <QApplication>
 #include <QCoreApplication>
 #include <QDoubleSpinBox>
+#include <QFile>
 #include <QGraphicsItem>
 #include <QListWidget>
 #include <QMessageBox>
@@ -535,6 +536,12 @@ private slots:
     // les autres sections en satin réel une fois qu'une seule est
     // convertie -- bout en bout depuis le VRAI chemin UI.
     void setStitchTypeOnMultiSectionSatinNetworkRemovesSiblingsInsteadOfLeavingResidue();
+    // Import SVG direct (2026-09-11, demande utilisateur : "éviter la
+    // segmentation" quand le tracé existe déjà) -- vérifie le VRAI chemin
+    // UI (openSvg(), appelé directement comme le ferait openImage() une
+    // fois le fichier choisi) plutôt que seulement formats::decode_svg en
+    // isolation (déjà testé dans tests/unit/formats/test_svg_import.cpp).
+    void openSvgCreatesVectorObjectsDirectlySkippingImage();
     // §23 du plan de refonte satin (2026-08-14) : le dialogue à choix
     // multiples (askAboutIncompleteSatinCoverage) remplace l'ancienne
     // information à sens unique -- un test par choix réel, bout en bout
@@ -1843,6 +1850,30 @@ void MainWindowTest::setStitchTypeOnMultiSectionSatinNetworkRemovesSiblingsInste
         }
     }
     QCOMPARE(satinCountAfterUndo, sectionIds.size());
+}
+
+void MainWindowTest::openSvgCreatesVectorObjectsDirectlySkippingImage() {
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    const QString svgPath = dir.filePath("test.svg");
+    QFile file(svgPath);
+    QVERIFY(file.open(QIODevice::WriteOnly | QIODevice::Text));
+    file.write(QByteArrayLiteral(
+        "<svg viewBox=\"0 0 100 100\" width=\"10mm\" height=\"10mm\">"
+        "<rect x=\"0\" y=\"0\" width=\"100\" height=\"100\"/>"
+        "</svg>"));
+    file.close();
+
+    MainWindow window;
+    window.openSvg(svgPath);
+
+    // Aucune image : le document est passe directement en objets
+    // vectoriels, sans jamais traverser segmentation/vectorisation.
+    QVERIFY(!window.project_.hasImage());
+    QCOMPARE(window.project_.vector_objects.size(), std::size_t{1});
+    QCOMPARE(window.project_.embroidery_objects.size(), std::size_t{0});
+    QCOMPARE(window.project_.vector_objects.front().paths.size(), std::size_t{1});
+    QCOMPARE(window.project_.vector_objects.front().paths.front().outer.nodes.size(), std::size_t{4});
 }
 
 void MainWindowTest::createSatinObjectContinuePartialLeavesResidualUncovered() {

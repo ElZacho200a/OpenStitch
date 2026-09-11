@@ -60,6 +60,7 @@
 #include "openstitch/document/image_placement.hpp"
 #include "openstitch/formats/dst.hpp"
 #include "openstitch/formats/dxf.hpp"
+#include "openstitch/formats/svg_import.hpp"
 #include "openstitch/geometry/cut.hpp"
 #include "openstitch/geometry/offset.hpp"
 #include "openstitch/geometry/polyline.hpp"
@@ -724,10 +725,20 @@ void MainWindow::buildMenus() {
 }
 
 void MainWindow::openImage() {
+    // Même point d'entrée pour une image ET un SVG (demande utilisateur,
+    // 2026-09-11) : ce qui compte pour l'utilisateur est "ouvrir mon
+    // dessin", pas la distinction interne image/vecteur -- branché sur
+    // l'extension juste après le dialogue, cf. openSvg().
     const QString file = QFileDialog::getOpenFileName(
-        this, tr("Ouvrir une image"), QString(),
-        tr("Images (*.png *.jpg *.jpeg *.bmp *.tif *.tiff);;Tous les fichiers (*)"));
+        this, tr("Ouvrir une image ou un SVG"), QString(),
+        tr("Images et SVG (*.png *.jpg *.jpeg *.bmp *.tif *.tiff *.svg);;"
+           "Images (*.png *.jpg *.jpeg *.bmp *.tif *.tiff);;"
+           "SVG (*.svg);;Tous les fichiers (*)"));
     if (file.isEmpty()) {
+        return;
+    }
+    if (file.endsWith(QStringLiteral(".svg"), Qt::CaseInsensitive)) {
+        openSvg(file);
         return;
     }
 
@@ -779,6 +790,52 @@ void MainWindow::openImage() {
                                  .arg(project_.original.height));
     updateActions();
     setWindowModified(false);  // nouveau document propre
+}
+
+void MainWindow::openSvg(const QString& file) {
+    auto imported = formats::read_svg_file(std::filesystem::path(file.toStdWString()));
+    if (!imported) {
+        QMessageBox::warning(this, tr("Erreur"), QString::fromStdString(imported.error().message));
+        return;
+    }
+
+    // Même réinitialisation "nouveau document" que openImage() ci-dessus --
+    // seule la source diffère (objets vectoriels directement construits,
+    // jamais d'image/segmentation/vectorisation à traverser).
+    project_ = document::Project{};
+    ++documentGeneration_;  // nouveau document : invalide les commandes différées en vol
+    std::vector<document::VectorObject> objects;
+    objects.reserve(imported->objects.size());
+    for (auto& pathSet : imported->objects) {
+        document::VectorObject object;
+        object.id = project_.object_ids.next();
+        object.name = tr("Import SVG %1").arg(objects.size() + 1).toStdString();
+        object.rgb = {80, 120, 200};
+        object.paths.push_back(std::move(pathSet));
+        objects.push_back(std::move(object));
+    }
+    const std::size_t imported_count = objects.size();
+    project_.vector_objects = std::move(objects);
+    undoStack_.clear();
+    sequence_.reset();
+    sequenceImported_ = false;
+    selectedRegion_.reset();
+    selectedObject_.reset();
+    if (stitchEditModeAct_ != nullptr) {
+        QSignalBlocker block(stitchEditModeAct_);
+        stitchEditModeAct_->setChecked(false);
+    }
+    stitchEditTarget_.reset();
+    stitchEditView_.reset();
+
+    showVectorsAct_->setChecked(true);
+    refreshImage();
+    view_->fitCanvas();
+    statusBar()->showMessage(
+        tr("%1 — %2 objet(s) vectoriel(s) importé(s)").arg(QFileInfo(file).fileName()).arg(imported_count));
+    updateActions();
+    setWindowModified(false);  // nouveau document propre
+    warnAboutSkippedSvgFeatures(imported->warnings);
 }
 
 void MainWindow::executeOp(image::ImageOp op) {
@@ -3220,6 +3277,24 @@ void MainWindow::warnAboutSkippedAutoSatinBranches(const std::vector<std::string
         text += tr("… et %1 de plus.").arg(warnings.size() - kMaxShown);
     }
     QMessageBox::warning(this, tr("Zones remplies en tatami de repli"), text);
+}
+
+void MainWindow::warnAboutSkippedSvgFeatures(const std::vector<std::string>& warnings) {
+    if (warnings.empty()) {
+        return;
+    }
+    constexpr std::size_t kMaxShown = 12;
+    QString text =
+        tr("Certains éléments de ce fichier SVG n'ont pas pu être importés (texte, "
+           "dégradés, filtres, motifs... — non pris en charge dans cette première version) "
+           "ou ont été simplifiés. Le reste du dessin a bien été importé.\n\n");
+    for (std::size_t i = 0; i < warnings.size() && i < kMaxShown; ++i) {
+        text += QStringLiteral("• ") + QString::fromStdString(warnings[i]) + "\n";
+    }
+    if (warnings.size() > kMaxShown) {
+        text += tr("… et %1 de plus.").arg(warnings.size() - kMaxShown);
+    }
+    QMessageBox::warning(this, tr("Import SVG partiel"), text);
 }
 
 MainWindow::SatinCoverageChoice MainWindow::askAboutIncompleteSatinCoverage(

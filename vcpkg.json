@@ -10,6 +10,7 @@
     "clipper2",
     "nlohmann-json",
     "minizip-ng",
+    "pugixml",
     {
       "name": "opencv4",
       "default-features": false,
