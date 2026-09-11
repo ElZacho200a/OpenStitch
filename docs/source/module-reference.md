@@ -21,7 +21,7 @@ fonctionnalité. Chaque module est une cible `openstitch::<nom>` sous `libs/`.
 | `auto_satin` | squelette → satinabilité → rails/barreaux multi-sections | core, geometry (+OpenCV) | `tests/unit/auto_satin` |
 | `satin_coverage` | mesure la surface géométrique couverte par des colonnes satin | core, geometry, stitch_generation | `tests/unit/satin_coverage` |
 | `commands` | undo/redo | document | `tests/unit/commands` |
-| `formats` | codec DST, SVG diagnostic | core, stitch | `tests/unit/formats` |
+| `formats` | codec DST, import DXF/SVG, export DXF/SVG diagnostic | core, geometry, stitch (+pugixml) | `tests/unit/formats` |
 | `project_io` | format `.osp` | core, document, image | `tests/unit/project_io` |
 
 ## Points d'extension
@@ -48,6 +48,7 @@ fonctionnalité. Chaque module est une cible `openstitch::<nom>` sous `libs/`.
 | le choix de type auto (tatami/satin) | `libs/autodigitize/src/autodigitize.cpp` |
 | l'édition (type, orientation, filtres, calques) | `apps/desktop/main_window.cpp` |
 | l'encodage DST | `libs/formats/src/dst.cpp` |
+| l'import SVG (contourne image/segmentation) | `libs/formats/src/svg_import.cpp` |
 | le format projet | `libs/project_io/src/` |
 | les menus | `apps/desktop/main_window.cpp` |
 | les unités | `libs/core/include/openstitch/core/units.hpp` |
