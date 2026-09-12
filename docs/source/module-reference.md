@@ -45,7 +45,7 @@ fonctionnalité. Chaque module est une cible `openstitch::<nom>` sous `libs/`.
 | la colonne satin | `libs/stitch_generation/src/satin.cpp` |
 | le satin par squelette et ses sections | `libs/auto_satin/src/` |
 | la mesure de couverture géométrique du satin | `libs/satin_coverage/src/coverage.cpp` |
-| le choix de type auto (tatami/satin) | `libs/autodigitize/src/autodigitize.cpp` |
+| le choix de type auto (tatami/satin), avec ou sans segmentation | `libs/autodigitize/src/autodigitize.cpp` (`auto_digitize`/`auto_digitize_vectors`) |
 | l'édition (type, orientation, filtres, calques) | `apps/desktop/main_window.cpp` |
 | l'encodage DST | `libs/formats/src/dst.cpp` |
 | l'import SVG (contourne image/segmentation) | `libs/formats/src/svg_import.cpp` |

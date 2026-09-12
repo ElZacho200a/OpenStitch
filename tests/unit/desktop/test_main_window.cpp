@@ -542,6 +542,16 @@ private slots:
     // fois le fichier choisi) plutôt que seulement formats::decode_svg en
     // isolation (déjà testé dans tests/unit/formats/test_svg_import.cpp).
     void openSvgCreatesVectorObjectsDirectlySkippingImage();
+    // Demande utilisateur (2026-09-12) : pouvoir lancer "Numérisation
+    // automatique" directement après un import SVG, comme si la
+    // segmentation avait déjà eu lieu -- autoDigitize() doit détecter
+    // l'absence de project_.segmentation et basculer sur
+    // autodigitize::auto_digitize_vectors(project_.vector_objects, ...)
+    // plutôt que d'exiger une segmentation qui n'aura jamais lieu pour ce
+    // chemin. Chemin vectoriel : contrairement au chemin segmentation,
+    // aucune QDialog (fond présumé) ne s'affiche -- testable sans
+    // autoDismissModalDialogs.
+    void autoDigitizeAfterOpenSvgClassifiesVectorObjectsDirectly();
     // §23 du plan de refonte satin (2026-08-14) : le dialogue à choix
     // multiples (askAboutIncompleteSatinCoverage) remplace l'ancienne
     // information à sens unique -- un test par choix réel, bout en bout
@@ -1874,6 +1884,57 @@ void MainWindowTest::openSvgCreatesVectorObjectsDirectlySkippingImage() {
     QCOMPARE(window.project_.embroidery_objects.size(), std::size_t{0});
     QCOMPARE(window.project_.vector_objects.front().paths.size(), std::size_t{1});
     QCOMPARE(window.project_.vector_objects.front().paths.front().outer.nodes.size(), std::size_t{4});
+}
+
+void MainWindowTest::autoDigitizeAfterOpenSvgClassifiesVectorObjectsDirectly() {
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    const QString svgPath = dir.filePath("bande.svg");
+    QFile file(svgPath);
+    QVERIFY(file.open(QIODevice::WriteOnly | QIODevice::Text));
+    // Bande fine 50x3 mm (viewBox 500x30, 10 unites/mm) : assez large pour
+    // remplir (aire >= min_fill_area_mm2 par defaut) et assez fine pour
+    // etre classee satin (largeur moyenne < satin_max_width par defaut,
+    // 6 mm) -- meme forme que le test equivalent de la voie segmentation
+    // (tests/unit/autodigitize/test_autodigitize.cpp).
+    file.write(QByteArrayLiteral(
+        "<svg viewBox=\"0 0 500 30\" width=\"50mm\" height=\"3mm\">"
+        "<rect x=\"0\" y=\"0\" width=\"500\" height=\"30\"/>"
+        "</svg>"));
+    file.close();
+
+    MainWindow window;
+    window.openSvg(svgPath);
+    QVERIFY(!window.project_.hasImage());
+    QVERIFY(!window.project_.segmentation.has_value());
+    QCOMPARE(window.project_.vector_objects.size(), std::size_t{1});
+    QCOMPARE(window.project_.embroidery_objects.size(), std::size_t{0});
+    const ObjectId sourceVecId = window.project_.vector_objects.front().id;
+
+    // Chemin vectoriel : aucune QDialog (la question "fond présumé" n'a de
+    // sens que pour une segmentation pixel) -- appel direct sans dismiss.
+    window.autoDigitize();
+
+    QVERIFY(!window.project_.hasImage());  // toujours aucune image traversee
+    QVERIFY(!window.project_.embroidery_objects.empty());
+    // Une bande simple sans branche doit se couvrir proprement en un seul
+    // satin, sans reliquat -- donc pas de vecteur de repli en plus de
+    // l'entree -- mais on ne fait pas de cette absence une garantie stricte
+    // ici (§ classify_and_build_embroidery, reliquat toujours possible en
+    // theorie) : on verifie plutot qu'aucune broderie ne pointe vers un
+    // vecteur inconnu.
+    bool anySatin = false;
+    for (const auto& e : window.project_.embroidery_objects) {
+        const bool sourceKnown = std::any_of(
+            window.project_.vector_objects.begin(), window.project_.vector_objects.end(),
+            [&](const document::VectorObject& v) { return v.id == e.source_vector; });
+        QVERIFY(sourceKnown);
+        anySatin = anySatin || e.is_satin();
+    }
+    QVERIFY(anySatin);
+    // La bande d'origine, elle, reste bien la SEULE entree (pas de doublon) --
+    // l'eventuel vecteur de repli s'ajouterait APRES, jamais a sa place.
+    QCOMPARE(window.project_.vector_objects.front().id, sourceVecId);
 }
 
 void MainWindowTest::createSatinObjectContinuePartialLeavesResidualUncovered() {

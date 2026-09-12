@@ -3,7 +3,10 @@
 
 #include <algorithm>
 #include <array>
+#include <cmath>
+#include <optional>
 #include <set>
+#include <string>
 #include <utility>
 
 #include "openstitch/auto_satin/satin_column.hpp"
@@ -40,6 +43,31 @@ AutoOptions opts() {
     o.min_fill_area_mm2 = 20.0;
     o.satin_max_width = Micrometers{6'000};
     return o;
+}
+
+// Même convention que libs/auto_satin/src/shapes.cpp : coordonnées en µm.
+geometry::PathNode node(double x, double y) {
+    return geometry::PathNode{
+        Vec2um{Micrometers{static_cast<std::int32_t>(std::lround(x))},
+              Micrometers{static_cast<std::int32_t>(std::lround(y))}},
+        geometry::NodeType::Corner, std::nullopt, std::nullopt};
+}
+
+geometry::Path rect_path_um(double x0, double y0, double x1, double y1) {
+    geometry::Path p;
+    p.closed = true;
+    p.nodes = {node(x0, y0), node(x1, y0), node(x1, y1), node(x0, y1)};
+    return p;
+}
+
+document::VectorObject make_vector(ObjectId id, geometry::Path outer,
+                                   std::array<std::uint8_t, 3> rgb = {220, 30, 30}) {
+    document::VectorObject v;
+    v.id = id;
+    v.name = "Import test " + std::to_string(id.value);
+    v.rgb = rgb;
+    v.paths.push_back(geometry::PathSet{std::move(outer), {}});
+    return v;
 }
 
 }  // namespace
@@ -541,4 +569,90 @@ TEST_CASE("branche squelette localement trop large -> avertissement (jamais sile
     // interstices le long de chaque couture satin/tatami avec le premier
     // correctif, incomplet -- cf. `shrink_strips_for_cutout`).
     CHECK(leftoverAreaMm2 < 0.5);
+}
+
+// `auto_digitize_vectors` : même classification AutoChoice qu'`auto_digitize`,
+// mais à partir d'objets vectoriels DÉJÀ existants -- le cas d'un import SVG
+// direct (formats::svg_import), qui construit des VectorObject sans jamais
+// passer par image/segmentation/vectorisation (§ demande utilisateur
+// "éviter la segmentation"). Réutilise le corpus de formes déjà couvert
+// ci-dessus pour la voie segmentation, en µm directs plutôt qu'en pixels.
+TEST_CASE("auto_digitize_vectors : grande zone pleine -> tatami editable, sans nouveau vecteur") {
+    IdGenerator<ObjectId> ids;
+    document::VectorObject v = make_vector(ids.next(), rect_path_um(0, 0, 30'000, 30'000));
+    const ObjectId vecId = v.id;
+    const auto result = auto_digitize_vectors({v}, ids, opts());
+    REQUIRE(result.has_value());
+    // L'objet vectoriel d'entrée existe déjà chez l'appelant (§ openSvg) --
+    // aucun nouveau vecteur ne doit être créé pour lui, seulement pour un
+    // éventuel reliquat satin (aucun ici, c'est du tatami).
+    CHECK(result->vectors.empty());
+    REQUIRE(result->embroideries.size() == 1);
+    CHECK(result->embroideries[0].is_tatami());
+    CHECK(result->embroideries[0].source_vector == vecId);
+}
+
+TEST_CASE("auto_digitize_vectors : bande fine -> satin topologique, meme moteur que la segmentation") {
+    IdGenerator<ObjectId> ids;
+    // Bande 40x3 mm, meme proportions que le test segmentation equivalent.
+    document::VectorObject v = make_vector(ids.next(), rect_path_um(0, 0, 40'000, 3'000));
+    const auto result = auto_digitize_vectors({v}, ids, opts());
+    REQUIRE(result.has_value());
+    bool anySatin = false;
+    for (const auto& e : result->embroideries) {
+        anySatin = anySatin || e.is_satin();
+        if (e.is_satin()) {
+            const auto& satin = std::get<document::SatinParams>(e.params);
+            CHECK(satin.rungs.size() >= 2);
+        }
+    }
+    CHECK(anySatin);
+}
+
+TEST_CASE("auto_digitize_vectors : petit objet -> contour, comme la voie segmentation") {
+    IdGenerator<ObjectId> ids;
+    // Carre 3x3 mm : aire 9 < 20 mm^2 (opts().min_fill_area_mm2) -> contour.
+    document::VectorObject v = make_vector(ids.next(), rect_path_um(0, 0, 3'000, 3'000));
+    const auto result = auto_digitize_vectors({v}, ids, opts());
+    REQUIRE(result.has_value());
+    REQUIRE(result->embroideries.size() == 1);
+    CHECK(std::holds_alternative<document::RunningStitchParams>(result->embroideries[0].params));
+}
+
+TEST_CASE("auto_digitize_vectors : plusieurs objets -> chacun classe independamment, ids distincts") {
+    IdGenerator<ObjectId> ids;
+    document::VectorObject big = make_vector(ids.next(), rect_path_um(0, 0, 30'000, 30'000));
+    document::VectorObject strip = make_vector(ids.next(), rect_path_um(0, 0, 40'000, 3'000));
+    document::VectorObject tiny = make_vector(ids.next(), rect_path_um(0, 0, 3'000, 3'000));
+    const auto result = auto_digitize_vectors({big, strip, tiny}, ids, opts());
+    REQUIRE(result.has_value());
+    std::set<ObjectId> sources;
+    for (const auto& e : result->embroideries) {
+        sources.insert(e.source_vector);
+    }
+    // Un objet source par forme d'entree au minimum (la bande peut en
+    // produire plusieurs si le planner topologique la decoupe en sections).
+    CHECK(sources.count(big.id) == 1);
+    CHECK(sources.count(strip.id) == 1);
+    CHECK(sources.count(tiny.id) == 1);
+
+    std::vector<std::uint64_t> allIds;
+    for (const auto& v : result->vectors) allIds.push_back(v.id.value);
+    for (const auto& e : result->embroideries) allIds.push_back(e.id.value);
+    std::sort(allIds.begin(), allIds.end());
+    CHECK(std::adjacent_find(allIds.begin(), allIds.end()) == allIds.end());  // tous distincts
+}
+
+TEST_CASE("auto_digitize_vectors : aucun objet vectoriel -> erreur propre") {
+    IdGenerator<ObjectId> ids;
+    CHECK_FALSE(auto_digitize_vectors({}, ids, opts()).has_value());
+}
+
+TEST_CASE("auto_digitize_vectors : objet sans geometrie exploitable -> ignore sans crash, erreur globale si seul") {
+    IdGenerator<ObjectId> ids;
+    document::VectorObject empty;
+    empty.id = ids.next();
+    empty.name = "vide";
+    // paths volontairement vide : simule un objet vectoriel degenere.
+    CHECK_FALSE(auto_digitize_vectors({empty}, ids, opts()).has_value());
 }

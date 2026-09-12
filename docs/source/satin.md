@@ -5477,3 +5477,66 @@ pour satisfaire un gate formulé avant l'investigation.
 
 Non-régression&nbsp;: `test_stitch` (187&nbsp;cas, 1520&nbsp;assertions)
 complet, nouveau test dédié inclus.
+
+### `auto_digitize_vectors` : AutoChoice sans segmentation, pour l'import SVG direct (2026-09-12)
+
+Demande utilisateur, suite à l'import SVG natif (`libs/formats/src/
+svg_import.cpp`, § plus haut dans ce document) : pouvoir lancer
+« Numérisation automatique » (§24, `AutoChoice`) directement sur les objets
+vectoriels d'un SVG importé, sans jamais passer par une segmentation
+pixel — « comme si on avait skip la partie segmentation ». Avant ce
+correctif, `MainWindow::autoDigitize()` refusait purement et simplement
+tant que `project_.segmentation` était absent, message « Segmentez
+d'abord l'image » — un message trompeur pour un document sans image du
+tout.
+
+**Root cause du couplage** : `autodigitize::auto_digitize(seg, ids,
+options)` mélangeait deux responsabilités dans une seule boucle — (1)
+itérer les régions d'une `Segmentation`, les vectoriser
+(`vectorization::vectorize_region`), et (2) classifier chaque morceau
+vectorisé en satin/tatami/contour (§24) puis construire les objets de
+broderie correspondants, avec repli tatami sur reliquat satin non
+couvert. Seule (1) a réellement besoin d'une `Segmentation` ; (2) ne
+prend en entrée qu'un `geometry::PathSet` déjà vectorisé — exactement ce
+qu'un `document::VectorObject` importé depuis un SVG fournit déjà.
+
+**Correctif** : extraction de (2) dans une fonction libre
+`classify_and_build_embroidery(main, RegionSource, ids, options, result)`
+(`libs/autodigitize/src/autodigitize.cpp`, namespace anonyme) — `RegionSource`
+porte l'id du vecteur, sa couleur, un libellé pour les noms/avertissements
+(« Région 3 » ou le nom de l'objet importé), et un `RegionId` optionnel
+(présent seulement côté segmentation, reporté sur un éventuel vecteur de
+repli pour que `tests/integration/test_pipeline.cpp` continue de pouvoir
+regrouper repli et couverture satin par région d'origine). `auto_digitize`
+devient un simple appelant de cette fonction après vectorisation ;
+nouvelle fonction publique `auto_digitize_vectors(vectors, ids, options)`
+l'appelle directement sur des `VectorObject` déjà existants — **aucun
+changement de comportement pour la voie segmentation** (même fonction
+partagée, mêmes chemins de code, seule la source du morceau à classifier
+change).
+
+**Différence assumée entre les deux entrées** : `auto_digitize` crée
+toujours un nouvel objet vectoriel pour la géométrie qu'il vient de
+vectoriser (§ comportement historique) ; `auto_digitize_vectors` n'en crée
+JAMAIS pour son entrée (elle existe déjà dans le document de l'appelant)
+— seul un reliquat satin non couvert peut encore ajouter un vecteur de
+repli, avec la même garantie de couverture que la voie segmentation.
+
+**Câblage `apps/desktop`** : `MainWindow::autoDigitize()` détecte l'absence
+de `project_.segmentation` et, si `project_.vector_objects` n'est pas vide,
+appelle `auto_digitize_vectors` au lieu de refuser. La boîte de dialogue
+« fond présumé » (`skip_largest_region`) ne s'affiche que côté
+segmentation — un SVG n'a pas de notion de fond de pixels. Le message
+d'erreur mis à jour mentionne désormais les deux chemins d'entrée
+possibles (« Segmentez d'abord l'image... ou importez un fichier SVG »).
+
+Non-régression&nbsp;: `test_autodigitize` (17&nbsp;cas, 6 nouveaux pour
+`auto_digitize_vectors`, dont un test parité forme-par-forme avec les cas
+segmentation équivalents), `test_pipeline` (vérifié manuellement que le
+regroupement par `source_region` des replis tatami reste correct — les
+tests DIAGNOSTIC TEMPORAIRE de ce fichier échouent tous par construction,
+`CHECK(false)` délibéré, non liés à ce correctif), nouveau test bout en
+bout `autoDigitizeAfterOpenSvgClassifiesVectorObjectsDirectly`
+(`tests/unit/desktop/test_main_window.cpp`) : import SVG réel puis
+`autoDigitize()` sans dialogue, vérifie une classification satin correcte
+sans jamais traverser image/segmentation.

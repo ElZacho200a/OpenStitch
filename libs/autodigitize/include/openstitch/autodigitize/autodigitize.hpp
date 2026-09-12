@@ -73,6 +73,19 @@ struct AutoResult {
                                                IdGenerator<ObjectId>& ids,
                                                const AutoOptions& options);
 
+// Même classification AutoChoice (satin/tatami/contour selon la forme) et
+// même moteur de construction que `auto_digitize`, mais à partir d'objets
+// vectoriels DÉJÀ existants -- typiquement un import SVG direct
+// (`formats::read_svg_file`), qui produit directement des `VectorObject`
+// sans jamais passer par image/segmentation/vectorisation. `AutoResult::
+// vectors` ne contient donc PAS les objets d'entrée (déjà dans le document
+// de l'appelant) : seulement d'éventuels nouveaux vecteurs de repli, pour un
+// reliquat satin non couvert (même garantie de couverture que
+// `auto_digitize` — jamais une zone laissée sans le moindre point).
+[[nodiscard]] Result<AutoResult> auto_digitize_vectors(
+    const std::vector<document::VectorObject>& vectors, IdGenerator<ObjectId>& ids,
+    const AutoOptions& options);
+
 // `satin_params_from_column`, `BuiltSatinSection`, `SatinBuildReport` et
 // `build_satin_sections` vivaient ici jusqu'au 2026-08-17 (§4 de la mission
 // de durcissement du contrat SatinPlanner) : cet adaptateur generique
