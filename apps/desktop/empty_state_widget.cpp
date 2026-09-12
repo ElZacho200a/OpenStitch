@@ -29,7 +29,7 @@ EmptyStateWidget::EmptyStateWidget(QWidget* parent) : QFrame(parent) {
 
     auto* buttons = new QVBoxLayout();
     buttons->setSpacing(6);
-    auto* openImg = new QPushButton(tr("Ouvrir une image…"), this);
+    auto* openImg = new QPushButton(tr("Ouvrir une image ou un SVG…"), this);
     auto* openPrj = new QPushButton(tr("Ouvrir un projet…"), this);
     auto* importDst = new QPushButton(tr("Importer un DST…"), this);
     for (QPushButton* b : {openImg, openPrj, importDst}) {
@@ -39,7 +39,8 @@ EmptyStateWidget::EmptyStateWidget(QWidget* parent) : QFrame(parent) {
     layout->addLayout(buttons);
 
     auto* hint = new QLabel(
-        tr("Importez une image pour commencer un nouveau motif,\nou ouvrez un projet existant."),
+        tr("Importez une image ou un fichier SVG pour commencer un nouveau motif\n"
+           "(un SVG évite l'étape de segmentation), ou ouvrez un projet existant."),
         this);
     hint->setAlignment(Qt::AlignCenter);
     hint->setEnabled(false);
