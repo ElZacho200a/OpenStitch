@@ -1,0 +1,122 @@
+name: Release
+
+# Construit l'application desktop (build + tests complets, même recette que
+# ci.yml), l'empaquette en un installeur Windows (Inno Setup,
+# packaging/windows/installer.iss) et le publie comme pièce jointe de la
+# release GitHub correspondante -- objectif : pouvoir télécharger et
+# installer OpenStitch Studio depuis n'importe quel PC via la page
+# "Releases" du dépôt, sans compiler quoi que ce soit soi-même.
+#
+# Déclenchement : push d'un tag "vX.Y.Z" (flux standard -- `git tag v0.2.0
+# && git push origin v0.2.0`) crée/complète automatiquement la release
+# GitHub correspondante avec l'installeur en pièce jointe. `workflow_dispatch`
+# permet aussi un déclenchement manuel (rejoue sur le tag le plus récent par
+# défaut) pour tester le pipeline sans pousser un nouveau tag.
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+env:
+  VCPKG_BINARY_SOURCES: "clear;x-gha,readwrite"
+
+# Nécessaire pour créer/mettre à jour une release et y téléverser
+# l'installeur (GITHUB_TOKEN par défaut, jamais un secret supplémentaire à
+# configurer).
+permissions:
+  contents: write
+
+jobs:
+  windows-installer:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Export GitHub Actions cache environment (vcpkg)
+        uses: actions/github-script@v7
+        with:
+          script: |
+            core.exportVariable('ACTIONS_CACHE_URL', process.env.ACTIONS_CACHE_URL || '');
+            core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN || '');
+
+      - name: Install Qt
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: "6.8.3"
+          arch: win64_msvc2022_64
+
+      - name: Set up vcpkg
+        shell: pwsh
+        run: |
+          git clone --depth 1 https://github.com/microsoft/vcpkg.git "$env:RUNNER_TEMP/vcpkg"
+          & "$env:RUNNER_TEMP/vcpkg/bootstrap-vcpkg.bat" -disableMetrics
+          "VCPKG_ROOT=$env:RUNNER_TEMP/vcpkg" | Out-File -Append -FilePath $env:GITHUB_ENV
+
+      - name: Configure
+        shell: pwsh
+        run: |
+          $env:QT_ROOT = $env:QT_ROOT_DIR
+          cmake --preset msvc
+
+      - name: Build Release
+        run: cmake --build --preset msvc-release
+
+      # Même garde-fou qualité qu'un merge sur main (ci.yml) : une release
+      # ne se publie jamais sur un build dont les tests échouent.
+      - name: Test (Release)
+        run: ctest --preset msvc-release
+
+      - name: Determine version from tag
+        id: version
+        shell: pwsh
+        run: |
+          $refName = "${{ github.ref_name }}"
+          if ("${{ github.event_name }}" -eq "workflow_dispatch") {
+            # Déclenchement manuel hors tag : version de secours horodatée,
+            # jamais un nom de release vide ou en conflit avec un vrai tag.
+            $version = "0.0.0-dev." + (Get-Date -Format "yyyyMMddHHmmss")
+            $tag = "manual-build"
+          } else {
+            $version = $refName -replace '^v', ''
+            $tag = $refName
+          }
+          "APP_VERSION=$version" | Out-File -Append -FilePath $env:GITHUB_ENV
+          "RELEASE_TAG=$tag" | Out-File -Append -FilePath $env:GITHUB_ENV
+
+      # Inno Setup n'est pas garanti préinstallé sur l'image du runner :
+      # installation explicite via Chocolatey plutôt qu'une hypothèse sur
+      # l'image (déjà présent -> réinstallation quasi instantanée, jamais un
+      # échec silencieux si l'image change).
+      - name: Install Inno Setup
+        shell: pwsh
+        run: choco install innosetup --no-progress -y
+
+      - name: Build installer
+        shell: pwsh
+        run: |
+          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" `
+            /DMyAppVersion=$env:APP_VERSION `
+            packaging\windows\installer.iss
+
+      - name: Publish to GitHub Release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $installer = Get-ChildItem "packaging\windows\dist\OpenStitchStudio-Setup-*.exe" | Select-Object -First 1
+          if (-not $installer) {
+            throw "Aucun installeur trouvé dans packaging\windows\dist\ -- ISCC.exe a-t-il réellement produit une sortie ?"
+          }
+          $tag = $env:RELEASE_TAG
+          gh release view $tag --repo "${{ github.repository }}" *> $null
+          if ($LASTEXITCODE -eq 0) {
+            gh release upload $tag $installer.FullName --repo "${{ github.repository }}" --clobber
+          } else {
+            $prerelease = if ($tag -match '-') { "--prerelease" } else { "" }
+            gh release create $tag $installer.FullName `
+              --repo "${{ github.repository }}" `
+              --title $tag `
+              --generate-notes `
+              $prerelease
+          }
