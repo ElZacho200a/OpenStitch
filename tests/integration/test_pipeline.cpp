@@ -204,7 +204,7 @@ TEST_CASE("fixture tentabrode : pipeline complexe deterministe et sans geometrie
 // que "fixture tentabrode" ci-dessus (segment -> auto_digitize, mêmes
 // réglages), puis calcule la couverture réelle de CHAQUE région ayant reçu
 // au moins un objet satin, avec satin_coverage::analyze_satin_coverage.
-TEST_CASE("DIAGNOSTIC TEMPORAIRE couverture satin (tentabrode)") {
+TEST_CASE("DIAGNOSTIC TEMPORAIRE couverture satin (tentabrode)", "[.][diagnostic]") {
     const fs::path fixture =
         fs::path{OPENSTITCH_TEST_SOURCE_DIR} / "tests" / "fixtures" / "tentabrode.png";
     const auto loaded = image::load_image(fixture);
