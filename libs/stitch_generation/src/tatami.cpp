@@ -54,8 +54,7 @@ bool point_in_poly(const std::vector<PointD>& poly, PointD p) {
     for (std::size_t i = 0, j = n - 1; i < n; j = i++) {
         const PointD a = poly[i];
         const PointD b = poly[j];
-        if (((a.y > p.y) != (b.y > p.y)) &&
-            (p.x < (b.x - a.x) * (p.y - a.y) / (b.y - a.y) + a.x)) {
+        if (((a.y > p.y) != (b.y > p.y)) && (p.x < (b.x - a.x) * (p.y - a.y) / (b.y - a.y) + a.x)) {
             inside = !inside;
         }
     }
@@ -86,7 +85,7 @@ double point_seg_dist2(PointD p, PointD c, PointD d) {
 // tout point sur une frontière comme faisant partie de la région, AVANT le
 // test pair-impair.
 bool point_on_boundary(const std::vector<std::vector<PointD>>& polys, PointD p) {
-    constexpr double kEps2 = 1e-4;  // 0,01 µm : marge numérique, pas une tolérance géométrique
+    constexpr double kEps2 = 1e-4; // 0,01 µm : marge numérique, pas une tolérance géométrique
     for (const auto& poly : polys) {
         const std::size_t n = poly.size();
         for (std::size_t i = 0; i < n; ++i) {
@@ -146,7 +145,7 @@ bool connector_invalid(const std::vector<std::vector<PointD>>& polys, PointD a, 
             const double cdLen = std::sqrt(dcx * dcx + dcy * dcy);
             const double denom = abx * dcy - aby * dcx;
             if (std::abs(denom) < 1e-9 * abLen * cdLen) {
-                continue;  // parallèle/colinéaire : suivi de bord, pas de découpe
+                continue; // parallèle/colinéaire : suivi de bord, pas de découpe
             }
             const double t = ((c.x - a.x) * dcy - (c.y - a.y) * dcx) / denom;
             const double s = ((c.x - a.x) * aby - (c.y - a.y) * abx) / denom;
@@ -166,7 +165,7 @@ bool connector_invalid(const std::vector<std::vector<PointD>>& polys, PointD a, 
     return false;
 }
 
-}  // namespace
+} // namespace
 
 std::vector<FillStitch> fill_tatami(const geometry::PathSet& region,
                                     const document::TatamiParams& params) {
@@ -187,9 +186,9 @@ std::vector<FillStitch> fill_tatami(const geometry::PathSet& region,
         std::vector<PointD> poly;
         poly.reserve(path.nodes.size());
         for (const auto& node : path.nodes) {
-            poly.push_back(rotate({static_cast<double>(node.pos.x.value),
-                                   static_cast<double>(node.pos.y.value)},
-                                  cosA, sinA));
+            poly.push_back(rotate(
+                {static_cast<double>(node.pos.x.value), static_cast<double>(node.pos.y.value)},
+                cosA, sinA));
         }
         if (poly.size() >= 3) {
             polys.push_back(std::move(poly));
@@ -219,7 +218,7 @@ std::vector<FillStitch> fill_tatami(const geometry::PathSet& region,
         double y{0.0};
         double lo{0.0};
         double hi{0.0};
-        std::vector<double> pens;  // pénétrations, ordonnées lo -> hi
+        std::vector<double> pens; // pénétrations, ordonnées lo -> hi
     };
     std::vector<Segment> segs;
     std::map<int, std::vector<int>> byRow;
@@ -230,8 +229,8 @@ std::vector<FillStitch> fill_tatami(const geometry::PathSet& region,
             scan_polygon(poly, y, xs);
         }
         std::sort(xs.begin(), xs.end());
-        const double phase = stitchLen * (static_cast<double>(rowIndex % stagger) /
-                                          static_cast<double>(stagger));
+        const double phase =
+            stitchLen * (static_cast<double>(rowIndex % stagger) / static_cast<double>(stagger));
         for (std::size_t i = 0; i + 1 < xs.size(); i += 2) {
             const double lo = xs[i];
             const double hi = xs[i + 1];
@@ -272,8 +271,8 @@ std::vector<FillStitch> fill_tatami(const geometry::PathSet& region,
         }
         for (const int i : ids) {
             for (const int j : it->second) {
-                const double ov = std::min(segs[i].hi, segs[j].hi) -
-                                  std::max(segs[i].lo, segs[j].lo);
+                const double ov =
+                    std::min(segs[i].hi, segs[j].hi) - std::max(segs[i].lo, segs[j].lo);
                 if (ov > 0.0) {
                     adj[i].push_back(j);
                     adj[j].push_back(i);
@@ -296,7 +295,8 @@ std::vector<FillStitch> fill_tatami(const geometry::PathSet& region,
         order[static_cast<std::size_t>(i)] = i;
     }
     std::sort(order.begin(), order.end(), [&](int a, int b) {
-        if (segs[a].row != segs[b].row) return segs[a].row < segs[b].row;
+        if (segs[a].row != segs[b].row)
+            return segs[a].row < segs[b].row;
         return segs[a].lo < segs[b].lo;
     });
 
@@ -305,7 +305,7 @@ std::vector<FillStitch> fill_tatami(const geometry::PathSet& region,
     PointD prev{};
     int visitedCount = 0;
     int current = -1;
-    bool jumpStart = true;  // true = on ARRIVE sur ce segment par un déplacement
+    bool jumpStart = true; // true = on ARRIVE sur ce segment par un déplacement
     std::size_t orderCursor = 0;
 
     // Entrée (§15) : on démarre depuis ce point (repère des rangées) et l'on
@@ -330,9 +330,9 @@ std::vector<FillStitch> fill_tatami(const geometry::PathSet& region,
                                               params.underlay_inset);
             r && !r->empty() && r->front().outer.nodes.size() >= 3) {
             for (const auto& nd : r->front().outer.nodes) {
-                hw.push_back(rotate({static_cast<double>(nd.pos.x.value),
-                                     static_cast<double>(nd.pos.y.value)},
-                                    cosA, sinA));
+                hw.push_back(rotate(
+                    {static_cast<double>(nd.pos.x.value), static_cast<double>(nd.pos.y.value)},
+                    cosA, sinA));
             }
         }
     }
@@ -368,7 +368,8 @@ std::vector<FillStitch> fill_tatami(const geometry::PathSet& region,
             int i = ia;
             for (int guard = 0; guard <= H; ++guard) {
                 v.push_back(hw[static_cast<std::size_t>(i)]);
-                if (i == ib) break;
+                if (i == ib)
+                    break;
                 i = fwd ? (i + 1) % H : (i - 1 + H) % H;
             }
             v.push_back(b);
@@ -395,7 +396,8 @@ std::vector<FillStitch> fill_tatami(const geometry::PathSet& region,
                 int best = -1;
                 double bd = std::numeric_limits<double>::max();
                 for (int j = 0; j < n; ++j) {
-                    if (visited[static_cast<std::size_t>(j)]) continue;
+                    if (visited[static_cast<std::size_t>(j)])
+                        continue;
                     const double d = std::min(dist2(prev, {segs[j].lo, segs[j].y}),
                                               dist2(prev, {segs[j].hi, segs[j].y}));
                     if (d < bd || (d == bd && (best == -1 || j < best))) {
@@ -411,7 +413,7 @@ std::vector<FillStitch> fill_tatami(const geometry::PathSet& region,
                 }
                 current = order[orderCursor];
             }
-            jumpStart = true;  // segment atteint par saut (nouvelle composante)
+            jumpStart = true; // segment atteint par saut (nouvelle composante)
         }
         const Segment& s = segs[static_cast<std::size_t>(current)];
         const PointD endLo{s.lo, s.y};
@@ -439,7 +441,8 @@ std::vector<FillStitch> fill_tatami(const geometry::PathSet& region,
                     const int steps = std::max(1, static_cast<int>(std::ceil(d / stitchLen)));
                     const bool lastSeg = (s + 1 == poly.size());
                     for (int t = 1; t <= steps; ++t) {
-                        if (lastSeg && t == steps) break;  // dernier point == rp
+                        if (lastSeg && t == steps)
+                            break; // dernier point == rp
                         const double f = static_cast<double>(t) / steps;
                         const PointD ip{poly[s - 1].x + (poly[s].x - poly[s - 1].x) * f,
                                         poly[s - 1].y + (poly[s].y - poly[s - 1].y) * f};
@@ -480,7 +483,7 @@ std::vector<FillStitch> fill_tatami(const geometry::PathSet& region,
             }
         }
         current = next;
-        jumpStart = false;  // atteint par une arête du graphe -> couture
+        jumpStart = false; // atteint par une arête du graphe -> couture
     }
     return out;
 }
@@ -501,7 +504,8 @@ std::vector<std::vector<Vec2um>> tatami_underlay(const geometry::PathSet& region
     if (params.underlay_edge) {
         std::vector<geometry::PathSet> shells;
         if (params.underlay_inset.value > 0) {
-            if (auto r = geometry::inset_path_set(region, params.underlay_inset); r && !r->empty()) {
+            if (auto r = geometry::inset_path_set(region, params.underlay_inset);
+                r && !r->empty()) {
                 shells = std::move(*r);
             }
         } else {
@@ -529,7 +533,8 @@ std::vector<std::vector<Vec2um>> tatami_underlay(const geometry::PathSet& region
     if (params.underlay_parallel) {
         document::TatamiParams up = params;
         up.angle = Angle{params.angle.radians + std::numbers::pi / 2.0};
-        up.row_spacing = Micrometers{std::max(params.underlay_spacing.value, params.row_spacing.value)};
+        up.row_spacing =
+            Micrometers{std::max(params.underlay_spacing.value, params.row_spacing.value)};
         up.inset = Micrometers{0};
         up.underlay_edge = false;
         up.underlay_parallel = false;
@@ -539,12 +544,14 @@ std::vector<std::vector<Vec2um>> tatami_underlay(const geometry::PathSet& region
         std::vector<Vec2um> run;
         for (const auto& fs : fill) {
             if (fs.jump) {
-                if (run.size() >= 2) passes.push_back(run);
+                if (run.size() >= 2)
+                    passes.push_back(run);
                 run.clear();
             }
             run.push_back(fs.pos);
         }
-        if (run.size() >= 2) passes.push_back(std::move(run));
+        if (run.size() >= 2)
+            passes.push_back(std::move(run));
     }
 
     return passes;
@@ -556,8 +563,8 @@ bool segment_stays_in_region(const geometry::PathSet& region, Vec2um a, Vec2um b
         std::vector<PointD> poly;
         poly.reserve(path.nodes.size());
         for (const auto& node : path.nodes) {
-            poly.push_back({static_cast<double>(node.pos.x.value),
-                            static_cast<double>(node.pos.y.value)});
+            poly.push_back(
+                {static_cast<double>(node.pos.x.value), static_cast<double>(node.pos.y.value)});
         }
         if (poly.size() >= 3) {
             polys.push_back(std::move(poly));
@@ -575,4 +582,4 @@ bool segment_stays_in_region(const geometry::PathSet& region, Vec2um a, Vec2um b
     return !connector_invalid(polys, pa, pb);
 }
 
-}  // namespace openstitch::stitch_generation
+} // namespace openstitch::stitch_generation

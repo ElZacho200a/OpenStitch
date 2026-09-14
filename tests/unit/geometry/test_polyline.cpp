@@ -15,7 +15,7 @@ PathNode corner(std::int32_t x, std::int32_t y) {
     return {Vec2um{Micrometers{x}, Micrometers{y}}, NodeType::Corner, std::nullopt, std::nullopt};
 }
 
-}  // namespace
+} // namespace
 
 TEST_CASE("flatten : polyligne droite inchangee") {
     Path p;
@@ -41,11 +41,12 @@ TEST_CASE("flatten : Bezier subdivisee, erreur bornee et longueur coherente") {
     p.nodes = {a, b};
 
     const Polyline fl = flatten(p, Micrometers{50});
-    REQUIRE(fl.points.size() > 5);  // reellement subdivisee
+    REQUIRE(fl.points.size() > 5); // reellement subdivisee
     // Tous les points a ~R du centre (0,0).
     for (const Vec2um& pt : fl.points) {
-        const double r = std::hypot(static_cast<double>(pt.x.value), static_cast<double>(pt.y.value));
-        CHECK(std::abs(r - R) < 120.0);  // < tolerance elargie
+        const double r =
+            std::hypot(static_cast<double>(pt.x.value), static_cast<double>(pt.y.value));
+        CHECK(std::abs(r - R) < 120.0); // < tolerance elargie
     }
     // Longueur proche de l'arc theorique (pi/2 * R).
     const double L = polyline_length(fl.points);

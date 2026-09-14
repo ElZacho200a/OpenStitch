@@ -81,8 +81,8 @@ OrientationCost best_orientation(const std::vector<RouteColumn>& cols,
                 const Vec2um out = exit_of(cols[order[i - 1]], pr != 0);
                 OrientationCost candidate = dp[pr];
                 candidate.travel_um += length_um(in - out);
-                if (shared_junction(cols[order[i - 1]], pr != 0, cols[order[i]],
-                                    r != 0, junctionMaxGap)) {
+                if (shared_junction(cols[order[i - 1]], pr != 0, cols[order[i]], r != 0,
+                                    junctionMaxGap)) {
                     ++candidate.junction_links;
                 }
                 if (better(candidate, next[r])) {
@@ -148,7 +148,7 @@ std::vector<std::size_t> greedy_order(const std::vector<RouteColumn>& cols, Vec2
     return order;
 }
 
-}  // namespace
+} // namespace
 
 RoutePlan route_columns(const std::vector<RouteColumn>& columns, Vec2um origin,
                         const RoutingConfig& config) {
@@ -160,8 +160,7 @@ RoutePlan route_columns(const std::vector<RouteColumn>& columns, Vec2um origin,
 
     std::vector<std::size_t> order = greedy_order(columns, origin, config.underpath_max);
     std::vector<char> reversed;
-    OrientationCost cost =
-        best_orientation(columns, order, origin, config.underpath_max, reversed);
+    OrientationCost cost = best_orientation(columns, order, origin, config.underpath_max, reversed);
 
     // 2-opt : inversion de sous-segments tant que le coût diminue (borné).
     if (config.two_opt && n >= 3) {
@@ -177,7 +176,7 @@ RoutePlan route_columns(const std::vector<RouteColumn>& columns, Vec2um origin,
                     std::vector<char> rev2;
                     const OrientationCost c2 =
                         best_orientation(columns, cand, origin, config.underpath_max, rev2);
-                    if (better(c2, cost, 1.0)) {  // marge anti-oscillation (1 µm)
+                    if (better(c2, cost, 1.0)) { // marge anti-oscillation (1 µm)
                         order = std::move(cand);
                         reversed = std::move(rev2);
                         cost = c2;
@@ -215,10 +214,10 @@ RoutePlan route_columns(const std::vector<RouteColumn>& columns, Vec2um origin,
             // peut être fortuite (deux formes disjointes rapprochées par
             // hasard) — le trajet caché n'est accordé que pour un quasi-contact
             // (`underpath_max_without_junction`, bien plus strict).
-            const double limit = step.junction.has_value()
-                                     ? static_cast<double>(config.underpath_max.value)
-                                     : static_cast<double>(
-                                           config.underpath_max_without_junction.value);
+            const double limit =
+                step.junction.has_value()
+                    ? static_cast<double>(config.underpath_max.value)
+                    : static_cast<double>(config.underpath_max_without_junction.value);
             if (gap <= limit) {
                 step.connector = ConnectorKind::Underpath;
                 ++plan.underpaths;
@@ -235,4 +234,4 @@ RoutePlan route_columns(const std::vector<RouteColumn>& columns, Vec2um origin,
     return plan;
 }
 
-}  // namespace openstitch::stitch_generation
+} // namespace openstitch::stitch_generation

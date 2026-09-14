@@ -32,7 +32,7 @@ enum class ObjectEditState : std::uint8_t { Clean, ManuallyEdited, Dirty };
 // soient contiguës (cas général) ou entrelacées (satin routé, trajets cachés
 // entre colonnes). Domaine indexé par `document::StitchOverride::base_index`.
 [[nodiscard]] std::vector<stitch::StitchCommand> raw_slice(const stitch::StitchSequence& full,
-                                                             ObjectId object);
+                                                           ObjectId object);
 
 // Empreinte 64 bits (FNV-1a) déterministe et reproductible bit à bit sur une
 // vue brute : dépend explicitement de la position, du type de commande, de la
@@ -43,7 +43,7 @@ enum class ObjectEditState : std::uint8_t { Clean, ManuallyEdited, Dirty };
 // Classe l'état d'un objet à partir de sa vue brute ACTUELLE (recalcule
 // toujours ; aucun état stocké ni mis en cache).
 [[nodiscard]] ObjectEditState classify_edit_state(const document::EmbroideryObject& object,
-                                                   const std::vector<stitch::StitchCommand>& raw);
+                                                  const std::vector<stitch::StitchCommand>& raw);
 
 // Applique en place, sur `sequence` (déjà produite par `generate_sequence`),
 // les retouches des objets `ManuallyEdited` de `project`. Les objets `Dirty`
@@ -56,7 +56,7 @@ enum class ObjectEditState : std::uint8_t { Clean, ManuallyEdited, Dirty };
 // TopStitch de type `Stitch` OU `Jump`. Un champ invalide pour sa cible est
 // ignoré silencieusement, sans rejeter les autres champs du même override.
 [[nodiscard]] std::vector<ObjectId> apply_manual_overrides(stitch::StitchSequence& sequence,
-                                                            const document::Project& project);
+                                                           const document::Project& project);
 
 // Point d'entree UNIQUE pour tout consommateur de production (desktop, CLI,
 // export, simulation) : enchaine generate_sequence + apply_manual_overrides.
@@ -78,7 +78,7 @@ enum class ObjectEditState : std::uint8_t { Clean, ManuallyEdited, Dirty };
 // widgets", cadrage §5).
 struct ObjectEditView {
     ObjectEditState state{ObjectEditState::Clean};
-    std::vector<stitch::StitchCommand> raw;  // raw_slice(objet), toutes passes confondues
+    std::vector<stitch::StitchCommand> raw; // raw_slice(objet), toutes passes confondues
     std::uint64_t fingerprint{0};
     std::uint32_t point_count{0};
 };
@@ -90,8 +90,8 @@ struct ObjectEditView {
 // leur état est implicitement Clean par absence. Sert aux indicateurs par
 // objet (liste Document, inspecteur, Lot 8.2 §6) sans recalculer une vue
 // brute complète pour des objets jamais retouchés.
-[[nodiscard]] Result<std::vector<std::pair<ObjectId, ObjectEditState>>> classify_all_edit_states(
-    const document::Project& project);
+[[nodiscard]] Result<std::vector<std::pair<ObjectId, ObjectEditState>>>
+classify_all_edit_states(const document::Project& project);
 
 // Rafraîchissement UI consolidé (Lot 8.2, revue corrective point 1) : un
 // SEUL appel à `generate_sequence` produit à la fois `effective` (contenu
@@ -110,6 +110,6 @@ struct RefreshContext {
     std::optional<ObjectEditView> target_view;
 };
 [[nodiscard]] Result<RefreshContext> refresh_context(const document::Project& project,
-                                                       std::optional<ObjectId> target);
+                                                     std::optional<ObjectId> target);
 
-}  // namespace openstitch::stitch_generation
+} // namespace openstitch::stitch_generation

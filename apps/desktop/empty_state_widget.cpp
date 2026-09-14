@@ -11,9 +11,10 @@ namespace openstitch::desktop {
 
 EmptyStateWidget::EmptyStateWidget(QWidget* parent) : QFrame(parent) {
     const Tokens& t = AppTheme::instance().tokens();
-    setStyleSheet(QStringLiteral("QFrame { background:%1; border:1px solid %2; border-radius:%3px; }")
-                      .arg(t.surface.name(), t.border.name())
-                      .arg(t.radiusMd));
+    setStyleSheet(
+        QStringLiteral("QFrame { background:%1; border:1px solid %2; border-radius:%3px; }")
+            .arg(t.surface.name(), t.border.name())
+            .arg(t.radiusMd));
 
     auto* layout = new QVBoxLayout(this);
     layout->setContentsMargins(28, 24, 28, 24);
@@ -50,4 +51,4 @@ EmptyStateWidget::EmptyStateWidget(QWidget* parent) : QFrame(parent) {
     connect(importDst, &QPushButton::clicked, this, &EmptyStateWidget::importDstRequested);
 }
 
-}  // namespace openstitch::desktop
+} // namespace openstitch::desktop

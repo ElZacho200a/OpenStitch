@@ -37,17 +37,31 @@ struct P {
     double y{0.0};
 };
 
-P operator+(P a, P b) { return {a.x + b.x, a.y + b.y}; }
-P operator-(P a, P b) { return {a.x - b.x, a.y - b.y}; }
-P operator*(P a, double s) { return {a.x * s, a.y * s}; }
-double dot(P a, P b) { return a.x * b.x + a.y * b.y; }
-double cross(P a, P b) { return a.x * b.y - a.y * b.x; }
-double norm(P a) { return std::sqrt(dot(a, a)); }
+P operator+(P a, P b) {
+    return {a.x + b.x, a.y + b.y};
+}
+P operator-(P a, P b) {
+    return {a.x - b.x, a.y - b.y};
+}
+P operator*(P a, double s) {
+    return {a.x * s, a.y * s};
+}
+double dot(P a, P b) {
+    return a.x * b.x + a.y * b.y;
+}
+double cross(P a, P b) {
+    return a.x * b.y - a.y * b.x;
+}
+double norm(P a) {
+    return std::sqrt(dot(a, a));
+}
 P unit(P a) {
     const double n = norm(a);
     return n > 1e-9 ? P{a.x / n, a.y / n} : P{0.0, 0.0};
 }
-P toP(Vec2um v) { return {static_cast<double>(v.x.value), static_cast<double>(v.y.value)}; }
+P toP(Vec2um v) {
+    return {static_cast<double>(v.x.value), static_cast<double>(v.y.value)};
+}
 Vec2um toUm(P p) {
     return Vec2um{Micrometers{static_cast<std::int32_t>(std::lround(p.x))},
                   Micrometers{static_cast<std::int32_t>(std::lround(p.y))}};
@@ -81,9 +95,12 @@ std::vector<double> cumulative(const std::vector<P>& pts) {
 }
 
 P point_at(const std::vector<P>& pts, const std::vector<double>& cum, double s) {
-    if (pts.empty()) return {};
-    if (s <= 0.0) return pts.front();
-    if (s >= cum.back()) return pts.back();
+    if (pts.empty())
+        return {};
+    if (s <= 0.0)
+        return pts.front();
+    if (s >= cum.back())
+        return pts.back();
     const auto it = std::upper_bound(cum.begin(), cum.end(), s);
     const std::size_t i = static_cast<std::size_t>(it - cum.begin());
     const double segLen = cum[i] - cum[i - 1];
@@ -153,8 +170,8 @@ std::vector<std::pair<P, P>> threads_from_satin(const std::vector<Vec2um>& satin
 // `fill_satin` : même fraction d'abscisse curviligne appliquée
 // indépendamment à chaque rail. Sert de référence comparative pour objectiver
 // l'amélioration -- jamais utilisée en production.
-std::vector<std::pair<P, P>> naive_fraction_pairs(const geometry::Path& railA, const geometry::Path& railB,
-                                                  double density) {
+std::vector<std::pair<P, P>> naive_fraction_pairs(const geometry::Path& railA,
+                                                  const geometry::Path& railB, double density) {
     const auto a = to_pts(railA);
     const auto b = to_pts(railB);
     const auto cumA = cumulative(a);
@@ -175,16 +192,16 @@ std::vector<std::pair<P, P>> naive_fraction_pairs(const geometry::Path& railA, c
 // Métriques géométriques d'une séquence de fils {A,B} par rapport aux deux
 // rails d'origine.
 struct PairingMetrics {
-    int crossings_adjacent{0};       // fils consécutifs qui se croisent
-    int crossings_total{0};          // toute paire de fils qui se croise
-    bool monotoneA{true};            // abscisse sur le rail A non-decroissante
-    bool monotoneB{true};            // abscisse sur le rail B non-decroissante
-    int max_station_stagnation_a{0}; // transitions consecutives sans avance sur A
-    int max_station_stagnation_b{0}; // transitions consecutives sans avance sur B
-    double max_normalized_skew{0.0}; // ecart maximal de progression relative A/B
-    double max_angle_to_normal_deg{0.0};  // pire écart fil/normale locale
+    int crossings_adjacent{0};           // fils consécutifs qui se croisent
+    int crossings_total{0};              // toute paire de fils qui se croise
+    bool monotoneA{true};                // abscisse sur le rail A non-decroissante
+    bool monotoneB{true};                // abscisse sur le rail B non-decroissante
+    int max_station_stagnation_a{0};     // transitions consecutives sans avance sur A
+    int max_station_stagnation_b{0};     // transitions consecutives sans avance sur B
+    double max_normalized_skew{0.0};     // ecart maximal de progression relative A/B
+    double max_angle_to_normal_deg{0.0}; // pire écart fil/normale locale
     double mean_angle_to_normal_deg{0.0};
-    double max_angular_jump_deg{0.0};     // pire saut de direction entre fils consecutifs
+    double max_angular_jump_deg{0.0}; // pire saut de direction entre fils consecutifs
     double mean_spacing{0.0};
     double stddev_spacing{0.0};
     double min_length{1e30};
@@ -197,7 +214,8 @@ PairingMetrics measure(const std::vector<std::pair<P, P>>& threads, const geomet
                        std::size_t skip_last = 0) {
     PairingMetrics m;
     m.thread_count = threads.size();
-    if (threads.size() < 2) return m;
+    if (threads.size() < 2)
+        return m;
 
     const auto a = to_pts(railA);
     const auto b = to_pts(railB);
@@ -230,8 +248,10 @@ PairingMetrics measure(const std::vector<std::pair<P, P>>& threads, const geomet
     int stagnationA = 0;
     int stagnationB = 0;
     for (std::size_t k = 1; k < threads.size(); ++k) {
-        if (sa[k] < sa[k - 1] - kTol) m.monotoneA = false;
-        if (sb[k] < sb[k - 1] - kTol) m.monotoneB = false;
+        if (sa[k] < sa[k - 1] - kTol)
+            m.monotoneA = false;
+        if (sb[k] < sb[k - 1] - kTol)
+            m.monotoneB = false;
         stagnationA = sa[k] - sa[k - 1] <= kTol ? stagnationA + 1 : 0;
         stagnationB = sb[k] - sb[k - 1] <= kTol ? stagnationB + 1 : 0;
         m.max_station_stagnation_a = std::max(m.max_station_stagnation_a, stagnationA);
@@ -255,7 +275,8 @@ PairingMetrics measure(const std::vector<std::pair<P, P>>& threads, const geomet
     }
     for (std::size_t k = 0; k < threads.size(); ++k) {
         for (std::size_t j = k + 1; j < threads.size(); ++j) {
-            if (segments_cross(threads[k].first, threads[k].second, threads[j].first, threads[j].second)) {
+            if (segments_cross(threads[k].first, threads[k].second, threads[j].first,
+                               threads[j].second)) {
                 ++m.crossings_total;
             }
         }
@@ -282,10 +303,12 @@ PairingMetrics measure(const std::vector<std::pair<P, P>>& threads, const geomet
             tangent = mid[k + 1] - mid[k - 1];
         }
         tangent = unit(tangent);
-        if (norm(tangent) < 1e-9) continue;
+        if (norm(tangent) < 1e-9)
+            continue;
         const P normal{-tangent.y, tangent.x};
         const P threadVec = unit(bpoint[k] - apoint[k]);
-        if (norm(threadVec) < 1e-9) continue;
+        if (norm(threadVec) < 1e-9)
+            continue;
         double cosang = std::clamp(std::abs(dot(threadVec, normal)), -1.0, 1.0);
         const double angleDeg = std::acos(cosang) * 180.0 / std::numbers::pi;
         sumAngle += angleDeg;
@@ -300,7 +323,8 @@ PairingMetrics measure(const std::vector<std::pair<P, P>>& threads, const geomet
     for (std::size_t k = lo + 1; k + 1 < hi; ++k) {
         const P v0 = unit(bpoint[k - 1] - apoint[k - 1]);
         const P v1 = unit(bpoint[k] - apoint[k]);
-        if (norm(v0) < 1e-9 || norm(v1) < 1e-9) continue;
+        if (norm(v0) < 1e-9 || norm(v1) < 1e-9)
+            continue;
         double cosang = std::clamp(std::abs(dot(v0, v1)), -1.0, 1.0);
         const double angleDeg = std::acos(cosang) * 180.0 / std::numbers::pi;
         maxJump = std::max(maxJump, angleDeg);
@@ -313,11 +337,14 @@ PairingMetrics measure(const std::vector<std::pair<P, P>>& threads, const geomet
         spacing.push_back(norm(mid[k] - mid[k - 1]));
     }
     double sumSp = 0.0;
-    for (double s : spacing) sumSp += s;
+    for (double s : spacing)
+        sumSp += s;
     m.mean_spacing = spacing.empty() ? 0.0 : sumSp / static_cast<double>(spacing.size());
     double sqDiff = 0.0;
-    for (double s : spacing) sqDiff += (s - m.mean_spacing) * (s - m.mean_spacing);
-    m.stddev_spacing = spacing.empty() ? 0.0 : std::sqrt(sqDiff / static_cast<double>(spacing.size()));
+    for (double s : spacing)
+        sqDiff += (s - m.mean_spacing) * (s - m.mean_spacing);
+    m.stddev_spacing =
+        spacing.empty() ? 0.0 : std::sqrt(sqDiff / static_cast<double>(spacing.size()));
 
     for (std::size_t k = 0; k < threads.size(); ++k) {
         const double len = norm(bpoint[k] - apoint[k]);
@@ -359,9 +386,11 @@ Ribbon offset_ribbon(CenterFn centerAt, WidthFn halfWidthAt, int n) {
         if (i == 0) {
             tangent = centerline[1] - centerline[0];
         } else if (i == n) {
-            tangent = centerline[static_cast<std::size_t>(n)] - centerline[static_cast<std::size_t>(n - 1)];
+            tangent = centerline[static_cast<std::size_t>(n)] -
+                      centerline[static_cast<std::size_t>(n - 1)];
         } else {
-            tangent = centerline[static_cast<std::size_t>(i + 1)] - centerline[static_cast<std::size_t>(i - 1)];
+            tangent = centerline[static_cast<std::size_t>(i + 1)] -
+                      centerline[static_cast<std::size_t>(i - 1)];
         }
         tangent = unit(tangent);
         const P normal{-tangent.y, tangent.x};
@@ -397,7 +426,7 @@ Ribbon variable_width_ribbon() {
     std::vector<P> a, b;
     for (int i = 0; i <= 20; ++i) {
         const double x = i * 1000.0;
-        const double hw = 3000.0 - (2500.0 * i / 20.0);  // 6 mm -> 1 mm
+        const double hw = 3000.0 - (2500.0 * i / 20.0); // 6 mm -> 1 mm
         a.push_back({x, hw});
         b.push_back({x, -hw});
     }
@@ -462,7 +491,7 @@ SatinConfig cfg_for(double density_um) {
     return cfg;
 }
 
-}  // namespace
+} // namespace
 
 // --- Tests -----------------------------------------------------------------
 
@@ -488,12 +517,11 @@ TEST_CASE("appariement satin : ruban en S -- pas d'eventail, correspondance loca
     const auto naive = naive_fraction_pairs(ribbon.rail_a, ribbon.rail_b, 800.0);
     const auto mNaive = measure(naive, ribbon.rail_a, ribbon.rail_b);
 
-    WARN("S-curve : angle max nouveau=" << m.max_angle_to_normal_deg
-                                        << " deg, ancien=" << mNaive.max_angle_to_normal_deg
-                                        << " deg ; angle moyen nouveau=" << m.mean_angle_to_normal_deg
-                                        << ", ancien=" << mNaive.mean_angle_to_normal_deg
-                                        << " ; croisements nouveau=" << m.crossings_total
-                                        << ", ancien=" << mNaive.crossings_total);
+    WARN("S-curve : angle max nouveau="
+         << m.max_angle_to_normal_deg << " deg, ancien=" << mNaive.max_angle_to_normal_deg
+         << " deg ; angle moyen nouveau=" << m.mean_angle_to_normal_deg << ", ancien="
+         << mNaive.mean_angle_to_normal_deg << " ; croisements nouveau=" << m.crossings_total
+         << ", ancien=" << mNaive.crossings_total);
 
     CHECK(m.crossings_adjacent == 0);
     CHECK(m.crossings_total == 0);
@@ -550,8 +578,8 @@ TEST_CASE("appariement satin : largeur variable -- pas de fils degeneres") {
     CHECK(m.crossings_total == 0);
     CHECK(m.monotoneA);
     CHECK(m.monotoneB);
-    CHECK(m.max_angle_to_normal_deg < 5.0);  // rails droits : normale constante
-    CHECK(m.min_length > 500.0);             // jamais degenere (largeur mini ~1mm)
+    CHECK(m.max_angle_to_normal_deg < 5.0); // rails droits : normale constante
+    CHECK(m.min_length > 500.0);            // jamais degenere (largeur mini ~1mm)
     CHECK(m.max_length < 6100.0);
 }
 
@@ -564,15 +592,12 @@ TEST_CASE("appariement satin : cas inspire de la capture -- courbe+coude+largeur
     const auto naive = naive_fraction_pairs(ribbon.rail_a, ribbon.rail_b, 700.0);
     const auto mNaive = measure(naive, ribbon.rail_a, ribbon.rail_b);
 
-    WARN("Crochet (capture) : angle max nouveau=" << m.max_angle_to_normal_deg
-                                                   << " deg, ancien=" << mNaive.max_angle_to_normal_deg
-                                                   << " deg ; angle moyen nouveau="
-                                                   << m.mean_angle_to_normal_deg
-                                                   << ", ancien=" << mNaive.mean_angle_to_normal_deg
-                                                   << " ; croisements nouveau=" << m.crossings_total
-                                                   << ", ancien=" << mNaive.crossings_total
-                                                   << " ; saut angulaire max nouveau="
-                                                   << m.max_angular_jump_deg);
+    WARN("Crochet (capture) : angle max nouveau="
+         << m.max_angle_to_normal_deg << " deg, ancien=" << mNaive.max_angle_to_normal_deg
+         << " deg ; angle moyen nouveau=" << m.mean_angle_to_normal_deg
+         << ", ancien=" << mNaive.mean_angle_to_normal_deg
+         << " ; croisements nouveau=" << m.crossings_total << ", ancien=" << mNaive.crossings_total
+         << " ; saut angulaire max nouveau=" << m.max_angular_jump_deg);
 
     CHECK(m.crossings_adjacent == 0);
     CHECK(m.crossings_total == 0);
@@ -624,8 +649,15 @@ TEST_CASE("appariement satin : echantillonnage asymetrique et segments nuls") {
     // doublons tandis que le rail B ne comporte que ses extrémités. Ces
     // segments de longueur nulle apparaissent après simplification/import et
     // ne doivent ni casser la monotonie ni produire de pénétration dégénérée.
-    const auto railA = path_from({{0, 0}, {0, 0}, {500, 0}, {1000, 0}, {1000, 0},
-                                  {4000, 0}, {9000, 0}, {15000, 0}, {20000, 0}});
+    const auto railA = path_from({{0, 0},
+                                  {0, 0},
+                                  {500, 0},
+                                  {1000, 0},
+                                  {1000, 0},
+                                  {4000, 0},
+                                  {9000, 0},
+                                  {15000, 0},
+                                  {20000, 0}});
     const auto railB = path_from({{0, 4000}, {20000, 4000}});
     const auto cfg = cfg_for(650.0);
 
@@ -651,7 +683,8 @@ TEST_CASE("appariement satin : rails tete-beche -- normalises, pas de noeud papi
     // papillon ou pratiquement tous les fils se croisent pres du centre.
     // opposite_orientation() doit detecter ce cas et retourner b en interne.
     const auto railA = path_from({{0, 0}, {5000, 0}, {10000, 0}, {15000, 0}, {20000, 0}});
-    const auto railB = path_from({{20000, 4000}, {15000, 4000}, {10000, 4000}, {5000, 4000}, {0, 4000}});
+    const auto railB =
+        path_from({{20000, 4000}, {15000, 4000}, {10000, 4000}, {5000, 4000}, {0, 4000}});
     const auto cfg = cfg_for(1000.0);
 
     const auto result = fill_satin(railA, railB, cfg);
@@ -689,10 +722,9 @@ TEST_CASE("appariement satin : longueurs tres differentes + largeur quasi nulle"
     const auto second = fill_satin(railA, railB, cfg);
     const auto m = measure(threads_from_satin(result.satin), railA, railB);
 
-    WARN("Rails asymetriques : stagnation A=" << m.max_station_stagnation_a
-                                               << ", B=" << m.max_station_stagnation_b
-                                               << ", skew=" << m.max_normalized_skew
-                                               << ", angle max=" << m.max_angle_to_normal_deg);
+    WARN("Rails asymetriques : stagnation A="
+         << m.max_station_stagnation_a << ", B=" << m.max_station_stagnation_b
+         << ", skew=" << m.max_normalized_skew << ", angle max=" << m.max_angle_to_normal_deg);
 
     CHECK(result.satin == second.satin);
     CHECK(m.crossings_adjacent == 0);
@@ -729,10 +761,9 @@ TEST_CASE("appariement satin : long arc -- progression bilaterale sans gerbe") {
     const auto second = fill_satin(ribbon.rail_a, ribbon.rail_b, cfg);
     const auto m = measure(threads_from_satin(result.satin), ribbon.rail_a, ribbon.rail_b);
 
-    WARN("Long arc : stagnation A=" << m.max_station_stagnation_a
-                                     << ", B=" << m.max_station_stagnation_b
-                                     << ", skew=" << m.max_normalized_skew
-                                     << ", angle max=" << m.max_angle_to_normal_deg);
+    WARN("Long arc : stagnation A="
+         << m.max_station_stagnation_a << ", B=" << m.max_station_stagnation_b
+         << ", skew=" << m.max_normalized_skew << ", angle max=" << m.max_angle_to_normal_deg);
     CHECK(result.satin == second.satin);
     CHECK(m.crossings_adjacent == 0);
     CHECK(m.crossings_total == 0);
@@ -756,14 +787,16 @@ TEST_CASE("appariement satin : barreaux desordonnes -- ordre du vecteur sans eff
         return SatinRungSeg{ribbon.rail_a.nodes[static_cast<std::size_t>(i)].pos,
                             ribbon.rail_b.nodes[static_cast<std::size_t>(i)].pos};
     };
-    const std::vector<SatinRungSeg> sorted{rungAt(0), rungAt(20), rungAt(40), rungAt(60), rungAt(80)};
-    const std::vector<SatinRungSeg> shuffled{rungAt(60), rungAt(0), rungAt(80), rungAt(20), rungAt(40)};
+    const std::vector<SatinRungSeg> sorted{rungAt(0), rungAt(20), rungAt(40), rungAt(60),
+                                           rungAt(80)};
+    const std::vector<SatinRungSeg> shuffled{rungAt(60), rungAt(0), rungAt(80), rungAt(20),
+                                             rungAt(40)};
 
     const auto resultSorted = fill_satin_columns(ribbon.rail_a, ribbon.rail_b, sorted, cfg);
     const auto resultShuffled = fill_satin_columns(ribbon.rail_a, ribbon.rail_b, shuffled, cfg);
 
     CHECK(resultSorted.satin == resultShuffled.satin);
-    CHECK(resultSorted.satin.size() > 10);  // pas le repli fill_satin (barreaux ignores)
+    CHECK(resultSorted.satin.size() > 10); // pas le repli fill_satin (barreaux ignores)
 
     const auto m = measure(threads_from_satin(resultShuffled.satin), ribbon.rail_a, ribbon.rail_b);
     CHECK(m.crossings_adjacent == 0);
@@ -783,7 +816,8 @@ TEST_CASE("appariement satin : barreau duplique/quasi-duplique -- filtre sans cr
         return SatinRungSeg{ribbon.rail_a.nodes[static_cast<std::size_t>(i)].pos,
                             ribbon.rail_b.nodes[static_cast<std::size_t>(i)].pos};
     };
-    const std::vector<SatinRungSeg> rungs{rungAt(0), rungAt(40), rungAt(40), rungAt(41), rungAt(80)};
+    const std::vector<SatinRungSeg> rungs{rungAt(0), rungAt(40), rungAt(40), rungAt(41),
+                                          rungAt(80)};
 
     const auto result = fill_satin_columns(ribbon.rail_a, ribbon.rail_b, rungs, cfg);
     const auto second = fill_satin_columns(ribbon.rail_a, ribbon.rail_b, rungs, cfg);

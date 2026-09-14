@@ -28,12 +28,11 @@ struct Error {
 
 // Les API publiques des bibliothèques retournent Result<T> ; les exceptions
 // ne traversent pas les frontières de bibliothèque (ADR-011).
-template <typename T>
-using Result = std::expected<T, Error>;
+template <typename T> using Result = std::expected<T, Error>;
 
 [[nodiscard]] inline std::unexpected<Error> fail(ErrorCategory category, std::string message,
                                                  std::string detail = {}) {
     return std::unexpected(Error{category, std::move(message), std::move(detail)});
 }
 
-}  // namespace openstitch
+} // namespace openstitch

@@ -43,7 +43,7 @@ Path oriented_as(const Path& path, bool wantPositive) {
     return reversed;
 }
 
-}  // namespace
+} // namespace
 
 Result<std::vector<PathSet>> inset_path_set(const PathSet& set, Micrometers delta) {
     if (delta.value == 0) {
@@ -57,9 +57,9 @@ Result<std::vector<PathSet>> inset_path_set(const PathSet& set, Micrometers delt
     }
 
     // delta > 0 = retrait intérieur -> offset négatif au sens Clipper.
-    const auto solution = Clipper2Lib::InflatePaths(
-        subject, static_cast<double>(-delta.value), Clipper2Lib::JoinType::Miter,
-        Clipper2Lib::EndType::Polygon);
+    const auto solution =
+        Clipper2Lib::InflatePaths(subject, static_cast<double>(-delta.value),
+                                  Clipper2Lib::JoinType::Miter, Clipper2Lib::EndType::Polygon);
 
     // On repasse par le nettoyage pour reconstruire la hiérarchie trous/extérieur.
     std::vector<Path> raw;
@@ -69,14 +69,13 @@ Result<std::vector<PathSet>> inset_path_set(const PathSet& set, Micrometers delt
         path.closed = true;
         path.nodes.reserve(poly.size());
         for (const auto& pt : poly) {
-            path.nodes.push_back(PathNode{
-                Vec2um{Micrometers{static_cast<std::int32_t>(pt.x)},
-                       Micrometers{static_cast<std::int32_t>(pt.y)}},
-                NodeType::Corner, std::nullopt, std::nullopt});
+            path.nodes.push_back(PathNode{Vec2um{Micrometers{static_cast<std::int32_t>(pt.x)},
+                                                 Micrometers{static_cast<std::int32_t>(pt.y)}},
+                                          NodeType::Corner, std::nullopt, std::nullopt});
         }
         raw.push_back(std::move(path));
     }
     return clean_to_path_sets(raw);
 }
 
-}  // namespace openstitch::geometry
+} // namespace openstitch::geometry

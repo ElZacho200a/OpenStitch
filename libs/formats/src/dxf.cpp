@@ -34,7 +34,7 @@ std::string trim(std::string_view s) {
     }
     std::size_t end = s.size();
     while (end > start &&
-          (s[end - 1] == ' ' || s[end - 1] == '\t' || s[end - 1] == '\r' || s[end - 1] == '\n')) {
+           (s[end - 1] == ' ' || s[end - 1] == '\t' || s[end - 1] == '\r' || s[end - 1] == '\n')) {
         --end;
     }
     return std::string(s.substr(start, end - start));
@@ -60,16 +60,17 @@ std::vector<DxfPair> tokenize(std::span<const std::uint8_t> bytes) {
             break;
         }
         if (codeLine->empty()) {
-            continue;  // ligne vide isolée (tolérance) : pas une paire valide
+            continue; // ligne vide isolée (tolérance) : pas une paire valide
         }
         const auto valueLine = nextLine();
         if (!valueLine) {
-            break;  // code sans valeur (fichier tronqué) : arrête proprement
+            break; // code sans valeur (fichier tronqué) : arrête proprement
         }
         int code = 0;
-        const auto res = std::from_chars(codeLine->data(), codeLine->data() + codeLine->size(), code);
+        const auto res =
+            std::from_chars(codeLine->data(), codeLine->data() + codeLine->size(), code);
         if (res.ec != std::errc{}) {
-            continue;  // ligne de code illisible : ignorée plutôt qu'un échec total
+            continue; // ligne de code illisible : ignorée plutôt qu'un échec total
         }
         pairs.push_back({code, *valueLine});
     }
@@ -79,7 +80,7 @@ std::vector<DxfPair> tokenize(std::span<const std::uint8_t> bytes) {
 std::optional<double> parse_double(const std::string& s) {
     std::size_t start = 0;
     if (!s.empty() && s[0] == '+') {
-        start = 1;  // std::from_chars n'accepte pas de '+' initial
+        start = 1; // std::from_chars n'accepte pas de '+' initial
     }
     double v{};
     const auto res = std::from_chars(s.data() + start, s.data() + s.size(), v);
@@ -120,7 +121,7 @@ void sample_bulge_arc(Vec2um p0Um, Vec2um p1Um, double bulge, std::vector<Vec2um
     const double dy = y1 - y0;
     const double d = std::hypot(dx, dy);
     if (d < 1e-6 || std::abs(bulge) < 1e-9) {
-        return;  // corde dégénérée ou bulge nul : segment droit, rien à insérer
+        return; // corde dégénérée ou bulge nul : segment droit, rien à insérer
     }
     const double ux = dx / d;
     const double uy = dy / d;
@@ -139,9 +140,9 @@ void sample_bulge_arc(Vec2um p0Um, Vec2um p1Um, double bulge, std::vector<Vec2um
     const double cx = mx + nx * (sagitta - radiusSigned);
     const double cy = my + ny * (sagitta - radiusSigned);
     const double radius = std::abs(radiusSigned);
-    const double theta = 4.0 * std::atan(bulge);  // balayage signé (rad)
+    const double theta = 4.0 * std::atan(bulge); // balayage signé (rad)
     const double startAngle = std::atan2(y0 - cy, x0 - cx);
-    constexpr double kStepRad = 5.0 * std::numbers::pi / 180.0;  // ~5° par segment
+    constexpr double kStepRad = 5.0 * std::numbers::pi / 180.0; // ~5° par segment
     const int steps = std::max(1, static_cast<int>(std::lround(std::abs(theta) / kStepRad)));
     for (int s = 1; s < steps; ++s) {
         const double a = startAngle + theta * (static_cast<double>(s) / steps);
@@ -286,7 +287,7 @@ void write_group_int(std::string& out, int code, int value) {
     write_group(out, code, std::to_string(value));
 }
 
-}  // namespace
+} // namespace
 
 Result<std::vector<geometry::Path>> decode_dxf(std::span<const std::uint8_t> bytes) {
     const std::vector<DxfPair> pairs = tokenize(bytes);
@@ -308,13 +309,14 @@ Result<std::vector<geometry::Path>> decode_dxf(std::span<const std::uint8_t> byt
         }
     }
     if (!foundEntities) {
-        return fail(ErrorCategory::InvalidFile, "Aucune section ENTITIES trouvée dans le fichier DXF");
+        return fail(ErrorCategory::InvalidFile,
+                    "Aucune section ENTITIES trouvée dans le fichier DXF");
     }
 
     std::vector<geometry::Path> paths;
     while (i < pairs.size() && !(pairs[i].code == 0 && pairs[i].value == "ENDSEC")) {
         if (pairs[i].code != 0) {
-            ++i;  // groupe orphelin hors de toute entité : ignoré, robustesse
+            ++i; // groupe orphelin hors de toute entité : ignoré, robustesse
             continue;
         }
         const std::string& entityType = pairs[i].value;
@@ -355,7 +357,8 @@ Result<std::vector<std::uint8_t>> encode_dxf(const std::vector<geometry::Path>& 
     write_group(out, 0, "SECTION");
     write_group(out, 2, "HEADER");
     write_group(out, 9, "$ACADVER");
-    write_group(out, 1, "AC1015");  // AutoCAD 2000 : LWPOLYLINE prise en charge, très large compatibilité
+    write_group(out, 1,
+                "AC1015"); // AutoCAD 2000 : LWPOLYLINE prise en charge, très large compatibilité
     write_group(out, 0, "ENDSEC");
 
     write_group(out, 0, "SECTION");
@@ -388,7 +391,8 @@ Result<std::vector<std::uint8_t>> encode_dxf(const std::vector<geometry::Path>& 
     return std::vector<std::uint8_t>(out.begin(), out.end());
 }
 
-Result<void> write_dxf_file(const std::filesystem::path& path, const std::vector<geometry::Path>& paths,
+Result<void> write_dxf_file(const std::filesystem::path& path,
+                            const std::vector<geometry::Path>& paths,
                             const DxfWriteOptions& options) {
     auto bytes = encode_dxf(paths, options);
     if (!bytes) {
@@ -398,7 +402,8 @@ Result<void> write_dxf_file(const std::filesystem::path& path, const std::vector
     if (!file) {
         return fail(ErrorCategory::UserInput, "Impossible d'écrire le fichier : " + path.string());
     }
-    file.write(reinterpret_cast<const char*>(bytes->data()), static_cast<std::streamsize>(bytes->size()));
+    file.write(reinterpret_cast<const char*>(bytes->data()),
+               static_cast<std::streamsize>(bytes->size()));
     if (!file) {
         return fail(ErrorCategory::Internal, "Échec d'écriture : " + path.string());
     }
@@ -408,11 +413,12 @@ Result<void> write_dxf_file(const std::filesystem::path& path, const std::vector
 Result<std::vector<geometry::Path>> read_dxf_file(const std::filesystem::path& path) {
     std::ifstream file(path, std::ios::binary);
     if (!file) {
-        return fail(ErrorCategory::UserInput, "Fichier introuvable ou illisible : " + path.string());
+        return fail(ErrorCategory::UserInput,
+                    "Fichier introuvable ou illisible : " + path.string());
     }
     std::vector<std::uint8_t> bytes((std::istreambuf_iterator<char>(file)),
                                     std::istreambuf_iterator<char>());
     return decode_dxf(bytes);
 }
 
-}  // namespace openstitch::formats
+} // namespace openstitch::formats

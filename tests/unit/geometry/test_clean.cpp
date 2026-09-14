@@ -20,11 +20,11 @@ Path make_path(std::initializer_list<std::pair<std::int32_t, std::int32_t>> pts)
     return path;
 }
 
-}  // namespace
+} // namespace
 
 TEST_CASE("clean : carre simple -> un PathSet sans trou") {
-    const auto sets = clean_to_path_sets(
-        {make_path({{0, 0}, {10'000, 0}, {10'000, 10'000}, {0, 10'000}})});
+    const auto sets =
+        clean_to_path_sets({make_path({{0, 0}, {10'000, 0}, {10'000, 10'000}, {0, 10'000}})});
     REQUIRE(sets.has_value());
     REQUIRE(sets->size() == 1);
     CHECK((*sets)[0].outer.nodes.size() == 4);
@@ -44,10 +44,10 @@ TEST_CASE("clean : carre + trou -> hierarchie reconstruite") {
 
 TEST_CASE("clean : noeud papillon auto-intersecte -> decoupe proprement") {
     // Papillon : deux triangles reliés par un croisement en (5000, 5000).
-    const auto sets = clean_to_path_sets(
-        {make_path({{0, 0}, {10'000, 10'000}, {10'000, 0}, {0, 10'000}})});
+    const auto sets =
+        clean_to_path_sets({make_path({{0, 0}, {10'000, 10'000}, {10'000, 0}, {0, 10'000}})});
     REQUIRE(sets.has_value());
-    CHECK(sets->size() == 2);  // regle pair-impair : deux triangles distincts
+    CHECK(sets->size() == 2); // regle pair-impair : deux triangles distincts
     for (const auto& set : *sets) {
         CHECK(set.holes.empty());
         CHECK(set.outer.nodes.size() == 3);

@@ -32,18 +32,20 @@ image::Image make_logo() {
     img.height = 40;
     img.rgba.assign(static_cast<std::size_t>(img.width) * img.height * 4, 0);
     const auto set = [&](int x, int y, std::uint8_t r, std::uint8_t g, std::uint8_t b) {
-        std::uint8_t* px = img.rgba.data() +
-                           (static_cast<std::size_t>(y) * img.width + x) * 4;
-        px[0] = r; px[1] = g; px[2] = b; px[3] = 255;
+        std::uint8_t* px = img.rgba.data() + (static_cast<std::size_t>(y) * img.width + x) * 4;
+        px[0] = r;
+        px[1] = g;
+        px[2] = b;
+        px[3] = 255;
     };
     for (int y = 0; y < 40; ++y) {
         for (int x = 0; x < 60; ++x) {
             const double dx = x - 30;
             const double dy = y - 20;
             if (dx * dx + dy * dy <= 12 * 12) {
-                set(x, y, 210, 40, 40);   // disque rouge
+                set(x, y, 210, 40, 40); // disque rouge
             } else if (y >= 17 && y < 23) {
-                set(x, y, 40, 40, 210);   // bande bleue
+                set(x, y, 40, 40, 210); // bande bleue
             }
         }
     }
@@ -70,11 +72,11 @@ image::Image subsample(const image::Image& source, int factor) {
     return out;
 }
 
-}  // namespace
+} // namespace
 
 TEST_CASE("chaine complete : image -> segmentation -> auto -> points -> DST -> relecture") {
     document::Project project;
-    project.mm_per_px = Millimeters{0.5};  // 60 px -> 30 mm de large
+    project.mm_per_px = Millimeters{0.5}; // 60 px -> 30 mm de large
     project.original = make_logo();
 
     // Segmentation.
@@ -100,7 +102,7 @@ TEST_CASE("chaine complete : image -> segmentation -> auto -> points -> DST -> r
     auto sequence = stitch_generation::generate_sequence(project);
     REQUIRE(sequence.has_value());
     const auto stats = stitch::compute_stats(*sequence);
-    CHECK(stats.stitches > 50);  // un vrai motif rempli
+    CHECK(stats.stitches > 50); // un vrai motif rempli
 
     // Export DST puis relecture.
     auto bytes = formats::encode_dst(*sequence);
@@ -127,8 +129,10 @@ TEST_CASE("chaine complete : projet sauvegarde, recharge, regenere a l'identique
     auto autoResult = autodigitize::auto_digitize(*project.segmentation, project.object_ids,
                                                   {.mm_per_px = project.mm_per_px});
     REQUIRE(autoResult.has_value());
-    for (auto& v : autoResult->vectors) project.vector_objects.push_back(std::move(v));
-    for (auto& e : autoResult->embroideries) project.embroidery_objects.push_back(std::move(e));
+    for (auto& v : autoResult->vectors)
+        project.vector_objects.push_back(std::move(v));
+    for (auto& e : autoResult->embroideries)
+        project.embroidery_objects.push_back(std::move(e));
 
     const auto before = stitch::compute_stats(*stitch_generation::generate_sequence(project));
 
@@ -147,8 +151,8 @@ TEST_CASE("chaine complete : projet sauvegarde, recharge, regenere a l'identique
 }
 
 TEST_CASE("fixture tentabrode : pipeline complexe deterministe et sans geometrie invalide") {
-    const fs::path fixture = fs::path{OPENSTITCH_TEST_SOURCE_DIR} / "tests" / "fixtures" /
-                             "tentabrode.png";
+    const fs::path fixture =
+        fs::path{OPENSTITCH_TEST_SOURCE_DIR} / "tests" / "fixtures" / "tentabrode.png";
     const auto loaded = image::load_image(fixture);
     REQUIRE(loaded.has_value());
     REQUIRE(loaded->width > 1000);
@@ -157,23 +161,27 @@ TEST_CASE("fixture tentabrode : pipeline complexe deterministe et sans geometrie
     document::Project project;
     project.original = subsample(*loaded, 8);
     project.mm_per_px = Millimeters{0.8};
-    auto segmented = segmentation::segment(project.original, {.max_colors = 8, .min_region_px = 24});
+    auto segmented =
+        segmentation::segment(project.original, {.max_colors = 8, .min_region_px = 24});
     REQUIRE(segmented.has_value());
     REQUIRE(segmented->region_count() > 10);
     project.segmentation = std::move(*segmented);
 
     const auto options = autodigitize::AutoOptions{.mm_per_px = project.mm_per_px};
-    auto digitized = autodigitize::auto_digitize(*project.segmentation, project.object_ids, options);
+    auto digitized =
+        autodigitize::auto_digitize(*project.segmentation, project.object_ids, options);
     REQUIRE(digitized.has_value());
     REQUIRE_FALSE(digitized->embroideries.empty());
     bool hasTopologicalSatin = false;
     for (const auto& embroidery : digitized->embroideries) {
-        if (!embroidery.is_satin()) continue;
+        if (!embroidery.is_satin())
+            continue;
         const auto& satin = std::get<document::SatinParams>(embroidery.params);
         hasTopologicalSatin = hasTopologicalSatin || satin.rungs.size() >= 2;
     }
     REQUIRE(hasTopologicalSatin);
-    for (auto& vector : digitized->vectors) project.vector_objects.push_back(std::move(vector));
+    for (auto& vector : digitized->vectors)
+        project.vector_objects.push_back(std::move(vector));
     for (auto& embroidery : digitized->embroideries)
         project.embroidery_objects.push_back(std::move(embroidery));
 
@@ -197,30 +205,33 @@ TEST_CASE("fixture tentabrode : pipeline complexe deterministe et sans geometrie
 // réglages), puis calcule la couverture réelle de CHAQUE région ayant reçu
 // au moins un objet satin, avec satin_coverage::analyze_satin_coverage.
 TEST_CASE("DIAGNOSTIC TEMPORAIRE couverture satin (tentabrode)") {
-    const fs::path fixture = fs::path{OPENSTITCH_TEST_SOURCE_DIR} / "tests" / "fixtures" /
-                             "tentabrode.png";
+    const fs::path fixture =
+        fs::path{OPENSTITCH_TEST_SOURCE_DIR} / "tests" / "fixtures" / "tentabrode.png";
     const auto loaded = image::load_image(fixture);
     REQUIRE(loaded.has_value());
 
     document::Project project;
     project.original = subsample(*loaded, 8);
     project.mm_per_px = Millimeters{0.8};
-    auto segmented = segmentation::segment(project.original, {.max_colors = 8, .min_region_px = 24});
+    auto segmented =
+        segmentation::segment(project.original, {.max_colors = 8, .min_region_px = 24});
     REQUIRE(segmented.has_value());
     project.segmentation = std::move(*segmented);
 
     const auto options = autodigitize::AutoOptions{.mm_per_px = project.mm_per_px};
-    auto digitized = autodigitize::auto_digitize(*project.segmentation, project.object_ids, options);
+    auto digitized =
+        autodigitize::auto_digitize(*project.segmentation, project.object_ids, options);
     REQUIRE(digitized.has_value());
 
     std::map<ObjectId, std::vector<document::SatinParams>> satinBySourceVector;
     for (const auto& emb : digitized->embroideries) {
         if (emb.is_satin()) {
-            satinBySourceVector[emb.source_vector].push_back(std::get<document::SatinParams>(emb.params));
+            satinBySourceVector[emb.source_vector].push_back(
+                std::get<document::SatinParams>(emb.params));
         }
     }
     std::fprintf(stderr, "DIAG regions avec satin: %zu / %zu vecteurs\n",
-                satinBySourceVector.size(), digitized->vectors.size());
+                 satinBySourceVector.size(), digitized->vectors.size());
 
     // Le repli tatami (§ satin.md, "Repli tatami sur une branche auto-satin
     // rejetee") cree un vecteur SEPARE (meme source_region, id different) --
@@ -235,9 +246,9 @@ TEST_CASE("DIAGNOSTIC TEMPORAIRE couverture satin (tentabrode)") {
         }
     }
     std::fprintf(stderr, "DIAG replis tatami declenches: %zu (aire totale %.2fmm2)\n",
-                fallbackAreaByRegion.size(),
-                std::accumulate(fallbackAreaByRegion.begin(), fallbackAreaByRegion.end(), 0.0,
-                                [](double s, const auto& kv) { return s + kv.second; }));
+                 fallbackAreaByRegion.size(),
+                 std::accumulate(fallbackAreaByRegion.begin(), fallbackAreaByRegion.end(), 0.0,
+                                 [](double s, const auto& kv) { return s + kv.second; }));
 
     double sumTargetMm2 = 0.0;
     double sumSatinCoveredMm2 = 0.0;
@@ -246,9 +257,11 @@ TEST_CASE("DIAGNOSTIC TEMPORAIRE couverture satin (tentabrode)") {
     std::size_t regionsPassed = 0;
     std::size_t regionsFailed = 0;
     for (const auto& [vecId, satins] : satinBySourceVector) {
-        const auto vecIt = std::find_if(digitized->vectors.begin(), digitized->vectors.end(),
-                                        [&](const document::VectorObject& v) { return v.id == vecId; });
-        if (vecIt == digitized->vectors.end() || vecIt->paths.empty()) continue;
+        const auto vecIt =
+            std::find_if(digitized->vectors.begin(), digitized->vectors.end(),
+                         [&](const document::VectorObject& v) { return v.id == vecId; });
+        if (vecIt == digitized->vectors.end() || vecIt->paths.empty())
+            continue;
         const auto& main = *std::max_element(
             vecIt->paths.begin(), vecIt->paths.end(), [](const auto& a, const auto& b) {
                 return geometry::path_set_area_um2(a) < geometry::path_set_area_um2(b);
@@ -259,22 +272,23 @@ TEST_CASE("DIAGNOSTIC TEMPORAIRE couverture satin (tentabrode)") {
             satin_coverage::SatinColumnInput in;
             in.rail_a = sp.rail_a;
             in.rail_b = sp.rail_b;
-            for (const auto& r : sp.rungs) in.rungs.emplace_back(r.a, r.b);
+            for (const auto& r : sp.rungs)
+                in.rungs.emplace_back(r.a, r.b);
             in.density = sp.density;
             columns.push_back(std::move(in));
         }
         const auto report = satin_coverage::analyze_satin_coverage(main, columns);
         if (!report) {
             std::fprintf(stderr, "DIAG vecteur %llu : erreur couverture : %s\n",
-                        static_cast<unsigned long long>(vecId.value),
-                        report.error().message.c_str());
+                         static_cast<unsigned long long>(vecId.value),
+                         report.error().message.c_str());
             continue;
         }
-        const double fallbackMm2 =
-            vecIt->source_region ? fallbackAreaByRegion.count(*vecIt->source_region)
-                                       ? fallbackAreaByRegion.at(*vecIt->source_region)
-                                       : 0.0
-                                 : 0.0;
+        const double fallbackMm2 = vecIt->source_region
+                                       ? fallbackAreaByRegion.count(*vecIt->source_region)
+                                             ? fallbackAreaByRegion.at(*vecIt->source_region)
+                                             : 0.0
+                                       : 0.0;
         const double trueCoveredMm2 =
             std::min(report->target_area_mm2, report->covered_area_mm2 + fallbackMm2);
         const double trueRatio =
@@ -284,26 +298,28 @@ TEST_CASE("DIAGNOSTIC TEMPORAIRE couverture satin (tentabrode)") {
         sumFallbackMm2 += fallbackMm2;
         sumStillMissingMm2 += std::max(0.0, report->target_area_mm2 - trueCoveredMm2);
         (trueRatio >= 99.5) ? ++regionsPassed : ++regionsFailed;
-        if (report->target_area_mm2 > 1.0) {  // ignore le bruit sous-mm2
+        if (report->target_area_mm2 > 1.0) { // ignore le bruit sous-mm2
             std::fprintf(stderr,
-                        "DIAG vecteur %llu : %zu colonne(s), cible=%.2fmm2 satin_seul=%.1f%% "
-                        "repli=%.2fmm2 REEL=%.1f%% (coeur satin seul=%.1f%%, %zu trou(s) satin, "
-                        "plus grand=%.2fmm2)\n",
-                        static_cast<unsigned long long>(vecId.value), columns.size(),
-                        report->target_area_mm2, report->raw_coverage_ratio * 100.0, fallbackMm2,
-                        trueRatio, report->core_coverage_ratio * 100.0, report->missing_regions.size(),
-                        report->largest_missing_area_mm2);
+                         "DIAG vecteur %llu : %zu colonne(s), cible=%.2fmm2 satin_seul=%.1f%% "
+                         "repli=%.2fmm2 REEL=%.1f%% (coeur satin seul=%.1f%%, %zu trou(s) satin, "
+                         "plus grand=%.2fmm2)\n",
+                         static_cast<unsigned long long>(vecId.value), columns.size(),
+                         report->target_area_mm2, report->raw_coverage_ratio * 100.0, fallbackMm2,
+                         trueRatio, report->core_coverage_ratio * 100.0,
+                         report->missing_regions.size(), report->largest_missing_area_mm2);
         }
     }
-    const double aggSatinOnly = sumTargetMm2 > 0.0 ? sumSatinCoveredMm2 / sumTargetMm2 * 100.0 : 0.0;
+    const double aggSatinOnly =
+        sumTargetMm2 > 0.0 ? sumSatinCoveredMm2 / sumTargetMm2 * 100.0 : 0.0;
     const double aggTrue =
         sumTargetMm2 > 0.0 ? (sumTargetMm2 - sumStillMissingMm2) / sumTargetMm2 * 100.0 : 0.0;
     std::fprintf(stderr,
-                "DIAG agrege : cible totale=%.1fmm2 -- satin seul=%.1f%% -- satin+repli tatami "
-                "(REEL)=%.1f%% -- encore manquant apres repli=%.2fmm2 -- regions (>=99.5%%) "
-                "PASS=%zu FAIL=%zu\n",
-                sumTargetMm2, aggSatinOnly, aggTrue, sumStillMissingMm2, regionsPassed, regionsFailed);
-    CHECK(false);  // toujours en échec : diagnostic uniquement, jamais un test de non-régression
+                 "DIAG agrege : cible totale=%.1fmm2 -- satin seul=%.1f%% -- satin+repli tatami "
+                 "(REEL)=%.1f%% -- encore manquant apres repli=%.2fmm2 -- regions (>=99.5%%) "
+                 "PASS=%zu FAIL=%zu\n",
+                 sumTargetMm2, aggSatinOnly, aggTrue, sumStillMissingMm2, regionsPassed,
+                 regionsFailed);
+    CHECK(false); // toujours en échec : diagnostic uniquement, jamais un test de non-régression
 }
 
 // DIAGNOSTIC TEMPORAIRE : analyse complète chaîne brute (image -> segmentation
@@ -322,7 +338,7 @@ TEST_CASE("DIAGNOSTIC TEMPORAIRE chaine brute (GISTRE.png)") {
     // vérifie si le fond "transparent" attendu par la segmentation
     // (labels[i]==0 pour alpha==0) existe réellement ou non pour ce fichier.
     std::fprintf(stderr, "DIAG image: %dx%d source_had_alpha=%d alpha(0,0)=%d\n", loaded->width,
-                loaded->height, loaded->source_had_alpha ? 1 : 0, loaded->rgba[3]);
+                 loaded->height, loaded->source_had_alpha ? 1 : 0, loaded->rgba[3]);
 
     auto seg = segmentation::segment(
         *loaded, {.max_colors = 8, .min_region_px = 16, .smoothing_radius_px = 3});
@@ -330,23 +346,25 @@ TEST_CASE("DIAGNOSTIC TEMPORAIRE chaine brute (GISTRE.png)") {
 
     std::size_t liveRegions = 0;
     std::size_t totalPixels = 0;
-    std::vector<std::pair<std::size_t, RegionId>> bySize;  // (pixels, id)
+    std::vector<std::pair<std::size_t, RegionId>> bySize; // (pixels, id)
     for (const auto& slot : seg->region_slots) {
-        if (!slot) continue;
+        if (!slot)
+            continue;
         ++liveRegions;
         totalPixels += slot->pixel_count;
         bySize.emplace_back(slot->pixel_count, slot->id);
     }
     std::sort(bySize.begin(), bySize.end(), std::greater<>());
     std::fprintf(stderr, "DIAG regions vivantes=%zu pixels segmentes=%zu image totale=%d\n",
-                liveRegions, totalPixels, loaded->width * loaded->height);
+                 liveRegions, totalPixels, loaded->width * loaded->height);
     for (std::size_t i = 0; i < bySize.size() && i < 10; ++i) {
         const auto* region = seg->find(bySize[i].second);
         std::fprintf(stderr, "DIAG top%zu: id=%llu pixels=%zu (%.1f%%) rgb=(%d,%d,%d)\n", i,
-                    static_cast<unsigned long long>(bySize[i].second.value), bySize[i].first,
-                    100.0 * static_cast<double>(bySize[i].first) / static_cast<double>(totalPixels),
-                    region ? region->rgb[0] : -1, region ? region->rgb[1] : -1,
-                    region ? region->rgb[2] : -1);
+                     static_cast<unsigned long long>(bySize[i].second.value), bySize[i].first,
+                     100.0 * static_cast<double>(bySize[i].first) /
+                         static_cast<double>(totalPixels),
+                     region ? region->rgb[0] : -1, region ? region->rgb[1] : -1,
+                     region ? region->rgb[2] : -1);
     }
 
     document::Project project;
@@ -361,8 +379,10 @@ TEST_CASE("DIAGNOSTIC TEMPORAIRE chaine brute (GISTRE.png)") {
     const auto result =
         autodigitize::auto_digitize(*project.segmentation, project.object_ids, options);
     REQUIRE(result.has_value());
-    for (auto v : result->vectors) project.vector_objects.push_back(std::move(v));
-    for (auto e : result->embroideries) project.embroidery_objects.push_back(std::move(e));
+    for (auto v : result->vectors)
+        project.vector_objects.push_back(std::move(v));
+    for (auto e : result->embroideries)
+        project.embroidery_objects.push_back(std::move(e));
 
     int nSatin = 0, nTatami = 0, nRunning = 0, nSatinDegenerate = 0;
     double maxObjectAreaMm2 = 0.0;
@@ -383,7 +403,8 @@ TEST_CASE("DIAGNOSTIC TEMPORAIRE chaine brute (GISTRE.png)") {
         if (const auto* vec = project.findObject(e.source_vector)) {
             for (const auto& set : vec->paths) {
                 double area = std::abs(geometry::signed_area_um2(set.outer)) / 1e6;
-                for (const auto& hole : set.holes) area -= std::abs(geometry::signed_area_um2(hole)) / 1e6;
+                for (const auto& hole : set.holes)
+                    area -= std::abs(geometry::signed_area_um2(hole)) / 1e6;
                 maxObjectAreaMm2 = std::max(maxObjectAreaMm2, area);
             }
         }
@@ -399,8 +420,8 @@ TEST_CASE("DIAGNOSTIC TEMPORAIRE chaine brute (GISTRE.png)") {
         const auto stats = stitch::compute_stats(*sequence);
         UNSCOPED_INFO("stitches=" << stats.stitches << " jumps=" << stats.jumps
                                   << " color_changes=" << stats.color_changes);
-        const auto svgResult = formats::write_svg_file(
-            "C:/Users/zache/Pictures/GISTRE_result.svg", *sequence);
+        const auto svgResult =
+            formats::write_svg_file("C:/Users/zache/Pictures/GISTRE_result.svg", *sequence);
         UNSCOPED_INFO("svg ecrit=" << svgResult.has_value());
 
         // Barres épaisses visibles dans le SVG : objets contribuant le plus de
@@ -423,15 +444,22 @@ TEST_CASE("DIAGNOSTIC TEMPORAIRE chaine brute (GISTRE.png)") {
             double areaMm2 = 0.0;
             double bboxW = 0.0, bboxH = 0.0;
             if (emb != nullptr) {
-                if (emb->is_satin()) kind = "satin";
-                else if (emb->is_tatami()) kind = "tatami";
-                else kind = "running";
+                if (emb->is_satin())
+                    kind = "satin";
+                else if (emb->is_tatami())
+                    kind = "tatami";
+                else
+                    kind = "running";
                 if (const auto* vec = project.findObject(emb->source_vector)) {
                     std::int32_t minx = 0, maxx = 0, miny = 0, maxy = 0;
                     bool first = true;
                     for (const auto& set : vec->paths) {
                         for (const auto& n : set.outer.nodes) {
-                            if (first) { minx = maxx = n.pos.x.value; miny = maxy = n.pos.y.value; first = false; }
+                            if (first) {
+                                minx = maxx = n.pos.x.value;
+                                miny = maxy = n.pos.y.value;
+                                first = false;
+                            }
                             minx = std::min(minx, n.pos.x.value);
                             maxx = std::max(maxx, n.pos.x.value);
                             miny = std::min(miny, n.pos.y.value);
@@ -454,10 +482,10 @@ TEST_CASE("DIAGNOSTIC TEMPORAIRE chaine brute (GISTRE.png)") {
                 }
             }
             std::fprintf(stderr,
-                        "DIAG top-objet stitch #%zu: id=%llu type=%s stitches=%zu aire=%.1fmm2 "
-                        "bbox=%.1fx%.1fmm morceaux=%zu max_noeuds_par_morceau=%zu\n",
-                        i, static_cast<unsigned long long>(byCount[i].second), kind, byCount[i].first,
-                        areaMm2, bboxW, bboxH, pieceCount, maxNodesInPiece);
+                         "DIAG top-objet stitch #%zu: id=%llu type=%s stitches=%zu aire=%.1fmm2 "
+                         "bbox=%.1fx%.1fmm morceaux=%zu max_noeuds_par_morceau=%zu\n",
+                         i, static_cast<unsigned long long>(byCount[i].second), kind,
+                         byCount[i].first, areaMm2, bboxW, bboxH, pieceCount, maxNodesInPiece);
         }
     } else {
         UNSCOPED_INFO("erreur generate_sequence: " << sequence.error().message);
@@ -472,7 +500,8 @@ TEST_CASE("DIAGNOSTIC TEMPORAIRE chaine brute (GISTRE.png)") {
     // simplement une étape que l'utilisateur n'a pas encore lancée.
     const auto centroidOf = [&](ObjectId sourceVec) -> Vec2um {
         const auto* vec = project.findObject(sourceVec);
-        if (vec == nullptr || vec->paths.empty()) return Vec2um{};
+        if (vec == nullptr || vec->paths.empty())
+            return Vec2um{};
         std::int64_t sx = 0, sy = 0;
         std::size_t n = 0;
         for (const auto& node : vec->paths.front().outer.nodes) {
@@ -480,9 +509,10 @@ TEST_CASE("DIAGNOSTIC TEMPORAIRE chaine brute (GISTRE.png)") {
             sy += node.pos.y.value;
             ++n;
         }
-        if (n == 0) return Vec2um{};
+        if (n == 0)
+            return Vec2um{};
         return Vec2um{Micrometers{static_cast<std::int32_t>(sx / static_cast<std::int64_t>(n))},
-                     Micrometers{static_cast<std::int32_t>(sy / static_cast<std::int64_t>(n))}};
+                      Micrometers{static_cast<std::int32_t>(sy / static_cast<std::int64_t>(n))}};
     };
     std::vector<optimization::OrderItem> items;
     for (const auto& obj : project.embroidery_objects) {
@@ -505,16 +535,16 @@ TEST_CASE("DIAGNOSTIC TEMPORAIRE chaine brute (GISTRE.png)") {
     }
     const auto costAfter = optimization::compute_cost(itemsAfter);
     std::fprintf(stderr,
-                "DIAG ordre optimise (ColorThenProximity) : trajet %.1f -> %.1f mm, "
-                "changements de fil %zu -> %zu\n",
-                costBefore.travel_um / 1000.0, costAfter.travel_um / 1000.0,
-                costBefore.color_changes, costAfter.color_changes);
+                 "DIAG ordre optimise (ColorThenProximity) : trajet %.1f -> %.1f mm, "
+                 "changements de fil %zu -> %zu\n",
+                 costBefore.travel_um / 1000.0, costAfter.travel_um / 1000.0,
+                 costBefore.color_changes, costAfter.color_changes);
 
     const auto sequence2 = stitch_generation::generate_sequence(project);
     if (sequence2.has_value()) {
         const auto stats2 = stitch::compute_stats(*sequence2);
         std::fprintf(stderr, "DIAG apres reordonnancement : stitches=%zu jumps=%zu\n",
-                    stats2.stitches, stats2.jumps);
+                     stats2.stitches, stats2.jumps);
         formats::write_svg_file("C:/Users/zache/Pictures/GISTRE_result_ordered.svg", *sequence2);
     }
     CHECK(false);
@@ -539,8 +569,7 @@ TEST_CASE("DIAGNOSTIC TEMPORAIRE satin pointes fines (GISTRE)") {
     auto project = *loaded;
     REQUIRE(project.segmentation.has_value());
 
-    const auto result =
-        autodigitize::auto_digitize(*project.segmentation, project.object_ids, {});
+    const auto result = autodigitize::auto_digitize(*project.segmentation, project.object_ids, {});
     REQUIRE(result.has_value());
 
     int nSatin = 0;
@@ -580,14 +609,16 @@ TEST_CASE("DIAGNOSTIC TEMPORAIRE osp utilisateur") {
     REQUIRE(loaded.has_value());
     const auto& project = *loaded;
     UNSCOPED_INFO("vector_objects=" << project.vector_objects.size()
-                                     << " embroidery_objects=" << project.embroidery_objects.size());
+                                    << " embroidery_objects=" << project.embroidery_objects.size());
     int nSatin = 0, nTatami = 0, nRunning = 0, nSatinWithRungs = 0, nInvisible = 0;
     for (const auto& e : project.embroidery_objects) {
-        if (!e.visible) ++nInvisible;
+        if (!e.visible)
+            ++nInvisible;
         if (std::holds_alternative<document::SatinParams>(e.params)) {
             ++nSatin;
             const auto& sp = std::get<document::SatinParams>(e.params);
-            if (sp.rungs.size() >= 2) ++nSatinWithRungs;
+            if (sp.rungs.size() >= 2)
+                ++nSatinWithRungs;
         } else if (std::holds_alternative<document::TatamiParams>(e.params)) {
             ++nTatami;
         } else if (std::holds_alternative<document::RunningStitchParams>(e.params)) {
@@ -595,7 +626,7 @@ TEST_CASE("DIAGNOSTIC TEMPORAIRE osp utilisateur") {
         }
     }
     UNSCOPED_INFO("satin=" << nSatin << " (avec barreaux=" << nSatinWithRungs << ") tatami="
-                            << nTatami << " running=" << nRunning << " invisible=" << nInvisible);
+                           << nTatami << " running=" << nRunning << " invisible=" << nInvisible);
 
     const auto seq = stitch_generation::generate_sequence(project);
     UNSCOPED_INFO("generate_sequence ok=" << seq.has_value());

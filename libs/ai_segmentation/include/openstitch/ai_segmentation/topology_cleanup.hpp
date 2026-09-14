@@ -43,7 +43,7 @@ struct SegmentationValidationReport {
 // sont isolés), trous comblés, régions protégées jamais touchées, bandes
 // fines signalées sans être corrigées. Les seuils d'aire sont physiques
 // (mm²), donc valides quelle que soit la résolution source.
-[[nodiscard]] Result<SegmentationValidationReport> cleanup_topology(
-    segmentation::Segmentation& seg, const TopologyCleanupOptions& options);
+[[nodiscard]] Result<SegmentationValidationReport>
+cleanup_topology(segmentation::Segmentation& seg, const TopologyCleanupOptions& options);
 
-}  // namespace openstitch::ai_segmentation
+} // namespace openstitch::ai_segmentation

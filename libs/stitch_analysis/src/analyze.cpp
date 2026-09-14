@@ -12,7 +12,7 @@ bool outside(Vec2um p, const stitch::BoundsUm& hoop) {
     return p.x < hoop.min.x || p.x > hoop.max.x || p.y < hoop.min.y || p.y > hoop.max.y;
 }
 
-}  // namespace
+} // namespace
 
 std::vector<Finding> analyze(const stitch::StitchSequence& sequence,
                              const AnalysisOptions& options) {
@@ -31,8 +31,7 @@ std::vector<Finding> analyze(const stitch::StitchSequence& sequence,
 
     const auto stats = stitch::compute_stats(sequence);
     if (stats.stitches == 0) {
-        findings.push_back(
-            {Severity::Error, "vide", "Le motif ne contient aucun point.", {}, {}});
+        findings.push_back({Severity::Error, "vide", "Le motif ne contient aucun point.", {}, {}});
         return findings;
     }
 
@@ -48,21 +47,20 @@ std::vector<Finding> analyze(const stitch::StitchSequence& sequence,
                 const double len = length_um(cmd.pos - prevStitch);
                 if (len < static_cast<double>(options.min_stitch.value)) {
                     add(Severity::Warning, "point-court",
-                        "Point très court (" + std::to_string(static_cast<int>(len / 1000.0 * 10) /
-                                                              10.0) +
+                        "Point très court (" +
+                            std::to_string(static_cast<int>(len / 1000.0 * 10) / 10.0) +
                             " mm) : risque de casse du fil et de sur-densité.",
                         cmd.pos, cmd.source);
                 } else if (len > static_cast<double>(options.max_stitch.value)) {
                     add(Severity::Warning, "point-long",
-                        "Point long (" +
-                            std::to_string(static_cast<int>(len / 100.0) / 10.0) +
+                        "Point long (" + std::to_string(static_cast<int>(len / 100.0) / 10.0) +
                             " mm) : risque d'accrochage.",
                         cmd.pos, cmd.source);
                 }
             }
             if (options.hoop && outside(cmd.pos, *options.hoop)) {
-                add(Severity::Error, "hors-cadre",
-                    "Point hors du cadre de broderie.", cmd.pos, cmd.source);
+                add(Severity::Error, "hors-cadre", "Point hors du cadre de broderie.", cmd.pos,
+                    cmd.source);
             }
             prevStitch = cmd.pos;
             hasPrevStitch = true;
@@ -110,4 +108,4 @@ std::vector<Finding> analyze(const stitch::StitchSequence& sequence,
     return findings;
 }
 
-}  // namespace openstitch::stitch_analysis
+} // namespace openstitch::stitch_analysis

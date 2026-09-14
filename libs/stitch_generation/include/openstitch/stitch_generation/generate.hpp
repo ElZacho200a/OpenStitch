@@ -13,4 +13,4 @@ namespace openstitch::stitch_generation {
 // Fonction pure : recalculable à tout moment depuis le document (ADR-014).
 [[nodiscard]] Result<stitch::StitchSequence> generate_sequence(const document::Project& project);
 
-}  // namespace openstitch::stitch_generation
+} // namespace openstitch::stitch_generation

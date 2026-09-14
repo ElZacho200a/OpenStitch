@@ -28,11 +28,12 @@ Path square_path(std::int32_t x0, std::int32_t y0, std::int32_t x1, std::int32_t
 
 double net_area_mm2(const PathSet& set) {
     double area = std::abs(signed_area_um2(set.outer)) / 1e6;
-    for (const auto& hole : set.holes) area -= std::abs(signed_area_um2(hole)) / 1e6;
+    for (const auto& hole : set.holes)
+        area -= std::abs(signed_area_um2(hole)) / 1e6;
     return area;
 }
 
-}  // namespace
+} // namespace
 
 TEST_CASE("subtract_polygons : aucun cutout -> region inchangee") {
     const PathSet base{square_path(0, 0, 10'000, 10'000), {}};
@@ -49,7 +50,7 @@ TEST_CASE("subtract_polygons : cutout entierement interieur -> trou net") {
     REQUIRE(result.has_value());
     REQUIRE(result->size() == 1);
     REQUIRE((*result)[0].holes.size() == 1);
-    CHECK(net_area_mm2((*result)[0]) == 84.0);  // 100 - 16 mm2
+    CHECK(net_area_mm2((*result)[0]) == 84.0); // 100 - 16 mm2
 }
 
 TEST_CASE("subtract_polygons : cutout couvrant toute la region -> resultat vide") {
@@ -65,11 +66,12 @@ TEST_CASE("subtract_polygons : cutout couvrant toute la region -> resultat vide"
 // partageant un barreau) : sous une regle pair-impair, le chevauchement
 // s'annulerait et laisserait un trou parasite au milieu -- exactement le
 // defaut que la regle NonZero doit eviter.
-TEST_CASE("subtract_polygons : deux cutouts chevauchants, orientations opposees -> pas de trou parasite") {
+TEST_CASE("subtract_polygons : deux cutouts chevauchants, orientations opposees -> pas de trou "
+          "parasite") {
     const PathSet base{square_path(0, 0, 10'000, 4'000), {}};
-    Path left = square_path(0, 0, 5'500, 4'000);           // CCW (via corner() -> square_path deja CCW)
+    Path left = square_path(0, 0, 5'500, 4'000); // CCW (via corner() -> square_path deja CCW)
     Path right = square_path(4'500, 0, 10'000, 4'000);
-    std::reverse(right.nodes.begin(), right.nodes.end());  // force CW : oriente a l'oppose
+    std::reverse(right.nodes.begin(), right.nodes.end()); // force CW : oriente a l'oppose
     const std::vector<Path> cutouts{left, right};
     const auto result = subtract_polygons(base, cutouts);
     REQUIRE(result.has_value());

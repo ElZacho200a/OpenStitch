@@ -122,7 +122,7 @@ std::vector<Vec2um> sample_by_runs(const std::vector<Vec2um>& poly, bool closed,
     // Fermé sans coin : boucle unique ré-échantillonnée (fermeture incluse).
     if (corners.empty()) {
         std::vector<Vec2um> loop = poly;
-        loop.push_back(poly.front());  // fermeture
+        loop.push_back(poly.front()); // fermeture
         appendRun(loop);
         return out;
     }
@@ -158,7 +158,7 @@ void fill_stats(RunningResult& result) {
     }
 }
 
-}  // namespace
+} // namespace
 
 RunningResult run_stitch(const geometry::Path& path, const RunningConfig& config) {
     RunningResult result;
@@ -174,9 +174,8 @@ RunningResult run_stitch(const geometry::Path& path, const RunningConfig& config
 
     geometry::Polyline poly = geometry::flatten(path, config.flatten_tolerance);
     if (poly.points.size() < 2) {
-        result.warnings.push_back(
-            {WarningCode::PathTooShort, "Chemin trop court pour être cousu",
-             path.nodes.front().pos});
+        result.warnings.push_back({WarningCode::PathTooShort, "Chemin trop court pour être cousu",
+                                   path.nodes.front().pos});
         result.points = poly.points;
         fill_stats(result);
         return result;
@@ -205,10 +204,9 @@ RunningResult run_stitch(const geometry::Path& path, const RunningConfig& config
 
     const double totalLen = geometry::polyline_length(poly.points);
     if (totalLen < static_cast<double>(config.target_length.value)) {
-        result.warnings.push_back(
-            {WarningCode::PathTooShort,
-             "Chemin plus court qu'une longueur de point : un seul segment",
-             poly.points.front()});
+        result.warnings.push_back({WarningCode::PathTooShort,
+                                   "Chemin plus court qu'une longueur de point : un seul segment",
+                                   poly.points.front()});
     }
 
     result.points = sample_by_runs(poly.points, poly.closed, config.target_length,
@@ -245,7 +243,7 @@ std::vector<Vec2um> apply_repeat_mode(const std::vector<Vec2um>& points, RepeatM
     }
 
     const auto push = [](std::vector<Vec2um>& v, Vec2um p) {
-        if (v.empty() || v.back() != p) {  // supprime les mouvements nuls
+        if (v.empty() || v.back() != p) { // supprime les mouvements nuls
             v.push_back(p);
         }
     };
@@ -297,4 +295,4 @@ std::vector<Vec2um> apply_repeats(const std::vector<Vec2um>& points, int repeats
     return apply_repeat_mode(points, RepeatMode::BeanStitch, repeats);
 }
 
-}  // namespace openstitch::stitch_generation
+} // namespace openstitch::stitch_generation

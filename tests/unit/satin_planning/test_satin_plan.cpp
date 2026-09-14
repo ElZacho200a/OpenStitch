@@ -28,9 +28,10 @@ geometry::PathSet shape(const std::string& name) {
     return *s;
 }
 
-}  // namespace
+} // namespace
 
-TEST_CASE("create_satin_plan : use_merge_pass force -- une fusion recommandee reduit reellement le nombre de regions") {
+TEST_CASE("create_satin_plan : use_merge_pass force -- une fusion recommandee reduit reellement le "
+          "nombre de regions") {
     // Sur le corpus de formes deliberement branchees (t/y/cross/h/trident),
     // §18 ne recommande naturellement AUCUNE fusion (verifie empiriquement :
     // memes nombres de regions avec et sans passe de fusion) -- attendu,
@@ -76,7 +77,8 @@ TEST_CASE("create_satin_plan : rectangle simple -- aucune decomposition inutile"
     // nombreuses petites composantes). Sur un rectangle simple, ce reliquat
     // doit rester negligeable en proportion de l'aire totale.
     double residualAreaMm2 = 0.0;
-    for (const auto& r : plan.unresolved_residual) residualAreaMm2 += geometry::path_set_area_um2(r) / 1e6;
+    for (const auto& r : plan.unresolved_residual)
+        residualAreaMm2 += geometry::path_set_area_um2(r) / 1e6;
     const double sourceAreaMm2 = geometry::path_set_area_um2(shape("rectangle")) / 1e6;
     CHECK(residualAreaMm2 < 0.05 * sourceAreaMm2);
 }
@@ -84,7 +86,8 @@ TEST_CASE("create_satin_plan : rectangle simple -- aucune decomposition inutile"
 // §7 de la mission de durcissement du contrat (2026-08-17) : le statut
 // explicite est la seule source de verite, jamais a deduire de
 // `regions.empty()`/`unresolved_residual.empty()`.
-TEST_CASE("create_satin_plan : rectangle simple -- statut Complete, aucun diagnostic, exploration mesuree") {
+TEST_CASE("create_satin_plan : rectangle simple -- statut Complete, aucun diagnostic, exploration "
+          "mesuree") {
     const auto plan = create_satin_plan(shape("rectangle"), prod_config());
     CHECK(plan.status == SatinPlanStatus::Complete);
     CHECK(to_string(plan.status) == "Complete");
@@ -96,7 +99,8 @@ TEST_CASE("create_satin_plan : rectangle simple -- statut Complete, aucun diagno
     CHECK(plan.regions_explored >= 1);
 }
 
-TEST_CASE("create_satin_plan : forme branchee -- statut jamais Impossible, exploration reellement mesuree") {
+TEST_CASE("create_satin_plan : forme branchee -- statut jamais Impossible, exploration reellement "
+          "mesuree") {
     const auto plan = create_satin_plan(shape("t"), prod_config());
     REQUIRE(plan.aggregate_coverage.has_value());
     // Une forme du corpus courant, avec un budget par defaut tres large, ne
@@ -115,7 +119,8 @@ TEST_CASE("create_satin_plan : forme branchee -- statut jamais Impossible, explo
     CHECK(plan.oracle_evaluations >= 1);
 }
 
-TEST_CASE("create_satin_plan : budget d'exploration mineur -- Incomplete ou Impossible, jamais un faux Complete") {
+TEST_CASE("create_satin_plan : budget d'exploration mineur -- Incomplete ou Impossible, jamais un "
+          "faux Complete") {
     // Budget delibrement trop petit pour qu'une forme branchee (au moins
     // deux niveaux de decoupe necessaires) puisse aboutir -- verifie que le
     // planner s'arrete PROPREMENT (statut honnete + diagnostic explicite)
@@ -133,7 +138,8 @@ TEST_CASE("create_satin_plan : budget d'exploration mineur -- Incomplete ou Impo
     CHECK(plan.regions_explored <= budgetConfig.max_planning_iterations);
 }
 
-TEST_CASE("create_satin_plan : budget genereux -- jamais atteint sur le corpus habituel, aucun diagnostic parasite") {
+TEST_CASE("create_satin_plan : budget genereux -- jamais atteint sur le corpus habituel, aucun "
+          "diagnostic parasite") {
     // Ancre de non-regression inverse du test precedent : DONNE assez de
     // ressources, le budget ne doit JAMAIS se declencher sur le corpus de
     // formes existant -- sinon le mecanisme casserait silencieusement des
@@ -163,12 +169,14 @@ TEST_CASE("create_satin_plan : budget genereux -- jamais atteint sur le corpus h
     for (const std::string& name : {"rectangle", "t", "y", "cross", "h", "trident", "ring"}) {
         INFO("forme = " << name);
         const auto plan = create_satin_plan(shape(name), generousConfig);
-        const bool hasBudgetDiagnostic =
-            std::any_of(plan.diagnostics.begin(), plan.diagnostics.end(),
-                        [](const PlanningDiagnostic& d) { return d.code == "SearchBudgetExceeded"; });
-        INFO("regions_explored=" << plan.regions_explored << " oracle_evaluations=" << plan.oracle_evaluations);
+        const bool hasBudgetDiagnostic = std::any_of(
+            plan.diagnostics.begin(), plan.diagnostics.end(),
+            [](const PlanningDiagnostic& d) { return d.code == "SearchBudgetExceeded"; });
+        INFO("regions_explored=" << plan.regions_explored
+                                 << " oracle_evaluations=" << plan.oracle_evaluations);
         std::string diagDump;
-        for (const auto& d : plan.diagnostics) diagDump += d.code + ": " + d.message + " | ";
+        for (const auto& d : plan.diagnostics)
+            diagDump += d.code + ": " + d.message + " | ";
         INFO("diagnostics = " << diagDump);
         CHECK_FALSE(hasBudgetDiagnostic);
     }
@@ -221,7 +229,8 @@ TEST_CASE("create_satin_plan : reseau en T -- adjacence et recouvrement peuples"
     }
 }
 
-TEST_CASE("create_satin_plan : recouvrement desactivable sans perdre l'adjacence (compute_overlaps=false)") {
+TEST_CASE("create_satin_plan : recouvrement desactivable sans perdre l'adjacence "
+          "(compute_overlaps=false)") {
     auto config = prod_config();
     config.compute_overlaps = false;
     const auto plan = create_satin_plan(shape("t"), config);
@@ -251,7 +260,8 @@ TEST_CASE("create_satin_plan : use_junction_separator_cuts desactivable, plan to
     CHECK(plan.aggregate_coverage->raw_coverage_ratio > 0.80);
 }
 
-TEST_CASE("create_satin_plan : coupes concavite -- resolvent une entaille profonde sans jonction de squelette") {
+TEST_CASE("create_satin_plan : coupes concavite -- resolvent une entaille profonde sans jonction "
+          "de squelette") {
     // §14 du plan de refonte satin, suite (2026-08-14) : `pinch` (encoche en
     // V descendant a moins de 0,3mm du bord oppose, un seul chemin
     // topologique -- AUCUNE jonction de squelette) est un echec TOTAL sans
@@ -277,7 +287,8 @@ TEST_CASE("create_satin_plan : coupes concavite -- resolvent une entaille profon
     CHECK(planWithout.regions.empty());
 }
 
-TEST_CASE("create_satin_plan : coupes concavite -- ameliorent (sans degrader) une entaille moins severe") {
+TEST_CASE("create_satin_plan : coupes concavite -- ameliorent (sans degrader) une entaille moins "
+          "severe") {
     // `notch` (variante moins severe de `pinch`, encoche jusqu'a 1mm du bord
     // oppose) n'echoue pas totalement sans la famille §14 (le solveur local
     // s'en tire avec un "meilleur effort" degrade), mais la couverture
@@ -295,7 +306,8 @@ TEST_CASE("create_satin_plan : coupes concavite -- ameliorent (sans degrader) un
           planWithout.aggregate_coverage->raw_coverage_ratio - 0.01);
 }
 
-TEST_CASE("create_satin_plan : formes branchees du corpus -- jamais de refus global, couverture agregee elevee") {
+TEST_CASE("create_satin_plan : formes branchees du corpus -- jamais de refus global, couverture "
+          "agregee elevee") {
     for (const std::string& name : {"y", "cross", "h", "trident"}) {
         INFO("forme = " << name);
         const auto source = shape(name);
@@ -312,7 +324,8 @@ TEST_CASE("create_satin_plan : formes branchees du corpus -- jamais de refus glo
     }
 }
 
-TEST_CASE("create_satin_plan : anneau -- resolu directement par le solveur local, sans decomposition") {
+TEST_CASE(
+    "create_satin_plan : anneau -- resolu directement par le solveur local, sans decomposition") {
     // Un anneau n'a pas de jonction (squelette en boucle fermee) : le
     // solveur local (build_annular_sections, deja a l'interieur de
     // build_satin_columns) le resout en un seul appel, avant meme que la
@@ -324,7 +337,8 @@ TEST_CASE("create_satin_plan : anneau -- resolu directement par le solveur local
     CHECK(plan.regions.front().coverage->passed);
 }
 
-TEST_CASE("create_satin_plan : recursion reelle -- une region fille encore mediocre est redecoupee a son tour") {
+TEST_CASE("create_satin_plan : recursion reelle -- une region fille encore mediocre est redecoupee "
+          "a son tour") {
     // Verifie la propriete structurelle de la recursion (§10 du plan de
     // refonte) plutot qu'une forme precise : sur le corpus branche, au
     // moins une region du plan final a une profondeur > 1 quelque part dans
@@ -345,13 +359,15 @@ TEST_CASE("create_satin_plan : recursion reelle -- une region fille encore medio
         config.use_junction_separator_cuts = false;
         const auto plan = create_satin_plan(shape(name), config);
         for (const auto& r : plan.regions) {
-            if (r.depth > 1) sawDepthBeyondOne = true;
+            if (r.depth > 1)
+                sawDepthBeyondOne = true;
         }
     }
     CHECK(sawDepthBeyondOne);
 }
 
-TEST_CASE("create_satin_plan : jamais de comblement automatique -- le residu reste une geometrie brute, pas du tatami") {
+TEST_CASE("create_satin_plan : jamais de comblement automatique -- le residu reste une geometrie "
+          "brute, pas du tatami") {
     // Le module ne connait meme pas document::TatamiParams : verifie
     // seulement que le residu, quand il existe, reste une liste de
     // geometrie -- jamais transforme en quoi que ce soit par ce module
@@ -367,11 +383,13 @@ TEST_CASE("create_satin_plan : jamais de comblement automatique -- le residu res
     const auto config = prod_config();
     const auto plan = create_satin_plan(ring, config);
     for (const auto& residual : plan.unresolved_residual) {
-        CHECK(geometry::path_set_area_um2(residual) >= 0.0);  // geometrie brute valide, jamais un type document
+        CHECK(geometry::path_set_area_um2(residual) >=
+              0.0); // geometrie brute valide, jamais un type document
     }
 }
 
-TEST_CASE("create_satin_plan : lettre T reelle -- residu honnetement rapporte plutot que fabrique") {
+TEST_CASE(
+    "create_satin_plan : lettre T reelle -- residu honnetement rapporte plutot que fabrique") {
     // Forme reelle (lettre T d'un vrai logo, empattement large) deja connue
     // pour mettre en echec l'ancien moteur direct (§ docs/source/satin.md,
     // "branche squelette localement trop large"). Sert ici de regression
@@ -386,11 +404,11 @@ TEST_CASE("create_satin_plan : lettre T reelle -- residu honnetement rapporte pl
     // eviter. Verifie donc que le residu reel, quand il existe, est
     // honnetement rapporte plutot que masque par une acceptation aveugle.
     const std::vector<std::pair<double, double>> letterT = {
-        {-101.859, 238.244}, {-89.160, 243.006}, {-87.043, 244.329}, {-87.572, 244.858},
-        {-92.599, 245.123},  {-93.128, 245.652}, {-99.478, 261.526}, {-102.652, 270.786},
-        {-100.801, 271.579}, {-96.832, 271.844}, {-94.715, 270.786}, {-91.541, 268.140},
-        {-89.953, 267.875},  {-89.953, 269.463}, {-90.482, 270.521}, {-90.482, 271.315},
-        {-92.863, 276.342},  {-94.186, 276.342}, {-94.980, 275.812}, {-98.419, 274.754},
+        {-101.859, 238.244}, {-89.160, 243.006},  {-87.043, 244.329},  {-87.572, 244.858},
+        {-92.599, 245.123},  {-93.128, 245.652},  {-99.478, 261.526},  {-102.652, 270.786},
+        {-100.801, 271.579}, {-96.832, 271.844},  {-94.715, 270.786},  {-91.541, 268.140},
+        {-89.953, 267.875},  {-89.953, 269.463},  {-90.482, 270.521},  {-90.482, 271.315},
+        {-92.863, 276.342},  {-94.186, 276.342},  {-94.980, 275.812},  {-98.419, 274.754},
         {-114.293, 268.405}, {-121.966, 264.965}, {-121.437, 262.584}, {-120.114, 259.938},
         {-120.114, 259.409}, {-118.262, 257.028}, {-117.733, 257.028}, {-116.939, 258.351},
         {-116.939, 261.261}, {-116.145, 263.907}, {-112.971, 266.553}, {-110.854, 267.346},
@@ -400,9 +418,9 @@ TEST_CASE("create_satin_plan : lettre T reelle -- residu honnetement rapporte pl
     geometry::PathSet shape;
     shape.outer.closed = true;
     for (const auto& [x, y] : letterT) {
-        shape.outer.nodes.push_back(
-            {Vec2um{Micrometers{static_cast<int>(x * 1000.0)}, Micrometers{static_cast<int>(y * 1000.0)}},
-             geometry::NodeType::Corner});
+        shape.outer.nodes.push_back({Vec2um{Micrometers{static_cast<int>(x * 1000.0)},
+                                            Micrometers{static_cast<int>(y * 1000.0)}},
+                                     geometry::NodeType::Corner});
     }
 
     auto config = prod_config();
@@ -412,7 +430,8 @@ TEST_CASE("create_satin_plan : lettre T reelle -- residu honnetement rapporte pl
 
     const double sourceAreaMm2 = geometry::path_set_area_um2(shape) / 1e6;
     double residualAreaMm2 = 0.0;
-    for (const auto& r : plan.unresolved_residual) residualAreaMm2 += geometry::path_set_area_um2(r) / 1e6;
+    for (const auto& r : plan.unresolved_residual)
+        residualAreaMm2 += geometry::path_set_area_um2(r) / 1e6;
     INFO("aire source=" << sourceAreaMm2 << "mm2 -- residu total=" << residualAreaMm2 << "mm2 -- "
                         << plan.regions.size() << " region(s)");
 
@@ -431,7 +450,7 @@ TEST_CASE("create_satin_plan : lettre T reelle -- residu honnetement rapporte pl
     // peut jamais depasser l'aire source elle-meme (garde-fou de sante),
     // et doit rester non-trivial ici (le vrai defaut trouve, § ci-dessus).
     CHECK(residualAreaMm2 > 0.0);
-    CHECK(residualAreaMm2 <= sourceAreaMm2 * 1.05);  // marge d'arrondi geometrique
+    CHECK(residualAreaMm2 <= sourceAreaMm2 * 1.05); // marge d'arrondi geometrique
 }
 
 TEST_CASE("create_satin_plan : profondeur maximale respectee -- pas de recursion infinie") {
@@ -443,7 +462,8 @@ TEST_CASE("create_satin_plan : profondeur maximale respectee -- pas de recursion
     }
 }
 
-TEST_CASE("create_satin_plan : extend_columns_into_overlap ferme reellement l'interstice (couverture en hausse, jamais en baisse)") {
+TEST_CASE("create_satin_plan : extend_columns_into_overlap ferme reellement l'interstice "
+          "(couverture en hausse, jamais en baisse)") {
     // §20 du plan de refonte satin (2026-08-16) : SatinPlan::overlaps
     // (§19/§20) etait calcule mais jamais consomme -- ce test verifie que
     // le consommer change reellement quelque chose (pas seulement que le

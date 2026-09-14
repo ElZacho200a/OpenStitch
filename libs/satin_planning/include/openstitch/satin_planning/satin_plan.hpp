@@ -398,8 +398,9 @@ struct SatinPlan {
 // replanifier chaque composante manquante significative comme une nouvelle
 // region -- jusqu'a `max_residual_repair_rounds` passes, ou jusqu'a ce
 // qu'aucun progres ne soit plus possible.
-[[nodiscard]] SatinPlan create_satin_plan(const geometry::PathSet& source, const SatinPlanConfig& config = {});
+[[nodiscard]] SatinPlan create_satin_plan(const geometry::PathSet& source,
+                                          const SatinPlanConfig& config = {});
 
 [[nodiscard]] std::string format_satin_plan(const SatinPlan& plan);
 
-}  // namespace openstitch::satin_planning
+} // namespace openstitch::satin_planning

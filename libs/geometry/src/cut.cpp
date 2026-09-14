@@ -25,10 +25,9 @@ Path from_clipper(const Clipper2Lib::Path64& path) {
     out.closed = true;
     out.nodes.reserve(path.size());
     for (const auto& pt : path) {
-        out.nodes.push_back(PathNode{
-            Vec2um{Micrometers{static_cast<std::int32_t>(pt.x)},
-                   Micrometers{static_cast<std::int32_t>(pt.y)}},
-            NodeType::Corner, std::nullopt, std::nullopt});
+        out.nodes.push_back(PathNode{Vec2um{Micrometers{static_cast<std::int32_t>(pt.x)},
+                                            Micrometers{static_cast<std::int32_t>(pt.y)}},
+                                     NodeType::Corner, std::nullopt, std::nullopt});
     }
     return out;
 }
@@ -50,7 +49,7 @@ void collect(const Clipper2Lib::PolyPath64& outer, std::vector<PathSet>& out) {
     }
 }
 
-}  // namespace
+} // namespace
 
 Result<std::vector<PathSet>> cut_path_set(const PathSet& region, Vec2um a, Vec2um b,
                                           Micrometers cut_width) {
@@ -62,11 +61,11 @@ Result<std::vector<PathSet>> cut_path_set(const PathSet& region, Vec2um a, Vec2u
     const double dy = by - ay;
     const double len = std::hypot(dx, dy);
     if (len < 1.0) {
-        return std::vector<PathSet>{region};  // ligne dégénérée : rien à couper
+        return std::vector<PathSet>{region}; // ligne dégénérée : rien à couper
     }
     const double ux = dx / len;
     const double uy = dy / len;
-    const double nx = -uy;  // normale (demi-largeur de la bande retirée)
+    const double nx = -uy; // normale (demi-largeur de la bande retirée)
     const double ny = ux;
 
     // Étend très au-delà de la région (diagonale de sa boîte englobante + 1 mm
@@ -90,7 +89,7 @@ Result<std::vector<PathSet>> cut_path_set(const PathSet& region, Vec2um a, Vec2u
         scan(hole);
     }
     if (minX > maxX) {
-        return std::vector<PathSet>{region};  // région vide
+        return std::vector<PathSet>{region}; // région vide
     }
     const double reach = std::hypot(maxX - minX, maxY - minY) + 1000.0;
 
@@ -135,4 +134,4 @@ Result<std::vector<PathSet>> cut_path_set(const PathSet& region, Vec2um a, Vec2u
     return out;
 }
 
-}  // namespace openstitch::geometry
+} // namespace openstitch::geometry

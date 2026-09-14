@@ -33,8 +33,7 @@ Result<void> write_zip(const std::filesystem::path& path,
         file_info.compression_method = MZ_COMPRESS_METHOD_DEFLATE;
         file_info.zip64 = MZ_ZIP64_AUTO;
         if (mz_zip_writer_add_buffer(writer, const_cast<std::uint8_t*>(blob.data()),
-                                     static_cast<std::int32_t>(blob.size()),
-                                     &file_info) != MZ_OK) {
+                                     static_cast<std::int32_t>(blob.size()), &file_info) != MZ_OK) {
             return fail(ErrorCategory::Internal, "Échec d'écriture de l'entrée « " + name + " »");
         }
     }
@@ -73,11 +72,12 @@ Result<std::map<std::string, Blob>> read_zip(const std::filesystem::path& path) 
         }
         Blob blob(static_cast<std::size_t>(size));
         if (mz_zip_reader_entry_open(reader) != MZ_OK) {
-            return fail(ErrorCategory::InvalidFile, "Impossible d'ouvrir l'entrée « " + name + " »");
+            return fail(ErrorCategory::InvalidFile,
+                        "Impossible d'ouvrir l'entrée « " + name + " »");
         }
         if (size > 0) {
-            const std::int32_t read = mz_zip_reader_entry_read(
-                reader, blob.data(), static_cast<std::int32_t>(size));
+            const std::int32_t read =
+                mz_zip_reader_entry_read(reader, blob.data(), static_cast<std::int32_t>(size));
             if (read != static_cast<std::int32_t>(size)) {
                 mz_zip_reader_entry_close(reader);
                 return fail(ErrorCategory::InvalidFile, "Lecture incomplète de « " + name + " »");
@@ -93,4 +93,4 @@ Result<std::map<std::string, Blob>> read_zip(const std::filesystem::path& path) 
     return entries;
 }
 
-}  // namespace openstitch::project_io::detail
+} // namespace openstitch::project_io::detail

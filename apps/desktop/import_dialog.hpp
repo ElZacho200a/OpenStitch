@@ -32,7 +32,7 @@ public:
 private:
     void syncFromWidth();
     void syncFromHeight();
-    void recompute();  // met à jour mm/pixel et l'alerte de dépassement
+    void recompute(); // met à jour mm/pixel et l'alerte de dépassement
 
     int widthPx_;
     int heightPx_;
@@ -45,4 +45,4 @@ private:
     bool syncing_{false};
 };
 
-}  // namespace openstitch::desktop
+} // namespace openstitch::desktop

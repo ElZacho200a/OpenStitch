@@ -20,11 +20,21 @@ struct Vec2d {
     double y{0.0};
 };
 
-Vec2d to_vec2d(Vec2um v) { return {static_cast<double>(v.x.value), static_cast<double>(v.y.value)}; }
-Vec2d sub(Vec2d a, Vec2d b) { return {a.x - b.x, a.y - b.y}; }
-Vec2d add(Vec2d a, Vec2d b) { return {a.x + b.x, a.y + b.y}; }
-Vec2d scale(Vec2d a, double s) { return {a.x * s, a.y * s}; }
-double norm(Vec2d a) { return std::sqrt(a.x * a.x + a.y * a.y); }
+Vec2d to_vec2d(Vec2um v) {
+    return {static_cast<double>(v.x.value), static_cast<double>(v.y.value)};
+}
+Vec2d sub(Vec2d a, Vec2d b) {
+    return {a.x - b.x, a.y - b.y};
+}
+Vec2d add(Vec2d a, Vec2d b) {
+    return {a.x + b.x, a.y + b.y};
+}
+Vec2d scale(Vec2d a, double s) {
+    return {a.x * s, a.y * s};
+}
+double norm(Vec2d a) {
+    return std::sqrt(a.x * a.x + a.y * a.y);
+}
 
 Vec2um to_vec2um(Vec2d v) {
     return Vec2um{Micrometers{static_cast<std::int32_t>(std::lround(v.x))},
@@ -44,8 +54,11 @@ struct PointAndTangent {
 PointAndTangent point_at_distance(const SkeletonEdge& edge, bool atStart, double distanceUm) {
     PointAndTangent out;
     const std::size_t n = edge.centerline.size();
-    if (n < 2) return out;
-    auto pointAt = [&](std::size_t i) { return atStart ? edge.centerline[i] : edge.centerline[n - 1 - i]; };
+    if (n < 2)
+        return out;
+    auto pointAt = [&](std::size_t i) {
+        return atStart ? edge.centerline[i] : edge.centerline[n - 1 - i];
+    };
 
     double accumulated = 0.0;
     for (std::size_t i = 0; i + 1 < n; ++i) {
@@ -53,7 +66,8 @@ PointAndTangent point_at_distance(const SkeletonEdge& edge, bool atStart, double
         const Vec2d p1 = to_vec2d(pointAt(i + 1));
         const Vec2d seg = sub(p1, p0);
         const double segLen = norm(seg);
-        if (segLen < 1e-9) continue;
+        if (segLen < 1e-9)
+            continue;
         if (accumulated + segLen >= distanceUm) {
             const double t = (distanceUm - accumulated) / segLen;
             out.point = add(p0, scale(seg, t));
@@ -63,7 +77,7 @@ PointAndTangent point_at_distance(const SkeletonEdge& edge, bool atStart, double
         }
         accumulated += segLen;
     }
-    return out;  // branche plus courte que distanceUm
+    return out; // branche plus courte que distanceUm
 }
 
 // Test point-dans-polygone par ray casting (nombre de croisements), sur les
@@ -73,7 +87,8 @@ PointAndTangent point_at_distance(const SkeletonEdge& edge, bool atStart, double
 bool point_in_polygon(const geometry::Path& path, Vec2um p) {
     const auto& nodes = path.nodes;
     const std::size_t n = nodes.size();
-    if (n < 3) return false;
+    if (n < 3)
+        return false;
     const double px = static_cast<double>(p.x.value);
     const double py = static_cast<double>(p.y.value);
     bool inside = false;
@@ -91,9 +106,11 @@ bool point_in_polygon(const geometry::Path& path, Vec2um p) {
 }
 
 bool path_set_contains(const geometry::PathSet& set, Vec2um p) {
-    if (!point_in_polygon(set.outer, p)) return false;
+    if (!point_in_polygon(set.outer, p))
+        return false;
     for (const auto& hole : set.holes) {
-        if (point_in_polygon(hole, p)) return false;
+        if (point_in_polygon(hole, p))
+            return false;
     }
     return true;
 }
@@ -113,8 +130,11 @@ struct EdgeProjection {
 EdgeProjection project_onto_edge(const SkeletonEdge& edge, bool atStart, Vec2d point) {
     EdgeProjection out;
     const std::size_t n = edge.centerline.size();
-    if (n < 2) return out;
-    auto pointAt = [&](std::size_t i) { return atStart ? edge.centerline[i] : edge.centerline[n - 1 - i]; };
+    if (n < 2)
+        return out;
+    auto pointAt = [&](std::size_t i) {
+        return atStart ? edge.centerline[i] : edge.centerline[n - 1 - i];
+    };
 
     double accumulated = 0.0;
     double bestPerp = std::numeric_limits<double>::max();
@@ -124,7 +144,8 @@ EdgeProjection project_onto_edge(const SkeletonEdge& edge, bool atStart, Vec2d p
         const Vec2d p1 = to_vec2d(pointAt(i + 1));
         const Vec2d seg = sub(p1, p0);
         const double segLen = norm(seg);
-        if (segLen < 1e-9) continue;
+        if (segLen < 1e-9)
+            continue;
         const Vec2d toPoint = sub(point, p0);
         double t = (toPoint.x * seg.x + toPoint.y * seg.y) / (segLen * segLen);
         t = std::clamp(t, 0.0, 1.0);
@@ -136,7 +157,8 @@ EdgeProjection project_onto_edge(const SkeletonEdge& edge, bool atStart, Vec2d p
         }
         accumulated += segLen;
     }
-    if (bestPerp == std::numeric_limits<double>::max()) return out;
+    if (bestPerp == std::numeric_limits<double>::max())
+        return out;
     out.distance_along_edge_um = bestDistance;
     out.perpendicular_distance_um = bestPerp;
     out.valid = true;
@@ -159,7 +181,8 @@ Vec2um probe_point(const SkeletonGraph& graph, const SatinPath& path) {
     // resolu (aucune coupe necessaire, un seul arc).
     if (!path.edges.empty()) {
         const std::size_t midEdgeIdx = path.edges.size() / 2;
-        if (const SkeletonEdge* edge = find_edge(graph, path.edges[midEdgeIdx]); edge != nullptr && !edge->centerline.empty()) {
+        if (const SkeletonEdge* edge = find_edge(graph, path.edges[midEdgeIdx]);
+            edge != nullptr && !edge->centerline.empty()) {
             return edge->centerline[edge->centerline.size() / 2];
         }
     }
@@ -167,25 +190,29 @@ Vec2um probe_point(const SkeletonGraph& graph, const SatinPath& path) {
     // median du chemin, sinon le milieu de ses extremites.
     if (path.nodes.size() >= 3) {
         const std::uint32_t midNodeId = path.nodes[path.nodes.size() / 2];
-        if (const SkeletonNode* n = find_node(graph, midNodeId)) return n->position;
+        if (const SkeletonNode* n = find_node(graph, midNodeId))
+            return n->position;
     }
     return to_vec2um(scale(add(to_vec2d(path.start), to_vec2d(path.end)), 0.5));
 }
 
-}  // namespace
+} // namespace
 
-std::vector<CutCandidate> generate_cut_candidates(const geometry::PathSet& piece, const SkeletonGraph& graph,
-                                                    std::uint32_t junctionNode, std::uint32_t edgeId,
-                                                    const CutCandidateParams& params) {
+std::vector<CutCandidate> generate_cut_candidates(const geometry::PathSet& piece,
+                                                  const SkeletonGraph& graph,
+                                                  std::uint32_t junctionNode, std::uint32_t edgeId,
+                                                  const CutCandidateParams& params) {
     std::vector<CutCandidate> candidates;
     const SkeletonEdge* edge = find_edge(graph, edgeId);
-    if (edge == nullptr) return candidates;
+    if (edge == nullptr)
+        return candidates;
     const bool atStart = edge->from == junctionNode;
 
     const std::uint32_t farNodeId = atStart ? edge->to : edge->from;
     const SkeletonNode* farNode = find_node(graph, farNodeId);
-    const bool verifySatinability = params.verify_isolated_endpoint_branches && farNode != nullptr &&
-                                     farNode->type == SkeletonNodeType::Endpoint;
+    const bool verifySatinability = params.verify_isolated_endpoint_branches &&
+                                    farNode != nullptr &&
+                                    farNode->type == SkeletonNodeType::Endpoint;
 
     // Construit et evalue un candidat a la distance `d` (memes regles de
     // rejet, quelle que soit la famille qui a propose `d`). Renvoie `false`
@@ -219,7 +246,8 @@ std::vector<CutCandidate> generate_cut_candidates(const geometry::PathSet& piece
         }
         if (cutResult->size() != 2) {
             cand.rejection_reason = "coupe n'a pas produit exactement 2 morceaux (" +
-                                     std::to_string(cutResult->size()) + " -- traverse une zone sans rapport)";
+                                    std::to_string(cutResult->size()) +
+                                    " -- traverse une zone sans rapport)";
             candidates.push_back(cand);
             return true;
         }
@@ -235,15 +263,17 @@ std::vector<CutCandidate> generate_cut_candidates(const geometry::PathSet& piece
         // le noeud distal) pour renseigner les aires ET, le cas echeant,
         // pour la verification de satinabilite ci-dessous.
         std::size_t branchIdx = 0;
-        if (farNode != nullptr && path_set_contains((*cutResult)[1], farNode->position)) branchIdx = 1;
+        if (farNode != nullptr && path_set_contains((*cutResult)[1], farNode->position))
+            branchIdx = 1;
         const std::size_t remainderIdx = 1 - branchIdx;
 
         if (verifySatinability) {
             const auto analysis = auto_satin::analyze_region((*cutResult)[branchIdx], {});
             const bool clean = analysis.has_value() && analysis->report.junction_count == 0;
             if (!clean) {
-                cand.rejection_reason = "morceau isole encore branche apres cette coupe (jonction residuelle, "
-                                         "probablement une branche voisine partiellement tranchee)";
+                cand.rejection_reason =
+                    "morceau isole encore branche apres cette coupe (jonction residuelle, "
+                    "probablement une branche voisine partiellement tranchee)";
                 candidates.push_back(cand);
                 return true;
             }
@@ -251,7 +281,8 @@ std::vector<CutCandidate> generate_cut_candidates(const geometry::PathSet& piece
 
         cand.valid = true;
         cand.branch_piece_area_mm2 = geometry::path_set_area_um2((*cutResult)[branchIdx]) / 1e6;
-        cand.remainder_piece_area_mm2 = geometry::path_set_area_um2((*cutResult)[remainderIdx]) / 1e6;
+        cand.remainder_piece_area_mm2 =
+            geometry::path_set_area_um2((*cutResult)[remainderIdx]) / 1e6;
         candidates.push_back(cand);
         return true;
     };
@@ -262,28 +293,34 @@ std::vector<CutCandidate> generate_cut_candidates(const geometry::PathSet& piece
     // quand aucun separateur n'est fourni ou n'est exploitable ici.
     std::vector<double> separatorDistances;
     for (const auto& sep : params.junction_separators) {
-        if (sep.junction_id != junctionNode) continue;
+        if (sep.junction_id != junctionNode)
+            continue;
         const EdgeProjection proj = project_onto_edge(*edge, atStart, to_vec2d(sep.point));
-        if (!proj.valid || proj.perpendicular_distance_um > params.junction_separator_max_perpendicular_um) continue;
-        if (proj.distance_along_edge_um < params.search_min_um || proj.distance_along_edge_um > params.search_max_um)
+        if (!proj.valid ||
+            proj.perpendicular_distance_um > params.junction_separator_max_perpendicular_um)
+            continue;
+        if (proj.distance_along_edge_um < params.search_min_um ||
+            proj.distance_along_edge_um > params.search_max_um)
             continue;
         separatorDistances.push_back(proj.distance_along_edge_um);
     }
     std::sort(separatorDistances.begin(), separatorDistances.end());
-    separatorDistances.erase(
-        std::unique(separatorDistances.begin(), separatorDistances.end(),
-                    [](double a, double b) { return std::abs(a - b) < 1.0; }),
-        separatorDistances.end());
-    for (double d : separatorDistances) try_distance(d, true);
+    separatorDistances.erase(std::unique(separatorDistances.begin(), separatorDistances.end(),
+                                         [](double a, double b) { return std::abs(a - b) < 1.0; }),
+                             separatorDistances.end());
+    for (double d : separatorDistances)
+        try_distance(d, true);
 
     for (double d = params.search_min_um; d <= params.search_max_um; d += params.search_step_um) {
-        if (!try_distance(d, false)) break;  // aucune distance plus grande ne sera valide non plus
+        if (!try_distance(d, false))
+            break; // aucune distance plus grande ne sera valide non plus
     }
     return candidates;
 }
 
 RegionSplitReport split_region(const geometry::PathSet& region, const SkeletonGraph& graph,
-                                const DecompositionReport& decomposition, const CutCandidateParams& params) {
+                               const DecompositionReport& decomposition,
+                               const CutCandidateParams& params) {
     RegionSplitReport report;
 
     struct Event {
@@ -292,10 +329,12 @@ RegionSplitReport split_region(const geometry::PathSet& region, const SkeletonGr
     };
     std::vector<Event> events;
     for (const auto& jr : decomposition.junctions) {
-        for (auto edgeId : jr.detached) events.push_back({jr.node, edgeId});
+        for (auto edgeId : jr.detached)
+            events.push_back({jr.node, edgeId});
     }
-    std::sort(events.begin(), events.end(),
-              [](const Event& a, const Event& b) { return std::tie(a.junction, a.edge) < std::tie(b.junction, b.edge); });
+    std::sort(events.begin(), events.end(), [](const Event& a, const Event& b) {
+        return std::tie(a.junction, a.edge) < std::tie(b.junction, b.edge);
+    });
 
     std::vector<geometry::PathSet> pieces{region};
 
@@ -332,31 +371,36 @@ RegionSplitReport split_region(const geometry::PathSet& region, const SkeletonGr
         }
         if (!pieceIdx) {
             report.cuts.push_back(std::move(attempt));
-            continue;  // jonction introuvable dans le pool courant : incoherence, on laisse tel quel
+            continue; // jonction introuvable dans le pool courant : incoherence, on laisse tel quel
         }
 
-        attempt.candidates = generate_cut_candidates(pieces[*pieceIdx], graph, ev.junction, ev.edge, params);
+        attempt.candidates =
+            generate_cut_candidates(pieces[*pieceIdx], graph, ev.junction, ev.edge, params);
 
         std::optional<std::size_t> chosen;
         if (params.selector) {
             chosen = params.selector(pieces[*pieceIdx], attempt.candidates);
         } else {
             const auto validIt = std::find_if(attempt.candidates.begin(), attempt.candidates.end(),
-                                               [](const CutCandidate& c) { return c.valid; });
+                                              [](const CutCandidate& c) { return c.valid; });
             if (validIt != attempt.candidates.end())
-                chosen = static_cast<std::size_t>(std::distance(attempt.candidates.begin(), validIt));
+                chosen =
+                    static_cast<std::size_t>(std::distance(attempt.candidates.begin(), validIt));
         }
         if (!chosen || *chosen >= attempt.candidates.size()) {
             report.cuts.push_back(std::move(attempt));
-            continue;  // aucune coupe valide (ou aucune retenue par le selecteur) : la branche reste fusionnee
+            continue; // aucune coupe valide (ou aucune retenue par le selecteur) : la branche reste
+                      // fusionnee
         }
         attempt.selected = *chosen;
         const CutCandidate& winner = attempt.candidates[*chosen];
 
-        const auto cutResult = geometry::cut_path_set(pieces[*pieceIdx], winner.a, winner.b, params.cut_width);
+        const auto cutResult =
+            geometry::cut_path_set(pieces[*pieceIdx], winner.a, winner.b, params.cut_width);
         if (!cutResult.has_value() || cutResult->size() != 2) {
             report.cuts.push_back(std::move(attempt));
-            continue;  // garde-fou : ne devrait pas arriver, deja verifie par generate_cut_candidates
+            continue; // garde-fou : ne devrait pas arriver, deja verifie par
+                      // generate_cut_candidates
         }
 
         const std::uint32_t farNodeId = edge->from == ev.junction ? edge->to : edge->from;
@@ -410,15 +454,19 @@ RegionSplitReport split_region(const geometry::PathSet& region, const SkeletonGr
     for (std::size_t i = 0; i < successfulEvents.size(); ++i) {
         const auto reusedLater = [&](std::size_t slot) {
             for (std::size_t j = i + 1; j < successfulEvents.size(); ++j) {
-                if (successfulEvents[j].sourceSlot == slot) return true;
+                if (successfulEvents[j].sourceSlot == slot)
+                    return true;
             }
             return false;
         };
-        if (reusedLater(successfulEvents[i].sourceSlot) || reusedLater(successfulEvents[i].branchSlot)) continue;
+        if (reusedLater(successfulEvents[i].sourceSlot) ||
+            reusedLater(successfulEvents[i].branchSlot))
+            continue;
 
         const auto sourcePath = slotPathIndex[successfulEvents[i].sourceSlot];
         const auto branchPath = slotPathIndex[successfulEvents[i].branchSlot];
-        if (!sourcePath || !branchPath) continue;  // un des deux cotes non resolu (chemin non isole)
+        if (!sourcePath || !branchPath)
+            continue; // un des deux cotes non resolu (chemin non isole)
 
         MergeCandidate candidate;
         candidate.first_path_index = *sourcePath;
@@ -431,7 +479,8 @@ RegionSplitReport split_region(const geometry::PathSet& region, const SkeletonGr
     return report;
 }
 
-std::string format_region_split_report(const RegionSplitReport& report, const DecompositionReport& decomposition) {
+std::string format_region_split_report(const RegionSplitReport& report,
+                                       const DecompositionReport& decomposition) {
     std::ostringstream out;
     out.setf(std::ios::fixed);
     out.precision(3);
@@ -442,16 +491,20 @@ std::string format_region_split_report(const RegionSplitReport& report, const De
         for (std::size_t i = 0; i < attempt.candidates.size(); ++i) {
             const auto& c = attempt.candidates[i];
             const bool selected = attempt.selected.has_value() && *attempt.selected == i;
-            out << "    d=" << c.distance_from_junction_um << "um" << (c.from_junction_separator ? " [SEP]" : "") << " : ";
+            out << "    d=" << c.distance_from_junction_um << "um"
+                << (c.from_junction_separator ? " [SEP]" : "") << " : ";
             if (c.valid) {
-                out << "valide (branche=" << c.branch_piece_area_mm2 << "mm2, reste=" << c.remainder_piece_area_mm2 << "mm2)";
+                out << "valide (branche=" << c.branch_piece_area_mm2
+                    << "mm2, reste=" << c.remainder_piece_area_mm2 << "mm2)";
             } else {
                 out << "rejetee (" << c.rejection_reason << ")";
             }
-            if (selected) out << "  [SELECTED]";
+            if (selected)
+                out << "  [SELECTED]";
             out << "\n";
         }
-        if (!attempt.selected.has_value()) out << "    -> aucune coupe valide, branche non isolee\n";
+        if (!attempt.selected.has_value())
+            out << "    -> aucune coupe valide, branche non isolee\n";
         out << "\n";
     }
 
@@ -462,12 +515,14 @@ std::string format_region_split_report(const RegionSplitReport& report, const De
     }
     if (!report.unresolved_paths.empty()) {
         out << "Chemins non isoles :";
-        for (auto pi : report.unresolved_paths) out << " " << pi;
+        for (auto pi : report.unresolved_paths)
+            out << " " << pi;
         out << "\n";
     }
-    out << "\nTotal : " << report.regions.size() << " region(s) sur " << decomposition.paths.size() << " chemin(s)\n";
+    out << "\nTotal : " << report.regions.size() << " region(s) sur " << decomposition.paths.size()
+        << " chemin(s)\n";
 
     return out.str();
 }
 
-}  // namespace openstitch::satin_planning
+} // namespace openstitch::satin_planning

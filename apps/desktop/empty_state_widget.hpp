@@ -20,4 +20,4 @@ signals:
     void importDstRequested();
 };
 
-}  // namespace openstitch::desktop
+} // namespace openstitch::desktop

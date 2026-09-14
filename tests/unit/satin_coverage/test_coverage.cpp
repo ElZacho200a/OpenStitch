@@ -29,10 +29,14 @@ geometry::Path closed_rect(std::int32_t x0, std::int32_t x1, std::int32_t y0, st
     geometry::Path p;
     p.closed = true;
     p.nodes = {
-        {Vec2um{Micrometers{x0}, Micrometers{y0}}, geometry::NodeType::Corner, std::nullopt, std::nullopt},
-        {Vec2um{Micrometers{x1}, Micrometers{y0}}, geometry::NodeType::Corner, std::nullopt, std::nullopt},
-        {Vec2um{Micrometers{x1}, Micrometers{y1}}, geometry::NodeType::Corner, std::nullopt, std::nullopt},
-        {Vec2um{Micrometers{x0}, Micrometers{y1}}, geometry::NodeType::Corner, std::nullopt, std::nullopt},
+        {Vec2um{Micrometers{x0}, Micrometers{y0}}, geometry::NodeType::Corner, std::nullopt,
+         std::nullopt},
+        {Vec2um{Micrometers{x1}, Micrometers{y0}}, geometry::NodeType::Corner, std::nullopt,
+         std::nullopt},
+        {Vec2um{Micrometers{x1}, Micrometers{y1}}, geometry::NodeType::Corner, std::nullopt,
+         std::nullopt},
+        {Vec2um{Micrometers{x0}, Micrometers{y1}}, geometry::NodeType::Corner, std::nullopt,
+         std::nullopt},
     };
     return p;
 }
@@ -56,8 +60,10 @@ geometry::Path reversed(geometry::Path p) {
 // (haut/bas) -- une seule station -> un unique quadrilatère de couverture.
 SatinColumnInput rect_column(std::int32_t x0, std::int32_t x1, std::int32_t y0, std::int32_t y1) {
     SatinColumnInput col;
-    col.rail_a = open_path({{Micrometers{x0}, Micrometers{y0}}, {Micrometers{x0}, Micrometers{y1}}});
-    col.rail_b = open_path({{Micrometers{x1}, Micrometers{y0}}, {Micrometers{x1}, Micrometers{y1}}});
+    col.rail_a =
+        open_path({{Micrometers{x0}, Micrometers{y0}}, {Micrometers{x0}, Micrometers{y1}}});
+    col.rail_b =
+        open_path({{Micrometers{x1}, Micrometers{y0}}, {Micrometers{x1}, Micrometers{y1}}});
     col.rungs = {
         {Vec2um{Micrometers{x0}, Micrometers{y0}}, Vec2um{Micrometers{x1}, Micrometers{y0}}},
         {Vec2um{Micrometers{x0}, Micrometers{y1}}, Vec2um{Micrometers{x1}, Micrometers{y1}}},
@@ -78,10 +84,10 @@ SatinColumnInput to_input(const auto_satin::SatinColumnGeometry& col) {
     return in;
 }
 
-}  // namespace
+} // namespace
 
 TEST_CASE("couverture satin : rectangle entierement couvert -> proche de 100%, PASS") {
-    const auto target = rect_target(20'000, 5'000);  // 20 x 5 mm
+    const auto target = rect_target(20'000, 5'000); // 20 x 5 mm
     const std::vector<SatinColumnInput> columns{rect_column(0, 20'000, 0, 5'000)};
     const auto report = analyze_satin_coverage(target, columns);
     REQUIRE(report.has_value());
@@ -96,7 +102,7 @@ TEST_CASE("couverture satin : rectangle entierement couvert -> proche de 100%, P
 
 TEST_CASE("couverture satin : rectangle couvert a moitie -> ~50%, FAIL") {
     const auto target = rect_target(20'000, 5'000);
-    const std::vector<SatinColumnInput> columns{rect_column(0, 10'000, 0, 5'000)};  // moitie gauche
+    const std::vector<SatinColumnInput> columns{rect_column(0, 10'000, 0, 5'000)}; // moitie gauche
     const auto report = analyze_satin_coverage(target, columns);
     REQUIRE(report.has_value());
     CHECK(report->raw_coverage_ratio == Approx(0.5).margin(0.01));
@@ -114,20 +120,21 @@ TEST_CASE("couverture satin : trou de la forme source jamais compte comme manqua
     const geometry::Path hole = reversed(closed_rect(8'000, 12'000, 2'000, 8'000));
     const geometry::PathSet target{closed_rect(0, 20'000, 0, 10'000), {hole}};
     const std::vector<SatinColumnInput> columns{
-        rect_column(0, 8'000, 0, 10'000),        // bande gauche
-        rect_column(12'000, 20'000, 0, 10'000),  // bande droite
-        rect_column(8'000, 12'000, 8'000, 10'000),  // bande haute (au-dessus du trou)
-        rect_column(8'000, 12'000, 0, 2'000),       // bande basse (au-dessous du trou)
+        rect_column(0, 8'000, 0, 10'000),          // bande gauche
+        rect_column(12'000, 20'000, 0, 10'000),    // bande droite
+        rect_column(8'000, 12'000, 8'000, 10'000), // bande haute (au-dessus du trou)
+        rect_column(8'000, 12'000, 0, 2'000),      // bande basse (au-dessous du trou)
     };
     const auto report = analyze_satin_coverage(target, columns);
     REQUIRE(report.has_value());
-    CHECK(report->target_area_mm2 == Approx(176.0).margin(0.05));  // 200 - 24 (trou)
+    CHECK(report->target_area_mm2 == Approx(176.0).margin(0.05)); // 200 - 24 (trou)
     CHECK(report->raw_coverage_ratio > 0.999);
     CHECK(report->missing_area_mm2 < 0.05);
     CHECK(report->passed);
 }
 
-TEST_CASE("couverture satin : vraie poche non couverte entouree de matiere -> FAIL, gap radius significatif") {
+TEST_CASE("couverture satin : vraie poche non couverte entouree de matiere -> FAIL, gap radius "
+          "significatif") {
     // Meme decoupage en quatre bandes que le test precedent, MAIS la cible
     // est le rectangle PLEIN (sans trou declare) : la zone laissee sans
     // colonne est donc une vraie poche manquante, entierement entouree de
@@ -141,7 +148,7 @@ TEST_CASE("couverture satin : vraie poche non couverte entouree de matiere -> FA
     };
     const auto report = analyze_satin_coverage(target, columns);
     REQUIRE(report.has_value());
-    CHECK(report->missing_area_mm2 == Approx(24.0).margin(0.1));  // 4mm x 6mm
+    CHECK(report->missing_area_mm2 == Approx(24.0).margin(0.1)); // 4mm x 6mm
     CHECK_FALSE(report->passed);
     REQUIRE(report->missing_regions.size() == 1);
     CHECK(report->missing_regions.front().area_mm2 == Approx(24.0).margin(0.1));
@@ -151,30 +158,32 @@ TEST_CASE("couverture satin : vraie poche non couverte entouree de matiere -> FA
 }
 
 TEST_CASE("couverture satin : debordement hors de la forme cible -> outside_area > 0") {
-    const auto target = rect_target(10'000, 5'000);  // 10 x 5 mm
+    const auto target = rect_target(10'000, 5'000); // 10 x 5 mm
     // La colonne deborde de 3mm a droite de la cible.
     const std::vector<SatinColumnInput> columns{rect_column(0, 13'000, 0, 5'000)};
     const auto report = analyze_satin_coverage(target, columns);
     REQUIRE(report.has_value());
-    CHECK(report->outside_area_mm2 == Approx(15.0).margin(0.1));  // 3mm x 5mm
+    CHECK(report->outside_area_mm2 == Approx(15.0).margin(0.1)); // 3mm x 5mm
     CHECK(report->outside_ratio > 0.0);
-    CHECK(report->raw_coverage_ratio > 0.999);  // la cible elle-meme reste entierement couverte
+    CHECK(report->raw_coverage_ratio > 0.999); // la cible elle-meme reste entierement couverte
 }
 
-TEST_CASE("couverture satin : deux colonnes qui se chevauchent -> l'union fait foi, pas de double comptage") {
+TEST_CASE("couverture satin : deux colonnes qui se chevauchent -> l'union fait foi, pas de double "
+          "comptage") {
     const auto target = rect_target(20'000, 5'000);
     const std::vector<SatinColumnInput> columns{
         rect_column(0, 15'000, 0, 5'000),
-        rect_column(5'000, 20'000, 0, 5'000),  // chevauche la precedente sur [5000,15000]
+        rect_column(5'000, 20'000, 0, 5'000), // chevauche la precedente sur [5000,15000]
     };
     const auto report = analyze_satin_coverage(target, columns);
     REQUIRE(report.has_value());
-    CHECK(report->covered_area_mm2 == Approx(100.0).margin(0.02));  // pas 150
+    CHECK(report->covered_area_mm2 == Approx(100.0).margin(0.02)); // pas 150
     CHECK(report->raw_coverage_ratio > 0.999);
     CHECK(report->passed);
 }
 
-TEST_CASE("couverture satin : trident, branche manquante detectee comme un vrai defaut de couverture") {
+TEST_CASE(
+    "couverture satin : trident, branche manquante detectee comme un vrai defaut de couverture") {
     // Formes historiquement problematiques pour Auto-Satin (cf. docs/source/satin.md,
     // audit jonctions branchees/concaves) : verifie que l'analyseur de couverture
     // distingue nettement "toutes les branches presentes" de "une branche absente",
@@ -184,7 +193,7 @@ TEST_CASE("couverture satin : trident, branche manquante detectee comme un vrai 
     auto_satin::SatinColumnsParameters params;
     params.analysis.raster.pixel_size = Micrometers{100};
     const auto network = auto_satin::build_satin_columns(*region, params);
-    REQUIRE(network.columns.size() >= 2);  // decomposition Legacy multi-branches
+    REQUIRE(network.columns.size() >= 2); // decomposition Legacy multi-branches
 
     std::vector<SatinColumnInput> allColumns;
     for (const auto& col : network.columns) {
@@ -207,7 +216,8 @@ TEST_CASE("couverture satin : trident, branche manquante detectee comme un vrai 
         std::vector<SatinColumnInput> variant;
         variant.reserve(allColumns.size() - 1);
         for (std::size_t i = 0; i < allColumns.size(); ++i) {
-            if (i != dropped) variant.push_back(allColumns[i]);
+            if (i != dropped)
+                variant.push_back(allColumns[i]);
         }
         const auto variantReport = analyze_satin_coverage(*region, variant);
         REQUIRE(variantReport.has_value());
@@ -221,8 +231,9 @@ TEST_CASE("couverture satin : trident, branche manquante detectee comme un vrai 
     INFO("couverture complete: " << fullReport->raw_coverage_ratio * 100.0
                                  << " %, plus grande zone manquante (complete): "
                                  << fullReport->largest_missing_area_mm2
-                                 << " mm2 ; pire branche retiree -> couverture: " << worstRawCoverage * 100.0
-                                 << " %, plus grande zone manquante: " << worstLargestMissing << " mm2");
+                                 << " mm2 ; pire branche retiree -> couverture: "
+                                 << worstRawCoverage * 100.0 << " %, plus grande zone manquante: "
+                                 << worstLargestMissing << " mm2");
 
     // Le retrait de la branche principale doit degrader la couverture de
     // facon tres nette (pas une baisse marginale de bruit d'arrondi), et
@@ -235,7 +246,7 @@ TEST_CASE("couverture satin : trident, branche manquante detectee comme un vrai 
 
 TEST_CASE("couverture satin : SVG de diagnostic bien forme et coherent avec le rapport") {
     const auto target = rect_target(20'000, 5'000);
-    const std::vector<SatinColumnInput> columns{rect_column(0, 10'000, 0, 5'000)};  // moitie gauche
+    const std::vector<SatinColumnInput> columns{rect_column(0, 10'000, 0, 5'000)}; // moitie gauche
     const auto report = analyze_satin_coverage(target, columns);
     REQUIRE(report.has_value());
 

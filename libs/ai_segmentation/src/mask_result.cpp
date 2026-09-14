@@ -7,7 +7,7 @@ namespace openstitch::ai_segmentation {
 
 namespace {
 using json = nlohmann::json;
-}  // namespace
+} // namespace
 
 Result<MaskCollection> parse_masks_json(std::string_view json_text) {
     json root;
@@ -48,8 +48,8 @@ Result<MaskCollection> parse_masks_json(std::string_view json_text) {
         }
         return collection;
     } catch (const json::exception& e) {
-        return fail(ErrorCategory::InvalidFile, "masks.json invalide (champ manquant ou de type incorrect)",
-                    e.what());
+        return fail(ErrorCategory::InvalidFile,
+                    "masks.json invalide (champ manquant ou de type incorrect)", e.what());
     }
 }
 
@@ -79,4 +79,4 @@ std::string serialize_masks_json(const MaskCollection& collection) {
     return root.dump(2);
 }
 
-}  // namespace openstitch::ai_segmentation
+} // namespace openstitch::ai_segmentation

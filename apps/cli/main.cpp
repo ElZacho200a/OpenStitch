@@ -9,19 +9,18 @@
 #include <cmath>
 #include <numbers>
 
-#include "openstitch/core/app_info.hpp"
-#include "openstitch/core/log.hpp"
-#include "openstitch/formats/dst.hpp"
-#include "openstitch/formats/svg.hpp"
-#include "openstitch/geometry/path.hpp"
-#include "openstitch/image/image.hpp"
 #include "openstitch/auto_satin/auto_satin.hpp"
 #include "openstitch/auto_satin/debug_export.hpp"
 #include "openstitch/auto_satin/satin_column.hpp"
 #include "openstitch/auto_satin/shapes.hpp"
+#include "openstitch/core/app_info.hpp"
+#include "openstitch/core/log.hpp"
 #include "openstitch/document/embroidery_object.hpp"
 #include "openstitch/document/project.hpp"
+#include "openstitch/formats/dst.hpp"
+#include "openstitch/formats/svg.hpp"
 #include "openstitch/geometry/path.hpp"
+#include "openstitch/image/image.hpp"
 #include "openstitch/satin_coverage/coverage.hpp"
 #include "openstitch/satin_planning/beam_search.hpp"
 #include "openstitch/satin_planning/merge_pass.hpp"
@@ -55,8 +54,8 @@ int run_info(const std::string& path, double dpi) {
     fmt::print("Dimensions     : {} x {} px\n", info->width_px, info->height_px);
     fmt::print("Canaux         : {}\n", info->channels);
     fmt::print("Canal alpha    : {}\n", info->has_alpha ? "oui" : "non");
-    fmt::print("Taille estimée : {:.1f} x {:.1f} mm (à {:g} dpi)\n",
-               info->width_px * mm_per_px, info->height_px * mm_per_px, dpi);
+    fmt::print("Taille estimée : {:.1f} x {:.1f} mm (à {:g} dpi)\n", info->width_px * mm_per_px,
+               info->height_px * mm_per_px, dpi);
     return 0;
 }
 
@@ -85,8 +84,7 @@ int run_dst2svg(const std::string& input, const std::string& output) {
         fmt::print(stderr, "Erreur : {}\n", seq.error().message);
         return 1;
     }
-    const auto written =
-        openstitch::formats::write_svg_file(std::filesystem::path(output), *seq);
+    const auto written = openstitch::formats::write_svg_file(std::filesystem::path(output), *seq);
     if (!written) {
         fmt::print(stderr, "Erreur : {}\n", written.error().message);
         return 1;
@@ -125,7 +123,7 @@ openstitch::geometry::Path debug_shape(const std::string& name) {
         geometry::PathNode b = corner(40'000, 0);
         b.tan_in = Vec2um{Micrometers{-15'000}, Micrometers{30'000}};
         p.nodes = {a, b};
-    } else {  // "star" : coins vifs
+    } else { // "star" : coins vifs
         p.closed = true;
         const int pts = 5;
         for (int i = 0; i < pts * 2; ++i) {
@@ -151,8 +149,7 @@ int run_filldebug(double lengthMm, const std::string& outSvg, int underlayMask, 
     };
     geometry::PathSet ring;
     ring.outer.closed = true;
-    ring.outer.nodes = {corner(0, 0), corner(20'000, 0), corner(20'000, 20'000),
-                        corner(0, 20'000)};
+    ring.outer.nodes = {corner(0, 0), corner(20'000, 0), corner(20'000, 20'000), corner(0, 20'000)};
     geometry::Path hole;
     hole.closed = true;
     hole.nodes = {corner(6'000, 6'000), corner(14'000, 6'000), corner(14'000, 14'000),
@@ -189,7 +186,8 @@ int run_filldebug(double lengthMm, const std::string& outSvg, int underlayMask, 
     int sewnCrossingHole = 0;
     for (std::size_t i = 1; i < seq->commands.size(); ++i) {
         const auto& c = seq->commands[i];
-        if (c.type != stitch::CommandType::Stitch) continue;
+        if (c.type != stitch::CommandType::Stitch)
+            continue;
         const Vec2um a = seq->commands[i - 1].pos;
         const Vec2um mid{Micrometers{(a.x.value + c.pos.x.value) / 2},
                          Micrometers{(a.y.value + c.pos.y.value) / 2}};
@@ -201,8 +199,10 @@ int run_filldebug(double lengthMm, const std::string& outSvg, int underlayMask, 
 
     int under = 0, travel = 0;
     for (const auto& c : seq->commands) {
-        if (c.type == stitch::CommandType::Stitch && c.pass == stitch::StitchPass::Underlay) ++under;
-        if (c.type == stitch::CommandType::Stitch && c.pass == stitch::StitchPass::Travel) ++travel;
+        if (c.type == stitch::CommandType::Stitch && c.pass == stitch::StitchPass::Underlay)
+            ++under;
+        if (c.type == stitch::CommandType::Stitch && c.pass == stitch::StitchPass::Travel)
+            ++travel;
     }
     fmt::print("Anneau tatami (trou central)\n");
     fmt::print("Points cousus : {}  |  déplacements : {}\n", stats.stitches, stats.jumps);
@@ -219,7 +219,8 @@ int run_filldebug(double lengthMm, const std::string& outSvg, int underlayMask, 
         for (std::size_t i = 1; i < seq->commands.size(); ++i) {
             const auto& prev = seq->commands[i - 1];
             const auto& cur = seq->commands[i];
-            if (cur.type == stitch::CommandType::End) continue;
+            if (cur.type == stitch::CommandType::End)
+                continue;
             const char* stroke = nullptr;
             const char* dash = "";
             if (cur.type == stitch::CommandType::Jump) {
@@ -297,9 +298,9 @@ int run_stitchdebug(const std::string& shape, double lengthMm, int repeats,
     return 0;
 }
 
-openstitch::satin_coverage::SatinColumnInput to_coverage_input(
-    const openstitch::geometry::Path& railA, const openstitch::geometry::Path& railB,
-    const std::vector<openstitch::auto_satin::SatinRung>& rungs) {
+openstitch::satin_coverage::SatinColumnInput
+to_coverage_input(const openstitch::geometry::Path& railA, const openstitch::geometry::Path& railB,
+                  const std::vector<openstitch::auto_satin::SatinRung>& rungs) {
     openstitch::satin_coverage::SatinColumnInput in;
     in.rail_a = railA;
     in.rail_b = railB;
@@ -336,7 +337,8 @@ void write_coverage_svg(const openstitch::geometry::PathSet& region,
 
 int run_auto_satin_debug(const std::string& shape, double pixelMm, const std::string& outSvg,
                          int capEnd, int shortMode, int splitMode, int underlayMask, int lockMode,
-                         bool route, const std::string& geometryMode, const std::string& coverageSvg) {
+                         bool route, const std::string& geometryMode,
+                         const std::string& coverageSvg) {
     using namespace openstitch;
     const auto region = auto_satin::make_shape(shape);
     if (!region) {
@@ -346,8 +348,8 @@ int run_auto_satin_debug(const std::string& shape, double pixelMm, const std::st
     const bool parametric = geometryMode == "parametric";
     auto_satin::SatinColumnsParameters params;
     params.analysis.raster.pixel_size = to_micrometers(Millimeters{pixelMm});
-    params.geometry_mode =
-        parametric ? auto_satin::SatinGeometryMode::Parametric : auto_satin::SatinGeometryMode::Legacy;
+    params.geometry_mode = parametric ? auto_satin::SatinGeometryMode::Parametric
+                                      : auto_satin::SatinGeometryMode::Legacy;
     const auto result = auto_satin::build_satin_columns(*region, params);
     const auto& r = result.report;
     fmt::print("Forme            : {}\n", shape);
@@ -367,10 +369,10 @@ int run_auto_satin_debug(const std::string& shape, double pixelMm, const std::st
         for (std::size_t i = 0; i < result.parametric_columns.size(); ++i) {
             const auto& c = result.parametric_columns[i];
             fmt::print("  objet {} : {} stations brutes -> {} paires structurantes, {} segments "
-                      "bezier, erreur max {:.3f} mm, largeur moy {:.2f} mm, long {:.1f} mm\n",
-                      i, c.raw_station_count, c.control_pairs.size(),
-                      c.rail_a.nodes.empty() ? 0 : c.rail_a.nodes.size() - 1,
-                      c.max_fit_error_um / 1000.0, c.mean_width_um / 1000.0, c.length_um / 1000.0);
+                       "bezier, erreur max {:.3f} mm, largeur moy {:.2f} mm, long {:.1f} mm\n",
+                       i, c.raw_station_count, c.control_pairs.size(),
+                       c.rail_a.nodes.empty() ? 0 : c.rail_a.nodes.size() - 1,
+                       c.max_fit_error_um / 1000.0, c.mean_width_um / 1000.0, c.length_um / 1000.0);
         }
         for (const auto& plan : result.junction_plans) {
             fmt::print("  jonction {} : ordre de couture =", plan.junction_id);
@@ -435,12 +437,13 @@ int run_auto_satin_debug(const std::string& shape, double pixelMm, const std::st
             const auto sat =
                 stitch_generation::fill_satin_columns(obj.rail_a, obj.rail_b, rungs, scfg);
             const auto polylineSvg = [&](const std::vector<Vec2um>& pts, const char* stroke,
-                                        double w) {
-                if (pts.size() < 2) return;
+                                         double w) {
+                if (pts.size() < 2)
+                    return;
                 overlay += "<path d=\"M";
                 for (std::size_t i = 0; i < pts.size(); ++i) {
-                    overlay += fmt::format("{}{:.3f} {:.3f} ", i ? "L" : "", pts[i].x.value / 1000.0,
-                                           -pts[i].y.value / 1000.0);
+                    overlay += fmt::format("{}{:.3f} {:.3f} ", i ? "L" : "",
+                                           pts[i].x.value / 1000.0, -pts[i].y.value / 1000.0);
                 }
                 overlay += fmt::format("\" fill=\"none\" stroke=\"{}\" stroke-width=\"{}\"/>\n",
                                        stroke, w);
@@ -482,19 +485,20 @@ int run_auto_satin_debug(const std::string& shape, double pixelMm, const std::st
                 stitch_generation::fill_satin_columns(col.rail_a, col.rail_b, rungs, scfg);
             const auto polylineSvg = [&](const std::vector<Vec2um>& pts, const char* stroke,
                                          double w) {
-                if (pts.size() < 2) return;
+                if (pts.size() < 2)
+                    return;
                 overlay += "<path d=\"M";
                 for (std::size_t i = 0; i < pts.size(); ++i) {
-                    overlay += fmt::format("{}{:.3f} {:.3f} ", i ? "L" : "", pts[i].x.value / 1000.0,
-                                           -pts[i].y.value / 1000.0);
+                    overlay += fmt::format("{}{:.3f} {:.3f} ", i ? "L" : "",
+                                           pts[i].x.value / 1000.0, -pts[i].y.value / 1000.0);
                 }
                 overlay += fmt::format("\" fill=\"none\" stroke=\"{}\" stroke-width=\"{}\"/>\n",
                                        stroke, w);
             };
             for (const auto& u : sat.underlays) {
-                polylineSvg(u.points, "#0a9", 0.05);  // sous-couches (vert)
+                polylineSvg(u.points, "#0a9", 0.05); // sous-couches (vert)
             }
-            polylineSvg(sat.satin, "#333", 0.06);  // couche supérieure
+            polylineSvg(sat.satin, "#333", 0.06); // couche supérieure
             // Points de fixation (Lot 5) : ancrés aux extrémités du satin, rouge.
             if (lockMode > 0 && sat.satin.size() >= 2) {
                 const auto type = static_cast<stitch_generation::LockType>(lockMode);
@@ -519,7 +523,7 @@ int run_auto_satin_debug(const std::string& shape, double pixelMm, const std::st
                 document::SatinParams sp;
                 sp.rail_a = col.rail_a;
                 sp.rail_b = col.rail_b;
-                sp.center_underlay = false;  // lisibilité : une passe par colonne
+                sp.center_underlay = false; // lisibilité : une passe par colonne
                 for (const auto& rr : col.rungs) {
                     sp.rungs.push_back(document::SatinRung{rr.a, rr.b});
                 }
@@ -546,10 +550,10 @@ int run_auto_satin_debug(const std::string& shape, double pixelMm, const std::st
                         continue;
                     }
                     const bool jump = cur.type == stitch::CommandType::Jump;
-                    overlay += fmt::format(
-                        "<path d=\"M{} L{}\" fill=\"none\" stroke=\"{}\" stroke-width=\"0.15\"{}/>\n",
-                        pt(prev.pos), pt(cur.pos), jump ? "#e00" : "#06c",
-                        jump ? " stroke-dasharray=\"0.4 0.3\"" : "");
+                    overlay += fmt::format("<path d=\"M{} L{}\" fill=\"none\" stroke=\"{}\" "
+                                           "stroke-width=\"0.15\"{}/>\n",
+                                           pt(prev.pos), pt(cur.pos), jump ? "#e00" : "#06c",
+                                           jump ? " stroke-dasharray=\"0.4 0.3\"" : "");
                 }
             }
         }
@@ -592,9 +596,11 @@ int run_sgsd_debug(const std::string& shape, double pixelMm, int beamWidth) {
 
     fmt::print("========== Phases 1-2 : graphe de squelette + décomposition ==========\n");
     const auto decomposition = satin_planning::decompose_into_paths(analysis->debug.graph);
-    fmt::print("{}\n", satin_planning::format_decomposition_report(analysis->debug.graph, decomposition));
+    fmt::print("{}\n",
+               satin_planning::format_decomposition_report(analysis->debug.graph, decomposition));
 
-    fmt::print("========== Phase 3/4/6 : découpage (candidats + garde-fou de satinabilité + recherche à faisceau) ==========\n");
+    fmt::print("========== Phase 3/4/6 : découpage (candidats + garde-fou de satinabilité + "
+               "recherche à faisceau) ==========\n");
     satin_planning::CutCandidateParams cutParams;
     satin_planning::BeamSearchParams beamParams;
     beamParams.beam_width = static_cast<std::size_t>(beamWidth > 0 ? beamWidth : 0);
@@ -607,7 +613,8 @@ int run_sgsd_debug(const std::string& shape, double pixelMm, int beamWidth) {
     } else {
         fmt::print("(recherche à faisceau désactivée : premier candidat valide retenu)\n\n");
     }
-    const auto split = satin_planning::split_region(*region, analysis->debug.graph, decomposition, cutParams);
+    const auto split =
+        satin_planning::split_region(*region, analysis->debug.graph, decomposition, cutParams);
     fmt::print("{}\n", satin_planning::format_region_split_report(split, decomposition));
 
     auto_satin::SatinColumnsParameters genParams;
@@ -634,7 +641,8 @@ int run_sgsd_debug(const std::string& shape, double pixelMm, int beamWidth) {
     const auto routingReport = satin_planning::route_regions(split, routingParams);
     fmt::print("{}\n", satin_planning::format_region_routing_report(routingReport));
 
-    fmt::print("========== Comparaison : SGSD vs approche directe (build_satin_columns sur la forme entière) ==========\n");
+    fmt::print("========== Comparaison : SGSD vs approche directe (build_satin_columns sur la "
+               "forme entière) ==========\n");
     const auto direct = auto_satin::build_satin_columns(*region, genParams);
     std::vector<satin_coverage::SatinColumnInput> directColumns;
     if (!direct.parametric_columns.empty()) {
@@ -649,17 +657,18 @@ int run_sgsd_debug(const std::string& shape, double pixelMm, int beamWidth) {
     double directCoverage = 0.0;
     if (!directColumns.empty()) {
         const auto directReport = satin_coverage::analyze_satin_coverage(*region, directColumns);
-        if (directReport) directCoverage = directReport->raw_coverage_ratio * 100.0;
+        if (directReport)
+            directCoverage = directReport->raw_coverage_ratio * 100.0;
     }
     fmt::print("SGSD (agrégé, {} région(s) résolue(s) sur {})   : {:.1f}%\n", split.regions.size(),
-              decomposition.paths.size(), genReport.aggregate_coverage_ratio);
+               decomposition.paths.size(), genReport.aggregate_coverage_ratio);
     fmt::print("Direct (build_satin_columns, non décomposé)     : {:.1f}%{}\n", directCoverage,
-              direct.refusal.empty() ? "" : fmt::format(" (refus : {})", direct.refusal));
+               direct.refusal.empty() ? "" : fmt::format(" (refus : {})", direct.refusal));
 
     return 0;
 }
 
-}  // namespace
+} // namespace
 
 int main(int argc, char** argv) {
 #ifdef _WIN32
@@ -693,8 +702,8 @@ int main(int argc, char** argv) {
     double sd_length = 3.0;
     int sd_repeats = 1;
     std::string sd_out;
-    auto* sd_cmd = app.add_subcommand(
-        "stitchdebug", "Inspecte le moteur de points sur une forme de référence");
+    auto* sd_cmd = app.add_subcommand("stitchdebug",
+                                      "Inspecte le moteur de points sur une forme de référence");
     sd_cmd->add_option("--shape", sd_shape, "line|corner|circle|bezier|star|ring")
         ->check(CLI::IsMember({"line", "corner", "circle", "bezier", "star", "ring"}));
     sd_cmd->add_option("--length", sd_length, "Longueur de point en mm")
@@ -723,7 +732,8 @@ int main(int argc, char** argv) {
     as_cmd->add_option("--short", as_short, "Points courts : 0 off, 2 inset, 3 multi-niveaux");
     as_cmd->add_option("--split", as_split, "Split : 0 off, 1 simple, 2 décalé, 3 jitter");
     int as_underlay = 0;
-    as_cmd->add_option("--underlay", as_underlay, "Sous-couches (masque : 1 center, 2 edge, 4 zigzag)");
+    as_cmd->add_option("--underlay", as_underlay,
+                       "Sous-couches (masque : 1 center, 2 edge, 4 zigzag)");
     int as_lock = 0;
     as_cmd->add_option("--lock", as_lock,
                        "Fixation : 0 off, 1 aller-retour, 2 triangle, 3 micro-zigzag");
@@ -731,9 +741,10 @@ int main(int argc, char** argv) {
     as_cmd->add_flag("--route", as_route,
                      "Superpose le routage multi-colonnes (liaisons cachées bleu / sauts rouge)");
     std::string as_geometry = "legacy";
-    as_cmd->add_option("--satin-geometry", as_geometry,
-                       "legacy (rails polyligne denses) | parametric (objets satin "
-                       "parametriques, rails Bezier epars)")
+    as_cmd
+        ->add_option("--satin-geometry", as_geometry,
+                     "legacy (rails polyligne denses) | parametric (objets satin "
+                     "parametriques, rails Bezier epars)")
         ->check(CLI::IsMember({"legacy", "parametric"}));
     std::string as_coverage_svg;
     as_cmd->add_option("--coverage-svg", as_coverage_svg,

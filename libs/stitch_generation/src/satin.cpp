@@ -66,7 +66,7 @@ PointD point_at(const std::vector<PointD>& pts, const std::vector<double>& cum, 
 // tangente (legacy, `rails_from_contour`, saisie manuelle) traverse
 // `flatten` inchangé (chaque segment reste une droite), donc ce changement
 // est un sur-ensemble strict du comportement précédent.
-constexpr Micrometers kRailFlattenTolerance{30};  // 0,03 mm : sous la résolution DST (0,1 mm)
+constexpr Micrometers kRailFlattenTolerance{30}; // 0,03 mm : sous la résolution DST (0,1 mm)
 
 std::vector<PointD> to_points(const geometry::Path& path) {
     const auto flat = geometry::flatten(path, kRailFlattenTolerance);
@@ -141,8 +141,12 @@ double jitter01(std::uint64_t x) {
     return static_cast<double>(x >> 11) / static_cast<double>(1ull << 53);
 }
 
-PointD lerpP(PointD a, PointD b, double t) { return {a.x + (b.x - a.x) * t, a.y + (b.y - a.y) * t}; }
-PointD midP(PointD a, PointD b) { return {(a.x + b.x) / 2.0, (a.y + b.y) / 2.0}; }
+PointD lerpP(PointD a, PointD b, double t) {
+    return {a.x + (b.x - a.x) * t, a.y + (b.y - a.y) * t};
+}
+PointD midP(PointD a, PointD b) {
+    return {(a.x + b.x) / 2.0, (a.y + b.y) / 2.0};
+}
 
 // --- Correspondance locale rail A <-> rail B (appariement, cf. audit satin) ---
 //
@@ -203,13 +207,11 @@ std::vector<double> fine_s_grid(double s0, double s1, double maxStep) {
 // courte avec le point courant de l'autre rail (ties : alterne, pour ne pas
 // épuiser un rail avant l'autre sur un cas symétrique). Garde-fou : si
 // l'avance choisie croiserait la diagonale précédente, tente l'autre côté.
-std::vector<CorrespondencePoint> ladder_correspondence(const std::vector<PointD>& a,
-                                                       const std::vector<double>& cumA, double sa0,
-                                                       PointD pa0, double sa1, PointD pa1,
-                                                       const std::vector<PointD>& b,
-                                                       const std::vector<double>& cumB, double sb0,
-                                                       PointD pb0, double sb1, PointD pb1,
-                                                       double maxStep) {
+std::vector<CorrespondencePoint>
+ladder_correspondence(const std::vector<PointD>& a, const std::vector<double>& cumA, double sa0,
+                      PointD pa0, double sa1, PointD pa1, const std::vector<PointD>& b,
+                      const std::vector<double>& cumB, double sb0, PointD pb0, double sb1,
+                      PointD pb1, double maxStep) {
     const auto ssa = fine_s_grid(sa0, sa1, maxStep);
     const auto ssb = fine_s_grid(sb0, sb1, maxStep);
     std::vector<PointD> chainA(ssa.size());
@@ -241,8 +243,9 @@ std::vector<CorrespondencePoint> ladder_correspondence(const std::vector<PointD>
             if (advanceA && segments_cross_strict(prev.pa, prev.pb, chainA[ia + 1], chainB[ib]) &&
                 !segments_cross_strict(prev.pa, prev.pb, chainA[ia], chainB[ib + 1])) {
                 advanceA = false;
-            } else if (!advanceA && segments_cross_strict(prev.pa, prev.pb, chainA[ia], chainB[ib + 1]) &&
-                      !segments_cross_strict(prev.pa, prev.pb, chainA[ia + 1], chainB[ib])) {
+            } else if (!advanceA &&
+                       segments_cross_strict(prev.pa, prev.pb, chainA[ia], chainB[ib + 1]) &&
+                       !segments_cross_strict(prev.pa, prev.pb, chainA[ia + 1], chainB[ib])) {
                 advanceA = true;
             }
         } else {
@@ -264,16 +267,15 @@ std::vector<CorrespondencePoint> ladder_correspondence(const std::vector<PointD>
 // LOCAL du ladder qui encadre la cible, jamais sur tout l'intervalle -> erreur
 // bornée par la résolution du ladder (maxStep), pas par la longueur totale de
 // l'intervalle. `ladder` doit contenir au moins un point.
-std::vector<CorrespondencePoint> resample_by_medial_spacing(const std::vector<CorrespondencePoint>& ladder,
-                                                             const std::vector<PointD>& a,
-                                                             const std::vector<double>& cumA,
-                                                             const std::vector<PointD>& b,
-                                                             const std::vector<double>& cumB,
-                                                             double spacing) {
+std::vector<CorrespondencePoint>
+resample_by_medial_spacing(const std::vector<CorrespondencePoint>& ladder,
+                           const std::vector<PointD>& a, const std::vector<double>& cumA,
+                           const std::vector<PointD>& b, const std::vector<double>& cumB,
+                           double spacing) {
     std::vector<double> cumM(ladder.size(), 0.0);
     for (std::size_t i = 1; i < ladder.size(); ++i) {
-        cumM[i] =
-            cumM[i - 1] + dist(midP(ladder[i - 1].pa, ladder[i - 1].pb), midP(ladder[i].pa, ladder[i].pb));
+        cumM[i] = cumM[i - 1] +
+                  dist(midP(ladder[i - 1].pa, ladder[i - 1].pb), midP(ladder[i].pa, ladder[i].pb));
     }
     const double total = cumM.back();
     const int n = std::max(1, static_cast<int>(std::lround(total / spacing)));
@@ -303,7 +305,7 @@ struct Thread {
     PointD b;
     bool anchor{false};
     bool dropped{false};
-    bool jump_before{false};  // atteint par un saut, pas un point continu depuis le fil précédent
+    bool jump_before{false}; // atteint par un saut, pas un point continu depuis le fil précédent
 };
 
 // Écart directionnel entre deux barreaux consécutifs, PAR MILLIMÈTRE
@@ -340,8 +342,7 @@ bool non_ribbon_interval(PointD a0, PointD a1, PointD b0, PointD b1) {
     if (lenA < kJumpMinSpan || lenB < kJumpMinSpan) {
         return false;
     }
-    const double cosTheta =
-        std::clamp((dirAx * dirBx + dirAy * dirBy) / (lenA * lenB), -1.0, 1.0);
+    const double cosTheta = std::clamp((dirAx * dirBx + dirAy * dirBy) / (lenA * lenB), -1.0, 1.0);
     const double angleDeg = std::acos(cosTheta) * 180.0 / std::numbers::pi;
     const double avgSpanMm = (lenA + lenB) / 2.0 / 1000.0;
     return angleDeg > kJumpDegPerMm * avgSpanMm;
@@ -353,22 +354,23 @@ double cap_factor(SatinCapType type, int stepsFromEnd, int len) {
     if (len <= 0 || stepsFromEnd >= len) {
         return 1.0;
     }
-    const double u = static_cast<double>(stepsFromEnd) / static_cast<double>(len);  // 0 au bout
-    constexpr double kMin = 0.18;  // jamais 0 : évite d'empiler sur un point unique
+    const double u = static_cast<double>(stepsFromEnd) / static_cast<double>(len); // 0 au bout
+    constexpr double kMin = 0.18; // jamais 0 : évite d'empiler sur un point unique
     switch (type) {
     case SatinCapType::Tapered:
-        return kMin + (1.0 - kMin) * u;  // linéaire -> pointe
+        return kMin + (1.0 - kMin) * u; // linéaire -> pointe
     case SatinCapType::Rounded:
-        return kMin + (1.0 - kMin) * std::sin(u * std::acos(-1.0) / 2.0);  // arrondi
+        return kMin + (1.0 - kMin) * std::sin(u * std::acos(-1.0) / 2.0); // arrondi
     default:
-        return 1.0;  // Flat : inchangé
+        return 1.0; // Flat : inchangé
     }
 }
 
-}  // namespace
+} // namespace
 
 std::vector<SatinStation> satin_stations(const geometry::Path& rail_a, const geometry::Path& rail_b,
-                                         const std::vector<SatinRungSeg>& rungs, Micrometers density) {
+                                         const std::vector<SatinRungSeg>& rungs,
+                                         Micrometers density) {
     std::vector<SatinStation> stations;
     const auto a = to_points(rail_a);
     auto b = to_points(rail_b);
@@ -454,13 +456,13 @@ std::vector<SatinStation> satin_stations(const geometry::Path& rail_a, const geo
             stations.push_back({toUm(a1.pa), toUm(a1.pb), true, true});
             continue;
         }
-        const auto ladder = ladder_correspondence(a, cumA, a0.sa, a0.pa, a1.sa, a1.pa, b, cumB, a0.sb,
-                                                   a0.pb, a1.sb, a1.pb, maxStep);
+        const auto ladder = ladder_correspondence(a, cumA, a0.sa, a0.pa, a1.sa, a1.pa, b, cumB,
+                                                  a0.sb, a0.pb, a1.sb, a1.pb, maxStep);
         const auto resampled = resample_by_medial_spacing(ladder, a, cumA, b, cumB, dens);
         for (std::size_t j = 1; j + 1 < resampled.size(); ++j) {
             stations.push_back({toUm(resampled[j].pa), toUm(resampled[j].pb), false, false});
         }
-        stations.push_back({toUm(a1.pa), toUm(a1.pb), true, false});  // barreau traversé exactement
+        stations.push_back({toUm(a1.pa), toUm(a1.pb), true, false}); // barreau traversé exactement
     }
     return stations;
 }
@@ -468,7 +470,7 @@ std::vector<SatinStation> satin_stations(const geometry::Path& rail_a, const geo
 SatinResult fill_satin_columns(const geometry::Path& rail_a, const geometry::Path& rail_b,
                                const std::vector<SatinRungSeg>& rungs, const SatinConfig& config) {
     if (rungs.size() < 2) {
-        return fill_satin(rail_a, rail_b, config);  // satin manuel / legacy
+        return fill_satin(rail_a, rail_b, config); // satin manuel / legacy
     }
     SatinResult result;
     const auto stations = satin_stations(rail_a, rail_b, rungs, config.density);
@@ -492,8 +494,10 @@ SatinResult fill_satin_columns(const geometry::Path& rail_a, const geometry::Pat
         if (f < 1.0) {
             const PointD m = midP(threads[static_cast<std::size_t>(i)].a,
                                   threads[static_cast<std::size_t>(i)].b);
-            threads[static_cast<std::size_t>(i)].a = lerpP(m, threads[static_cast<std::size_t>(i)].a, f);
-            threads[static_cast<std::size_t>(i)].b = lerpP(m, threads[static_cast<std::size_t>(i)].b, f);
+            threads[static_cast<std::size_t>(i)].a =
+                lerpP(m, threads[static_cast<std::size_t>(i)].a, f);
+            threads[static_cast<std::size_t>(i)].b =
+                lerpP(m, threads[static_cast<std::size_t>(i)].b, f);
         }
     }
 
@@ -532,7 +536,7 @@ SatinResult fill_satin_columns(const geometry::Path& rail_a, const geometry::Pat
             if (config.short_stitch == ShortStitchMode::MultiLevelInset) {
                 const int period = 2 * levels;
                 const int ph = i % period;
-                const int tri = ph <= levels ? ph : period - ph;  // 0..levels..0
+                const int tri = ph <= levels ? ph : period - ph; // 0..levels..0
                 frac = config.short_stitch_inset * static_cast<double>(tri) / levels;
             }
             const PointD m = midP(t.a, t.b);
@@ -552,8 +556,8 @@ SatinResult fill_satin_columns(const geometry::Path& rail_a, const geometry::Pat
         }
         auto& t = threads[static_cast<std::size_t>(idx)];
         const PointD mi = midP(t.a, t.b);
-        const PointD mn = midP(threads[static_cast<std::size_t>(nb)].a,
-                              threads[static_cast<std::size_t>(nb)].b);
+        const PointD mn =
+            midP(threads[static_cast<std::size_t>(nb)].a, threads[static_cast<std::size_t>(nb)].b);
         const double n = dist(mi, mn);
         if (n < 1e-6) {
             return;
@@ -577,8 +581,8 @@ SatinResult fill_satin_columns(const geometry::Path& rail_a, const geometry::Pat
     // Milieux + retrait aux extrémités (pour center/edge underlay).
     std::vector<PointD> mids(static_cast<std::size_t>(nThreads));
     for (int i = 0; i < nThreads; ++i) {
-        mids[static_cast<std::size_t>(i)] = midP(threads[static_cast<std::size_t>(i)].a,
-                                                 threads[static_cast<std::size_t>(i)].b);
+        mids[static_cast<std::size_t>(i)] =
+            midP(threads[static_cast<std::size_t>(i)].a, threads[static_cast<std::size_t>(i)].b);
     }
     std::vector<double> cumMid(static_cast<std::size_t>(nThreads), 0.0);
     for (int i = 1; i < nThreads; ++i) {
@@ -616,23 +620,27 @@ SatinResult fill_satin_columns(const geometry::Path& rail_a, const geometry::Pat
                 center.points.push_back(toUm(point_at(mids, cumMid, target)));
             }
         }
-        if (center.points.size() >= 2) result.underlays.push_back(std::move(center));
+        if (center.points.size() >= 2)
+            result.underlays.push_back(std::move(center));
     }
     if (config.underlay_edge) {
         SatinPass ea;
         SatinPass eb;
         for (int i = 0; i < nThreads; ++i) {
-            if (!keepEnd(i)) continue;
+            if (!keepEnd(i))
+                continue;
             const auto& t = threads[static_cast<std::size_t>(i)];
             const double half = dist(t.a, t.b) * 0.5;
-            const double ins = std::min(static_cast<double>(config.underlay_edge_inset.value),
-                                        half * 0.9);
-            const double f = half > 1e-6 ? ins / (2.0 * half) : 0.0;  // fraction a->b
+            const double ins =
+                std::min(static_cast<double>(config.underlay_edge_inset.value), half * 0.9);
+            const double f = half > 1e-6 ? ins / (2.0 * half) : 0.0; // fraction a->b
             ea.points.push_back(toUm(lerpP(t.a, t.b, f)));
             eb.points.push_back(toUm(lerpP(t.b, t.a, f)));
         }
-        if (ea.points.size() >= 2) result.underlays.push_back(std::move(ea));
-        if (eb.points.size() >= 2) result.underlays.push_back(std::move(eb));
+        if (ea.points.size() >= 2)
+            result.underlays.push_back(std::move(ea));
+        if (eb.points.size() >= 2)
+            result.underlays.push_back(std::move(eb));
     }
     if (config.underlay_zigzag) {
         const double zs =
@@ -645,11 +653,13 @@ SatinResult fill_satin_columns(const geometry::Path& rail_a, const geometry::Pat
             zz.points.push_back(toUm(lerpP(m, threads[static_cast<std::size_t>(i)].a, wf)));
             zz.points.push_back(toUm(lerpP(m, threads[static_cast<std::size_t>(i)].b, wf)));
         }
-        if (zz.points.size() >= 2) result.underlays.push_back(std::move(zz));
+        if (zz.points.size() >= 2)
+            result.underlays.push_back(std::move(zz));
     }
 
     // --- Émission couche supérieure : zigzag + split + compensation asym. ---
-    const double maxLen = static_cast<double>(std::max<std::int32_t>(1, config.max_stitch_length.value));
+    const double maxLen =
+        static_cast<double>(std::max<std::int32_t>(1, config.max_stitch_length.value));
     const double pmax = static_cast<double>(config.pull_max.value);
     int emitted = 0;
     for (int i = 0; i < nThreads; ++i) {
@@ -785,8 +795,8 @@ std::vector<SatinRungSeg> default_rungs(const geometry::Path& rail_a, const geom
     return out;
 }
 
-std::optional<std::pair<geometry::Path, geometry::Path>> rails_from_contour(
-    const geometry::Path& contour) {
+std::optional<std::pair<geometry::Path, geometry::Path>>
+rails_from_contour(const geometry::Path& contour) {
     const auto pts = to_points(contour);
     if (pts.size() < 4) {
         return std::nullopt;
@@ -833,4 +843,4 @@ std::optional<std::pair<geometry::Path, geometry::Path>> rails_from_contour(
     return std::pair{railA, railB};
 }
 
-}  // namespace openstitch::stitch_generation
+} // namespace openstitch::stitch_generation

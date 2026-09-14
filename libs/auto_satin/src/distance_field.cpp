@@ -34,7 +34,7 @@ DistanceField distance_transform(const RasterMask& mask) {
         }
     }
     cv::Mat dist;
-    cv::distanceTransform(bin, dist, cv::DIST_L2, 3);  // en pixels
+    cv::distanceTransform(bin, dist, cv::DIST_L2, 3); // en pixels
     const float px = static_cast<float>(mask.transform.pixel_size_um);
     for (int y = 0; y < mask.height; ++y) {
         const auto* row = dist.ptr<float>(y);
@@ -46,4 +46,4 @@ DistanceField distance_transform(const RasterMask& mask) {
     return df;
 }
 
-}  // namespace openstitch::auto_satin
+} // namespace openstitch::auto_satin

@@ -23,7 +23,9 @@ geometry::Path open_path(std::initializer_list<std::pair<std::int32_t, std::int3
     return p;
 }
 
-Vec2um v(std::int32_t x, std::int32_t y) { return {Micrometers{x}, Micrometers{y}}; }
+Vec2um v(std::int32_t x, std::int32_t y) {
+    return {Micrometers{x}, Micrometers{y}};
+}
 SatinRungSeg rung(std::int32_t ax, std::int32_t ay, std::int32_t bx, std::int32_t by) {
     return {v(ax, ay), v(bx, by)};
 }
@@ -31,7 +33,7 @@ Vec2um mid(Vec2um a, Vec2um b) {
     return {Micrometers{(a.x.value + b.x.value) / 2}, Micrometers{(a.y.value + b.y.value) / 2}};
 }
 
-}  // namespace
+} // namespace
 
 // --- Lot 2 : générateur satin par barreaux -----------------------------------
 
@@ -56,7 +58,7 @@ TEST_CASE("satin colonnes : espacement median regulier (colonne droite)") {
         maxGap = std::max(maxGap, length_um(m - prev));
         prev = m;
     }
-    CHECK(maxGap <= 1'250.0);  // aucun écart ne dépasse nettement la densité
+    CHECK(maxGap <= 1'250.0); // aucun écart ne dépasse nettement la densité
 }
 
 TEST_CASE("satin colonnes : barreaux traverses exactement") {
@@ -125,7 +127,7 @@ TEST_CASE("satin colonnes : coin quasi perpendiculaire -> saut plutot qu'un poin
 // largeur.
 TEST_CASE("satin colonnes : terminaison effilee ordinaire -> aucun saut") {
     const auto railA = open_path({{0, 0}, {10'000, 0}});
-    const auto railB = open_path({{0, 3'000}, {10'000, 0}});  // converge vers le meme point
+    const auto railB = open_path({{0, 3'000}, {10'000, 0}}); // converge vers le meme point
     const std::vector<SatinRungSeg> rungs{rung(0, 0, 0, 3'000), rung(10'000, 0, 10'000, 0)};
     SatinConfig cfg;
     cfg.density = Micrometers{400};
@@ -134,16 +136,19 @@ TEST_CASE("satin colonnes : terminaison effilee ordinaire -> aucun saut") {
 }
 
 namespace {
-geometry::PathNode smooth_node(std::int32_t x, std::int32_t y, std::optional<std::pair<std::int32_t, std::int32_t>> tin,
+geometry::PathNode smooth_node(std::int32_t x, std::int32_t y,
+                               std::optional<std::pair<std::int32_t, std::int32_t>> tin,
                                std::optional<std::pair<std::int32_t, std::int32_t>> tout) {
     geometry::PathNode n;
     n.pos = v(x, y);
     n.type = geometry::NodeType::Smooth;
-    if (tin) n.tan_in = Vec2um{Micrometers{tin->first}, Micrometers{tin->second}};
-    if (tout) n.tan_out = Vec2um{Micrometers{tout->first}, Micrometers{tout->second}};
+    if (tin)
+        n.tan_in = Vec2um{Micrometers{tin->first}, Micrometers{tin->second}};
+    if (tout)
+        n.tan_out = Vec2um{Micrometers{tout->first}, Micrometers{tout->second}};
     return n;
 }
-}  // namespace
+} // namespace
 
 // Deuxième cas réel (export debug utilisateur, même sceau, section 1/6
 // d'une autre lettre) : le seuil d'angle brut (75°, puis 50°) calibré sur le
@@ -180,18 +185,17 @@ TEST_CASE("satin colonnes : jonction serree apres barreau etroit (2e cas reel) -
     };
     const std::vector<SatinRungSeg> rungs{
         rung(-165485, -29800, -165763, -29910), rung(-164981, -30203, -165635, -30462),
-        rung(-164652, -30610, -165635, -31000),  rung(-164433, -30976, -165635, -31545),
-        rung(-164172, -31411, -165368, -31902),  rung(-163822, -31731, -165313, -32401),
+        rung(-164652, -30610, -165635, -31000), rung(-164433, -30976, -165635, -31545),
+        rung(-164172, -31411, -165368, -31902), rung(-163822, -31731, -165313, -32401),
         rung(-162281, -32148, -165152, -33853),
     };
-    const double maxRungWidth = std::max(
-        {length_um(v(-165485, -29800) - v(-165763, -29910)),
-         length_um(v(-164981, -30203) - v(-165635, -30462)),
-         length_um(v(-164652, -30610) - v(-165635, -31000)),
-         length_um(v(-164433, -30976) - v(-165635, -31545)),
-         length_um(v(-164172, -31411) - v(-165368, -31902)),
-         length_um(v(-163822, -31731) - v(-165313, -32401)),
-         length_um(v(-162281, -32148) - v(-165152, -33853))});
+    const double maxRungWidth = std::max({length_um(v(-165485, -29800) - v(-165763, -29910)),
+                                          length_um(v(-164981, -30203) - v(-165635, -30462)),
+                                          length_um(v(-164652, -30610) - v(-165635, -31000)),
+                                          length_um(v(-164433, -30976) - v(-165635, -31545)),
+                                          length_um(v(-164172, -31411) - v(-165368, -31902)),
+                                          length_um(v(-163822, -31731) - v(-165313, -32401)),
+                                          length_um(v(-162281, -32148) - v(-165152, -33853))});
     SatinConfig cfg;
     cfg.density = Micrometers{400};
     const auto r = fill_satin_columns(railA, railB, rungs, cfg);
@@ -267,11 +271,11 @@ TEST_CASE("satin colonnes : rail Bezier eparse -> points suivent la courbe, pas 
     // bien été appelé, pas seulement que le test l'espère.
     double maxYAboveChordA = 0.0;
     for (const auto& p : r.satin) {
-        if (p.y.value < 2'000) {  // du côté du rail A (sous le milieu)
+        if (p.y.value < 2'000) { // du côté du rail A (sous le milieu)
             maxYAboveChordA = std::max(maxYAboveChordA, static_cast<double>(p.y.value));
         }
     }
-    CHECK(maxYAboveChordA > 500.0);  // largement au-dessus de la corde y=0
+    CHECK(maxYAboveChordA > 500.0); // largement au-dessus de la corde y=0
 }
 
 TEST_CASE("satin colonnes : rails de longueurs differentes") {
@@ -336,16 +340,18 @@ SatinConfig short_cfg(ShortStitchMode mode) {
     SatinConfig cfg;
     cfg.density = Micrometers{1'000};
     cfg.short_stitch = mode;
-    cfg.short_stitch_min_gap = Micrometers{900};  // force l'action sur ce virage modéré
+    cfg.short_stitch_min_gap = Micrometers{900}; // force l'action sur ce virage modéré
     return cfg;
 }
-}  // namespace
+} // namespace
 
 TEST_CASE("short stitches : inset modifie le rail interieur en virage") {
     const Column c = curved_column();
     const auto off = fill_satin_columns(c.a, c.b, c.rungs, short_cfg(ShortStitchMode::Disabled));
-    const auto multi = fill_satin_columns(c.a, c.b, c.rungs, short_cfg(ShortStitchMode::MultiLevelInset));
-    const auto single = fill_satin_columns(c.a, c.b, c.rungs, short_cfg(ShortStitchMode::SingleInset));
+    const auto multi =
+        fill_satin_columns(c.a, c.b, c.rungs, short_cfg(ShortStitchMode::MultiLevelInset));
+    const auto single =
+        fill_satin_columns(c.a, c.b, c.rungs, short_cfg(ShortStitchMode::SingleInset));
     // Les points courts changent le tracé (rail intérieur rentré) mais gardent
     // le même nombre de pénétrations (inset, pas suppression).
     CHECK(multi.satin != off.satin);
@@ -356,10 +362,10 @@ TEST_CASE("short stitches : inset modifie le rail interieur en virage") {
 TEST_CASE("short stitches : remove-and-redistribute reduit les penetrations") {
     const Column c = curved_column();
     const auto off = fill_satin_columns(c.a, c.b, c.rungs, short_cfg(ShortStitchMode::Disabled));
-    const auto rem = fill_satin_columns(c.a, c.b, c.rungs,
-                                        short_cfg(ShortStitchMode::RemoveAndRedistribute));
+    const auto rem =
+        fill_satin_columns(c.a, c.b, c.rungs, short_cfg(ShortStitchMode::RemoveAndRedistribute));
     CHECK(rem.satin.size() < off.satin.size());
-    CHECK(rem.satin.size() >= 4);  // ne vide jamais la colonne
+    CHECK(rem.satin.size() >= 4); // ne vide jamais la colonne
 }
 
 TEST_CASE("short stitches : deterministe") {
@@ -377,7 +383,7 @@ namespace {
 Column wide_column() {
     Column c;
     c.a = open_path({{0, 0}, {20'000, 0}});
-    c.b = open_path({{0, 10'000}, {20'000, 10'000}});  // 10 mm de large
+    c.b = open_path({{0, 10'000}, {20'000, 10'000}}); // 10 mm de large
     c.rungs = {rung(0, 0, 0, 10'000), rung(10'000, 0, 10'000, 10'000),
                rung(20'000, 0, 20'000, 10'000)};
     return c;
@@ -386,20 +392,21 @@ SatinConfig split_cfg(SplitStitchMode mode) {
     SatinConfig cfg;
     cfg.density = Micrometers{1'000};
     cfg.split_stitch = mode;
-    cfg.max_stitch_length = Micrometers{4'000};  // 10 mm > 4 mm -> 2 splits par fil
+    cfg.max_stitch_length = Micrometers{4'000}; // 10 mm > 4 mm -> 2 splits par fil
     return cfg;
 }
-}  // namespace
+} // namespace
 
 TEST_CASE("split : traversee longue subdivisee") {
     const Column c = wide_column();
     const auto off = fill_satin_columns(c.a, c.b, c.rungs, split_cfg(SplitStitchMode::Disabled));
     const auto simple = fill_satin_columns(c.a, c.b, c.rungs, split_cfg(SplitStitchMode::Simple));
-    CHECK(simple.satin.size() > off.satin.size());  // pénétrations intermédiaires ajoutées
+    CHECK(simple.satin.size() > off.satin.size()); // pénétrations intermédiaires ajoutées
     // Chaque fil = 4 points (a, s1, s2, b) : des points strictement entre 0 et 10 mm.
     int between = 0;
     for (const auto& p : simple.satin) {
-        if (p.y.value > 100 && p.y.value < 9'900) ++between;
+        if (p.y.value > 100 && p.y.value < 9'900)
+            ++between;
     }
     CHECK(between > 0);
 }
@@ -416,11 +423,13 @@ TEST_CASE("split : staggered decale les points (pas de ligne centrale)") {
 
 TEST_CASE("split : jitter deterministe et reproductible") {
     const Column c = wide_column();
-    const auto j1 = fill_satin_columns(c.a, c.b, c.rungs, split_cfg(SplitStitchMode::DeterministicJitter));
-    const auto j2 = fill_satin_columns(c.a, c.b, c.rungs, split_cfg(SplitStitchMode::DeterministicJitter));
+    const auto j1 =
+        fill_satin_columns(c.a, c.b, c.rungs, split_cfg(SplitStitchMode::DeterministicJitter));
+    const auto j2 =
+        fill_satin_columns(c.a, c.b, c.rungs, split_cfg(SplitStitchMode::DeterministicJitter));
     CHECK(j1.satin == j2.satin);
     const auto simple = fill_satin_columns(c.a, c.b, c.rungs, split_cfg(SplitStitchMode::Simple));
-    CHECK(j1.satin != simple.satin);  // varie autour des positions régulières
+    CHECK(j1.satin != simple.satin); // varie autour des positions régulières
 }
 
 // --- Lot 3 : terminaisons -----------------------------------------------------
@@ -429,7 +438,7 @@ namespace {
 double thread_width(const std::vector<Vec2um>& satin, std::size_t thread) {
     return length_um(satin[2 * thread] - satin[2 * thread + 1]);
 }
-}  // namespace
+} // namespace
 
 TEST_CASE("caps : tapered reduit la largeur au bout sans l'annuler") {
     const auto railA = open_path({{0, 0}, {20'000, 0}});
@@ -444,9 +453,9 @@ TEST_CASE("caps : tapered reduit la largeur au bout sans l'annuler") {
     REQUIRE(nThreads >= 8);
     const double last = thread_width(r.satin, nThreads - 1);
     const double middle = thread_width(r.satin, nThreads / 2);
-    CHECK(last < middle * 0.5);  // effilé
-    CHECK(last > 0.0);           // jamais un point unique
-    CHECK(middle > 5'000.0);     // milieu à pleine largeur (~6 mm)
+    CHECK(last < middle * 0.5); // effilé
+    CHECK(last > 0.0);          // jamais un point unique
+    CHECK(middle > 5'000.0);    // milieu à pleine largeur (~6 mm)
 }
 
 TEST_CASE("caps : flat garde la pleine largeur au bout") {
@@ -454,7 +463,7 @@ TEST_CASE("caps : flat garde la pleine largeur au bout") {
     const auto railB = open_path({{0, 6'000}, {20'000, 6'000}});
     const std::vector<SatinRungSeg> rungs{rung(0, 0, 0, 6'000), rung(20'000, 0, 20'000, 6'000)};
     SatinConfig cfg;
-    cfg.density = Micrometers{1'000};  // cap_end = Flat par défaut
+    cfg.density = Micrometers{1'000}; // cap_end = Flat par défaut
     const auto r = fill_satin_columns(railA, railB, rungs, cfg);
     const std::size_t nThreads = r.satin.size() / 2;
     CHECK(thread_width(r.satin, nThreads - 1) > 5'000.0);
@@ -484,12 +493,13 @@ TEST_CASE("barreaux par defaut : au moins deux barreaux sur une colonne simple")
 }
 
 TEST_CASE("barreaux par defaut : vide sur des rails degeneres") {
-    const auto railA = open_path({{0, 0}});  // un seul point
+    const auto railA = open_path({{0, 0}}); // un seul point
     const auto railB = open_path({{0, 5'000}, {20'000, 5'000}});
     CHECK(default_rungs(railA, railB, Micrometers{2'000}).empty());
 }
 
-TEST_CASE("barreaux par defaut : debloque les reglages ignores par fill_satin (terminaison effilee)") {
+TEST_CASE(
+    "barreaux par defaut : debloque les reglages ignores par fill_satin (terminaison effilee)") {
     // Même colonne, même config (cap_end = Tapered), UNE FOIS sans barreaux
     // (fill_satin, l'ancien comportement pour un satin manuel -- Tapered SANS
     // EFFET) et une fois avec les barreaux par défaut (fill_satin_columns,
@@ -505,33 +515,34 @@ TEST_CASE("barreaux par defaut : debloque les reglages ignores par fill_satin (t
     const auto withoutRungs = fill_satin(railA, railB, cfg);
     const std::size_t nBare = withoutRungs.satin.size() / 2;
     REQUIRE(nBare >= 2);
-    CHECK(thread_width(withoutRungs.satin, nBare - 1) > 5'500.0);  // pleine largeur : Tapered ignoré
+    CHECK(thread_width(withoutRungs.satin, nBare - 1) > 5'500.0); // pleine largeur : Tapered ignoré
 
     const auto rungs = default_rungs(railA, railB, cfg.density);
     REQUIRE(rungs.size() >= 2);
     const auto withRungs = fill_satin_columns(railA, railB, rungs, cfg);
     const std::size_t nCols = withRungs.satin.size() / 2;
     REQUIRE(nCols >= 2);
-    CHECK(thread_width(withRungs.satin, nCols - 1) < 5'500.0);  // effilé : Tapered appliqué
+    CHECK(thread_width(withRungs.satin, nCols - 1) < 5'500.0); // effilé : Tapered appliqué
 }
 
 // --- Lot 5 : lock stitches ---------------------------------------------------
 
 TEST_CASE("lock : None -> vide ; sinon ancre au point et de taille bornee") {
     const Vec2um anchor = v(1'000, 1'000);
-    const Vec2um toward = v(3'000, 1'000);  // vers +x
+    const Vec2um toward = v(3'000, 1'000); // vers +x
     CHECK(lock_stitches(anchor, toward, LockType::None, Micrometers{800}, 2).empty());
     for (auto type : {LockType::BackAndForth, LockType::Triangle, LockType::MicroZigzag}) {
         const auto pts = lock_stitches(anchor, toward, type, Micrometers{800}, 2);
         REQUIRE(pts.size() >= 3);
-        CHECK(pts.front() == anchor);  // commence à l'ancre
+        CHECK(pts.front() == anchor); // commence à l'ancre
         // Reste proche de l'ancre (quelques taille de lock).
         for (const auto& p : pts) {
             CHECK(length_um(p - anchor) <= 2'000.0);
         }
         // Le lock progresse dans la direction de couture (+x).
         std::int32_t maxX = anchor.x.value;
-        for (const auto& p : pts) maxX = std::max(maxX, p.x.value);
+        for (const auto& p : pts)
+            maxX = std::max(maxX, p.x.value);
         CHECK(maxX >= anchor.x.value + 600);
     }
 }
@@ -543,11 +554,11 @@ TEST_CASE("lock : jamais au-dela du point voisin (colonne fine)") {
     // colonne fine (largeur < `length`, cas courant pour du texte fin),
     // l'aiguille piquait hors de la matière déjà cousue.
     const Vec2um anchor = v(0, 0);
-    const Vec2um toward = v(300, 0);  // rail opposé très proche (colonne 0,3 mm)
+    const Vec2um toward = v(300, 0); // rail opposé très proche (colonne 0,3 mm)
     for (auto type : {LockType::BackAndForth, LockType::Triangle, LockType::MicroZigzag}) {
         const auto pts = lock_stitches(anchor, toward, type, Micrometers{800}, 2);
         for (const auto& p : pts) {
-            CHECK(p.x.value <= 300);  // jamais au-delà de `toward` le long de l'axe
+            CHECK(p.x.value <= 300); // jamais au-delà de `toward` le long de l'axe
         }
     }
 }
@@ -571,25 +582,29 @@ Column straight6() {
 }
 std::int32_t minY(const std::vector<Vec2um>& v) {
     std::int32_t m = INT32_MAX;
-    for (auto p : v) m = std::min(m, p.y.value);
+    for (auto p : v)
+        m = std::min(m, p.y.value);
     return m;
 }
 std::int32_t maxY(const std::vector<Vec2um>& v) {
     std::int32_t m = INT32_MIN;
-    for (auto p : v) m = std::max(m, p.y.value);
+    for (auto p : v)
+        m = std::max(m, p.y.value);
     return m;
 }
 std::int32_t maxX(const std::vector<Vec2um>& v) {
     std::int32_t m = INT32_MIN;
-    for (auto p : v) m = std::max(m, p.x.value);
+    for (auto p : v)
+        m = std::max(m, p.x.value);
     return m;
 }
 std::int32_t minX(const std::vector<Vec2um>& v) {
     std::int32_t m = INT32_MAX;
-    for (auto p : v) m = std::min(m, p.x.value);
+    for (auto p : v)
+        m = std::min(m, p.x.value);
     return m;
 }
-}  // namespace
+} // namespace
 
 TEST_CASE("underlays : center, edge et zigzag = passes distinctes ordonnees") {
     const Column c = straight6();
@@ -599,14 +614,17 @@ TEST_CASE("underlays : center, edge et zigzag = passes distinctes ordonnees") {
     cfg.underlay_edge = true;
     cfg.underlay_zigzag = true;
     const auto r = fill_satin_columns(c.a, c.b, c.rungs, cfg);
-    REQUIRE(r.underlays.size() == 4);  // center, edge A, edge B, zigzag
+    REQUIRE(r.underlays.size() == 4); // center, edge A, edge B, zigzag
     // Center : sur l'axe (y ~ 3000).
-    for (auto p : r.underlays[0].points) CHECK(std::abs(p.y.value - 3'000) < 50);
+    for (auto p : r.underlays[0].points)
+        CHECK(std::abs(p.y.value - 3'000) < 50);
     // Edge A : rentré du rail A (y=0) de ~0,6 mm.
-    for (auto p : r.underlays[1].points) CHECK(std::abs(p.y.value - 600) < 100);
+    for (auto p : r.underlays[1].points)
+        CHECK(std::abs(p.y.value - 600) < 100);
     // Edge B : rentré du rail B (y=6000).
-    for (auto p : r.underlays[2].points) CHECK(std::abs(p.y.value - 5'400) < 100);
-    CHECK(r.underlays[3].points.size() >= 2);  // zigzag présent
+    for (auto p : r.underlays[2].points)
+        CHECK(std::abs(p.y.value - 5'400) < 100);
+    CHECK(r.underlays[3].points.size() >= 2); // zigzag présent
 }
 
 // Défaut trouvé en usage réel (export debug utilisateur, objet satin
@@ -618,10 +636,10 @@ TEST_CASE("underlays : center, edge et zigzag = passes distinctes ordonnees") {
 // utilisé par `fill_satin` (satin manuel/legacy) ; ce chemin (`fill_satin_columns`,
 // satin auto/à barreaux) l'ignorait silencieusement.
 TEST_CASE("underlay centrale : espacee a underlay_spacing, pas a la densite du zigzag") {
-    const Column c = straight6();  // 20 mm de long
+    const Column c = straight6(); // 20 mm de long
     SatinConfig cfg;
-    cfg.density = Micrometers{400};           // zigzag principal : fin
-    cfg.underlay_spacing = Micrometers{2'000};  // sous-couche : nettement plus large
+    cfg.density = Micrometers{400};            // zigzag principal : fin
+    cfg.underlay_spacing = Micrometers{2'000}; // sous-couche : nettement plus large
     cfg.center_underlay = true;
     const auto r = fill_satin_columns(c.a, c.b, c.rungs, cfg);
     REQUIRE(r.underlays.size() == 1);
@@ -638,7 +656,7 @@ TEST_CASE("underlay centrale : espacee a underlay_spacing, pas a la densite du z
 
 TEST_CASE("underlays : desactivees par defaut") {
     const Column c = straight6();
-    SatinConfig cfg;  // tout désactivé
+    SatinConfig cfg; // tout désactivé
     CHECK(fill_satin_columns(c.a, c.b, c.rungs, cfg).underlays.empty());
 }
 
@@ -646,10 +664,10 @@ TEST_CASE("compensation pull : elargit un seul cote (asymetrique)") {
     const Column c = straight6();
     SatinConfig cfg;
     cfg.density = Micrometers{1'000};
-    cfg.pull_left = Micrometers{800};  // côté A (rail à y=0) uniquement
+    cfg.pull_left = Micrometers{800}; // côté A (rail à y=0) uniquement
     const auto r = fill_satin_columns(c.a, c.b, c.rungs, cfg);
-    CHECK(minY(r.satin) <= -750);   // côté A poussé au-delà de y=0
-    CHECK(maxY(r.satin) <= 6'050);  // côté B inchangé (~6000)
+    CHECK(minY(r.satin) <= -750);  // côté A poussé au-delà de y=0
+    CHECK(maxY(r.satin) <= 6'050); // côté B inchangé (~6000)
     CHECK(maxY(r.satin) >= 5'950);
 }
 
@@ -674,7 +692,7 @@ TEST_CASE("compensation push : retraction bornee, jamais au-dela de la station v
     const Column c = straight6();
     SatinConfig cfg;
     cfg.density = Micrometers{1'000};
-    cfg.push_start = Micrometers{-50'000};  // rétraction demandée très excessive
+    cfg.push_start = Micrometers{-50'000}; // rétraction demandée très excessive
     const auto r = fill_satin_columns(c.a, c.b, c.rungs, cfg);
     REQUIRE(r.satin.size() >= 4);
     // Sans borne, le premier fil se retrouverait vers x=-50000 (auto-croisement
@@ -704,7 +722,7 @@ TEST_CASE("satin : colonne droite, zigzag entre les deux rails") {
     const auto railA = open_path({{0, 0}, {20'000, 0}});
     const auto railB = open_path({{0, 4'000}, {20'000, 4'000}});
     SatinConfig cfg;
-    cfg.density = Micrometers{1'000};  // 20 mm / 1 mm -> ~20 crossings
+    cfg.density = Micrometers{1'000}; // 20 mm / 1 mm -> ~20 crossings
     const auto result = fill_satin(railA, railB, cfg);
 
     CHECK(result.max_width_um == 4'000.0);
@@ -738,8 +756,10 @@ TEST_CASE("satin : compensation de tirage elargit la colonne") {
     bool below = false;
     bool above = false;
     for (const Vec2um& p : result.satin) {
-        if (p.y.value <= -500) below = true;
-        if (p.y.value >= 4'500) above = true;
+        if (p.y.value <= -500)
+            below = true;
+        if (p.y.value >= 4'500)
+            above = true;
     }
     CHECK(below);
     CHECK(above);

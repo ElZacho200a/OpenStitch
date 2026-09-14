@@ -17,7 +17,7 @@ namespace openstitch::satin_planning {
 struct RegionRoutingParams {
     auto_satin::SatinColumnsParameters genParams{};
     stitch_generation::RoutingConfig routingConfig{};
-    Vec2um origin{};  // point de depart du routage (ex. origine du cadre)
+    Vec2um origin{}; // point de depart du routage (ex. origine du cadre)
 };
 
 // Une SatinRegion resolue (phase 3/6/7), reellement construite en colonne
@@ -26,12 +26,13 @@ struct RegionRoutingParams {
 struct RoutedRegion {
     std::size_t path_index{0};
     bool build_succeeded{false};
-    stitch_generation::RouteColumn column;  // valide seulement si build_succeeded
+    stitch_generation::RouteColumn column; // valide seulement si build_succeeded
 };
 
 struct RegionRoutingReport {
-    std::vector<RoutedRegion> regions;  // une par SatinRegion de RegionSplitReport::regions, meme ordre
-    stitch_generation::RoutePlan plan;  // routage des seules regions dont build_succeeded == true
+    std::vector<RoutedRegion>
+        regions; // une par SatinRegion de RegionSplitReport::regions, meme ordre
+    stitch_generation::RoutePlan plan; // routage des seules regions dont build_succeeded == true
 };
 
 // Construit reellement une colonne satin par SatinRegion resolue (meme
@@ -57,8 +58,8 @@ struct RegionRoutingReport {
 // est deja connue via `RegionSplitReport::merge_candidates`) reste un
 // travail futur.
 [[nodiscard]] RegionRoutingReport route_regions(const RegionSplitReport& split,
-                                                 const RegionRoutingParams& params = {});
+                                                const RegionRoutingParams& params = {});
 
 [[nodiscard]] std::string format_region_routing_report(const RegionRoutingReport& report);
 
-}  // namespace openstitch::satin_planning
+} // namespace openstitch::satin_planning

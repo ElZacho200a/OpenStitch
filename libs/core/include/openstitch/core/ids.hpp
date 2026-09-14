@@ -7,8 +7,7 @@
 namespace openstitch {
 
 // Identifiant fort, distinct par étiquette de type. 0 = invalide.
-template <typename Tag>
-struct Id {
+template <typename Tag> struct Id {
     std::uint64_t value{0};
 
     constexpr auto operator<=>(const Id&) const = default;
@@ -17,13 +16,12 @@ struct Id {
 
 using ObjectId = Id<struct ObjectIdTag>;
 using RegionId = Id<struct RegionIdTag>;
-using ColorId  = Id<struct ColorIdTag>;
+using ColorId = Id<struct ColorIdTag>;
 using ThreadId = Id<struct ThreadIdTag>;
 
 // Compteur monotone (un par document) : les identifiants ne sont jamais
 // réutilisés, ce qui garantit des références stables (undo, fichiers projet).
-template <typename IdType>
-class IdGenerator {
+template <typename IdType> class IdGenerator {
 public:
     [[nodiscard]] IdType next() { return IdType{++last_}; }
 
@@ -35,4 +33,4 @@ private:
     std::uint64_t last_{0};
 };
 
-}  // namespace openstitch
+} // namespace openstitch

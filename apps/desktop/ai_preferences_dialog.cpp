@@ -23,7 +23,7 @@ namespace openstitch::desktop {
 namespace {
 
 QLineEdit* makePathRow(QFormLayout* form, const QString& label, QWidget* parent,
-                      const std::function<void()>& onBrowse) {
+                       const std::function<void()>& onBrowse) {
     auto* edit = new QLineEdit(parent);
     auto* browse = new QPushButton(QObject::tr("Parcourir…"), parent);
     QObject::connect(browse, &QPushButton::clicked, parent, onBrowse);
@@ -34,7 +34,7 @@ QLineEdit* makePathRow(QFormLayout* form, const QString& label, QWidget* parent,
     return edit;
 }
 
-}  // namespace
+} // namespace
 
 AiPreferencesDialog::AiPreferencesDialog(QWidget* parent) : QDialog(parent) {
     setWindowTitle(tr("Préférences — Intelligence artificielle"));
@@ -49,7 +49,8 @@ AiPreferencesDialog::AiPreferencesDialog(QWidget* parent) : QDialog(parent) {
     auto* runtimeForm = new QFormLayout(runtimeGroup);
     runtimeCombo_ = new QComboBox(runtimeGroup);
     runtimeCombo_->addItem(tr("WSL"), static_cast<int>(AiRuntimeKind::WslPython));
-    runtimeCombo_->addItem(tr("Python natif (sans WSL)"), static_cast<int>(AiRuntimeKind::NativePython));
+    runtimeCombo_->addItem(tr("Python natif (sans WSL)"),
+                           static_cast<int>(AiRuntimeKind::NativePython));
     runtimeForm->addRow(tr("Environnement :"), runtimeCombo_);
     wslDistroEdit_ = new QLineEdit(runtimeGroup);
     wslDistroEdit_->setPlaceholderText(tr("ex. Ubuntu"));
@@ -67,7 +68,8 @@ AiPreferencesDialog::AiPreferencesDialog(QWidget* parent) : QDialog(parent) {
     defaultModelCombo_ = new QComboBox(defaultsGroup);
     for (const auto& descriptor : ai_segmentation::all_models()) {
         defaultModelCombo_->addItem(
-            QString::fromUtf8(descriptor.display_name.data(), static_cast<qsizetype>(descriptor.display_name.size())),
+            QString::fromUtf8(descriptor.display_name.data(),
+                              static_cast<qsizetype>(descriptor.display_name.size())),
             static_cast<int>(descriptor.id));
     }
     defaultsForm->addRow(tr("Modèle par défaut :"), defaultModelCombo_);
@@ -79,11 +81,12 @@ AiPreferencesDialog::AiPreferencesDialog(QWidget* parent) : QDialog(parent) {
     maxResolutionSpin_->setSingleStep(128);
     maxResolutionSpin_->setSuffix(tr(" px"));
     defaultsForm->addRow(tr("Résolution maximale d'analyse :"), maxResolutionSpin_);
-    keepDiagnosticsCheck_ = new QCheckBox(tr("Conserver les fichiers de diagnostic"), defaultsGroup);
+    keepDiagnosticsCheck_ =
+        new QCheckBox(tr("Conserver les fichiers de diagnostic"), defaultsGroup);
     defaultsForm->addRow(keepDiagnosticsCheck_);
     logLevelCombo_ = new QComboBox(defaultsGroup);
-    logLevelCombo_->addItems({QStringLiteral("DEBUG"), QStringLiteral("INFO"), QStringLiteral("WARNING"),
-                              QStringLiteral("ERROR")});
+    logLevelCombo_->addItems({QStringLiteral("DEBUG"), QStringLiteral("INFO"),
+                              QStringLiteral("WARNING"), QStringLiteral("ERROR")});
     defaultsForm->addRow(tr("Niveau de journalisation du worker :"), logLevelCombo_);
     mainLayout->addWidget(defaultsGroup);
 
@@ -117,7 +120,9 @@ void AiPreferencesDialog::setPreferences(const AiPreferences& prefs) {
     modelsDirEdit_->setText(prefs.modelsDir);
     defaultModelCombo_->setCurrentIndex(static_cast<int>(prefs.defaultModel));
     defaultDeviceCombo_->setCurrentIndex(
-        prefs.defaultDevice == QStringLiteral("cpu") ? 1 : (prefs.defaultDevice == QStringLiteral("cuda") ? 2 : 0));
+        prefs.defaultDevice == QStringLiteral("cpu")
+            ? 1
+            : (prefs.defaultDevice == QStringLiteral("cuda") ? 2 : 0));
     maxResolutionSpin_->setValue(prefs.maxAnalysisResolution);
     keepDiagnosticsCheck_->setChecked(prefs.keepDiagnosticFiles);
     logLevelCombo_->setCurrentText(prefs.logLevel);
@@ -126,17 +131,20 @@ void AiPreferencesDialog::setPreferences(const AiPreferences& prefs) {
 AiPreferences AiPreferencesDialog::preferences() const {
     AiPreferences prefs;
     prefs.enabled = enabledCheck_->isChecked();
-    prefs.runtime = runtimeCombo_->currentData().toInt() == static_cast<int>(AiRuntimeKind::NativePython)
-                        ? AiRuntimeKind::NativePython
-                        : AiRuntimeKind::WslPython;
+    prefs.runtime =
+        runtimeCombo_->currentData().toInt() == static_cast<int>(AiRuntimeKind::NativePython)
+            ? AiRuntimeKind::NativePython
+            : AiRuntimeKind::WslPython;
     prefs.wslDistro = wslDistroEdit_->text();
     prefs.venvPythonPath = venvPythonEdit_->text();
     prefs.workerScriptPath = workerScriptEdit_->text();
     prefs.modelsDir = modelsDirEdit_->text();
-    prefs.defaultModel = static_cast<ai_segmentation::ModelId>(defaultModelCombo_->currentData().toInt());
+    prefs.defaultModel =
+        static_cast<ai_segmentation::ModelId>(defaultModelCombo_->currentData().toInt());
     const int deviceIndex = defaultDeviceCombo_->currentIndex();
     prefs.defaultDevice =
-        deviceIndex == 1 ? QStringLiteral("cpu") : (deviceIndex == 2 ? QStringLiteral("cuda") : QStringLiteral("auto"));
+        deviceIndex == 1 ? QStringLiteral("cpu")
+                         : (deviceIndex == 2 ? QStringLiteral("cuda") : QStringLiteral("auto"));
     prefs.maxAnalysisResolution = maxResolutionSpin_->value();
     prefs.keepDiagnosticFiles = keepDiagnosticsCheck_->isChecked();
     prefs.logLevel = logLevelCombo_->currentText();
@@ -144,22 +152,24 @@ AiPreferences AiPreferencesDialog::preferences() const {
 }
 
 void AiPreferencesDialog::browseVenvPython() {
-    const QString picked = QFileDialog::getOpenFileName(this, tr("Sélectionner l'interpréteur Python du venv"));
+    const QString picked =
+        QFileDialog::getOpenFileName(this, tr("Sélectionner l'interpréteur Python du venv"));
     if (!picked.isEmpty()) {
         venvPythonEdit_->setText(picked);
     }
 }
 
 void AiPreferencesDialog::browseWorkerScript() {
-    const QString picked = QFileDialog::getOpenFileName(this, tr("Sélectionner openstitch_sam_worker.py"),
-                                                         {}, tr("Script Python (*.py)"));
+    const QString picked = QFileDialog::getOpenFileName(
+        this, tr("Sélectionner openstitch_sam_worker.py"), {}, tr("Script Python (*.py)"));
     if (!picked.isEmpty()) {
         workerScriptEdit_->setText(picked);
     }
 }
 
 void AiPreferencesDialog::browseModelsDir() {
-    const QString picked = QFileDialog::getExistingDirectory(this, tr("Sélectionner le dossier des modèles"));
+    const QString picked =
+        QFileDialog::getExistingDirectory(this, tr("Sélectionner le dossier des modèles"));
     if (!picked.isEmpty()) {
         modelsDirEdit_->setText(picked);
     }
@@ -178,18 +188,22 @@ void AiPreferencesDialog::testConfiguration() {
     testLog_->clear();
     appendTestLog(tr("Démarrage du worker de test…"));
 
-    connect(testClient_, &SamWorkerClient::stateChanged, this, [this](SamWorkerClient::State state) {
-        if (state == SamWorkerClient::State::Ready) {
-            appendTestLog(tr("Worker démarré : protocole JSON Lines opérationnel."));
-        } else if (state == SamWorkerClient::State::Unavailable) {
-            appendTestLog(tr("Échec : le worker n'a pas pu démarrer."));
-        }
-    });
+    connect(testClient_, &SamWorkerClient::stateChanged, this,
+            [this](SamWorkerClient::State state) {
+                if (state == SamWorkerClient::State::Ready) {
+                    appendTestLog(tr("Worker démarré : protocole JSON Lines opérationnel."));
+                } else if (state == SamWorkerClient::State::Unavailable) {
+                    appendTestLog(tr("Échec : le worker n'a pas pu démarrer."));
+                }
+            });
     connect(testClient_, &SamWorkerClient::workerError, this,
-            [this](QString requestId, ai_segmentation::AiErrorCode code, QString message, QString detail) {
+            [this](QString requestId, ai_segmentation::AiErrorCode code, QString message,
+                   QString detail) {
                 Q_UNUSED(requestId);
-                appendTestLog(tr("Erreur [%1] : %2")
-                                  .arg(QString::fromStdString(ai_segmentation::ai_error_code_name(code)), message));
+                appendTestLog(
+                    tr("Erreur [%1] : %2")
+                        .arg(QString::fromStdString(ai_segmentation::ai_error_code_name(code)),
+                             message));
                 if (!detail.isEmpty()) {
                     appendTestLog(tr("  détail : %1").arg(detail));
                 }
@@ -201,10 +215,11 @@ void AiPreferencesDialog::testConfiguration() {
     const AiPreferences prefs = preferences();
     testClient_->configure(toWorkerConfig(prefs));
     if (!testClient_->isConfigured()) {
-        appendTestLog(tr("Configuration incomplète : renseignez tous les chemins avant de tester."));
+        appendTestLog(
+            tr("Configuration incomplète : renseignez tous les chemins avant de tester."));
         return;
     }
     testClient_->start();
 }
 
-}  // namespace openstitch::desktop
+} // namespace openstitch::desktop

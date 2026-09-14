@@ -32,13 +32,13 @@ document::Project make_project(int embroideryCount = 1) {
         emb.id = project.object_ids.next();
         emb.name = "contour " + std::to_string(i);
         emb.source_vector = vec.id;
-        emb.rgb = {static_cast<std::uint8_t>(200 - i * 100), 30, 30};  // couleurs differentes
+        emb.rgb = {static_cast<std::uint8_t>(200 - i * 100), 30, 30}; // couleurs differentes
         project.embroidery_objects.push_back(emb);
     }
     return project;
 }
 
-}  // namespace
+} // namespace
 
 TEST_CASE("sequence d'un contour : Jump, points, End") {
     const auto seq = generate_sequence(make_project());
@@ -84,14 +84,17 @@ namespace {
 document::SatinParams straight_satin() {
     document::SatinParams sp;
     sp.rail_a.closed = false;
-    sp.rail_a.nodes = {{Vec2um{Micrometers{0}, Micrometers{0}}, geometry::NodeType::Corner, {}, {}},
-                       {Vec2um{Micrometers{20'000}, Micrometers{0}}, geometry::NodeType::Corner, {}, {}}};
+    sp.rail_a.nodes = {
+        {Vec2um{Micrometers{0}, Micrometers{0}}, geometry::NodeType::Corner, {}, {}},
+        {Vec2um{Micrometers{20'000}, Micrometers{0}}, geometry::NodeType::Corner, {}, {}}};
     sp.rail_b.closed = false;
-    sp.rail_b.nodes = {{Vec2um{Micrometers{0}, Micrometers{5'000}}, geometry::NodeType::Corner, {}, {}},
-                       {Vec2um{Micrometers{20'000}, Micrometers{5'000}}, geometry::NodeType::Corner, {}, {}}};
-    sp.rungs = {{Vec2um{Micrometers{0}, Micrometers{0}}, Vec2um{Micrometers{0}, Micrometers{5'000}}},
-                {Vec2um{Micrometers{20'000}, Micrometers{0}},
-                 Vec2um{Micrometers{20'000}, Micrometers{5'000}}}};
+    sp.rail_b.nodes = {
+        {Vec2um{Micrometers{0}, Micrometers{5'000}}, geometry::NodeType::Corner, {}, {}},
+        {Vec2um{Micrometers{20'000}, Micrometers{5'000}}, geometry::NodeType::Corner, {}, {}}};
+    sp.rungs = {
+        {Vec2um{Micrometers{0}, Micrometers{0}}, Vec2um{Micrometers{0}, Micrometers{5'000}}},
+        {Vec2um{Micrometers{20'000}, Micrometers{0}},
+         Vec2um{Micrometers{20'000}, Micrometers{5'000}}}};
     return sp;
 }
 document::Project satin_project(const document::SatinParams& sp) {
@@ -102,7 +105,7 @@ document::Project satin_project(const document::SatinParams& sp) {
     project.embroidery_objects.push_back(emb);
     return project;
 }
-}  // namespace
+} // namespace
 
 TEST_CASE("satin : les sous-couches sont taggees Underlay, le satin TopStitch") {
     auto sp = straight_satin();
@@ -111,8 +114,10 @@ TEST_CASE("satin : les sous-couches sont taggees Underlay, le satin TopStitch") 
     REQUIRE(seq.has_value());
     int underlay = 0, top = 0;
     for (const auto& c : seq->commands) {
-        if (c.type == stitch::CommandType::Stitch && c.pass == stitch::StitchPass::Underlay) ++underlay;
-        if (c.type == stitch::CommandType::Stitch && c.pass == stitch::StitchPass::TopStitch) ++top;
+        if (c.type == stitch::CommandType::Stitch && c.pass == stitch::StitchPass::Underlay)
+            ++underlay;
+        if (c.type == stitch::CommandType::Stitch && c.pass == stitch::StitchPass::TopStitch)
+            ++top;
     }
     CHECK(underlay > 0);
     CHECK(top > 0);
@@ -128,7 +133,7 @@ TEST_CASE("satin : locks d'entree et de sortie en passe Lock, aux extremites") {
     REQUIRE(seq.has_value());
 
     int lockStitches = 0;
-    int lockRuns = 0;  // groupes contigus de passe Lock (doit rester <= 2)
+    int lockRuns = 0; // groupes contigus de passe Lock (doit rester <= 2)
     bool inLock = false;
     int firstTop = -1, i = 0;
     for (const auto& c : seq->commands) {
@@ -138,16 +143,18 @@ TEST_CASE("satin : locks d'entree et de sortie en passe Lock, aux extremites") {
         }
         if (c.pass == stitch::StitchPass::Lock) {
             ++lockStitches;
-            if (!inLock) ++lockRuns;
+            if (!inLock)
+                ++lockRuns;
             inLock = true;
         } else {
             inLock = false;
         }
-        if (c.pass == stitch::StitchPass::TopStitch && firstTop < 0) firstTop = i;
+        if (c.pass == stitch::StitchPass::TopStitch && firstTop < 0)
+            firstTop = i;
         ++i;
     }
     CHECK(lockStitches > 0);
-    CHECK(lockRuns == 2);  // un lock au début, un à la fin — jamais par sous-passe
+    CHECK(lockRuns == 2); // un lock au début, un à la fin — jamais par sous-passe
 }
 
 TEST_CASE("satin : le point d'entree oriente la couture") {
@@ -163,8 +170,8 @@ TEST_CASE("satin : le point d'entree oriente la couture") {
                 return c.pos;
         return Vec2um{};
     };
-    CHECK(firstTop(without).x.value < 5'000);   // sans entrée : démarre à x~0
-    CHECK(firstTop(with).x.value > 15'000);     // avec entrée : démarre à x~20000
+    CHECK(firstTop(without).x.value < 5'000); // sans entrée : démarre à x~0
+    CHECK(firstTop(with).x.value > 15'000);   // avec entrée : démarre à x~20000
 }
 
 TEST_CASE("tatami : sous-couche taggee Underlay, remplissage TopStitch") {
@@ -177,8 +184,10 @@ TEST_CASE("tatami : sous-couche taggee Underlay, remplissage TopStitch") {
     REQUIRE(seq.has_value());
     int under = 0, top = 0;
     for (const auto& c : seq->commands) {
-        if (c.type == stitch::CommandType::Stitch && c.pass == stitch::StitchPass::Underlay) ++under;
-        if (c.type == stitch::CommandType::Stitch && c.pass == stitch::StitchPass::TopStitch) ++top;
+        if (c.type == stitch::CommandType::Stitch && c.pass == stitch::StitchPass::Underlay)
+            ++under;
+        if (c.type == stitch::CommandType::Stitch && c.pass == stitch::StitchPass::TopStitch)
+            ++top;
     }
     CHECK(under > 0);
     CHECK(top > 0);

@@ -22,4 +22,4 @@ using Blob = std::vector<std::uint8_t>;
 // Lit toutes les entrées d'un ZIP.
 [[nodiscard]] Result<std::map<std::string, Blob>> read_zip(const std::filesystem::path& path);
 
-}  // namespace openstitch::project_io::detail
+} // namespace openstitch::project_io::detail

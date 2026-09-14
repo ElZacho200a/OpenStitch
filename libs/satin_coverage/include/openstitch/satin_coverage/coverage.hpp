@@ -22,7 +22,7 @@ struct SatinColumnInput {
     geometry::Path rail_a;
     geometry::Path rail_b;
     std::vector<stitch_generation::SatinRungSeg> rungs;
-    Micrometers density{400};  // pas d'échantillonnage des stations (0,4 mm par défaut)
+    Micrometers density{400}; // pas d'échantillonnage des stations (0,4 mm par défaut)
 };
 
 // Une composante connexe de la zone NON couverte par les colonnes -- vient
@@ -33,8 +33,8 @@ struct SatinColumnInput {
 struct MissingRegion {
     geometry::PathSet region;
     double area_mm2{0.0};
-    double area_ratio{0.0};  // fraction de la surface cible totale
-    Vec2um centroid{};       // barycentre des sommets du contour extérieur (approximatif)
+    double area_ratio{0.0}; // fraction de la surface cible totale
+    Vec2um centroid{};      // barycentre des sommets du contour extérieur (approximatif)
     Vec2um bbox_min{};
     Vec2um bbox_max{};
     // Rayon (mm) du plus grand disque inscrit dans cette région, obtenu par
@@ -74,9 +74,9 @@ struct SatinCoverageConfig {
 struct SatinCoverageReport {
     double target_area_mm2{0.0};
 
-    double covered_area_mm2{0.0};  // aire(P ∩ C)
-    double missing_area_mm2{0.0};  // aire(P \ C)
-    double outside_area_mm2{0.0};  // aire(C \ P)
+    double covered_area_mm2{0.0}; // aire(P ∩ C)
+    double missing_area_mm2{0.0}; // aire(P \ C)
+    double outside_area_mm2{0.0}; // aire(C \ P)
 
     // Géométrie exacte des trois régions (P ∩ C, C \ P ; la géométrie de
     // `P \ C` est déjà portée par `missing_regions[i].region`) -- conservée
@@ -85,14 +85,14 @@ struct SatinCoverageReport {
     std::vector<geometry::PathSet> covered_regions;
     std::vector<geometry::PathSet> outside_regions;
 
-    double raw_coverage_ratio{0.0};   // covered / target
-    double core_coverage_ratio{0.0};  // 1 - missing(Pcore) / area(Pcore)
-    double outside_ratio{0.0};        // outside / target
+    double raw_coverage_ratio{0.0};  // covered / target
+    double core_coverage_ratio{0.0}; // 1 - missing(Pcore) / area(Pcore)
+    double outside_ratio{0.0};       // outside / target
 
-    std::vector<MissingRegion> missing_regions;  // triées par aire décroissante
+    std::vector<MissingRegion> missing_regions; // triées par aire décroissante
     double largest_missing_area_mm2{0.0};
     double largest_missing_ratio{0.0};
-    double max_gap_radius_mm{0.0};  // maximum sur toutes les régions manquantes
+    double max_gap_radius_mm{0.0}; // maximum sur toutes les régions manquantes
 
     // Intervalles entre deux stations consécutives d'une même colonne rejetés
     // car géométriquement dégénérés (rail A et rail B qui se croisent) --
@@ -126,9 +126,10 @@ struct SatinCoverageReport {
 // rupture de ruban (`SatinStation::jump_before`, cf. audit lettres) coupe la
 // colonne en deux segments de couverture indépendants plutôt que d'être
 // pontée.
-[[nodiscard]] Result<SatinCoverageReport> analyze_satin_coverage(
-    const geometry::PathSet& target, const std::vector<SatinColumnInput>& columns,
-    const SatinCoverageConfig& config = {});
+[[nodiscard]] Result<SatinCoverageReport>
+analyze_satin_coverage(const geometry::PathSet& target,
+                       const std::vector<SatinColumnInput>& columns,
+                       const SatinCoverageConfig& config = {});
 
 // SVG de diagnostic (coordonnées en millimètres, même convention que
 // `auto_satin::debug_export`) superposant : forme cible (contour gris),
@@ -142,4 +143,4 @@ struct SatinCoverageReport {
                                           const std::vector<SatinColumnInput>& columns,
                                           const SatinCoverageReport& report);
 
-}  // namespace openstitch::satin_coverage
+} // namespace openstitch::satin_coverage

@@ -20,7 +20,7 @@ void exposeView(CanvasView& view) {
     QVERIFY(QTest::qWaitForWindowExposed(&view));
 }
 
-}  // namespace
+} // namespace
 
 class CanvasViewTest : public QObject {
     Q_OBJECT
@@ -57,7 +57,7 @@ void CanvasViewTest::zoomInThenOutChangesScaleAndEmitsViewChanged() {
 void CanvasViewTest::fitCanvasEmitsViewChanged() {
     QGraphicsScene scene;
     CanvasView view(&scene);
-    view.setCanvasSizeMm(QSizeF(300.0, 50.0));  // rectangle très allongé
+    view.setCanvasSizeMm(QSizeF(300.0, 50.0)); // rectangle très allongé
     exposeView(view);
 
     QSignalSpy spy(&view, &CanvasView::viewChanged);

@@ -59,10 +59,10 @@ bool opposite_orientation(const std::vector<Vec2um>& a, const std::vector<Vec2um
            distance2(a.front(), b.front()) + distance2(a.back(), b.back());
 }
 
-}  // namespace
+} // namespace
 
-std::vector<std::optional<std::uint32_t>> satin_guide_junctions(
-    const document::SatinParams& satin, Micrometers flatten_tolerance) {
+std::vector<std::optional<std::uint32_t>> satin_guide_junctions(const document::SatinParams& satin,
+                                                                Micrometers flatten_tolerance) {
     std::vector<std::optional<std::uint32_t>> junctions(satin.rungs.size());
     if (!satin.topology || satin.rungs.size() < 2) {
         return junctions;
@@ -112,9 +112,10 @@ std::optional<std::uint32_t> satin_guide_junction(const document::SatinParams& s
     return satin_guide_junctions(satin, flatten_tolerance)[guide_index];
 }
 
-std::vector<SatinJunctionGuideRef> satin_junction_guides(
-    const document::Project& project, ObjectId source_vector, std::uint32_t junction_id,
-    Micrometers flatten_tolerance) {
+std::vector<SatinJunctionGuideRef> satin_junction_guides(const document::Project& project,
+                                                         ObjectId source_vector,
+                                                         std::uint32_t junction_id,
+                                                         Micrometers flatten_tolerance) {
     std::vector<SatinJunctionGuideRef> result;
     if (!source_vector.valid()) {
         return result;
@@ -150,8 +151,7 @@ std::vector<SatinJunctionGuideRef> satin_junction_guides(
         std::size_t foundEnds = 0;
         for (std::size_t i = 0; i < junctions.size(); ++i) {
             if (junctions[i] == junction_id) {
-                result.push_back(
-                    {object.id, i, topology.section_index});
+                result.push_back({object.id, i, topology.section_index});
                 ++foundEnds;
             }
         }
@@ -258,9 +258,10 @@ std::optional<std::uint32_t> next_satin_guide_link_id(const document::Project& p
     return next;
 }
 
-std::optional<document::SatinRung> move_satin_guide_endpoint(
-    const document::SatinParams& satin, std::size_t guide_index, SatinGuideSide side,
-    Vec2um desired, Micrometers flatten_tolerance) {
+std::optional<document::SatinRung> move_satin_guide_endpoint(const document::SatinParams& satin,
+                                                             std::size_t guide_index,
+                                                             SatinGuideSide side, Vec2um desired,
+                                                             Micrometers flatten_tolerance) {
     if (guide_index >= satin.rungs.size() || satin.rungs.size() < 2) {
         return std::nullopt;
     }
@@ -279,9 +280,8 @@ std::optional<document::SatinRung> move_satin_guide_endpoint(
     const auto cumulativeB = geometry::cumulative_lengths(railB);
 
     document::SatinRung candidate = satin.rungs[guide_index];
-    const auto moved = side == SatinGuideSide::RailA
-                           ? project(railA, cumulativeA, desired)
-                           : project(railB, cumulativeB, desired);
+    const auto moved = side == SatinGuideSide::RailA ? project(railA, cumulativeA, desired)
+                                                     : project(railB, cumulativeB, desired);
     if (!moved) {
         return std::nullopt;
     }
@@ -302,10 +302,9 @@ std::optional<document::SatinRung> move_satin_guide_endpoint(
         }
         anchors.push_back({pa->station, pb->station});
     }
-    std::stable_sort(anchors.begin(), anchors.end(),
-                     [](const Anchor& lhs, const Anchor& rhs) {
-                         return lhs.sa + lhs.sb < rhs.sa + rhs.sb;
-                     });
+    std::stable_sort(anchors.begin(), anchors.end(), [](const Anchor& lhs, const Anchor& rhs) {
+        return lhs.sa + lhs.sb < rhs.sa + rhs.sb;
+    });
     const double minimumGap = std::max(1.0, static_cast<double>(satin.density.value) * 0.5);
     for (std::size_t i = 1; i < anchors.size(); ++i) {
         if (anchors[i].sa <= anchors[i - 1].sa + minimumGap ||
@@ -316,8 +315,8 @@ std::optional<document::SatinRung> move_satin_guide_endpoint(
     return candidate;
 }
 
-std::optional<SatinGuideInsertion> make_satin_guide_in_largest_gap(
-    const document::SatinParams& satin, Micrometers flatten_tolerance) {
+std::optional<SatinGuideInsertion>
+make_satin_guide_in_largest_gap(const document::SatinParams& satin, Micrometers flatten_tolerance) {
     if (satin.rungs.size() < 2) {
         return std::nullopt;
     }
@@ -347,10 +346,9 @@ std::optional<SatinGuideInsertion> make_satin_guide_in_largest_gap(
         }
         anchors.push_back({pa->station, pb->station, i});
     }
-    std::stable_sort(anchors.begin(), anchors.end(),
-                     [](const Anchor& lhs, const Anchor& rhs) {
-                         return lhs.sa + lhs.sb < rhs.sa + rhs.sb;
-                     });
+    std::stable_sort(anchors.begin(), anchors.end(), [](const Anchor& lhs, const Anchor& rhs) {
+        return lhs.sa + lhs.sb < rhs.sa + rhs.sb;
+    });
 
     std::size_t best = 0;
     double bestMedialGap = -1.0;
@@ -364,8 +362,7 @@ std::optional<SatinGuideInsertion> make_satin_guide_in_largest_gap(
         }
     }
     const double minimumGap = std::max(1.0, static_cast<double>(satin.density.value) * 0.5);
-    if (bestMedialGap < 0.0 ||
-        anchors[best + 1].sa - anchors[best].sa <= 2.0 * minimumGap ||
+    if (bestMedialGap < 0.0 || anchors[best + 1].sa - anchors[best].sa <= 2.0 * minimumGap ||
         anchors[best + 1].sb - anchors[best].sb <= 2.0 * minimumGap) {
         return std::nullopt;
     }
@@ -384,9 +381,9 @@ std::optional<SatinGuideInsertion> make_satin_guide_in_largest_gap(
         insertionIndex};
 }
 
-std::optional<SatinGuideInsertion> make_satin_guide_next_to_junction(
-    const document::SatinParams& satin, std::size_t junction_guide_index,
-    Micrometers flatten_tolerance) {
+std::optional<SatinGuideInsertion>
+make_satin_guide_next_to_junction(const document::SatinParams& satin,
+                                  std::size_t junction_guide_index, Micrometers flatten_tolerance) {
     if (satin.rungs.size() < 2 || junction_guide_index >= satin.rungs.size() ||
         !satin_guide_junction(satin, junction_guide_index, flatten_tolerance)) {
         return std::nullopt;
@@ -426,13 +423,11 @@ std::optional<SatinGuideInsertion> make_satin_guide_next_to_junction(
         (junction != anchors.begin() && junction + 1 != anchors.end())) {
         return std::nullopt;
     }
-    const Anchor& adjacent =
-        junction == anchors.begin() ? anchors[1] : anchors[anchors.size() - 2];
+    const Anchor& adjacent = junction == anchors.begin() ? anchors[1] : anchors[anchors.size() - 2];
     const Anchor& first = junction == anchors.begin() ? *junction : adjacent;
     const Anchor& second = junction == anchors.begin() ? adjacent : *junction;
     const double minimumGap = std::max(1.0, static_cast<double>(satin.density.value) * 0.5);
-    if (second.sa - first.sa <= 2.0 * minimumGap ||
-        second.sb - first.sb <= 2.0 * minimumGap) {
+    if (second.sa - first.sa <= 2.0 * minimumGap || second.sb - first.sb <= 2.0 * minimumGap) {
         return std::nullopt;
     }
     const double sa = 0.5 * (first.sa + second.sa);
@@ -651,4 +646,4 @@ move_satin_guide_group(const document::Project& doc, ObjectId source_vector, std
     return edits;
 }
 
-}  // namespace openstitch::stitch_generation
+} // namespace openstitch::stitch_generation

@@ -138,4 +138,4 @@ private:
     QRectF lastRubberBandMm_;
 };
 
-}  // namespace openstitch::desktop
+} // namespace openstitch::desktop

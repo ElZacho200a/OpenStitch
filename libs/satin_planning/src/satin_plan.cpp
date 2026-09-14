@@ -23,20 +23,23 @@ satin_coverage::SatinColumnInput to_coverage_input(const Column& col, Micrometer
     in.rail_a = col.rail_a;
     in.rail_b = col.rail_b;
     in.rungs.reserve(col.rungs.size());
-    for (const auto& r : col.rungs) in.rungs.emplace_back(r.a, r.b);
+    for (const auto& r : col.rungs)
+        in.rungs.emplace_back(r.a, r.b);
     in.density = density;
     return in;
 }
 
-std::vector<satin_coverage::SatinColumnInput> to_coverage_inputs(const auto_satin::SatinColumnsResult& built,
-                                                                  Micrometers density) {
+std::vector<satin_coverage::SatinColumnInput>
+to_coverage_inputs(const auto_satin::SatinColumnsResult& built, Micrometers density) {
     std::vector<satin_coverage::SatinColumnInput> inputs;
     if (!built.parametric_columns.empty()) {
         inputs.reserve(built.parametric_columns.size());
-        for (const auto& col : built.parametric_columns) inputs.push_back(to_coverage_input(col, density));
+        for (const auto& col : built.parametric_columns)
+            inputs.push_back(to_coverage_input(col, density));
     } else {
         inputs.reserve(built.columns.size());
-        for (const auto& col : built.columns) inputs.push_back(to_coverage_input(col, density));
+        for (const auto& col : built.columns)
+            inputs.push_back(to_coverage_input(col, density));
     }
     return inputs;
 }
@@ -56,11 +59,10 @@ LocalAttempt try_local_satin(const geometry::PathSet& region, const SatinPlanCon
     LocalAttempt attempt;
     attempt.built = auto_satin::build_satin_columns(region, config.genParams);
     if (attempt.built.columns.empty() && attempt.built.parametric_columns.empty()) {
-        return attempt;  // refuse : ni couverture ni verdict, `passed` reste false
+        return attempt; // refuse : ni couverture ni verdict, `passed` reste false
     }
-    const auto coverage =
-        satin_coverage::analyze_satin_coverage(region, to_coverage_inputs(attempt.built, config.density),
-                                                config.coverageConfig);
+    const auto coverage = satin_coverage::analyze_satin_coverage(
+        region, to_coverage_inputs(attempt.built, config.density), config.coverageConfig);
     if (coverage) {
         attempt.coverage = *coverage;
         attempt.passed = coverage->passed;
@@ -89,9 +91,9 @@ bool budget_exceeded(const PlanningBudgetState& budget, const SatinPlanConfig& c
         budget.regions_accepted >= config.max_total_regions) {
         return true;
     }
-    const auto elapsedMs = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() -
-                                                                                  budget.start_time)
-                                .count();
+    const auto elapsedMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+                               std::chrono::steady_clock::now() - budget.start_time)
+                               .count();
     return elapsedMs >= config.max_planning_wall_clock_ms;
 }
 
@@ -111,8 +113,8 @@ struct RecursionOutcome {
     std::vector<SatinPlanOverlap> overlaps;
 };
 
-RecursionOutcome plan_recursive(const geometry::PathSet& region, const SatinPlanConfig& config, int depth,
-                                bool fromResidualRepair, PlanningBudgetState& budget);
+RecursionOutcome plan_recursive(const geometry::PathSet& region, const SatinPlanConfig& config,
+                                int depth, bool fromResidualRepair, PlanningBudgetState& budget);
 
 // §14 du plan de refonte satin, suite (2026-08-14) : quand `region` n'a
 // AUCUNE jonction de squelette (donc rien pour les deux familles de coupe
@@ -125,28 +127,35 @@ RecursionOutcome plan_recursive(const geometry::PathSet& region, const SatinPlan
 // au chemin base sur le squelette, aucune adjacence n'est rapportee entre
 // les deux moities issues d'ici (§19/§20 restent un travail futur pour cette
 // famille -- pas de `RegionSplitReport::merge_candidates` equivalent).
-RecursionOutcome try_concavity_decomposition(const geometry::PathSet& region, const SatinPlanConfig& config, int depth,
+RecursionOutcome try_concavity_decomposition(const geometry::PathSet& region,
+                                             const SatinPlanConfig& config, int depth,
                                              bool fromResidualRepair, PlanningBudgetState& budget) {
     RecursionOutcome out;
     const auto candidates = generate_concavity_cut_candidates(region, config.concavityCutParams);
     ++budget.oracle_evaluations;
-    const auto chosen = select_best_concavity_cut(candidates, config.genParams, config.coverageConfig, config.density,
-                                                   config.concavity_cut_beam_width);
+    const auto chosen =
+        select_best_concavity_cut(candidates, config.genParams, config.coverageConfig,
+                                  config.density, config.concavity_cut_beam_width);
     if (!chosen) {
         out.unresolved.push_back(region);
         return out;
     }
     const auto& winner = candidates[*chosen];
     const auto absorb = [&](const geometry::PathSet& piece) {
-        RecursionOutcome child = plan_recursive(piece, config, depth + 1, fromResidualRepair, budget);
+        RecursionOutcome child =
+            plan_recursive(piece, config, depth + 1, fromResidualRepair, budget);
         const std::size_t baseIndex = out.accepted.size();
         for (std::size_t k = 0; k < child.adjacency.size(); ++k) {
-            out.adjacency.emplace_back(child.adjacency[k].first + baseIndex, child.adjacency[k].second + baseIndex);
+            out.adjacency.emplace_back(child.adjacency[k].first + baseIndex,
+                                       child.adjacency[k].second + baseIndex);
             out.overlaps.push_back(std::move(child.overlaps[k]));
         }
-        for (auto& leaf : child.accepted) out.accepted.push_back(std::move(leaf));
-        for (auto& p : child.unresolved) out.unresolved.push_back(std::move(p));
-        for (auto& w : child.warnings) out.warnings.push_back(std::move(w));
+        for (auto& leaf : child.accepted)
+            out.accepted.push_back(std::move(leaf));
+        for (auto& p : child.unresolved)
+            out.unresolved.push_back(std::move(p));
+        for (auto& w : child.warnings)
+            out.warnings.push_back(std::move(w));
     };
     absorb(winner.first_piece);
     absorb(winner.second_piece);
@@ -158,7 +167,8 @@ RecursionOutcome try_concavity_decomposition(const geometry::PathSet& region, co
 // resultante -- c'est cette recursion, absente de l'ancien
 // `build_satin_sections` a une seule passe, qui permet a une region fille
 // encore mediocre d'etre redecoupee a son tour (§10 du plan de refonte).
-RecursionOutcome decompose_and_recurse(const geometry::PathSet& region, const SatinPlanConfig& config, int depth,
+RecursionOutcome decompose_and_recurse(const geometry::PathSet& region,
+                                       const SatinPlanConfig& config, int depth,
                                        bool fromResidualRepair, PlanningBudgetState& budget) {
     RecursionOutcome out;
     const auto analysis = auto_satin::analyze_region(region, config.genParams.analysis);
@@ -244,8 +254,10 @@ RecursionOutcome decompose_and_recurse(const geometry::PathSet& region, const Sa
     const std::size_t complexitySignal =
         std::max(static_cast<std::size_t>(graph.junction_count()), decomposition.paths.size());
     const bool localComplexityHigh = complexitySignal > config.max_junctions_for_full_beam_search;
-    const bool globalBudgetSpent = budget.oracle_evaluations >= config.max_oracle_evaluations_at_full_beam_width;
-    beamParams.beam_width = (localComplexityHigh || globalBudgetSpent) ? std::size_t{1} : config.beam_width;
+    const bool globalBudgetSpent =
+        budget.oracle_evaluations >= config.max_oracle_evaluations_at_full_beam_width;
+    beamParams.beam_width =
+        (localComplexityHigh || globalBudgetSpent) ? std::size_t{1} : config.beam_width;
     satin_planning::OracleGuidedSelector selector(beamParams);
 
     CutCandidateParams cutParams = config.cutParams;
@@ -290,7 +302,8 @@ RecursionOutcome decompose_and_recurse(const geometry::PathSet& region, const Sa
     // recursion individuelle ci-dessous, remplaces par UNE recursion sur la
     // geometrie fusionnee.
     std::unordered_map<std::size_t, std::size_t> pathIndexToRegionSlot;
-    for (std::size_t i = 0; i < split.regions.size(); ++i) pathIndexToRegionSlot[split.regions[i].path_index] = i;
+    for (std::size_t i = 0; i < split.regions.size(); ++i)
+        pathIndexToRegionSlot[split.regions[i].path_index] = i;
 
     std::vector<bool> mergedAway(split.regions.size(), false);
     std::vector<geometry::PathSet> mergedGroups;
@@ -301,12 +314,15 @@ RecursionOutcome decompose_and_recurse(const geometry::PathSet& region, const Sa
         mergeParams.density = config.density;
         mergeParams.coverage_tolerance = config.merge_pass_coverage_tolerance;
         const auto mergeReport = evaluate_merge_pass(split, mergeParams);
-        for (std::size_t i = 0; i < mergeReport.decisions.size() && i < split.merge_candidates.size(); ++i) {
-            if (!mergeReport.decisions[i].merge_recommended) continue;
+        for (std::size_t i = 0;
+             i < mergeReport.decisions.size() && i < split.merge_candidates.size(); ++i) {
+            if (!mergeReport.decisions[i].merge_recommended)
+                continue;
             const auto& candidate = split.merge_candidates[i];
             const auto firstIt = pathIndexToRegionSlot.find(candidate.first_path_index);
             const auto secondIt = pathIndexToRegionSlot.find(candidate.second_path_index);
-            if (firstIt == pathIndexToRegionSlot.end() || secondIt == pathIndexToRegionSlot.end()) continue;
+            if (firstIt == pathIndexToRegionSlot.end() || secondIt == pathIndexToRegionSlot.end())
+                continue;
             mergedAway[firstIt->second] = true;
             mergedAway[secondIt->second] = true;
             mergedGroups.push_back(candidate.merged_region);
@@ -324,22 +340,29 @@ RecursionOutcome decompose_and_recurse(const geometry::PathSet& region, const Sa
     // ce `merge_candidates` -- la boucle qui suit `continue` naturellement
     // pour elle (aucune entree trouvee).
     std::unordered_map<std::size_t, std::size_t> leafIndexByPathIndex;
-    const auto absorb_child = [&](const geometry::PathSet& childRegion, std::optional<std::size_t> pathIndexForMapping) {
-        RecursionOutcome child = plan_recursive(childRegion, config, depth + 1, fromResidualRepair, budget);
+    const auto absorb_child = [&](const geometry::PathSet& childRegion,
+                                  std::optional<std::size_t> pathIndexForMapping) {
+        RecursionOutcome child =
+            plan_recursive(childRegion, config, depth + 1, fromResidualRepair, budget);
         const std::size_t baseIndex = out.accepted.size();
         if (pathIndexForMapping && child.accepted.size() == 1) {
             leafIndexByPathIndex[*pathIndexForMapping] = baseIndex;
         }
         for (std::size_t k = 0; k < child.adjacency.size(); ++k) {
-            out.adjacency.emplace_back(child.adjacency[k].first + baseIndex, child.adjacency[k].second + baseIndex);
+            out.adjacency.emplace_back(child.adjacency[k].first + baseIndex,
+                                       child.adjacency[k].second + baseIndex);
             out.overlaps.push_back(std::move(child.overlaps[k]));
         }
-        for (auto& leaf : child.accepted) out.accepted.push_back(std::move(leaf));
-        for (auto& piece : child.unresolved) out.unresolved.push_back(std::move(piece));
-        for (auto& w : child.warnings) out.warnings.push_back(std::move(w));
+        for (auto& leaf : child.accepted)
+            out.accepted.push_back(std::move(leaf));
+        for (auto& piece : child.unresolved)
+            out.unresolved.push_back(std::move(piece));
+        for (auto& w : child.warnings)
+            out.warnings.push_back(std::move(w));
     };
     for (std::size_t i = 0; i < split.regions.size(); ++i) {
-        if (mergedAway[i]) continue;
+        if (mergedAway[i])
+            continue;
         absorb_child(split.regions[i].region, split.regions[i].path_index);
     }
     for (const auto& mergedRegion : mergedGroups) {
@@ -352,18 +375,21 @@ RecursionOutcome decompose_and_recurse(const geometry::PathSet& region, const Sa
     // structurelles issues de CE decoupage precis (avant toute recursion
     // ulterieure d'un cote ou de l'autre).
     const OverlapReport overlapReport =
-        config.compute_overlaps ? generate_overlaps(split, OverlapParams{config.overlap_distance}) : OverlapReport{};
+        config.compute_overlaps ? generate_overlaps(split, OverlapParams{config.overlap_distance})
+                                : OverlapReport{};
 
     for (const auto& mc : split.merge_candidates) {
         const auto itA = leafIndexByPathIndex.find(mc.first_path_index);
         const auto itB = leafIndexByPathIndex.find(mc.second_path_index);
-        if (itA == leafIndexByPathIndex.end() || itB == leafIndexByPathIndex.end()) continue;
+        if (itA == leafIndexByPathIndex.end() || itB == leafIndexByPathIndex.end())
+            continue;
 
         SatinPlanOverlap planOverlap;
         planOverlap.first_extended = out.accepted[itA->second].region;
         planOverlap.second_extended = out.accepted[itB->second].region;
         for (const auto& ov : overlapReport.overlaps) {
-            if (ov.first_path_index == mc.first_path_index && ov.second_path_index == mc.second_path_index) {
+            if (ov.first_path_index == mc.first_path_index &&
+                ov.second_path_index == mc.second_path_index) {
                 planOverlap.first_extended = ov.first_extended;
                 planOverlap.second_extended = ov.second_extended;
                 break;
@@ -382,8 +408,8 @@ RecursionOutcome decompose_and_recurse(const geometry::PathSet& region, const Sa
     return out;
 }
 
-RecursionOutcome plan_recursive(const geometry::PathSet& region, const SatinPlanConfig& config, int depth,
-                                bool fromResidualRepair, PlanningBudgetState& budget) {
+RecursionOutcome plan_recursive(const geometry::PathSet& region, const SatinPlanConfig& config,
+                                int depth, bool fromResidualRepair, PlanningBudgetState& budget) {
     ++budget.regions_explored;
     LocalAttempt attempt = try_local_satin(region, config);
     // §18 de la mission de durcissement du contrat (2026-08-17) : la
@@ -396,9 +422,11 @@ RecursionOutcome plan_recursive(const geometry::PathSet& region, const SatinPlan
     // (`budget.exceeded`, lu par `create_satin_plan` pour choisir entre
     // `Incomplete` et `Impossible`), jamais pour la decision elle-meme.
     const bool globalBudgetExceeded = budget_exceeded(budget, config);
-    if (globalBudgetExceeded) budget.exceeded = true;
+    if (globalBudgetExceeded)
+        budget.exceeded = true;
     const bool budgetExhausted = depth >= config.max_recursion_depth || globalBudgetExceeded;
-    const bool hasColumns = !attempt.built.columns.empty() || !attempt.built.parametric_columns.empty();
+    const bool hasColumns =
+        !attempt.built.columns.empty() || !attempt.built.parametric_columns.empty();
     // `analyze_satin_coverage` échoue (erreur, jamais un simple "couverture
     // insuffisante") UNIQUEMENT sur une région cible dégénérée (moins de 3
     // sommets) -- défaut réel trouvé le 2026-08-14 sur une forme utilisateur
@@ -417,24 +445,28 @@ RecursionOutcome plan_recursive(const geometry::PathSet& region, const SatinPlan
     // reel trouve sur tentabrode.png, cf. SatinPlanConfig::
     // min_fallback_coverage_ratio) que fabriquer une "reussite" a 1-2%.
     const bool adequateFallback =
-        hasColumns && !coverageUnverifiable && attempt.coverage->raw_coverage_ratio >= config.min_fallback_coverage_ratio;
+        hasColumns && !coverageUnverifiable &&
+        attempt.coverage->raw_coverage_ratio >= config.min_fallback_coverage_ratio;
 
     const auto accept_as_leaf = [&]() {
         ++budget.regions_accepted;
         RecursionOutcome out;
-        for (const auto& w : attempt.built.warnings) out.warnings.push_back(w);
+        for (const auto& w : attempt.built.warnings)
+            out.warnings.push_back(w);
         SatinPlanRegion leaf;
         leaf.region = region;
         leaf.columns = std::move(attempt.built);
         leaf.depth = depth;
         leaf.from_residual_repair = fromResidualRepair;
-        if (attempt.coverage) leaf.coverage = *attempt.coverage;
+        if (attempt.coverage)
+            leaf.coverage = *attempt.coverage;
         out.accepted.push_back(std::move(leaf));
         return out;
     };
     const auto report_as_residual = [&]() {
         RecursionOutcome out;
-        for (const auto& w : attempt.built.warnings) out.warnings.push_back(w);
+        for (const auto& w : attempt.built.warnings)
+            out.warnings.push_back(w);
         out.unresolved.push_back(region);
         return out;
     };
@@ -449,7 +481,8 @@ RecursionOutcome plan_recursive(const geometry::PathSet& region, const SatinPlan
         return adequateFallback ? accept_as_leaf() : report_as_residual();
     }
 
-    RecursionOutcome decomposed = decompose_and_recurse(region, config, depth, fromResidualRepair, budget);
+    RecursionOutcome decomposed =
+        decompose_and_recurse(region, config, depth, fromResidualRepair, budget);
     if (!decomposed.accepted.empty()) {
         return decomposed;
     }
@@ -484,15 +517,19 @@ void extend_columns_into_known_overlaps(SatinPlan& plan, const SatinPlanConfig& 
 
         const auto try_extend = [&](std::size_t regionIdx, const geometry::PathSet& extendedGeom) {
             SatinPlanRegion& target = plan.regions[regionIdx];
-            if (!target.coverage) return;  // rien de fiable a comparer, ne rien risquer
+            if (!target.coverage)
+                return; // rien de fiable a comparer, ne rien risquer
 
             auto rebuilt = auto_satin::build_satin_columns(extendedGeom, config.genParams);
             const auto inputs = to_coverage_inputs(rebuilt, config.density);
-            if (inputs.empty()) return;  // reconstruction refusee : repli silencieux sur l'original
-            const auto newCoverage =
-                satin_coverage::analyze_satin_coverage(target.region, inputs, config.coverageConfig);
-            if (!newCoverage) return;
-            if (newCoverage->raw_coverage_ratio + 1e-9 < target.coverage->raw_coverage_ratio) return;
+            if (inputs.empty())
+                return; // reconstruction refusee : repli silencieux sur l'original
+            const auto newCoverage = satin_coverage::analyze_satin_coverage(target.region, inputs,
+                                                                            config.coverageConfig);
+            if (!newCoverage)
+                return;
+            if (newCoverage->raw_coverage_ratio + 1e-9 < target.coverage->raw_coverage_ratio)
+                return;
 
             target.columns = std::move(rebuilt);
             target.coverage = *newCoverage;
@@ -503,7 +540,7 @@ void extend_columns_into_known_overlaps(SatinPlan& plan, const SatinPlanConfig& 
     }
 }
 
-}  // namespace
+} // namespace
 
 std::string to_string(SatinPlanStatus status) {
     switch (status) {
@@ -529,8 +566,8 @@ SatinPlan create_satin_plan(const geometry::PathSet& source, const SatinPlanConf
     std::vector<geometry::PathSet> pendingResidual = std::move(top.unresolved);
 
     const double sourceAreaMm2 = geometry::path_set_area_um2(source) / 1e6;
-    const double repairAreaThresholdMm2 =
-        std::max(config.residual_repair_min_area_mm2, config.residual_repair_min_area_ratio * sourceAreaMm2);
+    const double repairAreaThresholdMm2 = std::max(
+        config.residual_repair_min_area_mm2, config.residual_repair_min_area_ratio * sourceAreaMm2);
 
     // Reparation de residu (§17) : mesure la couverture AGREGEE sur la
     // region SOURCE entiere (jamais une sous-region) et tente de
@@ -543,13 +580,16 @@ SatinPlan create_satin_plan(const geometry::PathSet& source, const SatinPlanConf
         // reparation qui ne ferait que re-epuiser le meme budget sans
         // progres reel (`plan_recursive` refuserait de toute facon toute
         // decomposition ulterieure).
-        if (budget.exceeded) break;
+        if (budget.exceeded)
+            break;
         std::vector<satin_coverage::SatinColumnInput> allInputs;
         for (const auto& r : plan.regions) {
             auto inputs = to_coverage_inputs(r.columns, config.density);
-            for (auto& in : inputs) allInputs.push_back(std::move(in));
+            for (auto& in : inputs)
+                allInputs.push_back(std::move(in));
         }
-        const auto aggregate = satin_coverage::analyze_satin_coverage(source, allInputs, config.coverageConfig);
+        const auto aggregate =
+            satin_coverage::analyze_satin_coverage(source, allInputs, config.coverageConfig);
         if (!aggregate) {
             // Echec de mesure (region source degeneree) : s'arreter
             // proprement plutot que de deviner un etat de couverture.
@@ -603,23 +643,26 @@ SatinPlan create_satin_plan(const geometry::PathSet& source, const SatinPlanConf
             // deja porte par chaque leaf issue de cette boucle, utilise par
             // le test pour distinguer les deux cas).
             RecursionOutcome repaired = plan_recursive(missing.region, config, 0, true, budget);
-            for (auto& w : repaired.warnings) plan.warnings.push_back(std::move(w));
+            for (auto& w : repaired.warnings)
+                plan.warnings.push_back(std::move(w));
             if (!repaired.accepted.empty()) {
                 const std::size_t baseIndex = plan.regions.size();
                 for (std::size_t k = 0; k < repaired.adjacency.size(); ++k) {
                     plan.adjacency.emplace_back(repaired.adjacency[k].first + baseIndex,
-                                                 repaired.adjacency[k].second + baseIndex);
+                                                repaired.adjacency[k].second + baseIndex);
                     plan.overlaps.push_back(std::move(repaired.overlaps[k]));
                 }
-                for (auto& leaf : repaired.accepted) plan.regions.push_back(std::move(leaf));
+                for (auto& leaf : repaired.accepted)
+                    plan.regions.push_back(std::move(leaf));
                 anyRepaired = true;
             } else {
-                for (auto& p : repaired.unresolved) stillMissing.push_back(std::move(p));
+                for (auto& p : repaired.unresolved)
+                    stillMissing.push_back(std::move(p));
             }
         }
         pendingResidual = std::move(stillMissing);
         if (!anyRepaired) {
-            break;  // plus aucun progres possible, inutile de reboucler
+            break; // plus aucun progres possible, inutile de reboucler
         }
     }
 
@@ -658,12 +701,15 @@ SatinPlan create_satin_plan(const geometry::PathSet& source, const SatinPlanConf
         std::vector<satin_coverage::SatinColumnInput> allInputs;
         for (const auto& r : plan.regions) {
             auto inputs = to_coverage_inputs(r.columns, config.density);
-            for (auto& in : inputs) allInputs.push_back(std::move(in));
+            for (auto& in : inputs)
+                allInputs.push_back(std::move(in));
         }
-        if (const auto aggregate = satin_coverage::analyze_satin_coverage(source, allInputs, config.coverageConfig)) {
+        if (const auto aggregate =
+                satin_coverage::analyze_satin_coverage(source, allInputs, config.coverageConfig)) {
             plan.aggregate_coverage = *aggregate;
             finalResidual.reserve(aggregate->missing_regions.size());
-            for (const auto& missing : aggregate->missing_regions) finalResidual.push_back(missing.region);
+            for (const auto& missing : aggregate->missing_regions)
+                finalResidual.push_back(missing.region);
         } else {
             finalResidual = std::move(pendingResidual);
         }
@@ -703,7 +749,8 @@ SatinPlan create_satin_plan(const geometry::PathSet& source, const SatinPlanConf
     double significantResidualAreaMm2 = 0.0;
     for (const auto& piece : plan.unresolved_residual) {
         const double areaMm2 = geometry::path_set_area_um2(piece) / 1e6;
-        if (areaMm2 >= repairAreaThresholdMm2) significantResidualAreaMm2 += areaMm2;
+        if (areaMm2 >= repairAreaThresholdMm2)
+            significantResidualAreaMm2 += areaMm2;
     }
     const bool noSignificantResidual = significantResidualAreaMm2 <= 1e-9;
     if (!noSignificantResidual) {
@@ -716,14 +763,17 @@ SatinPlan create_satin_plan(const geometry::PathSet& source, const SatinPlanConf
     }
 
     const bool coverageSufficient =
-        plan.aggregate_coverage.has_value() && plan.aggregate_coverage->raw_coverage_ratio >= config.complete_min_raw_coverage;
+        plan.aggregate_coverage.has_value() &&
+        plan.aggregate_coverage->raw_coverage_ratio >= config.complete_min_raw_coverage;
     const bool noLargeLocalGap =
-        plan.aggregate_coverage.has_value() && plan.aggregate_coverage->max_gap_radius_mm <= config.coverageConfig.max_gap_radius_mm;
+        plan.aggregate_coverage.has_value() &&
+        plan.aggregate_coverage->max_gap_radius_mm <= config.coverageConfig.max_gap_radius_mm;
     if (plan.aggregate_coverage.has_value() && (!coverageSufficient || !noLargeLocalGap)) {
         std::ostringstream reason;
         reason.setf(std::ios::fixed);
         reason.precision(2);
-        reason << "Couverture brute agregee=" << (plan.aggregate_coverage->raw_coverage_ratio * 100.0)
+        reason << "Couverture brute agregee="
+               << (plan.aggregate_coverage->raw_coverage_ratio * 100.0)
                << "% (seuil=" << (config.complete_min_raw_coverage * 100.0)
                << "%), rayon de trou max=" << plan.aggregate_coverage->max_gap_radius_mm
                << "mm (seuil=" << config.coverageConfig.max_gap_radius_mm << "mm).";
@@ -740,7 +790,8 @@ SatinPlan create_satin_plan(const geometry::PathSet& source, const SatinPlanConf
     if (!allLeavesHaveColumns) {
         plan.diagnostics.push_back(
             {"RegionWithoutColumns",
-             "Une region acceptee ne porte aucune colonne construite -- violation du contrat interne, "
+             "Une region acceptee ne porte aucune colonne construite -- violation du contrat "
+             "interne, "
              "signale explicitement plutot que silencieusement traite comme un succes."});
     }
 
@@ -758,15 +809,16 @@ SatinPlan create_satin_plan(const geometry::PathSet& source, const SatinPlanConf
 
     if (budget.exceeded) {
         const auto elapsedMs = std::chrono::duration_cast<std::chrono::milliseconds>(
-                                    std::chrono::steady_clock::now() - budget.start_time)
-                                    .count();
+                                   std::chrono::steady_clock::now() - budget.start_time)
+                                   .count();
         std::ostringstream reason;
         reason.setf(std::ios::fixed);
         reason.precision(0);
-        reason << "Budget d'exploration atteint (regions_explored=" << budget.regions_explored << "/"
-               << config.max_planning_iterations << ", regions_accepted=" << budget.regions_accepted << "/"
-               << config.max_total_regions << ", ecoule=" << elapsedMs << "ms/" << config.max_planning_wall_clock_ms
-               << "ms) avant la fin de la planification.";
+        reason << "Budget d'exploration atteint (regions_explored=" << budget.regions_explored
+               << "/" << config.max_planning_iterations
+               << ", regions_accepted=" << budget.regions_accepted << "/"
+               << config.max_total_regions << ", ecoule=" << elapsedMs << "ms/"
+               << config.max_planning_wall_clock_ms << "ms) avant la fin de la planification.";
         plan.diagnostics.push_back({"SearchBudgetExceeded", reason.str()});
     }
 
@@ -777,10 +829,11 @@ SatinPlan create_satin_plan(const geometry::PathSet& source, const SatinPlanConf
     // simplement `Incomplete`, pas `Impossible`).
     constexpr double kImpossibleCoverageCeiling = 0.5;
     const bool territoryLargelyUnaddressed =
-        !plan.aggregate_coverage.has_value() || plan.aggregate_coverage->raw_coverage_ratio < kImpossibleCoverageCeiling;
+        !plan.aggregate_coverage.has_value() ||
+        plan.aggregate_coverage->raw_coverage_ratio < kImpossibleCoverageCeiling;
 
-    if (noSignificantResidual && coverageSufficient && noLargeLocalGap && allLeavesHaveColumns && geometryValid &&
-        !budget.exceeded) {
+    if (noSignificantResidual && coverageSufficient && noLargeLocalGap && allLeavesHaveColumns &&
+        geometryValid && !budget.exceeded) {
         plan.status = SatinPlanStatus::Complete;
     } else if (budget.exceeded && territoryLargelyUnaddressed) {
         plan.status = SatinPlanStatus::Impossible;
@@ -791,12 +844,14 @@ SatinPlan create_satin_plan(const geometry::PathSet& source, const SatinPlanConf
     std::ostringstream out;
     out.setf(std::ios::fixed);
     out.precision(2);
-    out << "[SatinPlan] statut=" << to_string(plan.status) << ", " << plan.regions.size() << " region(s) acceptee(s)";
+    out << "[SatinPlan] statut=" << to_string(plan.status) << ", " << plan.regions.size()
+        << " region(s) acceptee(s)";
     if (!plan.adjacency.empty()) {
         out << ", " << plan.adjacency.size() << " adjacence(s)/recouvrement(s) connu(s)";
     }
     if (plan.aggregate_coverage) {
-        out << ", couverture agregee = " << (plan.aggregate_coverage->raw_coverage_ratio * 100.0) << "%";
+        out << ", couverture agregee = " << (plan.aggregate_coverage->raw_coverage_ratio * 100.0)
+            << "%";
     }
     if (!plan.unresolved_residual.empty()) {
         out << " -- " << plan.unresolved_residual.size() << " zone(s) non resolue(s)";
@@ -817,23 +872,24 @@ std::string format_satin_plan(const SatinPlan& plan) {
             out << "  [" << d.code << "] " << d.message << "\n";
         }
     }
-    out << "Exploration : " << plan.regions_explored << " region(s) tentee(s), " << plan.oracle_evaluations
-        << " evaluation(s) de decomposition guidee\n";
+    out << "Exploration : " << plan.regions_explored << " region(s) tentee(s), "
+        << plan.oracle_evaluations << " evaluation(s) de decomposition guidee\n";
     for (std::size_t i = 0; i < plan.regions.size(); ++i) {
         const auto& r = plan.regions[i];
         out << "  region " << i << " (profondeur=" << r.depth
             << (r.from_residual_repair ? ", reparation" : "") << ") : ";
         if (r.coverage) {
-            out << (r.coverage->raw_coverage_ratio * 100.0) << "% brut, " << (r.coverage->core_coverage_ratio * 100.0)
-                << "% coeur";
+            out << (r.coverage->raw_coverage_ratio * 100.0) << "% brut, "
+                << (r.coverage->core_coverage_ratio * 100.0) << "% coeur";
         } else {
             out << "sans mesure de couverture";
         }
         out << "\n";
     }
     if (plan.aggregate_coverage) {
-        out << "Couverture agregee (region source entiere) : " << (plan.aggregate_coverage->raw_coverage_ratio * 100.0)
-            << "% brut, " << (plan.aggregate_coverage->core_coverage_ratio * 100.0) << "% coeur\n";
+        out << "Couverture agregee (region source entiere) : "
+            << (plan.aggregate_coverage->raw_coverage_ratio * 100.0) << "% brut, "
+            << (plan.aggregate_coverage->core_coverage_ratio * 100.0) << "% coeur\n";
     }
     out << "Adjacence(s) connue(s) : " << plan.adjacency.size() << " paire(s)\n";
     out << "Residu non resolu : " << plan.unresolved_residual.size() << " zone(s)\n";
@@ -841,4 +897,4 @@ std::string format_satin_plan(const SatinPlan& plan) {
     return out.str();
 }
 
-}  // namespace openstitch::satin_planning
+} // namespace openstitch::satin_planning

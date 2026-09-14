@@ -7,7 +7,7 @@ namespace openstitch::desktop {
 
 QString WslPathConverter::toWsl(const QString& windowsPath) {
     if (windowsPath.startsWith(QLatin1Char('/'))) {
-        return windowsPath;  // déjà un chemin WSL (ou relatif)
+        return windowsPath; // déjà un chemin WSL (ou relatif)
     }
     QString path = windowsPath;
     path.replace(QLatin1Char('\\'), QLatin1Char('/'));
@@ -30,4 +30,4 @@ QString WslPathConverter::toWindows(const QString& wslPath) {
     return drive + QStringLiteral(":") + rest;
 }
 
-}  // namespace openstitch::desktop
+} // namespace openstitch::desktop

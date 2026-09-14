@@ -15,19 +15,19 @@ struct OrderItem {
     ObjectId id;
     std::array<std::uint8_t, 3> rgb{};
     Vec2um centroid{};  // position représentative (déplacements estimés par les centres)
-    bool locked{false};  // reste à sa position d'origine
+    bool locked{false}; // reste à sa position d'origine
 };
 
 enum class OrderStrategy {
-    Document,           // ordre actuel (aucun changement)
-    ByColor,            // regroupe les couleurs (minimise les changements de fil)
-    ByProximity,        // plus proche voisin (minimise les déplacements)
-    ColorThenProximity  // groupes de couleur, puis proximité à l'intérieur
+    Document,          // ordre actuel (aucun changement)
+    ByColor,           // regroupe les couleurs (minimise les changements de fil)
+    ByProximity,       // plus proche voisin (minimise les déplacements)
+    ColorThenProximity // groupes de couleur, puis proximité à l'intérieur
 };
 
 struct OrderCost {
     double travel_um{0.0};        // somme des déplacements entre centres
-    std::size_t color_changes{0};  // nombre de changements de fil
+    std::size_t color_changes{0}; // nombre de changements de fil
 
     // Coût scalaire : les changements de couleur sont chers (arrêt machine).
     [[nodiscard]] double score() const {
@@ -43,4 +43,4 @@ struct OrderCost {
 [[nodiscard]] std::vector<ObjectId> optimize_order(const std::vector<OrderItem>& items,
                                                    OrderStrategy strategy);
 
-}  // namespace openstitch::optimization
+} // namespace openstitch::optimization

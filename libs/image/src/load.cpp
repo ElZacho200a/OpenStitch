@@ -17,10 +17,14 @@ std::string format_from_extension(const std::filesystem::path& path) {
     std::string ext = path.extension().string();
     std::transform(ext.begin(), ext.end(), ext.begin(),
                    [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
-    if (ext == ".png") return "PNG";
-    if (ext == ".jpg" || ext == ".jpeg") return "JPEG";
-    if (ext == ".bmp") return "BMP";
-    if (ext == ".tif" || ext == ".tiff") return "TIFF";
+    if (ext == ".png")
+        return "PNG";
+    if (ext == ".jpg" || ext == ".jpeg")
+        return "JPEG";
+    if (ext == ".bmp")
+        return "BMP";
+    if (ext == ".tif" || ext == ".tiff")
+        return "TIFF";
     return ext.empty() ? "inconnu" : ext.substr(1);
 }
 
@@ -65,7 +69,7 @@ Result<cv::Mat> to_rgba8(cv::Mat mat) {
     case 1:
         cv::cvtColor(mat, rgba, cv::COLOR_GRAY2RGBA);
         break;
-    case 2: {  // niveaux de gris + alpha (PNG "GA")
+    case 2: { // niveaux de gris + alpha (PNG "GA")
         std::vector<cv::Mat> ga;
         cv::split(mat, ga);
         cv::Mat rgb;
@@ -89,7 +93,7 @@ Result<cv::Mat> to_rgba8(cv::Mat mat) {
     return rgba;
 }
 
-}  // namespace
+} // namespace
 
 Result<ImageInfo> read_image_info(const std::filesystem::path& path) {
     auto mat = decode_file(path);
@@ -140,7 +144,8 @@ Result<Image> decode_image(std::span<const std::uint8_t> bytes) {
     img.width = rgba->cols;
     img.height = rgba->rows;
     img.source_had_alpha = had_alpha;
-    img.rgba.resize(static_cast<std::size_t>(rgba->cols) * static_cast<std::size_t>(rgba->rows) * 4);
+    img.rgba.resize(static_cast<std::size_t>(rgba->cols) * static_cast<std::size_t>(rgba->rows) *
+                    4);
     for (int row = 0; row < rgba->rows; ++row) {
         const auto* src = rgba->ptr<std::uint8_t>(row);
         std::copy_n(src, static_cast<std::size_t>(rgba->cols) * 4,
@@ -166,14 +171,16 @@ Result<Image> load_image(const std::filesystem::path& path) {
     img.width = rgba->cols;
     img.height = rgba->rows;
     img.source_had_alpha = had_alpha;
-    img.rgba.resize(static_cast<std::size_t>(rgba->cols) * static_cast<std::size_t>(rgba->rows) * 4);
+    img.rgba.resize(static_cast<std::size_t>(rgba->cols) * static_cast<std::size_t>(rgba->rows) *
+                    4);
     // cv::Mat peut avoir un padding de ligne : copie ligne par ligne.
     for (int row = 0; row < rgba->rows; ++row) {
         const auto* src = rgba->ptr<std::uint8_t>(row);
         std::copy_n(src, static_cast<std::size_t>(rgba->cols) * 4,
-                    img.rgba.data() + static_cast<std::size_t>(row) * static_cast<std::size_t>(rgba->cols) * 4);
+                    img.rgba.data() +
+                        static_cast<std::size_t>(row) * static_cast<std::size_t>(rgba->cols) * 4);
     }
     return img;
 }
 
-}  // namespace openstitch::image
+} // namespace openstitch::image

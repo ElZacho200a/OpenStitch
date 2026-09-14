@@ -39,7 +39,7 @@ bool pass(std::vector<std::uint8_t>& g, int w, int h, int step) {
             if (bsum < 2 || bsum > 6) {
                 continue;
             }
-            int a = 0;  // transitions 0->1 dans la séquence p2..p9,p2
+            int a = 0; // transitions 0->1 dans la séquence p2..p9,p2
             for (int k = 0; k < 8; ++k) {
                 if (p[static_cast<std::size_t>(k)] == 0 &&
                     p[static_cast<std::size_t>((k + 1) % 8)] == 1) {
@@ -51,23 +51,27 @@ bool pass(std::vector<std::uint8_t>& g, int w, int h, int step) {
             }
             // p[0]=P2(N), p[2]=P4(E), p[4]=P6(S), p[6]=P8(W).
             if (step == 0) {
-                if (p[0] * p[2] * p[4] != 0) continue;
-                if (p[2] * p[4] * p[6] != 0) continue;
+                if (p[0] * p[2] * p[4] != 0)
+                    continue;
+                if (p[2] * p[4] * p[6] != 0)
+                    continue;
             } else {
-                if (p[0] * p[2] * p[6] != 0) continue;
-                if (p[0] * p[4] * p[6] != 0) continue;
+                if (p[0] * p[2] * p[6] != 0)
+                    continue;
+                if (p[0] * p[4] * p[6] != 0)
+                    continue;
             }
             to_clear.emplace_back(x, y);
         }
     }
     for (const auto& [x, y] : to_clear) {
-        g[static_cast<std::size_t>(y) * static_cast<std::size_t>(w) +
-          static_cast<std::size_t>(x)] = 0;
+        g[static_cast<std::size_t>(y) * static_cast<std::size_t>(w) + static_cast<std::size_t>(x)] =
+            0;
     }
     return !to_clear.empty();
 }
 
-}  // namespace
+} // namespace
 
 RasterMask thin_zhang_suen(const RasterMask& mask) {
     RasterMask out = mask;
@@ -85,4 +89,4 @@ RasterMask thin_zhang_suen(const RasterMask& mask) {
     return out;
 }
 
-}  // namespace openstitch::auto_satin
+} // namespace openstitch::auto_satin

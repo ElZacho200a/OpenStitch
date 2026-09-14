@@ -33,14 +33,12 @@ int neighbor_count(const RasterMask& s, int x, int y) {
 int crossing_number(const RasterMask& s, int x, int y) {
     int sum = 0;
     for (int k = 0; k < 8; ++k) {
-        const int a = s.at(x + RX[static_cast<std::size_t>(k)], y + RY[static_cast<std::size_t>(k)])
+        const int a =
+            s.at(x + RX[static_cast<std::size_t>(k)], y + RY[static_cast<std::size_t>(k)]) ? 1 : 0;
+        const int b = s.at(x + RX[static_cast<std::size_t>((k + 1) % 8)],
+                           y + RY[static_cast<std::size_t>((k + 1) % 8)])
                           ? 1
                           : 0;
-        const int b =
-            s.at(x + RX[static_cast<std::size_t>((k + 1) % 8)],
-                 y + RY[static_cast<std::size_t>((k + 1) % 8)])
-                ? 1
-                : 0;
         sum += std::abs(a - b);
     }
     return sum / 2;
@@ -73,7 +71,8 @@ struct DisjointSet {
     explicit DisjointSet(std::size_t n) : parent(n) { std::iota(parent.begin(), parent.end(), 0); }
     int find(int a) {
         while (parent[static_cast<std::size_t>(a)] != a) {
-            parent[static_cast<std::size_t>(a)] = parent[static_cast<std::size_t>(parent[static_cast<std::size_t>(a)])];
+            parent[static_cast<std::size_t>(a)] =
+                parent[static_cast<std::size_t>(parent[static_cast<std::size_t>(a)])];
             a = parent[static_cast<std::size_t>(a)];
         }
         return a;
@@ -87,7 +86,7 @@ struct DisjointSet {
     }
 };
 
-}  // namespace
+} // namespace
 
 std::size_t SkeletonGraph::endpoint_count() const {
     return static_cast<std::size_t>(
@@ -113,7 +112,8 @@ SkeletonGraph build_skeleton_graph(const RasterMask& s, const DistanceField& d) 
     // `SkeletonNode` : un pixel de jonction fait d'abord l'objet d'une
     // consolidation d'amas (1b) avant qu'un nœud logique ne lui soit assigné.
     const auto pixelIdx = [&](int x, int y) {
-        return static_cast<std::size_t>(y) * static_cast<std::size_t>(w) + static_cast<std::size_t>(x);
+        return static_cast<std::size_t>(y) * static_cast<std::size_t>(w) +
+               static_cast<std::size_t>(x);
     };
     std::vector<int> candidate_at(static_cast<std::size_t>(w) * static_cast<std::size_t>(h), -1);
     std::vector<NodeCandidate> candidates;
@@ -133,7 +133,7 @@ SkeletonGraph build_skeleton_graph(const RasterMask& s, const DistanceField& d) 
             NodeCandidate c;
             c.x = x;
             c.y = y;
-            c.type = nb == 0 ? SkeletonNodeType::Isolated
+            c.type = nb == 0   ? SkeletonNodeType::Isolated
                      : cn == 1 ? SkeletonNodeType::Endpoint
                                : SkeletonNodeType::Junction;
             c.radius = radius_at(d, x, y);
@@ -159,7 +159,8 @@ SkeletonGraph build_skeleton_graph(const RasterMask& s, const DistanceField& d) 
                 continue;
             }
             const int ni = candidate_at[pixelIdx(nx, ny)];
-            if (ni >= 0 && candidates[static_cast<std::size_t>(ni)].type == SkeletonNodeType::Junction) {
+            if (ni >= 0 &&
+                candidates[static_cast<std::size_t>(ni)].type == SkeletonNodeType::Junction) {
                 dsu.unite(static_cast<int>(ci), ni);
             }
         }
@@ -181,7 +182,7 @@ SkeletonGraph build_skeleton_graph(const RasterMask& s, const DistanceField& d) 
     for (std::size_t ci = 0; ci < candidates.size(); ++ci) {
         const NodeCandidate& c = candidates[ci];
         const int root = c.type == SkeletonNodeType::Junction ? dsu.find(static_cast<int>(ci))
-                                                               : static_cast<int>(ci);
+                                                              : static_cast<int>(ci);
         Cluster& cluster = clustersByRoot[root];
         cluster.type = c.type;
         cluster.members.push_back(ci);
@@ -206,10 +207,12 @@ SkeletonGraph build_skeleton_graph(const RasterMask& s, const DistanceField& d) 
         ordered.push_back(&cluster);
     }
     std::sort(ordered.begin(), ordered.end(), [](const Cluster* a, const Cluster* b) {
-        if (a->repY != b->repY) return a->repY < b->repY;
+        if (a->repY != b->repY)
+            return a->repY < b->repY;
         return a->repX < b->repX;
     });
-    std::vector<std::uint32_t> node_at(static_cast<std::size_t>(w) * static_cast<std::size_t>(h), 0);
+    std::vector<std::uint32_t> node_at(static_cast<std::size_t>(w) * static_cast<std::size_t>(h),
+                                       0);
     for (const Cluster* cluster : ordered) {
         SkeletonNode n;
         n.id = static_cast<std::uint32_t>(g.nodes.size());
@@ -288,7 +291,7 @@ SkeletonGraph build_skeleton_graph(const RasterMask& s, const DistanceField& d) 
                         if (node_at[idx(tx, ty)] != 0) {
                             nx = tx;
                             ny = ty;
-                            break;  // atteint un nœud : priorité absolue.
+                            break; // atteint un nœud : priorité absolue.
                         }
                     }
                     if (nx < 0) {
@@ -347,11 +350,13 @@ SkeletonGraph build_skeleton_graph(const RasterMask& s, const DistanceField& d) 
 
     // 3) Ordre déterministe stable des arêtes.
     std::sort(g.edges.begin(), g.edges.end(), [](const SkeletonEdge& a, const SkeletonEdge& b) {
-        if (a.from != b.from) return a.from < b.from;
-        if (a.to != b.to) return a.to < b.to;
+        if (a.from != b.from)
+            return a.from < b.from;
+        if (a.to != b.to)
+            return a.to < b.to;
         return a.length_um < b.length_um;
     });
     return g;
 }
 
-}  // namespace openstitch::auto_satin
+} // namespace openstitch::auto_satin

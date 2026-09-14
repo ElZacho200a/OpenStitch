@@ -35,37 +35,38 @@ struct SatinConfig {
 
     // --- Points courts (virages) ---
     ShortStitchMode short_stitch{ShortStitchMode::Disabled};
-    double short_stitch_curvature{0.55};    // ratio avance intérieure/extérieure sous lequel c'est serré
-    Micrometers short_stitch_min_gap{250};  // avance intérieure mini avant d'agir
-    double short_stitch_inset{0.35};        // profondeur d'inset (fraction de demi-largeur)
-    int short_stitch_levels{2};             // nombre de niveaux (mode MultiLevel)
+    double short_stitch_curvature{
+        0.55}; // ratio avance intérieure/extérieure sous lequel c'est serré
+    Micrometers short_stitch_min_gap{250}; // avance intérieure mini avant d'agir
+    double short_stitch_inset{0.35};       // profondeur d'inset (fraction de demi-largeur)
+    int short_stitch_levels{2};            // nombre de niveaux (mode MultiLevel)
 
     // --- Split (traversées longues) ---
     SplitStitchMode split_stitch{SplitStitchMode::Disabled};
-    Micrometers max_stitch_length{7'000};   // au-delà, on fractionne la traversée
-    std::uint64_t split_seed{1};            // graine déterministe (jitter)
+    Micrometers max_stitch_length{7'000}; // au-delà, on fractionne la traversée
+    std::uint64_t split_seed{1};          // graine déterministe (jitter)
 
     // --- Terminaisons ---
     SatinCapType cap_start{SatinCapType::Flat};
     SatinCapType cap_end{SatinCapType::Flat};
-    int cap_length{4};                      // nombre de fils effilés/arrondis au bout
+    int cap_length{4}; // nombre de fils effilés/arrondis au bout
 
     // --- Sous-couches (Lot 4) : passes distinctes, ordre center -> edge -> zigzag ---
-    bool underlay_edge{false};              // deux chemins internes près des rails
-    bool underlay_zigzag{false};            // satin léger (largeur réduite, pas plus grand)
-    Micrometers underlay_edge_inset{600};   // retrait des rails
-    Micrometers underlay_end_retract{600};  // retrait aux extrémités (center/edge)
+    bool underlay_edge{false};             // deux chemins internes près des rails
+    bool underlay_zigzag{false};           // satin léger (largeur réduite, pas plus grand)
+    Micrometers underlay_edge_inset{600};  // retrait des rails
+    Micrometers underlay_end_retract{600}; // retrait aux extrémités (center/edge)
     Micrometers underlay_zigzag_spacing{1'500};
-    double underlay_zigzag_width{0.65};     // fraction de la largeur
+    double underlay_zigzag_width{0.65}; // fraction de la largeur
 
     // --- Compensation (Lot 4) : pull latérale asymétrique + push longitudinale ---
     Micrometers pull_left{0};
     Micrometers pull_right{0};
-    double pull_left_prop{0.0};              // fraction de la largeur locale
+    double pull_left_prop{0.0}; // fraction de la largeur locale
     double pull_right_prop{0.0};
-    Micrometers pull_max{5'000};             // borne de l'offset par côté
-    Micrometers push_start{0};               // >0 étend la colonne au départ
-    Micrometers push_end{0};                 // >0 étend la colonne à la fin
+    Micrometers pull_max{5'000}; // borne de l'offset par côté
+    Micrometers push_start{0};   // >0 étend la colonne au départ
+    Micrometers push_end{0};     // >0 étend la colonne à la fin
 };
 
 // Une passe de couture (polyligne) — sous-couche ou trajet.
@@ -76,9 +77,9 @@ struct SatinPass {
 // Résultat d'une génération satin : sous-couches (dans l'ordre) + couche
 // supérieure. Chaque passe est distincte (affichable/analysable séparément).
 struct SatinResult {
-    std::vector<SatinPass> underlays;  // center, edge A, edge B, zigzag (selon config)
-    std::vector<Vec2um> satin;         // points du zigzag principal
-    double max_width_um{0.0};          // largeur maximale (pour l'avertissement)
+    std::vector<SatinPass> underlays; // center, edge A, edge B, zigzag (selon config)
+    std::vector<Vec2um> satin;        // points du zigzag principal
+    double max_width_um{0.0};         // largeur maximale (pour l'avertissement)
 
     // Indices dans `satin` où le fil doit être LEVÉ (saut) plutôt qu'enchaîné
     // par un point continu depuis le point précédent -- la couture reprend
@@ -105,9 +106,9 @@ struct SatinResult {
 // répondent à des besoins de couture (physique du fil, esthétique), pas à la
 // question structurelle « les rails couvrent-ils la forme ? ».
 struct SatinStation {
-    Vec2um a;  // point sur rail A
-    Vec2um b;  // point sur rail B
-    bool anchor{false};  // station exacte (barreau), par opposition à interpolée
+    Vec2um a;           // point sur rail A
+    Vec2um b;           // point sur rail B
+    bool anchor{false}; // station exacte (barreau), par opposition à interpolée
     // Vrai si cette station est atteinte par un SAUT (aiguille levée) depuis
     // la précédente plutôt qu'un fil continu -- cf. `SatinResult::jump_before`.
     // Aucun quadrilatère de couverture ne doit relier deux stations séparées
@@ -129,9 +130,9 @@ struct SatinStation {
 // utilisables après fusion (ou rails trop courts/dégénérés) -> liste vide,
 // l'appelant retombe alors sur `fill_satin`/`default_rungs` selon son besoin.
 [[nodiscard]] std::vector<SatinStation> satin_stations(const geometry::Path& rail_a,
-                                                        const geometry::Path& rail_b,
-                                                        const std::vector<SatinRungSeg>& rungs,
-                                                        Micrometers density);
+                                                       const geometry::Path& rail_b,
+                                                       const std::vector<SatinRungSeg>& rungs,
+                                                       Micrometers density);
 
 // Génère les points d'une colonne satin à partir de deux rails (polylignes
 // ouvertes, censées être orientées dans le même sens : bout 0 <-> bout 0,
@@ -177,14 +178,13 @@ struct SatinStation {
 // cousu dans ce cas. Retourne un vecteur vide si les rails sont trop
 // courts/dégénérés (l'appelant retombe alors sur `fill_satin`, comportement
 // inchangé).
-[[nodiscard]] std::vector<SatinRungSeg> default_rungs(const geometry::Path& rail_a,
-                                                       const geometry::Path& rail_b,
-                                                       Micrometers spacing);
+[[nodiscard]] std::vector<SatinRungSeg>
+default_rungs(const geometry::Path& rail_a, const geometry::Path& rail_b, Micrometers spacing);
 
 // Découpe un contour fermé en deux rails, coupé aux deux sommets les plus
 // éloignés (les « bouts » de la colonne). Convient aux formes allongées.
 // Renvoie nullopt si le contour est trop petit.
-[[nodiscard]] std::optional<std::pair<geometry::Path, geometry::Path>> rails_from_contour(
-    const geometry::Path& contour);
+[[nodiscard]] std::optional<std::pair<geometry::Path, geometry::Path>>
+rails_from_contour(const geometry::Path& contour);
 
-}  // namespace openstitch::stitch_generation
+} // namespace openstitch::stitch_generation

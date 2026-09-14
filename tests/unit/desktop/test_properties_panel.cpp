@@ -22,14 +22,14 @@ EmbroideryObject runningStitchObject(std::uint64_t id) {
     e.id = openstitch::ObjectId{id};
     e.name = "contour test";
     RunningStitchParams p;
-    p.stitch_length = Micrometers{3'000};  // 3 mm
-    p.min_length = Micrometers{500};       // 0.5 mm
+    p.stitch_length = Micrometers{3'000}; // 3 mm
+    p.min_length = Micrometers{500};      // 0.5 mm
     p.repeats = 1;
     e.params = p;
     return e;
 }
 
-}  // namespace
+} // namespace
 
 // PropertiesPanel est l'inspecteur contextuel : il se reconstruit selon la
 // sélection (menu/inspecteur qui "se met à jour selon l'état") et signale les
@@ -47,13 +47,13 @@ void PropertiesPanelTest::showEmbroideryPopulatesSpinBoxesWithoutEmittingWhileBu
     PropertiesPanel panel;
     int emitCount = 0;
     QObject::connect(&panel, &PropertiesPanel::paramsEdited, &panel,
-                      [&](openstitch::ObjectId, StitchParams) { ++emitCount; });
+                     [&](openstitch::ObjectId, StitchParams) { ++emitCount; });
 
     panel.showEmbroidery(runningStitchObject(7));
 
-    QCOMPARE(emitCount, 0);  // peuplement initial : pas d'édit émis
+    QCOMPARE(emitCount, 0); // peuplement initial : pas d'édit émis
     const auto spins = panel.findChildren<QDoubleSpinBox*>();
-    QCOMPARE(spins.size(), 2);  // longueur de point, longueur minimale
+    QCOMPARE(spins.size(), 2); // longueur de point, longueur minimale
     QCOMPARE(spins.at(0)->value(), 3.0);
     QCOMPARE(spins.at(1)->value(), 0.5);
 }
@@ -66,14 +66,14 @@ void PropertiesPanelTest::editingASpinBoxEmitsParamsEditedWithUpdatedValueAndPre
     std::optional<openstitch::ObjectId> emittedId;
     std::optional<StitchParams> emittedParams;
     QObject::connect(&panel, &PropertiesPanel::paramsEdited, &panel,
-                      [&](openstitch::ObjectId id, StitchParams params) {
-                          ++emitCount;
-                          emittedId = id;
-                          emittedParams = params;
-                      });
+                     [&](openstitch::ObjectId id, StitchParams params) {
+                         ++emitCount;
+                         emittedId = id;
+                         emittedParams = params;
+                     });
 
     auto* lengthSpin = panel.findChildren<QDoubleSpinBox*>().at(0);
-    lengthSpin->setValue(5.0);  // 5 mm au lieu de 3 mm
+    lengthSpin->setValue(5.0); // 5 mm au lieu de 3 mm
 
     QCOMPARE(emitCount, 1);
     QVERIFY(emittedId.has_value());

@@ -17,9 +17,10 @@ using namespace openstitch::autodigitize;
 namespace {
 
 void set_px(image::Image& img, int x, int y, std::uint8_t r, std::uint8_t g, std::uint8_t b) {
-    std::uint8_t* px = img.rgba.data() +
-                       (static_cast<std::size_t>(y) * static_cast<std::size_t>(img.width) +
-                        static_cast<std::size_t>(x)) * 4;
+    std::uint8_t* px =
+        img.rgba.data() + (static_cast<std::size_t>(y) * static_cast<std::size_t>(img.width) +
+                           static_cast<std::size_t>(x)) *
+                              4;
     px[0] = r;
     px[1] = g;
     px[2] = b;
@@ -36,13 +37,13 @@ image::Image blank(int w, int h) {
 
 AutoOptions opts() {
     AutoOptions o;
-    o.mm_per_px = Millimeters{1.0};  // 1 px = 1 mm (formes de test en mm)
+    o.mm_per_px = Millimeters{1.0}; // 1 px = 1 mm (formes de test en mm)
     o.min_fill_area_mm2 = 20.0;
     o.satin_max_width = Micrometers{6'000};
     return o;
 }
 
-}  // namespace
+} // namespace
 
 TEST_CASE("grande zone pleine -> tatami editable") {
     // Carré plein 30x30 mm rouge.
@@ -156,10 +157,12 @@ TEST_CASE("reseau en T -> decomposition en regions independantes via le planner 
     // compte exact d'objets, sensible aux details de calibration internes).
     image::Image img = blank(64, 64);
     for (int y = 8; y < 58; ++y) {
-        for (int x = 29; x < 35; ++x) set_px(img, x, y, 25, 180, 110);
+        for (int x = 29; x < 35; ++x)
+            set_px(img, x, y, 25, 180, 110);
     }
     for (int y = 8; y < 14; ++y) {
-        for (int x = 8; x < 56; ++x) set_px(img, x, y, 25, 180, 110);
+        for (int x = 8; x < 56; ++x)
+            set_px(img, x, y, 25, 180, 110);
     }
     const auto seg = segmentation::segment(img, {.max_colors = 2, .min_region_px = 1});
     REQUIRE(seg.has_value());
@@ -186,7 +189,8 @@ TEST_CASE("reseau en T -> decomposition en regions independantes via le planner 
             const auto flatB = geometry::flatten(satin.rail_b, Micrometers{30});
             geometry::Path strip;
             strip.closed = true;
-            for (const auto& pt : flatA.points) strip.nodes.push_back({pt, geometry::NodeType::Corner});
+            for (const auto& pt : flatA.points)
+                strip.nodes.push_back({pt, geometry::NodeType::Corner});
             for (auto it = flatB.points.rbegin(); it != flatB.points.rend(); ++it) {
                 strip.nodes.push_back({*it, geometry::NodeType::Corner});
             }
@@ -196,7 +200,8 @@ TEST_CASE("reseau en T -> decomposition en regions independantes via le planner 
                 result->vectors.begin(), result->vectors.end(),
                 [&](const document::VectorObject& v) { return v.id == e.source_vector; });
             REQUIRE(fallbackVec != result->vectors.end());
-            for (const auto& piece : fallbackVec->paths) covering.push_back(piece.outer);
+            for (const auto& piece : fallbackVec->paths)
+                covering.push_back(piece.outer);
         }
     }
     CHECK(satinSections.size() >= 2);
@@ -207,7 +212,8 @@ TEST_CASE("reseau en T -> decomposition en regions independantes via le planner 
     const auto leftover = geometry::subtract_polygons(sourceVec.paths.front(), covering);
     REQUIRE(leftover.has_value());
     double leftoverAreaMm2 = 0.0;
-    for (const auto& piece : *leftover) leftoverAreaMm2 += std::abs(geometry::signed_area_um2(piece.outer)) / 1e6;
+    for (const auto& piece : *leftover)
+        leftoverAreaMm2 += std::abs(geometry::signed_area_um2(piece.outer)) / 1e6;
     CHECK(leftoverAreaMm2 < 0.5);
 }
 
@@ -294,7 +300,8 @@ TEST_CASE("petite region -> contour (point triple)") {
 // pixels du projet réel, répartis sur 3 régions blanches, contre 40,9 %
 // pour la plus grosse seule). Corrigé : exclut toute région de la même
 // couleur exacte, pas seulement le plus gros morceau.
-TEST_CASE("fond fragmente en plusieurs regions disjointes -> toutes exclues par skip_largest_region") {
+TEST_CASE(
+    "fond fragmente en plusieurs regions disjointes -> toutes exclues par skip_largest_region") {
     // Croix rouge FINE (2 px) sur fond blanc, image 40x40 : les 4 coins
     // blancs (~19x19 px chacun) sont mutuellement disjoints (la croix les
     // sépare entièrement) et individuellement PLUS GRANDS que la croix
@@ -308,12 +315,12 @@ TEST_CASE("fond fragmente en plusieurs regions disjointes -> toutes exclues par 
     }
     for (int y = 19; y < 21; ++y) {
         for (int x = 0; x < 40; ++x) {
-            set_px(img, x, y, 220, 30, 30);  // barre horizontale
+            set_px(img, x, y, 220, 30, 30); // barre horizontale
         }
     }
     for (int x = 19; x < 21; ++x) {
         for (int y = 0; y < 40; ++y) {
-            set_px(img, x, y, 220, 30, 30);  // barre verticale
+            set_px(img, x, y, 220, 30, 30); // barre verticale
         }
     }
     const auto seg = segmentation::segment(img, {.max_colors = 2, .min_region_px = 1});
@@ -364,10 +371,12 @@ TEST_CASE("identifiants uniques, objets editables, deterministe") {
 
     // Tous les ids d'objets sont distincts.
     std::vector<std::uint64_t> allIds;
-    for (const auto& v : a->vectors) allIds.push_back(v.id.value);
-    for (const auto& e : a->embroideries) allIds.push_back(e.id.value);
+    for (const auto& v : a->vectors)
+        allIds.push_back(v.id.value);
+    for (const auto& e : a->embroideries)
+        allIds.push_back(e.id.value);
     const auto uniqueEnd = std::unique(allIds.begin(), allIds.end());
-    CHECK(uniqueEnd == allIds.end());  // deja tous distincts (pas de doublon adjacent)
+    CHECK(uniqueEnd == allIds.end()); // deja tous distincts (pas de doublon adjacent)
 }
 
 TEST_CASE("segmentation vide -> erreur propre") {
@@ -405,11 +414,11 @@ bool point_in_poly_mm(const std::vector<std::pair<double, double>>& poly, double
 // build_satin_columns en isolation).
 TEST_CASE("branche squelette localement trop large -> avertissement (jamais silencieux)") {
     const std::vector<std::pair<double, double>> letterT = {
-        {-101.859, 238.244}, {-89.160, 243.006}, {-87.043, 244.329}, {-87.572, 244.858},
-        {-92.599, 245.123},  {-93.128, 245.652}, {-99.478, 261.526}, {-102.652, 270.786},
-        {-100.801, 271.579}, {-96.832, 271.844}, {-94.715, 270.786}, {-91.541, 268.140},
-        {-89.953, 267.875},  {-89.953, 269.463}, {-90.482, 270.521}, {-90.482, 271.315},
-        {-92.863, 276.342},  {-94.186, 276.342}, {-94.980, 275.812}, {-98.419, 274.754},
+        {-101.859, 238.244}, {-89.160, 243.006},  {-87.043, 244.329},  {-87.572, 244.858},
+        {-92.599, 245.123},  {-93.128, 245.652},  {-99.478, 261.526},  {-102.652, 270.786},
+        {-100.801, 271.579}, {-96.832, 271.844},  {-94.715, 270.786},  {-91.541, 268.140},
+        {-89.953, 267.875},  {-89.953, 269.463},  {-90.482, 270.521},  {-90.482, 271.315},
+        {-92.863, 276.342},  {-94.186, 276.342},  {-94.980, 275.812},  {-98.419, 274.754},
         {-114.293, 268.405}, {-121.966, 264.965}, {-121.437, 262.584}, {-120.114, 259.938},
         {-120.114, 259.409}, {-118.262, 257.028}, {-117.733, 257.028}, {-116.939, 258.351},
         {-116.939, 261.261}, {-116.145, 263.907}, {-112.971, 266.553}, {-110.854, 267.346},
@@ -431,7 +440,7 @@ TEST_CASE("branche squelette localement trop large -> avertissement (jamais sile
     image::Image img = blank(w, h);
     for (int y = 0; y < h; ++y) {
         for (int x = 0; x < w; ++x) {
-            set_px(img, x, y, 255, 255, 255);  // fond blanc
+            set_px(img, x, y, 255, 255, 255); // fond blanc
         }
     }
     for (int py = 0; py < h; ++py) {
@@ -449,14 +458,15 @@ TEST_CASE("branche squelette localement trop large -> avertissement (jamais sile
     IdGenerator<ObjectId> ids;
     AutoOptions o = opts();
     o.mm_per_px = Millimeters{kMmPerPx};
-    o.skip_largest_region = true;  // exclut le fond blanc
+    o.skip_largest_region = true; // exclut le fond blanc
     const auto result = auto_digitize(*seg, ids, o);
     REQUIRE(result.has_value());
 
     REQUIRE_FALSE(result->warnings.empty());
-    const bool mentionsRejection = std::any_of(
-        result->warnings.begin(), result->warnings.end(),
-        [](const std::string& w) { return w.find("colonne refusee") != std::string::npos; });
+    const bool mentionsRejection =
+        std::any_of(result->warnings.begin(), result->warnings.end(), [](const std::string& w) {
+            return w.find("colonne refusee") != std::string::npos;
+        });
     // Le planner récursif (§10 du plan de refonte satin, 2026-08-14) tente
     // plusieurs décompositions successives avant d'abandonner une branche :
     // un message "colonne refusee" peut donc apparaître pour une TENTATIVE
@@ -485,10 +495,10 @@ TEST_CASE("branche squelette localement trop large -> avertissement (jamais sile
     // moins (bandes satin des sections réussies + zones de repli tatami) ne
     // doit rien laisser -- au-delà d'une tolérance d'arrondi de
     // rasterisation/vectorisation, pas une simple absence d'erreur.
-    const auto sourceVec = std::find_if(result->vectors.begin(), result->vectors.end(),
-                                        [](const document::VectorObject& v) {
-                                            return v.name.find("zone non couverte") == std::string::npos;
-                                        });
+    const auto sourceVec = std::find_if(
+        result->vectors.begin(), result->vectors.end(), [](const document::VectorObject& v) {
+            return v.name.find("zone non couverte") == std::string::npos;
+        });
     REQUIRE(sourceVec != result->vectors.end());
     REQUIRE_FALSE(sourceVec->paths.empty());
     // Le plus grand morceau par aire nette, PAS le premier : à la résolution
@@ -500,7 +510,8 @@ TEST_CASE("branche squelette localement trop large -> avertissement (jamais sile
         sourceVec->paths.begin(), sourceVec->paths.end(), [](const auto& a, const auto& b) {
             const auto netArea = [](const geometry::PathSet& s) {
                 double area = std::abs(geometry::signed_area_um2(s.outer));
-                for (const auto& h : s.holes) area -= std::abs(geometry::signed_area_um2(h));
+                for (const auto& h : s.holes)
+                    area -= std::abs(geometry::signed_area_um2(h));
                 return area;
             };
             return netArea(a) < netArea(b);
@@ -517,7 +528,8 @@ TEST_CASE("branche squelette localement trop large -> avertissement (jamais sile
                 strip.nodes.push_back({pt, geometry::NodeType::Corner, std::nullopt, std::nullopt});
             }
             for (auto it = flatB.points.rbegin(); it != flatB.points.rend(); ++it) {
-                strip.nodes.push_back({*it, geometry::NodeType::Corner, std::nullopt, std::nullopt});
+                strip.nodes.push_back(
+                    {*it, geometry::NodeType::Corner, std::nullopt, std::nullopt});
             }
             covering.push_back(std::move(strip));
         } else if (isFallbackTatami(e)) {

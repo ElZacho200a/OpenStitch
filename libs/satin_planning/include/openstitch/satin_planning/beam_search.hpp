@@ -30,7 +30,7 @@ struct BeamSearchParams {
     auto_satin::SatinColumnsParameters genParams{};
     satin_coverage::SatinCoverageConfig coverageConfig{};
     Micrometers density{400};
-    Micrometers cut_width{20};  // meme defaut que geometry::cut_path_set / CutCandidateParams
+    Micrometers cut_width{20}; // meme defaut que geometry::cut_path_set / CutCandidateParams
 };
 
 // Score d'un candidat evalue par la recherche : sa couverture brute une fois
@@ -62,17 +62,19 @@ public:
 
     // Compatible avec `CutCandidateSelector` : `std::ref(*this)` ou une
     // lambda de capture peuvent l'injecter dans `CutCandidateParams::selector`.
-    [[nodiscard]] std::optional<std::size_t> operator()(const geometry::PathSet& piece,
-                                                         const std::vector<CutCandidate>& candidates);
+    [[nodiscard]] std::optional<std::size_t>
+    operator()(const geometry::PathSet& piece, const std::vector<CutCandidate>& candidates);
 
     // Une entree par evenement de detachement traite jusqu'ici (meme ordre
     // que les appels), chacune la liste des candidats reellement evalues
     // avec leur score.
-    [[nodiscard]] const std::vector<std::vector<BeamCandidateScore>>& decisions() const { return decisions_; }
+    [[nodiscard]] const std::vector<std::vector<BeamCandidateScore>>& decisions() const {
+        return decisions_;
+    }
 
 private:
     BeamSearchParams params_;
     std::vector<std::vector<BeamCandidateScore>> decisions_;
 };
 
-}  // namespace openstitch::satin_planning
+} // namespace openstitch::satin_planning

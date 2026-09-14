@@ -10,8 +10,8 @@
 namespace openstitch::geometry {
 
 enum class NodeType : std::uint8_t {
-    Corner,  // point anguleux
-    Smooth,  // point lisse (tangentes liées) — exploité quand les courbes arriveront
+    Corner, // point anguleux
+    Smooth, // point lisse (tangentes liées) — exploité quand les courbes arriveront
 };
 
 // Nœud éditable d'un chemin. Les tangentes (Bézier) sont optionnelles :
@@ -19,8 +19,8 @@ enum class NodeType : std::uint8_t {
 struct PathNode {
     Vec2um pos{};
     NodeType type{NodeType::Corner};
-    std::optional<Vec2um> tan_in;   // relatif à pos
-    std::optional<Vec2um> tan_out;  // relatif à pos
+    std::optional<Vec2um> tan_in;  // relatif à pos
+    std::optional<Vec2um> tan_out; // relatif à pos
 
     constexpr bool operator==(const PathNode& o) const {
         return pos == o.pos && type == o.type && tan_in == o.tan_in && tan_out == o.tan_out;
@@ -58,4 +58,4 @@ struct PathSet {
 // (ou chemin à moins de 2 nœuds) renvoie `path` inchangé.
 [[nodiscard]] Path insert_node_on_segment(const Path& path, std::size_t segment_index, double t);
 
-}  // namespace openstitch::geometry
+} // namespace openstitch::geometry

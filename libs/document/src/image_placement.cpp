@@ -22,10 +22,9 @@ Result<void> check_positive(Millimeters value, const char* name) {
     return {};
 }
 
-}  // namespace
+} // namespace
 
-Result<ImagePlacement> placement_from_width(int width_px, int height_px,
-                                            Millimeters target_width) {
+Result<ImagePlacement> placement_from_width(int width_px, int height_px, Millimeters target_width) {
     if (auto ok = check_pixels(width_px, height_px); !ok) {
         return std::unexpected(ok.error());
     }
@@ -72,4 +71,4 @@ Millimeters mm_per_pixel(const ImagePlacement& placement, int width_px) {
     return Millimeters{to_millimeters(placement.width).value / static_cast<double>(width_px)};
 }
 
-}  // namespace openstitch::document
+} // namespace openstitch::document

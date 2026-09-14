@@ -21,10 +21,10 @@ namespace openstitch::document {
 // (image::apply_pipeline), jamais stockée comme vérité.
 // Ce type grandira (calques, objets, palette…) au fil des phases.
 struct Project {
-    image::Image original;                    // jamais modifiée après l'import
-    Millimeters mm_per_px{25.4 / 96.0};       // résolution de travail
-    Canvas canvas;                            // cadre de broderie (défaut 100x100 mm)
-    std::vector<image::ImageOp> ops;          // pile de prétraitements
+    image::Image original;              // jamais modifiée après l'import
+    Millimeters mm_per_px{25.4 / 96.0}; // résolution de travail
+    Canvas canvas;                      // cadre de broderie (défaut 100x100 mm)
+    std::vector<image::ImageOp> ops;    // pile de prétraitements
 
     // Segmentation de l'image de travail. Invalidée (remise à nullopt) par
     // toute nouvelle opération de prétraitement.
@@ -37,7 +37,7 @@ struct Project {
     // Objets de broderie (Phase 6), dans l'ordre de couture.
     std::vector<EmbroideryObject> embroidery_objects;
 
-    IdGenerator<ObjectId> object_ids;  // partagé par tous les types d'objets
+    IdGenerator<ObjectId> object_ids; // partagé par tous les types d'objets
 
     [[nodiscard]] bool hasImage() const { return !original.empty(); }
     [[nodiscard]] VectorObject* findObject(ObjectId id) {
@@ -64,4 +64,4 @@ struct Project {
     }
 };
 
-}  // namespace openstitch::document
+} // namespace openstitch::document

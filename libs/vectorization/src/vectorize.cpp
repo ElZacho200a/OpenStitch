@@ -25,7 +25,7 @@ geometry::PathNode to_model(const cv::Point& px, int width, int height, double m
         geometry::NodeType::Corner, std::nullopt, std::nullopt};
 }
 
-}  // namespace
+} // namespace
 
 Result<std::vector<geometry::PathSet>> vectorize_region(const segmentation::Segmentation& seg,
                                                         RegionId id,
@@ -63,7 +63,7 @@ Result<std::vector<geometry::PathSet>> vectorize_region(const segmentation::Segm
     raw.reserve(contours.size());
     for (const auto& contour : contours) {
         if (contour.size() < 3) {
-            continue;  // micro-artefact d'un pixel isolé
+            continue; // micro-artefact d'un pixel isolé
         }
         geometry::Path path;
         path.closed = true;
@@ -96,4 +96,4 @@ Result<std::vector<geometry::PathSet>> vectorize_region(const segmentation::Segm
     return sets;
 }
 
-}  // namespace openstitch::vectorization
+} // namespace openstitch::vectorization

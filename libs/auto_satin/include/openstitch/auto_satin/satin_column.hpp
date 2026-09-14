@@ -49,12 +49,12 @@ enum class SatinGeometryMode : std::uint8_t { Legacy, Parametric };
 
 struct SatinColumnsParameters {
     AutoSatinParameters analysis{};
-    Micrometers station_spacing{500};       // pas d'échantillonnage de l'axe (0,5 mm)
-    Micrometers rung_max_spacing{2'500};     // barreau au moins tous les 2,5 mm
-    double rung_angle_threshold_deg{18.0};   // barreau si l'axe tourne au-delà
-    double rung_width_ratio{0.30};           // barreau si la largeur varie au-delà
-    int axis_smoothing_iterations{2};        // lissage Chaikin de l'axe
-    int max_junctions{2};                    // au-delà : refus (trop complexe)
+    Micrometers station_spacing{500};      // pas d'échantillonnage de l'axe (0,5 mm)
+    Micrometers rung_max_spacing{2'500};   // barreau au moins tous les 2,5 mm
+    double rung_angle_threshold_deg{18.0}; // barreau si l'axe tourne au-delà
+    double rung_width_ratio{0.30};         // barreau si la largeur varie au-delà
+    int axis_smoothing_iterations{2};      // lissage Chaikin de l'axe
+    int max_junctions{2};                  // au-delà : refus (trop complexe)
     // Un bout OUVERT (sans jonction) du squelette s'arrête, par construction du
     // transformée de distance/amincissement, sensiblement avant le bord réel de
     // la région (un embout arrondi ou pointu n'est pas couvert). Étend chaque
@@ -82,7 +82,7 @@ struct SatinColumnsParameters {
     // chaque rail (indépendamment) sur le sommet REFLEX (concave) du contour
     // le plus proche, dans ce rayon de recherche.
     bool anchor_junction_ends{true};
-    Micrometers junction_anchor_radius{6'000};  // 6 mm : porte les encoches usuelles
+    Micrometers junction_anchor_radius{6'000}; // 6 mm : porte les encoches usuelles
 
     // Plafond de SÉCURITÉ pour le rayon local de traitement d'une jonction
     // (§ StableBranchEnd / JunctionSeparator) — PAS la valeur réellement
@@ -91,7 +91,7 @@ struct SatinColumnsParameters {
     // `StableBranchEndInfo`), toujours ≤ ce plafond. N'intervient que pour
     // borner un cas dégénéré (branches très courtes) ; ne doit jamais être
     // lu comme « le rayon du noyau ».
-    Micrometers junction_core_radius{10'000};  // 10 mm (plafond, rarement atteint)
+    Micrometers junction_core_radius{10'000}; // 10 mm (plafond, rarement atteint)
 
     // Aire, au-delà de laquelle un `JunctionCore` résiduel est jugé
     // significatif : `JunctionCore::requires_fill` est alors levé pour
@@ -99,7 +99,7 @@ struct SatinColumnsParameters {
     // plutôt que de laisser cette zone non couturée. La synthèse de cet
     // objet elle-même n'est pas implémentée ici (hors périmètre) : seul le
     // diagnostic (aire + contour) est produit.
-    double junction_core_significant_area_um2{500'000.0};  // 0,5 mm²
+    double junction_core_significant_area_um2{500'000.0}; // 0,5 mm²
 
     // § audit génération partielle (formes concaves/larges, `build_column`) :
     // ces trois seuils bornent à quel point un trou ou une irrégularité
@@ -128,19 +128,21 @@ struct SatinColumnsParameters {
     // suivants bornent respectivement l'écart de largeur (fraction de la
     // largeur locale), l'écart de tangente, et l'espacement entre deux
     // paires retenues consécutives (le long de l'axe).
-    Micrometers bezier_fit_tolerance{150};              // 0,15 mm
-    double maximum_width_error_ratio{0.12};              // 12 % de la largeur locale
+    Micrometers bezier_fit_tolerance{150};  // 0,15 mm
+    double maximum_width_error_ratio{0.12}; // 12 % de la largeur locale
     double maximum_tangent_error_deg{12.0};
-    Micrometers maximum_control_pair_spacing{15'000};    // 15 mm : jamais un rail sans guide sur une longue distance
-    Micrometers minimum_control_pair_spacing{300};       // 0,3 mm : ne pas sur-raffiner un bruit de station
+    Micrometers maximum_control_pair_spacing{
+        15'000}; // 15 mm : jamais un rail sans guide sur une longue distance
+    Micrometers minimum_control_pair_spacing{
+        300}; // 0,3 mm : ne pas sur-raffiner un bruit de station
 
     // Recouvrement local à une jonction (§ étape 9) : chaque branche est
     // prolongée un peu au-delà de sa dernière section stable, DANS la
     // confluence, jamais jusqu'à un point partagé. Fraction de la largeur
     // locale de la branche, bornée par un plancher/plafond absolu.
     double junction_overlap_ratio{0.6};
-    Micrometers junction_overlap_min{300};    // 0,3 mm
-    Micrometers junction_overlap_max{2'500};  // 2,5 mm : jamais loin dans la branche voisine
+    Micrometers junction_overlap_min{300};   // 0,3 mm
+    Micrometers junction_overlap_max{2'500}; // 2,5 mm : jamais loin dans la branche voisine
 };
 
 // Zone centrale d'une jonction à 2+ branches non couverte par les colonnes
@@ -157,10 +159,11 @@ struct JunctionCore {
     std::uint32_t junction_id{0};
     std::vector<Vec2um> boundary;
     double area_um2{0.0};
-    double configured_radius_um{0.0};    // plafond de sécurité (`junction_core_radius`), PAS le rayon réel
-    double local_radius_um{0.0};         // rayon local réellement utilisé (données réelles, ≤ configured)
-    double actual_max_radius_um{0.0};    // distance MESURÉE du point le plus éloigné du noyau au nœud
-    bool requires_fill{false};           // aire au-delà du seuil de significativité : à remplir séparément
+    double configured_radius_um{
+        0.0}; // plafond de sécurité (`junction_core_radius`), PAS le rayon réel
+    double local_radius_um{0.0}; // rayon local réellement utilisé (données réelles, ≤ configured)
+    double actual_max_radius_um{0.0}; // distance MESURÉE du point le plus éloigné du noyau au nœud
+    bool requires_fill{false}; // aire au-delà du seuil de significativité : à remplir séparément
 };
 
 // Dernière section transversale RÉELLEMENT stable d'une branche à une
@@ -213,11 +216,11 @@ struct SatinControlPair {
     Vec2um axis_point;
     Vec2um rail_a_point;
     Vec2um rail_b_point;
-    Vec2um tangent;              // direction (offset non unitaire, convention `PathNode::tan_out`)
+    Vec2um tangent; // direction (offset non unitaire, convention `PathNode::tan_out`)
     double width_um{0.0};
     bool structural{true};
-    bool junction_pair{false};   // paire terminale de recouvrement de jonction (§ étape 9)
-    bool open_tip_pair{false};   // paire terminale d'un bout ouvert (§ étape 8)
+    bool junction_pair{false}; // paire terminale de recouvrement de jonction (§ étape 9)
+    bool open_tip_pair{false}; // paire terminale d'un bout ouvert (§ étape 8)
 };
 
 // Ligne d'angle explicite (§ étape 7) : contrainte d'orientation entre les
@@ -246,7 +249,7 @@ struct ParametricSatinObject {
     geometry::Path rail_b;
     std::vector<SatinControlPair> control_pairs;
     std::vector<SatinAngleGuide> angle_guides;
-    std::vector<SatinRung> rungs;  // = angle_guides projetés en points (compat SatinParams)
+    std::vector<SatinRung> rungs; // = angle_guides projetés en points (compat SatinParams)
 
     std::uint32_t section_index{0};
     std::uint32_t section_count{1};
@@ -280,14 +283,14 @@ struct SatinJunctionPlan {
 
 struct SatinColumnsResult {
     SatinabilityStatus status{SatinabilityStatus::Unsuitable};
-    std::vector<SatinColumnGeometry> columns;  // mode Legacy
-    std::vector<ParametricSatinObject> parametric_columns;  // mode Parametric
-    std::vector<SatinJunctionPlan> junction_plans;          // mode Parametric
+    std::vector<SatinColumnGeometry> columns;              // mode Legacy
+    std::vector<ParametricSatinObject> parametric_columns; // mode Parametric
+    std::vector<SatinJunctionPlan> junction_plans;         // mode Parametric
     std::vector<std::string> warnings;
-    std::string refusal;         // non vide = refus explicite (aucune colonne)
-    SatinabilityReport report;   // rapport de satinabilité (diagnostic UI)
-    AutoSatinDebug debug;        // étapes intermédiaires (SVG)
-    std::vector<JunctionCore> junction_cores;              // zones centrales residuelles (diagnostic, Legacy)
+    std::string refusal;                      // non vide = refus explicite (aucune colonne)
+    SatinabilityReport report;                // rapport de satinabilité (diagnostic UI)
+    AutoSatinDebug debug;                     // étapes intermédiaires (SVG)
+    std::vector<JunctionCore> junction_cores; // zones centrales residuelles (diagnostic, Legacy)
     std::vector<StableBranchEndInfo> stable_branch_ends;    // diagnostic (SVG, tests, Legacy)
     std::vector<JunctionSeparatorInfo> junction_separators; // diagnostic (SVG, tests, Legacy)
     std::vector<JunctionSectorInfo> junction_sectors;       // diagnostic (SVG, tests, Legacy)
@@ -301,4 +304,4 @@ struct SatinColumnsResult {
 [[nodiscard]] SatinColumnsResult build_satin_columns(const geometry::PathSet& region,
                                                      const SatinColumnsParameters& params);
 
-}  // namespace openstitch::auto_satin
+} // namespace openstitch::auto_satin

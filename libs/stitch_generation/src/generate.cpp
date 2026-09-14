@@ -31,8 +31,8 @@ void emit_polyline(stitch::StitchSequence& sequence, const std::vector<Vec2um>& 
                          sequence.commands.back().type == stitch::CommandType::Stitch &&
                          sequence.commands.back().pos == points.front();
     if (!chained) {
-        sequence.commands.push_back({points.front(), stitch::CommandType::Jump, source,
-                                     stitch::StitchPass::Travel});
+        sequence.commands.push_back(
+            {points.front(), stitch::CommandType::Jump, source, stitch::StitchPass::Travel});
     }
     for (const Vec2um& p : points) {
         sequence.commands.push_back({p, stitch::CommandType::Stitch, source, pass});
@@ -53,7 +53,8 @@ void emit_polyline_with_breaks(stitch::StitchSequence& sequence, const std::vect
     }
     std::size_t nextBreak = 0;
     for (std::size_t i = 0; i < points.size(); ++i) {
-        const bool isBreak = i == 0 || (nextBreak < jump_before.size() && jump_before[nextBreak] == i);
+        const bool isBreak =
+            i == 0 || (nextBreak < jump_before.size() && jump_before[nextBreak] == i);
         if (isBreak) {
             if (nextBreak < jump_before.size() && jump_before[nextBreak] == i) {
                 ++nextBreak;
@@ -197,7 +198,8 @@ void generate_satin(stitch::StitchSequence& sequence, const document::Embroidery
 // milieux des barreaux d'about, sinon extrémités du rail A.
 std::pair<Vec2um, Vec2um> column_endpoints(const document::SatinParams& p) {
     const auto mid = [](Vec2um a, Vec2um b) {
-        return Vec2um{Micrometers{(a.x.value + b.x.value) / 2}, Micrometers{(a.y.value + b.y.value) / 2}};
+        return Vec2um{Micrometers{(a.x.value + b.x.value) / 2},
+                      Micrometers{(a.y.value + b.y.value) / 2}};
     };
     // Reproduit le décalage longitudinal (`push_start`/`push_end`) réellement
     // appliqué par `fill_satin_columns` (`shiftEnd`, satin.cpp) — même borne
@@ -314,7 +316,8 @@ void generate_tatami(stitch::StitchSequence& sequence, const document::VectorObj
         // disparaître la forme, on remplit la forme brute.
         std::vector<geometry::PathSet> filled;
         if (params.inset.value > 0) {
-            if (auto inset = geometry::inset_path_set(set, params.inset); inset && !inset->empty()) {
+            if (auto inset = geometry::inset_path_set(set, params.inset);
+                inset && !inset->empty()) {
                 filled = std::move(*inset);
             }
         }
@@ -331,7 +334,7 @@ void generate_tatami(stitch::StitchSequence& sequence, const document::VectorObj
     }
 }
 
-}  // namespace
+} // namespace
 
 namespace {
 
@@ -344,7 +347,7 @@ bool is_routable_satin(const document::EmbroideryObject& o) {
     return std::get<document::SatinParams>(o.params).rungs.size() >= 2;
 }
 
-}  // namespace
+} // namespace
 
 Result<stitch::StitchSequence> generate_sequence(const document::Project& project) {
     stitch::StitchSequence sequence;
@@ -425,4 +428,4 @@ Result<stitch::StitchSequence> generate_sequence(const document::Project& projec
     return sequence;
 }
 
-}  // namespace openstitch::stitch_generation
+} // namespace openstitch::stitch_generation

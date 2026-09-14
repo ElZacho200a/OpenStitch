@@ -17,8 +17,8 @@ namespace openstitch::formats {
 // pas de couleurs réelles (seulement des arrêts), pas d'objets éditables,
 // résolution 0,1 mm, déplacement max ±12,1 mm par enregistrement.
 struct DstWriteOptions {
-    std::string design_name{"OPENSTITCH"};  // champ LA:, tronqué à 16 caractères
-    int trim_jumps{3};  // un Trim logique = N sauts de délta nul (convention machine)
+    std::string design_name{"OPENSTITCH"}; // champ LA:, tronqué à 16 caractères
+    int trim_jumps{3}; // un Trim logique = N sauts de délta nul (convention machine)
 };
 
 // Encode la séquence en octets DST. Déterministe : même séquence -> mêmes
@@ -39,4 +39,4 @@ struct DstWriteOptions {
                                           const DstWriteOptions& options = {});
 [[nodiscard]] Result<stitch::StitchSequence> read_dst_file(const std::filesystem::path& path);
 
-}  // namespace openstitch::formats
+} // namespace openstitch::formats

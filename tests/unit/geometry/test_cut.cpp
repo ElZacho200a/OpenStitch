@@ -32,15 +32,15 @@ PathSet dumbbell() {
     Path path;
     path.closed = true;
     path.nodes = {
-        corner(p(0, 0)),        corner(p(10'000, 0)),      corner(p(10'000, 4'000)),
-        corner(p(20'000, 4'000)), corner(p(20'000, 0)),      corner(p(30'000, 0)),
+        corner(p(0, 0)),           corner(p(10'000, 0)),      corner(p(10'000, 4'000)),
+        corner(p(20'000, 4'000)),  corner(p(20'000, 0)),      corner(p(30'000, 0)),
         corner(p(30'000, 10'000)), corner(p(20'000, 10'000)), corner(p(20'000, 6'000)),
         corner(p(10'000, 6'000)),  corner(p(10'000, 10'000)), corner(p(0, 10'000)),
     };
     return {path, {}};
 }
 
-}  // namespace
+} // namespace
 
 TEST_CASE("cut_path_set : ligne verticale separe un carre en deux") {
     // Carre 10x10 mm, coupe verticale a mi-largeur, largement prolongee.
@@ -50,11 +50,11 @@ TEST_CASE("cut_path_set : ligne verticale separe un carre en deux") {
     double totalArea = 0.0;
     for (const auto& piece : *result) {
         const double area = std::abs(signed_area_um2(piece.outer)) / 1e6;
-        CHECK(area > 45.0);  // ~50 mm2 chacun, bande de coupe negligeable
+        CHECK(area > 45.0); // ~50 mm2 chacun, bande de coupe negligeable
         CHECK(area < 50.0);
         totalArea += area;
     }
-    CHECK(totalArea > 95.0);  // aire totale ~inchangee (bande de coupe fine)
+    CHECK(totalArea > 95.0); // aire totale ~inchangee (bande de coupe fine)
 }
 
 TEST_CASE("cut_path_set : coupe le pont d'un halte -> deux carres separes") {
@@ -100,8 +100,8 @@ TEST_CASE("cut_path_set : la bande retiree reste fine (aire totale quasi inchang
     // Meme coupe qu'au premier test, mais avec une bande plus large (0,5 mm) :
     // verifie que l'aire perdue reste bornee par la largeur demandee, pas
     // beaucoup plus (pas de sur-decoupe).
-    const auto result = cut_path_set(square(10'000), p(5'000, -5'000), p(5'000, 15'000),
-                                     Micrometers{500});
+    const auto result =
+        cut_path_set(square(10'000), p(5'000, -5'000), p(5'000, 15'000), Micrometers{500});
     REQUIRE(result.has_value());
     REQUIRE(result->size() == 2);
     double totalArea = 0.0;

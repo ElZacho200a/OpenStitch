@@ -11,8 +11,12 @@ namespace openstitch::auto_satin {
 
 namespace {
 
-double mmx(Vec2um p) { return static_cast<double>(p.x.value) / 1000.0; }
-double mmy(Vec2um p) { return -static_cast<double>(p.y.value) / 1000.0; }  // Y vers le bas en SVG
+double mmx(Vec2um p) {
+    return static_cast<double>(p.x.value) / 1000.0;
+}
+double mmy(Vec2um p) {
+    return -static_cast<double>(p.y.value) / 1000.0;
+} // Y vers le bas en SVG
 
 void poly(std::ostringstream& o, const std::vector<Vec2um>& pts, const char* stroke, double w,
           bool closed, const char* dash = "") {
@@ -41,11 +45,11 @@ std::vector<Vec2um> nodes_of(const geometry::Path& p) {
     return v;
 }
 
-}  // namespace
+} // namespace
 
-std::string to_debug_svg(
-    const geometry::PathSet& region, const AutoSatinAnalysis& a,
-    const std::optional<std::pair<geometry::Path, geometry::Path>>& current_rails) {
+std::string
+to_debug_svg(const geometry::PathSet& region, const AutoSatinAnalysis& a,
+             const std::optional<std::pair<geometry::Path, geometry::Path>>& current_rails) {
     // Bornes.
     double minx = 1e18, miny = 1e18, maxx = -1e18, maxy = -1e18;
     for (const auto& n : region.outer.nodes) {
@@ -78,7 +82,7 @@ std::string to_debug_svg(
     }
     // Nœuds.
     for (const auto& n : a.debug.graph.nodes) {
-        const char* col = n.type == SkeletonNodeType::Junction ? "#e80"
+        const char* col = n.type == SkeletonNodeType::Junction   ? "#e80"
                           : n.type == SkeletonNodeType::Endpoint ? "#0a0"
                                                                  : "#66c";
         o << "<circle cx=\"" << mmx(n.position) << "\" cy=\"" << mmy(n.position)
@@ -117,12 +121,12 @@ std::string columns_to_svg(const geometry::PathSet& region, const SatinColumnsRe
     }
     for (const auto& core : result.junction_cores) {
         o << "<!-- jonction " << core.junction_id << " : noyau"
-          << (core.requires_fill ? " (remplissage separe requis)" : "") << ", aire="
-          << (core.area_um2 / 1'000'000.0) << "mm2 -- configured_radius="
-          << (core.configured_radius_um / 1000.0)
+          << (core.requires_fill ? " (remplissage separe requis)" : "")
+          << ", aire=" << (core.area_um2 / 1'000'000.0)
+          << "mm2 -- configured_radius=" << (core.configured_radius_um / 1000.0)
           << "mm (plafond de securite, PAS le rayon reel) local_radius="
-          << (core.local_radius_um / 1000.0) << "mm actual_core_max_radius="
-          << (core.actual_max_radius_um / 1000.0) << "mm -->\n";
+          << (core.local_radius_um / 1000.0)
+          << "mm actual_core_max_radius=" << (core.actual_max_radius_um / 1000.0) << "mm -->\n";
     }
 
     poly(o, nodes_of(region.outer), "#111", 0.15, true);
@@ -152,8 +156,8 @@ std::string columns_to_svg(const geometry::PathSet& region, const SatinColumnsRe
     // couleur qui tourne dans une petite palette (indexée sur l'ordre
     // d'apparition dans `junction_sectors`, stable/déterministe).
     {
-        static constexpr const char* kSectorPalette[] = {"#f90", "#09f", "#9c0", "#c6f",
-                                                          "#0cc", "#f5a"};
+        static constexpr const char* kSectorPalette[] = {"#f90", "#09f", "#9c0",
+                                                         "#c6f", "#0cc", "#f5a"};
         constexpr std::size_t kPaletteSize = sizeof(kSectorPalette) / sizeof(kSectorPalette[0]);
         std::size_t sectorOrdinal = 0;
         for (const auto& sector : result.junction_sectors) {
@@ -227,8 +231,8 @@ std::string columns_to_svg(const geometry::PathSet& region, const SatinColumnsRe
         const auto& mid = c.rungs[c.rungs.size() / 2];
         const double x = (mmx(mid.a) + mmx(mid.b)) * 0.5;
         const double y = (mmy(mid.a) + mmy(mid.b)) * 0.5;
-        o << "<text x=\"" << x << "\" y=\"" << y
-          << "\" font-size=\"1.2\" fill=\"#000\">c" << i << "</text>\n";
+        o << "<text x=\"" << x << "\" y=\"" << y << "\" font-size=\"1.2\" fill=\"#000\">c" << i
+          << "</text>\n";
     }
     for (const auto& n : result.debug.graph.nodes) {
         if (n.type != SkeletonNodeType::Junction) {
@@ -378,4 +382,4 @@ std::string parametric_to_svg(const geometry::PathSet& region, const SatinColumn
     return o.str();
 }
 
-}  // namespace openstitch::auto_satin
+} // namespace openstitch::auto_satin

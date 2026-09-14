@@ -10,13 +10,14 @@ enum class Tool {
     Select,        // sélectionner région/objet (défaut) ; le glisser déplace la vue
     Pan,           // déplacer la vue uniquement (pas de sélection)
     Rect,          // sélection rectangulaire / recadrage image
-    DrawRectangle,  // dessine un nouvel objet vectoriel rectangulaire (glisser)
-    DrawEllipse,    // dessine un nouvel objet vectoriel elliptique (glisser ; Maj = cercle)
-    DrawPolygon,    // dessine un nouvel objet vectoriel polygonal (clics successifs, segments droits)
-    DrawPolygonRegular,  // polygone RÉGULIER (nombre de côtés réglable) inscrit dans le cadre glissé
-    DrawBezier,     // dessine un nouvel objet vectoriel en courbes (clic = coin, clic-glisser = nœud lisse)
-    DrawFreeform,   // dessine un nouvel objet vectoriel à main levée (glisser continu)
-    DrawSatinColumn,  // colonne satin manuelle (clics alternés rail A / rail B)
+    DrawRectangle, // dessine un nouvel objet vectoriel rectangulaire (glisser)
+    DrawEllipse,   // dessine un nouvel objet vectoriel elliptique (glisser ; Maj = cercle)
+    DrawPolygon, // dessine un nouvel objet vectoriel polygonal (clics successifs, segments droits)
+    DrawPolygonRegular, // polygone RÉGULIER (nombre de côtés réglable) inscrit dans le cadre glissé
+    DrawBezier,   // dessine un nouvel objet vectoriel en courbes (clic = coin, clic-glisser = nœud
+                  // lisse)
+    DrawFreeform, // dessine un nouvel objet vectoriel à main levée (glisser continu)
+    DrawSatinColumn, // colonne satin manuelle (clics alternés rail A / rail B)
     // Ligne de coupe (façon Ink/Stitch "cut line") : découpe la forme
     // vectorielle SÉLECTIONNÉE en deux morceaux au clic-glisser tracé, puis
     // convertit chaque morceau en colonne(s) satin indépendamment -- guide
@@ -26,4 +27,4 @@ enum class Tool {
     DrawSatinCutLine,
 };
 
-}  // namespace openstitch::desktop
+} // namespace openstitch::desktop

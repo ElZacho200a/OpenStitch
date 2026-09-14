@@ -25,8 +25,8 @@ struct ColorRefineOptions {
 // région dont la quantification échoue (trop petite/uniforme) est
 // silencieusement ignorée, comme pour la segmentation classique. Les pixels
 // hors de toute région de `labelMap` restent fond (label 0).
-[[nodiscard]] Result<segmentation::Segmentation> refine_label_map_by_color(
-    const segmentation::Segmentation& labelMap, const image::Image& sourceImage,
-    const ColorRefineOptions& options);
+[[nodiscard]] Result<segmentation::Segmentation>
+refine_label_map_by_color(const segmentation::Segmentation& labelMap,
+                          const image::Image& sourceImage, const ColorRefineOptions& options);
 
-}  // namespace openstitch::ai_segmentation
+} // namespace openstitch::ai_segmentation

@@ -55,7 +55,7 @@ document::Project project_with_segmentation() {
     return project;
 }
 
-}  // namespace
+} // namespace
 
 TEST_CASE("AppendImageOpCommand invalide la segmentation et la restaure a l'annulation") {
     auto project = project_with_segmentation();
@@ -89,7 +89,7 @@ TEST_CASE("MergeRegionsCommand : undo restaure labels et comptes exactement") {
 }
 
 TEST_CASE("RemoveRegionCommand : la region disparait, undo la restaure") {
-    auto project = project_with_segmentation();  // labels {1,1,2,2}, deux regions
+    auto project = project_with_segmentation(); // labels {1,1,2,2}, deux regions
     UndoStack stack;
 
     stack.execute(std::make_unique<RemoveRegionCommand>(RegionId{1}), project);
@@ -113,9 +113,9 @@ TEST_CASE("RecolorRegionCommand : aller-retour exact") {
     auto project = project_with_segmentation();
     UndoStack stack;
 
-    stack.execute(std::make_unique<RecolorRegionCommand>(RegionId{1},
-                                                         std::array<std::uint8_t, 3>{9, 9, 9}),
-                  project);
+    stack.execute(
+        std::make_unique<RecolorRegionCommand>(RegionId{1}, std::array<std::uint8_t, 3>{9, 9, 9}),
+        project);
     CHECK(project.segmentation->find(RegionId{1})->rgb == std::array<std::uint8_t, 3>{9, 9, 9});
     CHECK(stack.undo(project));
     CHECK(project.segmentation->find(RegionId{1})->rgb == std::array<std::uint8_t, 3>{255, 0, 0});
@@ -136,7 +136,8 @@ TEST_CASE("SetSegmentationCommand : apply/revert echangent les etats") {
     CHECK(project.segmentation.has_value());
 }
 
-TEST_CASE("TranslateVectorObjectCommand : deplace tous les noeuds (tous morceaux, tous trous), undo exact") {
+TEST_CASE("TranslateVectorObjectCommand : deplace tous les noeuds (tous morceaux, tous trous), "
+          "undo exact") {
     document::Project project;
     UndoStack stack;
 
@@ -146,19 +147,25 @@ TEST_CASE("TranslateVectorObjectCommand : deplace tous les noeuds (tous morceaux
     geometry::Path outer;
     outer.closed = true;
     outer.nodes.push_back(geometry::PathNode{Vec2um{Micrometers{0}, Micrometers{0}},
-                                             geometry::NodeType::Corner, std::nullopt, std::nullopt});
+                                             geometry::NodeType::Corner, std::nullopt,
+                                             std::nullopt});
     outer.nodes.push_back(geometry::PathNode{Vec2um{Micrometers{10000}, Micrometers{0}},
-                                             geometry::NodeType::Corner, std::nullopt, std::nullopt});
+                                             geometry::NodeType::Corner, std::nullopt,
+                                             std::nullopt});
     outer.nodes.push_back(geometry::PathNode{Vec2um{Micrometers{10000}, Micrometers{10000}},
-                                             geometry::NodeType::Corner, std::nullopt, std::nullopt});
+                                             geometry::NodeType::Corner, std::nullopt,
+                                             std::nullopt});
     geometry::Path hole;
     hole.closed = true;
     hole.nodes.push_back(geometry::PathNode{Vec2um{Micrometers{2000}, Micrometers{2000}},
-                                            geometry::NodeType::Corner, std::nullopt, std::nullopt});
+                                            geometry::NodeType::Corner, std::nullopt,
+                                            std::nullopt});
     hole.nodes.push_back(geometry::PathNode{Vec2um{Micrometers{3000}, Micrometers{2000}},
-                                            geometry::NodeType::Corner, std::nullopt, std::nullopt});
+                                            geometry::NodeType::Corner, std::nullopt,
+                                            std::nullopt});
     hole.nodes.push_back(geometry::PathNode{Vec2um{Micrometers{3000}, Micrometers{3000}},
-                                            geometry::NodeType::Corner, std::nullopt, std::nullopt});
+                                            geometry::NodeType::Corner, std::nullopt,
+                                            std::nullopt});
     object.paths.push_back(geometry::PathSet{outer, {hole}});
     stack.execute(std::make_unique<AddVectorObjectCommand>(object), project);
     const ObjectId id = project.vector_objects[0].id;
@@ -184,7 +191,8 @@ TEST_CASE("TranslateVectorObjectCommand : deplace tous les noeuds (tous morceaux
     CHECK(redone->paths[0].outer.nodes[0].pos == Vec2um{Micrometers{500}, Micrometers{-1200}});
 }
 
-TEST_CASE("ScaleVectorObjectCommand : redimensionne autour d'un ancrage fixe, met a l'echelle les tangentes, undo exact") {
+TEST_CASE("ScaleVectorObjectCommand : redimensionne autour d'un ancrage fixe, met a l'echelle les "
+          "tangentes, undo exact") {
     document::Project project;
     UndoStack stack;
 
@@ -195,13 +203,14 @@ TEST_CASE("ScaleVectorObjectCommand : redimensionne autour d'un ancrage fixe, me
     geometry::Path outer;
     outer.closed = true;
     outer.nodes.push_back(geometry::PathNode{Vec2um{Micrometers{0}, Micrometers{0}},
-                                             geometry::NodeType::Corner, std::nullopt, std::nullopt});
-    outer.nodes.push_back(geometry::PathNode{Vec2um{Micrometers{10000}, Micrometers{0}},
-                                             geometry::NodeType::Smooth,
-                                             Vec2um{Micrometers{-1000}, Micrometers{0}},
-                                             Vec2um{Micrometers{1000}, Micrometers{0}}});
+                                             geometry::NodeType::Corner, std::nullopt,
+                                             std::nullopt});
+    outer.nodes.push_back(geometry::PathNode{
+        Vec2um{Micrometers{10000}, Micrometers{0}}, geometry::NodeType::Smooth,
+        Vec2um{Micrometers{-1000}, Micrometers{0}}, Vec2um{Micrometers{1000}, Micrometers{0}}});
     outer.nodes.push_back(geometry::PathNode{Vec2um{Micrometers{10000}, Micrometers{10000}},
-                                             geometry::NodeType::Corner, std::nullopt, std::nullopt});
+                                             geometry::NodeType::Corner, std::nullopt,
+                                             std::nullopt});
     object.paths.push_back(geometry::PathSet{outer, {}});
     stack.execute(std::make_unique<AddVectorObjectCommand>(object), project);
     const ObjectId id = project.vector_objects[0].id;
@@ -211,7 +220,7 @@ TEST_CASE("ScaleVectorObjectCommand : redimensionne autour d'un ancrage fixe, me
 
     const auto* scaled = project.findObject(id);
     REQUIRE(scaled != nullptr);
-    CHECK(scaled->paths[0].outer.nodes[0].pos == anchor);  // l'ancrage ne bouge jamais
+    CHECK(scaled->paths[0].outer.nodes[0].pos == anchor); // l'ancrage ne bouge jamais
     CHECK(scaled->paths[0].outer.nodes[1].pos == Vec2um{Micrometers{20000}, Micrometers{0}});
     CHECK(scaled->paths[0].outer.nodes[2].pos == Vec2um{Micrometers{20000}, Micrometers{5000}});
     // Les tangentes (relatives au noeud) suivent la meme mise a l'echelle par axe.
@@ -294,7 +303,7 @@ TEST_CASE("RemoveEmbroideryObjectCommand : supprime seul, undo restaure a l'inde
 
     CHECK(stack.undo(project));
     REQUIRE(project.embroidery_objects.size() == 2);
-    CHECK(project.embroidery_objects[0].id == first.id);  // reinsere au bon index
+    CHECK(project.embroidery_objects[0].id == first.id); // reinsere au bon index
     CHECK(project.embroidery_objects[1].id == second.id);
 
     CHECK(stack.redo(project));
@@ -307,7 +316,7 @@ TEST_CASE("RemoveEmbroideryObjectCommand : id introuvable -- aucune mutation") {
     UndoStack stack;
     stack.execute(std::make_unique<RemoveEmbroideryObjectCommand>(ObjectId{999}), project);
     CHECK(project.embroidery_objects.empty());
-    CHECK(stack.undo(project));  // no-op, jamais applique -> revert() sans effet
+    CHECK(stack.undo(project)); // no-op, jamais applique -> revert() sans effet
 }
 
 TEST_CASE("RemoveVectorObjectCommand : supprime l'objet ET les broderies qui en dependent") {
@@ -336,12 +345,12 @@ TEST_CASE("RemoveVectorObjectCommand : supprime l'objet ET les broderies qui en 
     REQUIRE(project.vector_objects.size() == 1);
     CHECK(project.vector_objects[0].id == otherVec.id);
     REQUIRE(project.embroidery_objects.size() == 1);
-    CHECK(project.embroidery_objects[0].id == unrelated.id);  // seule la broderie liee a `vec` part
+    CHECK(project.embroidery_objects[0].id == unrelated.id); // seule la broderie liee a `vec` part
     CHECK(stack.undoName() == "Supprimer l'objet vectoriel");
 
     CHECK(stack.undo(project));
     REQUIRE(project.vector_objects.size() == 2);
-    CHECK(project.vector_objects[0].id == vec.id);  // reinsere a son index d'origine
+    CHECK(project.vector_objects[0].id == vec.id); // reinsere a son index d'origine
     REQUIRE(project.embroidery_objects.size() == 2);
     CHECK(project.embroidery_objects[0].id == dependent.id);
     CHECK(project.embroidery_objects[1].id == unrelated.id);
@@ -382,16 +391,16 @@ document::Project project_with_bezier_object() {
     curve.closed = true;
     curve.nodes = {
         geometry::PathNode{bezierVec(0, 0), geometry::NodeType::Smooth, bezierVec(-1'000, 0),
-                          bezierVec(1'000, 0)},
+                           bezierVec(1'000, 0)},
         geometry::PathNode{bezierVec(10'000, 0), geometry::NodeType::Corner, std::nullopt,
-                          std::nullopt},
+                           std::nullopt},
     };
     vec.paths.push_back(geometry::PathSet{curve, {}});
     project.vector_objects.push_back(vec);
     return project;
 }
 
-}  // namespace
+} // namespace
 
 TEST_CASE("SetNodeHandleCommand : deplace une poignee Bezier, undo restaure exact") {
     auto project = project_with_bezier_object();
@@ -401,9 +410,9 @@ TEST_CASE("SetNodeHandleCommand : deplace une poignee Bezier, undo restaure exac
 
     const Vec2um oldTanOut = bezierVec(1'000, 0);
     const Vec2um newTanOut = bezierVec(1'500, 500);
-    stack.execute(std::make_unique<SetNodeHandleCommand>(id, ref, /*isOut=*/true, oldTanOut,
-                                                          newTanOut),
-                  project);
+    stack.execute(
+        std::make_unique<SetNodeHandleCommand>(id, ref, /*isOut=*/true, oldTanOut, newTanOut),
+        project);
     REQUIRE(project.findObject(id)->paths[0].outer.nodes[0].tan_out.has_value());
     CHECK(*project.findObject(id)->paths[0].outer.nodes[0].tan_out == newTanOut);
     // La poignée entrante n'est pas affectée par une commande sur la sortante.
@@ -422,7 +431,7 @@ TEST_CASE("SetNodeHandleCommand : nullopt efface la poignee (segment redevient d
     const document::NodeRef ref{0, 0, 0};
 
     stack.execute(std::make_unique<SetNodeHandleCommand>(id, ref, /*isOut=*/true,
-                                                          bezierVec(1'000, 0), std::nullopt),
+                                                         bezierVec(1'000, 0), std::nullopt),
                   project);
     CHECK_FALSE(project.findObject(id)->paths[0].outer.nodes[0].tan_out.has_value());
     CHECK(stack.undo(project));
@@ -434,11 +443,11 @@ TEST_CASE("SetNodeTypeCommand : bascule Coin/Lisse sur un objet vectoriel, undo 
     auto project = project_with_bezier_object();
     UndoStack stack;
     const ObjectId id = project.vector_objects[0].id;
-    const document::NodeRef ref{0, 0, 1};  // le 2e nœud, Coin au depart
+    const document::NodeRef ref{0, 0, 1}; // le 2e nœud, Coin au depart
 
     REQUIRE(project.findObject(id)->paths[0].outer.nodes[1].type == geometry::NodeType::Corner);
-    stack.execute(
-        std::make_unique<SetNodeTypeCommand>(id, ref, geometry::NodeType::Smooth), project);
+    stack.execute(std::make_unique<SetNodeTypeCommand>(id, ref, geometry::NodeType::Smooth),
+                  project);
     CHECK(project.findObject(id)->paths[0].outer.nodes[1].type == geometry::NodeType::Smooth);
 
     CHECK(stack.undo(project));
@@ -457,18 +466,22 @@ TEST_CASE("RemoveNodeCommand : supprime un noeud, undo restaure a l'index d'orig
     geometry::Path square;
     square.closed = true;
     square.nodes.push_back(geometry::PathNode{Vec2um{Micrometers{0}, Micrometers{0}},
-                                              geometry::NodeType::Corner, std::nullopt, std::nullopt});
+                                              geometry::NodeType::Corner, std::nullopt,
+                                              std::nullopt});
     square.nodes.push_back(geometry::PathNode{Vec2um{Micrometers{1000}, Micrometers{0}},
-                                              geometry::NodeType::Corner, std::nullopt, std::nullopt});
+                                              geometry::NodeType::Corner, std::nullopt,
+                                              std::nullopt});
     square.nodes.push_back(geometry::PathNode{Vec2um{Micrometers{1000}, Micrometers{1000}},
-                                              geometry::NodeType::Corner, std::nullopt, std::nullopt});
+                                              geometry::NodeType::Corner, std::nullopt,
+                                              std::nullopt});
     square.nodes.push_back(geometry::PathNode{Vec2um{Micrometers{0}, Micrometers{1000}},
-                                              geometry::NodeType::Corner, std::nullopt, std::nullopt});
+                                              geometry::NodeType::Corner, std::nullopt,
+                                              std::nullopt});
     object.paths.push_back(geometry::PathSet{square, {}});
     stack.execute(std::make_unique<AddVectorObjectCommand>(object), project);
     const ObjectId id = project.vector_objects[0].id;
 
-    const document::NodeRef ref{0, 0, 1};  // 2e noeud, (1000, 0)
+    const document::NodeRef ref{0, 0, 1}; // 2e noeud, (1000, 0)
     stack.execute(std::make_unique<RemoveNodeCommand>(id, ref), project);
     REQUIRE(project.findObject(id)->paths[0].outer.nodes.size() == 3);
     CHECK(project.findObject(id)->paths[0].outer.nodes[1].pos ==
@@ -476,7 +489,8 @@ TEST_CASE("RemoveNodeCommand : supprime un noeud, undo restaure a l'index d'orig
 
     CHECK(stack.undo(project));
     REQUIRE(project.findObject(id)->paths[0].outer.nodes.size() == 4);
-    CHECK(project.findObject(id)->paths[0].outer.nodes[1].pos == Vec2um{Micrometers{1000}, Micrometers{0}});
+    CHECK(project.findObject(id)->paths[0].outer.nodes[1].pos ==
+          Vec2um{Micrometers{1000}, Micrometers{0}});
 
     CHECK(stack.redo(project));
     REQUIRE(project.findObject(id)->paths[0].outer.nodes.size() == 3);
@@ -492,17 +506,20 @@ TEST_CASE("RemoveNodeCommand : refuse de descendre sous 3 noeuds") {
     geometry::Path triangle;
     triangle.closed = true;
     triangle.nodes.push_back(geometry::PathNode{Vec2um{Micrometers{0}, Micrometers{0}},
-                                                geometry::NodeType::Corner, std::nullopt, std::nullopt});
+                                                geometry::NodeType::Corner, std::nullopt,
+                                                std::nullopt});
     triangle.nodes.push_back(geometry::PathNode{Vec2um{Micrometers{1000}, Micrometers{0}},
-                                                geometry::NodeType::Corner, std::nullopt, std::nullopt});
+                                                geometry::NodeType::Corner, std::nullopt,
+                                                std::nullopt});
     triangle.nodes.push_back(geometry::PathNode{Vec2um{Micrometers{0}, Micrometers{1000}},
-                                                geometry::NodeType::Corner, std::nullopt, std::nullopt});
+                                                geometry::NodeType::Corner, std::nullopt,
+                                                std::nullopt});
     object.paths.push_back(geometry::PathSet{triangle, {}});
     stack.execute(std::make_unique<AddVectorObjectCommand>(object), project);
     const ObjectId id = project.vector_objects[0].id;
 
     stack.execute(std::make_unique<RemoveNodeCommand>(id, document::NodeRef{0, 0, 0}), project);
-    CHECK(project.findObject(id)->paths[0].outer.nodes.size() == 3);  // inchange
+    CHECK(project.findObject(id)->paths[0].outer.nodes.size() == 3); // inchange
 }
 
 // Defaut trouve en usage reel (retour utilisateur : "je ne peux pas
@@ -520,11 +537,14 @@ TEST_CASE("RemoveNodeCommand : sur un chemin ouvert, descend jusqu'a 2 noeuds") 
     geometry::Path openPath;
     openPath.closed = false;
     openPath.nodes.push_back(geometry::PathNode{Vec2um{Micrometers{0}, Micrometers{0}},
-                                                geometry::NodeType::Corner, std::nullopt, std::nullopt});
+                                                geometry::NodeType::Corner, std::nullopt,
+                                                std::nullopt});
     openPath.nodes.push_back(geometry::PathNode{Vec2um{Micrometers{1000}, Micrometers{500}},
-                                                geometry::NodeType::Corner, std::nullopt, std::nullopt});
+                                                geometry::NodeType::Corner, std::nullopt,
+                                                std::nullopt});
     openPath.nodes.push_back(geometry::PathNode{Vec2um{Micrometers{2000}, Micrometers{0}},
-                                                geometry::NodeType::Corner, std::nullopt, std::nullopt});
+                                                geometry::NodeType::Corner, std::nullopt,
+                                                std::nullopt});
     object.paths.push_back(geometry::PathSet{openPath, {}});
     stack.execute(std::make_unique<AddVectorObjectCommand>(object), project);
     const ObjectId id = project.vector_objects[0].id;
@@ -532,7 +552,8 @@ TEST_CASE("RemoveNodeCommand : sur un chemin ouvert, descend jusqu'a 2 noeuds") 
     // 3 noeuds -> 2 : autorise (l'ancien code le refusait a tort).
     stack.execute(std::make_unique<RemoveNodeCommand>(id, document::NodeRef{0, 0, 1}), project);
     REQUIRE(project.findObject(id)->paths[0].outer.nodes.size() == 2);
-    CHECK(project.findObject(id)->paths[0].outer.nodes[0].pos == Vec2um{Micrometers{0}, Micrometers{0}});
+    CHECK(project.findObject(id)->paths[0].outer.nodes[0].pos ==
+          Vec2um{Micrometers{0}, Micrometers{0}});
     CHECK(project.findObject(id)->paths[0].outer.nodes[1].pos ==
           Vec2um{Micrometers{2000}, Micrometers{0}});
 
@@ -547,7 +568,7 @@ TEST_CASE("RemoveNodeCommand : sur un chemin ouvert, descend jusqu'a 2 noeuds") 
 
     // 2 noeuds : refuse de descendre a 1 (segment degenere).
     stack.execute(std::make_unique<RemoveNodeCommand>(id, document::NodeRef{0, 0, 0}), project);
-    CHECK(project.findObject(id)->paths[0].outer.nodes.size() == 2);  // inchange
+    CHECK(project.findObject(id)->paths[0].outer.nodes.size() == 2); // inchange
 }
 
 TEST_CASE("SetFillAngleCommand : reoriente le tatami, undo/redo exacts") {
@@ -588,9 +609,11 @@ TEST_CASE("SetFillAngleCommand : sans effet sur un objet non-tatami") {
 
     // La commande ne doit ni jeter ni altérer le type de point.
     stack.execute(std::make_unique<SetFillAngleCommand>(id, Angle{1.0}), project);
-    CHECK(std::holds_alternative<document::RunningStitchParams>(project.findEmbroidery(id)->params));
+    CHECK(
+        std::holds_alternative<document::RunningStitchParams>(project.findEmbroidery(id)->params));
     CHECK(stack.undo(project));
-    CHECK(std::holds_alternative<document::RunningStitchParams>(project.findEmbroidery(id)->params));
+    CHECK(
+        std::holds_alternative<document::RunningStitchParams>(project.findEmbroidery(id)->params));
 }
 
 TEST_CASE("ConvertFillsToTatamiCommand : satin -> tatami, undo restaure le satin") {
@@ -600,13 +623,14 @@ TEST_CASE("ConvertFillsToTatamiCommand : satin -> tatami, undo restaure le satin
     document::EmbroideryObject sat;
     sat.id = project.object_ids.next();
     document::SatinParams sp;
-    sp.density = Micrometers{321};  // marqueur pour verifier la restauration exacte
+    sp.density = Micrometers{321}; // marqueur pour verifier la restauration exacte
     sat.params = sp;
     stack.execute(std::make_unique<AddEmbroideryObjectCommand>(sat), project);
     const ObjectId id = project.embroidery_objects[0].id;
     REQUIRE(project.findEmbroidery(id)->is_satin());
 
-    stack.execute(std::make_unique<ConvertFillsToTatamiCommand>(std::vector<ObjectId>{id}), project);
+    stack.execute(std::make_unique<ConvertFillsToTatamiCommand>(std::vector<ObjectId>{id}),
+                  project);
     CHECK(project.findEmbroidery(id)->is_tatami());
 
     CHECK(stack.undo(project));
@@ -630,8 +654,8 @@ TEST_CASE("SetStitchTypeCommand : change de type, undo restaure l'exact") {
     stack.execute(std::make_unique<AddEmbroideryObjectCommand>(e), project);
     const ObjectId id = project.embroidery_objects[0].id;
 
-    stack.execute(
-        std::make_unique<SetStitchTypeCommand>(id, document::TatamiParams{}, "tatami"), project);
+    stack.execute(std::make_unique<SetStitchTypeCommand>(id, document::TatamiParams{}, "tatami"),
+                  project);
     CHECK(project.findEmbroidery(id)->is_tatami());
 
     CHECK(stack.undo(project));
@@ -659,8 +683,8 @@ TEST_CASE("SetStitchTypeCommand : marque ForcedUserChoice, undo restaure l'inten
     const ObjectId id = project.embroidery_objects[0].id;
     REQUIRE(project.findEmbroidery(id)->intent == document::EmbroideryIntent::AutoChoice);
 
-    stack.execute(
-        std::make_unique<SetStitchTypeCommand>(id, document::TatamiParams{}, "tatami"), project);
+    stack.execute(std::make_unique<SetStitchTypeCommand>(id, document::TatamiParams{}, "tatami"),
+                  project);
     CHECK(project.findEmbroidery(id)->intent == document::EmbroideryIntent::ForcedUserChoice);
 
     CHECK(stack.undo(project));
@@ -702,10 +726,9 @@ TEST_CASE("guides satin : ajout deplacement suppression sont annulables exacteme
     document::EmbroideryObject object;
     object.id = project.object_ids.next();
     document::SatinParams params;
-    params.rungs = {{{Micrometers{0}, Micrometers{0}},
-                     {Micrometers{0}, Micrometers{4'000}}},
-                    {{Micrometers{10'000}, Micrometers{0}},
-                     {Micrometers{10'000}, Micrometers{4'000}}}};
+    params.rungs = {
+        {{Micrometers{0}, Micrometers{0}}, {Micrometers{0}, Micrometers{4'000}}},
+        {{Micrometers{10'000}, Micrometers{0}}, {Micrometers{10'000}, Micrometers{4'000}}}};
     object.params = params;
     project.embroidery_objects.push_back(object);
     const ObjectId id = object.id;
@@ -717,7 +740,8 @@ TEST_CASE("guides satin : ajout deplacement suppression sont annulables exacteme
     CHECK(std::get<document::SatinParams>(project.findEmbroidery(id)->params).rungs[1] == added);
     CHECK(stack.undoName() == "Ajouter un guide satin");
     CHECK(stack.undo(project));
-    CHECK(std::get<document::SatinParams>(project.findEmbroidery(id)->params).rungs == params.rungs);
+    CHECK(std::get<document::SatinParams>(project.findEmbroidery(id)->params).rungs ==
+          params.rungs);
     CHECK(stack.redo(project));
 
     const document::SatinRung moved{{Micrometers{6'000}, Micrometers{100}},
@@ -728,7 +752,8 @@ TEST_CASE("guides satin : ajout deplacement suppression sont annulables exacteme
     CHECK(std::get<document::SatinParams>(project.findEmbroidery(id)->params).rungs[1] == added);
 
     stack.execute(std::make_unique<RemoveSatinGuideCommand>(id, 1), project);
-    CHECK(std::get<document::SatinParams>(project.findEmbroidery(id)->params).rungs == params.rungs);
+    CHECK(std::get<document::SatinParams>(project.findEmbroidery(id)->params).rungs ==
+          params.rungs);
     CHECK(stack.undoName() == "Supprimer un guide satin");
     CHECK(stack.undo(project));
     CHECK(std::get<document::SatinParams>(project.findEmbroidery(id)->params).rungs[1] == added);
@@ -738,10 +763,9 @@ TEST_CASE("guides satin coordonnes : plusieurs sections forment une seule comman
     document::Project project;
     UndoStack stack;
     document::SatinParams params;
-    params.rungs = {{{Micrometers{0}, Micrometers{0}},
-                     {Micrometers{0}, Micrometers{4'000}}},
-                    {{Micrometers{10'000}, Micrometers{0}},
-                     {Micrometers{10'000}, Micrometers{4'000}}}};
+    params.rungs = {
+        {{Micrometers{0}, Micrometers{0}}, {Micrometers{0}, Micrometers{4'000}}},
+        {{Micrometers{10'000}, Micrometers{0}}, {Micrometers{10'000}, Micrometers{4'000}}}};
     document::EmbroideryObject first;
     first.id = project.object_ids.next();
     first.params = params;
@@ -751,9 +775,9 @@ TEST_CASE("guides satin coordonnes : plusieurs sections forment une seule comman
     project.embroidery_objects = {first, second};
 
     const document::SatinRung movedFirst{{Micrometers{500}, Micrometers{0}},
-                                          {Micrometers{500}, Micrometers{4'000}}};
+                                         {Micrometers{500}, Micrometers{4'000}}};
     const document::SatinRung movedSecond{{Micrometers{9'500}, Micrometers{0}},
-                                           {Micrometers{9'500}, Micrometers{4'000}}};
+                                          {Micrometers{9'500}, Micrometers{4'000}}};
     stack.execute(std::make_unique<MoveSatinGuidesCommand>(std::vector<SatinGuideEdit>{
                       {first.id, 0, movedFirst}, {second.id, 1, movedSecond}}),
                   project);
@@ -779,10 +803,9 @@ TEST_CASE("guides satin coordonnes : ajout multi-section atomique et annulable")
     document::Project project;
     UndoStack stack;
     document::SatinParams params;
-    params.rungs = {{{Micrometers{0}, Micrometers{0}},
-                     {Micrometers{0}, Micrometers{4'000}}},
-                    {{Micrometers{10'000}, Micrometers{0}},
-                     {Micrometers{10'000}, Micrometers{4'000}}}};
+    params.rungs = {
+        {{Micrometers{0}, Micrometers{0}}, {Micrometers{0}, Micrometers{4'000}}},
+        {{Micrometers{10'000}, Micrometers{0}}, {Micrometers{10'000}, Micrometers{4'000}}}};
     document::EmbroideryObject first;
     first.id = project.object_ids.next();
     first.params = params;
@@ -791,11 +814,10 @@ TEST_CASE("guides satin coordonnes : ajout multi-section atomique et annulable")
     second.params = params;
     project.embroidery_objects = {first, second};
     const document::SatinRung guide{{Micrometers{5'000}, Micrometers{0}},
-                                     {Micrometers{5'000}, Micrometers{4'000}}};
+                                    {Micrometers{5'000}, Micrometers{4'000}}};
 
     stack.execute(std::make_unique<AddSatinGuidesCommand>(
-                      std::vector<SatinGuideAddition>{{first.id, guide, 1},
-                                                       {second.id, guide, 1}}),
+                      std::vector<SatinGuideAddition>{{first.id, guide, 1}, {second.id, guide, 1}}),
                   project);
     CHECK(std::get<document::SatinParams>(project.findEmbroidery(first.id)->params).rungs.size() ==
           3);
@@ -813,8 +835,7 @@ TEST_CASE("guides satin coordonnes : ajout multi-section atomique et annulable")
     CHECK(std::get<document::SatinParams>(project.findEmbroidery(second.id)->params).rungs[1] ==
           guide);
 
-    AddSatinGuidesCommand stale(
-        {{first.id, guide, 1}, {ObjectId{999}, guide, 0}});
+    AddSatinGuidesCommand stale({{first.id, guide, 1}, {ObjectId{999}, guide, 0}});
     stale.apply(project);
     CHECK(std::get<document::SatinParams>(project.findEmbroidery(first.id)->params).rungs.size() ==
           3);
@@ -823,16 +844,15 @@ TEST_CASE("guides satin coordonnes : ajout multi-section atomique et annulable")
 TEST_CASE("guides satin coordonnes : une cible obsolete interdit toute mutation partielle") {
     document::Project project;
     document::SatinParams params;
-    params.rungs = {{{Micrometers{0}, Micrometers{0}},
-                     {Micrometers{0}, Micrometers{4'000}}},
-                    {{Micrometers{10'000}, Micrometers{0}},
-                     {Micrometers{10'000}, Micrometers{4'000}}}};
+    params.rungs = {
+        {{Micrometers{0}, Micrometers{0}}, {Micrometers{0}, Micrometers{4'000}}},
+        {{Micrometers{10'000}, Micrometers{0}}, {Micrometers{10'000}, Micrometers{4'000}}}};
     document::EmbroideryObject object;
     object.id = project.object_ids.next();
     object.params = params;
     project.embroidery_objects.push_back(object);
     const document::SatinRung moved{{Micrometers{500}, Micrometers{0}},
-                                     {Micrometers{500}, Micrometers{4'000}}};
+                                    {Micrometers{500}, Micrometers{4'000}}};
 
     MoveSatinGuidesCommand stale({{object.id, 0, moved}, {ObjectId{999}, 0, moved}});
     stale.apply(project);
@@ -1017,7 +1037,9 @@ TEST_CASE("SetCanvasCommand : change la taille du cadre, undo restaure") {
 
 namespace {
 
-Vec2um um(std::int32_t x, std::int32_t y) { return Vec2um{Micrometers{x}, Micrometers{y}}; }
+Vec2um um(std::int32_t x, std::int32_t y) {
+    return Vec2um{Micrometers{x}, Micrometers{y}};
+}
 
 document::Project project_with_embroidery() {
     document::Project project;
@@ -1028,9 +1050,10 @@ document::Project project_with_embroidery() {
     return project;
 }
 
-}  // namespace
+} // namespace
 
-TEST_CASE("MoveStitchPointCommand : transitionne Clean -> ManuallyEdited, undo restaure Clean exact") {
+TEST_CASE(
+    "MoveStitchPointCommand : transitionne Clean -> ManuallyEdited, undo restaure Clean exact") {
     auto project = project_with_embroidery();
     const ObjectId id = project.embroidery_objects[0].id;
     UndoStack stack;
@@ -1113,7 +1136,8 @@ TEST_CASE("SetStitchTrimCommand : bascule trim_after, undo exact") {
 // ManuallyEdited.
 // ---------------------------------------------------------------------------
 
-TEST_CASE("SetStitchTrimCommand(false) sur un index sans override existant : no-op exact, reste Clean") {
+TEST_CASE(
+    "SetStitchTrimCommand(false) sur un index sans override existant : no-op exact, reste Clean") {
     auto project = project_with_embroidery();
     const ObjectId id = project.embroidery_objects[0].id;
     UndoStack stack;
@@ -1173,13 +1197,14 @@ TEST_CASE("SetStitchTrimCommand(false) efface le dernier champ effectif d'une en
     auto* obj = project.findEmbroidery(id);
     document::StitchOverride existing;
     existing.base_index = 2;
-    existing.trim_after = true;  // seul champ effectif de cette entree
+    existing.trim_after = true; // seul champ effectif de cette entree
     obj->overrides = {existing};
     obj->edited_fingerprint = 42;
     obj->edited_point_count = 4;
 
     UndoStack stack;
-    stack.execute(std::make_unique<SetStitchTrimCommand>(id, std::size_t{2}, false, 42, 4), project);
+    stack.execute(std::make_unique<SetStitchTrimCommand>(id, std::size_t{2}, false, 42, 4),
+                  project);
 
     obj = project.findEmbroidery(id);
     // L'entree n'avait plus aucun champ effectif une fois trim_after efface
@@ -1200,7 +1225,8 @@ TEST_CASE("SetStitchTrimCommand(false) efface le dernier champ effectif d'une en
     CHECK(obj->overrides.empty());
 }
 
-TEST_CASE("Deux commandes sur le meme base_index partagent une seule entree, undo la seconde seule") {
+TEST_CASE(
+    "Deux commandes sur le meme base_index partagent une seule entree, undo la seconde seule") {
     auto project = project_with_embroidery();
     const ObjectId id = project.embroidery_objects[0].id;
     UndoStack stack;
@@ -1218,20 +1244,20 @@ TEST_CASE("Deux commandes sur le meme base_index partagent une seule entree, und
                   project);
 
     auto* obj = project.findEmbroidery(id);
-    REQUIRE(obj->overrides.size() == 1);  // une seule entree, pas deux
+    REQUIRE(obj->overrides.size() == 1); // une seule entree, pas deux
     REQUIRE(obj->overrides[0].moved_to.has_value());
     CHECK(*obj->overrides[0].moved_to == um(10, 10));
     REQUIRE(obj->overrides[0].forced_type.has_value());
     CHECK(*obj->overrides[0].forced_type == document::StitchPointType::Jump);
 
-    CHECK(stack.undo(project));  // annule seulement SetStitchPointTypeCommand
+    CHECK(stack.undo(project)); // annule seulement SetStitchPointTypeCommand
     obj = project.findEmbroidery(id);
     REQUIRE(obj->overrides.size() == 1);
     CHECK(*obj->overrides[0].moved_to == um(10, 10));       // toujours present
-    CHECK_FALSE(obj->overrides[0].forced_type.has_value());  // type restaure
-    CHECK(obj->edited_fingerprint == fp);  // deja pose par la 1ere commande
+    CHECK_FALSE(obj->overrides[0].forced_type.has_value()); // type restaure
+    CHECK(obj->edited_fingerprint == fp);                   // deja pose par la 1ere commande
 
-    CHECK(stack.undo(project));  // annule MoveStitchPointCommand -> Clean total
+    CHECK(stack.undo(project)); // annule MoveStitchPointCommand -> Clean total
     obj = project.findEmbroidery(id);
     CHECK(obj->overrides.empty());
     CHECK(obj->edited_fingerprint == 0);
@@ -1252,8 +1278,8 @@ TEST_CASE("commande d'edition de point refusee sur un objet Dirty : aucune mutat
     UndoStack stack;
     // raw_fingerprint/raw_point_count (vue brute ACTUELLE) different de ceux
     // memorises sur l'objet -> Dirty, aucune commande ne doit rouvrir l'edition.
-    stack.execute(
-        std::make_unique<MoveStitchPointCommand>(id, std::size_t{1}, um(1, 1), 1'000, 4), project);
+    stack.execute(std::make_unique<MoveStitchPointCommand>(id, std::size_t{1}, um(1, 1), 1'000, 4),
+                  project);
 
     obj = project.findEmbroidery(id);
     REQUIRE(obj->overrides.size() == 1);
@@ -1273,8 +1299,8 @@ TEST_CASE("MoveStitchPointCommand : base_index hors bornes de la vue brute -- au
     const ObjectId id = project.embroidery_objects[0].id;
     UndoStack stack;
 
-    stack.execute(
-        std::make_unique<MoveStitchPointCommand>(id, std::size_t{10}, um(1, 1), 1, 4), project);
+    stack.execute(std::make_unique<MoveStitchPointCommand>(id, std::size_t{10}, um(1, 1), 1, 4),
+                  project);
 
     auto* obj = project.findEmbroidery(id);
     CHECK(obj->overrides.empty());
@@ -1286,14 +1312,15 @@ TEST_CASE("MoveStitchPointCommand : base_index hors bornes de la vue brute -- au
 TEST_CASE("MoveStitchPointCommand : objet introuvable -- aucune mutation, aucun plantage") {
     document::Project project;
     UndoStack stack;
-    stack.execute(std::make_unique<MoveStitchPointCommand>(ObjectId{999}, std::size_t{0}, um(1, 1),
-                                                            1, 4),
-                  project);
+    stack.execute(
+        std::make_unique<MoveStitchPointCommand>(ObjectId{999}, std::size_t{0}, um(1, 1), 1, 4),
+        project);
     CHECK(project.embroidery_objects.empty());
     CHECK(stack.undo(project));
 }
 
-TEST_CASE("DiscardOverridesCommand : vide les retouches (y compris Dirty), undo restaure exactement") {
+TEST_CASE(
+    "DiscardOverridesCommand : vide les retouches (y compris Dirty), undo restaure exactement") {
     auto project = project_with_embroidery();
     const ObjectId id = project.embroidery_objects[0].id;
     auto* obj = project.findEmbroidery(id);
@@ -1301,8 +1328,8 @@ TEST_CASE("DiscardOverridesCommand : vide les retouches (y compris Dirty), undo 
     ov.base_index = 1;
     ov.moved_to = um(7, 7);
     obj->overrides = {ov};
-    obj->edited_fingerprint = 555;  // volontairement incoherent (simule Dirty) :
-    obj->edited_point_count = 4;    // Discard reste valable dans tous les cas.
+    obj->edited_fingerprint = 555; // volontairement incoherent (simule Dirty) :
+    obj->edited_point_count = 4;   // Discard reste valable dans tous les cas.
 
     UndoStack stack;
     stack.execute(std::make_unique<DiscardOverridesCommand>(id), project);
@@ -1345,8 +1372,9 @@ document::Project project_with_manual_satin() {
     params.rail_a.nodes = {geometry::PathNode{um(0, 0), geometry::NodeType::Corner, {}, {}},
                            geometry::PathNode{um(10'000, 0), geometry::NodeType::Corner, {}, {}}};
     params.rail_b.closed = false;
-    params.rail_b.nodes = {geometry::PathNode{um(0, 4'000), geometry::NodeType::Corner, {}, {}},
-                           geometry::PathNode{um(10'000, 4'000), geometry::NodeType::Corner, {}, {}}};
+    params.rail_b.nodes = {
+        geometry::PathNode{um(0, 4'000), geometry::NodeType::Corner, {}, {}},
+        geometry::PathNode{um(10'000, 4'000), geometry::NodeType::Corner, {}, {}}};
     params.rungs = {{um(0, 0), um(0, 4'000), std::nullopt},
                     {um(10'000, 0), um(10'000, 4'000), std::nullopt}};
     object.params = params;
@@ -1354,15 +1382,15 @@ document::Project project_with_manual_satin() {
     return project;
 }
 
-}  // namespace
+} // namespace
 
 TEST_CASE("MoveSatinRailNodeCommand : deplace un noeud d'un rail, undo restaure exact") {
     auto project = project_with_manual_satin();
     const ObjectId id = project.embroidery_objects[0].id;
     UndoStack stack;
 
-    stack.execute(std::make_unique<MoveSatinRailNodeCommand>(id, SatinRailSide::RailA, 0,
-                                                              um(0, 0), um(100, 200)),
+    stack.execute(std::make_unique<MoveSatinRailNodeCommand>(id, SatinRailSide::RailA, 0, um(0, 0),
+                                                             um(100, 200)),
                   project);
     CHECK(std::get<document::SatinParams>(project.findEmbroidery(id)->params).rail_a.nodes[0].pos ==
           um(100, 200));
@@ -1383,8 +1411,8 @@ TEST_CASE("MoveSatinRailNodeCommand : index hors bornes -- aucune mutation") {
     const ObjectId id = project.embroidery_objects[0].id;
     UndoStack stack;
 
-    stack.execute(std::make_unique<MoveSatinRailNodeCommand>(id, SatinRailSide::RailA, 99,
-                                                              um(0, 0), um(1, 1)),
+    stack.execute(std::make_unique<MoveSatinRailNodeCommand>(id, SatinRailSide::RailA, 99, um(0, 0),
+                                                             um(1, 1)),
                   project);
     CHECK(std::get<document::SatinParams>(project.findEmbroidery(id)->params).rail_a.nodes[0].pos ==
           um(0, 0));
@@ -1396,13 +1424,15 @@ TEST_CASE("SetSatinRailNodeTypeCommand : bascule Coin/Lisse, undo restaure exact
     UndoStack stack;
 
     stack.execute(std::make_unique<SetSatinRailNodeTypeCommand>(id, SatinRailSide::RailB, 1,
-                                                                 geometry::NodeType::Smooth),
+                                                                geometry::NodeType::Smooth),
                   project);
-    CHECK(std::get<document::SatinParams>(project.findEmbroidery(id)->params).rail_b.nodes[1].type ==
-          geometry::NodeType::Smooth);
+    CHECK(
+        std::get<document::SatinParams>(project.findEmbroidery(id)->params).rail_b.nodes[1].type ==
+        geometry::NodeType::Smooth);
     CHECK(stack.undo(project));
-    CHECK(std::get<document::SatinParams>(project.findEmbroidery(id)->params).rail_b.nodes[1].type ==
-          geometry::NodeType::Corner);
+    CHECK(
+        std::get<document::SatinParams>(project.findEmbroidery(id)->params).rail_b.nodes[1].type ==
+        geometry::NodeType::Corner);
 }
 
 TEST_CASE("InsertSatinRailNodeCommand : ajoute un noeud par subdivision exacte, undo le retire") {
@@ -1410,10 +1440,9 @@ TEST_CASE("InsertSatinRailNodeCommand : ajoute un noeud par subdivision exacte, 
     const ObjectId id = project.embroidery_objects[0].id;
     UndoStack stack;
 
-    stack.execute(
-        std::make_unique<InsertSatinRailNodeCommand>(id, SatinRailSide::RailA, 0, 0.5), project);
-    const auto& railA =
-        std::get<document::SatinParams>(project.findEmbroidery(id)->params).rail_a;
+    stack.execute(std::make_unique<InsertSatinRailNodeCommand>(id, SatinRailSide::RailA, 0, 0.5),
+                  project);
+    const auto& railA = std::get<document::SatinParams>(project.findEmbroidery(id)->params).rail_a;
     REQUIRE(railA.nodes.size() == 3);
     CHECK(railA.nodes[1].pos == um(5'000, 0));
     CHECK(stack.undoName() == "Ajouter un nœud de rail satin");
@@ -1428,8 +1457,8 @@ TEST_CASE("RemoveSatinRailNodeCommand : retire un noeud, undo le restaure a la m
     const ObjectId id = project.embroidery_objects[0].id;
     UndoStack stack;
     // Un 3e noeud, sinon le rail (2 noeuds) refuserait la suppression.
-    stack.execute(
-        std::make_unique<InsertSatinRailNodeCommand>(id, SatinRailSide::RailA, 0, 0.5), project);
+    stack.execute(std::make_unique<InsertSatinRailNodeCommand>(id, SatinRailSide::RailA, 0, 0.5),
+                  project);
 
     stack.execute(std::make_unique<RemoveSatinRailNodeCommand>(id, SatinRailSide::RailA, 1),
                   project);
@@ -1454,7 +1483,8 @@ TEST_CASE("RemoveSatinRailNodeCommand : refuse de reduire un rail sous deux noeu
           2);
 }
 
-TEST_CASE("AddObjectBatchCommand : cree rails + objet de broderie en une seule commande annulable") {
+TEST_CASE(
+    "AddObjectBatchCommand : cree rails + objet de broderie en une seule commande annulable") {
     document::Project project;
     UndoStack stack;
 
@@ -1468,11 +1498,11 @@ TEST_CASE("AddObjectBatchCommand : cree rails + objet de broderie en une seule c
     params.rail_a.nodes = {geometry::PathNode{um(0, 0), geometry::NodeType::Corner, {}, {}}};
     emb.params = params;
 
-    stack.execute(std::make_unique<AddObjectBatchCommand>(
-                      std::vector<document::VectorObject>{vec},
-                      std::vector<document::EmbroideryObject>{emb},
-                      "Colonne satin (création manuelle)"),
-                  project);
+    stack.execute(
+        std::make_unique<AddObjectBatchCommand>(std::vector<document::VectorObject>{vec},
+                                                std::vector<document::EmbroideryObject>{emb},
+                                                "Colonne satin (création manuelle)"),
+        project);
     REQUIRE(project.vector_objects.size() == 1);
     REQUIRE(project.embroidery_objects.size() == 1);
     CHECK(stack.undoName() == "Colonne satin (création manuelle)");

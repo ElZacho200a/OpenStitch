@@ -29,40 +29,39 @@ PathNode corner(Vec2um pos) {
     return PathNode{pos, NodeType::Corner, std::nullopt, std::nullopt};
 }
 
-}  // namespace
+} // namespace
 
 TEST_CASE("dxf : aucune section ENTITIES -> erreur propre") {
-    const auto result = decode_dxf(to_bytes(
-        "0\r\nSECTION\r\n2\r\nHEADER\r\n0\r\nENDSEC\r\n0\r\nEOF\r\n"));
+    const auto result =
+        decode_dxf(to_bytes("0\r\nSECTION\r\n2\r\nHEADER\r\n0\r\nENDSEC\r\n0\r\nEOF\r\n"));
     REQUIRE_FALSE(result.has_value());
     CHECK(result.error().category == ErrorCategory::InvalidFile);
 }
 
 TEST_CASE("dxf : ENTITIES sans entite prise en charge -> erreur propre") {
-    const auto result = decode_dxf(to_bytes(
-        "0\r\nSECTION\r\n2\r\nENTITIES\r\n"
-        "0\r\nTEXT\r\n1\r\nBonjour\r\n"
-        "0\r\nENDSEC\r\n0\r\nEOF\r\n"));
+    const auto result = decode_dxf(to_bytes("0\r\nSECTION\r\n2\r\nENTITIES\r\n"
+                                            "0\r\nTEXT\r\n1\r\nBonjour\r\n"
+                                            "0\r\nENDSEC\r\n0\r\nEOF\r\n"));
     REQUIRE_FALSE(result.has_value());
     CHECK(result.error().category == ErrorCategory::UnsupportedFormat);
 }
 
 TEST_CASE("dxf : entite non prise en charge ignoree sans faire echouer le fichier") {
-    const auto result = decode_dxf(to_bytes(
-        "0\r\nSECTION\r\n2\r\nENTITIES\r\n"
-        "0\r\nTEXT\r\n1\r\nBonjour\r\n"
-        "0\r\nLINE\r\n10\r\n0.0\r\n20\r\n0.0\r\n11\r\n10.0\r\n21\r\n0.0\r\n"
-        "0\r\nENDSEC\r\n0\r\nEOF\r\n"));
+    const auto result =
+        decode_dxf(to_bytes("0\r\nSECTION\r\n2\r\nENTITIES\r\n"
+                            "0\r\nTEXT\r\n1\r\nBonjour\r\n"
+                            "0\r\nLINE\r\n10\r\n0.0\r\n20\r\n0.0\r\n11\r\n10.0\r\n21\r\n0.0\r\n"
+                            "0\r\nENDSEC\r\n0\r\nEOF\r\n"));
     REQUIRE(result.has_value());
     REQUIRE(result->size() == 1);
     CHECK((*result)[0].nodes.size() == 2);
 }
 
 TEST_CASE("dxf : LINE devient un chemin ouvert a deux noeuds") {
-    const auto result = decode_dxf(to_bytes(
-        "0\r\nSECTION\r\n2\r\nENTITIES\r\n"
-        "0\r\nLINE\r\n10\r\n1.0\r\n20\r\n2.0\r\n11\r\n5.0\r\n21\r\n2.0\r\n"
-        "0\r\nENDSEC\r\n0\r\nEOF\r\n"));
+    const auto result =
+        decode_dxf(to_bytes("0\r\nSECTION\r\n2\r\nENTITIES\r\n"
+                            "0\r\nLINE\r\n10\r\n1.0\r\n20\r\n2.0\r\n11\r\n5.0\r\n21\r\n2.0\r\n"
+                            "0\r\nENDSEC\r\n0\r\nEOF\r\n"));
     REQUIRE(result.has_value());
     REQUIRE(result->size() == 1);
     const Path& path = (*result)[0];
@@ -73,10 +72,9 @@ TEST_CASE("dxf : LINE devient un chemin ouvert a deux noeuds") {
 }
 
 TEST_CASE("dxf : CIRCLE devient un chemin ferme a quatre noeuds") {
-    const auto result = decode_dxf(to_bytes(
-        "0\r\nSECTION\r\n2\r\nENTITIES\r\n"
-        "0\r\nCIRCLE\r\n10\r\n3.0\r\n20\r\n4.0\r\n40\r\n2.0\r\n"
-        "0\r\nENDSEC\r\n0\r\nEOF\r\n"));
+    const auto result = decode_dxf(to_bytes("0\r\nSECTION\r\n2\r\nENTITIES\r\n"
+                                            "0\r\nCIRCLE\r\n10\r\n3.0\r\n20\r\n4.0\r\n40\r\n2.0\r\n"
+                                            "0\r\nENDSEC\r\n0\r\nEOF\r\n"));
     REQUIRE(result.has_value());
     REQUIRE(result->size() == 1);
     const Path& path = (*result)[0];
@@ -87,10 +85,10 @@ TEST_CASE("dxf : CIRCLE devient un chemin ferme a quatre noeuds") {
 }
 
 TEST_CASE("dxf : ARC echantillonne un quart de cercle en polyligne ouverte") {
-    const auto result = decode_dxf(to_bytes(
-        "0\r\nSECTION\r\n2\r\nENTITIES\r\n"
-        "0\r\nARC\r\n10\r\n0.0\r\n20\r\n0.0\r\n40\r\n10.0\r\n50\r\n0.0\r\n51\r\n90.0\r\n"
-        "0\r\nENDSEC\r\n0\r\nEOF\r\n"));
+    const auto result = decode_dxf(
+        to_bytes("0\r\nSECTION\r\n2\r\nENTITIES\r\n"
+                 "0\r\nARC\r\n10\r\n0.0\r\n20\r\n0.0\r\n40\r\n10.0\r\n50\r\n0.0\r\n51\r\n90.0\r\n"
+                 "0\r\nENDSEC\r\n0\r\nEOF\r\n"));
     REQUIRE(result.has_value());
     REQUIRE(result->size() == 1);
     const Path& path = (*result)[0];
@@ -110,14 +108,13 @@ TEST_CASE("dxf : ARC echantillonne un quart de cercle en polyligne ouverte") {
 }
 
 TEST_CASE("dxf : LWPOLYLINE fermee sans bulge reproduit les sommets exacts") {
-    const auto result = decode_dxf(to_bytes(
-        "0\r\nSECTION\r\n2\r\nENTITIES\r\n"
-        "0\r\nLWPOLYLINE\r\n90\r\n4\r\n70\r\n1\r\n"
-        "10\r\n0.0\r\n20\r\n0.0\r\n"
-        "10\r\n10.0\r\n20\r\n0.0\r\n"
-        "10\r\n10.0\r\n20\r\n10.0\r\n"
-        "10\r\n0.0\r\n20\r\n10.0\r\n"
-        "0\r\nENDSEC\r\n0\r\nEOF\r\n"));
+    const auto result = decode_dxf(to_bytes("0\r\nSECTION\r\n2\r\nENTITIES\r\n"
+                                            "0\r\nLWPOLYLINE\r\n90\r\n4\r\n70\r\n1\r\n"
+                                            "10\r\n0.0\r\n20\r\n0.0\r\n"
+                                            "10\r\n10.0\r\n20\r\n0.0\r\n"
+                                            "10\r\n10.0\r\n20\r\n10.0\r\n"
+                                            "10\r\n0.0\r\n20\r\n10.0\r\n"
+                                            "0\r\nENDSEC\r\n0\r\nEOF\r\n"));
     REQUIRE(result.has_value());
     REQUIRE(result->size() == 1);
     const Path& path = (*result)[0];
@@ -138,17 +135,18 @@ TEST_CASE("dxf : bulge produit un arc dont le centre et le sommet sont geometriq
     // signe ici : le centre tombe alors exactement sur la corde quel que
     // soit le sens choisi (defaut trouve en verifiant ce test a la main).
     const double bulge = std::tan(22.5 * std::numbers::pi / 180.0);
-    const auto result = decode_dxf(to_bytes(
-        "0\r\nSECTION\r\n2\r\nENTITIES\r\n"
-        "0\r\nLWPOLYLINE\r\n90\r\n2\r\n70\r\n0\r\n"
-        "10\r\n0.0\r\n20\r\n0.0\r\n42\r\n" + std::to_string(bulge) + "\r\n"
-        "10\r\n10.0\r\n20\r\n0.0\r\n"
-        "0\r\nENDSEC\r\n0\r\nEOF\r\n"));
+    const auto result = decode_dxf(to_bytes("0\r\nSECTION\r\n2\r\nENTITIES\r\n"
+                                            "0\r\nLWPOLYLINE\r\n90\r\n2\r\n70\r\n0\r\n"
+                                            "10\r\n0.0\r\n20\r\n0.0\r\n42\r\n" +
+                                            std::to_string(bulge) +
+                                            "\r\n"
+                                            "10\r\n10.0\r\n20\r\n0.0\r\n"
+                                            "0\r\nENDSEC\r\n0\r\nEOF\r\n"));
     REQUIRE(result.has_value());
     REQUIRE(result->size() == 1);
     const Path& path = (*result)[0];
     CHECK_FALSE(path.closed);
-    REQUIRE(path.nodes.size() > 2);  // sommets d'origine + points d'arc intercales
+    REQUIRE(path.nodes.size() > 2); // sommets d'origine + points d'arc intercales
 
     const double expectedRadius = 5.0 * std::sqrt(2.0);
     const double centerX = 5.0;
@@ -174,7 +172,7 @@ TEST_CASE("dxf : aller-retour d'un rectangle (noeuds Coin, sans courbe)") {
     Path rect;
     rect.closed = true;
     rect.nodes = {corner(um(0, 0)), corner(um(10'000, 0)), corner(um(10'000, 5'000)),
-                 corner(um(0, 5'000))};
+                  corner(um(0, 5'000))};
 
     const auto bytes = encode_dxf({rect});
     REQUIRE(bytes.has_value());

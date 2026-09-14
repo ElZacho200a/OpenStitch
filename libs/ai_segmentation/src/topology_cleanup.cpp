@@ -28,10 +28,10 @@ bool is_protected(RegionId id, const std::vector<RegionId>& protectedRegions) {
            protectedRegions.end();
 }
 
-}  // namespace
+} // namespace
 
 Result<SegmentationValidationReport> cleanup_topology(segmentation::Segmentation& seg,
-                                                       const TopologyCleanupOptions& options) {
+                                                      const TopologyCleanupOptions& options) {
     if (seg.width <= 0 || seg.height <= 0 || seg.labels.empty()) {
         return fail(ErrorCategory::Internal, "Carte de labels vide : rien à nettoyer");
     }
@@ -94,7 +94,7 @@ Result<SegmentationValidationReport> cleanup_topology(segmentation::Segmentation
                 const int nx = x + dxs4[k];
                 const int ny = y + dys4[k];
                 if (nx < 0 || ny < 0 || nx >= w || ny >= h) {
-                    ++comp.border_edges[label];  // sort du canevas : compte pour le périmètre
+                    ++comp.border_edges[label]; // sort du canevas : compte pour le périmètre
                     continue;
                 }
                 const std::uint32_t otherLabel = seg.labels[index(nx, ny)];
@@ -139,7 +139,7 @@ Result<SegmentationValidationReport> cleanup_topology(segmentation::Segmentation
             }
         }
         if (best == 0) {
-            continue;  // trou sans voisin non-fond exploitable (ne devrait pas arriver)
+            continue; // trou sans voisin non-fond exploitable (ne devrait pas arriver)
         }
         if (distinctNonBackground > 1) {
             ++ambiguous;
@@ -176,7 +176,7 @@ Result<SegmentationValidationReport> cleanup_topology(segmentation::Segmentation
                 best = neighborLabel;
             }
         }
-        newLabelFor[c] = best;  // 0 si aucun voisin de premier plan : speck isolé, retour au fond
+        newLabelFor[c] = best; // 0 si aucun voisin de premier plan : speck isolé, retour au fond
     }
 
     // 4. Application des relabels en une seule passe.
@@ -220,8 +220,7 @@ Result<SegmentationValidationReport> cleanup_topology(segmentation::Segmentation
             for (int k = 0; k < 4; ++k) {
                 const int nx = x + dxs4[k];
                 const int ny = y + dys4[k];
-                if (nx < 0 || ny < 0 || nx >= w || ny >= h ||
-                    seg.labels[index(nx, ny)] != label) {
+                if (nx < 0 || ny < 0 || nx >= w || ny >= h || seg.labels[index(nx, ny)] != label) {
                     ++perimeterPx[slot];
                 }
             }
@@ -251,4 +250,4 @@ Result<SegmentationValidationReport> cleanup_topology(segmentation::Segmentation
     return report;
 }
 
-}  // namespace openstitch::ai_segmentation
+} // namespace openstitch::ai_segmentation

@@ -45,4 +45,4 @@ namespace openstitch::geometry {
 // chemin vide (rien à fermer), à l'appelant de refuser, comme `polygon_path`.
 [[nodiscard]] Path freeform_path(const std::vector<Vec2um>& points, Micrometers tolerance);
 
-}  // namespace openstitch::geometry
+} // namespace openstitch::geometry

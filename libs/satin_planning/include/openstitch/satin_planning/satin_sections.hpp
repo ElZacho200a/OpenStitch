@@ -35,10 +35,9 @@ namespace openstitch::satin_planning {
 // `rail_a`/`rail_b` (Bezier ou polyligne dense indifferemment) a la demande,
 // donc un seul point d'entree suffit pour les deux modes.
 template <typename ColumnLike>
-[[nodiscard]] document::SatinParams satin_params_from_column(const ColumnLike& col, Micrometers density,
-                                                              Micrometers pull_compensation,
-                                                              bool center_underlay,
-                                                              Micrometers max_width) {
+[[nodiscard]] document::SatinParams
+satin_params_from_column(const ColumnLike& col, Micrometers density, Micrometers pull_compensation,
+                         bool center_underlay, Micrometers max_width) {
     document::SatinParams sp;
     sp.rail_a = col.rail_a;
     sp.rail_b = col.rail_b;
@@ -142,10 +141,10 @@ struct SatinBuildReport {
 // coupe du desktop, sans qu'aucun de ces appelants n'ait besoin de lier
 // `autodigitize`. `warningLabel`, si non vide, prefixe chaque message de
 // `warnings` (ex. "Region 12" cote auto-numerisation).
-[[nodiscard]] SatinBuildReport build_satin_sections(const geometry::PathSet& region,
-                                                    const auto_satin::SatinColumnsParameters& genParams,
-                                                    Micrometers density, Micrometers pullCompensation,
-                                                    bool centerUnderlay, Micrometers maxWidth,
-                                                    const std::string& warningLabel = {});
+[[nodiscard]] SatinBuildReport
+build_satin_sections(const geometry::PathSet& region,
+                     const auto_satin::SatinColumnsParameters& genParams, Micrometers density,
+                     Micrometers pullCompensation, bool centerUnderlay, Micrometers maxWidth,
+                     const std::string& warningLabel = {});
 
-}  // namespace openstitch::satin_planning
+} // namespace openstitch::satin_planning

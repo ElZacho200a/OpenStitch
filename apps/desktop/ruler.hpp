@@ -25,4 +25,4 @@ private:
     CanvasView* view_;
 };
 
-}  // namespace openstitch::desktop
+} // namespace openstitch::desktop

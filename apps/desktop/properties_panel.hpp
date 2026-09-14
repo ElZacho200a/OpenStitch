@@ -60,7 +60,7 @@ private:
     QWidget* body_{nullptr};
     std::optional<ObjectId> currentId_;
     std::optional<ObjectId> editStateId_;
-    bool building_{false};  // évite d'émettre pendant le peuplement
+    bool building_{false}; // évite d'émettre pendant le peuplement
 };
 
-}  // namespace openstitch::desktop
+} // namespace openstitch::desktop

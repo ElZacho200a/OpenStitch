@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 #include "ruler.hpp"
 
-#include <QPainter>
 #include <QPaintEvent>
+#include <QPainter>
 
 #include <cmath>
 
@@ -16,7 +16,7 @@ constexpr int kThickness = 26;
 double niceLabelStepMm(double pxPerMm) {
     static constexpr double steps[] = {0.5, 1, 2, 5, 10, 20, 50, 100, 200, 500};
     for (const double s : steps) {
-        if (s * pxPerMm >= 45.0) {  // au moins 45 px entre deux étiquettes
+        if (s * pxPerMm >= 45.0) { // au moins 45 px entre deux étiquettes
             return s;
         }
     }
@@ -27,7 +27,7 @@ QString formatMm(double mm) {
     return (std::abs(mm - std::round(mm)) < 1e-9) ? QString::number(std::lround(mm))
                                                   : QString::number(mm, 'f', 1);
 }
-}  // namespace
+} // namespace
 
 Ruler::Ruler(Qt::Orientation orientation, CanvasView* view, QWidget* parent)
     : QWidget(parent), orientation_(orientation), view_(view) {
@@ -94,4 +94,4 @@ void Ruler::paintEvent(QPaintEvent* /*event*/) {
     }
 }
 
-}  // namespace openstitch::desktop
+} // namespace openstitch::desktop

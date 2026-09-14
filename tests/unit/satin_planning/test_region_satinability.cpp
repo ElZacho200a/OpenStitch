@@ -34,7 +34,7 @@ Pipeline run_pipeline(const std::string& shapeName) {
     return out;
 }
 
-}  // namespace
+} // namespace
 
 TEST_CASE("check_region_satinability : rectangle -- deja simple, prete sans decoupe") {
     const Pipeline p = run_pipeline("rectangle");
@@ -74,7 +74,8 @@ TEST_CASE("check_all_regions : boucle complete decompose+split+check -- formes a
     }
 }
 
-TEST_CASE("check_all_regions : H -- les montants sont propres, le pont jonction-jonction connu limite") {
+TEST_CASE(
+    "check_all_regions : H -- les montants sont propres, le pont jonction-jonction connu limite") {
     // Le pont d'un "H" a SES DEUX bouts sur une jonction (§ region_split.hpp) :
     // il lui faut deux coupes successives, et le garde-fou de satinabilite
     // ne s'applique volontairement qu'aux branches se terminant par une
@@ -94,13 +95,16 @@ TEST_CASE("check_all_regions : H -- les montants sont propres, le pont jonction-
     std::size_t cleanCount = 0;
     for (const auto& v : report.verdicts) {
         REQUIRE(v.report.has_value());
-        if (v.ready_for_generation) ++cleanCount;
+        if (v.ready_for_generation)
+            ++cleanCount;
     }
-    CHECK(cleanCount == 2);  // les deux montants (jamais coupes qu'a une seule extremite chacun... voir note ci-dessus)
+    CHECK(cleanCount == 2); // les deux montants (jamais coupes qu'a une seule extremite chacun...
+                            // voir note ci-dessus)
     CHECK(report.not_ready.size() == 1);
 }
 
-TEST_CASE("check_all_regions : trident -- une branche isolee reste propre, sinon honnetement non resolue") {
+TEST_CASE("check_all_regions : trident -- une branche isolee reste propre, sinon honnetement non "
+          "resolue") {
     // La branche laterale du trident est etroite et courte (§ shapes.cpp) :
     // aucune distance de coupe dans la plage testee n'echappe forcement a
     // l'empreinte de la branche voisine pres de la confluence. Le garde-fou
@@ -114,7 +118,8 @@ TEST_CASE("check_all_regions : trident -- une branche isolee reste propre, sinon
     INFO(format_satinability_report(report));
     CHECK(report.verdicts.size() == p.decomposition.paths.size());
     for (const auto& v : report.verdicts) {
-        if (v.report.has_value()) CHECK(v.report->junction_count == 0);
+        if (v.report.has_value())
+            CHECK(v.report->junction_count == 0);
     }
 }
 

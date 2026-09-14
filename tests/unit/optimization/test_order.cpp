@@ -9,7 +9,7 @@ using namespace openstitch::optimization;
 namespace {
 
 OrderItem item(std::uint64_t id, std::array<std::uint8_t, 3> rgb, std::int32_t x, std::int32_t y,
-                bool locked = false) {
+               bool locked = false) {
     return OrderItem{ObjectId{id}, rgb, Vec2um{Micrometers{x}, Micrometers{y}}, locked};
 }
 
@@ -24,7 +24,7 @@ std::vector<std::uint64_t> ids(const std::vector<ObjectId>& v) {
 const std::array<std::uint8_t, 3> red{200, 0, 0};
 const std::array<std::uint8_t, 3> blue{0, 0, 200};
 
-}  // namespace
+} // namespace
 
 TEST_CASE("cout : deplacements et changements de couleur") {
     // rouge(0,0) bleu(3,0) rouge(6,0) : 2 changements, 6 mm de trajet.
@@ -39,7 +39,7 @@ TEST_CASE("ByColor : regroupe les couleurs, reduit les changements") {
     const std::vector<OrderItem> items = {item(1, red, 0, 0), item(2, blue, 1'000, 0),
                                           item(3, red, 2'000, 0), item(4, blue, 3'000, 0)};
     const auto order = optimize_order(items, OrderStrategy::ByColor);
-    CHECK(ids(order) == std::vector<std::uint64_t>{1, 3, 2, 4});  // rouges puis bleus
+    CHECK(ids(order) == std::vector<std::uint64_t>{1, 3, 2, 4}); // rouges puis bleus
 }
 
 TEST_CASE("ByProximity : plus proche voisin") {
@@ -73,7 +73,7 @@ TEST_CASE("objets verrouilles gardent leur position") {
     const std::vector<OrderItem> items = {item(1, blue, 0, 0), item(2, red, 1'000, 0, true),
                                           item(3, blue, 2'000, 0)};
     const auto order = optimize_order(items, OrderStrategy::ByColor);
-    CHECK(order[1].value == 2);  // le verrou reste en 2e position
+    CHECK(order[1].value == 2); // le verrou reste en 2e position
 }
 
 TEST_CASE("strategie Document ne change rien") {

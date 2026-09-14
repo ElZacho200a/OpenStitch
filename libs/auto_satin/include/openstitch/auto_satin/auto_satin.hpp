@@ -16,8 +16,8 @@ struct AutoSatinDebug {
     RasterMask mask;
     DistanceField distance;
     RasterMask skeleton;
-    SkeletonGraph raw_graph;                 // avant élagage
-    SkeletonGraph graph;                     // après élagage (utilisé pour le rapport)
+    SkeletonGraph raw_graph; // avant élagage
+    SkeletonGraph graph;     // après élagage (utilisé pour le rapport)
     std::vector<RemovedBranch> removed_branches;
 };
 
@@ -38,4 +38,4 @@ struct AutoSatinAnalysis {
 [[nodiscard]] Result<AutoSatinAnalysis> analyze_region(const geometry::PathSet& region,
                                                        const AutoSatinParameters& params);
 
-}  // namespace openstitch::auto_satin
+} // namespace openstitch::auto_satin

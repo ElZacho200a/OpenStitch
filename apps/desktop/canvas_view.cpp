@@ -16,8 +16,8 @@ namespace openstitch::desktop {
 
 namespace {
 constexpr double kZoomStep = 1.15;
-constexpr double kMinPxPerMm = 0.2;    // motif de 1 m visible en entier
-constexpr double kMaxPxPerMm = 400.0;  // 0,1 mm = 40 px : largement assez fin
+constexpr double kMinPxPerMm = 0.2;   // motif de 1 m visible en entier
+constexpr double kMaxPxPerMm = 400.0; // 0,1 mm = 40 px : largement assez fin
 
 // Plus petit pas « rond » (en mm) dont la taille à l'écran atteint minPixels.
 double niceStepMm(double pxPerMm, double minPixels) {
@@ -29,14 +29,14 @@ double niceStepMm(double pxPerMm, double minPixels) {
     }
     return 1000.0;
 }
-}  // namespace
+} // namespace
 
 CanvasView::CanvasView(QGraphicsScene* scene, QWidget* parent) : QGraphicsView(scene, parent) {
     setRenderHint(QPainter::Antialiasing);
     setRenderHint(QPainter::SmoothPixmapTransform);
     setDragMode(QGraphicsView::ScrollHandDrag);
     setTransformationAnchor(QGraphicsView::AnchorUnderMouse);
-    setFrameShape(QFrame::NoFrame);  // le viewport s'aligne avec les règles
+    setFrameShape(QFrame::NoFrame); // le viewport s'aligne avec les règles
     setMouseTracking(true);
     // Sans focus, keyPressEvent ne reçoit jamais les flèches (nudge clavier)
     // -- StrongFocus inclut le focus au clic, déjà le geste naturel pour
@@ -225,7 +225,7 @@ void CanvasView::mouseDoubleClickEvent(QMouseEvent* event) {
 void CanvasView::contextMenuEvent(QContextMenuEvent* event) {
     if (cropMode_ || boxDrawMode_ || polygonDrawMode_ || freeformDrawMode_ || satinPairDrawMode_ ||
         bezierDrawMode_) {
-        return;  // pas de menu contextuel pendant un recadrage/dessin
+        return; // pas de menu contextuel pendant un recadrage/dessin
     }
     emit canvasContextMenu(mapToScene(event->pos()), event->globalPos());
     event->accept();
@@ -260,7 +260,8 @@ void CanvasView::mouseReleaseEvent(QMouseEvent* event) {
         bezierPressActive_ = false;
         emit bezierPointCommittedMm(bezierAnchorMm_, mapToScene(event->position().toPoint()));
     }
-    if ((cropMode_ || boxDrawMode_) && lastRubberBandMm_.isValid() && !lastRubberBandMm_.isEmpty()) {
+    if ((cropMode_ || boxDrawMode_) && lastRubberBandMm_.isValid() &&
+        !lastRubberBandMm_.isEmpty()) {
         const QRectF rect = lastRubberBandMm_;
         lastRubberBandMm_ = QRectF();
         if (cropMode_) {
@@ -276,8 +277,8 @@ void CanvasView::keyPressEvent(QKeyEvent* event) {
     // même hors des modes de dessin où les autres évènements sont filtrés —
     // seul l'appelant (MainWindow) décide si un objet est sélectionnable au
     // clavier en ce moment (mode Sélection, un objet sélectionné).
-    constexpr double kStepMm = 0.1;      // pas normal : 0,1 mm
-    constexpr double kBigStepMm = 1.0;   // Maj : 1 mm
+    constexpr double kStepMm = 0.1;    // pas normal : 0,1 mm
+    constexpr double kBigStepMm = 1.0; // Maj : 1 mm
     const double step = (event->modifiers() & Qt::ShiftModifier) ? kBigStepMm : kStepMm;
     switch (event->key()) {
     case Qt::Key_Left:
@@ -363,4 +364,4 @@ void CanvasView::drawForeground(QPainter* painter, const QRectF& rect) {
     painter->drawRect(canvas);
 }
 
-}  // namespace openstitch::desktop
+} // namespace openstitch::desktop

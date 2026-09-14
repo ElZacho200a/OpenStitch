@@ -112,7 +112,8 @@ json op_to_json(const image::ImageOp& op) {
             } else if constexpr (std::is_same_v<T, image::GrayscaleOp>) {
                 j = {{"type", "grayscale"}};
             } else if constexpr (std::is_same_v<T, image::BrightnessContrastOp>) {
-                j = {{"type", "brightnessContrast"}, {"brightness", o.brightness},
+                j = {{"type", "brightnessContrast"},
+                     {"brightness", o.brightness},
                      {"contrast", o.contrast}};
             } else if constexpr (std::is_same_v<T, image::MedianDenoiseOp>) {
                 j = {{"type", "medianDenoise"}, {"strength", o.strength}};
@@ -175,7 +176,8 @@ json params_to_json(const document::StitchParams& params) {
                      {"underlaySpacing", p.underlay_spacing.value},
                      {"hiddenUnderpath", p.hidden_underpath}};
                 if (p.entry_point) {
-                    j["entryPoint"] = {{"x", p.entry_point->x.value}, {"y", p.entry_point->y.value}};
+                    j["entryPoint"] = {{"x", p.entry_point->x.value},
+                                       {"y", p.entry_point->y.value}};
                 }
             } else if constexpr (std::is_same_v<T, document::SatinParams>) {
                 json rungs = json::array();
@@ -213,7 +215,8 @@ json params_to_json(const document::StitchParams& params) {
                      {"lockLength", p.lock_length.value},
                      {"lockPasses", p.lock_passes}};
                 if (p.entry_point) {
-                    j["entryPoint"] = {{"x", p.entry_point->x.value}, {"y", p.entry_point->y.value}};
+                    j["entryPoint"] = {{"x", p.entry_point->x.value},
+                                       {"y", p.entry_point->y.value}};
                 }
                 if (p.exit_point) {
                     j["exitPoint"] = {{"x", p.exit_point->x.value}, {"y", p.exit_point->y.value}};
@@ -270,9 +273,8 @@ Result<document::StitchParams> params_from_json(const json& j) {
         // Barreaux : optionnels (projets antérieurs au schéma v2 -> aucun).
         if (j.contains("rungs")) {
             for (const auto& r : j.at("rungs")) {
-                document::SatinRung rung{
-                    Vec2um{Micrometers{r.at("ax")}, Micrometers{r.at("ay")}},
-                    Vec2um{Micrometers{r.at("bx")}, Micrometers{r.at("by")}}};
+                document::SatinRung rung{Vec2um{Micrometers{r.at("ax")}, Micrometers{r.at("ay")}},
+                                         Vec2um{Micrometers{r.at("bx")}, Micrometers{r.at("by")}}};
                 if (r.contains("linkId")) {
                     auto linkId = strict_uint32(r.at("linkId"), "linkId");
                     if (!linkId) {
@@ -378,7 +380,7 @@ Result<std::int32_t> strict_int32(const json& j, const char* field) {
         return static_cast<std::int32_t>(v);
     }
     return fail(ErrorCategory::InvalidFile,
-               std::string("Retouche invalide : coordonnée non entière (") + field + ")");
+                std::string("Retouche invalide : coordonnée non entière (") + field + ")");
 }
 
 Result<std::size_t> strict_index(const json& j) {
@@ -486,7 +488,7 @@ Result<std::vector<document::StitchOverride>> overrides_from_json(const json& ar
         }
         if (!seen_index.emplace(*idx, true).second) {
             return fail(ErrorCategory::InvalidFile,
-                       "Retouche invalide : index en double (" + std::to_string(*idx) + ")");
+                        "Retouche invalide : index en double (" + std::to_string(*idx) + ")");
         }
 
         document::StitchOverride ov;
@@ -510,13 +512,15 @@ Result<std::vector<document::StitchOverride>> overrides_from_json(const json& ar
             } else if (ts == "jump") {
                 ov.forced_type = document::StitchPointType::Jump;
             } else {
-                return fail(ErrorCategory::InvalidFile, "Retouche invalide : type inconnu (" + ts + ")");
+                return fail(ErrorCategory::InvalidFile,
+                            "Retouche invalide : type inconnu (" + ts + ")");
             }
         }
         if (entry.contains("trimAfter")) {
             const auto& ta = entry.at("trimAfter");
             if (!ta.is_boolean()) {
-                return fail(ErrorCategory::InvalidFile, "Retouche invalide : trimAfter non booléen");
+                return fail(ErrorCategory::InvalidFile,
+                            "Retouche invalide : trimAfter non booléen");
             }
             ov.trim_after = ta.get<bool>();
         }
@@ -528,8 +532,8 @@ Result<std::vector<document::StitchOverride>> overrides_from_json(const json& ar
         // en contenir un -- refusé plutôt que silencieusement absorbé.
         if (!ov.moved_to.has_value() && !ov.forced_type.has_value() && !ov.trim_after) {
             return fail(ErrorCategory::InvalidFile,
-                       "Retouche invalide : entrée sans modification effective (index " +
-                           std::to_string(*idx) + ")");
+                        "Retouche invalide : entrée sans modification effective (index " +
+                            std::to_string(*idx) + ")");
         }
 
         result.push_back(ov);
@@ -537,7 +541,7 @@ Result<std::vector<document::StitchOverride>> overrides_from_json(const json& ar
     return result;
 }
 
-}  // namespace
+} // namespace
 
 json project_to_json(const document::Project& project) {
     json j;
@@ -689,7 +693,7 @@ Result<document::Project> project_from_json(const json& j) {
                 const auto& overridesJson = eo.at("overrides");
                 if (!overridesJson.is_array()) {
                     return fail(ErrorCategory::InvalidFile,
-                               "Retouche invalide : overrides doit être un tableau");
+                                "Retouche invalide : overrides doit être un tableau");
                 }
                 auto overrides = overrides_from_json(overridesJson);
                 if (!overrides) {
@@ -706,8 +710,8 @@ Result<document::Project> project_from_json(const json& j) {
                     // voir test dédié).
                     if (!eo.contains("editedFingerprint") || !eo.contains("editedPointCount")) {
                         return fail(ErrorCategory::InvalidFile,
-                                   "Retouche invalide : editedFingerprint/editedPointCount "
-                                   "manquant pour un tableau overrides non vide");
+                                    "Retouche invalide : editedFingerprint/editedPointCount "
+                                    "manquant pour un tableau overrides non vide");
                     }
                     auto fp = strict_uint64(eo.at("editedFingerprint"), "editedFingerprint");
                     if (!fp) {
@@ -730,4 +734,4 @@ Result<document::Project> project_from_json(const json& j) {
     return project;
 }
 
-}  // namespace openstitch::project_io::detail
+} // namespace openstitch::project_io::detail

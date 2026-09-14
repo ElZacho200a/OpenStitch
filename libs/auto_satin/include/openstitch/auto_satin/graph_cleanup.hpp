@@ -10,7 +10,7 @@
 namespace openstitch::auto_satin {
 
 struct GraphCleanupParameters {
-    Micrometers minimum_branch_length{1'500};  // 1,5 mm
+    Micrometers minimum_branch_length{1'500}; // 1,5 mm
     double minimum_length_to_radius_ratio{1.5};
     int maximum_iterations{6};
 };
@@ -22,8 +22,8 @@ struct RemovedBranch {
 };
 
 struct GraphCleanupResult {
-    SkeletonGraph graph;                    // graphe élagué
-    std::vector<RemovedBranch> removed;     // branches supprimées (diagnostic)
+    SkeletonGraph graph;                // graphe élagué
+    std::vector<RemovedBranch> removed; // branches supprimées (diagnostic)
 };
 
 // Élague les branches terminales parasites (§11) : une arête terminale
@@ -35,4 +35,4 @@ struct GraphCleanupResult {
 [[nodiscard]] GraphCleanupResult prune_graph(const SkeletonGraph& graph,
                                              const GraphCleanupParameters& params);
 
-}  // namespace openstitch::auto_satin
+} // namespace openstitch::auto_satin

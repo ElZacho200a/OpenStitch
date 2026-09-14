@@ -108,8 +108,9 @@ private slots:
     // directement, sans dialogue, si le reliquat est négligeable (bruit de
     // pointe/jonction, même seuil que l'ancienne fonction). `sourceAreaMm2`
     // sert à exprimer le reliquat en pourcentage, pas seulement en mm² brut.
-    SatinCoverageChoice askAboutIncompleteSatinCoverage(const std::vector<geometry::PathSet>& unresolvedResidual,
-                                                        double sourceAreaMm2);
+    SatinCoverageChoice
+    askAboutIncompleteSatinCoverage(const std::vector<geometry::PathSet>& unresolvedResidual,
+                                    double sourceAreaMm2);
     // Construit un remplissage tatami (VectorObject + EmbroideryObject,
     // même schéma que le repli automatique de `autodigitize.cpp`, jamais
     // réimplémenté différemment ici) pour chaque morceau de `residual` dont
@@ -326,8 +327,8 @@ private:
     void offsetVectorObjectCore(ObjectId id, Micrometers delta);
 
     void executeOp(image::ImageOp op);
-    void positionEmptyState();  // centre l'accueil dans la vue
-    void updateEmptyState();    // affiche l'accueil quand aucun document
+    void positionEmptyState(); // centre l'accueil dans la vue
+    void updateEmptyState();   // affiche l'accueil quand aucun document
     // Applique la taille du cadre du document à la vue (si elle a changé).
     void applyCanvasToView();
     void refreshImage();
@@ -341,14 +342,14 @@ private:
 
     document::Project project_;
     commands::UndoStack undoStack_;
-    image::Image processed_;  // dernier résultat du pipeline (pour l'affichage)
+    image::Image processed_; // dernier résultat du pipeline (pour l'affichage)
 
     QGraphicsScene* scene_{nullptr};
     CanvasView* view_{nullptr};
     EmptyStateWidget* emptyState_{nullptr};
     QLabel* cursorLabel_{nullptr};
-    QList<QGraphicsItem*> baseItems_;    // couche image/vecteurs/régions
-    QList<QGraphicsItem*> stitchItems_;  // couche points (reconstruite seule en simu)
+    QList<QGraphicsItem*> baseItems_;   // couche image/vecteurs/régions
+    QList<QGraphicsItem*> stitchItems_; // couche points (reconstruite seule en simu)
     QAction* undoAct_{nullptr};
     QAction* redoAct_{nullptr};
     QAction* cropAct_{nullptr};
@@ -357,7 +358,7 @@ private:
     QAction* showVectorsAct_{nullptr};
     QAction* showImageAct_{nullptr};
     QAction* showStitchesAct_{nullptr};
-    std::vector<QDockWidget*> panelsToRestore_;  // docks masqués par « Masquer les panneaux »
+    std::vector<QDockWidget*> panelsToRestore_; // docks masqués par « Masquer les panneaux »
     QAction* createStitchAct_{nullptr};
     QAction* createTatamiAct_{nullptr};
     QAction* createSatinAct_{nullptr};
@@ -369,7 +370,7 @@ private:
     // Barres d'outils et modes d'interaction.
     QToolBar* mainToolbar_{nullptr};
     QToolBar* contextToolbar_{nullptr};
-    QString contextSig_;  // signature de l'état affiché (évite les reconstructions)
+    QString contextSig_; // signature de l'état affiché (évite les reconstructions)
     QToolBar* toolPalette_{nullptr};
     QAction* toolSelectAct_{nullptr};
     QAction* toolPanAct_{nullptr};
@@ -401,7 +402,8 @@ private:
     // l'annulation, ou reconstruit à chaque `renderBase`/changement d'outil).
     std::vector<Vec2um> pendingPolygonVertices_;
     QGraphicsPathItem* polygonPreviewItem_{nullptr};
-    QGraphicsEllipseItem* snapIndicatorItem_{nullptr};  // repère d'accroche (indépendant de baseItems_)
+    QGraphicsEllipseItem* snapIndicatorItem_{
+        nullptr}; // repère d'accroche (indépendant de baseItems_)
 
     // Tracé à main levée en cours (outil DrawFreeform) : points bruts captés
     // pendant le glisser (repère modèle, µm) + aperçu (même cycle de vie que
@@ -414,20 +416,20 @@ private:
     // modèle µm. Une paire n'est complète qu'à l'index impair suivant —
     // `finishSatinColumn` gère un dernier point orphelin (cf. son commentaire).
     std::vector<Vec2um> pendingSatinPoints_;
-    QGraphicsPathItem* satinPreviewItem_{nullptr};        // rails A/B provisoires
-    QGraphicsPathItem* satinConnectorPreviewItem_{nullptr};  // paires déjà posées
+    QGraphicsPathItem* satinPreviewItem_{nullptr};          // rails A/B provisoires
+    QGraphicsPathItem* satinConnectorPreviewItem_{nullptr}; // paires déjà posées
 
     // Courbe de Bézier en cours de tracé (outil DrawBezier) : nœuds déjà
     // posés (Coin ou Lisse à poignées symétriques, repère modèle) + aperçu
     // (tracé confirmé + poignée en cours de glisser, détruits comme les
     // aperçus polygone/satin ci-dessus).
     std::vector<geometry::PathNode> pendingBezierNodes_;
-    QGraphicsPathItem* bezierPreviewItem_{nullptr};   // tracé confirmé + segment élastique
-    QGraphicsPathItem* bezierHandlePreviewItem_{nullptr};  // poignée en cours de glisser
-    QGraphicsPathItem* cutLinePreviewItem_{nullptr};  // ligne de coupe en cours de glisser
+    QGraphicsPathItem* bezierPreviewItem_{nullptr};       // tracé confirmé + segment élastique
+    QGraphicsPathItem* bezierHandlePreviewItem_{nullptr}; // poignée en cours de glisser
+    QGraphicsPathItem* cutLinePreviewItem_{nullptr};      // ligne de coupe en cours de glisser
 
     QList<QAction*> imageActions_;
-    QList<QAction*> regionActions_;  // nécessitent une région sélectionnée
+    QList<QAction*> regionActions_; // nécessitent une région sélectionnée
 
     // Cache des points générés — recalculé à chaque modification du document
     // (jamais une vérité stockée, ADR-014). Exception : une séquence importée
@@ -438,7 +440,7 @@ private:
 
     std::optional<RegionId> selectedRegion_;
     std::optional<ObjectId> selectedObject_;
-    std::optional<ObjectId> selectedEmbroidery_;  // objet de broderie choisi dans l'ordre de couture
+    std::optional<ObjectId> selectedEmbroidery_; // objet de broderie choisi dans l'ordre de couture
     bool mergeMode_{false};
 
     // Mode d'édition des points générés (Lot 8.2, cf. docs/lot8-manual-editing-design.md §6) :
@@ -498,7 +500,7 @@ private:
     // Inspecteur de propriétés.
     QDockWidget* propertiesDock_{nullptr};
     PropertiesPanel* propertiesPanel_{nullptr};
-    int inspectedKind_{-1};        // -1 rien, 0 broderie, 1 vecteur, 2 région
+    int inspectedKind_{-1}; // -1 rien, 0 broderie, 1 vecteur, 2 région
     std::uint64_t inspectedId_{0};
 
     // Ordre de couture.
@@ -509,11 +511,11 @@ private:
 
     // Filtres d'affichage de la broderie.
     QDockWidget* filterDock_{nullptr};
-    std::array<QCheckBox*, 3> typeChecks_{nullptr, nullptr, nullptr};  // contour/tatami/satin
+    std::array<QCheckBox*, 3> typeChecks_{nullptr, nullptr, nullptr}; // contour/tatami/satin
     QVBoxLayout* colorFilterLayout_{nullptr};
     QDoubleSpinBox* minAreaSpin_{nullptr};
     std::array<bool, 3> showType_{true, true, true};
-    std::set<std::uint32_t> hiddenColors_;  // 0xRRGGBB masqués
+    std::set<std::uint32_t> hiddenColors_; // 0xRRGGBB masqués
     double minAreaMm2_{0.0};
 
     // Simulation de couture. Quand active (simStep_ >= 0), l'affichage ne
@@ -523,7 +525,7 @@ private:
     QLabel* simLabel_{nullptr};
     QAction* simPlayAct_{nullptr};
     QTimer* simTimer_{nullptr};
-    int simStep_{-1};  // -1 = simulation inactive (tout affiché)
+    int simStep_{-1}; // -1 = simulation inactive (tout affiché)
 
     [[nodiscard]] bool simulating() const { return simStep_ >= 0; }
 
@@ -533,4 +535,4 @@ private:
     [[nodiscard]] static QPainterPath objectPainterPath(const document::VectorObject& object);
 };
 
-}  // namespace openstitch::desktop
+} // namespace openstitch::desktop

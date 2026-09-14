@@ -15,12 +15,12 @@ namespace openstitch::ai_segmentation {
 // masque, non-zéro = dans le masque) et les choix issus de la revue.
 struct LabelMaskInput {
     int mask_id{0};
-    std::vector<std::uint8_t> pixels;  // width*height, ligne par ligne
+    std::vector<std::uint8_t> pixels; // width*height, ligne par ligne
     std::array<std::uint8_t, 3> rgb{};
     // Priorité manuelle (réordonnancement explicite par l'utilisateur dans la
     // revue) : prioritaire sur toute règle automatique si posée.
     bool manual_priority_set{false};
-    int manual_priority{0};  // plus petit = prioritaire
+    int manual_priority{0}; // plus petit = prioritaire
     bool is_protected{false};
     double predicted_iou{0.0};
     double stability_score{0.0};
@@ -45,7 +45,7 @@ struct LabelMapOptions {
 // par une région plus prioritaire obtient un `pixel_count` de zéro et sera
 // silencieusement ignorée par la vectorisation, comme pour toute région non
 // vectorisable.
-[[nodiscard]] Result<segmentation::Segmentation> build_label_map(
-    const std::vector<LabelMaskInput>& masks, const LabelMapOptions& options);
+[[nodiscard]] Result<segmentation::Segmentation>
+build_label_map(const std::vector<LabelMaskInput>& masks, const LabelMapOptions& options);
 
-}  // namespace openstitch::ai_segmentation
+} // namespace openstitch::ai_segmentation

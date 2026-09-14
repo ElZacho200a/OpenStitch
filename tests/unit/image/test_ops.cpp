@@ -21,9 +21,15 @@ Image make_test_image() {
         for (int x = 0; x < 4; ++x) {
             std::uint8_t* px = img.rgba.data() + (y * 4 + x) * 4;
             if (x < 2) {
-                px[0] = 255; px[1] = 0; px[2] = 0; px[3] = 255;
+                px[0] = 255;
+                px[1] = 0;
+                px[2] = 0;
+                px[3] = 255;
             } else {
-                px[0] = 0; px[1] = 0; px[2] = 255; px[3] = 128;
+                px[0] = 0;
+                px[1] = 0;
+                px[2] = 255;
+                px[3] = 128;
             }
         }
     }
@@ -32,7 +38,8 @@ Image make_test_image() {
 
 const std::uint8_t* pixel(const Image& img, int x, int y) {
     return img.rgba.data() + (static_cast<std::size_t>(y) * static_cast<std::size_t>(img.width) +
-                              static_cast<std::size_t>(x)) * 4;
+                              static_cast<std::size_t>(x)) *
+                                 4;
 }
 
 std::size_t distinct_rgb(const Image& img) {
@@ -44,14 +51,14 @@ std::size_t distinct_rgb(const Image& img) {
     return colors.size();
 }
 
-}  // namespace
+} // namespace
 
 TEST_CASE("crop : dimensions et contenu") {
     const auto out = apply_op(make_test_image(), CropOp{2, 0, 2, 4});
     REQUIRE(out.has_value());
     CHECK(out->width == 2);
     CHECK(out->height == 4);
-    CHECK(pixel(*out, 0, 0)[2] == 255);  // zone bleue
+    CHECK(pixel(*out, 0, 0)[2] == 255); // zone bleue
 }
 
 TEST_CASE("crop hors de l'image : erreur propre") {
@@ -62,8 +69,8 @@ TEST_CASE("crop hors de l'image : erreur propre") {
 TEST_CASE("symetrie horizontale : gauche et droite echangees") {
     const auto out = apply_op(make_test_image(), FlipOp{true});
     REQUIRE(out.has_value());
-    CHECK(pixel(*out, 0, 0)[2] == 255);  // bleu maintenant a gauche
-    CHECK(pixel(*out, 3, 0)[0] == 255);  // rouge a droite
+    CHECK(pixel(*out, 0, 0)[2] == 255); // bleu maintenant a gauche
+    CHECK(pixel(*out, 3, 0)[0] == 255); // rouge a droite
 }
 
 TEST_CASE("rotation 90 : dimensions echangees") {
@@ -83,14 +90,14 @@ TEST_CASE("niveaux de gris : r=g=b, alpha conserve") {
     const auto* px = pixel(*out, 0, 0);
     CHECK(px[0] == px[1]);
     CHECK(px[1] == px[2]);
-    CHECK(pixel(*out, 3, 0)[3] == 128);  // alpha intact
+    CHECK(pixel(*out, 3, 0)[3] == 128); // alpha intact
 }
 
 TEST_CASE("luminosite : +100 eclaircit, alpha conserve") {
     const auto out = apply_op(make_test_image(), BrightnessContrastOp{100.0, 0.0});
     REQUIRE(out.has_value());
-    CHECK(pixel(*out, 3, 0)[0] > 0);     // canal R du bleu remonte
-    CHECK(pixel(*out, 3, 0)[3] == 128);  // alpha intact
+    CHECK(pixel(*out, 3, 0)[0] > 0);    // canal R du bleu remonte
+    CHECK(pixel(*out, 3, 0)[3] == 128); // alpha intact
 }
 
 TEST_CASE("quantification : nombre de couleurs reduit, deterministe") {
@@ -114,7 +121,7 @@ TEST_CASE("quantification : nombre de couleurs reduit, deterministe") {
 
     const auto b = apply_op(img, QuantizeOp{4});
     REQUIRE(b.has_value());
-    CHECK(a->rgba == b->rgba);  // determinisme (graine RNG fixee)
+    CHECK(a->rgba == b->rgba); // determinisme (graine RNG fixee)
 }
 
 TEST_CASE("pipeline : l'original n'est jamais modifie") {
@@ -123,7 +130,7 @@ TEST_CASE("pipeline : l'original n'est jamais modifie") {
     const auto out = apply_pipeline(original, ops);
     REQUIRE(out.has_value());
     CHECK(out->width == 2);
-    CHECK(original.rgba == make_test_image().rgba);  // source intacte
+    CHECK(original.rgba == make_test_image().rgba); // source intacte
 }
 
 TEST_CASE("pipeline : une erreur au milieu est propagee") {

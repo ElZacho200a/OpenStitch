@@ -32,7 +32,7 @@ std::vector<int> degrees(const SkeletonGraph& g, const std::vector<char>& alive)
     return deg;
 }
 
-}  // namespace
+} // namespace
 
 GraphCleanupResult prune_graph(const SkeletonGraph& graph, const GraphCleanupParameters& params) {
     GraphCleanupResult result;
@@ -84,10 +84,10 @@ GraphCleanupResult prune_graph(const SkeletonGraph& graph, const GraphCleanupPar
                 SkeletonNode n = graph.nodes[nid];
                 n.id = remap[nid];
                 const int d = finalDeg[nid];
-                n.type = d == 1     ? SkeletonNodeType::Endpoint
-                         : d >= 3   ? SkeletonNodeType::Junction
-                         : d == 2   ? SkeletonNodeType::Continuation
-                                    : SkeletonNodeType::Isolated;
+                n.type = d == 1   ? SkeletonNodeType::Endpoint
+                         : d >= 3 ? SkeletonNodeType::Junction
+                         : d == 2 ? SkeletonNodeType::Continuation
+                                  : SkeletonNodeType::Isolated;
                 result.graph.nodes.push_back(n);
             }
         }
@@ -114,9 +114,9 @@ GraphCleanupResult prune_graph(const SkeletonGraph& graph, const GraphCleanupPar
             continue;
         }
         result.removed.push_back({0.0, graph.nodes[nid].local_radius_um,
-                                   "noeud sans arete vivante (isole ou orphelin apres elagage)"});
+                                  "noeud sans arete vivante (isole ou orphelin apres elagage)"});
     }
     return result;
 }
 
-}  // namespace openstitch::auto_satin
+} // namespace openstitch::auto_satin

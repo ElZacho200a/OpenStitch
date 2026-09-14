@@ -12,11 +12,11 @@
 namespace openstitch::auto_satin {
 
 enum class SatinabilityStatus {
-    Suitable,               // convertible directement
-    SuitableWithWarnings,   // convertible mais à vérifier
-    RequiresDecomposition,  // forme branchée : plusieurs colonnes
-    Ambiguous,              // direction non déterminée (quasi circulaire)
-    Unsuitable              // à refuser (trou, trop large, invalide)
+    Suitable,              // convertible directement
+    SuitableWithWarnings,  // convertible mais à vérifier
+    RequiresDecomposition, // forme branchée : plusieurs colonnes
+    Ambiguous,             // direction non déterminée (quasi circulaire)
+    Unsuitable             // à refuser (trou, trop large, invalide)
 };
 
 struct SatinabilityIssue {
@@ -33,10 +33,10 @@ struct SatinabilityReport {
     double mean_width_mm{0.0};
     double minimum_width_mm{0.0};
     double maximum_width_mm{0.0};
-    double width_variation{0.0};  // (max-min)/moyenne
+    double width_variation{0.0}; // (max-min)/moyenne
 
     int hole_count{0};
-    int branch_count{0};    // arêtes du squelette
+    int branch_count{0}; // arêtes du squelette
     int endpoint_count{0};
     int junction_count{0};
 
@@ -49,7 +49,7 @@ struct SatinabilityReport {
 
 struct SatinabilityThresholds {
     Micrometers min_satin_width{800};    // 0,8 mm
-    Micrometers max_satin_width{12'000};  // 12 mm
+    Micrometers max_satin_width{12'000}; // 12 mm
     double min_elongation{2.5};          // longueur/largeur en dessous = ambigu
 };
 
@@ -62,4 +62,4 @@ struct SatinabilityThresholds {
 
 [[nodiscard]] const char* to_string(SatinabilityStatus status);
 
-}  // namespace openstitch::auto_satin
+} // namespace openstitch::auto_satin

@@ -10,9 +10,9 @@ namespace openstitch::document {
 // Le lien pixels <-> millimètres est TOUJOURS explicite : il naît ici,
 // au moment de l'import, et nulle part ailleurs.
 struct ImagePlacement {
-    Micrometers width{};    // largeur physique de l'image
-    Micrometers height{};   // hauteur physique de l'image
-    Vec2um center{};        // centre de l'image, relatif au centre du canevas
+    Micrometers width{};  // largeur physique de l'image
+    Micrometers height{}; // hauteur physique de l'image
+    Vec2um center{};      // centre de l'image, relatif au centre du canevas
 };
 
 // Placement en imposant la largeur, ratio conservé.
@@ -30,4 +30,4 @@ struct ImagePlacement {
 // Échelle résultante d'un placement (millimètres par pixel, axe X).
 [[nodiscard]] Millimeters mm_per_pixel(const ImagePlacement& placement, int width_px);
 
-}  // namespace openstitch::document
+} // namespace openstitch::document

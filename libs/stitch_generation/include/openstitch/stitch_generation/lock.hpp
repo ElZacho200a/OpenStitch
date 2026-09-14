@@ -17,4 +17,4 @@ enum class LockType { None, BackAndForth, Triangle, MicroZigzag };
 [[nodiscard]] std::vector<Vec2um> lock_stitches(Vec2um anchor, Vec2um toward, LockType type,
                                                 Micrometers length, int passes);
 
-}  // namespace openstitch::stitch_generation
+} // namespace openstitch::stitch_generation

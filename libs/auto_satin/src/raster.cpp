@@ -36,7 +36,7 @@ std::vector<cv::Point> to_cv(const geometry::Path& path, const RasterTransform& 
     return out;
 }
 
-}  // namespace
+} // namespace
 
 Result<RasterMask> rasterize(const geometry::PathSet& region,
                              const SkeletonRasterParameters& params) {
@@ -84,9 +84,10 @@ Result<RasterMask> rasterize(const geometry::PathSet& region,
     for (int y = 0; y < h; ++y) {
         const auto* row = img.ptr<std::uint8_t>(y);
         std::copy_n(row, static_cast<std::size_t>(w),
-                    mask.pixels.begin() + static_cast<std::size_t>(y) * static_cast<std::size_t>(w));
+                    mask.pixels.begin() +
+                        static_cast<std::size_t>(y) * static_cast<std::size_t>(w));
     }
     return mask;
 }
 
-}  // namespace openstitch::auto_satin
+} // namespace openstitch::auto_satin

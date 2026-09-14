@@ -18,4 +18,4 @@ namespace openstitch::auto_satin {
 // inconnu.
 [[nodiscard]] std::optional<geometry::PathSet> make_shape(const std::string& name);
 
-}  // namespace openstitch::auto_satin
+} // namespace openstitch::auto_satin

@@ -42,4 +42,4 @@ void saveAiPreferences(const AiPreferences& prefs);
 // un seul endroit traduit AiPreferences -> SamWorkerConfig.
 [[nodiscard]] SamWorkerConfig toWorkerConfig(const AiPreferences& prefs);
 
-}  // namespace openstitch::desktop
+} // namespace openstitch::desktop

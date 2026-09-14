@@ -9,4 +9,4 @@ namespace openstitch {
 // démarrage de chaque exécutable.
 void init_logging(bool verbose = false);
 
-}  // namespace openstitch
+} // namespace openstitch

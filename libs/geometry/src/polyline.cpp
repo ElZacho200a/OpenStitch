@@ -22,8 +22,12 @@ Vec2um toUm(Pt p) {
                   Micrometers{static_cast<std::int32_t>(std::lround(p.y))}};
 }
 
-Pt add(Pt a, Pt b) { return {a.x + b.x, a.y + b.y}; }
-Pt mid(Pt a, Pt b) { return {(a.x + b.x) / 2.0, (a.y + b.y) / 2.0}; }
+Pt add(Pt a, Pt b) {
+    return {a.x + b.x, a.y + b.y};
+}
+Pt mid(Pt a, Pt b) {
+    return {(a.x + b.x) / 2.0, (a.y + b.y) / 2.0};
+}
 
 // Distance du point p à la droite (a,b).
 double dist_to_line(Pt p, Pt a, Pt b) {
@@ -54,7 +58,7 @@ void flatten_cubic(Pt p0, Pt p1, Pt p2, Pt p3, double tol, int depth, std::vecto
     flatten_cubic(p0123, p123, p23, p3, tol, depth - 1, out);
 }
 
-}  // namespace
+} // namespace
 
 Polyline flatten(const Path& path, Micrometers tolerance) {
     Polyline out;
@@ -185,8 +189,10 @@ double cross2(Vec2um o, Vec2um a, Vec2um b) {
 }
 
 bool on_segment(Vec2um p, Vec2um a, Vec2um b) {
-    return std::min(a.x.value, b.x.value) <= p.x.value && p.x.value <= std::max(a.x.value, b.x.value) &&
-           std::min(a.y.value, b.y.value) <= p.y.value && p.y.value <= std::max(a.y.value, b.y.value);
+    return std::min(a.x.value, b.x.value) <= p.x.value &&
+           p.x.value <= std::max(a.x.value, b.x.value) &&
+           std::min(a.y.value, b.y.value) <= p.y.value &&
+           p.y.value <= std::max(a.y.value, b.y.value);
 }
 
 bool segments_intersect(Vec2um p1, Vec2um p2, Vec2um p3, Vec2um p4) {
@@ -198,14 +204,18 @@ bool segments_intersect(Vec2um p1, Vec2um p2, Vec2um p3, Vec2um p4) {
         ((d3 > 0.0 && d4 < 0.0) || (d3 < 0.0 && d4 > 0.0))) {
         return true;
     }
-    if (d1 == 0.0 && on_segment(p1, p3, p4)) return true;
-    if (d2 == 0.0 && on_segment(p2, p3, p4)) return true;
-    if (d3 == 0.0 && on_segment(p3, p1, p2)) return true;
-    if (d4 == 0.0 && on_segment(p4, p1, p2)) return true;
+    if (d1 == 0.0 && on_segment(p1, p3, p4))
+        return true;
+    if (d2 == 0.0 && on_segment(p2, p3, p4))
+        return true;
+    if (d3 == 0.0 && on_segment(p3, p1, p2))
+        return true;
+    if (d4 == 0.0 && on_segment(p4, p1, p2))
+        return true;
     return false;
 }
 
-}  // namespace
+} // namespace
 
 bool polylines_cross(const std::vector<Vec2um>& a, const std::vector<Vec2um>& b) {
     if (a.size() < 2 || b.size() < 2) {
@@ -226,4 +236,4 @@ bool polylines_cross(const std::vector<Vec2um>& a, const std::vector<Vec2um>& b)
     return false;
 }
 
-}  // namespace openstitch::geometry
+} // namespace openstitch::geometry

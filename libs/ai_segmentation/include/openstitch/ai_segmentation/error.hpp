@@ -31,8 +31,8 @@ enum class AiErrorCode {
 
 struct AiError {
     AiErrorCode code{AiErrorCode::WorkerNotConfigured};
-    std::string message;  // montrable tel quel (par défaut : default_message(code))
-    std::string detail;   // réservé aux logs / au panneau développeur
+    std::string message; // montrable tel quel (par défaut : default_message(code))
+    std::string detail;  // réservé aux logs / au panneau développeur
 };
 
 // Nom stable du code, tel qu'échangé avec le worker Python (`code` du JSON
@@ -45,4 +45,4 @@ struct AiError {
 // enrichissement avec le `detail` reçu du worker.
 [[nodiscard]] std::string default_message(AiErrorCode code);
 
-}  // namespace openstitch::ai_segmentation
+} // namespace openstitch::ai_segmentation

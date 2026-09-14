@@ -27,10 +27,10 @@ satin_coverage::SatinColumnInput to_input(const SatinColumnGeometry& col) {
 
 struct Baseline {
     std::string shape;
-    double min_raw_coverage;  // plancher observe, marge de securite incluse
+    double min_raw_coverage; // plancher observe, marge de securite incluse
 };
 
-}  // namespace
+} // namespace
 
 TEST_CASE("couverture satin : non-regression sur le corpus de formes historiques") {
     // Photographie la couverture geometrique ACTUELLE de chaque forme du
@@ -52,9 +52,8 @@ TEST_CASE("couverture satin : non-regression sur le corpus de formes historiques
     // non-regression, pas un objectif de qualite (les residus de noyau de
     // jonction sur y/t/cross/h/trident sont un fait deja documente).
     const std::vector<Baseline> baselines = {
-        {"rectangle", 0.94}, {"capsule", 0.89}, {"ribbon", 0.90}, {"s", 0.95},
-        {"y", 0.85},        {"t", 0.86},       {"cross", 0.83},  {"h", 0.83},
-        {"ring", 0.99},     {"trident", 0.86},
+        {"rectangle", 0.94}, {"capsule", 0.89}, {"ribbon", 0.90}, {"s", 0.95},    {"y", 0.85},
+        {"t", 0.86},         {"cross", 0.83},   {"h", 0.83},      {"ring", 0.99}, {"trident", 0.86},
     };
     for (const auto& baseline : baselines) {
         DYNAMIC_SECTION("forme : " << baseline.shape) {

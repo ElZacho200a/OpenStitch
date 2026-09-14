@@ -17,7 +17,7 @@ void apply_density(Tokens& t, Density density) {
     t.controlHeight = (density == Density::Compact) ? 22 : 28;
 }
 
-}  // namespace
+} // namespace
 
 Tokens light_tokens(Density density) {
     Tokens t;
@@ -28,7 +28,7 @@ Tokens light_tokens(Density density) {
     t.text = QColor(0x1E, 0x21, 0x26);
     t.textSecondary = QColor(0x69, 0x6F, 0x78);
 
-    t.accent = QColor(0xB0, 0x4E, 0x3C);       // rouge-brique « fil », sobre
+    t.accent = QColor(0xB0, 0x4E, 0x3C); // rouge-brique « fil », sobre
     t.accentHover = QColor(0xC2, 0x5C, 0x48);
     t.selection = QColor(0xB0, 0x4E, 0x3C);
     t.selectionText = QColor(0xFF, 0xFF, 0xFF);
@@ -91,4 +91,4 @@ Tokens tokens_for(ThemeMode mode, Density density) {
     return mode == ThemeMode::Dark ? dark_tokens(density) : light_tokens(density);
 }
 
-}  // namespace openstitch::desktop
+} // namespace openstitch::desktop

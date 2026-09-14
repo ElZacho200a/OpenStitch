@@ -239,7 +239,7 @@ public:
             }
         }
         if (vecIndex == vecs.size()) {
-            return;  // introuvable : no-op
+            return; // introuvable : no-op
         }
         removedVector_ = vecs[vecIndex];
         vectorIndex_ = vecIndex;
@@ -367,7 +367,7 @@ private:
             return std::nullopt;
         }
         return Vec2um{Micrometers{static_cast<std::int32_t>(std::lround(t->x.value * scaleX_))},
-                     Micrometers{static_cast<std::int32_t>(std::lround(t->y.value * scaleY_))}};
+                      Micrometers{static_cast<std::int32_t>(std::lround(t->y.value * scaleY_))}};
     }
     void scaleNode(geometry::PathNode& node) const {
         node.pos = scalePoint(node.pos);
@@ -508,7 +508,8 @@ public:
         if (auto* object = project.findObject(object_)) {
             if (auto* path = document::path_in(*object, ref_.set, ref_.path);
                 path != nullptr && ref_.node <= path->nodes.size()) {
-                path->nodes.insert(path->nodes.begin() + static_cast<std::ptrdiff_t>(ref_.node), removed_);
+                path->nodes.insert(path->nodes.begin() + static_cast<std::ptrdiff_t>(ref_.node),
+                                   removed_);
             }
         }
         removedApplied_ = false;
@@ -529,8 +530,7 @@ public:
     AddObjectBatchCommand(std::vector<document::VectorObject> vectors,
                           std::vector<document::EmbroideryObject> embroideries,
                           std::string label = "Numérisation automatique")
-        : vectors_(std::move(vectors)),
-          embroideries_(std::move(embroideries)),
+        : vectors_(std::move(vectors)), embroideries_(std::move(embroideries)),
           label_(std::move(label)) {}
 
     void apply(document::Project& project) override {
@@ -543,8 +543,7 @@ public:
     }
     void revert(document::Project& project) override {
         project.vector_objects.resize(project.vector_objects.size() - vectors_.size());
-        project.embroidery_objects.resize(project.embroidery_objects.size() -
-                                          embroideries_.size());
+        project.embroidery_objects.resize(project.embroidery_objects.size() - embroideries_.size());
     }
     [[nodiscard]] std::string name() const override { return label_; }
 
@@ -771,9 +770,9 @@ namespace detail {
 
 // Etat memorise par une commande d'edition de point pour un revert exact.
 struct StitchEditContext {
-    bool valid{false};          // apply() a reellement modifie le document
-    bool createdEntry{false};   // l'entree base_index n'existait pas avant
-    bool wasClean{false};       // overrides etait vide avant (transition Clean->ManuallyEdited)
+    bool valid{false};        // apply() a reellement modifie le document
+    bool createdEntry{false}; // l'entree base_index n'existait pas avant
+    bool wasClean{false};     // overrides etait vide avant (transition Clean->ManuallyEdited)
     document::StitchOverride previousEntry{};
     std::uint64_t previousFingerprint{0};
     std::uint32_t previousPointCount{0};
@@ -787,9 +786,10 @@ struct StitchEditContext {
 // aucune commande ne doit faire revivre un objet Dirty sans passage explicite
 // par `DiscardOverridesCommand` (cadrage SS1, "pas de transition Dirty ->
 // ManuallyEdited").
-[[nodiscard]] inline document::StitchOverride* begin_stitch_edit(
-    document::Project& project, ObjectId id, std::size_t base_index,
-    std::uint64_t raw_fingerprint, std::uint32_t raw_point_count, StitchEditContext& ctx) {
+[[nodiscard]] inline document::StitchOverride*
+begin_stitch_edit(document::Project& project, ObjectId id, std::size_t base_index,
+                  std::uint64_t raw_fingerprint, std::uint32_t raw_point_count,
+                  StitchEditContext& ctx) {
     ctx = StitchEditContext{};
 
     auto* obj = project.findEmbroidery(id);
@@ -873,7 +873,7 @@ inline void end_stitch_edit(document::Project& project, ObjectId id, std::size_t
     }
 }
 
-}  // namespace detail
+} // namespace detail
 
 // Deplace un point genere (`StitchOverride::moved_to`). Seule la position est
 // posee ; l'eligibilite de la cible (Stitch en passe TopStitch) est validee
@@ -884,10 +884,7 @@ class MoveStitchPointCommand final : public ICommand {
 public:
     MoveStitchPointCommand(ObjectId id, std::size_t base_index, Vec2um new_pos,
                            std::uint64_t raw_fingerprint, std::uint32_t raw_point_count)
-        : id_(id),
-          base_index_(base_index),
-          new_pos_(new_pos),
-          raw_fingerprint_(raw_fingerprint),
+        : id_(id), base_index_(base_index), new_pos_(new_pos), raw_fingerprint_(raw_fingerprint),
           raw_point_count_(raw_point_count) {}
 
     void apply(document::Project& project) override {
@@ -915,13 +912,10 @@ private:
 class SetStitchPointTypeCommand final : public ICommand {
 public:
     SetStitchPointTypeCommand(ObjectId id, std::size_t base_index,
-                              document::StitchPointType forced_type,
-                              std::uint64_t raw_fingerprint, std::uint32_t raw_point_count)
-        : id_(id),
-          base_index_(base_index),
-          forced_type_(forced_type),
-          raw_fingerprint_(raw_fingerprint),
-          raw_point_count_(raw_point_count) {}
+                              document::StitchPointType forced_type, std::uint64_t raw_fingerprint,
+                              std::uint32_t raw_point_count)
+        : id_(id), base_index_(base_index), forced_type_(forced_type),
+          raw_fingerprint_(raw_fingerprint), raw_point_count_(raw_point_count) {}
 
     void apply(document::Project& project) override {
         if (auto* entry = detail::begin_stitch_edit(project, id_, base_index_, raw_fingerprint_,
@@ -950,11 +944,8 @@ class SetStitchTrimCommand final : public ICommand {
 public:
     SetStitchTrimCommand(ObjectId id, std::size_t base_index, bool trim_after,
                          std::uint64_t raw_fingerprint, std::uint32_t raw_point_count)
-        : id_(id),
-          base_index_(base_index),
-          trim_after_(trim_after),
-          raw_fingerprint_(raw_fingerprint),
-          raw_point_count_(raw_point_count) {}
+        : id_(id), base_index_(base_index), trim_after_(trim_after),
+          raw_fingerprint_(raw_fingerprint), raw_point_count_(raw_point_count) {}
 
     void apply(document::Project& project) override {
         if (!trim_after_) {
@@ -966,11 +957,10 @@ public:
             // meme sur un index sans entree prealable.
             auto* obj = project.findEmbroidery(id_);
             const bool hasEntry =
-                obj != nullptr &&
-                std::any_of(obj->overrides.begin(), obj->overrides.end(),
-                           [this](const document::StitchOverride& o) {
-                               return o.base_index == base_index_;
-                           });
+                obj != nullptr && std::any_of(obj->overrides.begin(), obj->overrides.end(),
+                                              [this](const document::StitchOverride& o) {
+                                                  return o.base_index == base_index_;
+                                              });
             if (!hasEntry) {
                 return;
             }
@@ -1061,13 +1051,15 @@ public:
         if (auto* obj = project.findEmbroidery(id_)) {
             if (auto* satin = std::get_if<document::SatinParams>(&obj->params);
                 satin != nullptr && index_ <= satin->rungs.size()) {
-                satin->rungs.insert(satin->rungs.begin() + static_cast<std::ptrdiff_t>(index_), guide_);
+                satin->rungs.insert(satin->rungs.begin() + static_cast<std::ptrdiff_t>(index_),
+                                    guide_);
                 applied_ = true;
             }
         }
     }
     void revert(document::Project& project) override {
-        if (!applied_) return;
+        if (!applied_)
+            return;
         if (auto* obj = project.findEmbroidery(id_)) {
             if (auto* satin = std::get_if<document::SatinParams>(&obj->params);
                 satin != nullptr && index_ < satin->rungs.size()) {
@@ -1182,7 +1174,8 @@ public:
         }
     }
     void revert(document::Project& project) override {
-        if (!applied_) return;
+        if (!applied_)
+            return;
         if (auto* obj = project.findEmbroidery(id_)) {
             if (auto* satin = std::get_if<document::SatinParams>(&obj->params);
                 satin != nullptr && index_ < satin->rungs.size()) {
@@ -1213,8 +1206,7 @@ struct SatinGuideEdit {
 // la construction de la commande, comme pour MoveSatinGuideCommand.
 class MoveSatinGuidesCommand final : public ICommand {
 public:
-    explicit MoveSatinGuidesCommand(std::vector<SatinGuideEdit> edits)
-        : edits_(std::move(edits)) {}
+    explicit MoveSatinGuidesCommand(std::vector<SatinGuideEdit> edits) : edits_(std::move(edits)) {}
 
     void apply(document::Project& project) override {
         applied_ = false;
@@ -1291,11 +1283,13 @@ public:
         }
     }
     void revert(document::Project& project) override {
-        if (!applied_) return;
+        if (!applied_)
+            return;
         if (auto* obj = project.findEmbroidery(id_)) {
             if (auto* satin = std::get_if<document::SatinParams>(&obj->params);
                 satin != nullptr && index_ <= satin->rungs.size()) {
-                satin->rungs.insert(satin->rungs.begin() + static_cast<std::ptrdiff_t>(index_), removed_);
+                satin->rungs.insert(satin->rungs.begin() + static_cast<std::ptrdiff_t>(index_),
+                                    removed_);
             }
         }
     }
@@ -1445,14 +1439,14 @@ enum class SatinRailSide { RailA, RailB };
 
 namespace detail {
 [[nodiscard]] inline geometry::Path* satin_rail(document::EmbroideryObject& obj,
-                                                 SatinRailSide side) {
+                                                SatinRailSide side) {
     auto* satin = std::get_if<document::SatinParams>(&obj.params);
     if (satin == nullptr) {
         return nullptr;
     }
     return side == SatinRailSide::RailA ? &satin->rail_a : &satin->rail_b;
 }
-}  // namespace detail
+} // namespace detail
 
 // Déplace un nœud d'un rail satin (mode remodelage). Miroir de MoveNodeCommand
 // pour les objets vectoriels.
@@ -1469,7 +1463,8 @@ public:
 private:
     void setPos(document::Project& project, Vec2um pos) {
         if (auto* obj = project.findEmbroidery(id_)) {
-            if (auto* rail = detail::satin_rail(*obj, side_); rail != nullptr && node_ < rail->nodes.size()) {
+            if (auto* rail = detail::satin_rail(*obj, side_);
+                rail != nullptr && node_ < rail->nodes.size()) {
                 rail->nodes[node_].pos = pos;
             }
         }
@@ -1488,11 +1483,7 @@ class MoveSatinRailHandleCommand final : public ICommand {
 public:
     MoveSatinRailHandleCommand(ObjectId id, SatinRailSide side, std::size_t node, bool isOut,
                                std::optional<Vec2um> oldHandle, std::optional<Vec2um> newHandle)
-        : id_(id),
-          side_(side),
-          node_(node),
-          isOut_(isOut),
-          oldHandle_(oldHandle),
+        : id_(id), side_(side), node_(node), isOut_(isOut), oldHandle_(oldHandle),
           newHandle_(newHandle) {}
 
     void apply(document::Project& project) override { setHandle(project, newHandle_); }
@@ -1502,7 +1493,8 @@ public:
 private:
     void setHandle(document::Project& project, std::optional<Vec2um> handle) {
         if (auto* obj = project.findEmbroidery(id_)) {
-            if (auto* rail = detail::satin_rail(*obj, side_); rail != nullptr && node_ < rail->nodes.size()) {
+            if (auto* rail = detail::satin_rail(*obj, side_);
+                rail != nullptr && node_ < rail->nodes.size()) {
                 (isOut_ ? rail->nodes[node_].tan_out : rail->nodes[node_].tan_in) = handle;
             }
         }
@@ -1525,7 +1517,8 @@ public:
 
     void apply(document::Project& project) override {
         if (auto* obj = project.findEmbroidery(id_)) {
-            if (auto* rail = detail::satin_rail(*obj, side_); rail != nullptr && node_ < rail->nodes.size()) {
+            if (auto* rail = detail::satin_rail(*obj, side_);
+                rail != nullptr && node_ < rail->nodes.size()) {
                 previous_ = rail->nodes[node_].type;
                 rail->nodes[node_].type = type_;
             }
@@ -1533,7 +1526,8 @@ public:
     }
     void revert(document::Project& project) override {
         if (auto* obj = project.findEmbroidery(id_)) {
-            if (auto* rail = detail::satin_rail(*obj, side_); rail != nullptr && node_ < rail->nodes.size()) {
+            if (auto* rail = detail::satin_rail(*obj, side_);
+                rail != nullptr && node_ < rail->nodes.size()) {
                 rail->nodes[node_].type = previous_;
             }
         }
@@ -1553,8 +1547,7 @@ private:
 // pas, seul un nœud supplémentaire apparaît.
 class InsertSatinRailNodeCommand final : public ICommand {
 public:
-    InsertSatinRailNodeCommand(ObjectId id, SatinRailSide side, std::size_t segmentIndex,
-                               double t)
+    InsertSatinRailNodeCommand(ObjectId id, SatinRailSide side, std::size_t segmentIndex, double t)
         : id_(id), side_(side), segmentIndex_(segmentIndex), t_(t) {}
 
     void apply(document::Project& project) override {
@@ -1612,8 +1605,10 @@ public:
             return;
         }
         if (auto* obj = project.findEmbroidery(id_)) {
-            if (auto* rail = detail::satin_rail(*obj, side_); rail != nullptr && node_ <= rail->nodes.size()) {
-                rail->nodes.insert(rail->nodes.begin() + static_cast<std::ptrdiff_t>(node_), removed_);
+            if (auto* rail = detail::satin_rail(*obj, side_);
+                rail != nullptr && node_ <= rail->nodes.size()) {
+                rail->nodes.insert(rail->nodes.begin() + static_cast<std::ptrdiff_t>(node_),
+                                   removed_);
             }
         }
     }
@@ -1627,4 +1622,4 @@ private:
     bool applied_{false};
 };
 
-}  // namespace openstitch::commands
+} // namespace openstitch::commands

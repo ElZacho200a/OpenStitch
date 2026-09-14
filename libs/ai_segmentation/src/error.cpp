@@ -54,7 +54,7 @@ constexpr std::array<CodeEntry, 17> kCodes{{
     {AiErrorCode::Cancelled, "CANCELLED", "Segmentation annulée."},
 }};
 
-}  // namespace
+} // namespace
 
 std::string ai_error_code_name(AiErrorCode code) {
     for (const auto& entry : kCodes) {
@@ -83,4 +83,4 @@ std::string default_message(AiErrorCode code) {
     return "Erreur de segmentation IA inconnue.";
 }
 
-}  // namespace openstitch::ai_segmentation
+} // namespace openstitch::ai_segmentation

@@ -23,7 +23,7 @@ Micrometers to_um(double mm) {
     return to_micrometers(Millimeters{mm});
 }
 
-}  // namespace
+} // namespace
 
 PropertiesPanel::PropertiesPanel(QWidget* parent) : QWidget(parent) {
     root_ = new QVBoxLayout(this);
@@ -165,7 +165,8 @@ void PropertiesPanel::showEmbroidery(const document::EmbroideryObject& object) {
                 form->addRow(tr("Longueur minimale :"), minl);
                 form->addRow(tr("Passages :"), rep);
                 const auto emitEdit = [this, id, len, minl, rep] {
-                    if (building_) return;
+                    if (building_)
+                        return;
                     document::RunningStitchParams r;
                     r.stitch_length = to_um(len->value());
                     r.min_length = to_um(minl->value());
@@ -181,8 +182,9 @@ void PropertiesPanel::showEmbroidery(const document::EmbroideryObject& object) {
                 auto* angle = new QSpinBox(body_);
                 angle->setRange(0, 179);
                 angle->setSuffix(tr(" °"));
-                angle->setValue(static_cast<int>(std::lround(
-                    p.angle.radians * 180.0 / std::numbers::pi)) % 180);
+                angle->setValue(
+                    static_cast<int>(std::lround(p.angle.radians * 180.0 / std::numbers::pi)) %
+                    180);
                 auto* inset = mmSpin(to_millimeters(p.inset).value, 5.0);
                 auto* stagger = new QSpinBox(body_);
                 stagger->setRange(1, 8);
@@ -209,8 +211,9 @@ void PropertiesPanel::showEmbroidery(const document::EmbroideryObject& object) {
                 form->addRow(QString(), underpath);
                 const auto emitEdit = [this, id, tbase, spacing, len, angle, inset, stagger, uEdge,
                                        uInset, uPar, uSpacing, underpath] {
-                    if (building_) return;
-                    document::TatamiParams t = tbase;  // conserve sous-couche fine + entrée
+                    if (building_)
+                        return;
+                    document::TatamiParams t = tbase; // conserve sous-couche fine + entrée
                     t.row_spacing = to_um(spacing->value());
                     t.stitch_length = to_um(len->value());
                     t.angle = Angle{angle->value() * std::numbers::pi / 180.0};
@@ -281,8 +284,9 @@ void PropertiesPanel::showEmbroidery(const document::EmbroideryObject& object) {
                 const auto emitEdit = [this, id, base, density, comp, underlay, shortCombo,
                                        splitCombo, capCombo, maxLen, edgeU, zigU, pullL, pullR,
                                        lockStart, lockEnd] {
-                    if (building_) return;
-                    document::SatinParams s = base;  // conserve rails + barreaux
+                    if (building_)
+                        return;
+                    document::SatinParams s = base; // conserve rails + barreaux
                     s.density = to_um(density->value());
                     s.pull_compensation = to_um(comp->value());
                     s.center_underlay = underlay->isChecked();
@@ -322,4 +326,4 @@ void PropertiesPanel::showEmbroidery(const document::EmbroideryObject& object) {
     body_->layout()->addWidget(holder);
 }
 
-}  // namespace openstitch::desktop
+} // namespace openstitch::desktop

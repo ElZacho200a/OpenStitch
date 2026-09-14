@@ -41,7 +41,7 @@ MaskCollection sampleCollection() {
     return collection;
 }
 
-}  // namespace
+} // namespace
 
 TEST_CASE("masks.json round-trips through serialize and parse") {
     const MaskCollection original = sampleCollection();

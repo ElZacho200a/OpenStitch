@@ -41,7 +41,7 @@ Path band(const std::function<std::pair<double, double>(double)>& centerline, in
             tx /= len;
             ty /= len;
         }
-        const double nx = -ty, ny = tx;  // normale
+        const double nx = -ty, ny = tx; // normale
         left.emplace_back(x + nx * half_width, y + ny * half_width);
         right.emplace_back(x - nx * half_width, y - ny * half_width);
     }
@@ -56,7 +56,9 @@ Path band(const std::function<std::pair<double, double>(double)>& centerline, in
     return p;
 }
 
-PathSet single(Path outer) { return PathSet{std::move(outer), {}}; }
+PathSet single(Path outer) {
+    return PathSet{std::move(outer), {}};
+}
 
 Path rect(double x0, double y0, double x1, double y1) {
     Path p;
@@ -93,10 +95,10 @@ PathSet from_union(const std::vector<Path>& parts) {
     return single(parts.front());
 }
 
-}  // namespace
+} // namespace
 
 std::optional<geometry::PathSet> make_shape(const std::string& name) {
-    const double W = 2500.0;  // demi-largeur 2,5 mm (bande de 5 mm)
+    const double W = 2500.0; // demi-largeur 2,5 mm (bande de 5 mm)
     if (name == "rectangle") {
         return single(rect(0, -W, 40'000, W));
     }
@@ -130,8 +132,7 @@ std::optional<geometry::PathSet> make_shape(const std::string& name) {
         return from_union(parts);
     }
     if (name == "t") {
-        std::vector<Path> parts{rect(-18'000, W, 18'000, -W + 5'000),
-                                rect(-W, -22'000, W, W)};
+        std::vector<Path> parts{rect(-18'000, W, 18'000, -W + 5'000), rect(-W, -22'000, W, W)};
         // stem vertical + barre horizontale
         parts[0] = rect(-18'000, 12'000, 18'000, 12'000 + 5'000);
         parts[1] = rect(-2'500, -20'000, 2'500, 17'000);
@@ -175,7 +176,7 @@ std::optional<geometry::PathSet> make_shape(const std::string& name) {
         return single(rect(0, -10'000, 100'000, 10'000));
     }
     if (name == "tiny") {
-        return single(rect(0, -300, 4'000, 300));  // 0,6 mm de large
+        return single(rect(0, -300, 4'000, 300)); // 0,6 mm de large
     }
     if (name == "notch") {
         // Bande de 40 x 5 mm entaillée d'une profonde encoche en V sur le bord
@@ -185,8 +186,8 @@ std::optional<geometry::PathSet> make_shape(const std::string& name) {
         // silence pres d'une forte variation de largeur locale).
         Path p;
         p.closed = true;
-        p.nodes = {node(0, -W), node(40'000, -W), node(40'000, W), node(25'000, W),
-                  node(20'000, -1'500), node(15'000, W), node(0, W)};
+        p.nodes = {node(0, -W),          node(40'000, -W), node(40'000, W), node(25'000, W),
+                   node(20'000, -1'500), node(15'000, W),  node(0, W)};
         return single(p);
     }
     if (name == "pinch") {
@@ -195,8 +196,8 @@ std::optional<geometry::PathSet> make_shape(const std::string& name) {
         // section transversale pres du point le plus etroit.
         Path p;
         p.closed = true;
-        p.nodes = {node(0, -W), node(40'000, -W), node(40'000, W), node(25'000, W),
-                  node(20'000, -2'200), node(15'000, W), node(0, W)};
+        p.nodes = {node(0, -W),          node(40'000, -W), node(40'000, W), node(25'000, W),
+                   node(20'000, -2'200), node(15'000, W),  node(0, W)};
         return single(p);
     }
     if (name == "trident") {
@@ -247,7 +248,9 @@ std::optional<geometry::PathSet> make_shape(const std::string& name) {
         for (int i = 0; i < kBranches; ++i) {
             const double angle = 2.0 * std::numbers::pi * i / kBranches - std::numbers::pi / 2.0;
             parts.push_back(band(
-                [angle](double t) { return std::pair{kArmLen * t * std::cos(angle), kArmLen * t * std::sin(angle)}; },
+                [angle](double t) {
+                    return std::pair{kArmLen * t * std::cos(angle), kArmLen * t * std::sin(angle)};
+                },
                 20, kHalfW));
         }
         return from_union(parts);
@@ -263,7 +266,7 @@ std::optional<geometry::PathSet> make_shape(const std::string& name) {
             double halfWidth;
         };
         const std::vector<Arm> arms = {
-            {0.0, 25'000.0, 3'000.0}, {80.0, 10'000.0, 900.0}, {160.0, 22'000.0, 900.0},
+            {0.0, 25'000.0, 3'000.0},  {80.0, 10'000.0, 900.0},    {160.0, 22'000.0, 900.0},
             {230.0, 9'000.0, 2'600.0}, {300.0, 16'000.0, 1'600.0},
         };
         std::vector<Path> parts;
@@ -272,7 +275,9 @@ std::optional<geometry::PathSet> make_shape(const std::string& name) {
             const double length = arm.length;
             const double halfWidth = arm.halfWidth;
             parts.push_back(band(
-                [angle, length](double t) { return std::pair{length * t * std::cos(angle), length * t * std::sin(angle)}; },
+                [angle, length](double t) {
+                    return std::pair{length * t * std::cos(angle), length * t * std::sin(angle)};
+                },
                 20, halfWidth));
         }
         return from_union(parts);
@@ -300,10 +305,10 @@ std::optional<geometry::PathSet> make_shape(const std::string& name) {
         // MEME cote d'une colonne verticale (lettre E) -- topologie de
         // jonctions differente d'un peigne symetrique.
         std::vector<Path> parts{
-            rect(-2'000, -20'000, 2'000, 20'000),     // colonne verticale
-            rect(-2'000, 16'000, 16'000, 20'000),      // barre haute
-            rect(-2'000, -2'000, 13'000, 2'000),        // barre milieu
-            rect(-2'000, -20'000, 16'000, -16'000),      // barre basse
+            rect(-2'000, -20'000, 2'000, 20'000),   // colonne verticale
+            rect(-2'000, 16'000, 16'000, 20'000),   // barre haute
+            rect(-2'000, -2'000, 13'000, 2'000),    // barre milieu
+            rect(-2'000, -20'000, 16'000, -16'000), // barre basse
         };
         return from_union(parts);
     }
@@ -313,10 +318,10 @@ std::optional<geometry::PathSet> make_shape(const std::string& name) {
         // PROUVER qu'au moins une region enfant est reellement redecoupee a
         // son tour -- profondeur de plan >= 3 attendue sur cette fixture.
         std::vector<Path> parts{
-            rect(0, -2'500, 30'000, 2'500),         // niveau 0 : tronc
-            rect(14'000, 0, 18'000, 20'000),          // niveau 1 : branche
-            rect(16'000, 14'000, 30'000, 18'000),       // niveau 2 : sous-branche
-            rect(26'000, 8'000, 30'000, 14'000),          // niveau 3 : sous-sous-branche
+            rect(0, -2'500, 30'000, 2'500),       // niveau 0 : tronc
+            rect(14'000, 0, 18'000, 20'000),      // niveau 1 : branche
+            rect(16'000, 14'000, 30'000, 18'000), // niveau 2 : sous-branche
+            rect(26'000, 8'000, 30'000, 14'000),  // niveau 3 : sous-sous-branche
         };
         return from_union(parts);
     }
@@ -325,8 +330,9 @@ std::optional<geometry::PathSet> make_shape(const std::string& name) {
         // le planner doit pouvoir considerer plusieurs coupes, pas
         // seulement une.
         std::vector<Path> parts{
-            circle(0, 0, 6'000, 64),      rect(4'000, -600, 16'000, 600),  circle(20'000, 0, 6'000, 64),
-            rect(24'000, -600, 36'000, 600), circle(40'000, 0, 6'000, 64),
+            circle(0, 0, 6'000, 64),      rect(4'000, -600, 16'000, 600),
+            circle(20'000, 0, 6'000, 64), rect(24'000, -600, 36'000, 600),
+            circle(40'000, 0, 6'000, 64),
         };
         return from_union(parts);
     }
@@ -347,8 +353,9 @@ std::optional<geometry::PathSet> make_shape(const std::string& name) {
         // "pinch") -- variante adversariale sans trou reel.
         Path p;
         p.closed = true;
-        p.nodes = {node(0, -8'000), node(40'000, -8'000), node(40'000, 8'000), node(24'000, 8'000),
-                  node(24'000, -4'000), node(16'000, -4'000), node(16'000, 8'000), node(0, 8'000)};
+        p.nodes = {node(0, -8'000),     node(40'000, -8'000), node(40'000, 8'000),
+                   node(24'000, 8'000), node(24'000, -4'000), node(16'000, -4'000),
+                   node(16'000, 8'000), node(0, 8'000)};
         return single(p);
     }
     if (name == "two_holes") {
@@ -380,7 +387,8 @@ std::optional<geometry::PathSet> make_shape(const std::string& name) {
         // §14 : jonction en T (memes proportions que "t") avec un petit
         // trou PRES de la confluence, pas au milieu d'une branche -- cas le
         // plus dur pour ne jamais traverser le trou par une coupe.
-        std::vector<Path> parts{rect(-18'000, 12'000, 18'000, 17'000), rect(-2'500, -20'000, 2'500, 17'000)};
+        std::vector<Path> parts{rect(-18'000, 12'000, 18'000, 17'000),
+                                rect(-2'500, -20'000, 2'500, 17'000)};
         PathSet merged = from_union(parts);
         Path hole = circle(0, 13'000, 1'800, 32);
         std::reverse(hole.nodes.begin(), hole.nodes.end());
@@ -399,14 +407,15 @@ std::optional<geometry::PathSet> make_shape(const std::string& name) {
         // cut_candidates`) puisse aussi l'exercer.
         Path p;
         p.closed = true;
-        p.nodes = {node(0, -4'000),      node(53'000, -4'000), node(54'000, -1'000), node(55'000, -4'000),
-                  node(100'000, -4'000), node(100'000, 4'000), node(62'000, 4'000),  node(61'000, 1'000),
-                  node(60'000, 4'000),   node(58'500, 4'000),  node(58'500, -1'500), node(56'500, -1'500),
-                  node(56'500, 4'000),   node(0, 4'000)};
+        p.nodes = {node(0, -4'000),      node(53'000, -4'000),  node(54'000, -1'000),
+                   node(55'000, -4'000), node(100'000, -4'000), node(100'000, 4'000),
+                   node(62'000, 4'000),  node(61'000, 1'000),   node(60'000, 4'000),
+                   node(58'500, 4'000),  node(58'500, -1'500),  node(56'500, -1'500),
+                   node(56'500, 4'000),  node(0, 4'000)};
         return single(p);
     }
 
     return std::nullopt;
 }
 
-}  // namespace openstitch::auto_satin
+} // namespace openstitch::auto_satin

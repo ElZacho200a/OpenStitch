@@ -35,7 +35,7 @@ struct RegionOverlap {
 };
 
 struct OverlapReport {
-    std::vector<RegionOverlap> overlaps;  // une par paire adjacente directe (cf. limite ci-dessous)
+    std::vector<RegionOverlap> overlaps; // une par paire adjacente directe (cf. limite ci-dessous)
 };
 
 // Genere, pour chaque paire de regions directement adjacentes
@@ -57,8 +57,9 @@ struct OverlapReport {
 // dans l'arbre de decoupage (un cote redecoupe ensuite) n'est pas encore
 // couverte -- necessiterait de determiner l'adjacence finale au-dela d'une
 // seule coupe, hors perimetre de cette phase.
-[[nodiscard]] OverlapReport generate_overlaps(const RegionSplitReport& split, const OverlapParams& params = {});
+[[nodiscard]] OverlapReport generate_overlaps(const RegionSplitReport& split,
+                                              const OverlapParams& params = {});
 
 [[nodiscard]] std::string format_overlap_report(const OverlapReport& report);
 
-}  // namespace openstitch::satin_planning
+} // namespace openstitch::satin_planning

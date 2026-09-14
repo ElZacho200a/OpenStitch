@@ -37,7 +37,8 @@ SatinPlanConfig prod_config() {
 
 double total_region_area_mm2(const SatinPlan& plan) {
     double area = 0.0;
-    for (const auto& r : plan.regions) area += geometry::path_set_area_um2(r.region) / 1e6;
+    for (const auto& r : plan.regions)
+        area += geometry::path_set_area_um2(r.region) / 1e6;
     return area;
 }
 
@@ -55,7 +56,8 @@ double total_region_area_mm2(const SatinPlan& plan) {
 double primary_region_area_mm2(const SatinPlan& plan) {
     double area = 0.0;
     for (const auto& r : plan.regions) {
-        if (r.from_residual_repair) continue;
+        if (r.from_residual_repair)
+            continue;
         area += geometry::path_set_area_um2(r.region) / 1e6;
     }
     return area;
@@ -68,16 +70,35 @@ double primary_region_area_mm2(const SatinPlan& plan) {
 // n'est meme accessible depuis ce module).
 const std::vector<std::string>& torture_corpus() {
     static const std::vector<std::string> kNames = {
-        "rectangle",  "capsule",       "ribbon",     "s",           "notch",
-        "pinch",      "t",             "y",          "cross",       "h",
-        "trident",    "ring",          "star5",      "asymmetric_star", "comb",
-        "E",          "multi_neck",    "deep_recursive", "dumbbell", "deep_channel",
-        "two_holes",  "ring_branch",   "junction_with_hole", "polygonal_cut_fixture",
+        "rectangle",
+        "capsule",
+        "ribbon",
+        "s",
+        "notch",
+        "pinch",
+        "t",
+        "y",
+        "cross",
+        "h",
+        "trident",
+        "ring",
+        "star5",
+        "asymmetric_star",
+        "comb",
+        "E",
+        "multi_neck",
+        "deep_recursive",
+        "dumbbell",
+        "deep_channel",
+        "two_holes",
+        "ring_branch",
+        "junction_with_hole",
+        "polygonal_cut_fixture",
     };
     return kNames;
 }
 
-}  // namespace
+} // namespace
 
 // ---------------------------------------------------------------------
 // §8/§23 : invariants generiques, verifies sur TOUT le corpus.
@@ -92,8 +113,8 @@ const std::vector<std::string>& torture_corpus() {
 // cf. `docs/source/satin.md`, section "Limitations connues" pour le detail
 // de chaque cas.
 const std::vector<std::string>& shapes_hitting_known_performance_limit() {
-    static const std::vector<std::string> kNames = {"star5", "asymmetric_star", "comb", "E", "multi_neck",
-                                                     "deep_channel"};
+    static const std::vector<std::string> kNames = {"star5", "asymmetric_star", "comb",
+                                                    "E",     "multi_neck",      "deep_channel"};
     return kNames;
 }
 
@@ -119,7 +140,8 @@ bool has_known_performance_limit(const std::string& name) {
     return std::find(list.begin(), list.end(), name) != list.end();
 }
 
-TEST_CASE("create_satin_plan : corpus de torture complet -- jamais Impossible, sauf limitation connue et documentee") {
+TEST_CASE("create_satin_plan : corpus de torture complet -- jamais Impossible, sauf limitation "
+          "connue et documentee") {
     // §6 : `Impossible` doit rester extremement rare -- chacune de ces
     // fixtures est construite a la main pour etre satinable en principe
     // (aucune n'est degeneree). Les formes de `shapes_hitting_known_
@@ -131,14 +153,16 @@ TEST_CASE("create_satin_plan : corpus de torture complet -- jamais Impossible, s
     // but de ce test est de detecter tout AUTRE cas Impossible imprevu, pas
     // de forcer artificiellement celles-la a passer.
     for (const auto& name : torture_corpus()) {
-        if (has_known_performance_limit(name)) continue;
+        if (has_known_performance_limit(name))
+            continue;
         INFO("forme = " << name);
         const auto plan = create_satin_plan(shape(name), prod_config());
         CHECK(plan.status != SatinPlanStatus::Impossible);
     }
 }
 
-TEST_CASE("create_satin_plan : corpus de torture complet -- Invariant 1, la source n'est jamais modifiee") {
+TEST_CASE("create_satin_plan : corpus de torture complet -- Invariant 1, la source n'est jamais "
+          "modifiee") {
     // La signature (`const geometry::PathSet&`) l'empeche deja au niveau du
     // systeme de types ; ce test verifie de plus qu'AUCUNE copie interne
     // fuite en retour alterant la geometrie observable par l'appelant.
@@ -156,7 +180,8 @@ TEST_CASE("create_satin_plan : corpus de torture complet -- Invariant 1, la sour
     }
 }
 
-TEST_CASE("create_satin_plan : corpus de torture complet -- Invariant 2/6, aucune region n'explique une surface arbitrairement exterieure") {
+TEST_CASE("create_satin_plan : corpus de torture complet -- Invariant 2/6, aucune region "
+          "n'explique une surface arbitrairement exterieure") {
     // Deux verifications distinctes (defaut reel trouve, corrige, PUIS
     // reverte le 2026-08-17 -- cf. le commentaire detaille dans
     // `satin_plan.cpp`, boucle de reparation de residu) :
@@ -179,13 +204,15 @@ TEST_CASE("create_satin_plan : corpus de torture complet -- Invariant 2/6, aucun
         const double sourceAreaMm2 = geometry::path_set_area_um2(source) / 1e6;
         const double primaryAreaMm2 = primary_region_area_mm2(plan);
         const double totalAreaMm2 = total_region_area_mm2(plan);
-        INFO("primaire=" << primaryAreaMm2 << "mm2 total=" << totalAreaMm2 << "mm2 source=" << sourceAreaMm2 << "mm2");
+        INFO("primaire=" << primaryAreaMm2 << "mm2 total=" << totalAreaMm2
+                         << "mm2 source=" << sourceAreaMm2 << "mm2");
         CHECK(primaryAreaMm2 <= sourceAreaMm2 + 0.5);
         CHECK(totalAreaMm2 <= sourceAreaMm2 * 2.0 + 0.5);
     }
 }
 
-TEST_CASE("create_satin_plan : corpus de torture complet -- Invariant 4, chaque feuille produit reellement des colonnes") {
+TEST_CASE("create_satin_plan : corpus de torture complet -- Invariant 4, chaque feuille produit "
+          "reellement des colonnes") {
     // Deja garanti par construction (`accept_as_leaf`, cf. satin_plan.cpp)
     // et re-verifie explicitement dans le calcul de statut
     // (diagnostic "RegionWithoutColumns") -- ce test le prouve depuis
@@ -196,23 +223,25 @@ TEST_CASE("create_satin_plan : corpus de torture complet -- Invariant 4, chaque 
         for (const auto& r : plan.regions) {
             CHECK((!r.columns.columns.empty() || !r.columns.parametric_columns.empty()));
         }
-        const bool hasRegionWithoutColumnsDiag =
-            std::any_of(plan.diagnostics.begin(), plan.diagnostics.end(),
-                        [](const PlanningDiagnostic& d) { return d.code == "RegionWithoutColumns"; });
+        const bool hasRegionWithoutColumnsDiag = std::any_of(
+            plan.diagnostics.begin(), plan.diagnostics.end(),
+            [](const PlanningDiagnostic& d) { return d.code == "RegionWithoutColumns"; });
         CHECK_FALSE(hasRegionWithoutColumnsDiag);
     }
 }
 
-TEST_CASE("create_satin_plan : corpus de torture complet -- Complete implique aucun residu significatif") {
+TEST_CASE("create_satin_plan : corpus de torture complet -- Complete implique aucun residu "
+          "significatif") {
     // Coherence interne du contrat (§7-A) : un statut Complete ne doit
     // jamais coexister avec un residu au-dela du seuil de significativite.
     for (const auto& name : torture_corpus()) {
         INFO("forme = " << name);
         const auto plan = create_satin_plan(shape(name), prod_config());
-        if (plan.status != SatinPlanStatus::Complete) continue;
-        const bool hasResidualDiag =
-            std::any_of(plan.diagnostics.begin(), plan.diagnostics.end(),
-                        [](const PlanningDiagnostic& d) { return d.code == "SignificantResidualRemaining"; });
+        if (plan.status != SatinPlanStatus::Complete)
+            continue;
+        const bool hasResidualDiag = std::any_of(
+            plan.diagnostics.begin(), plan.diagnostics.end(),
+            [](const PlanningDiagnostic& d) { return d.code == "SignificantResidualRemaining"; });
         CHECK_FALSE(hasResidualDiag);
     }
 }
@@ -221,7 +250,8 @@ TEST_CASE("create_satin_plan : corpus de torture complet -- Complete implique au
 // §9 : fixtures ciblees individuellement.
 // ---------------------------------------------------------------------
 
-TEST_CASE("create_satin_plan : star5 -- limitation connue (jonction a haut degre), termine dans le budget") {
+TEST_CASE("create_satin_plan : star5 -- limitation connue (jonction a haut degre), termine dans le "
+          "budget") {
     // §33/§37 de la mission : meme limitation reelle que "comb" (cf.
     // commentaire detaille sur ce test) -- UNE SEULE jonction, mais a 5
     // branches (haut degre), cause le meme cout par iteration cote
@@ -245,7 +275,8 @@ TEST_CASE("create_satin_plan : star5 -- limitation connue (jonction a haut degre
     CHECK(plan.status != SatinPlanStatus::Complete);
 }
 
-TEST_CASE("create_satin_plan : asymmetric_star -- termine proprement (meme limitation potentielle que star5)") {
+TEST_CASE("create_satin_plan : asymmetric_star -- termine proprement (meme limitation potentielle "
+          "que star5)") {
     // Meme topologie a risque que "star5" (5 branches, une seule jonction a
     // haut degre) : ce test ne suppose PAS une decomposition complete
     // reussie (cf. limitation documentee sur "star5"/"comb"), seulement que
@@ -254,7 +285,8 @@ TEST_CASE("create_satin_plan : asymmetric_star -- termine proprement (meme limit
     CHECK(plan.status != SatinPlanStatus::Complete);
 }
 
-TEST_CASE("create_satin_plan : comb -- limitation connue (jonction/branches nombreuses), termine dans le budget") {
+TEST_CASE("create_satin_plan : comb -- limitation connue (jonction/branches nombreuses), termine "
+          "dans le budget") {
     // §33/§37 de la mission : defaut REEL trouve via cette fixture (6
     // jonctions en serie) -- le solveur local seul (`auto_satin::
     // build_satin_columns`) reste rapide (< 1s, refuse proprement "trop de
@@ -277,7 +309,8 @@ TEST_CASE("create_satin_plan : comb -- limitation connue (jonction/branches nomb
     CHECK(plan.status != SatinPlanStatus::Complete);
 }
 
-TEST_CASE("create_satin_plan : E -- limitation connue (3 branches du meme cote), termine dans le budget") {
+TEST_CASE("create_satin_plan : E -- limitation connue (3 branches du meme cote), termine dans le "
+          "budget") {
     // Meme limitation reelle que "comb"/"star5" (cf. leurs tests dedies) :
     // 3 branches du meme cote d'un tronc suffisent a rendre la generation
     // de candidats de decomposition couteuse par iteration. Seul
@@ -298,7 +331,8 @@ TEST_CASE("create_satin_plan : deep_recursive -- preuve d'une profondeur de plan
     CHECK(hasDepth3);
 }
 
-TEST_CASE("create_satin_plan : multi_neck -- limitation connue (concavites multiples), termine dans le budget") {
+TEST_CASE("create_satin_plan : multi_neck -- limitation connue (concavites multiples), termine "
+          "dans le budget") {
     // Meme limitation reelle que "comb"/"star5"/"E" : 3 masses + 2
     // etranglements produisent plusieurs paires de concavites candidates,
     // dont l'evaluation (construction + mesure reelles de chaque candidat)
@@ -307,7 +341,8 @@ TEST_CASE("create_satin_plan : multi_neck -- limitation connue (concavites multi
     CHECK(plan.status != SatinPlanStatus::Complete);
 }
 
-TEST_CASE("create_satin_plan : dumbbell -- la masse large est subdivisee plutot que simplement rejetee") {
+TEST_CASE(
+    "create_satin_plan : dumbbell -- la masse large est subdivisee plutot que simplement rejetee") {
     const auto plan = create_satin_plan(shape("dumbbell"), prod_config());
     // Le test NE s'attend PAS a un simple rejet (§10) : au moins une region
     // doit avoir ete acceptee quelque part sur cette forme (bras fins +
@@ -316,7 +351,8 @@ TEST_CASE("create_satin_plan : dumbbell -- la masse large est subdivisee plutot 
     REQUIRE(plan.aggregate_coverage.has_value());
 }
 
-TEST_CASE("create_satin_plan : deep_channel -- limitation connue (canal rectangulaire, 2 coins reflex), termine dans le budget") {
+TEST_CASE("create_satin_plan : deep_channel -- limitation connue (canal rectangulaire, 2 coins "
+          "reflex), termine dans le budget") {
     // Contrairement a "notch"/"pinch" (une seule concavite reelle, rapides),
     // le canal rectangulaire produit DEUX coins reflex distincts -- assez
     // pour retrouver la meme limitation de performance que les autres
@@ -325,7 +361,8 @@ TEST_CASE("create_satin_plan : deep_channel -- limitation connue (canal rectangu
     CHECK(plan.status != SatinPlanStatus::Complete);
 }
 
-TEST_CASE("create_satin_plan : two_holes -- limitation connue (aucune famille de coupe applicable), jamais de trou rempli") {
+TEST_CASE("create_satin_plan : two_holes -- limitation connue (aucune famille de coupe "
+          "applicable), jamais de trou rempli") {
     // Limitation DISTINCTE de la performance (§14/§37) : le contour
     // EXTERIEUR de cette fixture est un simple rectangle CONVEXE (aucun
     // sommet reflex) -- la famille concavite->concavite, meme desormais
@@ -348,7 +385,8 @@ TEST_CASE("create_satin_plan : two_holes -- limitation connue (aucune famille de
     CHECK(plan.aggregate_coverage->covered_area_mm2 <= sourceNetAreaMm2 + 0.5);
 }
 
-TEST_CASE("create_satin_plan : ring_branch -- anneau plus branche, trou interieur toujours respecte") {
+TEST_CASE(
+    "create_satin_plan : ring_branch -- anneau plus branche, trou interieur toujours respecte") {
     const auto source = shape("ring_branch");
     const auto plan = create_satin_plan(source, prod_config());
     CHECK_FALSE(plan.regions.empty());
@@ -357,7 +395,8 @@ TEST_CASE("create_satin_plan : ring_branch -- anneau plus branche, trou interieu
     CHECK(plan.aggregate_coverage->covered_area_mm2 <= sourceNetAreaMm2 + 0.5);
 }
 
-TEST_CASE("create_satin_plan : junction_with_hole -- trou pres d'une confluence jamais traverse ni compte en manquant") {
+TEST_CASE("create_satin_plan : junction_with_hole -- trou pres d'une confluence jamais traverse ni "
+          "compte en manquant") {
     const auto source = shape("junction_with_hole");
     const auto plan = create_satin_plan(source, prod_config());
     CHECK_FALSE(plan.regions.empty());
@@ -366,7 +405,8 @@ TEST_CASE("create_satin_plan : junction_with_hole -- trou pres d'une confluence 
     CHECK(plan.aggregate_coverage->covered_area_mm2 <= sourceNetAreaMm2 + 0.5);
 }
 
-TEST_CASE("create_satin_plan : polygonal_cut_fixture -- le mecanisme est bien exerce, meme si le plan complet echoue") {
+TEST_CASE("create_satin_plan : polygonal_cut_fixture -- le mecanisme est bien exerce, meme si le "
+          "plan complet echoue") {
     // §13 : ne pas se contenter d'un test synthetique de `find_elbow_
     // waypoint` (deja fait dans test_concavity_cuts.cpp) -- verifier que le
     // planner COMPLET exerce reellement le chemin polygonal. Preuve directe
@@ -403,7 +443,8 @@ TEST_CASE("create_satin_plan : polygonal_cut_fixture -- le mecanisme est bien ex
 // §19 : determinisme.
 // ---------------------------------------------------------------------
 
-TEST_CASE("create_satin_plan : determinisme -- meme forme difficile, repetitions, resultat identique") {
+TEST_CASE(
+    "create_satin_plan : determinisme -- meme forme difficile, repetitions, resultat identique") {
     // Repetition sur des formes difficiles (branchee + concavites) : meme
     // nombre de regions, meme couverture, meme statut a chaque fois.
     // "comb"/"star5" sont volontairement EXCLUES ici : leur decomposition
@@ -449,7 +490,8 @@ TEST_CASE("create_satin_plan : determinisme -- meme forme difficile, repetitions
 // reflex cuts).
 // ---------------------------------------------------------------------
 
-TEST_CASE("create_satin_plan : invariance a la translation -- meme nombre de regions, meme couverture") {
+TEST_CASE(
+    "create_satin_plan : invariance a la translation -- meme nombre de regions, meme couverture") {
     // Translation pure : aucune raison structurelle pour que le nombre de
     // regions ou la couverture changent (contrairement a une rotation, ou
     // un tie-break de balayage axé-repere peut legitimement differer).
@@ -477,9 +519,11 @@ TEST_CASE("create_satin_plan : invariance a la translation -- meme nombre de reg
 
         geometry::PathSet translated = source;
         constexpr Micrometers kShift{37'000};
-        for (auto& n : translated.outer.nodes) n.pos.x = n.pos.x + kShift;
+        for (auto& n : translated.outer.nodes)
+            n.pos.x = n.pos.x + kShift;
         for (auto& hole : translated.holes) {
-            for (auto& n : hole.nodes) n.pos.x = n.pos.x + kShift;
+            for (auto& n : hole.nodes)
+                n.pos.x = n.pos.x + kShift;
         }
         const auto translatedPlan = create_satin_plan(translated, prod_config());
 

@@ -11,9 +11,10 @@ using namespace openstitch::vectorization;
 namespace {
 
 void set_px(image::Image& img, int x, int y, std::uint8_t r, std::uint8_t g, std::uint8_t b) {
-    std::uint8_t* px = img.rgba.data() +
-                       (static_cast<std::size_t>(y) * static_cast<std::size_t>(img.width) +
-                        static_cast<std::size_t>(x)) * 4;
+    std::uint8_t* px =
+        img.rgba.data() + (static_cast<std::size_t>(y) * static_cast<std::size_t>(img.width) +
+                           static_cast<std::size_t>(x)) *
+                              4;
     px[0] = r;
     px[1] = g;
     px[2] = b;
@@ -40,7 +41,7 @@ image::Image ring_image() {
     return img;
 }
 
-}  // namespace
+} // namespace
 
 TEST_CASE("anneau -> un PathSet avec exterieur et un trou") {
     const auto seg = segmentation::segment(ring_image(), {.max_colors = 2, .min_region_px = 1});
@@ -123,7 +124,7 @@ TEST_CASE("deux morceaux de meme region... deviennent deux PathSet") {
     const auto a = segmentation::region_at(*seg, 2, 2);
     const auto b = segmentation::region_at(*seg, 12, 2);
     REQUIRE((a && b));
-    CHECK(*a != *b);  // deux regions distinctes malgre la meme couleur (§4.3)
+    CHECK(*a != *b); // deux regions distinctes malgre la meme couleur (§4.3)
 
     const auto setsA = vectorize_region(*seg, *a, {.mm_per_px = Millimeters{1.0}});
     REQUIRE(setsA.has_value());

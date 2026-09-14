@@ -24,7 +24,7 @@ struct CutCandidate {
     bool valid{false};
     double branch_piece_area_mm2{0.0};
     double remainder_piece_area_mm2{0.0};
-    std::string rejection_reason;  // vide si valid
+    std::string rejection_reason; // vide si valid
     // Vrai si `distance_from_junction_um` vient de la famille §14
     // (JunctionSeparatorInfo, cf. `CutCandidateParams::junction_separators`)
     // plutot que du balayage regulier -- diagnostic uniquement (pour
@@ -43,8 +43,8 @@ struct CutCandidate {
 // dependance vers la generation/mesure). Par defaut (selecteur absent),
 // `split_region` retient le premier candidat valide (comportement des
 // phases 3/4, le plus proche de la jonction).
-using CutCandidateSelector =
-    std::function<std::optional<std::size_t>(const geometry::PathSet& piece, const std::vector<CutCandidate>& candidates)>;
+using CutCandidateSelector = std::function<std::optional<std::size_t>(
+    const geometry::PathSet& piece, const std::vector<CutCandidate>& candidates)>;
 
 struct CutCandidateParams {
     // Plage de distances depuis la jonction, le long de la branche a
@@ -61,7 +61,7 @@ struct CutCandidateParams {
     double search_min_um{300.0};
     double search_max_um{4000.0};
     double search_step_um{300.0};
-    Micrometers cut_width{20};  // meme defaut que geometry::cut_path_set
+    Micrometers cut_width{20}; // meme defaut que geometry::cut_path_set
     // Rejette une coupe qui produirait un fragment plus petit que ce seuil
     // (§13 : "piece extremement petite").
     double min_piece_area_mm2{0.3};
@@ -124,10 +124,10 @@ struct CutCandidateParams {
 // complet). Renvoie tous les candidats testes, dans l'ordre croissant de
 // distance -- `split_region` retient le premier valide, sauf si
 // `params.selector` (phase 6) en choisit un autre.
-[[nodiscard]] std::vector<CutCandidate> generate_cut_candidates(const geometry::PathSet& piece,
-                                                                  const SkeletonGraph& graph,
-                                                                  std::uint32_t junctionNode, std::uint32_t edgeId,
-                                                                  const CutCandidateParams& params = {});
+[[nodiscard]] std::vector<CutCandidate>
+generate_cut_candidates(const geometry::PathSet& piece, const SkeletonGraph& graph,
+                        std::uint32_t junctionNode, std::uint32_t edgeId,
+                        const CutCandidateParams& params = {});
 
 // Diagnostic d'un evenement de detachement (une jonction, une branche
 // detachee a cette jonction) : tous les candidats testes et lequel, le cas
@@ -136,7 +136,7 @@ struct CutAttempt {
     std::uint32_t junction{0};
     std::uint32_t edge{0};
     std::vector<CutCandidate> candidates;
-    std::optional<std::size_t> selected;  // index dans candidates
+    std::optional<std::size_t> selected; // index dans candidates
 };
 
 // Sous-region reelle issue du decoupage, associee au SatinPath dont elle est
@@ -167,10 +167,12 @@ struct MergeCandidate {
 };
 
 struct RegionSplitReport {
-    std::vector<SatinRegion> regions;           // une par SatinPath isole avec succes
-    std::vector<std::size_t> unresolved_paths;  // index de chemins non isoles (coupe impossible ou assignation ambigue)
-    std::vector<CutAttempt> cuts;               // un par evenement de detachement traite, dans l'ordre
-    std::vector<MergeCandidate> merge_candidates;  // paires de regions directement fusionnables (phase 7)
+    std::vector<SatinRegion> regions; // une par SatinPath isole avec succes
+    std::vector<std::size_t>
+        unresolved_paths; // index de chemins non isoles (coupe impossible ou assignation ambigue)
+    std::vector<CutAttempt> cuts; // un par evenement de detachement traite, dans l'ordre
+    std::vector<MergeCandidate>
+        merge_candidates; // paires de regions directement fusionnables (phase 7)
 };
 
 // Decoupe reellement `region` en sous-regions, une par SatinPath de
@@ -190,14 +192,15 @@ struct RegionSplitReport {
 // `merge_candidates` (phase 7) pour chaque coupe dont les deux resultats
 // sont restes des feuilles jusqu'a la fin. Ne genere aucune geometrie satin :
 // c'est un decoupage de polygone pur.
-[[nodiscard]] RegionSplitReport split_region(const geometry::PathSet& region, const SkeletonGraph& graph,
-                                              const DecompositionReport& decomposition,
-                                              const CutCandidateParams& params = {});
+[[nodiscard]] RegionSplitReport split_region(const geometry::PathSet& region,
+                                             const SkeletonGraph& graph,
+                                             const DecompositionReport& decomposition,
+                                             const CutCandidateParams& params = {});
 
 // Rendu textuel structure (evenements de detachement, candidats testes,
 // selection, regions resultantes) pour le debug -- meme convention que
 // `format_decomposition_report`.
 [[nodiscard]] std::string format_region_split_report(const RegionSplitReport& report,
-                                                      const DecompositionReport& decomposition);
+                                                     const DecompositionReport& decomposition);
 
-}  // namespace openstitch::satin_planning
+} // namespace openstitch::satin_planning

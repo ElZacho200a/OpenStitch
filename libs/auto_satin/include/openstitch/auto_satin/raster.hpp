@@ -13,8 +13,8 @@ namespace openstitch::auto_satin {
 // Transformation masque <-> coordonnées physiques (µm). Le pixel (0,0) est en
 // haut-gauche ; Y du modèle est vers le HAUT, donc row croissant = y décroissant.
 struct RasterTransform {
-    double min_x_um{0.0};   // µm du bord gauche (centre du pixel col=0)
-    double max_y_um{0.0};   // µm du bord haut (centre du pixel row=0)
+    double min_x_um{0.0}; // µm du bord gauche (centre du pixel col=0)
+    double max_y_um{0.0}; // µm du bord haut (centre du pixel row=0)
     double pixel_size_um{50.0};
 
     [[nodiscard]] Vec2um to_um(double col, double row) const {
@@ -46,9 +46,9 @@ struct RasterMask {
 };
 
 struct SkeletonRasterParameters {
-    Micrometers pixel_size{50};  // 0,05 mm par défaut
-    int max_dimension{1500};     // borne les dimensions du masque
-    int margin_px{2};            // marge autour de la forme
+    Micrometers pixel_size{50}; // 0,05 mm par défaut
+    int max_dimension{1500};    // borne les dimensions du masque
+    int margin_px{2};           // marge autour de la forme
 };
 
 // Rasterise une région (extérieur + trous) en masque binaire, à résolution
@@ -57,4 +57,4 @@ struct SkeletonRasterParameters {
 [[nodiscard]] Result<RasterMask> rasterize(const geometry::PathSet& region,
                                            const SkeletonRasterParameters& params);
 
-}  // namespace openstitch::auto_satin
+} // namespace openstitch::auto_satin

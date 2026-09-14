@@ -13,7 +13,7 @@ PathNode node(std::int32_t x, std::int32_t y) {
                     std::nullopt};
 }
 
-}  // namespace
+} // namespace
 
 TEST_CASE("simplify : points colineaires supprimes") {
     Path path;
@@ -39,8 +39,8 @@ TEST_CASE("simplify : ecart sous tolerance aplati, au-dessus conserve") {
     Path path;
     path.closed = false;
     path.nodes = {node(0, 0), node(5'000, 150), node(10'000, 0)};
-    CHECK(simplify(path, Micrometers{200}).nodes.size() == 2);  // 150 < 200 : aplati
-    CHECK(simplify(path, Micrometers{100}).nodes.size() == 3);  // 150 > 100 : conserve
+    CHECK(simplify(path, Micrometers{200}).nodes.size() == 2); // 150 < 200 : aplati
+    CHECK(simplify(path, Micrometers{100}).nodes.size() == 3); // 150 > 100 : conserve
 }
 
 TEST_CASE("simplify : chemin ferme, cas minimaux intacts") {
@@ -59,8 +59,8 @@ TEST_CASE("simplify : rectangle ferme bruite -> 4 coins") {
     Path path;
     path.closed = true;
     // Rectangle 10x6 mm avec un point intermediaire bruite (50 um) par cote.
-    path.nodes = {node(0, 0),      node(5'000, 50),     node(10'000, 0), node(10'000, 3'000),
-                  node(10'000, 6'000), node(5'000, 5'950), node(0, 6'000), node(0, 3'000)};
+    path.nodes = {node(0, 0),          node(5'000, 50),    node(10'000, 0), node(10'000, 3'000),
+                  node(10'000, 6'000), node(5'000, 5'950), node(0, 6'000),  node(0, 3'000)};
     const Path out = simplify(path, Micrometers{200});
     CHECK(out.nodes.size() == 4);
 }
@@ -69,7 +69,7 @@ TEST_CASE("aire signee : carre antihoraire positive") {
     Path square;
     square.closed = true;
     square.nodes = {node(0, 0), node(10'000, 0), node(10'000, 10'000), node(0, 10'000)};
-    CHECK(signed_area_um2(square) == 100'000'000.0);  // 10 mm x 10 mm en µm²
+    CHECK(signed_area_um2(square) == 100'000'000.0); // 10 mm x 10 mm en µm²
     std::reverse(square.nodes.begin(), square.nodes.end());
     CHECK(signed_area_um2(square) == -100'000'000.0);
 }

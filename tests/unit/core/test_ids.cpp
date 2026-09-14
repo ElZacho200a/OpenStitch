@@ -7,7 +7,8 @@
 
 using namespace openstitch;
 
-static_assert(!std::is_same_v<ObjectId, RegionId>, "les identifiants doivent être des types distincts");
+static_assert(!std::is_same_v<ObjectId, RegionId>,
+              "les identifiants doivent être des types distincts");
 
 TEST_CASE("id par defaut invalide, generateur monotone") {
     CHECK_FALSE(ObjectId{}.valid());

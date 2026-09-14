@@ -28,9 +28,9 @@
 #include "openstitch/commands/project_commands.hpp"
 #include "openstitch/document/project.hpp"
 #include "openstitch/stitch_generation/overrides.hpp"
-#include "workflow_panel.hpp"
 #include "properties_panel.hpp"
 #include "satin_guide_item.hpp"
+#include "workflow_panel.hpp"
 
 using openstitch::Micrometers;
 using openstitch::ObjectId;
@@ -72,15 +72,15 @@ Fixture buildFixture() {
     vec.name = "Triangle";
     openstitch::geometry::Path tri;
     tri.closed = true;
-    tri.nodes.push_back(openstitch::geometry::PathNode{
-        Vec2um{Micrometers{0}, Micrometers{0}}, openstitch::geometry::NodeType::Corner,
-        std::nullopt, std::nullopt});
-    tri.nodes.push_back(openstitch::geometry::PathNode{
-        Vec2um{Micrometers{1000}, Micrometers{0}}, openstitch::geometry::NodeType::Corner,
-        std::nullopt, std::nullopt});
-    tri.nodes.push_back(openstitch::geometry::PathNode{
-        Vec2um{Micrometers{0}, Micrometers{1000}}, openstitch::geometry::NodeType::Corner,
-        std::nullopt, std::nullopt});
+    tri.nodes.push_back(openstitch::geometry::PathNode{Vec2um{Micrometers{0}, Micrometers{0}},
+                                                       openstitch::geometry::NodeType::Corner,
+                                                       std::nullopt, std::nullopt});
+    tri.nodes.push_back(openstitch::geometry::PathNode{Vec2um{Micrometers{1000}, Micrometers{0}},
+                                                       openstitch::geometry::NodeType::Corner,
+                                                       std::nullopt, std::nullopt});
+    tri.nodes.push_back(openstitch::geometry::PathNode{Vec2um{Micrometers{0}, Micrometers{1000}},
+                                                       openstitch::geometry::NodeType::Corner,
+                                                       std::nullopt, std::nullopt});
     vec.paths.push_back(openstitch::geometry::PathSet{tri, {}});
     fx.vectorId = vec.id;
     fx.project.vector_objects.push_back(vec);
@@ -97,8 +97,7 @@ Fixture buildFixture() {
     seg.width = 1;
     seg.height = 1;
     seg.labels = {1};
-    seg.region_slots.push_back(
-        openstitch::segmentation::Region{RegionId{1}, {200, 30, 30}, 1});
+    seg.region_slots.push_back(openstitch::segmentation::Region{RegionId{1}, {200, 30, 30}, 1});
     fx.regionId = RegionId{1};
     fx.project.segmentation = std::move(seg);
 
@@ -136,7 +135,7 @@ Fixture buildRunningSquareFixture() {
     vec.name = "Square";
     openstitch::geometry::Path square;
     square.closed = true;
-    constexpr std::int32_t s = 10'000;  // 10 mm
+    constexpr std::int32_t s = 10'000; // 10 mm
     square.nodes = {
         {Vec2um{Micrometers{0}, Micrometers{0}}, openstitch::geometry::NodeType::Corner,
          std::nullopt, std::nullopt},
@@ -179,13 +178,13 @@ Fixture buildTShapeFixture() {
     openstitch::geometry::Path t;
     t.closed = true;
     const std::vector<std::pair<std::int32_t, std::int32_t>> pts = {
-        {13'000, 0},      {17'000, 0},      {17'000, 26'000}, {30'000, 26'000},
-        {30'000, 30'000}, {0, 30'000},      {0, 26'000},      {13'000, 26'000},
+        {13'000, 0},      {17'000, 0}, {17'000, 26'000}, {30'000, 26'000},
+        {30'000, 30'000}, {0, 30'000}, {0, 26'000},      {13'000, 26'000},
     };
     for (const auto& [x, y] : pts) {
-        t.nodes.push_back(openstitch::geometry::PathNode{
-            Vec2um{Micrometers{x}, Micrometers{y}}, openstitch::geometry::NodeType::Corner,
-            std::nullopt, std::nullopt});
+        t.nodes.push_back(openstitch::geometry::PathNode{Vec2um{Micrometers{x}, Micrometers{y}},
+                                                         openstitch::geometry::NodeType::Corner,
+                                                         std::nullopt, std::nullopt});
     }
     vec.paths.push_back(openstitch::geometry::PathSet{t, {}});
     fx.vectorId = vec.id;
@@ -218,9 +217,9 @@ Fixture buildPinchShapeFixture() {
         {0, -w}, {40'000, -w}, {40'000, w}, {25'000, w}, {20'000, -2'200}, {15'000, w}, {0, w},
     };
     for (const auto& [x, y] : pts) {
-        p.nodes.push_back(openstitch::geometry::PathNode{
-            Vec2um{Micrometers{x}, Micrometers{y}}, openstitch::geometry::NodeType::Corner,
-            std::nullopt, std::nullopt});
+        p.nodes.push_back(openstitch::geometry::PathNode{Vec2um{Micrometers{x}, Micrometers{y}},
+                                                         openstitch::geometry::NodeType::Corner,
+                                                         std::nullopt, std::nullopt});
     }
     vec.paths.push_back(openstitch::geometry::PathSet{p, {}});
     fx.vectorId = vec.id;
@@ -245,17 +244,17 @@ Fixture buildRunningRectangleFixture() {
     vec.name = "Rectangle";
     openstitch::geometry::Path rect;
     rect.closed = true;
-    constexpr std::int32_t w = 40'000;  // 40 mm
-    constexpr std::int32_t h = 5'000;   // 5 mm
+    constexpr std::int32_t w = 40'000; // 40 mm
+    constexpr std::int32_t h = 5'000;  // 5 mm
     rect.nodes = {
-        {Vec2um{Micrometers{0}, Micrometers{0}}, openstitch::geometry::NodeType::Corner, std::nullopt,
-         std::nullopt},
-        {Vec2um{Micrometers{w}, Micrometers{0}}, openstitch::geometry::NodeType::Corner, std::nullopt,
-         std::nullopt},
-        {Vec2um{Micrometers{w}, Micrometers{h}}, openstitch::geometry::NodeType::Corner, std::nullopt,
-         std::nullopt},
-        {Vec2um{Micrometers{0}, Micrometers{h}}, openstitch::geometry::NodeType::Corner, std::nullopt,
-         std::nullopt},
+        {Vec2um{Micrometers{0}, Micrometers{0}}, openstitch::geometry::NodeType::Corner,
+         std::nullopt, std::nullopt},
+        {Vec2um{Micrometers{w}, Micrometers{0}}, openstitch::geometry::NodeType::Corner,
+         std::nullopt, std::nullopt},
+        {Vec2um{Micrometers{w}, Micrometers{h}}, openstitch::geometry::NodeType::Corner,
+         std::nullopt, std::nullopt},
+        {Vec2um{Micrometers{0}, Micrometers{h}}, openstitch::geometry::NodeType::Corner,
+         std::nullopt, std::nullopt},
     };
     vec.paths.push_back(openstitch::geometry::PathSet{rect, {}});
     fx.vectorId = vec.id;
@@ -285,15 +284,13 @@ Fixture buildSatinGuideFixture(bool withStartJunction = false) {
                           {{Micrometers{10'000}, Micrometers{0}}}};
     satin.rail_b.nodes = {{{Micrometers{0}, Micrometers{4'000}}},
                           {{Micrometers{10'000}, Micrometers{4'000}}}};
-    satin.rungs = {{{Micrometers{0}, Micrometers{0}},
-                    {Micrometers{0}, Micrometers{4'000}}},
-                   {{Micrometers{5'000}, Micrometers{0}},
-                    {Micrometers{5'000}, Micrometers{4'000}}},
-                   {{Micrometers{10'000}, Micrometers{0}},
-                    {Micrometers{10'000}, Micrometers{4'000}}}};
+    satin.rungs = {
+        {{Micrometers{0}, Micrometers{0}}, {Micrometers{0}, Micrometers{4'000}}},
+        {{Micrometers{5'000}, Micrometers{0}}, {Micrometers{5'000}, Micrometers{4'000}}},
+        {{Micrometers{10'000}, Micrometers{0}}, {Micrometers{10'000}, Micrometers{4'000}}}};
     if (withStartJunction) {
-        satin.topology = openstitch::document::SatinSectionTopology{
-            0, 3, std::uint32_t{7}, std::nullopt};
+        satin.topology =
+            openstitch::document::SatinSectionTopology{0, 3, std::uint32_t{7}, std::nullopt};
     }
     openstitch::document::EmbroideryObject emb;
     emb.id = fx.project.object_ids.next();
@@ -312,15 +309,15 @@ Fixture buildSatinJunctionFixture() {
     auto& firstSatin = std::get<openstitch::document::SatinParams>(first.params);
     firstSatin.rungs[1].a.x = Micrometers{2'000};
     firstSatin.rungs[1].b.x = Micrometers{2'000};
-    firstSatin.topology = openstitch::document::SatinSectionTopology{
-        0, 2, std::uint32_t{7}, std::nullopt};
+    firstSatin.topology =
+        openstitch::document::SatinSectionTopology{0, 2, std::uint32_t{7}, std::nullopt};
 
     auto second = first;
     second.id = fx.project.object_ids.next();
     second.name = "Satin guides - branche 2";
     auto& secondSatin = std::get<openstitch::document::SatinParams>(second.params);
-    secondSatin.topology = openstitch::document::SatinSectionTopology{
-        1, 2, std::uint32_t{7}, std::nullopt};
+    secondSatin.topology =
+        openstitch::document::SatinSectionTopology{1, 2, std::uint32_t{7}, std::nullopt};
     fx.embroideryId2 = second.id;
     fx.project.embroidery_objects.push_back(std::move(second));
     return fx;
@@ -431,7 +428,7 @@ std::size_t firstMovableIndex(const openstitch::stitch_generation::ObjectEditVie
     return 0;
 }
 
-}  // namespace
+} // namespace
 
 namespace openstitch::desktop {
 
@@ -648,7 +645,7 @@ void MainWindowTest::clickingVectorObjectSyncsDocumentPanelAndInspector() {
 
     auto* createStitch = window.findChild<QAction*>(QStringLiteral("action_createStitch"));
     QVERIFY(createStitch != nullptr);
-    QVERIFY(createStitch->isEnabled());  // un objet vectoriel est sélectionné
+    QVERIFY(createStitch->isEnabled()); // un objet vectoriel est sélectionné
 }
 
 void MainWindowTest::regionAndVectorSelectionToggleContextActionsOppositely() {
@@ -665,16 +662,16 @@ void MainWindowTest::regionAndVectorSelectionToggleContextActionsOppositely() {
     QVERIFY(deleteRegion != nullptr);
     QVERIFY(createStitch != nullptr);
 
-    QVERIFY(!deleteRegion->isEnabled());  // rien de sélectionné au départ
+    QVERIFY(!deleteRegion->isEnabled()); // rien de sélectionné au départ
     QVERIFY(!createStitch->isEnabled());
 
     docPanel->regionSelected(fx.regionId);
     QVERIFY(deleteRegion->isEnabled());
-    QVERIFY(!createStitch->isEnabled());  // une région, pas un objet vectoriel
+    QVERIFY(!createStitch->isEnabled()); // une région, pas un objet vectoriel
 
-    view->canvasClickedMm(QPointF(0.25, -0.25));  // sélectionne le triangle
+    view->canvasClickedMm(QPointF(0.25, -0.25)); // sélectionne le triangle
     QVERIFY(createStitch->isEnabled());
-    QVERIFY(!deleteRegion->isEnabled());  // la sélection au canevas prime (cf. onCanvasClicked)
+    QVERIFY(!deleteRegion->isEnabled()); // la sélection au canevas prime (cf. onCanvasClicked)
 }
 
 void MainWindowTest::undoRedoRestoresDeletedRegionAndRefreshesDocumentPanel() {
@@ -696,7 +693,7 @@ void MainWindowTest::undoRedoRestoresDeletedRegionAndRefreshesDocumentPanel() {
     QVERIFY(!undoAction->isEnabled());
 
     deleteRegion->trigger();
-    QCOMPARE(regionsList(*docPanel)->count(), 0);  // la région a disparu de la liste
+    QCOMPARE(regionsList(*docPanel)->count(), 0); // la région a disparu de la liste
     QVERIFY(undoAction->isEnabled());
     QVERIFY(!redoAction->isEnabled());
 
@@ -727,10 +724,11 @@ void MainWindowTest::embroiderySelectionDoesNotLeakAcrossProjectLoadWithReusedId
 
     docPanel->embroiderySelected(fx1.embroideryId);
     QCOMPARE(objectsList(*docPanel)->currentItem(), objectsList(*docPanel)->topLevelItem(0));
-    QVERIFY(!propsPanel->findChildren<QDoubleSpinBox*>().isEmpty());  // inspecteur montre la broderie
+    QVERIFY(
+        !propsPanel->findChildren<QDoubleSpinBox*>().isEmpty()); // inspecteur montre la broderie
 
     const Fixture fx2 = buildFixture();
-    QCOMPARE(fx2.embroideryId.value, fx1.embroideryId.value);  // même ID recyclé, autre document
+    QCOMPARE(fx2.embroideryId.value, fx1.embroideryId.value); // même ID recyclé, autre document
     window.applyLoadedProject(fx2.project);
 
     // Rien n'a été sélectionné explicitement dans le nouveau projet : ni le
@@ -753,7 +751,7 @@ void MainWindowTest::stitchEditModeGatingTracksSelectionAndDirtyState() {
     QVERIFY(editAct != nullptr);
     QSignalSpy toggledSpy(editAct, &QAction::toggled);
 
-    QVERIFY(!editAct->isEnabled());  // rien de sélectionné au départ
+    QVERIFY(!editAct->isEnabled()); // rien de sélectionné au départ
     QVERIFY(!editAct->isChecked());
 
     window.selectedEmbroidery_ = fx.embroideryId;
@@ -795,7 +793,7 @@ void MainWindowTest::stitchEditModeGatingTracksSelectionAndDirtyState() {
     window.refreshImage();
     window.updateActions();
     QCOMPARE(window.editStateOf(fx.embroideryId), ObjectEditState::ManuallyEdited);
-    QVERIFY(editAct->isChecked());  // ManuallyEdited reste éditable
+    QVERIFY(editAct->isChecked()); // ManuallyEdited reste éditable
 
     window.undoStack_.execute(
         std::make_unique<openstitch::commands::SetStitchParamsCommand>(
@@ -805,8 +803,8 @@ void MainWindowTest::stitchEditModeGatingTracksSelectionAndDirtyState() {
     window.updateActions();
 
     QCOMPARE(window.editStateOf(fx.embroideryId), ObjectEditState::Dirty);
-    QVERIFY(!editAct->isChecked());   // sorti proprement, sans action utilisateur
-    QVERIFY(!editAct->isEnabled());   // reste désactivé tant que Dirty
+    QVERIFY(!editAct->isChecked()); // sorti proprement, sans action utilisateur
+    QVERIFY(!editAct->isEnabled()); // reste désactivé tant que Dirty
     QVERIFY(!window.stitchEditTarget_.has_value());
 }
 
@@ -834,7 +832,7 @@ void MainWindowTest::satinGuideModeMovesEndpointOnRailAndUndoRestoresIt() {
             handles.push_back(handle);
         }
     }
-    QCOMPARE(handles.size(), 6);  // deux extrémités pour chacun des trois guides
+    QCOMPARE(handles.size(), 6); // deux extrémités pour chacun des trois guides
     // Cadre de vue déterministe : la minuscule image factice ferait sinon
     // arrondir 1 mm à 0 px selon la géométrie de fenêtre restaurée.
     window.view_->resetTransform();
@@ -845,7 +843,7 @@ void MainWindowTest::satinGuideModeMovesEndpointOnRailAndUndoRestoresIt() {
                std::abs(handle->scenePos().y()) < 0.01;
     });
     QVERIFY(it != handles.end());
-    auto* first = *it;  // extrémité A du guide central, loin des bords de vue
+    auto* first = *it; // extrémité A du guide central, loin des bords de vue
     const QPoint start = window.view_->mapFromScene(first->scenePos());
     const int availableRight = window.view_->viewport()->width() - 1 - start.x();
     const int availableLeft = start.x();
@@ -992,7 +990,7 @@ void MainWindowTest::satinJunctionGuideIsLockedInUi() {
             junctionGuide = guide;
         }
     }
-    QCOMPARE(handleCount, 4);  // aucun handle sur le guide structurel de départ
+    QCOMPARE(handleCount, 4); // aucun handle sur le guide structurel de départ
     QVERIFY(junctionGuide != nullptr);
 
     window.view_->resetTransform();
@@ -1343,7 +1341,8 @@ void MainWindowTest::satinLinkedGuideEndpointDragWithoutShiftStaysLocal() {
     QCoreApplication::processEvents();
 }
 
-void MainWindowTest::dragFirstStitchHandle(MainWindow& window, ObjectId embroideryId, QPoint delta) {
+void MainWindowTest::dragFirstStitchHandle(MainWindow& window, ObjectId embroideryId,
+                                           QPoint delta) {
     window.selectedEmbroidery_ = embroideryId;
     window.updateActions();
 
@@ -1372,13 +1371,14 @@ void MainWindowTest::dragFirstStitchHandle(MainWindow& window, ObjectId embroide
 
     const auto* obj = window.project_.findEmbroidery(embroideryId);
     QVERIFY(obj != nullptr);
-    QCOMPARE(obj->overrides.size(), std::size_t(1));  // une seule commande pour tout le glisser
+    QCOMPARE(obj->overrides.size(), std::size_t(1)); // une seule commande pour tout le glisser
     QVERIFY(obj->overrides[0].moved_to.has_value());
-    const auto droppedOverride = obj->overrides[0];  // copie : comparée après undo/redo
+    const auto droppedOverride = obj->overrides[0]; // copie : comparée après undo/redo
 
     auto* docPanel = window.findChild<DocumentPanel*>();
     QVERIFY(docPanel != nullptr);
-    QVERIFY(objectsList(*docPanel)->topLevelItem(0)->toolTip(0).contains(QStringLiteral("Retouché")));
+    QVERIFY(
+        objectsList(*docPanel)->topLevelItem(0)->toolTip(0).contains(QStringLiteral("Retouché")));
 
     // Undo/redo exact : annuler retire la retouche entièrement (aucun résidu
     // partiel), rétablir restaure très exactement la même entrée.
@@ -1388,7 +1388,7 @@ void MainWindowTest::dragFirstStitchHandle(MainWindow& window, ObjectId embroide
     const auto* objAfterUndo = window.project_.findEmbroidery(embroideryId);
     QVERIFY(objAfterUndo != nullptr);
     QVERIFY(objAfterUndo->overrides.empty());
-    QVERIFY(!window.undoStack_.canUndo());  // une seule commande existait
+    QVERIFY(!window.undoStack_.canUndo()); // une seule commande existait
     QVERIFY(window.undoStack_.canRedo());
     QCOMPARE(window.editStateOf(embroideryId), ObjectEditState::Clean);
 
@@ -1400,7 +1400,7 @@ void MainWindowTest::dragFirstStitchHandle(MainWindow& window, ObjectId embroide
     QCOMPARE(objAfterRedo->overrides.size(), std::size_t(1));
     QCOMPARE(objAfterRedo->overrides[0].base_index, droppedOverride.base_index);
     QVERIFY(objAfterRedo->overrides[0].moved_to.has_value());
-    QVERIFY(*objAfterRedo->overrides[0].moved_to == *droppedOverride.moved_to);  // exact, pas approx
+    QVERIFY(*objAfterRedo->overrides[0].moved_to == *droppedOverride.moved_to); // exact, pas approx
     QCOMPARE(window.editStateOf(embroideryId), ObjectEditState::ManuallyEdited);
 }
 
@@ -1516,15 +1516,15 @@ void MainWindowTest::draggingHandleThenLoadingNewProjectDoesNotMutateIt() {
     // pas encore exécutée : on simule ici un changement de projet, avant
     // qu'elle ait pu tourner.
     const Fixture fx2 = buildRunningSquareFixture();
-    QCOMPARE(fx2.embroideryId.value, fx1.embroideryId.value);  // même id recyclé, autre document
+    QCOMPARE(fx2.embroideryId.value, fx1.embroideryId.value); // même id recyclé, autre document
     window.applyLoadedProject(fx2.project);
 
-    QTest::qWait(50);  // laisse le QTimer(0) en file se déclencher s'il le peut
+    QTest::qWait(50); // laisse le QTimer(0) en file se déclencher s'il le peut
 
     const auto* obj = window.project_.findEmbroidery(fx2.embroideryId);
     QVERIFY(obj != nullptr);
-    QVERIFY(obj->overrides.empty());        // la commande différée a été abandonnée
-    QVERIFY(!window.undoStack_.canUndo());  // aucune commande fantôme empilée
+    QVERIFY(obj->overrides.empty());       // la commande différée a été abandonnée
+    QVERIFY(!window.undoStack_.canUndo()); // aucune commande fantôme empilée
 }
 
 void MainWindowTest::discardingOverridesOnDirtyObjectIsUndoable() {
@@ -1541,11 +1541,11 @@ void MainWindowTest::discardingOverridesOnDirtyObjectIsUndoable() {
 
     const auto baseIndex = firstMovableIndex(*window.stitchEditView_);
     const Vec2um droppedPos{Micrometers{1'234}, Micrometers{5'678}};
-    window.undoStack_.execute(
-        std::make_unique<openstitch::commands::MoveStitchPointCommand>(
-            fx.embroideryId, baseIndex, droppedPos, window.stitchEditView_->fingerprint,
-            window.stitchEditView_->point_count),
-        window.project_);
+    window.undoStack_.execute(std::make_unique<openstitch::commands::MoveStitchPointCommand>(
+                                  fx.embroideryId, baseIndex, droppedPos,
+                                  window.stitchEditView_->fingerprint,
+                                  window.stitchEditView_->point_count),
+                              window.project_);
     window.refreshImage();
     window.updateActions();
     QCOMPARE(window.editStateOf(fx.embroideryId), ObjectEditState::ManuallyEdited);
@@ -1608,7 +1608,7 @@ void MainWindowTest::stitchEditModeRefusesWhenTooManyMovablePoints() {
     window.updateActions();
     auto* editAct = window.findChild<QAction*>(QStringLiteral("action_stitchEditMode"));
     QVERIFY(editAct != nullptr);
-    QVERIFY(editAct->isEnabled());  // Clean, sélectionné : activable a priori
+    QVERIFY(editAct->isEnabled()); // Clean, sélectionné : activable a priori
 
     editAct->setChecked(true);
 
@@ -1618,7 +1618,7 @@ void MainWindowTest::stitchEditModeRefusesWhenTooManyMovablePoints() {
     QVERIFY(!window.stitchEditTarget_.has_value());
     QVERIFY(!window.stitchEditView_.has_value());
     QVERIFY(window.statusBar()->currentMessage().contains(QStringLiteral("2000")));
-    QVERIFY(firstHandle(window.baseItems_) == nullptr);  // aucune poignée affichée
+    QVERIFY(firstHandle(window.baseItems_) == nullptr); // aucune poignée affichée
 }
 
 // --- Création manuelle de formes (mission « auto-satin béton », suite) ------
@@ -1732,9 +1732,13 @@ void MainWindowTest::createSatinObjectOnBranchedShapeProducesMultipleSatinSectio
     // reste une information interne, jamais une réponse finale « pas
     // satinable »). C'est le VRAI chemin UI (MainWindow::createSatinObject),
     // pas seulement satin_planning::create_satin_plan appelé directement.
-    const std::size_t createdCount = window.project_.embroidery_objects.size() - embroideryCountBefore;
-    QVERIFY2(createdCount >= 2, qPrintable(QStringLiteral("attendu >= 2 sections satin, obtenu %1").arg(createdCount)));
-    for (std::size_t i = embroideryCountBefore; i < window.project_.embroidery_objects.size(); ++i) {
+    const std::size_t createdCount =
+        window.project_.embroidery_objects.size() - embroideryCountBefore;
+    QVERIFY2(
+        createdCount >= 2,
+        qPrintable(QStringLiteral("attendu >= 2 sections satin, obtenu %1").arg(createdCount)));
+    for (std::size_t i = embroideryCountBefore; i < window.project_.embroidery_objects.size();
+         ++i) {
         const auto& emb = window.project_.embroidery_objects[i];
         QCOMPARE(emb.source_vector, fx.vectorId);
         QVERIFY(emb.is_satin());
@@ -1753,10 +1757,10 @@ void MainWindowTest::createSatinObjectOnBranchedShapeProducesMultipleSatinSectio
 
 void MainWindowTest::setStitchTypeSatinCaseProducesRealRailsAndIsUndoable() {
     MainWindow window;
-    const Fixture fx = buildRunningRectangleFixture();  // 40x5 mm, embroidery en contour
+    const Fixture fx = buildRunningRectangleFixture(); // 40x5 mm, embroidery en contour
     window.applyLoadedProject(fx.project);
 
-    window.setStitchType(fx.embroideryId, /*type=*/2);  // 2 = satin
+    window.setStitchType(fx.embroideryId, /*type=*/2); // 2 = satin
 
     const auto* emb = window.project_.findEmbroidery(fx.embroideryId);
     QVERIFY(emb != nullptr);
@@ -1796,12 +1800,15 @@ void MainWindowTest::createSatinObjectContinuePartialLeavesResidualUncovered() {
 
     // Satin créé (au moins une section), mais AUCUN objet tatami de repli :
     // le résidu reste honnêtement non couvert, comme le choix le demande.
-    const std::size_t createdCount = window.project_.embroidery_objects.size() - embroideryCountBefore;
+    const std::size_t createdCount =
+        window.project_.embroidery_objects.size() - embroideryCountBefore;
     QVERIFY(createdCount >= 1);
-    for (std::size_t i = embroideryCountBefore; i < window.project_.embroidery_objects.size(); ++i) {
+    for (std::size_t i = embroideryCountBefore; i < window.project_.embroidery_objects.size();
+         ++i) {
         QVERIFY(window.project_.embroidery_objects[i].is_satin());
     }
-    QCOMPARE(window.project_.vector_objects.size(), vectorCountBefore);  // aucun VectorObject de repli
+    QCOMPARE(window.project_.vector_objects.size(),
+             vectorCountBefore); // aucun VectorObject de repli
 
     QVERIFY(window.undoStack_.canUndo());
     window.undo();
@@ -1828,14 +1835,18 @@ void MainWindowTest::createSatinObjectUseTatamiFillsResidualWithFallback() {
     // (VectorObject + EmbroideryObject, même schéma que autodigitize.cpp).
     bool sawSatin = false;
     bool sawTatami = false;
-    for (std::size_t i = embroideryCountBefore; i < window.project_.embroidery_objects.size(); ++i) {
+    for (std::size_t i = embroideryCountBefore; i < window.project_.embroidery_objects.size();
+         ++i) {
         const auto& emb = window.project_.embroidery_objects[i];
-        if (emb.is_satin()) sawSatin = true;
-        if (emb.is_tatami()) sawTatami = true;
+        if (emb.is_satin())
+            sawSatin = true;
+        if (emb.is_tatami())
+            sawTatami = true;
     }
     QVERIFY(sawSatin);
     QVERIFY(sawTatami);
-    QVERIFY(window.project_.vector_objects.size() > vectorCountBefore);  // le VectorObject de repli existe
+    QVERIFY(window.project_.vector_objects.size() >
+            vectorCountBefore); // le VectorObject de repli existe
 
     // Un seul geste annulable : satin + tatami de repli disparaissent ensemble.
     QVERIFY(window.undoStack_.canUndo());
@@ -1866,7 +1877,8 @@ void MainWindowTest::createSatinObjectCancelLeavesDocumentUnchanged() {
     QCOMPARE(window.undoStack_.canUndo(), couldUndoBefore);
 }
 
-void MainWindowTest::workflowRegionsAndVectorsStepsReflectVectorObjectsWithoutClassicSegmentation() {
+void MainWindowTest::
+    workflowRegionsAndVectorsStepsReflectVectorObjectsWithoutClassicSegmentation() {
     MainWindow window;
     Fixture fx = buildFixture();
     // Simule le chemin « Segmenter avec l'IA » : un objet vectoriel existe
@@ -1880,8 +1892,8 @@ void MainWindowTest::workflowRegionsAndVectorsStepsReflectVectorObjectsWithoutCl
 
     auto* workflow = window.findChild<WorkflowPanel*>();
     QVERIFY(workflow != nullptr);
-    QCOMPARE(workflow->currentState(1), WorkflowPanel::State::Done);  // Régions
-    QCOMPARE(workflow->currentState(2), WorkflowPanel::State::Done);  // Vecteurs
+    QCOMPARE(workflow->currentState(1), WorkflowPanel::State::Done); // Régions
+    QCOMPARE(workflow->currentState(2), WorkflowPanel::State::Done); // Vecteurs
 }
 
 void MainWindowTest::draggingSelectedShapeBodyWithRealMouseTranslatesWholeObject() {
@@ -1896,19 +1908,23 @@ void MainWindowTest::draggingSelectedShapeBodyWithRealMouseTranslatesWholeObject
     geometry::Path outer;
     outer.closed = true;
     outer.nodes.push_back(geometry::PathNode{Vec2um{Micrometers{-5'000}, Micrometers{-5'000}},
-                                             geometry::NodeType::Corner, std::nullopt, std::nullopt});
+                                             geometry::NodeType::Corner, std::nullopt,
+                                             std::nullopt});
     outer.nodes.push_back(geometry::PathNode{Vec2um{Micrometers{5'000}, Micrometers{-5'000}},
-                                             geometry::NodeType::Corner, std::nullopt, std::nullopt});
+                                             geometry::NodeType::Corner, std::nullopt,
+                                             std::nullopt});
     outer.nodes.push_back(geometry::PathNode{Vec2um{Micrometers{5'000}, Micrometers{5'000}},
-                                             geometry::NodeType::Corner, std::nullopt, std::nullopt});
+                                             geometry::NodeType::Corner, std::nullopt,
+                                             std::nullopt});
     outer.nodes.push_back(geometry::PathNode{Vec2um{Micrometers{-5'000}, Micrometers{5'000}},
-                                             geometry::NodeType::Corner, std::nullopt, std::nullopt});
+                                             geometry::NodeType::Corner, std::nullopt,
+                                             std::nullopt});
     square.paths.push_back(geometry::PathSet{outer, {}});
     const ObjectId squareId = square.id;
     fx.project.vector_objects.push_back(square);
 
     window.applyLoadedProject(fx.project);
-    window.selectedObject_ = squareId;  // sélectionné -> corps glissable (VectorObjectBodyItem)
+    window.selectedObject_ = squareId; // sélectionné -> corps glissable (VectorObjectBodyItem)
     window.setTool(Tool::Select);
     window.refreshImage();
 
@@ -1935,7 +1951,7 @@ void MainWindowTest::draggingSelectedShapeBodyWithRealMouseTranslatesWholeObject
                             .arg((to - from).manhattanLength())));
 
     QCOMPARE(window.project_.findObject(squareId)->paths[0].outer.nodes[0].pos,
-            (Vec2um{Micrometers{-5'000}, Micrometers{-5'000}}));
+             (Vec2um{Micrometers{-5'000}, Micrometers{-5'000}}));
 
     QTest::mousePress(view->viewport(), Qt::LeftButton, Qt::NoModifier, from);
     QTest::mouseMove(view->viewport(), mid);
@@ -1959,10 +1975,10 @@ void MainWindowTest::draggingSelectedShapeBodyWithRealMouseTranslatesWholeObject
     QVERIFY(window.undoStack_.canUndo());
     window.undo();
     QCOMPARE(window.project_.findObject(squareId)->paths[0].outer.nodes[0].pos,
-            (Vec2um{Micrometers{-5'000}, Micrometers{-5'000}}));
+             (Vec2um{Micrometers{-5'000}, Micrometers{-5'000}}));
     window.redo();
     QCOMPARE(window.project_.findObject(squareId)->paths[0].outer.nodes[0].pos,
-            (Vec2um{Micrometers{-2'000}, Micrometers{-2'000}}));
+             (Vec2um{Micrometers{-2'000}, Micrometers{-2'000}}));
 }
 
 void MainWindowTest::draggingResizeHandleWithRealMouseScalesWholeObjectAroundOppositeCorner() {
@@ -1976,19 +1992,23 @@ void MainWindowTest::draggingResizeHandleWithRealMouseScalesWholeObjectAroundOpp
     geometry::Path outer;
     outer.closed = true;
     outer.nodes.push_back(geometry::PathNode{Vec2um{Micrometers{0}, Micrometers{0}},
-                                             geometry::NodeType::Corner, std::nullopt, std::nullopt});
+                                             geometry::NodeType::Corner, std::nullopt,
+                                             std::nullopt});
     outer.nodes.push_back(geometry::PathNode{Vec2um{Micrometers{10'000}, Micrometers{0}},
-                                             geometry::NodeType::Corner, std::nullopt, std::nullopt});
+                                             geometry::NodeType::Corner, std::nullopt,
+                                             std::nullopt});
     outer.nodes.push_back(geometry::PathNode{Vec2um{Micrometers{10'000}, Micrometers{10'000}},
-                                             geometry::NodeType::Corner, std::nullopt, std::nullopt});
+                                             geometry::NodeType::Corner, std::nullopt,
+                                             std::nullopt});
     outer.nodes.push_back(geometry::PathNode{Vec2um{Micrometers{0}, Micrometers{10'000}},
-                                             geometry::NodeType::Corner, std::nullopt, std::nullopt});
+                                             geometry::NodeType::Corner, std::nullopt,
+                                             std::nullopt});
     square.paths.push_back(geometry::PathSet{outer, {}});
     const ObjectId squareId = square.id;
     fx.project.vector_objects.push_back(square);
 
     window.applyLoadedProject(fx.project);
-    window.selectedObject_ = squareId;  // sélectionné -> poignées de redimensionnement visibles
+    window.selectedObject_ = squareId; // sélectionné -> poignées de redimensionnement visibles
     window.setTool(Tool::Select);
     window.refreshImage();
 
@@ -2000,7 +2020,7 @@ void MainWindowTest::draggingResizeHandleWithRealMouseScalesWholeObjectAroundOpp
 
     view->resetTransform();
     view->scale(10.0, 10.0);
-    view->centerOn(QPointF(5.0, -5.0));  // centre du carré en scène (Y vers le bas)
+    view->centerOn(QPointF(5.0, -5.0)); // centre du carré en scène (Y vers le bas)
 
     // Poignée au coin (10000,10000)µm = (10,-10) mm scène -- glissée jusqu'à
     // (20,-20) mm scène : double la taille, ancrée sur le coin opposé (0,0),
@@ -2024,17 +2044,18 @@ void MainWindowTest::draggingResizeHandleWithRealMouseScalesWholeObjectAroundOpp
                               (Vec2um{Micrometers{20'000}, Micrometers{20'000}}), 2000);
     const auto* scaled = window.project_.findObject(squareId);
     QVERIFY(scaled != nullptr);
-    QCOMPARE(scaled->paths[0].outer.nodes[0].pos, (Vec2um{Micrometers{0}, Micrometers{0}}));  // ancre fixe
+    QCOMPARE(scaled->paths[0].outer.nodes[0].pos,
+             (Vec2um{Micrometers{0}, Micrometers{0}})); // ancre fixe
     QCOMPARE(scaled->paths[0].outer.nodes[1].pos, (Vec2um{Micrometers{20'000}, Micrometers{0}}));
     QCOMPARE(scaled->paths[0].outer.nodes[3].pos, (Vec2um{Micrometers{0}, Micrometers{20'000}}));
 
     QVERIFY(window.undoStack_.canUndo());
     window.undo();
     QCOMPARE(window.project_.findObject(squareId)->paths[0].outer.nodes[2].pos,
-            (Vec2um{Micrometers{10'000}, Micrometers{10'000}}));
+             (Vec2um{Micrometers{10'000}, Micrometers{10'000}}));
     window.redo();
     QCOMPARE(window.project_.findObject(squareId)->paths[0].outer.nodes[2].pos,
-            (Vec2um{Micrometers{20'000}, Micrometers{20'000}}));
+             (Vec2um{Micrometers{20'000}, Micrometers{20'000}}));
 }
 
 void MainWindowTest::arrowKeyNudgesSelectedObjectByFixedStepAndShiftUsesBiggerStep() {
@@ -2046,13 +2067,17 @@ void MainWindowTest::arrowKeyNudgesSelectedObjectByFixedStepAndShiftUsesBiggerSt
     geometry::Path outer;
     outer.closed = true;
     outer.nodes.push_back(geometry::PathNode{Vec2um{Micrometers{-5'000}, Micrometers{-5'000}},
-                                             geometry::NodeType::Corner, std::nullopt, std::nullopt});
+                                             geometry::NodeType::Corner, std::nullopt,
+                                             std::nullopt});
     outer.nodes.push_back(geometry::PathNode{Vec2um{Micrometers{5'000}, Micrometers{-5'000}},
-                                             geometry::NodeType::Corner, std::nullopt, std::nullopt});
+                                             geometry::NodeType::Corner, std::nullopt,
+                                             std::nullopt});
     outer.nodes.push_back(geometry::PathNode{Vec2um{Micrometers{5'000}, Micrometers{5'000}},
-                                             geometry::NodeType::Corner, std::nullopt, std::nullopt});
+                                             geometry::NodeType::Corner, std::nullopt,
+                                             std::nullopt});
     outer.nodes.push_back(geometry::PathNode{Vec2um{Micrometers{-5'000}, Micrometers{5'000}},
-                                             geometry::NodeType::Corner, std::nullopt, std::nullopt});
+                                             geometry::NodeType::Corner, std::nullopt,
+                                             std::nullopt});
     square.paths.push_back(geometry::PathSet{outer, {}});
     const ObjectId squareId = square.id;
     fx.project.vector_objects.push_back(square);
@@ -2071,23 +2096,23 @@ void MainWindowTest::arrowKeyNudgesSelectedObjectByFixedStepAndShiftUsesBiggerSt
     // Droite, pas normal (0,1 mm) : x scène inchangé -> x modèle +100 µm.
     QTest::keyClick(view, Qt::Key_Right);
     QCOMPARE(window.project_.findObject(squareId)->paths[0].outer.nodes[0].pos,
-            (Vec2um{Micrometers{-4'900}, Micrometers{-5'000}}));
+             (Vec2um{Micrometers{-4'900}, Micrometers{-5'000}}));
 
     // Haut, pas normal : y scène décroît -> y modèle +100 µm (repère inversé).
     QTest::keyClick(view, Qt::Key_Up);
     QCOMPARE(window.project_.findObject(squareId)->paths[0].outer.nodes[0].pos,
-            (Vec2um{Micrometers{-4'900}, Micrometers{-4'900}}));
+             (Vec2um{Micrometers{-4'900}, Micrometers{-4'900}}));
 
     // Maj+Bas : grand pas (1 mm) -> y modèle -1000 µm.
     QTest::keyClick(view, Qt::Key_Down, Qt::ShiftModifier);
     QCOMPARE(window.project_.findObject(squareId)->paths[0].outer.nodes[0].pos,
-            (Vec2um{Micrometers{-4'900}, Micrometers{-5'900}}));
+             (Vec2um{Micrometers{-4'900}, Micrometers{-5'900}}));
 
     // Chaque appui pousse une commande distincte -- annulable individuellement.
     QVERIFY(window.undoStack_.canUndo());
     window.undo();
     QCOMPARE(window.project_.findObject(squareId)->paths[0].outer.nodes[0].pos,
-            (Vec2um{Micrometers{-4'900}, Micrometers{-4'900}}));
+             (Vec2um{Micrometers{-4'900}, Micrometers{-4'900}}));
 }
 
 void MainWindowTest::drawRectangleToolWithRealMouseDragOnMainWindowCreatesObject() {
@@ -2166,7 +2191,8 @@ void MainWindowTest::drawEllipseToolCreatesUndoableVectorObject() {
 
     const std::size_t before = window.project_.vector_objects.size();
     window.setTool(Tool::DrawEllipse);
-    view->boxDrawnMm(QRectF(0.0, -10.0, 20.0, 10.0), Qt::NoModifier);  // 20 x 10 mm -> rx=10, ry=5 mm
+    view->boxDrawnMm(QRectF(0.0, -10.0, 20.0, 10.0),
+                     Qt::NoModifier); // 20 x 10 mm -> rx=10, ry=5 mm
 
     QCOMPARE(window.project_.vector_objects.size(), before + 1);
     const auto& obj = window.project_.vector_objects.back();
@@ -2188,7 +2214,7 @@ void MainWindowTest::drawRegularPolygonToolCreatesUndoableVectorObjectWithConfig
     const std::size_t before = window.project_.vector_objects.size();
     window.setTool(Tool::DrawPolygonRegular);
     QVERIFY(window.polygonSidesSpin_ != nullptr);
-    window.polygonSidesSpin_->setValue(5);  // pentagone, pas la valeur par défaut (6)
+    window.polygonSidesSpin_->setValue(5); // pentagone, pas la valeur par défaut (6)
 
     // Cadre 10 x 10 mm, loin du triangle de buildFixture() (rayon d'accroche
     // max 2 mm, cf. findSnapPointMm) pour ne pas interférer avec les coins.
@@ -2228,13 +2254,17 @@ void MainWindowTest::offsetVectorObjectCoreShrinksIntoNewObjectWithoutTouchingOr
     geometry::Path outer;
     outer.closed = true;
     outer.nodes.push_back(geometry::PathNode{Vec2um{Micrometers{0}, Micrometers{0}},
-                                             geometry::NodeType::Corner, std::nullopt, std::nullopt});
+                                             geometry::NodeType::Corner, std::nullopt,
+                                             std::nullopt});
     outer.nodes.push_back(geometry::PathNode{Vec2um{Micrometers{10'000}, Micrometers{0}},
-                                             geometry::NodeType::Corner, std::nullopt, std::nullopt});
+                                             geometry::NodeType::Corner, std::nullopt,
+                                             std::nullopt});
     outer.nodes.push_back(geometry::PathNode{Vec2um{Micrometers{10'000}, Micrometers{10'000}},
-                                             geometry::NodeType::Corner, std::nullopt, std::nullopt});
+                                             geometry::NodeType::Corner, std::nullopt,
+                                             std::nullopt});
     outer.nodes.push_back(geometry::PathNode{Vec2um{Micrometers{0}, Micrometers{10'000}},
-                                             geometry::NodeType::Corner, std::nullopt, std::nullopt});
+                                             geometry::NodeType::Corner, std::nullopt,
+                                             std::nullopt});
     square.paths.push_back(geometry::PathSet{outer, {}});
     const ObjectId squareId = square.id;
     fx.project.vector_objects.push_back(square);
@@ -2284,13 +2314,17 @@ void MainWindowTest::offsetVectorObjectCoreTooLargeCreatesNothing() {
     geometry::Path outer;
     outer.closed = true;
     outer.nodes.push_back(geometry::PathNode{Vec2um{Micrometers{0}, Micrometers{0}},
-                                             geometry::NodeType::Corner, std::nullopt, std::nullopt});
+                                             geometry::NodeType::Corner, std::nullopt,
+                                             std::nullopt});
     outer.nodes.push_back(geometry::PathNode{Vec2um{Micrometers{10'000}, Micrometers{0}},
-                                             geometry::NodeType::Corner, std::nullopt, std::nullopt});
+                                             geometry::NodeType::Corner, std::nullopt,
+                                             std::nullopt});
     outer.nodes.push_back(geometry::PathNode{Vec2um{Micrometers{10'000}, Micrometers{10'000}},
-                                             geometry::NodeType::Corner, std::nullopt, std::nullopt});
+                                             geometry::NodeType::Corner, std::nullopt,
+                                             std::nullopt});
     outer.nodes.push_back(geometry::PathNode{Vec2um{Micrometers{0}, Micrometers{10'000}},
-                                             geometry::NodeType::Corner, std::nullopt, std::nullopt});
+                                             geometry::NodeType::Corner, std::nullopt,
+                                             std::nullopt});
     square.paths.push_back(geometry::PathSet{outer, {}});
     const ObjectId squareId = square.id;
     fx.project.vector_objects.push_back(square);
@@ -2300,7 +2334,7 @@ void MainWindowTest::offsetVectorObjectCoreTooLargeCreatesNothing() {
     // Retrait de 20 mm sur un carre de 10 mm de cote : consomme toute la forme.
     window.offsetVectorObjectCore(squareId, Micrometers{20'000});
 
-    QCOMPARE(window.project_.vector_objects.size(), before);  // rien de cree
+    QCOMPARE(window.project_.vector_objects.size(), before); // rien de cree
     QVERIFY(!window.undoStack_.canUndo());
 }
 
@@ -2341,10 +2375,10 @@ void MainWindowTest::drawEllipseWithShiftConstrainsToCircle() {
         if (first < 0.0) {
             first = d;
         } else {
-            QVERIFY(std::abs(d - first) < 5.0);  // tolérance arrondi µm
+            QVERIFY(std::abs(d - first) < 5.0); // tolérance arrondi µm
         }
     }
-    QVERIFY(first > 2'900.0 && first < 3'100.0);  // rayon attendu ~3 mm
+    QVERIFY(first > 2'900.0 && first < 3'100.0); // rayon attendu ~3 mm
 }
 
 void MainWindowTest::drawingTooSmallABoxCreatesNoObject() {
@@ -2356,7 +2390,8 @@ void MainWindowTest::drawingTooSmallABoxCreatesNoObject() {
 
     const std::size_t before = window.project_.vector_objects.size();
     window.setTool(Tool::DrawRectangle);
-    view->boxDrawnMm(QRectF(0.0, 0.0, 0.05, 0.05), Qt::NoModifier);  // très en dessous du seuil minimal
+    view->boxDrawnMm(QRectF(0.0, 0.0, 0.05, 0.05),
+                     Qt::NoModifier); // très en dessous du seuil minimal
 
     QCOMPARE(window.project_.vector_objects.size(), before);
     QVERIFY(!window.undoStack_.canUndo());
@@ -2383,14 +2418,13 @@ void MainWindowTest::drawPolygonSnapsToExistingVertexAndShowsIndicator() {
     // Le clic pose EXACTEMENT le sommet existant, pas la position brute.
     view->canvasClickedMm(QPointF(1.05, -0.03));
     QCOMPARE(window.pendingPolygonVertices_.size(), std::size_t{1});
-    QCOMPARE(window.pendingPolygonVertices_.back(),
-            (Vec2um{Micrometers{1000}, Micrometers{0}}));
+    QCOMPARE(window.pendingPolygonVertices_.back(), (Vec2um{Micrometers{1000}, Micrometers{0}}));
 
     // Loin de tout candidat (> 10 mm) : position brute conservée, pas d'accroche.
     view->canvasClickedMm(QPointF(50.0, 50.0));
     QCOMPARE(window.pendingPolygonVertices_.size(), std::size_t{2});
     QCOMPARE(window.pendingPolygonVertices_.back(),
-            (Vec2um{Micrometers{50'000}, Micrometers{-50'000}}));
+             (Vec2um{Micrometers{50'000}, Micrometers{-50'000}}));
 
     // Sortir de l'outil masque le repère, même sans mouvement de souris.
     window.setTool(Tool::Select);
@@ -2469,11 +2503,11 @@ void MainWindowTest::drawPolygonWithFewerThanThreeVerticesCancelsOnDoubleClick()
     const std::size_t before = window.project_.vector_objects.size();
     window.setTool(Tool::DrawPolygon);
     view->canvasClickedMm(QPointF(0.0, 0.0));
-    view->canvasClickedMm(QPointF(5.0, 0.0));  // seulement deux sommets
+    view->canvasClickedMm(QPointF(5.0, 0.0)); // seulement deux sommets
     view->canvasDoubleClickedMm(QPointF(5.0, 0.0));
 
-    QCOMPARE(window.project_.vector_objects.size(), before);  // rien créé
-    QVERIFY(window.pendingPolygonVertices_.empty());          // état nettoyé quand même
+    QCOMPARE(window.project_.vector_objects.size(), before); // rien créé
+    QVERIFY(window.pendingPolygonVertices_.empty());         // état nettoyé quand même
     QVERIFY(window.polygonPreviewItem_ == nullptr);
 }
 
@@ -2490,7 +2524,7 @@ void MainWindowTest::switchingToolDuringPolygonDrawCancelsIt() {
     QCOMPARE(window.pendingPolygonVertices_.size(), std::size_t{2});
     QVERIFY(window.polygonPreviewItem_ != nullptr);
 
-    window.setTool(Tool::Select);  // simule Échap / changement d'outil
+    window.setTool(Tool::Select); // simule Échap / changement d'outil
 
     QVERIFY(window.pendingPolygonVertices_.empty());
     QVERIFY(window.polygonPreviewItem_ == nullptr);
@@ -2512,7 +2546,7 @@ void MainWindowTest::polygonDoubleClickDoesNotAddADuplicateVertex() {
     // simple, quasi au même point que le dernier sommet posé -- doit être
     // ignoré (cf. onCanvasClicked) pour ne pas poser un sommet fantôme.
     view->canvasClickedMm(QPointF(10.0, -10.0));
-    QCOMPARE(window.pendingPolygonVertices_.size(), std::size_t{3});  // pas 4
+    QCOMPARE(window.pendingPolygonVertices_.size(), std::size_t{3}); // pas 4
     view->canvasDoubleClickedMm(QPointF(10.0, -10.0));
 
     QCOMPARE(window.project_.vector_objects.size(), before + 1);
@@ -2541,10 +2575,9 @@ void MainWindowTest::drawFreeformCreatesUndoableVectorObject() {
     // souris réel, un point par évènement de déplacement) : la simplification
     // doit les absorber et ne garder que les coins.
     const std::vector<QPointF> stroke = {
-        {0, 0},   {2, 0},   {4, 0},   {6, 0},   {8, 0},   {10, 0},
-        {10, -2}, {10, -4}, {10, -6}, {10, -8}, {10, -10},
-        {8, -10}, {6, -10}, {4, -10}, {2, -10}, {0, -10},
-        {0, -8},  {0, -6},  {0, -4},  {0, -2},
+        {0, 0},   {2, 0},   {4, 0},   {6, 0},    {8, 0},   {10, 0},  {10, -2},
+        {10, -4}, {10, -6}, {10, -8}, {10, -10}, {8, -10}, {6, -10}, {4, -10},
+        {2, -10}, {0, -10}, {0, -8},  {0, -6},   {0, -4},  {0, -2},
     };
     for (const auto& p : stroke) {
         view->freeformPointMm(p);
@@ -2586,11 +2619,11 @@ void MainWindowTest::drawFreeformWithTooFewPointsCancelsOnRelease() {
     const std::size_t before = window.project_.vector_objects.size();
     window.setTool(Tool::DrawFreeform);
     view->freeformPointMm(QPointF(0.0, 0.0));
-    view->freeformPointMm(QPointF(1.0, 0.0));  // seulement deux points
+    view->freeformPointMm(QPointF(1.0, 0.0)); // seulement deux points
     view->freeformStrokeFinished();
 
-    QCOMPARE(window.project_.vector_objects.size(), before);  // rien créé
-    QVERIFY(window.pendingFreeformPoints_.empty());           // état nettoyé quand même
+    QCOMPARE(window.project_.vector_objects.size(), before); // rien créé
+    QVERIFY(window.pendingFreeformPoints_.empty());          // état nettoyé quand même
     QVERIFY(window.freeformPreviewItem_ == nullptr);
 }
 
@@ -2607,7 +2640,7 @@ void MainWindowTest::switchingToolDuringFreeformDrawCancelsIt() {
     QCOMPARE(window.pendingFreeformPoints_.size(), std::size_t{2});
     QVERIFY(window.freeformPreviewItem_ != nullptr);
 
-    window.setTool(Tool::Select);  // simule Échap / changement d'outil
+    window.setTool(Tool::Select); // simule Échap / changement d'outil
 
     QVERIFY(window.pendingFreeformPoints_.empty());
     QVERIFY(window.freeformPreviewItem_ == nullptr);
@@ -2641,7 +2674,7 @@ void MainWindowTest::manualSatinColumnCreatesRailsAndRungsFromAlternatingPairs()
     view->canvasDoubleClickedMm(QPointF(10.0, -4.0));
 
     QCOMPARE(window.project_.embroidery_objects.size(), embBefore + 1);
-    QCOMPARE(window.project_.vector_objects.size(), vecBefore + 1);  // contour source synthétique
+    QCOMPARE(window.project_.vector_objects.size(), vecBefore + 1); // contour source synthétique
     QVERIFY(window.pendingSatinPoints_.empty());
     QVERIFY(window.satinPreviewItem_ == nullptr);
 
@@ -2690,15 +2723,15 @@ void MainWindowTest::manualSatinColumnDropsOrphanPointOnOddCountAtFinish() {
     view->canvasClickedMm(QPointF(0.0, -4.0));
     view->canvasClickedMm(QPointF(10.0, 0.0));
     view->canvasClickedMm(QPointF(10.0, -4.0));
-    view->canvasClickedMm(QPointF(20.0, 0.0));  // A3 orphelin
+    view->canvasClickedMm(QPointF(20.0, 0.0)); // A3 orphelin
     QCOMPARE(window.pendingSatinPoints_.size(), std::size_t{5});
 
     window.finishSatinColumn();
 
     QCOMPARE(window.project_.embroidery_objects.size(), embBefore + 1);
-    const auto& satin =
-        std::get<openstitch::document::SatinParams>(window.project_.embroidery_objects.back().params);
-    QCOMPARE(satin.rungs.size(), std::size_t{2});  // le point orphelin n'a pas créé de 3e paire
+    const auto& satin = std::get<openstitch::document::SatinParams>(
+        window.project_.embroidery_objects.back().params);
+    QCOMPARE(satin.rungs.size(), std::size_t{2}); // le point orphelin n'a pas créé de 3e paire
     QVERIFY(window.pendingSatinPoints_.empty());
 }
 
@@ -2715,11 +2748,11 @@ void MainWindowTest::switchingToolDuringSatinColumnDrawCancelsIt() {
     QCOMPARE(window.pendingSatinPoints_.size(), std::size_t{2});
     QVERIFY(window.satinPreviewItem_ != nullptr);
 
-    window.setTool(Tool::Select);  // simule Échap / changement d'outil
+    window.setTool(Tool::Select); // simule Échap / changement d'outil
 
     QVERIFY(window.pendingSatinPoints_.empty());
     QVERIFY(window.satinPreviewItem_ == nullptr);
-    QVERIFY(!window.undoStack_.canUndo());  // rien n'a été créé
+    QVERIFY(!window.undoStack_.canUndo()); // rien n'a été créé
 }
 
 void MainWindowTest::satinRailEditModeDragsNodeAndUndoRestoresIt() {
@@ -2756,7 +2789,7 @@ void MainWindowTest::satinRailEditModeDragsNodeAndUndoRestoresIt() {
         return std::abs(handle->scenePos().x()) < 0.01 && std::abs(handle->scenePos().y()) < 0.01;
     });
     QVERIFY(it != handles.end());
-    auto* first = *it;  // noeud de départ du rail A, en (0,0)
+    auto* first = *it; // noeud de départ du rail A, en (0,0)
 
     const QPoint start = window.view_->mapFromScene(first->scenePos());
     const int availableRight = window.view_->viewport()->width() - 1 - start.x();
@@ -2807,8 +2840,8 @@ void MainWindowTest::satinCutLineToolSplitsSelectedShapeIntoTwoSatinColumns() {
     geometry::Path outer;
     outer.closed = true;
     const auto corner = [](std::int32_t x, std::int32_t y) {
-        return geometry::PathNode{Vec2um{Micrometers{x}, Micrometers{y}}, geometry::NodeType::Corner,
-                                  std::nullopt, std::nullopt};
+        return geometry::PathNode{Vec2um{Micrometers{x}, Micrometers{y}},
+                                  geometry::NodeType::Corner, std::nullopt, std::nullopt};
     };
     outer.nodes = {corner(-20'000, -2'000), corner(20'000, -2'000), corner(20'000, 2'000),
                    corner(-20'000, 2'000)};
@@ -2935,7 +2968,7 @@ void MainWindowTest::bezierToolDragCreatesSmoothNodeWithSymmetricHandles() {
     view->centerOn(QPointF(0.0, 0.0));
 
     const QPoint anchorVp = view->mapFromScene(QPointF(0.0, 0.0));
-    const QPoint handleVp = anchorVp + QPoint(40, 0);  // glisser net, bien au-dessus du seuil
+    const QPoint handleVp = anchorVp + QPoint(40, 0); // glisser net, bien au-dessus du seuil
     QTest::mousePress(view->viewport(), Qt::LeftButton, Qt::NoModifier, anchorVp);
     QTest::mouseMove(view->viewport(), anchorVp + QPoint(20, 0));
     QTest::mouseMove(view->viewport(), handleVp);
@@ -2949,7 +2982,7 @@ void MainWindowTest::bezierToolDragCreatesSmoothNodeWithSymmetricHandles() {
     // Poignées symétriques : tan_in = -tan_out exactement.
     QCOMPARE(node.tan_in->x.value, -node.tan_out->x.value);
     QCOMPARE(node.tan_in->y.value, -node.tan_out->y.value);
-    QVERIFY(node.tan_out->x.value > 0);  // glissé vers la droite
+    QVERIFY(node.tan_out->x.value > 0); // glissé vers la droite
 
     window.cancelBezierDraw();
     QVERIFY(window.pendingBezierNodes_.empty());
@@ -2965,7 +2998,7 @@ void MainWindowTest::finishDrawActionAndEnterKeyBothClosePolygon() {
 
     const std::size_t before = window.project_.vector_objects.size();
     window.setTool(Tool::DrawPolygon);
-    QVERIFY(!window.finishDrawAct_->isEnabled());  // rien tracé encore
+    QVERIFY(!window.finishDrawAct_->isEnabled()); // rien tracé encore
 
     view->canvasClickedMm(QPointF(0.0, 0.0));
     view->canvasClickedMm(QPointF(10.0, 0.0));
@@ -3012,7 +3045,8 @@ void MainWindowTest::deleteVectorObjectRemovesShapeAndDependentEmbroidery() {
     window.deleteVectorObject(fx.vectorId);
 
     QCOMPARE(window.project_.vector_objects.size(), vecBefore - 1);
-    QCOMPARE(window.project_.embroidery_objects.size(), embBefore - 1);  // broderie liee partie aussi
+    QCOMPARE(window.project_.embroidery_objects.size(),
+             embBefore - 1); // broderie liee partie aussi
     QVERIFY(window.project_.findObject(fx.vectorId) == nullptr);
     QVERIFY(window.project_.findEmbroidery(fx.embroideryId) == nullptr);
     QCOMPARE(QString::fromStdString(window.undoStack_.undoName()),
@@ -3039,7 +3073,7 @@ void MainWindowTest::duplicateVectorObjectOffsetsCopyAndIsUndoable() {
     QCOMPARE(window.project_.vector_objects.size(), before + 1);
     const auto& copy = window.project_.vector_objects.back();
     QVERIFY(copy.id.value != fx.vectorId.value);
-    QVERIFY(copy.paths[0].outer.nodes[0].pos != originalFirstNode);  // décalée, pas superposée
+    QVERIFY(copy.paths[0].outer.nodes[0].pos != originalFirstNode); // décalée, pas superposée
     QVERIFY(window.selectedObject_.has_value());
     QCOMPARE(window.selectedObject_->value, copy.id.value);
 
@@ -3079,7 +3113,7 @@ void MainWindowTest::emptyStateHidesOnceContentExistsEvenWithoutImage() {
     QVERIFY(window.emptyState_ != nullptr);
     QVERIFY(!window.project_.hasImage());
     window.updateActions();
-    QVERIFY(window.emptyState_->isVisible());  // aucun contenu -> pastille visible
+    QVERIFY(window.emptyState_->isVisible()); // aucun contenu -> pastille visible
 
     // Dessine un rectangle SANS jamais ouvrir d'image : flux purement
     // vectoriel valide (canevas par défaut 100x100 mm, cf. document::Canvas).
@@ -3089,11 +3123,11 @@ void MainWindowTest::emptyStateHidesOnceContentExistsEvenWithoutImage() {
     view->boxDrawnMm(QRectF(0.0, 0.0, 10.0, 10.0), Qt::NoModifier);
 
     QVERIFY(!window.project_.vector_objects.empty());
-    QVERIFY(!window.project_.hasImage());  // toujours aucune image
-    QVERIFY(!window.emptyState_->isVisible());  // mais la pastille s'est effacée
+    QVERIFY(!window.project_.hasImage());      // toujours aucune image
+    QVERIFY(!window.emptyState_->isVisible()); // mais la pastille s'est effacée
 }
 
-}  // namespace openstitch::desktop
+} // namespace openstitch::desktop
 
 QTEST_MAIN(openstitch::desktop::MainWindowTest)
 #include "test_main_window.moc"

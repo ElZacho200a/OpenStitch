@@ -8,4 +8,4 @@ namespace openstitch {
 inline constexpr const char* kAppName = "OpenStitch Studio";
 inline constexpr const char* kAppVersion = "0.1.0";
 
-}  // namespace openstitch
+} // namespace openstitch

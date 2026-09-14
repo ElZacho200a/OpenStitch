@@ -10,11 +10,16 @@ namespace openstitch::auto_satin {
 
 const char* to_string(SatinabilityStatus s) {
     switch (s) {
-    case SatinabilityStatus::Suitable: return "Suitable";
-    case SatinabilityStatus::SuitableWithWarnings: return "SuitableWithWarnings";
-    case SatinabilityStatus::RequiresDecomposition: return "RequiresDecomposition";
-    case SatinabilityStatus::Ambiguous: return "Ambiguous";
-    case SatinabilityStatus::Unsuitable: return "Unsuitable";
+    case SatinabilityStatus::Suitable:
+        return "Suitable";
+    case SatinabilityStatus::SuitableWithWarnings:
+        return "SuitableWithWarnings";
+    case SatinabilityStatus::RequiresDecomposition:
+        return "RequiresDecomposition";
+    case SatinabilityStatus::Ambiguous:
+        return "Ambiguous";
+    case SatinabilityStatus::Unsuitable:
+        return "Unsuitable";
     }
     return "?";
 }
@@ -134,4 +139,4 @@ SatinabilityReport evaluate_satinability(const geometry::PathSet& region,
     return r;
 }
 
-}  // namespace openstitch::auto_satin
+} // namespace openstitch::auto_satin

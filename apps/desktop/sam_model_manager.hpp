@@ -11,7 +11,7 @@ namespace openstitch::desktop {
 struct InstalledModelInfo {
     ai_segmentation::ModelId id{ai_segmentation::ModelId::Tiny};
     bool installed{false};
-    QString checkpointPath;  // chemin Windows attendu, existant ou non
+    QString checkpointPath; // chemin Windows attendu, existant ou non
     qint64 fileSizeBytes{0};
 };
 
@@ -34,4 +34,4 @@ private:
     QString modelsDir_;
 };
 
-}  // namespace openstitch::desktop
+} // namespace openstitch::desktop

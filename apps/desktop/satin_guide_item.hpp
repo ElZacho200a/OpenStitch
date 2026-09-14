@@ -25,7 +25,7 @@ public:
         path.moveTo(line().p1());
         path.lineTo(line().p2());
         QPainterPathStroker stroker;
-        stroker.setWidth(1.0);  // 1 mm de tolérance de sélection
+        stroker.setWidth(1.0); // 1 mm de tolérance de sélection
         return stroker.createStroke(path);
     }
 
@@ -41,4 +41,4 @@ private:
     std::function<void()> onSelected_;
 };
 
-}  // namespace openstitch::desktop
+} // namespace openstitch::desktop

@@ -52,4 +52,4 @@ struct Polyline {
 // géométriquement séparés.
 [[nodiscard]] bool polylines_cross(const std::vector<Vec2um>& a, const std::vector<Vec2um>& b);
 
-}  // namespace openstitch::geometry
+} // namespace openstitch::geometry

@@ -34,8 +34,8 @@ public:
     // + infobulle sur la ligne correspondante. Vide par défaut (rétrocompatible
     // avec les appels existants qui ne connaissent pas cet état).
     void refresh(const document::Project& project,
-                const std::vector<std::pair<ObjectId, stitch_generation::ObjectEditState>>&
-                    editStates = {});
+                 const std::vector<std::pair<ObjectId, stitch_generation::ObjectEditState>>&
+                     editStates = {});
     // Sélectionne la ligne correspondant à la sélection courante (sans réémettre).
     void syncSelection(Kind kind, std::uint64_t id);
 
@@ -53,7 +53,7 @@ private:
     // visuellement identique à l'ancienne liste plate.
     QTreeWidget* objectsList_{nullptr};
     QListWidget* regionsList_{nullptr};
-    bool syncing_{false};  // évite la boucle sélection -> signal -> sélection
+    bool syncing_{false}; // évite la boucle sélection -> signal -> sélection
 };
 
-}  // namespace openstitch::desktop
+} // namespace openstitch::desktop

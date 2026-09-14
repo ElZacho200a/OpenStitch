@@ -10,4 +10,4 @@ namespace openstitch::auto_satin {
 // Déterministe. Le résultat est un RasterMask (1 = pixel de squelette).
 [[nodiscard]] RasterMask thin_zhang_suen(const RasterMask& mask);
 
-}  // namespace openstitch::auto_satin
+} // namespace openstitch::auto_satin

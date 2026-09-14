@@ -52,7 +52,7 @@ double net_area_um2(const geometry::PathSet& set) {
 // Même principe que le recouvrement de jonction (`extend_into_confluence`,
 // libs/auto_satin) et la pratique standard du métier (chevaucher plutôt que
 // raccorder pile, cf. audit Wilcom Hatch — Column B/miter joints, docs/source/satin.md).
-constexpr Micrometers kCoverageOverlap{400};  // 0,4 mm
+constexpr Micrometers kCoverageOverlap{400}; // 0,4 mm
 
 std::vector<geometry::Path> shrink_strips_for_cutout(const std::vector<geometry::Path>& strips) {
     std::vector<geometry::Path> out;
@@ -61,18 +61,19 @@ std::vector<geometry::Path> shrink_strips_for_cutout(const std::vector<geometry:
         const auto shrunk =
             geometry::inset_path_set(geometry::PathSet{strip, {}}, kCoverageOverlap);
         if (shrunk && !shrunk->empty()) {
-            for (const auto& piece : *shrunk) out.push_back(piece.outer);
+            for (const auto& piece : *shrunk)
+                out.push_back(piece.outer);
         } else {
-            out.push_back(strip);  // repli : bande non rétrécie plutôt qu'absente
+            out.push_back(strip); // repli : bande non rétrécie plutôt qu'absente
         }
     }
     return out;
 }
 
-}  // namespace
+} // namespace
 
-Result<AutoResult> auto_digitize(const segmentation::Segmentation& seg,
-                                 IdGenerator<ObjectId>& ids, const AutoOptions& options) {
+Result<AutoResult> auto_digitize(const segmentation::Segmentation& seg, IdGenerator<ObjectId>& ids,
+                                 const AutoOptions& options) {
     AutoResult result;
 
     // Régions vivantes, triées par identifiant pour un résultat déterministe.
@@ -119,7 +120,7 @@ Result<AutoResult> auto_digitize(const segmentation::Segmentation& seg,
         }
         auto sets = vectorization::vectorize_region(seg, id, vecOpts);
         if (!sets || sets->empty()) {
-            continue;  // région non vectorisable : ignorée sans erreur
+            continue; // région non vectorisable : ignorée sans erreur
         }
 
         // Objet vectoriel (toujours créé : c'est la géométrie éditable).
@@ -133,13 +134,14 @@ Result<AutoResult> auto_digitize(const segmentation::Segmentation& seg,
         result.vectors.push_back(std::move(vec));
 
         // Choix du type de point selon la forme du plus grand morceau.
-        const geometry::PathSet& main = *std::max_element(
-            sets->begin(), sets->end(), [](const auto& a, const auto& b) {
+        const geometry::PathSet& main =
+            *std::max_element(sets->begin(), sets->end(), [](const auto& a, const auto& b) {
                 return net_area_um2(a) < net_area_um2(b);
             });
         const double areaMm2 = net_area_um2(main) / 1e6;
         double perim = perimeter_um(main.outer);
-        for (const auto& hole : main.holes) perim += perimeter_um(hole);
+        for (const auto& hole : main.holes)
+            perim += perimeter_um(hole);
         const double meanWidthUm = perim > 0.0 ? 2.0 * net_area_um2(main) / perim : 0.0;
 
         document::EmbroideryObject emb;
@@ -178,8 +180,9 @@ Result<AutoResult> auto_digitize(const segmentation::Segmentation& seg,
             // branchée, repli interne sur l'appel direct sinon -- mêmes
             // garanties de couverture partout (§ build_satin_sections).
             satin_planning::SatinBuildReport built = satin_planning::build_satin_sections(
-                main, satinOptions, defaults.density, defaults.pull_compensation, defaults.center_underlay,
-                options.satin_max_width, "Région " + std::to_string(id.value));
+                main, satinOptions, defaults.density, defaults.pull_compensation,
+                defaults.center_underlay, options.satin_max_width,
+                "Région " + std::to_string(id.value));
             for (auto& w : built.warnings) {
                 result.warnings.push_back(std::move(w));
             }
@@ -229,7 +232,8 @@ Result<AutoResult> auto_digitize(const segmentation::Segmentation& seg,
                              << (built.aggregate_coverage->raw_coverage_ratio * 100.0)
                              << "% de la région couverte par le satin, "
                              << built.aggregate_coverage->missing_area_mm2
-                             << " mm² comblés par un remplissage tatami de repli (classification automatique)";
+                             << " mm² comblés par un remplissage tatami de repli (classification "
+                                "automatique)";
                         result.warnings.push_back(diag.str());
                     }
                     // Seuil délibérément bas et INDÉPENDANT de
@@ -241,11 +245,12 @@ Result<AutoResult> auto_digitize(const segmentation::Segmentation& seg,
                     // sous couvert d'être "trop petits", alors que l'objectif
                     // explicite est de ne JAMAIS laisser de zone sans point).
                     constexpr double kMinFallbackAreaMm2 = 0.5;
-                    const auto leftover = geometry::subtract_polygons(main, shrink_strips_for_cutout(strips));
+                    const auto leftover =
+                        geometry::subtract_polygons(main, shrink_strips_for_cutout(strips));
                     if (leftover) {
                         for (const auto& piece : *leftover) {
                             if (net_area_um2(piece) / 1e6 < kMinFallbackAreaMm2) {
-                                continue;  // reliquat négligeable (bruit d'arrondi géométrique)
+                                continue; // reliquat négligeable (bruit d'arrondi géométrique)
                             }
                             document::VectorObject fallbackVec;
                             fallbackVec.id = ids.next();
@@ -311,4 +316,4 @@ Result<AutoResult> auto_digitize(const segmentation::Segmentation& seg,
     return result;
 }
 
-}  // namespace openstitch::autodigitize
+} // namespace openstitch::autodigitize

@@ -26,4 +26,4 @@ Result<AutoSatinAnalysis> analyze_region(const geometry::PathSet& region,
     return out;
 }
 
-}  // namespace openstitch::auto_satin
+} // namespace openstitch::auto_satin

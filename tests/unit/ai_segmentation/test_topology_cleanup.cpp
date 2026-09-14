@@ -25,14 +25,14 @@ Segmentation makeSegmentation(int w, int h, std::vector<std::uint32_t> labels,
     return seg;
 }
 
-}  // namespace
+} // namespace
 
 TEST_CASE("cleanup_topology absorbs a tiny isolated island into its only neighbor") {
     // 5x5 : tout en label 1, sauf un pixel isole en label 2 au centre.
     constexpr int w = 5;
     constexpr int h = 5;
     std::vector<std::uint32_t> labels(static_cast<std::size_t>(w * h), 1);
-    labels[2 * w + 2] = 2;  // (2,2)
+    labels[2 * w + 2] = 2; // (2,2)
     Segmentation seg = makeSegmentation(w, h, labels, 2);
 
     TopologyCleanupOptions options;
@@ -44,8 +44,8 @@ TEST_CASE("cleanup_topology absorbs a tiny isolated island into its only neighbo
     const auto result = cleanup_topology(seg, options);
     REQUIRE(result.has_value());
     CHECK(result->tiny_island_count == 1);
-    CHECK(seg.labels[2 * w + 2] == 1);        // absorbe dans la seule region voisine
-    CHECK(seg.find(RegionId{2}) == nullptr);  // slot purge (0 pixel restant)
+    CHECK(seg.labels[2 * w + 2] == 1);       // absorbe dans la seule region voisine
+    CHECK(seg.find(RegionId{2}) == nullptr); // slot purge (0 pixel restant)
     CHECK(seg.find(RegionId{1})->pixel_count == 25);
     CHECK(result->label_count == 1);
     CHECK(result->ready_for_vectorization);
@@ -55,7 +55,7 @@ TEST_CASE("cleanup_topology fills a tiny fully-enclosed hole") {
     constexpr int w = 5;
     constexpr int h = 5;
     std::vector<std::uint32_t> labels(static_cast<std::size_t>(w * h), 1);
-    labels[1 * w + 1] = 0;  // (1,1) : trou entoure de label 1 de toutes parts
+    labels[1 * w + 1] = 0; // (1,1) : trou entoure de label 1 de toutes parts
     Segmentation seg = makeSegmentation(w, h, labels, 1);
 
     TopologyCleanupOptions options;
@@ -78,15 +78,13 @@ TEST_CASE("cleanup_topology reports an ambiguous hole touching two different reg
     constexpr int w = 3;
     constexpr int h = 3;
     std::vector<std::uint32_t> labels = {
-        1, 1, 2,
-        1, 0, 2,
-        1, 1, 2,
+        1, 1, 2, 1, 0, 2, 1, 1, 2,
     };
     Segmentation seg = makeSegmentation(w, h, labels, 2);
 
     TopologyCleanupOptions options;
     options.mm_per_px = 1.0;
-    options.min_island_area_mm2 = 0.0;  // desactive la logique d'ilot pour ce test
+    options.min_island_area_mm2 = 0.0; // desactive la logique d'ilot pour ce test
     options.min_hole_area_mm2 = 2.0;
     options.thin_band_max_width_mm = 0.01;
 
@@ -94,14 +92,14 @@ TEST_CASE("cleanup_topology reports an ambiguous hole touching two different reg
     REQUIRE(result.has_value());
     CHECK(result->tiny_hole_count == 1);
     CHECK(result->ambiguous_component_count == 1);
-    CHECK(seg.labels[1 * w + 1] == 1);  // majoritaire (3 aretes contre 1)
+    CHECK(seg.labels[1 * w + 1] == 1); // majoritaire (3 aretes contre 1)
 }
 
 TEST_CASE("cleanup_topology never merges or removes a protected region") {
     constexpr int w = 5;
     constexpr int h = 5;
     std::vector<std::uint32_t> labels(static_cast<std::size_t>(w * h), 1);
-    labels[2 * w + 2] = 2;  // meme configuration que le premier test...
+    labels[2 * w + 2] = 2; // meme configuration que le premier test...
     Segmentation seg = makeSegmentation(w, h, labels, 2);
 
     TopologyCleanupOptions options;
@@ -109,12 +107,12 @@ TEST_CASE("cleanup_topology never merges or removes a protected region") {
     options.min_island_area_mm2 = 2.0;
     options.min_hole_area_mm2 = 2.0;
     options.thin_band_max_width_mm = 0.01;
-    options.protected_regions = {RegionId{2}};  // ...mais region 2 est protegee
+    options.protected_regions = {RegionId{2}}; // ...mais region 2 est protegee
 
     const auto result = cleanup_topology(seg, options);
     REQUIRE(result.has_value());
-    CHECK(result->tiny_island_count == 1);       // toujours signalee comme fine...
-    CHECK(seg.labels[2 * w + 2] == 2);            // ...mais jamais fusionnee
+    CHECK(result->tiny_island_count == 1); // toujours signalee comme fine...
+    CHECK(seg.labels[2 * w + 2] == 2);     // ...mais jamais fusionnee
     CHECK(seg.find(RegionId{2}) != nullptr);
     CHECK(result->label_count == 2);
 }

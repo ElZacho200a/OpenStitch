@@ -16,7 +16,7 @@ AutoSatinAnalysis analyze(const std::string& shape) {
     const auto region = make_shape(shape);
     REQUIRE(region.has_value());
     AutoSatinParameters params;
-    params.raster.pixel_size = Micrometers{100};  // 0,1 mm : rapide pour les tests
+    params.raster.pixel_size = Micrometers{100}; // 0,1 mm : rapide pour les tests
     auto res = analyze_region(*region, params);
     REQUIRE(res.has_value());
     return *res;
@@ -31,7 +31,7 @@ bool finite_field(const DistanceField& d) {
     return true;
 }
 
-}  // namespace
+} // namespace
 
 // --- Rasterisation / distance ------------------------------------------------
 
@@ -110,8 +110,10 @@ TEST_CASE("croix : jonction correctement detectee a degre 4 (defaut corrige)") {
     REQUIRE(junctionIt != g.nodes.end());
     int degree = 0;
     for (const auto& e : g.edges) {
-        if (e.from == junctionIt->id) ++degree;
-        if (e.to == junctionIt->id) ++degree;
+        if (e.from == junctionIt->id)
+            ++degree;
+        if (e.to == junctionIt->id)
+            ++degree;
     }
     CHECK(degree == 4);
 }
@@ -122,7 +124,7 @@ TEST_CASE("y : les trois branches sont toutes presentes, aucune arete parasite (
     CHECK(a.report.endpoint_count == 3);
     CHECK(a.report.branch_count == 3);
     for (const auto& e : a.debug.graph.edges) {
-        CHECK(e.from != e.to);  // aucune arete en boucle sur elle-meme
+        CHECK(e.from != e.to); // aucune arete en boucle sur elle-meme
     }
 }
 

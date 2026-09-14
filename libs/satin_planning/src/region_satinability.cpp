@@ -12,10 +12,10 @@ bool is_ready(auto_satin::SatinabilityStatus status) {
            status == auto_satin::SatinabilityStatus::SuitableWithWarnings;
 }
 
-}  // namespace
+} // namespace
 
 RegionSatinabilityVerdict check_region_satinability(const SatinRegion& region,
-                                                      const auto_satin::AutoSatinParameters& params) {
+                                                    const auto_satin::AutoSatinParameters& params) {
     RegionSatinabilityVerdict verdict;
     verdict.path_index = region.path_index;
 
@@ -32,11 +32,12 @@ RegionSatinabilityVerdict check_region_satinability(const SatinRegion& region,
 }
 
 DecompositionSatinabilityReport check_all_regions(const RegionSplitReport& split,
-                                                    const auto_satin::AutoSatinParameters& params) {
+                                                  const auto_satin::AutoSatinParameters& params) {
     DecompositionSatinabilityReport out;
     for (const auto& region : split.regions) {
         RegionSatinabilityVerdict verdict = check_region_satinability(region, params);
-        if (!verdict.ready_for_generation) out.not_ready.push_back(verdict.path_index);
+        if (!verdict.ready_for_generation)
+            out.not_ready.push_back(verdict.path_index);
         out.verdicts.push_back(std::move(verdict));
     }
     for (auto pathIndex : split.unresolved_paths) {
@@ -56,7 +57,8 @@ std::string format_satinability_report(const DecompositionSatinabilityReport& re
     for (const auto& v : report.verdicts) {
         out << "chemin " << v.path_index << " : ";
         if (v.report.has_value()) {
-            out << auto_satin::to_string(v.report->status) << " (jonctions=" << v.report->junction_count
+            out << auto_satin::to_string(v.report->status)
+                << " (jonctions=" << v.report->junction_count
                 << ", extremites=" << v.report->endpoint_count
                 << ", variation_largeur=" << v.report->width_variation << ")";
         } else {
@@ -64,12 +66,13 @@ std::string format_satinability_report(const DecompositionSatinabilityReport& re
         }
         out << (v.ready_for_generation ? "  [PRET]" : "  [PAS PRET]") << "\n";
         if (v.report.has_value()) {
-            for (const auto& issue : v.report->issues) out << "        - " << issue.message << "\n";
+            for (const auto& issue : v.report->issues)
+                out << "        - " << issue.message << "\n";
         }
     }
-    out << "\nTotal : " << (report.verdicts.size() - report.not_ready.size()) << "/" << report.verdicts.size()
-        << " region(s) prete(s) pour la generation Auto-Satin\n";
+    out << "\nTotal : " << (report.verdicts.size() - report.not_ready.size()) << "/"
+        << report.verdicts.size() << " region(s) prete(s) pour la generation Auto-Satin\n";
     return out.str();
 }
 
-}  // namespace openstitch::satin_planning
+} // namespace openstitch::satin_planning

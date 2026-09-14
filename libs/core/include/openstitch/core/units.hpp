@@ -16,10 +16,20 @@ struct Micrometers {
     constexpr auto operator<=>(const Micrometers&) const = default;
 
     constexpr Micrometers operator-() const { return {-value}; }
-    constexpr Micrometers& operator+=(Micrometers o) { value += o.value; return *this; }
-    constexpr Micrometers& operator-=(Micrometers o) { value -= o.value; return *this; }
-    friend constexpr Micrometers operator+(Micrometers a, Micrometers b) { return {a.value + b.value}; }
-    friend constexpr Micrometers operator-(Micrometers a, Micrometers b) { return {a.value - b.value}; }
+    constexpr Micrometers& operator+=(Micrometers o) {
+        value += o.value;
+        return *this;
+    }
+    constexpr Micrometers& operator-=(Micrometers o) {
+        value -= o.value;
+        return *this;
+    }
+    friend constexpr Micrometers operator+(Micrometers a, Micrometers b) {
+        return {a.value + b.value};
+    }
+    friend constexpr Micrometers operator-(Micrometers a, Micrometers b) {
+        return {a.value - b.value};
+    }
 };
 
 // Millimètres en double : réservé à l'affichage et aux paramètres saisis
@@ -73,9 +83,15 @@ struct Vec2um {
 }
 
 namespace literals {
-constexpr Micrometers operator""_um(unsigned long long v) { return {static_cast<std::int32_t>(v)}; }
-constexpr Millimeters operator""_mm(long double v) { return {static_cast<double>(v)}; }
-constexpr Millimeters operator""_mm(unsigned long long v) { return {static_cast<double>(v)}; }
-}  // namespace literals
+constexpr Micrometers operator""_um(unsigned long long v) {
+    return {static_cast<std::int32_t>(v)};
+}
+constexpr Millimeters operator""_mm(long double v) {
+    return {static_cast<double>(v)};
+}
+constexpr Millimeters operator""_mm(unsigned long long v) {
+    return {static_cast<double>(v)};
+}
+} // namespace literals
 
-}  // namespace openstitch
+} // namespace openstitch

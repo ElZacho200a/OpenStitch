@@ -25,7 +25,7 @@ fs::path write_test_png(bool with_alpha) {
     return p;
 }
 
-}  // namespace
+} // namespace
 
 TEST_CASE("metadonnees d'un PNG RGB") {
     const auto p = write_test_png(false);

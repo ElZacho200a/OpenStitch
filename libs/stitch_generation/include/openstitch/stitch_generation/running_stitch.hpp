@@ -41,14 +41,14 @@ struct RunningResult {
 // Configuration du point courant. Les longueurs sont en micromètres ; les noms
 // distinguent explicitement la cible, le minimum et le maximum (§30).
 struct RunningConfig {
-    Micrometers target_length{3'000};    // longueur de point visée
-    Micrometers min_length{500};         // en deçà : fusion/avertissement
-    Micrometers max_length{7'000};       // au-delà : subdivision + avertissement
-    Micrometers flatten_tolerance{100};  // aplatissement de Bézier (0,1 mm)
-    Angle corner_threshold{0.6108652};   // ~35° : au-delà, sommet = pénétration exacte
-    bool reverse{false};                 // inverse le sens de parcours
-    double phase{0.0};                   // décalage curviligne initial [0,1) (boucles lisses)
-    std::optional<Vec2um> start;         // point de départ imposé (projeté), boucles fermées
+    Micrometers target_length{3'000};   // longueur de point visée
+    Micrometers min_length{500};        // en deçà : fusion/avertissement
+    Micrometers max_length{7'000};      // au-delà : subdivision + avertissement
+    Micrometers flatten_tolerance{100}; // aplatissement de Bézier (0,1 mm)
+    Angle corner_threshold{0.6108652};  // ~35° : au-delà, sommet = pénétration exacte
+    bool reverse{false};                // inverse le sens de parcours
+    double phase{0.0};                  // décalage curviligne initial [0,1) (boucles lisses)
+    std::optional<Vec2um> start;        // point de départ imposé (projeté), boucles fermées
 };
 
 // Point courant correct : aplatissement (courbes comprises) → découpe aux coins
@@ -62,10 +62,10 @@ struct RunningConfig {
 
 // Modes de répétition explicites (§8-9).
 enum class RepeatMode {
-    SinglePass,    // un passage
-    BackAndForth,  // aller complet puis retour (termine au départ)
-    BeanStitch,    // chaque intervalle cousu `passes` fois (impair)
-    Backstitch,    // progression avec recouvrement
+    SinglePass,   // un passage
+    BackAndForth, // aller complet puis retour (termine au départ)
+    BeanStitch,   // chaque intervalle cousu `passes` fois (impair)
+    Backstitch,   // progression avec recouvrement
 };
 
 // Applique un mode de répétition à une liste de points ordonnés. `passes` n'est
@@ -78,4 +78,4 @@ enum class RepeatMode {
 // >= 3 = bean à `repeats` passages.
 [[nodiscard]] std::vector<Vec2um> apply_repeats(const std::vector<Vec2um>& points, int repeats);
 
-}  // namespace openstitch::stitch_generation
+} // namespace openstitch::stitch_generation

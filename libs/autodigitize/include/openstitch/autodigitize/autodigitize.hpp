@@ -86,4 +86,4 @@ struct AutoResult {
 // `auto_digitize` reste le seul appelant ICI, au meme titre que n'importe
 // quel autre consommateur desormais.
 
-}  // namespace openstitch::autodigitize
+} // namespace openstitch::autodigitize

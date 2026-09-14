@@ -30,9 +30,7 @@ BrightnessDialog::BrightnessDialog(QWidget* parent) : QDialog(parent) {
     connect(buttons, &QDialogButtonBox::rejected, this, &QDialog::reject);
     layout->addRow(buttons);
 
-    const auto emitPreview = [this] {
-        emit previewRequested(brightness(), contrast());
-    };
+    const auto emitPreview = [this] { emit previewRequested(brightness(), contrast()); };
     connect(brightness_, &QSlider::valueChanged, this, emitPreview);
     connect(contrast_, &QSlider::valueChanged, this, emitPreview);
 }
@@ -45,4 +43,4 @@ double BrightnessDialog::contrast() const {
     return static_cast<double>(contrast_->value());
 }
 
-}  // namespace openstitch::desktop
+} // namespace openstitch::desktop

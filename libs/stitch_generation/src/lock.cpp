@@ -33,13 +33,14 @@ std::vector<Vec2um> lock_stitches(Vec2um anchor, Vec2um toward, LockType type, M
     // comportement de repli inchangé.
     const double requested = static_cast<double>(std::max<std::int32_t>(1, length.value));
     const double L = degenerate ? requested : std::min(requested, n);
-    const double px = -dy;  // perpendiculaire unitaire
+    const double px = -dy; // perpendiculaire unitaire
     const double py = dx;
     const int reps = std::max(1, passes);
     const auto P = [&](double along, double side) {
-        return Vec2um{
-            Micrometers{static_cast<std::int32_t>(std::lround(anchor.x.value + dx * along + px * side))},
-            Micrometers{static_cast<std::int32_t>(std::lround(anchor.y.value + dy * along + py * side))}};
+        return Vec2um{Micrometers{static_cast<std::int32_t>(
+                          std::lround(anchor.x.value + dx * along + px * side))},
+                      Micrometers{static_cast<std::int32_t>(
+                          std::lround(anchor.y.value + dy * along + py * side))}};
     };
 
     if (type == LockType::BackAndForth) {
@@ -55,7 +56,7 @@ std::vector<Vec2um> lock_stitches(Vec2um anchor, Vec2um toward, LockType type, M
             pts.push_back(P(L * 0.5, L * 0.6));
             pts.push_back(anchor);
         }
-    } else {  // MicroZigzag
+    } else { // MicroZigzag
         pts.push_back(anchor);
         for (int i = 0; i < reps * 2; ++i) {
             const double side = (i % 2 == 0) ? 1.0 : -1.0;
@@ -66,4 +67,4 @@ std::vector<Vec2um> lock_stitches(Vec2um anchor, Vec2um toward, LockType type, M
     return pts;
 }
 
-}  // namespace openstitch::stitch_generation
+} // namespace openstitch::stitch_generation

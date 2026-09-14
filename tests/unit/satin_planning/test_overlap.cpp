@@ -26,12 +26,13 @@ RegionSplitReport split_shape(const std::string& name, geometry::PathSet& shapeO
 
 const SatinRegion* find_region(const RegionSplitReport& split, std::size_t pathIndex) {
     for (const auto& r : split.regions) {
-        if (r.path_index == pathIndex) return &r;
+        if (r.path_index == pathIndex)
+            return &r;
     }
     return nullptr;
 }
 
-}  // namespace
+} // namespace
 
 TEST_CASE("generate_overlaps : t -- ferme reellement l'interstice de coupe") {
     geometry::PathSet shape;
@@ -63,7 +64,8 @@ TEST_CASE("generate_overlaps : t -- ferme reellement l'interstice de coupe") {
     REQUIRE(intersection.has_value());
     REQUIRE_FALSE(intersection->empty());
     double intersectionAreaMm2 = 0.0;
-    for (const auto& piece : *intersection) intersectionAreaMm2 += geometry::path_set_area_um2(piece) / 1e6;
+    for (const auto& piece : *intersection)
+        intersectionAreaMm2 += geometry::path_set_area_um2(piece) / 1e6;
     CHECK(intersectionAreaMm2 > 0.0);
 }
 

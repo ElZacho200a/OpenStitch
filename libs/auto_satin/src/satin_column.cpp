@@ -129,8 +129,8 @@ enum class CrossSectionFailure {
     AxisOutsideRegion,           // le point d'axe A lui-même n'est pas strictement intérieur
     MissingNegativeIntersection, // aucune intersection trouvée côté -N
     MissingPositiveIntersection, // aucune intersection trouvée côté +N
-    TooWide,               // intervalle plus large que max_width (normale quasi parallèle au bord)
-    TooNarrow,     // intervalle plus étroit que min_satin_width (§ audit anneaux/arcs fins)
+    TooWide,   // intervalle plus large que max_width (normale quasi parallèle au bord)
+    TooNarrow, // intervalle plus étroit que min_satin_width (§ audit anneaux/arcs fins)
     IntervalOutsideRegion, // intervalle trouvé mais son milieu retombe hors région
 };
 
@@ -288,8 +288,8 @@ double signed_area(const Poly& poly) {
 // curviligne cumulée à chaque sommet, permettant de projeter un point
 // quelconque sur le contour et d'en extraire un arc entre deux abscisses.
 struct ContourPolyline {
-    Poly points;                  // sommets du polygone, dans leur ordre d'origine
-    std::vector<double> cumulative;  // longueur cumulée jusqu'au sommet i (cumulative[0] = 0)
+    Poly points;                    // sommets du polygone, dans leur ordre d'origine
+    std::vector<double> cumulative; // longueur cumulée jusqu'au sommet i (cumulative[0] = 0)
     double total_length{0.0};
 };
 
@@ -307,11 +307,11 @@ ContourPolyline make_contour_polyline(const Poly& poly) {
 }
 
 struct ContourProjection {
-    std::size_t segment_index{0};  // arête [i, i+1) du polygone
-    double segment_t{0.0};         // 0..1 le long de cette arête
-    double arc_length{0.0};        // abscisse curviligne du point projeté
+    std::size_t segment_index{0}; // arête [i, i+1) du polygone
+    double segment_t{0.0};        // 0..1 le long de cette arête
+    double arc_length{0.0};       // abscisse curviligne du point projeté
     P2 point{};
-    double distance{0.0};          // distance point -> contour
+    double distance{0.0}; // distance point -> contour
 };
 
 // Projette `p` sur le contour : plus proche point parmi tous les segments.
@@ -345,8 +345,10 @@ enum class ContourDirection { Forward, Backward, Shortest };
 // donné, avec rebouclage sur `total_length` pour Forward/Backward.
 double contour_arc_span(double fromArc, double toArc, double totalLength, ContourDirection dir) {
     double fwd = toArc - fromArc;
-    while (fwd < 0.0) fwd += totalLength;
-    while (fwd > totalLength) fwd -= totalLength;
+    while (fwd < 0.0)
+        fwd += totalLength;
+    while (fwd > totalLength)
+        fwd -= totalLength;
     const double bwd = totalLength - fwd;
     switch (dir) {
     case ContourDirection::Forward:
@@ -389,14 +391,17 @@ Poly extract_contour_arc(const ContourPolyline& contour, double fromArc, double 
         return {};
     }
     double a = std::fmod(fromArc, total);
-    if (a < 0.0) a += total;
+    if (a < 0.0)
+        a += total;
     double b = std::fmod(toArc, total);
-    if (b < 0.0) b += total;
+    if (b < 0.0)
+        b += total;
 
     bool forward = dir != ContourDirection::Backward;
     if (dir == ContourDirection::Shortest) {
         double fwd = b - a;
-        while (fwd < 0.0) fwd += total;
+        while (fwd < 0.0)
+            fwd += total;
         forward = fwd <= total - fwd;
     }
     if (!forward) {
@@ -823,7 +828,8 @@ double representative_station_width(const std::vector<Station>& st) {
 // validations de couverture d'axe en aval (`min_axis_coverage_ratio`)
 // refusent la colonne si la portion retirée devient excessive.
 void trim_unstable_junction_tail(std::vector<Station>& st, bool atEnd, double referenceWidth) {
-    constexpr double kToleranceRatio = 1.3;  // 30% au-dessus du gabarit habituel : encore le bourrelet
+    constexpr double kToleranceRatio =
+        1.3; // 30% au-dessus du gabarit habituel : encore le bourrelet
 
     if (st.size() < 3 || referenceWidth <= 0.0) {
         return;
@@ -863,10 +869,10 @@ void trim_unstable_junction_tail(std::vector<Station>& st, bool atEnd, double re
 // sur formes concaves/larges : plus aucune station ni aucun trou n'est
 // ignoré en silence — voir les commentaires ci-dessous pour chaque étape).
 std::optional<std::vector<Station>> compute_column_stations(const std::vector<Vec2um>& centerline,
-                                                             const std::vector<Poly>& polys,
-                                                             const SatinColumnsParameters& params,
-                                                             bool extendStart, bool extendEnd,
-                                                             std::vector<std::string>& warnings) {
+                                                            const std::vector<Poly>& polys,
+                                                            const SatinColumnsParameters& params,
+                                                            bool extendStart, bool extendEnd,
+                                                            std::vector<std::string>& warnings) {
     std::vector<P2> axis;
     axis.reserve(centerline.size());
     for (const Vec2um& v : centerline) {
@@ -999,7 +1005,8 @@ std::optional<std::vector<Station>> compute_column_stations(const std::vector<Ve
             bool bridged = false;
             if (failLen == 1 && gap <= kMaxIsolatedGapFactor * stationSpacingUm) {
                 const Station candidate = interpolate_station(prevSt, nextSt, axis[i]);
-                if (interpolated_station_valid(polys, prevSt, candidate, nextSt, minWidth, maxWidth)) {
+                if (interpolated_station_valid(polys, prevSt, candidate, nextSt, minWidth,
+                                               maxWidth)) {
                     raw.push_back(candidate);
                     warnings.push_back("station axe #" + std::to_string(i) +
                                        " interpolee (echec isole : " + describe(firstFailure) +
@@ -1346,8 +1353,8 @@ double cubic_point_distance(P2 p0, P2 p1, P2 p2, P2 p3, P2 pt) {
 // d'ancrage (§ étape 5) : les deux poignées et l'erreur maximale mesurée sur
 // les stations denses de l'intervalle.
 struct CubicFit {
-    P2 p1;  // poignée sortante de l'ancrage de départ
-    P2 p2;  // poignée entrante de l'ancrage d'arrivée
+    P2 p1; // poignée sortante de l'ancrage de départ
+    P2 p2; // poignée entrante de l'ancrage d'arrivée
     double maxError{0.0};
 };
 
@@ -1495,7 +1502,7 @@ std::vector<std::size_t> width_extrema_indices(const std::vector<Station>& st,
 // segment [i-1, i] qui en résulte est court et quasi dégénéré PAR
 // CONSTRUCTION, exactement le comportement voulu pour un coin structurel.
 std::vector<std::size_t> adjacent_width_jump_indices(const std::vector<Station>& st,
-                                                      double minRelChange) {
+                                                     double minRelChange) {
     std::vector<std::size_t> out;
     for (std::size_t i = 1; i < st.size(); ++i) {
         const double w0 = st[i - 1].width;
@@ -1512,7 +1519,7 @@ std::vector<std::size_t> adjacent_width_jump_indices(const std::vector<Station>&
 // Indices de courbure maximale locale (§ étape 4) : angle entre tangentes
 // consécutives, maximum local dépassant `minAngleRad`.
 std::vector<std::size_t> curvature_maxima_indices(const std::vector<Station>& st,
-                                                   double minAngleRad) {
+                                                  double minAngleRad) {
     std::vector<std::size_t> out;
     if (st.size() < 3) {
         return out;
@@ -1582,7 +1589,7 @@ std::vector<std::size_t> douglas_peucker_indices(const std::vector<P2>& pts,
 // reconstruction sont appliqués séparément par `fit_rail` (§ subdivision
 // adaptative), qui peut réinsérer des indices ici absents.
 std::vector<std::size_t> select_structural_indices(const std::vector<Station>& st,
-                                                    const SatinColumnsParameters& params) {
+                                                   const SatinColumnsParameters& params) {
     std::set<std::size_t> chosen;
     chosen.insert(0);
     chosen.insert(st.size() - 1);
@@ -1649,8 +1656,8 @@ std::vector<std::size_t> select_structural_indices(const std::vector<Station>& s
 struct JointRailSegment {
     std::size_t fromIdx{0};
     std::size_t toIdx{0};
-    P2 aP1, aP2;  // poignées rail A
-    P2 bP1, bP2;  // poignées rail B
+    P2 aP1, aP2; // poignées rail A
+    P2 bP1, bP2; // poignées rail B
     double maxError{0.0};
 };
 
@@ -1747,8 +1754,8 @@ void fit_both_rails_recursive(const std::vector<Station>& st, std::size_t fromId
                 accLeft += norm(st[i].axis - st[i - 1].axis);
                 const double accRight = axisSpan - accLeft;
                 if (accLeft >= minSpacingUm && accRight >= minSpacingUm) {
-                    const double delta = std::abs(static_cast<double>(i) -
-                                                  static_cast<double>(splitIdx));
+                    const double delta =
+                        std::abs(static_cast<double>(i) - static_cast<double>(splitIdx));
                     if (delta < bestDelta) {
                         bestDelta = delta;
                         bestIdx = i;
@@ -1760,7 +1767,7 @@ void fit_both_rails_recursive(const std::vector<Station>& st, std::size_t fromId
             if (bestDelta < std::numeric_limits<double>::max()) {
                 splitIdx = bestIdx;
             } else {
-                leftLen = rightLen = -1.0;  // aucune coupure valide : intervalle trop court.
+                leftLen = rightLen = -1.0; // aucune coupure valide : intervalle trop court.
             }
         }
         if (leftLen >= minSpacingUm && rightLen >= minSpacingUm) {
@@ -1785,22 +1792,22 @@ void fit_both_rails_recursive(const std::vector<Station>& st, std::size_t fromId
 // (peut contenir plus d'indices que `select_structural_indices` initial),
 // et les poignées Bézier de chaque segment, pour chaque rail.
 struct RailFit {
-    std::vector<std::size_t> anchors;  // indices dans `st`, triés, PARTAGÉS par les deux rails
-    std::vector<P2> aTanOut, aTanIn;   // poignées rail A (taille anchors.size()-1 chacune)
-    std::vector<P2> bTanOut, bTanIn;   // poignées rail B
+    std::vector<std::size_t> anchors; // indices dans `st`, triés, PARTAGÉS par les deux rails
+    std::vector<P2> aTanOut, aTanIn;  // poignées rail A (taille anchors.size()-1 chacune)
+    std::vector<P2> bTanOut, bTanIn;  // poignées rail B
     double maxError{0.0};
 };
 
-RailFit fit_both_rails(const std::vector<Station>& st, const std::vector<std::size_t>& initialAnchors,
+RailFit fit_both_rails(const std::vector<Station>& st,
+                       const std::vector<std::size_t>& initialAnchors,
                        const SatinColumnsParameters& params) {
     std::vector<JointRailSegment> segments;
     for (std::size_t k = 0; k + 1 < initialAnchors.size(); ++k) {
         fit_both_rails_recursive(st, initialAnchors[k], initialAnchors[k + 1], params, 0, segments);
     }
-    std::sort(segments.begin(), segments.end(), [](const JointRailSegment& a,
-                                                    const JointRailSegment& b) {
-        return a.fromIdx < b.fromIdx;
-    });
+    std::sort(
+        segments.begin(), segments.end(),
+        [](const JointRailSegment& a, const JointRailSegment& b) { return a.fromIdx < b.fromIdx; });
 
     RailFit fit;
     fit.anchors.push_back(segments.front().fromIdx);
@@ -1942,10 +1949,11 @@ double junction_overlap_target(double referenceWidth, const SatinColumnsParamete
 // local borné (jamais un bout OUVERT — celui-ci est déjà étendu jusqu'au
 // bord réel par `compute_column_stations`/`extend_tip`, en amont, exactement
 // comme en mode legacy).
-std::optional<ParametricSatinObject> build_parametric_object(
-    const std::vector<Vec2um>& centerline, const std::vector<Poly>& polys,
-    const SatinColumnsParameters& params, bool extendStart, bool extendEnd,
-    std::vector<std::string>& warnings) {
+std::optional<ParametricSatinObject> build_parametric_object(const std::vector<Vec2um>& centerline,
+                                                             const std::vector<Poly>& polys,
+                                                             const SatinColumnsParameters& params,
+                                                             bool extendStart, bool extendEnd,
+                                                             std::vector<std::string>& warnings) {
     auto stationsOpt =
         compute_column_stations(centerline, polys, params, extendStart, extendEnd, warnings);
     if (!stationsOpt) {
@@ -1968,9 +1976,8 @@ std::optional<ParametricSatinObject> build_parametric_object(
     if (!extendEnd && params.anchor_junction_ends && st.size() >= 2) {
         const double overlapUm = junction_overlap_target(referenceWidth, params);
         const Station& last = st.back();
-        auto tail =
-            extend_into_confluence(polys, last.axis, last.tangent, last.tangent, maxWidth, stepLen,
-                                   overlapUm);
+        auto tail = extend_into_confluence(polys, last.axis, last.tangent, last.tangent, maxWidth,
+                                           stepLen, overlapUm);
         if (!tail.empty()) {
             obj.end_overlap_um = norm(tail.back().axis - last.axis);
             for (auto& s : tail) {
@@ -2035,8 +2042,8 @@ std::optional<ParametricSatinObject> build_parametric_object(
 // réelle entre eux. Renvoie un message d'échec explicite, ou `nullopt` si
 // l'objet est valide.
 std::optional<std::string> validate_parametric_object(const ParametricSatinObject& obj,
-                                                       const std::vector<Poly>& polys,
-                                                       const SatinColumnsParameters& params) {
+                                                      const std::vector<Poly>& polys,
+                                                      const SatinColumnsParameters& params) {
     if (obj.rail_a.nodes.size() < 2 || obj.rail_b.nodes.size() < 2) {
         return "rail trop court";
     }
@@ -2052,8 +2059,10 @@ std::optional<std::string> validate_parametric_object(const ParametricSatinObjec
     Poly polyA, polyB;
     polyA.reserve(flatA.points.size());
     polyB.reserve(flatB.points.size());
-    for (const auto& p : flatA.points) polyA.push_back(toP2(p));
-    for (const auto& p : flatB.points) polyB.push_back(toP2(p));
+    for (const auto& p : flatA.points)
+        polyA.push_back(toP2(p));
+    for (const auto& p : flatB.points)
+        polyB.push_back(toP2(p));
 
     const double maxWidthLimit =
         static_cast<double>(params.analysis.thresholds.max_satin_width.value) * 1.5;
@@ -2430,11 +2439,10 @@ std::optional<P2> build_separator(const std::vector<P2>& reflexVertices,
         return best;
     }
 
-    const double span =
-        contour_arc_span(projLead.arc_length, projTrail.arc_length, contour.total_length,
-                         ContourDirection::Shortest);
+    const double span = contour_arc_span(projLead.arc_length, projTrail.arc_length,
+                                         contour.total_length, ContourDirection::Shortest);
     if (span > radius * 3.0) {
-        return std::nullopt;  // les deux branches ne sont pas des voisines locales plausibles.
+        return std::nullopt; // les deux branches ne sont pas des voisines locales plausibles.
     }
     const P2 mid = arc[arc.size() / 2];
     return norm(mid - center) <= radius * 1.5 ? std::optional<P2>{mid} : std::nullopt;
@@ -2557,11 +2565,12 @@ Poly build_sector(const StableBranchEnd& e, const std::optional<P2>& sepPrev,
 // géométriquement incohérente (StableBranchEnd égarée, secteur qui traverse
 // une branche voisine, ou — cas limite — noyau qui s'auto-croise malgré
 // tout), auquel cas l'appelant refuse proprement la génération.
-std::optional<JunctionResolution>
-resolve_junction(const std::vector<SatinColumnGeometry>& columns,
-                 const std::vector<JunctionBranch>& branches,
-                 const std::vector<ContourPolyline>& contours, const std::vector<Poly>& polys,
-                 const std::vector<P2>& reflexVertices, P2 center, double configuredRadius) {
+std::optional<JunctionResolution> resolve_junction(const std::vector<SatinColumnGeometry>& columns,
+                                                   const std::vector<JunctionBranch>& branches,
+                                                   const std::vector<ContourPolyline>& contours,
+                                                   const std::vector<Poly>& polys,
+                                                   const std::vector<P2>& reflexVertices, P2 center,
+                                                   double configuredRadius) {
     const std::size_t n = branches.size();
     if (n < 2) {
         return std::nullopt;
@@ -2661,7 +2670,8 @@ resolve_junction(const std::vector<SatinColumnGeometry>& columns,
     {
         double best = std::numeric_limits<double>::max();
         for (std::size_t ci = 0; ci < contours.size(); ++ci) {
-            const double d = project_to_contour(contours[ci], res.ends.front().leading_point).distance;
+            const double d =
+                project_to_contour(contours[ci], res.ends.front().leading_point).distance;
             if (d < best) {
                 best = d;
                 contourIndex = ci;
@@ -2676,9 +2686,9 @@ resolve_junction(const std::vector<SatinColumnGeometry>& columns,
     // `build_separator`).
     res.separators.resize(n);
     for (std::size_t i = 0; i < n; ++i) {
-        res.separators[i] = build_separator(reflexVertices, contour, res.ends[i].leading_point,
-                                            res.ends[(i + 1) % n].trailing_point, center,
-                                            localRadius);
+        res.separators[i] =
+            build_separator(reflexVertices, contour, res.ends[i].leading_point,
+                            res.ends[(i + 1) % n].trailing_point, center, localRadius);
     }
 
     // Secteurs (§4).
@@ -2816,8 +2826,8 @@ SatinColumnsResult build_satin_columns(const geometry::PathSet& region,
         for (const auto& p : polys) {
             contours.push_back(make_contour_polyline(p));
         }
-        const std::vector<P2> reflexVertices = polys.empty() ? std::vector<P2>{}
-                                                              : reflex_vertices(polys.front());
+        const std::vector<P2> reflexVertices =
+            polys.empty() ? std::vector<P2>{} : reflex_vertices(polys.front());
         const auto junctionBranches = collect_junction_branches(r.columns);
 
         for (const auto& [junctionId, branches] : junctionBranches) {
@@ -2826,14 +2836,16 @@ SatinColumnsResult build_satin_columns(const geometry::PathSet& region,
             }
             std::size_t expectedEnds = 0;
             for (const auto& e : graph.edges) {
-                if (e.from == junctionId) ++expectedEnds;
-                if (e.to == junctionId) ++expectedEnds;
+                if (e.from == junctionId)
+                    ++expectedEnds;
+                if (e.to == junctionId)
+                    ++expectedEnds;
             }
             if (branches.size() != expectedEnds) {
-                const std::string problem =
-                    "jonction " + std::to_string(junctionId) + " incomplete (" +
-                    std::to_string(branches.size()) + "/" + std::to_string(expectedEnds) +
-                    " branches disponibles)";
+                const std::string problem = "jonction " + std::to_string(junctionId) +
+                                            " incomplete (" + std::to_string(branches.size()) +
+                                            "/" + std::to_string(expectedEnds) +
+                                            " branches disponibles)";
                 r.warnings.push_back("refus : " + problem);
                 r.columns.clear();
                 r.refusal = "jonction incoherente : " + problem;
@@ -2873,7 +2885,8 @@ SatinColumnsResult build_satin_columns(const geometry::PathSet& region,
                     sepInfo.junction_id = junctionId;
                     sepInfo.point = to_um(*resolved->separators[bi]);
                     sepInfo.column_index_before = resolved->ends[bi].columnIndex;
-                    sepInfo.column_index_after = resolved->ends[(bi + 1) % branches.size()].columnIndex;
+                    sepInfo.column_index_after =
+                        resolved->ends[(bi + 1) % branches.size()].columnIndex;
                     r.junction_separators.push_back(sepInfo);
                 }
 
@@ -2898,11 +2911,10 @@ SatinColumnsResult build_satin_columns(const geometry::PathSet& region,
                 pub.boundary.push_back(to_um(p));
             }
             if (pub.requires_fill) {
-                r.warnings.push_back(
-                    "jonction " + std::to_string(junctionId) +
-                    " : zone centrale significative (" +
-                    std::to_string(pub.area_um2 / 1'000'000.0) +
-                    " mm2) -- necessite un objet de remplissage separe");
+                r.warnings.push_back("jonction " + std::to_string(junctionId) +
+                                     " : zone centrale significative (" +
+                                     std::to_string(pub.area_um2 / 1'000'000.0) +
+                                     " mm2) -- necessite un objet de remplissage separe");
             }
             r.junction_cores.push_back(std::move(pub));
         }
@@ -2965,9 +2977,8 @@ SatinColumnsResult build_satin_columns(const geometry::PathSet& region,
             r.parametric_columns[i].section_index = static_cast<std::uint32_t>(i);
             r.parametric_columns[i].section_count = count;
         }
-        r.junction_plans =
-            plan_junction_stitch_order(r.parametric_columns,
-                                       collect_junction_branches(r.parametric_columns));
+        r.junction_plans = plan_junction_stitch_order(
+            r.parametric_columns, collect_junction_branches(r.parametric_columns));
     };
 
     const bool parametric = params.geometry_mode == SatinGeometryMode::Parametric;

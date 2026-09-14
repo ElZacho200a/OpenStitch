@@ -17,8 +17,7 @@ RouteColumn col(ObjectId id, Vec2um s, Vec2um e) {
     return RouteColumn{id, s, e};
 }
 
-RouteColumn network_col(ObjectId id, Vec2um s, Vec2um e,
-                        std::optional<std::uint32_t> startJunction,
+RouteColumn network_col(ObjectId id, Vec2um s, Vec2um e, std::optional<std::uint32_t> startJunction,
                         std::optional<std::uint32_t> endJunction) {
     return RouteColumn{id, s, e, startJunction, endJunction};
 }
@@ -33,7 +32,7 @@ document::SatinParams straight_column(std::int32_t x0, std::int32_t x1) {
     sp.rail_b.nodes = {{P(x0, 5'000), geometry::NodeType::Corner, {}, {}},
                        {P(x1, 5'000), geometry::NodeType::Corner, {}, {}}};
     sp.rungs = {{P(x0, 0), P(x0, 5'000)}, {P(x1, 0), P(x1, 5'000)}};
-    sp.center_underlay = false;  // isole le routage (une seule passe par colonne)
+    sp.center_underlay = false; // isole le routage (une seule passe par colonne)
     return sp;
 }
 
@@ -45,15 +44,15 @@ document::Project group_project(const std::vector<document::SatinParams>& cols) 
     for (const auto& sp : cols) {
         document::EmbroideryObject emb;
         emb.id = project.object_ids.next();
-        emb.source_vector = vec.id;  // même source -> même groupe auto-satin
-        emb.rgb = {10, 20, 30};      // même couleur
+        emb.source_vector = vec.id; // même source -> même groupe auto-satin
+        emb.rgb = {10, 20, 30};     // même couleur
         emb.params = sp;
         project.embroidery_objects.push_back(emb);
     }
     return project;
 }
 
-}  // namespace
+} // namespace
 
 TEST_CASE("routage : liste vide -> plan vide") {
     const auto plan = route_columns({}, P(0, 0), RoutingConfig{});
@@ -63,8 +62,8 @@ TEST_CASE("routage : liste vide -> plan vide") {
 }
 
 TEST_CASE("routage : une colonne -> une etape, liaison de depart") {
-    const auto plan = route_columns({col(ObjectId{1}, P(0, 0), P(10'000, 0))}, P(0, 0),
-                                    RoutingConfig{});
+    const auto plan =
+        route_columns({col(ObjectId{1}, P(0, 0), P(10'000, 0))}, P(0, 0), RoutingConfig{});
     REQUIRE(plan.steps.size() == 1);
     CHECK(plan.steps[0].column_index == 0);
     CHECK(plan.steps[0].connector == ConnectorKind::Start);
@@ -80,9 +79,9 @@ TEST_CASE("routage : reordonne pour minimiser le deplacement") {
                                      col(ObjectId{2}, P(21'000, 0), P(41'000, 0))};
     const auto plan = route_columns(cols, P(0, 0), RoutingConfig{});
     REQUIRE(plan.steps.size() == 3);
-    CHECK(plan.steps[0].column_index == 0);  // A
-    CHECK(plan.steps[1].column_index == 2);  // B (index 2 dans l'entrée)
-    CHECK(plan.steps[2].column_index == 1);  // C
+    CHECK(plan.steps[0].column_index == 0); // A
+    CHECK(plan.steps[1].column_index == 2); // B (index 2 dans l'entrée)
+    CHECK(plan.steps[2].column_index == 1); // C
     // Colonnes adjacentes (gaps ~1 mm < 8 mm) -> liaisons cachées, aucun saut.
     CHECK(plan.underpaths == 2);
     CHECK(plan.jumps == 0);
@@ -97,8 +96,8 @@ TEST_CASE("routage : oriente chaque colonne pour entrer par l'extremite proche")
     CHECK(plan.steps[0].column_index == 0);
     CHECK_FALSE(plan.steps[0].reversed);
     CHECK(plan.steps[1].column_index == 1);
-    CHECK(plan.steps[1].reversed);  // entre par end(11000) proche de A.end(10000)
-    CHECK(plan.underpaths == 1);    // gap 1 mm
+    CHECK(plan.steps[1].reversed); // entre par end(11000) proche de A.end(10000)
+    CHECK(plan.underpaths == 1);   // gap 1 mm
 }
 
 TEST_CASE("routage : liaison longue -> saut (coupe), pas de trajet cache") {
@@ -194,17 +193,19 @@ TEST_CASE("generation : un groupe satin adjacent enchaine par trajets caches") {
 
     int jumps = 0, travel = 0;
     for (const auto& c : seq->commands) {
-        if (c.type == stitch::CommandType::Jump) ++jumps;
-        if (c.type == stitch::CommandType::Stitch && c.pass == stitch::StitchPass::Travel) ++travel;
+        if (c.type == stitch::CommandType::Jump)
+            ++jumps;
+        if (c.type == stitch::CommandType::Stitch && c.pass == stitch::StitchPass::Travel)
+            ++travel;
     }
-    CHECK(jumps == 1);    // seule la pose initiale saute
-    CHECK(travel > 0);    // liaisons cousues (passe Travel)
+    CHECK(jumps == 1); // seule la pose initiale saute
+    CHECK(travel > 0); // liaisons cousues (passe Travel)
 }
 
 TEST_CASE("generation : la topologie SatinParams atteint le routage du groupe") {
     auto a = straight_column(0, 10'000);
     auto b = straight_column(12'000, 30'000);
-    auto c = straight_column(10'500, 40'000);  // plus proche de A mais sans jonction commune
+    auto c = straight_column(10'500, 40'000); // plus proche de A mais sans jonction commune
     a.topology = document::SatinSectionTopology{0, 3, std::nullopt, 7};
     b.topology = document::SatinSectionTopology{1, 3, 7, std::nullopt};
     c.topology = document::SatinSectionTopology{2, 3, 9, std::nullopt};
@@ -239,11 +240,13 @@ TEST_CASE("generation : deux sections sans jonction a 5mm ne sont plus cousues a
     REQUIRE(seq.has_value());
     int jumps = 0, travel = 0;
     for (const auto& c : seq->commands) {
-        if (c.type == stitch::CommandType::Jump) ++jumps;
-        if (c.type == stitch::CommandType::Stitch && c.pass == stitch::StitchPass::Travel) ++travel;
+        if (c.type == stitch::CommandType::Jump)
+            ++jumps;
+        if (c.type == stitch::CommandType::Stitch && c.pass == stitch::StitchPass::Travel)
+            ++travel;
     }
-    CHECK(jumps == 2);   // pose initiale + saut de liaison (non justifiee)
-    CHECK(travel == 0);  // aucun trajet cache sans jonction validee
+    CHECK(jumps == 2);  // pose initiale + saut de liaison (non justifiee)
+    CHECK(travel == 0); // aucun trajet cache sans jonction validee
 }
 
 TEST_CASE("generation : un groupe eloigne conserve des sauts") {
@@ -252,12 +255,14 @@ TEST_CASE("generation : un groupe eloigne conserve des sauts") {
     REQUIRE(seq.has_value());
     int jumps = 0;
     for (const auto& c : seq->commands) {
-        if (c.type == stitch::CommandType::Jump) ++jumps;
+        if (c.type == stitch::CommandType::Jump)
+            ++jumps;
     }
-    CHECK(jumps == 2);  // pose initiale + saut de liaison (trop long pour cacher)
+    CHECK(jumps == 2); // pose initiale + saut de liaison (trop long pour cacher)
 }
 
-TEST_CASE("generation : push_end deplace le point reellement couse, la decision de routage en tient compte") {
+TEST_CASE("generation : push_end deplace le point reellement couse, la decision de routage en "
+          "tient compte") {
     // Colonne A [0..10000] avec push_end negatif (retraction reelle du bout de
     // 700 um, cf. satin.cpp) : son dernier point reellement couse est donc a
     // x=9300, pas x=10000. Colonne B commence a x=10900. Ecart BRUT (barreaux,
@@ -274,9 +279,11 @@ TEST_CASE("generation : push_end deplace le point reellement couse, la decision 
     REQUIRE(seq.has_value());
     int jumps = 0, travel = 0;
     for (const auto& c : seq->commands) {
-        if (c.type == stitch::CommandType::Jump) ++jumps;
-        if (c.type == stitch::CommandType::Stitch && c.pass == stitch::StitchPass::Travel) ++travel;
+        if (c.type == stitch::CommandType::Jump)
+            ++jumps;
+        if (c.type == stitch::CommandType::Stitch && c.pass == stitch::StitchPass::Travel)
+            ++travel;
     }
-    CHECK(jumps == 2);   // pose initiale + saut de liaison (ecart reel > seuil)
-    CHECK(travel == 0);  // aucun trajet cache : l'espace reel n'est pas garanti couvert
+    CHECK(jumps == 2);  // pose initiale + saut de liaison (ecart reel > seuil)
+    CHECK(travel == 0); // aucun trajet cache : l'espace reel n'est pas garanti couvert
 }

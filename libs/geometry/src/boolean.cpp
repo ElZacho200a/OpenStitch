@@ -24,10 +24,9 @@ Path from_clipper(const Clipper2Lib::Path64& path) {
     out.closed = true;
     out.nodes.reserve(path.size());
     for (const auto& pt : path) {
-        out.nodes.push_back(PathNode{
-            Vec2um{Micrometers{static_cast<std::int32_t>(pt.x)},
-                   Micrometers{static_cast<std::int32_t>(pt.y)}},
-            NodeType::Corner, std::nullopt, std::nullopt});
+        out.nodes.push_back(PathNode{Vec2um{Micrometers{static_cast<std::int32_t>(pt.x)},
+                                            Micrometers{static_cast<std::int32_t>(pt.y)}},
+                                     NodeType::Corner, std::nullopt, std::nullopt});
     }
     return out;
 }
@@ -64,7 +63,7 @@ Path oriented_as(const Path& path, bool wantPositive) {
     return reversed;
 }
 
-}  // namespace
+} // namespace
 
 double path_set_area_um2(const PathSet& set) {
     double area = std::abs(signed_area_um2(set.outer));
@@ -91,8 +90,8 @@ void append_oriented(const PathSet& set, Clipper2Lib::Paths64& paths) {
     }
 }
 
-Result<std::vector<PathSet>> boolean_op(const std::vector<PathSet>& a, const std::vector<PathSet>& b,
-                                         Clipper2Lib::ClipType op) {
+Result<std::vector<PathSet>> boolean_op(const std::vector<PathSet>& a,
+                                        const std::vector<PathSet>& b, Clipper2Lib::ClipType op) {
     Clipper2Lib::Paths64 subject;
     for (const auto& set : a) {
         append_oriented(set, subject);
@@ -123,17 +122,20 @@ Result<std::vector<PathSet>> boolean_op(const std::vector<PathSet>& a, const std
     return out;
 }
 
-}  // namespace
+} // namespace
 
-Result<std::vector<PathSet>> intersect_polygons(const std::vector<PathSet>& a, const std::vector<PathSet>& b) {
+Result<std::vector<PathSet>> intersect_polygons(const std::vector<PathSet>& a,
+                                                const std::vector<PathSet>& b) {
     return boolean_op(a, b, Clipper2Lib::ClipType::Intersection);
 }
 
-Result<std::vector<PathSet>> difference_polygons(const std::vector<PathSet>& a, const std::vector<PathSet>& b) {
+Result<std::vector<PathSet>> difference_polygons(const std::vector<PathSet>& a,
+                                                 const std::vector<PathSet>& b) {
     return boolean_op(a, b, Clipper2Lib::ClipType::Difference);
 }
 
-Result<std::vector<PathSet>> subtract_polygons(const PathSet& base, const std::vector<Path>& cutouts) {
+Result<std::vector<PathSet>> subtract_polygons(const PathSet& base,
+                                               const std::vector<Path>& cutouts) {
     if (cutouts.empty()) {
         return std::vector<PathSet>{base};
     }
@@ -176,4 +178,4 @@ Result<std::vector<PathSet>> subtract_polygons(const PathSet& base, const std::v
     return out;
 }
 
-}  // namespace openstitch::geometry
+} // namespace openstitch::geometry
