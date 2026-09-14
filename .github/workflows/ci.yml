@@ -100,3 +100,39 @@ jobs:
         run: |
           sudo apt-get update && sudo apt-get install -y clang-format
           git ls-files '*.cpp' '*.hpp' | xargs clang-format --dry-run --Werror
+
+  # Publie l'exécutable Windows sur une release GitHub "latest", uniquement
+  # une fois que build + tests + garde-fou Linux + formatage sont tous verts
+  # sur main. La release est glissante : chaque push sur main remplace le
+  # tag et les binaires précédents.
+  release:
+    name: Release GitHub (dernier build de main)
+    needs: [windows-msvc, linux-core, format]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Télécharger l'artefact Windows
+        uses: actions/download-artifact@v4
+        with:
+          name: openstitch-windows-x64
+          path: dist/openstitch-windows-x64
+
+      - name: Empaqueter
+        run: |
+          cd dist
+          zip -r ../openstitch-windows-x64.zip openstitch-windows-x64
+
+      - name: Publier/remplacer la release "latest"
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release delete latest --yes --cleanup-tag --repo "$GITHUB_REPOSITORY" || true
+          gh release create latest openstitch-windows-x64.zip \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "Dernier build (main)" \
+            --notes "Build automatique généré depuis le commit ${{ github.sha }}." \
+            --target "${{ github.sha }}"
