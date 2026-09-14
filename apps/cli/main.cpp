@@ -34,6 +34,7 @@
 #include "openstitch/stitch/sequence.hpp"
 #include "openstitch/stitch_generation/generate.hpp"
 #include "openstitch/stitch_generation/lock.hpp"
+#include "openstitch/stitch_generation/overrides.hpp"
 #include "openstitch/stitch_generation/running_stitch.hpp"
 #include "openstitch/stitch_generation/satin.hpp"
 #include "openstitch/stitch_generation/tatami.hpp"
@@ -367,7 +368,7 @@ int run_digitize(const std::string& imagePath, const std::string& dstPath, doubl
     fmt::print("Objets brodés : {} (satin={} tatami={} running={})\n",
                project.embroidery_objects.size(), nSatin, nTatami, nRunning);
 
-    const auto sequence = stitch_generation::generate_sequence(project);
+    const auto sequence = stitch_generation::effective_sequence(project);
     if (!sequence) {
         fmt::print(stderr, "Erreur de génération des points : {}\n", sequence.error().message);
         return 1;
