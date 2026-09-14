@@ -13,6 +13,7 @@
 #include "openstitch/auto_satin/debug_export.hpp"
 #include "openstitch/auto_satin/satin_column.hpp"
 #include "openstitch/auto_satin/shapes.hpp"
+#include "openstitch/autodigitize/autodigitize.hpp"
 #include "openstitch/core/app_info.hpp"
 #include "openstitch/core/log.hpp"
 #include "openstitch/document/embroidery_object.hpp"
@@ -29,6 +30,7 @@
 #include "openstitch/satin_planning/region_routing.hpp"
 #include "openstitch/satin_planning/region_satinability.hpp"
 #include "openstitch/satin_planning/region_split.hpp"
+#include "openstitch/segmentation/segmentation.hpp"
 #include "openstitch/stitch/sequence.hpp"
 #include "openstitch/stitch_generation/generate.hpp"
 #include "openstitch/stitch_generation/lock.hpp"
@@ -291,6 +293,104 @@ int run_stitchdebug(const std::string& shape, double lengthMm, int repeats,
         const auto written = formats::write_svg_file(std::filesystem::path(outSvg), seq);
         if (!written) {
             fmt::print(stderr, "Erreur : {}\n", written.error().message);
+            return 1;
+        }
+        fmt::print("SVG écrit : {}\n", outSvg);
+    }
+    return 0;
+}
+
+// Pipeline complet image -> DST (segmentation -> numerisation automatique ->
+// generation des points -> export), en ligne de commande, pour comparer le
+// resultat d'OpenStitch a une reference externe sans passer par l'IHM. Memes
+// valeurs par defaut que le dialogue "Numerisation automatique" du desktop
+// (main_window.cpp : max_colors=8, min_region_px=16, smoothing_radius_px=3,
+// skip_largest_region coche par defaut seulement si l'image source n'a pas
+// de canal alpha).
+int run_digitize(const std::string& imagePath, const std::string& dstPath, double dpi,
+                 int maxColors, int minRegionPx, int smoothingPx, int skipBg,
+                 const std::string& outSvg) {
+    using namespace openstitch;
+
+    const auto loaded = image::load_image(std::filesystem::path(imagePath));
+    if (!loaded) {
+        fmt::print(stderr, "Erreur de chargement : {}\n", loaded.error().message);
+        return 1;
+    }
+    fmt::print("Image : {} x {} px (alpha source : {})\n", loaded->width, loaded->height,
+               loaded->source_had_alpha ? "oui" : "non");
+
+    document::Project project;
+    project.mm_per_px = Millimeters{25.4 / dpi};
+    project.original = *loaded;
+
+    auto seg = segmentation::segment(project.original, {.max_colors = maxColors,
+                                                        .min_region_px = minRegionPx,
+                                                        .smoothing_radius_px = smoothingPx});
+    if (!seg) {
+        fmt::print(stderr, "Erreur de segmentation : {}\n", seg.error().message);
+        return 1;
+    }
+    fmt::print("Régions segmentées : {}\n", seg->region_count());
+    project.segmentation = std::move(*seg);
+
+    const bool skipLargest = skipBg < 0 ? !loaded->source_had_alpha : (skipBg != 0);
+    autodigitize::AutoOptions opts;
+    opts.mm_per_px = project.mm_per_px;
+    opts.skip_largest_region = skipLargest;
+    fmt::print("Ignorer la plus grande région (fond) : {}\n", skipLargest ? "oui" : "non");
+
+    auto result = autodigitize::auto_digitize(*project.segmentation, project.object_ids, opts);
+    if (!result) {
+        fmt::print(stderr, "Erreur de numérisation : {}\n", result.error().message);
+        return 1;
+    }
+    for (const auto& w : result->warnings) {
+        fmt::print(stderr, "  ! {}\n", w);
+    }
+    for (auto& v : result->vectors) {
+        project.vector_objects.push_back(std::move(v));
+    }
+    for (auto& e : result->embroideries) {
+        project.embroidery_objects.push_back(std::move(e));
+    }
+
+    int nSatin = 0, nTatami = 0, nRunning = 0;
+    for (const auto& e : project.embroidery_objects) {
+        if (e.is_satin())
+            ++nSatin;
+        else if (e.is_tatami())
+            ++nTatami;
+        else if (std::holds_alternative<document::RunningStitchParams>(e.params))
+            ++nRunning;
+    }
+    fmt::print("Objets brodés : {} (satin={} tatami={} running={})\n",
+               project.embroidery_objects.size(), nSatin, nTatami, nRunning);
+
+    const auto sequence = stitch_generation::generate_sequence(project);
+    if (!sequence) {
+        fmt::print(stderr, "Erreur de génération des points : {}\n", sequence.error().message);
+        return 1;
+    }
+    const auto stats = stitch::compute_stats(*sequence);
+    const double wMm = (stats.bounds.max.x.value - stats.bounds.min.x.value) / 1000.0;
+    const double hMm = (stats.bounds.max.y.value - stats.bounds.min.y.value) / 1000.0;
+    fmt::print("Points : {}  |  sauts : {}  |  coupes : {}  |  changements de fil : {}\n",
+               stats.stitches, stats.jumps, stats.trims, stats.color_changes);
+    fmt::print("Dimensions : {:.1f} x {:.1f} mm  |  fil : {:.2f} m\n", wMm, hMm,
+               stats.thread_length_um / 1e6);
+
+    const auto written = formats::write_dst_file(std::filesystem::path(dstPath), *sequence);
+    if (!written) {
+        fmt::print(stderr, "Erreur d'écriture DST : {}\n", written.error().message);
+        return 1;
+    }
+    fmt::print("DST écrit : {}\n", dstPath);
+
+    if (!outSvg.empty()) {
+        const auto svgWritten = formats::write_svg_file(std::filesystem::path(outSvg), *sequence);
+        if (!svgWritten) {
+            fmt::print(stderr, "Erreur d'écriture SVG : {}\n", svgWritten.error().message);
             return 1;
         }
         fmt::print("SVG écrit : {}\n", outSvg);
@@ -698,6 +798,34 @@ int main(int argc, char** argv) {
     svg_cmd->add_option("entree", svg_in, "Fichier .dst source")->required();
     svg_cmd->add_option("sortie", svg_out, "Fichier .svg à produire")->required();
 
+    std::string dz_image;
+    std::string dz_dst;
+    double dz_dpi = 96.0;
+    int dz_max_colors = 8;
+    int dz_min_region_px = 16;
+    int dz_smoothing_px = 3;
+    int dz_skip_bg = -1; // -1 = auto (= !source_had_alpha), 0 = non, 1 = oui
+    std::string dz_out_svg;
+    auto* dz_cmd = app.add_subcommand(
+        "digitize", "Pipeline complet image -> DST (segmentation, numérisation automatique, "
+                    "génération des points), sans IHM");
+    dz_cmd->add_option("image", dz_image, "Image source (PNG, JPEG, BMP, TIFF)")->required();
+    dz_cmd->add_option("sortie", dz_dst, "Fichier .dst à produire")->required();
+    dz_cmd->add_option("--dpi", dz_dpi, "Résolution supposée pour l'échelle mm/px (défaut : 96)")
+        ->check(CLI::PositiveNumber);
+    dz_cmd->add_option("--max-colors", dz_max_colors, "Nombre maximal de couleurs (défaut : 8)")
+        ->check(CLI::Range(2, 64));
+    dz_cmd
+        ->add_option("--min-region-px", dz_min_region_px,
+                     "Taille minimale de région en px (défaut : 16)")
+        ->check(CLI::PositiveNumber);
+    dz_cmd->add_option("--smoothing-px", dz_smoothing_px, "Lissage des formes en px (défaut : 3)")
+        ->check(CLI::NonNegativeNumber);
+    dz_cmd->add_option("--skip-background", dz_skip_bg,
+                       "Ignorer la plus grande région : -1 auto (défaut, = pas de canal alpha "
+                       "source), 0 non, 1 oui");
+    dz_cmd->add_option("--output-svg", dz_out_svg, "SVG de diagnostic à produire en plus du DST");
+
     std::string sd_shape = "circle";
     double sd_length = 3.0;
     int sd_repeats = 1;
@@ -777,6 +905,10 @@ int main(int argc, char** argv) {
     }
     if (svg_cmd->parsed()) {
         return run_dst2svg(svg_in, svg_out);
+    }
+    if (dz_cmd->parsed()) {
+        return run_digitize(dz_image, dz_dst, dz_dpi, dz_max_colors, dz_min_region_px,
+                            dz_smoothing_px, dz_skip_bg, dz_out_svg);
     }
     if (sd_cmd->parsed()) {
         return run_stitchdebug(sd_shape, sd_length, sd_repeats, sd_out, sd_underlay, sd_underpath);
