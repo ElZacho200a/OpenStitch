@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 #include "openstitch/document/vector_object.hpp"
 
+#include <utility>
+
 namespace openstitch::document {
 
 const geometry::Path* path_in(const VectorObject& object, std::size_t set, std::size_t path) {
