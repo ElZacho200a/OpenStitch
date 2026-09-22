@@ -4025,10 +4025,11 @@ avec preuves de call sites&nbsp;:
   calculé par l'analyseur de couverture indépendant (rails croisés).
 
 Budgets d'exploration explicites (§18)&nbsp;: `max_total_regions`,
-`max_planning_iterations`, et un filet de sécurité **wall-clock**
-supplémentaire (`max_planning_wall_clock_ms`) — nécessaire en pratique, cf.
-Phase 7. Toute limite atteinte produit `Incomplete`/`Impossible` avec
-diagnostic `SearchBudgetExceeded`, jamais un faux `Complete`.
+`max_planning_iterations` et `max_oracle_evaluations`. Ils sont tous fondés
+sur des compteurs déterministes&nbsp;: la vitesse de la machine et la charge
+CPU ne peuvent plus changer le point d'arrêt ni le plan émis. Toute limite
+atteinte produit `Incomplete`/`Impossible` avec diagnostic
+`SearchBudgetExceeded`, jamais un faux `Complete`.
 
 ### Phase 3 — Extraction de l'adaptateur générique, suppression des bypass
 
@@ -4089,22 +4090,19 @@ contre-exemples » fonctionne.
    coût sans l'éliminer (le vrai goulot, la génération de candidats de
    `split_region` elle-même sur une jonction à haut degré, est identifié
    mais délibérément NON corrigé, cf. §33 : pas de patch opportuniste du
-   générateur/planner sous la pression d'une seule fixture). Le filet de
-   sécurité wall-clock (Phase 2) borne le nombre d'ITÉRATIONS de la
-   récursion, mais **ne préempte pas un appel unique** à
+   générateur/planner sous la pression d'une seule fixture). Le budget
+   déterministe d'oracle borne le nombre d'ITÉRATIONS de la récursion, mais
+   **ne préempte pas un appel unique** à
    `split_region`/`generate_concavity_cut_candidates` déjà en cours&nbsp;: le
    budget n'est revérifié qu'au retour de cet appel, pas pendant. Sur une
    jonction pathologique où une seule génération de candidats prend déjà
    plusieurs dizaines de secondes (mesuré isolément, ci-dessus), le
-   dépassement réel du budget configuré peut donc être largement supérieur
-   à `max_planning_wall_clock_ms` avant que le plan ne s'arrête. Constaté
+   coût réel d'un appel peut donc rester élevé avant que le plan ne s'arrête. Constaté
    concrètement en exécutant la suite `test_satin_planning` complète
    (nombreux appels à `create_satin_plan` sur les formes lentes, cumulés
    par les tests d'invariants qui parcourent tout le corpus) : durée totale
-   de plusieurs dizaines de minutes, très supérieure à la simple somme des
-   budgets configurés. Le filet garantit la terminaison EN NOMBRE
-   D'ITÉRATIONS, pas un plafond de temps strict par appel — nuance
-   importante que la Phase 2 avait sous-estimée.
+   de plusieurs dizaines de minutes. Le budget garantit la terminaison EN
+   NOMBRE D'ITÉRATIONS, pas un plafond de temps strict par appel.
 
    **Mise en garde vérifiée, pas supposée (§37) : ceci mélange DEUX
    limitations distinctes que les mesures Debug seules ne permettent pas de
@@ -4201,12 +4199,11 @@ contre-exemples » fonctionne.
    diagnostic) : leur cas est un pur artefact de vitesse Debug, sans
    contrepartie de qualité. **Corrigé** en
    distinguant clairement les deux usages du budget&nbsp;: le défaut de
-   production (`max_planning_wall_clock_ms=10&nbsp;000`, calibré pour
-   l'UI interactive) reste inchangé, mais le test qui vérifie « la
-   décomposition réussit avec des ressources suffisantes » utilise
-   désormais un budget explicitement généreux (120&nbsp;000&nbsp;ms) plutôt
-   que le défaut de production — ce test n'a jamais eu vocation à valider
-   un plafond de temps, seulement la logique de décomposition elle-même.
+   production (`max_oracle_evaluations=32`) reste borné et déterministe,
+   tandis que le test qui vérifie « la décomposition réussit avec des
+   ressources suffisantes » utilise un budget d'oracle explicitement
+   généreux. Ce test n'a jamais eu vocation à valider un plafond de temps,
+   seulement la logique de décomposition elle-même.
 8. **`unresolved_residual` pouvait se vider à tort quand le budget
    s'épuisait PENDANT une réparation de résidu** — trouvé en investiguant le
    revert du point 6 ci-dessus (`test_autodigitize`, réseau en T réel,
@@ -4237,8 +4234,8 @@ contre-exemples » fonctionne.
    de couverture FINALE (déjà calculée, authoritative, sur l'état
    réellement émis) plutôt que du bookkeeping accumulé round par round
    pendant la boucle — qui peut devenir périmé exactement dans ce cas de
-   bord. Le plafond wall-clock par défaut reste à 10&nbsp;000&nbsp;ms
-   (inchangé, l'essai à 20&nbsp;000 n'apportait rien et a été reverté).
+   bord. Le plafond wall-clock décrit dans cette investigation a depuis été
+   supprimé au profit du compteur déterministe `max_oracle_evaluations`.
    Non-régression&nbsp;: `test_autodigitize` complet + `test_satin_planning`
    complet, Debug ET Release.
 
@@ -4246,21 +4243,12 @@ contre-exemples » fonctionne.
 
 Répétitions (5×) sur `polygonal_cut_fixture`, `two_holes`&nbsp;: nombre de
 régions, statut, couverture agrégée, `regions_explored`/
-`oracle_evaluations` identiques à chaque exécution. `deep_recursive`
-faisait initialement partie de ce test mais en a été retirée le 2026-08-17
-— mesurée non déterministe de façon reproductible sous charge machine
-soutenue (nombreuses recompilations/exécutions en arrière-plan pendant
-cette session)&nbsp;: assez proche de la limite wall-clock pour que la
-variance de charge ambiante suffise à la faire basculer d'un côté ou de
-l'autre (2 contre 3 régions observées entre deux exécutions consécutives).
-**Compromis assumé** : les formes dont le filet wall-clock (Phase 7,
-point 2) est le facteur limitant (`comb`, `star5`, `deep_recursive`, etc.)
-sont exclues de ce test — le temps écoulé réel varie d'une exécution à
-l'autre par nature, donc leur plan résultant n'est pas garanti identique à
-l'octet près. Compromis documenté (`SatinPlanConfig::
-max_planning_wall_clock_ms`) plutôt que caché&nbsp;: sécurité avant
-déterminisme parfait sur des cas déjà
-pathologiques.
+`oracle_evaluations` identiques à chaque exécution. Le filet wall-clock qui
+rendait auparavant `deep_recursive`, `comb` ou `star5` sensibles à la charge
+machine a été supprimé&nbsp;: les limites de recherche sont maintenant des
+compteurs déterministes. Les formes pathologiques peuvent toujours terminer
+en `Incomplete`, mais leur point d'arrêt et leur sortie ne changent plus
+selon la vitesse du runner.
 
 ### Limitations connues (honnêtement documentées, trois catégories)
 
@@ -4970,12 +4958,9 @@ réelles, jamais sous la pression d'une seule (§33). `E`/`multi_neck`/
 `deep_channel` restent donc des limitations connues, désormais confirmées
 ne PAS relever de la portée de coupe.
 
-Le nouveau test dédié à `comb` reçoit un budget wall-clock explicitement
-généreux (`max_planning_wall_clock_ms=120000`, même pattern déjà en place
-pour le test "réseau en T") : sans cela, le ralentissement Debug non
-optimisé (déjà documenté ailleurs dans ce fichier) fait basculer `comb` sur
-`SearchBudgetExceeded` avant d'atteindre `Complete` — un artefact de
-configuration de build, pas une régression du correctif lui-même.
+Le test dédié à `comb` reçoit un budget d'oracle explicitement généreux
+(`max_oracle_evaluations=1000`) afin de vérifier la qualité atteignable sans
+confondre cette vérification avec le plafond de production.
 
 Non-régression&nbsp;: `test_satin_planning` (90&nbsp;cas, 3831&nbsp;assertions
 Release, 3813&nbsp;Debug) complet.

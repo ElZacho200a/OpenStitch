@@ -2,7 +2,6 @@
 #include "openstitch/satin_planning/satin_plan.hpp"
 
 #include <algorithm>
-#include <chrono>
 #include <functional>
 #include <limits>
 #include <sstream>
@@ -81,21 +80,15 @@ struct PlanningBudgetState {
     int regions_accepted{0};   // feuilles reellement acceptees dans le plan
     int oracle_evaluations{0}; // tentatives de decomposition guidee (beam search / concavite)
     bool exceeded{false};      // vrai des qu'une des limites est franchie
-    // Filet de securite wall-clock (§18, cf. doc de `SatinPlanConfig::
-    // max_planning_wall_clock_ms`) : horodatage du DEBUT de l'appel a
-    // `create_satin_plan`, pas de chaque iteration individuelle.
-    std::chrono::steady_clock::time_point start_time{std::chrono::steady_clock::now()};
 };
 
 bool budget_exceeded(const PlanningBudgetState& budget, const SatinPlanConfig& config) {
     if (budget.regions_explored >= config.max_planning_iterations ||
-        budget.regions_accepted >= config.max_total_regions) {
+        budget.regions_accepted >= config.max_total_regions ||
+        budget.oracle_evaluations >= config.max_oracle_evaluations) {
         return true;
     }
-    const auto elapsedMs = std::chrono::duration_cast<std::chrono::milliseconds>(
-                               std::chrono::steady_clock::now() - budget.start_time)
-                               .count();
-    return elapsedMs >= config.max_planning_wall_clock_ms;
+    return false;
 }
 
 struct RecursionOutcome {
@@ -978,17 +971,13 @@ SatinPlan create_satin_plan(const geometry::PathSet& source, const SatinPlanConf
     }
 
     if (budget.exceeded) {
-        const auto elapsedMs = std::chrono::duration_cast<std::chrono::milliseconds>(
-                                   std::chrono::steady_clock::now() - budget.start_time)
-                                   .count();
         std::ostringstream reason;
-        reason.setf(std::ios::fixed);
-        reason.precision(0);
         reason << "Budget d'exploration atteint (regions_explored=" << budget.regions_explored
                << "/" << config.max_planning_iterations
                << ", regions_accepted=" << budget.regions_accepted << "/"
-               << config.max_total_regions << ", ecoule=" << elapsedMs << "ms/"
-               << config.max_planning_wall_clock_ms << "ms) avant la fin de la planification.";
+               << config.max_total_regions << ", oracle_evaluations="
+               << budget.oracle_evaluations << "/" << config.max_oracle_evaluations
+               << ") avant la fin de la planification.";
         plan.diagnostics.push_back({"SearchBudgetExceeded", reason.str()});
     }
 

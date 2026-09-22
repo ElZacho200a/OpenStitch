@@ -145,27 +145,10 @@ TEST_CASE("create_satin_plan : budget genereux -- jamais atteint sur le corpus h
     // formes existant -- sinon le mecanisme casserait silencieusement des
     // plans qui reussissaient deja avant son introduction.
     //
-    // Defaut reel trouve puis CORRIGE le 2026-08-17 : ce test utilisait
-    // d'abord `prod_config()` telle quelle (budget PAR DEFAUT, calibre pour
-    // la reactivite interactive -- `max_planning_wall_clock_ms=10000`) --
-    // "cross" puis "h" (mesures sur des executions differentes, toutes deux
-    // 100% reproductibles isolement) ont alors declenche le budget en Debug
-    // (~10,5-11s pour un seul appel de generation de candidats sur UNE
-    // jonction), alors qu'un test Release identique les resout tous les
-    // deux en `Complete`, sans le moindre diagnostic de budget. Cause
-    // racine confirmee empiriquement (pas supposee) : la marge du budget
-    // PAR DEFAUT (dimensionnee pour l'usage interactif Release) est trop
-    // etroite face au ralentissement Debug (code geometrique non optimise,
-    // Clipper2 compile sans optimisations) -- un artefact de configuration
-    // de build, PAS une limitation architecturale du planner (a la
-    // difference de star5/comb/E/multi_neck/deep_channel, qui restent
-    // couteuses meme en Release, cf. leurs tests dedies). Corrige en
-    // donnant a CE test precis un budget explicitement genereux, decouple
-    // du defaut de production -- ce test verifie que la DECOMPOSITION
-    // reussit avec des ressources suffisantes, pas que le defaut de
-    // production suffit sur toutes les configurations de build.
+    // Ce test verifie la qualite atteignable avec un budget d'exploration
+    // volontairement genereux, independamment du plafond de production.
     auto generousConfig = prod_config();
-    generousConfig.max_planning_wall_clock_ms = 120'000;
+    generousConfig.max_oracle_evaluations = 1'000;
     for (const std::string& name : {"rectangle", "t", "y", "cross", "h", "trident", "ring"}) {
         INFO("forme = " << name);
         const auto plan = create_satin_plan(shape(name), generousConfig);
@@ -579,14 +562,12 @@ TEST_CASE("create_satin_plan : y_symmetric -- le multi-candidats converge vers l
     // Note sur la marge de l'assertion de couverture ci-dessous : confirme
     // deterministe (identique a 6 decimales) sur >10 executions isolees ET
     // apres un fort prechauffage dans le meme process (2026-08-30). Une
-    // seule execution en a devie sous CONTENTION CPU reelle (une compilation
-    // Debug concurrente sur la meme machine, pas reproduite depuis) --
-    // rappel attendu de `PlanningBudgetState` (§18, filet de securite
-    // wall-clock reel, `max_planning_wall_clock_ms`), pas un defaut de ce
-    // mecanisme precis. Marge conservee volontairement genereuse (pas
-    // d'egalite stricte) pour rester robuste a ce cas de charge machine.
+    // Marge conservee volontairement genereuse (pas d'egalite stricte) pour
+    // absorber les minuscules ecarts numeriques entre plateformes.
     auto withFlag = prod_config();
     auto withoutFlag = prod_config();
+    withFlag.max_oracle_evaluations = 1'000;
+    withoutFlag.max_oracle_evaluations = 1'000;
     withoutFlag.use_topology_multi_candidate = false;
 
     const auto planWith = create_satin_plan(shape("y_symmetric"), withFlag);
@@ -609,7 +590,7 @@ TEST_CASE("create_satin_plan : polygonal_cut_fixture -- le multi-candidats ne ch
     // numerique de cout de continuite se declenchait aussi INCIDEMMENT sur
     // les sous-regions degre-3 issues des coupes concavite/polygonales de
     // CETTE forme (sans rapport avec un Y symetrique), epuisant le budget
-    // wall-clock et faisant regresser le statut d'Incomplete (53,30%) a
+    // d'exploration et faisant regresser le statut d'Incomplete (53,30%) a
     // Impossible (38,70%). Corrige en ne declenchant la comparaison couteuse
     // que pour une jonction classee JunctionType::Y (etape 2) -- ce test
     // fige le resultat identique avec/sans le nouveau chemin, comme garde-

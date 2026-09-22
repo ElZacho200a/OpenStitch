@@ -204,6 +204,70 @@ TEST_CASE("fixture tentabrode : pipeline complexe deterministe et sans geometrie
 // que "fixture tentabrode" ci-dessus (segment -> auto_digitize, mêmes
 // réglages), puis calcule la couverture réelle de CHAQUE région ayant reçu
 // au moins un objet satin, avec satin_coverage::analyze_satin_coverage.
+TEST_CASE("fixture tentabrode exacte : auto-numerisation et sequence deterministes",
+          "[.][integration][slow]") {
+    const fs::path fixture =
+        fs::path{OPENSTITCH_TEST_SOURCE_DIR} / "tests" / "fixtures" / "tentabrode.png";
+    const auto loaded = image::load_image(fixture);
+    REQUIRE(loaded.has_value());
+    REQUIRE(loaded->width == 1117);
+    REQUIRE(loaded->height == 1408);
+
+    const Millimeters mmPerPx{25.4 / 96.0};
+    const auto segmented = segmentation::segment(
+        *loaded, {.max_colors = 8, .min_region_px = 16, .smoothing_radius_px = 3});
+    REQUIRE(segmented.has_value());
+
+    document::Project firstProject;
+    document::Project secondProject;
+    firstProject.original = *loaded;
+    secondProject.original = *loaded;
+    firstProject.mm_per_px = mmPerPx;
+    secondProject.mm_per_px = mmPerPx;
+    firstProject.segmentation = *segmented;
+    secondProject.segmentation = *segmented;
+
+    autodigitize::AutoOptions options;
+    options.mm_per_px = mmPerPx;
+    const auto background = segmentation::background_candidate(*segmented);
+    options.skip_largest_region = background && background->recommended;
+
+    auto firstDigitized =
+        autodigitize::auto_digitize(*segmented, firstProject.object_ids, options);
+    auto secondDigitized =
+        autodigitize::auto_digitize(*segmented, secondProject.object_ids, options);
+    REQUIRE(firstDigitized.has_value());
+    REQUIRE(secondDigitized.has_value());
+    REQUIRE(firstDigitized->vectors.size() == secondDigitized->vectors.size());
+    REQUIRE(firstDigitized->embroideries.size() == secondDigitized->embroideries.size());
+    REQUIRE_FALSE(firstDigitized->embroideries.empty());
+
+    const auto absorb = [](document::Project& project, autodigitize::AutoResult& result) {
+        for (auto& object : result.vectors)
+            project.vector_objects.push_back(std::move(object));
+        for (auto& object : result.embroideries)
+            project.embroidery_objects.push_back(std::move(object));
+    };
+    absorb(firstProject, *firstDigitized);
+    absorb(secondProject, *secondDigitized);
+
+    const auto firstSequence = stitch_generation::generate_sequence(firstProject);
+    const auto secondSequence = stitch_generation::generate_sequence(secondProject);
+    REQUIRE(firstSequence.has_value());
+    REQUIRE(secondSequence.has_value());
+    REQUIRE_FALSE(firstSequence->commands.empty());
+    CHECK(firstSequence->commands == secondSequence->commands);
+
+    bool hasHole = false;
+    for (const auto& object : firstProject.vector_objects) {
+        hasHole = hasHole || std::any_of(object.paths.begin(), object.paths.end(),
+                                         [](const geometry::PathSet& path) {
+                                             return !path.holes.empty();
+                                         });
+    }
+    CHECK(hasHole);
+}
+
 TEST_CASE("DIAGNOSTIC TEMPORAIRE couverture satin (tentabrode)", "[.][diagnostic]") {
     const fs::path fixture =
         fs::path{OPENSTITCH_TEST_SOURCE_DIR} / "tests" / "fixtures" / "tentabrode.png";

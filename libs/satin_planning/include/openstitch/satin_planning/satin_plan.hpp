@@ -195,42 +195,13 @@ struct SatinPlanConfig {
     // tourner indefiniment.
     int max_total_regions{40};
     int max_planning_iterations{60};
-    // Filet de securite EN PLUS des compteurs deterministes ci-dessus
-    // (§18 : "ne pas utiliser le temps wall-clock comme SEULE limite dans
-    // les tests deterministes" -- ceci n'en est PAS la seule limite, juste
-    // une garde-fou supplementaire de defense en profondeur) : borne le
-    // temps mur total d'un appel a `create_satin_plan`, quel que soit le
-    // cout reel par iteration -- jamais de dependance UNIQUE au nombre
-    // d'iterations pour borner le temps, qui s'est reveleee insuffisante en
-    // pratique (cf. commentaire ci-dessus).
-    //
-    // COMPROMIS DE DETERMINISME ASSUME (§19 de la mission) : pour une forme
-    // dont ce filet wall-clock est effectivement le facteur limitant (le
-    // temps ecoule reel varie d'une execution a l'autre, contrairement aux
-    // compteurs deterministes ci-dessus), le plan resultant N'EST PAS
-    // garanti identique a l'octet pres entre deux executions -- compromis
-    // deliberement accepte (securite avant determinisme parfait sur les cas
-    // deja pathologiques), documente honnetement plutot que cache. Les
-    // formes qui NE declenchent JAMAIS ce filet (l'immense majorite du
-    // corpus) restent entierement deterministes.
-    // Essaye brievement a 20'000 le 2026-08-17 (raisonnement initial :
-    // couvrir la marge Debug observee sur "cross"/"h", cf. docs/source/
-    // satin.md) puis REVERTE a 10'000 -- verifie empiriquement (§37, ne pas
-    // supposer) que ce raisonnement ne s'appliquait PAS a toutes les
-    // formes : sur le reseau en T de `test_autodigitize`, le temps ecoule
-    // reel a la limite SUIT le plafond configure (~15,4s a 10s de plafond,
-    // ~29,6s a 20s de plafond) au lieu de se stabiliser -- signe d'un cout
-    // qui CROIT avec le budget disponible (meme famille que comb/star5/E),
-    // pas d'un simple appel ponctuel un peu lent (contrairement a
-    // "cross"/"h", qui eux se stabilisent). Augmenter le plafond global
-    // n'aide donc PAS ce genre de cas (juste plus lent avant le meme
-    // echec), et ralentit inutilement toute la suite de tests sur les cas
-    // deja pathologiques. Le vrai defaut revele par ce cas (`unresolved_
-    // residual` qui peut se vider a tort quand le budget s'epuise PENDANT
-    // une reparation de residu) est corrige a la source (cf. `create_satin_
-    // plan`, derivation de `unresolved_residual` depuis la mesure finale)
-    // plutot que masque en repoussant le plafond.
-    int max_planning_wall_clock_ms{10'000};
+    // Budget GLOBAL d'appels couteux au selecteur de decomposition. A la
+    // difference d'un filet wall-clock, ce compteur produit exactement le
+    // meme plan quelle que soit la vitesse de la machine ou la charge du
+    // systeme. La valeur par defaut conserve les cas usuels mesures sur le
+    // corpus ("y" atteint 10 evaluations) tout en bornant les formes
+    // pathologiques dont chaque split peut prendre plusieurs secondes.
+    int max_oracle_evaluations{32};
     // §18 de la mission de durcissement du contrat (2026-08-17) : borne le
     // cout de `OracleGuidedSelector`, le selecteur PAR DEFAUT de chaque
     // decomposition -- documente lui-meme (beam_search.hpp) comme

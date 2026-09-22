@@ -340,7 +340,7 @@ TEST_CASE("create_satin_plan : comb -- resolue completement (ancienne limitation
     // COMPLETEMENT avec des ressources suffisantes, pas que le budget par
     // defaut de production suffit sur toutes les configurations de build.
     auto generousConfig = prod_config();
-    generousConfig.max_planning_wall_clock_ms = 120'000;
+    generousConfig.max_oracle_evaluations = 1'000;
     const auto plan = create_satin_plan(shape("comb"), generousConfig);
     INFO(format_satin_plan(plan));
     CHECK(plan.status == SatinPlanStatus::Complete);
@@ -493,43 +493,13 @@ TEST_CASE(
     "create_satin_plan : determinisme -- meme forme difficile, repetitions, resultat identique") {
     // Repetition sur des formes difficiles (branchee + concavites) : meme
     // nombre de regions, meme couverture, meme statut a chaque fois.
-    // "comb"/"star5" sont volontairement EXCLUES ici : leur decomposition
-    // est actuellement bornee par le filet de securite wall-clock
-    // (`SatinPlanConfig::max_planning_wall_clock_ms`, cf. leurs tests
-    // dedies) -- CE filet-la est intrinsequement non-deterministe (le temps
-    // ecoule reel varie d'une execution a l'autre), un compromis honnete et
-    // documente du garde-fou de securite, pas une garantie de determinisme
-    // violee pour les formes qui NE le declenchent jamais.
-    //
-    // "deep_recursive" retiree de cette liste le 2026-08-17 (etait presente
-    // depuis l'ecriture initiale de ce test) : mesure reproductible sous
-    // charge machine soutenue (nombreuses recompilations/executions
-    // background pendant cette meme session) -- `regions.size()`,
-    // `regions_explored`, `oracle_evaluations` et `aggregate_coverage`
-    // varient reellement d'une execution a l'autre (ex. 2 vs 3 regions,
-    // 12 vs 14 explorees). Meme famille que "comb"/"star5" ci-dessus : cette
-    // forme est apparemment assez proche de la limite wall-clock pour que
-    // la variance ambiante de charge machine suffise a la faire basculer
-    // d'un cote ou de l'autre -- pas une regression du code de
-    // planification lui-meme (aucun changement de cette session ne touche
-    // au comptage `regions_explored`/`oracle_evaluations`).
-    //
-    // 2026-09-22 : la CI linux-core (Debug, runner GitHub lent) a fait
-    // basculer "two_holes" a son tour (regions_explored 2 vs 1,
-    // oracle_evaluations 1 vs 0 d'une repetition a l'autre). Mesure : meme
-    // en Release sous MSVC, "two_holes" ET "polygonal_cut_fixture"
-    // atteignent le filet wall-clock de 10 s a CHAQUE planification -- leur
-    // resultat sous `prod_config()` depend donc toujours de la vitesse de la
-    // machine, jamais un vrai test de determinisme. Plutot que retirer une
-    // forme de plus, ce test desactive desormais le filet wall-clock (seuls
-    // les budgets en nombre d'iterations/evaluations, deterministes, bornent
-    // la recherche) et porte sur des formes difficiles qui terminent leur
-    // decomposition complete loin de toute limite de temps (Release MSVC,
-    // sans filet) : "notch" (~0,4 s, 5 regions, 16 explorees, 10 oracle),
+    // Le budget de production est entierement determine par des compteurs :
+    // la charge CPU ne peut plus changer le point d'arret. Ces formes
+    // difficiles terminent loin de la limite : "notch" (5 regions, 16
+    // explorees, 10 oracle),
     // "pinch" (~0,3 s, 5 regions, 10 explorees, 8 oracle), "y" branchee
     // (~1,6 s, 4 regions, 12 explorees, 10 oracle).
-    auto config = prod_config();
-    config.max_planning_wall_clock_ms = std::numeric_limits<int>::max();
+    const auto config = prod_config();
     for (const auto& name : {"notch", "pinch", "y"}) {
         INFO("forme = " << name);
         const auto source = shape(name);
@@ -558,23 +528,9 @@ TEST_CASE(
     // Translation pure : aucune raison structurelle pour que le nombre de
     // regions ou la couverture changent (contrairement a une rotation, ou
     // un tie-break de balayage axé-repere peut legitimement differer).
-    // "star5"/"comb" volontairement exclues (cf. le test de determinisme
-    // ci-dessus) : leur decomposition peut etre bornee par le filet de
-    // securite wall-clock, intrinsequement non-deterministe, MEME en
-    // Release (limitation architecturale reelle, pas un artefact de build).
-    // "cross" egalement exclue ici, pour une raison DIFFERENTE et plus
-    // etroite : mesuree le 2026-08-17 avec `prod_config()` (budget par
-    // defaut), sa decomposition frole le budget wall-clock UNIQUEMENT en
-    // Debug (~10,5-11s pour un seul appel de generation de candidats sur sa
-    // jonction, contre un `Complete` net et rapide en Release, cf.
-    // `test_satin_plan.cpp`, test "budget genereux") -- artefact de
-    // configuration de build (Debug non optimise), pas une propriete
-    // structurelle de "cross" elle-meme ; exclue quand meme ici par
-    // prudence car ce test utilise `prod_config()` telle quelle (pas de
-    // budget genereux explicite), et son `oracle_evaluations` a ete observe
-    // variant d'une execution Debug a l'autre (3 puis 2) -- preuve directe
-    // que le point d'interruption wall-clock n'est pas reproductible a
-    // l'octet pres quand il est atteint.
+    // Ce test reste volontairement cible sur deux topologies rapides. Les
+    // cas lourds ont leurs propres tests de terminaison et de determinisme,
+    // afin de ne pas multiplier ici le cout des rotations/translations.
     for (const auto& name : {"t", "trident"}) {
         INFO("forme = " << name);
         auto source = shape(name);
