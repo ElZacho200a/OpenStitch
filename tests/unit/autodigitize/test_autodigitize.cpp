@@ -4,10 +4,12 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <numbers>
 #include <optional>
 #include <set>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "openstitch/auto_satin/satin_column.hpp"
 #include "openstitch/autodigitize/autodigitize.hpp"
@@ -667,4 +669,184 @@ TEST_CASE("auto_digitize_vectors : objet sans geometrie exploitable -> ignore sa
     empty.name = "vide";
     // paths volontairement vide : simule un objet vectoriel degenere.
     CHECK_FALSE(auto_digitize_vectors({empty}, ids, opts()).has_value());
+}
+
+// --- Lot B (audit marine plein cadre) : orientation et sous-couche ----------
+// Avant : tous les tatami de l'auto-numérisation étaient à 0°, sans
+// sous-couche (`TatamiParams{}`), quelle que soit la forme.
+
+namespace {
+
+// Image opaque w x h (1 px = 1 mm avec opts()) : une liste de rectangles
+// colorés [x0,x1)x[y0,y1) peints dans l'ordre sur un fond transparent.
+struct Rect {
+    int x0, y0, x1, y1;
+    std::array<std::uint8_t, 3> rgb;
+};
+image::Image paint(int w, int h, const std::vector<Rect>& rects) {
+    image::Image img = blank(w, h);
+    for (const auto& r : rects) {
+        for (int y = r.y0; y < r.y1; ++y) {
+            for (int x = r.x0; x < r.x1; ++x) {
+                set_px(img, x, y, r.rgb[0], r.rgb[1], r.rgb[2]);
+            }
+        }
+    }
+    return img;
+}
+
+AutoOptions tatami_only_opts() {
+    AutoOptions o = opts();
+    o.use_auto_satin = false; // formes de test « tatami » quelle que soit leur largeur
+    o.min_fill_area_mm2 = 4.0;
+    return o;
+}
+
+double deg(const document::TatamiParams& p) {
+    return p.angle.radians * 180.0 / std::numbers::pi;
+}
+
+// Écart angulaire entre deux orientations de rangées (modulo 180°), en degrés.
+double row_gap_deg(double a, double b) {
+    const double d = std::fmod(std::abs(a - b), 180.0);
+    return std::min(d, 180.0 - d);
+}
+
+std::vector<document::TatamiParams> tatamis_by_color(const AutoResult& r,
+                                                     std::array<std::uint8_t, 3> rgb) {
+    std::vector<document::TatamiParams> out;
+    // La segmentation rend le centre k-means (reconverti Lab -> RGB), pas la
+    // couleur exacte peinte : comparaison à tolérance.
+    const auto close = [&](const std::array<std::uint8_t, 3>& c) {
+        int d = 0;
+        for (int i = 0; i < 3; ++i) {
+            d += std::abs(int{c[static_cast<std::size_t>(i)]} -
+                          int{rgb[static_cast<std::size_t>(i)]});
+        }
+        return d <= 24;
+    };
+    for (const auto& e : r.embroideries) {
+        if (close(e.rgb) && e.is_tatami()) {
+            out.push_back(std::get<document::TatamiParams>(e.params));
+        }
+    }
+    return out;
+}
+
+constexpr std::array<std::uint8_t, 3> kRed{220, 30, 30};
+constexpr std::array<std::uint8_t, 3> kBlue{30, 30, 220};
+
+} // namespace
+
+TEST_CASE("Lot B : angle du tatami selon l'axe principal de la region") {
+    SECTION("bande horizontale -> rangees a 0 degre") {
+        const auto seg = segmentation::segment(paint(70, 20, {{5, 4, 65, 16, kRed}}),
+                                               {.max_colors = 2, .min_region_px = 1});
+        REQUIRE(seg.has_value());
+        IdGenerator<ObjectId> ids;
+        const auto r = auto_digitize(*seg, ids, tatami_only_opts());
+        REQUIRE(r.has_value());
+        const auto t = tatamis_by_color(*r, kRed);
+        REQUIRE(t.size() == 1);
+        CHECK(row_gap_deg(deg(t[0]), 0.0) < 2.0);
+    }
+    SECTION("bande verticale -> rangees a 90 degres") {
+        const auto seg = segmentation::segment(paint(20, 70, {{4, 5, 16, 65, kRed}}),
+                                               {.max_colors = 2, .min_region_px = 1});
+        REQUIRE(seg.has_value());
+        IdGenerator<ObjectId> ids;
+        const auto r = auto_digitize(*seg, ids, tatami_only_opts());
+        REQUIRE(r.has_value());
+        const auto t = tatamis_by_color(*r, kRed);
+        REQUIRE(t.size() == 1);
+        CHECK(row_gap_deg(deg(t[0]), 90.0) < 2.0);
+    }
+    SECTION("carre quasi isotrope -> 45 degres") {
+        const auto seg = segmentation::segment(paint(40, 40, {{5, 5, 35, 35, kRed}}),
+                                               {.max_colors = 2, .min_region_px = 1});
+        REQUIRE(seg.has_value());
+        IdGenerator<ObjectId> ids;
+        const auto r = auto_digitize(*seg, ids, tatami_only_opts());
+        REQUIRE(r.has_value());
+        const auto t = tatamis_by_color(*r, kRed);
+        REQUIRE(t.size() == 1);
+        CHECK(row_gap_deg(deg(t[0]), 45.0) < 0.5);
+    }
+}
+
+TEST_CASE("Lot B : deux tatami voisins jamais a moins de 20 degres, la plus petite cede") {
+    // Deux bandes horizontales empilées (même axe naturel 0°) : la grande
+    // (rouge, 60x20) garde son angle, la petite (bleue, 60x12) est décalée.
+    const auto seg =
+        segmentation::segment(paint(70, 40, {{5, 4, 65, 24, kRed}, {5, 24, 65, 36, kBlue}}),
+                              {.max_colors = 2, .min_region_px = 1});
+    REQUIRE(seg.has_value());
+    IdGenerator<ObjectId> ids;
+    const auto r = auto_digitize(*seg, ids, tatami_only_opts());
+    REQUIRE(r.has_value());
+    const auto red = tatamis_by_color(*r, kRed);
+    const auto blue = tatamis_by_color(*r, kBlue);
+    REQUIRE((red.size() == 1 && blue.size() == 1));
+    CHECK(row_gap_deg(deg(red[0]), 0.0) < 2.0);
+    CHECK(row_gap_deg(deg(red[0]), deg(blue[0])) >= 20.0 - 1e-6);
+
+    // Les régions non voisines ne se contraignent pas : deux bandes séparées
+    // par du vide gardent toutes deux leur axe naturel.
+    const auto seg2 =
+        segmentation::segment(paint(70, 50, {{5, 4, 65, 24, kRed}, {5, 30, 65, 42, kBlue}}),
+                              {.max_colors = 2, .min_region_px = 1});
+    REQUIRE(seg2.has_value());
+    IdGenerator<ObjectId> ids2;
+    const auto r2 = auto_digitize(*seg2, ids2, tatami_only_opts());
+    REQUIRE(r2.has_value());
+    CHECK(row_gap_deg(deg(tatamis_by_color(*r2, kBlue).at(0)), 0.0) < 2.0);
+}
+
+TEST_CASE("Lot B : sous-couche selon l'aire (aucune, contour, contour + rangees)") {
+    // Trois carrés isolés : 4x4 = 16 mm², 7x7 = 49 mm², 20x20 = 400 mm².
+    const std::array<std::uint8_t, 3> kGreen{30, 200, 30};
+    const auto seg = segmentation::segment(
+        paint(60, 30, {{2, 2, 6, 6, kRed}, {10, 2, 17, 9, kBlue}, {30, 2, 50, 22, kGreen}}),
+        {.max_colors = 3, .min_region_px = 1});
+    REQUIRE(seg.has_value());
+    IdGenerator<ObjectId> ids;
+    const auto r = auto_digitize(*seg, ids, tatami_only_opts());
+    REQUIRE(r.has_value());
+    const auto small = tatamis_by_color(*r, kRed);
+    const auto medium = tatamis_by_color(*r, kBlue);
+    const auto large = tatamis_by_color(*r, kGreen);
+    REQUIRE((small.size() == 1 && medium.size() == 1 && large.size() == 1));
+    CHECK_FALSE(small[0].underlay_edge);
+    CHECK_FALSE(small[0].underlay_parallel);
+    CHECK(medium[0].underlay_edge);
+    CHECK_FALSE(medium[0].underlay_parallel);
+    CHECK(large[0].underlay_edge);
+    CHECK(large[0].underlay_parallel);
+
+    // Réglages désactivables : comportement historique (TatamiParams{}).
+    AutoOptions off = tatami_only_opts();
+    off.auto_fill_angle = false;
+    off.auto_fill_underlay = false;
+    IdGenerator<ObjectId> ids2;
+    const auto r2 = auto_digitize(*seg, ids2, off);
+    REQUIRE(r2.has_value());
+    const auto big2 = tatamis_by_color(*r2, kGreen);
+    REQUIRE(big2.size() == 1);
+    CHECK(big2[0].angle.radians == 0.0);
+    CHECK_FALSE(big2[0].underlay_edge);
+}
+
+TEST_CASE("Lot B : auto_digitize_vectors oriente aussi ses tatami (sans voisinage)") {
+    IdGenerator<ObjectId> ids;
+    std::vector<document::VectorObject> vecs{
+        make_vector(ids.next(), rect_path_um(0, 0, 12'000, 60'000))};
+    AutoOptions o = tatami_only_opts();
+    const auto r = auto_digitize_vectors(vecs, ids, o);
+    REQUIRE(r.has_value());
+    REQUIRE(r->embroideries.size() == 1);
+    REQUIRE(r->embroideries[0].is_tatami());
+    const auto& p = std::get<document::TatamiParams>(r->embroideries[0].params);
+    CHECK(row_gap_deg(deg(p), 90.0) < 0.5);
+    CHECK(p.underlay_edge);
+    CHECK(p.underlay_parallel);
 }

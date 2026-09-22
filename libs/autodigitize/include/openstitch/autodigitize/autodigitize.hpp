@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 #pragma once
 
+#include <numbers>
 #include <optional>
 #include <string>
 #include <vector>
@@ -46,6 +47,32 @@ struct AutoOptions {
     // auto-satin (squelette) ne génère pas la géométrie, on remplit ces zones
     // en tatami — découpé proprement sur la région, donc sans débordement.
     bool use_naive_satin{false};
+
+    // --- Remplissages tatami (Lot B, audit marine plein cadre 2026-09-22) ---
+    // Réglages appliqués aux tatami CRÉÉS par l'auto-numérisation, jamais aux
+    // valeurs par défaut de `document::TatamiParams` (projets .osp existants
+    // et objets manuels inchangés). Avant : tout à 0°, sans sous-couche.
+    //
+    // Orientation des rangées selon l'axe principal de la région (moments
+    // d'inertie, `geometry::principal_axis`).
+    bool auto_fill_angle{true};
+    // Anisotropie (rapport des moments principaux) sous laquelle la forme est
+    // jugée quasi isotrope : son axe n'a pas de sens stable, on prend
+    // `isotropic_fill_angle`.
+    double fill_isotropy_ratio{1.3};
+    Angle isotropic_fill_angle{std::numbers::pi / 4.0}; // 45°
+    // Deux tatami voisins (régions adjacentes) ne doivent pas avoir des
+    // rangées presque parallèles (la frontière disparaît à l'œil) : la plus
+    // petite des deux est décalée par pas de `fill_angle_search_step`.
+    Angle min_neighbor_fill_angle_gap{std::numbers::pi / 9.0}; // 20°
+    Angle fill_angle_search_step{std::numbers::pi / 36.0};     // 5°
+    // Sous-couche selon l'aire nette de l'objet : aucune en dessous de
+    // `underlay_edge_min_area_mm2`, contour seul jusqu'à
+    // `underlay_parallel_min_area_mm2`, contour + rangées perpendiculaires
+    // au-delà.
+    bool auto_fill_underlay{true};
+    double underlay_edge_min_area_mm2{20.0};
+    double underlay_parallel_min_area_mm2{100.0};
 };
 
 // Objets produits par l'autonumérisation : toujours ÉDITABLES (§13). Le type

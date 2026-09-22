@@ -4,6 +4,7 @@ add_library(openstitch_geometry
     src/simplify.cpp
     src/boolean.cpp
     src/clean.cpp
+    src/moments.cpp
     src/cut.cpp
     src/offset.cpp
     src/path.cpp

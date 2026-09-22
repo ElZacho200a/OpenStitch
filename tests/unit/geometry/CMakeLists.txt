@@ -4,6 +4,7 @@ add_executable(test_geometry
     test_clean.cpp
     test_cut.cpp
     test_offset.cpp
+    test_moments.cpp
     test_path.cpp
     test_polyline.cpp
     test_primitives.cpp

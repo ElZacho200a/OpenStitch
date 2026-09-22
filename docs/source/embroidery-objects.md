@@ -17,7 +17,7 @@ Le type de point est un `std::variant` à trois alternatives :
 | Objet | Params | Géométrie suivie | Sous-couche |
 |---|---|---|---|
 | Point de contour | `RunningStitchParams` | contours de l'objet vectoriel | non |
-| Remplissage tatami | `TatamiParams` | régions pleines (avec trous) | prévue, non générée |
+| Remplissage tatami | `TatamiParams` | régions pleines (avec trous) | contour et/ou rangées perpendiculaires (désactivées par défaut ; activées selon l'aire par l'auto-numérisation) |
 | Colonne satin | `SatinParams` | deux **rails** portés par l'objet | centrale (point droit) |
 
 Le satin est particulier : il **porte sa propre géométrie** (deux rails
@@ -32,8 +32,9 @@ Le satin est particulier : il **porte sa propre géométrie** (deux rails
 | Satin | `fill_satin` | `density`, `pull_compensation`, `center_underlay` | Expérimental |
 
 Le tableau reflète la **qualité métier**, pas seulement la présence de code : le
-running stitch est solide ; le tatami est fonctionnel mais sans sous-couche ni
-underpath caché ; le satin est une génération simple à deux rails (voir les
+running stitch est solide ; le tatami est fonctionnel, sa sous-couche et son
+underpath caché existent mais sont désactivés par défaut (l'auto-numérisation
+active la sous-couche) ; le satin est une génération simple à deux rails (voir les
 chapitres dédiés). Aucun n'est validé sur machine réelle.
 
 ## Création
@@ -43,7 +44,9 @@ par la **classification automatique expérimentale des régions** (voir
 *Limitations*) qui choisit le type selon la forme :
 
 - bande fine compatible → une ou plusieurs sections de **satin topologique** ;
-- autre zone **remplissable** → **tatami** ;
+- autre zone **remplissable** → **tatami**, orienté selon l'axe principal de
+  la région et avec une sous-couche selon son aire (voir *Numérisation
+  automatique*) ;
 - petite forme → **contour** cousu (point triple) ;
 - satin **automatique** naïf : désactivé par défaut car il débordait sur les
   formes concaves/branchues (`AutoOptions::use_naive_satin` pour le réactiver).

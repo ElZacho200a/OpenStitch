@@ -4,11 +4,15 @@
 #include <algorithm>
 #include <cmath>
 #include <functional>
+#include <numbers>
 #include <optional>
+#include <set>
 #include <sstream>
+#include <utility>
 
 #include "openstitch/auto_satin/satin_column.hpp"
 #include "openstitch/geometry/boolean.hpp"
+#include "openstitch/geometry/moments.hpp"
 #include "openstitch/geometry/offset.hpp"
 #include "openstitch/geometry/simplify.hpp"
 #include "openstitch/satin_planning/satin_sections.hpp"
@@ -274,6 +278,155 @@ const geometry::PathSet& largest_piece(const std::vector<geometry::PathSet>& set
     });
 }
 
+// Paires de régions voisines (identifiants triés), cf. `region_adjacency`.
+using RegionPairs = std::set<std::pair<std::uint64_t, std::uint64_t>>;
+
+RegionPairs adjacent_pairs(const segmentation::Segmentation& seg) {
+    RegionPairs out;
+    for (const auto& b : segmentation::region_adjacency(seg)) {
+        out.insert({b.a.value, b.b.value});
+    }
+    return out;
+}
+
+// Orientation de rangées ramenée dans [0, pi).
+double normalize_row_angle(double a) {
+    a = std::fmod(a, std::numbers::pi);
+    return a < 0.0 ? a + std::numbers::pi : a;
+}
+
+// Écart entre deux orientations de rangées, modulo pi (dans [0, pi/2]).
+double row_angle_gap(double a, double b) {
+    const double d = std::fmod(std::abs(a - b), std::numbers::pi);
+    return std::min(d, std::numbers::pi - d);
+}
+
+// Lot B (audit marine plein cadre, 2026-09-22) : angle et sous-couche de
+// chaque tatami créé par l'auto-numérisation, plutôt que `TatamiParams{}`
+// (tout à 0°, sans sous-couche). Post-passe sur le résultat complet :
+// l'angle d'un tatami dépend de ses VOISINS, qui ne sont connus qu'une fois
+// toutes les régions classées (satin/tatami/contour, replis compris).
+// `adjacency` absent (import SVG direct, aucune segmentation) : orientation
+// naturelle seule, sans règle de voisinage.
+void configure_tatami_fills(AutoResult& result, const std::vector<document::VectorObject>& inputs,
+                            const RegionPairs* adjacency, const AutoOptions& options) {
+    const auto findVector = [&](ObjectId id) -> const document::VectorObject* {
+        const std::array<const std::vector<document::VectorObject>*, 2> lists{&result.vectors,
+                                                                              &inputs};
+        for (const auto* list : lists) {
+            for (const auto& v : *list) {
+                if (v.id == id) {
+                    return &v;
+                }
+            }
+        }
+        return nullptr;
+    };
+
+    struct Fill {
+        std::size_t index; // dans result.embroideries
+        double areaMm2;
+        double natural; // angle naturel (axe principal ou isotrope)
+        std::optional<RegionId> region;
+        double angle{0.0};
+        bool assigned{false};
+    };
+    std::vector<Fill> fills;
+    for (std::size_t i = 0; i < result.embroideries.size(); ++i) {
+        const auto& e = result.embroideries[i];
+        if (!e.is_tatami()) {
+            continue;
+        }
+        const document::VectorObject* vec = findVector(e.source_vector);
+        if (vec == nullptr) {
+            continue;
+        }
+        double area = 0.0;
+        for (const auto& set : vec->paths) {
+            area += geometry::path_set_area_um2(set) / 1e6;
+        }
+        const auto axis = geometry::principal_axis(vec->paths);
+        const double natural = axis && axis->anisotropy >= options.fill_isotropy_ratio
+                                   ? axis->angle.radians
+                                   : options.isotropic_fill_angle.radians;
+        fills.push_back({i, area, normalize_row_angle(natural), vec->source_region});
+    }
+
+    if (options.auto_fill_underlay) {
+        for (const Fill& f : fills) {
+            auto& p = std::get<document::TatamiParams>(result.embroideries[f.index].params);
+            p.underlay_edge = f.areaMm2 >= options.underlay_edge_min_area_mm2;
+            p.underlay_parallel = f.areaMm2 >= options.underlay_parallel_min_area_mm2;
+        }
+    }
+    if (!options.auto_fill_angle) {
+        return;
+    }
+
+    // Les plus grandes régions fixent leur angle d'abord : lors d'un conflit
+    // avec un voisin déjà placé, c'est toujours la plus petite qui cède.
+    // Ordre total déterministe (aire, puis identifiant d'objet).
+    std::vector<std::size_t> order(fills.size());
+    for (std::size_t k = 0; k < order.size(); ++k) {
+        order[k] = k;
+    }
+    std::sort(order.begin(), order.end(), [&](std::size_t a, std::size_t b) {
+        if (fills[a].areaMm2 != fills[b].areaMm2) {
+            return fills[a].areaMm2 > fills[b].areaMm2;
+        }
+        return result.embroideries[fills[a].index].id.value <
+               result.embroideries[fills[b].index].id.value;
+    });
+    const auto neighbours = [&](const Fill& a, const Fill& b) {
+        if (adjacency == nullptr || !a.region || !b.region) {
+            return false;
+        }
+        const std::uint64_t x = a.region->value;
+        const std::uint64_t y = b.region->value;
+        return x == y || adjacency->contains({std::min(x, y), std::max(x, y)});
+    };
+    const double gap = options.min_neighbor_fill_angle_gap.radians;
+    const double step = std::max(1e-3, options.fill_angle_search_step.radians);
+    const int maxK = static_cast<int>(std::ceil(std::numbers::pi / 2.0 / step));
+    for (const std::size_t k : order) {
+        Fill& f = fills[k];
+        std::vector<double> placed;
+        for (const Fill& g : fills) {
+            if (&g != &f && g.assigned && neighbours(f, g)) {
+                placed.push_back(g.angle);
+            }
+        }
+        const auto minGap = [&](double a) {
+            double m = std::numbers::pi;
+            for (const double p : placed) {
+                m = std::min(m, row_angle_gap(a, p));
+            }
+            return m;
+        };
+        // Candidats du plus proche au plus éloigné de l'angle naturel
+        // (+pas avant -pas) ; le premier qui respecte l'écart gagne, sinon
+        // celui qui maximise l'écart minimal.
+        double best = f.natural;
+        double bestGap = -1.0;
+        for (int i = 0; i <= 2 * maxK; ++i) {
+            const int m = (i + 1) / 2 * (i % 2 == 1 ? 1 : -1);
+            const double cand = normalize_row_angle(f.natural + m * step);
+            const double g = minGap(cand);
+            if (g >= gap - 1e-9) {
+                best = cand;
+                break;
+            }
+            if (g > bestGap + 1e-12) {
+                bestGap = g;
+                best = cand;
+            }
+        }
+        f.angle = best;
+        f.assigned = true;
+        std::get<document::TatamiParams>(result.embroideries[f.index].params).angle = Angle{best};
+    }
+}
+
 }  // namespace
 
 Result<AutoResult> auto_digitize(const segmentation::Segmentation& seg, IdGenerator<ObjectId>& ids,
@@ -349,6 +502,8 @@ Result<AutoResult> auto_digitize(const segmentation::Segmentation& seg, IdGenera
         return fail(ErrorCategory::OperationImpossible,
                     "Aucune région exploitable pour la numérisation automatique");
     }
+    const RegionPairs adjacency = adjacent_pairs(seg);
+    configure_tatami_fills(result, {}, &adjacency, options);
     return result;
 }
 
@@ -375,6 +530,7 @@ Result<AutoResult> auto_digitize_vectors(const std::vector<document::VectorObjec
         return fail(ErrorCategory::OperationImpossible,
                     "Aucun objet vectoriel exploitable pour la numérisation automatique");
     }
+    configure_tatami_fills(result, vectors, nullptr, options);
     return result;
 }
 
