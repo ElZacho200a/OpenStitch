@@ -49,11 +49,13 @@
 #include "canvas_view.hpp"
 #include "document_panel.hpp"
 #include "empty_state_widget.hpp"
+#include "generation_options_dialog.hpp"
 #include "import_dialog.hpp"
 #include "node_handle.hpp"
 
 #include "openstitch/auto_satin/satin_column.hpp"
 #include "openstitch/autodigitize/autodigitize.hpp"
+#include "openstitch/commands/finishing_commands.hpp"
 #include "openstitch/commands/project_commands.hpp"
 #include "openstitch/core/app_info.hpp"
 #include "openstitch/document/canvas.hpp"
@@ -611,6 +613,19 @@ void MainWindow::buildMenus() {
         tr("Remplace les colonnes satin automatiques (qui débordent sur les formes "
            "concaves) par des remplissages tatami découpés sur la région."));
     connect(convertSatinAct_, &QAction::triggered, this, &MainWindow::convertSatinsToTatami);
+    // Finitions de la séquence du projet (Lots E/F) : coupes automatiques,
+    // points d'arrêt, points courts -- réglage de projet, annulable.
+    auto* finishingAct = embMenu->addAction(tr("Options de &génération…"));
+    finishingAct->setObjectName(QStringLiteral("action_generationOptions"));
+    connect(finishingAct, &QAction::triggered, this, [this] {
+        const auto edited = editSequenceFinishing(this, project_.finishing);
+        if (edited && *edited != project_.finishing) {
+            undoStack_.execute(std::make_unique<commands::SetFinishingCommand>(*edited),
+                               project_);
+            refreshImage();
+            updateActions();
+        }
+    });
     embMenu->addSeparator();
     // Mode d'édition des points générés (Lot 8.2). Mode exclusif : activable
     // seulement dans un contexte valide (objet de broderie sélectionné, non

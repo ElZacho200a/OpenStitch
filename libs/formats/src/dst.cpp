@@ -158,17 +158,29 @@ Result<std::vector<std::uint8_t>> encode_dst(const stitch::StitchSequence& seque
     DstPoint minP{0, 0};
     DstPoint maxP{0, 0};
     std::size_t colorChanges = 0;
+    bool lastWasZeroJump = false; // dernier enregistrement émis : saut de délta nul
 
     for (const auto* cmd : moves) {
         const DstPoint target = quantize(cmd->pos);
         const int dx = target.x - prev.x;
         const int dy = target.y - prev.y;
+        if (cmd->type != stitch::CommandType::Jump) {
+            lastWasZeroJump = cmd->type == stitch::CommandType::Trim && dx == 0 && dy == 0;
+        }
         switch (cmd->type) {
         case stitch::CommandType::Stitch:
             emit_move(body, dx, dy, RecordType::Normal);
             break;
         case stitch::CommandType::Jump:
-            emit_move(body, dx, dy, RecordType::Jump);
+            // Un saut sous la résolution DST (délta nul une fois quantifié)
+            // ne porte aucune information ; plusieurs d'affilée seraient
+            // relus comme une COUPE fantôme (convention `trim_jumps`). On
+            // n'en garde qu'un par série (le saut initial vers l'origine,
+            // lui, est conservé).
+            if (dx != 0 || dy != 0 || !lastWasZeroJump) {
+                emit_move(body, dx, dy, RecordType::Jump);
+            }
+            lastWasZeroJump = dx == 0 && dy == 0;
             break;
         case stitch::CommandType::Trim:
             // Convention : N sauts de délta nul déclenchent la coupe.

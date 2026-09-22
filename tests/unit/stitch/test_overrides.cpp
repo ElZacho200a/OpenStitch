@@ -695,6 +695,10 @@ document::Project make_running_square_project() {
     emb.id = project.object_ids.next();
     emb.source_vector = vec.id;
     project.embroidery_objects.push_back(emb);
+    // Ces tests portent sur les RETOUCHES : finitions (coupes, verrous,
+    // points courts -- tests/unit/stitch/test_finish.cpp) désactivées pour
+    // comparer directement à la séquence brute.
+    project.finishing = document::SequenceFinishing::legacy();
     return project;
 }
 

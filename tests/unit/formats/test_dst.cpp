@@ -176,3 +176,44 @@ TEST_CASE("octets en trop apres le marqueur de fin ignores (Hatch: 0x1A)") {
 TEST_CASE("sequence vide refusee a l'export") {
     CHECK_FALSE(encode_dst(stitch::StitchSequence{}).has_value());
 }
+
+// Lot E (audit marine) : coupes automatiques -- verrou, coupe, long
+// déplacement (plusieurs enregistrements), verrou.
+TEST_CASE("coupe suivie d'un long deplacement : relue comme une coupe, position exacte") {
+    stitch::StitchSequence seq;
+    seq.commands = {
+        {um(0, 0), CommandType::Stitch, ObjectId{}},
+        {um(2'000, 0), CommandType::Stitch, ObjectId{}},
+        {um(2'000, 0), CommandType::Trim, ObjectId{}},
+        {um(40'000, 7'000), CommandType::Jump, ObjectId{}}, // > 12,1 mm : découpé
+        {um(40'000, 7'000), CommandType::Stitch, ObjectId{}},
+        {um(42'000, 7'000), CommandType::Stitch, ObjectId{}},
+        {um(42'000, 7'000), CommandType::End, ObjectId{}},
+    };
+    const auto decoded = decode_dst(*encode_dst(seq));
+    REQUIRE(decoded.has_value());
+    const auto stats = stitch::compute_stats(*decoded);
+    CHECK(stats.trims == 1);
+    CHECK(stats.stitches == 4);
+    CHECK(decoded->commands[decoded->commands.size() - 2].pos == um(42'000, 7'000));
+}
+
+// Un saut plus court que la résolution DST (0,1 mm) s'encode en saut de
+// délta nul ; trois à la suite seraient relus comme une COUPE fantôme
+// (convention trim_jumps). Ils ne portent aucune information : l'encodeur
+// les omet.
+TEST_CASE("sauts sous la resolution DST : jamais relus comme une coupe") {
+    stitch::StitchSequence seq;
+    seq.commands = {
+        {um(0, 0), CommandType::Stitch, ObjectId{}},
+        {um(1'000, 0), CommandType::Stitch, ObjectId{}},
+        {um(1'020, 0), CommandType::Jump, ObjectId{}},
+        {um(1'030, 0), CommandType::Jump, ObjectId{}},
+        {um(1'040, 0), CommandType::Jump, ObjectId{}},
+        {um(2'000, 0), CommandType::Stitch, ObjectId{}},
+        {um(2'000, 0), CommandType::End, ObjectId{}},
+    };
+    const auto decoded = decode_dst(*encode_dst(seq));
+    REQUIRE(decoded.has_value());
+    CHECK(stitch::compute_stats(*decoded).trims == 0);
+}

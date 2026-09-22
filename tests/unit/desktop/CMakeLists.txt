@@ -33,6 +33,7 @@ openstitch_add_qt_test(test_document_panel test_document_panel.cpp)
 openstitch_add_qt_test(test_properties_panel test_properties_panel.cpp)
 openstitch_add_qt_test(test_main_window test_main_window.cpp)
 openstitch_add_qt_test(test_wsl_path_converter test_wsl_path_converter.cpp)
+openstitch_add_qt_test(test_generation_options test_generation_options.cpp)
 
 # Test d'intégration SamWorkerClient <-> faux worker Python (stdlib only,
 # aucune dépendance à un vrai environnement SAM 2/torch en CI).

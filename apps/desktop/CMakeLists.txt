@@ -38,6 +38,8 @@ add_library(openstitch_desktop_widgets STATIC
     import_dialog.hpp
     brightness_dialog.cpp
     brightness_dialog.hpp
+    generation_options_dialog.cpp
+    generation_options_dialog.hpp
     node_handle.hpp
     satin_guide_item.hpp
     wsl_path_converter.cpp

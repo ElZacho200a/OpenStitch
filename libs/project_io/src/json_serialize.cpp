@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 #include "json_serialize.hpp"
 
+#include <algorithm>
 #include <array>
 #include <limits>
 #include <unordered_map>
@@ -613,6 +614,18 @@ json project_to_json(const document::Project& project) {
         j["embroideryObjects"].push_back(eo);
     }
 
+    // Finitions de la séquence (Lots E/F). Toujours écrites ; absentes à la
+    // lecture (projet antérieur) -> SequenceFinishing::legacy().
+    const auto& f = project.finishing;
+    j["finishing"] = {{"enabled", f.enabled},
+                      {"trimThreshold", f.trim_threshold.value},
+                      {"trimBeforeColorChange", f.trim_before_color_change},
+                      {"lockType", static_cast<int>(f.lock_type)},
+                      {"lockLength", f.lock_length.value},
+                      {"lockPasses", f.lock_passes},
+                      {"filterShortStitches", f.filter_short_stitches},
+                      {"minStitchLength", f.min_stitch_length.value}};
+
     return j;
 }
 
@@ -727,6 +740,27 @@ Result<document::Project> project_from_json(const json& j) {
             }
 
             project.embroidery_objects.push_back(std::move(e));
+        }
+
+        // Finitions (Lots E/F) : bloc absent = projet antérieur, aucune
+        // finition (séquence identique à avant). Champ absent dans un bloc
+        // présent = valeur par défaut actuelle.
+        if (j.contains("finishing")) {
+            const auto& fj = j.at("finishing");
+            const document::SequenceFinishing d;
+            auto& f = project.finishing;
+            f.enabled = fj.value("enabled", d.enabled);
+            f.trim_threshold = Micrometers{fj.value("trimThreshold", d.trim_threshold.value)};
+            f.trim_before_color_change =
+                fj.value("trimBeforeColorChange", d.trim_before_color_change);
+            f.lock_type = static_cast<document::LockStitch>(
+                std::clamp(fj.value("lockType", static_cast<int>(d.lock_type)), 0, 3));
+            f.lock_length = Micrometers{fj.value("lockLength", d.lock_length.value)};
+            f.lock_passes = fj.value("lockPasses", d.lock_passes);
+            f.filter_short_stitches = fj.value("filterShortStitches", d.filter_short_stitches);
+            f.min_stitch_length = Micrometers{fj.value("minStitchLength", d.min_stitch_length.value)};
+        } else {
+            project.finishing = document::SequenceFinishing::legacy();
         }
     } catch (const json::exception& ex) {
         return fail(ErrorCategory::InvalidFile, "Projet illisible (JSON invalide)", ex.what());

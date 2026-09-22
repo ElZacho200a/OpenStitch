@@ -311,7 +311,7 @@ int run_stitchdebug(const std::string& shape, double lengthMm, int repeats,
 // Lot A ; une valeur explicite de --skip-background reste prioritaire).
 int run_digitize(const std::string& imagePath, const std::string& dstPath, double dpi,
                  int maxColors, int minRegionPx, int smoothingPx, int skipBg,
-                 const std::string& outSvg) {
+                 const std::string& outSvg, double trimThresholdMm, const std::string& lockName) {
     using namespace openstitch;
 
     const auto loaded = image::load_image(std::filesystem::path(imagePath));
@@ -325,6 +325,13 @@ int run_digitize(const std::string& imagePath, const std::string& dstPath, doubl
     document::Project project;
     project.mm_per_px = Millimeters{25.4 / dpi};
     project.original = *loaded;
+    // Finitions (Lots E/F) : nouveau projet -> activées ; réglables ici.
+    project.finishing.trim_threshold =
+        Micrometers{static_cast<std::int32_t>(std::lround(trimThresholdMm * 1000.0))};
+    project.finishing.lock_type = lockName == "none"       ? document::LockStitch::None
+                                  : lockName == "triangle" ? document::LockStitch::Triangle
+                                  : lockName == "zigzag"   ? document::LockStitch::MicroZigzag
+                                                           : document::LockStitch::BackAndForth;
 
     auto seg = segmentation::segment(project.original, {.max_colors = maxColors,
                                                         .min_region_px = minRegionPx,
@@ -819,6 +826,8 @@ int main(int argc, char** argv) {
     int dz_smoothing_px = 3;
     int dz_skip_bg = -1; // -1 = auto (segmentation::background_candidate), 0 = non, 1 = oui
     std::string dz_out_svg;
+    double dz_trim_mm = 3.0;
+    std::string dz_lock = "backforth";
     auto* dz_cmd = app.add_subcommand(
         "digitize", "Pipeline complet image -> DST (segmentation, numérisation automatique, "
                     "génération des points), sans IHM");
@@ -839,6 +848,12 @@ int main(int argc, char** argv) {
         "Ignorer la plus grande région : -1 auto (défaut : fond quasi blanc touchant "
         "au moins 3 bords), 0 non, 1 oui");
     dz_cmd->add_option("--output-svg", dz_out_svg, "SVG de diagnostic à produire en plus du DST");
+    dz_cmd
+        ->add_option("--trim-threshold", dz_trim_mm,
+                     "Coupe automatique au-delà de ce déplacement, en mm (défaut : 3)")
+        ->check(CLI::PositiveNumber);
+    dz_cmd->add_option("--lock", dz_lock, "Point d'arrêt : none|backforth|triangle|zigzag")
+        ->check(CLI::IsMember({"none", "backforth", "triangle", "zigzag"}));
 
     std::string sd_shape = "circle";
     double sd_length = 3.0;
@@ -922,7 +937,7 @@ int main(int argc, char** argv) {
     }
     if (dz_cmd->parsed()) {
         return run_digitize(dz_image, dz_dst, dz_dpi, dz_max_colors, dz_min_region_px,
-                            dz_smoothing_px, dz_skip_bg, dz_out_svg);
+                            dz_smoothing_px, dz_skip_bg, dz_out_svg, dz_trim_mm, dz_lock);
     }
     if (sd_cmd->parsed()) {
         return run_stitchdebug(sd_shape, sd_length, sd_repeats, sd_out, sd_underlay, sd_underpath);

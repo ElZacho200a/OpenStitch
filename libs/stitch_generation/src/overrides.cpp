@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <unordered_map>
 
+#include "openstitch/stitch_generation/finish.hpp"
 #include "openstitch/stitch_generation/generate.hpp"
 
 namespace openstitch::stitch_generation {
@@ -225,7 +226,10 @@ Result<stitch::StitchSequence> effective_sequence(const document::Project& proje
     // notification -- un consommateur qui a besoin de detecter/signaler l'etat
     // Dirty doit appeler apply_manual_overrides directement (UI, hors Lot 8.1).
     (void)apply_manual_overrides(*sequence, project);
-    return sequence;
+    // Finitions (Lots E/F : coupes, points d'arrêt, points courts) en DERNIER,
+    // après les retouches : elles ne touchent jamais la vue brute (raw_slice)
+    // à laquelle les index des retouches se réfèrent.
+    return finish_sequence(*sequence, project);
 }
 
 // Corps de `edit_view`/`classify_all_edit_states`, factorisés pour opérer sur
@@ -301,7 +305,7 @@ Result<RefreshContext> refresh_context(const document::Project& project,
     // JAMAIS diverger de ce que produirait `effective_sequence(project)` pour
     // le contenu affiché/exporté (cf. tests/check_no_raw_sequence_bypass.cmake).
     (void)apply_manual_overrides(*sequence, project);
-    ctx.effective = std::move(*sequence);
+    ctx.effective = finish_sequence(*sequence, project);
     return ctx;
 }
 

@@ -41,8 +41,10 @@ Le `document::Project` est la source de vérité (voir *Modèle de données*). L
 puis patchés par les **retouches manuelles** de l'objet le cas échéant (Lot
 8.1, ADR-014). `stitch_generation::effective_sequence(project)` est le
 **point d'entrée unique** que tout consommateur de production (aperçu,
-export, analyse, simulation) doit utiliser — il enchaîne les deux passes ;
-`generate_sequence` reste appelable séparément (implémentation interne,
+export, analyse, simulation) doit utiliser — il enchaîne les passes ;
+`effective_sequence` applique ensuite les **finitions** du projet
+(`finish_sequence` : coupes automatiques, points d'arrêt, points courts —
+`project.finishing`). `generate_sequence` reste appelable séparément (implémentation interne,
 tests, générateurs synthétiques). Une garde CTest structurelle
 (`tests/check_no_raw_sequence_bypass.cmake`) échoue si un nouveau site de
 production appelle `generate_sequence` directement sans annotation explicite.

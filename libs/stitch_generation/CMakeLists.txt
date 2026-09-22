@@ -5,6 +5,7 @@ add_library(openstitch_stitch_generation
     src/satin_guides.cpp
     src/lock.cpp
     src/routing.cpp
+    src/finish.cpp
     src/generate.cpp
     src/overrides.cpp
 )

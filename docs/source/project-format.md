@@ -52,6 +52,14 @@ labels peut faire plusieurs mégaoctets).
   valeur zéro implicite). Absents, ou `overrides` vide (métadonnées
   éventuellement présentes mais alors ignorées) → objet `Clean` (comportement
   actuel inchangé).
+- `finishing` : finitions de la séquence (coupes automatiques, points d'arrêt,
+  points courts -- `document::SequenceFinishing`) : `enabled`,
+  `trimThreshold` (µm), `trimBeforeColorChange`, `lockType` (0 aucun, 1
+  aller-retour, 2 triangle, 3 micro-zigzag), `lockLength` (µm), `lockPasses`,
+  `filterShortStitches`, `minStitchLength` (µm). **Bloc absent** (projet
+  antérieur) → finitions désactivées, séquence identique à avant ; clé absente
+  dans un bloc présent → valeur par défaut. Ajout sans changement de
+  `schemaVersion`.
 
 ## Versionnement et validation
 

@@ -39,6 +39,8 @@ document::Project
             SatinParams         -> generate_satin ou generate_satin_group (routage)
        └‑ ColorChange entre deux objets de couleurs différentes, End final
   └─ stitch_generation::apply_manual_overrides(sequence, project)  -- retouches Lot 8
+  └─ stitch_generation::finish_sequence(sequence, project)  -- finitions (coupes,
+       points d'arrêt, points courts ; project.finishing, Lots E/F)
   = stitch_generation::effective_sequence(project)   -- SEUL point d'entrée de production
        └─ apps/desktop : aperçu (renderStitches), simulation, statistiques (stitch::compute_stats)
        └─ formats::write_dst_file  -- export DST (voir *Format DST*)
@@ -54,7 +56,19 @@ important du module :
   patche **en place** une séquence déjà générée avec les retouches
   (`EmbroideryObject::overrides`, Lot 8/ADR-014 — déplacement de point,
   Stitch↔Jump, coupe de fil) des objets dans l'état `ManuallyEdited`.
-- **`effective_sequence(project)`** enchaîne les deux, dans cet ordre, et rien
+- **`finish_sequence(sequence, project)`** (`finish.hpp`/`finish.cpp`, Lots
+  E/F de l'audit marine plein cadre) ajoute les finitions réglées par
+  `project.finishing` (`document::SequenceFinishing`) : tout déplacement plus
+  long que `trim_threshold` (3 mm) devient point d'arrêt de sortie, `Trim`,
+  déplacement, point d'arrêt d'entrée ; un changement d'objet reçoit toujours
+  un point d'arrêt de sortie et d'entrée (passe `Lock`, `lock_stitches`, posé
+  le long du point voisin du tracé) ; une coupe précède chaque changement de
+  fil (`trim_before_color_change`). Un objet qui porte déjà ses verrous
+  (satin `lock_start`/`lock_end`) n'est pas doublé. Elle ne modifie jamais la
+  vue brute (`raw_slice`) : les index des retouches restent valides. Un
+  projet antérieur (sans bloc `finishing` dans le .osp) est relu avec
+  `enabled = false` : séquence identique à avant.
+- **`effective_sequence(project)`** enchaîne les trois, dans cet ordre, et rien
   d'autre — sa signature est volontairement identique à `generate_sequence`
   pour qu'un appelant existant n'ait qu'à substituer l'appel.
 

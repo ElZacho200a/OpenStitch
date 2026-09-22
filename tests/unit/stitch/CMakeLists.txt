@@ -2,6 +2,7 @@ add_executable(test_stitch
     test_stats.cpp
     test_running_stitch.cpp
     test_generate.cpp
+    test_finish.cpp
     test_tatami.cpp
     test_satin.cpp
     test_satin_guides.cpp

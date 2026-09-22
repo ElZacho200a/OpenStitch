@@ -175,6 +175,29 @@ par le plus petit identifiant) et désactivables (seuil à 0).
 fins que 1,2 mm (par exemple un mât fin), rendus à la région qui les entoure.
 Pour les garder, baissez `min_feature_width_mm`.
 
+## Coupes automatiques et points d'arrêt (Lot E)
+
+Avant ce lot, seules les retouches manuelles produisaient des `Trim`, et les
+seuls points d'arrêt étaient ceux, désactivés par défaut, du satin : la
+marine comptait 1 321 déplacements de plus de 3 mm sans coupe et aucun point
+d'arrêt. Ces finitions ne relèvent pas de l'auto-numérisation mais de la
+séquence : elles s'appliquent à tout projet, via `project.finishing`
+(`document::SequenceFinishing`) et `stitch_generation::finish_sequence`,
+dernière passe d'`effective_sequence` (voir *Moteur de génération de
+points*) :
+
+| Réglage | Défaut | Rôle |
+|---|---|---|
+| `trim_threshold` | 3 mm | au-delà : arrêt de sortie, coupe, déplacement, arrêt d'entrée ; en deçà : simple saut |
+| `trim_before_color_change` | oui | coupe avant chaque changement de fil |
+| `lock_type` | aller-retour | point d'arrêt à l'entrée/sortie de chaque objet et autour de chaque coupe |
+| `lock_length`, `lock_passes` | 0,8 mm, 2 | taille (bornée au point voisin) et répétitions |
+
+Réglables dans le desktop (menu *Broderie ▸ Options de génération…*,
+annulable) et dans le CLI (`digitize --trim-threshold <mm> --lock
+none|backforth|triangle|zigzag`). Un projet `.osp` antérieur est relu sans
+finitions (séquence identique).
+
 ## Implémentation associée
 
 - `libs/segmentation/include/openstitch/segmentation/segmentation.hpp` —

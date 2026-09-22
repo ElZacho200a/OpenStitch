@@ -56,6 +56,14 @@ les deltas : `delta_i = round(pos_i/100) − round(pos_{i-1}/100)`. Cela borne
 l'erreur à ±50 µm **sans dérive cumulative**. Tout déplacement dépassant ±121
 est **subdivisé** en sauts intermédiaires. La sortie est **déterministe**.
 
+**Coupes** (`Trim`) : `trim_jumps` (3) sauts de délta nul, suivis du
+déplacement éventuel. Les coupes automatiques de la séquence effective (Lot E,
+*Moteur de génération de points*) sont relues comme des coupes par
+`decode_dst`, déplacement long compris (vérifié par test). Un **saut sous la
+résolution** (délta nul une fois quantifié) ne porte aucune information :
+l'encodeur n'en garde qu'un par série, faute de quoi trois sauts minuscules
+consécutifs seraient relus comme une coupe fantôme.
+
 ## Décodage (tolérant)
 
 `decode_dst` lit l'en-tête de façon **laxiste** (la vérité est le corps),

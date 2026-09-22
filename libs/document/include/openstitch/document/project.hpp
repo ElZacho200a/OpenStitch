@@ -8,6 +8,7 @@
 #include "openstitch/core/units.hpp"
 #include "openstitch/document/canvas.hpp"
 #include "openstitch/document/embroidery_object.hpp"
+#include "openstitch/document/finishing.hpp"
 #include "openstitch/document/vector_object.hpp"
 #include "openstitch/image/image.hpp"
 #include "openstitch/image/ops.hpp"
@@ -38,6 +39,10 @@ struct Project {
     std::vector<EmbroideryObject> embroidery_objects;
 
     IdGenerator<ObjectId> object_ids; // partagé par tous les types d'objets
+
+    // Finitions de la séquence (coupes, points d'arrêt, points courts),
+    // appliquées par `stitch_generation::effective_sequence`.
+    SequenceFinishing finishing;
 
     [[nodiscard]] bool hasImage() const { return !original.empty(); }
     [[nodiscard]] VectorObject* findObject(ObjectId id) {
