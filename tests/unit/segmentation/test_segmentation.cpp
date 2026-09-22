@@ -1,7 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 #include <algorithm>
 #include <catch2/catch_test_macros.hpp>
+#include <map>
+#include <optional>
+#include <tuple>
 #include <utility>
+#include <vector>
 
 #include "openstitch/segmentation/segmentation.hpp"
 
@@ -476,6 +480,138 @@ TEST_CASE("remove_thin_parts : une lamelle isolee dans le vide reste en place") 
     Segmentation seg = *seg0;
     CHECK(remove_thin_parts(seg, 3) == 0);
     CHECK(seg.region_count() == 1);
+}
+
+namespace {
+
+// Nettoyage des petites régions tel qu'implémenté AVANT l'audit de
+// performance 2026-09 (balayage complet de l'image par région), recopié
+// comme référence d'équivalence.
+void reference_small_region_cleanup(Segmentation& seg, int min_region_px) {
+    const int w = seg.width;
+    const int h = seg.height;
+    const auto majority = [&](std::uint32_t label) -> std::optional<std::uint32_t> {
+        std::map<std::uint32_t, std::size_t> counts;
+        for (int y = 0; y < h; ++y) {
+            for (int x = 0; x < w; ++x) {
+                if (seg.labels[static_cast<std::size_t>(y) * static_cast<std::size_t>(w) +
+                               static_cast<std::size_t>(x)] != label) {
+                    continue;
+                }
+                const auto visit = [&](int nx, int ny) {
+                    if (nx < 0 || ny < 0 || nx >= w || ny >= h) {
+                        return;
+                    }
+                    const std::uint32_t other =
+                        seg.labels[static_cast<std::size_t>(ny) * static_cast<std::size_t>(w) +
+                                   static_cast<std::size_t>(nx)];
+                    if (other != label && other != 0) {
+                        ++counts[other];
+                    }
+                };
+                visit(x - 1, y);
+                visit(x + 1, y);
+                visit(x, y - 1);
+                visit(x, y + 1);
+            }
+        }
+        if (counts.empty()) {
+            return std::nullopt;
+        }
+        return std::max_element(counts.begin(), counts.end(),
+                                [](const auto& a, const auto& b) { return a.second < b.second; })
+            ->first;
+    };
+    std::vector<std::size_t> order;
+    for (std::size_t s = 0; s < seg.region_slots.size(); ++s) {
+        if (seg.region_slots[s] &&
+            seg.region_slots[s]->pixel_count < static_cast<std::size_t>(min_region_px)) {
+            order.push_back(s);
+        }
+    }
+    std::sort(order.begin(), order.end(), [&](std::size_t a, std::size_t b) {
+        return seg.region_slots[a]->pixel_count < seg.region_slots[b]->pixel_count;
+    });
+    for (const std::size_t s : order) {
+        if (!seg.region_slots[s]) {
+            continue;
+        }
+        const auto label = static_cast<std::uint32_t>(s + 1);
+        const std::uint32_t target = majority(label).value_or(0);
+        std::size_t changed = 0;
+        for (auto& l : seg.labels) {
+            if (l == label) {
+                l = target;
+                ++changed;
+            }
+        }
+        if (target != 0) {
+            seg.region_slots[target - 1]->pixel_count += changed;
+        }
+        seg.region_slots[s].reset();
+    }
+}
+
+// Image bruitée déterministe : blocs de couleur + bruit pixel (beaucoup de
+// petites régions en cascade) + quelques pixels transparents.
+image::Image noisy_image(int w, int h, unsigned seed) {
+    image::Image img = blank(w, h);
+    std::uint32_t state = seed;
+    const auto next = [&state] {
+        state = state * 1664525u + 1013904223u;
+        return state >> 8;
+    };
+    for (int y = 0; y < h; ++y) {
+        for (int x = 0; x < w; ++x) {
+            const int block = ((x / 7) + (y / 5)) % 4;
+            std::uint8_t r = static_cast<std::uint8_t>(40 + 60 * block);
+            std::uint8_t g = static_cast<std::uint8_t>(200 - 40 * block);
+            std::uint8_t b = static_cast<std::uint8_t>(90 + 30 * ((x / 11) % 3));
+            if (next() % 5 == 0) {
+                r = static_cast<std::uint8_t>(next() % 256);
+                g = static_cast<std::uint8_t>(next() % 256);
+                b = static_cast<std::uint8_t>(next() % 256);
+            }
+            const std::uint8_t a = (next() % 97 == 0) ? 0 : 255;
+            set_px(img, x, y, r, g, b, a);
+        }
+    }
+    return img;
+}
+
+} // namespace
+
+TEST_CASE("nettoyage des petites regions : identique a l'implementation de reference",
+          "[segmentation][perf]") {
+    for (const auto [w, h, seed] :
+         {std::tuple{64, 48, 1u}, std::tuple{120, 90, 7u}, std::tuple{200, 60, 42u}}) {
+        const image::Image img = noisy_image(w, h, seed);
+        for (const int minPx : {4, 16, 50}) {
+            for (const int smoothing : {0, 1}) {
+                INFO("image " << w << "x" << h << " graine " << seed << " min " << minPx
+                              << " lissage " << smoothing);
+                auto raw = segment(img, {.max_colors = 8,
+                                         .min_region_px = 1, // aucun nettoyage
+                                         .smoothing_radius_px = smoothing});
+                REQUIRE(raw.has_value());
+                reference_small_region_cleanup(*raw, minPx);
+                const auto fast = segment(
+                    img,
+                    {.max_colors = 8, .min_region_px = minPx, .smoothing_radius_px = smoothing});
+                REQUIRE(fast.has_value());
+                CHECK(fast->labels == raw->labels);
+                REQUIRE(fast->region_slots.size() == raw->region_slots.size());
+                for (std::size_t s = 0; s < fast->region_slots.size(); ++s) {
+                    REQUIRE(fast->region_slots[s].has_value() == raw->region_slots[s].has_value());
+                    if (fast->region_slots[s]) {
+                        CHECK(fast->region_slots[s]->pixel_count ==
+                              raw->region_slots[s]->pixel_count);
+                        CHECK(fast->region_slots[s]->rgb == raw->region_slots[s]->rgb);
+                    }
+                }
+            }
+        }
+    }
 }
 
 TEST_CASE("merge_small_regions : taille effective = pixels - poids x frontiere") {

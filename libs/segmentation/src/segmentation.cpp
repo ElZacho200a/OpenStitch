@@ -24,43 +24,6 @@ RegionId id_of_slot(std::size_t slot) {
     return RegionId{slot + 1};
 }
 
-// Voisine majoritaire (4-connexité) d'une région ; nullopt si isolée.
-// Déterministe : en cas d'égalité, le plus petit label gagne (std::map trié).
-std::optional<std::uint32_t> majority_neighbor(const Segmentation& seg, std::uint32_t label) {
-    std::map<std::uint32_t, std::size_t> counts;
-    const int w = seg.width;
-    const int h = seg.height;
-    for (int y = 0; y < h; ++y) {
-        for (int x = 0; x < w; ++x) {
-            if (seg.labels[static_cast<std::size_t>(y) * static_cast<std::size_t>(w) +
-                           static_cast<std::size_t>(x)] != label) {
-                continue;
-            }
-            const auto visit = [&](int nx, int ny) {
-                if (nx < 0 || ny < 0 || nx >= w || ny >= h) {
-                    return;
-                }
-                const std::uint32_t other =
-                    seg.labels[static_cast<std::size_t>(ny) * static_cast<std::size_t>(w) +
-                               static_cast<std::size_t>(nx)];
-                if (other != label && other != 0) {
-                    ++counts[other];
-                }
-            };
-            visit(x - 1, y);
-            visit(x + 1, y);
-            visit(x, y - 1);
-            visit(x, y + 1);
-        }
-    }
-    if (counts.empty()) {
-        return std::nullopt;
-    }
-    return std::max_element(counts.begin(), counts.end(),
-                            [](const auto& a, const auto& b) { return a.second < b.second; })
-        ->first;
-}
-
 std::vector<std::uint32_t> relabel(Segmentation& seg, std::uint32_t from, std::uint32_t to) {
     std::vector<std::uint32_t> changed;
     for (std::uint32_t i = 0; i < seg.labels.size(); ++i) {
@@ -282,17 +245,73 @@ Result<Segmentation> segment(const image::Image& img, const SegmentationOptions&
         std::sort(order.begin(), order.end(), [&](std::size_t a, std::size_t b) {
             return seg.region_slots[a]->pixel_count < seg.region_slots[b]->pixel_count;
         });
+        // Performance (audit 2026-09, docs/performance-audit.md) : l'ancienne
+        // boucle balayait l'image ENTIÈRE deux fois par petite région
+        // (recherche de la voisine majoritaire puis réétiquetage), soit O(petites régions x
+        // pixels) -- 38 s sur la fixture tentabrode sans lissage. Chaque
+        // petite région garde désormais la liste de ses pixels ; une région
+        // absorbée transmet la sienne à sa cible si celle-ci est une petite
+        // région pas encore traitée (la seule qui en ait besoin). Mêmes
+        // comptes de frontière, même départage (std::map : plus petit label),
+        // même ordre de traitement : résultat identique (test
+        // test_segmentation.cpp « nettoyage des petites regions ... reference »).
+        std::vector<std::vector<std::uint32_t>> pixelsOf(seg.region_slots.size());
+        std::vector<char> pending(seg.region_slots.size(), 0);
+        for (const std::size_t s : order) {
+            pending[s] = 1;
+        }
+        for (std::uint32_t i = 0; i < seg.labels.size(); ++i) {
+            const std::uint32_t label = seg.labels[i];
+            if (label != 0 && pending[label - 1]) {
+                pixelsOf[label - 1].push_back(i);
+            }
+        }
+        const int w = seg.width;
+        const int h = seg.height;
         for (const std::size_t s : order) {
             if (!seg.region_slots[s]) {
                 continue;
             }
             const std::uint32_t label = static_cast<std::uint32_t>(s + 1);
-            const auto neighbor = majority_neighbor(seg, label);
-            const std::uint32_t target = neighbor.value_or(0);
-            const auto changed = relabel(seg, label, target);
-            if (target != 0) {
-                seg.region_slots[target - 1]->pixel_count += changed.size();
+            std::vector<std::uint32_t> pixels = std::move(pixelsOf[s]);
+            std::map<std::uint32_t, std::size_t> counts;
+            for (const std::uint32_t i : pixels) {
+                const int x = static_cast<int>(i % static_cast<std::uint32_t>(w));
+                const int y = static_cast<int>(i / static_cast<std::uint32_t>(w));
+                const auto visit = [&](int nx, int ny) {
+                    if (nx < 0 || ny < 0 || nx >= w || ny >= h) {
+                        return;
+                    }
+                    const std::uint32_t other =
+                        seg.labels[static_cast<std::size_t>(ny) * static_cast<std::size_t>(w) +
+                                   static_cast<std::size_t>(nx)];
+                    if (other != label && other != 0) {
+                        ++counts[other];
+                    }
+                };
+                visit(x - 1, y);
+                visit(x + 1, y);
+                visit(x, y - 1);
+                visit(x, y + 1);
             }
+            const std::uint32_t target = counts.empty()
+                                             ? 0
+                                             : std::max_element(counts.begin(), counts.end(),
+                                                                [](const auto& a, const auto& b) {
+                                                                    return a.second < b.second;
+                                                                })
+                                                   ->first;
+            for (const std::uint32_t i : pixels) {
+                seg.labels[i] = target;
+            }
+            if (target != 0) {
+                seg.region_slots[target - 1]->pixel_count += pixels.size();
+                if (pending[target - 1]) {
+                    auto& dst = pixelsOf[target - 1];
+                    dst.insert(dst.end(), pixels.begin(), pixels.end());
+                }
+            }
+            pending[s] = 0;
             seg.region_slots[s].reset();
         }
     }
