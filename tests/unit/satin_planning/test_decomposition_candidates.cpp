@@ -139,7 +139,7 @@ TEST_CASE("enumerate_decomposition_candidates : determinisme (memes candidats a 
     }
 }
 
-TEST_CASE("decompose_into_paths (JunctionOverride) : forced_secondary_pair -- deux traversees simultanees (§ etape 4, croix)") {
+TEST_CASE("decompose_into_paths (JunctionOverride) : forced_secondary_pair -- deux traversees simultanees (etape 4, croix)") {
     const auto analysis = analyze("cross");
     const auto& graph = analysis.debug.graph;
     const std::uint32_t junctionId = single_junction_id(graph);

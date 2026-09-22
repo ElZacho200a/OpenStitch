@@ -79,7 +79,7 @@ TEST_CASE("generate_overlaps : cross -- un recouvrement par paire directement ad
     CHECK(report.overlaps.size() == split.merge_candidates.size());
 }
 
-TEST_CASE("extend_toward : recadre bien dans bounds, jamais au-dela (§ etape 5)") {
+TEST_CASE("extend_toward : recadre bien dans bounds, jamais au-dela (etape 5)") {
     geometry::PathSet shape;
     const RegionSplitReport split = split_shape("t", shape);
     REQUIRE(split.merge_candidates.size() == 1);

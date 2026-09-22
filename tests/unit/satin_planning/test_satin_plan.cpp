@@ -516,7 +516,7 @@ TEST_CASE("create_satin_plan : extend_columns_into_overlap ferme reellement l'in
           planWithout.aggregate_coverage->raw_coverage_ratio);
 }
 
-TEST_CASE("create_satin_plan : trident/star5/comb -- le recouvrement source-clippe ferme les eclats de jonction (§ etape 5)") {
+TEST_CASE("create_satin_plan : trident/star5/comb -- le recouvrement source-clippe ferme les eclats de jonction (etape 5)") {
     // Defaut REEL mesure (2026-08-30, corpus de torture) : sur une jonction
     // a 3+ branches, le recouvrement pairwise seul (issu de `merge_
     // candidates`, une seule coupe binaire) laisse un residu triangulaire

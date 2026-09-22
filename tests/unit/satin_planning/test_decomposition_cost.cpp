@@ -73,7 +73,7 @@ TEST_CASE("evaluate_decomposition_cost : T -- l'argmin de continuite reste gagna
     CHECK(result.scored[0].second.continuity_cost < result.scored[1].second.continuity_cost);
 }
 
-TEST_CASE("evaluate_decomposition_cost : y_symmetric -- le candidat runner-up gagne reellement (§ gate etape 3)") {
+TEST_CASE("evaluate_decomposition_cost : y_symmetric -- le candidat runner-up gagne reellement (gate etape 3)") {
     // Trois bras strictement identiques a 120 degres (cf. shapes.cpp) : les
     // 3 appariements ont un cout de continuite proche par symetrie, un cas
     // que l'ancien selecteur (argmin pre-construction) tranchait de facon
@@ -110,7 +110,7 @@ TEST_CASE("evaluate_decomposition_cost : determinisme (meme cout a chaque execut
     }
 }
 
-TEST_CASE("evaluate_decomposition_cost : cross -- deux traversees simultanees perd (limite architecturale connue, § etape 4)") {
+TEST_CASE("evaluate_decomposition_cost : cross -- deux traversees simultanees perd (limite architecturale connue, etape 4)") {
     // Defaut REEL trouve en tentant d'exploiter la variante "deux traversees
     // simultanees" d'un noeud degre 4 (§ etape 4, docs/source/satin.md) :
     // `split_region` derive ses coupes UNIQUEMENT de

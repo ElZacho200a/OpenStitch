@@ -224,7 +224,7 @@ double distance_um(Vec2um a, Vec2um b) {
 }
 }  // namespace
 
-TEST_CASE("tatami sur une forme a 2 trous separes (§ etape 6, docs/source/satin.md) : "
+TEST_CASE("tatami sur une forme a 2 trous separes (etape 6, docs/source/satin.md) : "
          "couverture complete, aucun point dans les trous") {
     // § refonte decomposition topologique, etape 6 : "two_holes" (rectangle
     // 60x30mm, 2 trous circulaires de 5mm separes) n'a AUCUNE famille de
