@@ -49,9 +49,15 @@ public:
     explicit SetSegmentationCommand(std::optional<segmentation::Segmentation> next)
         : next_(std::move(next)) {}
 
+    // Échange par déplacement dans les deux sens : l'historique ne garde
+    // qu'UN exemplaire de chaque segmentation (carte de labels de 4 octets
+    // par pixel), jamais une copie de celle qui est active dans le projet
+    // (audit perf 2026-09, docs/performance-audit.md). `revert` rend
+    // `next_` pour un `redo` ultérieur.
     void apply(document::Project& project) override {
         previous_ = std::move(project.segmentation);
-        project.segmentation = next_;
+        project.segmentation = std::move(next_);
+        next_.reset();
     }
     void revert(document::Project& project) override {
         next_ = std::move(project.segmentation);

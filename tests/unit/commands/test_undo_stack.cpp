@@ -1671,3 +1671,25 @@ TEST_CASE("une nouvelle commande invalide la branche redo") {
     CHECK(project.ops.size() == 2);
     CHECK(std::holds_alternative<image::QuantizeOp>(project.ops.back()));
 }
+
+TEST_CASE("SetSegmentationCommand : cycles undo/redo restituent exactement A puis B") {
+    document::Project project = project_with_segmentation();
+    const segmentation::Segmentation a = *project.segmentation;
+    segmentation::Segmentation b = a;
+    for (auto& l : b.labels) {
+        l = l == 0 ? 0u : 1u; // contenu différent de A
+    }
+    const segmentation::Segmentation bCopy = b;
+    UndoStack stack;
+    stack.execute(std::make_unique<SetSegmentationCommand>(std::move(b)), project);
+    for (int cycle = 0; cycle < 3; ++cycle) {
+        REQUIRE(project.segmentation.has_value());
+        CHECK(project.segmentation->labels == bCopy.labels);
+        REQUIRE(stack.undo(project));
+        REQUIRE(project.segmentation.has_value());
+        CHECK(project.segmentation->labels == a.labels);
+        CHECK(project.segmentation->region_slots.size() == a.region_slots.size());
+        REQUIRE(stack.redo(project));
+    }
+    CHECK(project.segmentation->labels == bCopy.labels);
+}
