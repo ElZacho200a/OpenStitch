@@ -61,6 +61,13 @@ double net_area_um2(const geometry::PathSet& set) {
 // raccorder pile, cf. audit Wilcom Hatch — Column B/miter joints, docs/source/satin.md).
 constexpr Micrometers kCoverageOverlap{400}; // 0,4 mm
 
+// La vectorisation trace les contours par les centres des pixels de bord : le
+// polygone perd un demi-pixel par arête de frontière. Le seuil de fragment
+// (Lot D) porte sur cette aire vectorisée, celle qui décide du type de point
+// (audit marine : des régions de 3 mm² en pixels donnaient des contours de
+// 2,5 mm²). Propriété de la vectorisation, pas un réglage.
+constexpr double kVectorizedBoundaryLoss = 0.5;
+
 std::vector<geometry::Path> shrink_strips_for_cutout(const std::vector<geometry::Path>& strips) {
     std::vector<geometry::Path> out;
     out.reserve(strips.size());
@@ -670,7 +677,7 @@ Result<AutoResult> auto_digitize(const segmentation::Segmentation& input,
         segmentation::merge_small_regions(
             seg,
             static_cast<std::size_t>(std::ceil(options.min_region_area_mm2 / (mmPerPx * mmPerPx))),
-            backgroundRgb);
+            backgroundRgb, kVectorizedBoundaryLoss);
     }
 
     const vectorization::VectorizeOptions vecOpts{options.mm_per_px, options.simplify_tolerance};

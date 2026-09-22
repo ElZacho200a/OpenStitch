@@ -392,7 +392,12 @@ std::vector<FillStitch> fill_tatami(const geometry::PathSet& region,
 
     while (visitedCount < n) {
         if (current == -1) {
-            if (hasEntry) {
+            // Nouvelle composante : reprise par le segment non visité le plus
+            // PROCHE du point courant (entrée demandée, ou fin de la
+            // composante précédente) -- l'ordre de balayage seul renvoyait à
+            // l'autre bout de la forme (audit marine plein cadre : 2 470 sauts
+            // internes aux tatami, autant de piqûres nulles d'arrivée).
+            if (hasPrev) {
                 int best = -1;
                 double bd = std::numeric_limits<double>::max();
                 for (int j = 0; j < n; ++j) {
@@ -431,6 +436,12 @@ std::vector<FillStitch> fill_tatami(const geometry::PathSet& region,
             // géométrique (connector_invalid) tranche.
             const bool cross = hasPrev && connector_invalid(polys, prev, rp);
             bool jump = (k == 0) && (jumpStart || !hasPrev || cross);
+            // Liaison COUSUE vers une rangée voisine (arête du graphe, trajet
+            // validé intérieur) : deux segments qui ne se chevauchent que sur
+            // une petite portion peuvent être reliés sur des dizaines de mm
+            // (audit marine : points de 12 à 62 mm dans le ciel). La liaison
+            // est découpée en pénétrations cachées d'au plus `stitch_length`.
+            const bool longLink = (k == 0) && !jump && hasPrev && seglen(prev, rp) > stitchLen;
             // Underpath caché (§15) : au lieu d'un saut, on coud un trajet caché.
             // Émet des pénétrations intermédiaires taguées `travel` le long du
             // trajet, `rp` restant une pénétration normale. `emitTravel` échantillonne
@@ -450,6 +461,9 @@ std::vector<FillStitch> fill_tatami(const geometry::PathSet& region,
                     }
                 }
             };
+            if (longLink) {
+                emitTravel({prev, rp});
+            }
             if (jump && params.hidden_underpath && hasPrev) {
                 // 1) trajet DIRECT s'il reste intérieur et court ;
                 if (!cross && seglen(prev, rp) <= underpathCap) {
@@ -538,7 +552,10 @@ std::vector<std::vector<Vec2um>> tatami_underlay(const geometry::PathSet& region
         up.inset = Micrometers{0};
         up.underlay_edge = false;
         up.underlay_parallel = false;
-        up.hidden_underpath = false;
+        // Trajets cachés hérités de l'objet : sous la couche supérieure, une
+        // liaison cousue de sous-couche est invisible (audit marine : 625
+        // sauts dans les sous-couches en rangées).
+        up.hidden_underpath = params.hidden_underpath;
         up.entry_point.reset();
         const auto fill = fill_tatami(region, up);
         std::vector<Vec2um> run;

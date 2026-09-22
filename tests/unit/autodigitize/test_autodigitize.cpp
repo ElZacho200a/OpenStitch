@@ -1100,3 +1100,25 @@ TEST_CASE("Lot F : les tatami de l'auto-numerisation ont le trajet cache active"
     // Le défaut du modèle, lui, ne change pas (objets manuels, .osp existants).
     CHECK_FALSE(document::TatamiParams{}.hidden_underpath);
 }
+
+TEST_CASE("Lot D : seuil de fragment sur l'aire vectorisee, pas en pixels") {
+    // Fragment vert 3x2 px à 0,8 mm/px : 3,84 mm² en pixels (au-dessus de
+    // 3 mm²) mais 1,28 mm² une fois vectorisé (contour par les centres des
+    // pixels de bord) -- il devenait un contour point triple de 1,3 mm²
+    // (audit marine : 4 objets brodés sous 3 mm²).
+    const std::array<std::uint8_t, 3> kGreen{30, 200, 30};
+    const auto seg = segmentation::segment(
+        paint(40, 20, {{0, 0, 20, 20, kRed}, {20, 0, 40, 20, kBlue}, {10, 8, 13, 10, kGreen}}),
+        {.max_colors = 3, .min_region_px = 1});
+    REQUIRE(seg.has_value());
+    AutoOptions o = tatami_only_opts();
+    o.mm_per_px = Millimeters{0.8};
+    o.min_feature_width_mm = 0.0; // isole le critère d'aire
+    IdGenerator<ObjectId> ids;
+    const auto r = auto_digitize(*seg, ids, o);
+    REQUIRE(r.has_value());
+    CHECK(r->vectors.size() == 2);
+    for (const auto& e : r->embroideries) {
+        CHECK_FALSE(std::holds_alternative<document::RunningStitchParams>(e.params));
+    }
+}

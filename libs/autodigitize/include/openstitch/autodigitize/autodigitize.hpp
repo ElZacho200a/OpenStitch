@@ -99,7 +99,9 @@ struct AutoOptions {
     // Régions plus petites que cette aire fusionnées avec la voisine de plus
     // longue frontière (jamais avec le fond ignoré). Seules les régions sans
     // autre voisine restent, et deviennent un contour (sous
-    // `min_fill_area_mm2`). 0 = désactivé.
+    // `min_fill_area_mm2`). Aire mesurée comme celle du polygone vectorisé
+    // (demi-pixel perdu le long des frontières, cf. merge_small_regions).
+    // 0 = désactivé.
     double min_region_area_mm2{3.0};
 };
 

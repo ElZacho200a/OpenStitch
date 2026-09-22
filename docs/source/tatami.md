@@ -145,6 +145,34 @@ parallèle en vert, couche supérieure en gris, underpath en bleu, sauts en roug
 en tatami. Le remplissage contourne le trou ; aucune couture ne le traverse
 (seulement ~2 sauts).*
 
+## Déplacements internes (audit marine plein cadre, 2026-09-22)
+
+Trois défauts mesurés sur le tatami d'un grand ciel percé de nuages, avec
+les outils de mesure du Lot G (*Analyse et validation*) :
+
+- **Composante suivante.** Quand une composante de rangées est épuisée,
+  `fill_tatami` reprenait au premier segment non visité **dans l'ordre de
+  balayage**, souvent à l'autre bout de la forme. Il reprend désormais au
+  segment non visité le **plus proche** du point courant (même règle que
+  pour un point d'entrée), ce qui raccourcit le saut et permet plus souvent
+  un trajet caché.
+- **Liaisons cousues trop longues.** La liaison entre deux segments de
+  rangées voisines (arête du graphe) était validée géométriquement mais pas
+  bornée en longueur. Deux segments qui ne se chevauchent que sur une petite
+  portion étaient reliés par un seul point de 12 à 62 mm, un fil flottant
+  visible. Une liaison plus longue que `stitch_length` est maintenant
+  découpée en pénétrations cachées (passe `Travel`) d'au plus
+  `stitch_length`.
+- **Sous-couche en rangées.** Elle était toujours générée sans trajet caché
+  (625 sauts sur la marine). Elle hérite désormais de `hidden_underpath` :
+  sous la couche supérieure, une liaison cousue de sous-couche est invisible.
+
+Limite restante : le trajet caché ne longe que le contour **extérieur**
+rentré, dans la limite de `underpathCap` (8 mm). Une forme criblée de trous
+(le ciel et ses nuages) garde de nombreux sauts internes, courts pour la
+plupart. Ils ne sont coupés qu'au-delà de 3 mm (*Moteur de génération de
+points*, finitions).
+
 ## Paramètres
 
 Valeurs par défaut lues dans `TatamiParams`

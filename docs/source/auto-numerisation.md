@@ -171,6 +171,14 @@ du projet n'est pas modifiée) et la nettoie avant de vectoriser :
 Les deux étapes sont déterministes (voisinages ordonnés, égalités tranchées
 par le plus petit identifiant) et désactivables (seuil à 0).
 
+**Aire vectorisée.** Le seuil porte sur l'aire que la région aura une fois
+vectorisée, pas sur son nombre de pixels. Le contour passe par les centres
+des pixels de bord : une tache de N pixels et B arêtes de frontière donne un
+polygone d'aire N − B/2 + 1 (théorème de Pick). Sans cette correction, des
+régions de 3 mm² en pixels devenaient des contours de 2,5 mm² sur la
+marine. `merge_small_regions` reçoit donc un poids de frontière de ½
+(`boundary_weight`).
+
 **Compromis connu** : l'ouverture efface aussi les détails volontaires plus
 fins que 1,2 mm (par exemple un mât fin), rendus à la région qui les entoure.
 Pour les garder, baissez `min_feature_width_mm`.

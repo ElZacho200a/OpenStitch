@@ -59,7 +59,8 @@ SequenceMetrics sequence_metrics(const stitch::StitchSequence& sequence,
             if (inMove && lastStitch) {
                 ++m.moves;
                 if (!trimmed && length_um(c.pos - *lastStitch) >
-                                    static_cast<double>(options.trim_threshold.value)) {
+                                    static_cast<double>(options.trim_threshold.value +
+                                                        options.length_tolerance.value)) {
                     ++m.long_moves_without_trim;
                 }
             }

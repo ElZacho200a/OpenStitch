@@ -18,6 +18,11 @@ struct SequenceMetricsOptions {
     // sa forme (retour exact sur le point d'il y a deux piqûres : aller-retour).
     bool infer_locks{false};
     Micrometers direction_min_length{1'000}; // points pris en compte dans l'histogramme
+    // Résolution de mesure : un déplacement n'est « long » qu'au-delà de
+    // trim_threshold + cette tolérance. Un DST est quantifié au pas de 0,1 mm
+    // (erreur jusqu'à ~0,07 mm par point) : un déplacement de 2,99 mm peut s'y
+    // relire 3,01 mm. `stats` sur un DST utilise donc une unité DST (100 µm).
+    Micrometers length_tolerance{0};
 };
 
 struct SequenceMetrics {

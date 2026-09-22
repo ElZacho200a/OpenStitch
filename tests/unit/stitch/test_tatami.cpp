@@ -549,3 +549,83 @@ TEST_CASE("tatami : le point d'entree oriente le demarrage") {
     CHECK(base.front().pos.x.value < 5'000);       // sans entrée : démarre à gauche
     CHECK(withEntry.front().pos.x.value > 15'000); // avec entrée : démarre à droite
 }
+
+// --- Complément Lots F/G (audit marine) : déplacements internes -------------
+// Mesure sur la marine : 2 470 arrivées de saut à l'intérieur des tatami (et
+// autant de piqûres de longueur nulle), 625 dans leurs sous-couches.
+
+namespace {
+
+// Carré 20 mm percé d'un trou central 8 mm (anneau carré).
+geometry::PathSet square_ring() {
+    geometry::Path hole;
+    hole.closed = true;
+    const auto n = [](std::int32_t x, std::int32_t y) {
+        return geometry::PathNode{Vec2um{Micrometers{x}, Micrometers{y}},
+                                  geometry::NodeType::Corner, std::nullopt, std::nullopt};
+    };
+    hole.nodes = {n(6'000, 6'000), n(14'000, 6'000), n(14'000, 14'000), n(6'000, 14'000)};
+    return geometry::PathSet{rect(20'000, 20'000), {hole}};
+}
+
+double total_jump_um(const std::vector<FillStitch>& fill) {
+    double total = 0.0;
+    for (std::size_t i = 1; i < fill.size(); ++i) {
+        if (fill[i].jump) {
+            total += length_um(fill[i].pos - fill[i - 1].pos);
+        }
+    }
+    return total;
+}
+
+} // namespace
+
+TEST_CASE("tatami : composante suivante = la plus proche, pas la suivante du balayage") {
+    // Après avoir remonté un côté de l'anneau jusqu'en haut, la composante
+    // restante (l'autre côté du trou) doit être reprise par son bout le plus
+    // proche (haut du trou, ~6 mm), pas par sa rangée la plus basse (~14 mm).
+    const auto fill = fill_tatami(square_ring(), params(400, 3'000));
+    REQUIRE_FALSE(fill.empty());
+    CHECK(total_jump_um(fill) < 10'000.0);
+    // Toujours complet et déterministe.
+    CHECK(fill == fill_tatami(square_ring(), params(400, 3'000)));
+}
+
+TEST_CASE("tatami : sous-couche en rangees, trajets caches si hidden_underpath") {
+    auto p = params(400, 3'000);
+    p.underlay_parallel = true;
+    p.underlay_spacing = Micrometers{2'000};
+    const auto withJumps = tatami_underlay(square_ring(), p);
+    p.hidden_underpath = true;
+    const auto hidden = tatami_underlay(square_ring(), p);
+    REQUIRE_FALSE(hidden.empty());
+    CHECK(hidden.size() < withJumps.size());
+}
+
+TEST_CASE("tatami : liaison entre rangees jamais plus longue qu'un point") {
+    // Deux bandes décalées qui ne se chevauchent que sur 4 mm (x 36..40) :
+    // la liaison de la dernière rangée basse (finie en x = 0 ou 40) vers la
+    // première rangée haute peut traverser toute la bande. Mesuré sur la
+    // marine : des points cousus de 12 à 62 mm dans le tatami du ciel.
+    geometry::Path p;
+    p.closed = true;
+    const auto n = [](std::int32_t x, std::int32_t y) {
+        return geometry::PathNode{Vec2um{Micrometers{x}, Micrometers{y}},
+                                  geometry::NodeType::Corner, std::nullopt, std::nullopt};
+    };
+    p.nodes = {n(0, 0),          n(40'000, 0),     n(40'000, 2'000), n(80'000, 2'000),
+               n(80'000, 4'200), n(36'000, 4'200), n(36'000, 2'000), n(0, 2'000)};
+    for (const bool underpath : {false, true}) {
+        auto prm = params(400, 3'000);
+        prm.hidden_underpath = underpath;
+        const auto fill = fill_tatami(geometry::PathSet{p, {}}, prm);
+        REQUIRE_FALSE(fill.empty());
+        double longest = 0.0;
+        for (std::size_t i = 1; i < fill.size(); ++i) {
+            if (!fill[i].jump) {
+                longest = std::max(longest, length_um(fill[i].pos - fill[i - 1].pos));
+            }
+        }
+        CHECK(longest <= 3'000.0 + 1.0);
+    }
+}

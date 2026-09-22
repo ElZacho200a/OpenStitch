@@ -45,6 +45,16 @@ TEST_CASE("sequence_metrics : deplacements, coupes, deplacements longs sans coup
     CHECK(m.long_moves_without_trim == 1);
 }
 
+TEST_CASE("sequence_metrics : tolerance de resolution sur la longueur des deplacements") {
+    // 3,05 mm : long à la précision du µm, pas à la résolution d'un DST.
+    stitch::StitchSequence seq;
+    seq.commands = {st(0, 0), st(1'000, 0), jmp(4'050, 0), st(4'050, 0)};
+    CHECK(sequence_metrics(seq).long_moves_without_trim == 1);
+    SequenceMetricsOptions o;
+    o.length_tolerance = Micrometers{100};
+    CHECK(sequence_metrics(seq, o).long_moves_without_trim == 0);
+}
+
 TEST_CASE("sequence_metrics : points courts hors verrous") {
     stitch::StitchSequence seq;
     seq.commands = {st(0, 0), st(300, 0),         // court

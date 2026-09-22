@@ -54,6 +54,9 @@ void print_sequence_metrics(const openstitch::stitch::StitchSequence& seq, bool 
     using namespace openstitch;
     stitch_analysis::SequenceMetricsOptions opts;
     opts.infer_locks = fromDst;
+    if (fromDst) {
+        opts.length_tolerance = Micrometers{100}; // résolution DST : 0,1 mm
+    }
     const auto m = stitch_analysis::sequence_metrics(seq, opts);
     fmt::print("Déplacements        : {}\n", m.moves);
     fmt::print("  > {:.1f} mm sans coupe : {}\n", opts.trim_threshold.value / 1000.0,

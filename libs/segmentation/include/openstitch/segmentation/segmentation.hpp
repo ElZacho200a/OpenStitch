@@ -115,8 +115,17 @@ std::size_t remove_thin_parts(Segmentation& seg, int min_width_px);
 // (fond ignoré) n'absorbe jamais : un fragment qui n'a pas d'autre voisine
 // reste tel quel (isolé au milieu du fond). Renvoie le nombre de fusions.
 // Déterministe.
+//
+// `boundary_weight` : la taille comparée à `min_px` est « pixels −
+// boundary_weight × (longueur de frontière avec les autres régions − 2) ». La
+// vectorisation trace les contours par les centres des pixels de bord : le
+// polygone perd ~½ pixel par arête de frontière, et c'est son aire qui
+// décide du type de point. 0,5 aligne donc le seuil sur l'aire vectorisée
+// (audit marine : des régions de 3 mm² en pixels donnaient des contours de
+// 2,5 mm²).
 std::size_t merge_small_regions(Segmentation& seg, std::size_t min_px,
-                                std::optional<std::array<std::uint8_t, 3>> excluded = {});
+                                std::optional<std::array<std::uint8_t, 3>> excluded = {},
+                                double boundary_weight = 0.0);
 
 // Seuils de la recommandation « ignorer le fond » (§ Lot A, audit marine).
 struct BackgroundCandidateOptions {

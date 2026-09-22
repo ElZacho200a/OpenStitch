@@ -167,9 +167,27 @@ stitch::StitchSequence finish_sequence(const stitch::StitchSequence& sequence,
     const Run* prev = nullptr;
     for (const Run& run : runs) {
         bool entryLock = true; // premier tracé : le fil démarre ici
+        // Verrou d'entrée potentiel et piqûre de longueur nulle à l'arrivée
+        // d'un saut (Jump p0, Stitch p0) : superflue quand un verrou d'entrée
+        // suit, puisqu'il revient piquer en p0 -- sinon c'est un « point » de
+        // 0 mm dans le fichier machine. Le fil atterrit alors sur le premier
+        // point du verrou, jusqu'à `lock_length` plus loin : c'est CE point qui
+        // décide de la coupe, pas p0 (sinon un déplacement jugé à 2,9 mm
+        // devient 3,5 mm sans coupe -- défaut mesuré sur la marine).
+        const auto entryCandidate = starts_with_lock(cmds, run) ? std::vector<StitchCommand>{}
+                                                                : lock_points(cmds, run, true, f);
+        const bool arrivesByJump = run.begin > cursor &&
+                                   cmds[run.begin - 1].type == CommandType::Jump &&
+                                   cmds[run.begin - 1].pos == cmds[run.begin].pos;
         if (prev != nullptr) {
             const StitchCommand& last = cmds[prev->end - 1];
-            const StitchCommand& first = cmds[run.begin];
+            StitchCommand first = cmds[run.begin];
+            if (arrivesByJump && !entryCandidate.empty()) {
+                const double viaLock = length_um(entryCandidate.front().pos - last.pos);
+                if (viaLock > length_um(first.pos - last.pos)) {
+                    first.pos = entryCandidate.front().pos;
+                }
+            }
             bool colorChange = false;
             bool hasTrim = false;
             for (std::size_t k = cursor; k < run.begin; ++k) {
@@ -194,15 +212,8 @@ stitch::StitchSequence finish_sequence(const stitch::StitchSequence& sequence,
         // Déplacement(s)/coupe/changement de fil d'origine, puis le tracé.
         out.commands.insert(out.commands.end(), cmds.begin() + static_cast<std::ptrdiff_t>(cursor),
                             cmds.begin() + static_cast<std::ptrdiff_t>(run.begin));
-        const auto entry = entryLock && !starts_with_lock(cmds, run)
-                               ? lock_points(cmds, run, true, f)
-                               : std::vector<StitchCommand>{};
-        // Piqûre de longueur nulle à l'arrivée d'un saut (Jump p0, Stitch p0) :
-        // superflue quand un verrou d'entrée suit, puisqu'il revient piquer en
-        // p0 -- sinon c'est un « point » de 0 mm dans le fichier machine.
-        const bool tieInOnly = !entry.empty() && !out.commands.empty() &&
-                               out.commands.back().type == CommandType::Jump &&
-                               out.commands.back().pos == cmds[run.begin].pos;
+        const auto entry = entryLock ? entryCandidate : std::vector<StitchCommand>{};
+        const bool tieInOnly = !entry.empty() && arrivesByJump;
         if (!tieInOnly) {
             out.commands.push_back(cmds[run.begin]);
         }

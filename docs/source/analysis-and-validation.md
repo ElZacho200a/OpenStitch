@@ -40,7 +40,11 @@ En plus des règles, deux fonctions **mesurent** une séquence
   d'arrêt. S'y ajoute l'**histogramme des directions** des points d'au moins
   1 mm, modulo 180°, par tranches de 5°. Une piqûre de longueur nulle à
   l'arrivée d'un saut compte comme point court : c'est un enregistrement de
-  0 mm dans le fichier machine.
+  0 mm dans le fichier machine. `length_tolerance` évite de compter comme
+  « long » un déplacement que la quantification DST (pas de 0,1 mm, erreur
+  jusqu'à ~0,07 mm) a fait passer d'un cheveu au-dessus du seuil ;
+  `openstitch-cli stats` relit un DST avec une tolérance d'une unité DST
+  (0,1 mm).
 - `project_metrics(project, sequence, options)` (`project_metrics.hpp`), qui
   a besoin du projet : **objets brodés de moins de 3 mm²** (objet vectoriel
   suivi, compté une fois), **angles de remplissage** des tatami, **part de

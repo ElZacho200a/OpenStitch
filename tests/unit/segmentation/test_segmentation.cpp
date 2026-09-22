@@ -477,3 +477,19 @@ TEST_CASE("remove_thin_parts : une lamelle isolee dans le vide reste en place") 
     CHECK(remove_thin_parts(seg, 3) == 0);
     CHECK(seg.region_count() == 1);
 }
+
+TEST_CASE("merge_small_regions : taille effective = pixels - poids x frontiere") {
+    // Bande verte 2x5 px (10 px) dans le rouge : 14 arêtes de frontière.
+    std::vector<std::pair<int, int>> green;
+    for (int y = 2; y < 7; ++y) {
+        green.emplace_back(5, y);
+        green.emplace_back(6, y);
+    }
+    const auto seg0 = segment(halves_with(green), {.max_colors = 3, .min_region_px = 1});
+    REQUIRE(seg0.has_value());
+    Segmentation plain = *seg0;
+    CHECK(merge_small_regions(plain, 8) == 0); // 10 px >= 8
+    Segmentation weighted = *seg0;
+    // 10 - 7 + 1 = 4 px effectifs (le polygone vectorisé fait 1 x 4 px) < 8.
+    CHECK(merge_small_regions(weighted, 8, std::nullopt, 0.5) == 1);
+}

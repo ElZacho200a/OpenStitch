@@ -519,7 +519,8 @@ std::size_t remove_thin_parts(Segmentation& seg, int min_width_px) {
 }
 
 std::size_t merge_small_regions(Segmentation& seg, std::size_t min_px,
-                                std::optional<std::array<std::uint8_t, 3>> excluded) {
+                                std::optional<std::array<std::uint8_t, 3>> excluded,
+                                double boundary_weight) {
     const std::size_t slots = seg.region_slots.size();
     std::vector<std::size_t> count(slots + 1, 0);
     for (std::size_t s = 0; s < slots; ++s) {
@@ -542,15 +543,32 @@ std::size_t merge_small_regions(Segmentation& seg, std::size_t min_px,
     for (std::uint32_t l = 0; l <= slots; ++l) {
         parent[l] = l;
     }
-    std::set<std::pair<std::size_t, std::uint32_t>> queue;
+    // Taille effective (cf. `boundary_weight`) ; clé de la file.
+    const auto effective = [&](std::uint32_t l) {
+        std::size_t border = 0;
+        for (const auto& [other, length] : nb[l]) {
+            border += length;
+        }
+        // Pick : un polygone par les centres des pixels de bord d'une tache de
+        // N pixels et B arêtes de bord a une aire N - B/2 + 1 (rectangle a x b :
+        // (a-1)(b-1)) -- généralisé au poids w : N - w.B + 2w.
+        return static_cast<double>(count[l]) - boundary_weight * static_cast<double>(border) +
+               2.0 * boundary_weight;
+    };
+    const double minSize = static_cast<double>(min_px);
+    std::set<std::pair<double, std::uint32_t>> queue;
+    std::vector<double> key(slots + 1, 0.0);
     for (std::uint32_t l = 1; l <= slots; ++l) {
-        if (seg.region_slots[l - 1] && count[l] < min_px) {
-            queue.insert({count[l], l});
+        if (seg.region_slots[l - 1]) {
+            key[l] = effective(l);
+            if (key[l] < minSize) {
+                queue.insert({key[l], l});
+            }
         }
     }
     std::size_t merges = 0;
     while (!queue.empty()) {
-        const auto [size, small] = *queue.begin();
+        const std::uint32_t small = queue.begin()->second;
         queue.erase(queue.begin());
         std::uint32_t keep = 0;
         std::size_t best = 0;
@@ -563,7 +581,7 @@ std::size_t merge_small_regions(Segmentation& seg, std::size_t min_px,
         if (keep == 0) {
             continue; // aucune voisine admissible : fragment isolé conservé
         }
-        queue.erase({count[keep], keep});
+        queue.erase({key[keep], keep});
         count[keep] += count[small];
         for (const auto& [other, length] : nb[small]) {
             if (other == keep) {
@@ -577,8 +595,12 @@ std::size_t merge_small_regions(Segmentation& seg, std::size_t min_px,
         nb[small].clear();
         parent[small] = keep;
         ++merges;
-        if (count[keep] < min_px) {
-            queue.insert({count[keep], keep});
+        // Les voisines de `small` ont maintenant `keep` pour voisine : leur
+        // frontière totale est inchangée (longueurs transférées), seule la
+        // clé de `keep` bouge.
+        key[keep] = effective(keep);
+        if (key[keep] < minSize) {
+            queue.insert({key[keep], keep});
         }
     }
     if (merges == 0) {

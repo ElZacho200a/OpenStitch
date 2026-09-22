@@ -343,3 +343,16 @@ TEST_CASE("finish : point de longueur nulle a l'arrivee d'un saut absorbe par le
     }
     CHECK(backAtStart);
 }
+
+TEST_CASE("finish : la coupe se decide sur le point d'atterrissage reel (verrou d'entree)") {
+    // Écart de 2,8 mm entre les deux objets, mais la piqûre nulle d'arrivée
+    // est remplacée par le verrou d'entrée, qui part 0,8 mm plus loin : le
+    // fil parcourt 3,6 mm, il faut couper (défaut mesuré sur la marine : 9
+    // déplacements de 3,2 à 3,6 mm restés sans coupe).
+    const auto project = two_squares(2'800);
+    const auto raw = generate_sequence(project);
+    REQUIRE(raw.has_value());
+    const auto done = finish_sequence(*raw, project);
+    CHECK(long_moves_without_trim(done, 3'000.0) == 0);
+    CHECK(count_type(done, CmdType::Trim) == 1);
+}
