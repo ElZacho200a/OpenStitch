@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 #pragma once
 
+#include <memory>
 #include <vector>
 
 #include "openstitch/core/units.hpp"
@@ -64,5 +65,27 @@ tatami_underlay(const geometry::PathSet& region, const document::TatamiParams& p
 // franchement. C'est la validation utilisée par `fill_tatami` pour décider
 // liaison cousue vs saut ; exposée pour test.
 [[nodiscard]] bool segment_stays_in_region(const geometry::PathSet& region, Vec2um a, Vec2um b);
+
+// Même prédicat que `segment_stays_in_region`, pour tester de nombreux
+// segments contre UNE région : l'index des arêtes est construit une seule
+// fois (audit perf 2026-09, docs/performance-audit.md -- filtre des points
+// courts de `finish_sequence`). `stays_inside(a, b)` renvoie exactement
+// `segment_stays_in_region(region, a, b)`. Un même objet ne doit pas être
+// interrogé depuis plusieurs threads à la fois.
+class RegionSegmentTester {
+public:
+    explicit RegionSegmentTester(const geometry::PathSet& region);
+    ~RegionSegmentTester();
+    RegionSegmentTester(RegionSegmentTester&&) noexcept;
+    RegionSegmentTester& operator=(RegionSegmentTester&&) noexcept;
+    RegionSegmentTester(const RegionSegmentTester&) = delete;
+    RegionSegmentTester& operator=(const RegionSegmentTester&) = delete;
+
+    [[nodiscard]] bool stays_inside(Vec2um a, Vec2um b) const;
+
+private:
+    struct Impl;
+    std::unique_ptr<Impl> impl_;
+};
 
 } // namespace openstitch::stitch_generation

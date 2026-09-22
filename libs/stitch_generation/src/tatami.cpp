@@ -47,20 +47,6 @@ Vec2um to_um(PointD p) {
                   Micrometers{static_cast<std::int32_t>(std::lround(p.y))}};
 }
 
-// Point dans polygone (lancer de rayon horizontal, règle pair-impair).
-bool point_in_poly(const std::vector<PointD>& poly, PointD p) {
-    bool inside = false;
-    const std::size_t n = poly.size();
-    for (std::size_t i = 0, j = n - 1; i < n; j = i++) {
-        const PointD a = poly[i];
-        const PointD b = poly[j];
-        if (((a.y > p.y) != (b.y > p.y)) && (p.x < (b.x - a.x) * (p.y - a.y) / (b.y - a.y) + a.x)) {
-            inside = !inside;
-        }
-    }
-    return inside;
-}
-
 // Distance au carré de p au segment [c,d].
 double point_seg_dist2(PointD p, PointD c, PointD d) {
     const double dx = d.x - c.x;
@@ -78,38 +64,139 @@ double point_seg_dist2(PointD p, PointD c, PointD d) {
     return fx * fx + fy * fy;
 }
 
-// p est-il (quasi) SUR une arête d'un des polygones (extérieur ou trou) ? Le
-// test pair-impair est ambigu pile sur une frontière — pour un trou, il classe
-// même le point comme « dans le trou » (cf. arête opposée qui bascule seule la
-// parité), ce qui rejetterait à tort un suivi de bord légitime. On traite donc
-// tout point sur une frontière comme faisant partie de la région, AVANT le
-// test pair-impair.
-bool point_on_boundary(const std::vector<std::vector<PointD>>& polys, PointD p) {
-    constexpr double kEps2 = 1e-4; // 0,01 µm : marge numérique, pas une tolérance géométrique
-    for (const auto& poly : polys) {
-        const std::size_t n = poly.size();
-        for (std::size_t i = 0; i < n; ++i) {
-            if (point_seg_dist2(p, poly[i], poly[(i + 1) % n]) < kEps2) {
-                return true;
+// Index des arêtes (extérieur + trous) par bandes horizontales, construit
+// une fois par remplissage (audit perf 2026-09, docs/performance-audit.md) :
+// les tests géométriques ci-dessous étaient en O(arêtes) et appelés des
+// dizaines de milliers de fois par génération (liaisons de rangées,
+// autoroute d'underpath), soit l'essentiel du coût du tatami.
+//
+// Contrat d'EXACTITUDE : une requête renvoie un SUR-ENSEMBLE des arêtes
+// capables de satisfaire le prédicat d'origine (chaque arête est inscrite
+// dans toutes les bandes couvrant son intervalle en y élargi de `kMargin`),
+// et chaque candidate est évaluée avec exactement la même arithmétique
+// qu'avant ; les résultats ne dépendent pas de l'ordre de visite (parité,
+// liste de paramètres triée). Une arête hors des bandes interrogées est à
+// plus de `kMargin` en y du point/segment testé : elle ne pouvait ni
+// basculer la parité, ni être à moins de 0,01 µm, ni couper le segment.
+class EdgeIndex {
+public:
+    struct Edge {
+        PointD c;            // poly[k]
+        PointD d;            // poly[(k + 1) % n]
+        std::size_t poly{0}; // 0 = extérieur, >= 1 = trous
+    };
+
+    explicit EdgeIndex(const std::vector<std::vector<PointD>>& polys) : polyCount_(polys.size()) {
+        double minY = std::numeric_limits<double>::max();
+        double maxY = std::numeric_limits<double>::lowest();
+        for (std::size_t p = 0; p < polys.size(); ++p) {
+            const auto& poly = polys[p];
+            const std::size_t n = poly.size();
+            for (std::size_t k = 0; k < n; ++k) {
+                edges_.push_back({poly[k], poly[(k + 1) % n], p});
+                minY = std::min(minY, poly[k].y);
+                maxY = std::max(maxY, poly[k].y);
+            }
+        }
+        stamp_.assign(edges_.size(), 0);
+        if (edges_.empty()) {
+            return;
+        }
+        minY_ = minY;
+        const double span = maxY - minY;
+        bandCount_ = std::clamp(
+            static_cast<int>(std::sqrt(static_cast<double>(edges_.size())) * 2.0), 1, 4096);
+        bandH_ = span > 0.0 ? span / bandCount_ : 1.0;
+        bands_.assign(static_cast<std::size_t>(bandCount_), {});
+        for (std::size_t e = 0; e < edges_.size(); ++e) {
+            const double y0 = std::min(edges_[e].c.y, edges_[e].d.y) - kMargin;
+            const double y1 = std::max(edges_[e].c.y, edges_[e].d.y) + kMargin;
+            for (int b = band(y0); b <= band(y1); ++b) {
+                bands_[static_cast<std::size_t>(b)].push_back(static_cast<std::uint32_t>(e));
             }
         }
     }
-    return false;
-}
+
+    [[nodiscard]] bool empty() const { return polyCount_ == 0; }
+    [[nodiscard]] std::size_t poly_count() const { return polyCount_; }
+
+    // Appelle f(edge) pour chaque arête candidate (sans doublon) dont
+    // l'intervalle en y élargi peut rencontrer [y0, y1].
+    template <typename F> void for_edges(double y0, double y1, F&& f) const {
+        if (edges_.empty()) {
+            return;
+        }
+        ++generation_;
+        if (generation_ == 0) { // débordement du compteur : réinitialise les marques
+            std::fill(stamp_.begin(), stamp_.end(), 0u);
+            generation_ = 1;
+        }
+        const int b1 = band(y1);
+        for (int b = band(y0); b <= b1; ++b) {
+            for (const std::uint32_t e : bands_[static_cast<std::size_t>(b)]) {
+                if (stamp_[e] != generation_) {
+                    stamp_[e] = generation_;
+                    f(edges_[e]);
+                }
+            }
+        }
+    }
+
+private:
+    static constexpr double kMargin = 1.0; // 1 µm, très au-delà des tolérances des prédicats
+
+    [[nodiscard]] int band(double y) const {
+        const double b = std::floor((y - minY_) / bandH_);
+        if (!(b > 0.0)) {
+            return 0;
+        }
+        return b >= bandCount_ ? bandCount_ - 1 : static_cast<int>(b);
+    }
+
+    std::size_t polyCount_{0};
+    std::vector<Edge> edges_;
+    std::vector<std::vector<std::uint32_t>> bands_;
+    double minY_{0.0};
+    double bandH_{1.0};
+    int bandCount_{1};
+    mutable std::vector<std::uint32_t> stamp_;
+    mutable std::uint32_t generation_{0};
+};
 
 // p est-il dans la région = dans l'extérieur ET hors de tous les trous ?
-bool in_region(const std::vector<std::vector<PointD>>& polys, PointD p) {
-    if (polys.empty()) {
+//
+// Un point (quasi) SUR une arête d'un des polygones (extérieur ou trou) est
+// traité comme faisant partie de la région, AVANT le test pair-impair : ce
+// dernier est ambigu pile sur une frontière — pour un trou, il classe même le
+// point comme « dans le trou » (cf. arête opposée qui bascule seule la
+// parité), ce qui rejetterait à tort un suivi de bord légitime. Pair-impair :
+// lancer de rayon horizontal, arête (a = poly[k+1], b = poly[k]) exactement
+// comme la boucle `for (i = 0, j = n - 1; i < n; j = i++)` d'origine.
+bool in_region(const EdgeIndex& index, PointD p) {
+    if (index.empty()) {
         return false;
     }
-    if (point_on_boundary(polys, p)) {
+    constexpr double kEps2 = 1e-4; // 0,01 µm : marge numérique, pas une tolérance géométrique
+    bool onBoundary = false;
+    std::vector<char> parity(index.poly_count(), 0);
+    index.for_edges(p.y, p.y, [&](const EdgeIndex::Edge& e) {
+        if (point_seg_dist2(p, e.c, e.d) < kEps2) {
+            onBoundary = true;
+        }
+        const PointD a = e.d;
+        const PointD b = e.c;
+        if (((a.y > p.y) != (b.y > p.y)) && (p.x < (b.x - a.x) * (p.y - a.y) / (b.y - a.y) + a.x)) {
+            parity[e.poly] = static_cast<char>(!parity[e.poly]);
+        }
+    });
+    if (onBoundary) {
         return true;
     }
-    if (!point_in_poly(polys[0], p)) {
+    if (!parity[0]) {
         return false;
     }
-    for (std::size_t i = 1; i < polys.size(); ++i) {
-        if (point_in_poly(polys[i], p)) {
+    for (std::size_t i = 1; i < parity.size(); ++i) {
+        if (parity[i]) {
             return false;
         }
     }
@@ -127,38 +214,35 @@ bool in_region(const std::vector<std::vector<PointD>>& polys, PointD p) {
 // l'écart en x — un connecteur parfaitement vertical qui traverse un trou de
 // part en part (même en touchant ses sommets, sans jamais le « croiser »
 // franchement) est donc détecté.
-bool connector_invalid(const std::vector<std::vector<PointD>>& polys, PointD a, PointD b) {
+bool connector_invalid(const EdgeIndex& index, PointD a, PointD b) {
     const double abx = b.x - a.x;
     const double aby = b.y - a.y;
     const double abLen = std::sqrt(abx * abx + aby * aby);
     if (abLen < 1e-6) {
-        return !in_region(polys, a);
+        return !in_region(index, a);
     }
     std::vector<double> ts{0.0, 1.0};
-    for (const auto& poly : polys) {
-        const std::size_t n = poly.size();
-        for (std::size_t i = 0; i < n; ++i) {
-            const PointD c = poly[i];
-            const PointD d = poly[(i + 1) % n];
-            const double dcx = d.x - c.x;
-            const double dcy = d.y - c.y;
-            const double cdLen = std::sqrt(dcx * dcx + dcy * dcy);
-            const double denom = abx * dcy - aby * dcx;
-            if (std::abs(denom) < 1e-9 * abLen * cdLen) {
-                continue; // parallèle/colinéaire : suivi de bord, pas de découpe
-            }
-            const double t = ((c.x - a.x) * dcy - (c.y - a.y) * dcx) / denom;
-            const double s = ((c.x - a.x) * aby - (c.y - a.y) * abx) / denom;
-            if (t > 1e-9 && t < 1.0 - 1e-9 && s >= -1e-9 && s <= 1.0 + 1e-9) {
-                ts.push_back(t);
-            }
+    index.for_edges(std::min(a.y, b.y), std::max(a.y, b.y), [&](const EdgeIndex::Edge& e) {
+        const PointD c = e.c;
+        const PointD d = e.d;
+        const double dcx = d.x - c.x;
+        const double dcy = d.y - c.y;
+        const double cdLen = std::sqrt(dcx * dcx + dcy * dcy);
+        const double denom = abx * dcy - aby * dcx;
+        if (std::abs(denom) < 1e-9 * abLen * cdLen) {
+            return; // parallèle/colinéaire : suivi de bord, pas de découpe
         }
-    }
+        const double t = ((c.x - a.x) * dcy - (c.y - a.y) * dcx) / denom;
+        const double s = ((c.x - a.x) * aby - (c.y - a.y) * abx) / denom;
+        if (t > 1e-9 && t < 1.0 - 1e-9 && s >= -1e-9 && s <= 1.0 + 1e-9) {
+            ts.push_back(t);
+        }
+    });
     std::sort(ts.begin(), ts.end());
     for (std::size_t i = 0; i + 1 < ts.size(); ++i) {
         const double tm = (ts[i] + ts[i + 1]) / 2.0;
         const PointD p{a.x + abx * tm, a.y + aby * tm};
-        if (!in_region(polys, p)) {
+        if (!in_region(index, p)) {
             return true;
         }
     }
@@ -201,6 +285,7 @@ std::vector<FillStitch> fill_tatami(const geometry::PathSet& region,
     if (polys.empty()) {
         return out;
     }
+    const EdgeIndex edgeIndex(polys);
 
     double minY = polys[0][0].y;
     double maxY = minY;
@@ -377,7 +462,7 @@ std::vector<FillStitch> fill_tatami(const geometry::PathSet& region,
             bool ok = true;
             for (std::size_t k = 1; k < v.size(); ++k) {
                 L += seglen(v[k - 1], v[k]);
-                if (L > bestLen || connector_invalid(polys, v[k - 1], v[k])) {
+                if (L > bestLen || connector_invalid(edgeIndex, v[k - 1], v[k])) {
                     ok = false;
                     break;
                 }
@@ -434,7 +519,11 @@ std::vector<FillStitch> fill_tatami(const geometry::PathSet& region,
             // trajet cousu couperait un bord de la région ou d'un trou. Le
             // chevauchement des rangées ne donne que des candidats ; la validation
             // géométrique (connector_invalid) tranche.
-            const bool cross = hasPrev && connector_invalid(polys, prev, rp);
+            // `cross` n'est lu que pour le premier point du segment (k == 0 :
+            // `jump` l'exige, et la branche underpath exige `jump`) : ne pas
+            // payer ce test en O(arêtes) à chaque pénétration (audit perf
+            // 2026-09, docs/performance-audit.md).
+            const bool cross = (k == 0) && hasPrev && connector_invalid(edgeIndex, prev, rp);
             bool jump = (k == 0) && (jumpStart || !hasPrev || cross);
             // Liaison COUSUE vers une rangée voisine (arête du graphe, trajet
             // validé intérieur) : deux segments qui ne se chevauchent que sur
@@ -574,7 +663,10 @@ std::vector<std::vector<Vec2um>> tatami_underlay(const geometry::PathSet& region
     return passes;
 }
 
-bool segment_stays_in_region(const geometry::PathSet& region, Vec2um a, Vec2um b) {
+namespace {
+
+// Polygones (extérieur + trous, >= 3 sommets) dans le repère du modèle.
+std::vector<std::vector<PointD>> model_polys(const geometry::PathSet& region) {
     std::vector<std::vector<PointD>> polys;
     const auto addPoly = [&](const geometry::Path& path) {
         std::vector<PointD> poly;
@@ -591,12 +683,38 @@ bool segment_stays_in_region(const geometry::PathSet& region, Vec2um a, Vec2um b
     for (const auto& hole : region.holes) {
         addPoly(hole);
     }
-    if (polys.empty()) {
-        return false;
+    return polys;
+}
+
+} // namespace
+
+bool segment_stays_in_region(const geometry::PathSet& region, Vec2um a, Vec2um b) {
+    return RegionSegmentTester(region).stays_inside(a, b);
+}
+
+struct RegionSegmentTester::Impl {
+    explicit Impl(const std::vector<std::vector<PointD>>& polys) : index(polys) {}
+    EdgeIndex index;
+};
+
+RegionSegmentTester::RegionSegmentTester(const geometry::PathSet& region) {
+    const auto polys = model_polys(region);
+    if (!polys.empty()) {
+        impl_ = std::make_unique<Impl>(polys);
+    }
+}
+
+RegionSegmentTester::~RegionSegmentTester() = default;
+RegionSegmentTester::RegionSegmentTester(RegionSegmentTester&&) noexcept = default;
+RegionSegmentTester& RegionSegmentTester::operator=(RegionSegmentTester&&) noexcept = default;
+
+bool RegionSegmentTester::stays_inside(Vec2um a, Vec2um b) const {
+    if (impl_ == nullptr) {
+        return false; // aucun polygone exploitable (cf. segment_stays_in_region)
     }
     const PointD pa{static_cast<double>(a.x.value), static_cast<double>(a.y.value)};
     const PointD pb{static_cast<double>(b.x.value), static_cast<double>(b.y.value)};
-    return !connector_invalid(polys, pa, pb);
+    return !connector_invalid(impl_->index, pa, pb);
 }
 
 } // namespace openstitch::stitch_generation

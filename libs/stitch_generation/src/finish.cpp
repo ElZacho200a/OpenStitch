@@ -111,13 +111,23 @@ std::vector<StitchCommand> filter_short_stitches(const std::vector<StitchCommand
         return cmds;
     }
     const auto regions = object_regions(project);
+    // Un testeur par morceau de l'objet vectoriel, construit à la première
+    // demande : même prédicat que `segment_stays_in_region`, sans reconstruire
+    // les polygones de l'objet à chaque point court (audit perf 2026-09).
+    std::map<std::uint64_t, std::vector<RegionSegmentTester>> testers;
     const auto chordInside = [&](ObjectId source, Vec2um a, Vec2um b) {
         const auto it = regions.find(source.value);
         if (it == regions.end()) {
             return true;
         }
-        return std::any_of(it->second->begin(), it->second->end(),
-                           [&](const auto& set) { return segment_stays_in_region(set, a, b); });
+        auto [tit, inserted] = testers.try_emplace(source.value);
+        if (inserted) {
+            for (const auto& set : *it->second) {
+                tit->second.emplace_back(set);
+            }
+        }
+        return std::any_of(tit->second.begin(), tit->second.end(),
+                           [&](const RegionSegmentTester& t) { return t.stays_inside(a, b); });
     };
     const double minLen = static_cast<double>(f.min_stitch_length.value);
     std::vector<StitchCommand> out;

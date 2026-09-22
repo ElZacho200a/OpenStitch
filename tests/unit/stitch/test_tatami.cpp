@@ -629,3 +629,154 @@ TEST_CASE("tatami : liaison entre rangees jamais plus longue qu'un point") {
         CHECK(longest <= 3'000.0 + 1.0);
     }
 }
+
+// Audit de performance 2026-09 : `segment_stays_in_region` passe par un index
+// d'arêtes par bandes (`RegionSegmentTester`). Référence : les prédicats
+// naïfs d'origine (parcours de toutes les arêtes), recopiés tels quels.
+namespace {
+
+struct RefPt {
+    double x{0.0};
+    double y{0.0};
+};
+
+double ref_seg_dist2(RefPt p, RefPt c, RefPt d) {
+    const double dx = d.x - c.x;
+    const double dy = d.y - c.y;
+    const double len2 = dx * dx + dy * dy;
+    if (len2 < 1e-12) {
+        return (p.x - c.x) * (p.x - c.x) + (p.y - c.y) * (p.y - c.y);
+    }
+    const double t = std::clamp(((p.x - c.x) * dx + (p.y - c.y) * dy) / len2, 0.0, 1.0);
+    const double fx = p.x - (c.x + t * dx);
+    const double fy = p.y - (c.y + t * dy);
+    return fx * fx + fy * fy;
+}
+
+bool ref_in_poly(const std::vector<RefPt>& poly, RefPt p) {
+    bool inside = false;
+    const std::size_t n = poly.size();
+    for (std::size_t i = 0, j = n - 1; i < n; j = i++) {
+        const RefPt a = poly[i];
+        const RefPt b = poly[j];
+        if (((a.y > p.y) != (b.y > p.y)) && (p.x < (b.x - a.x) * (p.y - a.y) / (b.y - a.y) + a.x)) {
+            inside = !inside;
+        }
+    }
+    return inside;
+}
+
+bool ref_in_region(const std::vector<std::vector<RefPt>>& polys, RefPt p) {
+    for (const auto& poly : polys) {
+        for (std::size_t i = 0; i < poly.size(); ++i) {
+            if (ref_seg_dist2(p, poly[i], poly[(i + 1) % poly.size()]) < 1e-4) {
+                return true;
+            }
+        }
+    }
+    if (!ref_in_poly(polys[0], p)) {
+        return false;
+    }
+    for (std::size_t i = 1; i < polys.size(); ++i) {
+        if (ref_in_poly(polys[i], p)) {
+            return false;
+        }
+    }
+    return true;
+}
+
+bool ref_segment_stays(const geometry::PathSet& region, Vec2um va, Vec2um vb) {
+    std::vector<std::vector<RefPt>> polys;
+    const auto add = [&](const geometry::Path& path) {
+        std::vector<RefPt> poly;
+        for (const auto& n : path.nodes) {
+            poly.push_back(
+                {static_cast<double>(n.pos.x.value), static_cast<double>(n.pos.y.value)});
+        }
+        if (poly.size() >= 3) {
+            polys.push_back(std::move(poly));
+        }
+    };
+    add(region.outer);
+    for (const auto& h : region.holes) {
+        add(h);
+    }
+    if (polys.empty()) {
+        return false;
+    }
+    const RefPt a{static_cast<double>(va.x.value), static_cast<double>(va.y.value)};
+    const RefPt b{static_cast<double>(vb.x.value), static_cast<double>(vb.y.value)};
+    const double abx = b.x - a.x;
+    const double aby = b.y - a.y;
+    const double abLen = std::sqrt(abx * abx + aby * aby);
+    if (abLen < 1e-6) {
+        return ref_in_region(polys, a);
+    }
+    std::vector<double> ts{0.0, 1.0};
+    for (const auto& poly : polys) {
+        for (std::size_t i = 0; i < poly.size(); ++i) {
+            const RefPt c = poly[i];
+            const RefPt d = poly[(i + 1) % poly.size()];
+            const double dcx = d.x - c.x;
+            const double dcy = d.y - c.y;
+            const double cdLen = std::sqrt(dcx * dcx + dcy * dcy);
+            const double denom = abx * dcy - aby * dcx;
+            if (std::abs(denom) < 1e-9 * abLen * cdLen) {
+                continue;
+            }
+            const double t = ((c.x - a.x) * dcy - (c.y - a.y) * dcx) / denom;
+            const double s = ((c.x - a.x) * aby - (c.y - a.y) * abx) / denom;
+            if (t > 1e-9 && t < 1.0 - 1e-9 && s >= -1e-9 && s <= 1.0 + 1e-9) {
+                ts.push_back(t);
+            }
+        }
+    }
+    std::sort(ts.begin(), ts.end());
+    for (std::size_t i = 0; i + 1 < ts.size(); ++i) {
+        const double tm = (ts[i] + ts[i + 1]) / 2.0;
+        if (!ref_in_region(polys, {a.x + abx * tm, a.y + aby * tm})) {
+            return false;
+        }
+    }
+    return true;
+}
+
+} // namespace
+
+TEST_CASE("segment_stays_in_region indexe : identique aux predicats naifs d'origine",
+          "[tatami][perf]") {
+    // Rectangle à trois trous losanges + L : contacts sommets, suivis de bord,
+    // segments nuls, horizontales passant par des sommets.
+    const std::vector<geometry::PathSet> regions{
+        geometry::PathSet{rect(30'000, 20'000),
+                          {diamond_hole(8'000, 10'000, 1'000), diamond_hole(22'000, 10'000, 1'500),
+                           diamond_hole(15'000, 4'000, 2'000)}},
+        l_shape(),
+        ring_shape(),
+    };
+    std::uint32_t state = 12345u;
+    const auto next = [&state] {
+        state = state * 1664525u + 1013904223u;
+        return state >> 8;
+    };
+    int checked = 0;
+    for (const auto& region : regions) {
+        const RegionSegmentTester tester(region);
+        for (int i = 0; i < 3000; ++i) {
+            // Coordonnées sur une grille de 500 µm (touche souvent des sommets
+            // exacts), débordant légèrement de la forme.
+            const auto coord = [&] {
+                return Micrometers{static_cast<std::int32_t>(next() % 70) * 500 - 2'000};
+            };
+            const Vec2um a{coord(), coord()};
+            const Vec2um b = (i % 50 == 0) ? a : Vec2um{coord(), coord()};
+            const bool expected = ref_segment_stays(region, a, b);
+            INFO("a=(" << a.x.value << "," << a.y.value << ") b=(" << b.x.value << "," << b.y.value
+                       << ")");
+            CHECK(segment_stays_in_region(region, a, b) == expected);
+            CHECK(tester.stays_inside(a, b) == expected);
+            ++checked;
+        }
+    }
+    CHECK(checked == 9000);
+}
