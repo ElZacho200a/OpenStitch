@@ -357,6 +357,13 @@ private:
     document::Project project_;
     commands::UndoStack undoStack_;
     image::Image processed_; // dernier résultat du pipeline (pour l'affichage)
+    // Entrées exactes ayant produit `processed_` (clé de contenu du cache,
+    // cf. refreshImage) : `processed_` n'est recalculée que si l'image source
+    // ou la pile d'opérations diffère réellement -- ce qui couvre d'office
+    // undo/redo, changement de projet et nouvel import, sans liste de sites
+    // d'invalidation à maintenir.
+    image::Image processedSource_;
+    std::vector<image::ImageOp> processedOps_;
 
     QGraphicsScene* scene_{nullptr};
     CanvasView* view_{nullptr};

@@ -21,29 +21,37 @@ namespace openstitch::image {
 
 struct CropOp {
     int x{0}, y{0}, width{0}, height{0}; // en pixels de l'image d'entrée
+    bool operator==(const CropOp&) const = default;
 };
 
 struct FlipOp {
     bool horizontal{true}; // false = symétrie verticale
+    bool operator==(const FlipOp&) const = default;
 };
 
 struct Rotate90Op {
     int quarter_turns{1}; // 1..3, sens horaire
+    bool operator==(const Rotate90Op&) const = default;
 };
 
-struct GrayscaleOp {};
+struct GrayscaleOp {
+    bool operator==(const GrayscaleOp&) const = default;
+};
 
 struct BrightnessContrastOp {
     double brightness{0.0}; // -100..100 (décalage)
     double contrast{0.0};   // -100..100 (pente autour de 128)
+    bool operator==(const BrightnessContrastOp&) const = default;
 };
 
 struct MedianDenoiseOp {
     int strength{1}; // 1 => noyau 3, 2 => noyau 5
+    bool operator==(const MedianDenoiseOp&) const = default;
 };
 
 struct QuantizeOp {
     int colors{8}; // 2..64
+    bool operator==(const QuantizeOp&) const = default;
 };
 
 using ImageOp = std::variant<CropOp, FlipOp, Rotate90Op, GrayscaleOp, BrightnessContrastOp,

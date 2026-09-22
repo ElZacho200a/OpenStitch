@@ -456,6 +456,9 @@ private slots:
     void regionAndVectorSelectionToggleContextActionsOppositely();
     void undoRedoRestoresDeletedRegionAndRefreshesDocumentPanel();
     void embroiderySelectionDoesNotLeakAcrossProjectLoadWithReusedId();
+    // Cache de l'image de travail (audit perf 2026-09) : toujours égale au
+    // pipeline rejoué, quelle que soit la mutation.
+    void processedImageCacheFollowsOpsUndoRedoAndProjectChange();
 
     // Lot 8.2 (mode d'édition des points) — revue corrective.
     void stitchEditModeGatingTracksSelectionAndDirtyState();
@@ -3378,6 +3381,69 @@ void MainWindowTest::emptyStateHidesOnceContentExistsEvenWithoutImage() {
     QVERIFY(!window.project_.vector_objects.empty());
     QVERIFY(!window.project_.hasImage());      // toujours aucune image
     QVERIFY(!window.emptyState_->isVisible()); // mais la pastille s'est effacée
+}
+
+namespace {
+
+openstitch::image::Image gradient_image(int w, int h, std::uint8_t seed) {
+    openstitch::image::Image img;
+    img.width = w;
+    img.height = h;
+    img.rgba.resize(static_cast<std::size_t>(w) * static_cast<std::size_t>(h) * 4);
+    for (int y = 0; y < h; ++y) {
+        for (int x = 0; x < w; ++x) {
+            std::uint8_t* px = img.rgba.data() + (static_cast<std::size_t>(y) * w + x) * 4;
+            px[0] = static_cast<std::uint8_t>(seed + x * 13);
+            px[1] = static_cast<std::uint8_t>(y * 17);
+            px[2] = static_cast<std::uint8_t>(seed ^ (x * y));
+            px[3] = 255;
+        }
+    }
+    return img;
+}
+
+} // namespace
+
+void MainWindowTest::processedImageCacheFollowsOpsUndoRedoAndProjectChange() {
+    using openstitch::image::apply_pipeline;
+    MainWindow window;
+    document::Project first;
+    first.original = gradient_image(16, 12, 3);
+    window.applyLoadedProject(first);
+    QVERIFY(window.processed_.rgba == first.original.rgba);
+
+    // Nouvelle opération (vrai chemin : commande + rafraîchissement).
+    window.undoStack_.execute(std::make_unique<commands::AppendImageOpCommand>(image::FlipOp{true}),
+                              window.project_);
+    window.refreshImage();
+    const auto flipped = apply_pipeline(first.original, window.project_.ops);
+    QVERIFY(flipped.has_value());
+    QVERIFY(flipped->rgba != first.original.rgba);
+    QVERIFY(window.processed_.rgba == flipped->rgba);
+
+    // Mutation sans rapport avec l'image : résultat inchangé et toujours exact.
+    document::VectorObject shape;
+    shape.id = window.project_.object_ids.next();
+    window.undoStack_.execute(std::make_unique<commands::AddVectorObjectCommand>(shape),
+                              window.project_);
+    window.refreshImage();
+    QVERIFY(window.processed_.rgba == flipped->rgba);
+
+    window.undo(); // objet
+    window.undo(); // symétrie
+    QVERIFY(window.project_.ops.empty());
+    QVERIFY(window.processed_.rgba == first.original.rgba);
+    window.redo(); // symétrie
+    QVERIFY(window.processed_.rgba == flipped->rgba);
+
+    // Autre projet, MÊME pile d'opérations, autre image source : recalculé.
+    document::Project second;
+    second.original = gradient_image(16, 12, 99);
+    second.ops = {image::FlipOp{true}};
+    window.applyLoadedProject(second);
+    const auto expected = apply_pipeline(second.original, second.ops);
+    QVERIFY(expected.has_value());
+    QVERIFY(window.processed_.rgba == expected->rgba);
 }
 
 } // namespace openstitch::desktop

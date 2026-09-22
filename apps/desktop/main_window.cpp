@@ -2024,12 +2024,29 @@ void MainWindow::refreshImage() {
     if (selectedObject_ && project_.findObject(*selectedObject_) == nullptr) {
         selectedObject_.reset();
     }
-    const auto result = image::apply_pipeline(project_.original, project_.ops);
-    if (!result) {
-        QMessageBox::warning(this, tr("Erreur"), QString::fromStdString(result.error().message));
-        return;
+    // L'image de travail ne dépend que de l'original et de la pile
+    // d'opérations : inutile de rejouer le pipeline (quantification,
+    // débruitage… plusieurs dizaines de ms) après une mutation qui ne touche
+    // ni l'un ni l'autre -- glisser de nœud, paramètre de point, sélection
+    // (audit perf 2026-09, docs/performance-audit.md). Comparaison de contenu
+    // exacte, pas d'horodatage.
+    const bool processedUpToDate =
+        !processed_.empty() && processedOps_ == project_.ops &&
+        processedSource_.width == project_.original.width &&
+        processedSource_.height == project_.original.height &&
+        processedSource_.source_had_alpha == project_.original.source_had_alpha &&
+        processedSource_.rgba == project_.original.rgba;
+    if (!processedUpToDate) {
+        const auto result = image::apply_pipeline(project_.original, project_.ops);
+        if (!result) {
+            QMessageBox::warning(this, tr("Erreur"),
+                                 QString::fromStdString(result.error().message));
+            return;
+        }
+        processed_ = *result;
+        processedSource_ = project_.original;
+        processedOps_ = project_.ops;
     }
-    processed_ = *result;
 
     // Régénération des points depuis le document (fonction pure). Une
     // séquence importée d'un DST n'est pas régénérable : elle est conservée.
