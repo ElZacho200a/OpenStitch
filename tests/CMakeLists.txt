@@ -1,5 +1,6 @@
 add_subdirectory(unit)
 add_subdirectory(integration)
+add_subdirectory(bench)
 
 # Garde structurelle Lot 8.1 : aucun consommateur de production ne doit
 # appeler generate_sequence() directement (contournerait les retouches

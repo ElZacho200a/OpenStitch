@@ -76,6 +76,10 @@ SatinBuildReport build_satin_sections(const geometry::PathSet& region,
                                       Micrometers density, Micrometers pullCompensation,
                                       bool centerUnderlay, Micrometers maxWidth,
                                       const std::string& warningLabel) {
+    // Mémoïsation de l'étape squelette pour toute la planification de cette
+    // région (analyse initiale ci-dessous + `create_satin_plan`), libérée en
+    // sortie -- cf. auto_satin::SkeletonCacheScope.
+    const auto_satin::SkeletonCacheScope skeletonCache;
     SatinBuildReport report;
     const std::string prefix = warningLabel.empty() ? std::string() : (warningLabel + " : ");
 

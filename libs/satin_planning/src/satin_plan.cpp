@@ -718,6 +718,10 @@ std::string to_string(SatinPlanStatus status) {
 }
 
 SatinPlan create_satin_plan(const geometry::PathSet& source, const SatinPlanConfig& config) {
+    // Mémoïsation de l'étape squelette sur tout l'arbre de décomposition (la
+    // même géométrie est analysée par le solveur local puis par la
+    // décomposition) ; réutilise celle de `build_satin_sections` si active.
+    const auto_satin::SkeletonCacheScope skeletonCache;
     SatinPlan plan;
     PlanningBudgetState budget;
 
