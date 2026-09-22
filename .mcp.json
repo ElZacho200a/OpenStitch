@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "mesh-mcp": {
+      "command": "wsl",
+      "args": [
+        "-d", "Ubuntu", "--", "bash", "-lc",
+        "cd /mnt/c/Users/zache/Documents/EPITA/Assos/Atelier/Embrodeur && WORKSPACE_ROOT=$PWD exec mesh-mcp -c .agents/mesh-mcp.toml run --standalone"
+      ]
+    }
+  }
+}

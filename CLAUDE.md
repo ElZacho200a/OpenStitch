@@ -56,6 +56,47 @@ Regenerate the documentation PDF after editing anything in `docs/source/`:
 powershell -File docs/scripts/build-docs.ps1
 ```
 
+## Code navigation tool: causalmesh (mesh-mcp) in WSL
+
+Claude should use **causalmesh / MeshMCP** (https://github.com/VictorAgahi/causalmesh)
+from the local WSL `Ubuntu` distro for code search and dependency/impact analysis.
+It is already installed there (`~/.local/bin/mesh-mcp`, v2.9.0; `meshd` daemon alongside).
+
+```bash
+wsl -d Ubuntu -- bash -lc 'cd /mnt/c/Users/zache/Documents/EPITA/Assos/Atelier/Embrodeur && mesh-mcp doctor'
+# other subcommands: graph --format mermaid, run (MCP stdio server)
+```
+
+It is wired as a project MCP server in `.mcp.json` (launched through `wsl -d Ubuntu`,
+config in `.agents/mesh-mcp.toml`). Tools: `smart_search`, `find_dependents`,
+`analyze_impact`, `search_docs` (indexes `docs/`), `analyze_grpc`, `visualize_mesh`.
+
+Caveat: its tree-sitter parsers cover Java/Go/Python/TS/Rust/Protobuf only, **not
+C++**, so on this codebase it adds little over grep/Glob for `.cpp`/`.hpp` files.
+Fall back to the normal search tools when it doesn't return anything useful.
+What does work on C++: regex patterns in `.agents/mesh-mcp.toml` feed
+`analyze_impact` — `analyze_impact("effective_sequence")` /
+`("generate_sequence")` list call sites, `analyze_impact("<lib>")` lists the
+CMake targets linking `openstitch::<lib>`, and `ICommand` subclasses are
+indexed. Results are file-level (line numbers are always `:1`).
+`search_docs` works well on `docs/` — **always look up documentation through
+it** (workflow in the `openstitch-docs` skill, `.claude/skills/openstitch-docs/`):
+locate with `search_docs`, then `Read` only the returned line ranges. `sam-worker/` is not in the roots (the
+watcher hangs on its `.venv-wsl/`).
+
+## Project skills (`.claude/skills/`)
+
+- `openstitch-docs` — look up / edit documentation through `search_docs`.
+- `openstitch-build-test` — targeted build, lib → test executable map, final checks.
+- `openstitch-stitch-param` — end-to-end checklist for a new stitch parameter or stitch type.
+- `openstitch-cli-debug` — reproduce generation issues with `openstitch-cli`, regenerate goldens.
+- `openstitch-bugfix` — root-cause workflow (failing test first, rejected hypotheses documented).
+- `openstitch-commit` — pre-commit checks and commit message conventions.
+- `openstitch-roadmap` — **when driven without a precise instruction**
+  ("continue", "next task", `/loop`…), pick the next item of
+  `docs/roadmap-parite-hatch.md` (gap list vs Hatch Embroidery, P0→P3, delivery
+  waves) and update its status in the same commit.
+
 ## Architecture
 
 **Layering is strict and acyclic**: `apps/{desktop,cli} → libs/* → libs/core`.

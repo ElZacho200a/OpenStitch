@@ -1,0 +1,87 @@
+# mesh-mcp.toml — config causalmesh (MeshMCP) pour OpenStitch.
+# Lancé depuis la racine du dépôt par .mcp.json (WORKSPACE_ROOT=$PWD).
+#
+# Rappel : les parseurs tree-sitter ne couvrent pas le C++. Seul
+# docs/scripts/ (Python) est indexé structurellement ; pour le C++, les
+# patterns regex de [engines.contracts] ci-dessous alimentent analyze_impact.
+#
+# sam-worker/ est volontairement HORS des roots : le FileWatcher (v2.9.0)
+# ignore exclude_patterns et bloque le démarrage du serveur en parcourant
+# .venv-wsl/ et models/ sur /mnt/c. v2.9.0 ne connaît pas non plus
+# [engines.watcher] (config refusée).
+[workspace]
+name = "openstitch"
+version = "2.9.0"
+workspace_root = "${WORKSPACE_ROOT:-..}"
+roots = [
+  "${workspace_root}/apps",
+  "${workspace_root}/libs",
+  "${workspace_root}/tests",
+  "${workspace_root}/scripts",
+  "${workspace_root}/docs",
+]
+exclude_patterns = [
+  "**/.git/**",
+  "**/build/**",
+  "**/out/**",
+  "**/vcpkg_installed/**",
+  "**/.venv/**",
+  "**/.venv-wsl/**",
+  "**/models/**",
+  "**/__pycache__/**",
+  "**/.pytest_cache/**",
+  "**/*.pdf",
+  "**/*.png",
+  "**/*.dst",
+  "**/*.osp",
+  "**/.env*",
+]
+
+[engines.docs]
+enabled = true
+paths = ["${workspace_root}/docs"]
+exact_phrase_boost = 60
+fuzzy_fallback = true
+
+[engines.contracts]
+enabled = true
+
+# Consommateurs de la séquence de points : tout site d'appel production doit
+# passer par effective_sequence (cf. CLAUDE.md). analyze_impact("effective_sequence")
+# / analyze_impact("generate_sequence") listent les appelants.
+[[engines.contracts.patterns]]
+name = "effective-sequence-consumer"
+kind = "topic_consumer"
+file_pattern = "*.cpp"
+regex = '\b(effective_sequence)\s*\('
+target_group = 1
+
+[[engines.contracts.patterns]]
+name = "raw-sequence-consumer"
+kind = "topic_consumer"
+file_pattern = "*.cpp"
+regex = '\b(generate_sequence)\s*\('
+target_group = 1
+
+# Commandes undo/redo (toute mutation du document passe par un ICommand).
+[[engines.contracts.patterns]]
+name = "undo-command"
+kind = "saga"
+file_pattern = "*.hpp"
+regex = 'class\s+(\w+Command)\b[^;{]*:\s*public\s+(?:\w+::)*ICommand'
+target_group = 1
+
+# Graphe des bibliothèques CMake : openstitch::<lib> consommée par une cible.
+[[engines.contracts.patterns]]
+name = "cmake-lib-link"
+kind = "topic_consumer"
+file_pattern = "CMakeLists.txt"
+regex = 'openstitch::(\w+)'
+target_group = 1
+
+[engines.policy]
+enabled = true
+enforce_git_hooks = true
+cryptographic_audit_trail = true
+
+[engines.policy.stop_rules]
