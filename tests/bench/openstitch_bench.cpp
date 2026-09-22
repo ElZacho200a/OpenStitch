@@ -237,89 +237,89 @@ int main(int argc, char** argv) {
         std::printf("projet %s : objets vectoriels %zu | objets brodés %zu\n", fromOsp.c_str(),
                     project.vector_objects.size(), project.embroidery_objects.size());
     } else {
-    image::Image img;
-    measure("load_image", reps, [&] {
-        auto r = image::load_image(imagePath);
-        if (!r) {
-            std::fprintf(stderr, "chargement impossible : %s\n", r.error().message.c_str());
-            std::exit(1);
-        }
-        img = std::move(*r);
-    });
-    std::printf("  %d x %d px (%.2f Mpx)\n", img.width, img.height,
-                img.width * static_cast<double>(img.height) / 1e6);
-
-    const std::vector<image::ImageOp> noOps;
-    const std::vector<image::ImageOp> quantOps{image::QuantizeOp{8}};
-    const std::vector<image::ImageOp> mixOps{image::MedianDenoiseOp{1},
-                                             image::BrightnessContrastOp{10.0, 10.0}};
-    measure("apply_pipeline (0 op)", reps, [&] { (void)image::apply_pipeline(img, noOps); });
-    measure("apply_pipeline (quantize 8)", reps,
-            [&] { (void)image::apply_pipeline(img, quantOps); });
-    measure("apply_pipeline (median+bright/contrast)", reps,
-            [&] { (void)image::apply_pipeline(img, mixOps); });
-
-    segmentation::Segmentation seg;
-    measure("segment (8 coul, min 16, lissage 0)", reps, [&] {
-        seg = *segmentation::segment(img,
-                                     {.max_colors = 8, .min_region_px = 16, .smoothing_radius_px = 0});
-    });
-    std::printf("  régions : %zu\n", seg.region_count());
-    measure("segment (8 coul, min 16, lissage 3)", reps, [&] {
-        seg = *segmentation::segment(img,
-                                     {.max_colors = 8, .min_region_px = 16, .smoothing_radius_px = 3});
-    });
-    std::printf("  régions : %zu (défauts desktop)\n", seg.region_count());
-    measure("segment (16 coul, min 16, lissage 3)", reps, [&] {
-        (void)segmentation::segment(img,
-                                    {.max_colors = 16, .min_region_px = 16, .smoothing_radius_px = 3});
-    });
-
-    measure("region_adjacency", reps, [&] { (void)segmentation::region_adjacency(seg); });
-    {
-        const vectorization::VectorizeOptions vo{Millimeters{25.4 / dpi}, Micrometers{100}};
-        std::size_t n = 0;
-        measure("vectorize_region (toutes régions)", reps, [&] {
-            n = 0;
-            for (const auto& slot : seg.region_slots) {
-                if (slot) {
-                    auto r = vectorization::vectorize_region(seg, slot->id, vo);
-                    n += r ? r->size() : 0;
-                }
+        image::Image img;
+        measure("load_image", reps, [&] {
+            auto r = image::load_image(imagePath);
+            if (!r) {
+                std::fprintf(stderr, "chargement impossible : %s\n", r.error().message.c_str());
+                std::exit(1);
             }
+            img = std::move(*r);
         });
-        std::printf("  morceaux vectorisés : %zu\n", n);
-    }
+        std::printf("  %d x %d px (%.2f Mpx)\n", img.width, img.height,
+                    img.width * static_cast<double>(img.height) / 1e6);
 
-    project.mm_per_px = Millimeters{25.4 / dpi};
-    project.original = img;
-    project.segmentation = seg;
-    autodigitize::AutoOptions opts;
-    opts.mm_per_px = project.mm_per_px;
-    const auto cand = segmentation::background_candidate(seg);
-    opts.skip_largest_region = cand && cand->recommended;
+        const std::vector<image::ImageOp> noOps;
+        const std::vector<image::ImageOp> quantOps{image::QuantizeOp{8}};
+        const std::vector<image::ImageOp> mixOps{image::MedianDenoiseOp{1},
+                                                 image::BrightnessContrastOp{10.0, 10.0}};
+        measure("apply_pipeline (0 op)", reps, [&] { (void)image::apply_pipeline(img, noOps); });
+        measure("apply_pipeline (quantize 8)", reps,
+                [&] { (void)image::apply_pipeline(img, quantOps); });
+        measure("apply_pipeline (median+bright/contrast)", reps,
+                [&] { (void)image::apply_pipeline(img, mixOps); });
 
-    autodigitize::AutoResult auto_result;
-    measure("auto_digitize", std::max(1, reps / 2), [&] {
-        IdGenerator<ObjectId> ids;
-        auto r = autodigitize::auto_digitize(seg, ids, opts);
-        if (!r) {
-            std::fprintf(stderr, "auto_digitize : %s\n", r.error().message.c_str());
-            std::exit(1);
+        segmentation::Segmentation seg;
+        measure("segment (8 coul, min 16, lissage 0)", reps, [&] {
+            seg = *segmentation::segment(
+                img, {.max_colors = 8, .min_region_px = 16, .smoothing_radius_px = 0});
+        });
+        std::printf("  régions : %zu\n", seg.region_count());
+        measure("segment (8 coul, min 16, lissage 3)", reps, [&] {
+            seg = *segmentation::segment(
+                img, {.max_colors = 8, .min_region_px = 16, .smoothing_radius_px = 3});
+        });
+        std::printf("  régions : %zu (défauts desktop)\n", seg.region_count());
+        measure("segment (16 coul, min 16, lissage 3)", reps, [&] {
+            (void)segmentation::segment(
+                img, {.max_colors = 16, .min_region_px = 16, .smoothing_radius_px = 3});
+        });
+
+        measure("region_adjacency", reps, [&] { (void)segmentation::region_adjacency(seg); });
+        {
+            const vectorization::VectorizeOptions vo{Millimeters{25.4 / dpi}, Micrometers{100}};
+            std::size_t n = 0;
+            measure("vectorize_region (toutes régions)", reps, [&] {
+                n = 0;
+                for (const auto& slot : seg.region_slots) {
+                    if (slot) {
+                        auto r = vectorization::vectorize_region(seg, slot->id, vo);
+                        n += r ? r->size() : 0;
+                    }
+                }
+            });
+            std::printf("  morceaux vectorisés : %zu\n", n);
         }
-        auto_result = std::move(*r);
-        project.object_ids = ids;
-    });
-    project.vector_objects = auto_result.vectors;
-    project.embroidery_objects = auto_result.embroideries;
-    std::printf("  objets vectoriels %zu | objets brodés %zu\n", project.vector_objects.size(),
-                project.embroidery_objects.size());
-    std::printf("  empreinte segmentation %016llx\n",
-                static_cast<unsigned long long>(fnv(seg.labels)));
-    if (!saveOsp.empty() && !project_io::save_project(saveOsp, project)) {
-        std::fprintf(stderr, "écriture de %s impossible\n", saveOsp.c_str());
-        return 1;
-    }
+
+        project.mm_per_px = Millimeters{25.4 / dpi};
+        project.original = img;
+        project.segmentation = seg;
+        autodigitize::AutoOptions opts;
+        opts.mm_per_px = project.mm_per_px;
+        const auto cand = segmentation::background_candidate(seg);
+        opts.skip_largest_region = cand && cand->recommended;
+
+        autodigitize::AutoResult auto_result;
+        measure("auto_digitize", std::max(1, reps / 2), [&] {
+            IdGenerator<ObjectId> ids;
+            auto r = autodigitize::auto_digitize(seg, ids, opts);
+            if (!r) {
+                std::fprintf(stderr, "auto_digitize : %s\n", r.error().message.c_str());
+                std::exit(1);
+            }
+            auto_result = std::move(*r);
+            project.object_ids = ids;
+        });
+        project.vector_objects = auto_result.vectors;
+        project.embroidery_objects = auto_result.embroideries;
+        std::printf("  objets vectoriels %zu | objets brodés %zu\n", project.vector_objects.size(),
+                    project.embroidery_objects.size());
+        std::printf("  empreinte segmentation %016llx\n",
+                    static_cast<unsigned long long>(fnv(seg.labels)));
+        if (!saveOsp.empty() && !project_io::save_project(saveOsp, project)) {
+            std::fprintf(stderr, "écriture de %s impossible\n", saveOsp.c_str());
+            return 1;
+        }
     } // fin du pipeline image -> projet
 
     stitch::StitchSequence raw;

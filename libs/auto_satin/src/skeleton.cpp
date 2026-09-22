@@ -101,9 +101,8 @@ RasterMask thin_zhang_suen(const RasterMask& mask) {
     const auto code_of = [&](std::size_t i) {
         unsigned code = 0;
         for (int k = 0; k < 8; ++k) {
-            code |= static_cast<unsigned>(
-                        g[static_cast<std::size_t>(static_cast<std::ptrdiff_t>(i) +
-                                                   offset[static_cast<std::size_t>(k)])])
+            code |= static_cast<unsigned>(g[static_cast<std::size_t>(
+                        static_cast<std::ptrdiff_t>(i) + offset[static_cast<std::size_t>(k)])])
                     << k;
         }
         return code;

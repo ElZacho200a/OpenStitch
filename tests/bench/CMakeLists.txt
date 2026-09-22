@@ -11,3 +11,13 @@ target_link_libraries(openstitch-bench
 if(WIN32)
     target_link_libraries(openstitch-bench PRIVATE psapi)
 endif()
+
+# Banc de réactivité de l'interface (headless), seulement si le desktop est
+# construit. Lancer avec le PATH Qt, p. ex. :
+#   $env:PATH = "$env:QT_ROOT\bin;$env:PATH"
+#   build\msvc\tests\bench\Release\openstitch-bench-ui.exe projet.osp
+if(TARGET openstitch_desktop_widgets)
+    add_executable(openstitch-bench-ui bench_main_window.cpp)
+    target_link_libraries(openstitch-bench-ui
+        PRIVATE openstitch::desktop_widgets openstitch::project_io openstitch::warnings)
+endif()
