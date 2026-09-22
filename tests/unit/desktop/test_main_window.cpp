@@ -1488,10 +1488,8 @@ void MainWindowTest::clickingStitchHandleWithoutMovingCreatesNoCommand() {
 
     QVERIFY(!window.undoStack_.canUndo());
     QTest::mouseClick(window.view_->viewport(), Qt::LeftButton, Qt::NoModifier, clickVp);
-    // Rien à attendre : le callback de relâchement retourne avant même de
-    // programmer un QTimer quand la position n'a pas changé (cf. renderBase,
-    // garde `newPos == pos`) -- aucune commande différée en vol ici.
-    QTest::qWait(20);
+    // Le callback de relâchement retourne avant même de programmer un QTimer
+    // quand la position n'a pas changé (cf. renderBase, garde `newPos == pos`).
     QVERIFY(!window.undoStack_.canUndo());
 }
 
@@ -1554,7 +1552,9 @@ void MainWindowTest::draggingHandleThenLoadingNewProjectDoesNotMutateIt() {
     QCOMPARE(fx2.embroideryId.value, fx1.embroideryId.value); // même id recyclé, autre document
     window.applyLoadedProject(fx2.project);
 
-    QTest::qWait(50); // laisse le QTimer(0) en file se déclencher s'il le peut
+    // Traite explicitement le prochain cycle de la boucle Qt : le QTimer(0)
+    // est ainsi exécuté sans attente temporelle ni hypothèse sur la machine.
+    QCoreApplication::processEvents();
 
     const auto* obj = window.project_.findEmbroidery(fx2.embroideryId);
     QVERIFY(obj != nullptr);
