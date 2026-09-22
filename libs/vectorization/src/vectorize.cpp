@@ -38,14 +38,39 @@ Result<std::vector<geometry::PathSet>> vectorize_region(const segmentation::Segm
         return fail(ErrorCategory::Internal, "Résolution de travail invalide");
     }
 
-    // Masque binaire de la région.
-    cv::Mat mask(seg.height, seg.width, CV_8U, cv::Scalar(0));
+    // Masque binaire de la région, restreint à sa boîte englobante + 1 px de
+    // marge éteinte (audit perf 2026-09, docs/performance-audit.md : un
+    // masque pleine image par région coûtait O(régions x pixels) à
+    // l'auto-numérisation). Hors de la boîte, le masque pleine image ne
+    // contenait que des zéros : même parcours de `findContours` (même ordre
+    // de balayage relatif), points ramenés au repère image par `offset`.
     const auto label = static_cast<std::uint32_t>(id.value);
+    int minX = seg.width, minY = seg.height, maxX = -1, maxY = -1;
     for (int y = 0; y < seg.height; ++y) {
+        const std::uint32_t* row =
+            seg.labels.data() + static_cast<std::size_t>(y) * static_cast<std::size_t>(seg.width);
         for (int x = 0; x < seg.width; ++x) {
-            if (seg.labels[static_cast<std::size_t>(y) * static_cast<std::size_t>(seg.width) +
-                           static_cast<std::size_t>(x)] == label) {
-                mask.at<std::uint8_t>(y, x) = 255;
+            if (row[x] == label) {
+                minX = std::min(minX, x);
+                maxX = std::max(maxX, x);
+                minY = std::min(minY, y);
+                maxY = y;
+            }
+        }
+    }
+    if (maxX < 0) {
+        return fail(ErrorCategory::Internal, "La région n'a produit aucun contour");
+    }
+    const int x0 = minX - 1;
+    const int y0 = minY - 1;
+    cv::Mat mask(maxY - minY + 3, maxX - minX + 3, CV_8U, cv::Scalar(0));
+    for (int y = minY; y <= maxY; ++y) {
+        const std::uint32_t* row =
+            seg.labels.data() + static_cast<std::size_t>(y) * static_cast<std::size_t>(seg.width);
+        auto* dst = mask.ptr<std::uint8_t>(y - y0);
+        for (int x = minX; x <= maxX; ++x) {
+            if (row[x] == label) {
+                dst[x - x0] = 255;
             }
         }
     }
@@ -54,7 +79,7 @@ Result<std::vector<geometry::PathSet>> vectorize_region(const segmentation::Segm
     // déjà les points colinéaires. La hiérarchie exacte est reconstruite plus
     // loin par le nettoyage (règle pair-impair), inutile de l'exploiter ici.
     std::vector<std::vector<cv::Point>> contours;
-    cv::findContours(mask, contours, cv::RETR_CCOMP, cv::CHAIN_APPROX_SIMPLE);
+    cv::findContours(mask, contours, cv::RETR_CCOMP, cv::CHAIN_APPROX_SIMPLE, cv::Point(x0, y0));
     if (contours.empty()) {
         return fail(ErrorCategory::Internal, "La région n'a produit aucun contour");
     }
