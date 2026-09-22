@@ -2568,7 +2568,6 @@ Poly build_sector(const StableBranchEnd& e, const std::optional<P2>& sepPrev,
 std::optional<JunctionResolution> resolve_junction(const std::vector<SatinColumnGeometry>& columns,
                                                    const std::vector<JunctionBranch>& branches,
                                                    const std::vector<ContourPolyline>& contours,
-                                                   const std::vector<Poly>& polys,
                                                    const std::vector<P2>& reflexVertices, P2 center,
                                                    double configuredRadius) {
     const std::size_t n = branches.size();
@@ -2904,7 +2903,7 @@ SatinColumnsResult build_satin_columns(const geometry::PathSet& region,
             const auto& node = graph.nodes[junctionId];
             const P2 center{static_cast<double>(node.position.x.value),
                             static_cast<double>(node.position.y.value)};
-            auto resolved = resolve_junction(r.columns, branches, contours, polys, reflexVertices,
+            auto resolved = resolve_junction(r.columns, branches, contours, reflexVertices,
                                              center, configuredRadius);
             if (!resolved) {
                 const std::string problem =
