@@ -334,6 +334,23 @@ private:
                 }
             }
         }
+        // Les guides et lignes de rupture d'un remplissage directionnel sont
+        // exprimés dans le repère de la forme qu'il remplit : ils la suivent
+        // (translation entière, donc inverse exacte au revert).
+        for (auto& emb : project.embroidery_objects) {
+            if (emb.source_vector != object_) {
+                continue;
+            }
+            if (auto* dir = std::get_if<document::DirectionalFillParams>(&emb.params)) {
+                for (auto* paths : {&dir->guides, &dir->break_lines}) {
+                    for (auto& path : *paths) {
+                        for (auto& node : path.nodes) {
+                            node.pos = node.pos + delta;
+                        }
+                    }
+                }
+            }
+        }
     }
 
     ObjectId object_;
@@ -368,10 +385,35 @@ public:
                 }
             }
         }
+        // Guides/ruptures d'un remplissage directionnel : mis à l'échelle avec
+        // la forme ; instantané pour un revert exact (cf. before_).
+        directionalBefore_.clear();
+        for (auto& emb : project.embroidery_objects) {
+            if (emb.source_vector != object_) {
+                continue;
+            }
+            if (auto* dir = std::get_if<document::DirectionalFillParams>(&emb.params)) {
+                directionalBefore_.emplace_back(emb.id, *dir);
+                for (auto* paths : {&dir->guides, &dir->break_lines}) {
+                    for (auto& path : *paths) {
+                        for (auto& node : path.nodes) {
+                            scaleNode(node);
+                        }
+                    }
+                }
+            }
+        }
     }
     void revert(document::Project& project) override {
         if (auto* object = project.findObject(object_)) {
             object->paths = before_;
+        }
+        for (const auto& [id, params] : directionalBefore_) {
+            if (auto* emb = project.findEmbroidery(id)) {
+                if (auto* dir = std::get_if<document::DirectionalFillParams>(&emb->params)) {
+                    *dir = params;
+                }
+            }
         }
     }
     [[nodiscard]] std::string name() const override { return "Redimensionnement de forme"; }
@@ -402,6 +444,7 @@ private:
     double scaleX_;
     double scaleY_;
     std::vector<geometry::PathSet> before_;
+    std::vector<std::pair<ObjectId, document::DirectionalFillParams>> directionalBefore_;
 };
 
 // Déplace un nœud d'un objet vectoriel.
@@ -884,6 +927,48 @@ private:
     ObjectId id_;
     Angle angle_;
     Angle previous_{0.0};
+};
+
+// Édition des guides / lignes de rupture d'un remplissage directionnel depuis
+// le canevas (tracer, déplacer un point, supprimer). Les nouveaux paramètres
+// complets sont construits par l'appelant ; la commande n'agit que si l'objet
+// porte TOUJOURS un remplissage directionnel (sinon no-op, comme les autres
+// commandes de ce fichier sur un objet introuvable). `label` nomme le geste
+// dans l'historique (« Tracer un guide », « Déplacer un point de guide »…).
+class EditDirectionalFillCommand final : public ICommand {
+public:
+    EditDirectionalFillCommand(ObjectId id, document::DirectionalFillParams params,
+                               std::string label)
+        : id_(id), params_(std::move(params)), label_(std::move(label)) {}
+
+    void apply(document::Project& project) override {
+        applied_ = false;
+        if (auto* obj = project.findEmbroidery(id_)) {
+            if (auto* dir = std::get_if<document::DirectionalFillParams>(&obj->params)) {
+                previous_ = *dir;
+                *dir = params_;
+                applied_ = true;
+            }
+        }
+    }
+    void revert(document::Project& project) override {
+        if (!applied_) {
+            return;
+        }
+        if (auto* obj = project.findEmbroidery(id_)) {
+            if (auto* dir = std::get_if<document::DirectionalFillParams>(&obj->params)) {
+                *dir = previous_;
+            }
+        }
+    }
+    [[nodiscard]] std::string name() const override { return label_; }
+
+private:
+    ObjectId id_;
+    document::DirectionalFillParams params_;
+    std::string label_;
+    document::DirectionalFillParams previous_{};
+    bool applied_{false};
 };
 
 // Retouches manuelles de points generes (Lot 8.1, cf. docs/lot8-manual-editing-design.md

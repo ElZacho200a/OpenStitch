@@ -38,6 +38,44 @@ struct TatamiParams {
     std::optional<Vec2um> entry_point; // démarre le remplissage près de ce point
 };
 
+// Paramètres du remplissage DIRECTIONNEL (passé empiétant / peinture à
+// l'aiguille, cf. docs/source/directional-fill.md). Contrairement au tatami
+// (rangées droites à angle fixe), les points suivent un CHAMP de directions
+// interpolé depuis des courbes guides : les lignes de couture épousent la
+// forme. Comme le tatami, la région remplie est celle de l'objet vectoriel
+// source ; les guides et lignes de rupture sont exprimés en µm dans le MÊME
+// repère que ce contour (repère du modèle) et suivent la forme quand elle est
+// déplacée ou redimensionnée (cf. TranslateVectorObjectCommand).
+struct DirectionalFillParams {
+    // Courbes guides (polylignes ou Béziers, ouvertes) : leurs tangentes
+    // orientent le fil. Vide = repli sur l'axe principal de la forme.
+    std::vector<geometry::Path> guides;
+    // Lignes de rupture (Phase 2) : découpent la forme en SECTEURS dont les
+    // champs sont calculés indépendamment (chevrons). Une rupture doit
+    // traverser la forme (bord à bord ou jusqu'à une autre rupture).
+    std::vector<geometry::Path> break_lines;
+    Micrometers row_spacing{400};     // écart entre lignes de couture (densité) — 0,4 mm
+    Micrometers stitch_length{3'000}; // longueur cible, bornée à [1 ; 7] mm à la génération
+    double edge_weight{0.0};          // influence de la tangente du bord le plus proche, [0 ; 1]
+    Micrometers inset{200};           // retrait du bord (compensation de contour)
+    int stagger{2};                   // lignes avant répétition de la phase des pénétrations
+    // Sous-couches (mêmes réglages et mêmes générateurs que le tatami).
+    bool underlay_edge{false};           // contour rentré
+    bool underlay_parallel{false};       // rangées droites perpendiculaires à la direction moyenne
+    Micrometers underlay_inset{600};     // retrait de la sous-couche de contour
+    Micrometers underlay_spacing{2'000}; // écart des rangées de sous-couche
+    bool hidden_underpath{true}; // liaisons cousues cachées (au lieu de sauts) si trajet valide
+    Micrometers sector_overlap{250}; // chevauchement le long des ruptures (Phase 2)
+    // Aspect « fait main » (Phase 3) : longueurs irrégulières, pénétrations
+    // imbriquées, légère ondulation de la direction. Pseudo-aléatoire à graine
+    // FIXE (`seed`, stockée dans l'objet) : même projet, même résultat.
+    bool handmade{false};
+    int handmade_intensity{50}; // 0 à 100 %
+    std::uint32_t seed{0};
+
+    bool operator==(const DirectionalFillParams&) const = default;
+};
+
 // Barreau (rung) : segment transversal reliant les deux rails, qui les découpe
 // en intervalles correspondants. Produit par l'auto-satin (squelette) ; stocké
 // dans le document (éditable, sérialisé), pas seulement utilisé à la génération.
@@ -111,7 +149,10 @@ struct SatinParams {
 // type suit la géométrie d'un objet vectoriel source (contour pour running,
 // région pleine pour tatami) ou porte la sienne (satin). La séparation
 // intention/points (ADR-014) tient : les points sont régénérés à la demande.
-using StitchParams = std::variant<RunningStitchParams, TatamiParams, SatinParams>;
+// L'alternative directionnelle est AJOUTÉE en fin de variant : les index des
+// types historiques ne changent pas.
+using StitchParams =
+    std::variant<RunningStitchParams, TatamiParams, SatinParams, DirectionalFillParams>;
 
 // Type de point autorisé après retouche manuelle (Lot 8 MVP, §2 du cadrage) :
 // seule transition permise, Stitch <-> Jump — pas de Trim/ColorChange/Stop,
@@ -167,6 +208,9 @@ struct EmbroideryObject {
 
     [[nodiscard]] bool is_tatami() const { return std::holds_alternative<TatamiParams>(params); }
     [[nodiscard]] bool is_satin() const { return std::holds_alternative<SatinParams>(params); }
+    [[nodiscard]] bool is_directional() const {
+        return std::holds_alternative<DirectionalFillParams>(params);
+    }
 };
 
 } // namespace openstitch::document

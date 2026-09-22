@@ -1672,6 +1672,108 @@ TEST_CASE("une nouvelle commande invalide la branche redo") {
     CHECK(std::holds_alternative<image::QuantizeOp>(project.ops.back()));
 }
 
+namespace {
+
+// Forme + remplissage directionnel portant un guide et une rupture.
+document::Project directional_project() {
+    document::Project project;
+    document::VectorObject object;
+    object.id = project.object_ids.next();
+    geometry::Path outer;
+    outer.closed = true;
+    for (const auto& [x, y] : {std::pair{0, 0}, {10'000, 0}, {10'000, 10'000}, {0, 10'000}}) {
+        outer.nodes.push_back(geometry::PathNode{Vec2um{Micrometers{x}, Micrometers{y}},
+                                                 geometry::NodeType::Corner, std::nullopt,
+                                                 std::nullopt});
+    }
+    object.paths.push_back(geometry::PathSet{outer, {}});
+    project.vector_objects.push_back(object);
+
+    document::DirectionalFillParams dp;
+    geometry::Path guide;
+    guide.closed = false;
+    guide.nodes = {geometry::PathNode{Vec2um{Micrometers{1'000}, Micrometers{2'000}},
+                                      geometry::NodeType::Corner, std::nullopt,
+                                      Vec2um{Micrometers{400}, Micrometers{0}}},
+                   geometry::PathNode{Vec2um{Micrometers{9'000}, Micrometers{8'000}},
+                                      geometry::NodeType::Corner, std::nullopt, std::nullopt}};
+    dp.guides.push_back(guide);
+    geometry::Path rupture;
+    rupture.closed = false;
+    rupture.nodes = {geometry::PathNode{Vec2um{Micrometers{5'000}, Micrometers{0}},
+                                        geometry::NodeType::Corner, std::nullopt, std::nullopt},
+                     geometry::PathNode{Vec2um{Micrometers{5'000}, Micrometers{10'000}},
+                                        geometry::NodeType::Corner, std::nullopt, std::nullopt}};
+    dp.break_lines.push_back(rupture);
+    document::EmbroideryObject emb;
+    emb.id = project.object_ids.next();
+    emb.source_vector = object.id;
+    emb.params = dp;
+    project.embroidery_objects.push_back(emb);
+    return project;
+}
+
+} // namespace
+
+TEST_CASE("TranslateVectorObjectCommand : les guides directionnels suivent la forme") {
+    auto project = directional_project();
+    UndoStack stack;
+    const ObjectId vecId = project.vector_objects[0].id;
+    const auto before =
+        std::get<document::DirectionalFillParams>(project.embroidery_objects[0].params);
+
+    stack.execute(std::make_unique<TranslateVectorObjectCommand>(
+                      vecId, Vec2um{Micrometers{700}, Micrometers{-300}}),
+                  project);
+    const auto& moved = std::get<document::DirectionalFillParams>(project.embroidery_objects[0].params);
+    CHECK(moved.guides[0].nodes[0].pos == Vec2um{Micrometers{1'700}, Micrometers{1'700}});
+    CHECK(moved.guides[0].nodes[0].tan_out == Vec2um{Micrometers{400}, Micrometers{0}});
+    CHECK(moved.break_lines[0].nodes[1].pos == Vec2um{Micrometers{5'700}, Micrometers{9'700}});
+
+    CHECK(stack.undo(project));
+    CHECK(std::get<document::DirectionalFillParams>(project.embroidery_objects[0].params) == before);
+}
+
+TEST_CASE("ScaleVectorObjectCommand : les guides directionnels sont mis a l'echelle, undo exact") {
+    auto project = directional_project();
+    UndoStack stack;
+    const ObjectId vecId = project.vector_objects[0].id;
+    const auto before =
+        std::get<document::DirectionalFillParams>(project.embroidery_objects[0].params);
+
+    stack.execute(std::make_unique<ScaleVectorObjectCommand>(
+                      vecId, Vec2um{Micrometers{0}, Micrometers{0}}, 1.5, 0.5),
+                  project);
+    const auto scaled = // copie : comparée après undo/redo
+        std::get<document::DirectionalFillParams>(project.embroidery_objects[0].params);
+    CHECK(scaled.guides[0].nodes[1].pos == Vec2um{Micrometers{13'500}, Micrometers{4'000}});
+    CHECK(scaled.guides[0].nodes[0].tan_out == Vec2um{Micrometers{600}, Micrometers{0}});
+    CHECK(scaled.break_lines[0].nodes[1].pos == Vec2um{Micrometers{7'500}, Micrometers{5'000}});
+
+    CHECK(stack.undo(project));
+    CHECK(std::get<document::DirectionalFillParams>(project.embroidery_objects[0].params) == before);
+    CHECK(stack.redo(project));
+    CHECK(std::get<document::DirectionalFillParams>(project.embroidery_objects[0].params) == scaled);
+}
+
+TEST_CASE("SetStitchTypeCommand : conversion tatami -> directionnel annulable") {
+    auto project = directional_project();
+    UndoStack stack;
+    const ObjectId embId = project.embroidery_objects[0].id;
+    project.embroidery_objects[0].params = document::TatamiParams{};
+    const auto directional = std::get<document::DirectionalFillParams>(
+        directional_project().embroidery_objects[0].params);
+
+    stack.execute(std::make_unique<SetStitchTypeCommand>(embId, directional,
+                                                         "Type : remplissage directionnel"),
+                  project);
+    CHECK(project.embroidery_objects[0].is_directional());
+    CHECK(project.embroidery_objects[0].intent == document::EmbroideryIntent::ForcedUserChoice);
+    CHECK(stack.undo(project));
+    CHECK(project.embroidery_objects[0].is_tatami());
+    CHECK(project.embroidery_objects[0].intent == document::EmbroideryIntent::AutoChoice);
+}
+
 TEST_CASE("SetSegmentationCommand : cycles undo/redo restituent exactement A puis B") {
     document::Project project = project_with_segmentation();
     const segmentation::Segmentation a = *project.segmentation;

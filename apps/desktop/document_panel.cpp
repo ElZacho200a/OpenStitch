@@ -21,9 +21,10 @@ QIcon swatch(const std::array<std::uint8_t, 3>& rgb) {
 }
 
 QString type_label(const document::EmbroideryObject& e) {
-    return e.is_tatami()  ? QObject::tr("Tatami")
-           : e.is_satin() ? QObject::tr("Satin")
-                          : QObject::tr("Contour");
+    return e.is_tatami()        ? QObject::tr("Tatami")
+           : e.is_directional() ? QObject::tr("Directionnel")
+           : e.is_satin()       ? QObject::tr("Satin")
+                                : QObject::tr("Contour");
 }
 
 // Suffixe + infobulle d'état (Lot 8.2) : "" / tooltip vide pour Clean, l'état

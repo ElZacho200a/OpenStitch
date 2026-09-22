@@ -37,6 +37,7 @@ document::Project
             RunningStitchParams -> generate_running (run_stitch + apply_repeats)
             TatamiParams        -> generate_tatami  (tatami_underlay + fill_tatami)
             SatinParams         -> generate_satin ou generate_satin_group (routage)
+            DirectionalFillParams -> generate_directional (directional_underlay + fill_directional)
        └‑ ColorChange entre deux objets de couleurs différentes, End final
   └─ stitch_generation::apply_manual_overrides(sequence, project)  -- retouches Lot 8
   └─ stitch_generation::finish_sequence(sequence, project)  -- finitions (coupes,
@@ -191,7 +192,8 @@ du document, pas ici) :
    satin manuel/legacy sans barreaux n'est jamais groupé, quelle que soit sa
    couleur ;
 5. sinon, `std::visit` sur `object.params` dispatch vers `generate_running`,
-   `generate_tatami` ou `generate_satin` (§4, §5, §6).
+   `generate_tatami`, `generate_satin` ou `generate_directional` (§4, §5, §6 ;
+   le directionnel a son chapitre, *Remplissage directionnel*).
 
 Une fois tous les objets traités, si la séquence reste vide (aucun objet
 visible n'a rien produit — cas trivial : document vide, ou uniquement des

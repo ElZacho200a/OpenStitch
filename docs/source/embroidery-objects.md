@@ -1,6 +1,6 @@
 # Objets de broderie
 
-Public : utilisateur avancé, développeur. État : **Implémenté** (trois types).
+Public : utilisateur avancé, développeur. État : **Implémenté** (quatre types).
 
 ## Définition
 
@@ -12,13 +12,14 @@ intention/points).
 
 ## Le variant `StitchParams`
 
-Le type de point est un `std::variant` à trois alternatives :
+Le type de point est un `std::variant` à quatre alternatives :
 
 | Objet | Params | Géométrie suivie | Sous-couche |
 |---|---|---|---|
 | Point de contour | `RunningStitchParams` | contours de l'objet vectoriel | non |
 | Remplissage tatami | `TatamiParams` | régions pleines (avec trous) | contour et/ou rangées perpendiculaires (désactivées par défaut ; activées selon l'aire par l'auto-numérisation) |
 | Colonne satin | `SatinParams` | deux **rails** portés par l'objet | centrale (point droit) |
+| Remplissage directionnel | `DirectionalFillParams` | régions pleines ; points qui suivent des **guides** | contour + perpendiculaire (du tatami) |
 
 Le satin est particulier : il **porte sa propre géométrie** (deux rails
 éditables), car une colonne ne se déduit pas d'un simple contour.
@@ -30,6 +31,11 @@ Le satin est particulier : il **porte sa propre géométrie** (deux rails
 | Running (simple/double/triple) | `run_stitch` + `apply_repeats` | `stitch_length`, `min_length`, `repeats` | Implémenté |
 | Tatami | `fill_tatami` | `row_spacing`, `stitch_length`, `angle`, `inset`, `stagger` | Partiel |
 | Satin | `fill_satin` | `density`, `pull_compensation`, `center_underlay` | Expérimental |
+| Directionnel | `fill_directional` | `guides`, `break_lines`, `row_spacing`, `stitch_length`, `handmade` | Expérimental |
+
+Le remplissage directionnel est détaillé dans son chapitre (*Remplissage
+directionnel*) ; il se crée par conversion d'un tatami (inspecteur) ou via
+*Type de points*.
 
 Le tableau reflète la **qualité métier**, pas seulement la présence de code : le
 running stitch est solide ; le tatami est fonctionnel, sa sous-couche et son
@@ -52,7 +58,7 @@ par la **classification automatique expérimentale des régions** (voir
   formes concaves/branchues (`AutoOptions::use_naive_satin` pour le réactiver).
 
 Le **type se change ensuite** à tout moment (clic droit sur la forme ▸ *Type de
-points* ▸ contour / tatami / satin) via `SetStitchTypeCommand` (annulable) ;
+points* ▸ contour / tatami / satin / directionnel) via `SetStitchTypeCommand` (annulable) ;
 l'action **Convertir les satins auto en tatami** répare en lot un projet importé.
 
 Limitation : cette classification est une heuristique simple (largeur moyenne

@@ -1,5 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
+#include <QCheckBox>
 #include <QDoubleSpinBox>
+#include <QPushButton>
+#include <QSpinBox>
 #include <QTest>
 
 #include <optional>
@@ -41,6 +44,8 @@ private slots:
     void showEmbroideryPopulatesSpinBoxesWithoutEmittingWhileBuilding();
     void editingASpinBoxEmitsParamsEditedWithUpdatedValueAndPreservesOthers();
     void switchingToInfoRemovesThePreviousFormControls();
+    void tatamiOffersConversionToDirectionalFill();
+    void directionalEditKeepsGuidesAndSeed();
 };
 
 void PropertiesPanelTest::showEmbroideryPopulatesSpinBoxesWithoutEmittingWhileBuilding() {
@@ -95,6 +100,65 @@ void PropertiesPanelTest::switchingToInfoRemovesThePreviousFormControls() {
     panel.showInfo(QStringLiteral("Région"), QStringLiteral("détails"));
 
     QCOMPARE(panel.findChildren<QDoubleSpinBox*>().size(), 0);
+}
+
+void PropertiesPanelTest::tatamiOffersConversionToDirectionalFill() {
+    PropertiesPanel panel;
+    EmbroideryObject e;
+    e.id = openstitch::ObjectId{11};
+    e.params = openstitch::document::TatamiParams{};
+    panel.showEmbroidery(e);
+    auto* button = panel.findChild<QPushButton*>(QStringLiteral("button_convertToDirectional"));
+    QVERIFY(button != nullptr);
+    std::optional<std::uint64_t> requested;
+    int edits = 0;
+    QObject::connect(&panel, &PropertiesPanel::convertToDirectionalRequested, &panel,
+                     [&](openstitch::ObjectId id) { requested = id.value; });
+    QObject::connect(&panel, &PropertiesPanel::paramsEdited, &panel,
+                     [&](openstitch::ObjectId, StitchParams) { ++edits; });
+    button->click();
+    QCOMPARE(requested.value_or(0), static_cast<std::uint64_t>(11));
+    QCOMPARE(edits, 0); // la conversion passe par MainWindow, jamais par un edit direct
+}
+
+void PropertiesPanelTest::directionalEditKeepsGuidesAndSeed() {
+    PropertiesPanel panel;
+    EmbroideryObject e;
+    e.id = openstitch::ObjectId{12};
+    openstitch::document::DirectionalFillParams dp;
+    openstitch::geometry::Path guide;
+    guide.closed = false;
+    guide.nodes = {{openstitch::Vec2um{Micrometers{0}, Micrometers{0}},
+                    openstitch::geometry::NodeType::Corner, {}, {}},
+                   {openstitch::Vec2um{Micrometers{5'000}, Micrometers{0}},
+                    openstitch::geometry::NodeType::Corner, {}, {}}};
+    dp.guides.push_back(guide);
+    dp.seed = 77;
+    e.params = dp;
+    panel.showEmbroidery(e);
+
+    std::optional<StitchParams> emitted;
+    QObject::connect(&panel, &PropertiesPanel::paramsEdited, &panel,
+                     [&](openstitch::ObjectId, StitchParams params) { emitted = params; });
+    auto* handmade = panel.findChild<QCheckBox*>(QStringLiteral("check_handmade"));
+    auto* intensity = panel.findChild<QSpinBox*>(QStringLiteral("spin_handmadeIntensity"));
+    QVERIFY(handmade != nullptr);
+    QVERIFY(intensity != nullptr);
+    QVERIFY(!intensity->isEnabled());
+    handmade->setChecked(true);
+    QVERIFY(intensity->isEnabled());
+    QVERIFY(emitted.has_value());
+    const auto& out = std::get<openstitch::document::DirectionalFillParams>(*emitted);
+    QVERIFY(out.handmade);
+    QCOMPARE(out.guides.size(), std::size_t{1}); // guides conservés
+    QCOMPARE(out.seed, 77U);                      // graine conservée
+
+    auto* reseed = panel.findChild<QPushButton*>(QStringLiteral("button_handmadeReseed"));
+    QVERIFY(reseed != nullptr);
+    reseed->click();
+    const auto& reseeded = std::get<openstitch::document::DirectionalFillParams>(*emitted);
+    QVERIFY(reseeded.seed != 77U);
+    QVERIFY(reseeded.handmade);
 }
 
 QTEST_MAIN(PropertiesPanelTest)

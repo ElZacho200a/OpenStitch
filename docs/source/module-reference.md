@@ -14,7 +14,7 @@ fonctionnalité. Chaque module est une cible `openstitch::<nom>` sous `libs/`.
 | `vectorization` | régions → contours vectoriels | core, geometry, segmentation | `tests/unit/vectorization` |
 | `document` | modèle métier (projet, objets) | core, geometry, image, segmentation | via commands/project_io |
 | `stitch` | commandes machine, statistiques | core | `tests/unit/stitch` |
-| `stitch_generation` | running / tatami / satin | core, geometry, stitch, document | `tests/unit/stitch` |
+| `stitch_generation` | running / tatami / satin / directionnel | core, geometry, stitch, document | `tests/unit/stitch` |
 | `stitch_analysis` | règles de validation | core, stitch | `tests/unit/stitch_analysis` |
 | `optimization` | ordre de couture | core | `tests/unit/optimization` |
 | `autodigitize` | image → objets éditables | vectorization, stitch_generation | `tests/unit/autodigitize` |
@@ -42,6 +42,8 @@ fonctionnalité. Chaque module est une cible `openstitch::<nom>` sous `libs/`.
 |---|---|
 | l'échantillonnage des points | `libs/stitch_generation/src/running_stitch.cpp`, `polyline.cpp` |
 | le remplissage/routage tatami | `libs/stitch_generation/src/tatami.cpp` |
+| le remplissage directionnel (champ, lignes de courant, secteurs, fait main) | `libs/stitch_generation/src/directional_fill.cpp` |
+| l'outil de guides de direction (canevas) | `apps/desktop/main_window_directional.cpp` |
 | la colonne satin | `libs/stitch_generation/src/satin.cpp` |
 | le satin par squelette et ses sections | `libs/auto_satin/src/` |
 | la mesure de couverture géométrique du satin | `libs/satin_coverage/src/coverage.cpp` |

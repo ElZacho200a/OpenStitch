@@ -244,3 +244,53 @@ TEST_CASE("ecriture atomique : un fichier existant survit a un chemin invalide")
     CHECK_FALSE(fs::exists(fs::path(path.string() + ".tmp")));
     fs::remove(path);
 }
+
+TEST_CASE("remplissage directionnel : save puis load = memes parametres") {
+    document::Project project;
+    document::VectorObject vec;
+    vec.id = project.object_ids.next();
+    vec.paths.push_back(geometry::PathSet{square_path(), {}});
+    project.vector_objects.push_back(vec);
+
+    document::DirectionalFillParams dp;
+    geometry::Path guide;
+    guide.closed = false;
+    guide.nodes = {{um(100, 200), geometry::NodeType::Corner, {}, um(300, 0)},
+                   {um(4'000, 2'500), geometry::NodeType::Smooth, um(-300, -100), {}}};
+    dp.guides.push_back(guide);
+    geometry::Path rupture;
+    rupture.closed = false;
+    rupture.nodes = {{um(2'500, -100), geometry::NodeType::Corner, {}, {}},
+                     {um(2'500, 5'100), geometry::NodeType::Corner, {}, {}}};
+    dp.break_lines.push_back(rupture);
+    dp.row_spacing = Micrometers{350};
+    dp.stitch_length = Micrometers{4'200};
+    dp.edge_weight = 0.35;
+    dp.inset = Micrometers{150};
+    dp.stagger = 3;
+    dp.underlay_edge = true;
+    dp.underlay_parallel = true;
+    dp.underlay_inset = Micrometers{700};
+    dp.underlay_spacing = Micrometers{2'200};
+    dp.hidden_underpath = false;
+    dp.sector_overlap = Micrometers{280};
+    dp.handmade = true;
+    dp.handmade_intensity = 65;
+    dp.seed = 4'000'000'000U; // > int32 : doit survivre intact
+
+    document::EmbroideryObject emb;
+    emb.id = project.object_ids.next();
+    emb.name = "vague";
+    emb.source_vector = vec.id;
+    emb.params = dp;
+    project.embroidery_objects.push_back(emb);
+
+    const auto path = temp_osp();
+    REQUIRE(project_io::save_project(path, project).has_value());
+    const auto loaded = project_io::load_project(path);
+    REQUIRE(loaded.has_value());
+    REQUIRE(loaded->embroidery_objects.size() == 1);
+    REQUIRE(loaded->embroidery_objects[0].is_directional());
+    CHECK(std::get<document::DirectionalFillParams>(loaded->embroidery_objects[0].params) == dp);
+    fs::remove(path);
+}

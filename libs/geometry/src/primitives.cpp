@@ -114,4 +114,40 @@ Path freeform_path(const std::vector<Vec2um>& points, Micrometers tolerance) {
     return result;
 }
 
+Path smooth_open_path(const std::vector<Vec2um>& points) {
+    std::vector<Vec2um> pts;
+    for (const Vec2um& q : points) {
+        if (pts.empty() || pts.back() != q) {
+            pts.push_back(q);
+        }
+    }
+    Path path;
+    path.closed = false;
+    if (pts.size() < 2) {
+        return path;
+    }
+    const auto third = [](Vec2um from, Vec2um to, double k) {
+        return Vec2um{um((to.x.value - from.x.value) * k), um((to.y.value - from.y.value) * k)};
+    };
+    const std::size_t n = pts.size();
+    for (std::size_t i = 0; i < n; ++i) {
+        PathNode node = corner(pts[i]);
+        if (n >= 3) {
+            if (i == 0) {
+                node.tan_out = third(pts[0], pts[1], 1.0 / 3.0);
+            } else if (i + 1 == n) {
+                node.tan_in = third(pts[n - 1], pts[n - 2], 1.0 / 3.0);
+            } else {
+                // Tangente de Catmull-Rom (p_{i+1} - p_{i-1}) / 2, au tiers.
+                const Vec2um t = third(pts[i - 1], pts[i + 1], 1.0 / 6.0);
+                node.type = NodeType::Smooth;
+                node.tan_out = t;
+                node.tan_in = Vec2um{Micrometers{-t.x.value}, Micrometers{-t.y.value}};
+            }
+        }
+        path.nodes.push_back(node);
+    }
+    return path;
+}
+
 } // namespace openstitch::geometry

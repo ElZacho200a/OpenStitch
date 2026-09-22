@@ -233,6 +233,32 @@ json params_to_json(const document::StitchParams& params) {
                     }
                     j["topology"] = std::move(topology);
                 }
+            } else if constexpr (std::is_same_v<T, document::DirectionalFillParams>) {
+                json guides = json::array();
+                for (const auto& g : p.guides) {
+                    guides.push_back(path_to_json(g));
+                }
+                json breaks = json::array();
+                for (const auto& b : p.break_lines) {
+                    breaks.push_back(path_to_json(b));
+                }
+                j = {{"type", "directional"},
+                     {"guides", std::move(guides)},
+                     {"breakLines", std::move(breaks)},
+                     {"rowSpacing", p.row_spacing.value},
+                     {"stitchLength", p.stitch_length.value},
+                     {"edgeWeight", p.edge_weight},
+                     {"inset", p.inset.value},
+                     {"stagger", p.stagger},
+                     {"underlayEdge", p.underlay_edge},
+                     {"underlayParallel", p.underlay_parallel},
+                     {"underlayInset", p.underlay_inset.value},
+                     {"underlaySpacing", p.underlay_spacing.value},
+                     {"hiddenUnderpath", p.hidden_underpath},
+                     {"sectorOverlap", p.sector_overlap.value},
+                     {"handmade", p.handmade},
+                     {"handmadeIntensity", p.handmade_intensity},
+                     {"seed", p.seed}};
             }
             return j;
         },
@@ -346,6 +372,43 @@ Result<document::StitchParams> params_from_json(const json& j) {
                 section.end_junction = *end;
             }
             p.topology = section;
+        }
+        return document::StitchParams{p};
+    }
+    if (type == "directional") {
+        // Remplissage directionnel : toutes les clés sauf `type` sont
+        // optionnelles (défauts du modèle), pour qu'un fichier écrit par une
+        // version ultérieure ajoutant des réglages reste lisible.
+        document::DirectionalFillParams p;
+        if (j.contains("guides")) {
+            for (const auto& g : j.at("guides")) {
+                p.guides.push_back(path_from_json(g));
+            }
+        }
+        if (j.contains("breakLines")) {
+            for (const auto& b : j.at("breakLines")) {
+                p.break_lines.push_back(path_from_json(b));
+            }
+        }
+        p.row_spacing = Micrometers{j.value("rowSpacing", 400)};
+        p.stitch_length = Micrometers{j.value("stitchLength", 3'000)};
+        p.edge_weight = j.value("edgeWeight", 0.0);
+        p.inset = Micrometers{j.value("inset", 200)};
+        p.stagger = j.value("stagger", 2);
+        p.underlay_edge = j.value("underlayEdge", false);
+        p.underlay_parallel = j.value("underlayParallel", false);
+        p.underlay_inset = Micrometers{j.value("underlayInset", 600)};
+        p.underlay_spacing = Micrometers{j.value("underlaySpacing", 2'000)};
+        p.hidden_underpath = j.value("hiddenUnderpath", true);
+        p.sector_overlap = Micrometers{j.value("sectorOverlap", 250)};
+        p.handmade = j.value("handmade", false);
+        p.handmade_intensity = j.value("handmadeIntensity", 50);
+        if (j.contains("seed")) {
+            auto seed = strict_uint32(j.at("seed"), "seed");
+            if (!seed) {
+                return std::unexpected(seed.error());
+            }
+            p.seed = *seed;
         }
         return document::StitchParams{p};
     }

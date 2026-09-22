@@ -6,6 +6,7 @@
 #include <variant>
 
 #include "openstitch/geometry/offset.hpp"
+#include "openstitch/stitch_generation/directional_fill.hpp"
 #include "openstitch/stitch_generation/lock.hpp"
 #include "openstitch/stitch_generation/routing.hpp"
 #include "openstitch/stitch_generation/running_stitch.hpp"
@@ -334,6 +335,32 @@ void generate_tatami(stitch::StitchSequence& sequence, const document::VectorObj
     }
 }
 
+// Remplissage directionnel : même enveloppe que le tatami (retrait de bord,
+// repli sur la forme brute si le retrait la fait disparaître, sous-couches
+// puis couche supérieure), seul le générateur de lignes change.
+void generate_directional(stitch::StitchSequence& sequence, const document::VectorObject& source,
+                          const document::EmbroideryObject& object,
+                          const document::DirectionalFillParams& params) {
+    for (const geometry::PathSet& set : source.paths) {
+        std::vector<geometry::PathSet> filled;
+        if (params.inset.value > 0) {
+            if (auto inset = geometry::inset_path_set(set, params.inset);
+                inset && !inset->empty()) {
+                filled = std::move(*inset);
+            }
+        }
+        if (filled.empty()) {
+            filled.push_back(set);
+        }
+        for (const geometry::PathSet& region : filled) {
+            for (const auto& up : directional_underlay(region, params)) {
+                emit_polyline(sequence, up, object.id, stitch::StitchPass::Underlay);
+            }
+            emit_fill(sequence, fill_directional(region, params), object.id);
+        }
+    }
+}
+
 } // namespace
 
 namespace {
@@ -413,6 +440,8 @@ Result<stitch::StitchSequence> generate_sequence(const document::Project& projec
                     generate_tatami(sequence, *source, object, params);
                 } else if constexpr (std::is_same_v<T, document::SatinParams>) {
                     generate_satin(sequence, object, params);
+                } else if constexpr (std::is_same_v<T, document::DirectionalFillParams>) {
+                    generate_directional(sequence, *source, object, params);
                 }
             },
             object.params);

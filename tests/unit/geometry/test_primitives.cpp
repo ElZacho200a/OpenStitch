@@ -213,3 +213,36 @@ TEST_CASE("freeform_path : deterministe") {
     CHECK(freeform_path(stroke, Micrometers{300}).nodes ==
           freeform_path(stroke, Micrometers{300}).nodes);
 }
+
+TEST_CASE("smooth_open_path : courbe lisse passant exactement par les points cliques") {
+    const std::vector<Vec2um> pts{p(0, 0), p(10'000, 5'000), p(20'000, 0), p(30'000, 5'000)};
+    const Path path = smooth_open_path(pts);
+    CHECK_FALSE(path.closed);
+    REQUIRE(path.nodes.size() == pts.size());
+    for (std::size_t i = 0; i < pts.size(); ++i) {
+        CHECK(path.nodes[i].pos == pts[i]);
+    }
+    // Noeuds interieurs lisses, tangentes opposees (continuite C1).
+    for (std::size_t i = 1; i + 1 < pts.size(); ++i) {
+        CHECK(path.nodes[i].type == NodeType::Smooth);
+        REQUIRE(path.nodes[i].tan_in.has_value());
+        REQUIRE(path.nodes[i].tan_out.has_value());
+        CHECK(path.nodes[i].tan_in->x.value == -path.nodes[i].tan_out->x.value);
+        CHECK(path.nodes[i].tan_in->y.value == -path.nodes[i].tan_out->y.value);
+    }
+    // Tangente de Catmull-Rom en p1 : (p2 - p0) / 6.
+    CHECK(*path.nodes[1].tan_out == p(3'333, 0));
+    // La courbe aplatie reste proche des cordes (pas d'oscillation parasite).
+    const auto flat = flatten(path, Micrometers{50});
+    for (const Vec2um q : flat.points) {
+        CHECK(q.y.value >= -1'500);
+        CHECK(q.y.value <= 6'500);
+    }
+}
+
+TEST_CASE("smooth_open_path : deux points donnent un segment, doublons ignores") {
+    const Path seg = smooth_open_path({p(0, 0), p(0, 0), p(5'000, 0)});
+    REQUIRE(seg.nodes.size() == 2);
+    CHECK_FALSE(seg.nodes[0].tan_out.has_value());
+    CHECK(smooth_open_path({p(1, 1)}).nodes.empty());
+}

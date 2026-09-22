@@ -45,4 +45,12 @@ namespace openstitch::geometry {
 // chemin vide (rien à fermer), à l'appelant de refuser, comme `polygon_path`.
 [[nodiscard]] Path freeform_path(const std::vector<Vec2um>& points, Micrometers tolerance);
 
+// Courbe OUVERTE lisse passant EXACTEMENT par les points donnés (dans
+// l'ordre) : spline de Catmull-Rom convertie en Béziers cubiques (tangente
+// en p_i = (p_{i+1} - p_{i-1}) / 6 de chaque côté, nœuds intérieurs Lisses ;
+// extrémités à tangente dirigée vers le voisin). Sert au tracé d'une courbe
+// guide par clics successifs. 2 points -> segment droit (nœuds Coin) ;
+// moins de 2 points -> chemin vide. Les doublons consécutifs sont ignorés.
+[[nodiscard]] Path smooth_open_path(const std::vector<Vec2um>& points);
+
 } // namespace openstitch::geometry

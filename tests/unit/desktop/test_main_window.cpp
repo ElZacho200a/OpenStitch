@@ -460,6 +460,10 @@ private slots:
     // pipeline rejoué, quelle que soit la mutation.
     void processedImageCacheFollowsOpsUndoRedoAndProjectChange();
 
+    // Remplissage directionnel : conversion, outil de guides, undo/redo.
+    void convertingTatamiToDirectionalIsUndoable();
+    void directionGuideToolDrawsGuidesAndBreakLinesThroughUndoStack();
+
     // Lot 8.2 (mode d'édition des points) — revue corrective.
     void stitchEditModeGatingTracksSelectionAndDirtyState();
     void draggingStitchHandleAtDefaultZoomMovesPointOnce();
@@ -3381,6 +3385,118 @@ void MainWindowTest::emptyStateHidesOnceContentExistsEvenWithoutImage() {
     QVERIFY(!window.project_.vector_objects.empty());
     QVERIFY(!window.project_.hasImage());      // toujours aucune image
     QVERIFY(!window.emptyState_->isVisible()); // mais la pastille s'est effacée
+}
+
+} // namespace openstitch::desktop
+
+namespace {
+
+Fixture buildTatamiSquareFixture() {
+    Fixture fx = buildRunningSquareFixture();
+    openstitch::document::TatamiParams tp;
+    tp.angle = openstitch::Angle{0.5};
+    tp.row_spacing = Micrometers{450};
+    fx.project.embroidery_objects[0].params = tp;
+    return fx;
+}
+
+} // namespace
+
+namespace openstitch::desktop {
+
+void MainWindowTest::convertingTatamiToDirectionalIsUndoable() {
+    MainWindow window;
+    const Fixture fx = buildTatamiSquareFixture();
+    window.applyLoadedProject(fx.project);
+    window.selectedEmbroidery_ = fx.embroideryId;
+    window.updateActions();
+
+    window.convertToDirectional(fx.embroideryId);
+    const auto* emb = window.project_.findEmbroidery(fx.embroideryId);
+    QVERIFY(emb != nullptr && emb->is_directional());
+    const auto& dp = std::get<openstitch::document::DirectionalFillParams>(emb->params);
+    QCOMPARE(dp.row_spacing.value, 450);             // réglages du tatami repris
+    QCOMPARE(dp.guides.size(), std::size_t{1});      // guide initial à l'angle du tatami
+    QCOMPARE(dp.seed, static_cast<std::uint32_t>(fx.embroideryId.value));
+    QCOMPARE(QString::fromStdString(window.undoStack_.undoName()),
+             QStringLiteral("Type : remplissage directionnel"));
+    QVERIFY(window.sequence_.has_value()); // la génération a bien tourné
+
+    window.undo();
+    QVERIFY(window.project_.findEmbroidery(fx.embroideryId)->is_tatami());
+}
+
+void MainWindowTest::directionGuideToolDrawsGuidesAndBreakLinesThroughUndoStack() {
+    MainWindow window;
+    const Fixture fx = buildTatamiSquareFixture();
+    window.applyLoadedProject(fx.project);
+    window.selectedEmbroidery_ = fx.embroideryId;
+    window.updateActions();
+
+    auto* mode = window.findChild<QAction*>(QStringLiteral("action_directionGuideMode"));
+    QVERIFY(mode != nullptr);
+    QVERIFY(!mode->isEnabled()); // tatami : pas de guides
+    window.convertToDirectional(fx.embroideryId);
+    QVERIFY(mode->isEnabled());
+    mode->setChecked(true);
+    QVERIFY(window.directionGuideTarget_.has_value());
+    // Une poignée par nœud du guide initial (2 nœuds).
+    int handles = 0;
+    for (QGraphicsItem* item : window.baseItems_) {
+        if (dynamic_cast<NodeHandleItem*>(item) != nullptr) {
+            ++handles;
+        }
+    }
+    QCOMPARE(handles, 2);
+
+    const auto params = [&] {
+        return std::get<openstitch::document::DirectionalFillParams>(
+            window.project_.findEmbroidery(fx.embroideryId)->params);
+    };
+
+    // Guide : trois clics (scène en mm, Y vers le bas) puis Terminer.
+    window.findChild<QAction*>(QStringLiteral("action_drawDirectionGuide"))->trigger();
+    QCOMPARE(window.currentTool_, Tool::DrawDirectionGuide);
+    window.onCanvasClicked(QPointF(1.0, -2.0));
+    window.onCanvasClicked(QPointF(5.0, -6.0));
+    window.onCanvasClicked(QPointF(9.0, -2.0));
+    window.finishDirectionGuide();
+    QCOMPARE(params().guides.size(), std::size_t{2});
+    const auto afterGuide = params(); // copie : params() renvoie une valeur
+    const auto& drawn = afterGuide.guides.back();
+    QCOMPARE(drawn.nodes.size(), std::size_t{3});
+    QCOMPARE(drawn.nodes[1].pos, (Vec2um{Micrometers{5'000}, Micrometers{6'000}}));
+    QVERIFY(drawn.nodes[1].type == openstitch::geometry::NodeType::Smooth); // courbe lisse
+    QCOMPARE(QString::fromStdString(window.undoStack_.undoName()),
+             QStringLiteral("Tracer un guide de direction"));
+
+    // Ligne de rupture : polyligne à angles vifs.
+    window.findChild<QAction*>(QStringLiteral("action_drawBreakLine"))->trigger();
+    window.onCanvasClicked(QPointF(5.0, 0.5));
+    window.onCanvasClicked(QPointF(5.0, -10.5));
+    window.finishDirectionGuide();
+    QCOMPARE(params().break_lines.size(), std::size_t{1});
+    QVERIFY(!params().break_lines[0].nodes[0].tan_out.has_value());
+
+    // Un tracé à moins de deux points ne crée rien.
+    window.onCanvasClicked(QPointF(2.0, -2.0));
+    window.finishDirectionGuide();
+    QCOMPARE(params().break_lines.size(), std::size_t{1});
+
+    window.undo();
+    QCOMPARE(params().break_lines.size(), std::size_t{0});
+    window.undo();
+    QCOMPARE(params().guides.size(), std::size_t{1});
+    window.redo();
+    QCOMPARE(params().guides.size(), std::size_t{2});
+
+    // Annuler la conversion fait sortir proprement du mode guides.
+    window.undo(); // guide
+    window.undo(); // conversion
+    QVERIFY(window.project_.findEmbroidery(fx.embroideryId)->is_tatami());
+    QVERIFY(!mode->isChecked());
+    QVERIFY(!window.directionGuideTarget_.has_value());
+    QCOMPARE(window.currentTool_, Tool::Select);
 }
 
 namespace {

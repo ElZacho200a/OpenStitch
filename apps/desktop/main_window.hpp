@@ -32,6 +32,7 @@ class QCheckBox;
 class QVBoxLayout;
 class QDoubleSpinBox;
 class QSpinBox;
+class QMenu;
 
 namespace openstitch::desktop {
 
@@ -184,6 +185,16 @@ private slots:
     // DiscardOverridesCommand annulable) — appelée depuis l'inspecteur ou la
     // barre contextuelle, jamais de mutation directe hors commande.
     void discardOverrides(ObjectId id);
+    // Remplissage directionnel (implémentation : main_window_directional.cpp).
+    // Conversion d'un objet en remplissage directionnel (paramètres
+    // équivalents calculés par le cœur, ConvertFillGroupCommand annulable).
+    void convertToDirectional(ObjectId embroideryId);
+    // Mode « Guides de direction » : affiche l'aperçu du champ, les guides et
+    // les lignes de rupture de l'objet ciblé, avec poignées déplaçables.
+    void onDirectionGuideModeToggled(bool on);
+    void finishDirectionGuide();
+    void cancelDirectionGuideDraw();
+    void removeLastDirectionGuidePoint();
 
 private:
     // Applique un projet déjà construit (charge depuis un fichier ou fixture
@@ -231,7 +242,7 @@ private:
     [[nodiscard]] bool objectPassesFilter(const document::EmbroideryObject& object) const;
     // Aire de la région source d'un objet (mm²) ; 0 si introuvable.
     [[nodiscard]] double regionAreaMm2(const document::EmbroideryObject& object) const;
-    // Index de type : 0 contour, 1 tatami, 2 satin.
+    // Index de type : 0 contour, 1 tatami, 2 satin, 3 remplissage directionnel.
     [[nodiscard]] static int stitchTypeIndex(const document::EmbroideryObject& object);
     void updateSimulationRange();
     // Remplissage tatami dont l'orientation est éditable : celui choisi dans
@@ -339,6 +350,27 @@ private:
     // (positif = retrait intérieur). Seam de test uniquement -- offsetVectorObject
     // reste le seul point d'entrée en usage réel.
     void offsetVectorObjectCore(ObjectId id, Micrometers delta);
+
+    // --- Remplissage directionnel (main_window_directional.cpp) ---
+    // Paramètres directionnels de départ pour `emb` (réglages du tatami
+    // repris le cas échéant, guide initial à son angle) ; nullopt sans forme
+    // source. Pur calcul du cœur (`directional_from_tatami`).
+    [[nodiscard]] std::optional<document::DirectionalFillParams>
+    directionalParamsFor(const document::EmbroideryObject& emb) const;
+    void buildDirectionalActions(QMenu* embMenu);
+    [[nodiscard]] bool drawingDirectionGuide() const {
+        return currentTool_ == Tool::DrawDirectionGuide || currentTool_ == Tool::DrawBreakLine;
+    }
+    void addDirectionGuidePoint(QPointF posMm);
+    void updateDirectionGuidePreview(QPointF cursorSceneMm);
+    // Surcouche du mode guides, appelée par renderBase : traits de direction
+    // du champ, guides, ruptures et leurs poignées.
+    void renderDirectionGuides();
+    // Cohérence du mode guides avec la sélection (appelée par updateActions).
+    void updateDirectionGuideActions();
+    // Toute édition des guides passe par EditDirectionalFillCommand.
+    void applyDirectionalEdit(ObjectId id, document::DirectionalFillParams params,
+                              const QString& label);
 
     void executeOp(image::ImageOp op);
     void positionEmptyState(); // centre l'accueil dans la vue
@@ -490,6 +522,15 @@ private:
     // segment insère un nœud par subdivision De Casteljau exacte).
     QAction* railEditModeAct_{nullptr};
     std::optional<ObjectId> railEditTarget_;
+    // Mode « Guides de direction » (remplissage directionnel) : objet capturé
+    // à l'activation, jamais suivi automatiquement (même règle que les modes
+    // satin). Tracé en cours : points posés (repère modèle) + aperçu.
+    QAction* directionGuideModeAct_{nullptr};
+    QAction* drawDirectionGuideAct_{nullptr};
+    QAction* drawBreakLineAct_{nullptr};
+    std::optional<ObjectId> directionGuideTarget_;
+    std::vector<Vec2um> pendingGuidePoints_;
+    QGraphicsPathItem* guidePreviewItem_{nullptr};
     // État Clean/ManuallyEdited/Dirty des objets retouchés (absents = Clean),
     // recalculé à chaque `refreshImage()` (cf. `classify_all_edit_states`) —
     // jamais recalculé ailleurs (panneau Document, inspecteur, barre

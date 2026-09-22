@@ -27,7 +27,7 @@ labels peut faire plusieurs mégaoctets).
 - `vectorObjects` : id, nom, couleur, visibilité, région source, `paths`
   (chemins avec nœuds et tangentes optionnelles) ;
 - `embroideryObjects` : id, nom, couleur, visibilité, vecteur source, et
-  `params` (variant `running` | `tatami` | `satin`). Le `satin` porte ses deux
+  `params` (variant `running` | `tatami` | `satin` | `directional`). Le `satin` porte ses deux
   rails et, depuis le schéma v2, ses **barreaux** (`rungs` : liste de segments
   `{ax, ay, bx, by}` en µm), ses réglages de finition (points courts, split,
   terminaisons), de sous-couche/compensation, et de **fixation/entrée-sortie**
@@ -39,7 +39,13 @@ labels peut faire plusieurs mégaoctets).
   par `sourceVector`; l'absence de `topology` désigne un satin isolé/historique.
   Le `tatami` porte de même ses réglages avancés (Lot 7) : `underlayEdge`,
   `underlayParallel`, `underlayInset`, `underlaySpacing`, `hiddenUnderpath` et
-  `entryPoint` — optionnels et rétrocompatibles. Depuis le schéma v3, un objet
+  `entryPoint` — optionnels et rétrocompatibles. Le `directional`
+  (remplissage directionnel, voir *Remplissage directionnel*) porte `guides`
+  et `breakLines` (listes de chemins ouverts), `rowSpacing`, `stitchLength`,
+  `edgeWeight`, `inset`, `stagger`, les réglages de sous-couche du tatami,
+  `hiddenUnderpath`, `sectorOverlap`, `handmade`, `handmadeIntensity` et
+  `seed` — tous optionnels (défauts du modèle) ; son ajout n'a pas changé
+  `schemaVersion`. Depuis le schéma v3, un objet
   peut aussi porter ses **retouches manuelles** (Lot 8.1, ADR-014) :
   `overrides` (**tableau** JSON obligatoire de `{index, pos?, type?, trimAfter}`
   — `index` désigne une position dans la vue brute de l'objet et doit être

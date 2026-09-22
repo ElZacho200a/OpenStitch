@@ -11,6 +11,7 @@
 #include <QSpinBox>
 #include <QVBoxLayout>
 
+#include <algorithm>
 #include <cmath>
 #include <numbers>
 #include <variant>
@@ -145,9 +146,10 @@ void PropertiesPanel::showEmbroidery(const document::EmbroideryObject& object) {
     auto* form = new QFormLayout();
     form->setLabelAlignment(Qt::AlignRight);
 
-    const QString typeName = object.is_tatami()  ? tr("Remplissage tatami")
-                             : object.is_satin() ? tr("Colonne satin (expérimental)")
-                                                 : tr("Contour cousu");
+    const QString typeName = object.is_tatami()        ? tr("Remplissage tatami")
+                             : object.is_directional() ? tr("Remplissage directionnel")
+                             : object.is_satin()       ? tr("Colonne satin (expérimental)")
+                                                       : tr("Contour cousu");
     form->addRow(tr("Type :"), new QLabel(typeName, body_));
 
     building_ = true;
@@ -236,6 +238,138 @@ void PropertiesPanel::showEmbroidery(const document::EmbroideryObject& object) {
                 connect(uPar, &QCheckBox::toggled, this, emitEdit);
                 connect(uSpacing, &QDoubleSpinBox::valueChanged, this, emitEdit);
                 connect(underpath, &QCheckBox::toggled, this, emitEdit);
+                // Conversion vers le remplissage directionnel (points qui
+                // suivent la forme) : un seul clic, annulable.
+                auto* toDirectional =
+                    new QPushButton(tr("Convertir en remplissage directionnel"), body_);
+                toDirectional->setObjectName(QStringLiteral("button_convertToDirectional"));
+                toDirectional->setToolTip(
+                    tr("Remplace les rangées droites par des lignes qui suivent des courbes "
+                       "guides (passé empiétant). Les réglages actuels sont conservés ; un "
+                       "guide droit reproduit l'angle courant. Annulable (Ctrl+Z)."));
+                form->addRow(QString(), toDirectional);
+                connect(toDirectional, &QPushButton::clicked, this,
+                        [this, id] { emit convertToDirectionalRequested(id); });
+            } else if constexpr (std::is_same_v<T, document::DirectionalFillParams>) {
+                // Guides et ruptures ne s'éditent pas ici (canevas) : conservés.
+                const document::DirectionalFillParams dbase = p;
+                auto* summary =
+                    new QLabel(tr("%1 guide(s) · %2 ligne(s) de rupture")
+                                   .arg(p.guides.size())
+                                   .arg(p.break_lines.size()),
+                               body_);
+                summary->setObjectName(QStringLiteral("label_directionalSummary"));
+                auto* editGuides = new QPushButton(tr("Éditer les guides…"), body_);
+                editGuides->setObjectName(QStringLiteral("button_editDirectionGuides"));
+                editGuides->setToolTip(tr("Tracer, déplacer ou supprimer les courbes guides et "
+                                          "les lignes de rupture sur le canevas (D)."));
+                connect(editGuides, &QPushButton::clicked, this,
+                        [this, id] { emit editDirectionGuidesRequested(id); });
+                auto* spacing = mmSpin(to_millimeters(p.row_spacing).value, 5.0);
+                auto* len = mmSpin(to_millimeters(p.stitch_length).value, 7.0);
+                len->setMinimum(1.0);
+                len->setToolTip(tr("Longueur cible, bornée entre 1 et 7 mm."));
+                auto* edge = new QSpinBox(body_);
+                edge->setRange(0, 100);
+                edge->setSuffix(tr(" %"));
+                edge->setValue(static_cast<int>(std::lround(p.edge_weight * 100.0)));
+                edge->setToolTip(tr("Influence de la tangente du bord le plus proche sur la "
+                                    "direction du fil (0 % = guides seuls)."));
+                auto* inset = mmSpin(to_millimeters(p.inset).value, 5.0);
+                auto* stagger = new QSpinBox(body_);
+                stagger->setRange(1, 8);
+                stagger->setValue(p.stagger);
+                auto* overlap = mmSpin(to_millimeters(p.sector_overlap).value, 1.0);
+                overlap->setToolTip(tr("Chevauchement des secteurs le long des lignes de "
+                                       "rupture (0,2 à 0,3 mm évite les interstices)."));
+                auto* uEdge = new QCheckBox(tr("Sous-couche de contour"), body_);
+                uEdge->setChecked(p.underlay_edge);
+                auto* uInset = mmSpin(to_millimeters(p.underlay_inset).value, 5.0);
+                auto* uPar = new QCheckBox(tr("Sous-couche perpendiculaire"), body_);
+                uPar->setChecked(p.underlay_parallel);
+                auto* uSpacing = mmSpin(to_millimeters(p.underlay_spacing).value, 10.0);
+                auto* underpath = new QCheckBox(tr("Liaisons cousues cachées"), body_);
+                underpath->setChecked(p.hidden_underpath);
+                auto* handmade = new QCheckBox(tr("Aspect fait main"), body_);
+                handmade->setObjectName(QStringLiteral("check_handmade"));
+                handmade->setChecked(p.handmade);
+                handmade->setToolTip(tr("Longueurs irrégulières, pénétrations imbriquées et "
+                                        "légère ondulation, comme un passé empiétant. "
+                                        "Reproductible : même projet, même résultat."));
+                auto* intensity = new QSpinBox(body_);
+                intensity->setObjectName(QStringLiteral("spin_handmadeIntensity"));
+                intensity->setRange(0, 100);
+                intensity->setSuffix(tr(" %"));
+                intensity->setValue(std::clamp(p.handmade_intensity, 0, 100));
+                intensity->setEnabled(p.handmade);
+                auto* reseed = new QPushButton(tr("Autre tirage"), body_);
+                reseed->setObjectName(QStringLiteral("button_handmadeReseed"));
+                reseed->setToolTip(tr("Change la graine de l'aspect fait main (variation "
+                                      "différente, toujours reproductible)."));
+                reseed->setEnabled(p.handmade);
+                form->addRow(QString(), summary);
+                form->addRow(QString(), editGuides);
+                form->addRow(tr("Espacement des lignes :"), spacing);
+                form->addRow(tr("Longueur de point :"), len);
+                form->addRow(tr("Influence des bords :"), edge);
+                form->addRow(tr("Retrait de bord :"), inset);
+                form->addRow(tr("Décalage (stagger) :"), stagger);
+                form->addRow(tr("Chevauchement des secteurs :"), overlap);
+                form->addRow(QString(), uEdge);
+                form->addRow(tr("Retrait de la sous-couche :"), uInset);
+                form->addRow(QString(), uPar);
+                form->addRow(tr("Espacement de la sous-couche :"), uSpacing);
+                form->addRow(QString(), underpath);
+                form->addRow(QString(), handmade);
+                form->addRow(tr("Intensité :"), intensity);
+                form->addRow(QString(), reseed);
+                const auto build = [dbase, spacing, len, edge, inset, stagger, overlap, uEdge,
+                                    uInset, uPar, uSpacing, underpath, handmade, intensity] {
+                    document::DirectionalFillParams d = dbase; // conserve guides + graine
+                    d.row_spacing = to_um(spacing->value());
+                    d.stitch_length = to_um(len->value());
+                    d.edge_weight = edge->value() / 100.0;
+                    d.inset = to_um(inset->value());
+                    d.stagger = stagger->value();
+                    d.sector_overlap = to_um(overlap->value());
+                    d.underlay_edge = uEdge->isChecked();
+                    d.underlay_inset = to_um(uInset->value());
+                    d.underlay_parallel = uPar->isChecked();
+                    d.underlay_spacing = to_um(uSpacing->value());
+                    d.hidden_underpath = underpath->isChecked();
+                    d.handmade = handmade->isChecked();
+                    d.handmade_intensity = intensity->value();
+                    return d;
+                };
+                const auto emitEdit = [this, id, build] {
+                    if (building_)
+                        return;
+                    emit paramsEdited(id, build());
+                };
+                connect(spacing, &QDoubleSpinBox::valueChanged, this, emitEdit);
+                connect(len, &QDoubleSpinBox::valueChanged, this, emitEdit);
+                connect(edge, &QSpinBox::valueChanged, this, emitEdit);
+                connect(inset, &QDoubleSpinBox::valueChanged, this, emitEdit);
+                connect(stagger, &QSpinBox::valueChanged, this, emitEdit);
+                connect(overlap, &QDoubleSpinBox::valueChanged, this, emitEdit);
+                connect(uEdge, &QCheckBox::toggled, this, emitEdit);
+                connect(uInset, &QDoubleSpinBox::valueChanged, this, emitEdit);
+                connect(uPar, &QCheckBox::toggled, this, emitEdit);
+                connect(uSpacing, &QDoubleSpinBox::valueChanged, this, emitEdit);
+                connect(underpath, &QCheckBox::toggled, this, emitEdit);
+                connect(intensity, &QSpinBox::valueChanged, this, emitEdit);
+                connect(handmade, &QCheckBox::toggled, this, [intensity, reseed](bool on) {
+                    intensity->setEnabled(on);
+                    reseed->setEnabled(on);
+                });
+                connect(handmade, &QCheckBox::toggled, this, emitEdit);
+                connect(reseed, &QPushButton::clicked, this, [this, id, build] {
+                    auto d = build();
+                    // Graine suivante d'un générateur congruentiel : déterministe,
+                    // jamais tirée de l'horloge (projet reproductible).
+                    d.seed = d.seed * 1'664'525U + 1'013'904'223U;
+                    emit paramsEdited(id, d);
+                });
             } else if constexpr (std::is_same_v<T, document::SatinParams>) {
                 // Les rails ne sont pas édités ici ; on les conserve tels quels.
                 const document::SatinParams base = p;

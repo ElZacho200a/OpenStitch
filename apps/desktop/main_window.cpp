@@ -685,6 +685,8 @@ void MainWindow::buildMenus() {
            "(forme exactement conservée)."));
     connect(railEditModeAct_, &QAction::toggled, this, &MainWindow::onSatinRailEditModeToggled);
     embMenu->addSeparator();
+    buildDirectionalActions(embMenu);
+    embMenu->addSeparator();
     statsAct_ = embMenu->addAction(tr("&Statistiques…"));
     connect(statsAct_, &QAction::triggered, this, &MainWindow::showStatistics);
 
@@ -928,6 +930,9 @@ void MainWindow::onStitchEditModeToggled(bool on) {
     if (on) {
         if (satinGuideModeAct_ != nullptr && satinGuideModeAct_->isChecked()) {
             satinGuideModeAct_->setChecked(false);
+        }
+        if (directionGuideModeAct_ != nullptr && directionGuideModeAct_->isChecked()) {
+            directionGuideModeAct_->setChecked(false);
         }
         if (const auto* emb = resolveSelectedEmbroidery()) {
             if (auto view = stitch_generation::edit_view(project_, emb->id);
@@ -1382,6 +1387,10 @@ void MainWindow::onCanvasDoubleClicked(QPointF posMm) {
     }
     if (currentTool_ == Tool::DrawBezier) {
         finishBezier();
+        return;
+    }
+    if (drawingDirectionGuide()) {
+        finishDirectionGuide();
         return;
     }
     // Mode remodelage des rails : double-clic sur un rail insère un nœud par
@@ -1931,7 +1940,8 @@ void MainWindow::updateDrawActionsState() {
     }
     const bool drawing = (currentTool_ == Tool::DrawPolygon && !pendingPolygonVertices_.empty()) ||
                          (currentTool_ == Tool::DrawBezier && !pendingBezierNodes_.empty()) ||
-                         (currentTool_ == Tool::DrawSatinColumn && !pendingSatinPoints_.empty());
+                         (currentTool_ == Tool::DrawSatinColumn && !pendingSatinPoints_.empty()) ||
+                         (drawingDirectionGuide() && !pendingGuidePoints_.empty());
     finishDrawAct_->setEnabled(drawing);
     cancelDrawAct_->setEnabled(drawing);
 }
@@ -2454,6 +2464,9 @@ void MainWindow::renderBase(const image::Image& img) {
         scene_->addItem(knob);
         baseItems_.append(knob);
     }
+
+    // Remplissage directionnel : champ, guides et ruptures (mode guides).
+    renderDirectionGuides();
 
     // Guides satin paramétriques. Chaque extrémité est indépendante mais reste
     // contrainte à son rail ; la validation monotone est partagée avec les
@@ -4198,6 +4211,17 @@ void MainWindow::setStitchType(ObjectId embroideryId, int type) {
         params = document::TatamiParams{};
         label = "Type : tatami";
         break;
+    case 3: { // remplissage directionnel (réglages du tatami repris s'il y a lieu)
+        auto directional = directionalParamsFor(*emb);
+        if (!directional) {
+            QMessageBox::warning(this, tr("Conversion impossible"),
+                                 tr("Aucun contour source pour le remplissage directionnel."));
+            return;
+        }
+        params = std::move(*directional);
+        label = "Type : remplissage directionnel";
+        break;
+    }
     case 2: { // satin : exige deux rails, construits depuis le contour source
         const auto* source = project_.findObject(emb->source_vector);
         if (source == nullptr || source->paths.empty()) {
@@ -4318,9 +4342,10 @@ void MainWindow::onCanvasContextMenu(QPointF posMm, QPoint globalPos) {
     if (emb != nullptr) {
         const ObjectId embId = emb->id;
         auto* typeMenu = menu.addMenu(tr("Type de points"));
-        const int current = emb->is_tatami() ? 1 : emb->is_satin() ? 2 : 0;
-        const char* labels[] = {"Contour cousu", "Remplissage tatami", "Colonne satin"};
-        for (int t = 0; t < 3; ++t) {
+        const int current = stitchTypeIndex(*emb);
+        const char* labels[] = {"Contour cousu", "Remplissage tatami", "Colonne satin",
+                                "Remplissage directionnel"};
+        for (int t = 0; t < 4; ++t) {
             auto* act = typeMenu->addAction(tr(labels[t]));
             act->setCheckable(true);
             act->setChecked(t == current);
@@ -4329,6 +4354,13 @@ void MainWindow::onCanvasContextMenu(QPointF posMm, QPoint globalPos) {
         if (emb->is_tatami()) {
             auto* rot = menu.addAction(tr("Orientation du remplissage…"));
             connect(rot, &QAction::triggered, this, &MainWindow::changeFillAngle);
+        }
+        if (emb->is_directional()) {
+            auto* guides = menu.addAction(tr("Guides de direction…"));
+            connect(guides, &QAction::triggered, this, [this, embId] {
+                selectedEmbroidery_ = embId;
+                directionGuideModeAct_->setChecked(true);
+            });
         }
         menu.addSeparator();
         // Supprimer la broderie seule n'a de sens que si la forme source
@@ -4535,9 +4567,10 @@ QString MainWindow::buildDebugDump(ObjectId embroideryId) const {
         << QStringLiteral("ObjectId : %1").arg(emb->id.value)
         << QStringLiteral("Nom : \"%1\"").arg(QString::fromStdString(emb->name))
         << QStringLiteral("Type de points : %1")
-               .arg(emb->is_satin()    ? QStringLiteral("Satin")
-                    : emb->is_tatami() ? QStringLiteral("Tatami")
-                                       : QStringLiteral("Contour (running stitch)"))
+               .arg(emb->is_satin()         ? QStringLiteral("Satin")
+                    : emb->is_tatami()      ? QStringLiteral("Tatami")
+                    : emb->is_directional() ? QStringLiteral("Remplissage directionnel")
+                                            : QStringLiteral("Contour (running stitch)"))
         << QStringLiteral("Visible : %1").arg(fmtBool(emb->visible))
         << QStringLiteral("Verrouillé : %1").arg(fmtBool(emb->locked))
         << QStringLiteral("Couleur RGB : (%1, %2, %3)  #%4")
@@ -4595,6 +4628,29 @@ QString MainWindow::buildDebugDump(ObjectId embroideryId) const {
                     << QStringLiteral("underlay_spacing : %1").arg(fmtUm(p.underlay_spacing))
                     << QStringLiteral("hidden_underpath : %1").arg(fmtBool(p.hidden_underpath))
                     << QStringLiteral("entry_point : %1").arg(fmtOptVec(p.entry_point));
+            } else if constexpr (std::is_same_v<T, document::DirectionalFillParams>) {
+                out << QStringLiteral("Variant : DirectionalFillParams")
+                    << QStringLiteral("row_spacing : %1").arg(fmtUm(p.row_spacing))
+                    << QStringLiteral("stitch_length : %1").arg(fmtUm(p.stitch_length))
+                    << QStringLiteral("edge_weight : %1").arg(p.edge_weight, 0, 'f', 2)
+                    << QStringLiteral("inset : %1").arg(fmtUm(p.inset))
+                    << QStringLiteral("stagger : %1").arg(p.stagger)
+                    << QStringLiteral("underlay_edge : %1").arg(fmtBool(p.underlay_edge))
+                    << QStringLiteral("underlay_parallel : %1").arg(fmtBool(p.underlay_parallel))
+                    << QStringLiteral("underlay_inset : %1").arg(fmtUm(p.underlay_inset))
+                    << QStringLiteral("underlay_spacing : %1").arg(fmtUm(p.underlay_spacing))
+                    << QStringLiteral("hidden_underpath : %1").arg(fmtBool(p.hidden_underpath))
+                    << QStringLiteral("sector_overlap : %1").arg(fmtUm(p.sector_overlap))
+                    << QStringLiteral("handmade : %1 (%2 %)")
+                           .arg(fmtBool(p.handmade))
+                           .arg(p.handmade_intensity)
+                    << QStringLiteral("seed : %1").arg(p.seed) << QString();
+                for (std::size_t i = 0; i < p.guides.size(); ++i) {
+                    dumpPath(out, p.guides[i], QStringLiteral("guide[%1]").arg(i));
+                }
+                for (std::size_t i = 0; i < p.break_lines.size(); ++i) {
+                    dumpPath(out, p.break_lines[i], QStringLiteral("break_line[%1]").arg(i));
+                }
             } else if constexpr (std::is_same_v<T, document::SatinParams>) {
                 out << QStringLiteral("Variant : SatinParams")
                     << QStringLiteral("density : %1").arg(fmtUm(p.density))
@@ -4910,7 +4966,8 @@ void MainWindow::updateContextToolbar() {
                   .arg(stitchEditModeAct_->isChecked() ? 1 : 0)
                   .arg(satinGuideModeAct_->isChecked() ? 1 : 0)
                   .arg(selectedSatinGuide_ ? static_cast<qlonglong>(*selectedSatinGuide_) : -1)
-                  .arg(railEditModeAct_->isChecked() ? 1 : 0);
+                  .arg(railEditModeAct_->isChecked() ? 1 : 0) +
+              QStringLiteral("d%1").arg(directionGuideModeAct_->isChecked() ? 1 : 0);
     } else if (hasVec) {
         sig = QStringLiteral("V%1").arg(selectedObject_->value);
     } else if (hasReg) {
@@ -4931,8 +4988,8 @@ void MainWindow::updateContextToolbar() {
         const ObjectId id = emb->id;
         contextToolbar_->addWidget(new QLabel(tr("Type de points :  "), contextToolbar_));
         const int current = stitchTypeIndex(*emb);
-        const QString names[] = {tr("Contour"), tr("Tatami"), tr("Satin")};
-        for (int t = 0; t < 3; ++t) {
+        const QString names[] = {tr("Contour"), tr("Tatami"), tr("Satin"), tr("Directionnel")};
+        for (int t = 0; t < 4; ++t) {
             auto* btn = new QToolButton(contextToolbar_);
             btn->setText(names[t]);
             btn->setCheckable(true);
@@ -4944,6 +5001,14 @@ void MainWindow::updateContextToolbar() {
             contextToolbar_->addSeparator();
             auto* rot = contextToolbar_->addAction(tr("Orientation…"));
             connect(rot, &QAction::triggered, this, &MainWindow::changeFillAngle);
+        }
+        if (emb->is_directional()) {
+            contextToolbar_->addSeparator();
+            contextToolbar_->addAction(directionGuideModeAct_);
+            if (directionGuideModeAct_->isChecked()) {
+                contextToolbar_->addAction(drawDirectionGuideAct_);
+                contextToolbar_->addAction(drawBreakLineAct_);
+            }
         }
         contextToolbar_->addSeparator();
         contextToolbar_->addAction(stitchEditModeAct_);
@@ -5087,6 +5152,8 @@ void MainWindow::buildToolPalette() {
             finishBezier();
         } else if (currentTool_ == Tool::DrawSatinColumn) {
             finishSatinColumn();
+        } else if (drawingDirectionGuide()) {
+            finishDirectionGuide();
         }
     });
     cancelDrawAct_ = toolPalette_->addAction(icons::cancelDraw(), tr("Annuler le tracé (Échap)"));
@@ -5099,6 +5166,8 @@ void MainWindow::buildToolPalette() {
             cancelBezierDraw();
         } else if (currentTool_ == Tool::DrawSatinColumn) {
             cancelSatinColumnDraw();
+        } else if (drawingDirectionGuide()) {
+            cancelDirectionGuideDraw();
         }
     });
 
@@ -5124,6 +5193,9 @@ void MainWindow::buildToolPalette() {
         if (railEditModeAct_->isChecked()) {
             railEditModeAct_->setChecked(false);
         }
+        if (directionGuideModeAct_->isChecked()) {
+            directionGuideModeAct_->setChecked(false);
+        }
         setTool(Tool::Select);
     });
 
@@ -5138,6 +5210,8 @@ void MainWindow::buildToolPalette() {
             finishBezier();
         } else if (currentTool_ == Tool::DrawSatinColumn) {
             finishSatinColumn();
+        } else if (drawingDirectionGuide()) {
+            finishDirectionGuide();
         }
     };
     auto* drawFinishReturn = new QShortcut(QKeySequence(Qt::Key_Return), this);
@@ -5152,6 +5226,8 @@ void MainWindow::buildToolPalette() {
             removeLastBezierPoint();
         } else if (currentTool_ == Tool::DrawSatinColumn) {
             removeLastSatinColumnPoint();
+        } else if (drawingDirectionGuide()) {
+            removeLastDirectionGuidePoint();
         }
     });
 }
@@ -5171,6 +5247,9 @@ void MainWindow::setTool(Tool tool) {
     }
     if (currentTool_ == Tool::DrawBezier && tool != Tool::DrawBezier) {
         cancelBezierDraw();
+    }
+    if (drawingDirectionGuide() && tool != currentTool_) {
+        cancelDirectionGuideDraw();
     }
     if (currentTool_ == Tool::DrawSatinCutLine && tool != Tool::DrawSatinCutLine &&
         cutLinePreviewItem_ != nullptr) {
@@ -5215,7 +5294,8 @@ void MainWindow::setTool(Tool tool) {
     view_->setCropMode(tool == Tool::Rect);
     view_->setBoxDrawMode(tool == Tool::DrawRectangle || tool == Tool::DrawEllipse ||
                           tool == Tool::DrawPolygonRegular);
-    view_->setPolygonDrawMode(tool == Tool::DrawPolygon);
+    view_->setPolygonDrawMode(tool == Tool::DrawPolygon || tool == Tool::DrawDirectionGuide ||
+                              tool == Tool::DrawBreakLine);
     view_->setBezierDrawMode(tool == Tool::DrawBezier || tool == Tool::DrawSatinCutLine);
     view_->setFreeformDrawMode(tool == Tool::DrawFreeform);
     view_->setSatinPairDrawMode(tool == Tool::DrawSatinColumn);
@@ -5239,7 +5319,9 @@ void MainWindow::setTool(Tool tool) {
                              : tool == Tool::DrawBezier       ? tr("Dessiner une courbe de Bézier")
                              : tool == Tool::DrawFreeform     ? tr("Dessiner à main levée")
                              : tool == Tool::DrawSatinCutLine ? tr("Ligne de coupe satin")
-                                                              : tr("Colonne satin");
+                             : tool == Tool::DrawDirectionGuide ? tr("Guide de direction")
+                             : tool == Tool::DrawBreakLine      ? tr("Ligne de rupture")
+                                                                : tr("Colonne satin");
         toolLabel_->setText(tr("Outil : %1").arg(name));
     }
     // Rappel explicite du geste attendu à l'activation de l'outil : défaut
@@ -5271,6 +5353,14 @@ void MainWindow::setTool(Tool tool) {
         statusBar()->showMessage(
             tr("Sélectionnez d'abord une forme, puis cliquez-glissez pour tracer la ligne de "
                "coupe qui la sépare en colonnes satin."));
+    } else if (tool == Tool::DrawDirectionGuide) {
+        statusBar()->showMessage(
+            tr("Cliquez les points de la courbe que le fil doit suivre — Entrée/double-clic "
+               "pour terminer (2 points min.), Échap pour annuler."));
+    } else if (tool == Tool::DrawBreakLine) {
+        statusBar()->showMessage(
+            tr("Cliquez les points de la ligne de rupture, d'un bord de la forme à l'autre — "
+               "Entrée/double-clic pour terminer, Échap pour annuler."));
     }
     updateDrawActionsState();
 }
@@ -5411,6 +5501,18 @@ void MainWindow::buildPropertiesPanel() {
             });
     connect(propertiesPanel_, &PropertiesPanel::discardOverridesRequested, this,
             &MainWindow::discardOverrides);
+    connect(propertiesPanel_, &PropertiesPanel::convertToDirectionalRequested, this,
+            &MainWindow::convertToDirectional);
+    connect(propertiesPanel_, &PropertiesPanel::editDirectionGuidesRequested, this,
+            [this](ObjectId id) {
+                if (auto* emb = project_.findEmbroidery(id); emb != nullptr && emb->is_directional()) {
+                    selectedEmbroidery_ = id;
+                    if (directionGuideModeAct_->isChecked()) {
+                        directionGuideModeAct_->setChecked(false);
+                    }
+                    directionGuideModeAct_->setChecked(true);
+                }
+            });
 }
 
 void MainWindow::updateInspector() {
@@ -5658,7 +5760,10 @@ void MainWindow::refreshOrderPanel() {
 }
 
 int MainWindow::stitchTypeIndex(const document::EmbroideryObject& object) {
-    return object.is_tatami() ? 1 : object.is_satin() ? 2 : 0;
+    return object.is_tatami()        ? 1
+           : object.is_satin()       ? 2
+           : object.is_directional() ? 3
+                                     : 0;
 }
 
 double MainWindow::regionAreaMm2(const document::EmbroideryObject& object) const {
@@ -5691,7 +5796,9 @@ bool MainWindow::objectPassesFilter(const document::EmbroideryObject& object) co
     if (!object.visible) {
         return false;
     }
-    if (!showType_[static_cast<std::size_t>(stitchTypeIndex(object))]) {
+    // Filtre « remplissage » : tatami et directionnel ensemble (index 1).
+    const int typeIndex = stitchTypeIndex(object);
+    if (!showType_[static_cast<std::size_t>(typeIndex == 3 ? 1 : typeIndex)]) {
         return false;
     }
     const std::uint32_t key = (static_cast<std::uint32_t>(object.rgb[0]) << 16) |
@@ -6226,6 +6333,10 @@ void MainWindow::onCanvasClicked(QPointF posMm) {
     if (currentTool_ == Tool::Pan) {
         return;
     }
+    if (drawingDirectionGuide()) {
+        addDirectionGuidePoint(posMm);
+        return;
+    }
     if (currentTool_ == Tool::DrawPolygon) {
         posMm = findSnapPointMm(posMm).value_or(posMm);
         const Vec2um v = sceneMmToModel(posMm);
@@ -6515,6 +6626,8 @@ void MainWindow::updateActions() {
         stitch_generation::satin_guide_junction(*selectedSatin, *selectedSatinGuide_).has_value();
     removeSatinGuideAct_->setEnabled(satinGuideEditing && selectedSatinGuide_.has_value() &&
                                      selectedSatin->rungs.size() > 2 && !structuralJunctionGuide);
+
+    updateDirectionGuideActions();
 
     document::EmbroideryObject* railEditEmb = resolveSelectedEmbroidery();
     const bool railEditContext = railEditEmb != nullptr && railEditEmb->is_satin();
