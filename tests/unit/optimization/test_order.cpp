@@ -89,3 +89,47 @@ TEST_CASE("deterministe") {
     CHECK(ids(optimize_order(items, OrderStrategy::ColorThenProximity)) ==
           ids(optimize_order(items, OrderStrategy::ColorThenProximity)));
 }
+
+// Lot C (audit marine) : pour qu'un remplissage qui déborde sur ses voisins
+// reste propre, les grandes régions « de fond » (mer, ciel) sont cousues
+// AVANT les petites régions posées dessus.
+TEST_CASE("LayeredColorThenProximity : couleurs des grandes regions d'abord") {
+    auto sea = item(1, blue, 0, 0);
+    sea.area_mm2 = 5'000.0;
+    auto boat = item(2, red, 1'000, 0);
+    boat.area_mm2 = 300.0;
+    auto bird = item(3, red, 50'000, 0);
+    bird.area_mm2 = 20.0;
+    // Ordre document : rouge d'abord (première apparition) -- la stratégie
+    // par couleur simple coudrait le bateau AVANT la mer qu'il chevauche.
+    const std::vector<OrderItem> items = {boat, bird, sea};
+    CHECK(ids(optimize_order(items, OrderStrategy::ColorThenProximity)) ==
+          std::vector<std::uint64_t>{2, 3, 1});
+    const auto order = optimize_order(items, OrderStrategy::LayeredColorThenProximity);
+    CHECK(ids(order) == std::vector<std::uint64_t>{1, 2, 3});
+    CHECK(compute_cost({sea, boat, bird}).color_changes == 1); // regroupement conservé
+}
+
+TEST_CASE("LayeredColorThenProximity : a couleur egale, grandes avant petites puis proximite") {
+    std::vector<OrderItem> items = {item(1, blue, 0, 0), item(2, blue, 40'000, 0),
+                                    item(3, blue, 2'000, 0), item(4, blue, 38'000, 0)};
+    items[0].area_mm2 = 10.0;    // petite, près de l'origine
+    items[1].area_mm2 = 4'000.0; // grande (fond)
+    items[2].area_mm2 = 12.0;
+    items[3].area_mm2 = 3'000.0; // grande
+    const auto order = optimize_order(items, OrderStrategy::LayeredColorThenProximity);
+    // Grandes (>= 25 % de la plus grande du groupe) par aire décroissante,
+    // puis les petites par proximité depuis la dernière grande.
+    CHECK(ids(order) == std::vector<std::uint64_t>{2, 4, 3, 1});
+}
+
+TEST_CASE("LayeredColorThenProximity : les objets verrouilles gardent leur place") {
+    std::vector<OrderItem> items = {item(1, red, 0, 0, true), item(2, red, 1'000, 0),
+                                    item(3, blue, 2'000, 0)};
+    items[0].area_mm2 = 1.0;
+    items[1].area_mm2 = 1.0;
+    items[2].area_mm2 = 900.0;
+    const auto order = optimize_order(items, OrderStrategy::LayeredColorThenProximity);
+    CHECK(order.front().value == 1);
+    CHECK(ids(order) == std::vector<std::uint64_t>{1, 3, 2});
+}

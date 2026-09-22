@@ -91,13 +91,68 @@ comportement historique. L'import SVG direct (`auto_digitize_vectors`) reçoit
 l'angle naturel et la sous-couche, mais pas la règle de voisinage (aucune
 segmentation, donc aucune adjacence connue) — limite documentée.
 
+## Chevauchement entre remplissages voisins et ordre en couches (Lot C)
+
+**Cause des interstices.** Trois écarts s'additionnaient le long de chaque
+frontière entre deux tatami :
+
+1. la vectorisation trace chaque contour par les **centres** des pixels de
+   bord (`vectorize.cpp`) : deux régions voisines sont séparées d'un pixel
+   entier (0,17 mm sur la marine) ;
+2. chaque contour est simplifié indépendamment (tolérance 0,2 mm) ;
+3. chaque tatami est rentré de `TatamiParams::inset` (0,2 mm) de son côté.
+
+**Correction** (`overlap_neighbor_fills`) : la surface remplie d'un tatami
+devient
+
+    (région rentrée de inset) ∪ (région ⊕ g ∩ voisins brodés ⊕ g),  g = fill_overlap + ½ pixel
+
+Le débord ne se fait donc que du côté des régions voisines **brodées**, sur
+`fill_overlap` (0,3 mm, réglable dans `AutoOptions`) au-delà de la vraie
+frontière. Les bords extérieurs du motif et le contact avec le fond ignoré
+(qui n'a pas d'objet vectoriel, donc n'est jamais un voisin brodé) gardent le
+retrait. La surface élargie remplace la géométrie de l'objet vectoriel de la
+région, et `inset` passe à 0 pour ne pas rentrer deux fois. Conséquence
+visible : l'objet vectoriel éditable déborde légèrement sur ses voisins.
+Toutes les surfaces sont calculées sur la géométrie d'origine avant d'être
+appliquées, donc le résultat ne dépend pas de l'ordre de traitement.
+`fill_overlap = 0` rétablit l'ancien comportement.
+
+Les remplissages de repli d'un satin incomplet ne sont pas concernés : ils
+recouvrent déjà leurs bandes satin (`kCoverageOverlap`).
+
+**Ordre en couches.** Un remplissage qui déborde doit passer **sous** son
+voisin : les grandes zones de fond (ciel, mer) doivent être cousues avant les
+détails posés dessus. La nouvelle stratégie
+`optimization::OrderStrategy::LayeredColorThenProximity` :
+
+- garde le regroupement par couleur (même nombre de changements de fil) ;
+- ordonne les couleurs par aire de leur plus grande zone, décroissante ;
+- à couleur égale, coud d'abord les grandes zones (aire ≥
+  `layer_large_area_ratio` = 25 % de la plus grande de la couleur) par aire
+  décroissante, puis les petites par proximité ;
+- laisse les objets verrouillés à leur place (mécanisme commun à toutes les
+  stratégies).
+
+L'auto-numérisation l'applique à son résultat (`order_by_layers`). L'unité
+d'ordre est une suite contiguë d'objets de même `source_vector`, pour que les
+sections satin d'une région restent contiguës : `generate_sequence` ne route
+ensemble que des sections contiguës. Avant ce lot, aucune numérisation
+automatique (desktop ou CLI) n'ordonnait son résultat : les objets suivaient
+l'ordre des identifiants de région (classe k-means puis balayage de l'image).
+
 ## Implémentation associée
 
 - `libs/segmentation/include/openstitch/segmentation/segmentation.hpp` —
   `cielab_lightness`, `BackgroundCandidateOptions`, `BackgroundCandidate`,
   `background_candidate`.
 - `libs/autodigitize/src/autodigitize.cpp` — `auto_digitize`,
-  `AutoOptions::skip_largest_region`, `configure_tatami_fills` (Lot B).
+  `AutoOptions::skip_largest_region`, `configure_tatami_fills` (Lot B),
+  `overlap_neighbor_fills`, `order_in_layers` (Lot C).
+- `libs/geometry/include/openstitch/geometry/boolean.hpp` — `union_polygons`.
+- `libs/optimization/include/openstitch/optimization/order.hpp` —
+  `OrderStrategy::LayeredColorThenProximity`, `OrderOptions`,
+  `OrderItem::area_mm2`.
 - `libs/geometry/include/openstitch/geometry/moments.hpp` — `principal_axis`.
 - `apps/desktop/main_window.cpp` — `MainWindow::autoDigitize` (dialogue).
 - `apps/cli/main.cpp` — `run_digitize`.
@@ -107,4 +162,5 @@ segmentation, donc aucune adjacence connue) — limite documentée.
   (`autoDigitizeDialogDoesNotSkipColoredFullFrameRegion`,
   `autoDigitizeDialogSkipsNearWhiteFramingBackground`),
   `tests/unit/geometry/test_moments.cpp`, `tests/unit/autodigitize/test_autodigitize.cpp`
-  (cas « Lot B »).
+  (cas « Lot B » et « Lot C »), `tests/unit/optimization/test_order.cpp`,
+  `tests/unit/geometry/test_boolean.cpp`.

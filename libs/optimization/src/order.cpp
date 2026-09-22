@@ -12,8 +12,82 @@ double distance(Vec2um a, Vec2um b) {
     return length_um(a - b);
 }
 
+// Plus proche voisin (centroïdes) à partir de `from`, sur `rest`.
+std::vector<OrderItem> nearest_chain(Vec2um from, const std::vector<OrderItem>& rest) {
+    std::vector<OrderItem> out;
+    out.reserve(rest.size());
+    std::vector<bool> used(rest.size(), false);
+    for (std::size_t step = 0; step < rest.size(); ++step) {
+        double best = std::numeric_limits<double>::max();
+        std::size_t bestIdx = 0;
+        for (std::size_t j = 0; j < rest.size(); ++j) {
+            if (used[j]) {
+                continue;
+            }
+            const double d = distance(from, rest[j].centroid);
+            if (d < best) {
+                best = d;
+                bestIdx = j;
+            }
+        }
+        used[bestIdx] = true;
+        out.push_back(rest[bestIdx]);
+        from = rest[bestIdx].centroid;
+    }
+    return out;
+}
+
+std::vector<OrderItem> arrange_free(const std::vector<OrderItem>& items, OrderStrategy strategy,
+                                    const OrderOptions& options);
+
+// Couches (Lot C) : couleurs par aire max décroissante, puis grandes zones
+// par aire décroissante, puis petites par proximité. Tris stables : à
+// égalité, l'ordre d'origine décide (déterminisme).
+std::vector<OrderItem> arrange_layered(const std::vector<OrderItem>& items,
+                                       const OrderOptions& options) {
+    const std::vector<OrderItem> byColor = arrange_free(items, OrderStrategy::ByColor, options);
+    std::vector<std::vector<OrderItem>> groups;
+    for (const auto& it : byColor) {
+        if (groups.empty() || groups.back().front().rgb != it.rgb) {
+            groups.emplace_back();
+        }
+        groups.back().push_back(it);
+    }
+    const auto maxArea = [](const std::vector<OrderItem>& g) {
+        double m = 0.0;
+        for (const auto& it : g) {
+            m = std::max(m, it.area_mm2);
+        }
+        return m;
+    };
+    std::stable_sort(groups.begin(), groups.end(),
+                     [&](const auto& a, const auto& b) { return maxArea(a) > maxArea(b); });
+
+    std::vector<OrderItem> out;
+    out.reserve(items.size());
+    for (const auto& g : groups) {
+        const double threshold = maxArea(g) * options.layer_large_area_ratio;
+        std::vector<OrderItem> large;
+        std::vector<OrderItem> small;
+        for (const auto& it : g) {
+            (it.area_mm2 >= threshold ? large : small).push_back(it);
+        }
+        std::stable_sort(large.begin(), large.end(), [](const OrderItem& a, const OrderItem& b) {
+            return a.area_mm2 > b.area_mm2;
+        });
+        out.insert(out.end(), large.begin(), large.end());
+        if (!small.empty()) {
+            const Vec2um from = large.empty() ? small.front().centroid : large.back().centroid;
+            const auto chained = nearest_chain(from, small);
+            out.insert(out.end(), chained.begin(), chained.end());
+        }
+    }
+    return out;
+}
+
 // Ordonne des items libres selon la stratégie (sans contrainte de verrou).
-std::vector<OrderItem> arrange_free(const std::vector<OrderItem>& items, OrderStrategy strategy) {
+std::vector<OrderItem> arrange_free(const std::vector<OrderItem>& items, OrderStrategy strategy,
+                                    const OrderOptions& options) {
     if (strategy == OrderStrategy::Document || items.size() < 2) {
         return items;
     }
@@ -63,9 +137,13 @@ std::vector<OrderItem> arrange_free(const std::vector<OrderItem>& items, OrderSt
         return out;
     }
 
+    if (strategy == OrderStrategy::LayeredColorThenProximity) {
+        return arrange_layered(items, options);
+    }
+
     // ColorThenProximity : groupes de couleur (ordre d'apparition), proximité
     // à l'intérieur de chaque groupe.
-    std::vector<OrderItem> byColor = arrange_free(items, OrderStrategy::ByColor);
+    std::vector<OrderItem> byColor = arrange_free(items, OrderStrategy::ByColor, options);
     std::vector<OrderItem> out;
     std::size_t i = 0;
     while (i < byColor.size()) {
@@ -75,7 +153,7 @@ std::vector<OrderItem> arrange_free(const std::vector<OrderItem>& items, OrderSt
         }
         std::vector<OrderItem> group(byColor.begin() + static_cast<std::ptrdiff_t>(i),
                                      byColor.begin() + static_cast<std::ptrdiff_t>(j));
-        const auto arranged = arrange_free(group, OrderStrategy::ByProximity);
+        const auto arranged = arrange_free(group, OrderStrategy::ByProximity, options);
         out.insert(out.end(), arranged.begin(), arranged.end());
         i = j;
     }
@@ -95,7 +173,8 @@ OrderCost compute_cost(const std::vector<OrderItem>& items) {
     return cost;
 }
 
-std::vector<ObjectId> optimize_order(const std::vector<OrderItem>& items, OrderStrategy strategy) {
+std::vector<ObjectId> optimize_order(const std::vector<OrderItem>& items, OrderStrategy strategy,
+                                     const OrderOptions& options) {
     // Items libres réarrangés ; les verrous gardent leur emplacement.
     std::vector<OrderItem> free;
     for (const auto& item : items) {
@@ -103,7 +182,7 @@ std::vector<ObjectId> optimize_order(const std::vector<OrderItem>& items, OrderS
             free.push_back(item);
         }
     }
-    const std::vector<OrderItem> arranged = arrange_free(free, strategy);
+    const std::vector<OrderItem> arranged = arrange_free(free, strategy, options);
 
     std::vector<ObjectId> result;
     result.reserve(items.size());

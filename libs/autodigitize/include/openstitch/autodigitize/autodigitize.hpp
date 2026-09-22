@@ -73,6 +73,20 @@ struct AutoOptions {
     bool auto_fill_underlay{true};
     double underlay_edge_min_area_mm2{20.0};
     double underlay_parallel_min_area_mm2{100.0};
+
+    // --- Chevauchement et ordre (Lot C) ---
+    // Débord de chaque tatami sur ses voisins BRODÉS, uniquement le long des
+    // bords partagés (au lieu du retrait `TatamiParams::inset`, qui laissait
+    // un interstice de chaque côté). Bords extérieurs du motif et contact du
+    // fond ignoré : retrait conservé. La surface élargie est portée par
+    // l'objet vectoriel (le paramètre `inset` passe alors à 0). 0 = désactivé.
+    Micrometers fill_overlap{300};
+    // Ordre de couture du résultat en « couches » (`optimization::
+    // OrderStrategy::LayeredColorThenProximity`) : grandes zones de fond
+    // d'abord, détails posés dessus ensuite, couleurs toujours regroupées.
+    // Les sections satin d'une même région restent contiguës (routage).
+    bool order_by_layers{true};
+    double layer_large_area_ratio{0.25};
 };
 
 // Objets produits par l'autonumérisation : toujours ÉDITABLES (§13). Le type

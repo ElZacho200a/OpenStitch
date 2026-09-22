@@ -134,6 +134,28 @@ Result<std::vector<PathSet>> difference_polygons(const std::vector<PathSet>& a,
     return boolean_op(a, b, Clipper2Lib::ClipType::Difference);
 }
 
+Result<std::vector<PathSet>> union_polygons(const std::vector<PathSet>& sets) {
+    Clipper2Lib::Paths64 subject;
+    for (const auto& set : sets) {
+        append_oriented(set, subject);
+    }
+    if (subject.empty()) {
+        return std::vector<PathSet>{};
+    }
+    Clipper2Lib::Clipper64 clipper;
+    clipper.AddSubject(subject);
+    Clipper2Lib::PolyTree64 tree;
+    if (!clipper.Execute(Clipper2Lib::ClipType::Union, Clipper2Lib::FillRule::NonZero, tree)) {
+        return fail(ErrorCategory::Internal, "Échec de l'opération géométrique",
+                    "Clipper64::Execute (union) a renvoyé false");
+    }
+    std::vector<PathSet> out;
+    for (const auto& top : tree) {
+        collect(*top, out);
+    }
+    return out;
+}
+
 Result<std::vector<PathSet>> subtract_polygons(const PathSet& base,
                                                const std::vector<Path>& cutouts) {
     if (cutouts.empty()) {

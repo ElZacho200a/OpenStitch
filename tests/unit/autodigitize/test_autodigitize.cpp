@@ -850,3 +850,157 @@ TEST_CASE("Lot B : auto_digitize_vectors oriente aussi ses tatami (sans voisinag
     CHECK(p.underlay_edge);
     CHECK(p.underlay_parallel);
 }
+
+// --- Lot C (audit marine plein cadre) : chevauchement et ordre --------------
+// Avant : chaque tatami était rentré de `inset` (0,2 mm) sur TOUS ses bords,
+// y compris ceux partagés avec un voisin brodé -- interstices visibles.
+
+namespace {
+
+struct BoundsMm {
+    double x0, y0, x1, y1;
+};
+
+BoundsMm bounds_mm(const document::VectorObject& v) {
+    BoundsMm b{1e18, 1e18, -1e18, -1e18};
+    for (const auto& set : v.paths) {
+        for (const auto& n : set.outer.nodes) {
+            b.x0 = std::min(b.x0, n.pos.x.value / 1000.0);
+            b.y0 = std::min(b.y0, n.pos.y.value / 1000.0);
+            b.x1 = std::max(b.x1, n.pos.x.value / 1000.0);
+            b.y1 = std::max(b.y1, n.pos.y.value / 1000.0);
+        }
+    }
+    return b;
+}
+
+// Objet vectoriel suivi par le (seul) tatami de couleur proche de `rgb`.
+const document::VectorObject* tatami_vector(const AutoResult& r, std::array<std::uint8_t, 3> rgb,
+                                            const document::TatamiParams** params = nullptr) {
+    for (const auto& e : r.embroideries) {
+        int d = 0;
+        for (std::size_t i = 0; i < 3; ++i) {
+            d += std::abs(int{e.rgb[i]} - int{rgb[i]});
+        }
+        if (d > 24 || !e.is_tatami()) {
+            continue;
+        }
+        if (params != nullptr) {
+            *params = &std::get<document::TatamiParams>(e.params);
+        }
+        for (const auto& v : r.vectors) {
+            if (v.id == e.source_vector) {
+                return &v;
+            }
+        }
+    }
+    return nullptr;
+}
+
+std::size_t first_index_of(const AutoResult& r, std::array<std::uint8_t, 3> rgb) {
+    for (std::size_t i = 0; i < r.embroideries.size(); ++i) {
+        int d = 0;
+        for (std::size_t k = 0; k < 3; ++k) {
+            d += std::abs(int{r.embroideries[i].rgb[k]} - int{rgb[k]});
+        }
+        if (d <= 24) {
+            return i;
+        }
+    }
+    return r.embroideries.size();
+}
+
+} // namespace
+
+TEST_CASE("Lot C : tatami voisins -> debord de 0,3 mm sur le bord partage, retrait ailleurs") {
+    // Rouge [5,25) et bleu [25,45) en x, 1 px = 1 mm, fond transparent autour.
+    const auto seg =
+        segmentation::segment(paint(50, 30, {{5, 5, 25, 25, kRed}, {25, 5, 45, 25, kBlue}}),
+                              {.max_colors = 2, .min_region_px = 1});
+    REQUIRE(seg.has_value());
+    IdGenerator<ObjectId> ids;
+    const auto r = auto_digitize(*seg, ids, tatami_only_opts());
+    REQUIRE(r.has_value());
+    const document::TatamiParams* redParams = nullptr;
+    const auto* red = tatami_vector(*r, kRed, &redParams);
+    REQUIRE(red != nullptr);
+    // Repère vectoriel centré sur l'image (50 px -> x de -25 à 25 mm), contours
+    // passant par les centres des pixels de bord (demi-pixel à l'intérieur).
+    const auto b = bounds_mm(*red);
+    // Frontière partagée (pixel x = 25 -> 0 mm) : débord de 0,3 mm sur le bleu.
+    CHECK(b.x1 >= 0.25);
+    CHECK(b.x1 <= 0.35);
+    // Bord extérieur (pixel x = 5 -> -20 mm ; contour à -19,5) : retrait de
+    // 0,2 mm conservé, désormais porté par la géométrie -- le paramètre inset
+    // passe à 0 pour ne pas le doubler.
+    CHECK(b.x0 >= -19.35);
+    CHECK(b.x0 <= -19.25);
+    CHECK(redParams->inset.value == 0);
+    const auto* blue = tatami_vector(*r, kBlue);
+    REQUIRE(blue != nullptr);
+    CHECK(bounds_mm(*blue).x0 <= -0.25); // le bleu déborde aussi sur le rouge
+
+    // Réglage désactivable : comportement historique (géométrie brute + inset).
+    AutoOptions off = tatami_only_opts();
+    off.fill_overlap = Micrometers{0};
+    IdGenerator<ObjectId> ids2;
+    const auto r2 = auto_digitize(*seg, ids2, off);
+    REQUIRE(r2.has_value());
+    const document::TatamiParams* p2 = nullptr;
+    const auto* red2 = tatami_vector(*r2, kRed, &p2);
+    REQUIRE(red2 != nullptr);
+    CHECK(bounds_mm(*red2).x1 == -0.5); // demi-pixel en retrait de la frontière
+    CHECK(p2->inset.value == 200);
+}
+
+TEST_CASE("Lot C : pas de debord vers le fond ignore") {
+    // Fond blanc ignoré (skip_largest_region) autour d'un carré rouge : le
+    // fond n'est pas brodé, le carré garde son retrait sur tous ses bords.
+    const std::array<std::uint8_t, 3> kWhite{250, 250, 250};
+    const auto seg =
+        segmentation::segment(paint(60, 60, {{0, 0, 60, 60, kWhite}, {20, 20, 40, 40, kRed}}),
+                              {.max_colors = 2, .min_region_px = 1});
+    REQUIRE(seg.has_value());
+    AutoOptions o = tatami_only_opts();
+    o.skip_largest_region = true;
+    IdGenerator<ObjectId> ids;
+    const auto r = auto_digitize(*seg, ids, o);
+    REQUIRE(r.has_value());
+    const document::TatamiParams* params = nullptr;
+    const auto* red = tatami_vector(*r, kRed, &params);
+    REQUIRE(red != nullptr);
+    // Aucun voisin brodé : géométrie inchangée, retrait `inset` conservé.
+    CHECK(params->inset.value == 200);
+    // Carré pixels [20,40) dans 60 px -> [-10, 10] mm, contour à ±9,5.
+    const auto b = bounds_mm(*red);
+    CHECK(b.x0 >= -9.5);
+    CHECK(b.x1 <= 9.5);
+    CHECK(b.y0 >= -9.5);
+    CHECK(b.y1 <= 9.5);
+}
+
+TEST_CASE("Lot C : la grande region de fond est cousue avant le detail pose dessus") {
+    // Petit bateau rouge (6x6) posé sur une grande mer bleue (40x40). Les
+    // régions de segmentation sont numérotées par couleur k-means : l'ordre
+    // naturel ne garantit rien -- l'auto-numérisation doit ordonner en couches.
+    const auto seg =
+        segmentation::segment(paint(50, 50, {{5, 5, 45, 45, kBlue}, {20, 20, 26, 26, kRed}}),
+                              {.max_colors = 2, .min_region_px = 1});
+    REQUIRE(seg.has_value());
+    IdGenerator<ObjectId> ids;
+    const auto r = auto_digitize(*seg, ids, tatami_only_opts());
+    REQUIRE(r.has_value());
+    CHECK(first_index_of(*r, kBlue) < first_index_of(*r, kRed));
+
+    // Même résultat quel que soit l'ordre des couleurs dans la segmentation :
+    // inverser les couleurs inverse les identifiants de région, pas l'ordre
+    // de couture (la grande zone reste d'abord).
+    const auto seg2 =
+        segmentation::segment(paint(50, 50, {{5, 5, 45, 45, kRed}, {20, 20, 26, 26, kBlue}}),
+                              {.max_colors = 2, .min_region_px = 1});
+    REQUIRE(seg2.has_value());
+    IdGenerator<ObjectId> ids2;
+    const auto r2 = auto_digitize(*seg2, ids2, tatami_only_opts());
+    REQUIRE(r2.has_value());
+    CHECK(first_index_of(*r2, kRed) < first_index_of(*r2, kBlue));
+}

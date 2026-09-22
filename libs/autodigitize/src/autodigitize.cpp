@@ -4,6 +4,8 @@
 #include <algorithm>
 #include <cmath>
 #include <functional>
+#include <limits>
+#include <map>
 #include <numbers>
 #include <optional>
 #include <set>
@@ -15,6 +17,7 @@
 #include "openstitch/geometry/moments.hpp"
 #include "openstitch/geometry/offset.hpp"
 #include "openstitch/geometry/simplify.hpp"
+#include "openstitch/optimization/order.hpp"
 #include "openstitch/satin_planning/satin_sections.hpp"
 #include "openstitch/stitch_generation/satin.hpp"
 #include "openstitch/vectorization/vectorize.hpp"
@@ -281,14 +284,6 @@ const geometry::PathSet& largest_piece(const std::vector<geometry::PathSet>& set
 // Paires de régions voisines (identifiants triés), cf. `region_adjacency`.
 using RegionPairs = std::set<std::pair<std::uint64_t, std::uint64_t>>;
 
-RegionPairs adjacent_pairs(const segmentation::Segmentation& seg) {
-    RegionPairs out;
-    for (const auto& b : segmentation::region_adjacency(seg)) {
-        out.insert({b.a.value, b.b.value});
-    }
-    return out;
-}
-
 // Orientation de rangées ramenée dans [0, pi).
 double normalize_row_angle(double a) {
     a = std::fmod(a, std::numbers::pi);
@@ -427,6 +422,194 @@ void configure_tatami_fills(AutoResult& result, const std::vector<document::Vect
     }
 }
 
+// Élargit (delta > 0) chaque PathSet de `delta` ; un élargissement qui
+// échouerait garde la forme brute (jamais de perte de surface).
+std::vector<geometry::PathSet> dilate(const std::vector<geometry::PathSet>& sets,
+                                      Micrometers delta) {
+    std::vector<geometry::PathSet> out;
+    for (const auto& set : sets) {
+        if (auto grown = geometry::inset_path_set(set, Micrometers{-delta.value});
+            grown && !grown->empty()) {
+            out.insert(out.end(), grown->begin(), grown->end());
+        } else {
+            out.push_back(set);
+        }
+    }
+    return out;
+}
+
+// Lot C (audit marine plein cadre) : chaque tatami rentré de `inset` sur
+// TOUS ses bords laissait, avec la simplification indépendante de chaque
+// contour, un interstice visible le long de chaque frontière partagée. Ici,
+// la surface remplie devient
+//     (région rentrée de inset) ∪ (région élargie de fill_overlap ∩ voisins élargis)
+// soit un débord de `fill_overlap` UNIQUEMENT du côté des régions voisines
+// brodées : les bords extérieurs du motif et le contact avec le fond ignoré
+// (région sans objet vectoriel, donc jamais voisine brodée) gardent le
+// retrait. Les voisins sont élargis eux aussi : la vectorisation trace les
+// contours par les CENTRES des pixels de bord (vectorize.cpp), donc deux
+// régions voisines sont séparées d'un pixel entier. Élargir les deux côtés
+// de `fill_overlap + ½ pixel` place la bande à ±fill_overlap autour de la
+// VRAIE frontière (le bord commun des pixels). La surface est portée par l'objet
+// vectoriel (éditable) et `inset` passe à 0 pour ne pas rentrer deux fois.
+// Toutes les surfaces sont calculées sur la géométrie d'ORIGINE avant d'être
+// appliquées (le résultat ne dépend pas de l'ordre de traitement).
+void overlap_neighbor_fills(AutoResult& result,
+                            const std::map<std::uint64_t, ObjectId>& regionVector,
+                            const std::vector<segmentation::RegionBorder>& borders,
+                            const AutoOptions& options) {
+    if (options.fill_overlap.value <= 0) {
+        return;
+    }
+    std::map<std::uint64_t, std::vector<std::uint64_t>> neighbours;
+    for (const auto& b : borders) {
+        if (regionVector.contains(b.a.value) && regionVector.contains(b.b.value)) {
+            neighbours[b.a.value].push_back(b.b.value);
+            neighbours[b.b.value].push_back(b.a.value);
+        }
+    }
+    const Micrometers grow{
+        options.fill_overlap.value +
+        static_cast<std::int32_t>(std::lround(to_micrometers(options.mm_per_px).value / 2.0))};
+    const auto vectorIndex = [&](ObjectId id) -> std::optional<std::size_t> {
+        for (std::size_t i = 0; i < result.vectors.size(); ++i) {
+            if (result.vectors[i].id == id) {
+                return i;
+            }
+        }
+        return std::nullopt;
+    };
+
+    struct Change {
+        std::size_t vec;
+        std::size_t emb;
+        std::vector<geometry::PathSet> paths;
+    };
+    std::vector<Change> changes;
+    for (std::size_t e = 0; e < result.embroideries.size(); ++e) {
+        const auto& emb = result.embroideries[e];
+        if (!emb.is_tatami()) {
+            continue;
+        }
+        const auto vi = vectorIndex(emb.source_vector);
+        if (!vi) {
+            continue;
+        }
+        const auto& vec = result.vectors[*vi];
+        // Seul l'objet vectoriel PRINCIPAL d'une région (pas un repli satin,
+        // déjà en recouvrement avec ses bandes, cf. kCoverageOverlap).
+        if (!vec.source_region || !regionVector.contains(vec.source_region->value) ||
+            regionVector.at(vec.source_region->value) != vec.id) {
+            continue;
+        }
+        const auto it = neighbours.find(vec.source_region->value);
+        if (it == neighbours.end()) {
+            continue;
+        }
+        std::vector<geometry::PathSet> around;
+        for (const std::uint64_t n : it->second) {
+            if (const auto ni = vectorIndex(regionVector.at(n))) {
+                const auto& np = result.vectors[*ni].paths;
+                around.insert(around.end(), np.begin(), np.end());
+            }
+        }
+        const auto band =
+            geometry::intersect_polygons(dilate(vec.paths, grow), dilate(around, grow));
+        if (!band || band->empty()) {
+            continue;
+        }
+        const auto& params = std::get<document::TatamiParams>(emb.params);
+        std::vector<geometry::PathSet> parts;
+        for (const auto& set : vec.paths) {
+            if (auto in = geometry::inset_path_set(set, params.inset); in && !in->empty()) {
+                parts.insert(parts.end(), in->begin(), in->end());
+            } else {
+                parts.push_back(set); // même repli que generate_tatami
+            }
+        }
+        parts.insert(parts.end(), band->begin(), band->end());
+        auto merged = geometry::union_polygons(parts);
+        if (!merged || merged->empty()) {
+            continue;
+        }
+        changes.push_back({*vi, e, std::move(*merged)});
+    }
+    for (auto& c : changes) {
+        result.vectors[c.vec].paths = std::move(c.paths);
+        std::get<document::TatamiParams>(result.embroideries[c.emb].params).inset = Micrometers{0};
+    }
+}
+
+// Lot C : ordre de couture en couches (optimization::LayeredColorThenProximity).
+// Unité d'ordre = suite CONTIGUË d'objets de même `source_vector` (sections
+// satin d'une région : `generate_sequence` ne route ensemble que des sections
+// contiguës, il ne faut jamais les séparer).
+void order_in_layers(AutoResult& result, const std::vector<document::VectorObject>& inputs,
+                     const AutoOptions& options) {
+    if (!options.order_by_layers || result.embroideries.size() < 2) {
+        return;
+    }
+    const auto findVector = [&](ObjectId id) -> const document::VectorObject* {
+        const std::array<const std::vector<document::VectorObject>*, 2> lists{&result.vectors,
+                                                                              &inputs};
+        for (const auto* list : lists) {
+            for (const auto& v : *list) {
+                if (v.id == id) {
+                    return &v;
+                }
+            }
+        }
+        return nullptr;
+    };
+    std::vector<std::pair<std::size_t, std::size_t>> units; // [début, fin)
+    for (std::size_t i = 0; i < result.embroideries.size(); ++i) {
+        if (!units.empty() && result.embroideries[units.back().first].source_vector ==
+                                  result.embroideries[i].source_vector) {
+            units.back().second = i + 1;
+        } else {
+            units.emplace_back(i, i + 1);
+        }
+    }
+    std::vector<optimization::OrderItem> items;
+    items.reserve(units.size());
+    for (std::size_t u = 0; u < units.size(); ++u) {
+        const auto& first = result.embroideries[units[u].first];
+        optimization::OrderItem item;
+        item.id = ObjectId{u + 1}; // identifiant d'unité (local à cette fonction)
+        item.rgb = first.rgb;
+        if (const auto* vec = findVector(first.source_vector)) {
+            std::int64_t x0 = std::numeric_limits<std::int64_t>::max(), y0 = x0;
+            std::int64_t x1 = std::numeric_limits<std::int64_t>::min(), y1 = x1;
+            for (const auto& set : vec->paths) {
+                item.area_mm2 += geometry::path_set_area_um2(set) / 1e6;
+                for (const auto& n : set.outer.nodes) {
+                    x0 = std::min<std::int64_t>(x0, n.pos.x.value);
+                    y0 = std::min<std::int64_t>(y0, n.pos.y.value);
+                    x1 = std::max<std::int64_t>(x1, n.pos.x.value);
+                    y1 = std::max<std::int64_t>(y1, n.pos.y.value);
+                }
+            }
+            if (x0 <= x1) {
+                item.centroid = Vec2um{Micrometers{static_cast<std::int32_t>((x0 + x1) / 2)},
+                                       Micrometers{static_cast<std::int32_t>((y0 + y1) / 2)}};
+            }
+        }
+        items.push_back(item);
+    }
+    const auto order =
+        optimization::optimize_order(items, optimization::OrderStrategy::LayeredColorThenProximity,
+                                     {.layer_large_area_ratio = options.layer_large_area_ratio});
+    std::vector<document::EmbroideryObject> reordered;
+    reordered.reserve(result.embroideries.size());
+    for (const ObjectId unit : order) {
+        const auto [b, e] = units[unit.value - 1];
+        for (std::size_t i = b; i < e; ++i) {
+            reordered.push_back(std::move(result.embroideries[i]));
+        }
+    }
+    result.embroideries = std::move(reordered);
+}
+
 }  // namespace
 
 Result<AutoResult> auto_digitize(const segmentation::Segmentation& seg, IdGenerator<ObjectId>& ids,
@@ -466,6 +649,10 @@ Result<AutoResult> auto_digitize(const segmentation::Segmentation& seg, IdGenera
             : std::nullopt;
 
     const vectorization::VectorizeOptions vecOpts{options.mm_per_px, options.simplify_tolerance};
+    // Objet vectoriel principal de chaque région numérisée (Lot C) : une
+    // région absente (fond ignoré, non vectorisable) n'est jamais une voisine
+    // brodée.
+    std::map<std::uint64_t, ObjectId> regionVector;
 
     for (const RegionId id : regions) {
         const auto* region = seg.find(id);
@@ -489,6 +676,7 @@ Result<AutoResult> auto_digitize(const segmentation::Segmentation& seg, IdGenera
         vec.paths = *sets;
         const ObjectId vecId = vec.id;
         result.vectors.push_back(std::move(vec));
+        regionVector[id.value] = vecId;
 
         // Choix du type de point selon la forme du plus grand morceau --
         // logique PARTAGÉE avec `auto_digitize_vectors` (§ classify_and_
@@ -502,8 +690,14 @@ Result<AutoResult> auto_digitize(const segmentation::Segmentation& seg, IdGenera
         return fail(ErrorCategory::OperationImpossible,
                     "Aucune région exploitable pour la numérisation automatique");
     }
-    const RegionPairs adjacency = adjacent_pairs(seg);
+    const auto borders = segmentation::region_adjacency(seg);
+    RegionPairs adjacency;
+    for (const auto& b : borders) {
+        adjacency.insert({b.a.value, b.b.value});
+    }
     configure_tatami_fills(result, {}, &adjacency, options);
+    overlap_neighbor_fills(result, regionVector, borders, options);
+    order_in_layers(result, {}, options);
     return result;
 }
 
@@ -531,6 +725,7 @@ Result<AutoResult> auto_digitize_vectors(const std::vector<document::VectorObjec
                     "Aucun objet vectoriel exploitable pour la numérisation automatique");
     }
     configure_tatami_fills(result, vectors, nullptr, options);
+    order_in_layers(result, vectors, options);
     return result;
 }
 

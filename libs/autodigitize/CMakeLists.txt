@@ -8,5 +8,5 @@ target_link_libraries(openstitch_autodigitize
     PUBLIC openstitch::core openstitch::document openstitch::segmentation
            openstitch::vectorization openstitch::stitch_generation openstitch::auto_satin
            openstitch::satin_coverage
-    PRIVATE openstitch::satin_planning openstitch::warnings
+    PRIVATE openstitch::satin_planning openstitch::optimization openstitch::warnings
 )

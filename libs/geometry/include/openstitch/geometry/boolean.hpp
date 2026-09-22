@@ -38,4 +38,9 @@ namespace openstitch::geometry {
 [[nodiscard]] Result<std::vector<PathSet>> difference_polygons(const std::vector<PathSet>& a,
                                                                const std::vector<PathSet>& b);
 
+// Union NonZero de PathSet (trous compris) : composantes connexes disjointes,
+// même convention de sortie que `intersect_polygons`. Liste vide si `sets`
+// n'a aucune surface.
+[[nodiscard]] Result<std::vector<PathSet>> union_polygons(const std::vector<PathSet>& sets);
+
 } // namespace openstitch::geometry

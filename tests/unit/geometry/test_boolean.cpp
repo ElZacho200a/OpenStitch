@@ -111,3 +111,21 @@ TEST_CASE("subtract_polygons : deterministe") {
         CHECK((*a)[i].outer.nodes == (*b)[i].outer.nodes);
     }
 }
+
+TEST_CASE("union_polygons : deux carres qui se chevauchent -> une composante") {
+    const auto u = union_polygons({PathSet{square_path(0, 0, 10'000, 10'000), {}},
+                                   PathSet{square_path(5'000, 0, 15'000, 10'000), {}}});
+    REQUIRE(u.has_value());
+    REQUIRE(u->size() == 1);
+    CHECK(std::abs(net_area_mm2(u->front()) - 150.0) < 1e-6);
+}
+
+TEST_CASE("union_polygons : disjoints -> deux composantes, vide -> vide") {
+    const auto u = union_polygons({PathSet{square_path(0, 0, 10'000, 10'000), {}},
+                                   PathSet{square_path(20'000, 0, 30'000, 10'000), {}}});
+    REQUIRE(u.has_value());
+    CHECK(u->size() == 2);
+    const auto e = union_polygons({});
+    REQUIRE(e.has_value());
+    CHECK(e->empty());
+}

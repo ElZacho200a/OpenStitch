@@ -96,6 +96,9 @@ optimize_order(items, stratégie):
     ByColor: regrouper par couleur (ordre d'apparition)
     ByProximity: plus proche voisin
     ColorThenProximity: groupes de couleur puis proximité
+    LayeredColorThenProximity: groupes de couleur triés par aire max
+      décroissante ; dans chaque groupe, grandes zones (>= 25 % de la plus
+      grande) par aire décroissante, puis petites par proximité
   réinsérer dans les emplacements libres, verrous à leur place
 coût = distance de déplacement + 50000 * changements de couleur
 ```
