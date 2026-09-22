@@ -224,6 +224,16 @@ La piqûre de longueur nulle à l'arrivée d'un saut (`Jump p0` puis `Stitch
 p0`) est omise quand un verrou d'entrée suit : le verrou revient piquer en
 `p0`.
 
+## Mesures et critères d'acceptation (Lot G)
+
+`openstitch-cli stats fichier.dst` imprime, en plus des compteurs de base,
+les mesures de `stitch_analysis::sequence_metrics` (voir *Analyse et
+validation*) : déplacements, dont ceux de plus de 3 mm sans coupe, points de
+moins de 0,5 mm hors points d'arrêt, histogramme des directions.
+`openstitch-cli digitize` imprime en plus `project_metrics` : objets de moins
+de 3 mm², surface non couverte hors fond ignoré, angles de remplissage
+distincts, ventilation par source.
+
 ## Implémentation associée
 
 - `libs/segmentation/include/openstitch/segmentation/segmentation.hpp` —

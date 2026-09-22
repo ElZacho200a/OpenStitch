@@ -39,11 +39,31 @@ std::vector<Finding> analyze(const stitch::StitchSequence& sequence,
     Vec2um prevStitch{};
     Vec2um prevPos{};
     bool hasPrevPos = false;
+    // Déplacement en cours depuis la dernière piqûre (Lot G : déplacement
+    // long sans coupe).
+    bool hasLastStitch = false;
+    Vec2um lastStitch{};
+    bool inMove = false;
+    bool trimmed = false;
 
     for (const auto& cmd : sequence.commands) {
         switch (cmd.type) {
         case stitch::CommandType::Stitch: {
-            if (hasPrevStitch) {
+            if (inMove && hasLastStitch && !trimmed) {
+                const double moved = length_um(cmd.pos - lastStitch);
+                if (moved > static_cast<double>(options.trim_threshold.value)) {
+                    add(Severity::Warning, "saut-sans-coupe",
+                        "Déplacement de " + std::to_string(static_cast<int>(moved / 100.0) / 10.0) +
+                            " mm sans coupe : le fil traîne sur le tissu.",
+                        cmd.pos, cmd.source);
+                }
+            }
+            inMove = false;
+            trimmed = false;
+            hasLastStitch = true;
+            lastStitch = cmd.pos;
+            // Les points d'arrêt sont courts par construction : jamais signalés.
+            if (hasPrevStitch && cmd.pass != stitch::StitchPass::Lock) {
                 const double len = length_um(cmd.pos - prevStitch);
                 if (len < static_cast<double>(options.min_stitch.value)) {
                     add(Severity::Warning, "point-court",
@@ -67,6 +87,7 @@ std::vector<Finding> analyze(const stitch::StitchSequence& sequence,
             break;
         }
         case stitch::CommandType::Jump: {
+            inMove = true;
             if (hasPrevPos) {
                 const double len = length_um(cmd.pos - prevPos);
                 if (len > static_cast<double>(options.max_jump.value)) {
@@ -88,6 +109,9 @@ std::vector<Finding> analyze(const stitch::StitchSequence& sequence,
             hasPrevStitch = false;
             break;
         }
+        case stitch::CommandType::Trim:
+            trimmed = true;
+            break;
         default:
             break;
         }

@@ -25,6 +25,9 @@ struct AnalysisOptions {
     Micrometers min_stitch{500};   // en dessous : point trop court (0,5 mm)
     Micrometers max_stitch{7'000}; // au-dessus : point trop long (7 mm)
     Micrometers max_jump{30'000};  // saut trop long (30 mm)
+    // Déplacement plus long que ce seuil sans coupe (Lot G) : le fil traîne
+    // sur le tissu. Même seuil par défaut que les coupes automatiques.
+    Micrometers trim_threshold{3'000};
     std::size_t max_stitches{100'000};
     std::optional<stitch::BoundsUm> hoop;      // cadre : hors limites = erreur
     std::size_t max_findings_per_category{50}; // anti-inondation

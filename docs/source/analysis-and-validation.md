@@ -14,15 +14,45 @@ appliquer de correction automatique silencieuse.
 | Catégorie | Condition (par défaut) | Gravité |
 |---|---|---|
 | `vide` | aucun point | Erreur |
-| `point-court` | segment cousu < 0,5 mm | Avertissement |
+| `point-court` | segment cousu < 0,5 mm, hors points d'arrêt (passe `Lock`) | Avertissement |
 | `point-long` | segment cousu > 7 mm | Avertissement |
 | `saut-long` | déplacement > 30 mm | Avertissement |
+| `saut-sans-coupe` | déplacement > `trim_threshold` (3 mm) sans `Trim` | Avertissement |
 | `hors-cadre` | point hors du cadre (si fourni) | Erreur |
 | `trop-de-points` | > 100 000 points | Avertissement |
 
 Chaque problème porte une **gravité** (`Info`/`Warning`/`Error`), un **message**,
 une **localisation** et l'**objet** concerné. Un plafond par catégorie évite
 l'inondation ; le résultat est **déterministe**.
+
+## Mesures de qualité (Lot G, audit marine plein cadre)
+
+En plus des règles, deux fonctions **mesurent** une séquence
+(`openstitch-cli stats` et `digitize` les impriment) :
+
+- `sequence_metrics(sequence, options)` (`metrics.hpp`), calculable sur un DST
+  relu : nombre de points, de déplacements (une suite de sauts = un
+  déplacement) et de coupes ; **déplacements plus longs que `trim_threshold`
+  sans coupe** ; **points de moins de 0,5 mm hors points d'arrêt**, les points
+  d'arrêt courts étant comptés à part. Sur un DST relu, les passes sont
+  perdues : avec `infer_locks`, un point qui revient exactement sur la
+  position d'il y a deux piqûres (aller-retour) est reconnu comme point
+  d'arrêt. S'y ajoute l'**histogramme des directions** des points d'au moins
+  1 mm, modulo 180°, par tranches de 5°. Une piqûre de longueur nulle à
+  l'arrivée d'un saut compte comme point court : c'est un enregistrement de
+  0 mm dans le fichier machine.
+- `project_metrics(project, sequence, options)` (`project_metrics.hpp`), qui
+  a besoin du projet : **objets brodés de moins de 3 mm²** (objet vectoriel
+  suivi, compté une fois), **angles de remplissage** des tatami, **part de
+  l'image non couverte** par les points et une ventilation des déplacements et
+  des points courts par type d'objet et passe.
+
+  La couverture se calcule sur les pixels de la segmentation, hors fond
+  transparent et hors couleur du fond ignoré (`excluded_rgb`). Un pixel est
+  couvert si son centre est à moins de `coverage_width / 2` (0,25 mm) d'un
+  segment cousu. Le repère est le repère vectoriel centré sur l'image, comme à
+  la vectorisation. Cette mesure n'est pas calculable depuis un DST seul
+  (origine décalée, pas d'image).
 
 ## `point-long` fantôme juste après un saut (2026-08-12)
 

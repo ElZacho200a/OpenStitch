@@ -32,6 +32,8 @@
 #include "openstitch/satin_planning/region_split.hpp"
 #include "openstitch/segmentation/segmentation.hpp"
 #include "openstitch/stitch/sequence.hpp"
+#include "openstitch/stitch_analysis/metrics.hpp"
+#include "openstitch/stitch_analysis/project_metrics.hpp"
 #include "openstitch/stitch_generation/generate.hpp"
 #include "openstitch/stitch_generation/lock.hpp"
 #include "openstitch/stitch_generation/overrides.hpp"
@@ -44,6 +46,42 @@
 #endif
 
 namespace {
+
+// Mesures de qualité d'une séquence (Lot G) : communes à `stats` (DST relu,
+// verrous reconnus par leur forme) et `digitize` (séquence effective, passes
+// connues).
+void print_sequence_metrics(const openstitch::stitch::StitchSequence& seq, bool fromDst) {
+    using namespace openstitch;
+    stitch_analysis::SequenceMetricsOptions opts;
+    opts.infer_locks = fromDst;
+    const auto m = stitch_analysis::sequence_metrics(seq, opts);
+    fmt::print("Déplacements        : {}\n", m.moves);
+    fmt::print("  > {:.1f} mm sans coupe : {}\n", opts.trim_threshold.value / 1000.0,
+               m.long_moves_without_trim);
+    fmt::print("Points < {:.1f} mm    : {} ({:.2f} %) hors points d'arrêt ; {} dans les points "
+               "d'arrêt{}\n",
+               opts.short_stitch.value / 1000.0, m.short_stitches,
+               m.stitches
+                   ? 100.0 * static_cast<double>(m.short_stitches) / static_cast<double>(m.stitches)
+                   : 0.0,
+               m.short_lock_stitches, fromDst ? " (reconnus par leur forme)" : "");
+    // Histogramme des directions : les 6 tranches de 5° les plus fréquentes.
+    std::vector<std::pair<std::size_t, int>> bins;
+    std::size_t total = 0;
+    for (int b = 0; b < 36; ++b) {
+        bins.emplace_back(m.direction_histogram[static_cast<std::size_t>(b)], b * 5);
+        total += m.direction_histogram[static_cast<std::size_t>(b)];
+    }
+    std::stable_sort(bins.begin(), bins.end(),
+                     [](const auto& a, const auto& b) { return a.first > b.first; });
+    fmt::print("Directions (points >= 1 mm, modulo 180°) :");
+    for (int k = 0; k < 6 && bins[static_cast<std::size_t>(k)].first > 0; ++k) {
+        fmt::print(" {}° {:.0f} %", bins[static_cast<std::size_t>(k)].second,
+                   100.0 * static_cast<double>(bins[static_cast<std::size_t>(k)].first) /
+                       static_cast<double>(std::max<std::size_t>(1, total)));
+    }
+    fmt::print("\n");
+}
 
 int run_info(const std::string& path, double dpi) {
     const auto info = openstitch::image::read_image_info(std::filesystem::path(path));
@@ -78,6 +116,7 @@ int run_stats(const std::string& path) {
     fmt::print("Changements de fil : {}\n", stats.color_changes);
     fmt::print("Dimensions         : {:.1f} x {:.1f} mm\n", wMm, hMm);
     fmt::print("Fil cousu estimé   : {:.2f} m\n", stats.thread_length_um / 1e6);
+    print_sequence_metrics(*seq, true);
     return 0;
 }
 
@@ -399,6 +438,33 @@ int run_digitize(const std::string& imagePath, const std::string& dstPath, doubl
                stats.stitches, stats.jumps, stats.trims, stats.color_changes);
     fmt::print("Dimensions : {:.1f} x {:.1f} mm  |  fil : {:.2f} m\n", wMm, hMm,
                stats.thread_length_um / 1e6);
+
+    // Mesures de qualité (Lot G).
+    print_sequence_metrics(*sequence, false);
+    stitch_analysis::ProjectMetricsOptions pm;
+    if (skipLargest && candidate) {
+        pm.excluded_rgb = candidate->rgb;
+    }
+    const auto quality = stitch_analysis::project_metrics(project, *sequence, pm);
+    fmt::print("Objets brodés < {:.0f} mm² : {}\n", pm.small_object_mm2, quality.small_objects);
+    if (quality.uncovered_ratio) {
+        fmt::print("Surface non couverte (hors fond ignoré) : {:.2f} %\n",
+                   *quality.uncovered_ratio * 100.0);
+    }
+    fmt::print("Angles de remplissage ({} distincts) :", quality.fill_angles_deg.size());
+    for (const auto& [deg, n] : quality.fill_angles_deg) {
+        fmt::print(" {}°x{}", deg, n);
+    }
+    fmt::print("\n");
+    fmt::print("Déplacements par source :");
+    for (const auto& [kind, n] : quality.moves_by_kind) {
+        fmt::print(" {}={}", kind, n);
+    }
+    fmt::print("\nPoints courts par source :");
+    for (const auto& [kind, n] : quality.short_stitches_by_kind) {
+        fmt::print(" {}={}", kind, n);
+    }
+    fmt::print("\n");
 
     const auto written = formats::write_dst_file(std::filesystem::path(dstPath), *sequence);
     if (!written) {
