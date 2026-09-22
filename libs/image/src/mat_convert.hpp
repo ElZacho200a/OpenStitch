@@ -15,4 +15,4 @@ namespace openstitch::image::detail {
 // Copie une Mat CV_8UC4 (RGBA) vers une Image.
 [[nodiscard]] Image image_from_mat_rgba(const cv::Mat& mat, bool source_had_alpha);
 
-}  // namespace openstitch::image::detail
+} // namespace openstitch::image::detail

@@ -20,30 +20,30 @@ namespace openstitch::image {
 // changerait la résolution de travail et sera conçu avec la segmentation.
 
 struct CropOp {
-    int x{0}, y{0}, width{0}, height{0};  // en pixels de l'image d'entrée
+    int x{0}, y{0}, width{0}, height{0}; // en pixels de l'image d'entrée
 };
 
 struct FlipOp {
-    bool horizontal{true};  // false = symétrie verticale
+    bool horizontal{true}; // false = symétrie verticale
 };
 
 struct Rotate90Op {
-    int quarter_turns{1};  // 1..3, sens horaire
+    int quarter_turns{1}; // 1..3, sens horaire
 };
 
 struct GrayscaleOp {};
 
 struct BrightnessContrastOp {
-    double brightness{0.0};  // -100..100 (décalage)
-    double contrast{0.0};    // -100..100 (pente autour de 128)
+    double brightness{0.0}; // -100..100 (décalage)
+    double contrast{0.0};   // -100..100 (pente autour de 128)
 };
 
 struct MedianDenoiseOp {
-    int strength{1};  // 1 => noyau 3, 2 => noyau 5
+    int strength{1}; // 1 => noyau 3, 2 => noyau 5
 };
 
 struct QuantizeOp {
-    int colors{8};  // 2..64
+    int colors{8}; // 2..64
 };
 
 using ImageOp = std::variant<CropOp, FlipOp, Rotate90Op, GrayscaleOp, BrightnessContrastOp,
@@ -57,4 +57,4 @@ using ImageOp = std::variant<CropOp, FlipOp, Rotate90Op, GrayscaleOp, Brightness
 // Rejoue la pile complète depuis l'original. Déterministe.
 [[nodiscard]] Result<Image> apply_pipeline(const Image& original, std::span<const ImageOp> ops);
 
-}  // namespace openstitch::image
+} // namespace openstitch::image

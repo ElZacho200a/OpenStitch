@@ -26,7 +26,7 @@ namespace openstitch::geometry {
 // l'appelant de vérifier `size() >= 2` pour savoir si la coupe a réellement
 // séparé quelque chose.
 [[nodiscard]] Result<std::vector<PathSet>> cut_path_set(const PathSet& region, Vec2um a, Vec2um b,
-                                                         Micrometers cut_width = Micrometers{20});
+                                                        Micrometers cut_width = Micrometers{20});
 
 // Variante BORNEE de `cut_path_set` (2026-08-22) : retire la meme bande de
 // largeur `cut_width`, perpendiculaire a [a,b] et centree sur son milieu,

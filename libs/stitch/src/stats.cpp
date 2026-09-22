@@ -32,7 +32,7 @@ StitchStats compute_stats(const StitchSequence& sequence) {
             break;
         case CommandType::Jump:
             ++stats.jumps;
-            prev = cmd.pos;  // le fil ne coud pas mais l'aiguille se déplace
+            prev = cmd.pos; // le fil ne coud pas mais l'aiguille se déplace
             hasPrev = true;
             break;
         case CommandType::Trim:
@@ -49,4 +49,4 @@ StitchStats compute_stats(const StitchSequence& sequence) {
     return stats;
 }
 
-}  // namespace openstitch::stitch
+} // namespace openstitch::stitch

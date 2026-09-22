@@ -19,7 +19,7 @@ PathNode corner(Vec2um p) {
     return PathNode{p, NodeType::Corner, {}, {}};
 }
 
-}  // namespace
+} // namespace
 
 Path rectangle_path(Vec2um corner1, Vec2um corner2) {
     const Micrometers left = std::min(corner1.x, corner2.x);
@@ -29,7 +29,7 @@ Path rectangle_path(Vec2um corner1, Vec2um corner2) {
     Path path;
     path.closed = true;
     path.nodes = {corner({left, bottom}), corner({right, bottom}), corner({right, top}),
-                 corner({left, top})};
+                  corner({left, top})};
     return path;
 }
 
@@ -37,10 +37,14 @@ Path ellipse_path(Vec2um corner1, Vec2um corner2) {
     // Constante Bézier standard pour approximer un quart de cercle/ellipse
     // par une courbe cubique (erreur radiale relative maximale ~0,027 %).
     constexpr double kKappa = 0.5522847498307936;
-    const double cx = (static_cast<double>(corner1.x.value) + static_cast<double>(corner2.x.value)) / 2.0;
-    const double cy = (static_cast<double>(corner1.y.value) + static_cast<double>(corner2.y.value)) / 2.0;
-    const double rx = std::abs(static_cast<double>(corner1.x.value) - static_cast<double>(corner2.x.value)) / 2.0;
-    const double ry = std::abs(static_cast<double>(corner1.y.value) - static_cast<double>(corner2.y.value)) / 2.0;
+    const double cx =
+        (static_cast<double>(corner1.x.value) + static_cast<double>(corner2.x.value)) / 2.0;
+    const double cy =
+        (static_cast<double>(corner1.y.value) + static_cast<double>(corner2.y.value)) / 2.0;
+    const double rx =
+        std::abs(static_cast<double>(corner1.x.value) - static_cast<double>(corner2.x.value)) / 2.0;
+    const double ry =
+        std::abs(static_cast<double>(corner1.y.value) - static_cast<double>(corner2.y.value)) / 2.0;
     const double hx = kKappa * rx;
     const double hy = kKappa * ry;
 
@@ -48,8 +52,8 @@ Path ellipse_path(Vec2um corner1, Vec2um corner2) {
     const Vec2um north{um(cx), um(cy + ry)};
     const Vec2um west{um(cx - rx), um(cy)};
     const Vec2um south{um(cx), um(cy - ry)};
-    const Vec2um tanUpDown{Micrometers{0}, um(hy)};   // ± vertical
-    const Vec2um tanRightLeft{um(hx), Micrometers{0}};  // ± horizontal
+    const Vec2um tanUpDown{Micrometers{0}, um(hy)};    // ± vertical
+    const Vec2um tanRightLeft{um(hx), Micrometers{0}}; // ± horizontal
 
     Path path;
     path.closed = true;
@@ -110,4 +114,4 @@ Path freeform_path(const std::vector<Vec2um>& points, Micrometers tolerance) {
     return result;
 }
 
-}  // namespace openstitch::geometry
+} // namespace openstitch::geometry

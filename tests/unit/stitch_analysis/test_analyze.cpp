@@ -24,7 +24,7 @@ std::size_t count_category(const std::vector<Finding>& f, const std::string& cat
         std::count_if(f.begin(), f.end(), [&](const Finding& x) { return x.category == cat; }));
 }
 
-}  // namespace
+} // namespace
 
 TEST_CASE("sequence vide -> une erreur 'vide'") {
     const auto f = analyze({});
@@ -48,7 +48,7 @@ TEST_CASE("point trop court detecte") {
     stitch::StitchSequence seq;
     seq.commands = {
         {um(0, 0), CommandType::Stitch, ObjectId{1}},
-        {um(200, 0), CommandType::Stitch, ObjectId{1}},  // 0,2 mm < 0,5 mm
+        {um(200, 0), CommandType::Stitch, ObjectId{1}}, // 0,2 mm < 0,5 mm
         {um(3'000, 0), CommandType::Stitch, ObjectId{1}},
     };
     const auto f = analyze(seq);
@@ -60,7 +60,7 @@ TEST_CASE("point trop long detecte") {
     stitch::StitchSequence seq;
     seq.commands = {
         {um(0, 0), CommandType::Stitch, ObjectId{1}},
-        {um(9'000, 0), CommandType::Stitch, ObjectId{1}},  // 9 mm > 7 mm
+        {um(9'000, 0), CommandType::Stitch, ObjectId{1}}, // 9 mm > 7 mm
     };
     CHECK(has_category(analyze(seq), "point-long"));
 }
@@ -69,7 +69,7 @@ TEST_CASE("saut trop long detecte") {
     stitch::StitchSequence seq;
     seq.commands = {
         {um(0, 0), CommandType::Stitch, ObjectId{1}},
-        {um(50'000, 0), CommandType::Jump, ObjectId{1}},  // 50 mm > 30 mm
+        {um(50'000, 0), CommandType::Jump, ObjectId{1}}, // 50 mm > 30 mm
         {um(50'000, 0), CommandType::Stitch, ObjectId{1}},
     };
     const auto f = analyze(seq);
@@ -94,9 +94,9 @@ TEST_CASE("saut suivi d'une reprise a distance nulle -> aucun point-court ni poi
     seq.commands = {
         {um(0, 0), CommandType::Stitch, ObjectId{1}},
         {um(0, 3'000), CommandType::Stitch, ObjectId{1}},
-        {um(51'400, 4'227), CommandType::Jump, ObjectId{1}},  // ~51,4 mm, cf. export debug
-        {um(51'400, 4'227), CommandType::Stitch, ObjectId{1}},  // atterrissage : distance nulle
-        {um(52'400, 4'227), CommandType::Stitch, ObjectId{1}},  // reprise normale (1 mm)
+        {um(51'400, 4'227), CommandType::Jump, ObjectId{1}},   // ~51,4 mm, cf. export debug
+        {um(51'400, 4'227), CommandType::Stitch, ObjectId{1}}, // atterrissage : distance nulle
+        {um(52'400, 4'227), CommandType::Stitch, ObjectId{1}}, // reprise normale (1 mm)
     };
     const auto f = analyze(seq);
     CHECK(has_category(f, "saut-long"));
@@ -108,7 +108,7 @@ TEST_CASE("point hors cadre detecte") {
     stitch::StitchSequence seq;
     seq.commands = {
         {um(0, 0), CommandType::Stitch, ObjectId{1}},
-        {um(60'000, 0), CommandType::Stitch, ObjectId{1}},  // hors d'un cadre 100x100 centre
+        {um(60'000, 0), CommandType::Stitch, ObjectId{1}}, // hors d'un cadre 100x100 centre
     };
     AnalysisOptions opts;
     opts.hoop = stitch::BoundsUm{um(-50'000, -50'000), um(50'000, 50'000)};

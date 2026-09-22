@@ -9,14 +9,16 @@ using namespace openstitch;
 using namespace openstitch::geometry;
 
 namespace {
-Vec2um um(std::int32_t x, std::int32_t y) { return Vec2um{Micrometers{x}, Micrometers{y}}; }
-}  // namespace
+Vec2um um(std::int32_t x, std::int32_t y) {
+    return Vec2um{Micrometers{x}, Micrometers{y}};
+}
+} // namespace
 
 TEST_CASE("insert_node_on_segment : segment droit, insertion au milieu exact") {
     Path rail;
     rail.closed = false;
     rail.nodes = {PathNode{um(0, 0), NodeType::Corner, {}, {}},
-                 PathNode{um(10'000, 0), NodeType::Corner, {}, {}}};
+                  PathNode{um(10'000, 0), NodeType::Corner, {}, {}}};
 
     const Path out = insert_node_on_segment(rail, 0, 0.5);
     REQUIRE(out.nodes.size() == 3);
@@ -26,7 +28,8 @@ TEST_CASE("insert_node_on_segment : segment droit, insertion au milieu exact") {
     CHECK(out.nodes[2].pos == um(10'000, 0));
 }
 
-TEST_CASE("insert_node_on_segment : segment courbe, subdivision De Casteljau exacte (forme conservee)") {
+TEST_CASE(
+    "insert_node_on_segment : segment courbe, subdivision De Casteljau exacte (forme conservee)") {
     Path rail;
     rail.closed = false;
     PathNode a{um(0, 0), NodeType::Smooth, {}, um(3'000, 0)};
@@ -46,14 +49,15 @@ TEST_CASE("insert_node_on_segment : segment courbe, subdivision De Casteljau exa
     // (a la tolerance d'aplatissement pres) la MEME polyligne que l'original.
     REQUIRE(after.points.front() == before.points.front());
     REQUIRE(after.points.back() == before.points.back());
-    CHECK(polyline_length(after.points) == Catch::Approx(polyline_length(before.points)).epsilon(0.01));
+    CHECK(polyline_length(after.points) ==
+          Catch::Approx(polyline_length(before.points)).epsilon(0.01));
 }
 
 TEST_CASE("insert_node_on_segment : segment_index hors bornes renvoie le chemin inchange") {
     Path rail;
     rail.closed = false;
     rail.nodes = {PathNode{um(0, 0), NodeType::Corner, {}, {}},
-                 PathNode{um(1'000, 0), NodeType::Corner, {}, {}}};
+                  PathNode{um(1'000, 0), NodeType::Corner, {}, {}}};
     const Path out = insert_node_on_segment(rail, 5, 0.5);
     CHECK(out.nodes.size() == 2);
     CHECK(out == rail);
@@ -63,11 +67,11 @@ TEST_CASE("insert_node_on_segment : chemin ferme, segment de fermeture (dernier 
     Path tri;
     tri.closed = true;
     tri.nodes = {PathNode{um(0, 0), NodeType::Corner, {}, {}},
-                PathNode{um(10'000, 0), NodeType::Corner, {}, {}},
-                PathNode{um(0, 10'000), NodeType::Corner, {}, {}}};
-    const Path out = insert_node_on_segment(tri, 2, 0.5);  // segment noeud2 -> noeud0
+                 PathNode{um(10'000, 0), NodeType::Corner, {}, {}},
+                 PathNode{um(0, 10'000), NodeType::Corner, {}, {}}};
+    const Path out = insert_node_on_segment(tri, 2, 0.5); // segment noeud2 -> noeud0
     REQUIRE(out.nodes.size() == 4);
-    CHECK(out.nodes[3].pos == um(0, 5'000));  // milieu de (0,10000)-(0,0)
+    CHECK(out.nodes[3].pos == um(0, 5'000)); // milieu de (0,10000)-(0,0)
     CHECK(out.closed);
 }
 

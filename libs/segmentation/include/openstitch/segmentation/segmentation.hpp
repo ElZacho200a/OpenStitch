@@ -17,7 +17,7 @@ namespace openstitch::segmentation {
 // restent distinctes même si elles partagent la même couleur (§4.3).
 struct Region {
     RegionId id;
-    std::array<std::uint8_t, 3> rgb{};  // couleur représentative
+    std::array<std::uint8_t, 3> rgb{}; // couleur représentative
     std::size_t pixel_count{0};
 };
 
@@ -38,8 +38,8 @@ struct Segmentation {
 };
 
 struct SegmentationOptions {
-    int max_colors{8};      // 2..64
-    int min_region_px{16};  // régions plus petites absorbées par leur voisine
+    int max_colors{8};     // 2..64
+    int min_region_px{16}; // régions plus petites absorbées par leur voisine
     // Lissage optionnel des frontières : après l'affectation initiale
     // pixel-à-pixel (au plus proche centre Lab, intrinsèquement bruitée —
     // effet « poivre et sel » sur les photos/dégradés/artefacts JPEG),
@@ -66,16 +66,16 @@ struct SegmentationOptions {
 // Supprime une région en l'absorbant dans sa voisine majoritaire (choix
 // déterministe), ou dans le fond si elle n'a aucune voisine.
 // Renvoie {absorbeur (invalide = fond), indices réétiquetés}.
-[[nodiscard]] Result<std::pair<RegionId, std::vector<std::uint32_t>>> remove_region(
-    Segmentation& seg, RegionId id);
+[[nodiscard]] Result<std::pair<RegionId, std::vector<std::uint32_t>>>
+remove_region(Segmentation& seg, RegionId id);
 
 // Change la couleur représentative. Renvoie l'ancienne couleur.
-[[nodiscard]] Result<std::array<std::uint8_t, 3>> recolor_region(
-    Segmentation& seg, RegionId id, std::array<std::uint8_t, 3> rgb);
+[[nodiscard]] Result<std::array<std::uint8_t, 3>> recolor_region(Segmentation& seg, RegionId id,
+                                                                 std::array<std::uint8_t, 3> rgb);
 
 // Carte des régions en RGBA (fond transparent) ; la région `highlight`
 // est éclaircie pour matérialiser la sélection.
 [[nodiscard]] image::Image render_map(const Segmentation& seg,
                                       std::optional<RegionId> highlight = {});
 
-}  // namespace openstitch::segmentation
+} // namespace openstitch::segmentation

@@ -52,7 +52,7 @@ double net_area_um2(const geometry::PathSet& set) {
 // Même principe que le recouvrement de jonction (`extend_into_confluence`,
 // libs/auto_satin) et la pratique standard du métier (chevaucher plutôt que
 // raccorder pile, cf. audit Wilcom Hatch — Column B/miter joints, docs/source/satin.md).
-constexpr Micrometers kCoverageOverlap{400};  // 0,4 mm
+constexpr Micrometers kCoverageOverlap{400}; // 0,4 mm
 
 std::vector<geometry::Path> shrink_strips_for_cutout(const std::vector<geometry::Path>& strips) {
     std::vector<geometry::Path> out;
@@ -61,9 +61,10 @@ std::vector<geometry::Path> shrink_strips_for_cutout(const std::vector<geometry:
         const auto shrunk =
             geometry::inset_path_set(geometry::PathSet{strip, {}}, kCoverageOverlap);
         if (shrunk && !shrunk->empty()) {
-            for (const auto& piece : *shrunk) out.push_back(piece.outer);
+            for (const auto& piece : *shrunk)
+                out.push_back(piece.outer);
         } else {
-            out.push_back(strip);  // repli : bande non rétrécie plutôt qu'absente
+            out.push_back(strip); // repli : bande non rétrécie plutôt qu'absente
         }
     }
     return out;
@@ -275,8 +276,8 @@ const geometry::PathSet& largest_piece(const std::vector<geometry::PathSet>& set
 
 }  // namespace
 
-Result<AutoResult> auto_digitize(const segmentation::Segmentation& seg,
-                                 IdGenerator<ObjectId>& ids, const AutoOptions& options) {
+Result<AutoResult> auto_digitize(const segmentation::Segmentation& seg, IdGenerator<ObjectId>& ids,
+                                 const AutoOptions& options) {
     AutoResult result;
 
     // Régions vivantes, triées par identifiant pour un résultat déterministe.
@@ -323,7 +324,7 @@ Result<AutoResult> auto_digitize(const segmentation::Segmentation& seg,
         }
         auto sets = vectorization::vectorize_region(seg, id, vecOpts);
         if (!sets || sets->empty()) {
-            continue;  // région non vectorisable : ignorée sans erreur
+            continue; // région non vectorisable : ignorée sans erreur
         }
 
         // Objet vectoriel (toujours créé : c'est la géométrie éditable).

@@ -14,4 +14,4 @@ namespace openstitch::geometry {
 // Un retrait qui fait disparaître la forme renvoie une liste vide.
 [[nodiscard]] Result<std::vector<PathSet>> inset_path_set(const PathSet& set, Micrometers delta);
 
-}  // namespace openstitch::geometry
+} // namespace openstitch::geometry

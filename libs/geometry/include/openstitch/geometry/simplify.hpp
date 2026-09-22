@@ -11,4 +11,4 @@ namespace openstitch::geometry {
 // garde au moins 3 nœuds (fermé) ou 2 nœuds (ouvert).
 [[nodiscard]] Path simplify(const Path& path, Micrometers tolerance);
 
-}  // namespace openstitch::geometry
+} // namespace openstitch::geometry

@@ -26,7 +26,7 @@ struct RegionSatinabilityVerdict {
     // analyser.
     std::optional<auto_satin::SatinabilityReport> report;
     bool ready_for_generation{false};
-    std::string note;  // renseigne quand `report` est absent, ou en cas d'echec d'analyse
+    std::string note; // renseigne quand `report` est absent, ou en cas d'echec d'analyse
 };
 
 // Reanalyse une SatinRegion deja decoupee avec le pipeline existant.
@@ -36,21 +36,23 @@ struct RegionSatinabilityVerdict {
 // endpoint--endpoint (spec SGSD §14), sans quoi la region devrait en
 // principe continuer a etre decomposee (hors perimetre de cette phase :
 // aucune recursion n'est tentee ici, seulement le diagnostic).
-[[nodiscard]] RegionSatinabilityVerdict check_region_satinability(
-    const SatinRegion& region, const auto_satin::AutoSatinParameters& params = {});
+[[nodiscard]] RegionSatinabilityVerdict
+check_region_satinability(const SatinRegion& region,
+                          const auto_satin::AutoSatinParameters& params = {});
 
 struct DecompositionSatinabilityReport {
-    std::vector<RegionSatinabilityVerdict> verdicts;  // une par SatinRegion isolee a la phase 3
-    std::vector<std::size_t> not_ready;               // path_index : verdict negatif OU chemin jamais isole
+    std::vector<RegionSatinabilityVerdict> verdicts; // une par SatinRegion isolee a la phase 3
+    std::vector<std::size_t> not_ready; // path_index : verdict negatif OU chemin jamais isole
 };
 
 // Applique `check_region_satinability` a chaque region de `split`, et
 // reporte aussi automatiquement dans `not_ready` les chemins que la phase 3
 // n'a jamais reussi a isoler (`split.unresolved_paths`) -- pas de verdict
 // sans region a analyser, mais pas d'omission silencieuse non plus.
-[[nodiscard]] DecompositionSatinabilityReport check_all_regions(const RegionSplitReport& split,
-                                                                  const auto_satin::AutoSatinParameters& params = {});
+[[nodiscard]] DecompositionSatinabilityReport
+check_all_regions(const RegionSplitReport& split,
+                  const auto_satin::AutoSatinParameters& params = {});
 
 [[nodiscard]] std::string format_satinability_report(const DecompositionSatinabilityReport& report);
 
-}  // namespace openstitch::satin_planning
+} // namespace openstitch::satin_planning

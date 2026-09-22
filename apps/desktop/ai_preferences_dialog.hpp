@@ -57,4 +57,4 @@ private:
     SamWorkerClient* testClient_{nullptr};
 };
 
-}  // namespace openstitch::desktop
+} // namespace openstitch::desktop

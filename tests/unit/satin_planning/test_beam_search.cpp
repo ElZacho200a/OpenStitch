@@ -28,7 +28,7 @@ geometry::PathSet load_shape(const std::string& name) {
     return *shape;
 }
 
-}  // namespace
+} // namespace
 
 TEST_CASE("OracleGuidedSelector : t -- resout toujours la branche, journalise sa decision") {
     const geometry::PathSet shape = load_shape("t");
@@ -40,7 +40,8 @@ TEST_CASE("OracleGuidedSelector : t -- resout toujours la branche, journalise sa
     CutCandidateParams params;
     params.selector = std::ref(selector);
 
-    const RegionSplitReport split = split_region(shape, analysis->debug.graph, decomposition, params);
+    const RegionSplitReport split =
+        split_region(shape, analysis->debug.graph, decomposition, params);
     CHECK(split.unresolved_paths.empty());
     REQUIRE(split.regions.size() == 2);
 
@@ -51,7 +52,8 @@ TEST_CASE("OracleGuidedSelector : t -- resout toujours la branche, journalise sa
     CHECK(selector.decisions().front().size() <= 3);
 }
 
-TEST_CASE("OracleGuidedSelector : corpus branche -- ne resout jamais moins de chemins que le comportement par defaut") {
+TEST_CASE("OracleGuidedSelector : corpus branche -- ne resout jamais moins de chemins que le "
+          "comportement par defaut") {
     for (const std::string& name : {"t", "y", "cross", "h", "trident"}) {
         INFO("forme = " << name);
         const geometry::PathSet shape = load_shape(name);
@@ -59,12 +61,14 @@ TEST_CASE("OracleGuidedSelector : corpus branche -- ne resout jamais moins de ch
         REQUIRE(analysis.has_value());
         const DecompositionReport decomposition = decompose_into_paths(analysis->debug.graph);
 
-        const RegionSplitReport defaultSplit = split_region(shape, analysis->debug.graph, decomposition);
+        const RegionSplitReport defaultSplit =
+            split_region(shape, analysis->debug.graph, decomposition);
 
         OracleGuidedSelector selector(parametric_beam_params());
         CutCandidateParams guidedParams;
         guidedParams.selector = std::ref(selector);
-        const RegionSplitReport guidedSplit = split_region(shape, analysis->debug.graph, decomposition, guidedParams);
+        const RegionSplitReport guidedSplit =
+            split_region(shape, analysis->debug.graph, decomposition, guidedParams);
 
         // Le garde-fou de satinabilite (phase 4) s'applique en amont, dans
         // generate_cut_candidates lui-meme : le selecteur ne peut choisir
@@ -75,7 +79,8 @@ TEST_CASE("OracleGuidedSelector : corpus branche -- ne resout jamais moins de ch
     }
 }
 
-TEST_CASE("OracleGuidedSelector : H -- ameliore mesurablement la couverture du pont par rapport au comportement par defaut") {
+TEST_CASE("OracleGuidedSelector : H -- ameliore mesurablement la couverture du pont par rapport au "
+          "comportement par defaut") {
     // Non-regression directe sur la valeur de la phase 6 : mesure sur
     // 2026-08-13, le pont (§ phase 4/5, encore branche apres decoupe,
     // couverture par defaut ~69,9 %) passe a ~92,3 % avec la selection
@@ -88,11 +93,13 @@ TEST_CASE("OracleGuidedSelector : H -- ameliore mesurablement la couverture du p
     REQUIRE(analysis.has_value());
     const DecompositionReport decomposition = decompose_into_paths(analysis->debug.graph);
 
-    const RegionSplitReport defaultSplit = split_region(shape, analysis->debug.graph, decomposition);
+    const RegionSplitReport defaultSplit =
+        split_region(shape, analysis->debug.graph, decomposition);
     OracleGuidedSelector selector(parametric_beam_params());
     CutCandidateParams guidedParams;
     guidedParams.selector = std::ref(selector);
-    const RegionSplitReport guidedSplit = split_region(shape, analysis->debug.graph, decomposition, guidedParams);
+    const RegionSplitReport guidedSplit =
+        split_region(shape, analysis->debug.graph, decomposition, guidedParams);
     REQUIRE(defaultSplit.regions.size() == 3);
     REQUIRE(guidedSplit.regions.size() == 3);
 
@@ -102,7 +109,7 @@ TEST_CASE("OracleGuidedSelector : H -- ameliore mesurablement la couverture du p
     const auto bridgeCoverage = [&](const RegionSplitReport& split) {
         double coverage = 1.0;
         for (const auto& r : split.regions) {
-            if (r.area_mm2 > 300.0) {  // le pont est le plus grand fragment (~310-350mm2)
+            if (r.area_mm2 > 300.0) { // le pont est le plus grand fragment (~310-350mm2)
                 const auto v = evaluate_region_generation(r, genParams);
                 REQUIRE(v.coverage.has_value());
                 coverage = v.coverage->raw_coverage_ratio;
@@ -113,12 +120,13 @@ TEST_CASE("OracleGuidedSelector : H -- ameliore mesurablement la couverture du p
 
     const double defaultCoverage = bridgeCoverage(defaultSplit);
     const double guidedCoverage = bridgeCoverage(guidedSplit);
-    CHECK(defaultCoverage < 0.80);   // comportement par defaut : ~69,9%
-    CHECK(guidedCoverage > 0.85);    // guide par l'oracle : ~92,3%
+    CHECK(defaultCoverage < 0.80); // comportement par defaut : ~69,9%
+    CHECK(guidedCoverage > 0.85);  // guide par l'oracle : ~92,3%
     CHECK(guidedCoverage > defaultCoverage + 0.10);
 }
 
-TEST_CASE("OracleGuidedSelector : H -- evalue plusieurs candidats pour le pont, pas seulement le plus proche") {
+TEST_CASE("OracleGuidedSelector : H -- evalue plusieurs candidats pour le pont, pas seulement le "
+          "plus proche") {
     const geometry::PathSet shape = load_shape("h");
     const auto analysis = auto_satin::analyze_region(shape, {});
     REQUIRE(analysis.has_value());
@@ -128,7 +136,8 @@ TEST_CASE("OracleGuidedSelector : H -- evalue plusieurs candidats pour le pont, 
     OracleGuidedSelector selector(parametric_beam_params());
     CutCandidateParams params;
     params.selector = std::ref(selector);
-    const RegionSplitReport split = split_region(shape, analysis->debug.graph, decomposition, params);
+    const RegionSplitReport split =
+        split_region(shape, analysis->debug.graph, decomposition, params);
 
     // Le pont a deux bouts de jonction : deux evenements de detachement.
     REQUIRE(selector.decisions().size() == 2);

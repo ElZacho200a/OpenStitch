@@ -10,8 +10,8 @@ namespace openstitch::document {
 // cadres/machines (formes, marges) viendront en Phase 16 du cahier des charges.
 // Repère : origine au centre, X vers la droite, Y vers le haut.
 struct Canvas {
-    Micrometers width{100'000};   // 100 mm par défaut (cadre courant 10x10 cm)
+    Micrometers width{100'000}; // 100 mm par défaut (cadre courant 10x10 cm)
     Micrometers height{100'000};
 };
 
-}  // namespace openstitch::document
+} // namespace openstitch::document

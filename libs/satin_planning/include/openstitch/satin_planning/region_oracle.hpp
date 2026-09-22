@@ -24,9 +24,9 @@ namespace openstitch::satin_planning {
 struct RegionGenerationVerdict {
     std::size_t path_index{0};
     bool build_succeeded{false};
-    std::string build_refusal;  // rempli si build_succeeded == false (refus ou echec de couverture)
+    std::string build_refusal; // rempli si build_succeeded == false (refus ou echec de couverture)
     std::optional<satin_coverage::SatinCoverageReport> coverage;
-    bool passed{false};  // == coverage->passed ; toujours false si build_succeeded == false
+    bool passed{false}; // == coverage->passed ; toujours false si build_succeeded == false
 };
 
 // Construit reellement les colonnes satin sur `region.region` avec
@@ -36,13 +36,15 @@ struct RegionGenerationVerdict {
 // mesure la couverture obtenue avec `satin_coverage::analyze_satin_coverage`
 // (reutilise `parametric_columns` si non vide, sinon `columns` -- meme
 // selection que `autodigitize.cpp`/le CLI). Ne modifie jamais `region`.
-[[nodiscard]] RegionGenerationVerdict evaluate_region_generation(
-    const SatinRegion& region, const auto_satin::SatinColumnsParameters& genParams = {},
-    const satin_coverage::SatinCoverageConfig& coverageConfig = {}, Micrometers density = Micrometers{400});
+[[nodiscard]] RegionGenerationVerdict
+evaluate_region_generation(const SatinRegion& region,
+                           const auto_satin::SatinColumnsParameters& genParams = {},
+                           const satin_coverage::SatinCoverageConfig& coverageConfig = {},
+                           Micrometers density = Micrometers{400});
 
 struct DecompositionGenerationReport {
-    std::vector<RegionGenerationVerdict> verdicts;  // une par SatinRegion isolee a la phase 3
-    std::vector<std::size_t> failed;                // path_index : verdict negatif OU chemin jamais isole
+    std::vector<RegionGenerationVerdict> verdicts; // une par SatinRegion isolee a la phase 3
+    std::vector<std::size_t> failed; // path_index : verdict negatif OU chemin jamais isole
     // Couverture agregee (aire couverte / aire cible) sur toutes les
     // regions ayant produit un rapport de couverture -- indicateur global
     // de qualite du decoupage complet, pas seulement region par region.
@@ -52,10 +54,12 @@ struct DecompositionGenerationReport {
 // Applique `evaluate_region_generation` a chaque region de `split`, et
 // reporte aussi automatiquement dans `failed` les chemins que la phase 3
 // n'a jamais reussi a isoler (`split.unresolved_paths`).
-[[nodiscard]] DecompositionGenerationReport evaluate_decomposition_generation(
-    const RegionSplitReport& split, const auto_satin::SatinColumnsParameters& genParams = {},
-    const satin_coverage::SatinCoverageConfig& coverageConfig = {}, Micrometers density = Micrometers{400});
+[[nodiscard]] DecompositionGenerationReport
+evaluate_decomposition_generation(const RegionSplitReport& split,
+                                  const auto_satin::SatinColumnsParameters& genParams = {},
+                                  const satin_coverage::SatinCoverageConfig& coverageConfig = {},
+                                  Micrometers density = Micrometers{400});
 
 [[nodiscard]] std::string format_generation_report(const DecompositionGenerationReport& report);
 
-}  // namespace openstitch::satin_planning
+} // namespace openstitch::satin_planning

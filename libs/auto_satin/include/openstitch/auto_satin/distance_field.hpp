@@ -12,7 +12,7 @@ namespace openstitch::auto_satin {
 struct DistanceField {
     int width{0};
     int height{0};
-    std::vector<float> distance_um;  // 0 à l'extérieur
+    std::vector<float> distance_um; // 0 à l'extérieur
     RasterTransform transform;
 
     [[nodiscard]] float at(int x, int y) const {
@@ -27,4 +27,4 @@ struct DistanceField {
 
 [[nodiscard]] DistanceField distance_transform(const RasterMask& mask);
 
-}  // namespace openstitch::auto_satin
+} // namespace openstitch::auto_satin

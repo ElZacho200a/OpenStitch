@@ -12,7 +12,7 @@ namespace openstitch::segmentation {
 
 namespace {
 
-constexpr std::uint8_t kAlphaOpaque = 128;  // seuil : en dessous, pixel de fond
+constexpr std::uint8_t kAlphaOpaque = 128; // seuil : en dessous, pixel de fond
 
 std::size_t slot_of(RegionId id) {
     return static_cast<std::size_t>(id.value - 1);
@@ -70,7 +70,7 @@ std::vector<std::uint32_t> relabel(Segmentation& seg, std::uint32_t from, std::u
     return changed;
 }
 
-}  // namespace
+} // namespace
 
 const Region* Segmentation::find(RegionId id) const {
     if (!id.valid() || slot_of(id) >= region_slots.size() || !region_slots[slot_of(id)]) {
@@ -84,8 +84,8 @@ Region* Segmentation::find(RegionId id) {
 }
 
 std::size_t Segmentation::region_count() const {
-    return static_cast<std::size_t>(
-        std::count_if(region_slots.begin(), region_slots.end(), [](const auto& s) { return s.has_value(); }));
+    return static_cast<std::size_t>(std::count_if(region_slots.begin(), region_slots.end(),
+                                                  [](const auto& s) { return s.has_value(); }));
 }
 
 Result<Segmentation> segment(const image::Image& img, const SegmentationOptions& options) {
@@ -105,8 +105,9 @@ Result<Segmentation> segment(const image::Image& img, const SegmentationOptions&
     std::size_t opaqueCount = 0;
     for (std::size_t i = 0; i < pixelCount; ++i) {
         const std::uint8_t* px = img.rgba.data() + i * 4;
-        auto* dst = rgb.ptr<std::uint8_t>(static_cast<int>(i / static_cast<std::size_t>(img.width)),
-                                          static_cast<int>(i % static_cast<std::size_t>(img.width)));
+        auto* dst =
+            rgb.ptr<std::uint8_t>(static_cast<int>(i / static_cast<std::size_t>(img.width)),
+                                  static_cast<int>(i % static_cast<std::size_t>(img.width)));
         dst[0] = px[0];
         dst[1] = px[1];
         dst[2] = px[2];
@@ -200,14 +201,14 @@ Result<Segmentation> segment(const image::Image& img, const SegmentationOptions&
                     }
                 }
             }
-            cv::boxFilter(classMask, density[static_cast<std::size_t>(c)], CV_32F, cv::Size(ksize, ksize),
-                          cv::Point(-1, -1), false);
+            cv::boxFilter(classMask, density[static_cast<std::size_t>(c)], CV_32F,
+                          cv::Size(ksize, ksize), cv::Point(-1, -1), false);
         }
         cv::Mat smoothedColorIdx = colorIdx.clone();
         for (int y = 0; y < img.height; ++y) {
             for (int x = 0; x < img.width; ++x) {
                 if (colorIdx.at<int>(y, x) < 0) {
-                    continue;  // pixel transparent : jamais reclasse
+                    continue; // pixel transparent : jamais reclasse
                 }
                 int bestClass = colorIdx.at<int>(y, x);
                 float bestDensity = 0.0f;
@@ -271,8 +272,8 @@ Result<Segmentation> segment(const image::Image& img, const SegmentationOptions&
     if (options.min_region_px > 1) {
         std::vector<std::size_t> order;
         for (std::size_t s = 0; s < seg.region_slots.size(); ++s) {
-            if (seg.region_slots[s] &&
-                seg.region_slots[s]->pixel_count < static_cast<std::size_t>(options.min_region_px)) {
+            if (seg.region_slots[s] && seg.region_slots[s]->pixel_count <
+                                           static_cast<std::size_t>(options.min_region_px)) {
                 order.push_back(s);
             }
         }
@@ -374,15 +375,18 @@ image::Image render_map(const Segmentation& seg, std::optional<RegionId> highlig
         std::uint8_t* px = out.rgba.data() + i * 4;
         const bool selected = highlight && region.id == *highlight;
         // Sélection : couleur éclaircie (mélange 55 % blanc).
-        px[0] = selected ? static_cast<std::uint8_t>(region.rgb[0] + (255 - region.rgb[0]) * 55 / 100)
-                         : region.rgb[0];
-        px[1] = selected ? static_cast<std::uint8_t>(region.rgb[1] + (255 - region.rgb[1]) * 55 / 100)
-                         : region.rgb[1];
-        px[2] = selected ? static_cast<std::uint8_t>(region.rgb[2] + (255 - region.rgb[2]) * 55 / 100)
-                         : region.rgb[2];
+        px[0] = selected
+                    ? static_cast<std::uint8_t>(region.rgb[0] + (255 - region.rgb[0]) * 55 / 100)
+                    : region.rgb[0];
+        px[1] = selected
+                    ? static_cast<std::uint8_t>(region.rgb[1] + (255 - region.rgb[1]) * 55 / 100)
+                    : region.rgb[1];
+        px[2] = selected
+                    ? static_cast<std::uint8_t>(region.rgb[2] + (255 - region.rgb[2]) * 55 / 100)
+                    : region.rgb[2];
         px[3] = 255;
     }
     return out;
 }
 
-}  // namespace openstitch::segmentation
+} // namespace openstitch::segmentation

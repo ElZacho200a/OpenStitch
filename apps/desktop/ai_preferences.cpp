@@ -32,7 +32,8 @@ constexpr auto kLogLevel = "ai/logLevel";
 QString findRepoRoot() {
     QDir dir(QCoreApplication::applicationDirPath());
     for (int i = 0; i < 10; ++i) {
-        if (dir.exists(QStringLiteral("sam-worker")) && dir.exists(QStringLiteral("CMakeLists.txt"))) {
+        if (dir.exists(QStringLiteral("sam-worker")) &&
+            dir.exists(QStringLiteral("CMakeLists.txt"))) {
             return dir.absolutePath();
         }
         if (!dir.cdUp()) {
@@ -50,13 +51,14 @@ AiPreferences defaultAiPreferences() {
     if (!repoRoot.isEmpty()) {
         const QString repoRootWsl = WslPathConverter::toWsl(repoRoot);
         prefs.venvPythonPath = repoRootWsl + QStringLiteral("/sam-worker/.venv-wsl/bin/python");
-        prefs.workerScriptPath = repoRootWsl + QStringLiteral("/sam-worker/openstitch_sam_worker.py");
+        prefs.workerScriptPath =
+            repoRootWsl + QStringLiteral("/sam-worker/openstitch_sam_worker.py");
         prefs.modelsDir = QDir::toNativeSeparators(repoRoot + QStringLiteral("/sam-worker/models"));
     }
     return prefs;
 }
 
-}  // namespace
+} // namespace
 
 AiPreferences loadAiPreferences() {
     QSettings s;
@@ -71,8 +73,9 @@ AiPreferences loadAiPreferences() {
     prefs.workerScriptPath = s.value(kWorkerScript, prefs.workerScriptPath).toString();
     prefs.modelsDir = s.value(kModelsDir, prefs.modelsDir).toString();
     const int modelValue = s.value(kDefaultModel, static_cast<int>(prefs.defaultModel)).toInt();
-    prefs.defaultModel = (modelValue >= 0 && modelValue <= 3) ? static_cast<ai_segmentation::ModelId>(modelValue)
-                                                              : prefs.defaultModel;
+    prefs.defaultModel = (modelValue >= 0 && modelValue <= 3)
+                             ? static_cast<ai_segmentation::ModelId>(modelValue)
+                             : prefs.defaultModel;
     prefs.defaultDevice = s.value(kDefaultDevice, prefs.defaultDevice).toString();
     prefs.maxAnalysisResolution = s.value(kMaxResolution, prefs.maxAnalysisResolution).toInt();
     prefs.keepDiagnosticFiles = s.value(kKeepDiagnostics, prefs.keepDiagnosticFiles).toBool();
@@ -106,4 +109,4 @@ SamWorkerConfig toWorkerConfig(const AiPreferences& prefs) {
     return config;
 }
 
-}  // namespace openstitch::desktop
+} // namespace openstitch::desktop

@@ -21,10 +21,9 @@ Path from_clipper(const Clipper2Lib::Path64& path) {
     out.closed = true;
     out.nodes.reserve(path.size());
     for (const auto& pt : path) {
-        out.nodes.push_back(PathNode{
-            Vec2um{Micrometers{static_cast<std::int32_t>(pt.x)},
-                   Micrometers{static_cast<std::int32_t>(pt.y)}},
-            NodeType::Corner, std::nullopt, std::nullopt});
+        out.nodes.push_back(PathNode{Vec2um{Micrometers{static_cast<std::int32_t>(pt.x)},
+                                            Micrometers{static_cast<std::int32_t>(pt.y)}},
+                                     NodeType::Corner, std::nullopt, std::nullopt});
     }
     return out;
 }
@@ -46,12 +45,11 @@ void collect(const Clipper2Lib::PolyPath64& outer, std::vector<PathSet>& out) {
     }
 }
 
-}  // namespace
+} // namespace
 
 namespace {
 
-Result<std::vector<PathSet>> union_with(const std::vector<Path>& raw,
-                                        Clipper2Lib::FillRule rule) {
+Result<std::vector<PathSet>> union_with(const std::vector<Path>& raw, Clipper2Lib::FillRule rule) {
     Clipper2Lib::Paths64 subject;
     for (const Path& path : raw) {
         if (path.nodes.size() >= 3) {
@@ -76,7 +74,7 @@ Result<std::vector<PathSet>> union_with(const std::vector<Path>& raw,
     return out;
 }
 
-}  // namespace
+} // namespace
 
 Result<std::vector<PathSet>> clean_to_path_sets(const std::vector<Path>& raw) {
     return union_with(raw, Clipper2Lib::FillRule::EvenOdd);
@@ -86,4 +84,4 @@ Result<std::vector<PathSet>> union_nonzero(const std::vector<Path>& raw) {
     return union_with(raw, Clipper2Lib::FillRule::NonZero);
 }
 
-}  // namespace openstitch::geometry
+} // namespace openstitch::geometry

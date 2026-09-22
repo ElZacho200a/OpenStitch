@@ -13,7 +13,7 @@ namespace openstitch::formats {
 namespace {
 
 constexpr std::size_t kHeaderSize = 512;
-constexpr int kMaxDelta = 121;  // ±12,1 mm par enregistrement
+constexpr int kMaxDelta = 121; // ±12,1 mm par enregistrement
 constexpr std::int32_t kUmPerDstUnit = 100;
 
 // Point en unités DST (0,1 mm).
@@ -51,7 +51,7 @@ std::array<std::uint8_t, 3> encode_record(int dx, int dy, RecordType type) {
     const auto y = balanced_ternary(dy);
     std::uint8_t b0 = 0;
     std::uint8_t b1 = 0;
-    std::uint8_t b2 = 0x03;  // bits toujours à 1
+    std::uint8_t b2 = 0x03; // bits toujours à 1
 
     const auto set = [](std::uint8_t& b, int digit, std::uint8_t plus, std::uint8_t minus) {
         if (digit > 0) {
@@ -60,16 +60,16 @@ std::array<std::uint8_t, 3> encode_record(int dx, int dy, RecordType type) {
             b |= minus;
         }
     };
-    set(b0, x[0], 0x01, 0x02);  // x ±1
-    set(b0, x[2], 0x04, 0x08);  // x ±9
-    set(b0, y[2], 0x20, 0x10);  // y ±9
-    set(b0, y[0], 0x80, 0x40);  // y ±1
-    set(b1, x[1], 0x01, 0x02);  // x ±3
-    set(b1, x[3], 0x04, 0x08);  // x ±27
-    set(b1, y[3], 0x20, 0x10);  // y ±27
-    set(b1, y[1], 0x80, 0x40);  // y ±3
-    set(b2, x[4], 0x04, 0x08);  // x ±81
-    set(b2, y[4], 0x20, 0x10);  // y ±81
+    set(b0, x[0], 0x01, 0x02); // x ±1
+    set(b0, x[2], 0x04, 0x08); // x ±9
+    set(b0, y[2], 0x20, 0x10); // y ±9
+    set(b0, y[0], 0x80, 0x40); // y ±1
+    set(b1, x[1], 0x01, 0x02); // x ±3
+    set(b1, x[3], 0x04, 0x08); // x ±27
+    set(b1, y[3], 0x20, 0x10); // y ±27
+    set(b1, y[1], 0x80, 0x40); // y ±3
+    set(b2, x[4], 0x04, 0x08); // x ±81
+    set(b2, y[4], 0x20, 0x10); // y ±81
 
     if (type == RecordType::Jump) {
         b2 |= 0x80;
@@ -135,7 +135,7 @@ void emit_move(std::vector<std::uint8_t>& out, int dx, int dy, RecordType type) 
     out.insert(out.end(), rec.begin(), rec.end());
 }
 
-}  // namespace
+} // namespace
 
 Result<std::vector<std::uint8_t>> encode_dst(const stitch::StitchSequence& sequence,
                                              const DstWriteOptions& options) {
@@ -239,14 +239,14 @@ Result<stitch::StitchSequence> decode_dst(std::span<const std::uint8_t> bytes) {
     const auto flushZeroJumps = [&] {
         if (pendingZeroJumps >= 3) {
             // Convention inverse de l'encodeur : rafale de sauts nuls = coupe.
-            sequence.commands.push_back({Vec2um{Micrometers{pos.x * kUmPerDstUnit},
-                                                Micrometers{pos.y * kUmPerDstUnit}},
-                                         stitch::CommandType::Trim, ObjectId{}});
+            sequence.commands.push_back(
+                {Vec2um{Micrometers{pos.x * kUmPerDstUnit}, Micrometers{pos.y * kUmPerDstUnit}},
+                 stitch::CommandType::Trim, ObjectId{}});
         } else {
             for (int i = 0; i < pendingZeroJumps; ++i) {
-                sequence.commands.push_back({Vec2um{Micrometers{pos.x * kUmPerDstUnit},
-                                                    Micrometers{pos.y * kUmPerDstUnit}},
-                                             stitch::CommandType::Jump, ObjectId{}});
+                sequence.commands.push_back(
+                    {Vec2um{Micrometers{pos.x * kUmPerDstUnit}, Micrometers{pos.y * kUmPerDstUnit}},
+                     stitch::CommandType::Jump, ObjectId{}});
             }
         }
         pendingZeroJumps = 0;
@@ -301,8 +301,7 @@ Result<void> write_dst_file(const std::filesystem::path& path,
     }
     std::ofstream file(path, std::ios::binary | std::ios::trunc);
     if (!file) {
-        return fail(ErrorCategory::UserInput,
-                    "Impossible d'écrire le fichier : " + path.string());
+        return fail(ErrorCategory::UserInput, "Impossible d'écrire le fichier : " + path.string());
     }
     file.write(reinterpret_cast<const char*>(bytes->data()),
                static_cast<std::streamsize>(bytes->size()));
@@ -323,4 +322,4 @@ Result<stitch::StitchSequence> read_dst_file(const std::filesystem::path& path) 
     return decode_dst(bytes);
 }
 
-}  // namespace openstitch::formats
+} // namespace openstitch::formats

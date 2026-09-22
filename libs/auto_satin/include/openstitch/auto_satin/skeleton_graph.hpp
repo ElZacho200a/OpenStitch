@@ -23,8 +23,8 @@ struct SkeletonEdge {
     std::uint32_t id{0};
     std::uint32_t from{0};
     std::uint32_t to{0};
-    std::vector<Vec2um> centerline;      // du nœud `from` au nœud `to`
-    std::vector<double> local_radii_um;  // rayon local le long de la centerline
+    std::vector<Vec2um> centerline;     // du nœud `from` au nœud `to`
+    std::vector<double> local_radii_um; // rayon local le long de la centerline
     double length_um{0.0};
 };
 
@@ -44,4 +44,4 @@ struct SkeletonGraph {
 [[nodiscard]] SkeletonGraph build_skeleton_graph(const RasterMask& skeleton,
                                                  const DistanceField& distance);
 
-}  // namespace openstitch::auto_satin
+} // namespace openstitch::auto_satin

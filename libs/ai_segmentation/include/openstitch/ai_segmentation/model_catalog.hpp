@@ -24,11 +24,11 @@ enum class ModelId {
 // dans le protocole JSON Lines (jamais des chemins choisis côté C++).
 struct ModelDescriptor {
     ModelId id;
-    std::string_view worker_id;        // "tiny" | "small" | "base_plus" | "large"
-    std::string_view display_name;     // pour l'UI
-    std::string_view config_name;      // ex. "sam2.1_hiera_t.yaml"
-    std::string_view checkpoint_file;  // ex. "sam2.1_hiera_tiny.pt"
-    double approx_size_mb;             // indicatif, pour l'UI (espace/temps de téléchargement)
+    std::string_view worker_id;       // "tiny" | "small" | "base_plus" | "large"
+    std::string_view display_name;    // pour l'UI
+    std::string_view config_name;     // ex. "sam2.1_hiera_t.yaml"
+    std::string_view checkpoint_file; // ex. "sam2.1_hiera_tiny.pt"
+    double approx_size_mb;            // indicatif, pour l'UI (espace/temps de téléchargement)
 };
 
 // Catalogue fixe des quatre tailles supportées, dans l'ordre Tiny..Large.
@@ -43,4 +43,4 @@ struct ModelDescriptor {
 // entrée du catalogue.
 [[nodiscard]] std::optional<ModelId> model_id_from_worker_id(std::string_view worker_id);
 
-}  // namespace openstitch::ai_segmentation
+} // namespace openstitch::ai_segmentation

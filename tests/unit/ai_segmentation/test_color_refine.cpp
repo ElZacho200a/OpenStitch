@@ -21,7 +21,8 @@ Segmentation twoRegionLabelMap() {
     seg.labels.assign(16, 0);
     for (int y = 0; y < 4; ++y) {
         for (int x = 0; x < 4; ++x) {
-            seg.labels[static_cast<std::size_t>(y) * 4 + static_cast<std::size_t>(x)] = (x < 2) ? 1 : 2;
+            seg.labels[static_cast<std::size_t>(y) * 4 + static_cast<std::size_t>(x)] =
+                (x < 2) ? 1 : 2;
         }
     }
     Region region1;
@@ -41,16 +42,17 @@ Image colorSourceImage() {
     img.rgba.assign(static_cast<std::size_t>(4 * 4 * 4), 255);
     for (int y = 0; y < 4; ++y) {
         for (int x = 0; x < 4; ++x) {
-            const std::size_t idx = (static_cast<std::size_t>(y) * 4 + static_cast<std::size_t>(x)) * 4;
+            const std::size_t idx =
+                (static_cast<std::size_t>(y) * 4 + static_cast<std::size_t>(x)) * 4;
             std::uint8_t r = 0, g = 0, b = 0;
             if (x < 2) {
                 if (y < 2) {
-                    r = 220;  // rouge (haut de la region 1)
+                    r = 220; // rouge (haut de la region 1)
                 } else {
-                    b = 220;  // bleu (bas de la region 1)
+                    b = 220; // bleu (bas de la region 1)
                 }
             } else {
-                g = 220;  // vert uni (region 2 entiere)
+                g = 220; // vert uni (region 2 entiere)
             }
             img.rgba[idx + 0] = r;
             img.rgba[idx + 1] = g;
@@ -61,7 +63,7 @@ Image colorSourceImage() {
     return img;
 }
 
-}  // namespace
+} // namespace
 
 TEST_CASE("refine_label_map_by_color splits a region with two distinct colors in two") {
     const Segmentation labelMap = twoRegionLabelMap();
@@ -78,8 +80,8 @@ TEST_CASE("refine_label_map_by_color splits a region with two distinct colors in
     };
     // Le haut et le bas de la region 1 doivent porter des labels differents...
     CHECK(labelAt(0, 0) != labelAt(0, 3));
-    CHECK(labelAt(0, 0) == labelAt(1, 1));  // uniforme a l'interieur du rouge
-    CHECK(labelAt(0, 3) == labelAt(1, 2));  // uniforme a l'interieur du bleu
+    CHECK(labelAt(0, 0) == labelAt(1, 1)); // uniforme a l'interieur du rouge
+    CHECK(labelAt(0, 3) == labelAt(1, 2)); // uniforme a l'interieur du bleu
     // ...et toute la region 2 (verte) doit porter UN SEUL label, distinct des deux precedents.
     CHECK(labelAt(2, 0) == labelAt(3, 3));
     CHECK(labelAt(2, 0) != labelAt(0, 0));
@@ -104,7 +106,8 @@ TEST_CASE("refine_label_map_by_color leaves background pixels as background") {
     REQUIRE(result.has_value());
     for (int y = 0; y < 4; ++y) {
         for (int x = 1; x < 4; ++x) {
-            CHECK(result->labels[static_cast<std::size_t>(y) * 4 + static_cast<std::size_t>(x)] == 0);
+            CHECK(result->labels[static_cast<std::size_t>(y) * 4 + static_cast<std::size_t>(x)] ==
+                  0);
         }
     }
 }

@@ -18,7 +18,7 @@ double mmY(Vec2um p) {
     return -static_cast<double>(p.y.value) / 1000.0;
 }
 
-}  // namespace
+} // namespace
 
 std::string to_diagnostic_svg(const stitch::StitchSequence& sequence) {
     const auto stats = stitch::compute_stats(sequence);
@@ -32,8 +32,8 @@ std::string to_diagnostic_svg(const stitch::StitchSequence& sequence) {
         "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"{:.3f} {:.3f} {:.3f} {:.3f}\" "
         "width=\"{:.3f}mm\" height=\"{:.3f}mm\">\n",
         minX, minY, maxX - minX, maxY - minY, maxX - minX, maxY - minY);
-    svg += fmt::format("<!-- points: {} sauts: {} coupes: {} changements: {} -->\n",
-                       stats.stitches, stats.jumps, stats.trims, stats.color_changes);
+    svg += fmt::format("<!-- points: {} sauts: {} coupes: {} changements: {} -->\n", stats.stitches,
+                       stats.jumps, stats.trims, stats.color_changes);
 
     std::string sew;
     std::string jumps;
@@ -59,26 +59,23 @@ std::string to_diagnostic_svg(const stitch::StitchSequence& sequence) {
             hasPos = true;
             break;
         case stitch::CommandType::ColorChange:
-            markers += fmt::format(
-                "<circle cx=\"{:.3f}\" cy=\"{:.3f}\" r=\"0.8\" fill=\"none\" "
-                "stroke=\"red\" stroke-width=\"0.3\"/>\n",
-                mmX(cmd.pos), mmY(cmd.pos));
+            markers += fmt::format("<circle cx=\"{:.3f}\" cy=\"{:.3f}\" r=\"0.8\" fill=\"none\" "
+                                   "stroke=\"red\" stroke-width=\"0.3\"/>\n",
+                                   mmX(cmd.pos), mmY(cmd.pos));
             break;
         case stitch::CommandType::Trim:
-            markers += fmt::format(
-                "<circle cx=\"{:.3f}\" cy=\"{:.3f}\" r=\"0.5\" fill=\"red\"/>\n", mmX(cmd.pos),
-                mmY(cmd.pos));
+            markers += fmt::format("<circle cx=\"{:.3f}\" cy=\"{:.3f}\" r=\"0.5\" fill=\"red\"/>\n",
+                                   mmX(cmd.pos), mmY(cmd.pos));
             break;
         default:
             break;
         }
     }
-    svg += fmt::format("<path d=\"{}\" fill=\"none\" stroke=\"black\" stroke-width=\"0.15\"/>\n",
-                       sew);
-    svg += fmt::format(
-        "<path d=\"{}\" fill=\"none\" stroke=\"orange\" stroke-width=\"0.15\" "
-        "stroke-dasharray=\"0.8 0.5\"/>\n",
-        jumps);
+    svg +=
+        fmt::format("<path d=\"{}\" fill=\"none\" stroke=\"black\" stroke-width=\"0.15\"/>\n", sew);
+    svg += fmt::format("<path d=\"{}\" fill=\"none\" stroke=\"orange\" stroke-width=\"0.15\" "
+                       "stroke-dasharray=\"0.8 0.5\"/>\n",
+                       jumps);
     svg += markers;
     svg += "</svg>\n";
     return svg;
@@ -88,8 +85,7 @@ Result<void> write_svg_file(const std::filesystem::path& path,
                             const stitch::StitchSequence& sequence) {
     std::ofstream file(path, std::ios::binary | std::ios::trunc);
     if (!file) {
-        return fail(ErrorCategory::UserInput,
-                    "Impossible d'écrire le fichier : " + path.string());
+        return fail(ErrorCategory::UserInput, "Impossible d'écrire le fichier : " + path.string());
     }
     const std::string svg = to_diagnostic_svg(sequence);
     file << svg;
@@ -99,4 +95,4 @@ Result<void> write_svg_file(const std::filesystem::path& path,
     return {};
 }
 
-}  // namespace openstitch::formats
+} // namespace openstitch::formats

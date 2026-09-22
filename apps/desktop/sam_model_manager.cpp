@@ -11,7 +11,7 @@ namespace {
 QString toQString(std::string_view sv) {
     return QString::fromUtf8(sv.data(), static_cast<qsizetype>(sv.size()));
 }
-}  // namespace
+} // namespace
 
 SamModelManager::SamModelManager(QString modelsDir) : modelsDir_(std::move(modelsDir)) {}
 
@@ -43,4 +43,4 @@ bool SamModelManager::isInstalled(ai_segmentation::ModelId id) const {
     return status(id).installed;
 }
 
-}  // namespace openstitch::desktop
+} // namespace openstitch::desktop

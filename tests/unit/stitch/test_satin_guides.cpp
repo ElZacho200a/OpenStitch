@@ -14,8 +14,7 @@ namespace {
 geometry::Path rail(std::int32_t y) {
     geometry::Path path;
     path.closed = false;
-    path.nodes = {{{Micrometers{0}, Micrometers{y}}},
-                  {{Micrometers{10'000}, Micrometers{y}}}};
+    path.nodes = {{{Micrometers{0}, Micrometers{y}}}, {{Micrometers{10'000}, Micrometers{y}}}};
     return path;
 }
 
@@ -29,12 +28,12 @@ document::SatinParams satin() {
                {{Micrometers{10'000}, Micrometers{0}}, {Micrometers{10'000}, Micrometers{4'000}}}};
     return p;
 }
-}  // namespace
+} // namespace
 
 TEST_CASE("un guide satin deplace se projette exactement sur son rail") {
     const auto p = satin();
-    const auto moved = move_satin_guide_endpoint(
-        p, 1, SatinGuideSide::RailA, {Micrometers{6'000}, Micrometers{1'500}});
+    const auto moved = move_satin_guide_endpoint(p, 1, SatinGuideSide::RailA,
+                                                 {Micrometers{6'000}, Micrometers{1'500}});
     REQUIRE(moved.has_value());
     CHECK(moved->a == Vec2um{Micrometers{6'000}, Micrometers{0}});
     CHECK(moved->b == p.rungs[1].b);
@@ -42,10 +41,9 @@ TEST_CASE("un guide satin deplace se projette exactement sur son rail") {
 
 TEST_CASE("un guide satin ne peut pas franchir son voisin sur un seul rail") {
     const auto p = satin();
-    CHECK_FALSE(move_satin_guide_endpoint(
-                    p, 1, SatinGuideSide::RailA,
-                    {Micrometers{9'950}, Micrometers{0}})
-                    .has_value());
+    CHECK_FALSE(
+        move_satin_guide_endpoint(p, 1, SatinGuideSide::RailA, {Micrometers{9'950}, Micrometers{0}})
+            .has_value());
 }
 
 TEST_CASE("un index de guide satin obsolete est refuse") {
@@ -115,14 +113,12 @@ TEST_CASE("un guide terminal de jonction est structurel meme si les rungs sont i
     p.topology = document::SatinSectionTopology{0, 3, 7, std::nullopt};
     CHECK(satin_guide_junction(p, 0) == std::optional<std::uint32_t>{7});
     CHECK_FALSE(satin_guide_junction(p, 1).has_value());
-    CHECK_FALSE(move_satin_guide_endpoint(
-                    p, 0, SatinGuideSide::RailA,
-                    {Micrometers{1'000}, Micrometers{0}})
-                    .has_value());
-    CHECK(move_satin_guide_endpoint(
-              p, 1, SatinGuideSide::RailA,
-              {Micrometers{6'000}, Micrometers{0}})
-              .has_value());
+    CHECK_FALSE(
+        move_satin_guide_endpoint(p, 0, SatinGuideSide::RailA, {Micrometers{1'000}, Micrometers{0}})
+            .has_value());
+    CHECK(
+        move_satin_guide_endpoint(p, 1, SatinGuideSide::RailA, {Micrometers{6'000}, Micrometers{0}})
+            .has_value());
 
     std::reverse(p.rungs.begin(), p.rungs.end());
     CHECK(satin_guide_junction(p, 2) == std::optional<std::uint32_t>{7});
@@ -138,8 +134,7 @@ TEST_CASE("les guides d'une jonction sont retrouves par reseau et tries par sect
         object.id = project.object_ids.next();
         object.source_vector = sectionSource;
         auto params = satin();
-        params.topology = document::SatinSectionTopology{
-            section, 3, junction, std::nullopt};
+        params.topology = document::SatinSectionTopology{section, 3, junction, std::nullopt};
         if (reverse) {
             std::reverse(params.rungs.begin(), params.rungs.end());
         }
@@ -149,9 +144,9 @@ TEST_CASE("les guides d'une jonction sont retrouves par reseau et tries par sect
     };
 
     const ObjectId section2 = addSection(2, 7, source, false);
-    addSection(1, 7, ObjectId{99}, false);  // même ID de jonction, autre réseau
+    addSection(1, 7, ObjectId{99}, false); // même ID de jonction, autre réseau
     const ObjectId section0 = addSection(0, 7, source, true);
-    addSection(1, 8, source, false);  // même réseau, autre jonction
+    addSection(1, 8, source, false); // même réseau, autre jonction
 
     const auto refs = satin_junction_guides(project, source, 7);
     REQUIRE(refs.size() == 2);
@@ -159,7 +154,7 @@ TEST_CASE("les guides d'une jonction sont retrouves par reseau et tries par sect
     CHECK(refs[1] == SatinJunctionGuideRef{section2, 0, 2});
     CHECK(satin_junction_guides(project, ObjectId{}, 7).empty());
 
-    project.embroidery_objects.pop_back();  // section 1 du réseau absente
+    project.embroidery_objects.pop_back(); // section 1 du réseau absente
     CHECK(satin_junction_guides(project, source, 7).empty());
 }
 

@@ -7,14 +7,22 @@ using namespace openstitch::ai_segmentation;
 
 TEST_CASE("every AiErrorCode round-trips through its protocol name") {
     const AiErrorCode codes[] = {
-        AiErrorCode::WorkerNotConfigured,   AiErrorCode::WorkerStartFailed,
-        AiErrorCode::PythonNotFound,        AiErrorCode::WslNotFound,
-        AiErrorCode::VenvNotFound,          AiErrorCode::Sam2NotInstalled,
-        AiErrorCode::ModelNotInstalled,     AiErrorCode::ConfigNotFound,
-        AiErrorCode::CheckpointNotFound,    AiErrorCode::ModelCheckpointMismatch,
-        AiErrorCode::CudaUnavailable,       AiErrorCode::CudaOutOfMemory,
-        AiErrorCode::ImageLoadFailed,       AiErrorCode::InferenceFailed,
-        AiErrorCode::InvalidWorkerResponse, AiErrorCode::WorkerCrashed,
+        AiErrorCode::WorkerNotConfigured,
+        AiErrorCode::WorkerStartFailed,
+        AiErrorCode::PythonNotFound,
+        AiErrorCode::WslNotFound,
+        AiErrorCode::VenvNotFound,
+        AiErrorCode::Sam2NotInstalled,
+        AiErrorCode::ModelNotInstalled,
+        AiErrorCode::ConfigNotFound,
+        AiErrorCode::CheckpointNotFound,
+        AiErrorCode::ModelCheckpointMismatch,
+        AiErrorCode::CudaUnavailable,
+        AiErrorCode::CudaOutOfMemory,
+        AiErrorCode::ImageLoadFailed,
+        AiErrorCode::InferenceFailed,
+        AiErrorCode::InvalidWorkerResponse,
+        AiErrorCode::WorkerCrashed,
         AiErrorCode::Cancelled,
     };
     for (const AiErrorCode code : codes) {

@@ -50,8 +50,8 @@ std::pair<QString, QString> edit_state_suffix(stitch_generation::ObjectEditState
 // demande (survol).
 QString intent_tooltip(document::EmbroideryIntent intent) {
     return intent == document::EmbroideryIntent::ForcedUserChoice
-              ? QObject::tr("Créé par une action explicite de l'utilisateur")
-              : QObject::tr("Classifié automatiquement (auto-numérisation)");
+               ? QObject::tr("Créé par une action explicite de l'utilisateur")
+               : QObject::tr("Classifié automatiquement (auto-numérisation)");
 }
 
 QString embroidery_item_text(const document::EmbroideryObject& e, const QString& suffix) {
@@ -61,7 +61,7 @@ QString embroidery_item_text(const document::EmbroideryObject& e, const QString&
         .arg(type_label(e), QString::fromStdString(e.name), vis, lock, suffix);
 }
 
-}  // namespace
+} // namespace
 
 DocumentPanel::DocumentPanel(QWidget* parent) : QWidget(parent) {
     auto* layout = new QVBoxLayout(this);
@@ -79,16 +79,19 @@ DocumentPanel::DocumentPanel(QWidget* parent) : QWidget(parent) {
 
     connect(objectsList_, &QTreeWidget::currentItemChanged, this,
             [this](QTreeWidgetItem* item, QTreeWidgetItem*) {
-                if (syncing_ || item == nullptr) return;
+                if (syncing_ || item == nullptr)
+                    return;
                 // Un nœud de groupe (plan satin multi-sections) ne porte pas
                 // d'ObjectId propre -- rien à sélectionner côté document.
                 const QVariant data = item->data(0, Qt::UserRole);
-                if (!data.isValid()) return;
+                if (!data.isValid())
+                    return;
                 emit embroiderySelected(ObjectId{data.toULongLong()});
             });
     connect(regionsList_, &QListWidget::currentItemChanged, this,
             [this](QListWidgetItem* item, QListWidgetItem*) {
-                if (syncing_ || item == nullptr) return;
+                if (syncing_ || item == nullptr)
+                    return;
                 emit regionSelected(
                     RegionId{static_cast<std::uint32_t>(item->data(Qt::UserRole).toUInt())});
             });
@@ -121,7 +124,8 @@ void DocumentPanel::refresh(
 
     const auto find_vector_name = [&project](ObjectId id) -> QString {
         for (const auto& v : project.vector_objects) {
-            if (v.id == id) return QString::fromStdString(v.name);
+            if (v.id == id)
+                return QString::fromStdString(v.name);
         }
         return QObject::tr("(vecteur inconnu)");
     };
@@ -135,8 +139,8 @@ void DocumentPanel::refresh(
             }
         }
         const auto [suffix, tooltip] = edit_state_suffix(state);
-        const QString fullTooltip =
-            tooltip.isEmpty() ? intent_tooltip(e.intent) : tooltip + "\n" + intent_tooltip(e.intent);
+        const QString fullTooltip = tooltip.isEmpty() ? intent_tooltip(e.intent)
+                                                      : tooltip + "\n" + intent_tooltip(e.intent);
 
         const bool grouped = countBySourceVector[e.source_vector.value] > 1;
         QTreeWidgetItem* item = nullptr;
@@ -164,7 +168,8 @@ void DocumentPanel::refresh(
     if (project.segmentation) {
         const double mmPerPx = project.mm_per_px.value;
         for (const auto& slot : project.segmentation->region_slots) {
-            if (!slot) continue;
+            if (!slot)
+                continue;
             const double areaMm2 = slot->pixel_count * mmPerPx * mmPerPx;
             auto* item = new QListWidgetItem(
                 swatch(slot->rgb),
@@ -186,7 +191,8 @@ void DocumentPanel::syncSelection(Kind kind, std::uint64_t id) {
         // groupées, §21) -- la sélection peut cibler n'importe quel niveau.
         for (int i = 0; i < objectsList_->topLevelItemCount(); ++i) {
             QTreeWidgetItem* top = objectsList_->topLevelItem(i);
-            if (top->data(0, Qt::UserRole).isValid() && top->data(0, Qt::UserRole).toULongLong() == id) {
+            if (top->data(0, Qt::UserRole).isValid() &&
+                top->data(0, Qt::UserRole).toULongLong() == id) {
                 objectsList_->setCurrentItem(top);
                 break;
             }
@@ -199,7 +205,8 @@ void DocumentPanel::syncSelection(Kind kind, std::uint64_t id) {
                     break;
                 }
             }
-            if (found) break;
+            if (found)
+                break;
         }
         regionsList_->setCurrentItem(nullptr);
     } else if (kind == Kind::Region) {
@@ -219,4 +226,4 @@ void DocumentPanel::syncSelection(Kind kind, std::uint64_t id) {
     syncing_ = false;
 }
 
-}  // namespace openstitch::desktop
+} // namespace openstitch::desktop

@@ -93,11 +93,11 @@ document::Project rich_project() {
     document::SatinParams sp;
     sp.rail_a = square_path();
     sp.rail_b = square_path();
-    sp.rungs.push_back({Vec2um{Micrometers{100}, Micrometers{200}},
-                        Vec2um{Micrometers{300}, Micrometers{400}}});
+    sp.rungs.push_back(
+        {Vec2um{Micrometers{100}, Micrometers{200}}, Vec2um{Micrometers{300}, Micrometers{400}}});
     sp.rungs.back().link_id = 12;
-    sp.rungs.push_back({Vec2um{Micrometers{500}, Micrometers{600}},
-                        Vec2um{Micrometers{700}, Micrometers{800}}});
+    sp.rungs.push_back(
+        {Vec2um{Micrometers{500}, Micrometers{600}}, Vec2um{Micrometers{700}, Micrometers{800}}});
     sp.topology = document::SatinSectionTopology{2, 4, 7, 9};
     sp.density = Micrometers{350};
     sp.center_underlay = true;
@@ -123,7 +123,7 @@ fs::path temp_osp() {
     return fs::temp_directory_path() / "openstitch_roundtrip.osp";
 }
 
-}  // namespace
+} // namespace
 
 TEST_CASE("projet complet : save puis load = memes donnees") {
     const auto original = rich_project();
@@ -152,8 +152,7 @@ TEST_CASE("projet complet : save puis load = memes donnees") {
     REQUIRE(loaded->segmentation.has_value());
     CHECK(loaded->segmentation->labels == original.segmentation->labels);
     CHECK(loaded->segmentation->region_count() == 2);
-    CHECK(loaded->segmentation->find(RegionId{2})->rgb ==
-          std::array<std::uint8_t, 3>{0, 100, 200});
+    CHECK(loaded->segmentation->find(RegionId{2})->rgb == std::array<std::uint8_t, 3>{0, 100, 200});
 
     // Vecteurs (avec un noeud lisse a tangentes).
     REQUIRE(loaded->vector_objects.size() == 1);

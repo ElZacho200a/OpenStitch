@@ -6,9 +6,9 @@
 
 namespace openstitch::ai_segmentation {
 
-Result<segmentation::Segmentation> refine_label_map_by_color(
-    const segmentation::Segmentation& labelMap, const image::Image& sourceImage,
-    const ColorRefineOptions& options) {
+Result<segmentation::Segmentation>
+refine_label_map_by_color(const segmentation::Segmentation& labelMap,
+                          const image::Image& sourceImage, const ColorRefineOptions& options) {
     if (labelMap.width != sourceImage.width || labelMap.height != sourceImage.height) {
         return fail(ErrorCategory::Internal,
                     "Dimensions incohérentes entre la carte de labels et l'image source");
@@ -39,7 +39,8 @@ Result<segmentation::Segmentation> refine_label_map_by_color(
         for (std::size_t p = 0; p < labelMap.labels.size(); ++p) {
             if (labelMap.labels[p] == regionLabel) {
                 std::copy_n(sourceImage.rgba.data() + p * 4, 4, masked.rgba.data() + p * 4);
-                masked.rgba[p * 4 + 3] = 255;  // opaque à l'intérieur de la région, quoi qu'il arrive
+                masked.rgba[p * 4 + 3] =
+                    255; // opaque à l'intérieur de la région, quoi qu'il arrive
                 anyPixel = true;
             }
         }
@@ -49,7 +50,7 @@ Result<segmentation::Segmentation> refine_label_map_by_color(
 
         const auto subSeg = segmentation::segment(masked, segOptions);
         if (!subSeg) {
-            continue;  // région trop petite/uniforme pour être quantifiée : ignorée sans erreur
+            continue; // région trop petite/uniforme pour être quantifiée : ignorée sans erreur
         }
 
         // Fusionne les sous-régions dans le résultat global, avec de nouveaux ids.
@@ -78,4 +79,4 @@ Result<segmentation::Segmentation> refine_label_map_by_color(
     return result;
 }
 
-}  // namespace openstitch::ai_segmentation
+} // namespace openstitch::ai_segmentation

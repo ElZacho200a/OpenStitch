@@ -24,9 +24,8 @@ double net_area_um2(const geometry::PathSet& set) {
 // aller, rail B retour). Les rails sont aplatis (`geometry::flatten`) : un
 // rail parametrique est une courbe de Bezier eparse, jamais une polyligne
 // dense.
-template <typename ColumnLike>
-geometry::Path column_strip(const ColumnLike& column) {
-    constexpr Micrometers kFlattenTolerance{30};  // 0,03 mm : sous la resolution DST
+template <typename ColumnLike> geometry::Path column_strip(const ColumnLike& column) {
+    constexpr Micrometers kFlattenTolerance{30}; // 0,03 mm : sous la resolution DST
     const auto flatA = geometry::flatten(column.rail_a, kFlattenTolerance);
     const auto flatB = geometry::flatten(column.rail_b, kFlattenTolerance);
     geometry::Path strip;
@@ -42,17 +41,19 @@ geometry::Path column_strip(const ColumnLike& column) {
 }
 
 template <typename ColumnLike>
-BuiltSatinSection make_section(const ColumnLike& col, Micrometers density, Micrometers pullCompensation,
-                               bool centerUnderlay, Micrometers maxWidth) {
+BuiltSatinSection make_section(const ColumnLike& col, Micrometers density,
+                               Micrometers pullCompensation, bool centerUnderlay,
+                               Micrometers maxWidth) {
     BuiltSatinSection out;
     out.params = satin_params_from_column(col, density, pullCompensation, centerUnderlay, maxWidth);
     out.strip = column_strip(col);
     return out;
 }
 
-std::vector<BuiltSatinSection> sections_from_result(const auto_satin::SatinColumnsResult& built, Micrometers density,
-                                                    Micrometers pullCompensation, bool centerUnderlay,
-                                                    Micrometers maxWidth) {
+std::vector<BuiltSatinSection> sections_from_result(const auto_satin::SatinColumnsResult& built,
+                                                    Micrometers density,
+                                                    Micrometers pullCompensation,
+                                                    bool centerUnderlay, Micrometers maxWidth) {
     std::vector<BuiltSatinSection> out;
     if (!built.parametric_columns.empty()) {
         out.reserve(built.parametric_columns.size());
@@ -68,11 +69,12 @@ std::vector<BuiltSatinSection> sections_from_result(const auto_satin::SatinColum
     return out;
 }
 
-}  // namespace
+} // namespace
 
 SatinBuildReport build_satin_sections(const geometry::PathSet& region,
-                                      const auto_satin::SatinColumnsParameters& genParams, Micrometers density,
-                                      Micrometers pullCompensation, bool centerUnderlay, Micrometers maxWidth,
+                                      const auto_satin::SatinColumnsParameters& genParams,
+                                      Micrometers density, Micrometers pullCompensation,
+                                      bool centerUnderlay, Micrometers maxWidth,
                                       const std::string& warningLabel) {
     SatinBuildReport report;
     const std::string prefix = warningLabel.empty() ? std::string() : (warningLabel + " : ");
@@ -103,8 +105,10 @@ SatinBuildReport build_satin_sections(const geometry::PathSet& region,
         if (r.depth > 0 || r.from_residual_repair) {
             report.used_sgsd = true;
         }
-        auto secs = sections_from_result(r.columns, density, pullCompensation, centerUnderlay, maxWidth);
-        for (auto& s : secs) report.sections.push_back(std::move(s));
+        auto secs =
+            sections_from_result(r.columns, density, pullCompensation, centerUnderlay, maxWidth);
+        for (auto& s : secs)
+            report.sections.push_back(std::move(s));
     }
 
     // Le residu reste une geometrie BRUTE, complete et JAMAIS filtree -- c'est
@@ -128,11 +132,13 @@ SatinBuildReport build_satin_sections(const geometry::PathSet& region,
     // meme minuscule, sans le confondre avec un vrai trou -- mais une SOMME
     // de nombreux petits reliquats reste, elle, correctement signalee).
     double residualAreaMm2 = 0.0;
-    for (const auto& piece : report.unresolved_residual) residualAreaMm2 += net_area_um2(piece) / 1e6;
+    for (const auto& piece : report.unresolved_residual)
+        residualAreaMm2 += net_area_um2(piece) / 1e6;
     const double totalAreaMm2 = net_area_um2(region) / 1e6;
     constexpr double kGapThresholdFloorMm2 = 1.0;
     constexpr double kGapThresholdRatio = 0.03;
-    report.structural_gap = residualAreaMm2 > std::max(kGapThresholdFloorMm2, kGapThresholdRatio * totalAreaMm2);
+    report.structural_gap =
+        residualAreaMm2 > std::max(kGapThresholdFloorMm2, kGapThresholdRatio * totalAreaMm2);
 
     if (report.sections.empty()) {
         report.refusal = "Aucune colonne satin n'a pu etre construite sur cette region.";
@@ -141,4 +147,4 @@ SatinBuildReport build_satin_sections(const geometry::PathSet& region,
     return report;
 }
 
-}  // namespace openstitch::satin_planning
+} // namespace openstitch::satin_planning

@@ -18,24 +18,24 @@ private slots:
 
 void WslPathConverterTest::toWslConvertsDriveLetterPath() {
     QCOMPARE(WslPathConverter::toWsl(QStringLiteral(R"(C:\Users\foo\bar)")),
-            QStringLiteral("/mnt/c/Users/foo/bar"));
+             QStringLiteral("/mnt/c/Users/foo/bar"));
     QCOMPARE(WslPathConverter::toWsl(QStringLiteral(R"(D:\OpenStitch\ai-jobs\job-1)")),
-            QStringLiteral("/mnt/d/OpenStitch/ai-jobs/job-1"));
+             QStringLiteral("/mnt/d/OpenStitch/ai-jobs/job-1"));
 }
 
 void WslPathConverterTest::toWslLeavesAlreadyWslPathUnchanged() {
     QCOMPARE(WslPathConverter::toWsl(QStringLiteral("/mnt/c/already/wsl")),
-            QStringLiteral("/mnt/c/already/wsl"));
+             QStringLiteral("/mnt/c/already/wsl"));
 }
 
 void WslPathConverterTest::toWindowsConvertsMntPath() {
     QCOMPARE(WslPathConverter::toWindows(QStringLiteral("/mnt/c/Users/foo/bar")),
-            QStringLiteral(R"(C:\Users\foo\bar)"));
+             QStringLiteral(R"(C:\Users\foo\bar)"));
 }
 
 void WslPathConverterTest::toWindowsLeavesNonMntPathUnchanged() {
     QCOMPARE(WslPathConverter::toWindows(QStringLiteral("/home/user/venv/bin/python")),
-            QStringLiteral("/home/user/venv/bin/python"));
+             QStringLiteral("/home/user/venv/bin/python"));
 }
 
 void WslPathConverterTest::roundTripPreservesPath() {

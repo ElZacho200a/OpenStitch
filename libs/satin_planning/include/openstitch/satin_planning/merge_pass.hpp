@@ -31,14 +31,15 @@ struct MergePassParams {
 struct MergeDecision {
     std::size_t first_path_index{0};
     std::size_t second_path_index{0};
-    double separate_coverage_ratio{0.0};  // moyenne ponderee par aire de evaluate_region_generation(first)/(second)
-    double merged_coverage_ratio{0.0};    // 0 si la construction fusionnee echoue
+    double separate_coverage_ratio{
+        0.0}; // moyenne ponderee par aire de evaluate_region_generation(first)/(second)
+    double merged_coverage_ratio{0.0}; // 0 si la construction fusionnee echoue
     bool merged_build_succeeded{false};
     bool merge_recommended{false};
 };
 
 struct MergePassReport {
-    std::vector<MergeDecision> decisions;  // une par MergeCandidate de RegionSplitReport
+    std::vector<MergeDecision> decisions; // une par MergeCandidate de RegionSplitReport
 };
 
 // Evalue CHAQUE candidat de fusion independamment (pas de fusion en cascade
@@ -50,8 +51,9 @@ struct MergePassReport {
 // complet de la phase 5) et recommande la fusion si la couverture obtenue
 // ne degrade pas de plus de `coverage_tolerance` par rapport a la moyenne
 // ponderee des deux regions separees.
-[[nodiscard]] MergePassReport evaluate_merge_pass(const RegionSplitReport& split, const MergePassParams& params = {});
+[[nodiscard]] MergePassReport evaluate_merge_pass(const RegionSplitReport& split,
+                                                  const MergePassParams& params = {});
 
 [[nodiscard]] std::string format_merge_pass_report(const MergePassReport& report);
 
-}  // namespace openstitch::satin_planning
+} // namespace openstitch::satin_planning

@@ -33,4 +33,4 @@ namespace openstitch::auto_satin {
 [[nodiscard]] std::string parametric_to_svg(const geometry::PathSet& region,
                                             const SatinColumnsResult& result);
 
-}  // namespace openstitch::auto_satin
+} // namespace openstitch::auto_satin

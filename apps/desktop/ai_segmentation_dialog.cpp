@@ -43,11 +43,12 @@ QTableWidgetItem* makeCheckableItem(Qt::CheckState initial) {
     return item;
 }
 
-}  // namespace
+} // namespace
 
-AiSegmentationDialog::AiSegmentationDialog(image::Image sourceImage, Millimeters mmPerPx, AiPreferences prefs,
-                                          QWidget* parent)
-    : QDialog(parent), sourceImage_(std::move(sourceImage)), mmPerPx_(mmPerPx), prefs_(std::move(prefs)) {
+AiSegmentationDialog::AiSegmentationDialog(image::Image sourceImage, Millimeters mmPerPx,
+                                           AiPreferences prefs, QWidget* parent)
+    : QDialog(parent), sourceImage_(std::move(sourceImage)), mmPerPx_(mmPerPx),
+      prefs_(std::move(prefs)) {
     setupUi();
 }
 
@@ -71,21 +72,22 @@ void AiSegmentationDialog::setupUi() {
     // couleur mais appartenant à des formes différentes seront séparées, et
     // inversement. Pour diviser par couleur (préparation de blocs de
     // couleur), le menu Segmentation classique est le bon outil.
-    auto* explainer = new QLabel(
-        tr("Détecte des formes/objets (contours), pas des couleurs — deux zones "
-           "de même couleur mais de formes différentes seront séparées. Pour "
-           "diviser par couleur, utilisez plutôt le menu Segmentation."),
-        this);
+    auto* explainer =
+        new QLabel(tr("Détecte des formes/objets (contours), pas des couleurs — deux zones "
+                      "de même couleur mais de formes différentes seront séparées. Pour "
+                      "diviser par couleur, utilisez plutôt le menu Segmentation."),
+                   this);
     explainer->setWordWrap(true);
-    explainer->setEnabled(false);  // texte atténué : information, pas une alerte
+    explainer->setEnabled(false); // texte atténué : information, pas une alerte
     mainLayout->addWidget(explainer);
 
     auto* topRow = new QHBoxLayout;
     modelCombo_ = new QComboBox(this);
     for (const auto& descriptor : ai_segmentation::all_models()) {
-        modelCombo_->addItem(QString::fromUtf8(descriptor.display_name.data(),
-                                               static_cast<qsizetype>(descriptor.display_name.size())),
-                             static_cast<int>(descriptor.id));
+        modelCombo_->addItem(
+            QString::fromUtf8(descriptor.display_name.data(),
+                              static_cast<qsizetype>(descriptor.display_name.size())),
+            static_cast<int>(descriptor.id));
     }
     modelCombo_->setCurrentIndex(static_cast<int>(prefs_.defaultModel));
     topRow->addWidget(new QLabel(tr("Modèle :"), this));
@@ -137,7 +139,8 @@ void AiSegmentationDialog::setupUi() {
         {tr("Garder"), tr("Id"), tr("Aire (mm²)"), tr("IoU"), tr("Stabilité"), tr("Protéger")});
     maskTable_->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
     maskTable_->setSelectionBehavior(QAbstractItemView::SelectRows);
-    connect(maskTable_, &QTableWidget::itemSelectionChanged, this, &AiSegmentationDialog::onTableSelectionChanged);
+    connect(maskTable_, &QTableWidget::itemSelectionChanged, this,
+            &AiSegmentationDialog::onTableSelectionChanged);
     tableColumn->addWidget(maskTable_, 1);
     mergeButton_ = new QPushButton(tr("Fusionner la sélection"), this);
     connect(mergeButton_, &QPushButton::clicked, this, &AiSegmentationDialog::onMergeClicked);
@@ -196,7 +199,7 @@ void AiSegmentationDialog::setStatus(const QString& text) {
 
 QString AiSegmentationDialog::jobDirPath() const {
     return QStandardPaths::writableLocation(QStandardPaths::TempLocation) +
-          QStringLiteral("/OpenStitch/ai-jobs/") + jobId_;
+           QStringLiteral("/OpenStitch/ai-jobs/") + jobId_;
 }
 
 void AiSegmentationDialog::onAnalyzeClicked() {
@@ -220,7 +223,8 @@ void AiSegmentationDialog::onAnalyzeClicked() {
         QFile inputFile(jobDirPath() + QStringLiteral("/input.png"));
         if (inputFile.open(QIODevice::WriteOnly)) {
             wrote = inputFile.write(reinterpret_cast<const char*>(encoded->data()),
-                                    static_cast<qint64>(encoded->size())) == static_cast<qint64>(encoded->size());
+                                    static_cast<qint64>(encoded->size())) ==
+                    static_cast<qint64>(encoded->size());
         }
     }
     if (!wrote) {
@@ -233,10 +237,12 @@ void AiSegmentationDialog::onAnalyzeClicked() {
 
     if (client_ == nullptr) {
         client_ = new SamWorkerClient(this);
-        connect(client_, &SamWorkerClient::stateChanged, this, &AiSegmentationDialog::onWorkerStateChanged);
+        connect(client_, &SamWorkerClient::stateChanged, this,
+                &AiSegmentationDialog::onWorkerStateChanged);
         connect(client_, &SamWorkerClient::progress, this, &AiSegmentationDialog::onWorkerProgress);
         connect(client_, &SamWorkerClient::modelReady, this, &AiSegmentationDialog::onModelReady);
-        connect(client_, &SamWorkerClient::segmentResult, this, &AiSegmentationDialog::onSegmentResult);
+        connect(client_, &SamWorkerClient::segmentResult, this,
+                &AiSegmentationDialog::onSegmentResult);
         connect(client_, &SamWorkerClient::workerError, this, &AiSegmentationDialog::onWorkerError);
         connect(client_, &SamWorkerClient::requestCancelled, this, [this](QString requestId) {
             Q_UNUSED(requestId);
@@ -247,7 +253,8 @@ void AiSegmentationDialog::onAnalyzeClicked() {
             setStatus(tr("Analyse annulée."));
         });
         connect(client_, &SamWorkerClient::crashed, this, [this](QString detail) {
-            setStatus(tr("Le worker s'est arrêté de façon inattendue (%1). Nouvelle tentative…").arg(detail));
+            setStatus(tr("Le worker s'est arrêté de façon inattendue (%1). Nouvelle tentative…")
+                          .arg(detail));
         });
         client_->configure(toWorkerConfig(prefs_));
     }
@@ -255,7 +262,8 @@ void AiSegmentationDialog::onAnalyzeClicked() {
     pendingModel_ = static_cast<ai_segmentation::ModelId>(modelCombo_->currentData().toInt());
 
     if (!client_->isConfigured()) {
-        setStatus(tr("Configuration IA incomplète : ouvrez Préférences > Intelligence artificielle."));
+        setStatus(
+            tr("Configuration IA incomplète : ouvrez Préférences > Intelligence artificielle."));
         analyzeButton_->setEnabled(true);
         cancelButton_->setEnabled(false);
         progressBar_->setVisible(false);
@@ -323,7 +331,8 @@ void AiSegmentationDialog::onModelReady(QString modelWorkerId, QString device, d
     activeRequestId_ = client_->segmentImage(jobDirPath(), QStringLiteral("input.png"), params);
 }
 
-void AiSegmentationDialog::onSegmentResult(QString requestId, QString jobDir, QString masksFile, int maskCount) {
+void AiSegmentationDialog::onSegmentResult(QString requestId, QString jobDir, QString masksFile,
+                                           int maskCount) {
     Q_UNUSED(requestId);
     Q_UNUSED(maskCount);
     phase_ = Phase::Idle;
@@ -337,15 +346,16 @@ void AiSegmentationDialog::onSegmentResult(QString requestId, QString jobDir, QS
         return;
     }
     const QByteArray content = file.readAll();
-    const auto parsed =
-        ai_segmentation::parse_masks_json(std::string_view(content.constData(), static_cast<std::size_t>(content.size())));
+    const auto parsed = ai_segmentation::parse_masks_json(
+        std::string_view(content.constData(), static_cast<std::size_t>(content.size())));
     if (!parsed) {
         setStatus(tr("Échec : résultat de segmentation invalide (%1).")
                       .arg(QString::fromStdString(parsed.error().message)));
         return;
     }
     masks_ = *parsed;
-    setStatus(tr("%1 masque(s) proposé(s) — cochez ceux à conserver puis validez.").arg(masks_.masks.size()));
+    setStatus(tr("%1 masque(s) proposé(s) — cochez ceux à conserver puis validez.")
+                  .arg(masks_.masks.size()));
 
     const QPixmap preview(jobDir + QStringLiteral("/preview.png"));
     if (!preview.isNull()) {
@@ -355,8 +365,8 @@ void AiSegmentationDialog::onSegmentResult(QString requestId, QString jobDir, QS
     loadMasksIntoTable();
 }
 
-void AiSegmentationDialog::onWorkerError(QString requestId, ai_segmentation::AiErrorCode code, QString message,
-                                        QString detail) {
+void AiSegmentationDialog::onWorkerError(QString requestId, ai_segmentation::AiErrorCode code,
+                                         QString message, QString detail) {
     Q_UNUSED(requestId);
     Q_UNUSED(code);
     phase_ = Phase::Idle;
@@ -366,8 +376,10 @@ void AiSegmentationDialog::onWorkerError(QString requestId, ai_segmentation::AiE
     setStatus(detail.isEmpty() ? message : QStringLiteral("%1 (%2)").arg(message, detail));
 }
 
-QVector<std::uint8_t> AiSegmentationDialog::loadMaskPixels(const ai_segmentation::MaskEntry& entry) const {
-    const std::filesystem::path path((jobDirPath() + QStringLiteral("/") + QString::fromStdString(entry.file)).toStdString());
+QVector<std::uint8_t>
+AiSegmentationDialog::loadMaskPixels(const ai_segmentation::MaskEntry& entry) const {
+    const std::filesystem::path path(
+        (jobDirPath() + QStringLiteral("/") + QString::fromStdString(entry.file)).toStdString());
     const auto loaded = image::load_image(path);
     if (!loaded) {
         return {};
@@ -391,9 +403,12 @@ void AiSegmentationDialog::loadMasksIntoTable() {
         maskTable_->setItem(r, 0, makeCheckableItem(Qt::Checked));
         maskTable_->setItem(r, 1, new QTableWidgetItem(QString::number(entry.id)));
         maskTable_->setItem(r, 2,
-                            new QTableWidgetItem(QString::number(static_cast<double>(entry.area_pixels) * mm2PerPx, 'f', 2)));
-        maskTable_->setItem(r, 3, new QTableWidgetItem(QString::number(entry.predicted_iou, 'f', 2)));
-        maskTable_->setItem(r, 4, new QTableWidgetItem(QString::number(entry.stability_score, 'f', 2)));
+                            new QTableWidgetItem(QString::number(
+                                static_cast<double>(entry.area_pixels) * mm2PerPx, 'f', 2)));
+        maskTable_->setItem(r, 3,
+                            new QTableWidgetItem(QString::number(entry.predicted_iou, 'f', 2)));
+        maskTable_->setItem(r, 4,
+                            new QTableWidgetItem(QString::number(entry.stability_score, 'f', 2)));
         maskTable_->setItem(r, 5, makeCheckableItem(Qt::Unchecked));
     }
     validateButton_->setEnabled(maskTable_->rowCount() > 0);
@@ -404,8 +419,9 @@ void AiSegmentationDialog::onTableSelectionChanged() {
 }
 
 void AiSegmentationDialog::updateSelectedMaskPreview() {
-    const auto selectedRows = maskTable_->selectionModel() != nullptr ? maskTable_->selectionModel()->selectedRows()
-                                                                      : QModelIndexList{};
+    const auto selectedRows = maskTable_->selectionModel() != nullptr
+                                  ? maskTable_->selectionModel()->selectedRows()
+                                  : QModelIndexList{};
     if (selectedRows.isEmpty()) {
         selectionPreviewLabel_->clear();
         return;
@@ -435,13 +451,14 @@ void AiSegmentationDialog::updateSelectedMaskPreview() {
             }
         }
     }
-    selectionPreviewLabel_->setPixmap(
-        QPixmap::fromImage(image).scaled(selectionPreviewLabel_->size(), Qt::KeepAspectRatio, Qt::SmoothTransformation));
+    selectionPreviewLabel_->setPixmap(QPixmap::fromImage(image).scaled(
+        selectionPreviewLabel_->size(), Qt::KeepAspectRatio, Qt::SmoothTransformation));
 }
 
 void AiSegmentationDialog::onMergeClicked() {
-    const auto selectedRows = maskTable_->selectionModel() != nullptr ? maskTable_->selectionModel()->selectedRows()
-                                                                      : QModelIndexList{};
+    const auto selectedRows = maskTable_->selectionModel() != nullptr
+                                  ? maskTable_->selectionModel()->selectedRows()
+                                  : QModelIndexList{};
     if (selectedRows.size() < 2) {
         setStatus(tr("Sélectionnez au moins deux masques dans la liste pour les fusionner."));
         return;
@@ -473,7 +490,8 @@ void AiSegmentationDialog::onMergeClicked() {
             }
         }
     }
-    const auto mergedArea = static_cast<std::size_t>(std::count(merged.begin(), merged.end(), std::uint8_t{1}));
+    const auto mergedArea =
+        static_cast<std::size_t>(std::count(merged.begin(), merged.end(), std::uint8_t{1}));
 
     int newId = 0;
     for (const auto& entry : masks_.masks) {
@@ -489,9 +507,9 @@ void AiSegmentationDialog::onMergeClicked() {
     maskPixels_.insert(newId, merged);
 
     for (const int id : ids) {
-        masks_.masks.erase(
-            std::remove_if(masks_.masks.begin(), masks_.masks.end(), [id](const auto& e) { return e.id == id; }),
-            masks_.masks.end());
+        masks_.masks.erase(std::remove_if(masks_.masks.begin(), masks_.masks.end(),
+                                          [id](const auto& e) { return e.id == id; }),
+                           masks_.masks.end());
         maskPixels_.remove(id);
     }
 
@@ -509,7 +527,9 @@ void AiSegmentationDialog::onMergeClicked() {
     maskTable_->setItem(r, 0, makeCheckableItem(Qt::Checked));
     maskTable_->setItem(r, 1, new QTableWidgetItem(QString::number(newId)));
     const double mm2PerPx = mmPerPx_.value * mmPerPx_.value;
-    maskTable_->setItem(r, 2, new QTableWidgetItem(QString::number(static_cast<double>(mergedArea) * mm2PerPx, 'f', 2)));
+    maskTable_->setItem(
+        r, 2,
+        new QTableWidgetItem(QString::number(static_cast<double>(mergedArea) * mm2PerPx, 'f', 2)));
     maskTable_->setItem(r, 3, new QTableWidgetItem(QString::number(maxIou, 'f', 2)));
     maskTable_->setItem(r, 4, new QTableWidgetItem(QString::number(maxStability, 'f', 2)));
     maskTable_->setItem(r, 5, makeCheckableItem(Qt::Unchecked));
@@ -532,8 +552,9 @@ void AiSegmentationDialog::onValidateClicked() {
         ai_segmentation::LabelMaskInput input;
         input.mask_id = id;
         input.pixels.assign(pixelsIt->begin(), pixelsIt->end());
-        input.rgb = {static_cast<std::uint8_t>((id * 53) % 180 + 60), static_cast<std::uint8_t>((id * 97) % 180 + 60),
-                    static_cast<std::uint8_t>((id * 151) % 180 + 60)};
+        input.rgb = {static_cast<std::uint8_t>((id * 53) % 180 + 60),
+                     static_cast<std::uint8_t>((id * 97) % 180 + 60),
+                     static_cast<std::uint8_t>((id * 151) % 180 + 60)};
         input.is_protected = maskTable_->item(r, 5)->checkState() == Qt::Checked;
         for (const auto& entry : masks_.masks) {
             if (entry.id == id) {
@@ -573,8 +594,8 @@ void AiSegmentationDialog::onValidateClicked() {
 
     auto report = ai_segmentation::cleanup_topology(*labelMap, cleanupOptions);
     if (!report) {
-        setStatus(
-            tr("Échec du nettoyage topologique : %1").arg(QString::fromStdString(report.error().message)));
+        setStatus(tr("Échec du nettoyage topologique : %1")
+                      .arg(QString::fromStdString(report.error().message)));
         return;
     }
 
@@ -590,7 +611,8 @@ void AiSegmentationDialog::onValidateClicked() {
         ai_segmentation::ColorRefineOptions colorOptions;
         colorOptions.max_colors = colorRefineColorsSpin_->value();
         colorOptions.min_region_px = colorRefineMinSizeSpin_->value();
-        auto refined = ai_segmentation::refine_label_map_by_color(*labelMap, sourceImage_, colorOptions);
+        auto refined =
+            ai_segmentation::refine_label_map_by_color(*labelMap, sourceImage_, colorOptions);
         if (refined) {
             validatedSegmentation_ = std::move(*refined);
             accept();
@@ -608,4 +630,4 @@ std::optional<segmentation::Segmentation> AiSegmentationDialog::takeSegmentation
     return std::move(validatedSegmentation_);
 }
 
-}  // namespace openstitch::desktop
+} // namespace openstitch::desktop

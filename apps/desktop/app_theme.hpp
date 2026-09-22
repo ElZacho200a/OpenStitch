@@ -27,8 +27,8 @@ public:
     [[nodiscard]] ThemeMode mode() const { return mode_; }
     [[nodiscard]] Density density() const { return density_; }
 
-    void setMode(ThemeMode mode);        // ré-applique + persiste
-    void setDensity(Density density);    // ré-applique + persiste
+    void setMode(ThemeMode mode);     // ré-applique + persiste
+    void setDensity(Density density); // ré-applique + persiste
 
 signals:
     // Émis après un changement de thème/densité : les vues à dessin personnalisé
@@ -46,4 +46,4 @@ private:
     Tokens tokens_{light_tokens()};
 };
 
-}  // namespace openstitch::desktop
+} // namespace openstitch::desktop

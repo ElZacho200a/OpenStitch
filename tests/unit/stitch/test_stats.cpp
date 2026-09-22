@@ -10,7 +10,7 @@ namespace {
 Vec2um um(std::int32_t x, std::int32_t y) {
     return Vec2um{Micrometers{x}, Micrometers{y}};
 }
-}  // namespace
+} // namespace
 
 TEST_CASE("stats : compteurs, longueur de fil et bornes") {
     StitchSequence seq;

@@ -42,4 +42,4 @@ void UndoStack::clear() {
     redo_.clear();
 }
 
-}  // namespace openstitch::commands
+} // namespace openstitch::commands

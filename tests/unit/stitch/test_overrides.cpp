@@ -19,7 +19,7 @@ stitch::StitchCommand mk(std::int32_t x, std::int32_t y, CmdType type, ObjectId 
     return {Vec2um{Micrometers{x}, Micrometers{y}}, type, source, pass};
 }
 
-}  // namespace
+} // namespace
 
 // ---------------------------------------------------------------------------
 // fingerprint
@@ -38,7 +38,8 @@ TEST_CASE("fingerprint : stable pour une vue brute identique") {
 
 TEST_CASE("fingerprint : sensible a la position d'un seul point") {
     const ObjectId o{1};
-    std::vector<stitch::StitchCommand> a = {mk(0, 0, CmdType::Stitch, o), mk(1'000, 0, CmdType::Stitch, o)};
+    std::vector<stitch::StitchCommand> a = {mk(0, 0, CmdType::Stitch, o),
+                                            mk(1'000, 0, CmdType::Stitch, o)};
     auto b = a;
     b[1].pos.x = Micrometers{1'001};
     CHECK(fingerprint(a) != fingerprint(b));
@@ -46,7 +47,8 @@ TEST_CASE("fingerprint : sensible a la position d'un seul point") {
 
 TEST_CASE("fingerprint : sensible au type de commande") {
     const ObjectId o{1};
-    std::vector<stitch::StitchCommand> a = {mk(0, 0, CmdType::Stitch, o), mk(1'000, 0, CmdType::Stitch, o)};
+    std::vector<stitch::StitchCommand> a = {mk(0, 0, CmdType::Stitch, o),
+                                            mk(1'000, 0, CmdType::Stitch, o)};
     auto b = a;
     b[1].type = CmdType::Jump;
     CHECK(fingerprint(a) != fingerprint(b));
@@ -54,7 +56,8 @@ TEST_CASE("fingerprint : sensible au type de commande") {
 
 TEST_CASE("fingerprint : sensible a la passe") {
     const ObjectId o{1};
-    std::vector<stitch::StitchCommand> a = {mk(0, 0, CmdType::Stitch, o), mk(1'000, 0, CmdType::Stitch, o)};
+    std::vector<stitch::StitchCommand> a = {mk(0, 0, CmdType::Stitch, o),
+                                            mk(1'000, 0, CmdType::Stitch, o)};
     auto b = a;
     b[1].pass = Pass::Underlay;
     CHECK(fingerprint(a) != fingerprint(b));
@@ -104,11 +107,8 @@ TEST_CASE("raw_slice : reconstitue un objet meme entrelace avec un autre") {
     const ObjectId b{2};
     stitch::StitchSequence seq;
     seq.commands = {
-        mk(0, 0, CmdType::Stitch, a),
-        mk(10, 0, CmdType::Stitch, b),
-        mk(20, 0, CmdType::Stitch, a),
-        mk(30, 0, CmdType::Stitch, b),
-        mk(40, 0, CmdType::Stitch, a),
+        mk(0, 0, CmdType::Stitch, a),  mk(10, 0, CmdType::Stitch, b), mk(20, 0, CmdType::Stitch, a),
+        mk(30, 0, CmdType::Stitch, b), mk(40, 0, CmdType::Stitch, a),
     };
     const auto ra = raw_slice(seq, a);
     REQUIRE(ra.size() == 3);
@@ -130,16 +130,19 @@ namespace {
 document::SatinParams straight_column(std::int32_t x0, std::int32_t x1) {
     document::SatinParams sp;
     sp.rail_a.closed = false;
-    sp.rail_a.nodes = {{Vec2um{Micrometers{x0}, Micrometers{0}}, geometry::NodeType::Corner, {}, {}},
-                       {Vec2um{Micrometers{x1}, Micrometers{0}}, geometry::NodeType::Corner, {}, {}}};
+    sp.rail_a.nodes = {
+        {Vec2um{Micrometers{x0}, Micrometers{0}}, geometry::NodeType::Corner, {}, {}},
+        {Vec2um{Micrometers{x1}, Micrometers{0}}, geometry::NodeType::Corner, {}, {}}};
     sp.rail_b.closed = false;
-    sp.rail_b.nodes = {{Vec2um{Micrometers{x0}, Micrometers{3'000}}, geometry::NodeType::Corner, {}, {}},
-                       {Vec2um{Micrometers{x1}, Micrometers{3'000}}, geometry::NodeType::Corner, {}, {}}};
-    sp.rungs = {{Vec2um{Micrometers{x0}, Micrometers{0}}, Vec2um{Micrometers{x0}, Micrometers{3'000}}},
-                {Vec2um{Micrometers{x1}, Micrometers{0}}, Vec2um{Micrometers{x1}, Micrometers{3'000}}}};
+    sp.rail_b.nodes = {
+        {Vec2um{Micrometers{x0}, Micrometers{3'000}}, geometry::NodeType::Corner, {}, {}},
+        {Vec2um{Micrometers{x1}, Micrometers{3'000}}, geometry::NodeType::Corner, {}, {}}};
+    sp.rungs = {
+        {Vec2um{Micrometers{x0}, Micrometers{0}}, Vec2um{Micrometers{x0}, Micrometers{3'000}}},
+        {Vec2um{Micrometers{x1}, Micrometers{0}}, Vec2um{Micrometers{x1}, Micrometers{3'000}}}};
     return sp;
 }
-}  // namespace
+} // namespace
 
 TEST_CASE("raw_slice : isole chaque colonne satin routee, meme avec un trajet cache") {
     document::Project project;
@@ -148,7 +151,7 @@ TEST_CASE("raw_slice : isole chaque colonne satin routee, meme avec un trajet ca
     a.params = straight_column(0, 10'000);
     document::EmbroideryObject b;
     b.id = project.object_ids.next();
-    b.params = straight_column(14'000, 24'000);  // ecart 4mm < underpath_max (8mm)
+    b.params = straight_column(14'000, 24'000); // ecart 4mm < underpath_max (8mm)
     project.embroidery_objects = {a, b};
 
     const auto seq = generate_sequence(project);
@@ -195,7 +198,7 @@ void make_manually_edited(document::Project& project, document::EmbroideryObject
     project.embroidery_objects.push_back(obj);
 }
 
-}  // namespace
+} // namespace
 
 TEST_CASE("apply_manual_overrides : deplace un point Stitch cible") {
     const ObjectId oid{1};
@@ -205,7 +208,7 @@ TEST_CASE("apply_manual_overrides : deplace un point Stitch cible") {
     auto seq = make_single_object_sequence(oid);
 
     document::StitchOverride ov;
-    ov.base_index = 2;  // (1000, 0)
+    ov.base_index = 2; // (1000, 0)
     ov.moved_to = Vec2um{Micrometers{1'500}, Micrometers{500}};
     make_manually_edited(project, obj, seq, {ov});
 
@@ -235,7 +238,7 @@ TEST_CASE("apply_manual_overrides : convertit Stitch en Jump") {
     CHECK(dirty.empty());
     CHECK(seq.commands[1].type == CmdType::Jump);
     CHECK(seq.commands[1].pass == Pass::Manual);
-    CHECK(seq.commands[1].pos == (Vec2um{Micrometers{0}, Micrometers{0}}));  // position inchangee
+    CHECK(seq.commands[1].pos == (Vec2um{Micrometers{0}, Micrometers{0}})); // position inchangee
 }
 
 TEST_CASE("apply_manual_overrides : insere un Trim exactement apres le point cible") {
@@ -254,8 +257,8 @@ TEST_CASE("apply_manual_overrides : insere un Trim exactement apres le point cib
     const auto dirty = apply_manual_overrides(seq, project);
     CHECK(dirty.empty());
     REQUIRE(seq.commands.size() == sizeBefore + 1);
-    CHECK(seq.commands[1].type == CmdType::Stitch);  // point cible inchange
-    CHECK(seq.commands[2].type == CmdType::Trim);    // Trim juste apres
+    CHECK(seq.commands[1].type == CmdType::Stitch); // point cible inchange
+    CHECK(seq.commands[2].type == CmdType::Trim);   // Trim juste apres
     CHECK(seq.commands[2].pos == seq.commands[1].pos);
     CHECK(seq.commands[2].pass == Pass::Manual);
     CHECK(seq.commands[2].source == oid);
@@ -282,7 +285,8 @@ TEST_CASE("apply_manual_overrides : trim apres un deplacement utilise la positio
     CHECK(seq.commands[4].pos == (Vec2um{Micrometers{2'000}, Micrometers{2'000}}));
 }
 
-TEST_CASE("apply_manual_overrides : plusieurs overrides, une insertion de Trim ne decale pas les autres index") {
+TEST_CASE("apply_manual_overrides : plusieurs overrides, une insertion de Trim ne decale pas les "
+          "autres index") {
     const ObjectId oid{1};
     document::Project project;
     document::EmbroideryObject obj;
@@ -316,16 +320,17 @@ TEST_CASE("apply_manual_overrides : Dirty par empreinte -- sequence non patchee"
     ov.base_index = 1;
     ov.moved_to = Vec2um{Micrometers{9'999}, Micrometers{9'999}};
     make_manually_edited(project, obj, seq, {ov});
-    project.embroidery_objects[0].edited_fingerprint += 1;  // corrompt l'empreinte
+    project.embroidery_objects[0].edited_fingerprint += 1; // corrompt l'empreinte
 
     const auto original = seq.commands;
     const auto dirty = apply_manual_overrides(seq, project);
     REQUIRE(dirty.size() == 1);
     CHECK(dirty[0] == oid);
-    CHECK(seq.commands == original);  // aucune retouche appliquee, aucune perte
+    CHECK(seq.commands == original); // aucune retouche appliquee, aucune perte
 }
 
-TEST_CASE("apply_manual_overrides : Dirty par compteur de points, meme si l'empreinte semble correcte") {
+TEST_CASE(
+    "apply_manual_overrides : Dirty par compteur de points, meme si l'empreinte semble correcte") {
     const ObjectId oid{1};
     document::Project project;
     document::EmbroideryObject obj;
@@ -369,15 +374,17 @@ TEST_CASE("apply_manual_overrides : isolation entre deux objets retouches") {
     document::EmbroideryObject b;
     b.id = oidB;
     document::StitchOverride ovB;
-    ovB.base_index = 1;  // deuxieme entree de B (indice brut 3 dans seq)
+    ovB.base_index = 1; // deuxieme entree de B (indice brut 3 dans seq)
     ovB.moved_to = Vec2um{Micrometers{222}, Micrometers{222}};
     make_manually_edited(project, b, seq, {ovB});
 
     const auto dirty = apply_manual_overrides(seq, project);
     CHECK(dirty.empty());
     CHECK(seq.commands[0].pos == (Vec2um{Micrometers{111}, Micrometers{111}}));
-    CHECK(seq.commands[1].pos == (Vec2um{Micrometers{1'000}, Micrometers{0}}));  // A non cible : intact
-    CHECK(seq.commands[2].pos == (Vec2um{Micrometers{2'000}, Micrometers{0}}));  // B non cible : intact
+    CHECK(seq.commands[1].pos ==
+          (Vec2um{Micrometers{1'000}, Micrometers{0}})); // A non cible : intact
+    CHECK(seq.commands[2].pos ==
+          (Vec2um{Micrometers{2'000}, Micrometers{0}})); // B non cible : intact
     CHECK(seq.commands[3].pos == (Vec2um{Micrometers{222}, Micrometers{222}}));
 }
 
@@ -385,7 +392,7 @@ TEST_CASE("apply_manual_overrides : cible hors TopStitch (Underlay) refusee") {
     const ObjectId oid{1};
     stitch::StitchSequence seq;
     seq.commands = {
-        mk(0, 0, CmdType::Stitch, oid, Pass::Underlay),  // base_index 0 : ineligible
+        mk(0, 0, CmdType::Stitch, oid, Pass::Underlay), // base_index 0 : ineligible
         mk(1'000, 0, CmdType::Stitch, oid, Pass::TopStitch),
     };
     document::Project project;
@@ -397,8 +404,8 @@ TEST_CASE("apply_manual_overrides : cible hors TopStitch (Underlay) refusee") {
     make_manually_edited(project, obj, seq, {ov});
 
     const auto dirty = apply_manual_overrides(seq, project);
-    CHECK(dirty.empty());  // toujours ManuallyEdited : l'empreinte/compteur correspondent
-    CHECK(seq.commands[0].pos == (Vec2um{Micrometers{0}, Micrometers{0}}));  // override ignore
+    CHECK(dirty.empty()); // toujours ManuallyEdited : l'empreinte/compteur correspondent
+    CHECK(seq.commands[0].pos == (Vec2um{Micrometers{0}, Micrometers{0}})); // override ignore
     CHECK(seq.commands[0].pass == Pass::Underlay);
 }
 
@@ -425,7 +432,7 @@ TEST_CASE("apply_manual_overrides : deplacer une cible Jump en passe TopStitch r
 
     const auto dirty = apply_manual_overrides(seq, project);
     CHECK(dirty.empty());
-    CHECK(seq.commands[0].pos == (Vec2um{Micrometers{0}, Micrometers{0}}));  // override ignore
+    CHECK(seq.commands[0].pos == (Vec2um{Micrometers{0}, Micrometers{0}})); // override ignore
 }
 
 TEST_CASE("apply_manual_overrides : convertit Jump en Stitch (direction inverse)") {
@@ -451,7 +458,7 @@ TEST_CASE("apply_manual_overrides : convertit Jump en Stitch (direction inverse)
     CHECK(dirty.empty());
     CHECK(seq.commands[0].type == CmdType::Stitch);
     CHECK(seq.commands[0].pass == Pass::Manual);
-    CHECK(seq.commands[0].pos == (Vec2um{Micrometers{0}, Micrometers{0}}));  // position inchangee
+    CHECK(seq.commands[0].pos == (Vec2um{Micrometers{0}, Micrometers{0}})); // position inchangee
 }
 
 TEST_CASE("apply_manual_overrides : trim apres une cible Jump accepte") {
@@ -474,12 +481,13 @@ TEST_CASE("apply_manual_overrides : trim apres une cible Jump accepte") {
     const auto dirty = apply_manual_overrides(seq, project);
     CHECK(dirty.empty());
     REQUIRE(seq.commands.size() == 3);
-    CHECK(seq.commands[0].type == CmdType::Jump);  // point cible inchange
+    CHECK(seq.commands[0].type == CmdType::Jump); // point cible inchange
     CHECK(seq.commands[1].type == CmdType::Trim);
     CHECK(seq.commands[1].pos == seq.commands[0].pos);
 }
 
-TEST_CASE("apply_manual_overrides : override combine sur cible Jump -- moved_to ignore, forced_type applique") {
+TEST_CASE("apply_manual_overrides : override combine sur cible Jump -- moved_to ignore, "
+          "forced_type applique") {
     // Validation par champ (cadrage : "un override combinant plusieurs champs
     // doit valider chaque champ separement, pas rejeter tout le bloc selon
     // une regle unique trop restrictive") : sur une cible Jump, `moved_to`
@@ -496,18 +504,18 @@ TEST_CASE("apply_manual_overrides : override combine sur cible Jump -- moved_to 
     obj.id = oid;
     document::StitchOverride ov;
     ov.base_index = 0;
-    ov.moved_to = Vec2um{Micrometers{9'999}, Micrometers{9'999}};  // invalide sur cible Jump
-    ov.forced_type = document::StitchPointType::Stitch;             // valide : Jump->Stitch
-    ov.trim_after = true;                                           // valide sur cible Jump/Stitch
+    ov.moved_to = Vec2um{Micrometers{9'999}, Micrometers{9'999}}; // invalide sur cible Jump
+    ov.forced_type = document::StitchPointType::Stitch;           // valide : Jump->Stitch
+    ov.trim_after = true;                                         // valide sur cible Jump/Stitch
     make_manually_edited(project, obj, seq, {ov});
 
     const auto dirty = apply_manual_overrides(seq, project);
     CHECK(dirty.empty());
-    CHECK(seq.commands[0].pos == (Vec2um{Micrometers{0}, Micrometers{0}}));  // moved_to ignore
-    CHECK(seq.commands[0].type == CmdType::Stitch);                          // forced_type applique
+    CHECK(seq.commands[0].pos == (Vec2um{Micrometers{0}, Micrometers{0}})); // moved_to ignore
+    CHECK(seq.commands[0].type == CmdType::Stitch);                         // forced_type applique
     CHECK(seq.commands[0].pass == Pass::Manual);
     REQUIRE(seq.commands.size() == 3);
-    CHECK(seq.commands[1].type == CmdType::Trim);  // trim_after applique
+    CHECK(seq.commands[1].type == CmdType::Trim); // trim_after applique
     CHECK(seq.commands[1].pos == (Vec2um{Micrometers{0}, Micrometers{0}}));
 }
 
@@ -518,7 +526,7 @@ TEST_CASE("apply_manual_overrides : index invalide ignore sans plantage") {
     document::EmbroideryObject obj;
     obj.id = oid;
     document::StitchOverride ov;
-    ov.base_index = 999;  // hors bornes de raw_slice (taille 4)
+    ov.base_index = 999; // hors bornes de raw_slice (taille 4)
     ov.moved_to = Vec2um{Micrometers{1}, Micrometers{1}};
     make_manually_edited(project, obj, seq, {ov});
 
@@ -535,7 +543,7 @@ TEST_CASE("apply_manual_overrides : override vide -- aucun effet") {
     document::EmbroideryObject obj;
     obj.id = oid;
     document::StitchOverride ov;
-    ov.base_index = 1;  // moved_to/forced_type nullopt, trim_after false
+    ov.base_index = 1; // moved_to/forced_type nullopt, trim_after false
     make_manually_edited(project, obj, seq, {ov});
 
     const auto original = seq.commands;
@@ -544,7 +552,8 @@ TEST_CASE("apply_manual_overrides : override vide -- aucun effet") {
     CHECK(seq.commands == original);
 }
 
-TEST_CASE("apply_manual_overrides : doublon d'overrides -- la derniere entree du vecteur l'emporte en bloc") {
+TEST_CASE("apply_manual_overrides : doublon d'overrides -- la derniere entree du vecteur l'emporte "
+          "en bloc") {
     const ObjectId oid{1};
     auto seq = make_single_object_sequence(oid);
     document::Project project;
@@ -556,7 +565,7 @@ TEST_CASE("apply_manual_overrides : doublon d'overrides -- la derniere entree du
     first.moved_to = Vec2um{Micrometers{5'000}, Micrometers{5'000}};
     document::StitchOverride second;
     second.base_index = 1;
-    second.forced_type = document::StitchPointType::Jump;  // moved_to nullopt ici
+    second.forced_type = document::StitchPointType::Jump; // moved_to nullopt ici
     make_manually_edited(project, obj, seq, {first, second});
 
     const auto dirty = apply_manual_overrides(seq, project);
@@ -574,7 +583,7 @@ TEST_CASE("apply_manual_overrides : n'a aucun effet observable si overrides est 
     document::Project project;
     document::EmbroideryObject obj;
     obj.id = oid;
-    project.embroidery_objects.push_back(obj);  // overrides vide (Clean)
+    project.embroidery_objects.push_back(obj); // overrides vide (Clean)
 
     const auto original = seq.commands;
     const auto dirty = apply_manual_overrides(seq, project);
@@ -636,7 +645,7 @@ TEST_CASE("classify_edit_state : ManuallyEdited quand empreinte et compteur corr
     document::EmbroideryObject obj;
     obj.id = ObjectId{1};
     const std::vector<stitch::StitchCommand> raw = {mk(0, 0, CmdType::Stitch, obj.id),
-                                                     mk(1'000, 0, CmdType::Stitch, obj.id)};
+                                                    mk(1'000, 0, CmdType::Stitch, obj.id)};
     obj.edited_point_count = static_cast<std::uint32_t>(raw.size());
     obj.edited_fingerprint = fingerprint(raw);
     obj.overrides.push_back(document::StitchOverride{});
@@ -689,7 +698,7 @@ document::Project make_running_square_project() {
     return project;
 }
 
-}  // namespace
+} // namespace
 
 TEST_CASE("effective_sequence : identique au brut quand l'objet est Clean") {
     const auto project = make_running_square_project();
@@ -720,17 +729,17 @@ TEST_CASE("effective_sequence : applique les retouches quand l'objet est Manuall
 
     const auto effective = effective_sequence(project);
     REQUIRE(effective.has_value());
-    REQUIRE(effective->commands.size() == raw->commands.size());  // aucun Trim insere ici
+    REQUIRE(effective->commands.size() == raw->commands.size()); // aucun Trim insere ici
     CHECK(effective->commands[1].pos == (Vec2um{Micrometers{123}, Micrometers{456}}));
     CHECK(effective->commands[1].pass == Pass::Manual);
     // Les points non cibles restent ceux du brut.
     CHECK(effective->commands[2].pos == raw->commands[2].pos);
-    CHECK(effective->commands.front() == raw->commands.front());  // Jump initial inchange
+    CHECK(effective->commands.front() == raw->commands.front()); // Jump initial inchange
 }
 
 TEST_CASE("effective_sequence : propage l'erreur de generate_sequence sans plantage") {
     auto project = make_running_square_project();
-    project.embroidery_objects[0].visible = false;  // aucun objet visible -> erreur
+    project.embroidery_objects[0].visible = false; // aucun objet visible -> erreur
     const auto effective = effective_sequence(project);
     REQUIRE_FALSE(effective.has_value());
     CHECK(effective.error().category == ErrorCategory::UserInput);
@@ -830,7 +839,7 @@ TEST_CASE("edit_view : Dirty quand l'empreinte stockee ne correspond plus") {
     ov.trim_after = true;
     project.embroidery_objects[0].overrides = {ov};
     project.embroidery_objects[0].edited_point_count = static_cast<std::uint32_t>(slice.size());
-    project.embroidery_objects[0].edited_fingerprint = fingerprint(slice) + 1;  // corrompue
+    project.embroidery_objects[0].edited_fingerprint = fingerprint(slice) + 1; // corrompue
 
     const auto view = edit_view(project, oid);
     REQUIRE(view.has_value());
@@ -851,7 +860,7 @@ TEST_CASE("edit_view : Clean pour un objet absent du projet, sans plantage") {
 TEST_CASE("edit_view : propage l'erreur de generate_sequence sans plantage") {
     auto project = make_running_square_project();
     const ObjectId oid = project.embroidery_objects[0].id;
-    project.embroidery_objects[0].visible = false;  // aucun objet visible -> erreur
+    project.embroidery_objects[0].visible = false; // aucun objet visible -> erreur
     const auto view = edit_view(project, oid);
     REQUIRE_FALSE(view.has_value());
     CHECK(view.error().category == ErrorCategory::UserInput);
@@ -861,7 +870,8 @@ TEST_CASE("edit_view : propage l'erreur de generate_sequence sans plantage") {
 // classify_all_edit_states (Lot 8.2 : indicateurs par objet)
 // ---------------------------------------------------------------------------
 
-TEST_CASE("classify_all_edit_states : vide et sans appel a generate_sequence si aucun objet retouche") {
+TEST_CASE(
+    "classify_all_edit_states : vide et sans appel a generate_sequence si aucun objet retouche") {
     auto project = make_running_square_project();
     // Rendrait generate_sequence en erreur si jamais invoque -- prouve le
     // court-circuit "aucun objet retouche" avant tout calcul de sequence.
@@ -894,11 +904,11 @@ TEST_CASE("classify_all_edit_states : objets Clean absents, ManuallyEdited/Dirty
     ov.moved_to = Vec2um{Micrometers{50}, Micrometers{60}};
     project.embroidery_objects[0].overrides = {ov};
     project.embroidery_objects[0].edited_point_count = static_cast<std::uint32_t>(slice.size());
-    project.embroidery_objects[0].edited_fingerprint = fingerprint(slice) + 1;  // Dirty
+    project.embroidery_objects[0].edited_fingerprint = fingerprint(slice) + 1; // Dirty
 
     const auto states = classify_all_edit_states(project);
     REQUIRE(states.has_value());
-    REQUIRE(states->size() == 1);  // l'objet Clean n'apparait pas
+    REQUIRE(states->size() == 1); // l'objet Clean n'apparait pas
     CHECK((*states)[0].first == editedId);
     CHECK((*states)[0].second == ObjectEditState::Dirty);
 }
@@ -928,7 +938,7 @@ TEST_CASE("refresh_context : effective identique a effective_sequence, sans cibl
     const auto ctx = refresh_context(project, std::nullopt);
     REQUIRE(ctx.has_value());
     CHECK(ctx->effective.commands == expected->commands);
-    CHECK_FALSE(ctx->target_view.has_value());  // aucune cible demandee
+    CHECK_FALSE(ctx->target_view.has_value()); // aucune cible demandee
     REQUIRE(ctx->edit_states.size() == 1);
     CHECK(ctx->edit_states[0].first == oid);
     CHECK(ctx->edit_states[0].second == ObjectEditState::ManuallyEdited);
@@ -962,12 +972,13 @@ TEST_CASE("refresh_context : target_view present et Dirty quand l'empreinte ne c
     ov.trim_after = true;
     project.embroidery_objects[0].overrides = {ov};
     project.embroidery_objects[0].edited_point_count = static_cast<std::uint32_t>(slice.size());
-    project.embroidery_objects[0].edited_fingerprint = fingerprint(slice) + 1;  // corrompue
+    project.embroidery_objects[0].edited_fingerprint = fingerprint(slice) + 1; // corrompue
 
     const auto ctx = refresh_context(project, oid);
     REQUIRE(ctx.has_value());
     REQUIRE(ctx->target_view.has_value());
-    CHECK(ctx->target_view->state == ObjectEditState::Dirty);  // jamais filtre ici : a l'appelant de le faire
+    CHECK(ctx->target_view->state ==
+          ObjectEditState::Dirty); // jamais filtre ici : a l'appelant de le faire
     // effective conserve la sequence brute pour l'objet Dirty (jamais reappliquee).
     CHECK(raw_slice(ctx->effective, oid) == slice);
 }
@@ -975,7 +986,7 @@ TEST_CASE("refresh_context : target_view present et Dirty quand l'empreinte ne c
 TEST_CASE("refresh_context : propage l'erreur de generate_sequence sans plantage") {
     auto project = make_running_square_project();
     const ObjectId oid = project.embroidery_objects[0].id;
-    project.embroidery_objects[0].visible = false;  // aucun objet visible -> erreur
+    project.embroidery_objects[0].visible = false; // aucun objet visible -> erreur
     const auto ctx = refresh_context(project, oid);
     REQUIRE_FALSE(ctx.has_value());
     CHECK(ctx.error().category == ErrorCategory::UserInput);

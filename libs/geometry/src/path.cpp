@@ -17,7 +17,7 @@ Vec2um lerp(Vec2um a, Vec2um b, double t) {
                   Micrometers{static_cast<std::int32_t>(std::lround(ay + (by - ay) * t))}};
 }
 
-}  // namespace
+} // namespace
 
 Path insert_node_on_segment(const Path& path, std::size_t segment_index, double t) {
     const std::size_t n = path.nodes.size();
@@ -71,4 +71,4 @@ Path insert_node_on_segment(const Path& path, std::size_t segment_index, double 
     return out;
 }
 
-}  // namespace openstitch::geometry
+} // namespace openstitch::geometry

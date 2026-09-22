@@ -30,7 +30,7 @@ auto_satin::AutoSatinAnalysis analyze(const std::string& shapeName, geometry::Pa
     return std::move(*analysis);
 }
 
-}  // namespace
+} // namespace
 
 TEST_CASE("split_region : rectangle -- aucune jonction, region inchangee") {
     geometry::PathSet shape;
@@ -42,7 +42,7 @@ TEST_CASE("split_region : rectangle -- aucune jonction, region inchangee") {
     const RegionSplitReport split = split_region(shape, graph, decomposition);
     REQUIRE(split.regions.size() == 1);
     CHECK(split.unresolved_paths.empty());
-    CHECK(split.cuts.empty());  // aucune jonction => aucun evenement de detachement
+    CHECK(split.cuts.empty()); // aucune jonction => aucun evenement de detachement
 
     const double originalAreaMm2 = geometry::path_set_area_um2(shape) / 1e6;
     CHECK(split.regions.front().area_mm2 == Catch::Approx(originalAreaMm2).margin(0.01));
@@ -57,7 +57,7 @@ TEST_CASE("split_region : T -- une coupe separe le pied de la barre") {
     REQUIRE(decomposition.paths.size() == 2);
 
     const RegionSplitReport split = split_region(shape, graph, decomposition);
-    CHECK(split.cuts.size() == 1);  // un seul arc detache a l'unique jonction
+    CHECK(split.cuts.size() == 1); // un seul arc detache a l'unique jonction
 
     INFO(format_region_split_report(split, decomposition));
     if (!split.cuts.empty()) {
@@ -66,8 +66,9 @@ TEST_CASE("split_region : T -- une coupe separe le pied de la barre") {
     // Aucune coupe ne peut faire APPARAITRE de matiere : la somme des
     // regions (resolues + non isolees, encore fusionnees dans une region
     // parente comptee une fois) ne depasse jamais l'aire d'origine.
-    double sumResolved = std::accumulate(split.regions.begin(), split.regions.end(), 0.0,
-                                          [](double s, const SatinRegion& r) { return s + r.area_mm2; });
+    double sumResolved =
+        std::accumulate(split.regions.begin(), split.regions.end(), 0.0,
+                        [](double s, const SatinRegion& r) { return s + r.area_mm2; });
     const double originalAreaMm2 = geometry::path_set_area_um2(shape) / 1e6;
     CHECK(sumResolved <= originalAreaMm2 + 0.5);
     CHECK(split.regions.size() + split.unresolved_paths.size() == decomposition.paths.size());
@@ -99,7 +100,8 @@ TEST_CASE("split_region : notch -- chemin unique sans jonction resolu malgre une
 }
 
 TEST_CASE("split_region : propriete generale sur le corpus de formes branchees et courbes") {
-    for (const std::string& name : {"t", "y", "cross", "h", "trident", "s", "ribbon", "notch", "wide"}) {
+    for (const std::string& name :
+         {"t", "y", "cross", "h", "trident", "s", "ribbon", "notch", "wide"}) {
         INFO("forme = " << name);
         geometry::PathSet shape;
         const auto analysis = analyze(name, shape);
@@ -111,7 +113,8 @@ TEST_CASE("split_region : propriete generale sur le corpus de formes branchees e
         // Sans jonction, aucune coupe n'est jamais tentee : le chemin unique
         // doit TOUJOURS se resoudre (regle stricte qui aurait attrape le
         // defaut `notch` ci-dessus si elle avait deja existe).
-        if (graph.junction_count() == 0) CHECK(split.unresolved_paths.empty());
+        if (graph.junction_count() == 0)
+            CHECK(split.unresolved_paths.empty());
 
         double sumResolved = 0.0;
         for (const auto& r : split.regions) {
@@ -133,7 +136,8 @@ TEST_CASE("split_region : propriete generale sur le corpus de formes branchees e
     }
 }
 
-TEST_CASE("region reelle avec boucle -- SGSD accepte chaque sous-region mais laisse un reliquat massif non couvert") {
+TEST_CASE("region reelle avec boucle -- SGSD accepte chaque sous-region mais laisse un reliquat "
+          "massif non couvert") {
     // Coordonnees exactes exportees depuis l'application (export debug) sur
     // une forme utilisateur reelle (lettre avec contre-poincon) qui
     // apparaissait visiblement sans aucun point (ni satin ni repli tatami)
@@ -157,13 +161,19 @@ TEST_CASE("region reelle avec boucle -- SGSD accepte chaque sous-region mais lai
              {-64667, 56378}, {-64219, 57722}, {-64368, 58768}, {-65862, 60261}, {-67206, 60261},
              {-68401, 59515}, {-71238, 56677}, {-73329, 53839}, {-71985, 54437}, {-69745, 52794},
              {-65563, 48463}, {-65713, 47268}}) {
-        shape.outer.nodes.push_back({Vec2um{Micrometers{x}, Micrometers{y}}, geometry::NodeType::Corner});
+        shape.outer.nodes.push_back(
+            {Vec2um{Micrometers{x}, Micrometers{y}}, geometry::NodeType::Corner});
     }
     geometry::Path hole;
     hole.closed = true;
-    for (auto [x, y] : std::vector<std::pair<int, int>>{
-             {-68849, 55184}, {-70342, 56826}, {-69745, 57573}, {-67953, 58171},
-             {-67206, 57872}, {-65862, 56229}, {-66011, 55034}, {-67057, 53839}}) {
+    for (auto [x, y] : std::vector<std::pair<int, int>>{{-68849, 55184},
+                                                        {-70342, 56826},
+                                                        {-69745, 57573},
+                                                        {-67953, 58171},
+                                                        {-67206, 57872},
+                                                        {-65862, 56229},
+                                                        {-66011, 55034},
+                                                        {-67057, 53839}}) {
         hole.nodes.push_back({Vec2um{Micrometers{x}, Micrometers{y}}, geometry::NodeType::Corner});
     }
     shape.holes.push_back(hole);
@@ -179,7 +189,7 @@ TEST_CASE("region reelle avec boucle -- SGSD accepte chaque sous-region mais lai
     REQUIRE(analysis.has_value());
     const auto& graph = analysis->debug.graph;
     WARN("jonctions=" << graph.junction_count() << " extremites=" << graph.endpoint_count()
-                       << " arcs=" << graph.edges.size());
+                      << " arcs=" << graph.edges.size());
 
     const DecompositionReport decomposition = decompose_into_paths(graph);
     WARN("chemins=" << decomposition.paths.size());
@@ -203,17 +213,20 @@ TEST_CASE("region reelle avec boucle -- SGSD accepte chaque sous-region mais lai
     std::vector<geometry::Path> strips;
     for (const auto& r : split.regions) {
         const auto built = auto_satin::build_satin_columns(r.region, prodParams);
-        const std::size_t count =
-            !built.parametric_columns.empty() ? built.parametric_columns.size() : built.columns.size();
-        INFO("chemin " << r.path_index << " (" << r.area_mm2 << "mm2) -> " << count << " colonne(s), statut="
-                        << auto_satin::to_string(built.report.status));
-        if (count > 0) ++acceptedCount;
+        const std::size_t count = !built.parametric_columns.empty()
+                                      ? built.parametric_columns.size()
+                                      : built.columns.size();
+        INFO("chemin " << r.path_index << " (" << r.area_mm2 << "mm2) -> " << count
+                       << " colonne(s), statut=" << auto_satin::to_string(built.report.status));
+        if (count > 0)
+            ++acceptedCount;
         for (const auto& col : built.parametric_columns) {
             const auto flatA = geometry::flatten(col.rail_a, Micrometers{30});
             const auto flatB = geometry::flatten(col.rail_b, Micrometers{30});
             geometry::Path strip;
             strip.closed = true;
-            for (const auto& p : flatA.points) strip.nodes.push_back({p, geometry::NodeType::Corner});
+            for (const auto& p : flatA.points)
+                strip.nodes.push_back({p, geometry::NodeType::Corner});
             for (auto it = flatB.points.rbegin(); it != flatB.points.rend(); ++it)
                 strip.nodes.push_back({*it, geometry::NodeType::Corner});
             strips.push_back(std::move(strip));
@@ -232,12 +245,15 @@ TEST_CASE("region reelle avec boucle -- SGSD accepte chaque sous-region mais lai
     const auto leftover = geometry::subtract_polygons(shape, strips);
     REQUIRE(leftover.has_value());
     double leftoverAreaMm2 = 0.0;
-    for (const auto& piece : *leftover) leftoverAreaMm2 += geometry::path_set_area_um2(piece) / 1e6;
-    INFO("aire totale=" << originalAreaMm2 << "mm2 -- reliquat non couvert=" << leftoverAreaMm2 << "mm2");
+    for (const auto& piece : *leftover)
+        leftoverAreaMm2 += geometry::path_set_area_um2(piece) / 1e6;
+    INFO("aire totale=" << originalAreaMm2 << "mm2 -- reliquat non couvert=" << leftoverAreaMm2
+                        << "mm2");
     CHECK(leftoverAreaMm2 > 0.3 * originalAreaMm2);
 }
 
-TEST_CASE("generate_cut_candidates : reutilise les JunctionSeparatorInfo Legacy comme famille supplementaire") {
+TEST_CASE("generate_cut_candidates : reutilise les JunctionSeparatorInfo Legacy comme famille "
+          "supplementaire") {
     // Regression pour le wiring §14 (2026-08-14) : `JunctionSeparatorInfo`
     // (reflex vertex du contour a la confluence, deja calcule par le moteur
     // Legacy -- cf. `auto_satin::satin_column.cpp`, `resolve_junction`)
@@ -264,14 +280,17 @@ TEST_CASE("generate_cut_candidates : reutilise les JunctionSeparatorInfo Legacy 
     const auto candidates = generate_cut_candidates(shape, graph, junctionNode, edgeId, params);
 
     REQUIRE_FALSE(candidates.empty());
-    const auto firstSeparatorIt = std::find_if(candidates.begin(), candidates.end(),
-                                                [](const CutCandidate& c) { return c.from_junction_separator; });
+    const auto firstSeparatorIt =
+        std::find_if(candidates.begin(), candidates.end(),
+                     [](const CutCandidate& c) { return c.from_junction_separator; });
     REQUIRE(firstSeparatorIt != candidates.end());
     CHECK(firstSeparatorIt->valid);
-    const auto firstSweepIt = std::find_if(candidates.begin(), candidates.end(),
-                                            [](const CutCandidate& c) { return !c.from_junction_separator; });
+    const auto firstSweepIt =
+        std::find_if(candidates.begin(), candidates.end(),
+                     [](const CutCandidate& c) { return !c.from_junction_separator; });
     REQUIRE(firstSweepIt != candidates.end());
-    CHECK(std::distance(candidates.begin(), firstSeparatorIt) < std::distance(candidates.begin(), firstSweepIt));
+    CHECK(std::distance(candidates.begin(), firstSeparatorIt) <
+          std::distance(candidates.begin(), firstSweepIt));
 
     // Et la coupe qu'elle propose reste correcte au sens des regles
     // existantes : reutilisees TELLES QUELLES (pas de nouvelle regle de
@@ -280,7 +299,8 @@ TEST_CASE("generate_cut_candidates : reutilise les JunctionSeparatorInfo Legacy 
     CHECK(firstSeparatorIt->remainder_piece_area_mm2 > 0.0);
 }
 
-TEST_CASE("generate_cut_candidates : un separateur d'une autre jonction ou trop eloigne perpendiculairement est ignore") {
+TEST_CASE("generate_cut_candidates : un separateur d'une autre jonction ou trop eloigne "
+          "perpendiculairement est ignore") {
     geometry::PathSet shape;
     const auto analysis = analyze("t", shape);
     const auto& graph = analysis.debug.graph;
@@ -297,22 +317,24 @@ TEST_CASE("generate_cut_candidates : un separateur d'une autre jonction ou trop 
         params.junction_separators.push_back(wrongJunction);
         const auto candidates = generate_cut_candidates(shape, graph, junctionNode, edgeId, params);
         CHECK_FALSE(std::any_of(candidates.begin(), candidates.end(),
-                                 [](const CutCandidate& c) { return c.from_junction_separator; }));
+                                [](const CutCandidate& c) { return c.from_junction_separator; }));
     }
 
-    SECTION("bonne jonction mais point trop eloigne perpendiculairement -- rejete par la tolerance") {
+    SECTION(
+        "bonne jonction mais point trop eloigne perpendiculairement -- rejete par la tolerance") {
         auto_satin::JunctionSeparatorInfo farPoint;
         farPoint.junction_id = junctionNode;
         const Vec2um junctionPos = graph.nodes[junctionNode].position;
         // 50mm perpendiculaire : tres au-dela de la tolerance par defaut
         // (2mm), quelle que soit l'orientation reelle de la branche.
-        farPoint.point = Vec2um{junctionPos.x + Micrometers{50'000}, junctionPos.y + Micrometers{50'000}};
+        farPoint.point =
+            Vec2um{junctionPos.x + Micrometers{50'000}, junctionPos.y + Micrometers{50'000}};
 
         CutCandidateParams params;
         params.junction_separators.push_back(farPoint);
         const auto candidates = generate_cut_candidates(shape, graph, junctionNode, edgeId, params);
         CHECK_FALSE(std::any_of(candidates.begin(), candidates.end(),
-                                 [](const CutCandidate& c) { return c.from_junction_separator; }));
+                                [](const CutCandidate& c) { return c.from_junction_separator; }));
     }
 }
 

@@ -52,21 +52,21 @@ Result<Image> apply_grayscale(const Image& in) {
     cv::Mat gray;
     cv::cvtColor(src, gray, cv::COLOR_RGBA2GRAY);
     std::vector<cv::Mat> planes;
-    cv::split(src, planes);  // récupère le canal alpha d'origine
+    cv::split(src, planes); // récupère le canal alpha d'origine
     cv::Mat dst;
     cv::merge(std::vector<cv::Mat>{gray, gray, gray, planes[3]}, dst);
     return image_from_mat_rgba(dst, in.source_had_alpha);
 }
 
 Result<Image> apply_brightness_contrast(const Image& in, const BrightnessContrastOp& op) {
-    const double b = std::clamp(op.brightness, -100.0, 100.0) * 1.28;  // -128..128
+    const double b = std::clamp(op.brightness, -100.0, 100.0) * 1.28; // -128..128
     const double c = std::clamp(op.contrast, -100.0, 100.0);
-    const double k = (c >= 0.0) ? 1.0 + c / 50.0 : 1.0 + c / 100.0;  // pente 0..3
+    const double k = (c >= 0.0) ? 1.0 + c / 50.0 : 1.0 + c / 100.0; // pente 0..3
 
     const cv::Mat src = mat_view_rgba(in);
     std::vector<cv::Mat> planes;
     cv::split(src, planes);
-    for (int i = 0; i < 3; ++i) {  // l'alpha n'est pas touché
+    for (int i = 0; i < 3; ++i) { // l'alpha n'est pas touché
         planes[static_cast<std::size_t>(i)].convertTo(planes[static_cast<std::size_t>(i)], -1, k,
                                                       128.0 * (1.0 - k) + b);
     }
@@ -93,7 +93,8 @@ Result<Image> apply_quantize(const Image& in, const QuantizeOp& op) {
     if (op.colors < 2 || op.colors > 64) {
         return fail(ErrorCategory::UserInput, "Nombre de couleurs invalide (2 à 64)");
     }
-    const auto pixelCount = static_cast<std::size_t>(in.width) * static_cast<std::size_t>(in.height);
+    const auto pixelCount =
+        static_cast<std::size_t>(in.width) * static_cast<std::size_t>(in.height);
     if (pixelCount == 0) {
         return fail(ErrorCategory::Internal, "Image vide");
     }
@@ -108,13 +109,12 @@ Result<Image> apply_quantize(const Image& in, const QuantizeOp& op) {
         samplesVec.emplace_back(px[0], px[1], px[2]);
     }
     const int k = std::min<int>(op.colors, static_cast<int>(samplesVec.size()));
-    cv::Mat samples(static_cast<int>(samplesVec.size()), 3, CV_32F,
-                    samplesVec.data());
+    cv::Mat samples(static_cast<int>(samplesVec.size()), 3, CV_32F, samplesVec.data());
 
     cv::Mat labels;
     cv::Mat centers;
     cv::TermCriteria criteria(cv::TermCriteria::EPS + cv::TermCriteria::MAX_ITER, 20, 1.0);
-    cv::setRNGSeed(12345);  // déterminisme (tests golden)
+    cv::setRNGSeed(12345); // déterminisme (tests golden)
     cv::kmeans(samples, k, labels, criteria, 3, cv::KMEANS_PP_CENTERS, centers);
 
     // Affecte chaque pixel au centre le plus proche.
@@ -140,20 +140,26 @@ Result<Image> apply_quantize(const Image& in, const QuantizeOp& op) {
     return out;
 }
 
-}  // namespace
+} // namespace
 
 std::string op_name(const ImageOp& op) {
     return std::visit(
         [](const auto& o) -> std::string {
             using T = std::decay_t<decltype(o)>;
-            if constexpr (std::is_same_v<T, CropOp>) return "Recadrage";
+            if constexpr (std::is_same_v<T, CropOp>)
+                return "Recadrage";
             if constexpr (std::is_same_v<T, FlipOp>)
                 return o.horizontal ? "Symétrie horizontale" : "Symétrie verticale";
-            if constexpr (std::is_same_v<T, Rotate90Op>) return "Rotation";
-            if constexpr (std::is_same_v<T, GrayscaleOp>) return "Niveaux de gris";
-            if constexpr (std::is_same_v<T, BrightnessContrastOp>) return "Luminosité/contraste";
-            if constexpr (std::is_same_v<T, MedianDenoiseOp>) return "Débruitage";
-            if constexpr (std::is_same_v<T, QuantizeOp>) return "Quantification";
+            if constexpr (std::is_same_v<T, Rotate90Op>)
+                return "Rotation";
+            if constexpr (std::is_same_v<T, GrayscaleOp>)
+                return "Niveaux de gris";
+            if constexpr (std::is_same_v<T, BrightnessContrastOp>)
+                return "Luminosité/contraste";
+            if constexpr (std::is_same_v<T, MedianDenoiseOp>)
+                return "Débruitage";
+            if constexpr (std::is_same_v<T, QuantizeOp>)
+                return "Quantification";
         },
         op);
 }
@@ -165,14 +171,20 @@ Result<Image> apply_op(const Image& input, const ImageOp& op) {
     return std::visit(
         [&](const auto& o) -> Result<Image> {
             using T = std::decay_t<decltype(o)>;
-            if constexpr (std::is_same_v<T, CropOp>) return apply_crop(input, o);
-            if constexpr (std::is_same_v<T, FlipOp>) return apply_flip(input, o);
-            if constexpr (std::is_same_v<T, Rotate90Op>) return apply_rotate90(input, o);
-            if constexpr (std::is_same_v<T, GrayscaleOp>) return apply_grayscale(input);
+            if constexpr (std::is_same_v<T, CropOp>)
+                return apply_crop(input, o);
+            if constexpr (std::is_same_v<T, FlipOp>)
+                return apply_flip(input, o);
+            if constexpr (std::is_same_v<T, Rotate90Op>)
+                return apply_rotate90(input, o);
+            if constexpr (std::is_same_v<T, GrayscaleOp>)
+                return apply_grayscale(input);
             if constexpr (std::is_same_v<T, BrightnessContrastOp>)
                 return apply_brightness_contrast(input, o);
-            if constexpr (std::is_same_v<T, MedianDenoiseOp>) return apply_median_denoise(input, o);
-            if constexpr (std::is_same_v<T, QuantizeOp>) return apply_quantize(input, o);
+            if constexpr (std::is_same_v<T, MedianDenoiseOp>)
+                return apply_median_denoise(input, o);
+            if constexpr (std::is_same_v<T, QuantizeOp>)
+                return apply_quantize(input, o);
         },
         op);
 }
@@ -189,4 +201,4 @@ Result<Image> apply_pipeline(const Image& original, std::span<const ImageOp> ops
     return current;
 }
 
-}  // namespace openstitch::image
+} // namespace openstitch::image

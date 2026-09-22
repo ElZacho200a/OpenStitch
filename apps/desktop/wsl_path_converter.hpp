@@ -22,4 +22,4 @@ public:
     [[nodiscard]] static QString toWindows(const QString& wslPath);
 };
 
-}  // namespace openstitch::desktop
+} // namespace openstitch::desktop

@@ -16,7 +16,7 @@ using openstitch::document::Project;
 namespace {
 
 Project projectWithTwoObjectsAndTwoRegions(openstitch::ObjectId& firstObjectId,
-                                            openstitch::ObjectId& secondObjectId) {
+                                           openstitch::ObjectId& secondObjectId) {
     Project project;
 
     openstitch::document::EmbroideryObject a;
@@ -65,8 +65,8 @@ QListWidget* regionsList(DocumentPanel& panel) {
 // plus un objet autonome sans rapport (`source_vector` invalide, jamais
 // regroupé) -- §21 du plan de refonte satin (2026-08-15).
 Project projectWithGroupedSatinSections(openstitch::ObjectId& sourceVectorId,
-                                         std::vector<openstitch::ObjectId>& sectionIds,
-                                         openstitch::ObjectId& standaloneId) {
+                                        std::vector<openstitch::ObjectId>& sectionIds,
+                                        openstitch::ObjectId& standaloneId) {
     Project project;
 
     openstitch::document::VectorObject vec;
@@ -96,7 +96,7 @@ Project projectWithGroupedSatinSections(openstitch::ObjectId& sourceVectorId,
     return project;
 }
 
-}  // namespace
+} // namespace
 
 class DocumentPanelTest : public QObject {
     Q_OBJECT
@@ -129,9 +129,9 @@ void DocumentPanelTest::refreshPopulatesObjectsAndRegionsLists() {
     QCOMPARE(objects->topLevelItemCount(), 2);
     QCOMPARE(regions->count(), 2);
     QCOMPARE(objects->topLevelItem(0)->data(0, Qt::UserRole).toULongLong(),
-              static_cast<qulonglong>(first.value));
+             static_cast<qulonglong>(first.value));
     QCOMPARE(objects->topLevelItem(1)->data(0, Qt::UserRole).toULongLong(),
-              static_cast<qulonglong>(second.value));
+             static_cast<qulonglong>(second.value));
     QVERIFY(objects->topLevelItem(0)->text(0).contains(QStringLiteral("Feuille")));
     QVERIFY(objects->topLevelItem(1)->text(0).contains(QStringLiteral("Tige")));
 }
@@ -149,13 +149,13 @@ void DocumentPanelTest::selectingAnObjectRowEmitsEmbroiderySelectedWithMatchingI
     int emitCount = 0;
     std::optional<openstitch::ObjectId> emittedId;
     QObject::connect(&panel, &DocumentPanel::embroiderySelected, &panel,
-                      [&](openstitch::ObjectId id) {
-                          ++emitCount;
-                          emittedId = id;
-                      });
+                     [&](openstitch::ObjectId id) {
+                         ++emitCount;
+                         emittedId = id;
+                     });
 
     auto* objects = objectsList(panel);
-    objects->setCurrentItem(objects->topLevelItem(1));  // second objet ("Tige")
+    objects->setCurrentItem(objects->topLevelItem(1)); // second objet ("Tige")
 
     QCOMPARE(emitCount, 1);
     QVERIFY(emittedId.has_value());
@@ -172,9 +172,9 @@ void DocumentPanelTest::syncSelectionReflectsSelectionWithoutReemittingSignal() 
     int embroideryEmits = 0;
     int regionEmits = 0;
     QObject::connect(&panel, &DocumentPanel::embroiderySelected, &panel,
-                      [&](openstitch::ObjectId) { ++embroideryEmits; });
+                     [&](openstitch::ObjectId) { ++embroideryEmits; });
     QObject::connect(&panel, &DocumentPanel::regionSelected, &panel,
-                      [&](openstitch::RegionId) { ++regionEmits; });
+                     [&](openstitch::RegionId) { ++regionEmits; });
 
     panel.syncSelection(DocumentPanel::Kind::Embroidery, first.value);
 
@@ -189,7 +189,8 @@ void DocumentPanelTest::multiSectionSatinPlanGroupsUnderOneParentNode() {
     openstitch::ObjectId sourceVectorId{};
     std::vector<openstitch::ObjectId> sectionIds;
     openstitch::ObjectId standaloneId{};
-    const Project project = projectWithGroupedSatinSections(sourceVectorId, sectionIds, standaloneId);
+    const Project project =
+        projectWithGroupedSatinSections(sourceVectorId, sectionIds, standaloneId);
 
     panel.refresh(project);
 
@@ -215,12 +216,12 @@ void DocumentPanelTest::multiSectionSatinPlanGroupsUnderOneParentNode() {
     // Le nœud de groupe lui-même ne porte pas d'ObjectId (rien à sélectionner).
     QVERIFY(!group->data(0, Qt::UserRole).isValid());
     QCOMPARE(standaloneItem->data(0, Qt::UserRole).toULongLong(),
-              static_cast<qulonglong>(standaloneId.value));
+             static_cast<qulonglong>(standaloneId.value));
 
     // Chaque enfant porte bien l'ObjectId de SA section, dans l'ordre d'ajout.
     for (int c = 0; c < group->childCount(); ++c) {
         QCOMPARE(group->child(c)->data(0, Qt::UserRole).toULongLong(),
-                  static_cast<qulonglong>(sectionIds[static_cast<std::size_t>(c)].value));
+                 static_cast<qulonglong>(sectionIds[static_cast<std::size_t>(c)].value));
     }
 }
 
@@ -229,17 +230,18 @@ void DocumentPanelTest::selectingAGroupedSectionEmitsItsOwnId() {
     openstitch::ObjectId sourceVectorId{};
     std::vector<openstitch::ObjectId> sectionIds;
     openstitch::ObjectId standaloneId{};
-    const Project project = projectWithGroupedSatinSections(sourceVectorId, sectionIds, standaloneId);
+    const Project project =
+        projectWithGroupedSatinSections(sourceVectorId, sectionIds, standaloneId);
     panel.refresh(project);
 
     std::optional<openstitch::ObjectId> emittedId;
     QObject::connect(&panel, &DocumentPanel::embroiderySelected, &panel,
-                      [&](openstitch::ObjectId id) { emittedId = id; });
+                     [&](openstitch::ObjectId id) { emittedId = id; });
 
     auto* objects = objectsList(panel);
     QTreeWidgetItem* group = objects->topLevelItem(0)->childCount() > 0 ? objects->topLevelItem(0)
                                                                         : objects->topLevelItem(1);
-    objects->setCurrentItem(group->child(1));  // deuxième section du groupe
+    objects->setCurrentItem(group->child(1)); // deuxième section du groupe
 
     QVERIFY(emittedId.has_value());
     QCOMPARE(emittedId->value, sectionIds[1].value);
@@ -250,17 +252,18 @@ void DocumentPanelTest::selectingTheGroupHeaderEmitsNothing() {
     openstitch::ObjectId sourceVectorId{};
     std::vector<openstitch::ObjectId> sectionIds;
     openstitch::ObjectId standaloneId{};
-    const Project project = projectWithGroupedSatinSections(sourceVectorId, sectionIds, standaloneId);
+    const Project project =
+        projectWithGroupedSatinSections(sourceVectorId, sectionIds, standaloneId);
     panel.refresh(project);
 
     int emitCount = 0;
     QObject::connect(&panel, &DocumentPanel::embroiderySelected, &panel,
-                      [&](openstitch::ObjectId) { ++emitCount; });
+                     [&](openstitch::ObjectId) { ++emitCount; });
 
     auto* objects = objectsList(panel);
     QTreeWidgetItem* group = objects->topLevelItem(0)->childCount() > 0 ? objects->topLevelItem(0)
                                                                         : objects->topLevelItem(1);
-    objects->setCurrentItem(group);  // le nœud de groupe lui-même, pas une section
+    objects->setCurrentItem(group); // le nœud de groupe lui-même, pas une section
 
     // Aucun ObjectId propre au groupe : rien à sélectionner côté document.
     QCOMPARE(emitCount, 0);
@@ -271,23 +274,24 @@ void DocumentPanelTest::syncSelectionFindsAGroupedChildAcrossLevels() {
     openstitch::ObjectId sourceVectorId{};
     std::vector<openstitch::ObjectId> sectionIds;
     openstitch::ObjectId standaloneId{};
-    const Project project = projectWithGroupedSatinSections(sourceVectorId, sectionIds, standaloneId);
+    const Project project =
+        projectWithGroupedSatinSections(sourceVectorId, sectionIds, standaloneId);
     panel.refresh(project);
 
     int emitCount = 0;
     QObject::connect(&panel, &DocumentPanel::embroiderySelected, &panel,
-                      [&](openstitch::ObjectId) { ++emitCount; });
+                     [&](openstitch::ObjectId) { ++emitCount; });
 
     // La troisième section est un ENFANT d'un nœud de groupe -- syncSelection
     // doit la retrouver en descendant dans l'arbre, pas seulement parcourir
     // les items de premier niveau.
     panel.syncSelection(DocumentPanel::Kind::Embroidery, sectionIds[2].value);
 
-    QCOMPARE(emitCount, 0);  // syncSelection ne réémet jamais (évite la boucle)
+    QCOMPARE(emitCount, 0); // syncSelection ne réémet jamais (évite la boucle)
     auto* objects = objectsList(panel);
     QVERIFY(objects->currentItem() != nullptr);
     QCOMPARE(objects->currentItem()->data(0, Qt::UserRole).toULongLong(),
-              static_cast<qulonglong>(sectionIds[2].value));
+             static_cast<qulonglong>(sectionIds[2].value));
 }
 
 QTEST_MAIN(DocumentPanelTest)

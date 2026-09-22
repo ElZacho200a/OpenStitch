@@ -106,7 +106,8 @@ double sum_area_mm2(const std::vector<geometry::PathSet>& sets) {
     return total / 1e6;
 }
 
-void compute_centroid_bbox(const geometry::Path& outer, Vec2um& centroid, Vec2um& bboxMin, Vec2um& bboxMax) {
+void compute_centroid_bbox(const geometry::Path& outer, Vec2um& centroid, Vec2um& bboxMin,
+                           Vec2um& bboxMax) {
     if (outer.nodes.empty()) {
         centroid = bboxMin = bboxMax = Vec2um{};
         return;
@@ -155,8 +156,12 @@ double max_inscribed_radius_mm(const geometry::PathSet& region, double resolutio
 // --- Rendu SVG de diagnostic (§ coverage_to_svg) : mêmes conventions que
 // `auto_satin::debug_export` (coordonnées millimètres, Y inversé pour SVG). ---
 
-double mmx(Vec2um p) { return static_cast<double>(p.x.value) / 1000.0; }
-double mmy(Vec2um p) { return -static_cast<double>(p.y.value) / 1000.0; }
+double mmx(Vec2um p) {
+    return static_cast<double>(p.x.value) / 1000.0;
+}
+double mmy(Vec2um p) {
+    return -static_cast<double>(p.y.value) / 1000.0;
+}
 
 void extend_bounds(Vec2um p, double& minx, double& miny, double& maxx, double& maxy) {
     minx = std::min(minx, mmx(p));
@@ -223,8 +228,10 @@ std::string format_diagnostic(const SatinCoverageReport& r, const SatinCoverageC
     os << "    area:                 " << r.outside_area_mm2 << " mm2\n";
     os << "    ratio:                " << (r.outside_ratio * 100.0) << " %\n";
     if (r.degenerate_interval_count > 0) {
-        os << "\n" << r.degenerate_interval_count
-           << " intervalle(s) de colonne rejete(s) (rails croises -- exclu(s) du calcul de couverture)\n";
+        os << "\n"
+           << r.degenerate_interval_count
+           << " intervalle(s) de colonne rejete(s) (rails croises -- exclu(s) du calcul de "
+              "couverture)\n";
     }
     os << "\nRESULT: " << (r.passed ? "PASSED" : "REJECTED") << "\n";
     if (!r.passed) {
@@ -236,8 +243,8 @@ std::string format_diagnostic(const SatinCoverageReport& r, const SatinCoverageC
             reasons.emplace_back("raw coverage below threshold");
         }
         if (r.largest_missing_area_mm2 > cfg.max_largest_missing_area_mm2) {
-            reasons.emplace_back(
-                "large connected region of the target polygon is not covered by any generated satin column");
+            reasons.emplace_back("large connected region of the target polygon is not covered by "
+                                 "any generated satin column");
         }
         if (r.max_gap_radius_mm > cfg.max_gap_radius_mm) {
             reasons.emplace_back("maximum gap radius exceeds threshold");
@@ -253,11 +260,11 @@ std::string format_diagnostic(const SatinCoverageReport& r, const SatinCoverageC
     return os.str();
 }
 
-}  // namespace
+} // namespace
 
 Result<SatinCoverageReport> analyze_satin_coverage(const geometry::PathSet& target,
-                                                    const std::vector<SatinColumnInput>& columns,
-                                                    const SatinCoverageConfig& config) {
+                                                   const std::vector<SatinColumnInput>& columns,
+                                                   const SatinCoverageConfig& config) {
     if (target.outer.nodes.size() < 3) {
         return fail(ErrorCategory::UserInput, "Région cible dégénérée",
                     "PathSet.outer a moins de 3 sommets");
@@ -318,8 +325,9 @@ Result<SatinCoverageReport> analyze_satin_coverage(const geometry::PathSet& targ
     for (auto& mr : report.missing_regions) {
         mr.area_ratio = report.target_area_mm2 > 1e-9 ? mr.area_mm2 / report.target_area_mm2 : 0.0;
     }
-    std::sort(report.missing_regions.begin(), report.missing_regions.end(),
-             [](const MissingRegion& a, const MissingRegion& b) { return a.area_mm2 > b.area_mm2; });
+    std::sort(
+        report.missing_regions.begin(), report.missing_regions.end(),
+        [](const MissingRegion& a, const MissingRegion& b) { return a.area_mm2 > b.area_mm2; });
     if (!report.missing_regions.empty()) {
         report.largest_missing_area_mm2 = report.missing_regions.front().area_mm2;
         report.largest_missing_ratio = report.missing_regions.front().area_ratio;
@@ -359,7 +367,8 @@ Result<SatinCoverageReport> analyze_satin_coverage(const geometry::PathSet& targ
     return report;
 }
 
-std::string coverage_to_svg(const geometry::PathSet& target, const std::vector<SatinColumnInput>& columns,
+std::string coverage_to_svg(const geometry::PathSet& target,
+                            const std::vector<SatinColumnInput>& columns,
                             const SatinCoverageReport& report) {
     double minx = 1e18;
     double miny = 1e18;
@@ -373,8 +382,8 @@ std::string coverage_to_svg(const geometry::PathSet& target, const std::vector<S
     o << "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"" << (minx - margin) << " "
       << (miny - margin) << " " << (maxx - minx + 2 * margin) << " " << (maxy - miny + 2 * margin)
       << "\">\n";
-    o << "<!-- AUTO-SATIN COVERAGE " << (report.passed ? "PASSED" : "FAILED") << " target="
-      << report.target_area_mm2 << "mm2 covered=" << report.covered_area_mm2
+    o << "<!-- AUTO-SATIN COVERAGE " << (report.passed ? "PASSED" : "FAILED")
+      << " target=" << report.target_area_mm2 << "mm2 covered=" << report.covered_area_mm2
       << "mm2 raw=" << (report.raw_coverage_ratio * 100.0)
       << "% core=" << (report.core_coverage_ratio * 100.0)
       << "% missing=" << report.missing_area_mm2 << "mm2 (" << report.missing_regions.size()
@@ -414,7 +423,8 @@ std::string coverage_to_svg(const geometry::PathSet& target, const std::vector<S
     for (const auto& col : columns) {
         svg_polyline(o, col.rail_a, "#06c", 0.12);
         svg_polyline(o, col.rail_b, "#c60", 0.12);
-        const auto stations = stitch_generation::satin_stations(col.rail_a, col.rail_b, col.rungs, col.density);
+        const auto stations =
+            stitch_generation::satin_stations(col.rail_a, col.rail_b, col.rungs, col.density);
         for (const auto& st : stations) {
             const char* fillColor = st.jump_before ? "#c22" : "#333";
             o << "<circle cx=\"" << mmx(st.a) << "\" cy=\"" << mmy(st.a) << "\" r=\"0.25\" fill=\""
@@ -428,4 +438,4 @@ std::string coverage_to_svg(const geometry::PathSet& target, const std::vector<S
     return o.str();
 }
 
-}  // namespace openstitch::satin_coverage
+} // namespace openstitch::satin_coverage

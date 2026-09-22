@@ -73,11 +73,10 @@ void NodeHandleTest::unmovedClickStillInvokesReleasedAtSamePosition() {
 
     int releasedCount = 0;
     std::optional<QPointF> releasedPosition;
-    auto* handle = new NodeHandleItem(
-        QPointF(10.0, -5.0), [&](QPointF p) {
-            ++releasedCount;
-            releasedPosition = p;
-        });
+    auto* handle = new NodeHandleItem(QPointF(10.0, -5.0), [&](QPointF p) {
+        ++releasedCount;
+        releasedPosition = p;
+    });
     scene.addItem(handle);
 
     const QPoint clickVp = view.mapFromScene(handle->pos());

@@ -22,4 +22,4 @@ namespace openstitch::geometry {
 // trou au recouvrement. Utile pour composer des formes (bandes, branches).
 [[nodiscard]] Result<std::vector<PathSet>> union_nonzero(const std::vector<Path>& raw);
 
-}  // namespace openstitch::geometry
+} // namespace openstitch::geometry

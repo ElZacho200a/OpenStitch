@@ -30,4 +30,4 @@ private:
     std::vector<std::unique_ptr<ICommand>> redo_;
 };
 
-}  // namespace openstitch::commands
+} // namespace openstitch::commands

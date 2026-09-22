@@ -28,4 +28,4 @@ private:
     QSlider* contrast_{nullptr};
 };
 
-}  // namespace openstitch::desktop
+} // namespace openstitch::desktop

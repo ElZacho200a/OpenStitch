@@ -30,7 +30,7 @@ RegionSplitReport split_shape(const std::string& name, geometry::PathSet& shapeO
     return split_region(*shape, analysis->debug.graph, decomposition);
 }
 
-}  // namespace
+} // namespace
 
 TEST_CASE("route_regions : rectangle -- une seule region, un seul pas de depart") {
     geometry::PathSet shape;
@@ -45,22 +45,23 @@ TEST_CASE("route_regions : rectangle -- une seule region, un seul pas de depart"
     CHECK(report.plan.jumps == 0);
 }
 
-TEST_CASE("route_regions : t -- route les deux regions, plan coherent avec le nombre de colonnes construites") {
+TEST_CASE("route_regions : t -- route les deux regions, plan coherent avec le nombre de colonnes "
+          "construites") {
     geometry::PathSet shape;
     const RegionSplitReport split = split_shape("t", shape);
     REQUIRE(split.regions.size() == 2);
 
     const RegionRoutingReport report = route_regions(split, parametric_routing_params());
     REQUIRE(report.regions.size() == 2);
-    const std::size_t builtCount =
-        static_cast<std::size_t>(std::count_if(report.regions.begin(), report.regions.end(),
-                                                [](const RoutedRegion& r) { return r.build_succeeded; }));
+    const std::size_t builtCount = static_cast<std::size_t>(
+        std::count_if(report.regions.begin(), report.regions.end(),
+                      [](const RoutedRegion& r) { return r.build_succeeded; }));
     CHECK(builtCount == 2);
     REQUIRE(report.plan.steps.size() == builtCount);
 
     // Exactement un pas de depart, le reste des liaisons (underpath ou jump).
-    const std::size_t startCount =
-        static_cast<std::size_t>(std::count_if(report.plan.steps.begin(), report.plan.steps.end(), [](const auto& s) {
+    const std::size_t startCount = static_cast<std::size_t>(
+        std::count_if(report.plan.steps.begin(), report.plan.steps.end(), [](const auto& s) {
             return s.connector == stitch_generation::ConnectorKind::Start;
         }));
     CHECK(startCount == 1);

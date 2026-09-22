@@ -26,7 +26,7 @@ double polyline_area_um2(const std::vector<Vec2um>& pts) {
     }
     return area * 0.5;
 }
-}  // namespace
+} // namespace
 
 // --- Rectangle ----------------------------------------------------------
 
@@ -34,7 +34,7 @@ TEST_CASE("rectangle_path : quatre coins droits, aire exacte") {
     const auto path = rectangle_path(p(0, 0), p(10'000, 5'000));
     REQUIRE(path.nodes.size() == 4);
     CHECK(path.closed);
-    CHECK(std::abs(signed_area_um2(path)) == 50'000'000.0);  // 10 x 5 mm
+    CHECK(std::abs(signed_area_um2(path)) == 50'000'000.0); // 10 x 5 mm
     for (const auto& n : path.nodes) {
         CHECK(n.type == NodeType::Corner);
     }
@@ -66,9 +66,9 @@ TEST_CASE("ellipse_path : quatre noeuds lisses, aire proche de pi*rx*ry") {
         CHECK(n.tan_out.has_value());
     }
     const auto flat = flatten(path, Micrometers{20});
-    const double area = std::abs(polyline_area_um2(flat.points)) / 1e6;  // mm^2
+    const double area = std::abs(polyline_area_um2(flat.points)) / 1e6; // mm^2
     const double expected = std::numbers::pi * 10.0 * 5.0;
-    CHECK(std::abs(area - expected) / expected < 0.01);  // < 1%
+    CHECK(std::abs(area - expected) / expected < 0.01); // < 1%
 }
 
 TEST_CASE("ellipse_path : cercle quand les deux cotes sont egaux") {
@@ -76,7 +76,7 @@ TEST_CASE("ellipse_path : cercle quand les deux cotes sont egaux") {
     const auto flat = flatten(path, Micrometers{10});
     // Chaque point aplati doit etre a ~5mm (rayon) du centre.
     for (const auto& pt : flat.points) {
-        const double r = length_um(pt) / 1000.0;  // mm
+        const double r = length_um(pt) / 1000.0; // mm
         CHECK(std::abs(r - 5.0) < 0.05);
     }
 }
@@ -175,15 +175,14 @@ TEST_CASE("freeform_path : simplifie un trace bruite en contour exploitable") {
     // colineaires intermediaires sur chaque bord (comme un glisser souris
     // reel, un point par evenement de deplacement).
     const std::vector<Vec2um> stroke = {
-        p(0, 0),     p(2'000, 0),     p(4'000, 0),     p(6'000, 0),
-        p(8'000, 0), p(10'000, 0),    p(10'000, 2'000), p(10'000, 4'000),
-        p(10'000, 6'000), p(10'000, 8'000), p(10'000, 10'000),
-        p(8'000, 10'000), p(6'000, 10'000), p(4'000, 10'000), p(2'000, 10'000),
-        p(0, 10'000), p(0, 8'000), p(0, 6'000), p(0, 4'000), p(0, 2'000),
+        p(0, 0),           p(2'000, 0),      p(4'000, 0),      p(6'000, 0),      p(8'000, 0),
+        p(10'000, 0),      p(10'000, 2'000), p(10'000, 4'000), p(10'000, 6'000), p(10'000, 8'000),
+        p(10'000, 10'000), p(8'000, 10'000), p(6'000, 10'000), p(4'000, 10'000), p(2'000, 10'000),
+        p(0, 10'000),      p(0, 8'000),      p(0, 6'000),      p(0, 4'000),      p(0, 2'000),
     };
     const auto path = freeform_path(stroke, Micrometers{300});
     REQUIRE(path.nodes.size() >= 3);
-    CHECK(path.nodes.size() < stroke.size());  // simplification reelle
+    CHECK(path.nodes.size() < stroke.size()); // simplification reelle
     CHECK(path.closed);
     for (const auto& n : path.nodes) {
         CHECK(n.type == NodeType::Corner);
@@ -209,8 +208,8 @@ TEST_CASE("freeform_path : points colineaires -> chemin vide apres simplificatio
 }
 
 TEST_CASE("freeform_path : deterministe") {
-    const std::vector<Vec2um> stroke = {p(0, 0), p(5'000, 100), p(10'000, 0), p(10'000, 10'000),
-                                        p(5'000, 9'900), p(0, 10'000)};
+    const std::vector<Vec2um> stroke = {p(0, 0),           p(5'000, 100),   p(10'000, 0),
+                                        p(10'000, 10'000), p(5'000, 9'900), p(0, 10'000)};
     CHECK(freeform_path(stroke, Micrometers{300}).nodes ==
           freeform_path(stroke, Micrometers{300}).nodes);
 }

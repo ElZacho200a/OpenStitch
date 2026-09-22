@@ -43,7 +43,7 @@ std::vector<std::uint32_t> labels_from_bytes(const detail::Blob& bytes) {
     return out;
 }
 
-}  // namespace
+} // namespace
 
 Result<void> save_project(const std::filesystem::path& path, const document::Project& project) {
     nlohmann::json root;
@@ -96,8 +96,7 @@ Result<document::Project> load_project(const std::filesystem::path& path) {
     }
     const auto jsonIt = entries->find(kJsonEntry);
     if (jsonIt == entries->end()) {
-        return fail(ErrorCategory::InvalidFile,
-                    "Archive projet invalide : project.json manquant");
+        return fail(ErrorCategory::InvalidFile, "Archive projet invalide : project.json manquant");
     }
 
     nlohmann::json root;
@@ -144,4 +143,4 @@ Result<document::Project> load_project(const std::filesystem::path& path) {
     return project;
 }
 
-}  // namespace openstitch::project_io
+} // namespace openstitch::project_io

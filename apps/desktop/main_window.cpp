@@ -53,7 +53,6 @@
 
 #include "openstitch/auto_satin/satin_column.hpp"
 #include "openstitch/autodigitize/autodigitize.hpp"
-#include "openstitch/satin_planning/satin_sections.hpp"
 #include "openstitch/commands/project_commands.hpp"
 #include "openstitch/core/app_info.hpp"
 #include "openstitch/document/canvas.hpp"
@@ -68,6 +67,7 @@
 #include "openstitch/image/image.hpp"
 #include "openstitch/optimization/order.hpp"
 #include "openstitch/project_io/project_io.hpp"
+#include "openstitch/satin_planning/satin_sections.hpp"
 #include "openstitch/stitch_analysis/analyze.hpp"
 #include "openstitch/stitch_generation/generate.hpp"
 #include "openstitch/stitch_generation/overrides.hpp"
@@ -109,7 +109,7 @@ constexpr std::size_t kMaxEditableStitchHandles = 2000;
 // depuis un geste souris (rectangle/ellipse/polygone dessinés à la main).
 Vec2um sceneMmToModel(QPointF sceneMm) {
     return Vec2um{to_micrometers(Millimeters{sceneMm.x()}),
-                 to_micrometers(Millimeters{-sceneMm.y()})};
+                  to_micrometers(Millimeters{-sceneMm.y()})};
 }
 QPointF modelToSceneMm(Vec2um pos) {
     return QPointF(to_millimeters(pos.x).value, -to_millimeters(pos.y).value);
@@ -127,7 +127,7 @@ Vec2um cubicPointAt(Vec2um p0, Vec2um p1, Vec2um p2, Vec2um p3, double t) {
     const double x = b0 * p0.x.value + b1 * p1.x.value + b2 * p2.x.value + b3 * p3.x.value;
     const double y = b0 * p0.y.value + b1 * p1.y.value + b2 * p2.y.value + b3 * p3.y.value;
     return Vec2um{Micrometers{static_cast<std::int32_t>(std::lround(x))},
-                 Micrometers{static_cast<std::int32_t>(std::lround(y))}};
+                  Micrometers{static_cast<std::int32_t>(std::lround(y))}};
 }
 
 struct RailPointHit {
@@ -159,11 +159,12 @@ std::optional<RailPointHit> nearestPointOnRail(const geometry::Path& rail, Vec2u
         constexpr int kSteps = 24;
         for (int i = 0; i <= kSteps; ++i) {
             const double t = static_cast<double>(i) / kSteps;
-            const Vec2um pt = curved ? cubicPointAt(p0, p1, p2, p3, t)
-                                     : Vec2um{Micrometers{static_cast<std::int32_t>(std::lround(
-                                                   p0.x.value + (p3.x.value - p0.x.value) * t))},
-                                             Micrometers{static_cast<std::int32_t>(std::lround(
-                                                   p0.y.value + (p3.y.value - p0.y.value) * t))}};
+            const Vec2um pt =
+                curved ? cubicPointAt(p0, p1, p2, p3, t)
+                       : Vec2um{Micrometers{static_cast<std::int32_t>(
+                                    std::lround(p0.x.value + (p3.x.value - p0.x.value) * t))},
+                                Micrometers{static_cast<std::int32_t>(
+                                    std::lround(p0.y.value + (p3.y.value - p0.y.value) * t))}};
             const double d = length_um(pt - click);
             if (!best || d < best->distUm) {
                 best = RailPointHit{e, t, d};
@@ -197,80 +198,111 @@ QString fmtNodeType(geometry::NodeType t) {
 }
 QString fmtShortStitch(document::SatinShortStitch v) {
     switch (v) {
-        case document::SatinShortStitch::Disabled: return QStringLiteral("Désactivés");
-        case document::SatinShortStitch::RemoveAndRedistribute:
-            return QStringLiteral("Retirer/redistribuer");
-        case document::SatinShortStitch::SingleInset: return QStringLiteral("Inset simple");
-        case document::SatinShortStitch::MultiLevelInset:
-            return QStringLiteral("Inset multi-niveaux");
+    case document::SatinShortStitch::Disabled:
+        return QStringLiteral("Désactivés");
+    case document::SatinShortStitch::RemoveAndRedistribute:
+        return QStringLiteral("Retirer/redistribuer");
+    case document::SatinShortStitch::SingleInset:
+        return QStringLiteral("Inset simple");
+    case document::SatinShortStitch::MultiLevelInset:
+        return QStringLiteral("Inset multi-niveaux");
     }
     return QStringLiteral("?");
 }
 QString fmtSplit(document::SatinSplit v) {
     switch (v) {
-        case document::SatinSplit::Disabled: return QStringLiteral("Désactivé");
-        case document::SatinSplit::Simple: return QStringLiteral("Simple");
-        case document::SatinSplit::Staggered: return QStringLiteral("Décalé");
-        case document::SatinSplit::DeterministicJitter: return QStringLiteral("Jitter déterministe");
+    case document::SatinSplit::Disabled:
+        return QStringLiteral("Désactivé");
+    case document::SatinSplit::Simple:
+        return QStringLiteral("Simple");
+    case document::SatinSplit::Staggered:
+        return QStringLiteral("Décalé");
+    case document::SatinSplit::DeterministicJitter:
+        return QStringLiteral("Jitter déterministe");
     }
     return QStringLiteral("?");
 }
 QString fmtCap(document::SatinCap v) {
     switch (v) {
-        case document::SatinCap::Flat: return QStringLiteral("Plat");
-        case document::SatinCap::Rounded: return QStringLiteral("Arrondi");
-        case document::SatinCap::Tapered: return QStringLiteral("Effilé");
-        case document::SatinCap::Automatic: return QStringLiteral("Auto");
+    case document::SatinCap::Flat:
+        return QStringLiteral("Plat");
+    case document::SatinCap::Rounded:
+        return QStringLiteral("Arrondi");
+    case document::SatinCap::Tapered:
+        return QStringLiteral("Effilé");
+    case document::SatinCap::Automatic:
+        return QStringLiteral("Auto");
     }
     return QStringLiteral("?");
 }
 QString fmtLock(document::SatinLock v) {
     switch (v) {
-        case document::SatinLock::None: return QStringLiteral("Aucun");
-        case document::SatinLock::BackAndForth: return QStringLiteral("Aller-retour");
-        case document::SatinLock::Triangle: return QStringLiteral("Triangle");
-        case document::SatinLock::MicroZigzag: return QStringLiteral("Micro-zigzag");
+    case document::SatinLock::None:
+        return QStringLiteral("Aucun");
+    case document::SatinLock::BackAndForth:
+        return QStringLiteral("Aller-retour");
+    case document::SatinLock::Triangle:
+        return QStringLiteral("Triangle");
+    case document::SatinLock::MicroZigzag:
+        return QStringLiteral("Micro-zigzag");
     }
     return QStringLiteral("?");
 }
 QString fmtStitchPointType(document::StitchPointType v) {
-    return v == document::StitchPointType::Stitch ? QStringLiteral("Stitch") : QStringLiteral("Jump");
+    return v == document::StitchPointType::Stitch ? QStringLiteral("Stitch")
+                                                  : QStringLiteral("Jump");
 }
 QString fmtCommandType(stitch::CommandType v) {
     switch (v) {
-        case stitch::CommandType::Stitch: return QStringLiteral("Stitch");
-        case stitch::CommandType::Jump: return QStringLiteral("Jump");
-        case stitch::CommandType::Trim: return QStringLiteral("Trim");
-        case stitch::CommandType::ColorChange: return QStringLiteral("ColorChange");
-        case stitch::CommandType::Stop: return QStringLiteral("Stop");
-        case stitch::CommandType::End: return QStringLiteral("End");
+    case stitch::CommandType::Stitch:
+        return QStringLiteral("Stitch");
+    case stitch::CommandType::Jump:
+        return QStringLiteral("Jump");
+    case stitch::CommandType::Trim:
+        return QStringLiteral("Trim");
+    case stitch::CommandType::ColorChange:
+        return QStringLiteral("ColorChange");
+    case stitch::CommandType::Stop:
+        return QStringLiteral("Stop");
+    case stitch::CommandType::End:
+        return QStringLiteral("End");
     }
     return QStringLiteral("?");
 }
 QString fmtPass(stitch::StitchPass v) {
     switch (v) {
-        case stitch::StitchPass::Underlay: return QStringLiteral("Underlay");
-        case stitch::StitchPass::TopStitch: return QStringLiteral("TopStitch");
-        case stitch::StitchPass::Travel: return QStringLiteral("Travel");
-        case stitch::StitchPass::Lock: return QStringLiteral("Lock");
-        case stitch::StitchPass::Manual: return QStringLiteral("Manual");
+    case stitch::StitchPass::Underlay:
+        return QStringLiteral("Underlay");
+    case stitch::StitchPass::TopStitch:
+        return QStringLiteral("TopStitch");
+    case stitch::StitchPass::Travel:
+        return QStringLiteral("Travel");
+    case stitch::StitchPass::Lock:
+        return QStringLiteral("Lock");
+    case stitch::StitchPass::Manual:
+        return QStringLiteral("Manual");
     }
     return QStringLiteral("?");
 }
 QString fmtEditState(stitch_generation::ObjectEditState v) {
     switch (v) {
-        case stitch_generation::ObjectEditState::Clean: return QStringLiteral("Clean");
-        case stitch_generation::ObjectEditState::ManuallyEdited:
-            return QStringLiteral("ManuallyEdited");
-        case stitch_generation::ObjectEditState::Dirty: return QStringLiteral("Dirty");
+    case stitch_generation::ObjectEditState::Clean:
+        return QStringLiteral("Clean");
+    case stitch_generation::ObjectEditState::ManuallyEdited:
+        return QStringLiteral("ManuallyEdited");
+    case stitch_generation::ObjectEditState::Dirty:
+        return QStringLiteral("Dirty");
     }
     return QStringLiteral("?");
 }
 QString fmtSeverity(stitch_analysis::Severity v) {
     switch (v) {
-        case stitch_analysis::Severity::Info: return QStringLiteral("Info");
-        case stitch_analysis::Severity::Warning: return QStringLiteral("Warning");
-        case stitch_analysis::Severity::Error: return QStringLiteral("Error");
+    case stitch_analysis::Severity::Info:
+        return QStringLiteral("Info");
+    case stitch_analysis::Severity::Warning:
+        return QStringLiteral("Warning");
+    case stitch_analysis::Severity::Error:
+        return QStringLiteral("Error");
     }
     return QStringLiteral("?");
 }
@@ -283,7 +315,8 @@ void dumpPath(QStringList& out, const geometry::Path& path, const QString& label
         const auto& n = path.nodes[i];
         out << QStringLiteral("    [%1] pos=%2  type=%3  tan_in=%4  tan_out=%5")
                    .arg(i)
-                   .arg(fmtVec(n.pos), fmtNodeType(n.type), fmtOptVec(n.tan_in), fmtOptVec(n.tan_out));
+                   .arg(fmtVec(n.pos), fmtNodeType(n.type), fmtOptVec(n.tan_in),
+                        fmtOptVec(n.tan_out));
     }
 }
 
@@ -328,10 +361,10 @@ MainWindow::MainWindow() {
     buildWorkflowPanel();
     buildFilterPanel();
     buildMainToolbar();
-    addToolBarBreak();  // la barre contextuelle sur sa propre rangée
+    addToolBarBreak(); // la barre contextuelle sur sa propre rangée
     buildContextToolbar();
     buildToolPalette();
-    addToolBarBreak();  // la barre de simulation occupe sa propre rangée
+    addToolBarBreak(); // la barre de simulation occupe sa propre rangée
     buildSimulationToolbar();
 
     buildHelpMenu();
@@ -339,8 +372,8 @@ MainWindow::MainWindow() {
     // Noms accessibles (lecteurs d'écran) sur les grandes zones.
     view_->setAccessibleName(tr("Canevas"));
     view_->setAccessibleDescription(tr("Zone de travail du motif, en millimètres."));
-    for (auto* d : {documentDock_, propertiesDock_, workflowDock_, orderDock_, filterDock_,
-                    analysisDock_}) {
+    for (auto* d :
+         {documentDock_, propertiesDock_, workflowDock_, orderDock_, filterDock_, analysisDock_}) {
         if (d != nullptr) {
             d->setAccessibleName(d->windowTitle());
         }
@@ -626,8 +659,7 @@ void MainWindow::buildMenus() {
     connect(addSatinGuideAct_, &QAction::triggered, this, &MainWindow::addSatinGuide);
     removeSatinGuideAct_ = satinAdvancedMenu->addAction(tr("Supprimer le guide satin sélectionné"));
     removeSatinGuideAct_->setObjectName(QStringLiteral("action_removeSatinGuide"));
-    connect(removeSatinGuideAct_, &QAction::triggered, this,
-            &MainWindow::removeSelectedSatinGuide);
+    connect(removeSatinGuideAct_, &QAction::triggered, this, &MainWindow::removeSelectedSatinGuide);
     railEditModeAct_ = satinAdvancedMenu->addAction(tr("Éditer seulement les rails satin…"));
     railEditModeAct_->setObjectName(QStringLiteral("action_satinRailEditMode"));
     railEditModeAct_->setCheckable(true);
@@ -703,8 +735,8 @@ void MainWindow::buildMenus() {
     hidePanelsAct->setShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_P));
     hidePanelsAct->setToolTip(tr("Mode canevas : masque tous les panneaux."));
     connect(hidePanelsAct, &QAction::toggled, this, [this](bool hide) {
-        const std::vector<QDockWidget*> docks{documentDock_,  propertiesDock_, workflowDock_,
-                                              orderDock_,     filterDock_,     analysisDock_};
+        const std::vector<QDockWidget*> docks{documentDock_, propertiesDock_, workflowDock_,
+                                              orderDock_,    filterDock_,     analysisDock_};
         if (hide) {
             panelsToRestore_.clear();
             for (auto* d : docks) {
@@ -763,7 +795,7 @@ void MainWindow::openImage() {
     }
 
     project_ = document::Project{};
-    ++documentGeneration_;  // nouveau document : invalide les commandes différées en vol
+    ++documentGeneration_; // nouveau document : invalide les commandes différées en vol
     project_.mm_per_px = document::mm_per_pixel(*placement, loaded->width);
     project_.original = std::move(*loaded);
     undoStack_.clear();
@@ -789,7 +821,7 @@ void MainWindow::openImage() {
                                  .arg(project_.original.width)
                                  .arg(project_.original.height));
     updateActions();
-    setWindowModified(false);  // nouveau document propre
+    setWindowModified(false); // nouveau document propre
 }
 
 void MainWindow::openSvg(const QString& file) {
@@ -898,7 +930,7 @@ void MainWindow::onStitchEditModeToggled(bool on) {
                 tr("Édition des points : glissez un point pour le déplacer. Échap pour quitter."));
         }
     }
-    displayImage(processed_);  // fait apparaître/disparaître les poignées
+    displayImage(processed_); // fait apparaître/disparaître les poignées
     updateActions();
 }
 
@@ -966,10 +998,10 @@ void MainWindow::addSatinGuide() {
         return;
     }
     if (selectedSatinGuide_) {
-        if (const auto junction = stitch_generation::satin_guide_junction(
-                *satin, *selectedSatinGuide_)) {
-            const auto refs = stitch_generation::satin_junction_guides(
-                project_, obj->source_vector, *junction);
+        if (const auto junction =
+                stitch_generation::satin_guide_junction(*satin, *selectedSatinGuide_)) {
+            const auto refs =
+                stitch_generation::satin_junction_guides(project_, obj->source_vector, *junction);
             const auto linkId =
                 stitch_generation::next_satin_guide_link_id(project_, obj->source_vector);
             if (!linkId) {
@@ -991,14 +1023,12 @@ void MainWindow::addSatinGuide() {
                 }
                 const auto* section = project_.findEmbroidery(ref.embroidery_id);
                 const auto* sectionSatin =
-                    section != nullptr
-                        ? std::get_if<document::SatinParams>(&section->params)
-                        : nullptr;
-                const auto insertion =
-                    sectionSatin != nullptr
-                        ? stitch_generation::make_satin_guide_next_to_junction(
-                              *sectionSatin, ref.guide_index)
-                        : std::nullopt;
+                    section != nullptr ? std::get_if<document::SatinParams>(&section->params)
+                                       : nullptr;
+                const auto insertion = sectionSatin != nullptr
+                                           ? stitch_generation::make_satin_guide_next_to_junction(
+                                                 *sectionSatin, ref.guide_index)
+                                           : std::nullopt;
                 if (!insertion) {
                     statusBar()->showMessage(
                         tr("Impossible d'ajouter les guides de jonction : une section n'a "
@@ -1007,8 +1037,7 @@ void MainWindow::addSatinGuide() {
                 }
                 auto linkedGuide = insertion->guide;
                 linkedGuide.link_id = *linkId;
-                additions.push_back(
-                    {ref.embroidery_id, std::move(linkedGuide), insertion->index});
+                additions.push_back({ref.embroidery_id, std::move(linkedGuide), insertion->index});
                 if (ref.embroidery_id == obj->id) {
                     selected = insertion->index;
                 }
@@ -1020,15 +1049,13 @@ void MainWindow::addSatinGuide() {
             }
             const auto branchCount = additions.size();
             undoStack_.execute(
-                std::make_unique<commands::AddSatinGuidesCommand>(std::move(additions)),
-                project_);
+                std::make_unique<commands::AddSatinGuidesCommand>(std::move(additions)), project_);
             selectedSatinGuide_ = selected;
             refreshImage();
             updateActions();
-            statusBar()->showMessage(
-                tr("%1 guides internes ajoutés autour de la jonction #%2.")
-                    .arg(branchCount)
-                    .arg(*junction));
+            statusBar()->showMessage(tr("%1 guides internes ajoutés autour de la jonction #%2.")
+                                         .arg(branchCount)
+                                         .arg(*junction));
             return;
         }
     }
@@ -1039,8 +1066,8 @@ void MainWindow::addSatinGuide() {
         return;
     }
     const std::size_t selected = insertion->index;
-    undoStack_.execute(std::make_unique<commands::AddSatinGuideCommand>(
-                           obj->id, insertion->guide, insertion->index),
+    undoStack_.execute(std::make_unique<commands::AddSatinGuideCommand>(obj->id, insertion->guide,
+                                                                        insertion->index),
                        project_);
     selectedSatinGuide_ = selected;
     refreshImage();
@@ -1053,11 +1080,12 @@ void MainWindow::removeSelectedSatinGuide() {
     }
     auto* obj = project_.findEmbroidery(*satinGuideTarget_);
     auto* satin = obj != nullptr ? std::get_if<document::SatinParams>(&obj->params) : nullptr;
-    if (satin == nullptr || satin->rungs.size() <= 2 || *selectedSatinGuide_ >= satin->rungs.size()) {
+    if (satin == nullptr || satin->rungs.size() <= 2 ||
+        *selectedSatinGuide_ >= satin->rungs.size()) {
         return;
     }
-    if (const auto junction = stitch_generation::satin_guide_junction(
-            *satin, *selectedSatinGuide_)) {
+    if (const auto junction =
+            stitch_generation::satin_guide_junction(*satin, *selectedSatinGuide_)) {
         statusBar()->showMessage(tr("Guide de jonction #%1 verrouillé : ajoutez un guide interne "
                                     "pour orienter la section.")
                                      .arg(*junction));
@@ -1098,9 +1126,9 @@ void MainWindow::removeSelectedSatinGuide() {
         statusBar()->showMessage(tr("Groupe de %1 guides liés supprimé.").arg(groupCount));
         return;
     }
-    undoStack_.execute(std::make_unique<commands::RemoveSatinGuideCommand>(
-                           obj->id, *selectedSatinGuide_),
-                       project_);
+    undoStack_.execute(
+        std::make_unique<commands::RemoveSatinGuideCommand>(obj->id, *selectedSatinGuide_),
+        project_);
     selectedSatinGuide_.reset();
     refreshImage();
     updateActions();
@@ -1152,8 +1180,8 @@ void MainWindow::updateEmptyState() {
     // document::Canvas) -- défaut trouvé en usage réel, la pastille restait
     // affichée EN PERMANENCE par-dessus le canevas dès lors qu'aucune image
     // n'était chargée, même après avoir dessiné plusieurs formes.
-    const bool hasContent =
-        project_.hasImage() || !project_.vector_objects.empty() || !project_.embroidery_objects.empty();
+    const bool hasContent = project_.hasImage() || !project_.vector_objects.empty() ||
+                            !project_.embroidery_objects.empty();
     emptyState_->setVisible(!hasContent);
     positionEmptyState();
 }
@@ -1169,13 +1197,13 @@ void MainWindow::closeEvent(QCloseEvent* event) {
         event->accept();
         return;
     }
-    const auto answer = QMessageBox::warning(
-        this, tr("Modifications non enregistrées"),
-        tr("Le projet a été modifié. Enregistrer avant de quitter ?"),
-        QMessageBox::Save | QMessageBox::Discard | QMessageBox::Cancel);
+    const auto answer =
+        QMessageBox::warning(this, tr("Modifications non enregistrées"),
+                             tr("Le projet a été modifié. Enregistrer avant de quitter ?"),
+                             QMessageBox::Save | QMessageBox::Discard | QMessageBox::Cancel);
     if (answer == QMessageBox::Save) {
         saveProject();
-        event->setAccepted(!isWindowModified());  // annulé dans le dialogue -> reste ouvert
+        event->setAccepted(!isWindowModified()); // annulé dans le dialogue -> reste ouvert
     } else if (answer == QMessageBox::Discard) {
         event->accept();
     } else {
@@ -1187,10 +1215,9 @@ void MainWindow::setHoopSize() {
     QDialog dialog(this);
     dialog.setWindowTitle(tr("Taille du cadre de broderie"));
     auto* layout = new QFormLayout(&dialog);
-    layout->addRow(new QLabel(
-        tr("Zone physique dans laquelle le motif doit tenir.\n"
-           "L'analyse signale les points hors de ce cadre."),
-        &dialog));
+    layout->addRow(new QLabel(tr("Zone physique dans laquelle le motif doit tenir.\n"
+                                 "L'analyse signale les points hors de ce cadre."),
+                              &dialog));
     const auto makeSpin = [&](double valueMm) {
         auto* spin = new QDoubleSpinBox(&dialog);
         spin->setRange(10.0, 500.0);
@@ -1235,7 +1262,7 @@ void MainWindow::adjustBrightnessContrast() {
         (dialog.brightness() != 0.0 || dialog.contrast() != 0.0)) {
         executeOp(image::BrightnessContrastOp{dialog.brightness(), dialog.contrast()});
     } else {
-        displayImage(processed_);  // retire l'aperçu
+        displayImage(processed_); // retire l'aperçu
     }
 }
 
@@ -1274,7 +1301,7 @@ void MainWindow::onCropSelected(QRectF rectMm) {
 void MainWindow::onBoxDrawn(QRectF rectMm, Qt::KeyboardModifiers modifiers) {
     if (currentTool_ != Tool::DrawRectangle && currentTool_ != Tool::DrawEllipse &&
         currentTool_ != Tool::DrawPolygonRegular) {
-        return;  // sécurité : signal reçu hors mode dessin (ne devrait pas arriver)
+        return; // sécurité : signal reçu hors mode dessin (ne devrait pas arriver)
     }
     if (rectMm.width() < kMinDrawExtentMm || rectMm.height() < kMinDrawExtentMm) {
         statusBar()->showMessage(tr("Forme trop petite — glissez davantage."));
@@ -1394,7 +1421,7 @@ void MainWindow::updatePolygonPreview(QPointF cursorSceneMm) {
         pen.setWidthF(0.15);
         pen.setStyle(Qt::DashLine);
         polygonPreviewItem_->setPen(pen);
-        polygonPreviewItem_->setZValue(1000.0);  // toujours au-dessus du reste
+        polygonPreviewItem_->setZValue(1000.0); // toujours au-dessus du reste
         scene_->addItem(polygonPreviewItem_);
     }
     QPainterPath path;
@@ -1402,7 +1429,7 @@ void MainWindow::updatePolygonPreview(QPointF cursorSceneMm) {
     for (std::size_t i = 1; i < pendingPolygonVertices_.size(); ++i) {
         path.lineTo(modelToSceneMm(pendingPolygonVertices_[i]));
     }
-    path.lineTo(cursorSceneMm);  // segment élastique jusqu'au curseur
+    path.lineTo(cursorSceneMm); // segment élastique jusqu'au curseur
     polygonPreviewItem_->setPath(path);
 }
 
@@ -1412,7 +1439,7 @@ void MainWindow::finishPolygon() {
     } else {
         statusBar()->showMessage(tr("Polygone : au moins 3 sommets requis."));
     }
-    cancelPolygonDraw();  // nettoie l'état de tracé, succès ou échec
+    cancelPolygonDraw(); // nettoie l'état de tracé, succès ou échec
 }
 
 void MainWindow::cancelPolygonDraw() {
@@ -1442,7 +1469,7 @@ void MainWindow::removeLastPolygonVertex() {
 }
 
 namespace {
-constexpr double kSnapRadiusPx = 10.0;  // rayon d'accroche « visé » à l'écran
+constexpr double kSnapRadiusPx = 10.0; // rayon d'accroche « visé » à l'écran
 // Borné en mm (pas seulement en pixels écran) : à fort dézoom (grand hoop, ou
 // même la fenêtre pas encore affichée/redimensionnée en test -- pixelsPerMm()
 // alors minuscule), 10 px écran peuvent représenter des dizaines de mm, ce qui
@@ -1452,7 +1479,7 @@ constexpr double kSnapRadiusPx = 10.0;  // rayon d'accroche « visé » à l'éc
 // la fenêtre n'a pas encore de taille réelle).
 constexpr double kSnapRadiusMinMm = 0.05;
 constexpr double kSnapRadiusMaxMm = 2.0;
-}  // namespace
+} // namespace
 
 std::optional<QPointF> MainWindow::findSnapPointMm(QPointF cursorSceneMm) const {
     const double radiusMm = std::clamp(kSnapRadiusPx / std::max(view_->pixelsPerMm(), 0.01),
@@ -1524,7 +1551,7 @@ void MainWindow::updateSnapIndicator(std::optional<QPointF> snapSceneMm) {
         snapIndicatorItem_->setFlag(QGraphicsItem::ItemIgnoresTransformations);
         snapIndicatorItem_->setPen(QPen(QColor(255, 140, 0), 2));
         snapIndicatorItem_->setBrush(Qt::NoBrush);
-        snapIndicatorItem_->setZValue(1002.0);  // au-dessus des aperçus élastiques (1000)
+        snapIndicatorItem_->setZValue(1002.0); // au-dessus des aperçus élastiques (1000)
         scene_->addItem(snapIndicatorItem_);
     }
     snapIndicatorItem_->setPos(*snapSceneMm);
@@ -1537,7 +1564,7 @@ void MainWindow::updateSatinColumnPreview(QPointF cursorSceneMm) {
     }
     if (satinPreviewItem_ == nullptr) {
         satinPreviewItem_ = new QGraphicsPathItem();
-        satinPreviewItem_->setZValue(1000.0);  // toujours au-dessus du reste
+        satinPreviewItem_->setZValue(1000.0); // toujours au-dessus du reste
         scene_->addItem(satinPreviewItem_);
     }
     // Rail A (indices pairs) et rail B (indices impairs) en deux couleurs
@@ -1624,7 +1651,7 @@ void MainWindow::finishSatinColumn() {
         statusBar()->showMessage(
             tr("Colonne satin : dernier point sans correspondance ignoré (paire incomplète)."));
     }
-    if (pendingSatinPoints_.size() < 4) {  // < 2 paires complètes
+    if (pendingSatinPoints_.size() < 4) { // < 2 paires complètes
         statusBar()->showMessage(
             tr("Colonne satin : au moins deux paires complètes (4 points) sont nécessaires."));
         cancelSatinColumnDraw();
@@ -1671,7 +1698,7 @@ void MainWindow::finishSatinColumn() {
     sourceObject.id = project_.object_ids.next();
     sourceObject.name = tr("Colonne satin (rails)").toStdString();
     sourceObject.rgb = {200, 90, 40};
-    sourceObject.visible = false;  // le rendu passe par les rails/points du satin, pas ce contour
+    sourceObject.visible = false; // le rendu passe par les rails/points du satin, pas ce contour
     sourceObject.paths.push_back(geometry::PathSet{std::move(outline), {}});
 
     const std::size_t pairCount = rungs.size();
@@ -1690,10 +1717,10 @@ void MainWindow::finishSatinColumn() {
     const ObjectId newEmbId = embObject.id;
     std::vector<document::VectorObject> vectors{std::move(sourceObject)};
     std::vector<document::EmbroideryObject> embroideries{std::move(embObject)};
-    undoStack_.execute(std::make_unique<commands::AddObjectBatchCommand>(
-                           std::move(vectors), std::move(embroideries),
-                           "Colonne satin (création manuelle)"),
-                       project_);
+    undoStack_.execute(
+        std::make_unique<commands::AddObjectBatchCommand>(
+            std::move(vectors), std::move(embroideries), "Colonne satin (création manuelle)"),
+        project_);
 
     selectedEmbroidery_ = newEmbId;
     selectedObject_.reset();
@@ -1765,7 +1792,7 @@ void MainWindow::updateBezierPreview(QPointF cursorSceneMm) {
     bezierPreviewItem_->setPath(path);
 
     if (bezierHandlePreviewItem_ != nullptr) {
-        bezierHandlePreviewItem_->setPath(QPainterPath());  // efface l'aperçu de poignée
+        bezierHandlePreviewItem_->setPath(QPainterPath()); // efface l'aperçu de poignée
     }
 }
 
@@ -1773,7 +1800,7 @@ void MainWindow::onBezierPointDragging(QPointF anchorMm, QPointF currentMm) {
     if (currentTool_ != Tool::DrawBezier) {
         return;
     }
-    updateBezierPreview(anchorMm);  // tracé confirmé + segment élastique jusqu'à l'ancre
+    updateBezierPreview(anchorMm); // tracé confirmé + segment élastique jusqu'à l'ancre
 
     // Poignée en cours de glisser : segment plein ancre -> curseur (poignée
     // sortante) + reflet symétrique en pointillé (poignée entrante), pour que
@@ -1849,7 +1876,7 @@ void MainWindow::finishBezier() {
     } else {
         statusBar()->showMessage(tr("Courbe : au moins deux nœuds requis."));
     }
-    cancelBezierDraw();  // nettoie l'état de tracé, succès ou échec
+    cancelBezierDraw(); // nettoie l'état de tracé, succès ou échec
 }
 
 void MainWindow::cancelBezierDraw() {
@@ -1879,8 +1906,7 @@ void MainWindow::removeLastBezierPoint() {
     }
     updateBezierPreview(modelToSceneMm(pendingBezierNodes_.back().pos));
     updateDrawActionsState();
-    statusBar()->showMessage(
-        tr("Courbe : %1 nœud(s) restant(s).").arg(pendingBezierNodes_.size()));
+    statusBar()->showMessage(tr("Courbe : %1 nœud(s) restant(s).").arg(pendingBezierNodes_.size()));
 }
 
 void MainWindow::updateDrawActionsState() {
@@ -1896,7 +1922,7 @@ void MainWindow::updateDrawActionsState() {
 
 void MainWindow::onFreeformPointAdded(QPointF posMm) {
     if (currentTool_ != Tool::DrawFreeform) {
-        return;  // sécurité : signal reçu hors mode dessin (ne devrait pas arriver)
+        return; // sécurité : signal reçu hors mode dessin (ne devrait pas arriver)
     }
     pendingFreeformPoints_.push_back(sceneMmToModel(posMm));
     if (freeformPreviewItem_ == nullptr) {
@@ -1905,7 +1931,7 @@ void MainWindow::onFreeformPointAdded(QPointF posMm) {
         pen.setWidthF(0.15);
         pen.setStyle(Qt::DashLine);
         freeformPreviewItem_->setPen(pen);
-        freeformPreviewItem_->setZValue(1000.0);  // toujours au-dessus du reste
+        freeformPreviewItem_->setZValue(1000.0); // toujours au-dessus du reste
         scene_->addItem(freeformPreviewItem_);
     }
     QPainterPath path;
@@ -1922,16 +1948,16 @@ void MainWindow::finishFreeform() {
     // tolérance) : on vérifie le résultat RÉEL, pas seulement le nombre de
     // points bruts, pour toujours donner un message clair plutôt qu'un
     // échec silencieux.
-    geometry::Path path = pendingFreeformPoints_.size() >= 3
-                              ? geometry::freeform_path(pendingFreeformPoints_,
-                                                        kFreeformSimplifyTolerance)
-                              : geometry::Path{};
+    geometry::Path path =
+        pendingFreeformPoints_.size() >= 3
+            ? geometry::freeform_path(pendingFreeformPoints_, kFreeformSimplifyTolerance)
+            : geometry::Path{};
     if (!path.nodes.empty()) {
         addVectorPrimitive(std::move(path), tr("Forme libre"));
     } else {
         statusBar()->showMessage(tr("Forme libre : tracé trop court."));
     }
-    cancelFreeformDraw();  // nettoie l'état de tracé, succès ou échec
+    cancelFreeformDraw(); // nettoie l'état de tracé, succès ou échec
 }
 
 void MainWindow::cancelFreeformDraw() {
@@ -1945,7 +1971,7 @@ void MainWindow::cancelFreeformDraw() {
 
 void MainWindow::addVectorPrimitive(geometry::Path path, const QString& name) {
     if (path.nodes.empty()) {
-        return;  // dégénéré (ex. polygone à moins de 3 sommets) : rien à créer
+        return; // dégénéré (ex. polygone à moins de 3 sommets) : rien à créer
     }
     document::VectorObject object;
     object.id = project_.object_ids.next();
@@ -1966,11 +1992,11 @@ void MainWindow::addVectorPrimitive(geometry::Path path, const QString& name) {
 }
 
 void MainWindow::refreshImage() {
-    applyCanvasToView();  // taille du cadre (peut avoir changé : réglage, undo, chargement)
-    setWindowModified(true);  // toute régénération suit une mutation du document
+    applyCanvasToView();     // taille du cadre (peut avoir changé : réglage, undo, chargement)
+    setWindowModified(true); // toute régénération suit une mutation du document
     if (!project_.hasImage()) {
         processed_ = {};
-        displayImage(processed_);  // affiche quand même une séquence importée
+        displayImage(processed_); // affiche quand même une séquence importée
         return;
     }
     // Une sélection qui ne correspond plus à une région ou un objet vivant
@@ -2023,9 +2049,8 @@ void MainWindow::refreshImage() {
                 stitchEditView_ = std::move(*ctx->target_view);
             }
         } else {
-            statusBar()->showMessage(
-                tr("Génération des points impossible : %1")
-                    .arg(QString::fromStdString(ctx.error().message)));
+            statusBar()->showMessage(tr("Génération des points impossible : %1")
+                                         .arg(QString::fromStdString(ctx.error().message)));
         }
     }
     if (simToolbar_ != nullptr) {
@@ -2098,18 +2123,20 @@ void MainWindow::renderBase(const image::Image& img) {
             // usage réel — cf. VectorObjectBodyItem).
             if (selected && currentTool_ == Tool::Select) {
                 const ObjectId objectId = object.id;
-                auto* bodyItem = new VectorObjectBodyItem(outline, pen, brush, [this, objectId](QPointF deltaSceneMm) {
-                    const Vec2um delta = sceneMmToModel(deltaSceneMm);
-                    // Diffère : refreshImage() détruirait cet item pendant son
-                    // propre événement souris (même défaut que NodeHandleItem).
-                    QTimer::singleShot(0, this, [this, objectId, delta] {
-                        undoStack_.execute(
-                            std::make_unique<commands::TranslateVectorObjectCommand>(objectId, delta),
-                            project_);
-                        refreshImage();
-                        updateActions();
+                auto* bodyItem = new VectorObjectBodyItem(
+                    outline, pen, brush, [this, objectId](QPointF deltaSceneMm) {
+                        const Vec2um delta = sceneMmToModel(deltaSceneMm);
+                        // Diffère : refreshImage() détruirait cet item pendant son
+                        // propre événement souris (même défaut que NodeHandleItem).
+                        QTimer::singleShot(0, this, [this, objectId, delta] {
+                            undoStack_.execute(
+                                std::make_unique<commands::TranslateVectorObjectCommand>(objectId,
+                                                                                         delta),
+                                project_);
+                            refreshImage();
+                            updateActions();
+                        });
                     });
-                });
                 scene_->addItem(bodyItem);
                 pathItem = bodyItem;
             } else {
@@ -2182,14 +2209,14 @@ void MainWindow::renderBase(const image::Image& img) {
                                     }
                                     deleteAct->setEnabled(canDelete);
                                     connect(deleteAct, &QAction::triggered, this,
-                                           [this, objectId, ref] {
-                                               undoStack_.execute(
-                                                   std::make_unique<commands::RemoveNodeCommand>(
-                                                       objectId, ref),
-                                                   project_);
-                                               refreshImage();
-                                               updateActions();
-                                           });
+                                            [this, objectId, ref] {
+                                                undoStack_.execute(
+                                                    std::make_unique<commands::RemoveNodeCommand>(
+                                                        objectId, ref),
+                                                    project_);
+                                                refreshImage();
+                                                updateActions();
+                                            });
                                     nodeMenu.exec(globalPos);
                                 });
                             scene_->addItem(handle);
@@ -2214,43 +2241,41 @@ void MainWindow::renderBase(const image::Image& img) {
 
                                 auto* handleItem = new NodeHandleItem(
                                     handleSceneMm,
-                                    [this, objectId, ref, isOut,
-                                     oldTan = tan](QPointF newSceneMm) {
+                                    [this, objectId, ref, isOut, oldTan = tan](QPointF newSceneMm) {
                                         const Vec2um newHandlePos{
                                             to_micrometers(Millimeters{newSceneMm.x()}),
                                             to_micrometers(Millimeters{-newSceneMm.y()})};
                                         const auto* obj = project_.findObject(objectId);
-                                        const auto* p = obj != nullptr
-                                                           ? document::path_in(*obj, ref.set, ref.path)
-                                                           : nullptr;
+                                        const auto* p =
+                                            obj != nullptr
+                                                ? document::path_in(*obj, ref.set, ref.path)
+                                                : nullptr;
                                         if (p == nullptr || ref.node >= p->nodes.size()) {
                                             return;
                                         }
-                                        const Vec2um newTan =
-                                            newHandlePos - p->nodes[ref.node].pos;
+                                        const Vec2um newTan = newHandlePos - p->nodes[ref.node].pos;
                                         if (newTan == *oldTan) {
                                             return;
                                         }
                                         QTimer::singleShot(
-                                            0, this,
-                                            [this, objectId, ref, isOut, oldTan, newTan] {
+                                            0, this, [this, objectId, ref, isOut, oldTan, newTan] {
                                                 undoStack_.execute(
-                                                    std::make_unique<commands::SetNodeHandleCommand>(
+                                                    std::make_unique<
+                                                        commands::SetNodeHandleCommand>(
                                                         objectId, ref, isOut, oldTan, newTan),
                                                     project_);
                                                 refreshImage();
                                                 updateActions();
                                             });
                                     });
-                                handleItem->setPen(
-                                    QPen(AppTheme::instance().tokens().accent, 1.5));
+                                handleItem->setPen(QPen(AppTheme::instance().tokens().accent, 1.5));
                                 handleItem->setBrush(
                                     QBrush(AppTheme::instance().tokens().accent.lighter(160)));
                                 handleItem->setToolTip(
                                     isOut ? tr("Poignée sortante — glisser pour incurver la "
-                                              "courbe")
-                                         : tr("Poignée entrante — glisser pour incurver la "
-                                              "courbe"));
+                                               "courbe")
+                                          : tr("Poignée entrante — glisser pour incurver la "
+                                               "courbe"));
                                 scene_->addItem(handleItem);
                                 baseItems_.append(handleItem);
                             };
@@ -2277,10 +2302,14 @@ void MainWindow::renderBase(const image::Image& img) {
                 std::optional<Micrometers> minX, maxX, minY, maxY;
                 const auto scan = [&](const geometry::Path& path) {
                     for (const auto& node : path.nodes) {
-                        if (!minX || node.pos.x < *minX) minX = node.pos.x;
-                        if (!maxX || node.pos.x > *maxX) maxX = node.pos.x;
-                        if (!minY || node.pos.y < *minY) minY = node.pos.y;
-                        if (!maxY || node.pos.y > *maxY) maxY = node.pos.y;
+                        if (!minX || node.pos.x < *minX)
+                            minX = node.pos.x;
+                        if (!maxX || node.pos.x > *maxX)
+                            maxX = node.pos.x;
+                        if (!minY || node.pos.y < *minY)
+                            minY = node.pos.y;
+                        if (!maxY || node.pos.y > *maxY)
+                            maxY = node.pos.y;
                     }
                 };
                 for (const auto& set : object->paths) {
@@ -2294,22 +2323,24 @@ void MainWindow::renderBase(const image::Image& img) {
                 // plutôt que de diviser par zéro.
                 if (minX && maxX && minY && maxY && *minX != *maxX && *minY != *maxY) {
                     const ObjectId objectId = object->id;
-                    const Vec2um corners[4] = {
-                        Vec2um{*minX, *minY}, Vec2um{*maxX, *minY}, Vec2um{*maxX, *maxY},
-                        Vec2um{*minX, *maxY}};
+                    const Vec2um corners[4] = {Vec2um{*minX, *minY}, Vec2um{*maxX, *minY},
+                                               Vec2um{*maxX, *maxY}, Vec2um{*minX, *maxY}};
                     for (std::size_t i = 0; i < 4; ++i) {
                         const Vec2um corner = corners[i];
-                        const Vec2um anchor = corners[(i + 2) % 4];  // coin diagonalement opposé
+                        const Vec2um anchor = corners[(i + 2) % 4]; // coin diagonalement opposé
                         auto* handle = new ResizeHandleItem(
-                            modelToSceneMm(corner), [this, objectId, corner, anchor](QPointF newSceneMm) {
+                            modelToSceneMm(corner),
+                            [this, objectId, corner, anchor](QPointF newSceneMm) {
                                 const Vec2um newCorner = sceneMmToModel(newSceneMm);
                                 if (newCorner == corner) {
                                     return;
                                 }
-                                const double sx = static_cast<double>((newCorner.x - anchor.x).value) /
-                                                  static_cast<double>((corner.x - anchor.x).value);
-                                const double sy = static_cast<double>((newCorner.y - anchor.y).value) /
-                                                  static_cast<double>((corner.y - anchor.y).value);
+                                const double sx =
+                                    static_cast<double>((newCorner.x - anchor.x).value) /
+                                    static_cast<double>((corner.x - anchor.x).value);
+                                const double sy =
+                                    static_cast<double>((newCorner.y - anchor.y).value) /
+                                    static_cast<double>((corner.y - anchor.y).value);
                                 // Diffère : refreshImage() détruirait cet item pendant
                                 // son propre événement souris (même défaut que
                                 // NodeHandleItem/VectorObjectBodyItem).
@@ -2338,24 +2369,26 @@ void MainWindow::renderBase(const image::Image& img) {
         const auto& tatami = std::get<document::TatamiParams>(fill->params);
         const Vec2um cUm = embroideryCentroid(*fill);
         const QPointF c(to_millimeters(cUm.x).value, -to_millimeters(cUm.y).value);
-        double radius = 12.0;  // mm
+        double radius = 12.0; // mm
         if (const auto* vec = project_.findObject(fill->source_vector)) {
             const QRectF bb = objectPainterPath(*vec).boundingRect();
             radius = std::clamp(0.45 * std::min(bb.width(), bb.height()), 6.0, 60.0);
         }
-        const double theta = tatami.angle.radians;  // repère physique (Y haut)
+        const double theta = tatami.angle.radians; // repère physique (Y haut)
         const double dx = radius * std::cos(theta);
-        const double dy = -radius * std::sin(theta);  // scène : Y vers le bas
+        const double dy = -radius * std::sin(theta); // scène : Y vers le bas
         QPen axisPen(AppTheme::instance().tokens().canvasHandle);
         axisPen.setCosmetic(true);
         axisPen.setWidth(2);
-        auto* axis = scene_->addLine(QLineF(c.x() - dx, c.y() - dy, c.x() + dx, c.y() + dy), axisPen);
+        auto* axis =
+            scene_->addLine(QLineF(c.x() - dx, c.y() - dy, c.x() + dx, c.y() + dy), axisPen);
         axis->setZValue(98);
         baseItems_.append(axis);
 
         const ObjectId fillId = fill->id;
         auto* knob = new NodeHandleItem(
-            QPointF(c.x() + dx, c.y() + dy), [this, fillId, c](QPointF released) {
+            QPointF(c.x() + dx, c.y() + dy),
+            [this, fillId, c](QPointF released) {
                 double angle = std::atan2(-(released.y() - c.y()), released.x() - c.x());
                 angle = std::fmod(angle, std::numbers::pi);
                 if (angle < 0.0) {
@@ -2372,7 +2405,7 @@ void MainWindow::renderBase(const image::Image& img) {
                     updateActions();
                 });
             },
-            [this, c](QPointF moved) {  // aperçu : angle affiché pendant le glisser
+            [this, c](QPointF moved) { // aperçu : angle affiché pendant le glisser
                 double angle = std::atan2(-(moved.y() - c.y()), moved.x() - c.x());
                 angle = std::fmod(angle, std::numbers::pi);
                 if (angle < 0.0) {
@@ -2392,8 +2425,7 @@ void MainWindow::renderBase(const image::Image& img) {
     // Guides satin paramétriques. Chaque extrémité est indépendante mais reste
     // contrainte à son rail ; la validation monotone est partagée avec les
     // tests du cœur, donc un geste accepté ne disparaît pas à la génération.
-    if (satinGuideModeAct_ != nullptr && satinGuideModeAct_->isChecked() &&
-        satinGuideTarget_) {
+    if (satinGuideModeAct_ != nullptr && satinGuideModeAct_->isChecked() && satinGuideTarget_) {
         if (const auto* obj = project_.findEmbroidery(*satinGuideTarget_)) {
             if (const auto* satin = std::get_if<document::SatinParams>(&obj->params)) {
                 const ObjectId targetId = obj->id;
@@ -2444,105 +2476,100 @@ void MainWindow::renderBase(const image::Image& img) {
                     // jamais de coordonnée/angle recopié d'une section à l'autre. Un
                     // glisser sans Maj reste un geste local (édition d'angle) qui ne
                     // touche que cette section, comme avant.
-                    const auto addEndpoint = [this, targetId, i, rung, generation](
-                                                 QPointF scenePos,
-                                                 stitch_generation::SatinGuideSide side) {
-                        auto* handle = new NodeHandleItem(
-                            scenePos,
-                            [this, targetId, i, rung, generation, side](QPointF released) {
-                                const Vec2um desired{
-                                    to_micrometers(Millimeters{released.x()}),
-                                    to_micrometers(Millimeters{-released.y()})};
-                                const auto* current = project_.findEmbroidery(targetId);
-                                const auto* satinNow =
-                                    current != nullptr
-                                        ? std::get_if<document::SatinParams>(&current->params)
-                                        : nullptr;
-                                if (satinNow == nullptr) {
-                                    return;
-                                }
-                                const bool groupGesture =
-                                    rung.link_id.has_value() &&
-                                    (QGuiApplication::keyboardModifiers() & Qt::ShiftModifier);
-                                if (groupGesture) {
-                                    const auto edits = stitch_generation::move_satin_guide_group(
-                                        project_, current->source_vector, *rung.link_id, targetId,
-                                        side, desired);
-                                    if (!edits) {
-                                        statusBar()->showMessage(
-                                            tr("Déplacement du groupe refusé : intervalle "
-                                               "épuisé ou jonction modifiée entretemps."));
-                                        displayImage(processed_);
-                                        return;
-                                    }
-                                    const bool changed = std::any_of(
-                                        edits->begin(), edits->end(), [this](const auto& edit) {
-                                            const auto* section =
-                                                project_.findEmbroidery(edit.embroidery_id);
-                                            const auto* sectionSatin =
-                                                section != nullptr
-                                                    ? std::get_if<document::SatinParams>(
-                                                          &section->params)
-                                                    : nullptr;
-                                            return sectionSatin == nullptr ||
-                                                   edit.guide_index >= sectionSatin->rungs.size() ||
-                                                   sectionSatin->rungs[edit.guide_index] !=
-                                                       edit.guide;
-                                        });
-                                    if (!changed) {
-                                        return; // Maj+clic sans mouvement : aucun historique
-                                                // fantôme
-                                    }
-                                    QTimer::singleShot(0, this, [this, edits = *edits, generation] {
-                                        if (generation != documentGeneration_) {
-                                            return;
-                                        }
-                                        std::vector<commands::SatinGuideEdit> commandEdits;
-                                        commandEdits.reserve(edits.size());
-                                        for (const auto& edit : edits) {
-                                            commandEdits.push_back(
-                                                {edit.embroidery_id, edit.guide_index, edit.guide});
-                                        }
-                                        const auto groupCount = commandEdits.size();
-                                        undoStack_.execute(
-                                            std::make_unique<commands::MoveSatinGuidesCommand>(
-                                                std::move(commandEdits)),
-                                            project_);
-                                        refreshImage();
-                                        updateActions();
-                                        statusBar()->showMessage(
-                                            tr("%1 guides liés déplacés ensemble.")
-                                                .arg(groupCount));
-                                    });
-                                    return;
-                                }
-                                const auto moved = stitch_generation::move_satin_guide_endpoint(
-                                    *satinNow, i, side, desired);
-                                if (!moved) {
-                                    statusBar()->showMessage(tr(
-                                        "Guide refusé : il doit rester ordonné sur les deux rails."));
+                    const auto addEndpoint = [this, targetId, i, rung,
+                                              generation](QPointF scenePos,
+                                                          stitch_generation::SatinGuideSide side) {
+                        auto* handle = new NodeHandleItem(scenePos, [this, targetId, i, rung,
+                                                                     generation,
+                                                                     side](QPointF released) {
+                            const Vec2um desired{to_micrometers(Millimeters{released.x()}),
+                                                 to_micrometers(Millimeters{-released.y()})};
+                            const auto* current = project_.findEmbroidery(targetId);
+                            const auto* satinNow =
+                                current != nullptr
+                                    ? std::get_if<document::SatinParams>(&current->params)
+                                    : nullptr;
+                            if (satinNow == nullptr) {
+                                return;
+                            }
+                            const bool groupGesture =
+                                rung.link_id.has_value() &&
+                                (QGuiApplication::keyboardModifiers() & Qt::ShiftModifier);
+                            if (groupGesture) {
+                                const auto edits = stitch_generation::move_satin_guide_group(
+                                    project_, current->source_vector, *rung.link_id, targetId, side,
+                                    desired);
+                                if (!edits) {
+                                    statusBar()->showMessage(
+                                        tr("Déplacement du groupe refusé : intervalle "
+                                           "épuisé ou jonction modifiée entretemps."));
                                     displayImage(processed_);
                                     return;
                                 }
-                                if (*moved == rung) {
-                                    return;
-                                }
-                                QTimer::singleShot(
-                                    0, this, [this, targetId, i, moved = *moved, generation] {
-                                        if (generation != documentGeneration_) {
-                                            return;
-                                        }
-                                        undoStack_.execute(
-                                            std::make_unique<commands::MoveSatinGuideCommand>(
-                                                targetId, i, moved),
-                                            project_);
-                                        refreshImage();
-                                        updateActions();
+                                const bool changed = std::any_of(
+                                    edits->begin(), edits->end(), [this](const auto& edit) {
+                                        const auto* section =
+                                            project_.findEmbroidery(edit.embroidery_id);
+                                        const auto* sectionSatin =
+                                            section != nullptr ? std::get_if<document::SatinParams>(
+                                                                     &section->params)
+                                                               : nullptr;
+                                        return sectionSatin == nullptr ||
+                                               edit.guide_index >= sectionSatin->rungs.size() ||
+                                               sectionSatin->rungs[edit.guide_index] != edit.guide;
                                     });
-                            });
+                                if (!changed) {
+                                    return; // Maj+clic sans mouvement : aucun historique
+                                            // fantôme
+                                }
+                                QTimer::singleShot(0, this, [this, edits = *edits, generation] {
+                                    if (generation != documentGeneration_) {
+                                        return;
+                                    }
+                                    std::vector<commands::SatinGuideEdit> commandEdits;
+                                    commandEdits.reserve(edits.size());
+                                    for (const auto& edit : edits) {
+                                        commandEdits.push_back(
+                                            {edit.embroidery_id, edit.guide_index, edit.guide});
+                                    }
+                                    const auto groupCount = commandEdits.size();
+                                    undoStack_.execute(
+                                        std::make_unique<commands::MoveSatinGuidesCommand>(
+                                            std::move(commandEdits)),
+                                        project_);
+                                    refreshImage();
+                                    updateActions();
+                                    statusBar()->showMessage(
+                                        tr("%1 guides liés déplacés ensemble.").arg(groupCount));
+                                });
+                                return;
+                            }
+                            const auto moved = stitch_generation::move_satin_guide_endpoint(
+                                *satinNow, i, side, desired);
+                            if (!moved) {
+                                statusBar()->showMessage(tr(
+                                    "Guide refusé : il doit rester ordonné sur les deux rails."));
+                                displayImage(processed_);
+                                return;
+                            }
+                            if (*moved == rung) {
+                                return;
+                            }
+                            QTimer::singleShot(
+                                0, this, [this, targetId, i, moved = *moved, generation] {
+                                    if (generation != documentGeneration_) {
+                                        return;
+                                    }
+                                    undoStack_.execute(
+                                        std::make_unique<commands::MoveSatinGuideCommand>(targetId,
+                                                                                          i, moved),
+                                        project_);
+                                    refreshImage();
+                                    updateActions();
+                                });
+                        });
                         handle->setPen(QPen(AppTheme::instance().tokens().accent, 1.5));
-                        handle->setBrush(
-                            QBrush(AppTheme::instance().tokens().accent.lighter(160)));
+                        handle->setBrush(QBrush(AppTheme::instance().tokens().accent.lighter(160)));
                         handle->setToolTip(
                             side == stitch_generation::SatinGuideSide::RailA
                                 ? tr("Guide satin #%1 — extrémité rail A").arg(i + 1)
@@ -2592,9 +2619,9 @@ void MainWindow::renderBase(const image::Image& img) {
                     for (std::size_t n = 0; n < rail.nodes.size(); ++n) {
                         const Vec2um pos = rail.nodes[n].pos;
                         const QPointF sceneMm = modelToSceneMm(pos);
-                        auto* handle = new NodeHandleItem(
-                            sceneMm,
-                            [this, targetId, side, n, pos, generation](QPointF newSceneMm) {
+                        auto* handle =
+                            new NodeHandleItem(sceneMm, [this, targetId, side, n, pos,
+                                                         generation](QPointF newSceneMm) {
                                 const Vec2um newPos = sceneMmToModel(newSceneMm);
                                 if (newPos == pos) {
                                     return;
@@ -2652,11 +2679,10 @@ void MainWindow::renderBase(const image::Image& img) {
         // Le seuil porte sur les points RÉELLEMENT déplaçables (une passe
         // TopStitch/Stitch), pas sur `view.raw.size()` qui compte aussi les
         // sauts/points de sous-couche jamais dotés d'une poignée.
-        const auto movableCount = std::count_if(view.raw.begin(), view.raw.end(),
-                                                 stitch_generation::is_movable_point);
+        const auto movableCount =
+            std::count_if(view.raw.begin(), view.raw.end(), stitch_generation::is_movable_point);
         if (const auto* obj = project_.findEmbroidery(targetId);
-            obj != nullptr &&
-            static_cast<std::size_t>(movableCount) <= kMaxEditableStitchHandles) {
+            obj != nullptr && static_cast<std::size_t>(movableCount) <= kMaxEditableStitchHandles) {
             // Overrides indexés une fois par `base_index` : la boucle sur les
             // poignées ci-dessous ne doit pas redevenir O(points*overrides) en
             // rescannant `obj->overrides` pour chaque point (motif dense).
@@ -2672,7 +2698,7 @@ void MainWindow::renderBase(const image::Image& img) {
                 if (!stitch_generation::is_movable_point(cmd)) {
                     continue;
                 }
-                Vec2um pos = cmd.pos;  // position affichée : retouche existante sinon brute
+                Vec2um pos = cmd.pos; // position affichée : retouche existante sinon brute
                 if (auto it = movedOverrides.find(i); it != movedOverrides.end()) {
                     pos = it->second;
                 }
@@ -2687,12 +2713,13 @@ void MainWindow::renderBase(const image::Image& img) {
                 // muter un projet qui n'est plus celui visé par ce glisser.
                 const std::uint64_t generation = documentGeneration_;
                 auto* handle = new NodeHandleItem(
-                    sceneMm, [this, targetId, baseIndex, pos, rawFingerprint, rawPointCount,
-                              generation](QPointF newSceneMm) {
+                    sceneMm,
+                    [this, targetId, baseIndex, pos, rawFingerprint, rawPointCount,
+                     generation](QPointF newSceneMm) {
                         const Vec2um newPos{to_micrometers(Millimeters{newSceneMm.x()}),
                                             to_micrometers(Millimeters{-newSceneMm.y()})};
                         if (newPos == pos) {
-                            return;  // pas de mouvement : aucune commande (pas de pollution undo)
+                            return; // pas de mouvement : aucune commande (pas de pollution undo)
                         }
                         // Diffère : refreshImage() détruirait cette poignée pendant
                         // son propre événement souris (même précaution que les
@@ -2707,8 +2734,7 @@ void MainWindow::renderBase(const image::Image& img) {
                                 }
                                 undoStack_.execute(
                                     std::make_unique<commands::MoveStitchPointCommand>(
-                                        targetId, baseIndex, newPos, rawFingerprint,
-                                        rawPointCount),
+                                        targetId, baseIndex, newPos, rawFingerprint, rawPointCount),
                                     project_);
                                 refreshImage();
                                 updateActions();
@@ -2816,7 +2842,7 @@ void MainWindow::renderStitches() {
             }
             break;
         default:
-            hasPos = false;  // ColorChange / End : rompt la continuité
+            hasPos = false; // ColorChange / End : rompt la continuité
             break;
         }
     }
@@ -3054,9 +3080,8 @@ void MainWindow::createRunningStitchObject() {
     updateActions();
     if (sequence_) {
         const auto stats = stitch::compute_stats(*sequence_);
-        statusBar()->showMessage(tr("Points générés : %1 points, %2 saut(s)")
-                                     .arg(stats.stitches)
-                                     .arg(stats.jumps));
+        statusBar()->showMessage(
+            tr("Points générés : %1 points, %2 saut(s)").arg(stats.stitches).arg(stats.jumps));
     }
 }
 
@@ -3230,7 +3255,8 @@ void MainWindow::autoDigitize() {
 
 void MainWindow::segmentWithAi() {
     if (!project_.hasImage() || processed_.empty()) {
-        QMessageBox::information(this, tr("Segmenter avec l'IA"), tr("Importez d'abord une image."));
+        QMessageBox::information(this, tr("Segmenter avec l'IA"),
+                                 tr("Importez d'abord une image."));
         return;
     }
     const AiPreferences prefs = loadAiPreferences();
@@ -3267,10 +3293,10 @@ void MainWindow::segmentWithAi() {
     const std::size_t embCount = result->embroideries.size();
     const std::vector<std::string> warnings = std::move(result->warnings);
 
-    undoStack_.execute(std::make_unique<commands::AddObjectBatchCommand>(
-                           std::move(result->vectors), std::move(result->embroideries),
-                           "Segmentation IA"),
-                       project_);
+    undoStack_.execute(
+        std::make_unique<commands::AddObjectBatchCommand>(
+            std::move(result->vectors), std::move(result->embroideries), "Segmentation IA"),
+        project_);
     showStitchesAct_->setChecked(true);
     refreshImage();
     updateActions();
@@ -3354,8 +3380,8 @@ MainWindow::SatinCoverageChoice MainWindow::askAboutIncompleteSatinCoverage(
     box.setIcon(QMessageBox::Warning);
     box.setWindowTitle(tr("Satin incomplet"));
     box.setText(tr("%1 % de la région a pu être converti en satin. %2 mm² restent sans point "
-                    "(satin ni tatami) — la forme comporte une zone que le découpage automatique "
-                    "n'a pas su rendre en satin de qualité suffisante.")
+                   "(satin ni tatami) — la forme comporte une zone que le découpage automatique "
+                   "n'a pas su rendre en satin de qualité suffisante.")
                     .arg(coveredPercent, 0, 'f', 1)
                     .arg(residualAreaMm2, 0, 'f', 1));
     QString detail = tr("Zone(s) non résolue(s) (%1) :\n").arg(unresolvedResidual.size());
@@ -3363,9 +3389,12 @@ MainWindow::SatinCoverageChoice MainWindow::askAboutIncompleteSatinCoverage(
         const double pieceAreaMm2 = std::abs(geometry::signed_area_um2(piece.outer)) / 1e6;
         detail += QStringLiteral("• %1 mm²\n").arg(pieceAreaMm2, 0, 'f', 2);
     }
-    box.setDetailedText(detail);  // "Voir le problème" -- bouton "Détails" ajouté automatiquement par Qt
-    auto* partialButton = box.addButton(tr("Continuer avec satin partiel"), QMessageBox::AcceptRole);
-    auto* tatamiButton = box.addButton(tr("Utiliser tatami pour le reliquat"), QMessageBox::ActionRole);
+    box.setDetailedText(
+        detail); // "Voir le problème" -- bouton "Détails" ajouté automatiquement par Qt
+    auto* partialButton =
+        box.addButton(tr("Continuer avec satin partiel"), QMessageBox::AcceptRole);
+    auto* tatamiButton =
+        box.addButton(tr("Utiliser tatami pour le reliquat"), QMessageBox::ActionRole);
     box.addButton(tr("Annuler"), QMessageBox::RejectRole);
     box.setDefaultButton(partialButton);
     box.exec();
@@ -3379,10 +3408,10 @@ MainWindow::SatinCoverageChoice MainWindow::askAboutIncompleteSatinCoverage(
     return SatinCoverageChoice::Cancel;
 }
 
-void MainWindow::appendTatamiFallbackObjects(const std::vector<geometry::PathSet>& residual,
-                                             const document::VectorObject& source,
-                                             std::vector<document::VectorObject>& vectorsOut,
-                                             std::vector<document::EmbroideryObject>& embroideriesOut) {
+void MainWindow::appendTatamiFallbackObjects(
+    const std::vector<geometry::PathSet>& residual, const document::VectorObject& source,
+    std::vector<document::VectorObject>& vectorsOut,
+    std::vector<document::EmbroideryObject>& embroideriesOut) {
     // Même schéma que le repli automatique de `autodigitize.cpp` (§ AutoChoice,
     // 2026-08-14) : une paire VectorObject+EmbroideryObject par morceau, le
     // remplissage tatami suivant `source_vector` (`TatamiParams` ne porte
@@ -3394,11 +3423,12 @@ void MainWindow::appendTatamiFallbackObjects(const std::vector<geometry::PathSet
     for (const auto& piece : residual) {
         const double areaMm2 = std::abs(geometry::signed_area_um2(piece.outer)) / 1e6;
         if (areaMm2 < kMinFallbackAreaMm2) {
-            continue;  // reliquat négligeable (bruit d'arrondi géométrique)
+            continue; // reliquat négligeable (bruit d'arrondi géométrique)
         }
         document::VectorObject fallbackVec;
         fallbackVec.id = project_.object_ids.next();
-        fallbackVec.name = tr("Reliquat de %1 (tatami)").arg(QString::fromStdString(source.name)).toStdString();
+        fallbackVec.name =
+            tr("Reliquat de %1 (tatami)").arg(QString::fromStdString(source.name)).toStdString();
         fallbackVec.rgb = source.rgb;
         fallbackVec.paths = {piece};
         const ObjectId fallbackVecId = fallbackVec.id;
@@ -3413,7 +3443,8 @@ void MainWindow::appendTatamiFallbackObjects(const std::vector<geometry::PathSet
         // pour le reliquat" (§23) -- jamais une classification automatique,
         // même si le résultat ressemble au repli d'autodigitize.cpp.
         fallback.intent = document::EmbroideryIntent::ForcedUserChoice;
-        fallback.name = tr("Tatami de repli (%1)").arg(QString::fromStdString(source.name)).toStdString();
+        fallback.name =
+            tr("Tatami de repli (%1)").arg(QString::fromStdString(source.name)).toStdString();
         embroideriesOut.push_back(std::move(fallback));
     }
 }
@@ -3461,8 +3492,9 @@ void MainWindow::createSatinObject() {
     skeletonParams.geometry_mode = auto_satin::SatinGeometryMode::Parametric;
     const document::SatinParams initialDefaults;
     satin_planning::SatinBuildReport built = satin_planning::build_satin_sections(
-        source->paths.front(), skeletonParams, initialDefaults.density, initialDefaults.pull_compensation,
-        initialDefaults.center_underlay, initialDefaults.max_width);
+        source->paths.front(), skeletonParams, initialDefaults.density,
+        initialDefaults.pull_compensation, initialDefaults.center_underlay,
+        initialDefaults.max_width);
     const std::size_t skeletonColumnCount = built.sections.size();
 
     if (skeletonColumnCount == 0) {
@@ -3482,11 +3514,13 @@ void MainWindow::createSatinObject() {
         }
         std::vector<document::EmbroideryObject> tatamiObjects;
         std::vector<document::VectorObject> tatamiVectors;
-        appendTatamiFallbackObjects(built.unresolved_residual, *source, tatamiVectors, tatamiObjects);
+        appendTatamiFallbackObjects(built.unresolved_residual, *source, tatamiVectors,
+                                    tatamiObjects);
         if (tatamiObjects.empty()) {
-            QMessageBox::warning(this, tr("Satin impossible"),
-                                 tr("Le remplissage tatami de repli n'a lui non plus rien pu construire "
-                                    "(région dégénérée)."));
+            QMessageBox::warning(
+                this, tr("Satin impossible"),
+                tr("Le remplissage tatami de repli n'a lui non plus rien pu construire "
+                   "(région dégénérée)."));
             return;
         }
         undoStack_.execute(std::make_unique<commands::AddObjectBatchCommand>(
@@ -3498,7 +3532,8 @@ void MainWindow::createSatinObject() {
         updateActions();
         if (sequence_) {
             const auto stats = stitch::compute_stats(*sequence_);
-            statusBar()->showMessage(tr("Remplissage tatami de repli : %1 points").arg(stats.stitches));
+            statusBar()->showMessage(
+                tr("Remplissage tatami de repli : %1 points").arg(stats.stitches));
         }
         return;
     }
@@ -3506,10 +3541,10 @@ void MainWindow::createSatinObject() {
     QDialog dialog(this);
     dialog.setWindowTitle(tr("Colonne satin"));
     auto* layout = new QFormLayout(&dialog);
-    auto* warn = new QLabel(
-        tr("⚠ Le satin automatique est expérimental. Vérifiez impérativement le "
-           "résultat (densité, virages, extrémités) avant tout passage sur machine."),
-        &dialog);
+    auto* warn =
+        new QLabel(tr("⚠ Le satin automatique est expérimental. Vérifiez impérativement le "
+                      "résultat (densité, virages, extrémités) avant tout passage sur machine."),
+                   &dialog);
     warn->setWordWrap(true);
     warn->setStyleSheet("color:#8a5a00;");
     layout->addRow(warn);
@@ -3539,7 +3574,7 @@ void MainWindow::createSatinObject() {
     const Micrometers density = to_micrometers(Millimeters{densitySpin->value()});
     const Micrometers compensation = to_micrometers(Millimeters{compSpin->value()});
     const bool underlay = underlayCheck->isChecked();
-    const document::SatinParams defaults;  // pour le seuil max_width (§5.3)
+    const document::SatinParams defaults; // pour le seuil max_width (§5.3)
 
     std::vector<document::EmbroideryObject> objects;
     double worstWidthUm = 0.0;
@@ -3553,18 +3588,18 @@ void MainWindow::createSatinObject() {
         section.params.center_underlay = underlay;
         stitch_generation::SatinConfig probe;
         probe.density = density;
-        worstWidthUm = std::max(
-            worstWidthUm,
-            stitch_generation::fill_satin(section.params.rail_a, section.params.rail_b, probe).max_width_um);
+        worstWidthUm =
+            std::max(worstWidthUm, stitch_generation::fill_satin(section.params.rail_a,
+                                                                 section.params.rail_b, probe)
+                                       .max_width_um);
 
         document::EmbroideryObject object;
         object.id = project_.object_ids.next();
-        object.name = (skeletonColumnCount > 1
-                          ? tr("Satin de %1 (%2)")
-                                .arg(QString::fromStdString(source->name))
-                                .arg(++idx)
-                          : tr("Satin de %1").arg(QString::fromStdString(source->name)))
-                         .toStdString();
+        object.name =
+            (skeletonColumnCount > 1
+                 ? tr("Satin de %1 (%2)").arg(QString::fromStdString(source->name)).arg(++idx)
+                 : tr("Satin de %1").arg(QString::fromStdString(source->name)))
+                .toStdString();
         object.source_vector = source->id;
         object.rgb = source->rgb;
         object.params = std::move(section.params);
@@ -3593,7 +3628,8 @@ void MainWindow::createSatinObject() {
     // §23 du plan de refonte satin : le choix (partiel / tatami / annuler)
     // est demandé AVANT toute création, jamais après -- `Annuler` doit
     // pouvoir laisser le document totalement inchangé.
-    const double sourceAreaMm2 = std::abs(geometry::signed_area_um2(source->paths.front().outer)) / 1e6;
+    const double sourceAreaMm2 =
+        std::abs(geometry::signed_area_um2(source->paths.front().outer)) / 1e6;
     const SatinCoverageChoice coverageChoice =
         askAboutIncompleteSatinCoverage(built.unresolved_residual, sourceAreaMm2);
     if (coverageChoice == SatinCoverageChoice::Cancel) {
@@ -3605,16 +3641,17 @@ void MainWindow::createSatinObject() {
         appendTatamiFallbackObjects(built.unresolved_residual, *source, extraVectors, objects);
     }
 
-    undoStack_.execute(std::make_unique<commands::AddObjectBatchCommand>(
-                           std::move(extraVectors), std::move(objects),
-                           "Colonne satin (création manuelle)"),
-                       project_);
+    undoStack_.execute(
+        std::make_unique<commands::AddObjectBatchCommand>(
+            std::move(extraVectors), std::move(objects), "Colonne satin (création manuelle)"),
+        project_);
     showStitchesAct_->setChecked(true);
     refreshImage();
     updateActions();
     if (sequence_) {
         const auto stats = stitch::compute_stats(*sequence_);
-        QString msg = tr("%1 colonne(s) satin générée(s) : %2 points").arg(satinCount).arg(stats.stitches);
+        QString msg =
+            tr("%1 colonne(s) satin générée(s) : %2 points").arg(satinCount).arg(stats.stitches);
         if (coverageChoice == SatinCoverageChoice::UseTatami) {
             msg += tr(" (+ remplissage tatami pour le reliquat)");
         }
@@ -3690,10 +3727,10 @@ bool MainWindow::createSatinObjectWithCutLine(Vec2um cutA, Vec2um cutB) {
     QDialog dialog(this);
     dialog.setWindowTitle(tr("Colonnes satin (ligne de coupe)"));
     auto* layout = new QFormLayout(&dialog);
-    auto* warn = new QLabel(
-        tr("⚠ Le satin automatique est expérimental. Vérifiez impérativement le "
-           "résultat (densité, virages, extrémités) avant tout passage sur machine."),
-        &dialog);
+    auto* warn =
+        new QLabel(tr("⚠ Le satin automatique est expérimental. Vérifiez impérativement le "
+                      "résultat (densité, virages, extrémités) avant tout passage sur machine."),
+                   &dialog);
     warn->setWordWrap(true);
     warn->setStyleSheet("color:#8a5a00;");
     layout->addRow(warn);
@@ -3723,7 +3760,7 @@ bool MainWindow::createSatinObjectWithCutLine(Vec2um cutA, Vec2um cutB) {
     const Micrometers density = to_micrometers(Millimeters{densitySpin->value()});
     const Micrometers compensation = to_micrometers(Millimeters{compSpin->value()});
     const bool underlay = underlayCheck->isChecked();
-    const document::SatinParams defaults;  // pour le seuil max_width (§5.3)
+    const document::SatinParams defaults; // pour le seuil max_width (§5.3)
 
     std::vector<document::EmbroideryObject> objects;
     std::vector<std::string> allWarnings;
@@ -3746,8 +3783,10 @@ bool MainWindow::createSatinObjectWithCutLine(Vec2um cutA, Vec2um cutB) {
         skeletonParams.geometry_mode = auto_satin::SatinGeometryMode::Parametric;
         satin_planning::SatinBuildReport pieceBuilt = satin_planning::build_satin_sections(
             piece, skeletonParams, density, compensation, underlay, defaults.max_width);
-        for (auto& w : pieceBuilt.warnings) allWarnings.push_back(std::move(w));
-        for (auto& r : pieceBuilt.unresolved_residual) allResidual.push_back(std::move(r));
+        for (auto& w : pieceBuilt.warnings)
+            allWarnings.push_back(std::move(w));
+        for (auto& r : pieceBuilt.unresolved_residual)
+            allResidual.push_back(std::move(r));
         if (pieceBuilt.sections.empty()) {
             continue;
         }
@@ -3755,9 +3794,10 @@ bool MainWindow::createSatinObjectWithCutLine(Vec2um cutA, Vec2um cutB) {
         for (auto& section : pieceBuilt.sections) {
             stitch_generation::SatinConfig probe;
             probe.density = density;
-            worstWidthUm = std::max(worstWidthUm, stitch_generation::fill_satin(section.params.rail_a,
-                                                                                 section.params.rail_b, probe)
-                                                        .max_width_um);
+            worstWidthUm =
+                std::max(worstWidthUm, stitch_generation::fill_satin(section.params.rail_a,
+                                                                     section.params.rail_b, probe)
+                                           .max_width_um);
 
             document::EmbroideryObject object;
             object.id = project_.object_ids.next();
@@ -3798,7 +3838,8 @@ bool MainWindow::createSatinObjectWithCutLine(Vec2um cutA, Vec2um cutB) {
     // §23 du plan de refonte satin : même choix explicite qu'`createSatinObject()`,
     // demandé AVANT creation -- `Annuler` laisse le document inchangé malgré
     // la découpe géométrique déjà calculée localement (jamais committée).
-    const SatinCoverageChoice coverageChoice = askAboutIncompleteSatinCoverage(allResidual, totalPieceAreaMm2);
+    const SatinCoverageChoice coverageChoice =
+        askAboutIncompleteSatinCoverage(allResidual, totalPieceAreaMm2);
     if (coverageChoice == SatinCoverageChoice::Cancel) {
         return false;
     }
@@ -3808,16 +3849,18 @@ bool MainWindow::createSatinObjectWithCutLine(Vec2um cutA, Vec2um cutB) {
         appendTatamiFallbackObjects(allResidual, *source, extraVectors, objects);
     }
 
-    undoStack_.execute(std::make_unique<commands::AddObjectBatchCommand>(
-                           std::move(extraVectors), std::move(objects),
-                           "Colonne satin (ligne de coupe)"),
-                       project_);
+    undoStack_.execute(
+        std::make_unique<commands::AddObjectBatchCommand>(
+            std::move(extraVectors), std::move(objects), "Colonne satin (ligne de coupe)"),
+        project_);
     showStitchesAct_->setChecked(true);
     refreshImage();
     updateActions();
     if (sequence_) {
         const auto stats = stitch::compute_stats(*sequence_);
-        QString msg = tr("Coupe : %1 colonne(s) satin générée(s) : %2 points").arg(satinCount).arg(stats.stitches);
+        QString msg = tr("Coupe : %1 colonne(s) satin générée(s) : %2 points")
+                          .arg(satinCount)
+                          .arg(stats.stitches);
         if (coverageChoice == SatinCoverageChoice::UseTatami) {
             msg += tr(" (+ remplissage tatami pour le reliquat)");
         }
@@ -3848,7 +3891,7 @@ std::optional<ObjectId> MainWindow::objectAt(QPointF posMm) const {
     std::optional<ObjectId> hit;
     for (const auto& object : project_.vector_objects) {
         if (object.visible && objectPainterPath(object).contains(posMm)) {
-            hit = object.id;  // le dernier dessiné (au-dessus) gagne
+            hit = object.id; // le dernier dessiné (au-dessus) gagne
         }
     }
     return hit;
@@ -3876,7 +3919,7 @@ document::EmbroideryObject* MainWindow::satinEmbroideryAt(QPointF posMm) {
         }
         ribbon.closeSubpath();
         if (ribbon.contains(posMm)) {
-            hit = &emb;  // le dernier de la liste gagne, comme objectAt
+            hit = &emb; // le dernier de la liste gagne, comme objectAt
         }
     }
     return hit;
@@ -3937,7 +3980,8 @@ void MainWindow::autoConvertToSatin() {
     // affichée dans l'APERÇU avant toute création, jamais découverte après
     // coup -- l'utilisateur décide en connaissance de cause plutôt que de
     // voir une intention SATIN silencieusement réalisée à moitié.
-    const double sourceAreaMm2 = std::abs(geometry::signed_area_um2(source->paths.front().outer)) / 1e6;
+    const double sourceAreaMm2 =
+        std::abs(geometry::signed_area_um2(source->paths.front().outer)) / 1e6;
     double residualAreaMm2 = 0.0;
     for (const auto& piece : built.unresolved_residual) {
         residualAreaMm2 += std::abs(geometry::signed_area_um2(piece.outer)) / 1e6;
@@ -3951,7 +3995,8 @@ void MainWindow::autoConvertToSatin() {
         const double coveredPercent = 100.0 * (1.0 - residualAreaMm2 / sourceAreaMm2);
         info += tr("\nCouverture estimée : %1 %").arg(coveredPercent, 0, 'f', 1);
         if (residualSignificant) {
-            info += tr("\n⚠ %1 mm² resteraient sans point (satin ni tatami).").arg(residualAreaMm2, 0, 'f', 1);
+            info += tr("\n⚠ %1 mm² resteraient sans point (satin ni tatami).")
+                        .arg(residualAreaMm2, 0, 'f', 1);
         }
     }
     for (const auto& w : built.warnings) {
@@ -3959,10 +4004,9 @@ void MainWindow::autoConvertToSatin() {
     }
 
     if (columnCount == 0) {
-        QMessageBox::information(
-            this, tr("Conversion en satin"),
-            tr("Conversion impossible : %1\n\n%2")
-                .arg(QString::fromStdString(built.refusal), info));
+        QMessageBox::information(this, tr("Conversion en satin"),
+                                 tr("Conversion impossible : %1\n\n%2")
+                                     .arg(QString::fromStdString(built.refusal), info));
         return;
     }
 
@@ -4007,8 +4051,8 @@ void MainWindow::autoConvertToSatin() {
     if (coverageChoice == SatinCoverageChoice::UseTatami) {
         appendTatamiFallbackObjects(built.unresolved_residual, *source, extraVectors, objects);
     }
-    undoStack_.execute(std::make_unique<commands::AddObjectBatchCommand>(
-                           std::move(extraVectors), std::move(objects)),
+    undoStack_.execute(std::make_unique<commands::AddObjectBatchCommand>(std::move(extraVectors),
+                                                                         std::move(objects)),
                        project_);
     showStitchesAct_->setChecked(true);
     refreshImage();
@@ -4087,18 +4131,18 @@ void MainWindow::setStitchType(ObjectId embroideryId, int type) {
     document::StitchParams params;
     std::string label;
     switch (type) {
-    case 0: {  // contour cousu
+    case 0: { // contour cousu
         document::RunningStitchParams rp;
         rp.repeats = 3;
         params = rp;
         label = "Type : contour";
         break;
     }
-    case 1:  // tatami
+    case 1: // tatami
         params = document::TatamiParams{};
         label = "Type : tatami";
         break;
-    case 2: {  // satin : exige deux rails, construits depuis le contour source
+    case 2: { // satin : exige deux rails, construits depuis le contour source
         const auto* source = project_.findObject(emb->source_vector);
         if (source == nullptr || source->paths.empty()) {
             QMessageBox::warning(this, tr("Satin impossible"),
@@ -4117,7 +4161,7 @@ void MainWindow::setStitchType(ObjectId embroideryId, int type) {
         // cas courant (une seule section) plutôt que l'ancien appel direct.
         auto_satin::SatinColumnsParameters skeletonParams;
         skeletonParams.geometry_mode = auto_satin::SatinGeometryMode::Parametric;
-        const document::SatinParams defaults;  // densité/compensation/sous-couche inchangées ici
+        const document::SatinParams defaults; // densité/compensation/sous-couche inchangées ici
         satin_planning::SatinBuildReport built = satin_planning::build_satin_sections(
             source->paths.front(), skeletonParams, defaults.density, defaults.pull_compensation,
             defaults.center_underlay, defaults.max_width);
@@ -4187,7 +4231,7 @@ void MainWindow::onCanvasContextMenu(QPointF posMm, QPoint globalPos) {
     const auto hit = objectAt(posMm);
     QMenu menu(this);
     document::EmbroideryObject* emb = nullptr;
-    std::optional<ObjectId> vecId;  // objet vectoriel à supprimer/dupliquer, si pertinent
+    std::optional<ObjectId> vecId; // objet vectoriel à supprimer/dupliquer, si pertinent
 
     if (hit) {
         selectedObject_ = hit;
@@ -4206,7 +4250,7 @@ void MainWindow::onCanvasContextMenu(QPointF posMm, QPoint globalPos) {
         // cf. satinEmbroideryAt) — sans quoi ni le menu « Type de points » ni
         // le débogage ne seraient jamais accessibles pour ces objets.
         emb = satinHit;
-        vecId = emb->source_vector;  // proxy caché : sa suppression entraîne le satin
+        vecId = emb->source_vector; // proxy caché : sa suppression entraîne le satin
         selectedEmbroidery_ = emb->id;
         selectedObject_.reset();
         selectedRegion_.reset();
@@ -4274,7 +4318,7 @@ void MainWindow::onCanvasContextMenu(QPointF posMm, QPoint globalPos) {
         }
     }
 
-    displayImage(processed_);  // reflète la sélection éventuelle
+    displayImage(processed_); // reflète la sélection éventuelle
     updateActions();
     menu.exec(globalPos);
 }
@@ -4405,10 +4449,9 @@ void MainWindow::offsetVectorObjectCore(ObjectId id, Micrometers delta) {
     const ObjectId newId = result.id;
     std::vector<document::VectorObject> batch;
     batch.push_back(std::move(result));
-    undoStack_.execute(
-        std::make_unique<commands::AddObjectBatchCommand>(
-            std::move(batch), std::vector<document::EmbroideryObject>{}, "Décalage"),
-        project_);
+    undoStack_.execute(std::make_unique<commands::AddObjectBatchCommand>(
+                           std::move(batch), std::vector<document::EmbroideryObject>{}, "Décalage"),
+                       project_);
     selectedObject_ = newId;
     selectedRegion_.reset();
     selectedEmbroidery_.reset();
@@ -4436,7 +4479,7 @@ QString MainWindow::buildDebugDump(ObjectId embroideryId) const {
         << QStringLiteral("ObjectId : %1").arg(emb->id.value)
         << QStringLiteral("Nom : \"%1\"").arg(QString::fromStdString(emb->name))
         << QStringLiteral("Type de points : %1")
-               .arg(emb->is_satin()  ? QStringLiteral("Satin")
+               .arg(emb->is_satin()    ? QStringLiteral("Satin")
                     : emb->is_tatami() ? QStringLiteral("Tatami")
                                        : QStringLiteral("Contour (running stitch)"))
         << QStringLiteral("Visible : %1").arg(fmtBool(emb->visible))
@@ -4466,7 +4509,7 @@ QString MainWindow::buildDebugDump(ObjectId embroideryId) const {
                        .arg(ov.base_index)
                        .arg(fmtOptVec(ov.moved_to))
                        .arg(ov.forced_type ? fmtStitchPointType(*ov.forced_type)
-                                            : QStringLiteral("(absent)"))
+                                           : QStringLiteral("(absent)"))
                        .arg(fmtBool(ov.trim_after));
         }
     }
@@ -4518,8 +4561,7 @@ QString MainWindow::buildDebugDump(ObjectId embroideryId) const {
                     << QStringLiteral("lock_length : %1").arg(fmtUm(p.lock_length))
                     << QStringLiteral("lock_passes : %1").arg(p.lock_passes)
                     << QStringLiteral("entry_point : %1").arg(fmtOptVec(p.entry_point))
-                    << QStringLiteral("exit_point : %1").arg(fmtOptVec(p.exit_point))
-                    << QString();
+                    << QStringLiteral("exit_point : %1").arg(fmtOptVec(p.exit_point)) << QString();
 
                 out << QStringLiteral("--- Rails et barreaux satin ---");
                 dumpPath(out, p.rail_a, QStringLiteral("rail_a"));
@@ -4562,7 +4604,7 @@ QString MainWindow::buildDebugDump(ObjectId embroideryId) const {
             << QStringLiteral("Nom : \"%1\"").arg(QString::fromStdString(vec->name))
             << QStringLiteral("source_region : %1")
                    .arg(vec->source_region ? QString::number(vec->source_region->value)
-                                            : QStringLiteral("(absent)"))
+                                           : QStringLiteral("(absent)"))
             << QStringLiteral("Couleur RGB : (%1, %2, %3)")
                    .arg(vec->rgb[0])
                    .arg(vec->rgb[1])
@@ -4590,7 +4632,8 @@ QString MainWindow::buildDebugDump(ObjectId embroideryId) const {
         const auto raw = stitch_generation::raw_slice(*sequence_, emb->id);
         out << QStringLiteral("Total commandes (raw_slice) : %1").arg(raw.size());
         if (raw.empty()) {
-            out << QStringLiteral("  (cet objet ne produit aucune commande — vérifier params/rails)");
+            out << QStringLiteral(
+                "  (cet objet ne produit aucune commande — vérifier params/rails)");
         } else {
             const stitch::StitchSequence subSeq{raw};
             const auto stats = stitch::compute_stats(subSeq);
@@ -4604,7 +4647,7 @@ QString MainWindow::buildDebugDump(ObjectId embroideryId) const {
                 << QStringLiteral("  Boîte englobante : min=%1  max=%2")
                        .arg(fmtVec(stats.bounds.min), fmtVec(stats.bounds.max));
 
-            std::array<std::size_t, 5> perPass{};  // Underlay,TopStitch,Travel,Lock,Manual
+            std::array<std::size_t, 5> perPass{}; // Underlay,TopStitch,Travel,Lock,Manual
             for (const auto& cmd : raw) {
                 ++perPass[static_cast<std::size_t>(cmd.pass)];
             }
@@ -4679,9 +4722,9 @@ void MainWindow::showDebugDump(ObjectId embroideryId) {
     connect(copyBtn, &QPushButton::clicked, &dialog,
             [text] { QGuiApplication::clipboard()->setText(text); });
     connect(saveBtn, &QPushButton::clicked, &dialog, [this, &dialog, text] {
-        const QString path = QFileDialog::getSaveFileName(
-            &dialog, tr("Enregistrer les données de débogage"), QStringLiteral("debug.txt"),
-            tr("Texte (*.txt)"));
+        const QString path =
+            QFileDialog::getSaveFileName(&dialog, tr("Enregistrer les données de débogage"),
+                                         QStringLiteral("debug.txt"), tr("Texte (*.txt)"));
         if (path.isEmpty()) {
             return;
         }
@@ -4707,18 +4750,17 @@ void MainWindow::buildHelpMenu() {
     auto* helpMenu = menuBar()->addMenu(tr("Aid&e"));
     auto* shortcutsAct = helpMenu->addAction(tr("&Raccourcis clavier…"));
     connect(shortcutsAct, &QAction::triggered, this, [this] {
-        QMessageBox::information(
-            this, tr("Raccourcis clavier"),
-            tr("Ctrl+O   Ouvrir une image\n"
-               "Ctrl+S   Enregistrer le projet\n"
-               "Ctrl+Z / Ctrl+Y   Annuler / Rétablir\n"
-               "Suppr   Supprimer la région sélectionnée\n"
-               "Ctrl++ / Ctrl+- / Ctrl+0   Zoom avant / arrière / ajuster\n"
-               "F   Ajuster au canevas\n"
-               "F5   Analyser le motif\n"
-               "V / H / M   Outils : Sélection / Déplacer la vue / Rectangle\n"
-               "Échap   Revenir à la Sélection\n"
-               "Ctrl+Shift+P   Masquer / afficher les panneaux"));
+        QMessageBox::information(this, tr("Raccourcis clavier"),
+                                 tr("Ctrl+O   Ouvrir une image\n"
+                                    "Ctrl+S   Enregistrer le projet\n"
+                                    "Ctrl+Z / Ctrl+Y   Annuler / Rétablir\n"
+                                    "Suppr   Supprimer la région sélectionnée\n"
+                                    "Ctrl++ / Ctrl+- / Ctrl+0   Zoom avant / arrière / ajuster\n"
+                                    "F   Ajuster au canevas\n"
+                                    "F5   Analyser le motif\n"
+                                    "V / H / M   Outils : Sélection / Déplacer la vue / Rectangle\n"
+                                    "Échap   Revenir à la Sélection\n"
+                                    "Ctrl+Shift+P   Masquer / afficher les panneaux"));
     });
     auto* aboutAct = helpMenu->addAction(tr("À &propos"));
     connect(aboutAct, &QAction::triggered, this, [this] {
@@ -4786,7 +4828,7 @@ stitch_generation::ObjectEditState MainWindow::editStateOf(ObjectId id) const {
             return state;
         }
     }
-    return stitch_generation::ObjectEditState::Clean;  // absent du cache = Clean (jamais retouché)
+    return stitch_generation::ObjectEditState::Clean; // absent du cache = Clean (jamais retouché)
 }
 
 void MainWindow::updateContextToolbar() {
@@ -4864,9 +4906,8 @@ void MainWindow::updateContextToolbar() {
             contextToolbar_->addWidget(new QLabel(tr("  ✎ retouché  "), contextToolbar_));
         } else if (editState == stitch_generation::ObjectEditState::Dirty) {
             auto* warn = new QLabel(tr("  ⚠ retouches obsolètes  "), contextToolbar_);
-            warn->setToolTip(
-                tr("La géométrie ou l'ordre de couture a changé depuis les dernières "
-                   "retouches : elles ne sont plus appliquées."));
+            warn->setToolTip(tr("La géométrie ou l'ordre de couture a changé depuis les dernières "
+                                "retouches : elles ne sont plus appliquées."));
             contextToolbar_->addWidget(warn);
         }
         if (editState != stitch_generation::ObjectEditState::Clean) {
@@ -4892,7 +4933,7 @@ void MainWindow::updateContextToolbar() {
                 tr("Région %1  ·  %2 mm²    ").arg(region->id.value).arg(areaMm2, 0, 'f', 1),
                 contextToolbar_));
         }
-        contextToolbar_->addAction(mergeAct_);  // Fusionner (mode)
+        contextToolbar_->addAction(mergeAct_); // Fusionner (mode)
         auto* del = contextToolbar_->addAction(tr("Supprimer"));
         connect(del, &QAction::triggered, this, &MainWindow::deleteSelectedRegion);
         auto* vec = contextToolbar_->addAction(tr("Vectoriser"));
@@ -4910,9 +4951,9 @@ void MainWindow::updateContextToolbar() {
                     .arg(st.color_changes),
                 contextToolbar_));
         } else {
-            contextToolbar_->addWidget(new QLabel(
-                tr("Ouvrez une image, ou sélectionnez une région ou un objet.    "),
-                contextToolbar_));
+            contextToolbar_->addWidget(
+                new QLabel(tr("Ouvrez une image, ou sélectionnez une région ou un objet.    "),
+                           contextToolbar_));
         }
         auto* hoop = contextToolbar_->addAction(
             tr("Cadre : %1 × %2 mm…")
@@ -4940,37 +4981,35 @@ void MainWindow::buildToolPalette() {
         connect(act, &QAction::triggered, this, [this, tool] { setTool(tool); });
         return act;
     };
-    toolSelectAct_ = addTool(icons::select(), tr("Sélection"), Tool::Select,
-                             QKeySequence(Qt::Key_V));
+    toolSelectAct_ =
+        addTool(icons::select(), tr("Sélection"), Tool::Select, QKeySequence(Qt::Key_V));
     toolPanAct_ = addTool(icons::pan(), tr("Déplacer la vue"), Tool::Pan, QKeySequence(Qt::Key_H));
-    toolRectAct_ = addTool(icons::rect(), tr("Rectangle / Recadrage"), Tool::Rect,
-                           QKeySequence(Qt::Key_M));
-    toolDrawRectAct_ = addTool(icons::drawRect(), tr("Dessiner un rectangle"),
-                               Tool::DrawRectangle, QKeySequence(Qt::Key_R));
-    toolDrawEllipseAct_ =
-        addTool(icons::ellipse(), tr("Dessiner une ellipse (Maj = cercle)"), Tool::DrawEllipse,
-               QKeySequence(Qt::Key_O));
-    toolDrawPolygonAct_ =
-        addTool(icons::polygon(), tr("Dessiner un polygone (segments droits)"), Tool::DrawPolygon,
-               QKeySequence(Qt::Key_P));
+    toolRectAct_ =
+        addTool(icons::rect(), tr("Rectangle / Recadrage"), Tool::Rect, QKeySequence(Qt::Key_M));
+    toolDrawRectAct_ = addTool(icons::drawRect(), tr("Dessiner un rectangle"), Tool::DrawRectangle,
+                               QKeySequence(Qt::Key_R));
+    toolDrawEllipseAct_ = addTool(icons::ellipse(), tr("Dessiner une ellipse (Maj = cercle)"),
+                                  Tool::DrawEllipse, QKeySequence(Qt::Key_O));
+    toolDrawPolygonAct_ = addTool(icons::polygon(), tr("Dessiner un polygone (segments droits)"),
+                                  Tool::DrawPolygon, QKeySequence(Qt::Key_P));
     toolDrawPolygonRegularAct_ =
         addTool(icons::regularPolygon(), tr("Dessiner un polygone régulier (glisser un cadre)"),
-               Tool::DrawPolygonRegular, QKeySequence(Qt::Key_G));
+                Tool::DrawPolygonRegular, QKeySequence(Qt::Key_G));
     polygonSidesSpin_ = new QSpinBox(toolPalette_);
     polygonSidesSpin_->setRange(3, 12);
     polygonSidesSpin_->setValue(6);
     polygonSidesSpin_->setToolTip(tr("Nombre de côtés du polygone régulier"));
     polygonSidesSpin_->setMaximumWidth(48);
     toolPalette_->addWidget(polygonSidesSpin_);
-    toolDrawBezierAct_ = addTool(
-        icons::bezierCurve(),
-        tr("Dessiner une courbe de Bézier (clic = coin, clic-glisser = nœud lisse)"),
-        Tool::DrawBezier, QKeySequence(Qt::Key_B));
+    toolDrawBezierAct_ =
+        addTool(icons::bezierCurve(),
+                tr("Dessiner une courbe de Bézier (clic = coin, clic-glisser = nœud lisse)"),
+                Tool::DrawBezier, QKeySequence(Qt::Key_B));
     toolDrawFreeformAct_ = addTool(icons::freeform(), tr("Dessiner à main levée (lasso)"),
                                    Tool::DrawFreeform, QKeySequence(Qt::Key_L));
     toolDrawSatinColumnAct_ =
         addTool(icons::satinColumn(), tr("Colonne satin (clics alternés côté A / côté B)"),
-               Tool::DrawSatinColumn, QKeySequence(Qt::Key_S));
+                Tool::DrawSatinColumn, QKeySequence(Qt::Key_S));
     toolDrawSatinCutLineAct_ = addTool(
         icons::satinCutLine(),
         tr("Ligne de coupe satin (découpe la forme sélectionnée pour guider le satin auto)"),
@@ -5089,7 +5128,8 @@ void MainWindow::setTool(Tool tool) {
 
     // Synchronise les cases d'outils (sans réémettre).
     const auto sync = [](QAction* act, bool on) {
-        if (act == nullptr) return;
+        if (act == nullptr)
+            return;
         QSignalBlocker block(act);
         act->setChecked(on);
     };
@@ -5132,17 +5172,18 @@ void MainWindow::setTool(Tool tool) {
     }
 
     if (toolLabel_ != nullptr) {
-        const QString name = tool == Tool::Select        ? tr("Sélection")
-                             : tool == Tool::Pan          ? tr("Déplacer la vue")
+        const QString name = tool == Tool::Select          ? tr("Sélection")
+                             : tool == Tool::Pan           ? tr("Déplacer la vue")
                              : tool == Tool::Rect          ? tr("Rectangle")
                              : tool == Tool::DrawRectangle ? tr("Dessiner un rectangle")
                              : tool == Tool::DrawEllipse   ? tr("Dessiner une ellipse")
                              : tool == Tool::DrawPolygon   ? tr("Dessiner un polygone")
-                             : tool == Tool::DrawPolygonRegular ? tr("Dessiner un polygone régulier")
-                             : tool == Tool::DrawBezier    ? tr("Dessiner une courbe de Bézier")
-                             : tool == Tool::DrawFreeform  ? tr("Dessiner à main levée")
+                             : tool == Tool::DrawPolygonRegular
+                                 ? tr("Dessiner un polygone régulier")
+                             : tool == Tool::DrawBezier       ? tr("Dessiner une courbe de Bézier")
+                             : tool == Tool::DrawFreeform     ? tr("Dessiner à main levée")
                              : tool == Tool::DrawSatinCutLine ? tr("Ligne de coupe satin")
-                                                           : tr("Colonne satin");
+                                                              : tr("Colonne satin");
         toolLabel_->setText(tr("Outil : %1").arg(name));
     }
     // Rappel explicite du geste attendu à l'activation de l'outil : défaut
@@ -5185,7 +5226,7 @@ void MainWindow::buildWorkflowPanel() {
     workflowPanel_ = new WorkflowPanel(workflowDock_);
     workflowDock_->setWidget(workflowPanel_);
     if (documentDock_ != nullptr) {
-        splitDockWidget(documentDock_, workflowDock_, Qt::Vertical);  // sous Document
+        splitDockWidget(documentDock_, workflowDock_, Qt::Vertical); // sous Document
     } else {
         addDockWidget(Qt::LeftDockWidgetArea, workflowDock_);
     }
@@ -5239,7 +5280,7 @@ void MainWindow::buildDocumentPanel() {
     documentDock_->setWidget(documentPanel_);
     addDockWidget(Qt::LeftDockWidgetArea, documentDock_);
     if (orderDock_ != nullptr) {
-        tabifyDockWidget(documentDock_, orderDock_);  // Document et Ordre en onglets
+        tabifyDockWidget(documentDock_, orderDock_); // Document et Ordre en onglets
         documentDock_->raise();
     }
 
@@ -5248,7 +5289,7 @@ void MainWindow::buildDocumentPanel() {
         selectedRegion_.reset();
         if (const auto* e = project_.findEmbroidery(id);
             e != nullptr && project_.findObject(e->source_vector) != nullptr) {
-            selectedObject_ = e->source_vector;  // met en évidence la forme au canevas
+            selectedObject_ = e->source_vector; // met en évidence la forme au canevas
         } else {
             selectedObject_.reset();
         }
@@ -5361,7 +5402,8 @@ void MainWindow::updateInspector() {
         if (vec != nullptr) {
             for (const auto& set : vec->paths) {
                 nodes += static_cast<int>(set.outer.nodes.size());
-                for (const auto& h : set.holes) nodes += static_cast<int>(h.nodes.size());
+                for (const auto& h : set.holes)
+                    nodes += static_cast<int>(h.nodes.size());
             }
         }
         propertiesPanel_->showInfo(
@@ -5374,16 +5416,14 @@ void MainWindow::updateInspector() {
         const auto* region = project_.segmentation->find(*selectedRegion_);
         if (region != nullptr) {
             const double mmPerPx = project_.mm_per_px.value;
-            const double areaMm2 =
-                region->pixel_count * mmPerPx * mmPerPx;
-            propertiesPanel_->showInfo(
-                tr("Région %1").arg(region->id.value),
-                tr("Aire : %1 mm²   ·   %2 pixels\nCouleur : #%3%4%5")
-                    .arg(areaMm2, 0, 'f', 1)
-                    .arg(region->pixel_count)
-                    .arg(region->rgb[0], 2, 16, QLatin1Char('0'))
-                    .arg(region->rgb[1], 2, 16, QLatin1Char('0'))
-                    .arg(region->rgb[2], 2, 16, QLatin1Char('0')));
+            const double areaMm2 = region->pixel_count * mmPerPx * mmPerPx;
+            propertiesPanel_->showInfo(tr("Région %1").arg(region->id.value),
+                                       tr("Aire : %1 mm²   ·   %2 pixels\nCouleur : #%3%4%5")
+                                           .arg(areaMm2, 0, 'f', 1)
+                                           .arg(region->pixel_count)
+                                           .arg(region->rgb[0], 2, 16, QLatin1Char('0'))
+                                           .arg(region->rgb[1], 2, 16, QLatin1Char('0'))
+                                           .arg(region->rgb[2], 2, 16, QLatin1Char('0')));
         }
     } else {
         propertiesPanel_->showInfo(
@@ -5422,11 +5462,10 @@ void MainWindow::runAnalysis() {
         return;
     }
     stitch_analysis::AnalysisOptions opts;
-    const document::Canvas& canvas = project_.canvas;  // cadre défini par l'utilisateur
-    opts.hoop = stitch::BoundsUm{Vec2um{Micrometers{-canvas.width.value / 2},
-                                        Micrometers{-canvas.height.value / 2}},
-                                 Vec2um{Micrometers{canvas.width.value / 2},
-                                        Micrometers{canvas.height.value / 2}}};
+    const document::Canvas& canvas = project_.canvas; // cadre défini par l'utilisateur
+    opts.hoop = stitch::BoundsUm{
+        Vec2um{Micrometers{-canvas.width.value / 2}, Micrometers{-canvas.height.value / 2}},
+        Vec2um{Micrometers{canvas.width.value / 2}, Micrometers{canvas.height.value / 2}}};
     const auto findings = stitch_analysis::analyze(*sequence_, opts);
 
     analysisList_->clear();
@@ -5434,14 +5473,12 @@ void MainWindow::runAnalysis() {
         analysisList_->addItem(tr("✓ Aucun problème détecté."));
     } else {
         for (const auto& f : findings) {
-            const QString prefix = f.severity == stitch_analysis::Severity::Error ? tr("⛔ ")
-                                   : f.severity == stitch_analysis::Severity::Warning
-                                       ? tr("⚠ ")
-                                       : tr("ℹ ");
+            const QString prefix = f.severity == stitch_analysis::Severity::Error     ? tr("⛔ ")
+                                   : f.severity == stitch_analysis::Severity::Warning ? tr("⚠ ")
+                                                                                      : tr("ℹ ");
             auto* item = new QListWidgetItem(prefix + QString::fromStdString(f.message));
-            item->setData(Qt::UserRole,
-                          QPointF(to_millimeters(f.location.x).value,
-                                  -to_millimeters(f.location.y).value));
+            item->setData(Qt::UserRole, QPointF(to_millimeters(f.location.x).value,
+                                                -to_millimeters(f.location.y).value));
             analysisList_->addItem(item);
         }
     }
@@ -5492,7 +5529,7 @@ void MainWindow::buildOrderPanel() {
     layout->addWidget(orderList_, 1);
     connect(orderList_, &QListWidget::currentRowChanged, this, [this](int row) {
         if (row >= 0 && row < static_cast<int>(project_.embroidery_objects.size())) {
-            selectedObject_.reset();  // sélection d'objet vectoriel distincte
+            selectedObject_.reset(); // sélection d'objet vectoriel distincte
             selectedEmbroidery_ = project_.embroidery_objects[static_cast<std::size_t>(row)].id;
             updateActions();
             displayImage(processed_);
@@ -5741,8 +5778,8 @@ void MainWindow::toggleObjectLock() {
         return;
     }
     const auto& obj = project_.embroidery_objects[static_cast<std::size_t>(row)];
-    undoStack_.execute(
-        std::make_unique<commands::SetEmbroideryLockCommand>(obj.id, !obj.locked), project_);
+    undoStack_.execute(std::make_unique<commands::SetEmbroideryLockCommand>(obj.id, !obj.locked),
+                       project_);
     refreshOrderPanel();
     updateActions();
 }
@@ -5755,8 +5792,8 @@ void MainWindow::applyOrderStrategy() {
     for (const auto& obj : project_.embroidery_objects) {
         items.push_back({obj.id, obj.rgb, embroideryCentroid(obj), obj.locked});
     }
-    const auto strategy = static_cast<optimization::OrderStrategy>(
-        orderStrategyCombo_->currentData().toInt());
+    const auto strategy =
+        static_cast<optimization::OrderStrategy>(orderStrategyCombo_->currentData().toInt());
     const auto before = optimization::compute_cost(items);
     const auto order = optimization::optimize_order(items, strategy);
 
@@ -5798,7 +5835,7 @@ void MainWindow::buildSimulationToolbar() {
     simToolbar_->addWidget(simLabel_);
 
     simTimer_ = new QTimer(this);
-    simTimer_->setInterval(16);  // ~60 pas/seconde
+    simTimer_->setInterval(16); // ~60 pas/seconde
     connect(simTimer_, &QTimer::timeout, this, &MainWindow::onSimTick);
 
     // Zone réservée : la barre reste visible (contrôles grisés sans séquence)
@@ -5822,7 +5859,7 @@ void MainWindow::updateSimulationRange() {
     simSlider_->setMaximum(n);
     simSlider_->setEnabled(true);
     if (simStep_ > n || simStep_ < 0) {
-        simStep_ = -1;  // hors simulation : tout affiché
+        simStep_ = -1; // hors simulation : tout affiché
         simSlider_->setValue(n);
     }
     simSlider_->blockSignals(false);
@@ -5859,7 +5896,7 @@ void MainWindow::onSimTick() {
     simSlider_->setValue(simStep_);
     simSlider_->blockSignals(false);
     simLabel_->setText(tr("%1 / %2").arg(simStep_).arg(n));
-    renderStitches();  // seule la couche points change pendant la simulation
+    renderStitches(); // seule la couche points change pendant la simulation
     if (simStep_ >= n) {
         simTimer_->stop();
         simPlayAct_->setChecked(false);
@@ -5905,8 +5942,8 @@ void MainWindow::saveProject() {
     if (file.isEmpty()) {
         return;
     }
-    const auto written = project_io::save_project(std::filesystem::path(file.toStdWString()),
-                                                  project_);
+    const auto written =
+        project_io::save_project(std::filesystem::path(file.toStdWString()), project_);
     if (!written) {
         QMessageBox::warning(this, tr("Enregistrement impossible"),
                              QString::fromStdString(written.error().message));
@@ -5938,7 +5975,7 @@ void MainWindow::loadProject() {
 
 void MainWindow::applyLoadedProject(document::Project project) {
     project_ = std::move(project);
-    ++documentGeneration_;  // projet remplacé : invalide les commandes différées en vol
+    ++documentGeneration_; // projet remplacé : invalide les commandes différées en vol
     undoStack_.clear();
     sequence_.reset();
     sequenceImported_ = false;
@@ -5956,7 +5993,7 @@ void MainWindow::applyLoadedProject(document::Project project) {
     refreshImage();
     view_->fitCanvas();
     updateActions();
-    setWindowModified(false);  // projet fraîchement chargé = propre
+    setWindowModified(false); // projet fraîchement chargé = propre
 }
 
 void MainWindow::exportDst() {
@@ -6010,16 +6047,15 @@ void MainWindow::exportDst() {
     }
 
     // Rappel honnête (§17) : le DST ne conserve ni objets ni couleurs réelles.
-    const auto written = formats::write_dst_file(std::filesystem::path(file.toStdWString()),
-                                                 *sequence_);
+    const auto written =
+        formats::write_dst_file(std::filesystem::path(file.toStdWString()), *sequence_);
     if (!written) {
         QMessageBox::warning(this, tr("Export impossible"),
                              QString::fromStdString(written.error().message));
         return;
     }
-    statusBar()->showMessage(tr("DST exporté : %1 (%2 points).")
-                                 .arg(QFileInfo(file).fileName())
-                                 .arg(stats.stitches));
+    statusBar()->showMessage(
+        tr("DST exporté : %1 (%2 points).").arg(QFileInfo(file).fileName()).arg(stats.stitches));
 }
 
 void MainWindow::importDst() {
@@ -6030,8 +6066,7 @@ void MainWindow::importDst() {
     }
     if (project_.hasImage() || sequence_) {
         const auto answer = QMessageBox::question(
-            this, tr("Importer un DST"),
-            tr("L'import remplace le document en cours. Continuer ?"));
+            this, tr("Importer un DST"), tr("L'import remplace le document en cours. Continuer ?"));
         if (answer != QMessageBox::Yes) {
             return;
         }
@@ -6044,7 +6079,7 @@ void MainWindow::importDst() {
     }
 
     project_ = document::Project{};
-    ++documentGeneration_;  // document remplacé : invalide les commandes différées en vol
+    ++documentGeneration_; // document remplacé : invalide les commandes différées en vol
     undoStack_.clear();
     processed_ = {};
     selectedRegion_.reset();
@@ -6102,7 +6137,8 @@ void MainWindow::importDxf() {
 
 void MainWindow::exportDxf() {
     if (project_.vector_objects.empty()) {
-        QMessageBox::information(this, tr("Exporter en DXF"), tr("Aucun objet vectoriel à exporter."));
+        QMessageBox::information(this, tr("Exporter en DXF"),
+                                 tr("Aucun objet vectoriel à exporter."));
         return;
     }
     const QString file = QFileDialog::getSaveFileName(this, tr("Exporter en DXF"), QString(),
@@ -6145,7 +6181,7 @@ void MainWindow::onCanvasClicked(QPointF posMm) {
             const auto& last = pendingPolygonVertices_.back();
             const double dx = static_cast<double>(v.x.value - last.x.value);
             const double dy = static_cast<double>(v.y.value - last.y.value);
-            if (dx * dx + dy * dy < 4.0) {  // < 2 µm de l'un à l'autre
+            if (dx * dx + dy * dy < 4.0) { // < 2 µm de l'un à l'autre
                 return;
             }
         }
@@ -6177,12 +6213,11 @@ void MainWindow::onCanvasClicked(QPointF posMm) {
         const bool nextIsSideB = pendingSatinPoints_.size() % 2 == 0;
         const auto pairs = pendingSatinPoints_.size() / 2;
         statusBar()->showMessage(
-            nextIsSideB
-                ? tr("Colonne satin : cliquez le côté B de la paire — Échap : annuler")
-                : tr("Colonne satin : %1 paire(s) posée(s) — cliquez le côté A de la paire "
-                     "suivante — Entrée/double-clic : terminer (2 paires min.), Retour "
-                     "arrière : retirer le dernier point")
-                      .arg(pairs));
+            nextIsSideB ? tr("Colonne satin : cliquez le côté B de la paire — Échap : annuler")
+                        : tr("Colonne satin : %1 paire(s) posée(s) — cliquez le côté A de la paire "
+                             "suivante — Entrée/double-clic : terminer (2 paires min.), Retour "
+                             "arrière : retirer le dernier point")
+                              .arg(pairs));
         return;
     }
     // Priorité aux objets vectoriels lorsqu'ils sont affichés (hors fusion).
@@ -6190,13 +6225,13 @@ void MainWindow::onCanvasClicked(QPointF posMm) {
         std::optional<ObjectId> hit;
         for (const auto& object : project_.vector_objects) {
             if (object.visible && objectPainterPath(object).contains(posMm)) {
-                hit = object.id;  // le dernier dessiné (au-dessus) gagne
+                hit = object.id; // le dernier dessiné (au-dessus) gagne
             }
         }
         if (hit) {
             selectedObject_ = hit;
             selectedRegion_.reset();
-            selectedEmbroidery_.reset();  // la sélection au canevas prime
+            selectedEmbroidery_.reset(); // la sélection au canevas prime
             const auto* object = project_.findObject(*hit);
             statusBar()->showMessage(tr("Objet « %1 » — %2 morceau(x), nœuds déplaçables")
                                          .arg(QString::fromStdString(object->name))
@@ -6372,15 +6407,13 @@ void MainWindow::updateActions() {
     // sortie propre + explication, plutôt qu'un mode "actif" muet.
     const bool stitchEditTooManyPoints =
         stitchEditView_.has_value() &&
-        static_cast<std::size_t>(std::count_if(stitchEditView_->raw.begin(),
-                                                stitchEditView_->raw.end(),
-                                                stitch_generation::is_movable_point)) >
-            kMaxEditableStitchHandles;
+        static_cast<std::size_t>(
+            std::count_if(stitchEditView_->raw.begin(), stitchEditView_->raw.end(),
+                          stitch_generation::is_movable_point)) > kMaxEditableStitchHandles;
     bool stitchEditNeedsRerender = false;
     if (stitchEditModeAct_->isChecked() &&
         (stitchEditEmb == nullptr || !stitchEditSameTarget ||
-         stitchEditState == stitch_generation::ObjectEditState::Dirty ||
-         stitchEditTooManyPoints)) {
+         stitchEditState == stitch_generation::ObjectEditState::Dirty || stitchEditTooManyPoints)) {
         if (stitchEditTooManyPoints) {
             statusBar()->showMessage(
                 tr("Édition des points désactivée : cet objet compte plus de %1 points de "
@@ -6397,20 +6430,17 @@ void MainWindow::updateActions() {
     stitchEditModeAct_->setEnabled(stitchEditEmb != nullptr &&
                                    stitchEditState != stitch_generation::ObjectEditState::Dirty);
     if (stitchEditNeedsRerender) {
-        displayImage(processed_);  // retire les poignées de l'objet quitté
+        displayImage(processed_); // retire les poignées de l'objet quitté
     }
 
     document::EmbroideryObject* satinGuideEmb = resolveSelectedEmbroidery();
-    const auto* selectedSatin =
-        satinGuideEmb != nullptr
-            ? std::get_if<document::SatinParams>(&satinGuideEmb->params)
-            : nullptr;
+    const auto* selectedSatin = satinGuideEmb != nullptr
+                                    ? std::get_if<document::SatinParams>(&satinGuideEmb->params)
+                                    : nullptr;
     const bool satinGuideContext = selectedSatin != nullptr && selectedSatin->rungs.size() >= 2;
-    const bool satinGuideSameTarget =
-        satinGuideTarget_.has_value() && satinGuideEmb != nullptr &&
-        *satinGuideTarget_ == satinGuideEmb->id;
-    if (satinGuideModeAct_->isChecked() &&
-        (!satinGuideContext || !satinGuideSameTarget)) {
+    const bool satinGuideSameTarget = satinGuideTarget_.has_value() && satinGuideEmb != nullptr &&
+                                      *satinGuideTarget_ == satinGuideEmb->id;
+    if (satinGuideModeAct_->isChecked() && (!satinGuideContext || !satinGuideSameTarget)) {
         QSignalBlocker block(satinGuideModeAct_);
         satinGuideModeAct_->setChecked(false);
         satinGuideTarget_.reset();
@@ -6428,13 +6458,12 @@ void MainWindow::updateActions() {
         satinGuideEditing && selectedSatinGuide_ &&
         stitch_generation::satin_guide_junction(*selectedSatin, *selectedSatinGuide_).has_value();
     removeSatinGuideAct_->setEnabled(satinGuideEditing && selectedSatinGuide_.has_value() &&
-                                     selectedSatin->rungs.size() > 2 &&
-                                     !structuralJunctionGuide);
+                                     selectedSatin->rungs.size() > 2 && !structuralJunctionGuide);
 
     document::EmbroideryObject* railEditEmb = resolveSelectedEmbroidery();
     const bool railEditContext = railEditEmb != nullptr && railEditEmb->is_satin();
-    const bool railEditSameTarget =
-        railEditTarget_.has_value() && railEditEmb != nullptr && *railEditTarget_ == railEditEmb->id;
+    const bool railEditSameTarget = railEditTarget_.has_value() && railEditEmb != nullptr &&
+                                    *railEditTarget_ == railEditEmb->id;
     if (railEditModeAct_->isChecked() && (!railEditContext || !railEditSameTarget)) {
         QSignalBlocker block(railEditModeAct_);
         railEditModeAct_->setChecked(false);
@@ -6470,4 +6499,4 @@ void MainWindow::updateActions() {
     updateEmptyState();
 }
 
-}  // namespace openstitch::desktop
+} // namespace openstitch::desktop

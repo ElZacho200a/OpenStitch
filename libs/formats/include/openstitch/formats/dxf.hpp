@@ -32,17 +32,17 @@ namespace openstitch::formats {
 // round-trip exact des nœuds/tangentes.
 struct DxfWriteOptions {
     // Tolérance d'aplatissement des courbes en polyligne (cf. geometry::flatten).
-    Micrometers flatten_tolerance{Micrometers{50}};  // 0,05 mm
+    Micrometers flatten_tolerance{Micrometers{50}}; // 0,05 mm
 };
 
 [[nodiscard]] Result<std::vector<geometry::Path>> decode_dxf(std::span<const std::uint8_t> bytes);
 
 [[nodiscard]] Result<std::vector<std::uint8_t>> encode_dxf(const std::vector<geometry::Path>& paths,
-                                                            const DxfWriteOptions& options = {});
+                                                           const DxfWriteOptions& options = {});
 
 [[nodiscard]] Result<void> write_dxf_file(const std::filesystem::path& path,
                                           const std::vector<geometry::Path>& paths,
                                           const DxfWriteOptions& options = {});
 [[nodiscard]] Result<std::vector<geometry::Path>> read_dxf_file(const std::filesystem::path& path);
 
-}  // namespace openstitch::formats
+} // namespace openstitch::formats

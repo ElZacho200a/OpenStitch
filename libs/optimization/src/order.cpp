@@ -82,7 +82,7 @@ std::vector<OrderItem> arrange_free(const std::vector<OrderItem>& items, OrderSt
     return out;
 }
 
-}  // namespace
+} // namespace
 
 OrderCost compute_cost(const std::vector<OrderItem>& items) {
     OrderCost cost;
@@ -118,4 +118,4 @@ std::vector<ObjectId> optimize_order(const std::vector<OrderItem>& items, OrderS
     return result;
 }
 
-}  // namespace openstitch::optimization
+} // namespace openstitch::optimization

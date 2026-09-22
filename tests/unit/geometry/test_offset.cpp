@@ -27,7 +27,8 @@ PathSet square(std::int32_t s) {
 // reel trouve sur la fixture `auto_satin::shapes::make_shape("ring")`, dont
 // le trou et l'exterieur sont tous deux generes par le meme parcours d'angle
 // croissant (audit satin_coverage, 2026-08-13).
-PathSet annulus_same_orientation_hole(std::int32_t outerSide, std::int32_t holeMin, std::int32_t holeMax) {
+PathSet annulus_same_orientation_hole(std::int32_t outerSide, std::int32_t holeMin,
+                                      std::int32_t holeMax) {
     PathSet ps = square(outerSide);
     Path hole;
     hole.closed = true;
@@ -41,7 +42,7 @@ PathSet annulus_same_orientation_hole(std::int32_t outerSide, std::int32_t holeM
     return ps;
 }
 
-}  // namespace
+} // namespace
 
 TEST_CASE("inset : retrait interieur reduit l'aire") {
     // Carre 10x10 mm, retrait 1 mm -> carre 8x8 mm = 64 mm².

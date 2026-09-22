@@ -35,7 +35,7 @@ std::string document_json_without_intent_field() {
            R"("params":{"type":"running","stitchLength":2500,"minLength":400,"repeats":1}}]}})";
 }
 
-}  // namespace
+} // namespace
 
 TEST_CASE("intent : round-trip exact pour ForcedUserChoice et AutoChoice via l'API publique") {
     document::Project project;
@@ -65,7 +65,8 @@ TEST_CASE("intent : round-trip exact pour ForcedUserChoice et AutoChoice via l'A
     fs::remove(path);
 }
 
-TEST_CASE("intent : absent d'un projet anterieur -> AutoChoice, jamais une erreur ni une supposition differente") {
+TEST_CASE("intent : absent d'un projet anterieur -> AutoChoice, jamais une erreur ni une "
+          "supposition differente") {
     const auto path =
         write_raw_osp("openstitch_intent_absent.osp", document_json_without_intent_field());
     const auto loaded = project_io::load_project(path);

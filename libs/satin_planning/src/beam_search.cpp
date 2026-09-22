@@ -10,15 +10,17 @@ namespace openstitch::satin_planning {
 
 OracleGuidedSelector::OracleGuidedSelector(BeamSearchParams params) : params_(std::move(params)) {}
 
-std::optional<std::size_t> OracleGuidedSelector::operator()(const geometry::PathSet& piece,
-                                                              const std::vector<CutCandidate>& candidates) {
+std::optional<std::size_t>
+OracleGuidedSelector::operator()(const geometry::PathSet& piece,
+                                 const std::vector<CutCandidate>& candidates) {
     std::vector<BeamCandidateScore> scores;
     std::optional<std::size_t> bestIndex;
     double bestCoverage = -1.0;
 
     for (std::size_t i = 0; i < candidates.size() && scores.size() < params_.beam_width; ++i) {
         const CutCandidate& cand = candidates[i];
-        if (!cand.valid) continue;
+        if (!cand.valid)
+            continue;
 
         BeamCandidateScore score;
         score.candidate_index = i;
@@ -32,17 +34,20 @@ std::optional<std::size_t> OracleGuidedSelector::operator()(const geometry::Path
             // besoin de reobtenir ici).
             const double area0 = geometry::path_set_area_um2((*cutResult)[0]) / 1e6;
             const double area1 = geometry::path_set_area_um2((*cutResult)[1]) / 1e6;
-            const std::size_t branchIdx =
-                std::abs(area0 - cand.branch_piece_area_mm2) <= std::abs(area1 - cand.branch_piece_area_mm2) ? 0 : 1;
+            const std::size_t branchIdx = std::abs(area0 - cand.branch_piece_area_mm2) <=
+                                                  std::abs(area1 - cand.branch_piece_area_mm2)
+                                              ? 0
+                                              : 1;
 
             SatinRegion probe;
             probe.region = (*cutResult)[branchIdx];
             probe.area_mm2 = geometry::path_set_area_um2(probe.region) / 1e6;
 
-            const RegionGenerationVerdict verdict =
-                evaluate_region_generation(probe, params_.genParams, params_.coverageConfig, params_.density);
+            const RegionGenerationVerdict verdict = evaluate_region_generation(
+                probe, params_.genParams, params_.coverageConfig, params_.density);
             score.build_succeeded = verdict.build_succeeded;
-            score.raw_coverage_ratio = verdict.coverage ? verdict.coverage->raw_coverage_ratio : 0.0;
+            score.raw_coverage_ratio =
+                verdict.coverage ? verdict.coverage->raw_coverage_ratio : 0.0;
         }
 
         if (score.build_succeeded && score.raw_coverage_ratio > bestCoverage) {
@@ -56,4 +61,4 @@ std::optional<std::size_t> OracleGuidedSelector::operator()(const geometry::Path
     return bestIndex;
 }
 
-}  // namespace openstitch::satin_planning
+} // namespace openstitch::satin_planning

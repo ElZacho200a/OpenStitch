@@ -18,4 +18,4 @@ namespace openstitch::formats {
 [[nodiscard]] Result<void> write_svg_file(const std::filesystem::path& path,
                                           const stitch::StitchSequence& sequence);
 
-}  // namespace openstitch::formats
+} // namespace openstitch::formats

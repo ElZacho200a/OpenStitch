@@ -38,5 +38,5 @@ TEST_CASE("arithmetique des unites et vecteurs") {
 TEST_CASE("le pas DST (100 um) se convertit exactement") {
     const Micrometers dst_step = to_micrometers(Millimeters{0.1});
     CHECK(dst_step.value == 100);
-    CHECK(Micrometers{12100}.value % dst_step.value == 0);  // déplacement max DST : 12,1 mm
+    CHECK(Micrometers{12100}.value % dst_step.value == 0); // déplacement max DST : 12,1 mm
 }

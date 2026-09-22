@@ -18,14 +18,14 @@ class WorkflowPanel : public QWidget {
     Q_OBJECT
 
 public:
-    static constexpr int kStepCount = 6;  // Image, Régions, Vecteurs, Broderie, Vérif, Export
+    static constexpr int kStepCount = 6; // Image, Régions, Vecteurs, Broderie, Vérif, Export
     enum class State { NotStarted, Available, InProgress, Done, Attention };
 
     explicit WorkflowPanel(QWidget* parent = nullptr);
 
     void setStates(const std::array<State, kStepCount>& states);
     [[nodiscard]] State currentState(int index) const { return current_[index]; }
-    void applyTheme();  // recolore les pastilles au changement de thème
+    void applyTheme(); // recolore les pastilles au changement de thème
 
 signals:
     void stepClicked(int index);
@@ -37,4 +37,4 @@ private:
     std::array<State, kStepCount> current_{};
 };
 
-}  // namespace openstitch::desktop
+} // namespace openstitch::desktop

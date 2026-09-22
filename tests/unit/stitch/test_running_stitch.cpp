@@ -54,7 +54,7 @@ double min_gap(const std::vector<Vec2um>& pts) {
     return pts.size() < 2 ? 0.0 : m;
 }
 
-}  // namespace
+} // namespace
 
 // --- D1 : espacement par longueur d'arc sur les courbes ----------------------
 
@@ -62,7 +62,7 @@ TEST_CASE("D1 corrige : cercle finement facette -> espacement = longueur cible")
     // Cercle r=10mm en 64 cotes (arete ~0,98mm). Avant : 64 points a 0,98mm.
     RunningConfig cfg;
     cfg.target_length = Micrometers{3'000};
-    cfg.corner_threshold = Angle{0.6108652};  // 35° : les micro-facettes ne sont PAS des coins
+    cfg.corner_threshold = Angle{0.6108652}; // 35° : les micro-facettes ne sont PAS des coins
     const auto res = run_stitch(circle(10'000, 64), cfg);
 
     // Perimetre ~62,8mm / 3mm -> ~21 points (fermeture incluse : front==back).
@@ -84,7 +84,7 @@ TEST_CASE("D2 corrige : micro-segments -> pas de rafale de points courts") {
     cfg.target_length = Micrometers{3'000};
     cfg.min_length = Micrometers{500};
     const auto res = run_stitch(p, cfg);
-    CHECK(min_gap(res.points) >= 500.0);  // aucun ecart < min_length
+    CHECK(min_gap(res.points) >= 500.0); // aucun ecart < min_length
     CHECK(max_gap(res.points) <= 3'100.0);
 }
 
@@ -106,8 +106,8 @@ TEST_CASE("D3 corrige : une Bezier est suivie, pas coupee en ligne droite") {
     // et non sur la corde droite (qui passerait a ~7071 du centre au milieu).
     bool anyFarFromChord = false;
     for (const Vec2um& pt : res.points) {
-        const double r = std::hypot(static_cast<double>(pt.x.value),
-                                    static_cast<double>(pt.y.value));
+        const double r =
+            std::hypot(static_cast<double>(pt.x.value), static_cast<double>(pt.y.value));
         if (r > 9'000.0) {
             anyFarFromChord = true;
         }
@@ -137,7 +137,7 @@ TEST_CASE("chemin vide -> warning PathEmpty") {
 
 TEST_CASE("segment droit : espacement equilibre, extremites exactes") {
     const auto res = run_stitch(open_path({{0, 0}, {10'000, 0}}), {});
-    REQUIRE(res.points.size() == 5);  // 10mm / 3mm -> 4 pas de 2,5mm
+    REQUIRE(res.points.size() == 5); // 10mm / 3mm -> 4 pas de 2,5mm
     CHECK(res.points.front() == Vec2um{Micrometers{0}, Micrometers{0}});
     CHECK(res.points.back() == Vec2um{Micrometers{10'000}, Micrometers{0}});
 }
@@ -159,9 +159,9 @@ TEST_CASE("coin en L : le sommet est une penetration exacte") {
 }
 
 TEST_CASE("chemin ferme : revient au depart, sans doublon final minuscule") {
-    const auto res = run_stitch(circle(10'000, 4), {});  // carre incline (losange)
+    const auto res = run_stitch(circle(10'000, 4), {}); // carre incline (losange)
     REQUIRE(res.points.size() >= 4);
-    CHECK(res.points.front() == res.points.back());       // fermeture
+    CHECK(res.points.front() == res.points.back()); // fermeture
     // Le segment de fermeture n'est pas minuscule.
     const double closing = length_um(res.points.back() - res.points[res.points.size() - 2]);
     CHECK(closing > 2'000.0);
@@ -180,7 +180,7 @@ TEST_CASE("sens inverse : sequence renversee") {
 
 TEST_CASE("depart impose sur une boucle fermee") {
     RunningConfig cfg;
-    cfg.start = Vec2um{Micrometers{-10'000}, Micrometers{0}};  // proche d'un sommet du cercle
+    cfg.start = Vec2um{Micrometers{-10'000}, Micrometers{0}}; // proche d'un sommet du cercle
     const auto res = run_stitch(circle(10'000, 8), cfg);
     REQUIRE(res.points.size() >= 3);
     // Le premier point est proche du depart demande.
@@ -208,7 +208,7 @@ TEST_CASE("bean stitch : chaque intervalle traverse exactement 3 fois") {
     CHECK(bean[3] == pts[1]);
     CHECK(bean[4] == pts[2]);
     for (std::size_t i = 1; i < bean.size(); ++i) {
-        CHECK(bean[i] != bean[i - 1]);  // aucun mouvement nul
+        CHECK(bean[i] != bean[i - 1]); // aucun mouvement nul
     }
 }
 

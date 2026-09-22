@@ -83,7 +83,7 @@ struct ConcavityCutCandidate {
     geometry::PathSet second_piece;
     double first_piece_area_mm2{0.0};
     double second_piece_area_mm2{0.0};
-    std::string rejection_reason;  // vide si valid
+    std::string rejection_reason; // vide si valid
     // "concavite->concavite" ou "concavite->bord oppose" -- diagnostic
     // uniquement (format_concavity_cut_candidates).
     std::string family;
@@ -103,8 +103,9 @@ struct ConcavityCutCandidate {
 // (exactement 2 morceaux, aucun trop petit) -- aucune nouvelle regle de
 // rejet inventee ici. Ne necessite ni graphe de squelette ni jonction :
 // pure geometrie de contour.
-[[nodiscard]] std::vector<ConcavityCutCandidate> generate_concavity_cut_candidates(
-    const geometry::PathSet& region, const ConcavityCutParams& params = {});
+[[nodiscard]] std::vector<ConcavityCutCandidate>
+generate_concavity_cut_candidates(const geometry::PathSet& region,
+                                  const ConcavityCutParams& params = {});
 
 // Choisit, parmi les candidats VALIDES (dans l'ordre ou ils apparaissent
 // dans `candidates`, jusqu'a `max_candidates_evaluated`), celui dont les
@@ -115,11 +116,13 @@ struct ConcavityCutCandidate {
 // limitee en nombre d'evaluations (paires concavite->concavite = O(n^2)
 // sommets reflex, potentiellement nombreux). Renvoie l'index dans
 // `candidates`, ou `nullopt` si aucun candidat valide n'a pu etre construit.
-[[nodiscard]] std::optional<std::size_t> select_best_concavity_cut(
-    const std::vector<ConcavityCutCandidate>& candidates, const auto_satin::SatinColumnsParameters& genParams,
-    const satin_coverage::SatinCoverageConfig& coverageConfig, Micrometers density,
-    std::size_t max_candidates_evaluated = 6);
+[[nodiscard]] std::optional<std::size_t>
+select_best_concavity_cut(const std::vector<ConcavityCutCandidate>& candidates,
+                          const auto_satin::SatinColumnsParameters& genParams,
+                          const satin_coverage::SatinCoverageConfig& coverageConfig,
+                          Micrometers density, std::size_t max_candidates_evaluated = 6);
 
-[[nodiscard]] std::string format_concavity_cut_candidates(const std::vector<ConcavityCutCandidate>& candidates);
+[[nodiscard]] std::string
+format_concavity_cut_candidates(const std::vector<ConcavityCutCandidate>& candidates);
 
-}  // namespace openstitch::satin_planning
+} // namespace openstitch::satin_planning

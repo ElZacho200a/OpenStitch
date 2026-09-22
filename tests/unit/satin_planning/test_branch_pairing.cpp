@@ -24,34 +24,40 @@ SkeletonGraph make_synthetic_t_junction() {
     SkeletonGraph graph;
     graph.nodes = {
         SkeletonNode{0, Vec2um{Micrometers{0}, Micrometers{0}}, SkeletonNodeType::Endpoint, 1000.0},
-        SkeletonNode{1, Vec2um{Micrometers{10'000}, Micrometers{0}}, SkeletonNodeType::Junction, 1000.0},
-        SkeletonNode{2, Vec2um{Micrometers{20'000}, Micrometers{0}}, SkeletonNodeType::Endpoint, 1000.0},
-        SkeletonNode{3, Vec2um{Micrometers{10'000}, Micrometers{10'000}}, SkeletonNodeType::Endpoint, 500.0},
+        SkeletonNode{1, Vec2um{Micrometers{10'000}, Micrometers{0}}, SkeletonNodeType::Junction,
+                     1000.0},
+        SkeletonNode{2, Vec2um{Micrometers{20'000}, Micrometers{0}}, SkeletonNodeType::Endpoint,
+                     1000.0},
+        SkeletonNode{3, Vec2um{Micrometers{10'000}, Micrometers{10'000}},
+                     SkeletonNodeType::Endpoint, 500.0},
     };
     graph.edges = {
-        SkeletonEdge{0,
-                     0,
-                     1,
-                     {Vec2um{Micrometers{0}, Micrometers{0}}, Vec2um{Micrometers{10'000}, Micrometers{0}}},
-                     {1000.0, 1000.0},
-                     10'000.0},
+        SkeletonEdge{
+            0,
+            0,
+            1,
+            {Vec2um{Micrometers{0}, Micrometers{0}}, Vec2um{Micrometers{10'000}, Micrometers{0}}},
+            {1000.0, 1000.0},
+            10'000.0},
         SkeletonEdge{1,
                      1,
                      2,
-                     {Vec2um{Micrometers{10'000}, Micrometers{0}}, Vec2um{Micrometers{20'000}, Micrometers{0}}},
+                     {Vec2um{Micrometers{10'000}, Micrometers{0}},
+                      Vec2um{Micrometers{20'000}, Micrometers{0}}},
                      {1000.0, 1000.0},
                      10'000.0},
         SkeletonEdge{2,
                      1,
                      3,
-                     {Vec2um{Micrometers{10'000}, Micrometers{0}}, Vec2um{Micrometers{10'000}, Micrometers{10'000}}},
+                     {Vec2um{Micrometers{10'000}, Micrometers{0}},
+                      Vec2um{Micrometers{10'000}, Micrometers{10'000}}},
                      {1000.0, 500.0},
                      10'000.0},
     };
     return graph;
 }
 
-}  // namespace
+} // namespace
 
 TEST_CASE("continuation_cost : continuation droite = cout angle nul") {
     const SkeletonGraph graph = make_synthetic_t_junction();
@@ -62,7 +68,8 @@ TEST_CASE("continuation_cost : continuation droite = cout angle nul") {
     CHECK(cost.curvature_cost == Catch::Approx(0.0).margin(1e-9));
 }
 
-TEST_CASE("continuation_cost : branche perpendiculaire plus etroite = cout angle et largeur eleves") {
+TEST_CASE(
+    "continuation_cost : branche perpendiculaire plus etroite = cout angle et largeur eleves") {
     const SkeletonGraph graph = make_synthetic_t_junction();
     const ContinuationCost straight = continuation_cost(graph, 1, 0, 1);
     const ContinuationCost perpendicular = continuation_cost(graph, 1, 0, 2);
@@ -82,7 +89,7 @@ TEST_CASE("continuation_cost : arcs inconnus -> cout invalide") {
 TEST_CASE("pair_branches_at_junction : jonction en T -- la continuation droite est retenue") {
     const SkeletonGraph graph = make_synthetic_t_junction();
     const JunctionPairingReport report = pair_branches_at_junction(graph, 1);
-    REQUIRE(report.candidates.size() == 3);  // C(3,2)
+    REQUIRE(report.candidates.size() == 3); // C(3,2)
     REQUIRE(report.selected_pair.size() == 2);
     CHECK(report.selected_pair[0] == 0);
     CHECK(report.selected_pair[1] == 1);
@@ -96,7 +103,7 @@ TEST_CASE("decompose_into_paths : jonction en T synthetique -- deux chemins, arc
     REQUIRE(report.paths.size() == 2);
 
     const auto mainPath = std::find_if(report.paths.begin(), report.paths.end(),
-                                        [](const SatinPath& p) { return p.edges.size() == 2; });
+                                       [](const SatinPath& p) { return p.edges.size() == 2; });
     REQUIRE(mainPath != report.paths.end());
     CHECK(mainPath->edges[0] == 0);
     CHECK(mainPath->edges[1] == 1);
@@ -104,7 +111,7 @@ TEST_CASE("decompose_into_paths : jonction en T synthetique -- deux chemins, arc
     CHECK(mainPath->length_um == Catch::Approx(20'000.0));
 
     const auto secondaryPath = std::find_if(report.paths.begin(), report.paths.end(),
-                                             [](const SatinPath& p) { return p.edges.size() == 1; });
+                                            [](const SatinPath& p) { return p.edges.size() == 1; });
     REQUIRE(secondaryPath != report.paths.end());
     CHECK(secondaryPath->edges[0] == 2);
     CHECK(secondaryPath->nodes == std::vector<std::uint32_t>{1, 3});
@@ -112,7 +119,8 @@ TEST_CASE("decompose_into_paths : jonction en T synthetique -- deux chemins, arc
     // Partition exacte : chaque arc apparait exactement une fois au total.
     std::set<std::uint32_t> seen;
     for (const auto& p : report.paths)
-        for (auto e : p.edges) CHECK(seen.insert(e).second);
+        for (auto e : p.edges)
+            CHECK(seen.insert(e).second);
     CHECK(seen.size() == graph.edges.size());
 }
 
@@ -137,7 +145,7 @@ auto_satin::AutoSatinAnalysis analyze(const std::string& shapeName) {
     return std::move(*analysis);
 }
 
-}  // namespace
+} // namespace
 
 TEST_CASE("decompose_into_paths : rectangle -- aucune jonction, un seul chemin") {
     const auto analysis = analyze("rectangle");
@@ -159,14 +167,15 @@ TEST_CASE("decompose_into_paths : T -- une jonction, deux chemins (barre + pied)
     CHECK(report.paths.size() == 2);
 }
 
-TEST_CASE("decompose_into_paths : croix -- jonction de degre 4, une continuation + deux branches secondaires") {
+TEST_CASE("decompose_into_paths : croix -- jonction de degre 4, une continuation + deux branches "
+          "secondaires") {
     const auto analysis = analyze("cross");
     const auto& graph = analysis.debug.graph;
     REQUIRE(graph.junction_count() == 1);
     const DecompositionReport report = decompose_into_paths(graph);
     REQUIRE(report.junctions.size() == 1);
     const auto& jr = report.junctions.front();
-    REQUIRE(jr.candidates.size() == 6);  // C(4,2) : degre 4
+    REQUIRE(jr.candidates.size() == 6); // C(4,2) : degre 4
     CHECK(jr.selected_pair.size() == 2);
     CHECK(jr.detached.size() == 2);
     // Une continuation principale (2 arcs fusionnes) + deux branches secondaires isolees.
@@ -182,16 +191,17 @@ TEST_CASE("decompose_into_paths : H -- le pont jonction-jonction reste detache a
 
     const auto isJunction = [&](std::uint32_t nodeId) {
         const auto it = std::find_if(graph.nodes.begin(), graph.nodes.end(),
-                                      [&](const SkeletonNode& n) { return n.id == nodeId; });
+                                     [&](const SkeletonNode& n) { return n.id == nodeId; });
         return it != graph.nodes.end() && it->type == SkeletonNodeType::Junction;
     };
-    const auto bridgeIt = std::find_if(graph.edges.begin(), graph.edges.end(), [&](const SkeletonEdge& e) {
-        return isJunction(e.from) && isJunction(e.to);
-    });
+    const auto bridgeIt =
+        std::find_if(graph.edges.begin(), graph.edges.end(),
+                     [&](const SkeletonEdge& e) { return isJunction(e.from) && isJunction(e.to); });
     REQUIRE(bridgeIt != graph.edges.end());
 
     for (const auto& jr : report.junctions) {
-        const bool bridgeDetached = std::find(jr.detached.begin(), jr.detached.end(), bridgeIt->id) != jr.detached.end();
+        const bool bridgeDetached =
+            std::find(jr.detached.begin(), jr.detached.end(), bridgeIt->id) != jr.detached.end();
         CHECK(bridgeDetached);
     }
     // Les deux montants + le pont, chacun son propre chemin.
@@ -209,8 +219,8 @@ TEST_CASE("decompose_into_paths : trident -- une jonction degre 3, deux chemins"
 }
 
 TEST_CASE("decompose_into_paths : propriete de partition sur le corpus de formes historiques") {
-    for (const std::string& name : {"rectangle", "capsule", "ribbon", "s", "y", "t", "cross", "h", "wide", "notch",
-                                     "pinch", "trident"}) {
+    for (const std::string& name : {"rectangle", "capsule", "ribbon", "s", "y", "t", "cross", "h",
+                                    "wide", "notch", "pinch", "trident"}) {
         INFO("forme = " << name);
         const auto analysis = analyze(name);
         const auto& graph = analysis.debug.graph;
@@ -218,16 +228,19 @@ TEST_CASE("decompose_into_paths : propriete de partition sur le corpus de formes
 
         std::set<std::uint32_t> seen;
         for (const auto& p : report.paths)
-            for (auto e : p.edges) CHECK(seen.insert(e).second);
+            for (auto e : p.edges)
+                CHECK(seen.insert(e).second);
         CHECK(seen.size() == graph.edges.size());
 
         for (const auto& jr : report.junctions) {
             const std::size_t c = jr.candidates.size();
-            std::size_t degree = 2;  // un noeud Junction a toujours degre >= 3, donc >= 3 candidats
-            while (degree * (degree - 1) / 2 < c) ++degree;
+            std::size_t degree = 2; // un noeud Junction a toujours degre >= 3, donc >= 3 candidats
+            while (degree * (degree - 1) / 2 < c)
+                ++degree;
             REQUIRE(degree * (degree - 1) / 2 == c);
             CHECK(jr.selected_pair.size() + jr.detached.size() == degree);
-            if (!jr.selected_pair.empty()) CHECK(jr.selected_pair.size() == 2);
+            if (!jr.selected_pair.empty())
+                CHECK(jr.selected_pair.size() == 2);
         }
     }
 }

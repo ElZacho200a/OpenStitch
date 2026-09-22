@@ -26,18 +26,18 @@ enum class AiRuntimeKind {
 
 struct SamWorkerConfig {
     AiRuntimeKind runtime{AiRuntimeKind::WslPython};
-    QString wslDistro;          // ex. "Ubuntu" — ignoré si runtime == NativePython
-    QString pythonExecutable;   // python du venv worker, côté WSL ou natif selon `runtime`
-    QString workerScriptPath;   // openstitch_sam_worker.py, côté WSL ou natif selon `runtime`
+    QString wslDistro;        // ex. "Ubuntu" — ignoré si runtime == NativePython
+    QString pythonExecutable; // python du venv worker, côté WSL ou natif selon `runtime`
+    QString workerScriptPath; // openstitch_sam_worker.py, côté WSL ou natif selon `runtime`
     // Dossier des modèles : un chemin WINDOWS, supposé aussi visible depuis
     // WSL sous /mnt/<lettre>/... (hypothèse MVP documentée dans
     // WslPathConverter) — jamais un chemin choisi indépendamment côté worker.
     QString modelsDir;
-    QString device{QStringLiteral("auto")};  // "auto" | "cpu" | "cuda"
+    QString device{QStringLiteral("auto")}; // "auto" | "cpu" | "cuda"
 };
 
 struct SamSegmentParams {
-    QString profile{QStringLiteral("balanced")};  // "main_shapes" | "balanced" | "detail"
+    QString profile{QStringLiteral("balanced")}; // "main_shapes" | "balanced" | "detail"
     std::optional<int> pointsPerSide;
     std::optional<double> predIouThresh;
     std::optional<double> stabilityScoreThresh;
@@ -93,8 +93,8 @@ signals:
     void progress(QString requestId, QString stage);
     void segmentResult(QString requestId, QString jobDir, QString masksFile, int maskCount);
     void requestCancelled(QString requestId);
-    void workerError(QString requestId, openstitch::ai_segmentation::AiErrorCode code, QString message,
-                     QString detail);
+    void workerError(QString requestId, openstitch::ai_segmentation::AiErrorCode code,
+                     QString message, QString detail);
     void crashed(QString detail);
 
 private slots:
@@ -135,4 +135,4 @@ private:
     bool stoppingIntentionally_{false};
 };
 
-}  // namespace openstitch::desktop
+} // namespace openstitch::desktop

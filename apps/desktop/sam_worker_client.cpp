@@ -17,7 +17,7 @@ QString toQString(std::string_view sv) {
     return QString::fromUtf8(sv.data(), static_cast<qsizetype>(sv.size()));
 }
 
-}  // namespace
+} // namespace
 
 SamWorkerClient::SamWorkerClient(QObject* parent) : QObject(parent) {
     watchdogTimer_ = new QTimer(this);
@@ -91,8 +91,9 @@ void SamWorkerClient::launchProcess() {
     if (config_.runtime == AiRuntimeKind::WslPython) {
         program = QStringLiteral("wsl.exe");
         arguments << QStringLiteral("-d") << config_.wslDistro << QStringLiteral("--")
-                  << config_.pythonExecutable << config_.workerScriptPath << QStringLiteral("--models-dir")
-                  << translateForWorker(config_.modelsDir) << QStringLiteral("--device") << config_.device;
+                  << config_.pythonExecutable << config_.workerScriptPath
+                  << QStringLiteral("--models-dir") << translateForWorker(config_.modelsDir)
+                  << QStringLiteral("--device") << config_.device;
     } else {
         program = config_.pythonExecutable;
         arguments << config_.workerScriptPath << QStringLiteral("--models-dir") << config_.modelsDir
@@ -105,13 +106,14 @@ void SamWorkerClient::launchProcess() {
 void SamWorkerClient::start() {
     if (!isConfigured()) {
         setState(State::Unavailable);
-        emit workerError(
-            {}, ai_segmentation::AiErrorCode::WorkerNotConfigured,
-            toQString(ai_segmentation::default_message(ai_segmentation::AiErrorCode::WorkerNotConfigured)), {});
+        emit workerError({}, ai_segmentation::AiErrorCode::WorkerNotConfigured,
+                         toQString(ai_segmentation::default_message(
+                             ai_segmentation::AiErrorCode::WorkerNotConfigured)),
+                         {});
         return;
     }
     if (process_ != nullptr && process_->state() != QProcess::NotRunning) {
-        return;  // déjà démarré
+        return; // déjà démarré
     }
     stoppingIntentionally_ = false;
     setState(State::Starting);
@@ -144,9 +146,11 @@ QString SamWorkerClient::newRequestId() {
 
 void SamWorkerClient::sendRequest(const QJsonObject& request) {
     if (process_ == nullptr || process_->state() != QProcess::Running) {
-        emit workerError(
-            request.value(QStringLiteral("id")).toString(), ai_segmentation::AiErrorCode::WorkerNotConfigured,
-            toQString(ai_segmentation::default_message(ai_segmentation::AiErrorCode::WorkerNotConfigured)), {});
+        emit workerError(request.value(QStringLiteral("id")).toString(),
+                         ai_segmentation::AiErrorCode::WorkerNotConfigured,
+                         toQString(ai_segmentation::default_message(
+                             ai_segmentation::AiErrorCode::WorkerNotConfigured)),
+                         {});
         return;
     }
     const QString type = request.value(QStringLiteral("type")).toString();
@@ -259,7 +263,8 @@ void SamWorkerClient::handleMessage(const QJsonObject& message) {
     }
     if (type == QStringLiteral("progress")) {
         watchdogTimer_->start(kWatchdogTimeoutMs);
-        emit progress(message.value(QStringLiteral("id")).toString(), message.value(QStringLiteral("stage")).toString());
+        emit progress(message.value(QStringLiteral("id")).toString(),
+                      message.value(QStringLiteral("stage")).toString());
         return;
     }
     if (type == QStringLiteral("model_ready")) {
@@ -296,25 +301,27 @@ void SamWorkerClient::handleMessage(const QJsonObject& message) {
     if (type == QStringLiteral("error")) {
         watchdogTimer_->stop();
         setState(State::Ready);
-        const auto code =
-            ai_segmentation::ai_error_code_from_name(message.value(QStringLiteral("code")).toString().toStdString());
+        const auto code = ai_segmentation::ai_error_code_from_name(
+            message.value(QStringLiteral("code")).toString().toStdString());
         emit workerError(message.value(QStringLiteral("id")).toString(), code,
                          message.value(QStringLiteral("message")).toString(),
                          message.value(QStringLiteral("details")).toString());
         return;
     }
     emit workerError({}, ai_segmentation::AiErrorCode::InvalidWorkerResponse,
-                     toQString(ai_segmentation::default_message(ai_segmentation::AiErrorCode::InvalidWorkerResponse)),
+                     toQString(ai_segmentation::default_message(
+                         ai_segmentation::AiErrorCode::InvalidWorkerResponse)),
                      QStringLiteral("type inconnu : ") + type);
 }
 
 void SamWorkerClient::onProcessErrorOccurred(QProcess::ProcessError error) {
     if (error != QProcess::FailedToStart) {
-        return;  // les autres cas sont traites par onProcessFinished()
+        return; // les autres cas sont traites par onProcessFinished()
     }
     setState(State::Unavailable);
     emit workerError({}, ai_segmentation::AiErrorCode::WorkerStartFailed,
-                     toQString(ai_segmentation::default_message(ai_segmentation::AiErrorCode::WorkerStartFailed)),
+                     toQString(ai_segmentation::default_message(
+                         ai_segmentation::AiErrorCode::WorkerStartFailed)),
                      process_->errorString());
 }
 
@@ -352,4 +359,4 @@ void SamWorkerClient::onWatchdogTimeout() {
     process_->kill();
 }
 
-}  // namespace openstitch::desktop
+} // namespace openstitch::desktop

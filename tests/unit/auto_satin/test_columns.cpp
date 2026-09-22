@@ -21,7 +21,7 @@ SatinColumnsResult columns_of(const std::string& shape) {
     const auto region = make_shape(shape);
     REQUIRE(region.has_value());
     SatinColumnsParameters params;
-    params.analysis.raster.pixel_size = Micrometers{100};  // 0,1 mm : rapide
+    params.analysis.raster.pixel_size = Micrometers{100}; // 0,1 mm : rapide
     return build_satin_columns(*region, params);
 }
 
@@ -34,10 +34,10 @@ bool point_in_poly(const geometry::Path& poly, Vec2um p) {
         const auto ax = n[i].pos.x.value, ay = n[i].pos.y.value;
         const auto bx = n[j].pos.x.value, by = n[j].pos.y.value;
         if (((ay > p.y.value) != (by > p.y.value)) &&
-            (static_cast<double>(p.x.value) <
-             static_cast<double>(bx - ax) * static_cast<double>(p.y.value - ay) /
-                     static_cast<double>(by - ay) +
-                 static_cast<double>(ax))) {
+            (static_cast<double>(p.x.value) < static_cast<double>(bx - ax) *
+                                                      static_cast<double>(p.y.value - ay) /
+                                                      static_cast<double>(by - ay) +
+                                                  static_cast<double>(ax))) {
             inside = !inside;
         }
     }
@@ -65,7 +65,9 @@ geometry::PathNode node(std::int32_t x, std::int32_t y) {
                               std::nullopt, std::nullopt};
 }
 
-double length_of(double x, double y) { return std::sqrt(x * x + y * y); }
+double length_of(double x, double y) {
+    return std::sqrt(x * x + y * y);
+}
 
 // Distance minimale (µm) d'un point au segment [a,b].
 double distance_to_segment(Vec2um p, Vec2um a, Vec2um b) {
@@ -159,26 +161,27 @@ double max_station_width(const SatinColumnGeometry& col) {
 // exposé) : sert uniquement à vérifier qu'aucun barreau ne croise un autre
 // dans les tests de non-régression ci-dessous.
 bool segments_cross_2d(Vec2um a, Vec2um b, Vec2um c, Vec2um d) {
-    const auto cross2 = [](double ax, double ay, double bx, double by) { return ax * by - ay * bx; };
-    const auto orient = [&](Vec2um p, Vec2um q, Vec2um r) {
-        return cross2(static_cast<double>(q.x.value - p.x.value),
-                      static_cast<double>(q.y.value - p.y.value),
-                      static_cast<double>(r.x.value - p.x.value),
-                      static_cast<double>(r.y.value - p.y.value));
+    const auto cross2 = [](double ax, double ay, double bx, double by) {
+        return ax * by - ay * bx;
     };
-    const double o1 = orient(a, b, c), o2 = orient(a, b, d), o3 = orient(c, d, a), o4 = orient(c, d, b);
+    const auto orient = [&](Vec2um p, Vec2um q, Vec2um r) {
+        return cross2(
+            static_cast<double>(q.x.value - p.x.value), static_cast<double>(q.y.value - p.y.value),
+            static_cast<double>(r.x.value - p.x.value), static_cast<double>(r.y.value - p.y.value));
+    };
+    const double o1 = orient(a, b, c), o2 = orient(a, b, d), o3 = orient(c, d, a),
+                 o4 = orient(c, d, b);
     return (o1 > 0) != (o2 > 0) && (o3 > 0) != (o4 > 0) && o1 != 0 && o2 != 0 && o3 != 0 && o4 != 0;
 }
 
-}  // namespace
+} // namespace
 
 // --- Formes simples : colonnes cohérentes ------------------------------------
 
 TEST_CASE("colonnes : formes simples produisent au moins une colonne") {
     for (const char* s : {"rectangle", "capsule", "ribbon", "s"}) {
         const auto r = columns_of(s);
-        INFO("forme = " << s << " statut = " << to_string(r.status)
-                        << " refus = " << r.refusal);
+        INFO("forme = " << s << " statut = " << to_string(r.status) << " refus = " << r.refusal);
         CHECK(r.refusal.empty());
         REQUIRE(r.columns.size() >= 1);
         const auto& c = r.columns.front();
@@ -216,7 +219,7 @@ TEST_CASE("colonnes : rails et barreaux finis, non degeneres") {
             CHECK(std::isfinite(static_cast<double>(n.pos.y.value)));
         }
         for (const auto& rung : col.rungs) {
-            CHECK(length_um(rung.a - rung.b) > 0.0);  // largeur non nulle
+            CHECK(length_um(rung.a - rung.b) > 0.0); // largeur non nulle
         }
     }
 }
@@ -308,12 +311,16 @@ TEST_CASE("colonnes : bouts de jonction (Y) jamais etendus, arretes ouverts allo
     // l'extension, qui ne touche que le bout SANS jonction de chaque bras).
     std::set<std::uint32_t> junctionsA, junctionsB;
     for (const auto& c : a.columns) {
-        if (c.start_junction) junctionsA.insert(*c.start_junction);
-        if (c.end_junction) junctionsA.insert(*c.end_junction);
+        if (c.start_junction)
+            junctionsA.insert(*c.start_junction);
+        if (c.end_junction)
+            junctionsA.insert(*c.end_junction);
     }
     for (const auto& c : b.columns) {
-        if (c.start_junction) junctionsB.insert(*c.start_junction);
-        if (c.end_junction) junctionsB.insert(*c.end_junction);
+        if (c.start_junction)
+            junctionsB.insert(*c.start_junction);
+        if (c.end_junction)
+            junctionsB.insert(*c.end_junction);
     }
     CHECK(junctionsA.size() == 1);
     CHECK(junctionsB.size() == 1);
@@ -369,8 +376,10 @@ TEST_CASE("colonnes : un reseau Y identifie ses sections et sa jonction") {
         CHECK(column.section_index == i);
         CHECK(column.section_count == r.columns.size());
         CHECK(column.start_junction.has_value() != column.end_junction.has_value());
-        if (column.start_junction) junctions.insert(*column.start_junction);
-        if (column.end_junction) junctions.insert(*column.end_junction);
+        if (column.start_junction)
+            junctions.insert(*column.start_junction);
+        if (column.end_junction)
+            junctions.insert(*column.end_junction);
     }
     CHECK(junctions.size() == 1);
 }
@@ -405,16 +414,17 @@ TEST_CASE("colonnes : jonction Y symetrique - bridges locaux, sans ancre partage
     REQUIRE(r.columns.size() == 3);
     std::set<std::uint32_t> junctions;
     for (const auto& c : r.columns) {
-        if (c.start_junction) junctions.insert(*c.start_junction);
-        if (c.end_junction) junctions.insert(*c.end_junction);
+        if (c.start_junction)
+            junctions.insert(*c.start_junction);
+        if (c.end_junction)
+            junctions.insert(*c.end_junction);
     }
     REQUIRE(junctions.size() == 1);
     const std::uint32_t junctionId = *junctions.begin();
     check_junction_no_collision(r, junctionId);
 
-    const auto junctionNode =
-        std::find_if(r.debug.graph.nodes.begin(), r.debug.graph.nodes.end(),
-                     [&](const auto& n) { return n.id == junctionId; });
+    const auto junctionNode = std::find_if(r.debug.graph.nodes.begin(), r.debug.graph.nodes.end(),
+                                           [&](const auto& n) { return n.id == junctionId; });
     REQUIRE(junctionNode != r.debug.graph.nodes.end());
 
     std::vector<Vec2um> endpoints;
@@ -441,7 +451,7 @@ TEST_CASE("colonnes : jonction Y symetrique - bridges locaux, sans ancre partage
     const auto core = std::find_if(r.junction_cores.begin(), r.junction_cores.end(),
                                    [&](const auto& c) { return c.junction_id == junctionId; });
     if (core != r.junction_cores.end()) {
-        CHECK(core->area_um2 < 50.0 * 1'000'000.0);  // < 50 mm^2 (bandes de 5 mm de large)
+        CHECK(core->area_um2 < 50.0 * 1'000'000.0); // < 50 mm^2 (bandes de 5 mm de large)
     }
 }
 
@@ -477,8 +487,10 @@ TEST_CASE("colonnes : pont Jonction-Jonction d'un H converti en colonne") {
 
     std::set<std::uint32_t> junctions;
     for (const auto& c : r.columns) {
-        if (c.start_junction) junctions.insert(*c.start_junction);
-        if (c.end_junction) junctions.insert(*c.end_junction);
+        if (c.start_junction)
+            junctions.insert(*c.start_junction);
+        if (c.end_junction)
+            junctions.insert(*c.end_junction);
     }
     REQUIRE(junctions.size() == 2);
     for (auto j : junctions) {
@@ -503,8 +515,10 @@ TEST_CASE("colonnes : jonction a 4 branches (croix) - aucune collision") {
     REQUIRE(r.columns.size() == 4);
     std::set<std::uint32_t> junctions;
     for (const auto& c : r.columns) {
-        if (c.start_junction) junctions.insert(*c.start_junction);
-        if (c.end_junction) junctions.insert(*c.end_junction);
+        if (c.start_junction)
+            junctions.insert(*c.start_junction);
+        if (c.end_junction)
+            junctions.insert(*c.end_junction);
     }
     REQUIRE(junctions.size() == 1);
     check_junction_no_collision(r, *junctions.begin());
@@ -530,8 +544,10 @@ TEST_CASE("colonnes : jonction T - aucune collision (barreau degenere)") {
     REQUIRE(r.refusal.empty());
     std::set<std::uint32_t> junctions;
     for (const auto& c : r.columns) {
-        if (c.start_junction) junctions.insert(*c.start_junction);
-        if (c.end_junction) junctions.insert(*c.end_junction);
+        if (c.start_junction)
+            junctions.insert(*c.start_junction);
+        if (c.end_junction)
+            junctions.insert(*c.end_junction);
     }
     REQUIRE(junctions.size() == 1);
     check_junction_no_collision(r, *junctions.begin());
@@ -578,8 +594,10 @@ TEST_CASE("colonnes : jonction concave asymetrique (trident) - raccord coherent,
 
     std::set<std::uint32_t> junctions;
     for (const auto& c : r.columns) {
-        if (c.start_junction) junctions.insert(*c.start_junction);
-        if (c.end_junction) junctions.insert(*c.end_junction);
+        if (c.start_junction)
+            junctions.insert(*c.start_junction);
+        if (c.end_junction)
+            junctions.insert(*c.end_junction);
     }
     REQUIRE(junctions.size() == 1);
     const std::uint32_t junctionId = *junctions.begin();
@@ -613,8 +631,8 @@ TEST_CASE("colonnes : jonction concave asymetrique (trident) - raccord coherent,
     REQUIRE(terminalRungs.size() == 3);
     for (std::size_t i = 0; i + 1 < terminalRungs.size(); ++i) {
         for (std::size_t j = i + 1; j < terminalRungs.size(); ++j) {
-            CHECK_FALSE(segments_cross_2d(terminalRungs[i].a, terminalRungs[i].b, terminalRungs[j].a,
-                                          terminalRungs[j].b));
+            CHECK_FALSE(segments_cross_2d(terminalRungs[i].a, terminalRungs[i].b,
+                                          terminalRungs[j].a, terminalRungs[j].b));
         }
     }
 }
@@ -646,7 +664,7 @@ TEST_CASE("colonnes : jonction concave asymetrique (trident) - deterministe") {
 // d'échantillons d'axe adjacents (pas `station_spacing`), un segment terminal
 // anormalement long est la signature directe de ce défaut.
 TEST_CASE("colonnes : jonction concave asymetrique (trident) - pas de segment "
-         "rectiligne artificiel pres de la jonction") {
+          "rectiligne artificiel pres de la jonction") {
     const auto region = make_shape("trident");
     REQUIRE(region.has_value());
     SatinColumnsParameters params;
@@ -656,7 +674,7 @@ TEST_CASE("colonnes : jonction concave asymetrique (trident) - pas de segment "
     params.min_axis_coverage_ratio = 0.7;
     const auto r = build_satin_columns(*region, params);
     INFO("refus = " << r.refusal);
-    REQUIRE(r.refusal.empty());  // aucune zone non couturee ne bloque la generation
+    REQUIRE(r.refusal.empty()); // aucune zone non couturee ne bloque la generation
     REQUIRE(r.columns.size() == 3);
 
     // Rails inchanges : deterministes, et chaque noeud reste sur le contour
@@ -664,7 +682,7 @@ TEST_CASE("colonnes : jonction concave asymetrique (trident) - pas de segment "
     // de fermeture de `extend_tip`, tres inferieure a un defaut de plusieurs mm).
     const auto again = build_satin_columns(*region, params);
     REQUIRE(again.columns.size() == r.columns.size());
-    constexpr double kOnContourToleranceUm = 200.0;  // 0,2 mm
+    constexpr double kOnContourToleranceUm = 200.0; // 0,2 mm
     for (std::size_t ci = 0; ci < r.columns.size(); ++ci) {
         CHECK(again.columns[ci].rail_a == r.columns[ci].rail_a);
         CHECK(again.columns[ci].rail_b == r.columns[ci].rail_b);
@@ -694,7 +712,8 @@ TEST_CASE("colonnes : jonction concave asymetrique (trident) - pas de segment "
         // Progression curviligne monotone : chaque station d'axe successive
         // avance (jamais un rail qui rebrousse chemin sur lui-meme).
         for (std::size_t i = 1; i + 1 < n; ++i) {
-            const double prevStep = length_um(col.rail_a.nodes[i].pos - col.rail_a.nodes[i - 1].pos);
+            const double prevStep =
+                length_um(col.rail_a.nodes[i].pos - col.rail_a.nodes[i - 1].pos);
             CHECK(prevStep > 0.0);
         }
     }
@@ -702,8 +721,10 @@ TEST_CASE("colonnes : jonction concave asymetrique (trident) - pas de segment "
     // Identifie la jonction unique J1 de "trident".
     std::set<std::uint32_t> junctionIds;
     for (const auto& c : r.columns) {
-        if (c.start_junction) junctionIds.insert(*c.start_junction);
-        if (c.end_junction) junctionIds.insert(*c.end_junction);
+        if (c.start_junction)
+            junctionIds.insert(*c.start_junction);
+        if (c.end_junction)
+            junctionIds.insert(*c.end_junction);
     }
     REQUIRE(junctionIds.size() == 1);
     const std::uint32_t j1 = *junctionIds.begin();
@@ -714,11 +735,12 @@ TEST_CASE("colonnes : jonction concave asymetrique (trident) - pas de segment "
     // 3 secteurs de jonction (§ StableBranchEnd/JunctionSeparator), un par branche.
     std::vector<JunctionSectorInfo> sectorsJ1;
     for (const auto& s : r.junction_sectors) {
-        if (s.junction_id == j1) sectorsJ1.push_back(s);
+        if (s.junction_id == j1)
+            sectorsJ1.push_back(s);
     }
     REQUIRE(sectorsJ1.size() == 3);
     for (const auto& s : sectorsJ1) {
-        REQUIRE(s.boundary.size() >= 4);  // separateur, ..., trailing, leading, ..., separateur
+        REQUIRE(s.boundary.size() >= 4); // separateur, ..., trailing, leading, ..., separateur
     }
 
     // 3 JunctionSeparator (un par espace angulaire entre 2 des 3 branches),
@@ -727,12 +749,14 @@ TEST_CASE("colonnes : jonction concave asymetrique (trident) - pas de segment "
     // concernes (§4 -- construction de `build_sector`).
     std::vector<JunctionSeparatorInfo> separatorsJ1;
     for (const auto& s : r.junction_separators) {
-        if (s.junction_id == j1) separatorsJ1.push_back(s);
+        if (s.junction_id == j1)
+            separatorsJ1.push_back(s);
     }
     REQUIRE(separatorsJ1.size() == 3);
     const auto sectorForColumn = [&](std::size_t columnIndex) -> const JunctionSectorInfo* {
         for (const auto& s : sectorsJ1) {
-            if (s.column_index == columnIndex) return &s;
+            if (s.column_index == columnIndex)
+                return &s;
         }
         return nullptr;
     };
@@ -761,7 +785,8 @@ TEST_CASE("colonnes : jonction concave asymetrique (trident) - pas de segment "
         INFO("local_radius mm = " << core.local_radius_um / 1000.0);
         INFO("actual_max_radius mm = " << core.actual_max_radius_um / 1000.0);
         CHECK(core.area_um2 >= 0.0);
-        CHECK(core.area_um2 < 22'126'600.0 / 4.0);  // nettement < 22,1266 mm^2 (ancien resultat invalide)
+        CHECK(core.area_um2 <
+              22'126'600.0 / 4.0); // nettement < 22,1266 mm^2 (ancien resultat invalide)
         CHECK(core.local_radius_um <= core.configured_radius_um + 1.0);
         CHECK(core.actual_max_radius_um <= core.local_radius_um + 1.0);
         for (const auto& p : core.boundary) {
@@ -884,31 +909,32 @@ geometry::PathSet real_region_gistre_bordure() {
     p.nodes = {
         node(-18606, -58556), node(-27442, -50342), node(-32296, -44243), node(-35407, -39390),
         node(-38145, -34162), node(-41630, -24953), node(-43746, -15121), node(-44244, -9520),
-        node(-44244, -4044),  node(-43123, 5663),    node(-40634, 14749),  node(-38519, 19976),
-        node(-35158, 26447),  node(-31674, 31799),   node(-28189, 36155),  node(-22464, 41880),
-        node(-18979, 44742),  node(-12134, 49223),   node(-6409, 52210),   node(-1929, 54077),
-        node(5539, 56317),    node(12259, 57561),    node(18109, 58059),   node(25078, 57935),
-        node(30554, 57312),   node(38022, 55694),    node(44120, 53579),   node(44867, 53828),
-        node(43746, 54574),   node(39764, 55943),    node(33914, 57437),   node(27567, 58433),
-        node(16989, 58681),   node(7779, 57561),     node(-1306, 55072),   node(-5662, 53330),
-        node(-11387, 50467),  node(-19228, 45240),   node(-25824, 39391),  node(-29931, 34910),
-        node(-33665, 30057),  node(-38394, 21967),   node(-42003, 12882),  node(-43621, 6659),
-        node(-44741, -684),   node(-44866, -10267),  node(-44119, -17610), node(-41630, -27317),
-        node(-39639, -32544), node(-37150, -37647),  node(-32669, -44741), node(-27069, -51462),
+        node(-44244, -4044),  node(-43123, 5663),   node(-40634, 14749),  node(-38519, 19976),
+        node(-35158, 26447),  node(-31674, 31799),  node(-28189, 36155),  node(-22464, 41880),
+        node(-18979, 44742),  node(-12134, 49223),  node(-6409, 52210),   node(-1929, 54077),
+        node(5539, 56317),    node(12259, 57561),   node(18109, 58059),   node(25078, 57935),
+        node(30554, 57312),   node(38022, 55694),   node(44120, 53579),   node(44867, 53828),
+        node(43746, 54574),   node(39764, 55943),   node(33914, 57437),   node(27567, 58433),
+        node(16989, 58681),   node(7779, 57561),    node(-1306, 55072),   node(-5662, 53330),
+        node(-11387, 50467),  node(-19228, 45240),  node(-25824, 39391),  node(-29931, 34910),
+        node(-33665, 30057),  node(-38394, 21967),  node(-42003, 12882),  node(-43621, 6659),
+        node(-44741, -684),   node(-44866, -10267), node(-44119, -17610), node(-41630, -27317),
+        node(-39639, -32544), node(-37150, -37647), node(-32669, -44741), node(-27069, -51462),
         node(-22837, -55569), node(-18979, -58680),
     };
     return {p, {}};
 }
 
 TEST_CASE("colonnes : bordure fine d'un logo circulaire (projet reel) - jamais de rails "
-         "confondus") {
+          "confondus") {
     const auto region = real_region_gistre_bordure();
-    SatinColumnsParameters params;  // parametres par defaut, comme autodigitize.cpp (pixel 50 um)
-    params.analysis.thresholds.max_satin_width = Micrometers{6'000};  // options.satin_max_width par defaut
+    SatinColumnsParameters params; // parametres par defaut, comme autodigitize.cpp (pixel 50 um)
+    params.analysis.thresholds.max_satin_width =
+        Micrometers{6'000}; // options.satin_max_width par defaut
     const auto r = build_satin_columns(region, params);
     std::fprintf(stderr, "DIAG status=%d columns=%zu parametric=%zu refusal=%s\n",
-                static_cast<int>(r.status), r.columns.size(), r.parametric_columns.size(),
-                r.refusal.c_str());
+                 static_cast<int>(r.status), r.columns.size(), r.parametric_columns.size(),
+                 r.refusal.c_str());
     for (const auto& w : r.warnings) {
         std::fprintf(stderr, "DIAG warn: %s\n", w.c_str());
     }
@@ -943,30 +969,31 @@ geometry::PathSet real_region_gistre_lettre_t() {
     geometry::Path p;
     p.closed = true;
     p.nodes = {
-        node(-101859, 238244), node(-89160, 243006),  node(-87043, 244329), node(-87572, 244858),
-        node(-92599, 245123),  node(-93128, 245652),  node(-99478, 261526), node(-102652, 270786),
-        node(-100801, 271579), node(-96832, 271844),  node(-94715, 270786), node(-91541, 268140),
-        node(-89953, 267875),  node(-89953, 269463),  node(-90482, 270521), node(-90482, 271315),
-        node(-92863, 276342),  node(-94186, 276342),  node(-94980, 275812), node(-98419, 274754),
+        node(-101859, 238244), node(-89160, 243006),  node(-87043, 244329),  node(-87572, 244858),
+        node(-92599, 245123),  node(-93128, 245652),  node(-99478, 261526),  node(-102652, 270786),
+        node(-100801, 271579), node(-96832, 271844),  node(-94715, 270786),  node(-91541, 268140),
+        node(-89953, 267875),  node(-89953, 269463),  node(-90482, 270521),  node(-90482, 271315),
+        node(-92863, 276342),  node(-94186, 276342),  node(-94980, 275812),  node(-98419, 274754),
         node(-114293, 268405), node(-121966, 264965), node(-121437, 262584), node(-120114, 259938),
         node(-120114, 259409), node(-118262, 257028), node(-117733, 257028), node(-116939, 258351),
         node(-116939, 261261), node(-116145, 263907), node(-112971, 266553), node(-110854, 267346),
-        node(-110325, 266817), node(-101859, 245652),  node(-100536, 241683), node(-103711, 239037),
+        node(-110325, 266817), node(-101859, 245652), node(-100536, 241683), node(-103711, 239037),
         node(-104240, 237979),
     };
     return {p, {}};
 }
 
 TEST_CASE("colonnes : coin interieur d'une lettre en T (projet reel) - saut au lieu d'un point "
-         "plus disproportionne qu'aucun barreau reel") {
+          "plus disproportionne qu'aucun barreau reel") {
     const auto region = real_region_gistre_lettre_t();
-    SatinColumnsParameters params;  // parametres par defaut, comme autodigitize.cpp
-    params.analysis.thresholds.max_satin_width = Micrometers{6'000};  // options.satin_max_width par defaut
+    SatinColumnsParameters params; // parametres par defaut, comme autodigitize.cpp
+    params.analysis.thresholds.max_satin_width =
+        Micrometers{6'000}; // options.satin_max_width par defaut
     params.geometry_mode = SatinGeometryMode::Parametric;
     const auto r = build_satin_columns(region, params);
     std::fprintf(stderr, "DIAG lettre T: status=%d columns=%zu parametric=%zu refusal=%s\n",
-                static_cast<int>(r.status), r.columns.size(), r.parametric_columns.size(),
-                r.refusal.c_str());
+                 static_cast<int>(r.status), r.columns.size(), r.parametric_columns.size(),
+                 r.refusal.c_str());
 
     REQUIRE((!r.parametric_columns.empty() || !r.columns.empty()));
     // `SatinColumnGeometry` (mode Legacy) et `ParametricSatinObject` (mode
@@ -986,9 +1013,11 @@ TEST_CASE("colonnes : coin interieur d'une lettre en T (projet reel) - saut au l
                                  const std::vector<SatinRung>& colRungs) {
         std::vector<stitch_generation::SatinRungSeg> rungs;
         rungs.reserve(colRungs.size());
-        for (const auto& rg : colRungs) rungs.emplace_back(rg.a, rg.b);
+        for (const auto& rg : colRungs)
+            rungs.emplace_back(rg.a, rg.b);
         double maxRungWidth = 0.0;
-        for (const auto& rg : colRungs) maxRungWidth = std::max(maxRungWidth, length_um(rg.a - rg.b));
+        for (const auto& rg : colRungs)
+            maxRungWidth = std::max(maxRungWidth, length_um(rg.a - rg.b));
         stitch_generation::SatinConfig cfg;
         cfg.density = Micrometers{400};
         const auto fill = stitch_generation::fill_satin_columns(railA, railB, rungs, cfg);
@@ -996,17 +1025,20 @@ TEST_CASE("colonnes : coin interieur d'une lettre en T (projet reel) - saut au l
 
         std::size_t nextBreak = 0;
         for (std::size_t i = 1; i < fill.satin.size(); ++i) {
-            const bool isBreak = nextBreak < fill.jump_before.size() && fill.jump_before[nextBreak] == i;
+            const bool isBreak =
+                nextBreak < fill.jump_before.size() && fill.jump_before[nextBreak] == i;
             if (isBreak) {
                 ++nextBreak;
-                continue;  // saut : aucune contrainte de longueur, le fil est levé
+                continue; // saut : aucune contrainte de longueur, le fil est levé
             }
             const double segUm = length_um(fill.satin[i] - fill.satin[i - 1]);
-            CHECK(segUm <= maxRungWidth + 50.0);  // tolerance d'arrondi
+            CHECK(segUm <= maxRungWidth + 50.0); // tolerance d'arrondi
         }
     };
-    for (const auto& col : r.parametric_columns) checkColumn(col.rail_a, col.rail_b, col.rungs);
-    for (const auto& col : r.columns) checkColumn(col.rail_a, col.rail_b, col.rungs);
+    for (const auto& col : r.parametric_columns)
+        checkColumn(col.rail_a, col.rail_b, col.rungs);
+    for (const auto& col : r.columns)
+        checkColumn(col.rail_a, col.rail_b, col.rungs);
 
     // Le mecanisme de saut s'engage bien quelque part sur cette geometrie
     // reelle -- sinon ce test ne vérifierait rien de plus que la suite
@@ -1069,7 +1101,7 @@ void check_no_partial_generation(const SatinColumnsResult& r, const geometry::Pa
     }
 }
 
-}  // namespace
+} // namespace
 
 TEST_CASE("colonnes : forme concave (encoche profonde) - jamais de generation partielle") {
     for (const char* s : {"notch", "pinch"}) {
@@ -1127,7 +1159,8 @@ SatinColumnsResult parametric_columns_of(const std::string& shape) {
 // Aplatit chaque objet en une polyligne par rail, pour les vérifications
 // géométriques (croisement, distance au contour) qui doivent porter sur la
 // courbe RÉELLE, jamais sur les seuls nœuds de contrôle Bézier.
-std::pair<std::vector<Vec2um>, std::vector<Vec2um>> flatten_object(const ParametricSatinObject& obj) {
+std::pair<std::vector<Vec2um>, std::vector<Vec2um>>
+flatten_object(const ParametricSatinObject& obj) {
     const auto a = geometry::flatten(obj.rail_a, Micrometers{30});
     const auto b = geometry::flatten(obj.rail_b, Micrometers{30});
     return {a.points, b.points};
@@ -1136,10 +1169,9 @@ std::pair<std::vector<Vec2um>, std::vector<Vec2um>> flatten_object(const Paramet
 bool segments_cross(Vec2um a, Vec2um b, Vec2um c, Vec2um d) {
     const auto cross = [](double ax, double ay, double bx, double by) { return ax * by - ay * bx; };
     const auto o = [&](Vec2um p, Vec2um q, Vec2um r) {
-        return cross(static_cast<double>(q.x.value - p.x.value),
-                     static_cast<double>(q.y.value - p.y.value),
-                     static_cast<double>(r.x.value - p.x.value),
-                     static_cast<double>(r.y.value - p.y.value));
+        return cross(
+            static_cast<double>(q.x.value - p.x.value), static_cast<double>(q.y.value - p.y.value),
+            static_cast<double>(r.x.value - p.x.value), static_cast<double>(r.y.value - p.y.value));
     };
     const double o1 = o(a, b, c), o2 = o(a, b, d), o3 = o(c, d, a), o4 = o(c, d, b);
     return (o1 > 0) != (o2 > 0) && (o3 > 0) != (o4 > 0) && o1 != 0 && o2 != 0 && o3 != 0 && o4 != 0;
@@ -1156,7 +1188,7 @@ bool polylines_cross(const std::vector<Vec2um>& a, const std::vector<Vec2um>& b)
     return false;
 }
 
-}  // namespace
+} // namespace
 
 TEST_CASE("parametrique : rectangle -> un objet, rails Bezier epars (pas une station = un noeud)") {
     const auto r = parametric_columns_of("rectangle");
@@ -1186,7 +1218,7 @@ TEST_CASE("parametrique : capsule -> rails Bezier restent dans la region, embout
     REQUIRE(r.refusal.empty());
     REQUIRE(r.parametric_columns.size() == 1);
     const auto [flatA, flatB] = flatten_object(r.parametric_columns.front());
-    constexpr double kToleranceUm = 250.0;  // generreuse : tolerance de fit + aplatissement
+    constexpr double kToleranceUm = 250.0; // generreuse : tolerance de fit + aplatissement
     for (const auto& p : flatA) {
         CHECK(distance_to_contour(*region, p) < kToleranceUm);
     }
@@ -1258,9 +1290,9 @@ TEST_CASE("parametrique : recouvrement de jonction borne, jamais loin dans la br
             CHECK(obj.start_overlap_um >= 0.0);
             CHECK(obj.end_overlap_um >= 0.0);
             CHECK(obj.start_overlap_um <=
-                 static_cast<double>(defaults.junction_overlap_max.value) + 1.0);
+                  static_cast<double>(defaults.junction_overlap_max.value) + 1.0);
             CHECK(obj.end_overlap_um <=
-                 static_cast<double>(defaults.junction_overlap_max.value) + 1.0);
+                  static_cast<double>(defaults.junction_overlap_max.value) + 1.0);
         }
         const std::string s = shape;
         if (s == "y" || s == "trident") {
@@ -1273,7 +1305,8 @@ TEST_CASE("parametrique : recouvrement de jonction borne, jamais loin dans la br
     }
 }
 
-TEST_CASE("parametrique : lignes d'angle -- correspondance strictement monotone sur les deux rails") {
+TEST_CASE(
+    "parametrique : lignes d'angle -- correspondance strictement monotone sur les deux rails") {
     for (const char* shape : {"rectangle", "capsule", "y", "t", "cross", "trident"}) {
         const auto r = parametric_columns_of(shape);
         INFO("forme = " << shape);
@@ -1297,10 +1330,9 @@ TEST_CASE("parametrique : aucune ligne d'angle croisee, largeur toujours positiv
                 CHECK(length_um(g.rail_a_point - g.rail_b_point) > 0.0);
             }
             for (std::size_t i = 0; i + 1 < obj.angle_guides.size(); ++i) {
-                CHECK_FALSE(segments_cross(obj.angle_guides[i].rail_a_point,
-                                          obj.angle_guides[i].rail_b_point,
-                                          obj.angle_guides[i + 1].rail_a_point,
-                                          obj.angle_guides[i + 1].rail_b_point));
+                CHECK_FALSE(segments_cross(
+                    obj.angle_guides[i].rail_a_point, obj.angle_guides[i].rail_b_point,
+                    obj.angle_guides[i + 1].rail_a_point, obj.angle_guides[i + 1].rail_b_point));
             }
         }
     }

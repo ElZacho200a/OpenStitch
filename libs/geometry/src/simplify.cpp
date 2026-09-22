@@ -45,7 +45,7 @@ void douglas_peucker(const std::vector<PathNode>& nodes, std::size_t first, std:
     }
 }
 
-}  // namespace
+} // namespace
 
 double signed_area_um2(const Path& path) {
     double area = 0.0;
@@ -122,4 +122,4 @@ Path simplify(const Path& path, Micrometers tolerance) {
     return result;
 }
 
-}  // namespace openstitch::geometry
+} // namespace openstitch::geometry

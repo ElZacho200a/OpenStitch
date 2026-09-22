@@ -20,9 +20,9 @@ TEST_CASE("svg de diagnostic : structure et determinisme") {
     const std::string svg = to_diagnostic_svg(seq);
     CHECK(svg.find("<svg") == 0);
     CHECK(svg.find("</svg>") != std::string::npos);
-    CHECK(svg.find("stroke=\"black\"") != std::string::npos);   // couture
-    CHECK(svg.find("stroke=\"orange\"") != std::string::npos);  // sauts
-    CHECK(svg.find("stroke=\"red\"") != std::string::npos);     // changement de couleur
+    CHECK(svg.find("stroke=\"black\"") != std::string::npos);  // couture
+    CHECK(svg.find("stroke=\"orange\"") != std::string::npos); // sauts
+    CHECK(svg.find("stroke=\"red\"") != std::string::npos);    // changement de couleur
     CHECK(svg.find("points: 3 sauts: 1") != std::string::npos);
-    CHECK(svg == to_diagnostic_svg(seq));  // deterministe
+    CHECK(svg == to_diagnostic_svg(seq)); // deterministe
 }

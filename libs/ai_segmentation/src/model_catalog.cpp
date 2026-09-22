@@ -28,7 +28,7 @@ constexpr std::array<ModelDescriptor, 4> kCatalog{{
      "sam2.1_hiera_large.pt", 857.0},
 }};
 
-}  // namespace
+} // namespace
 
 const ModelDescriptor& model_descriptor(ModelId id) {
     for (const auto& entry : kCatalog) {
@@ -36,7 +36,7 @@ const ModelDescriptor& model_descriptor(ModelId id) {
             return entry;
         }
     }
-    return kCatalog[0];  // inatteignable : ModelId est un enum fermé couvrant kCatalog
+    return kCatalog[0]; // inatteignable : ModelId est un enum fermé couvrant kCatalog
 }
 
 const std::array<ModelDescriptor, 4>& all_models() {
@@ -52,4 +52,4 @@ std::optional<ModelId> model_id_from_worker_id(std::string_view worker_id) {
     return std::nullopt;
 }
 
-}  // namespace openstitch::ai_segmentation
+} // namespace openstitch::ai_segmentation

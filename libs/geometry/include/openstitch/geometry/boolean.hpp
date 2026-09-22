@@ -18,7 +18,7 @@ namespace openstitch::geometry {
 // inchangée (dans une liste à un élément) si `cutouts` est vide ou ne
 // recouvre rien de `base`.
 [[nodiscard]] Result<std::vector<PathSet>> subtract_polygons(const PathSet& base,
-                                                              const std::vector<Path>& cutouts);
+                                                             const std::vector<Path>& cutouts);
 
 // Aire nette d'un PathSet (extérieur moins trous), en µm². Toujours >= 0.
 [[nodiscard]] double path_set_area_um2(const PathSet& set);
@@ -34,8 +34,8 @@ namespace openstitch::geometry {
 // Renvoie une liste vide si le résultat est vide (aucun recouvrement pour
 // l'intersection, `a` totalement recouvert par `b` pour la différence).
 [[nodiscard]] Result<std::vector<PathSet>> intersect_polygons(const std::vector<PathSet>& a,
-                                                               const std::vector<PathSet>& b);
+                                                              const std::vector<PathSet>& b);
 [[nodiscard]] Result<std::vector<PathSet>> difference_polygons(const std::vector<PathSet>& a,
-                                                                const std::vector<PathSet>& b);
+                                                               const std::vector<PathSet>& b);
 
-}  // namespace openstitch::geometry
+} // namespace openstitch::geometry

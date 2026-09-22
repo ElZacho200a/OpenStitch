@@ -28,7 +28,7 @@ QString fakeWorkerScript() {
     return QStringLiteral(OPENSTITCH_FIXTURES_DIR "/fake_sam_worker.py");
 }
 
-}  // namespace
+} // namespace
 
 // SamWorkerClient contre un faux worker Python (tests/fixtures/fake_sam_worker.py,
 // stdlib uniquement) : jamais de dépendance à un vrai environnement SAM 2/
@@ -131,8 +131,9 @@ void SamWorkerClientTest::cancelDuringHangProfileEmitsCancelled() {
     QSignalSpy progressSpy(&client, &SamWorkerClient::progress);
     SamSegmentParams params;
     params.profile = QStringLiteral("hang");
-    const QString requestId = client.segmentImage(jobDir.path(), QStringLiteral("input.png"), params);
-    QVERIFY(progressSpy.wait(2000));  // au moins "preparing_image"
+    const QString requestId =
+        client.segmentImage(jobDir.path(), QStringLiteral("input.png"), params);
+    QVERIFY(progressSpy.wait(2000)); // au moins "preparing_image"
 
     QSignalSpy cancelledSpy(&client, &SamWorkerClient::requestCancelled);
     client.cancel(requestId);

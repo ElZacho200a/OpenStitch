@@ -9,14 +9,14 @@ namespace openstitch::ai_segmentation {
 namespace {
 
 std::size_t count_nonzero(const std::vector<std::uint8_t>& pixels) {
-    return static_cast<std::size_t>(std::count_if(
-        pixels.begin(), pixels.end(), [](std::uint8_t v) { return v != 0; }));
+    return static_cast<std::size_t>(
+        std::count_if(pixels.begin(), pixels.end(), [](std::uint8_t v) { return v != 0; }));
 }
 
-}  // namespace
+} // namespace
 
 Result<segmentation::Segmentation> build_label_map(const std::vector<LabelMaskInput>& masks,
-                                                    const LabelMapOptions& options) {
+                                                   const LabelMapOptions& options) {
     if (options.width <= 0 || options.height <= 0) {
         return fail(ErrorCategory::Internal, "Dimensions de carte de labels invalides");
     }
@@ -49,7 +49,7 @@ Result<segmentation::Segmentation> build_label_map(const std::vector<LabelMaskIn
         const LabelMaskInput& ma = masks[a];
         const LabelMaskInput& mb = masks[b];
         if (ma.manual_priority_set != mb.manual_priority_set) {
-            return ma.manual_priority_set;  // priorité manuelle passe devant
+            return ma.manual_priority_set; // priorité manuelle passe devant
         }
         if (ma.manual_priority_set) {
             if (ma.manual_priority != mb.manual_priority) {
@@ -94,4 +94,4 @@ Result<segmentation::Segmentation> build_label_map(const std::vector<LabelMaskIn
     return seg;
 }
 
-}  // namespace openstitch::ai_segmentation
+} // namespace openstitch::ai_segmentation

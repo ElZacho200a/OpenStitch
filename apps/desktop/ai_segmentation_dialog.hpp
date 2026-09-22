@@ -42,7 +42,7 @@ class AiSegmentationDialog : public QDialog {
 
 public:
     AiSegmentationDialog(image::Image sourceImage, Millimeters mmPerPx, AiPreferences prefs,
-                        QWidget* parent = nullptr);
+                         QWidget* parent = nullptr);
     ~AiSegmentationDialog() override;
 
     // Valide seulement après un clic sur « Valider » réussi.
@@ -61,8 +61,8 @@ private slots:
     void onWorkerProgress(QString requestId, QString stage);
     void onModelReady(QString modelWorkerId, QString device, double loadSeconds);
     void onSegmentResult(QString requestId, QString jobDir, QString masksFile, int maskCount);
-    void onWorkerError(QString requestId, openstitch::ai_segmentation::AiErrorCode code, QString message,
-                       QString detail);
+    void onWorkerError(QString requestId, openstitch::ai_segmentation::AiErrorCode code,
+                       QString message, QString detail);
     void onTableSelectionChanged();
 
 private:
@@ -71,7 +71,8 @@ private:
     void setupUi();
     void setStatus(const QString& text);
     void loadMasksIntoTable();
-    [[nodiscard]] QVector<std::uint8_t> loadMaskPixels(const ai_segmentation::MaskEntry& entry) const;
+    [[nodiscard]] QVector<std::uint8_t>
+    loadMaskPixels(const ai_segmentation::MaskEntry& entry) const;
     void updateSelectedMaskPreview();
     [[nodiscard]] QString jobDirPath() const;
 
@@ -85,7 +86,7 @@ private:
     ai_segmentation::ModelId pendingModel_{ai_segmentation::ModelId::Small};
 
     ai_segmentation::MaskCollection masks_;
-    QHash<int, QVector<std::uint8_t>> maskPixels_;  // mask id -> bitmap 0/1 (width*height)
+    QHash<int, QVector<std::uint8_t>> maskPixels_; // mask id -> bitmap 0/1 (width*height)
 
     QComboBox* modelCombo_{nullptr};
     QComboBox* profileCombo_{nullptr};
@@ -115,4 +116,4 @@ private:
     ai_segmentation::SegmentationValidationReport validationReport_;
 };
 
-}  // namespace openstitch::desktop
+} // namespace openstitch::desktop

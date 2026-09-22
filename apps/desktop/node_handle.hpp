@@ -27,10 +27,8 @@ public:
     NodeHandleItem(QPointF sceneMm, std::function<void(QPointF)> onReleased,
                    std::function<void(QPointF)> onMoved = {},
                    std::function<void(QPoint)> onContextMenu = {})
-        : QGraphicsEllipseItem(-4.0, -4.0, 8.0, 8.0),
-          onReleased_(std::move(onReleased)),
-          onMoved_(std::move(onMoved)),
-          onContextMenu_(std::move(onContextMenu)) {
+        : QGraphicsEllipseItem(-4.0, -4.0, 8.0, 8.0), onReleased_(std::move(onReleased)),
+          onMoved_(std::move(onMoved)), onContextMenu_(std::move(onContextMenu)) {
         setPos(sceneMm);
         setFlag(ItemIgnoresTransformations);
         setFlag(ItemIsMovable);
@@ -126,7 +124,7 @@ public:
         setFlag(ItemIsMovable);
         setBrush(QBrush(AppTheme::instance().tokens().canvasSelectionHalo));
         setPen(QPen(AppTheme::instance().tokens().canvasSelectionLine, 1.5));
-        setZValue(101);  // au-dessus des poignées de nœud (100) : jamais masquée par elles
+        setZValue(101); // au-dessus des poignées de nœud (100) : jamais masquée par elles
         setCursor(Qt::SizeFDiagCursor);
     }
 
@@ -148,4 +146,4 @@ private:
     std::function<void(QPointF)> onReleased_;
 };
 
-}  // namespace openstitch::desktop
+} // namespace openstitch::desktop

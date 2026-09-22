@@ -17,24 +17,24 @@ namespace openstitch::stitch_generation {
 // puis pour minimiser les déplacements ; la géométrie reste inchangée.
 struct RouteColumn {
     ObjectId id{};
-    Vec2um start{};  // extrémité « début » naturelle
-    Vec2um end{};    // extrémité « fin » naturelle
+    Vec2um start{}; // extrémité « début » naturelle
+    Vec2um end{};   // extrémité « fin » naturelle
     std::optional<std::uint32_t> start_junction;
     std::optional<std::uint32_t> end_junction;
 };
 
 // Nature d'une liaison entre deux colonnes consécutives.
 enum class ConnectorKind {
-    Start,      // première colonne : simple saut depuis l'origine (pose du fil)
-    Underpath,  // trajet cousu caché (pas de coupe) : la sortie rejoint l'entrée
-    Jump,       // saut avec coupe : liaison trop longue pour être cachée
+    Start,     // première colonne : simple saut depuis l'origine (pose du fil)
+    Underpath, // trajet cousu caché (pas de coupe) : la sortie rejoint l'entrée
+    Jump,      // saut avec coupe : liaison trop longue pour être cachée
 };
 
 // Une étape du plan : quelle colonne, dans quel sens, atteinte par quel type
 // de liaison.
 struct RouteStep {
-    std::size_t column_index{0};  // index dans le vecteur d'entrée
-    bool reversed{false};         // true = coudre end -> start
+    std::size_t column_index{0}; // index dans le vecteur d'entrée
+    bool reversed{false};        // true = coudre end -> start
     ConnectorKind connector{ConnectorKind::Start};
     // Jonction logique commune à la sortie précédente et à cette entrée. Elle
     // n'est retenue que si l'écart géométrique reste sous `underpath_max`.
@@ -43,10 +43,10 @@ struct RouteStep {
 
 struct RoutePlan {
     std::vector<RouteStep> steps;
-    double travel_um{0.0};    // somme des déplacements entre colonnes
-    std::size_t jumps{0};     // liaisons de type Jump (coupes)
-    std::size_t underpaths{0};  // liaisons cachées
-    std::size_t junction_links{0};  // liaisons validées par une jonction commune
+    double travel_um{0.0};         // somme des déplacements entre colonnes
+    std::size_t jumps{0};          // liaisons de type Jump (coupes)
+    std::size_t underpaths{0};     // liaisons cachées
+    std::size_t junction_links{0}; // liaisons validées par une jonction commune
 };
 
 struct RoutingConfig {
@@ -70,7 +70,7 @@ struct RoutingConfig {
     // jonction — un trajet caché de 5 à 8 mm entre deux formes sans aucun
     // lien topologique était accepté silencieusement.
     Micrometers underpath_max_without_junction{1'500};
-    bool two_opt{true};  // amélioration 2-opt de l'ordre après le glouton
+    bool two_opt{true}; // amélioration 2-opt de l'ordre après le glouton
 };
 
 // Ordonne et oriente les colonnes pour conserver les jonctions explicites puis
@@ -89,4 +89,4 @@ struct RoutingConfig {
 [[nodiscard]] RoutePlan route_columns(const std::vector<RouteColumn>& columns, Vec2um origin,
                                       const RoutingConfig& config);
 
-}  // namespace openstitch::stitch_generation
+} // namespace openstitch::stitch_generation

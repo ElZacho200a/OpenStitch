@@ -27,4 +27,4 @@ inline constexpr int kSchemaVersion = 3;
 
 [[nodiscard]] Result<document::Project> load_project(const std::filesystem::path& path);
 
-}  // namespace openstitch::project_io
+} // namespace openstitch::project_io

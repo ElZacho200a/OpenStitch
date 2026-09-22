@@ -18,4 +18,4 @@ namespace openstitch::project_io::detail {
 // Reconstruit le document depuis le JSON (labels de segmentation à part).
 [[nodiscard]] Result<document::Project> project_from_json(const nlohmann::json& j);
 
-}  // namespace openstitch::project_io::detail
+} // namespace openstitch::project_io::detail

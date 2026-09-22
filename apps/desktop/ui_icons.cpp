@@ -35,7 +35,7 @@ QIcon make(const std::function<void(QPainter&)>& draw) {
     return QIcon(pm);
 }
 
-}  // namespace
+} // namespace
 
 QIcon select() {
     return make([](QPainter& p) {
@@ -215,8 +215,8 @@ QIcon openProject() {
 QIcon save() {
     return make([](QPainter& p) {
         p.drawRect(6, 6, 20, 20);
-        p.drawRect(11, 6, 10, 7);   // volet
-        p.drawRect(10, 17, 12, 9);  // étiquette
+        p.drawRect(11, 6, 10, 7);  // volet
+        p.drawRect(10, 17, 12, 9); // étiquette
     });
 }
 
@@ -340,4 +340,4 @@ QIcon exportDst() {
     });
 }
 
-}  // namespace openstitch::desktop::icons
+} // namespace openstitch::desktop::icons

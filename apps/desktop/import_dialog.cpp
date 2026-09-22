@@ -24,8 +24,8 @@ ImportDialog::ImportDialog(int widthPx, int heightPx, const QImage& preview, QSi
     auto* preview_label = new QLabel(this);
     preview_label->setAlignment(Qt::AlignCenter);
     if (!preview.isNull()) {
-        preview_label->setPixmap(QPixmap::fromImage(preview).scaled(
-            220, 160, Qt::KeepAspectRatio, Qt::SmoothTransformation));
+        preview_label->setPixmap(QPixmap::fromImage(preview).scaled(220, 160, Qt::KeepAspectRatio,
+                                                                    Qt::SmoothTransformation));
     }
     root->addWidget(preview_label);
 
@@ -72,8 +72,7 @@ ImportDialog::ImportDialog(int widthPx, int heightPx, const QImage& preview, QSi
         QStringLiteral("color:%1;").arg(AppTheme::instance().tokens().warning.name()));
     root->addWidget(warningLabel_);
 
-    auto* buttons =
-        new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, this);
+    auto* buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, this);
     connect(buttons, &QDialogButtonBox::accepted, this, &QDialog::accept);
     connect(buttons, &QDialogButtonBox::rejected, this, &QDialog::reject);
     root->addWidget(buttons);
@@ -113,11 +112,10 @@ void ImportDialog::recompute() {
     const double wMm = widthMm_->value();
     const double hMm = heightMm_->value();
     const double mmPerPx = widthPx_ > 0 ? wMm / widthPx_ : 0.0;
-    resolutionLabel_->setText(
-        tr("Résolution : %1 mm/pixel   ·   cadre %2 × %3 mm")
-            .arg(mmPerPx, 0, 'f', 3)
-            .arg(hoopMm_.width(), 0, 'f', 0)
-            .arg(hoopMm_.height(), 0, 'f', 0));
+    resolutionLabel_->setText(tr("Résolution : %1 mm/pixel   ·   cadre %2 × %3 mm")
+                                  .arg(mmPerPx, 0, 'f', 3)
+                                  .arg(hoopMm_.width(), 0, 'f', 0)
+                                  .arg(hoopMm_.height(), 0, 'f', 0));
 
     if (wMm > hoopMm_.width() + 1e-6 || hMm > hoopMm_.height() + 1e-6) {
         warningLabel_->setText(
@@ -135,13 +133,12 @@ void ImportDialog::recompute() {
 }
 
 std::optional<document::ImagePlacement> ImportDialog::placement() const {
-    const auto p = document::placement_from_size(widthPx_, heightPx_,
-                                                 Millimeters{widthMm_->value()},
-                                                 Millimeters{heightMm_->value()});
+    const auto p = document::placement_from_size(
+        widthPx_, heightPx_, Millimeters{widthMm_->value()}, Millimeters{heightMm_->value()});
     if (!p) {
         return std::nullopt;
     }
     return *p;
 }
 
-}  // namespace openstitch::desktop
+} // namespace openstitch::desktop

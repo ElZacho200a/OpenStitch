@@ -31,7 +31,7 @@ RegionSplitReport split_shape(const std::string& name, geometry::PathSet& shapeO
     return split_region(*shape, analysis->debug.graph, decomposition);
 }
 
-}  // namespace
+} // namespace
 
 TEST_CASE("split_region : t -- expose exactement un candidat de fusion coherent") {
     geometry::PathSet shape;

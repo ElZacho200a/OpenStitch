@@ -4,8 +4,7 @@
 namespace openstitch::image::detail {
 
 cv::Mat mat_view_rgba(const Image& img) {
-    return cv::Mat(img.height, img.width, CV_8UC4,
-                   const_cast<std::uint8_t*>(img.rgba.data()));
+    return cv::Mat(img.height, img.width, CV_8UC4, const_cast<std::uint8_t*>(img.rgba.data()));
 }
 
 Image image_from_mat_rgba(const cv::Mat& mat, bool source_had_alpha) {
@@ -24,4 +23,4 @@ Image image_from_mat_rgba(const cv::Mat& mat, bool source_had_alpha) {
     return img;
 }
 
-}  // namespace openstitch::image::detail
+} // namespace openstitch::image::detail

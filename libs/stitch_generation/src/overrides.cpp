@@ -68,10 +68,10 @@ bool can_trim_after(const stitch::StitchCommand& cmd) {
 
 stitch::CommandType to_command_type(document::StitchPointType t) {
     return t == document::StitchPointType::Jump ? stitch::CommandType::Jump
-                                                 : stitch::CommandType::Stitch;
+                                                : stitch::CommandType::Stitch;
 }
 
-}  // namespace
+} // namespace
 
 bool is_movable_point(const stitch::StitchCommand& cmd) {
     return is_topstitch_entry(cmd) && cmd.type == stitch::CommandType::Stitch;
@@ -100,7 +100,7 @@ std::uint64_t fingerprint(const std::vector<stitch::StitchCommand>& raw_slice) {
 }
 
 ObjectEditState classify_edit_state(const document::EmbroideryObject& object,
-                                     const std::vector<stitch::StitchCommand>& raw) {
+                                    const std::vector<stitch::StitchCommand>& raw) {
     if (object.overrides.empty()) {
         return ObjectEditState::Clean;
     }
@@ -111,7 +111,7 @@ ObjectEditState classify_edit_state(const document::EmbroideryObject& object,
 }
 
 std::vector<ObjectId> apply_manual_overrides(stitch::StitchSequence& sequence,
-                                              const document::Project& project) {
+                                             const document::Project& project) {
     std::vector<ObjectId> dirty;
 
     std::unordered_map<std::uint64_t, const document::EmbroideryObject*> edited;
@@ -121,7 +121,7 @@ std::vector<ObjectId> apply_manual_overrides(stitch::StitchSequence& sequence,
         }
     }
     if (edited.empty()) {
-        return dirty;  // aucun objet retouché : aucun effet observable (cf. §1)
+        return dirty; // aucun objet retouché : aucun effet observable (cf. §1)
     }
 
     // Un seul passage sur la séquence pour regrouper les index par objet
@@ -159,10 +159,10 @@ std::vector<ObjectId> apply_manual_overrides(stitch::StitchSequence& sequence,
 
         if (classify_edit_state(obj, raw) == ObjectEditState::Dirty) {
             dirty.push_back(obj.id);
-            continue;  // jamais réappliqué : la séquence brute reste telle quelle
+            continue; // jamais réappliqué : la séquence brute reste telle quelle
         }
         if (obj.overrides.empty()) {
-            continue;  // Clean (garde défensive : `edited` ne devrait pas le contenir)
+            continue; // Clean (garde défensive : `edited` ne devrait pas le contenir)
         }
 
         // Doublons d'overrides pour un même base_index : la dernière entrée du
@@ -176,7 +176,7 @@ std::vector<ObjectId> apply_manual_overrides(stitch::StitchSequence& sequence,
 
         for (const auto& [base_index, ov] : resolved) {
             if (base_index >= idxs.size()) {
-                continue;  // index invalide : ignoré, pas d'erreur (cœur pur)
+                continue; // index invalide : ignoré, pas d'erreur (cœur pur)
             }
             const std::size_t seq_index = idxs[base_index];
             const stitch::StitchCommand original = sequence.commands[seq_index];
@@ -204,12 +204,14 @@ std::vector<ObjectId> apply_manual_overrides(stitch::StitchSequence& sequence,
         return a.seq_index > b.seq_index;
     });
     for (const auto& t : trims) {
-        sequence.commands.insert(
-            sequence.commands.begin() + static_cast<std::ptrdiff_t>(t.seq_index) + 1,
-            stitch::StitchCommand{t.pos, stitch::CommandType::Trim, t.source, stitch::StitchPass::Manual});
+        sequence.commands.insert(sequence.commands.begin() +
+                                     static_cast<std::ptrdiff_t>(t.seq_index) + 1,
+                                 stitch::StitchCommand{t.pos, stitch::CommandType::Trim, t.source,
+                                                       stitch::StitchPass::Manual});
     }
 
-    std::sort(dirty.begin(), dirty.end());  // résultat déterministe (ordre d'itération de la map non garanti)
+    std::sort(dirty.begin(),
+              dirty.end()); // résultat déterministe (ordre d'itération de la map non garanti)
     return dirty;
 }
 
@@ -233,7 +235,7 @@ Result<stitch::StitchSequence> effective_sequence(const document::Project& proje
 namespace {
 
 ObjectEditView edit_view_from_sequence(const document::Project& project, ObjectId object,
-                                        const stitch::StitchSequence& sequence) {
+                                       const stitch::StitchSequence& sequence) {
     ObjectEditView view;
     view.raw = raw_slice(sequence, object);
     view.point_count = static_cast<std::uint32_t>(view.raw.size());
@@ -243,20 +245,21 @@ ObjectEditView edit_view_from_sequence(const document::Project& project, ObjectI
     return view;
 }
 
-std::vector<std::pair<ObjectId, ObjectEditState>> classify_all_from_sequence(
-    const document::Project& project, const stitch::StitchSequence& sequence) {
+std::vector<std::pair<ObjectId, ObjectEditState>>
+classify_all_from_sequence(const document::Project& project,
+                           const stitch::StitchSequence& sequence) {
     std::vector<std::pair<ObjectId, ObjectEditState>> result;
     result.reserve(project.embroidery_objects.size());
     for (const auto& obj : project.embroidery_objects) {
         if (obj.overrides.empty()) {
-            continue;  // Clean implicite : absent du resultat
+            continue; // Clean implicite : absent du resultat
         }
         result.emplace_back(obj.id, classify_edit_state(obj, raw_slice(sequence, obj.id)));
     }
     return result;
 }
 
-}  // namespace
+} // namespace
 
 Result<ObjectEditView> edit_view(const document::Project& project, ObjectId object) {
     auto sequence = generate_sequence(project);
@@ -266,13 +269,15 @@ Result<ObjectEditView> edit_view(const document::Project& project, ObjectId obje
     return edit_view_from_sequence(project, object, *sequence);
 }
 
-Result<std::vector<std::pair<ObjectId, ObjectEditState>>> classify_all_edit_states(
-    const document::Project& project) {
-    const bool any_edited = std::any_of(
-        project.embroidery_objects.begin(), project.embroidery_objects.end(),
-        [](const document::EmbroideryObject& o) { return !o.overrides.empty(); });
+Result<std::vector<std::pair<ObjectId, ObjectEditState>>>
+classify_all_edit_states(const document::Project& project) {
+    const bool any_edited =
+        std::any_of(project.embroidery_objects.begin(), project.embroidery_objects.end(),
+                    [](const document::EmbroideryObject& o) { return !o.overrides.empty(); });
     if (!any_edited) {
-        return std::vector<std::pair<ObjectId, ObjectEditState>>{};  // aucun objet retouche : aucun appel a generate_sequence necessaire
+        return std::vector<std::pair<ObjectId, ObjectEditState>>{}; // aucun objet retouche : aucun
+                                                                    // appel a generate_sequence
+                                                                    // necessaire
     }
     auto sequence = generate_sequence(project);
     if (!sequence) {
@@ -281,7 +286,8 @@ Result<std::vector<std::pair<ObjectId, ObjectEditState>>> classify_all_edit_stat
     return classify_all_from_sequence(project, *sequence);
 }
 
-Result<RefreshContext> refresh_context(const document::Project& project, std::optional<ObjectId> target) {
+Result<RefreshContext> refresh_context(const document::Project& project,
+                                       std::optional<ObjectId> target) {
     auto sequence = generate_sequence(project);
     if (!sequence) {
         return std::unexpected(sequence.error());
@@ -299,4 +305,4 @@ Result<RefreshContext> refresh_context(const document::Project& project, std::op
     return ctx;
 }
 
-}  // namespace openstitch::stitch_generation
+} // namespace openstitch::stitch_generation

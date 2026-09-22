@@ -38,7 +38,7 @@ void check_same_shape(const stitch::StitchSequence& a, const stitch::StitchSeque
     }
 }
 
-}  // namespace
+} // namespace
 
 TEST_CASE("en-tete : 512 octets, champs calcules depuis le corps") {
     const auto bytes = encode_dst(simple_square());
@@ -50,7 +50,7 @@ TEST_CASE("en-tete : 512 octets, champs calcules depuis le corps") {
     CHECK(header.substr(0, 3) == "LA:");
     CHECK(header.find("ST:") != std::string::npos);
     CHECK(header.find("CO:  0") != std::string::npos);
-    CHECK(header.find("+X:   50") != std::string::npos);  // 5 mm = 50 unites
+    CHECK(header.find("+X:   50") != std::string::npos); // 5 mm = 50 unites
     CHECK(header.find("+Y:   50") != std::string::npos);
     CHECK(header.find("-X:    0") != std::string::npos);
 }
@@ -100,7 +100,7 @@ TEST_CASE("grand deplacement subdivise en sauts") {
     stitch::StitchSequence seq;
     seq.commands = {
         {um(0, 0), CommandType::Stitch, ObjectId{}},
-        {um(50'000, 0), CommandType::Jump, ObjectId{}},  // 50 mm > 12,1 mm
+        {um(50'000, 0), CommandType::Jump, ObjectId{}}, // 50 mm > 12,1 mm
         {um(50'000, 0), CommandType::Stitch, ObjectId{}},
         {um(50'000, 0), CommandType::End, ObjectId{}},
     };
@@ -109,7 +109,7 @@ TEST_CASE("grand deplacement subdivise en sauts") {
     const auto decoded = decode_dst(*bytes);
     REQUIRE(decoded.has_value());
     const auto stats = stitch::compute_stats(*decoded);
-    CHECK(stats.jumps >= 5);  // 500 unites / 121 -> au moins 5 sauts
+    CHECK(stats.jumps >= 5); // 500 unites / 121 -> au moins 5 sauts
     // Position finale exacte malgre la subdivision.
     CHECK(decoded->commands[decoded->commands.size() - 2].pos == um(50'000, 0));
 }
@@ -167,7 +167,7 @@ TEST_CASE("octets en trop apres le marqueur de fin ignores (Hatch: 0x1A)") {
 
     auto withTail = clean;
     withTail.push_back(0x1A);                      // marqueur EOF DOS
-    withTail.insert(withTail.end(), {0x00, 0x7F});  // + reliquat quelconque
+    withTail.insert(withTail.end(), {0x00, 0x7F}); // + reliquat quelconque
     const auto got = decode_dst(withTail);
     REQUIRE(got.has_value());
     CHECK(got->commands == ref->commands);

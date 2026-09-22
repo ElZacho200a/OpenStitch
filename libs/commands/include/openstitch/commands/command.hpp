@@ -19,4 +19,4 @@ public:
     [[nodiscard]] virtual std::string name() const = 0;
 };
 
-}  // namespace openstitch::commands
+} // namespace openstitch::commands

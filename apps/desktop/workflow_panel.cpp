@@ -15,33 +15,49 @@ namespace {
 
 const char* step_name(int i) {
     switch (i) {
-    case 0: return "Image";
-    case 1: return "Régions";
-    case 2: return "Vecteurs";
-    case 3: return "Broderie";
-    case 4: return "Vérification";
-    default: return "Export";
+    case 0:
+        return "Image";
+    case 1:
+        return "Régions";
+    case 2:
+        return "Vecteurs";
+    case 3:
+        return "Broderie";
+    case 4:
+        return "Vérification";
+    default:
+        return "Export";
     }
 }
 
 QString state_word(WorkflowPanel::State s) {
     switch (s) {
-    case WorkflowPanel::State::NotStarted: return QObject::tr("à faire");
-    case WorkflowPanel::State::Available: return QObject::tr("disponible");
-    case WorkflowPanel::State::InProgress: return QObject::tr("en cours");
-    case WorkflowPanel::State::Done: return QObject::tr("terminé");
-    case WorkflowPanel::State::Attention: return QObject::tr("attention");
+    case WorkflowPanel::State::NotStarted:
+        return QObject::tr("à faire");
+    case WorkflowPanel::State::Available:
+        return QObject::tr("disponible");
+    case WorkflowPanel::State::InProgress:
+        return QObject::tr("en cours");
+    case WorkflowPanel::State::Done:
+        return QObject::tr("terminé");
+    case WorkflowPanel::State::Attention:
+        return QObject::tr("attention");
     }
     return {};
 }
 
 QColor state_color(WorkflowPanel::State s, const Tokens& t) {
     switch (s) {
-    case WorkflowPanel::State::NotStarted: return t.border;
-    case WorkflowPanel::State::Available: return t.info;
-    case WorkflowPanel::State::InProgress: return t.accent;
-    case WorkflowPanel::State::Done: return t.success;
-    case WorkflowPanel::State::Attention: return t.warning;
+    case WorkflowPanel::State::NotStarted:
+        return t.border;
+    case WorkflowPanel::State::Available:
+        return t.info;
+    case WorkflowPanel::State::InProgress:
+        return t.accent;
+    case WorkflowPanel::State::Done:
+        return t.success;
+    case WorkflowPanel::State::Attention:
+        return t.warning;
     }
     return t.border;
 }
@@ -58,7 +74,7 @@ QPixmap dot(const QColor& color) {
     return pm;
 }
 
-}  // namespace
+} // namespace
 
 WorkflowPanel::WorkflowPanel(QWidget* parent) : QWidget(parent) {
     auto* grid = new QGridLayout(this);
@@ -100,4 +116,4 @@ void WorkflowPanel::applyTheme() {
     }
 }
 
-}  // namespace openstitch::desktop
+} // namespace openstitch::desktop

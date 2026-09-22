@@ -17,9 +17,9 @@ namespace openstitch::document {
 struct VectorObject {
     ObjectId id;
     std::string name;
-    std::optional<RegionId> source_region;  // lien conservé vers la région d'origine
+    std::optional<RegionId> source_region; // lien conservé vers la région d'origine
     std::array<std::uint8_t, 3> rgb{};
-    std::vector<geometry::PathSet> paths;   // plusieurs morceaux possibles
+    std::vector<geometry::PathSet> paths; // plusieurs morceaux possibles
     bool visible{true};
 };
 
@@ -36,4 +36,4 @@ struct NodeRef {
 [[nodiscard]] const geometry::Path* path_in(const VectorObject& object, std::size_t set,
                                             std::size_t path);
 
-}  // namespace openstitch::document
+} // namespace openstitch::document

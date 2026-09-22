@@ -12,4 +12,4 @@ void init_logging(bool verbose) {
     spdlog::set_pattern("[%H:%M:%S.%e] [%^%l%$] %v");
 }
 
-}  // namespace openstitch
+} // namespace openstitch

@@ -20,8 +20,8 @@ namespace openstitch::stitch_generation {
 // cousables sont donc des sauts, pas des sous-chemins cachés.
 struct FillStitch {
     Vec2um pos{};
-    bool jump{false};    // true = saut (aiguille levée) ; false = point cousu
-    bool travel{false};  // true = déplacement COUSU caché (underpath, §15) ; jump alors false
+    bool jump{false};   // true = saut (aiguille levée) ; false = point cousu
+    bool travel{false}; // true = déplacement COUSU caché (underpath, §15) ; jump alors false
 
     bool operator==(const FillStitch&) const = default;
 };
@@ -53,8 +53,8 @@ struct FillStitch {
 // - rangées parallèles espacées (`underlay_parallel`) : balayage perpendiculaire
 //   aux rangées supérieures, pas `underlay_spacing` — évite l'affaissement.
 // Chaque passe est une polyligne cousue. Vide si aucune sous-couche activée.
-[[nodiscard]] std::vector<std::vector<Vec2um>> tatami_underlay(
-    const geometry::PathSet& region, const document::TatamiParams& params);
+[[nodiscard]] std::vector<std::vector<Vec2um>>
+tatami_underlay(const geometry::PathSet& region, const document::TatamiParams& params);
 
 // Le segment [a,b] reste-t-il ENTIÈREMENT dans la région (extérieur moins les
 // trous) ? Indépendant de l'orientation du segment ; un suivi de frontière
@@ -65,4 +65,4 @@ struct FillStitch {
 // liaison cousue vs saut ; exposée pour test.
 [[nodiscard]] bool segment_stays_in_region(const geometry::PathSet& region, Vec2um a, Vec2um b);
 
-}  // namespace openstitch::stitch_generation
+} // namespace openstitch::stitch_generation
