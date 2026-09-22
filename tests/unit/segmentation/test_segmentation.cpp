@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
+#include <algorithm>
 #include <catch2/catch_test_macros.hpp>
+#include <utility>
 
 #include "openstitch/segmentation/segmentation.hpp"
 
@@ -244,4 +246,122 @@ TEST_CASE("rendu de la carte : fond transparent, selection eclaircie") {
     const std::size_t outsideIdx = (1 * 8 + 6) * 4;
     CHECK(highlighted.rgba[insideIdx] > plain.rgba[insideIdx]);
     CHECK(highlighted.rgba[outsideIdx] == plain.rgba[outsideIdx]);
+}
+
+// --- Lot A (audit marine plein cadre) : fond présumé ------------------------
+
+namespace {
+
+// Image opaque w x h remplie de `bg`, avec un rectangle `fg` [x0,x1)x[y0,y1).
+image::Image framed(int w, int h, std::array<std::uint8_t, 3> bg, std::array<std::uint8_t, 3> fg,
+                    int x0, int y0, int x1, int y1) {
+    image::Image img = blank(w, h);
+    for (int y = 0; y < h; ++y) {
+        for (int x = 0; x < w; ++x) {
+            const bool inside = x >= x0 && x < x1 && y >= y0 && y < y1;
+            const auto& c = inside ? fg : bg;
+            set_px(img, x, y, c[0], c[1], c[2]);
+        }
+    }
+    return img;
+}
+
+} // namespace
+
+TEST_CASE("cielab_lightness : blanc 100, noir 0, bleu du ciel sombre") {
+    CHECK(cielab_lightness({255, 255, 255}) > 99.9);
+    CHECK(cielab_lightness({0, 0, 0}) < 0.1);
+    // Bleu du ciel de l'image d'exemple (sample/, L* ~ 43).
+    const double sky = cielab_lightness({57, 93, 213});
+    CHECK(sky > 40.0);
+    CHECK(sky < 47.0);
+}
+
+TEST_CASE("fond blanc qui encadre le motif -> ignorer recommande") {
+    const auto img = framed(40, 30, {250, 250, 250}, {200, 30, 30}, 10, 8, 30, 22);
+    const auto seg = segment(img, {.max_colors = 2, .min_region_px = 1});
+    REQUIRE(seg.has_value());
+    const auto cand = background_candidate(*seg);
+    REQUIRE(cand.has_value());
+    CHECK(cand->sides_touched == 4);
+    CHECK(cand->lightness > 90.0);
+    CHECK(cand->area_ratio > 0.7);
+    CHECK(cand->area_ratio < 0.8);
+    CHECK(cand->recommended);
+}
+
+TEST_CASE("image plein cadre dont la plus grande region est coloree -> jamais ignoree") {
+    // Ciel bleu sur la moitié haute, mer verte (plus petite) en bas : la plus
+    // grande région touche 3 bords mais n'est pas claire -- c'est un vrai
+    // élément du motif (défaut de l'audit : le ciel n'était pas brodé).
+    const auto img = framed(40, 30, {57, 93, 213}, {6, 101, 60}, 0, 20, 40, 30);
+    const auto seg = segment(img, {.max_colors = 2, .min_region_px = 1});
+    REQUIRE(seg.has_value());
+    const auto cand = background_candidate(*seg);
+    REQUIRE(cand.has_value());
+    CHECK(cand->rgb[2] > cand->rgb[1]); // le bleu est bien la candidate
+    CHECK(cand->sides_touched == 3);
+    CHECK_FALSE(cand->recommended);
+}
+
+TEST_CASE("region blanche centrale qui ne touche pas les bords -> pas recommandee") {
+    const auto img = framed(40, 30, {200, 30, 30}, {250, 250, 250}, 2, 2, 38, 28);
+    const auto seg = segment(img, {.max_colors = 2, .min_region_px = 1});
+    REQUIRE(seg.has_value());
+    const auto cand = background_candidate(*seg);
+    REQUIRE(cand.has_value());
+    CHECK(cand->lightness > 90.0);
+    CHECK(cand->sides_touched == 0);
+    CHECK_FALSE(cand->recommended);
+}
+
+TEST_CASE("fond blanc ne touchant que 2 bords -> pas recommande par defaut") {
+    // Blanc sur un coin (L inversé), motif rouge ailleurs.
+    image::Image img = blank(40, 30);
+    for (int y = 0; y < 30; ++y) {
+        for (int x = 0; x < 40; ++x) {
+            const bool white = x < 32 && y < 24; // 768 px blancs contre 432 rouges
+            set_px(img, x, y, white ? 250 : 200, white ? 250 : 30, white ? 250 : 30);
+        }
+    }
+    const auto seg = segment(img, {.max_colors = 2, .min_region_px = 1});
+    REQUIRE(seg.has_value());
+    const auto cand = background_candidate(*seg);
+    REQUIRE(cand.has_value());
+    CHECK(cand->sides_touched == 2);
+    CHECK_FALSE(cand->recommended);
+    // Le seuil de bords reste réglable.
+    const auto lax = background_candidate(*seg, {.min_lightness = 90.0, .min_sides_touched = 2});
+    REQUIRE(lax.has_value());
+    CHECK(lax->recommended);
+}
+
+TEST_CASE("region_adjacency : longueurs de frontiere des quatre quadrants") {
+    const auto seg = segment(quadrants(), {.max_colors = 4, .min_region_px = 1});
+    REQUIRE(seg.has_value());
+    const auto borders = region_adjacency(*seg);
+    // 4 quadrants 4x4 : chaque paire côte à côte partage 4 arêtes de pixels,
+    // les paires diagonales ne se touchent pas (4-connexité).
+    REQUIRE(borders.size() == 4);
+    for (const auto& b : borders) {
+        CHECK(b.a.value < b.b.value);
+        CHECK(b.length == 4);
+    }
+    // Déterministe et trié.
+    CHECK(borders == region_adjacency(*seg));
+    CHECK(std::is_sorted(borders.begin(), borders.end(), [](const auto& l, const auto& r) {
+        return std::pair{l.a.value, l.b.value} < std::pair{r.a.value, r.b.value};
+    }));
+}
+
+TEST_CASE("region_adjacency : le fond transparent n'est jamais une region voisine") {
+    image::Image img = blank(6, 6); // tout transparent
+    for (int y = 1; y < 5; ++y) {
+        for (int x = 1; x < 5; ++x) {
+            set_px(img, x, y, 200, 30, 30);
+        }
+    }
+    const auto seg = segment(img, {.max_colors = 2, .min_region_px = 1});
+    REQUIRE(seg.has_value());
+    CHECK(region_adjacency(*seg).empty());
 }

@@ -306,8 +306,9 @@ int run_stitchdebug(const std::string& shape, double lengthMm, int repeats,
 // resultat d'OpenStitch a une reference externe sans passer par l'IHM. Memes
 // valeurs par defaut que le dialogue "Numerisation automatique" du desktop
 // (main_window.cpp : max_colors=8, min_region_px=16, smoothing_radius_px=3,
-// skip_largest_region coche par defaut seulement si l'image source n'a pas
-// de canal alpha).
+// skip_largest_region coche par defaut seulement si la plus grande region est
+// un fond quasi blanc qui encadre le motif -- segmentation::background_candidate,
+// Lot A ; une valeur explicite de --skip-background reste prioritaire).
 int run_digitize(const std::string& imagePath, const std::string& dstPath, double dpi,
                  int maxColors, int minRegionPx, int smoothingPx, int skipBg,
                  const std::string& outSvg) {
@@ -335,11 +336,22 @@ int run_digitize(const std::string& imagePath, const std::string& dstPath, doubl
     fmt::print("Régions segmentées : {}\n", seg->region_count());
     project.segmentation = std::move(*seg);
 
-    const bool skipLargest = skipBg < 0 ? !loaded->source_had_alpha : (skipBg != 0);
+    // Même règle que le dialogue desktop (Lot A) : jamais sur le seul
+    // critère « pas d'alpha ».
+    const auto candidate = segmentation::background_candidate(*project.segmentation);
+    if (candidate) {
+        fmt::print(
+            "Région candidate au fond : #{:02X}{:02X}{:02X}, {:.1f} % de l'image, L* {:.0f}, "
+            "{} bord(s) touché(s)\n",
+            candidate->rgb[0], candidate->rgb[1], candidate->rgb[2], candidate->area_ratio * 100.0,
+            candidate->lightness, candidate->sides_touched);
+    }
+    const bool skipLargest = skipBg < 0 ? (candidate && candidate->recommended) : (skipBg != 0);
     autodigitize::AutoOptions opts;
     opts.mm_per_px = project.mm_per_px;
     opts.skip_largest_region = skipLargest;
-    fmt::print("Ignorer la plus grande région (fond) : {}\n", skipLargest ? "oui" : "non");
+    fmt::print("Ignorer la plus grande région (fond) : {}{}\n", skipLargest ? "oui" : "non",
+               skipBg < 0 ? " (automatique)" : " (option explicite)");
 
     auto result = autodigitize::auto_digitize(*project.segmentation, project.object_ids, opts);
     if (!result) {
@@ -805,7 +817,7 @@ int main(int argc, char** argv) {
     int dz_max_colors = 8;
     int dz_min_region_px = 16;
     int dz_smoothing_px = 3;
-    int dz_skip_bg = -1; // -1 = auto (= !source_had_alpha), 0 = non, 1 = oui
+    int dz_skip_bg = -1; // -1 = auto (segmentation::background_candidate), 0 = non, 1 = oui
     std::string dz_out_svg;
     auto* dz_cmd = app.add_subcommand(
         "digitize", "Pipeline complet image -> DST (segmentation, numérisation automatique, "
@@ -822,9 +834,10 @@ int main(int argc, char** argv) {
         ->check(CLI::PositiveNumber);
     dz_cmd->add_option("--smoothing-px", dz_smoothing_px, "Lissage des formes en px (défaut : 3)")
         ->check(CLI::NonNegativeNumber);
-    dz_cmd->add_option("--skip-background", dz_skip_bg,
-                       "Ignorer la plus grande région : -1 auto (défaut, = pas de canal alpha "
-                       "source), 0 non, 1 oui");
+    dz_cmd->add_option(
+        "--skip-background", dz_skip_bg,
+        "Ignorer la plus grande région : -1 auto (défaut : fond quasi blanc touchant "
+        "au moins 3 bords), 0 non, 1 oui");
     dz_cmd->add_option("--output-svg", dz_out_svg, "SVG de diagnostic à produire en plus du DST");
 
     std::string sd_shape = "circle";

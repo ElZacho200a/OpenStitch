@@ -5,6 +5,7 @@
 #include <opencv2/imgproc.hpp>
 
 #include <algorithm>
+#include <cmath>
 #include <limits>
 #include <map>
 
@@ -357,6 +358,102 @@ Result<std::array<std::uint8_t, 3>> recolor_region(Segmentation& seg, RegionId i
     const auto old = region->rgb;
     region->rgb = rgb;
     return old;
+}
+
+std::vector<RegionBorder> region_adjacency(const Segmentation& seg) {
+    std::map<std::pair<std::uint32_t, std::uint32_t>, std::size_t> counts;
+    const auto at = [&](int x, int y) {
+        return seg.labels[static_cast<std::size_t>(y) * static_cast<std::size_t>(seg.width) +
+                          static_cast<std::size_t>(x)];
+    };
+    const auto add = [&](std::uint32_t p, std::uint32_t q) {
+        if (p == q || p == 0 || q == 0) {
+            return;
+        }
+        ++counts[{std::min(p, q), std::max(p, q)}];
+    };
+    for (int y = 0; y < seg.height; ++y) {
+        for (int x = 0; x < seg.width; ++x) {
+            if (x + 1 < seg.width) {
+                add(at(x, y), at(x + 1, y));
+            }
+            if (y + 1 < seg.height) {
+                add(at(x, y), at(x, y + 1));
+            }
+        }
+    }
+    std::vector<RegionBorder> out;
+    out.reserve(counts.size());
+    for (const auto& [key, length] : counts) {
+        out.push_back({RegionId{key.first}, RegionId{key.second}, length});
+    }
+    return out;
+}
+
+double cielab_lightness(std::array<std::uint8_t, 3> rgb) {
+    // sRGB -> luminance relative Y (linéarisation IEC 61966-2-1), puis L*.
+    const auto linear = [](std::uint8_t v) {
+        const double c = static_cast<double>(v) / 255.0;
+        return c <= 0.04045 ? c / 12.92 : std::pow((c + 0.055) / 1.055, 2.4);
+    };
+    const double y = 0.2126 * linear(rgb[0]) + 0.7152 * linear(rgb[1]) + 0.0722 * linear(rgb[2]);
+    constexpr double kEpsilon = 216.0 / 24389.0;
+    constexpr double kKappa = 24389.0 / 27.0;
+    return y > kEpsilon ? 116.0 * std::cbrt(y) - 16.0 : kKappa * y;
+}
+
+std::optional<BackgroundCandidate> background_candidate(const Segmentation& seg,
+                                                        const BackgroundCandidateOptions& options) {
+    std::optional<std::size_t> largest;
+    for (std::size_t s = 0; s < seg.region_slots.size(); ++s) {
+        if (seg.region_slots[s] && (!largest || seg.region_slots[s]->pixel_count >
+                                                    seg.region_slots[*largest]->pixel_count)) {
+            largest = s;
+        }
+    }
+    if (!largest || seg.width <= 0 || seg.height <= 0) {
+        return std::nullopt;
+    }
+    BackgroundCandidate out;
+    out.region = seg.region_slots[*largest]->id;
+    out.rgb = seg.region_slots[*largest]->rgb;
+    out.lightness = cielab_lightness(out.rgb);
+
+    // Labels (slot+1) de TOUTES les régions de cette couleur exacte.
+    std::vector<char> sameColor(seg.region_slots.size() + 1, 0);
+    for (std::size_t s = 0; s < seg.region_slots.size(); ++s) {
+        if (seg.region_slots[s] && seg.region_slots[s]->rgb == out.rgb) {
+            sameColor[s + 1] = 1;
+        }
+    }
+    const auto isBg = [&](int x, int y) {
+        const std::uint32_t label =
+            seg.labels[static_cast<std::size_t>(y) * static_cast<std::size_t>(seg.width) +
+                       static_cast<std::size_t>(x)];
+        return label != 0 && sameColor[label] != 0;
+    };
+    std::size_t count = 0;
+    for (int y = 0; y < seg.height; ++y) {
+        for (int x = 0; x < seg.width; ++x) {
+            count += isBg(x, y) ? 1 : 0;
+        }
+    }
+    out.area_ratio = static_cast<double>(count) /
+                     (static_cast<double>(seg.width) * static_cast<double>(seg.height));
+
+    bool top = false, bottom = false, left = false, right = false;
+    for (int x = 0; x < seg.width; ++x) {
+        top = top || isBg(x, 0);
+        bottom = bottom || isBg(x, seg.height - 1);
+    }
+    for (int y = 0; y < seg.height; ++y) {
+        left = left || isBg(0, y);
+        right = right || isBg(seg.width - 1, y);
+    }
+    out.sides_touched = int{top} + int{bottom} + int{left} + int{right};
+    out.recommended =
+        out.lightness > options.min_lightness && out.sides_touched >= options.min_sides_touched;
+    return out;
 }
 
 image::Image render_map(const Segmentation& seg, std::optional<RegionId> highlight) {

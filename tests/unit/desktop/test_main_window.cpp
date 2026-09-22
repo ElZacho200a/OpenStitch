@@ -1,10 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 #include <QAbstractButton>
 #include <QApplication>
+#include <QCheckBox>
 #include <QCoreApplication>
+#include <QDialog>
 #include <QDoubleSpinBox>
 #include <QFile>
 #include <QGraphicsItem>
+#include <QLabel>
 #include <QListWidget>
 #include <QMessageBox>
 #include <QPushButton>
@@ -549,6 +552,13 @@ private slots:
     // aucune QDialog (fond présumé) ne s'affiche -- testable sans
     // autoDismissModalDialogs.
     void autoDigitizeAfterOpenSvgClassifiesVectorObjectsDirectly();
+    // Lot A (audit marine plein cadre, 2026-09-22) : « Ignorer la plus grande
+    // région » n'est plus cochée sur le seul critère « pas d'alpha » -- le
+    // ciel d'une image plein cadre n'était pas brodé. Cochée seulement pour
+    // un fond quasi blanc qui encadre le motif ; pastille + pourcentage
+    // affichés dans les deux cas.
+    void autoDigitizeDialogDoesNotSkipColoredFullFrameRegion();
+    void autoDigitizeDialogSkipsNearWhiteFramingBackground();
     // §23 du plan de refonte satin (2026-08-14) : le dialogue à choix
     // multiples (askAboutIncompleteSatinCoverage) remplace l'ancienne
     // information à sens unique -- un test par choix réel, bout en bout
@@ -1888,6 +1898,90 @@ void MainWindowTest::openSvgCreatesVectorObjectsDirectlySkippingImage() {
     QCOMPARE(window.project_.embroidery_objects.size(), std::size_t{0});
     QCOMPARE(window.project_.vector_objects.front().paths.size(), std::size_t{1});
     QCOMPARE(window.project_.vector_objects.front().paths.front().outer.nodes.size(), std::size_t{4});
+}
+
+namespace {
+
+// Projet opaque (sans alpha) w x h : `bg` partout sauf le rectangle `fg`,
+// segmenté réellement (deux couleurs) -- l'image d'entrée d'autoDigitize().
+openstitch::document::Project opaqueSegmentedProject(std::array<std::uint8_t, 3> bg,
+                                                     std::array<std::uint8_t, 3> fg, int x0, int y0,
+                                                     int x1, int y1) {
+    constexpr int kW = 40;
+    constexpr int kH = 30;
+    openstitch::document::Project project;
+    project.original.width = kW;
+    project.original.height = kH;
+    project.original.source_had_alpha = false;
+    project.original.rgba.resize(std::size_t{kW} * kH * 4);
+    for (int y = 0; y < kH; ++y) {
+        for (int x = 0; x < kW; ++x) {
+            const bool inside = x >= x0 && x < x1 && y >= y0 && y < y1;
+            const auto& c = inside ? fg : bg;
+            auto* px = project.original.rgba.data() + (std::size_t(y) * kW + std::size_t(x)) * 4;
+            px[0] = c[0];
+            px[1] = c[1];
+            px[2] = c[2];
+            px[3] = 255;
+        }
+    }
+    auto seg =
+        openstitch::segmentation::segment(project.original, {.max_colors = 2, .min_region_px = 1});
+    project.segmentation = std::move(*seg);
+    return project;
+}
+
+// Lance autoDigitize() et relève l'état du dialogue d'options (case « fond »,
+// texte d'information) avant de l'annuler -- rien n'est numérisé.
+struct BackgroundDialogState {
+    bool seen{false};
+    bool checked{false};
+    QString info;
+};
+// `run` déclenche autoDigitize() (privé : appelé depuis une méthode de
+// MainWindowTest, seul ami de MainWindow).
+template <typename Run> BackgroundDialogState inspectBackgroundDialog(MainWindow& window, Run run) {
+    BackgroundDialogState state;
+    QTimer::singleShot(0, &window, [&state] {
+        auto* dlg = qobject_cast<QDialog*>(QApplication::activeModalWidget());
+        if (dlg == nullptr) {
+            return;
+        }
+        if (auto* check = dlg->findChild<QCheckBox*>("skipBackgroundCheck")) {
+            state.seen = true;
+            state.checked = check->isChecked();
+        }
+        if (auto* info = dlg->findChild<QLabel*>("backgroundInfo")) {
+            state.info = info->text();
+        }
+        state.seen = state.seen && dlg->findChild<QLabel*>("backgroundSwatch") != nullptr;
+        dlg->reject();
+    });
+    run();
+    return state;
+}
+
+} // namespace
+
+void MainWindowTest::autoDigitizeDialogDoesNotSkipColoredFullFrameRegion() {
+    MainWindow window;
+    // Ciel bleu (plus grande région, 3 bords touchés) au-dessus d'une mer verte.
+    window.applyLoadedProject(opaqueSegmentedProject({57, 93, 213}, {6, 101, 60}, 0, 20, 40, 30));
+    const auto state = inspectBackgroundDialog(window, [&] { window.autoDigitize(); });
+    QVERIFY(state.seen);
+    QVERIFY(!state.checked);
+    QVERIFY(state.info.contains('%'));
+    QVERIFY(window.project_.embroidery_objects.empty()); // dialogue annulé
+}
+
+void MainWindowTest::autoDigitizeDialogSkipsNearWhiteFramingBackground() {
+    MainWindow window;
+    window.applyLoadedProject(
+        opaqueSegmentedProject({250, 250, 250}, {200, 30, 30}, 10, 8, 30, 22));
+    const auto state = inspectBackgroundDialog(window, [&] { window.autoDigitize(); });
+    QVERIFY(state.seen);
+    QVERIFY(state.checked);
+    QVERIFY(state.info.contains('%'));
 }
 
 void MainWindowTest::autoDigitizeAfterOpenSvgClassifiesVectorObjectsDirectly() {

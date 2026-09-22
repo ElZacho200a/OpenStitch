@@ -73,6 +73,55 @@ remove_region(Segmentation& seg, RegionId id);
 [[nodiscard]] Result<std::array<std::uint8_t, 3>> recolor_region(Segmentation& seg, RegionId id,
                                                                  std::array<std::uint8_t, 3> rgb);
 
+// Clarté CIELAB L* (0 = noir, 100 = blanc, illuminant D65) d'une couleur
+// sRGB 8 bits. Calcul analytique, sans OpenCV : réutilisable par tout
+// appelant qui doit juger si une couleur est « claire ».
+[[nodiscard]] double cielab_lightness(std::array<std::uint8_t, 3> rgb);
+
+// Frontière partagée entre deux régions : `length` = nombre d'arêtes de
+// pixels communes (4-connexité), donc une longueur en pixels. `a < b`.
+struct RegionBorder {
+    RegionId a;
+    RegionId b;
+    std::size_t length{0};
+
+    bool operator==(const RegionBorder&) const = default;
+};
+
+// Toutes les frontières entre régions vivantes (le fond transparent, label
+// 0, n'est jamais une région), triées par (a, b) -- déterministe. Base des
+// règles de voisinage de l'auto-numérisation (angles, chevauchement,
+// fusion des fragments).
+[[nodiscard]] std::vector<RegionBorder> region_adjacency(const Segmentation& seg);
+
+// Seuils de la recommandation « ignorer le fond » (§ Lot A, audit marine).
+struct BackgroundCandidateOptions {
+    double min_lightness{90.0}; // L* au-dessus duquel la couleur est jugée quasi blanche
+    int min_sides_touched{3};   // nombre minimal de bords de l'image touchés (sur 4)
+};
+
+// Fond présumé d'une image opaque : la couleur de la plus grande région
+// (même critère que `autodigitize::AutoOptions::skip_largest_region`, qui
+// exclut ensuite TOUTES les régions de cette couleur exacte). Les mesures
+// portent donc sur l'ensemble des régions de cette couleur, pas seulement
+// sur le plus gros morceau.
+struct BackgroundCandidate {
+    RegionId region; // plus grande région (la candidate)
+    std::array<std::uint8_t, 3> rgb{};
+    double area_ratio{0.0}; // part de l'image (0..1) couverte par cette couleur
+    double lightness{0.0};  // L* CIELAB de la couleur
+    int sides_touched{0};   // bords de l'image touchés (0..4)
+    // Vrai seulement pour un fond quasi blanc qui encadre le motif : sur une
+    // image plein cadre, la plus grande région est un vrai élément du motif
+    // (ciel, mer...) et ne doit JAMAIS être ignorée par défaut.
+    bool recommended{false};
+};
+
+// Candidate au rôle de fond, ou nullopt si la segmentation est vide.
+// Déterministe : à pixel_count égal, le plus petit identifiant l'emporte.
+[[nodiscard]] std::optional<BackgroundCandidate>
+background_candidate(const Segmentation& seg, const BackgroundCandidateOptions& options = {});
+
 // Carte des régions en RGBA (fond transparent) ; la région `highlight`
 // est éclaircie pour matérialiser la sélection.
 [[nodiscard]] image::Image render_map(const Segmentation& seg,

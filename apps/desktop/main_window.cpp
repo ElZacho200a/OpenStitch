@@ -21,6 +21,7 @@
 #include <QImage>
 #include <QInputDialog>
 #include <QLabel>
+#include <QLocale>
 #include <QMenu>
 #include <QMenuBar>
 #include <QMessageBox>
@@ -3187,32 +3188,55 @@ void MainWindow::autoDigitize() {
     opts.mm_per_px = project_.mm_per_px;
 
     if (hasSegmentation) {
-        // Défaut trouvé sur un projet réel (logo circulaire fourni par
-        // l'utilisateur) : une image PNG sans canal alpha (très courant —
-        // export simple, capture d'écran...) n'a, par construction, aucun
-        // pixel transparent (`image::load.cpp` remplit l'alpha à 255 pour
-        // toute image source à 3 canaux) — le fond devient donc une région
-        // opaque comme les autres, souvent la plus grande. Sur ce projet :
-        // 40,9 % des pixels segmentés, 38,8 % de l'aire du canevas
-        // numérisés comme UN SEUL objet. `AutoOptions::skip_largest_region`
-        // existe précisément pour ce cas mais n'était jamais exposé côté
-        // interface — silencieusement toujours à `false`. Coché par défaut
-        // seulement quand l'image source n'a pas de canal alpha (sinon, la
-        // transparence réelle exclut déjà le fond correctement : la plus
-        // grande région COULEUR a alors plus de chances d'être un vrai
-        // élément du motif, pas un fond déguisé). Sans objet de pixel
-        // segmenté (chemin SVG), cette notion de "fond présumé" n'a pas de
-        // sens -- la boîte de dialogue ne s'affiche que dans ce cas.
+        // Fond présumé (Lot A, audit marine plein cadre 2026-09-22) : la
+        // recommandation vient de `segmentation::background_candidate`, plus
+        // du seul critère « pas de canal alpha ». Historique : une image PNG
+        // sans alpha n'a aucun pixel transparent (`image::load.cpp` remplit
+        // l'alpha à 255), son fond devient une région opaque comme les
+        // autres -- d'où l'option. Mais sur une image PLEIN CADRE (paysage,
+        // carte de segmentation) la plus grande région est un vrai élément
+        // du motif : cocher d'office sur « pas d'alpha » laissait le ciel
+        // entier sans un point. La case n'est donc cochée que pour un fond
+        // quasi blanc (L* > 90) qui encadre le motif (>= 3 bords), et la
+        // couleur + la surface de la candidate sont affichées pour que
+        // l'utilisateur tranche en connaissance de cause. Sans objet de pixel
+        // segmenté (chemin SVG), cette notion n'a pas de sens -- la boîte de
+        // dialogue ne s'affiche que dans ce cas.
+        const auto candidate = segmentation::background_candidate(*project_.segmentation);
         QDialog optsDialog(this);
         optsDialog.setWindowTitle(tr("Numérisation automatique"));
         auto* optsLayout = new QVBoxLayout(&optsDialog);
         auto* skipBgCheck = new QCheckBox(
             tr("Ignorer la plus grande région (probablement le fond)"), &optsDialog);
-        skipBgCheck->setChecked(!project_.original.source_had_alpha);
+        skipBgCheck->setObjectName("skipBackgroundCheck");
+        skipBgCheck->setChecked(candidate && candidate->recommended);
         skipBgCheck->setToolTip(
-            tr("Une image sans transparence (canal alpha) numérise aussi son fond comme une "
-               "région ordinaire, souvent la plus grande — cette option l'exclut."));
+            tr("Exclut la couleur de la plus grande région, et toutes les régions de cette "
+               "couleur. Cochée d'office seulement pour un fond quasi blanc qui encadre le "
+               "motif : sur une image plein cadre, la plus grande région (ciel, mer...) fait "
+               "partie du dessin."));
         optsLayout->addWidget(skipBgCheck);
+        if (candidate) {
+            auto* row = new QHBoxLayout;
+            auto* swatch = new QLabel(&optsDialog);
+            swatch->setObjectName("backgroundSwatch");
+            swatch->setFixedSize(24, 24);
+            swatch->setStyleSheet(QStringLiteral("background-color: rgb(%1,%2,%3); "
+                                                 "border: 1px solid palette(mid);")
+                                      .arg(candidate->rgb[0])
+                                      .arg(candidate->rgb[1])
+                                      .arg(candidate->rgb[2]));
+            auto* info = new QLabel(
+                tr("Région candidate : %1 % de l'image, clarté L* %2, %3 bord(s) touché(s) sur 4")
+                    .arg(QLocale().toString(candidate->area_ratio * 100.0, 'f', 1))
+                    .arg(QLocale().toString(candidate->lightness, 'f', 0))
+                    .arg(candidate->sides_touched),
+                &optsDialog);
+            info->setObjectName("backgroundInfo");
+            row->addWidget(swatch);
+            row->addWidget(info, 1);
+            optsLayout->addLayout(row);
+        }
         auto* optsButtons =
             new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &optsDialog);
         connect(optsButtons, &QDialogButtonBox::accepted, &optsDialog, &QDialog::accept);
