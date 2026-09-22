@@ -87,6 +87,17 @@ struct AutoOptions {
     // Les sections satin d'une même région restent contiguës (routage).
     bool order_by_layers{true};
     double layer_large_area_ratio{0.25};
+
+    // --- Fragments (Lot D) ---
+    // Nettoyage d'une copie de travail de la segmentation avant numérisation.
+    // Isthmes et lamelles plus étroits que cette largeur (ouverture
+    // morphologique) rendus à la région voisine. 0 = désactivé.
+    double min_feature_width_mm{1.2};
+    // Régions plus petites que cette aire fusionnées avec la voisine de plus
+    // longue frontière (jamais avec le fond ignoré). Seules les régions sans
+    // autre voisine restent, et deviennent un contour (sous
+    // `min_fill_area_mm2`). 0 = désactivé.
+    double min_region_area_mm2{3.0};
 };
 
 // Objets produits par l'autonumérisation : toujours ÉDITABLES (§13). Le type

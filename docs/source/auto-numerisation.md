@@ -141,11 +141,46 @@ ensemble que des sections contiguës. Avant ce lot, aucune numérisation
 automatique (desktop ou CLI) n'ordonnait son résultat : les objets suivaient
 l'ordre des identifiants de région (classe k-means puis balayage de l'image).
 
+## Fragments (Lot D)
+
+Avant ce lot, le seul seuil de taille était `SegmentationOptions::
+min_region_px` (16 px, soit 0,48 mm² à 146,8 dpi : indépendant de l'échelle),
+et toute région sous `min_fill_area_mm2` devenait un contour point triple,
+même au milieu d'autres régions brodées. Sur la marine, le reflet (couleur
+très découpée, anticrénelage) donnait 817 morceaux, dont 683 de moins de 15
+points.
+
+`auto_digitize` travaille désormais sur une **copie** de la segmentation (celle
+du projet n'est pas modifiée) et la nettoie avant de vectoriser :
+
+1. **Isthmes et lamelles** (`segmentation::remove_thin_parts`) : ouverture
+   morphologique région par région, avec un noyau elliptique de
+   `min_feature_width_mm` (1,2 mm, converti en pixels avec `mm_per_px`). Les
+   pixels retirés sont rendus de proche en proche à la région **voisine**
+   majoritaire. Une partie qui ne touche aucune autre région (lamelle isolée
+   dans le vide) reste en place.
+2. **Petites régions** (`segmentation::merge_small_regions`) : toute région de
+   moins de `min_region_area_mm2` (3 mm², converti en pixels) est fusionnée
+   avec la voisine qui partage la plus longue frontière. La plus petite
+   restante est toujours traitée d'abord, et la région absorbante garde sa
+   couleur. Le **fond ignoré n'absorbe jamais** : un fragment qui n'a que lui
+   pour voisin reste une région isolée et devient un contour point triple
+   (s'il est sous `min_fill_area_mm2`). C'est désormais le seul cas de
+   contour pour une petite région.
+
+Les deux étapes sont déterministes (voisinages ordonnés, égalités tranchées
+par le plus petit identifiant) et désactivables (seuil à 0).
+
+**Compromis connu** : l'ouverture efface aussi les détails volontaires plus
+fins que 1,2 mm (par exemple un mât fin), rendus à la région qui les entoure.
+Pour les garder, baissez `min_feature_width_mm`.
+
 ## Implémentation associée
 
 - `libs/segmentation/include/openstitch/segmentation/segmentation.hpp` —
   `cielab_lightness`, `BackgroundCandidateOptions`, `BackgroundCandidate`,
-  `background_candidate`.
+  `background_candidate`, `region_adjacency`, `remove_thin_parts`,
+  `merge_small_regions` (Lot D).
 - `libs/autodigitize/src/autodigitize.cpp` — `auto_digitize`,
   `AutoOptions::skip_largest_region`, `configure_tatami_fills` (Lot B),
   `overlap_neighbor_fills`, `order_in_layers` (Lot C).
@@ -162,5 +197,5 @@ l'ordre des identifiants de région (classe k-means puis balayage de l'image).
   (`autoDigitizeDialogDoesNotSkipColoredFullFrameRegion`,
   `autoDigitizeDialogSkipsNearWhiteFramingBackground`),
   `tests/unit/geometry/test_moments.cpp`, `tests/unit/autodigitize/test_autodigitize.cpp`
-  (cas « Lot B » et « Lot C »), `tests/unit/optimization/test_order.cpp`,
+  (cas « Lot B », « Lot C » et « Lot D »), `tests/unit/optimization/test_order.cpp`,
   `tests/unit/geometry/test_boolean.cpp`.

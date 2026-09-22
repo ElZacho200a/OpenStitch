@@ -365,3 +365,115 @@ TEST_CASE("region_adjacency : le fond transparent n'est jamais une region voisin
     REQUIRE(seg.has_value());
     CHECK(region_adjacency(*seg).empty());
 }
+
+// --- Lot D (audit marine) : fragments -----------------------------------------
+
+namespace {
+
+// Région vivante contenant le pixel (x, y), ou nullptr.
+const Region* region_under(const Segmentation& seg, int x, int y) {
+    const auto id = region_at(seg, x, y);
+    return id ? seg.find(*id) : nullptr;
+}
+
+// Rouge [0,15) | bleu [15,30) sur 30x10, avec des pixels verts optionnels.
+image::Image halves_with(const std::vector<std::pair<int, int>>& green) {
+    image::Image img = blank(30, 10);
+    for (int y = 0; y < 10; ++y) {
+        for (int x = 0; x < 30; ++x) {
+            if (x < 15) {
+                set_px(img, x, y, 220, 30, 30);
+            } else {
+                set_px(img, x, y, 30, 30, 220);
+            }
+        }
+    }
+    for (const auto& [x, y] : green) {
+        set_px(img, x, y, 30, 200, 30);
+    }
+    return img;
+}
+
+} // namespace
+
+TEST_CASE("merge_small_regions : un fragment rejoint la voisine de plus longue frontiere") {
+    // Bloc vert 2x3 (x 13..14, y 2..4) : 7 arêtes avec le rouge, 3 avec le bleu.
+    const auto seg0 = segment(halves_with({{13, 2}, {14, 2}, {13, 3}, {14, 3}, {13, 4}, {14, 4}}),
+                              {.max_colors = 3, .min_region_px = 1});
+    REQUIRE(seg0.has_value());
+    REQUIRE(seg0->region_count() == 3);
+    Segmentation seg = *seg0;
+    const auto* redBefore = region_under(seg, 0, 0);
+    REQUIRE(redBefore != nullptr);
+    const RegionId red = redBefore->id;
+    const std::size_t redCount = redBefore->pixel_count;
+
+    CHECK(merge_small_regions(seg, 10) == 1);
+    CHECK(seg.region_count() == 2);
+    CHECK(region_under(seg, 13, 3)->id == red);
+    CHECK(seg.find(red)->pixel_count == redCount + 6);
+
+    // Déterministe.
+    Segmentation again = *seg0;
+    CHECK(merge_small_regions(again, 10) == 1);
+    CHECK(again.labels == seg.labels);
+}
+
+TEST_CASE("merge_small_regions : jamais dans une couleur exclue (fond ignore)") {
+    // Vert entouré de rouge seul : si le rouge est le fond ignoré, le
+    // fragment n'a aucune voisine admissible et reste tel quel (il sera
+    // cousu en contour, isolé au milieu du fond).
+    const auto seg0 = segment(halves_with({{5, 4}, {6, 4}, {5, 5}, {6, 5}}),
+                              {.max_colors = 3, .min_region_px = 1});
+    REQUIRE(seg0.has_value());
+    Segmentation seg = *seg0;
+    const auto redRgb = region_under(seg, 0, 0)->rgb;
+    CHECK(merge_small_regions(seg, 10, redRgb) == 0);
+    CHECK(seg.region_count() == 3);
+}
+
+TEST_CASE("remove_thin_parts : une lamelle de 1 px rejoint sa voisine, le corps reste") {
+    // Carré rouge 20x20 (x 0..19) + lamelle rouge de 1 px (y = 10) qui
+    // s'avance dans le bleu (x 20..29).
+    image::Image img = blank(40, 20);
+    for (int y = 0; y < 20; ++y) {
+        for (int x = 0; x < 40; ++x) {
+            const bool red = x < 20 || (y == 10 && x < 30);
+            set_px(img, x, y, red ? 220 : 30, 30, red ? 30 : 220);
+        }
+    }
+    const auto seg0 = segment(img, {.max_colors = 2, .min_region_px = 1});
+    REQUIRE(seg0.has_value());
+    Segmentation seg = *seg0;
+    const RegionId red = region_under(seg, 0, 0)->id;
+    const RegionId blue = region_under(seg, 39, 0)->id;
+    CHECK(region_under(seg, 25, 10)->id == red);
+
+    // 10 px de lamelle ; le noyau elliptique (croix en 3x3) arrondit aussi
+    // les deux coins convexes du carré côté bleu -- rien d'autre.
+    const std::size_t moved = remove_thin_parts(seg, 3);
+    CHECK(moved >= 10);
+    CHECK(moved <= 12);
+    CHECK(region_under(seg, 25, 10)->id == blue);
+    CHECK(region_under(seg, 21, 10)->id == blue);
+    CHECK(region_under(seg, 10, 10)->id == red); // le corps du carré reste
+    CHECK(seg.find(red)->pixel_count + seg.find(blue)->pixel_count == 800);
+    CHECK(seg.find(red)->pixel_count >= 398);
+
+    // Largeur < 2 px : sans effet (aucune ouverture possible).
+    Segmentation same = *seg0;
+    CHECK(remove_thin_parts(same, 1) == 0);
+    CHECK(same.labels == seg0->labels);
+}
+
+TEST_CASE("remove_thin_parts : une lamelle isolee dans le vide reste en place") {
+    image::Image img = blank(20, 10); // transparent
+    for (int x = 2; x < 18; ++x) {
+        set_px(img, x, 5, 220, 30, 30);
+    }
+    const auto seg0 = segment(img, {.max_colors = 2, .min_region_px = 1});
+    REQUIRE(seg0.has_value());
+    Segmentation seg = *seg0;
+    CHECK(remove_thin_parts(seg, 3) == 0);
+    CHECK(seg.region_count() == 1);
+}

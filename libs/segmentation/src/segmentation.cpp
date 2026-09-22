@@ -8,6 +8,7 @@
 #include <cmath>
 #include <limits>
 #include <map>
+#include <set>
 
 namespace openstitch::segmentation {
 
@@ -388,6 +389,223 @@ std::vector<RegionBorder> region_adjacency(const Segmentation& seg) {
         out.push_back({RegionId{key.first}, RegionId{key.second}, length});
     }
     return out;
+}
+
+std::size_t remove_thin_parts(Segmentation& seg, int min_width_px) {
+    if (min_width_px < 2 || seg.width <= 0 || seg.height <= 0) {
+        return 0;
+    }
+    const int w = seg.width;
+    const int h = seg.height;
+    const auto idx = [w](int x, int y) {
+        return static_cast<std::size_t>(y) * static_cast<std::size_t>(w) +
+               static_cast<std::size_t>(x);
+    };
+
+    // Boîte englobante de chaque label (ROI de l'ouverture).
+    const std::size_t slots = seg.region_slots.size();
+    std::vector<cv::Rect> boxes(slots + 1);
+    std::vector<char> seen(slots + 1, 0);
+    for (int y = 0; y < h; ++y) {
+        for (int x = 0; x < w; ++x) {
+            const std::uint32_t l = seg.labels[idx(x, y)];
+            if (l == 0) {
+                continue;
+            }
+            if (!seen[l]) {
+                boxes[l] = cv::Rect(x, y, 1, 1);
+                seen[l] = 1;
+            } else {
+                boxes[l] |= cv::Rect(x, y, 1, 1);
+            }
+        }
+    }
+
+    const cv::Mat kernel =
+        cv::getStructuringElement(cv::MORPH_ELLIPSE, cv::Size(min_width_px, min_width_px));
+    const std::vector<std::uint32_t> orig = seg.labels;
+    std::vector<char> pending(orig.size(), 0);
+    for (std::uint32_t l = 1; l <= slots; ++l) {
+        if (!seen[l] || !seg.region_slots[l - 1]) {
+            continue;
+        }
+        // ROI élargie du diamètre du noyau ; hors image, OpenCV traite le
+        // bord comme intérieur (valeur par défaut) : le bord de l'image
+        // n'érode pas une région qui le touche.
+        const cv::Rect roi = (boxes[l] + cv::Size(2 * min_width_px, 2 * min_width_px) -
+                              cv::Point(min_width_px, min_width_px)) &
+                             cv::Rect(0, 0, w, h);
+        cv::Mat mask(roi.height, roi.width, CV_8U, cv::Scalar(0));
+        for (int y = 0; y < roi.height; ++y) {
+            for (int x = 0; x < roi.width; ++x) {
+                if (orig[idx(roi.x + x, roi.y + y)] == l) {
+                    mask.at<std::uint8_t>(y, x) = 255;
+                }
+            }
+        }
+        cv::Mat opened;
+        cv::morphologyEx(mask, opened, cv::MORPH_OPEN, kernel);
+        for (int y = 0; y < roi.height; ++y) {
+            for (int x = 0; x < roi.width; ++x) {
+                if (mask.at<std::uint8_t>(y, x) != 0 && opened.at<std::uint8_t>(y, x) == 0) {
+                    pending[idx(roi.x + x, roi.y + y)] = 1;
+                }
+            }
+        }
+    }
+
+    // Réaffectation de proche en proche depuis les régions VOISINES (jamais
+    // depuis la région d'origine du pixel) ; passes synchrones pour rester
+    // indépendant de l'ordre de balayage.
+    std::size_t moved = 0;
+    for (;;) {
+        std::vector<std::pair<std::size_t, std::uint32_t>> assign;
+        for (int y = 0; y < h; ++y) {
+            for (int x = 0; x < w; ++x) {
+                const std::size_t i = idx(x, y);
+                if (!pending[i]) {
+                    continue;
+                }
+                std::map<std::uint32_t, int> votes;
+                const auto vote = [&](int nx, int ny) {
+                    if (nx < 0 || ny < 0 || nx >= w || ny >= h) {
+                        return;
+                    }
+                    const std::size_t j = idx(nx, ny);
+                    if (!pending[j] && seg.labels[j] != 0 && seg.labels[j] != orig[i]) {
+                        ++votes[seg.labels[j]];
+                    }
+                };
+                vote(x - 1, y);
+                vote(x + 1, y);
+                vote(x, y - 1);
+                vote(x, y + 1);
+                if (!votes.empty()) {
+                    assign.emplace_back(i, std::max_element(votes.begin(), votes.end(),
+                                                            [](const auto& a, const auto& b) {
+                                                                return a.second < b.second;
+                                                            })
+                                               ->first);
+                }
+            }
+        }
+        if (assign.empty()) {
+            break;
+        }
+        for (const auto& [i, l] : assign) {
+            seg.labels[i] = l;
+            pending[i] = 0;
+        }
+        moved += assign.size();
+    }
+
+    // Comptes de pixels ; une région vidée disparaît.
+    for (auto& slot : seg.region_slots) {
+        if (slot) {
+            slot->pixel_count = 0;
+        }
+    }
+    for (const std::uint32_t l : seg.labels) {
+        if (l != 0) {
+            ++seg.region_slots[l - 1]->pixel_count;
+        }
+    }
+    for (auto& slot : seg.region_slots) {
+        if (slot && slot->pixel_count == 0) {
+            slot.reset();
+        }
+    }
+    return moved;
+}
+
+std::size_t merge_small_regions(Segmentation& seg, std::size_t min_px,
+                                std::optional<std::array<std::uint8_t, 3>> excluded) {
+    const std::size_t slots = seg.region_slots.size();
+    std::vector<std::size_t> count(slots + 1, 0);
+    for (std::size_t s = 0; s < slots; ++s) {
+        if (seg.region_slots[s]) {
+            count[s + 1] = seg.region_slots[s]->pixel_count;
+        }
+    }
+    // Voisinage pondéré par la longueur de frontière, mis à jour à chaque fusion.
+    std::vector<std::map<std::uint32_t, std::size_t>> nb(slots + 1);
+    for (const auto& b : region_adjacency(seg)) {
+        const auto a = static_cast<std::uint32_t>(b.a.value);
+        const auto c = static_cast<std::uint32_t>(b.b.value);
+        nb[a][c] += b.length;
+        nb[c][a] += b.length;
+    }
+    const auto isExcluded = [&](std::uint32_t l) {
+        return excluded && seg.region_slots[l - 1]->rgb == *excluded;
+    };
+    std::vector<std::uint32_t> parent(slots + 1);
+    for (std::uint32_t l = 0; l <= slots; ++l) {
+        parent[l] = l;
+    }
+    std::set<std::pair<std::size_t, std::uint32_t>> queue;
+    for (std::uint32_t l = 1; l <= slots; ++l) {
+        if (seg.region_slots[l - 1] && count[l] < min_px) {
+            queue.insert({count[l], l});
+        }
+    }
+    std::size_t merges = 0;
+    while (!queue.empty()) {
+        const auto [size, small] = *queue.begin();
+        queue.erase(queue.begin());
+        std::uint32_t keep = 0;
+        std::size_t best = 0;
+        for (const auto& [other, length] : nb[small]) {
+            if (!isExcluded(other) && length > best) {
+                best = length;
+                keep = other;
+            }
+        }
+        if (keep == 0) {
+            continue; // aucune voisine admissible : fragment isolé conservé
+        }
+        queue.erase({count[keep], keep});
+        count[keep] += count[small];
+        for (const auto& [other, length] : nb[small]) {
+            if (other == keep) {
+                continue;
+            }
+            nb[keep][other] += length;
+            nb[other][keep] += length;
+            nb[other].erase(small);
+        }
+        nb[keep].erase(small);
+        nb[small].clear();
+        parent[small] = keep;
+        ++merges;
+        if (count[keep] < min_px) {
+            queue.insert({count[keep], keep});
+        }
+    }
+    if (merges == 0) {
+        return 0;
+    }
+    const auto root = [&](std::uint32_t l) {
+        while (parent[l] != l) {
+            l = parent[l];
+        }
+        return l;
+    };
+    for (auto& l : seg.labels) {
+        if (l != 0) {
+            l = root(l);
+        }
+    }
+    for (std::uint32_t l = 1; l <= slots; ++l) {
+        if (!seg.region_slots[l - 1]) {
+            continue;
+        }
+        if (parent[l] != l) {
+            seg.region_slots[l - 1].reset();
+        } else {
+            seg.region_slots[l - 1]->pixel_count = count[l];
+        }
+    }
+    return merges;
 }
 
 double cielab_lightness(std::array<std::uint8_t, 3> rgb) {

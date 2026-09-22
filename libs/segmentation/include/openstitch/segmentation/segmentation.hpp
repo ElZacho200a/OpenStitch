@@ -94,6 +94,30 @@ struct RegionBorder {
 // fusion des fragments).
 [[nodiscard]] std::vector<RegionBorder> region_adjacency(const Segmentation& seg);
 
+// Nettoyage des fragments avant auto-numérisation (Lot D, audit marine) --
+// sur une COPIE de travail : les régions de l'utilisateur ne sont pas
+// modifiées par ces fonctions quand l'appelant travaille sur une copie.
+//
+// Ouverture morphologique (noyau elliptique de `min_width_px` de diamètre)
+// région par région : les isthmes et lamelles plus étroits que ce diamètre
+// sont retirés de leur région et rendus, de proche en proche, à la région
+// VOISINE majoritaire (4-connexité, égalité -> plus petit label). Une partie
+// retirée qui ne touche aucune autre région (lamelle isolée dans le vide)
+// reste à sa région d'origine. Une région entièrement retirée disparaît.
+// `min_width_px` < 2 : sans effet. Renvoie le nombre de pixels réaffectés.
+// Déterministe.
+std::size_t remove_thin_parts(Segmentation& seg, int min_width_px);
+
+// Fusionne chaque région de moins de `min_px` pixels avec la voisine qui
+// partage la plus longue frontière (égalité -> plus petit identifiant), en
+// traitant toujours la plus petite région restante d'abord ; la région
+// absorbante garde sa couleur. Une région dont la couleur vaut `excluded`
+// (fond ignoré) n'absorbe jamais : un fragment qui n'a pas d'autre voisine
+// reste tel quel (isolé au milieu du fond). Renvoie le nombre de fusions.
+// Déterministe.
+std::size_t merge_small_regions(Segmentation& seg, std::size_t min_px,
+                                std::optional<std::array<std::uint8_t, 3>> excluded = {});
+
 // Seuils de la recommandation « ignorer le fond » (§ Lot A, audit marine).
 struct BackgroundCandidateOptions {
     double min_lightness{90.0}; // L* au-dessus duquel la couleur est jugée quasi blanche

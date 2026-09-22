@@ -612,19 +612,19 @@ void order_in_layers(AutoResult& result, const std::vector<document::VectorObjec
 
 }  // namespace
 
-Result<AutoResult> auto_digitize(const segmentation::Segmentation& seg, IdGenerator<ObjectId>& ids,
-                                 const AutoOptions& options) {
+Result<AutoResult> auto_digitize(const segmentation::Segmentation& input,
+                                 IdGenerator<ObjectId>& ids, const AutoOptions& options) {
     AutoResult result;
 
     // Régions vivantes, triées par identifiant pour un résultat déterministe.
     std::vector<RegionId> regions;
     std::size_t largestSlot = 0;
     std::size_t largestCount = 0;
-    for (std::size_t s = 0; s < seg.region_slots.size(); ++s) {
-        if (seg.region_slots[s]) {
-            regions.push_back(seg.region_slots[s]->id);
-            if (seg.region_slots[s]->pixel_count > largestCount) {
-                largestCount = seg.region_slots[s]->pixel_count;
+    for (std::size_t s = 0; s < input.region_slots.size(); ++s) {
+        if (input.region_slots[s]) {
+            regions.push_back(input.region_slots[s]->id);
+            if (input.region_slots[s]->pixel_count > largestCount) {
+                largestCount = input.region_slots[s]->pixel_count;
                 largestSlot = s;
             }
         }
@@ -644,9 +644,30 @@ Result<AutoResult> auto_digitize(const segmentation::Segmentation& seg, IdGenera
     // même fond se faire numériser comme de vrais objets ; exclure toute
     // région de cette couleur EXACTE couvre le fond dans son ensemble.
     const std::optional<std::array<std::uint8_t, 3>> backgroundRgb =
-        options.skip_largest_region && seg.region_slots[largestSlot]
-            ? std::optional{seg.region_slots[largestSlot]->rgb}
+        options.skip_largest_region && input.region_slots[largestSlot]
+            ? std::optional{input.region_slots[largestSlot]->rgb}
             : std::nullopt;
+
+    // Fragments (Lot D, audit marine plein cadre) : sur une COPIE de travail
+    // (la segmentation de l'utilisateur reste intacte), retire d'abord les
+    // isthmes et lamelles plus étroits que `min_feature_width_mm`, puis
+    // fusionne chaque région sous `min_region_area_mm2` avec la voisine de
+    // plus longue frontière -- au lieu d'en faire un contour point triple.
+    // Le fond ignoré n'absorbe jamais : un fragment qui n'a que lui pour
+    // voisin reste une région isolée (cousue en contour plus bas). Seuils en
+    // mm/mm², convertis avec mm_per_px : indépendants de la résolution.
+    segmentation::Segmentation seg = input;
+    const double mmPerPx = options.mm_per_px.value;
+    if (options.min_feature_width_mm > 0.0 && mmPerPx > 0.0) {
+        segmentation::remove_thin_parts(
+            seg, static_cast<int>(std::lround(options.min_feature_width_mm / mmPerPx)));
+    }
+    if (options.min_region_area_mm2 > 0.0 && mmPerPx > 0.0) {
+        segmentation::merge_small_regions(
+            seg,
+            static_cast<std::size_t>(std::ceil(options.min_region_area_mm2 / (mmPerPx * mmPerPx))),
+            backgroundRgb);
+    }
 
     const vectorization::VectorizeOptions vecOpts{options.mm_per_px, options.simplify_tolerance};
     // Objet vectoriel principal de chaque région numérisée (Lot C) : une

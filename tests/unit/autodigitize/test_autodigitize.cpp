@@ -1004,3 +1004,77 @@ TEST_CASE("Lot C : la grande region de fond est cousue avant le detail pose dess
     REQUIRE(r2.has_value());
     CHECK(first_index_of(*r2, kRed) < first_index_of(*r2, kBlue));
 }
+
+// --- Lot D (audit marine plein cadre) : fragments ---------------------------
+// Avant : toute région sous min_fill_area_mm2 devenait un contour point
+// triple, même au milieu d'autres régions brodées (683 morceaux de moins de
+// 15 points pour le seul reflet de la marine).
+
+TEST_CASE("Lot D : un petit fragment entre deux regions est fusionne, pas cousu en contour") {
+    const std::array<std::uint8_t, 3> kGreen{30, 200, 30};
+    // Rouge | bleu à 0,8 mm/px ; fragment vert 2x2 px (2,56 mm²) dans le rouge.
+    const auto seg = segmentation::segment(
+        paint(40, 20, {{0, 0, 20, 20, kRed}, {20, 0, 40, 20, kBlue}, {10, 8, 12, 10, kGreen}}),
+        {.max_colors = 3, .min_region_px = 1});
+    REQUIRE(seg.has_value());
+    REQUIRE(seg->region_count() == 3);
+    AutoOptions o = tatami_only_opts();
+    o.mm_per_px = Millimeters{0.8};
+    IdGenerator<ObjectId> ids;
+    const auto r = auto_digitize(*seg, ids, o);
+    REQUIRE(r.has_value());
+    for (const auto& e : r->embroideries) {
+        CHECK_FALSE(std::holds_alternative<document::RunningStitchParams>(e.params));
+    }
+    CHECK(r->vectors.size() == 2);
+    // La segmentation d'entrée n'est jamais modifiée (copie de travail).
+    CHECK(seg->region_count() == 3);
+
+    // Seuil nul : comportement historique (le fragment devient un contour).
+    AutoOptions off = o;
+    off.min_region_area_mm2 = 0.0;
+    off.min_feature_width_mm = 0.0;
+    IdGenerator<ObjectId> ids2;
+    const auto r2 = auto_digitize(*seg, ids2, off);
+    REQUIRE(r2.has_value());
+    CHECK(r2->vectors.size() == 3);
+}
+
+TEST_CASE("Lot D : seuil de fragment exprime en mm2, independant de la resolution") {
+    // Même dessin à une autre résolution : 2x2 px à 3 mm/px (36 mm²) est une
+    // vraie région, gardée (à 0,8 mm/px elle est fusionnée, cf. ci-dessus).
+    const std::array<std::uint8_t, 3> kGreen{30, 200, 30};
+    const auto seg = segmentation::segment(
+        paint(40, 20, {{0, 0, 20, 20, kRed}, {20, 0, 40, 20, kBlue}, {10, 8, 12, 10, kGreen}}),
+        {.max_colors = 3, .min_region_px = 1});
+    REQUIRE(seg.has_value());
+    AutoOptions coarse = tatami_only_opts();
+    coarse.mm_per_px = Millimeters{3.0};
+    coarse.min_feature_width_mm = 0.0; // isole le critère d'aire
+    IdGenerator<ObjectId> ids;
+    const auto r = auto_digitize(*seg, ids, coarse);
+    REQUIRE(r.has_value());
+    CHECK(r->vectors.size() == 3);
+}
+
+TEST_CASE("Lot D : fragment isole au milieu du fond ignore -> contour point triple") {
+    const std::array<std::uint8_t, 3> kWhite{250, 250, 250};
+    const std::array<std::uint8_t, 3> kGreen{30, 200, 30};
+    const auto seg = segmentation::segment(
+        paint(60, 40, {{0, 0, 60, 40, kWhite}, {5, 5, 25, 25, kRed}, {45, 20, 47, 22, kGreen}}),
+        {.max_colors = 3, .min_region_px = 1});
+    REQUIRE(seg.has_value());
+    AutoOptions o = tatami_only_opts();
+    o.skip_largest_region = true;
+    o.mm_per_px = Millimeters{0.8};
+    IdGenerator<ObjectId> ids;
+    const auto r = auto_digitize(*seg, ids, o);
+    REQUIRE(r.has_value());
+    bool greenContour = false;
+    for (const auto& e : r->embroideries) {
+        if (e.rgb[1] > 150 && e.rgb[0] < 100) {
+            greenContour = std::holds_alternative<document::RunningStitchParams>(e.params);
+        }
+    }
+    CHECK(greenContour);
+}
