@@ -1078,3 +1078,25 @@ TEST_CASE("Lot D : fragment isole au milieu du fond ignore -> contour point trip
     }
     CHECK(greenContour);
 }
+
+// --- Lot F : déplacements internes au tatami ---------------------------------
+TEST_CASE("Lot F : les tatami de l'auto-numerisation ont le trajet cache active") {
+    const auto seg = segmentation::segment(paint(40, 40, {{5, 5, 35, 35, kRed}}),
+                                           {.max_colors = 2, .min_region_px = 1});
+    REQUIRE(seg.has_value());
+    IdGenerator<ObjectId> ids;
+    const auto r = auto_digitize(*seg, ids, tatami_only_opts());
+    REQUIRE(r.has_value());
+    const auto t = tatamis_by_color(*r, kRed);
+    REQUIRE(t.size() == 1);
+    CHECK(t[0].hidden_underpath);
+
+    AutoOptions off = tatami_only_opts();
+    off.fill_hidden_underpath = false;
+    IdGenerator<ObjectId> ids2;
+    const auto r2 = auto_digitize(*seg, ids2, off);
+    REQUIRE(r2.has_value());
+    CHECK_FALSE(tatamis_by_color(*r2, kRed).at(0).hidden_underpath);
+    // Le défaut du modèle, lui, ne change pas (objets manuels, .osp existants).
+    CHECK_FALSE(document::TatamiParams{}.hidden_underpath);
+}

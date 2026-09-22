@@ -217,3 +217,129 @@ TEST_CASE("finish : effective_sequence applique les finitions, deterministe") {
     REQUIRE(ctx.has_value());
     CHECK(ctx->effective.commands == a->commands);
 }
+
+// --- Lot F : points trop courts ----------------------------------------------
+// Avant : ~4 950 points de moins de 0,5 mm sur la marine (bouts de rangée
+// tatami, point de longueur nulle à chaque arrivée de saut), aucun filtrage.
+
+namespace {
+
+Vec2um um(std::int32_t x, std::int32_t y) {
+    return Vec2um{Micrometers{x}, Micrometers{y}};
+}
+
+// Projet : un tatami suivant une région en L (0..10 mm, bras de 2 mm), plus
+// la séquence brute fournie par le test (fabriquée à la main pour viser un cas
+// précis ; la source de chaque commande est ce tatami).
+struct LCase {
+    document::Project project;
+    ObjectId object;
+};
+
+LCase l_shape_project() {
+    LCase c;
+    geometry::Path l;
+    l.closed = true;
+    const auto node = [](std::int32_t x, std::int32_t y) {
+        return geometry::PathNode{Vec2um{Micrometers{x}, Micrometers{y}},
+                                  geometry::NodeType::Corner, std::nullopt, std::nullopt};
+    };
+    l.nodes = {node(0, 0),         node(10'000, 0),     node(10'000, 2'000),
+               node(2'000, 2'000), node(2'000, 10'000), node(0, 10'000)};
+    document::VectorObject vec;
+    vec.id = c.project.object_ids.next();
+    vec.paths.push_back(geometry::PathSet{l, {}});
+    c.project.vector_objects.push_back(vec);
+    document::EmbroideryObject emb;
+    emb.id = c.project.object_ids.next();
+    emb.source_vector = vec.id;
+    emb.params = document::TatamiParams{};
+    c.project.embroidery_objects.push_back(emb);
+    c.object = emb.id;
+    c.project.finishing.lock_type = document::LockStitch::None; // isole le filtre
+    return c;
+}
+
+stitch::StitchSequence seq_of(ObjectId src, const std::vector<Vec2um>& pts,
+                              std::vector<Pass> passes = {}) {
+    stitch::StitchSequence s;
+    s.commands.push_back({pts.front(), CmdType::Jump, src, Pass::Travel});
+    for (std::size_t i = 0; i < pts.size(); ++i) {
+        s.commands.push_back(
+            {pts[i], CmdType::Stitch, src, i < passes.size() ? passes[i] : Pass::TopStitch});
+    }
+    s.commands.push_back({pts.back(), CmdType::End, ObjectId{}});
+    return s;
+}
+
+std::size_t stitches_shorter_than(const stitch::StitchSequence& s, double len) {
+    std::size_t n = 0;
+    for (std::size_t i = 1; i < s.commands.size(); ++i) {
+        if (s.commands[i].type == CmdType::Stitch && s.commands[i - 1].type == CmdType::Stitch &&
+            s.commands[i].pass != Pass::Lock &&
+            length_um(s.commands[i].pos - s.commands[i - 1].pos) < len) {
+            ++n;
+        }
+    }
+    return n;
+}
+
+} // namespace
+
+TEST_CASE("finish : un point de moins de 0,5 mm est fusionne avec le suivant") {
+    auto c = l_shape_project();
+    // Bras horizontal : 1 -> 1,3 (0,3 mm) -> 4 -> 7 mm.
+    const auto raw =
+        seq_of(c.object, {um(1'000, 1'000), um(1'300, 1'000), um(4'000, 1'000), um(7'000, 1'000)});
+    CHECK(stitches_shorter_than(raw, 500.0) == 1);
+    const auto done = finish_sequence(raw, c.project);
+    CHECK(stitches_shorter_than(done, 500.0) == 0);
+    // Seul le point court disparaît ; extrémités et autres points intacts.
+    CHECK(count_type(done, CmdType::Stitch) == 3);
+    CHECK(done.commands[1].pos == um(1'000, 1'000));
+    CHECK(done.commands[done.commands.size() - 2].pos == um(7'000, 1'000));
+
+    // Désactivable.
+    c.project.finishing.filter_short_stitches = false;
+    CHECK(stitches_shorter_than(finish_sequence(raw, c.project), 500.0) == 1);
+}
+
+TEST_CASE("finish : jamais de fusion qui ferait sortir le fil de la region") {
+    const auto c = l_shape_project();
+    // A (bras horizontal) -> B (coin intérieur, 0,43 mm plus loin) -> C (bras
+    // vertical). Sans B, la corde A->C couperait l'angle HORS du L.
+    const auto raw = seq_of(c.object, {um(5'000, 1'000), um(2'300, 1'800), um(1'950, 2'050),
+                                       um(1'950, 6'000), um(1'000, 9'000)});
+    const auto done = finish_sequence(raw, c.project);
+    CHECK(count_type(done, CmdType::Stitch) == count_type(raw, CmdType::Stitch));
+}
+
+TEST_CASE("finish : verrous, retouches manuelles et extremites jamais filtres") {
+    const auto c = l_shape_project();
+    const auto raw = seq_of(
+        c.object,
+        {um(1'000, 1'000), um(1'200, 1'000), um(1'400, 1'000), um(5'000, 1'000), um(5'100, 1'000)},
+        {Pass::TopStitch, Pass::Lock, Pass::Manual, Pass::TopStitch, Pass::TopStitch});
+    const auto done = finish_sequence(raw, c.project);
+    // Lock (0,2 mm), Manual (0,2 mm) et le dernier point (0,1 mm) restent.
+    CHECK(count_type(done, CmdType::Stitch) == 5);
+}
+
+TEST_CASE("finish : point de longueur nulle a l'arrivee d'un saut absorbe par le verrou") {
+    auto c = l_shape_project();
+    c.project.finishing.lock_type = document::LockStitch::BackAndForth;
+    const auto raw = seq_of(c.object, {um(1'000, 1'000), um(4'000, 1'000), um(7'000, 1'000)});
+    // seq_of : Jump(p0) puis Stitch(p0) -- piqûre de longueur nulle.
+    CHECK(stitches_shorter_than(raw, 1.0) == 0); // (le Jump n'est pas un Stitch)
+    const auto done = finish_sequence(raw, c.project);
+    REQUIRE(done.commands[0].type == CmdType::Jump);
+    // Le premier point cousu après le saut est le verrou, pas une piqûre nulle.
+    CHECK(done.commands[1].pass == Pass::Lock);
+    CHECK(done.commands[1].pos != done.commands[0].pos);
+    // Le verrou revient bien piquer en p0 avant le premier vrai point.
+    bool backAtStart = false;
+    for (std::size_t i = 1; i < done.commands.size() && done.commands[i].pass == Pass::Lock; ++i) {
+        backAtStart = backAtStart || done.commands[i].pos == um(1'000, 1'000);
+    }
+    CHECK(backAtStart);
+}

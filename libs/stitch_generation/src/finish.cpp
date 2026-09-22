@@ -2,10 +2,12 @@
 #include "openstitch/stitch_generation/finish.hpp"
 
 #include <algorithm>
+#include <map>
 #include <optional>
 #include <vector>
 
 #include "openstitch/stitch_generation/lock.hpp"
+#include "openstitch/stitch_generation/tatami.hpp"
 
 namespace openstitch::stitch_generation {
 
@@ -38,14 +40,16 @@ std::vector<Run> find_runs(const std::vector<StitchCommand>& cmds) {
     return runs;
 }
 
-// Point d'arrêt ancré en `anchor`, orienté vers le premier point du tracé
-// (dans le sens `step`) distinct de l'ancre -- le verrou reste donc sur un
-// segment réellement cousu de l'objet. Le premier point renvoyé par
-// `lock_stitches` (l'ancre elle-même, déjà cousue) est omis.
-void append_lock(std::vector<StitchCommand>& out, const std::vector<StitchCommand>& cmds,
-                 const Run& run, bool atStart, const document::SequenceFinishing& f) {
+// Point d'arrêt ancré en `anchor` (premier ou dernier point du tracé),
+// orienté vers le point du tracé le plus proche distinct de l'ancre -- le
+// verrou reste donc sur un segment réellement cousu de l'objet. Le premier
+// point renvoyé par `lock_stitches` (l'ancre elle-même) est omis. Vide si
+// aucun verrou n'est demandé ou si le tracé n'a pas de direction.
+std::vector<StitchCommand> lock_points(const std::vector<StitchCommand>& cmds, const Run& run,
+                                       bool atStart, const document::SequenceFinishing& f) {
+    std::vector<StitchCommand> out;
     if (f.lock_type == document::LockStitch::None || run.end - run.begin < 2) {
-        return;
+        return out;
     }
     const std::size_t anchorIdx = atStart ? run.begin : run.end - 1;
     const Vec2um anchor = cmds[anchorIdx].pos;
@@ -64,7 +68,7 @@ void append_lock(std::vector<StitchCommand>& out, const std::vector<StitchComman
         }
     }
     if (!toward) {
-        return; // tracé dégénéré (un seul point distinct) : pas de direction fiable
+        return out; // tracé dégénéré (un seul point distinct) : pas de direction fiable
     }
     const auto pts =
         lock_stitches(anchor, *toward, static_cast<LockType>(static_cast<int>(f.lock_type)),
@@ -73,6 +77,66 @@ void append_lock(std::vector<StitchCommand>& out, const std::vector<StitchComman
     for (std::size_t k = 1; k < pts.size(); ++k) {
         out.push_back({pts[k], CommandType::Stitch, source, StitchPass::Lock});
     }
+    return out;
+}
+
+void append(std::vector<StitchCommand>& out, const std::vector<StitchCommand>& more) {
+    out.insert(out.end(), more.begin(), more.end());
+}
+
+// Surfaces de référence des objets (objet vectoriel suivi), pour vérifier
+// qu'une fusion de points ne fait jamais sortir le fil de sa région.
+std::map<std::uint64_t, const std::vector<geometry::PathSet>*>
+object_regions(const document::Project& project) {
+    std::map<std::uint64_t, const std::vector<geometry::PathSet>*> out;
+    for (const auto& obj : project.embroidery_objects) {
+        if (const auto* vec = project.findObject(obj.source_vector)) {
+            out[obj.id.value] = &vec->paths;
+        }
+    }
+    return out;
+}
+
+// Lot F : fusionne chaque point cousu plus court que `min_stitch_length` avec
+// le suivant (le point court est retiré, aucun point n'est déplacé). Jamais
+// le premier ni le dernier point d'un tracé, jamais une passe de verrou ni un
+// point retouché à la main (passe Manual), et seulement si le nouveau segment
+// reste dans la région de l'objet (`segment_stays_in_region` sur son objet
+// vectoriel ; objet sans surface -- satin manuel -- : écart borné par la
+// longueur minimale, accepté).
+std::vector<StitchCommand> filter_short_stitches(const std::vector<StitchCommand>& cmds,
+                                                 const document::Project& project,
+                                                 const document::SequenceFinishing& f) {
+    if (!f.filter_short_stitches || f.min_stitch_length.value <= 0) {
+        return cmds;
+    }
+    const auto regions = object_regions(project);
+    const auto chordInside = [&](ObjectId source, Vec2um a, Vec2um b) {
+        const auto it = regions.find(source.value);
+        if (it == regions.end()) {
+            return true;
+        }
+        return std::any_of(it->second->begin(), it->second->end(),
+                           [&](const auto& set) { return segment_stays_in_region(set, a, b); });
+    };
+    const double minLen = static_cast<double>(f.min_stitch_length.value);
+    std::vector<StitchCommand> out;
+    out.reserve(cmds.size());
+    for (std::size_t i = 0; i < cmds.size(); ++i) {
+        const StitchCommand& c = cmds[i];
+        const bool interior = c.type == CommandType::Stitch && i > 0 &&
+                              cmds[i - 1].type == CommandType::Stitch && i + 1 < cmds.size() &&
+                              cmds[i + 1].type == CommandType::Stitch;
+        if (interior && c.pass != StitchPass::Lock && c.pass != StitchPass::Manual &&
+            cmds[i + 1].pass != StitchPass::Lock) {
+            const Vec2um prev = out.back().pos; // dernier point conservé du tracé
+            if (length_um(c.pos - prev) < minLen && chordInside(c.source, prev, cmds[i + 1].pos)) {
+                continue;
+            }
+        }
+        out.push_back(c);
+    }
+    return out;
 }
 
 bool starts_with_lock(const std::vector<StitchCommand>& cmds, const Run& run) {
@@ -92,7 +156,9 @@ stitch::StitchSequence finish_sequence(const stitch::StitchSequence& sequence,
     if (!f.enabled) {
         return sequence;
     }
-    const auto& cmds = sequence.commands;
+    // Points courts d'abord (Lot F) : les verrous ajoutés ensuite ne sont
+    // jamais filtrés.
+    const std::vector<StitchCommand> cmds = filter_short_stitches(sequence.commands, project, f);
     const std::vector<Run> runs = find_runs(cmds);
 
     stitch::StitchSequence out;
@@ -117,7 +183,7 @@ stitch::StitchSequence finish_sequence(const stitch::StitchSequence& sequence,
                              (colorChange && f.trim_before_color_change));
             const bool cut = needTrim || hasTrim || colorChange;
             if ((boundary || cut) && !ends_with_lock(cmds, *prev)) {
-                append_lock(out.commands, cmds, *prev, false, f);
+                append(out.commands, lock_points(cmds, *prev, false, f));
             }
             if (needTrim) {
                 out.commands.push_back(
@@ -128,10 +194,19 @@ stitch::StitchSequence finish_sequence(const stitch::StitchSequence& sequence,
         // Déplacement(s)/coupe/changement de fil d'origine, puis le tracé.
         out.commands.insert(out.commands.end(), cmds.begin() + static_cast<std::ptrdiff_t>(cursor),
                             cmds.begin() + static_cast<std::ptrdiff_t>(run.begin));
-        out.commands.push_back(cmds[run.begin]);
-        if (entryLock && !starts_with_lock(cmds, run)) {
-            append_lock(out.commands, cmds, run, true, f);
+        const auto entry = entryLock && !starts_with_lock(cmds, run)
+                               ? lock_points(cmds, run, true, f)
+                               : std::vector<StitchCommand>{};
+        // Piqûre de longueur nulle à l'arrivée d'un saut (Jump p0, Stitch p0) :
+        // superflue quand un verrou d'entrée suit, puisqu'il revient piquer en
+        // p0 -- sinon c'est un « point » de 0 mm dans le fichier machine.
+        const bool tieInOnly = !entry.empty() && !out.commands.empty() &&
+                               out.commands.back().type == CommandType::Jump &&
+                               out.commands.back().pos == cmds[run.begin].pos;
+        if (!tieInOnly) {
+            out.commands.push_back(cmds[run.begin]);
         }
+        append(out.commands, entry);
         out.commands.insert(out.commands.end(),
                             cmds.begin() + static_cast<std::ptrdiff_t>(run.begin + 1),
                             cmds.begin() + static_cast<std::ptrdiff_t>(run.end));
@@ -139,7 +214,7 @@ stitch::StitchSequence finish_sequence(const stitch::StitchSequence& sequence,
         prev = &run;
     }
     if (prev != nullptr && !ends_with_lock(cmds, *prev)) {
-        append_lock(out.commands, cmds, *prev, false, f);
+        append(out.commands, lock_points(cmds, *prev, false, f));
     }
     out.commands.insert(out.commands.end(), cmds.begin() + static_cast<std::ptrdiff_t>(cursor),
                         cmds.end());

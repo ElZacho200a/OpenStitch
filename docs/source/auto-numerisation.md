@@ -198,6 +198,32 @@ annulable) et dans le CLI (`digitize --trim-threshold <mm> --lock
 none|backforth|triangle|zigzag`). Un projet `.osp` antérieur est relu sans
 finitions (séquence identique).
 
+## Déplacements internes et points courts (Lot F)
+
+**Trajets cachés.** Les tatami créés par l'auto-numérisation reçoivent
+`hidden_underpath = true` (`AutoOptions::fill_hidden_underpath`) : la
+liaison entre deux composantes de rangées devient un trajet cousu caché sous
+la couche supérieure (direct s'il reste court et intérieur, sinon le long du
+contour rentré ; voir *Remplissage tatami*) au lieu d'un saut. Le défaut de
+`TatamiParams` reste `false`.
+
+**Points courts.** Dernier réglage de `project.finishing` :
+`filter_short_stitches` (activé) et `min_stitch_length` (0,5 mm). Avant la
+pose des verrous, `finish_sequence` retire chaque point cousu plus proche que
+ce seuil du point conservé précédent, ce qui revient à le fusionner avec le
+suivant. Aucun point n'est déplacé. Ne sont jamais retirés :
+
+- le premier et le dernier point d'un tracé ;
+- les passes de verrou (`Lock`), qui sont d'ailleurs ajoutées après le filtre ;
+- les points retouchés à la main (`Manual`) ;
+- un point dont le retrait ferait passer le nouveau segment hors de la région
+  de son objet (`segment_stays_in_region` sur l'objet vectoriel suivi) — par
+  exemple le point d'un angle intérieur.
+
+La piqûre de longueur nulle à l'arrivée d'un saut (`Jump p0` puis `Stitch
+p0`) est omise quand un verrou d'entrée suit : le verrou revient piquer en
+`p0`.
+
 ## Implémentation associée
 
 - `libs/segmentation/include/openstitch/segmentation/segmentation.hpp` —

@@ -73,6 +73,9 @@ struct AutoOptions {
     bool auto_fill_underlay{true};
     double underlay_edge_min_area_mm2{20.0};
     double underlay_parallel_min_area_mm2{100.0};
+    // Lot F : liaisons cousues cachées (underpath) plutôt que des sauts entre
+    // les composantes de rangées d'un même tatami.
+    bool fill_hidden_underpath{true};
 
     // --- Chevauchement et ordre (Lot C) ---
     // Débord de chaque tatami sur ses voisins BRODÉS, uniquement le long des

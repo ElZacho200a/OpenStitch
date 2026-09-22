@@ -347,6 +347,10 @@ void configure_tatami_fills(AutoResult& result, const std::vector<document::Vect
         fills.push_back({i, area, normalize_row_angle(natural), vec->source_region});
     }
 
+    for (const Fill& f : fills) {
+        std::get<document::TatamiParams>(result.embroideries[f.index].params).hidden_underpath =
+            options.fill_hidden_underpath;
+    }
     if (options.auto_fill_underlay) {
         for (const Fill& f : fills) {
             auto& p = std::get<document::TatamiParams>(result.embroideries[f.index].params);
