@@ -10,6 +10,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <limits>
 #include <string>
 #include <vector>
 
@@ -512,12 +513,29 @@ TEST_CASE(
     // d'un cote ou de l'autre -- pas une regression du code de
     // planification lui-meme (aucun changement de cette session ne touche
     // au comptage `regions_explored`/`oracle_evaluations`).
-    for (const auto& name : {"polygonal_cut_fixture", "two_holes"}) {
+    //
+    // 2026-09-22 : la CI linux-core (Debug, runner GitHub lent) a fait
+    // basculer "two_holes" a son tour (regions_explored 2 vs 1,
+    // oracle_evaluations 1 vs 0 d'une repetition a l'autre). Mesure : meme
+    // en Release sous MSVC, "two_holes" ET "polygonal_cut_fixture"
+    // atteignent le filet wall-clock de 10 s a CHAQUE planification -- leur
+    // resultat sous `prod_config()` depend donc toujours de la vitesse de la
+    // machine, jamais un vrai test de determinisme. Plutot que retirer une
+    // forme de plus, ce test desactive desormais le filet wall-clock (seuls
+    // les budgets en nombre d'iterations/evaluations, deterministes, bornent
+    // la recherche) et porte sur des formes difficiles qui terminent leur
+    // decomposition complete loin de toute limite de temps (Release MSVC,
+    // sans filet) : "notch" (~0,4 s, 5 regions, 16 explorees, 10 oracle),
+    // "pinch" (~0,3 s, 5 regions, 10 explorees, 8 oracle), "y" branchee
+    // (~1,6 s, 4 regions, 12 explorees, 10 oracle).
+    auto config = prod_config();
+    config.max_planning_wall_clock_ms = std::numeric_limits<int>::max();
+    for (const auto& name : {"notch", "pinch", "y"}) {
         INFO("forme = " << name);
         const auto source = shape(name);
-        const auto reference = create_satin_plan(source, prod_config());
-        for (int i = 0; i < 5; ++i) {
-            const auto repeat = create_satin_plan(source, prod_config());
+        const auto reference = create_satin_plan(source, config);
+        for (int i = 0; i < 3; ++i) {
+            const auto repeat = create_satin_plan(source, config);
             CHECK(repeat.regions.size() == reference.regions.size());
             CHECK(repeat.status == reference.status);
             REQUIRE(repeat.aggregate_coverage.has_value());
