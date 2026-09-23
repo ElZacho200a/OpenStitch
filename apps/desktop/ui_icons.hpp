@@ -22,6 +22,7 @@ namespace openstitch::desktop::icons {
 [[nodiscard]] QIcon checkmark();
 [[nodiscard]] QIcon cancelDraw();
 
+[[nodiscard]] QIcon newProject();
 [[nodiscard]] QIcon openImage();
 [[nodiscard]] QIcon openProject();
 [[nodiscard]] QIcon save();

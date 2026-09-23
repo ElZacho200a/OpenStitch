@@ -483,6 +483,11 @@ MainWindow::~MainWindow() {
 
 void MainWindow::buildMenus() {
     auto* fileMenu = menuBar()->addMenu(tr("&Fichier"));
+    auto* newAct = fileMenu->addAction(tr("&Nouveau projet"));
+    newAct->setObjectName(QStringLiteral("action_newProject"));
+    newAct->setShortcut(QKeySequence::New);
+    connect(newAct, &QAction::triggered, this, &MainWindow::newProject);
+    fileMenu->addSeparator();
     auto* openAct = fileMenu->addAction(tr("&Ouvrir une image…"));
     openAct->setShortcut(QKeySequence::Open);
     connect(openAct, &QAction::triggered, this, &MainWindow::openImage);
@@ -774,6 +779,105 @@ void MainWindow::buildMenus() {
     });
 }
 
+void MainWindow::resetDocumentState() {
+    // Invalide les commandes différées en vol (QTimer::singleShot, cf.
+    // renderBase/MoveStitchPointCommand) : elles ne doivent jamais s'exécuter
+    // sur un document qui n'est plus celui pour lequel elles ont été construites.
+    ++documentGeneration_;
+    undoStack_.clear();
+    sequence_.reset();
+    sequenceImported_ = false;
+    editStates_.clear();
+    selectedRegion_.reset();
+    selectedObject_.reset();
+    selectedEmbroidery_.reset();
+    if (mergeAct_ != nullptr) {
+        mergeAct_->setChecked(false); // remet aussi mergeMode_ à false (cf. buildMenus)
+    }
+
+    // Modes d'édition exclusifs : décochés SANS passer par leurs slots
+    // (`project_` vient d'être remplacé mais l'affichage ne l'est pas encore —
+    // displayImage() y serait prématuré ; le refreshImage() de l'appelant s'en
+    // charge), puis cibles relâchées.
+    for (QAction* mode : {stitchEditModeAct_, satinEditModeAct_, satinGuideModeAct_,
+                          railEditModeAct_, directionGuideModeAct_}) {
+        if (mode != nullptr && mode->isChecked()) {
+            QSignalBlocker block(mode);
+            mode->setChecked(false);
+        }
+    }
+    stitchEditTarget_.reset();
+    stitchEditView_.reset();
+    satinGuideTarget_.reset();
+    selectedSatinGuide_.reset();
+    railEditTarget_.reset();
+    directionGuideTarget_.reset();
+
+    // Tracés en cours : leurs aperçus appartiennent à la scène, qui survit au
+    // changement de document — sans ça, un polygone à moitié posé resterait
+    // dessiné par-dessus le nouveau document et son prochain clic créerait un
+    // objet mêlant les deux.
+    cancelPolygonDraw();
+    cancelFreeformDraw();
+    cancelSatinColumnDraw();
+    cancelBezierDraw();
+    cancelDirectionGuideDraw();
+    updateSnapIndicator(std::nullopt);
+    if (cutLinePreviewItem_ != nullptr) {
+        scene_->removeItem(cutLinePreviewItem_);
+        delete cutLinePreviewItem_;
+        cutLinePreviewItem_ = nullptr;
+    }
+
+    // Simulation : jamais laissée en lecture sur une séquence qui disparaît.
+    // (updateSimulationRange() remettra l'étiquette et les bornes en phase.)
+    if (simTimer_ != nullptr) {
+        simTimer_->stop();
+    }
+    if (simPlayAct_ != nullptr && simPlayAct_->isChecked()) {
+        QSignalBlocker block(simPlayAct_);
+        simPlayAct_->setChecked(false);
+        simPlayAct_->setText(tr("▶ Lecture"));
+    }
+    simStep_ = -1;
+}
+
+bool MainWindow::confirmDiscardChanges(const QString& question) {
+    if (!isWindowModified()) {
+        return true;
+    }
+    // Libellés explicites plutôt que les libellés standard de Qt : le reste de
+    // l'interface est en français sans dépendre des traductions Qt installées
+    // (HP-I18N-001 n'existe pas encore).
+    QMessageBox box(QMessageBox::Warning, tr("Modifications non enregistrées"), question,
+                    QMessageBox::Save | QMessageBox::Discard | QMessageBox::Cancel, this);
+    box.button(QMessageBox::Save)->setText(tr("Enregistrer"));
+    box.button(QMessageBox::Discard)->setText(tr("Ne pas enregistrer"));
+    box.button(QMessageBox::Cancel)->setText(tr("Annuler"));
+    box.setDefaultButton(QMessageBox::Save);
+    box.exec();
+    const auto answer = box.standardButton(box.clickedButton());
+    if (answer == QMessageBox::Save) {
+        saveProject();
+        // Enregistrement annulé (dialogue de fichier fermé) ou en échec : le
+        // document reste modifié, donc on n'enchaîne pas sur sa destruction.
+        return !isWindowModified();
+    }
+    return answer == QMessageBox::Discard;
+}
+
+void MainWindow::newProject() {
+    if (!confirmDiscardChanges(
+            tr("Le projet a été modifié. Enregistrer avant de créer un nouveau projet ?"))) {
+        return;
+    }
+    // Un `Project` par défaut passe par le même chemin qu'un projet chargé :
+    // aucune réinitialisation spécifique à maintenir en double ici.
+    applyLoadedProject(document::Project{});
+    setTool(Tool::Select);
+    statusBar()->showMessage(tr("Nouveau projet — ouvrez une image ou dessinez une forme."));
+}
+
 void MainWindow::openImage() {
     // Même point d'entrée pour une image ET un SVG (demande utilisateur,
     // 2026-09-11) : ce qui compte pour l'utilisateur est "ouvrir mon
@@ -813,24 +917,9 @@ void MainWindow::openImage() {
     }
 
     project_ = document::Project{};
-    ++documentGeneration_; // nouveau document : invalide les commandes différées en vol
     project_.mm_per_px = document::mm_per_pixel(*placement, loaded->width);
     project_.original = std::move(*loaded);
-    undoStack_.clear();
-    sequence_.reset();
-    sequenceImported_ = false;
-    selectedRegion_.reset();
-    selectedObject_.reset();
-    // Nouveau document : sortie propre du mode d'édition des points (Lot 8.2),
-    // sans passer par onStitchEditModeToggled (project_ n'est pas encore
-    // rafraîchi -- displayImage() y serait prématuré, refreshImage() ci-dessous
-    // s'en charge).
-    if (stitchEditModeAct_ != nullptr) {
-        QSignalBlocker block(stitchEditModeAct_);
-        stitchEditModeAct_->setChecked(false);
-    }
-    stitchEditTarget_.reset();
-    stitchEditView_.reset();
+    resetDocumentState();
 
     refreshImage();
     view_->fitCanvas();
@@ -853,7 +942,6 @@ void MainWindow::openSvg(const QString& file) {
     // seule la source diffère (objets vectoriels directement construits,
     // jamais d'image/segmentation/vectorisation à traverser).
     project_ = document::Project{};
-    ++documentGeneration_;  // nouveau document : invalide les commandes différées en vol
     std::vector<document::VectorObject> objects;
     objects.reserve(imported->objects.size());
     for (auto& pathSet : imported->objects) {
@@ -866,17 +954,7 @@ void MainWindow::openSvg(const QString& file) {
     }
     const std::size_t imported_count = objects.size();
     project_.vector_objects = std::move(objects);
-    undoStack_.clear();
-    sequence_.reset();
-    sequenceImported_ = false;
-    selectedRegion_.reset();
-    selectedObject_.reset();
-    if (stitchEditModeAct_ != nullptr) {
-        QSignalBlocker block(stitchEditModeAct_);
-        stitchEditModeAct_->setChecked(false);
-    }
-    stitchEditTarget_.reset();
-    stitchEditView_.reset();
+    resetDocumentState();
 
     showVectorsAct_->setChecked(true);
     refreshImage();
@@ -1214,22 +1292,10 @@ void MainWindow::closeEvent(QCloseEvent* event) {
         s.setValue(QStringLiteral("ui/geometry"), saveGeometry());
         s.setValue(QStringLiteral("ui/windowState"), saveState());
     }
-    if (!isWindowModified()) {
-        event->accept();
-        return;
-    }
-    const auto answer =
-        QMessageBox::warning(this, tr("Modifications non enregistrées"),
-                             tr("Le projet a été modifié. Enregistrer avant de quitter ?"),
-                             QMessageBox::Save | QMessageBox::Discard | QMessageBox::Cancel);
-    if (answer == QMessageBox::Save) {
-        saveProject();
-        event->setAccepted(!isWindowModified()); // annulé dans le dialogue -> reste ouvert
-    } else if (answer == QMessageBox::Discard) {
-        event->accept();
-    } else {
-        event->ignore();
-    }
+    // Même garde que « Nouveau projet » (HP-FILE-001) : enregistrement annulé
+    // ou refusé -> la fenêtre reste ouverte.
+    event->setAccepted(
+        confirmDiscardChanges(tr("Le projet a été modifié. Enregistrer avant de quitter ?")));
 }
 
 void MainWindow::setHoopSize() {
@@ -4895,6 +4961,7 @@ void MainWindow::buildMainToolbar() {
         connect(act, &QAction::triggered, this, slot);
         return act;
     };
+    add(icons::newProject(), tr("Nouveau projet"), &MainWindow::newProject);
     add(icons::openImage(), tr("Ouvrir une image"), &MainWindow::openImage);
     add(icons::openProject(), tr("Ouvrir un projet"), &MainWindow::loadProject);
     add(icons::save(), tr("Enregistrer le projet"), &MainWindow::saveProject);
@@ -6138,22 +6205,24 @@ void MainWindow::loadProject() {
 
 void MainWindow::applyLoadedProject(document::Project project) {
     project_ = std::move(project);
-    ++documentGeneration_; // projet remplacé : invalide les commandes différées en vol
-    undoStack_.clear();
-    sequence_.reset();
-    sequenceImported_ = false;
-    selectedRegion_.reset();
-    selectedObject_.reset();
-    selectedEmbroidery_.reset();
-    // Nouveau projet chargé : sortie propre du mode d'édition des points
-    // (Lot 8.2), même raison que openImage() ci-dessus.
-    if (stitchEditModeAct_ != nullptr) {
-        QSignalBlocker block(stitchEditModeAct_);
-        stitchEditModeAct_->setChecked(false);
-    }
-    stitchEditTarget_.reset();
-    stitchEditView_.reset();
+    resetDocumentState();
     refreshImage();
+    // refreshImage() sort tôt quand le document n'a pas d'image (cf. son début) :
+    // les panneaux garderaient alors les entrées du document précédent. Un
+    // remplacement de document les rafraîchit toujours — c'est visible dès
+    // « Nouveau projet » après un travail en cours (HP-FILE-001).
+    if (!project_.hasImage()) {
+        if (simToolbar_ != nullptr) {
+            updateSimulationRange();
+        }
+        if (orderDock_ != nullptr) {
+            refreshOrderPanel();
+        }
+        if (filterDock_ != nullptr) {
+            refreshFilterPanel();
+        }
+        refreshDocumentPanel();
+    }
     view_->fitCanvas();
     updateActions();
     setWindowModified(false); // projet fraîchement chargé = propre
@@ -6242,12 +6311,9 @@ void MainWindow::importDst() {
     }
 
     project_ = document::Project{};
-    ++documentGeneration_; // document remplacé : invalide les commandes différées en vol
-    undoStack_.clear();
+    resetDocumentState();
     processed_ = {};
-    selectedRegion_.reset();
-    selectedObject_.reset();
-    sequence_ = std::move(*seq);
+    sequence_ = std::move(*seq); // la séquence importée EST la vérité (§17)
     sequenceImported_ = true;
     showStitchesAct_->setChecked(true);
     updateSimulationRange();

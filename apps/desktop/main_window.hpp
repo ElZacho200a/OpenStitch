@@ -76,6 +76,12 @@ private:
     enum class SatinCoverageChoice { ContinuePartial, UseTatami, Cancel };
 
 private slots:
+    // Document vierge (Ctrl+N, HP-FILE-001) : garde des modifications non
+    // enregistrées, puis remplacement complet du document par un `Project`
+    // par défaut via `applyLoadedProject` — un seul chemin de remplacement de
+    // document, donc jamais un mode d'édition ou un tracé en cours qui
+    // survivrait au nouveau document.
+    void newProject();
     void openImage();
     void undo();
     void redo();
@@ -200,6 +206,20 @@ private:
     // Applique un projet déjà construit (charge depuis un fichier ou fixture
     // de test) : remplace le document, réinitialise undo/sélection, rafraîchit.
     void applyLoadedProject(document::Project project);
+    // Remet à zéro tout l'état d'édition attaché au document COURANT (pile
+    // d'annulation, séquence en cache, sélections, modes d'édition exclusifs,
+    // tracés en cours, simulation) et invalide les commandes différées en vol.
+    // Ne touche jamais `project_` : l'appelant l'a déjà remplacé (ou est sur le
+    // point de le faire). Point unique de réinitialisation partagé par tous les
+    // chemins « nouveau document » (Nouveau, ouvrir image/SVG/projet, import
+    // DST) — chacun oubliait auparavant une partie de l'état (sélection de
+    // broderie, modes satin/guides, polygone en cours…).
+    void resetDocumentState();
+    // Garde commune aux actions destructrices de document (Nouveau, Quitter) :
+    // `true` si l'on peut continuer (document propre, enregistré à la demande,
+    // ou abandon explicite), `false` si l'utilisateur annule — ou si
+    // l'enregistrement demandé n'a pas abouti.
+    [[nodiscard]] bool confirmDiscardChanges(const QString& question);
     // Objet de broderie ciblé par la sélection courante (broderie choisie
     // dans l'ordre de couture, sinon remplissage rattaché à l'objet vectoriel
     // sélectionné au canevas ; nullptr sinon). Résolution partagée par

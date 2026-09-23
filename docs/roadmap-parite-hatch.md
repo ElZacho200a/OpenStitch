@@ -1505,12 +1505,35 @@ Aujourd'hui : ouvrir image/SVG, enregistrer `.osp` (**le chemin est redemandé
 à chaque Ctrl+S**, `MainWindow::saveProject`), ouvrir `.osp`, import/export
 DST et DXF, indicateur « modifié » et garde à la fermeture.
 
-### HP-FILE-001 — Nouveau projet (Ctrl+N) [P0] — ☐ À faire
+### HP-FILE-001 — Nouveau projet (Ctrl+N) [P0] — ☑ Fait (2026-09-23)
 - État OpenStitch : aucune action « Nouveau » ; il faut relancer ou ouvrir
   autre chose.
 - À faire : action Nouveau (avec garde des modifications non enregistrées),
   réinitialisation propre de tous les modes d'édition (cf. la sortie propre du
   mode d'édition des points déjà faite au chargement).
+- Livré : action « Fichier ▸ Nouveau projet » (Ctrl+N, `action_newProject`) +
+  bouton de barre principale, avec garde des modifications non enregistrées
+  (`MainWindow::confirmDiscardChanges`, Enregistrer / Ne pas enregistrer /
+  Annuler — garde désormais partagée avec la fermeture de la fenêtre).
+  Réinitialisation centralisée dans `MainWindow::resetDocumentState()`, appelée
+  par TOUS les chemins de remplacement de document (Nouveau, ouvrir image,
+  ouvrir SVG, ouvrir projet, importer DST) : pile d'annulation, séquence en
+  cache, états d'édition, sélections, mode fusion, les cinq modes d'édition
+  exclusifs et leurs cibles, les tracés en cours (polygone/main levée/colonne
+  satin/Bézier/guides de direction) et leurs aperçus de scène, la simulation.
+  Chacun de ces chemins n'en réinitialisait auparavant qu'une partie (mode
+  satin, sélection de broderie et tracé en cours survivaient au changement de
+  document). `applyLoadedProject` rafraîchit aussi explicitement les panneaux
+  quand le document n'a pas d'image (`refreshImage()` sort tôt dans ce cas) —
+  sans quoi le panneau Document gardait les objets du document précédent.
+  Tests : `newProjectActionIsInFileMenuWithStandardShortcut`,
+  `newProjectResetsDocumentEditModesAndPanels`,
+  `newProjectOnModifiedDocumentCancelsOrDiscardsAsChosen`
+  (`tests/unit/desktop/test_main_window.cpp`).
+- Reste (hors entrée) : le chemin « Enregistrer » de la garde rouvre toujours un
+  sélecteur de fichier tant que HP-FILE-002 n'est pas fait ; un document sans
+  image ne régénère toujours pas de points (`refreshImage` sort tôt), limite
+  indépendante de cette entrée.
 
 ### HP-FILE-002 — Enregistrer / Enregistrer sous [P0] — ☐ À faire
 - État OpenStitch : « Enregistrer le projet… » ouvre toujours un dialogue.
@@ -1872,3 +1895,4 @@ ci-dessus doit les respecter :
 | Date | Qui | Changement |
 |---|---|---|
 | 2026-09-22 | Claude (session d'audit) | Création : inventaire complet vérifié dans le code. |
+| 2026-09-23 | Claude (session pilotée) | HP-FILE-001 ☑ : action « Nouveau projet » (Ctrl+N) avec garde des modifications non enregistrées et réinitialisation centralisée de tout l'état d'édition de la fenêtre. |

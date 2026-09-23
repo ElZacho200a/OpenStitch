@@ -626,6 +626,14 @@ private slots:
     // une pastille qui ne disparaissait jamais.
     void emptyStateHidesOnceContentExistsEvenWithoutImage();
 
+    // HP-FILE-001 (roadmap de parité Hatch) : « Nouveau projet » (Ctrl+N).
+    // L'état d'édition vit dans la FENÊTRE, pas dans le document (modes
+    // exclusifs, tracé en cours, sélections, simulation) : sans
+    // réinitialisation explicite, il survivrait au nouveau document.
+    void newProjectActionIsInFileMenuWithStandardShortcut();
+    void newProjectResetsDocumentEditModesAndPanels();
+    void newProjectOnModifiedDocumentCancelsOrDiscardsAsChosen();
+
 private:
     // Active le mode d'édition (sélection directe via selectedEmbroidery_,
     // pas via le signal DocumentPanel::embroiderySelected -- qui sélectionne
@@ -3560,6 +3568,89 @@ void MainWindowTest::processedImageCacheFollowsOpsUndoRedoAndProjectChange() {
     const auto expected = apply_pipeline(second.original, second.ops);
     QVERIFY(expected.has_value());
     QVERIFY(window.processed_.rgba == expected->rgba);
+}
+
+void MainWindowTest::newProjectActionIsInFileMenuWithStandardShortcut() {
+    MainWindow window;
+    auto* act = window.findChild<QAction*>(QStringLiteral("action_newProject"));
+    QVERIFY(act != nullptr);
+    QCOMPARE(act->shortcut(), QKeySequence(QKeySequence::New));
+}
+
+void MainWindowTest::newProjectResetsDocumentEditModesAndPanels() {
+    MainWindow window;
+    const Fixture fx = buildFixture();
+    window.applyLoadedProject(fx.project);
+    QVERIFY(!window.isWindowModified()); // projet fraîchement chargé = propre
+    const auto generationAfterLoad = window.documentGeneration_;
+
+    auto* docPanel = window.findChild<DocumentPanel*>();
+    auto* view = window.findChild<CanvasView*>();
+    QVERIFY(docPanel != nullptr);
+    QVERIFY(view != nullptr);
+    QVERIFY(objectsList(*docPanel)->topLevelItemCount() > 0);
+
+    // État d'édition typique en cours au moment du « Nouveau » : objets
+    // sélectionnés, mode d'édition des points actif sur une cible, polygone à
+    // moitié posé (aperçu vivant dans la scène, qui survit au document).
+    window.selectedObject_ = fx.vectorId;
+    window.selectedEmbroidery_ = fx.embroideryId;
+    window.updateActions();
+    auto* editAct = window.findChild<QAction*>(QStringLiteral("action_stitchEditMode"));
+    QVERIFY(editAct != nullptr);
+    editAct->setChecked(true);
+    QVERIFY(window.stitchEditTarget_.has_value());
+
+    window.setTool(Tool::DrawPolygon);
+    view->canvasClickedMm(QPointF(0.0, 0.0));
+    view->canvasClickedMm(QPointF(10.0, 0.0));
+    view->canvasClickedMm(QPointF(10.0, -10.0));
+    QCOMPARE(window.pendingPolygonVertices_.size(), std::size_t{3});
+    QVERIFY(window.polygonPreviewItem_ != nullptr);
+
+    window.newProject(); // document propre : aucun dialogue de garde
+
+    QVERIFY(!window.project_.hasImage());
+    QVERIFY(window.project_.vector_objects.empty());
+    QVERIFY(window.project_.embroidery_objects.empty());
+    QVERIFY(!window.project_.segmentation.has_value());
+    QVERIFY(!window.undoStack_.canUndo());
+    QVERIFY(!window.sequence_.has_value());
+    QVERIFY(!window.sequenceImported_);
+    QVERIFY(!window.selectedObject_.has_value());
+    QVERIFY(!window.selectedEmbroidery_.has_value());
+    QVERIFY(!window.selectedRegion_.has_value());
+    QVERIFY(!editAct->isChecked());
+    QVERIFY(!window.stitchEditTarget_.has_value());
+    QVERIFY(!window.stitchEditView_.has_value());
+    QVERIFY(window.pendingPolygonVertices_.empty());
+    QVERIFY(window.polygonPreviewItem_ == nullptr);
+    QCOMPARE(window.currentTool_, Tool::Select);
+    QCOMPARE(window.simStep_, -1);
+    // Les panneaux sont vidés : refreshImage() sort tôt sans image, c'est
+    // applyLoadedProject qui doit les rafraîchir dans ce cas.
+    QCOMPARE(objectsList(*docPanel)->topLevelItemCount(), 0);
+    QVERIFY(window.documentGeneration_ != generationAfterLoad);
+    QVERIFY(!window.isWindowModified()); // document vierge = propre
+}
+
+void MainWindowTest::newProjectOnModifiedDocumentCancelsOrDiscardsAsChosen() {
+    MainWindow window;
+    const Fixture fx = buildFixture();
+    window.applyLoadedProject(fx.project);
+    window.setWindowModified(true); // travail non enregistré en cours
+
+    // Annuler : le document en cours est intact et toujours signalé modifié.
+    clickModalDialogButton(&window, QStringLiteral("Annuler"), 1);
+    window.newProject();
+    QCOMPARE(window.project_.vector_objects.size(), std::size_t{1});
+    QVERIFY(window.isWindowModified());
+
+    // Ne pas enregistrer : le document est bien remplacé par un document vierge.
+    clickModalDialogButton(&window, QStringLiteral("Ne pas enregistrer"), 1);
+    window.newProject();
+    QVERIFY(window.project_.vector_objects.empty());
+    QVERIFY(!window.isWindowModified());
 }
 
 } // namespace openstitch::desktop

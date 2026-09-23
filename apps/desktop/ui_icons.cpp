@@ -188,6 +188,22 @@ QIcon satinCutLine() {
     });
 }
 
+QIcon newProject() {
+    return make([](QPainter& p) {
+        // Feuille vierge à coin replié.
+        QPainterPath sheet;
+        sheet.moveTo(8, 5);
+        sheet.lineTo(19, 5);
+        sheet.lineTo(24, 10);
+        sheet.lineTo(24, 27);
+        sheet.lineTo(8, 27);
+        sheet.closeSubpath();
+        p.drawPath(sheet);
+        p.drawLine(19, 5, 19, 10);
+        p.drawLine(19, 10, 24, 10);
+    });
+}
+
 QIcon openImage() {
     return make([](QPainter& p) {
         p.drawRect(6, 9, 20, 15);

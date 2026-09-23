@@ -52,12 +52,23 @@ de gros motifs.
 
 | Action | Raccourci | Effet |
 |---|---|---|
+| Nouveau projet | Ctrl+N | Repart d'un document vierge (voir ci-dessous) |
 | Ouvrir une image… | Ctrl+O | Charge PNG/JPEG/BMP/TIFF puis demande la taille physique |
 | Enregistrer le projet… | Ctrl+S | Écrit un fichier `.osp` (tout le document) |
 | Ouvrir un projet… | — | Recharge un `.osp` |
 | Exporter en DST… | — | Écrit un fichier `.dst` (points uniquement) |
 | Importer un DST… | — | Relit un `.dst` comme séquence de points |
 | Quitter | Ctrl+Q | Ferme l'application |
+
+**Nouveau projet** : si le document courant a été modifié, une garde propose
+d'enregistrer, d'abandonner les modifications ou d'annuler — la même que celle
+de la fermeture de la fenêtre. Le document repart à vide (aucune image, aucun
+objet, aucune région), la pile Annuler/Rétablir est vidée, et **tout l'état
+d'édition de la fenêtre est relâché** : sélections, mode d'édition des points,
+modes satin (barreaux et rails), guides de direction, tracé en cours
+(polygone, main levée, colonne satin, Bézier) et simulation. L'outil revient à
+Sélection. Cette réinitialisation est partagée par tous les chemins qui
+remplacent le document (ouvrir une image, un SVG, un projet, importer un DST).
 
 **Import** : le dialogue affiche un aperçu, les dimensions en pixels, la
 résolution **mm/pixel** en direct, la taille du cadre, et **alerte si l'image
@@ -258,6 +269,7 @@ constitue pas une garantie absolue en version 0.1.0.
 
 | Raccourci | Action |
 |---|---|
+| Ctrl+N | Nouveau projet (garde des modifications non enregistrées) |
 | Ctrl+O / Ctrl+S | Ouvrir une image / Enregistrer le projet |
 | Ctrl+Z / Ctrl+Y | Annuler / Rétablir |
 | Suppr | Supprimer la région sélectionnée |
