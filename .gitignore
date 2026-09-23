@@ -25,3 +25,6 @@ sam-worker/models/
 # OS
 Thumbs.db
 Desktop.ini
+
+# Liza : worktrees isolees par tache (jamais commit)
+.worktrees/

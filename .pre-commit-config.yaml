@@ -1,0 +1,11 @@
+# Miroir local du job CI "format" (.github/workflows/ci.yml) : même commande,
+# même mode --dry-run --Werror, pour attraper les problèmes de formatage
+# avant le push plutôt qu'en CI.
+repos:
+  - repo: local
+    hooks:
+      - id: clang-format-check
+        name: clang-format (vérification, sans modification)
+        entry: clang-format --dry-run --Werror
+        language: system
+        files: \.(cpp|hpp)$
