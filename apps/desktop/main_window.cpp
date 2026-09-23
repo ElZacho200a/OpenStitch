@@ -336,7 +336,7 @@ constexpr double kMinDrawExtentMm = 0.5;
 constexpr Micrometers kFreeformSimplifyTolerance{300};
 
 MainWindow::MainWindow() {
-    setWindowTitle(QStringLiteral("%1 [*]").arg(QString::fromUtf8(kAppName)));
+    updateWindowTitle();
     resize(1100, 800);
 
     scene_ = new QGraphicsScene(this);
@@ -492,9 +492,16 @@ void MainWindow::buildMenus() {
     openAct->setShortcut(QKeySequence::Open);
     connect(openAct, &QAction::triggered, this, &MainWindow::openImage);
     fileMenu->addSeparator();
-    auto* saveProjectAct = fileMenu->addAction(tr("&Enregistrer le projet…"));
+    // Pas de « … » sur Enregistrer : il n'ouvre un dialogue que pour un
+    // document encore sans fichier (HP-FILE-002).
+    auto* saveProjectAct = fileMenu->addAction(tr("&Enregistrer le projet"));
+    saveProjectAct->setObjectName(QStringLiteral("action_saveProject"));
     saveProjectAct->setShortcut(QKeySequence::Save);
     connect(saveProjectAct, &QAction::triggered, this, &MainWindow::saveProject);
+    auto* saveProjectAsAct = fileMenu->addAction(tr("Enregistrer le projet &sous…"));
+    saveProjectAsAct->setObjectName(QStringLiteral("action_saveProjectAs"));
+    saveProjectAsAct->setShortcut(QKeySequence::SaveAs);
+    connect(saveProjectAsAct, &QAction::triggered, this, &MainWindow::saveProjectAs);
     auto* loadProjectAct = fileMenu->addAction(tr("Ou&vrir un projet…"));
     connect(loadProjectAct, &QAction::triggered, this, &MainWindow::loadProject);
     fileMenu->addSeparator();
@@ -784,6 +791,11 @@ void MainWindow::resetDocumentState() {
     // renderBase/MoveStitchPointCommand) : elles ne doivent jamais s'exécuter
     // sur un document qui n'est plus celui pour lequel elles ont été construites.
     ++documentGeneration_;
+    // Le nouveau document n'est rattaché à aucun fichier tant qu'il n'a pas
+    // été enregistré (ou qu'une ouverture n'a pas réinstallé la cible juste
+    // après) : sans ça, un Ctrl+S après « Nouveau » écraserait le projet
+    // précédent sans rien demander (HP-FILE-002).
+    setCurrentProjectPath(QString());
     undoStack_.clear();
     sequence_.reset();
     sequenceImported_ = false;
@@ -6162,25 +6174,52 @@ void MainWindow::showStatistics() {
 }
 
 void MainWindow::saveProject() {
+    // Document déjà rattaché à un fichier : Ctrl+S écrit dessus, sans dialogue
+    // (le sélecteur systématique était le défaut corrigé par HP-FILE-002).
+    if (currentProjectPath_.isEmpty()) {
+        saveProjectAs();
+        return;
+    }
+    (void)saveProjectToPath(currentProjectPath_);
+}
+
+void MainWindow::saveProjectAs() {
     if (!project_.hasImage() && project_.vector_objects.empty()) {
         QMessageBox::information(this, tr("Rien à enregistrer"),
                                  tr("Ouvrez une image et créez des objets d'abord."));
         return;
     }
-    const QString file = QFileDialog::getSaveFileName(this, tr("Enregistrer le projet"), QString(),
-                                                      tr("Projet OpenStitch (*.osp)"));
+    // Le dialogue repart du fichier courant quand il y en a un (dossier et nom
+    // présélectionnés), comportement attendu d'un « Enregistrer sous ».
+    const QString filter = tr("Projet OpenStitch (*.osp)");
+    QString file = QFileDialog::getSaveFileName(this, tr("Enregistrer le projet sous"),
+                                                currentProjectPath_, filter);
     if (file.isEmpty()) {
         return;
     }
+    // Certaines plateformes ne complètent pas l'extension du filtre choisi ;
+    // sans elle, le fichier ne se retrouve plus par le filtre à l'ouverture.
+    if (QFileInfo(file).suffix().isEmpty()) {
+        file += QStringLiteral(".osp");
+    }
+    (void)saveProjectToPath(file);
+}
+
+bool MainWindow::saveProjectToPath(const QString& file) {
+    // L'écriture atomique (temporaire + renommage) est assurée par
+    // project_io::save_project : un échec en cours d'écriture laisse le
+    // fichier précédent intact.
     const auto written =
         project_io::save_project(std::filesystem::path(file.toStdWString()), project_);
     if (!written) {
         QMessageBox::warning(this, tr("Enregistrement impossible"),
                              QString::fromStdString(written.error().message));
-        return;
+        return false;
     }
+    setCurrentProjectPath(file);
     statusBar()->showMessage(tr("Projet enregistré : %1").arg(QFileInfo(file).fileName()));
     setWindowModified(false);
+    return true;
 }
 
 void MainWindow::loadProject() {
@@ -6189,18 +6228,42 @@ void MainWindow::loadProject() {
     if (file.isEmpty()) {
         return;
     }
+    (void)openProjectFile(file);
+}
+
+bool MainWindow::openProjectFile(const QString& file) {
     auto loaded = project_io::load_project(std::filesystem::path(file.toStdWString()));
     if (!loaded) {
         QMessageBox::warning(this, tr("Ouverture impossible"),
                              QString::fromStdString(loaded.error().message));
-        return;
+        return false;
     }
     applyLoadedProject(std::move(*loaded));
+    // Après applyLoadedProject : sa réinitialisation efface la cible
+    // d'enregistrement (tout remplacement de document l'oublie), c'est
+    // l'ouverture qui en installe une nouvelle.
+    setCurrentProjectPath(file);
     statusBar()->showMessage(tr("Projet ouvert : %1 — %2 objet(s) vectoriel(s), %3 objet(s) de "
                                 "broderie")
                                  .arg(QFileInfo(file).fileName())
                                  .arg(project_.vector_objects.size())
                                  .arg(project_.embroidery_objects.size()));
+    return true;
+}
+
+void MainWindow::setCurrentProjectPath(const QString& file) {
+    currentProjectPath_ = file;
+    updateWindowTitle();
+}
+
+void MainWindow::updateWindowTitle() {
+    // Le marqueur [*] est obligatoire pour que setWindowModified() ait un
+    // effet : il est remplacé par l'indicateur de modification de la plateforme.
+    QString document = tr("Sans titre");
+    if (!currentProjectPath_.isEmpty()) {
+        document = QFileInfo(currentProjectPath_).fileName();
+    }
+    setWindowTitle(QStringLiteral("%1[*] — %2").arg(document, QString::fromUtf8(kAppName)));
 }
 
 void MainWindow::applyLoadedProject(document::Project project) {

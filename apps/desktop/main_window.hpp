@@ -166,7 +166,12 @@ private slots:
     // combiner avec le travail en cours, pas un motif de broderie fini.
     void importDxf();
     void exportDxf();
+    // Enregistre sur le chemin courant sans rien demander (Ctrl+S) ; bascule
+    // sur « Enregistrer sous » tant qu'aucun chemin n'est connu (HP-FILE-002).
     void saveProject();
+    // Demande toujours un chemin, puis l'adopte comme chemin courant
+    // (Ctrl+Maj+S).
+    void saveProjectAs();
     void loadProject();
     void runAnalysis();
     void toggleSimulation();
@@ -220,6 +225,20 @@ private:
     // ou abandon explicite), `false` si l'utilisateur annule — ou si
     // l'enregistrement demandé n'a pas abouti.
     [[nodiscard]] bool confirmDiscardChanges(const QString& question);
+    // Écrit le document dans `file` (écriture atomique côté project_io) et,
+    // en cas de succès, adopte ce chemin comme cible d'enregistrement.
+    // `false` si l'écriture a échoué (message déjà affiché).
+    [[nodiscard]] bool saveProjectToPath(const QString& file);
+    // Charge un `.osp` déjà désigné (sans dialogue) : remplace le document et
+    // adopte le chemin comme cible d'enregistrement. Seam de test du chemin
+    // « ouvrir un projet », et futur point d'entrée des fichiers récents /
+    // de l'ouverture par ligne de commande (HP-FILE-003, HP-FILE-005).
+    bool openProjectFile(const QString& file);
+    // Chemin `.osp` du document courant (vide = document jamais enregistré) ;
+    // met le titre de la fenêtre en phase. Remis à vide par
+    // resetDocumentState() : tout remplacement de document oublie la cible.
+    void setCurrentProjectPath(const QString& file);
+    void updateWindowTitle();
     // Objet de broderie ciblé par la sélection courante (broderie choisie
     // dans l'ordre de couture, sinon remplissage rattaché à l'objet vectoriel
     // sélectionné au canevas ; nullptr sinon). Résolution partagée par
@@ -407,6 +426,9 @@ private:
     void updateActions();
 
     document::Project project_;
+    // Fichier `.osp` auquel le document est rattaché (vide tant qu'il n'a
+    // jamais été enregistré) : cible de Ctrl+S et nom affiché dans le titre.
+    QString currentProjectPath_;
     commands::UndoStack undoStack_;
     image::Image processed_; // dernier résultat du pipeline (pour l'affichage)
     // Entrées exactes ayant produit `processed_` (clé de contenu du cache,

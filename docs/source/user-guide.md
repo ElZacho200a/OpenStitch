@@ -54,7 +54,8 @@ de gros motifs.
 |---|---|---|
 | Nouveau projet | Ctrl+N | Repart d'un document vierge (voir ci-dessous) |
 | Ouvrir une image… | Ctrl+O | Charge PNG/JPEG/BMP/TIFF puis demande la taille physique |
-| Enregistrer le projet… | Ctrl+S | Écrit un fichier `.osp` (tout le document) |
+| Enregistrer le projet | Ctrl+S | Réécrit le `.osp` courant (demande où enregistrer la première fois) |
+| Enregistrer le projet sous… | Ctrl+Maj+S | Écrit le document dans un nouveau `.osp`, qui devient le fichier courant |
 | Ouvrir un projet… | — | Recharge un `.osp` |
 | Exporter en DST… | — | Écrit un fichier `.dst` (points uniquement) |
 | Importer un DST… | — | Relit un `.dst` comme séquence de points |
@@ -76,8 +77,19 @@ dépasse le cadre**. **Export DST** : un **résumé** (dimensions, points, sauts
 coupes, changements de couleur, fil estimé, cadre, dépassement éventuel) est
 présenté avant écriture, avec un rappel que le DST ne conserve pas les objets.
 
-Le titre de la fenêtre affiche un indicateur **modifié** (`*`) ; quitter avec des
-modifications non enregistrées propose **Enregistrer / Ignorer / Annuler**.
+**Enregistrer** : le document retient le fichier `.osp` auquel il est rattaché
+(celui qu'on vient d'ouvrir ou d'enregistrer). Ctrl+S réécrit ce fichier
+directement ; le sélecteur n'apparaît que pour un document encore sans fichier,
+ou via **Enregistrer sous…** (Ctrl+Maj+S), qui adopte ensuite le nouveau
+fichier. Tout changement de document (Nouveau, ouvrir une image/un SVG/un
+projet, importer un DST) oublie ce rattachement, pour qu'un Ctrl+S ne puisse
+jamais écraser le projet précédent. L'écriture est **atomique** (fichier
+temporaire puis renommage) : une coupure en cours d'enregistrement ne détruit
+pas le `.osp` existant.
+
+Le titre de la fenêtre affiche le nom du fichier courant (ou « Sans titre ») et
+un indicateur **modifié** (`*`) ; quitter avec des modifications non
+enregistrées propose **Enregistrer / Ignorer / Annuler**.
 
 ## Menu Édition
 
@@ -270,7 +282,8 @@ constitue pas une garantie absolue en version 0.1.0.
 | Raccourci | Action |
 |---|---|
 | Ctrl+N | Nouveau projet (garde des modifications non enregistrées) |
-| Ctrl+O / Ctrl+S | Ouvrir une image / Enregistrer le projet |
+| Ctrl+O / Ctrl+S | Ouvrir une image / Enregistrer le projet (sans redemander le chemin) |
+| Ctrl+Maj+S | Enregistrer le projet sous… |
 | Ctrl+Z / Ctrl+Y | Annuler / Rétablir |
 | Suppr | Supprimer la région sélectionnée |
 | Ctrl++ / Ctrl+- / Ctrl+0 | Zoom avant / arrière / ajuster |

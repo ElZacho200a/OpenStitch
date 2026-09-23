@@ -23,6 +23,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <filesystem>
 
 #include "canvas_view.hpp"
 #include "document_panel.hpp"
@@ -31,6 +32,7 @@
 #include "node_handle.hpp"
 #include "openstitch/commands/project_commands.hpp"
 #include "openstitch/document/project.hpp"
+#include "openstitch/project_io/project_io.hpp"
 #include "openstitch/stitch_generation/overrides.hpp"
 #include "properties_panel.hpp"
 #include "satin_guide_item.hpp"
@@ -633,6 +635,11 @@ private slots:
     void newProjectActionIsInFileMenuWithStandardShortcut();
     void newProjectResetsDocumentEditModesAndPanels();
     void newProjectOnModifiedDocumentCancelsOrDiscardsAsChosen();
+
+    // HP-FILE-002 — chemin d'enregistrement mémorisé.
+    void saveActionsAreInFileMenuWithStandardShortcuts();
+    void savingAnOpenedProjectRewritesItWithoutAskingAPath();
+    void newProjectForgetsTheSaveTargetAndResetsTheTitle();
 
 private:
     // Active le mode d'édition (sélection directe via selectedEmbroidery_,
@@ -3651,6 +3658,73 @@ void MainWindowTest::newProjectOnModifiedDocumentCancelsOrDiscardsAsChosen() {
     window.newProject();
     QVERIFY(window.project_.vector_objects.empty());
     QVERIFY(!window.isWindowModified());
+}
+
+void MainWindowTest::saveActionsAreInFileMenuWithStandardShortcuts() {
+    MainWindow window;
+    auto* save = window.findChild<QAction*>(QStringLiteral("action_saveProject"));
+    auto* saveAs = window.findChild<QAction*>(QStringLiteral("action_saveProjectAs"));
+    QVERIFY(save != nullptr);
+    QVERIFY(saveAs != nullptr);
+    QCOMPARE(save->shortcut(), QKeySequence(QKeySequence::Save));
+    QCOMPARE(saveAs->shortcut(), QKeySequence(QKeySequence::SaveAs));
+    // Document jamais enregistré : aucune cible, et le titre l'annonce.
+    QVERIFY(window.currentProjectPath_.isEmpty());
+    QVERIFY(window.windowTitle().contains(QStringLiteral("Sans titre")));
+}
+
+void MainWindowTest::savingAnOpenedProjectRewritesItWithoutAskingAPath() {
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    const QString path = dir.filePath(QStringLiteral("projet.osp"));
+    const std::filesystem::path fsPath(path.toStdWString());
+    const Fixture fx = buildFixture();
+    QVERIFY(project_io::save_project(fsPath, fx.project).has_value());
+
+    MainWindow window;
+    QVERIFY(window.openProjectFile(path));
+    QCOMPARE(window.currentProjectPath_, path);
+    QVERIFY(window.windowTitle().contains(QStringLiteral("projet.osp")));
+    QVERIFY(!window.isWindowModified());
+
+    // Travail en cours puis Ctrl+S : le fichier ouvert est réécrit sans
+    // dialogue. Si saveProject() en ouvrait un (le défaut corrigé par
+    // HP-FILE-002), ce test se bloquerait sur un QFileDialog modal.
+    QVERIFY(!window.project_.vector_objects.empty());
+    window.project_.vector_objects.front().name = "Renomme";
+    window.setWindowModified(true);
+    window.saveProject();
+    QVERIFY(!window.isWindowModified());
+    QCOMPARE(window.currentProjectPath_, path);
+
+    auto reloaded = project_io::load_project(fsPath);
+    QVERIFY(reloaded.has_value());
+    QVERIFY(!reloaded->vector_objects.empty());
+    QCOMPARE(QString::fromStdString(reloaded->vector_objects.front().name),
+             QStringLiteral("Renomme"));
+}
+
+void MainWindowTest::newProjectForgetsTheSaveTargetAndResetsTheTitle() {
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    const QString path = dir.filePath(QStringLiteral("projet.osp"));
+    const std::filesystem::path fsPath(path.toStdWString());
+    const Fixture fx = buildFixture();
+    QVERIFY(project_io::save_project(fsPath, fx.project).has_value());
+
+    MainWindow window;
+    QVERIFY(window.openProjectFile(path));
+    QCOMPARE(window.currentProjectPath_, path);
+
+    // Document propre : « Nouveau » passe sans garde. Le document vierge ne
+    // doit plus viser le fichier précédent, sinon un Ctrl+S l'écraserait.
+    window.newProject();
+    QVERIFY(window.currentProjectPath_.isEmpty());
+    QVERIFY(window.windowTitle().contains(QStringLiteral("Sans titre")));
+
+    auto untouched = project_io::load_project(fsPath);
+    QVERIFY(untouched.has_value());
+    QCOMPARE(untouched->vector_objects.size(), fx.project.vector_objects.size());
 }
 
 } // namespace openstitch::desktop

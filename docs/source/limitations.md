@@ -28,7 +28,7 @@ fonctionnalité, vérifié dans le code.
 | Simulation | Implémenté | barre | desktop | — | pas de réglage de vitesse |
 | Export/Import DST | Implémenté | Fichier/CLI | formats | oui | limites du format |
 | Export SVG diagnostic | Implémenté | CLI | formats | oui | — |
-| Format projet `.osp` | Implémenté | Fichier | project_io | oui | suivi « modifié » + garde partagée (fermeture et **Nouveau projet**, Ctrl+N) ; le chemin du fichier n'est pas mémorisé (Ctrl+S redemande où enregistrer) ; pas d'autosave |
+| Format projet `.osp` | Implémenté | Fichier | project_io | oui | suivi « modifié » + garde partagée (fermeture et **Nouveau projet**, Ctrl+N) ; chemin mémorisé (Ctrl+S réécrit le fichier, Ctrl+Maj+S = Enregistrer sous), écriture atomique ; pas de fichiers récents ni d'autosave |
 | Cadre de broderie | Implémenté | Affichage | document | oui | taille réglable et persistée ; rectangle simple (pas de profils/formes) |
 | Palette de fils | Non implémenté | — | (thread_palette absent) | — | RGB par objet uniquement |
 | Édition manuelle des points | Partiel (Lot 8.2) | canevas | desktop/commands | QTest | déplacement d'un point + undo/redo ; Stitch/Jump/Trim UI restent à faire |

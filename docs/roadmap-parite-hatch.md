@@ -1501,9 +1501,10 @@ Aujourd'hui : rien (aucune occurrence « appliqué » dans le code métier).
 
 ## 19. Gestion de fichiers et de projets (FILE)
 
-Aujourd'hui : ouvrir image/SVG, enregistrer `.osp` (**le chemin est redemandé
-à chaque Ctrl+S**, `MainWindow::saveProject`), ouvrir `.osp`, import/export
-DST et DXF, indicateur « modifié » et garde à la fermeture.
+Aujourd'hui : ouvrir image/SVG, enregistrer `.osp` (chemin mémorisé depuis
+HP-FILE-002 : Ctrl+S réécrit, Ctrl+Maj+S = Enregistrer sous), ouvrir `.osp`,
+import/export DST et DXF, indicateur « modifié », garde partagée
+(fermeture et Nouveau projet).
 
 ### HP-FILE-001 — Nouveau projet (Ctrl+N) [P0] — ☑ Fait (2026-09-23)
 - État OpenStitch : aucune action « Nouveau » ; il faut relancer ou ouvrir
@@ -1530,18 +1531,38 @@ DST et DXF, indicateur « modifié » et garde à la fermeture.
   `newProjectResetsDocumentEditModesAndPanels`,
   `newProjectOnModifiedDocumentCancelsOrDiscardsAsChosen`
   (`tests/unit/desktop/test_main_window.cpp`).
-- Reste (hors entrée) : le chemin « Enregistrer » de la garde rouvre toujours un
-  sélecteur de fichier tant que HP-FILE-002 n'est pas fait ; un document sans
+- Reste (hors entrée) : le chemin « Enregistrer » de la garde n'ouvre plus de
+  sélecteur pour un document déjà rattaché à un fichier (HP-FILE-002) ; un document sans
   image ne régénère toujours pas de points (`refreshImage` sort tôt), limite
   indépendante de cette entrée.
 
-### HP-FILE-002 — Enregistrer / Enregistrer sous [P0] — ☐ À faire
+### HP-FILE-002 — Enregistrer / Enregistrer sous [P0] — ☑ Fait (2026-09-23)
 - État OpenStitch : « Enregistrer le projet… » ouvre toujours un dialogue.
 - À faire : chemin courant mémorisé ; Ctrl+S enregistre directement,
   Ctrl+Maj+S = Enregistrer sous ; nom du fichier dans le titre de la fenêtre ;
   écriture atomique (fichier temporaire + renommage) pour ne jamais corrompre
   un `.osp` en cas de crash pendant l'écriture.
 - Modules : `apps/desktop`, `libs/project_io` (écriture atomique).
+- Livré : `MainWindow::currentProjectPath_` porte le fichier `.osp` du document.
+  « Fichier ▸ Enregistrer le projet » (Ctrl+S, `action_saveProject`) réécrit ce
+  fichier sans dialogue et n'ouvre le sélecteur que pour un document encore sans
+  fichier ; « Enregistrer le projet sous… » (Ctrl+Maj+S, `action_saveProjectAs`)
+  demande toujours un chemin, complète l'extension `.osp` si la plateforme ne
+  l'a pas fait, puis l'adopte. L'ouverture d'un projet installe la cible
+  (`openProjectFile`, extrait de `loadProject` — seam de test et futur point
+  d'entrée de HP-FILE-003/005) ; `resetDocumentState()` l'efface, donc tout
+  remplacement de document (Nouveau, image, SVG, projet, import DST) empêche un
+  Ctrl+S d'écraser le projet précédent. Titre de fenêtre
+  « <fichier>[*] — OpenStitch Studio » (« Sans titre » avant le premier
+  enregistrement). Écriture atomique : déjà assurée par
+  `project_io::save_project` (temporaire + renommage, testée par
+  `tests/unit/project_io/test_roundtrip.cpp`) — rien à ajouter côté cœur.
+  Tests : `saveActionsAreInFileMenuWithStandardShortcuts`,
+  `savingAnOpenedProjectRewritesItWithoutAskingAPath`,
+  `newProjectForgetsTheSaveTargetAndResetsTheTitle`
+  (`tests/unit/desktop/test_main_window.cpp`).
+- Reste (hors entrée) : pas de liste de fichiers récents (HP-FILE-003), pas
+  d'autosave (HP-FILE-004), pas de `.osp.bak` (HP-FILE-009).
 
 ### HP-FILE-003 — Fichiers récents [P0] — ☐ À faire
 - À faire : sous-menu Fichier ▸ Récents (10), liste sur l'écran d'accueil
@@ -1896,3 +1917,4 @@ ci-dessus doit les respecter :
 |---|---|---|
 | 2026-09-22 | Claude (session d'audit) | Création : inventaire complet vérifié dans le code. |
 | 2026-09-23 | Claude (session pilotée) | HP-FILE-001 ☑ : action « Nouveau projet » (Ctrl+N) avec garde des modifications non enregistrées et réinitialisation centralisée de tout l'état d'édition de la fenêtre. |
+| 2026-09-23 | Claude (session pilotée) | HP-FILE-002 ☑ : chemin `.osp` mémorisé (Ctrl+S réécrit sans dialogue, Ctrl+Maj+S = Enregistrer sous), nom du fichier dans le titre, cible oubliée à chaque changement de document ; écriture atomique déjà en place côté `project_io`. |
