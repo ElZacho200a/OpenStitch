@@ -1,0 +1,25 @@
+[
+  {
+    "desc": "HP-FILE-003 : module recent_files (QSettings, dedup/troncature 10), signal/liste EmptyStateWidget, integration MainWindow (menu Recents, connexion constructeur, setCurrentProjectPath, purge sur echec d'ouverture) avec rafraichissement UI differe (QTimer::singleShot) pour eviter la reentrance QAction/QPushButton, plus tests Qt.",
+    "done_when": "test_main_window couvre : (a) addRecentFile deduplique et tronque a 10 avec le plus recent en tete, (b) pruneMissingRecentFiles retire les chemins disparus en preservant l'ordre, (c) apres deux sauvegardes/ouvertures + traitement des evenements, recentFiles_ et recentMenu_->actions() refletent les 2 entrees dans l'ordre, (d) un QTest::mouseClick reel sur un bouton recent de l'ecran d'accueil pointant vers un fichier supprime affiche l'avertissement existant et retire l'entree sans crash ; cmake --build --preset msvc-debug --target openstitch_desktop_widgets, ctest --preset msvc-debug -R main_window et le clang-format --dry-run --Werror passent tous.",
+    "scope": "apps/desktop/recent_files.hpp, apps/desktop/recent_files.cpp (nouveaux) ; apps/desktop/empty_state_widget.hpp/.cpp ; apps/desktop/main_window.hpp (membres recentFiles_, recentMenu_, methode refreshRecentFilesUi()) ; apps/desktop/main_window.cpp (uniquement : insertion dans buildMenus, bloc d'inscription du constructeur, ajout dans setCurrentProjectPath, ajout dans la branche d'echec d'openProjectFile, definition de refreshRecentFilesUi) ; apps/desktop/CMakeLists.txt (lignes source) ; tests/unit/desktop/test_main_window.cpp (nouveaux slots). Exclut resetDocumentState, closeEvent, saveProjectToPath, loadProject, libs/project_io, HP-FMT-020, HP-FILE-005, HP-FILE-004 (tache soeur arm-1-ar-9-cp-1).",
+    "spec_ref": "specs/arch-plan/vision/20260929-102601-arm-1-ar-9.md#Scope 1 (output 0): Fichiers récents",
+    "plan_ref": "specs/plans/vision/20260930-091520-arm-1-ar-9-cp-0.md#Task 1: Fichiers récents — module, intégration MainWindow/EmptyStateWidget, tests",
+    "validation": [
+      "cmake --build --preset msvc-debug --target openstitch_desktop_widgets",
+      "ctest --preset msvc-debug -R main_window",
+      "git ls-files '*.cpp' '*.hpp' | xargs clang-format --dry-run --Werror"
+    ]
+  },
+  {
+    "desc": "Marquer l'entree HP-FILE-003 comme faite dans docs/roadmap-parite-hatch.md, avec la date, une fois le module fichiers recents livre par la tache 1.",
+    "done_when": "La ligne de statut de l'entree HP-FILE-003 passe a coche/fait avec une date d'achevement ; git diff -- docs/roadmap-parite-hatch.md ne touche que cette entree (aucune autre ligne modifiee, notamment pas HP-FILE-004).",
+    "scope": "docs/roadmap-parite-hatch.md, entree HP-FILE-003 uniquement. Exclut HP-FILE-004 et toute autre entree du fichier.",
+    "spec_ref": "specs/arch-plan/vision/20260929-102601-arm-1-ar-9.md#Cross-Cutting Concerns",
+    "plan_ref": "specs/plans/vision/20260930-091520-arm-1-ar-9-cp-0.md#Task 2: Marquer HP-FILE-003 fait dans le roadmap de parité",
+    "validation": [
+      "git ls-files '*.cpp' '*.hpp' | xargs clang-format --dry-run --Werror"
+    ],
+    "depends_on": ["0"]
+  }
+]
