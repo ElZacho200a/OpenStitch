@@ -78,6 +78,7 @@
 #include "openstitch/stitch_generation/satin_guides.hpp"
 #include "openstitch/vectorization/vectorize.hpp"
 #include "properties_panel.hpp"
+#include "recent_files.hpp"
 #include "ruler.hpp"
 #include "satin_guide_item.hpp"
 #include "ui_icons.hpp"
@@ -465,6 +466,16 @@ MainWindow::MainWindow() {
     connect(emptyState_, &EmptyStateWidget::openImageRequested, this, &MainWindow::openImage);
     connect(emptyState_, &EmptyStateWidget::openProjectRequested, this, &MainWindow::loadProject);
     connect(emptyState_, &EmptyStateWidget::importDstRequested, this, &MainWindow::importDst);
+    // Même garde HP-FILE-001 que les autres points d'entrée destructeurs de
+    // document (newProject) : un clic sur un récent de l'écran d'accueil ne
+    // doit pas perdre un travail en cours sans confirmation.
+    connect(emptyState_, &EmptyStateWidget::openRecentRequested, this, [this](QString path) {
+        if (confirmDiscardChanges(
+                tr("Le projet a été modifié. Enregistrer avant d'ouvrir un autre projet ?"))) {
+            (void)openProjectFile(path);
+        }
+    });
+    refreshRecentFilesUi();
     connect(view_, &CanvasView::viewChanged, this, &MainWindow::positionEmptyState);
 
     statusBar()->showMessage(tr("Ouvrez une image (PNG, JPEG, BMP, TIFF) pour commencer."));
@@ -505,6 +516,9 @@ void MainWindow::buildMenus() {
     auto* loadProjectAct = fileMenu->addAction(tr("Ou&vrir un projet…"));
     connect(loadProjectAct, &QAction::triggered, this, &MainWindow::loadProject);
     fileMenu->addSeparator();
+    // Rempli par refreshRecentFilesUi() (appelée une première fois depuis le
+    // constructeur, après la construction de emptyState_) -- HP-FILE-003.
+    recentMenu_ = fileMenu->addMenu(tr("&Récents"));
     exportDstAct_ = fileMenu->addAction(tr("&Exporter en DST…"));
     connect(exportDstAct_, &QAction::triggered, this, &MainWindow::exportDst);
     auto* importDstAct = fileMenu->addAction(tr("&Importer un DST…"));
@@ -6236,6 +6250,11 @@ bool MainWindow::openProjectFile(const QString& file) {
     if (!loaded) {
         QMessageBox::warning(this, tr("Ouverture impossible"),
                              QString::fromStdString(loaded.error().message));
+        // Purge immédiate (AD-S11-2) : si `file` provenait d'un item
+        // Récents, l'échec prouve qu'il n'existe plus -- pruneMissingRecentFiles
+        // (appliqué par refreshRecentFilesUi) le retire sans attendre une
+        // prochaine reconstruction du menu/de l'écran d'accueil.
+        refreshRecentFilesUi();
         return false;
     }
     applyLoadedProject(std::move(*loaded));
@@ -6254,6 +6273,34 @@ bool MainWindow::openProjectFile(const QString& file) {
 void MainWindow::setCurrentProjectPath(const QString& file) {
     currentProjectPath_ = file;
     updateWindowTitle();
+    if (!file.isEmpty()) {
+        // Seul site d'ajout aux récents (HP-FILE-003) : couvre à la fois
+        // saveProjectToPath et openProjectFile, qui appellent tous deux
+        // cette fonction.
+        recentFiles_ = addRecentFile(std::move(recentFiles_), file);
+        saveRecentFiles(recentFiles_);
+        refreshRecentFilesUi();
+    }
+}
+
+void MainWindow::refreshRecentFilesUi() {
+    QTimer::singleShot(0, this, [this] {
+        recentFiles_ = pruneMissingRecentFiles(loadRecentFiles());
+        saveRecentFiles(recentFiles_);
+
+        recentMenu_->clear();
+        for (const QString& path : recentFiles_) {
+            auto* action = recentMenu_->addAction(QFileInfo(path).fileName());
+            action->setToolTip(path);
+            connect(action, &QAction::triggered, this, [this, path] {
+                if (confirmDiscardChanges(tr("Le projet a été modifié. Enregistrer avant "
+                                             "d'ouvrir un autre projet ?"))) {
+                    (void)openProjectFile(path);
+                }
+            });
+        }
+        emptyState_->setRecentFiles(recentFiles_);
+    });
 }
 
 void MainWindow::updateWindowTitle() {

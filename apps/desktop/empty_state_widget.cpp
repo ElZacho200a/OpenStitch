@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 #include "empty_state_widget.hpp"
 
+#include <QFileInfo>
 #include <QLabel>
+#include <QLayoutItem>
 #include <QPushButton>
 #include <QVBoxLayout>
 
@@ -47,9 +49,30 @@ EmptyStateWidget::EmptyStateWidget(QWidget* parent) : QFrame(parent) {
     hint->setEnabled(false);
     layout->addWidget(hint);
 
+    // Liste des récents (HP-FILE-003) : vide au départ, remplie par le
+    // premier appel à setRecentFiles (MainWindow::refreshRecentFilesUi).
+    recentLayout_ = new QVBoxLayout();
+    recentLayout_->setSpacing(6);
+    layout->addLayout(recentLayout_);
+
     connect(openImg, &QPushButton::clicked, this, &EmptyStateWidget::openImageRequested);
     connect(openPrj, &QPushButton::clicked, this, &EmptyStateWidget::openProjectRequested);
     connect(importDst, &QPushButton::clicked, this, &EmptyStateWidget::importDstRequested);
+}
+
+void EmptyStateWidget::setRecentFiles(const QStringList& paths) {
+    while (QLayoutItem* item = recentLayout_->takeAt(0)) {
+        delete item->widget();
+        delete item;
+    }
+    for (const QString& path : paths) {
+        auto* button = new QPushButton(QFileInfo(path).fileName(), this);
+        button->setToolTip(path);
+        button->setMinimumWidth(220);
+        recentLayout_->addWidget(button, 0, Qt::AlignCenter);
+        connect(button, &QPushButton::clicked, this,
+                [this, path] { emit openRecentRequested(path); });
+    }
 }
 
 } // namespace openstitch::desktop

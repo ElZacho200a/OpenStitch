@@ -3,6 +3,8 @@
 
 #include <QList>
 #include <QMainWindow>
+#include <QString>
+#include <QStringList>
 
 #include <array>
 #include <cstddef>
@@ -238,6 +240,14 @@ private:
     // met le titre de la fenêtre en phase. Remis à vide par
     // resetDocumentState() : tout remplacement de document oublie la cible.
     void setCurrentProjectPath(const QString& file);
+    // Reconstruit, après un cycle d'évènements (QTimer::singleShot), le
+    // sous-menu Fichier ▸ Récents et la liste de l'écran d'accueil à partir
+    // de pruneMissingRecentFiles(loadRecentFiles()) -- seul endroit qui
+    // applique la purge des entrées disparues (AD-S11-2, HP-FILE-003). Le
+    // report d'un cycle évite de détruire, pendant l'exécution de son propre
+    // gestionnaire de clic, le QAction du menu Récents ou le QPushButton de
+    // l'écran d'accueil qui vient de déclencher cet appel (réentrance).
+    void refreshRecentFilesUi();
     void updateWindowTitle();
     // Objet de broderie ciblé par la sélection courante (broderie choisie
     // dans l'ordre de couture, sinon remplissage rattaché à l'objet vectoriel
@@ -429,6 +439,11 @@ private:
     // Fichier `.osp` auquel le document est rattaché (vide tant qu'il n'a
     // jamais été enregistré) : cible de Ctrl+S et nom affiché dans le titre.
     QString currentProjectPath_;
+    // Fichiers récents (le plus récent en tête), persistés via QSettings
+    // (recent_files.hpp) -- HP-FILE-003. Menu Fichier ▸ Récents et écran
+    // d'accueil reconstruits à partir de cette liste par refreshRecentFilesUi().
+    QStringList recentFiles_;
+    QMenu* recentMenu_{nullptr};
     commands::UndoStack undoStack_;
     image::Image processed_; // dernier résultat du pipeline (pour l'affichage)
     // Entrées exactes ayant produit `processed_` (clé de contenu du cache,

@@ -6,9 +6,11 @@
 #include <QDialog>
 #include <QDoubleSpinBox>
 #include <QFile>
+#include <QFileInfo>
 #include <QGraphicsItem>
 #include <QLabel>
 #include <QListWidget>
+#include <QMenu>
 #include <QMessageBox>
 #include <QPushButton>
 #include <QSettings>
@@ -35,6 +37,7 @@
 #include "openstitch/project_io/project_io.hpp"
 #include "openstitch/stitch_generation/overrides.hpp"
 #include "properties_panel.hpp"
+#include "recent_files.hpp"
 #include "satin_guide_item.hpp"
 #include "workflow_panel.hpp"
 
@@ -640,6 +643,18 @@ private slots:
     void saveActionsAreInFileMenuWithStandardShortcuts();
     void savingAnOpenedProjectRewritesItWithoutAskingAPath();
     void newProjectForgetsTheSaveTargetAndResetsTheTitle();
+
+    // HP-FILE-003 — fichiers récents. Les deux premiers slots couvrent
+    // addRecentFile/pruneMissingRecentFiles (fonctions pures, sans construire
+    // de MainWindow) ; les deux suivants l'intégration MainWindow/EmptyStateWidget.
+    void addRecentFileDeduplicatesAndTruncatesToTen();
+    void pruneMissingRecentFilesRemovesDeletedPathsPreservingOrder();
+    void recentFilesAndMenuReflectTwoSavesAndOpensInOrder();
+    // Régression : refreshRecentFilesUi() doit différer la reconstruction du
+    // menu/de l'écran d'accueil (QTimer::singleShot), sinon un clic réel sur
+    // un bouton récent pointant vers un fichier supprimé détruirait ce même
+    // bouton pendant l'exécution de son propre gestionnaire clicked().
+    void clickingRecentButtonForDeletedFileWarnsAndPrunesWithoutCrashing();
 
 private:
     // Active le mode d'édition (sélection directe via selectedEmbroidery_,
@@ -3725,6 +3740,146 @@ void MainWindowTest::newProjectForgetsTheSaveTargetAndResetsTheTitle() {
     auto untouched = project_io::load_project(fsPath);
     QVERIFY(untouched.has_value());
     QCOMPARE(untouched->vector_objects.size(), fx.project.vector_objects.size());
+}
+
+void MainWindowTest::addRecentFileDeduplicatesAndTruncatesToTen() {
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    // 11 chemins distincts, réellement présents sur disque : canonicalFilePath()
+    // (utilisé par addRecentFile pour dédupliquer) ne résout que des fichiers
+    // existants.
+    QStringList paths;
+    for (int i = 0; i < 11; ++i) {
+        const QString path = dir.filePath(QStringLiteral("f%1.osp").arg(i));
+        QFile f(path);
+        QVERIFY(f.open(QIODevice::WriteOnly));
+        f.close();
+        paths.append(path);
+    }
+
+    QStringList current;
+    for (const QString& path : paths) {
+        current = addRecentFile(std::move(current), path);
+    }
+    QCOMPARE(current.size(), 10);
+    // Le plus récemment ajouté (paths.last()) en tête, le plus ancien
+    // (paths.first()) abandonné par la troncature à 10.
+    QCOMPARE(current.first(), paths.last());
+    QVERIFY(!current.contains(paths.first()));
+
+    // Réinsertion d'une entrée déjà présente, sous une orthographe différente
+    // mais canoniquement égale (segment "." redondant, éliminé par
+    // QFileInfo::canonicalFilePath()) : déplacée en tête plutôt que dupliquée
+    // -- toujours 10 entrées.
+    const QString reAdded = current.at(3);
+    const QFileInfo reAddedInfo(reAdded);
+    const QString spelledDifferently =
+        reAddedInfo.absolutePath() + QStringLiteral("/./") + reAddedInfo.fileName();
+    QVERIFY(spelledDifferently != reAdded);
+    current = addRecentFile(std::move(current), spelledDifferently);
+    QCOMPARE(current.size(), 10);
+    QCOMPARE(current.first(), spelledDifferently);
+    QVERIFY(!current.contains(reAdded));
+}
+
+void MainWindowTest::pruneMissingRecentFilesRemovesDeletedPathsPreservingOrder() {
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    const QString existing = dir.filePath(QStringLiteral("existing.osp"));
+    const QString deleted = dir.filePath(QStringLiteral("deleted.osp"));
+    QFile existingFile(existing);
+    QVERIFY(existingFile.open(QIODevice::WriteOnly));
+    existingFile.close();
+    QFile deletedFile(deleted);
+    QVERIFY(deletedFile.open(QIODevice::WriteOnly));
+    deletedFile.close();
+    QVERIFY(QFile::remove(deleted));
+
+    const QStringList pruned = pruneMissingRecentFiles(QStringList{deleted, existing});
+    QCOMPARE(pruned, QStringList({existing}));
+}
+
+void MainWindowTest::recentFilesAndMenuReflectTwoSavesAndOpensInOrder() {
+    // Isole cette liste des autres tests du même binaire : QSettings est
+    // partagé (fichier INI temporaire unique posé une fois par initTestCase).
+    QSettings().remove(QStringLiteral("recent/files"));
+
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    const QString firstPath = dir.filePath(QStringLiteral("premier.osp"));
+    const QString secondPath = dir.filePath(QStringLiteral("second.osp"));
+    const std::filesystem::path secondFsPath(secondPath.toStdWString());
+    QVERIFY(project_io::save_project(secondFsPath, document::Project{}).has_value());
+
+    MainWindow window;
+    QCoreApplication::processEvents(); // consomme le refreshRecentFilesUi() initial (liste vide)
+
+    // Enregistrer (saveProjectToPath) puis ouvrir (openProjectFile) sont les
+    // deux seuls appelants de setCurrentProjectPath -- ce test couvre les deux.
+    QVERIFY(window.saveProjectToPath(firstPath));
+    QCoreApplication::processEvents();
+
+    QVERIFY(window.openProjectFile(secondPath));
+    QCoreApplication::processEvents();
+
+    QCOMPARE(window.recentFiles_, QStringList({secondPath, firstPath}));
+    QVERIFY(window.recentMenu_ != nullptr);
+    const auto actions = window.recentMenu_->actions();
+    QCOMPARE(actions.size(), 2);
+    QCOMPARE(actions.at(0)->toolTip(), secondPath);
+    QCOMPARE(actions.at(1)->toolTip(), firstPath);
+}
+
+void MainWindowTest::clickingRecentButtonForDeletedFileWarnsAndPrunesWithoutCrashing() {
+    QSettings().remove(QStringLiteral("recent/files"));
+
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    const QString firstPath = dir.filePath(QStringLiteral("premier.osp"));
+    const QString secondPath = dir.filePath(QStringLiteral("second.osp"));
+
+    MainWindow window;
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+    QCoreApplication::processEvents(); // consomme le refreshRecentFilesUi() initial (liste vide)
+
+    // Document resté vide (aucune image, aucun objet) : l'écran d'accueil
+    // reste affiché tout du long -- condition nécessaire pour un vrai clic
+    // QTest sur un de ses boutons.
+    QVERIFY(window.saveProjectToPath(firstPath));
+    QCoreApplication::processEvents();
+    QVERIFY(window.saveProjectToPath(secondPath));
+    QCoreApplication::processEvents();
+
+    QCOMPARE(window.recentFiles_, QStringList({secondPath, firstPath}));
+    QVERIFY(window.emptyState_->isVisible());
+
+    QVERIFY(QFile::remove(firstPath));
+
+    QPushButton* target = nullptr;
+    for (QPushButton* button : window.emptyState_->findChildren<QPushButton*>()) {
+        if (button->toolTip() == firstPath) {
+            target = button;
+            break;
+        }
+    }
+    QVERIFY(target != nullptr);
+
+    // openProjectFile() échoue sur le fichier supprimé -> QMessageBox::warning
+    // (avertissement déjà existant) -- armé avant le clic, comme les autres
+    // tests de dialogue modal de ce fichier.
+    autoDismissModalDialogs(&window);
+    QTest::mouseClick(target, Qt::LeftButton);
+    // Le clic déclenche : lambda du bouton -> confirmDiscardChanges (document
+    // propre, passe sans garde) -> openProjectFile -> échec ->
+    // refreshRecentFilesUi() différée (QTimer::singleShot). C'est la
+    // régression testée ici : sans ce report, le rafraîchissement détruirait
+    // `target` alors que son propre gestionnaire clicked() est encore sur la
+    // pile d'appels.
+    QCoreApplication::processEvents();
+    QCoreApplication::processEvents();
+
+    QCOMPARE(window.recentFiles_, QStringList({secondPath}));
 }
 
 } // namespace openstitch::desktop
