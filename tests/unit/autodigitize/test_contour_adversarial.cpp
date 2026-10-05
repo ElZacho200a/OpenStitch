@@ -783,7 +783,7 @@ TEST_CASE("adv salt noise isolated pixels") {
     CHECK(lo.metrics.segments <= clean.metrics.segments + 3);
 }
 
-TEST_CASE("adv pepper holes keep T structure at default detail", "[!shouldfail]") {
+TEST_CASE("adv pepper holes keep T structure at default detail") {
     // BUG: 1-px holes inside a 6-px stroke each create a skeleton loop that is
     // not pruned at detail 0.5 (T of 3 segments becomes ~150 segments).
     const auto clean_img = tee(300, 200);
@@ -799,7 +799,7 @@ TEST_CASE("adv pepper holes keep T structure at default detail", "[!shouldfail]"
     CHECK(r.metrics.junctions <= 4);
 }
 
-TEST_CASE("adv pepper holes are cleaned at detail 0", "[!shouldfail]") {
+TEST_CASE("adv pepper holes are cleaned at detail 0") {
     // BUG: same 114 segments at detail 0 as at 0.5: the detail slider cannot clean pepper holes.
     auto img = tee(300, 200);
     lcg_state = 12345;
@@ -1180,7 +1180,7 @@ TEST_CASE("adv svg dump", "[.svg]") {
     }
 }
 
-TEST_CASE("adv pixel thin strokes are never silently lost", "[!shouldfail]") {
+TEST_CASE("adv pixel thin strokes are never silently lost") {
     // BUG: strokes 1-2 px wide vanish from a multi-line drawing with no warning,
     // no diagnostic and no counter (rejected / removed_* all 0). Alone they give
     // "Aucune region exploitable".
@@ -1197,7 +1197,7 @@ TEST_CASE("adv pixel thin strokes are never silently lost", "[!shouldfail]") {
     CHECK((all_sewn || reported));
 }
 
-TEST_CASE("adv unbranched curve is not shredded into satin and running patches", "[!shouldfail]") {
+TEST_CASE("adv unbranched curve is not shredded into satin and running patches") {
     // BUG: a 1 mm spiral (junction free, 1 chain) is cut into ~80 segments that
     // flip between satin and running around the 0.8 mm threshold (no hysteresis).
     auto img = blank(300, 300);

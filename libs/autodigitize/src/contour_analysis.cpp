@@ -578,8 +578,17 @@ void split_width_regimes(std::vector<RawSeg>& raws, NodeSet& ns, double px,
                          const ContourLimits& lim) {
     const double minSatin = static_cast<double>(lim.min_satin_width.value);
     const double maxSatin = static_cast<double>(lim.max_satin_width.value);
+    // Regimes bruts, sans hysteresis (elle rendait le nombre de segments non
+    // monotone en `detail`) ; un regime plus court que kMinRun est absorbe.
+    const auto regimes_of = [&](const std::vector<double>& med) {
+        std::vector<int> out(med.size(), 1);
+        for (std::size_t i = 0; i < med.size(); ++i) {
+            out[i] = med[i] < minSatin ? 0 : (med[i] > maxSatin ? 2 : 1);
+        }
+        return out;
+    };
     constexpr double kWindow = 500.0;  // µm de part et d'autre (mediane)
-    constexpr double kMinRun = 1500.0; // µm : un regime plus court est absorbe
+    constexpr double kMinRun = 6000.0; // µm : un regime plus court est absorbe
     const std::size_t original = raws.size();
     for (std::size_t k = 0; k < original; ++k) {
         RawSeg r = raws[k];
@@ -593,7 +602,7 @@ void split_width_regimes(std::vector<RawSeg>& raws, NodeSet& ns, double px,
             std::vector<double> rad2 = r.radii;
             rad2.insert(rad2.end(), r.radii.begin(), r.radii.end());
             const auto c2 = geometry::cumulative_lengths(p2);
-            std::vector<int> reg(m, 1);
+            std::vector<double> medArr(m, 0.0);
             for (std::size_t i = 0; i < m; ++i) {
                 const std::size_t c = i + m / 2;
                 std::vector<double> w;
@@ -603,9 +612,9 @@ void split_width_regimes(std::vector<RawSeg>& raws, NodeSet& ns, double px,
                 for (std::size_t j = c; j < p2.size() && c2[j] - c2[c] <= kWindow; ++j) {
                     w.push_back(std::max(0.0, 2.0 * rad2[j] - px));
                 }
-                const double med = median_of(w);
-                reg[i] = med < minSatin ? 0 : (med > maxSatin ? 2 : 1);
+                medArr[i] = median_of(w);
             }
+            const std::vector<int> reg = regimes_of(medArr);
             // reg[i] correspond au point (i + m/2) % m : on le reindexe.
             std::vector<int> regAt(m, 1);
             for (std::size_t i = 0; i < m; ++i) {
@@ -635,7 +644,7 @@ void split_width_regimes(std::vector<RawSeg>& raws, NodeSet& ns, double px,
             continue;
         }
         const auto cum = geometry::cumulative_lengths(r.pts);
-        std::vector<int> regime(n, 1);
+        std::vector<double> medArr(n, 0.0);
         std::size_t lo = 0;
         std::size_t hi = 0;
         for (std::size_t i = 0; i < n; ++i) {
@@ -649,9 +658,9 @@ void split_width_regimes(std::vector<RawSeg>& raws, NodeSet& ns, double px,
             for (std::size_t j = lo; j <= hi; ++j) {
                 w.push_back(std::max(0.0, 2.0 * r.radii[j] - px));
             }
-            const double m = median_of(w);
-            regime[i] = m < minSatin ? 0 : (m > maxSatin ? 2 : 1);
+            medArr[i] = median_of(w);
         }
+        const std::vector<int> regime = regimes_of(medArr);
         // Runs, puis absorption des runs trop courts.
         struct Run {
             std::size_t begin, end; // [begin, end)
@@ -730,12 +739,36 @@ std::optional<ContourComponent> analyze_piece(const geometry::PathSet& piece,
     if (piece.outer.nodes.size() < 3) {
         return std::nullopt;
     }
+    // Petits trous (poivre, anti-crenelage) : chacun creerait une boucle de
+    // squelette. Un trou plus petit qu'une boucle minimale (aire d'un cercle de
+    // perimetre `min_loop_perimeter`) est rebouche avant l'extraction.
+    const double perimeter = static_cast<double>(th.min_loop_perimeter.value);
+    const double minHoleArea = perimeter * perimeter / (4.0 * std::numbers::pi);
+    // Le contour passe par les centres des pixels : une poche reliee a
+    // l'exterieur par un pincement de largeur nulle est une ENTAILLE du contour
+    // exterieur, pas un trou. Une dilatation de 5 um (sous le pixel de 50 um)
+    // scelle ces pincements et en fait de vrais trous, filtrables par l'aire.
+    geometry::PathSet sealed = piece;
+    if (const auto grown = geometry::inset_path_set(piece, Micrometers{-5});
+        grown && grown->size() == 1) {
+        sealed = grown->front();
+    }
+    geometry::PathSet filtered = sealed;
+    filtered.holes.clear();
+    std::size_t droppedHoles = 0;
+    for (const auto& hole : sealed.holes) {
+        if (std::abs(geometry::signed_area_um2(hole)) < minHoleArea) {
+            ++droppedHoles;
+        } else {
+            filtered.holes.push_back(hole);
+        }
+    }
     auto_satin::AutoSatinParameters ap;
     ap.cleanup.minimum_branch_length = th.min_branch_length;
     ap.raster.max_dimension = kContourRasterMaxDimension;
     ap.thresholds.min_satin_width = lim.min_satin_width;
     ap.thresholds.max_satin_width = lim.max_satin_width;
-    const auto analysis = auto_satin::analyze_region(piece, ap);
+    const auto analysis = auto_satin::analyze_region(filtered, ap);
     if (!analysis) {
         ++net.failed_components;
         net.diagnostics.push_back(label + " : analyse du squelette impossible (" +
@@ -747,7 +780,8 @@ std::optional<ContourComponent> analyze_piece(const geometry::PathSet& piece,
 
     ContourComponent comp;
     comp.rgb = rgb;
-    comp.region = piece;
+    comp.region = filtered;
+    comp.removed_small_loops += droppedHoles;
     comp.raster_pixel_um = px;
     auto_satin::RasterMask skeleton = dbg.skeleton;
     repair_crossing_blocks(skeleton);
@@ -960,9 +994,10 @@ Result<ContourNetwork> analyze_contours(const segmentation::Segmentation& seg,
         options.skip_largest_region ? std::optional{seg.region_slots[largestSlot]->rgb}
                                     : std::nullopt;
 
-    // Contours fins : la tolerance de vectorisation ne depasse jamais l'ancre
-    // historique (une tolerance de 0,4 mm ecraserait un trait de 1 mm).
-    const Micrometers vecTol{std::min(net.thresholds.simplify_tolerance.value, 200)};
+    // Vectorisation a tolerance FIXE (pas DST) : la geometrie ne depend pas de
+    // `detail`, qui ne pilote que les seuils de nettoyage (monotonie des
+    // comptes de segments) et la simplification des lignes mediennes.
+    const Micrometers vecTol{200};
     const vectorization::VectorizeOptions vecOpts{options.mm_per_px, vecTol};
 
     std::map<std::array<std::uint8_t, 3>, std::vector<geometry::PathSet>> byColour;
@@ -971,7 +1006,14 @@ Result<ContourNetwork> analyze_contours(const segmentation::Segmentation& seg,
             continue;
         }
         auto sets = vectorization::vectorize_region(seg, slot->id, vecOpts);
-        if (!sets) {
+        if (!sets || sets->empty()) {
+            // Typiquement un trait de 1-2 px : le contour passe par les centres
+            // des pixels et n'a aucune aire. Jamais perdu en silence.
+            ++net.failed_components;
+            net.diagnostics.push_back(
+                "Region " + std::to_string(slot->id.value) + " (" +
+                std::to_string(slot->pixel_count) +
+                " px) : trait trop fin pour etre vectorise (1-2 px de large) : non brode");
             continue;
         }
         auto& dst = byColour[slot->rgb];
@@ -1009,6 +1051,10 @@ Result<ContourNetwork> analyze_contours(const segmentation::Segmentation& seg,
             if (!hasJunction && comp->segments.size() == 1 && !comp->segments[0].closed &&
                 total < static_cast<double>(net.thresholds.min_isolated_length.value)) {
                 ++net.removed_isolated;
+                net.diagnostics.push_back("Trait " + std::to_string(counter) +
+                                          " : element isole de " +
+                                          std::to_string(static_cast<int>(total / 100.0) / 10.0) +
+                                          " mm sous le seuil de detail : ignore");
                 continue;
             }
             net.components.push_back(std::move(*comp));

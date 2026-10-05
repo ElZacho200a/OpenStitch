@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <cmath>
 #include <map>
+#include <set>
 #include <sstream>
 
 #include "openstitch/auto_satin/satin_column.hpp"
@@ -436,23 +437,89 @@ Result<AutoResult> build_contour_objects(const ContourNetwork& net, IdGenerator<
         }
         std::vector<geometry::PathSet> satinRegions;
         if (!satinSegs.empty()) {
-            // Region entiere seulement si rien n'a ete elague : les moignons
-            // elagues restent dans le polygone et feraient refuser les colonnes
-            // voisines ("rail hors region") ; on les decoupe avec les bandes.
-            if (wholeRegion && comp.removed_short_branches == 0) {
-                satinRegions.push_back(comp.region);
-            } else {
-                std::vector<Path> strips;
-                for (const std::size_t si : satinSegs) {
-                    for (auto& p : strips_for(comp.segments[si])) {
-                        strips.push_back(std::move(p));
+            // Region entiere seulement si le sous-reseau est petit et que rien
+            // n'a ete elague (les moignons elagues restent dans le polygone et
+            // feraient refuser les colonnes voisines). Sinon, le satin est
+            // planifie par GROUPES de segments voisins a au plus
+            // `kMaxJunctionsPerGroup` jonctions : la planification SGSD d'une
+            // region entiere est superlineaire en nombre de jonctions (grille
+            // 6x6 : 40 s en Debug), et des groupes bornes la rendent lineaire.
+            constexpr std::size_t kMaxJunctionsPerGroup = 2;
+            const auto isJunction = [&](std::int32_t n) {
+                return n >= 0 &&
+                       comp.nodes[static_cast<std::size_t>(n)].kind == ContourNodeKind::Junction;
+            };
+            std::set<std::int32_t> satinJunctions;
+            for (const std::size_t si : satinSegs) {
+                for (const std::int32_t n :
+                     {comp.segments[si].start_node, comp.segments[si].end_node}) {
+                    if (isJunction(n)) {
+                        satinJunctions.insert(n);
                     }
                 }
-                const auto uni = geometry::union_nonzero(strips);
-                if (uni) {
+            }
+            if (wholeRegion && comp.removed_short_branches == 0 &&
+                satinJunctions.size() <= kMaxJunctionsPerGroup) {
+                satinRegions.push_back(comp.region);
+            } else {
+                // Groupes gloutons, deterministes : parcours en largeur depuis le
+                // premier segment non affecte.
+                std::vector<bool> assigned(comp.segments.size(), false);
+                for (const std::size_t seed : satinSegs) {
+                    if (assigned[seed]) {
+                        continue;
+                    }
+                    std::vector<std::size_t> group{seed};
+                    assigned[seed] = true;
+                    std::set<std::int32_t> junctions;
+                    for (const std::int32_t n :
+                         {comp.segments[seed].start_node, comp.segments[seed].end_node}) {
+                        if (isJunction(n)) {
+                            junctions.insert(n);
+                        }
+                    }
+                    for (std::size_t head = 0; head < group.size(); ++head) {
+                        const auto& cur = comp.segments[group[head]];
+                        for (const std::size_t other : satinSegs) {
+                            if (assigned[other]) {
+                                continue;
+                            }
+                            const auto& o = comp.segments[other];
+                            const bool adjacent =
+                                (cur.start_node >= 0 && (cur.start_node == o.start_node ||
+                                                         cur.start_node == o.end_node)) ||
+                                (cur.end_node >= 0 &&
+                                 (cur.end_node == o.start_node || cur.end_node == o.end_node));
+                            if (!adjacent) {
+                                continue;
+                            }
+                            std::set<std::int32_t> merged = junctions;
+                            for (const std::int32_t n : {o.start_node, o.end_node}) {
+                                if (isJunction(n)) {
+                                    merged.insert(n);
+                                }
+                            }
+                            if (merged.size() > kMaxJunctionsPerGroup) {
+                                continue;
+                            }
+                            junctions = std::move(merged);
+                            assigned[other] = true;
+                            group.push_back(other);
+                        }
+                    }
+                    std::vector<Path> strips;
+                    for (const std::size_t si : group) {
+                        for (auto& p : strips_for(comp.segments[si])) {
+                            strips.push_back(std::move(p));
+                        }
+                    }
+                    const auto uni = geometry::union_nonzero(strips);
+                    if (!uni) {
+                        continue;
+                    }
                     const auto cut = geometry::intersect_polygons({comp.region}, *uni);
                     if (cut) {
-                        satinRegions = *cut;
+                        satinRegions.insert(satinRegions.end(), cut->begin(), cut->end());
                     }
                 }
             }

@@ -500,7 +500,8 @@ TEST_CASE("contour physical guards hold at detail 1") {
     const auto dt = run(dotImg, opts(1.0));
     dump("dot", dt);
     CHECK(dt.metrics.removed_small_elements >= 1);
-    CHECK(any_warning(dt, "aucune ligne mediane"));
+    CHECK((any_warning(dt, "aucune ligne mediane") || any_warning(dt, "trop fin") ||
+           any_warning(dt, "element isole")));
 }
 
 TEST_CASE("contour classify_segment guards are independent of technique") {
