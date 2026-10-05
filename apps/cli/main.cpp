@@ -14,6 +14,7 @@
 #include "openstitch/auto_satin/satin_column.hpp"
 #include "openstitch/auto_satin/shapes.hpp"
 #include "openstitch/autodigitize/autodigitize.hpp"
+#include "openstitch/autodigitize/contour_objects.hpp"
 #include "openstitch/core/app_info.hpp"
 #include "openstitch/core/log.hpp"
 #include "openstitch/document/embroidery_object.hpp"
@@ -353,7 +354,8 @@ int run_stitchdebug(const std::string& shape, double lengthMm, int repeats,
 // Lot A ; une valeur explicite de --skip-background reste prioritaire).
 int run_digitize(const std::string& imagePath, const std::string& dstPath, double dpi,
                  int maxColors, int minRegionPx, int smoothingPx, int skipBg,
-                 const std::string& outSvg, double trimThresholdMm, const std::string& lockName) {
+                 const std::string& outSvg, double trimThresholdMm, const std::string& lockName,
+                 const std::string& mode, double detail, const std::string& technique) {
     using namespace openstitch;
 
     const auto loaded = image::load_image(std::filesystem::path(imagePath));
@@ -402,10 +404,38 @@ int run_digitize(const std::string& imagePath, const std::string& dstPath, doubl
     fmt::print("Ignorer la plus grande région (fond) : {}{}\n", skipLargest ? "oui" : "non",
                skipBg < 0 ? " (automatique)" : " (option explicite)");
 
-    auto result = autodigitize::auto_digitize(*project.segmentation, project.object_ids, opts);
+    // Strategie « contours / dessin au trait » : lignes medianes cousues en
+    // point droit ou satin (autodigitize::auto_digitize_contours).
+    const bool contours = mode == "contours";
+    autodigitize::ContourMetrics cm;
+    autodigitize::ContourOptions co;
+    co.mm_per_px = project.mm_per_px;
+    co.skip_largest_region = skipLargest;
+    co.detail = detail;
+    co.technique = technique == "running" ? autodigitize::ContourTechnique::Running
+                   : technique == "satin" ? autodigitize::ContourTechnique::Satin
+                                          : autodigitize::ContourTechnique::Automatic;
+    if (contours) {
+        fmt::print("Mode : contours (detail {:.2f}, technique {})\n", detail, technique);
+    }
+    auto result =
+        contours ? autodigitize::auto_digitize_contours(*project.segmentation, project.object_ids,
+                                                        co, &cm)
+                 : autodigitize::auto_digitize(*project.segmentation, project.object_ids, opts);
     if (!result) {
         fmt::print(stderr, "Erreur de numérisation : {}\n", result.error().message);
         return 1;
+    }
+    if (contours) {
+        fmt::print("Contours : composantes={} segments={} jonctions={} extremites={}\n",
+                   cm.components, cm.segments, cm.junctions, cm.endpoints);
+        fmt::print("  elagage : branches courtes={} elements petits={}\n",
+                   cm.removed_short_branches, cm.removed_small_elements);
+        fmt::print("  longueur point droit {:.1f} mm | satin {:.1f} mm | largeur min/moy/max "
+                   "{:.2f}/{:.2f}/{:.2f} mm\n",
+                   cm.running_length_mm, cm.satin_length_mm, cm.min_width_mm, cm.mean_width_mm,
+                   cm.max_width_mm);
+        fmt::print("  replis satin->point droit={} rejets={}\n", cm.fallbacks, cm.rejected);
     }
     for (const auto& w : result->warnings) {
         fmt::print(stderr, "  ! {}\n", w);
@@ -921,6 +951,19 @@ int main(int argc, char** argv) {
         ->add_option("--trim-threshold", dz_trim_mm,
                      "Coupe automatique au-delà de ce déplacement, en mm (défaut : 3)")
         ->check(CLI::PositiveNumber);
+    std::string dz_mode = "shapes";
+    double dz_detail = 0.5;
+    std::string dz_technique = "auto";
+    dz_cmd
+        ->add_option("--mode", dz_mode,
+                     "Stratégie : shapes (formes pleines, défaut) | contours (dessin au trait)")
+        ->check(CLI::IsMember({"shapes", "contours"}));
+    dz_cmd
+        ->add_option("--detail", dz_detail, "Mode contours : niveau de détail 0..1 (défaut : 0.5)")
+        ->check(CLI::Range(0.0, 1.0));
+    dz_cmd
+        ->add_option("--technique", dz_technique, "Mode contours : auto (défaut) | running | satin")
+        ->check(CLI::IsMember({"auto", "running", "satin"}));
     dz_cmd->add_option("--lock", dz_lock, "Point d'arrêt : none|backforth|triangle|zigzag")
         ->check(CLI::IsMember({"none", "backforth", "triangle", "zigzag"}));
 
@@ -1006,7 +1049,8 @@ int main(int argc, char** argv) {
     }
     if (dz_cmd->parsed()) {
         return run_digitize(dz_image, dz_dst, dz_dpi, dz_max_colors, dz_min_region_px,
-                            dz_smoothing_px, dz_skip_bg, dz_out_svg, dz_trim_mm, dz_lock);
+                            dz_smoothing_px, dz_skip_bg, dz_out_svg, dz_trim_mm, dz_lock, dz_mode,
+                            dz_detail, dz_technique);
     }
     if (sd_cmd->parsed()) {
         return run_stitchdebug(sd_shape, sd_length, sd_repeats, sd_out, sd_underlay, sd_underpath);

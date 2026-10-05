@@ -15,9 +15,11 @@
 #include <QMenu>
 #include <QMessageBox>
 #include <QPushButton>
+#include <QRadioButton>
 #include <QSettings>
 #include <QShortcut>
 #include <QSignalSpy>
+#include <QSlider>
 #include <QStandardPaths>
 #include <QStatusBar>
 #include <QTabWidget>
@@ -595,6 +597,9 @@ private slots:
     // affichés dans les deux cas.
     void autoDigitizeDialogDoesNotSkipColoredFullFrameRegion();
     void autoDigitizeDialogSkipsNearWhiteFramingBackground();
+    // Strategie « Contours » : choix de strategie, curseur de detail (defaut
+    // 50) et techniques presents dans le dialogue.
+    void autoDigitizeDialogOffersContoursStrategy();
     // §23 du plan de refonte satin (2026-08-14) : le dialogue à choix
     // multiples (askAboutIncompleteSatinCoverage) remplace l'ancienne
     // information à sens unique -- un test par choix réel, bout en bout
@@ -2075,6 +2080,50 @@ void MainWindowTest::autoDigitizeDialogSkipsNearWhiteFramingBackground() {
     QVERIFY(state.seen);
     QVERIFY(state.checked);
     QVERIFY(state.info.contains('%'));
+}
+
+void MainWindowTest::autoDigitizeDialogOffersContoursStrategy() {
+    MainWindow window;
+    window.applyLoadedProject(
+        opaqueSegmentedProject({250, 250, 250}, {200, 30, 30}, 10, 8, 30, 22));
+    bool seen = false;
+    int detail = -1;
+    bool shapesChecked = false;
+    bool panelEnabledBefore = true;
+    bool panelEnabledAfter = false;
+    bool autoChecked = false;
+    QTimer::singleShot(0, &window, [&] {
+        auto* dlg = qobject_cast<QDialog*>(QApplication::activeModalWidget());
+        if (dlg == nullptr) {
+            return;
+        }
+        auto* contours = dlg->findChild<QRadioButton*>("strategyContoursRadio");
+        auto* shapes = dlg->findChild<QRadioButton*>("strategyShapesRadio");
+        auto* slider = dlg->findChild<QSlider*>("contourDetailSlider");
+        auto* panel = dlg->findChild<QWidget*>("contoursPanel");
+        auto* autoRadio = dlg->findChild<QRadioButton*>("contourTechniqueAutoRadio");
+        if (contours == nullptr || shapes == nullptr || slider == nullptr || panel == nullptr ||
+            autoRadio == nullptr) {
+            dlg->reject();
+            return;
+        }
+        seen = true;
+        detail = slider->value();
+        shapesChecked = shapes->isChecked();
+        autoChecked = autoRadio->isChecked();
+        panelEnabledBefore = panel->isEnabled();
+        contours->setChecked(true);
+        panelEnabledAfter = panel->isEnabled();
+        dlg->reject();
+    });
+    window.autoDigitize();
+    QVERIFY(seen);
+    QCOMPARE(detail, 50);
+    QVERIFY(shapesChecked);
+    QVERIFY(autoChecked);
+    QVERIFY(!panelEnabledBefore);
+    QVERIFY(panelEnabledAfter);
+    QVERIFY(window.project_.embroidery_objects.empty()); // dialogue annule
 }
 
 void MainWindowTest::autoDigitizeAfterOpenSvgClassifiesVectorObjectsDirectly() {
