@@ -221,13 +221,14 @@ void measure_overlap(Out& o) {
     o.overlap_mm2 = static_cast<double>(over) * cell * cell / 1e6;
 }
 
-Out exercise(const image::Image& img, const ContourOptions& o, int colours = 4,
-             bool overlap = true, bool want_seq = true) {
+Out exercise(const image::Image& img, const ContourOptions& o, int colours = 4, bool overlap = true,
+             bool want_seq = true) {
     Out r;
     try {
         const auto tseg = std::chrono::steady_clock::now();
         const auto seg = seg_of(img, colours, &r.seg_ok);
-        r.seg_seconds = std::chrono::duration<double>(std::chrono::steady_clock::now() - tseg).count();
+        r.seg_seconds =
+            std::chrono::duration<double>(std::chrono::steady_clock::now() - tseg).count();
         if (!r.seg_ok) {
             return r;
         }
@@ -248,7 +249,8 @@ Out exercise(const image::Image& img, const ContourOptions& o, int colours = 4,
         IdGenerator<ObjectId> ids;
         const auto tb = std::chrono::steady_clock::now();
         auto res = build_contour_objects(r.net, ids, o, &r.metrics);
-        r.build_seconds = std::chrono::duration<double>(std::chrono::steady_clock::now() - tb).count();
+        r.build_seconds =
+            std::chrono::duration<double>(std::chrono::steady_clock::now() - tb).count();
         if (!res.has_value()) {
             r.error = "build failed: " + res.error().message;
             return r;
@@ -286,7 +288,8 @@ Out exercise(const image::Image& img, const ContourOptions& o, int colours = 4,
     try {
         const auto ts = std::chrono::steady_clock::now();
         auto seq = stitch_generation::effective_sequence(project);
-        r.seq_seconds = std::chrono::duration<double>(std::chrono::steady_clock::now() - ts).count();
+        r.seq_seconds =
+            std::chrono::duration<double>(std::chrono::steady_clock::now() - ts).count();
         if (seq.has_value()) {
             r.seq = *seq;
             r.seq_ok = true;
@@ -323,7 +326,8 @@ Out exercise(const image::Image& img, const ContourOptions& o, int colours = 4,
     if (overlap) {
         const auto to = std::chrono::steady_clock::now();
         measure_overlap(r);
-        r.ovl_seconds = std::chrono::duration<double>(std::chrono::steady_clock::now() - to).count();
+        r.ovl_seconds =
+            std::chrono::duration<double>(std::chrono::steady_clock::now() - to).count();
     }
     return r;
 }
@@ -338,7 +342,8 @@ void report(const char* name, const Out& r) {
                 r.metrics.removed_small_elements, r.satin, r.running, r.net_len_mm, r.sew_mm,
                 r.metrics.max_width_mm, r.max_rung_mm, r.stitches, r.jumps, r.trims,
                 r.colour_changes, r.max_stitch_mm, r.overlap_mm2, r.satin_mm2, r.metrics.rejected,
-                r.metrics.fallbacks, r.seconds, r.seq_seconds, r.seg_seconds, r.ovl_seconds, r.build_seconds);
+                r.metrics.fallbacks, r.seconds, r.seq_seconds, r.seg_seconds, r.ovl_seconds,
+                r.build_seconds);
 }
 
 // Fingerprint of the effective sequence (byte-identical check).
@@ -561,7 +566,7 @@ TEST_CASE("adv zigzag acute angles") {
     check_invariants("zigzag_forcedsatin", img, opts(0.5, ContourTechnique::Satin), {1, 20});
 }
 
-TEST_CASE("adv grid") {
+TEST_CASE("adv grid", "[.slow]") {
     auto img = blank(400, 400);
     for (int i = 0; i < 5; ++i) {
         stroke(img, 50 + i * 75, 30, 50 + i * 75, 370, 5, kBlack);
@@ -612,7 +617,7 @@ TEST_CASE("adv text like letters") {
     check_monotone("letters", img);
 }
 
-TEST_CASE("adv rosette concentric and spokes") {
+TEST_CASE("adv rosette concentric and spokes", "[.slow]") {
     auto img = blank(400, 400);
     for (const double r : {40.0, 90.0, 140.0, 180.0}) {
         ring(img, 200, 200, r, 5, kBlack);
@@ -641,8 +646,8 @@ TEST_CASE("adv thick thin mix") {
 TEST_CASE("adv colours touching must not merge") {
     auto img = blank(300, 300);
     stroke(img, 20, 100, 280, 100, 5, kBlack);
-    stroke(img, 150, 100, 150, 280, 5, kRed);  // touches black at a T
-    stroke(img, 20, 20, 280, 200, 5, kBlue);   // crosses both
+    stroke(img, 150, 100, 150, 280, 5, kRed); // touches black at a T
+    stroke(img, 20, 20, 280, 200, 5, kBlue);  // crosses both
     check_invariants("three_colours", img, opts(), {3, 12});
     const auto r = exercise(img, opts());
     std::map<std::array<std::uint8_t, 3>, double> len;
@@ -727,13 +732,14 @@ TEST_CASE("adv anti aliased edges opaque white background") {
     }
     const auto line_d = [&](double x, double y, double x0, double y0, double x1, double y1) {
         const double dx = x1 - x0, dy = y1 - y0;
-        const double t = std::clamp(((x - x0) * dx + (y - y0) * dy) / (dx * dx + dy * dy), 0.0, 1.0);
+        const double t =
+            std::clamp(((x - x0) * dx + (y - y0) * dy) / (dx * dx + dy * dy), 0.0, 1.0);
         return std::hypot(x - (x0 + t * dx), y - (y0 + t * dy));
     };
     for (int y = 0; y < H; ++y) {
         for (int x = 0; x < W; ++x) {
-            const double d = std::min(line_d(x, y, 20, 100, 280, 100),
-                                      line_d(x, y, 150, 100, 150, 180));
+            const double d =
+                std::min(line_d(x, y, 20, 100, 280, 100), line_d(x, y, 150, 100, 150, 180));
             const double cov = std::clamp(2.5 - d + 0.5, 0.0, 1.0);
             const auto v = static_cast<std::uint8_t>(255.0 * (1.0 - cov));
             put(img, x, y, Rgb{v, v, v});
@@ -929,8 +935,8 @@ TEST_CASE("adv real image file via PPM loader") {
     auto img = blank(W, H);
     stroke(img, 20, 80, 220, 80, 5, kBlack);
     stroke(img, 120, 80, 120, 140, 5, kBlack);
-    const std::string path = std::string(std::getenv("TMPDIR") ? std::getenv("TMPDIR") : "/tmp") +
-                             "/adv_contour_t.ppm";
+    const std::string path =
+        std::string(std::getenv("TMPDIR") ? std::getenv("TMPDIR") : "/tmp") + "/adv_contour_t.ppm";
     {
         std::ofstream f(path, std::ios::binary);
         f << "P6\n" << W << ' ' << H << "\n255\n";
@@ -962,7 +968,8 @@ TEST_CASE("adv huge image near 4000 px", "[.huge]") {
     o.mm_per_px = Millimeters{0.05};
     const auto t0 = std::chrono::steady_clock::now();
     const auto r = exercise(img, o, 4, false);
-    const double total = std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count();
+    const double total =
+        std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count();
     report("huge", r);
     std::printf("REPORT huge total=%.1fs analyze=%.1fs\n", total, r.seconds);
     REQUIRE(r.ok);
@@ -1190,8 +1197,7 @@ TEST_CASE("adv pixel thin strokes are never silently lost", "[!shouldfail]") {
     CHECK((all_sewn || reported));
 }
 
-TEST_CASE("adv unbranched curve is not shredded into satin and running patches",
-          "[!shouldfail]") {
+TEST_CASE("adv unbranched curve is not shredded into satin and running patches", "[!shouldfail]") {
     // BUG: a 1 mm spiral (junction free, 1 chain) is cut into ~80 segments that
     // flip between satin and running around the 0.8 mm threshold (no hysteresis).
     auto img = blank(300, 300);
@@ -1215,8 +1221,7 @@ TEST_CASE("adv unbranched curve is not shredded into satin and running patches",
             prev = st;
         }
     }
-    std::printf("REPORT spiral segments=%zu strategy switches=%zu\n", r.metrics.segments,
-                switches);
+    std::printf("REPORT spiral segments=%zu strategy switches=%zu\n", r.metrics.segments, switches);
     CHECK(switches <= 4);
 }
 
