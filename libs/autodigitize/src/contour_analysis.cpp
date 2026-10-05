@@ -5,9 +5,11 @@
 #include <map>
 #include <numbers>
 #include <optional>
+#include <set>
 #include <string>
 
 #include "openstitch/auto_satin/auto_satin.hpp"
+#include "openstitch/auto_satin/skeleton.hpp"
 #include "openstitch/autodigitize/contour_network.hpp"
 #include "openstitch/geometry/boolean.hpp"
 #include "openstitch/geometry/offset.hpp"
@@ -357,6 +359,31 @@ ContourSegment finalize_segment(const RawSeg& raw, double pixel_um, Micrometers 
     seg.mean_width_um = core.empty() ? 0.0 : sum / static_cast<double>(core.size());
     seg.min_width_um = quantile(core, 0.1);
     seg.max_width_um = quantile(core, 0.9);
+
+    // Irregularite : ecarts a la droite des moindres carres largeur(s).
+    {
+        const auto cum = geometry::cumulative_lengths(raw.pts);
+        const std::size_t m = std::min(widths.size(), cum.size());
+        if (m >= 6 && seg.mean_width_um > 0.0) {
+            const std::size_t t0 = m >= 10 ? m / 5 : 0;
+            double sx = 0, sy = 0, sxx = 0, sxy = 0;
+            const double cnt = static_cast<double>(m - 2 * t0);
+            for (std::size_t i = t0; i < m - t0; ++i) {
+                sx += cum[i];
+                sy += widths[i];
+                sxx += cum[i] * cum[i];
+                sxy += cum[i] * widths[i];
+            }
+            const double den = cnt * sxx - sx * sx;
+            const double slope = den != 0.0 ? (cnt * sxy - sx * sy) / den : 0.0;
+            const double icpt = (sy - slope * sx) / cnt;
+            std::vector<double> res;
+            for (std::size_t i = t0; i < m - t0; ++i) {
+                res.push_back(widths[i] - (icpt + slope * cum[i]));
+            }
+            seg.width_roughness = (quantile(res, 0.9) - quantile(res, 0.1)) / seg.mean_width_um;
+        }
+    }
 
     geometry::Path path;
     path.closed = raw.closed;
@@ -732,6 +759,12 @@ void split_width_regimes(std::vector<RawSeg>& raws, NodeSet& ns, double px,
     }
 }
 
+std::optional<ContourComponent>
+build_component(const auto_satin::RasterMask& skeletonIn, const auto_satin::DistanceField& distance,
+                double px, geometry::PathSet region, std::size_t droppedHoles,
+                std::array<std::uint8_t, 3> rgb, const ContourThresholds& th,
+                const ContourLimits& lim, ContourNetwork& net, const std::string& label);
+
 std::optional<ContourComponent> analyze_piece(const geometry::PathSet& piece,
                                               std::array<std::uint8_t, 3> rgb,
                                               const ContourThresholds& th, const ContourLimits& lim,
@@ -778,21 +811,34 @@ std::optional<ContourComponent> analyze_piece(const geometry::PathSet& piece,
     const auto& dbg = analysis->debug;
     const double px = dbg.mask.transform.pixel_size_um;
 
+    return build_component(dbg.skeleton, dbg.distance, px, filtered, droppedHoles, rgb, th, lim,
+                           net, label);
+}
+
+// Squelette (deja calcule) -> composante : graphe, boucles, croisements, regimes
+// de largeur, segments. Commun a la voie polygone et a la voie pixel.
+std::optional<ContourComponent>
+build_component(const auto_satin::RasterMask& skeletonIn, const auto_satin::DistanceField& distance,
+                double px, geometry::PathSet region, std::size_t droppedHoles,
+                std::array<std::uint8_t, 3> rgb, const ContourThresholds& th,
+                const ContourLimits& lim, ContourNetwork& net, const std::string& label) {
+    auto_satin::GraphCleanupParameters cleanup;
+    cleanup.minimum_branch_length = th.min_branch_length;
     ContourComponent comp;
     comp.rgb = rgb;
-    comp.region = filtered;
+    comp.region = std::move(region);
     comp.removed_small_loops += droppedHoles;
     comp.raster_pixel_um = px;
-    auto_satin::RasterMask skeleton = dbg.skeleton;
+    auto_satin::RasterMask skeleton = skeletonIn;
     repair_crossing_blocks(skeleton);
-    const auto rawGraph = auto_satin::build_skeleton_graph(skeleton, dbg.distance);
-    const auto pruned = auto_satin::prune_graph(rawGraph, ap.cleanup);
+    const auto rawGraph = auto_satin::build_skeleton_graph(skeleton, distance);
+    const auto pruned = auto_satin::prune_graph(rawGraph, cleanup);
     for (const auto& rb : pruned.removed) {
         if (rb.reason.rfind("branche terminale", 0) == 0) {
             ++comp.removed_short_branches;
         }
     }
-    if (px > 75.0) {
+    if (px > 75.0 && comp.region.outer.nodes.size() >= 3) {
         net.diagnostics.push_back(
             label + " : squelette calcule a " + std::to_string(static_cast<int>(px)) +
             " um/pixel (plafond de 1500 px) : les traits plus fins que ~" +
@@ -840,7 +886,7 @@ std::optional<ContourComponent> analyze_piece(const geometry::PathSet& piece,
     // Boucles residuelles : anneaux purs, ou boucles rattachees a UNE jonction
     // (les deux bouts au meme noeud). Le reste du residu est un artefact de
     // l'amas de pixels de jonction : ignore.
-    for (auto& ch : residual_chains(skeleton, dbg.distance, rawGraph)) {
+    for (auto& ch : residual_chains(skeleton, distance, rawGraph)) {
         RawSeg r;
         r.pts = std::move(ch.pts);
         r.radii = std::move(ch.radii);
@@ -932,6 +978,98 @@ std::optional<ContourComponent> analyze_piece(const geometry::PathSet& piece,
     return comp;
 }
 
+// Voie PIXEL : les traits de 1-2 px n'ont pas d'aire une fois vectorises (le
+// contour passe par les centres des pixels). On extrait alors la ligne mediane
+// directement du masque de labels : les pixels de ces regions (reunis par
+// couleur, 8-connexite : la segmentation 4-connexe coupe une diagonale en
+// pixels isoles) sont amincis puis traites comme n'importe quel squelette.
+std::vector<ContourComponent>
+analyze_pixel_strokes(const segmentation::Segmentation& seg, const std::set<std::uint32_t>& labels,
+                      std::array<std::uint8_t, 3> rgb, double mmPerPx, const ContourThresholds& th,
+                      const ContourLimits& lim, ContourNetwork& net, std::size_t& counter) {
+    std::vector<ContourComponent> out;
+    const int w = seg.width;
+    const int h = seg.height;
+    const auto idx = [&](int x, int y) {
+        return static_cast<std::size_t>(y) * static_cast<std::size_t>(w) +
+               static_cast<std::size_t>(x);
+    };
+    const auto on = [&](int x, int y) {
+        return x >= 0 && y >= 0 && x < w && y < h && labels.contains(seg.labels[idx(x, y)]);
+    };
+    std::vector<std::uint8_t> seen(seg.labels.size(), 0);
+    std::size_t dropped = 0;
+    for (int y0 = 0; y0 < h; ++y0) {
+        for (int x0 = 0; x0 < w; ++x0) {
+            if (!on(x0, y0) || seen[idx(x0, y0)]) {
+                continue;
+            }
+            std::vector<std::pair<int, int>> pix;
+            std::vector<std::pair<int, int>> stack{{x0, y0}};
+            seen[idx(x0, y0)] = 1;
+            int minX = x0, maxX = x0, minY = y0, maxY = y0;
+            while (!stack.empty()) {
+                const auto [cx, cy] = stack.back();
+                stack.pop_back();
+                pix.push_back({cx, cy});
+                minX = std::min(minX, cx);
+                maxX = std::max(maxX, cx);
+                minY = std::min(minY, cy);
+                maxY = std::max(maxY, cy);
+                for (int dy = -1; dy <= 1; ++dy) {
+                    for (int dx = -1; dx <= 1; ++dx) {
+                        const int nx = cx + dx;
+                        const int ny = cy + dy;
+                        if (on(nx, ny) && !seen[idx(nx, ny)]) {
+                            seen[idx(nx, ny)] = 1;
+                            stack.push_back({nx, ny});
+                        }
+                    }
+                }
+            }
+            ++counter;
+            if (pix.size() < 3) {
+                ++dropped; // 1-2 pixels : sous le plancher physique
+                continue;
+            }
+            constexpr int kMargin = 2;
+            auto_satin::RasterMask mask;
+            mask.width = maxX - minX + 1 + 2 * kMargin;
+            mask.height = maxY - minY + 1 + 2 * kMargin;
+            mask.pixels.assign(
+                static_cast<std::size_t>(mask.width) * static_cast<std::size_t>(mask.height), 0);
+            const int ox = minX - kMargin;
+            const int oy = minY - kMargin;
+            for (const auto& [px, py] : pix) {
+                mask.pixels[static_cast<std::size_t>(py - oy) *
+                                static_cast<std::size_t>(mask.width) +
+                            static_cast<std::size_t>(px - ox)] = 1;
+            }
+            // Meme repere que vectorize_region : centre du pixel, Y vers le haut.
+            mask.transform.pixel_size_um = mmPerPx * 1000.0;
+            mask.transform.min_x_um = (ox + 0.5 - w / 2.0) * mmPerPx * 1000.0;
+            mask.transform.max_y_um = (h / 2.0 - (oy + 0.5)) * mmPerPx * 1000.0;
+            const auto distance = auto_satin::distance_transform(mask);
+            const auto skeleton = auto_satin::thin_zhang_suen(mask);
+            auto comp = build_component(skeleton, distance, mask.transform.pixel_size_um, {}, 0,
+                                        rgb, th, lim, net, "Trait fin " + std::to_string(counter));
+            if (!comp) {
+                ++dropped;
+                continue;
+            }
+            comp->pixel_route = true;
+            out.push_back(std::move(*comp));
+        }
+    }
+    if (dropped > 0) {
+        net.removed_isolated += dropped;
+        net.diagnostics.push_back(
+            std::to_string(dropped) +
+            " element(s) de 1-2 px sans ligne mediane exploitable : ignore(s)");
+    }
+    return out;
+}
+
 // Fermeture polygonale par groupe de couleur : les traits separes de moins de
 // `distance` fusionnent (dilatation, union, erosion).
 std::vector<geometry::PathSet> merge_near_pieces(const std::vector<geometry::PathSet>& pieces,
@@ -1001,63 +1139,75 @@ Result<ContourNetwork> analyze_contours(const segmentation::Segmentation& seg,
     const vectorization::VectorizeOptions vecOpts{options.mm_per_px, vecTol};
 
     std::map<std::array<std::uint8_t, 3>, std::vector<geometry::PathSet>> byColour;
+    std::map<std::array<std::uint8_t, 3>, std::set<std::uint32_t>> thinLabels;
     for (const auto& slot : seg.region_slots) {
         if (!slot || (background && slot->rgb == *background)) {
             continue;
         }
         auto sets = vectorization::vectorize_region(seg, slot->id, vecOpts);
         if (!sets || sets->empty()) {
-            // Typiquement un trait de 1-2 px : le contour passe par les centres
-            // des pixels et n'a aucune aire. Jamais perdu en silence.
-            ++net.failed_components;
-            net.diagnostics.push_back(
-                "Region " + std::to_string(slot->id.value) + " (" +
-                std::to_string(slot->pixel_count) +
-                " px) : trait trop fin pour etre vectorise (1-2 px de large) : non brode");
+            // Trait de 1-2 px : voie pixel (cf. analyze_pixel_strokes).
+            thinLabels[slot->rgb].insert(static_cast<std::uint32_t>(slot->id.value));
             continue;
         }
         auto& dst = byColour[slot->rgb];
         dst.insert(dst.end(), sets->begin(), sets->end());
     }
-    if (byColour.empty()) {
+    if (byColour.empty() && thinLabels.empty()) {
         return fail(ErrorCategory::OperationImpossible, "Aucune region exploitable");
     }
 
     const auto_satin::SkeletonCacheScope cache;
     std::size_t counter = 0;
-    for (auto& [rgb, pieces] : byColour) {
-        const auto merged = merge_near_pieces(pieces, net.thresholds.merge_distance);
-        for (const auto& piece : merged) {
-            ++counter;
-            const std::size_t failedBefore = net.failed_components;
-            auto comp = analyze_piece(piece, rgb, net.thresholds, lim, net,
-                                      "Trait " + std::to_string(counter));
-            if (!comp) {
-                if (net.failed_components != failedBefore) {
-                    continue; // deja diagnostique par analyze_piece
+    const auto accept = [&](std::optional<ContourComponent>&& comp, const std::string& label) {
+        if (!comp) {
+            return;
+        }
+        const bool hasJunction = comp->junction_count() > 0;
+        double total = 0.0;
+        for (const auto& sg : comp->segments) {
+            total += sg.length_um;
+        }
+        if (!hasJunction && comp->segments.size() == 1 && !comp->segments[0].closed &&
+            total < static_cast<double>(net.thresholds.min_isolated_length.value)) {
+            ++net.removed_isolated;
+            net.diagnostics.push_back(label + " : element isole de " +
+                                      std::to_string(static_cast<int>(total / 100.0) / 10.0) +
+                                      " mm sous le seuil de detail : ignore");
+            return;
+        }
+        net.components.push_back(std::move(*comp));
+    };
+    std::set<std::array<std::uint8_t, 3>> colours;
+    for (const auto& kv : byColour) {
+        colours.insert(kv.first);
+    }
+    for (const auto& kv : thinLabels) {
+        colours.insert(kv.first);
+    }
+    for (const auto& rgb : colours) {
+        if (const auto it = byColour.find(rgb); it != byColour.end()) {
+            const auto merged = merge_near_pieces(it->second, net.thresholds.merge_distance);
+            for (const auto& piece : merged) {
+                ++counter;
+                const std::string label = "Trait " + std::to_string(counter);
+                const std::size_t failedBefore = net.failed_components;
+                auto comp = analyze_piece(piece, rgb, net.thresholds, lim, net, label);
+                if (!comp && net.failed_components == failedBefore) {
+                    // Sans ligne mediane (point, disque) : element isole sous le seuil.
+                    ++net.removed_isolated;
+                    net.diagnostics.push_back(label +
+                                              " : aucune ligne mediane exploitable (point, disque "
+                                              "ou trait trop fin) : ignore");
                 }
-                // Sans ligne mediane (point, disque) : element isole sous le seuil.
-                ++net.removed_isolated;
-                net.diagnostics.push_back("Trait " + std::to_string(counter) +
-                                          " : aucune ligne mediane exploitable (point, disque ou "
-                                          "trait trop fin) : ignore");
-                continue;
+                accept(std::move(comp), label);
             }
-            const bool hasJunction = comp->junction_count() > 0;
-            double total = 0.0;
-            for (const auto& s : comp->segments) {
-                total += s.length_um;
+        }
+        if (const auto it = thinLabels.find(rgb); it != thinLabels.end()) {
+            for (auto& comp : analyze_pixel_strokes(seg, it->second, rgb, options.mm_per_px.value,
+                                                    net.thresholds, lim, net, counter)) {
+                accept(std::move(comp), "Trait fin");
             }
-            if (!hasJunction && comp->segments.size() == 1 && !comp->segments[0].closed &&
-                total < static_cast<double>(net.thresholds.min_isolated_length.value)) {
-                ++net.removed_isolated;
-                net.diagnostics.push_back("Trait " + std::to_string(counter) +
-                                          " : element isole de " +
-                                          std::to_string(static_cast<int>(total / 100.0) / 10.0) +
-                                          " mm sous le seuil de detail : ignore");
-                continue;
-            }
-            net.components.push_back(std::move(*comp));
         }
     }
     return net;

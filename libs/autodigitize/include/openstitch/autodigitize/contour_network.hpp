@@ -37,6 +37,11 @@ struct ContourSegment {
     double min_width_um{0.0};
     double max_width_um{0.0};
     double mean_width_um{0.0};
+    // Irregularite de largeur : etendue (p90 - p10) des ecarts a la tendance
+    // LINEAIRE de la largeur le long du trait, rapportee a la largeur moyenne.
+    // Un effilement regulier a une irregularite faible ; une largeur qui ondule
+    // ou saute a une irregularite forte.
+    double width_roughness{0.0};
     double max_turn_deg{0.0}; // virage le plus brusque (fenetre ~1 mm)
 };
 
@@ -46,7 +51,10 @@ struct ContourComponent {
     geometry::PathSet region; // polygone vectorise dont le squelette est issu
     std::vector<ContourNode> nodes;
     std::vector<ContourSegment> segments;
-    double raster_pixel_um{0.0}; // pixel reel du squelette (plafond 1500 px)
+    double raster_pixel_um{0.0}; // pixel reel du squelette
+    // Trait de 1-2 px extrait du masque de labels : pas de polygone (`region`
+    // vide), donc jamais de satin.
+    bool pixel_route{false};
     std::size_t removed_short_branches{0};
     std::size_t removed_small_loops{0};
 

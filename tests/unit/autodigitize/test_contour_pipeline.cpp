@@ -664,3 +664,92 @@ TEST_CASE("contour closed ring is split by width regime") {
         CHECK(r.metrics.satin_length_mm > 90.0);
     }
 }
+
+TEST_CASE("contour one pixel strokes are sewn along their centerline") {
+    auto img = blank(300, 200);
+    stroke(img, 20, 50, 280, 50, 14, kBlack);
+    stroke(img, 20, 100, 280, 100, 1.5, kBlack); // 1 px
+    stroke(img, 20, 140, 280, 190, 1.0, kBlack); // 1 px diagonal (4-conn splits it)
+    const auto r = run(img, opts());
+    dump("one px", r);
+    // 65 mm horizontal + ~66 mm diagonal must be sewn as open running paths.
+    std::size_t openPaths = 0;
+    double len = 0.0;
+    for (const auto& v : r.result.vectors) {
+        if (v.name.find("ligne") == std::string::npos) {
+            continue;
+        }
+        for (const auto& ps : v.paths) {
+            openPaths += ps.outer.closed ? 0 : 1;
+            for (std::size_t i = 1; i < ps.outer.nodes.size(); ++i) {
+                len += length_um(ps.outer.nodes[i].pos - ps.outer.nodes[i - 1].pos) / 1000.0;
+            }
+        }
+    }
+    CHECK(openPaths >= 2);
+    CHECK(len > 120.0);
+}
+
+TEST_CASE("contour low resolution line art is covered by running objects") {
+    // 2-3 px line drawing (an X inside a box), nothing wider than 3 px.
+    auto img = blank(220, 220);
+    stroke(img, 20, 20, 200, 20, 2, kBlack);
+    stroke(img, 200, 20, 200, 200, 2, kBlack);
+    stroke(img, 200, 200, 20, 200, 2, kBlack);
+    stroke(img, 20, 200, 20, 20, 2, kBlack);
+    stroke(img, 20, 20, 200, 200, 3, kBlack);
+    stroke(img, 20, 200, 200, 20, 3, kBlack);
+    const auto r = run(img, opts());
+    dump("lowres", r);
+    CHECK(r.metrics.components >= 1);
+    CHECK(r.satin == 0);
+    CHECK(r.running >= 1);
+    // 4 sides of 45 mm + 2 diagonals of ~64 mm = ~308 mm of line.
+    CHECK(r.metrics.running_length_mm > 280.0);
+}
+
+TEST_CASE("contour dense junction network stays satin") {
+    auto img = blank(400, 400);
+    for (const double r : {40.0, 90.0, 140.0, 180.0}) {
+        ring(img, 200, 200, r, 5, kBlack);
+    }
+    for (int k = 0; k < 12; ++k) {
+        const double a = 2 * std::acos(-1.0) * k / 12;
+        stroke(img, 200 + 40 * std::cos(a), 200 + 40 * std::sin(a), 200 + 180 * std::cos(a),
+               200 + 180 * std::sin(a), 5, kBlack);
+    }
+    const auto r = run(img, opts());
+    dump("rosette", r);
+    if (const char* dir = std::getenv("CONTOUR_SVG_DIR")) {
+        write_svg(std::string(dir) + "/rosette.svg", r);
+    }
+    // 48 junctions, 84 segments of ~0.9-1.0 mm: satin everywhere, with at most a
+    // couple of honest fallbacks, never the 45 / 84 seen with a width margin.
+    CHECK(r.metrics.segments >= 80);
+    CHECK(r.metrics.fallbacks <= 4);
+    CHECK(r.metrics.satin_length_mm >
+          0.95 * (r.metrics.satin_length_mm + r.metrics.running_length_mm));
+}
+
+TEST_CASE("contour taper is split into a satin part and a running tip") {
+    // Stroke tapering linearly from 22 px (5.5 mm) to 1 px along 280 mm.
+    auto img = blank(300, 100);
+    const int n = 2000;
+    for (int i = 0; i <= n; ++i) {
+        const double t = static_cast<double>(i) / n;
+        disc(img, 10 + 280 * t, 50, (22.0 * (1.0 - t) + 1.0 * t) / 2.0, kBlack);
+    }
+    for (const double d : {0.0, 0.5, 1.0}) {
+        const auto r = run(img, opts(d));
+        dump("taper", r);
+        std::printf("   detail=%.1f segments=%zu satin=%zu running=%zu\n", d, r.metrics.segments,
+                    r.satin, r.running);
+        CHECK(r.satin >= 1);
+        CHECK(r.running >= 1);
+        // Exactly one transition: few segments (no oscillation near 0.8 mm).
+        CHECK(r.metrics.segments <= 4);
+        // The satin part is the wide one: its length is a real share of the stroke.
+        CHECK(r.metrics.satin_length_mm > 40.0);
+        CHECK(r.metrics.running_length_mm > 5.0);
+    }
+}
