@@ -1,5 +1,8 @@
 add_library(openstitch_autodigitize
     src/autodigitize.cpp
+    src/contour_options.cpp
+    src/contour_analysis.cpp
+    src/contour_objects.cpp
 )
 add_library(openstitch::autodigitize ALIAS openstitch_autodigitize)
 
