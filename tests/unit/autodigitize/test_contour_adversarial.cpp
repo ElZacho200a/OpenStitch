@@ -136,6 +136,7 @@ struct Out {
     double seconds{0.0};
     double seq_seconds{0.0};
     double seg_seconds{0.0};
+    double build_seconds{0.0};
     double ovl_seconds{0.0};
     std::size_t net_segments{0};
     double net_len_mm{0.0};
@@ -245,7 +246,9 @@ Out exercise(const image::Image& img, const ContourOptions& o, int colours = 4,
             }
         }
         IdGenerator<ObjectId> ids;
+        const auto tb = std::chrono::steady_clock::now();
         auto res = build_contour_objects(r.net, ids, o, &r.metrics);
+        r.build_seconds = std::chrono::duration<double>(std::chrono::steady_clock::now() - tb).count();
         if (!res.has_value()) {
             r.error = "build failed: " + res.error().message;
             return r;
@@ -329,13 +332,13 @@ void report(const char* name, const Out& r) {
     std::printf("REPORT %-22s comps=%zu seg=%zu junc=%zu end=%zu rmBr=%zu rmSmall=%zu | "
                 "satinObj=%zu runObj=%zu | netLen=%.1f sew=%.1f | wMax=%.2f rungMax=%.2f | "
                 "stitches=%zu jumps=%zu trims=%zu cc=%zu maxSt=%.1f | ovl=%.2f/%.2fmm2 | rej=%zu "
-                "fb=%zu | %.2fs seq=%.2fs seg=%.2fs ovl=%.2fs\n",
+                "fb=%zu | %.2fs seq=%.2fs seg=%.2fs ovl=%.2fs build=%.2fs\n",
                 name, r.metrics.components, r.metrics.segments, r.metrics.junctions,
                 r.metrics.endpoints, r.metrics.removed_short_branches,
                 r.metrics.removed_small_elements, r.satin, r.running, r.net_len_mm, r.sew_mm,
                 r.metrics.max_width_mm, r.max_rung_mm, r.stitches, r.jumps, r.trims,
                 r.colour_changes, r.max_stitch_mm, r.overlap_mm2, r.satin_mm2, r.metrics.rejected,
-                r.metrics.fallbacks, r.seconds, r.seq_seconds, r.seg_seconds, r.ovl_seconds);
+                r.metrics.fallbacks, r.seconds, r.seq_seconds, r.seg_seconds, r.ovl_seconds, r.build_seconds);
 }
 
 // Fingerprint of the effective sequence (byte-identical check).
@@ -1227,4 +1230,17 @@ TEST_CASE("adv satin column covers the ink width") {
     std::printf("REPORT width6px nominal=1.50 measured_rung=%.2f metrics_w=%.2f\n", r.max_rung_mm,
                 r.metrics.mean_width_mm);
     CHECK(r.max_rung_mm >= 1.5 * 0.9);
+}
+
+TEST_CASE("adv build time scales with grid size", "[.perf]") {
+    for (const int n : {2, 3, 4, 5, 6}) {
+        auto img = blank(100 + n * 75, 100 + n * 75);
+        for (int i = 0; i < n; ++i) {
+            stroke(img, 50 + i * 75, 30, 50 + i * 75, 70 + n * 75, 5, kBlack);
+            stroke(img, 30, 50 + i * 75, 70 + n * 75, 50 + i * 75, 5, kBlack);
+        }
+        const auto r = exercise(img, opts(), 4, false, false);
+        std::printf("PERF grid %dx%d segments=%zu analyze=%.2fs build=%.2fs\n", n, n,
+                    r.metrics.segments, r.seconds, r.build_seconds);
+    }
 }
