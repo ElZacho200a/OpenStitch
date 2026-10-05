@@ -28,6 +28,7 @@
 #include <QPainterPath>
 #include <QPixmap>
 #include <QPlainTextEdit>
+#include <QRadioButton>
 #include <QSpinBox>
 #include <QStatusBar>
 #include <QTextStream>
@@ -56,6 +57,7 @@
 
 #include "openstitch/auto_satin/satin_column.hpp"
 #include "openstitch/autodigitize/autodigitize.hpp"
+#include "openstitch/autodigitize/contour_objects.hpp"
 #include "openstitch/commands/finishing_commands.hpp"
 #include "openstitch/commands/project_commands.hpp"
 #include "openstitch/core/app_info.hpp"
@@ -3341,6 +3343,11 @@ void MainWindow::autoDigitize() {
 
     autodigitize::AutoOptions opts;
     opts.mm_per_px = project_.mm_per_px;
+    // Strategie « Contours / dessin au trait » (choisie dans le dialogue,
+    // segmentation uniquement) : la logique vit dans libs/autodigitize.
+    bool contoursMode = false;
+    autodigitize::ContourOptions contourOpts;
+    contourOpts.mm_per_px = project_.mm_per_px;
 
     if (hasSegmentation) {
         // Fond présumé (Lot A, audit marine plein cadre 2026-09-22) : la
@@ -3392,6 +3399,56 @@ void MainWindow::autoDigitize() {
             row->addWidget(info, 1);
             optsLayout->addLayout(row);
         }
+        // Strategie : formes pleines (historique) ou contours (dessin au trait).
+        auto* shapesRadio = new QRadioButton(tr("Formes pleines (remplissages)"), &optsDialog);
+        shapesRadio->setObjectName("strategyShapesRadio");
+        shapesRadio->setChecked(true);
+        auto* contoursRadio = new QRadioButton(tr("Contours (dessin au trait)"), &optsDialog);
+        contoursRadio->setObjectName("strategyContoursRadio");
+        contoursRadio->setToolTip(
+            tr("Coud les traits du dessin (lignes médianes) en point droit ou en satin selon "
+               "leur largeur, au lieu de remplir les formes."));
+        optsLayout->addWidget(shapesRadio);
+        optsLayout->addWidget(contoursRadio);
+
+        auto* contoursPanel = new QWidget(&optsDialog);
+        contoursPanel->setObjectName("contoursPanel");
+        auto* panelLayout = new QVBoxLayout(contoursPanel);
+        panelLayout->setContentsMargins(0, 0, 0, 0);
+        auto* detailRow = new QHBoxLayout;
+        auto* detailSlider = new QSlider(Qt::Horizontal, contoursPanel);
+        detailSlider->setObjectName("contourDetailSlider");
+        detailSlider->setRange(0, 100);
+        detailSlider->setValue(50);
+        detailSlider->setToolTip(
+            tr("Niveau de détail : bas = lignes très simplifiées, petits traits ignorés ; "
+               "haut = fidèle au dessin."));
+        auto* detailValue = new QLabel(QStringLiteral("50"), contoursPanel);
+        detailValue->setObjectName("contourDetailValue");
+        connect(detailSlider, &QSlider::valueChanged, detailValue,
+                [detailValue](int v) { detailValue->setText(QString::number(v)); });
+        detailRow->addWidget(new QLabel(tr("Détail :"), contoursPanel));
+        detailRow->addWidget(new QLabel(tr("Faible"), contoursPanel));
+        detailRow->addWidget(detailSlider, 1);
+        detailRow->addWidget(new QLabel(tr("Élevé"), contoursPanel));
+        detailRow->addWidget(detailValue);
+        panelLayout->addLayout(detailRow);
+        auto* techAutoRadio = new QRadioButton(tr("Automatique"), contoursPanel);
+        techAutoRadio->setObjectName("contourTechniqueAutoRadio");
+        techAutoRadio->setChecked(true);
+        auto* techRunningRadio = new QRadioButton(tr("Running (point droit)"), contoursPanel);
+        techRunningRadio->setObjectName("contourTechniqueRunningRadio");
+        auto* techSatinRadio = new QRadioButton(tr("Satin"), contoursPanel);
+        techSatinRadio->setObjectName("contourTechniqueSatinRadio");
+        auto* techRow = new QHBoxLayout;
+        techRow->addWidget(techAutoRadio);
+        techRow->addWidget(techRunningRadio);
+        techRow->addWidget(techSatinRadio);
+        panelLayout->addLayout(techRow);
+        contoursPanel->setEnabled(false);
+        connect(contoursRadio, &QRadioButton::toggled, contoursPanel, &QWidget::setEnabled);
+        optsLayout->addWidget(contoursPanel);
+
         auto* optsButtons =
             new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &optsDialog);
         connect(optsButtons, &QDialogButtonBox::accepted, &optsDialog, &QDialog::accept);
@@ -3401,13 +3458,25 @@ void MainWindow::autoDigitize() {
             return;
         }
         opts.skip_largest_region = skipBgCheck->isChecked();
+        contoursMode = contoursRadio->isChecked();
+        contourOpts.skip_largest_region = skipBgCheck->isChecked();
+        contourOpts.detail = static_cast<double>(detailSlider->value()) / 100.0;
+        contourOpts.technique = techSatinRadio->isChecked() ? autodigitize::ContourTechnique::Satin
+                                : techRunningRadio->isChecked()
+                                    ? autodigitize::ContourTechnique::Running
+                                    : autodigitize::ContourTechnique::Automatic;
     }
 
     QGuiApplication::setOverrideCursor(Qt::WaitCursor);
-    auto result = hasSegmentation ? autodigitize::auto_digitize(*project_.segmentation,
-                                                                project_.object_ids, opts)
-                                  : autodigitize::auto_digitize_vectors(project_.vector_objects,
-                                                                        project_.object_ids, opts);
+    autodigitize::ContourMetrics contourMetrics;
+    auto result =
+        contoursMode
+            ? autodigitize::auto_digitize_contours(*project_.segmentation, project_.object_ids,
+                                                   contourOpts, &contourMetrics)
+        : hasSegmentation
+            ? autodigitize::auto_digitize(*project_.segmentation, project_.object_ids, opts)
+            : autodigitize::auto_digitize_vectors(project_.vector_objects, project_.object_ids,
+                                                  opts);
     QGuiApplication::restoreOverrideCursor();
     if (!result) {
         QMessageBox::warning(this, tr("Numérisation impossible"),
@@ -3424,6 +3493,33 @@ void MainWindow::autoDigitize() {
     showStitchesAct_->setChecked(true);
     refreshImage();
     updateActions();
+    if (contoursMode) {
+        // Metriques et avertissements viennent tels quels de la lib (aucune
+        // logique metier ici) : resume en barre d'etat, details en dialogue.
+        statusBar()->showMessage(
+            tr("Contours : %1 objet(s), %2 segment(s), %3 jonction(s) — point droit %4 mm, "
+               "satin %5 mm, %6 repli(s), %7 rejet(s)")
+                .arg(embCount)
+                .arg(contourMetrics.segments)
+                .arg(contourMetrics.junctions)
+                .arg(QLocale().toString(contourMetrics.running_length_mm, 'f', 1))
+                .arg(QLocale().toString(contourMetrics.satin_length_mm, 'f', 1))
+                .arg(contourMetrics.fallbacks)
+                .arg(contourMetrics.rejected));
+        if (!warnings.empty()) {
+            constexpr std::size_t kMaxShown = 12;
+            QString text = tr("Certains traits n'ont pas pu être cousus tels quels (trop courts, "
+                              "trop larges ou trop irréguliers pour le satin) :\n\n");
+            for (std::size_t i = 0; i < warnings.size() && i < kMaxShown; ++i) {
+                text += QStringLiteral("• ") + QString::fromStdString(warnings[i]) + "\n";
+            }
+            if (warnings.size() > kMaxShown) {
+                text += tr("… et %1 de plus.").arg(warnings.size() - kMaxShown);
+            }
+            QMessageBox::warning(this, tr("Contours : avertissements"), text);
+        }
+        return;
+    }
     statusBar()->showMessage(
         tr("Numérisation automatique : %1 objet(s) vectoriel(s), %2 objet(s) de broderie — "
            "tous éditables")

@@ -242,6 +242,75 @@ moins de 0,5 mm hors points d'arrêt, histogramme des directions.
 de 3 mm², surface non couverte hors fond ignoré, angles de remplissage
 distincts, ventilation par source.
 
+## Contours / Line Art
+
+Seconde stratégie de l'auto-numérisation, pour les **dessins au trait** :
+au lieu de remplir les régions, on coud les *traits*. Entrée : la même
+segmentation CIELAB ; sortie : des objets éditables (`AutoResult`), jamais
+des points stockés.
+
+**Pipeline** (`libs/autodigitize/src/contour_*.cpp`) : segmentation → pour
+chaque couleur, squelette / lignes médianes avec largeur locale → réseau de
+nœuds (jonctions, extrémités) et segments (`ContourNetwork`) → nettoyage
+selon `detail` (branches courtes, boucles et éléments isolés trop petits,
+fusion de traits proches, simplification Douglas-Peucker) → classification
+par segment (`classify_segment` : point droit simple, point triple, satin,
+rejeté) → objets : une couleur = un groupe contigu (les plus claires d'abord,
+la plus sombre en dernier), ordre déterministe. Les lignes sont des objets
+Running à chemin ouvert ; les jonctions satin passent par
+`satin_planning::build_satin_sections`.
+
+**Détail → seuils** (`contour_thresholds`, fonction pure et monotone ; facteur
+`f = 4^(1 - 2*detail)`, 0,5 = réglages historiques) :
+
+| detail | f | branche min | élément isolé min | tolérance DP | fusion |
+|---|---|---|---|---|---|
+| 0,0 | 4 | 6 mm | 9,6 mm | 0,40 mm | 1,2 mm |
+| 0,25 | 2 | 3 mm | 4,8 mm | 0,28 mm | 0,6 mm |
+| 0,5 | 1 | 1,5 mm | 2,4 mm | 0,20 mm | 0,3 mm |
+| 0,75 | 0,5 | 0,75 mm | 1,2 mm | 0,14 mm | 0,15 mm |
+| 1,0 | 0,25 | 0,375 mm | 0,6 mm | 0,10 mm | 0,075 mm |
+
+Boucle fermée minimale : périmètre π × branche min. Chaque seuil est borné par
+les garde-fous physiques ci-dessous.
+
+**Garde-fous physiques** (`contour_limits`, jamais abaissés par `detail`) :
+largeur satin min = `SatinabilityThresholds::min_satin_width` (0,8 mm) et max
+= `AutoOptions::satin_max_width` ; longueur min d'élément =
+`RunningStitchParams::min_length` ; périmètre de boucle min = 3 fois cette
+longueur ; tolérance de simplification min = 0,1 mm (pas DST). Heuristiques de
+qualité satin (variation de largeur 50 %, virage 60° sur ~1 mm) ignorées quand
+la technique est forcée à Satin. Un satin voulu mais impossible retombe en
+point droit avec un avertissement (jamais silencieux) ; les segments
+inférieurs à 0,5 mm entre nœuds sont rejetés avec avertissement.
+
+**Technique** : Automatique (par segment : fin -> point droit, régulier ->
+satin, sinon repli), Running (point droit sur la ligne médiane), Satin (satin
+quand la largeur le permet).
+
+**Jonctions** : croisements (X, T) conservés comme nœuds du réseau ; les
+colonnes satin aboutissant à une jonction sont ancrées par les sections
+satin_planning existantes (voir `satin.md`).
+
+**Métriques** (`ContourMetrics`) : composantes, segments, jonctions,
+extrémités, branches courtes et éléments petits supprimés, longueur point
+droit / satin (mm), largeur min / moyenne pondérée / max, replis, rejets.
+Affichées par `openstitch-cli digitize --mode contours` et dans la barre
+d'état du desktop.
+
+**Utilisation** : CLI `digitize image.png out.dst --mode contours --detail
+0.5 --technique auto|running|satin` (défaut `--mode shapes`, comportement
+inchangé) ; desktop : dialogue « Numérisation automatique » -> « Contours »,
+curseur Détail 0-100 (défaut 50), technique Automatique / Running / Satin.
+Pas d'aperçu superposé dans le dialogue pour l'instant.
+
+**Limites connues** : un pincement en 8 n'est que partiellement satin (repli
+point droit + avertissement) ; segments entre nœuds < 0,5 mm rejetés ; images
+> 4000 px non testées ; groupes de couleur non ordonnés par proximité ; sur le
+cas synthétique CLI, `detail` 0,9 produit des colonnes refusées sur un anneau
+fin (« trou entre stations ») : le segment est alors découpé en plusieurs
+objets au lieu de rester continu.
+
 ## Implémentation associée
 
 - `libs/segmentation/include/openstitch/segmentation/segmentation.hpp` —
@@ -257,7 +326,9 @@ distincts, ventilation par source.
   `OrderItem::area_mm2`.
 - `libs/geometry/include/openstitch/geometry/moments.hpp` — `principal_axis`.
 - `apps/desktop/main_window.cpp` — `MainWindow::autoDigitize` (dialogue).
-- `apps/cli/main.cpp` — `run_digitize`.
+- `libs/autodigitize/src/contour_*.cpp` — stratégie Contours
+  (`auto_digitize_contours`, `contour_thresholds`, `contour_limits`).
+- `apps/cli/main.cpp` — `run_digitize` (`--mode contours`).
 - Tests : `tests/unit/segmentation/test_segmentation.cpp` (cas « fond
   blanc », « plein cadre coloré », « blanc central », « deux bords »),
   `tests/unit/desktop/test_main_window.cpp`
