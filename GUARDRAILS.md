@@ -49,6 +49,14 @@ foi.
   (`docs/performance-audit.md`, `docs/stitch-engine-audit.md`) sans
   justification explicite.
 
+### G2.x: Lessons — Agents
+
+Operational lessons from project experience. Read when a trigger matches.
+
+| Trigger | File |
+|---------|------|
+| When a liza lifecycle command fails with 'agent generation required' in a Windows-hosted agent session | [liza-generation-lost-wsl-to-windows.md](lessons/agents/liza-generation-lost-wsl-to-windows.md) |
+
 ## Tier 3 (Préférences — dégradées gracieusement sous pression)
 
 - Suivre les conventions de commit existantes : message conventionnel en
