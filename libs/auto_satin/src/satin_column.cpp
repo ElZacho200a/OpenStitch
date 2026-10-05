@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 #include "openstitch/auto_satin/satin_column.hpp"
 
+#include "corridor.hpp"
 #include "geometry_detail.hpp"
 #include "openstitch/geometry/polyline.hpp"
 #include "openstitch/geometry/simplify.hpp"
@@ -818,31 +819,62 @@ std::optional<std::vector<Station>> compute_column_stations(const std::vector<Ve
     {
         std::vector<AxisEntry> entries(axis.size());
         std::size_t successCount = 0;
-        for (std::size_t i = 0; i < axis.size(); ++i) {
-            P2 tan;
-            if (i == 0) {
-                tan = axis[1] - axis[0];
-            } else if (i + 1 == axis.size()) {
-                tan = axis[i] - axis[i - 1];
-            } else {
-                tan = axis[i + 1] - axis[i - 1];
+        if (params.use_corridor_tracing_dev_only) {
+            // § HP-STI-018 Phase B -- indicateur TEST/DEV UNIQUEMENT (cf.
+            // SatinColumnsParameters::use_corridor_tracing_dev_only) : mesure
+            // dense par pieds de bord les plus proches (`detail::trace_corridor`,
+            // corridor.hpp) au lieu du ray-cast `cross_section`. SEULE cette
+            // boucle change -- le filtre `TooNarrow` par station, l'assemblage
+            // tolérant aux trous, le nettoyage anti-croisement, l'amputation de
+            // jonction (`trim_unstable_junction_tail`) et l'extension des bouts
+            // juste après restent EXACTEMENT les mêmes qu'avant, appliqués aux
+            // `Station` converties ci-dessous. `trace_corridor` ne peut jamais
+            // échouer (contrairement à `cross_section`) : une `CorridorStation`
+            // existe pour chaque `axis[i]`, donc seul le filtre `TooNarrow`
+            // peut encore produire un échec dans cette branche.
+            const auto corridor = detail::trace_corridor(axis, polys, params);
+            for (std::size_t i = 0; i < axis.size(); ++i) {
+                const auto& cs = corridor[i];
+                if (cs.width_um < minWidth) {
+                    entries[i].failure = CrossSectionFailure::TooNarrow;
+                } else {
+                    Station st;
+                    st.axis = cs.axis_point;
+                    st.tangent = cs.tangent;
+                    st.railA = cs.foot_a.point; // côté +N (gauche), même convention que railA
+                    st.railB = cs.foot_b.point; // côté -N (droite), même convention que railB
+                    st.width = cs.width_um;
+                    entries[i].station = std::move(st);
+                    ++successCount;
+                }
             }
-            tan = unit(tan);
-            const P2 nrm{-tan.y, tan.x}; // +90° : +N = gauche
-            const auto sec = cross_section(polys, axis[i], nrm, maxWidth);
-            if (sec && sec->second - sec->first < minWidth) {
-                entries[i].failure = CrossSectionFailure::TooNarrow;
-            } else if (sec) {
-                Station st;
-                st.axis = axis[i];
-                st.tangent = tan;
-                st.railA = axis[i] + nrm * sec->second; // t_hi > 0
-                st.railB = axis[i] + nrm * sec->first;  // t_lo < 0
-                st.width = sec->second - sec->first;
-                entries[i].station = std::move(st);
-                ++successCount;
-            } else {
-                entries[i].failure = sec.error();
+        } else {
+            for (std::size_t i = 0; i < axis.size(); ++i) {
+                P2 tan;
+                if (i == 0) {
+                    tan = axis[1] - axis[0];
+                } else if (i + 1 == axis.size()) {
+                    tan = axis[i] - axis[i - 1];
+                } else {
+                    tan = axis[i + 1] - axis[i - 1];
+                }
+                tan = unit(tan);
+                const P2 nrm{-tan.y, tan.x}; // +90° : +N = gauche
+                const auto sec = cross_section(polys, axis[i], nrm, maxWidth);
+                if (sec && sec->second - sec->first < minWidth) {
+                    entries[i].failure = CrossSectionFailure::TooNarrow;
+                } else if (sec) {
+                    Station st;
+                    st.axis = axis[i];
+                    st.tangent = tan;
+                    st.railA = axis[i] + nrm * sec->second; // t_hi > 0
+                    st.railB = axis[i] + nrm * sec->first;  // t_lo < 0
+                    st.width = sec->second - sec->first;
+                    entries[i].station = std::move(st);
+                    ++successCount;
+                } else {
+                    entries[i].failure = sec.error();
+                }
             }
         }
         if (successCount == 0) {

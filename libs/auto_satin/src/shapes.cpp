@@ -338,6 +338,28 @@ std::optional<geometry::PathSet> make_shape(const std::string& name) {
         };
         return from_union(parts);
     }
+    if (name == "e_trunk_isolated") {
+        // Isolee de "E" (meme montant + barre haute + barre basse, SANS la
+        // barre du milieu -- forme en " ] ") pour reproduire, independamment
+        // de toute jonction (squelette sans noeud : jonctions_squelette=0),
+        // le defaut precis identifie le 2026-08-30 : un coude a 90 degres fait
+        // exploser la largeur mesuree par cross_section (tangente par
+        // difference centree -> normale quasi parallele au bord au niveau du
+        // coude -> intersection loin sur le bord oppose), refusant la colonne
+        // entiere (`colonne refusee : trou de 2471 um entre stations axe #23
+        // et #28 (largeur superieure a max_width)`), cf. docs/source/satin.md
+        // (section « Root cause precise du refus total sur E », 2026-08-30,
+        // ~l.5245-5270). Sert de preuve empirique Phase B (HP-STI-018,
+        // specs/plans/hp-sti-018-turning-satin.md §4/§5) : la nouvelle mesure
+        // par pieds de bord les plus proches (trace_corridor) ne peut, par
+        // construction, pas depasser un coin de cette facon.
+        std::vector<Path> parts{
+            rect(-2'000, -20'000, 2'000, 20'000),   // colonne verticale (montant)
+            rect(-2'000, 16'000, 16'000, 20'000),   // barre haute
+            rect(-2'000, -20'000, 16'000, -16'000), // barre basse
+        };
+        return from_union(parts);
+    }
     if (name == "deep_recursive") {
         // §9.5 : arbre de branches en cascade (tronc -> branche -> sous-
         // branche -> sous-sous-branche) construit specifiquement pour

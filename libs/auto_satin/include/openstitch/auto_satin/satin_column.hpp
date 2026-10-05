@@ -143,6 +143,21 @@ struct SatinColumnsParameters {
     double junction_overlap_ratio{0.6};
     Micrometers junction_overlap_min{300};   // 0,3 mm
     Micrometers junction_overlap_max{2'500}; // 2,5 mm : jamais loin dans la branche voisine
+
+    // --- § HP-STI-018 Phase B (corridor.hpp, nearest_boundary_feet) --------
+    // Indicateur TEST/DEV UNIQUEMENT : bascule la mesure dense de
+    // `compute_column_stations` de l'ancien ray-cast (`cross_section`) vers
+    // la nouvelle marche par pieds de bord les plus proches
+    // (`detail::trace_corridor`), pour une comparaison cote a cote sur le
+    // corpus complet (`shapes.cpp`) avant tout branchement de production
+    // (specs/plans/hp-sti-018-turning-satin.md §4, Phase B). JAMAIS lu par
+    // `apps/cli` ni `apps/desktop` -- aucune option utilisateur ne doit
+    // jamais exposer ce champ ; seuls les tests (`tests/unit/auto_satin/
+    // test_corridor.cpp`) le mettent a `true`. Ne change RIEN au chemin
+    // `false` (comportement de production inchange) : n'affecte que la boucle
+    // de mesure par station, jamais `trim_unstable_junction_tail`/
+    // `extend_tip`/les validations de couverture qui suivent, inchangees.
+    bool use_corridor_tracing_dev_only{false};
 };
 
 // Zone centrale d'une jonction à 2+ branches non couverte par les colonnes
