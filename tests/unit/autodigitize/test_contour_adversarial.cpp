@@ -229,7 +229,7 @@ Out exercise(const image::Image& img, const ContourOptions& o, int colours = 4,
         auto net = analyze_contours(seg, o);
         r.seconds = std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count();
         if (!net.has_value()) {
-            r.error = "analyze failed";
+            r.error = "analyze failed: " + net.error().message;
             return r;
         }
         r.net = *net;
@@ -242,7 +242,7 @@ Out exercise(const image::Image& img, const ContourOptions& o, int colours = 4,
         IdGenerator<ObjectId> ids;
         auto res = build_contour_objects(r.net, ids, o, &r.metrics);
         if (!res.has_value()) {
-            r.error = "build failed";
+            r.error = "build failed: " + res.error().message;
             return r;
         }
         r.result = *res;
@@ -960,8 +960,24 @@ TEST_CASE("adv explore", "[.explore]") {
                    200 + 180 * std::sin(a), 5, kBlack);
         }
     }
+    if (w == "mix") {
+        img = blank(300, 200);
+        stroke(img, 20, 50, 280, 50, 14, kBlack);
+        stroke(img, 20, 100, 280, 100, 1.5, kBlack);
+        stroke(img, 20, 150, 280, 150, 3, kBlack);
+    }
+    if (w == "thin1px" || w == "thin15" || w == "thin3") {
+        img = blank(300, 100);
+        stroke(img, 20, 50, 280, 50, w == "thin1px" ? 1.0 : (w == "thin15" ? 1.5 : 3.0), kBlack);
+    }
     const auto r = exercise(img, opts(), 4, false);
     report(w.c_str(), r);
+    std::printf("   failed=%zu removedIso=%zu error=%s\n", r.net.failed_components,
+                r.net.removed_isolated, r.error.c_str());
+    for (const auto& d : r.net.diagnostics) {
+        std::printf("   diag: %s\n", d.c_str());
+    }
+    std::printf("   warnings=%zu\n", r.result.warnings.size());
     for (const auto& wn : r.result.warnings) {
         std::printf("   warn: %s\n", wn.c_str());
     }
@@ -984,5 +1000,124 @@ TEST_CASE("adv explore", "[.explore]") {
                         int(prev->type));
         }
         prev = &c;
+    }
+}
+
+namespace {
+void write_adv_svg(const std::string& file, const Out& r) {
+    double x0 = 1e18, y0 = 1e18, x1 = -1e18, y1 = -1e18;
+    for (const auto& c : r.seq.commands) {
+        x0 = std::min<double>(x0, c.pos.x.value);
+        x1 = std::max<double>(x1, c.pos.x.value);
+        y0 = std::min<double>(y0, c.pos.y.value);
+        y1 = std::max<double>(y1, c.pos.y.value);
+    }
+    for (const auto& c : r.net.components) {
+        for (const auto& n : c.region.outer.nodes) {
+            x0 = std::min<double>(x0, n.pos.x.value);
+            x1 = std::max<double>(x1, n.pos.x.value);
+            y0 = std::min<double>(y0, n.pos.y.value);
+            y1 = std::max<double>(y1, n.pos.y.value);
+        }
+    }
+    std::ostringstream o;
+    o << "<svg xmlns='http://www.w3.org/2000/svg' viewBox='" << (x0 - 1000) << ' ' << (-y1 - 1000)
+      << ' ' << (x1 - x0 + 2000) << ' ' << (y1 - y0 + 2000) << "' width='1000'>\n"
+      << "<rect x='-1000000' y='-1000000' width='3000000' height='3000000' fill='white'/>\n";
+    const auto pts = [&](const geometry::Path& p) {
+        std::ostringstream q;
+        for (const auto& n : p.nodes) {
+            q << n.pos.x.value << ',' << -n.pos.y.value << ' ';
+        }
+        return q.str();
+    };
+    for (const auto& c : r.net.components) {
+        o << "<polygon points='" << pts(c.region.outer) << "' fill='#ccc' stroke='none'/>\n";
+        for (const auto& h : c.region.holes) {
+            o << "<polygon points='" << pts(h) << "' fill='white'/>\n";
+        }
+    }
+    for (const auto& e : r.result.embroideries) {
+        if (const auto* sp = std::get_if<document::SatinParams>(&e.params)) {
+            o << "<polygon points='" << pts(sp->rail_a);
+            for (auto it = sp->rail_b.nodes.rbegin(); it != sp->rail_b.nodes.rend(); ++it) {
+                o << it->pos.x.value << ',' << -it->pos.y.value << ' ';
+            }
+            o << "' fill='red' fill-opacity='0.3' stroke='none'/>\n";
+        }
+    }
+    o << "<polyline fill='none' stroke='blue' stroke-width='12' points='";
+    for (const auto& c : r.seq.commands) {
+        if (c.type == stitch::CommandType::Stitch) {
+            o << c.pos.x.value << ',' << -c.pos.y.value << ' ';
+        } else if (c.type == stitch::CommandType::Jump) {
+            o << "'/>\n<line stroke='orange' stroke-width='8' x1='" << c.pos.x.value << "' y1='"
+              << -c.pos.y.value << "' x2='" << c.pos.x.value << "' y2='" << -c.pos.y.value
+              << "'/>\n<polyline fill='none' stroke='blue' stroke-width='12' points='";
+        }
+    }
+    o << "'/>\n</svg>\n";
+    if (std::FILE* f = std::fopen(file.c_str(), "w")) {
+        std::fputs(o.str().c_str(), f);
+        std::fclose(f);
+    }
+}
+} // namespace
+
+TEST_CASE("adv svg dump", "[.svg]") {
+    const char* dir = std::getenv("CONTOUR_SVG_DIR");
+    REQUIRE(dir != nullptr);
+    const std::string d = dir;
+    {
+        auto img = blank(300, 100);
+        stroke(img, 20, 40, 280, 40, 4, kBlack);
+        stroke(img, 20, 45, 280, 45, 4, kBlack);
+        write_adv_svg(d + "/adv_near1.svg", exercise(img, opts(), 4, false));
+    }
+    {
+        auto img = blank(240, 240);
+        for (int k = 0; k < 5; ++k) {
+            const double a = 2 * std::acos(-1.0) * k / 5 - 1.5708;
+            stroke(img, 120, 120, 120 + 100 * std::cos(a), 120 + 100 * std::sin(a), 5, kBlack);
+        }
+        write_adv_svg(d + "/adv_star5.svg", exercise(img, opts(), 4, false));
+    }
+    {
+        auto img = blank(400, 400);
+        for (const double r : {40.0, 90.0, 140.0, 180.0}) {
+            ring(img, 200, 200, r, 5, kBlack);
+        }
+        for (int k = 0; k < 12; ++k) {
+            const double a = 2 * std::acos(-1.0) * k / 12;
+            stroke(img, 200 + 40 * std::cos(a), 200 + 40 * std::sin(a), 200 + 180 * std::cos(a),
+                   200 + 180 * std::sin(a), 5, kBlack);
+        }
+        write_adv_svg(d + "/adv_rosette.svg", exercise(img, opts(), 4, false));
+    }
+    {
+        auto img = blank(300, 300);
+        double px = 150, py = 150;
+        for (int i = 1; i <= 720; ++i) {
+            const double a = i * 0.05, r = 2.0 + a * 3.2;
+            const double x = 150 + r * std::cos(a), y = 150 + r * std::sin(a);
+            stroke(img, px, py, x, y, 4, kBlack);
+            px = x;
+            py = y;
+        }
+        write_adv_svg(d + "/adv_spiral.svg", exercise(img, opts(), 4, false));
+    }
+    {
+        auto img = blank(300, 200);
+        stroke(img, 20, 100, 280, 100, 6, kBlack);
+        stroke(img, 150, 100, 150, 180, 6, kBlack);
+        unsigned s = 12345;
+        const auto rnd = [&]() {
+            s = s * 1664525u + 1013904223u;
+            return (s >> 8) & 0xFFFF;
+        };
+        for (int i = 0; i < 120; ++i) {
+            erase(img, 20 + static_cast<int>(rnd() % 260), 98 + static_cast<int>(rnd() % 5));
+        }
+        write_adv_svg(d + "/adv_pepper.svg", exercise(img, opts(), 4, false));
     }
 }
