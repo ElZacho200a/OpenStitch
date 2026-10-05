@@ -1,5 +1,6 @@
 add_subdirectory(core)
 add_subdirectory(geometry)
+add_subdirectory(thread_palette)
 add_subdirectory(image)
 add_subdirectory(vectorization)
 add_subdirectory(document)

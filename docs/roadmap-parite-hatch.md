@@ -333,11 +333,12 @@ graphiques. C'est **le premier mur** : la majorité des machines domestiques
 
 ## 3. Fils, couleurs et palettes (THR)
 
-Aujourd'hui : un **RGB par objet**, rien d'autre (`palettes-and-threads.md` :
-« Prévu / partiel », lib `thread_palette` absente). Hatch est construit autour
+Aujourd'hui : un **RGB par objet**, plus un catalogue de fils autonome
+(`libs/thread_palette`, HP-THR-001/002/003) pas encore relié au document
+(`palettes-and-threads.md`, section *Catalogue*). Hatch est construit autour
 des nuanciers de fabricants : c'est ce que l'utilisateur achète en magasin.
 
-### HP-THR-001 — Bibliothèque `thread_palette` [P0] — ☐ À faire
+### HP-THR-001 — Bibliothèque `thread_palette` [P0] — ☑ Fait (2026-10-05)
 - À faire : lib cœur sans Qt : `Thread { brand, range, code, name, rgb,
   weight }`, `ThreadChart { name, threads }`, chargement depuis des fichiers de
   données (JSON/CSV) embarqués, recherche par code/nom.
@@ -345,8 +346,30 @@ des nuanciers de fabricants : c'est ce que l'utilisateur achète en magasin.
   tests `tests/unit/thread_palette/`.
 - Acceptation : ≥ 1 nuancier chargé et interrogé en test ; déterminisme de
   l'ordre.
+- Livré : `libs/thread_palette` (`openstitch::thread_palette`), lib cœur ne
+  liant que `openstitch::core` (aucune dépendance tierce, aucune autre lib
+  `openstitch::*`), construite sous le preset `msvc-debug`. Types valeur
+  `ThreadKey { chart_id, code }`, `Thread { key, brand, range, name, rgb }`,
+  `ThreadChart { chart_id, display_name, source_note, threads }`
+  (`include/openstitch/thread_palette/thread.hpp`) — **données embarquées =
+  constantes C++ compilées dans `libs/thread_palette/data/`, pas de
+  JSON/CSV lu à l'exécution** (clarification du libellé ci-dessus : choix
+  d'architecture délibéré, voir
+  `specs/arch-plan/vision/20260929-110240-arm-1-ar-0.md` C-S1-02). Champ
+  `weight` du libellé ci-dessus délibérément absent du type `Thread` —
+  reporté à HP-THR-009 (P2), pas ajouté par erreur. Registre
+  (`include/openstitch/thread_palette/catalog.hpp`, `src/catalog.cpp`) :
+  `all_charts()`, `find_chart(chart_id)`, `find_by_code(chart_id, code)`,
+  `search_by_name(needle)`, ordre déterministe (ordre textuel des appels de
+  factory dans `catalog.cpp`, testé par
+  `all_charts order is stable across two calls`). Tests :
+  `tests/unit/thread_palette/test_catalog.cpp`
+  (`test_thread_palette`, 11 `TEST_CASE`).
+- Reste (hors entrée) : aucun consommateur ne lit encore ce catalogue
+  (HP-THR-004) ; un seul nuancier aurait suffi à l'acceptation, deux sont
+  livrés directement avec HP-THR-002.
 
-### HP-THR-002 — Nuanciers des fabricants [P0] — ☐ À faire
+### HP-THR-002 — Nuanciers des fabricants [P0] — ◐ Partiel (2026-10-05)
 - Hatch : Madeira (Polyneon, Rayon, Classic), Isacord, Robison-Anton,
   Sulky, Gunold, Marathon, Floriani, Coats, Brother, Janome, Pantone approx…
 - À faire : fichiers de données par fabricant. **Point licence** : les
@@ -355,8 +378,28 @@ des nuanciers de fabricants : c'est ce que l'utilisateur achète en magasin.
   les fabricants et documenter la source dans `THIRD_PARTY_LICENSES.md`.
 - Modules : `libs/thread_palette/data/`.
 - Dépend de : HP-THR-001.
+- Livré : deux nuanciers enregistrés dans le registre, dans cet ordre de
+  déclaration : Madeira Polyneon 40 (`madeira_polyneon`,
+  `libs/thread_palette/data/madeira_polyneon.cpp`) puis Isacord 40
+  (`isacord_40`, `libs/thread_palette/data/isacord_40.cpp`), chacun avec son
+  `source_note` et sa ligne dans la nouvelle sous-section « Nuanciers de
+  fils » de `THIRD_PARTY_LICENSES.md` (source + date de consultation).
+  **⚠️ Point licence non résolu, données PLACEHOLDER** : les deux fichiers
+  ci-dessus contiennent des codes/noms/RGB **inventés** (forme plausible
+  d'un nuancier réel : codes à 4 chiffres, noms de couleur usuels, RGB
+  cohérent avec le nom), **pas** une transcription du vrai nuancier Madeira
+  ou Isacord — l'environnement d'implémentation n'avait pas d'accès web pour
+  sourcer les valeurs officielles (S1-POLICY-1 non appliquée pour le
+  contenu, seulement pour la forme/structure). Chaque `source_note` le dit
+  explicitement et cite l'URL à consulter. Passer cette entrée à `☑ Fait`
+  seulement une fois les vraies cartes de couleurs transcrites depuis les
+  sites officiels Madeira et Isacord.
+- Reste (hors entrée) : transcription réelle des deux nuanciers (ci-dessus) ;
+  les autres nuanciers de la liste Hatch (Robison-Anton, Sulky, Gunold,
+  Marathon, Floriani, Coats, Brother, Janome, Pantone approximé) restent à
+  ajouter, hors périmètre P0.
 
-### HP-THR-003 — Fil le plus proche (distance perceptuelle) [P0] — ☐ À faire
+### HP-THR-003 — Fil le plus proche (distance perceptuelle) [P0] — ☑ Fait (2026-10-05)
 - Hatch : « Match » vers le nuancier choisi.
 - À faire : conversion sRGB → CIELAB (déjà faite dans `segmentation`, à
   factoriser dans `core` ou `thread_palette`), distance **CIEDE2000**, top-N
@@ -364,6 +407,19 @@ des nuanciers de fabricants : c'est ce que l'utilisateur achète en magasin.
 - Modules : `libs/thread_palette`.
 - Acceptation : tests contre les valeurs de référence publiées de CIEDE2000
   (jeu de Sharma).
+- Livré : `include/openstitch/thread_palette/color_distance.hpp` +
+  `src/color_distance.cpp`, module séparé du registre. `to_cielab(rgb)`
+  écrite depuis les formules standard sRGB→linéaire→XYZ(D65)→CIELAB,
+  indépendante de `cv::cvtColor` (`libs/segmentation` reste inchangée,
+  `thread_palette` ne peut lier OpenCV). `ciede2000(a, b)` validée dans
+  `tests/unit/thread_palette/test_color_distance.cpp` contre les 34 paires
+  de référence publiées par Sharma, Wu & Dalal (2005), tolérance 1e-4 ; les
+  34 paires passent. `nearest_threads(rgb, chart, top_n)` : top-N trié par
+  distance croissante, égalités départagées par l'ordre de déclaration du
+  nuancier, déterministe (testé par appels répétés). Filtre par gamme
+  possédée explicitement hors périmètre (HP-THR-007, P1).
+- Reste (hors entrée) : pas de filtre par gamme possédée (HP-THR-007) ; pas
+  d'utilisation par un objet du document (HP-THR-004).
 
 ### HP-THR-004 — Fil assigné à chaque objet + remplacer une couleur partout [P0] — ☐ À faire
 - État OpenStitch : `EmbroideryObject::rgb` seul ; pas de sélecteur de couleur

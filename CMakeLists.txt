@@ -30,6 +30,7 @@ endif()
 
 add_subdirectory(libs/core)
 add_subdirectory(libs/geometry)
+add_subdirectory(libs/thread_palette)
 add_subdirectory(libs/image)
 add_subdirectory(libs/segmentation)
 add_subdirectory(libs/ai_segmentation)
