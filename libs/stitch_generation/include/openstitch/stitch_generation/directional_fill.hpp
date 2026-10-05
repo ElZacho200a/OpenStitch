@@ -61,8 +61,8 @@ directional_stitch_lines(const geometry::PathSet& region,
 
 // Remplissage complet (couche supérieure), même vocabulaire que le tatami
 // (`FillStitch` : point cousu, saut, ou déplacement cousu caché).
-[[nodiscard]] std::vector<FillStitch> fill_directional(const geometry::PathSet& region,
-                                                       const document::DirectionalFillParams& params);
+[[nodiscard]] std::vector<FillStitch>
+fill_directional(const geometry::PathSet& region, const document::DirectionalFillParams& params);
 
 // Sous-couches : réutilise `tatami_underlay` (contour rentré + rangées
 // droites), les rangées étant perpendiculaires à la direction MOYENNE du
@@ -75,8 +75,7 @@ directional_underlay(const geometry::PathSet& region,
 // demandés — perturbation « fait main » comprise. nullopt pour un point hors
 // de tous les secteurs. Exposé pour les tests et l'aperçu.
 [[nodiscard]] std::vector<std::optional<Angle>>
-directional_field_at(const geometry::PathSet& region,
-                     const document::DirectionalFillParams& params,
+directional_field_at(const geometry::PathSet& region, const document::DirectionalFillParams& params,
                      const std::vector<Vec2um>& points);
 
 // Aperçu du champ : un échantillon (position, orientation) tous les `step`

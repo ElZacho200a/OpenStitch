@@ -313,8 +313,9 @@ SkeletonGraph build_skeleton_graph(const RasterMask& s, const DistanceField& d) 
                 const auto neighbor_ok = [&](int tx, int ty, int prevX, int prevY) {
                     return !((tx == prevX && ty == prevY) || (tx == x && ty == y)) && s.at(tx, ty);
                 };
-                const auto find_node_neighbor = [&](int fx, int fy, int prevX,
-                                                     int prevY) -> std::optional<std::pair<int, int>> {
+                const auto find_node_neighbor =
+                    [&](int fx, int fy, int prevX,
+                        int prevY) -> std::optional<std::pair<int, int>> {
                     for (int m = 0; m < 8; ++m) {
                         const int tx = fx + DX[static_cast<std::size_t>(m)];
                         const int ty = fy + DY[static_cast<std::size_t>(m)];
@@ -400,7 +401,7 @@ SkeletonGraph build_skeleton_graph(const RasterMask& s, const DistanceField& d) 
                 }
 
                 if (!reachedNode) {
-                    continue;  // aucun chemin possible depuis cette direction de départ.
+                    continue; // aucun chemin possible depuis cette direction de départ.
                 }
 
                 std::vector<Vec2um> line;

@@ -129,9 +129,13 @@ void PropertiesPanelTest::directionalEditKeepsGuidesAndSeed() {
     openstitch::geometry::Path guide;
     guide.closed = false;
     guide.nodes = {{openstitch::Vec2um{Micrometers{0}, Micrometers{0}},
-                    openstitch::geometry::NodeType::Corner, {}, {}},
+                    openstitch::geometry::NodeType::Corner,
+                    {},
+                    {}},
                    {openstitch::Vec2um{Micrometers{5'000}, Micrometers{0}},
-                    openstitch::geometry::NodeType::Corner, {}, {}}};
+                    openstitch::geometry::NodeType::Corner,
+                    {},
+                    {}}};
     dp.guides.push_back(guide);
     dp.seed = 77;
     e.params = dp;
@@ -151,7 +155,7 @@ void PropertiesPanelTest::directionalEditKeepsGuidesAndSeed() {
     const auto& out = std::get<openstitch::document::DirectionalFillParams>(*emitted);
     QVERIFY(out.handmade);
     QCOMPARE(out.guides.size(), std::size_t{1}); // guides conservés
-    QCOMPARE(out.seed, 77U);                      // graine conservée
+    QCOMPARE(out.seed, 77U);                     // graine conservée
 
     auto* reseed = panel.findChild<QPushButton*>(QStringLiteral("button_handmadeReseed"));
     QVERIFY(reseed != nullptr);

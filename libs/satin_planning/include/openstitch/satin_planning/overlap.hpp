@@ -70,8 +70,9 @@ struct OverlapReport {
 // seule coupe). Expose publiquement pour cette reutilisation -- jamais
 // destine a inventer de la matiere hors de `bounds` (le recadrage Clipper2
 // garantit de rester dedans).
-[[nodiscard]] geometry::PathSet extend_toward(const geometry::PathSet& region, const geometry::PathSet& bounds,
-                                               Micrometers overlap_distance);
+[[nodiscard]] geometry::PathSet extend_toward(const geometry::PathSet& region,
+                                              const geometry::PathSet& bounds,
+                                              Micrometers overlap_distance);
 
 [[nodiscard]] std::string format_overlap_report(const OverlapReport& report);
 

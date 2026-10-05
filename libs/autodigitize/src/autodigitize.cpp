@@ -114,7 +114,8 @@ void classify_and_build_embroidery(const geometry::PathSet& main, const RegionSo
                                    AutoResult& result) {
     const double areaMm2 = net_area_um2(main) / 1e6;
     double perim = perimeter_um(main.outer);
-    for (const auto& hole : main.holes) perim += perimeter_um(hole);
+    for (const auto& hole : main.holes)
+        perim += perimeter_um(hole);
     const double meanWidthUm = perim > 0.0 ? 2.0 * net_area_um2(main) / perim : 0.0;
 
     document::EmbroideryObject emb;
@@ -153,8 +154,8 @@ void classify_and_build_embroidery(const geometry::PathSet& main, const RegionSo
         // branchée, repli interne sur l'appel direct sinon -- mêmes
         // garanties de couverture partout (§ build_satin_sections).
         satin_planning::SatinBuildReport built = satin_planning::build_satin_sections(
-            main, satinOptions, defaults.density, defaults.pull_compensation, defaults.center_underlay,
-            options.satin_max_width, source.label);
+            main, satinOptions, defaults.density, defaults.pull_compensation,
+            defaults.center_underlay, options.satin_max_width, source.label);
         for (auto& w : built.warnings) {
             result.warnings.push_back(std::move(w));
         }
@@ -169,7 +170,7 @@ void classify_and_build_embroidery(const geometry::PathSet& main, const RegionSo
                 document::EmbroideryObject section = emb;
                 section.id = ids.next();
                 section.name = "Satin " + source.label + " - section " + std::to_string(i + 1) +
-                              "/" + std::to_string(sectionCount);
+                               "/" + std::to_string(sectionCount);
                 section.params = std::move(sections[i].params);
                 result.embroideries.push_back(std::move(section));
                 strips.push_back(std::move(sections[i].strip));
@@ -204,7 +205,8 @@ void classify_and_build_embroidery(const geometry::PathSet& main, const RegionSo
                          << (built.aggregate_coverage->raw_coverage_ratio * 100.0)
                          << "% de la région couverte par le satin, "
                          << built.aggregate_coverage->missing_area_mm2
-                         << " mm² comblés par un remplissage tatami de repli (classification automatique)";
+                         << " mm² comblés par un remplissage tatami de repli (classification "
+                            "automatique)";
                     result.warnings.push_back(diag.str());
                 }
                 // Seuil délibérément bas et INDÉPENDANT de
@@ -216,11 +218,12 @@ void classify_and_build_embroidery(const geometry::PathSet& main, const RegionSo
                 // sous couvert d'être "trop petits", alors que l'objectif
                 // explicite est de ne JAMAIS laisser de zone sans point).
                 constexpr double kMinFallbackAreaMm2 = 0.5;
-                const auto leftover = geometry::subtract_polygons(main, shrink_strips_for_cutout(strips));
+                const auto leftover =
+                    geometry::subtract_polygons(main, shrink_strips_for_cutout(strips));
                 if (leftover) {
                     for (const auto& piece : *leftover) {
                         if (net_area_um2(piece) / 1e6 < kMinFallbackAreaMm2) {
-                            continue;  // reliquat négligeable (bruit d'arrondi géométrique)
+                            continue; // reliquat négligeable (bruit d'arrondi géométrique)
                         }
                         document::VectorObject fallbackVec;
                         fallbackVec.id = ids.next();
@@ -621,7 +624,7 @@ void order_in_layers(AutoResult& result, const std::vector<document::VectorObjec
     result.embroideries = std::move(reordered);
 }
 
-}  // namespace
+} // namespace
 
 Result<AutoResult> auto_digitize(const segmentation::Segmentation& input,
                                  IdGenerator<ObjectId>& ids, const AutoOptions& options) {
@@ -742,7 +745,8 @@ Result<AutoResult> auto_digitize_vectors(const std::vector<document::VectorObjec
     AutoResult result;
     for (const auto& vec : vectors) {
         if (vec.paths.empty()) {
-            continue;  // objet vectoriel vide : ignoré sans erreur, comme une région non vectorisable
+            continue; // objet vectoriel vide : ignoré sans erreur, comme une région non
+                      // vectorisable
         }
         // Aucun nouvel objet vectoriel créé pour la géométrie d'entrée : elle
         // existe déjà (import SVG direct, § "skip segmentation") -- seul un
@@ -761,4 +765,4 @@ Result<AutoResult> auto_digitize_vectors(const std::vector<document::VectorObjec
     return result;
 }
 
-}  // namespace openstitch::autodigitize
+} // namespace openstitch::autodigitize

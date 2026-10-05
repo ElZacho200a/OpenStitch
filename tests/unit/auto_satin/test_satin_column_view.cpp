@@ -22,13 +22,14 @@ SatinColumnsResult columns_of(const std::string& shape, SatinGeometryMode mode) 
     const auto region = make_shape(shape);
     REQUIRE(region.has_value());
     SatinColumnsParameters params;
-    params.analysis.raster.pixel_size = Micrometers{100};  // 0,1 mm : rapide
+    params.analysis.raster.pixel_size = Micrometers{100}; // 0,1 mm : rapide
     params.geometry_mode = mode;
     return build_satin_columns(*region, params);
 }
 
 bool paths_identical(const geometry::Path& a, const geometry::Path& b) {
-    if (a.nodes.size() != b.nodes.size() || a.closed != b.closed) return false;
+    if (a.nodes.size() != b.nodes.size() || a.closed != b.closed)
+        return false;
     for (std::size_t i = 0; i < a.nodes.size(); ++i) {
         if (a.nodes[i].pos.x.value != b.nodes[i].pos.x.value ||
             a.nodes[i].pos.y.value != b.nodes[i].pos.y.value) {
@@ -39,7 +40,8 @@ bool paths_identical(const geometry::Path& a, const geometry::Path& b) {
 }
 
 bool rungs_identical(const std::vector<SatinRung>& a, const std::vector<SatinRung>& b) {
-    if (a.size() != b.size()) return false;
+    if (a.size() != b.size())
+        return false;
     for (std::size_t i = 0; i < a.size(); ++i) {
         if (a[i].a.x.value != b[i].a.x.value || a[i].a.y.value != b[i].a.y.value ||
             a[i].b.x.value != b[i].b.x.value || a[i].b.y.value != b[i].b.y.value) {
@@ -49,14 +51,15 @@ bool rungs_identical(const std::vector<SatinRung>& a, const std::vector<SatinRun
     return true;
 }
 
-}  // namespace
+} // namespace
 
 TEST_CASE("satin_column_view : mode Legacy -- identite bit-a-bit avec SatinColumnGeometry") {
     for (const std::string& name : {"capsule", "t", "y", "cross", "trident"}) {
         INFO("forme = " << name);
         const auto built = columns_of(name, SatinGeometryMode::Legacy);
         REQUIRE_FALSE(built.columns.empty());
-        REQUIRE(built.parametric_columns.empty());  // sinon la vue prendrait l'autre vecteur (cf. satin_column_view)
+        REQUIRE(built.parametric_columns
+                    .empty()); // sinon la vue prendrait l'autre vecteur (cf. satin_column_view)
 
         const auto view = satin_column_view(built);
         REQUIRE(view.size() == built.columns.size());

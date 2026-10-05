@@ -19,8 +19,9 @@ namespace openstitch::satin_planning {
 // avant de changer un defaut) une fois le corpus complet observe, jamais un
 // ajustement a l'aveugle sur le taux de reussite agrege.
 struct DecompositionCostWeights {
-    double coverage{2.0};    // dominant : un trou visible est le pire defaut visible
-    double continuity{1.0};  // meme echelle que ContinuationCostWeights::angle (poids 1.0, signal le plus fiable)
+    double coverage{2.0}; // dominant : un trou visible est le pire defaut visible
+    double continuity{
+        1.0}; // meme echelle que ContinuationCostWeights::angle (poids 1.0, signal le plus fiable)
     double angle{0.6};
     double width{0.6};
     double overlap{0.8};
@@ -58,8 +59,9 @@ struct DecompositionCost {
 
 struct DecompositionCostParams {
     DecompositionCostWeights weights{};
-    CutCandidateParams cutParams{};                       // rejoue split_region sur ce candidat
-    auto_satin::SatinColumnsParameters genParams{};        // construit reellement les colonnes (evaluate_region_generation)
+    CutCandidateParams cutParams{}; // rejoue split_region sur ce candidat
+    auto_satin::SatinColumnsParameters
+        genParams{}; // construit reellement les colonnes (evaluate_region_generation)
     satin_coverage::SatinCoverageConfig coverageConfig{};
     Micrometers density{400};
 };
@@ -79,16 +81,17 @@ struct DecompositionCostParams {
 // jamais recalcule), plus une penalite FIXE documentee (1.0, "ne jamais
 // rendre l'abandon de continuite gratuit") pour chaque jonction dont
 // `selected_pair` est vide (candidat "aucun trunk").
-[[nodiscard]] DecompositionCost evaluate_decomposition_cost(const geometry::PathSet& region,
-                                                             const SkeletonGraph& graph,
-                                                             const DecompositionCandidate& candidate,
-                                                             const DecompositionCostParams& params = {});
+[[nodiscard]] DecompositionCost
+evaluate_decomposition_cost(const geometry::PathSet& region, const SkeletonGraph& graph,
+                            const DecompositionCandidate& candidate,
+                            const DecompositionCostParams& params = {});
 
 // Rendu textuel structure (meme convention que format_merge_pass_report/
 // format_overlap_report) : un candidat par bloc, chaque terme de cout non
 // nul et le total, la selection finale. Aucune constante magique
 // injustifiee : chaque poids est documente dans DecompositionCostWeights.
 [[nodiscard]] std::string format_decomposition_cost_report(
-    const std::vector<std::pair<DecompositionCandidate, DecompositionCost>>& scored, std::optional<std::size_t> selected);
+    const std::vector<std::pair<DecompositionCandidate, DecompositionCost>>& scored,
+    std::optional<std::size_t> selected);
 
-}  // namespace openstitch::satin_planning
+} // namespace openstitch::satin_planning

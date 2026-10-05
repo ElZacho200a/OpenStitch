@@ -477,7 +477,8 @@ Nearest nearest_on_polyline(const std::vector<P2>& pts, P2 p) {
 }
 
 struct FieldConfig {
-    double softening{400.0};  // adoucissement de la pondération (µm) : pas de singularité sur un guide
+    double softening{
+        400.0}; // adoucissement de la pondération (µm) : pas de singularité sur un guide
     double edgeWeight{0.0};   // [0 ; 1]
     double edgeBand{2'000.0}; // décroissance de l'influence du bord (µm)
     double fallbackAngle{0.0};
@@ -528,8 +529,8 @@ public:
                 }
                 if (cfg_.edgeWeight > 0.0) {
                     if (const auto e = edges.nearest_edge(p)) {
-                        const double alpha =
-                            std::clamp(cfg_.edgeWeight, 0.0, 1.0) * std::exp(-e->first / cfg_.edgeBand);
+                        const double alpha = std::clamp(cfg_.edgeWeight, 0.0, 1.0) *
+                                             std::exp(-e->first / cfg_.edgeBand);
                         const P2 mixed = base * (1.0 - alpha) + doubled(e->second) * alpha;
                         const double m = norm(mixed);
                         if (m > 1e-6) {
@@ -568,7 +569,8 @@ public:
         const P2 v10 = at(i + 1, j);
         const P2 v01 = at(i, j + 1);
         const P2 v11 = at(i + 1, j + 1);
-        const P2 v = (v00 * (1.0 - tx) + v10 * tx) * (1.0 - ty) + (v01 * (1.0 - tx) + v11 * tx) * ty;
+        const P2 v =
+            (v00 * (1.0 - tx) + v10 * tx) * (1.0 - ty) + (v01 * (1.0 - tx) + v11 * tx) * ty;
         if (norm(v) < 1e-9) {
             // Point singulier exact : valeur du nœud le plus proche.
             return at(std::min(static_cast<int>(std::lround(gx)), nx_ - 1),
@@ -708,7 +710,8 @@ std::vector<std::vector<P2>> flattened_guides(const document::DirectionalFillPar
                 const double len = dist(pts[i], pts[i + 1]);
                 const int steps = std::max(1, static_cast<int>(std::ceil(len / 500.0)));
                 for (int k = 1; k <= steps; ++k) {
-                    dense.push_back(pts[i] + (pts[i + 1] - pts[i]) * (static_cast<double>(k) / steps));
+                    dense.push_back(pts[i] +
+                                    (pts[i + 1] - pts[i]) * (static_cast<double>(k) / steps));
                 }
             }
             pts = std::move(dense);
@@ -738,7 +741,8 @@ std::vector<Sector> build_sectors(const geometry::PathSet& region,
     const auto pieces = split_sectors(region, params);
     const bool multi = pieces.size() > 1;
     const auto guides = flattened_guides(params, multi);
-    const double overlap = static_cast<double>(std::max<std::int32_t>(0, params.sector_overlap.value));
+    const double overlap =
+        static_cast<double>(std::max<std::int32_t>(0, params.sector_overlap.value));
     const double intensity = handmade_intensity(params);
 
     for (const auto& piece : pieces) {
@@ -793,7 +797,7 @@ struct Traced {
     std::vector<P2> pts;
     std::vector<double> u; // coordonnée d'arc alignée sur la ligne mère (décalage des pénétrations)
     int depth{0};          // rang relatif (±1 d'une ligne à sa voisine)
-    double seedU{0.0};     // u de la graine (abscisses de la grille relatives à elle)
+    double seedU{0.0}; // u de la graine (abscisses de la grille relatives à elle)
 };
 
 // Grille de séparation : cellule = distance de séparation ; chaque point
@@ -1187,10 +1191,10 @@ std::vector<P2> place_stitches(const Traced& line, const StitchPlan& plan, std::
     if (I > 0.0) {
         const bool odd = posmod(line.depth, 2) == 1;
         const double shortF = 1.0 - 0.6 * I;
-        double firstLen = L * (odd ? shortF : 1.0) *
-                          (1.0 + 0.15 * I * hash_unit(plan.seed, lineKey, -1, 2));
-        double lastLen = L * (odd ? 1.0 : shortF) *
-                         (1.0 + 0.15 * I * hash_unit(plan.seed, lineKey, -2, 2));
+        double firstLen =
+            L * (odd ? shortF : 1.0) * (1.0 + 0.15 * I * hash_unit(plan.seed, lineKey, -1, 2));
+        double lastLen =
+            L * (odd ? 1.0 : shortF) * (1.0 + 0.15 * I * hash_unit(plan.seed, lineKey, -2, 2));
         firstLen = std::max(firstLen, kMinTarget);
         lastLen = std::max(lastLen, kMinTarget);
         const double f = u0 + firstLen;
@@ -1281,8 +1285,8 @@ std::vector<SectorLines> compute_lines(const std::vector<Sector>& sectors,
         sl.traced = tracer.run();
         if (withStitches) {
             for (std::size_t li = 0; li < sl.traced.size(); ++li) {
-                const auto key = static_cast<std::int64_t>(si) * 1'000'000 +
-                                 static_cast<std::int64_t>(li);
+                const auto key =
+                    static_cast<std::int64_t>(si) * 1'000'000 + static_cast<std::int64_t>(li);
                 auto pts = place_stitches(sl.traced[li], plan, key, sectors[si].trace);
                 if (pts.size() >= 2) {
                     sl.stitched.push_back(std::move(pts));
@@ -1343,8 +1347,8 @@ std::vector<FillStitch> fill_directional(const geometry::PathSet& region,
     }
     const auto lines = compute_lines(sectors, params, true);
     const double spacing = clamp_spacing(params);
-    const double L = std::clamp(static_cast<double>(params.stitch_length.value), kMinTarget,
-                                kMaxTarget);
+    const double L =
+        std::clamp(static_cast<double>(params.stitch_length.value), kMinTarget, kMaxTarget);
     // Liaison cousue « normale » (comme la liaison de rangée du tatami) si
     // courte et intérieure ; trajet caché jusqu'au plafond du tatami ; au-delà,
     // saut.
@@ -1420,7 +1424,8 @@ std::vector<FillStitch> fill_directional(const geometry::PathSet& region,
                 if (lastSeg && t == steps) {
                     break; // le dernier point est la pénétration d'arrivée
                 }
-                const P2 ip = path[k - 1] + (path[k] - path[k - 1]) * (static_cast<double>(t) / steps);
+                const P2 ip =
+                    path[k - 1] + (path[k] - path[k - 1]) * (static_cast<double>(t) / steps);
                 out.push_back({to_um(ip), false, true});
             }
         }
@@ -1588,8 +1593,8 @@ directional_underlay(const geometry::PathSet& region,
     }
     document::TatamiParams tp;
     tp.row_spacing = params.row_spacing;
-    tp.stitch_length = Micrometers{static_cast<std::int32_t>(std::lround(std::clamp(
-        static_cast<double>(params.stitch_length.value), kMinTarget, kMaxTarget)))};
+    tp.stitch_length = Micrometers{static_cast<std::int32_t>(std::lround(
+        std::clamp(static_cast<double>(params.stitch_length.value), kMinTarget, kMaxTarget)))};
     tp.inset = Micrometers{0};
     tp.underlay_edge = params.underlay_edge;
     tp.underlay_parallel = params.underlay_parallel;
@@ -1619,8 +1624,7 @@ directional_underlay(const geometry::PathSet& region,
 }
 
 std::vector<std::optional<Angle>>
-directional_field_at(const geometry::PathSet& region,
-                     const document::DirectionalFillParams& params,
+directional_field_at(const geometry::PathSet& region, const document::DirectionalFillParams& params,
                      const std::vector<Vec2um>& points) {
     std::vector<std::optional<Angle>> out;
     out.reserve(points.size());
@@ -1643,9 +1647,9 @@ directional_field_at(const geometry::PathSet& region,
     return out;
 }
 
-std::vector<DirectionTick>
-directional_field_preview(const geometry::PathSet& region,
-                          const document::DirectionalFillParams& params, Micrometers step) {
+std::vector<DirectionTick> directional_field_preview(const geometry::PathSet& region,
+                                                     const document::DirectionalFillParams& params,
+                                                     Micrometers step) {
     std::vector<DirectionTick> out;
     const double g = static_cast<double>(std::max<std::int32_t>(200, step.value));
     const auto sectors = build_sectors(region, params);
@@ -1672,9 +1676,9 @@ directional_field_preview(const geometry::PathSet& region,
     return out;
 }
 
-document::DirectionalFillParams
-directional_from_tatami(const document::TatamiParams& tatami,
-                        const std::vector<geometry::PathSet>& shape, std::uint32_t seed) {
+document::DirectionalFillParams directional_from_tatami(const document::TatamiParams& tatami,
+                                                        const std::vector<geometry::PathSet>& shape,
+                                                        std::uint32_t seed) {
     document::DirectionalFillParams d;
     d.row_spacing = tatami.row_spacing;
     d.stitch_length = Micrometers{static_cast<std::int32_t>(std::lround(

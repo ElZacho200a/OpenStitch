@@ -34,20 +34,35 @@ SkeletonGraph make_synthetic_t() {
     SkeletonGraph graph;
     graph.nodes = {
         SkeletonNode{0, Vec2um{Micrometers{0}, Micrometers{0}}, SkeletonNodeType::Endpoint, 1000.0},
-        SkeletonNode{1, Vec2um{Micrometers{10'000}, Micrometers{0}}, SkeletonNodeType::Junction, 1000.0},
-        SkeletonNode{2, Vec2um{Micrometers{20'000}, Micrometers{0}}, SkeletonNodeType::Endpoint, 1000.0},
-        SkeletonNode{3, Vec2um{Micrometers{10'000}, Micrometers{10'000}}, SkeletonNodeType::Endpoint, 500.0},
+        SkeletonNode{1, Vec2um{Micrometers{10'000}, Micrometers{0}}, SkeletonNodeType::Junction,
+                     1000.0},
+        SkeletonNode{2, Vec2um{Micrometers{20'000}, Micrometers{0}}, SkeletonNodeType::Endpoint,
+                     1000.0},
+        SkeletonNode{3, Vec2um{Micrometers{10'000}, Micrometers{10'000}},
+                     SkeletonNodeType::Endpoint, 500.0},
     };
     graph.edges = {
-        SkeletonEdge{0, 0, 1,
-                     {Vec2um{Micrometers{0}, Micrometers{0}}, Vec2um{Micrometers{10'000}, Micrometers{0}}},
-                     {1000.0, 1000.0}, 10'000.0},
-        SkeletonEdge{1, 1, 2,
-                     {Vec2um{Micrometers{10'000}, Micrometers{0}}, Vec2um{Micrometers{20'000}, Micrometers{0}}},
-                     {1000.0, 1000.0}, 10'000.0},
-        SkeletonEdge{2, 1, 3,
-                     {Vec2um{Micrometers{10'000}, Micrometers{0}}, Vec2um{Micrometers{10'000}, Micrometers{10'000}}},
-                     {1000.0, 500.0}, 10'000.0},
+        SkeletonEdge{
+            0,
+            0,
+            1,
+            {Vec2um{Micrometers{0}, Micrometers{0}}, Vec2um{Micrometers{10'000}, Micrometers{0}}},
+            {1000.0, 1000.0},
+            10'000.0},
+        SkeletonEdge{1,
+                     1,
+                     2,
+                     {Vec2um{Micrometers{10'000}, Micrometers{0}},
+                      Vec2um{Micrometers{20'000}, Micrometers{0}}},
+                     {1000.0, 1000.0},
+                     10'000.0},
+        SkeletonEdge{2,
+                     1,
+                     3,
+                     {Vec2um{Micrometers{10'000}, Micrometers{0}},
+                      Vec2um{Micrometers{10'000}, Micrometers{10'000}}},
+                     {1000.0, 500.0},
+                     10'000.0},
     };
     return graph;
 }
@@ -69,21 +84,25 @@ SkeletonGraph make_synthetic_y() {
         SkeletonNode{3, arm(330.0), SkeletonNodeType::Endpoint, 1000.0},
     };
     graph.edges = {
-        SkeletonEdge{0, 1, 0, {Vec2um{Micrometers{0}, Micrometers{0}}, arm(90.0)}, {1000.0, 1000.0}, r},
-        SkeletonEdge{1, 1, 2, {Vec2um{Micrometers{0}, Micrometers{0}}, arm(210.0)}, {1000.0, 1000.0}, r},
-        SkeletonEdge{2, 1, 3, {Vec2um{Micrometers{0}, Micrometers{0}}, arm(330.0)}, {1000.0, 1000.0}, r},
+        SkeletonEdge{
+            0, 1, 0, {Vec2um{Micrometers{0}, Micrometers{0}}, arm(90.0)}, {1000.0, 1000.0}, r},
+        SkeletonEdge{
+            1, 1, 2, {Vec2um{Micrometers{0}, Micrometers{0}}, arm(210.0)}, {1000.0, 1000.0}, r},
+        SkeletonEdge{
+            2, 1, 3, {Vec2um{Micrometers{0}, Micrometers{0}}, arm(330.0)}, {1000.0, 1000.0}, r},
     };
     return graph;
 }
 
 std::uint32_t single_junction_id(const SkeletonGraph& graph) {
-    const auto it = std::find_if(graph.nodes.begin(), graph.nodes.end(),
-                                  [](const SkeletonNode& n) { return n.type == SkeletonNodeType::Junction; });
+    const auto it = std::find_if(graph.nodes.begin(), graph.nodes.end(), [](const SkeletonNode& n) {
+        return n.type == SkeletonNodeType::Junction;
+    });
     REQUIRE(it != graph.nodes.end());
     return it->id;
 }
 
-}  // namespace
+} // namespace
 
 TEST_CASE("classify_junction : T synthetique -- une paire colineaire domine nettement") {
     const SkeletonGraph graph = make_synthetic_t();
@@ -93,7 +112,8 @@ TEST_CASE("classify_junction : T synthetique -- une paire colineaire domine nett
     CHECK(j.type == JunctionType::T);
 }
 
-TEST_CASE("classify_junction : Y synthetique -- trois branches a 120 degres, aucune paire dominante") {
+TEST_CASE(
+    "classify_junction : Y synthetique -- trois branches a 120 degres, aucune paire dominante") {
     const SkeletonGraph graph = make_synthetic_y();
     const SatinJunction j = classify_junction(graph, 1);
     CHECK(j.type == JunctionType::Y);
@@ -137,12 +157,13 @@ TEST_CASE("classify_edge : T -- l'arete touchant la jonction est Singular (Junct
         const RegionClassification c = classify_edge(graph, edge);
         const bool touchesJunction =
             std::any_of(graph.nodes.begin(), graph.nodes.end(), [&](const SkeletonNode& n) {
-                return (n.id == edge.from || n.id == edge.to) && n.type == SkeletonNodeType::Junction;
+                return (n.id == edge.from || n.id == edge.to) &&
+                       n.type == SkeletonNodeType::Junction;
             });
         if (touchesJunction) {
             CHECK(c.region_class == RegionClass::Singular);
-            CHECK(std::find(c.reasons.begin(), c.reasons.end(), SingularityReason::JunctionDegreeGE3) !=
-                  c.reasons.end());
+            CHECK(std::find(c.reasons.begin(), c.reasons.end(),
+                            SingularityReason::JunctionDegreeGE3) != c.reasons.end());
             foundSingularNearJunction = true;
         }
     }
@@ -156,14 +177,20 @@ TEST_CASE("classify_edge : changement de largeur abrupt -> Singular (AbruptWidth
     SkeletonGraph graph;
     graph.nodes = {
         SkeletonNode{0, Vec2um{Micrometers{0}, Micrometers{0}}, SkeletonNodeType::Endpoint, 1000.0},
-        SkeletonNode{1, Vec2um{Micrometers{10'000}, Micrometers{0}}, SkeletonNodeType::Endpoint, 3000.0},
+        SkeletonNode{1, Vec2um{Micrometers{10'000}, Micrometers{0}}, SkeletonNodeType::Endpoint,
+                     3000.0},
     };
     graph.edges = {
-        SkeletonEdge{0, 0, 1,
-                     {Vec2um{Micrometers{0}, Micrometers{0}}, Vec2um{Micrometers{10'000}, Micrometers{0}}},
-                     {1000.0, 3000.0}, 10'000.0},
+        SkeletonEdge{
+            0,
+            0,
+            1,
+            {Vec2um{Micrometers{0}, Micrometers{0}}, Vec2um{Micrometers{10'000}, Micrometers{0}}},
+            {1000.0, 3000.0},
+            10'000.0},
     };
     const RegionClassification c = classify_edge(graph, graph.edges.front());
     CHECK(c.region_class == RegionClass::Singular);
-    CHECK(std::find(c.reasons.begin(), c.reasons.end(), SingularityReason::AbruptWidthChange) != c.reasons.end());
+    CHECK(std::find(c.reasons.begin(), c.reasons.end(), SingularityReason::AbruptWidthChange) !=
+          c.reasons.end());
 }

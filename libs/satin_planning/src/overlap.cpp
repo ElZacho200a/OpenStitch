@@ -18,12 +18,13 @@ const SatinRegion* find_region(const RegionSplitReport& split, std::size_t pathI
     return nullptr;
 }
 
-}  // namespace
+} // namespace
 
 geometry::PathSet extend_toward(const geometry::PathSet& region, const geometry::PathSet& bounds,
-                                 Micrometers overlap_distance) {
+                                Micrometers overlap_distance) {
     const auto dilated = geometry::inset_path_set(region, -overlap_distance);
-    if (!dilated.has_value() || dilated->empty()) return region;
+    if (!dilated.has_value() || dilated->empty())
+        return region;
 
     const auto clamped = geometry::intersect_polygons({(*dilated)[0]}, {bounds});
     if (!clamped.has_value() || clamped->empty())

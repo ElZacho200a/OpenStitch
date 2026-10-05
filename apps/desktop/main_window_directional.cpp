@@ -140,13 +140,14 @@ void MainWindow::onDirectionGuideModeToggled(bool on) {
     directionGuideTarget_.reset();
     if (on) {
         // Mode exclusif : un seul jeu de poignées éditables à la fois.
-        for (QAction* other : {stitchEditModeAct_, satinEditModeAct_, satinGuideModeAct_,
-                               railEditModeAct_}) {
+        for (QAction* other :
+             {stitchEditModeAct_, satinEditModeAct_, satinGuideModeAct_, railEditModeAct_}) {
             if (other != nullptr && other->isChecked()) {
                 other->setChecked(false);
             }
         }
-        if (const auto* emb = resolveSelectedEmbroidery(); emb != nullptr && emb->is_directional()) {
+        if (const auto* emb = resolveSelectedEmbroidery();
+            emb != nullptr && emb->is_directional()) {
             directionGuideTarget_ = emb->id;
         }
         if (!directionGuideTarget_) {
@@ -198,7 +199,8 @@ void MainWindow::updateDirectionGuidePreview(QPointF cursorSceneMm) {
         scene_->addItem(guidePreviewItem_);
     }
     const bool isBreak = currentTool_ == Tool::DrawBreakLine;
-    QPen pen(isBreak ? AppTheme::instance().tokens().warning : AppTheme::instance().tokens().accent);
+    QPen pen(isBreak ? AppTheme::instance().tokens().warning
+                     : AppTheme::instance().tokens().accent);
     pen.setCosmetic(true);
     pen.setWidthF(2.0);
     pen.setStyle(Qt::DashLine);
@@ -207,8 +209,7 @@ void MainWindow::updateDirectionGuidePreview(QPointF cursorSceneMm) {
     // une rupture (même fonction du cœur qu'à la validation).
     std::vector<Vec2um> pts = pendingGuidePoints_;
     pts.push_back(toModel(cursorSceneMm));
-    const geometry::Path path =
-        isBreak ? geometry::Path{} : geometry::smooth_open_path(pts);
+    const geometry::Path path = isBreak ? geometry::Path{} : geometry::smooth_open_path(pts);
     QPainterPath painter;
     if (isBreak) {
         painter.moveTo(toScene(pts.front()));
@@ -280,8 +281,8 @@ void MainWindow::finishDirectionGuide() {
 
 void MainWindow::applyDirectionalEdit(ObjectId id, document::DirectionalFillParams params,
                                       const QString& label) {
-    undoStack_.execute(std::make_unique<commands::EditDirectionalFillCommand>(
-                           id, std::move(params), label.toStdString()),
+    undoStack_.execute(std::make_unique<commands::EditDirectionalFillCommand>(id, std::move(params),
+                                                                              label.toStdString()),
                        project_);
     refreshImage();
     updateActions();
@@ -386,79 +387,82 @@ void MainWindow::renderDirectionGuides() {
                 // poignée pendant son propre évènement souris sinon.
                 const auto onReleased = [this, targetId, generation, isBreak, gi,
                                          ni](QPointF released) {
-                    QTimer::singleShot(0, this, [this, targetId, generation, isBreak, gi, ni,
-                                                 released] {
-                        if (generation != documentGeneration_) {
-                            return;
-                        }
-                        const auto* e = project_.findEmbroidery(targetId);
-                        const auto* d = e != nullptr
-                                            ? std::get_if<document::DirectionalFillParams>(&e->params)
-                                            : nullptr;
-                        if (d == nullptr) {
-                            return;
-                        }
-                        auto params = *d;
-                        auto& list = isBreak ? params.break_lines : params.guides;
-                        if (gi >= list.size() || ni >= list[gi].nodes.size()) {
-                            return;
-                        }
-                        const Vec2um to = toModel(released);
-                        if (list[gi].nodes[ni].pos == to) {
-                            return; // clic sans déplacement : aucun historique fantôme
-                        }
-                        list[gi].nodes[ni].pos = to; // tangentes relatives : suivent le nœud
-                        applyDirectionalEdit(targetId, std::move(params),
-                                             isBreak ? tr("Déplacer un point de rupture")
-                                                     : tr("Déplacer un point de guide"));
-                    });
+                    QTimer::singleShot(
+                        0, this, [this, targetId, generation, isBreak, gi, ni, released] {
+                            if (generation != documentGeneration_) {
+                                return;
+                            }
+                            const auto* e = project_.findEmbroidery(targetId);
+                            const auto* d =
+                                e != nullptr
+                                    ? std::get_if<document::DirectionalFillParams>(&e->params)
+                                    : nullptr;
+                            if (d == nullptr) {
+                                return;
+                            }
+                            auto params = *d;
+                            auto& list = isBreak ? params.break_lines : params.guides;
+                            if (gi >= list.size() || ni >= list[gi].nodes.size()) {
+                                return;
+                            }
+                            const Vec2um to = toModel(released);
+                            if (list[gi].nodes[ni].pos == to) {
+                                return; // clic sans déplacement : aucun historique fantôme
+                            }
+                            list[gi].nodes[ni].pos = to; // tangentes relatives : suivent le nœud
+                            applyDirectionalEdit(targetId, std::move(params),
+                                                 isBreak ? tr("Déplacer un point de rupture")
+                                                         : tr("Déplacer un point de guide"));
+                        });
                 };
                 const auto onContextMenu = [this, targetId, generation, isBreak, gi,
                                             ni](QPoint globalPos) {
-                    QTimer::singleShot(0, this, [this, targetId, generation, isBreak, gi, ni,
-                                                 globalPos] {
-                        if (generation != documentGeneration_) {
-                            return;
-                        }
-                        const auto* e = project_.findEmbroidery(targetId);
-                        const auto* d = e != nullptr
-                                            ? std::get_if<document::DirectionalFillParams>(&e->params)
-                                            : nullptr;
-                        if (d == nullptr) {
-                            return;
-                        }
-                        const auto& list = isBreak ? d->break_lines : d->guides;
-                        if (gi >= list.size()) {
-                            return;
-                        }
-                        QMenu menu(this);
-                        QAction* removeNode = nullptr;
-                        if (list[gi].nodes.size() > 2) {
-                            removeNode = menu.addAction(tr("Supprimer ce point"));
-                        }
-                        QAction* removePath = menu.addAction(
-                            isBreak ? tr("Supprimer la ligne de rupture") : tr("Supprimer le guide"));
-                        QAction* chosen = menu.exec(globalPos);
-                        if (chosen == nullptr) {
-                            return;
-                        }
-                        auto params = *d;
-                        auto& target = isBreak ? params.break_lines : params.guides;
-                        if (chosen == removeNode && ni < target[gi].nodes.size()) {
-                            target[gi].nodes.erase(target[gi].nodes.begin() +
-                                                   static_cast<std::ptrdiff_t>(ni));
-                            applyDirectionalEdit(targetId, std::move(params),
-                                                 tr("Supprimer un point de guide"));
-                        } else if (chosen == removePath) {
-                            target.erase(target.begin() + static_cast<std::ptrdiff_t>(gi));
-                            applyDirectionalEdit(targetId, std::move(params),
-                                                 isBreak ? tr("Supprimer une ligne de rupture")
-                                                         : tr("Supprimer un guide"));
-                        }
-                    });
+                    QTimer::singleShot(
+                        0, this, [this, targetId, generation, isBreak, gi, ni, globalPos] {
+                            if (generation != documentGeneration_) {
+                                return;
+                            }
+                            const auto* e = project_.findEmbroidery(targetId);
+                            const auto* d =
+                                e != nullptr
+                                    ? std::get_if<document::DirectionalFillParams>(&e->params)
+                                    : nullptr;
+                            if (d == nullptr) {
+                                return;
+                            }
+                            const auto& list = isBreak ? d->break_lines : d->guides;
+                            if (gi >= list.size()) {
+                                return;
+                            }
+                            QMenu menu(this);
+                            QAction* removeNode = nullptr;
+                            if (list[gi].nodes.size() > 2) {
+                                removeNode = menu.addAction(tr("Supprimer ce point"));
+                            }
+                            QAction* removePath =
+                                menu.addAction(isBreak ? tr("Supprimer la ligne de rupture")
+                                                       : tr("Supprimer le guide"));
+                            QAction* chosen = menu.exec(globalPos);
+                            if (chosen == nullptr) {
+                                return;
+                            }
+                            auto params = *d;
+                            auto& target = isBreak ? params.break_lines : params.guides;
+                            if (chosen == removeNode && ni < target[gi].nodes.size()) {
+                                target[gi].nodes.erase(target[gi].nodes.begin() +
+                                                       static_cast<std::ptrdiff_t>(ni));
+                                applyDirectionalEdit(targetId, std::move(params),
+                                                     tr("Supprimer un point de guide"));
+                            } else if (chosen == removePath) {
+                                target.erase(target.begin() + static_cast<std::ptrdiff_t>(gi));
+                                applyDirectionalEdit(targetId, std::move(params),
+                                                     isBreak ? tr("Supprimer une ligne de rupture")
+                                                             : tr("Supprimer un guide"));
+                            }
+                        });
                 };
-                auto* handle = new NodeHandleItem(toScene(paths[gi].nodes[ni].pos), onReleased,
-                                                  {}, onContextMenu);
+                auto* handle = new NodeHandleItem(toScene(paths[gi].nodes[ni].pos), onReleased, {},
+                                                  onContextMenu);
                 handle->setPen(QPen(isBreak ? tokens.warning : tokens.accent, 1.5));
                 handle->setBrush(QBrush((isBreak ? tokens.warning : tokens.accent).lighter(160)));
                 handle->setToolTip(tr("Glisser pour déplacer — clic droit pour supprimer"));

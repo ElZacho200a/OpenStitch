@@ -785,9 +785,10 @@ public:
         removedSiblings_.clear();
         auto& embs = project.embroidery_objects;
         const auto anchorIt =
-            std::find_if(embs.begin(), embs.end(), [&](const document::EmbroideryObject& e) { return e.id == anyMemberId_; });
+            std::find_if(embs.begin(), embs.end(),
+                         [&](const document::EmbroideryObject& e) { return e.id == anyMemberId_; });
         if (anchorIt == embs.end()) {
-            return;  // objet ancre introuvable : no-op, comme les autres commandes de ce fichier
+            return; // objet ancre introuvable : no-op, comme les autres commandes de ce fichier
         }
         const ObjectId sourceVector = anchorIt->source_vector;
         primaryId_ = anchorIt->id;
@@ -836,7 +837,8 @@ public:
         // disposition initiale, même garantie que `RemoveVectorObjectCommand`.
         for (const auto& [index, emb] : removedSiblings_) {
             const std::size_t pos = std::min(index, project.embroidery_objects.size());
-            project.embroidery_objects.insert(project.embroidery_objects.begin() + static_cast<std::ptrdiff_t>(pos), emb);
+            project.embroidery_objects.insert(
+                project.embroidery_objects.begin() + static_cast<std::ptrdiff_t>(pos), emb);
         }
         removedSiblings_.clear();
         applied_ = false;

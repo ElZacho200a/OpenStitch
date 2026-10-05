@@ -60,4 +60,4 @@ struct SvgImportResult {
 [[nodiscard]] Result<SvgImportResult> decode_svg(std::span<const std::uint8_t> bytes);
 [[nodiscard]] Result<SvgImportResult> read_svg_file(const std::filesystem::path& path);
 
-}  // namespace openstitch::formats
+} // namespace openstitch::formats

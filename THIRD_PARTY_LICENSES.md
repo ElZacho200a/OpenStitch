@@ -23,6 +23,28 @@ Qt est utilisé en **liaison dynamique** avec les DLL officielles non modifiées
 - aucune modification n'est apportée aux sources de Qt ;
 - seuls des modules Qt sous licence LGPL sont utilisés (pas de module GPL-only ni commercial).
 
+## Nuanciers de fils
+
+Ce ne sont pas des dépendances logicielles (pas de code ni de licence
+logicielle tierce liée) mais des **données de fait** (code fabricant ↔ nom ↔
+approximation RGB publiée) chargées en mémoire par `libs/thread_palette`
+(C-S1-02 : constantes C++ compilées, pas de fichier lu à l'exécution). Chaque
+ligne documente la provenance exigée par la procédure de sourçage
+(S1-POLICY-1/2) : une ligne par nuancier, jamais fusionnée.
+
+| Fabricant | Gamme | Source (URL) | Date de consultation |
+|---|---|---|---|
+| Madeira | Polyneon 40 | **DONNÉES PLACEHOLDER — non sourcées** : à transcrire depuis https://www.madeira.co.uk (fiche couleurs Polyneon 40) | — (pas encore consultée ; voir `libs/thread_palette/data/madeira_polyneon.cpp`) |
+| Isacord | Isacord 40 | **DONNÉES PLACEHOLDER — non sourcées** : à transcrire depuis https://www.isacord.com (fiche couleurs Isacord 40) | — (pas encore consultée ; voir `libs/thread_palette/data/isacord_40.cpp`) |
+
+**Important** : les deux fichiers de données ci-dessus contiennent
+actuellement des codes/noms/RGB **inventés** (forme plausible d'un nuancier
+réel, pas une transcription) car l'environnement d'implémentation initial
+n'avait pas d'accès web pour sourcer les valeurs réelles. À remplacer par une
+vraie transcription avant toute utilisation hors développement/test — voir
+`docs/source/palettes-and-threads.md` (section *Catalogue*) et
+`specs/plans/thread-palette-implementation.md` (section 4).
+
 ## Dépendances prévues (non encore intégrées)
 
 _(Toutes les dépendances prévues en Phase 0 sont désormais intégrées.)_

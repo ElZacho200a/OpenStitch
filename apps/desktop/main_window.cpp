@@ -45,6 +45,7 @@
 #include "ai_preferences_dialog.hpp"
 #include "ai_segmentation_dialog.hpp"
 #include "app_theme.hpp"
+#include "autosave.hpp"
 #include "brightness_dialog.hpp"
 #include "canvas_view.hpp"
 #include "document_panel.hpp"
@@ -78,6 +79,7 @@
 #include "openstitch/stitch_generation/satin_guides.hpp"
 #include "openstitch/vectorization/vectorize.hpp"
 #include "properties_panel.hpp"
+#include "recent_files.hpp"
 #include "ruler.hpp"
 #include "satin_guide_item.hpp"
 #include "ui_icons.hpp"
@@ -465,10 +467,28 @@ MainWindow::MainWindow() {
     connect(emptyState_, &EmptyStateWidget::openImageRequested, this, &MainWindow::openImage);
     connect(emptyState_, &EmptyStateWidget::openProjectRequested, this, &MainWindow::loadProject);
     connect(emptyState_, &EmptyStateWidget::importDstRequested, this, &MainWindow::importDst);
+    // Même garde HP-FILE-001 que les autres points d'entrée destructeurs de
+    // document (newProject) : un clic sur un récent de l'écran d'accueil ne
+    // doit pas perdre un travail en cours sans confirmation.
+    connect(emptyState_, &EmptyStateWidget::openRecentRequested, this,
+            [this](const QString& path) { openRecentFile(path); });
+    refreshRecentFilesUi();
     connect(view_, &CanvasView::viewChanged, this, &MainWindow::positionEmptyState);
 
     statusBar()->showMessage(tr("Ouvrez une image (PNG, JPEG, BMP, TIFF) pour commencer."));
     view_->fitCanvas();
+
+    // HP-FILE-004 : autosave périodique, démarré dès l'ouverture (protège
+    // dès avant la première modification, pas seulement après).
+    autosaveTimer_ = new QTimer(this);
+    autosaveTimer_->setInterval(120000); // ASM-S11-01 : 2 min, non configurable en P0
+    connect(autosaveTimer_, &QTimer::timeout, this, &MainWindow::onAutosaveTick);
+    autosaveTimer_->start();
+    // Différé après le premier passage de la boucle d'évènements (donc après
+    // window.show() dans main.cpp) pour que le dialogue de récupération
+    // s'affiche au-dessus d'une fenêtre déjà visible.
+    QTimer::singleShot(0, this, &MainWindow::checkAutosaveRecovery);
+
     updateActions();
 }
 
@@ -505,6 +525,9 @@ void MainWindow::buildMenus() {
     auto* loadProjectAct = fileMenu->addAction(tr("Ou&vrir un projet…"));
     connect(loadProjectAct, &QAction::triggered, this, &MainWindow::loadProject);
     fileMenu->addSeparator();
+    // Rempli par refreshRecentFilesUi() (appelée une première fois depuis le
+    // constructeur, après la construction de emptyState_) -- HP-FILE-003.
+    recentMenu_ = fileMenu->addMenu(tr("&Récents"));
     exportDstAct_ = fileMenu->addAction(tr("&Exporter en DST…"));
     connect(exportDstAct_, &QAction::triggered, this, &MainWindow::exportDst);
     auto* importDstAct = fileMenu->addAction(tr("&Importer un DST…"));
@@ -632,8 +655,7 @@ void MainWindow::buildMenus() {
     connect(finishingAct, &QAction::triggered, this, [this] {
         const auto edited = editSequenceFinishing(this, project_.finishing);
         if (edited && *edited != project_.finishing) {
-            undoStack_.execute(std::make_unique<commands::SetFinishingCommand>(*edited),
-                               project_);
+            undoStack_.execute(std::make_unique<commands::SetFinishingCommand>(*edited), project_);
             refreshImage();
             updateActions();
         }
@@ -971,10 +993,11 @@ void MainWindow::openSvg(const QString& file) {
     showVectorsAct_->setChecked(true);
     refreshImage();
     view_->fitCanvas();
-    statusBar()->showMessage(
-        tr("%1 — %2 objet(s) vectoriel(s) importé(s)").arg(QFileInfo(file).fileName()).arg(imported_count));
+    statusBar()->showMessage(tr("%1 — %2 objet(s) vectoriel(s) importé(s)")
+                                 .arg(QFileInfo(file).fileName())
+                                 .arg(imported_count));
     updateActions();
-    setWindowModified(false);  // nouveau document propre
+    setWindowModified(false); // nouveau document propre
     warnAboutSkippedSvgFeatures(imported->warnings);
 }
 
@@ -1308,6 +1331,15 @@ void MainWindow::closeEvent(QCloseEvent* event) {
     // ou refusé -> la fenêtre reste ouverte.
     event->setAccepted(
         confirmDiscardChanges(tr("Le projet a été modifié. Enregistrer avant de quitter ?")));
+
+    // HP-FILE-004 : une fermeture réellement acceptée (enregistrée ou
+    // abandon explicite) ne laisse rien à récupérer au prochain lancement.
+    // Si l'évènement n'est pas accepté (fermeture annulée), l'autosave
+    // continue de tourner normalement.
+    if (event->isAccepted()) {
+        autosaveTimer_->stop();
+        discardAutosave(slotFor(currentProjectPath_));
+    }
 }
 
 void MainWindow::setHoopSize() {
@@ -3294,9 +3326,9 @@ void MainWindow::autoDigitize() {
     // historique, inchangé). Pour le chemin SVG, les objets vectoriels SONT
     // l'entrée elle-même -- seule la présence d'un objet de broderie
     // signale une numérisation déjà effectuée.
-    const bool alreadyDigitized = hasSegmentation
-        ? (!project_.embroidery_objects.empty() || !project_.vector_objects.empty())
-        : !project_.embroidery_objects.empty();
+    const bool alreadyDigitized =
+        hasSegmentation ? (!project_.embroidery_objects.empty() || !project_.vector_objects.empty())
+                        : !project_.embroidery_objects.empty();
     if (alreadyDigitized) {
         const auto answer = QMessageBox::question(
             this, tr("Numérisation automatique"),
@@ -3329,8 +3361,8 @@ void MainWindow::autoDigitize() {
         QDialog optsDialog(this);
         optsDialog.setWindowTitle(tr("Numérisation automatique"));
         auto* optsLayout = new QVBoxLayout(&optsDialog);
-        auto* skipBgCheck = new QCheckBox(
-            tr("Ignorer la plus grande région (probablement le fond)"), &optsDialog);
+        auto* skipBgCheck =
+            new QCheckBox(tr("Ignorer la plus grande région (probablement le fond)"), &optsDialog);
         skipBgCheck->setObjectName("skipBackgroundCheck");
         skipBgCheck->setChecked(candidate && candidate->recommended);
         skipBgCheck->setToolTip(
@@ -3372,10 +3404,10 @@ void MainWindow::autoDigitize() {
     }
 
     QGuiApplication::setOverrideCursor(Qt::WaitCursor);
-    auto result = hasSegmentation
-                      ? autodigitize::auto_digitize(*project_.segmentation, project_.object_ids, opts)
-                      : autodigitize::auto_digitize_vectors(project_.vector_objects,
-                                                            project_.object_ids, opts);
+    auto result = hasSegmentation ? autodigitize::auto_digitize(*project_.segmentation,
+                                                                project_.object_ids, opts)
+                                  : autodigitize::auto_digitize_vectors(project_.vector_objects,
+                                                                        project_.object_ids, opts);
     QGuiApplication::restoreOverrideCursor();
     if (!result) {
         QMessageBox::warning(this, tr("Numérisation impossible"),
@@ -4377,8 +4409,8 @@ void MainWindow::setStitchType(ObjectId embroideryId, int type) {
     // -- exactement le défaut réel signalé (« résidu de satin qui reste
     // même en revenant en tatami », 2026-09-04, cf. le commentaire de la
     // commande pour le détail complet).
-    undoStack_.execute(std::make_unique<commands::ConvertFillGroupCommand>(embroideryId, std::move(params),
-                                                                           std::move(label)),
+    undoStack_.execute(std::make_unique<commands::ConvertFillGroupCommand>(
+                           embroideryId, std::move(params), std::move(label)),
                        project_);
     showStitchesAct_->setChecked(true);
     refreshImage();
@@ -5584,7 +5616,8 @@ void MainWindow::buildPropertiesPanel() {
             &MainWindow::convertToDirectional);
     connect(propertiesPanel_, &PropertiesPanel::editDirectionGuidesRequested, this,
             [this](ObjectId id) {
-                if (auto* emb = project_.findEmbroidery(id); emb != nullptr && emb->is_directional()) {
+                if (auto* emb = project_.findEmbroidery(id);
+                    emb != nullptr && emb->is_directional()) {
                     selectedEmbroidery_ = id;
                     if (directionGuideModeAct_->isChecked()) {
                         directionGuideModeAct_->setChecked(false);
@@ -5839,10 +5872,7 @@ void MainWindow::refreshOrderPanel() {
 }
 
 int MainWindow::stitchTypeIndex(const document::EmbroideryObject& object) {
-    return object.is_tatami()        ? 1
-           : object.is_satin()       ? 2
-           : object.is_directional() ? 3
-                                     : 0;
+    return object.is_tatami() ? 1 : object.is_satin() ? 2 : object.is_directional() ? 3 : 0;
 }
 
 double MainWindow::regionAreaMm2(const document::EmbroideryObject& object) const {
@@ -6236,6 +6266,11 @@ bool MainWindow::openProjectFile(const QString& file) {
     if (!loaded) {
         QMessageBox::warning(this, tr("Ouverture impossible"),
                              QString::fromStdString(loaded.error().message));
+        // Purge immédiate (AD-S11-2) : si `file` provenait d'un item
+        // Récents, l'échec prouve qu'il n'existe plus -- pruneMissingRecentFiles
+        // (appliqué par refreshRecentFilesUi) le retire sans attendre une
+        // prochaine reconstruction du menu/de l'écran d'accueil.
+        refreshRecentFilesUi();
         return false;
     }
     applyLoadedProject(std::move(*loaded));
@@ -6252,8 +6287,108 @@ bool MainWindow::openProjectFile(const QString& file) {
 }
 
 void MainWindow::setCurrentProjectPath(const QString& file) {
+    // HP-FILE-004 : le créneau autosave suit l'identité du document -- un
+    // changement d'identité abandonne le créneau de l'ancienne (slotFor()
+    // est pure, recalculée depuis currentProjectPath_ à chaque usage, donc
+    // rien à recalculer pour la nouvelle avant qu'un tick n'en ait besoin).
+    // Doit lire l'ANCIEN chemin avant qu'il soit écrasé ci-dessous.
+    discardAutosave(slotFor(currentProjectPath_));
     currentProjectPath_ = file;
     updateWindowTitle();
+    if (!file.isEmpty()) {
+        // Seul site d'ajout aux récents (HP-FILE-003) : couvre à la fois
+        // saveProjectToPath et openProjectFile, qui appellent tous deux
+        // cette fonction.
+        recentFiles_ = addRecentFile(std::move(recentFiles_), file);
+        saveRecentFiles(recentFiles_);
+        refreshRecentFilesUi();
+    }
+}
+
+void MainWindow::openRecentFile(const QString& path) {
+    if (confirmDiscardChanges(
+            tr("Le projet a été modifié. Enregistrer avant d'ouvrir un autre projet ?"))) {
+        (void)openProjectFile(path);
+    }
+}
+
+void MainWindow::refreshRecentFilesUi() {
+    // Synchrone : recentFiles_ doit être à jour dès le retour de cet appel,
+    // pas seulement après un cycle d'évènements -- setCurrentProjectPath()
+    // (et tout appelant futur) le relit et le persiste immédiatement.
+    recentFiles_ = pruneMissingRecentFiles(loadRecentFiles());
+    saveRecentFiles(recentFiles_);
+
+    // Seule la reconstruction des widgets est différée (réentrance : ne pas
+    // détruire, depuis son propre gestionnaire de clic, le QAction ou le
+    // QPushButton qui vient de déclencher cet appel).
+    QTimer::singleShot(0, this, [this] {
+        recentMenu_->clear();
+        for (const QString& path : recentFiles_) {
+            auto* action = recentMenu_->addAction(QFileInfo(path).fileName());
+            action->setToolTip(path);
+            connect(action, &QAction::triggered, this, [this, path] { openRecentFile(path); });
+        }
+        emptyState_->setRecentFiles(recentFiles_);
+    });
+}
+
+void MainWindow::onAutosaveTick() {
+    // Même garde que updateEmptyState() : un document vide n'a rien à
+    // protéger, et écrire n'apporterait qu'un fichier autosave inutile.
+    const bool empty = !project_.hasImage() && project_.vector_objects.empty() &&
+                       project_.embroidery_objects.empty();
+    if (!isWindowModified() || empty) {
+        return;
+    }
+    const auto written = writeAutosave(slotFor(currentProjectPath_), project_, currentProjectPath_);
+    if (!written) {
+        // Best-effort (jamais bloquant) : message transitoire, même gabarit
+        // que saveProjectToPath pour un échec d'enregistrement normal.
+        statusBar()->showMessage(tr("Sauvegarde automatique impossible : %1")
+                                     .arg(QString::fromStdString(written.error().message)));
+    }
+}
+
+void MainWindow::checkAutosaveRecovery() {
+    // Différé après le premier passage de la boucle d'évènements qui suit la
+    // construction : à ce point le document est toujours le défaut neuf,
+    // jamais modifié -- aucune garde confirmDiscardChanges n'est donc
+    // nécessaire avant de le remplacer par une récupération acceptée.
+    for (const auto& candidate : scanForRecoverableAutosaves()) {
+        QMessageBox box(QMessageBox::Warning, tr("Récupération après un arrêt anormal"),
+                        candidate.original_path.isEmpty()
+                            ? tr("Un projet sans nom non enregistré a été retrouvé (%1).")
+                                  .arg(candidate.saved_at.toLocalTime().toString())
+                            : tr("Une sauvegarde automatique de « %1 » a été retrouvée (%2).")
+                                  .arg(QFileInfo(candidate.original_path).fileName(),
+                                       candidate.saved_at.toLocalTime().toString()),
+                        QMessageBox::NoButton, this);
+        auto* recoverBtn = box.addButton(tr("Récupérer"), QMessageBox::AcceptRole);
+        recoverBtn->setObjectName(QStringLiteral("action_autosaveRecover"));
+        box.addButton(tr("Ignorer"), QMessageBox::RejectRole)
+            ->setObjectName(QStringLiteral("action_autosaveIgnore"));
+        box.exec();
+        if (box.clickedButton() == recoverBtn) {
+            auto loaded = project_io::load_project(
+                std::filesystem::path(candidate.slot.osp_path.toStdWString()));
+            if (!loaded) {
+                QMessageBox::warning(this, tr("Récupération impossible"),
+                                     QString::fromStdString(loaded.error().message));
+            } else {
+                applyLoadedProject(std::move(*loaded));
+                // PAS de second setCurrentProjectPath(QString()) explicite :
+                // applyLoadedProject() appelle déjà resetDocumentState(), qui
+                // appelle déjà setCurrentProjectPath(QString()) -- un second
+                // appel ici serait un 4e site d'appel redondant pour la même
+                // valeur (cf. specs/plans/autosave-implementation.md §8).
+                setWindowModified(true);
+            }
+        }
+        // Traité (récupéré ou ignoré) -> jamais reproposé au prochain
+        // démarrage.
+        discardAutosave(candidate.slot);
+    }
 }
 
 void MainWindow::updateWindowTitle() {

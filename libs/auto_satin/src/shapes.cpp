@@ -151,8 +151,9 @@ std::optional<geometry::PathSet> make_shape(const std::string& name) {
             const double angle = std::numbers::pi / 2.0 + i * (2.0 * std::numbers::pi / 3.0);
             const double dx = std::cos(angle);
             const double dy = std::sin(angle);
-            parts.push_back(band(
-                [dx, dy](double t) { return std::pair{dx * 16'000.0 * t, dy * 16'000.0 * t}; }, 20, W));
+            parts.push_back(
+                band([dx, dy](double t) { return std::pair{dx * 16'000.0 * t, dy * 16'000.0 * t}; },
+                     20, W));
         }
         return from_union(parts);
     }
@@ -457,9 +458,10 @@ std::optional<geometry::PathSet> make_shape(const std::string& name) {
         // chemin en impasse.
         Path p;
         p.closed = true;
-        p.nodes = {node(44'427, 155'087), node(44'956, 155'881), node(44'956, 156'939), node(43'898, 157'733),
-                  node(42'311, 157'733), node(41'252, 157'204), node(40'194, 155'881), node(40'194, 154'823),
-                  node(40'988, 154'029), node(42'575, 154'029)};
+        p.nodes = {node(44'427, 155'087), node(44'956, 155'881), node(44'956, 156'939),
+                   node(43'898, 157'733), node(42'311, 157'733), node(41'252, 157'204),
+                   node(40'194, 155'881), node(40'194, 154'823), node(40'988, 154'029),
+                   node(42'575, 154'029)};
         return single(p);
     }
 

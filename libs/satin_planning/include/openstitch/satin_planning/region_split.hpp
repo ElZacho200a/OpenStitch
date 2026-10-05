@@ -76,7 +76,7 @@ struct CutCandidateParams {
     double search_min_um{300.0};
     double search_max_um{4000.0};
     double search_step_um{300.0};
-    Micrometers cut_width{20};  // meme defaut que geometry::cut_path_set
+    Micrometers cut_width{20}; // meme defaut que geometry::cut_path_set
     // Marge ajoutee au rayon local (distance field) de la branche, au point
     // de coupe, pour determiner la portee BORNEE de la coupe (§ defaut reel
     // trouve sur "comb", 2026-08-22, cf. region_split.cpp) : garantit de

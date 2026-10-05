@@ -270,7 +270,8 @@ TEST_CASE("create_satin_plan : coupes concavite -- resolvent une entaille profon
     CHECK(planWithout.regions.empty());
 }
 
-TEST_CASE("create_satin_plan : coupes concavite -- entaille moins severe, les deux chemins restent honnetes") {
+TEST_CASE("create_satin_plan : coupes concavite -- entaille moins severe, les deux chemins restent "
+          "honnetes") {
     // `notch` (variante moins severe de `pinch`, encoche jusqu'a 1mm du bord
     // oppose) n'echoue pas totalement sans la famille §14 (le solveur local
     // s'en tire avec un "meilleur effort" degrade, complete par la
@@ -499,7 +500,8 @@ TEST_CASE("create_satin_plan : extend_columns_into_overlap ferme reellement l'in
           planWithout.aggregate_coverage->raw_coverage_ratio);
 }
 
-TEST_CASE("create_satin_plan : trident/star5/comb -- le recouvrement source-clippe ferme les eclats de jonction (etape 5)") {
+TEST_CASE("create_satin_plan : trident/star5/comb -- le recouvrement source-clippe ferme les "
+          "eclats de jonction (etape 5)") {
     // Defaut REEL mesure (2026-08-30, corpus de torture) : sur une jonction
     // a 3+ branches, le recouvrement pairwise seul (issu de `merge_
     // candidates`, une seule coupe binaire) laisse un residu triangulaire
@@ -533,7 +535,8 @@ TEST_CASE("create_satin_plan : trident/star5/comb -- le recouvrement source-clip
 // test_decomposition_cost.cpp).
 // ---------------------------------------------------------------------
 
-TEST_CASE("create_satin_plan : y_symmetric -- le multi-candidats converge vers le meme resultat que l'ancien defaut") {
+TEST_CASE("create_satin_plan : y_symmetric -- le multi-candidats converge vers le meme resultat "
+          "que l'ancien defaut") {
     // Defaut REEL trouve en integrant use_topology_multi_candidate
     // (2026-08-30) : test_decomposition_cost.cpp demontre qu'AVEC des
     // CutCandidateParams par defaut (sans les coupes "separateur de
@@ -584,7 +587,8 @@ TEST_CASE("create_satin_plan : y_symmetric -- le multi-candidats converge vers l
           Catch::Approx(planWithout.aggregate_coverage->raw_coverage_ratio).margin(0.01));
 }
 
-TEST_CASE("create_satin_plan : polygonal_cut_fixture -- le multi-candidats ne change rien (garde-fou budget)") {
+TEST_CASE("create_satin_plan : polygonal_cut_fixture -- le multi-candidats ne change rien "
+          "(garde-fou budget)") {
     // Defaut REEL trouve en integrant use_topology_multi_candidate
     // (2026-08-30) : un premier court-circuit fonde sur un simple ecart
     // numerique de cout de continuite se declenchait aussi INCIDEMMENT sur

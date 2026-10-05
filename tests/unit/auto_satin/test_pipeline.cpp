@@ -224,7 +224,7 @@ TEST_CASE("regression : squelette diagonal a 2px, aucune arete perdue par la tra
     // precise a cette resolution.
     const auto region = make_shape("thick_diagonal_blob");
     REQUIRE(region.has_value());
-    AutoSatinParameters params;  // pixel_size par defaut (50 um), comme l'application reelle
+    AutoSatinParameters params; // pixel_size par defaut (50 um), comme l'application reelle
     const auto analysis = analyze_region(*region, params);
     REQUIRE(analysis.has_value());
     CAPTURE(analysis->debug.raw_graph.nodes.size());

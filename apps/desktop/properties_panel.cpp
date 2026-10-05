@@ -253,11 +253,10 @@ void PropertiesPanel::showEmbroidery(const document::EmbroideryObject& object) {
             } else if constexpr (std::is_same_v<T, document::DirectionalFillParams>) {
                 // Guides et ruptures ne s'éditent pas ici (canevas) : conservés.
                 const document::DirectionalFillParams dbase = p;
-                auto* summary =
-                    new QLabel(tr("%1 guide(s) · %2 ligne(s) de rupture")
-                                   .arg(p.guides.size())
-                                   .arg(p.break_lines.size()),
-                               body_);
+                auto* summary = new QLabel(tr("%1 guide(s) · %2 ligne(s) de rupture")
+                                               .arg(p.guides.size())
+                                               .arg(p.break_lines.size()),
+                                           body_);
                 summary->setObjectName(QStringLiteral("label_directionalSummary"));
                 auto* editGuides = new QPushButton(tr("Éditer les guides…"), body_);
                 editGuides->setObjectName(QStringLiteral("button_editDirectionGuides"));

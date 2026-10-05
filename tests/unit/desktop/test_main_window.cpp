@@ -2,18 +2,23 @@
 #include <QAbstractButton>
 #include <QApplication>
 #include <QCheckBox>
+#include <QCloseEvent>
 #include <QCoreApplication>
 #include <QDialog>
+#include <QDir>
 #include <QDoubleSpinBox>
 #include <QFile>
+#include <QFileInfo>
 #include <QGraphicsItem>
 #include <QLabel>
 #include <QListWidget>
+#include <QMenu>
 #include <QMessageBox>
 #include <QPushButton>
 #include <QSettings>
 #include <QShortcut>
 #include <QSignalSpy>
+#include <QStandardPaths>
 #include <QStatusBar>
 #include <QTabWidget>
 #include <QTemporaryDir>
@@ -25,6 +30,7 @@
 #include <cmath>
 #include <filesystem>
 
+#include "autosave.hpp"
 #include "canvas_view.hpp"
 #include "document_panel.hpp"
 #include "empty_state_widget.hpp"
@@ -35,6 +41,7 @@
 #include "openstitch/project_io/project_io.hpp"
 #include "openstitch/stitch_generation/overrides.hpp"
 #include "properties_panel.hpp"
+#include "recent_files.hpp"
 #include "satin_guide_item.hpp"
 #include "workflow_panel.hpp"
 
@@ -405,6 +412,26 @@ void clickModalDialogButton(QWidget* parent, const QString& buttonText, int maxD
     });
 }
 
+// Dossier autosave (AppDataLocation/autosave) calculé via slotFor() -- la
+// convention de chemin n'est pas exposée ailleurs, et la dupliquer ici
+// romprait si autosave.cpp en changeait un jour. Partagé par TOUT le binaire
+// de test (QStandardPaths::setTestModeOn, posé par initTestCase, le rend
+// stable mais PERSISTANT entre deux exécutions du binaire -- pas remis à
+// zéro automatiquement).
+QString autosaveTestDir() {
+    return QFileInfo(openstitch::desktop::slotFor(QString()).osp_path).absolutePath();
+}
+
+// Vide le dossier autosave partagé. Indispensable avant/après chaque test
+// HP-FILE-004 : un créneau orphelin oublié y ferait apparaître le dialogue
+// de checkAutosaveRecovery() -- différé par QTimer::singleShot(0,...) depuis
+// LE CONSTRUCTEUR DE TOUT MainWindow -- dès le premier traitement
+// d'évènements d'un test qui n'a jamais entendu parler d'autosave, bloquant
+// sur un QMessageBox::exec() que personne n'arme.
+void clearAutosaveDir() {
+    QDir(autosaveTestDir()).removeRecursively();
+}
+
 // Seule poignée trouvée parmi les items de la couche de base : valable quand
 // aucun objet vectoriel n'est sélectionné en parallèle (cf. tests ci-dessous,
 // qui sélectionnent l'objet de broderie via selectedEmbroidery_ seul, jamais
@@ -641,6 +668,38 @@ private slots:
     void savingAnOpenedProjectRewritesItWithoutAskingAPath();
     void newProjectForgetsTheSaveTargetAndResetsTheTitle();
 
+    // HP-FILE-003 — fichiers récents. Les deux premiers slots couvrent
+    // addRecentFile/pruneMissingRecentFiles (fonctions pures, sans construire
+    // de MainWindow) ; les deux suivants l'intégration MainWindow/EmptyStateWidget.
+    void addRecentFileDeduplicatesAndTruncatesToTen();
+    void pruneMissingRecentFilesRemovesDeletedPathsPreservingOrder();
+    void recentFilesAndMenuReflectTwoSavesAndOpensInOrder();
+    // Régression : refreshRecentFilesUi() doit différer la reconstruction du
+    // menu/de l'écran d'accueil (QTimer::singleShot), sinon un clic réel sur
+    // un bouton récent pointant vers un fichier supprimé détruirait ce même
+    // bouton pendant l'exécution de son propre gestionnaire clicked().
+    void clickingRecentButtonForDeletedFileWarnsAndPrunesWithoutCrashing();
+
+    // HP-FILE-004 — sauvegarde automatique et récupération après plantage.
+    // Invariant central (voir l'architecture S11) : un tick sur un document
+    // modifié dont currentProjectPath_ pointe vers un fichier "utilisateur"
+    // temporaire laisse ce fichier strictement inchangé et produit un
+    // fichier distinct sous le dossier autosave.
+    void autosaveTickWritesASeparateFileAndLeavesTheUserFileUntouched();
+    void autosaveTickSkipsWhenDocumentUnmodifiedOrEmpty();
+    // Un candidat orphelin (écrit directement via writeAutosave(), comme un
+    // VRAI plantage -- aucun MainWindow vivant à ce moment) déclenche le
+    // dialogue de récupération ; "Récupérer" charge le contenu comme document
+    // SANS NOM (jamais réassocié au chemin d'origine ni au créneau autosave
+    // lui-même) et purge le créneau.
+    void autosaveRecoveryAcceptLoadsAsUntitledDocumentAndPurgesSlot();
+    // "Ignorer" purge aussi le créneau, mais sans rien charger : le document
+    // par défaut de la fenêtre reste intact.
+    void autosaveRecoveryIgnoreDiscardsSlotWithoutLoading();
+    // Une fermeture RÉELLEMENT acceptée (closeEvent) ne laisse rien à
+    // récupérer au prochain lancement.
+    void cleanCloseDiscardsTheCurrentAutosaveSlot();
+
 private:
     // Active le mode d'édition (sélection directe via selectedEmbroidery_,
     // pas via le signal DocumentPanel::embroiderySelected -- qui sélectionne
@@ -674,6 +733,16 @@ void MainWindowTest::initTestCase() {
     // temporaire (pas au profil utilisateur) : on le prouve en le lisant.
     QSettings probe;
     QVERIFY(probe.fileName().startsWith(settingsDir_.path()));
+
+    // HP-FILE-004 : isole QStandardPaths::AppDataLocation (dossier autosave)
+    // du profil utilisateur réel, comme ci-dessus pour QSettings. Qt pointe
+    // alors vers un sous-dossier "qttest" STABLE MAIS PERSISTANT entre deux
+    // exécutions de ce binaire -- purge défensive d'un créneau laissé par une
+    // exécution précédente interrompue, sans quoi il ferait apparaître le
+    // dialogue de récupération, non armé, dès le premier traitement
+    // d'évènements du premier test venu.
+    QStandardPaths::setTestModeEnabled(true);
+    clearAutosaveDir();
 }
 
 void MainWindowTest::clickingVectorObjectSyncsDocumentPanelAndInspector() {
@@ -1839,7 +1908,8 @@ void MainWindowTest::setStitchTypeSatinCaseProducesRealRailsAndIsUndoable() {
     QVERIFY(!restored->is_satin());
 }
 
-void MainWindowTest::setStitchTypeOnMultiSectionSatinNetworkRemovesSiblingsInsteadOfLeavingResidue() {
+void MainWindowTest::
+    setStitchTypeOnMultiSectionSatinNetworkRemovesSiblingsInsteadOfLeavingResidue() {
     MainWindow window;
     const Fixture fx = buildTShapeFixture();
     window.applyLoadedProject(fx.project);
@@ -1858,13 +1928,14 @@ void MainWindowTest::setStitchTypeOnMultiSectionSatinNetworkRemovesSiblingsInste
         }
     }
     QVERIFY2(sectionIds.size() >= 2,
-             qPrintable(QStringLiteral("attendu >= 2 sections satin, obtenu %1").arg(sectionIds.size())));
+             qPrintable(
+                 QStringLiteral("attendu >= 2 sections satin, obtenu %1").arg(sectionIds.size())));
     const std::size_t totalEmbroideryBefore = window.project_.embroidery_objects.size();
 
     // `setStitchType` résout l'objet cible via `embroideryForVector` (le
     // premier trouvé) exactement comme le VRAI menu contextuel "Type de
     // points" -- même chemin que l'utilisateur emprunte.
-    window.setStitchType(sectionIds.front(), /*type=*/1);  // 1 = tatami
+    window.setStitchType(sectionIds.front(), /*type=*/1); // 1 = tatami
 
     // Plus AUCUNE section satin ne doit rester pour ce vecteur -- c'est
     // exactement le résidu signalé par l'utilisateur.
@@ -1904,10 +1975,9 @@ void MainWindowTest::openSvgCreatesVectorObjectsDirectlySkippingImage() {
     const QString svgPath = dir.filePath("test.svg");
     QFile file(svgPath);
     QVERIFY(file.open(QIODevice::WriteOnly | QIODevice::Text));
-    file.write(QByteArrayLiteral(
-        "<svg viewBox=\"0 0 100 100\" width=\"10mm\" height=\"10mm\">"
-        "<rect x=\"0\" y=\"0\" width=\"100\" height=\"100\"/>"
-        "</svg>"));
+    file.write(QByteArrayLiteral("<svg viewBox=\"0 0 100 100\" width=\"10mm\" height=\"10mm\">"
+                                 "<rect x=\"0\" y=\"0\" width=\"100\" height=\"100\"/>"
+                                 "</svg>"));
     file.close();
 
     MainWindow window;
@@ -1919,7 +1989,8 @@ void MainWindowTest::openSvgCreatesVectorObjectsDirectlySkippingImage() {
     QCOMPARE(window.project_.vector_objects.size(), std::size_t{1});
     QCOMPARE(window.project_.embroidery_objects.size(), std::size_t{0});
     QCOMPARE(window.project_.vector_objects.front().paths.size(), std::size_t{1});
-    QCOMPARE(window.project_.vector_objects.front().paths.front().outer.nodes.size(), std::size_t{4});
+    QCOMPARE(window.project_.vector_objects.front().paths.front().outer.nodes.size(),
+             std::size_t{4});
 }
 
 namespace {
@@ -2017,10 +2088,9 @@ void MainWindowTest::autoDigitizeAfterOpenSvgClassifiesVectorObjectsDirectly() {
     // etre classee satin (largeur moyenne < satin_max_width par defaut,
     // 6 mm) -- meme forme que le test equivalent de la voie segmentation
     // (tests/unit/autodigitize/test_autodigitize.cpp).
-    file.write(QByteArrayLiteral(
-        "<svg viewBox=\"0 0 500 30\" width=\"50mm\" height=\"3mm\">"
-        "<rect x=\"0\" y=\"0\" width=\"500\" height=\"30\"/>"
-        "</svg>"));
+    file.write(QByteArrayLiteral("<svg viewBox=\"0 0 500 30\" width=\"50mm\" height=\"3mm\">"
+                                 "<rect x=\"0\" y=\"0\" width=\"500\" height=\"30\"/>"
+                                 "</svg>"));
     file.close();
 
     MainWindow window;
@@ -2035,7 +2105,7 @@ void MainWindowTest::autoDigitizeAfterOpenSvgClassifiesVectorObjectsDirectly() {
     // sens que pour une segmentation pixel) -- appel direct sans dismiss.
     window.autoDigitize();
 
-    QVERIFY(!window.project_.hasImage());  // toujours aucune image traversee
+    QVERIFY(!window.project_.hasImage()); // toujours aucune image traversee
     QVERIFY(!window.project_.embroidery_objects.empty());
     // Une bande simple sans branche doit se couvrir proprement en un seul
     // satin, sans reliquat -- donc pas de vecteur de repli en plus de
@@ -3430,8 +3500,8 @@ void MainWindowTest::convertingTatamiToDirectionalIsUndoable() {
     const auto* emb = window.project_.findEmbroidery(fx.embroideryId);
     QVERIFY(emb != nullptr && emb->is_directional());
     const auto& dp = std::get<openstitch::document::DirectionalFillParams>(emb->params);
-    QCOMPARE(dp.row_spacing.value, 450);             // réglages du tatami repris
-    QCOMPARE(dp.guides.size(), std::size_t{1});      // guide initial à l'angle du tatami
+    QCOMPARE(dp.row_spacing.value, 450);        // réglages du tatami repris
+    QCOMPARE(dp.guides.size(), std::size_t{1}); // guide initial à l'angle du tatami
     QCOMPARE(dp.seed, static_cast<std::uint32_t>(fx.embroideryId.value));
     QCOMPARE(QString::fromStdString(window.undoStack_.undoName()),
              QStringLiteral("Type : remplissage directionnel"));
@@ -3725,6 +3795,311 @@ void MainWindowTest::newProjectForgetsTheSaveTargetAndResetsTheTitle() {
     auto untouched = project_io::load_project(fsPath);
     QVERIFY(untouched.has_value());
     QCOMPARE(untouched->vector_objects.size(), fx.project.vector_objects.size());
+}
+
+void MainWindowTest::addRecentFileDeduplicatesAndTruncatesToTen() {
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    // 11 chemins distincts, réellement présents sur disque : canonicalFilePath()
+    // (utilisé par addRecentFile pour dédupliquer) ne résout que des fichiers
+    // existants.
+    QStringList paths;
+    for (int i = 0; i < 11; ++i) {
+        const QString path = dir.filePath(QStringLiteral("f%1.osp").arg(i));
+        QFile f(path);
+        QVERIFY(f.open(QIODevice::WriteOnly));
+        f.close();
+        paths.append(path);
+    }
+
+    QStringList current;
+    for (const QString& path : paths) {
+        current = addRecentFile(std::move(current), path);
+    }
+    QCOMPARE(current.size(), 10);
+    // Le plus récemment ajouté (paths.last()) en tête, le plus ancien
+    // (paths.first()) abandonné par la troncature à 10.
+    QCOMPARE(current.first(), paths.last());
+    QVERIFY(!current.contains(paths.first()));
+
+    // Réinsertion d'une entrée déjà présente, sous une orthographe différente
+    // mais canoniquement égale (segment "." redondant, éliminé par
+    // QFileInfo::canonicalFilePath()) : déplacée en tête plutôt que dupliquée
+    // -- toujours 10 entrées.
+    const QString reAdded = current.at(3);
+    const QFileInfo reAddedInfo(reAdded);
+    const QString spelledDifferently =
+        reAddedInfo.absolutePath() + QStringLiteral("/./") + reAddedInfo.fileName();
+    QVERIFY(spelledDifferently != reAdded);
+    current = addRecentFile(std::move(current), spelledDifferently);
+    QCOMPARE(current.size(), 10);
+    QCOMPARE(current.first(), spelledDifferently);
+    QVERIFY(!current.contains(reAdded));
+}
+
+void MainWindowTest::pruneMissingRecentFilesRemovesDeletedPathsPreservingOrder() {
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    const QString existing = dir.filePath(QStringLiteral("existing.osp"));
+    const QString deleted = dir.filePath(QStringLiteral("deleted.osp"));
+    QFile existingFile(existing);
+    QVERIFY(existingFile.open(QIODevice::WriteOnly));
+    existingFile.close();
+    QFile deletedFile(deleted);
+    QVERIFY(deletedFile.open(QIODevice::WriteOnly));
+    deletedFile.close();
+    QVERIFY(QFile::remove(deleted));
+
+    const QStringList pruned = pruneMissingRecentFiles(QStringList{deleted, existing});
+    QCOMPARE(pruned, QStringList({existing}));
+}
+
+void MainWindowTest::recentFilesAndMenuReflectTwoSavesAndOpensInOrder() {
+    // Isole cette liste des autres tests du même binaire : QSettings est
+    // partagé (fichier INI temporaire unique posé une fois par initTestCase).
+    QSettings().remove(QStringLiteral("recent/files"));
+
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    const QString firstPath = dir.filePath(QStringLiteral("premier.osp"));
+    const QString secondPath = dir.filePath(QStringLiteral("second.osp"));
+    const std::filesystem::path secondFsPath(secondPath.toStdWString());
+    QVERIFY(project_io::save_project(secondFsPath, document::Project{}).has_value());
+
+    MainWindow window;
+    QCoreApplication::processEvents(); // consomme le refreshRecentFilesUi() initial (liste vide)
+
+    // Enregistrer (saveProjectToPath) puis ouvrir (openProjectFile) sont les
+    // deux seuls appelants de setCurrentProjectPath -- ce test couvre les deux.
+    QVERIFY(window.saveProjectToPath(firstPath));
+    QCoreApplication::processEvents();
+
+    QVERIFY(window.openProjectFile(secondPath));
+    QCoreApplication::processEvents();
+
+    QCOMPARE(window.recentFiles_, QStringList({secondPath, firstPath}));
+    QVERIFY(window.recentMenu_ != nullptr);
+    const auto actions = window.recentMenu_->actions();
+    QCOMPARE(actions.size(), 2);
+    QCOMPARE(actions.at(0)->toolTip(), secondPath);
+    QCOMPARE(actions.at(1)->toolTip(), firstPath);
+}
+
+void MainWindowTest::clickingRecentButtonForDeletedFileWarnsAndPrunesWithoutCrashing() {
+    QSettings().remove(QStringLiteral("recent/files"));
+
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    const QString firstPath = dir.filePath(QStringLiteral("premier.osp"));
+    const QString secondPath = dir.filePath(QStringLiteral("second.osp"));
+
+    MainWindow window;
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+    QCoreApplication::processEvents(); // consomme le refreshRecentFilesUi() initial (liste vide)
+
+    // Document resté vide (aucune image, aucun objet) : l'écran d'accueil
+    // reste affiché tout du long -- condition nécessaire pour un vrai clic
+    // QTest sur un de ses boutons.
+    QVERIFY(window.saveProjectToPath(firstPath));
+    QCoreApplication::processEvents();
+    QVERIFY(window.saveProjectToPath(secondPath));
+    QCoreApplication::processEvents();
+
+    QCOMPARE(window.recentFiles_, QStringList({secondPath, firstPath}));
+    QVERIFY(window.emptyState_->isVisible());
+
+    QVERIFY(QFile::remove(firstPath));
+
+    QPushButton* target = nullptr;
+    for (QPushButton* button : window.emptyState_->findChildren<QPushButton*>()) {
+        if (button->toolTip() == firstPath) {
+            target = button;
+            break;
+        }
+    }
+    QVERIFY(target != nullptr);
+
+    // openProjectFile() échoue sur le fichier supprimé -> QMessageBox::warning
+    // (avertissement déjà existant) -- armé avant le clic, comme les autres
+    // tests de dialogue modal de ce fichier.
+    autoDismissModalDialogs(&window);
+    QTest::mouseClick(target, Qt::LeftButton);
+    // Le clic déclenche : lambda du bouton -> confirmDiscardChanges (document
+    // propre, passe sans garde) -> openProjectFile -> échec ->
+    // refreshRecentFilesUi() différée (QTimer::singleShot). C'est la
+    // régression testée ici : sans ce report, le rafraîchissement détruirait
+    // `target` alors que son propre gestionnaire clicked() est encore sur la
+    // pile d'appels.
+    QCoreApplication::processEvents();
+    QCoreApplication::processEvents();
+
+    QCOMPARE(window.recentFiles_, QStringList({secondPath}));
+}
+
+void MainWindowTest::autosaveTickWritesASeparateFileAndLeavesTheUserFileUntouched() {
+    clearAutosaveDir();
+
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    const QString userFile = dir.filePath(QStringLiteral("user.osp"));
+
+    MainWindow window;
+    QCoreApplication::processEvents(); // consomme checkAutosaveRecovery() initial (dossier vide)
+
+    const Fixture fx = buildFixture();
+    window.applyLoadedProject(fx.project);
+    QVERIFY(window.saveProjectToPath(userFile)); // "fichier utilisateur" réel, non vide
+    QCoreApplication::processEvents();
+    QVERIFY(!window.isWindowModified());
+    // Une modification après l'enregistrement : condition nécessaire pour
+    // que le tick écrive quoi que ce soit (cf. test suivant).
+    window.setWindowModified(true);
+
+    QFile before(userFile);
+    QVERIFY(before.open(QIODevice::ReadOnly));
+    const QByteArray beforeContent = before.readAll();
+    before.close();
+    const QDateTime beforeModified = QFileInfo(userFile).lastModified();
+
+    window.onAutosaveTick();
+
+    // (a) Le fichier utilisateur est strictement inchangé (contenu et date).
+    QFile after(userFile);
+    QVERIFY(after.open(QIODevice::ReadOnly));
+    QCOMPARE(after.readAll(), beforeContent);
+    after.close();
+    QCOMPARE(QFileInfo(userFile).lastModified(), beforeModified);
+
+    // (b) Un fichier DISTINCT est apparu sous le dossier autosave.
+    const auto slot = slotFor(userFile);
+    QVERIFY(slot.osp_path != userFile);
+    QVERIFY(QFile::exists(slot.osp_path));
+
+    // (c) currentProjectPath_ reste le fichier utilisateur après le tick :
+    // l'autosave ne compte jamais comme un enregistrement.
+    QCOMPARE(window.currentProjectPath_, userFile);
+
+    clearAutosaveDir();
+}
+
+void MainWindowTest::autosaveTickSkipsWhenDocumentUnmodifiedOrEmpty() {
+    clearAutosaveDir();
+
+    MainWindow window;
+    QCoreApplication::processEvents();
+
+    // Document vierge (vide) et non modifié : rien à protéger, rien écrit.
+    QVERIFY(!window.isWindowModified());
+    window.onAutosaveTick();
+    QVERIFY(scanForRecoverableAutosaves().empty());
+
+    // Document encore vide mais marqué "modifié" (cas limite) : la garde
+    // porte sur le contenu, pas seulement sur isWindowModified().
+    window.setWindowModified(true);
+    window.onAutosaveTick();
+    QVERIFY(scanForRecoverableAutosaves().empty());
+
+    // Document non vide mais PAS modifié (cas réel : juste après un
+    // enregistrement, applyLoadedProject() laisse setWindowModified(false)).
+    const Fixture fx = buildFixture();
+    window.applyLoadedProject(fx.project);
+    QVERIFY(!window.isWindowModified());
+    window.onAutosaveTick();
+    QVERIFY(scanForRecoverableAutosaves().empty());
+
+    clearAutosaveDir();
+}
+
+void MainWindowTest::autosaveRecoveryAcceptLoadsAsUntitledDocumentAndPurgesSlot() {
+    clearAutosaveDir();
+
+    MainWindow window;
+    // Consomme checkAutosaveRecovery() initial pendant que le dossier est
+    // encore vide.
+    QCoreApplication::processEvents();
+
+    // Simule un créneau laissé par un arrêt anormal : écrit directement via
+    // writeAutosave() -- aucun MainWindow n'était vivant au moment du
+    // "plantage", comme en réalité.
+    const Fixture fx = buildFixture();
+    const QString originalPath = QStringLiteral("C:/ancien/projet.osp"); // chemin affiché seulement
+    const auto slot = slotFor(originalPath);
+    QVERIFY(writeAutosave(slot, fx.project, originalPath).has_value());
+
+    clickModalDialogButton(&window, QStringLiteral("Récupérer"));
+    window.checkAutosaveRecovery();
+
+    // Chargé en tant que document SANS NOM -- jamais réassocié au chemin
+    // d'origine ni au créneau autosave lui-même (invariant central, cf.
+    // specs/arch-plan/vision/20260929-102601-arm-1-ar-9.md).
+    QVERIFY(window.currentProjectPath_.isEmpty());
+    QVERIFY(window.isWindowModified());
+    QVERIFY(!window.project_.vector_objects.empty()); // le contenu récupéré est bien chargé
+
+    // Traité (récupéré) -> jamais reproposé au prochain démarrage.
+    QVERIFY(scanForRecoverableAutosaves().empty());
+
+    clearAutosaveDir();
+}
+
+void MainWindowTest::autosaveRecoveryIgnoreDiscardsSlotWithoutLoading() {
+    clearAutosaveDir();
+
+    MainWindow window;
+    QCoreApplication::processEvents();
+
+    const Fixture fx = buildFixture();
+    const QString originalPath = QStringLiteral("C:/ancien/projet.osp");
+    const auto slot = slotFor(originalPath);
+    QVERIFY(writeAutosave(slot, fx.project, originalPath).has_value());
+
+    clickModalDialogButton(&window, QStringLiteral("Ignorer"));
+    window.checkAutosaveRecovery();
+
+    // Document courant inchangé : "Ignorer" ne charge rien.
+    QVERIFY(window.currentProjectPath_.isEmpty());
+    QVERIFY(!window.isWindowModified());
+    QVERIFY(window.project_.vector_objects.empty());
+
+    // Traité (ignoré) -> jamais reproposé non plus.
+    QVERIFY(scanForRecoverableAutosaves().empty());
+
+    clearAutosaveDir();
+}
+
+void MainWindowTest::cleanCloseDiscardsTheCurrentAutosaveSlot() {
+    clearAutosaveDir();
+
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    const QString userFile = dir.filePath(QStringLiteral("user.osp"));
+
+    MainWindow window;
+    QCoreApplication::processEvents();
+
+    const Fixture fx = buildFixture();
+    window.applyLoadedProject(fx.project);
+    QVERIFY(window.saveProjectToPath(userFile));
+    window.setWindowModified(true);
+    window.onAutosaveTick(); // laisse un créneau, comme si l'app allait planter juste après
+
+    const auto slot = slotFor(userFile);
+    QVERIFY(QFile::exists(slot.osp_path));
+
+    // Document propre : confirmDiscardChanges() passe sans dialogue, la
+    // fermeture est donc acceptée de façon déterministe.
+    window.setWindowModified(false);
+    QCloseEvent event;
+    window.closeEvent(&event);
+    QVERIFY(event.isAccepted());
+
+    // Fermeture acceptée -> le créneau courant est purgé : rien à récupérer
+    // au prochain lancement.
+    QVERIFY(!QFile::exists(slot.osp_path));
+    QVERIFY(scanForRecoverableAutosaves().empty());
+
+    clearAutosaveDir();
 }
 
 } // namespace openstitch::desktop
