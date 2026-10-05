@@ -28,3 +28,9 @@ Desktop.ini
 
 # Liza : worktrees isolees par tache (jamais commit)
 .worktrees/
+
+# Liza : etat runtime/logs d'orchestration (ephemere, 200+ Mo, jamais commit)
+.liza/
+
+# Secrets (jamais commit)
+claude.env
