@@ -7,6 +7,7 @@
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
+#include <numbers>
 #include <set>
 #include <sstream>
 #include <string>
@@ -498,7 +499,8 @@ TEST_CASE("contour physical guards hold at detail 1") {
     disc(dotImg, 100, 20, 2.5, kBlack);
     const auto dt = run(dotImg, opts(1.0));
     dump("dot", dt);
-    CHECK(dt.metrics.rejected >= 1);
+    CHECK(dt.metrics.removed_small_elements >= 1);
+    CHECK(any_warning(dt, "aucune ligne mediane"));
 }
 
 TEST_CASE("contour classify_segment guards are independent of technique") {
@@ -618,5 +620,46 @@ TEST_CASE("contour scale probe", "[.scale]") {
     }
     for (const auto& d : net->diagnostics) {
         std::printf(" diag: %s\n", d.c_str());
+    }
+}
+
+TEST_CASE("contour isolated speck is counted as removed") {
+    auto img = blank(260, 260);
+    stroke(img, 20, 130, 240, 130, 2, kBlack);
+    disc(img, 130, 30, 2.0, kBlack);
+    for (const double d : {0.1, 0.5}) {
+        ContourOptions o;
+        o.detail = d;
+        const auto r = run(img, o);
+        CHECK(r.metrics.removed_small_elements >= 1);
+    }
+}
+
+TEST_CASE("contour closed ring is split by width regime") {
+    // Thick ring (5 px) whose upper third narrows to 2 px: the narrow arc must
+    // be running, never satin-sectioned where it narrows.
+    auto img = blank(260, 260);
+    const int n = 1100;
+    for (int i = 0; i < n; ++i) {
+        const double a = 2.0 * std::numbers::pi * i / n;
+        const bool narrow = a > 0.3 && a < 2.4;
+        disc(img, 130 + 90 * std::cos(a), 130 + 90 * std::sin(a), narrow ? 1.0 : 3.5, kBlack);
+    }
+    for (const double d : {0.5, 0.9}) {
+        ContourOptions o;
+        o.detail = d;
+        const auto r = run(img, o);
+        dump("regime ring", r);
+        CHECK(r.metrics.segments >= 2);
+        CHECK(r.running >= 1);
+        CHECK(r.satin >= 1);
+        CHECK_FALSE(any_warning(r, "colonne refusee"));
+        CHECK_FALSE(any_warning(r, "branche ignoree"));
+        CHECK_FALSE(any_warning(r, "croisement local"));
+        CHECK_FALSE(any_warning(r, "interpolee"));
+
+        CHECK(r.metrics.running_length_mm > 40.0);
+        CHECK(r.metrics.running_length_mm < 60.0);
+        CHECK(r.metrics.satin_length_mm > 90.0);
     }
 }

@@ -583,6 +583,53 @@ void split_width_regimes(std::vector<RawSeg>& raws, NodeSet& ns, double px,
     const std::size_t original = raws.size();
     for (std::size_t k = 0; k < original; ++k) {
         RawSeg r = raws[k];
+        if (r.closed && r.pts.size() >= 8) {
+            // Anneau : on l'ouvre a un changement de regime (regimes calcules
+            // sur l'anneau doublé, fenetre circulaire) ; sans changement il
+            // reste un anneau unique.
+            const std::size_t m = r.pts.size();
+            std::vector<Vec2um> p2 = r.pts;
+            p2.insert(p2.end(), r.pts.begin(), r.pts.end());
+            std::vector<double> rad2 = r.radii;
+            rad2.insert(rad2.end(), r.radii.begin(), r.radii.end());
+            const auto c2 = geometry::cumulative_lengths(p2);
+            std::vector<int> reg(m, 1);
+            for (std::size_t i = 0; i < m; ++i) {
+                const std::size_t c = i + m / 2;
+                std::vector<double> w;
+                for (std::size_t j = c; j-- > 0 && c2[c] - c2[j] <= kWindow;) {
+                    w.push_back(std::max(0.0, 2.0 * rad2[j] - px));
+                }
+                for (std::size_t j = c; j < p2.size() && c2[j] - c2[c] <= kWindow; ++j) {
+                    w.push_back(std::max(0.0, 2.0 * rad2[j] - px));
+                }
+                const double med = median_of(w);
+                reg[i] = med < minSatin ? 0 : (med > maxSatin ? 2 : 1);
+            }
+            // reg[i] correspond au point (i + m/2) % m : on le reindexe.
+            std::vector<int> regAt(m, 1);
+            for (std::size_t i = 0; i < m; ++i) {
+                regAt[(i + m / 2) % m] = reg[i];
+            }
+            std::size_t cut = m;
+            for (std::size_t i = 0; i < m; ++i) {
+                if (regAt[i] != regAt[(i + m - 1) % m]) {
+                    cut = i;
+                    break;
+                }
+            }
+            if (cut == m) {
+                continue;
+            }
+            std::rotate(r.pts.begin(), r.pts.begin() + static_cast<std::ptrdiff_t>(cut),
+                        r.pts.end());
+            std::rotate(r.radii.begin(), r.radii.begin() + static_cast<std::ptrdiff_t>(cut),
+                        r.radii.end());
+            r.pts.push_back(r.pts.front());
+            r.radii.push_back(r.radii.front());
+            r.closed = false;
+            r.from = r.to = ns.add(r.pts.front());
+        }
         const std::size_t n = r.pts.size();
         if (r.closed || n < 8) {
             continue;
@@ -947,7 +994,8 @@ Result<ContourNetwork> analyze_contours(const segmentation::Segmentation& seg,
                 if (net.failed_components != failedBefore) {
                     continue; // deja diagnostique par analyze_piece
                 }
-                ++net.failed_components;
+                // Sans ligne mediane (point, disque) : element isole sous le seuil.
+                ++net.removed_isolated;
                 net.diagnostics.push_back("Trait " + std::to_string(counter) +
                                           " : aucune ligne mediane exploitable (point, disque ou "
                                           "trait trop fin) : ignore");

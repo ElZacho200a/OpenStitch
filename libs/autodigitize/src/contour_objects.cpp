@@ -68,6 +68,17 @@ SegmentPlan classify_segment(const ContourSegment& seg, ContourTechnique techniq
         return plan;
     }
     if (technique == ContourTechnique::Automatic) {
+        // Une colonne dont le 10e percentile passe sous le minimum satin se
+        // pincerait sous la limite physique (le planificateur la refuse ou la
+        // coupe en trous) : point droit plutot qu'un satin troue.
+        constexpr double kSatinMarginRatio = 1.1; // marge sur le bruit de mesure raster
+        if (seg.min_width_um < kSatinMarginRatio * minSatin) {
+            plan.strategy = run;
+            plan.fallback = true;
+            plan.reason = "largeur minimale " + fmt_mm(seg.min_width_um) + " mm < minimum satin " +
+                          fmt_mm(minSatin) + " mm : point droit";
+            return plan;
+        }
         const double variation = seg.mean_width_um > 0.0
                                      ? (seg.max_width_um - seg.min_width_um) / seg.mean_width_um
                                      : 0.0;
