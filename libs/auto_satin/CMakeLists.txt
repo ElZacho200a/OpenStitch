@@ -9,6 +9,7 @@ add_library(openstitch_auto_satin
     src/satinability.cpp
     src/auto_satin.cpp
     src/satin_column.cpp
+    src/medial_field.cpp
     src/debug_export.cpp
     src/shapes.cpp
 )
