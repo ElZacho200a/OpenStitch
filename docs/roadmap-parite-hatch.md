@@ -781,13 +781,24 @@ plus.
 
 ### HP-STI-018 — Satin et tatami « tournants » [P1] — ◐ Partiel
 - État OpenStitch : satin à barreaux (angle variable) ✓ ; remplissage
-  directionnel (champ de directions) ✓ ; **pas** de satin automatique sur les
-  formes rondes/larges (cercle plein refusé par l'auto-satin).
-- Hatch : Turning satin / Complex turning sur formes larges et arrondies.
-- À faire : proposer automatiquement le remplissage directionnel pour les
-  formes refusées par le satin au lieu d'un tatami à angle fixe ; valider sur
-  cercle, disque, pétale.
-- Modules : `libs/autodigitize`, `libs/stitch_generation`.
+  directionnel tatami (champ de directions) ✓ — les deux briques existent
+  indépendamment, mais rien ne les relie : une forme large/ronde refusée par
+  l'auto-satin tombe en tatami à **angle fixe** (ou sans repli du tout),
+  jamais en direction tournante.
+- Hatch : Turning satin / Complex turning — le remplissage **satin lui-même**
+  suit la courbure (la direction du point tourne), sans jamais changer de
+  type de point.
+- À faire : décision de conception à trancher avant tout code — (a) brancher
+  automatiquement le remplissage directionnel tatami existant en repli
+  (contournement rapide, mais reste du tatami, pas du satin) vs (b) un vrai
+  mode satin tournant (zigzag entre deux rails radiaux courbes) pour une
+  parité réelle avec Hatch. Valider sur cercle, disque, pétale.
+- Modules : `libs/autodigitize`, `libs/stitch_generation`, `libs/auto_satin`
+  si (b).
+- Acceptation : un disque de 15 mm et un pétale produisent un remplissage
+  dont la direction suit la courbure (métrique : régularité de la direction
+  des fils, cf. HP-ENG-009) et ne tombent jamais silencieusement sur un
+  tatami à angle fixe.
 
 ### HP-STI-019 — Broderie à main levée (freehand) [P2] — ☐ À faire
 - Hatch : dessiner directement un point de contour, triple, satin à la souris
@@ -815,9 +826,22 @@ plus.
 
 ### HP-STI-024 — Satin complexe avec trous [P2] — ☐ À faire
 - État OpenStitch : l'auto-satin refuse les anneaux larges / formes à trous
-  complexes (anneau fin géré en 4 sections).
-- Hatch : Column C / Complex fill contournant les trous.
-- Modules : `libs/auto_satin`, `libs/satin_planning`. Lire `satin.md`.
+  complexes ; un anneau fin est géré, mais en le **découpant** en 4 sections
+  (`satin_planning`), pas par une vraie gestion native des trous. Une région
+  à 2+ trous à contour extérieur **convexe** (`two_holes`, corpus de
+  torture) n'a aujourd'hui **aucune stratégie** : aucune famille de coupe
+  actuelle n'a de sommet reflex à exploiter sur un contour convexe.
+- Hatch : Column C / Complex fill — un remplissage satin unique qui
+  contourne nativement les trous, sans découpage visible côté utilisateur.
+- À faire : nouvelle famille de coupe « entre deux trous » dans
+  `libs/satin_planning` (aucune des familles existantes — normale au
+  squelette, concavité, JunctionSeparator — ne s'applique à un contour
+  convexe) ; ne pas patcher les familles existantes sous la pression de
+  cette seule fixture.
+- Modules : `libs/auto_satin`, `libs/satin_planning`. Lire `satin.md`
+  (§ Limitations connues).
+- Acceptation : la fixture `two_holes` (`test_torture_corpus.cpp`) atteint
+  une couverture significative sans refus total.
 
 ---
 
