@@ -469,12 +469,8 @@ MainWindow::MainWindow() {
     // Même garde HP-FILE-001 que les autres points d'entrée destructeurs de
     // document (newProject) : un clic sur un récent de l'écran d'accueil ne
     // doit pas perdre un travail en cours sans confirmation.
-    connect(emptyState_, &EmptyStateWidget::openRecentRequested, this, [this](QString path) {
-        if (confirmDiscardChanges(
-                tr("Le projet a été modifié. Enregistrer avant d'ouvrir un autre projet ?"))) {
-            (void)openProjectFile(path);
-        }
-    });
+    connect(emptyState_, &EmptyStateWidget::openRecentRequested, this,
+            [this](const QString& path) { openRecentFile(path); });
     refreshRecentFilesUi();
     connect(view_, &CanvasView::viewChanged, this, &MainWindow::positionEmptyState);
 
@@ -6283,21 +6279,29 @@ void MainWindow::setCurrentProjectPath(const QString& file) {
     }
 }
 
-void MainWindow::refreshRecentFilesUi() {
-    QTimer::singleShot(0, this, [this] {
-        recentFiles_ = pruneMissingRecentFiles(loadRecentFiles());
-        saveRecentFiles(recentFiles_);
+void MainWindow::openRecentFile(const QString& path) {
+    if (confirmDiscardChanges(
+            tr("Le projet a été modifié. Enregistrer avant d'ouvrir un autre projet ?"))) {
+        (void)openProjectFile(path);
+    }
+}
 
+void MainWindow::refreshRecentFilesUi() {
+    // Synchrone : recentFiles_ doit être à jour dès le retour de cet appel,
+    // pas seulement après un cycle d'évènements -- setCurrentProjectPath()
+    // (et tout appelant futur) le relit et le persiste immédiatement.
+    recentFiles_ = pruneMissingRecentFiles(loadRecentFiles());
+    saveRecentFiles(recentFiles_);
+
+    // Seule la reconstruction des widgets est différée (réentrance : ne pas
+    // détruire, depuis son propre gestionnaire de clic, le QAction ou le
+    // QPushButton qui vient de déclencher cet appel).
+    QTimer::singleShot(0, this, [this] {
         recentMenu_->clear();
         for (const QString& path : recentFiles_) {
             auto* action = recentMenu_->addAction(QFileInfo(path).fileName());
             action->setToolTip(path);
-            connect(action, &QAction::triggered, this, [this, path] {
-                if (confirmDiscardChanges(tr("Le projet a été modifié. Enregistrer avant "
-                                             "d'ouvrir un autre projet ?"))) {
-                    (void)openProjectFile(path);
-                }
-            });
+            connect(action, &QAction::triggered, this, [this, path] { openRecentFile(path); });
         }
         emptyState_->setRecentFiles(recentFiles_);
     });

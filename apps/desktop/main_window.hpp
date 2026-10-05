@@ -240,13 +240,23 @@ private:
     // met le titre de la fenêtre en phase. Remis à vide par
     // resetDocumentState() : tout remplacement de document oublie la cible.
     void setCurrentProjectPath(const QString& file);
-    // Reconstruit, après un cycle d'évènements (QTimer::singleShot), le
-    // sous-menu Fichier ▸ Récents et la liste de l'écran d'accueil à partir
-    // de pruneMissingRecentFiles(loadRecentFiles()) -- seul endroit qui
-    // applique la purge des entrées disparues (AD-S11-2, HP-FILE-003). Le
-    // report d'un cycle évite de détruire, pendant l'exécution de son propre
+    // Garde commune (confirmDiscardChanges) + ouverture d'un item Récents,
+    // partagée par le sous-menu Fichier ▸ Récents et l'écran d'accueil pour
+    // qu'une évolution de la confirmation ou de l'enchaînement ne se fasse
+    // qu'en un seul endroit.
+    void openRecentFile(const QString& path);
+    // Resynchronise recentFiles_ avec pruneMissingRecentFiles(loadRecentFiles())
+    // -- seul endroit qui applique la purge des entrées disparues (AD-S11-2,
+    // HP-FILE-003) -- puis reconstruit, après un cycle d'évènements
+    // (QTimer::singleShot), le sous-menu Fichier ▸ Récents et la liste de
+    // l'écran d'accueil à partir de recentFiles_. Seule la reconstruction de
+    // l'UI est reportée : détruire, pendant l'exécution de son propre
     // gestionnaire de clic, le QAction du menu Récents ou le QPushButton de
-    // l'écran d'accueil qui vient de déclencher cet appel (réentrance).
+    // l'écran d'accueil qui vient de déclencher cet appel serait une
+    // réentrance. La resynchronisation de recentFiles_, elle, reste
+    // synchrone : setCurrentProjectPath() et le constructeur le lisent et le
+    // persistent sans attendre de cycle d'évènements, avant qu'aucun appel
+    // différé n'ait pu s'exécuter.
     void refreshRecentFilesUi();
     void updateWindowTitle();
     // Objet de broderie ciblé par la sélection courante (broderie choisie
