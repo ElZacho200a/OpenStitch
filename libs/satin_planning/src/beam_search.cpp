@@ -25,7 +25,8 @@ OracleGuidedSelector::operator()(const geometry::PathSet& piece,
         BeamCandidateScore score;
         score.candidate_index = i;
 
-        const auto cutResult = geometry::cut_path_set_bounded(piece, cand.a, cand.b, cand.reach_um, params_.cut_width);
+        const auto cutResult =
+            geometry::cut_path_set_bounded(piece, cand.a, cand.b, cand.reach_um, params_.cut_width);
         if (cutResult.has_value() && cutResult->size() == 2) {
             // Identifie lequel des deux morceaux est la branche : celui dont
             // l'aire est la plus proche de `branch_piece_area_mm2`, deja

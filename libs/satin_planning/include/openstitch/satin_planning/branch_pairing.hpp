@@ -79,8 +79,8 @@ struct PairCandidate {
 // polygone n'est generee ici).
 struct JunctionPairingReport {
     std::uint32_t node{0};
-    std::vector<PairCandidate> candidates;      // toutes les paires evaluees, triees par cout croissant
-    std::vector<std::uint32_t> selected_pair;   // 0 ou 2 edge ids
+    std::vector<PairCandidate> candidates; // toutes les paires evaluees, triees par cout croissant
+    std::vector<std::uint32_t> selected_pair; // 0 ou 2 edge ids
     // Second trunk simultane (0 ou 2 edge ids) -- degre 4 UNIQUEMENT (§ etape
     // 4 de la refonte topologique, croix). Jamais peuple par
     // `pair_branches_at_junction` elle-meme (qui ne retient toujours qu'UNE
@@ -91,7 +91,8 @@ struct JunctionPairingReport {
     // simultanees" par construction+mesure reelle plutot que de choisir cette
     // strategie par defaut partout.
     std::vector<std::uint32_t> secondary_pair;
-    std::vector<std::uint32_t> detached;        // arcs incidents non retenus dans une paire (primaire OU secondaire)
+    std::vector<std::uint32_t>
+        detached; // arcs incidents non retenus dans une paire (primaire OU secondaire)
 };
 
 // Calcule le rapport d'appariement d'une jonction unique (degre >= 2 requis
@@ -137,8 +138,9 @@ struct DecompositionReport {
 // deux pour le meme `node` -- l'appelant ne doit jamais le faire).
 struct JunctionOverride {
     std::uint32_t node{0};
-    std::vector<std::uint32_t> forced_pair;            // vide, ou exactement 2 ids d'arete incidents a `node`
-    std::vector<std::uint32_t> forced_secondary_pair;  // vide (cas courant), ou exactement 2 ids -- degre 4 uniquement
+    std::vector<std::uint32_t> forced_pair; // vide, ou exactement 2 ids d'arete incidents a `node`
+    std::vector<std::uint32_t>
+        forced_secondary_pair; // vide (cas courant), ou exactement 2 ids -- degre 4 uniquement
 };
 
 // Decompose l'integralite du graphe de squelette en SatinPath. Ne modifie
@@ -152,9 +154,9 @@ struct JunctionOverride {
 // a une jonction ciblee, `JunctionPairingReport::candidates` restant
 // neanmoins peuple normalement (diagnostic/cout inchange, seule la
 // SELECTION differe).
-[[nodiscard]] DecompositionReport decompose_into_paths(const SkeletonGraph& graph,
-                                                        const ContinuationCostParams& params = {},
-                                                        const std::vector<JunctionOverride>& overrides = {});
+[[nodiscard]] DecompositionReport
+decompose_into_paths(const SkeletonGraph& graph, const ContinuationCostParams& params = {},
+                     const std::vector<JunctionOverride>& overrides = {});
 
 // Rendu textuel structure d'un rapport de decomposition (format de
 // diagnostic SGSD : jonctions, candidats d'appariement avec leur cout,

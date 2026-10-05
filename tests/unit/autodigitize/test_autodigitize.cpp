@@ -50,10 +50,9 @@ AutoOptions opts() {
 
 // Même convention que libs/auto_satin/src/shapes.cpp : coordonnées en µm.
 geometry::PathNode node(double x, double y) {
-    return geometry::PathNode{
-        Vec2um{Micrometers{static_cast<std::int32_t>(std::lround(x))},
-              Micrometers{static_cast<std::int32_t>(std::lround(y))}},
-        geometry::NodeType::Corner, std::nullopt, std::nullopt};
+    return geometry::PathNode{Vec2um{Micrometers{static_cast<std::int32_t>(std::lround(x))},
+                                     Micrometers{static_cast<std::int32_t>(std::lround(y))}},
+                              geometry::NodeType::Corner, std::nullopt, std::nullopt};
 }
 
 geometry::Path rect_path_um(double x0, double y0, double x1, double y1) {
@@ -73,7 +72,7 @@ document::VectorObject make_vector(ObjectId id, geometry::Path outer,
     return v;
 }
 
-}  // namespace
+} // namespace
 
 TEST_CASE("grande zone pleine -> tatami editable") {
     // Carré plein 30x30 mm rouge.
@@ -606,7 +605,8 @@ TEST_CASE("auto_digitize_vectors : grande zone pleine -> tatami editable, sans n
     CHECK(result->embroideries[0].source_vector == vecId);
 }
 
-TEST_CASE("auto_digitize_vectors : bande fine -> satin topologique, meme moteur que la segmentation") {
+TEST_CASE(
+    "auto_digitize_vectors : bande fine -> satin topologique, meme moteur que la segmentation") {
     IdGenerator<ObjectId> ids;
     // Bande 40x3 mm, meme proportions que le test segmentation equivalent.
     document::VectorObject v = make_vector(ids.next(), rect_path_um(0, 0, 40'000, 3'000));
@@ -633,7 +633,8 @@ TEST_CASE("auto_digitize_vectors : petit objet -> contour, comme la voie segment
     CHECK(std::holds_alternative<document::RunningStitchParams>(result->embroideries[0].params));
 }
 
-TEST_CASE("auto_digitize_vectors : plusieurs objets -> chacun classe independamment, ids distincts") {
+TEST_CASE(
+    "auto_digitize_vectors : plusieurs objets -> chacun classe independamment, ids distincts") {
     IdGenerator<ObjectId> ids;
     document::VectorObject big = make_vector(ids.next(), rect_path_um(0, 0, 30'000, 30'000));
     document::VectorObject strip = make_vector(ids.next(), rect_path_um(0, 0, 40'000, 3'000));
@@ -651,10 +652,12 @@ TEST_CASE("auto_digitize_vectors : plusieurs objets -> chacun classe independamm
     CHECK(sources.count(tiny.id) == 1);
 
     std::vector<std::uint64_t> allIds;
-    for (const auto& v : result->vectors) allIds.push_back(v.id.value);
-    for (const auto& e : result->embroideries) allIds.push_back(e.id.value);
+    for (const auto& v : result->vectors)
+        allIds.push_back(v.id.value);
+    for (const auto& e : result->embroideries)
+        allIds.push_back(e.id.value);
     std::sort(allIds.begin(), allIds.end());
-    CHECK(std::adjacent_find(allIds.begin(), allIds.end()) == allIds.end());  // tous distincts
+    CHECK(std::adjacent_find(allIds.begin(), allIds.end()) == allIds.end()); // tous distincts
 }
 
 TEST_CASE("auto_digitize_vectors : aucun objet vectoriel -> erreur propre") {
@@ -662,7 +665,8 @@ TEST_CASE("auto_digitize_vectors : aucun objet vectoriel -> erreur propre") {
     CHECK_FALSE(auto_digitize_vectors({}, ids, opts()).has_value());
 }
 
-TEST_CASE("auto_digitize_vectors : objet sans geometrie exploitable -> ignore sans crash, erreur globale si seul") {
+TEST_CASE("auto_digitize_vectors : objet sans geometrie exploitable -> ignore sans crash, erreur "
+          "globale si seul") {
     IdGenerator<ObjectId> ids;
     document::VectorObject empty;
     empty.id = ids.next();

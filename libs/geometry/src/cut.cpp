@@ -112,9 +112,10 @@ Result<std::vector<PathSet>> cut_band(const PathSet& region, Vec2um a, Vec2um b,
     return out;
 }
 
-}  // namespace
+} // namespace
 
-Result<std::vector<PathSet>> cut_path_set(const PathSet& region, Vec2um a, Vec2um b, Micrometers cut_width) {
+Result<std::vector<PathSet>> cut_path_set(const PathSet& region, Vec2um a, Vec2um b,
+                                          Micrometers cut_width) {
     // Étend très au-delà de la région (diagonale de sa boîte englobante + 1 mm
     // de marge) pour garantir une traversée complète quels que soient les
     // points A/B fournis par l'utilisateur -- l'utilisateur vise la jonction,
@@ -136,15 +137,15 @@ Result<std::vector<PathSet>> cut_path_set(const PathSet& region, Vec2um a, Vec2u
         scan(hole);
     }
     if (minX > maxX) {
-        return std::vector<PathSet>{region};  // région vide
+        return std::vector<PathSet>{region}; // région vide
     }
     const double reach = std::hypot(maxX - minX, maxY - minY) + 1000.0;
     return cut_band(region, a, b, reach, cut_width);
 }
 
-Result<std::vector<PathSet>> cut_path_set_bounded(const PathSet& region, Vec2um a, Vec2um b, double reach_um,
-                                                  Micrometers cut_width) {
+Result<std::vector<PathSet>> cut_path_set_bounded(const PathSet& region, Vec2um a, Vec2um b,
+                                                  double reach_um, Micrometers cut_width) {
     return cut_band(region, a, b, reach_um, cut_width);
 }
 
-}  // namespace openstitch::geometry
+} // namespace openstitch::geometry

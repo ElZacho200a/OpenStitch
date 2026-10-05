@@ -82,9 +82,7 @@ double sewn_length(const std::vector<FillStitch>& fill) {
 class PointBuckets {
 public:
     PointBuckets(double cell) : cell_(cell) {}
-    void add(Vec2um p, std::size_t tag) {
-        buckets_.push_back({key(p), tag, p});
-    }
+    void add(Vec2um p, std::size_t tag) { buckets_.push_back({key(p), tag, p}); }
     void finalize() {
         std::sort(buckets_.begin(), buckets_.end(),
                   [](const Entry& a, const Entry& b) { return a.k < b.k; });
@@ -170,7 +168,9 @@ TEST_CASE("directional: arc guide keeps every stitch within 10 deg of the field"
     for (int k = 0; k <= 40; ++k) {
         const double a = (60.0 + 60.0 * k / 40.0) * kPi / 180.0;
         arc.nodes.push_back({um(40.0 * std::cos(a), -30.0 + 40.0 * std::sin(a)),
-                             geometry::NodeType::Corner, {}, {}});
+                             geometry::NodeType::Corner,
+                             {},
+                             {}});
     }
     dp.guides.push_back(arc);
 
@@ -358,8 +358,8 @@ TEST_CASE("directional: generation is byte for byte deterministic") {
 TEST_CASE("directional: break line gives independent sectors (chevron)") {
     const auto region = rect_mm(0, 0, 40, 20);
     auto dp = base_params();
-    dp.guides.push_back(line_mm(2, 2, 18, 18));  // +45 deg a gauche
-    dp.guides.push_back(line_mm(22, 18, 38, 2)); // -45 deg a droite
+    dp.guides.push_back(line_mm(2, 2, 18, 18));           // +45 deg a gauche
+    dp.guides.push_back(line_mm(22, 18, 38, 2));          // -45 deg a droite
     dp.break_lines.push_back(line_mm(20, 0.5, 20, 19.5)); // prolongée jusqu'aux bords
     dp.sector_overlap = Micrometers{250};
 
@@ -553,19 +553,21 @@ TEST_CASE("directional: convex shape is sewn without any jump") {
     for (int k = 0; k <= 20; ++k) {
         const double a = (60.0 + 60.0 * k / 20.0) * kPi / 180.0;
         arc.nodes.push_back({um(40.0 * std::cos(a), -30.0 + 40.0 * std::sin(a)),
-                             geometry::NodeType::Corner, {}, {}});
+                             geometry::NodeType::Corner,
+                             {},
+                             {}});
     }
     dp.guides.push_back(arc);
     const auto fill = fill_directional(region, dp);
     REQUIRE(fill.size() > 100);
     CHECK(fill.front().jump);
-    const auto jumps = std::count_if(fill.begin() + 1, fill.end(),
-                                     [](const FillStitch& fs) { return fs.jump; });
+    const auto jumps =
+        std::count_if(fill.begin() + 1, fill.end(), [](const FillStitch& fs) { return fs.jump; });
     CHECK(jumps == 0);
     // Sans trajet caché, les liaisons longues redeviennent des sauts.
     dp.hidden_underpath = false;
     const auto raw = fill_directional(region, dp);
-    const auto rawJumps = std::count_if(raw.begin() + 1, raw.end(),
-                                        [](const FillStitch& fs) { return fs.jump; });
+    const auto rawJumps =
+        std::count_if(raw.begin() + 1, raw.end(), [](const FillStitch& fs) { return fs.jump; });
     CHECK(rawJumps >= jumps);
 }

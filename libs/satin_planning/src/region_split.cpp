@@ -41,7 +41,9 @@ Vec2um to_vec2um(Vec2d v) {
                   Micrometers{static_cast<std::int32_t>(std::lround(v.y))}};
 }
 
-double cross(Vec2d a, Vec2d b) { return a.x * b.y - a.y * b.x; }
+double cross(Vec2d a, Vec2d b) {
+    return a.x * b.y - a.y * b.x;
+}
 
 // Distance depuis `origin` jusqu'au bord EXTERIEUR de `piece` en suivant le
 // rayon `origin + t*dir` (t>0), par intersection avec chaque arete du
@@ -57,18 +59,22 @@ double ray_boundary_distance(const geometry::PathSet& piece, Vec2d origin, Vec2d
     double best = std::numeric_limits<double>::max();
     const auto& nodes = piece.outer.nodes;
     const std::size_t n = nodes.size();
-    if (n < 2) return best;
+    if (n < 2)
+        return best;
     for (std::size_t i = 0, j = n - 1; i < n; j = i++) {
         const Vec2d p0 = to_vec2d(nodes[j].pos);
         const Vec2d p1 = to_vec2d(nodes[i].pos);
         const Vec2d seg = sub(p1, p0);
         const double denom = cross(seg, dir);
-        if (std::abs(denom) < 1e-9) continue;  // rayon parallele a cette arete
+        if (std::abs(denom) < 1e-9)
+            continue; // rayon parallele a cette arete
         const Vec2d diff = sub(p0, origin);
         const double s = cross(dir, diff) / denom;
-        if (s < -1e-6 || s > 1.0 + 1e-6) continue;  // hors segment
+        if (s < -1e-6 || s > 1.0 + 1e-6)
+            continue; // hors segment
         const double t = cross(seg, diff) / denom;
-        if (t > 1e-6 && t < best) best = t;
+        if (t > 1e-6 && t < best)
+            best = t;
     }
     return best;
 }
@@ -76,7 +82,8 @@ double ray_boundary_distance(const geometry::PathSet& piece, Vec2d origin, Vec2d
 double point_segment_distance(Vec2d p, Vec2d a, Vec2d b) {
     const Vec2d ab = sub(b, a);
     const double lenSq = ab.x * ab.x + ab.y * ab.y;
-    if (lenSq < 1e-9) return norm(sub(p, a));
+    if (lenSq < 1e-9)
+        return norm(sub(p, a));
     double t = ((p.x - a.x) * ab.x + (p.y - a.y) * ab.y) / lenSq;
     t = std::clamp(t, 0.0, 1.0);
     return norm(sub(p, add(a, scale(ab, t))));
@@ -97,15 +104,19 @@ double point_segment_distance(Vec2d p, Vec2d a, Vec2d b) {
 // sont jamais une branche a eviter, seulement la matiere naturelle de la
 // confluence elle-meme -- les atteindre pour nettoyer le renflement est
 // souhaite, pas un risque de coupe croisee.
-double distance_to_other_branches(const SkeletonGraph& graph, std::uint32_t junctionNode, std::uint32_t currentEdgeId,
-                                   Vec2d point) {
+double distance_to_other_branches(const SkeletonGraph& graph, std::uint32_t junctionNode,
+                                  std::uint32_t currentEdgeId, Vec2d point) {
     double best = std::numeric_limits<double>::max();
     for (const auto& edge : graph.edges) {
-        if (edge.id == currentEdgeId) continue;
-        if (edge.from == junctionNode || edge.to == junctionNode) continue;
+        if (edge.id == currentEdgeId)
+            continue;
+        if (edge.from == junctionNode || edge.to == junctionNode)
+            continue;
         for (std::size_t i = 0; i + 1 < edge.centerline.size(); ++i) {
-            const double d = point_segment_distance(point, to_vec2d(edge.centerline[i]), to_vec2d(edge.centerline[i + 1]));
-            if (d < best) best = d;
+            const double d = point_segment_distance(point, to_vec2d(edge.centerline[i]),
+                                                    to_vec2d(edge.centerline[i + 1]));
+            if (d < best)
+                best = d;
         }
     }
     return best;
@@ -129,8 +140,10 @@ double bounding_box_diagonal_reach(const geometry::PathSet& piece) {
         }
     };
     scan(piece.outer);
-    for (const auto& hole : piece.holes) scan(hole);
-    if (minX > maxX) return 1000.0;
+    for (const auto& hole : piece.holes)
+        scan(hole);
+    if (minX > maxX)
+        return 1000.0;
     return std::hypot(maxX - minX, maxY - minY) + 1000.0;
 }
 
@@ -349,7 +362,8 @@ std::vector<CutCandidate> generate_cut_candidates(const geometry::PathSet& piece
         // sans risque, exactement comme avant ce correctif. Sur "comb",
         // chaque dent voisine a sa PROPRE jonction, donc la distance
         // plafonne correctement avant d'y atteindre.
-        const double siblingDistance = distance_to_other_branches(graph, junctionNode, edgeId, sample.point);
+        const double siblingDistance =
+            distance_to_other_branches(graph, junctionNode, edgeId, sample.point);
         const double generousReach = bounding_box_diagonal_reach(piece);
         // Portee minimale REELLEMENT necessaire dans cette direction precise
         // (rayon vers le bord exterieur, jamais les trous -- cf.
@@ -362,11 +376,14 @@ std::vector<CutCandidate> generate_cut_candidates(const geometry::PathSet& piece
         // `siblingDistance` laisse malgre tout un peu de marge pres d'une
         // confluence large ("t") quand le rayon exterieur seul serait trop
         // court -- les deux corrections cohabitent sans se supplanter.
-        const double outerReach = std::max(ray_boundary_distance(piece, sample.point, normal),
-                                            ray_boundary_distance(piece, sample.point, {-normal.x, -normal.y}));
-        const double primaryReach = siblingDistance < std::numeric_limits<double>::max()
-                                  ? std::min(generousReach, std::max(outerReach, siblingDistance) + params.local_cut_margin_um)
-                                  : generousReach;
+        const double outerReach =
+            std::max(ray_boundary_distance(piece, sample.point, normal),
+                     ray_boundary_distance(piece, sample.point, {-normal.x, -normal.y}));
+        const double primaryReach =
+            siblingDistance < std::numeric_limits<double>::max()
+                ? std::min(generousReach,
+                           std::max(outerReach, siblingDistance) + params.local_cut_margin_um)
+                : generousReach;
 
         // Tente une coupe a une portee DONNEE et remplit `cand` en
         // consequence (`valid`/aires si acceptee, sinon `rejection_reason`).
@@ -375,14 +392,16 @@ std::vector<CutCandidate> generate_cut_candidates(const geometry::PathSet& piece
         // logique de rejet.
         const auto attempt_reach = [&](double reach) {
             cand.reach_um = reach;
-            const auto cutResult = geometry::cut_path_set_bounded(piece, cand.a, cand.b, reach, params.cut_width);
+            const auto cutResult =
+                geometry::cut_path_set_bounded(piece, cand.a, cand.b, reach, params.cut_width);
             if (!cutResult.has_value()) {
                 cand.rejection_reason = "echec de la decoupe geometrique";
                 return false;
             }
             if (cutResult->size() != 2) {
                 cand.rejection_reason = "coupe n'a pas produit exactement 2 morceaux (" +
-                                         std::to_string(cutResult->size()) + " -- traverse une zone sans rapport)";
+                                        std::to_string(cutResult->size()) +
+                                        " -- traverse une zone sans rapport)";
                 return false;
             }
             const double areaA = geometry::path_set_area_um2((*cutResult)[0]) / 1e6;
@@ -396,22 +415,25 @@ std::vector<CutCandidate> generate_cut_candidates(const geometry::PathSet& piece
             // (contient le noeud distal) pour renseigner les aires ET, le
             // cas echeant, pour la verification de satinabilite ci-dessous.
             std::size_t branchIdx = 0;
-            if (farNode != nullptr && path_set_contains((*cutResult)[1], farNode->position)) branchIdx = 1;
+            if (farNode != nullptr && path_set_contains((*cutResult)[1], farNode->position))
+                branchIdx = 1;
             const std::size_t remainderIdx = 1 - branchIdx;
 
             if (verifySatinability) {
                 const auto analysis = auto_satin::analyze_region((*cutResult)[branchIdx], {});
                 const bool clean = analysis.has_value() && analysis->report.junction_count == 0;
                 if (!clean) {
-                    cand.rejection_reason = "morceau isole encore branche apres cette coupe (jonction residuelle, "
-                                             "probablement une branche voisine partiellement tranchee)";
+                    cand.rejection_reason =
+                        "morceau isole encore branche apres cette coupe (jonction residuelle, "
+                        "probablement une branche voisine partiellement tranchee)";
                     return false;
                 }
             }
 
             cand.valid = true;
             cand.branch_piece_area_mm2 = geometry::path_set_area_um2((*cutResult)[branchIdx]) / 1e6;
-            cand.remainder_piece_area_mm2 = geometry::path_set_area_um2((*cutResult)[remainderIdx]) / 1e6;
+            cand.remainder_piece_area_mm2 =
+                geometry::path_set_area_um2((*cutResult)[remainderIdx]) / 1e6;
             return true;
         };
 
@@ -548,8 +570,8 @@ RegionSplitReport split_region(const geometry::PathSet& region, const SkeletonGr
         attempt.selected = *chosen;
         const CutCandidate& winner = attempt.candidates[*chosen];
 
-        const auto cutResult =
-            geometry::cut_path_set_bounded(pieces[*pieceIdx], winner.a, winner.b, winner.reach_um, params.cut_width);
+        const auto cutResult = geometry::cut_path_set_bounded(pieces[*pieceIdx], winner.a, winner.b,
+                                                              winner.reach_um, params.cut_width);
         if (!cutResult.has_value() || cutResult->size() != 2) {
             report.cuts.push_back(std::move(attempt));
             continue; // garde-fou : ne devrait pas arriver, deja verifie par
@@ -644,8 +666,9 @@ std::string format_region_split_report(const RegionSplitReport& report,
         for (std::size_t i = 0; i < attempt.candidates.size(); ++i) {
             const auto& c = attempt.candidates[i];
             const bool selected = attempt.selected.has_value() && *attempt.selected == i;
-            out << "    d=" << c.distance_from_junction_um << "um" << (c.from_junction_separator ? " [SEP]" : "")
-                << " reach=" << c.reach_um << "um : ";
+            out << "    d=" << c.distance_from_junction_um << "um"
+                << (c.from_junction_separator ? " [SEP]" : "") << " reach=" << c.reach_um
+                << "um : ";
             if (c.valid) {
                 out << "valide (branche=" << c.branch_piece_area_mm2
                     << "mm2, reste=" << c.remainder_piece_area_mm2 << "mm2)";

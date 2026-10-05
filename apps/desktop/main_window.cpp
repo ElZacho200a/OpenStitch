@@ -642,8 +642,7 @@ void MainWindow::buildMenus() {
     connect(finishingAct, &QAction::triggered, this, [this] {
         const auto edited = editSequenceFinishing(this, project_.finishing);
         if (edited && *edited != project_.finishing) {
-            undoStack_.execute(std::make_unique<commands::SetFinishingCommand>(*edited),
-                               project_);
+            undoStack_.execute(std::make_unique<commands::SetFinishingCommand>(*edited), project_);
             refreshImage();
             updateActions();
         }
@@ -981,10 +980,11 @@ void MainWindow::openSvg(const QString& file) {
     showVectorsAct_->setChecked(true);
     refreshImage();
     view_->fitCanvas();
-    statusBar()->showMessage(
-        tr("%1 — %2 objet(s) vectoriel(s) importé(s)").arg(QFileInfo(file).fileName()).arg(imported_count));
+    statusBar()->showMessage(tr("%1 — %2 objet(s) vectoriel(s) importé(s)")
+                                 .arg(QFileInfo(file).fileName())
+                                 .arg(imported_count));
     updateActions();
-    setWindowModified(false);  // nouveau document propre
+    setWindowModified(false); // nouveau document propre
     warnAboutSkippedSvgFeatures(imported->warnings);
 }
 
@@ -3304,9 +3304,9 @@ void MainWindow::autoDigitize() {
     // historique, inchangé). Pour le chemin SVG, les objets vectoriels SONT
     // l'entrée elle-même -- seule la présence d'un objet de broderie
     // signale une numérisation déjà effectuée.
-    const bool alreadyDigitized = hasSegmentation
-        ? (!project_.embroidery_objects.empty() || !project_.vector_objects.empty())
-        : !project_.embroidery_objects.empty();
+    const bool alreadyDigitized =
+        hasSegmentation ? (!project_.embroidery_objects.empty() || !project_.vector_objects.empty())
+                        : !project_.embroidery_objects.empty();
     if (alreadyDigitized) {
         const auto answer = QMessageBox::question(
             this, tr("Numérisation automatique"),
@@ -3339,8 +3339,8 @@ void MainWindow::autoDigitize() {
         QDialog optsDialog(this);
         optsDialog.setWindowTitle(tr("Numérisation automatique"));
         auto* optsLayout = new QVBoxLayout(&optsDialog);
-        auto* skipBgCheck = new QCheckBox(
-            tr("Ignorer la plus grande région (probablement le fond)"), &optsDialog);
+        auto* skipBgCheck =
+            new QCheckBox(tr("Ignorer la plus grande région (probablement le fond)"), &optsDialog);
         skipBgCheck->setObjectName("skipBackgroundCheck");
         skipBgCheck->setChecked(candidate && candidate->recommended);
         skipBgCheck->setToolTip(
@@ -3382,10 +3382,10 @@ void MainWindow::autoDigitize() {
     }
 
     QGuiApplication::setOverrideCursor(Qt::WaitCursor);
-    auto result = hasSegmentation
-                      ? autodigitize::auto_digitize(*project_.segmentation, project_.object_ids, opts)
-                      : autodigitize::auto_digitize_vectors(project_.vector_objects,
-                                                            project_.object_ids, opts);
+    auto result = hasSegmentation ? autodigitize::auto_digitize(*project_.segmentation,
+                                                                project_.object_ids, opts)
+                                  : autodigitize::auto_digitize_vectors(project_.vector_objects,
+                                                                        project_.object_ids, opts);
     QGuiApplication::restoreOverrideCursor();
     if (!result) {
         QMessageBox::warning(this, tr("Numérisation impossible"),
@@ -4387,8 +4387,8 @@ void MainWindow::setStitchType(ObjectId embroideryId, int type) {
     // -- exactement le défaut réel signalé (« résidu de satin qui reste
     // même en revenant en tatami », 2026-09-04, cf. le commentaire de la
     // commande pour le détail complet).
-    undoStack_.execute(std::make_unique<commands::ConvertFillGroupCommand>(embroideryId, std::move(params),
-                                                                           std::move(label)),
+    undoStack_.execute(std::make_unique<commands::ConvertFillGroupCommand>(
+                           embroideryId, std::move(params), std::move(label)),
                        project_);
     showStitchesAct_->setChecked(true);
     refreshImage();
@@ -5594,7 +5594,8 @@ void MainWindow::buildPropertiesPanel() {
             &MainWindow::convertToDirectional);
     connect(propertiesPanel_, &PropertiesPanel::editDirectionGuidesRequested, this,
             [this](ObjectId id) {
-                if (auto* emb = project_.findEmbroidery(id); emb != nullptr && emb->is_directional()) {
+                if (auto* emb = project_.findEmbroidery(id);
+                    emb != nullptr && emb->is_directional()) {
                     selectedEmbroidery_ = id;
                     if (directionGuideModeAct_->isChecked()) {
                         directionGuideModeAct_->setChecked(false);
@@ -5849,10 +5850,7 @@ void MainWindow::refreshOrderPanel() {
 }
 
 int MainWindow::stitchTypeIndex(const document::EmbroideryObject& object) {
-    return object.is_tatami()        ? 1
-           : object.is_satin()       ? 2
-           : object.is_directional() ? 3
-                                     : 0;
+    return object.is_tatami() ? 1 : object.is_satin() ? 2 : object.is_directional() ? 3 : 0;
 }
 
 double MainWindow::regionAreaMm2(const document::EmbroideryObject& object) const {

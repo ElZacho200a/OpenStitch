@@ -18,9 +18,11 @@ std::vector<std::uint8_t> to_bytes(const std::string& s) {
     return std::vector<std::uint8_t>(s.begin(), s.end());
 }
 
-double mm(Micrometers um) { return static_cast<double>(um.value) / 1000.0; }
+double mm(Micrometers um) {
+    return static_cast<double>(um.value) / 1000.0;
+}
 
-}  // namespace
+} // namespace
 
 // Toutes les formes de test utilisent viewBox="0 0 100 100" + width="10mm"
 // height="10mm" -> échelle EXACTE de 0,1 mm par unité utilisateur, pour
@@ -60,7 +62,7 @@ TEST_CASE("svg : rectangle simple -- position, taille et centrage exacts") {
 TEST_CASE("svg : axe Y inverse (SVG bas -> modele haut, Vec2um Y vers le haut)") {
     const std::string svg = R"svg(<svg viewBox="0 0 100 100" width="10mm" height="10mm">
         <path d="M 50 0 L 50 100"/>
-    </svg>)svg";  // point HAUT du fichier (y=0) puis point BAS (y=100)
+    </svg>)svg"; // point HAUT du fichier (y=0) puis point BAS (y=100)
     const auto result = decode_svg(to_bytes(svg));
     REQUIRE(result.has_value());
     REQUIRE(result->objects.size() == 1);
@@ -80,7 +82,8 @@ TEST_CASE("svg : chemin cubique -- tangentes exactes (pas d'approximation)") {
     REQUIRE(result->objects.size() == 1);
     const auto& nodes = result->objects.front().outer.nodes;
     REQUIRE(nodes.size() == 2);
-    CHECK(nodes[0].type == NodeType::Corner);  // premier noeud (M) : jamais de tangente sortante propre
+    CHECK(nodes[0].type ==
+          NodeType::Corner); // premier noeud (M) : jamais de tangente sortante propre
     REQUIRE(nodes[0].tan_out.has_value());
     REQUIRE(nodes[1].tan_in.has_value());
     // C1=(10,0) relatif à M(0,0) -> (1.0mm, 0mm) apres echelle 0.1mm/unite ;
@@ -104,8 +107,9 @@ TEST_CASE("svg : cercle -- rayon exact sur les 4 points cardinaux") {
     REQUIRE(nodes.size() == 4);
     for (const auto& n : nodes) {
         CHECK(n.type == NodeType::Smooth);
-        const double dist = std::hypot(mm(n.pos.x), mm(n.pos.y));  // centre du cercle == centre du canevas ici
-        CHECK(dist == Catch::Approx(3.0).margin(0.001));  // r=30 unites * 0.1mm/unite = 3mm
+        const double dist =
+            std::hypot(mm(n.pos.x), mm(n.pos.y)); // centre du cercle == centre du canevas ici
+        CHECK(dist == Catch::Approx(3.0).margin(0.001)); // r=30 unites * 0.1mm/unite = 3mm
     }
 }
 
@@ -118,7 +122,8 @@ TEST_CASE("svg : groupe avec transform translate -- compose correctement") {
     REQUIRE(result->objects.size() == 1);
     const auto& nodes = result->objects.front().outer.nodes;
     double minX = 1e9;
-    for (const auto& n : nodes) minX = std::min(minX, mm(n.pos.x));
+    for (const auto& n : nodes)
+        minX = std::min(minX, mm(n.pos.x));
     // rect en x=[0,10], translate(10,0) -> x=[10,20] en unites -> [1mm,2mm]
     // avant centrage (-5mm) -> [-4mm,-3mm].
     CHECK(minX == Catch::Approx(-4.0).margin(0.001));
@@ -156,11 +161,12 @@ TEST_CASE("svg : element non pris en charge -- diagnostic explicite, import du r
     </svg>)svg";
     const auto result = decode_svg(to_bytes(svg));
     REQUIRE(result.has_value());
-    CHECK(result->objects.size() == 1);  // le rect importe malgre le <text> voisin
+    CHECK(result->objects.size() == 1); // le rect importe malgre le <text> voisin
     REQUIRE_FALSE(result->warnings.empty());
     bool foundTextWarning = false;
     for (const auto& w : result->warnings) {
-        if (w.find("text") != std::string::npos) foundTextWarning = true;
+        if (w.find("text") != std::string::npos)
+            foundTextWarning = true;
     }
     CHECK(foundTextWarning);
 }

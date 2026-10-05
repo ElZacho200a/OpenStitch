@@ -28,9 +28,15 @@ struct V2 {
     double y{0.0};
 };
 
-V2 operator+(V2 a, V2 b) { return {a.x + b.x, a.y + b.y}; }
-V2 operator-(V2 a, V2 b) { return {a.x - b.x, a.y - b.y}; }
-V2 operator*(V2 a, double s) { return {a.x * s, a.y * s}; }
+V2 operator+(V2 a, V2 b) {
+    return {a.x + b.x, a.y + b.y};
+}
+V2 operator-(V2 a, V2 b) {
+    return {a.x - b.x, a.y - b.y};
+}
+V2 operator*(V2 a, double s) {
+    return {a.x * s, a.y * s};
+}
 
 // Transformation affine 2D (matrice SVG [a b c d e f], cf. spec §7.6) :
 // point' = (a*x + c*y + e, b*x + d*y + f). Composition SVG : appliquer T1
@@ -39,7 +45,9 @@ V2 operator*(V2 a, double s) { return {a.x * s, a.y * s}; }
 struct Affine {
     double a{1.0}, b{0.0}, c{0.0}, d{1.0}, e{0.0}, f{0.0};
 
-    [[nodiscard]] V2 apply_point(V2 p) const { return {a * p.x + c * p.y + e, b * p.x + d * p.y + f}; }
+    [[nodiscard]] V2 apply_point(V2 p) const {
+        return {a * p.x + c * p.y + e, b * p.x + d * p.y + f};
+    }
     // Un vecteur (tangente Bézier relative) ignore la translation.
     [[nodiscard]] V2 apply_vector(V2 v) const { return {a * v.x + c * v.y, b * v.x + d * v.y}; }
 };
@@ -62,8 +70,8 @@ Affine compose(const Affine& outer, const Affine& inner) {
 struct DNode {
     V2 pos{};
     bool smooth{false};
-    std::optional<V2> tan_in;   // relatif à pos, déjà transformé
-    std::optional<V2> tan_out;  // relatif à pos, déjà transformé
+    std::optional<V2> tan_in;  // relatif à pos, déjà transformé
+    std::optional<V2> tan_out; // relatif à pos, déjà transformé
 };
 
 struct DPath {
@@ -75,7 +83,8 @@ struct DPath {
 // données de chemin `d`) -------------------------------------------------
 
 void skip_ws_and_commas(std::string_view s, std::size_t& i) {
-    while (i < s.size() && (std::isspace(static_cast<unsigned char>(s[i])) != 0 || s[i] == ',')) ++i;
+    while (i < s.size() && (std::isspace(static_cast<unsigned char>(s[i])) != 0 || s[i] == ','))
+        ++i;
 }
 
 // Un seul nombre flottant SVG (signe, exposant, point décimal) -- pas de
@@ -83,7 +92,8 @@ void skip_ws_and_commas(std::string_view s, std::size_t& i) {
 // données de chemin qui autorise des nombres collés : "1.5.5" == "1.5 .5").
 std::optional<double> parse_number(std::string_view s, std::size_t& i) {
     const std::size_t start = i;
-    if (i < s.size() && (s[i] == '+' || s[i] == '-')) ++i;
+    if (i < s.size() && (s[i] == '+' || s[i] == '-'))
+        ++i;
     bool sawDigitOrDot = false;
     while (i < s.size() && std::isdigit(static_cast<unsigned char>(s[i])) != 0) {
         ++i;
@@ -103,10 +113,13 @@ std::optional<double> parse_number(std::string_view s, std::size_t& i) {
     if (i < s.size() && (s[i] == 'e' || s[i] == 'E')) {
         const std::size_t expStart = i;
         ++i;
-        if (i < s.size() && (s[i] == '+' || s[i] == '-')) ++i;
+        if (i < s.size() && (s[i] == '+' || s[i] == '-'))
+            ++i;
         const std::size_t digitsStart = i;
-        while (i < s.size() && std::isdigit(static_cast<unsigned char>(s[i])) != 0) ++i;
-        if (i == digitsStart) i = expStart;  // "1e" sans chiffre : pas un exposant
+        while (i < s.size() && std::isdigit(static_cast<unsigned char>(s[i])) != 0)
+            ++i;
+        if (i == digitsStart)
+            i = expStart; // "1e" sans chiffre : pas un exposant
     }
     double value = 0.0;
     const auto res = std::from_chars(s.data() + start, s.data() + i, value);
@@ -131,16 +144,23 @@ ParsedLength parse_length(std::string_view raw, double fallback = 0.0) {
     std::size_t i = 0;
     skip_ws_and_commas(raw, i);
     const auto num = parse_number(raw, i);
-    if (!num) return {fallback, false};
+    if (!num)
+        return {fallback, false};
     const std::string_view unit = raw.substr(i);
     constexpr double kPxPerInch = 96.0;
-    if (unit == "mm") return {*num * kPxPerInch / 25.4, false};
-    if (unit == "cm") return {*num * kPxPerInch / 2.54, false};
-    if (unit == "in") return {*num * kPxPerInch, false};
-    if (unit == "pt") return {*num * kPxPerInch / 72.0, false};
-    if (unit == "pc") return {*num * kPxPerInch / 6.0, false};
-    if (unit == "%") return {*num, true};
-    return {*num, false};  // "px" ou sans unité
+    if (unit == "mm")
+        return {*num * kPxPerInch / 25.4, false};
+    if (unit == "cm")
+        return {*num * kPxPerInch / 2.54, false};
+    if (unit == "in")
+        return {*num * kPxPerInch, false};
+    if (unit == "pt")
+        return {*num * kPxPerInch / 72.0, false};
+    if (unit == "pc")
+        return {*num * kPxPerInch / 6.0, false};
+    if (unit == "%")
+        return {*num, true};
+    return {*num, false}; // "px" ou sans unité
 }
 
 // --- Transform SVG : "translate(...) rotate(...) ..." (composé de gauche à
@@ -152,22 +172,28 @@ Affine parse_transform(std::string_view raw) {
     std::size_t i = 0;
     while (true) {
         skip_ws_and_commas(raw, i);
-        if (i >= raw.size()) break;
+        if (i >= raw.size())
+            break;
         const std::size_t nameStart = i;
-        while (i < raw.size() && std::isalpha(static_cast<unsigned char>(raw[i])) != 0) ++i;
+        while (i < raw.size() && std::isalpha(static_cast<unsigned char>(raw[i])) != 0)
+            ++i;
         const std::string_view name = raw.substr(nameStart, i - nameStart);
         skip_ws_and_commas(raw, i);
-        if (i >= raw.size() || raw[i] != '(') break;
+        if (i >= raw.size() || raw[i] != '(')
+            break;
         ++i;
         std::vector<double> args;
         while (true) {
             skip_ws_and_commas(raw, i);
-            if (i < raw.size() && raw[i] == ')') break;
+            if (i < raw.size() && raw[i] == ')')
+                break;
             const auto num = parse_number(raw, i);
-            if (!num) break;
+            if (!num)
+                break;
             args.push_back(*num);
         }
-        if (i < raw.size() && raw[i] == ')') ++i;
+        if (i < raw.size() && raw[i] == ')')
+            ++i;
 
         Affine local;
         if (name == "translate" && !args.empty()) {
@@ -194,7 +220,7 @@ Affine parse_transform(std::string_view raw) {
         } else if (name == "matrix" && args.size() >= 6) {
             local = Affine{args[0], args[1], args[2], args[3], args[4], args[5]};
         } else {
-            continue;  // fonction inconnue ou arguments insuffisants : ignorée
+            continue; // fonction inconnue ou arguments insuffisants : ignorée
         }
         result = compose(result, local);
     }
@@ -217,7 +243,8 @@ struct PathCursor {
 };
 
 void end_open_subpath(std::vector<DPath>& out, DPath& subpath) {
-    if (subpath.nodes.size() >= 2) out.push_back(std::move(subpath));
+    if (subpath.nodes.size() >= 2)
+        out.push_back(std::move(subpath));
     subpath = DPath{};
 }
 
@@ -228,7 +255,8 @@ void end_open_subpath(std::vector<DPath>& out, DPath& subpath) {
 void append_quadratic(DPath& subpath, V2 start, V2 control, V2 end, bool smooth) {
     const V2 c1 = start + (control - start) * (2.0 / 3.0);
     const V2 c2 = end + (control - end) * (2.0 / 3.0);
-    if (!subpath.nodes.empty()) subpath.nodes.back().tan_out = c1 - start;
+    if (!subpath.nodes.empty())
+        subpath.nodes.back().tan_out = c1 - start;
     DNode node;
     node.pos = end;
     node.smooth = smooth;
@@ -237,7 +265,8 @@ void append_quadratic(DPath& subpath, V2 start, V2 control, V2 end, bool smooth)
 }
 
 void append_cubic(DPath& subpath, V2 start, V2 c1, V2 c2, V2 end, bool smooth) {
-    if (!subpath.nodes.empty()) subpath.nodes.back().tan_out = c1 - start;
+    if (!subpath.nodes.empty())
+        subpath.nodes.back().tan_out = c1 - start;
     DNode node;
     node.pos = end;
     node.smooth = smooth;
@@ -280,7 +309,8 @@ void append_arc(DPath& subpath, V2 start, double rx, double ry, double xAxisRotD
     const double num = rx2 * ry2 - rx2 * p1.y * p1.y - ry2 * p1.x * p1.x;
     const double den = rx2 * p1.y * p1.y + ry2 * p1.x * p1.x;
     double coef = den > 1e-12 ? std::sqrt(std::max(0.0, num / den)) : 0.0;
-    if (largeArc == sweep) coef = -coef;
+    if (largeArc == sweep)
+        coef = -coef;
     const V2 c1{coef * (rx * p1.y / ry), coef * (-ry * p1.x / rx)};
     const V2 mid2 = (start + end) * 0.5;
     const V2 center{cosPhi * c1.x - sinPhi * c1.y + mid2.x, sinPhi * c1.x + cosPhi * c1.y + mid2.y};
@@ -290,10 +320,13 @@ void append_arc(DPath& subpath, V2 start, double rx, double ry, double xAxisRotD
     const V2 endVec{(-p1.x - c1.x) / rx, (-p1.y - c1.y) / ry};
     double theta1 = angleOf(startVec);
     double deltaTheta = angleOf(endVec) - theta1;
-    if (!sweep && deltaTheta > 0.0) deltaTheta -= 2.0 * std::numbers::pi;
-    if (sweep && deltaTheta < 0.0) deltaTheta += 2.0 * std::numbers::pi;
+    if (!sweep && deltaTheta > 0.0)
+        deltaTheta -= 2.0 * std::numbers::pi;
+    if (sweep && deltaTheta < 0.0)
+        deltaTheta += 2.0 * std::numbers::pi;
 
-    const int segments = std::max(1, static_cast<int>(std::ceil(std::abs(deltaTheta) / (std::numbers::pi / 2.0))));
+    const int segments =
+        std::max(1, static_cast<int>(std::ceil(std::abs(deltaTheta) / (std::numbers::pi / 2.0))));
     const double segDelta = deltaTheta / segments;
     const double alpha = (4.0 / 3.0) * std::tan(segDelta / 4.0);
 
@@ -320,7 +353,7 @@ void append_arc(DPath& subpath, V2 start, double rx, double ry, double xAxisRotD
         prevPoint = p3;
         theta = thetaNext;
     }
-    (void)warnings;  // réservé si un jour un diagnostic de dégénérescence est ajouté ici
+    (void)warnings; // réservé si un jour un diagnostic de dégénérescence est ajouté ici
 }
 
 std::vector<DPath> parse_path_data(std::string_view d, std::vector<std::string>& warnings) {
@@ -337,18 +370,21 @@ std::vector<DPath> parse_path_data(std::string_view d, std::vector<std::string>&
     };
     const auto readFlag = [&]() -> std::optional<bool> {
         skip_ws_and_commas(d, i);
-        if (i >= d.size() || (d[i] != '0' && d[i] != '1')) return std::nullopt;
+        if (i >= d.size() || (d[i] != '0' && d[i] != '1'))
+            return std::nullopt;
         return d[i++] == '1';
     };
 
     while (true) {
         skip_ws_and_commas(d, i);
-        if (i >= d.size()) break;
+        if (i >= d.size())
+            break;
         if (std::isalpha(static_cast<unsigned char>(d[i])) != 0) {
             command = d[i++];
             haveCommand = true;
         } else if (!haveCommand) {
-            warnings.push_back("chemin SVG : données invalides avant la première commande, ignorées");
+            warnings.push_back(
+                "chemin SVG : données invalides avant la première commande, ignorées");
             break;
         }
         const bool relative = std::islower(static_cast<unsigned char>(command)) != 0;
@@ -358,20 +394,26 @@ std::vector<DPath> parse_path_data(std::string_view d, std::vector<std::string>&
         case 'M': {
             const auto x = readNum();
             const auto y = readNum();
-            if (!x || !y) { haveCommand = false; break; }
+            if (!x || !y) {
+                haveCommand = false;
+                break;
+            }
             end_open_subpath(result, subpath);
             cursor.current = relative ? cursor.current + V2{*x, *y} : V2{*x, *y};
             cursor.subpathStart = cursor.current;
             subpath.nodes.push_back(DNode{cursor.current, false, std::nullopt, std::nullopt});
             cursor.lastCubicControl.reset();
             cursor.lastQuadControl.reset();
-            command = relative ? 'l' : 'L';  // répétitions implicites -> L (spec §9.3.3)
+            command = relative ? 'l' : 'L'; // répétitions implicites -> L (spec §9.3.3)
             break;
         }
         case 'L': {
             const auto x = readNum();
             const auto y = readNum();
-            if (!x || !y) { haveCommand = false; break; }
+            if (!x || !y) {
+                haveCommand = false;
+                break;
+            }
             cursor.current = relative ? cursor.current + V2{*x, *y} : V2{*x, *y};
             append_line(subpath, cursor.current);
             cursor.lastCubicControl.reset();
@@ -380,7 +422,10 @@ std::vector<DPath> parse_path_data(std::string_view d, std::vector<std::string>&
         }
         case 'H': {
             const auto x = readNum();
-            if (!x) { haveCommand = false; break; }
+            if (!x) {
+                haveCommand = false;
+                break;
+            }
             cursor.current = {relative ? cursor.current.x + *x : *x, cursor.current.y};
             append_line(subpath, cursor.current);
             cursor.lastCubicControl.reset();
@@ -389,7 +434,10 @@ std::vector<DPath> parse_path_data(std::string_view d, std::vector<std::string>&
         }
         case 'V': {
             const auto y = readNum();
-            if (!y) { haveCommand = false; break; }
+            if (!y) {
+                haveCommand = false;
+                break;
+            }
             cursor.current = {cursor.current.x, relative ? cursor.current.y + *y : *y};
             append_line(subpath, cursor.current);
             cursor.lastCubicControl.reset();
@@ -397,8 +445,12 @@ std::vector<DPath> parse_path_data(std::string_view d, std::vector<std::string>&
             break;
         }
         case 'C': {
-            const auto x1 = readNum(), y1 = readNum(), x2 = readNum(), y2 = readNum(), x = readNum(), y = readNum();
-            if (!x1 || !y1 || !x2 || !y2 || !x || !y) { haveCommand = false; break; }
+            const auto x1 = readNum(), y1 = readNum(), x2 = readNum(), y2 = readNum(),
+                       x = readNum(), y = readNum();
+            if (!x1 || !y1 || !x2 || !y2 || !x || !y) {
+                haveCommand = false;
+                break;
+            }
             const V2 start = cursor.current;
             const V2 c1 = relative ? start + V2{*x1, *y1} : V2{*x1, *y1};
             const V2 c2 = relative ? start + V2{*x2, *y2} : V2{*x2, *y2};
@@ -410,7 +462,10 @@ std::vector<DPath> parse_path_data(std::string_view d, std::vector<std::string>&
         }
         case 'S': {
             const auto x2 = readNum(), y2 = readNum(), x = readNum(), y = readNum();
-            if (!x2 || !y2 || !x || !y) { haveCommand = false; break; }
+            if (!x2 || !y2 || !x || !y) {
+                haveCommand = false;
+                break;
+            }
             const V2 start = cursor.current;
             const V2 c1 = cursor.lastCubicControl ? start * 2.0 - *cursor.lastCubicControl : start;
             const V2 c2 = relative ? start + V2{*x2, *y2} : V2{*x2, *y2};
@@ -422,7 +477,10 @@ std::vector<DPath> parse_path_data(std::string_view d, std::vector<std::string>&
         }
         case 'Q': {
             const auto x1 = readNum(), y1 = readNum(), x = readNum(), y = readNum();
-            if (!x1 || !y1 || !x || !y) { haveCommand = false; break; }
+            if (!x1 || !y1 || !x || !y) {
+                haveCommand = false;
+                break;
+            }
             const V2 start = cursor.current;
             const V2 c = relative ? start + V2{*x1, *y1} : V2{*x1, *y1};
             cursor.current = relative ? start + V2{*x, *y} : V2{*x, *y};
@@ -433,7 +491,10 @@ std::vector<DPath> parse_path_data(std::string_view d, std::vector<std::string>&
         }
         case 'T': {
             const auto x = readNum(), y = readNum();
-            if (!x || !y) { haveCommand = false; break; }
+            if (!x || !y) {
+                haveCommand = false;
+                break;
+            }
             const V2 start = cursor.current;
             const V2 c = cursor.lastQuadControl ? start * 2.0 - *cursor.lastQuadControl : start;
             cursor.current = relative ? start + V2{*x, *y} : V2{*x, *y};
@@ -446,7 +507,10 @@ std::vector<DPath> parse_path_data(std::string_view d, std::vector<std::string>&
             const auto rx = readNum(), ry = readNum(), rot = readNum();
             const auto large = readFlag(), sweep = readFlag();
             const auto x = readNum(), y = readNum();
-            if (!rx || !ry || !rot || !large || !sweep || !x || !y) { haveCommand = false; break; }
+            if (!rx || !ry || !rot || !large || !sweep || !x || !y) {
+                haveCommand = false;
+                break;
+            }
             const V2 start = cursor.current;
             cursor.current = relative ? start + V2{*x, *y} : V2{*x, *y};
             append_arc(subpath, start, *rx, *ry, *rot, *large, *sweep, cursor.current, warnings);
@@ -463,7 +527,8 @@ std::vector<DPath> parse_path_data(std::string_view d, std::vector<std::string>&
             break;
         }
         default:
-            warnings.push_back(std::string("chemin SVG : commande non reconnue '") + command + "', ignorée");
+            warnings.push_back(std::string("chemin SVG : commande non reconnue '") + command +
+                               "', ignorée");
             haveCommand = false;
             break;
         }
@@ -494,10 +559,10 @@ DPath ellipse_shape(V2 center, double rx, double ry) {
     DPath path;
     path.closed = true;
     path.nodes = {
-        node({center.x + rx, center.y}, V2{0, -ky}, V2{0, ky}),   // droite
-        node({center.x, center.y + ry}, V2{kx, 0}, V2{-kx, 0}),   // "haut" (+Y local)
-        node({center.x - rx, center.y}, V2{0, ky}, V2{0, -ky}),   // gauche
-        node({center.x, center.y - ry}, V2{-kx, 0}, V2{kx, 0}),   // "bas" (-Y local)
+        node({center.x + rx, center.y}, V2{0, -ky}, V2{0, ky}), // droite
+        node({center.x, center.y + ry}, V2{kx, 0}, V2{-kx, 0}), // "haut" (+Y local)
+        node({center.x - rx, center.y}, V2{0, ky}, V2{0, -ky}), // gauche
+        node({center.x, center.y - ry}, V2{-kx, 0}, V2{kx, 0}), // "bas" (-Y local)
     };
     return path;
 }
@@ -520,12 +585,14 @@ DPath polyline_shape(std::string_view points, bool close, std::vector<std::strin
     std::size_t i = 0;
     while (true) {
         skip_ws_and_commas(points, i);
-        if (i >= points.size()) break;
+        if (i >= points.size())
+            break;
         const auto x = parse_number(points, i);
         skip_ws_and_commas(points, i);
         const auto y = parse_number(points, i);
         if (!x || !y) {
-            if (!path.nodes.empty()) warnings.push_back("points/polyline SVG : coordonnées incomplètes ignorées");
+            if (!path.nodes.empty())
+                warnings.push_back("points/polyline SVG : coordonnées incomplètes ignorées");
             break;
         }
         path.nodes.push_back(DNode{{*x, *y}, false, std::nullopt, std::nullopt});
@@ -544,8 +611,10 @@ DPath transform_path(const DPath& path, const Affine& t) {
         DNode tn;
         tn.pos = t.apply_point(n.pos);
         tn.smooth = n.smooth;
-        if (n.tan_in) tn.tan_in = t.apply_vector(*n.tan_in);
-        if (n.tan_out) tn.tan_out = t.apply_vector(*n.tan_out);
+        if (n.tan_in)
+            tn.tan_in = t.apply_vector(*n.tan_in);
+        if (n.tan_out)
+            tn.tan_out = t.apply_vector(*n.tan_out);
         out.nodes.push_back(tn);
     }
     return out;
@@ -569,10 +638,11 @@ struct ParseContext {
 
 void warn_unsupported(ParseContext& ctx, const pugi::xml_node& node) {
     const std::string_view name = node.name();
-    static const std::vector<std::string_view> kNoisy = {"defs", "title", "desc", "metadata", "sodipodi:namedview",
-                                                          "style", "namedview"};
+    static const std::vector<std::string_view> kNoisy = {
+        "defs", "title", "desc", "metadata", "sodipodi:namedview", "style", "namedview"};
     for (const auto& n : kNoisy) {
-        if (name == n) return;  // définitions/métadonnées : jamais un manque visible, pas de diagnostic
+        if (name == n)
+            return; // définitions/métadonnées : jamais un manque visible, pas de diagnostic
     }
     std::string message = "élément SVG non pris en charge ignoré : <" + std::string(name) + ">";
     if (const auto id = node.attribute("id"); id) {
@@ -585,13 +655,15 @@ void walk(const pugi::xml_node& node, const Affine& parentTransform, ParseContex
 
 void walk_children(const pugi::xml_node& node, const Affine& transform, ParseContext& ctx) {
     for (const auto& child : node.children()) {
-        if (child.type() == pugi::node_element) walk(child, transform, ctx);
+        if (child.type() == pugi::node_element)
+            walk(child, transform, ctx);
     }
 }
 
 double attr_len(const pugi::xml_node& node, const char* name, double fallback = 0.0) {
     const auto a = node.attribute(name);
-    if (!a) return fallback;
+    if (!a)
+        return fallback;
     return parse_length(a.value(), fallback).user_units;
 }
 
@@ -604,7 +676,8 @@ void walk(const pugi::xml_node& node, const Affine& parentTransform, ParseContex
     // `display="none"` : élément explicitement masqué, jamais importé (mais
     // pas non plus un diagnostic -- c'est une intention normale de l'auteur,
     // pas une fonctionnalité manquante).
-    if (const auto display = node.attribute("display"); display && std::string_view(display.value()) == "none") {
+    if (const auto display = node.attribute("display");
+        display && std::string_view(display.value()) == "none") {
         return;
     }
 
@@ -614,12 +687,15 @@ void walk(const pugi::xml_node& node, const Affine& parentTransform, ParseContex
     }
     if (tag == "path") {
         const auto d = node.attribute("d");
-        if (!d) return;
+        if (!d)
+            return;
         auto subpaths = parse_path_data(d.value(), ctx.warnings);
-        if (subpaths.empty()) return;
+        if (subpaths.empty())
+            return;
         std::vector<DPath> group;
         group.reserve(subpaths.size());
-        for (auto& sp : subpaths) group.push_back(transform_path(sp, transform));
+        for (auto& sp : subpaths)
+            group.push_back(transform_path(sp, transform));
         ctx.shapeGroups.push_back(std::move(group));
         return;
     }
@@ -628,7 +704,8 @@ void walk(const pugi::xml_node& node, const Affine& parentTransform, ParseContex
         const double y = attr_len(node, "y");
         const double w = attr_len(node, "width");
         const double h = attr_len(node, "height");
-        if (w <= 0.0 || h <= 0.0) return;
+        if (w <= 0.0 || h <= 0.0)
+            return;
         if (node.attribute("rx") || node.attribute("ry")) {
             ctx.warnings.push_back("<rect> : coins arrondis (rx/ry) aplatis en rectangle droit");
         }
@@ -639,7 +716,8 @@ void walk(const pugi::xml_node& node, const Affine& parentTransform, ParseContex
         const double cx = attr_len(node, "cx");
         const double cy = attr_len(node, "cy");
         const double r = attr_len(node, "r");
-        if (r <= 0.0) return;
+        if (r <= 0.0)
+            return;
         ctx.shapeGroups.push_back({transform_path(ellipse_shape({cx, cy}, r, r), transform)});
         return;
     }
@@ -648,37 +726,43 @@ void walk(const pugi::xml_node& node, const Affine& parentTransform, ParseContex
         const double cy = attr_len(node, "cy");
         const double rx = attr_len(node, "rx");
         const double ry = attr_len(node, "ry");
-        if (rx <= 0.0 || ry <= 0.0) return;
+        if (rx <= 0.0 || ry <= 0.0)
+            return;
         ctx.shapeGroups.push_back({transform_path(ellipse_shape({cx, cy}, rx, ry), transform)});
         return;
     }
     if (tag == "line") {
         DPath path;
         path.closed = false;
-        path.nodes = {DNode{{attr_len(node, "x1"), attr_len(node, "y1")}, false, std::nullopt, std::nullopt},
-                     DNode{{attr_len(node, "x2"), attr_len(node, "y2")}, false, std::nullopt, std::nullopt}};
+        path.nodes = {
+            DNode{{attr_len(node, "x1"), attr_len(node, "y1")}, false, std::nullopt, std::nullopt},
+            DNode{{attr_len(node, "x2"), attr_len(node, "y2")}, false, std::nullopt, std::nullopt}};
         ctx.shapeGroups.push_back({transform_path(path, transform)});
         return;
     }
     if (tag == "polyline" || tag == "polygon") {
         const auto points = node.attribute("points");
-        if (!points) return;
+        if (!points)
+            return;
         auto path = polyline_shape(points.value(), /*close=*/tag == "polygon", ctx.warnings);
-        if (path.nodes.size() < 2) return;
+        if (path.nodes.size() < 2)
+            return;
         ctx.shapeGroups.push_back({transform_path(path, transform)});
         return;
     }
     warn_unsupported(ctx, node);
 }
 
-geometry::Path to_geometry_path(const DPath& path, double scaleUserUnitsToMm, V2 centerOffsetUserUnits) {
+geometry::Path to_geometry_path(const DPath& path, double scaleUserUnitsToMm,
+                                V2 centerOffsetUserUnits) {
     geometry::Path out;
     out.closed = path.closed;
     out.nodes.reserve(path.nodes.size());
     const auto convert = [&](V2 p) {
         const double xMm = (p.x - centerOffsetUserUnits.x) * scaleUserUnitsToMm;
         const double yMm = (p.y - centerOffsetUserUnits.y) * scaleUserUnitsToMm;
-        return Vec2um{to_micrometers(Millimeters{xMm}), to_micrometers(Millimeters{-yMm})};  // Y : SVG bas -> modèle haut
+        return Vec2um{to_micrometers(Millimeters{xMm}),
+                      to_micrometers(Millimeters{-yMm})}; // Y : SVG bas -> modèle haut
     };
     const auto convertVec = [&](V2 v) {
         const double xMm = v.x * scaleUserUnitsToMm;
@@ -689,8 +773,10 @@ geometry::Path to_geometry_path(const DPath& path, double scaleUserUnitsToMm, V2
         geometry::PathNode gn;
         gn.pos = convert(n.pos);
         gn.type = n.smooth ? geometry::NodeType::Smooth : geometry::NodeType::Corner;
-        if (n.tan_in) gn.tan_in = convertVec(*n.tan_in);
-        if (n.tan_out) gn.tan_out = convertVec(*n.tan_out);
+        if (n.tan_in)
+            gn.tan_in = convertVec(*n.tan_in);
+        if (n.tan_out)
+            gn.tan_out = convertVec(*n.tan_out);
         out.nodes.push_back(gn);
     }
     return out;
@@ -706,10 +792,13 @@ bool point_in_polygon(const std::vector<Vec2um>& poly, Vec2um p) {
     bool inside = false;
     const std::size_t n = poly.size();
     for (std::size_t i = 0, j = n - 1; i < n; j = i++) {
-        const double xi = static_cast<double>(poly[i].x.value), yi = static_cast<double>(poly[i].y.value);
-        const double xj = static_cast<double>(poly[j].x.value), yj = static_cast<double>(poly[j].y.value);
+        const double xi = static_cast<double>(poly[i].x.value),
+                     yi = static_cast<double>(poly[i].y.value);
+        const double xj = static_cast<double>(poly[j].x.value),
+                     yj = static_cast<double>(poly[j].y.value);
         const double px = static_cast<double>(p.x.value), py = static_cast<double>(p.y.value);
-        if (((yi > py) != (yj > py)) && (px < (xj - xi) * (py - yi) / (yj - yi) + xi)) inside = !inside;
+        if (((yi > py) != (yj > py)) && (px < (xj - xi) * (py - yi) / (yj - yi) + xi))
+            inside = !inside;
     }
     return inside;
 }
@@ -723,9 +812,10 @@ bool point_in_polygon(const std::vector<Vec2um>& poly, Vec2um p) {
 // `closedPaths`, jamais un ordre dépendant d'un hash.
 std::vector<geometry::PathSet> group_by_nesting(const std::vector<geometry::Path>& closedPaths) {
     const std::size_t n = closedPaths.size();
-    constexpr Micrometers kFlattenTolerance{20};  // 0,02 mm : bien sous toute résolution utile
+    constexpr Micrometers kFlattenTolerance{20}; // 0,02 mm : bien sous toute résolution utile
     std::vector<geometry::Polyline> flat(n);
-    for (std::size_t i = 0; i < n; ++i) flat[i] = geometry::flatten(closedPaths[i], kFlattenTolerance);
+    for (std::size_t i = 0; i < n; ++i)
+        flat[i] = geometry::flatten(closedPaths[i], kFlattenTolerance);
 
     // Profondeur d'imbrication de chaque sous-tracé (nombre d'AUTRES
     // sous-tracés du même groupe qui le contiennent). L'ancêtre immédiat
@@ -734,20 +824,27 @@ std::vector<geometry::PathSet> group_by_nesting(const std::vector<geometry::Path
     std::vector<int> depth(n, 0);
     std::vector<std::optional<std::size_t>> parent(n);
     for (std::size_t j = 0; j < n; ++j) {
-        if (flat[j].points.empty()) continue;
+        if (flat[j].points.empty())
+            continue;
         const Vec2um sample = flat[j].points.front();
         for (std::size_t i = 0; i < n; ++i) {
-            if (i == j || flat[i].points.empty()) continue;
-            if (point_in_polygon(flat[i].points, sample)) ++depth[j];
+            if (i == j || flat[i].points.empty())
+                continue;
+            if (point_in_polygon(flat[i].points, sample))
+                ++depth[j];
         }
     }
     for (std::size_t j = 0; j < n; ++j) {
-        if (depth[j] % 2 == 0) continue;  // extérieur : pas de parent à trouver
+        if (depth[j] % 2 == 0)
+            continue; // extérieur : pas de parent à trouver
         std::optional<std::size_t> best;
         for (std::size_t i = 0; i < n; ++i) {
-            if (i == j || flat[i].points.empty() || flat[j].points.empty()) continue;
-            if (!point_in_polygon(flat[i].points, flat[j].points.front())) continue;
-            if (!best || depth[i] > depth[*best]) best = i;
+            if (i == j || flat[i].points.empty() || flat[j].points.empty())
+                continue;
+            if (!point_in_polygon(flat[i].points, flat[j].points.front()))
+                continue;
+            if (!best || depth[i] > depth[*best])
+                best = i;
         }
         parent[j] = best;
     }
@@ -755,27 +852,31 @@ std::vector<geometry::PathSet> group_by_nesting(const std::vector<geometry::Path
     std::vector<geometry::PathSet> result;
     std::vector<std::optional<std::size_t>> outerToResultIndex(n);
     for (std::size_t j = 0; j < n; ++j) {
-        if (depth[j] % 2 != 0) continue;
+        if (depth[j] % 2 != 0)
+            continue;
         outerToResultIndex[j] = result.size();
         result.push_back(geometry::PathSet{closedPaths[j], {}});
     }
     for (std::size_t j = 0; j < n; ++j) {
-        if (depth[j] % 2 == 0 || !parent[j]) continue;
+        if (depth[j] % 2 == 0 || !parent[j])
+            continue;
         const auto resultIdx = outerToResultIndex[*parent[j]];
-        if (!resultIdx) continue;  // parent introuvable (dégénéré) : trou orphelin ignoré, jamais un crash
+        if (!resultIdx)
+            continue; // parent introuvable (dégénéré) : trou orphelin ignoré, jamais un crash
         result[*resultIdx].holes.push_back(closedPaths[j]);
     }
     return result;
 }
 
-}  // namespace
+} // namespace
 
 Result<SvgImportResult> decode_svg(std::span<const std::uint8_t> bytes) {
     pugi::xml_document doc;
     const auto parseResult =
         doc.load_buffer(bytes.data(), bytes.size(), pugi::parse_default, pugi::encoding_utf8);
     if (!parseResult) {
-        return fail(ErrorCategory::InvalidFile, "SVG invalide (XML mal formé)", parseResult.description());
+        return fail(ErrorCategory::InvalidFile, "SVG invalide (XML mal formé)",
+                    parseResult.description());
     }
     const pugi::xml_node root = doc.child("svg");
     if (!root) {
@@ -793,7 +894,10 @@ Result<SvgImportResult> decode_svg(std::span<const std::uint8_t> bytes) {
     if (viewBoxAttr) {
         const std::string_view vb = viewBoxAttr.value();
         std::size_t i = 0;
-        const auto a = [&] { skip_ws_and_commas(vb, i); return parse_number(vb, i); };
+        const auto a = [&] {
+            skip_ws_and_commas(vb, i);
+            return parse_number(vb, i);
+        };
         const auto x0 = a(), y0 = a(), w0 = a(), h0 = a();
         if (x0 && y0 && w0 && h0 && *w0 > 0.0 && *h0 > 0.0) {
             vbMinX = *x0;
@@ -809,12 +913,16 @@ Result<SvgImportResult> decode_svg(std::span<const std::uint8_t> bytes) {
     const bool haveWidth = widthAttr && !widthLen.had_percent && widthLen.user_units > 0.0;
     const bool haveHeight = heightAttr && !heightLen.had_percent && heightLen.user_units > 0.0;
 
-    double userUnitsWidth, userUnitsHeight;   // étendue du contenu, en unités utilisateur (== espace des coordonnées de `d`)
-    double physicalWidthUserUnits;            // largeur physique CIBLE, dans la MÊME base (userUnits == px @96dpi)
+    double userUnitsWidth, userUnitsHeight; // étendue du contenu, en unités utilisateur (== espace
+                                            // des coordonnées de `d`)
+    double physicalWidthUserUnits; // largeur physique CIBLE, dans la MÊME base (userUnits == px
+                                   // @96dpi)
     if (haveViewBox) {
         userUnitsWidth = vbWidth;
         userUnitsHeight = vbHeight;
-        physicalWidthUserUnits = haveWidth ? widthLen.user_units : (haveHeight ? heightLen.user_units * (vbWidth / vbHeight) : vbWidth);
+        physicalWidthUserUnits =
+            haveWidth ? widthLen.user_units
+                      : (haveHeight ? heightLen.user_units * (vbWidth / vbHeight) : vbWidth);
     } else if (haveWidth && haveHeight) {
         // Pas de viewBox : les coordonnées du fichier sont directement dans
         // l'unité déclarée par width/height (cas courant des SVG générés
@@ -826,7 +934,7 @@ Result<SvgImportResult> decode_svg(std::span<const std::uint8_t> bytes) {
         // Ni viewBox ni taille exploitable : repli sur la boîte englobante
         // du contenu, calculée après le parcours (cf. plus bas). 96 px/pouce
         // par défaut (valeur normative), 1 unité utilisateur == 1 px.
-        userUnitsWidth = 0.0;   // recalculé après coup
+        userUnitsWidth = 0.0; // recalculé après coup
         userUnitsHeight = 0.0;
         physicalWidthUserUnits = 0.0;
     }
@@ -841,7 +949,8 @@ Result<SvgImportResult> decode_svg(std::span<const std::uint8_t> bytes) {
 
     if (userUnitsWidth <= 0.0 || userUnitsHeight <= 0.0) {
         double minX = std::numeric_limits<double>::max(), minY = std::numeric_limits<double>::max();
-        double maxX = std::numeric_limits<double>::lowest(), maxY = std::numeric_limits<double>::lowest();
+        double maxX = std::numeric_limits<double>::lowest(),
+               maxY = std::numeric_limits<double>::lowest();
         for (const auto& group : ctx.shapeGroups) {
             for (const auto& p : group) {
                 for (const auto& n : p.nodes) {
@@ -860,13 +969,14 @@ Result<SvgImportResult> decode_svg(std::span<const std::uint8_t> bytes) {
         userUnitsWidth = maxX - minX;
         userUnitsHeight = maxY - minY;
         physicalWidthUserUnits = userUnitsWidth;
-        haveViewBox = true;  // réutilise le même chemin de centrage ci-dessous
+        haveViewBox = true; // réutilise le même chemin de centrage ci-dessous
     }
 
     // mm par unité utilisateur : physicalWidthUserUnits est déjà en "unités
     // utilisateur == px @96dpi" (cf. parse_length) -- convertit vers mm.
     constexpr double kMmPerUserUnit96dpi = 25.4 / 96.0;
-    const double scaleUserUnitsToMm = (physicalWidthUserUnits / userUnitsWidth) * kMmPerUserUnit96dpi;
+    const double scaleUserUnitsToMm =
+        (physicalWidthUserUnits / userUnitsWidth) * kMmPerUserUnit96dpi;
 
     const V2 center{vbMinX + userUnitsWidth * 0.5, vbMinY + userUnitsHeight * 0.5};
 
@@ -882,7 +992,8 @@ Result<SvgImportResult> decode_svg(std::span<const std::uint8_t> bytes) {
     for (const auto& group : ctx.shapeGroups) {
         std::vector<geometry::Path> closed;
         for (const auto& p : group) {
-            if (p.nodes.size() < 2) continue;
+            if (p.nodes.size() < 2)
+                continue;
             geometry::Path converted = to_geometry_path(p, scaleUserUnitsToMm, center);
             if (converted.closed) {
                 closed.push_back(std::move(converted));
@@ -892,7 +1003,8 @@ Result<SvgImportResult> decode_svg(std::span<const std::uint8_t> bytes) {
         }
         if (!closed.empty()) {
             auto nested = group_by_nesting(closed);
-            for (auto& ps : nested) objects.push_back(std::move(ps));
+            for (auto& ps : nested)
+                objects.push_back(std::move(ps));
         }
     }
     if (objects.empty()) {
@@ -908,10 +1020,12 @@ Result<SvgImportResult> decode_svg(std::span<const std::uint8_t> bytes) {
 Result<SvgImportResult> read_svg_file(const std::filesystem::path& path) {
     std::ifstream file(path, std::ios::binary);
     if (!file) {
-        return fail(ErrorCategory::UserInput, "Fichier introuvable ou illisible : " + path.string());
+        return fail(ErrorCategory::UserInput,
+                    "Fichier introuvable ou illisible : " + path.string());
     }
-    std::vector<std::uint8_t> bytes((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
+    std::vector<std::uint8_t> bytes((std::istreambuf_iterator<char>(file)),
+                                    std::istreambuf_iterator<char>());
     return decode_svg(bytes);
 }
 
-}  // namespace openstitch::formats
+} // namespace openstitch::formats

@@ -116,7 +116,8 @@ const std::vector<std::string>& torture_corpus() {
 // correctif de portee de coupe (repli sur le bord exterieur reel), cf. son
 // test dedie.
 const std::vector<std::string>& shapes_hitting_known_performance_limit() {
-    static const std::vector<std::string> kNames = {"star5", "asymmetric_star", "E", "multi_neck", "deep_channel"};
+    static const std::vector<std::string> kNames = {"star5", "asymmetric_star", "E", "multi_neck",
+                                                    "deep_channel"};
     return kNames;
 }
 
@@ -316,7 +317,8 @@ TEST_CASE("create_satin_plan : asymmetric_star -- termine proprement (meme limit
     CHECK(plan.status != SatinPlanStatus::Complete);
 }
 
-TEST_CASE("create_satin_plan : comb -- resolue completement (ancienne limitation connue, corrigee)") {
+TEST_CASE(
+    "create_satin_plan : comb -- resolue completement (ancienne limitation connue, corrigee)") {
     // §33/§37 de la mission : "comb" (6 jonctions en serie) etait une
     // limitation reelle documentee (coupe non bornee tranchant les dents
     // VOISINES, cf. le correctif de portee de coupe -- docs/source/satin.md,
@@ -434,7 +436,8 @@ TEST_CASE(
     CHECK(plan.aggregate_coverage->covered_area_mm2 <= sourceNetAreaMm2 + 0.5);
 }
 
-TEST_CASE("create_satin_plan : junction_with_hole -- limitation connue (validation de coupe), jamais de trou traverse") {
+TEST_CASE("create_satin_plan : junction_with_hole -- limitation connue (validation de coupe), "
+          "jamais de trou traverse") {
     // Limitation reelle trouvee le 2026-08-21 en corrigeant `skeleton_graph.
     // cpp` (cf. commentaire detaille sur `shapes_hitting_known_limitation`) :
     // aucune coupe candidate n'isole en verite un morceau sans jonction

@@ -362,7 +362,7 @@ TEST_CASE("RemoveVectorObjectCommand : supprime l'objet ET les broderies qui en 
 }
 
 TEST_CASE("RemoveVectorObjectCommand : plusieurs broderies dependantes CONSECUTIVES, "
-         "undo restaure leur ordre exact (reseau satin multi-sections)") {
+          "undo restaure leur ordre exact (reseau satin multi-sections)") {
     // Defaut reel trouve le 2026-09-04 (meme pattern que ConvertFillGroupCommand,
     // ci-dessous) : un reseau satin auto-genere en plusieurs sections
     // (createSatinObject/autoConvertToSatin/autodigitize) laisse plusieurs
@@ -732,7 +732,8 @@ TEST_CASE("SetStitchTypeCommand : marque ForcedUserChoice, undo restaure l'inten
     CHECK(project.findEmbroidery(id)->intent == document::EmbroideryIntent::ForcedUserChoice);
 }
 
-TEST_CASE("ConvertFillGroupCommand : sans sections soeurs, se comporte comme SetStitchTypeCommand") {
+TEST_CASE(
+    "ConvertFillGroupCommand : sans sections soeurs, se comporte comme SetStitchTypeCommand") {
     document::Project project;
     UndoStack stack;
 
@@ -745,8 +746,8 @@ TEST_CASE("ConvertFillGroupCommand : sans sections soeurs, se comporte comme Set
     stack.execute(std::make_unique<AddEmbroideryObjectCommand>(e), project);
     const ObjectId id = project.embroidery_objects[0].id;
 
-    stack.execute(
-        std::make_unique<ConvertFillGroupCommand>(id, document::TatamiParams{}, "tatami"), project);
+    stack.execute(std::make_unique<ConvertFillGroupCommand>(id, document::TatamiParams{}, "tatami"),
+                  project);
     CHECK(project.embroidery_objects.size() == 1);
     CHECK(project.findEmbroidery(id)->is_tatami());
 
@@ -761,7 +762,7 @@ TEST_CASE("ConvertFillGroupCommand : sans sections soeurs, se comporte comme Set
 }
 
 TEST_CASE("ConvertFillGroupCommand : reseau satin multi-sections -- retire les sections soeurs, "
-         "jamais de residu (defaut reel signale par l'utilisateur, 2026-09-04)") {
+          "jamais de residu (defaut reel signale par l'utilisateur, 2026-09-04)") {
     // Un reseau satin auto-genere en plusieurs sections (createSatinObject/
     // autoConvertToSatin/autodigitize, cf. docs/source/satin.md) partage un
     // SEUL source_vector entre plusieurs EmbroideryObject. Convertir l'un
@@ -802,17 +803,17 @@ TEST_CASE("ConvertFillGroupCommand : reseau satin multi-sections -- retire les s
 
     stack.execute(std::make_unique<ConvertFillGroupCommand>(section0.id, document::TatamiParams{},
                                                             "Type : tatami"),
-                 project);
+                  project);
 
     // Plus qu'une section du groupe partage : l'ancre (tatami) + l'objet
     // sans rapport (inchange).
     REQUIRE(project.embroidery_objects.size() == 2);
     REQUIRE(project.findEmbroidery(section0.id) != nullptr);
     CHECK(project.findEmbroidery(section0.id)->is_tatami());
-    CHECK(project.findEmbroidery(section1.id) == nullptr);  // retiree, plus de residu satin
+    CHECK(project.findEmbroidery(section1.id) == nullptr); // retiree, plus de residu satin
     CHECK(project.findEmbroidery(section2.id) == nullptr);
     REQUIRE(project.findEmbroidery(unrelated.id) != nullptr);
-    CHECK(project.findEmbroidery(unrelated.id)->is_satin());  // jamais touche
+    CHECK(project.findEmbroidery(unrelated.id)->is_satin()); // jamais touche
 
     // Annulation : reconstitue le groupe EXACT (3 sections satin + l'objet
     // sans rapport), dans le meme ordre.
@@ -1725,13 +1726,15 @@ TEST_CASE("TranslateVectorObjectCommand : les guides directionnels suivent la fo
     stack.execute(std::make_unique<TranslateVectorObjectCommand>(
                       vecId, Vec2um{Micrometers{700}, Micrometers{-300}}),
                   project);
-    const auto& moved = std::get<document::DirectionalFillParams>(project.embroidery_objects[0].params);
+    const auto& moved =
+        std::get<document::DirectionalFillParams>(project.embroidery_objects[0].params);
     CHECK(moved.guides[0].nodes[0].pos == Vec2um{Micrometers{1'700}, Micrometers{1'700}});
     CHECK(moved.guides[0].nodes[0].tan_out == Vec2um{Micrometers{400}, Micrometers{0}});
     CHECK(moved.break_lines[0].nodes[1].pos == Vec2um{Micrometers{5'700}, Micrometers{9'700}});
 
     CHECK(stack.undo(project));
-    CHECK(std::get<document::DirectionalFillParams>(project.embroidery_objects[0].params) == before);
+    CHECK(std::get<document::DirectionalFillParams>(project.embroidery_objects[0].params) ==
+          before);
 }
 
 TEST_CASE("ScaleVectorObjectCommand : les guides directionnels sont mis a l'echelle, undo exact") {
@@ -1751,9 +1754,11 @@ TEST_CASE("ScaleVectorObjectCommand : les guides directionnels sont mis a l'eche
     CHECK(scaled.break_lines[0].nodes[1].pos == Vec2um{Micrometers{7'500}, Micrometers{5'000}});
 
     CHECK(stack.undo(project));
-    CHECK(std::get<document::DirectionalFillParams>(project.embroidery_objects[0].params) == before);
+    CHECK(std::get<document::DirectionalFillParams>(project.embroidery_objects[0].params) ==
+          before);
     CHECK(stack.redo(project));
-    CHECK(std::get<document::DirectionalFillParams>(project.embroidery_objects[0].params) == scaled);
+    CHECK(std::get<document::DirectionalFillParams>(project.embroidery_objects[0].params) ==
+          scaled);
 }
 
 TEST_CASE("SetStitchTypeCommand : conversion tatami -> directionnel annulable") {

@@ -232,8 +232,7 @@ TEST_CASE("fixture tentabrode exacte : auto-numerisation et sequence determinist
     const auto background = segmentation::background_candidate(*segmented);
     options.skip_largest_region = background && background->recommended;
 
-    auto firstDigitized =
-        autodigitize::auto_digitize(*segmented, firstProject.object_ids, options);
+    auto firstDigitized = autodigitize::auto_digitize(*segmented, firstProject.object_ids, options);
     auto secondDigitized =
         autodigitize::auto_digitize(*segmented, secondProject.object_ids, options);
     REQUIRE(firstDigitized.has_value());
@@ -260,10 +259,9 @@ TEST_CASE("fixture tentabrode exacte : auto-numerisation et sequence determinist
 
     bool hasHole = false;
     for (const auto& object : firstProject.vector_objects) {
-        hasHole = hasHole || std::any_of(object.paths.begin(), object.paths.end(),
-                                         [](const geometry::PathSet& path) {
-                                             return !path.holes.empty();
-                                         });
+        hasHole = hasHole ||
+                  std::any_of(object.paths.begin(), object.paths.end(),
+                              [](const geometry::PathSet& path) { return !path.holes.empty(); });
     }
     CHECK(hasHole);
 }

@@ -43,8 +43,8 @@ namespace openstitch::geometry {
 // entierement la branche visee (comportement identique a une ligne
 // degeneree -- 1 seul morceau renvoye), trop long retrouve le probleme que
 // cette variante existe pour eviter.
-[[nodiscard]] Result<std::vector<PathSet>> cut_path_set_bounded(const PathSet& region, Vec2um a, Vec2um b,
-                                                                 double reach_um,
-                                                                 Micrometers cut_width = Micrometers{20});
+[[nodiscard]] Result<std::vector<PathSet>>
+cut_path_set_bounded(const PathSet& region, Vec2um a, Vec2um b, double reach_um,
+                     Micrometers cut_width = Micrometers{20});
 
-}  // namespace openstitch::geometry
+} // namespace openstitch::geometry

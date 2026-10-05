@@ -302,15 +302,18 @@ RecursionOutcome decompose_and_recurse(const geometry::PathSet& region,
     // arithmetique.
     DecompositionReport decomposition;
     if (config.use_topology_multi_candidate && graph.junction_count() == 1) {
-        const auto junctionNodeIt = std::find_if(graph.nodes.begin(), graph.nodes.end(),
-                                                  [](const auto_satin::SkeletonNode& n) {
-                                                      return n.type == auto_satin::SkeletonNodeType::Junction;
-                                                  });
+        const auto junctionNodeIt = std::find_if(
+            graph.nodes.begin(), graph.nodes.end(), [](const auto_satin::SkeletonNode& n) {
+                return n.type == auto_satin::SkeletonNodeType::Junction;
+            });
         const JunctionPairingReport natural =
-            junctionNodeIt != graph.nodes.end() ? pair_branches_at_junction(graph, junctionNodeIt->id)
-                                                 : JunctionPairingReport{};
+            junctionNodeIt != graph.nodes.end()
+                ? pair_branches_at_junction(graph, junctionNodeIt->id)
+                : JunctionPairingReport{};
         const std::size_t junctionDegree =
-            junctionNodeIt != graph.nodes.end() ? natural.selected_pair.size() + natural.detached.size() : 0;
+            junctionNodeIt != graph.nodes.end()
+                ? natural.selected_pair.size() + natural.detached.size()
+                : 0;
         const bool degreeThree = junctionDegree == 3;
         // Gate par CLASSIFICATION (JunctionType::Y), pas par un simple ecart
         // numerique de cout -- defaut reel trouve en integrant ce chemin
@@ -356,7 +359,8 @@ RecursionOutcome decompose_and_recurse(const geometry::PathSet& region,
         // que de brancher une comparaison qui ne peut aujourd'hui QUE perdre
         // (cout budgetaire pur, aucun benefice possible).
         if (degreeThreeSymmetric) {
-            const DecompositionCandidateSet candidates = enumerate_decomposition_candidates(graph, junctionNodeIt->id);
+            const DecompositionCandidateSet candidates =
+                enumerate_decomposition_candidates(graph, junctionNodeIt->id);
             DecompositionCostParams costParams;
             costParams.weights = config.topologyCostWeights;
             // Sans selecteur (premier candidat valide) : la comparaison
@@ -372,7 +376,8 @@ RecursionOutcome decompose_and_recurse(const geometry::PathSet& region,
             std::size_t bestIdx = 0;
             double bestTotal = std::numeric_limits<double>::max();
             for (std::size_t i = 0; i < candidates.candidates.size(); ++i) {
-                const DecompositionCost cost = evaluate_decomposition_cost(region, graph, candidates.candidates[i], costParams);
+                const DecompositionCost cost = evaluate_decomposition_cost(
+                    region, graph, candidates.candidates[i], costParams);
                 ++budget.oracle_evaluations;
                 if (cost.total < bestTotal) {
                     bestTotal = cost.total;
@@ -651,14 +656,19 @@ RecursionOutcome plan_recursive(const geometry::PathSet& region, const SatinPlan
 // "jamais de degradation silencieuse" pour les deux.
 bool try_extend_region(SatinPlanRegion& target, const geometry::PathSet& extendedGeom,
                        const SatinPlanConfig& config) {
-    if (!target.coverage) return false;  // rien de fiable a comparer, ne rien risquer
+    if (!target.coverage)
+        return false; // rien de fiable a comparer, ne rien risquer
 
     auto rebuilt = auto_satin::build_satin_columns(extendedGeom, config.genParams);
     const auto inputs = to_coverage_inputs(rebuilt, config.density);
-    if (inputs.empty()) return false;  // reconstruction refusee : repli silencieux sur l'original
-    const auto newCoverage = satin_coverage::analyze_satin_coverage(target.region, inputs, config.coverageConfig);
-    if (!newCoverage) return false;
-    if (newCoverage->raw_coverage_ratio + 1e-9 < target.coverage->raw_coverage_ratio) return false;
+    if (inputs.empty())
+        return false; // reconstruction refusee : repli silencieux sur l'original
+    const auto newCoverage =
+        satin_coverage::analyze_satin_coverage(target.region, inputs, config.coverageConfig);
+    if (!newCoverage)
+        return false;
+    if (newCoverage->raw_coverage_ratio + 1e-9 < target.coverage->raw_coverage_ratio)
+        return false;
 
     target.columns = std::move(rebuilt);
     target.coverage = *newCoverage;
@@ -979,9 +989,8 @@ SatinPlan create_satin_plan(const geometry::PathSet& source, const SatinPlanConf
         reason << "Budget d'exploration atteint (regions_explored=" << budget.regions_explored
                << "/" << config.max_planning_iterations
                << ", regions_accepted=" << budget.regions_accepted << "/"
-               << config.max_total_regions << ", oracle_evaluations="
-               << budget.oracle_evaluations << "/" << config.max_oracle_evaluations
-               << ") avant la fin de la planification.";
+               << config.max_total_regions << ", oracle_evaluations=" << budget.oracle_evaluations
+               << "/" << config.max_oracle_evaluations << ") avant la fin de la planification.";
         plan.diagnostics.push_back({"SearchBudgetExceeded", reason.str()});
     }
 

@@ -221,8 +221,9 @@ JunctionPairingReport pair_branches_at_junction(const SkeletonGraph& graph,
     return report;
 }
 
-DecompositionReport decompose_into_paths(const SkeletonGraph& graph, const ContinuationCostParams& params,
-                                          const std::vector<JunctionOverride>& overrides) {
+DecompositionReport decompose_into_paths(const SkeletonGraph& graph,
+                                         const ContinuationCostParams& params,
+                                         const std::vector<JunctionOverride>& overrides) {
     DecompositionReport report;
     for (const auto& node : graph.nodes) {
         if (node.type == SkeletonNodeType::Junction) {
@@ -233,20 +234,24 @@ DecompositionReport decompose_into_paths(const SkeletonGraph& graph, const Conti
     // chaque paire) reste peuple pour le diagnostic, seule `selected_pair`/
     // `detached` est remplacee -- cf. doc de JunctionOverride.
     for (const auto& ov : overrides) {
-        const auto it = std::find_if(report.junctions.begin(), report.junctions.end(),
-                                      [&](const JunctionPairingReport& jr) { return jr.node == ov.node; });
-        if (it == report.junctions.end()) continue;  // noeud absent ou pas une Junction : ignore silencieusement
+        const auto it =
+            std::find_if(report.junctions.begin(), report.junctions.end(),
+                         [&](const JunctionPairingReport& jr) { return jr.node == ov.node; });
+        if (it == report.junctions.end())
+            continue; // noeud absent ou pas une Junction : ignore silencieusement
         it->selected_pair = ov.forced_pair;
         it->secondary_pair = ov.forced_secondary_pair;
         it->detached.clear();
         const auto isRetained = [&](std::uint32_t id) {
-            const bool inPrimary = it->selected_pair.size() == 2 && (id == it->selected_pair[0] || id == it->selected_pair[1]);
-            const bool inSecondary =
-                it->secondary_pair.size() == 2 && (id == it->secondary_pair[0] || id == it->secondary_pair[1]);
+            const bool inPrimary = it->selected_pair.size() == 2 &&
+                                   (id == it->selected_pair[0] || id == it->selected_pair[1]);
+            const bool inSecondary = it->secondary_pair.size() == 2 &&
+                                     (id == it->secondary_pair[0] || id == it->secondary_pair[1]);
             return inPrimary || inSecondary;
         };
         for (auto id : incident_edges(graph, ov.node)) {
-            if (isRetained(id)) continue;
+            if (isRetained(id))
+                continue;
             it->detached.push_back(id);
         }
     }
@@ -290,9 +295,11 @@ DecompositionReport decompose_into_paths(const SkeletonGraph& graph, const Conti
     // ferait une vraie jonction a degre 2 -- fidele au NOM du type
     // `Continuation`, jamais un point de coupe.
     for (const auto& node : graph.nodes) {
-        if (node.type != SkeletonNodeType::Continuation) continue;
+        if (node.type != SkeletonNodeType::Continuation)
+            continue;
         const std::vector<std::uint32_t> incident = incident_edges(graph, node.id);
-        if (incident.size() != 2) continue;  // degenere (ex. boucle) : jamais suppose, ignore silencieusement
+        if (incident.size() != 2)
+            continue; // degenere (ex. boucle) : jamais suppose, ignore silencieusement
         continuation[{node.id, incident[0]}] = incident[1];
         continuation[{node.id, incident[1]}] = incident[0];
     }
@@ -391,8 +398,8 @@ std::string format_decomposition_report(const SkeletonGraph& graph,
             out << "    retenu : aucun\n";
         }
         if (jr.secondary_pair.size() == 2) {
-            out << "    second trunk (croix) : arc " << jr.secondary_pair[0] << " <-> arc " << jr.secondary_pair[1]
-                << "\n";
+            out << "    second trunk (croix) : arc " << jr.secondary_pair[0] << " <-> arc "
+                << jr.secondary_pair[1] << "\n";
         }
         out << "    detaches :";
         for (auto id : jr.detached)

@@ -1854,7 +1854,8 @@ void MainWindowTest::setStitchTypeSatinCaseProducesRealRailsAndIsUndoable() {
     QVERIFY(!restored->is_satin());
 }
 
-void MainWindowTest::setStitchTypeOnMultiSectionSatinNetworkRemovesSiblingsInsteadOfLeavingResidue() {
+void MainWindowTest::
+    setStitchTypeOnMultiSectionSatinNetworkRemovesSiblingsInsteadOfLeavingResidue() {
     MainWindow window;
     const Fixture fx = buildTShapeFixture();
     window.applyLoadedProject(fx.project);
@@ -1873,13 +1874,14 @@ void MainWindowTest::setStitchTypeOnMultiSectionSatinNetworkRemovesSiblingsInste
         }
     }
     QVERIFY2(sectionIds.size() >= 2,
-             qPrintable(QStringLiteral("attendu >= 2 sections satin, obtenu %1").arg(sectionIds.size())));
+             qPrintable(
+                 QStringLiteral("attendu >= 2 sections satin, obtenu %1").arg(sectionIds.size())));
     const std::size_t totalEmbroideryBefore = window.project_.embroidery_objects.size();
 
     // `setStitchType` résout l'objet cible via `embroideryForVector` (le
     // premier trouvé) exactement comme le VRAI menu contextuel "Type de
     // points" -- même chemin que l'utilisateur emprunte.
-    window.setStitchType(sectionIds.front(), /*type=*/1);  // 1 = tatami
+    window.setStitchType(sectionIds.front(), /*type=*/1); // 1 = tatami
 
     // Plus AUCUNE section satin ne doit rester pour ce vecteur -- c'est
     // exactement le résidu signalé par l'utilisateur.
@@ -1919,10 +1921,9 @@ void MainWindowTest::openSvgCreatesVectorObjectsDirectlySkippingImage() {
     const QString svgPath = dir.filePath("test.svg");
     QFile file(svgPath);
     QVERIFY(file.open(QIODevice::WriteOnly | QIODevice::Text));
-    file.write(QByteArrayLiteral(
-        "<svg viewBox=\"0 0 100 100\" width=\"10mm\" height=\"10mm\">"
-        "<rect x=\"0\" y=\"0\" width=\"100\" height=\"100\"/>"
-        "</svg>"));
+    file.write(QByteArrayLiteral("<svg viewBox=\"0 0 100 100\" width=\"10mm\" height=\"10mm\">"
+                                 "<rect x=\"0\" y=\"0\" width=\"100\" height=\"100\"/>"
+                                 "</svg>"));
     file.close();
 
     MainWindow window;
@@ -1934,7 +1935,8 @@ void MainWindowTest::openSvgCreatesVectorObjectsDirectlySkippingImage() {
     QCOMPARE(window.project_.vector_objects.size(), std::size_t{1});
     QCOMPARE(window.project_.embroidery_objects.size(), std::size_t{0});
     QCOMPARE(window.project_.vector_objects.front().paths.size(), std::size_t{1});
-    QCOMPARE(window.project_.vector_objects.front().paths.front().outer.nodes.size(), std::size_t{4});
+    QCOMPARE(window.project_.vector_objects.front().paths.front().outer.nodes.size(),
+             std::size_t{4});
 }
 
 namespace {
@@ -2032,10 +2034,9 @@ void MainWindowTest::autoDigitizeAfterOpenSvgClassifiesVectorObjectsDirectly() {
     // etre classee satin (largeur moyenne < satin_max_width par defaut,
     // 6 mm) -- meme forme que le test equivalent de la voie segmentation
     // (tests/unit/autodigitize/test_autodigitize.cpp).
-    file.write(QByteArrayLiteral(
-        "<svg viewBox=\"0 0 500 30\" width=\"50mm\" height=\"3mm\">"
-        "<rect x=\"0\" y=\"0\" width=\"500\" height=\"30\"/>"
-        "</svg>"));
+    file.write(QByteArrayLiteral("<svg viewBox=\"0 0 500 30\" width=\"50mm\" height=\"3mm\">"
+                                 "<rect x=\"0\" y=\"0\" width=\"500\" height=\"30\"/>"
+                                 "</svg>"));
     file.close();
 
     MainWindow window;
@@ -2050,7 +2051,7 @@ void MainWindowTest::autoDigitizeAfterOpenSvgClassifiesVectorObjectsDirectly() {
     // sens que pour une segmentation pixel) -- appel direct sans dismiss.
     window.autoDigitize();
 
-    QVERIFY(!window.project_.hasImage());  // toujours aucune image traversee
+    QVERIFY(!window.project_.hasImage()); // toujours aucune image traversee
     QVERIFY(!window.project_.embroidery_objects.empty());
     // Une bande simple sans branche doit se couvrir proprement en un seul
     // satin, sans reliquat -- donc pas de vecteur de repli en plus de
@@ -3445,8 +3446,8 @@ void MainWindowTest::convertingTatamiToDirectionalIsUndoable() {
     const auto* emb = window.project_.findEmbroidery(fx.embroideryId);
     QVERIFY(emb != nullptr && emb->is_directional());
     const auto& dp = std::get<openstitch::document::DirectionalFillParams>(emb->params);
-    QCOMPARE(dp.row_spacing.value, 450);             // réglages du tatami repris
-    QCOMPARE(dp.guides.size(), std::size_t{1});      // guide initial à l'angle du tatami
+    QCOMPARE(dp.row_spacing.value, 450);        // réglages du tatami repris
+    QCOMPARE(dp.guides.size(), std::size_t{1}); // guide initial à l'angle du tatami
     QCOMPARE(dp.seed, static_cast<std::uint32_t>(fx.embroideryId.value));
     QCOMPARE(QString::fromStdString(window.undoStack_.undoName()),
              QStringLiteral("Type : remplissage directionnel"));

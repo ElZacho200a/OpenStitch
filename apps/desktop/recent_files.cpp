@@ -46,10 +46,9 @@ QStringList addRecentFile(QStringList current, const QString& path) {
 }
 
 QStringList pruneMissingRecentFiles(QStringList current) {
-    current.erase(
-        std::remove_if(current.begin(), current.end(),
-                       [](const QString& path) { return !QFileInfo::exists(path); }),
-        current.end());
+    current.erase(std::remove_if(current.begin(), current.end(),
+                                 [](const QString& path) { return !QFileInfo::exists(path); }),
+                  current.end());
     return current;
 }
 

@@ -91,20 +91,22 @@ TEST_CASE("extend_toward : recadre bien dans bounds, jamais au-dela (etape 5)") 
     // plutot que la seule geometrie d'avant-coupe d'un voisin -- doit rester
     // strictement plus genereux, jamais moins.
     const auto extendedToSource = extend_toward(first->region, shape, Micrometers{300});
-    const auto extendedToPair = extend_toward(first->region, candidate.merged_region, Micrometers{300});
+    const auto extendedToPair =
+        extend_toward(first->region, candidate.merged_region, Micrometers{300});
     const double areaSource = geometry::path_set_area_um2(extendedToSource) / 1e6;
     const double areaPair = geometry::path_set_area_um2(extendedToPair) / 1e6;
     const double areaOriginal = first->area_mm2;
 
     CHECK(areaSource > areaOriginal);
-    CHECK(areaSource >= areaPair - 0.01);  // source englobe merged_region : jamais plus petit
+    CHECK(areaSource >= areaPair - 0.01); // source englobe merged_region : jamais plus petit
     // Jamais d'invention de matiere hors de la forme source (garantie du
     // recadrage Clipper2, pas juste une propriete supposee).
     const auto withinSource = geometry::intersect_polygons({extendedToSource}, {shape});
     REQUIRE(withinSource.has_value());
     REQUIRE_FALSE(withinSource->empty());
     double withinSourceArea = 0.0;
-    for (const auto& piece : *withinSource) withinSourceArea += geometry::path_set_area_um2(piece) / 1e6;
+    for (const auto& piece : *withinSource)
+        withinSourceArea += geometry::path_set_area_um2(piece) / 1e6;
     CHECK(withinSourceArea == Catch::Approx(areaSource).margin(0.01));
 }
 

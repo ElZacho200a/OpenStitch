@@ -31,7 +31,7 @@ enum class SingularityReason : std::uint8_t {
 
 struct RegionClassification {
     RegionClass region_class{RegionClass::Regular};
-    std::vector<SingularityReason> reasons;  // vide ssi region_class == Regular
+    std::vector<SingularityReason> reasons; // vide ssi region_class == Regular
 };
 
 // Classifie UNE arete du squelette (§ refonte topologique). `JunctionDegreeGE3`
@@ -50,8 +50,9 @@ struct RegionClassification {
 // plus sur la longueur de la branche") : premier point de depart explicite,
 // pas derive -- a recalibrer par la methode "shadow-log" (cf. plan de
 // refonte) une fois des cas reels observes, jamais ajuste a l'aveugle.
-[[nodiscard]] RegionClassification classify_edge(const SkeletonGraph& graph, const SkeletonEdge& edge,
-                                                  double width_jump_ratio_threshold = 2.0);
+[[nodiscard]] RegionClassification classify_edge(const SkeletonGraph& graph,
+                                                 const SkeletonEdge& edge,
+                                                 double width_jump_ratio_threshold = 2.0);
 
 enum class JunctionType : std::uint8_t { T, Y, X, AcuteFork, Merge, LoopConnection, Complex };
 
@@ -66,7 +67,7 @@ enum class JunctionType : std::uint8_t { T, Y, X, AcuteFork, Merge, LoopConnecti
 struct SatinJunction {
     std::uint32_t node_id{0};
     Vec2um position{};
-    std::vector<std::uint32_t> incident_branches;  // == SkeletonEdge::id, tries croissants
+    std::vector<std::uint32_t> incident_branches; // == SkeletonEdge::id, tries croissants
     JunctionType type{JunctionType::Complex};
 };
 
@@ -100,9 +101,10 @@ struct JunctionClassificationParams {
     double symmetric_pair_closeness{0.15};
 };
 
-[[nodiscard]] SatinJunction classify_junction(const SkeletonGraph& graph, std::uint32_t junctionNode,
-                                               const ContinuationCostParams& costParams = {},
-                                               const JunctionClassificationParams& classParams = {});
+[[nodiscard]] SatinJunction classify_junction(const SkeletonGraph& graph,
+                                              std::uint32_t junctionNode,
+                                              const ContinuationCostParams& costParams = {},
+                                              const JunctionClassificationParams& classParams = {});
 
 // Une decomposition topologique CANDIDATE pour une jonction donnee :
 // generalisation de decompose_into_paths, qui n'en produit qu'une (l'argmin
@@ -113,7 +115,7 @@ struct JunctionClassificationParams {
 struct DecompositionCandidate {
     std::uint32_t candidate_id{0};
     DecompositionReport topology;
-    std::string description;  // "trunk = aretes 0/1 (cout 0.042)", lisible humain
+    std::string description; // "trunk = aretes 0/1 (cout 0.042)", lisible humain
 };
 
 struct DecompositionCandidateSet {
@@ -140,9 +142,10 @@ struct DecompositionCandidateSet {
 // variante independante en dernier) -- jamais un ordre dependant d'un hash,
 // deterministe par construction (meme discipline que
 // pair_branches_at_junction::candidates).
-[[nodiscard]] DecompositionCandidateSet enumerate_decomposition_candidates(
-    const SkeletonGraph& graph, std::uint32_t junctionNode, const ContinuationCostParams& params = {},
-    std::size_t max_candidates_per_junction = 3);
+[[nodiscard]] DecompositionCandidateSet
+enumerate_decomposition_candidates(const SkeletonGraph& graph, std::uint32_t junctionNode,
+                                   const ContinuationCostParams& params = {},
+                                   std::size_t max_candidates_per_junction = 3);
 
 // Rendu textuel structure (meme convention que format_decomposition_report/
 // format_merge_pass_report/format_overlap_report) : un candidat par bloc,
@@ -150,6 +153,7 @@ struct DecompositionCandidateSet {
 // cout est ajoute une fois decomposition_cost.hpp integre (§ mode
 // shadow-log, plan de refonte) -- pour l'instant, diagnostic topologique
 // seul.
-[[nodiscard]] std::string format_decomposition_candidates_report(const DecompositionCandidateSet& candidates);
+[[nodiscard]] std::string
+format_decomposition_candidates_report(const DecompositionCandidateSet& candidates);
 
-}  // namespace openstitch::satin_planning
+} // namespace openstitch::satin_planning

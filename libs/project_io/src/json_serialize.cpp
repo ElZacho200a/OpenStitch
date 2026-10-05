@@ -821,7 +821,8 @@ Result<document::Project> project_from_json(const json& j) {
             f.lock_length = Micrometers{fj.value("lockLength", d.lock_length.value)};
             f.lock_passes = fj.value("lockPasses", d.lock_passes);
             f.filter_short_stitches = fj.value("filterShortStitches", d.filter_short_stitches);
-            f.min_stitch_length = Micrometers{fj.value("minStitchLength", d.min_stitch_length.value)};
+            f.min_stitch_length =
+                Micrometers{fj.value("minStitchLength", d.min_stitch_length.value)};
         } else {
             project.finishing = document::SequenceFinishing::legacy();
         }

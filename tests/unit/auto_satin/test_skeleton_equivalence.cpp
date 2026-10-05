@@ -102,16 +102,34 @@ RasterMask reference_thin(const RasterMask& mask) {
 
 TEST_CASE("thin_zhang_suen optimise : identique a la reference sur tout le corpus de formes",
           "[skeleton][perf]") {
-    const std::vector<std::string> names{
-        "rectangle", "capsule",  "ribbon",        "s",
-        "y",         "t",        "cross",         "h",
-        "circle",    "ring",     "wide",          "tiny",
-        "notch",     "pinch",    "trident",       "star5",
-        "asymmetric_star",       "comb",          "E",
-        "deep_recursive",        "multi_neck",    "dumbbell",
-        "deep_channel",          "two_holes",     "ring_branch",
-        "junction_with_hole",    "polygonal_cut_fixture",
-        "thick_diagonal_blob"};
+    const std::vector<std::string> names{"rectangle",
+                                         "capsule",
+                                         "ribbon",
+                                         "s",
+                                         "y",
+                                         "t",
+                                         "cross",
+                                         "h",
+                                         "circle",
+                                         "ring",
+                                         "wide",
+                                         "tiny",
+                                         "notch",
+                                         "pinch",
+                                         "trident",
+                                         "star5",
+                                         "asymmetric_star",
+                                         "comb",
+                                         "E",
+                                         "deep_recursive",
+                                         "multi_neck",
+                                         "dumbbell",
+                                         "deep_channel",
+                                         "two_holes",
+                                         "ring_branch",
+                                         "junction_with_hole",
+                                         "polygonal_cut_fixture",
+                                         "thick_diagonal_blob"};
     for (const auto& name : names) {
         const auto shape = make_shape(name);
         REQUIRE(shape.has_value());
@@ -139,9 +157,8 @@ TEST_CASE("thin_zhang_suen optimise : identique a la reference sur des masques a
         RasterMask mask;
         mask.width = 8 + static_cast<int>(rng() % 60);
         mask.height = 8 + static_cast<int>(rng() % 60);
-        mask.pixels.assign(static_cast<std::size_t>(mask.width) *
-                               static_cast<std::size_t>(mask.height),
-                           0);
+        mask.pixels.assign(
+            static_cast<std::size_t>(mask.width) * static_cast<std::size_t>(mask.height), 0);
         const unsigned density = 30 + rng() % 60; // en %
         for (auto& p : mask.pixels) {
             p = (rng() % 100) < density ? 1 : 0;

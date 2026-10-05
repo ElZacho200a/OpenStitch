@@ -20,8 +20,9 @@ using namespace openstitch::satin_planning;
 namespace {
 
 std::uint32_t single_junction_id(const SkeletonGraph& graph) {
-    const auto it = std::find_if(graph.nodes.begin(), graph.nodes.end(),
-                                  [](const SkeletonNode& n) { return n.type == SkeletonNodeType::Junction; });
+    const auto it = std::find_if(graph.nodes.begin(), graph.nodes.end(), [](const SkeletonNode& n) {
+        return n.type == SkeletonNodeType::Junction;
+    });
     REQUIRE(it != graph.nodes.end());
     return it->id;
 }
@@ -42,7 +43,8 @@ ScoredCandidates score_shape(const std::string& shapeName) {
     const auto& graph = analysis->debug.graph;
     const std::uint32_t junctionId = single_junction_id(graph);
 
-    const DecompositionCandidateSet candidates = enumerate_decomposition_candidates(graph, junctionId);
+    const DecompositionCandidateSet candidates =
+        enumerate_decomposition_candidates(graph, junctionId);
     DecompositionCostParams costParams;
     costParams.genParams = prodParams;
 
@@ -59,9 +61,10 @@ ScoredCandidates score_shape(const std::string& shapeName) {
     return out;
 }
 
-}  // namespace
+} // namespace
 
-TEST_CASE("evaluate_decomposition_cost : T -- l'argmin de continuite reste gagnant (pas de surprise)") {
+TEST_CASE(
+    "evaluate_decomposition_cost : T -- l'argmin de continuite reste gagnant (pas de surprise)") {
     // Sur un T canonique, la couverture reelle des deux candidats
     // geometriquement valides est deja quasi identique (§4 du plan de
     // refonte) : le terme de continuite, seul discriminant reel, doit donc
@@ -69,11 +72,13 @@ TEST_CASE("evaluate_decomposition_cost : T -- l'argmin de continuite reste gagna
     // regression de comportement attendue ici.
     const ScoredCandidates result = score_shape("t");
     REQUIRE(result.scored.size() == 3);
-    CHECK(result.best_index == 0);  // candidat 0 = argmin de continuite (cf. enumerate_decomposition_candidates)
+    CHECK(result.best_index ==
+          0); // candidat 0 = argmin de continuite (cf. enumerate_decomposition_candidates)
     CHECK(result.scored[0].second.continuity_cost < result.scored[1].second.continuity_cost);
 }
 
-TEST_CASE("evaluate_decomposition_cost : y_symmetric -- le candidat runner-up gagne reellement (gate etape 3)") {
+TEST_CASE("evaluate_decomposition_cost : y_symmetric -- le candidat runner-up gagne reellement "
+          "(gate etape 3)") {
     // Trois bras strictement identiques a 120 degres (cf. shapes.cpp) : les
     // 3 appariements ont un cout de continuite proche par symetrie, un cas
     // que l'ancien selecteur (argmin pre-construction) tranchait de facon
@@ -110,7 +115,8 @@ TEST_CASE("evaluate_decomposition_cost : determinisme (meme cout a chaque execut
     }
 }
 
-TEST_CASE("evaluate_decomposition_cost : cross -- deux traversees simultanees perd (limite architecturale connue, etape 4)") {
+TEST_CASE("evaluate_decomposition_cost : cross -- deux traversees simultanees perd (limite "
+          "architecturale connue, etape 4)") {
     // Defaut REEL trouve en tentant d'exploiter la variante "deux traversees
     // simultanees" d'un noeud degre 4 (§ etape 4, docs/source/satin.md) :
     // `split_region` derive ses coupes UNIQUEMENT de
@@ -127,7 +133,7 @@ TEST_CASE("evaluate_decomposition_cost : cross -- deux traversees simultanees pe
     // examiner, pas une amelioration a accepter telle quelle.
     const ScoredCandidates result = score_shape("cross");
     REQUIRE(result.scored.size() == 3);
-    CHECK(result.best_index == 0);  // le trunk simple (comportement historique) reste gagnant
+    CHECK(result.best_index == 0); // le trunk simple (comportement historique) reste gagnant
     // Pas un ecart marginal : la variante "deux traversees" perd nettement,
     // preuve qu'il ne s'agit pas d'un cas limite mais d'une impossibilite
     // de construction avec le mecanisme de coupe actuel.

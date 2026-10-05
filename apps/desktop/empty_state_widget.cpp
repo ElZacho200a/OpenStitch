@@ -41,10 +41,10 @@ EmptyStateWidget::EmptyStateWidget(QWidget* parent) : QFrame(parent) {
     }
     layout->addLayout(buttons);
 
-    auto* hint = new QLabel(
-        tr("Importez une image ou un fichier SVG pour commencer un nouveau motif\n"
-           "(un SVG évite l'étape de segmentation), ou ouvrez un projet existant."),
-        this);
+    auto* hint =
+        new QLabel(tr("Importez une image ou un fichier SVG pour commencer un nouveau motif\n"
+                      "(un SVG évite l'étape de segmentation), ou ouvrez un projet existant."),
+                   this);
     hint->setAlignment(Qt::AlignCenter);
     hint->setEnabled(false);
     layout->addWidget(hint);
