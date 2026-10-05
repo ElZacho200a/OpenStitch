@@ -129,8 +129,8 @@ enum class CrossSectionFailure {
     AxisOutsideRegion,           // le point d'axe A lui-même n'est pas strictement intérieur
     MissingNegativeIntersection, // aucune intersection trouvée côté -N
     MissingPositiveIntersection, // aucune intersection trouvée côté +N
-    TooWide,               // intervalle plus large que max_width (normale quasi parallèle au bord)
-    TooNarrow,             // intervalle plus étroit que min_satin_width (§ audit anneaux/arcs fins)
+    TooWide,   // intervalle plus large que max_width (normale quasi parallèle au bord)
+    TooNarrow, // intervalle plus étroit que min_satin_width (§ audit anneaux/arcs fins)
     IntervalOutsideRegion, // intervalle trouvé mais son milieu retombe hors région
 };
 
