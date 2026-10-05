@@ -1617,17 +1617,67 @@ import/export DST et DXF, indicateur « modifié », garde partagée
   `savingAnOpenedProjectRewritesItWithoutAskingAPath`,
   `newProjectForgetsTheSaveTargetAndResetsTheTitle`
   (`tests/unit/desktop/test_main_window.cpp`).
-- Reste (hors entrée) : pas de liste de fichiers récents (HP-FILE-003), pas
-  d'autosave (HP-FILE-004), pas de `.osp.bak` (HP-FILE-009).
+- Reste (hors entrée) : pas de `.osp.bak` (HP-FILE-009).
 
-### HP-FILE-003 — Fichiers récents [P0] — ☐ À faire
+### HP-FILE-003 — Fichiers récents [P0] — ☑ Fait (2026-10-05)
 - À faire : sous-menu Fichier ▸ Récents (10), liste sur l'écran d'accueil
   (avec vignettes quand HP-FMT-020 existe), suppression des entrées disparues.
+- Modules : `apps/desktop/recent_files.hpp/.cpp` (nouveau),
+  `apps/desktop/empty_state_widget.*`, `apps/desktop/main_window.*`.
+- Livré : `apps/desktop/recent_files.hpp/.cpp` (fonctions libres,
+  `addRecentFile`/`pruneMissingRecentFiles`/`QSettings` clé `recent/files`,
+  dédup/troncature à 10). `MainWindow::refreshRecentFilesUi()` resynchronise
+  `recentFiles_` (load + purge + save) de façon synchrone dès l'appel (y
+  compris le premier, au constructeur), seule la reconstruction des widgets
+  (sous-menu Fichier ▸ Récents, liste de l'écran d'accueil) étant différée
+  d'un cycle (évite de détruire, depuis son propre gestionnaire de clic, le
+  `QAction`/`QPushButton` qui vient de déclencher l'appel). `openRecentFile()`
+  partage la garde `confirmDiscardChanges` + ouverture entre le menu et
+  l'écran d'accueil. Pas de vignettes (HP-FMT-020 n'existe pas encore).
+  Tests : `addRecentFileDeduplicatesAndTruncatesToTen`,
+  `recentFilesAndMenuReflectTwoSavesAndOpensInOrder`,
+  `clickingRecentButtonForDeletedFileWarnsAndPrunesWithoutCrashing`
+  (`tests/unit/desktop/test_main_window.cpp`).
 
-### HP-FILE-004 — Sauvegarde automatique et récupération après plantage [P0] — ☐ À faire
+### HP-FILE-004 — Sauvegarde automatique et récupération après plantage [P0] — ☑ Fait (2026-10-05)
 - État OpenStitch : `limitations.md` : « pas d'autosave ».
 - À faire : autosave périodique (hors thread UI si lourd) dans le dossier
   applicatif ; au démarrage suivant un plantage, proposer la récupération.
+- Modules : `apps/desktop/autosave.hpp/.cpp` (nouveau), `apps/desktop/main_window.*`.
+- Livré : `apps/desktop/autosave.hpp/.cpp` — fonctions libres + deux structs
+  (`AutosaveSlot`, `AutosaveCandidate`), gabarit `recent_files.hpp` (pas de
+  classe, pas d'état caché : le créneau est toujours recalculé depuis
+  `currentProjectPath_` via `slotFor()`, pur). `MainWindow` : timer
+  `autosaveTimer_` (120 s fixe, P0, ASM-S11-01) démarré dans le constructeur,
+  déclenchant `onAutosaveTick()` — écrit, sur le thread UI via
+  `project_io::save_project`, un instantané `.osp` + sidecar JSON sous
+  `QStandardPaths::AppDataLocation/autosave/<slug>.*` (jamais le fichier
+  utilisateur) dès que `isWindowModified()` et le document non vide ;
+  `setCurrentProjectPath()` abandonne le créneau de l'ancienne identité à
+  chaque changement (nouveau document, enregistrement, ouverture) ;
+  `closeEvent()` arrête le timer et purge le créneau courant sur une
+  fermeture réellement acceptée. Au démarrage (`checkAutosaveRecovery()`,
+  différé après le premier passage de la boucle d'évènements qui suit
+  `show()`), chaque créneau orphelin propose Récupérer/Ignorer
+  (`QMessageBox`, boutons `action_autosaveRecover`/`action_autosaveIgnore`) ;
+  « Récupérer » charge le contenu comme document **sans nom**
+  (`currentProjectPath_` vide, `isWindowModified() == true`) — jamais
+  réassocié au chemin d'origine ni au créneau autosave lui-même (invariant
+  central) — et purge le créneau dans les deux cas (traité une fois pour
+  toutes). Slug : SHA-1 hex du chemin canonique du fichier utilisateur, ou
+  `untitled-<pid>` si jamais enregistré (AD-S11-1, decision du
+  code-planner — n'importe quel hachage stable convenait). Tests :
+  `autosaveTickWritesASeparateFileAndLeavesTheUserFileUntouched`,
+  `autosaveTickSkipsWhenDocumentUnmodifiedOrEmpty`,
+  `autosaveRecoveryAcceptLoadsAsUntitledDocumentAndPurgesSlot`,
+  `autosaveRecoveryIgnoreDiscardsSlotWithoutLoading`,
+  `cleanCloseDiscardsTheCurrentAutosaveSlot`
+  (`tests/unit/desktop/test_main_window.cpp`).
+- Reste (hors entrée) : intervalle fixe, non configurable (ASM-S11-01, P0) ;
+  écriture synchrone sur le thread UI — pas de passage en tâche de fond
+  (aucune infrastructure async n'existe encore, `CLAUDE.md#Architecture`) ;
+  pas de vignette dans le dialogue de récupération (HP-FMT-020 hors
+  périmètre) ; pas de `.osp.bak` versionné (HP-FILE-009, entrée distincte).
 
 ### HP-FILE-005 — Association de fichiers et glisser-déposer [P1] — ☐ À faire
 - À faire : double-clic sur un `.osp` (et, en option, `.dst`/`.pes`) ouvre

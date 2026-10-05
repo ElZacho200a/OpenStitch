@@ -2,8 +2,10 @@
 #include <QAbstractButton>
 #include <QApplication>
 #include <QCheckBox>
+#include <QCloseEvent>
 #include <QCoreApplication>
 #include <QDialog>
+#include <QDir>
 #include <QDoubleSpinBox>
 #include <QFile>
 #include <QFileInfo>
@@ -16,6 +18,7 @@
 #include <QSettings>
 #include <QShortcut>
 #include <QSignalSpy>
+#include <QStandardPaths>
 #include <QStatusBar>
 #include <QTabWidget>
 #include <QTemporaryDir>
@@ -27,6 +30,7 @@
 #include <cmath>
 #include <filesystem>
 
+#include "autosave.hpp"
 #include "canvas_view.hpp"
 #include "document_panel.hpp"
 #include "empty_state_widget.hpp"
@@ -408,6 +412,26 @@ void clickModalDialogButton(QWidget* parent, const QString& buttonText, int maxD
     });
 }
 
+// Dossier autosave (AppDataLocation/autosave) calculé via slotFor() -- la
+// convention de chemin n'est pas exposée ailleurs, et la dupliquer ici
+// romprait si autosave.cpp en changeait un jour. Partagé par TOUT le binaire
+// de test (QStandardPaths::setTestModeOn, posé par initTestCase, le rend
+// stable mais PERSISTANT entre deux exécutions du binaire -- pas remis à
+// zéro automatiquement).
+QString autosaveTestDir() {
+    return QFileInfo(openstitch::desktop::slotFor(QString()).osp_path).absolutePath();
+}
+
+// Vide le dossier autosave partagé. Indispensable avant/après chaque test
+// HP-FILE-004 : un créneau orphelin oublié y ferait apparaître le dialogue
+// de checkAutosaveRecovery() -- différé par QTimer::singleShot(0,...) depuis
+// LE CONSTRUCTEUR DE TOUT MainWindow -- dès le premier traitement
+// d'évènements d'un test qui n'a jamais entendu parler d'autosave, bloquant
+// sur un QMessageBox::exec() que personne n'arme.
+void clearAutosaveDir() {
+    QDir(autosaveTestDir()).removeRecursively();
+}
+
 // Seule poignée trouvée parmi les items de la couche de base : valable quand
 // aucun objet vectoriel n'est sélectionné en parallèle (cf. tests ci-dessous,
 // qui sélectionnent l'objet de broderie via selectedEmbroidery_ seul, jamais
@@ -656,6 +680,26 @@ private slots:
     // bouton pendant l'exécution de son propre gestionnaire clicked().
     void clickingRecentButtonForDeletedFileWarnsAndPrunesWithoutCrashing();
 
+    // HP-FILE-004 — sauvegarde automatique et récupération après plantage.
+    // Invariant central (voir l'architecture S11) : un tick sur un document
+    // modifié dont currentProjectPath_ pointe vers un fichier "utilisateur"
+    // temporaire laisse ce fichier strictement inchangé et produit un
+    // fichier distinct sous le dossier autosave.
+    void autosaveTickWritesASeparateFileAndLeavesTheUserFileUntouched();
+    void autosaveTickSkipsWhenDocumentUnmodifiedOrEmpty();
+    // Un candidat orphelin (écrit directement via writeAutosave(), comme un
+    // VRAI plantage -- aucun MainWindow vivant à ce moment) déclenche le
+    // dialogue de récupération ; "Récupérer" charge le contenu comme document
+    // SANS NOM (jamais réassocié au chemin d'origine ni au créneau autosave
+    // lui-même) et purge le créneau.
+    void autosaveRecoveryAcceptLoadsAsUntitledDocumentAndPurgesSlot();
+    // "Ignorer" purge aussi le créneau, mais sans rien charger : le document
+    // par défaut de la fenêtre reste intact.
+    void autosaveRecoveryIgnoreDiscardsSlotWithoutLoading();
+    // Une fermeture RÉELLEMENT acceptée (closeEvent) ne laisse rien à
+    // récupérer au prochain lancement.
+    void cleanCloseDiscardsTheCurrentAutosaveSlot();
+
 private:
     // Active le mode d'édition (sélection directe via selectedEmbroidery_,
     // pas via le signal DocumentPanel::embroiderySelected -- qui sélectionne
@@ -689,6 +733,16 @@ void MainWindowTest::initTestCase() {
     // temporaire (pas au profil utilisateur) : on le prouve en le lisant.
     QSettings probe;
     QVERIFY(probe.fileName().startsWith(settingsDir_.path()));
+
+    // HP-FILE-004 : isole QStandardPaths::AppDataLocation (dossier autosave)
+    // du profil utilisateur réel, comme ci-dessus pour QSettings. Qt pointe
+    // alors vers un sous-dossier "qttest" STABLE MAIS PERSISTANT entre deux
+    // exécutions de ce binaire -- purge défensive d'un créneau laissé par une
+    // exécution précédente interrompue, sans quoi il ferait apparaître le
+    // dialogue de récupération, non armé, dès le premier traitement
+    // d'évènements du premier test venu.
+    QStandardPaths::setTestModeEnabled(true);
+    clearAutosaveDir();
 }
 
 void MainWindowTest::clickingVectorObjectSyncsDocumentPanelAndInspector() {
@@ -3881,6 +3935,171 @@ void MainWindowTest::clickingRecentButtonForDeletedFileWarnsAndPrunesWithoutCras
     QCoreApplication::processEvents();
 
     QCOMPARE(window.recentFiles_, QStringList({secondPath}));
+}
+
+void MainWindowTest::autosaveTickWritesASeparateFileAndLeavesTheUserFileUntouched() {
+    clearAutosaveDir();
+
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    const QString userFile = dir.filePath(QStringLiteral("user.osp"));
+
+    MainWindow window;
+    QCoreApplication::processEvents(); // consomme checkAutosaveRecovery() initial (dossier vide)
+
+    const Fixture fx = buildFixture();
+    window.applyLoadedProject(fx.project);
+    QVERIFY(window.saveProjectToPath(userFile)); // "fichier utilisateur" réel, non vide
+    QCoreApplication::processEvents();
+    QVERIFY(!window.isWindowModified());
+    // Une modification après l'enregistrement : condition nécessaire pour
+    // que le tick écrive quoi que ce soit (cf. test suivant).
+    window.setWindowModified(true);
+
+    QFile before(userFile);
+    QVERIFY(before.open(QIODevice::ReadOnly));
+    const QByteArray beforeContent = before.readAll();
+    before.close();
+    const QDateTime beforeModified = QFileInfo(userFile).lastModified();
+
+    window.onAutosaveTick();
+
+    // (a) Le fichier utilisateur est strictement inchangé (contenu et date).
+    QFile after(userFile);
+    QVERIFY(after.open(QIODevice::ReadOnly));
+    QCOMPARE(after.readAll(), beforeContent);
+    after.close();
+    QCOMPARE(QFileInfo(userFile).lastModified(), beforeModified);
+
+    // (b) Un fichier DISTINCT est apparu sous le dossier autosave.
+    const auto slot = slotFor(userFile);
+    QVERIFY(slot.osp_path != userFile);
+    QVERIFY(QFile::exists(slot.osp_path));
+
+    // (c) currentProjectPath_ reste le fichier utilisateur après le tick :
+    // l'autosave ne compte jamais comme un enregistrement.
+    QCOMPARE(window.currentProjectPath_, userFile);
+
+    clearAutosaveDir();
+}
+
+void MainWindowTest::autosaveTickSkipsWhenDocumentUnmodifiedOrEmpty() {
+    clearAutosaveDir();
+
+    MainWindow window;
+    QCoreApplication::processEvents();
+
+    // Document vierge (vide) et non modifié : rien à protéger, rien écrit.
+    QVERIFY(!window.isWindowModified());
+    window.onAutosaveTick();
+    QVERIFY(scanForRecoverableAutosaves().empty());
+
+    // Document encore vide mais marqué "modifié" (cas limite) : la garde
+    // porte sur le contenu, pas seulement sur isWindowModified().
+    window.setWindowModified(true);
+    window.onAutosaveTick();
+    QVERIFY(scanForRecoverableAutosaves().empty());
+
+    // Document non vide mais PAS modifié (cas réel : juste après un
+    // enregistrement, applyLoadedProject() laisse setWindowModified(false)).
+    const Fixture fx = buildFixture();
+    window.applyLoadedProject(fx.project);
+    QVERIFY(!window.isWindowModified());
+    window.onAutosaveTick();
+    QVERIFY(scanForRecoverableAutosaves().empty());
+
+    clearAutosaveDir();
+}
+
+void MainWindowTest::autosaveRecoveryAcceptLoadsAsUntitledDocumentAndPurgesSlot() {
+    clearAutosaveDir();
+
+    MainWindow window;
+    // Consomme checkAutosaveRecovery() initial pendant que le dossier est
+    // encore vide.
+    QCoreApplication::processEvents();
+
+    // Simule un créneau laissé par un arrêt anormal : écrit directement via
+    // writeAutosave() -- aucun MainWindow n'était vivant au moment du
+    // "plantage", comme en réalité.
+    const Fixture fx = buildFixture();
+    const QString originalPath = QStringLiteral("C:/ancien/projet.osp"); // chemin affiché seulement
+    const auto slot = slotFor(originalPath);
+    QVERIFY(writeAutosave(slot, fx.project, originalPath).has_value());
+
+    clickModalDialogButton(&window, QStringLiteral("Récupérer"));
+    window.checkAutosaveRecovery();
+
+    // Chargé en tant que document SANS NOM -- jamais réassocié au chemin
+    // d'origine ni au créneau autosave lui-même (invariant central, cf.
+    // specs/arch-plan/vision/20260929-102601-arm-1-ar-9.md).
+    QVERIFY(window.currentProjectPath_.isEmpty());
+    QVERIFY(window.isWindowModified());
+    QVERIFY(!window.project_.vector_objects.empty()); // le contenu récupéré est bien chargé
+
+    // Traité (récupéré) -> jamais reproposé au prochain démarrage.
+    QVERIFY(scanForRecoverableAutosaves().empty());
+
+    clearAutosaveDir();
+}
+
+void MainWindowTest::autosaveRecoveryIgnoreDiscardsSlotWithoutLoading() {
+    clearAutosaveDir();
+
+    MainWindow window;
+    QCoreApplication::processEvents();
+
+    const Fixture fx = buildFixture();
+    const QString originalPath = QStringLiteral("C:/ancien/projet.osp");
+    const auto slot = slotFor(originalPath);
+    QVERIFY(writeAutosave(slot, fx.project, originalPath).has_value());
+
+    clickModalDialogButton(&window, QStringLiteral("Ignorer"));
+    window.checkAutosaveRecovery();
+
+    // Document courant inchangé : "Ignorer" ne charge rien.
+    QVERIFY(window.currentProjectPath_.isEmpty());
+    QVERIFY(!window.isWindowModified());
+    QVERIFY(window.project_.vector_objects.empty());
+
+    // Traité (ignoré) -> jamais reproposé non plus.
+    QVERIFY(scanForRecoverableAutosaves().empty());
+
+    clearAutosaveDir();
+}
+
+void MainWindowTest::cleanCloseDiscardsTheCurrentAutosaveSlot() {
+    clearAutosaveDir();
+
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    const QString userFile = dir.filePath(QStringLiteral("user.osp"));
+
+    MainWindow window;
+    QCoreApplication::processEvents();
+
+    const Fixture fx = buildFixture();
+    window.applyLoadedProject(fx.project);
+    QVERIFY(window.saveProjectToPath(userFile));
+    window.setWindowModified(true);
+    window.onAutosaveTick(); // laisse un créneau, comme si l'app allait planter juste après
+
+    const auto slot = slotFor(userFile);
+    QVERIFY(QFile::exists(slot.osp_path));
+
+    // Document propre : confirmDiscardChanges() passe sans dialogue, la
+    // fermeture est donc acceptée de façon déterministe.
+    window.setWindowModified(false);
+    QCloseEvent event;
+    window.closeEvent(&event);
+    QVERIFY(event.isAccepted());
+
+    // Fermeture acceptée -> le créneau courant est purgé : rien à récupérer
+    // au prochain lancement.
+    QVERIFY(!QFile::exists(slot.osp_path));
+    QVERIFY(scanForRecoverableAutosaves().empty());
+
+    clearAutosaveDir();
 }
 
 } // namespace openstitch::desktop

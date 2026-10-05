@@ -32,6 +32,8 @@ add_library(openstitch_desktop_widgets STATIC
     empty_state_widget.hpp
     recent_files.cpp
     recent_files.hpp
+    autosave.cpp
+    autosave.hpp
     tools.hpp
     ui_icons.cpp
     ui_icons.hpp

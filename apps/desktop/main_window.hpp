@@ -209,6 +209,17 @@ private slots:
     void cancelDirectionGuideDraw();
     void removeLastDirectionGuidePoint();
 
+    // HP-FILE-004 — sauvegarde automatique et récupération après plantage.
+    // Tick périodique (QTimer, ~120 s) : écrit un instantané de secours
+    // (autosave.hpp) si le document est modifié et non vide, sans jamais
+    // toucher le fichier utilisateur ni `currentProjectPath_`.
+    void onAutosaveTick();
+    // Appelé une fois, différé après le premier passage de la boucle
+    // d'évènements qui suit la construction (après `window.show()`) : propose
+    // de récupérer chaque créneau autosave orphelin laissé par un arrêt
+    // anormal précédent.
+    void checkAutosaveRecovery();
+
 private:
     // Applique un projet déjà construit (charge depuis un fichier ou fixture
     // de test) : remplace le document, réinitialise undo/sélection, rafraîchit.
@@ -655,6 +666,11 @@ private:
     QAction* simPlayAct_{nullptr};
     QTimer* simTimer_{nullptr};
     int simStep_{-1}; // -1 = simulation inactive (tout affiché)
+
+    // HP-FILE-004 : tick périodique (120 s, non configurable en P0) qui
+    // déclenche onAutosaveTick() -- construit dans le constructeur, démarré
+    // immédiatement, arrêté par closeEvent() sur une fermeture acceptée.
+    QTimer* autosaveTimer_{nullptr};
 
     [[nodiscard]] bool simulating() const { return simStep_ >= 0; }
 

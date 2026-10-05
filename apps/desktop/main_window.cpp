@@ -45,6 +45,7 @@
 #include "ai_preferences_dialog.hpp"
 #include "ai_segmentation_dialog.hpp"
 #include "app_theme.hpp"
+#include "autosave.hpp"
 #include "brightness_dialog.hpp"
 #include "canvas_view.hpp"
 #include "document_panel.hpp"
@@ -476,6 +477,18 @@ MainWindow::MainWindow() {
 
     statusBar()->showMessage(tr("Ouvrez une image (PNG, JPEG, BMP, TIFF) pour commencer."));
     view_->fitCanvas();
+
+    // HP-FILE-004 : autosave périodique, démarré dès l'ouverture (protège
+    // dès avant la première modification, pas seulement après).
+    autosaveTimer_ = new QTimer(this);
+    autosaveTimer_->setInterval(120000); // ASM-S11-01 : 2 min, non configurable en P0
+    connect(autosaveTimer_, &QTimer::timeout, this, &MainWindow::onAutosaveTick);
+    autosaveTimer_->start();
+    // Différé après le premier passage de la boucle d'évènements (donc après
+    // window.show() dans main.cpp) pour que le dialogue de récupération
+    // s'affiche au-dessus d'une fenêtre déjà visible.
+    QTimer::singleShot(0, this, &MainWindow::checkAutosaveRecovery);
+
     updateActions();
 }
 
@@ -1318,6 +1331,15 @@ void MainWindow::closeEvent(QCloseEvent* event) {
     // ou refusé -> la fenêtre reste ouverte.
     event->setAccepted(
         confirmDiscardChanges(tr("Le projet a été modifié. Enregistrer avant de quitter ?")));
+
+    // HP-FILE-004 : une fermeture réellement acceptée (enregistrée ou
+    // abandon explicite) ne laisse rien à récupérer au prochain lancement.
+    // Si l'évènement n'est pas accepté (fermeture annulée), l'autosave
+    // continue de tourner normalement.
+    if (event->isAccepted()) {
+        autosaveTimer_->stop();
+        discardAutosave(slotFor(currentProjectPath_));
+    }
 }
 
 void MainWindow::setHoopSize() {
@@ -6265,6 +6287,12 @@ bool MainWindow::openProjectFile(const QString& file) {
 }
 
 void MainWindow::setCurrentProjectPath(const QString& file) {
+    // HP-FILE-004 : le créneau autosave suit l'identité du document -- un
+    // changement d'identité abandonne le créneau de l'ancienne (slotFor()
+    // est pure, recalculée depuis currentProjectPath_ à chaque usage, donc
+    // rien à recalculer pour la nouvelle avant qu'un tick n'en ait besoin).
+    // Doit lire l'ANCIEN chemin avant qu'il soit écrasé ci-dessous.
+    discardAutosave(slotFor(currentProjectPath_));
     currentProjectPath_ = file;
     updateWindowTitle();
     if (!file.isEmpty()) {
@@ -6303,6 +6331,64 @@ void MainWindow::refreshRecentFilesUi() {
         }
         emptyState_->setRecentFiles(recentFiles_);
     });
+}
+
+void MainWindow::onAutosaveTick() {
+    // Même garde que updateEmptyState() : un document vide n'a rien à
+    // protéger, et écrire n'apporterait qu'un fichier autosave inutile.
+    const bool empty = !project_.hasImage() && project_.vector_objects.empty() &&
+                       project_.embroidery_objects.empty();
+    if (!isWindowModified() || empty) {
+        return;
+    }
+    const auto written = writeAutosave(slotFor(currentProjectPath_), project_, currentProjectPath_);
+    if (!written) {
+        // Best-effort (jamais bloquant) : message transitoire, même gabarit
+        // que saveProjectToPath pour un échec d'enregistrement normal.
+        statusBar()->showMessage(tr("Sauvegarde automatique impossible : %1")
+                                     .arg(QString::fromStdString(written.error().message)));
+    }
+}
+
+void MainWindow::checkAutosaveRecovery() {
+    // Différé après le premier passage de la boucle d'évènements qui suit la
+    // construction : à ce point le document est toujours le défaut neuf,
+    // jamais modifié -- aucune garde confirmDiscardChanges n'est donc
+    // nécessaire avant de le remplacer par une récupération acceptée.
+    for (const auto& candidate : scanForRecoverableAutosaves()) {
+        QMessageBox box(QMessageBox::Warning, tr("Récupération après un arrêt anormal"),
+                        candidate.original_path.isEmpty()
+                            ? tr("Un projet sans nom non enregistré a été retrouvé (%1).")
+                                  .arg(candidate.saved_at.toLocalTime().toString())
+                            : tr("Une sauvegarde automatique de « %1 » a été retrouvée (%2).")
+                                  .arg(QFileInfo(candidate.original_path).fileName(),
+                                       candidate.saved_at.toLocalTime().toString()),
+                        QMessageBox::NoButton, this);
+        auto* recoverBtn = box.addButton(tr("Récupérer"), QMessageBox::AcceptRole);
+        recoverBtn->setObjectName(QStringLiteral("action_autosaveRecover"));
+        box.addButton(tr("Ignorer"), QMessageBox::RejectRole)
+            ->setObjectName(QStringLiteral("action_autosaveIgnore"));
+        box.exec();
+        if (box.clickedButton() == recoverBtn) {
+            auto loaded = project_io::load_project(
+                std::filesystem::path(candidate.slot.osp_path.toStdWString()));
+            if (!loaded) {
+                QMessageBox::warning(this, tr("Récupération impossible"),
+                                     QString::fromStdString(loaded.error().message));
+            } else {
+                applyLoadedProject(std::move(*loaded));
+                // PAS de second setCurrentProjectPath(QString()) explicite :
+                // applyLoadedProject() appelle déjà resetDocumentState(), qui
+                // appelle déjà setCurrentProjectPath(QString()) -- un second
+                // appel ici serait un 4e site d'appel redondant pour la même
+                // valeur (cf. specs/plans/autosave-implementation.md §8).
+                setWindowModified(true);
+            }
+        }
+        // Traité (récupéré ou ignoré) -> jamais reproposé au prochain
+        // démarrage.
+        discardAutosave(candidate.slot);
+    }
 }
 
 void MainWindow::updateWindowTitle() {

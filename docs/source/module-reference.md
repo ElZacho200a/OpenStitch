@@ -54,7 +54,26 @@ fonctionnalité. Chaque module est une cible `openstitch::<nom>` sous `libs/`.
 | le format projet | `libs/project_io/src/` |
 | les menus | `apps/desktop/main_window.cpp` |
 | les unités | `libs/core/include/openstitch/core/units.hpp` |
+| les fichiers récents (HP-FILE-003) | `apps/desktop/recent_files.hpp/.cpp` |
+| la sauvegarde automatique et la récupération après plantage (HP-FILE-004) | `apps/desktop/autosave.hpp/.cpp` |
 
 ## Implémentation associée
 
 Voir les chapitres thématiques pour le détail de chaque module.
+
+## Préférences et données applicatives persistantes (`apps/desktop`)
+
+Deux emplacements distincts, à ne pas confondre :
+
+- `QSettings` (`ai_preferences.hpp`, `recent_files.hpp`, géométrie/état des
+  panneaux dans `main_window.cpp`) : petites préférences clé-valeur, namespace
+  par préfixe (`ui/*`, `ai/*`, `recent/*`).
+- `QStandardPaths::AppDataLocation` : dossier de données applicatives
+  persistantes, distinct de `QSettings`. Premier usage dans
+  `apps/desktop/autosave.hpp/.cpp` (HP-FILE-004, sous-dossier `autosave/`) —
+  le seul précédent dans `apps/desktop` avant cette entrée,
+  `ai_segmentation_dialog.cpp`, n'utilise que `QStandardPaths::TempLocation`
+  (fichiers de travail éphémères, pas de persistance voulue). Un périmètre
+  futur qui a besoin d'un dossier de données applicatives persistant (pas
+  seulement une préférence clé-valeur) suit ce même étendard plutôt que d'en
+  introduire un troisième.
