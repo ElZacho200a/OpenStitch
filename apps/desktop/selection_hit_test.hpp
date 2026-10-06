@@ -29,7 +29,9 @@ namespace openstitch::desktop {
 
 // Objets vectoriels VISIBLES retenus par un rectangle (scène, mm). Fenêtre
 // (crossing == false) : la boîte englobante de l'objet est entièrement dans le
-// rectangle. Croisement : le contour/remplissage coupe le rectangle. Résultat
+// rectangle. Croisement : le remplissage (trous respectés) ou le contour coupe le rectangle ;
+// un chemin OUVERT n'est retenu que si le rectangle coupe son TRAIT (son remplissage implicite
+// n'est pas sélectionnable). Résultat
 // trié par ObjectId croissant (indépendant de l'ordre de dessin).
 [[nodiscard]] std::vector<ObjectId> objectsInRectangleMm(const document::Project& project,
                                                          const QRectF& rectMm, bool crossing);

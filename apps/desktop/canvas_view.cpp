@@ -280,7 +280,13 @@ void CanvasView::updateDragMode() {
         setDragMode(QGraphicsView::NoDrag);
     } else {
         // Vue isolée (aucun setBaseContext) : comportement historique.
-        setDragMode(inputModelEnabled_ ? QGraphicsView::NoDrag : QGraphicsView::ScrollHandDrag);
+        // Modèle activé : NoDrag (panoramique = clic molette / Espace / outil Pan), SAUF en
+        // édition de nœuds / de points où glisser dans le vide déplace toujours la vue
+        // (comportement historique : pas de rectangle de sélection dans ces contextes).
+        const bool editContext =
+            baseContext_ == Context::NodeEdit || baseContext_ == Context::StitchEdit;
+        setDragMode(inputModelEnabled_ && !editContext ? QGraphicsView::NoDrag
+                                                       : QGraphicsView::ScrollHandDrag);
     }
 }
 
@@ -463,6 +469,7 @@ bool CanvasView::viewportEvent(QEvent* event) {
         // curseur « + » / « ± ») ne doit pas survivre à l'état clavier qu'on ne voit plus.
         cursorOverViewport_ = false;
         updateModifiers(Qt::NoModifier);
+        emit cursorLeftViewport();
         break;
     case QEvent::NativeGesture: {
         const auto* g = static_cast<QNativeGestureEvent*>(event);
@@ -608,6 +615,7 @@ void CanvasView::cancelSelectionPress() {
     longPressTimer_.stop();
     selectionPress_ = false;
     rectActive_ = false;
+    altBodyPress_ = false;
     longPressFired_ = false;
     if (rubberBand_ != nullptr) {
         rubberBand_->hide();
@@ -765,6 +773,9 @@ void CanvasView::mousePressEvent(QMouseEvent* event) {
             return;
         }
     }
+    if (event->button() == Qt::LeftButton && boxDrawMode_) {
+        boxPressMm_ = mapToScene(viewportPos); // vrai point d'appui (Alt = depuis le centre)
+    }
     if (event->button() == Qt::LeftButton && freeformDrawMode_) {
         freeformActive_ = true;
         emit freeformPointMm(mapToScene(viewportPos));
@@ -804,6 +815,17 @@ void CanvasView::mousePressEvent(QMouseEvent* event) {
         ctx == Context::Select && !onHandle) {
         const bool selectionMods =
             (mods & (Qt::ShiftModifier | Qt::ControlModifier | Qt::AltModifier)) != 0;
+        // Alt SEUL sur le corps d'un objet déjà sélectionné : le press est transmis à l'item
+        // (glisser = déplacer ; avec Alt = dupliquer en déplaçant, M4). Un Alt + clic sans
+        // mouvement ouvre « Sélectionner dessous » au relâchement.
+        if (anyMovable && mods == Qt::AltModifier) {
+            altBodyPress_ = true;
+            pressViewportPos_ = viewportPos;
+            pressGlobalPos_ = event->globalPosition().toPoint();
+            QGraphicsView::mousePressEvent(event);
+            event->accept();
+            return;
+        }
         // Corps déplaçable sans modificateur : glisser d'objet (M1), inchangé.
         if (!anyMovable || selectionMods) {
             selectionPress_ = true;
@@ -919,6 +941,17 @@ void CanvasView::mouseReleaseEvent(QMouseEvent* event) {
     if (event->button() == Qt::MiddleButton && middleDoubleClickPending_) {
         middleDoubleClickPending_ = false;
         event->accept();
+        return;
+    }
+    if (altBodyPress_ && event->button() == Qt::LeftButton) {
+        altBodyPress_ = false;
+        const QPoint pressPos = pressViewportPos_;
+        const QPoint global = pressGlobalPos_;
+        const QPoint releasePos = event->position().toPoint();
+        QGraphicsView::mouseReleaseEvent(event);
+        if ((releasePos - pressPos).manhattanLength() <= QApplication::startDragDistance()) {
+            queueSelectBelow(mapToScene(pressPos), global);
+        }
         return;
     }
     if (selectionPress_ && event->button() == Qt::LeftButton) {

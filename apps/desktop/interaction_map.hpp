@@ -129,6 +129,10 @@ public:
     // contexte puis Global (6 au plus, ordre de la table). Avec `held` non vide :
     // lignes dont les modificateurs contiennent `held`. Préréglage actif, jamais planned.
     static QList<Hint> hintsFor(Context context, Qt::KeyboardModifiers held);
+    // Idem, plus les lignes du contexte Move (déplacement) quand `held` n'est pas vide, que le
+    // contexte est Select et qu'un objet déplaçable est sélectionné.
+    static QList<Hint> hintsFor(Context context, Qt::KeyboardModifiers held,
+                                bool hasMovableSelection);
 
     // Lignes dans l'ordre de la table, filtrées par préréglage actif ; les
     // lignes planned n'y figurent que si `includePlanned`.

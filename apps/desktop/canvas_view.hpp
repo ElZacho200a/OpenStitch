@@ -53,6 +53,13 @@ public:
     void setSelectionRectangleEnabled(bool enabled);
     [[nodiscard]] bool selectionRectangleEnabled() const { return selectionRectEnabled_; }
     [[nodiscard]] bool spaceHeld() const { return spaceHeld_; }
+    // Point d'appui (scène, mm) du dernier cadre dessiné en mode boîte : valable pendant
+    // l'émission de boxDrawnMm (Alt = dessiner depuis le centre).
+    [[nodiscard]] QPointF lastBoxPressMm() const { return boxPressMm_; }
+    // Un geste de la vue est en cours (panoramique, zoom continu, sélection/rectangle).
+    [[nodiscard]] bool gestureActive() const {
+        return panning_ || zoomDragging_ || selectionPress_ || rectActive_ || altBodyPress_;
+    }
 
     // Mode recadrage : sélection au rectangle élastique au lieu du déplacement.
     void setCropMode(bool enabled);
@@ -137,6 +144,8 @@ signals:
                               openstitch::desktop::SelectMode mode);
     // Modificateurs observés (évènements, jamais l'état global) : sur changement.
     void modifiersChanged(Qt::KeyboardModifiers modifiers);
+    // Le curseur quitte le viewport (la surbrillance de survol doit disparaître).
+    void cursorLeftViewport();
 
 protected:
     void wheelEvent(QWheelEvent* event) override;
@@ -226,6 +235,8 @@ private:
     // Sélection (clic différé, rectangle, appui long).
     bool selectionPress_{false};
     bool rectActive_{false};
+    bool altBodyPress_{false}; // Alt seul sur un corps sélectionné : glisser d'item
+    QPointF boxPressMm_;
     bool longPressFired_{false};
     QPoint pressViewportPos_;
     QPoint pressGlobalPos_;

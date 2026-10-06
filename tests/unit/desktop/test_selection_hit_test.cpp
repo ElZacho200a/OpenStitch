@@ -108,6 +108,108 @@ private slots:
         QVERIFY(hits == objectsInRectangleMm(project, all, false));
     }
 
+    void rectangleInsideAHoleSelectsOnlyInWindowIfContainsNothing() {
+        openstitch::document::Project project;
+        // Carré 20 x 20 mm (0..20) avec un trou 8..12 (physique).
+        const ObjectId id = addSquare(project, 0, 0, 20);
+        openstitch::geometry::Path hole;
+        hole.closed = true;
+        hole.nodes = {corner(8000, 8000), corner(12000, 8000), corner(12000, 12000),
+                      corner(8000, 12000)};
+        project.findObject(id)->paths.front().holes.push_back(hole);
+        const QRectF insideHole(-0.0 + 9.0, -11.0, 2.0, 2.0); // scène : x 9..11, y -11..-9
+        // Croisement : le rectangle ne touche ni le remplissage ni un bord -> pas retenu.
+        QVERIFY(objectsInRectangleMm(project, insideHole, true).empty());
+        // Un rectangle qui mord sur le bord du trou croise l'objet.
+        QCOMPARE(objectsInRectangleMm(project, QRectF(7.0, -11.0, 3.0, 2.0), true).size(),
+                 std::size_t{1});
+        // Fenêtre : la boîte englobante de l'objet doit tenir dans le cadre (le trou n'y change
+        // rien).
+        QVERIFY(objectsInRectangleMm(project, insideHole, false).empty());
+        QCOMPARE(objectsInRectangleMm(project, QRectF(-1.0, -21.0, 22.0, 22.0), false).size(),
+                 std::size_t{1});
+    }
+
+    void openPathIsSelectedByItsStrokeOnlyNotItsImplicitFill() {
+        openstitch::document::Project project;
+        openstitch::document::VectorObject object;
+        object.id = project.object_ids.next();
+        object.name = "ouvert";
+        openstitch::geometry::Path path;
+        path.closed = false; // « U » ouvert : 0,0 -> 0,10 -> 10,10 -> 10,0 (physique)
+        path.nodes = {corner(0, 0), corner(0, 10000), corner(10000, 10000), corner(10000, 0)};
+        object.paths.push_back(openstitch::geometry::PathSet{path, {}});
+        project.vector_objects.push_back(object);
+        // Au milieu de la zone fermée implicitement (entre les branches) : rien en croisement.
+        QVERIFY(objectsInRectangleMm(project, QRectF(4.0, -6.0, 2.0, 2.0), true).empty());
+        // Sur le trait (branche gauche) : retenu.
+        QCOMPARE(objectsInRectangleMm(project, QRectF(-1.0, -6.0, 2.0, 2.0), true).size(),
+                 std::size_t{1});
+        // Fenêtre englobante : retenu.
+        QCOMPARE(objectsInRectangleMm(project, QRectF(-1.0, -11.0, 12.0, 12.0), false).size(),
+                 std::size_t{1});
+    }
+
+    void rotatedShapeUsesItsRealOutlineInCrossingMode() {
+        openstitch::document::Project project;
+        openstitch::document::VectorObject object;
+        object.id = project.object_ids.next();
+        object.name = "losange";
+        openstitch::geometry::Path path;
+        path.closed = true; // losange centré (10,10) de demi-diagonale 10 (physique)
+        path.nodes = {corner(10000, 0), corner(20000, 10000), corner(10000, 20000),
+                      corner(0, 10000)};
+        object.paths.push_back(openstitch::geometry::PathSet{path, {}});
+        project.vector_objects.push_back(object);
+        // Coin du cadre englobant, hors du losange : la boîte l'inclurait, pas la forme.
+        QVERIFY(objectsInRectangleMm(project, QRectF(0.0, -3.0, 2.0, 2.0), true).empty());
+        QCOMPARE(objectsInRectangleMm(project, QRectF(9.0, -11.0, 2.0, 2.0), true).size(),
+                 std::size_t{1});
+    }
+
+    void curvedSegmentIsHitByTheRealCurveNotTheControlPolygon() {
+        openstitch::document::Project project;
+        openstitch::document::VectorObject object;
+        object.id = project.object_ids.next();
+        object.name = "courbe";
+        openstitch::geometry::Path path;
+        path.closed = true; // base 0..10 ; arête haute en arche (tangentes +/-8 mm vers le haut)
+        auto n0 = corner(0, 0);
+        auto n1 = corner(10000, 0);
+        auto n2 = corner(10000, 10000);
+        auto n3 = corner(0, 10000);
+        n2.tan_out = Vec2um{Micrometers{-3000}, Micrometers{8000}};
+        n3.tan_in = Vec2um{Micrometers{3000}, Micrometers{8000}};
+        path.nodes = {n0, n1, n2, n3};
+        object.paths.push_back(openstitch::geometry::PathSet{path, {}});
+        project.vector_objects.push_back(object);
+        // Le sommet de l'arche (t = 0,5) culmine à y = 10 + 0,75 * 8 = 16 mm (physique) :
+        // un rectangle autour y 15..17 la croise réellement.
+        QCOMPARE(objectsInRectangleMm(project, QRectF(4.0, -17.0, 2.0, 2.0), true).size(),
+                 std::size_t{1});
+        // Un rectangle au-dessus de la courbe réelle (y 17,5..19) ne la croise pas.
+        QVERIFY(objectsInRectangleMm(project, QRectF(4.0, -19.0, 2.0, 1.5), true).empty());
+        // Fenêtre : la boîte englobante réelle (sommet 16) tient dans un cadre jusqu'à y = 17.
+        QCOMPARE(objectsInRectangleMm(project, QRectF(-1.0, -17.0, 12.0, 18.0), false).size(),
+                 std::size_t{1});
+    }
+
+    void emptyObjectIsNeverSelected() {
+        openstitch::document::Project project;
+        openstitch::document::VectorObject object;
+        object.id = project.object_ids.next();
+        object.name = "vide";
+        project.vector_objects.push_back(object); // aucun chemin
+        openstitch::document::VectorObject object2 = object;
+        object2.id = project.object_ids.next();
+        object2.paths.push_back(openstitch::geometry::PathSet{}); // chemin sans nœud
+        project.vector_objects.push_back(object2);
+        const QRectF big(-100.0, -100.0, 200.0, 200.0);
+        QVERIFY(objectsInRectangleMm(project, big, true).empty());
+        QVERIFY(objectsInRectangleMm(project, big, false).empty());
+        QVERIFY(objectsAtPointMm(project, QPointF(0.0, 0.0)).empty());
+    }
+
     void emptyRectangleSelectsNothingInWindowMode() {
         openstitch::document::Project project;
         addSquare(project, 0, 0, 10);

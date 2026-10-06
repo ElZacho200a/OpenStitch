@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 #include "selection_hit_test.hpp"
 
+#include <QPainterPathStroker>
+
 #include <algorithm>
 
 #include "interaction_map.hpp"
@@ -8,7 +10,12 @@
 
 namespace openstitch::desktop {
 
-QPainterPath objectScenePath(const document::VectorObject& object) {
+namespace {
+enum class Part { All, ClosedOnly, OpenOnly };
+// Largeur (mm) du trait fictif d'un chemin OUVERT pour la sélection au rectangle.
+constexpr double kOpenPathHitWidthMm = 0.4;
+
+QPainterPath buildPath(const document::VectorObject& object, Part part) {
     QPainterPath painterPath;
     painterPath.setFillRule(Qt::OddEvenFill);
     // Scène en mm, Y vers le bas : inversion du repère physique.
@@ -17,7 +24,8 @@ QPainterPath objectScenePath(const document::VectorObject& object) {
     };
     const auto addPath = [&](const geometry::Path& path) {
         const std::size_t n = path.nodes.size();
-        if (n == 0) {
+        if (n == 0 || (part == Part::ClosedOnly && !path.closed) ||
+            (part == Part::OpenOnly && path.closed)) {
             return;
         }
         painterPath.moveTo(toScene(path.nodes[0].pos));
@@ -49,6 +57,27 @@ QPainterPath objectScenePath(const document::VectorObject& object) {
     return painterPath;
 }
 
+// Croisement : les surfaces fermées (trous respectés) par leur remplissage, les chemins OUVERTS
+// par leur seul trait (le remplissage implicite d'une polyligne ouverte n'est pas sélectionnable).
+bool crossesRect(const document::VectorObject& object, const QRectF& rect) {
+    const QPainterPath closed = buildPath(object, Part::ClosedOnly);
+    if (!closed.isEmpty() && closed.intersects(rect)) {
+        return true;
+    }
+    const QPainterPath open = buildPath(object, Part::OpenOnly);
+    if (open.isEmpty()) {
+        return false;
+    }
+    QPainterPathStroker stroker;
+    stroker.setWidth(kOpenPathHitWidthMm);
+    return stroker.createStroke(open).intersects(rect);
+}
+} // namespace
+
+QPainterPath objectScenePath(const document::VectorObject& object) {
+    return buildPath(object, Part::All);
+}
+
 std::vector<ObjectId> objectsAtPointMm(const document::Project& project, QPointF posMm) {
     std::vector<ObjectId> hits;
     for (auto it = project.vector_objects.rbegin(); it != project.vector_objects.rend(); ++it) {
@@ -63,8 +92,13 @@ std::vector<ObjectId> objectsInRectangleMm(const document::Project& project, con
                                            bool crossing) {
     std::vector<ObjectId> hits;
     for (const auto& object : project.vector_objects) {
-        if (object.visible &&
-            InteractionMap::rectSelects(rectMm, objectScenePath(object), crossing)) {
+        if (!object.visible) {
+            continue;
+        }
+        const bool hit = crossing
+                             ? crossesRect(object, rectMm)
+                             : InteractionMap::rectSelects(rectMm, objectScenePath(object), false);
+        if (hit) {
             hits.push_back(object.id);
         }
     }

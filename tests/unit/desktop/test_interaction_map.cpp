@@ -90,7 +90,9 @@ const Expected kExpected[] = {
     {"S11", Context::Select, Intent::HoverHighlight, true, false, false},
     {"M1", Context::Move, Intent::MoveObject, false, false, false},
     {"M2", Context::Move, Intent::AxisLock, false, false, false},
-    {"M3", Context::Move, Intent::SuspendSnap, false, false, false},
+    // M3 planned : le glisser de corps n'a aucune accroche à suspendre (annoncer « Ctrl : suspendre
+    // l'accroche » serait un faux conseil) ; la ligne reste dans la table pour mémoire.
+    {"M3", Context::Move, Intent::SuspendSnap, false, true, false},
     {"M4", Context::Move, Intent::DuplicateOnMove, false, false, false},
     {"D1", Context::DrawClicks, Intent::DrawPoint, false, false, false},
     {"D2", Context::DrawClicks, Intent::FinishDraw, false, false, false},
@@ -168,6 +170,35 @@ private slots:
             }
             QCOMPARE_EQ(shadows, r.overridesGlobal);
         }
+    }
+
+    void hintsWithMovableSelectionAddMoveLinesOnlyWithAModifier() {
+        const auto labels = [](const QList<Hint>& hints) {
+            QStringList out;
+            for (const Hint& h : hints) {
+                out << h.label;
+            }
+            return out;
+        };
+        const QString axisLock = QStringLiteral("verrouiller l'axe");
+        // Sans modificateur : identique à la variante sans sélection.
+        QCOMPARE(InteractionMap::hintsFor(Context::Select, Qt::NoModifier, true),
+                 InteractionMap::hintsFor(Context::Select, Qt::NoModifier));
+        // Maj + sélection déplaçable : lignes Move (verrou d'axe) ajoutées ; sans sélection non.
+        QVERIFY(labels(InteractionMap::hintsFor(Context::Select, Qt::ShiftModifier, true))
+                    .contains(axisLock));
+        QVERIFY(!labels(InteractionMap::hintsFor(Context::Select, Qt::ShiftModifier, false))
+                     .contains(axisLock));
+        // Autres contextes : jamais de lignes Move.
+        QCOMPARE(InteractionMap::hintsFor(Context::Pan, Qt::ShiftModifier, true),
+                 InteractionMap::hintsFor(Context::Pan, Qt::ShiftModifier));
+        // Ctrl : M3 est planned -> aucune « suspendre l'accroche » côté déplacement de corps.
+        QVERIFY(!labels(InteractionMap::hintsFor(Context::Select, Qt::ControlModifier, true))
+                     .contains(QStringLiteral("suspendre l'accroche")));
+        // Pas de doublon.
+        const QStringList shift =
+            labels(InteractionMap::hintsFor(Context::Select, Qt::ShiftModifier, true));
+        QCOMPARE(QSet<QString>(shift.begin(), shift.end()).size(), shift.size());
     }
 
     void plannedRowsAreNeverResolvedNorListed() {

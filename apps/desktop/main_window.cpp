@@ -3,6 +3,7 @@
 
 #include <QAction>
 #include <QActionGroup>
+#include <QApplication>
 #include <QClipboard>
 #include <QColorDialog>
 #include <QDateTime>
@@ -22,6 +23,7 @@
 #include <QInputDialog>
 #include <QLabel>
 #include <QLocale>
+#include <QMap>
 #include <QMenu>
 #include <QMenuBar>
 #include <QMessageBox>
@@ -469,8 +471,11 @@ MainWindow::MainWindow() {
         // physicalMm est déjà Y-haut (cf. CanvasView::mouseMoveEvent) ; on
         // revient au repère scène (Y-bas) pour les aperçus QGraphicsItem.
         const QPointF sceneMm(physicalMm.x(), -physicalMm.y());
-        lastCursorSceneMm_ = sceneMm; // point de relâchement d'un cadre (Alt = depuis le centre)
-        updateHoverHighlight(sceneMm);
+        if (view_->gestureActive() || QGuiApplication::mouseButtons() != Qt::NoButton) {
+            hideHoverHighlight(); // pas de surbrillance pendant un glisser / panoramique
+        } else {
+            scheduleHoverHighlight(sceneMm);
+        }
         // Accroche (façon Fusion 360) : seulement pour les outils où le clic
         // pose réellement le point prévisualisé ici -- cf. commentaire de
         // findSnapPointMm (Bézier/rectangle/ellipse exclus).
@@ -502,6 +507,7 @@ MainWindow::MainWindow() {
     connect(view_, &CanvasView::selectionClickedMm, this, &MainWindow::onSelectionClicked);
     connect(view_, &CanvasView::selectionRectangleMm, this, &MainWindow::onSelectionRectangle);
     connect(view_, &CanvasView::selectBelowRequested, this, &MainWindow::onSelectBelow);
+    connect(view_, &CanvasView::cursorLeftViewport, this, [this] { hideHoverHighlight(); });
     connect(view_, &CanvasView::modifiersChanged, this, [this](Qt::KeyboardModifiers mods) {
         heldModifiers_ = mods;
         refreshHints();
@@ -857,6 +863,17 @@ void MainWindow::buildMenus() {
     addDensityAct(tr("Confortable"), Density::Comfortable);
     addDensityAct(tr("Compact"), Density::Compact);
     buildNavigationMenu(viewMenu);
+    snapNodesAct_ = viewMenu->addAction(tr("Accrochage des nœuds au glisser"));
+    snapNodesAct_->setObjectName(QStringLiteral("action_snapNodesOnDrag"));
+    snapNodesAct_->setCheckable(true);
+    snapNodesAct_->setChecked(
+        QSettings().value(QStringLiteral("edit/snapNodesOnDrag"), false).toBool());
+    snapNodesAct_->setToolTip(tr("Accroche un nœud glissé aux sommets des autres objets "
+                                 "(Ctrl ou Maj au relâchement : sans accroche). Désactivé par "
+                                 "défaut."));
+    snapNodesAct_->setStatusTip(snapNodesAct_->toolTip());
+    connect(snapNodesAct_, &QAction::toggled, this,
+            [](bool on) { QSettings().setValue(QStringLiteral("edit/snapNodesOnDrag"), on); });
 
     viewMenu->addSeparator();
     // Menu des panneaux : rempli dans le constructeur une fois les docks construits
@@ -1528,31 +1545,20 @@ void MainWindow::onBoxDrawn(QRectF rectMm, Qt::KeyboardModifiers modifiers) {
         currentTool_ != Tool::DrawPolygonRegular) {
         return; // sécurité : signal reçu hors mode dessin (ne devrait pas arriver)
     }
-    if (rectMm.width() < kMinDrawExtentMm || rectMm.height() < kMinDrawExtentMm) {
-        statusBar()->showMessage(tr("Forme trop petite — glissez davantage."));
-        return;
-    }
     QRectF box = rectMm;
     const bool fromCenter = (modifiers & Qt::AltModifier) != 0;
     if (fromCenter) {
-        // Alt (ligne D4) : le point d'appui est le CENTRE du cadre. Le cadre reçu est
-        // normalisé : l'appui est le coin opposé à celui qui est le plus près du dernier
-        // point de curseur (= le point de relâchement).
-        const std::array<QPointF, 4> corners = {box.topLeft(), box.topRight(), box.bottomRight(),
-                                                box.bottomLeft()};
-        std::size_t nearest = 0;
-        double best = std::numeric_limits<double>::max();
-        for (std::size_t i = 0; i < corners.size(); ++i) {
-            const QPointF d = corners[i] - lastCursorSceneMm_;
-            const double distSq = d.x() * d.x() + d.y() * d.y();
-            if (distSq < best) {
-                best = distSq;
-                nearest = i;
-            }
-        }
-        const QPointF anchor = corners[(nearest + 2) % 4];
-        const QPointF half = corners[nearest] - anchor;
-        box = QRectF(anchor - half, anchor + half).normalized();
+        // Alt (ligne D4) : le VRAI point d'appui (fourni par le canevas) est le centre du cadre.
+        const QPointF anchor = view_->lastBoxPressMm();
+        const double halfW =
+            std::max(std::abs(rectMm.left() - anchor.x()), std::abs(rectMm.right() - anchor.x()));
+        const double halfH =
+            std::max(std::abs(rectMm.top() - anchor.y()), std::abs(rectMm.bottom() - anchor.y()));
+        box = QRectF(anchor.x() - halfW, anchor.y() - halfH, 2.0 * halfW, 2.0 * halfH);
+    }
+    if (box.width() < kMinDrawExtentMm || box.height() < kMinDrawExtentMm) {
+        statusBar()->showMessage(tr("Forme trop petite — glissez davantage."));
+        return;
     }
     if (currentTool_ == Tool::DrawEllipse && (modifiers & Qt::ShiftModifier)) {
         // Maj enfoncée : contraint à un cercle (côté = le plus petit des deux).
@@ -1736,6 +1742,7 @@ constexpr double kSnapRadiusPx = 10.0; // rayon d'accroche « visé » à l'écr
 // la fenêtre n'a pas encore de taille réelle).
 constexpr double kSnapRadiusMinMm = 0.05;
 constexpr double kSnapRadiusMaxMm = 2.0;
+constexpr double kNodeSnapMaxMm = 1.0; // accroche des nœuds au glisser : jamais > 1 mm
 } // namespace
 
 std::optional<QPointF> MainWindow::findSnapPointMm(QPointF cursorSceneMm,
@@ -1797,20 +1804,71 @@ std::optional<QPointF> MainWindow::findSnapPointMm(QPointF cursorSceneMm,
     return best;
 }
 
+std::optional<QPointF> MainWindow::findNodeSnapMm(QPointF cursorSceneMm, ObjectId exclude) const {
+    // Accroche des nœuds au glisser (réglage `edit/snapNodesOnDrag`) : SOMMETS des autres
+    // objets visibles seulement (ni milieux de corde, ni centres), rayon <= 1 mm et <= 10 px.
+    const double radiusMm =
+        std::min(kNodeSnapMaxMm, kSnapRadiusPx / std::max(view_->pixelsPerMm(), 0.01));
+    double bestDistSq = radiusMm * radiusMm;
+    std::optional<QPointF> best;
+    for (const auto& object : project_.vector_objects) {
+        if (!object.visible || object.id == exclude) {
+            continue;
+        }
+        const auto consider = [&](const geometry::Path& path) {
+            for (const auto& node : path.nodes) {
+                const QPointF candidate = modelToSceneMm(node.pos);
+                const double dx = candidate.x() - cursorSceneMm.x();
+                const double dy = candidate.y() - cursorSceneMm.y();
+                const double distSq = dx * dx + dy * dy;
+                if (distSq <= bestDistSq) {
+                    bestDistSq = distSq;
+                    best = candidate;
+                }
+            }
+        };
+        for (const auto& set : object.paths) {
+            consider(set.outer);
+            for (const auto& hole : set.holes) {
+                consider(hole);
+            }
+        }
+    }
+    return best;
+}
+
 void MainWindow::updateHoverHighlight(std::optional<QPointF> sceneMm) {
     // Surbrillance de pré-sélection (ligne S11) : contour de l'objet non sélectionné le plus
     // haut sous le curseur, outil Sélection seulement. Un seul item, indépendant de baseItems_,
-    // qui n'accepte aucun bouton (le clic atteint l'objet dessous).
-    std::optional<ObjectId> under;
+    // qui n'accepte aucun bouton (le clic atteint l'objet dessous). Les contours viennent d'un
+    // cache reconstruit après chaque rendu de la couche base (renderBase).
+    ++hoverComputations_;
+    const HoverShape* under = nullptr;
     if (sceneMm && currentTool_ == Tool::Select && interactionContext() == Context::Select &&
         showVectorsAct_ != nullptr && showVectorsAct_->isChecked() && !mergeMode_) {
-        const std::vector<ObjectId> hits = objectsAtPointMm(project_, *sceneMm);
-        if (!hits.empty() && !isObjectSelected(hits.front())) {
-            under = hits.front();
+        if (!hoverCacheValid_) {
+            hoverCache_.clear();
+            for (const auto& object : project_.vector_objects) {
+                if (object.visible) {
+                    QPainterPath path = objectScenePath(object);
+                    const QRectF bounds = path.boundingRect();
+                    hoverCache_.push_back({object.id, std::move(path), bounds});
+                    ++hoverPathBuilds_;
+                }
+            }
+            hoverCacheValid_ = true;
+        }
+        // Du plus haut (dessiné en dernier) au plus bas ; pré-rejet par boîte englobante.
+        for (auto it = hoverCache_.rbegin(); it != hoverCache_.rend(); ++it) {
+            if (it->bounds.contains(*sceneMm) && it->path.contains(*sceneMm)) {
+                if (!isObjectSelected(it->id)) {
+                    under = &*it;
+                }
+                break;
+            }
         }
     }
-    const auto* object = under ? project_.findObject(*under) : nullptr;
-    if (object == nullptr) {
+    if (under == nullptr) {
         if (hoverItem_ != nullptr) {
             hoverItem_->setVisible(false);
         }
@@ -1827,8 +1885,40 @@ void MainWindow::updateHoverHighlight(std::optional<QPointF> sceneMm) {
         hoverItem_->setAcceptHoverEvents(false);
         scene_->addItem(hoverItem_);
     }
-    hoverItem_->setPath(objectScenePath(*object));
+    hoverItem_->setPath(under->path);
     hoverItem_->setVisible(true);
+}
+
+void MainWindow::scheduleHoverHighlight(QPointF sceneMm) {
+    // Coalescence : le premier mouvement est traité aussitôt (réactivité), les suivants
+    // attendent la fin du pas de 16 ms, avec seulement le dernier point retenu.
+    if (hoverTimer_ == nullptr) {
+        hoverTimer_ = new QTimer(this);
+        hoverTimer_->setSingleShot(true);
+        hoverTimer_->setInterval(16);
+        connect(hoverTimer_, &QTimer::timeout, this, [this] {
+            if (hoverPending_) {
+                const QPointF pos = *hoverPending_;
+                hoverPending_.reset();
+                updateHoverHighlight(pos);
+                hoverTimer_->start();
+            }
+        });
+    }
+    if (hoverTimer_->isActive()) {
+        hoverPending_ = sceneMm;
+        return;
+    }
+    hoverPending_.reset();
+    updateHoverHighlight(sceneMm);
+    hoverTimer_->start();
+}
+
+void MainWindow::hideHoverHighlight() {
+    hoverPending_.reset();
+    if (hoverItem_ != nullptr) {
+        hoverItem_->setVisible(false);
+    }
 }
 
 void MainWindow::updateSnapIndicator(std::optional<QPointF> snapSceneMm) {
@@ -2382,9 +2472,8 @@ void MainWindow::renderBase(const image::Image& img) {
         delete it;
     }
     baseItems_.clear();
-    if (hoverItem_ != nullptr) {
-        hoverItem_->setVisible(false); // la sélection/les objets ont pu changer
-    }
+    hoverCacheValid_ = false; // les contours ont pu changer
+    hideHoverHighlight();     // la sélection/les objets ont pu changer
 
     if (!img.empty() && (showImageAct_ == nullptr || showImageAct_->isChecked())) {
         const QImage qimg(img.rgba.data(), img.width, img.height, img.width * 4,
@@ -2437,7 +2526,11 @@ void MainWindow::renderBase(const image::Image& img) {
                 bodyItem->setReleasedWithModifiers([this, objectId](QPointF deltaSceneMm,
                                                                     Qt::KeyboardModifiers mods) {
                     const Vec2um delta = sceneMmToModel(deltaSceneMm);
-                    const bool duplicate = (mods & Qt::AltModifier) != 0;
+                    // Alt + simple clic (mouvement <= seuil de glisser) : « Sélectionner
+                    // dessous » côté canevas, pas de copie.
+                    const bool duplicate = (mods & Qt::AltModifier) != 0 &&
+                                           deltaSceneMm.manhattanLength() * view_->pixelsPerMm() >
+                                               QApplication::startDragDistance();
                     // Diffère : refreshImage() détruirait cet item pendant son
                     // propre événement souris (même défaut que NodeHandleItem).
                     // Glisser un membre d'une multi-sélection déplace tout
@@ -2489,15 +2582,17 @@ void MainWindow::renderBase(const image::Image& img) {
                             const ObjectId objectId = object->id;
                             const document::NodeRef ref{s, pathIdx, n};
                             // Relâchement avec modificateurs : Maj = verrou d'axe (appliqué
-                            // par l'item), Ctrl = suspend l'accroche (lignes N2/N2b). Sans
-                            // Ctrl ni Maj, le nœud s'accroche aux points des AUTRES objets.
+                            // par l'item), Ctrl = suspend l'accroche (lignes N2/N2b). Avec le
+                            // réglage « Accrochage des nœuds au glisser » (désactivé par défaut),
+                            // le nœud s'accroche aux SOMMETS des autres objets.
                             const auto commitNodeMove = [this, objectId, ref,
                                                          pos](QPointF releasedSceneMm,
                                                               Qt::KeyboardModifiers mods) {
                                 QPointF newSceneMm = releasedSceneMm;
-                                if ((mods & (Qt::ControlModifier | Qt::ShiftModifier)) == 0) {
+                                if (snapNodesAct_ != nullptr && snapNodesAct_->isChecked() &&
+                                    (mods & (Qt::ControlModifier | Qt::ShiftModifier)) == 0) {
                                     newSceneMm =
-                                        findSnapPointMm(newSceneMm, objectId).value_or(newSceneMm);
+                                        findNodeSnapMm(newSceneMm, objectId).value_or(newSceneMm);
                                 }
                                 const Vec2um newPos{to_micrometers(Millimeters{newSceneMm.x()}),
                                                     to_micrometers(Millimeters{-newSceneMm.y()})};
@@ -5361,29 +5456,34 @@ void MainWindow::applyNavigationPreset(Preset preset) {
 }
 
 Context MainWindow::interactionContext() const {
+    // Même priorité que CanvasView::currentContext : un outil de dessin / recadrage prime sur les
+    // modes d'édition, l'outil Déplacer la vue est toujours Pan ; seuls les modes d'édition de
+    // nœuds / de points passent devant l'outil Sélection.
+    if (currentTool_ == Tool::Pan) {
+        return Context::Pan;
+    }
+    if (currentTool_ != Tool::Select) {
+        return InteractionMap::contextFor(currentTool_, false, false);
+    }
     const bool nodeEdit =
         (satinEditModeAct_ != nullptr && satinEditModeAct_->isChecked()) ||
         (satinGuideModeAct_ != nullptr && satinGuideModeAct_->isChecked()) ||
         (railEditModeAct_ != nullptr && railEditModeAct_->isChecked()) ||
         (directionGuideModeAct_ != nullptr && directionGuideModeAct_->isChecked());
     const bool stitchEdit = stitchEditModeAct_ != nullptr && stitchEditModeAct_->isChecked();
-    return InteractionMap::contextFor(currentTool_, nodeEdit, stitchEdit);
+    return InteractionMap::contextFor(Tool::Select, nodeEdit, stitchEdit);
 }
 
 void MainWindow::updateInteractionContext() {
     if (view_ == nullptr) {
         return;
     }
-    // Le canevas dérive lui-même Crop/Draw* de ses booléens de mode : on ne lui
-    // donne que le contexte de base (Select, Pan, NodeEdit, StitchEdit).
+    // Le canevas dérive lui-même Crop/Draw* de ses booléens de mode : on ne lui donne que le
+    // contexte de base (Select, Pan, NodeEdit, StitchEdit) ; pour les autres outils : Select.
     const Context logical = interactionContext();
-    Context base = Context::Select;
-    if (currentTool_ == Tool::Pan) {
-        base = Context::Pan;
-    } else if (currentTool_ == Tool::Select) {
-        base = logical;
-    }
-    view_->setBaseContext(base);
+    const bool baseContext = logical == Context::Select || logical == Context::Pan ||
+                             logical == Context::NodeEdit || logical == Context::StitchEdit;
+    view_->setBaseContext(baseContext ? logical : Context::Select);
     view_->setSelectionRectangleEnabled(currentTool_ == Tool::Select);
     refreshHints();
 }
@@ -5392,18 +5492,8 @@ void MainWindow::refreshHints() {
     if (hintsLabel_ == nullptr) {
         return;
     }
-    const Context ctx = interactionContext();
-    QList<Hint> hints = InteractionMap::hintsFor(ctx, heldModifiers_);
-    // Un objet sélectionné en mode Sélection peut être déplacé : les lignes de
-    // déplacement (verrou d'axe, accroche, copie) suivent le modificateur tenu.
-    if (ctx == Context::Select && heldModifiers_ != Qt::KeyboardModifiers{} &&
-        selectedObject_.has_value()) {
-        for (const Hint& hint : InteractionMap::hintsFor(Context::Move, heldModifiers_)) {
-            if (!hints.contains(hint)) {
-                hints.push_back(hint);
-            }
-        }
-    }
+    const QList<Hint> hints =
+        InteractionMap::hintsFor(interactionContext(), heldModifiers_, selectedObject_.has_value());
     QStringList parts;
     for (const Hint& hint : hints) {
         parts << tr("%1 : %2").arg(hint.gesture, hint.label);
@@ -5935,7 +6025,7 @@ void MainWindow::setTool(Tool tool) {
     }
     updateDrawActionsState();
     updateInteractionContext();
-    updateHoverHighlight(std::nullopt);
+    hideHoverHighlight();
 }
 
 void MainWindow::buildWorkflowPanel() {
@@ -7337,12 +7427,27 @@ void MainWindow::onSelectBelow(QPointF posMm, QPoint globalPos, SelectMode mode)
     menu->setObjectName(QStringLiteral("selectBelowMenu"));
     menu->setAttribute(Qt::WA_DeleteOnClose);
     menu->setAccessibleName(tr("Objets sous le curseur"));
+    // Noms vides ou en double : suffixe « (#id) » pour les distinguer.
+    QMap<QString, int> nameCount;
+    for (const ObjectId id : under) {
+        if (const auto* object = project_.findObject(id)) {
+            ++nameCount[QString::fromStdString(object->name)];
+        }
+    }
     for (const ObjectId id : under) {
         const auto* object = project_.findObject(id);
         if (object == nullptr) {
             continue;
         }
-        auto* act = menu->addAction(QString::fromStdString(object->name));
+        QString label = QString::fromStdString(object->name);
+        const bool ambiguous = object->name.empty() || nameCount.value(label) > 1;
+        if (object->name.empty()) {
+            label = tr("(sans nom)");
+        }
+        if (ambiguous) {
+            label += QStringLiteral(" (#%1)").arg(id.value);
+        }
+        auto* act = menu->addAction(label);
         connect(act, &QAction::triggered, this,
                 [this, id, mode] { applySelectionClick(id, mode); });
     }

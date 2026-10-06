@@ -565,6 +565,11 @@ void sendMouseEvent(QWidget* viewport, QEvent::Type type, const QPoint& at, Qt::
     QApplication::sendEvent(viewport, &event);
 }
 
+// Remet le réglage d'accrochage des nœuds à sa valeur par défaut (désactivé) en fin de test.
+struct SnapSettingReset {
+    ~SnapSettingReset() { QSettings().setValue(QStringLiteral("edit/snapNodesOnDrag"), false); }
+};
+
 // Rend le préréglage de navigation à OpenStitch (état global + QSettings de test) en fin de test.
 struct PresetRestorer {
     ~PresetRestorer() {
@@ -644,6 +649,14 @@ private slots:
     void altDragDuplicatesAndMovesCopyInOneUndoStep();
     void altBoxDrawGrowsFromCenter();
     void hoverHighlightShowsOnlyUnselectedObjectUnderCursorInSelectTool();
+    void hoverHighlightHidesOnLeaveAndDuringGestures();
+    void hoverBurstIsCoalescedAndPathsAreCached();
+    void leftDragOnEmptySpaceStillPansInNodeEditAndStitchEditContexts();
+    void altClickOnSelectedBodyOpensSelectBelowWithoutDuplicating();
+    void nodeSnapIsOffByDefaultAndLandsExactlyWhereReleased();
+    void nodeSnapSettingPersistsAndOnlySnapsToOtherObjectVertices();
+    void hintsFollowTheSameContextPriorityAsTheCanvas();
+    void selectBelowMenuDisambiguatesDuplicateAndEmptyNames();
     void embroiderySelectionDoesNotLeakAcrossProjectLoadWithReusedId();
     // Cache de l'image de travail (audit perf 2026-09) : toujours égale au
     // pipeline rejoué, quelle que soit la mutation.
@@ -5532,10 +5545,12 @@ void MainWindowTest::shiftDragOfNodeKeepsOneAxis() {
 }
 
 void MainWindowTest::ctrlDragSkipsSnap() {
+    const SnapSettingReset reset;
     MainWindow window;
     ObjectId a, b, c;
     CanvasView* view = openSquares(window, a, b, c);
     QVERIFY(view != nullptr);
+    window.snapNodesAct_->setChecked(true); // accrochage des nœuds : désactivé par défaut
     // Nœud au milieu de l'arête haute de A (physique (-15, 5) -> scène (-15, -5)) : les coins
     // portent aussi les poignées de redimensionnement. Cible : près du coin (-5, 5) de B.
     auto& nodes = window.project_.findObject(a)->paths.front().outer.nodes;
@@ -5598,8 +5613,8 @@ void MainWindowTest::altDragDuplicatesAndMovesCopyInOneUndoStep() {
     const Vec2um before = origin(b);
     const std::size_t count = window.project_.vector_objects.size();
 
-    // Appui sans modificateur sur le corps sélectionné (glisser d'item), Alt pendant le geste.
-    dragWith(view, vp(view, 0, 0), vp(view, 3, -2), Qt::AltModifier);
+    // Alt tenu AVANT l'appui, sur le corps d'un objet déjà sélectionné : le glisser démarre.
+    dragWith(view, vp(view, 0, 0), vp(view, 3, -2), Qt::AltModifier, Qt::AltModifier);
     QTRY_COMPARE_WITH_TIMEOUT(window.project_.vector_objects.size(), count + 1, 2000);
     QCOMPARE(origin(b), before); // l'original n'a pas bougé
     const ObjectId copy = window.project_.vector_objects.back().id;
@@ -5652,6 +5667,13 @@ void MainWindowTest::altBoxDrawGrowsFromCenter() {
     QVERIFY(std::abs(centered.right() - 38000.0) <= 150);
     QVERIFY(std::abs(centered.top() - (-31000.0)) <= 150);
     QVERIFY(std::abs(centered.bottom() - (-19000.0)) <= 150);
+    // Cadre « mince » (0,4 mm de haut) : le vrai point d'appui reste le centre, le cadre centré
+    // fait 0,8 mm de haut et est accepté (x 22..38, y(physique) 24,6..25,4 ; en haut, loin des
+    // formes déjà dessinées pour que l'accroche des coins n'interfère pas).
+    const QRectF thin = drawAndMeasure(vp(view, 30, -25), vp(view, 38, -25.4), Qt::AltModifier);
+    QVERIFY2(thin.isValid(), qPrintable(window.statusBar()->currentMessage()));
+    QVERIFY(std::abs(thin.left() - 22000.0) <= 150 && std::abs(thin.right() - 38000.0) <= 150);
+    QVERIFY(std::abs(thin.center().y() - 25000.0) <= 150);
     // Appui d'un côté, relâchement vers le haut-gauche : même centre (le point d'appui).
     const QRectF reverse = drawAndMeasure(vp(view, -30, 25), vp(view, -38, 19), Qt::AltModifier);
     QVERIFY2(reverse.isValid(), qPrintable(window.statusBar()->currentMessage()));
@@ -5667,6 +5689,11 @@ void MainWindowTest::hoverHighlightShowsOnlyUnselectedObjectUnderCursorInSelectT
     const auto hover = [&](double x, double y) {
         sendMouseEvent(view->viewport(), QEvent::MouseMove, vp(view, x, y), Qt::NoButton,
                        Qt::NoButton, Qt::NoModifier);
+        // Coalescence 16 ms : attend le traitement du dernier point.
+        for (int i = 0; i < 100 && window.hoverTimer_ != nullptr && window.hoverTimer_->isActive();
+             ++i) {
+            QTest::qWait(2);
+        }
     };
     const auto shown = [&] {
         return window.hoverItem_ != nullptr && window.hoverItem_->isVisible();
@@ -5692,6 +5719,236 @@ void MainWindowTest::hoverHighlightShowsOnlyUnselectedObjectUnderCursorInSelectT
     QVERIFY(!shown());
     hover(15, 0);
     QVERIFY(!shown());
+}
+
+void MainWindowTest::hoverHighlightHidesOnLeaveAndDuringGestures() {
+    MainWindow window;
+    ObjectId a, b, c;
+    CanvasView* view = openSquares(window, a, b, c);
+    QVERIFY(view != nullptr);
+    const auto shown = [&] {
+        return window.hoverItem_ != nullptr && window.hoverItem_->isVisible();
+    };
+    sendMouseEvent(view->viewport(), QEvent::MouseMove, vp(view, 0, 0), Qt::NoButton, Qt::NoButton,
+                   Qt::NoModifier);
+    QVERIFY(shown());
+    // Le curseur quitte le viewport : la surbrillance disparaît.
+    QEvent leave(QEvent::Leave);
+    QApplication::sendEvent(view->viewport(), &leave);
+    QVERIFY(!shown());
+    // Pendant un rectangle de sélection (geste actif), pas de surbrillance.
+    QTest::qWait(30);
+    sendMouseEvent(view->viewport(), QEvent::MouseButtonPress, vp(view, 0, 30), Qt::LeftButton,
+                   Qt::LeftButton, Qt::NoModifier);
+    sendMouseEvent(view->viewport(), QEvent::MouseMove, vp(view, 0, 0), Qt::NoButton,
+                   Qt::LeftButton, Qt::NoModifier);
+    QVERIFY(view->gestureActive());
+    QVERIFY(!shown());
+    sendMouseEvent(view->viewport(), QEvent::MouseButtonRelease, vp(view, 0, 0), Qt::LeftButton,
+                   Qt::NoButton, Qt::NoModifier);
+}
+
+void MainWindowTest::hoverBurstIsCoalescedAndPathsAreCached() {
+    MainWindow window;
+    ObjectId a, b, c;
+    CanvasView* view = openSquares(window, a, b, c);
+    QVERIFY(view != nullptr);
+    window.hoverCacheValid_ = false;
+    window.hoverPathBuilds_ = 0;
+    window.hoverComputations_ = 0;
+    constexpr int kMoves = 60;
+    for (int i = 0; i < kMoves; ++i) { // rafale sans traiter d'évènements
+        sendMouseEvent(view->viewport(), QEvent::MouseMove,
+                       vp(view, (i % 2 == 0) ? -15.0 : 15.0, 0.0), Qt::NoButton, Qt::NoButton,
+                       Qt::NoModifier);
+    }
+    for (int i = 0; i < 100 && window.hoverTimer_->isActive(); ++i) {
+        QTest::qWait(2);
+    }
+    QVERIFY(window.hoverComputations_ >= 1);
+    QVERIFY2(window.hoverComputations_ < kMoves / 2,
+             qPrintable(QString::number(window.hoverComputations_)));
+    QCOMPARE(window.hoverPathBuilds_, 3); // un seul calcul de contours pour les 3 objets
+    // Un rendu de la couche base invalide le cache.
+    window.refreshImage();
+    QVERIFY(!window.hoverCacheValid_);
+}
+
+void MainWindowTest::leftDragOnEmptySpaceStillPansInNodeEditAndStitchEditContexts() {
+    MainWindow window;
+    ObjectId a, b, c;
+    CanvasView* view = openSquares(window, a, b, c);
+    QVERIFY(view != nullptr);
+    view->setCanvasSizeMm(QSizeF(100.0, 100.0));
+    view->resetTransform();
+    view->scale(40.0, 40.0);
+    for (const Context ctx : {Context::NodeEdit, Context::StitchEdit}) {
+        view->setBaseContext(ctx);
+        QCOMPARE(view->dragMode(), QGraphicsView::ScrollHandDrag);
+        view->horizontalScrollBar()->setValue(view->horizontalScrollBar()->maximum() / 2);
+        const int h0 = view->horizontalScrollBar()->value();
+        QTest::mousePress(view->viewport(), Qt::LeftButton, Qt::NoModifier, QPoint(400, 300));
+        QTest::mouseMove(view->viewport(), QPoint(360, 280));
+        QTest::mouseMove(view->viewport(), QPoint(340, 270));
+        QTest::mouseRelease(view->viewport(), Qt::LeftButton, Qt::NoModifier, QPoint(340, 270));
+        QVERIFY2(view->horizontalScrollBar()->value() != h0, qPrintable(QString::number(int(ctx))));
+    }
+    // Select / Pan gardent NoDrag.
+    view->setBaseContext(Context::Select);
+    QCOMPARE(view->dragMode(), QGraphicsView::NoDrag);
+    // Via la fenêtre : un mode d'édition actif sous l'outil Sélection donne le contexte d'édition.
+    window.setTool(Tool::Select);
+    window.stitchEditModeAct_->setChecked(true);
+    if (window.stitchEditModeAct_->isChecked()) {
+        QCOMPARE(view->baseContext(), Context::StitchEdit);
+        QCOMPARE(view->dragMode(), QGraphicsView::ScrollHandDrag);
+    }
+}
+
+void MainWindowTest::altClickOnSelectedBodyOpensSelectBelowWithoutDuplicating() {
+    MainWindow window;
+    ObjectId a, b, c;
+    CanvasView* view = openSquares(window, a, b, c);
+    QVERIFY(view != nullptr);
+    window.applySelectionClick(b, SelectMode::Replace);
+    window.selectionChanged();
+    const std::size_t count = window.project_.vector_objects.size();
+    QSignalSpy below(view, &CanvasView::selectBelowRequested);
+    QTest::mouseClick(view->viewport(), Qt::LeftButton, Qt::AltModifier, vp(view, 0, 0));
+    QVERIFY(below.count() == 1 || below.wait(1000));
+    QCOMPARE(window.project_.vector_objects.size(), count); // pas de copie
+    QVERIFY(!window.undoStack_.canUndo());
+    QVERIFY(window.findChild<QMenu*>(QStringLiteral("selectBelowMenu")) != nullptr);
+}
+
+void MainWindowTest::nodeSnapIsOffByDefaultAndLandsExactlyWhereReleased() {
+    const SnapSettingReset reset;
+    QSettings().setValue(QStringLiteral("edit/snapNodesOnDrag"), false);
+    MainWindow window;
+    ObjectId a, b, c;
+    CanvasView* view = openSquares(window, a, b, c);
+    QVERIFY(view != nullptr);
+    QVERIFY(window.snapNodesAct_ != nullptr);
+    QVERIFY(window.snapNodesAct_->isCheckable());
+    QVERIFY(!window.snapNodesAct_->isChecked());
+    QCOMPARE(window.snapNodesAct_->objectName(), QStringLiteral("action_snapNodesOnDrag"));
+    QVERIFY(!window.snapNodesAct_->toolTip().isEmpty());
+    auto& nodes = window.project_.findObject(a)->paths.front().outer.nodes;
+    nodes.insert(nodes.begin() + 3,
+                 geometry::PathNode{Vec2um{Micrometers{-15'000}, Micrometers{5'000}},
+                                    geometry::NodeType::Corner, std::nullopt, std::nullopt});
+    window.applySelectionClick(a, SelectMode::Replace);
+    window.refreshImage();
+    const auto node = [&] {
+        return window.project_.findObject(a)->paths.front().outer.nodes[3].pos;
+    };
+    // À 0,2 mm d'un sommet de B (-5, 5) : sans le réglage, le nœud reste là où on le lâche
+    // (déplacement exact en pixels, 10 px/mm -> x +10 200 µm, y -200 µm).
+    const QPoint from = vp(view, -15, -5);
+    const QPoint to = vp(view, -4.8, -4.8);
+    dragWith(view, from, to, Qt::NoModifier);
+    QTRY_VERIFY_WITH_TIMEOUT(node() != (Vec2um{Micrometers{-15'000}, Micrometers{5'000}}), 2000);
+    const double dxMm = (to.x() - from.x()) / 10.0;
+    const double dyMm = (to.y() - from.y()) / 10.0;
+    QVERIFY(std::abs(node().x.value - (-15'000 + dxMm * 1000.0)) <= 1.0);
+    QVERIFY(std::abs(node().y.value - (5'000 - dyMm * 1000.0)) <= 1.0);
+    QVERIFY(node() != (Vec2um{Micrometers{-5'000}, Micrometers{5'000}})); // pas accroché
+}
+
+void MainWindowTest::nodeSnapSettingPersistsAndOnlySnapsToOtherObjectVertices() {
+    const SnapSettingReset reset;
+    QSettings().setValue(QStringLiteral("edit/snapNodesOnDrag"), false);
+    {
+        MainWindow window;
+        window.snapNodesAct_->trigger();
+        QVERIFY(window.snapNodesAct_->isChecked());
+        QVERIFY(QSettings().value(QStringLiteral("edit/snapNodesOnDrag")).toBool());
+    }
+    MainWindow window; // relit le réglage
+    QVERIFY(window.snapNodesAct_->isChecked());
+    ObjectId a, b, c;
+    CanvasView* view = openSquares(window, a, b, c);
+    QVERIFY(view != nullptr);
+    // Candidats : sommets des AUTRES objets seulement. Milieu d'arête (0, 5) de B et centre de B
+    // ne sont pas des candidats ; le sommet (-5, 5) l'est ; rayon <= 1 mm.
+    const QPointF nearMidEdge(0.2, -5.1); // scène : proche du milieu d'arête de B
+    QVERIFY(!window.findNodeSnapMm(nearMidEdge, a).has_value());
+    QVERIFY(!window.findNodeSnapMm(QPointF(0.2, 0.2), a).has_value()); // centre de B
+    const auto corner = window.findNodeSnapMm(QPointF(-4.8, -4.8), a);
+    QVERIFY(corner.has_value());
+    QCOMPARE(*corner, QPointF(-5.0, -5.0));
+    QVERIFY(!window.findNodeSnapMm(QPointF(-3.5, -3.5), a).has_value()); // > 1 mm
+    QVERIFY(!window.findNodeSnapMm(QPointF(-4.8, -4.8), b).has_value() ||
+            *window.findNodeSnapMm(QPointF(-4.8, -4.8), b) !=
+                QPointF(-5.0, -5.0)); // pas son propre sommet
+}
+
+void MainWindowTest::hintsFollowTheSameContextPriorityAsTheCanvas() {
+    MainWindow window;
+    ObjectId a, b, c;
+    CanvasView* view = openSquares(window, a, b, c);
+    QVERIFY(view != nullptr);
+    // Un mode d'édition actif avec un outil de dessin : le canevas est en contexte de dessin,
+    // les indications aussi.
+    window.setTool(Tool::DrawPolygon);
+    bool toggled = false;
+    for (QAction* act : {window.stitchEditModeAct_, window.railEditModeAct_,
+                         window.satinGuideModeAct_, window.directionGuideModeAct_}) {
+        QSignalBlocker block(act);
+        act->setChecked(true);
+        toggled = toggled || act->isChecked();
+        break;
+    }
+    QVERIFY(toggled);
+    window.updateInteractionContext();
+    QCOMPARE(window.interactionContext(), Context::DrawClicks);
+    QCOMPARE(view->baseContext(), Context::Select); // le contexte de dessin vient des booléens
+    // Outil Pan : toujours Pan, même avec un mode d'édition coché.
+    window.setTool(Tool::Pan);
+    QCOMPARE(window.interactionContext(), Context::Pan);
+    QCOMPARE(view->baseContext(), Context::Pan);
+    // Outil Sélection : le mode d'édition passe devant.
+    window.setTool(Tool::Select);
+    const Context ctx = window.interactionContext();
+    QVERIFY(ctx == Context::NodeEdit || ctx == Context::StitchEdit);
+    QCOMPARE(view->baseContext(), ctx);
+    QCOMPARE(window.hintsText().isEmpty(), InteractionMap::hintsFor(ctx, Qt::NoModifier).isEmpty());
+}
+
+void MainWindowTest::selectBelowMenuDisambiguatesDuplicateAndEmptyNames() {
+    MainWindow window;
+    ObjectId a, b, c;
+    CanvasView* view = openSquares(window, a, b, c);
+    QVERIFY(view != nullptr);
+    // Trois objets superposés au centre de B : « B », « B » (doublon) et un sans nom.
+    for (const char* name : {"B", ""}) {
+        auto copy = *window.project_.findObject(b);
+        copy.id = window.project_.object_ids.next();
+        copy.name = name;
+        window.undoStack_.execute(
+            std::make_unique<openstitch::commands::AddVectorObjectCommand>(copy), window.project_);
+    }
+    window.refreshImage();
+    window.onSelectBelow(QPointF(0.0, 0.0), QPoint(100, 100), SelectMode::Replace);
+    QMenu* menu = window.findChild<QMenu*>(QStringLiteral("selectBelowMenu"));
+    QVERIFY(menu != nullptr);
+    QStringList labels;
+    for (const QAction* act : menu->actions()) {
+        labels << act->text();
+    }
+    QCOMPARE(labels.size(), 3);
+    QCOMPARE(QSet<QString>(labels.begin(), labels.end()).size(), 3); // tous distincts
+    for (const QString& label : labels) {
+        QVERIFY2(label.contains(QStringLiteral("(#")), qPrintable(label));
+    }
+    QVERIFY(labels.constFirst().startsWith(QStringLiteral("(sans nom)")));
+    menu->close();
+    QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
+    // Noms uniques : pas de suffixe.
+    window.onSelectBelow(QPointF(-15.0, 0.0), QPoint(100, 100), SelectMode::Replace);
+    menu = window.findChild<QMenu*>(QStringLiteral("selectBelowMenu"));
+    QVERIFY(menu != nullptr);
+    QCOMPARE(menu->actions().constFirst()->text(), QStringLiteral("A"));
 }
 
 } // namespace openstitch::desktop

@@ -98,7 +98,9 @@ constexpr auto kRows = std::to_array<Row>({
     row("S11", Context::Select, simple(GestureKind::Hover), Intent::HoverHighlight, QT_TRANSLATE_NOOP("InteractionMap", "Surbrillance de pré-sélection"), P, Both, true, false, false, false),
     row("M1", Context::Move, drag(L), Intent::MoveObject, QT_TRANSLATE_NOOP("InteractionMap", "Déplacer l'objet"), E, Both, false, false, false, true),
     row("M2", Context::Move, drag(L, kShift), Intent::AxisLock, QT_TRANSLATE_NOOP("InteractionMap", "Verrouiller l'axe"), P, Both, false, false, false, true),
-    row("M3", Context::Move, drag(L, kCtrl), Intent::SuspendSnap, QT_TRANSLATE_NOOP("InteractionMap", "Suspendre l'accroche"), P, Both, false, false, false, true),
+    // M3 planned : le glisser de corps n'a aucune accroche à suspendre (l'accroche existe pour
+    // les nœuds, N2b, et le tracé, D5) ; la ligne reste pour mémoire, jamais listée.
+    row("M3", Context::Move, drag(L, kCtrl), Intent::SuspendSnap, QT_TRANSLATE_NOOP("InteractionMap", "Suspendre l'accroche"), P, Both, false, true, false, false),
     row("M4", Context::Move, drag(L, kAlt), Intent::DuplicateOnMove, QT_TRANSLATE_NOOP("InteractionMap", "Dupliquer en déplaçant"), P, Both, false, false, false, true),
     row("D1", Context::DrawClicks, click(L), Intent::DrawPoint, QT_TRANSLATE_NOOP("InteractionMap", "Ajouter un point"), E, Both, false, false, false, true),
     row("D2", Context::DrawClicks, dblclick(L), Intent::FinishDraw, QT_TRANSLATE_NOOP("InteractionMap", "Terminer le tracé"), E, Both, false, false, false, true),
@@ -110,7 +112,7 @@ constexpr auto kRows = std::to_array<Row>({
     row("D7", Context::DrawClicks, key(Qt::Key_Escape), Intent::CancelTool, QT_TRANSLATE_NOOP("InteractionMap", "Annuler l'outil en cours"), E, Both, false, false, true, false),
     row("N1", Context::NodeEdit, drag(L), Intent::MoveNode, QT_TRANSLATE_NOOP("InteractionMap", "Déplacer le nœud"), E, Both, false, false, false, true),
     row("N2", Context::NodeEdit, drag(L, kShift), Intent::AxisLock, QT_TRANSLATE_NOOP("InteractionMap", "Verrouiller l'axe"), P, Both, false, false, false, true),
-    row("N2b", Context::NodeEdit, drag(L, kCtrl), Intent::SuspendSnap, QT_TRANSLATE_NOOP("InteractionMap", "Suspendre l'accroche"), P, Both, false, false, false, true),
+    row("N2b", Context::NodeEdit, drag(L, kCtrl), Intent::SuspendSnap, QT_TRANSLATE_NOOP("InteractionMap", "Suspendre l'accroche"), P, Both, false, false, false, false),
     row("N3", Context::NodeEdit, dblclick(L), Intent::InsertNode, QT_TRANSLATE_NOOP("InteractionMap", "Insérer un nœud sur le segment"), P, Both, false, true, false, false),
     row("N4", Context::NodeEdit, key(Qt::Key_Delete), Intent::DeleteNodes, QT_TRANSLATE_NOOP("InteractionMap", "Supprimer les nœuds sélectionnés"), E, Both, false, false, true, true),
 });
@@ -218,6 +220,21 @@ std::optional<Intent> InteractionMap::resolve(Context context, const Gesture& ge
         }
     }
     return std::nullopt;
+}
+
+QList<Hint> InteractionMap::hintsFor(Context context, Qt::KeyboardModifiers held,
+                                     bool hasMovableSelection) {
+    QList<Hint> out = hintsFor(context, held);
+    // Un objet sélectionné en contexte Sélection peut être déplacé : les lignes de
+    // déplacement suivent le modificateur tenu (sans modificateur : rien de plus).
+    if (context == Context::Select && hasMovableSelection && held != Qt::KeyboardModifiers{}) {
+        for (const Hint& hint : hintsFor(Context::Move, held)) {
+            if (!out.contains(hint)) {
+                out.push_back(hint);
+            }
+        }
+    }
+    return out;
 }
 
 QList<Hint> InteractionMap::hintsFor(Context context, Qt::KeyboardModifiers held) {

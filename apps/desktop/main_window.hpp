@@ -4,7 +4,9 @@
 #include <QHash>
 #include <QList>
 #include <QMainWindow>
+#include <QPainterPath>
 #include <QPointer>
+#include <QRectF>
 #include <QString>
 #include <QStringList>
 
@@ -394,8 +396,8 @@ private:
     // réellement au clic, pire qu'aucune accroche) ni sur le rectangle/ellipse
     // (glisser natif RubberBandDrag de Qt, pas d'aperçu personnalisable en
     // cours de glisser ; seuls les coins finaux sont accrochés à la fin).
-    // `excludeObject` : objet dont les points ne sont pas candidats (nœud en cours de
-    // déplacement : il ne doit pas s'accrocher à sa propre position d'origine).
+    // `excludeObject` (optionnel) : objet dont les points ne sont pas candidats. Le glisser de
+    // nœud n'utilise PLUS cette accroche (voir findNodeSnapMm, sommets seulement).
     [[nodiscard]] std::optional<QPointF>
     findSnapPointMm(QPointF cursorSceneMm,
                     std::optional<ObjectId> excludeObject = std::nullopt) const;
@@ -674,10 +676,28 @@ private:
     QLabel* hintsLabel_{nullptr};
     QString hintsFullText_;
     Qt::KeyboardModifiers heldModifiers_{};
-    QPointF lastCursorSceneMm_; // dernier point de curseur (scène, mm)
     // Surbrillance de pré-sélection (S11) : un seul item, masqué hors outil Sélection.
     QGraphicsPathItem* hoverItem_{nullptr};
+    // Calcul de la surbrillance (cache de contours, voir hoverCache_) et sa planification :
+    // premier mouvement traité aussitôt, les suivants coalescés par pas de 16 ms.
     void updateHoverHighlight(std::optional<QPointF> sceneMm);
+    void scheduleHoverHighlight(QPointF sceneMm);
+    void hideHoverHighlight();
+    struct HoverShape {
+        ObjectId id;
+        QPainterPath path;
+        QRectF bounds;
+    };
+    std::vector<HoverShape> hoverCache_;
+    bool hoverCacheValid_{false};
+    QTimer* hoverTimer_{nullptr};
+    std::optional<QPointF> hoverPending_;
+    int hoverComputations_{0}; // compteurs (tests) : calculs de survol, contours construits
+    int hoverPathBuilds_{0};
+    QAction* snapNodesAct_{nullptr};
+    // Sommets des AUTRES objets (réglage edit/snapNodesOnDrag), rayon <= 1 mm et <= 10 px.
+    [[nodiscard]] std::optional<QPointF> findNodeSnapMm(QPointF cursorSceneMm,
+                                                        ObjectId exclude) const;
     QPointer<GesturesDialog> gesturesDialog_;
     QPointer<QuickStartDialog> quickStartDialog_;
     QPointer<QMenu> selectBelowMenu_;

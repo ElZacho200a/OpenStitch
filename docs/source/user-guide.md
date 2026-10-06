@@ -105,7 +105,6 @@ entre les deux marqueurs.
 | S11 | Sélection | Survol | Surbrillance de pré-sélection |
 | M1 | Déplacement | Glisser | Déplacer l'objet |
 | M2 | Déplacement | Maj + glisser | Verrouiller l'axe |
-| M3 | Déplacement | Ctrl + glisser | Suspendre l'accroche |
 | M4 | Déplacement | Alt + glisser | Dupliquer en déplaçant |
 | D1 | Dessin (clics) | Clic | Ajouter un point |
 | D2 | Dessin (clics) | Double-clic | Terminer le tracé |
@@ -120,6 +119,26 @@ entre les deux marqueurs.
 | N2b | Édition de nœuds | Ctrl + glisser | Suspendre l'accroche |
 | N4 | Édition de nœuds | Suppr | Supprimer les nœuds sélectionnés |
 <!-- GESTURES:END -->
+
+Précisions sur les gestes du tableau :
+
+- **Surbrillance** : avec l'outil Sélection, le contour en pointillés de l'objet non
+  sélectionné situé sous le curseur est mis en évidence ; elle disparaît quand le
+  curseur quitte le canevas ou pendant un glisser.
+- **Alt** : *Alt + clic* ouvre « Sélectionner dessous », y compris sur le corps d'un
+  objet déjà sélectionné ; *Alt tenu avant l'appui*, puis glisser le corps d'un objet
+  **déjà sélectionné**, le **duplique** en déplaçant la copie (un seul pas
+  d'annulation) ; la copie ne reprend **aucun objet de broderie** de l'original (il
+  faut lui en créer un), de même que la commande « Dupliquer ». En dessin de
+  rectangle, ellipse ou polygone régulier, *Alt* dessine le cadre depuis son centre
+  (le point d'appui).
+- **Maj** pendant un glisser verrouille l'axe dominant (objets et nœuds). **Ctrl**
+  suspend l'accroche pendant le tracé d'un polygone ou d'une colonne satin.
+- **Accrochage des nœuds au glisser** (Affichage ▸ *Accrochage des nœuds au
+  glisser*, réglage `edit/snapNodesOnDrag`, **désactivé par défaut**) : un nœud
+  relâché à moins de 1 mm (et 10 px) d'un sommet d'un autre objet s'y accroche ;
+  Ctrl ou Maj au relâchement l'évitent. Glisser un objet entier n'a pas d'accroche.
+
 
 ## Menu Fichier
 
