@@ -2,8 +2,17 @@
 #include "app_theme.hpp"
 
 #include <QApplication>
+#include <QGuiApplication>
 #include <QPalette>
 #include <QSettings>
+#include <QStyle>
+#include <QStyleHints>
+#include <QWidget>
+
+#include "app_style.hpp"
+#include "style_assets.hpp"
+
+#include <spdlog/spdlog.h>
 
 namespace openstitch::desktop {
 
@@ -13,133 +22,26 @@ QSettings settings() {
     return QSettings(QStringLiteral("OpenStitch"), QStringLiteral("OpenStitch Studio"));
 }
 
-QPalette build_palette(const Tokens& t) {
-    QPalette p;
-    p.setColor(QPalette::Window, t.window);
-    p.setColor(QPalette::WindowText, t.text);
-    p.setColor(QPalette::Base, t.surfaceRaised);
-    p.setColor(QPalette::AlternateBase, t.surface);
-    p.setColor(QPalette::Text, t.text);
-    p.setColor(QPalette::Button, t.surface);
-    p.setColor(QPalette::ButtonText, t.text);
-    p.setColor(QPalette::ToolTipBase, t.surfaceRaised);
-    p.setColor(QPalette::ToolTipText, t.text);
-    p.setColor(QPalette::Highlight, t.selection);
-    p.setColor(QPalette::HighlightedText, t.selectionText);
-    p.setColor(QPalette::PlaceholderText, t.textSecondary);
-    p.setColor(QPalette::Link, t.info);
-    p.setColor(QPalette::Mid, t.border);
-    p.setColor(QPalette::Dark, t.border);
-    // États désactivés reconnaissables (contraste réduit mais lisible).
-    p.setColor(QPalette::Disabled, QPalette::WindowText, t.textSecondary);
-    p.setColor(QPalette::Disabled, QPalette::Text, t.textSecondary);
-    p.setColor(QPalette::Disabled, QPalette::ButtonText, t.textSecondary);
-    return p;
+QString choice_to_string(ThemeChoice c) {
+    switch (c) {
+    case ThemeChoice::System:
+        return QStringLiteral("system");
+    case ThemeChoice::Dark:
+        return QStringLiteral("dark");
+    case ThemeChoice::Light:
+        break;
+    }
+    return QStringLiteral("light");
 }
 
-// Feuille de style CIBLÉE (widgets nommés), pas monolithique : elle raffine
-// bordures, focus, sélection et espacements ; la palette fait le reste.
-QString build_stylesheet(const Tokens& t) {
-    const auto c = [](const QColor& col) { return col.name(QColor::HexRgb); };
-    QString qss;
-    qss += QStringLiteral("QMainWindow, QDialog { background: %1; }\n").arg(c(t.window));
-    qss += QStringLiteral(
-               "QToolTip { background: %1; color: %2; border: 1px solid %3; padding: %4px; }\n")
-               .arg(c(t.surfaceRaised), c(t.text), c(t.border))
-               .arg(t.space2);
-
-    qss += QStringLiteral("QMenuBar { background: %1; }\n").arg(c(t.surface));
-    qss += QStringLiteral("QMenuBar::item { padding: %1px %2px; }\n").arg(t.space1).arg(t.space3);
-    qss += QStringLiteral("QMenuBar::item:selected { background: %1; color: %2; }\n")
-               .arg(c(t.accent), c(t.selectionText));
-    qss += QStringLiteral("QMenu { background: %1; border: 1px solid %2; }\n")
-               .arg(c(t.surfaceRaised), c(t.border));
-    qss += QStringLiteral("QMenu::item { padding: %1px %2px; }\n").arg(t.space2).arg(t.space4);
-    qss += QStringLiteral("QMenu::item:selected { background: %1; color: %2; }\n")
-               .arg(c(t.accent), c(t.selectionText));
-    qss += QStringLiteral("QMenu::separator { height: 1px; background: %1; margin: %2px 0; }\n")
-               .arg(c(t.border))
-               .arg(t.space1);
-
-    qss +=
-        QStringLiteral("QToolBar { background: %1; border: none; spacing: %2px; padding: %3px; }\n")
-            .arg(c(t.surface))
-            .arg(t.space2)
-            .arg(t.space1);
-    qss += QStringLiteral("QStatusBar { background: %1; }\n").arg(c(t.surface));
-    qss += QStringLiteral("QStatusBar::item { border: none; }\n");
-
-    qss +=
-        QStringLiteral(
-            "QDockWidget::title { background: %1; padding: %2px; border-bottom: 1px solid %3; }\n")
-            .arg(c(t.surface))
-            .arg(t.space2)
-            .arg(c(t.border));
-
-    qss += QStringLiteral("QPushButton { background: %1; color: %2; border: 1px solid %3; "
-                          "border-radius: %4px; padding: %5px %6px; min-height: %7px; }\n")
-               .arg(c(t.surfaceRaised), c(t.text), c(t.border))
-               .arg(t.radiusSm)
-               .arg(t.space1)
-               .arg(t.space3)
-               .arg(t.controlHeight);
-    qss += QStringLiteral("QPushButton:hover { border-color: %1; }\n").arg(c(t.accent));
-    qss += QStringLiteral("QPushButton:pressed { background: %1; }\n").arg(c(t.window));
-    qss += QStringLiteral("QPushButton:focus { border: 1px solid %1; }\n").arg(c(t.focus));
-    qss += QStringLiteral("QPushButton:disabled { color: %1; border-color: %2; }\n")
-               .arg(c(t.textSecondary), c(t.border));
-
-    qss += QStringLiteral(
-               "QLineEdit, QSpinBox, QDoubleSpinBox, QComboBox { background: %1; color: %2; "
-               "border: 1px solid %3; border-radius: %4px; padding: %5px %6px; min-height: %7px; "
-               "selection-background-color: %8; selection-color: %9; }\n")
-               .arg(c(t.surfaceRaised), c(t.text), c(t.border))
-               .arg(t.radiusSm)
-               .arg(t.space1)
-               .arg(t.space2)
-               .arg(t.controlHeight)
-               .arg(c(t.accent), c(t.selectionText));
-    qss +=
-        QStringLiteral("QLineEdit:focus, QSpinBox:focus, QDoubleSpinBox:focus, QComboBox:focus { "
-                       "border: 1px solid %1; }\n")
-            .arg(c(t.focus));
-
-    qss += QStringLiteral(
-               "QListView, QListWidget, QTreeView { background: %1; border: 1px solid %2; }\n")
-               .arg(c(t.surfaceRaised), c(t.border));
-    qss += QStringLiteral("QListView::item:selected, QListWidget::item:selected, "
-                          "QTreeView::item:selected { background: %1; color: %2; }\n")
-               .arg(c(t.selection), c(t.selectionText));
-    qss += QStringLiteral("QListView::item:hover, QListWidget::item:hover { background: %1; }\n")
-               .arg(c(t.surface));
-
-    qss += QStringLiteral("QLabel { color: %1; }\n").arg(c(t.text));
-    qss += QStringLiteral(
-               "QGroupBox { border: 1px solid %1; border-radius: %2px; margin-top: %3px; }\n")
-               .arg(c(t.border))
-               .arg(t.radiusSm)
-               .arg(t.space3);
-    qss += QStringLiteral("QGroupBox::title { subcontrol-origin: margin; left: %1px; padding: 0 "
-                          "%2px; color: %3; }\n")
-               .arg(t.space3)
-               .arg(t.space1)
-               .arg(c(t.textSecondary));
-
-    qss += QStringLiteral("QScrollBar:vertical { background: %1; width: 12px; margin: 0; }\n")
-               .arg(c(t.surface));
-    qss += QStringLiteral("QScrollBar::handle:vertical { background: %1; border-radius: %2px; "
-                          "min-height: 24px; }\n")
-               .arg(c(t.border))
-               .arg(t.radiusSm);
-    qss += QStringLiteral("QScrollBar:horizontal { background: %1; height: 12px; margin: 0; }\n")
-               .arg(c(t.surface));
-    qss += QStringLiteral("QScrollBar::handle:horizontal { background: %1; border-radius: %2px; "
-                          "min-width: 24px; }\n")
-               .arg(c(t.border))
-               .arg(t.radiusSm);
-    qss += QStringLiteral("QScrollBar::add-line, QScrollBar::sub-line { width: 0; height: 0; }\n");
-
-    return qss;
+ThemeChoice choice_from_string(const QString& s) {
+    if (s == QStringLiteral("system")) {
+        return ThemeChoice::System;
+    }
+    if (s == QStringLiteral("dark")) {
+        return ThemeChoice::Dark;
+    }
+    return ThemeChoice::Light;
 }
 
 } // namespace
@@ -149,29 +51,126 @@ AppTheme& AppTheme::instance() {
     return theme;
 }
 
+// Style de base neutre forcé (identité propre d'OpenStitch). setStyle() réinitialise
+// la palette : TOUJOURS avant setPalette. Idempotent. Avec une feuille de style
+// d'application, QApplication::style() est le proxy QStyleSheetStyle dont name() est
+// vide : on se fie alors au drapeau posé lors du dernier forçage.
+void AppTheme::ensureFusion(QApplication& app) {
+    const QStyle* current = app.style();
+    const QString name = current != nullptr ? current->name() : QString();
+    if (name.compare(QLatin1String("fusion"), Qt::CaseInsensitive) == 0) {
+        fusionForced_ = true;
+        return;
+    }
+    if (name.isEmpty() && fusionForced_) {
+        return;
+    }
+    if (QApplication::setStyle(QStringLiteral("Fusion")) == nullptr) {
+        spdlog::warn("AppTheme: style Fusion indisponible, rendu de base conserve");
+        return;
+    }
+    fusionForced_ = true;
+}
+
+// Thème système au démarrage, lu AVANT tout setStyle/setPalette (chemin Qt 6.4).
+void AppTheme::probeStartupScheme() {
+    if (startupProbed_) {
+        return;
+    }
+    startupProbed_ = true;
+    startupPrefersDark_ = QGuiApplication::palette().color(QPalette::Window).lightness() < 128;
+}
+
+ThemeMode AppTheme::resolve() const {
+    switch (choice_) {
+    case ThemeChoice::Light:
+        return ThemeMode::Light;
+    case ThemeChoice::Dark:
+        return ThemeMode::Dark;
+    case ThemeChoice::System:
+        break;
+    }
+    if (systemOverride_.has_value()) {
+        return *systemOverride_ ? ThemeMode::Dark : ThemeMode::Light;
+    }
+#if QT_VERSION >= QT_VERSION_CHECK(6, 5, 0)
+    if (QGuiApplication::instance() != nullptr) {
+        const Qt::ColorScheme scheme = QGuiApplication::styleHints()->colorScheme();
+        if (scheme != Qt::ColorScheme::Unknown) {
+            return scheme == Qt::ColorScheme::Dark ? ThemeMode::Dark : ThemeMode::Light;
+        }
+    }
+#endif
+    return startupPrefersDark_ ? ThemeMode::Dark : ThemeMode::Light;
+}
+
 void AppTheme::applyToApp(QApplication& app) {
+    probeStartupScheme();
     load();
-    tokens_ = tokens_for(mode_, density_);
-    app.setPalette(build_palette(tokens_));
-    app.setStyleSheet(build_stylesheet(tokens_));
-    emit changed();
+#if QT_VERSION >= QT_VERSION_CHECK(6, 5, 0)
+    if (!schemeSignalConnected_) {
+        schemeSignalConnected_ = true;
+        connect(QGuiApplication::styleHints(), &QStyleHints::colorSchemeChanged, this, [this] {
+            if (choice_ == ThemeChoice::System && !applying_) {
+                reapply();
+            }
+        });
+    }
+#endif
+    // `reapply` fait ensureFusion -> police -> palette -> QSS -> changed().
+    reapply();
+    (void)app;
 }
 
 void AppTheme::reapply() {
+    if (applying_) {
+        return; // récursion via colorSchemeChanged déclenchée par setColorScheme
+    }
+    applying_ = true;
+    probeStartupScheme();
+    mode_ = resolve();
     tokens_ = tokens_for(mode_, density_);
+
     if (auto* app = qobject_cast<QApplication*>(QApplication::instance())) {
+        ensureFusion(*app);
+
+        const auto windows = QApplication::topLevelWidgets();
+        for (QWidget* w : windows) {
+            w->setUpdatesEnabled(false);
+        }
+
+#if QT_VERSION >= QT_VERSION_CHECK(6, 8, 0)
+        // Chrome natif (barre de titre, dialogues natifs) : suit le choix de
+        // l'utilisateur ; Unknown rend la main à l'OS.
+        QGuiApplication::styleHints()->setColorScheme(
+            choice_ == ThemeChoice::System ? Qt::ColorScheme::Unknown
+            : choice_ == ThemeChoice::Dark ? Qt::ColorScheme::Dark
+                                           : Qt::ColorScheme::Light);
+#endif
+        // Ordre : style (déjà fait) -> police -> palette (APRÈS setColorScheme) -> QSS.
+        app->setFont(app_font(tokens_));
         app->setPalette(build_palette(tokens_));
-        app->setStyleSheet(build_stylesheet(tokens_));
+        const QString root = style_assets::install(tokens_);
+        app->setStyleSheet(build_stylesheet(tokens_, root));
+
+        for (QWidget* w : windows) {
+            w->setUpdatesEnabled(true);
+        }
     }
     save();
+    applying_ = false;
     emit changed();
 }
 
 void AppTheme::setMode(ThemeMode mode) {
-    if (mode_ == mode) {
+    setThemeChoice(mode == ThemeMode::Dark ? ThemeChoice::Dark : ThemeChoice::Light);
+}
+
+void AppTheme::setThemeChoice(ThemeChoice choice) {
+    if (choice_ == choice) {
         return;
     }
-    mode_ = mode;
+    choice_ = choice;
     reapply();
 }
 
@@ -183,12 +182,14 @@ void AppTheme::setDensity(Density density) {
     reapply();
 }
 
+void AppTheme::setSystemPreferenceForTesting(std::optional<bool> prefersDark) {
+    systemOverride_ = prefersDark;
+}
+
 void AppTheme::load() {
     auto s = settings();
-    mode_ = s.value(QStringLiteral("ui/theme"), QStringLiteral("light")).toString() ==
-                    QStringLiteral("dark")
-                ? ThemeMode::Dark
-                : ThemeMode::Light;
+    choice_ =
+        choice_from_string(s.value(QStringLiteral("ui/theme"), QStringLiteral("light")).toString());
     density_ = s.value(QStringLiteral("ui/density"), QStringLiteral("comfortable")).toString() ==
                        QStringLiteral("compact")
                    ? Density::Compact
@@ -197,8 +198,7 @@ void AppTheme::load() {
 
 void AppTheme::save() const {
     auto s = settings();
-    s.setValue(QStringLiteral("ui/theme"),
-               mode_ == ThemeMode::Dark ? QStringLiteral("dark") : QStringLiteral("light"));
+    s.setValue(QStringLiteral("ui/theme"), choice_to_string(choice_));
     s.setValue(QStringLiteral("ui/density"), density_ == Density::Compact
                                                  ? QStringLiteral("compact")
                                                  : QStringLiteral("comfortable"));

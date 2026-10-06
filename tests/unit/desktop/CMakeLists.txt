@@ -51,6 +51,11 @@ openstitch_add_qt_test(test_selection_hit_test test_selection_hit_test.cpp)
 openstitch_add_qt_test(test_wsl_path_converter test_wsl_path_converter.cpp)
 openstitch_add_qt_test(test_generation_options test_generation_options.cpp)
 
+# Design system v2 (lot L2) : tokens/contraste (pur), QSS+palette, application réelle.
+openstitch_add_qt_test(test_design_tokens test_design_tokens.cpp)
+openstitch_add_qt_test(test_app_style test_app_style.cpp)
+openstitch_add_qt_test(test_design_system test_design_system.cpp)
+
 # Test d'intégration SamWorkerClient <-> faux worker Python (stdlib only,
 # aucune dépendance à un vrai environnement SAM 2/torch en CI).
 openstitch_add_qt_test(test_sam_worker_client test_sam_worker_client.cpp)

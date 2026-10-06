@@ -18,6 +18,11 @@ add_library(openstitch_desktop_widgets STATIC
     main_window.hpp
     app_theme.cpp
     app_theme.hpp
+    app_style.cpp
+    app_style.hpp
+    style_assets.cpp
+    style_assets.hpp
+    ui_style.hpp
     design_tokens.cpp
     design_tokens.hpp
     canvas_view.cpp
