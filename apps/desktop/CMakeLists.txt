@@ -37,6 +37,8 @@ add_library(openstitch_desktop_widgets STATIC
     tools.hpp
     interaction_map.cpp
     interaction_map.hpp
+    help_dialogs.cpp
+    help_dialogs.hpp
     ui_icons.cpp
     ui_icons.hpp
     ruler.cpp

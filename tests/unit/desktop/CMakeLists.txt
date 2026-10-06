@@ -45,6 +45,7 @@ openstitch_add_qt_test(test_ui_invariants test_ui_invariants.cpp)
 openstitch_add_qt_test(test_ui_characterization test_ui_characterization.cpp)
 openstitch_add_qt_test(test_canvas_input test_canvas_input.cpp)
 openstitch_add_qt_test(test_interaction_map test_interaction_map.cpp)
+openstitch_add_qt_test(test_help_dialogs test_help_dialogs.cpp)
 openstitch_add_qt_test(test_wsl_path_converter test_wsl_path_converter.cpp)
 openstitch_add_qt_test(test_generation_options test_generation_options.cpp)
 
