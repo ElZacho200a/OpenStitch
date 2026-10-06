@@ -1,0 +1,10 @@
+# Cliquet du garde tests/check_no_hardcoded_colors.cmake : nombre de couleurs en dur
+# TOLEREES par fichier de apps/desktop (dette a resorber, jamais a augmenter).
+# Le garde echoue si un nombre depasse sa ligne, ou lui est inferieur (-> abaisser la
+# ligne ici) : la base ne fait que decroitre jusqu'a ne plus contenir aucune ligne.
+# Format : <nom de fichier> <nombre>
+ai_segmentation_dialog.cpp 1
+app_style.cpp 1
+canvas_view.cpp 1
+main_window.cpp 13
+ui_icons.cpp 2

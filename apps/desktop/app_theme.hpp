@@ -44,6 +44,8 @@ public:
     // Crochet de test : force la préférence « système » (true = sombre) pour les
     // deux chemins (Qt 6.4 et >= 6.5). std::nullopt = détection réelle.
     void setSystemPreferenceForTesting(std::optional<bool> prefersDark);
+    // Crochet de test : le prochain applyToApp relit la palette de démarrage.
+    void resetStartupProbeForTesting();
 
 signals:
     // Émis après un changement de thème/densité : les vues à dessin personnalisé

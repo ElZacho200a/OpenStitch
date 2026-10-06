@@ -4,6 +4,7 @@
 #include <QApplication>
 #include <QGuiApplication>
 #include <QPalette>
+#include <QPointer>
 #include <QSettings>
 #include <QStyle>
 #include <QStyleHints>
@@ -13,6 +14,9 @@
 #include "style_assets.hpp"
 
 #include <spdlog/spdlog.h>
+
+#include <utility>
+#include <vector>
 
 namespace openstitch::desktop {
 
@@ -74,7 +78,7 @@ void AppTheme::ensureFusion(QApplication& app) {
 
 // Thème système au démarrage, lu AVANT tout setStyle/setPalette (chemin Qt 6.4).
 void AppTheme::probeStartupScheme() {
-    if (startupProbed_) {
+    if (startupProbed_ || QGuiApplication::instance() == nullptr) {
         return;
     }
     startupProbed_ = true;
@@ -105,6 +109,8 @@ ThemeMode AppTheme::resolve() const {
 }
 
 void AppTheme::applyToApp(QApplication& app) {
+    // Lecture du thème système AVANT tout setStyle/setPalette (ensureFusion réinitialise
+    // la palette) : c'est la valeur de repli de Qt 6.4.
     probeStartupScheme();
     load();
 #if QT_VERSION >= QT_VERSION_CHECK(6, 5, 0)
@@ -127,34 +133,45 @@ void AppTheme::reapply() {
         return; // récursion via colorSchemeChanged déclenchée par setColorScheme
     }
     applying_ = true;
-    probeStartupScheme();
-    mode_ = resolve();
-    tokens_ = tokens_for(mode_, density_);
-
-    if (auto* app = qobject_cast<QApplication*>(QApplication::instance())) {
-        ensureFusion(*app);
-
-        const auto windows = QApplication::topLevelWidgets();
-        for (QWidget* w : windows) {
-            w->setUpdatesEnabled(false);
-        }
-
+    auto* app = qobject_cast<QApplication*>(QApplication::instance());
+    if (app != nullptr) {
+        probeStartupScheme(); // no-op si applyToApp l'a déjà fait ; avant ensureFusion
 #if QT_VERSION >= QT_VERSION_CHECK(6, 8, 0)
         // Chrome natif (barre de titre, dialogues natifs) : suit le choix de
-        // l'utilisateur ; Unknown rend la main à l'OS.
+        // l'utilisateur ; Unknown rend la main à l'OS. Posé AVANT resolve() : pour
+        // System, colorScheme() doit refléter l'OS et non le choix précédent.
         QGuiApplication::styleHints()->setColorScheme(
             choice_ == ThemeChoice::System ? Qt::ColorScheme::Unknown
             : choice_ == ThemeChoice::Dark ? Qt::ColorScheme::Dark
                                            : Qt::ColorScheme::Light);
 #endif
+    }
+    mode_ = resolve();
+    tokens_ = tokens_for(mode_, density_);
+
+    if (app != nullptr) {
+        ensureFusion(*app);
+
+        // Mises à jour suspendues pendant l'application ; état antérieur restitué
+        // (une fenêtre déjà suspendue le reste), fenêtres détruites ignorées.
+        std::vector<std::pair<QPointer<QWidget>, bool>> windows;
+        for (QWidget* w : QApplication::topLevelWidgets()) {
+            windows.emplace_back(w, w->updatesEnabled());
+            w->setUpdatesEnabled(false);
+        }
+
         // Ordre : style (déjà fait) -> police -> palette (APRÈS setColorScheme) -> QSS.
         app->setFont(app_font(tokens_));
         app->setPalette(build_palette(tokens_));
         const QString root = style_assets::install(tokens_);
         app->setStyleSheet(build_stylesheet(tokens_, root));
+        // L'ancienne racine n'est libérée qu'une fois la nouvelle feuille appliquée.
+        style_assets::releaseRetired();
 
-        for (QWidget* w : windows) {
-            w->setUpdatesEnabled(true);
+        for (const auto& [w, wasEnabled] : windows) {
+            if (w != nullptr) {
+                w->setUpdatesEnabled(wasEnabled);
+            }
         }
     }
     save();
@@ -180,6 +197,10 @@ void AppTheme::setDensity(Density density) {
     }
     density_ = density;
     reapply();
+}
+
+void AppTheme::resetStartupProbeForTesting() {
+    startupProbed_ = false;
 }
 
 void AppTheme::setSystemPreferenceForTesting(std::optional<bool> prefersDark) {

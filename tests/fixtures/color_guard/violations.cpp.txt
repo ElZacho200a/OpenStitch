@@ -1,0 +1,62 @@
+// Fixture de l'auto-test de check_no_hardcoded_colors.cmake : chaque ligne marquee
+// par le marqueur de fin de ligne ci-dessous (deux barres, espace, le mot en
+// majuscules) doit etre signalee, et AUCUNE autre.
+#include <QColor>
+#include "design_tokens.hpp"
+
+void violations() {
+    QPen a(QColor(80, 120, 200)); // VIOLATION
+    QPen b(QColor(0xB0, 0x30, 0x30)); // VIOLATION
+    QColor c = QColor{12, 34, 56}; // VIOLATION
+    const QColor kInk(0x5C, 0x62, 0x6A); // VIOLATION
+    QColor fill{1, 2, 3}; // VIOLATION
+    painter->fillRect(canvas, Qt::white); // VIOLATION
+    painter->setPen(Qt::black); // VIOLATION
+    brush.setColor(Qt::darkGray); // VIOLATION
+    brush.setColor(Qt::lightGray); // VIOLATION
+    QPen pen(Qt::red, 2); // VIOLATION
+    auto warn = QColor(Qt::green); // VIOLATION
+    label->setStyleSheet("#8a5a00"); // VIOLATION
+    label->setStyleSheet("color:#8a5a00;"); // VIOLATION
+    const char* white = "#ffffff"; // VIOLATION
+    const char* alpha = "#11223344"; // VIOLATION
+    const char* shortHex = "#fff"; // VIOLATION
+    const char* shortAlpha = "#fff8"; // VIOLATION
+    swatch->setStyleSheet("background: rgba(1,2,3,4)"); // VIOLATION
+    swatch->setStyleSheet(QStringLiteral("background-color: rgb(%1,%2,%3);")); // VIOLATION
+    swatch->setStyleSheet(QStringLiteral("rgba(%1,%2,%3,%4)")); // VIOLATION
+    swatch->setStyleSheet("color: hsl(120, 50%, 50%)"); // VIOLATION
+    QColor fromText("#ff0000"); // VIOLATION
+    QColor named("red"); // VIOLATION
+    auto d = QColor::fromRgb(1, 2, 3); // VIOLATION
+    auto e = QColor::fromRgbF(0.5, 0.5, 0.5); // VIOLATION
+    auto f = QColor::fromHsv(10, 20, 30); // VIOLATION
+    QRgb g = qRgb(1, 2, 3); // VIOLATION
+    QRgb h = qRgba(0xFF, 0, 0, 0xFF); // VIOLATION
+    color.setNamedColor("tomato"); // VIOLATION
+    QPen multi(QColor( // VIOLATION
+        200,
+        90,
+        40));
+    QColor multiDecl( // VIOLATION
+        12, 34, 56);
+    QColor multiBrace{ // VIOLATION
+        0x10, 0x20, 0x30};
+    QColor stray = Qt::yellow; // VIOLATION
+    /* commentaire */ QColor afterBlock(9, 9, 9); // VIOLATION
+    const char* url = "http://example.com/"; QColor afterUrl(7, 7, 7); // VIOLATION
+    char quote = '"'; QColor afterQuote(8, 8, 8); // VIOLATION
+    int big = 1'000'000; QColor afterSeparator(6, 6, 6); // VIOLATION
+    // l'apostrophe d'un commentaire ne doit pas masquer la ligne suivante
+    QColor afterApostrophe(5, 5, 5); // VIOLATION
+    /* bloc sur
+       plusieurs lignes, avec une apostrophe : l'etat */
+    QColor afterMultiBlock(4, 4, 4); // VIOLATION
+}
+
+#define BAD_COLOR "#abcdef" // VIOLATION
+
+const char* kSheet = R"qss(
+QPushButton { color: #123456; } // VIOLATION
+QLabel { color: @text@; }
+)qss";

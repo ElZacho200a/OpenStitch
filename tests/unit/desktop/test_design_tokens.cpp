@@ -5,6 +5,7 @@
 #include <QFile>
 #include <QRegularExpression>
 #include <QSet>
+#include <QSettings>
 #include <QTemporaryDir>
 #include <QTest>
 
@@ -104,6 +105,76 @@ class DesignTokensTest : public QObject {
     Q_OBJECT
 
 private slots:
+    void initTestCase() {
+        // QSettings isolé : tokens_for lit `ui/reduceMotion`, jamais le profil réel.
+        QVERIFY(settingsDir_.isValid());
+        QSettings::setDefaultFormat(QSettings::IniFormat);
+        QSettings::setPath(QSettings::IniFormat, QSettings::UserScope, settingsDir_.path());
+    }
+
+    // Valeurs hexadécimales du plan §1.1 : un échange de teintes qui garderait les ratios
+    // doit échouer ici.
+    void keyTokenHexValuesMatchTheSpec() {
+        struct Row {
+            const char* name;
+            QColor Tokens::*field;
+            const char* light;
+            const char* dark;
+        };
+        const Row rows[] = {
+            {"window", &Tokens::window, "#ebedf1", "#1b1d21"},
+            {"surface", &Tokens::surface, "#f5f6f8", "#23262b"},
+            {"surfaceRaised", &Tokens::surfaceRaised, "#ffffff", "#2c3036"},
+            {"surfaceSunken", &Tokens::surfaceSunken, "#e2e5ea", "#17181c"},
+            {"border", &Tokens::border, "#d3d7dd", "#363b43"},
+            {"borderStrong", &Tokens::borderStrong, "#767d86", "#7f8794"},
+            {"text", &Tokens::text, "#1b1e23", "#e8eaee"},
+            {"textSecondary", &Tokens::textSecondary, "#50575f", "#b0b7c1"},
+            {"textDisabled", &Tokens::textDisabled, "#7a808a", "#7c838d"},
+            {"accent", &Tokens::accent, "#b04e3c", "#e0765f"},
+            {"accentHover", &Tokens::accentHover, "#9a4130", "#e88b77"},
+            {"accentPressed", &Tokens::accentPressed, "#843727", "#cf664f"},
+            {"onAccent", &Tokens::onAccent, "#ffffff", "#1c100d"},
+            {"tonal", &Tokens::tonal, "#e4e7ec", "#363b44"},
+            {"tonalHover", &Tokens::tonalHover, "#d9dde4", "#40464f"},
+            {"tonalPressed", &Tokens::tonalPressed, "#cdd2da", "#2f343c"},
+            {"selection", &Tokens::selection, "#f2dad3", "#4b302a"},
+            {"selectionText", &Tokens::selectionText, "#1b1e23", "#f1f3f6"},
+            {"textSelection", &Tokens::textSelection, "#b04e3c", "#e0765f"},
+            {"textSelectionText", &Tokens::textSelectionText, "#ffffff", "#1c100d"},
+            {"focus", &Tokens::focus, "#1f5fc4", "#6aa3f0"},
+            {"icon", &Tokens::icon, "#50575f", "#b0b7c1"},
+            {"success", &Tokens::success, "#2b6e3d", "#6fbf86"},
+            {"warning", &Tokens::warning, "#8a5a00", "#e0a93f"},
+            {"error", &Tokens::error, "#b3261e", "#f07a6e"},
+            {"info", &Tokens::info, "#25598f", "#7fb0e8"},
+            {"canvasBackground", &Tokens::canvasBackground, "#d5d9df", "#15171a"},
+            {"canvasPaper", &Tokens::canvasPaper, "#ffffff", "#e4e7ec"},
+            {"canvasStitch", &Tokens::canvasStitch, "#1f2233", "#1f2233"},
+            {"canvasHoop", &Tokens::canvasHoop, "#c8383a", "#c8383a"},
+            {"canvasJump", &Tokens::canvasJump, "#b35c00", "#b35c00"},
+            {"canvasNode", &Tokens::canvasNode, "#2463c6", "#2463c6"},
+            {"canvasHandle", &Tokens::canvasHandle, "#2463c6", "#2463c6"},
+            {"canvasRailA", &Tokens::canvasRailA, "#c2531f", "#c2531f"},
+            {"canvasRailB", &Tokens::canvasRailB, "#1b7f8c", "#1b7f8c"},
+            {"canvasSnap", &Tokens::canvasSnap, "#b8239a", "#b8239a"},
+            {"canvasPreview", &Tokens::canvasPreview, "#5560cc", "#5560cc"},
+            {"canvasCutLine", &Tokens::canvasCutLine, "#c0262d", "#c0262d"},
+            {"canvasMask", &Tokens::canvasMask, "#c93f00", "#c93f00"},
+            {"canvasSelectionLine", &Tokens::canvasSelectionLine, "#b04e3c", "#b04e3c"},
+            {"canvasSelectionRectLine", &Tokens::canvasSelectionRectLine, "#2463c6", "#2463c6"},
+        };
+        const Tokens light = light_tokens();
+        const Tokens dark = dark_tokens();
+        for (const Row& r : rows) {
+            QVERIFY2(light.*r.field == QColor(QLatin1String(r.light)), r.name);
+            QVERIFY2(dark.*r.field == QColor(QLatin1String(r.dark)), r.name);
+        }
+        QCOMPARE(light.canvasGrid, QColor(0x1F, 0x22, 0x33, 40));
+        QCOMPARE(light.canvasAxis, QColor(0x5A, 0x5F, 0x8C, 120));
+        QCOMPARE(dark.canvasSelectionHalo, QColor(255, 255, 255, 220));
+    }
+
     void wcagReferenceValues() {
         QCOMPARE(QString::number(contrast_ratio(Qt::black, Qt::white), 'f', 1),
                  QStringLiteral("21.0"));
@@ -326,6 +397,14 @@ private slots:
         qputenv("OPENSTITCH_REDUCE_MOTION", "1");
         QCOMPARE(light_tokens().motionShortMs, 0);
         qunsetenv("OPENSTITCH_REDUCE_MOTION");
+        // Préférence persistée `ui/reduceMotion`.
+        QSettings s(QStringLiteral("OpenStitch"), QStringLiteral("OpenStitch Studio"));
+        s.setValue(QStringLiteral("ui/reduceMotion"), true);
+        s.sync();
+        QCOMPARE(light_tokens().motionShortMs, 0);
+        s.setValue(QStringLiteral("ui/reduceMotion"), false);
+        s.sync();
+        QCOMPARE(light_tokens().motionShortMs, 120);
     }
 
     void legacyTokenNamesStillExist() {
@@ -401,6 +480,9 @@ private slots:
             }
         }
     }
+
+private:
+    QTemporaryDir settingsDir_;
 };
 
 } // namespace openstitch::desktop

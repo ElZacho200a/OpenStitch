@@ -104,6 +104,8 @@ QPlainTextEdit, QTextEdit { background: @surfaceRaised@; color: @text@; border: 
 QLineEdit:hover, QAbstractSpinBox:hover, QComboBox:hover, QPlainTextEdit:hover, QTextEdit:hover { border-color: @textSecondary@; }
 QLineEdit:focus, QAbstractSpinBox:focus, QComboBox:focus { border: @focusRing@px solid @focus@; padding: 0 @space3@px; }
 QPlainTextEdit:focus, QTextEdit:focus { border: @focusRing@px solid @focus@; padding: @space2@px; }
+QComboBox { padding-right: @dropPadRest@px; }
+QComboBox:focus { padding-right: @dropPadFocus@px; }
 QLineEdit:read-only, QPlainTextEdit:read-only, QTextEdit:read-only { background: @surfaceSunken@; }
 QLineEdit:disabled, QAbstractSpinBox:disabled, QComboBox:disabled, QPlainTextEdit:disabled, QTextEdit:disabled { background: @surfaceSunken@; color: @textDisabled@; border: 1px solid @border@; }
 
@@ -157,7 +159,7 @@ QSlider::groove:disabled { background: @border@; }
 QSlider::sub-page:horizontal:disabled, QSlider::add-page:vertical:disabled { background: @borderStrong@; }
 QSlider::handle:disabled { background: @surfaceSunken@; border-color: @borderStrong@; }
 
-QProgressBar { background: @surfaceSunken@; color: @text@; border: none; border-radius: @radiusSm@px; text-align: center; min-height: @space3@px; max-height: @space3@px; }
+QProgressBar { qproperty-textVisible: false; background: @surfaceSunken@; color: @text@; border: none; border-radius: @radiusSm@px; text-align: center; min-height: @space3@px; max-height: @space3@px; }
 QProgressBar::chunk { background: @accent@; border-radius: @radiusSm@px; }
 
 QTabWidget::pane { background: @surface@; border: none; border-top: 1px solid @border@; top: -1px; }
@@ -318,6 +320,10 @@ QMap<QString, QString> style_token_map(const Tokens& t) {
     m.insert(QStringLiteral("textPadRest"), num(t.space2 + 1));
     m.insert(QStringLiteral("spinButtonW"), num(t.space5 + t.space2));
     m.insert(QStringLiteral("dropDownW"), num(t.space6));
+    // Le texte ne passe jamais sous la flèche : largeur du bouton + écart ; au focus la
+    // bordure gagne 1 px, le padding en perd 1 (pas de saut de mise en page).
+    m.insert(QStringLiteral("dropPadRest"), num(t.space6 + t.space2));
+    m.insert(QStringLiteral("dropPadFocus"), num(t.space6 + t.space2 - 1));
     m.insert(QStringLiteral("glyph"), QStringLiteral("10"));
     m.insert(QStringLiteral("indicatorContent"), QStringLiteral("12")); // + 2x2 de bordure = 16
     m.insert(QStringLiteral("indicatorRadius"), num(t.space2));
@@ -334,6 +340,7 @@ QMap<QString, QString> style_token_map(const Tokens& t) {
     for (const QString& f : mono_font_families()) {
         quoted << QStringLiteral("\"%1\"").arg(f);
     }
+    quoted << QStringLiteral("monospace");
     m.insert(QStringLiteral("monoFamily"), quoted.join(QStringLiteral(", ")));
     return m;
 }

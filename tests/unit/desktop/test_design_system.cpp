@@ -330,12 +330,63 @@ private slots:
         QCOMPARE(QGuiApplication::styleHints()->colorScheme(), Qt::ColorScheme::Dark);
         theme.setThemeChoice(ThemeChoice::Light);
         QCOMPARE(QGuiApplication::styleHints()->colorScheme(), Qt::ColorScheme::Light);
+        // Dark -> System : Unknown est posé AVANT la résolution, donc le mode résolu est
+        // celui de l'OS (colorScheme() rendu à l'OS), jamais le choix précédent.
+        theme.setThemeChoice(ThemeChoice::Dark);
         theme.setThemeChoice(ThemeChoice::System);
-        // Pas de récursion infinie ni de blocage : la palette reste celle d'un thème.
-        QVERIFY(qApp->palette().color(QPalette::Window) == light_tokens().window ||
-                qApp->palette().color(QPalette::Window) == dark_tokens().window);
+        const Qt::ColorScheme os = QGuiApplication::styleHints()->colorScheme();
+        QVERIFY(os != Qt::ColorScheme::Dark || theme.resolvedMode() == ThemeMode::Dark);
+        if (os == Qt::ColorScheme::Unknown) {
+            // Plateforme sans thème : repli sur la valeur de démarrage (clair en offscreen),
+            // et surtout pas sur le Dark précédemment forcé.
+            QCOMPARE(theme.resolvedMode(), ThemeMode::Light);
+        } else {
+            QCOMPARE(theme.resolvedMode(),
+                     os == Qt::ColorScheme::Dark ? ThemeMode::Dark : ThemeMode::Light);
+        }
+        QCOMPARE(qApp->palette().color(QPalette::Window),
+                 tokens_for(theme.resolvedMode(), theme.density()).window);
     }
 #endif
+
+    // Le thème système de démarrage est lu AVANT que Fusion réinitialise la palette.
+    void startupSchemeIsProbedBeforeFusionResetsThePalette() {
+        auto& theme = AppTheme::instance();
+        qApp->setStyleSheet(QString());
+        QVERIFY(QApplication::setStyle(QStringLiteral("Windows")) != nullptr);
+        QPalette osDark;
+        osDark.setColor(QPalette::Window, QColor(0x20, 0x20, 0x20));
+        qApp->setPalette(osDark);
+        {
+            QSettings s(QStringLiteral("OpenStitch"), QStringLiteral("OpenStitch Studio"));
+            s.setValue(QStringLiteral("ui/theme"), QStringLiteral("system"));
+            s.sync();
+        }
+        theme.setSystemPreferenceForTesting(std::nullopt);
+        theme.resetStartupProbeForTesting();
+        theme.applyToApp(*qApp);
+        QCOMPARE(theme.themeChoice(), ThemeChoice::System);
+        QCOMPARE(baseStyleName().toLower(), QStringLiteral("fusion"));
+#if QT_VERSION >= QT_VERSION_CHECK(6, 5, 0)
+        if (QGuiApplication::styleHints()->colorScheme() == Qt::ColorScheme::Unknown) {
+            QCOMPARE(theme.resolvedMode(), ThemeMode::Dark);
+        }
+#else
+        QCOMPARE(theme.resolvedMode(), ThemeMode::Dark);
+#endif
+    }
+
+    void updatesEnabledStateOfWindowsIsRestored() {
+        QWidget suspended;
+        suspended.show();
+        suspended.setUpdatesEnabled(false);
+        QWidget normal;
+        normal.show();
+        AppTheme::instance().setMode(ThemeMode::Dark);
+        QVERIFY(!suspended.updatesEnabled());
+        QVERIFY(normal.updatesEnabled());
+        suspended.setUpdatesEnabled(true);
+    }
 
     void themeChoiceIsPersistedAndRestored() {
         auto& theme = AppTheme::instance();

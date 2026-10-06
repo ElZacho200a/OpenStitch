@@ -178,6 +178,7 @@ private slots:
                                             "font-weight",
                                             "font-family",
                                             "text-align",
+                                            "qproperty-textVisible",
                                             "left",
                                             "right",
                                             "top",
@@ -410,9 +411,38 @@ private slots:
             QCOMPARE(p.color(QPalette::Disabled, QPalette::Base), t.surfaceRaised);
             // Aucun rôle ne reste à la valeur par défaut de Qt (palette thémée).
             QVERIFY(p != QPalette());
-            QVERIFY(p.color(QPalette::Window) != QPalette().color(QPalette::Window) ||
-                    c.mode == ThemeMode::Light);
+            // Les deux thèmes produisent des palettes distinctes (fond ET texte).
+            const Tokens other = tokens_for(
+                c.mode == ThemeMode::Light ? ThemeMode::Dark : ThemeMode::Light, c.density);
+            QVERIFY(build_palette(other).color(QPalette::Window) != p.color(QPalette::Window));
+            QVERIFY(build_palette(other).color(QPalette::Text) != p.color(QPalette::Text));
         }
+    }
+
+    void progressBarTextIsHiddenAndComboTextClearsTheArrow() {
+        const QString qss = build_stylesheet(light_tokens());
+        // Le texte de pourcentage sur le chunk accent échouerait à R1 : masqué.
+        QVERIFY(qss.contains(QStringLiteral("qproperty-textVisible: false")));
+        // Padding droit du combo = bouton (24) + écart (4) au repos, 27 au focus (bordure 2 px).
+        QVERIFY(qss.contains(QStringLiteral("QComboBox { padding-right: 28px; }")));
+        QVERIFY(qss.contains(QStringLiteral("QComboBox:focus { padding-right: 27px; }")));
+    }
+
+    // font-family : liste de familles acceptée par Qt (déterministe : on compare la liste
+    // demandée, pas la police résolue, qui dépend des polices installées).
+    void monoRoleCarriesTheWholeFamilyStack() {
+        const QString saved = qApp->styleSheet();
+        qApp->setStyleSheet(build_stylesheet(light_tokens()));
+        QPlainTextEdit edit;
+        ui::setRole(&edit, ui::LabelRole::Mono);
+        edit.ensurePolished();
+        const QStringList families = edit.font().families();
+        QCOMPARE(families.first(), mono_font_families().first());
+        for (const QString& f : mono_font_families()) {
+            QVERIFY2(families.contains(f), qPrintable(f));
+        }
+        QVERIFY(families.contains(QStringLiteral("monospace")));
+        qApp->setStyleSheet(saved);
     }
 
     void appFontUsesTheFamilyStackAndBaseSize() {

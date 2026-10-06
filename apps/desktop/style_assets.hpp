@@ -14,6 +14,10 @@
 // QResource::registerResource sous une racine « :/openstitch-<n> » (n incrémenté à
 // chaque installation ; l'ancienne racine est désenregistrée). La QSS les
 // référence par `url(":/openstitch-<n>/<nom>")`, toujours entre guillemets.
+//
+// THREAD : fil GUI uniquement (état global non protégé). Fuite connue et bornée : le
+// cache de pixmaps de QSS garde les petites images d'une ancienne racine jusqu'à la
+// fin du processus (quelques Ko par bascule de thème).
 namespace openstitch::desktop::style_assets {
 
 // Noms de fichiers de base (sans variante @2x), ex. « check.png ». Chaque nom
@@ -29,10 +33,14 @@ namespace openstitch::desktop::style_assets {
 
 // Enregistre les glyphes pour ces tokens ; renvoie la racine (« :/openstitch-3 »)
 // ou une chaîne VIDE en cas d'échec (la QSS est alors générée sans `image:`).
-// Désenregistre la racine précédente.
+// La NOUVELLE racine est enregistrée d'abord ; l'ancienne est seulement « retirée »
+// (toujours lisible) jusqu'à releaseRetired(), à appeler après setStyleSheet.
 [[nodiscard]] QString install(const Tokens& tokens);
 
-// Désenregistre la racine courante (no-op si aucune).
+// Désenregistre la racine retirée par le dernier install() (no-op si aucune).
+void releaseRetired();
+
+// Désenregistre tout (racine courante et racine retirée).
 void uninstall();
 
 // Racine actuellement enregistrée (vide si aucune).

@@ -46,6 +46,8 @@ const std::vector<Glyph>& glyphs() {
     return kGlyphs;
 }
 
+QString g_retiredRoot; // ancienne racine, encore enregistrée jusqu'à releaseRetired()
+QByteArray g_retiredBlob;
 QString g_root;              // racine enregistrée (« :/openstitch-N »), vide si aucune
 QByteArray g_blob;           // octets rcc : DOIVENT rester vivants tant qu'enregistrés
 int g_counter = 0;           // n de « openstitch-<n> »
@@ -247,18 +249,34 @@ QByteArray build_resource_blob(const Tokens& tokens) {
     return write_qres(std::move(files));
 }
 
-void uninstall() {
-    if (g_root.isEmpty()) {
+void releaseRetired() {
+    if (g_retiredRoot.isEmpty()) {
         return;
     }
     // La racine de mapping est donnée sans le préfixe « :/ ».
+    QResource::unregisterResource(reinterpret_cast<const uchar*>(g_retiredBlob.constData()),
+                                  g_retiredRoot.mid(1));
+    g_retiredRoot.clear();
+    g_retiredBlob.clear();
+}
+
+void uninstall() {
+    releaseRetired();
+    if (g_root.isEmpty()) {
+        return;
+    }
     QResource::unregisterResource(blob_ptr(), g_root.mid(1));
     g_root.clear();
     g_blob.clear();
 }
 
 QString install(const Tokens& tokens) {
-    uninstall();
+    releaseRetired(); // un seul retrait en attente à la fois
+    // La racine courante est retirée (pas désenregistrée) : la nouvelle est posée d'abord.
+    g_retiredRoot = g_root;
+    g_retiredBlob = g_blob;
+    g_root.clear();
+    g_blob.clear();
     if (g_forceFailure) {
         spdlog::warn("style_assets: enregistrement force en echec (test) ; QSS sans image");
         return {};

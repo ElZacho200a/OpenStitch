@@ -1,0 +1,51 @@
+// Fixture de l'auto-test de check_no_hardcoded_colors.cmake : AUCUNE violation.
+// Commentaires : #ff0000  QColor(1, 2, 3)  Qt::white  rgb(%1,%2,%3)  "#ffffff"
+/* #abcdef */
+/* bloc sur plusieurs lignes :
+   QColor(80, 120, 200) et Qt::red et #8a5a00 et l'apostrophe */
+#include <QColor>
+#include "design_tokens.hpp"
+#define FOO 1
+#define MAX_COLORS 8
+#define NAMED_LIKE_HEX defaced
+
+struct Palette {
+    QColor color{};
+    QColor other;
+    QColor lighter(int amount) const;
+};
+
+void clean(const Tokens& tokens, int r, int g, int b) {
+    QColor a(r, g, b);
+    QColor c = QColor(r, g, b);
+    QColor d = tokens.accent;
+    QColor e(tokens.window);
+    QColor f(Qt::transparent);
+    QColor h = QColor::fromRgb(qRgb(r, g, b));
+    QColor i = QColor::fromRgb(packed);
+    auto pen = QPen(Qt::NoPen);
+    auto align = Qt::AlignCenter;
+    auto scheme = Qt::ColorScheme::Dark;
+    int mask = 0xFFAA;
+    int levels = 255;
+    int redo = 3;
+    int darkRedValue = 4;
+    QColor ofShade(redo, darkRedValue, 0);
+    const char* anchor = "http://example.com/#anchor";
+    const char* label = "Objet #12";
+    const char* hash = "#";
+    const char* fmt = "#%1";
+    const char* inc = "#include";
+    const char* argb = "argb(1) et rgb values";
+    const char* css = "color: @text@;";
+    char sharp = '#';
+    char quote = '\'';
+    int big = 1'000'000;
+    QColor swatchColor(200, 100, 50); // color-ok: pastille de demonstration
+
+    static const char* kSheet = R"qss(
+QPushButton { color: @text@; }
+QLabel[role="caption"] { color: @textSecondary@; }
+)qss";
+    use(a, c, d, e, f, h, i, pen, align, scheme, mask, levels, ofShade, anchor, label, hash, fmt);
+}

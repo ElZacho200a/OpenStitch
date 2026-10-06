@@ -14,13 +14,9 @@ int main(int argc, char** argv) {
     QApplication::setApplicationName(QString::fromUtf8(openstitch::kAppName));
     QApplication::setApplicationVersion(QString::fromUtf8(openstitch::kAppVersion));
 
-    // Identité visuelle propre : Fusion n'est que la base neutre (jamais le style natif
-    // de Windows), forcée AVANT le thème car setStyle() réinitialise la palette ;
-    // `-style` / QT_STYLE_OVERRIDE de l'utilisateur sont ignorés.
-    if (QApplication::setStyle(QStringLiteral("Fusion")) == nullptr) {
-        qWarning("OpenStitch: style Fusion indisponible, rendu de base conserve");
-    }
-
+    // Le style Fusion (base neutre, jamais le style natif de Windows ; `-style` et
+    // QT_STYLE_OVERRIDE ignorés) est forcé par AppTheme::applyToApp, APRÈS la lecture
+    // du thème système de démarrage (setStyle réinitialise la palette).
     // Design system : palette + feuille de style centralisées (thème persistant).
     openstitch::desktop::AppTheme::instance().applyToApp(app);
 

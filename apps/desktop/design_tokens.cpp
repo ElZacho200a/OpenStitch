@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 #include "design_tokens.hpp"
 
+#include <QSettings>
 #include <QtGlobal>
 
 #include <algorithm>
@@ -48,7 +49,12 @@ void apply_density(Tokens& t, Density density) {
     t.weightMedium = 500;
     t.weightSemibold = 600;
 
-    t.motionShortMs = qEnvironmentVariableIsSet("OPENSTITCH_REDUCE_MOTION") ? 0 : 120;
+    // Mouvement réduit : variable d'environnement OU préférence persistée `ui/reduceMotion`.
+    const bool reduce = qEnvironmentVariableIsSet("OPENSTITCH_REDUCE_MOTION") ||
+                        QSettings(QStringLiteral("OpenStitch"), QStringLiteral("OpenStitch Studio"))
+                            .value(QStringLiteral("ui/reduceMotion"), false)
+                            .toBool();
+    t.motionShortMs = reduce ? 0 : 120;
 }
 
 // Valeurs communes aux deux thèmes (surcouches canevas : bande de luminance
