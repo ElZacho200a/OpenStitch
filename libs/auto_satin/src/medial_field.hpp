@@ -80,4 +80,70 @@ struct FootQuery {
 [[nodiscard]] std::vector<BoundaryFoot> nearest_boundary_feet(const std::vector<Poly>& polys, P2 p,
                                                               const FootQuery& query = {});
 
+// --- HP-STI-018 Phase B.5 (specs/plans/hp-sti-018-turning-satin.md §Phase B.5) :
+// gathering DIRECTION-AWARE, remplacement du besoin qui motivait la requete
+// "large" ad hoc de corridor.cpp (`FootQuery{6, 1.0}`) ---------------------
+//
+// `nearest_boundary_feet` seule est AVEUGLE A LA DIRECTION : elle classe tous
+// les candidats par distance brute, sans aucune notion de "cote". A forte
+// courbure (ex. "s") ou a une transition de largeur serree (ex. "multi_neck",
+// un coin tres aigu d'une jonction comme "trident"/"y"), les deux candidats
+// GLOBALEMENT les plus proches peuvent tout a fait se trouver du MEME cote
+// physique du contour -- meme avec un `max_feet`/`tolerance_relative` tres
+// permissifs (une requete "large"), si le vrai point du cote oppose est plus
+// loin que les quelques candidats globalement les plus proches, il n'apparait
+// JAMAIS dans la liste renvoyee : ce n'est pas un probleme de reglage de
+// tolerance, c'est un probleme de ce qui est collecte en premier lieu.
+// `trace_corridor` se retrouvait alors a selectionner deux pieds du meme
+// cote (ou un pied absent), produisant une station degeneree/une largeur
+// quasi nulle, refusant la colonne entiere (Phase B/C, kKnownCurvatureLimitations
+// / kKnownAsymmetricJunctionLimitations dans test_corridor.cpp).
+//
+// `nearest_boundary_feet_oriented` resout ceci A LA SOURCE : au lieu d'une
+// seule file de candidats triee globalement, deux files INDEPENDANTES sont
+// maintenues pendant le MEME parcours O(E) des aretes -- une par demi-plan
+// relatif a `query.normal` (gauche = `dot(candidat.point - p, query.normal)
+// >= 0`, droite = `< 0`). Un cote ne peut donc plus jamais "affamer" l'autre :
+// le point le plus proche du cote droit est TOUJOURS trouve si un tel point
+// existe, independamment de la distance du point le plus proche du cote
+// gauche. C'est la primitive, pas l'appelant (`corridor.cpp`), qui porte
+// cette garantie -- coherent avec la separation de responsabilites du plan
+// (medial_field = primitive geometrique pure ; corridor = marche d'axe +
+// logique de selection/continuite par-dessus).
+struct OrientedFootQuery {
+    P2 normal{0.0, 1.0};            // direction normale locale definissant le partage gauche/droite
+                                    // (vecteur unitaire attendu, mais non renormalise ici -- a
+                                    // l'appelant de fournir une normale deja normalisee, meme
+                                    // convention que `trace_corridor`).
+    int max_feet_per_side{4};       // candidats conserves PAR COTE, independamment l'un de l'autre.
+    double tolerance_relative{1.0}; // filtre de tolerance appliique SEPAREMENT a chaque cote
+                                    // (relatif au minimum DE CE COTE, pas au minimum global).
+};
+
+struct OrientedBoundaryFeet {
+    std::vector<BoundaryFoot> left;  // dot(candidat.point - p, query.normal) >= 0, tries par
+                                     // distance croissante (meme ordre total que
+                                     // nearest_boundary_feet : distance puis poly_index puis
+                                     // edge_index puis edge_t).
+    std::vector<BoundaryFoot> right; // dot(...) < 0, meme tri.
+};
+
+// Pieds de bord les plus proches de `p`, PAR COTE de `query.normal`,
+// independamment l'un de l'autre -- meme parcours O(E) unique que
+// `nearest_boundary_feet` (E = nombre total d'aretes de `polys`), mais DEUX
+// ensembles bornes maintenus en parallele au lieu d'un seul (cout par arete
+// toujours borne : classification en O(1) puis insertion dans l'un des deux
+// ensembles bornes, donc meme classe de complexite globale).
+//
+// Un candidat exactement sur la ligne de `normal` (produit scalaire nul) est
+// classe a GAUCHE (`>= 0`), meme convention que le test gauche/droite
+// historique de `compute_column_stations`/`corridor.cpp`.
+//
+// Un cote sans aucun candidat (polygone(s) entierement de l'autre cote, ou
+// `polys` vide) renvoie une liste vide pour ce cote -- jamais d'exception, a
+// l'appelant de traiter ce cas comme toute autre absence de pied exploitable.
+[[nodiscard]] OrientedBoundaryFeet
+nearest_boundary_feet_oriented(const std::vector<Poly>& polys, P2 p,
+                               const OrientedFootQuery& query = {});
+
 } // namespace openstitch::auto_satin::detail

@@ -883,6 +883,42 @@ std::optional<std::vector<Station>> compute_column_stations(const std::vector<Ve
                 const auto& cs = corridor[i];
                 if (cs.width_um < minWidth) {
                     entries[i].failure = CrossSectionFailure::TooNarrow;
+                } else if (cs.width_um > maxWidth) {
+                    // § HP-STI-018 Phase B.5 (specs/plans/hp-sti-018-turning-satin.md,
+                    // meme chantier que la gathering direction-aware ci-dessous) :
+                    // contrairement a ce que §2.5 du plan supposait ("TooWide has no
+                    // equivalent because nearest-point search cannot overshoot"),
+                    // ceci n'est PAS toujours un artefact de rayon qui depasse un
+                    // coin -- un echantillon d'axe genuinement degenere (le centre
+                    // geometrique d'un hub quasi circulaire, ou le squelette amincil
+                    // laisse un court troncon instable avant que la vraie branche
+                    // fine ne commence, ex. "multi_neck" : premier echantillon de
+                    // l'axe REECHANTILLONNE exactement au centre du premier cercle,
+                    // largeur mesuree ~11,99mm la ou la branche reelle fait 1,2-1,7mm)
+                    // produit une largeur REELLEMENT enorme, pas un artefact de
+                    // mesure a corriger par une meilleure selection de pieds -- il
+                    // n'y a tout simplement PAS de corridor exploitable a ce point
+                    // precis. CORRECTIF (revue Phase B.5) : sur "multi_neck" precisement,
+                    // cette largeur (~11,99mm) reste de justesse SOUS `maxWidth`
+                    // (12mm par defaut) -- cette branche ne s'y declenche donc PAS
+                    // pour cette fixture ; le refus observe vient du garde-fou de
+                    // saut de largeur adjacent, pas de celui-ci. La branche reste une
+                    // correction generale correcte (un vrai depassement doit etre
+                    // classe TooWide, pas accepte comme valide), mais aucun test du
+                    // corpus actuel ne l'exerce reellement -- a verrouiller par une
+                    // fixture synthetique dediee qui depasse franchement `maxWidth`.
+                    // `cross_section` filtrait deja ce cas via son propre
+                    // `TooWide` (ligne ~130 ci-dessus) ; sans equivalent ici, une
+                    // telle station degeneree etait acceptee comme VALIDE (largeur
+                    // enorme) puis provoquait un refus de colonne entiere sur le
+                    // saut de largeur adjacent (ou pire, un barreau degenere) au
+                    // lieu d'etre traitee, comme sous l'ancien chemin, comme un bord
+                    // legitime d'axe que la boucle d'assemblage tolerante aux trous
+                    // (plus bas) saute deja naturellement en tete/queue. Reutilise
+                    // directement `CrossSectionFailure::TooWide` -- meme semantique
+                    // cote appelant (describe()/traitement de bord legitime), aucun
+                    // nouveau code de traitement necessaire.
+                    entries[i].failure = CrossSectionFailure::TooWide;
                 } else {
                     Station st;
                     st.axis = cs.axis_point;

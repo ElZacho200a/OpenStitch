@@ -16,6 +16,26 @@
 // `find_stable_corridor_end`/`CorridorEnd`, remplacement de
 // `trim_unstable_junction_tail` par le critere de multiplicite dans
 // `resolve_junction`, et verification explicite du mode Parametric (§2.6).
+//
+// § HP-STI-018 Phase B.5 (meme plan, §4 "Phase B.5 (added after Phase B
+// review...)") : gathering DIRECTION-AWARE de `nearest_boundary_feet`
+// (nouvelle primitive `nearest_boundary_feet_oriented`, medial_field.hpp) --
+// corrige le defaut identifie en cloture de Phase C ("s"/"multi_neck"/"y"/
+// "y_symmetric"/"trident" tombaient tous sous le MEME mecanisme : gathering
+// aveugle a la direction, les deux candidats globalement les plus proches
+// pouvant atterrir du MEME cote physique, affamant l'autre cote). Resultat
+// empirique, honnete, PAS force a "tout passe" :
+//   - "s" : CORRIGE -- deplacee de `kKnownCurvatureLimitations` vers
+//     `kNonJunctionCorpus` ci-dessous, asseree au meme titre que le reste de
+//     ce sous-corpus (parite stricte avec le chemin historique).
+//   - "multi_neck" : PAS corrige, mais pour une cause racine DIFFERENTE de
+//     celle visee par cette phase (confirme en isolant le probleme station
+//     par station, cf. commentaire sur `kKnownCurvatureLimitations`
+//     ci-dessous) -- reste dans `kKnownCurvatureLimitations`.
+//   - "y"/"y_symmetric"/"trident" : PAS corriges -- cf. le commentaire sur
+//     `kKnownAsymmetricJunctionLimitations` plus bas pour le detail par
+//     forme (deux mecanismes distincts identifies, ni l'un ni l'autre n'est
+//     le gathering direction-aveugle que cette phase corrige).
 #include "corridor.hpp"
 #include "geometry_detail.hpp"
 
@@ -187,28 +207,60 @@ constexpr const char* kFullCorpus[] = {
 // faisait echouer le chemin historique -- exactement le cas que ce
 // sous-ensemble doit couvrir.
 //
-// EXCLUS deliberement malgre l'absence de jonction : "s" (courbe S a forte
-// courbure) et "multi_neck" ("0 jonction, 1 seul arc de squelette" confirme
-// par l'investigation du 2026-08-30, mais transitions de largeur fine/large
-// tres marquees aux etranglements, deja documentees comme leur PROPRE cause
-// racine distincte dans docs/source/satin.md). Constate empiriquement ici :
-// sous le chemin corridor, plusieurs stations consecutives a forte courbure/
-// transition de largeur tombent sous `min_satin_width` (feet.size()<2 meme
-// avec la requete large, les deux pieds les plus proches se retrouvant du
-// MEME cote du contour a l'interieur d'une courbe serree), refusant la
-// colonne entiere -- une vraie regression sur CES deux formes precisement,
-// rapportee (WARN) mais pas corrigee ici : la tolerance de selection n'est
-// deja plus la cause single-shot (voir corridor.hpp/corridor.cpp), et
-// resserrer encore le perimetre corrigerait un symptome sans preuve que ce
-// soit la bonne direction -- exactement le genre de patch opportuniste sous
-// pression d'une seule fixture que ce depot proscrit (§21/§22,
-// docs/source/satin.md). Laisse a un futur chantier (Phase C ou un
-// ajustement dedie de la selection sur forte courbure), avec cette mesure
-// comme point de depart.
+// EXCLUE deliberement malgre l'absence de jonction : "multi_neck" ("0
+// jonction, 1 seul arc de squelette" confirme par l'investigation du
+// 2026-08-30, mais transitions de largeur fine/large tres marquees aux
+// etranglements, deja documentees comme leur PROPRE cause racine distincte
+// dans docs/source/satin.md).
+//
+// "s" (courbe S a forte courbure) a REJOINT ce sous-corpus en Phase B.5
+// (§4/§Phase B.5 du plan) : la gathering direction-aware
+// (`nearest_boundary_feet_oriented`, medial_field.hpp) corrige exactement le
+// mecanisme qui la faisait echouer (les deux candidats globalement les plus
+// proches tombaient du meme cote physique a forte courbure, affamant l'autre
+// cote) -- verifie empiriquement, "s" egale desormais le chemin historique
+// (meme nombre de colonnes, aucun refus introduit), cf. le test "formes a
+// branche unique, drop-in replacement" ci-dessous qui l'assert desormais au
+// meme titre que le reste de ce sous-corpus.
+//
+// "multi_neck" reste exclue -- Phase B.5 a identifie, en isolant la station
+// precise qui echoue (axe reechantillonne, premier echantillon EXACTEMENT au
+// centre geometrique du premier cercle du corpus, largeur mesuree ~12,0 mm,
+// a comparer a la largeur reelle du col voisin ~1,2 mm 500 um plus loin), que
+// sa cause racine est DIFFERENTE de celle visee par cette phase : ce n'est
+// PAS un probleme de famine d'un cote (les deux cotes trouvent chacun un
+// candidat, independamment, exactement comme concu) mais un probleme plus
+// profond -- "le plus proche point dans un demi-plan" n'est pas la meme
+// chose que "le bon point de rail perpendiculaire au corridor" quand
+// l'echantillon d'axe se trouve, par construction du squelette amincil, au
+// centre d'une region localement large/ronde (le moyeu d'un cercle de 12 mm
+// de diametre) plutot que dans un vrai corridor etroit 1D. Le point "le plus
+// proche en direction +N" y est alors un point presque EN FACE (vers la
+// branche voisine du meme polygone), pas un point lateral au sens d'un rail
+// -- confirme directement (test unitaire ad hoc sur
+// `nearest_boundary_feet_oriented` au point degenere, pas conserve ici) : la
+// gathering fonctionne exactement comme concue, mais le concept "pied le
+// plus proche par demi-plan" lui-meme ne s'applique pas a ce point d'axe
+// precis. Resoudre ceci proprement ressemble au probleme que `IsoOffsetRing`
+// (§2.3 du plan, Phase D, explicitement hors perimetre de cette phase) est
+// cense couvrir (axe median degenere sur une forme large/ronde) -- PAS un
+// reglage supplementaire de tolerance sur la gathering, qui serait a nouveau
+// le patch opportuniste sous pression d'une seule fixture que ce depot
+// proscrit (§21/§22, docs/source/satin.md). Rapportee (WARN) mais pas
+// corrigee ici, en toute honnetete : la gathering direction-aware ETAIT la
+// bonne premiere piste (elle a corrige "s"), mais ne suffit pas seule pour
+// "multi_neck".
+//
+// Tente egalement (puis REVERTE, cf. historique git de ce lot) : faire subir
+// le meme traitement a `extend_tip` (sonde de largeur par pas, satin_
+// column.cpp) pour "y"/"y_symmetric" -- cf. le commentaire sur
+// `kKnownAsymmetricJunctionLimitations` plus bas pour pourquoi ce chemin-la
+// est reste hors perimetre.
 constexpr const char* kNonJunctionCorpus[] = {
     "rectangle",
     "capsule",
     "ribbon",
+    "s",
     "wide",
     "tiny",
     "notch",
@@ -222,10 +274,9 @@ constexpr const char* kNonJunctionCorpus[] = {
     "e_trunk_isolated",
 };
 
-// Formes a branche unique mais EXCLUES de kNonJunctionCorpus (cf. ci-dessus) :
-// rapportees separement, jamais asserees egales au chemin historique dans
-// cette phase.
-constexpr const char* kKnownCurvatureLimitations[] = {"s", "multi_neck"};
+// Forme a branche unique mais EXCLUE de kNonJunctionCorpus (cf. ci-dessus) :
+// rapportee separement, jamais asseree egale au chemin historique.
+constexpr const char* kKnownCurvatureLimitations[] = {"multi_neck"};
 
 // Convertit les rails Legacy (Vec2um) en sequence de P2 pour reutiliser
 // `segments_cross_p2` ci-dessus.
@@ -519,12 +570,14 @@ TEST_CASE("corridor dev flag : formes a branche unique, drop-in replacement (pas
 }
 
 TEST_CASE("corridor dev flag : formes a forte courbure/transition de largeur -- rapport, limite "
-          "connue de la Phase B",
+          "connue (Phase B.5)",
           "[corridor][corpus]") {
-    // "s" et "multi_neck" : cf. le commentaire sur kKnownCurvatureLimitations
-    // ci-dessus. Rapporte le comportement reel sans affirmer de parite --
-    // limite connue et documentee de cette phase, pas une regression passee
-    // sous silence.
+    // "multi_neck" seule desormais ("s" a rejoint kNonJunctionCorpus en
+    // Phase B.5, corrigee par la gathering direction-aware) : cf. le
+    // commentaire sur kKnownCurvatureLimitations ci-dessus pour la cause
+    // racine distincte identifiee. Rapporte le comportement reel sans
+    // affirmer de parite -- limite connue et documentee, pas une regression
+    // passee sous silence.
     for (const char* shape : kKnownCurvatureLimitations) {
         INFO("forme = " << shape);
         const auto legacy = build_with_flag(shape, /*use_corridor=*/false);
@@ -613,13 +666,81 @@ TEST_CASE("corridor dev flag : E complet (avec jonction) -- rapport, pas d'affir
 //    (Phase B.5, deja trackee, en est le bon perimetre) : ces deux formes
 //    rejoignent `kKnownCurvatureLimitations` ci-dessus plutot que d'etre
 //    forcees a passer par un ajustement de la Phase C qui ne serait pas le
-//    bon niveau pour les corriger.
+//    bon niveau pour les corriger. CORRECTIF (revue, cette prose etait deja
+//    perimee avant meme la suite Phase B.5 ci-dessous) : "y"/"trident" ne
+//    rejoignent PAS `kKnownCurvatureLimitations` (qui ne contient que
+//    "multi_neck") -- elles vivent dans `kKnownAsymmetricJunctionLimitations`,
+//    un tableau distinct declare plus bas, cf. la suite Phase B.5 juste
+//    apres pour l'etat reel (post-gathering direction-aware) de chacune.
 //  - la boucle de retrait iteratif de `resolve_junction` (ancien mecanisme
 //    PRINCIPAL contre la contamination par une branche voisine) n'a ete
 //    declenchee NULLE PART sur le corpus complet sous le nouveau critere de
 //    multiplicite (margin=6) -- cf. le test dedie plus bas. Gardee comme filet
-//    defensif inerte (cout nul tant qu'elle ne se declenche pas), PAS comme
-//    mecanisme requis -- aucune forme ne fournit de preuve du contraire.
+//    defensif inerte (cout nul tant qu'elle ne se declenche pas) -- MAIS cf.
+//    la suite Phase B.5 : "trident" est precisement la forme qui exercerait
+//    ce filet, et elle n'atteint toujours pas resolve_junction aujourd'hui --
+//    ce zero reste une preuve d'absence de besoin uniquement pour les formes
+//    testables aujourd'hui, pas une preuve generale.
+
+// =============================================================================
+// § HP-STI-018 Phase B.5, suite -- "y"/"y_symmetric"/"trident" apres la
+// gathering direction-aware (nearest_boundary_feet_oriented, medial_field.hpp) :
+//
+// Toujours PAS corrigees, mais pour DEUX mecanismes distincts, aucun des deux
+// n'etant la famine d'un cote par gathering aveugle que cette phase corrige
+// (confirme independamment pour chacune, pas suppose) :
+//
+//  - "y"/"y_symmetric" : le refus restant ("croisement entre barreaux #0/1")
+//    vient ENTIEREMENT de `extend_tip` (satin_column.cpp, extension du bout
+//    OUVERT), PAS de `trace_corridor` -- confirme en isolant
+//    `extend_open_ends=false` : les deux formes construisent alors une
+//    colonne complete pour les 3 branches (jonction correctement resolue,
+//    seul un diagnostic "zone centrale significative -- necessite un objet
+//    de remplissage separe" subsiste, attendu et documente pour une jonction
+//    a 3 branches de meme largeur). `extend_tip` appelle encore
+//    `cross_section` meme sous le chemin corridor (jamais bascule vers
+//    `nearest_boundary_feet`, contrairement a ce que le plan §2.2 anticipe
+//    pour une phase ulterieure) -- une tentative de bascule a ete faite puis
+//    REVERTEE dans ce meme lot : `nearest_boundary_feet_oriented` applique
+//    au pas-a-pas de `extend_tip` choisit systematiquement le mur d'EMBOUT
+//    (le bout ouvert lui-meme, tres proche par construction de la marche)
+//    comme "pied le plus proche du cote +N/-N" plutot que le vrai mur
+//    LATERAL de la branche -- regression reproductible et confirmee sur
+//    "rectangle"/"notch"/"t" (formes simples, jusque-la saines), revertee
+//    immediatement plutot que risquee. Corriger `extend_tip` proprement
+//    demanderait une restriction angulaire supplementaire (pas seulement un
+//    demi-plan) que cette phase n'a pas le mandat d'inventer sous pression
+//    d'une seule paire de fixtures (meme risque de patch opportuniste que
+//    documente plus haut) -- une dette reelle, pas cachee, a reprendre
+//    specifiquement sur `extend_tip` avant la Phase F.
+//  - "trident" : le refus restant ("trou de 8690 um entre stations axe #0 et
+//    #19, largeur inferieure a min_satin_width") vient de `trace_corridor`
+//    lui-meme, sur la branche interne pointue (triangle effile, shapes.cpp)
+//    -- mais PAS par famine d'un cote : `foot_multiplicity` y vaut 1 (un
+//    seul pied exploitable, pas deux insuffisamment separes), signe d'un
+//    point d'axe ou les deux cotes du triangle convergent deja presque au
+//    meme point de contour (la pointe elle-meme). La gathering
+//    direction-aware ne peut rien y faire par construction : si le cote
+//    droit et le cote gauche du contour sont reellement, geometriquement,
+//    le MEME point a cet endroit (la pointe d'un triangle effile), aucune
+//    independance de collecte par cote ne fait apparaitre un second point
+//    qui n'existe pas. Un gain reel est neanmoins mesure (rapporte
+//    honnetement, pas cache) : la jonction de "trident" passe de 1/3 a 2/3
+//    branches disponibles sous ce lot (la branche laterale etroite, qui
+//    echouait aussi en Phase C, reussit desormais) -- seule la branche en
+//    pointe reste bloquee, par le mecanisme "tres fin par nature", pas par
+//    le mecanisme que cette phase corrige.
+//
+// Net : la gathering direction-aware a corrige exactement ce qu'elle visait
+// (demonstre sur "s" et sur la branche laterale de "trident"), mais
+// "y"/"y_symmetric"/"trident" restent bloquees par deux mecanismes
+// DIFFERENTS et PRE-EXISTANTS (respectivement : `extend_tip` n'a jamais ete
+// migre vers `nearest_boundary_feet`, et une pointe effilee genuinement
+// degeneree n'a qu'un seul pied exploitable par construction) -- ni l'un ni
+// l'autre n'est "le meme bug pas encore completement corrige", ce sont deux
+// chantiers distincts, correctement non entrepris ici (hors mandat de cette
+// phase, cf. discipline de perimetre du lot).
+// =============================================================================
 
 namespace {
 
@@ -632,9 +753,9 @@ namespace {
 constexpr const char* kJunctionSuccessCorpus[] = {"t", "cross", "h"};
 
 // Formes a jonction asymetrique/forte courbure qui echouent encore --
-// RAPPORTEES, jamais asserees : limitation de `trace_corridor`/`select_feet`
-// anterieure a cette phase (confirmee empiriquement, cf. commentaire
-// ci-dessus), pas du ressort de `find_stable_corridor_end`/`resolve_junction`.
+// RAPPORTEES, jamais asserees : deux limitations DISTINCTES, ni l'une ni
+// l'autre n'etant la famine par gathering aveugle que la Phase B.5 corrige
+// -- cf. le bloc de commentaire Phase B.5 ci-dessus pour le detail par forme.
 constexpr const char* kKnownAsymmetricJunctionLimitations[] = {"y", "y_symmetric", "trident"};
 
 } // namespace

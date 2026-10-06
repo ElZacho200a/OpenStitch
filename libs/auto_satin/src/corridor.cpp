@@ -49,6 +49,75 @@ std::size_t edge_ring_distance(std::size_t a, std::size_t b, std::size_t ring) {
     return std::min(diff, ring - diff);
 }
 
+// Même ordre total que le comparateur privé `foot_order` de medial_field.cpp
+// (dupliqué ici délibérément -- même style déjà choisi par ce fichier pour
+// ses petits helpers géométriques plutôt que de partager un comparateur via
+// un en-tête supplémentaire pour une fonction aussi réduite). Sert
+// UNIQUEMENT à fusionner les deux listes déjà triées d'un
+// `OrientedBoundaryFeet` (`merge_oriented`, ci-dessous) en une seule liste
+// GLOBALEMENT triée par distance croissante.
+bool foot_less(const BoundaryFoot& a, const BoundaryFoot& b) {
+    if (a.distance_um != b.distance_um) {
+        return a.distance_um < b.distance_um;
+    }
+    if (a.poly_index != b.poly_index) {
+        return a.poly_index < b.poly_index;
+    }
+    if (a.edge_index != b.edge_index) {
+        return a.edge_index < b.edge_index;
+    }
+    return a.edge_t < b.edge_t;
+}
+
+// Fusionne `left`/`right` (chacune déjà triée par `foot_less`, sortie de
+// `nearest_boundary_feet_oriented`) en une seule liste globalement triée par
+// distance croissante, plus un vecteur parallèle `out_is_left` portant le
+// côté d'origine de chaque entrée -- PAS une simple concaténation
+// gauche-puis-droite : `pick_continuous` ci-dessous renvoie le PREMIER
+// candidat trouvé qui satisfait son critère de continuité, en supposant que
+// "premier dans la liste" == "le plus proche qui satisfait le critère". Une
+// concaténation brute casserait cette hypothèse (un candidat du côté droit,
+// plus proche mais placé APRÈS tout le côté gauche dans une concaténation,
+// serait injustement court-circuité par un candidat gauche plus éloigné mais
+// trouvé en premier) -- régression constatée empiriquement (Phase B.5,
+// fixtures "rectangle"/"ribbon"/"notch"/"t" : la station de continuité
+// choisissait l'arête topologiquement adjacente la plus proche DANS L'ORDRE
+// DE CONCATÉNATION plutôt que la plus proche en distance réelle). Un merge
+// deux-pointeurs classique (équivalent à `std::merge`, réécrit à la main
+// pour produire DEUX vecteurs parallèles -- pied et côté d'origine -- ce que
+// `std::merge` seul, une sortie un type, ne permet pas directement sans
+// structure intermédiaire).
+void merge_oriented(const std::vector<BoundaryFoot>& left, const std::vector<BoundaryFoot>& right,
+                    std::vector<BoundaryFoot>& out_feet, std::vector<bool>& out_is_left) {
+    out_feet.clear();
+    out_is_left.clear();
+    out_feet.reserve(left.size() + right.size());
+    out_is_left.reserve(left.size() + right.size());
+    std::size_t li = 0;
+    std::size_t ri = 0;
+    while (li < left.size() && ri < right.size()) {
+        if (foot_less(left[li], right[ri])) {
+            out_feet.push_back(left[li]);
+            out_is_left.push_back(true);
+            ++li;
+        } else {
+            out_feet.push_back(right[ri]);
+            out_is_left.push_back(false);
+            ++ri;
+        }
+    }
+    while (li < left.size()) {
+        out_feet.push_back(left[li]);
+        out_is_left.push_back(true);
+        ++li;
+    }
+    while (ri < right.size()) {
+        out_feet.push_back(right[ri]);
+        out_is_left.push_back(false);
+        ++ri;
+    }
+}
+
 // Sentinelle "aucun candidat" pour les fonctions de sélection ci-dessous :
 // toujours `feet.size()` (un indice valide est dans [0, feet.size())).
 
@@ -76,16 +145,27 @@ std::size_t pick_continuous(const std::vector<BoundaryFoot>& feet, const std::ve
 }
 
 // Repli "première station" / "continuité rompue" : plus proche candidat NON
-// ENCORE UTILISÉ du côté demandé de la normale (`wantLeft` -- +N, même
-// convention que `compute_column_stations` : "+N = gauche").
-std::size_t pick_by_side(const std::vector<BoundaryFoot>& feet, P2 axis_pt, P2 normal,
-                         bool wantLeft, const std::vector<bool>& used) {
+// ENCORE UTILISÉ du côté demandé (`wantLeft` -- +N, même convention que
+// `compute_column_stations` : "+N = gauche").
+//
+// § HP-STI-018 Phase B.5 : le côté n'est plus recalculé ici par un produit
+// scalaire sur `feet[i].point` -- `is_left[i]` porte déjà la classification
+// faite AU MOMENT DE LA COLLECTE par `nearest_boundary_feet_oriented`
+// (medial_field.hpp), qui est la source de vérité (c'est elle qui garantit
+// qu'un candidat du côté demandé est présent si un tel candidat existe à
+// portée, cf. justification de `trace_corridor` ci-dessous). Recalculer le
+// signe ici recréerait la même classification qu'à la collecte -- aucune
+// raison de le refaire, et une divergence accidentelle entre les deux
+// calculs (ex. normale légèrement différente) serait une source de bug
+// silencieux à éviter.
+std::size_t pick_by_side_flag(const std::vector<BoundaryFoot>& feet,
+                              const std::vector<bool>& is_left, bool wantLeft,
+                              const std::vector<bool>& used) {
     for (std::size_t i = 0; i < feet.size(); ++i) {
         if (used[i]) {
             continue;
         }
-        const double side = dot(feet[i].point - axis_pt, normal);
-        if (wantLeft ? side >= 0.0 : side < 0.0) {
+        if (is_left[i] == wantLeft) {
             return i;
         }
     }
@@ -105,13 +185,26 @@ std::size_t pick_any_unused(const std::vector<BoundaryFoot>& feet, const std::ve
     return feet.size();
 }
 
-// Sélectionne foot_a (+N, gauche) et foot_b (-N, droite) parmi `feet` pour la
-// station courante. `prev` est nullptr pour la première station d'une
-// branche (aucune continuité possible, repli direct gauche/droite). Renvoie
-// false si moins de 2 pieds distincts étaient exploitables (feet trop
-// court) -- l'appelant comble alors depuis la station précédente.
-bool select_feet(const std::vector<BoundaryFoot>& feet, const std::vector<Poly>& polys, P2 axis_pt,
-                 P2 normal, const CorridorStation* prev, BoundaryFoot& out_a, BoundaryFoot& out_b) {
+// Sélectionne foot_a (+N, gauche) et foot_b (-N, droite) parmi `feet`
+// (concaténation gauche++droite d'un `OrientedBoundaryFeet`, `is_left` portant
+// la classification d'origine de chaque entrée) pour la station courante.
+// `prev` est nullptr pour la première station d'une branche (aucune
+// continuité possible, repli direct gauche/droite). Renvoie false si moins de
+// 2 pieds distincts étaient exploitables (feet trop court) -- l'appelant
+// comble alors depuis la station précédente.
+//
+// § HP-STI-018 Phase B.5 : la recherche de continuité (`pick_continuous`)
+// reste volontairement AVEUGLE au côté -- elle cherche parmi TOUS les
+// candidats (gauche ET droite confondus), exactement comme avant cette phase.
+// Ce n'est pas un oubli : un pied physiquement continu peut, à une station où
+// la normale tourne vite (virage serré), basculer de classification gauche/
+// droite d'une station à l'autre sans qu'il s'agisse d'un vrai changement de
+// branche -- seul le repli gauche/droite (`pick_by_side_flag`), qui ne
+// s'applique qu'en l'ABSENCE de continuité, doit se fier à la classification
+// de collecte.
+bool select_feet(const std::vector<BoundaryFoot>& feet, const std::vector<bool>& is_left,
+                 const std::vector<Poly>& polys, const CorridorStation* prev, BoundaryFoot& out_a,
+                 BoundaryFoot& out_b) {
     if (feet.size() < 2) {
         return false;
     }
@@ -130,7 +223,7 @@ bool select_feet(const std::vector<BoundaryFoot>& feet, const std::vector<Poly>&
         }
     }
     if (idx_a == feet.size()) {
-        idx_a = pick_by_side(feet, axis_pt, normal, /*wantLeft=*/true, used);
+        idx_a = pick_by_side_flag(feet, is_left, /*wantLeft=*/true, used);
         if (idx_a == feet.size()) {
             idx_a = pick_any_unused(feet, used);
         }
@@ -139,7 +232,7 @@ bool select_feet(const std::vector<BoundaryFoot>& feet, const std::vector<Poly>&
         }
     }
     if (idx_b == feet.size()) {
-        idx_b = pick_by_side(feet, axis_pt, normal, /*wantLeft=*/false, used);
+        idx_b = pick_by_side_flag(feet, is_left, /*wantLeft=*/false, used);
         if (idx_b == feet.size()) {
             idx_b = pick_any_unused(feet, used);
         }
@@ -186,27 +279,35 @@ std::vector<CorridorStation> trace_corridor(const std::vector<P2>& axis,
                                         // compute_column_stations).
 
         // Deux requetes distinctes, pas une seule -- decouple deux besoins
-        // differents que medial_field.hpp ne distingue pas lui-meme :
-        //   - `wide_feet` (tolerance tres large, 100% -- garde tout candidat
-        //     jusqu'a 2x la distance minimale, max_feet=6) sert a la
-        //     SELECTION de foot_a/foot_b. Un axe reel (centerline issue du
-        //     squelette amincil, pas une ligne mediane mathematique exacte)
-        //     n'est quasiment jamais parfaitement equidistant des deux cotes
-        //     -- le filtre de tolerance de 2% de `nearest_boundary_feet`
-        //     (concu pour detecter une proximite de jonction, cf.
-        //     medial_field.hpp) exclurait alors le cote le plus eloigne,
-        //     meme quand il reste le bon pied du bon cote a mesurer. Constate
-        //     empiriquement (Phase B, corpus `shapes.cpp`) sur "ribbon"/"s"/
-        //     "notch" : avec la seule requete stricte, plusieurs stations
-        //     consecutives perdaient un cote et la colonne entiere etait
-        //     refusee -- un vrai regression sur des formes a branche unique
-        //     sans jonction, hors de portee de la Phase B.
+        // differents que medial_field.hpp ne distingue pas dans une seule
+        // fonction :
+        //   - `oriented_feet` (`nearest_boundary_feet_oriented`, §Phase B.5)
+        //     sert a la SELECTION de foot_a/foot_b : DEUX files de candidats
+        //     INDEPENDANTES, une par cote de `normal`, chacune jusqu'a 4
+        //     candidats a moins de 2x sa PROPRE distance minimale. Remplace
+        //     l'ancienne requete "large" unique (FootQuery{6, 1.0} sur
+        //     nearest_boundary_feet, aveugle a la direction) qui, a forte
+        //     courbure ("s") ou a une transition de largeur serree
+        //     ("multi_neck", les branches aigues de "y"/"trident"), pouvait
+        //     laisser les quelques candidats globalement les plus proches
+        //     tomber TOUS du meme cote physique, affamant l'autre cote meme
+        //     quand un vrai point exploitable s'y trouvait, juste plus loin
+        //     que le top-6 global (§ HP-STI-018 Phase B.5,
+        //     specs/plans/hp-sti-018-turning-satin.md). La separation par
+        //     cote est faite A LA COLLECTE (medial_field.hpp), pas apres
+        //     coup : un cote ne peut donc plus etre exclu par la proximite
+        //     de l'autre.
         //   - `strict_feet` (FootQuery par defaut : max_feet=3,
         //     tolerance_relative=2%) sert UNIQUEMENT a `foot_multiplicity` --
         //     c'est la, et seulement la, qu'un filtre serre a un sens
         //     (signaler qu'un 3e point de contour distinct est VRAIMENT a
-        //     portee, pas juste "un candidat parmi 6").
-        const auto wide_feet = nearest_boundary_feet(polys, axis[i], FootQuery{6, 1.0});
+        //     portee, pas juste "un candidat parmi 6"). Inchange par la
+        //     Phase B.5 : ce besoin n'a jamais ete celui qui regressait.
+        const auto oriented =
+            nearest_boundary_feet_oriented(polys, axis[i], OrientedFootQuery{normal, 4, 1.0});
+        std::vector<BoundaryFoot> combined;
+        std::vector<bool> is_left;
+        merge_oriented(oriented.left, oriented.right, combined, is_left);
         const auto strict_feet = nearest_boundary_feet(polys, axis[i], FootQuery{});
 
         CorridorStation st;
@@ -215,7 +316,7 @@ std::vector<CorridorStation> trace_corridor(const std::vector<P2>& axis,
 
         BoundaryFoot a;
         BoundaryFoot b;
-        if (select_feet(wide_feet, polys, axis[i], normal, prev, a, b)) {
+        if (select_feet(combined, is_left, polys, prev, a, b)) {
             st.foot_a = a;
             st.foot_b = b;
             st.width_um = norm(a.point - b.point);
