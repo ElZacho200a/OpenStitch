@@ -1,0 +1,44 @@
+// Fixture de l'auto-test : chaque ligne marquee VIOLATION doit etre signalee par
+// check_selection_single_mutator.cmake (et AUCUNE autre).
+// SELECTION-MUTATOR:BEGIN
+void W::setSelection(Selection s) { selectedObject_ = s.id; }
+// SELECTION-MUTATOR:END
+
+void W::bad() {
+    selectedObject_ = x; // VIOLATION assignation
+    selectedRegion_.reset(); // VIOLATION reset
+    multiSelection_.clear(); // VIOLATION clear
+    multiSelection_.push_back(x); // VIOLATION push_back
+    multiSelection_.emplace_back(x); // VIOLATION emplace_back
+    multiSelection_.pop_back(); // VIOLATION pop_back
+    multiSelection_.erase(multiSelection_.begin()); // VIOLATION erase
+    multiSelection_.insert(multiSelection_.end(), x); // VIOLATION insert
+    auto& alias = selectedRegion_; // VIOLATION alias reference
+    auto* ptr = &multiSelection_; // VIOLATION pointeur
+    multiSelection_ // VIOLATION appel coupe sur deux lignes
+        .push_back(x);
+    multiSelection_.back() = x; // VIOLATION back()=
+    multiSelection_[0] = x; // VIOLATION [i]=
+    multiSelection_.at(0) = x; // VIOLATION at()=
+    selectedObject_.value() = x; // VIOLATION value()=
+    selectedObject_->value = 3; // VIOLATION ->champ=
+    std::sort(multiSelection_.begin(), multiSelection_.end()); // VIOLATION sort
+    std::erase_if(multiSelection_, pred); // VIOLATION erase_if
+    std::ranges::reverse(multiSelection_); // VIOLATION ranges::reverse
+    std::exchange(selectedRegion_, y); // VIOLATION exchange
+    std::swap(selectedEmbroidery_, other); // VIOLATION swap
+    auto moved = std::move(multiSelection_); // VIOLATION move
+    /* commentaire */ selectedObject_ = x; // VIOLATION apres commentaire bloc
+    /* commentaire
+       sur deux lignes */ selectedObject_.reset(); // VIOLATION apres commentaire multi-lignes
+    *selectedObject_ = x; // VIOLATION deref=
+    for (auto& id : multiSelection_) {} // VIOLATION range-for non const
+    auto fn = [&selectedObject_]() {}; // VIOLATION capture par reference
+    auto r = std::ref(selectedRegion_); // VIOLATION std::ref
+    selectedObject_ += 1; // VIOLATION operateur compose
+    ++multiSelection_.back().value; // VIOLATION pre-increment
+    multiSelection_.back().value++; // VIOLATION post-increment
+    multiSelection_.swap(other); // VIOLATION swap membre
+    selectedEmbroidery_ = // VIOLATION affectation dont la valeur est sur la ligne suivante
+        z;
+}

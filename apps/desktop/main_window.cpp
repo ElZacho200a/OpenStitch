@@ -7031,8 +7031,8 @@ void MainWindow::translateObjects(const std::vector<ObjectId>& ids, Vec2um delta
         return;
     }
     if (ids.size() == 1) {
-        undoStack_.execute(std::make_unique<commands::TranslateVectorObjectCommand>(ids.front(), delta),
-                           project_);
+        undoStack_.execute(
+            std::make_unique<commands::TranslateVectorObjectCommand>(ids.front(), delta), project_);
     } else {
         auto composite = std::make_unique<commands::CompositeCommand>(
             tr("Déplacer %1 objets").arg(ids.size()).toStdString());

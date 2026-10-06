@@ -31,6 +31,7 @@
 #include <algorithm>
 #include <cmath>
 #include <filesystem>
+#include <functional>
 
 #include "autosave.hpp"
 #include "canvas_view.hpp"
@@ -155,6 +156,55 @@ TrianglesFixture buildTriangles() {
     fx.b = addTriangle(fx.project, "B", 3);
     fx.c = addTriangle(fx.project, "C", 6);
     return fx;
+}
+
+// Carré 10 x 10 mm centré en (cxMm, 0), assez grand pour cliquer au centre sans frôler un nœud.
+ObjectId addSquare(openstitch::document::Project& project, const char* name, int cxMm) {
+    openstitch::document::VectorObject vec;
+    vec.id = project.object_ids.next();
+    vec.name = name;
+    openstitch::geometry::Path path;
+    path.closed = true;
+    for (const auto& [dx, dy] :
+         {std::pair{-5, -5}, std::pair{5, -5}, std::pair{5, 5}, std::pair{-5, 5}}) {
+        path.nodes.push_back(openstitch::geometry::PathNode{
+            Vec2um{Micrometers{(cxMm + dx) * 1000}, Micrometers{dy * 1000}},
+            openstitch::geometry::NodeType::Corner, std::nullopt, std::nullopt});
+    }
+    vec.paths.push_back(openstitch::geometry::PathSet{path, {}});
+    project.vector_objects.push_back(vec);
+    return vec.id;
+}
+
+// Le menu contextuel du canevas s'ouvre par un exec() bloquant : programme, AVANT l'appel,
+// une inspection qui s'exécute dès qu'un QMenu visible apparaît (sonde à 10 ms), lui laisse
+// lire/déclencher ses actions, puis le ferme.
+void scheduleContextMenuInspection(std::function<void(QMenu&)> inspect) {
+    auto* timer = new QTimer(qApp);
+    timer->setInterval(10);
+    QObject::connect(timer, &QTimer::timeout, qApp, [timer, inspect = std::move(inspect)] {
+        for (QWidget* w : QApplication::topLevelWidgets()) {
+            auto* menu = qobject_cast<QMenu*>(w);
+            if (menu != nullptr && menu->isVisible() && !menu->actions().isEmpty()) {
+                timer->stop();
+                timer->deleteLater();
+                inspect(*menu);
+                menu->close();
+                return;
+            }
+        }
+    });
+    timer->start();
+}
+
+QStringList actionTexts(const QMenu& menu) {
+    QStringList out;
+    for (const QAction* a : menu.actions()) {
+        if (!a->isSeparator()) {
+            out << a->text().remove(QLatin1Char('&'));
+        }
+    }
+    return out;
 }
 
 // tabs_/objectsList_/regionsList_ sont privés (comme dans test_document_panel.cpp) :
@@ -537,6 +587,12 @@ private slots:
     void multiSelectionDrawsEveryObjectAsSelected();
     void nudgeMovesWholeMultiSelectionInOneUndoStep();
     void deleteRemovesWholeMultiSelectionInOneUndoStep();
+    void draggingOneOfThreeSelectedBodiesMovesAllInOneUndoStep();
+    void rightClickOnSelectedMemberKeepsMultiSelectionAndDeletesAll();
+    void rightClickOnUnselectedObjectReplacesTheSelection();
+    void deleteSelectionPrefersEmbroideryOverRegion();
+    void deleteKeyInDrawToolsDeletesObjectAndBackspaceStillRemovesLastPoint();
+    void deleteKeyInFocusedInspectorFieldDoesNotDeleteTheObject();
     void deleteOnSingleVectorObjectIsOneUndoStep();
     void deleteOnEmbroideryKeepsVisibleSourceAndRemovesHiddenProxy();
     void deleteOnRegionKeepsLegacyBehaviour();
@@ -1223,6 +1279,199 @@ void MainWindowTest::deleteRemovesWholeMultiSelectionInOneUndoStep() {
     QVERIFY(window.project_.findObject(extra) == nullptr);
     QVERIFY(window.project_.findObject(keep) != nullptr);
     QVERIFY(window.checkSelectionInvariants());
+}
+
+void MainWindowTest::draggingOneOfThreeSelectedBodiesMovesAllInOneUndoStep() {
+    MainWindow window;
+    TrianglesFixture fx;
+    fx.project.original.width = 2;
+    fx.project.original.height = 2;
+    fx.project.original.rgba.assign(2 * 2 * 4, 255);
+    const ObjectId a = addSquare(fx.project, "A", -15);
+    const ObjectId b = addSquare(fx.project, "B", 0);
+    const ObjectId c = addSquare(fx.project, "C", 15);
+    window.applyLoadedProject(fx.project);
+    window.applySelectionRectangle({a, b, c}, SelectMode::Replace);
+    window.setTool(Tool::Select);
+    window.refreshImage();
+    QCOMPARE(window.multiSelection_.size(), std::size_t{3});
+
+    auto* view = window.findChild<CanvasView*>();
+    QVERIFY(view != nullptr);
+    window.resize(1600, 1000);
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+    view->resetTransform();
+    view->scale(10.0, 10.0);
+    view->centerOn(QPointF(0.0, 0.0));
+
+    const auto originX = [&](ObjectId id) {
+        return window.project_.findObject(id)->paths.front().outer.nodes.front().pos.x.value;
+    };
+    const auto ax = originX(a);
+    const auto bx = originX(b);
+    const auto cx = originX(c);
+
+    // On glisse B (centre du carré central) de +3 mm.
+    const QPoint from = view->mapFromScene(QPointF(0.0, 0.0));
+    const QPoint mid = view->mapFromScene(QPointF(1.5, -1.5));
+    const QPoint to = view->mapFromScene(QPointF(3.0, -3.0));
+    QTest::mousePress(view->viewport(), Qt::LeftButton, Qt::NoModifier, from);
+    QTest::mouseMove(view->viewport(), mid);
+    QTest::mouseMove(view->viewport(), to);
+    QTest::mouseRelease(view->viewport(), Qt::LeftButton, Qt::NoModifier, to);
+
+    QTRY_COMPARE_WITH_TIMEOUT(originX(b), bx + 3000, 2000);
+    QCOMPARE(originX(a), ax + 3000); // les deux autres membres suivent
+    QCOMPARE(originX(c), cx + 3000);
+    QCOMPARE(window.multiSelection_.size(), std::size_t{3});
+
+    window.undo(); // UN seul pas
+    QCOMPARE(originX(a), ax);
+    QCOMPARE(originX(b), bx);
+    QCOMPARE(originX(c), cx);
+    QVERIFY(!window.undoStack_.canUndo());
+}
+
+void MainWindowTest::rightClickOnSelectedMemberKeepsMultiSelectionAndDeletesAll() {
+    MainWindow window;
+    TrianglesFixture fx;
+    fx.project.original.width = 2;
+    fx.project.original.height = 2;
+    fx.project.original.rgba.assign(2 * 2 * 4, 255);
+    const ObjectId a = addSquare(fx.project, "A", -15);
+    const ObjectId b = addSquare(fx.project, "B", 0);
+    const ObjectId c = addSquare(fx.project, "C", 15);
+    window.applyLoadedProject(fx.project);
+    window.applySelectionRectangle({a, b}, SelectMode::Replace);
+
+    QStringList texts;
+    bool deleteEnabled = false;
+    QAction* deleteAct = nullptr;
+    scheduleContextMenuInspection([&](QMenu& menu) {
+        texts = actionTexts(menu);
+        for (QAction* act : menu.actions()) {
+            if (act->objectName() == QLatin1String("contextDeleteSelection")) {
+                deleteAct = act;
+                deleteEnabled = act->isEnabled();
+                act->trigger();
+            }
+        }
+    });
+    window.onCanvasContextMenu(QPointF(0.0, 0.0), QPoint(20, 20)); // sur B, membre sélectionné
+
+    QVERIFY(texts.contains(QStringLiteral("2 objets")));
+    QVERIFY(texts.contains(QStringLiteral("Supprimer 2 objets")));
+    QVERIFY(!texts.contains(QStringLiteral("Dupliquer"))); // entrées mono-objet absentes
+    QVERIFY(!texts.contains(QStringLiteral("Décaler…")));
+    QVERIFY(!texts.contains(QStringLiteral("Type de points")));
+    QVERIFY(deleteAct != nullptr && deleteEnabled);
+
+    // « Supprimer N objets » a agi sur tout l'ensemble, en un pas.
+    QVERIFY(window.project_.findObject(a) == nullptr);
+    QVERIFY(window.project_.findObject(b) == nullptr);
+    QVERIFY(window.project_.findObject(c) != nullptr);
+    window.undo();
+    QVERIFY(window.project_.findObject(a) != nullptr);
+    QVERIFY(window.project_.findObject(b) != nullptr);
+    QVERIFY(!window.undoStack_.canUndo());
+}
+
+void MainWindowTest::rightClickOnUnselectedObjectReplacesTheSelection() {
+    MainWindow window;
+    TrianglesFixture fx;
+    fx.project.original.width = 2;
+    fx.project.original.height = 2;
+    fx.project.original.rgba.assign(2 * 2 * 4, 255);
+    const ObjectId a = addSquare(fx.project, "A", -15);
+    const ObjectId b = addSquare(fx.project, "B", 0);
+    const ObjectId c = addSquare(fx.project, "C", 15);
+    window.applyLoadedProject(fx.project);
+    window.applySelectionRectangle({a, b}, SelectMode::Replace);
+
+    QStringList texts;
+    scheduleContextMenuInspection([&](QMenu& menu) { texts = actionTexts(menu); });
+    window.onCanvasContextMenu(QPointF(15.0, 0.0), QPoint(20, 20)); // sur C, non sélectionné
+
+    QVERIFY(window.multiSelection_.empty());
+    QVERIFY(window.selectedObject_ == c);
+    QVERIFY(texts.contains(QStringLiteral("Dupliquer"))); // menu mono-objet habituel
+    QVERIFY(window.checkSelectionInvariants());
+}
+
+void MainWindowTest::deleteSelectionPrefersEmbroideryOverRegion() {
+    MainWindow window;
+    const Fixture fx = buildFixture();
+    window.applyLoadedProject(fx.project);
+
+    // Le dock Ordre garde la région en sélectionnant une broderie.
+    window.setSelection({.region = fx.regionId, .embroidery = fx.embroideryId, .objects = {}});
+    window.deleteSelection();
+    QVERIFY(window.project_.findEmbroidery(fx.embroideryId) == nullptr);
+    QVERIFY(window.project_.segmentation->find(fx.regionId) != nullptr); // région intacte
+    window.undo();
+    QVERIFY(window.project_.findEmbroidery(fx.embroideryId) != nullptr);
+    QVERIFY(!window.undoStack_.canUndo());
+}
+
+void MainWindowTest::deleteKeyInDrawToolsDeletesObjectAndBackspaceStillRemovesLastPoint() {
+    // Comportement ACCEPTÉ et épinglé : en outil de dessin, Suppr supprime l'objet
+    // sélectionné (annulable) ; Retour arrière retire toujours le dernier point en
+    // cours. La suppression de nœuds (contexte NodeEdit, ligne N4) est PLANIFIÉE, pas
+    // encore implémentée.
+    MainWindow window;
+    TrianglesFixture fx = buildTriangles();
+    window.applyLoadedProject(fx.project);
+    window.resize(1400, 900);
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+    window.activateWindow();
+    QVERIFY(QTest::qWaitForWindowActive(&window));
+    auto* view = window.findChild<CanvasView*>();
+    QVERIFY(view != nullptr);
+
+    window.applySelectionClick(fx.a, SelectMode::Replace);
+    window.setTool(Tool::DrawPolygon);
+    view->canvasClickedMm(QPointF(30.0, 30.0));
+    view->canvasClickedMm(QPointF(35.0, 30.0));
+    QCOMPARE(window.pendingPolygonVertices_.size(), std::size_t{2});
+
+    QTest::keyClick(&window, Qt::Key_Backspace);
+    QCOMPARE(window.pendingPolygonVertices_.size(), std::size_t{1});
+    QVERIFY(window.project_.findObject(fx.a) != nullptr); // Retour arrière ne supprime pas
+
+    QTest::keyClick(&window, Qt::Key_Delete);
+    QVERIFY(window.project_.findObject(fx.a) == nullptr);
+    window.undo();
+    QVERIFY(window.project_.findObject(fx.a) != nullptr);
+}
+
+void MainWindowTest::deleteKeyInFocusedInspectorFieldDoesNotDeleteTheObject() {
+    MainWindow window;
+    const Fixture fx = buildFixture();
+    window.applyLoadedProject(fx.project);
+    window.resize(1400, 900);
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+    window.activateWindow();
+    QVERIFY(QTest::qWaitForWindowActive(&window));
+
+    // Broderie sélectionnée : l'inspecteur affiche ses champs de paramètres.
+    window.setSelection({.region = std::nullopt, .embroidery = fx.embroideryId, .objects = {}});
+    window.updateActions();
+    auto* propsPanel = window.findChild<PropertiesPanel*>();
+    QVERIFY(propsPanel != nullptr);
+    const auto spins = propsPanel->findChildren<QDoubleSpinBox*>();
+    QVERIFY(!spins.isEmpty());
+    spins.front()->setFocus();
+    QTRY_VERIFY_WITH_TIMEOUT(QApplication::focusWidget() != nullptr &&
+                                 spins.front()->isAncestorOf(QApplication::focusWidget()),
+                             2000);
+
+    QTest::keyClick(QApplication::focusWidget(), Qt::Key_Delete);
+    // Le champ garde Suppr : l'objet reste (le champ peut, lui, éditer sa valeur).
+    QVERIFY(window.project_.findEmbroidery(fx.embroideryId) != nullptr);
+    QVERIFY(window.project_.findObject(fx.vectorId) != nullptr);
 }
 
 void MainWindowTest::deleteOnSingleVectorObjectIsOneUndoStep() {
