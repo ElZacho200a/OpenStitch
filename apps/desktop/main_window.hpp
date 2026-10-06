@@ -1,16 +1,24 @@
 // SPDX-License-Identifier: Apache-2.0
 #pragma once
 
+#include <QHash>
 #include <QList>
 #include <QMainWindow>
+#include <QPainterPath>
+#include <QPointer>
+#include <QRectF>
 #include <QString>
 #include <QStringList>
 
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <functional>
+#include <optional>
 #include <set>
+#include <vector>
 
+#include "interaction_map.hpp"
 #include "openstitch/commands/undo_stack.hpp"
 #include "openstitch/document/project.hpp"
 #include "openstitch/geometry/path.hpp"
@@ -35,10 +43,13 @@ class QVBoxLayout;
 class QDoubleSpinBox;
 class QSpinBox;
 class QMenu;
+class QActionGroup;
 
 namespace openstitch::desktop {
 
 class CanvasView;
+class GesturesDialog;
+class QuickStartDialog;
 class PropertiesPanel;
 class DocumentPanel;
 class WorkflowPanel;
@@ -92,6 +103,12 @@ private slots:
     void onCropSelected(QRectF rectMm);
     void segmentImage();
     void onCanvasClicked(QPointF posMm);
+    // Modèle d'interaction L5 (signaux de CanvasView, specs/plans/ui-interaction-model.md §2.5).
+    // Maj/Ctrl + clic : sélection par point (Add/Toggle) ; Replace passe par
+    // onCanvasClicked (comportement historique inchangé).
+    void onSelectionClicked(QPointF posMm, SelectMode mode);
+    void onSelectionRectangle(QRectF rectMm, SelectMode mode, bool crossing);
+    void onSelectBelow(QPointF posMm, QPoint globalPos, SelectMode mode);
     void onCanvasContextMenu(QPointF posMm, QPoint globalPos);
     // Rectangle/ellipse dessiné (outils DrawRectangle/DrawEllipse) : interprété
     // selon `currentTool_`. Maj enfoncée + DrawEllipse = cercle contraint.
@@ -99,6 +116,11 @@ private slots:
     // Double-clic : clôt un polygone en cours de tracé (outil DrawPolygon).
     void onCanvasDoubleClicked(QPointF posMm);
     void deleteSelectedRegion();
+    // Suppr universel (action_deleteRegion, QKeySequence::Delete) : selon le
+    // contexte, supprime la région (comportement historique), l'objet de
+    // broderie ou l'ensemble des objets vectoriels sélectionnés -- un seul pas
+    // d'annulation (CompositeCommand) pour la multi-sélection.
+    void deleteSelection();
     void recolorSelectedRegion();
     void vectorizeSelectedRegion();
     void autoDigitize();
@@ -297,6 +319,10 @@ private:
     void refreshOrderPanel();
     void buildFilterPanel();
     void refreshFilterPanel();
+    // Affiche/masque un dock sur ordre d'un rafraîchissement, sans défaire « Masquer les
+    // panneaux » : en mode canevas seul, le dock reste caché et n'est (ré)affiché qu'à la sortie.
+    static bool debugMenuEnabled(); // OPENSTITCH_DEBUG=1 ou QSettings « debug/menu »
+    void setDockAutoVisible(QDockWidget* dock, bool visible, bool force = false);
     void buildWorkflowPanel();
     void refreshWorkflow();
     void buildDocumentPanel();
@@ -370,7 +396,11 @@ private:
     // réellement au clic, pire qu'aucune accroche) ni sur le rectangle/ellipse
     // (glisser natif RubberBandDrag de Qt, pas d'aperçu personnalisable en
     // cours de glisser ; seuls les coins finaux sont accrochés à la fin).
-    [[nodiscard]] std::optional<QPointF> findSnapPointMm(QPointF cursorSceneMm) const;
+    // `excludeObject` (optionnel) : objet dont les points ne sont pas candidats. Le glisser de
+    // nœud n'utilise PLUS cette accroche (voir findNodeSnapMm, sommets seulement).
+    [[nodiscard]] std::optional<QPointF>
+    findSnapPointMm(QPointF cursorSceneMm,
+                    std::optional<ObjectId> excludeObject = std::nullopt) const;
     // Affiche/masque le repère visuel d'accroche (cercle) au point donné.
     void updateSnapIndicator(std::optional<QPointF> snapSceneMm);
     // Miroir de ce qui précède pour le tracé à main levée (outil
@@ -456,6 +486,49 @@ private:
     void renderStitches();
     void updateActions();
 
+    // ---- Sélection (L5-T4a, specs/plans/ui-interaction-model.md §2.7) ----------
+    // État de sélection complet. `objects` : objets vectoriels dans l'ordre de
+    // sélection, le DERNIER est le principal. Un seul élément = cas legacy
+    // (multiSelection_ reste vide, selectedObject_ porte l'objet).
+    struct Selection {
+        std::optional<RegionId> region;
+        std::optional<ObjectId> embroidery;
+        std::vector<ObjectId> objects;
+    };
+    // SEUL écrivain de selectedObject_/selectedRegion_/selectedEmbroidery_/
+    // multiSelection_ (garde CTest check_selection_single_mutator). Normalise :
+    // doublons retirés (dernière occurrence gardée), région/broderie
+    // sélectionnée => au plus l'objet principal conservé, un seul objet =>
+    // multiSelection_ vide. Ne rafraîchit rien (l'appelant appelle
+    // displayImage/refreshImage + updateActions).
+    void setSelection(Selection selection);
+    // Modification partielle : copie l'état courant, applique `edit`, puis passe
+    // par setSelection (jamais d'écriture directe des membres).
+    void editSelection(const std::function<void(Selection&)>& edit);
+    // Translate des objets vectoriels en UN pas d'annulation (CompositeCommand si
+    // > 1) puis rafraîchit : partagé par les flèches et le glisser de corps.
+    void translateObjects(const std::vector<ObjectId>& ids, Vec2um delta);
+    [[nodiscard]] bool isObjectSelected(ObjectId id) const;
+    // Lecture : état courant sous forme de Selection (objets = multiSelection_
+    // ou {selectedObject_}), pour les modifications partielles.
+    [[nodiscard]] Selection currentSelection() const;
+    // Objets vectoriels sélectionnés (ordre de sélection ; principal en dernier).
+    [[nodiscard]] std::vector<ObjectId> selectedObjectIds() const;
+    [[nodiscard]] bool hasMultiSelection() const { return !multiSelection_.empty(); }
+    // Retire de la sélection les ids disparus (suppression/undo/redo/chargement).
+    void pruneSelection();
+    // Invariants : pas de doublon, multi => >= 2 éléments, principal = dernier,
+    // région/broderie => multi vide, ids vectoriels existants.
+    [[nodiscard]] bool checkSelectionInvariants() const;
+    // Entrées pour le câblage canevas (T4b) : sémantique Replace/Add (Maj)/
+    // Toggle (Ctrl). `hit` vide = clic dans le vide (Replace : désélectionne les
+    // objets et la broderie ; Add/Toggle : sans effet). La détection
+    // géométrique reste à l'appelant.
+    void applySelectionClick(std::optional<ObjectId> hit, SelectMode mode);
+    void applySelectionRectangle(const std::vector<ObjectId>& hits, SelectMode mode);
+    // Réaffiche après un changement de sélection (rendu, actions, inspecteur).
+    void selectionChanged();
+
     document::Project project_;
     // Fichier `.osp` auquel le document est rattaché (vide tant qu'il n'a
     // jamais été enregistré) : cible de Ctrl+S et nom affiché dans le titre.
@@ -490,6 +563,10 @@ private:
     QAction* showImageAct_{nullptr};
     QAction* showStitchesAct_{nullptr};
     std::vector<QDockWidget*> panelsToRestore_; // docks masqués par « Masquer les panneaux »
+    QHash<QDockWidget*, bool>
+        dockHadContent_;         // dernier état « a du contenu » (cf. setDockAutoVisible)
+    bool hidePanelsMode_{false}; // mode « canevas seul » actif
+    QMenu* panelsMenu_{nullptr}; // Affichage > Panneaux (toggleViewAction des docks)
     QAction* createStitchAct_{nullptr};
     QAction* createTatamiAct_{nullptr};
     QAction* createSatinAct_{nullptr};
@@ -561,6 +638,8 @@ private:
 
     QList<QAction*> imageActions_;
     QList<QAction*> regionActions_; // nécessitent une région sélectionnée
+    QAction* deleteSelectionAct_{
+        nullptr}; // « Supprimer la sélection » (objectName action_deleteRegion)
 
     // Cache des points générés — recalculé à chaque modification du document
     // (jamais une vérité stockée, ADR-014). Exception : une séquence importée
@@ -568,10 +647,79 @@ private:
     std::optional<stitch::StitchSequence> sequence_;
     bool sequenceImported_{false};
     QAction* exportDstAct_{nullptr};
+    QAction* saveProjectAct_{nullptr};
+    QAction* saveProjectAsAct_{nullptr};
+    QAction* exportDxfAct_{nullptr};
+    QAction* clearRecentAct_{nullptr};
+
+    // ---- Modèle d'interaction L5-T4b ------------------------------------------
+    // Pousse le contexte de base au canevas (outil actif + modes d'édition) et
+    // active le rectangle de sélection pour l'outil Sélection ; rafraîchit les
+    // indications. Appelée par setTool et les bascules des modes d'édition.
+    void updateInteractionContext();
+    // Contexte d'interaction « logique » (table de gestes) de l'état courant.
+    [[nodiscard]] Context interactionContext() const;
+    // Recalcule la ligne d'indications (widget permanent de la barre d'état).
+    void refreshHints();
+    // Texte complet des indications (non élidé) : lu par les tests et l'infobulle.
+    [[nodiscard]] QString hintsText() const { return hintsFullText_; }
+    void showGesturesDialog();
+    void showQuickStartDialog();
+    void buildNavigationMenu(QMenu* viewMenu);
+    void applyNavigationPreset(Preset preset);
+    // Duplique `ids` (copies exactes, même position) puis translate les COPIES de
+    // `delta`, en un seul pas d'annulation (CompositeCommand) ; les copies deviennent
+    // la sélection. Alt + glisser (ligne M4).
+    void duplicateAndTranslate(const std::vector<ObjectId>& ids, Vec2um delta);
+    // Ctrl tenu (évènements du canevas) : l'accroche du tracé est suspendue (ligne D5).
+    [[nodiscard]] bool snapSuspended() const { return (heldModifiers_ & Qt::ControlModifier) != 0; }
+    QLabel* hintsLabel_{nullptr};
+    QString hintsFullText_;
+    Qt::KeyboardModifiers heldModifiers_{};
+    // Surbrillance de pré-sélection (S11) : un seul item, masqué hors outil Sélection.
+    QGraphicsPathItem* hoverItem_{nullptr};
+    // Calcul de la surbrillance (cache de contours, voir hoverCache_) et sa planification :
+    // premier mouvement traité aussitôt, les suivants coalescés par pas de 16 ms.
+    void updateHoverHighlight(std::optional<QPointF> sceneMm);
+    void scheduleHoverHighlight(QPointF sceneMm);
+    void hideHoverHighlight();
+    struct HoverShape {
+        ObjectId id;
+        QPainterPath path;
+        QRectF bounds;
+    };
+    std::vector<HoverShape> hoverCache_;
+    bool hoverCacheValid_{false};
+    QTimer* hoverTimer_{nullptr};
+    std::optional<QPointF> hoverPending_;
+    int hoverComputations_{0}; // compteurs (tests) : calculs de survol, contours construits
+    int hoverPathBuilds_{0};
+    QAction* snapNodesAct_{nullptr};
+    // Sommets des AUTRES objets (réglage edit/snapNodesOnDrag), rayon <= 1 mm et <= 10 px.
+    [[nodiscard]] std::optional<QPointF> findNodeSnapMm(QPointF cursorSceneMm,
+                                                        ObjectId exclude) const;
+    QPointer<GesturesDialog> gesturesDialog_;
+    QPointer<QuickStartDialog> quickStartDialog_;
+    QPointer<QMenu> selectBelowMenu_;
+    QActionGroup* navigationGroup_{nullptr};
+    QAction* navOpenStitchAct_{nullptr};
+    QAction* navTouchpadAct_{nullptr};
+    QAction* helpQuickStartAct_{nullptr};
+    QAction* helpGesturesAct_{nullptr};
+    QAction* aboutAct_{nullptr};
+    // Actions du guide de prise en main (étapes construites à partir d'elles).
+    QAction* openImageAct_{nullptr};
+    QAction* segmentAct_{nullptr};
+    QAction* vectorizeRegionAct_{nullptr};
+    QAction* autoDigitizeAct_{nullptr};
 
     std::optional<RegionId> selectedRegion_;
     std::optional<ObjectId> selectedObject_;
     std::optional<ObjectId> selectedEmbroidery_; // objet de broderie choisi dans l'ordre de couture
+    // Multi-sélection d'objets vectoriels : VIDE dans le cas legacy (0 ou 1
+    // objet, porté par selectedObject_) ; sinon >= 2 ids, principal =
+    // back() == selectedObject_. Écrit uniquement par setSelection().
+    std::vector<ObjectId> multiSelection_;
     bool mergeMode_{false};
 
     // Mode d'édition des points générés (Lot 8.2, cf. docs/lot8-manual-editing-design.md §6) :

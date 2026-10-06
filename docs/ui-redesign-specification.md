@@ -74,7 +74,7 @@ une infobulle explicative (jamais cachées).
   Simulation) · Masquer les panneaux (Tab) · — · Thème ▸ (Clair/Sombre) ·
   Densité ▸ (Confortable/Compact).
 - **Analyse** : Analyser le motif (F5).
-- **Aide** : Guide de démarrage · Raccourcis clavier · À propos.
+- **Aide** : Guide de prise en main · Gestes souris et clavier (F1) · À propos.
 
 Menu **contextuel** (clic droit sur objet), ordre imposé : action principale →
 édition → conversion/type → visibilité/verrou → suppression.

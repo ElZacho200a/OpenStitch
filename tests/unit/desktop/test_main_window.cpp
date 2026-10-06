@@ -3,6 +3,7 @@
 #include <QApplication>
 #include <QCheckBox>
 #include <QCloseEvent>
+#include <QComboBox>
 #include <QCoreApplication>
 #include <QDialog>
 #include <QDir>
@@ -14,8 +15,11 @@
 #include <QListWidget>
 #include <QMenu>
 #include <QMessageBox>
+#include <QMouseEvent>
 #include <QPushButton>
 #include <QRadioButton>
+#include <QScopeGuard>
+#include <QScrollBar>
 #include <QSettings>
 #include <QShortcut>
 #include <QSignalSpy>
@@ -31,11 +35,14 @@
 #include <algorithm>
 #include <cmath>
 #include <filesystem>
+#include <functional>
 
 #include "autosave.hpp"
 #include "canvas_view.hpp"
 #include "document_panel.hpp"
 #include "empty_state_widget.hpp"
+#include "help_dialogs.hpp"
+#include "interaction_map.hpp"
 #include "main_window.hpp"
 #include "node_handle.hpp"
 #include "openstitch/commands/project_commands.hpp"
@@ -117,6 +124,93 @@ Fixture buildFixture() {
     fx.project.segmentation = std::move(seg);
 
     return fx;
+}
+
+// Ajoute un triangle (1 mm de côté, coin bas-gauche à x = xMm) au projet et
+// retourne son id ; sert aux tests de multi-sélection (L5-T4a).
+ObjectId addTriangle(openstitch::document::Project& project, const char* name, int xMm) {
+    openstitch::document::VectorObject vec;
+    vec.id = project.object_ids.next();
+    vec.name = name;
+    openstitch::geometry::Path tri;
+    tri.closed = true;
+    const std::int32_t x0 = xMm * 1000;
+    for (const auto& [dx, dy] : {std::pair{0, 0}, std::pair{1000, 0}, std::pair{0, 1000}}) {
+        tri.nodes.push_back(openstitch::geometry::PathNode{
+            Vec2um{Micrometers{x0 + dx}, Micrometers{dy}}, openstitch::geometry::NodeType::Corner,
+            std::nullopt, std::nullopt});
+    }
+    vec.paths.push_back(openstitch::geometry::PathSet{tri, {}});
+    project.vector_objects.push_back(vec);
+    return vec.id;
+}
+
+// Projet de test : image 2x2 + trois triangles A, B, C (sans broderie ni région).
+struct TrianglesFixture {
+    openstitch::document::Project project;
+    ObjectId a{};
+    ObjectId b{};
+    ObjectId c{};
+};
+
+TrianglesFixture buildTriangles() {
+    TrianglesFixture fx;
+    fx.project.original.width = 2;
+    fx.project.original.height = 2;
+    fx.project.original.rgba.assign(2 * 2 * 4, 255);
+    fx.a = addTriangle(fx.project, "A", 0);
+    fx.b = addTriangle(fx.project, "B", 3);
+    fx.c = addTriangle(fx.project, "C", 6);
+    return fx;
+}
+
+// Carré 10 x 10 mm centré en (cxMm, 0), assez grand pour cliquer au centre sans frôler un nœud.
+ObjectId addSquare(openstitch::document::Project& project, const char* name, int cxMm) {
+    openstitch::document::VectorObject vec;
+    vec.id = project.object_ids.next();
+    vec.name = name;
+    openstitch::geometry::Path path;
+    path.closed = true;
+    for (const auto& [dx, dy] :
+         {std::pair{-5, -5}, std::pair{5, -5}, std::pair{5, 5}, std::pair{-5, 5}}) {
+        path.nodes.push_back(openstitch::geometry::PathNode{
+            Vec2um{Micrometers{(cxMm + dx) * 1000}, Micrometers{dy * 1000}},
+            openstitch::geometry::NodeType::Corner, std::nullopt, std::nullopt});
+    }
+    vec.paths.push_back(openstitch::geometry::PathSet{path, {}});
+    project.vector_objects.push_back(vec);
+    return vec.id;
+}
+
+// Le menu contextuel du canevas s'ouvre par un exec() bloquant : programme, AVANT l'appel,
+// une inspection qui s'exécute dès qu'un QMenu visible apparaît (sonde à 10 ms), lui laisse
+// lire/déclencher ses actions, puis le ferme.
+void scheduleContextMenuInspection(std::function<void(QMenu&)> inspect) {
+    auto* timer = new QTimer(qApp);
+    timer->setInterval(10);
+    QObject::connect(timer, &QTimer::timeout, qApp, [timer, inspect = std::move(inspect)] {
+        for (QWidget* w : QApplication::topLevelWidgets()) {
+            auto* menu = qobject_cast<QMenu*>(w);
+            if (menu != nullptr && menu->isVisible() && !menu->actions().isEmpty()) {
+                timer->stop();
+                timer->deleteLater();
+                inspect(*menu);
+                menu->close();
+                return;
+            }
+        }
+    });
+    timer->start();
+}
+
+QStringList actionTexts(const QMenu& menu) {
+    QStringList out;
+    for (const QAction* a : menu.actions()) {
+        if (!a->isSeparator()) {
+            out << a->text().remove(QLatin1Char('&'));
+        }
+    }
+    return out;
 }
 
 // tabs_/objectsList_/regionsList_ sont privés (comme dans test_document_panel.cpp) :
@@ -463,6 +557,27 @@ std::size_t firstMovableIndex(const openstitch::stitch_generation::ObjectEditVie
     return 0;
 }
 
+// Évènement souris explicite sur le viewport (modificateurs maîtrisés : QTest::mouseMove n'en
+// accepte pas, et l'état clavier global est ignoré).
+void sendMouseEvent(QWidget* viewport, QEvent::Type type, const QPoint& at, Qt::MouseButton button,
+                    Qt::MouseButtons buttons, Qt::KeyboardModifiers mods) {
+    QMouseEvent event(type, QPointF(at), QPointF(viewport->mapToGlobal(at)), button, buttons, mods);
+    QApplication::sendEvent(viewport, &event);
+}
+
+// Remet le réglage d'accrochage des nœuds à sa valeur par défaut (désactivé) en fin de test.
+struct SnapSettingReset {
+    ~SnapSettingReset() { QSettings().setValue(QStringLiteral("edit/snapNodesOnDrag"), false); }
+};
+
+// Rend le préréglage de navigation à OpenStitch (état global + QSettings de test) en fin de test.
+struct PresetRestorer {
+    ~PresetRestorer() {
+        openstitch::desktop::InteractionMap::setPreset(openstitch::desktop::Preset::OpenStitch);
+        openstitch::desktop::InteractionMap::savePreset();
+    }
+};
+
 } // namespace
 
 namespace openstitch::desktop {
@@ -485,7 +600,63 @@ private slots:
 
     void clickingVectorObjectSyncsDocumentPanelAndInspector();
     void regionAndVectorSelectionToggleContextActionsOppositely();
+    // ---- L5-T4a : modèle de sélection (multi-sélection) et Suppr universel ----
+    void selectionAddAndToggleKeepInvariants();
+    void togglingPrimaryPromotesPrevious();
+    void addOfAlreadySelectedObjectIsNoOp();
+    void clickOnEmptyReplaceDeselectsButModifiersKeepSelection();
+    void rectangleSelectionHonoursModes();
+    void regionSelectionClearsMultiSelection();
+    void embroiderySelectionClearsMultiSelection();
+    void danglingIdsArePrunedAfterDeleteUndoRedo();
+    void multiSelectionDisablesSingleObjectActions();
+    void inspectorShowsNObjets();
+    void multiSelectionDrawsEveryObjectAsSelected();
+    void nudgeMovesWholeMultiSelectionInOneUndoStep();
+    void deleteRemovesWholeMultiSelectionInOneUndoStep();
+    void draggingOneOfThreeSelectedBodiesMovesAllInOneUndoStep();
+    void rightClickOnSelectedMemberKeepsMultiSelectionAndDeletesAll();
+    void rightClickOnUnselectedObjectReplacesTheSelection();
+    void deleteSelectionPrefersEmbroideryOverRegion();
+    void deleteKeyInDrawToolsDeletesObjectAndBackspaceStillRemovesLastPoint();
+    void deleteKeyInFocusedInspectorFieldDoesNotDeleteTheObject();
+    void deleteOnSingleVectorObjectIsOneUndoStep();
+    void deleteOnEmbroideryKeepsVisibleSourceAndRemovesHiddenProxy();
+    void deleteOnRegionKeepsLegacyBehaviour();
+    void deleteActionIsEnabledForAnySelectionKind();
     void undoRedoRestoresDeletedRegionAndRefreshesDocumentPanel();
+    // ---- L5-T4b : câblage du modèle d'interaction, aide, préréglages ----
+    void helpMenuHasThreeEntriesAndF1OpensGestures();
+    void oldShortcutsMessageBoxIsGone();
+    void quickStartIsNonModalSingleInstanceBoundToMemberActions();
+    void hintsLabelSurvivesShowMessage();
+    void hintsFollowToolSelectionAndHeldModifiers();
+    void plainClickReplacesAndEmptyClickDeselects();
+    void shiftClickAddsAndCtrlClickToggles();
+    void rectangleLeftToRightIsWindowRightToLeftIsCrossing();
+    void shiftRectangleAddsToTheSelection();
+    void longPressOpensSelectBelowMenuAndChoosingSelectsIt();
+    void altClickOpensSelectBelowMenu();
+    void navigationPresetMenuSwitchesTableAndPersists();
+    void gesturesDialogPresetChangeUpdatesMenuAndHints();
+    void panToolStillPansAfterNoDrag();
+    void legacyDrawAndCropToolsStillWorkWithTheInteractionModel();
+    void escapeAndDeleteKeepWorkingThroughTheCanvas();
+    void shiftDragMovesAlongDominantAxis();
+    void shiftDragOfNodeKeepsOneAxis();
+    void ctrlDragSkipsSnap();
+    void ctrlSuspendsSnapWhenPlacingPolygonVertex();
+    void altDragDuplicatesAndMovesCopyInOneUndoStep();
+    void altBoxDrawGrowsFromCenter();
+    void hoverHighlightShowsOnlyUnselectedObjectUnderCursorInSelectTool();
+    void hoverHighlightHidesOnLeaveAndDuringGestures();
+    void hoverBurstIsCoalescedAndPathsAreCached();
+    void leftDragOnEmptySpaceStillPansInNodeEditAndStitchEditContexts();
+    void altClickOnSelectedBodyOpensSelectBelowWithoutDuplicating();
+    void nodeSnapIsOffByDefaultAndLandsExactlyWhereReleased();
+    void nodeSnapSettingPersistsAndOnlySnapsToOtherObjectVertices();
+    void hintsFollowTheSameContextPriorityAsTheCanvas();
+    void selectBelowMenuDisambiguatesDuplicateAndEmptyNames();
     void embroiderySelectionDoesNotLeakAcrossProjectLoadWithReusedId();
     // Cache de l'image de travail (audit perf 2026-09) : toujours égale au
     // pipeline rejoué, quelle que soit la mutation.
@@ -722,6 +893,17 @@ private:
     // Point de départ partagé par les tests de groupe lié ci-dessous.
     void selectJunctionAndAddLinkedGuides(MainWindow& window, const Fixture& fx);
 
+    // Fenêtre visible, trois carrés 10 x 10 mm centrés en x = -15, 0, 15 (mm), vue à
+    // 10 px/mm centrée sur l'origine, outil Sélection. Retourne la vue du canevas.
+    CanvasView* openSquares(MainWindow& window, ObjectId& a, ObjectId& b, ObjectId& c);
+    // Point du viewport au-dessus d'un point scène (mm).
+    static QPoint vp(const CanvasView* view, double xMm, double yMm) {
+        return view->mapFromScene(QPointF(xMm, yMm));
+    }
+    // Glisser avec modificateurs : appui sans modificateur, déplacements et relâchement avec.
+    static void dragWith(CanvasView* view, QPoint from, QPoint to, Qt::KeyboardModifiers mods,
+                         Qt::KeyboardModifiers pressMods = Qt::NoModifier);
+
     QTemporaryDir settingsDir_;
 };
 
@@ -802,7 +984,653 @@ void MainWindowTest::regionAndVectorSelectionToggleContextActionsOppositely() {
 
     view->canvasClickedMm(QPointF(0.25, -0.25)); // sélectionne le triangle
     QVERIFY(createStitch->isEnabled());
-    QVERIFY(!deleteRegion->isEnabled()); // la sélection au canevas prime (cf. onCanvasClicked)
+    QVERIFY(
+        !window.selectedRegion_.has_value()); // la sélection au canevas prime (cf. onCanvasClicked)
+    // Suppr universel (L5-T4a) : l'action reste active, désormais pour l'objet vectoriel.
+    QVERIFY(deleteRegion->isEnabled());
+}
+
+// ---------------------------------------------------------------------------
+// L5-T4a : modèle de sélection (specs/plans/ui-interaction-model.md §2.7).
+// ---------------------------------------------------------------------------
+
+void MainWindowTest::selectionAddAndToggleKeepInvariants() {
+    MainWindow window;
+    const TrianglesFixture fx = buildTriangles();
+    window.applyLoadedProject(fx.project);
+
+    // Replace : cas legacy, multiSelection_ reste vide.
+    window.applySelectionClick(fx.a, SelectMode::Replace);
+    QVERIFY(window.selectedObject_ == fx.a);
+    QVERIFY(window.multiSelection_.empty());
+    QVERIFY(window.checkSelectionInvariants());
+
+    // Maj : ajoute, le dernier ajouté devient le principal.
+    window.applySelectionClick(fx.b, SelectMode::Add);
+    QCOMPARE(window.multiSelection_.size(), std::size_t{2});
+    QVERIFY(window.selectedObject_ == fx.b);
+    QVERIFY(window.checkSelectionInvariants());
+
+    // Ctrl sur un absent : l'ajoute en dernier.
+    window.applySelectionClick(fx.c, SelectMode::Toggle);
+    QCOMPARE(window.multiSelection_.size(), std::size_t{3});
+    QVERIFY(window.selectedObject_ == fx.c);
+    QVERIFY(window.multiSelection_.back() == fx.c);
+
+    // Ctrl sur un présent non principal : le retire, le principal ne change pas.
+    window.applySelectionClick(fx.a, SelectMode::Toggle);
+    QCOMPARE(window.multiSelection_.size(), std::size_t{2});
+    QVERIFY(window.selectedObject_ == fx.c);
+    QVERIFY(window.checkSelectionInvariants());
+
+    // Replace repart d'un seul objet.
+    window.applySelectionClick(fx.b, SelectMode::Replace);
+    QVERIFY(window.multiSelection_.empty());
+    QVERIFY(window.selectedObject_ == fx.b);
+}
+
+void MainWindowTest::togglingPrimaryPromotesPrevious() {
+    MainWindow window;
+    const TrianglesFixture fx = buildTriangles();
+    window.applyLoadedProject(fx.project);
+
+    window.applySelectionClick(fx.a, SelectMode::Replace);
+    window.applySelectionClick(fx.b, SelectMode::Add);
+    window.applySelectionClick(fx.c, SelectMode::Add);
+    QVERIFY(window.selectedObject_ == fx.c);
+
+    window.applySelectionClick(fx.c, SelectMode::Toggle); // retire le principal
+    QVERIFY(window.selectedObject_ == fx.b);              // le précédent est promu
+    QCOMPARE(window.multiSelection_.size(), std::size_t{2});
+    QVERIFY(window.checkSelectionInvariants());
+
+    window.applySelectionClick(fx.b, SelectMode::Toggle); // il ne reste qu'un objet
+    QVERIFY(window.selectedObject_ == fx.a);
+    QVERIFY(window.multiSelection_.empty()); // retour au cas legacy
+    QVERIFY(window.checkSelectionInvariants());
+
+    window.applySelectionClick(fx.a, SelectMode::Toggle); // plus rien
+    QVERIFY(!window.selectedObject_.has_value());
+    QVERIFY(window.multiSelection_.empty());
+}
+
+void MainWindowTest::addOfAlreadySelectedObjectIsNoOp() {
+    MainWindow window;
+    const TrianglesFixture fx = buildTriangles();
+    window.applyLoadedProject(fx.project);
+
+    window.applySelectionClick(fx.a, SelectMode::Replace);
+    window.applySelectionClick(fx.b, SelectMode::Add);
+    window.applySelectionClick(fx.a, SelectMode::Add); // déjà présent : rien
+    QCOMPARE(window.multiSelection_.size(), std::size_t{2});
+    QVERIFY(window.selectedObject_ == fx.b); // le principal ne change pas
+    QVERIFY(window.checkSelectionInvariants());
+}
+
+void MainWindowTest::clickOnEmptyReplaceDeselectsButModifiersKeepSelection() {
+    MainWindow window;
+    const TrianglesFixture fx = buildTriangles();
+    window.applyLoadedProject(fx.project);
+
+    window.applySelectionClick(fx.a, SelectMode::Replace);
+    window.applySelectionClick(fx.b, SelectMode::Add);
+
+    window.applySelectionClick(std::nullopt, SelectMode::Add);
+    window.applySelectionClick(std::nullopt, SelectMode::Toggle);
+    QCOMPARE(window.multiSelection_.size(), std::size_t{2}); // Maj/Ctrl dans le vide : rien
+
+    window.applySelectionClick(std::nullopt, SelectMode::Replace);
+    QVERIFY(!window.selectedObject_.has_value());
+    QVERIFY(window.multiSelection_.empty());
+    QVERIFY(window.checkSelectionInvariants());
+}
+
+void MainWindowTest::rectangleSelectionHonoursModes() {
+    MainWindow window;
+    const TrianglesFixture fx = buildTriangles();
+    window.applyLoadedProject(fx.project);
+
+    window.applySelectionRectangle({fx.a, fx.b, fx.a}, SelectMode::Replace); // doublon ignoré
+    QCOMPARE(window.multiSelection_.size(), std::size_t{2});
+    QVERIFY(window.selectedObject_ == fx.b);
+
+    window.applySelectionRectangle({fx.b, fx.c}, SelectMode::Toggle); // b retiré, c ajouté
+    QCOMPARE(window.selectedObjectIds(), (std::vector<ObjectId>{fx.a, fx.c}));
+
+    window.applySelectionRectangle({fx.a}, SelectMode::Add); // déjà présent
+    QCOMPARE(window.selectedObjectIds(), (std::vector<ObjectId>{fx.a, fx.c}));
+
+    window.applySelectionRectangle({fx.b}, SelectMode::Add);
+    QCOMPARE(window.selectedObjectIds(), (std::vector<ObjectId>{fx.a, fx.c, fx.b}));
+
+    window.applySelectionRectangle({}, SelectMode::Replace); // rectangle vide : désélectionne
+    QVERIFY(window.selectedObjectIds().empty());
+    QVERIFY(window.checkSelectionInvariants());
+}
+
+void MainWindowTest::regionSelectionClearsMultiSelection() {
+    MainWindow window;
+    Fixture fx = buildFixture();
+    const ObjectId extra = addTriangle(fx.project, "Extra", 3);
+    window.applyLoadedProject(fx.project);
+    auto* docPanel = window.findChild<DocumentPanel*>();
+    QVERIFY(docPanel != nullptr);
+
+    window.applySelectionClick(fx.vectorId, SelectMode::Replace);
+    window.applySelectionClick(extra, SelectMode::Add);
+    QCOMPARE(window.multiSelection_.size(), std::size_t{2});
+
+    docPanel->regionSelected(fx.regionId);
+    QVERIFY(window.multiSelection_.empty());
+    QVERIFY(!window.selectedObject_.has_value());
+    QVERIFY(window.selectedRegion_ == fx.regionId);
+    QVERIFY(window.checkSelectionInvariants());
+
+    // Même garantie au niveau du mutateur : région + 2 objets => seul le principal reste.
+    window.setSelection(
+        {.region = fx.regionId, .embroidery = std::nullopt, .objects = {fx.vectorId, extra}});
+    QVERIFY(window.multiSelection_.empty());
+    QVERIFY(window.selectedObject_ == extra);
+    QVERIFY(window.checkSelectionInvariants());
+}
+
+void MainWindowTest::embroiderySelectionClearsMultiSelection() {
+    MainWindow window;
+    Fixture fx = buildFixture();
+    const ObjectId extra = addTriangle(fx.project, "Extra", 3);
+    window.applyLoadedProject(fx.project);
+    auto* docPanel = window.findChild<DocumentPanel*>();
+    QVERIFY(docPanel != nullptr);
+
+    window.applySelectionClick(fx.vectorId, SelectMode::Replace);
+    window.applySelectionClick(extra, SelectMode::Add);
+    docPanel->embroiderySelected(fx.embroideryId);
+
+    QVERIFY(window.multiSelection_.empty());
+    QVERIFY(window.selectedEmbroidery_ == fx.embroideryId);
+    QVERIFY(window.selectedObject_ == fx.vectorId); // forme source mise en évidence
+    QVERIFY(window.checkSelectionInvariants());
+
+    // Une sélection d'objets depuis le canevas écarte la broderie.
+    window.applySelectionClick(extra, SelectMode::Add);
+    QVERIFY(!window.selectedEmbroidery_.has_value());
+    QCOMPARE(window.multiSelection_.size(), std::size_t{2});
+    QVERIFY(window.checkSelectionInvariants());
+}
+
+void MainWindowTest::danglingIdsArePrunedAfterDeleteUndoRedo() {
+    MainWindow window;
+    const TrianglesFixture fx = buildTriangles();
+    window.applyLoadedProject(fx.project);
+
+    window.applySelectionClick(fx.a, SelectMode::Replace);
+    window.applySelectionClick(fx.b, SelectMode::Add);
+    window.applySelectionClick(fx.c, SelectMode::Add);
+
+    // Suppression hors sélection (menu contextuel, autre chemin) du principal :
+    // refreshImage élague l'id disparu et re-promeut le dernier restant.
+    window.deleteVectorObject(fx.c);
+    QCOMPARE(window.selectedObjectIds(), (std::vector<ObjectId>{fx.a, fx.b}));
+    QVERIFY(window.selectedObject_ == fx.b);
+    QVERIFY(window.checkSelectionInvariants());
+
+    // Suppression directe du document puis refresh : même élagage.
+    window.project_.vector_objects.erase(window.project_.vector_objects.begin());
+    window.refreshImage();
+    QVERIFY(window.selectedObject_ == fx.b);
+    QVERIFY(window.multiSelection_.empty()); // un seul restant : cas legacy
+    QVERIFY(window.checkSelectionInvariants());
+
+    // Undo de la suppression de C : C réapparaît mais n'est pas re-sélectionné ;
+    // aucun id périmé.
+    window.undo();
+    QVERIFY(window.project_.findObject(fx.c) != nullptr);
+    QVERIFY(window.checkSelectionInvariants());
+    window.redo();
+    QVERIFY(window.project_.findObject(fx.c) == nullptr);
+    QVERIFY(window.checkSelectionInvariants());
+}
+
+void MainWindowTest::multiSelectionDisablesSingleObjectActions() {
+    MainWindow window;
+    const TrianglesFixture fx = buildTriangles();
+    window.applyLoadedProject(fx.project);
+
+    window.applySelectionClick(fx.a, SelectMode::Replace);
+    QVERIFY(window.createStitchAct_->isEnabled());
+    QVERIFY(window.createTatamiAct_->isEnabled());
+    QVERIFY(window.createSatinAct_->isEnabled());
+    QVERIFY(window.autoSatinAct_->isEnabled());
+
+    window.applySelectionClick(fx.b, SelectMode::Add);
+    QVERIFY(!window.createStitchAct_->isEnabled());
+    QVERIFY(!window.createTatamiAct_->isEnabled());
+    QVERIFY(!window.createSatinAct_->isEnabled());
+    QVERIFY(!window.autoSatinAct_->isEnabled());
+
+    // Les slots eux-mêmes refusent d'agir (menus/barres qui contourneraient l'état d'action).
+    const std::size_t embBefore = window.project_.embroidery_objects.size();
+    window.createRunningStitchObject();
+    window.createTatamiObject();
+    QCOMPARE(window.project_.embroidery_objects.size(), embBefore);
+    QVERIFY(!window.undoStack_.canUndo());
+
+    // Retour à un seul objet : réactivées.
+    window.applySelectionClick(fx.b, SelectMode::Toggle);
+    QVERIFY(window.createStitchAct_->isEnabled());
+    QVERIFY(window.autoSatinAct_->isEnabled());
+}
+
+void MainWindowTest::inspectorShowsNObjets() {
+    MainWindow window;
+    const TrianglesFixture fx = buildTriangles();
+    window.applyLoadedProject(fx.project);
+    auto* propsPanel = window.findChild<PropertiesPanel*>();
+    QVERIFY(propsPanel != nullptr);
+
+    const auto hasText = [&](const QString& needle) {
+        const auto labels = propsPanel->findChildren<QLabel*>();
+        return std::any_of(labels.begin(), labels.end(),
+                           [&](const QLabel* l) { return l->text().contains(needle); });
+    };
+
+    window.applySelectionClick(fx.a, SelectMode::Replace);
+    QVERIFY(!hasText(QStringLiteral("2 objets")));
+
+    window.applySelectionClick(fx.b, SelectMode::Add);
+    QVERIFY(hasText(QStringLiteral("2 objets")));
+    QCOMPARE(propsPanel->findChildren<QDoubleSpinBox*>().size(), 0); // texte seul
+
+    window.applySelectionClick(fx.c, SelectMode::Add);
+    QVERIFY(hasText(QStringLiteral("3 objets")));
+
+    window.applySelectionClick(fx.c, SelectMode::Toggle);
+    window.applySelectionClick(fx.b, SelectMode::Toggle); // retour mono-objet
+    QVERIFY(!hasText(QStringLiteral("2 objets")));
+}
+
+void MainWindowTest::multiSelectionDrawsEveryObjectAsSelected() {
+    MainWindow window;
+    const TrianglesFixture fx = buildTriangles();
+    window.applyLoadedProject(fx.project);
+
+    // Le rendu se base sur isObjectSelected : tous les objets de l'ensemble, pas
+    // seulement le principal.
+    window.applySelectionClick(fx.a, SelectMode::Replace);
+    window.applySelectionClick(fx.b, SelectMode::Add);
+    QVERIFY(window.isObjectSelected(fx.a));
+    QVERIFY(window.isObjectSelected(fx.b));
+    QVERIFY(!window.isObjectSelected(fx.c));
+
+    // Les poignées de nœuds (principal seul) ne sont plus posées en multi-sélection.
+    int handles = 0;
+    for (QGraphicsItem* item : window.scene_->items()) {
+        if (dynamic_cast<NodeHandleItem*>(item) != nullptr) {
+            ++handles;
+        }
+    }
+    QCOMPARE(handles, 0);
+    window.applySelectionClick(fx.b, SelectMode::Toggle); // a seul
+    handles = 0;
+    for (QGraphicsItem* item : window.scene_->items()) {
+        if (dynamic_cast<NodeHandleItem*>(item) != nullptr) {
+            ++handles;
+        }
+    }
+    QVERIFY(handles > 0);
+}
+
+void MainWindowTest::nudgeMovesWholeMultiSelectionInOneUndoStep() {
+    MainWindow window;
+    const TrianglesFixture fx = buildTriangles();
+    window.applyLoadedProject(fx.project);
+    auto* view = window.findChild<CanvasView*>();
+    QVERIFY(view != nullptr);
+
+    const auto originX = [&](ObjectId id) {
+        return window.project_.findObject(id)->paths.front().outer.nodes.front().pos.x.value;
+    };
+    const auto ax = originX(fx.a);
+    const auto bx = originX(fx.b);
+    const auto cx = originX(fx.c);
+
+    window.applySelectionClick(fx.a, SelectMode::Replace);
+    window.applySelectionClick(fx.b, SelectMode::Add);
+    emit view->nudgeRequestedMm(QPointF(1.0, 0.0));
+    QCOMPARE(originX(fx.a), ax + 1000);
+    QCOMPARE(originX(fx.b), bx + 1000);
+    QCOMPARE(originX(fx.c), cx); // hors sélection : immobile
+
+    window.undo(); // UN seul pas annule les deux déplacements
+    QCOMPARE(originX(fx.a), ax);
+    QCOMPARE(originX(fx.b), bx);
+    QVERIFY(!window.undoStack_.canUndo());
+}
+
+void MainWindowTest::deleteRemovesWholeMultiSelectionInOneUndoStep() {
+    MainWindow window;
+    Fixture fx = buildFixture(); // triangle + broderie contour dépendante
+    const ObjectId extra = addTriangle(fx.project, "Extra", 3);
+    const ObjectId keep = addTriangle(fx.project, "Keep", 6);
+    window.applyLoadedProject(fx.project);
+    auto* deleteAct = window.findChild<QAction*>(QStringLiteral("action_deleteRegion"));
+    QVERIFY(deleteAct != nullptr);
+
+    window.applySelectionClick(fx.vectorId, SelectMode::Replace);
+    window.applySelectionClick(extra, SelectMode::Add);
+    QVERIFY(deleteAct->isEnabled());
+
+    const auto vecCount = window.project_.vector_objects.size();
+    const auto embCount = window.project_.embroidery_objects.size();
+    QCOMPARE(window.project_.embroidery_objects.size(), std::size_t{1});
+
+    deleteAct->trigger();
+    QVERIFY(window.project_.findObject(fx.vectorId) == nullptr);
+    QVERIFY(window.project_.findObject(extra) == nullptr);
+    QVERIFY(window.project_.findObject(keep) != nullptr);
+    QVERIFY(window.project_.embroidery_objects.empty()); // la broderie dépendante part avec
+    QVERIFY(!window.selectedObject_.has_value());
+    QVERIFY(window.multiSelection_.empty());
+    QVERIFY(window.checkSelectionInvariants());
+    QCOMPARE(window.undoStack_.undoName(), std::string("Supprimer 2 objets"));
+
+    // UN seul pas d'annulation restaure tout, aux mêmes index.
+    window.undo();
+    QVERIFY(!window.undoStack_.canUndo());
+    QCOMPARE(window.project_.vector_objects.size(), vecCount);
+    QCOMPARE(window.project_.embroidery_objects.size(), embCount);
+    QVERIFY(window.project_.vector_objects[0].id == fx.vectorId);
+    QVERIFY(window.project_.vector_objects[1].id == extra);
+    QVERIFY(window.project_.vector_objects[2].id == keep);
+    QVERIFY(window.checkSelectionInvariants());
+
+    window.redo();
+    QVERIFY(window.project_.findObject(fx.vectorId) == nullptr);
+    QVERIFY(window.project_.findObject(extra) == nullptr);
+    QVERIFY(window.project_.findObject(keep) != nullptr);
+    QVERIFY(window.checkSelectionInvariants());
+}
+
+void MainWindowTest::draggingOneOfThreeSelectedBodiesMovesAllInOneUndoStep() {
+    MainWindow window;
+    TrianglesFixture fx;
+    fx.project.original.width = 2;
+    fx.project.original.height = 2;
+    fx.project.original.rgba.assign(2 * 2 * 4, 255);
+    const ObjectId a = addSquare(fx.project, "A", -15);
+    const ObjectId b = addSquare(fx.project, "B", 0);
+    const ObjectId c = addSquare(fx.project, "C", 15);
+    window.applyLoadedProject(fx.project);
+    window.applySelectionRectangle({a, b, c}, SelectMode::Replace);
+    window.setTool(Tool::Select);
+    window.refreshImage();
+    QCOMPARE(window.multiSelection_.size(), std::size_t{3});
+
+    auto* view = window.findChild<CanvasView*>();
+    QVERIFY(view != nullptr);
+    window.resize(1600, 1000);
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+    view->resetTransform();
+    view->scale(10.0, 10.0);
+    view->centerOn(QPointF(0.0, 0.0));
+
+    const auto originX = [&](ObjectId id) {
+        return window.project_.findObject(id)->paths.front().outer.nodes.front().pos.x.value;
+    };
+    const auto ax = originX(a);
+    const auto bx = originX(b);
+    const auto cx = originX(c);
+
+    // On glisse B (centre du carré central) de +3 mm.
+    const QPoint from = view->mapFromScene(QPointF(0.0, 0.0));
+    const QPoint mid = view->mapFromScene(QPointF(1.5, -1.5));
+    const QPoint to = view->mapFromScene(QPointF(3.0, -3.0));
+    QTest::mousePress(view->viewport(), Qt::LeftButton, Qt::NoModifier, from);
+    QTest::mouseMove(view->viewport(), mid);
+    QTest::mouseMove(view->viewport(), to);
+    QTest::mouseRelease(view->viewport(), Qt::LeftButton, Qt::NoModifier, to);
+
+    QTRY_COMPARE_WITH_TIMEOUT(originX(b), bx + 3000, 2000);
+    QCOMPARE(originX(a), ax + 3000); // les deux autres membres suivent
+    QCOMPARE(originX(c), cx + 3000);
+    QCOMPARE(window.multiSelection_.size(), std::size_t{3});
+
+    window.undo(); // UN seul pas
+    QCOMPARE(originX(a), ax);
+    QCOMPARE(originX(b), bx);
+    QCOMPARE(originX(c), cx);
+    QVERIFY(!window.undoStack_.canUndo());
+}
+
+void MainWindowTest::rightClickOnSelectedMemberKeepsMultiSelectionAndDeletesAll() {
+    MainWindow window;
+    TrianglesFixture fx;
+    fx.project.original.width = 2;
+    fx.project.original.height = 2;
+    fx.project.original.rgba.assign(2 * 2 * 4, 255);
+    const ObjectId a = addSquare(fx.project, "A", -15);
+    const ObjectId b = addSquare(fx.project, "B", 0);
+    const ObjectId c = addSquare(fx.project, "C", 15);
+    window.applyLoadedProject(fx.project);
+    window.applySelectionRectangle({a, b}, SelectMode::Replace);
+
+    QStringList texts;
+    bool deleteEnabled = false;
+    QAction* deleteAct = nullptr;
+    scheduleContextMenuInspection([&](QMenu& menu) {
+        texts = actionTexts(menu);
+        for (QAction* act : menu.actions()) {
+            if (act->objectName() == QLatin1String("contextDeleteSelection")) {
+                deleteAct = act;
+                deleteEnabled = act->isEnabled();
+                act->trigger();
+            }
+        }
+    });
+    window.onCanvasContextMenu(QPointF(0.0, 0.0), QPoint(20, 20)); // sur B, membre sélectionné
+
+    QVERIFY(texts.contains(QStringLiteral("2 objets")));
+    QVERIFY(texts.contains(QStringLiteral("Supprimer 2 objets")));
+    QVERIFY(!texts.contains(QStringLiteral("Dupliquer"))); // entrées mono-objet absentes
+    QVERIFY(!texts.contains(QStringLiteral("Décaler…")));
+    QVERIFY(!texts.contains(QStringLiteral("Type de points")));
+    QVERIFY(deleteAct != nullptr && deleteEnabled);
+
+    // « Supprimer N objets » a agi sur tout l'ensemble, en un pas.
+    QVERIFY(window.project_.findObject(a) == nullptr);
+    QVERIFY(window.project_.findObject(b) == nullptr);
+    QVERIFY(window.project_.findObject(c) != nullptr);
+    window.undo();
+    QVERIFY(window.project_.findObject(a) != nullptr);
+    QVERIFY(window.project_.findObject(b) != nullptr);
+    QVERIFY(!window.undoStack_.canUndo());
+}
+
+void MainWindowTest::rightClickOnUnselectedObjectReplacesTheSelection() {
+    MainWindow window;
+    TrianglesFixture fx;
+    fx.project.original.width = 2;
+    fx.project.original.height = 2;
+    fx.project.original.rgba.assign(2 * 2 * 4, 255);
+    const ObjectId a = addSquare(fx.project, "A", -15);
+    const ObjectId b = addSquare(fx.project, "B", 0);
+    const ObjectId c = addSquare(fx.project, "C", 15);
+    window.applyLoadedProject(fx.project);
+    window.applySelectionRectangle({a, b}, SelectMode::Replace);
+
+    QStringList texts;
+    scheduleContextMenuInspection([&](QMenu& menu) { texts = actionTexts(menu); });
+    window.onCanvasContextMenu(QPointF(15.0, 0.0), QPoint(20, 20)); // sur C, non sélectionné
+
+    QVERIFY(window.multiSelection_.empty());
+    QVERIFY(window.selectedObject_ == c);
+    QVERIFY(texts.contains(QStringLiteral("Dupliquer"))); // menu mono-objet habituel
+    QVERIFY(window.checkSelectionInvariants());
+}
+
+void MainWindowTest::deleteSelectionPrefersEmbroideryOverRegion() {
+    MainWindow window;
+    const Fixture fx = buildFixture();
+    window.applyLoadedProject(fx.project);
+
+    // Le dock Ordre garde la région en sélectionnant une broderie.
+    window.setSelection({.region = fx.regionId, .embroidery = fx.embroideryId, .objects = {}});
+    window.deleteSelection();
+    QVERIFY(window.project_.findEmbroidery(fx.embroideryId) == nullptr);
+    QVERIFY(window.project_.segmentation->find(fx.regionId) != nullptr); // région intacte
+    window.undo();
+    QVERIFY(window.project_.findEmbroidery(fx.embroideryId) != nullptr);
+    QVERIFY(!window.undoStack_.canUndo());
+}
+
+void MainWindowTest::deleteKeyInDrawToolsDeletesObjectAndBackspaceStillRemovesLastPoint() {
+    // Comportement ACCEPTÉ et épinglé : en outil de dessin, Suppr supprime l'objet
+    // sélectionné (annulable) ; Retour arrière retire toujours le dernier point en
+    // cours. La suppression de nœuds (contexte NodeEdit, ligne N4) est PLANIFIÉE, pas
+    // encore implémentée.
+    MainWindow window;
+    TrianglesFixture fx = buildTriangles();
+    window.applyLoadedProject(fx.project);
+    window.resize(1400, 900);
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+    window.activateWindow();
+    QVERIFY(QTest::qWaitForWindowActive(&window));
+    auto* view = window.findChild<CanvasView*>();
+    QVERIFY(view != nullptr);
+
+    window.applySelectionClick(fx.a, SelectMode::Replace);
+    window.setTool(Tool::DrawPolygon);
+    view->canvasClickedMm(QPointF(30.0, 30.0));
+    view->canvasClickedMm(QPointF(35.0, 30.0));
+    QCOMPARE(window.pendingPolygonVertices_.size(), std::size_t{2});
+
+    QTest::keyClick(&window, Qt::Key_Backspace);
+    QCOMPARE(window.pendingPolygonVertices_.size(), std::size_t{1});
+    QVERIFY(window.project_.findObject(fx.a) != nullptr); // Retour arrière ne supprime pas
+
+    QTest::keyClick(&window, Qt::Key_Delete);
+    QVERIFY(window.project_.findObject(fx.a) == nullptr);
+    window.undo();
+    QVERIFY(window.project_.findObject(fx.a) != nullptr);
+}
+
+void MainWindowTest::deleteKeyInFocusedInspectorFieldDoesNotDeleteTheObject() {
+    MainWindow window;
+    const Fixture fx = buildFixture();
+    window.applyLoadedProject(fx.project);
+    window.resize(1400, 900);
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+    window.activateWindow();
+    QVERIFY(QTest::qWaitForWindowActive(&window));
+
+    // Broderie sélectionnée : l'inspecteur affiche ses champs de paramètres.
+    window.setSelection({.region = std::nullopt, .embroidery = fx.embroideryId, .objects = {}});
+    window.updateActions();
+    auto* propsPanel = window.findChild<PropertiesPanel*>();
+    QVERIFY(propsPanel != nullptr);
+    const auto spins = propsPanel->findChildren<QDoubleSpinBox*>();
+    QVERIFY(!spins.isEmpty());
+    spins.front()->setFocus();
+    QTRY_VERIFY_WITH_TIMEOUT(QApplication::focusWidget() != nullptr &&
+                                 spins.front()->isAncestorOf(QApplication::focusWidget()),
+                             2000);
+
+    QTest::keyClick(QApplication::focusWidget(), Qt::Key_Delete);
+    // Le champ garde Suppr : l'objet reste (le champ peut, lui, éditer sa valeur).
+    QVERIFY(window.project_.findEmbroidery(fx.embroideryId) != nullptr);
+    QVERIFY(window.project_.findObject(fx.vectorId) != nullptr);
+}
+
+void MainWindowTest::deleteOnSingleVectorObjectIsOneUndoStep() {
+    MainWindow window;
+    const TrianglesFixture fx = buildTriangles();
+    window.applyLoadedProject(fx.project);
+
+    window.applySelectionClick(fx.b, SelectMode::Replace);
+    window.deleteSelection();
+    QVERIFY(window.project_.findObject(fx.b) == nullptr);
+    QVERIFY(!window.selectedObject_.has_value());
+    window.undo();
+    QVERIFY(window.project_.findObject(fx.b) != nullptr);
+    QVERIFY(!window.undoStack_.canUndo());
+    QVERIFY(window.checkSelectionInvariants());
+}
+
+void MainWindowTest::deleteOnEmbroideryKeepsVisibleSourceAndRemovesHiddenProxy() {
+    {
+        MainWindow window;
+        const Fixture fx = buildFixture();
+        window.applyLoadedProject(fx.project);
+        window.setSelection(
+            {.region = std::nullopt, .embroidery = fx.embroideryId, .objects = {fx.vectorId}});
+        window.deleteSelection();
+        QVERIFY(window.project_.findEmbroidery(fx.embroideryId) == nullptr);
+        QVERIFY(window.project_.findObject(fx.vectorId) != nullptr); // forme conservée
+        QVERIFY(!window.selectedEmbroidery_.has_value());
+        QVERIFY(window.checkSelectionInvariants());
+        window.undo();
+        QVERIFY(window.project_.findEmbroidery(fx.embroideryId) != nullptr);
+        QVERIFY(!window.undoStack_.canUndo());
+    }
+    {
+        // Proxy invisible (colonne satin manuelle) : la source part avec la broderie.
+        MainWindow window;
+        Fixture fx = buildFixture();
+        fx.project.vector_objects.front().visible = false;
+        window.applyLoadedProject(fx.project);
+        window.setSelection({.region = std::nullopt, .embroidery = fx.embroideryId, .objects = {}});
+        window.deleteSelection();
+        QVERIFY(window.project_.findEmbroidery(fx.embroideryId) == nullptr);
+        QVERIFY(window.project_.findObject(fx.vectorId) == nullptr);
+        window.undo();
+        QVERIFY(window.project_.findEmbroidery(fx.embroideryId) != nullptr);
+        QVERIFY(window.project_.findObject(fx.vectorId) != nullptr);
+        QVERIFY(!window.undoStack_.canUndo());
+    }
+}
+
+void MainWindowTest::deleteOnRegionKeepsLegacyBehaviour() {
+    MainWindow window;
+    const Fixture fx = buildFixture();
+    window.applyLoadedProject(fx.project);
+
+    window.setSelection({.region = fx.regionId, .embroidery = std::nullopt, .objects = {}});
+    window.deleteSelection();
+    QVERIFY(window.project_.segmentation->find(fx.regionId) == nullptr);
+    QVERIFY(!window.selectedRegion_.has_value());
+    QCOMPARE(window.undoStack_.undoName(), std::string("Suppression de région"));
+    QVERIFY(window.project_.findObject(fx.vectorId) != nullptr); // rien d'autre supprimé
+    window.undo();
+    QVERIFY(window.project_.segmentation->find(fx.regionId) != nullptr);
+    QVERIFY(!window.undoStack_.canUndo());
+}
+
+void MainWindowTest::deleteActionIsEnabledForAnySelectionKind() {
+    MainWindow window;
+    const Fixture fx = buildFixture();
+    window.applyLoadedProject(fx.project);
+    auto* deleteAct = window.findChild<QAction*>(QStringLiteral("action_deleteRegion"));
+    QVERIFY(deleteAct != nullptr);
+    QCOMPARE(deleteAct->text().remove(QLatin1Char('&')), QStringLiteral("Supprimer la sélection"));
+    QCOMPARE(deleteAct->shortcut(), QKeySequence(QKeySequence::Delete));
+
+    QVERIFY(!deleteAct->isEnabled());
+    window.setSelection({.region = fx.regionId, .embroidery = std::nullopt, .objects = {}});
+    window.updateActions();
+    QVERIFY(deleteAct->isEnabled());
+    window.setSelection({.region = std::nullopt, .embroidery = fx.embroideryId, .objects = {}});
+    window.updateActions();
+    QVERIFY(deleteAct->isEnabled());
+    window.setSelection(
+        {.region = std::nullopt, .embroidery = std::nullopt, .objects = {fx.vectorId}});
+    window.updateActions();
+    QVERIFY(deleteAct->isEnabled());
+    window.setSelection({});
+    window.updateActions();
+    QVERIFY(!deleteAct->isEnabled());
 }
 
 void MainWindowTest::undoRedoRestoresDeletedRegionAndRefreshesDocumentPanel() {
@@ -4149,6 +4977,978 @@ void MainWindowTest::cleanCloseDiscardsTheCurrentAutosaveSlot() {
     QVERIFY(scanForRecoverableAutosaves().empty());
 
     clearAutosaveDir();
+}
+
+// ---------------------------------------------------------------------------
+// L5-T4b : câblage du modèle d'interaction (specs/plans/ui-interaction-model.md §2.5, §3, §4).
+// ---------------------------------------------------------------------------
+
+CanvasView* MainWindowTest::openSquares(MainWindow& window, ObjectId& a, ObjectId& b, ObjectId& c) {
+    TrianglesFixture fx;
+    fx.project.original.width = 2;
+    fx.project.original.height = 2;
+    fx.project.original.rgba.assign(2 * 2 * 4, 255);
+    a = addSquare(fx.project, "A", -15);
+    b = addSquare(fx.project, "B", 0);
+    c = addSquare(fx.project, "C", 15);
+    window.applyLoadedProject(fx.project);
+    window.setTool(Tool::Select);
+    window.refreshImage();
+    auto* view = window.findChild<CanvasView*>();
+    if (view == nullptr) {
+        return nullptr;
+    }
+    window.resize(1600, 1000);
+    window.show();
+    if (!QTest::qWaitForWindowExposed(&window)) {
+        return nullptr;
+    }
+    view->resetTransform();
+    view->scale(10.0, 10.0);
+    view->centerOn(QPointF(0.0, 0.0));
+    return view;
+}
+
+void MainWindowTest::dragWith(CanvasView* view, QPoint from, QPoint to, Qt::KeyboardModifiers mods,
+                              Qt::KeyboardModifiers pressMods) {
+    QWidget* vpw = view->viewport();
+    sendMouseEvent(vpw, QEvent::MouseButtonPress, from, Qt::LeftButton, Qt::LeftButton, pressMods);
+    const QPoint mid = (from + to) / 2;
+    sendMouseEvent(vpw, QEvent::MouseMove, mid, Qt::NoButton, Qt::LeftButton, mods);
+    sendMouseEvent(vpw, QEvent::MouseMove, to, Qt::NoButton, Qt::LeftButton, mods);
+    sendMouseEvent(vpw, QEvent::MouseButtonRelease, to, Qt::LeftButton, Qt::NoButton, mods);
+}
+
+void MainWindowTest::helpMenuHasThreeEntriesAndF1OpensGestures() {
+    MainWindow window;
+    auto* helpMenu = window.findChild<QMenu*>(QStringLiteral("menu_help"));
+    QVERIFY(helpMenu != nullptr);
+    QStringList names;
+    for (const QAction* act : helpMenu->actions()) {
+        if (!act->isSeparator()) {
+            names << act->objectName();
+        }
+    }
+    QCOMPARE(names,
+             (QStringList{QStringLiteral("action_help_quickstart"),
+                          QStringLiteral("action_help_gestures"), QStringLiteral("action_about")}));
+    for (const QAction* act : helpMenu->actions()) {
+        QVERIFY2(!act->toolTip().isEmpty() && !act->statusTip().isEmpty(),
+                 qPrintable(act->objectName()));
+    }
+    auto* gestures = window.findChild<QAction*>(QStringLiteral("action_help_gestures"));
+    QCOMPARE(gestures->shortcut(), QKeySequence(Qt::Key_F1));
+    QVERIFY(window.findChild<GesturesDialog*>() == nullptr);
+
+    // F1 réel sur la fenêtre active : ouvre le dialogue, non modal, une seule instance.
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+    window.activateWindow();
+    QVERIFY(QTest::qWaitForWindowActive(&window));
+    QTest::keyClick(&window, Qt::Key_F1);
+    auto* dialog = window.findChild<GesturesDialog*>();
+    QVERIFY(dialog != nullptr);
+    QVERIFY(dialog->isVisible());
+    QVERIFY(!dialog->isModal());
+    QVERIFY(dialog->testAttribute(Qt::WA_DeleteOnClose));
+    gestures->trigger();
+    QCOMPARE(window.findChildren<GesturesDialog*>().size(), 1);
+
+    // Fermé -> détruit ; une nouvelle demande en recrée un.
+    dialog->close();
+    QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
+    QVERIFY(window.gesturesDialog_.isNull());
+    gestures->trigger();
+    QVERIFY(window.findChild<GesturesDialog*>() != nullptr);
+}
+
+void MainWindowTest::oldShortcutsMessageBoxIsGone() {
+    MainWindow window;
+    auto* helpMenu = window.findChild<QMenu*>(QStringLiteral("menu_help"));
+    QVERIFY(helpMenu != nullptr);
+    for (const QAction* act : helpMenu->actions()) {
+        QVERIFY2(!act->text().contains(QStringLiteral("Raccourcis")), qPrintable(act->text()));
+    }
+    // « À propos » : boîte standard construite sur aboutText().
+    QString shownText;
+    // Sonde répétée : la boîte est modale (exec).
+    auto* probe = new QTimer(&window);
+    probe->setInterval(10);
+    connect(probe, &QTimer::timeout, &window, [&shownText] {
+        for (QWidget* w : QApplication::topLevelWidgets()) {
+            if (auto* box = qobject_cast<QMessageBox*>(w); box != nullptr && box->isVisible()) {
+                shownText = box->text();
+                box->close();
+            }
+        }
+    });
+    probe->start();
+    window.findChild<QAction*>(QStringLiteral("action_about"))->trigger();
+    probe->stop();
+    QVERIFY(!shownText.isEmpty());
+    QCOMPARE(shownText, aboutText());
+}
+
+void MainWindowTest::quickStartIsNonModalSingleInstanceBoundToMemberActions() {
+    MainWindow window;
+    auto* act = window.findChild<QAction*>(QStringLiteral("action_help_quickstart"));
+    QVERIFY(act != nullptr);
+    act->trigger();
+    auto* dialog = window.findChild<QuickStartDialog*>();
+    QVERIFY(dialog != nullptr);
+    QVERIFY(dialog->isVisible());
+    QVERIFY(!dialog->isModal());
+    QCOMPARE(dialog->stepCount(), 6);
+    // Un bouton par commande réelle : libellé = texte de la QAction membre.
+    const std::vector<QAction*> expected = {window.openImageAct_,       window.segmentAct_,
+                                            window.vectorizeRegionAct_, window.createTatamiAct_,
+                                            window.analyzeAct_,         window.exportDstAct_};
+    for (int i = 0; i < 6; ++i) {
+        QPushButton* button = dialog->stepButton(i, 0);
+        QVERIFY2(button != nullptr, qPrintable(QString::number(i)));
+        QCOMPARE(button->text(), plainActionText(expected[static_cast<std::size_t>(i)]->text()));
+        QCOMPARE(button->isEnabled(), expected[static_cast<std::size_t>(i)]->isEnabled());
+    }
+    QVERIFY(dialog->stepButton(0, 0)->isEnabled());  // Ouvrir une image : toujours possible
+    QVERIFY(!dialog->stepButton(4, 0)->isEnabled()); // Analyser : rien à analyser
+    QVERIFY(dialog->stepButtonCount(2) == 2);        // vectoriser + numérisation automatique
+    act->trigger();
+    QCOMPARE(window.findChildren<QuickStartDialog*>().size(), 1);
+}
+
+void MainWindowTest::hintsLabelSurvivesShowMessage() {
+    MainWindow window;
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+    QVERIFY(window.hintsLabel_ != nullptr);
+    QVERIFY(window.hintsLabel_->isVisible());
+    QVERIFY(!window.hintsText().isEmpty());
+    window.statusBar()->showMessage(QStringLiteral("Message sans délai"));
+    QVERIFY(window.hintsLabel_->isVisible()); // widget permanent : jamais masqué
+    QVERIFY(window.hintsLabel_->sizePolicy().horizontalPolicy() == QSizePolicy::Ignored);
+    QCOMPARE(window.hintsLabel_->minimumWidth(), 0);
+    QVERIFY(!window.hintsLabel_->accessibleName().isEmpty());
+}
+
+void MainWindowTest::hintsFollowToolSelectionAndHeldModifiers() {
+    MainWindow window;
+    ObjectId a, b, c;
+    CanvasView* view = openSquares(window, a, b, c);
+    QVERIFY(view != nullptr);
+    const auto contains = [&](const QList<Hint>& hints) {
+        for (const Hint& h : hints) {
+            if (!window.hintsText().contains(h.label)) {
+                return false;
+            }
+        }
+        return !hints.isEmpty();
+    };
+    QVERIFY(contains(InteractionMap::hintsFor(Context::Select, Qt::NoModifier)));
+    const QString selectText = window.hintsText();
+
+    // Maj tenu (évènement du canevas) : les lignes à Maj du contexte.
+    sendMouseEvent(view->viewport(), QEvent::MouseMove, QPoint(100, 100), Qt::NoButton,
+                   Qt::NoButton, Qt::ShiftModifier);
+    QVERIFY(contains(InteractionMap::hintsFor(Context::Select, Qt::ShiftModifier)));
+    QVERIFY(window.hintsText() != selectText);
+    // Sans objet sélectionné, le verrou d'axe (déplacement) n'est pas proposé ;
+    const QString moveLabel =
+        InteractionMap::hintsFor(Context::Move, Qt::ShiftModifier).constFirst().label;
+    QVERIFY(!window.hintsText().contains(moveLabel));
+    // avec un objet sélectionné, il l'est (rafraîchi au changement de sélection).
+    window.applySelectionClick(b, SelectMode::Replace);
+    QVERIFY(window.hintsText().contains(moveLabel));
+    sendMouseEvent(view->viewport(), QEvent::MouseMove, QPoint(101, 100), Qt::NoButton,
+                   Qt::NoButton, Qt::NoModifier);
+    QCOMPARE(window.hintsText(), selectText);
+
+    // Changement d'outil : le texte suit le contexte.
+    window.setTool(Tool::Pan);
+    QVERIFY(contains(InteractionMap::hintsFor(Context::Pan, Qt::NoModifier)));
+    QVERIFY(window.hintsText() != selectText);
+    window.setTool(Tool::DrawPolygon);
+    QVERIFY(contains(InteractionMap::hintsFor(Context::DrawClicks, Qt::NoModifier)));
+    QVERIFY(window.hintsLabel_->toolTip() == window.hintsText());
+}
+
+void MainWindowTest::plainClickReplacesAndEmptyClickDeselects() {
+    MainWindow window;
+    ObjectId a, b, c;
+    CanvasView* view = openSquares(window, a, b, c);
+    QVERIFY(view != nullptr);
+
+    QTest::mouseClick(view->viewport(), Qt::LeftButton, Qt::NoModifier, vp(view, -15, 0));
+    QVERIFY(window.selectedObject_ == a);
+    QTest::mouseClick(view->viewport(), Qt::LeftButton, Qt::NoModifier, vp(view, 0, 0));
+    QVERIFY(window.selectedObject_ == b);
+    QVERIFY(window.multiSelection_.empty()); // Replace : mono-sélection legacy
+    QTest::mouseClick(view->viewport(), Qt::LeftButton, Qt::NoModifier, vp(view, 0, 30));
+    QVERIFY(!window.selectedObject_.has_value());
+    QVERIFY(window.checkSelectionInvariants());
+}
+
+void MainWindowTest::shiftClickAddsAndCtrlClickToggles() {
+    MainWindow window;
+    ObjectId a, b, c;
+    CanvasView* view = openSquares(window, a, b, c);
+    QVERIFY(view != nullptr);
+
+    QTest::mouseClick(view->viewport(), Qt::LeftButton, Qt::NoModifier, vp(view, -15, 0));
+    QTest::mouseClick(view->viewport(), Qt::LeftButton, Qt::ShiftModifier, vp(view, 0, 0));
+    QCOMPARE(window.selectedObjectIds(), (std::vector<ObjectId>{a, b}));
+    QTest::mouseClick(view->viewport(), Qt::LeftButton, Qt::ShiftModifier, vp(view, 15, 0));
+    QCOMPARE(window.selectedObjectIds(), (std::vector<ObjectId>{a, b, c}));
+    QVERIFY(window.selectedObject_ == c);
+    // Maj sur un objet déjà sélectionné : sans effet.
+    QTest::mouseClick(view->viewport(), Qt::LeftButton, Qt::ShiftModifier, vp(view, 0, 0));
+    QCOMPARE(window.selectedObjectIds().size(), std::size_t{3});
+    // Ctrl : bascule (retire b), puis le principal est promu quand on retire c.
+    QTest::mouseClick(view->viewport(), Qt::LeftButton, Qt::ControlModifier, vp(view, 0, 0));
+    QCOMPARE(window.selectedObjectIds(), (std::vector<ObjectId>{a, c}));
+    QTest::mouseClick(view->viewport(), Qt::LeftButton, Qt::ControlModifier, vp(view, 15, 0));
+    QVERIFY(window.selectedObject_ == a); // promu
+    QVERIFY(window.multiSelection_.empty());
+    // Maj/Ctrl dans le vide : la sélection reste.
+    QTest::mouseClick(view->viewport(), Qt::LeftButton, Qt::ShiftModifier, vp(view, 0, 30));
+    QVERIFY(window.selectedObject_ == a);
+    QVERIFY(window.checkSelectionInvariants());
+    // Un seul pas d'annulation n'a été créé : la sélection n'est pas une commande.
+    QVERIFY(!window.undoStack_.canUndo());
+}
+
+void MainWindowTest::rectangleLeftToRightIsWindowRightToLeftIsCrossing() {
+    MainWindow window;
+    ObjectId a, b, c;
+    CanvasView* view = openSquares(window, a, b, c);
+    QVERIFY(view != nullptr);
+
+    // Gauche -> droite : fenêtre. [-7, 12] x [-8, 8] contient B (-5..5), coupe C (10..20).
+    dragWith(view, vp(view, -7, -8), vp(view, 12, 8), Qt::NoModifier);
+    QCOMPARE(window.selectedObjectIds(), (std::vector<ObjectId>{b}));
+    // Droite -> gauche : croisement, même cadre -> B et C (ordre d'ObjectId).
+    dragWith(view, vp(view, 12, 8), vp(view, -7, -8), Qt::NoModifier);
+    QCOMPARE(window.selectedObjectIds(), (std::vector<ObjectId>{b, c}));
+    QVERIFY(window.checkSelectionInvariants());
+    // Rectangle dans le vide, sans Maj/Ctrl : désélectionne (Replace).
+    dragWith(view, vp(view, -7, 20), vp(view, 7, 30), Qt::NoModifier);
+    QVERIFY(window.selectedObjectIds().empty());
+    QVERIFY(!window.undoStack_.canUndo());
+}
+
+void MainWindowTest::shiftRectangleAddsToTheSelection() {
+    MainWindow window;
+    ObjectId a, b, c;
+    CanvasView* view = openSquares(window, a, b, c);
+    QVERIFY(view != nullptr);
+    QTest::mouseClick(view->viewport(), Qt::LeftButton, Qt::NoModifier, vp(view, -15, 0));
+    // Maj dès l'appui : ajout du rectangle (fenêtre autour de C) à la sélection existante.
+    dragWith(view, vp(view, 8, -8), vp(view, 22, 8), Qt::ShiftModifier, Qt::ShiftModifier);
+    QCOMPARE(window.selectedObjectIds(), (std::vector<ObjectId>{a, c}));
+    // Ctrl : bascule (retire C, ajoute B) ; le principal est le dernier ajouté.
+    dragWith(view, vp(view, -7, -8), vp(view, 22, 8), Qt::ControlModifier, Qt::ControlModifier);
+    QVERIFY(window.checkSelectionInvariants());
+    QVERIFY(window.selectedObject_ == b);
+    QCOMPARE(window.selectedObjectIds(), (std::vector<ObjectId>{a, b}));
+}
+
+void MainWindowTest::longPressOpensSelectBelowMenuAndChoosingSelectsIt() {
+    InteractionMap::setLongPressMsForTesting(1);
+    const auto restore = qScopeGuard([] { InteractionMap::setLongPressMsForTesting(-1); });
+    MainWindow window;
+    ObjectId a, b, c;
+    CanvasView* view = openSquares(window, a, b, c);
+    QVERIFY(view != nullptr);
+    // Deux objets superposés : un second carré exactement sur B.
+    window.undoStack_.execute(std::make_unique<openstitch::commands::AddVectorObjectCommand>([&] {
+                                  auto copy = *window.project_.findObject(b);
+                                  copy.id = window.project_.object_ids.next();
+                                  copy.name = "B2";
+                                  return copy;
+                              }()),
+                              window.project_);
+    window.refreshImage();
+    QSignalSpy below(view, &CanvasView::selectBelowRequested);
+
+    QTest::mousePress(view->viewport(), Qt::LeftButton, Qt::NoModifier, vp(view, 0, 0));
+    QVERIFY(below.wait(1000));
+    QTest::mouseRelease(view->viewport(), Qt::LeftButton, Qt::NoModifier, vp(view, 0, 0));
+    QVERIFY(!window.selectedObject_.has_value()); // l'appui long consommé ne sélectionne pas
+
+    QMenu* menu = window.findChild<QMenu*>(QStringLiteral("selectBelowMenu"));
+    QVERIFY(menu != nullptr);
+    QStringList names;
+    for (const QAction* act : menu->actions()) {
+        names << act->text();
+    }
+    // Du plus haut au plus bas.
+    QCOMPARE(names, (QStringList{QStringLiteral("B2"), QStringLiteral("B")}));
+    menu->actions().at(1)->trigger(); // l'objet du dessous
+    QVERIFY(window.selectedObject_ == b);
+    QVERIFY(window.multiSelection_.empty());
+}
+
+void MainWindowTest::altClickOpensSelectBelowMenu() {
+    MainWindow window;
+    ObjectId a, b, c;
+    CanvasView* view = openSquares(window, a, b, c);
+    QVERIFY(view != nullptr);
+    QSignalSpy below(view, &CanvasView::selectBelowRequested);
+    QTest::mouseClick(view->viewport(), Qt::LeftButton, Qt::AltModifier, vp(view, 15, 0));
+    QVERIFY(below.count() == 1 || below.wait(1000)); // émis en différé par le canevas
+    QCOMPARE(below.count(), 1);
+    QMenu* menu = window.findChild<QMenu*>(QStringLiteral("selectBelowMenu"));
+    QVERIFY(menu != nullptr);
+    QCOMPARE(menu->actions().size(), 1);
+    menu->actions().first()->trigger();
+    QVERIFY(window.selectedObject_ == c);
+    // Aucun objet sous le point : pas de menu.
+    menu->close();
+    QTest::mouseClick(view->viewport(), Qt::LeftButton, Qt::AltModifier, vp(view, 0, 30));
+    QTRY_COMPARE_WITH_TIMEOUT(below.count(), 2, 1000);
+    QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
+    QVERIFY(window.selectBelowMenu_.isNull());
+}
+
+void MainWindowTest::navigationPresetMenuSwitchesTableAndPersists() {
+    const PresetRestorer restorer;
+    MainWindow window;
+    auto* os = window.findChild<QAction*>(QStringLiteral("navPresetOpenStitch"));
+    auto* touch = window.findChild<QAction*>(QStringLiteral("navPresetTouchpad"));
+    QVERIFY(os != nullptr && touch != nullptr);
+    QVERIFY(os->isCheckable() && touch->isCheckable());
+    QVERIFY(os->isChecked() && !touch->isChecked());
+    QCOMPARE(InteractionMap::preset(), Preset::OpenStitch);
+    const QString osHints = window.hintsText();
+    const int osRows = InteractionMap::allRows().size();
+
+    touch->trigger();
+    QCOMPARE(InteractionMap::preset(), Preset::Touchpad);
+    QVERIFY(touch->isChecked() && !os->isChecked());    // exclusif
+    QVERIFY(window.hintsText() != osHints);             // la ligne d'indications suit
+    QVERIFY(InteractionMap::allRows().size() < osRows); // la table filtrée change
+    QSettings stored(QSettings::defaultFormat(), QSettings::UserScope, QStringLiteral("OpenStitch"),
+                     QStringLiteral("OpenStitch Studio"));
+    QCOMPARE(stored.value(QStringLiteral("navigation/preset")).toString(),
+             QStringLiteral("touchpad"));
+    // Une nouvelle fenêtre relit le préréglage enregistré.
+    {
+        MainWindow second;
+        QVERIFY(second.findChild<QAction*>(QStringLiteral("navPresetTouchpad"))->isChecked());
+        QCOMPARE(second.hintsText(), window.hintsText());
+    }
+    os->trigger();
+    QCOMPARE(InteractionMap::preset(), Preset::OpenStitch);
+    QCOMPARE(window.hintsText(), osHints);
+    QCOMPARE(QSettings(QSettings::defaultFormat(), QSettings::UserScope,
+                       QStringLiteral("OpenStitch"), QStringLiteral("OpenStitch Studio"))
+                 .value(QStringLiteral("navigation/preset"))
+                 .toString(),
+             QStringLiteral("openstitch"));
+}
+
+void MainWindowTest::gesturesDialogPresetChangeUpdatesMenuAndHints() {
+    const PresetRestorer restorer;
+    MainWindow window;
+    window.showGesturesDialog();
+    auto* dialog = window.findChild<GesturesDialog*>();
+    QVERIFY(dialog != nullptr);
+    const QString before = window.hintsText();
+    dialog->presetCombo()->setCurrentIndex(1); // Pavé tactile
+    QCOMPARE(InteractionMap::preset(), Preset::Touchpad);
+    QVERIFY(window.findChild<QAction*>(QStringLiteral("navPresetTouchpad"))->isChecked());
+    QVERIFY(window.hintsText() != before);
+    // Dans l'autre sens : le menu met à jour le dialogue ouvert.
+    window.findChild<QAction*>(QStringLiteral("navPresetOpenStitch"))->trigger();
+    QCOMPARE(dialog->presetCombo()->currentIndex(), 0);
+    QCOMPARE(window.hintsText(), before);
+}
+
+void MainWindowTest::panToolStillPansAfterNoDrag() {
+    MainWindow window;
+    ObjectId a, b, c;
+    CanvasView* view = openSquares(window, a, b, c);
+    QVERIFY(view != nullptr);
+    window.setTool(Tool::Pan);
+    view->setCanvasSizeMm(QSizeF(100.0, 100.0)); // scène bornée : les barres ont de la plage
+    view->resetTransform();
+    view->scale(40.0, 40.0);
+    QVERIFY(view->horizontalScrollBar()->maximum() > 200);
+    QCOMPARE(view->dragMode(), QGraphicsView::NoDrag);
+    QCOMPARE(view->baseContext(), Context::Pan);
+    QVERIFY(!view->selectionRectangleEnabled());
+    view->horizontalScrollBar()->setValue(view->horizontalScrollBar()->maximum() / 2);
+    view->verticalScrollBar()->setValue(view->verticalScrollBar()->maximum() / 2);
+    const int h0 = view->horizontalScrollBar()->value();
+    const int v0 = view->verticalScrollBar()->value();
+    QSignalSpy clicked(view, &CanvasView::canvasClickedMm);
+    QTest::mousePress(view->viewport(), Qt::LeftButton, Qt::NoModifier, QPoint(400, 300));
+    QTest::mouseMove(view->viewport(), QPoint(360, 270));
+    QTest::mouseMove(view->viewport(), QPoint(340, 250));
+    QTest::mouseRelease(view->viewport(), Qt::LeftButton, Qt::NoModifier, QPoint(340, 250));
+    QCOMPARE(view->horizontalScrollBar()->value(), h0 + 60);
+    QCOMPARE(view->verticalScrollBar()->value(), v0 + 50);
+    QCOMPARE(clicked.count(), 0);                 // le panoramique n'est pas un clic
+    QVERIFY(!window.selectedObject_.has_value()); // et ne sélectionne rien
+    // Retour à l'outil Sélection : le canevas réactive le rectangle.
+    window.setTool(Tool::Select);
+    QVERIFY(view->selectionRectangleEnabled());
+    QCOMPARE(view->baseContext(), Context::Select);
+}
+
+void MainWindowTest::legacyDrawAndCropToolsStillWorkWithTheInteractionModel() {
+    MainWindow window;
+    ObjectId a, b, c;
+    CanvasView* view = openSquares(window, a, b, c);
+    QVERIFY(view != nullptr);
+    // Aucun dialogue modal ne doit s'ouvrir (sinon le test resterait bloqué) : sonde + fermeture.
+    QStringList modals;
+    QTimer probe;
+    probe.setInterval(10);
+    connect(&probe, &QTimer::timeout, &window, [&modals] {
+        if (QWidget* w = QApplication::activeModalWidget()) {
+            modals << w->windowTitle();
+            w->close();
+        }
+    });
+    probe.start();
+
+    // Recadrage : le cadre élastique émet toujours cropSelectedMm.
+    window.setTool(Tool::Rect);
+    QCOMPARE(view->dragMode(), QGraphicsView::RubberBandDrag);
+    QSignalSpy crop(view, &CanvasView::cropSelectedMm);
+    QTest::mousePress(view->viewport(), Qt::LeftButton, Qt::NoModifier, vp(view, -30, -20));
+    QTest::mouseMove(view->viewport(), vp(view, -20, -10));
+    QTest::mouseMove(view->viewport(), vp(view, -10, 0));
+    QTest::mouseRelease(view->viewport(), Qt::LeftButton, Qt::NoModifier, vp(view, -10, 0));
+    QCOMPARE(crop.count(), 1);
+    window.setTool(Tool::Select);
+
+    // Main levée : points captés pendant le glisser, trait fini au relâchement.
+    window.setTool(Tool::DrawFreeform);
+    QCOMPARE(view->dragMode(), QGraphicsView::NoDrag);
+    QSignalSpy points(view, &CanvasView::freeformPointMm);
+    QSignalSpy finished(view, &CanvasView::freeformStrokeFinished);
+    QTest::mousePress(view->viewport(), Qt::LeftButton, Qt::NoModifier, vp(view, -30, 20));
+    QTest::mouseMove(view->viewport(), vp(view, -25, 24));
+    QTest::mouseMove(view->viewport(), vp(view, -20, 20));
+    QTest::mouseRelease(view->viewport(), Qt::LeftButton, Qt::NoModifier, vp(view, -20, 20));
+    QVERIFY(points.count() >= 3);
+    QCOMPARE(finished.count(), 1);
+    window.setTool(Tool::Select);
+
+    // Polygone : un clic simple pose un sommet (le clic reste émis à l'appui).
+    window.setTool(Tool::DrawPolygon);
+    QTest::mouseClick(view->viewport(), Qt::LeftButton, Qt::NoModifier, vp(view, 25, -25));
+    QTest::mouseClick(view->viewport(), Qt::LeftButton, Qt::NoModifier, vp(view, 35, -25));
+    QTest::mouseClick(view->viewport(), Qt::LeftButton, Qt::NoModifier, vp(view, 30, -35));
+    QCOMPARE(window.pendingPolygonVertices_.size(), std::size_t{3});
+    window.setTool(Tool::Select);
+    QVERIFY(window.pendingPolygonVertices_.empty());
+
+    // Satin : ligne de coupe (Bézier) -> le glisser émet toujours l'engagement du nœud.
+    window.setTool(Tool::DrawSatinCutLine);
+    QCOMPARE(view->dragMode(), QGraphicsView::NoDrag);
+    QSignalSpy committed(view, &CanvasView::bezierPointCommittedMm);
+    QTest::mousePress(view->viewport(), Qt::LeftButton, Qt::NoModifier, vp(view, 0, -30));
+    QTest::mouseMove(view->viewport(), vp(view, 0, -20));
+    QTest::mouseRelease(view->viewport(), Qt::LeftButton, Qt::NoModifier, vp(view, 0, -20));
+    QCOMPARE(committed.count(), 1);
+    window.setTool(Tool::Select);
+
+    // Rectangle dessiné : déjà couvert par drawRectangleToolWithRealMouse...; ici seulement le
+    // mode de glisser (cadre élastique) sous le modèle activé.
+    window.setTool(Tool::DrawRectangle);
+    QCOMPARE(view->dragMode(), QGraphicsView::RubberBandDrag);
+    // Le recadrage hors image et la coupe sans forme affichent un avertissement modal (fermé
+    // par la sonde) : preuve que les gestionnaires historiques ont bien reçu leur signal.
+    QVERIFY(modals.contains(QStringLiteral("Coupe sans effet")));
+}
+
+void MainWindowTest::escapeAndDeleteKeepWorkingThroughTheCanvas() {
+    MainWindow window;
+    ObjectId a, b, c;
+    CanvasView* view = openSquares(window, a, b, c);
+    QVERIFY(view != nullptr);
+    window.activateWindow();
+    QVERIFY(QTest::qWaitForWindowActive(&window));
+
+    QTest::mouseClick(view->viewport(), Qt::LeftButton, Qt::NoModifier, vp(view, 0, 0));
+    QVERIFY(window.selectedObject_ == b);
+    // Suppr universel : l'objet disparaît en un pas d'annulation.
+    window.deleteSelectionAct_->trigger();
+    QVERIFY(window.project_.findObject(b) == nullptr);
+    window.undo();
+    QVERIFY(window.project_.findObject(b) != nullptr);
+
+    // Échap revient à la Sélection depuis un outil de dessin (contexte et rectangle réactivés).
+    window.setTool(Tool::DrawPolygon);
+    QCOMPARE(window.interactionContext(), Context::DrawClicks);
+    QTest::keyClick(&window, Qt::Key_Escape);
+    QCOMPARE(window.currentTool_, Tool::Select);
+    QVERIFY(view->selectionRectangleEnabled());
+    QCOMPARE(window.interactionContext(), Context::Select);
+}
+
+void MainWindowTest::shiftDragMovesAlongDominantAxis() {
+    MainWindow window;
+    ObjectId a, b, c;
+    CanvasView* view = openSquares(window, a, b, c);
+    QVERIFY(view != nullptr);
+    window.applySelectionClick(b, SelectMode::Replace);
+    window.selectionChanged();
+    const auto origin = [&](ObjectId id) {
+        return window.project_.findObject(id)->paths.front().outer.nodes.front().pos;
+    };
+    const Vec2um before = origin(b);
+
+    // +3 mm en x, +1 mm vers le bas (scène) : Maj -> axe dominant x, y inchangé.
+    dragWith(view, vp(view, 0, 0), vp(view, 3, 1), Qt::ShiftModifier);
+    QTRY_COMPARE_WITH_TIMEOUT(origin(b).x.value, before.x.value + 3000, 2000);
+    QCOMPARE(origin(b).y.value, before.y.value);
+    window.undo();
+    QCOMPARE(origin(b), before);
+
+    // Axe dominant y.
+    dragWith(view, vp(view, 0, 0), vp(view, 1, 3), Qt::ShiftModifier);
+    QTRY_COMPARE_WITH_TIMEOUT(origin(b).y.value, before.y.value - 3000, 2000);
+    QCOMPARE(origin(b).x.value, before.x.value);
+    window.undo();
+
+    // Sans Maj : déplacement libre (témoin).
+    dragWith(view, vp(view, 0, 0), vp(view, 3, 1), Qt::NoModifier);
+    QTRY_COMPARE_WITH_TIMEOUT(origin(b).x.value, before.x.value + 3000, 2000);
+    QCOMPARE(origin(b).y.value, before.y.value - 1000);
+}
+
+void MainWindowTest::shiftDragOfNodeKeepsOneAxis() {
+    MainWindow window;
+    ObjectId a, b, c;
+    CanvasView* view = openSquares(window, a, b, c);
+    QVERIFY(view != nullptr);
+    // Un nœud au milieu de l'arête haute de C (les 4 coins portent aussi les poignées de
+    // redimensionnement) : physique (15, 5) -> scène (15, -5).
+    auto& nodes = window.project_.findObject(c)->paths.front().outer.nodes;
+    nodes.insert(nodes.begin() + 3,
+                 geometry::PathNode{Vec2um{Micrometers{15'000}, Micrometers{5'000}},
+                                    geometry::NodeType::Corner, std::nullopt, std::nullopt});
+    window.applySelectionClick(c, SelectMode::Replace);
+    window.refreshImage();
+    const auto nodePos = [&](std::size_t n) {
+        return window.project_.findObject(c)->paths.front().outer.nodes[n].pos;
+    };
+    const Vec2um before = nodePos(3);
+    // Glissé de (+2, +1) mm scène avec Maj : l'axe x domine, y reste verrouillé.
+    dragWith(view, vp(view, 15, -5), vp(view, 17, -4), Qt::ShiftModifier);
+    QTRY_VERIFY_WITH_TIMEOUT(nodePos(3) != before, 2000);
+    QCOMPARE(nodePos(3).x.value, before.x.value + 2000);
+    QCOMPARE(nodePos(3).y.value, before.y.value);
+}
+
+void MainWindowTest::ctrlDragSkipsSnap() {
+    const SnapSettingReset reset;
+    MainWindow window;
+    ObjectId a, b, c;
+    CanvasView* view = openSquares(window, a, b, c);
+    QVERIFY(view != nullptr);
+    window.snapNodesAct_->setChecked(true); // accrochage des nœuds : désactivé par défaut
+    // Nœud au milieu de l'arête haute de A (physique (-15, 5) -> scène (-15, -5)) : les coins
+    // portent aussi les poignées de redimensionnement. Cible : près du coin (-5, 5) de B.
+    auto& nodes = window.project_.findObject(a)->paths.front().outer.nodes;
+    nodes.insert(nodes.begin() + 3,
+                 geometry::PathNode{Vec2um{Micrometers{-15'000}, Micrometers{5'000}},
+                                    geometry::NodeType::Corner, std::nullopt, std::nullopt});
+    window.applySelectionClick(a, SelectMode::Replace);
+    window.refreshImage();
+    const auto node = [&] {
+        return window.project_.findObject(a)->paths.front().outer.nodes[3].pos;
+    };
+    const Vec2um before = node();
+    const Vec2um bCorner{Micrometers{-5'000}, Micrometers{5'000}};
+
+    // Sans Ctrl : s'accroche au coin de B (exactement).
+    dragWith(view, vp(view, -15, -5), vp(view, -4.8, -4.8), Qt::NoModifier);
+    QTRY_VERIFY_WITH_TIMEOUT(node() != before, 2000);
+    QCOMPARE(node(), bCorner);
+    window.undo();
+    QCOMPARE(node(), before);
+
+    // Ctrl au relâchement : accroche suspendue, position brute (au pixel près : 0,1 mm).
+    window.applySelectionClick(a, SelectMode::Replace);
+    window.selectionChanged();
+    dragWith(view, vp(view, -15, -5), vp(view, -4.8, -4.8), Qt::ControlModifier);
+    QTRY_VERIFY_WITH_TIMEOUT(node() != before, 2000);
+    QVERIFY(node() != bCorner);
+    QVERIFY(std::abs(node().x.value - (-4'800)) <= 150);
+    QVERIFY(std::abs(node().y.value - 4'800) <= 150);
+}
+
+void MainWindowTest::ctrlSuspendsSnapWhenPlacingPolygonVertex() {
+    MainWindow window;
+    ObjectId a, b, c;
+    CanvasView* view = openSquares(window, a, b, c);
+    QVERIFY(view != nullptr);
+    window.setTool(Tool::DrawPolygon);
+    // Près du nœud (-5, 5 scène) de B, à 0,3 mm.
+    QTest::mouseClick(view->viewport(), Qt::LeftButton, Qt::NoModifier, vp(view, -4.7, 5.0));
+    QCOMPARE(window.pendingPolygonVertices_.size(), std::size_t{1});
+    QCOMPARE(window.pendingPolygonVertices_.back(),
+             (Vec2um{Micrometers{-5'000}, Micrometers{-5'000}})); // accroché
+    window.cancelPolygonDraw();
+    QTest::mouseClick(view->viewport(), Qt::LeftButton, Qt::ControlModifier, vp(view, -4.7, 5.0));
+    QCOMPARE(window.pendingPolygonVertices_.size(), std::size_t{1});
+    QVERIFY(window.pendingPolygonVertices_.back() !=
+            (Vec2um{Micrometers{-5'000}, Micrometers{-5'000}})); // Ctrl : brut
+}
+
+void MainWindowTest::altDragDuplicatesAndMovesCopyInOneUndoStep() {
+    MainWindow window;
+    ObjectId a, b, c;
+    CanvasView* view = openSquares(window, a, b, c);
+    QVERIFY(view != nullptr);
+    window.applySelectionClick(b, SelectMode::Replace);
+    window.selectionChanged();
+    const auto origin = [&](ObjectId id) {
+        return window.project_.findObject(id)->paths.front().outer.nodes.front().pos;
+    };
+    const Vec2um before = origin(b);
+    const std::size_t count = window.project_.vector_objects.size();
+
+    // Alt tenu AVANT l'appui, sur le corps d'un objet déjà sélectionné : le glisser démarre.
+    dragWith(view, vp(view, 0, 0), vp(view, 3, -2), Qt::AltModifier, Qt::AltModifier);
+    QTRY_COMPARE_WITH_TIMEOUT(window.project_.vector_objects.size(), count + 1, 2000);
+    QCOMPARE(origin(b), before); // l'original n'a pas bougé
+    const ObjectId copy = window.project_.vector_objects.back().id;
+    QVERIFY(copy != b);
+    QCOMPARE(origin(copy).x.value, before.x.value + 3000);
+    QCOMPARE(origin(copy).y.value, before.y.value + 2000);
+    QVERIFY(window.selectedObject_ == copy); // la copie est sélectionnée
+    QVERIFY(window.checkSelectionInvariants());
+
+    window.undo(); // UN seul pas : copie ET déplacement
+    QCOMPARE(window.project_.vector_objects.size(), count);
+    QVERIFY(!window.undoStack_.canUndo());
+    window.redo();
+    QCOMPARE(window.project_.vector_objects.size(), count + 1);
+    QCOMPARE(origin(copy).x.value, before.x.value + 3000);
+}
+
+void MainWindowTest::altBoxDrawGrowsFromCenter() {
+    MainWindow window;
+    ObjectId a, b, c;
+    CanvasView* view = openSquares(window, a, b, c);
+    QVERIFY(view != nullptr);
+    window.setTool(Tool::DrawRectangle);
+    const auto drawAndMeasure = [&](QPoint from, QPoint to, Qt::KeyboardModifiers mods) {
+        window.setTool(Tool::DrawRectangle); // l'outil repasse en Sélection après une forme
+        const std::size_t before = window.project_.vector_objects.size();
+        dragWith(view, from, to, mods);
+        if (window.project_.vector_objects.size() != before + 1) {
+            return QRectF();
+        }
+        double minX = 1e9, maxX = -1e9, minY = 1e9, maxY = -1e9;
+        for (const auto& node : window.project_.vector_objects.back().paths.front().outer.nodes) {
+            minX = std::min(minX, static_cast<double>(node.pos.x.value));
+            maxX = std::max(maxX, static_cast<double>(node.pos.x.value));
+            minY = std::min(minY, static_cast<double>(node.pos.y.value));
+            maxY = std::max(maxY, static_cast<double>(node.pos.y.value));
+        }
+        return QRectF(QPointF(minX, minY), QPointF(maxX, maxY));
+    };
+    // Sans Alt : le cadre va du point d'appui au point de relâchement (scène (0,25) -> (8,31),
+    // soit physique x 0..8, y -31..-25).
+    const QRectF plain = drawAndMeasure(vp(view, 0, 25), vp(view, 8, 31), Qt::NoModifier);
+    QVERIFY(plain.isValid());
+    QVERIFY(std::abs(plain.left() - 0.0) <= 150 && std::abs(plain.right() - 8000.0) <= 150);
+    // Avec Alt (ailleurs : la forme précédente, sélectionnée, capterait l'appui) : le point
+    // d'appui (30, 25) est le centre -> x 22..38, y(physique) -31..-19.
+    const QRectF centered = drawAndMeasure(vp(view, 30, 25), vp(view, 38, 31), Qt::AltModifier);
+    QVERIFY2(centered.isValid(), qPrintable(window.statusBar()->currentMessage()));
+    QVERIFY(std::abs(centered.left() - 22000.0) <= 150);
+    QVERIFY(std::abs(centered.right() - 38000.0) <= 150);
+    QVERIFY(std::abs(centered.top() - (-31000.0)) <= 150);
+    QVERIFY(std::abs(centered.bottom() - (-19000.0)) <= 150);
+    // Cadre « mince » (0,4 mm de haut) : le vrai point d'appui reste le centre, le cadre centré
+    // fait 0,8 mm de haut et est accepté (x 22..38, y(physique) 24,6..25,4 ; en haut, loin des
+    // formes déjà dessinées pour que l'accroche des coins n'interfère pas).
+    const QRectF thin = drawAndMeasure(vp(view, 30, -25), vp(view, 38, -25.4), Qt::AltModifier);
+    QVERIFY2(thin.isValid(), qPrintable(window.statusBar()->currentMessage()));
+    QVERIFY(std::abs(thin.left() - 22000.0) <= 150 && std::abs(thin.right() - 38000.0) <= 150);
+    QVERIFY(std::abs(thin.center().y() - 25000.0) <= 150);
+    // Appui d'un côté, relâchement vers le haut-gauche : même centre (le point d'appui).
+    const QRectF reverse = drawAndMeasure(vp(view, -30, 25), vp(view, -38, 19), Qt::AltModifier);
+    QVERIFY2(reverse.isValid(), qPrintable(window.statusBar()->currentMessage()));
+    QVERIFY(std::abs(reverse.center().x() - (-30000.0)) <= 150);
+    QVERIFY(std::abs(reverse.center().y() - (-25000.0)) <= 150);
+}
+
+void MainWindowTest::hoverHighlightShowsOnlyUnselectedObjectUnderCursorInSelectTool() {
+    MainWindow window;
+    ObjectId a, b, c;
+    CanvasView* view = openSquares(window, a, b, c);
+    QVERIFY(view != nullptr);
+    const auto hover = [&](double x, double y) {
+        sendMouseEvent(view->viewport(), QEvent::MouseMove, vp(view, x, y), Qt::NoButton,
+                       Qt::NoButton, Qt::NoModifier);
+        // Coalescence 16 ms : attend le traitement du dernier point.
+        for (int i = 0; i < 100 && window.hoverTimer_ != nullptr && window.hoverTimer_->isActive();
+             ++i) {
+            QTest::qWait(2);
+        }
+    };
+    const auto shown = [&] {
+        return window.hoverItem_ != nullptr && window.hoverItem_->isVisible();
+    };
+
+    hover(-15, 0);
+    QVERIFY(shown());
+    QCOMPARE(window.hoverItem_->path().boundingRect(), QRectF(-20.0, -5.0, 10.0, 10.0));
+    hover(0, 30); // le vide
+    QVERIFY(!shown());
+    hover(0, 0);
+    QVERIFY(shown());
+    // Le clic traverse la surbrillance : il sélectionne l'objet dessous ; sélectionné, il n'est
+    // plus surligné.
+    QTest::mouseClick(view->viewport(), Qt::LeftButton, Qt::NoModifier, vp(view, 0, 0));
+    QVERIFY(window.selectedObject_ == b);
+    hover(0.5, 0.5);
+    QVERIFY(!shown());
+    hover(15, 0);
+    QVERIFY(shown());
+    // Hors outil Sélection : jamais de surbrillance.
+    window.setTool(Tool::Pan);
+    QVERIFY(!shown());
+    hover(15, 0);
+    QVERIFY(!shown());
+}
+
+void MainWindowTest::hoverHighlightHidesOnLeaveAndDuringGestures() {
+    MainWindow window;
+    ObjectId a, b, c;
+    CanvasView* view = openSquares(window, a, b, c);
+    QVERIFY(view != nullptr);
+    const auto shown = [&] {
+        return window.hoverItem_ != nullptr && window.hoverItem_->isVisible();
+    };
+    sendMouseEvent(view->viewport(), QEvent::MouseMove, vp(view, 0, 0), Qt::NoButton, Qt::NoButton,
+                   Qt::NoModifier);
+    QVERIFY(shown());
+    // Le curseur quitte le viewport : la surbrillance disparaît.
+    QEvent leave(QEvent::Leave);
+    QApplication::sendEvent(view->viewport(), &leave);
+    QVERIFY(!shown());
+    // Pendant un rectangle de sélection (geste actif), pas de surbrillance.
+    QTest::qWait(30);
+    sendMouseEvent(view->viewport(), QEvent::MouseButtonPress, vp(view, 0, 30), Qt::LeftButton,
+                   Qt::LeftButton, Qt::NoModifier);
+    sendMouseEvent(view->viewport(), QEvent::MouseMove, vp(view, 0, 0), Qt::NoButton,
+                   Qt::LeftButton, Qt::NoModifier);
+    QVERIFY(view->gestureActive());
+    QVERIFY(!shown());
+    sendMouseEvent(view->viewport(), QEvent::MouseButtonRelease, vp(view, 0, 0), Qt::LeftButton,
+                   Qt::NoButton, Qt::NoModifier);
+}
+
+void MainWindowTest::hoverBurstIsCoalescedAndPathsAreCached() {
+    MainWindow window;
+    ObjectId a, b, c;
+    CanvasView* view = openSquares(window, a, b, c);
+    QVERIFY(view != nullptr);
+    window.hoverCacheValid_ = false;
+    window.hoverPathBuilds_ = 0;
+    window.hoverComputations_ = 0;
+    constexpr int kMoves = 60;
+    for (int i = 0; i < kMoves; ++i) { // rafale sans traiter d'évènements
+        sendMouseEvent(view->viewport(), QEvent::MouseMove,
+                       vp(view, (i % 2 == 0) ? -15.0 : 15.0, 0.0), Qt::NoButton, Qt::NoButton,
+                       Qt::NoModifier);
+    }
+    for (int i = 0; i < 100 && window.hoverTimer_->isActive(); ++i) {
+        QTest::qWait(2);
+    }
+    QVERIFY(window.hoverComputations_ >= 1);
+    QVERIFY2(window.hoverComputations_ < kMoves / 2,
+             qPrintable(QString::number(window.hoverComputations_)));
+    QCOMPARE(window.hoverPathBuilds_, 3); // un seul calcul de contours pour les 3 objets
+    // Un rendu de la couche base invalide le cache.
+    window.refreshImage();
+    QVERIFY(!window.hoverCacheValid_);
+}
+
+void MainWindowTest::leftDragOnEmptySpaceStillPansInNodeEditAndStitchEditContexts() {
+    MainWindow window;
+    ObjectId a, b, c;
+    CanvasView* view = openSquares(window, a, b, c);
+    QVERIFY(view != nullptr);
+    view->setCanvasSizeMm(QSizeF(100.0, 100.0));
+    view->resetTransform();
+    view->scale(40.0, 40.0);
+    for (const Context ctx : {Context::NodeEdit, Context::StitchEdit}) {
+        view->setBaseContext(ctx);
+        QCOMPARE(view->dragMode(), QGraphicsView::ScrollHandDrag);
+        view->horizontalScrollBar()->setValue(view->horizontalScrollBar()->maximum() / 2);
+        const int h0 = view->horizontalScrollBar()->value();
+        QTest::mousePress(view->viewport(), Qt::LeftButton, Qt::NoModifier, QPoint(400, 300));
+        QTest::mouseMove(view->viewport(), QPoint(360, 280));
+        QTest::mouseMove(view->viewport(), QPoint(340, 270));
+        QTest::mouseRelease(view->viewport(), Qt::LeftButton, Qt::NoModifier, QPoint(340, 270));
+        QVERIFY2(view->horizontalScrollBar()->value() != h0, qPrintable(QString::number(int(ctx))));
+    }
+    // Select / Pan gardent NoDrag.
+    view->setBaseContext(Context::Select);
+    QCOMPARE(view->dragMode(), QGraphicsView::NoDrag);
+    // Via la fenêtre : un mode d'édition actif sous l'outil Sélection donne le contexte d'édition.
+    window.setTool(Tool::Select);
+    window.stitchEditModeAct_->setChecked(true);
+    if (window.stitchEditModeAct_->isChecked()) {
+        QCOMPARE(view->baseContext(), Context::StitchEdit);
+        QCOMPARE(view->dragMode(), QGraphicsView::ScrollHandDrag);
+    }
+}
+
+void MainWindowTest::altClickOnSelectedBodyOpensSelectBelowWithoutDuplicating() {
+    MainWindow window;
+    ObjectId a, b, c;
+    CanvasView* view = openSquares(window, a, b, c);
+    QVERIFY(view != nullptr);
+    window.applySelectionClick(b, SelectMode::Replace);
+    window.selectionChanged();
+    const std::size_t count = window.project_.vector_objects.size();
+    QSignalSpy below(view, &CanvasView::selectBelowRequested);
+    QTest::mouseClick(view->viewport(), Qt::LeftButton, Qt::AltModifier, vp(view, 0, 0));
+    QVERIFY(below.count() == 1 || below.wait(1000));
+    QCOMPARE(window.project_.vector_objects.size(), count); // pas de copie
+    QVERIFY(!window.undoStack_.canUndo());
+    QVERIFY(window.findChild<QMenu*>(QStringLiteral("selectBelowMenu")) != nullptr);
+}
+
+void MainWindowTest::nodeSnapIsOffByDefaultAndLandsExactlyWhereReleased() {
+    const SnapSettingReset reset;
+    QSettings().setValue(QStringLiteral("edit/snapNodesOnDrag"), false);
+    MainWindow window;
+    ObjectId a, b, c;
+    CanvasView* view = openSquares(window, a, b, c);
+    QVERIFY(view != nullptr);
+    QVERIFY(window.snapNodesAct_ != nullptr);
+    QVERIFY(window.snapNodesAct_->isCheckable());
+    QVERIFY(!window.snapNodesAct_->isChecked());
+    QCOMPARE(window.snapNodesAct_->objectName(), QStringLiteral("action_snapNodesOnDrag"));
+    QVERIFY(!window.snapNodesAct_->toolTip().isEmpty());
+    auto& nodes = window.project_.findObject(a)->paths.front().outer.nodes;
+    nodes.insert(nodes.begin() + 3,
+                 geometry::PathNode{Vec2um{Micrometers{-15'000}, Micrometers{5'000}},
+                                    geometry::NodeType::Corner, std::nullopt, std::nullopt});
+    window.applySelectionClick(a, SelectMode::Replace);
+    window.refreshImage();
+    const auto node = [&] {
+        return window.project_.findObject(a)->paths.front().outer.nodes[3].pos;
+    };
+    // À 0,2 mm d'un sommet de B (-5, 5) : sans le réglage, le nœud reste là où on le lâche
+    // (déplacement exact en pixels, 10 px/mm -> x +10 200 µm, y -200 µm).
+    const QPoint from = vp(view, -15, -5);
+    const QPoint to = vp(view, -4.8, -4.8);
+    dragWith(view, from, to, Qt::NoModifier);
+    QTRY_VERIFY_WITH_TIMEOUT(node() != (Vec2um{Micrometers{-15'000}, Micrometers{5'000}}), 2000);
+    const double dxMm = (to.x() - from.x()) / 10.0;
+    const double dyMm = (to.y() - from.y()) / 10.0;
+    QVERIFY(std::abs(node().x.value - (-15'000 + dxMm * 1000.0)) <= 1.0);
+    QVERIFY(std::abs(node().y.value - (5'000 - dyMm * 1000.0)) <= 1.0);
+    QVERIFY(node() != (Vec2um{Micrometers{-5'000}, Micrometers{5'000}})); // pas accroché
+}
+
+void MainWindowTest::nodeSnapSettingPersistsAndOnlySnapsToOtherObjectVertices() {
+    const SnapSettingReset reset;
+    QSettings().setValue(QStringLiteral("edit/snapNodesOnDrag"), false);
+    {
+        MainWindow window;
+        window.snapNodesAct_->trigger();
+        QVERIFY(window.snapNodesAct_->isChecked());
+        QVERIFY(QSettings().value(QStringLiteral("edit/snapNodesOnDrag")).toBool());
+    }
+    MainWindow window; // relit le réglage
+    QVERIFY(window.snapNodesAct_->isChecked());
+    ObjectId a, b, c;
+    CanvasView* view = openSquares(window, a, b, c);
+    QVERIFY(view != nullptr);
+    // Candidats : sommets des AUTRES objets seulement. Milieu d'arête (0, 5) de B et centre de B
+    // ne sont pas des candidats ; le sommet (-5, 5) l'est ; rayon <= 1 mm.
+    const QPointF nearMidEdge(0.2, -5.1); // scène : proche du milieu d'arête de B
+    QVERIFY(!window.findNodeSnapMm(nearMidEdge, a).has_value());
+    QVERIFY(!window.findNodeSnapMm(QPointF(0.2, 0.2), a).has_value()); // centre de B
+    const auto corner = window.findNodeSnapMm(QPointF(-4.8, -4.8), a);
+    QVERIFY(corner.has_value());
+    QCOMPARE(*corner, QPointF(-5.0, -5.0));
+    QVERIFY(!window.findNodeSnapMm(QPointF(-3.5, -3.5), a).has_value()); // > 1 mm
+    QVERIFY(!window.findNodeSnapMm(QPointF(-4.8, -4.8), b).has_value() ||
+            *window.findNodeSnapMm(QPointF(-4.8, -4.8), b) !=
+                QPointF(-5.0, -5.0)); // pas son propre sommet
+}
+
+void MainWindowTest::hintsFollowTheSameContextPriorityAsTheCanvas() {
+    MainWindow window;
+    ObjectId a, b, c;
+    CanvasView* view = openSquares(window, a, b, c);
+    QVERIFY(view != nullptr);
+    // Un mode d'édition actif avec un outil de dessin : le canevas est en contexte de dessin,
+    // les indications aussi.
+    window.setTool(Tool::DrawPolygon);
+    bool toggled = false;
+    for (QAction* act : {window.stitchEditModeAct_, window.railEditModeAct_,
+                         window.satinGuideModeAct_, window.directionGuideModeAct_}) {
+        QSignalBlocker block(act);
+        act->setChecked(true);
+        toggled = toggled || act->isChecked();
+        break;
+    }
+    QVERIFY(toggled);
+    window.updateInteractionContext();
+    QCOMPARE(window.interactionContext(), Context::DrawClicks);
+    QCOMPARE(view->baseContext(), Context::Select); // le contexte de dessin vient des booléens
+    // Outil Pan : toujours Pan, même avec un mode d'édition coché.
+    window.setTool(Tool::Pan);
+    QCOMPARE(window.interactionContext(), Context::Pan);
+    QCOMPARE(view->baseContext(), Context::Pan);
+    // Outil Sélection : le mode d'édition passe devant.
+    window.setTool(Tool::Select);
+    const Context ctx = window.interactionContext();
+    QVERIFY(ctx == Context::NodeEdit || ctx == Context::StitchEdit);
+    QCOMPARE(view->baseContext(), ctx);
+    QCOMPARE(window.hintsText().isEmpty(), InteractionMap::hintsFor(ctx, Qt::NoModifier).isEmpty());
+}
+
+void MainWindowTest::selectBelowMenuDisambiguatesDuplicateAndEmptyNames() {
+    MainWindow window;
+    ObjectId a, b, c;
+    CanvasView* view = openSquares(window, a, b, c);
+    QVERIFY(view != nullptr);
+    // Trois objets superposés au centre de B : « B », « B » (doublon) et un sans nom.
+    for (const char* name : {"B", ""}) {
+        auto copy = *window.project_.findObject(b);
+        copy.id = window.project_.object_ids.next();
+        copy.name = name;
+        window.undoStack_.execute(
+            std::make_unique<openstitch::commands::AddVectorObjectCommand>(copy), window.project_);
+    }
+    window.refreshImage();
+    window.onSelectBelow(QPointF(0.0, 0.0), QPoint(100, 100), SelectMode::Replace);
+    QMenu* menu = window.findChild<QMenu*>(QStringLiteral("selectBelowMenu"));
+    QVERIFY(menu != nullptr);
+    QStringList labels;
+    for (const QAction* act : menu->actions()) {
+        labels << act->text();
+    }
+    QCOMPARE(labels.size(), 3);
+    QCOMPARE(QSet<QString>(labels.begin(), labels.end()).size(), 3); // tous distincts
+    for (const QString& label : labels) {
+        QVERIFY2(label.contains(QStringLiteral("(#")), qPrintable(label));
+    }
+    QVERIFY(labels.constFirst().startsWith(QStringLiteral("(sans nom)")));
+    menu->close();
+    QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
+    // Noms uniques : pas de suffixe.
+    window.onSelectBelow(QPointF(-15.0, 0.0), QPoint(100, 100), SelectMode::Replace);
+    menu = window.findChild<QMenu*>(QStringLiteral("selectBelowMenu"));
+    QVERIFY(menu != nullptr);
+    QCOMPARE(menu->actions().constFirst()->text(), QStringLiteral("A"));
 }
 
 } // namespace openstitch::desktop

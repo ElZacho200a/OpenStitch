@@ -1,0 +1,51 @@
+// Fixture de l'auto-test de check_selection_single_mutator.cmake : AUCUNE violation.
+// Prose : selectedObject_ = x; multiSelection_.clear(); (ignore, commentaire)
+struct W {
+    std::optional<ObjectId> selectedObject_;
+    std::vector<ObjectId> multiSelection_;
+    std::optional<RegionId> selectedRegion_;
+    std::optional<ObjectId> selectedEmbroidery_;
+};
+
+// SELECTION-MUTATOR:BEGIN
+void W::setSelection(Selection s) {
+    selectedRegion_ = s.region;
+    selectedEmbroidery_ = s.embroidery;
+    selectedObject_.reset();
+    multiSelection_.clear();
+    multiSelection_.push_back(s.id);
+    std::sort(multiSelection_.begin(), multiSelection_.end());
+}
+// SELECTION-MUTATOR:END
+
+/* bloc de commentaire : selectedObject_ = y;
+   multiSelection_.push_back(z); */
+
+void W::reads() {
+    if (selectedObject_ == id) {}
+    if (selectedObject_ != id) {}
+    if (selectedObject_) {}
+    if (!selectedRegion_.has_value()) {}
+    if (multiSelection_.empty()) {}
+    const auto n = multiSelection_.size();
+    const auto last = multiSelection_.back();
+    const auto first = multiSelection_.front();
+    const auto v = selectedObject_->value;
+    const auto w = *selectedObject_;
+    const auto x = selectedRegion_.value();
+    const auto elem = multiSelection_[0];
+    const auto at1 = multiSelection_.at(1);
+    const auto it = std::find(multiSelection_.begin(), multiSelection_.end(), id);
+    const bool any = std::any_of(multiSelection_.begin(), multiSelection_.end(), pred);
+    const auto copy = selectedObject_;
+    const auto& cref = multiSelection_;
+    for (const auto& oid : multiSelection_) {}
+    foo(selectedRegion_);
+    return multiSelection_;
+    const bool same = multiSelection_.back() == *selectedObject_;
+    const bool cmp = multiSelection_.back().value == 3;
+    const bool lt = a < multiSelection_.size();
+    bar(selectedEmbroidery_,
+        multiSelection_);
+    auto s = "texte /* pas un commentaire";
+}

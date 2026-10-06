@@ -23,14 +23,14 @@ fonctionnalité, vérifié dans le code.
 | Auto-satin géométrique (rails+barreaux) | Présent · testé · SVG | Auto + Broderie ▸ Convertir en satin | auto_satin | oui | formes simples, Y/T multi-sections, croix à 4 branches (jonction degré 4 correctement détectée) et anneau fin en 4 sections ; **bouts ouverts étendus jusqu'au bord réel** et **bouts de jonction ancrés sur les sommets reflex du contour** (mission « auto-satin béton ») ; pont Jonction-Jonction (ex. un "H") converti en colonne ; cercle plein/forme large refusés |
 | Classification auto des régions | **Expérimental** | Segmentation | autodigitize | oui | bandes fines → moteur topologique par défaut (`use_auto_satin`) ; refus → tatami ; moteur naïf désactivé |
 | Filtres d'affichage / calques | Implémenté | Affichage | desktop | (vue) | affichage seulement (couleur, type, taille ; image/régions/vecteurs/broderie) |
-| Ordre de couture | Implémenté | dock | optimization | oui | 2-opt non implémenté |
+| Ordre de couture | Implémenté | dock | optimization | oui | 2-opt entre objets non implémenté (il existe dans le routage interne d'un objet) |
 | Analyse | Implémenté | Analyse | stitch_analysis | oui | pas de carte de densité |
 | Simulation | Implémenté | barre | desktop | — | pas de réglage de vitesse |
 | Export/Import DST | Implémenté | Fichier/CLI | formats | oui | limites du format |
 | Export SVG diagnostic | Implémenté | CLI | formats | oui | — |
 | Format projet `.osp` | Implémenté | Fichier | project_io | oui | suivi « modifié » + garde partagée (fermeture et **Nouveau projet**, Ctrl+N) ; chemin mémorisé (Ctrl+S réécrit le fichier, Ctrl+Maj+S = Enregistrer sous), écriture atomique ; pas de fichiers récents ni d'autosave |
 | Cadre de broderie | Implémenté | Affichage | document | oui | taille réglable et persistée ; rectangle simple (pas de profils/formes) |
-| Palette de fils | Non implémenté | — | (thread_palette absent) | — | RGB par objet uniquement |
+| Palette de fils | Partiellement implémenté | — | thread_palette | oui | bibliothèque et distance perceptuelle livrées (HP-THR-001/003) ; nuanciers fabricants placeholder (HP-THR-002) ; pas de fil assigné par objet (RGB seul, HP-THR-004) |
 | Édition manuelle des points | Partiel (Lot 8.2) | canevas | desktop/commands | QTest | déplacement d'un point + undo/redo ; Stitch/Jump/Trim UI restent à faire |
 | Remplissages courbe/radial/spirale/motif | Non implémenté | — | — | — | prévus |
 | Profils machine/cadres avancés | Non implémenté | — | — | — | cadre = rectangle simple (taille réglable) |
@@ -39,7 +39,7 @@ fonctionnalité, vérifié dans le code.
 
 ## Dette technique connue
 
-- Le compte CTest courant est **398** en Debug et Release ; éviter de figer ce
+- Le compte CTest courant est **814** sous Linux sans Qt (2026-10-06, hors tests desktop) ; éviter de figer ce
   nombre dans les pages d'introduction sans le mettre à jour avec la CI.
 - Le satin dispose désormais d'un moteur géométrique par **squelette**
   (`auto_satin::build_satin_columns`, Lot 1) et d'une **génération par barreaux**

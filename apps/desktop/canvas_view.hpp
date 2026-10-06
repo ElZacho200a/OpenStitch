@@ -1,9 +1,18 @@
 // SPDX-License-Identifier: Apache-2.0
 #pragma once
 
+#include <QCursor>
 #include <QGraphicsView>
+#include <QPoint>
+#include <QTimer>
+
+#include "interaction_map.hpp"
+
+class QRubberBand;
 
 namespace openstitch::desktop {
+
+class SpaceKeyFilter;
 
 // Vue du canevas. Unité de scène : le MILLIMÈTRE (double), origine au centre
 // du canevas. La scène est en Y vers le bas (convention Qt) ; l'inversion
@@ -14,6 +23,7 @@ class CanvasView : public QGraphicsView {
 
 public:
     explicit CanvasView(QGraphicsScene* scene, QWidget* parent = nullptr);
+    ~CanvasView() override;
 
     void setCanvasSizeMm(QSizeF sizeMm);
     [[nodiscard]] QSizeF canvasSizeMm() const { return canvasMm_; }
@@ -24,6 +34,32 @@ public:
     void zoomIn();
     void zoomOut();
     void fitCanvas();
+    // Zoom ancré : le point de la scène situé sous `viewportPos` (coordonnées du
+    // viewport) y reste après le zoom. Ancrage manuel (NoAnchor) : indépendant
+    // de QCursor::pos(), donc valable avec des évènements synthétiques et un
+    // pavé tactile. Borné à [kMin, kMax] pixels par mm.
+    void zoomAt(double factor, QPointF viewportPos);
+
+    // --- Modèle d'interaction (lot L5, specs/plans/ui-interaction-model.md §2) ---
+    // Le PREMIER appel active le modèle : glisser gauche = NoDrag, contexte
+    // piloté par l'appelant. Tant qu'il n'est pas appelé, la vue garde le
+    // comportement historique (ScrollHandDrag) ; seules les branches purement
+    // additives (clic milieu, Espace, molette Maj/Alt/Ctrl/pixelDelta, gestes
+    // natifs) sont actives.
+    void setBaseContext(Context context);
+    [[nodiscard]] Context baseContext() const { return baseContext_; }
+    [[nodiscard]] bool inputModelEnabled() const { return inputModelEnabled_; }
+    // Sélection au clic différé / rectangle / appui long (contexte Select seulement).
+    void setSelectionRectangleEnabled(bool enabled);
+    [[nodiscard]] bool selectionRectangleEnabled() const { return selectionRectEnabled_; }
+    [[nodiscard]] bool spaceHeld() const { return spaceHeld_; }
+    // Point d'appui (scène, mm) du dernier cadre dessiné en mode boîte : valable pendant
+    // l'émission de boxDrawnMm (Alt = dessiner depuis le centre).
+    [[nodiscard]] QPointF lastBoxPressMm() const { return boxPressMm_; }
+    // Un geste de la vue est en cours (panoramique, zoom continu, sélection/rectangle).
+    [[nodiscard]] bool gestureActive() const {
+        return panning_ || zoomDragging_ || selectionPress_ || rectActive_ || altBodyPress_;
+    }
 
     // Mode recadrage : sélection au rectangle élastique au lieu du déplacement.
     void setCropMode(bool enabled);
@@ -98,6 +134,18 @@ signals:
     // l'écran (haut = y scène décroissant). L'appelant interprète (objet
     // sélectionné, mode Sélection) et construit la commande d'undo.
     void nudgeRequestedMm(QPointF deltaMm);
+    // Sélection (contexte Select, setSelectionRectangleEnabled(true)). Rectangle
+    // en mm scène ; `crossing` = glissé vers la gauche (croise) sinon englobe.
+    void selectionRectangleMm(QRectF rectMm, openstitch::desktop::SelectMode mode, bool crossing);
+    // Clic avec Maj/Ctrl (mode != Replace) ; le clic simple reste canvasClickedMm.
+    void selectionClickedMm(QPointF posMm, openstitch::desktop::SelectMode mode);
+    // Appui long ou Alt + clic : objets sous le point.
+    void selectBelowRequested(QPointF posMm, QPoint globalPos,
+                              openstitch::desktop::SelectMode mode);
+    // Modificateurs observés (évènements, jamais l'état global) : sur changement.
+    void modifiersChanged(Qt::KeyboardModifiers modifiers);
+    // Le curseur quitte le viewport (la surbrillance de survol doit disparaître).
+    void cursorLeftViewport();
 
 protected:
     void wheelEvent(QWheelEvent* event) override;
@@ -107,13 +155,20 @@ protected:
     void mouseMoveEvent(QMouseEvent* event) override;
     void mouseReleaseEvent(QMouseEvent* event) override;
     void keyPressEvent(QKeyEvent* event) override;
+    void keyReleaseEvent(QKeyEvent* event) override;
+    void focusOutEvent(QFocusEvent* event) override;
+    void hideEvent(QHideEvent* event) override;
+    void changeEvent(QEvent* event) override;
+    bool viewportEvent(QEvent* event) override;
     void resizeEvent(QResizeEvent* event) override;
     void scrollContentsBy(int dx, int dy) override;
     void drawBackground(QPainter* painter, const QRectF& rect) override;
     void drawForeground(QPainter* painter, const QRectF& rect) override;
 
 private:
-    void applyZoom(double factor, bool anchorUnderMouse);
+    friend class SpaceKeyFilter;
+
+    void applyCenterZoom(double factor);
     // Applique le curseur à LA FOIS sur la vue et sur son viewport : c'est le
     // viewport qui reçoit réellement les évènements souris affichés à
     // l'écran, et QGraphicsView ne propage pas toujours automatiquement le
@@ -124,6 +179,24 @@ private:
     // jamais depuis un seul flag isolé (cf. commentaire détaillé dans
     // canvas_view.cpp, défaut « rectangle/ellipse ne dessinent rien »).
     void updateDragMode();
+
+    [[nodiscard]] Context currentContext() const;
+    // Filtre applicatif : Espace (tenu) et Alt seul. true = évènement consommé.
+    bool filterKey(QKeyEvent* event);
+    void setSpaceHeld(bool held);
+    void updateModifiers(Qt::KeyboardModifiers mods);
+    void resetTransientInput(bool cursorLeft = true);
+    void startPan(const QPoint& viewportPos, Qt::MouseButton button);
+    void startZoomDrag(const QPoint& viewportPos, Qt::MouseButton button);
+    void endGesture();
+    void scrollBy(int dx, int dy);
+    void refreshCursor();
+    void cancelSelectionPress();
+    void ensureRubberBand();
+    void emitSelectionClick(const QPoint& viewportPos, const QPoint& globalPos,
+                            Qt::KeyboardModifiers mods);
+    void fireLongPress();
+    void queueSelectBelow(QPointF posMm, QPoint globalPos);
 
     QSizeF canvasMm_{100.0, 100.0};
     bool cropMode_{false};
@@ -136,6 +209,40 @@ private:
     bool bezierPressActive_{false};
     QPointF bezierAnchorMm_;
     QRectF lastRubberBandMm_;
+
+    // --- modèle d'interaction ---
+    bool inputModelEnabled_{false};
+    Context baseContext_{Context::Select};
+    bool selectionRectEnabled_{false};
+    SpaceKeyFilter* spaceFilter_{nullptr};
+    bool spaceHeld_{false};
+    bool spaceConsumed_{false}; // l'appui d'Espace a été consommé par le filtre
+    bool cursorOverViewport_{false};
+    bool altUsedInGesture_{false};
+    Qt::KeyboardModifiers lastModifiers_{};
+    // Glisser actif (panoramique ou zoom continu) sur `gestureButton_`.
+    bool panning_{false};
+    bool zoomDragging_{false};
+    Qt::MouseButton gestureButton_{Qt::NoButton};
+    QPoint gestureLastPos_;
+    QPoint zoomAnchorPos_;
+    bool middleDoubleClickPending_{false};
+    // Curseur transitoire (main, +, ±) posé par-dessus le curseur d'origine.
+    bool transientCursor_{false};
+    bool hadViewportCursor_{false};
+    QCursor savedViewportCursor_;
+    int cursorKind_{0};
+    // Sélection (clic différé, rectangle, appui long).
+    bool selectionPress_{false};
+    bool rectActive_{false};
+    bool altBodyPress_{false}; // Alt seul sur un corps sélectionné : glisser d'item
+    QPointF boxPressMm_;
+    bool longPressFired_{false};
+    QPoint pressViewportPos_;
+    QPoint pressGlobalPos_;
+    Qt::KeyboardModifiers pressMods_{};
+    QTimer longPressTimer_;
+    QRubberBand* rubberBand_{nullptr};
 };
 
 } // namespace openstitch::desktop

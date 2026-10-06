@@ -3,6 +3,7 @@
 
 #include <QAction>
 #include <QActionGroup>
+#include <QApplication>
 #include <QClipboard>
 #include <QColorDialog>
 #include <QDateTime>
@@ -22,6 +23,7 @@
 #include <QInputDialog>
 #include <QLabel>
 #include <QLocale>
+#include <QMap>
 #include <QMenu>
 #include <QMenuBar>
 #include <QMessageBox>
@@ -29,6 +31,7 @@
 #include <QPixmap>
 #include <QPlainTextEdit>
 #include <QRadioButton>
+#include <QSizePolicy>
 #include <QSpinBox>
 #include <QStatusBar>
 #include <QTextStream>
@@ -52,12 +55,14 @@
 #include "document_panel.hpp"
 #include "empty_state_widget.hpp"
 #include "generation_options_dialog.hpp"
+#include "help_dialogs.hpp"
 #include "import_dialog.hpp"
 #include "node_handle.hpp"
 
 #include "openstitch/auto_satin/satin_column.hpp"
 #include "openstitch/autodigitize/autodigitize.hpp"
 #include "openstitch/autodigitize/contour_objects.hpp"
+#include "openstitch/commands/composite_command.hpp"
 #include "openstitch/commands/finishing_commands.hpp"
 #include "openstitch/commands/project_commands.hpp"
 #include "openstitch/core/app_info.hpp"
@@ -84,6 +89,7 @@
 #include "recent_files.hpp"
 #include "ruler.hpp"
 #include "satin_guide_item.hpp"
+#include "selection_hit_test.hpp"
 #include "ui_icons.hpp"
 #include "workflow_panel.hpp"
 #include <QCheckBox>
@@ -102,6 +108,7 @@
 #include <QToolBar>
 #include <QToolButton>
 #include <QVBoxLayout>
+#include <QWidgetAction>
 
 namespace openstitch::desktop {
 
@@ -339,6 +346,30 @@ constexpr double kMinDrawExtentMm = 0.5;
 // bruts (un évènement de déplacement souris par pixel).
 constexpr Micrometers kFreeformSimplifyTolerance{300};
 
+namespace {
+// Étiquette à texte élidé (ligne d'indications) : le texte complet reste dans
+// l'infobulle ; l'élision suit la largeur courante, jamais l'inverse.
+class ElidedLabel : public QLabel {
+public:
+    using QLabel::QLabel;
+    void setFullText(const QString& text) {
+        full_ = text;
+        setToolTip(text);
+        updateElision();
+    }
+
+protected:
+    void resizeEvent(QResizeEvent* event) override {
+        QLabel::resizeEvent(event);
+        updateElision();
+    }
+
+private:
+    void updateElision() { setText(fontMetrics().elidedText(full_, Qt::ElideRight, width())); }
+    QString full_;
+};
+} // namespace
+
 MainWindow::MainWindow() {
     updateWindowTitle();
     resize(1100, 800);
@@ -367,6 +398,10 @@ MainWindow::MainWindow() {
     buildDocumentPanel();
     buildWorkflowPanel();
     buildFilterPanel();
+    for (auto* d :
+         {documentDock_, propertiesDock_, workflowDock_, orderDock_, filterDock_, analysisDock_}) {
+        panelsMenu_->addAction(d->toggleViewAction());
+    }
     buildMainToolbar();
     addToolBarBreak(); // la barre contextuelle sur sa propre rangée
     buildContextToolbar();
@@ -403,11 +438,27 @@ MainWindow::MainWindow() {
         }
     }
 
+    // Ligne d'indications des gestes (L5) : widget PERMANENT (un widget ajouté par
+    // addWidget serait masqué pendant tout showMessage) ; largeur ignorée pour ne
+    // jamais imposer sa taille à la fenêtre ; texte élidé.
+    hintsLabel_ = new ElidedLabel(this);
+    hintsLabel_->setObjectName(QStringLiteral("hintsLabel"));
+    hintsLabel_->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
+    hintsLabel_->setMinimumWidth(0);
+    hintsLabel_->setAccessibleName(tr("Indications de geste"));
+    statusBar()->addPermanentWidget(hintsLabel_, 1);
     toolLabel_ = new QLabel(this);
     statusBar()->addPermanentWidget(toolLabel_);
     cursorLabel_ = new QLabel(this);
     cursorLabel_->setMinimumWidth(180);
     statusBar()->addPermanentWidget(cursorLabel_);
+    // Les bascules des modes d'édition changent le contexte d'interaction du canevas.
+    for (QAction* act : {stitchEditModeAct_, satinEditModeAct_, satinGuideModeAct_,
+                         railEditModeAct_, directionGuideModeAct_}) {
+        if (act != nullptr) {
+            connect(act, &QAction::toggled, this, [this] { updateInteractionContext(); });
+        }
+    }
     setTool(Tool::Select);
     connect(view_, &CanvasView::cursorMovedMm, this, [this](QPointF mm) {
         cursorLabel_->setText(
@@ -420,12 +471,18 @@ MainWindow::MainWindow() {
         // physicalMm est déjà Y-haut (cf. CanvasView::mouseMoveEvent) ; on
         // revient au repère scène (Y-bas) pour les aperçus QGraphicsItem.
         const QPointF sceneMm(physicalMm.x(), -physicalMm.y());
+        if (view_->gestureActive() || QGuiApplication::mouseButtons() != Qt::NoButton) {
+            hideHoverHighlight(); // pas de surbrillance pendant un glisser / panoramique
+        } else {
+            scheduleHoverHighlight(sceneMm);
+        }
         // Accroche (façon Fusion 360) : seulement pour les outils où le clic
         // pose réellement le point prévisualisé ici -- cf. commentaire de
         // findSnapPointMm (Bézier/rectangle/ellipse exclus).
         const bool snapEligible =
             currentTool_ == Tool::DrawPolygon || currentTool_ == Tool::DrawSatinColumn;
-        const std::optional<QPointF> snap = snapEligible ? findSnapPointMm(sceneMm) : std::nullopt;
+        const std::optional<QPointF> snap =
+            snapEligible && !snapSuspended() ? findSnapPointMm(sceneMm) : std::nullopt;
         updateSnapIndicator(snap);
         const QPointF effectiveMm = snap.value_or(sceneMm);
         if (currentTool_ == Tool::DrawPolygon && !pendingPolygonVertices_.empty()) {
@@ -447,6 +504,23 @@ MainWindow::MainWindow() {
     connect(view_, &CanvasView::bezierPointCommittedMm, this, &MainWindow::onSatinCutLineCommitted);
 
     connect(view_, &CanvasView::canvasClickedMm, this, &MainWindow::onCanvasClicked);
+    connect(view_, &CanvasView::selectionClickedMm, this, &MainWindow::onSelectionClicked);
+    connect(view_, &CanvasView::selectionRectangleMm, this, &MainWindow::onSelectionRectangle);
+    connect(view_, &CanvasView::selectBelowRequested, this, &MainWindow::onSelectBelow);
+    // Préréglage de navigation GLOBAL : toute fenêtre reflète un changement venu d'ailleurs.
+    connect(&InteractionMap::notifier(), &PresetNotifier::presetChanged, this,
+            [this](Preset preset) {
+                QAction* act = preset == Preset::Touchpad ? navTouchpadAct_ : navOpenStitchAct_;
+                if (act != nullptr && !act->isChecked()) {
+                    act->setChecked(true);
+                }
+                refreshHints();
+            });
+    connect(view_, &CanvasView::cursorLeftViewport, this, [this] { hideHoverHighlight(); });
+    connect(view_, &CanvasView::modifiersChanged, this, [this](Qt::KeyboardModifiers mods) {
+        heldModifiers_ = mods;
+        refreshHints();
+    });
     connect(view_, &CanvasView::canvasContextMenu, this, &MainWindow::onCanvasContextMenu);
     // Flèches clavier : déplace l'objet vectoriel sélectionné (mode Sélection
     // uniquement) — même commande que le glisser du corps de forme.
@@ -454,12 +528,8 @@ MainWindow::MainWindow() {
         if (!selectedObject_ || currentTool_ != Tool::Select) {
             return;
         }
-        const Vec2um delta = sceneMmToModel(deltaSceneMm);
-        undoStack_.execute(
-            std::make_unique<commands::TranslateVectorObjectCommand>(*selectedObject_, delta),
-            project_);
-        refreshImage();
-        updateActions();
+        // Multi-sélection : tout l'ensemble bouge, en UN pas d'annulation.
+        translateObjects(selectedObjectIds(), sceneMmToModel(deltaSceneMm));
     });
     // Un changement de thème redessine les couches (couleurs des points, repères).
     connect(&AppTheme::instance(), &AppTheme::changed, this, [this] { displayImage(processed_); });
@@ -510,17 +580,20 @@ void MainWindow::buildMenus() {
     newAct->setShortcut(QKeySequence::New);
     connect(newAct, &QAction::triggered, this, &MainWindow::newProject);
     fileMenu->addSeparator();
-    auto* openAct = fileMenu->addAction(tr("&Ouvrir une image…"));
+    openImageAct_ = fileMenu->addAction(tr("&Ouvrir une image…"));
+    auto* openAct = openImageAct_;
     openAct->setShortcut(QKeySequence::Open);
     connect(openAct, &QAction::triggered, this, &MainWindow::openImage);
     fileMenu->addSeparator();
     // Pas de « … » sur Enregistrer : il n'ouvre un dialogue que pour un
     // document encore sans fichier (HP-FILE-002).
-    auto* saveProjectAct = fileMenu->addAction(tr("&Enregistrer le projet"));
+    saveProjectAct_ = fileMenu->addAction(tr("Enre&gistrer le projet"));
+    auto* saveProjectAct = saveProjectAct_;
     saveProjectAct->setObjectName(QStringLiteral("action_saveProject"));
     saveProjectAct->setShortcut(QKeySequence::Save);
     connect(saveProjectAct, &QAction::triggered, this, &MainWindow::saveProject);
-    auto* saveProjectAsAct = fileMenu->addAction(tr("Enregistrer le projet &sous…"));
+    saveProjectAsAct_ = fileMenu->addAction(tr("Enregistrer le projet &sous…"));
+    auto* saveProjectAsAct = saveProjectAsAct_;
     saveProjectAsAct->setObjectName(QStringLiteral("action_saveProjectAs"));
     saveProjectAsAct->setShortcut(QKeySequence::SaveAs);
     connect(saveProjectAsAct, &QAction::triggered, this, &MainWindow::saveProjectAs);
@@ -530,6 +603,14 @@ void MainWindow::buildMenus() {
     // Rempli par refreshRecentFilesUi() (appelée une première fois depuis le
     // constructeur, après la construction de emptyState_) -- HP-FILE-003.
     recentMenu_ = fileMenu->addMenu(tr("&Récents"));
+    // « Vider la liste » vit dans le menu Fichier et non dans le sous-menu : le sous-menu
+    // ne contient que les fichiers (un test et refreshRecentFilesUi() comptent ses actions).
+    clearRecentAct_ = fileMenu->addAction(tr("Vider &la liste des récents"));
+    clearRecentAct_->setObjectName(QStringLiteral("action_clearRecent"));
+    connect(clearRecentAct_, &QAction::triggered, this, [this] {
+        saveRecentFiles(QStringList());
+        refreshRecentFilesUi();
+    });
     exportDstAct_ = fileMenu->addAction(tr("&Exporter en DST…"));
     connect(exportDstAct_, &QAction::triggered, this, &MainWindow::exportDst);
     auto* importDstAct = fileMenu->addAction(tr("&Importer un DST…"));
@@ -537,7 +618,8 @@ void MainWindow::buildMenus() {
     fileMenu->addSeparator();
     auto* importDxfAct = fileMenu->addAction(tr("Importer un &DXF…"));
     connect(importDxfAct, &QAction::triggered, this, &MainWindow::importDxf);
-    auto* exportDxfAct = fileMenu->addAction(tr("Exporter en D&XF…"));
+    exportDxfAct_ = fileMenu->addAction(tr("Exporter en D&XF…"));
+    auto* exportDxfAct = exportDxfAct_;
     connect(exportDxfAct, &QAction::triggered, this, &MainWindow::exportDxf);
     fileMenu->addSeparator();
     auto* quitAct = fileMenu->addAction(tr("&Quitter"));
@@ -571,7 +653,7 @@ void MainWindow::buildMenus() {
     connect(bcAct, &QAction::triggered, this, &MainWindow::adjustBrightnessContrast);
     imageActions_.append(bcAct);
 
-    addOpAction(tr("Débruitage lé&ger"), image::MedianDenoiseOp{1});
+    addOpAction(tr("Dé&bruitage léger"), image::MedianDenoiseOp{1});
     addOpAction(tr("Débruitage &moyen"), image::MedianDenoiseOp{2});
 
     auto* quantAct = imageMenu->addAction(tr("&Quantifier les couleurs…"));
@@ -592,7 +674,8 @@ void MainWindow::buildMenus() {
     imageActions_.append(cropAct_);
 
     auto* segMenu = menuBar()->addMenu(tr("&Segmentation"));
-    auto* segAct = segMenu->addAction(tr("&Segmenter l'image…"));
+    segmentAct_ = segMenu->addAction(tr("&Segmenter l'image…"));
+    auto* segAct = segmentAct_;
     connect(segAct, &QAction::triggered, this, &MainWindow::segmentImage);
     imageActions_.append(segAct);
 
@@ -606,23 +689,28 @@ void MainWindow::buildMenus() {
     connect(mergeAct_, &QAction::toggled, this, [this](bool on) { mergeMode_ = on; });
     regionActions_.append(mergeAct_);
 
-    auto* delRegionAct = segMenu->addAction(tr("&Supprimer la région sélectionnée"));
-    delRegionAct->setObjectName(QStringLiteral("action_deleteRegion"));
-    delRegionAct->setShortcut(QKeySequence::Delete);
-    connect(delRegionAct, &QAction::triggered, this, &MainWindow::deleteSelectedRegion);
-    regionActions_.append(delRegionAct);
+    // Suppr universel (L5-T4a) : l'objectName historique « action_deleteRegion »
+    // est conservé (tests, snapshot d'actions) ; l'action est activée par
+    // updateActions() selon la sélection (pas via regionActions_).
+    deleteSelectionAct_ = segMenu->addAction(tr("Su&pprimer la sélection"));
+    deleteSelectionAct_->setObjectName(QStringLiteral("action_deleteRegion"));
+    deleteSelectionAct_->setShortcut(QKeySequence::Delete);
+    connect(deleteSelectionAct_, &QAction::triggered, this, &MainWindow::deleteSelection);
 
     auto* recolorAct = segMenu->addAction(tr("&Recolorer la région sélectionnée…"));
     connect(recolorAct, &QAction::triggered, this, &MainWindow::recolorSelectedRegion);
     regionActions_.append(recolorAct);
 
     segMenu->addSeparator();
-    auto* vectorizeAct = segMenu->addAction(tr("Convertir la région en objet &vectoriel"));
+    vectorizeRegionAct_ = segMenu->addAction(tr("Convertir la région en objet &vectoriel"));
+    auto* vectorizeAct = vectorizeRegionAct_;
     connect(vectorizeAct, &QAction::triggered, this, &MainWindow::vectorizeSelectedRegion);
     regionActions_.append(vectorizeAct);
 
     auto* embMenu = menuBar()->addMenu(tr("&Broderie"));
-    auto* autoAct = embMenu->addAction(tr("Numérisation &automatique"));
+    autoDigitizeAct_ = embMenu->addAction(tr("Numérisation &automatique"));
+    autoDigitizeAct_->setObjectName(QStringLiteral("action_autoDigitize"));
+    auto* autoAct = autoDigitizeAct_;
     connect(autoAct, &QAction::triggered, this, &MainWindow::autoDigitize);
     auto* aiSegmentAct = embMenu->addAction(icons::aiSegment(), tr("Segmenter avec l'&IA…"));
     aiSegmentAct->setObjectName(QStringLiteral("action_segmentWithAi"));
@@ -635,9 +723,10 @@ void MainWindow::buildMenus() {
     connect(createTatamiAct_, &QAction::triggered, this, &MainWindow::createTatamiObject);
     createSatinAct_ = embMenu->addAction(tr("Créer une colonne &satin…"));
     connect(createSatinAct_, &QAction::triggered, this, &MainWindow::createSatinObject);
-    autoSatinAct_ = embMenu->addAction(tr("Convertir automatiquement en satin…"));
+    autoSatinAct_ = embMenu->addAction(tr("Convertir automatiquement en satin (expérimental)…"));
     autoSatinAct_->setToolTip(
-        tr("Construit des colonnes satin (rails + barreaux) depuis le squelette de la forme."));
+        tr("Expérimental : construit des colonnes satin (rails + barreaux) depuis le squelette "
+           "de la forme. Le résultat est à vérifier."));
     connect(autoSatinAct_, &QAction::triggered, this, &MainWindow::autoConvertToSatin);
     embMenu->addSeparator();
     fillAngleAct_ = embMenu->addAction(tr("&Orientation du remplissage…"));
@@ -645,7 +734,7 @@ void MainWindow::buildMenus() {
         tr("Change l'angle des fils du remplissage tatami sélectionné (clic sur la forme "
            "ou dans l'ordre de couture)."));
     connect(fillAngleAct_, &QAction::triggered, this, &MainWindow::changeFillAngle);
-    convertSatinAct_ = embMenu->addAction(tr("Convertir les satins auto en &tatami"));
+    convertSatinAct_ = embMenu->addAction(tr("Con&vertir les satins auto en tatami"));
     convertSatinAct_->setToolTip(
         tr("Remplace les colonnes satin automatiques (qui débordent sur les formes "
            "concaves) par des remplissages tatami découpés sur la région."));
@@ -685,11 +774,11 @@ void MainWindow::buildMenus() {
     satinEditModeAct_ = embMenu->addAction(tr("&Modifier la colonne satin (rails + guides)…"));
     satinEditModeAct_->setObjectName(QStringLiteral("action_satinEditMode"));
     satinEditModeAct_->setCheckable(true);
-    satinEditModeAct_->setShortcut(QKeySequence(Qt::Key_G));
+    satinEditModeAct_->setShortcut(QKeySequence(Qt::SHIFT | Qt::Key_E));
     satinEditModeAct_->setToolTip(
         tr("Affiche ensemble les nœuds des deux rails (glisser pour déplacer, double-clic "
            "pour ajouter un nœud) et les guides transversaux (glisser une extrémité) de la "
-           "colonne satin sélectionnée (G)."));
+           "colonne satin sélectionnée (Maj+E)."));
     connect(satinEditModeAct_, &QAction::toggled, this, [this](bool on) {
         satinGuideModeAct_->setChecked(on);
         railEditModeAct_->setChecked(on);
@@ -723,7 +812,7 @@ void MainWindow::buildMenus() {
     embMenu->addSeparator();
     buildDirectionalActions(embMenu);
     embMenu->addSeparator();
-    statsAct_ = embMenu->addAction(tr("&Statistiques…"));
+    statsAct_ = embMenu->addAction(tr("Statisti&ques…"));
     connect(statsAct_, &QAction::triggered, this, &MainWindow::showStatistics);
 
     auto* viewMenu = menuBar()->addMenu(tr("&Affichage"));
@@ -754,7 +843,7 @@ void MainWindow::buildMenus() {
     connect(fitAct, &QAction::triggered, view_, &CanvasView::fitCanvas);
 
     viewMenu->addSeparator();
-    auto* hoopAct = viewMenu->addAction(tr("Taille du &cadre…"));
+    auto* hoopAct = viewMenu->addAction(tr("Tai&lle du cadre…"));
     hoopAct->setToolTip(tr("Définit la zone physique de broderie (cadre)."));
     connect(hoopAct, &QAction::triggered, this, &MainWindow::setHoopSize);
 
@@ -782,13 +871,30 @@ void MainWindow::buildMenus() {
     };
     addDensityAct(tr("Confortable"), Density::Comfortable);
     addDensityAct(tr("Compact"), Density::Compact);
+    buildNavigationMenu(viewMenu);
+    snapNodesAct_ = viewMenu->addAction(tr("Accrochage des nœuds au glisser"));
+    snapNodesAct_->setObjectName(QStringLiteral("action_snapNodesOnDrag"));
+    snapNodesAct_->setCheckable(true);
+    snapNodesAct_->setChecked(
+        QSettings().value(QStringLiteral("edit/snapNodesOnDrag"), false).toBool());
+    snapNodesAct_->setToolTip(tr("Accroche un nœud glissé aux sommets des autres objets "
+                                 "(Ctrl ou Maj au relâchement : sans accroche). Désactivé par "
+                                 "défaut."));
+    snapNodesAct_->setStatusTip(snapNodesAct_->toolTip());
+    connect(snapNodesAct_, &QAction::toggled, this,
+            [](bool on) { QSettings().setValue(QStringLiteral("edit/snapNodesOnDrag"), on); });
 
     viewMenu->addSeparator();
+    // Menu des panneaux : rempli dans le constructeur une fois les docks construits
+    // (buildMenus s'exécute avant eux). Permet de rouvrir un panneau fermé par sa croix.
+    panelsMenu_ = viewMenu->addMenu(tr("&Panneaux"));
+    panelsMenu_->setObjectName(QStringLiteral("menu_panels"));
     auto* hidePanelsAct = viewMenu->addAction(tr("&Masquer les panneaux"));
     hidePanelsAct->setCheckable(true);
     hidePanelsAct->setShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_P));
     hidePanelsAct->setToolTip(tr("Mode canevas : masque tous les panneaux."));
     connect(hidePanelsAct, &QAction::toggled, this, [this](bool hide) {
+        hidePanelsMode_ = hide;
         const std::vector<QDockWidget*> docks{documentDock_, propertiesDock_, workflowDock_,
                                               orderDock_,    filterDock_,     analysisDock_};
         if (hide) {
@@ -824,9 +930,7 @@ void MainWindow::resetDocumentState() {
     sequence_.reset();
     sequenceImported_ = false;
     editStates_.clear();
-    selectedRegion_.reset();
-    selectedObject_.reset();
-    selectedEmbroidery_.reset();
+    setSelection({});
     if (mergeAct_ != nullptr) {
         mergeAct_->setChecked(false); // remet aussi mergeMode_ à false (cf. buildMenus)
     }
@@ -1049,6 +1153,18 @@ void MainWindow::onStitchEditModeToggled(bool on) {
         if (directionGuideModeAct_ != nullptr && directionGuideModeAct_->isChecked()) {
             directionGuideModeAct_->setChecked(false);
         }
+        // Modes exclusifs : le mode rails (et le bouton unifié qui l'agrège) cède la place.
+        // Décochés SANS passer par leur slot : onSatinRailEditModeToggled(false) relancerait
+        // updateActions() avant que stitchEditTarget_ soit posé (symétrique du défaut inverse).
+        if (railEditModeAct_ != nullptr && railEditModeAct_->isChecked()) {
+            QSignalBlocker block(railEditModeAct_);
+            railEditModeAct_->setChecked(false);
+            railEditTarget_.reset();
+        }
+        if (satinEditModeAct_ != nullptr && satinEditModeAct_->isChecked()) {
+            QSignalBlocker block(satinEditModeAct_);
+            satinEditModeAct_->setChecked(false);
+        }
         if (const auto* emb = resolveSelectedEmbroidery()) {
             if (auto view = stitch_generation::edit_view(project_, emb->id);
                 view && view->state != stitch_generation::ObjectEditState::Dirty) {
@@ -1099,17 +1215,19 @@ void MainWindow::onSatinGuideModeToggled(bool on) {
 void MainWindow::onSatinRailEditModeToggled(bool on) {
     railEditTarget_.reset();
     if (on) {
-        // Ne coupe PLUS le mode guides (satinGuideModeAct_) : les deux
-        // coexistent délibérément depuis l'introduction du mode unifié
-        // (satinEditModeAct_, § remodelage satin) — rails et guides
-        // s'affichent ensemble, plus besoin de choisir entre les deux.
-        if (stitchEditModeAct_ != nullptr && stitchEditModeAct_->isChecked()) {
-            stitchEditModeAct_->setChecked(false);
-        }
         if (const auto* emb = resolveSelectedEmbroidery()) {
             if (emb->is_satin()) {
                 railEditTarget_ = emb->id;
             }
+        }
+        // Ne coupe PLUS le mode guides (satinGuideModeAct_) : les deux
+        // coexistent délibérément depuis l'introduction du mode unifié
+        // (satinEditModeAct_, § remodelage satin) — rails et guides
+        // s'affichent ensemble, plus besoin de choisir entre les deux.
+        // La cible rails est posée AVANT de couper le mode points : sa sortie relance
+        // updateActions(), qui décocherait sinon aussitôt le mode rails (cible absente).
+        if (stitchEditModeAct_ != nullptr && stitchEditModeAct_->isChecked()) {
+            stitchEditModeAct_->setChecked(false);
         }
         if (!railEditTarget_) {
             QSignalBlocker block(railEditModeAct_);
@@ -1436,16 +1554,30 @@ void MainWindow::onBoxDrawn(QRectF rectMm, Qt::KeyboardModifiers modifiers) {
         currentTool_ != Tool::DrawPolygonRegular) {
         return; // sécurité : signal reçu hors mode dessin (ne devrait pas arriver)
     }
-    if (rectMm.width() < kMinDrawExtentMm || rectMm.height() < kMinDrawExtentMm) {
+    QRectF box = rectMm;
+    const bool fromCenter = (modifiers & Qt::AltModifier) != 0;
+    if (fromCenter) {
+        // Alt (ligne D4) : le VRAI point d'appui (fourni par le canevas) est le centre du cadre.
+        const QPointF anchor = view_->lastBoxPressMm();
+        const double halfW =
+            std::max(std::abs(rectMm.left() - anchor.x()), std::abs(rectMm.right() - anchor.x()));
+        const double halfH =
+            std::max(std::abs(rectMm.top() - anchor.y()), std::abs(rectMm.bottom() - anchor.y()));
+        box = QRectF(anchor.x() - halfW, anchor.y() - halfH, 2.0 * halfW, 2.0 * halfH);
+    }
+    if (box.width() < kMinDrawExtentMm || box.height() < kMinDrawExtentMm) {
         statusBar()->showMessage(tr("Forme trop petite — glissez davantage."));
         return;
     }
-    QRectF box = rectMm;
     if (currentTool_ == Tool::DrawEllipse && (modifiers & Qt::ShiftModifier)) {
         // Maj enfoncée : contraint à un cercle (côté = le plus petit des deux).
+        const QPointF center = box.center();
         const double side = std::min(box.width(), box.height());
         box.setWidth(side);
         box.setHeight(side);
+        if (fromCenter) {
+            box.moveCenter(center); // le centre reste le point d'appui
+        }
     }
     // Accroche des deux coins, indépendamment l'un de l'autre (pas d'aperçu en
     // cours de glisser ici, contrairement au polygone/satin : le glisser
@@ -1453,11 +1585,14 @@ void MainWindow::onBoxDrawn(QRectF rectMm, Qt::KeyboardModifiers modifiers) {
     // aperçu personnalisable point par point).
     QPointF topLeft = box.topLeft();
     QPointF bottomRight = box.bottomRight();
-    if (const auto snap = findSnapPointMm(topLeft)) {
-        topLeft = *snap;
-    }
-    if (const auto snap = findSnapPointMm(bottomRight)) {
-        bottomRight = *snap;
+    // Ctrl tenu au relâchement : accroche suspendue (ligne D5).
+    if ((modifiers & Qt::ControlModifier) == 0) {
+        if (const auto snap = findSnapPointMm(topLeft)) {
+            topLeft = *snap;
+        }
+        if (const auto snap = findSnapPointMm(bottomRight)) {
+            bottomRight = *snap;
+        }
     }
     box = QRectF(topLeft, bottomRight).normalized();
     if (box.width() < kMinDrawExtentMm || box.height() < kMinDrawExtentMm) {
@@ -1616,9 +1751,11 @@ constexpr double kSnapRadiusPx = 10.0; // rayon d'accroche « visé » à l'écr
 // la fenêtre n'a pas encore de taille réelle).
 constexpr double kSnapRadiusMinMm = 0.05;
 constexpr double kSnapRadiusMaxMm = 2.0;
+constexpr double kNodeSnapMaxMm = 1.0; // accroche des nœuds au glisser : jamais > 1 mm
 } // namespace
 
-std::optional<QPointF> MainWindow::findSnapPointMm(QPointF cursorSceneMm) const {
+std::optional<QPointF> MainWindow::findSnapPointMm(QPointF cursorSceneMm,
+                                                   std::optional<ObjectId> excludeObject) const {
     const double radiusMm = std::clamp(kSnapRadiusPx / std::max(view_->pixelsPerMm(), 0.01),
                                        kSnapRadiusMinMm, kSnapRadiusMaxMm);
     double bestDistSq = radiusMm * radiusMm;
@@ -1636,7 +1773,7 @@ std::optional<QPointF> MainWindow::findSnapPointMm(QPointF cursorSceneMm) const 
     // les nœuds Lisse : approximation suffisante, la même que l'aperçu élastique
     // des autres outils) et centre (boîte englobante) des morceaux fermés.
     for (const auto& object : project_.vector_objects) {
-        if (!object.visible) {
+        if (!object.visible || (excludeObject && object.id == *excludeObject)) {
             continue;
         }
         const auto considerPath = [&](const geometry::Path& path) {
@@ -1674,6 +1811,123 @@ std::optional<QPointF> MainWindow::findSnapPointMm(QPointF cursorSceneMm) const 
         }
     }
     return best;
+}
+
+std::optional<QPointF> MainWindow::findNodeSnapMm(QPointF cursorSceneMm, ObjectId exclude) const {
+    // Accroche des nœuds au glisser (réglage `edit/snapNodesOnDrag`) : SOMMETS des autres
+    // objets visibles seulement (ni milieux de corde, ni centres), rayon <= 1 mm et <= 10 px.
+    const double radiusMm =
+        std::min(kNodeSnapMaxMm, kSnapRadiusPx / std::max(view_->pixelsPerMm(), 0.01));
+    double bestDistSq = radiusMm * radiusMm;
+    std::optional<QPointF> best;
+    for (const auto& object : project_.vector_objects) {
+        if (!object.visible || object.id == exclude) {
+            continue;
+        }
+        const auto consider = [&](const geometry::Path& path) {
+            for (const auto& node : path.nodes) {
+                const QPointF candidate = modelToSceneMm(node.pos);
+                const double dx = candidate.x() - cursorSceneMm.x();
+                const double dy = candidate.y() - cursorSceneMm.y();
+                const double distSq = dx * dx + dy * dy;
+                if (distSq <= bestDistSq) {
+                    bestDistSq = distSq;
+                    best = candidate;
+                }
+            }
+        };
+        for (const auto& set : object.paths) {
+            consider(set.outer);
+            for (const auto& hole : set.holes) {
+                consider(hole);
+            }
+        }
+    }
+    return best;
+}
+
+void MainWindow::updateHoverHighlight(std::optional<QPointF> sceneMm) {
+    // Surbrillance de pré-sélection (ligne S11) : contour de l'objet non sélectionné le plus
+    // haut sous le curseur, outil Sélection seulement. Un seul item, indépendant de baseItems_,
+    // qui n'accepte aucun bouton (le clic atteint l'objet dessous). Les contours viennent d'un
+    // cache reconstruit après chaque rendu de la couche base (renderBase).
+    ++hoverComputations_;
+    const HoverShape* under = nullptr;
+    if (sceneMm && currentTool_ == Tool::Select && interactionContext() == Context::Select &&
+        showVectorsAct_ != nullptr && showVectorsAct_->isChecked() && !mergeMode_) {
+        if (!hoverCacheValid_) {
+            hoverCache_.clear();
+            for (const auto& object : project_.vector_objects) {
+                if (object.visible) {
+                    QPainterPath path = objectScenePath(object);
+                    const QRectF bounds = path.boundingRect();
+                    hoverCache_.push_back({object.id, std::move(path), bounds});
+                    ++hoverPathBuilds_;
+                }
+            }
+            hoverCacheValid_ = true;
+        }
+        // Du plus haut (dessiné en dernier) au plus bas ; pré-rejet par boîte englobante.
+        for (auto it = hoverCache_.rbegin(); it != hoverCache_.rend(); ++it) {
+            if (it->bounds.contains(*sceneMm) && it->path.contains(*sceneMm)) {
+                if (!isObjectSelected(it->id)) {
+                    under = &*it;
+                }
+                break;
+            }
+        }
+    }
+    if (under == nullptr) {
+        if (hoverItem_ != nullptr) {
+            hoverItem_->setVisible(false);
+        }
+        return;
+    }
+    if (hoverItem_ == nullptr) {
+        hoverItem_ = new QGraphicsPathItem();
+        QPen pen(AppTheme::instance().tokens().accent, 2.0, Qt::DashLine);
+        pen.setCosmetic(true);
+        hoverItem_->setPen(pen);
+        hoverItem_->setBrush(Qt::NoBrush);
+        hoverItem_->setZValue(11.0); // au-dessus des formes (10), sous les poignées (100+)
+        hoverItem_->setAcceptedMouseButtons(Qt::NoButton);
+        hoverItem_->setAcceptHoverEvents(false);
+        scene_->addItem(hoverItem_);
+    }
+    hoverItem_->setPath(under->path);
+    hoverItem_->setVisible(true);
+}
+
+void MainWindow::scheduleHoverHighlight(QPointF sceneMm) {
+    // Coalescence : le premier mouvement est traité aussitôt (réactivité), les suivants
+    // attendent la fin du pas de 16 ms, avec seulement le dernier point retenu.
+    if (hoverTimer_ == nullptr) {
+        hoverTimer_ = new QTimer(this);
+        hoverTimer_->setSingleShot(true);
+        hoverTimer_->setInterval(16);
+        connect(hoverTimer_, &QTimer::timeout, this, [this] {
+            if (hoverPending_) {
+                const QPointF pos = *hoverPending_;
+                hoverPending_.reset();
+                updateHoverHighlight(pos);
+                hoverTimer_->start();
+            }
+        });
+    }
+    if (hoverTimer_->isActive()) {
+        hoverPending_ = sceneMm;
+        return;
+    }
+    hoverPending_.reset();
+    updateHoverHighlight(sceneMm);
+    hoverTimer_->start();
+}
+
+void MainWindow::hideHoverHighlight() {
+    hoverPending_.reset();
+    if (hoverItem_ != nullptr) {
+        hoverItem_->setVisible(false);
+    }
 }
 
 void MainWindow::updateSnapIndicator(std::optional<QPointF> snapSceneMm) {
@@ -1859,9 +2113,7 @@ void MainWindow::finishSatinColumn() {
             std::move(vectors), std::move(embroideries), "Colonne satin (création manuelle)"),
         project_);
 
-    selectedEmbroidery_ = newEmbId;
-    selectedObject_.reset();
-    selectedRegion_.reset();
+    setSelection({.region = std::nullopt, .embroidery = newEmbId, .objects = {}});
     showStitchesAct_->setChecked(true);
     cancelSatinColumnDraw();
     setTool(Tool::Select);
@@ -2119,9 +2371,9 @@ void MainWindow::addVectorPrimitive(geometry::Path path, const QString& name) {
 
     undoStack_.execute(std::make_unique<commands::AddVectorObjectCommand>(std::move(object)),
                        project_);
-    selectedObject_ = project_.vector_objects.back().id;
-    selectedRegion_.reset();
-    selectedEmbroidery_.reset();
+    setSelection({.region = std::nullopt,
+                  .embroidery = std::nullopt,
+                  .objects = {project_.vector_objects.back().id}});
     showVectorsAct_->setChecked(true);
     refreshImage();
     updateActions();
@@ -2132,19 +2384,15 @@ void MainWindow::addVectorPrimitive(geometry::Path path, const QString& name) {
 void MainWindow::refreshImage() {
     applyCanvasToView();     // taille du cadre (peut avoir changé : réglage, undo, chargement)
     setWindowModified(true); // toute régénération suit une mutation du document
+    // Une sélection qui ne correspond plus à une région, un objet vectoriel ou
+    // de broderie vivant est élaguée (undo/redo, nouvelle segmentation,
+    // suppression, rechargement) ; le dernier objet restant devient le principal.
+    pruneSelection();
+    Q_ASSERT(checkSelectionInvariants());
     if (!project_.hasImage()) {
         processed_ = {};
         displayImage(processed_); // affiche quand même une séquence importée
         return;
-    }
-    // Une sélection qui ne correspond plus à une région ou un objet vivant
-    // est annulée (undo/redo, nouvelle segmentation, suppression…).
-    if (selectedRegion_ &&
-        (!project_.segmentation || project_.segmentation->find(*selectedRegion_) == nullptr)) {
-        selectedRegion_.reset();
-    }
-    if (selectedObject_ && project_.findObject(*selectedObject_) == nullptr) {
-        selectedObject_.reset();
     }
     // L'image de travail ne dépend que de l'original et de la pile
     // d'opérations : inutile de rejouer le pipeline (quantification,
@@ -2233,6 +2481,8 @@ void MainWindow::renderBase(const image::Image& img) {
         delete it;
     }
     baseItems_.clear();
+    hoverCacheValid_ = false; // les contours ont pu changer
+    hideHoverHighlight();     // la sélection/les objets ont pu changer
 
     if (!img.empty() && (showImageAct_ == nullptr || showImageAct_->isChecked())) {
         const QImage qimg(img.rgba.data(), img.width, img.height, img.width * 4,
@@ -2253,7 +2503,7 @@ void MainWindow::renderBase(const image::Image& img) {
             if (!object.visible) {
                 continue;
             }
-            const bool selected = selectedObject_ && object.id == *selectedObject_;
+            const bool selected = isObjectSelected(object.id);
             const QColor color(object.rgb[0], object.rgb[1], object.rgb[2]);
             const QPainterPath outline = objectPainterPath(object);
             // Sélection à DOUBLE contraste : un halo clair sous un trait d'accent,
@@ -2278,20 +2528,40 @@ void MainWindow::renderBase(const image::Image& img) {
             // usage réel — cf. VectorObjectBodyItem).
             if (selected && currentTool_ == Tool::Select) {
                 const ObjectId objectId = object.id;
-                auto* bodyItem = new VectorObjectBodyItem(
-                    outline, pen, brush, [this, objectId](QPointF deltaSceneMm) {
-                        const Vec2um delta = sceneMmToModel(deltaSceneMm);
-                        // Diffère : refreshImage() détruirait cet item pendant son
-                        // propre événement souris (même défaut que NodeHandleItem).
-                        QTimer::singleShot(0, this, [this, objectId, delta] {
-                            undoStack_.execute(
-                                std::make_unique<commands::TranslateVectorObjectCommand>(objectId,
-                                                                                         delta),
-                                project_);
-                            refreshImage();
-                            updateActions();
-                        });
+                auto* bodyItem = new VectorObjectBodyItem(outline, pen, brush, {});
+                // Modificateurs lus sur le relâchement : Maj = verrou d'axe (déjà
+                // appliqué par l'item), Alt = dupliquer en déplaçant (M4). L'accroche
+                // (Ctrl la suspend) n'existe pas pour le glisser de corps.
+                bodyItem->setReleasedWithModifiers([this, objectId](QPointF deltaSceneMm,
+                                                                    Qt::KeyboardModifiers mods) {
+                    const Vec2um delta = sceneMmToModel(deltaSceneMm);
+                    const std::uint64_t generation = documentGeneration_;
+                    // Alt + simple clic (mouvement <= seuil de glisser) : « Sélectionner
+                    // dessous » côté canevas, pas de copie.
+                    const bool duplicate = (mods & Qt::AltModifier) != 0 &&
+                                           deltaSceneMm.manhattanLength() * view_->pixelsPerMm() >
+                                               QApplication::startDragDistance();
+                    // Diffère : refreshImage() détruirait cet item pendant son
+                    // propre événement souris (même défaut que NodeHandleItem).
+                    // Glisser un membre d'une multi-sélection déplace tout
+                    // l'ensemble (même helper que les flèches : un seul pas).
+                    QTimer::singleShot(0, this, [this, objectId, delta, duplicate, generation] {
+                        if (generation != documentGeneration_) {
+                            return; // document remplacé entre-temps : aucune commande périmée
+                        }
+                        if (duplicate) {
+                            duplicateAndTranslate(hasMultiSelection() && isObjectSelected(objectId)
+                                                      ? selectedObjectIds()
+                                                      : std::vector<ObjectId>{objectId},
+                                                  delta);
+                            return;
+                        }
+                        translateObjects(hasMultiSelection() && isObjectSelected(objectId)
+                                             ? selectedObjectIds()
+                                             : std::vector<ObjectId>{objectId},
+                                         delta);
                     });
+                });
                 scene_->addItem(bodyItem);
                 pathItem = bodyItem;
             } else {
@@ -2312,7 +2582,7 @@ void MainWindow::renderBase(const image::Image& img) {
         // nœuds Lisse : glisser une poignée édite la courbe sans déplacer le
         // nœud — même principe que le remodelage des rails satin, § courbes
         // de Bézier).
-        if (selectedObject_) {
+        if (selectedObject_ && !hasMultiSelection()) {
             if (const auto* object = project_.findObject(*selectedObject_)) {
                 for (std::size_t s = 0; s < object->paths.size(); ++s) {
                     const auto& set = object->paths[s];
@@ -2324,27 +2594,36 @@ void MainWindow::renderBase(const image::Image& img) {
                                                   -to_millimeters(pos.y).value);
                             const ObjectId objectId = object->id;
                             const document::NodeRef ref{s, pathIdx, n};
+                            // Relâchement avec modificateurs : Maj = verrou d'axe (appliqué
+                            // par l'item), Ctrl = suspend l'accroche (lignes N2/N2b). Avec le
+                            // réglage « Accrochage des nœuds au glisser » (désactivé par défaut),
+                            // le nœud s'accroche aux SOMMETS des autres objets.
+                            const auto commitNodeMove = [this, objectId, ref,
+                                                         pos](QPointF releasedSceneMm,
+                                                              Qt::KeyboardModifiers mods) {
+                                QPointF newSceneMm = releasedSceneMm;
+                                if (snapNodesAct_ != nullptr && snapNodesAct_->isChecked() &&
+                                    (mods & (Qt::ControlModifier | Qt::ShiftModifier)) == 0) {
+                                    newSceneMm =
+                                        findNodeSnapMm(newSceneMm, objectId).value_or(newSceneMm);
+                                }
+                                const Vec2um newPos{to_micrometers(Millimeters{newSceneMm.x()}),
+                                                    to_micrometers(Millimeters{-newSceneMm.y()})};
+                                if (newPos == pos) {
+                                    return;
+                                }
+                                // Diffère : refreshImage() détruirait cette poignée
+                                // pendant son propre événement souris (crash).
+                                QTimer::singleShot(0, this, [this, objectId, ref, pos, newPos] {
+                                    undoStack_.execute(std::make_unique<commands::MoveNodeCommand>(
+                                                           objectId, ref, pos, newPos),
+                                                       project_);
+                                    refreshImage();
+                                    updateActions();
+                                });
+                            };
                             auto* handle = new NodeHandleItem(
-                                sceneMm,
-                                [this, objectId, ref, pos](QPointF newSceneMm) {
-                                    const Vec2um newPos{
-                                        to_micrometers(Millimeters{newSceneMm.x()}),
-                                        to_micrometers(Millimeters{-newSceneMm.y()})};
-                                    if (newPos == pos) {
-                                        return;
-                                    }
-                                    // Diffère : refreshImage() détruirait cette poignée
-                                    // pendant son propre événement souris (crash).
-                                    QTimer::singleShot(0, this, [this, objectId, ref, pos, newPos] {
-                                        undoStack_.execute(
-                                            std::make_unique<commands::MoveNodeCommand>(
-                                                objectId, ref, pos, newPos),
-                                            project_);
-                                        refreshImage();
-                                        updateActions();
-                                    });
-                                },
-                                {},
+                                sceneMm, {}, {},
                                 // Clic droit sur un nœud : simplification manuelle d'une
                                 // forme (typiquement après vectorisation d'une région
                                 // segmentée — contour trop détaillé pour être exploitable
@@ -2374,6 +2653,7 @@ void MainWindow::renderBase(const image::Image& img) {
                                             });
                                     nodeMenu.exec(globalPos);
                                 });
+                            handle->setReleasedWithModifiers(commitNodeMove);
                             scene_->addItem(handle);
                             baseItems_.append(handle);
 
@@ -2452,7 +2732,7 @@ void MainWindow::renderBase(const image::Image& img) {
         // opposé (fixe) — jusqu'ici, redimensionner exigeait de déplacer
         // chaque nœud un par un (même défaut remonté que pour le déplacement
         // de forme entière, § VectorObjectBodyItem plus haut).
-        if (selectedObject_ && currentTool_ == Tool::Select) {
+        if (selectedObject_ && !hasMultiSelection() && currentTool_ == Tool::Select) {
             if (const auto* object = project_.findObject(*selectedObject_)) {
                 std::optional<Micrometers> minX, maxX, minY, maxY;
                 const auto scan = [&](const geometry::Path& path) {
@@ -3108,7 +3388,7 @@ void MainWindow::segmentImage() {
     const auto regionCount = seg->region_count();
     undoStack_.execute(std::make_unique<commands::SetSegmentationCommand>(std::move(*seg)),
                        project_);
-    selectedRegion_.reset();
+    editSelection([](Selection& sel) { sel.region.reset(); });
     showSegAct_->setChecked(true);
     refreshImage();
     updateActions();
@@ -3116,44 +3396,7 @@ void MainWindow::segmentImage() {
 }
 
 QPainterPath MainWindow::objectPainterPath(const document::VectorObject& object) {
-    QPainterPath painterPath;
-    painterPath.setFillRule(Qt::OddEvenFill);
-    // Scène en mm, Y vers le bas : inversion du repère physique.
-    const auto toScene = [](Vec2um p) {
-        return QPointF(to_millimeters(p.x).value, -to_millimeters(p.y).value);
-    };
-    const auto addPath = [&](const geometry::Path& path) {
-        const std::size_t n = path.nodes.size();
-        if (n == 0) {
-            return;
-        }
-        painterPath.moveTo(toScene(path.nodes[0].pos));
-        const std::size_t edges = path.closed ? n : n - 1;
-        for (std::size_t e = 0; e < edges; ++e) {
-            const auto& a = path.nodes[e];
-            const auto& b = path.nodes[(e + 1) % n];
-            // Segment courbe (au moins une tangente) -> cubique de Bézier
-            // réelle, jamais une approximation par segments droits : c'est ce
-            // même contour qui sert à l'affichage ET au hit-test des clics.
-            if (a.tan_out || b.tan_in) {
-                const QPointF c1 = a.tan_out ? toScene(a.pos + *a.tan_out) : toScene(a.pos);
-                const QPointF c2 = b.tan_in ? toScene(b.pos + *b.tan_in) : toScene(b.pos);
-                painterPath.cubicTo(c1, c2, toScene(b.pos));
-            } else {
-                painterPath.lineTo(toScene(b.pos));
-            }
-        }
-        if (path.closed) {
-            painterPath.closeSubpath();
-        }
-    };
-    for (const auto& set : object.paths) {
-        addPath(set.outer);
-        for (const auto& hole : set.holes) {
-            addPath(hole);
-        }
-    }
-    return painterPath;
+    return objectScenePath(object); // contour unique partagé avec la détection de sélection
 }
 
 void MainWindow::vectorizeSelectedRegion() {
@@ -3181,7 +3424,10 @@ void MainWindow::vectorizeSelectedRegion() {
 
     undoStack_.execute(std::make_unique<commands::AddVectorObjectCommand>(std::move(object)),
                        project_);
-    selectedObject_ = project_.vector_objects.back().id;
+    {
+        const ObjectId created = project_.vector_objects.back().id;
+        editSelection([created](Selection& sel) { sel.objects = {created}; });
+    }
     showVectorsAct_->setChecked(true);
     refreshImage();
     updateActions();
@@ -3189,7 +3435,7 @@ void MainWindow::vectorizeSelectedRegion() {
 }
 
 void MainWindow::createRunningStitchObject() {
-    if (!selectedObject_) {
+    if (!selectedObject_ || hasMultiSelection()) {
         return;
     }
     const auto* source = project_.findObject(*selectedObject_);
@@ -3244,7 +3490,7 @@ void MainWindow::createRunningStitchObject() {
 }
 
 void MainWindow::createTatamiObject() {
-    if (!selectedObject_) {
+    if (!selectedObject_ || hasMultiSelection()) {
         return;
     }
     const auto* source = project_.findObject(*selectedObject_);
@@ -3293,11 +3539,12 @@ void MainWindow::createTatamiObject() {
     object.params = params;
     object.intent = document::EmbroideryIntent::ForcedUserChoice;
 
-    // Sélectionne le nouveau remplissage pour que « Orientation du remplissage… »
-    // s'applique directement à lui.
-    selectedEmbroidery_ = object.id;
+    // Sélectionne le nouveau remplissage (APRÈS l'exécution réussie, jamais un id
+    // inexistant) pour que « Orientation du remplissage… » s'applique à lui.
+    const ObjectId createdId = object.id;
     undoStack_.execute(std::make_unique<commands::AddEmbroideryObjectCommand>(std::move(object)),
                        project_);
+    editSelection([createdId](Selection& sel) { sel.embroidery = createdId; });
     showStitchesAct_->setChecked(true);
     refreshImage();
     updateActions();
@@ -3733,7 +3980,7 @@ void MainWindow::openAiPreferences() {
 }
 
 void MainWindow::createSatinObject() {
-    if (!selectedObject_) {
+    if (!selectedObject_ || hasMultiSelection()) {
         return;
     }
     const auto* source = project_.findObject(*selectedObject_);
@@ -3972,7 +4219,7 @@ void MainWindow::onSatinCutLineCommitted(QPointF anchorMm, QPointF handleMm) {
 }
 
 bool MainWindow::createSatinObjectWithCutLine(Vec2um cutA, Vec2um cutB) {
-    if (!selectedObject_) {
+    if (!selectedObject_ || hasMultiSelection()) {
         statusBar()->showMessage(
             tr("Sélectionnez d'abord la forme à découper avant de tracer la ligne de coupe."),
             4000);
@@ -4152,7 +4399,7 @@ document::EmbroideryObject* MainWindow::currentFillObject() {
             return emb;
         }
     }
-    if (selectedObject_) {
+    if (selectedObject_ && !hasMultiSelection()) {
         for (auto& emb : project_.embroidery_objects) {
             if (emb.source_vector == *selectedObject_ && emb.is_tatami()) {
                 return &emb;
@@ -4210,7 +4457,7 @@ document::EmbroideryObject* MainWindow::embroideryForVector(ObjectId vectorId) {
 }
 
 void MainWindow::autoConvertToSatin() {
-    if (!selectedObject_) {
+    if (!selectedObject_ || hasMultiSelection()) {
         return;
     }
     const auto* source = project_.findObject(*selectedObject_);
@@ -4519,10 +4766,18 @@ void MainWindow::onCanvasContextMenu(QPointF posMm, QPoint globalPos) {
     document::EmbroideryObject* emb = nullptr;
     std::optional<ObjectId> vecId; // objet vectoriel à supprimer/dupliquer, si pertinent
 
-    if (hit) {
-        selectedObject_ = hit;
-        selectedRegion_.reset();
-        selectedEmbroidery_.reset();
+    if (hit && hasMultiSelection() && isObjectSelected(*hit)) {
+        // Clic droit sur un membre de la multi-sélection : on la garde ; seules les
+        // entrées qui valent pour tout l'ensemble sont proposées (les entrées
+        // mono-objet -- type de points, dupliquer, décaler -- sont absentes).
+        auto* title = menu.addAction(tr("%1 objets").arg(multiSelection_.size()));
+        title->setEnabled(false);
+        menu.addSeparator();
+        auto* deleteAllAct = menu.addAction(tr("&Supprimer %1 objets").arg(multiSelection_.size()));
+        deleteAllAct->setObjectName(QStringLiteral("contextDeleteSelection"));
+        connect(deleteAllAct, &QAction::triggered, this, &MainWindow::deleteSelection);
+    } else if (hit) {
+        setSelection({.region = std::nullopt, .embroidery = std::nullopt, .objects = {*hit}});
         const auto* vec = project_.findObject(*hit);
         emb = embroideryForVector(*hit);
         if (vec != nullptr) {
@@ -4537,9 +4792,7 @@ void MainWindow::onCanvasContextMenu(QPointF posMm, QPoint globalPos) {
         // le débogage ne seraient jamais accessibles pour ces objets.
         emb = satinHit;
         vecId = emb->source_vector; // proxy caché : sa suppression entraîne le satin
-        selectedEmbroidery_ = emb->id;
-        selectedObject_.reset();
-        selectedRegion_.reset();
+        setSelection({.region = std::nullopt, .embroidery = emb->id, .objects = {}});
         auto* title = menu.addAction(QString::fromStdString(emb->name));
         title->setEnabled(false);
         menu.addSeparator();
@@ -4564,7 +4817,7 @@ void MainWindow::onCanvasContextMenu(QPointF posMm, QPoint globalPos) {
         if (emb->is_directional()) {
             auto* guides = menu.addAction(tr("Guides de direction…"));
             connect(guides, &QAction::triggered, this, [this, embId] {
-                selectedEmbroidery_ = embId;
+                editSelection([embId](Selection& sel) { sel.embroidery = embId; });
                 directionGuideModeAct_->setChecked(true);
             });
         }
@@ -4578,8 +4831,12 @@ void MainWindow::onCanvasContextMenu(QPointF posMm, QPoint globalPos) {
             connect(removeStitchAct, &QAction::triggered, this,
                     [this, embId] { deleteEmbroideryObjectOnly(embId); });
         }
-        auto* debugAct = menu.addAction(tr("&Déboguer : afficher toutes les données…"));
-        connect(debugAct, &QAction::triggered, this, [this, embId] { showDebugDump(embId); });
+        // Entrée de diagnostic réservée aux développeurs : masquée sauf si
+        // OPENSTITCH_DEBUG=1 (variable d'environnement) ou clé QSettings « debug/menu » à vrai.
+        if (debugMenuEnabled()) {
+            auto* debugAct = menu.addAction(tr("&Déboguer : afficher toutes les données…"));
+            connect(debugAct, &QAction::triggered, this, [this, embId] { showDebugDump(embId); });
+        }
     }
 
     if (vecId) {
@@ -4593,9 +4850,9 @@ void MainWindow::onCanvasContextMenu(QPointF posMm, QPoint globalPos) {
             connect(offsetAct, &QAction::triggered, this,
                     [this, targetVecId] { offsetVectorObject(targetVecId); });
         }
-        // Pas de raccourci Suppr ici : déjà utilisé par la suppression de
-        // région (action toujours active au niveau fenêtre) — un second
-        // raccourci identique créerait une ambiguïté Qt au lieu d'agir.
+        // Pas de raccourci Suppr ici : « Supprimer la sélection »
+        // (action_deleteRegion, universelle) le porte déjà au niveau fenêtre — un
+        // second raccourci identique créerait une ambiguïté Qt au lieu d'agir.
         auto* deleteAct = menu.addAction(tr("&Supprimer"));
         connect(deleteAct, &QAction::triggered, this,
                 [this, targetVecId] { deleteVectorObject(targetVecId); });
@@ -4621,14 +4878,10 @@ void MainWindow::deleteVectorObject(ObjectId id) {
     const auto* obj = project_.findObject(id);
     const QString name = obj != nullptr ? QString::fromStdString(obj->name) : tr("objet");
     undoStack_.execute(std::make_unique<commands::RemoveVectorObjectCommand>(id), project_);
-    if (selectedObject_ == id) {
-        selectedObject_.reset();
-    }
-    // La broderie rattachée disparaît avec l'objet vectoriel : si elle était
-    // ciblée par la sélection, celle-ci ne doit pas pointer dans le vide.
-    if (selectedEmbroidery_ && project_.findEmbroidery(*selectedEmbroidery_) == nullptr) {
-        selectedEmbroidery_.reset();
-    }
+    // L'objet supprimé quitte la sélection (principal compris : le précédent
+    // est promu) ; la broderie rattachée disparaît avec lui : si elle était
+    // ciblée, la sélection ne doit pas pointer dans le vide.
+    pruneSelection();
     refreshImage();
     updateActions();
     statusBar()->showMessage(tr("« %1 » supprimé.").arg(name));
@@ -4638,9 +4891,11 @@ void MainWindow::deleteEmbroideryObjectOnly(ObjectId id) {
     const auto* obj = project_.findEmbroidery(id);
     const QString name = obj != nullptr ? QString::fromStdString(obj->name) : tr("objet");
     undoStack_.execute(std::make_unique<commands::RemoveEmbroideryObjectCommand>(id), project_);
-    if (selectedEmbroidery_ == id) {
-        selectedEmbroidery_.reset();
-    }
+    editSelection([id](Selection& sel) {
+        if (sel.embroidery == id) {
+            sel.embroidery.reset();
+        }
+    });
     refreshImage();
     updateActions();
     statusBar()->showMessage(tr("Broderie « %1 » supprimée (forme conservée).").arg(name));
@@ -4670,12 +4925,38 @@ void MainWindow::duplicateVectorObject(ObjectId id) {
     }
     const QString sourceName = QString::fromStdString(source->name);
     undoStack_.execute(std::make_unique<commands::AddVectorObjectCommand>(copy), project_);
-    selectedObject_ = copy.id;
-    selectedRegion_.reset();
-    selectedEmbroidery_.reset();
+    setSelection({.region = std::nullopt, .embroidery = std::nullopt, .objects = {copy.id}});
     refreshImage();
     updateActions();
     statusBar()->showMessage(tr("« %1 » dupliqué.").arg(sourceName));
+}
+
+void MainWindow::duplicateAndTranslate(const std::vector<ObjectId>& ids, Vec2um delta) {
+    // Copie(s) + translation des COPIES = UN pas d'annulation ; les originaux ne bougent pas.
+    auto composite =
+        std::make_unique<commands::CompositeCommand>(tr("Dupliquer en déplaçant").toStdString());
+    std::vector<ObjectId> copies;
+    for (const ObjectId id : ids) {
+        const auto* source = project_.findObject(id);
+        if (source == nullptr) {
+            continue;
+        }
+        document::VectorObject copy = *source;
+        copy.id = project_.object_ids.next();
+        copy.name = tr("%1 (copie)").arg(QString::fromStdString(source->name)).toStdString();
+        copies.push_back(copy.id);
+        composite->add(std::make_unique<commands::AddVectorObjectCommand>(std::move(copy)));
+        composite->add(
+            std::make_unique<commands::TranslateVectorObjectCommand>(copies.back(), delta));
+    }
+    if (copies.empty()) {
+        return;
+    }
+    undoStack_.execute(std::move(composite), project_);
+    setSelection({.region = std::nullopt, .embroidery = std::nullopt, .objects = copies});
+    refreshImage();
+    updateActions();
+    statusBar()->showMessage(tr("%1 objet(s) dupliqué(s) et déplacé(s).").arg(copies.size()));
 }
 
 void MainWindow::offsetVectorObject(ObjectId id) {
@@ -4746,9 +5027,7 @@ void MainWindow::offsetVectorObjectCore(ObjectId id, Micrometers delta) {
     undoStack_.execute(std::make_unique<commands::AddObjectBatchCommand>(
                            std::move(batch), std::vector<document::EmbroideryObject>{}, "Décalage"),
                        project_);
-    selectedObject_ = newId;
-    selectedRegion_.reset();
-    selectedEmbroidery_.reset();
+    setSelection({.region = std::nullopt, .embroidery = std::nullopt, .objects = {newId}});
     showVectorsAct_->setChecked(true);
     refreshImage();
     updateActions();
@@ -5066,27 +5345,172 @@ void MainWindow::buildHelpMenu() {
     connect(fitShortcut, &QShortcut::activated, view_, &CanvasView::fitCanvas);
 
     auto* helpMenu = menuBar()->addMenu(tr("Aid&e"));
-    auto* shortcutsAct = helpMenu->addAction(tr("&Raccourcis clavier…"));
-    connect(shortcutsAct, &QAction::triggered, this, [this] {
-        QMessageBox::information(this, tr("Raccourcis clavier"),
-                                 tr("Ctrl+O   Ouvrir une image\n"
-                                    "Ctrl+S   Enregistrer le projet\n"
-                                    "Ctrl+Z / Ctrl+Y   Annuler / Rétablir\n"
-                                    "Suppr   Supprimer la région sélectionnée\n"
-                                    "Ctrl++ / Ctrl+- / Ctrl+0   Zoom avant / arrière / ajuster\n"
-                                    "F   Ajuster au canevas\n"
-                                    "F5   Analyser le motif\n"
-                                    "V / H / M   Outils : Sélection / Déplacer la vue / Rectangle\n"
-                                    "Échap   Revenir à la Sélection\n"
-                                    "Ctrl+Shift+P   Masquer / afficher les panneaux"));
+    helpMenu->setObjectName(QStringLiteral("menu_help"));
+
+    helpQuickStartAct_ = helpMenu->addAction(tr("&Guide de prise en main"));
+    helpQuickStartAct_->setObjectName(QStringLiteral("action_help_quickstart"));
+    helpQuickStartAct_->setToolTip(
+        tr("Les six étapes de l'image au fichier DST, avec un bouton par commande"));
+    helpQuickStartAct_->setStatusTip(
+        tr("Guide de prise en main : de l'image au fichier DST en six étapes"));
+    connect(helpQuickStartAct_, &QAction::triggered, this, &MainWindow::showQuickStartDialog);
+
+    helpGesturesAct_ = helpMenu->addAction(tr("Gestes &souris et clavier"));
+    helpGesturesAct_->setObjectName(QStringLiteral("action_help_gestures"));
+    helpGesturesAct_->setShortcut(QKeySequence(Qt::Key_F1));
+    helpGesturesAct_->setToolTip(tr("Tous les gestes de la souris et les raccourcis clavier (F1)"));
+    helpGesturesAct_->setStatusTip(
+        tr("Tableau consultable des gestes souris et des raccourcis clavier"));
+    connect(helpGesturesAct_, &QAction::triggered, this, &MainWindow::showGesturesDialog);
+
+    aboutAct_ = helpMenu->addAction(tr("À &propos"));
+    aboutAct_->setObjectName(QStringLiteral("action_about"));
+    aboutAct_->setToolTip(tr("Version, licence et code source"));
+    aboutAct_->setStatusTip(tr("Version, licence et code source d'OpenStitch"));
+    connect(aboutAct_, &QAction::triggered, this,
+            [this] { QMessageBox::about(this, tr("À propos"), aboutText()); });
+}
+
+void MainWindow::showGesturesDialog() {
+    if (gesturesDialog_ != nullptr) {
+        gesturesDialog_->refresh();
+        gesturesDialog_->show();
+        gesturesDialog_->raise();
+        gesturesDialog_->activateWindow();
+        return;
+    }
+    // Tas + WA_DeleteOnClose : non modal, une seule instance (QPointer).
+    auto* dialog = new GesturesDialog(this, this);
+    dialog->setAttribute(Qt::WA_DeleteOnClose);
+    connect(dialog, &GesturesDialog::presetChanged, this, [this](Preset preset) {
+        // Le dialogue a déjà appliqué et enregistré le préréglage : on aligne le menu.
+        QAction* act = preset == Preset::Touchpad ? navTouchpadAct_ : navOpenStitchAct_;
+        if (act != nullptr) {
+            act->setChecked(true);
+        }
+        refreshHints();
     });
-    auto* aboutAct = helpMenu->addAction(tr("À &propos"));
-    connect(aboutAct, &QAction::triggered, this, [this] {
-        QMessageBox::about(
-            this, tr("À propos"),
-            tr("%1 %2\nNumérisation de broderie machine, logiciel libre (Apache-2.0).")
-                .arg(QString::fromUtf8(kAppName), QString::fromUtf8(kAppVersion)));
-    });
+    gesturesDialog_ = dialog;
+    dialog->show();
+}
+
+void MainWindow::showQuickStartDialog() {
+    if (quickStartDialog_ != nullptr) {
+        quickStartDialog_->show();
+        quickStartDialog_->raise();
+        quickStartDialog_->activateWindow();
+        return;
+    }
+    // Étapes construites à partir des QAction MEMBRES (libellés non dupliqués) ;
+    // les textes viennent du dialogue.
+    std::vector<QuickStartStep> steps = QuickStartDialog::defaultSteps();
+    const std::vector<QAction*> primary = {openImageAct_,    segmentAct_, vectorizeRegionAct_,
+                                           createTatamiAct_, analyzeAct_, exportDstAct_};
+    for (std::size_t i = 0; i < steps.size() && i < primary.size(); ++i) {
+        steps[i].action = primary[i];
+        steps[i].informative = false;
+    }
+    if (steps.size() > 2) {
+        steps[2].actionNames = {QStringLiteral("action_autoDigitize")};
+    }
+    if (steps.size() > 3) {
+        steps[3].actionNames = {QStringLiteral("action_createStitch")};
+    }
+    auto* dialog = new QuickStartDialog(this, std::move(steps), this);
+    dialog->setAttribute(Qt::WA_DeleteOnClose);
+    quickStartDialog_ = dialog;
+    dialog->show();
+}
+
+void MainWindow::buildNavigationMenu(QMenu* viewMenu) {
+    // Préréglage persistant (QSettings « navigation/preset »), appliqué avant de
+    // cocher l'entrée correspondante.
+    InteractionMap::loadPreset();
+    auto* navMenu = viewMenu->addMenu(tr("&Navigation"));
+    navMenu->setObjectName(QStringLiteral("menu_navigation"));
+    navMenu->setToolTipsVisible(true);
+    navigationGroup_ = new QActionGroup(this);
+    navigationGroup_->setExclusive(true);
+    const auto addPreset = [&](const QString& label, const QString& objectName, const QString& tip,
+                               Preset preset) {
+        auto* act = navMenu->addAction(label);
+        act->setObjectName(objectName);
+        act->setCheckable(true);
+        act->setChecked(InteractionMap::preset() == preset);
+        act->setToolTip(tip);
+        act->setStatusTip(tip);
+        navigationGroup_->addAction(act);
+        connect(act, &QAction::triggered, this, [this, preset] { applyNavigationPreset(preset); });
+        return act;
+    };
+    navOpenStitchAct_ =
+        addPreset(tr("&OpenStitch"), QStringLiteral("navPresetOpenStitch"),
+                  tr("Souris à trois boutons : clic molette = panoramique, molette = zoom"),
+                  Preset::OpenStitch);
+    navTouchpadAct_ =
+        addPreset(tr("Pavé &tactile"), QStringLiteral("navPresetTouchpad"),
+                  tr("Sans clic molette : Espace + glisser = panoramique, Ctrl + molette = zoom"),
+                  Preset::Touchpad);
+}
+
+void MainWindow::applyNavigationPreset(Preset preset) {
+    InteractionMap::setPreset(preset);
+    InteractionMap::savePreset();
+    QAction* act = preset == Preset::Touchpad ? navTouchpadAct_ : navOpenStitchAct_;
+    if (act != nullptr && !act->isChecked()) {
+        act->setChecked(true);
+    }
+    refreshHints();
+    if (gesturesDialog_ != nullptr) {
+        gesturesDialog_->refresh();
+    }
+}
+
+Context MainWindow::interactionContext() const {
+    // Même priorité que CanvasView::currentContext : un outil de dessin / recadrage prime sur les
+    // modes d'édition, l'outil Déplacer la vue est toujours Pan ; seuls les modes d'édition de
+    // nœuds / de points passent devant l'outil Sélection.
+    if (currentTool_ == Tool::Pan) {
+        return Context::Pan;
+    }
+    if (currentTool_ != Tool::Select) {
+        return InteractionMap::contextFor(currentTool_, false, false);
+    }
+    const bool nodeEdit =
+        (satinEditModeAct_ != nullptr && satinEditModeAct_->isChecked()) ||
+        (satinGuideModeAct_ != nullptr && satinGuideModeAct_->isChecked()) ||
+        (railEditModeAct_ != nullptr && railEditModeAct_->isChecked()) ||
+        (directionGuideModeAct_ != nullptr && directionGuideModeAct_->isChecked());
+    const bool stitchEdit = stitchEditModeAct_ != nullptr && stitchEditModeAct_->isChecked();
+    return InteractionMap::contextFor(Tool::Select, nodeEdit, stitchEdit);
+}
+
+void MainWindow::updateInteractionContext() {
+    if (view_ == nullptr) {
+        return;
+    }
+    // Le canevas dérive lui-même Crop/Draw* de ses booléens de mode : on ne lui donne que le
+    // contexte de base (Select, Pan, NodeEdit, StitchEdit) ; pour les autres outils : Select.
+    const Context logical = interactionContext();
+    const bool baseContext = logical == Context::Select || logical == Context::Pan ||
+                             logical == Context::NodeEdit || logical == Context::StitchEdit;
+    view_->setBaseContext(baseContext ? logical : Context::Select);
+    view_->setSelectionRectangleEnabled(currentTool_ == Tool::Select);
+    refreshHints();
+}
+
+void MainWindow::refreshHints() {
+    if (hintsLabel_ == nullptr) {
+        return;
+    }
+    const QList<Hint> hints =
+        InteractionMap::hintsFor(interactionContext(), heldModifiers_, selectedObject_.has_value());
+    QStringList parts;
+    for (const Hint& hint : hints) {
+        parts << tr("%1 : %2").arg(hint.gesture, hint.label);
+    }
+    hintsFullText_ = parts.join(QStringLiteral("  ·  "));
+    static_cast<ElidedLabel*>(hintsLabel_)->setFullText(hintsFullText_);
 }
 
 void MainWindow::buildMainToolbar() {
@@ -5135,7 +5559,7 @@ document::EmbroideryObject* MainWindow::resolveSelectedEmbroidery() {
     if (selectedEmbroidery_) {
         emb = project_.findEmbroidery(*selectedEmbroidery_);
     }
-    if (emb == nullptr && selectedObject_) {
+    if (emb == nullptr && selectedObject_ && !hasMultiSelection()) {
         emb = embroideryForVector(*selectedObject_);
     }
     return emb;
@@ -5155,7 +5579,8 @@ void MainWindow::updateContextToolbar() {
         return;
     }
     const document::EmbroideryObject* emb = resolveSelectedEmbroidery();
-    const bool hasVec = selectedObject_.has_value();
+    const bool hasMulti = hasMultiSelection();
+    const bool hasVec = selectedObject_.has_value() && !hasMulti;
     const bool hasReg = selectedRegion_ && project_.segmentation;
     const int pts = sequence_ ? static_cast<int>(sequence_->commands.size()) : 0;
 
@@ -5175,6 +5600,8 @@ void MainWindow::updateContextToolbar() {
                   .arg(selectedSatinGuide_ ? static_cast<qlonglong>(*selectedSatinGuide_) : -1)
                   .arg(railEditModeAct_->isChecked() ? 1 : 0) +
               QStringLiteral("d%1").arg(directionGuideModeAct_->isChecked() ? 1 : 0);
+    } else if (hasMulti) {
+        sig = QStringLiteral("M%1").arg(multiSelection_.size());
     } else if (hasVec) {
         sig = QStringLiteral("V%1").arg(selectedObject_->value);
     } else if (hasReg) {
@@ -5189,7 +5616,42 @@ void MainWindow::updateContextToolbar() {
         return;
     }
     contextSig_ = sig;
+    // QToolBar::clear() ne détruit ni les actions ni les widgets créés par addAction(texte)
+    // / addWidget() : ils s'accumulaient comme enfants de la barre à chaque reconstruction.
+    // On détruit ceux que la barre possède ; les actions persistantes (membres *_Act_,
+    // parentées à la fenêtre) sont seulement retirées. Détachés tout de suite (le compte
+    // d'enfants reste stable) mais détruits en différé : cette méthode peut être appelée
+    // depuis le slot d'un des boutons qu'on retire.
+    const QList<QAction*> previous = contextToolbar_->actions();
     contextToolbar_->clear();
+    for (QAction* old : previous) {
+        if (old->parent() != contextToolbar_) {
+            continue;
+        }
+        if (auto* widgetAct = qobject_cast<QWidgetAction*>(old)) {
+            if (QWidget* w = widgetAct->defaultWidget()) {
+                w->hide();
+                w->setParent(nullptr);
+                w->deleteLater();
+            }
+        }
+        old->setParent(nullptr);
+        old->deleteLater();
+    }
+    // Le layout de la barre crée un QToolButton par action simple et ne le détruit qu'en
+    // différé (deleteLater) : tant que la boucle d'évènements n'a pas tourné, ils restent
+    // enfants de la barre. On les détache tout de suite (leur destruction différée suit son
+    // cours) ; le bouton d'extension (« >> ») est permanent et reste en place. Dépend d'un
+    // détail interne de Qt : l'objectName "qt_toolbar_ext_button" du QToolBarExtension
+    // (stable de Qt 5 à 6.8) ; s'il changeait, le bouton serait détaché puis détruit, et la
+    // barre n'afficherait plus le menu de débordement (sans plantage).
+    for (auto* stale : contextToolbar_->findChildren<QToolButton*>(Qt::FindDirectChildrenOnly)) {
+        if (stale->objectName() != QLatin1String("qt_toolbar_ext_button")) {
+            stale->hide();
+            stale->setParent(nullptr);
+            stale->deleteLater();
+        }
+    }
 
     if (emb != nullptr) {
         const ObjectId id = emb->id;
@@ -5242,6 +5704,9 @@ void MainWindow::updateContextToolbar() {
             auto* discard = contextToolbar_->addAction(tr("Abandonner les retouches"));
             connect(discard, &QAction::triggered, this, [this, id] { discardOverrides(id); });
         }
+    } else if (hasMulti) {
+        contextToolbar_->addWidget(
+            new QLabel(tr("%1 objets sélectionnés").arg(multiSelection_.size()), contextToolbar_));
     } else if (hasVec) {
         contextToolbar_->addWidget(
             new QLabel(tr("Objet vectoriel  ·  créer un objet de broderie :  "), contextToolbar_));
@@ -5570,6 +6035,8 @@ void MainWindow::setTool(Tool tool) {
                "Entrée/double-clic pour terminer, Échap pour annuler."));
     }
     updateDrawActionsState();
+    updateInteractionContext();
+    hideHoverHighlight();
 }
 
 void MainWindow::buildWorkflowPanel() {
@@ -5638,24 +6105,53 @@ void MainWindow::buildDocumentPanel() {
     }
 
     connect(documentPanel_, &DocumentPanel::embroiderySelected, this, [this](ObjectId id) {
-        selectedEmbroidery_ = id;
-        selectedRegion_.reset();
+        Selection sel{.region = std::nullopt, .embroidery = id, .objects = {}};
         if (const auto* e = project_.findEmbroidery(id);
             e != nullptr && project_.findObject(e->source_vector) != nullptr) {
-            selectedObject_ = e->source_vector; // met en évidence la forme au canevas
-        } else {
-            selectedObject_.reset();
+            sel.objects = {e->source_vector}; // met en évidence la forme au canevas
         }
+        setSelection(std::move(sel));
         displayImage(processed_);
         updateActions();
     });
     connect(documentPanel_, &DocumentPanel::regionSelected, this, [this](RegionId id) {
-        selectedRegion_ = id;
-        selectedObject_.reset();
-        selectedEmbroidery_.reset();
+        setSelection({.region = id, .embroidery = std::nullopt, .objects = {}});
         displayImage(processed_);
         updateActions();
     });
+}
+
+bool MainWindow::debugMenuEnabled() {
+    return qEnvironmentVariable("OPENSTITCH_DEBUG") == QLatin1String("1") ||
+           QSettings().value(QStringLiteral("debug/menu"), false).toBool();
+}
+
+void MainWindow::setDockAutoVisible(QDockWidget* dock, bool visible, bool force) {
+    if (dock == nullptr) {
+        return;
+    }
+    // Un rafraîchissement n'affiche un dock que lors de la transition vide -> non vide
+    // (premier contenu) : ensuite, la visibilité appartient à l'utilisateur (croix du dock,
+    // menu Affichage > Panneaux). `force` : demande explicite de l'utilisateur (Analyse).
+    const bool hadContent = dockHadContent_.value(dock, false);
+    dockHadContent_[dock] = visible;
+    const bool show = visible && (force || !hadContent);
+    if (!hidePanelsMode_) {
+        if (show) {
+            dock->show();
+        } else if (!visible) {
+            dock->hide();
+        }
+        return;
+    }
+    // Mode canevas seul : on ne touche pas à l'affichage, mais on tient la liste de
+    // restauration à jour pour que la sortie du mode reflète l'état voulu.
+    const auto it = std::find(panelsToRestore_.begin(), panelsToRestore_.end(), dock);
+    if (show && it == panelsToRestore_.end()) {
+        panelsToRestore_.push_back(dock);
+    } else if (!visible && it != panelsToRestore_.end()) {
+        panelsToRestore_.erase(it);
+    }
 }
 
 void MainWindow::refreshDocumentPanel() {
@@ -5663,7 +6159,7 @@ void MainWindow::refreshDocumentPanel() {
         return;
     }
     documentPanel_->refresh(project_, editStates_);
-    documentDock_->setVisible(project_.hasImage() || !project_.embroidery_objects.empty());
+    setDockAutoVisible(documentDock_, project_.hasImage() || !project_.embroidery_objects.empty());
     syncDocumentSelection();
 }
 
@@ -5714,7 +6210,7 @@ void MainWindow::buildPropertiesPanel() {
             [this](ObjectId id) {
                 if (auto* emb = project_.findEmbroidery(id);
                     emb != nullptr && emb->is_directional()) {
-                    selectedEmbroidery_ = id;
+                    editSelection([id](Selection& sel) { sel.embroidery = id; });
                     if (directionGuideModeAct_->isChecked()) {
                         directionGuideModeAct_->setChecked(false);
                     }
@@ -5736,6 +6232,9 @@ void MainWindow::updateInspector() {
     if (emb != nullptr) {
         kind = 0;
         id = emb->id.value;
+    } else if (hasMultiSelection()) {
+        kind = 3; // « N objets » : texte seul, pas d'édition
+        id = multiSelection_.size();
     } else if (selectedObject_) {
         kind = 1;
         id = selectedObject_->value;
@@ -5762,6 +6261,12 @@ void MainWindow::updateInspector() {
 
     if (kind == 0) {
         propertiesPanel_->showEmbroidery(*emb);
+    } else if (kind == 3) {
+        propertiesPanel_->showInfo(
+            tr("%1 objets").arg(multiSelection_.size()),
+            tr("%1 objets vectoriels sélectionnés.\nSupprimer : les retire tous en une seule "
+               "étape annulable. Sélectionnez un seul objet pour le modifier.")
+                .arg(multiSelection_.size()));
     } else if (kind == 1) {
         const auto* vec = project_.findObject(*selectedObject_);
         int nodes = 0;
@@ -5848,8 +6353,13 @@ void MainWindow::runAnalysis() {
             analysisList_->addItem(item);
         }
     }
-    analysisDock_->show();
-    analysisDock_->raise();
+    // Résultat d'une demande explicite (F5) : affiché d'office, sauf en mode canevas seul
+    // où le dock reste masqué (réaffiché à la sortie du mode) : seul le message d'état
+    // ci-dessous signale alors le résultat.
+    setDockAutoVisible(analysisDock_, true, /*force=*/true);
+    if (!hidePanelsMode_) {
+        analysisDock_->raise();
+    }
     statusBar()->showMessage(tr("Analyse : %1 problème(s) détecté(s)").arg(findings.size()));
 }
 
@@ -5895,12 +6405,15 @@ void MainWindow::buildOrderPanel() {
     layout->addWidget(orderList_, 1);
     connect(orderList_, &QListWidget::currentRowChanged, this, [this](int row) {
         if (row >= 0 && row < static_cast<int>(project_.embroidery_objects.size())) {
-            selectedObject_.reset(); // sélection d'objet vectoriel distincte
-            selectedEmbroidery_ = project_.embroidery_objects[static_cast<std::size_t>(row)].id;
+            // sélection d'objet vectoriel distincte
+            setSelection(
+                {.region = selectedRegion_,
+                 .embroidery = project_.embroidery_objects[static_cast<std::size_t>(row)].id,
+                 .objects = {}});
             updateActions();
             displayImage(processed_);
         } else {
-            selectedEmbroidery_.reset();
+            editSelection([](Selection& sel) { sel.embroidery.reset(); });
             updateActions();
         }
     });
@@ -5964,7 +6477,7 @@ void MainWindow::refreshOrderPanel() {
     orderCostLabel_->setText(tr("Trajet : %1 mm — %2 changement(s) de fil")
                                  .arg(cost.travel_um / 1000.0, 0, 'f', 1)
                                  .arg(cost.color_changes));
-    orderDock_->setVisible(!project_.embroidery_objects.empty());
+    setDockAutoVisible(orderDock_, !project_.embroidery_objects.empty());
 }
 
 int MainWindow::stitchTypeIndex(const document::EmbroideryObject& object) {
@@ -6103,7 +6616,7 @@ void MainWindow::refreshFilterPanel() {
         });
         colorFilterLayout_->addWidget(check);
     }
-    filterDock_->setVisible(!project_.embroidery_objects.empty());
+    setDockAutoVisible(filterDock_, !project_.embroidery_objects.empty());
 }
 
 void MainWindow::moveObjectUp() {
@@ -6310,7 +6823,8 @@ void MainWindow::saveProject() {
 }
 
 void MainWindow::saveProjectAs() {
-    if (!project_.hasImage() && project_.vector_objects.empty()) {
+    if (!project_.hasImage() && project_.vector_objects.empty() &&
+        project_.embroidery_objects.empty()) {
         QMessageBox::information(this, tr("Rien à enregistrer"),
                                  tr("Ouvrez une image et créez des objets d'abord."));
         return;
@@ -6420,6 +6934,8 @@ void MainWindow::refreshRecentFilesUi() {
     // QPushButton qui vient de déclencher cet appel).
     QTimer::singleShot(0, this, [this] {
         recentMenu_->clear();
+        recentMenu_->setEnabled(!recentFiles_.isEmpty());
+        clearRecentAct_->setEnabled(!recentFiles_.isEmpty());
         for (const QString& path : recentFiles_) {
             auto* action = recentMenu_->addAction(QFileInfo(path).fileName());
             action->setToolTip(path);
@@ -6698,7 +7214,9 @@ void MainWindow::onCanvasClicked(QPointF posMm) {
         return;
     }
     if (currentTool_ == Tool::DrawPolygon) {
-        posMm = findSnapPointMm(posMm).value_or(posMm);
+        if (!snapSuspended()) {
+            posMm = findSnapPointMm(posMm).value_or(posMm);
+        }
         const Vec2um v = sceneMmToModel(posMm);
         if (!pendingPolygonVertices_.empty()) {
             // Séquence Qt d'un double-clic : press/release/DOUBLECLICK/release —
@@ -6722,7 +7240,9 @@ void MainWindow::onCanvasClicked(QPointF posMm) {
         return;
     }
     if (currentTool_ == Tool::DrawSatinColumn) {
-        posMm = findSnapPointMm(posMm).value_or(posMm);
+        if (!snapSuspended()) {
+            posMm = findSnapPointMm(posMm).value_or(posMm);
+        }
         const Vec2um v = sceneMmToModel(posMm);
         if (!pendingSatinPoints_.empty()) {
             // Même garde anti-doublon que le polygone : la séquence Qt d'un
@@ -6756,9 +7276,9 @@ void MainWindow::onCanvasClicked(QPointF posMm) {
             }
         }
         if (hit) {
-            selectedObject_ = hit;
-            selectedRegion_.reset();
-            selectedEmbroidery_.reset(); // la sélection au canevas prime
+            // la sélection au canevas prime (Replace : T4b route Maj/Ctrl vers
+            // applySelectionClick)
+            setSelection({.region = std::nullopt, .embroidery = std::nullopt, .objects = {*hit}});
             const auto* object = project_.findObject(*hit);
             statusBar()->showMessage(tr("Objet « %1 » — %2 morceau(x), nœuds déplaçables")
                                          .arg(QString::fromStdString(object->name))
@@ -6796,9 +7316,7 @@ void MainWindow::onCanvasClicked(QPointF posMm) {
                     if (emb == nullptr) {
                         return;
                     }
-                    selectedEmbroidery_ = hitId;
-                    selectedObject_.reset();
-                    selectedRegion_.reset();
+                    setSelection({.region = std::nullopt, .embroidery = hitId, .objects = {}});
                     statusBar()->showMessage(tr("Colonne satin « %1 » sélectionnée")
                                                  .arg(QString::fromStdString(emb->name)));
                     displayImage(processed_);
@@ -6811,8 +7329,10 @@ void MainWindow::onCanvasClicked(QPointF posMm) {
             // (sélection d'objet vectoriel) est concerné dans ce cas, exactement
             // le comportement d'avant l'ajout du satin manuel.
             if (selectedObject_ || selectedEmbroidery_) {
-                selectedObject_.reset();
-                selectedEmbroidery_.reset();
+                editSelection([](Selection& sel) {
+                    sel.objects.clear();
+                    sel.embroidery.reset();
+                });
                 displayImage(processed_);
                 // updateActions() manquait ici (contrairement aux autres chemins
                 // de sélection) : nécessaire pour que le mode d'édition des
@@ -6822,7 +7342,7 @@ void MainWindow::onCanvasClicked(QPointF posMm) {
                 updateActions();
             }
         } else if (selectedObject_) {
-            selectedObject_.reset();
+            editSelection([](Selection& sel) { sel.objects.clear(); });
             displayImage(processed_);
             updateActions();
         }
@@ -6844,7 +7364,7 @@ void MainWindow::onCanvasClicked(QPointF posMm) {
         return;
     }
 
-    selectedRegion_ = clicked;
+    editSelection([clicked](Selection& sel) { sel.region = clicked; });
     if (clicked) {
         const auto* region = project_.segmentation->find(*clicked);
         const double mm2 = static_cast<double>(region->pixel_count) * project_.mm_per_px.value *
@@ -6861,12 +7381,382 @@ void MainWindow::onCanvasClicked(QPointF posMm) {
     updateActions();
 }
 
+void MainWindow::onSelectionClicked(QPointF posMm, SelectMode mode) {
+    if (currentTool_ != Tool::Select) {
+        return;
+    }
+    if (mode == SelectMode::Replace) {
+        onCanvasClicked(posMm); // chemin historique, inchangé
+        return;
+    }
+    // Maj/Ctrl + clic : ajout/bascule d'un objet vectoriel (affiché, hors fusion).
+    // Régions et broderies restent en mono-sélection (Maj/Ctrl = Replace, documenté).
+    if (showVectorsAct_->isChecked() && !mergeMode_) {
+        const std::vector<ObjectId> under = objectsAtPointMm(project_, posMm);
+        if (!under.empty()) {
+            applySelectionClick(under.front(), mode);
+            return;
+        }
+        if (satinEmbroideryAt(posMm) != nullptr) {
+            onCanvasClicked(posMm);
+            return;
+        }
+    }
+    if (showSegAct_->isChecked() && project_.segmentation) {
+        const auto px = mmToImagePixel(posMm);
+        if (px && segmentation::region_at(*project_.segmentation, px->x(), px->y())) {
+            onCanvasClicked(posMm);
+            return;
+        }
+    }
+    applySelectionClick(std::nullopt, mode); // vide : sans effet pour Maj/Ctrl
+}
+
+void MainWindow::onSelectionRectangle(QRectF rectMm, SelectMode mode, bool crossing) {
+    if (currentTool_ != Tool::Select || !showVectorsAct_->isChecked() || mergeMode_) {
+        return;
+    }
+    // Fenêtre (glisser vers la droite) : objets entièrement dans le cadre ;
+    // croisement (vers la gauche) : objets que le cadre coupe. Détection pure.
+    applySelectionRectangle(objectsInRectangleMm(project_, rectMm, crossing), mode);
+}
+
+void MainWindow::onSelectBelow(QPointF posMm, QPoint globalPos, SelectMode mode) {
+    if (currentTool_ != Tool::Select || !showVectorsAct_->isChecked() || mergeMode_) {
+        return;
+    }
+    const std::vector<ObjectId> under = objectsAtPointMm(project_, posMm);
+    if (under.empty()) {
+        statusBar()->showMessage(tr("Aucun objet sous le curseur."));
+        return;
+    }
+    if (selectBelowMenu_ != nullptr) {
+        selectBelowMenu_->close();
+    }
+    // Menu non bloquant (popup) : les objets sous le point, du plus haut au plus bas.
+    auto* menu = new QMenu(this);
+    menu->setObjectName(QStringLiteral("selectBelowMenu"));
+    menu->setAttribute(Qt::WA_DeleteOnClose);
+    menu->setAccessibleName(tr("Objets sous le curseur"));
+    // Noms vides ou en double : suffixe « (#id) » pour les distinguer.
+    QMap<QString, int> nameCount;
+    for (const ObjectId id : under) {
+        if (const auto* object = project_.findObject(id)) {
+            ++nameCount[QString::fromStdString(object->name)];
+        }
+    }
+    for (const ObjectId id : under) {
+        const auto* object = project_.findObject(id);
+        if (object == nullptr) {
+            continue;
+        }
+        QString label = QString::fromStdString(object->name);
+        const bool ambiguous = object->name.empty() || nameCount.value(label) > 1;
+        if (object->name.empty()) {
+            label = tr("(sans nom)");
+        }
+        if (ambiguous) {
+            label += QStringLiteral(" (#%1)").arg(id.value);
+        }
+        auto* act = menu->addAction(label);
+        connect(act, &QAction::triggered, this,
+                [this, id, mode] { applySelectionClick(id, mode); });
+    }
+    selectBelowMenu_ = menu;
+    menu->popup(globalPos);
+}
+
+// SELECTION-MUTATOR:BEGIN
+// Seul bloc autorisé à écrire selectedObject_/selectedRegion_/selectedEmbroidery_/
+// multiSelection_ (garde tests/check_selection_single_mutator.cmake). Tout autre
+// site passe par setSelection()/editSelection().
+void MainWindow::setSelection(Selection selection) {
+    // Doublons : la DERNIÈRE occurrence est gardée (le dernier id reste le principal).
+    std::vector<ObjectId> objects;
+    objects.reserve(selection.objects.size());
+    for (std::size_t i = 0; i < selection.objects.size(); ++i) {
+        const bool later =
+            std::find(selection.objects.begin() + static_cast<std::ptrdiff_t>(i) + 1,
+                      selection.objects.end(), selection.objects[i]) != selection.objects.end();
+        if (!later) {
+            objects.push_back(selection.objects[i]);
+        }
+    }
+    // Sélectionner une région ou une broderie vide la multi-sélection (seul le
+    // principal peut subsister, ex. forme source d'une broderie choisie au dock).
+    if ((selection.region || selection.embroidery) && objects.size() > 1) {
+        objects = {objects.back()};
+    }
+    selectedRegion_ = selection.region;
+    selectedEmbroidery_ = selection.embroidery;
+    if (objects.empty()) {
+        selectedObject_.reset();
+    } else {
+        selectedObject_ = objects.back();
+    }
+    if (objects.size() > 1) {
+        multiSelection_ = std::move(objects);
+    } else {
+        multiSelection_.clear(); // cas legacy : 0 ou 1 objet porté par selectedObject_
+    }
+    Q_ASSERT(multiSelection_.empty() ||
+             (selectedObject_ && multiSelection_.back() == *selectedObject_));
+    Q_ASSERT(multiSelection_.empty() || (!selectedRegion_ && !selectedEmbroidery_));
+}
+
+// SELECTION-MUTATOR:END
+
+void MainWindow::translateObjects(const std::vector<ObjectId>& ids, Vec2um delta) {
+    if (ids.empty()) {
+        return;
+    }
+    if (ids.size() == 1) {
+        undoStack_.execute(
+            std::make_unique<commands::TranslateVectorObjectCommand>(ids.front(), delta), project_);
+    } else {
+        auto composite = std::make_unique<commands::CompositeCommand>(
+            tr("Déplacer %1 objets").arg(ids.size()).toStdString());
+        for (const ObjectId id : ids) {
+            composite->add(std::make_unique<commands::TranslateVectorObjectCommand>(id, delta));
+        }
+        undoStack_.execute(std::move(composite), project_);
+    }
+    refreshImage();
+    updateActions();
+}
+
+void MainWindow::editSelection(const std::function<void(Selection&)>& edit) {
+    Selection sel = currentSelection();
+    edit(sel);
+    setSelection(std::move(sel));
+}
+
+MainWindow::Selection MainWindow::currentSelection() const {
+    return Selection{selectedRegion_, selectedEmbroidery_, selectedObjectIds()};
+}
+
+std::vector<ObjectId> MainWindow::selectedObjectIds() const {
+    if (!multiSelection_.empty()) {
+        return multiSelection_;
+    }
+    if (selectedObject_) {
+        return {*selectedObject_};
+    }
+    return {};
+}
+
+bool MainWindow::isObjectSelected(ObjectId id) const {
+    if (!multiSelection_.empty()) {
+        return std::find(multiSelection_.begin(), multiSelection_.end(), id) !=
+               multiSelection_.end();
+    }
+    return selectedObject_ && *selectedObject_ == id;
+}
+
+void MainWindow::pruneSelection() {
+    Selection sel = currentSelection();
+    bool changed = false;
+    if (sel.region &&
+        (!project_.segmentation || project_.segmentation->find(*sel.region) == nullptr)) {
+        sel.region.reset();
+        changed = true;
+    }
+    if (sel.embroidery && project_.findEmbroidery(*sel.embroidery) == nullptr) {
+        sel.embroidery.reset();
+        changed = true;
+    }
+    const auto dead = [this](ObjectId id) { return project_.findObject(id) == nullptr; };
+    const auto removed = std::erase_if(sel.objects, dead);
+    changed = changed || removed != 0;
+    if (changed) {
+        setSelection(std::move(sel)); // le dernier restant devient le principal
+    }
+}
+
+bool MainWindow::checkSelectionInvariants() const {
+    if (!multiSelection_.empty()) {
+        if (multiSelection_.size() < 2) {
+            return false; // un seul objet = cas legacy (multi vide)
+        }
+        if (!selectedObject_ || multiSelection_.back() != *selectedObject_) {
+            return false; // principal = dernier
+        }
+        if (selectedRegion_ || selectedEmbroidery_) {
+            return false; // région/broderie sélectionnée => multi vide
+        }
+        for (std::size_t i = 0; i < multiSelection_.size(); ++i) {
+            for (std::size_t j = i + 1; j < multiSelection_.size(); ++j) {
+                if (multiSelection_[i] == multiSelection_[j]) {
+                    return false;
+                }
+            }
+        }
+    }
+    for (const ObjectId id : selectedObjectIds()) {
+        if (project_.findObject(id) == nullptr) {
+            return false;
+        }
+    }
+    if (selectedEmbroidery_ && project_.findEmbroidery(*selectedEmbroidery_) == nullptr) {
+        return false;
+    }
+    if (selectedRegion_ &&
+        (!project_.segmentation || project_.segmentation->find(*selectedRegion_) == nullptr)) {
+        return false;
+    }
+    return true;
+}
+
+void MainWindow::selectionChanged() {
+    Q_ASSERT(checkSelectionInvariants());
+    displayImage(processed_);
+    updateActions();
+}
+
+void MainWindow::applySelectionClick(std::optional<ObjectId> hit, SelectMode mode) {
+    Selection sel = currentSelection();
+    if (!hit) {
+        // Clic dans le vide : Replace désélectionne objets et broderie (la région
+        // reste à la charge du repli région de onCanvasClicked) ; Maj/Ctrl : rien.
+        if (mode != SelectMode::Replace) {
+            return;
+        }
+        sel.objects.clear();
+        sel.embroidery.reset();
+    } else {
+        if (project_.findObject(*hit) == nullptr) {
+            return;
+        }
+        const auto it = std::find(sel.objects.begin(), sel.objects.end(), *hit);
+        switch (mode) {
+        case SelectMode::Replace:
+            sel.objects = {*hit};
+            break;
+        case SelectMode::Add:
+            if (it != sel.objects.end()) {
+                return; // déjà présent : sans effet (le principal ne change pas)
+            }
+            sel.objects.push_back(*hit);
+            break;
+        case SelectMode::Toggle:
+            if (it != sel.objects.end()) {
+                sel.objects.erase(it); // retirer le principal promeut le précédent
+            } else {
+                sel.objects.push_back(*hit); // devient le principal
+            }
+            break;
+        }
+        sel.region.reset();
+        sel.embroidery.reset();
+    }
+    setSelection(std::move(sel));
+    selectionChanged();
+}
+
+void MainWindow::applySelectionRectangle(const std::vector<ObjectId>& hits, SelectMode mode) {
+    Selection sel = currentSelection();
+    std::vector<ObjectId> valid;
+    for (const ObjectId id : hits) {
+        if (project_.findObject(id) != nullptr &&
+            std::find(valid.begin(), valid.end(), id) == valid.end()) {
+            valid.push_back(id);
+        }
+    }
+    switch (mode) {
+    case SelectMode::Replace:
+        sel.objects = valid; // rectangle vide : désélectionne les objets
+        break;
+    case SelectMode::Add: {
+        bool added = false;
+        for (const ObjectId id : valid) {
+            if (std::find(sel.objects.begin(), sel.objects.end(), id) == sel.objects.end()) {
+                sel.objects.push_back(id);
+                added = true;
+            }
+        }
+        if (!added) {
+            return;
+        }
+        break;
+    }
+    case SelectMode::Toggle: {
+        if (valid.empty()) {
+            return;
+        }
+        for (const ObjectId id : valid) {
+            const auto it = std::find(sel.objects.begin(), sel.objects.end(), id);
+            if (it != sel.objects.end()) {
+                sel.objects.erase(it);
+            } else {
+                sel.objects.push_back(id);
+            }
+        }
+        break;
+    }
+    }
+    sel.region.reset();
+    sel.embroidery.reset();
+    setSelection(std::move(sel));
+    selectionChanged();
+}
+
+void MainWindow::deleteSelection() {
+    // Objet de broderie choisi (dock Ordre/Document) : la broderie seule, forme
+    // source conservée -- sauf proxy invisible (colonne satin manuelle), dont la
+    // suppression emporte la source (comme « Supprimer » du menu contextuel).
+    if (selectedEmbroidery_) {
+        const auto* emb = project_.findEmbroidery(*selectedEmbroidery_);
+        if (emb == nullptr) {
+            return;
+        }
+        const QString name = QString::fromStdString(emb->name);
+        const auto* source = project_.findObject(emb->source_vector);
+        if (source != nullptr && !source->visible) {
+            undoStack_.execute(std::make_unique<commands::RemoveVectorObjectCommand>(source->id),
+                               project_);
+        } else {
+            undoStack_.execute(std::make_unique<commands::RemoveEmbroideryObjectCommand>(emb->id),
+                               project_);
+        }
+        setSelection({});
+        refreshImage();
+        updateActions();
+        statusBar()->showMessage(tr("« %1 » supprimé.").arg(name));
+        return;
+    }
+    // Région (comportement historique inchangé, RemoveRegionCommand) : testée APRÈS la
+    // broderie car le dock Ordre garde la région en sélectionnant une broderie.
+    if (selectedRegion_ && project_.segmentation) {
+        deleteSelectedRegion();
+        return;
+    }
+    // Objet(s) vectoriel(s) : un seul pas d'annulation (CompositeCommand si > 1).
+    const std::vector<ObjectId> ids = selectedObjectIds();
+    if (ids.empty()) {
+        return;
+    }
+    if (ids.size() == 1) {
+        deleteVectorObject(ids.front()); // exécute, élague la sélection, rafraîchit
+        return;
+    }
+    auto composite = std::make_unique<commands::CompositeCommand>(
+        tr("Supprimer %1 objets").arg(ids.size()).toStdString());
+    for (const ObjectId id : ids) {
+        composite->add(std::make_unique<commands::RemoveVectorObjectCommand>(id));
+    }
+    undoStack_.execute(std::move(composite), project_);
+    setSelection({});
+    refreshImage();
+    updateActions();
+    statusBar()->showMessage(tr("%1 objets supprimés.").arg(ids.size()));
+}
+
 void MainWindow::deleteSelectedRegion() {
     if (!selectedRegion_ || !project_.segmentation) {
         return;
     }
     undoStack_.execute(std::make_unique<commands::RemoveRegionCommand>(*selectedRegion_), project_);
-    selectedRegion_.reset();
+    editSelection([](Selection& sel) { sel.region.reset(); });
     refreshImage();
     updateActions();
 }
@@ -6899,19 +7789,43 @@ void MainWindow::updateActions() {
     showSegAct_->setEnabled(project_.segmentation.has_value());
     showVectorsAct_->setEnabled(!project_.vector_objects.empty());
     showStitchesAct_->setEnabled(!project_.embroidery_objects.empty());
-    createStitchAct_->setEnabled(selectedObject_.has_value());
-    createTatamiAct_->setEnabled(selectedObject_.has_value());
-    createSatinAct_->setEnabled(selectedObject_.has_value());
-    autoSatinAct_->setEnabled(selectedObject_.has_value());
+    // Actions mono-objet : désactivées dès que la multi-sélection compte > 1 objet.
+    const bool singleObject = selectedObject_.has_value() && !hasMultiSelection();
+    createStitchAct_->setEnabled(singleObject);
+    createTatamiAct_->setEnabled(singleObject);
+    createSatinAct_->setEnabled(singleObject);
+    autoSatinAct_->setEnabled(singleObject);
     fillAngleAct_->setEnabled(currentFillObject() != nullptr);
     convertSatinAct_->setEnabled(std::any_of(project_.embroidery_objects.begin(),
                                              project_.embroidery_objects.end(),
                                              [](const auto& e) { return e.is_satin(); }));
     statsAct_->setEnabled(sequence_.has_value());
     exportDstAct_->setEnabled(sequence_.has_value());
+    // Actions « document requis » : mêmes gardes que leurs slots (qui restent en place).
+    // « Contenu » = même critère que updateEmptyState()/onAutosaveTick() (image, vecteurs ou
+    // broderie) ; Enregistrer reste actif dès que le document a un fichier.
+    const bool hasDocument =
+        hasImage || !project_.vector_objects.empty() || !project_.embroidery_objects.empty();
+    if (saveProjectAct_ != nullptr) {
+        saveProjectAct_->setEnabled(hasDocument || !currentProjectPath_.isEmpty());
+    }
+    if (saveProjectAsAct_ != nullptr) {
+        saveProjectAsAct_->setEnabled(hasDocument);
+    }
+    if (exportDxfAct_ != nullptr) {
+        exportDxfAct_->setEnabled(!project_.vector_objects.empty());
+    }
+    if (analyzeAct_ != nullptr) {
+        analyzeAct_->setEnabled(sequence_.has_value());
+    }
     const bool hasSelection = selectedRegion_.has_value() && project_.segmentation.has_value();
     for (QAction* act : regionActions_) {
         act->setEnabled(hasSelection);
+    }
+    // Suppr universel : région, objet(s) vectoriel(s) ou objet de broderie.
+    if (deleteSelectionAct_ != nullptr) {
+        deleteSelectionAct_->setEnabled(hasSelection || selectedObject_.has_value() ||
+                                        selectedEmbroidery_.has_value());
     }
     if (!mergeAct_->isEnabled()) {
         mergeAct_->setChecked(false);
@@ -7026,6 +7940,7 @@ void MainWindow::updateActions() {
     updateContextToolbar();
     refreshWorkflow();
     updateEmptyState();
+    refreshHints(); // les indications dépendent de la sélection (lignes de déplacement)
 }
 
 } // namespace openstitch::desktop

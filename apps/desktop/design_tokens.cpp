@@ -48,6 +48,8 @@ Tokens light_tokens(Density density) {
     t.canvasHandle = QColor(0x2A, 0x6B, 0xD0);
     t.canvasSelectionHalo = QColor(0xFF, 0xFF, 0xFF, 220);
     t.canvasSelectionLine = QColor(0xB0, 0x4E, 0x3C);
+    t.canvasSelectionRectHalo = QColor(0xFF, 0xFF, 0xFF, 200);
+    t.canvasSelectionRectLine = QColor(0x2A, 0x6B, 0xD0);
 
     apply_density(t, density);
     return t;
@@ -82,6 +84,8 @@ Tokens dark_tokens(Density density) {
     t.canvasHandle = QColor(0x4A, 0x8B, 0xE0);
     t.canvasSelectionHalo = QColor(0x10, 0x12, 0x16, 220);
     t.canvasSelectionLine = QColor(0xD0, 0x64, 0x50);
+    t.canvasSelectionRectHalo = QColor(0x10, 0x12, 0x16, 200);
+    t.canvasSelectionRectLine = QColor(0x4A, 0x8B, 0xE0);
 
     apply_density(t, density);
     return t;

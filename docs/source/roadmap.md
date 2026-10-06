@@ -1,77 +1,65 @@
 # Roadmap
 
-Public : mainteneur, contributeur. Cette roadmap est construite à partir du code
-existant, des documents de conception (`docs/phase0/`, `docs/stitch-engine-*.md`)
-et des fonctionnalités manquantes identifiables. **Aucune date n'est annoncée.**
+Public : mainteneur, contributeur. Vue d'ensemble **courte** ; **aucune date n'est annoncée**.
+Revue le 2026-10-06 après un audit complet contre le code.
 
-## Court terme (dette et robustesse)
+Trois documents, un rôle chacun — ne pas dupliquer leur contenu ici :
 
-- **Priorité immédiate après le Lot 8.2 — qualité satin et orientation guidée** :
-  le pipeline utilise maintenant le moteur topologique et représente les Y/T
-  et anneaux comme un réseau de sections `SatinParams` rétrocompatibles. Les
-  fixtures bande/T/anneau/tentabrode verrouillent cette base. Continuer à
-  durcir les arcs très asymétriques (progression bilatérale et métriques de
-  stagnation), puis ajouter plusieurs guides
-  de direction éditables par zone satin : chaque guide relie les deux rails et
-  impose une orientation locale, interpolée continûment entre guides. **Premier
-  incrément livré** : affichage des guides, déplacement indépendant des deux
-  extrémités avec projection/validation monotone, undo/redo et test Qt de
-  glisser. **Deuxième incrément livré** : sélection explicite sur le canevas,
-  ajout dans le plus grand intervalle admissible, suppression avec plancher de
-  deux guides, ordre de routage préservé et parcours QTest complet. **Troisième
-  incrément livré** : chaque section persiste son index, le nombre de sections
-  et ses identifiants de jonction déterministes, avec lecture des anciens `.osp`
-  inchangée. **Quatrième incrément livré** : le routage maximise les transitions
-  par jonction admissible avant de minimiser la distance et ignore une jonction
-  géométriquement incohérente. **Cinquième incrément livré** : les guides
-  terminaux porteurs d'une jonction sont détectés par stations projetées et
-  verrouillés dans le cœur et l'UI afin qu'une édition locale ne raccourcisse pas
-  la section. **Sixième incrément livré** : découverte déterministe et stricte
-  de toutes les extrémités partageant une jonction, plus commande multi-objet
-  tout-ou-rien avec undo/redo unique. **Septième incrément livré** : sélectionner
-  un guide structurel puis ajouter un guide crée, en une transaction, un guide
-  interne dans l'intervalle directement adjacent de chaque section incidente ;
-  si une seule section est invalide, rien n'est modifié. Restent la propagation
-  géométrique coordonnée des angles et déplacements, puis les retours textiles
-  suivant le réseau plutôt qu'un segment direct. Ne jamais accepter
-  silencieusement une gerbe ou un croisement comme satin valide.
+| Question | Document |
+|---|---|
+| Qu'est-ce qui manque par rapport à Hatch, et où en est chaque entrée (☐ ◐ ☑) ? | `docs/roadmap-parite-hatch.md` — **source de vérité des statuts** (256 entrées HP-*, tableau de bord en tête) |
+| Dans quel ordre le livrer (vagues, scopes S1…S15, dépendances, plans) ? | `specs/implementation-roadmap.md` |
+| Où va le projet, en gros ? | ce chapitre |
 
-- Refonte avancée du **satin** (§12 de l'étude) : correspondance par sections,
-  barreaux de direction, densité perpendiculaire au fil, gestion des points
-  courts dans les virages, split stitch pour les colonnes larges, terminaisons.
-- Refonte avancée du **tatami** (§15) : underpath **caché** au lieu de sauts,
-  points d'entrée/sortie imposés, sous-couches, motifs de phase.
-- Séparer la **normalisation machine** de l'encodeur DST (préparer PES/JEF/EXP).
+## Déjà livré (depuis la roadmap d'origine)
 
-## Moyen terme (fonctionnalités)
+- Moteur satin topologique (réseaux Y/T/anneaux, guides éditables, jonctions ancrées),
+  sous-couches, underpath caché, coupes et points d'arrêt, filtre de points courts
+  (`satin.md`, `tatami.md`, `auto-numerisation.md`).
+- Auto-numérisation durcie (Lots A à G : fond présumé, angles et sous-couches des
+  remplissages, chevauchement, fragments, finitions, métriques) et mode **Contours / Line
+  Art** (traits → running/satin par couleur, curseur de détail, 2026-10-05).
+- Fichiers : Nouveau projet, Enregistrer / Enregistrer sous, fichiers récents, sauvegarde
+  automatique avec récupération après plantage.
+- Bibliothèque de fils (`thread_palette`) avec distance perceptuelle ; nuanciers fabricants
+  encore partiels (données placeholder).
+- Distribution : installateur Windows (Inno Setup), workflow de release sur tag, release
+  « latest » publiée par la CI — **installateur non signé**.
 
-- **Palette de fils** (`thread_palette`) : base fabricants, distance perceptuelle,
-  association objet↔bobine, import/export.
-- **Édition manuelle des points** (déplacer, convertir en saut, ajouter une
-  coupe) avec états `Clean`/`Dirty`/`ManuallyEdited`.
-- **Sous-couches** paramétrables (contour, zigzag) pour satin et tatami.
-- **Compensation** directionnelle et profils tissu/stabilisateur/fil.
-- **Édition de nœuds** complète (ajout/suppression, tangentes, anguleux/lisse).
+## En cours
 
-## Long terme (avancé)
+- **PR #5** — couche de normalisation machine (HP-FMT-001), préalable à PES/JEF/EXP.
+- **PR #3** — plan de code de la sélection, du presse-papiers et des transformations (S3).
+- **Satin guidé** : restent la propagation géométrique coordonnée des angles et des
+  déplacements de guides sur un réseau, puis les retours textiles suivant le réseau plutôt
+  qu'un segment direct. Ne jamais accepter silencieusement une gerbe ou un croisement comme
+  satin valide.
 
-- **Auto-satin** : poursuivre au-delà du réseau de sections maintenant branché
-  dans l'auto-numérisation (jonctions textiles avancées, réseaux à plusieurs
-  trous, validation machine, guides d'orientation par section). Les formes
-  refusées retombent sur le tatami ; le satin naïf reste désactivé.
-- **Remplissages avancés** : concentrique, spirale, radial, guidé (champ de
-  direction), motifs.
-- **Autres formats** : PES, JEF, EXP, VP3.
-- **Tâches asynchrones** (annulation, progression) et **carte de densité**.
-- **Profils machine/cadres**, sauvegarde automatique, migrations de projet.
-- Portage **macOS**, distribution de binaires, publication publique.
+## Court terme (P0 restants)
+
+Formats machine (PES, JEF, EXP) · fils par objet et film couleur · sélection multiple,
+presse-papiers, rotation, miroir · tracés ouverts et satin de bordure (outils) · lettrage ·
+longueurs min/max appliquées à tous les générateurs · tâches de fond avec annulation ·
+rendu réaliste des points · fiche de production · installateur signé · protocole de
+validation sur machine réelle · jeu de référence et métriques pour l'auto-numérisation.
+La liste exacte et l'ordre sont dans les deux documents ci-dessus.
+
+## Moyen et long terme
+
+- Remplissages avancés (concentrique, spirale, radial, motifs), édition de points complète,
+  simulateur, profils machine/cadres/tissus, appliqué, bibliothèques de motifs.
+- Autres formats (VP3, HUS, …), import SVG/DXF plus complet, migrations `.osp` systématiques.
+- Internationalisation (infrastructure puis anglais) : volontairement **en toute fin**, un
+  seul balayage `tr()` une fois le reste fonctionnel.
+- Portage macOS et publication publique.
 
 ## Sources
 
-- `docs/phase0/08-roadmap-adr.md` — roadmap d'origine (13 phases).
+- `docs/phase0/08-roadmap-adr.md` — roadmap d'origine (13 phases), **historique**.
 - `docs/stitch-engine-audit.md` — défauts et priorités du moteur de points.
+- `docs/roadmap-parite-hatch.md`, `specs/implementation-roadmap.md` — état courant.
 
 ## Implémentation associée
 
-Les fonctionnalités « Non implémenté » du chapitre *Limitations* constituent la
-liste de travail. Chacune indique le module cible.
+Les fonctionnalités « Non implémenté » du chapitre *Limitations* constituent la liste de
+travail ; chacune indique le module cible.

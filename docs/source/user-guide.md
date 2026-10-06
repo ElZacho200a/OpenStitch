@@ -37,7 +37,7 @@ curseur en mm apparaît dans la barre d'état.
 
 Le **mode d'interaction** vient de la palette d'outils (à gauche) :
 
-- **Sélection** (`V`) : sélectionner une région/un objet ; le glisser déplace la vue.
+- **Sélection** (`V`) : sélectionner une région/un objet (Maj ajoute, Ctrl bascule, glisser dans le vide trace un rectangle de sélection) ; la vue se déplace au clic molette ou à Espace + glisser.
 - **Déplacer la vue** (`H`) : déplacement pur (le clic ne sélectionne pas).
 - **Rectangle / Recadrage** (`M`) : sélection rectangulaire pour recadrer l'image.
 - **Zoom** : molette (ancrée sous le curseur) ou barre d'outils / menu Affichage.
@@ -47,6 +47,98 @@ La sélection d'un objet est tracée en **double contraste** (halo clair + trait
 d'accent), lisible sur tout fond. Le rendu est organisé en deux couches
 (image/vecteurs/régions d'une part, points d'autre part) pour rester fluide sur
 de gros motifs.
+
+## Souris et clavier
+
+Le comportement de la souris et du clavier dans le canevas suit une **table
+unique** (`apps/desktop/interaction_map.cpp`) : c'est elle qui pilote le
+comportement du canevas, la ligne d'indications de la barre d'état et le
+tableau ci-dessous. Principes : la **molette** zoome sous le curseur (**Ctrl + molette** aussi ;
+c'est ainsi que Windows livre le pincement d'un pavé tactile), le **clic
+molette** ou **Espace** + glisser déplace la vue, **Maj** ajoute à la sélection,
+**Ctrl** ajoute ou retire, un **appui long** ou **Alt + clic** ouvre
+« Sélectionner dessous ». La correspondance est exacte : Maj + clic n'est pas un
+clic simple, et le panoramique reste disponible pendant un outil de dessin. Sous
+Windows, un pavé tactile se distingue mal d'une molette : le préréglage de
+navigation « Pavé tactile » (Affichage ▸ Navigation) y met en avant
+Espace + glisser et Ctrl + molette.
+
+Le tableau est **généré** par `openstitch_gesture_table --markdown` ; ne pas le
+modifier à la main (le test `docs_gestures_in_sync` échoue si la table du code
+et ce bloc divergent). Pour le régénérer, recopier la sortie de la commande
+entre les deux marqueurs.
+
+<!-- GESTURES:BEGIN -->
+| Réf. | Contexte | Geste | Action |
+|---|---|---|---|
+| G1 | Partout | Molette | Zoom au curseur |
+| G2 | Partout | Ctrl + Maj + clic molette + glisser | Zoom continu |
+| G3 | Partout | Clic molette + glisser | Panoramique |
+| G4 | Partout | Double-clic molette | Cadrer le design |
+| G5 | Partout | Espace + glisser | Panoramique (sans clic molette) |
+| G6 | Partout | Maj + molette | Défilement horizontal |
+| G7 | Partout | Alt + molette | Défilement vertical |
+| G8 | Partout | Défilement à deux doigts | Panoramique |
+| G9 | Partout | Pincement | Zoom au curseur |
+| G10 | Sélection | Clic droit | Menu contextuel |
+| G10b | Déplacement | Clic droit | Menu contextuel |
+| G10c | Édition de nœuds | Clic droit | Menu contextuel |
+| G10d | Édition de points | Clic droit | Menu contextuel |
+| G11 | Partout | Suppr | Supprimer la sélection |
+| G12 | Partout | Échap | Annuler l'outil en cours |
+| G13 | Partout | Ctrl + molette | Zoom au curseur |
+| G14 | Partout | F | Ajuster au canevas |
+| G15 | Partout | Flèches | Déplacer l'objet de 0,1 mm |
+| G15b | Partout | Maj + Flèches | Déplacer l'objet de 1 mm |
+| P1 | Déplacer la vue | Glisser | Panoramique |
+| S1 | Sélection | Clic | Sélectionner (le vide désélectionne) |
+| S2 | Sélection | Maj + clic | Ajouter à la sélection |
+| S3 | Sélection | Ctrl + clic | Basculer dans la sélection |
+| S3b | Sélection | Ctrl + Maj + clic | Basculer dans la sélection |
+| S4 | Sélection | Appui long | Sélectionner dessous |
+| S5 | Sélection | Alt + clic | Sélectionner dessous |
+| S6 | Sélection | Glisser | Sélection par rectangle (vers la droite : englobe, vers la gauche : croise) |
+| S7 | Sélection | Maj + glisser | Rectangle : ajouter à la sélection |
+| S8 | Sélection | Ctrl + glisser | Rectangle : basculer dans la sélection |
+| S8b | Sélection | Ctrl + Maj + glisser | Rectangle : basculer dans la sélection |
+| S10 | Sélection | Double-clic | Entrer en édition de l'objet |
+| S11 | Sélection | Survol | Surbrillance de pré-sélection |
+| M1 | Déplacement | Glisser | Déplacer l'objet |
+| M2 | Déplacement | Maj + glisser | Verrouiller l'axe |
+| M4 | Déplacement | Alt + glisser | Dupliquer en déplaçant |
+| D1 | Dessin (clics) | Clic | Ajouter un point |
+| D2 | Dessin (clics) | Double-clic | Terminer le tracé |
+| D2b | Dessin (clics) | Entrée | Terminer le tracé |
+| D3 | Dessin (cadre) | Maj | Contraindre la forme (carré, cercle) |
+| D4 | Dessin (cadre) | Alt | Dessiner depuis le centre |
+| D5 | Dessin (clics) | Ctrl | Suspendre l'accroche |
+| D6 | Dessin (clics) | Retour arrière | Retirer le dernier point |
+| D7 | Dessin (clics) | Échap | Annuler l'outil en cours |
+| N1 | Édition de nœuds | Glisser | Déplacer le nœud |
+| N2 | Édition de nœuds | Maj + glisser | Verrouiller l'axe |
+| N2b | Édition de nœuds | Ctrl + glisser | Suspendre l'accroche |
+| N4 | Édition de nœuds | Suppr | Supprimer les nœuds sélectionnés |
+<!-- GESTURES:END -->
+
+Précisions sur les gestes du tableau :
+
+- **Surbrillance** : avec l'outil Sélection, le contour en pointillés de l'objet non
+  sélectionné situé sous le curseur est mis en évidence ; elle disparaît quand le
+  curseur quitte le canevas ou pendant un glisser.
+- **Alt** : *Alt + clic* ouvre « Sélectionner dessous », y compris sur le corps d'un
+  objet déjà sélectionné ; *Alt tenu avant l'appui*, puis glisser le corps d'un objet
+  **déjà sélectionné**, le **duplique** en déplaçant la copie (un seul pas
+  d'annulation) ; la copie ne reprend **aucun objet de broderie** de l'original (il
+  faut lui en créer un), de même que la commande « Dupliquer ». En dessin de
+  rectangle, ellipse ou polygone régulier, *Alt* dessine le cadre depuis son centre
+  (le point d'appui).
+- **Maj** pendant un glisser verrouille l'axe dominant (objets et nœuds). **Ctrl**
+  suspend l'accroche pendant le tracé d'un polygone ou d'une colonne satin.
+- **Accrochage des nœuds au glisser** (Affichage ▸ *Accrochage des nœuds au
+  glisser*, réglage `edit/snapNodesOnDrag`, **désactivé par défaut**) : un nœud
+  relâché à moins de 1 mm (et 10 px) d'un sommet d'un autre objet s'y accroche ;
+  Ctrl ou Maj au relâchement l'évitent. Glisser un objet entier n'a pas d'accroche.
+
 
 ## Menu Fichier
 
@@ -274,8 +366,30 @@ constitue pas une garantie absolue en version 0.1.0.
 
 ## Menu Aide
 
-- **Raccourcis clavier…** : la liste ci-dessous.
-- **À propos** : nom, version, licence.
+Le menu **Aide** compte trois entrées, chacune avec une infobulle et un texte
+d'aide dans la barre d'état :
+
+- **Guide de prise en main** : une fenêtre **non modale** (elle reste ouverte
+  pendant que vous travaillez, une seule à la fois) qui déroule les six étapes de
+  l'image au fichier DST : ouvrir une image, segmenter, vectoriser ou numériser
+  automatiquement, choisir le type de point (tatami, satin, contour), analyser
+  (F5), exporter en DST. Chaque étape porte un bouton qui lance la vraie commande
+  du menu ; il est grisé tant que la commande n'est pas disponible (par exemple
+  « Analyser » sans motif).
+- **Gestes souris et clavier** (**F1**) : fenêtre non modale qui liste, dans un
+  tableau Contexte / Geste / Action filtrable par la recherche, tous les gestes de
+  la souris (table de la section *Souris et clavier*) et tous les raccourcis des
+  commandes. Elle propose aussi le choix du préréglage de navigation ; elle remplace
+  l'ancienne boîte « Raccourcis clavier », supprimée.
+- **À propos** : nom, version, licence et dépôt du code source.
+
+La **ligne d'indications** de la barre d'état (à gauche des indicateurs d'outil et
+de position) rappelle en permanence les gestes de l'outil actif ; elle se met à
+jour quand on change d'outil, de sélection ou qu'on tient Maj, Ctrl ou Alt, et
+n'est jamais masquée par les messages de la barre d'état. Le préréglage de
+navigation se choisit aussi dans **Affichage ▸ Navigation** (**OpenStitch** :
+souris à trois boutons ; **Pavé tactile** : Espace + glisser et Ctrl + molette
+mis en avant) ; le choix est mémorisé entre deux sessions.
 
 ## Raccourcis
 
@@ -285,12 +399,13 @@ constitue pas une garantie absolue en version 0.1.0.
 | Ctrl+O / Ctrl+S | Ouvrir une image / Enregistrer le projet (sans redemander le chemin) |
 | Ctrl+Maj+S | Enregistrer le projet sous… |
 | Ctrl+Z / Ctrl+Y | Annuler / Rétablir |
-| Suppr | Supprimer la région sélectionnée |
+| Suppr | Supprimer la sélection (région, objet de broderie ou objets vectoriels) |
 | Ctrl++ / Ctrl+- / Ctrl+0 | Zoom avant / arrière / ajuster |
 | F | Ajuster au canevas |
 | F5 | Analyser le motif |
 | V / H / M | Outils : Sélection / Déplacer la vue / Rectangle |
 | Échap | Revenir à la Sélection (annule la fusion) |
+| F1 | Ouvrir « Gestes souris et clavier » |
 | Ctrl+Shift+P | Masquer / afficher les panneaux |
 | Ctrl+Q | Quitter |
 

@@ -175,7 +175,7 @@ void DocumentPanel::refresh(
             auto* item = new QListWidgetItem(
                 swatch(slot->rgb),
                 tr("Région %1 — %2 mm²").arg(slot->id.value).arg(areaMm2, 0, 'f', 1));
-            item->setData(Qt::UserRole, slot->id.value);
+            item->setData(Qt::UserRole, static_cast<qulonglong>(slot->id.value));
             regionsList_->addItem(item);
         }
     }
