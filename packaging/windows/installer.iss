@@ -48,7 +48,7 @@ OutputBaseFilename=OpenStitchStudio-Setup-{#MyAppVersion}
 Compression=lzma2
 SolidCompression=yes
 WizardStyle=modern
-SetupIconFile={#SourceDir}\{#MyAppExeName}
+; Use the built-in setup icon until a dedicated .ico is provided.
 UninstallDisplayIcon={app}\{#MyAppExeName}
 
 [Languages]
