@@ -19,7 +19,9 @@
 #include <QTest>
 
 #include <map>
+#include <set>
 
+#include "interaction_map.hpp"
 #include "main_window.hpp"
 
 using openstitch::desktop::MainWindow;
@@ -52,6 +54,35 @@ QChar mnemonicOf(const QString& text) {
         }
     }
     return QChar();
+}
+
+
+// Séquences de touches réellement câblées sur la fenêtre (QAction + QShortcut de contexte non
+// local), comme windowShortcutsAreUnique.
+std::set<QString> actualWindowShortcuts(const MainWindow& window) {
+    std::set<QString> keys;
+    for (const QAction* action : window.findChildren<QAction*>()) {
+        if (action->shortcutContext() == Qt::WidgetShortcut) {
+            continue;
+        }
+        for (const QKeySequence& seq : action->shortcuts()) {
+            keys.insert(seq.toString());
+        }
+    }
+    for (const QShortcut* shortcut : window.findChildren<QShortcut*>()) {
+        if (shortcut->context() != Qt::WidgetShortcut) {
+            keys.insert(shortcut->key().toString());
+        }
+    }
+    return keys;
+}
+
+// Séquence d'une ligne `Key` de la table ; vide pour une ligne « modificateur seul » (touche 0).
+QString keySequenceOf(const openstitch::desktop::Row& row) {
+    if (row.gesture.key == Qt::Key(0)) {
+        return {};
+    }
+    return QKeySequence(QKeyCombination(row.gesture.mods, row.gesture.key)).toString();
 }
 
 } // namespace
@@ -169,6 +200,63 @@ private slots:
         for (const auto& [letter, texts] : byLetter) {
             QVERIFY2(texts.size() == 1, qPrintable(QString(letter) + QStringLiteral(" : ") +
                                                    texts.join(QStringLiteral(" | "))));
+        }
+    }
+
+    // Règle 5 de la table des gestes : une ligne Key ROUTÉE par le canevas ne doit coïncider avec
+    // aucun raccourci de la fenêtre (sinon le canevas ne la verrait jamais).
+    void routedKeyRowsDoNotClashWithWindowShortcuts() {
+        MainWindow window;
+        const std::set<QString> actual = actualWindowShortcuts(window);
+        QStringList clashes;
+        for (const Row& row : InteractionMap::rawRows()) {
+            if (row.gesture.kind != GestureKind::Key || !row.routed || row.planned) {
+                continue;
+            }
+            const QString seq = keySequenceOf(row);
+            if (!seq.isEmpty() && actual.count(seq) != 0) {
+                clashes << QString::fromLatin1(row.id) + QStringLiteral(" : ") + seq;
+            }
+        }
+        QVERIFY2(clashes.isEmpty(), qPrintable(clashes.join(QStringLiteral(" | "))));
+    }
+
+    // Dans l'autre sens : une ligne Key « Existing » non routée documente un raccourci qui existe
+    // vraiment (QAction/QShortcut), sauf les flèches, lues par keyPressEvent du canevas.
+    void existingKeyRowsMatchAnActualShortcut() {
+        MainWindow window;
+        const std::set<QString> actual = actualWindowShortcuts(window);
+        const std::set<Qt::Key> canvasKeys = {Qt::Key_Left, Qt::Key_Right, Qt::Key_Up,
+                                              Qt::Key_Down};
+        QStringList missing;
+        int checked = 0;
+        for (const Row& row : InteractionMap::rawRows()) {
+            if (row.gesture.kind != GestureKind::Key || row.routed || row.planned ||
+                row.origin != Origin::Existing) {
+                continue;
+            }
+            if (canvasKeys.count(row.gesture.key) != 0) {
+                continue;
+            }
+            const QString seq = keySequenceOf(row);
+            if (seq.isEmpty()) {
+                continue; // modificateur seul : pas une touche câblée
+            }
+            ++checked;
+            if (actual.count(seq) == 0) {
+                missing << QString::fromLatin1(row.id) + QStringLiteral(" : ") + seq;
+            }
+        }
+        QVERIFY2(missing.isEmpty(), qPrintable(missing.join(QStringLiteral(" | "))));
+        QVERIFY(checked >= 5); // Suppr, Échap, F, Entrée, Retour arrière au moins
+    }
+
+    // Aide : trois entrées nommées, F1 libre (windowShortcutsAreUnique le garde déjà).
+    void helpActionsHaveStableObjectNames() {
+        MainWindow window;
+        for (const char* name :
+             {"action_help_quickstart", "action_help_gestures", "action_about"}) {
+            QVERIFY2(window.findChild<QAction*>(QString::fromLatin1(name)) != nullptr, name);
         }
     }
 

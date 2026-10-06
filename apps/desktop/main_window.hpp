@@ -4,6 +4,7 @@
 #include <QHash>
 #include <QList>
 #include <QMainWindow>
+#include <QPointer>
 #include <QString>
 #include <QStringList>
 
@@ -40,10 +41,13 @@ class QVBoxLayout;
 class QDoubleSpinBox;
 class QSpinBox;
 class QMenu;
+class QActionGroup;
 
 namespace openstitch::desktop {
 
 class CanvasView;
+class GesturesDialog;
+class QuickStartDialog;
 class PropertiesPanel;
 class DocumentPanel;
 class WorkflowPanel;
@@ -97,6 +101,12 @@ private slots:
     void onCropSelected(QRectF rectMm);
     void segmentImage();
     void onCanvasClicked(QPointF posMm);
+    // Modèle d'interaction L5 (signaux de CanvasView, specs/plans/ui-interaction-model.md §2.5).
+    // Maj/Ctrl + clic : sélection par point (Add/Toggle) ; Replace passe par
+    // onCanvasClicked (comportement historique inchangé).
+    void onSelectionClicked(QPointF posMm, SelectMode mode);
+    void onSelectionRectangle(QRectF rectMm, SelectMode mode, bool crossing);
+    void onSelectBelow(QPointF posMm, QPoint globalPos, SelectMode mode);
     void onCanvasContextMenu(QPointF posMm, QPoint globalPos);
     // Rectangle/ellipse dessiné (outils DrawRectangle/DrawEllipse) : interprété
     // selon `currentTool_`. Maj enfoncée + DrawEllipse = cercle contraint.
@@ -384,7 +394,11 @@ private:
     // réellement au clic, pire qu'aucune accroche) ni sur le rectangle/ellipse
     // (glisser natif RubberBandDrag de Qt, pas d'aperçu personnalisable en
     // cours de glisser ; seuls les coins finaux sont accrochés à la fin).
-    [[nodiscard]] std::optional<QPointF> findSnapPointMm(QPointF cursorSceneMm) const;
+    // `excludeObject` : objet dont les points ne sont pas candidats (nœud en cours de
+    // déplacement : il ne doit pas s'accrocher à sa propre position d'origine).
+    [[nodiscard]] std::optional<QPointF>
+    findSnapPointMm(QPointF cursorSceneMm,
+                    std::optional<ObjectId> excludeObject = std::nullopt) const;
     // Affiche/masque le repère visuel d'accroche (cercle) au point donné.
     void updateSnapIndicator(std::optional<QPointF> snapSceneMm);
     // Miroir de ce qui précède pour le tracé à main levée (outil
@@ -635,6 +649,48 @@ private:
     QAction* saveProjectAsAct_{nullptr};
     QAction* exportDxfAct_{nullptr};
     QAction* clearRecentAct_{nullptr};
+
+    // ---- Modèle d'interaction L5-T4b ------------------------------------------
+    // Pousse le contexte de base au canevas (outil actif + modes d'édition) et
+    // active le rectangle de sélection pour l'outil Sélection ; rafraîchit les
+    // indications. Appelée par setTool et les bascules des modes d'édition.
+    void updateInteractionContext();
+    // Contexte d'interaction « logique » (table de gestes) de l'état courant.
+    [[nodiscard]] Context interactionContext() const;
+    // Recalcule la ligne d'indications (widget permanent de la barre d'état).
+    void refreshHints();
+    // Texte complet des indications (non élidé) : lu par les tests et l'infobulle.
+    [[nodiscard]] QString hintsText() const { return hintsFullText_; }
+    void showGesturesDialog();
+    void showQuickStartDialog();
+    void buildNavigationMenu(QMenu* viewMenu);
+    void applyNavigationPreset(Preset preset);
+    // Duplique `ids` (copies exactes, même position) puis translate les COPIES de
+    // `delta`, en un seul pas d'annulation (CompositeCommand) ; les copies deviennent
+    // la sélection. Alt + glisser (ligne M4).
+    void duplicateAndTranslate(const std::vector<ObjectId>& ids, Vec2um delta);
+    // Ctrl tenu (évènements du canevas) : l'accroche du tracé est suspendue (ligne D5).
+    [[nodiscard]] bool snapSuspended() const {
+        return (heldModifiers_ & Qt::ControlModifier) != 0;
+    }
+    QLabel* hintsLabel_{nullptr};
+    QString hintsFullText_;
+    Qt::KeyboardModifiers heldModifiers_{};
+    QPointF lastCursorSceneMm_; // dernier point de curseur (scène, mm)
+    QPointer<GesturesDialog> gesturesDialog_;
+    QPointer<QuickStartDialog> quickStartDialog_;
+    QPointer<QMenu> selectBelowMenu_;
+    QActionGroup* navigationGroup_{nullptr};
+    QAction* navOpenStitchAct_{nullptr};
+    QAction* navTouchpadAct_{nullptr};
+    QAction* helpQuickStartAct_{nullptr};
+    QAction* helpGesturesAct_{nullptr};
+    QAction* aboutAct_{nullptr};
+    // Actions du guide de prise en main (étapes construites à partir d'elles).
+    QAction* openImageAct_{nullptr};
+    QAction* segmentAct_{nullptr};
+    QAction* vectorizeRegionAct_{nullptr};
+    QAction* autoDigitizeAct_{nullptr};
 
     std::optional<RegionId> selectedRegion_;
     std::optional<ObjectId> selectedObject_;
