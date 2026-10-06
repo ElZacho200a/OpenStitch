@@ -31,6 +31,13 @@ Voir la [feuille de route de parité avec Hatch](docs/roadmap-parite-hatch.md) (
 
 Des binaires sont publiés par la CI : release « latest » (zip) et installateur Windows sur les tags `vX.Y.Z` (non signé, voir `docs/roadmap-parite-hatch.md`, HP-DIST-001).
 
+**Builds bêta** : dès que la compilation Windows réussit, les workflows CI et
+Release déposent un ZIP `openstitch-beta-windows-x64` dans **Actions → exécution
+concernée → Artifacts**, conservé 30 jours, même si les tests échouent ensuite.
+Décompressez tout le ZIP et lancez `desktop/Release/openstitch.exe` (les DLL et
+plugins voisins sont nécessaires). Ces builds ne sont pas forcément validés par
+les tests ; les releases publiées restent réservées aux builds validés.
+
 > **Note honnête** : ce socle est complet et testé, mais n'a pas encore été validé sur une machine à broder réelle. Les heuristiques de compensation (tirage, densité) et les conventions DST de certaines machines demandent des essais terrain avant un usage en production.
 
 ## Compilation (Windows)

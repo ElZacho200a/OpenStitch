@@ -44,21 +44,27 @@ jobs:
         run: cmake --build --preset msvc-debug
 
       - name: Build Release
+        id: build_release
         run: cmake --build --preset msvc-release
+
+      # Disponible des la compilation, meme si les tests suivants echouent.
+      # La publication stable reste conditionnee au succes de tous les jobs.
+      - name: Upload Windows beta binaries
+        uses: actions/upload-artifact@v4
+        with:
+          name: openstitch-beta-windows-x64
+          if-no-files-found: error
+          retention-days: 30
+          path: |
+            build/msvc/apps/desktop/Release/
+            build/msvc/apps/cli/Release/
 
       - name: Test (Debug)
         run: ctest --preset msvc-debug
 
       - name: Test (Release)
+        if: ${{ !cancelled() && steps.build_release.outcome == 'success' }}
         run: ctest --preset msvc-release
-
-      - name: Upload Windows artifacts (Release)
-        uses: actions/upload-artifact@v4
-        with:
-          name: openstitch-windows-x64
-          path: |
-            build/msvc/apps/desktop/Release/
-            build/msvc/apps/cli/Release/
 
   # Garde-fou de portabilité : le cœur et la CLI doivent compiler sans Qt
   # et sans dépendance Windows involontaire.
@@ -118,7 +124,7 @@ jobs:
       - name: Télécharger l'artefact Windows
         uses: actions/download-artifact@v4
         with:
-          name: openstitch-windows-x64
+          name: openstitch-beta-windows-x64
           path: dist/openstitch-windows-x64
 
       - name: Empaqueter

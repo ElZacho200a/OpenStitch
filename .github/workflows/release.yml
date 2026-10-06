@@ -63,6 +63,18 @@ jobs:
       - name: Build Release
         run: cmake --build --preset msvc-release
 
+      # Disponible des la compilation, meme si les tests suivants echouent.
+      # La publication stable reste conditionnee au succes de tous les jobs.
+      - name: Upload Windows beta binaries
+        uses: actions/upload-artifact@v4
+        with:
+          name: openstitch-beta-windows-x64
+          if-no-files-found: error
+          retention-days: 30
+          path: |
+            build/msvc/apps/desktop/Release/
+            build/msvc/apps/cli/Release/
+
       # Même garde-fou qualité qu'un merge sur main (ci.yml) : une release
       # ne se publie jamais sur un build dont les tests échouent.
       - name: Test (Release)
