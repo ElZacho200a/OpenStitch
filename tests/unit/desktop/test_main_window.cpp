@@ -52,6 +52,7 @@
 #include "properties_panel.hpp"
 #include "recent_files.hpp"
 #include "satin_guide_item.hpp"
+#include "theme_test_support.hpp"
 #include "workflow_panel.hpp"
 
 using openstitch::Micrometers;
@@ -930,6 +931,7 @@ void MainWindowTest::initTestCase() {
     // d'évènements du premier test venu.
     QStandardPaths::setTestModeEnabled(true);
     clearAutosaveDir();
+    openstitch::desktop::test::applyThemeFromEnv();
 }
 
 void MainWindowTest::clickingVectorObjectSyncsDocumentPanelAndInspector() {

@@ -50,6 +50,7 @@
 #include "openstitch/commands/project_commands.hpp"
 #include "openstitch/document/project.hpp"
 #include "selection_hit_test.hpp"
+#include "theme_test_support.hpp"
 
 using openstitch::Micrometers;
 using openstitch::ObjectId;
@@ -269,6 +270,7 @@ private slots:
         QSettings::setPath(QSettings::IniFormat, QSettings::UserScope, settingsDir_.path());
         QStandardPaths::setTestModeEnabled(true);
         QDir(QFileInfo(slotFor(QString()).osp_path).absolutePath()).removeRecursively();
+        openstitch::desktop::test::applyThemeFromEnv();
     }
     void cleanup() {
         closePopups();

@@ -23,6 +23,7 @@
 
 #include "interaction_map.hpp"
 #include "main_window.hpp"
+#include "theme_test_support.hpp"
 
 using openstitch::desktop::MainWindow;
 
@@ -99,6 +100,7 @@ private slots:
         QCoreApplication::setApplicationName(QStringLiteral("UiInvariantsTest"));
         QSettings::setDefaultFormat(QSettings::IniFormat);
         QSettings::setPath(QSettings::IniFormat, QSettings::UserScope, settingsDir_.path());
+        openstitch::desktop::test::applyThemeFromEnv();
     }
 
     // Deux actions de la même fenêtre avec la même touche rendent le raccourci

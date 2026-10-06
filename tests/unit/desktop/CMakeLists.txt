@@ -56,6 +56,32 @@ openstitch_add_qt_test(test_design_tokens test_design_tokens.cpp)
 openstitch_add_qt_test(test_app_style test_app_style.cpp)
 openstitch_add_qt_test(test_design_system test_design_system.cpp)
 
+# Variantes « thémées » des 4 suites d'interface existantes (plan L2 §5.7) : mêmes
+# exécutables, mais Fusion + QSS + palette appliqués par theme_test_support.hpp via
+# OPENSTITCH_TEST_APPLY_THEME. Les assertions dépendantes de la géométrie doivent
+# rester vertes dans les deux thèmes et les deux densités.
+foreach(suite test_main_window test_ui_invariants test_ui_adversarial test_ui_characterization)
+    foreach(combo light-comfortable dark-compact)
+        string(REPLACE "-" "_" combo_id "${combo}")
+        add_test(NAME ${suite}_themed_${combo_id} COMMAND ${suite})
+        set_tests_properties(${suite}_themed_${combo_id} PROPERTIES
+            ENVIRONMENT "QT_QPA_PLATFORM=offscreen;OPENSTITCH_TEST_APPLY_THEME=${combo}"
+            ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>"
+            LABELS themed)
+    endforeach()
+endforeach()
+
+# Instantanés headless (plan L2 §4) : écrit des PNG pour relecture humaine dans
+# OPENSTITCH_UI_SNAPSHOT_DIR (sinon dossier temporaire : simple test de fumée).
+# Aucune comparaison de pixels. Une seconde entrée rejoue à l'échelle 2x.
+openstitch_add_qt_test(test_ui_snapshot test_ui_snapshot.cpp)
+set_property(TEST test_ui_snapshot APPEND PROPERTY LABELS snapshot)
+add_test(NAME test_ui_snapshot_hidpi COMMAND test_ui_snapshot)
+set_tests_properties(test_ui_snapshot_hidpi PROPERTIES
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_SCALE_FACTOR=2"
+    ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>"
+    LABELS snapshot)
+
 # Test d'intégration SamWorkerClient <-> faux worker Python (stdlib only,
 # aucune dépendance à un vrai environnement SAM 2/torch en CI).
 openstitch_add_qt_test(test_sam_worker_client test_sam_worker_client.cpp)

@@ -32,6 +32,7 @@
 #include "openstitch/document/project.hpp"
 #include "openstitch/segmentation/segmentation.hpp"
 #include "recent_files.hpp"
+#include "theme_test_support.hpp"
 
 using openstitch::Micrometers;
 using openstitch::ObjectId;
@@ -158,6 +159,7 @@ private slots:
         QCoreApplication::setApplicationName(QStringLiteral("UiCharacterizationTest"));
         QSettings::setDefaultFormat(QSettings::IniFormat);
         QSettings::setPath(QSettings::IniFormat, QSettings::UserScope, settingsDir_.path());
+        openstitch::desktop::test::applyThemeFromEnv();
     }
 
     // ---- (a) matrice d'activation des actions -------------------------------------
