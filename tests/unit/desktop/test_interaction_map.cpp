@@ -42,6 +42,79 @@ struct SettingsSandbox {
     ~SettingsSandbox() { QSettings::setDefaultFormat(savedFormat); }
 };
 
+struct Expected {
+    const char* id;
+    Context context;
+    Intent intent;
+    bool routed;
+    bool planned;
+    bool overrides;
+};
+
+// Table attendue, écrite à la main et indépendante de la table du code.
+constexpr Context Gl = Context::Global;
+const Expected kExpected[] = {
+    {"G1", Gl, Intent::ZoomAtCursor, true, false, false},
+    {"G2", Gl, Intent::ZoomDrag, true, false, false},
+    {"G3", Gl, Intent::PanView, true, false, false},
+    {"G4", Gl, Intent::FitDesign, true, false, false},
+    {"G5", Gl, Intent::PanView, true, false, false},
+    {"G6", Gl, Intent::ScrollHorizontal, true, false, false},
+    {"G7", Gl, Intent::ScrollVertical, true, false, false},
+    {"G8", Gl, Intent::PanView, true, false, false},
+    {"G9", Gl, Intent::ZoomAtCursor, true, false, false},
+    {"G10", Context::Select, Intent::ContextMenu, false, false, false},
+    {"G10b", Context::Move, Intent::ContextMenu, false, false, false},
+    {"G10c", Context::NodeEdit, Intent::ContextMenu, false, false, false},
+    {"G10d", Context::StitchEdit, Intent::ContextMenu, false, false, false},
+    {"G11", Gl, Intent::DeleteSelection, false, false, false},
+    {"G12", Gl, Intent::CancelTool, false, false, false},
+    {"G13", Gl, Intent::ZoomAtCursor, true, false, false},
+    {"G14", Gl, Intent::FitCanvas, false, false, false},
+    {"G15", Gl, Intent::NudgeFine, false, false, false},
+    {"G15b", Gl, Intent::NudgeCoarse, false, false, false},
+    {"P1", Context::Pan, Intent::PanView, true, false, false},
+    {"S1", Context::Select, Intent::SelectReplace, true, false, false},
+    {"S2", Context::Select, Intent::SelectAdd, true, false, false},
+    {"S3", Context::Select, Intent::SelectToggle, true, false, false},
+    {"S3b", Context::Select, Intent::SelectToggle, true, false, false},
+    {"S4", Context::Select, Intent::SelectBelow, true, false, false},
+    {"S5", Context::Select, Intent::SelectBelow, true, false, false},
+    {"S6", Context::Select, Intent::SelectRectangle, true, false, false},
+    {"S7", Context::Select, Intent::SelectRectangle, true, false, false},
+    {"S8", Context::Select, Intent::SelectRectangle, true, false, false},
+    {"S8b", Context::Select, Intent::SelectRectangle, true, false, false},
+    {"S9", Context::Select, Intent::SelectModeFree, false, true, false},
+    {"S9b", Context::Select, Intent::SelectModeBrush, false, true, false},
+    {"S10", Context::Select, Intent::EnterEdit, false, false, false},
+    {"S11", Context::Select, Intent::HoverHighlight, true, false, false},
+    {"M1", Context::Move, Intent::MoveObject, false, false, false},
+    {"M2", Context::Move, Intent::AxisLock, false, false, false},
+    {"M3", Context::Move, Intent::SuspendSnap, false, false, false},
+    {"M4", Context::Move, Intent::DuplicateOnMove, false, false, false},
+    {"D1", Context::DrawClicks, Intent::DrawPoint, false, false, false},
+    {"D2", Context::DrawClicks, Intent::FinishDraw, false, false, false},
+    {"D2b", Context::DrawClicks, Intent::FinishDraw, false, false, false},
+    {"D3", Context::DrawBox, Intent::ConstrainShape, false, false, false},
+    {"D4", Context::DrawBox, Intent::DrawFromCenter, false, false, false},
+    {"D5", Context::DrawClicks, Intent::SuspendSnap, false, false, false},
+    {"D6", Context::DrawClicks, Intent::RemoveLastPoint, false, false, false},
+    {"D7", Context::DrawClicks, Intent::CancelTool, false, false, true},
+    {"N1", Context::NodeEdit, Intent::MoveNode, false, false, false},
+    {"N2", Context::NodeEdit, Intent::AxisLock, false, false, false},
+    {"N2b", Context::NodeEdit, Intent::SuspendSnap, false, false, false},
+    {"N3", Context::NodeEdit, Intent::InsertNode, false, true, false},
+    {"N4", Context::NodeEdit, Intent::DeleteNodes, false, false, true},
+};
+
+QStringList gestures(const QList<Hint>& hints) {
+    QStringList out;
+    for (const Hint& h : hints) {
+        out << h.gesture;
+    }
+    return out;
+}
+
 QPainterPath rectShape(const QRectF& r) {
     QPainterPath p;
     p.addRect(r);
@@ -116,23 +189,37 @@ private slots:
         QVERIFY(planned >= 3); // S9, S9b, N3
     }
 
-    void everyRowResolvesToItself_data() {
+    void everyRowMatchesTheExpectedTable_data() {
         QTest::addColumn<int>("index");
-        const auto rows = InteractionMap::rawRows();
-        for (std::size_t i = 0; i < rows.size(); ++i) {
-            QTest::newRow(rows[i].id) << static_cast<int>(i);
+        for (std::size_t i = 0; i < std::size(kExpected); ++i) {
+            QTest::newRow(kExpected[i].id) << static_cast<int>(i);
         }
     }
-    void everyRowResolvesToItself() {
+    void everyRowMatchesTheExpectedTable() {
         QFETCH(int, index);
-        const Row& r = InteractionMap::rawRows()[static_cast<std::size_t>(index)];
-        const auto got = InteractionMap::resolve(r.context, r.gesture);
-        if (r.planned) {
+        const Expected& e = kExpected[index];
+        const Row* found = nullptr;
+        for (const Row& r : InteractionMap::rawRows()) {
+            if (QLatin1String(r.id) == QLatin1String(e.id)) {
+                found = &r;
+            }
+        }
+        QVERIFY2(found != nullptr, e.id);
+        QCOMPARE(found->context, e.context);
+        QCOMPARE(found->intent, e.intent);
+        QCOMPARE(found->routed, e.routed);
+        QCOMPARE(found->planned, e.planned);
+        QCOMPARE(found->overridesGlobal, e.overrides);
+        const auto got = InteractionMap::resolve(found->context, found->gesture);
+        if (e.planned) {
             QVERIFY(!got.has_value());
         } else {
             QVERIFY(got.has_value());
-            QCOMPARE(*got, r.intent);
+            QCOMPARE(*got, e.intent);
         }
+    }
+    void tableHasExactlyTheExpectedRows() {
+        QCOMPARE(static_cast<std::size_t>(InteractionMap::rawRows().size()), std::size(kExpected));
     }
 
     void globalGesturesResolveInEveryContext() {
@@ -165,7 +252,15 @@ private slots:
                  std::optional<Intent>(Intent::SelectReplace));
         QCOMPARE(InteractionMap::resolve(Context::Select, shift),
                  std::optional<Intent>(Intent::SelectAdd));
-        QVERIFY(!InteractionMap::resolve(Context::Select, both).has_value());
+        QCOMPARE(InteractionMap::resolve(Context::Select, both),
+                 std::optional<Intent>(Intent::SelectToggle));
+        const Gesture bothDrag{GestureKind::Drag, Qt::LeftButton,
+                               Qt::ShiftModifier | Qt::ControlModifier, Qt::Key(0)};
+        QCOMPARE(InteractionMap::resolve(Context::Select, bothDrag),
+                 std::optional<Intent>(Intent::SelectRectangle));
+        const Gesture altShift{GestureKind::Click, Qt::LeftButton,
+                               Qt::ShiftModifier | Qt::AltModifier, Qt::Key(0)};
+        QVERIFY(!InteractionMap::resolve(Context::Select, altShift).has_value());
         // Maj + clic n'est pas un clic en contexte de dessin.
         QVERIFY(!InteractionMap::resolve(Context::DrawClicks, shift).has_value());
     }
@@ -212,6 +307,34 @@ private slots:
         const QList<Hint> select = InteractionMap::hintsFor(Context::Select, {});
         QCOMPARE(select.at(0).gesture, QStringLiteral("Clic"));
         QCOMPARE(select.at(0).label, QStringLiteral("sélectionner (le vide désélectionne)"));
+    }
+
+    void hintsExactListsForSelect() {
+        // 6 au plus : G5 (Espace + glisser) est coupé en OpenStitch.
+        QCOMPARE(gestures(InteractionMap::hintsFor(Context::Select, {})),
+                 (QStringList{"Clic", "Maj + clic", "Ctrl + clic", "Alt + clic", "Molette",
+                              "Clic molette + glisser"}));
+        InteractionMap::setPreset(Preset::Touchpad);
+        QCOMPARE(gestures(InteractionMap::hintsFor(Context::Select, {})),
+                 (QStringList{"Clic", "Maj + clic", "Ctrl + clic", "Alt + clic", "Molette",
+                              "Espace + glisser"}));
+        InteractionMap::setPreset(Preset::OpenStitch);
+        QCOMPARE(
+            gestures(InteractionMap::hintsFor(Context::Select, Qt::ShiftModifier)),
+            (QStringList{"Maj + clic", "Ctrl + Maj + clic", "Maj + glisser", "Ctrl + Maj + glisser",
+                         "Ctrl + Maj + clic molette + glisser", "Maj + molette", "Maj + Flèches"}));
+    }
+
+    void keyNamesAreFrench() {
+        QCOMPARE(InteractionMap::describe({GestureKind::Key, Qt::NoButton, {}, Qt::Key_Up}),
+                 QStringLiteral("Flèches"));
+        QCOMPARE(InteractionMap::describe(
+                     {GestureKind::Key, Qt::NoButton, Qt::ShiftModifier, Qt::Key_Left}),
+                 QStringLiteral("Maj + Flèches"));
+        QCOMPARE(InteractionMap::describe({GestureKind::Key, Qt::NoButton, {}, Qt::Key_Backspace}),
+                 QStringLiteral("Retour arrière"));
+        QCOMPARE(InteractionMap::describe({GestureKind::Key, Qt::NoButton, {}, Qt::Key_Delete}),
+                 QStringLiteral("Suppr"));
     }
 
     void hintsWithShiftListShiftRows() {

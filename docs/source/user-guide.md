@@ -53,14 +53,15 @@ de gros motifs.
 Le comportement de la souris et du clavier dans le canevas suit une **table
 unique** (`apps/desktop/interaction_map.cpp`) : c'est elle qui pilote le
 comportement du canevas, la ligne d'indications de la barre d'état et le
-tableau ci-dessous. Principes : la **molette** zoome sous le curseur, le **clic
-molette** (ou **Espace** + glisser, ou **Ctrl + molette** pour un pavé tactile)
-déplace la vue, **Maj** ajoute à la sélection, **Ctrl** ajoute ou retire, un
-**appui long** ou **Alt + clic** ouvre « Sélectionner dessous ». La
-correspondance est exacte : Maj + clic n'est pas un clic simple, et le panoramique
-reste disponible pendant un outil de dessin. Sous Windows, un pavé tactile se
-distingue mal d'une molette : le préréglage de navigation « Pavé tactile »
-(Affichage ▸ Navigation) y met en avant Espace + glisser et Ctrl + molette.
+tableau ci-dessous. Principes : la **molette** zoome sous le curseur (**Ctrl + molette** aussi ;
+c'est ainsi que Windows livre le pincement d'un pavé tactile), le **clic
+molette** ou **Espace** + glisser déplace la vue, **Maj** ajoute à la sélection,
+**Ctrl** ajoute ou retire, un **appui long** ou **Alt + clic** ouvre
+« Sélectionner dessous ». La correspondance est exacte : Maj + clic n'est pas un
+clic simple, et le panoramique reste disponible pendant un outil de dessin. Sous
+Windows, un pavé tactile se distingue mal d'une molette : le préréglage de
+navigation « Pavé tactile » (Affichage ▸ Navigation) y met en avant
+Espace + glisser et Ctrl + molette.
 
 Le tableau est **généré** par `openstitch_gesture_table --markdown` ; ne pas le
 modifier à la main (le test `docs_gestures_in_sync` échoue si la table du code
@@ -346,6 +347,10 @@ constitue pas une garantie absolue en version 0.1.0.
 
 - **Raccourcis clavier…** : la liste ci-dessous.
 - **À propos** : nom, version, licence.
+
+Le nouveau menu Aide (Guide de prise en main, Gestes souris et clavier (F1),
+À propos) est prévu par la tâche T4 du lot L5 : il n'est pas encore dans
+l'application.
 
 ## Raccourcis
 

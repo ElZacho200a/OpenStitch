@@ -11,6 +11,11 @@
 #include <cstdio>
 #include <cstring>
 
+#ifdef _WIN32
+#include <fcntl.h>
+#include <io.h>
+#endif
+
 #include "interaction_map.hpp"
 
 using openstitch::desktop::InteractionMap;
@@ -38,6 +43,9 @@ QString markdown() {
 
 int main(int argc, char** argv) {
     if (argc == 2 && std::strcmp(argv[1], "--markdown") == 0) {
+#ifdef _WIN32
+        _setmode(_fileno(stdout), _O_BINARY); // sortie LF pure, jamais CRLF
+#endif
         const QByteArray bytes = markdown().toUtf8();
         std::fwrite(bytes.constData(), 1, static_cast<std::size_t>(bytes.size()), stdout);
         return 0;

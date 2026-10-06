@@ -4,6 +4,7 @@
 #include <memory>
 #include <stdexcept>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "openstitch/commands/composite_command.hpp"
@@ -34,6 +35,21 @@ private:
     std::vector<std::string>& log_;
     std::string tag_;
     bool failOnApply_;
+};
+
+// Réussit au premier apply, échoue ensuite (redo qui échoue).
+class FlakyCommand final : public ICommand {
+public:
+    void apply(document::Project&) override {
+        if (applied_++ > 0) {
+            throw std::runtime_error("flaky");
+        }
+    }
+    void revert(document::Project&) override {}
+    [[nodiscard]] std::string name() const override { return "Flaky"; }
+
+private:
+    int applied_ = 0;
 };
 
 std::unique_ptr<CompositeCommand> make_abc(std::vector<std::string>& log) {
@@ -141,4 +157,73 @@ TEST_CASE("failed composite is not pushed on the undo stack") {
     CHECK_THROWS_AS(stack.execute(std::move(c), project), std::runtime_error);
     CHECK_FALSE(stack.canUndo());
     CHECK_FALSE(stack.canRedo());
+}
+
+TEST_CASE("composite ignores null children") {
+    std::vector<std::string> log;
+    document::Project project;
+    CompositeCommand c("Nul");
+    c.add(nullptr);
+    c.add(std::make_unique<LogCommand>(log, "A"));
+    std::vector<std::unique_ptr<ICommand>> subs;
+    subs.push_back(nullptr);
+    subs.push_back(std::make_unique<LogCommand>(log, "B"));
+    CompositeCommand d("Nul2", std::move(subs));
+    CHECK(c.size() == 1);
+    CHECK(d.size() == 1);
+    c.apply(project);
+    d.apply(project);
+    c.revert(project);
+    CHECK(log == std::vector<std::string>{"apply A", "apply B", "revert A"});
+}
+
+TEST_CASE("composite nested in a composite applies, reverts and undoes as one step") {
+    std::vector<std::string> log;
+    document::Project project;
+    UndoStack stack;
+
+    auto inner = std::make_unique<CompositeCommand>("Interne");
+    inner->add(std::make_unique<LogCommand>(log, "B"));
+    inner->add(std::make_unique<LogCommand>(log, "C"));
+    auto outer = std::make_unique<CompositeCommand>("Externe");
+    outer->add(std::make_unique<LogCommand>(log, "A"));
+    outer->add(std::move(inner));
+    outer->add(std::make_unique<LogCommand>(log, "D"));
+
+    stack.execute(std::move(outer), project);
+    CHECK(log == std::vector<std::string>{"apply A", "apply B", "apply C", "apply D"});
+
+    log.clear();
+    CHECK(stack.undo(project));
+    CHECK(log == std::vector<std::string>{"revert D", "revert C", "revert B", "revert A"});
+    CHECK_FALSE(stack.canUndo());
+
+    log.clear();
+    CHECK(stack.redo(project));
+    CHECK(log == std::vector<std::string>{"apply A", "apply B", "apply C", "apply D"});
+}
+
+TEST_CASE("failure inside a nested composite rolls back the whole outer composite") {
+    std::vector<std::string> log;
+    document::Project project;
+    auto inner = std::make_unique<CompositeCommand>("Interne");
+    inner->add(std::make_unique<LogCommand>(log, "B"));
+    inner->add(std::make_unique<LogCommand>(log, "C", true));
+    CompositeCommand outer("Externe");
+    outer.add(std::make_unique<LogCommand>(log, "A"));
+    outer.add(std::move(inner));
+    CHECK_THROWS_AS(outer.apply(project), std::runtime_error);
+    CHECK(log == std::vector<std::string>{"apply A", "apply B", "fail C", "revert B", "revert A"});
+}
+
+TEST_CASE("failing redo keeps the redo entry") {
+    document::Project project;
+    UndoStack stack;
+    auto c = std::make_unique<CompositeCommand>("Flaky");
+    c->add(std::make_unique<FlakyCommand>());
+    stack.execute(std::move(c), project);
+    CHECK(stack.undo(project));
+    CHECK_THROWS_AS(stack.redo(project), std::runtime_error);
+    CHECK(stack.canRedo());
+    CHECK_FALSE(stack.canUndo());
 }

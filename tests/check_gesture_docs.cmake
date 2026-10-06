@@ -14,6 +14,7 @@ if(NOT DEFINED TOOL OR NOT DEFINED DOC)
 endif()
 
 execute_process(COMMAND "${TOOL}" --markdown
+    ENCODING UTF-8
     OUTPUT_VARIABLE generated
     RESULT_VARIABLE rc
     ERROR_VARIABLE err)
@@ -21,10 +22,16 @@ if(NOT rc EQUAL 0)
     message(FATAL_ERROR "openstitch_gesture_table a echoue (${rc}) : ${err}")
 endif()
 
+string(FIND "${generated}" "\r" cr_pos)
+if(NOT cr_pos EQUAL -1)
+    message(FATAL_ERROR "La sortie du generateur contient des CR : elle doit etre en LF pur")
+endif()
+
 file(READ "${DOC}" doc)
 # Normalise les fins de ligne (autocrlf Windows) des deux cotes.
 string(REPLACE "\r\n" "\n" doc "${doc}")
 string(REPLACE "\r\n" "\n" generated "${generated}")
+# Sortie attendue en LF pur (le generateur passe stdout en binaire sous Windows).
 
 set(begin_marker "<!-- GESTURES:BEGIN -->\n")
 set(end_marker "<!-- GESTURES:END -->")

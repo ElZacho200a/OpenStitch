@@ -7,10 +7,14 @@ namespace openstitch::commands {
 
 CompositeCommand::CompositeCommand(std::string name,
                                    std::vector<std::unique_ptr<ICommand>> commands)
-    : name_(std::move(name)), commands_(std::move(commands)) {}
+    : name_(std::move(name)), commands_(std::move(commands)) {
+    std::erase(commands_, nullptr);
+}
 
 void CompositeCommand::add(std::unique_ptr<ICommand> command) {
-    commands_.push_back(std::move(command));
+    if (command) {
+        commands_.push_back(std::move(command));
+    }
 }
 
 void CompositeCommand::apply(document::Project& project) {

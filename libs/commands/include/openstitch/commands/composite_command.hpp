@@ -26,7 +26,10 @@ public:
     explicit CompositeCommand(std::string name,
                               std::vector<std::unique_ptr<ICommand>> commands = {});
 
-    // Ajoute une sous-commande en fin de liste (avant le premier `apply`).
+    // Ajoute une sous-commande en fin de liste. À appeler AVANT le premier
+    // `apply` : ajouter après coup désynchroniserait `revert` (la nouvelle
+    // sous-commande serait annulée sans avoir été appliquée). Un pointeur nul
+    // est ignoré.
     void add(std::unique_ptr<ICommand> command);
 
     [[nodiscard]] std::size_t size() const { return commands_.size(); }
