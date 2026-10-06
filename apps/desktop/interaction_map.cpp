@@ -417,8 +417,17 @@ Preset InteractionMap::preset() {
     return activePreset();
 }
 
+PresetNotifier& InteractionMap::notifier() {
+    static PresetNotifier instance;
+    return instance;
+}
+
 void InteractionMap::setPreset(Preset p) {
+    const bool changed = activePreset() != p;
     activePreset() = p;
+    if (changed) {
+        emit notifier().presetChanged(p);
+    }
 }
 
 Preset InteractionMap::loadPreset() {

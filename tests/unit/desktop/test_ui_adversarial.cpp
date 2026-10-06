@@ -1154,11 +1154,7 @@ void MainWindowTest::deferredBodyDragDoesNotLeakIntoAReplacedDocument() {
     // BUG: le lambda différé de VectorObjectBodyItem (main_window.cpp, renderBase) ne teste pas
     // documentGeneration_ (contrairement aux autres commandes différées) : il translate un
     // objet du NOUVEAU document portant le même id et empile une commande d'annulation.
-    QEXPECT_FAIL("", "BUG: deferred body-drag command not guarded by documentGeneration_",
-                 Continue);
     QCOMPARE(QString::fromStdString(snap(window.project_)), QString::fromStdString(fresh));
-    QEXPECT_FAIL("", "BUG: deferred body-drag command not guarded by documentGeneration_",
-                 Continue);
     QVERIFY(!window.undoStack_.canUndo());
 }
 
@@ -1427,7 +1423,6 @@ void MainWindowTest::plainClickWithOnePixelJitterOnSelectedBodyMovesNothing() {
     // BUG (antérieur à L5, VectorObjectBodyItem) : aucun seuil de glisser. Un clic dont la
     // souris bouge d'un pixel déplace l'objet sélectionné (0,1 mm ici, 1 mm à l'échelle 1) et
     // empile une commande d'annulation.
-    QEXPECT_FAIL("", "BUG: no drag threshold on the selected body (pre-existing)", Continue);
     QCOMPARE(QString::fromStdString(snap(window.project_)), QString::fromStdString(before));
 }
 
@@ -1504,7 +1499,6 @@ void MainWindowTest::degenerateRectanglesNeverSelectOrCrash() {
     // BUG: QRectF::contains() renvoie false pour un rectangle de largeur/hauteur nulle (même
     // entièrement couvert) : une forme plate n'est jamais prise par un cadre fenêtre, alors que
     // le cadre « croisement » la prend.
-    QEXPECT_FAIL("", "BUG: window rectangle never selects a zero-height/width object", Continue);
     QVERIFY(std::find(all.begin(), all.end(), flatObj->id) != all.end());
 }
 
@@ -1786,7 +1780,6 @@ void MainWindowTest::staleModifierHintsAfterFocusLoss() {
     QApplication::sendEvent(view, &out);
     // BUG: resetTransientInput() ne remet pas lastModifiers_ à zéro : la ligne d'indications
     // (« Maj : ajouter ») et le curseur « + » restent périmés jusqu'au prochain mouvement.
-    QEXPECT_FAIL("", "BUG: modifier cache (hints/cursor) not reset on focus loss", Continue);
     QCOMPARE(window.hintsText(), base);
     // Même chose quand la fenêtre est désactivée.
     sendMouse(view->viewport(), QEvent::MouseMove, QPoint(101, 100), Qt::NoButton, Qt::NoButton,
@@ -1796,7 +1789,6 @@ void MainWindowTest::staleModifierHintsAfterFocusLoss() {
               Qt::ControlModifier);
     QVERIFY(window.hintsText() != base);
     window.hide();
-    QEXPECT_FAIL("", "BUG: modifier cache (hints/cursor) not reset on hide", Continue);
     QCOMPARE(window.hintsText(), base);
 }
 
@@ -2082,10 +2074,7 @@ void MainWindowTest::twoWindowsShareTheGlobalPresetConsistently() {
     QCOMPARE(InteractionMap::preset(), Preset::Touchpad);
     QVERIFY(secondTouch->isChecked());
     // Le préréglage est GLOBAL au processus : la première fenêtre doit refléter le même état.
-    QEXPECT_FAIL("", "BUG: other window's Navigation menu check state is stale", Continue);
     QVERIFY(firstTouch->isChecked() && !firstOs->isChecked());
-    QEXPECT_FAIL("", "BUG: other window's hints line is stale after a global preset change",
-                 Continue);
     QCOMPARE(first.hintsText(), second.hintsText());
     // Détruire une fenêtre ne change pas le préréglage.
     {

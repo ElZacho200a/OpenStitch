@@ -507,6 +507,15 @@ MainWindow::MainWindow() {
     connect(view_, &CanvasView::selectionClickedMm, this, &MainWindow::onSelectionClicked);
     connect(view_, &CanvasView::selectionRectangleMm, this, &MainWindow::onSelectionRectangle);
     connect(view_, &CanvasView::selectBelowRequested, this, &MainWindow::onSelectBelow);
+    // Préréglage de navigation GLOBAL : toute fenêtre reflète un changement venu d'ailleurs.
+    connect(&InteractionMap::notifier(), &PresetNotifier::presetChanged, this,
+            [this](Preset preset) {
+                QAction* act = preset == Preset::Touchpad ? navTouchpadAct_ : navOpenStitchAct_;
+                if (act != nullptr && !act->isChecked()) {
+                    act->setChecked(true);
+                }
+                refreshHints();
+            });
     connect(view_, &CanvasView::cursorLeftViewport, this, [this] { hideHoverHighlight(); });
     connect(view_, &CanvasView::modifiersChanged, this, [this](Qt::KeyboardModifiers mods) {
         heldModifiers_ = mods;
@@ -2526,6 +2535,7 @@ void MainWindow::renderBase(const image::Image& img) {
                 bodyItem->setReleasedWithModifiers([this, objectId](QPointF deltaSceneMm,
                                                                     Qt::KeyboardModifiers mods) {
                     const Vec2um delta = sceneMmToModel(deltaSceneMm);
+                    const std::uint64_t generation = documentGeneration_;
                     // Alt + simple clic (mouvement <= seuil de glisser) : « Sélectionner
                     // dessous » côté canevas, pas de copie.
                     const bool duplicate = (mods & Qt::AltModifier) != 0 &&
@@ -2535,7 +2545,10 @@ void MainWindow::renderBase(const image::Image& img) {
                     // propre événement souris (même défaut que NodeHandleItem).
                     // Glisser un membre d'une multi-sélection déplace tout
                     // l'ensemble (même helper que les flèches : un seul pas).
-                    QTimer::singleShot(0, this, [this, objectId, delta, duplicate] {
+                    QTimer::singleShot(0, this, [this, objectId, delta, duplicate, generation] {
+                        if (generation != documentGeneration_) {
+                            return; // document remplacé entre-temps : aucune commande périmée
+                        }
                         if (duplicate) {
                             duplicateAndTranslate(hasMultiSelection() && isObjectSelected(objectId)
                                                       ? selectedObjectIds()
@@ -5373,7 +5386,6 @@ void MainWindow::showGesturesDialog() {
         // Le dialogue a déjà appliqué et enregistré le préréglage : on aligne le menu.
         QAction* act = preset == Preset::Touchpad ? navTouchpadAct_ : navOpenStitchAct_;
         if (act != nullptr) {
-            const QSignalBlocker blocker(act);
             act->setChecked(true);
         }
         refreshHints();
@@ -5446,7 +5458,6 @@ void MainWindow::applyNavigationPreset(Preset preset) {
     InteractionMap::savePreset();
     QAction* act = preset == Preset::Touchpad ? navTouchpadAct_ : navOpenStitchAct_;
     if (act != nullptr && !act->isChecked()) {
-        const QSignalBlocker blocker(act);
         act->setChecked(true);
     }
     refreshHints();

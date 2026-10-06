@@ -72,6 +72,19 @@ bool crossesRect(const document::VectorObject& object, const QRectF& rect) {
     stroker.setWidth(kOpenPathHitWidthMm);
     return stroker.createStroke(open).intersects(rect);
 }
+
+// Fenêtre : la boîte englobante de l'objet tient entièrement dans le cadre. Comparaison des
+// bords à la main : QRectF::contains() est faux pour un objet plat (largeur ou hauteur nulle)
+// même entièrement couvert.
+bool windowEncloses(const document::VectorObject& object, const QRectF& rect) {
+    const QPainterPath shape = buildPath(object, Part::All);
+    if (shape.isEmpty() || rect.width() < 0.0 || rect.height() < 0.0) {
+        return false;
+    }
+    const QRectF b = shape.boundingRect();
+    return rect.left() <= b.left() && rect.top() <= b.top() && rect.right() >= b.right() &&
+           rect.bottom() >= b.bottom();
+}
 } // namespace
 
 QPainterPath objectScenePath(const document::VectorObject& object) {
@@ -95,9 +108,7 @@ std::vector<ObjectId> objectsInRectangleMm(const document::Project& project, con
         if (!object.visible) {
             continue;
         }
-        const bool hit = crossing
-                             ? crossesRect(object, rectMm)
-                             : InteractionMap::rectSelects(rectMm, objectScenePath(object), false);
+        const bool hit = crossing ? crossesRect(object, rectMm) : windowEncloses(object, rectMm);
         if (hit) {
             hits.push_back(object.id);
         }

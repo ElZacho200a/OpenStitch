@@ -585,6 +585,9 @@ void CanvasView::resetTransientInput(bool cursorLeft) {
     if (panning_ || zoomDragging_) {
         endGesture();
     }
+    // Perte de focus / masquage / désactivation : l'état clavier n'est plus observable, le
+    // cache de modificateurs (curseur, indications) ne doit pas survivre.
+    updateModifiers(Qt::NoModifier);
 }
 
 void CanvasView::startPan(const QPoint& viewportPos, Qt::MouseButton button) {

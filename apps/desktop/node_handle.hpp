@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 #pragma once
 
+#include <QApplication>
 #include <QBrush>
 #include <QCursor>
 #include <QGraphicsEllipseItem>
@@ -134,7 +135,21 @@ public:
     }
 
 protected:
+    // Seuil de glisser : un clic dont la souris bouge de quelques pixels ne déplace rien (pas de
+    // commande, pas de pas d'annulation) ; au-delà, le déplacement suit la souris sans saut.
+    void mousePressEvent(QGraphicsSceneMouseEvent* event) override {
+        pressScreenPos_ = event->screenPos();
+        dragStarted_ = false;
+        QGraphicsPathItem::mousePressEvent(event);
+    }
     void mouseMoveEvent(QGraphicsSceneMouseEvent* event) override {
+        if (!dragStarted_) {
+            if ((event->screenPos() - pressScreenPos_).manhattanLength() <=
+                QApplication::startDragDistance()) {
+                return;
+            }
+            dragStarted_ = true;
+        }
         QGraphicsPathItem::mouseMoveEvent(event);
         // Maj : verrou d'axe pendant le glisser (ligne M2) ; pos() = delta.
         if ((event->modifiers() & Qt::ShiftModifier) != 0) {
@@ -159,6 +174,8 @@ protected:
 private:
     std::function<void(QPointF)> onReleased_;
     std::function<void(QPointF, Qt::KeyboardModifiers)> onReleasedMods_;
+    QPoint pressScreenPos_;
+    bool dragStarted_{false};
 };
 
 // Poignée de redimensionnement : carré (distinct des poignées de nœud,

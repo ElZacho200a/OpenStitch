@@ -7,6 +7,7 @@
 // (QPainterPath / QRectF) : jamais QtWidgets, aucun QApplication requis.
 
 #include <QList>
+#include <QObject>
 #include <QPainterPath>
 #include <QRectF>
 #include <QString>
@@ -119,6 +120,14 @@ struct Hint {
     bool operator==(const Hint&) const = default;
 };
 
+// Notification process-wide : émise par InteractionMap::setPreset quand le préréglage change
+// (plusieurs fenêtres / dialogues partagent le même état global).
+class PresetNotifier : public QObject {
+    Q_OBJECT
+signals:
+    void presetChanged(openstitch::desktop::Preset preset);
+};
+
 class InteractionMap {
 public:
     // Exact sur (kind, button, mods, key) : contexte spécifique puis Global.
@@ -150,6 +159,7 @@ public:
     // Fenêtre : boundingRect entièrement dans `rect` ; croisement : la forme coupe `rect`.
     static bool rectSelects(const QRectF& rect, const QPainterPath& shape, bool crossing);
 
+    static PresetNotifier& notifier();
     static Preset preset();
     static void setPreset(Preset preset);
     // Lit QSettings « navigation/preset » (openstitch|touchpad), l'applique et le retourne.
