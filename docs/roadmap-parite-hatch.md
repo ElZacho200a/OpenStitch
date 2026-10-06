@@ -24,6 +24,45 @@ prochaine entrée de ce fichier.
 
 ---
 
+## État d'avancement (revu le 2026-10-06)
+
+> **Source de vérité des statuts : ce fichier.** `specs/implementation-roadmap.md`
+> décrit l'*ordre de livraison* (vagues, scopes S1…S15, plans) et `docs/source/roadmap.md`
+> la vue d'ensemble ; ils renvoient ici pour tout statut. Une entrée ne passe à ☑
+> que si ses critères d'acceptation sont remplis **sur `main`** (code + tests), pas
+> sur une branche ou une PR ouverte.
+
+Audit du 2026-10-06 : chaque entrée a été confrontée au code de `main` (`40bf4c0`).
+
+| Priorité | ☑ Fait | ◐ Partiel | ☐ À faire | Total |
+|---|---|---|---|---|
+| P0 | 6 | 10 | 28 | 44 |
+| P1 | 0 | 30 | 91 | 121 |
+| P2 | 0 | 9 | 70 | 79 |
+| P3 | 0 | 0 | 12 | 12 |
+| **Total** | **6** | **49** | **201** | **256** |
+
+**Fait (6)** : FILE-001/002/003/004 (nouveau projet, enregistrer, récents, autosave),
+THR-001/003 (bibliothèque de fils, fil le plus proche).
+
+**En PR, non fusionné** : HP-FMT-001 (PR #5, couche de normalisation machine) ; plan de code
+S3 sélection/presse-papiers (PR #3, documentation seulement, **aucun code**).
+
+**Livré hors entrée dédiée** : mode Contours / Line Art (PR #4, 2026-10-05) — fait avancer
+AUTO-001/002/005/008/009, VEC-002, STI-004 (brique), sans en clore aucune.
+
+**P0 encore ouverts, par thème** (38 entrées ; détail dans les sections) :
+formats machine (FMT-001…005) · fils (THR-002/004/005) · lettrage (TXT-001/003/004) ·
+moteur (STI-004, ENG-001/002/008/010) · auto-numérisation (AUTO-001/003/009) ·
+manipulation d'objets (VEC-002, OBJ-001/002/003/004/006/014/016/018, SEQ-003) ·
+visualisation et production (VIEW-001, PROD-001) · transverse (UX-006, PERF-001/002,
+I18N-001/002) · distribution et validation (DIST-001, PHYS-001).
+
+**Preuves humaines requises** pour clore certaines entrées (HP-PHYS-001, HP-AUTO-001,
+HP-DIST-001 …) : machine réelle, scans Hatch, certificat de signature.
+
+---
+
 ## 0. Mode d'emploi
 
 ### 0.1 Format d'une entrée
@@ -127,7 +166,10 @@ graphiques. C'est **le premier mur** : la majorité des machines domestiques
 (Brother, Babylock, Janome, Husqvarna, Pfaff, Bernina) n'utilisent pas DST.
 
 ### HP-FMT-001 — Couche de normalisation machine séparée des codecs [P0] — ☐ À faire
-- État OpenStitch : la découpe des grands déplacements, la quantification et
+- Suivi : **PR #5** (`task/s2a-machine-layer`, ouverte, non fusionnée) livre
+  `machine.hpp` (`MachineConstraints`, `normalize_for_machine`), `format_registry` et
+  les tests ; sur `main` l'entrée reste ☐ tant qu'elle n'est pas fusionnée.
+- État OpenStitch (sur `main`) : la découpe des grands déplacements, la quantification et
   l'encodage des coupes sont faits *dans* l'encodeur DST (`encode_dst`,
   `DstWriteOptions::trim_jumps`). `roadmap.md` le signale déjà (« Séparer la
   normalisation machine de l'encodeur DST »).
@@ -271,7 +313,8 @@ graphiques. C'est **le premier mur** : la majorité des machines domestiques
 - Modules : `libs/formats`, `THIRD_PARTY_LICENSES.md`.
 
 ### HP-FMT-014 — Import SVG plus complet [P1] — ◐ Partiel
-- État OpenStitch : formes, `<path>` complet, `<g>`, transformations.
+- État OpenStitch : formes, `<path>` complet, `<g>`, transformations, **`viewBox`,
+  `width`/`height` et unités** (`mm`/`cm`/`in`/`pt`/`pc`, `svg_import.cpp`).
 - À faire : `<text>` (converti en contours via HP-TXT-003), styles CSS et
   attribut `style`, `fill-rule`, `<use>`/`<defs>`/`<symbol>`, `clipPath`,
   unités (`mm`, `in`, `pt`, `viewBox`) pour une taille physique exacte,
@@ -322,8 +365,9 @@ graphiques. C'est **le premier mur** : la majorité des machines domestiques
 - Modules : `libs/project_io`, `libs/document`.
 
 ### HP-FMT-021 — Migrations de schéma `.osp` systématiques [P1] — ◐ Partiel
-- État OpenStitch : lecture tolérante `value(clé, défaut)` ; `stitch-feature-gap-audit.md`
-  note l'absence de vrai mécanisme de migration.
+- État OpenStitch : lecture tolérante `value(clé, défaut)` ; refus clair d'un fichier de
+  version future (`schemaVersion > kSchemaVersion`, `project_io.cpp`) ; toujours pas de table
+  de migrations ni de corpus `tests/fixtures/osp/`.
 - À faire : table de migrations versionnées `vN → vN+1` testées une à une ;
   corpus d'anciens `.osp` figés dans `tests/fixtures/osp/` relus à chaque
   build ; refus clair d'un fichier d'une version *future*.
@@ -424,6 +468,7 @@ des nuanciers de fabricants : c'est ce que l'utilisateur achète en magasin.
 ### HP-THR-004 — Fil assigné à chaque objet + remplacer une couleur partout [P0] — ☐ À faire
 - État OpenStitch : `EmbroideryObject::rgb` seul ; pas de sélecteur de couleur
   d'objet de broderie dans l'inspecteur (seulement la recoloration de région).
+  Démarrable : sa dépendance HP-THR-001 est ☑ (2026-10-05).
 - À faire : `EmbroideryObject` porte une référence de fil optionnelle
   (`ThreadRef`) en plus du RGB d'affichage ; commande `SetObjectThreadCommand`
   (un ou plusieurs objets) ; « remplacer ce fil par… » sur tout le design ;
@@ -620,7 +665,10 @@ directionnel** (guides, ruptures, aspect fait main). Hatch en propose beaucoup
 plus.
 
 ### HP-STI-001 — Point arrière, point tige, point « bean » [P1] — ◐ Partiel
-- État OpenStitch : simple / aller-retour / triple (`RunningStitchParams::repeats`).
+- État OpenStitch : simple / aller-retour / triple (`RunningStitchParams::repeats`) ;
+  `RepeatMode::Backstitch` et `BeanStitch` existent dans `apply_repeat_mode`
+  (`running_stitch.cpp`, testés) mais **ne sont pas exposés** dans les paramètres ni l'UI ;
+  pas de point tige.
 - Hatch : Backstitch, Stemstitch, Bean (triple), Single/Triple run.
 - À faire : point arrière (chaque point revient d'une fraction en arrière),
   point tige (points décalés latéralement, aspect torsadé) comme variantes de
@@ -642,6 +690,8 @@ plus.
 - Modules : `libs/stitch_generation`.
 
 ### HP-STI-004 — Satin de bordure à largeur fixe le long d'un chemin [P0] — ☐ À faire
+- Brique existante : `strip_polygon(centerline, demi-largeur)` (`contour_objects.cpp`) sert au
+  mode Contours ; aucun outil utilisateur ni commande `libs/commands` pour « chemin ouvert + largeur fixe ».
 - État OpenStitch : le satin exige deux rails ou un contour fermé découpé ;
   pas de « trait satin » de largeur constante sur un tracé ouvert.
 - Hatch : Satin Outline / Column A à largeur fixe : l'outil le plus utilisé
@@ -788,7 +838,11 @@ l'utilisateur ne voit pas. OpenStitch a les briques mais peu d'automatismes.
 - Acceptation : test géométrique (la rangée dépasse du contour de exactement
   `pull` ± 0,1 mm) ; validation physique HP-PHYS-001.
 
-### HP-ENG-002 — Sous-couche automatique selon la forme [P0] — ☐ À faire
+### HP-ENG-002 — Sous-couche automatique selon la forme [P0] — ◐ Partiel (2026-10-06)
+- Livré : l'auto-numérisation choisit la sous-couche du tatami selon l'aire (Lot B,
+  `auto_fill_underlay`) ; le satin a `center_underlay` par défaut. Manque : mode
+  Auto/Manuel au niveau du document pour les objets créés à la main, et seuils par
+  largeur de satin.
 - État OpenStitch : sous-couches désactivées par défaut (tatami) ou booléennes
   (satin) ; l'utilisateur doit savoir quoi cocher.
 - Hatch : sous-couche choisie automatiquement selon la largeur/le type
@@ -842,7 +896,7 @@ l'utilisateur ne voit pas. OpenStitch a les briques mais peu d'automatismes.
 ### HP-ENG-010 — Entrée et sortie automatiques au plus proche [P0] — ◐ Partiel
 - État OpenStitch : points d'entrée/sortie réglables (satin, tatami) ;
   routage multi-colonnes satin ; ordre des objets par centres (pas par
-  extrémités).
+  extrémités : `OrderItem` n'a que `centroid`).
 - Hatch : Auto start & end / Closest join : chaque objet commence au point le
   plus proche de la fin du précédent et finit près du début du suivant.
 - À faire : après l'ordre, calcul des points d'entrée/sortie de chaque objet
@@ -872,11 +926,13 @@ l'utilisateur ne voit pas. OpenStitch a les briques mais peu d'automatismes.
 - Modules : `libs/document`, `apps/desktop`.
 
 ### HP-ENG-014 — Verrous d'entrée/sortie réglables par objet [P2] — ◐ Partiel
-- État OpenStitch : réglage global (`SequenceFinishing`) + satin propre.
+- État OpenStitch : réglage global (`SequenceFinishing`, Lots E/F) + satin propre
+  (`lock_start/lock_end/lock_length/lock_passes`) ; rien par objet pour tatami, directionnel, running.
 - À faire : surcharge par objet (tous types).
 
 ### HP-ENG-015 — Déplacements cousus le long des bords [P1] — ◐ Partiel
-- État OpenStitch : underpath caché (tatami, satin, directionnel).
+- État OpenStitch : underpath caché (tatami, satin, directionnel) ; le tatami longe le
+  contour rentré quand le trajet intérieur est invalide (`tatami.cpp`) ; satin/directionnel non vérifiés en détail.
 - Hatch : Travel on edges : déplacements cousus le long du contour vers le
   prochain départ au lieu d'un saut.
 - À faire : trajet le long du bord (sous la future couche) quand aucun
@@ -898,6 +954,8 @@ vecteurs → satin/tatami), classification **expérimentale**, segmentation IA
 SAM via un worker **WSL**. ~18 s sur l'image de référence.
 
 ### HP-AUTO-001 — Qualité de l'auto-numérisation comparable à Hatch [P0] — ◐ Partiel
+- État OpenStitch : le mode Contours (2026-10-05) apporte des métriques internes
+  (`ContourMetrics`) et une QA adversariale, mais aucun corpus de référence ni comparaison à Hatch.
 - À faire : jeu de référence (10–20 images variées : logo, dessin au trait,
   mascotte, texte, photo simple) numérisé dans Hatch et dans OpenStitch ;
   métriques (points, coupes, sauts, zones oubliées, débordements, satin vs
@@ -908,7 +966,8 @@ SAM via un worker **WSL**. ~18 s sur l'image de référence.
 
 ### HP-AUTO-002 — Numérisation instantanée en un clic [P1] — ◐ Partiel
 - État OpenStitch : « Numérisation automatique » existe mais demande une
-  segmentation préalable et des réglages.
+  segmentation préalable et des réglages (le dialogue propose aussi le mode Contours
+  avec curseur de détail, sans aperçu).
 - Hatch : Instant Auto-Digitize : image → broderie sans question.
 - À faire : action unique qui enchaîne les étapes avec des défauts choisis
   automatiquement (nombre de couleurs estimé, fond détecté), en tâche de fond
@@ -932,28 +991,36 @@ SAM via un worker **WSL**. ~18 s sur l'image de référence.
 - Modules : `libs/vectorization`.
 - Acceptation : nombre de nœuds divisé par ≥ 3 à erreur de contour égale.
 
-### HP-AUTO-005 — Détection des contours noirs (outlines) [P1] — ☐ À faire
+### HP-AUTO-005 — Détection des contours noirs (outlines) [P1] — ◐ Partiel (2026-10-06)
+- État OpenStitch : le mode **Contours / Line Art** (fusionné 2026-10-05, PR #4) coud
+  les traits d'un dessin comme objets running/satin à tracé ouvert, par couleur
+  (`libs/autodigitize/contour_*`, `docs/source/auto-numerisation.md`). C'est une
+  stratégie *alternative* : il n'existe toujours pas de mode qui détecte les
+  contours noirs et les pose **par-dessus** des remplissages.
 - À faire : les traits noirs fins d'un dessin (contours de coloriage)
   deviennent des objets contour/satin **par-dessus** les remplissages, au lieu
   de régions noires tatamisées.
 - Modules : `libs/autodigitize`, `libs/auto_satin`.
 
 ### HP-AUTO-006 — Suppression du fond [P1] — ◐ Partiel
-- État OpenStitch : option « ignorer le fond » à la numérisation.
-- À faire : détection automatique du fond (couleur dominante au bord),
-  transparence PNG respectée, choix « ne pas broder cette couleur » par couleur.
+- État OpenStitch : option « ignorer le fond » et **détection automatique du fond**
+  (`segmentation::background_candidate`, case cochée selon L* et bords touchés, Lot A) ;
+  transparence PNG respectée.
+- À faire : choix « ne pas broder cette couleur » par couleur.
 
 ### HP-AUTO-007 — Fusion automatique des couleurs proches [P1] — ☐ À faire
 - Voir HP-THR-011, déclenché à la fin de l'auto-numérisation.
 
 ### HP-AUTO-008 — Nettoyage des micro-détails [P2] — ◐ Partiel
-- État OpenStitch : taille min de région.
-- À faire : absorption des petites régions dans leur voisine dominante,
-  lissage des bords en escalier.
+- État OpenStitch : taille min de région, **absorption des petites régions et des
+  lamelles** (`merge_small_regions`, `remove_thin_parts`, Lot D) ; le mode Contours
+  a son propre nettoyage piloté par le curseur de détail (branches, boucles, éléments isolés).
+- À faire : lissage des bords en escalier ; étendre le niveau de détail au mode « Formes ».
 
 ### HP-AUTO-009 — Choix du type satin / tatami fiable [P0] — ◐ Partiel
 - État OpenStitch : moteur topologique par défaut, refus → tatami ; étiqueté
-  expérimental.
+  expérimental. Le mode Contours a des garde-fous de largeur satin et un repli documenté,
+  mais aucune métrique satin/tatami n'est enregistrée.
 - À faire : fait partie de HP-AUTO-001 ; métrique spécifique : taux de bandes
   fines cousues en satin, zéro satin > largeur max.
 
@@ -969,6 +1036,9 @@ SAM via un worker **WSL**. ~18 s sur l'image de référence.
 - Modules : `libs/ai_segmentation`, `apps/desktop`, `packaging/`.
 
 ### HP-AUTO-012 — Numériser automatiquement un graphisme vectoriel [P1] — ☐ À faire
+- État OpenStitch : import SVG et `auto_digitize_vectors` (classification AutoChoice sur
+  objets vectoriels existants) présents dans `libs/autodigitize` ; manque l'action de bout en
+  bout « SVG importé → broderie » côté utilisateur.
 - Hatch : Convert graphics to embroidery : SVG/AI importé → objets de broderie
   avec types choisis automatiquement.
 - À faire : après import SVG, appliquer la classification satin/tatami/contour
@@ -991,9 +1061,10 @@ libre, colonne satin manuelle, ligne de coupe satin ; édition de nœuds
   courbe : subdivision de De Casteljau) ; `InsertNodeCommand`.
 - Modules : `libs/geometry`, `libs/commands`, `apps/desktop`.
 
-### HP-VEC-002 — Tracé ouvert (ligne, polyligne, courbe ouverte) [P0] — ☐ À faire
-- État OpenStitch : les outils de dessin ferment toujours la forme ; pas
-  moyen de tracer une simple ligne pour un point de contour ou une tige.
+### HP-VEC-002 — Tracé ouvert (ligne, polyligne, courbe ouverte) [P0] — ◐ Partiel (2026-10-06)
+- État OpenStitch : `geometry::Path::closed` existe et le mode Contours produit des
+  objets running à tracé ouvert ; mais **aucun outil de dessin** de ligne ouverte
+  (`apps/desktop/tools.hpp`) : les outils manuels ferment toujours la forme.
 - Hatch : outils de ligne ouverte (droite et courbe) pour contours et satins.
 - À faire : outils « ligne » (clics, Entrée pour terminer **sans** fermer) et
   « courbe ouverte » ; `VectorObject` doit porter des chemins ouverts
@@ -1035,8 +1106,10 @@ libre, colonne satin manuelle, ligne de coupe satin ; édition de nœuds
 ### HP-VEC-008 — Convertir un polygone en courbes [P2] — ☐ À faire
 - Dépend de : HP-AUTO-004.
 
-### HP-VEC-009 — Magnétisme (grille, nœuds, guides) [P1] — ☐ À faire
-- État OpenStitch : grille affichée, aucun accrochage.
+### HP-VEC-009 — Magnétisme (grille, nœuds, guides) [P1] — ◐ Partiel (2026-10-06)
+- État OpenStitch : accrochage aux sommets, milieux de segment et centres de forme
+  pendant le dessin, avec indicateur (`findSnapPointMm`) ; manquent grille, guides
+  et l'activation par touche/bouton.
 - À faire : accrochage à la grille, aux nœuds et aux guides, activable
   (touche + bouton), tolérance en pixels écran.
 - Modules : `apps/desktop/canvas_view`.
@@ -1092,7 +1165,9 @@ tout utilisateur de Hatch fait Ctrl+C/Ctrl+V, sélection rectangle, rotation.
   `libs/commands`, `apps/desktop`.
 - Dépend de : HP-OBJ-001.
 
-### HP-OBJ-003 — Déplacement au clavier [P0] — ☐ À faire
+### HP-OBJ-003 — Déplacement au clavier [P0] — ◐ Partiel (2026-10-06)
+- État OpenStitch : flèches = 0,1 mm, Maj+flèches = 1 mm (`canvas_view.cpp`), testé ;
+  manquent la fusion en un seul undo par rafale, le pas de grille et le multi-objet.
 - À faire : flèches = 0,1 mm (ou pas de grille), Maj+flèches = 1 mm ; une
   commande fusionnée par rafale (undo en un coup).
 - Modules : `apps/desktop`, `libs/commands` (fusion de commandes consécutives).
@@ -1262,8 +1337,10 @@ mais **sans interface** (`stitch-editing.md`).
 Aujourd'hui : stratégies document / couleur / proximité / couleur+proximité /
 couches ; objets verrouillables ; coût estimé ; routage satin multi-colonnes.
 
-### HP-SEQ-001 — Amélioration 2-opt / Or-opt [P1] — ☐ À faire
-- État OpenStitch : `limitations.md` : « 2-opt non implémenté ».
+### HP-SEQ-001 — Amélioration 2-opt / Or-opt [P1] — ◐ Partiel (2026-10-06)
+- État OpenStitch : 2-opt existe pour le routage *interne* d'un objet
+  (`RoutingConfig::two_opt`, `routing.cpp`) ; il manque pour l'ordre *entre*
+  objets (`libs/optimization/src/order.cpp`), seul concerné par `limitations.md`.
 - À faire : amélioration locale déterministe après la stratégie choisie, sur
   les points d'entrée/sortie réels (HP-ENG-010).
 - Modules : `libs/optimization`.
@@ -1560,7 +1637,8 @@ Aujourd'hui : rien (aucune occurrence « appliqué » dans le code métier).
 Aujourd'hui : ouvrir image/SVG, enregistrer `.osp` (chemin mémorisé depuis
 HP-FILE-002 : Ctrl+S réécrit, Ctrl+Maj+S = Enregistrer sous), ouvrir `.osp`,
 import/export DST et DXF, indicateur « modifié », garde partagée
-(fermeture et Nouveau projet).
+(fermeture et Nouveau projet), fichiers récents (HP-FILE-003), sauvegarde automatique
+et récupération après plantage (HP-FILE-004).
 
 ### HP-FILE-001 — Nouveau projet (Ctrl+N) [P0] — ☑ Fait (2026-09-23)
 - État OpenStitch : aucune action « Nouveau » ; il faut relancer ou ouvrir
@@ -1880,7 +1958,7 @@ modification, scène reconstruite à chaque rafraîchissement.
 ## 23. Robustesse et qualité logicielle (QA)
 
 ### HP-QA-001 — Découper `main_window.cpp` [P1] — ☐ À faire
-- État OpenStitch : `apps/desktop/main_window.cpp` ≈ 305 Ko, un seul fichier
+- État OpenStitch : `apps/desktop/main_window.cpp` ≈ 324 Ko (2026-10-06), un seul fichier
   pour menus, outils, modes d'édition, rendu, simulation. Chaque nouvelle
   fonctionnalité UI de cette liste l'alourdit et ralentit tout le monde.
 - À faire : extraire par responsabilité (contrôleur de sélection, outils de
@@ -1890,6 +1968,8 @@ modification, scène reconstruite à chaque rafraîchissement.
 - Faire **tôt** : avant HP-OBJ-001 idéalement.
 
 ### HP-QA-002 — Journal et rapport de plantage [P1] — ☐ À faire
+- État OpenStitch : `libs/core/src/log.cpp` n'a qu'un sink console (pas de journal fichier ni de
+  minidump) ; la récupération après plantage existe côté autosave (HP-FILE-004), sans rapport.
 - À faire : journal fichier (spdlog déjà présent) dans le dossier applicatif,
   minidump en cas de crash (Windows `MiniDumpWriteDump`), « envoyer le rapport »
   (lien vers un ticket prérempli, jamais d'envoi silencieux).
@@ -1915,10 +1995,15 @@ modification, scène reconstruite à chaque rafraîchissement.
 
 ## 24. Distribution et plateformes (DIST)
 
-Aujourd'hui : un script Inno Setup (`packaging/windows/installer.iss`),
-build Windows MSVC, pas de binaire public.
+Aujourd'hui : un script Inno Setup (`packaging/windows/installer.iss`), un build
+Windows MSVC, un workflow de release sur tag (`.github/workflows/release.yml`) et une
+release « latest » publiée par la CI (`ci.yml`) ; installateur non signé.
 
 ### HP-DIST-001 — Installateur Windows signé et publié [P0] — ◐ Partiel
+- État OpenStitch (2026-10-06) : `.github/workflows/release.yml` construit, teste et publie
+  l'installateur Inno sur un tag `vX.Y.Z` (notes générées) ; `ci.yml` publie une release
+  « latest » (zip) ; `windeployqt` branché ; désinstallation propre. Manquent : signature de code,
+  associations de fichiers, runtime MSVC, et une release taguée effectivement publiée.
 - À faire : installateur produit par la CI (Release), Qt déployé
   (`windeployqt`), runtime MSVC, signature de code (sinon SmartScreen bloque
   l'utilisateur), associations de fichiers (HP-FILE-005), désinstallation
@@ -2024,3 +2109,6 @@ ci-dessus doit les respecter :
 | 2026-09-22 | Claude (session d'audit) | Création : inventaire complet vérifié dans le code. |
 | 2026-09-23 | Claude (session pilotée) | HP-FILE-001 ☑ : action « Nouveau projet » (Ctrl+N) avec garde des modifications non enregistrées et réinitialisation centralisée de tout l'état d'édition de la fenêtre. |
 | 2026-09-23 | Claude (session pilotée) | HP-FILE-002 ☑ : chemin `.osp` mémorisé (Ctrl+S réécrit sans dialogue, Ctrl+Maj+S = Enregistrer sous), nom du fichier dans le titre, cible oubliée à chaque changement de document ; écriture atomique déjà en place côté `project_io`. |
+| 2026-10-05 | Claude (session pilotée) | HP-THR-001 ☑, HP-THR-003 ☑ (bibliothèque `thread_palette`), HP-FILE-003 ☑, HP-FILE-004 ☑ ; HP-THR-002 ◐ (nuanciers placeholder). |
+| 2026-10-05 | Claude (session multi-agents) | Mode **Contours / Line Art** fusionné (PR #4) : `libs/autodigitize/contour_*`, CLI `digitize --mode contours`, dialogue desktop avec curseur de détail. |
+| 2026-10-06 | Claude (revue d'ensemble) | **Audit complet des 256 entrées contre `main`.** Statuts : AUTO-005, VEC-002, VEC-009, OBJ-003, SEQ-001, ENG-002 ☐ → ◐. « État OpenStitch » corrigé : FMT-001 (PR #5), FMT-014, FMT-021, THR-004, AUTO-001/002/006/008/009/012, STI-001, STI-004, ENG-010/014/015, QA-001/002, DIST-001 et introductions des sections 19 et 24. Ajout du tableau de bord et de la règle « ☑ = sur `main` ». |

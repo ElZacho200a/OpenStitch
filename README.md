@@ -25,9 +25,11 @@ Logiciel de bureau **libre et gratuit** de numérisation pour broderie machine :
 9. export/import **DST**, export SVG de diagnostic ;
 10. format de projet **`.osp`** (sauvegarde/chargement complet).
 
-Undo/redo sur toutes les opérations. 121 tests unitaires et d'intégration.
+Undo/redo sur toutes les opérations. Un mode **Contours / Line Art** (dessins au trait → running/satin, curseur de détail), les fichiers récents et la sauvegarde automatique complètent la chaîne. Plus de 800 tests CTest (Linux sans Qt, 2026-10-06).
 
-Voir la [roadmap](docs/phase0/08-roadmap-adr.md) et l'[étude de cadrage](docs/phase0/README.md).
+Voir la [feuille de route de parité avec Hatch](docs/roadmap-parite-hatch.md) (état de chaque fonctionnalité), le [plan de livraison](specs/implementation-roadmap.md), la [roadmap d'origine](docs/phase0/08-roadmap-adr.md) (historique) et l'[étude de cadrage](docs/phase0/README.md).
+
+Des binaires sont publiés par la CI : release « latest » (zip) et installateur Windows sur les tags `vX.Y.Z` (non signé, voir `docs/roadmap-parite-hatch.md`, HP-DIST-001).
 
 > **Note honnête** : ce socle est complet et testé, mais n'a pas encore été validé sur une machine à broder réelle. Les heuristiques de compensation (tirage, densité) et les conventions DST de certaines machines demandent des essais terrain avant un usage en production.
 
