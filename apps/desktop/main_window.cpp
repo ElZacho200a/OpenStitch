@@ -58,6 +58,7 @@
 #include "openstitch/auto_satin/satin_column.hpp"
 #include "openstitch/autodigitize/autodigitize.hpp"
 #include "openstitch/autodigitize/contour_objects.hpp"
+#include "openstitch/commands/composite_command.hpp"
 #include "openstitch/commands/finishing_commands.hpp"
 #include "openstitch/commands/project_commands.hpp"
 #include "openstitch/core/app_info.hpp"
@@ -460,9 +461,19 @@ MainWindow::MainWindow() {
             return;
         }
         const Vec2um delta = sceneMmToModel(deltaSceneMm);
-        undoStack_.execute(
-            std::make_unique<commands::TranslateVectorObjectCommand>(*selectedObject_, delta),
-            project_);
+        if (hasMultiSelection()) {
+            // Multi-sélection : tout l'ensemble bouge, en UN pas d'annulation.
+            auto composite = std::make_unique<commands::CompositeCommand>(
+                tr("Déplacer %1 objets").arg(multiSelection_.size()).toStdString());
+            for (const ObjectId id : multiSelection_) {
+                composite->add(std::make_unique<commands::TranslateVectorObjectCommand>(id, delta));
+            }
+            undoStack_.execute(std::move(composite), project_);
+        } else {
+            undoStack_.execute(
+                std::make_unique<commands::TranslateVectorObjectCommand>(*selectedObject_, delta),
+                project_);
+        }
         refreshImage();
         updateActions();
     });
@@ -622,11 +633,13 @@ void MainWindow::buildMenus() {
     connect(mergeAct_, &QAction::toggled, this, [this](bool on) { mergeMode_ = on; });
     regionActions_.append(mergeAct_);
 
-    auto* delRegionAct = segMenu->addAction(tr("Su&pprimer la région sélectionnée"));
-    delRegionAct->setObjectName(QStringLiteral("action_deleteRegion"));
-    delRegionAct->setShortcut(QKeySequence::Delete);
-    connect(delRegionAct, &QAction::triggered, this, &MainWindow::deleteSelectedRegion);
-    regionActions_.append(delRegionAct);
+    // Suppr universel (L5-T4a) : l'objectName historique « action_deleteRegion »
+    // est conservé (tests, snapshot d'actions) ; l'action est activée par
+    // updateActions() selon la sélection (pas via regionActions_).
+    deleteSelectionAct_ = segMenu->addAction(tr("Su&pprimer la sélection"));
+    deleteSelectionAct_->setObjectName(QStringLiteral("action_deleteRegion"));
+    deleteSelectionAct_->setShortcut(QKeySequence::Delete);
+    connect(deleteSelectionAct_, &QAction::triggered, this, &MainWindow::deleteSelection);
 
     auto* recolorAct = segMenu->addAction(tr("&Recolorer la région sélectionnée…"));
     connect(recolorAct, &QAction::triggered, this, &MainWindow::recolorSelectedRegion);
@@ -846,9 +859,7 @@ void MainWindow::resetDocumentState() {
     sequence_.reset();
     sequenceImported_ = false;
     editStates_.clear();
-    selectedRegion_.reset();
-    selectedObject_.reset();
-    selectedEmbroidery_.reset();
+    setSelection({});
     if (mergeAct_ != nullptr) {
         mergeAct_->setChecked(false); // remet aussi mergeMode_ à false (cf. buildMenus)
     }
@@ -1895,9 +1906,7 @@ void MainWindow::finishSatinColumn() {
             std::move(vectors), std::move(embroideries), "Colonne satin (création manuelle)"),
         project_);
 
-    selectedEmbroidery_ = newEmbId;
-    selectedObject_.reset();
-    selectedRegion_.reset();
+    setSelection({.region = std::nullopt, .embroidery = newEmbId, .objects = {}});
     showStitchesAct_->setChecked(true);
     cancelSatinColumnDraw();
     setTool(Tool::Select);
@@ -2155,9 +2164,9 @@ void MainWindow::addVectorPrimitive(geometry::Path path, const QString& name) {
 
     undoStack_.execute(std::make_unique<commands::AddVectorObjectCommand>(std::move(object)),
                        project_);
-    selectedObject_ = project_.vector_objects.back().id;
-    selectedRegion_.reset();
-    selectedEmbroidery_.reset();
+    setSelection({.region = std::nullopt,
+                  .embroidery = std::nullopt,
+                  .objects = {project_.vector_objects.back().id}});
     showVectorsAct_->setChecked(true);
     refreshImage();
     updateActions();
@@ -2168,19 +2177,14 @@ void MainWindow::addVectorPrimitive(geometry::Path path, const QString& name) {
 void MainWindow::refreshImage() {
     applyCanvasToView();     // taille du cadre (peut avoir changé : réglage, undo, chargement)
     setWindowModified(true); // toute régénération suit une mutation du document
+    // Une sélection qui ne correspond plus à une région, un objet vectoriel ou
+    // de broderie vivant est élaguée (undo/redo, nouvelle segmentation,
+    // suppression, rechargement) ; le dernier objet restant devient le principal.
+    pruneSelection();
     if (!project_.hasImage()) {
         processed_ = {};
         displayImage(processed_); // affiche quand même une séquence importée
         return;
-    }
-    // Une sélection qui ne correspond plus à une région ou un objet vivant
-    // est annulée (undo/redo, nouvelle segmentation, suppression…).
-    if (selectedRegion_ &&
-        (!project_.segmentation || project_.segmentation->find(*selectedRegion_) == nullptr)) {
-        selectedRegion_.reset();
-    }
-    if (selectedObject_ && project_.findObject(*selectedObject_) == nullptr) {
-        selectedObject_.reset();
     }
     // L'image de travail ne dépend que de l'original et de la pile
     // d'opérations : inutile de rejouer le pipeline (quantification,
@@ -2289,7 +2293,7 @@ void MainWindow::renderBase(const image::Image& img) {
             if (!object.visible) {
                 continue;
             }
-            const bool selected = selectedObject_ && object.id == *selectedObject_;
+            const bool selected = isObjectSelected(object.id);
             const QColor color(object.rgb[0], object.rgb[1], object.rgb[2]);
             const QPainterPath outline = objectPainterPath(object);
             // Sélection à DOUBLE contraste : un halo clair sous un trait d'accent,
@@ -2348,7 +2352,7 @@ void MainWindow::renderBase(const image::Image& img) {
         // nœuds Lisse : glisser une poignée édite la courbe sans déplacer le
         // nœud — même principe que le remodelage des rails satin, § courbes
         // de Bézier).
-        if (selectedObject_) {
+        if (selectedObject_ && !hasMultiSelection()) {
             if (const auto* object = project_.findObject(*selectedObject_)) {
                 for (std::size_t s = 0; s < object->paths.size(); ++s) {
                     const auto& set = object->paths[s];
@@ -2488,7 +2492,7 @@ void MainWindow::renderBase(const image::Image& img) {
         // opposé (fixe) — jusqu'ici, redimensionner exigeait de déplacer
         // chaque nœud un par un (même défaut remonté que pour le déplacement
         // de forme entière, § VectorObjectBodyItem plus haut).
-        if (selectedObject_ && currentTool_ == Tool::Select) {
+        if (selectedObject_ && !hasMultiSelection() && currentTool_ == Tool::Select) {
             if (const auto* object = project_.findObject(*selectedObject_)) {
                 std::optional<Micrometers> minX, maxX, minY, maxY;
                 const auto scan = [&](const geometry::Path& path) {
@@ -3144,7 +3148,7 @@ void MainWindow::segmentImage() {
     const auto regionCount = seg->region_count();
     undoStack_.execute(std::make_unique<commands::SetSegmentationCommand>(std::move(*seg)),
                        project_);
-    selectedRegion_.reset();
+    editSelection([](Selection& sel) { sel.region.reset(); });
     showSegAct_->setChecked(true);
     refreshImage();
     updateActions();
@@ -3217,7 +3221,10 @@ void MainWindow::vectorizeSelectedRegion() {
 
     undoStack_.execute(std::make_unique<commands::AddVectorObjectCommand>(std::move(object)),
                        project_);
-    selectedObject_ = project_.vector_objects.back().id;
+    {
+        const ObjectId created = project_.vector_objects.back().id;
+        editSelection([created](Selection& sel) { sel.objects = {created}; });
+    }
     showVectorsAct_->setChecked(true);
     refreshImage();
     updateActions();
@@ -3225,7 +3232,7 @@ void MainWindow::vectorizeSelectedRegion() {
 }
 
 void MainWindow::createRunningStitchObject() {
-    if (!selectedObject_) {
+    if (!selectedObject_ || hasMultiSelection()) {
         return;
     }
     const auto* source = project_.findObject(*selectedObject_);
@@ -3280,7 +3287,7 @@ void MainWindow::createRunningStitchObject() {
 }
 
 void MainWindow::createTatamiObject() {
-    if (!selectedObject_) {
+    if (!selectedObject_ || hasMultiSelection()) {
         return;
     }
     const auto* source = project_.findObject(*selectedObject_);
@@ -3331,7 +3338,10 @@ void MainWindow::createTatamiObject() {
 
     // Sélectionne le nouveau remplissage pour que « Orientation du remplissage… »
     // s'applique directement à lui.
-    selectedEmbroidery_ = object.id;
+    {
+        const ObjectId created = object.id;
+        editSelection([created](Selection& sel) { sel.embroidery = created; });
+    }
     undoStack_.execute(std::make_unique<commands::AddEmbroideryObjectCommand>(std::move(object)),
                        project_);
     showStitchesAct_->setChecked(true);
@@ -3769,7 +3779,7 @@ void MainWindow::openAiPreferences() {
 }
 
 void MainWindow::createSatinObject() {
-    if (!selectedObject_) {
+    if (!selectedObject_ || hasMultiSelection()) {
         return;
     }
     const auto* source = project_.findObject(*selectedObject_);
@@ -4008,7 +4018,7 @@ void MainWindow::onSatinCutLineCommitted(QPointF anchorMm, QPointF handleMm) {
 }
 
 bool MainWindow::createSatinObjectWithCutLine(Vec2um cutA, Vec2um cutB) {
-    if (!selectedObject_) {
+    if (!selectedObject_ || hasMultiSelection()) {
         statusBar()->showMessage(
             tr("Sélectionnez d'abord la forme à découper avant de tracer la ligne de coupe."),
             4000);
@@ -4188,7 +4198,7 @@ document::EmbroideryObject* MainWindow::currentFillObject() {
             return emb;
         }
     }
-    if (selectedObject_) {
+    if (selectedObject_ && !hasMultiSelection()) {
         for (auto& emb : project_.embroidery_objects) {
             if (emb.source_vector == *selectedObject_ && emb.is_tatami()) {
                 return &emb;
@@ -4246,7 +4256,7 @@ document::EmbroideryObject* MainWindow::embroideryForVector(ObjectId vectorId) {
 }
 
 void MainWindow::autoConvertToSatin() {
-    if (!selectedObject_) {
+    if (!selectedObject_ || hasMultiSelection()) {
         return;
     }
     const auto* source = project_.findObject(*selectedObject_);
@@ -4556,9 +4566,7 @@ void MainWindow::onCanvasContextMenu(QPointF posMm, QPoint globalPos) {
     std::optional<ObjectId> vecId; // objet vectoriel à supprimer/dupliquer, si pertinent
 
     if (hit) {
-        selectedObject_ = hit;
-        selectedRegion_.reset();
-        selectedEmbroidery_.reset();
+        setSelection({.region = std::nullopt, .embroidery = std::nullopt, .objects = {*hit}});
         const auto* vec = project_.findObject(*hit);
         emb = embroideryForVector(*hit);
         if (vec != nullptr) {
@@ -4573,9 +4581,7 @@ void MainWindow::onCanvasContextMenu(QPointF posMm, QPoint globalPos) {
         // le débogage ne seraient jamais accessibles pour ces objets.
         emb = satinHit;
         vecId = emb->source_vector; // proxy caché : sa suppression entraîne le satin
-        selectedEmbroidery_ = emb->id;
-        selectedObject_.reset();
-        selectedRegion_.reset();
+        setSelection({.region = std::nullopt, .embroidery = emb->id, .objects = {}});
         auto* title = menu.addAction(QString::fromStdString(emb->name));
         title->setEnabled(false);
         menu.addSeparator();
@@ -4600,7 +4606,7 @@ void MainWindow::onCanvasContextMenu(QPointF posMm, QPoint globalPos) {
         if (emb->is_directional()) {
             auto* guides = menu.addAction(tr("Guides de direction…"));
             connect(guides, &QAction::triggered, this, [this, embId] {
-                selectedEmbroidery_ = embId;
+                editSelection([embId](Selection& sel) { sel.embroidery = embId; });
                 directionGuideModeAct_->setChecked(true);
             });
         }
@@ -4661,14 +4667,10 @@ void MainWindow::deleteVectorObject(ObjectId id) {
     const auto* obj = project_.findObject(id);
     const QString name = obj != nullptr ? QString::fromStdString(obj->name) : tr("objet");
     undoStack_.execute(std::make_unique<commands::RemoveVectorObjectCommand>(id), project_);
-    if (selectedObject_ == id) {
-        selectedObject_.reset();
-    }
-    // La broderie rattachée disparaît avec l'objet vectoriel : si elle était
-    // ciblée par la sélection, celle-ci ne doit pas pointer dans le vide.
-    if (selectedEmbroidery_ && project_.findEmbroidery(*selectedEmbroidery_) == nullptr) {
-        selectedEmbroidery_.reset();
-    }
+    // L'objet supprimé quitte la sélection (principal compris : le précédent
+    // est promu) ; la broderie rattachée disparaît avec lui : si elle était
+    // ciblée, la sélection ne doit pas pointer dans le vide.
+    pruneSelection();
     refreshImage();
     updateActions();
     statusBar()->showMessage(tr("« %1 » supprimé.").arg(name));
@@ -4678,9 +4680,11 @@ void MainWindow::deleteEmbroideryObjectOnly(ObjectId id) {
     const auto* obj = project_.findEmbroidery(id);
     const QString name = obj != nullptr ? QString::fromStdString(obj->name) : tr("objet");
     undoStack_.execute(std::make_unique<commands::RemoveEmbroideryObjectCommand>(id), project_);
-    if (selectedEmbroidery_ == id) {
-        selectedEmbroidery_.reset();
-    }
+    editSelection([id](Selection& sel) {
+        if (sel.embroidery == id) {
+            sel.embroidery.reset();
+        }
+    });
     refreshImage();
     updateActions();
     statusBar()->showMessage(tr("Broderie « %1 » supprimée (forme conservée).").arg(name));
@@ -4710,9 +4714,7 @@ void MainWindow::duplicateVectorObject(ObjectId id) {
     }
     const QString sourceName = QString::fromStdString(source->name);
     undoStack_.execute(std::make_unique<commands::AddVectorObjectCommand>(copy), project_);
-    selectedObject_ = copy.id;
-    selectedRegion_.reset();
-    selectedEmbroidery_.reset();
+    setSelection({.region = std::nullopt, .embroidery = std::nullopt, .objects = {copy.id}});
     refreshImage();
     updateActions();
     statusBar()->showMessage(tr("« %1 » dupliqué.").arg(sourceName));
@@ -4786,9 +4788,7 @@ void MainWindow::offsetVectorObjectCore(ObjectId id, Micrometers delta) {
     undoStack_.execute(std::make_unique<commands::AddObjectBatchCommand>(
                            std::move(batch), std::vector<document::EmbroideryObject>{}, "Décalage"),
                        project_);
-    selectedObject_ = newId;
-    selectedRegion_.reset();
-    selectedEmbroidery_.reset();
+    setSelection({.region = std::nullopt, .embroidery = std::nullopt, .objects = {newId}});
     showVectorsAct_->setChecked(true);
     refreshImage();
     updateActions();
@@ -5175,7 +5175,7 @@ document::EmbroideryObject* MainWindow::resolveSelectedEmbroidery() {
     if (selectedEmbroidery_) {
         emb = project_.findEmbroidery(*selectedEmbroidery_);
     }
-    if (emb == nullptr && selectedObject_) {
+    if (emb == nullptr && selectedObject_ && !hasMultiSelection()) {
         emb = embroideryForVector(*selectedObject_);
     }
     return emb;
@@ -5195,7 +5195,8 @@ void MainWindow::updateContextToolbar() {
         return;
     }
     const document::EmbroideryObject* emb = resolveSelectedEmbroidery();
-    const bool hasVec = selectedObject_.has_value();
+    const bool hasMulti = hasMultiSelection();
+    const bool hasVec = selectedObject_.has_value() && !hasMulti;
     const bool hasReg = selectedRegion_ && project_.segmentation;
     const int pts = sequence_ ? static_cast<int>(sequence_->commands.size()) : 0;
 
@@ -5215,6 +5216,8 @@ void MainWindow::updateContextToolbar() {
                   .arg(selectedSatinGuide_ ? static_cast<qlonglong>(*selectedSatinGuide_) : -1)
                   .arg(railEditModeAct_->isChecked() ? 1 : 0) +
               QStringLiteral("d%1").arg(directionGuideModeAct_->isChecked() ? 1 : 0);
+    } else if (hasMulti) {
+        sig = QStringLiteral("M%1").arg(multiSelection_.size());
     } else if (hasVec) {
         sig = QStringLiteral("V%1").arg(selectedObject_->value);
     } else if (hasReg) {
@@ -5317,6 +5320,9 @@ void MainWindow::updateContextToolbar() {
             auto* discard = contextToolbar_->addAction(tr("Abandonner les retouches"));
             connect(discard, &QAction::triggered, this, [this, id] { discardOverrides(id); });
         }
+    } else if (hasMulti) {
+        contextToolbar_->addWidget(
+            new QLabel(tr("%1 objets sélectionnés").arg(multiSelection_.size()), contextToolbar_));
     } else if (hasVec) {
         contextToolbar_->addWidget(
             new QLabel(tr("Objet vectoriel  ·  créer un objet de broderie :  "), contextToolbar_));
@@ -5713,21 +5719,17 @@ void MainWindow::buildDocumentPanel() {
     }
 
     connect(documentPanel_, &DocumentPanel::embroiderySelected, this, [this](ObjectId id) {
-        selectedEmbroidery_ = id;
-        selectedRegion_.reset();
+        Selection sel{.region = std::nullopt, .embroidery = id, .objects = {}};
         if (const auto* e = project_.findEmbroidery(id);
             e != nullptr && project_.findObject(e->source_vector) != nullptr) {
-            selectedObject_ = e->source_vector; // met en évidence la forme au canevas
-        } else {
-            selectedObject_.reset();
+            sel.objects = {e->source_vector}; // met en évidence la forme au canevas
         }
+        setSelection(std::move(sel));
         displayImage(processed_);
         updateActions();
     });
     connect(documentPanel_, &DocumentPanel::regionSelected, this, [this](RegionId id) {
-        selectedRegion_ = id;
-        selectedObject_.reset();
-        selectedEmbroidery_.reset();
+        setSelection({.region = id, .embroidery = std::nullopt, .objects = {}});
         displayImage(processed_);
         updateActions();
     });
@@ -5822,7 +5824,7 @@ void MainWindow::buildPropertiesPanel() {
             [this](ObjectId id) {
                 if (auto* emb = project_.findEmbroidery(id);
                     emb != nullptr && emb->is_directional()) {
-                    selectedEmbroidery_ = id;
+                    editSelection([id](Selection& sel) { sel.embroidery = id; });
                     if (directionGuideModeAct_->isChecked()) {
                         directionGuideModeAct_->setChecked(false);
                     }
@@ -5844,6 +5846,9 @@ void MainWindow::updateInspector() {
     if (emb != nullptr) {
         kind = 0;
         id = emb->id.value;
+    } else if (hasMultiSelection()) {
+        kind = 3; // « N objets » : texte seul, pas d'édition
+        id = multiSelection_.size();
     } else if (selectedObject_) {
         kind = 1;
         id = selectedObject_->value;
@@ -5870,6 +5875,12 @@ void MainWindow::updateInspector() {
 
     if (kind == 0) {
         propertiesPanel_->showEmbroidery(*emb);
+    } else if (kind == 3) {
+        propertiesPanel_->showInfo(
+            tr("%1 objets").arg(multiSelection_.size()),
+            tr("%1 objets vectoriels sélectionnés.\nSupprimer : les retire tous en une seule "
+               "étape annulable. Sélectionnez un seul objet pour le modifier.")
+                .arg(multiSelection_.size()));
     } else if (kind == 1) {
         const auto* vec = project_.findObject(*selectedObject_);
         int nodes = 0;
@@ -6008,12 +6019,15 @@ void MainWindow::buildOrderPanel() {
     layout->addWidget(orderList_, 1);
     connect(orderList_, &QListWidget::currentRowChanged, this, [this](int row) {
         if (row >= 0 && row < static_cast<int>(project_.embroidery_objects.size())) {
-            selectedObject_.reset(); // sélection d'objet vectoriel distincte
-            selectedEmbroidery_ = project_.embroidery_objects[static_cast<std::size_t>(row)].id;
+            // sélection d'objet vectoriel distincte
+            setSelection(
+                {.region = selectedRegion_,
+                 .embroidery = project_.embroidery_objects[static_cast<std::size_t>(row)].id,
+                 .objects = {}});
             updateActions();
             displayImage(processed_);
         } else {
-            selectedEmbroidery_.reset();
+            editSelection([](Selection& sel) { sel.embroidery.reset(); });
             updateActions();
         }
     });
@@ -6872,9 +6886,9 @@ void MainWindow::onCanvasClicked(QPointF posMm) {
             }
         }
         if (hit) {
-            selectedObject_ = hit;
-            selectedRegion_.reset();
-            selectedEmbroidery_.reset(); // la sélection au canevas prime
+            // la sélection au canevas prime (Replace : T4b route Maj/Ctrl vers
+            // applySelectionClick)
+            setSelection({.region = std::nullopt, .embroidery = std::nullopt, .objects = {*hit}});
             const auto* object = project_.findObject(*hit);
             statusBar()->showMessage(tr("Objet « %1 » — %2 morceau(x), nœuds déplaçables")
                                          .arg(QString::fromStdString(object->name))
@@ -6912,9 +6926,7 @@ void MainWindow::onCanvasClicked(QPointF posMm) {
                     if (emb == nullptr) {
                         return;
                     }
-                    selectedEmbroidery_ = hitId;
-                    selectedObject_.reset();
-                    selectedRegion_.reset();
+                    setSelection({.region = std::nullopt, .embroidery = hitId, .objects = {}});
                     statusBar()->showMessage(tr("Colonne satin « %1 » sélectionnée")
                                                  .arg(QString::fromStdString(emb->name)));
                     displayImage(processed_);
@@ -6927,8 +6939,10 @@ void MainWindow::onCanvasClicked(QPointF posMm) {
             // (sélection d'objet vectoriel) est concerné dans ce cas, exactement
             // le comportement d'avant l'ajout du satin manuel.
             if (selectedObject_ || selectedEmbroidery_) {
-                selectedObject_.reset();
-                selectedEmbroidery_.reset();
+                editSelection([](Selection& sel) {
+                    sel.objects.clear();
+                    sel.embroidery.reset();
+                });
                 displayImage(processed_);
                 // updateActions() manquait ici (contrairement aux autres chemins
                 // de sélection) : nécessaire pour que le mode d'édition des
@@ -6938,7 +6952,7 @@ void MainWindow::onCanvasClicked(QPointF posMm) {
                 updateActions();
             }
         } else if (selectedObject_) {
-            selectedObject_.reset();
+            editSelection([](Selection& sel) { sel.objects.clear(); });
             displayImage(processed_);
             updateActions();
         }
@@ -6960,7 +6974,7 @@ void MainWindow::onCanvasClicked(QPointF posMm) {
         return;
     }
 
-    selectedRegion_ = clicked;
+    editSelection([clicked](Selection& sel) { sel.region = clicked; });
     if (clicked) {
         const auto* region = project_.segmentation->find(*clicked);
         const double mm2 = static_cast<double>(region->pixel_count) * project_.mm_per_px.value *
@@ -6977,12 +6991,280 @@ void MainWindow::onCanvasClicked(QPointF posMm) {
     updateActions();
 }
 
+// SELECTION-MUTATOR:BEGIN
+// Seul bloc autorisé à écrire selectedObject_/selectedRegion_/selectedEmbroidery_/
+// multiSelection_ (garde tests/check_selection_single_mutator.cmake). Tout autre
+// site passe par setSelection()/editSelection().
+void MainWindow::setSelection(Selection selection) {
+    // Doublons : la DERNIÈRE occurrence est gardée (le dernier id reste le principal).
+    std::vector<ObjectId> objects;
+    objects.reserve(selection.objects.size());
+    for (std::size_t i = 0; i < selection.objects.size(); ++i) {
+        const bool later =
+            std::find(selection.objects.begin() + static_cast<std::ptrdiff_t>(i) + 1,
+                      selection.objects.end(), selection.objects[i]) != selection.objects.end();
+        if (!later) {
+            objects.push_back(selection.objects[i]);
+        }
+    }
+    // Sélectionner une région ou une broderie vide la multi-sélection (seul le
+    // principal peut subsister, ex. forme source d'une broderie choisie au dock).
+    if ((selection.region || selection.embroidery) && objects.size() > 1) {
+        objects = {objects.back()};
+    }
+    selectedRegion_ = selection.region;
+    selectedEmbroidery_ = selection.embroidery;
+    if (objects.empty()) {
+        selectedObject_.reset();
+    } else {
+        selectedObject_ = objects.back();
+    }
+    if (objects.size() > 1) {
+        multiSelection_ = std::move(objects);
+    } else {
+        multiSelection_.clear(); // cas legacy : 0 ou 1 objet porté par selectedObject_
+    }
+    Q_ASSERT(multiSelection_.empty() ||
+             (selectedObject_ && multiSelection_.back() == *selectedObject_));
+    Q_ASSERT(multiSelection_.empty() || (!selectedRegion_ && !selectedEmbroidery_));
+}
+
+void MainWindow::clearMultiSelection() {
+    // Ne garde que le principal (cas legacy).
+    multiSelection_.clear();
+}
+// SELECTION-MUTATOR:END
+
+void MainWindow::editSelection(const std::function<void(Selection&)>& edit) {
+    Selection sel = currentSelection();
+    edit(sel);
+    setSelection(std::move(sel));
+}
+
+MainWindow::Selection MainWindow::currentSelection() const {
+    return Selection{selectedRegion_, selectedEmbroidery_, selectedObjectIds()};
+}
+
+std::vector<ObjectId> MainWindow::selectedObjectIds() const {
+    if (!multiSelection_.empty()) {
+        return multiSelection_;
+    }
+    if (selectedObject_) {
+        return {*selectedObject_};
+    }
+    return {};
+}
+
+bool MainWindow::isObjectSelected(ObjectId id) const {
+    if (!multiSelection_.empty()) {
+        return std::find(multiSelection_.begin(), multiSelection_.end(), id) !=
+               multiSelection_.end();
+    }
+    return selectedObject_ && *selectedObject_ == id;
+}
+
+void MainWindow::pruneSelection() {
+    Selection sel = currentSelection();
+    bool changed = false;
+    if (sel.region &&
+        (!project_.segmentation || project_.segmentation->find(*sel.region) == nullptr)) {
+        sel.region.reset();
+        changed = true;
+    }
+    if (sel.embroidery && project_.findEmbroidery(*sel.embroidery) == nullptr) {
+        sel.embroidery.reset();
+        changed = true;
+    }
+    const auto dead = [this](ObjectId id) { return project_.findObject(id) == nullptr; };
+    const auto removed = std::erase_if(sel.objects, dead);
+    changed = changed || removed != 0;
+    if (changed) {
+        setSelection(std::move(sel)); // le dernier restant devient le principal
+    }
+}
+
+bool MainWindow::checkSelectionInvariants() const {
+    if (!multiSelection_.empty()) {
+        if (multiSelection_.size() < 2) {
+            return false; // un seul objet = cas legacy (multi vide)
+        }
+        if (!selectedObject_ || multiSelection_.back() != *selectedObject_) {
+            return false; // principal = dernier
+        }
+        if (selectedRegion_ || selectedEmbroidery_) {
+            return false; // région/broderie sélectionnée => multi vide
+        }
+        for (std::size_t i = 0; i < multiSelection_.size(); ++i) {
+            for (std::size_t j = i + 1; j < multiSelection_.size(); ++j) {
+                if (multiSelection_[i] == multiSelection_[j]) {
+                    return false;
+                }
+            }
+        }
+    }
+    for (const ObjectId id : selectedObjectIds()) {
+        if (project_.findObject(id) == nullptr) {
+            return false;
+        }
+    }
+    if (selectedEmbroidery_ && project_.findEmbroidery(*selectedEmbroidery_) == nullptr) {
+        return false;
+    }
+    if (selectedRegion_ &&
+        (!project_.segmentation || project_.segmentation->find(*selectedRegion_) == nullptr)) {
+        return false;
+    }
+    return true;
+}
+
+void MainWindow::selectionChanged() {
+    displayImage(processed_);
+    updateActions();
+}
+
+void MainWindow::applySelectionClick(std::optional<ObjectId> hit, SelectMode mode) {
+    Selection sel = currentSelection();
+    if (!hit) {
+        // Clic dans le vide : Replace désélectionne objets et broderie (la région
+        // reste à la charge du repli région de onCanvasClicked) ; Maj/Ctrl : rien.
+        if (mode != SelectMode::Replace) {
+            return;
+        }
+        sel.objects.clear();
+        sel.embroidery.reset();
+    } else {
+        if (project_.findObject(*hit) == nullptr) {
+            return;
+        }
+        const auto it = std::find(sel.objects.begin(), sel.objects.end(), *hit);
+        switch (mode) {
+        case SelectMode::Replace:
+            sel.objects = {*hit};
+            break;
+        case SelectMode::Add:
+            if (it != sel.objects.end()) {
+                return; // déjà présent : sans effet (le principal ne change pas)
+            }
+            sel.objects.push_back(*hit);
+            break;
+        case SelectMode::Toggle:
+            if (it != sel.objects.end()) {
+                sel.objects.erase(it); // retirer le principal promeut le précédent
+            } else {
+                sel.objects.push_back(*hit); // devient le principal
+            }
+            break;
+        }
+        sel.region.reset();
+        sel.embroidery.reset();
+    }
+    setSelection(std::move(sel));
+    selectionChanged();
+}
+
+void MainWindow::applySelectionRectangle(const std::vector<ObjectId>& hits, SelectMode mode) {
+    Selection sel = currentSelection();
+    std::vector<ObjectId> valid;
+    for (const ObjectId id : hits) {
+        if (project_.findObject(id) != nullptr &&
+            std::find(valid.begin(), valid.end(), id) == valid.end()) {
+            valid.push_back(id);
+        }
+    }
+    switch (mode) {
+    case SelectMode::Replace:
+        sel.objects = valid; // rectangle vide : désélectionne les objets
+        break;
+    case SelectMode::Add: {
+        bool added = false;
+        for (const ObjectId id : valid) {
+            if (std::find(sel.objects.begin(), sel.objects.end(), id) == sel.objects.end()) {
+                sel.objects.push_back(id);
+                added = true;
+            }
+        }
+        if (!added) {
+            return;
+        }
+        break;
+    }
+    case SelectMode::Toggle: {
+        if (valid.empty()) {
+            return;
+        }
+        for (const ObjectId id : valid) {
+            const auto it = std::find(sel.objects.begin(), sel.objects.end(), id);
+            if (it != sel.objects.end()) {
+                sel.objects.erase(it);
+            } else {
+                sel.objects.push_back(id);
+            }
+        }
+        break;
+    }
+    }
+    sel.region.reset();
+    sel.embroidery.reset();
+    setSelection(std::move(sel));
+    selectionChanged();
+}
+
+void MainWindow::deleteSelection() {
+    // Région : comportement historique inchangé (RemoveRegionCommand).
+    if (selectedRegion_ && project_.segmentation) {
+        deleteSelectedRegion();
+        return;
+    }
+    // Objet de broderie choisi (dock Ordre/Document) : la broderie seule, forme
+    // source conservée -- sauf proxy invisible (colonne satin manuelle), dont la
+    // suppression emporte la source (comme « Supprimer » du menu contextuel).
+    if (selectedEmbroidery_) {
+        const auto* emb = project_.findEmbroidery(*selectedEmbroidery_);
+        if (emb == nullptr) {
+            return;
+        }
+        const QString name = QString::fromStdString(emb->name);
+        const auto* source = project_.findObject(emb->source_vector);
+        if (source != nullptr && !source->visible) {
+            undoStack_.execute(std::make_unique<commands::RemoveVectorObjectCommand>(source->id),
+                               project_);
+        } else {
+            undoStack_.execute(std::make_unique<commands::RemoveEmbroideryObjectCommand>(emb->id),
+                               project_);
+        }
+        setSelection({});
+        refreshImage();
+        updateActions();
+        statusBar()->showMessage(tr("« %1 » supprimé.").arg(name));
+        return;
+    }
+    // Objet(s) vectoriel(s) : un seul pas d'annulation (CompositeCommand si > 1).
+    const std::vector<ObjectId> ids = selectedObjectIds();
+    if (ids.empty()) {
+        return;
+    }
+    if (ids.size() == 1) {
+        deleteVectorObject(ids.front()); // exécute, élague la sélection, rafraîchit
+        return;
+    }
+    auto composite = std::make_unique<commands::CompositeCommand>(
+        tr("Supprimer %1 objets").arg(ids.size()).toStdString());
+    for (const ObjectId id : ids) {
+        composite->add(std::make_unique<commands::RemoveVectorObjectCommand>(id));
+    }
+    undoStack_.execute(std::move(composite), project_);
+    setSelection({});
+    refreshImage();
+    updateActions();
+    statusBar()->showMessage(tr("%1 objets supprimés.").arg(ids.size()));
+}
+
 void MainWindow::deleteSelectedRegion() {
     if (!selectedRegion_ || !project_.segmentation) {
         return;
     }
     undoStack_.execute(std::make_unique<commands::RemoveRegionCommand>(*selectedRegion_), project_);
-    selectedRegion_.reset();
+    editSelection([](Selection& sel) { sel.region.reset(); });
     refreshImage();
     updateActions();
 }
@@ -7015,10 +7297,12 @@ void MainWindow::updateActions() {
     showSegAct_->setEnabled(project_.segmentation.has_value());
     showVectorsAct_->setEnabled(!project_.vector_objects.empty());
     showStitchesAct_->setEnabled(!project_.embroidery_objects.empty());
-    createStitchAct_->setEnabled(selectedObject_.has_value());
-    createTatamiAct_->setEnabled(selectedObject_.has_value());
-    createSatinAct_->setEnabled(selectedObject_.has_value());
-    autoSatinAct_->setEnabled(selectedObject_.has_value());
+    // Actions mono-objet : désactivées dès que la multi-sélection compte > 1 objet.
+    const bool singleObject = selectedObject_.has_value() && !hasMultiSelection();
+    createStitchAct_->setEnabled(singleObject);
+    createTatamiAct_->setEnabled(singleObject);
+    createSatinAct_->setEnabled(singleObject);
+    autoSatinAct_->setEnabled(singleObject);
     fillAngleAct_->setEnabled(currentFillObject() != nullptr);
     convertSatinAct_->setEnabled(std::any_of(project_.embroidery_objects.begin(),
                                              project_.embroidery_objects.end(),
@@ -7045,6 +7329,11 @@ void MainWindow::updateActions() {
     const bool hasSelection = selectedRegion_.has_value() && project_.segmentation.has_value();
     for (QAction* act : regionActions_) {
         act->setEnabled(hasSelection);
+    }
+    // Suppr universel : région, objet(s) vectoriel(s) ou objet de broderie.
+    if (deleteSelectionAct_ != nullptr) {
+        deleteSelectionAct_->setEnabled(hasSelection || selectedObject_.has_value() ||
+                                        selectedEmbroidery_.has_value());
     }
     if (!mergeAct_->isEnabled()) {
         mergeAct_->setChecked(false);

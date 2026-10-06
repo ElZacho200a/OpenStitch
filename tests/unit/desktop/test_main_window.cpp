@@ -119,6 +119,44 @@ Fixture buildFixture() {
     return fx;
 }
 
+// Ajoute un triangle (1 mm de côté, coin bas-gauche à x = xMm) au projet et
+// retourne son id ; sert aux tests de multi-sélection (L5-T4a).
+ObjectId addTriangle(openstitch::document::Project& project, const char* name, int xMm) {
+    openstitch::document::VectorObject vec;
+    vec.id = project.object_ids.next();
+    vec.name = name;
+    openstitch::geometry::Path tri;
+    tri.closed = true;
+    const std::int32_t x0 = xMm * 1000;
+    for (const auto& [dx, dy] : {std::pair{0, 0}, std::pair{1000, 0}, std::pair{0, 1000}}) {
+        tri.nodes.push_back(openstitch::geometry::PathNode{
+            Vec2um{Micrometers{x0 + dx}, Micrometers{dy}}, openstitch::geometry::NodeType::Corner,
+            std::nullopt, std::nullopt});
+    }
+    vec.paths.push_back(openstitch::geometry::PathSet{tri, {}});
+    project.vector_objects.push_back(vec);
+    return vec.id;
+}
+
+// Projet de test : image 2x2 + trois triangles A, B, C (sans broderie ni région).
+struct TrianglesFixture {
+    openstitch::document::Project project;
+    ObjectId a{};
+    ObjectId b{};
+    ObjectId c{};
+};
+
+TrianglesFixture buildTriangles() {
+    TrianglesFixture fx;
+    fx.project.original.width = 2;
+    fx.project.original.height = 2;
+    fx.project.original.rgba.assign(2 * 2 * 4, 255);
+    fx.a = addTriangle(fx.project, "A", 0);
+    fx.b = addTriangle(fx.project, "B", 3);
+    fx.c = addTriangle(fx.project, "C", 6);
+    return fx;
+}
+
 // tabs_/objectsList_/regionsList_ sont privés (comme dans test_document_panel.cpp) :
 // on retrouve les listes par leur ordre d'ajout, seul contrat stable observé
 // depuis l'extérieur. objectsList_ est un QTreeWidget depuis §21 (regroupement
@@ -485,6 +523,24 @@ private slots:
 
     void clickingVectorObjectSyncsDocumentPanelAndInspector();
     void regionAndVectorSelectionToggleContextActionsOppositely();
+    // ---- L5-T4a : modèle de sélection (multi-sélection) et Suppr universel ----
+    void selectionAddAndToggleKeepInvariants();
+    void togglingPrimaryPromotesPrevious();
+    void addOfAlreadySelectedObjectIsNoOp();
+    void clickOnEmptyReplaceDeselectsButModifiersKeepSelection();
+    void rectangleSelectionHonoursModes();
+    void regionSelectionClearsMultiSelection();
+    void embroiderySelectionClearsMultiSelection();
+    void danglingIdsArePrunedAfterDeleteUndoRedo();
+    void multiSelectionDisablesSingleObjectActions();
+    void inspectorShowsNObjets();
+    void multiSelectionDrawsEveryObjectAsSelected();
+    void nudgeMovesWholeMultiSelectionInOneUndoStep();
+    void deleteRemovesWholeMultiSelectionInOneUndoStep();
+    void deleteOnSingleVectorObjectIsOneUndoStep();
+    void deleteOnEmbroideryKeepsVisibleSourceAndRemovesHiddenProxy();
+    void deleteOnRegionKeepsLegacyBehaviour();
+    void deleteActionIsEnabledForAnySelectionKind();
     void undoRedoRestoresDeletedRegionAndRefreshesDocumentPanel();
     void embroiderySelectionDoesNotLeakAcrossProjectLoadWithReusedId();
     // Cache de l'image de travail (audit perf 2026-09) : toujours égale au
@@ -802,7 +858,460 @@ void MainWindowTest::regionAndVectorSelectionToggleContextActionsOppositely() {
 
     view->canvasClickedMm(QPointF(0.25, -0.25)); // sélectionne le triangle
     QVERIFY(createStitch->isEnabled());
-    QVERIFY(!deleteRegion->isEnabled()); // la sélection au canevas prime (cf. onCanvasClicked)
+    QVERIFY(
+        !window.selectedRegion_.has_value()); // la sélection au canevas prime (cf. onCanvasClicked)
+    // Suppr universel (L5-T4a) : l'action reste active, désormais pour l'objet vectoriel.
+    QVERIFY(deleteRegion->isEnabled());
+}
+
+// ---------------------------------------------------------------------------
+// L5-T4a : modèle de sélection (specs/plans/ui-interaction-model.md §2.7).
+// ---------------------------------------------------------------------------
+
+void MainWindowTest::selectionAddAndToggleKeepInvariants() {
+    MainWindow window;
+    const TrianglesFixture fx = buildTriangles();
+    window.applyLoadedProject(fx.project);
+
+    // Replace : cas legacy, multiSelection_ reste vide.
+    window.applySelectionClick(fx.a, SelectMode::Replace);
+    QVERIFY(window.selectedObject_ == fx.a);
+    QVERIFY(window.multiSelection_.empty());
+    QVERIFY(window.checkSelectionInvariants());
+
+    // Maj : ajoute, le dernier ajouté devient le principal.
+    window.applySelectionClick(fx.b, SelectMode::Add);
+    QCOMPARE(window.multiSelection_.size(), std::size_t{2});
+    QVERIFY(window.selectedObject_ == fx.b);
+    QVERIFY(window.checkSelectionInvariants());
+
+    // Ctrl sur un absent : l'ajoute en dernier.
+    window.applySelectionClick(fx.c, SelectMode::Toggle);
+    QCOMPARE(window.multiSelection_.size(), std::size_t{3});
+    QVERIFY(window.selectedObject_ == fx.c);
+    QVERIFY(window.multiSelection_.back() == fx.c);
+
+    // Ctrl sur un présent non principal : le retire, le principal ne change pas.
+    window.applySelectionClick(fx.a, SelectMode::Toggle);
+    QCOMPARE(window.multiSelection_.size(), std::size_t{2});
+    QVERIFY(window.selectedObject_ == fx.c);
+    QVERIFY(window.checkSelectionInvariants());
+
+    // Replace repart d'un seul objet.
+    window.applySelectionClick(fx.b, SelectMode::Replace);
+    QVERIFY(window.multiSelection_.empty());
+    QVERIFY(window.selectedObject_ == fx.b);
+}
+
+void MainWindowTest::togglingPrimaryPromotesPrevious() {
+    MainWindow window;
+    const TrianglesFixture fx = buildTriangles();
+    window.applyLoadedProject(fx.project);
+
+    window.applySelectionClick(fx.a, SelectMode::Replace);
+    window.applySelectionClick(fx.b, SelectMode::Add);
+    window.applySelectionClick(fx.c, SelectMode::Add);
+    QVERIFY(window.selectedObject_ == fx.c);
+
+    window.applySelectionClick(fx.c, SelectMode::Toggle); // retire le principal
+    QVERIFY(window.selectedObject_ == fx.b);              // le précédent est promu
+    QCOMPARE(window.multiSelection_.size(), std::size_t{2});
+    QVERIFY(window.checkSelectionInvariants());
+
+    window.applySelectionClick(fx.b, SelectMode::Toggle); // il ne reste qu'un objet
+    QVERIFY(window.selectedObject_ == fx.a);
+    QVERIFY(window.multiSelection_.empty()); // retour au cas legacy
+    QVERIFY(window.checkSelectionInvariants());
+
+    window.applySelectionClick(fx.a, SelectMode::Toggle); // plus rien
+    QVERIFY(!window.selectedObject_.has_value());
+    QVERIFY(window.multiSelection_.empty());
+}
+
+void MainWindowTest::addOfAlreadySelectedObjectIsNoOp() {
+    MainWindow window;
+    const TrianglesFixture fx = buildTriangles();
+    window.applyLoadedProject(fx.project);
+
+    window.applySelectionClick(fx.a, SelectMode::Replace);
+    window.applySelectionClick(fx.b, SelectMode::Add);
+    window.applySelectionClick(fx.a, SelectMode::Add); // déjà présent : rien
+    QCOMPARE(window.multiSelection_.size(), std::size_t{2});
+    QVERIFY(window.selectedObject_ == fx.b); // le principal ne change pas
+    QVERIFY(window.checkSelectionInvariants());
+}
+
+void MainWindowTest::clickOnEmptyReplaceDeselectsButModifiersKeepSelection() {
+    MainWindow window;
+    const TrianglesFixture fx = buildTriangles();
+    window.applyLoadedProject(fx.project);
+
+    window.applySelectionClick(fx.a, SelectMode::Replace);
+    window.applySelectionClick(fx.b, SelectMode::Add);
+
+    window.applySelectionClick(std::nullopt, SelectMode::Add);
+    window.applySelectionClick(std::nullopt, SelectMode::Toggle);
+    QCOMPARE(window.multiSelection_.size(), std::size_t{2}); // Maj/Ctrl dans le vide : rien
+
+    window.applySelectionClick(std::nullopt, SelectMode::Replace);
+    QVERIFY(!window.selectedObject_.has_value());
+    QVERIFY(window.multiSelection_.empty());
+    QVERIFY(window.checkSelectionInvariants());
+}
+
+void MainWindowTest::rectangleSelectionHonoursModes() {
+    MainWindow window;
+    const TrianglesFixture fx = buildTriangles();
+    window.applyLoadedProject(fx.project);
+
+    window.applySelectionRectangle({fx.a, fx.b, fx.a}, SelectMode::Replace); // doublon ignoré
+    QCOMPARE(window.multiSelection_.size(), std::size_t{2});
+    QVERIFY(window.selectedObject_ == fx.b);
+
+    window.applySelectionRectangle({fx.b, fx.c}, SelectMode::Toggle); // b retiré, c ajouté
+    QCOMPARE(window.selectedObjectIds(), (std::vector<ObjectId>{fx.a, fx.c}));
+
+    window.applySelectionRectangle({fx.a}, SelectMode::Add); // déjà présent
+    QCOMPARE(window.selectedObjectIds(), (std::vector<ObjectId>{fx.a, fx.c}));
+
+    window.applySelectionRectangle({fx.b}, SelectMode::Add);
+    QCOMPARE(window.selectedObjectIds(), (std::vector<ObjectId>{fx.a, fx.c, fx.b}));
+
+    window.applySelectionRectangle({}, SelectMode::Replace); // rectangle vide : désélectionne
+    QVERIFY(window.selectedObjectIds().empty());
+    QVERIFY(window.checkSelectionInvariants());
+}
+
+void MainWindowTest::regionSelectionClearsMultiSelection() {
+    MainWindow window;
+    Fixture fx = buildFixture();
+    const ObjectId extra = addTriangle(fx.project, "Extra", 3);
+    window.applyLoadedProject(fx.project);
+    auto* docPanel = window.findChild<DocumentPanel*>();
+    QVERIFY(docPanel != nullptr);
+
+    window.applySelectionClick(fx.vectorId, SelectMode::Replace);
+    window.applySelectionClick(extra, SelectMode::Add);
+    QCOMPARE(window.multiSelection_.size(), std::size_t{2});
+
+    docPanel->regionSelected(fx.regionId);
+    QVERIFY(window.multiSelection_.empty());
+    QVERIFY(!window.selectedObject_.has_value());
+    QVERIFY(window.selectedRegion_ == fx.regionId);
+    QVERIFY(window.checkSelectionInvariants());
+
+    // Même garantie au niveau du mutateur : région + 2 objets => seul le principal reste.
+    window.setSelection(
+        {.region = fx.regionId, .embroidery = std::nullopt, .objects = {fx.vectorId, extra}});
+    QVERIFY(window.multiSelection_.empty());
+    QVERIFY(window.selectedObject_ == extra);
+    QVERIFY(window.checkSelectionInvariants());
+}
+
+void MainWindowTest::embroiderySelectionClearsMultiSelection() {
+    MainWindow window;
+    Fixture fx = buildFixture();
+    const ObjectId extra = addTriangle(fx.project, "Extra", 3);
+    window.applyLoadedProject(fx.project);
+    auto* docPanel = window.findChild<DocumentPanel*>();
+    QVERIFY(docPanel != nullptr);
+
+    window.applySelectionClick(fx.vectorId, SelectMode::Replace);
+    window.applySelectionClick(extra, SelectMode::Add);
+    docPanel->embroiderySelected(fx.embroideryId);
+
+    QVERIFY(window.multiSelection_.empty());
+    QVERIFY(window.selectedEmbroidery_ == fx.embroideryId);
+    QVERIFY(window.selectedObject_ == fx.vectorId); // forme source mise en évidence
+    QVERIFY(window.checkSelectionInvariants());
+
+    // Une sélection d'objets depuis le canevas écarte la broderie.
+    window.applySelectionClick(extra, SelectMode::Add);
+    QVERIFY(!window.selectedEmbroidery_.has_value());
+    QCOMPARE(window.multiSelection_.size(), std::size_t{2});
+    QVERIFY(window.checkSelectionInvariants());
+}
+
+void MainWindowTest::danglingIdsArePrunedAfterDeleteUndoRedo() {
+    MainWindow window;
+    const TrianglesFixture fx = buildTriangles();
+    window.applyLoadedProject(fx.project);
+
+    window.applySelectionClick(fx.a, SelectMode::Replace);
+    window.applySelectionClick(fx.b, SelectMode::Add);
+    window.applySelectionClick(fx.c, SelectMode::Add);
+
+    // Suppression hors sélection (menu contextuel, autre chemin) du principal :
+    // refreshImage élague l'id disparu et re-promeut le dernier restant.
+    window.deleteVectorObject(fx.c);
+    QCOMPARE(window.selectedObjectIds(), (std::vector<ObjectId>{fx.a, fx.b}));
+    QVERIFY(window.selectedObject_ == fx.b);
+    QVERIFY(window.checkSelectionInvariants());
+
+    // Suppression directe du document puis refresh : même élagage.
+    window.project_.vector_objects.erase(window.project_.vector_objects.begin());
+    window.refreshImage();
+    QVERIFY(window.selectedObject_ == fx.b);
+    QVERIFY(window.multiSelection_.empty()); // un seul restant : cas legacy
+    QVERIFY(window.checkSelectionInvariants());
+
+    // Undo de la suppression de C : C réapparaît mais n'est pas re-sélectionné ;
+    // aucun id périmé.
+    window.undo();
+    QVERIFY(window.project_.findObject(fx.c) != nullptr);
+    QVERIFY(window.checkSelectionInvariants());
+    window.redo();
+    QVERIFY(window.project_.findObject(fx.c) == nullptr);
+    QVERIFY(window.checkSelectionInvariants());
+}
+
+void MainWindowTest::multiSelectionDisablesSingleObjectActions() {
+    MainWindow window;
+    const TrianglesFixture fx = buildTriangles();
+    window.applyLoadedProject(fx.project);
+
+    window.applySelectionClick(fx.a, SelectMode::Replace);
+    QVERIFY(window.createStitchAct_->isEnabled());
+    QVERIFY(window.createTatamiAct_->isEnabled());
+    QVERIFY(window.createSatinAct_->isEnabled());
+    QVERIFY(window.autoSatinAct_->isEnabled());
+
+    window.applySelectionClick(fx.b, SelectMode::Add);
+    QVERIFY(!window.createStitchAct_->isEnabled());
+    QVERIFY(!window.createTatamiAct_->isEnabled());
+    QVERIFY(!window.createSatinAct_->isEnabled());
+    QVERIFY(!window.autoSatinAct_->isEnabled());
+
+    // Les slots eux-mêmes refusent d'agir (menus/barres qui contourneraient l'état d'action).
+    const std::size_t embBefore = window.project_.embroidery_objects.size();
+    window.createRunningStitchObject();
+    window.createTatamiObject();
+    QCOMPARE(window.project_.embroidery_objects.size(), embBefore);
+    QVERIFY(!window.undoStack_.canUndo());
+
+    // Retour à un seul objet : réactivées.
+    window.applySelectionClick(fx.b, SelectMode::Toggle);
+    QVERIFY(window.createStitchAct_->isEnabled());
+    QVERIFY(window.autoSatinAct_->isEnabled());
+}
+
+void MainWindowTest::inspectorShowsNObjets() {
+    MainWindow window;
+    const TrianglesFixture fx = buildTriangles();
+    window.applyLoadedProject(fx.project);
+    auto* propsPanel = window.findChild<PropertiesPanel*>();
+    QVERIFY(propsPanel != nullptr);
+
+    const auto hasText = [&](const QString& needle) {
+        const auto labels = propsPanel->findChildren<QLabel*>();
+        return std::any_of(labels.begin(), labels.end(),
+                           [&](const QLabel* l) { return l->text().contains(needle); });
+    };
+
+    window.applySelectionClick(fx.a, SelectMode::Replace);
+    QVERIFY(!hasText(QStringLiteral("2 objets")));
+
+    window.applySelectionClick(fx.b, SelectMode::Add);
+    QVERIFY(hasText(QStringLiteral("2 objets")));
+    QCOMPARE(propsPanel->findChildren<QDoubleSpinBox*>().size(), 0); // texte seul
+
+    window.applySelectionClick(fx.c, SelectMode::Add);
+    QVERIFY(hasText(QStringLiteral("3 objets")));
+
+    window.applySelectionClick(fx.c, SelectMode::Toggle);
+    window.applySelectionClick(fx.b, SelectMode::Toggle); // retour mono-objet
+    QVERIFY(!hasText(QStringLiteral("2 objets")));
+}
+
+void MainWindowTest::multiSelectionDrawsEveryObjectAsSelected() {
+    MainWindow window;
+    const TrianglesFixture fx = buildTriangles();
+    window.applyLoadedProject(fx.project);
+
+    // Le rendu se base sur isObjectSelected : tous les objets de l'ensemble, pas
+    // seulement le principal.
+    window.applySelectionClick(fx.a, SelectMode::Replace);
+    window.applySelectionClick(fx.b, SelectMode::Add);
+    QVERIFY(window.isObjectSelected(fx.a));
+    QVERIFY(window.isObjectSelected(fx.b));
+    QVERIFY(!window.isObjectSelected(fx.c));
+
+    // Les poignées de nœuds (principal seul) ne sont plus posées en multi-sélection.
+    int handles = 0;
+    for (QGraphicsItem* item : window.scene_->items()) {
+        if (dynamic_cast<NodeHandleItem*>(item) != nullptr) {
+            ++handles;
+        }
+    }
+    QCOMPARE(handles, 0);
+    window.applySelectionClick(fx.b, SelectMode::Toggle); // a seul
+    handles = 0;
+    for (QGraphicsItem* item : window.scene_->items()) {
+        if (dynamic_cast<NodeHandleItem*>(item) != nullptr) {
+            ++handles;
+        }
+    }
+    QVERIFY(handles > 0);
+}
+
+void MainWindowTest::nudgeMovesWholeMultiSelectionInOneUndoStep() {
+    MainWindow window;
+    const TrianglesFixture fx = buildTriangles();
+    window.applyLoadedProject(fx.project);
+    auto* view = window.findChild<CanvasView*>();
+    QVERIFY(view != nullptr);
+
+    const auto originX = [&](ObjectId id) {
+        return window.project_.findObject(id)->paths.front().outer.nodes.front().pos.x.value;
+    };
+    const auto ax = originX(fx.a);
+    const auto bx = originX(fx.b);
+    const auto cx = originX(fx.c);
+
+    window.applySelectionClick(fx.a, SelectMode::Replace);
+    window.applySelectionClick(fx.b, SelectMode::Add);
+    emit view->nudgeRequestedMm(QPointF(1.0, 0.0));
+    QCOMPARE(originX(fx.a), ax + 1000);
+    QCOMPARE(originX(fx.b), bx + 1000);
+    QCOMPARE(originX(fx.c), cx); // hors sélection : immobile
+
+    window.undo(); // UN seul pas annule les deux déplacements
+    QCOMPARE(originX(fx.a), ax);
+    QCOMPARE(originX(fx.b), bx);
+    QVERIFY(!window.undoStack_.canUndo());
+}
+
+void MainWindowTest::deleteRemovesWholeMultiSelectionInOneUndoStep() {
+    MainWindow window;
+    Fixture fx = buildFixture(); // triangle + broderie contour dépendante
+    const ObjectId extra = addTriangle(fx.project, "Extra", 3);
+    const ObjectId keep = addTriangle(fx.project, "Keep", 6);
+    window.applyLoadedProject(fx.project);
+    auto* deleteAct = window.findChild<QAction*>(QStringLiteral("action_deleteRegion"));
+    QVERIFY(deleteAct != nullptr);
+
+    window.applySelectionClick(fx.vectorId, SelectMode::Replace);
+    window.applySelectionClick(extra, SelectMode::Add);
+    QVERIFY(deleteAct->isEnabled());
+
+    const auto vecCount = window.project_.vector_objects.size();
+    const auto embCount = window.project_.embroidery_objects.size();
+    QCOMPARE(window.project_.embroidery_objects.size(), std::size_t{1});
+
+    deleteAct->trigger();
+    QVERIFY(window.project_.findObject(fx.vectorId) == nullptr);
+    QVERIFY(window.project_.findObject(extra) == nullptr);
+    QVERIFY(window.project_.findObject(keep) != nullptr);
+    QVERIFY(window.project_.embroidery_objects.empty()); // la broderie dépendante part avec
+    QVERIFY(!window.selectedObject_.has_value());
+    QVERIFY(window.multiSelection_.empty());
+    QVERIFY(window.checkSelectionInvariants());
+    QCOMPARE(window.undoStack_.undoName(), std::string("Supprimer 2 objets"));
+
+    // UN seul pas d'annulation restaure tout, aux mêmes index.
+    window.undo();
+    QVERIFY(!window.undoStack_.canUndo());
+    QCOMPARE(window.project_.vector_objects.size(), vecCount);
+    QCOMPARE(window.project_.embroidery_objects.size(), embCount);
+    QVERIFY(window.project_.vector_objects[0].id == fx.vectorId);
+    QVERIFY(window.project_.vector_objects[1].id == extra);
+    QVERIFY(window.project_.vector_objects[2].id == keep);
+    QVERIFY(window.checkSelectionInvariants());
+
+    window.redo();
+    QVERIFY(window.project_.findObject(fx.vectorId) == nullptr);
+    QVERIFY(window.project_.findObject(extra) == nullptr);
+    QVERIFY(window.project_.findObject(keep) != nullptr);
+    QVERIFY(window.checkSelectionInvariants());
+}
+
+void MainWindowTest::deleteOnSingleVectorObjectIsOneUndoStep() {
+    MainWindow window;
+    const TrianglesFixture fx = buildTriangles();
+    window.applyLoadedProject(fx.project);
+
+    window.applySelectionClick(fx.b, SelectMode::Replace);
+    window.deleteSelection();
+    QVERIFY(window.project_.findObject(fx.b) == nullptr);
+    QVERIFY(!window.selectedObject_.has_value());
+    window.undo();
+    QVERIFY(window.project_.findObject(fx.b) != nullptr);
+    QVERIFY(!window.undoStack_.canUndo());
+    QVERIFY(window.checkSelectionInvariants());
+}
+
+void MainWindowTest::deleteOnEmbroideryKeepsVisibleSourceAndRemovesHiddenProxy() {
+    {
+        MainWindow window;
+        const Fixture fx = buildFixture();
+        window.applyLoadedProject(fx.project);
+        window.setSelection(
+            {.region = std::nullopt, .embroidery = fx.embroideryId, .objects = {fx.vectorId}});
+        window.deleteSelection();
+        QVERIFY(window.project_.findEmbroidery(fx.embroideryId) == nullptr);
+        QVERIFY(window.project_.findObject(fx.vectorId) != nullptr); // forme conservée
+        QVERIFY(!window.selectedEmbroidery_.has_value());
+        QVERIFY(window.checkSelectionInvariants());
+        window.undo();
+        QVERIFY(window.project_.findEmbroidery(fx.embroideryId) != nullptr);
+        QVERIFY(!window.undoStack_.canUndo());
+    }
+    {
+        // Proxy invisible (colonne satin manuelle) : la source part avec la broderie.
+        MainWindow window;
+        Fixture fx = buildFixture();
+        fx.project.vector_objects.front().visible = false;
+        window.applyLoadedProject(fx.project);
+        window.setSelection({.region = std::nullopt, .embroidery = fx.embroideryId, .objects = {}});
+        window.deleteSelection();
+        QVERIFY(window.project_.findEmbroidery(fx.embroideryId) == nullptr);
+        QVERIFY(window.project_.findObject(fx.vectorId) == nullptr);
+        window.undo();
+        QVERIFY(window.project_.findEmbroidery(fx.embroideryId) != nullptr);
+        QVERIFY(window.project_.findObject(fx.vectorId) != nullptr);
+        QVERIFY(!window.undoStack_.canUndo());
+    }
+}
+
+void MainWindowTest::deleteOnRegionKeepsLegacyBehaviour() {
+    MainWindow window;
+    const Fixture fx = buildFixture();
+    window.applyLoadedProject(fx.project);
+
+    window.setSelection({.region = fx.regionId, .embroidery = std::nullopt, .objects = {}});
+    window.deleteSelection();
+    QVERIFY(window.project_.segmentation->find(fx.regionId) == nullptr);
+    QVERIFY(!window.selectedRegion_.has_value());
+    QCOMPARE(window.undoStack_.undoName(), std::string("Suppression de région"));
+    QVERIFY(window.project_.findObject(fx.vectorId) != nullptr); // rien d'autre supprimé
+    window.undo();
+    QVERIFY(window.project_.segmentation->find(fx.regionId) != nullptr);
+    QVERIFY(!window.undoStack_.canUndo());
+}
+
+void MainWindowTest::deleteActionIsEnabledForAnySelectionKind() {
+    MainWindow window;
+    const Fixture fx = buildFixture();
+    window.applyLoadedProject(fx.project);
+    auto* deleteAct = window.findChild<QAction*>(QStringLiteral("action_deleteRegion"));
+    QVERIFY(deleteAct != nullptr);
+    QCOMPARE(deleteAct->text().remove(QLatin1Char('&')), QStringLiteral("Supprimer la sélection"));
+    QCOMPARE(deleteAct->shortcut(), QKeySequence(QKeySequence::Delete));
+
+    QVERIFY(!deleteAct->isEnabled());
+    window.setSelection({.region = fx.regionId, .embroidery = std::nullopt, .objects = {}});
+    window.updateActions();
+    QVERIFY(deleteAct->isEnabled());
+    window.setSelection({.region = std::nullopt, .embroidery = fx.embroideryId, .objects = {}});
+    window.updateActions();
+    QVERIFY(deleteAct->isEnabled());
+    window.setSelection(
+        {.region = std::nullopt, .embroidery = std::nullopt, .objects = {fx.vectorId}});
+    window.updateActions();
+    QVERIFY(deleteAct->isEnabled());
+    window.setSelection({});
+    window.updateActions();
+    QVERIFY(!deleteAct->isEnabled());
 }
 
 void MainWindowTest::undoRedoRestoresDeletedRegionAndRefreshesDocumentPanel() {

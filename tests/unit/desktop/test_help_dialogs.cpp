@@ -9,17 +9,20 @@
 #include <QKeySequence>
 #include <QLineEdit>
 #include <QMainWindow>
+#include <QMenu>
 #include <QPushButton>
 #include <QSettings>
 #include <QSignalSpy>
 #include <QTableView>
 #include <QTemporaryDir>
 #include <QTest>
+#include <QWidget>
 
 #include <memory>
 
 #include "help_dialogs.hpp"
 #include "interaction_map.hpp"
+#include "openstitch/core/app_info.hpp"
 
 namespace openstitch::desktop {
 
@@ -78,20 +81,37 @@ private slots:
         GesturesDialog dialog(&noActions);
         const auto rows = InteractionMap::allRows(false);
         QVERIFY(!rows.isEmpty());
-        // Cardinalité : une ligne de dialogue par ligne de table non planned.
+        // Attente indépendante : table brute, filtrée à la main (non planned, bit du préréglage).
+        int expected = 0;
+        QStringList plannedOnlyLabels;
+        QStringList liveLabels;
+        for (const Row& raw : InteractionMap::rawRows()) {
+            if (!raw.planned && (raw.presets & kPresetOpenStitch) != 0) {
+                ++expected;
+                liveLabels << InteractionMap::label(raw);
+            }
+        }
+        for (const Row& raw : InteractionMap::rawRows()) {
+            if (raw.planned && !liveLabels.contains(InteractionMap::label(raw))) {
+                plannedOnlyLabels << InteractionMap::label(raw);
+            }
+        }
+        QCOMPARE(dialog.totalRowCount(), expected);
+        QCOMPARE(dialog.visibleRowCount(), expected);
         QCOMPARE(dialog.totalRowCount(), static_cast<int>(rows.size()));
-        QCOMPARE(dialog.visibleRowCount(), static_cast<int>(rows.size()));
-        // Et chaque ligne reprend contexte / geste / libellé de la table, dans l'ordre.
         for (int i = 0; i < rows.size(); ++i) {
             const Row& row = *rows[i];
             QCOMPARE(cell(dialog, i, 0), InteractionMap::contextName(row.context));
             QCOMPARE(cell(dialog, i, 1), InteractionMap::describe(row.gesture));
             QCOMPARE(cell(dialog, i, 2), InteractionMap::label(row));
         }
-        // Aucune ligne planned n'est affichée.
-        const auto withPlanned = InteractionMap::allRows(true);
-        if (withPlanned.size() > rows.size()) {
-            QVERIFY(dialog.totalRowCount() < static_cast<int>(withPlanned.size()));
+        // Aucune ligne planned n'est affichée (inconditionnel, sinon QSKIP motivé).
+        if (plannedOnlyLabels.isEmpty()) {
+            QSKIP("la table n'a aucune ligne planned au libelle distinct : controle impossible");
+        }
+        for (int r = 0; r < dialog.visibleRowCount(); ++r) {
+            QVERIFY2(!plannedOnlyLabels.contains(cell(dialog, r, 2)),
+                     qPrintable(cell(dialog, r, 2)));
         }
     }
 
@@ -238,16 +258,16 @@ private slots:
 
     void quickStartButtonTriggersAction() {
         QMainWindow window;
-        QAction* edit = addAction(window, QStringLiteral("action_stitchEditMode"),
-                                  QStringLiteral("&Éditer les points…"));
+        QAction* edit = addAction(window, QStringLiteral("action_createStitch"),
+                                  QStringLiteral("&Créer un objet…"));
         QSignalSpy spy(edit, &QAction::triggered);
 
         QuickStartDialog dialog(&window);
-        // Étape 5 (index 4) : édition -> action_stitchEditMode.
-        QPushButton* button = dialog.stepButton(4);
+        // Étape 4 (index 3) : type de point -> action_createStitch (repli par objectName).
+        QPushButton* button = dialog.stepButton(3);
         QVERIFY(button != nullptr);
         QVERIFY(button->isEnabled());
-        QCOMPARE(button->text(), QStringLiteral("Éditer les points…"));
+        QCOMPARE(button->text(), QStringLiteral("Créer un objet…"));
         QVERIFY(!button->accessibleName().isEmpty());
         button->click();
         QCOMPARE(spy.count(), 1);
@@ -267,10 +287,14 @@ private slots:
     void quickStartMissingActionDisablesButton() {
         QMainWindow window;
         std::vector<QuickStartStep> steps{
-            {QStringLiteral("Un"), QStringLiteral("Corps"), {QStringLiteral("action_absent")}},
-            {QStringLiteral("Deux"), QStringLiteral("Info seule"), {}},
+            {QStringLiteral("Un"),
+             QStringLiteral("Corps"),
+             nullptr,
+             {QStringLiteral("action_absent")}},
+            {QStringLiteral("Deux"), QStringLiteral("Info seule"), nullptr, {}, true},
             {QStringLiteral("Trois"),
              QStringLiteral("Deux boutons"),
+             nullptr,
              {QStringLiteral("action_a"), QStringLiteral("action_b")}},
         };
         QAction* a = addAction(window, QStringLiteral("action_a"), QStringLiteral("A"));
@@ -295,10 +319,103 @@ private slots:
         QVERIFY(!dialog.stepButton(2, 1)->isEnabled());
     }
 
+    void quickStartExplicitActionsTriggerAndReportState() {
+        QMainWindow window;
+        QAction* open = addAction(window, QStringLiteral("x_open"), QStringLiteral("&Ouvrir"));
+        QAction* exp = addAction(window, QStringLiteral("x_export"), QStringLiteral("Exporter"));
+        exp->setEnabled(false);
+        QSignalSpy spyOpen(open, &QAction::triggered);
+        QSignalSpy spyExp(exp, &QAction::triggered);
+        std::vector<QuickStartStep> steps{
+            {QStringLiteral("Ouvrir"), QStringLiteral("a"), open},
+            {QStringLiteral("Exporter"), QStringLiteral("b"), exp},
+            {QStringLiteral("Absente"), QStringLiteral("c"), nullptr},
+            {QStringLiteral("Info"), QStringLiteral("d"), nullptr, {}, true},
+        };
+        QuickStartDialog dialog(steps);
+        QVERIFY(dialog.stepButton(0)->isEnabled());
+        QCOMPARE(dialog.stepButton(0)->text(), QStringLiteral("Ouvrir"));
+        dialog.stepButton(0)->click();
+        QCOMPARE(spyOpen.count(), 1);
+        QVERIFY(!dialog.stepButton(1)->isEnabled());
+        QVERIFY(!dialog.stepButton(1)->toolTip().isEmpty());
+        dialog.stepButton(1)->click();
+        QCOMPARE(spyExp.count(), 0);
+        QVERIFY(dialog.stepButton(2) != nullptr);
+        QVERIFY(!dialog.stepButton(2)->isEnabled());
+        QVERIFY(!dialog.stepButton(2)->toolTip().isEmpty());
+        QCOMPARE(dialog.stepButtonCount(3), 0);
+        exp->setEnabled(true);
+        QVERIFY(dialog.stepButton(1)->isEnabled());
+    }
+
+    void gesturesDialogFindsNestedActionsSortedWithTwoShortcuts() {
+        PresetGuard guard;
+        InteractionMap::setPreset(Preset::OpenStitch);
+        QMainWindow window;
+        auto* menu = new QMenu(QStringLiteral("M"), &window);
+        auto* inMenu = new QAction(QStringLiteral("&Zoom avant"), menu);
+        inMenu->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_Plus));
+        menu->addAction(inMenu);
+        auto* child = new QWidget(&window);
+        auto* inChild = new QAction(QStringLiteral("Annuler"), child);
+        inChild->setShortcuts({QKeySequence(Qt::CTRL | Qt::Key_Z), QKeySequence(Qt::Key_F8)});
+        child->addAction(inChild);
+        addAction(window, QStringLiteral("a_mid"), QStringLiteral("Marquer"),
+                  QKeySequence(Qt::Key_F6));
+
+        GesturesDialog dialog(&window);
+        const int first = static_cast<int>(InteractionMap::allRows(false).size());
+        QCOMPARE(dialog.totalRowCount(), first + 3);
+        QCOMPARE(cell(dialog, first, 2), QStringLiteral("Annuler"));
+        QCOMPARE(cell(dialog, first + 1, 2), QStringLiteral("Marquer"));
+        QCOMPARE(cell(dialog, first + 2, 2), QStringLiteral("Zoom avant"));
+        QCOMPARE(cell(dialog, first, 1),
+                 QKeySequence(Qt::CTRL | Qt::Key_Z).toString(QKeySequence::NativeText) +
+                     QStringLiteral(" / ") +
+                     QKeySequence(Qt::Key_F8).toString(QKeySequence::NativeText));
+    }
+
+    void refreshFollowsExternalPresetWithoutSignalOrWrite() {
+        PresetGuard guard;
+        InteractionMap::setPreset(Preset::OpenStitch);
+        QObject root;
+        GesturesDialog dialog(&root);
+        qRegisterMetaType<openstitch::desktop::Preset>();
+        QSignalSpy spy(&dialog, &GesturesDialog::presetChanged);
+        const auto stored = [] {
+            QSettings s(QSettings::defaultFormat(), QSettings::UserScope,
+                        QStringLiteral("OpenStitch"), QStringLiteral("OpenStitch Studio"));
+            return s.value(QStringLiteral("navigation/preset"));
+        };
+        const QVariant before = stored();
+        InteractionMap::setPreset(Preset::Touchpad);
+        dialog.refresh();
+        QCOMPARE(dialog.presetCombo()->currentIndex(), 1);
+        QCOMPARE(dialog.totalRowCount(), static_cast<int>(InteractionMap::allRows(false).size()));
+        QCOMPARE(spy.count(), 0);
+        QCOMPARE(stored(), before);
+    }
+
+    void searchSplitsOnAnyWhitespace() {
+        PresetGuard guard;
+        InteractionMap::setPreset(Preset::OpenStitch);
+        QMainWindow window;
+        addAction(window, QStringLiteral("action_analyze"), QStringLiteral("&Analyser le motif"),
+                  QKeySequence(Qt::Key_F5));
+        GesturesDialog dialog(&window);
+        dialog.searchField()->setText(QStringLiteral("motif\tanalyser"));
+        QCOMPARE(dialog.visibleRowCount(), 1);
+        dialog.searchField()->setText(QStringLiteral("motif\u00A0analyser"));
+        QCOMPARE(dialog.visibleRowCount(), 1);
+        dialog.searchField()->setText(QStringLiteral("  \t "));
+        QCOMPARE(dialog.visibleRowCount(), dialog.totalRowCount());
+    }
+
     void quickStartWorksWithoutActionRoot() {
         QuickStartDialog dialog(nullptr);
         QCOMPARE(dialog.stepCount(), 6);
-        QPushButton* edit = dialog.stepButton(4);
+        QPushButton* edit = dialog.stepButton(3);
         QVERIFY(edit != nullptr);
         QVERIFY(!edit->isEnabled());
     }
@@ -321,9 +438,9 @@ private slots:
 
     void aboutTextHasNameVersionLicenseAndRepository() {
         const QString text = aboutText();
-        QVERIFY(text.contains(QStringLiteral("OpenStitch")));
         QVERIFY(text.contains(QStringLiteral("Apache-2.0")));
-        QVERIFY(text.contains(QStringLiteral("0.1.0")));
+        QVERIFY(text.contains(QString::fromUtf8(openstitch::kAppName)));
+        QVERIFY(text.contains(QString::fromUtf8(openstitch::kAppVersion)));
         QVERIFY(text.contains(QStringLiteral("https://github.com/")));
     }
 

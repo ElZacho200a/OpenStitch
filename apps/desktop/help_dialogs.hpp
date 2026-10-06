@@ -40,8 +40,10 @@ class GesturesDialog : public QDialog {
     Q_OBJECT
 
 public:
-    // `actionRoot` : objet dont les QAction descendantes (avec raccourci) sont
-    // listées sous « Raccourcis des commandes ». Peut être nul.
+    // `actionRoot` : DOIT être la fenêtre principale (ou la racine de l'arbre
+    // d'actions) : toutes les QAction descendantes (menus, widgets enfants) avec
+    // texte et raccourci sont listées sous « Raccourcis des commandes », triées par
+    // texte. Peut être nul.
     explicit GesturesDialog(QObject* actionRoot, QWidget* parent = nullptr);
 
     [[nodiscard]] int totalRowCount() const;   // lignes du modèle (avant filtre)
@@ -81,9 +83,13 @@ private:
 struct QuickStartStep {
     QString title;
     QString body;
-    // objectName de QAction à déclencher (un bouton par nom) ; vide = étape
-    // purement informative.
-    QStringList actionNames;
+    // Chemin principal : action réelle de la fenêtre (construite par MainWindow).
+    // Un bouton lui est associé ; nulle ou désactivée = bouton grisé + raison.
+    QAction* action{nullptr};
+    // Repli : objectNames recherchés sous la racine (un bouton par nom).
+    QStringList actionNames{};
+    // true : étape sans bouton, même sans action.
+    bool informative{false};
 };
 
 // « Guide de prise en main » : 6 étapes, non modal.
@@ -94,9 +100,12 @@ public:
     explicit QuickStartDialog(QObject* actionRoot, QWidget* parent = nullptr);
     QuickStartDialog(QObject* actionRoot, std::vector<QuickStartStep> steps,
                      QWidget* parent = nullptr);
+    // Chemin de la spec : étapes construites par MainWindow avec ses QAction membres.
+    explicit QuickStartDialog(std::vector<QuickStartStep> steps, QWidget* parent = nullptr);
 
-    // Les 6 étapes du flux réel. Seul endroit à éditer pour relier une étape à
-    // une action (ajouter son objectName dans `actionNames`).
+    // Les 6 étapes du flux réel (textes ; MainWindow y associe ses QAction : voir
+    // le constructeur à étapes explicites). Les étapes sans objectName connu sont
+    // informatives.
     [[nodiscard]] static std::vector<QuickStartStep> defaultSteps();
 
     [[nodiscard]] int stepCount() const { return static_cast<int>(steps_.size()); }
@@ -115,3 +124,5 @@ private:
 };
 
 } // namespace openstitch::desktop
+
+Q_DECLARE_METATYPE(openstitch::desktop::Preset)

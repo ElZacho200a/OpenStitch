@@ -10,8 +10,12 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <functional>
+#include <optional>
 #include <set>
+#include <vector>
 
+#include "interaction_map.hpp"
 #include "openstitch/commands/undo_stack.hpp"
 #include "openstitch/document/project.hpp"
 #include "openstitch/geometry/path.hpp"
@@ -100,6 +104,11 @@ private slots:
     // Double-clic : clôt un polygone en cours de tracé (outil DrawPolygon).
     void onCanvasDoubleClicked(QPointF posMm);
     void deleteSelectedRegion();
+    // Suppr universel (action_deleteRegion, QKeySequence::Delete) : selon le
+    // contexte, supprime la région (comportement historique), l'objet de
+    // broderie ou l'ensemble des objets vectoriels sélectionnés -- un seul pas
+    // d'annulation (CompositeCommand) pour la multi-sélection.
+    void deleteSelection();
     void recolorSelectedRegion();
     void vectorizeSelectedRegion();
     void autoDigitize();
@@ -461,6 +470,47 @@ private:
     void renderStitches();
     void updateActions();
 
+    // ---- Sélection (L5-T4a, specs/plans/ui-interaction-model.md §2.7) ----------
+    // État de sélection complet. `objects` : objets vectoriels dans l'ordre de
+    // sélection, le DERNIER est le principal. Un seul élément = cas legacy
+    // (multiSelection_ reste vide, selectedObject_ porte l'objet).
+    struct Selection {
+        std::optional<RegionId> region;
+        std::optional<ObjectId> embroidery;
+        std::vector<ObjectId> objects;
+    };
+    // SEUL écrivain de selectedObject_/selectedRegion_/selectedEmbroidery_/
+    // multiSelection_ (garde CTest check_selection_single_mutator). Normalise :
+    // doublons retirés (dernière occurrence gardée), région/broderie
+    // sélectionnée => au plus l'objet principal conservé, un seul objet =>
+    // multiSelection_ vide. Ne rafraîchit rien (l'appelant appelle
+    // displayImage/refreshImage + updateActions).
+    void setSelection(Selection selection);
+    void clearMultiSelection();
+    // Modification partielle : copie l'état courant, applique `edit`, puis passe
+    // par setSelection (jamais d'écriture directe des membres).
+    void editSelection(const std::function<void(Selection&)>& edit);
+    [[nodiscard]] bool isObjectSelected(ObjectId id) const;
+    // Lecture : état courant sous forme de Selection (objets = multiSelection_
+    // ou {selectedObject_}), pour les modifications partielles.
+    [[nodiscard]] Selection currentSelection() const;
+    // Objets vectoriels sélectionnés (ordre de sélection ; principal en dernier).
+    [[nodiscard]] std::vector<ObjectId> selectedObjectIds() const;
+    [[nodiscard]] bool hasMultiSelection() const { return !multiSelection_.empty(); }
+    // Retire de la sélection les ids disparus (suppression/undo/redo/chargement).
+    void pruneSelection();
+    // Invariants : pas de doublon, multi => >= 2 éléments, principal = dernier,
+    // région/broderie => multi vide, ids vectoriels existants.
+    [[nodiscard]] bool checkSelectionInvariants() const;
+    // Entrées pour le câblage canevas (T4b) : sémantique Replace/Add (Maj)/
+    // Toggle (Ctrl). `hit` vide = clic dans le vide (Replace : désélectionne les
+    // objets et la broderie ; Add/Toggle : sans effet). La détection
+    // géométrique reste à l'appelant.
+    void applySelectionClick(std::optional<ObjectId> hit, SelectMode mode);
+    void applySelectionRectangle(const std::vector<ObjectId>& hits, SelectMode mode);
+    // Réaffiche après un changement de sélection (rendu, actions, inspecteur).
+    void selectionChanged();
+
     document::Project project_;
     // Fichier `.osp` auquel le document est rattaché (vide tant qu'il n'a
     // jamais été enregistré) : cible de Ctrl+S et nom affiché dans le titre.
@@ -570,6 +620,8 @@ private:
 
     QList<QAction*> imageActions_;
     QList<QAction*> regionActions_; // nécessitent une région sélectionnée
+    QAction* deleteSelectionAct_{
+        nullptr}; // « Supprimer la sélection » (objectName action_deleteRegion)
 
     // Cache des points générés — recalculé à chaque modification du document
     // (jamais une vérité stockée, ADR-014). Exception : une séquence importée
@@ -585,6 +637,10 @@ private:
     std::optional<RegionId> selectedRegion_;
     std::optional<ObjectId> selectedObject_;
     std::optional<ObjectId> selectedEmbroidery_; // objet de broderie choisi dans l'ordre de couture
+    // Multi-sélection d'objets vectoriels : VIDE dans le cas legacy (0 ou 1
+    // objet, porté par selectedObject_) ; sinon >= 2 ids, principal =
+    // back() == selectedObject_. Écrit uniquement par setSelection().
+    std::vector<ObjectId> multiSelection_;
     bool mergeMode_{false};
 
     // Mode d'édition des points générés (Lot 8.2, cf. docs/lot8-manual-editing-design.md §6) :

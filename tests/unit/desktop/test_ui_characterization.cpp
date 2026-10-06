@@ -215,6 +215,8 @@ private slots:
                            "merge=1"));
     }
 
+    // L5-T4a : deleteRegion (« Supprimer la sélection », Suppr universel) est actif dès qu'une
+    // région, un objet vectoriel ou un objet de broderie est sélectionné (était 0 avant).
     void actionMatrixVectorObjectSelectedWithoutEmbroidery() {
         MainWindow window;
         doc::Project project = imageOnlyProject();
@@ -224,7 +226,7 @@ private slots:
         window.updateActions();
         QCOMPARE(
             snapshot(window),
-            QStringLiteral("newProject=1 deleteRegion=0 segmentWithAi=1 generationOptions=1 undo=0 "
+            QStringLiteral("newProject=1 deleteRegion=1 segmentWithAi=1 generationOptions=1 undo=0 "
                            "redo=0 createStitch=1 createTatami=1 createSatin=1 autoSatin=1 "
                            "fillAngle=0 convertSatin=0 stats=0 exportDst=0 stitchEdit=0 "
                            "satinEdit=0 satinGuides=0 satinRails=0 addGuide=0 removeGuide=0 "
@@ -243,7 +245,7 @@ private slots:
         window.updateActions();
         QCOMPARE(
             snapshot(window),
-            QStringLiteral("newProject=1 deleteRegion=0 segmentWithAi=1 generationOptions=1 undo=0 "
+            QStringLiteral("newProject=1 deleteRegion=1 segmentWithAi=1 generationOptions=1 undo=0 "
                            "redo=0 createStitch=1 createTatami=1 createSatin=1 autoSatin=1 "
                            "fillAngle=0 convertSatin=0 stats=1 exportDst=1 stitchEdit=1 "
                            "satinEdit=0 satinGuides=0 satinRails=0 addGuide=0 removeGuide=0 "
@@ -260,7 +262,7 @@ private slots:
         window.updateActions();
         QCOMPARE(
             snapshot(window),
-            QStringLiteral("newProject=1 deleteRegion=0 segmentWithAi=1 generationOptions=1 undo=0 "
+            QStringLiteral("newProject=1 deleteRegion=1 segmentWithAi=1 generationOptions=1 undo=0 "
                            "redo=0 createStitch=0 createTatami=0 createSatin=0 autoSatin=0 "
                            "fillAngle=0 convertSatin=0 stats=1 exportDst=1 stitchEdit=1 "
                            "satinEdit=0 satinGuides=0 satinRails=0 addGuide=0 removeGuide=0 "
@@ -276,7 +278,7 @@ private slots:
         window.updateActions();
         QCOMPARE(
             snapshot(window),
-            QStringLiteral("newProject=1 deleteRegion=0 segmentWithAi=1 generationOptions=1 undo=0 "
+            QStringLiteral("newProject=1 deleteRegion=1 segmentWithAi=1 generationOptions=1 undo=0 "
                            "redo=0 createStitch=0 createTatami=0 createSatin=0 autoSatin=0 "
                            "fillAngle=0 convertSatin=1 stats=1 exportDst=1 stitchEdit=1 "
                            "satinEdit=1 satinGuides=1 satinRails=1 addGuide=0 removeGuide=0 "
@@ -346,7 +348,8 @@ private slots:
         QVERIFY(window.undoStack_.canUndo());
     }
 
-    void deleteKeyOnVectorObjectDoesNotDeleteIt() {
+    // L5-T4a : Suppr est universel (ex-QEXPECT_FAIL « audit UI 2026-10 »).
+    void deleteKeyDeletesVectorObjectInOneUndoStep() {
         MainWindow window;
         doc::Project project = imageOnlyProject();
         const ObjectId vec = addSquareVector(project);
@@ -356,13 +359,15 @@ private slots:
         activate(window);
 
         QTest::keyClick(&window, Qt::Key_Delete);
-        // Comportement actuel : rien ne se passe, l'objet reste (audit 2026-10, Moyenne).
-        QVERIFY(!window.undoStack_.canUndo());
-        QEXPECT_FAIL("", "Suppr ne supprime pas un objet vectoriel (audit UI 2026-10)", Continue);
         QVERIFY(window.project_.findObject(vec) == nullptr);
+        QVERIFY(!window.selectedObject_.has_value());
+        QVERIFY(window.checkSelectionInvariants());
+        QVERIFY(window.undoStack_.canUndo());
+        window.undo();
+        QVERIFY(window.project_.findObject(vec) != nullptr);
     }
 
-    void deleteKeyOnEmbroideryObjectDoesNotDeleteIt() {
+    void deleteKeyDeletesEmbroideryObjectInOneUndoStep() {
         MainWindow window;
         doc::Project project = imageOnlyProject();
         const ObjectId vec = addSquareVector(project);
@@ -373,9 +378,12 @@ private slots:
         activate(window);
 
         QTest::keyClick(&window, Qt::Key_Delete);
-        QVERIFY(!window.undoStack_.canUndo());
-        QEXPECT_FAIL("", "Suppr ne supprime pas un objet de broderie (audit UI 2026-10)", Continue);
         QVERIFY(window.project_.findEmbroidery(emb) == nullptr);
+        QVERIFY(window.project_.findObject(vec) != nullptr); // forme source conservée
+        QVERIFY(!window.selectedEmbroidery_.has_value());
+        QVERIFY(window.undoStack_.canUndo());
+        window.undo();
+        QVERIFY(window.project_.findEmbroidery(emb) != nullptr);
     }
 
     // ---- (c) exclusivité des modes d'édition --------------------------------------

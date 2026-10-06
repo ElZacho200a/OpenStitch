@@ -13,6 +13,7 @@
 #include <QLabel>
 #include <QLineEdit>
 #include <QPushButton>
+#include <QRegularExpression>
 #include <QScrollArea>
 #include <QSortFilterProxyModel>
 #include <QStandardItemModel>
@@ -21,6 +22,8 @@
 
 #include "app_theme.hpp"
 #include "openstitch/core/app_info.hpp"
+
+#include <algorithm>
 
 namespace openstitch::desktop {
 
@@ -46,7 +49,8 @@ public:
     using QSortFilterProxyModel::QSortFilterProxyModel;
 
     void setQuery(const QString& query) {
-        terms_ = fold(query).split(QLatin1Char(' '), Qt::SkipEmptyParts);
+        static const QRegularExpression whitespace(QStringLiteral("[\\s\\x{00A0}]+"));
+        terms_ = fold(query).split(whitespace, Qt::SkipEmptyParts);
         invalidateFilter();
     }
 
@@ -241,6 +245,11 @@ void GesturesDialog::rebuildModel() {
 
     if (actionRoot_ != nullptr) {
         const QString group = commandsGroupName();
+        struct Entry {
+            QString text;
+            QString keys;
+        };
+        QList<Entry> entries;
         const auto actions = actionRoot_->findChildren<QAction*>();
         for (const QAction* action : actions) {
             const QString text = plainActionText(action->text());
@@ -257,7 +266,13 @@ void GesturesDialog::rebuildModel() {
             if (names.isEmpty()) {
                 continue;
             }
-            appendRow(*model_, group, names.join(QStringLiteral(" / ")), text);
+            entries.append({text, names.join(QStringLiteral(" / "))});
+        }
+        std::stable_sort(entries.begin(), entries.end(), [](const Entry& a, const Entry& b) {
+            return a.text.localeAwareCompare(b.text) < 0;
+        });
+        for (const Entry& e : entries) {
+            appendRow(*model_, group, e.keys, e.text);
         }
     }
 
@@ -284,36 +299,45 @@ void GesturesDialog::onPresetIndexChanged(int index) {
 // -------------------------------------------------------------- QuickStartDialog
 
 std::vector<QuickStartStep> QuickStartDialog::defaultSteps() {
-    // Une étape sans `actionNames` est informative. objectNames existants à ce jour :
-    // action_stitchEditMode (étape 5). À AJOUTER dans MainWindow puis ici :
-    //   étape 1 action_openImage, étape 2 action_segmentImage,
-    //   étape 3 action_vectorizeRegion, étape 4 action_autoDigitize,
-    //   étape 6 action_exportDst.
+    // Textes des 6 étapes. MainWindow passe ses QAction membres via le constructeur
+    // à étapes explicites (copier ces étapes et renseigner `action`) ; sans cela,
+    // seules les étapes ayant un objectName existant (`actionNames`) ont un bouton.
     return {
         {tr("Ouvrir une image"),
-         tr("Importez la photo ou le dessin à broder (menu Fichier). Vous pouvez ensuite "
-            "régler la luminosité, quantifier les couleurs ou recadrer (menu Image)."),
-         {}},
+         tr("Importez la photo ou le dessin à broder (menu Fichier, Ctrl+O). Vous pouvez "
+            "ensuite régler la luminosité, quantifier les couleurs ou recadrer (menu Image)."),
+         nullptr,
+         {},
+         true},
         {tr("Segmenter en régions"),
          tr("Regroupez les couleurs en régions (menu Segmentation). Fusionnez, recolorez ou "
             "supprimez les régions parasites avant de continuer."),
-         {}},
-        {tr("Vectoriser"),
-         tr("Sélectionnez une région puis convertissez-la en objet vectoriel : ses contours "
-            "deviennent des nœuds modifiables."),
-         {}},
-        {tr("Numériser automatiquement"),
-         tr("Laissez OpenStitch proposer les objets de broderie (menu Broderie). Choisissez "
-            "les formes pleines ou le mode Contours (dessin au trait) selon votre image."),
-         {}},
-        {tr("Éditer"),
-         tr("Retouchez les objets : déplacez les nœuds, changez le type de point par clic droit, "
-            "ou éditez les points cousus un à un."),
-         {QStringLiteral("action_stitchEditMode")}},
-        {tr("Analyser et exporter en DST"),
-         tr("Analysez le motif pour repérer les problèmes, puis exportez le fichier DST pour "
-            "votre machine (menu Fichier). Les raccourcis sont listés dans Aide, Gestes."),
-         {}},
+         nullptr,
+         {},
+         true},
+        {tr("Vectoriser ou numériser automatiquement"),
+         tr("Convertissez une région en objet vectoriel modifiable, ou laissez OpenStitch "
+            "proposer les objets de broderie (Numérisation automatique, formes pleines ou "
+            "mode Contours pour un dessin au trait)."),
+         nullptr,
+         {},
+         true},
+        {tr("Choisir le type de point"),
+         tr("Pour chaque objet, choisissez le type de point (clic droit) : remplissage tatami, "
+            "colonne satin ou point de contour. Retouchez les nœuds ou les points au besoin."),
+         nullptr,
+         {QStringLiteral("action_createStitch")}},
+        {tr("Analyser le motif"),
+         tr("Lancez l'analyse (F5) pour repérer les problèmes avant la broderie."),
+         nullptr,
+         {},
+         true},
+        {tr("Exporter en DST"),
+         tr("Exportez le fichier DST pour votre machine (menu Fichier). Les raccourcis sont "
+            "listés dans Aide, Gestes."),
+         nullptr,
+         {},
+         true},
     };
 }
 
@@ -332,6 +356,9 @@ QuickStartDialog::QuickStartDialog(QObject* actionRoot, std::vector<QuickStartSt
     setMinimumSize(380, 300);
     build(actionRoot);
 }
+
+QuickStartDialog::QuickStartDialog(std::vector<QuickStartStep> steps, QWidget* parent)
+    : QuickStartDialog(nullptr, std::move(steps), parent) {}
 
 int QuickStartDialog::stepButtonCount(int step) const {
     if (step < 0 || step >= static_cast<int>(buttons_.size())) {
@@ -389,9 +416,24 @@ void QuickStartDialog::build(QObject* actionRoot) {
         boxLayout->addWidget(title);
         boxLayout->addWidget(body);
 
+        struct Binding {
+            QAction* action;
+            QString name;
+        };
+        QList<Binding> bindings;
+        if (step.action != nullptr) {
+            bindings.append({step.action, step.title});
+        }
         for (const QString& name : step.actionNames) {
-            QAction* action =
-                actionRoot != nullptr ? actionRoot->findChild<QAction*>(name) : nullptr;
+            bindings.append(
+                {actionRoot != nullptr ? actionRoot->findChild<QAction*>(name) : nullptr, name});
+        }
+        if (bindings.isEmpty() && !step.informative) {
+            bindings.append({nullptr, step.title}); // action attendue mais absente
+        }
+        for (const Binding& binding : bindings) {
+            QAction* action = binding.action;
+            const QString& name = binding.name;
             auto* button = new QPushButton(box);
             button->setObjectName(QStringLiteral("quickStartStep%1Button").arg(i + 1));
             button->setAccessibleDescription(step.body);
