@@ -26,9 +26,10 @@ QString markdown() {
     out += QStringLiteral("| Réf. | Contexte | Geste | Action |\n");
     out += QStringLiteral("|---|---|---|---|\n");
     for (const auto* r : InteractionMap::allRows(false)) {
-        out += QStringLiteral("| %1 | %2 | %3 | %4 |\n")
-                   .arg(QString::fromLatin1(r->id), cell(InteractionMap::contextName(r->context)),
-                        cell(InteractionMap::describe(r->gesture)), cell(InteractionMap::label(*r)));
+        out +=
+            QStringLiteral("| %1 | %2 | %3 | %4 |\n")
+                .arg(QString::fromLatin1(r->id), cell(InteractionMap::contextName(r->context)),
+                     cell(InteractionMap::describe(r->gesture)), cell(InteractionMap::label(*r)));
     }
     return out;
 }

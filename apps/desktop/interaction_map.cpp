@@ -27,7 +27,8 @@ constexpr Gesture click(Qt::MouseButton b, Qt::KeyboardModifiers m = kNone) {
 constexpr Gesture dblclick(Qt::MouseButton b, Qt::KeyboardModifiers m = kNone) {
     return {GestureKind::DoubleClick, b, m, Qt::Key(0)};
 }
-constexpr Gesture drag(Qt::MouseButton b, Qt::KeyboardModifiers m = kNone, Qt::Key held = Qt::Key(0)) {
+constexpr Gesture drag(Qt::MouseButton b, Qt::KeyboardModifiers m = kNone,
+                       Qt::Key held = Qt::Key(0)) {
     return {GestureKind::Drag, b, m, held};
 }
 constexpr Gesture wheel(Qt::KeyboardModifiers m = kNone) {
@@ -125,8 +126,13 @@ std::atomic<int>& longPressOverride() {
     return v;
 }
 
+// Même couple organisation/application que app_theme.cpp. Le format est
+// QSettings::defaultFormat() (= natif en production) pour qu'un test puisse
+// tout rediriger vers un dossier temporaire sur toute plate-forme
+// (QSettings::setDefaultFormat(IniFormat) + QSettings::setPath).
 QSettings settings() {
-    return QSettings(QStringLiteral("OpenStitch"), QStringLiteral("OpenStitch Studio"));
+    return QSettings(QSettings::defaultFormat(), QSettings::UserScope, QStringLiteral("OpenStitch"),
+                     QStringLiteral("OpenStitch Studio"));
 }
 
 bool visibleInPreset(const Row& r) {
@@ -156,17 +162,24 @@ QString lowerFirstWord(QString s) {
 
 QString keyName(Qt::Key k) {
     switch (k) {
-    case Qt::Key_Delete: return tr("Suppr");
-    case Qt::Key_Escape: return tr("Échap");
+    case Qt::Key_Delete:
+        return tr("Suppr");
+    case Qt::Key_Escape:
+        return tr("Échap");
     case Qt::Key_Return:
-    case Qt::Key_Enter: return tr("Entrée");
-    case Qt::Key_Backspace: return tr("Retour arrière");
-    case Qt::Key_Space: return tr("Espace");
+    case Qt::Key_Enter:
+        return tr("Entrée");
+    case Qt::Key_Backspace:
+        return tr("Retour arrière");
+    case Qt::Key_Space:
+        return tr("Espace");
     case Qt::Key_Left:
     case Qt::Key_Right:
     case Qt::Key_Up:
-    case Qt::Key_Down: return tr("Flèches");
-    default: return QKeySequence(k).toString(QKeySequence::PortableText);
+    case Qt::Key_Down:
+        return tr("Flèches");
+    default:
+        return QKeySequence(k).toString(QKeySequence::PortableText);
     }
 }
 
@@ -174,9 +187,12 @@ QString keyName(Qt::Key k) {
 // d'un geste commence donc toujours par une majuscule.
 QString buttonPrefix(Qt::MouseButton b) {
     switch (b) {
-    case Qt::MiddleButton: return tr("clic molette");
-    case Qt::RightButton: return tr("clic droit");
-    default: return tr("clic");
+    case Qt::MiddleButton:
+        return tr("clic molette");
+    case Qt::RightButton:
+        return tr("clic droit");
+    default:
+        return tr("clic");
     }
 }
 
@@ -260,11 +276,15 @@ QString InteractionMap::describe(const Gesture& g) {
         parts << tr("Alt");
     }
     switch (g.kind) {
-    case GestureKind::Click: parts << buttonPrefix(g.button); break;
+    case GestureKind::Click:
+        parts << buttonPrefix(g.button);
+        break;
     case GestureKind::DoubleClick:
         parts << (g.button == Qt::MiddleButton ? tr("double-clic molette") : tr("double-clic"));
         break;
-    case GestureKind::LongPress: parts << tr("appui long"); break;
+    case GestureKind::LongPress:
+        parts << tr("appui long");
+        break;
     case GestureKind::Drag:
         if (g.key != Qt::Key(0)) {
             parts << keyName(g.key);
@@ -276,10 +296,18 @@ QString InteractionMap::describe(const Gesture& g) {
         }
         parts << tr("glisser");
         break;
-    case GestureKind::Wheel: parts << tr("molette"); break;
-    case GestureKind::PixelScroll: parts << tr("défilement à deux doigts"); break;
-    case GestureKind::NativePinch: parts << tr("pincement"); break;
-    case GestureKind::Hover: parts << tr("survol"); break;
+    case GestureKind::Wheel:
+        parts << tr("molette");
+        break;
+    case GestureKind::PixelScroll:
+        parts << tr("défilement à deux doigts");
+        break;
+    case GestureKind::NativePinch:
+        parts << tr("pincement");
+        break;
+    case GestureKind::Hover:
+        parts << tr("survol");
+        break;
     case GestureKind::Key:
         if (g.key != Qt::Key(0)) {
             parts << keyName(g.key);
@@ -291,17 +319,28 @@ QString InteractionMap::describe(const Gesture& g) {
 
 QString InteractionMap::contextName(Context context) {
     switch (context) {
-    case Context::Global: return tr("Partout");
-    case Context::Select: return tr("Sélection");
-    case Context::Pan: return tr("Déplacer la vue");
-    case Context::Move: return tr("Déplacement");
-    case Context::Crop: return tr("Recadrage");
-    case Context::DrawBox: return tr("Dessin (cadre)");
-    case Context::DrawClicks: return tr("Dessin (clics)");
-    case Context::DrawBezier: return tr("Dessin (courbes)");
-    case Context::DrawFreeform: return tr("Dessin (main levée)");
-    case Context::NodeEdit: return tr("Édition de nœuds");
-    case Context::StitchEdit: return tr("Édition de points");
+    case Context::Global:
+        return tr("Partout");
+    case Context::Select:
+        return tr("Sélection");
+    case Context::Pan:
+        return tr("Déplacer la vue");
+    case Context::Move:
+        return tr("Déplacement");
+    case Context::Crop:
+        return tr("Recadrage");
+    case Context::DrawBox:
+        return tr("Dessin (cadre)");
+    case Context::DrawClicks:
+        return tr("Dessin (clics)");
+    case Context::DrawBezier:
+        return tr("Dessin (courbes)");
+    case Context::DrawFreeform:
+        return tr("Dessin (main levée)");
+    case Context::NodeEdit:
+        return tr("Édition de nœuds");
+    case Context::StitchEdit:
+        return tr("Édition de points");
     }
     return {};
 }
@@ -314,19 +353,26 @@ Context InteractionMap::contextFor(Tool tool, bool nodeEditActive, bool stitchEd
         return Context::NodeEdit;
     }
     switch (tool) {
-    case Tool::Select: return Context::Select;
-    case Tool::Pan: return Context::Pan;
-    case Tool::Rect: return Context::Crop;
+    case Tool::Select:
+        return Context::Select;
+    case Tool::Pan:
+        return Context::Pan;
+    case Tool::Rect:
+        return Context::Crop;
     case Tool::DrawRectangle:
     case Tool::DrawEllipse:
-    case Tool::DrawPolygonRegular: return Context::DrawBox;
+    case Tool::DrawPolygonRegular:
+        return Context::DrawBox;
     case Tool::DrawPolygon:
     case Tool::DrawSatinColumn:
     case Tool::DrawDirectionGuide:
-    case Tool::DrawBreakLine: return Context::DrawClicks;
+    case Tool::DrawBreakLine:
+        return Context::DrawClicks;
     case Tool::DrawBezier:
-    case Tool::DrawSatinCutLine: return Context::DrawBezier;
-    case Tool::DrawFreeform: return Context::DrawFreeform;
+    case Tool::DrawSatinCutLine:
+        return Context::DrawBezier;
+    case Tool::DrawFreeform:
+        return Context::DrawFreeform;
     }
     return Context::Select;
 }
@@ -364,9 +410,9 @@ Preset InteractionMap::loadPreset() {
 
 void InteractionMap::savePreset() {
     QSettings s = settings();
-    s.setValue(QStringLiteral("navigation/preset"),
-               activePreset() == Preset::Touchpad ? QStringLiteral("touchpad")
-                                                  : QStringLiteral("openstitch"));
+    s.setValue(QStringLiteral("navigation/preset"), activePreset() == Preset::Touchpad
+                                                        ? QStringLiteral("touchpad")
+                                                        : QStringLiteral("openstitch"));
     s.sync();
 }
 

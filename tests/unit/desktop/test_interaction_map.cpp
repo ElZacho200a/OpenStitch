@@ -37,6 +37,7 @@ struct SettingsSandbox {
     SettingsSandbox() {
         QSettings::setDefaultFormat(QSettings::IniFormat);
         QSettings::setPath(QSettings::IniFormat, QSettings::UserScope, dir.path());
+        QSettings::setPath(QSettings::NativeFormat, QSettings::UserScope, dir.path());
     }
     ~SettingsSandbox() { QSettings::setDefaultFormat(savedFormat); }
 };
@@ -61,8 +62,8 @@ private slots:
         const auto rows = InteractionMap::rawRows();
         for (std::size_t i = 0; i < rows.size(); ++i) {
             for (std::size_t j = i + 1; j < rows.size(); ++j) {
-                const bool same = rows[i].context == rows[j].context &&
-                                  rows[i].gesture == rows[j].gesture;
+                const bool same =
+                    rows[i].context == rows[j].context && rows[i].gesture == rows[j].gesture;
                 QVERIFY2(!same, qPrintable(rowId(rows[i]) + " et " + rowId(rows[j]) +
                                            " ont le meme (contexte, geste)"));
             }
@@ -88,7 +89,8 @@ private slots:
                 }
             }
             if (r.context == Context::Global || r.planned) {
-                QVERIFY2(!r.overridesGlobal, qPrintable(rowId(r) + " : overridesGlobal sans objet"));
+                QVERIFY2(!r.overridesGlobal,
+                         qPrintable(rowId(r) + " : overridesGlobal sans objet"));
                 continue;
             }
             QCOMPARE_EQ(shadows, r.overridesGlobal);
@@ -137,7 +139,8 @@ private slots:
         const Gesture middleDrag{GestureKind::Drag, Qt::MiddleButton, {}, Qt::Key(0)};
         for (const Context c : {Context::Select, Context::DrawFreeform, Context::DrawClicks,
                                 Context::NodeEdit, Context::DrawBezier, Context::Crop}) {
-            QCOMPARE(InteractionMap::resolve(c, middleDrag), std::optional<Intent>(Intent::PanView));
+            QCOMPARE(InteractionMap::resolve(c, middleDrag),
+                     std::optional<Intent>(Intent::PanView));
         }
         // Escape : Global partout, mais la ligne spécifique prime en DrawClicks.
         const Gesture esc{GestureKind::Key, Qt::NoButton, {}, Qt::Key_Escape};
@@ -180,9 +183,12 @@ private slots:
         QCOMPARE(InteractionMap::contextFor(Tool::Pan, false, false), Context::Pan);
         QCOMPARE(InteractionMap::contextFor(Tool::Rect, false, false), Context::Crop);
         QCOMPARE(InteractionMap::contextFor(Tool::DrawEllipse, false, false), Context::DrawBox);
-        QCOMPARE(InteractionMap::contextFor(Tool::DrawSatinColumn, false, false), Context::DrawClicks);
-        QCOMPARE(InteractionMap::contextFor(Tool::DrawSatinCutLine, false, false), Context::DrawBezier);
-        QCOMPARE(InteractionMap::contextFor(Tool::DrawFreeform, false, false), Context::DrawFreeform);
+        QCOMPARE(InteractionMap::contextFor(Tool::DrawSatinColumn, false, false),
+                 Context::DrawClicks);
+        QCOMPARE(InteractionMap::contextFor(Tool::DrawSatinCutLine, false, false),
+                 Context::DrawBezier);
+        QCOMPARE(InteractionMap::contextFor(Tool::DrawFreeform, false, false),
+                 Context::DrawFreeform);
         QCOMPARE(InteractionMap::contextFor(Tool::Select, true, false), Context::NodeEdit);
         QCOMPARE(InteractionMap::contextFor(Tool::Select, true, true), Context::StitchEdit);
     }
@@ -306,17 +312,20 @@ private slots:
         SettingsSandbox sandbox;
         QCOMPARE(InteractionMap::longPressMs(), InteractionMap::kLongPressMs);
         {
-            QSettings s(QStringLiteral("OpenStitch"), QStringLiteral("OpenStitch Studio"));
+            QSettings s(QSettings::defaultFormat(), QSettings::UserScope,
+                        QStringLiteral("OpenStitch"), QStringLiteral("OpenStitch Studio"));
             s.setValue(QStringLiteral("navigation/longPressMs"), 700);
         }
         QCOMPARE(InteractionMap::longPressMs(), 700);
         {
-            QSettings s(QStringLiteral("OpenStitch"), QStringLiteral("OpenStitch Studio"));
+            QSettings s(QSettings::defaultFormat(), QSettings::UserScope,
+                        QStringLiteral("OpenStitch"), QStringLiteral("OpenStitch Studio"));
             s.setValue(QStringLiteral("navigation/longPressMs"), 5);
         }
         QCOMPARE(InteractionMap::longPressMs(), 300);
         {
-            QSettings s(QStringLiteral("OpenStitch"), QStringLiteral("OpenStitch Studio"));
+            QSettings s(QSettings::defaultFormat(), QSettings::UserScope,
+                        QStringLiteral("OpenStitch"), QStringLiteral("OpenStitch Studio"));
             s.setValue(QStringLiteral("navigation/longPressMs"), 99999);
         }
         QCOMPARE(InteractionMap::longPressMs(), 1000);
@@ -347,21 +356,21 @@ private slots:
         QCOMPARE(InteractionMap::describe({GestureKind::Drag, Qt::MiddleButton,
                                            Qt::ControlModifier | Qt::ShiftModifier, Qt::Key(0)}),
                  QStringLiteral("Ctrl + Maj + clic molette + glisser"));
-        QCOMPARE(InteractionMap::describe({GestureKind::Click, Qt::LeftButton, Qt::ShiftModifier,
-                                           Qt::Key(0)}),
+        QCOMPARE(InteractionMap::describe(
+                     {GestureKind::Click, Qt::LeftButton, Qt::ShiftModifier, Qt::Key(0)}),
                  QStringLiteral("Maj + clic"));
         QCOMPARE(InteractionMap::describe({GestureKind::Click, Qt::LeftButton, {}, Qt::Key(0)}),
                  QStringLiteral("Clic"));
         QCOMPARE(InteractionMap::describe({GestureKind::Drag, Qt::LeftButton, {}, Qt::Key_Space}),
                  QStringLiteral("Espace + glisser"));
-        QCOMPARE(InteractionMap::describe({GestureKind::Wheel, Qt::NoButton, Qt::AltModifier,
-                                           Qt::Key(0)}),
+        QCOMPARE(InteractionMap::describe(
+                     {GestureKind::Wheel, Qt::NoButton, Qt::AltModifier, Qt::Key(0)}),
                  QStringLiteral("Alt + molette"));
         QCOMPARE(InteractionMap::describe({GestureKind::Key, Qt::NoButton, {}, Qt::Key_Escape}),
                  QStringLiteral("Échap"));
-        QCOMPARE(InteractionMap::describe({GestureKind::DoubleClick, Qt::MiddleButton, {},
-                                           Qt::Key(0)}),
-                 QStringLiteral("Double-clic molette"));
+        QCOMPARE(
+            InteractionMap::describe({GestureKind::DoubleClick, Qt::MiddleButton, {}, Qt::Key(0)}),
+            QStringLiteral("Double-clic molette"));
         QCOMPARE(InteractionMap::describe({GestureKind::LongPress, Qt::LeftButton, {}, Qt::Key(0)}),
                  QStringLiteral("Appui long"));
     }

@@ -116,6 +116,7 @@ struct Row {
 struct Hint {
     QString gesture;
     QString label;
+    bool operator==(const Hint&) const = default;
 };
 
 class InteractionMap {
