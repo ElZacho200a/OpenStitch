@@ -309,14 +309,9 @@ private slots:
         QAction* saveAsAct = window.findChild<QAction*>("action_saveProjectAs");
         QAction* analyzeAct = window.analyzeAct_;
 
-        QEXPECT_FAIL("", "Enregistrer actif sans document (audit UI 2026-10, Basse)", Continue);
         QVERIFY(!saveAct->isEnabled());
-        QEXPECT_FAIL("", "Enregistrer sous actif sans document (audit UI 2026-10, Basse)",
-                     Continue);
         QVERIFY(!saveAsAct->isEnabled());
-        QEXPECT_FAIL("", "Exporter en DXF actif sans document (audit UI 2026-10, Basse)", Continue);
         QVERIFY(!exportDxf->isEnabled());
-        QEXPECT_FAIL("", "Analyser actif sans document (audit UI 2026-10, Basse)", Continue);
         QVERIFY(!analyzeAct->isEnabled());
     }
 
@@ -395,10 +390,9 @@ private slots:
         QVERIFY(window.stitchEditModeAct_->isChecked());
         window.railEditModeAct_->setChecked(true);
         QVERIFY(!window.stitchEditModeAct_->isChecked());
-        // Constat (non voulu, mais figé) : la sortie du mode points relance updateActions()
-        // AVANT que railEditTarget_ soit posé, qui décoche aussitôt les rails : le geste
-        // demandé (activer les rails) aboutit à AUCUN mode actif.
-        QVERIFY(!window.railEditModeAct_->isChecked());
+        // L1 : railEditTarget_ est posé avant la sortie du mode points : le geste demandé
+        // (activer les rails) aboutit bien au mode rails actif (avant : AUCUN mode actif).
+        QVERIFY(window.railEditModeAct_->isChecked());
     }
 
     // Sens « points -> rails » : « Éditer les points » ne désactive pas le mode rails
@@ -416,8 +410,6 @@ private slots:
         QVERIFY(window.stitchEditModeAct_->isEnabled());
         window.stitchEditModeAct_->setChecked(true);
         QVERIFY(window.stitchEditModeAct_->isChecked());
-        QEXPECT_FAIL("", "Éditer les points laisse le mode rails actif (audit UI 2026-10)",
-                     Continue);
         QVERIFY(!window.railEditModeAct_->isChecked());
     }
 
@@ -448,14 +440,8 @@ private slots:
         window.refreshOrderPanel();
         window.refreshFilterPanel();
         QVERIFY(hideAct->isChecked());
-        QEXPECT_FAIL("", "refreshDocumentPanel réaffiche le dock malgré Masquer (audit 2026-10)",
-                     Continue);
         QVERIFY(!window.documentDock_->isVisible());
-        QEXPECT_FAIL("", "refreshOrderPanel réaffiche le dock malgré Masquer (audit 2026-10)",
-                     Continue);
         QVERIFY(!window.orderDock_->isVisible());
-        QEXPECT_FAIL("", "refreshFilterPanel réaffiche le dock malgré Masquer (audit 2026-10)",
-                     Continue);
         QVERIFY(!window.filterDock_->isVisible());
     }
 
@@ -478,8 +464,6 @@ private slots:
 
         window.runAnalysis();
         QVERIFY(hideAct->isChecked());
-        QEXPECT_FAIL("", "runAnalysis réaffiche le dock malgré Masquer (audit UI 2026-10)",
-                     Continue);
         QVERIFY(!window.analysisDock_->isVisible());
     }
 
@@ -545,8 +529,6 @@ private slots:
             cycle();
         }
         const int afterMany = childCount();
-        QEXPECT_FAIL("", "la barre contextuelle accumule ses enfants (audit UI 2026-10, Moyenne)",
-                     Continue);
         QCOMPARE(afterMany, afterFirst);
     }
 

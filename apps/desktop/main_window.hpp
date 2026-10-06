@@ -297,6 +297,9 @@ private:
     void refreshOrderPanel();
     void buildFilterPanel();
     void refreshFilterPanel();
+    // Affiche/masque un dock sur ordre d'un rafraîchissement, sans défaire « Masquer les
+    // panneaux » : en mode canevas seul, le dock reste caché et n'est (ré)affiché qu'à la sortie.
+    void setDockAutoVisible(QDockWidget* dock, bool visible);
     void buildWorkflowPanel();
     void refreshWorkflow();
     void buildDocumentPanel();
@@ -490,6 +493,8 @@ private:
     QAction* showImageAct_{nullptr};
     QAction* showStitchesAct_{nullptr};
     std::vector<QDockWidget*> panelsToRestore_; // docks masqués par « Masquer les panneaux »
+    bool hidePanelsMode_{false};                // mode « canevas seul » actif
+    QMenu* panelsMenu_{nullptr};                // Affichage > Panneaux (toggleViewAction des docks)
     QAction* createStitchAct_{nullptr};
     QAction* createTatamiAct_{nullptr};
     QAction* createSatinAct_{nullptr};
@@ -568,6 +573,10 @@ private:
     std::optional<stitch::StitchSequence> sequence_;
     bool sequenceImported_{false};
     QAction* exportDstAct_{nullptr};
+    QAction* saveProjectAct_{nullptr};
+    QAction* saveProjectAsAct_{nullptr};
+    QAction* exportDxfAct_{nullptr};
+    QAction* clearRecentAct_{nullptr};
 
     std::optional<RegionId> selectedRegion_;
     std::optional<ObjectId> selectedObject_;

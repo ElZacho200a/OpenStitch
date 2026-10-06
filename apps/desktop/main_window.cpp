@@ -102,6 +102,7 @@
 #include <QToolBar>
 #include <QToolButton>
 #include <QVBoxLayout>
+#include <QWidgetAction>
 
 namespace openstitch::desktop {
 
@@ -367,6 +368,10 @@ MainWindow::MainWindow() {
     buildDocumentPanel();
     buildWorkflowPanel();
     buildFilterPanel();
+    for (auto* d : {documentDock_, propertiesDock_, workflowDock_, orderDock_, filterDock_,
+                    analysisDock_}) {
+        panelsMenu_->addAction(d->toggleViewAction());
+    }
     buildMainToolbar();
     addToolBarBreak(); // la barre contextuelle sur sa propre rangée
     buildContextToolbar();
@@ -516,11 +521,13 @@ void MainWindow::buildMenus() {
     fileMenu->addSeparator();
     // Pas de « … » sur Enregistrer : il n'ouvre un dialogue que pour un
     // document encore sans fichier (HP-FILE-002).
-    auto* saveProjectAct = fileMenu->addAction(tr("&Enregistrer le projet"));
+    saveProjectAct_ = fileMenu->addAction(tr("&Enregistrer le projet"));
+    auto* saveProjectAct = saveProjectAct_;
     saveProjectAct->setObjectName(QStringLiteral("action_saveProject"));
     saveProjectAct->setShortcut(QKeySequence::Save);
     connect(saveProjectAct, &QAction::triggered, this, &MainWindow::saveProject);
-    auto* saveProjectAsAct = fileMenu->addAction(tr("Enregistrer le projet &sous…"));
+    saveProjectAsAct_ = fileMenu->addAction(tr("Enregistrer le projet &sous…"));
+    auto* saveProjectAsAct = saveProjectAsAct_;
     saveProjectAsAct->setObjectName(QStringLiteral("action_saveProjectAs"));
     saveProjectAsAct->setShortcut(QKeySequence::SaveAs);
     connect(saveProjectAsAct, &QAction::triggered, this, &MainWindow::saveProjectAs);
@@ -530,14 +537,23 @@ void MainWindow::buildMenus() {
     // Rempli par refreshRecentFilesUi() (appelée une première fois depuis le
     // constructeur, après la construction de emptyState_) -- HP-FILE-003.
     recentMenu_ = fileMenu->addMenu(tr("&Récents"));
-    exportDstAct_ = fileMenu->addAction(tr("&Exporter en DST…"));
+    // « Vider la liste » vit dans le menu Fichier et non dans le sous-menu : le sous-menu
+    // ne contient que les fichiers (un test et refreshRecentFilesUi() comptent ses actions).
+    clearRecentAct_ = fileMenu->addAction(tr("&Vider la liste des récents"));
+    clearRecentAct_->setObjectName(QStringLiteral("action_clearRecent"));
+    connect(clearRecentAct_, &QAction::triggered, this, [this] {
+        saveRecentFiles(QStringList());
+        refreshRecentFilesUi();
+    });
+    exportDstAct_ = fileMenu->addAction(tr("E&xporter en DST…"));
     connect(exportDstAct_, &QAction::triggered, this, &MainWindow::exportDst);
     auto* importDstAct = fileMenu->addAction(tr("&Importer un DST…"));
     connect(importDstAct, &QAction::triggered, this, &MainWindow::importDst);
     fileMenu->addSeparator();
     auto* importDxfAct = fileMenu->addAction(tr("Importer un &DXF…"));
     connect(importDxfAct, &QAction::triggered, this, &MainWindow::importDxf);
-    auto* exportDxfAct = fileMenu->addAction(tr("Exporter en D&XF…"));
+    exportDxfAct_ = fileMenu->addAction(tr("Exporter en DX&F…"));
+    auto* exportDxfAct = exportDxfAct_;
     connect(exportDxfAct, &QAction::triggered, this, &MainWindow::exportDxf);
     fileMenu->addSeparator();
     auto* quitAct = fileMenu->addAction(tr("&Quitter"));
@@ -635,9 +651,10 @@ void MainWindow::buildMenus() {
     connect(createTatamiAct_, &QAction::triggered, this, &MainWindow::createTatamiObject);
     createSatinAct_ = embMenu->addAction(tr("Créer une colonne &satin…"));
     connect(createSatinAct_, &QAction::triggered, this, &MainWindow::createSatinObject);
-    autoSatinAct_ = embMenu->addAction(tr("Convertir automatiquement en satin…"));
+    autoSatinAct_ = embMenu->addAction(tr("Convertir automatiquement en satin (expérimental)…"));
     autoSatinAct_->setToolTip(
-        tr("Construit des colonnes satin (rails + barreaux) depuis le squelette de la forme."));
+        tr("Expérimental : construit des colonnes satin (rails + barreaux) depuis le squelette "
+           "de la forme. Le résultat est à vérifier."));
     connect(autoSatinAct_, &QAction::triggered, this, &MainWindow::autoConvertToSatin);
     embMenu->addSeparator();
     fillAngleAct_ = embMenu->addAction(tr("&Orientation du remplissage…"));
@@ -645,7 +662,7 @@ void MainWindow::buildMenus() {
         tr("Change l'angle des fils du remplissage tatami sélectionné (clic sur la forme "
            "ou dans l'ordre de couture)."));
     connect(fillAngleAct_, &QAction::triggered, this, &MainWindow::changeFillAngle);
-    convertSatinAct_ = embMenu->addAction(tr("Convertir les satins auto en &tatami"));
+    convertSatinAct_ = embMenu->addAction(tr("Convertir les satins auto en tata&mi"));
     convertSatinAct_->setToolTip(
         tr("Remplace les colonnes satin automatiques (qui débordent sur les formes "
            "concaves) par des remplissages tatami découpés sur la région."));
@@ -685,11 +702,11 @@ void MainWindow::buildMenus() {
     satinEditModeAct_ = embMenu->addAction(tr("&Modifier la colonne satin (rails + guides)…"));
     satinEditModeAct_->setObjectName(QStringLiteral("action_satinEditMode"));
     satinEditModeAct_->setCheckable(true);
-    satinEditModeAct_->setShortcut(QKeySequence(Qt::Key_G));
+    satinEditModeAct_->setShortcut(QKeySequence(Qt::SHIFT | Qt::Key_E));
     satinEditModeAct_->setToolTip(
         tr("Affiche ensemble les nœuds des deux rails (glisser pour déplacer, double-clic "
            "pour ajouter un nœud) et les guides transversaux (glisser une extrémité) de la "
-           "colonne satin sélectionnée (G)."));
+           "colonne satin sélectionnée (Maj+E)."));
     connect(satinEditModeAct_, &QAction::toggled, this, [this](bool on) {
         satinGuideModeAct_->setChecked(on);
         railEditModeAct_->setChecked(on);
@@ -784,11 +801,16 @@ void MainWindow::buildMenus() {
     addDensityAct(tr("Compact"), Density::Compact);
 
     viewMenu->addSeparator();
+    // Menu des panneaux : rempli dans le constructeur une fois les docks construits
+    // (buildMenus s'exécute avant eux). Permet de rouvrir un panneau fermé par sa croix.
+    panelsMenu_ = viewMenu->addMenu(tr("&Panneaux"));
+    panelsMenu_->setObjectName(QStringLiteral("menu_panels"));
     auto* hidePanelsAct = viewMenu->addAction(tr("&Masquer les panneaux"));
     hidePanelsAct->setCheckable(true);
     hidePanelsAct->setShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_P));
     hidePanelsAct->setToolTip(tr("Mode canevas : masque tous les panneaux."));
     connect(hidePanelsAct, &QAction::toggled, this, [this](bool hide) {
+        hidePanelsMode_ = hide;
         const std::vector<QDockWidget*> docks{documentDock_, propertiesDock_, workflowDock_,
                                               orderDock_,    filterDock_,     analysisDock_};
         if (hide) {
@@ -1049,6 +1071,18 @@ void MainWindow::onStitchEditModeToggled(bool on) {
         if (directionGuideModeAct_ != nullptr && directionGuideModeAct_->isChecked()) {
             directionGuideModeAct_->setChecked(false);
         }
+        // Modes exclusifs : le mode rails (et le bouton unifié qui l'agrège) cède la place.
+        // Décochés SANS passer par leur slot : onSatinRailEditModeToggled(false) relancerait
+        // updateActions() avant que stitchEditTarget_ soit posé (symétrique du défaut inverse).
+        if (railEditModeAct_ != nullptr && railEditModeAct_->isChecked()) {
+            QSignalBlocker block(railEditModeAct_);
+            railEditModeAct_->setChecked(false);
+            railEditTarget_.reset();
+        }
+        if (satinEditModeAct_ != nullptr && satinEditModeAct_->isChecked()) {
+            QSignalBlocker block(satinEditModeAct_);
+            satinEditModeAct_->setChecked(false);
+        }
         if (const auto* emb = resolveSelectedEmbroidery()) {
             if (auto view = stitch_generation::edit_view(project_, emb->id);
                 view && view->state != stitch_generation::ObjectEditState::Dirty) {
@@ -1099,17 +1133,19 @@ void MainWindow::onSatinGuideModeToggled(bool on) {
 void MainWindow::onSatinRailEditModeToggled(bool on) {
     railEditTarget_.reset();
     if (on) {
-        // Ne coupe PLUS le mode guides (satinGuideModeAct_) : les deux
-        // coexistent délibérément depuis l'introduction du mode unifié
-        // (satinEditModeAct_, § remodelage satin) — rails et guides
-        // s'affichent ensemble, plus besoin de choisir entre les deux.
-        if (stitchEditModeAct_ != nullptr && stitchEditModeAct_->isChecked()) {
-            stitchEditModeAct_->setChecked(false);
-        }
         if (const auto* emb = resolveSelectedEmbroidery()) {
             if (emb->is_satin()) {
                 railEditTarget_ = emb->id;
             }
+        }
+        // Ne coupe PLUS le mode guides (satinGuideModeAct_) : les deux
+        // coexistent délibérément depuis l'introduction du mode unifié
+        // (satinEditModeAct_, § remodelage satin) — rails et guides
+        // s'affichent ensemble, plus besoin de choisir entre les deux.
+        // La cible rails est posée AVANT de couper le mode points : sa sortie relance
+        // updateActions(), qui décocherait sinon aussitôt le mode rails (cible absente).
+        if (stitchEditModeAct_ != nullptr && stitchEditModeAct_->isChecked()) {
+            stitchEditModeAct_->setChecked(false);
         }
         if (!railEditTarget_) {
             QSignalBlocker block(railEditModeAct_);
@@ -4578,8 +4614,13 @@ void MainWindow::onCanvasContextMenu(QPointF posMm, QPoint globalPos) {
             connect(removeStitchAct, &QAction::triggered, this,
                     [this, embId] { deleteEmbroideryObjectOnly(embId); });
         }
-        auto* debugAct = menu.addAction(tr("&Déboguer : afficher toutes les données…"));
-        connect(debugAct, &QAction::triggered, this, [this, embId] { showDebugDump(embId); });
+        // Entrée de diagnostic réservée aux développeurs : masquée sauf si
+        // OPENSTITCH_DEBUG=1 (variable d'environnement) ou clé QSettings « debug/menu » à vrai.
+        if (qEnvironmentVariable("OPENSTITCH_DEBUG") == QLatin1String("1") ||
+            QSettings().value(QStringLiteral("debug/menu"), false).toBool()) {
+            auto* debugAct = menu.addAction(tr("&Déboguer : afficher toutes les données…"));
+            connect(debugAct, &QAction::triggered, this, [this, embId] { showDebugDump(embId); });
+        }
     }
 
     if (vecId) {
@@ -5189,7 +5230,28 @@ void MainWindow::updateContextToolbar() {
         return;
     }
     contextSig_ = sig;
+    // QToolBar::clear() ne détruit ni les actions ni les widgets créés par addAction(texte)
+    // / addWidget() : ils s'accumulaient comme enfants de la barre à chaque reconstruction.
+    // On détruit ceux que la barre possède ; les actions persistantes (membres *_Act_,
+    // parentées à la fenêtre) sont seulement retirées. Détachés tout de suite (le compte
+    // d'enfants reste stable) mais détruits en différé : cette méthode peut être appelée
+    // depuis le slot d'un des boutons qu'on retire.
+    const QList<QAction*> previous = contextToolbar_->actions();
     contextToolbar_->clear();
+    for (QAction* old : previous) {
+        if (old->parent() != contextToolbar_) {
+            continue;
+        }
+        if (auto* widgetAct = qobject_cast<QWidgetAction*>(old)) {
+            if (QWidget* w = widgetAct->defaultWidget()) {
+                w->hide();
+                w->setParent(nullptr);
+                w->deleteLater();
+            }
+        }
+        old->setParent(nullptr);
+        old->deleteLater();
+    }
 
     if (emb != nullptr) {
         const ObjectId id = emb->id;
@@ -5658,12 +5720,31 @@ void MainWindow::buildDocumentPanel() {
     });
 }
 
+void MainWindow::setDockAutoVisible(QDockWidget* dock, bool visible) {
+    if (dock == nullptr) {
+        return;
+    }
+    if (!hidePanelsMode_) {
+        dock->setVisible(visible);
+        return;
+    }
+    // Mode canevas seul : on ne touche pas à l'affichage, mais on tient la liste de
+    // restauration à jour pour que la sortie du mode reflète l'état voulu.
+    const auto it = std::find(panelsToRestore_.begin(), panelsToRestore_.end(), dock);
+    if (visible && it == panelsToRestore_.end()) {
+        panelsToRestore_.push_back(dock);
+    } else if (!visible && it != panelsToRestore_.end()) {
+        panelsToRestore_.erase(it);
+    }
+}
+
 void MainWindow::refreshDocumentPanel() {
     if (documentPanel_ == nullptr) {
         return;
     }
     documentPanel_->refresh(project_, editStates_);
-    documentDock_->setVisible(project_.hasImage() || !project_.embroidery_objects.empty());
+    setDockAutoVisible(documentDock_,
+                       project_.hasImage() || !project_.embroidery_objects.empty());
     syncDocumentSelection();
 }
 
@@ -5848,8 +5929,10 @@ void MainWindow::runAnalysis() {
             analysisList_->addItem(item);
         }
     }
-    analysisDock_->show();
-    analysisDock_->raise();
+    setDockAutoVisible(analysisDock_, true);
+    if (!hidePanelsMode_) {
+        analysisDock_->raise();
+    }
     statusBar()->showMessage(tr("Analyse : %1 problème(s) détecté(s)").arg(findings.size()));
 }
 
@@ -5964,7 +6047,7 @@ void MainWindow::refreshOrderPanel() {
     orderCostLabel_->setText(tr("Trajet : %1 mm — %2 changement(s) de fil")
                                  .arg(cost.travel_um / 1000.0, 0, 'f', 1)
                                  .arg(cost.color_changes));
-    orderDock_->setVisible(!project_.embroidery_objects.empty());
+    setDockAutoVisible(orderDock_, !project_.embroidery_objects.empty());
 }
 
 int MainWindow::stitchTypeIndex(const document::EmbroideryObject& object) {
@@ -6103,7 +6186,7 @@ void MainWindow::refreshFilterPanel() {
         });
         colorFilterLayout_->addWidget(check);
     }
-    filterDock_->setVisible(!project_.embroidery_objects.empty());
+    setDockAutoVisible(filterDock_, !project_.embroidery_objects.empty());
 }
 
 void MainWindow::moveObjectUp() {
@@ -6420,6 +6503,8 @@ void MainWindow::refreshRecentFilesUi() {
     // QPushButton qui vient de déclencher cet appel).
     QTimer::singleShot(0, this, [this] {
         recentMenu_->clear();
+        recentMenu_->setEnabled(!recentFiles_.isEmpty());
+        clearRecentAct_->setEnabled(!recentFiles_.isEmpty());
         for (const QString& path : recentFiles_) {
             auto* action = recentMenu_->addAction(QFileInfo(path).fileName());
             action->setToolTip(path);
@@ -6909,6 +6994,12 @@ void MainWindow::updateActions() {
                                              [](const auto& e) { return e.is_satin(); }));
     statsAct_->setEnabled(sequence_.has_value());
     exportDstAct_->setEnabled(sequence_.has_value());
+    // Actions « document requis » : mêmes gardes que leurs slots (qui restent en place).
+    const bool hasDocument = hasImage || !project_.vector_objects.empty();
+    saveProjectAct_->setEnabled(hasDocument);
+    saveProjectAsAct_->setEnabled(hasDocument);
+    exportDxfAct_->setEnabled(!project_.vector_objects.empty());
+    analyzeAct_->setEnabled(sequence_.has_value());
     const bool hasSelection = selectedRegion_.has_value() && project_.segmentation.has_value();
     for (QAction* act : regionActions_) {
         act->setEnabled(hasSelection);

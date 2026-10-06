@@ -99,7 +99,6 @@ private slots:
         }
         // Audit UI 2026-10-06 : la touche G est liée au mode remodelage satin ET à l'outil
         // polygone régulier (main_window.cpp, createToolPalette / satinEditModeAct_).
-        QEXPECT_FAIL("", "touche G liée deux fois (audit UI 2026-10-06)", Continue);
         QVERIFY2(clashes.isEmpty(), qPrintable(clashes.join(QStringLiteral(" | "))));
     }
 
@@ -125,8 +124,6 @@ private slots:
         }
         // Audit UI 2026-10-06 : aucun dock n'expose toggleViewAction() dans un menu ;
         // un panneau fermé ne peut pas être rouvert dans la session.
-        QEXPECT_FAIL("", "docks sans entrée de menu pour les rouvrir (audit UI 2026-10-06)",
-                     Continue);
         QVERIFY2(unreachable.isEmpty(), qPrintable(unreachable.join(QStringLiteral(", "))));
     }
 
@@ -156,8 +153,6 @@ private slots:
                 }
             }
         }
-        QEXPECT_FAIL("", "mnémoniques en double dans File/Broderie (audit UI 2026-10-06)",
-                     Continue);
         QVERIFY2(clashes.isEmpty(), qPrintable(clashes.join(QStringLiteral("\n"))));
     }
 
