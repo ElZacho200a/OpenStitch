@@ -461,9 +461,15 @@ void check_invariants(const char* name, const image::Image& img, const ContourOp
         }
     }
     CHECK(a.max_stitch_mm <= 12.2);
-    // Jump / trim explosion: bounded by a small multiple of the segment count.
+    // A skeleton segment may become several satin sections (junction cuts and
+    // residual repair). Each emitted section has its own underlay and travel,
+    // so bound travel by the larger of the input and output counts. Retain a
+    // separate topology-based bound to catch excessive section fragmentation.
     if (ex.check_jumps) {
-        CHECK(a.jumps + a.trims <= 4 * (a.metrics.segments + a.metrics.components) + 4);
+        const std::size_t objects = a.result.embroideries.size();
+        const std::size_t travelUnits = std::max(a.metrics.segments, objects);
+        CHECK(objects <= 4 * (a.metrics.segments + a.metrics.components) + 4);
+        CHECK(a.jumps + a.trims <= 4 * (travelUnits + a.metrics.components) + 4);
     }
     // Stitch count sanity: <= ~25 stitches per mm of sewn line (satin zigzag + underlay).
     CHECK(static_cast<double>(a.stitches) <= a.sew_mm * 25.0 + 100.0);
