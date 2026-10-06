@@ -45,10 +45,13 @@ l'absence de tokens, c'est ce qui est bâti dessus.**
 
 **Direction proposée** — « moins carré, plus guidé » :
 
-1. **Forme** : rayons 6/10/14 px au lieu de 3/5 ; boutons secondaires *tonals* (fond, sans bordure) ;
+1. **Forme** : **décision (2026-10-06) : OpenStitch Studio a sa propre identité visuelle, pas de rendu
+   natif Windows.** On force le style Qt « Fusion » (sans rapport avec Autodesk Fusion 360 : c'est
+   seulement le moteur de style neutre de Qt, qui sert de base) et on habille *tout* via les tokens et
+   la QSS : rayons 6/10/14 px au lieu de 3/5 ; boutons secondaires *tonals* (fond, sans bordure) ;
    `QGroupBox` sans cadre (titre + séparateur) ; docks séparés par le fond, pas par des traits ; barres
-   de défilement fines (8 px) ; élévation légère pour menus/infobulles ; **style Fusion forcé** + QSS
-   complété (case à cocher, curseur, onglets, progression, séparateurs) pour un rendu identique partout.
+   de défilement fines (8 px) ; élévation légère pour menus/infobulles ; QSS complétée (case à cocher,
+   curseur, onglets, progression, séparateurs). Rendu identique sur toutes les machines.
 2. **Icônes** : jeu **SVG** monochrome recoloré par thème (aujourd'hui 28 icônes peintes en 32×32 fixe,
    une seule teinte grise ≈ 2,9:1 en sombre, sans HiDPI) ; une icône pour *chaque* action de menu/barre.
 3. **Retours** : **bandeau de notification non modal** (icône + action) à la place de la majorité des
@@ -58,9 +61,9 @@ l'absence de tokens, c'est ce qui est bâti dessus.**
    principal « Suivant : Segmenter ») ; écran d'accueil à cartes (« Image → broderie », « SVG », « Projet »,
    récents) ; menus regroupés (Objet / Génération / Satin) ; **palette de commandes** (Ctrl+K) ;
    Préférences générales (thème, densité) hors du menu Affichage.
-5. **Canevas** : glisser dans le vide = rectangle de sélection ; panoramique Espace+glisser / clic
-   milieu ; molette ancrée au curseur avec gestion trackpad ; surbrillance au survol, curseurs par
-   poignée, infobulle live de dimension/angle ; couleurs de rails/accroche via tokens.
+5. **Canevas et souris** : voir la §3 bis (modèle d'interaction complet, point central de l'ergonomie) ;
+   surbrillance au survol, curseurs par poignée, infobulle live de dimension/angle ; couleurs de
+   rails/accroche via tokens.
 6. **Accessibilité** : `accessibleName` sur docks/barres/canevas, ordre de tabulation, anneau de
    focus 2 px, états par icône et pas seulement par couleur, cibles ≥ 24 px, suivi du thème système.
 7. **Opérations longues** : segmentation, vectorisation, auto-numérisation et génération sont
@@ -71,6 +74,67 @@ Structurel (à répartir, pas à faire d'un bloc) : découper `main_window.cpp` 
 dialogues dédiés, scène) ; moteur de tâches ; système de notifications ; bibliothèque d'icônes ;
 parcours guidé.
 
+## 3 bis. Modèle d'interaction souris et clavier (inspiré de Fusion 360)
+
+**Constat sur l'existant** (`canvas_view.cpp`) : seul le **bouton gauche** est géré ; le glisser
+panoramique par défaut (`ScrollHandDrag`), donc **glisser dans le vide ne sélectionne pas** ; **aucune gestion
+du clic molette** ni d'Espace ; la molette ne fait que zoomer (`angleDelta` seul : un pavé tactile précis
+envoie `pixelDelta`, jamais lu) ; **les modificateurs sont quasi absents** (Maj contraint l'ellipse,
+Maj+flèche change le pas) ; **aucun test** de molette, panoramique ou modificateur.
+
+**Principe** : une table unique `InteractionMap` (contexte, bouton, modificateurs → intention) est la
+source de vérité du comportement, de l'aide à l'écran et des tests. Ce que Fusion 360 fait bien et qu'on
+reprend : *molette = zoom au curseur, clic molette = panoramique, sélection par fenêtre/croisement, Ctrl pour
+ajouter/retirer, survol pré-sélectionnant, indications contextuelles des modificateurs, Échap = annuler,
+Entrée = valider*. Les touches exactes ci-dessous sont une **proposition à valider** (je n'ai pas Fusion 360
+sous la main : à confronter à son usage réel avant de figer).
+
+| Contexte | Geste | Intention |
+|---|---|---|
+| Partout | Molette | Zoom ancré sous le curseur |
+| Partout | **Clic molette + glisser** | Panoramique |
+| Partout | Double-clic molette | Cadrer le design (zoom ajusté) |
+| Partout | Espace + glisser gauche | Panoramique (secours sans molette cliquable) |
+| Partout | Maj + molette / Alt + molette | Défilement horizontal / vertical |
+| Pavé tactile | Deux doigts / pincement | Panoramique / zoom (`pixelDelta`, `QNativeGestureEvent`) |
+| Sélection | Clic | Sélectionner (remplace) |
+| Sélection | **Maj + clic** | Ajouter à la sélection |
+| Sélection | **Ctrl + clic** | Basculer (ajouter / retirer) |
+| Sélection | **Alt + clic** | Parcourir les objets superposés (« sélectionner dessous ») |
+| Sélection | Glisser dans le vide | Rectangle : gauche→droite = *englobe* (entièrement dedans), droite→gauche = *croise* |
+| Sélection | Maj / Ctrl + glisser | Ajouter / retirer au rectangle |
+| Sélection | Double-clic objet | Entrer en édition de l'objet (nœuds / points) |
+| Sélection | Survol | Surbrillance de pré-sélection + curseur adapté |
+| Sélection | Clic dans le vide | Désélectionner |
+| Déplacement | Glisser un objet | Déplacer ; **Maj** verrouille l'axe ; **Ctrl** suspend l'accroche ; **Alt** duplique |
+| Dessin | Clic / double-clic ou Entrée | Ajouter un point / terminer |
+| Dessin | Maj | Contraindre (angle 15° ; carré / cercle) |
+| Dessin | Alt | Dessiner depuis le centre |
+| Dessin | Ctrl (maintenu) | Suspendre l'accroche |
+| Dessin | Retour arrière / Échap | Retirer le dernier point / annuler l'outil |
+| Édition de nœuds | Glisser un nœud | Déplacer ; Maj = axe ; Ctrl = sans accroche |
+| Édition de nœuds | Double-clic sur un segment | Insérer un nœud |
+| Édition de nœuds | Suppr | Retirer les nœuds sélectionnés |
+| Tous | Clic droit | Menu contextuel selon l'objet et le contexte (jamais d'entrée de débogage) |
+| Tous | Suppr | Supprimer la sélection **quel que soit son type** (région, vectoriel, broderie) |
+
+**Retour visuel obligatoire** : une **ligne d'indications** (barre d'état) affiche en permanence ce que
+chaque modificateur ferait *dans l'état courant* (« Clic : sélectionner · Maj : ajouter · Ctrl : basculer ·
+Alt : objet dessous · Molette : zoom · Clic molette : panoramique ») ; le curseur change avec le
+modificateur tenu (ajout, retrait, déplacement, duplication) ; l'aide « Raccourcis » est **générée** depuis
+`InteractionMap` et les actions.
+
+**Mise en œuvre Qt** : `CanvasView` passe en `NoDrag` et gère lui-même clic molette, Espace (focus
+explicite pour que la barre d'espace ne « clique » pas un bouton), rectangle englobe/croise, et
+`pixelDelta` / `QNativeGestureEvent` ; modificateurs lus **depuis l'évènement** (jamais
+`QGuiApplication::keyboardModifiers()` différé, déjà une règle du code) ; l'état « Espace enfoncé » se
+perd à la perte de focus (à tester). Le panoramique doit rester disponible *pendant* un outil de dessin.
+
+**Tests** (QTest headless, `QTest::mouseClick/Press/Move` acceptent bouton et modificateurs ; molette et
+gestes par évènements injectés ; aucun `sleep`) : une ligne de test par ligne de la table ci-dessus ; test
+de **cohérence de la table** (aucun couple contexte+geste ambigu) ; test que l'aide affichée correspond à la
+table ; non-régression du comportement actuel (clic gauche, flèches, Maj ellipse) avant de le modifier.
+
 ## 4. Stratégie de non-régression
 
 Conventions du projet (`CLAUDE.md`) : QTest headless, aucune comparaison de pixels, aucun `sleep`.
@@ -79,7 +143,8 @@ Conventions du projet (`CLAUDE.md`) : QTest headless, aucune comparaison de pixe
 |---|---|---|
 | **Existant** | 8 suites QTest (canevas, nœuds, panneaux, inspecteur, fenêtre principale, WSL, options, worker SAM) | vert (Linux/Qt 6.4) |
 | **Invariants** (`test_ui_invariants`) | raccourcis uniques ; docks nommés et réouvrables ; mnémoniques uniques ; chaque défaut connu en `QEXPECT_FAIL(Continue)` → échoue en « XPASS » dès qu'il est corrigé | créé (6 tests) |
-| **À ajouter avant de toucher au code** (lot 0) | *tests de caractérisation* du comportement actuel : matrice d'activation des actions selon l'état (vide / image / segmentée / objet sélectionné) ; Suppr par type d'objet ; exclusivité des modes d'édition ; visibilité des docks après rafraîchissement ; absence de fuite de widgets de la barre contextuelle (compte d'enfants stable) | à faire |
+| **À ajouter avant de toucher au code** (lot 0) | *tests de caractérisation* du comportement actuel : matrice d'activation des actions selon l'état (vide / image / segmentée / objet sélectionné) ; Suppr par type d'objet ; exclusivité des modes d'édition ; visibilité des docks après rafraîchissement ; absence de fuite de widgets de la barre contextuelle (compte d'enfants stable) ; **souris** : clic gauche, flèches, Maj ellipse, molette actuelle | à faire |
+| **Souris / clavier** (lot L5) | matrice `InteractionMap` : un test par geste (clic molette, Ctrl/Maj/Alt+clic, englobe/croise, Espace, molette, double-clic) | à faire avec L5 |
 | **À ajouter avec chaque lot** | un test par comportement modifié, écrit *avant* le correctif | convention |
 | **Hors périmètre** | rendu/DPI/thème Windows, vrai bureau : CI `windows-msvc` + essai manuel | CI existante |
 
@@ -110,20 +175,26 @@ dans `main_window.cpp` à la fois ; les nouveaux composants vont dans des fichie
 |---|---|---|---|
 | 0 | **L0 — Filet de sécurité** | tests de caractérisation de la §4 ; base verte documentée | M |
 | 1 | **L1 — Corrections de câblage** | G en double ; `toggleViewAction` + sous-menu Panneaux ; rafraîchissements qui réaffichent ; fuite de la barre contextuelle ; exclusivité des modes ; Suppr contextuel ; aide des raccourcis générée depuis les actions ; mnémoniques ; « Vider les récents » ; « Déboguer » derrière un indicateur | M |
-| 2 | **L2 — Design system v2** | tokens (rayons, typographie, échelle d'espacement, élévation) ; QSS plat + Fusion ; recoloration des icônes par thème ; suppression des 2 hex et 13 `QColor` du canevas | M |
+| 2 | **L2 — Design system v2 (identité propre)** | tokens (rayons, typographie, échelle d'espacement, élévation) ; style Qt de base forcé + QSS complet, aucun rendu natif ; recoloration des icônes par thème ; suppression des 2 hex et 13 `QColor` du canevas | M |
+| 2 | **L5 — Modèle d'interaction souris/clavier** *(remonté en vague 2 : base de la prise en main)* | `InteractionMap` ; clic molette, Espace, molette ancrée + trackpad, Maj/Ctrl/Alt+clic, englobe/croise, survol, curseurs par modificateur, ligne d'indications, aide générée, Suppr universel ; tests de la §3 bis | L |
 | 2 | **L3 — Notifications et retours** | `NotificationBanner` ; migration progressive des `QMessageBox` non destructifs ; libellés d'annulation ; barre d'état segmentée | M |
 | 3 | **L4 — Icônes SVG** | jeu thémable, HiDPI, icône pour toute action | M |
-| 3 | **L5 — Canevas ergonomique** | sélection rectangle, pan Espace/clic milieu, trackpad, survol, curseurs, infobulle live | M |
+| 3 | **L5b — Retours de canevas** | infobulle live de dimension/angle, poignées à cible ≥ 12 px, accroche animée avec libellé | S |
 | 4 | **L6 — Parcours guidé** | stepper actionnable, écran d'accueil, regroupement des menus, palette de commandes, Préférences | L |
 | 4 | **L7 — Accessibilité** | noms accessibles, ordre de tabulation, focus, états sans couleur seule | S |
 | 5 | **L8 — Tâches asynchrones** | `TaskRunner` + progression + annulation sur segmentation/vectorisation/digitize/génération (HP-PERF-001, UX-006) | L |
 | 5 | **L9 — Découpage de `main_window.cpp`** | extraction du registre d'actions et des dialogues ; **fait au fil des lots précédents**, pas en bloc | L |
 
 **Risques** : régressions silencieuses de raccourcis (→ test d'unicité) ; conflits de fusion sur
-`main_window.cpp` (→ propriété exclusive, petits commits) ; écarts Qt 6.4 / 6.8 (→ CI Windows) ; perte
-de la sensation « native » en forçant Fusion (→ décision à valider avec l'utilisateur) ; asynchrone et
+`main_window.cpp` (→ propriété exclusive, petits commits) ; écarts Qt 6.4 / 6.8 (→ CI Windows) ; gestes
+en conflit selon le contexte (ex. Maj = ajout au rectangle *ou* verrou d'axe → `InteractionMap` testée) ;
+pavés tactiles et souris sans clic molette (→ Espace + glisser, pincement) ; asynchrone et
 `Project` non thread-safe (→ fonctions pures sur instantanés, cf. `CLAUDE.md`).
 
-**Décisions à valider avant la vague 2** : style Fusion forcé ; bibliothèque d'icônes SVG (licence
-compatible Apache-2.0 requise, ex. Lucide en ISC / Tabler en MIT) ; densité par défaut ; ordre de L8
-(le plus gros gain d'ergonomie, mais le plus risqué).
+**Décisions prises le 2026-10-06** : identité visuelle propre (pas de rendu natif Windows) ; la souris et
+les modificateurs (clic molette, Ctrl, Maj, Alt) sont une priorité de premier rang, remontée en vague 2.
+
+**Décisions encore à valider avant la vague 2** : la table de gestes de la §3 bis (touches exactes, à
+confronter à l'usage réel de Fusion 360) ; bibliothèque d'icônes SVG (licence compatible Apache-2.0 requise,
+ex. Lucide en ISC / Tabler en MIT) ; densité par défaut ; ordre de L8 (le plus gros gain d'ergonomie, mais
+le plus risqué).
