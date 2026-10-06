@@ -486,10 +486,12 @@ private:
     // multiSelection_ vide. Ne rafraîchit rien (l'appelant appelle
     // displayImage/refreshImage + updateActions).
     void setSelection(Selection selection);
-    void clearMultiSelection();
     // Modification partielle : copie l'état courant, applique `edit`, puis passe
     // par setSelection (jamais d'écriture directe des membres).
     void editSelection(const std::function<void(Selection&)>& edit);
+    // Translate des objets vectoriels en UN pas d'annulation (CompositeCommand si
+    // > 1) puis rafraîchit : partagé par les flèches et le glisser de corps.
+    void translateObjects(const std::vector<ObjectId>& ids, Vec2um delta);
     [[nodiscard]] bool isObjectSelected(ObjectId id) const;
     // Lecture : état courant sous forme de Selection (objets = multiSelection_
     // ou {selectedObject_}), pour les modifications partielles.

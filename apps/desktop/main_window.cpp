@@ -460,22 +460,8 @@ MainWindow::MainWindow() {
         if (!selectedObject_ || currentTool_ != Tool::Select) {
             return;
         }
-        const Vec2um delta = sceneMmToModel(deltaSceneMm);
-        if (hasMultiSelection()) {
-            // Multi-sélection : tout l'ensemble bouge, en UN pas d'annulation.
-            auto composite = std::make_unique<commands::CompositeCommand>(
-                tr("Déplacer %1 objets").arg(multiSelection_.size()).toStdString());
-            for (const ObjectId id : multiSelection_) {
-                composite->add(std::make_unique<commands::TranslateVectorObjectCommand>(id, delta));
-            }
-            undoStack_.execute(std::move(composite), project_);
-        } else {
-            undoStack_.execute(
-                std::make_unique<commands::TranslateVectorObjectCommand>(*selectedObject_, delta),
-                project_);
-        }
-        refreshImage();
-        updateActions();
+        // Multi-sélection : tout l'ensemble bouge, en UN pas d'annulation.
+        translateObjects(selectedObjectIds(), sceneMmToModel(deltaSceneMm));
     });
     // Un changement de thème redessine les couches (couleurs des points, repères).
     connect(&AppTheme::instance(), &AppTheme::changed, this, [this] { displayImage(processed_); });
@@ -2181,6 +2167,7 @@ void MainWindow::refreshImage() {
     // de broderie vivant est élaguée (undo/redo, nouvelle segmentation,
     // suppression, rechargement) ; le dernier objet restant devient le principal.
     pruneSelection();
+    Q_ASSERT(checkSelectionInvariants());
     if (!project_.hasImage()) {
         processed_ = {};
         displayImage(processed_); // affiche quand même une séquence importée
@@ -2323,13 +2310,13 @@ void MainWindow::renderBase(const image::Image& img) {
                         const Vec2um delta = sceneMmToModel(deltaSceneMm);
                         // Diffère : refreshImage() détruirait cet item pendant son
                         // propre événement souris (même défaut que NodeHandleItem).
+                        // Glisser un membre d'une multi-sélection déplace tout
+                        // l'ensemble (même helper que les flèches : un seul pas).
                         QTimer::singleShot(0, this, [this, objectId, delta] {
-                            undoStack_.execute(
-                                std::make_unique<commands::TranslateVectorObjectCommand>(objectId,
-                                                                                         delta),
-                                project_);
-                            refreshImage();
-                            updateActions();
+                            translateObjects(hasMultiSelection() && isObjectSelected(objectId)
+                                                 ? selectedObjectIds()
+                                                 : std::vector<ObjectId>{objectId},
+                                             delta);
                         });
                     });
                 scene_->addItem(bodyItem);
@@ -3336,14 +3323,12 @@ void MainWindow::createTatamiObject() {
     object.params = params;
     object.intent = document::EmbroideryIntent::ForcedUserChoice;
 
-    // Sélectionne le nouveau remplissage pour que « Orientation du remplissage… »
-    // s'applique directement à lui.
-    {
-        const ObjectId created = object.id;
-        editSelection([created](Selection& sel) { sel.embroidery = created; });
-    }
+    // Sélectionne le nouveau remplissage (APRÈS l'exécution réussie, jamais un id
+    // inexistant) pour que « Orientation du remplissage… » s'applique à lui.
+    const ObjectId createdId = object.id;
     undoStack_.execute(std::make_unique<commands::AddEmbroideryObjectCommand>(std::move(object)),
                        project_);
+    editSelection([createdId](Selection& sel) { sel.embroidery = createdId; });
     showStitchesAct_->setChecked(true);
     refreshImage();
     updateActions();
@@ -4565,7 +4550,17 @@ void MainWindow::onCanvasContextMenu(QPointF posMm, QPoint globalPos) {
     document::EmbroideryObject* emb = nullptr;
     std::optional<ObjectId> vecId; // objet vectoriel à supprimer/dupliquer, si pertinent
 
-    if (hit) {
+    if (hit && hasMultiSelection() && isObjectSelected(*hit)) {
+        // Clic droit sur un membre de la multi-sélection : on la garde ; seules les
+        // entrées qui valent pour tout l'ensemble sont proposées (les entrées
+        // mono-objet -- type de points, dupliquer, décaler -- sont absentes).
+        auto* title = menu.addAction(tr("%1 objets").arg(multiSelection_.size()));
+        title->setEnabled(false);
+        menu.addSeparator();
+        auto* deleteAllAct = menu.addAction(tr("&Supprimer %1 objets").arg(multiSelection_.size()));
+        deleteAllAct->setObjectName(QStringLiteral("contextDeleteSelection"));
+        connect(deleteAllAct, &QAction::triggered, this, &MainWindow::deleteSelection);
+    } else if (hit) {
         setSelection({.region = std::nullopt, .embroidery = std::nullopt, .objects = {*hit}});
         const auto* vec = project_.findObject(*hit);
         emb = embroideryForVector(*hit);
@@ -4639,9 +4634,9 @@ void MainWindow::onCanvasContextMenu(QPointF posMm, QPoint globalPos) {
             connect(offsetAct, &QAction::triggered, this,
                     [this, targetVecId] { offsetVectorObject(targetVecId); });
         }
-        // Pas de raccourci Suppr ici : déjà utilisé par la suppression de
-        // région (action toujours active au niveau fenêtre) — un second
-        // raccourci identique créerait une ambiguïté Qt au lieu d'agir.
+        // Pas de raccourci Suppr ici : « Supprimer la sélection »
+        // (action_deleteRegion, universelle) le porte déjà au niveau fenêtre — un
+        // second raccourci identique créerait une ambiguïté Qt au lieu d'agir.
         auto* deleteAct = menu.addAction(tr("&Supprimer"));
         connect(deleteAct, &QAction::triggered, this,
                 [this, targetVecId] { deleteVectorObject(targetVecId); });
@@ -7029,11 +7024,26 @@ void MainWindow::setSelection(Selection selection) {
     Q_ASSERT(multiSelection_.empty() || (!selectedRegion_ && !selectedEmbroidery_));
 }
 
-void MainWindow::clearMultiSelection() {
-    // Ne garde que le principal (cas legacy).
-    multiSelection_.clear();
-}
 // SELECTION-MUTATOR:END
+
+void MainWindow::translateObjects(const std::vector<ObjectId>& ids, Vec2um delta) {
+    if (ids.empty()) {
+        return;
+    }
+    if (ids.size() == 1) {
+        undoStack_.execute(std::make_unique<commands::TranslateVectorObjectCommand>(ids.front(), delta),
+                           project_);
+    } else {
+        auto composite = std::make_unique<commands::CompositeCommand>(
+            tr("Déplacer %1 objets").arg(ids.size()).toStdString());
+        for (const ObjectId id : ids) {
+            composite->add(std::make_unique<commands::TranslateVectorObjectCommand>(id, delta));
+        }
+        undoStack_.execute(std::move(composite), project_);
+    }
+    refreshImage();
+    updateActions();
+}
 
 void MainWindow::editSelection(const std::function<void(Selection&)>& edit) {
     Selection sel = currentSelection();
@@ -7118,6 +7128,7 @@ bool MainWindow::checkSelectionInvariants() const {
 }
 
 void MainWindow::selectionChanged() {
+    Q_ASSERT(checkSelectionInvariants());
     displayImage(processed_);
     updateActions();
 }
@@ -7210,11 +7221,6 @@ void MainWindow::applySelectionRectangle(const std::vector<ObjectId>& hits, Sele
 }
 
 void MainWindow::deleteSelection() {
-    // Région : comportement historique inchangé (RemoveRegionCommand).
-    if (selectedRegion_ && project_.segmentation) {
-        deleteSelectedRegion();
-        return;
-    }
     // Objet de broderie choisi (dock Ordre/Document) : la broderie seule, forme
     // source conservée -- sauf proxy invisible (colonne satin manuelle), dont la
     // suppression emporte la source (comme « Supprimer » du menu contextuel).
@@ -7236,6 +7242,12 @@ void MainWindow::deleteSelection() {
         refreshImage();
         updateActions();
         statusBar()->showMessage(tr("« %1 » supprimé.").arg(name));
+        return;
+    }
+    // Région (comportement historique inchangé, RemoveRegionCommand) : testée APRÈS la
+    // broderie car le dock Ordre garde la région en sélectionnant une broderie.
+    if (selectedRegion_ && project_.segmentation) {
+        deleteSelectedRegion();
         return;
     }
     // Objet(s) vectoriel(s) : un seul pas d'annulation (CompositeCommand si > 1).
