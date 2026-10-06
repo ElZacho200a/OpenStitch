@@ -226,3 +226,23 @@ les modificateurs (clic molette, Ctrl, Maj, Alt) sont une priorité de premier r
 Fusion (liste dans « Sources et degré de confirmation ») ; bibliothèque d'icônes SVG (licence compatible Apache-2.0 requise,
 ex. Lucide en ISC / Tabler en MIT) ; densité par défaut ; ordre de L8 (le plus gros gain d'ergonomie, mais
 le plus risqué).
+
+## 6. État d'avancement des lots (mis à jour le 2026-10-06, après la PR #6)
+
+| Lot | État | Notes |
+|---|---|---|
+| **L0** Filet de sécurité | ☑ livré (PR #6) | caractérisation, invariants, et suite adversariale `test_ui_adversarial` |
+| **L1** Corrections de câblage | ☑ livré (PR #6) | G/Maj+E, Affichage ▸ Panneaux, modes exclusifs, Enregistrer, mnémoniques, récents, débogage |
+| **L5** Modèle d'interaction + menu Aide | ☑ livré (PR #6), vérification manuelle Windows restante | `InteractionMap`, `CompositeCommand`, `CanvasView`, sélection multiple, Suppr universel, ligne d'indications, Aide/F1, préréglages de navigation |
+| **L2** Design system v2 (identité propre) | ☐ à faire | tokens (rayons, typographie, espacement, élévation), QSS plat, style de base forcé, recoloration des icônes |
+| **L3** Notifications et retours | ☐ à faire | bandeau non modal, migration des `QMessageBox` non destructifs, libellés d'annulation, barre d'état segmentée (la ligne d'indications existe déjà) |
+| **L4** Icônes SVG | ☐ à faire | jeu thémable, HiDPI, icône pour toute action |
+| **L5b** Retours de canevas | ◐ partiel | surbrillance au survol et curseurs par modificateur livrés ; restent infobulle live de dimension/angle, curseurs par poignée, accroche animée |
+| **L6** Parcours guidé | ◐ partiel | guide de prise en main non modal livré ; restent stepper actionnable, écran d'accueil à cartes, regroupement des menus, palette de commandes, Préférences |
+| **L7** Accessibilité | ◐ partiel | noms accessibles sur les dialogues d'aide et la ligne d'indications ; restent docks, barres d'outils, canevas, ordre de tabulation, focus, états sans couleur seule |
+| **L8** Tâches asynchrones | ☐ à faire | le plus gros gain d'ergonomie et le plus risqué (HP-PERF-001, HP-UX-006) |
+| **L9** Découpage de `main_window.cpp` | ☐ à faire | s'est encore alourdi avec L1/L5 ; à faire au fil des lots suivants |
+
+Décisions prises en cours de route (2026-10-06) : l'**accrochage des nœuds au glisser** est désactivé par
+défaut (réglage `edit/snapNodesOnDrag`, sommets des autres objets, ≤ 1 mm) ; les touches 2/3 (lasso, pinceau)
+restent « prévues » ; M3 (Ctrl+glisser suspend l'accroche d'un corps d'objet) est « prévue » faute d'accroche.

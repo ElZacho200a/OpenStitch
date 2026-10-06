@@ -26,7 +26,7 @@ fusionnée · ☐ pas commencé.
 | 1 | S2a — Couche machine + design importé | FMT-001 | S1 | **PR #5** (`task/s2a-machine-layer`) : `machine.hpp`, `format_registry`, tests — à relire et fusionner | à produire si besoin après fusion |
 | 2 | S2b — Codec PES | FMT-002/003 | S1, S2a | ☐ (attend S2a) | — |
 | 2 | S2c — Codecs JEF/EXP | FMT-004/005 | S1, S2a | ☐ (attend S2a) | — |
-| 2 | S3 — Sélection/presse-papiers/transfo | OBJ-001/002/003/004/006/014/016 | S2a | ☐ code ; **PR #3** = plan de code seulement ; OBJ-003 déjà ◐ (flèches 0,1/1 mm) | `specs/plans/s3-selection-implementation.md` (dans la PR #3) |
+| 2 | S3 — Sélection/presse-papiers/transfo | OBJ-001/002/003/004/006/014/016 | S2a | ◐ **sélection multiple, Suppr universel, déplacement/duplication de la sélection livrés** (PR #6, hors du plan S3 : OBJ-001/003/016 ◐) ; **restent** presse-papiers (OBJ-002), rotation (OBJ-004), miroir (OBJ-006), transformer le design entier (OBJ-014), Ctrl+A ; **PR #3** = plan de code antérieur, à rebaser | `specs/plans/s3-selection-implementation.md` (dans la PR #3) |
 | 3 | S4 — Fils du design/film couleur | THR-004/005, SEQ-003, OBJ-018 | S1, S2a, S3 | ☐ (THR-004 démarrable : S1 livré) | — |
 | 3 | S5 — Tracés ouverts/satin bordure | VEC-002, STI-004 | S3 | ◐ briques via le mode Contours (`Path::closed`, `strip_polygon`) ; **aucun outil utilisateur** | — |
 | 4 | S9 — Tâches longues | PERF-001, UX-006 | S2a, S3, S4 | ☐ (epic et stories rédigées dans `specs/`, zéro code) | — |
@@ -48,8 +48,9 @@ l'architecture maître sans la redéfinir.
 
 1. **Relire et fusionner la PR #5 (S2a, FMT-001)** : elle débloque PES/JEF/EXP et S3. Elle a
    10 commits de retard sur `main` : fusionner `main` dedans d'abord.
-2. **S3 (sélection, presse-papiers, transformations)** : le plan existe (PR #3, à fusionner
-   avec la même mise à jour de base) ; c'est le plus gros nœud de dépendances côté édition.
+2. **S3 (reste : presse-papiers, rotation, miroir, transformation du design)** : la sélection multiple et le
+   mutateur unique existent (PR #6) ; le plan de la PR #3 est à rebaser sur ce modèle (`multiSelection_`,
+   `CompositeCommand`, `InteractionMap`) avant fusion.
 3. **S4 : THR-004/THR-005** (fil par objet, film couleur) : démarrable dès maintenant côté
    modèle (S1 livré), en parallèle de S2a/S3 pour la partie cœur.
 4. **S5 : outils utilisateur de tracé ouvert et de satin à largeur fixe** : le cœur est

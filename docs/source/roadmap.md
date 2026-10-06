@@ -7,7 +7,7 @@ Trois documents, un rôle chacun — ne pas dupliquer leur contenu ici :
 
 | Question | Document |
 |---|---|
-| Qu'est-ce qui manque par rapport à Hatch, et où en est chaque entrée (☐ ◐ ☑) ? | `docs/roadmap-parite-hatch.md` — **source de vérité des statuts** (256 entrées HP-*, tableau de bord en tête) |
+| Qu'est-ce qui manque par rapport à Hatch, et où en est chaque entrée (☐ ◐ ☑) ? | `docs/roadmap-parite-hatch.md` — **source de vérité des statuts** (257 entrées HP-*, tableau de bord en tête) |
 | Dans quel ordre le livrer (vagues, scopes S1…S15, dépendances, plans) ? | `specs/implementation-roadmap.md` |
 | Où va le projet, en gros ? | ce chapitre |
 
@@ -21,6 +21,11 @@ Trois documents, un rôle chacun — ne pas dupliquer leur contenu ici :
   Art** (traits → running/satin par couleur, curseur de détail, 2026-10-05).
 - Fichiers : Nouveau projet, Enregistrer / Enregistrer sous, fichiers récents, sauvegarde
   automatique avec récupération après plantage.
+- Interface (PR #6) : **modèle d'interaction souris/clavier** (clic molette, Espace+glisser, molette ancrée,
+  pavé tactile, Maj/Ctrl/Alt+clic, rectangle fenêtre/croisement, sélectionner dessous), **sélection multiple**
+  et Suppr universel en un seul undo, ligne d'indications, **menu Aide** (guide de prise en main, F1 = gestes
+  souris et clavier), préréglages de navigation, corrections de câblage (panneaux réouvrables, raccourcis
+  uniques, modes d'édition exclusifs).
 - Bibliothèque de fils (`thread_palette`) avec distance perceptuelle ; nuanciers fabricants
   encore partiels (données placeholder).
 - Distribution : installateur Windows (Inno Setup), workflow de release sur tag, release
@@ -29,7 +34,9 @@ Trois documents, un rôle chacun — ne pas dupliquer leur contenu ici :
 ## En cours
 
 - **PR #5** — couche de normalisation machine (HP-FMT-001), préalable à PES/JEF/EXP.
-- **PR #3** — plan de code de la sélection, du presse-papiers et des transformations (S3).
+- **PR #3** — plan de code de la sélection, du presse-papiers et des transformations (S3) : la sélection
+  multiple et Suppr sont livrés par la PR #6 ; restent presse-papiers, rotation, miroir, transformation du
+  design entier, Ctrl+A. Le plan est à rebaser sur ce qui existe avant fusion.
 - **Satin guidé** : restent la propagation géométrique coordonnée des angles et des
   déplacements de guides sur un réseau, puis les retours textiles suivant le réseau plutôt
   qu'un segment direct. Ne jamais accepter silencieusement une gerbe ou un croisement comme
@@ -37,8 +44,8 @@ Trois documents, un rôle chacun — ne pas dupliquer leur contenu ici :
 
 ## Court terme (P0 restants)
 
-Formats machine (PES, JEF, EXP) · fils par objet et film couleur · sélection multiple,
-presse-papiers, rotation, miroir · tracés ouverts et satin de bordure (outils) · lettrage ·
+Formats machine (PES, JEF, EXP) · fils par objet et film couleur · presse-papiers, rotation, miroir,
+compléments de sélection (Ctrl+A, multi-lignes de la liste, inspecteur multi-objets) · tracés ouverts et satin de bordure (outils) · lettrage ·
 longueurs min/max appliquées à tous les générateurs · tâches de fond avec annulation ·
 rendu réaliste des points · fiche de production · installateur signé · protocole de
 validation sur machine réelle · jeu de référence et métriques pour l'auto-numérisation.

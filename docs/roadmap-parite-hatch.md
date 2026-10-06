@@ -24,7 +24,7 @@ prochaine entrée de ce fichier.
 
 ---
 
-## État d'avancement (revu le 2026-10-06)
+## État d'avancement (revu le 2026-10-06, après la PR #6)
 
 > **Source de vérité des statuts : ce fichier.** `specs/implementation-roadmap.md`
 > décrit l'*ordre de livraison* (vagues, scopes S1…S15, plans) et `docs/source/roadmap.md`
@@ -36,11 +36,11 @@ Audit du 2026-10-06 : chaque entrée a été confrontée au code de `main` (`40b
 
 | Priorité | ☑ Fait | ◐ Partiel | ☐ À faire | Total |
 |---|---|---|---|---|
-| P0 | 6 | 10 | 28 | 44 |
-| P1 | 0 | 30 | 91 | 121 |
-| P2 | 0 | 9 | 70 | 79 |
+| P0 | 6 | 11 | 27 | 44 |
+| P1 | 0 | 31 | 90 | 121 |
+| P2 | 0 | 10 | 70 | 80 |
 | P3 | 0 | 0 | 12 | 12 |
-| **Total** | **6** | **49** | **201** | **256** |
+| **Total** | **6** | **52** | **199** | **257** |
 
 **Fait (6)** : FILE-001/002/003/004 (nouveau projet, enregistrer, récents, autosave),
 THR-001/003 (bibliothèque de fils, fil le plus proche).
@@ -49,7 +49,9 @@ THR-001/003 (bibliothèque de fils, fil le plus proche).
 S3 sélection/presse-papiers (PR #3, documentation seulement, **aucun code**).
 
 **Livré hors entrée dédiée** : mode Contours / Line Art (PR #4, 2026-10-05) — fait avancer
-AUTO-001/002/005/008/009, VEC-002, STI-004 (brique), sans en clore aucune.
+AUTO-001/002/005/008/009, VEC-002, STI-004 (brique), sans en clore aucune ; modèle d'interaction souris/clavier,
+menu Aide et sélection multiple (PR #6, 2026-10-06) — font avancer OBJ-001/003/016, UX-009/010/012/014, HELP-001,
+VEC-009, QA-004 (voir leurs entrées).
 
 **P0 encore ouverts, par thème** (38 entrées ; détail dans les sections) :
 formats machine (FMT-001…005) · fils (THR-002/004/005) · lettrage (TXT-001/003/004) ·
@@ -1107,6 +1109,8 @@ libre, colonne satin manuelle, ligne de coupe satin ; édition de nœuds
 - Dépend de : HP-AUTO-004.
 
 ### HP-VEC-009 — Magnétisme (grille, nœuds, guides) [P1] — ◐ Partiel (2026-10-06)
+- Mise à jour (PR #6) : accrochage des nœuds au glisser **désactivé par défaut** (réglage `edit/snapNodesOnDrag`,
+  Affichage ▸ Accrochage des nœuds au glisser) ; sommets des autres objets uniquement, rayon ≤ 1 mm, Ctrl/Maj le suspend.
 - État OpenStitch : accrochage aux sommets, milieux de segment et centres de forme
   pendant le dessin, avec indicateur (`findSnapPointMm`) ; manquent grille, guides
   et l'activation par touche/bouton.
@@ -1145,8 +1149,15 @@ dupliquer / décaler (vecteurs) ; supprimer ; monter/descendre dans l'ordre ;
 verrouiller pour l'optimisation. C'est le **deuxième mur** après les formats :
 tout utilisateur de Hatch fait Ctrl+C/Ctrl+V, sélection rectangle, rotation.
 
-### HP-OBJ-001 — Sélection multiple [P0] — ☐ À faire
-- À faire : Ctrl/Maj+clic, rectangle de sélection (glisser dans le vide),
+### HP-OBJ-001 — Sélection multiple [P0] — ◐ Partiel (2026-10-06)
+- Livré (PR #6, `main_window` + `selection_hit_test`) : modèle de sélection multiple avec **mutateur unique**
+  (garde CTest `check_selection_single_mutator`), Maj+clic = ajouter, Ctrl+clic = basculer, rectangle
+  **fenêtre** (gauche→droite) / **croisement** (droite→gauche), « sélectionner dessous » (appui long ou Alt+clic),
+  surbrillance au survol ; déplacement, duplication (Alt+glisser) et Suppr appliqués à toute la sélection en un seul undo.
+- Reste : Ctrl+A, sélection multi-lignes depuis la liste Document, sélection par couleur, boîte englobante
+  commune avec poignées, inspecteur multi-objets (aujourd'hui seulement « N objets », HP-OBJ-019), modèle de
+  sélection extrait de `MainWindow` dans une classe dédiée.
+- À faire (initial) : Ctrl/Maj+clic, rectangle de sélection (glisser dans le vide),
   Ctrl+A, sélection depuis la liste Document (multi-lignes), sélection de
   tous les objets d'une couleur ; boîte englobante commune avec poignées ;
   inspecteur multi-objets (HP-OBJ-019). Modèle de sélection sorti de
@@ -1166,8 +1177,9 @@ tout utilisateur de Hatch fait Ctrl+C/Ctrl+V, sélection rectangle, rotation.
 - Dépend de : HP-OBJ-001.
 
 ### HP-OBJ-003 — Déplacement au clavier [P0] — ◐ Partiel (2026-10-06)
-- État OpenStitch : flèches = 0,1 mm, Maj+flèches = 1 mm (`canvas_view.cpp`), testé ;
-  manquent la fusion en un seul undo par rafale, le pas de grille et le multi-objet.
+- État OpenStitch : flèches = 0,1 mm, Maj+flèches = 1 mm (`canvas_view.cpp`), testé ; **le multi-objet est livré**
+  (toute la sélection bouge en une seule commande composite) ; manquent la fusion en un seul undo par rafale
+  de touches et le pas de grille.
 - À faire : flèches = 0,1 mm (ou pas de grille), Maj+flèches = 1 mm ; une
   commande fusionnée par rafale (undo en un coup).
 - Modules : `apps/desktop`, `libs/commands` (fusion de commandes consécutives).
@@ -1249,8 +1261,9 @@ tout utilisateur de Hatch fait Ctrl+C/Ctrl+V, sélection rectangle, rotation.
   de proportions ; chaque validation = une commande.
 
 ### HP-OBJ-016 — Suppression multiple [P0] — ◐ Partiel
-- État OpenStitch : supprimer un objet, supprimer la broderie en gardant la
-  forme ; Suppr = supprimer la **région** sélectionnée (conflit de sens).
+- État OpenStitch (2026-10-06) : **Suppr supprime la sélection courante** — région, objets vectoriels (un ou
+  plusieurs) ou objets de broderie — en une seule étape d'annulation (`CompositeCommand`, PR #6) ; il reste
+  la suppression des **points/nœuds en mode édition** (ligne N4 de la table de gestes, planifiée).
 - À faire : Suppr supprime la sélection courante quelle qu'elle soit (objets,
   régions, points en mode édition), une seule commande.
 - Dépend de : HP-OBJ-001.
@@ -1835,20 +1848,26 @@ les paramètres avant de créer) et par des **modes** distincts (édition satin,
   stockage toujours en µm. Indispensable pour le marché nord-américain.
 
 ### HP-UX-009 — Conventions de navigation standard [P1] — ◐ Partiel
-- État OpenStitch : molette = zoom ancré, outil Main ; le glisser en Sélection
-  déplace la vue (non standard : il devrait faire un rectangle de sélection).
+- État OpenStitch (2026-10-06, PR #6) : **clic molette = panoramique, Espace+glisser, molette = zoom ancré au
+  curseur, Ctrl+molette = zoom, Maj/Alt+molette = défilement, pavé tactile (`pixelDelta`, gestes natifs), glisser dans
+  le vide = rectangle de sélection** (outil Sélection), préréglages Affichage ▸ Navigation. Limites : sous Windows
+  Qt 6 n'envoie ni `pixelDelta` ni geste natif (le défilement à deux doigts y devient du zoom, pan = Espace+glisser) ;
+  Alt seul et le pavé tactile restent **à vérifier à la main sous Windows** ; molette configurable non faite.
 - À faire : Espace+glisser et clic molette = déplacer la vue ; glisser dans le
   vide = rectangle de sélection (HP-OBJ-001) ; Ctrl+molette / molette
   configurable ; pavé tactile (pinch-zoom).
 
 ### HP-UX-010 — Barre d'état informative [P1] — ◐ Partiel
+- État OpenStitch (2026-10-06) : **ligne d'indications permanente** (ce que chaque modificateur ferait dans l'état
+  courant, générée depuis la table de gestes) ; reste le contenu d'information ci-dessous.
 - À faire : taille de la sélection, nombre de points de la sélection et du
   design, couleur courante, zoom, unité.
 
 ### HP-UX-011 — Raccourcis et barres personnalisables [P2] — ☐ À faire
 
 ### HP-UX-012 — Assistant de démarrage image → broderie [P1] — ◐ Partiel
-- État OpenStitch : bandeau workflow (6 étapes) informatif.
+- État OpenStitch : bandeau workflow (6 étapes) informatif ; **Aide ▸ Guide de prise en main** (PR #6) : 6 étapes
+  non modales dont les boutons déclenchent de vraies actions, mais ce n'est pas un assistant séquentiel.
 - Hatch : assistants pas à pas pour les débutants.
 - À faire : assistant guidé (image → taille → couleurs → fond → numériser →
   vérifier → exporter pour ma machine).
@@ -1857,8 +1876,10 @@ les paramètres avant de créer) et par des **modes** distincts (édition satin,
 - À faire : chaque refus dit quoi faire (« satin refusé : forme trop large,
   essayez Remplissage directionnel [bouton] »).
 
-### HP-UX-014 — Retour visuel du survol et des curseurs [P2] — ☐ À faire
-- À faire : surbrillance au survol, curseurs spécifiques par poignée.
+### HP-UX-014 — Retour visuel du survol et des curseurs [P2] — ◐ Partiel (2026-10-06)
+- Livré (PR #6) : surbrillance au survol (outil Sélection, avec cache et coalescence), curseurs par modificateur
+  (ajout, retrait, copie, main ouverte/fermée). Reste : curseurs spécifiques par poignée.
+- À faire (initial) : surbrillance au survol, curseurs spécifiques par poignée.
 
 ### HP-UX-015 — Icônes haute densité et cohérence visuelle [P2] — ◐ Partiel
 - À faire : jeu d'icônes complet (tous les outils/actions), rendu net en 150–200 %.
@@ -1979,6 +2000,10 @@ modification, scène reconstruite à chaque rafraîchissement.
   SVG, DXF, `.osp` ; corpus minimal commité.
 
 ### HP-QA-004 — Tests bout en bout desktop [P2] — ◐ Partiel
+- État OpenStitch (2026-10-06) : suites QTest headless pour la fenêtre principale (`test_main_window`), les invariants
+  d'interface, la caractérisation du comportement, la souris (`test_canvas_input`), les dialogues d'aide, le test
+  géométrique de sélection et une suite **adversariale** (`test_ui_adversarial` : fuzz de sélection/annulation et
+  d'événements) ; build desktop vérifié sous Linux/Qt 6.4 (la CI Windows exécute les mêmes suites).
 - À faire : scénarios complets en QTest offscreen (image → numériser → éditer
   → exporter PES) pour chaque vague livrée.
 
@@ -2039,7 +2064,10 @@ release « latest » publiée par la CI (`ci.yml`) ; installateur non signé.
 Aujourd'hui : documentation technique riche (PDF) surtout pour développeurs ;
 un guide utilisateur ; aide = liste des raccourcis + À propos.
 
-### HP-HELP-001 — Manuel utilisateur en ligne et aide contextuelle (F1) [P1] — ☐ À faire
+### HP-HELP-001 — Manuel utilisateur en ligne et aide contextuelle (F1) [P1] — ◐ Partiel (2026-10-06)
+- Livré (PR #6) : menu **Aide** (Guide de prise en main, Gestes souris et clavier sur **F1** — dialogue de
+  recherche généré depuis la table de gestes et les raccourcis —, À propos) ; section « Souris et clavier » du guide
+  utilisateur synchronisée par test. Reste : manuel en ligne, aide contextuelle par outil/paramètre.
 - À faire : manuel orienté tâches (« broder un logo », « faire du texte »,
   « exporter pour une Brother »), accessible par F1 sur l'outil/le panneau
   courant.
@@ -2113,3 +2141,4 @@ ci-dessus doit les respecter :
 | 2026-10-05 | Claude (session multi-agents) | Mode **Contours / Line Art** fusionné (PR #4) : `libs/autodigitize/contour_*`, CLI `digitize --mode contours`, dialogue desktop avec curseur de détail. |
 | 2026-10-06 | Claude (revue d'ensemble) | **Audit complet des 256 entrées contre `main`.** Statuts : AUTO-005, VEC-002, VEC-009, OBJ-003, SEQ-001, ENG-002 ☐ → ◐. « État OpenStitch » corrigé : FMT-001 (PR #5), FMT-014, FMT-021, THR-004, AUTO-001/002/006/008/009/012, STI-001, STI-004, ENG-010/014/015, QA-001/002, DIST-001 et introductions des sections 19 et 24. Ajout du tableau de bord et de la règle « ☑ = sur `main` ». |
 | 2026-10-06 | Claude (audit UI) | Audit du câblage et de l'ergonomie Qt : `docs/ui-audit-2026-10.md` (constats, tests d'invariants `test_ui_invariants`, plan multi-agents par lots). Aucun statut HP-UX modifié ; HP-UX-006/009/010/013/015 sont confirmés ouverts. |
+| 2026-10-06 | Claude (après PR #6) | OBJ-001, UX-014, HELP-001 ☐ → ◐ ; « État » précisé pour OBJ-003, OBJ-016, UX-009, UX-010, UX-012, VEC-009, QA-004 (sélection multiple, Suppr universel, souris, ligne d'indications, menu Aide, surbrillance). Aucune entrée passée à ☑ : les critères d'acceptation complets ne sont pas remplis. Tableau de bord recalculé : le total est **257** entrées (le décompte du 2026-10-06 matin, 256, avait omis une entrée P2). |
