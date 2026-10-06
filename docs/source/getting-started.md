@@ -68,7 +68,7 @@ type d'une forme par **clic droit ▸ Type de points**, et on règle l'orientati
 d'un tatami à la souris (poignée de rotation).
 
 Pour une colonne satin sélectionnée, **Broderie ▸ Éditer les guides satin…**
-(`G`) affiche les barreaux d'orientation. Glissez une extrémité le long de son
+(`Maj+E`) affiche les barreaux d'orientation. Glissez une extrémité le long de son
 rail pour infléchir localement les points ; plusieurs barreaux pilotent des
 orientations successives. Cliquez sur un barreau pour le sélectionner, utilisez
 **Ajouter un guide satin** (`Maj+G`) pour partager le plus grand intervalle ou

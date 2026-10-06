@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 #pragma once
 
+#include <QHash>
 #include <QList>
 #include <QMainWindow>
 #include <QString>
@@ -299,7 +300,8 @@ private:
     void refreshFilterPanel();
     // Affiche/masque un dock sur ordre d'un rafraîchissement, sans défaire « Masquer les
     // panneaux » : en mode canevas seul, le dock reste caché et n'est (ré)affiché qu'à la sortie.
-    void setDockAutoVisible(QDockWidget* dock, bool visible);
+    static bool debugMenuEnabled(); // OPENSTITCH_DEBUG=1 ou QSettings « debug/menu »
+    void setDockAutoVisible(QDockWidget* dock, bool visible, bool force = false);
     void buildWorkflowPanel();
     void refreshWorkflow();
     void buildDocumentPanel();
@@ -493,8 +495,10 @@ private:
     QAction* showImageAct_{nullptr};
     QAction* showStitchesAct_{nullptr};
     std::vector<QDockWidget*> panelsToRestore_; // docks masqués par « Masquer les panneaux »
-    bool hidePanelsMode_{false};                // mode « canevas seul » actif
-    QMenu* panelsMenu_{nullptr};                // Affichage > Panneaux (toggleViewAction des docks)
+    QHash<QDockWidget*, bool>
+        dockHadContent_;         // dernier état « a du contenu » (cf. setDockAutoVisible)
+    bool hidePanelsMode_{false}; // mode « canevas seul » actif
+    QMenu* panelsMenu_{nullptr}; // Affichage > Panneaux (toggleViewAction des docks)
     QAction* createStitchAct_{nullptr};
     QAction* createTatamiAct_{nullptr};
     QAction* createSatinAct_{nullptr};

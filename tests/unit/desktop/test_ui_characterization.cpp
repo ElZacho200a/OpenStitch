@@ -9,10 +9,12 @@
 #include <QApplication>
 #include <QCoreApplication>
 #include <QDockWidget>
+#include <QFile>
 #include <QKeySequence>
 #include <QLabel>
 #include <QMenu>
 #include <QMenuBar>
+#include <QPointer>
 #include <QSettings>
 #include <QStringList>
 #include <QTemporaryDir>
@@ -20,6 +22,7 @@
 #include <QToolBar>
 #include <QToolButton>
 
+#include <algorithm>
 #include <functional>
 #include <utility>
 #include <vector>
@@ -28,6 +31,7 @@
 #include "main_window.hpp"
 #include "openstitch/document/project.hpp"
 #include "openstitch/segmentation/segmentation.hpp"
+#include "recent_files.hpp"
 
 using openstitch::Micrometers;
 using openstitch::ObjectId;
@@ -545,6 +549,191 @@ private slots:
             window.updateActions();
         }
         QCOMPARE(window.contextToolbar_->findChildren<QObject*>().size(), before);
+    }
+
+    // ---- (f) revue L1 : Enregistrer / docks / récents / débogage -------------------
+
+    void saveActionsFollowTheSameContentCriterionAsTheEmptyState() {
+        QAction* save = nullptr;
+        QAction* saveAs = nullptr;
+        {
+            MainWindow window; // fenêtre réellement vide
+            save = window.saveProjectAct_;
+            saveAs = window.saveProjectAsAct_;
+            QVERIFY(!save->isEnabled());
+            QVERIFY(!saveAs->isEnabled());
+        }
+        {
+            // Broderie seule (vecteur source supprimé, ni image ni vecteur).
+            MainWindow window;
+            doc::Project project;
+            addEmbroidery(project, ObjectId{999});
+            window.applyLoadedProject(project);
+            QVERIFY(window.saveProjectAct_->isEnabled());
+            QVERIFY(window.saveProjectAsAct_->isEnabled());
+        }
+        {
+            MainWindow window; // vecteur seul
+            doc::Project project;
+            addSquareVector(project);
+            window.applyLoadedProject(project);
+            QVERIFY(window.saveProjectAct_->isEnabled());
+            QVERIFY(window.saveProjectAsAct_->isEnabled());
+        }
+        {
+            // Document vide mais rattaché à un fichier : Enregistrer reste actif.
+            MainWindow window;
+            QTemporaryDir dir;
+            QVERIFY(dir.isValid());
+            window.setCurrentProjectPath(dir.filePath(QStringLiteral("p.osp")));
+            window.updateActions();
+            QVERIFY(window.saveProjectAct_->isEnabled());
+            QVERIFY(!window.saveProjectAsAct_->isEnabled());
+        }
+    }
+
+    void closedDockStaysClosedAfterRefreshButShowsOnFirstContent() {
+        MainWindow window;
+        window.resize(1400, 900);
+        window.show();
+        QVERIFY(QTest::qWaitForWindowExposed(&window));
+        doc::Project project = imageOnlyProject();
+        const ObjectId vec = addSquareVector(project);
+        addEmbroidery(project, vec);
+        window.applyLoadedProject(project);
+        QVERIFY(window.documentDock_->isVisible()); // vide -> non vide : affiché
+        QVERIFY(window.orderDock_->isVisible());
+
+        window.documentDock_->close(); // croix du dock
+        window.orderDock_->close();
+        window.refreshDocumentPanel();
+        window.refreshOrderPanel();
+        window.refreshFilterPanel();
+        QVERIFY(!window.documentDock_->isVisible());
+        QVERIFY(!window.orderDock_->isVisible());
+
+        // Rouvert par le menu Panneaux, puis nouveau document vide puis non vide : la
+        // transition vide -> non vide réaffiche.
+        window.documentDock_->toggleViewAction()->trigger();
+        QVERIFY(window.documentDock_->isVisible());
+        window.applyLoadedProject(doc::Project{});
+        QVERIFY(!window.orderDock_->isVisible());
+        window.applyLoadedProject(project);
+        QVERIFY(window.orderDock_->isVisible());
+    }
+
+    void hidePanelsRestoreListTracksAutoVisibility() {
+        MainWindow window;
+        window.resize(1400, 900);
+        window.show();
+        QVERIFY(QTest::qWaitForWindowExposed(&window));
+        doc::Project project = imageOnlyProject();
+        addEmbroidery(project, addSquareVector(project));
+        window.applyLoadedProject(project);
+
+        QAction* hideAct = findMenuAction(window, QStringLiteral("Masquer les panneaux"));
+        QVERIFY(hideAct != nullptr);
+        hideAct->setChecked(true);
+        const auto contains = [&](QDockWidget* d) {
+            return std::find(window.panelsToRestore_.begin(), window.panelsToRestore_.end(), d) !=
+                   window.panelsToRestore_.end();
+        };
+        QVERIFY(contains(window.documentDock_));
+        QVERIFY(contains(window.orderDock_));
+        // Le contenu disparaît pendant le mode : le dock ne doit plus être restauré.
+        window.setDockAutoVisible(window.orderDock_, false);
+        QVERIFY(!contains(window.orderDock_));
+        QVERIFY(!window.orderDock_->isVisible());
+        hideAct->setChecked(false);
+        QVERIFY(window.documentDock_->isVisible());
+        QVERIFY(!window.orderDock_->isVisible());
+        QVERIFY(window.panelsToRestore_.empty());
+    }
+
+    void recentMenuIsDisabledWhenEmptyAndClearEmptiesIt() {
+        QSettings().remove(QStringLiteral("recent/files"));
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        const QString file = dir.filePath(QStringLiteral("a.osp"));
+        QFile f(file);
+        QVERIFY(f.open(QIODevice::WriteOnly));
+        f.close();
+
+        MainWindow window;
+        QCoreApplication::processEvents();
+        QVERIFY(!window.recentMenu_->isEnabled());
+        QVERIFY(!window.clearRecentAct_->isEnabled());
+
+        saveRecentFiles(QStringList{file});
+        window.refreshRecentFilesUi();
+        QCoreApplication::processEvents();
+        QVERIFY(window.recentMenu_->isEnabled());
+        QVERIFY(window.clearRecentAct_->isEnabled());
+        QCOMPARE(window.recentMenu_->actions().size(), 1);
+
+        window.clearRecentAct_->trigger();
+        QCoreApplication::processEvents();
+        QVERIFY(window.recentFiles_.isEmpty());
+        QVERIFY(loadRecentFiles().isEmpty());
+        QVERIFY(!window.recentMenu_->isEnabled());
+        QVERIFY(!window.clearRecentAct_->isEnabled());
+    }
+
+    void debugContextMenuEntryIsGatedByEnvOrSetting() {
+        const QByteArray previous = qgetenv("OPENSTITCH_DEBUG");
+        const bool had = qEnvironmentVariableIsSet("OPENSTITCH_DEBUG");
+        QSettings().remove(QStringLiteral("debug/menu"));
+        qunsetenv("OPENSTITCH_DEBUG");
+        QVERIFY(!MainWindow::debugMenuEnabled());
+        qputenv("OPENSTITCH_DEBUG", "1");
+        QVERIFY(MainWindow::debugMenuEnabled());
+        qputenv("OPENSTITCH_DEBUG", "0");
+        QVERIFY(!MainWindow::debugMenuEnabled());
+        QSettings().setValue(QStringLiteral("debug/menu"), true);
+        QVERIFY(MainWindow::debugMenuEnabled());
+        QSettings().remove(QStringLiteral("debug/menu"));
+        if (had) {
+            qputenv("OPENSTITCH_DEBUG", previous);
+        } else {
+            qunsetenv("OPENSTITCH_DEBUG");
+        }
+    }
+
+    void shiftEShortcutTogglesSatinEditMode() {
+        MainWindow window;
+        doc::Project project = imageOnlyProject();
+        const ObjectId emb = addSatinColumn(project);
+        window.applyLoadedProject(project);
+        window.selectedEmbroidery_ = emb;
+        window.updateActions();
+        activate(window);
+        QVERIFY(window.satinEditModeAct_->isEnabled());
+        QVERIFY(!window.satinEditModeAct_->isChecked());
+        QTest::keyClick(&window, Qt::Key_E, Qt::ShiftModifier);
+        QVERIFY(window.satinEditModeAct_->isChecked());
+        QVERIFY(window.railEditModeAct_->isChecked());
+        QTest::keyClick(&window, Qt::Key_E, Qt::ShiftModifier);
+        QVERIFY(!window.satinEditModeAct_->isChecked());
+    }
+
+    void contextToolbarDestroysRemovedWidgets() {
+        MainWindow window;
+        doc::Project project = imageOnlyProject();
+        const ObjectId vec = addSquareVector(project);
+        const ObjectId emb = addEmbroidery(project, vec);
+        window.applyLoadedProject(project);
+        window.selectedEmbroidery_ = emb;
+        window.updateActions();
+        QPointer<QLabel> label;
+        for (QLabel* l : window.contextToolbar_->findChildren<QLabel*>()) {
+            label = l;
+        }
+        QVERIFY(!label.isNull());
+        window.selectedEmbroidery_.reset();
+        window.selectedObject_ = vec;
+        window.updateActions(); // reconstruction
+        QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
+        QVERIFY(label.isNull());
     }
 
 private:

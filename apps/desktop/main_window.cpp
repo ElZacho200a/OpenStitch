@@ -4616,8 +4616,7 @@ void MainWindow::onCanvasContextMenu(QPointF posMm, QPoint globalPos) {
         }
         // Entrée de diagnostic réservée aux développeurs : masquée sauf si
         // OPENSTITCH_DEBUG=1 (variable d'environnement) ou clé QSettings « debug/menu » à vrai.
-        if (qEnvironmentVariable("OPENSTITCH_DEBUG") == QLatin1String("1") ||
-            QSettings().value(QStringLiteral("debug/menu"), false).toBool()) {
+        if (debugMenuEnabled()) {
             auto* debugAct = menu.addAction(tr("&Déboguer : afficher toutes les données…"));
             connect(debugAct, &QAction::triggered, this, [this, embId] { showDebugDump(embId); });
         }
@@ -5255,7 +5254,10 @@ void MainWindow::updateContextToolbar() {
     // Le layout de la barre crée un QToolButton par action simple et ne le détruit qu'en
     // différé (deleteLater) : tant que la boucle d'évènements n'a pas tourné, ils restent
     // enfants de la barre. On les détache tout de suite (leur destruction différée suit son
-    // cours) ; le bouton d'extension (« >> ») est permanent et reste en place.
+    // cours) ; le bouton d'extension (« >> ») est permanent et reste en place. Dépend d'un
+    // détail interne de Qt : l'objectName "qt_toolbar_ext_button" du QToolBarExtension
+    // (stable de Qt 5 à 6.8) ; s'il changeait, le bouton serait détaché puis détruit, et la
+    // barre n'afficherait plus le menu de débordement (sans plantage).
     for (auto* stale : contextToolbar_->findChildren<QToolButton*>(Qt::FindDirectChildrenOnly)) {
         if (stale->objectName() != QLatin1String("qt_toolbar_ext_button")) {
             stale->hide();
@@ -5731,18 +5733,33 @@ void MainWindow::buildDocumentPanel() {
     });
 }
 
-void MainWindow::setDockAutoVisible(QDockWidget* dock, bool visible) {
+bool MainWindow::debugMenuEnabled() {
+    return qEnvironmentVariable("OPENSTITCH_DEBUG") == QLatin1String("1") ||
+           QSettings().value(QStringLiteral("debug/menu"), false).toBool();
+}
+
+void MainWindow::setDockAutoVisible(QDockWidget* dock, bool visible, bool force) {
     if (dock == nullptr) {
         return;
     }
+    // Un rafraîchissement n'affiche un dock que lors de la transition vide -> non vide
+    // (premier contenu) : ensuite, la visibilité appartient à l'utilisateur (croix du dock,
+    // menu Affichage > Panneaux). `force` : demande explicite de l'utilisateur (Analyse).
+    const bool hadContent = dockHadContent_.value(dock, false);
+    dockHadContent_[dock] = visible;
+    const bool show = visible && (force || !hadContent);
     if (!hidePanelsMode_) {
-        dock->setVisible(visible);
+        if (show) {
+            dock->show();
+        } else if (!visible) {
+            dock->hide();
+        }
         return;
     }
     // Mode canevas seul : on ne touche pas à l'affichage, mais on tient la liste de
     // restauration à jour pour que la sortie du mode reflète l'état voulu.
     const auto it = std::find(panelsToRestore_.begin(), panelsToRestore_.end(), dock);
-    if (visible && it == panelsToRestore_.end()) {
+    if (show && it == panelsToRestore_.end()) {
         panelsToRestore_.push_back(dock);
     } else if (!visible && it != panelsToRestore_.end()) {
         panelsToRestore_.erase(it);
@@ -5939,7 +5956,10 @@ void MainWindow::runAnalysis() {
             analysisList_->addItem(item);
         }
     }
-    setDockAutoVisible(analysisDock_, true);
+    // Résultat d'une demande explicite (F5) : affiché d'office, sauf en mode canevas seul
+    // où le dock reste masqué (réaffiché à la sortie du mode) : seul le message d'état
+    // ci-dessous signale alors le résultat.
+    setDockAutoVisible(analysisDock_, true, /*force=*/true);
     if (!hidePanelsMode_) {
         analysisDock_->raise();
     }
@@ -6403,7 +6423,8 @@ void MainWindow::saveProject() {
 }
 
 void MainWindow::saveProjectAs() {
-    if (!project_.hasImage() && project_.vector_objects.empty()) {
+    if (!project_.hasImage() && project_.vector_objects.empty() &&
+        project_.embroidery_objects.empty()) {
         QMessageBox::information(this, tr("Rien à enregistrer"),
                                  tr("Ouvrez une image et créez des objets d'abord."));
         return;
@@ -7005,11 +7026,22 @@ void MainWindow::updateActions() {
     statsAct_->setEnabled(sequence_.has_value());
     exportDstAct_->setEnabled(sequence_.has_value());
     // Actions « document requis » : mêmes gardes que leurs slots (qui restent en place).
-    const bool hasDocument = hasImage || !project_.vector_objects.empty();
-    saveProjectAct_->setEnabled(hasDocument);
-    saveProjectAsAct_->setEnabled(hasDocument);
-    exportDxfAct_->setEnabled(!project_.vector_objects.empty());
-    analyzeAct_->setEnabled(sequence_.has_value());
+    // « Contenu » = même critère que updateEmptyState()/onAutosaveTick() (image, vecteurs ou
+    // broderie) ; Enregistrer reste actif dès que le document a un fichier.
+    const bool hasDocument =
+        hasImage || !project_.vector_objects.empty() || !project_.embroidery_objects.empty();
+    if (saveProjectAct_ != nullptr) {
+        saveProjectAct_->setEnabled(hasDocument || !currentProjectPath_.isEmpty());
+    }
+    if (saveProjectAsAct_ != nullptr) {
+        saveProjectAsAct_->setEnabled(hasDocument);
+    }
+    if (exportDxfAct_ != nullptr) {
+        exportDxfAct_->setEnabled(!project_.vector_objects.empty());
+    }
+    if (analyzeAct_ != nullptr) {
+        analyzeAct_->setEnabled(sequence_.has_value());
+    }
     const bool hasSelection = selectedRegion_.has_value() && project_.segmentation.has_value();
     for (QAction* act : regionActions_) {
         act->setEnabled(hasSelection);

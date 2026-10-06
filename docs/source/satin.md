@@ -1584,7 +1584,7 @@ défaut est bien corrigé, pas seulement que des barreaux existent.
 ### Édition interactive de plusieurs guides
 
 Sélectionner une colonne satin puis activer **Broderie ▸ Éditer les guides
-satin…** (raccourci `G`) affiche chaque barreau et deux poignées. Une extrémité
+satin…** (raccourci `Maj+E`) affiche chaque barreau et deux poignées. Une extrémité
 peut être glissée indépendamment : elle est projetée exactement sur son rail et
 la colonne est régénérée. Plusieurs guides successifs imposent donc plusieurs
 orientations locales ; `fill_satin_columns` interpole la correspondance de
