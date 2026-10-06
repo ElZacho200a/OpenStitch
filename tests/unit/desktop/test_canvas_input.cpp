@@ -7,8 +7,10 @@
 // QWheelEvent), aucun sleep, aucune comparaison de pixels.
 #include <QApplication>
 #include <QComboBox>
+#include <QDialog>
 #include <QGraphicsRectItem>
 #include <QGraphicsScene>
+#include <QMenu>
 #include <QPushButton>
 #include <QScopeGuard>
 #include <QScrollBar>
@@ -418,10 +420,12 @@ private slots:
         CanvasView view(&scene);
         prepareView(view);
         view.setFocus();
+        QSignalSpy clicked(&view, &CanvasView::canvasClickedMm);
         const QPoint start = scrollPos(view);
 
         drag(view, Qt::LeftButton, QPoint(200, 200), QPoint(160, 180));
         const QPoint plainDelta = scrollPos(view) - start;
+        QCOMPARE(clicked.count(), 1); // le glisser seul émet encore son « clic »
         view.horizontalScrollBar()->setValue(start.x());
         view.verticalScrollBar()->setValue(start.y());
 
@@ -429,6 +433,7 @@ private slots:
         drag(view, Qt::LeftButton, QPoint(200, 200), QPoint(160, 180));
         QTest::keyRelease(&view, Qt::Key_Space);
         QCOMPARE(scrollPos(view) - start, plainDelta);
+        QCOMPARE(clicked.count(), 1); // Espace + glisser : aucun clic de plus
     }
 
     // Avec un outil de dessin actif (ici le cadre élastique), Espace + glisser
@@ -752,6 +757,7 @@ private slots:
         const QPoint at(150, 120);
         QTest::mouseClick(view.viewport(), Qt::LeftButton, Qt::AltModifier, at);
         QCOMPARE(clicked.count(), 0);
+        QVERIFY(below.wait(500)); // émission différée (file d'évènements)
         QCOMPARE(below.count(), 1);
         QVERIFY(nearlyEqual(below.at(0).at(0).toPointF(), view.mapToScene(at), 0.5));
         QCOMPARE(below.at(0).at(1).toPoint(), view.viewport()->mapToGlobal(at));
@@ -983,6 +989,217 @@ private slots:
 
         view.setFocus();
         QTest::keyPress(&view, Qt::Key_Space);
+        QCOMPARE(view.viewport()->cursor().shape(), Qt::OpenHandCursor);
+        QTest::keyRelease(&view, Qt::Key_Space);
+        QCOMPARE(view.viewport()->cursor().shape(), base);
+    }
+
+    // ---- revue T2 : Espace hors contexte, boutons concurrents, jours de fenêtre -------------
+
+    void spaceNotConsumedWhilePopupModalOrInactive() {
+        QWidget host;
+        auto* layout = new QVBoxLayout(&host);
+        auto* view = new CanvasView(new QGraphicsScene(&host));
+        auto* button = new QPushButton(QStringLiteral("ok"));
+        layout->addWidget(view, 1);
+        layout->addWidget(button);
+        host.resize(400, 500);
+        host.show();
+        QVERIFY(QTest::qWaitForWindowExposed(&host));
+        host.activateWindow();
+        QVERIFY(QTest::qWaitForWindowActive(&host));
+        button->setFocus();
+        QEnterEvent enter(QPointF(50, 50), QPointF(50, 50), QPointF(50, 50));
+        QApplication::sendEvent(view->viewport(), &enter);
+
+        // Contrôle : actif, curseur sur le viewport -> consommé.
+        QTest::keyPress(button, Qt::Key_Space);
+        QVERIFY(view->spaceHeld());
+        QTest::keyRelease(button, Qt::Key_Space);
+        QVERIFY(!view->spaceHeld());
+
+        // Popup ouvert : Espace appartient au popup.
+        {
+            QMenu menu;
+            menu.addAction(QStringLiteral("a"));
+            menu.popup(host.mapToGlobal(QPoint(10, 10)));
+            QVERIFY(QTest::qWaitForWindowExposed(&menu));
+            QVERIFY(QApplication::activePopupWidget() != nullptr);
+            QTest::keyPress(button, Qt::Key_Space);
+            QVERIFY(!view->spaceHeld());
+            QTest::keyRelease(button, Qt::Key_Space);
+            menu.close();
+        }
+
+        // Boîte modale ouverte.
+        {
+            QDialog dialog;
+            dialog.setModal(true);
+            dialog.show();
+            QVERIFY(QTest::qWaitForWindowExposed(&dialog));
+            QVERIFY(QApplication::activeModalWidget() != nullptr);
+            QTest::keyPress(button, Qt::Key_Space);
+            QVERIFY(!view->spaceHeld());
+            QTest::keyRelease(button, Qt::Key_Space);
+            dialog.close();
+        }
+
+        // Fenêtre inactive.
+        {
+            QWidget other;
+            other.show();
+            QVERIFY(QTest::qWaitForWindowExposed(&other));
+            other.activateWindow();
+            QVERIFY(QTest::qWaitForWindowActive(&other));
+            QVERIFY(!host.isActiveWindow());
+            QTest::keyPress(button, Qt::Key_Space);
+            QVERIFY(!view->spaceHeld());
+            QTest::keyRelease(button, Qt::Key_Space);
+        }
+    }
+
+    void secondButtonDuringMiddlePanIsIgnored() {
+        QGraphicsScene scene;
+        CanvasView view(&scene);
+        prepareSelectView(view);
+        QSignalSpy clicked(&view, &CanvasView::canvasClickedMm);
+        QSignalSpy rect(&view, &CanvasView::selectionRectangleMm);
+        InteractionMap::setLongPressMsForTesting(1);
+        const auto restore = qScopeGuard([] { InteractionMap::setLongPressMsForTesting(-1); });
+        QSignalSpy below(&view, &CanvasView::selectBelowRequested);
+
+        sendMouse(view, QEvent::MouseButtonPress, QPoint(200, 200), Qt::MiddleButton,
+                  Qt::MiddleButton, Qt::NoModifier);
+        sendMouse(view, QEvent::MouseButtonPress, QPoint(200, 200), Qt::LeftButton,
+                  Qt::MiddleButton | Qt::LeftButton, Qt::NoModifier);
+        QTest::qWait(30); // un appui long armé à tort aurait tiré
+        sendMouse(view, QEvent::MouseButtonRelease, QPoint(200, 200), Qt::LeftButton,
+                  Qt::MiddleButton, Qt::NoModifier);
+        sendMouse(view, QEvent::MouseButtonRelease, QPoint(200, 200), Qt::MiddleButton,
+                  Qt::NoButton, Qt::NoModifier);
+        QCOMPARE(clicked.count(), 0);
+        QCOMPARE(rect.count(), 0);
+        QCOMPARE(below.count(), 0);
+
+        // Le pan est terminé proprement : un clic gauche normal refonctionne.
+        InteractionMap::setLongPressMsForTesting(-1);
+        QTest::mouseClick(view.viewport(), Qt::LeftButton, Qt::NoModifier, QPoint(150, 120));
+        QCOMPARE(clicked.count(), 1);
+    }
+
+    void middlePressDuringRubberBandIsIgnored() {
+        QGraphicsScene scene;
+        CanvasView view(&scene);
+        prepareSelectView(view);
+        QSignalSpy rect(&view, &CanvasView::selectionRectangleMm);
+        const QPoint before = scrollPos(view);
+
+        QTest::mousePress(view.viewport(), Qt::LeftButton, Qt::NoModifier, QPoint(100, 100));
+        QTest::mouseMove(view.viewport(), QPoint(160, 140));
+        QTest::mouseMove(view.viewport(), QPoint(220, 200));
+        sendMouse(view, QEvent::MouseButtonPress, QPoint(220, 200), Qt::MiddleButton,
+                  Qt::LeftButton | Qt::MiddleButton, Qt::NoModifier);
+        QTest::mouseMove(view.viewport(), QPoint(260, 240)); // ne doit pas panoramiquer
+        sendMouse(view, QEvent::MouseButtonRelease, QPoint(260, 240), Qt::MiddleButton,
+                  Qt::LeftButton, Qt::NoModifier);
+        QTest::mouseRelease(view.viewport(), Qt::LeftButton, Qt::NoModifier, QPoint(260, 240));
+
+        QCOMPARE(scrollPos(view), before);
+        QCOMPARE(rect.count(), 1);
+    }
+
+    void wheelWithUndefinedModifiersStillZooms() {
+        for (const Qt::KeyboardModifiers mod :
+             {Qt::KeyboardModifiers(Qt::ControlModifier | Qt::ShiftModifier),
+              Qt::KeyboardModifiers(Qt::MetaModifier)}) {
+            QGraphicsScene scene;
+            CanvasView view(&scene);
+            prepareView(view);
+            const double initial = view.pixelsPerMm();
+            sendWheel(view, QPoint(200, 200), QPoint(0, 120), QPoint(), mod);
+            QVERIFY(view.pixelsPerMm() > initial);
+        }
+        // Alt + autre modificateur : ignoré (ni zoom ni défilement).
+        QGraphicsScene scene;
+        CanvasView view(&scene);
+        prepareView(view);
+        const double initial = view.pixelsPerMm();
+        const QPoint before = scrollPos(view);
+        sendWheel(view, QPoint(200, 200), QPoint(0, 120), QPoint(),
+                  Qt::AltModifier | Qt::ShiftModifier);
+        QCOMPARE(view.pixelsPerMm(), initial);
+        QCOMPARE(scrollPos(view), before);
+    }
+
+    // Le slot d'un QMenu::exec() tourne dans sa propre boucle : l'état de sélection
+    // doit déjà être soldé quand il s'exécute (émission différée).
+    void selectBelowSlotRunsAfterStateIsCleaned() {
+        QGraphicsScene scene;
+        CanvasView view(&scene);
+        prepareSelectView(view);
+        QSignalSpy clicked(&view, &CanvasView::canvasClickedMm);
+        int slotClicks = -1;
+        QObject::connect(&view, &CanvasView::selectBelowRequested, &view, [&] {
+            // Re-entrance : un clic normal pendant le « menu » doit fonctionner.
+            QTest::mouseClick(view.viewport(), Qt::LeftButton, Qt::NoModifier, QPoint(150, 120));
+            slotClicks = static_cast<int>(clicked.count());
+        });
+        QTest::mouseClick(view.viewport(), Qt::LeftButton, Qt::AltModifier, QPoint(150, 120));
+        QCOMPARE(slotClicks, -1); // pas émis de façon synchrone
+        QTRY_COMPARE(slotClicks, 1);
+    }
+
+    void twoCanvasViewsHaveIndependentSpaceState() {
+        QGraphicsScene sceneA;
+        QGraphicsScene sceneB;
+        auto* a = new CanvasView(&sceneA);
+        CanvasView b(&sceneB);
+        prepareView(*a);
+        prepareView(b);
+        QEnterEvent enter(QPointF(50, 50), QPointF(50, 50), QPointF(50, 50));
+        QEvent leave(QEvent::Leave);
+        QApplication::sendEvent(b.viewport(), &leave);
+        QApplication::sendEvent(a->viewport(), &enter);
+        a->setFocus();
+        QTest::keyPress(a, Qt::Key_Space);
+        QVERIFY(a->spaceHeld());
+        QVERIFY(!b.spaceHeld());
+        QTest::keyRelease(a, Qt::Key_Space);
+        delete a; // le filtre de B reste fonctionnel
+        QApplication::sendEvent(b.viewport(), &enter);
+        b.setFocus();
+        QTest::keyPress(&b, Qt::Key_Space);
+        QVERIFY(b.spaceHeld());
+        QTest::keyRelease(&b, Qt::Key_Space);
+    }
+
+    void leavingViewportResetsModifierCacheAndCursor() {
+        QGraphicsScene scene;
+        CanvasView view(&scene);
+        prepareSelectView(view);
+        const Qt::CursorShape base = view.viewport()->cursor().shape();
+        QSignalSpy mods(&view, &CanvasView::modifiersChanged);
+        sendMouse(view, QEvent::MouseMove, QPoint(100, 100), Qt::NoButton, Qt::NoButton,
+                  Qt::ShiftModifier);
+        QCOMPARE(view.viewport()->cursor().shape(), Qt::BitmapCursor);
+        QCOMPARE(mods.count(), 1);
+
+        QEvent leave(QEvent::Leave);
+        QApplication::sendEvent(view.viewport(), &leave);
+        QCOMPARE(mods.count(), 2);
+        QCOMPARE(mods.at(1).at(0).value<Qt::KeyboardModifiers>(), Qt::KeyboardModifiers());
+        QCOMPARE(view.viewport()->cursor().shape(), base);
+    }
+
+    void cursorRestoredAfterSetBaseContextDuringSpace() {
+        QGraphicsScene scene;
+        CanvasView view(&scene);
+        prepareSelectView(view);
+        const Qt::CursorShape base = view.viewport()->cursor().shape();
+        view.setFocus();
+        QTest::keyPress(&view, Qt::Key_Space);
+        QCOMPARE(view.viewport()->cursor().shape(), Qt::OpenHandCursor);
+        view.setBaseContext(Context::NodeEdit); // changement de contexte en plein Espace
         QCOMPARE(view.viewport()->cursor().shape(), Qt::OpenHandCursor);
         QTest::keyRelease(&view, Qt::Key_Space);
         QCOMPARE(view.viewport()->cursor().shape(), base);

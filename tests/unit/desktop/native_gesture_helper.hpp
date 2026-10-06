@@ -4,7 +4,8 @@
 // Unique point de construction d'un QNativeGestureEvent pour les tests : la
 // signature du constructeur diffère selon la version de Qt (le constructeur à
 // « quint64 intArgument » est déprécié depuis 6.2 ; celui avec nombre de doigts
-// et delta existe de 6.2 à 6.8 au moins). Ne pas construire l'évènement ailleurs.
+// et delta est vérifié sur Qt 6.4.2 ; la CI construit avec 6.8.3). Ne pas construire l'évènement
+// ailleurs.
 
 #include <QNativeGestureEvent>
 #include <QPointingDevice>

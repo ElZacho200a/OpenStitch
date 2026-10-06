@@ -94,11 +94,13 @@ entre les deux marqueurs.
 | S1 | Sélection | Clic | Sélectionner (le vide désélectionne) |
 | S2 | Sélection | Maj + clic | Ajouter à la sélection |
 | S3 | Sélection | Ctrl + clic | Basculer dans la sélection |
+| S3b | Sélection | Ctrl + Maj + clic | Basculer dans la sélection |
 | S4 | Sélection | Appui long | Sélectionner dessous |
 | S5 | Sélection | Alt + clic | Sélectionner dessous |
 | S6 | Sélection | Glisser | Sélection par rectangle (vers la droite : englobe, vers la gauche : croise) |
 | S7 | Sélection | Maj + glisser | Rectangle : ajouter à la sélection |
 | S8 | Sélection | Ctrl + glisser | Rectangle : basculer dans la sélection |
+| S8b | Sélection | Ctrl + Maj + glisser | Rectangle : basculer dans la sélection |
 | S10 | Sélection | Double-clic | Entrer en édition de l'objet |
 | S11 | Sélection | Survol | Surbrillance de pré-sélection |
 | M1 | Déplacement | Glisser | Déplacer l'objet |

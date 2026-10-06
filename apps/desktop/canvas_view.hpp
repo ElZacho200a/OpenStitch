@@ -176,7 +176,7 @@ private:
     bool filterKey(QKeyEvent* event);
     void setSpaceHeld(bool held);
     void updateModifiers(Qt::KeyboardModifiers mods);
-    void resetTransientInput();
+    void resetTransientInput(bool cursorLeft = true);
     void startPan(const QPoint& viewportPos, Qt::MouseButton button);
     void startZoomDrag(const QPoint& viewportPos, Qt::MouseButton button);
     void endGesture();
@@ -187,6 +187,7 @@ private:
     void emitSelectionClick(const QPoint& viewportPos, const QPoint& globalPos,
                             Qt::KeyboardModifiers mods);
     void fireLongPress();
+    void queueSelectBelow(QPointF posMm, QPoint globalPos);
 
     QSizeF canvasMm_{100.0, 100.0};
     bool cropMode_{false};

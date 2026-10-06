@@ -98,9 +98,11 @@ protected:
 };
 
 // Curseur de modificateur 24x24 dessiné par code : flèche + symbole.
-QCursor makeModifierCursor(QChar symbol) {
+// `dpr` = devicePixelRatioF du viewport (écrans HiDPI : pixmap 2x, hotspot logique).
+QCursor makeModifierCursor(QChar symbol, qreal dpr) {
     const auto& t = AppTheme::instance().tokens();
-    QPixmap pm(24, 24);
+    QPixmap pm(QSize(24, 24) * dpr);
+    pm.setDevicePixelRatio(dpr);
     pm.fill(Qt::transparent);
     QPainter p(&pm);
     p.setRenderHint(QPainter::Antialiasing);
@@ -175,6 +177,10 @@ CanvasView::CanvasView(QGraphicsScene* scene, QWidget* parent) : QGraphicsView(s
         setBackgroundBrush(AppTheme::instance().tokens().canvasBackground);
         resetCachedContent();
         viewport()->update();
+        // Les pixmaps de curseur (+, ±) sont recolorés par les tokens : on force
+        // leur reconstruction.
+        cursorKind_ = -1;
+        refreshCursor();
     });
 
     // Note : fromScenePoint/toScenePoint (paramètres du signal) accusent un
@@ -411,7 +417,13 @@ void CanvasView::wheelEvent(QWheelEvent* event) {
     if (!pixel.isNull() && mods == Qt::KeyboardModifiers{}) {
         g.kind = GestureKind::PixelScroll;
     }
-    const auto intent = InteractionMap::resolve(currentContext(), g);
+    auto intent = InteractionMap::resolve(currentContext(), g);
+    if (!intent && (mods & Qt::AltModifier) == 0) {
+        // Ctrl+Maj+molette, Meta+molette... : non définis par la table mais zoomaient
+        // avant L5 ; on ne régresse pas silencieusement. (Alt + autre modificateur :
+        // ignoré, comme Alt+Maj/Ctrl + clic.)
+        intent = Intent::ZoomAtCursor;
+    }
     if (!intent) {
         return;
     }
@@ -447,7 +459,10 @@ bool CanvasView::viewportEvent(QEvent* event) {
         cursorOverViewport_ = true;
         break;
     case QEvent::Leave:
+        // Le curseur quitte le viewport : le cache de modificateurs (et donc le
+        // curseur « + » / « ± ») ne doit pas survivre à l'état clavier qu'on ne voit plus.
         cursorOverViewport_ = false;
+        updateModifiers(Qt::NoModifier);
         break;
     case QEvent::NativeGesture: {
         const auto* g = static_cast<QNativeGestureEvent*>(event);
@@ -533,10 +548,10 @@ void CanvasView::refreshCursor() {
         viewport()->setCursor(Qt::OpenHandCursor);
         break;
     case 3:
-        viewport()->setCursor(makeModifierCursor(QChar(u'+')));
+        viewport()->setCursor(makeModifierCursor(QChar(u'+'), viewport()->devicePixelRatioF()));
         break;
     case 4:
-        viewport()->setCursor(makeModifierCursor(QChar(0x00B1)));
+        viewport()->setCursor(makeModifierCursor(QChar(0x00B1), viewport()->devicePixelRatioF()));
         break;
     default:
         viewport()->setCursor(Qt::DragCopyCursor);
@@ -552,7 +567,11 @@ void CanvasView::setSpaceHeld(bool held) {
     refreshCursor();
 }
 
-void CanvasView::resetTransientInput() {
+void CanvasView::resetTransientInput(bool cursorLeft) {
+    if (cursorLeft) {
+        cursorOverViewport_ = false;
+    }
+    middleDoubleClickPending_ = false;
     spaceConsumed_ = false;
     setSpaceHeld(false);
     cancelSelectionPress();
@@ -605,8 +624,25 @@ void CanvasView::fireLongPress() {
     if (!selectionPress_ || rectActive_) {
         return;
     }
-    longPressFired_ = true;
-    emit selectBelowRequested(mapToScene(pressViewportPos_), pressGlobalPos_, SelectMode::Replace);
+    const QPointF posMm = mapToScene(pressViewportPos_);
+    const QPoint globalPos = pressGlobalPos_;
+    // État de sélection soldé AVANT l'émission : le relâchement qui suit (souvent
+    // capté par le menu ouvert) n'émet ni clic ni rectangle, et un appui suivant
+    // n'est pas bloqué par un état périmé.
+    cancelSelectionPress();
+    queueSelectBelow(posMm, globalPos);
+}
+
+// Émission différée : le slot ouvre en général un QMenu::exec(), dont la boucle
+// d'évènements ne doit pas tourner au milieu de notre gestionnaire souris (état
+// de sélection à moitié nettoyé, appui long encore armé).
+void CanvasView::queueSelectBelow(QPointF posMm, QPoint globalPos) {
+    QMetaObject::invokeMethod(
+        this,
+        [this, posMm, globalPos] {
+            emit selectBelowRequested(posMm, globalPos, SelectMode::Replace);
+        },
+        Qt::QueuedConnection);
 }
 
 void CanvasView::emitSelectionClick(const QPoint& viewportPos, const QPoint& globalPos,
@@ -617,8 +653,9 @@ void CanvasView::emitSelectionClick(const QPoint& viewportPos, const QPoint& glo
     if ((m & Qt::AltModifier) != 0) {
         const Gesture g{GestureKind::Click, Qt::LeftButton, m, Qt::Key(0)};
         if (InteractionMap::resolve(Context::Select, g) == Intent::SelectBelow) {
-            emit selectBelowRequested(pos, globalPos, SelectMode::Replace);
+            queueSelectBelow(pos, globalPos);
         }
+        // Alt + Maj/Ctrl + clic : non défini par la table, ignoré (comme Alt + glisser).
         return;
     }
     const SelectMode mode = InteractionMap::selectModeFor(m);
@@ -641,8 +678,12 @@ bool CanvasView::filterKey(QKeyEvent* event) {
         if (key == Qt::Key_Alt) {
             if (press && !event->isAutoRepeat()) {
                 altUsedInGesture_ = false;
-            } else if (!press && altUsedInGesture_ && cursorOverViewport_) {
+            } else if (!press && altUsedInGesture_ && cursorOverViewport_ && isVisible() &&
+                       isActiveWindow()) {
                 // Alt seul activerait la barre de menus (Windows) au relâchement.
+                // (Sous Linux, un gestionnaire de fenêtres qui réserve Alt+clic pour
+                // déplacer les fenêtres ne livre pas ce clic à l'application : c'est
+                // hors de notre portée, l'Alt+clic doit y être reconfiguré.)
                 altUsedInGesture_ = false;
                 return true;
             }
@@ -654,7 +695,12 @@ bool CanvasView::filterKey(QKeyEvent* event) {
     }
     if (press) {
         if (!spaceConsumed_) {
-            if (!cursorOverViewport_ || !isVisible() ||
+            // Jamais pendant un menu/popup, une boîte modale ou si la fenêtre n'est
+            // pas active : Espace y appartient à l'autre widget (activer un menu,
+            // valider un bouton de dialogue).
+            if (!cursorOverViewport_ || !isVisible() || !isActiveWindow() ||
+                QApplication::activePopupWidget() != nullptr ||
+                QApplication::activeModalWidget() != nullptr ||
                 (event->modifiers() & ~Qt::KeypadModifier) != 0 ||
                 isTextInput(QApplication::focusWidget())) {
                 return false;
@@ -679,6 +725,12 @@ bool CanvasView::filterKey(QKeyEvent* event) {
 void CanvasView::mousePressEvent(QMouseEvent* event) {
     updateModifiers(event->modifiers());
     cursorOverViewport_ = true;
+    // Un glisser (pan/zoom) ou une sélection est en cours : un autre bouton ne
+    // démarre rien (pas d'état à moitié possédé, pas d'appui long armé).
+    if (panning_ || zoomDragging_ || selectionPress_) {
+        event->accept();
+        return;
+    }
     const Context ctx = currentContext();
     const QPoint viewportPos = event->position().toPoint();
     const Qt::KeyboardModifiers mods = event->modifiers() & kRelevantMods;
@@ -730,16 +782,30 @@ void CanvasView::mousePressEvent(QMouseEvent* event) {
     QGraphicsItem* item = itemAt(viewportPos);
     const bool onInteractiveItem =
         item != nullptr && (item->flags() & QGraphicsItem::ItemIsMovable);
-    // Les poignées ignorent la transformation de vue ; le corps d'un objet
-    // vectoriel (déplaçable) non.
-    const bool onHandle =
+    // Modèle de sélection : on regarde TOUS les items sous le point, pas seulement
+    // le plus haut (un item de survol/surbrillance au-dessus ne doit pas masquer une
+    // poignée). Les poignées ignorent la transformation de vue ; le corps d'un objet
+    // vectoriel (déplaçable) non. NB (T4) : les items de recouvrement/survol doivent
+    // avoir setAcceptedMouseButtons(Qt::NoButton), sinon ils captent le press.
+    bool anyMovable = onInteractiveItem;
+    bool onHandle =
         onInteractiveItem && (item->flags() & QGraphicsItem::ItemIgnoresTransformations);
+    if (inputModelEnabled_ && selectionRectEnabled_ && ctx == Context::Select) {
+        for (const QGraphicsItem* it : items(viewportPos)) {
+            if ((it->flags() & QGraphicsItem::ItemIsMovable) != 0) {
+                anyMovable = true;
+                if ((it->flags() & QGraphicsItem::ItemIgnoresTransformations) != 0) {
+                    onHandle = true;
+                }
+            }
+        }
+    }
     if (event->button() == Qt::LeftButton && inputModelEnabled_ && selectionRectEnabled_ &&
         ctx == Context::Select && !onHandle) {
         const bool selectionMods =
             (mods & (Qt::ShiftModifier | Qt::ControlModifier | Qt::AltModifier)) != 0;
         // Corps déplaçable sans modificateur : glisser d'objet (M1), inchangé.
-        if (!onInteractiveItem || selectionMods) {
+        if (!anyMovable || selectionMods) {
             selectionPress_ = true;
             rectActive_ = false;
             longPressFired_ = false;
@@ -751,7 +817,7 @@ void CanvasView::mousePressEvent(QMouseEvent* event) {
                                                      Qt::NoModifier, Qt::Key(0)})) {
                 longPressTimer_.start(InteractionMap::longPressMs());
             }
-            if (onInteractiveItem) {
+            if (anyMovable) {
                 event->accept(); // Maj/Ctrl/Alt sur un corps : sélection, pas de glisser
             } else {
                 QGraphicsView::mousePressEvent(event);
@@ -843,9 +909,11 @@ void CanvasView::mouseMoveEvent(QMouseEvent* event) {
 
 void CanvasView::mouseReleaseEvent(QMouseEvent* event) {
     updateModifiers(event->modifiers());
-    if ((panning_ || zoomDragging_) && event->button() == gestureButton_) {
-        endGesture();
-        event->accept();
+    if (panning_ || zoomDragging_) {
+        if (event->button() == gestureButton_) {
+            endGesture();
+        }
+        event->accept(); // le relâchement d'un autre bouton est ignoré
         return;
     }
     if (event->button() == Qt::MiddleButton && middleDoubleClickPending_) {
@@ -951,7 +1019,8 @@ void CanvasView::keyReleaseEvent(QKeyEvent* event) {
 }
 
 void CanvasView::focusOutEvent(QFocusEvent* event) {
-    resetTransientInput();
+    // Le focus part, pas forcément le curseur : le drapeau de survol est conservé.
+    resetTransientInput(false);
     QGraphicsView::focusOutEvent(event);
 }
 
