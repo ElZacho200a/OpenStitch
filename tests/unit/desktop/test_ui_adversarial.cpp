@@ -19,18 +19,22 @@
 #include <QMenu>
 #include <QMouseEvent>
 #include <QPointer>
+#include <QPushButton>
 #include <QScopeGuard>
 #include <QScrollBar>
 #include <QSettings>
 #include <QSignalSpy>
 #include <QStandardPaths>
 #include <QStatusBar>
+#include <QTableView>
 #include <QTemporaryDir>
 #include <QTest>
 #include <QTimer>
+#include <QWheelEvent>
 
 #include <algorithm>
 #include <cstdint>
+#include <functional>
 #include <set>
 #include <sstream>
 #include <string>
@@ -41,6 +45,7 @@
 #include "help_dialogs.hpp"
 #include "interaction_map.hpp"
 #include "main_window.hpp"
+#include "native_gesture_helper.hpp"
 #include "node_handle.hpp"
 #include "openstitch/commands/project_commands.hpp"
 #include "openstitch/document/project.hpp"
@@ -275,17 +280,28 @@ private slots:
     // ---- sélection / undo ------------------------------------------------------------
     void fuzzSelectionUndoRedoKeepsInvariants_data() {
         QTest::addColumn<int>("seed");
-        for (const int seed : {1, 2, 3, 4, 5}) {
+        const int extra = qEnvironmentVariableIntValue("OSADV_SEEDS");
+        for (int seed = 1; seed < 6 + std::max(0, extra); ++seed) {
             QTest::newRow(qPrintable(QStringLiteral("seed%1").arg(seed))) << seed;
         }
     }
     void fuzzSelectionUndoRedoKeepsInvariants();
     void fuzzWithoutImageKeepsInvariants();
+    void fuzzCanvasEventsKeepStateMachineSane_data() {
+        QTest::addColumn<int>("seed");
+        // OSADV_SEEDS=N : explore N graines au lieu de 4 (chasse aux défauts hors CI).
+        const int extra = qEnvironmentVariableIntValue("OSADV_SEEDS");
+        for (int seed = 21; seed < 25 + std::max(0, extra); ++seed) {
+            QTest::newRow(qPrintable(QStringLiteral("seed%1").arg(seed))) << seed;
+        }
+    }
+    void fuzzCanvasEventsKeepStateMachineSane();
 
     // ---- Suppr universel -------------------------------------------------------------
     void deleteWithRegionAndEmbroideryBothSelectedKeepsRegionAndUndoRestores();
     void deleteOfSatinProxyEmbroideryRemovesHiddenSourceAndUndoRestoresIndices();
     void deleteMultiSelectionWithEmbroideryChildrenRestoresInterleavedOrder();
+    void deleteWhileAnEditModeTargetsTheDeletedObjectLeavesNoDanglingMode();
     void deleteWhilePolygonIsPendingKeepsThePendingDrawUsable();
     void deleteDuringFreeformStrokeKeepsDocumentConsistent();
     void deleteWithOnlyHiddenProxySourceSelectedViaRectangleIsImpossible();
@@ -303,6 +319,9 @@ private slots:
     void nodeSnapIgnoresHiddenObjects();
     void nodeSnapWithCtrlAtReleaseKeepsRawPosition();
     void nodeSnapIsOffByDefaultAndSettingPersistsAcrossWindows();
+    void hoverHighlightFollowsDeleteUndoMoveAndVisibility();
+    void altPressOnSelectedBodyWithJitterDoesNotBothDuplicateAndOpenMenu();
+    void plainClickWithOnePixelJitterOnSelectedBodyMovesNothing();
 
     // ---- sélection rectangle / dessous ------------------------------------------------
     void degenerateRectanglesNeverSelectOrCrash();
@@ -327,6 +346,8 @@ private slots:
     // ---- menu Aide / préréglages -----------------------------------------------------
     void helpDialogsAreSingleInstanceAcrossRepeatedOpenAndClose();
     void f1WhileDialogOpenAndPresetSwitchWhileDialogOpenThenClose();
+    void gesturesDialogSearchSurvivesHostileInputAndRebuilds();
+    void quickStartButtonsFollowActionStateAndDisabledOnesNeverFire();
     void twoWindowsShareTheGlobalPresetConsistently();
     void presetPersistsAcrossWindowsAndCorruptSettingFallsBack();
 
@@ -443,12 +464,20 @@ void MainWindowTest::runFuzz(int seed, bool withImage) {
     int redos = 0;
     int dups = 0;
     constexpr int kSteps = 200;
-    constexpr int kOps = 22;
+    constexpr int kOps = 24;
     for (int step = 0; step < kSteps; ++step) {
-        const std::uint32_t op = rng.below(kOps);
+        std::uint32_t op = rng.below(kOps);
+        if (op == 12 && rng.below(5) != 0) {
+            op = 10 + rng.below(2); // chargements rares : la pile d'annulation doit vivre
+        }
         const QString where = QStringLiteral("seed %1 step %2 op %3").arg(seed).arg(step).arg(op);
         if (trace) {
             qInfo("%s", qPrintable(where));
+        }
+        if (window.project_.vector_objects.empty() && window.project_.embroidery_objects.empty()) {
+            // Document vide (chargement d'un projet vide) : un nouveau document riche.
+            window.applyLoadedProject(buildBig(withImage).project);
+            baseSnap = snap(window.project_);
         }
         const std::size_t objectsBefore = window.project_.vector_objects.size();
         const bool multiBefore = window.hasMultiSelection();
@@ -495,8 +524,8 @@ void MainWindowTest::runFuzz(int seed, bool withImage) {
             window.redo();
             break;
         case 12: {
-            const std::uint32_t which = rng.below(3);
-            window.applyLoadedProject(which == 0 ? doc::Project{} : buildBig(which == 1).project);
+            const std::uint32_t which = rng.below(8);
+            window.applyLoadedProject(which == 0 ? doc::Project{} : buildBig(which != 1).project);
             baseSnap = snap(window.project_);
             break;
         }
@@ -546,6 +575,20 @@ void MainWindowTest::runFuzz(int seed, bool withImage) {
         case 20:
             window.refreshImage();
             break;
+        case 22:
+        case 23: {
+            // Multi-sélection explicite (2 à 4 objets) puis, une fois sur deux, Suppr.
+            std::vector<ObjectId> subset;
+            const std::uint32_t n = 2 + rng.below(3);
+            for (std::uint32_t i = 0; i < n; ++i) {
+                subset.push_back(anyId());
+            }
+            window.applySelectionRectangle(subset, SelectMode::Replace);
+            if (op == 22) {
+                del->trigger();
+            }
+            break;
+        }
         case 21:
             if (rng.below(4) == 0) {
                 roundTrip(window, baseSnap, where);
@@ -561,9 +604,11 @@ void MainWindowTest::runFuzz(int seed, bool withImage) {
             return;
         }
         multiStates += window.hasMultiSelection() ? 1 : 0;
-        if ((op == 8 || op == 9) && window.project_.vector_objects.size() < objectsBefore) {
+        if ((op == 8 || op == 9 || op == 22) &&
+            window.project_.vector_objects.size() < objectsBefore) {
             ++deletes;
-            multiDeletes += multiBefore ? 1 : 0;
+            multiDeletes +=
+                (objectsBefore - window.project_.vector_objects.size() >= 2 || multiBefore) ? 1 : 0;
         }
         undos += (op == 10 && canUndoBefore) ? 1 : 0;
         redos += (op == 11 && canRedoBefore) ? 1 : 0;
@@ -581,6 +626,9 @@ void MainWindowTest::runFuzz(int seed, bool withImage) {
     roundTrip(window, baseSnap, QStringLiteral("seed %1 final").arg(seed));
     qInfo("coverage seed %d: multi=%d deletes=%d multiDeletes=%d undos=%d redos=%d dups=%d", seed,
           multiStates, deletes, multiDeletes, undos, redos, dups);
+    // Le fuzz doit réellement exercer ce qu'il prétend attaquer.
+    QVERIFY2(multiStates >= 1 && deletes >= 1 && undos >= 1,
+             "fuzz coverage too low: the operation mix no longer exercises the targets");
 }
 
 void MainWindowTest::fuzzSelectionUndoRedoKeepsInvariants() {
@@ -597,6 +645,195 @@ void MainWindowTest::fuzzWithoutImageKeepsInvariants() {
             return;
         }
     }
+}
+
+void MainWindowTest::fuzzCanvasEventsKeepStateMachineSane() {
+    QFETCH(int, seed);
+    MainWindow window;
+    Big big;
+    CanvasView* view = openBig(window, big);
+    QVERIFY(view != nullptr);
+    window.activateWindow();
+    QWidget* w = view->viewport();
+    int modalSeen = 0;
+    QTimer watchdog;
+    watchdog.setInterval(15);
+    connect(&watchdog, &QTimer::timeout, this, [&modalSeen] {
+        if (QWidget* modal = QApplication::activeModalWidget()) {
+            ++modalSeen;
+            modal->close();
+        }
+        for (QWidget* top : QApplication::topLevelWidgets()) {
+            if (auto* menu = qobject_cast<QMenu*>(top); menu != nullptr && menu->isVisible()) {
+                menu->close();
+            }
+        }
+    });
+    watchdog.start();
+    Lcg rng{static_cast<std::uint32_t>(seed) * 40503u + 7u};
+    Qt::MouseButtons down;
+    std::vector<Qt::MouseButton> pressOrder;
+    const Qt::MouseButton buttons[] = {Qt::LeftButton, Qt::LeftButton, Qt::LeftButton,
+                                       Qt::MiddleButton, Qt::RightButton};
+    const Tool tools[] = {Tool::Select,      Tool::Select,        Tool::Pan,
+                          Tool::DrawPolygon, Tool::DrawRectangle, Tool::DrawEllipse,
+                          Tool::DrawBezier,  Tool::DrawFreeform,  Tool::DrawPolygonRegular};
+    const auto point = [&] {
+        return vp(view, static_cast<double>(rng.below(120)) - 60.0,
+                  static_cast<double>(rng.below(60)) - 30.0);
+    };
+    const auto mods = [&] {
+        Qt::KeyboardModifiers m;
+        const std::uint32_t r = rng.below(8);
+        if (r & 1) {
+            m |= Qt::ShiftModifier;
+        }
+        if (r & 2) {
+            m |= Qt::ControlModifier;
+        }
+        if (r & 4) {
+            m |= Qt::AltModifier;
+        }
+        return m;
+    };
+    const Qt::Key keys[] = {Qt::Key_Space,  Qt::Key_Shift, Qt::Key_Control, Qt::Key_Alt,
+                            Qt::Key_Escape, Qt::Key_Left,  Qt::Key_Up,      Qt::Key_Right};
+    qInfo("canvas fuzz seed %d", seed);
+    for (int step = 0; step < 400; ++step) {
+        const std::uint32_t op = rng.below(16);
+        const QString where = QStringLiteral("seed %1 step %2 op %3").arg(seed).arg(step).arg(op);
+        switch (op) {
+        case 0:
+        case 1:
+        case 2:
+            sendMouse(w, QEvent::MouseMove, point(), Qt::NoButton, down, mods());
+            break;
+        case 3:
+        case 4: {
+            const Qt::MouseButton b = buttons[rng.below(5)];
+            if (!down.testFlag(b)) {
+                down |= b;
+                pressOrder.push_back(b);
+                sendMouse(w, QEvent::MouseButtonPress, point(), b, down, mods());
+            }
+            break;
+        }
+        case 5:
+        case 6:
+            if (!pressOrder.empty()) {
+                const std::size_t i = rng.below(static_cast<std::uint32_t>(pressOrder.size()));
+                const Qt::MouseButton b = pressOrder[i];
+                pressOrder.erase(pressOrder.begin() + static_cast<std::ptrdiff_t>(i));
+                down &= ~Qt::MouseButtons(b);
+                sendMouse(w, QEvent::MouseButtonRelease, point(), b, down, mods());
+            }
+            break;
+        case 7: {
+            const Qt::MouseButton b = buttons[rng.below(5)];
+            if (down == Qt::NoButton) {
+                sendMouse(w, QEvent::MouseButtonDblClick, point(), b, b, mods());
+                sendMouse(w, QEvent::MouseButtonRelease, point(), b, Qt::NoButton, mods());
+            }
+            break;
+        }
+        case 8: {
+            const QPoint at = point();
+            const int delta =
+                (static_cast<int>(rng.below(7)) - 3) * 60 + (rng.below(4) == 0 ? 7 : 0);
+            const bool xOnly = rng.below(4) == 0;
+            QWheelEvent wheel(QPointF(at), QPointF(w->mapToGlobal(at)),
+                              rng.below(5) == 0 ? QPoint(0, delta / 4) : QPoint(),
+                              xOnly ? QPoint(delta, 0) : QPoint(0, delta), down, mods(),
+                              Qt::NoScrollPhase, false);
+            QApplication::sendEvent(w, &wheel);
+            break;
+        }
+        case 9: {
+            const Qt::Key k = keys[rng.below(8)];
+            QKeyEvent press(QEvent::KeyPress, k, mods());
+            QApplication::sendEvent(view, &press);
+            if (rng.below(3) != 0) {
+                QKeyEvent release(QEvent::KeyRelease, k, Qt::NoModifier);
+                QApplication::sendEvent(view, &release);
+            }
+            break;
+        }
+        case 10: {
+            QFocusEvent ev(rng.below(2) == 0 ? QEvent::FocusOut : QEvent::FocusIn,
+                           Qt::ActiveWindowFocusReason);
+            QApplication::sendEvent(view, &ev);
+            break;
+        }
+        case 11:
+            window.setTool(tools[rng.below(9)]);
+            break;
+        case 12: {
+            QEvent ev(rng.below(2) == 0 ? QEvent::Enter : QEvent::Leave);
+            QApplication::sendEvent(w, &ev);
+            break;
+        }
+        case 13: {
+            const auto native = makeNativeGesture(
+                rng.below(2) == 0 ? Qt::ZoomNativeGesture : Qt::PanNativeGesture, QPointF(point()),
+                (static_cast<double>(rng.below(21)) - 10.0) / 40.0,
+                QPointF(static_cast<double>(rng.below(40)) - 20.0, 5.0));
+            QApplication::sendEvent(w, native.get());
+            break;
+        }
+        case 14:
+            window.findChild<QAction*>(QStringLiteral("action_deleteRegion"))->trigger();
+            if (rng.below(2) == 0) {
+                window.undo();
+            }
+            break;
+        case 15:
+            QCoreApplication::processEvents();
+            if (rng.below(12) == 0) {
+                window.hide();
+                window.show();
+            }
+            break;
+        default:
+            break;
+        }
+        const QString problem = checkAll(window);
+        QVERIFY2(problem.isEmpty(), qPrintable(where + QStringLiteral(": ") + problem));
+        const double ppm = view->pixelsPerMm();
+        QVERIFY2(ppm > 0.0 && ppm < 1e6, qPrintable(where + QStringLiteral(": zoom %1").arg(ppm)));
+    }
+    // Retour au calme : tous les boutons relâchés, outil Sélection, aucun appui résiduel.
+    for (const Qt::MouseButton b : pressOrder) {
+        down &= ~Qt::MouseButtons(b);
+        sendMouse(w, QEvent::MouseButtonRelease, vp(view, 0, 0), b, down, {});
+    }
+    QCoreApplication::processEvents();
+    closePopups();
+    window.cancelPolygonDraw();
+    window.setTool(Tool::Select);
+    window.hide();
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+    view->resetTransform();
+    view->scale(10.0, 10.0);
+    view->centerOn(QPointF(0.0, 0.0));
+    QKeyEvent spaceUp(QEvent::KeyRelease, Qt::Key_Space, Qt::NoModifier);
+    QApplication::sendEvent(view, &spaceUp);
+    window.applySelectionClick(std::nullopt, SelectMode::Replace);
+    // La machine à états doit avoir récupéré : un clic simple sélectionne, sans modificateur
+    // fantôme (Maj/Ctrl/Alt rémanents) ni pan fantôme.
+    const ObjectId target = big.squares[2];
+    const auto* obj = window.project_.findObject(target);
+    if (obj != nullptr && obj->visible) {
+        sendMouse(w, QEvent::MouseMove, vp(view, 0, 20), Qt::NoButton, Qt::NoButton, {});
+        QTest::mouseClick(w, Qt::LeftButton, Qt::NoModifier, vp(view, 0, 0));
+        const auto ids = window.selectedObjectIds();
+        QVERIFY2(ids.size() == 1,
+                 qPrintable(QStringLiteral("seed %1: plain click selected %2 objects")
+                                .arg(seed)
+                                .arg(ids.size())));
+    }
+    QVERIFY2(modalSeen == 0,
+             qPrintable(QStringLiteral("unexpected modal dialog x%1").arg(modalSeen)));
 }
 
 // ---- Suppr ---------------------------------------------------------------------------
@@ -668,6 +905,69 @@ void MainWindowTest::deleteMultiSelectionWithEmbroideryChildrenRestoresInterleav
         QVERIFY(window.project_.findObject(big.squares[0]) == nullptr);
         QVERIFY(window.checkSelectionInvariants());
     }
+}
+
+void MainWindowTest::deleteWhileAnEditModeTargetsTheDeletedObjectLeavesNoDanglingMode() {
+    // Modes d'édition (points / guides satin / rails) : supprimer l'objet ciblé (Suppr, undo,
+    // redo) ne doit laisser ni cible pendante, ni mode coché sans cible, ni génération cassée.
+    struct Case {
+        const char* name;
+        std::function<QAction*(MainWindow&)> mode;
+        std::function<ObjectId(const Big&)> embroidery;
+        std::function<bool(MainWindow&)> hasTarget;
+    };
+    const std::vector<Case> cases = {
+        {"stitchEdit", [](MainWindow& w) { return w.stitchEditModeAct_; },
+         [](const Big& b) { return b.embroideries[0]; },
+         [](MainWindow& w) { return w.stitchEditTarget_.has_value(); }},
+        {"satinGuides", [](MainWindow& w) { return w.satinGuideModeAct_; },
+         [](const Big& b) { return b.proxyEmb; },
+         [](MainWindow& w) { return w.satinGuideTarget_.has_value(); }},
+        {"railEdit", [](MainWindow& w) { return w.railEditModeAct_; },
+         [](const Big& b) { return b.proxyEmb; },
+         [](MainWindow& w) { return w.railEditTarget_.has_value(); }},
+    };
+    QStringList exercised;
+    for (const Case& c : cases) {
+        MainWindow window;
+        const Big big = buildBig();
+        window.applyLoadedProject(big.project);
+        window.setSelection(
+            {.region = std::nullopt, .embroidery = c.embroidery(big), .objects = {}});
+        window.selectionChanged();
+        QAction* mode = c.mode(window);
+        QVERIFY2(mode != nullptr, c.name);
+        if (!mode->isEnabled()) {
+            continue; // mode non activable pour cet objet dans cette version : rien à attaquer
+        }
+        mode->setChecked(true);
+        if (!c.hasTarget(window)) {
+            continue;
+        }
+        exercised << QLatin1String(c.name);
+        // Suppr de la broderie ciblée (et de son proxy source invisible pour le satin).
+        window.deleteSelection();
+        QVERIFY2(window.project_.findEmbroidery(c.embroidery(big)) == nullptr, c.name);
+        const bool targetGone = !c.hasTarget(window);
+        QVERIFY2(targetGone || mode->isChecked(), c.name);
+        QVERIFY2(!mode->isChecked() || targetGone,
+                 qPrintable(QStringLiteral("%1: mode still checked with a dangling target")
+                                .arg(QLatin1String(c.name))));
+        // La génération des points n'est pas cassée par la cible disparue.
+        QVERIFY2(window.sequence_.has_value(),
+                 qPrintable(QStringLiteral("%1: sequence lost after deleting the edit target")
+                                .arg(QLatin1String(c.name))));
+        QVERIFY2(window.exportDstAct_->isEnabled(), c.name);
+        QVERIFY(window.checkSelectionInvariants());
+        window.undo();
+        QVERIFY(window.project_.findEmbroidery(c.embroidery(big)) != nullptr);
+        window.redo();
+        QVERIFY(window.sequence_.has_value());
+        QVERIFY(window.checkSelectionInvariants());
+    }
+    qInfo("edit modes exercised: %s", qPrintable(exercised.join(QLatin1Char(','))));
+    QVERIFY2(exercised.contains(QStringLiteral("stitchEdit")),
+             "the stitch edit mode could not be activated: the attack no longer runs");
 }
 
 void MainWindowTest::deleteWhilePolygonIsPendingKeepsThePendingDrawUsable() {
@@ -1025,6 +1325,112 @@ void MainWindowTest::nodeSnapIsOffByDefaultAndSettingPersistsAcrossWindows() {
     QVERIFY(!window.snapNodesAct_->isChecked());
 }
 
+void MainWindowTest::hoverHighlightFollowsDeleteUndoMoveAndVisibility() {
+    MainWindow window;
+    Big big;
+    CanvasView* view = openBig(window, big);
+    QVERIFY(view != nullptr);
+    QWidget* w = view->viewport();
+    const auto hoverAt = [&](double xMm, double yMm) {
+        // Deux évènements : le premier peut être traité aussitôt, le dernier est coalescé.
+        sendMouse(w, QEvent::MouseMove, vp(view, xMm, yMm) + QPoint(1, 0), Qt::NoButton,
+                  Qt::NoButton, {});
+        sendMouse(w, QEvent::MouseMove, vp(view, xMm, yMm), Qt::NoButton, Qt::NoButton, {});
+    };
+    const auto shown = [&] {
+        return window.hoverItem_ != nullptr && window.hoverItem_->isVisible();
+    };
+    hoverAt(-30, 0);
+    QTRY_VERIFY_WITH_TIMEOUT(shown(), 2000);
+    // L'objet survolé est supprimé : plus de surbrillance, même sans bouger la souris.
+    window.applySelectionClick(big.squares[0], SelectMode::Replace);
+    window.deleteSelection();
+    QVERIFY(!shown());
+    hoverAt(-30, 0);
+    QTest::qWait(60);
+    QVERIFY(!shown());
+    // Annulation : l'objet revient, le survol aussi.
+    window.undo();
+    hoverAt(-30, 0);
+    QTRY_VERIFY_WITH_TIMEOUT(shown(), 2000);
+    // Déplacement d'un objet (cache des contours) : l'ancien emplacement n'est plus surligné.
+    window.translateObjects({big.squares[0]}, Vec2um{Micrometers{0}, Micrometers{30'000}});
+    hoverAt(-30, 0);
+    QTest::qWait(60);
+    QVERIFY(!shown());
+    hoverAt(-30, -30);
+    QTRY_VERIFY_WITH_TIMEOUT(shown(), 2000);
+    // Objet masqué : jamais surligné.
+    window.project_.findObject(big.squares[0])->visible = false;
+    window.refreshImage();
+    hoverAt(-30, -30);
+    QTest::qWait(60);
+    QVERIFY(!shown());
+    window.project_.findObject(big.squares[0])->visible = true;
+    window.refreshImage();
+    // Objet sélectionné : jamais surligné ; le curseur quitte le viewport : masqué.
+    hoverAt(-15, 0);
+    QTRY_VERIFY_WITH_TIMEOUT(shown(), 2000);
+    window.applySelectionClick(big.squares[1], SelectMode::Replace);
+    hoverAt(-15, 0);
+    QTest::qWait(60);
+    QVERIFY(!shown());
+    hoverAt(0, 0);
+    QTRY_VERIFY_WITH_TIMEOUT(shown(), 2000);
+    QEvent leave(QEvent::Leave);
+    QApplication::sendEvent(w, &leave);
+    QVERIFY(!shown());
+    // Outil changé pendant une surbrillance en attente : masqué et rien ne réapparaît.
+    hoverAt(0, 0);
+    window.setTool(Tool::Pan);
+    QTest::qWait(60);
+    QVERIFY(!shown());
+}
+
+void MainWindowTest::altPressOnSelectedBodyWithJitterDoesNotBothDuplicateAndOpenMenu() {
+    MainWindow window;
+    Big big;
+    CanvasView* view = openBig(window, big);
+    QVERIFY(view != nullptr);
+    window.applySelectionClick(big.squares[1], SelectMode::Replace);
+    window.refreshImage();
+    QSignalSpy below(view, &CanvasView::selectBelowRequested);
+    const auto count = window.project_.vector_objects.size();
+    const std::string before = snap(window.project_);
+    // Alt + clic à 2 px près (< startDragDistance) sur le corps sélectionné.
+    dragWith(view, vp(view, -15, 0), vp(view, -15, 0) + QPoint(2, 1), Qt::AltModifier,
+             Qt::AltModifier);
+    QTest::qWait(60);
+    const bool duplicated = window.project_.vector_objects.size() > count;
+    const bool menu = below.count() > 0;
+    QVERIFY2(!(duplicated && menu),
+             "Alt + click with 2 px jitter both duplicated the object and opened the menu");
+    QVERIFY2(duplicated || menu, "Alt + click did nothing");
+    QVERIFY(window.checkSelectionInvariants());
+    closePopups();
+    while (window.undoStack_.canUndo()) {
+        window.undo();
+    }
+    QCOMPARE(QString::fromStdString(snap(window.project_)), QString::fromStdString(before));
+}
+
+void MainWindowTest::plainClickWithOnePixelJitterOnSelectedBodyMovesNothing() {
+    MainWindow window;
+    Big big;
+    CanvasView* view = openBig(window, big);
+    QVERIFY(view != nullptr);
+    window.applySelectionClick(big.squares[1], SelectMode::Replace);
+    window.refreshImage();
+    const std::string before = snap(window.project_);
+    dragWith(view, vp(view, -15, 0), vp(view, -15, 0) + QPoint(1, 0), Qt::NoModifier);
+    QTest::qWait(60);
+    // BUG (antérieur à L5, VectorObjectBodyItem) : aucun seuil de glisser. Un clic dont la
+    // souris bouge d'un pixel déplace l'objet sélectionné (0,1 mm ici, 1 mm à l'échelle 1) et
+    // empile une commande d'annulation.
+    QEXPECT_FAIL("", "BUG: no drag threshold on the selected body (pre-existing)", Continue);
+    QCOMPARE(QString::fromStdString(snap(window.project_)), QString::fromStdString(before));
+}
+
 // ---- rectangle / dessous --------------------------------------------------------------
 
 void MainWindowTest::degenerateRectanglesNeverSelectOrCrash() {
@@ -1341,6 +1747,17 @@ void MainWindowTest::spaceHeldIsResetByToolChangeAndIgnoredWithModalOrTextFocus(
     QApplication::sendEvent(edit, &down2);
     QVERIFY(!view->spaceHeld());
     QCOMPARE(edit->text(), QStringLiteral(" "));
+    // Boîte modale ouverte : Espace lui appartient, jamais au canevas.
+    {
+        QDialog modal(&window);
+        modal.setModal(true);
+        modal.show();
+        QTRY_VERIFY_WITH_TIMEOUT(QApplication::activeModalWidget() == &modal, 2000);
+        QApplication::sendEvent(view->viewport(), &enter);
+        QKeyEvent downM(QEvent::KeyPress, Qt::Key_Space, Qt::NoModifier, QStringLiteral(" "));
+        QApplication::sendEvent(&modal, &downM);
+        QVERIFY(!view->spaceHeld());
+    }
     // Espace tenu puis perte de focus : remis à zéro.
     view->setFocus();
     QApplication::sendEvent(view, &down);
@@ -1565,6 +1982,93 @@ void MainWindowTest::f1WhileDialogOpenAndPresetSwitchWhileDialogOpenThenClose() 
     // Fenêtre détruite avec un dialogue ouvert (enfant) : pas de crash.
     window.showGesturesDialog();
     window.showQuickStartDialog();
+}
+
+void MainWindowTest::gesturesDialogSearchSurvivesHostileInputAndRebuilds() {
+    MainWindow window;
+    window.showGesturesDialog();
+    auto* dialog = window.findChild<GesturesDialog*>();
+    QVERIFY(dialog != nullptr);
+    const int total = dialog->totalRowCount();
+    QVERIFY(total > 0);
+    const QStringList hostile = {
+        QStringLiteral("("),      QStringLiteral("["),
+        QStringLiteral("\\"),     QStringLiteral("*"),
+        QStringLiteral(".*"),     QStringLiteral("%"),
+        QStringLiteral("(?<a>"),  QStringLiteral("e\u0301"),
+        QStringLiteral("\u00e9"), QString(100000, QLatin1Char('x')),
+        QStringLiteral("  "),     QStringLiteral("\t\n"),
+        QStringLiteral("<b>"),    QString(),
+    };
+    for (const QString& text : hostile) {
+        dialog->searchField()->setText(text);
+        QVERIFY2(dialog->visibleRowCount() >= 0 && dialog->visibleRowCount() <= total,
+                 qPrintable(text.left(20)));
+        QVERIFY(dialog->totalRowCount() == total);
+    }
+    dialog->searchField()->setText(QStringLiteral("clic"));
+    const int clicRows = dialog->visibleRowCount();
+    QVERIFY(clicRows > 0 && clicRows < total);
+    // Reconstruction (changement de préréglage) pendant qu'un filtre est actif : le résultat
+    // est celui d'un dialogue neuf avec le même filtre.
+    window.findChild<QAction*>(QStringLiteral("navPresetTouchpad"))->trigger();
+    const int filteredAfter = dialog->visibleRowCount();
+    const QString filterAfter = dialog->searchField()->text();
+    dialog->close();
+    QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
+    window.showGesturesDialog();
+    auto* fresh = window.findChild<GesturesDialog*>();
+    QVERIFY(fresh != nullptr);
+    fresh->searchField()->setText(filterAfter);
+    QCOMPARE(fresh->visibleRowCount(), filteredAfter);
+    // Sélectionner une ligne puis filtrer tout : pas de crash, table vide.
+    fresh->table()->selectRow(0);
+    fresh->searchField()->setText(QStringLiteral("zzzzzzzz-introuvable"));
+    QCOMPARE(fresh->visibleRowCount(), 0);
+    fresh->searchField()->clear();
+    QCOMPARE(fresh->visibleRowCount(), fresh->totalRowCount());
+}
+
+void MainWindowTest::quickStartButtonsFollowActionStateAndDisabledOnesNeverFire() {
+    MainWindow window;
+    window.showQuickStartDialog();
+    auto* dialog = window.findChild<QuickStartDialog*>();
+    QVERIFY(dialog != nullptr);
+    QCOMPARE(dialog->stepCount(), 6);
+    const std::vector<QAction*> primary = {window.openImageAct_,       window.segmentAct_,
+                                           window.vectorizeRegionAct_, window.createTatamiAct_,
+                                           window.analyzeAct_,         window.exportDstAct_};
+    const auto inSync = [&](const QString& phase) {
+        for (int i = 0; i < 6; ++i) {
+            QPushButton* button = dialog->stepButton(i, 0);
+            QVERIFY2(button != nullptr, qPrintable(phase + QStringLiteral(" step %1").arg(i)));
+            QVERIFY2(
+                button->isEnabled() == primary[static_cast<std::size_t>(i)]->isEnabled(),
+                qPrintable(phase + QStringLiteral(": step %1 button/action state differ").arg(i)));
+        }
+    };
+    inSync(QStringLiteral("empty"));
+    int triggered = 0;
+    for (QAction* act : primary) {
+        connect(act, &QAction::triggered, this, [&triggered] { ++triggered; });
+    }
+    // Un bouton grisé ne lance jamais sa commande.
+    for (int i = 1; i < 6; ++i) {
+        QPushButton* button = dialog->stepButton(i, 0);
+        if (!button->isEnabled()) {
+            button->click();
+        }
+    }
+    QCOMPARE(triggered, 0);
+    const Big big = buildBig();
+    window.applyLoadedProject(big.project);
+    inSync(QStringLiteral("loaded"));
+    window.setSelection({.region = RegionId{1}, .embroidery = std::nullopt, .objects = {}});
+    window.selectionChanged();
+    inSync(QStringLiteral("region selected"));
+    window.applyLoadedProject(doc::Project{});
+    inSync(QStringLiteral("reset"));
+    // Fenêtre principale détruite avec le dialogue ouvert : pas d'accès pendu.
 }
 
 void MainWindowTest::twoWindowsShareTheGlobalPresetConsistently() {
