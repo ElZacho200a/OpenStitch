@@ -101,10 +101,11 @@ ObjectId addSatinColumn(doc::Project& project) {
     };
     satin.rail_a.nodes = {node(0, 0), node(10'000, 0)};
     satin.rail_b.nodes = {node(0, 4'000), node(10'000, 4'000)};
-    satin.rungs = {
-        {{Micrometers{0}, Micrometers{0}}, {Micrometers{0}, Micrometers{4'000}}},
-        {{Micrometers{5'000}, Micrometers{0}}, {Micrometers{5'000}, Micrometers{4'000}}},
-        {{Micrometers{10'000}, Micrometers{0}}, {Micrometers{10'000}, Micrometers{4'000}}}};
+    const auto rung = [](std::int32_t x) {
+        return doc::SatinRung{Vec2um{Micrometers{x}, Micrometers{0}},
+                              Vec2um{Micrometers{x}, Micrometers{4'000}}, std::nullopt};
+    };
+    satin.rungs = {rung(0), rung(5'000), rung(10'000)};
     doc::EmbroideryObject emb;
     emb.id = project.object_ids.next();
     emb.name = "Satin";
@@ -531,10 +532,10 @@ private slots:
             window.selectedEmbroidery_.reset();
             window.updateActions();
         };
-        const auto childCount = [&] {
-            return window.contextToolbar_->findChildren<QAction*>().size() +
-                   window.contextToolbar_->findChildren<QToolButton*>().size() +
-                   window.contextToolbar_->findChildren<QLabel*>().size();
+        const auto childCount = [&]() -> int {
+            return static_cast<int>(window.contextToolbar_->findChildren<QAction*>().size() +
+                                    window.contextToolbar_->findChildren<QToolButton*>().size() +
+                                    window.contextToolbar_->findChildren<QLabel*>().size());
         };
 
         cycle(); // premier passage : amorce (actions partagées, premières créations)
@@ -557,7 +558,7 @@ private slots:
         window.applyLoadedProject(project);
         window.selectedObject_ = vec;
         window.updateActions();
-        const int before = window.contextToolbar_->findChildren<QObject*>().size();
+        const auto before = window.contextToolbar_->findChildren<QObject*>().size();
         for (int i = 0; i < 5; ++i) {
             window.updateActions();
         }
