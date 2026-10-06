@@ -56,7 +56,6 @@ QChar mnemonicOf(const QString& text) {
     return QChar();
 }
 
-
 // Séquences de touches réellement câblées sur la fenêtre (QAction + QShortcut de contexte non
 // local), comme windowShortcutsAreUnique.
 std::set<QString> actualWindowShortcuts(const MainWindow& window) {

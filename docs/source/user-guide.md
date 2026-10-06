@@ -37,7 +37,7 @@ curseur en mm apparaît dans la barre d'état.
 
 Le **mode d'interaction** vient de la palette d'outils (à gauche) :
 
-- **Sélection** (`V`) : sélectionner une région/un objet ; le glisser déplace la vue.
+- **Sélection** (`V`) : sélectionner une région/un objet (Maj ajoute, Ctrl bascule, glisser dans le vide trace un rectangle de sélection) ; la vue se déplace au clic molette ou à Espace + glisser.
 - **Déplacer la vue** (`H`) : déplacement pur (le clic ne sélectionne pas).
 - **Rectangle / Recadrage** (`M`) : sélection rectangulaire pour recadrer l'image.
 - **Zoom** : molette (ancrée sous le curseur) ou barre d'outils / menu Affichage.
@@ -347,12 +347,30 @@ constitue pas une garantie absolue en version 0.1.0.
 
 ## Menu Aide
 
-- **Raccourcis clavier…** : la liste ci-dessous.
-- **À propos** : nom, version, licence.
+Le menu **Aide** compte trois entrées, chacune avec une infobulle et un texte
+d'aide dans la barre d'état :
 
-Le nouveau menu Aide (Guide de prise en main, Gestes souris et clavier (F1),
-À propos) est prévu par la tâche T4 du lot L5 : il n'est pas encore dans
-l'application.
+- **Guide de prise en main** : une fenêtre **non modale** (elle reste ouverte
+  pendant que vous travaillez, une seule à la fois) qui déroule les six étapes de
+  l'image au fichier DST : ouvrir une image, segmenter, vectoriser ou numériser
+  automatiquement, choisir le type de point (tatami, satin, contour), analyser
+  (F5), exporter en DST. Chaque étape porte un bouton qui lance la vraie commande
+  du menu ; il est grisé tant que la commande n'est pas disponible (par exemple
+  « Analyser » sans motif).
+- **Gestes souris et clavier** (**F1**) : fenêtre non modale qui liste, dans un
+  tableau Contexte / Geste / Action filtrable par la recherche, tous les gestes de
+  la souris (table de la section *Souris et clavier*) et tous les raccourcis des
+  commandes. Elle propose aussi le choix du préréglage de navigation ; elle remplace
+  l'ancienne boîte « Raccourcis clavier », supprimée.
+- **À propos** : nom, version, licence et dépôt du code source.
+
+La **ligne d'indications** de la barre d'état (à gauche des indicateurs d'outil et
+de position) rappelle en permanence les gestes de l'outil actif ; elle se met à
+jour quand on change d'outil, de sélection ou qu'on tient Maj, Ctrl ou Alt, et
+n'est jamais masquée par les messages de la barre d'état. Le préréglage de
+navigation se choisit aussi dans **Affichage ▸ Navigation** (**OpenStitch** :
+souris à trois boutons ; **Pavé tactile** : Espace + glisser et Ctrl + molette
+mis en avant) ; le choix est mémorisé entre deux sessions.
 
 ## Raccourcis
 
@@ -362,12 +380,13 @@ l'application.
 | Ctrl+O / Ctrl+S | Ouvrir une image / Enregistrer le projet (sans redemander le chemin) |
 | Ctrl+Maj+S | Enregistrer le projet sous… |
 | Ctrl+Z / Ctrl+Y | Annuler / Rétablir |
-| Suppr | Supprimer la région sélectionnée |
+| Suppr | Supprimer la sélection (région, objet de broderie ou objets vectoriels) |
 | Ctrl++ / Ctrl+- / Ctrl+0 | Zoom avant / arrière / ajuster |
 | F | Ajuster au canevas |
 | F5 | Analyser le motif |
 | V / H / M | Outils : Sélection / Déplacer la vue / Rectangle |
 | Échap | Revenir à la Sélection (annule la fusion) |
+| F1 | Ouvrir « Gestes souris et clavier » |
 | Ctrl+Shift+P | Masquer / afficher les panneaux |
 | Ctrl+Q | Quitter |
 

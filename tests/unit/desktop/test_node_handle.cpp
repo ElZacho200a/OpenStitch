@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
-#include <QGraphicsScene>
 #include <QApplication>
+#include <QGraphicsScene>
 #include <QGraphicsView>
 #include <QMouseEvent>
 #include <QTest>
@@ -36,8 +36,8 @@ private slots:
 namespace {
 void sendMouse(QGraphicsView& view, QEvent::Type type, QPoint at, Qt::MouseButton button,
                Qt::MouseButtons buttons, Qt::KeyboardModifiers mods) {
-    QMouseEvent event(type, QPointF(at), QPointF(view.viewport()->mapToGlobal(at)), button,
-                      buttons, mods);
+    QMouseEvent event(type, QPointF(at), QPointF(view.viewport()->mapToGlobal(at)), button, buttons,
+                      mods);
     QApplication::sendEvent(view.viewport(), &event);
 }
 

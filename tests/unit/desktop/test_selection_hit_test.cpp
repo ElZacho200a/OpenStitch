@@ -10,8 +10,8 @@
 using openstitch::Micrometers;
 using openstitch::ObjectId;
 using openstitch::Vec2um;
-using openstitch::desktop::objectScenePath;
 using openstitch::desktop::objectsAtPointMm;
+using openstitch::desktop::objectScenePath;
 using openstitch::desktop::objectsInRectangleMm;
 
 namespace {
@@ -68,10 +68,10 @@ private slots:
 
     void windowRequiresFullContainmentCrossingAcceptsOverlap() {
         openstitch::document::Project project;
-        const ObjectId a = addSquare(project, 0, 0, 10);   // scène x 0..10, y -10..0
-        const ObjectId b = addSquare(project, 20, 0, 10);  // scène x 20..30
-        const QRectF coversA(-1.0, -11.0, 12.0, 12.0);     // contient A seul
-        const QRectF overlapsBoth(5.0, -5.0, 20.0, 3.0);   // coupe A et B
+        const ObjectId a = addSquare(project, 0, 0, 10);  // scène x 0..10, y -10..0
+        const ObjectId b = addSquare(project, 20, 0, 10); // scène x 20..30
+        const QRectF coversA(-1.0, -11.0, 12.0, 12.0);    // contient A seul
+        const QRectF overlapsBoth(5.0, -5.0, 20.0, 3.0);  // coupe A et B
         const auto window1 = objectsInRectangleMm(project, coversA, false);
         QCOMPARE(window1.size(), std::size_t{1});
         QVERIFY(window1[0] == a);

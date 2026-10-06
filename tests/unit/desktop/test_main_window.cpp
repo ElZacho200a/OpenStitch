@@ -2,8 +2,8 @@
 #include <QAbstractButton>
 #include <QApplication>
 #include <QCheckBox>
-#include <QComboBox>
 #include <QCloseEvent>
+#include <QComboBox>
 #include <QCoreApplication>
 #include <QDialog>
 #include <QDir>
@@ -557,7 +557,6 @@ std::size_t firstMovableIndex(const openstitch::stitch_generation::ObjectEditVie
     return 0;
 }
 
-
 // Évènement souris explicite sur le viewport (modificateurs maîtrisés : QTest::mouseMove n'en
 // accepte pas, et l'état clavier global est ignoré).
 void sendMouseEvent(QWidget* viewport, QEvent::Type type, const QPoint& at, Qt::MouseButton button,
@@ -644,6 +643,7 @@ private slots:
     void ctrlSuspendsSnapWhenPlacingPolygonVertex();
     void altDragDuplicatesAndMovesCopyInOneUndoStep();
     void altBoxDrawGrowsFromCenter();
+    void hoverHighlightShowsOnlyUnselectedObjectUnderCursorInSelectTool();
     void embroiderySelectionDoesNotLeakAcrossProjectLoadWithReusedId();
     // Cache de l'image de travail (audit perf 2026-09) : toujours égale au
     // pipeline rejoué, quelle que soit la mutation.
@@ -4966,13 +4966,11 @@ void MainWindowTest::cleanCloseDiscardsTheCurrentAutosaveSlot() {
     clearAutosaveDir();
 }
 
-
 // ---------------------------------------------------------------------------
 // L5-T4b : câblage du modèle d'interaction (specs/plans/ui-interaction-model.md §2.5, §3, §4).
 // ---------------------------------------------------------------------------
 
-CanvasView* MainWindowTest::openSquares(MainWindow& window, ObjectId& a, ObjectId& b,
-                                        ObjectId& c) {
+CanvasView* MainWindowTest::openSquares(MainWindow& window, ObjectId& a, ObjectId& b, ObjectId& c) {
     TrianglesFixture fx;
     fx.project.original.width = 2;
     fx.project.original.height = 2;
@@ -4998,8 +4996,8 @@ CanvasView* MainWindowTest::openSquares(MainWindow& window, ObjectId& a, ObjectI
     return view;
 }
 
-void MainWindowTest::dragWith(CanvasView* view, QPoint from, QPoint to,
-                              Qt::KeyboardModifiers mods, Qt::KeyboardModifiers pressMods) {
+void MainWindowTest::dragWith(CanvasView* view, QPoint from, QPoint to, Qt::KeyboardModifiers mods,
+                              Qt::KeyboardModifiers pressMods) {
     QWidget* vpw = view->viewport();
     sendMouseEvent(vpw, QEvent::MouseButtonPress, from, Qt::LeftButton, Qt::LeftButton, pressMods);
     const QPoint mid = (from + to) / 2;
@@ -5018,9 +5016,9 @@ void MainWindowTest::helpMenuHasThreeEntriesAndF1OpensGestures() {
             names << act->objectName();
         }
     }
-    QCOMPARE(names, (QStringList{QStringLiteral("action_help_quickstart"),
-                                 QStringLiteral("action_help_gestures"),
-                                 QStringLiteral("action_about")}));
+    QCOMPARE(names,
+             (QStringList{QStringLiteral("action_help_quickstart"),
+                          QStringLiteral("action_help_gestures"), QStringLiteral("action_about")}));
     for (const QAction* act : helpMenu->actions()) {
         QVERIFY2(!act->toolTip().isEmpty() && !act->statusTip().isEmpty(),
                  qPrintable(act->objectName()));
@@ -5089,9 +5087,9 @@ void MainWindowTest::quickStartIsNonModalSingleInstanceBoundToMemberActions() {
     QVERIFY(!dialog->isModal());
     QCOMPARE(dialog->stepCount(), 6);
     // Un bouton par commande réelle : libellé = texte de la QAction membre.
-    const std::vector<QAction*> expected = {window.openImageAct_,  window.segmentAct_,
+    const std::vector<QAction*> expected = {window.openImageAct_,       window.segmentAct_,
                                             window.vectorizeRegionAct_, window.createTatamiAct_,
-                                            window.analyzeAct_,    window.exportDstAct_};
+                                            window.analyzeAct_,         window.exportDstAct_};
     for (int i = 0; i < 6; ++i) {
         QPushButton* button = dialog->stepButton(i, 0);
         QVERIFY2(button != nullptr, qPrintable(QString::number(i)));
@@ -5248,14 +5246,13 @@ void MainWindowTest::longPressOpensSelectBelowMenuAndChoosingSelectsIt() {
     CanvasView* view = openSquares(window, a, b, c);
     QVERIFY(view != nullptr);
     // Deux objets superposés : un second carré exactement sur B.
-    window.undoStack_.execute(
-        std::make_unique<openstitch::commands::AddVectorObjectCommand>([&] {
-            auto copy = *window.project_.findObject(b);
-            copy.id = window.project_.object_ids.next();
-            copy.name = "B2";
-            return copy;
-        }()),
-        window.project_);
+    window.undoStack_.execute(std::make_unique<openstitch::commands::AddVectorObjectCommand>([&] {
+                                  auto copy = *window.project_.findObject(b);
+                                  copy.id = window.project_.object_ids.next();
+                                  copy.name = "B2";
+                                  return copy;
+                              }()),
+                              window.project_);
     window.refreshImage();
     QSignalSpy below(view, &CanvasView::selectBelowRequested);
 
@@ -5313,8 +5310,8 @@ void MainWindowTest::navigationPresetMenuSwitchesTableAndPersists() {
 
     touch->trigger();
     QCOMPARE(InteractionMap::preset(), Preset::Touchpad);
-    QVERIFY(touch->isChecked() && !os->isChecked()); // exclusif
-    QVERIFY(window.hintsText() != osHints);          // la ligne d'indications suit
+    QVERIFY(touch->isChecked() && !os->isChecked());    // exclusif
+    QVERIFY(window.hintsText() != osHints);             // la ligne d'indications suit
     QVERIFY(InteractionMap::allRows().size() < osRows); // la table filtrée change
     QSettings stored(QSettings::defaultFormat(), QSettings::UserScope, QStringLiteral("OpenStitch"),
                      QStringLiteral("OpenStitch Studio"));
@@ -5377,7 +5374,7 @@ void MainWindowTest::panToolStillPansAfterNoDrag() {
     QTest::mouseRelease(view->viewport(), Qt::LeftButton, Qt::NoModifier, QPoint(340, 250));
     QCOMPARE(view->horizontalScrollBar()->value(), h0 + 60);
     QCOMPARE(view->verticalScrollBar()->value(), v0 + 50);
-    QCOMPARE(clicked.count(), 0);                  // le panoramique n'est pas un clic
+    QCOMPARE(clicked.count(), 0);                 // le panoramique n'est pas un clic
     QVERIFY(!window.selectedObject_.has_value()); // et ne sélectionne rien
     // Retour à l'outil Sélection : le canevas réactive le rectangle.
     window.setTool(Tool::Select);
@@ -5518,10 +5515,9 @@ void MainWindowTest::shiftDragOfNodeKeepsOneAxis() {
     // Un nœud au milieu de l'arête haute de C (les 4 coins portent aussi les poignées de
     // redimensionnement) : physique (15, 5) -> scène (15, -5).
     auto& nodes = window.project_.findObject(c)->paths.front().outer.nodes;
-    nodes.insert(nodes.begin() + 3, geometry::PathNode{Vec2um{Micrometers{15'000},
-                                                              Micrometers{5'000}},
-                                                       geometry::NodeType::Corner, std::nullopt,
-                                                       std::nullopt});
+    nodes.insert(nodes.begin() + 3,
+                 geometry::PathNode{Vec2um{Micrometers{15'000}, Micrometers{5'000}},
+                                    geometry::NodeType::Corner, std::nullopt, std::nullopt});
     window.applySelectionClick(c, SelectMode::Replace);
     window.refreshImage();
     const auto nodePos = [&](std::size_t n) {
@@ -5543,10 +5539,9 @@ void MainWindowTest::ctrlDragSkipsSnap() {
     // Nœud au milieu de l'arête haute de A (physique (-15, 5) -> scène (-15, -5)) : les coins
     // portent aussi les poignées de redimensionnement. Cible : près du coin (-5, 5) de B.
     auto& nodes = window.project_.findObject(a)->paths.front().outer.nodes;
-    nodes.insert(nodes.begin() + 3, geometry::PathNode{Vec2um{Micrometers{-15'000},
-                                                              Micrometers{5'000}},
-                                                       geometry::NodeType::Corner, std::nullopt,
-                                                       std::nullopt});
+    nodes.insert(nodes.begin() + 3,
+                 geometry::PathNode{Vec2um{Micrometers{-15'000}, Micrometers{5'000}},
+                                    geometry::NodeType::Corner, std::nullopt, std::nullopt});
     window.applySelectionClick(a, SelectMode::Replace);
     window.refreshImage();
     const auto node = [&] {
@@ -5622,7 +5617,6 @@ void MainWindowTest::altDragDuplicatesAndMovesCopyInOneUndoStep() {
     QCOMPARE(origin(copy).x.value, before.x.value + 3000);
 }
 
-
 void MainWindowTest::altBoxDrawGrowsFromCenter() {
     MainWindow window;
     ObjectId a, b, c;
@@ -5630,6 +5624,7 @@ void MainWindowTest::altBoxDrawGrowsFromCenter() {
     QVERIFY(view != nullptr);
     window.setTool(Tool::DrawRectangle);
     const auto drawAndMeasure = [&](QPoint from, QPoint to, Qt::KeyboardModifiers mods) {
+        window.setTool(Tool::DrawRectangle); // l'outil repasse en Sélection après une forme
         const std::size_t before = window.project_.vector_objects.size();
         dragWith(view, from, to, mods);
         if (window.project_.vector_objects.size() != before + 1) {
@@ -5649,18 +5644,54 @@ void MainWindowTest::altBoxDrawGrowsFromCenter() {
     const QRectF plain = drawAndMeasure(vp(view, 0, 25), vp(view, 8, 31), Qt::NoModifier);
     QVERIFY(plain.isValid());
     QVERIFY(std::abs(plain.left() - 0.0) <= 150 && std::abs(plain.right() - 8000.0) <= 150);
-    // Avec Alt : le point d'appui est le centre -> x -8..8, y -31..-19.
-    const QRectF centered = drawAndMeasure(vp(view, 0, 25), vp(view, 8, 31), Qt::AltModifier);
-    QVERIFY(centered.isValid());
-    QVERIFY(std::abs(centered.left() - (-8000.0)) <= 150);
-    QVERIFY(std::abs(centered.right() - 8000.0) <= 150);
+    // Avec Alt (ailleurs : la forme précédente, sélectionnée, capterait l'appui) : le point
+    // d'appui (30, 25) est le centre -> x 22..38, y(physique) -31..-19.
+    const QRectF centered = drawAndMeasure(vp(view, 30, 25), vp(view, 38, 31), Qt::AltModifier);
+    QVERIFY2(centered.isValid(), qPrintable(window.statusBar()->currentMessage()));
+    QVERIFY(std::abs(centered.left() - 22000.0) <= 150);
+    QVERIFY(std::abs(centered.right() - 38000.0) <= 150);
     QVERIFY(std::abs(centered.top() - (-31000.0)) <= 150);
     QVERIFY(std::abs(centered.bottom() - (-19000.0)) <= 150);
-    // Appui en bas à droite, relâchement en haut à gauche : même centre (le coin d'appui).
-    const QRectF reverse = drawAndMeasure(vp(view, 0, 25), vp(view, -8, 19), Qt::AltModifier);
-    QVERIFY(reverse.isValid());
-    QVERIFY(std::abs(reverse.center().x() - 0.0) <= 150);
+    // Appui d'un côté, relâchement vers le haut-gauche : même centre (le point d'appui).
+    const QRectF reverse = drawAndMeasure(vp(view, -30, 25), vp(view, -38, 19), Qt::AltModifier);
+    QVERIFY2(reverse.isValid(), qPrintable(window.statusBar()->currentMessage()));
+    QVERIFY(std::abs(reverse.center().x() - (-30000.0)) <= 150);
     QVERIFY(std::abs(reverse.center().y() - (-25000.0)) <= 150);
+}
+
+void MainWindowTest::hoverHighlightShowsOnlyUnselectedObjectUnderCursorInSelectTool() {
+    MainWindow window;
+    ObjectId a, b, c;
+    CanvasView* view = openSquares(window, a, b, c);
+    QVERIFY(view != nullptr);
+    const auto hover = [&](double x, double y) {
+        sendMouseEvent(view->viewport(), QEvent::MouseMove, vp(view, x, y), Qt::NoButton,
+                       Qt::NoButton, Qt::NoModifier);
+    };
+    const auto shown = [&] {
+        return window.hoverItem_ != nullptr && window.hoverItem_->isVisible();
+    };
+
+    hover(-15, 0);
+    QVERIFY(shown());
+    QCOMPARE(window.hoverItem_->path().boundingRect(), QRectF(-20.0, -5.0, 10.0, 10.0));
+    hover(0, 30); // le vide
+    QVERIFY(!shown());
+    hover(0, 0);
+    QVERIFY(shown());
+    // Le clic traverse la surbrillance : il sélectionne l'objet dessous ; sélectionné, il n'est
+    // plus surligné.
+    QTest::mouseClick(view->viewport(), Qt::LeftButton, Qt::NoModifier, vp(view, 0, 0));
+    QVERIFY(window.selectedObject_ == b);
+    hover(0.5, 0.5);
+    QVERIFY(!shown());
+    hover(15, 0);
+    QVERIFY(shown());
+    // Hors outil Sélection : jamais de surbrillance.
+    window.setTool(Tool::Pan);
+    QVERIFY(!shown());
+    hover(15, 0);
+    QVERIFY(!shown());
 }
 
 } // namespace openstitch::desktop

@@ -31,7 +31,7 @@ namespace openstitch::desktop {
 // (crossing == false) : la boîte englobante de l'objet est entièrement dans le
 // rectangle. Croisement : le contour/remplissage coupe le rectangle. Résultat
 // trié par ObjectId croissant (indépendant de l'ordre de dessin).
-[[nodiscard]] std::vector<ObjectId>
-objectsInRectangleMm(const document::Project& project, const QRectF& rectMm, bool crossing);
+[[nodiscard]] std::vector<ObjectId> objectsInRectangleMm(const document::Project& project,
+                                                         const QRectF& rectMm, bool crossing);
 
 } // namespace openstitch::desktop

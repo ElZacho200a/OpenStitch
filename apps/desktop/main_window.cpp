@@ -85,9 +85,9 @@
 #include "openstitch/vectorization/vectorize.hpp"
 #include "properties_panel.hpp"
 #include "recent_files.hpp"
-#include "selection_hit_test.hpp"
 #include "ruler.hpp"
 #include "satin_guide_item.hpp"
+#include "selection_hit_test.hpp"
 #include "ui_icons.hpp"
 #include "workflow_panel.hpp"
 #include <QCheckBox>
@@ -470,6 +470,7 @@ MainWindow::MainWindow() {
         // revient au repère scène (Y-bas) pour les aperçus QGraphicsItem.
         const QPointF sceneMm(physicalMm.x(), -physicalMm.y());
         lastCursorSceneMm_ = sceneMm; // point de relâchement d'un cadre (Alt = depuis le centre)
+        updateHoverHighlight(sceneMm);
         // Accroche (façon Fusion 360) : seulement pour les outils où le clic
         // pose réellement le point prévisualisé ici -- cf. commentaire de
         // findSnapPointMm (Bézier/rectangle/ellipse exclus).
@@ -1796,6 +1797,40 @@ std::optional<QPointF> MainWindow::findSnapPointMm(QPointF cursorSceneMm,
     return best;
 }
 
+void MainWindow::updateHoverHighlight(std::optional<QPointF> sceneMm) {
+    // Surbrillance de pré-sélection (ligne S11) : contour de l'objet non sélectionné le plus
+    // haut sous le curseur, outil Sélection seulement. Un seul item, indépendant de baseItems_,
+    // qui n'accepte aucun bouton (le clic atteint l'objet dessous).
+    std::optional<ObjectId> under;
+    if (sceneMm && currentTool_ == Tool::Select && interactionContext() == Context::Select &&
+        showVectorsAct_ != nullptr && showVectorsAct_->isChecked() && !mergeMode_) {
+        const std::vector<ObjectId> hits = objectsAtPointMm(project_, *sceneMm);
+        if (!hits.empty() && !isObjectSelected(hits.front())) {
+            under = hits.front();
+        }
+    }
+    const auto* object = under ? project_.findObject(*under) : nullptr;
+    if (object == nullptr) {
+        if (hoverItem_ != nullptr) {
+            hoverItem_->setVisible(false);
+        }
+        return;
+    }
+    if (hoverItem_ == nullptr) {
+        hoverItem_ = new QGraphicsPathItem();
+        QPen pen(AppTheme::instance().tokens().accent, 2.0, Qt::DashLine);
+        pen.setCosmetic(true);
+        hoverItem_->setPen(pen);
+        hoverItem_->setBrush(Qt::NoBrush);
+        hoverItem_->setZValue(11.0); // au-dessus des formes (10), sous les poignées (100+)
+        hoverItem_->setAcceptedMouseButtons(Qt::NoButton);
+        hoverItem_->setAcceptHoverEvents(false);
+        scene_->addItem(hoverItem_);
+    }
+    hoverItem_->setPath(objectScenePath(*object));
+    hoverItem_->setVisible(true);
+}
+
 void MainWindow::updateSnapIndicator(std::optional<QPointF> snapSceneMm) {
     if (!snapSceneMm) {
         if (snapIndicatorItem_ != nullptr) {
@@ -2347,6 +2382,9 @@ void MainWindow::renderBase(const image::Image& img) {
         delete it;
     }
     baseItems_.clear();
+    if (hoverItem_ != nullptr) {
+        hoverItem_->setVisible(false); // la sélection/les objets ont pu changer
+    }
 
     if (!img.empty() && (showImageAct_ == nullptr || showImageAct_->isChecked())) {
         const QImage qimg(img.rgba.data(), img.width, img.height, img.width * 4,
@@ -2396,29 +2434,28 @@ void MainWindow::renderBase(const image::Image& img) {
                 // Modificateurs lus sur le relâchement : Maj = verrou d'axe (déjà
                 // appliqué par l'item), Alt = dupliquer en déplaçant (M4). L'accroche
                 // (Ctrl la suspend) n'existe pas pour le glisser de corps.
-                bodyItem->setReleasedWithModifiers(
-                    [this, objectId](QPointF deltaSceneMm, Qt::KeyboardModifiers mods) {
-                        const Vec2um delta = sceneMmToModel(deltaSceneMm);
-                        const bool duplicate = (mods & Qt::AltModifier) != 0;
-                        // Diffère : refreshImage() détruirait cet item pendant son
-                        // propre événement souris (même défaut que NodeHandleItem).
-                        // Glisser un membre d'une multi-sélection déplace tout
-                        // l'ensemble (même helper que les flèches : un seul pas).
-                        QTimer::singleShot(0, this, [this, objectId, delta, duplicate] {
-                            if (duplicate) {
-                                duplicateAndTranslate(
-                                    hasMultiSelection() && isObjectSelected(objectId)
-                                        ? selectedObjectIds()
-                                        : std::vector<ObjectId>{objectId},
-                                    delta);
-                                return;
-                            }
-                            translateObjects(hasMultiSelection() && isObjectSelected(objectId)
-                                                 ? selectedObjectIds()
-                                                 : std::vector<ObjectId>{objectId},
-                                             delta);
-                        });
+                bodyItem->setReleasedWithModifiers([this, objectId](QPointF deltaSceneMm,
+                                                                    Qt::KeyboardModifiers mods) {
+                    const Vec2um delta = sceneMmToModel(deltaSceneMm);
+                    const bool duplicate = (mods & Qt::AltModifier) != 0;
+                    // Diffère : refreshImage() détruirait cet item pendant son
+                    // propre événement souris (même défaut que NodeHandleItem).
+                    // Glisser un membre d'une multi-sélection déplace tout
+                    // l'ensemble (même helper que les flèches : un seul pas).
+                    QTimer::singleShot(0, this, [this, objectId, delta, duplicate] {
+                        if (duplicate) {
+                            duplicateAndTranslate(hasMultiSelection() && isObjectSelected(objectId)
+                                                      ? selectedObjectIds()
+                                                      : std::vector<ObjectId>{objectId},
+                                                  delta);
+                            return;
+                        }
+                        translateObjects(hasMultiSelection() && isObjectSelected(objectId)
+                                             ? selectedObjectIds()
+                                             : std::vector<ObjectId>{objectId},
+                                         delta);
                     });
+                });
                 scene_->addItem(bodyItem);
                 pathItem = bodyItem;
             } else {
@@ -2457,28 +2494,26 @@ void MainWindow::renderBase(const image::Image& img) {
                             const auto commitNodeMove = [this, objectId, ref,
                                                          pos](QPointF releasedSceneMm,
                                                               Qt::KeyboardModifiers mods) {
-                                    QPointF newSceneMm = releasedSceneMm;
-                                    if ((mods & (Qt::ControlModifier | Qt::ShiftModifier)) == 0) {
-                                        newSceneMm = findSnapPointMm(newSceneMm, objectId)
-                                                         .value_or(newSceneMm);
-                                    }
-                                    const Vec2um newPos{
-                                        to_micrometers(Millimeters{newSceneMm.x()}),
-                                        to_micrometers(Millimeters{-newSceneMm.y()})};
-                                    if (newPos == pos) {
-                                        return;
-                                    }
-                                    // Diffère : refreshImage() détruirait cette poignée
-                                    // pendant son propre événement souris (crash).
-                                    QTimer::singleShot(0, this, [this, objectId, ref, pos, newPos] {
-                                        undoStack_.execute(
-                                            std::make_unique<commands::MoveNodeCommand>(
-                                                objectId, ref, pos, newPos),
-                                            project_);
-                                        refreshImage();
-                                        updateActions();
-                                    });
-                                };
+                                QPointF newSceneMm = releasedSceneMm;
+                                if ((mods & (Qt::ControlModifier | Qt::ShiftModifier)) == 0) {
+                                    newSceneMm =
+                                        findSnapPointMm(newSceneMm, objectId).value_or(newSceneMm);
+                                }
+                                const Vec2um newPos{to_micrometers(Millimeters{newSceneMm.x()}),
+                                                    to_micrometers(Millimeters{-newSceneMm.y()})};
+                                if (newPos == pos) {
+                                    return;
+                                }
+                                // Diffère : refreshImage() détruirait cette poignée
+                                // pendant son propre événement souris (crash).
+                                QTimer::singleShot(0, this, [this, objectId, ref, pos, newPos] {
+                                    undoStack_.execute(std::make_unique<commands::MoveNodeCommand>(
+                                                           objectId, ref, pos, newPos),
+                                                       project_);
+                                    refreshImage();
+                                    updateActions();
+                                });
+                            };
                             auto* handle = new NodeHandleItem(
                                 sceneMm, {}, {},
                                 // Clic droit sur un nœud : simplification manuelle d'une
@@ -4790,8 +4825,8 @@ void MainWindow::duplicateVectorObject(ObjectId id) {
 
 void MainWindow::duplicateAndTranslate(const std::vector<ObjectId>& ids, Vec2um delta) {
     // Copie(s) + translation des COPIES = UN pas d'annulation ; les originaux ne bougent pas.
-    auto composite = std::make_unique<commands::CompositeCommand>(
-        tr("Dupliquer en déplaçant").toStdString());
+    auto composite =
+        std::make_unique<commands::CompositeCommand>(tr("Dupliquer en déplaçant").toStdString());
     std::vector<ObjectId> copies;
     for (const ObjectId id : ids) {
         const auto* source = project_.findObject(id);
@@ -4803,7 +4838,8 @@ void MainWindow::duplicateAndTranslate(const std::vector<ObjectId>& ids, Vec2um 
         copy.name = tr("%1 (copie)").arg(QString::fromStdString(source->name)).toStdString();
         copies.push_back(copy.id);
         composite->add(std::make_unique<commands::AddVectorObjectCommand>(std::move(copy)));
-        composite->add(std::make_unique<commands::TranslateVectorObjectCommand>(copies.back(), delta));
+        composite->add(
+            std::make_unique<commands::TranslateVectorObjectCommand>(copies.back(), delta));
     }
     if (copies.empty()) {
         return;
@@ -5214,8 +5250,7 @@ void MainWindow::buildHelpMenu() {
     helpGesturesAct_ = helpMenu->addAction(tr("Gestes &souris et clavier"));
     helpGesturesAct_->setObjectName(QStringLiteral("action_help_gestures"));
     helpGesturesAct_->setShortcut(QKeySequence(Qt::Key_F1));
-    helpGesturesAct_->setToolTip(
-        tr("Tous les gestes de la souris et les raccourcis clavier (F1)"));
+    helpGesturesAct_->setToolTip(tr("Tous les gestes de la souris et les raccourcis clavier (F1)"));
     helpGesturesAct_->setStatusTip(
         tr("Tableau consultable des gestes souris et des raccourcis clavier"));
     connect(helpGesturesAct_, &QAction::triggered, this, &MainWindow::showGesturesDialog);
@@ -5262,7 +5297,7 @@ void MainWindow::showQuickStartDialog() {
     // Étapes construites à partir des QAction MEMBRES (libellés non dupliqués) ;
     // les textes viennent du dialogue.
     std::vector<QuickStartStep> steps = QuickStartDialog::defaultSteps();
-    const std::vector<QAction*> primary = {openImageAct_,  segmentAct_,   vectorizeRegionAct_,
+    const std::vector<QAction*> primary = {openImageAct_,    segmentAct_, vectorizeRegionAct_,
                                            createTatamiAct_, analyzeAct_, exportDstAct_};
     for (std::size_t i = 0; i < steps.size() && i < primary.size(); ++i) {
         steps[i].action = primary[i];
@@ -5289,8 +5324,8 @@ void MainWindow::buildNavigationMenu(QMenu* viewMenu) {
     navMenu->setToolTipsVisible(true);
     navigationGroup_ = new QActionGroup(this);
     navigationGroup_->setExclusive(true);
-    const auto addPreset = [&](const QString& label, const QString& objectName,
-                               const QString& tip, Preset preset) {
+    const auto addPreset = [&](const QString& label, const QString& objectName, const QString& tip,
+                               Preset preset) {
         auto* act = navMenu->addAction(label);
         act->setObjectName(objectName);
         act->setCheckable(true);
@@ -5326,10 +5361,11 @@ void MainWindow::applyNavigationPreset(Preset preset) {
 }
 
 Context MainWindow::interactionContext() const {
-    const bool nodeEdit = (satinEditModeAct_ != nullptr && satinEditModeAct_->isChecked()) ||
-                          (satinGuideModeAct_ != nullptr && satinGuideModeAct_->isChecked()) ||
-                          (railEditModeAct_ != nullptr && railEditModeAct_->isChecked()) ||
-                          (directionGuideModeAct_ != nullptr && directionGuideModeAct_->isChecked());
+    const bool nodeEdit =
+        (satinEditModeAct_ != nullptr && satinEditModeAct_->isChecked()) ||
+        (satinGuideModeAct_ != nullptr && satinGuideModeAct_->isChecked()) ||
+        (railEditModeAct_ != nullptr && railEditModeAct_->isChecked()) ||
+        (directionGuideModeAct_ != nullptr && directionGuideModeAct_->isChecked());
     const bool stitchEdit = stitchEditModeAct_ != nullptr && stitchEditModeAct_->isChecked();
     return InteractionMap::contextFor(currentTool_, nodeEdit, stitchEdit);
 }
@@ -5899,6 +5935,7 @@ void MainWindow::setTool(Tool tool) {
     }
     updateDrawActionsState();
     updateInteractionContext();
+    updateHoverHighlight(std::nullopt);
 }
 
 void MainWindow::buildWorkflowPanel() {
@@ -7306,7 +7343,8 @@ void MainWindow::onSelectBelow(QPointF posMm, QPoint globalPos, SelectMode mode)
             continue;
         }
         auto* act = menu->addAction(QString::fromStdString(object->name));
-        connect(act, &QAction::triggered, this, [this, id, mode] { applySelectionClick(id, mode); });
+        connect(act, &QAction::triggered, this,
+                [this, id, mode] { applySelectionClick(id, mode); });
     }
     selectBelowMenu_ = menu;
     menu->popup(globalPos);

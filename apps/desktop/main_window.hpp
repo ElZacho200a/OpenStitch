@@ -670,13 +670,14 @@ private:
     // la sélection. Alt + glisser (ligne M4).
     void duplicateAndTranslate(const std::vector<ObjectId>& ids, Vec2um delta);
     // Ctrl tenu (évènements du canevas) : l'accroche du tracé est suspendue (ligne D5).
-    [[nodiscard]] bool snapSuspended() const {
-        return (heldModifiers_ & Qt::ControlModifier) != 0;
-    }
+    [[nodiscard]] bool snapSuspended() const { return (heldModifiers_ & Qt::ControlModifier) != 0; }
     QLabel* hintsLabel_{nullptr};
     QString hintsFullText_;
     Qt::KeyboardModifiers heldModifiers_{};
     QPointF lastCursorSceneMm_; // dernier point de curseur (scène, mm)
+    // Surbrillance de pré-sélection (S11) : un seul item, masqué hors outil Sélection.
+    QGraphicsPathItem* hoverItem_{nullptr};
+    void updateHoverHighlight(std::optional<QPointF> sceneMm);
     QPointer<GesturesDialog> gesturesDialog_;
     QPointer<QuickStartDialog> quickStartDialog_;
     QPointer<QMenu> selectBelowMenu_;
