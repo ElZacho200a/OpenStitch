@@ -22,6 +22,8 @@
 #include "medial_field.hpp"
 #include "openstitch/auto_satin/satin_column.hpp"
 
+#include <cstddef>
+#include <cstdint>
 #include <vector>
 
 namespace openstitch::auto_satin::detail {
@@ -123,5 +125,59 @@ struct CorridorStation {
 [[nodiscard]] std::vector<CorridorStation> trace_corridor(const std::vector<P2>& axis,
                                                           const std::vector<Poly>& polys,
                                                           const SatinColumnsParameters& params);
+
+// --- Phase C (HP-STI-018, §2.2/§2.6) : critere de stabilite structurel ------
+//
+// Remplace `trim_unstable_junction_tail`'s width-drift/plateau heuristic (a
+// quantity measured AFTER the fact, on an already-ray-cast station) with a
+// single structural criterion read directly off `foot_multiplicity` : walking
+// INWARD from a junction-node end of a branch's dense station sequence, the
+// StableCorridorEnd is the first station whose `foot_multiplicity == 2` AND
+// whose next `junction_stability_margin_stations` consecutive stations
+// (further inward still) are ALSO `foot_multiplicity == 2`. A station still
+// "contaminated" by a neighbouring branch necessarily shows multiplicity >= 3
+// at that radius -- true BY CONSTRUCTION of `nearest_boundary_feet` (a third,
+// geometrically distinct contour location is within tolerance), not by
+// inference -- so a StableCorridorEnd can never be geometrically inside a
+// neighbour's corridor the way a width-stable-but-mislocated `cross_section`
+// station could (the exact historical bug on fixture "t",
+// docs/source/satin.md:690-703).
+//
+// `edge_id` is NOT computed here (a plain station sequence carries no
+// `SkeletonEdge` identity) -- it is always default (0) in the returned
+// `CorridorEnd`; a caller that needs it (e.g. a future `describe_junctions`,
+// Phase E) fills it in itself from the branch it already knows it is
+// processing.
+struct CorridorEnd {
+    std::uint32_t edge_id{0};
+    bool at_end{false};
+    CorridorStation station;
+};
+
+// Index-returning form of the criterion above, for a caller that must know
+// WHERE to cut `stations` (e.g. `compute_column_stations`, which must decide
+// which axis samples to even attempt measuring before any `Station` exists --
+// see satin_column.cpp) rather than just the station's own geometry.
+// `atEnd == true` walks from `stations.back()` inward (decreasing index),
+// `atEnd == false` from `stations.front()` inward (increasing index).
+//
+// Degenerate fallback (no station satisfies the margin -- an entire branch
+// contaminated, or too short to even test `junction_stability_margin_stations`
+// stations of margin): returns the END index itself (`stations.size() - 1`
+// for `atEnd`, `0` otherwise), i.e. NO trim at all -- same conservative floor
+// as `trim_unstable_junction_tail`'s own `st.size() >= 3` guard, never empties
+// a branch out from under its caller. Returns 0 if `stations` is empty
+// (caller must already guard against an empty branch before reaching here).
+[[nodiscard]] std::size_t
+find_stable_corridor_end_index(const std::vector<CorridorStation>& stations, bool atEnd,
+                               const SatinColumnsParameters& params);
+
+// Value-returning form, for direct callers/tests (§5 of the plan: explicit
+// `t`/`trident` fixtures asserting the thin branch's `CorridorEnd` lies
+// outside the wide branch's rail-to-rail span). Thin wrapper over
+// `find_stable_corridor_end_index`.
+[[nodiscard]] CorridorEnd find_stable_corridor_end(const std::vector<CorridorStation>& stations,
+                                                   bool atEnd,
+                                                   const SatinColumnsParameters& params);
 
 } // namespace openstitch::auto_satin::detail

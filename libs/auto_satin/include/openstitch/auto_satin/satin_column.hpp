@@ -158,6 +158,48 @@ struct SatinColumnsParameters {
     // de mesure par station, jamais `trim_unstable_junction_tail`/
     // `extend_tip`/les validations de couverture qui suivent, inchangees.
     bool use_corridor_tracing_dev_only{false};
+
+    // --- § HP-STI-018 Phase C (corridor.hpp, find_stable_corridor_end) -----
+    // Nombre de stations consecutives, en plus de la station candidate
+    // elle-meme, qui doivent TOUTES avoir `foot_multiplicity == 2` pour que
+    // cette candidate soit retenue comme StableCorridorEnd (specs/plans/
+    // hp-sti-018-turning-satin.md §2.2 : "new SatinColumnsParameters field,
+    // default 3"). Protege contre une station isolee a multiplicite 2 au
+    // milieu d'un bourrelet de confluence encore instable (une seule mesure a
+    // 2 pieds ne prouve rien si la station suivante retombe a 3) -- un
+    // plateau de `margin` stations consecutives est un signal nettement plus
+    // robuste qu'une seule. Lu UNIQUEMENT par le chemin
+    // `use_corridor_tracing_dev_only` (cf. ce champ ci-dessus) : n'affecte en
+    // rien le chemin de production (`cross_section`/`trim_unstable_junction_tail`).
+    //
+    // Valeur 6, PAS 3 (le defaut suggere par le plan initial,
+    // specs/plans/hp-sti-018-turning-satin.md §2.2) -- deviation empirique
+    // documentee en Phase C : sur la fixture "h" (pont jonction-jonction,
+    // shapes.cpp), la station choisie a margin=3 tombe encore dans la zone de
+    // virage du squelette tout pres du nœud (tangente locale franchement
+    // diagonale alors que la branche est, plus loin, parfaitement
+    // horizontale) -- foot_multiplicity==2 y est deja vrai (aucune troisieme
+    // feature de contour a portee), mais la geometrie locale n'a pas encore
+    // "redresse" apres le virage, ce qui produit un `JunctionCore` auto-
+    // croise (refus propre, mais une vraie regression par rapport au chemin
+    // historique qui reussissait sur "h"). margin=6 (teste empiriquement avec
+    // 3/6/10/15/20/30 sur "h" ; 6 est deja la plus petite valeur qui passe,
+    // 10/15/20/30 ne changent plus rien) pousse la station retenue juste assez
+    // loin pour laisser le virage se resorber. Documente ici plutot qu'ajuste
+    // silencieusement : c'est un vrai signal que la multiplicite seule ne
+    // garantit pas la stabilite GEOMETRIQUE locale (seulement l'absence de
+    // contamination par une branche voisine), cf. le rapport de la Phase C.
+    //
+    // CORRECTIF (revue Phase C) : l'affirmation "10/15/20/30 ne changent plus
+    // rien" ci-dessus est inexacte -- a margin=30, l'aire du noyau de la
+    // jonction 1 de "h" change reellement (15,49 -> 12,50 mm2), sans changer
+    // le verdict passe/refuse. 6 reste la plus petite valeur qui passe, et
+    // 6/10/15/20 sont bien identiques entre eux, mais la plage n'est pas
+    // parfaitement stable au-dela. Plus largement : cette valeur est calibree
+    // empiriquement sur UNE SEULE fixture ("h"), en stations brutes plutot
+    // qu'en distance/largeur de branche -- une vraie dette a corriger avant le
+    // cutover (Phase F), pas une valeur a considerer definitive.
+    int junction_stability_margin_stations{6};
 };
 
 // Zone centrale d'une jonction à 2+ branches non couverte par les colonnes
@@ -175,7 +217,7 @@ struct JunctionCore {
     std::vector<Vec2um> boundary;
     double area_um2{0.0};
     double configured_radius_um{
-        0.0}; // plafond de sécurité (`junction_core_radius`), PAS le rayon réel
+        0.0};                    // plafond de sécurité (`junction_core_radius`), PAS le rayon réel
     double local_radius_um{0.0}; // rayon local réellement utilisé (données réelles, ≤ configured)
     double actual_max_radius_um{0.0}; // distance MESURÉE du point le plus éloigné du noyau au nœud
     bool requires_fill{false}; // aire au-delà du seuil de significativité : à remplir séparément

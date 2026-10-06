@@ -493,6 +493,17 @@ struct Station {
     P2 railB; // côté -N (droite)
     P2 tangent;
     double width{0.0};
+    // § HP-STI-018 Phase C : copie de `detail::CorridorStation::foot_multiplicity`
+    // quand cette station vient de `detail::trace_corridor`
+    // (`use_corridor_tracing_dev_only`) -- sert UNIQUEMENT à
+    // `find_stable_corridor_end_index` (appelé, lui aussi, seulement sur ce
+    // chemin). Vaut 2 (corridor ordinaire, valeur neutre) pour toute station
+    // construite par l'ancien chemin `cross_section`, qui ne mesure pas cette
+    // grandeur, et pour toute station interpolée/étendue (`interpolate_station`,
+    // `extend_tip`, `extend_into_confluence`) : ces dernières ne sont jamais
+    // consultées pour ce champ (la restriction de plage par multiplicité a
+    // déjà eu lieu avant leur construction, cf. `compute_column_stations`).
+    int foot_multiplicity{2};
 };
 
 // Comble un échec ISOLÉ de `cross_section` (une seule station manquante entre
@@ -823,17 +834,52 @@ std::optional<std::vector<Station>> compute_column_stations(const std::vector<Ve
             // § HP-STI-018 Phase B -- indicateur TEST/DEV UNIQUEMENT (cf.
             // SatinColumnsParameters::use_corridor_tracing_dev_only) : mesure
             // dense par pieds de bord les plus proches (`detail::trace_corridor`,
-            // corridor.hpp) au lieu du ray-cast `cross_section`. SEULE cette
-            // boucle change -- le filtre `TooNarrow` par station, l'assemblage
-            // tolérant aux trous, le nettoyage anti-croisement, l'amputation de
-            // jonction (`trim_unstable_junction_tail`) et l'extension des bouts
-            // juste après restent EXACTEMENT les mêmes qu'avant, appliqués aux
-            // `Station` converties ci-dessous. `trace_corridor` ne peut jamais
-            // échouer (contrairement à `cross_section`) : une `CorridorStation`
-            // existe pour chaque `axis[i]`, donc seul le filtre `TooNarrow`
-            // peut encore produire un échec dans cette branche.
+            // corridor.hpp) au lieu du ray-cast `cross_section`. Le nettoyage
+            // anti-croisement et l'extension des bouts ouverts juste après
+            // restent EXACTEMENT les mêmes qu'avant, appliqués aux `Station`
+            // converties ci-dessous. `trace_corridor` ne peut jamais échouer
+            // (contrairement à `cross_section`) : une `CorridorStation` existe
+            // pour chaque `axis[i]`, donc seul le filtre `TooNarrow` peut
+            // encore produire un échec dans cette branche.
+            //
+            // § HP-STI-018 Phase C -- amputation de jonction DÉPLACÉE ICI,
+            // AVANT même la construction d'une `Station` : `trim_unstable_
+            // junction_tail`'s width-drift/plateau heuristic (appliqué plus
+            // bas, sur `st` déjà assemblé) est REMPLACÉ sur ce chemin par le
+            // critère structurel de `detail::find_stable_corridor_end_index`
+            // (foot_multiplicity), appliqué directement sur la série dense
+            // `corridor` indexée comme `axis`. Les échantillons d'axe
+            // EXCLUS par cette restriction (avant `loBound`, après `hiBound`)
+            // sont délibérément laissés en échec (`entries[i]` reste par
+            // défaut) plutôt que mesurés puis retirés après coup -- la boucle
+            // d'assemblage tolérante aux trous juste en dessous traite déjà
+            // tout échec en tête/queue d'axe comme un bord légitime (jamais un
+            // trou interne), exactement le traitement qu'exige une queue de
+            // jonction amputée. Un bout OUVERT (`extendStart`/`extendEnd` ==
+            // true) n'est, comme avant, jamais concerné : seul un bout de
+            // JONCTION est restreint ici (`extend_tip` étend le bout ouvert
+            // plus bas, sur la plage complète). Un critère de multiplicité n'a
+            // de sens que si l'amputation de jonction est activée
+            // (`anchor_junction_ends`) -- sinon la plage reste entière, comme
+            // avant.
             const auto corridor = detail::trace_corridor(axis, polys, params);
+            std::size_t loBound = 0;
+            std::size_t hiBound = corridor.empty() ? 0 : corridor.size() - 1;
+            if (params.anchor_junction_ends && !corridor.empty()) {
+                if (!extendStart) {
+                    loBound =
+                        detail::find_stable_corridor_end_index(corridor, /*atEnd=*/false, params);
+                }
+                if (!extendEnd) {
+                    hiBound =
+                        detail::find_stable_corridor_end_index(corridor, /*atEnd=*/true, params);
+                }
+            }
             for (std::size_t i = 0; i < axis.size(); ++i) {
+                if (i < loBound || i > hiBound) {
+                    continue; // queue de jonction amputée par multiplicité -- laissé en
+                              // échec par défaut, traité en bord légitime ci-dessous.
+                }
                 const auto& cs = corridor[i];
                 if (cs.width_um < minWidth) {
                     entries[i].failure = CrossSectionFailure::TooNarrow;
@@ -844,6 +890,7 @@ std::optional<std::vector<Station>> compute_column_stations(const std::vector<Ve
                     st.railA = cs.foot_a.point; // côté +N (gauche), même convention que railA
                     st.railB = cs.foot_b.point; // côté -N (droite), même convention que railB
                     st.width = cs.width_um;
+                    st.foot_multiplicity = cs.foot_multiplicity;
                     entries[i].station = std::move(st);
                     ++successCount;
                 }
@@ -945,11 +992,27 @@ std::optional<std::vector<Station>> compute_column_stations(const std::vector<Ve
                 // Dans ce cas, on arrête la branche à la dernière station valide avant
                 // le bourrelet. L'extrémité sera ensuite traitée par l'amputation et
                 // l'ancrage global de la jonction.
+                // § HP-STI-018 Phase C : sur le chemin corridor, la plage
+                // [loBound, hiBound] a DÉJÀ exclu tout échantillon jugé
+                // instable côté jonction (critère de multiplicité, plus haut,
+                // AVANT la moindre mesure) -- un trou TooNarrow qui survient
+                // malgré tout À L'INTÉRIEUR de cette plage déjà restreinte
+                // n'est donc PLUS présumé être « le bourrelet de confluence »
+                // par construction : c'est un creux de largeur ordinaire,
+                // traité comme n'importe quel autre trou interne (bridgé s'il
+                // est isolé, sinon la colonne entière est refusée) -- jamais
+                // ce raccourci qui jetterait les stations ENCORE PLUS loin
+                // dans la branche (potentiellement déjà confirmées stables
+                // par le critère de multiplicité) sur la seule foi de leur
+                // proximité du bout BRUT de l'axe (`axis.back()`, qui ignore
+                // totalement `hiBound`). Sur le chemin historique
+                // (`cross_section`), ce raccourci reste la SEULE protection
+                // contre le bourrelet (aucune restriction amont) : inchangé.
                 const double junctionRadius =
                     static_cast<double>(params.junction_anchor_radius.value);
 
-                const bool nearEndJunction =
-                    !extendEnd && norm(axis[i] - axis.back()) <= junctionRadius;
+                const bool nearEndJunction = !params.use_corridor_tracing_dev_only && !extendEnd &&
+                                             norm(axis[i] - axis.back()) <= junctionRadius;
 
                 if (nearEndJunction) {
                     warnings.push_back("queue de jonction amputee avant stations axe #" +
@@ -1022,7 +1085,15 @@ std::optional<std::vector<Station>> compute_column_stations(const std::vector<Ve
     // que la branche elle-même soit invalide. Si on valide avant cette amputation,
     // on refuse la branche sur un faux saut de largeur et la jonction devient
     // artificiellement incomplète.
-    if (params.anchor_junction_ends) {
+    //
+    // § HP-STI-018 Phase C : sur le chemin `use_corridor_tracing_dev_only`,
+    // cette amputation a DÉJÀ eu lieu plus haut (restriction de plage
+    // `loBound`/`hiBound` par `find_stable_corridor_end_index`, AVANT même la
+    // construction des `Station`) -- `trim_unstable_junction_tail`'s heuristique
+    // de dérive de largeur ne doit PAS s'appliquer une seconde fois par-dessus
+    // (elle lirait une largeur déjà correcte et pourrait amputer encore sur un
+    // critère sans rapport). Le chemin `false` reste À L'IDENTIQUE.
+    if (params.anchor_junction_ends && !params.use_corridor_tracing_dev_only) {
         // Référence calculée UNE FOIS, avant toute amputation, pour que
         // trimmer un bout n'affecte pas la référence utilisée par l'autre.
         const double referenceWidth = representative_station_width(st);
@@ -2445,6 +2516,16 @@ struct JunctionResolution {
     double coreArea{0.0};
     double localRadius{0.0};
     double actualMaxRadius{0.0};
+    // § HP-STI-018 Phase C -- décision empirique (§9.4 du plan) : nombre de
+    // fois où la boucle de retrait itératif ci-dessous a dû reculer une
+    // `StableBranchEnd` d'une station supplémentaire. Toujours calculé (le
+    // coût est négligeable), mais seulement EXPOSÉ en avertissement (cf.
+    // `resolve_and_validate_junctions`) quand `use_corridor_tracing_dev_only`
+    // est actif -- c'est la mesure qui permet de trancher "cette boucle
+    // reste-t-elle réellement nécessaire une fois le critère de multiplicité
+    // en place, ou n'est-elle plus qu'un filet mort" sur le corpus complet,
+    // au lieu de la retirer "au cas où" sans preuve.
+    std::size_t retractionEvents{0};
 };
 
 // Construit le secteur local d'une branche (§4) : borné par le séparateur
@@ -2492,6 +2573,14 @@ std::optional<JunctionResolution> resolve_junction(const std::vector<SatinColumn
                                                    const std::vector<ContourPolyline>& contours,
                                                    const std::vector<P2>& reflexVertices, P2 center,
                                                    double configuredRadius) {
+    // NOTE (§ HP-STI-018 Phase C) : `params` n'est PAS un paramètre de cette
+    // fonction -- `resolve_junction` reste une fonction purement géométrique
+    // sur des `SatinColumnGeometry` déjà construites, inchangée dans sa
+    // signature. L'instrumentation de la boucle de retrait ci-dessous
+    // (`JunctionResolution::retractionEvents`) est TOUJOURS calculée (coût
+    // négligeable) et c'est l'APPELANT (`resolve_and_validate_junctions`, qui
+    // a `params` en portée) qui décide s'il doit l'exposer en avertissement
+    // -- cf. commentaire sur `retractionEvents`.
     const std::size_t n = branches.size();
     if (n < 2) {
         return std::nullopt;
@@ -2541,6 +2630,7 @@ std::optional<JunctionResolution> resolve_junction(const std::vector<SatinColumn
             }
             ++offsets[idx];
             res.ends[idx] = make_stable_branch_end(col, branches[idx], offsets[idx]);
+            ++res.retractionEvents;
             return true;
         };
         const bool retractedFirst = retract(bad->first);
@@ -2839,6 +2929,23 @@ SatinColumnsResult build_satin_columns(const geometry::PathSet& region,
                 r.columns.clear();
                 r.refusal = "jonction incoherente : " + problem;
                 return;
+            }
+            // § HP-STI-018 Phase C -- décision empirique sur la boucle de
+            // retrait itératif (§9.4 du plan, "decide after Phase C's
+            // empirical results") : n'affiche cette mesure QUE sur le chemin
+            // dev-only (le chemin de production n'en a pas besoin -- la
+            // boucle y est toujours la mécanique PRINCIPALE, pas une
+            // décision à évaluer). `tests/unit/auto_satin/test_corridor.cpp`
+            // grep cette sous-chaîne sur le corpus complet pour établir si la
+            // boucle a encore été nécessaire ne serait-ce qu'une fois sous le
+            // nouveau critère de multiplicité.
+            if (params.use_corridor_tracing_dev_only && resolved->retractionEvents > 0) {
+                r.warnings.push_back(
+                    "jonction " + std::to_string(junctionId) +
+                    " : repli de retrait iteratif (Phase C, mesure empirique) declenche " +
+                    std::to_string(resolved->retractionEvents) +
+                    " fois malgre le critere de "
+                    "multiplicite (find_stable_corridor_end)");
             }
             // Expose StableBranchEnd / JunctionSeparator / secteurs (diagnostic SVG/tests).
             for (std::size_t bi = 0; bi < branches.size(); ++bi) {

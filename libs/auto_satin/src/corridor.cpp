@@ -250,4 +250,58 @@ std::vector<CorridorStation> trace_corridor(const std::vector<P2>& axis,
     return stations;
 }
 
+std::size_t find_stable_corridor_end_index(const std::vector<CorridorStation>& stations, bool atEnd,
+                                           const SatinColumnsParameters& params) {
+    const std::size_t n = stations.size();
+    if (n == 0) {
+        return 0;
+    }
+    // Negatif ou nul traite comme "aucune marge exigee" (seule la station
+    // elle-meme compte) -- jamais une exception, cf. le meme traitement
+    // defensif que le reste du fichier (ex. `tip_min_width`).
+    const std::size_t margin =
+        params.junction_stability_margin_stations > 0
+            ? static_cast<std::size_t>(params.junction_stability_margin_stations)
+            : 0;
+    for (std::size_t step = 0; step < n; ++step) {
+        const std::size_t idx = atEnd ? (n - 1 - step) : step;
+        if (stations[idx].foot_multiplicity != 2) {
+            continue;
+        }
+        bool stable = true;
+        for (std::size_t m = 1; m <= margin; ++m) {
+            if (atEnd) {
+                if (idx < m || stations[idx - m].foot_multiplicity != 2) {
+                    stable = false;
+                    break;
+                }
+            } else {
+                if (idx + m >= n || stations[idx + m].foot_multiplicity != 2) {
+                    stable = false;
+                    break;
+                }
+            }
+        }
+        if (stable) {
+            return idx;
+        }
+    }
+    // Degenere (branche entierement contaminee, ou trop courte pour meme
+    // tester la marge) : ne rien retrancher plutot que de vider la branche --
+    // meme garde-fou conservateur que l'ancien `trim_unstable_junction_tail`
+    // (`st.size() >= 3`).
+    return atEnd ? (n - 1) : 0;
+}
+
+CorridorEnd find_stable_corridor_end(const std::vector<CorridorStation>& stations, bool atEnd,
+                                     const SatinColumnsParameters& params) {
+    CorridorEnd result;
+    result.at_end = atEnd;
+    if (stations.empty()) {
+        return result; // station par defaut, edge_id 0 -- cf. corridor.hpp.
+    }
+    result.station = stations[find_stable_corridor_end_index(stations, atEnd, params)];
+    return result;
+}
+
 } // namespace openstitch::auto_satin::detail

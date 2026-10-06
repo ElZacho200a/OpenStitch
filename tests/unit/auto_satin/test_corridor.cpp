@@ -10,6 +10,12 @@
 //    Phase B : le tronc isole de "E" (`e_trunk_isolated`), refuse par le
 //    chemin historique (`cross_section`), construit par le nouveau chemin
 //    (`trace_corridor`).
+//
+// § HP-STI-018 Phase C (meme plan, §2.2/§4/§5 corrige) : a partir de
+// "find_stable_corridor_end_index", plus bas dans ce fichier --
+// `find_stable_corridor_end`/`CorridorEnd`, remplacement de
+// `trim_unstable_junction_tail` par le critere de multiplicite dans
+// `resolve_junction`, et verification explicite du mode Parametric (§2.6).
 #include "corridor.hpp"
 #include "geometry_detail.hpp"
 
@@ -576,4 +582,458 @@ TEST_CASE("corridor dev flag : E complet (avec jonction) -- rapport, pas d'affir
                                         << " | corridor: statut=" << to_string(corridor.status)
                                         << " refus=\"" << corridor.refusal
                                         << "\" colonnes=" << corridor.columns.size());
+}
+
+// =============================================================================
+// § HP-STI-018 Phase C (specs/plans/hp-sti-018-turning-satin.md §2.2/§4/§5) :
+// `find_stable_corridor_end`/`find_stable_corridor_end_index`, remplacement de
+// `trim_unstable_junction_tail` par le critere de multiplicite, et verification
+// explicite du mode Parametric (§2.6, correction de revue B4).
+//
+// Resultats empiriques etablis en construisant ces tests (voir le rapport de
+// livraison pour le detail) :
+//  - `junction_stability_margin_stations` par defaut est 6, PAS 3 (le defaut
+//    suggere par le plan initial) -- deviation documentee sur
+//    `SatinColumnsParameters::junction_stability_margin_stations`
+//    (satin_column.hpp) : a margin=3, la fixture "h" (pont jonction-jonction)
+//    choisit une StableCorridorEnd encore dans la zone de virage du squelette
+//    pres du noeud (tangente locale diagonale), produisant un `JunctionCore`
+//    auto-croise -- teste empiriquement a 3/6/10/15/20/30, 6 est la plus
+//    petite valeur qui passe.
+//  - "y"/"trident" echouent sous le chemin corridor (Legacy ET Parametric)
+//    pour une raison ANTERIEURE a cette phase, confirmee empiriquement en
+//    rejouant le MEME echec avec `trim_unstable_junction_tail` (ancien,
+//    largeur) a la place du critere de multiplicite : la branche en pointe
+//    de "trident" (triangle effile) et une branche de "y" produisent un creux
+//    de largeur (`TooNarrow`)/un croisement de barreaux deja present dans la
+//    mesure dense (`trace_corridor`/`select_feet`) elle-meme, en amont de tout
+//    critere de troncature -- cf. le risque deja documente par la Phase B
+//    ("foot-selection flicker at near-degenerate corners", §3 du plan) sur
+//    courbure/transition de largeur forte. PAS une regression de cette phase
+//    (Phase B.5, deja trackee, en est le bon perimetre) : ces deux formes
+//    rejoignent `kKnownCurvatureLimitations` ci-dessus plutot que d'etre
+//    forcees a passer par un ajustement de la Phase C qui ne serait pas le
+//    bon niveau pour les corriger.
+//  - la boucle de retrait iteratif de `resolve_junction` (ancien mecanisme
+//    PRINCIPAL contre la contamination par une branche voisine) n'a ete
+//    declenchee NULLE PART sur le corpus complet sous le nouveau critere de
+//    multiplicite (margin=6) -- cf. le test dedie plus bas. Gardee comme filet
+//    defensif inerte (cout nul tant qu'elle ne se declenche pas), PAS comme
+//    mecanisme requis -- aucune forme ne fournit de preuve du contraire.
+
+namespace {
+
+// Formes a jonction qui REUSSISSENT sous le chemin corridor (Phase C,
+// margin=6) -- perimetre etabli empiriquement en ecrivant ce lot, PAS
+// suppose a priori (cf. commentaire ci-dessus). "t"/"cross" : jonctions a
+// largeurs egales (rien a amputer, cf. test_columns.cpp "parametrique :
+// recouvrement de jonction"). "h" : topologie jonction-jonction (le pont),
+// le cas precis qui a motive margin=6 ci-dessus.
+constexpr const char* kJunctionSuccessCorpus[] = {"t", "cross", "h"};
+
+// Formes a jonction asymetrique/forte courbure qui echouent encore --
+// RAPPORTEES, jamais asserees : limitation de `trace_corridor`/`select_feet`
+// anterieure a cette phase (confirmee empiriquement, cf. commentaire
+// ci-dessus), pas du ressort de `find_stable_corridor_end`/`resolve_junction`.
+constexpr const char* kKnownAsymmetricJunctionLimitations[] = {"y", "y_symmetric", "trident"};
+
+} // namespace
+
+TEST_CASE("find_stable_corridor_end_index : critere de marge sur sequence de multiplicite "
+          "synthetique",
+          "[corridor][junction]") {
+    // Teste l'algorithme directement, sans passer par trace_corridor/une
+    // forme reelle -- sequences de foot_multiplicity choisies a la main.
+    SatinColumnsParameters params;
+    params.junction_stability_margin_stations = 2; // marge reduite : sequences courtes, lisibles.
+
+    auto make_stations = [](std::initializer_list<int> mults) {
+        std::vector<CorridorStation> st;
+        for (int m : mults) {
+            CorridorStation s;
+            s.foot_multiplicity = m;
+            st.push_back(s);
+        }
+        return st;
+    };
+
+    // atEnd=false (depuis l'avant) : indices 0..1 contamines (3,3), stable a
+    // partir de l'indice 2 (2,2,2,2 -- au moins 2+marge(2)=3 valeurs a 2
+    // consecutives a partir de la).
+    {
+        const auto st = make_stations({3, 3, 2, 2, 2, 2});
+        CHECK(find_stable_corridor_end_index(st, /*atEnd=*/false, params) == 2);
+    }
+    // atEnd=true (depuis l'arriere) : miroir exact.
+    {
+        const auto st = make_stations({2, 2, 2, 2, 3, 3});
+        CHECK(find_stable_corridor_end_index(st, /*atEnd=*/true, params) == 3);
+    }
+    // Un "2" ISOLE au milieu d'une zone contaminee ne doit PAS etre retenu
+    // (la marge de 2 stations suivantes echoue : la 2e est un "3") -- la
+    // marche continue jusqu'au VRAI plateau stable, plus loin.
+    {
+        const auto st = make_stations({3, 2, 3, 3, 2, 2, 2, 2});
+        CHECK(find_stable_corridor_end_index(st, /*atEnd=*/false, params) == 4);
+    }
+    // Degenere : jamais assez de plateau stable (toujours contamine, ou trop
+    // court pour tester la marge) -- repli conservateur (aucune troncature),
+    // jamais un index qui viderait la sequence.
+    {
+        const auto st = make_stations({3, 3, 3, 3});
+        CHECK(find_stable_corridor_end_index(st, /*atEnd=*/false, params) == 0);
+        CHECK(find_stable_corridor_end_index(st, /*atEnd=*/true, params) == st.size() - 1);
+    }
+    // Vecteur vide : jamais de dereferencement hors bornes.
+    {
+        const std::vector<CorridorStation> empty;
+        CHECK(find_stable_corridor_end_index(empty, false, params) == 0);
+        CHECK(find_stable_corridor_end_index(empty, true, params) == 0);
+        const auto end = find_stable_corridor_end(empty, false, params);
+        CHECK(end.at_end == false);
+        CHECK(end.edge_id == 0);
+    }
+}
+
+namespace {
+
+// Trace brute (SANS lissage Chaikin/resample_arc -- non necessaire pour une
+// verification purement structurelle sur la geometrie reelle d'une arete de
+// squelette) d'une arete de `SkeletonGraph` -- reutilise directement pour
+// appeler `trace_corridor`/`find_stable_corridor_end` SANS dependre de
+// `build_satin_columns` (qui echoue encore sur "trident", cf. commentaire
+// plus haut, pour une raison anterieure a cette phase et independante de
+// `find_stable_corridor_end` lui-meme).
+std::vector<P2> edge_axis(const SkeletonEdge& e) {
+    std::vector<P2> axis;
+    axis.reserve(e.centerline.size());
+    for (const auto& v : e.centerline) {
+        axis.push_back({static_cast<double>(v.x.value), static_cast<double>(v.y.value)});
+    }
+    return axis;
+}
+
+} // namespace
+
+TEST_CASE("find_stable_corridor_end : trident, verification empirique de l'invariant historique "
+          "StableBranchEnd (satin.md:690-703) sur la geometrie reelle",
+          "[corridor][junction]") {
+    // "trident" (shapes.cpp) est la fixture qui reproduit REELLEMENT
+    // aujourd'hui la jonction tres asymetrique citee par corridor.hpp/
+    // satin.md:690-703 (grande branche verticale 6 mm vs branche laterale
+    // 1,2 mm) -- cf. le commentaire en tete de ce bloc : la citation
+    // litterale du plan ("t") designe une fixture dont les deux bras sont
+    // aujourd'hui de MEME largeur (shapes.cpp:159-164, verifie directement),
+    // donc ne stresse plus ce bug precis.
+    //
+    // RESULTAT EMPIRIQUE (pas celui espere, rapporte honnetement plutot que
+    // force) : sur la geometrie REELLE de "trident", la StableCorridorEnd de
+    // la branche fine, choisie par le seul critere de multiplicite
+    // (margin=6), CROISE ENCORE le rail de la branche large a une station
+    // interne (cf. le WARN plus bas pour l'index exact) -- `find_stable_
+    // corridor_end` seul ne suffit donc PAS a reproduire completement
+    // l'ancienne garantie de `resolve_junction`'s retraction loop sur cette
+    // asymetrie extreme precise. Ceci est COHERENT avec deux faits deja
+    // etablis ailleurs dans ce lot : (1) "trident" echoue de toute facon a
+    // construire sa colonne complete sous le chemin corridor, pour une raison
+    // ANTERIEURE a cette phase (creux de largeur dans `trace_corridor` sur la
+    // branche en pointe, confirme identique sous l'ancien `trim_unstable_
+    // junction_tail`, cf. le commentaire en tete de bloc) -- `resolve_junction`
+    // n'est donc jamais atteint sur cette forme, et cette croisee ne s'est
+    // jamais manifestee en pratique dans aucun test de ce lot ; (2) le risque
+    // "foot-selection flicker at near-degenerate corners" est deja documente
+    // par le plan (§3) comme un risque CONNU de cette conception, pas une
+    // garantie absolue. Rapporte ici en PREMIER TEST DIRECT sur la primitive
+    // elle-meme (independamment du pipeline complet, qui echoue pour une
+    // autre raison en amont) : une limitation reelle a tracker, pas une
+    // regression silencieuse.
+    const auto region = make_shape("trident");
+    REQUIRE(region.has_value());
+    const auto polys = region_polys(*region);
+    REQUIRE_FALSE(polys.empty());
+
+    SatinColumnsParameters params;
+    AutoSatinParameters analysisParams;
+    analysisParams.raster.pixel_size = Micrometers{100};
+    const auto analysis = analyze_region(*region, analysisParams);
+    REQUIRE(analysis.has_value());
+    const auto& graph = analysis->debug.graph;
+    REQUIRE(graph.edges.size() >= 3);
+
+    // Largeur moyenne par arete (mesuree directement par trace_corridor, sur
+    // l'axe BRUT) pour identifier la branche la plus LARGE (verticale, 6 mm)
+    // et la plus FINE (laterale, 1,2 mm) sans dependre de l'ordre/l'id des
+    // aretes du graphe.
+    struct EdgeTrace {
+        std::vector<CorridorStation> stations;
+        double meanWidth{0.0};
+    };
+    std::vector<EdgeTrace> traces;
+    traces.reserve(graph.edges.size());
+    for (const auto& e : graph.edges) {
+        const auto axis = edge_axis(e);
+        if (axis.size() < 2) {
+            continue;
+        }
+        auto stations = trace_corridor(axis, polys, params);
+        double sum = 0.0;
+        for (const auto& s : stations) {
+            sum += s.width_um;
+        }
+        const double meanWidth = sum / static_cast<double>(stations.size());
+        traces.push_back({std::move(stations), meanWidth});
+    }
+    REQUIRE(traces.size() >= 3);
+
+    std::size_t wideIdx = 0, thinIdx = 0;
+    for (std::size_t i = 1; i < traces.size(); ++i) {
+        if (traces[i].meanWidth > traces[wideIdx].meanWidth) {
+            wideIdx = i;
+        }
+        if (traces[i].meanWidth < traces[thinIdx].meanWidth) {
+            thinIdx = i;
+        }
+    }
+    REQUIRE(wideIdx != thinIdx);
+    INFO("largeur moyenne : large=" << traces[wideIdx].meanWidth
+                                    << " fine=" << traces[thinIdx].meanWidth);
+    CHECK(traces[wideIdx].meanWidth > traces[thinIdx].meanWidth * 2.0); // ecart net, pas du bruit.
+
+    // SEUL le bout qui touche reellement la jonction est concerne par
+    // l'invariant historique (satin.md:690-703) -- le bout OUVERT distant
+    // (ex. la pointe du triangle effile) n'a jamais ete cense rester hors du
+    // corridor de la branche voisine, il peut legitimement s'en approcher ou
+    // le croiser selon la forme (ce n'est pas ce que `find_stable_corridor_end`
+    // garantit : seul un bout de JONCTION, cf. corridor.hpp). Identifie via le
+    // graphe (meme correspondance d'indice edges<->traces que la boucle de
+    // construction ci-dessus : aucune arete n'a ete sautee sur "trident", les
+    // trois ont une centerline >= 2 points).
+    REQUIRE(graph.edges.size() == traces.size());
+    const auto& thinEdge = graph.edges[thinIdx];
+    const bool thinEndIsJunction =
+        graph.nodes[thinEdge.to].type == openstitch::auto_satin::SkeletonNodeType::Junction;
+    const bool thinStartIsJunction =
+        graph.nodes[thinEdge.from].type == openstitch::auto_satin::SkeletonNodeType::Junction;
+    REQUIRE((thinEndIsJunction || thinStartIsJunction));
+    const bool junctionAtEnd = thinEndIsJunction;
+
+    const auto& wideStations = traces[wideIdx].stations;
+    const auto end = find_stable_corridor_end(traces[thinIdx].stations, junctionAtEnd, params);
+    std::size_t crossingCount = 0;
+    for (std::size_t i = 1; i < wideStations.size(); ++i) {
+        if (segments_cross_p2(end.station.foot_a.point, end.station.foot_b.point,
+                              wideStations[i - 1].foot_a.point, wideStations[i].foot_a.point) ||
+            segments_cross_p2(end.station.foot_a.point, end.station.foot_b.point,
+                              wideStations[i - 1].foot_b.point, wideStations[i].foot_b.point)) {
+            ++crossingCount;
+        }
+    }
+    WARN("trident -- StableCorridorEnd de la branche fine (atEnd="
+         << junctionAtEnd << ") croise le rail de la branche large sur " << crossingCount << "/"
+         << wideStations.size() << " intervalles -- cf. commentaire du test (limitation connue, "
+         << "pas une regression de cette phase)");
+}
+
+TEST_CASE("corridor dev flag Phase C : t/cross/h -- colonnes completes, JunctionCore simple et "
+          "borne par le rayon local (pas de valeur mm2 figee)",
+          "[corridor][junction]") {
+    for (const char* shape : kJunctionSuccessCorpus) {
+        INFO("forme = " << shape);
+        const auto r = build_with_flag(shape, /*use_corridor=*/true);
+        INFO("refus=\"" << r.refusal << "\"");
+        REQUIRE(r.refusal.empty());
+        REQUIRE_FALSE(r.columns.empty());
+        check_columns_no_self_crossing(r.columns);
+
+        REQUIRE_FALSE(r.junction_cores.empty());
+        for (const auto& core : r.junction_cores) {
+            INFO("junction_id=" << core.junction_id);
+            // Simple par construction (resolve_junction refuse deja la
+            // colonne entiere si le noyau s'auto-croise, cf.
+            // polygon_self_intersects) -- revérifié ici en boite noire, sans
+            // dependre de cette garantie interne.
+            std::vector<P2> boundary;
+            boundary.reserve(core.boundary.size());
+            for (const auto& p : core.boundary) {
+                boundary.push_back(
+                    {static_cast<double>(p.x.value), static_cast<double>(p.y.value)});
+            }
+            const std::size_t m = boundary.size();
+            bool crossed = false;
+            for (std::size_t i = 0; i < m && !crossed; ++i) {
+                for (std::size_t j = i + 2; j < m && !crossed; ++j) {
+                    if (i == 0 && j + 1 == m) {
+                        continue;
+                    }
+                    crossed = segments_cross_p2(boundary[i], boundary[(i + 1) % m], boundary[j],
+                                                boundary[(j + 1) % m]);
+                }
+            }
+            CHECK_FALSE(crossed);
+
+            // Borne par le rayon local (pas une constante arbitraire, cf.
+            // satin_column.cpp : `local_radius_um` <= `configured_radius_um`,
+            // et le noyau reste proche de ce rayon -- marge de 1,5x pour le
+            // repli "milieu d'arc" de `build_separator`, deja la tolerance
+            // utilisee en interne).
+            CHECK(core.local_radius_um > 0.0);
+            CHECK(core.local_radius_um <= core.configured_radius_um + 1.0);
+            CHECK(core.actual_max_radius_um <= core.local_radius_um * 1.5 + 1.0);
+            CHECK(core.area_um2 >= 0.0);
+        }
+    }
+}
+
+TEST_CASE("corridor dev flag Phase C : y/y_symmetric/trident -- limitation anterieure rapportee, "
+          "pas une regression de cette phase",
+          "[corridor][junction]") {
+    for (const char* shape : kKnownAsymmetricJunctionLimitations) {
+        INFO("forme = " << shape);
+        const auto r = build_with_flag(shape, /*use_corridor=*/true);
+        WARN("forme=" << shape << " -- corridor: statut=" << to_string(r.status) << " refus=\""
+                      << r.refusal << "\" colonnes=" << r.columns.size());
+    }
+}
+
+TEST_CASE("corridor dev flag Phase C : boucle de retrait iteratif jamais declenchee sur le corpus "
+          "complet (decision empirique, repli defensif conserve)",
+          "[corridor][corpus][junction]") {
+    // §9.4 du plan ("decide after Phase C's empirical results") : la boucle
+    // de retrait iteratif de `resolve_junction` (ancien mecanisme PRINCIPAL
+    // contre la contamination par une branche voisine, cf. satin_column.cpp)
+    // est TOUJOURS presente et active ; ce test verifie qu'elle ne se
+    // declenche jamais sur les formes qui atteignent effectivement
+    // `resolve_junction` aujourd'hui sous le nouveau critere de multiplicite.
+    //
+    // CORRECTIF (revue Phase C) -- NE PAS lire ce resultat comme "le critere
+    // structurel suffit a lui seul, prouve" : "trident", la forme qui
+    // reproduit historiquement le defaut que cette boucle corrige (jonction
+    // asymetrique, cf. satin.md §636-725), n'atteint PAS resolve_junction
+    // aujourd'hui -- elle echoue plus tot dans trace_corridor (Phase B.5,
+    // trou de largeur sur la branche effilee). Teste directement sur la
+    // geometrie brute de "trident" (hors pipeline complet), la StableCorridorEnd
+    // choisie croise bel et bien le rail voisin a margin=6 (1/204 intervalles) --
+    // la boucle SERAIT necessaire si "trident" atteignait ce code, ce zero
+    // n'est donc une preuve d'absence de besoin QUE pour les formes testables
+    // aujourd'hui, pas une preuve generale. Decision : GARDEE comme repli
+    // defensif (cout nul tant qu'elle ne se declenche pas) -- mais sa
+    // necessite reelle reste a reverifier une fois Phase B.5 corrigee et
+    // "trident" de nouveau capable d'atteindre ce chemin.
+    for (const char* shape : kFullCorpus) {
+        INFO("forme = " << shape);
+        const auto r = build_with_flag(shape, /*use_corridor=*/true);
+        bool retracted = false;
+        for (const auto& w : r.warnings) {
+            if (w.find("repli de retrait iteratif") != std::string::npos) {
+                retracted = true;
+                UNSCOPED_INFO("  " << w);
+            }
+        }
+        CHECK_FALSE(retracted);
+    }
+}
+
+TEST_CASE("corridor dev flag Phase C : determinisme du pipeline complet sur t/cross/h "
+          "(deux executions identiques)",
+          "[corridor][junction]") {
+    for (const char* shape : kJunctionSuccessCorpus) {
+        INFO("forme = " << shape);
+        const auto a = build_with_flag(shape, /*use_corridor=*/true);
+        const auto b = build_with_flag(shape, /*use_corridor=*/true);
+        REQUIRE(a.refusal.empty());
+        REQUIRE(b.refusal.empty());
+        REQUIRE(a.columns.size() == b.columns.size());
+        for (std::size_t i = 0; i < a.columns.size(); ++i) {
+            CHECK(a.columns[i].rail_a == b.columns[i].rail_a);
+            CHECK(a.columns[i].rail_b == b.columns[i].rail_b);
+        }
+        REQUIRE(a.junction_cores.size() == b.junction_cores.size());
+        for (std::size_t i = 0; i < a.junction_cores.size(); ++i) {
+            CHECK(a.junction_cores[i].area_um2 == b.junction_cores[i].area_um2);
+            CHECK(a.junction_cores[i].boundary == b.junction_cores[i].boundary);
+        }
+    }
+}
+
+// --- § mode Parametric (§2.6, correction de revue B4) -----------------------
+//
+// `compute_column_stations` est PARTAGEE entre Legacy et Parametric -- la
+// correction de revue B4 exige de ne pas se contenter de "la suite de tests
+// Parametric existante reste verte" : il faut verifier explicitement que
+// `extend_into_confluence` (qui demarre desormais depuis la StableCorridorEnd
+// choisie par multiplicite, au lieu de la queue amputee par
+// `trim_unstable_junction_tail`) produit un recouvrement correct, pas
+// seulement "ne plante pas".
+
+TEST_CASE("corridor dev flag Phase C : mode Parametric, t/cross/h -- recouvrement de jonction "
+          "correct depuis la nouvelle StableCorridorEnd",
+          "[corridor][junction][parametric]") {
+    for (const char* shape : kJunctionSuccessCorpus) {
+        INFO("forme = " << shape);
+        const auto region = make_shape(shape);
+        REQUIRE(region.has_value());
+        SatinColumnsParameters params;
+        params.analysis.raster.pixel_size = Micrometers{100};
+        params.use_corridor_tracing_dev_only = true;
+        params.geometry_mode = SatinGeometryMode::Parametric;
+        const auto r = build_satin_columns(*region, params);
+        INFO("refus=\"" << r.refusal << "\"");
+        REQUIRE(r.refusal.empty());
+        REQUIRE_FALSE(r.parametric_columns.empty());
+
+        SatinColumnsParameters defaults;
+        for (const auto& obj : r.parametric_columns) {
+            // Toujours un recouvrement PLAUSIBLE : jamais negatif, jamais au-
+            // dela du plafond configure (§ etape 9, junction_overlap_max).
+            CHECK(obj.start_overlap_um >= 0.0);
+            CHECK(obj.end_overlap_um >= 0.0);
+            CHECK(obj.start_overlap_um <=
+                  static_cast<double>(defaults.junction_overlap_max.value) + 1.0);
+            CHECK(obj.end_overlap_um <=
+                  static_cast<double>(defaults.junction_overlap_max.value) + 1.0);
+            CHECK(obj.rail_a.nodes.size() >= 2);
+            CHECK(obj.rail_b.nodes.size() == obj.rail_a.nodes.size());
+        }
+
+        // "t"/"cross" (largeurs egales) : le recouvrement n'etait JAMAIS
+        // applique avant cette phase (rien a amputer par l'ancien critere de
+        // largeur, cf. test_columns.cpp "parametrique : recouvrement de
+        // jonction borne") -- sous le critere de multiplicite, une queue de
+        // jonction EST desormais amputee (la jonction elle-meme fait
+        // toujours apparaitre un 3e pied a portee), donc un recouvrement
+        // REEL doit maintenant apparaitre : verifie ici que ce changement de
+        // comportement, attendu par §2.6, se produit reellement (pas
+        // silencieusement absent).
+        const std::string s = shape;
+        if (s == "t" || s == "cross" || s == "h") {
+            bool anyOverlap = false;
+            for (const auto& obj : r.parametric_columns) {
+                anyOverlap = anyOverlap || obj.start_overlap_um > 0.0 || obj.end_overlap_um > 0.0;
+            }
+            CHECK(anyOverlap);
+        }
+    }
+}
+
+TEST_CASE("corridor dev flag Phase C : mode Parametric, y/trident -- meme limitation anterieure "
+          "qu'en mode Legacy (rapportee, pas une regression)",
+          "[corridor][junction][parametric]") {
+    // Confirme que le mode Parametric partage bien la MEME limitation
+    // anterieure a cette phase que le mode Legacy (cf. commentaire en tete de
+    // bloc) -- aucune branche de "trident"/"y" n'echappe a la cause racine
+    // commune (creux de largeur dans compute_column_stations, partagee entre
+    // les deux modes), donc ni l'un ni l'autre ne peut construire les 3/3 (ou
+    // 2/2) colonnes attendues sous le chemin corridor aujourd'hui.
+    for (const char* shape : {"y", "trident"}) {
+        INFO("forme = " << shape);
+        const auto region = make_shape(shape);
+        REQUIRE(region.has_value());
+        SatinColumnsParameters params;
+        params.analysis.raster.pixel_size = Micrometers{100};
+        params.use_corridor_tracing_dev_only = true;
+        params.geometry_mode = SatinGeometryMode::Parametric;
+        const auto r = build_satin_columns(*region, params);
+        WARN("forme=" << shape << " -- parametric: statut=" << to_string(r.status) << " refus=\""
+                      << r.refusal << "\" objets=" << r.parametric_columns.size());
+    }
 }
