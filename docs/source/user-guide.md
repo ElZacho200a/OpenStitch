@@ -48,6 +48,76 @@ d'accent), lisible sur tout fond. Le rendu est organisé en deux couches
 (image/vecteurs/régions d'une part, points d'autre part) pour rester fluide sur
 de gros motifs.
 
+## Souris et clavier
+
+Le comportement de la souris et du clavier dans le canevas suit une **table
+unique** (`apps/desktop/interaction_map.cpp`) : c'est elle qui pilote le
+comportement du canevas, la ligne d'indications de la barre d'état et le
+tableau ci-dessous. Principes : la **molette** zoome sous le curseur, le **clic
+molette** (ou **Espace** + glisser, ou **Ctrl + molette** pour un pavé tactile)
+déplace la vue, **Maj** ajoute à la sélection, **Ctrl** ajoute ou retire, un
+**appui long** ou **Alt + clic** ouvre « Sélectionner dessous ». La
+correspondance est exacte : Maj + clic n'est pas un clic simple, et le panoramique
+reste disponible pendant un outil de dessin. Sous Windows, un pavé tactile se
+distingue mal d'une molette : le préréglage de navigation « Pavé tactile »
+(Affichage ▸ Navigation) y met en avant Espace + glisser et Ctrl + molette.
+
+Le tableau est **généré** par `openstitch_gesture_table --markdown` ; ne pas le
+modifier à la main (le test `docs_gestures_in_sync` échoue si la table du code
+et ce bloc divergent). Pour le régénérer, recopier la sortie de la commande
+entre les deux marqueurs.
+
+<!-- GESTURES:BEGIN -->
+| Réf. | Contexte | Geste | Action |
+|---|---|---|---|
+| G1 | Partout | Molette | Zoom au curseur |
+| G2 | Partout | Ctrl + Maj + clic molette + glisser | Zoom continu |
+| G3 | Partout | Clic molette + glisser | Panoramique |
+| G4 | Partout | Double-clic molette | Cadrer le design |
+| G5 | Partout | Espace + glisser | Panoramique (sans clic molette) |
+| G6 | Partout | Maj + molette | Défilement horizontal |
+| G7 | Partout | Alt + molette | Défilement vertical |
+| G8 | Partout | Défilement à deux doigts | Panoramique |
+| G9 | Partout | Pincement | Zoom au curseur |
+| G10 | Sélection | Clic droit | Menu contextuel |
+| G10b | Déplacement | Clic droit | Menu contextuel |
+| G10c | Édition de nœuds | Clic droit | Menu contextuel |
+| G10d | Édition de points | Clic droit | Menu contextuel |
+| G11 | Partout | Suppr | Supprimer la sélection |
+| G12 | Partout | Échap | Annuler l'outil en cours |
+| G13 | Partout | Ctrl + molette | Zoom au curseur |
+| G14 | Partout | F | Ajuster au canevas |
+| G15 | Partout | Flèches | Déplacer l'objet de 0,1 mm |
+| G15b | Partout | Maj + Flèches | Déplacer l'objet de 1 mm |
+| P1 | Déplacer la vue | Glisser | Panoramique |
+| S1 | Sélection | Clic | Sélectionner (le vide désélectionne) |
+| S2 | Sélection | Maj + clic | Ajouter à la sélection |
+| S3 | Sélection | Ctrl + clic | Basculer dans la sélection |
+| S4 | Sélection | Appui long | Sélectionner dessous |
+| S5 | Sélection | Alt + clic | Sélectionner dessous |
+| S6 | Sélection | Glisser | Sélection par rectangle (vers la droite : englobe, vers la gauche : croise) |
+| S7 | Sélection | Maj + glisser | Rectangle : ajouter à la sélection |
+| S8 | Sélection | Ctrl + glisser | Rectangle : basculer dans la sélection |
+| S10 | Sélection | Double-clic | Entrer en édition de l'objet |
+| S11 | Sélection | Survol | Surbrillance de pré-sélection |
+| M1 | Déplacement | Glisser | Déplacer l'objet |
+| M2 | Déplacement | Maj + glisser | Verrouiller l'axe |
+| M3 | Déplacement | Ctrl + glisser | Suspendre l'accroche |
+| M4 | Déplacement | Alt + glisser | Dupliquer en déplaçant |
+| D1 | Dessin (clics) | Clic | Ajouter un point |
+| D2 | Dessin (clics) | Double-clic | Terminer le tracé |
+| D2b | Dessin (clics) | Entrée | Terminer le tracé |
+| D3 | Dessin (cadre) | Maj | Contraindre la forme (carré, cercle) |
+| D4 | Dessin (cadre) | Alt | Dessiner depuis le centre |
+| D5 | Dessin (clics) | Ctrl | Suspendre l'accroche |
+| D6 | Dessin (clics) | Retour arrière | Retirer le dernier point |
+| D7 | Dessin (clics) | Échap | Annuler l'outil en cours |
+| N1 | Édition de nœuds | Glisser | Déplacer le nœud |
+| N2 | Édition de nœuds | Maj + glisser | Verrouiller l'axe |
+| N2b | Édition de nœuds | Ctrl + glisser | Suspendre l'accroche |
+| N4 | Édition de nœuds | Suppr | Supprimer les nœuds sélectionnés |
+<!-- GESTURES:END -->
+
 ## Menu Fichier
 
 | Action | Raccourci | Effet |

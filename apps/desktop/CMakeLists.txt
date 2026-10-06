@@ -35,6 +35,8 @@ add_library(openstitch_desktop_widgets STATIC
     autosave.cpp
     autosave.hpp
     tools.hpp
+    interaction_map.cpp
+    interaction_map.hpp
     ui_icons.cpp
     ui_icons.hpp
     ruler.cpp
@@ -91,3 +93,10 @@ if(WIN32 AND TARGET Qt6::windeployqt)
                 "$<TARGET_FILE:openstitch>"
         COMMENT "Déploiement des DLL Qt (windeployqt)")
 endif()
+
+# Générateur de la table des gestes pour docs/source/user-guide.md (test de
+# dérive `docs_gestures_in_sync`). Qt Core + Gui seulement, lié à
+# interaction_map.cpp seul (jamais à Widgets, aucun QApplication).
+add_executable(openstitch_gesture_table gesture_table_tool.cpp interaction_map.cpp interaction_map.hpp)
+target_include_directories(openstitch_gesture_table PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+target_link_libraries(openstitch_gesture_table PRIVATE Qt6::Core Qt6::Gui openstitch::warnings)

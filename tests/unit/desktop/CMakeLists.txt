@@ -5,6 +5,15 @@ if(NOT TARGET openstitch_desktop_widgets)
     return()
 endif()
 
+# Dérive documentation <-> table des gestes (lot L5) : la sortie du générateur
+# doit être identique, octet pour octet, au bloc GESTURES de user-guide.md.
+add_test(NAME docs_gestures_in_sync
+    COMMAND ${CMAKE_COMMAND} -DTOOL=$<TARGET_FILE:openstitch_gesture_table>
+            -DDOC=${PROJECT_SOURCE_DIR}/docs/source/user-guide.md
+            -P ${PROJECT_SOURCE_DIR}/tests/check_gesture_docs.cmake)
+set_tests_properties(docs_gestures_in_sync PROPERTIES
+    ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
+
 find_package(Qt6 COMPONENTS Test QUIET)
 if(NOT Qt6Test_FOUND)
     message(WARNING "Qt6::Test introuvable : tests UI desktop non construits.")
@@ -35,6 +44,7 @@ openstitch_add_qt_test(test_main_window test_main_window.cpp)
 openstitch_add_qt_test(test_ui_invariants test_ui_invariants.cpp)
 openstitch_add_qt_test(test_ui_characterization test_ui_characterization.cpp)
 openstitch_add_qt_test(test_canvas_input test_canvas_input.cpp)
+openstitch_add_qt_test(test_interaction_map test_interaction_map.cpp)
 openstitch_add_qt_test(test_wsl_path_converter test_wsl_path_converter.cpp)
 openstitch_add_qt_test(test_generation_options test_generation_options.cpp)
 

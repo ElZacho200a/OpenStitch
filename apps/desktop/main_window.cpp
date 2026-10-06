@@ -368,8 +368,8 @@ MainWindow::MainWindow() {
     buildDocumentPanel();
     buildWorkflowPanel();
     buildFilterPanel();
-    for (auto* d : {documentDock_, propertiesDock_, workflowDock_, orderDock_, filterDock_,
-                    analysisDock_}) {
+    for (auto* d :
+         {documentDock_, propertiesDock_, workflowDock_, orderDock_, filterDock_, analysisDock_}) {
         panelsMenu_->addAction(d->toggleViewAction());
     }
     buildMainToolbar();
@@ -521,7 +521,7 @@ void MainWindow::buildMenus() {
     fileMenu->addSeparator();
     // Pas de « … » sur Enregistrer : il n'ouvre un dialogue que pour un
     // document encore sans fichier (HP-FILE-002).
-    saveProjectAct_ = fileMenu->addAction(tr("&Enregistrer le projet"));
+    saveProjectAct_ = fileMenu->addAction(tr("Enre&gistrer le projet"));
     auto* saveProjectAct = saveProjectAct_;
     saveProjectAct->setObjectName(QStringLiteral("action_saveProject"));
     saveProjectAct->setShortcut(QKeySequence::Save);
@@ -539,20 +539,20 @@ void MainWindow::buildMenus() {
     recentMenu_ = fileMenu->addMenu(tr("&Récents"));
     // « Vider la liste » vit dans le menu Fichier et non dans le sous-menu : le sous-menu
     // ne contient que les fichiers (un test et refreshRecentFilesUi() comptent ses actions).
-    clearRecentAct_ = fileMenu->addAction(tr("&Vider la liste des récents"));
+    clearRecentAct_ = fileMenu->addAction(tr("Vider &la liste des récents"));
     clearRecentAct_->setObjectName(QStringLiteral("action_clearRecent"));
     connect(clearRecentAct_, &QAction::triggered, this, [this] {
         saveRecentFiles(QStringList());
         refreshRecentFilesUi();
     });
-    exportDstAct_ = fileMenu->addAction(tr("E&xporter en DST…"));
+    exportDstAct_ = fileMenu->addAction(tr("&Exporter en DST…"));
     connect(exportDstAct_, &QAction::triggered, this, &MainWindow::exportDst);
     auto* importDstAct = fileMenu->addAction(tr("&Importer un DST…"));
     connect(importDstAct, &QAction::triggered, this, &MainWindow::importDst);
     fileMenu->addSeparator();
     auto* importDxfAct = fileMenu->addAction(tr("Importer un &DXF…"));
     connect(importDxfAct, &QAction::triggered, this, &MainWindow::importDxf);
-    exportDxfAct_ = fileMenu->addAction(tr("Exporter en DX&F…"));
+    exportDxfAct_ = fileMenu->addAction(tr("Exporter en D&XF…"));
     auto* exportDxfAct = exportDxfAct_;
     connect(exportDxfAct, &QAction::triggered, this, &MainWindow::exportDxf);
     fileMenu->addSeparator();
@@ -587,7 +587,7 @@ void MainWindow::buildMenus() {
     connect(bcAct, &QAction::triggered, this, &MainWindow::adjustBrightnessContrast);
     imageActions_.append(bcAct);
 
-    addOpAction(tr("Débruitage lé&ger"), image::MedianDenoiseOp{1});
+    addOpAction(tr("Dé&bruitage léger"), image::MedianDenoiseOp{1});
     addOpAction(tr("Débruitage &moyen"), image::MedianDenoiseOp{2});
 
     auto* quantAct = imageMenu->addAction(tr("&Quantifier les couleurs…"));
@@ -622,7 +622,7 @@ void MainWindow::buildMenus() {
     connect(mergeAct_, &QAction::toggled, this, [this](bool on) { mergeMode_ = on; });
     regionActions_.append(mergeAct_);
 
-    auto* delRegionAct = segMenu->addAction(tr("&Supprimer la région sélectionnée"));
+    auto* delRegionAct = segMenu->addAction(tr("Su&pprimer la région sélectionnée"));
     delRegionAct->setObjectName(QStringLiteral("action_deleteRegion"));
     delRegionAct->setShortcut(QKeySequence::Delete);
     connect(delRegionAct, &QAction::triggered, this, &MainWindow::deleteSelectedRegion);
@@ -662,7 +662,7 @@ void MainWindow::buildMenus() {
         tr("Change l'angle des fils du remplissage tatami sélectionné (clic sur la forme "
            "ou dans l'ordre de couture)."));
     connect(fillAngleAct_, &QAction::triggered, this, &MainWindow::changeFillAngle);
-    convertSatinAct_ = embMenu->addAction(tr("Convertir les satins auto en tata&mi"));
+    convertSatinAct_ = embMenu->addAction(tr("Con&vertir les satins auto en tatami"));
     convertSatinAct_->setToolTip(
         tr("Remplace les colonnes satin automatiques (qui débordent sur les formes "
            "concaves) par des remplissages tatami découpés sur la région."));
@@ -740,7 +740,7 @@ void MainWindow::buildMenus() {
     embMenu->addSeparator();
     buildDirectionalActions(embMenu);
     embMenu->addSeparator();
-    statsAct_ = embMenu->addAction(tr("&Statistiques…"));
+    statsAct_ = embMenu->addAction(tr("Statisti&ques…"));
     connect(statsAct_, &QAction::triggered, this, &MainWindow::showStatistics);
 
     auto* viewMenu = menuBar()->addMenu(tr("&Affichage"));
@@ -771,7 +771,7 @@ void MainWindow::buildMenus() {
     connect(fitAct, &QAction::triggered, view_, &CanvasView::fitCanvas);
 
     viewMenu->addSeparator();
-    auto* hoopAct = viewMenu->addAction(tr("Taille du &cadre…"));
+    auto* hoopAct = viewMenu->addAction(tr("Tai&lle du cadre…"));
     hoopAct->setToolTip(tr("Définit la zone physique de broderie (cadre)."));
     connect(hoopAct, &QAction::triggered, this, &MainWindow::setHoopSize);
 
@@ -5252,6 +5252,17 @@ void MainWindow::updateContextToolbar() {
         old->setParent(nullptr);
         old->deleteLater();
     }
+    // Le layout de la barre crée un QToolButton par action simple et ne le détruit qu'en
+    // différé (deleteLater) : tant que la boucle d'évènements n'a pas tourné, ils restent
+    // enfants de la barre. On les détache tout de suite (leur destruction différée suit son
+    // cours) ; le bouton d'extension (« >> ») est permanent et reste en place.
+    for (auto* stale : contextToolbar_->findChildren<QToolButton*>(Qt::FindDirectChildrenOnly)) {
+        if (stale->objectName() != QLatin1String("qt_toolbar_ext_button")) {
+            stale->hide();
+            stale->setParent(nullptr);
+            stale->deleteLater();
+        }
+    }
 
     if (emb != nullptr) {
         const ObjectId id = emb->id;
@@ -5743,8 +5754,7 @@ void MainWindow::refreshDocumentPanel() {
         return;
     }
     documentPanel_->refresh(project_, editStates_);
-    setDockAutoVisible(documentDock_,
-                       project_.hasImage() || !project_.embroidery_objects.empty());
+    setDockAutoVisible(documentDock_, project_.hasImage() || !project_.embroidery_objects.empty());
     syncDocumentSelection();
 }
 
