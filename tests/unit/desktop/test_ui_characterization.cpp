@@ -730,8 +730,8 @@ private slots:
         }
         QVERIFY(!label.isNull());
         window.selectedEmbroidery_.reset();
-        window.selectedObject_ = vec;
-        window.updateActions(); // reconstruction
+        window.selectedObject_.reset();
+        window.updateActions(); // reconstruction (état sans sélection)
         QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
         QVERIFY(label.isNull());
     }

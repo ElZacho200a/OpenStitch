@@ -43,6 +43,11 @@ struct Tokens {
     QColor canvasHandle;        // poignées (rotation, etc.)
     QColor canvasSelectionHalo; // halo clair sous la sélection
     QColor canvasSelectionLine; // trait de sélection
+    // Cadre élastique de sélection (glisser dans le vide, lot L5) : double trait
+    // (halo clair/sombre sous le trait) pour rester lisible sur toute couleur de
+    // fond ; le remplissage dérive du trait (même teinte, alpha réduit).
+    QColor canvasSelectionRectHalo;
+    QColor canvasSelectionRectLine;
 
     // --- Métrique (dépend de la densité, pas du thème) ---
     int space1;        // 2
