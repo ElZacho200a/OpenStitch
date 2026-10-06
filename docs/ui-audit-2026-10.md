@@ -86,23 +86,26 @@ Maj+flèche change le pas) ; **aucun test** de molette, panoramique ou modificat
 source de vérité du comportement, de l'aide à l'écran et des tests. Ce que Fusion 360 fait bien et qu'on
 reprend : *molette = zoom au curseur, clic molette = panoramique, sélection par fenêtre/croisement, Ctrl pour
 ajouter/retirer, survol pré-sélectionnant, indications contextuelles des modificateurs, Échap = annuler,
-Entrée = valider*. Les touches exactes ci-dessous sont une **proposition à valider** (je n'ai pas Fusion 360
-sous la main : à confronter à son usage réel avant de figer).
+Entrée = valider*. Confrontée le 2026-10-06 à la documentation publique d'Autodesk (recherche web ; le téléchargement direct
+des pages était bloqué par le proxy du conteneur, donc seuls les extraits de recherche ont été lus) : voir
+« Sources et degré de confirmation » plus bas.
 
 | Contexte | Geste | Intention |
 |---|---|---|
-| Partout | Molette | Zoom ancré sous le curseur |
-| Partout | **Clic molette + glisser** | Panoramique |
+| Partout | Molette | Zoom ancré sous le curseur — *Fusion* |
+| Partout | Ctrl + Maj + clic molette + glisser | Zoom continu — *Fusion (variante)* |
+| Partout | **Clic molette + glisser** | Panoramique — *Fusion* |
 | Partout | Double-clic molette | Cadrer le design (zoom ajusté) |
 | Partout | Espace + glisser gauche | Panoramique (secours sans molette cliquable) |
 | Partout | Maj + molette / Alt + molette | Défilement horizontal / vertical |
 | Pavé tactile | Deux doigts / pincement | Panoramique / zoom (`pixelDelta`, `QNativeGestureEvent`) |
 | Sélection | Clic | Sélectionner (remplace) |
-| Sélection | **Maj + clic** | Ajouter à la sélection |
-| Sélection | **Ctrl + clic** | Basculer (ajouter / retirer) |
-| Sélection | **Alt + clic** | Parcourir les objets superposés (« sélectionner dessous ») |
-| Sélection | Glisser dans le vide | Rectangle : gauche→droite = *englobe* (entièrement dedans), droite→gauche = *croise* |
-| Sélection | Maj / Ctrl + glisser | Ajouter / retirer au rectangle |
+| Sélection | **Maj + clic** | Ajouter seulement (recliquer ne retire pas) — *Fusion* |
+| Sélection | **Ctrl + clic** | Basculer : ajouter / retirer — *Fusion* |
+| Sélection | **Appui long sur un objet** (ou **Alt + clic**) | « Sélectionner dessous » : liste des objets superposés sous le curseur — *Fusion pour l'appui long* |
+| Sélection | Glisser dans le vide | Rectangle : gauche→droite = *englobe* (entièrement dedans), droite→gauche = *croise* — *Fusion* |
+| Sélection | Maj / Ctrl + glisser | Ajouter seulement / basculer, comme pour le clic — *Fusion* |
+| Sélection | Touches **1 / 2 / 3** | Mode de sélection : fenêtre / lasso libre / pinceau (glisser sur les objets) — *Fusion (esquisse)* |
 | Sélection | Double-clic objet | Entrer en édition de l'objet (nœuds / points) |
 | Sélection | Survol | Surbrillance de pré-sélection + curseur adapté |
 | Sélection | Clic dans le vide | Désélectionner |
@@ -117,6 +120,31 @@ sous la main : à confronter à son usage réel avant de figer).
 | Édition de nœuds | Suppr | Retirer les nœuds sélectionnés |
 | Tous | Clic droit | Menu contextuel selon l'objet et le contexte (jamais d'entrée de débogage) |
 | Tous | Suppr | Supprimer la sélection **quel que soit son type** (région, vectoriel, broderie) |
+
+**Sources et degré de confirmation** (Autodesk, extraits de recherche web du 2026-10-06) :
+
+- *Confirmé* : panoramique = clic molette maintenu ; zoom = molette (ou Ctrl+Maj+clic molette) ;
+  rotation 3D = Maj+clic molette (**sans objet ici**, le canevas est 2D) ; **Ctrl (Cmd sur macOS) ajoute ou
+  retire** de la sélection ; **Maj ajoute seulement** (un second clic ou un second passage du rectangle ne
+  retire rien) ; rectangle haut-gauche→bas-droite = **fenêtre** (entièrement dedans), haut-droite→bas-gauche =
+  **croisement** ; « Select Other » s'ouvre par **appui long du bouton gauche** sur la géométrie ; en esquisse,
+  touches **1 / 2 / 3** = sélection par fenêtre / libre / pinceau ; Fusion propose des **préréglages de
+  navigation** (Fusion, Inventor, SolidWorks, Tinkercad) dans les préférences.
+- *Pas dans Fusion, proposition OpenStitch* : double-clic molette = cadrer ; Espace+glisser ; Maj/Alt+molette
+  en défilement ; Alt = dupliquer au déplacement ; Alt = dessiner depuis le centre ; Ctrl maintenu = suspendre
+  l'accroche ; double-clic sur un segment = insérer un nœud. À valider à l'usage.
+- *Non vérifié* : le détail du menu radial (« marking menu ») du clic droit de Fusion, et les valeurs exactes
+  (délai de l'appui long). On commence par un menu contextuel classique ; le menu radial est une option
+  ultérieure.
+- Sources : [raccourcis Fusion](https://www.autodesk.com/shortcuts/fusion-360),
+  [préréglages pan/zoom/orbit](https://www.autodesk.com/products/fusion-360/blog/quick-tip-pan-zoom-orbit-preferences/),
+  [3 façons de sélectionner une zone](https://www.autodesk.com/products/fusion-360/blog/tip-tuesday-3-ways-to-select-an-area-in-fusion-360/),
+  [Select Other](https://www.autodesk.com/products/fusion-360/blog/quick-tip-how-to-use-select-other/),
+  [sélection (aide)](https://help.autodesk.com/view/fusion360/ENU/?guid=SLD-SELECTION).
+
+**Préréglages de navigation** : comme Fusion, une préférence « Navigation » avec au moins *OpenStitch*
+(défaut ci-dessus) et un préréglage « pavé tactile / sans clic molette » ; les autres (Inventor, SolidWorks)
+seulement si la demande existe.
 
 **Retour visuel obligatoire** : une **ligne d'indications** (barre d'état) affiche en permanence ce que
 chaque modificateur ferait *dans l'état courant* (« Clic : sélectionner · Maj : ajouter · Ctrl : basculer ·
@@ -194,7 +222,7 @@ pavés tactiles et souris sans clic molette (→ Espace + glisser, pincement) ; 
 **Décisions prises le 2026-10-06** : identité visuelle propre (pas de rendu natif Windows) ; la souris et
 les modificateurs (clic molette, Ctrl, Maj, Alt) sont une priorité de premier rang, remontée en vague 2.
 
-**Décisions encore à valider avant la vague 2** : la table de gestes de la §3 bis (touches exactes, à
-confronter à l'usage réel de Fusion 360) ; bibliothèque d'icônes SVG (licence compatible Apache-2.0 requise,
+**Décisions encore à valider avant la vague 2** : les propositions de la §3 bis qui ne viennent pas de
+Fusion (liste dans « Sources et degré de confirmation ») ; bibliothèque d'icônes SVG (licence compatible Apache-2.0 requise,
 ex. Lucide en ISC / Tabler en MIT) ; densité par défaut ; ordre de L8 (le plus gros gain d'ergonomie, mais
 le plus risqué).
