@@ -860,10 +860,22 @@ TEST_CASE("colonnes : ancrage des jonctions deterministe") {
     }
 }
 
-TEST_CASE("colonnes : cercle refuse (direction ambigue)") {
+TEST_CASE("colonnes : cercle -> satin tournant (anneaux concentriques, HP-STI-018 Phase D)") {
+    // AVANT HP-STI-018 Phase D : un cercle (direction ambigue, squelette
+    // inexploitable) etait refuse sans aucune colonne -- cf. git blame de ce
+    // test. Phase D ajoute precisement le pelage en anneaux concentriques
+    // (`build_turning_satin_sections`) qui se declenche sur CE statut, donc
+    // ce comportement change deliberement (§2.3/§4 du plan) : ce n'est pas
+    // une regression, c'est la fonctionnalite livree. Les assertions
+    // specifiques au pelage (nombre d'anneaux, multiple de 4, determinisme,
+    // absence de croisement) vivent dans test_turning_satin.cpp -- ce test
+    // se limite a verifier que le dispatch de `build_satin_columns` ne
+    // refuse plus "circle" du tout.
     const auto r = columns_of("circle");
-    CHECK(r.columns.empty());
-    CHECK_FALSE(r.refusal.empty());
+    CHECK(r.refusal.empty());
+    CHECK_FALSE(r.columns.empty());
+    CHECK(r.status == SatinabilityStatus::RequiresDecomposition);
+    CHECK(r.columns.size() % 4 == 0);
 }
 
 TEST_CASE("colonnes : anneau decompose en quatre sections ouvertes raccordees") {
@@ -888,10 +900,20 @@ TEST_CASE("colonnes : anneau decompose en quatre sections ouvertes raccordees") 
     }
 }
 
-TEST_CASE("colonnes : forme large refusee") {
+TEST_CASE("colonnes : forme large -> satin tournant (anneaux concentriques, HP-STI-018 Phase D)") {
+    // AVANT HP-STI-018 Phase D : "wide" (bande allongee 100x20mm, refusee
+    // `Unsuitable`/`has_wide_area` -- trop large pour un satin a un seul
+    // axe) etait refusee sans aucune colonne -- cf. git blame de ce test.
+    // C'est exactement le second declencheur du pelage en anneaux
+    // concentriques (§2.3 du plan : "Unsuitable avec has_wide_area"), pas
+    // seulement les formes rondes -- verifie ici empiriquement plutot que
+    // suppose : une bande large mais allongee a, elle aussi, un axe median
+    // degenere sur l'essentiel de sa largeur, pas seulement un disque.
     const auto r = columns_of("wide");
-    CHECK(r.columns.empty());
-    CHECK_FALSE(r.refusal.empty());
+    CHECK(r.refusal.empty());
+    CHECK_FALSE(r.columns.empty());
+    CHECK(r.status == SatinabilityStatus::RequiresDecomposition);
+    CHECK(r.columns.size() % 4 == 0);
 }
 
 // Défaut trouvé sur un projet réel (logo circulaire "GISTRE" numérisé

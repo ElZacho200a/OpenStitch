@@ -3,6 +3,7 @@
 
 #include "corridor.hpp"
 #include "geometry_detail.hpp"
+#include "openstitch/geometry/offset.hpp"
 #include "openstitch/geometry/polyline.hpp"
 #include "openstitch/geometry/simplify.hpp"
 
@@ -370,17 +371,25 @@ double polyline_length(const Poly& points) {
 // sections ouvertes raccordees bout a bout. Les validations ci-dessous
 // interdisent de recreer une gerbe ou un noeud papillon sur un anneau trop
 // irregulier pour cet appariement automatique.
+//
+// § HP-STI-018 Phase D (specs/plans/hp-sti-018-turning-satin.md §2.3/§4) :
+// extrait de `build_annular_sections` (qui en devient un mince wrapper,
+// comportement inchange, cf. plus bas) pour etre reutilise par
+// `build_turning_satin_sections` sur CHAQUE bande d'anneau d'un pelage
+// iteratif, pas seulement sur le trou unique d'une region annulaire.
+// `fullRegionPolys` est TOUJOURS la region source COMPLETE (tous ses
+// polygones, pas seulement la paire locale outer/inner de CETTE bande) :
+// pour `build_annular_sections`, les deux coincident exactement (une region
+// a un seul trou n'a que deux polygones, qui SONT outer/inner) ; pour un
+// pelage, `outer`/`inner` sont deux anneaux INTERMEDIAIRES d'une region
+// hole-free bien plus grande, et les verifications `in_region`/`barreau hors
+// region` ci-dessous doivent valider contre la VRAIE forme entiere, jamais
+// contre la paire locale seule (une bande pourrait sembler valide entre ses
+// deux anneaux immediats tout en debordant, par un artefact d'erosion, hors
+// du contour reel d'origine).
 std::optional<std::vector<SatinColumnGeometry>>
-build_annular_sections(const geometry::PathSet& region, const SatinColumnsParameters& params,
-                       std::string& refusal) {
-    if (region.holes.size() != 1 || region.outer.nodes.size() < 4 ||
-        region.holes.front().nodes.size() < 4) {
-        refusal = "contours incomplets";
-        return std::nullopt;
-    }
-    const auto polys = region_polys(region);
-    Poly outer = polys[0];
-    Poly inner = polys[1];
+build_ring_band_sections(Poly outer, Poly inner, const std::vector<Poly>& fullRegionPolys,
+                         const SatinColumnsParameters& params, std::string& refusal) {
     const double outerArea = signed_area(outer);
     const double innerArea = signed_area(inner);
     if (outerArea * innerArea < 0.0)
@@ -420,7 +429,7 @@ build_annular_sections(const geometry::PathSet& region, const SatinColumnsParame
         }
         for (double t : {0.2, 0.4, 0.6, 0.8}) {
             const P2 sample = outer[i] + (inner[i] - outer[i]) * t;
-            if (!in_region(polys, sample)) {
+            if (!in_region(fullRegionPolys, sample)) {
                 refusal = "barreau hors region a la station " + std::to_string(i);
                 return std::nullopt;
             }
@@ -485,6 +494,151 @@ build_annular_sections(const geometry::PathSet& region, const SatinColumnsParame
         columns.push_back(std::move(column));
     }
     return columns;
+}
+
+// Mince wrapper autour de `build_ring_band_sections` (§ Phase D, extraction
+// ci-dessus) : une region a un seul trou n'a QUE deux polygones
+// (`region_polys` renvoie exactement [outer, hole]), qui SONT deja outer/
+// inner -- `fullRegionPolys` coincide donc exactement avec la paire locale,
+// comportement identique a avant l'extraction (pur deplacement de code, pas
+// un changement de comportement).
+std::optional<std::vector<SatinColumnGeometry>>
+build_annular_sections(const geometry::PathSet& region, const SatinColumnsParameters& params,
+                       std::string& refusal) {
+    if (region.holes.size() != 1 || region.outer.nodes.size() < 4 ||
+        region.holes.front().nodes.size() < 4) {
+        refusal = "contours incomplets";
+        return std::nullopt;
+    }
+    const auto polys = region_polys(region);
+    return build_ring_band_sections(polys[0], polys[1], polys, params, refusal);
+}
+
+// § HP-STI-018 Phase D (specs/plans/hp-sti-018-turning-satin.md §2.3/§4) :
+// pele une region SANS TROU en anneaux concentriques via
+// `geometry::inset_path_set` (delta positif = retrait vers l'interieur,
+// meme convention que `satin_coverage::max_inscribed_radius_mm`), pas a pas
+// de `params.turning_satin_ring_width`, jusqu'a `params.turning_satin_max_rings`
+// anneaux. C'est le pendant, pour une forme SANS trou prealable, de
+// `build_annular_sections` ci-dessus (qui, lui, decoupe l'UNIQUE anneau
+// deja impose par la geometrie d'un trou existant) -- chaque pas d'erosion
+// cree ICI le trou (temporaire) du pas suivant.
+//
+// Arret du pelage (jamais un echec dur, sauf tout premier anneau -- voir
+// plus bas) : `inset_path_set` renvoie zero composante (la forme a disparu
+// sous l'erosion) ou 2+ (elle s'est scindee), ou le plafond de securite est
+// atteint. Un trou qui apparaitrait dans le resultat erode (forme non
+// convexe pathologique) est traite comme un arret egalement : ce pelage ne
+// sait construire que des anneaux SANS trou propre, par construction de
+// `build_ring_band_sections` (deux polygones en entree, jamais plus).
+//
+// Acceptation PARTIELLE, deliberement differente de `build_annular_sections`
+// (tout ou rien) : si un anneau interieur echoue sa validation
+// (`build_ring_band_sections` refuse), les anneaux exterieurs deja construits
+// sont CONSERVES plutot que de tout refuser -- seul l'echec du tout premier
+// anneau (le plus exterieur) refuse la fonction entiere (`std::nullopt`),
+// faute de quoi aucune colonne ne serait produite.
+std::optional<std::vector<SatinColumnGeometry>>
+build_turning_satin_sections(const geometry::PathSet& region, const SatinColumnsParameters& params,
+                             std::string& refusal, std::vector<std::string>& warnings) {
+    if (!region.holes.empty() || region.outer.nodes.size() < 4) {
+        refusal = "forme non adaptee au satin tournant (trou present ou contour incomplet)";
+        return std::nullopt;
+    }
+    const std::vector<Poly> fullPolys = region_polys(region);
+    if (fullPolys.empty()) {
+        refusal = "contour source invalide";
+        return std::nullopt;
+    }
+
+    const Micrometers ringWidth = params.turning_satin_ring_width;
+    const int maxRings = std::max(0, params.turning_satin_max_rings);
+
+    std::vector<SatinColumnGeometry> allColumns;
+    geometry::PathSet currentOuter = region;
+    int ringCount = 0;
+    while (ringCount < maxRings) {
+        const auto insetResult = geometry::inset_path_set(currentOuter, ringWidth);
+        const bool insetOk =
+            insetResult.has_value() && insetResult->size() == 1 && (*insetResult)[0].holes.empty();
+        if (!insetOk) {
+            if (ringCount == 0) {
+                refusal = "premier anneau : erosion degeneree (forme disparue ou scindee)";
+                return std::nullopt;
+            }
+            warnings.push_back("satin tournant : arret du pelage apres " +
+                               std::to_string(ringCount) +
+                               " anneau(x) (erosion degeneree -- forme disparue ou scindee)");
+            break;
+        }
+        const geometry::PathSet& innerRegion = (*insetResult)[0];
+        const auto outerPolys = region_polys(currentOuter);
+        const auto innerPolys = region_polys(innerRegion);
+        if (outerPolys.empty() || innerPolys.empty()) {
+            // Contour degenere (< 3 sommets apres erosion) : meme traitement
+            // qu'un arret d'erosion ordinaire (cf. `insetOk` ci-dessus), pas
+            // un cas distinct -- la boucle ci-dessous ne peut de toute facon
+            // plus progresser au-dela de ce point.
+            if (ringCount == 0) {
+                refusal = "premier anneau : contour degenere apres erosion";
+                return std::nullopt;
+            }
+            warnings.push_back("satin tournant : arret du pelage apres " +
+                               std::to_string(ringCount) +
+                               " anneau(x) (contour degenere apres erosion)");
+            break;
+        }
+        const Poly& outerPoly = outerPolys[0];
+        const Poly& innerPoly = innerPolys[0];
+
+        std::string bandRefusal;
+        auto bandSections =
+            build_ring_band_sections(outerPoly, innerPoly, fullPolys, params, bandRefusal);
+        if (!bandSections) {
+            if (ringCount == 0) {
+                refusal = "premier anneau non constructible : " + bandRefusal;
+                return std::nullopt;
+            }
+            warnings.push_back("satin tournant : anneau " + std::to_string(ringCount) +
+                               " refuse (" + bandRefusal + "), " + std::to_string(ringCount) +
+                               " anneau(x) conserve(s)");
+            break;
+        }
+        // `build_ring_band_sections` numerote start_junction/end_junction
+        // 0..3, en LOCAL a l'anneau qu'elle vient de construire (cf.
+        // `build_annular_sections`, ou c'est deja correct puisqu'il n'y a
+        // jamais qu'un seul anneau). Ici, plusieurs anneaux INDEPENDANTS
+        // (aucun n'est physiquement adjacent a un autre) partageraient sinon
+        // la MEME numerotation 0..3 -- un consommateur aval qui associe des
+        // sections par cette id (§ document::SatinSectionTopology, cf.
+        // satin_sections.hpp/routing.cpp/satin_guides.cpp) croirait alors que
+        // la section 3 de l'anneau 0 et la section 0 de l'anneau 1 partagent
+        // une jonction reelle, alors qu'elles n'ont jamais de barreau commun.
+        // Decale par bloc de 4 par anneau pour rester globalement unique tout
+        // en preservant la fermeture cyclique PROPRE a chaque anneau (modulo
+        // 4 a l'interieur de son propre bloc).
+        const std::uint32_t idBase = static_cast<std::uint32_t>(ringCount) * 4u;
+        for (auto& col : *bandSections) {
+            if (col.start_junction) {
+                col.start_junction = idBase + *col.start_junction;
+            }
+            if (col.end_junction) {
+                col.end_junction = idBase + *col.end_junction;
+            }
+            allColumns.push_back(std::move(col));
+        }
+        ++ringCount;
+        currentOuter = innerRegion;
+    }
+
+    if (allColumns.empty()) {
+        refusal = "aucun anneau constructible (plafond atteint avant le premier anneau)";
+        return std::nullopt;
+    }
+    warnings.push_back("satin tournant : " + std::to_string(ringCount) +
+                       " anneau(x) genere(s) (pelage iteratif, largeur d'anneau " +
+                       std::to_string(static_cast<double>(ringWidth.value) / 1000.0) + " mm)");
+    return allColumns;
 }
 
 struct Station {
@@ -2898,6 +3052,40 @@ SatinColumnsResult build_satin_columns(const geometry::PathSet& region,
         r.warnings.push_back("couture fermee : routage cyclique de quatre sections");
         finalize_sections();
         return r;
+    }
+
+    // § HP-STI-018 Phase D (specs/plans/hp-sti-018-turning-satin.md §2.3/§4) :
+    // satin tournant -- une region SANS trou dont le squelette est
+    // inexploitable (`Ambiguous`, forme compacte/ronde -- disque, petale) ou
+    // refusee pour largeur excessive (`Unsuitable` + `has_wide_area`, bande
+    // large mais allongee, meme defaut d'axe degenere pour l'essentiel de sa
+    // largeur) tente un pelage en anneaux concentriques AVANT de tomber dans
+    // le refus explicite plus bas. Ne peut jamais regresser une forme qui
+    // reussissait deja : `r.status` ne vaut `Ambiguous`/`Unsuitable` que pour
+    // une region que `evaluate_satinability` avait deja decidee refusee par
+    // construction (un seul statut par appel, cf. satinability.cpp) --
+    // aucune region `Suitable`/`SuitableWithWarnings`/`RequiresDecomposition`
+    // ne peut jamais satisfaire cette condition. En cas d'echec (meme le
+    // premier anneau n'est pas constructible), ne RETOURNE PAS ici : retombe
+    // dans le chemin de refus existant plus bas, `r.status` etant reste
+    // inchange.
+    if (region.holes.empty() &&
+        (r.status == SatinabilityStatus::Ambiguous ||
+         (r.status == SatinabilityStatus::Unsuitable && r.report.has_wide_area))) {
+        std::string turningRefusal;
+        auto turningSections =
+            build_turning_satin_sections(region, params, turningRefusal, r.warnings);
+        if (turningSections) {
+            r.columns = std::move(*turningSections);
+            r.status = SatinabilityStatus::RequiresDecomposition;
+            r.report.status = r.status;
+            r.report.issues.clear();
+            r.report.issues.push_back(
+                {"Forme sans axe exploitable decomposee en anneaux satin tournants."});
+            finalize_sections();
+            return r;
+        }
+        r.warnings.push_back("satin tournant non retenu : " + turningRefusal);
     }
 
     const auto& graph = analysis->debug.graph;

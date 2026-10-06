@@ -200,6 +200,38 @@ struct SatinColumnsParameters {
     // qu'en distance/largeur de branche -- une vraie dette a corriger avant le
     // cutover (Phase F), pas une valeur a considerer definitive.
     int junction_stability_margin_stations{6};
+
+    // --- § HP-STI-018 Phase D (satin tournant, specs/plans/hp-sti-018-turning-
+    // satin.md §2.3/§4) : pelage de la region en anneaux concentriques
+    // (`geometry::inset_path_set`) quand `evaluate_satinability` classe la
+    // region `Ambiguous` (forme compacte/ronde, squelette inexploitable --
+    // disque, petale) ou `Unsuitable` avec `has_wide_area` (bande large mais
+    // allongee, meme defaut d'axe degenere pour l'essentiel de sa largeur) ET
+    // sans trou (`region.holes.empty()` -- un trou unique reste gere par
+    // `build_annular_sections`, un seul anneau impose par la geometrie, pas
+    // par ce pelage iteratif). Valeur par defaut 3 mm, PAS les 4 mm suggeres
+    // par le plan initial (§9 "Still open", item 5 -- "a recalibrer sur les
+    // SVG regeneres... pas une valeur consideree definitive") -- deviation
+    // deliberee, calibree
+    // empiriquement sur `disc_15mm` (le fixture nomme directement d'apres le
+    // libelle de la roadmap, rayon 7,5 mm) : a 4 mm, ce disque ne produit
+    // qu'UN SEUL anneau avant disparition sous l'erosion suivante (7,5 mm ->
+    // 3,5 mm, la 2e passe de 4 mm le fait disparaitre) -- tout juste le cas
+    // degenere que `disc_tight_inner_ring` doit isoler specifiquement, pas le
+    // comportement NOMINAL attendu du pelage sur la forme meme que la
+    // roadmap designe. A 3 mm, `disc_15mm` produit 2 anneaux complets
+    // (7,5 -> 4,5 -> 1,5 mm) avant l'arret, ce qui demontre reellement le
+    // pelage ITERATIF sur sa cible nominale. Reste une valeur a recalibrer
+    // sur les SVG regeneres (§9 "Still open" du plan, item 5), pas consideree
+    // definitive.
+    Micrometers turning_satin_ring_width{3'000}; // 3 mm
+    // Plafond de securite sur le nombre d'anneaux peles -- borne un pelage
+    // degenere (forme bien plus grande que prevu, ou pas d'erosion/anneau qui
+    // ne retrecit jamais assez) plutot que de boucler trop longtemps ; ne
+    // devrait jamais etre atteint sur un disque/petale de taille normale (une
+    // forme de 15 cm de diametre avec des anneaux de 3 mm en consomme environ
+    // 25). specs/plans/hp-sti-018-turning-satin.md §4 suggere 48.
+    int turning_satin_max_rings{48};
 };
 
 // Zone centrale d'une jonction à 2+ branches non couverte par les colonnes
@@ -365,7 +397,21 @@ struct SatinColumnsResult {
 // colonne produite par `build_satin_columns` aujourd'hui n'utilise cette
 // valeur ; le champ existe pour que `satin_planning` puisse déjà distinguer
 // les deux méthodes une fois la seconde implémentée, sans nouveau bris d'API.
-enum class RailConstructionMethod : std::uint8_t { AxisStation, ContourCorrespondence };
+// `IsoOffsetRing` (HP-STI-018 Phase D, specs/plans/hp-sti-018-turning-satin.md
+// §2.3/§4) : anneaux concentriques (`build_turning_satin_sections`), pour les
+// formes au squelette inexploitable (rondes/larges). Comme `AxisStation`
+// aujourd'hui, `SatinColumn::method` n'est pas encore peuplé différemment par
+// source dans `to_satin_column`/`satin_column_view` (le champ reste au
+// défaut `AxisStation` quelle que soit la méthode réellement employée, y
+// compris pour `build_annular_sections` déjà en production) — ce champ
+// existe pour que `satin_planning` puisse distinguer les méthodes une fois
+// le report réellement câblé, sans nouveau bris d'API ; non câblé ici
+// (hors périmètre de ce lot, cf. le rapport de livraison).
+enum class RailConstructionMethod : std::uint8_t {
+    AxisStation,
+    IsoOffsetRing,
+    ContourCorrespondence
+};
 
 // Vue NORMALISÉE et EN LECTURE SEULE d'une colonne satin déjà construite par
 // `build_satin_columns` (§ refonte décomposition topologique). Ne remplace

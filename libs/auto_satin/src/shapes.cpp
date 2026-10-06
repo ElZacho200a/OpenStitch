@@ -180,6 +180,51 @@ std::optional<geometry::PathSet> make_shape(const std::string& name) {
     if (name == "circle") {
         return single(circle(0, 0, 15'000));
     }
+    if (name == "disc_15mm") {
+        // § HP-STI-018 Phase D (specs/plans/hp-sti-018-turning-satin.md §4/§5) :
+        // DIAMETRE 15 mm (rayon 7,5 mm), litteralement le libelle de la
+        // roadmap -- distinct de "circle" ci-dessus (diametre 30 mm, forme
+        // historique deja utilisee par le corpus Phase A-C, conservee telle
+        // quelle). Cible directe du pelage en anneaux concentriques
+        // (`build_turning_satin_sections`) : region sans trou, classee
+        // `Ambiguous` (squelette inexploitable, forme compacte).
+        return single(circle(0, 0, 7'500));
+    }
+    if (name == "disc_tight_inner_ring") {
+        // § HP-STI-018 Phase D (§4/§5 du plan, "tight-inner-ring case") :
+        // rayon delibere juste au-dessus de `turning_satin_ring_width` (3 mm
+        // par defaut) pour qu'UN SEUL anneau tienne avant que l'erosion
+        // suivante ne fasse disparaitre la forme (rayon 5 mm -> premier
+        // anneau outer=5mm/inner=2mm valide, deuxieme tentative d'erosion de
+        // 3 mm sur un disque de 2 mm de rayon le fait disparaitre) -- exercice
+        // volontaire de l'arret apres un seul anneau et de la courbure serree
+        // pres du centre (risque documente §3 du plan : `kJumpDegPerMm` dans
+        // `fill_satin_columns`).
+        return single(circle(0, 0, 5'000));
+    }
+    if (name == "petal") {
+        // § HP-STI-018 Phase D (§4/§5 du plan) : "petale" asymetrique, peu
+        // allonge, SANS branche ni trou -- une limacon (r(theta) = R0 +
+        // R1*cos(theta), R1 < R0 pour rester un contour simple, sans boucle
+        // interne) donne une goutte/petale convexe-ish : plus large d'un
+        // cote (theta=0, rayon R0+R1=13mm) que de l'autre (theta=pi, rayon
+        // R0-R1=5mm), sans jamais former un cou etroit ni une pointe
+        // filiforme (contrairement a "trident"/"y") -- juste assez compacte
+        // pour que le squelette amincil reste court (classee `Ambiguous`,
+        // verifie directement via `evaluate_satinability` plutot que
+        // suppose, cf. test_turning_satin.cpp).
+        Path p;
+        p.closed = true;
+        constexpr int kSamples = 96;
+        constexpr double kR0 = 9'000.0;
+        constexpr double kR1 = 4'000.0;
+        for (int i = 0; i < kSamples; ++i) {
+            const double theta = 2.0 * std::numbers::pi * i / kSamples;
+            const double r = kR0 + kR1 * std::cos(theta);
+            p.nodes.push_back(node(r * std::cos(theta), r * std::sin(theta)));
+        }
+        return single(p);
+    }
     if (name == "ring") {
         PathSet ps;
         ps.outer = circle(0, 0, 15'000);
