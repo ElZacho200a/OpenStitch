@@ -1,5 +1,6 @@
 add_executable(test_stitch
     test_stats.cpp
+    test_color_block.cpp
     test_running_stitch.cpp
     test_generate.cpp
     test_finish.cpp

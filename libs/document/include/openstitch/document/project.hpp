@@ -9,6 +9,7 @@
 #include "openstitch/document/canvas.hpp"
 #include "openstitch/document/embroidery_object.hpp"
 #include "openstitch/document/finishing.hpp"
+#include "openstitch/document/imported_design.hpp"
 #include "openstitch/document/vector_object.hpp"
 #include "openstitch/image/image.hpp"
 #include "openstitch/image/ops.hpp"
@@ -43,6 +44,14 @@ struct Project {
     // Finitions de la séquence (coupes, points d'arrêt, points courts),
     // appliquées par `stitch_generation::effective_sequence`.
     SequenceFinishing finishing;
+
+    // AD-04 : design importé depuis un fichier machine (DST aujourd'hui) --
+    // donnée source immuable, restituée telle quelle par `generate_sequence`
+    // (inscription S2a) à la place de la régénération par objet. Remplace
+    // l'ancienne exception desktop `MainWindow::sequenceImported_` (§17).
+    // `nullopt` = comportement historique inchangé (régénération normale
+    // depuis `embroidery_objects`).
+    std::optional<ImportedDesign> imported_design;
 
     [[nodiscard]] bool hasImage() const { return !original.empty(); }
     [[nodiscard]] VectorObject* findObject(ObjectId id) {

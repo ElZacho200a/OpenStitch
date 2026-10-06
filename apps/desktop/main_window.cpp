@@ -64,6 +64,7 @@
 #include "openstitch/autodigitize/contour_objects.hpp"
 #include "openstitch/commands/composite_command.hpp"
 #include "openstitch/commands/finishing_commands.hpp"
+#include "openstitch/commands/import_machine_design_command.hpp"
 #include "openstitch/commands/project_commands.hpp"
 #include "openstitch/core/app_info.hpp"
 #include "openstitch/document/canvas.hpp"
@@ -77,6 +78,7 @@
 #include "openstitch/geometry/primitives.hpp"
 #include "openstitch/image/image.hpp"
 #include "openstitch/optimization/order.hpp"
+#include "openstitch/project_io/machine_file.hpp"
 #include "openstitch/project_io/project_io.hpp"
 #include "openstitch/satin_planning/satin_sections.hpp"
 #include "openstitch/stitch_analysis/analyze.hpp"
@@ -928,7 +930,6 @@ void MainWindow::resetDocumentState() {
     setCurrentProjectPath(QString());
     undoStack_.clear();
     sequence_.reset();
-    sequenceImported_ = false;
     editStates_.clear();
     setSelection({});
     if (mergeAct_ != nullptr) {
@@ -1435,7 +1436,7 @@ void MainWindow::updateEmptyState() {
     // affichée EN PERMANENCE par-dessus le canevas dès lors qu'aucune image
     // n'était chargée, même après avoir dessiné plusieurs formes.
     const bool hasContent = project_.hasImage() || !project_.vector_objects.empty() ||
-                            !project_.embroidery_objects.empty();
+                            !project_.embroidery_objects.empty() || project_.imported_design;
     emptyState_->setVisible(!hasContent);
     positionEmptyState();
 }
@@ -2389,7 +2390,7 @@ void MainWindow::refreshImage() {
     // suppression, rechargement) ; le dernier objet restant devient le principal.
     pruneSelection();
     Q_ASSERT(checkSelectionInvariants());
-    if (!project_.hasImage()) {
+    if (!project_.hasImage() && !project_.imported_design) {
         processed_ = {};
         displayImage(processed_); // affiche quand même une séquence importée
         return;
@@ -2418,19 +2419,19 @@ void MainWindow::refreshImage() {
         processedOps_ = project_.ops;
     }
 
-    // Régénération des points depuis le document (fonction pure). Une
-    // séquence importée d'un DST n'est pas régénérable : elle est conservée.
-    // État Clean/ManuallyEdited/Dirty par objet retouché (Lot 8.2) et vue
-    // brute de l'objet en cours d'édition (Lot 8.2, source unique pour le
-    // placement des poignées dans renderBase et la construction des
-    // commandes) : tenus à jour ici. Ni displayImage() ni updateActions() ne
-    // les recalculent : ils lisent editStates_/stitchEditView_.
+    // Régénération des points depuis le document (fonction pure). Un design
+    // importé (AD-04, `project_.imported_design`) n'a pas d'objet à
+    // régénérer : `generate_sequence` le restitue tel quel (inscription
+    // S2a), donc le même appel ci-dessous couvre les deux cas. État
+    // Clean/ManuallyEdited/Dirty par objet retouché (Lot 8.2) et vue brute de
+    // l'objet en cours d'édition (Lot 8.2, source unique pour le placement
+    // des poignées dans renderBase et la construction des commandes) : tenus
+    // à jour ici. Ni displayImage() ni updateActions() ne les recalculent :
+    // ils lisent editStates_/stitchEditView_.
     editStates_.clear();
-    if (!sequenceImported_) {
-        sequence_.reset();
-    }
+    sequence_.reset();
     stitchEditView_.reset();
-    if (!sequenceImported_ && !project_.embroidery_objects.empty()) {
+    if (!project_.embroidery_objects.empty() || project_.imported_design) {
         // refresh_context (pas effective_sequence + classify_all_edit_states +
         // edit_view séparément) : un seul appel interne à generate_sequence
         // produit à la fois la séquence effective -- retouches appliquées,
@@ -3227,6 +3228,20 @@ void MainWindow::renderStitches() {
     for (const auto& emb : project_.embroidery_objects) {
         visible[emb.id.value] = objectPassesFilter(emb);
         colorOf[emb.id.value] = qRgb(emb.rgb[0], emb.rgb[1], emb.rgb[2]);
+    }
+    // AD-04 : un design importé (DST aujourd'hui) porte ses commandes avec
+    // `source == ObjectId{}` (0 = manuel/importé, cf. stitch/sequence.hpp) --
+    // toujours visible en P0 (non transformable, aucun filtre ne s'y
+    // applique). Une seule couleur pour tout le design (DST ne porte aucune
+    // vraie couleur, roadmap §2 FMT-002) : noir par défaut si ses blocs n'en
+    // indiquent aucune -- à revoir avec HP-FMT-003 (import PES, couleurs
+    // réelles, qui pourra varier par bloc).
+    if (project_.imported_design) {
+        const auto& blocks = project_.imported_design->color_blocks;
+        const std::array<std::uint8_t, 3> rgb =
+            blocks.empty() ? std::array<std::uint8_t, 3>{0, 0, 0} : blocks.front().rgb;
+        visible[ObjectId{}.value] = true;
+        colorOf[ObjectId{}.value] = qRgb(rgb[0], rgb[1], rgb[2]);
     }
     const auto isVisible = [&](std::uint64_t src) {
         const auto it = visible.find(src);
@@ -7089,8 +7104,11 @@ void MainWindow::exportDst() {
     }
 
     // Rappel honnête (§17) : le DST ne conserve ni objets ni couleurs réelles.
-    const auto written =
-        formats::write_dst_file(std::filesystem::path(file.toStdWString()), *sequence_);
+    // AD-03 : composition projet -> fichier machine générique (AI-03b),
+    // partagée avec la CLI -- recalcule sa propre `effective_sequence`,
+    // garantie identique à `*sequence_` (même site de recalcul, refreshImage).
+    const auto written = project_io::export_machine_file(
+        project_, "dst", std::filesystem::path(file.toStdWString()));
     if (!written) {
         QMessageBox::warning(this, tr("Export impossible"),
                              QString::fromStdString(written.error().message));
@@ -7106,37 +7124,48 @@ void MainWindow::importDst() {
     if (file.isEmpty()) {
         return;
     }
-    if (project_.hasImage() || sequence_) {
+    // AD-04 : « quelque chose à perdre » se lit maintenant sur le document
+    // réel (le design importé en fait partie), plus sur `sequence_` (qui
+    // n'est qu'une copie d'affichage, cf. main_window.hpp).
+    if (project_.hasImage() || project_.imported_design || !project_.vector_objects.empty() ||
+        !project_.embroidery_objects.empty()) {
         const auto answer = QMessageBox::question(
             this, tr("Importer un DST"), tr("L'import remplace le document en cours. Continuer ?"));
         if (answer != QMessageBox::Yes) {
             return;
         }
     }
-    auto seq = formats::read_dst_file(std::filesystem::path(file.toStdWString()));
-    if (!seq) {
+    // AD-03 : composition fichier machine -> design importé générique
+    // (AI-03b), partagée avec la CLI.
+    auto imported = project_io::import_machine_file(std::filesystem::path(file.toStdWString()));
+    if (!imported) {
         QMessageBox::warning(this, tr("Import impossible"),
-                             QString::fromStdString(seq.error().message));
+                             QString::fromStdString(imported.error().message));
         return;
     }
 
     project_ = document::Project{};
     resetDocumentState();
-    processed_ = {};
-    sequence_ = std::move(*seq); // la séquence importée EST la vérité (§17)
-    sequenceImported_ = true;
+    // AD-04 (Tier 0) : le design importé entre dans le document par
+    // `ICommand`, jamais une affectation directe -- remplace l'ancienne
+    // exception desktop `sequenceImported_`/`sequence_` hors document (§17).
+    // Poussée sur la pile juste vidée par `resetDocumentState` : un Ctrl+Z
+    // immédiat après cet import redonne un document sans design importé.
+    undoStack_.execute(std::make_unique<commands::SetImportedDesignCommand>(std::move(*imported)),
+                       project_);
     showStitchesAct_->setChecked(true);
-    updateSimulationRange();
-    displayImage(processed_);
+    refreshImage(); // regenere sequence_ via effective_sequence, qui voit project_.imported_design
     view_->fitCanvas();
     updateActions();
 
-    const auto stats = stitch::compute_stats(*sequence_);
-    statusBar()->showMessage(tr("%1 — %2 points, %3 saut(s), %4 changement(s) de fil")
-                                 .arg(QFileInfo(file).fileName())
-                                 .arg(stats.stitches)
-                                 .arg(stats.jumps)
-                                 .arg(stats.color_changes));
+    if (sequence_) {
+        const auto stats = stitch::compute_stats(*sequence_);
+        statusBar()->showMessage(tr("%1 — %2 points, %3 saut(s), %4 changement(s) de fil")
+                                     .arg(QFileInfo(file).fileName())
+                                     .arg(stats.stitches)
+                                     .arg(stats.jumps)
+                                     .arg(stats.color_changes));
+    }
 }
 
 void MainWindow::importDxf() {

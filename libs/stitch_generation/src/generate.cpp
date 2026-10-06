@@ -377,6 +377,16 @@ bool is_routable_satin(const document::EmbroideryObject& o) {
 } // namespace
 
 Result<stitch::StitchSequence> generate_sequence(const document::Project& project) {
+    // S2a (AD-04) : un design importé est une donnée SOURCE, jamais
+    // régénérée par objet -- restituée telle quelle, avant toute
+    // construction depuis `embroidery_objects` (vide pour un projet
+    // d'import). Remplace l'ancienne exception desktop
+    // `MainWindow::sequenceImported_` (§17) : ce chemin est désormais le
+    // SEUL, commun à tous les consommateurs de production via
+    // `effective_sequence`.
+    if (project.imported_design) {
+        return project.imported_design->sequence;
+    }
     stitch::StitchSequence sequence;
     const auto& objects = project.embroidery_objects;
     const document::EmbroideryObject* previous = nullptr;

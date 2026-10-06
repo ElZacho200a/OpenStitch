@@ -1,5 +1,8 @@
 add_executable(test_formats
     test_dst.cpp
+    test_dst_bytes_regression.cpp
+    test_machine.cpp
+    test_format_registry.cpp
     test_dxf.cpp
     test_svg.cpp
     test_svg_import.cpp

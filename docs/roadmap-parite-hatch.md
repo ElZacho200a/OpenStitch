@@ -165,11 +165,8 @@ Hatch lit et écrit une vingtaine de formats machine et plusieurs formats
 graphiques. C'est **le premier mur** : la majorité des machines domestiques
 (Brother, Babylock, Janome, Husqvarna, Pfaff, Bernina) n'utilisent pas DST.
 
-### HP-FMT-001 — Couche de normalisation machine séparée des codecs [P0] — ☐ À faire
-- Suivi : **PR #5** (`task/s2a-machine-layer`, ouverte, non fusionnée) livre
-  `machine.hpp` (`MachineConstraints`, `normalize_for_machine`), `format_registry` et
-  les tests ; sur `main` l'entrée reste ☐ tant qu'elle n'est pas fusionnée.
-- État OpenStitch (sur `main`) : la découpe des grands déplacements, la quantification et
+### HP-FMT-001 — Couche de normalisation machine séparée des codecs [P0] — ☑ Fait (2026-10-06)
+- État OpenStitch : la découpe des grands déplacements, la quantification et
   l'encodage des coupes sont faits *dans* l'encodeur DST (`encode_dst`,
   `DstWriteOptions::trim_jumps`). `roadmap.md` le signale déjà (« Séparer la
   normalisation machine de l'encodeur DST »).
@@ -188,6 +185,28 @@ graphiques. C'est **le premier mur** : la majorité des machines domestiques
 - Acceptation : l'export DST reste **octet pour octet identique** sur tout le
   corpus de tests existant ; tests unitaires de la normalisation seule (saut de
   50 mm découpé en N enregistrements, dérive nulle cumulée sur 10 000 points).
+- Livré : `libs/formats/include/openstitch/formats/machine.hpp`/`machine.cpp`
+  (`MachineConstraints`, `MachineRecord`, `normalize_for_machine`),
+  `format_registry.hpp`/`.cpp` (AI-02, une entrée `"dst"` pour l'instant ;
+  S2b/S2c s'y inscriront sans toucher au reste). `dst.cpp` migré sur cette
+  couche, signatures publiques `encode_dst`/`decode_dst`/`write_dst_file`/
+  `read_dst_file` inchangées. Bloc de couleur partagé `stitch::ColorBlock`
+  (AD-02 ter). Composition générique projet ↔ fichier machine
+  (`project_io::export_machine_file`/`import_machine_file`, AI-03b), table de
+  blocs de couleur du design (`stitch_analysis::color_blocks`, AI-03a), nature
+  « design importé » (`document::ImportedDesign`, AD-04 — remplace
+  l'exception desktop `MainWindow::sequenceImported_`, mutation par
+  `commands::SetImportedDesignCommand`, Tier 0). **Octet-pour-octet vérifié
+  explicitement** : sortie de `encode_dst` sur deux séquences synthétiques
+  (carré simple, séquence complexe trim/jump long/colorchange/stop) comparée
+  byte à byte à la sortie de l'ancien `dst.cpp` (avant migration, capturée sur
+  la même révision de ces séquences) — identique dans les deux cas ; filet de
+  régression permanent dans `tests/unit/formats/test_dst_bytes_regression.cpp`
+  et `tests/unit/project_io/test_machine_file.cpp`.
+- Reste (hors entrée) : codecs PES (HP-FMT-002/003) et JEF/EXP
+  (HP-FMT-004/005) — s'inscrivent dans le registre sans modifier cette couche ;
+  aiguillage par nature de `commands::ICommand` pour éditer un design importé
+  (S3, AD-05, hors P0).
 
 ### HP-FMT-002 — Export PES (Brother / Babylock / Bernette) [P0] — ☐ À faire
 - État OpenStitch : absent.

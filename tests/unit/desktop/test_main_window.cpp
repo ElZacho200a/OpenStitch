@@ -4570,7 +4570,7 @@ void MainWindowTest::newProjectResetsDocumentEditModesAndPanels() {
     QVERIFY(!window.project_.segmentation.has_value());
     QVERIFY(!window.undoStack_.canUndo());
     QVERIFY(!window.sequence_.has_value());
-    QVERIFY(!window.sequenceImported_);
+    QVERIFY(!window.project_.imported_design.has_value());
     QVERIFY(!window.selectedObject_.has_value());
     QVERIFY(!window.selectedEmbroidery_.has_value());
     QVERIFY(!window.selectedRegion_.has_value());
