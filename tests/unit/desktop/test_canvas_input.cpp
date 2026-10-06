@@ -1,23 +1,35 @@
 // SPDX-License-Identifier: Apache-2.0
-// Caractérisation des entrées souris/clavier de CanvasView (lot L0 de la modernisation
-// UI, docs/ui-audit-2026-10.md §3 bis et §4) : ce que le canevas fait AUJOURD'HUI de
-// chaque geste. Les lignes QEXPECT_FAIL(Continue) décrivent le comportement CIBLE du
-// lot L5 (clic molette = panoramique, Espace + glisser, pavé tactile...) : la suite
-// reste verte, et dès que L5 implémente le geste le test échoue en « XPASS » jusqu'à ce
-// que le marqueur soit retiré. Évènements injectés (QTest::mouse*, QWheelEvent), aucun
-// sleep, aucune comparaison de pixels.
+// Entrées souris/clavier de CanvasView (lot L0 : caractérisation, lot L5 : modèle
+// d'interaction, docs/ui-audit-2026-10.md §3 bis et §4, specs/plans/ui-interaction-model.md).
+// Les tests « isolés » (sans setBaseContext) figent le comportement historique
+// (ScrollHandDrag) ; les tests « modèle activé » appellent setBaseContext(Select)
+// + setSelectionRectangleEnabled(true). Évènements injectés (QTest::mouse*,
+// QWheelEvent), aucun sleep, aucune comparaison de pixels.
 #include <QApplication>
+#include <QComboBox>
+#include <QGraphicsRectItem>
 #include <QGraphicsScene>
+#include <QPushButton>
+#include <QScopeGuard>
 #include <QScrollBar>
+#include <QSettings>
 #include <QSignalSpy>
+#include <QSpinBox>
+#include <QTemporaryDir>
 #include <QTest>
+#include <QVBoxLayout>
 #include <QWheelEvent>
 
 #include <cmath>
 
 #include "canvas_view.hpp"
+#include "native_gesture_helper.hpp"
 
 using openstitch::desktop::CanvasView;
+using openstitch::desktop::Context;
+using openstitch::desktop::InteractionMap;
+using openstitch::desktop::Preset;
+using openstitch::desktop::SelectMode;
 
 namespace {
 
@@ -61,6 +73,30 @@ void drag(CanvasView& view, Qt::MouseButton button, const QPoint& from, const QP
     QTest::mouseMove(view.viewport(), mid);
     QTest::mouseMove(view.viewport(), to);
     QTest::mouseRelease(view.viewport(), button, modifiers, to);
+}
+
+// Vue en mode « modèle d'interaction » (outil Sélection).
+void prepareSelectView(CanvasView& view) {
+    prepareView(view);
+    view.setBaseContext(Context::Select);
+    view.setSelectionRectangleEnabled(true);
+}
+
+// Évènement souris explicite (modificateurs maîtrisés, état clavier global ignoré).
+void sendMouse(CanvasView& view, QEvent::Type type, const QPoint& at, Qt::MouseButton button,
+               Qt::MouseButtons buttons, Qt::KeyboardModifiers mods) {
+    QMouseEvent event(type, QPointF(at), QPointF(view.viewport()->mapToGlobal(at)), button, buttons,
+                      mods);
+    QApplication::sendEvent(view.viewport(), &event);
+}
+
+bool nearlyEqual(const QPointF& a, const QPointF& b, double tol) {
+    return std::abs(a.x() - b.x()) <= tol && std::abs(a.y() - b.y()) <= tol;
+}
+
+// Point de scène sous un point du viewport, en flottant (pas d'arrondi entier).
+QPointF sceneUnder(const CanvasView& view, const QPointF& viewportPos) {
+    return view.viewportTransform().inverted().map(viewportPos);
 }
 
 } // namespace
@@ -205,38 +241,143 @@ private slots:
         QVERIFY(view.pixelsPerMm() < 0.21);
     }
 
-    // Les modificateurs sont ignorés par la molette : Maj/Ctrl/Alt + molette zooment
-    // comme la molette seule (cible L5 : Maj/Alt = défilement horizontal/vertical).
-    void wheelWithModifiersZoomsLikePlainWheel() {
-        for (const Qt::KeyboardModifiers mod :
-             {Qt::KeyboardModifiers(Qt::ShiftModifier), Qt::KeyboardModifiers(Qt::ControlModifier),
-              Qt::KeyboardModifiers(Qt::AltModifier)}) {
-            QGraphicsScene scene;
-            CanvasView view(&scene);
-            prepareView(view);
-            const double initial = view.pixelsPerMm();
-            sendWheel(view, QPoint(200, 200), QPoint(0, 120), QPoint(), mod);
-            QVERIFY(view.pixelsPerMm() > initial);
-            QVERIFY(std::abs(view.pixelsPerMm() / initial - 1.15) < 1e-6);
-        }
+    // Ctrl + molette zoome comme la molette seule (G13 : le pincement Windows arrive
+    // ainsi). Maj/Alt + molette défilent désormais (G6/G7, tests dédiés).
+    void wheelWithCtrlZoomsLikePlainWheel() {
+        QGraphicsScene scene;
+        CanvasView view(&scene);
+        prepareView(view);
+        const double initial = view.pixelsPerMm();
+        sendWheel(view, QPoint(200, 200), QPoint(0, 120), QPoint(), Qt::ControlModifier);
+        QVERIFY(view.pixelsPerMm() > initial);
+        QVERIFY(std::abs(view.pixelsPerMm() / initial - 1.15) < 1e-6);
     }
 
-    void shiftWheelZoomsInsteadOfScrollingHorizontallyYet() {
+    // G6 : Maj + molette = défilement horizontal, SANS changement de zoom.
+    void shiftWheelScrollsHorizontallyWithoutZoom() {
         QGraphicsScene scene;
         CanvasView view(&scene);
         prepareView(view);
         const double zoom = view.pixelsPerMm();
+        const QPoint before = scrollPos(view);
         sendWheel(view, QPoint(200, 200), QPoint(0, 120), QPoint(), Qt::ShiftModifier);
-        // Aujourd'hui Maj + molette zoome (l'ancrage déplace les barres comme effet de
-        // bord) ; cible L5 : défilement horizontal SANS changement de zoom.
-        QEXPECT_FAIL("", "cible L5 : Maj + molette = défilement horizontal (audit §3 bis)",
-                     Continue);
         QCOMPARE(view.pixelsPerMm(), zoom);
+        QVERIFY(scrollPos(view).x() < before.x()); // cran vers le haut : vers la gauche
+        QCOMPARE(scrollPos(view).y(), before.y());
     }
 
-    // Pavé tactile : un évènement qui ne porte que pixelDelta (angleDelta nul) est
-    // consommé sans effet -- ni zoom, ni panoramique.
-    void pixelDeltaOnlyWheelIsIgnored() {
+    // G7 : Alt + molette = défilement vertical.
+    void altWheelScrollsVerticallyWithoutZoom() {
+        QGraphicsScene scene;
+        CanvasView view(&scene);
+        prepareView(view);
+        const double zoom = view.pixelsPerMm();
+        const QPoint before = scrollPos(view);
+        sendWheel(view, QPoint(200, 200), QPoint(0, -120), QPoint(), Qt::AltModifier);
+        QCOMPARE(view.pixelsPerMm(), zoom);
+        QVERIFY(scrollPos(view).y() > before.y());
+        QCOMPARE(scrollPos(view).x(), before.x());
+    }
+
+    // Qt échange x/y avec Alt sur certaines plates-formes : delta porté par x seul.
+    void altWheelWithXOnlyAngleDeltaScrollsVertically() {
+        QGraphicsScene scene;
+        CanvasView view(&scene);
+        prepareView(view);
+        const double zoom = view.pixelsPerMm();
+        const QPoint before = scrollPos(view);
+        sendWheel(view, QPoint(200, 200), QPoint(120, 0), QPoint(), Qt::AltModifier);
+        QCOMPARE(view.pixelsPerMm(), zoom);
+        QVERIFY(scrollPos(view).y() < before.y());
+        QCOMPARE(scrollPos(view).x(), before.x());
+    }
+
+    // G1 : zoom AVANT ancré au curseur (<= 1 px), sans dépendre de QCursor::pos().
+    void wheelZoomInKeepsAnchor() {
+        QGraphicsScene scene;
+        CanvasView view(&scene);
+        prepareView(view);
+        const QPoint at(120, 300);
+        const QPointF before = sceneUnder(view, QPointF(at));
+        sendWheel(view, at, QPoint(0, 120));
+        const QPointF after = sceneUnder(view, QPointF(at));
+        QVERIFY(nearlyEqual(before, after, 1.0 / view.pixelsPerMm()));
+    }
+
+    // Deltas < 120 (pavés tactiles Windows) : zoom proportionnel.
+    void fractionalAngleDeltaZoomsProportionally() {
+        QGraphicsScene scene;
+        CanvasView view(&scene);
+        prepareView(view);
+        const double initial = view.pixelsPerMm();
+        sendWheel(view, QPoint(200, 200), QPoint(0, 30));
+        QVERIFY(std::abs(view.pixelsPerMm() / initial - std::pow(1.15, 0.25)) < 1e-6);
+    }
+
+    // Un coup de molette violent est plafonné à 3 crans.
+    void hugeAngleDeltaIsCapped() {
+        QGraphicsScene scene;
+        CanvasView view(&scene);
+        prepareView(view);
+        const double initial = view.pixelsPerMm();
+        sendWheel(view, QPoint(200, 200), QPoint(0, 12000));
+        QVERIFY(std::abs(view.pixelsPerMm() / initial - std::pow(1.15, 3.0)) < 1e-6);
+    }
+
+    // G13 : Ctrl + molette zoome dans les deux préréglages.
+    void ctrlWheelZoomsInBothPresets() {
+        const Preset original = InteractionMap::preset();
+        const auto restore = qScopeGuard([&] { InteractionMap::setPreset(original); });
+        for (const Preset preset : {Preset::OpenStitch, Preset::Touchpad}) {
+            InteractionMap::setPreset(preset);
+            QGraphicsScene scene;
+            CanvasView view(&scene);
+            prepareView(view);
+            const double initial = view.pixelsPerMm();
+            sendWheel(view, QPoint(200, 200), QPoint(0, 120), QPoint(), Qt::ControlModifier);
+            QVERIFY(view.pixelsPerMm() > initial);
+        }
+    }
+
+    // G8 (macOS / Wayland ; Windows ne livre pas de pixelDelta) : défilement à
+    // deux doigts = panoramique, jamais zoom.
+    void pixelDeltaWheelPansNotZooms() {
+#ifdef Q_OS_WIN
+        QSKIP("Windows ne livre pas pixelDelta pour le pavé tactile");
+#endif
+        QGraphicsScene scene;
+        CanvasView view(&scene);
+        prepareView(view);
+        const double zoom = view.pixelsPerMm();
+        const QPoint before = scrollPos(view);
+        sendWheel(view, QPoint(200, 200), QPoint(0, 120), QPoint(-30, 20));
+        QCOMPARE(view.pixelsPerMm(), zoom);
+        QCOMPARE(scrollPos(view), before + QPoint(30, -20));
+    }
+
+    // G9 : pincement natif (macOS / Wayland) = zoom ancré au curseur.
+    void nativePinchZoomsAtCursor() {
+        QGraphicsScene scene;
+        CanvasView view(&scene);
+        prepareView(view);
+        const QPoint at(130, 270);
+        const double initial = view.pixelsPerMm();
+        const QPointF before = sceneUnder(view, QPointF(at));
+        const auto zoomEvent = makeNativeGesture(Qt::ZoomNativeGesture, QPointF(at), 0.5);
+        QApplication::sendEvent(view.viewport(), zoomEvent.get());
+        QVERIFY(std::abs(view.pixelsPerMm() / initial - 1.5) < 1e-6);
+        QVERIFY(nearlyEqual(before, sceneUnder(view, QPointF(at)), 1.0 / view.pixelsPerMm()));
+
+        const QPoint scrollBefore = scrollPos(view);
+        const auto panEvent =
+            makeNativeGesture(Qt::PanNativeGesture, QPointF(at), 0.0, QPointF(10, 5));
+        QApplication::sendEvent(view.viewport(), panEvent.get());
+        QCOMPARE(scrollPos(view), scrollBefore - QPoint(10, 5));
+    }
+
+    // Pavé tactile : un évènement qui ne porte que pixelDelta (angleDelta nul) panoramique
+    // sans jamais zoomer.
+    void pixelDeltaOnlyWheelPans() {
         QGraphicsScene scene;
         CanvasView view(&scene);
         prepareView(view);
@@ -250,14 +391,12 @@ private slots:
 
         QVERIFY(event.isAccepted());
         QCOMPARE(view.pixelsPerMm(), zoom);
-        QEXPECT_FAIL("", "cible L5 : pixelDelta (pavé tactile) = panoramique (audit §3 bis)",
-                     Continue);
         QVERIFY(scrollPos(view) != before);
     }
 
     // ---- clic molette et Espace ------------------------------------------------------
 
-    void middleButtonDragDoesNotPanNorClick() {
+    void middleButtonDragPansAndDoesNotClick() {
         QGraphicsScene scene;
         CanvasView view(&scene);
         prepareView(view);
@@ -266,16 +405,15 @@ private slots:
 
         drag(view, Qt::MiddleButton, QPoint(200, 200), QPoint(150, 170));
 
-        // Comportement actuel : le bouton du milieu est entièrement ignoré.
         QCOMPARE(clicked.count(), 0);
-        QEXPECT_FAIL("", "cible L5 : clic molette + glisser = panoramique (audit §3 bis)",
-                     Continue);
         QVERIFY(scrollPos(view) != before);
+        QVERIFY2(scrollPos(view).x() > before.x(), "glisser vers la gauche -> défilement +");
+        QVERIFY2(scrollPos(view).y() > before.y(), "glisser vers le haut -> défilement +");
     }
 
-    // Espace n'a aucun rôle : Espace + glisser se comporte exactement comme le glisser
-    // seul (ici : panoramique, parce que le glisser gauche pan déjà).
-    void spaceKeyHasNoEffectOnLeftDrag() {
+    // Vue isolée : Espace + glisser panoramique exactement comme le glisser seul
+    // (ScrollHandDrag historique) -> même déplacement.
+    void spaceDragPansLikePlainDragOnIsolatedView() {
         QGraphicsScene scene;
         CanvasView view(&scene);
         prepareView(view);
@@ -293,10 +431,9 @@ private slots:
         QCOMPARE(scrollPos(view) - start, plainDelta);
     }
 
-    // Cible L5 : avec un outil de dessin actif (ici le cadre élastique), Espace + glisser
-    // doit panoramiquer au lieu de dessiner. Aujourd'hui : le cadre est dessiné, la vue
-    // ne bouge pas.
-    void spaceDragDuringBoxDrawToolDrawsInsteadOfPanning() {
+    // Avec un outil de dessin actif (ici le cadre élastique), Espace + glisser
+    // panoramique au lieu de dessiner.
+    void spaceDragDuringBoxDrawToolPansInsteadOfDrawing() {
         QGraphicsScene scene;
         CanvasView view(&scene);
         prepareView(view);
@@ -309,10 +446,546 @@ private slots:
         drag(view, Qt::LeftButton, QPoint(100, 100), QPoint(220, 200));
         QTest::keyRelease(&view, Qt::Key_Space);
 
-        QCOMPARE(box.count(), 1);
-        QEXPECT_FAIL("", "cible L5 : Espace + glisser = panoramique, même en dessin (§3 bis)",
-                     Continue);
+        QCOMPARE(box.count(), 0);
         QVERIFY(scrollPos(view) != before);
+    }
+
+    // ---- Espace : filtre applicatif, focus, remise à zéro ---------------------------------
+
+    void spaceDragPansViewAndResetsOnFocusOut() {
+        QGraphicsScene scene;
+        CanvasView view(&scene);
+        prepareView(view);
+        view.setBoxDrawMode(true);
+        view.setFocus();
+        QSignalSpy box(&view, &CanvasView::boxDrawnMm);
+        QSignalSpy clicked(&view, &CanvasView::canvasClickedMm);
+        const QPoint before = scrollPos(view);
+
+        QTest::keyPress(&view, Qt::Key_Space);
+        QVERIFY(view.spaceHeld());
+        drag(view, Qt::LeftButton, QPoint(200, 200), QPoint(150, 170));
+        QVERIFY(scrollPos(view) != before);
+        QCOMPARE(box.count(), 0);
+        QCOMPARE(clicked.count(), 0);
+
+        // Perte de focus : la touche n'est plus considérée comme tenue.
+        QFocusEvent out(QEvent::FocusOut, Qt::OtherFocusReason);
+        QApplication::sendEvent(&view, &out);
+        QVERIFY(!view.spaceHeld());
+        drag(view, Qt::LeftButton, QPoint(100, 100), QPoint(220, 200));
+        QCOMPARE(box.count(), 1);
+    }
+
+    void spaceHeldIsClearedWhenViewIsHidden() {
+        QGraphicsScene scene;
+        CanvasView view(&scene);
+        prepareView(view);
+        view.setFocus();
+        QTest::keyPress(&view, Qt::Key_Space);
+        QVERIFY(view.spaceHeld());
+        view.hide();
+        QVERIFY(!view.spaceHeld());
+    }
+
+    void spaceDoesNotClickFocusedButton() {
+        QWidget host;
+        auto* layout = new QVBoxLayout(&host);
+        auto* view = new CanvasView(new QGraphicsScene(&host));
+        auto* button = new QPushButton(QStringLiteral("ok"));
+        layout->addWidget(view, 1);
+        layout->addWidget(button);
+        view->setCanvasSizeMm(QSizeF(100.0, 100.0));
+        host.resize(400, 500);
+        host.show();
+        QVERIFY(QTest::qWaitForWindowExposed(&host));
+        button->setFocus();
+        QSignalSpy clicks(button, &QPushButton::clicked);
+        QEvent initialLeave(QEvent::Leave); // l'offscreen peut avoir envoyé un Enter à l'affichage
+        QApplication::sendEvent(view->viewport(), &initialLeave);
+
+        // Curseur hors du viewport : Espace clique le bouton (comportement Qt normal).
+        QTest::keyClick(button, Qt::Key_Space);
+        QCOMPARE(clicks.count(), 1);
+
+        // Curseur sur le viewport : Espace est consommé, le bouton ne reçoit rien.
+        QEnterEvent enter(QPointF(50, 50), QPointF(50, 50), QPointF(50, 50));
+        QApplication::sendEvent(view->viewport(), &enter);
+        QTest::keyPress(button, Qt::Key_Space);
+        QVERIFY(view->spaceHeld());
+        QTest::keyRelease(button, Qt::Key_Space);
+        QVERIFY(!view->spaceHeld());
+        QCOMPARE(clicks.count(), 1);
+
+        // Le curseur quitte le viewport : le comportement normal revient.
+        QEvent leave(QEvent::Leave);
+        QApplication::sendEvent(view->viewport(), &leave);
+        QTest::keyClick(button, Qt::Key_Space);
+        QCOMPARE(clicks.count(), 2);
+    }
+
+    void spaceIgnoredWhenSpinBoxHasFocus() {
+        QWidget host;
+        auto* layout = new QVBoxLayout(&host);
+        auto* view = new CanvasView(new QGraphicsScene(&host));
+        auto* spin = new QSpinBox;
+        layout->addWidget(view, 1);
+        layout->addWidget(spin);
+        view->setCanvasSizeMm(QSizeF(100.0, 100.0));
+        host.resize(400, 500);
+        host.show();
+        QVERIFY(QTest::qWaitForWindowExposed(&host));
+        spin->setFocus();
+        QEnterEvent enter(QPointF(50, 50), QPointF(50, 50), QPointF(50, 50));
+        QApplication::sendEvent(view->viewport(), &enter);
+
+        QTest::keyPress(spin, Qt::Key_Space);
+        QVERIFY(!view->spaceHeld());
+        QTest::keyRelease(spin, Qt::Key_Space);
+    }
+
+    void spaceFilterRemovedWithView() {
+        QWidget host;
+        auto* layout = new QVBoxLayout(&host);
+        auto* view = new CanvasView(new QGraphicsScene(&host));
+        auto* button = new QPushButton(QStringLiteral("ok"));
+        layout->addWidget(view, 1);
+        layout->addWidget(button);
+        host.resize(400, 500);
+        host.show();
+        QVERIFY(QTest::qWaitForWindowExposed(&host));
+        button->setFocus();
+        QEnterEvent enter(QPointF(50, 50), QPointF(50, 50), QPointF(50, 50));
+        QApplication::sendEvent(view->viewport(), &enter);
+        delete view;
+
+        QSignalSpy clicks(button, &QPushButton::clicked);
+        QTest::keyClick(button, Qt::Key_Space);
+        QCOMPARE(clicks.count(), 1);
+    }
+
+    // ---- clic molette : zoom continu, double-clic -----------------------------------------
+
+    void ctrlShiftMiddleDragZoomsContinuously() {
+        QGraphicsScene scene;
+        CanvasView view(&scene);
+        prepareView(view);
+        QSignalSpy clicked(&view, &CanvasView::canvasClickedMm);
+        const QPoint anchor(200, 200);
+        const double initial = view.pixelsPerMm();
+        const QPointF before = sceneUnder(view, QPointF(anchor));
+
+        // Vers le haut : zoom avant, ancré au point d'appui.
+        drag(view, Qt::MiddleButton, anchor, QPoint(200, 150),
+             Qt::ControlModifier | Qt::ShiftModifier);
+        QVERIFY(view.pixelsPerMm() > initial);
+        QVERIFY(std::abs(view.pixelsPerMm() / initial - std::exp(0.5)) < 1e-6);
+        QVERIFY(nearlyEqual(before, sceneUnder(view, QPointF(anchor)), 2.0 / view.pixelsPerMm()));
+        QCOMPARE(clicked.count(), 0);
+
+        const double zoomed = view.pixelsPerMm();
+        drag(view, Qt::MiddleButton, anchor, QPoint(200, 250),
+             Qt::ControlModifier | Qt::ShiftModifier);
+        QVERIFY(view.pixelsPerMm() < zoomed);
+    }
+
+    void middleDoubleClickFitsCanvasWithoutGhostPan() {
+        QGraphicsScene scene;
+        CanvasView view(&scene);
+        prepareView(view);
+        const double initial = view.pixelsPerMm();
+        CanvasView reference(new QGraphicsScene);
+        prepareView(reference);
+        reference.fitCanvas();
+
+        const QPoint at(200, 200);
+        sendMouse(view, QEvent::MouseButtonPress, at, Qt::MiddleButton, Qt::MiddleButton,
+                  Qt::NoModifier);
+        sendMouse(view, QEvent::MouseButtonRelease, at, Qt::MiddleButton, Qt::NoButton,
+                  Qt::NoModifier);
+        QCOMPARE(view.pixelsPerMm(), initial); // le premier press/release ne bouge rien
+        sendMouse(view, QEvent::MouseButtonDblClick, at, Qt::MiddleButton, Qt::MiddleButton,
+                  Qt::NoModifier);
+        const double fitted = view.pixelsPerMm();
+        const QPoint fittedScroll = scrollPos(view);
+        QVERIFY(fitted != initial);
+        QVERIFY(std::abs(fitted / reference.pixelsPerMm() - 1.0) < 0.05);
+
+        sendMouse(view, QEvent::MouseButtonRelease, at, Qt::MiddleButton, Qt::NoButton,
+                  Qt::NoModifier);
+        // Un mouvement sans bouton ensuite ne doit rien déplacer (pas de pan fantôme).
+        sendMouse(view, QEvent::MouseMove, QPoint(260, 240), Qt::NoButton, Qt::NoButton,
+                  Qt::NoModifier);
+        QCOMPARE(view.pixelsPerMm(), fitted);
+        QCOMPARE(scrollPos(view), fittedScroll);
+        delete reference.scene();
+    }
+
+    // ---- outil Pan et NoDrag ---------------------------------------------------------------
+
+    void isolatedViewKeepsScrollHandDrag() {
+        QGraphicsScene scene;
+        CanvasView view(&scene);
+        QVERIFY(!view.inputModelEnabled());
+        QCOMPARE(view.dragMode(), QGraphicsView::ScrollHandDrag);
+        view.setBaseContext(Context::Select);
+        QVERIFY(view.inputModelEnabled());
+        QCOMPARE(view.dragMode(), QGraphicsView::NoDrag);
+    }
+
+    void panToolLeftDragPansWithNoDragMode() {
+        QGraphicsScene scene;
+        CanvasView view(&scene);
+        prepareView(view);
+        view.setBaseContext(Context::Pan);
+        QCOMPARE(view.dragMode(), QGraphicsView::NoDrag);
+        QSignalSpy clicked(&view, &CanvasView::canvasClickedMm);
+        const QPoint before = scrollPos(view);
+
+        drag(view, Qt::LeftButton, QPoint(200, 200), QPoint(150, 170));
+
+        QVERIFY(scrollPos(view).x() > before.x());
+        QVERIFY(scrollPos(view).y() > before.y());
+        QCOMPARE(clicked.count(), 0);
+    }
+
+    void panWorksWhileFreeformToolActive() {
+        QGraphicsScene scene;
+        CanvasView view(&scene);
+        prepareView(view);
+        view.setFreeformDrawMode(true);
+        QSignalSpy points(&view, &CanvasView::freeformPointMm);
+        QSignalSpy finished(&view, &CanvasView::freeformStrokeFinished);
+        const QPoint before = scrollPos(view);
+
+        drag(view, Qt::MiddleButton, QPoint(200, 200), QPoint(150, 170));
+
+        QVERIFY(scrollPos(view) != before);
+        QCOMPARE(points.count(), 0);
+        QCOMPARE(finished.count(), 0);
+    }
+
+    void panWorksWhileBezierToolActive() {
+        QGraphicsScene scene;
+        CanvasView view(&scene);
+        prepareView(view);
+        view.setBezierDrawMode(true);
+        QSignalSpy dragging(&view, &CanvasView::bezierPointDraggingMm);
+        QSignalSpy committed(&view, &CanvasView::bezierPointCommittedMm);
+        const QPoint before = scrollPos(view);
+
+        drag(view, Qt::MiddleButton, QPoint(200, 200), QPoint(150, 170));
+
+        QVERIFY(scrollPos(view) != before);
+        QCOMPARE(dragging.count(), 0);
+        QCOMPARE(committed.count(), 0);
+    }
+
+    // ---- sélection (contexte Select, modèle activé) ---------------------------------------
+
+    void plainClickEmitsCanvasClickedMm() {
+        QGraphicsScene scene;
+        CanvasView view(&scene);
+        prepareSelectView(view);
+        QSignalSpy clicked(&view, &CanvasView::canvasClickedMm);
+        QSignalSpy added(&view, &CanvasView::selectionClickedMm);
+        const QPoint at(150, 120);
+        const QPointF expected = view.mapToScene(at);
+
+        QTest::mouseClick(view.viewport(), Qt::LeftButton, Qt::NoModifier, at);
+
+        QCOMPARE(clicked.count(), 1);
+        QVERIFY(nearlyEqual(clicked.at(0).at(0).toPointF(), expected, 0.5));
+        QCOMPARE(added.count(), 0);
+    }
+
+    void clickIsDeferredToReleaseInSelectContext() {
+        QGraphicsScene scene;
+        CanvasView view(&scene);
+        prepareSelectView(view);
+        QSignalSpy clicked(&view, &CanvasView::canvasClickedMm);
+        QTest::mousePress(view.viewport(), Qt::LeftButton, Qt::NoModifier, QPoint(150, 120));
+        QCOMPARE(clicked.count(), 0);
+        QTest::mouseRelease(view.viewport(), Qt::LeftButton, Qt::NoModifier, QPoint(150, 120));
+        QCOMPARE(clicked.count(), 1);
+    }
+
+    void shiftClickEmitsSelectionClickedAdd() {
+        QGraphicsScene scene;
+        CanvasView view(&scene);
+        prepareSelectView(view);
+        QSignalSpy clicked(&view, &CanvasView::canvasClickedMm);
+        QSignalSpy added(&view, &CanvasView::selectionClickedMm);
+        QTest::mouseClick(view.viewport(), Qt::LeftButton, Qt::ShiftModifier, QPoint(150, 120));
+        QCOMPARE(clicked.count(), 0);
+        QCOMPARE(added.count(), 1);
+        QCOMPARE(added.at(0).at(1).value<SelectMode>(), SelectMode::Add);
+    }
+
+    void ctrlClickEmitsSelectionClickedToggle() {
+        QGraphicsScene scene;
+        CanvasView view(&scene);
+        prepareSelectView(view);
+        QSignalSpy added(&view, &CanvasView::selectionClickedMm);
+        QTest::mouseClick(view.viewport(), Qt::LeftButton, Qt::ControlModifier, QPoint(150, 120));
+        QCOMPARE(added.count(), 1);
+        QCOMPARE(added.at(0).at(1).value<SelectMode>(), SelectMode::Toggle);
+    }
+
+    void ctrlShiftClickIsToggle() {
+        QGraphicsScene scene;
+        CanvasView view(&scene);
+        prepareSelectView(view);
+        QSignalSpy added(&view, &CanvasView::selectionClickedMm);
+        QTest::mouseClick(view.viewport(), Qt::LeftButton, Qt::ControlModifier | Qt::ShiftModifier,
+                          QPoint(150, 120));
+        QCOMPARE(added.count(), 1);
+        QCOMPARE(added.at(0).at(1).value<SelectMode>(), SelectMode::Toggle);
+    }
+
+    void altClickEmitsSelectBelow() {
+        QGraphicsScene scene;
+        CanvasView view(&scene);
+        prepareSelectView(view);
+        QSignalSpy clicked(&view, &CanvasView::canvasClickedMm);
+        QSignalSpy below(&view, &CanvasView::selectBelowRequested);
+        const QPoint at(150, 120);
+        QTest::mouseClick(view.viewport(), Qt::LeftButton, Qt::AltModifier, at);
+        QCOMPARE(clicked.count(), 0);
+        QCOMPARE(below.count(), 1);
+        QVERIFY(nearlyEqual(below.at(0).at(0).toPointF(), view.mapToScene(at), 0.5));
+        QCOMPARE(below.at(0).at(1).toPoint(), view.viewport()->mapToGlobal(at));
+        QCOMPARE(below.at(0).at(2).value<SelectMode>(), SelectMode::Replace);
+    }
+
+    void altReleaseIsSwallowedAfterAltClick() {
+        struct Counter : QObject {
+            int releases = 0;
+            bool eventFilter(QObject*, QEvent* e) override {
+                if (e->type() == QEvent::KeyRelease) {
+                    ++releases;
+                }
+                return false;
+            }
+        };
+        QGraphicsScene scene;
+        CanvasView view(&scene);
+        prepareSelectView(view);
+        view.setFocus();
+        Counter counter;
+        view.installEventFilter(&counter);
+
+        // Sans geste Alt : le relâchement d'Alt est transmis normalement.
+        QTest::mouseMove(view.viewport(), QPoint(150, 120));
+        QTest::keyRelease(&view, Qt::Key_Alt);
+        QCOMPARE(counter.releases, 1);
+
+        // Après un Alt + clic : avalé (sinon Windows active la barre de menus).
+        QTest::mouseClick(view.viewport(), Qt::LeftButton, Qt::AltModifier, QPoint(150, 120));
+        QTest::keyRelease(&view, Qt::Key_Alt);
+        QCOMPARE(counter.releases, 1);
+        // Un seul relâchement avalé par geste.
+        QTest::keyRelease(&view, Qt::Key_Alt);
+        QCOMPARE(counter.releases, 2);
+    }
+
+    void longPressEmitsSelectBelow() {
+        InteractionMap::setLongPressMsForTesting(1);
+        const auto restore = qScopeGuard([] { InteractionMap::setLongPressMsForTesting(-1); });
+        QGraphicsScene scene;
+        CanvasView view(&scene);
+        prepareSelectView(view);
+        QSignalSpy clicked(&view, &CanvasView::canvasClickedMm);
+        QSignalSpy below(&view, &CanvasView::selectBelowRequested);
+
+        QTest::mousePress(view.viewport(), Qt::LeftButton, Qt::NoModifier, QPoint(150, 120));
+        QVERIFY(below.wait(500));
+        QTest::mouseRelease(view.viewport(), Qt::LeftButton, Qt::NoModifier, QPoint(150, 120));
+
+        QCOMPARE(below.count(), 1);
+        QCOMPARE(clicked.count(), 0); // l'appui long consommé n'émet pas de clic
+    }
+
+    void longPressDelayIsReadFromSettings() {
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        const QSettings::Format oldFormat = QSettings::defaultFormat();
+        QSettings::setDefaultFormat(QSettings::IniFormat);
+        QSettings::setPath(QSettings::IniFormat, QSettings::UserScope, dir.path());
+        const auto restore = qScopeGuard([&] { QSettings::setDefaultFormat(oldFormat); });
+        {
+            QSettings settings(QSettings::defaultFormat(), QSettings::UserScope,
+                               QStringLiteral("OpenStitch"), QStringLiteral("OpenStitch Studio"));
+            settings.setValue(QStringLiteral("navigation/longPressMs"), 300);
+        }
+        QCOMPARE(InteractionMap::longPressMs(), 300);
+
+        QGraphicsScene scene;
+        CanvasView view(&scene);
+        prepareSelectView(view);
+        QSignalSpy below(&view, &CanvasView::selectBelowRequested);
+        QTest::mousePress(view.viewport(), Qt::LeftButton, Qt::NoModifier, QPoint(150, 120));
+        QVERIFY(below.wait(1500));
+        QTest::mouseRelease(view.viewport(), Qt::LeftButton, Qt::NoModifier, QPoint(150, 120));
+        QCOMPARE(below.count(), 1);
+    }
+
+    void dragRightwardEmitsWindowRectangle() {
+        QGraphicsScene scene;
+        CanvasView view(&scene);
+        prepareSelectView(view);
+        QSignalSpy rect(&view, &CanvasView::selectionRectangleMm);
+        QSignalSpy clicked(&view, &CanvasView::canvasClickedMm);
+        const QPoint from(100, 100);
+        const QPoint to(220, 200);
+        const QRectF expected = view.mapToScene(QRect(from, to).normalized()).boundingRect();
+
+        drag(view, Qt::LeftButton, from, to);
+
+        QCOMPARE(rect.count(), 1);
+        const QRectF got = rect.at(0).at(0).toRectF();
+        QVERIFY(nearlyEqual(got.topLeft(), expected.topLeft(), 0.5));
+        QVERIFY(nearlyEqual(got.bottomRight(), expected.bottomRight(), 0.5));
+        QCOMPARE(rect.at(0).at(1).value<SelectMode>(), SelectMode::Replace);
+        QCOMPARE(rect.at(0).at(2).toBool(), false);
+        QCOMPARE(clicked.count(), 0); // dragDoesNotEmitCanvasClicked
+    }
+
+    void dragLeftwardEmitsCrossingRectangle() {
+        QGraphicsScene scene;
+        CanvasView view(&scene);
+        prepareSelectView(view);
+        QSignalSpy rect(&view, &CanvasView::selectionRectangleMm);
+        drag(view, Qt::LeftButton, QPoint(220, 200), QPoint(100, 100));
+        QCOMPARE(rect.count(), 1);
+        QCOMPARE(rect.at(0).at(2).toBool(), true);
+    }
+
+    void shiftDragRectangleIsAdd() {
+        QGraphicsScene scene;
+        CanvasView view(&scene);
+        prepareSelectView(view);
+        QSignalSpy rect(&view, &CanvasView::selectionRectangleMm);
+        drag(view, Qt::LeftButton, QPoint(100, 100), QPoint(220, 200), Qt::ShiftModifier);
+        QCOMPARE(rect.count(), 1);
+        QCOMPARE(rect.at(0).at(1).value<SelectMode>(), SelectMode::Add);
+    }
+
+    void ctrlDragRectangleIsToggle() {
+        QGraphicsScene scene;
+        CanvasView view(&scene);
+        prepareSelectView(view);
+        QSignalSpy rect(&view, &CanvasView::selectionRectangleMm);
+        drag(view, Qt::LeftButton, QPoint(100, 100), QPoint(220, 200), Qt::ControlModifier);
+        QCOMPARE(rect.count(), 1);
+        QCOMPARE(rect.at(0).at(1).value<SelectMode>(), SelectMode::Toggle);
+    }
+
+    void shiftPressOnSelectedBodyTogglesInsteadOfDragging() {
+        QGraphicsScene scene;
+        auto* body = new QGraphicsRectItem(-10, -10, 20, 20);
+        body->setFlag(QGraphicsItem::ItemIsMovable);
+        scene.addItem(body);
+        CanvasView view(&scene);
+        prepareSelectView(view);
+        const QPoint center = view.mapFromScene(QPointF(0, 0));
+        QSignalSpy added(&view, &CanvasView::selectionClickedMm);
+        QSignalSpy clicked(&view, &CanvasView::canvasClickedMm);
+
+        // Maj + clic sur le corps : sélection (ajout), pas de glisser d'item.
+        QTest::mouseClick(view.viewport(), Qt::LeftButton, Qt::ShiftModifier, center);
+        QCOMPARE(added.count(), 1);
+        QCOMPARE(body->pos(), QPointF(0, 0));
+
+        // Maj + glisser depuis le corps : rectangle, l'item ne bouge pas.
+        QSignalSpy rect(&view, &CanvasView::selectionRectangleMm);
+        drag(view, Qt::LeftButton, center, center + QPoint(40, 30), Qt::ShiftModifier);
+        QCOMPARE(rect.count(), 1);
+        QCOMPARE(body->pos(), QPointF(0, 0));
+
+        // Sans modificateur : glisser d'objet inchangé (M1), aucun signal de sélection.
+        drag(view, Qt::LeftButton, center, center + QPoint(40, 30));
+        QVERIFY(body->pos() != QPointF(0, 0));
+        QCOMPARE(clicked.count(), 0);
+        QCOMPARE(added.count(), 1);
+        QCOMPARE(rect.count(), 1);
+    }
+
+    void selectionBehaviourIsInertWithoutBaseContext() {
+        QGraphicsScene scene;
+        CanvasView view(&scene);
+        prepareView(view);
+        view.setSelectionRectangleEnabled(true); // sans setBaseContext : jamais d'effet
+        QSignalSpy clicked(&view, &CanvasView::canvasClickedMm);
+        QSignalSpy rect(&view, &CanvasView::selectionRectangleMm);
+        drag(view, Qt::LeftButton, QPoint(200, 200), QPoint(150, 170));
+        QCOMPARE(rect.count(), 0);
+        QCOMPARE(clicked.count(), 1);
+    }
+
+    // ---- modificateurs et curseur ---------------------------------------------------------
+
+    void modifiersComeFromEventNotGlobalState() {
+        QGraphicsScene scene;
+        CanvasView view(&scene);
+        prepareSelectView(view);
+        QSignalSpy mods(&view, &CanvasView::modifiersChanged);
+
+        sendMouse(view, QEvent::MouseMove, QPoint(100, 100), Qt::NoButton, Qt::NoButton,
+                  Qt::ShiftModifier);
+        QCOMPARE(mods.count(), 1);
+        QCOMPARE(mods.at(0).at(0).value<Qt::KeyboardModifiers>(),
+                 Qt::KeyboardModifiers(Qt::ShiftModifier));
+
+        // Appui sur Ctrl : la touche elle-même est comptée, même si l'évènement ne
+        // porte pas son propre modificateur.
+        QKeyEvent press(QEvent::KeyPress, Qt::Key_Control, Qt::ShiftModifier);
+        QApplication::sendEvent(&view, &press);
+        QCOMPARE(mods.count(), 2);
+        QCOMPARE(mods.at(1).at(0).value<Qt::KeyboardModifiers>(),
+                 Qt::KeyboardModifiers(Qt::ShiftModifier | Qt::ControlModifier));
+    }
+
+    void modifiersChangedEmittedOnlyOnChange() {
+        QGraphicsScene scene;
+        CanvasView view(&scene);
+        prepareSelectView(view);
+        QSignalSpy mods(&view, &CanvasView::modifiersChanged);
+        sendMouse(view, QEvent::MouseMove, QPoint(100, 100), Qt::NoButton, Qt::NoButton,
+                  Qt::NoModifier);
+        QCOMPARE(mods.count(), 0);
+        sendMouse(view, QEvent::MouseMove, QPoint(101, 100), Qt::NoButton, Qt::NoButton,
+                  Qt::ShiftModifier);
+        sendMouse(view, QEvent::MouseMove, QPoint(102, 100), Qt::NoButton, Qt::NoButton,
+                  Qt::ShiftModifier);
+        QCOMPARE(mods.count(), 1);
+        sendMouse(view, QEvent::MouseMove, QPoint(103, 100), Qt::NoButton, Qt::NoButton,
+                  Qt::NoModifier);
+        QCOMPARE(mods.count(), 2);
+    }
+
+    void cursorFollowsModifierInSelectContext() {
+        QGraphicsScene scene;
+        CanvasView view(&scene);
+        prepareSelectView(view);
+        const Qt::CursorShape base = view.viewport()->cursor().shape();
+        QVERIFY(base != Qt::BitmapCursor);
+
+        sendMouse(view, QEvent::MouseMove, QPoint(100, 100), Qt::NoButton, Qt::NoButton,
+                  Qt::ShiftModifier);
+        QCOMPARE(view.viewport()->cursor().shape(), Qt::BitmapCursor); // « + »
+        sendMouse(view, QEvent::MouseMove, QPoint(101, 100), Qt::NoButton, Qt::NoButton,
+                  Qt::ShiftModifier | Qt::ControlModifier);
+        QCOMPARE(view.viewport()->cursor().shape(), Qt::BitmapCursor); // « ± »
+        sendMouse(view, QEvent::MouseMove, QPoint(102, 100), Qt::NoButton, Qt::NoButton,
+                  Qt::NoModifier);
+        QCOMPARE(view.viewport()->cursor().shape(), base);
+
+        view.setFocus();
+        QTest::keyPress(&view, Qt::Key_Space);
+        QCOMPARE(view.viewport()->cursor().shape(), Qt::OpenHandCursor);
+        QTest::keyRelease(&view, Qt::Key_Space);
+        QCOMPARE(view.viewport()->cursor().shape(), base);
     }
 
     // ---- flèches ------------------------------------------------------------------------

@@ -27,13 +27,13 @@ namespace openstitch::desktop {
 
 namespace {
 constexpr double kZoomStep = 1.15;
-constexpr double kMinPxPerMm = 0.2;   // motif de 1 m visible en entier
-constexpr double kMaxPxPerMm = 400.0; // 0,1 mm = 40 px : largement assez fin
-constexpr double kMaxWheelSteps = 3.0;   // plafonne un coup de molette violent
+constexpr double kMinPxPerMm = 0.2;    // motif de 1 m visible en entier
+constexpr double kMaxPxPerMm = 400.0;  // 0,1 mm = 40 px : largement assez fin
+constexpr double kMaxWheelSteps = 3.0; // plafonne un coup de molette violent
 constexpr double kScrollPxPerNotch = 60.0;
 constexpr double kZoomDragPerPixel = 0.01;
-constexpr Qt::KeyboardModifiers kRelevantMods = Qt::ShiftModifier | Qt::ControlModifier |
-                                                Qt::AltModifier | Qt::MetaModifier;
+constexpr Qt::KeyboardModifiers kRelevantMods =
+    Qt::ShiftModifier | Qt::ControlModifier | Qt::AltModifier | Qt::MetaModifier;
 
 // Modificateurs « effectifs » d'un évènement clavier : Qt 6.4/6.8 ne garantissent
 // pas que l'appui sur une touche modificatrice la porte déjà dans modifiers().
@@ -158,7 +158,7 @@ CanvasView::CanvasView(QGraphicsScene* scene, QWidget* parent) : QGraphicsView(s
     setRenderHint(QPainter::SmoothPixmapTransform);
     setDragMode(QGraphicsView::ScrollHandDrag);
     setTransformationAnchor(QGraphicsView::NoAnchor); // zoomAt() ancre à la main
-    setFrameShape(QFrame::NoFrame); // le viewport s'aligne avec les règles
+    setFrameShape(QFrame::NoFrame);                   // le viewport s'aligne avec les règles
     setMouseTracking(true);
     // Sans focus, keyPressEvent ne reçoit jamais les flèches (nudge clavier)
     // -- StrongFocus inclut le focus au clic, déjà le geste naturel pour
@@ -700,9 +700,9 @@ void CanvasView::mousePressEvent(QMouseEvent* event) {
     }
     if (event->button() == Qt::LeftButton) {
         const bool spacePan =
-            spaceHeld_ && InteractionMap::resolve(ctx, Gesture{GestureKind::Drag, Qt::LeftButton,
-                                                              mods, Qt::Key_Space}) ==
-                              Intent::PanView;
+            spaceHeld_ &&
+            InteractionMap::resolve(ctx, Gesture{GestureKind::Drag, Qt::LeftButton, mods,
+                                                 Qt::Key_Space}) == Intent::PanView;
         const bool panTool =
             ctx == Context::Pan &&
             InteractionMap::resolve(ctx, Gesture{GestureKind::Drag, Qt::LeftButton, mods,
@@ -755,6 +755,7 @@ void CanvasView::mousePressEvent(QMouseEvent* event) {
                 event->accept(); // Maj/Ctrl/Alt sur un corps : sélection, pas de glisser
             } else {
                 QGraphicsView::mousePressEvent(event);
+                event->accept(); // le geste est pris en charge par la vue
             }
             return;
         }
@@ -865,7 +866,8 @@ void CanvasView::mouseReleaseEvent(QMouseEvent* event) {
             return; // l'appui long consommé n'émet ni clic ni rectangle
         }
         if (wasRect) {
-            const QRectF rectMm = mapToScene(QRect(pressPos, releasePos).normalized()).boundingRect();
+            const QRectF rectMm =
+                mapToScene(QRect(pressPos, releasePos).normalized()).boundingRect();
             emit selectionRectangleMm(rectMm, InteractionMap::selectModeFor(mods),
                                       releasePos.x() < pressPos.x());
             return;
@@ -875,7 +877,7 @@ void CanvasView::mouseReleaseEvent(QMouseEvent* event) {
     }
     // Capturé AVANT QGraphicsView::mouseReleaseEvent (qui peut, selon le mode
     // de glisser, déclencher un traitement interne) : les modificateurs de CET
-    // évènement, pas une relecture différée de QGuiApplication::keyboardModifiers()
+    // évènement, pas une relecture différée de l'état clavier global
     // (défaut trouvé par revue — pas fiable à rejouer dans un test QTest
     // offscreen, cf. Maj = cercle).
     const Qt::KeyboardModifiers modifiers = event->modifiers();

@@ -6,6 +6,7 @@
 #include <cmath>
 
 #include "canvas_view.hpp"
+#include "design_tokens.hpp"
 
 using openstitch::desktop::CanvasView;
 
@@ -32,6 +33,9 @@ private slots:
     void cropModeSuppressesCanvasClicked();
     void cropModeRubberBandEmitsCropSelectedMm();
     void boxDrawModeRubberBandEmitsBoxDrawnMm();
+    void isolatedViewKeepsScrollHandDragUntilBaseContextIsSet();
+    void zoomAtKeepsSceneAnchorAndIsClamped();
+    void selectionRectTokenIsDefinedInBothThemes();
 };
 
 void CanvasViewTest::zoomInThenOutChangesScaleAndEmitsViewChanged() {
@@ -167,6 +171,56 @@ void CanvasViewTest::boxDrawModeRubberBandEmitsBoxDrawnMm() {
     QVERIFY(std::abs(rectMm.top() - expected.top()) < 1.0);
     QVERIFY(std::abs(rectMm.right() - expected.right()) < 1.0);
     QVERIFY(std::abs(rectMm.bottom() - expected.bottom()) < 1.0);
+}
+
+// Spec L5 §2.1 : une vue isolée garde ScrollHandDrag ; le premier setBaseContext
+// active le modèle (NoDrag), les modes rectangle/recadrage restent élastiques.
+void CanvasViewTest::isolatedViewKeepsScrollHandDragUntilBaseContextIsSet() {
+    QGraphicsScene scene;
+    CanvasView view(&scene);
+    QCOMPARE(view.dragMode(), QGraphicsView::ScrollHandDrag);
+    view.setBoxDrawMode(true);
+    QCOMPARE(view.dragMode(), QGraphicsView::RubberBandDrag);
+    view.setBoxDrawMode(false);
+    QCOMPARE(view.dragMode(), QGraphicsView::ScrollHandDrag);
+
+    view.setBaseContext(openstitch::desktop::Context::Select);
+    QCOMPARE(view.dragMode(), QGraphicsView::NoDrag);
+    view.setCropMode(true);
+    QCOMPARE(view.dragMode(), QGraphicsView::RubberBandDrag);
+    view.setCropMode(false);
+    QCOMPARE(view.dragMode(), QGraphicsView::NoDrag);
+}
+
+void CanvasViewTest::zoomAtKeepsSceneAnchorAndIsClamped() {
+    QGraphicsScene scene;
+    CanvasView view(&scene);
+    view.setCanvasSizeMm(QSizeF(100.0, 100.0));
+    exposeView(view);
+    for (int i = 0; i < 6; ++i) {
+        view.zoomIn();
+    }
+    const QPointF at(120.5, 260.25);
+    const QPointF before = view.viewportTransform().inverted().map(at);
+    view.zoomAt(1.7, at);
+    const QPointF after = view.viewportTransform().inverted().map(at);
+    QVERIFY(std::abs(after.x() - before.x()) * view.pixelsPerMm() < 1.0);
+    QVERIFY(std::abs(after.y() - before.y()) * view.pixelsPerMm() < 1.0);
+
+    view.zoomAt(1e9, at);
+    QVERIFY(view.pixelsPerMm() <= 400.0 + 1e-6);
+    view.zoomAt(1e-9, at);
+    QVERIFY(view.pixelsPerMm() >= 0.2 - 1e-9);
+}
+
+void CanvasViewTest::selectionRectTokenIsDefinedInBothThemes() {
+    using namespace openstitch::desktop;
+    for (const ThemeMode mode : {ThemeMode::Light, ThemeMode::Dark}) {
+        const Tokens t = tokens_for(mode, Density::Comfortable);
+        QVERIFY(t.canvasSelectionRectHalo.isValid());
+        QVERIFY(t.canvasSelectionRectLine.isValid());
+        QVERIFY(t.canvasSelectionRectHalo != t.canvasSelectionRectLine);
+    }
 }
 
 QTEST_MAIN(CanvasViewTest)
