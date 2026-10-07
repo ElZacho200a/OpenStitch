@@ -4832,6 +4832,7 @@ void MainWindowTest::autosaveTickWritesASeparateFileAndLeavesTheUserFileUntouche
     // Une modification après l'enregistrement : condition nécessaire pour
     // que le tick écrive quoi que ce soit (cf. test suivant).
     window.setWindowModified(true);
+    QVERIFY(window.isWindowModified());
 
     QFile before(userFile);
     QVERIFY(before.open(QIODevice::ReadOnly));
@@ -4851,7 +4852,10 @@ void MainWindowTest::autosaveTickWritesASeparateFileAndLeavesTheUserFileUntouche
     // (b) Un fichier DISTINCT est apparu sous le dossier autosave.
     const auto slot = slotFor(userFile);
     QVERIFY(slot.osp_path != userFile);
-    QVERIFY(QFile::exists(slot.osp_path));
+    QVERIFY2(QFile::exists(slot.osp_path),
+             qPrintable(QStringLiteral("slot=%1 status=%2 current=%3")
+                            .arg(slot.osp_path, window.statusBar()->currentMessage(),
+                                 window.currentProjectPath_)));
 
     // (c) currentProjectPath_ reste le fichier utilisateur après le tick :
     // l'autosave ne compte jamais comme un enregistrement.

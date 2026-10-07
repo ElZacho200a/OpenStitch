@@ -234,7 +234,7 @@ TEST_CASE("disc_tight_inner_ring : exactement 1 anneau avant arret (cap/collapse
 }
 
 TEST_CASE("disc_tight_inner_ring : fill_satin_columns ne produit ni croisement ni saut "
-          "disproportionne pres du centre (risque kJumpDegPerMm, §3 du plan)") {
+          "disproportionne pres du centre (risque kJumpDegPerMm, section 3 du plan)") {
     // Ne corrige rien si un probleme est trouve (hors perimetre de cette
     // phase, cf. consigne) -- rapporte honnetement via WARN plutot que
     // d'echouer silencieusement un CHECK sur une valeur non calibree.
