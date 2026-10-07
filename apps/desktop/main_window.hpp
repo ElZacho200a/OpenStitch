@@ -642,10 +642,15 @@ private:
         nullptr}; // « Supprimer la sélection » (objectName action_deleteRegion)
 
     // Cache des points générés — recalculé à chaque modification du document
-    // (jamais une vérité stockée, ADR-014). Exception : une séquence importée
-    // d'un DST est la vérité (le DST ne contient pas d'objets, §17).
+    // (jamais une vérité stockée, ADR-014). Un design importé (AD-04,
+    // `document::Project::imported_design`) est une donnée SOURCE du
+    // document, restituée par `generate_sequence` (inscription S2a) comme
+    // n'importe quel autre contenu : `sequence_` reste la copie
+    // d'affichage de la séquence effective, remplie au site de recalcul,
+    // qu'elle vienne d'objets régénérés ou d'un design importé -- plus
+    // d'exception ni de membre séparé (remplace l'ancien
+    // `sequenceImported_`, §17).
     std::optional<stitch::StitchSequence> sequence_;
-    bool sequenceImported_{false};
     QAction* exportDstAct_{nullptr};
     QAction* saveProjectAct_{nullptr};
     QAction* saveProjectAsAct_{nullptr};

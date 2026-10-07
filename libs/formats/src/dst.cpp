@@ -5,8 +5,10 @@
 
 #include <algorithm>
 #include <array>
-#include <cmath>
+#include <cstdlib>
 #include <fstream>
+
+#include "openstitch/formats/machine.hpp"
 
 namespace openstitch::formats {
 
@@ -16,16 +18,13 @@ constexpr std::size_t kHeaderSize = 512;
 constexpr int kMaxDelta = 121; // ±12,1 mm par enregistrement
 constexpr std::int32_t kUmPerDstUnit = 100;
 
-// Point en unités DST (0,1 mm).
+// Point en unités DST (0,1 mm) -- uniquement pour le calcul de l'en-tête
+// (bornes, dernière position) : la quantification elle-même est faite par
+// `normalize_for_machine`/`sequence_from_machine_records` (HP-FMT-001).
 struct DstPoint {
     std::int32_t x{0};
     std::int32_t y{0};
 };
-
-DstPoint quantize(Vec2um pos) {
-    return {static_cast<std::int32_t>(std::lround(pos.x.value / 100.0)),
-            static_cast<std::int32_t>(std::lround(pos.y.value / 100.0))};
-}
 
 // Décomposition en ternaire équilibré : v = d0·1 + d1·3 + d2·9 + d3·27 + d4·81,
 // chaque digit dans {-1, 0, +1}. Unique pour |v| <= 121.
@@ -118,98 +117,84 @@ DecodedRecord decode_record(std::uint8_t b0, std::uint8_t b1, std::uint8_t b2) {
     return rec;
 }
 
-// Découpe un déplacement quelconque en enregistrements <= ±121. Tous les
-// morceaux intermédiaires sont des Jump ; le dernier porte le type demandé.
-void emit_move(std::vector<std::uint8_t>& out, int dx, int dy, RecordType type) {
-    while (std::abs(dx) > kMaxDelta || std::abs(dy) > kMaxDelta) {
-        const int steps = std::max((std::abs(dx) + kMaxDelta - 1) / kMaxDelta,
-                                   (std::abs(dy) + kMaxDelta - 1) / kMaxDelta);
-        const int sx = dx / steps;
-        const int sy = dy / steps;
-        const auto rec = encode_record(sx, sy, RecordType::Jump);
-        out.insert(out.end(), rec.begin(), rec.end());
-        dx -= sx;
-        dy -= sy;
-    }
-    const auto rec = encode_record(dx, dy, type);
-    out.insert(out.end(), rec.begin(), rec.end());
+// Contraintes machine DST (HP-FMT-001) pour l'ÉCRITURE : `trim_zero_jump_count`
+// vient de `DstWriteOptions::trim_jumps` (paramétrable par l'appelant).
+MachineConstraints write_constraints(const DstWriteOptions& options) {
+    MachineConstraints c;
+    c.resolution_um = kUmPerDstUnit;
+    c.max_record_delta = kMaxDelta;
+    c.trim_encoding = MachineConstraints::TrimEncoding::RepeatedZeroJumps;
+    c.trim_zero_jump_count = std::max(1, options.trim_jumps);
+    c.merge_stop_into_color_change = true;
+    return c;
+}
+
+// Contraintes machine DST pour la LECTURE : convention FIXE du format (3
+// sauts nuls = une coupe), indépendante de `trim_jumps` -- qui n'est pas
+// stocké dans le fichier, cf. l'ancien `decode_dst` (toujours ">= 3", jamais
+// une valeur lue depuis `options`).
+MachineConstraints read_constraints() {
+    MachineConstraints c;
+    c.resolution_um = kUmPerDstUnit;
+    c.max_record_delta = kMaxDelta;
+    c.trim_encoding = MachineConstraints::TrimEncoding::RepeatedZeroJumps;
+    c.trim_zero_jump_count = 3;
+    c.merge_stop_into_color_change = true;
+    return c;
 }
 
 } // namespace
 
 Result<std::vector<std::uint8_t>> encode_dst(const stitch::StitchSequence& sequence,
                                              const DstWriteOptions& options) {
-    // Seules les commandes de mouvement sont encodables ; End est implicite.
-    std::vector<const stitch::StitchCommand*> moves;
-    for (const auto& cmd : sequence.commands) {
-        if (cmd.type != stitch::CommandType::End) {
-            moves.push_back(&cmd);
-        }
-    }
-    if (moves.empty()) {
-        return fail(ErrorCategory::UserInput, "Aucun point à exporter");
+    // HP-FMT-001 : toute la normalisation (découpage, quantification sans
+    // dérive, représentation des coupes, fusion Stop/ColorChange) est faite
+    // ici ; ce qui suit n'est que sérialisation bit à bit + en-tête.
+    auto normalized = normalize_for_machine(sequence, write_constraints(options));
+    if (!normalized) {
+        return std::unexpected(normalized.error());
     }
 
-    const DstPoint origin = quantize(moves.front()->pos);
     std::vector<std::uint8_t> body;
-    body.reserve(moves.size() * 3 + 3);
+    body.reserve(normalized->records.size() * 3 + 3);
 
-    DstPoint prev = origin;
+    DstPoint pos{0, 0};
     DstPoint minP{0, 0};
     DstPoint maxP{0, 0};
     std::size_t colorChanges = 0;
-    bool lastWasZeroJump = false; // dernier enregistrement émis : saut de délta nul
-
-    for (const auto* cmd : moves) {
-        const DstPoint target = quantize(cmd->pos);
-        const int dx = target.x - prev.x;
-        const int dy = target.y - prev.y;
-        if (cmd->type != stitch::CommandType::Jump) {
-            lastWasZeroJump = cmd->type == stitch::CommandType::Trim && dx == 0 && dy == 0;
-        }
-        switch (cmd->type) {
-        case stitch::CommandType::Stitch:
-            emit_move(body, dx, dy, RecordType::Normal);
+    for (const auto& rec : normalized->records) {
+        RecordType type = RecordType::Normal;
+        switch (rec.type) {
+        case MachineRecordType::Stitch:
+            type = RecordType::Normal;
             break;
-        case stitch::CommandType::Jump:
-            // Un saut sous la résolution DST (délta nul une fois quantifié)
-            // ne porte aucune information ; plusieurs d'affilée seraient
-            // relus comme une COUPE fantôme (convention `trim_jumps`). On
-            // n'en garde qu'un par série (le saut initial vers l'origine,
-            // lui, est conservé).
-            if (dx != 0 || dy != 0 || !lastWasZeroJump) {
-                emit_move(body, dx, dy, RecordType::Jump);
-            }
-            lastWasZeroJump = dx == 0 && dy == 0;
+        case MachineRecordType::Jump:
+            type = RecordType::Jump;
             break;
-        case stitch::CommandType::Trim:
-            // Convention : N sauts de délta nul déclenchent la coupe.
-            for (int i = 0; i < std::max(1, options.trim_jumps); ++i) {
-                emit_move(body, 0, 0, RecordType::Jump);
-            }
-            if (dx != 0 || dy != 0) {
-                emit_move(body, dx, dy, RecordType::Jump);
-            }
-            break;
-        case stitch::CommandType::ColorChange:
-        case stitch::CommandType::Stop:
-            // DST ne distingue pas Stop d'un changement de fil : même arrêt.
-            emit_move(body, dx, dy, RecordType::ColorChange);
+        case MachineRecordType::ColorChange:
+            type = RecordType::ColorChange;
             ++colorChanges;
             break;
-        case stitch::CommandType::End:
-            break;
+        case MachineRecordType::Stop:
+        case MachineRecordType::Trim:
+            // DST n'émet jamais ces types avec `write_constraints`
+            // (RepeatedZeroJumps + fusion Stop) : garde défensive.
+            return fail(ErrorCategory::Internal, "Enregistrement machine non représentable en DST");
         }
-        prev = target;
-        minP.x = std::min(minP.x, target.x - origin.x);
-        minP.y = std::min(minP.y, target.y - origin.y);
-        maxP.x = std::max(maxP.x, target.x - origin.x);
-        maxP.y = std::max(maxP.y, target.y - origin.y);
+        const auto rec3 = encode_record(rec.dx, rec.dy, type);
+        body.insert(body.end(), rec3.begin(), rec3.end());
+
+        pos.x += rec.dx;
+        pos.y += rec.dy;
+        minP.x = std::min(minP.x, pos.x);
+        minP.y = std::min(minP.y, pos.y);
+        maxP.x = std::max(maxP.x, pos.x);
+        maxP.y = std::max(maxP.y, pos.y);
     }
     body.insert(body.end(), {0x00, 0x00, 0xF3});
 
     // En-tête calculé depuis le corps réellement encodé.
-    const std::size_t records = body.size() / 3 - 1;
+    const std::size_t records = normalized->records.size();
     std::string name = options.design_name.substr(0, 16);
     std::string header;
     header += fmt::format("LA:{:<16}\r", name);
@@ -219,9 +204,8 @@ Result<std::vector<std::uint8_t>> encode_dst(const stitch::StitchSequence& seque
     header += fmt::format("-X:{:>5}\r", -minP.x);
     header += fmt::format("+Y:{:>5}\r", maxP.y);
     header += fmt::format("-Y:{:>5}\r", -minP.y);
-    const DstPoint last{prev.x - origin.x, prev.y - origin.y};
-    header += fmt::format("AX:{}{:>5}\r", last.x >= 0 ? '+' : '-', std::abs(last.x));
-    header += fmt::format("AY:{}{:>5}\r", last.y >= 0 ? '+' : '-', std::abs(last.y));
+    header += fmt::format("AX:{}{:>5}\r", pos.x >= 0 ? '+' : '-', std::abs(pos.x));
+    header += fmt::format("AY:{}{:>5}\r", pos.y >= 0 ? '+' : '-', std::abs(pos.y));
     header += "MX:+    0\rMY:+    0\rPD:******\r";
     header += '\x1a';
 
@@ -242,66 +226,34 @@ Result<stitch::StitchSequence> decode_dst(std::span<const std::uint8_t> bytes) {
     // octet de fin DOS (0x1A) après le marqueur `00 00 F3`. La boucle s'arrête au
     // marqueur de fin ; tout ce qui suit est ignoré. L'absence de marqueur (vrai
     // fichier tronqué) est détectée plus bas via `ended`.
-
-    stitch::StitchSequence sequence;
-    DstPoint pos{0, 0};
-    int pendingZeroJumps = 0;
+    //
+    // Cette boucle ne fait QUE l'extraction bit à bit (dx, dy, type) propre
+    // au format DST et la détection de son marqueur de fin -- toute la
+    // reconstruction (positions absolues, run de sauts nuls -> Trim logique,
+    // `End` final) est déléguée à `sequence_from_machine_records`
+    // (HP-FMT-001).
+    std::vector<MachineRecord> rawRecords;
     bool ended = false;
-
-    const auto flushZeroJumps = [&] {
-        if (pendingZeroJumps >= 3) {
-            // Convention inverse de l'encodeur : rafale de sauts nuls = coupe.
-            sequence.commands.push_back(
-                {Vec2um{Micrometers{pos.x * kUmPerDstUnit}, Micrometers{pos.y * kUmPerDstUnit}},
-                 stitch::CommandType::Trim, ObjectId{}});
-        } else {
-            for (int i = 0; i < pendingZeroJumps; ++i) {
-                sequence.commands.push_back(
-                    {Vec2um{Micrometers{pos.x * kUmPerDstUnit}, Micrometers{pos.y * kUmPerDstUnit}},
-                     stitch::CommandType::Jump, ObjectId{}});
-            }
-        }
-        pendingZeroJumps = 0;
-    };
-
     for (std::size_t i = kHeaderSize; i + 2 < bytes.size(); i += 3) {
         const DecodedRecord rec = decode_record(bytes[i], bytes[i + 1], bytes[i + 2]);
         if (rec.end) {
             ended = true;
             break;
         }
-        if (rec.type == RecordType::Jump && rec.dx == 0 && rec.dy == 0) {
-            ++pendingZeroJumps;
-            continue;
-        }
-        flushZeroJumps();
-        pos.x += rec.dx;
-        pos.y += rec.dy;
-        const Vec2um p{Micrometers{pos.x * kUmPerDstUnit}, Micrometers{pos.y * kUmPerDstUnit}};
-        switch (rec.type) {
-        case RecordType::Normal:
-            sequence.commands.push_back({p, stitch::CommandType::Stitch, ObjectId{}});
-            break;
-        case RecordType::Jump:
-            sequence.commands.push_back({p, stitch::CommandType::Jump, ObjectId{}});
-            break;
-        case RecordType::ColorChange:
-            sequence.commands.push_back({p, stitch::CommandType::ColorChange, ObjectId{}});
-            break;
-        }
+        const MachineRecordType type = rec.type == RecordType::Normal ? MachineRecordType::Stitch
+                                       : rec.type == RecordType::Jump
+                                           ? MachineRecordType::Jump
+                                           : MachineRecordType::ColorChange;
+        rawRecords.push_back({rec.dx, rec.dy, type});
     }
-    flushZeroJumps();
-
-    if (sequence.commands.empty()) {
+    if (rawRecords.empty()) {
         return fail(ErrorCategory::InvalidFile, "Le fichier DST ne contient aucun point");
     }
     if (!ended) {
         return fail(ErrorCategory::InvalidFile,
                     "Fichier DST sans marqueur de fin (fichier tronqué ?)");
     }
-    sequence.commands.push_back(
-        {sequence.commands.back().pos, stitch::CommandType::End, ObjectId{}});
-    return sequence;
+    return sequence_from_machine_records(rawRecords, read_constraints());
 }
 
 Result<void> write_dst_file(const std::filesystem::path& path,

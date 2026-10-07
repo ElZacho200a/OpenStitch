@@ -5,6 +5,6 @@ add_library(openstitch::stitch ALIAS openstitch_stitch)
 
 target_include_directories(openstitch_stitch PUBLIC include)
 target_link_libraries(openstitch_stitch
-    PUBLIC openstitch::core
+    PUBLIC openstitch::core openstitch::thread_palette
     PRIVATE openstitch::warnings
 )

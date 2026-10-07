@@ -7,5 +7,6 @@ add_library(openstitch::document ALIAS openstitch_document)
 target_include_directories(openstitch_document PUBLIC include)
 target_link_libraries(openstitch_document
     PUBLIC openstitch::core openstitch::geometry openstitch::image openstitch::segmentation
+           openstitch::stitch openstitch::thread_palette
     PRIVATE openstitch::warnings
 )

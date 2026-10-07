@@ -689,6 +689,33 @@ json project_to_json(const document::Project& project) {
                       {"filterShortStitches", f.filter_short_stitches},
                       {"minStitchLength", f.min_stitch_length.value}};
 
+    // AD-04 : design importé (DST aujourd'hui) -- donnée source immuable,
+    // absente d'un projet qui n'en a pas (comportement historique inchangé).
+    // `source` de chaque commande est délibérément omis : toujours
+    // `ObjectId{}` pour un design importé (0 = manuel/importé, cf.
+    // `stitch/sequence.hpp`), jamais relu.
+    if (project.imported_design) {
+        const auto& im = *project.imported_design;
+        json id;
+        id["sourceFormat"] = im.source_format;
+        id["sequence"] = json::array();
+        for (const auto& cmd : im.sequence.commands) {
+            id["sequence"].push_back({{"pos", vec_to_json(cmd.pos)},
+                                      {"type", static_cast<int>(cmd.type)},
+                                      {"pass", static_cast<int>(cmd.pass)}});
+        }
+        id["colorBlocks"] = json::array();
+        for (const auto& b : im.color_blocks) {
+            json bj{{"rgb", rgb_to_json(b.rgb)}, {"start", b.start}, {"end", b.end}};
+            if (b.thread_key) {
+                bj["threadChart"] = b.thread_key->chart_id;
+                bj["threadCode"] = b.thread_key->code;
+            }
+            id["colorBlocks"].push_back(bj);
+        }
+        j["importedDesign"] = id;
+    }
+
     return j;
 }
 
@@ -825,6 +852,36 @@ Result<document::Project> project_from_json(const json& j) {
                 Micrometers{fj.value("minStitchLength", d.min_stitch_length.value)};
         } else {
             project.finishing = document::SequenceFinishing::legacy();
+        }
+
+        // Design importé (AD-04) : absent d'un projet antérieur -> nullopt,
+        // comportement historique inchangé (régénération normale depuis
+        // `embroidery_objects`). `source` de chaque commande reconstruite
+        // est toujours `ObjectId{}` (0 = manuel/importé) : jamais lu du JSON.
+        if (j.contains("importedDesign")) {
+            const auto& idj = j.at("importedDesign");
+            document::ImportedDesign imported;
+            imported.source_format = idj.value("sourceFormat", std::string{});
+            for (const auto& cj : idj.at("sequence")) {
+                stitch::StitchCommand cmd;
+                cmd.pos = vec_from_json(cj.at("pos"));
+                cmd.type = static_cast<stitch::CommandType>(cj.at("type").get<int>());
+                cmd.pass = static_cast<stitch::StitchPass>(cj.value("pass", 0));
+                cmd.source = ObjectId{};
+                imported.sequence.commands.push_back(cmd);
+            }
+            for (const auto& bj : idj.at("colorBlocks")) {
+                stitch::ColorBlock block;
+                block.rgb = rgb_from_json(bj.at("rgb"));
+                block.start = bj.at("start").get<std::size_t>();
+                block.end = bj.at("end").get<std::size_t>();
+                if (bj.contains("threadChart") && bj.contains("threadCode")) {
+                    block.thread_key =
+                        thread_palette::ThreadKey{bj.at("threadChart"), bj.at("threadCode")};
+                }
+                imported.color_blocks.push_back(block);
+            }
+            project.imported_design = std::move(imported);
         }
     } catch (const json::exception& ex) {
         return fail(ErrorCategory::InvalidFile, "Projet illisible (JSON invalide)", ex.what());

@@ -3,9 +3,11 @@ add_executable(test_project_io
     test_overrides_persistence.cpp
     test_intent_persistence.cpp
     test_finishing_persistence.cpp
+    test_machine_file.cpp
 )
 target_link_libraries(test_project_io
-    PRIVATE openstitch::project_io Catch2::Catch2WithMain openstitch::warnings)
+    PRIVATE openstitch::project_io openstitch::formats openstitch::stitch_generation
+            Catch2::Catch2WithMain openstitch::warnings)
 # test_overrides_persistence.cpp forge un .osp minimal via detail::write_zip
 # (archive.hpp, header interne de openstitch_project_io) pour tester la
 # validation stricte et la migration v1/v2 sans reconstruire tout le pipeline

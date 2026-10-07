@@ -16,6 +16,15 @@ namespace openstitch::formats {
 // publique du format. Limitations du format (docs/formats/dst.md) :
 // pas de couleurs réelles (seulement des arrêts), pas d'objets éditables,
 // résolution 0,1 mm, déplacement max ±12,1 mm par enregistrement.
+//
+// HP-FMT-001 (S2a) : la normalisation (découpage des grands déplacements,
+// quantification sans dérive, représentation des coupes, fusion Stop/
+// ColorChange) est déléguée à `formats::normalize_for_machine`/
+// `sequence_from_machine_records` (`openstitch/formats/machine.hpp`) --
+// `encode_dst`/`decode_dst` ne font plus que la sérialisation bit à bit
+// propre au format DST (ternaire équilibré) et le calcul de l'en-tête.
+// Signatures PUBLIQUES inchangées (compatibilité des appelants existants,
+// cf. `docs/source/dst-format.md`) : sortie strictement identique à l'octet.
 struct DstWriteOptions {
     std::string design_name{"OPENSTITCH"}; // champ LA:, tronqué à 16 caractères
     int trim_jumps{3}; // un Trim logique = N sauts de délta nul (convention machine)

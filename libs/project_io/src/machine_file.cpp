@@ -1,0 +1,86 @@
+// SPDX-License-Identifier: Apache-2.0
+#include "openstitch/project_io/machine_file.hpp"
+
+#include <algorithm>
+#include <cctype>
+#include <fstream>
+
+#include "openstitch/formats/format_registry.hpp"
+#include "openstitch/stitch_analysis/color_blocks.hpp"
+#include "openstitch/stitch_generation/overrides.hpp"
+
+namespace openstitch::project_io {
+
+namespace {
+
+std::string lower_extension(const std::filesystem::path& path) {
+    std::string ext = path.extension().string();
+    if (!ext.empty() && ext.front() == '.') {
+        ext.erase(ext.begin());
+    }
+    std::transform(ext.begin(), ext.end(), ext.begin(),
+                   [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+    return ext;
+}
+
+} // namespace
+
+Result<void> export_machine_file(const document::Project& project, const std::string& format_id,
+                                 const std::filesystem::path& path) {
+    const auto* info = formats::find_format(format_id);
+    if (info == nullptr || !info->can_write || info->encode == nullptr) {
+        return fail(ErrorCategory::UnsupportedFormat,
+                    "Format d'export non pris en charge en écriture : " + format_id);
+    }
+    // Point d'entrée de production unique (jamais generate_sequence directement) :
+    // retouches manuelles incluses.
+    auto sequence = stitch_generation::effective_sequence(project);
+    if (!sequence) {
+        return std::unexpected(sequence.error());
+    }
+    auto bytes = info->encode(*sequence);
+    if (!bytes) {
+        return std::unexpected(bytes.error());
+    }
+    std::ofstream file(path, std::ios::binary | std::ios::trunc);
+    if (!file) {
+        return fail(ErrorCategory::UserInput, "Impossible d'écrire le fichier : " + path.string());
+    }
+    file.write(reinterpret_cast<const char*>(bytes->data()),
+               static_cast<std::streamsize>(bytes->size()));
+    if (!file) {
+        return fail(ErrorCategory::Internal, "Échec d'écriture : " + path.string());
+    }
+    return {};
+}
+
+Result<document::ImportedDesign> import_machine_file(const std::filesystem::path& path,
+                                                     std::string format_id) {
+    if (format_id.empty()) {
+        format_id = lower_extension(path);
+    }
+    const auto* info = formats::find_format(format_id);
+    if (info == nullptr || !info->can_read || info->decode == nullptr) {
+        return fail(ErrorCategory::UnsupportedFormat,
+                    "Format d'import non pris en charge en lecture : " + format_id);
+    }
+    std::ifstream file(path, std::ios::binary);
+    if (!file) {
+        return fail(ErrorCategory::UserInput,
+                    "Fichier introuvable ou illisible : " + path.string());
+    }
+    std::vector<std::uint8_t> bytes((std::istreambuf_iterator<char>(file)),
+                                    std::istreambuf_iterator<char>());
+    auto sequence = info->decode(bytes);
+    if (!sequence) {
+        return std::unexpected(sequence.error());
+    }
+
+    document::ImportedDesign imported;
+    imported.source_format = info->id;
+    imported.color_blocks = stitch_analysis::color_blocks(document::Project{}, *sequence);
+    imported.sequence = std::move(*sequence);
+    return imported;
+}
+
+} // namespace openstitch::project_io

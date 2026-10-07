@@ -292,3 +292,22 @@ TEST_CASE("tatami sur une forme a 2 trous separes (etape 6, docs/source/satin.md
     // jamais supposee.
     CHECK(pointsInsideHoles == 0);
 }
+
+// S2a (AD-04) : un design importe est restitue tel quel, jamais regenere
+// depuis des objets (il n'y en a pas pour cette nature) -- remplace l'ancien
+// court-circuit desktop MainWindow::sequenceImported_.
+TEST_CASE("generate_sequence : design importe restitue tel quel, sans objet") {
+    document::Project project; // aucun objet vectoriel ni de broderie
+    document::ImportedDesign imported;
+    imported.source_format = "dst";
+    imported.sequence.commands = {
+        {Vec2um{Micrometers{0}, Micrometers{0}}, stitch::CommandType::Stitch, ObjectId{}},
+        {Vec2um{Micrometers{1'000}, Micrometers{0}}, stitch::CommandType::Stitch, ObjectId{}},
+        {Vec2um{Micrometers{1'000}, Micrometers{0}}, stitch::CommandType::End, ObjectId{}},
+    };
+    project.imported_design = imported;
+
+    const auto result = generate_sequence(project);
+    REQUIRE(result.has_value());
+    CHECK(result->commands == imported.sequence.commands);
+}
