@@ -101,6 +101,7 @@ document::Project rich_project() {
     sp.topology = document::SatinSectionTopology{2, 4, 7, 9};
     sp.density = Micrometers{350};
     sp.center_underlay = true;
+    sp.max_width_hard = Micrometers{32'000};
     sp.short_stitch = document::SatinShortStitch::MultiLevelInset;
     sp.split_stitch = document::SatinSplit::Staggered;
     sp.cap_end = document::SatinCap::Tapered;
@@ -184,6 +185,7 @@ TEST_CASE("projet complet : save puis load = memes donnees") {
     CHECK_FALSE(loadedSatin.rungs[1].link_id.has_value());
     REQUIRE(loadedSatin.topology.has_value());
     CHECK(*loadedSatin.topology == document::SatinSectionTopology{2, 4, 7, 9});
+    CHECK(loadedSatin.max_width_hard == Micrometers{32'000});
     CHECK(loadedSatin.short_stitch == document::SatinShortStitch::MultiLevelInset);
     CHECK(loadedSatin.split_stitch == document::SatinSplit::Staggered);
     CHECK(loadedSatin.cap_end == document::SatinCap::Tapered);

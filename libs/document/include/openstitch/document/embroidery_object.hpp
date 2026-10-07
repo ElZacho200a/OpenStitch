@@ -120,6 +120,7 @@ struct SatinParams {
     Micrometers pull_compensation{0};
     bool center_underlay{true};
     Micrometers max_width{9'000}; // au-delà, avertissement (satin trop large -> tatami)
+    Micrometers max_width_hard{48'000}; // plafond géométrique avant refus du corridor
 
     // Lot 3 — finitions (défauts = comportement inchangé).
     SatinShortStitch short_stitch{SatinShortStitch::Disabled};

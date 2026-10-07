@@ -143,6 +143,7 @@ TEST_CASE("topologie satin optionnelle : un projet historique reste lisible") {
     REQUIRE(loaded->embroidery_objects.size() == 1);
     const auto& satin = std::get<document::SatinParams>(loaded->embroidery_objects.front().params);
     CHECK_FALSE(satin.topology.has_value());
+    CHECK(satin.max_width_hard == Micrometers{48'000});
     fs::remove(path);
 }
 

@@ -123,9 +123,9 @@ SatinabilityReport evaluate_satinability(const geometry::PathSet& region,
         return r;
     }
     if (r.has_wide_area) {
-        r.status = SatinabilityStatus::Unsuitable;
-        issue("Zone trop large pour un satin (envisagez un tatami).");
-        r.confidence = 0.8;
+        r.status = SatinabilityStatus::SuitableWithWarnings;
+        issue("Zone plus large que le seuil satin : génération tentée avec avertissement.");
+        r.confidence = 0.65;
         return r;
     }
     if (r.width_variation > 0.8) {

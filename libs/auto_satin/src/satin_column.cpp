@@ -419,7 +419,7 @@ build_ring_band_sections(Poly outer, Poly inner, const std::vector<Poly>& fullRe
     }
 
     const double minWidth = static_cast<double>(params.analysis.thresholds.min_satin_width.value);
-    const double maxWidth = static_cast<double>(params.analysis.thresholds.max_satin_width.value);
+    const double maxWidth = static_cast<double>(params.corridor_max_width_hard.value);
     for (std::size_t i = 0; i < outer.size(); ++i) {
         const double width = norm(outer[i] - inner[i]);
         if (width < minWidth || width > maxWidth) {
@@ -647,6 +647,7 @@ struct Station {
     P2 railB; // côté -N (droite)
     P2 tangent;
     double width{0.0};
+    bool wide{false};
     // § HP-STI-018 Phase C : copie de `detail::CorridorStation::foot_multiplicity`
     // quand cette station vient de `detail::trace_corridor`
     // (`use_corridor_tracing_dev_only`) -- sert UNIQUEMENT à
@@ -676,6 +677,7 @@ Station interpolate_station(const Station& prev, const Station& next, P2 axisPt)
     s.railA = prev.railA + (next.railA - prev.railA) * t;
     s.railB = prev.railB + (next.railB - prev.railB) * t;
     s.width = norm(s.railA - s.railB);
+    s.wide = prev.wide || next.wide;
     return s;
 }
 
@@ -946,7 +948,8 @@ std::optional<std::vector<Station>> compute_column_stations(const std::vector<Ve
         return std::nullopt;
     }
 
-    const double maxWidth = static_cast<double>(params.analysis.thresholds.max_satin_width.value);
+    const double softMaxWidth = static_cast<double>(params.analysis.thresholds.max_satin_width.value);
+    const double maxWidth = static_cast<double>(params.corridor_max_width_hard.value);
     // Plancher de largeur PAR STATION (§ audit anneaux/arcs fins, projet réel :
     // un anneau/arc très long et globalement fin passe le test d'éligibilité
     // (satinability.cpp compare max_satin_width à la largeur MAXIMALE relevée
@@ -1080,6 +1083,7 @@ std::optional<std::vector<Station>> compute_column_stations(const std::vector<Ve
                     st.railA = cs.foot_a.point; // côté +N (gauche), même convention que railA
                     st.railB = cs.foot_b.point; // côté -N (droite), même convention que railB
                     st.width = cs.width_um;
+                    st.wide = cs.wide;
                     st.foot_multiplicity = cs.foot_multiplicity;
                     entries[i].station = std::move(st);
                     ++successCount;
@@ -1107,6 +1111,7 @@ std::optional<std::vector<Station>> compute_column_stations(const std::vector<Ve
                     st.railA = axis[i] + nrm * sec->second; // t_hi > 0
                     st.railB = axis[i] + nrm * sec->first;  // t_lo < 0
                     st.width = sec->second - sec->first;
+                    st.wide = st.width > softMaxWidth;
                     entries[i].station = std::move(st);
                     ++successCount;
                 } else {
@@ -2144,7 +2149,7 @@ std::optional<ParametricSatinObject> build_parametric_object(const std::vector<V
     }
     std::vector<Station> st = std::move(*stationsOpt);
 
-    const double maxWidth = static_cast<double>(params.analysis.thresholds.max_satin_width.value);
+    const double maxWidth = static_cast<double>(params.corridor_max_width_hard.value);
     const double stepLen = static_cast<double>(params.station_spacing.value);
     const double referenceWidth = representative_station_width(st);
 
@@ -2247,8 +2252,7 @@ std::optional<std::string> validate_parametric_object(const ParametricSatinObjec
     for (const auto& p : flatB.points)
         polyB.push_back(toP2(p));
 
-    const double maxWidthLimit =
-        static_cast<double>(params.analysis.thresholds.max_satin_width.value) * 1.5;
+    const double maxWidthLimit = static_cast<double>(params.corridor_max_width_hard.value);
     // Un rail satin trace le CONTOUR par construction (`cross_section`
     // intersecte exactement le bord) : un point de rail est donc légitimement
     // ON THE BOUNDARY, pas strictement à l'intérieur. `in_region` (test de
@@ -3028,6 +3032,10 @@ SatinColumnsResult build_satin_columns(const geometry::PathSet& region,
     r.report = analysis->report;
     r.debug = analysis->debug;
     r.status = analysis->report.status;
+    SatinColumnsParameters generationParams = params;
+    if (r.status == SatinabilityStatus::RequiresDecomposition) {
+        generationParams.corridor_max_width_hard = params.analysis.thresholds.max_satin_width;
+    }
     const auto finalize_sections = [&r] {
         const auto count = static_cast<std::uint32_t>(r.columns.size());
         for (std::size_t i = 0; i < r.columns.size(); ++i) {
@@ -3057,21 +3065,19 @@ SatinColumnsResult build_satin_columns(const geometry::PathSet& region,
     // § HP-STI-018 Phase D (specs/plans/hp-sti-018-turning-satin.md §2.3/§4) :
     // satin tournant -- une region SANS trou dont le squelette est
     // inexploitable (`Ambiguous`, forme compacte/ronde -- disque, petale) ou
-    // refusee pour largeur excessive (`Unsuitable` + `has_wide_area`, bande
-    // large mais allongee, meme defaut d'axe degenere pour l'essentiel de sa
-    // largeur) tente un pelage en anneaux concentriques AVANT de tomber dans
-    // le refus explicite plus bas. Ne peut jamais regresser une forme qui
-    // reussissait deja : `r.status` ne vaut `Ambiguous`/`Unsuitable` que pour
-    // une region que `evaluate_satinability` avait deja decidee refusee par
-    // construction (un seul statut par appel, cf. satinability.cpp) --
-    // aucune region `Suitable`/`SuitableWithWarnings`/`RequiresDecomposition`
-    // ne peut jamais satisfaire cette condition. En cas d'echec (meme le
-    // premier anneau n'est pas constructible), ne RETOURNE PAS ici : retombe
-    // dans le chemin de refus existant plus bas, `r.status` etant reste
-    // inchange.
+    // signalee trop large (`has_wide_area`, bande large mais allongee, meme
+    // defaut d'axe degenere pour l'essentiel de sa largeur) tente un pelage en
+    // anneaux concentriques AVANT de tomber dans le refus explicite plus bas.
+    // Le seuil large est desormais un avertissement doux, donc la condition
+    // couvre a la fois l'ancien refus `Unsuitable` et le nouveau
+    // `SuitableWithWarnings`. En cas d'echec (meme le premier anneau n'est pas
+    // constructible), ne RETOURNE PAS ici : retombe dans le chemin de refus
+    // existant plus bas, `r.status` etant reste inchange.
     if (region.holes.empty() &&
         (r.status == SatinabilityStatus::Ambiguous ||
-         (r.status == SatinabilityStatus::Unsuitable && r.report.has_wide_area))) {
+         ((r.status == SatinabilityStatus::Unsuitable ||
+           r.status == SatinabilityStatus::SuitableWithWarnings) &&
+          r.report.has_wide_area))) {
         std::string turningRefusal;
         auto turningSections =
             build_turning_satin_sections(region, params, turningRefusal, r.warnings);
@@ -3231,8 +3237,8 @@ SatinColumnsResult build_satin_columns(const geometry::PathSet& region,
         // dans `build_column`) puis verrouillé tel quel comme `JunctionBridge`
         // de la colonne, une fois toutes les colonnes construites — cf.
         // `resolve_and_validate_junctions` ci-dessus.
-        if (auto col = build_column(e.centerline, polys, params, !startIsJunction, !endIsJunction,
-                                    r.warnings)) {
+        if (auto col = build_column(e.centerline, polys, generationParams, !startIsJunction,
+                                    !endIsJunction, r.warnings)) {
             if (startIsJunction) {
                 col->start_junction = e.from;
             }
@@ -3254,15 +3260,15 @@ SatinColumnsResult build_satin_columns(const geometry::PathSet& region,
     const auto try_edge_parametric = [&](const SkeletonEdge& e) {
         const bool startIsJunction = graph.nodes[e.from].type == SkeletonNodeType::Junction;
         const bool endIsJunction = graph.nodes[e.to].type == SkeletonNodeType::Junction;
-        if (auto obj = build_parametric_object(e.centerline, polys, params, !startIsJunction,
-                                               !endIsJunction, r.warnings)) {
+        if (auto obj = build_parametric_object(e.centerline, polys, generationParams,
+                                               !startIsJunction, !endIsJunction, r.warnings)) {
             if (startIsJunction) {
                 obj->start_junction = e.from;
             }
             if (endIsJunction) {
                 obj->end_junction = e.to;
             }
-            if (auto problem = validate_parametric_object(*obj, polys, params)) {
+            if (auto problem = validate_parametric_object(*obj, polys, generationParams)) {
                 r.warnings.push_back("objet paramétrique refuse (arete " + std::to_string(e.id) +
                                      ") : " + *problem);
                 return;

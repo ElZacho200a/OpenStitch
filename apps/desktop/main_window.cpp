@@ -5157,6 +5157,7 @@ QString MainWindow::buildDebugDump(ObjectId embroideryId) const {
                     << QStringLiteral("pull_compensation : %1").arg(fmtUm(p.pull_compensation))
                     << QStringLiteral("center_underlay : %1").arg(fmtBool(p.center_underlay))
                     << QStringLiteral("max_width : %1").arg(fmtUm(p.max_width))
+                    << QStringLiteral("max_width_hard : %1").arg(fmtUm(p.max_width_hard))
                     << QStringLiteral("short_stitch : %1").arg(fmtShortStitch(p.short_stitch))
                     << QStringLiteral("split_stitch : %1").arg(fmtSplit(p.split_stitch))
                     << QStringLiteral("cap_start : %1").arg(fmtCap(p.cap_start))

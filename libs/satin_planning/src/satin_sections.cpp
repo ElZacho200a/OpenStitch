@@ -43,9 +43,10 @@ template <typename ColumnLike> geometry::Path column_strip(const ColumnLike& col
 template <typename ColumnLike>
 BuiltSatinSection make_section(const ColumnLike& col, Micrometers density,
                                Micrometers pullCompensation, bool centerUnderlay,
-                               Micrometers maxWidth) {
+                               Micrometers maxWidth, Micrometers maxWidthHard) {
     BuiltSatinSection out;
-    out.params = satin_params_from_column(col, density, pullCompensation, centerUnderlay, maxWidth);
+    out.params = satin_params_from_column(col, density, pullCompensation, centerUnderlay, maxWidth,
+                                          maxWidthHard);
     out.strip = column_strip(col);
     return out;
 }
@@ -53,17 +54,20 @@ BuiltSatinSection make_section(const ColumnLike& col, Micrometers density,
 std::vector<BuiltSatinSection> sections_from_result(const auto_satin::SatinColumnsResult& built,
                                                     Micrometers density,
                                                     Micrometers pullCompensation,
-                                                    bool centerUnderlay, Micrometers maxWidth) {
+                                                    bool centerUnderlay, Micrometers maxWidth,
+                                                    Micrometers maxWidthHard) {
     std::vector<BuiltSatinSection> out;
     if (!built.parametric_columns.empty()) {
         out.reserve(built.parametric_columns.size());
         for (const auto& c : built.parametric_columns) {
-            out.push_back(make_section(c, density, pullCompensation, centerUnderlay, maxWidth));
+            out.push_back(
+                make_section(c, density, pullCompensation, centerUnderlay, maxWidth, maxWidthHard));
         }
     } else {
         out.reserve(built.columns.size());
         for (const auto& c : built.columns) {
-            out.push_back(make_section(c, density, pullCompensation, centerUnderlay, maxWidth));
+            out.push_back(
+                make_section(c, density, pullCompensation, centerUnderlay, maxWidth, maxWidthHard));
         }
     }
     return out;
@@ -75,15 +79,21 @@ SatinBuildReport build_satin_sections(const geometry::PathSet& region,
                                       const auto_satin::SatinColumnsParameters& genParams,
                                       Micrometers density, Micrometers pullCompensation,
                                       bool centerUnderlay, Micrometers maxWidth,
-                                      const std::string& warningLabel) {
+                                      const std::string& warningLabel,
+                                      Micrometers maxWidthHard) {
     // Mémoïsation de l'étape squelette pour toute la planification de cette
     // région (analyse initiale ci-dessous + `create_satin_plan`), libérée en
     // sortie -- cf. auto_satin::SkeletonCacheScope.
     const auto_satin::SkeletonCacheScope skeletonCache;
     SatinBuildReport report;
     const std::string prefix = warningLabel.empty() ? std::string() : (warningLabel + " : ");
+    const Micrometers effectiveMaxWidthHard =
+        maxWidthHard.value > 0 ? maxWidthHard : genParams.corridor_max_width_hard;
 
-    const auto analysis = auto_satin::analyze_region(region, genParams.analysis);
+    auto_satin::SatinColumnsParameters planningParams = genParams;
+    planningParams.corridor_max_width_hard = effectiveMaxWidthHard;
+
+    const auto analysis = auto_satin::analyze_region(region, planningParams.analysis);
     if (analysis) {
         report.whole_region_report = analysis->report;
     }
@@ -93,7 +103,7 @@ SatinBuildReport build_satin_sections(const geometry::PathSet& region,
     // seul point d'appel vers `create_satin_plan` -- ce module GERE lui-meme
     // la recursion, la mesure de couverture et la reparation de residu.
     satin_planning::SatinPlanConfig planConfig;
-    planConfig.genParams = genParams;
+    planConfig.genParams = planningParams;
     planConfig.density = density;
     const satin_planning::SatinPlan plan = satin_planning::create_satin_plan(region, planConfig);
 
@@ -110,7 +120,8 @@ SatinBuildReport build_satin_sections(const geometry::PathSet& region,
             report.used_sgsd = true;
         }
         auto secs =
-            sections_from_result(r.columns, density, pullCompensation, centerUnderlay, maxWidth);
+            sections_from_result(r.columns, density, pullCompensation, centerUnderlay, maxWidth,
+                                 effectiveMaxWidthHard);
         for (auto& s : secs)
             report.sections.push_back(std::move(s));
     }
