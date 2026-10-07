@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 #include "openstitch/auto_satin/satin_column.hpp"
 
+#include "corridor.hpp"
+#include "geometry_detail.hpp"
+#include "openstitch/geometry/offset.hpp"
 #include "openstitch/geometry/polyline.hpp"
 #include "openstitch/geometry/simplify.hpp"
 
@@ -19,100 +22,26 @@ namespace openstitch::auto_satin {
 
 namespace {
 
-// Travail en µm double, repère modèle (Y vers le haut).
-struct P2 {
-    double x{0.0};
-    double y{0.0};
-};
+// P2/Poly/region_polys/in_region/distance_to_polys/project_to_contour (plus
+// ContourPolyline/ContourProjection, nécessaires à sa signature) vivent
+// désormais dans geometry_detail.hpp (§ Phase A0, extraction préalable à
+// HP-STI-018) pour être réutilisables hors de ce fichier — importés ici à
+// l'identique, c'est un pur déplacement.
+using detail::ContourPolyline;
+using detail::ContourProjection;
+using detail::distance_to_polys;
+using detail::in_region;
+using detail::P2;
+using detail::Poly;
+using detail::project_to_contour;
+using detail::region_polys;
 
-P2 operator+(P2 a, P2 b) {
-    return {a.x + b.x, a.y + b.y};
-}
-P2 operator-(P2 a, P2 b) {
-    return {a.x - b.x, a.y - b.y};
-}
-P2 operator*(P2 a, double s) {
-    return {a.x * s, a.y * s};
-}
-double dot(P2 a, P2 b) {
-    return a.x * b.x + a.y * b.y;
-}
 double cross(P2 a, P2 b) {
     return a.x * b.y - a.y * b.x;
-}
-double norm(P2 a) {
-    return std::sqrt(dot(a, a));
 }
 P2 unit(P2 a) {
     const double n = norm(a);
     return n > 1e-9 ? P2{a.x / n, a.y / n} : P2{0.0, 0.0};
-}
-
-using Poly = std::vector<P2>;
-
-std::vector<Poly> region_polys(const geometry::PathSet& region) {
-    std::vector<Poly> polys;
-    const auto add = [&](const geometry::Path& path) {
-        Poly poly;
-        poly.reserve(path.nodes.size());
-        for (const auto& n : path.nodes) {
-            poly.push_back(
-                {static_cast<double>(n.pos.x.value), static_cast<double>(n.pos.y.value)});
-        }
-        if (poly.size() >= 3) {
-            polys.push_back(std::move(poly));
-        }
-    };
-    add(region.outer);
-    for (const auto& h : region.holes) {
-        add(h);
-    }
-    return polys;
-}
-
-bool point_in_poly(const Poly& poly, P2 p) {
-    bool inside = false;
-    const std::size_t n = poly.size();
-    for (std::size_t i = 0, j = n - 1; i < n; j = i++) {
-        const P2 a = poly[i];
-        const P2 b = poly[j];
-        if (((a.y > p.y) != (b.y > p.y)) && (p.x < (b.x - a.x) * (p.y - a.y) / (b.y - a.y) + a.x)) {
-            inside = !inside;
-        }
-    }
-    return inside;
-}
-
-bool in_region(const std::vector<Poly>& polys, P2 p) {
-    if (polys.empty() || !point_in_poly(polys[0], p)) {
-        return false;
-    }
-    for (std::size_t i = 1; i < polys.size(); ++i) {
-        if (point_in_poly(polys[i], p)) {
-            return false;
-        }
-    }
-    return true;
-}
-
-// Distance de `p` au bord le plus proche (tous polygones confondus) — utilisé
-// pour tolérer un point de rail exactement SUR le contour (§ validation
-// paramétrique, étape 12) : `in_region` seul est ambigu pile sur une arête.
-double distance_to_polys(const std::vector<Poly>& polys, P2 p) {
-    double best = std::numeric_limits<double>::max();
-    for (const auto& poly : polys) {
-        const std::size_t n = poly.size();
-        for (std::size_t i = 0; i < n; ++i) {
-            const P2 a = poly[i];
-            const P2 b = poly[(i + 1) % n];
-            const P2 ab = b - a;
-            const double len2 = dot(ab, ab);
-            const double t = len2 > 1e-12 ? std::clamp(dot(p - a, ab) / len2, 0.0, 1.0) : 0.0;
-            const P2 proj = a + ab * t;
-            best = std::min(best, norm(p - proj));
-        }
-    }
-    return best;
 }
 
 // Raison d'échec explicite d'une section transversale (§ audit génération
@@ -284,14 +213,10 @@ double signed_area(const Poly& poly) {
 // --- Représentation paramétrique du contour extérieur -----------------------
 //
 // Utilisée UNIQUEMENT en diagnostic (calcul de `JunctionCore`, rendu SVG) :
-// jamais pour construire ou déplacer un rail. Un polygone fermé + longueur
-// curviligne cumulée à chaque sommet, permettant de projeter un point
-// quelconque sur le contour et d'en extraire un arc entre deux abscisses.
-struct ContourPolyline {
-    Poly points;                    // sommets du polygone, dans leur ordre d'origine
-    std::vector<double> cumulative; // longueur cumulée jusqu'au sommet i (cumulative[0] = 0)
-    double total_length{0.0};
-};
+// jamais pour construire ou déplacer un rail. `ContourPolyline`/
+// `ContourProjection` et la projection la plus proche (`project_to_contour`)
+// vivent désormais dans geometry_detail.hpp (§ Phase A0) ; ce qui suit
+// construit et consomme ce type plus finement, local à ce fichier.
 
 ContourPolyline make_contour_polyline(const Poly& poly) {
     ContourPolyline c;
@@ -304,39 +229,6 @@ ContourPolyline make_contour_polyline(const Poly& poly) {
     }
     c.total_length = acc;
     return c;
-}
-
-struct ContourProjection {
-    std::size_t segment_index{0}; // arête [i, i+1) du polygone
-    double segment_t{0.0};        // 0..1 le long de cette arête
-    double arc_length{0.0};       // abscisse curviligne du point projeté
-    P2 point{};
-    double distance{0.0}; // distance point -> contour
-};
-
-// Projette `p` sur le contour : plus proche point parmi tous les segments.
-ContourProjection project_to_contour(const ContourPolyline& contour, P2 p) {
-    ContourProjection best;
-    best.distance = std::numeric_limits<double>::max();
-    const std::size_t n = contour.points.size();
-    for (std::size_t i = 0; i < n; ++i) {
-        const P2 a = contour.points[i];
-        const P2 b = contour.points[(i + 1) % n];
-        const P2 ab = b - a;
-        const double len2 = dot(ab, ab);
-        const double t = len2 > 1e-12 ? std::clamp(dot(p - a, ab) / len2, 0.0, 1.0) : 0.0;
-        const P2 proj = a + ab * t;
-        const double d = norm(p - proj);
-        if (d < best.distance) {
-            best.distance = d;
-            best.segment_index = i;
-            best.segment_t = t;
-            best.point = proj;
-            const double segLen = norm(ab);
-            best.arc_length = contour.cumulative[i] + t * segLen;
-        }
-    }
-    return best;
 }
 
 enum class ContourDirection { Forward, Backward, Shortest };
@@ -479,17 +371,25 @@ double polyline_length(const Poly& points) {
 // sections ouvertes raccordees bout a bout. Les validations ci-dessous
 // interdisent de recreer une gerbe ou un noeud papillon sur un anneau trop
 // irregulier pour cet appariement automatique.
+//
+// § HP-STI-018 Phase D (specs/plans/hp-sti-018-turning-satin.md §2.3/§4) :
+// extrait de `build_annular_sections` (qui en devient un mince wrapper,
+// comportement inchange, cf. plus bas) pour etre reutilise par
+// `build_turning_satin_sections` sur CHAQUE bande d'anneau d'un pelage
+// iteratif, pas seulement sur le trou unique d'une region annulaire.
+// `fullRegionPolys` est TOUJOURS la region source COMPLETE (tous ses
+// polygones, pas seulement la paire locale outer/inner de CETTE bande) :
+// pour `build_annular_sections`, les deux coincident exactement (une region
+// a un seul trou n'a que deux polygones, qui SONT outer/inner) ; pour un
+// pelage, `outer`/`inner` sont deux anneaux INTERMEDIAIRES d'une region
+// hole-free bien plus grande, et les verifications `in_region`/`barreau hors
+// region` ci-dessous doivent valider contre la VRAIE forme entiere, jamais
+// contre la paire locale seule (une bande pourrait sembler valide entre ses
+// deux anneaux immediats tout en debordant, par un artefact d'erosion, hors
+// du contour reel d'origine).
 std::optional<std::vector<SatinColumnGeometry>>
-build_annular_sections(const geometry::PathSet& region, const SatinColumnsParameters& params,
-                       std::string& refusal) {
-    if (region.holes.size() != 1 || region.outer.nodes.size() < 4 ||
-        region.holes.front().nodes.size() < 4) {
-        refusal = "contours incomplets";
-        return std::nullopt;
-    }
-    const auto polys = region_polys(region);
-    Poly outer = polys[0];
-    Poly inner = polys[1];
+build_ring_band_sections(Poly outer, Poly inner, const std::vector<Poly>& fullRegionPolys,
+                         const SatinColumnsParameters& params, std::string& refusal) {
     const double outerArea = signed_area(outer);
     const double innerArea = signed_area(inner);
     if (outerArea * innerArea < 0.0)
@@ -529,7 +429,7 @@ build_annular_sections(const geometry::PathSet& region, const SatinColumnsParame
         }
         for (double t : {0.2, 0.4, 0.6, 0.8}) {
             const P2 sample = outer[i] + (inner[i] - outer[i]) * t;
-            if (!in_region(polys, sample)) {
+            if (!in_region(fullRegionPolys, sample)) {
                 refusal = "barreau hors region a la station " + std::to_string(i);
                 return std::nullopt;
             }
@@ -596,12 +496,168 @@ build_annular_sections(const geometry::PathSet& region, const SatinColumnsParame
     return columns;
 }
 
+// Mince wrapper autour de `build_ring_band_sections` (§ Phase D, extraction
+// ci-dessus) : une region a un seul trou n'a QUE deux polygones
+// (`region_polys` renvoie exactement [outer, hole]), qui SONT deja outer/
+// inner -- `fullRegionPolys` coincide donc exactement avec la paire locale,
+// comportement identique a avant l'extraction (pur deplacement de code, pas
+// un changement de comportement).
+std::optional<std::vector<SatinColumnGeometry>>
+build_annular_sections(const geometry::PathSet& region, const SatinColumnsParameters& params,
+                       std::string& refusal) {
+    if (region.holes.size() != 1 || region.outer.nodes.size() < 4 ||
+        region.holes.front().nodes.size() < 4) {
+        refusal = "contours incomplets";
+        return std::nullopt;
+    }
+    const auto polys = region_polys(region);
+    return build_ring_band_sections(polys[0], polys[1], polys, params, refusal);
+}
+
+// § HP-STI-018 Phase D (specs/plans/hp-sti-018-turning-satin.md §2.3/§4) :
+// pele une region SANS TROU en anneaux concentriques via
+// `geometry::inset_path_set` (delta positif = retrait vers l'interieur,
+// meme convention que `satin_coverage::max_inscribed_radius_mm`), pas a pas
+// de `params.turning_satin_ring_width`, jusqu'a `params.turning_satin_max_rings`
+// anneaux. C'est le pendant, pour une forme SANS trou prealable, de
+// `build_annular_sections` ci-dessus (qui, lui, decoupe l'UNIQUE anneau
+// deja impose par la geometrie d'un trou existant) -- chaque pas d'erosion
+// cree ICI le trou (temporaire) du pas suivant.
+//
+// Arret du pelage (jamais un echec dur, sauf tout premier anneau -- voir
+// plus bas) : `inset_path_set` renvoie zero composante (la forme a disparu
+// sous l'erosion) ou 2+ (elle s'est scindee), ou le plafond de securite est
+// atteint. Un trou qui apparaitrait dans le resultat erode (forme non
+// convexe pathologique) est traite comme un arret egalement : ce pelage ne
+// sait construire que des anneaux SANS trou propre, par construction de
+// `build_ring_band_sections` (deux polygones en entree, jamais plus).
+//
+// Acceptation PARTIELLE, deliberement differente de `build_annular_sections`
+// (tout ou rien) : si un anneau interieur echoue sa validation
+// (`build_ring_band_sections` refuse), les anneaux exterieurs deja construits
+// sont CONSERVES plutot que de tout refuser -- seul l'echec du tout premier
+// anneau (le plus exterieur) refuse la fonction entiere (`std::nullopt`),
+// faute de quoi aucune colonne ne serait produite.
+std::optional<std::vector<SatinColumnGeometry>>
+build_turning_satin_sections(const geometry::PathSet& region, const SatinColumnsParameters& params,
+                             std::string& refusal, std::vector<std::string>& warnings) {
+    if (!region.holes.empty() || region.outer.nodes.size() < 4) {
+        refusal = "forme non adaptee au satin tournant (trou present ou contour incomplet)";
+        return std::nullopt;
+    }
+    const std::vector<Poly> fullPolys = region_polys(region);
+    if (fullPolys.empty()) {
+        refusal = "contour source invalide";
+        return std::nullopt;
+    }
+
+    const Micrometers ringWidth = params.turning_satin_ring_width;
+    const int maxRings = std::max(0, params.turning_satin_max_rings);
+
+    std::vector<SatinColumnGeometry> allColumns;
+    geometry::PathSet currentOuter = region;
+    int ringCount = 0;
+    while (ringCount < maxRings) {
+        const auto insetResult = geometry::inset_path_set(currentOuter, ringWidth);
+        const bool insetOk =
+            insetResult.has_value() && insetResult->size() == 1 && (*insetResult)[0].holes.empty();
+        if (!insetOk) {
+            if (ringCount == 0) {
+                refusal = "premier anneau : erosion degeneree (forme disparue ou scindee)";
+                return std::nullopt;
+            }
+            warnings.push_back("satin tournant : arret du pelage apres " +
+                               std::to_string(ringCount) +
+                               " anneau(x) (erosion degeneree -- forme disparue ou scindee)");
+            break;
+        }
+        const geometry::PathSet& innerRegion = (*insetResult)[0];
+        const auto outerPolys = region_polys(currentOuter);
+        const auto innerPolys = region_polys(innerRegion);
+        if (outerPolys.empty() || innerPolys.empty()) {
+            // Contour degenere (< 3 sommets apres erosion) : meme traitement
+            // qu'un arret d'erosion ordinaire (cf. `insetOk` ci-dessus), pas
+            // un cas distinct -- la boucle ci-dessous ne peut de toute facon
+            // plus progresser au-dela de ce point.
+            if (ringCount == 0) {
+                refusal = "premier anneau : contour degenere apres erosion";
+                return std::nullopt;
+            }
+            warnings.push_back("satin tournant : arret du pelage apres " +
+                               std::to_string(ringCount) +
+                               " anneau(x) (contour degenere apres erosion)");
+            break;
+        }
+        const Poly& outerPoly = outerPolys[0];
+        const Poly& innerPoly = innerPolys[0];
+
+        std::string bandRefusal;
+        auto bandSections =
+            build_ring_band_sections(outerPoly, innerPoly, fullPolys, params, bandRefusal);
+        if (!bandSections) {
+            if (ringCount == 0) {
+                refusal = "premier anneau non constructible : " + bandRefusal;
+                return std::nullopt;
+            }
+            warnings.push_back("satin tournant : anneau " + std::to_string(ringCount) +
+                               " refuse (" + bandRefusal + "), " + std::to_string(ringCount) +
+                               " anneau(x) conserve(s)");
+            break;
+        }
+        // `build_ring_band_sections` numerote start_junction/end_junction
+        // 0..3, en LOCAL a l'anneau qu'elle vient de construire (cf.
+        // `build_annular_sections`, ou c'est deja correct puisqu'il n'y a
+        // jamais qu'un seul anneau). Ici, plusieurs anneaux INDEPENDANTS
+        // (aucun n'est physiquement adjacent a un autre) partageraient sinon
+        // la MEME numerotation 0..3 -- un consommateur aval qui associe des
+        // sections par cette id (§ document::SatinSectionTopology, cf.
+        // satin_sections.hpp/routing.cpp/satin_guides.cpp) croirait alors que
+        // la section 3 de l'anneau 0 et la section 0 de l'anneau 1 partagent
+        // une jonction reelle, alors qu'elles n'ont jamais de barreau commun.
+        // Decale par bloc de 4 par anneau pour rester globalement unique tout
+        // en preservant la fermeture cyclique PROPRE a chaque anneau (modulo
+        // 4 a l'interieur de son propre bloc).
+        const std::uint32_t idBase = static_cast<std::uint32_t>(ringCount) * 4u;
+        for (auto& col : *bandSections) {
+            if (col.start_junction) {
+                col.start_junction = idBase + *col.start_junction;
+            }
+            if (col.end_junction) {
+                col.end_junction = idBase + *col.end_junction;
+            }
+            allColumns.push_back(std::move(col));
+        }
+        ++ringCount;
+        currentOuter = innerRegion;
+    }
+
+    if (allColumns.empty()) {
+        refusal = "aucun anneau constructible (plafond atteint avant le premier anneau)";
+        return std::nullopt;
+    }
+    warnings.push_back("satin tournant : " + std::to_string(ringCount) +
+                       " anneau(x) genere(s) (pelage iteratif, largeur d'anneau " +
+                       std::to_string(static_cast<double>(ringWidth.value) / 1000.0) + " mm)");
+    return allColumns;
+}
+
 struct Station {
     P2 axis;
     P2 railA; // côté +N (gauche)
     P2 railB; // côté -N (droite)
     P2 tangent;
     double width{0.0};
+    // § HP-STI-018 Phase C : copie de `detail::CorridorStation::foot_multiplicity`
+    // quand cette station vient de `detail::trace_corridor`
+    // (`use_corridor_tracing_dev_only`) -- sert UNIQUEMENT à
+    // `find_stable_corridor_end_index` (appelé, lui aussi, seulement sur ce
+    // chemin). Vaut 2 (corridor ordinaire, valeur neutre) pour toute station
+    // construite par l'ancien chemin `cross_section`, qui ne mesure pas cette
+    // grandeur, et pour toute station interpolée/étendue (`interpolate_station`,
+    // `extend_tip`, `extend_into_confluence`) : ces dernières ne sont jamais
+    // consultées pour ce champ (la restriction de plage par multiplicité a
+    // déjà eu lieu avant leur construction, cf. `compute_column_stations`).
+    int foot_multiplicity{2};
 };
 
 // Comble un échec ISOLÉ de `cross_section` (une seule station manquante entre
@@ -928,31 +984,134 @@ std::optional<std::vector<Station>> compute_column_stations(const std::vector<Ve
     {
         std::vector<AxisEntry> entries(axis.size());
         std::size_t successCount = 0;
-        for (std::size_t i = 0; i < axis.size(); ++i) {
-            P2 tan;
-            if (i == 0) {
-                tan = axis[1] - axis[0];
-            } else if (i + 1 == axis.size()) {
-                tan = axis[i] - axis[i - 1];
-            } else {
-                tan = axis[i + 1] - axis[i - 1];
+        if (params.use_corridor_tracing_dev_only) {
+            // § HP-STI-018 Phase B -- indicateur TEST/DEV UNIQUEMENT (cf.
+            // SatinColumnsParameters::use_corridor_tracing_dev_only) : mesure
+            // dense par pieds de bord les plus proches (`detail::trace_corridor`,
+            // corridor.hpp) au lieu du ray-cast `cross_section`. Le nettoyage
+            // anti-croisement et l'extension des bouts ouverts juste après
+            // restent EXACTEMENT les mêmes qu'avant, appliqués aux `Station`
+            // converties ci-dessous. `trace_corridor` ne peut jamais échouer
+            // (contrairement à `cross_section`) : une `CorridorStation` existe
+            // pour chaque `axis[i]`, donc seul le filtre `TooNarrow` peut
+            // encore produire un échec dans cette branche.
+            //
+            // § HP-STI-018 Phase C -- amputation de jonction DÉPLACÉE ICI,
+            // AVANT même la construction d'une `Station` : `trim_unstable_
+            // junction_tail`'s width-drift/plateau heuristic (appliqué plus
+            // bas, sur `st` déjà assemblé) est REMPLACÉ sur ce chemin par le
+            // critère structurel de `detail::find_stable_corridor_end_index`
+            // (foot_multiplicity), appliqué directement sur la série dense
+            // `corridor` indexée comme `axis`. Les échantillons d'axe
+            // EXCLUS par cette restriction (avant `loBound`, après `hiBound`)
+            // sont délibérément laissés en échec (`entries[i]` reste par
+            // défaut) plutôt que mesurés puis retirés après coup -- la boucle
+            // d'assemblage tolérante aux trous juste en dessous traite déjà
+            // tout échec en tête/queue d'axe comme un bord légitime (jamais un
+            // trou interne), exactement le traitement qu'exige une queue de
+            // jonction amputée. Un bout OUVERT (`extendStart`/`extendEnd` ==
+            // true) n'est, comme avant, jamais concerné : seul un bout de
+            // JONCTION est restreint ici (`extend_tip` étend le bout ouvert
+            // plus bas, sur la plage complète). Un critère de multiplicité n'a
+            // de sens que si l'amputation de jonction est activée
+            // (`anchor_junction_ends`) -- sinon la plage reste entière, comme
+            // avant.
+            const auto corridor = detail::trace_corridor(axis, polys, params);
+            std::size_t loBound = 0;
+            std::size_t hiBound = corridor.empty() ? 0 : corridor.size() - 1;
+            if (params.anchor_junction_ends && !corridor.empty()) {
+                if (!extendStart) {
+                    loBound =
+                        detail::find_stable_corridor_end_index(corridor, /*atEnd=*/false, params);
+                }
+                if (!extendEnd) {
+                    hiBound =
+                        detail::find_stable_corridor_end_index(corridor, /*atEnd=*/true, params);
+                }
             }
-            tan = unit(tan);
-            const P2 nrm{-tan.y, tan.x}; // +90° : +N = gauche
-            const auto sec = cross_section(polys, axis[i], nrm, maxWidth);
-            if (sec && sec->second - sec->first < minWidth) {
-                entries[i].failure = CrossSectionFailure::TooNarrow;
-            } else if (sec) {
-                Station st;
-                st.axis = axis[i];
-                st.tangent = tan;
-                st.railA = axis[i] + nrm * sec->second; // t_hi > 0
-                st.railB = axis[i] + nrm * sec->first;  // t_lo < 0
-                st.width = sec->second - sec->first;
-                entries[i].station = std::move(st);
-                ++successCount;
-            } else {
-                entries[i].failure = sec.error();
+            for (std::size_t i = 0; i < axis.size(); ++i) {
+                if (i < loBound || i > hiBound) {
+                    continue; // queue de jonction amputée par multiplicité -- laissé en
+                              // échec par défaut, traité en bord légitime ci-dessous.
+                }
+                const auto& cs = corridor[i];
+                if (cs.width_um < minWidth) {
+                    entries[i].failure = CrossSectionFailure::TooNarrow;
+                } else if (cs.width_um > maxWidth) {
+                    // § HP-STI-018 Phase B.5 (specs/plans/hp-sti-018-turning-satin.md,
+                    // meme chantier que la gathering direction-aware ci-dessous) :
+                    // contrairement a ce que §2.5 du plan supposait ("TooWide has no
+                    // equivalent because nearest-point search cannot overshoot"),
+                    // ceci n'est PAS toujours un artefact de rayon qui depasse un
+                    // coin -- un echantillon d'axe genuinement degenere (le centre
+                    // geometrique d'un hub quasi circulaire, ou le squelette amincil
+                    // laisse un court troncon instable avant que la vraie branche
+                    // fine ne commence, ex. "multi_neck" : premier echantillon de
+                    // l'axe REECHANTILLONNE exactement au centre du premier cercle,
+                    // largeur mesuree ~11,99mm la ou la branche reelle fait 1,2-1,7mm)
+                    // produit une largeur REELLEMENT enorme, pas un artefact de
+                    // mesure a corriger par une meilleure selection de pieds -- il
+                    // n'y a tout simplement PAS de corridor exploitable a ce point
+                    // precis. CORRECTIF (revue Phase B.5) : sur "multi_neck" precisement,
+                    // cette largeur (~11,99mm) reste de justesse SOUS `maxWidth`
+                    // (12mm par defaut) -- cette branche ne s'y declenche donc PAS
+                    // pour cette fixture ; le refus observe vient du garde-fou de
+                    // saut de largeur adjacent, pas de celui-ci. La branche reste une
+                    // correction generale correcte (un vrai depassement doit etre
+                    // classe TooWide, pas accepte comme valide), mais aucun test du
+                    // corpus actuel ne l'exerce reellement -- a verrouiller par une
+                    // fixture synthetique dediee qui depasse franchement `maxWidth`.
+                    // `cross_section` filtrait deja ce cas via son propre
+                    // `TooWide` (ligne ~130 ci-dessus) ; sans equivalent ici, une
+                    // telle station degeneree etait acceptee comme VALIDE (largeur
+                    // enorme) puis provoquait un refus de colonne entiere sur le
+                    // saut de largeur adjacent (ou pire, un barreau degenere) au
+                    // lieu d'etre traitee, comme sous l'ancien chemin, comme un bord
+                    // legitime d'axe que la boucle d'assemblage tolerante aux trous
+                    // (plus bas) saute deja naturellement en tete/queue. Reutilise
+                    // directement `CrossSectionFailure::TooWide` -- meme semantique
+                    // cote appelant (describe()/traitement de bord legitime), aucun
+                    // nouveau code de traitement necessaire.
+                    entries[i].failure = CrossSectionFailure::TooWide;
+                } else {
+                    Station st;
+                    st.axis = cs.axis_point;
+                    st.tangent = cs.tangent;
+                    st.railA = cs.foot_a.point; // côté +N (gauche), même convention que railA
+                    st.railB = cs.foot_b.point; // côté -N (droite), même convention que railB
+                    st.width = cs.width_um;
+                    st.foot_multiplicity = cs.foot_multiplicity;
+                    entries[i].station = std::move(st);
+                    ++successCount;
+                }
+            }
+        } else {
+            for (std::size_t i = 0; i < axis.size(); ++i) {
+                P2 tan;
+                if (i == 0) {
+                    tan = axis[1] - axis[0];
+                } else if (i + 1 == axis.size()) {
+                    tan = axis[i] - axis[i - 1];
+                } else {
+                    tan = axis[i + 1] - axis[i - 1];
+                }
+                tan = unit(tan);
+                const P2 nrm{-tan.y, tan.x}; // +90° : +N = gauche
+                const auto sec = cross_section(polys, axis[i], nrm, maxWidth);
+                if (sec && sec->second - sec->first < minWidth) {
+                    entries[i].failure = CrossSectionFailure::TooNarrow;
+                } else if (sec) {
+                    Station st;
+                    st.axis = axis[i];
+                    st.tangent = tan;
+                    st.railA = axis[i] + nrm * sec->second; // t_hi > 0
+                    st.railB = axis[i] + nrm * sec->first;  // t_lo < 0
+                    st.width = sec->second - sec->first;
+                    entries[i].station = std::move(st);
+                    ++successCount;
+                } else {
+                    entries[i].failure = sec.error();
+                }
             }
         }
         if (successCount == 0) {
@@ -1023,11 +1182,27 @@ std::optional<std::vector<Station>> compute_column_stations(const std::vector<Ve
                 // Dans ce cas, on arrête la branche à la dernière station valide avant
                 // le bourrelet. L'extrémité sera ensuite traitée par l'amputation et
                 // l'ancrage global de la jonction.
+                // § HP-STI-018 Phase C : sur le chemin corridor, la plage
+                // [loBound, hiBound] a DÉJÀ exclu tout échantillon jugé
+                // instable côté jonction (critère de multiplicité, plus haut,
+                // AVANT la moindre mesure) -- un trou TooNarrow qui survient
+                // malgré tout À L'INTÉRIEUR de cette plage déjà restreinte
+                // n'est donc PLUS présumé être « le bourrelet de confluence »
+                // par construction : c'est un creux de largeur ordinaire,
+                // traité comme n'importe quel autre trou interne (bridgé s'il
+                // est isolé, sinon la colonne entière est refusée) -- jamais
+                // ce raccourci qui jetterait les stations ENCORE PLUS loin
+                // dans la branche (potentiellement déjà confirmées stables
+                // par le critère de multiplicité) sur la seule foi de leur
+                // proximité du bout BRUT de l'axe (`axis.back()`, qui ignore
+                // totalement `hiBound`). Sur le chemin historique
+                // (`cross_section`), ce raccourci reste la SEULE protection
+                // contre le bourrelet (aucune restriction amont) : inchangé.
                 const double junctionRadius =
                     static_cast<double>(params.junction_anchor_radius.value);
 
-                const bool nearEndJunction =
-                    !extendEnd && norm(axis[i] - axis.back()) <= junctionRadius;
+                const bool nearEndJunction = !params.use_corridor_tracing_dev_only && !extendEnd &&
+                                             norm(axis[i] - axis.back()) <= junctionRadius;
 
                 if (nearEndJunction) {
                     warnings.push_back("queue de jonction amputee avant stations axe #" +
@@ -1100,7 +1275,15 @@ std::optional<std::vector<Station>> compute_column_stations(const std::vector<Ve
     // que la branche elle-même soit invalide. Si on valide avant cette amputation,
     // on refuse la branche sur un faux saut de largeur et la jonction devient
     // artificiellement incomplète.
-    if (params.anchor_junction_ends) {
+    //
+    // § HP-STI-018 Phase C : sur le chemin `use_corridor_tracing_dev_only`,
+    // cette amputation a DÉJÀ eu lieu plus haut (restriction de plage
+    // `loBound`/`hiBound` par `find_stable_corridor_end_index`, AVANT même la
+    // construction des `Station`) -- `trim_unstable_junction_tail`'s heuristique
+    // de dérive de largeur ne doit PAS s'appliquer une seconde fois par-dessus
+    // (elle lirait une largeur déjà correcte et pourrait amputer encore sur un
+    // critère sans rapport). Le chemin `false` reste À L'IDENTIQUE.
+    if (params.anchor_junction_ends && !params.use_corridor_tracing_dev_only) {
         // Référence calculée UNE FOIS, avant toute amputation, pour que
         // trimmer un bout n'affecte pas la référence utilisée par l'autre.
         const double referenceWidth = representative_station_width(st);
@@ -2523,6 +2706,16 @@ struct JunctionResolution {
     double coreArea{0.0};
     double localRadius{0.0};
     double actualMaxRadius{0.0};
+    // § HP-STI-018 Phase C -- décision empirique (§9.4 du plan) : nombre de
+    // fois où la boucle de retrait itératif ci-dessous a dû reculer une
+    // `StableBranchEnd` d'une station supplémentaire. Toujours calculé (le
+    // coût est négligeable), mais seulement EXPOSÉ en avertissement (cf.
+    // `resolve_and_validate_junctions`) quand `use_corridor_tracing_dev_only`
+    // est actif -- c'est la mesure qui permet de trancher "cette boucle
+    // reste-t-elle réellement nécessaire une fois le critère de multiplicité
+    // en place, ou n'est-elle plus qu'un filet mort" sur le corpus complet,
+    // au lieu de la retirer "au cas où" sans preuve.
+    std::size_t retractionEvents{0};
 };
 
 // Construit le secteur local d'une branche (§4) : borné par le séparateur
@@ -2570,6 +2763,14 @@ std::optional<JunctionResolution> resolve_junction(const std::vector<SatinColumn
                                                    const std::vector<ContourPolyline>& contours,
                                                    const std::vector<P2>& reflexVertices, P2 center,
                                                    double configuredRadius) {
+    // NOTE (§ HP-STI-018 Phase C) : `params` n'est PAS un paramètre de cette
+    // fonction -- `resolve_junction` reste une fonction purement géométrique
+    // sur des `SatinColumnGeometry` déjà construites, inchangée dans sa
+    // signature. L'instrumentation de la boucle de retrait ci-dessous
+    // (`JunctionResolution::retractionEvents`) est TOUJOURS calculée (coût
+    // négligeable) et c'est l'APPELANT (`resolve_and_validate_junctions`, qui
+    // a `params` en portée) qui décide s'il doit l'exposer en avertissement
+    // -- cf. commentaire sur `retractionEvents`.
     const std::size_t n = branches.size();
     if (n < 2) {
         return std::nullopt;
@@ -2619,6 +2820,7 @@ std::optional<JunctionResolution> resolve_junction(const std::vector<SatinColumn
             }
             ++offsets[idx];
             res.ends[idx] = make_stable_branch_end(col, branches[idx], offsets[idx]);
+            ++res.retractionEvents;
             return true;
         };
         const bool retractedFirst = retract(bad->first);
@@ -2852,6 +3054,40 @@ SatinColumnsResult build_satin_columns(const geometry::PathSet& region,
         return r;
     }
 
+    // § HP-STI-018 Phase D (specs/plans/hp-sti-018-turning-satin.md §2.3/§4) :
+    // satin tournant -- une region SANS trou dont le squelette est
+    // inexploitable (`Ambiguous`, forme compacte/ronde -- disque, petale) ou
+    // refusee pour largeur excessive (`Unsuitable` + `has_wide_area`, bande
+    // large mais allongee, meme defaut d'axe degenere pour l'essentiel de sa
+    // largeur) tente un pelage en anneaux concentriques AVANT de tomber dans
+    // le refus explicite plus bas. Ne peut jamais regresser une forme qui
+    // reussissait deja : `r.status` ne vaut `Ambiguous`/`Unsuitable` que pour
+    // une region que `evaluate_satinability` avait deja decidee refusee par
+    // construction (un seul statut par appel, cf. satinability.cpp) --
+    // aucune region `Suitable`/`SuitableWithWarnings`/`RequiresDecomposition`
+    // ne peut jamais satisfaire cette condition. En cas d'echec (meme le
+    // premier anneau n'est pas constructible), ne RETOURNE PAS ici : retombe
+    // dans le chemin de refus existant plus bas, `r.status` etant reste
+    // inchange.
+    if (region.holes.empty() &&
+        (r.status == SatinabilityStatus::Ambiguous ||
+         (r.status == SatinabilityStatus::Unsuitable && r.report.has_wide_area))) {
+        std::string turningRefusal;
+        auto turningSections =
+            build_turning_satin_sections(region, params, turningRefusal, r.warnings);
+        if (turningSections) {
+            r.columns = std::move(*turningSections);
+            r.status = SatinabilityStatus::RequiresDecomposition;
+            r.report.status = r.status;
+            r.report.issues.clear();
+            r.report.issues.push_back(
+                {"Forme sans axe exploitable decomposee en anneaux satin tournants."});
+            finalize_sections();
+            return r;
+        }
+        r.warnings.push_back("satin tournant non retenu : " + turningRefusal);
+    }
+
     const auto& graph = analysis->debug.graph;
     const std::vector<Poly> polys = region_polys(region);
 
@@ -2917,6 +3153,23 @@ SatinColumnsResult build_satin_columns(const geometry::PathSet& region,
                 r.columns.clear();
                 r.refusal = "jonction incoherente : " + problem;
                 return;
+            }
+            // § HP-STI-018 Phase C -- décision empirique sur la boucle de
+            // retrait itératif (§9.4 du plan, "decide after Phase C's
+            // empirical results") : n'affiche cette mesure QUE sur le chemin
+            // dev-only (le chemin de production n'en a pas besoin -- la
+            // boucle y est toujours la mécanique PRINCIPALE, pas une
+            // décision à évaluer). `tests/unit/auto_satin/test_corridor.cpp`
+            // grep cette sous-chaîne sur le corpus complet pour établir si la
+            // boucle a encore été nécessaire ne serait-ce qu'une fois sous le
+            // nouveau critère de multiplicité.
+            if (params.use_corridor_tracing_dev_only && resolved->retractionEvents > 0) {
+                r.warnings.push_back(
+                    "jonction " + std::to_string(junctionId) +
+                    " : repli de retrait iteratif (Phase C, mesure empirique) declenche " +
+                    std::to_string(resolved->retractionEvents) +
+                    " fois malgre le critere de "
+                    "multiplicite (find_stable_corridor_end)");
             }
             // Expose StableBranchEnd / JunctionSeparator / secteurs (diagnostic SVG/tests).
             for (std::size_t bi = 0; bi < branches.size(); ++bi) {

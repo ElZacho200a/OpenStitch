@@ -14,11 +14,19 @@ namespace openstitch::auto_satin {
 // durcissement du contrat SatinPlanner, 2026-08-17, §9-14), formes
 // délibérément difficiles : star5, asymmetric_star, comb, E, deep_recursive,
 // multi_neck, dumbbell, deep_channel, two_holes, ring_branch,
-// junction_with_hole, polygonal_cut_fixture. Régression squelette
+// junction_with_hole, polygonal_cut_fixture. e_trunk_isolated : tronc en
+// « ] » de `E` (montant + barre haute + barre basse, sans la barre du
+// milieu), isolé le 2026-08-30 pour reproduire le défaut de coude à 90°
+// indépendamment de toute jonction (HP-STI-018, Phase B). Régression squelette
 // (2026-08-21) : thick_diagonal_blob (géométrie exacte d'une région
 // utilisateur — escalier de squelette à 2 px de large ayant fait échouer
-// la trace d'arête sans retour arrière, cf. skeleton_graph.cpp). Renvoie
-// nullopt si le nom est inconnu.
+// la trace d'arête sans retour arrière, cf. skeleton_graph.cpp). HP-STI-018
+// Phase D (satin tournant, specs/plans/hp-sti-018-turning-satin.md §4/§5) :
+// disc_15mm (disque de 15 mm de DIAMETRE, distinct de "circle" ci-dessus qui
+// fait 30 mm), petal (limacon asymetrique peu allonge, sans trou ni branche),
+// disc_tight_inner_ring (disque juste assez grand pour un seul anneau avant
+// disparition sous l'erosion suivante). Renvoie nullopt si le nom est
+// inconnu.
 [[nodiscard]] std::optional<geometry::PathSet> make_shape(const std::string& name);
 
 } // namespace openstitch::auto_satin

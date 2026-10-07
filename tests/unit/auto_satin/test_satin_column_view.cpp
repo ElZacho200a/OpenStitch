@@ -125,9 +125,16 @@ TEST_CASE("satin_column_view : start_width/end_width derives du premier/dernier 
 }
 
 TEST_CASE("satin_column_view : vecteur vide sur un refus (aucune colonne construite)") {
-    // "wide" (forme large refusee, cf. test_columns.cpp) -- refus explicite,
-    // ni columns ni parametric_columns peuples.
-    const auto region = make_shape("wide");
+    // "two_holes" (rectangle troue deux fois, refuse `Unsuitable` --
+    // hole_count>0 refuse avant meme le test de largeur, cf.
+    // satinability.cpp) -- refus explicite, ni columns ni parametric_columns
+    // peuples. "wide" (utilise ici avant HP-STI-018 Phase D) ne convient
+    // plus : une bande large mais allongee declenche desormais le pelage en
+    // anneaux concentriques (§2.3/§4 du plan, cf. test_columns.cpp) et n'est
+    // donc plus un exemple de refus -- "two_holes" reste refuse par
+    // construction (deux trous, jamais la cible de `build_turning_satin_
+    // sections`, qui exige `region.holes.empty()`).
+    const auto region = make_shape("two_holes");
     REQUIRE(region.has_value());
     SatinColumnsParameters params;
     params.analysis.raster.pixel_size = Micrometers{100};

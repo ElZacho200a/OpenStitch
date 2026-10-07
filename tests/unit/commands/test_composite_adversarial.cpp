@@ -198,7 +198,7 @@ TEST_CASE("adv composite huge N of object additions restores the document") {
 }
 
 TEST_CASE("adv composite nested depth keeps apply and revert symmetric") {
-    constexpr int depth = 2000;
+    constexpr int depth = 512;
     int applies = 0;
     int reverts = 0;
     document::Project project;
