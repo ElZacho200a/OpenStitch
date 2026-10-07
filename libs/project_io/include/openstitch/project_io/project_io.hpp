@@ -14,9 +14,12 @@ namespace openstitch::project_io {
 // (`overrides`/`editedFingerprint`/`editedPointCount`, ADR-014, Lot 8.1) --
 // changement de nature du fichier (les points ne sont plus purement dérivés
 // pour un objet retouché), pas seulement un nouveau champ de finition.
-// Lecture rétrocompatible : un fichier v1 ou v2 se charge (retouches absentes
-// -> overrides vides, état Clean).
-inline constexpr int kSchemaVersion = 3;
+// v3 -> v4 : les satins séparent `maxWidth` (seuil doux/avertissement) de
+// `maxWidthHard` (plafond géométrique du corridor). Lecture tolérante :
+// champ absent -> 48 mm.
+// Lecture rétrocompatible : un fichier v1/v2/v3 se charge (champs absents
+// remplacés par leurs valeurs par défaut).
+inline constexpr int kSchemaVersion = 4;
 
 // Enregistre le projet dans une archive .osp (ZIP : project.json + image
 // originale PNG + carte de segmentation binaire). Écriture atomique :

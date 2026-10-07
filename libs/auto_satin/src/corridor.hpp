@@ -42,6 +42,7 @@ struct CorridorStation {
     BoundaryFoot foot_b;
     P2 tangent;
     double width_um{0.0};
+    bool wide{false};
     // Nombre de pieds de bord DISTINCTS (non coïncidents EN POSITION, pas le
     // compte brut du vecteur renvoyé par `nearest_boundary_feet`) à cette
     // station -- un simple sommet ordinaire de polygone peut à lui seul

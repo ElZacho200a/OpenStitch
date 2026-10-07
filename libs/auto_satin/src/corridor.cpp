@@ -253,11 +253,7 @@ bool select_feet(const std::vector<BoundaryFoot>& feet, const std::vector<bool>&
 std::vector<CorridorStation> trace_corridor(const std::vector<P2>& axis,
                                             const std::vector<Poly>& polys,
                                             const SatinColumnsParameters& params) {
-    // Phase B : aucun champ de `SatinColumnsParameters` n'est encore lu ici --
-    // le paramètre existe pour la stabilité de signature avec la Phase C
-    // (`find_stable_corridor_end` consommera des seuils de jonction dédiés,
-    // cf. specs/plans/hp-sti-018-turning-satin.md §2.2).
-    (void)params;
+    const double softMaxWidth = static_cast<double>(params.analysis.thresholds.max_satin_width.value);
 
     std::vector<CorridorStation> stations;
     stations.reserve(axis.size());
@@ -320,6 +316,7 @@ std::vector<CorridorStation> trace_corridor(const std::vector<P2>& axis,
             st.foot_a = a;
             st.foot_b = b;
             st.width_um = norm(a.point - b.point);
+            st.wide = st.width_um > softMaxWidth;
             st.foot_multiplicity = count_distinct_feet(strict_feet);
             st.interpolated = false;
         } else if (prev != nullptr) {
@@ -330,6 +327,7 @@ std::vector<CorridorStation> trace_corridor(const std::vector<P2>& axis,
             st.foot_a = prev->foot_a;
             st.foot_b = prev->foot_b;
             st.width_um = prev->width_um;
+            st.wide = prev->wide;
             st.foot_multiplicity = prev->foot_multiplicity;
             st.interpolated = true;
         } else {

@@ -411,6 +411,23 @@ TEST_CASE("split : traversee longue subdivisee") {
     CHECK(between > 0);
 }
 
+TEST_CASE("split : grande traversee zigzague le long de l'axe sans activer le mode disabled") {
+    const Column c = wide_column();
+    SatinConfig simpleCfg = split_cfg(SplitStitchMode::Simple);
+    simpleCfg.wide_throw_width = Micrometers{12'000};
+    SatinConfig wideCfg = split_cfg(SplitStitchMode::Simple);
+    wideCfg.wide_throw_width = Micrometers{9'000};
+
+    const auto disabled = fill_satin_columns(c.a, c.b, c.rungs, split_cfg(SplitStitchMode::Disabled));
+    const auto simple = fill_satin_columns(c.a, c.b, c.rungs, simpleCfg);
+    const auto wide = fill_satin_columns(c.a, c.b, c.rungs, wideCfg);
+
+    REQUIRE(simple.satin.size() == wide.satin.size());
+    REQUIRE(disabled.satin.size() < wide.satin.size());
+    CHECK(wide.satin[5].x != simple.satin[5].x);
+    CHECK(wide.satin[6].x != simple.satin[6].x);
+}
+
 TEST_CASE("split : staggered decale les points (pas de ligne centrale)") {
     const Column c = wide_column();
     const auto simple = fill_satin_columns(c.a, c.b, c.rungs, split_cfg(SplitStitchMode::Simple));

@@ -37,7 +37,8 @@ namespace openstitch::satin_planning {
 template <typename ColumnLike>
 [[nodiscard]] document::SatinParams
 satin_params_from_column(const ColumnLike& col, Micrometers density, Micrometers pull_compensation,
-                         bool center_underlay, Micrometers max_width) {
+                         bool center_underlay, Micrometers max_width,
+                         Micrometers max_width_hard = Micrometers{48'000}) {
     document::SatinParams sp;
     sp.rail_a = col.rail_a;
     sp.rail_b = col.rail_b;
@@ -45,6 +46,7 @@ satin_params_from_column(const ColumnLike& col, Micrometers density, Micrometers
     sp.pull_compensation = pull_compensation;
     sp.center_underlay = center_underlay;
     sp.max_width = max_width;
+    sp.max_width_hard = max_width_hard;
     sp.rungs.reserve(col.rungs.size());
     for (const auto& rung : col.rungs) {
         sp.rungs.push_back(document::SatinRung{rung.a, rung.b});
@@ -145,6 +147,7 @@ struct SatinBuildReport {
 build_satin_sections(const geometry::PathSet& region,
                      const auto_satin::SatinColumnsParameters& genParams, Micrometers density,
                      Micrometers pullCompensation, bool centerUnderlay, Micrometers maxWidth,
-                     const std::string& warningLabel = {});
+                     const std::string& warningLabel = {},
+                     Micrometers maxWidthHard = Micrometers{0});
 
 } // namespace openstitch::satin_planning

@@ -184,9 +184,9 @@ TEST_CASE("anneau : Unsuitable (trou)") {
     CHECK(a.report.hole_count == 1);
 }
 
-TEST_CASE("forme large : Unsuitable (trop large)") {
+TEST_CASE("forme large : SuitableWithWarnings (trop large)") {
     const auto a = analyze("wide");
-    CHECK(a.report.status == SatinabilityStatus::Unsuitable);
+    CHECK(a.report.status == SatinabilityStatus::SuitableWithWarnings);
     CHECK(a.report.has_wide_area);
 }
 

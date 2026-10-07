@@ -200,6 +200,7 @@ json params_to_json(const document::StitchParams& params) {
                      {"pullCompensation", p.pull_compensation.value},
                      {"centerUnderlay", p.center_underlay},
                      {"maxWidth", p.max_width.value},
+                     {"maxWidthHard", p.max_width_hard.value},
                      {"shortStitch", static_cast<int>(p.short_stitch)},
                      {"splitStitch", static_cast<int>(p.split_stitch)},
                      {"capStart", static_cast<int>(p.cap_start)},
@@ -316,6 +317,7 @@ Result<document::StitchParams> params_from_json(const json& j) {
         p.pull_compensation = Micrometers{j.at("pullCompensation")};
         p.center_underlay = j.at("centerUnderlay");
         p.max_width = Micrometers{j.at("maxWidth")};
+        p.max_width_hard = Micrometers{j.value("maxWidthHard", 48'000)};
         // Finitions Lot 3 : optionnelles (projets antérieurs -> défauts).
         p.short_stitch = static_cast<document::SatinShortStitch>(j.value("shortStitch", 0));
         p.split_stitch = static_cast<document::SatinSplit>(j.value("splitStitch", 0));

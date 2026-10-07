@@ -689,6 +689,28 @@ SatinResult fill_satin_columns(const geometry::Path& rail_a, const geometry::Pat
         const double len = dist(pa, pb);
         if (config.split_stitch != SplitStitchMode::Disabled && len > maxLen) {
             const int nsplit = std::max(1, static_cast<int>(std::ceil(len / maxLen)) - 1);
+            const bool wideThrow =
+                w > static_cast<double>(config.wide_throw_width.value) && i > 0 &&
+                i + 1 < nThreads;
+            PointD tangent{0.0, 0.0};
+            double wideOffset = 0.0;
+            if (wideThrow) {
+                const PointD prevMid = mids[static_cast<std::size_t>(i - 1)];
+                const PointD nextMid = mids[static_cast<std::size_t>(i + 1)];
+                const double tn = dist(prevMid, nextMid);
+                if (tn > 1e-6) {
+                    tangent = {(nextMid.x - prevMid.x) / tn, (nextMid.y - prevMid.y) / tn};
+                    const double advancePrev =
+                        cumMid[static_cast<std::size_t>(i)] -
+                        cumMid[static_cast<std::size_t>(i - 1)];
+                    const double advanceNext =
+                        cumMid[static_cast<std::size_t>(i + 1)] -
+                        cumMid[static_cast<std::size_t>(i)];
+                    const double amp =
+                        std::max(0.0, config.wide_throw_zigzag_amplitude) * (w * 0.5);
+                    wideOffset = std::min(amp, 0.4 * std::min(advancePrev, advanceNext));
+                }
+            }
             for (int s = 1; s <= nsplit; ++s) {
                 double frac = static_cast<double>(s) / (nsplit + 1);
                 const double amp = 0.35 / (nsplit + 1);
@@ -701,7 +723,13 @@ SatinResult fill_satin_columns(const geometry::Path& rail_a, const geometry::Pat
                     frac += (jitter01(h) * 2.0 - 1.0) * amp;
                 }
                 frac = std::clamp(frac, 0.05, 0.95);
-                result.satin.push_back(toUm(lerpP(pa, pb, frac)));
+                PointD splitPoint = lerpP(pa, pb, frac);
+                if (wideOffset > 0.0) {
+                    const double sign = ((emitted + s) % 2 == 0) ? 1.0 : -1.0;
+                    splitPoint = {splitPoint.x + tangent.x * wideOffset * sign,
+                                  splitPoint.y + tangent.y * wideOffset * sign};
+                }
+                result.satin.push_back(toUm(splitPoint));
             }
         }
         result.satin.push_back(toUm(pb));

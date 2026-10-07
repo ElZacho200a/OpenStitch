@@ -44,6 +44,8 @@ struct SatinConfig {
     // --- Split (traversées longues) ---
     SplitStitchMode split_stitch{SplitStitchMode::Disabled};
     Micrometers max_stitch_length{7'000}; // au-delà, on fractionne la traversée
+    Micrometers wide_throw_width{10'000}; // au-delà, les splits zigzaguent le long de l'axe
+    double wide_throw_zigzag_amplitude{0.35};
     std::uint64_t split_seed{1};          // graine déterministe (jitter)
 
     // --- Terminaisons ---
