@@ -74,7 +74,7 @@ TEST_CASE("satin_column_view : mode Legacy -- identite bit-a-bit avec SatinColum
             CHECK(proj.end_junction == src.end_junction);
             CHECK(proj.mean_width_um == src.mean_width_um);
             CHECK(proj.length_um == src.length_um);
-            CHECK(proj.method == RailConstructionMethod::AxisStation);
+            CHECK(proj.method == src.method);
         }
     }
 }
@@ -98,7 +98,24 @@ TEST_CASE("satin_column_view : mode Parametric -- identite bit-a-bit avec Parame
             CHECK(proj.end_junction == src.end_junction);
             CHECK(proj.mean_width_um == src.mean_width_um);
             CHECK(proj.length_um == src.length_um);
-            CHECK(proj.method == RailConstructionMethod::AxisStation);
+            CHECK(proj.method == src.method);
+        }
+    }
+}
+
+TEST_CASE("satin_column_view : methode IsoOffsetRing reportee pour anneaux et satin tournant") {
+    for (const std::string& name : {"ring", "disc_15mm"}) {
+        INFO("forme = " << name);
+        const auto built = columns_of(name, SatinGeometryMode::Legacy);
+        REQUIRE_FALSE(built.columns.empty());
+        REQUIRE(built.parametric_columns.empty());
+
+        const auto view = satin_column_view(built);
+        REQUIRE(view.size() == built.columns.size());
+        for (std::size_t i = 0; i < view.size(); ++i) {
+            INFO("colonne " << i);
+            CHECK(built.columns[i].method == RailConstructionMethod::IsoOffsetRing);
+            CHECK(view[i].method == RailConstructionMethod::IsoOffsetRing);
         }
     }
 }

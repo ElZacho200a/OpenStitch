@@ -20,6 +20,12 @@ struct SatinRung {
     Vec2um b{};
 };
 
+enum class RailConstructionMethod : std::uint8_t {
+    AxisStation,
+    IsoOffsetRing,
+    ContourCorrespondence
+};
+
 // Géométrie d'une colonne satin ÉDITABLE : deux rails ouverts et les barreaux
 // qui les découpent en intervalles correspondants. Les rails viennent des
 // sections transversales de l'axe (squelette), PAS d'une découpe du contour.
@@ -35,6 +41,7 @@ struct SatinColumnGeometry {
     double mean_width_um{0.0};
     double min_width_um{0.0};
     double max_width_um{0.0};
+    RailConstructionMethod method{RailConstructionMethod::AxisStation};
 };
 
 // Mode de géométrie produit par `build_satin_columns` (§ refonte auto-satin
@@ -350,6 +357,7 @@ struct ParametricSatinObject {
     double min_width_um{0.0};
     double max_width_um{0.0};
     double length_um{0.0};
+    RailConstructionMethod method{RailConstructionMethod::AxisStation};
 
     // Recouvrement RÉELLEMENT appliqué à chaque bout de jonction (0 si ce
     // bout est ouvert, ou si `junction_overlap_*` n'a rien pu ajouter).
@@ -389,10 +397,10 @@ struct SatinColumnsResult {
 // Méthode de construction de rail réellement employée pour UNE colonne
 // (§ refonte décomposition topologique, docs/source/satin.md). `AxisStation`
 // = méthode historique (station sur l'axe -> normale -> intersection du
-// contour, `compute_column_stations`/`cross_section`) : c'est la SEULE
-// méthode existante à ce jour, en mode Legacy comme Parametric — les deux ne
-// diffèrent que par la finalisation dense/Bézier, jamais par la façon dont
-// une section transversale est obtenue. `ContourCorrespondence` est réservée
+// contour, compute_column_stations/cross_section) : c'est le chemin
+// historique des colonnes issues de l'axe median. En mode Legacy comme
+// Parametric, les deux ne different que par la finalisation dense/Bezier, pas
+// par la facon dont une section transversale est obtenue. `ContourCorrespondence` est réservée
 // à un futur alignement explicite de deux chaînes de contour (jonctions
 // résiduelles non isolables par une coupe, ex. `comb`/`star5`/`E`) — aucune
 // colonne produite par `build_satin_columns` aujourd'hui n'utilise cette
@@ -400,20 +408,9 @@ struct SatinColumnsResult {
 // les deux méthodes une fois la seconde implémentée, sans nouveau bris d'API.
 // `IsoOffsetRing` (HP-STI-018 Phase D, specs/plans/hp-sti-018-turning-satin.md
 // §2.3/§4) : anneaux concentriques (`build_turning_satin_sections`), pour les
-// formes au squelette inexploitable (rondes/larges). Comme `AxisStation`
-// aujourd'hui, `SatinColumn::method` n'est pas encore peuplé différemment par
-// source dans `to_satin_column`/`satin_column_view` (le champ reste au
-// défaut `AxisStation` quelle que soit la méthode réellement employée, y
-// compris pour `build_annular_sections` déjà en production) — ce champ
-// existe pour que `satin_planning` puisse distinguer les méthodes une fois
-// le report réellement câblé, sans nouveau bris d'API ; non câblé ici
-// (hors périmètre de ce lot, cf. le rapport de livraison).
-enum class RailConstructionMethod : std::uint8_t {
-    AxisStation,
-    IsoOffsetRing,
-    ContourCorrespondence
-};
-
+// formes au squelette inexploitable (rondes/larges) ou les anneaux a trou
+// unique. `SatinColumnGeometry` et `ParametricSatinObject` portent cette
+// provenance, que `satin_column_view` projette sans inference par la forme.
 // Vue NORMALISÉE et EN LECTURE SEULE d'une colonne satin déjà construite par
 // `build_satin_columns` (§ refonte décomposition topologique). Ne remplace
 // NI `SatinColumnGeometry` NI `ParametricSatinObject` — les deux restent les

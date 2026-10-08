@@ -804,6 +804,14 @@ plus.
   indépendamment, mais rien ne les relie : une forme large/ronde refusée par
   l'auto-satin tombe en tatami à **angle fixe** (ou sans repli du tout),
   jamais en direction tournante.
+- Recherche brevets : EP0761860B1 motive les axes/lignes caractéristiques et
+  orientations interpolées ; US6390005B1 motive la vigilance sur l'espacement
+  des points en virage. Voir `docs/source/patent-research.md`.
+- État R&D 2026-10 : le satin tournant `IsoOffsetRing` existe pour les formes
+  compactes/anneaux et expose désormais sa provenance via
+  `RailConstructionMethod::IsoOffsetRing` dans `satin_column_view`, ce qui évite
+  aux consommateurs de confondre anneau iso-offset et colonne issue d'un axe
+  médian. Reste expérimental, sans validation machine.
 - Hatch : Turning satin / Complex turning — le remplissage **satin lui-même**
   suit la courbure (la direction du point tourne), sans jamais changer de
   type de point.
@@ -813,11 +821,14 @@ plus.
   mode satin tournant (zigzag entre deux rails radiaux courbes) pour une
   parité réelle avec Hatch. Valider sur cercle, disque, pétale.
 - Modules : `libs/autodigitize`, `libs/stitch_generation`, `libs/auto_satin`
-  si (b).
+  si (b), `libs/satin_coverage` pour valider la couverture et les reliquats.
 - Acceptation : un disque de 15 mm et un pétale produisent un remplissage
   dont la direction suit la courbure (métrique : régularité de la direction
   des fils, cf. HP-ENG-009) et ne tombent jamais silencieusement sur un
   tatami à angle fixe.
+- Suite recommandée : traiter la dette HP-STI-018 Phase B.5b (`extend_tip`
+  direction-aware) avant tout cutover plus large ; ne pas prolonger SGSD comme
+  stratégie principale sans preuve de couverture sur le corpus.
 
 ### HP-STI-018.a — Assistant de guides directionnels par squelette [P1] — ☐ À faire
 - Contexte : le remplissage directionnel existe déjà (`DirectionalFillParams`

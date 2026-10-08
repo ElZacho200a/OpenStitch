@@ -37,6 +37,7 @@ CHAPTERS = [
     "auto-numerisation",
     "stitch-generation", "moteur-de-points", "satin", "tatami", "directional-fill",
     "stitch-editing",
+    "patent-research",
     "palettes-and-threads", "simulation", "analysis-and-validation",
     "dst-format", "project-format", "architecture", "module-reference",
     "data-model", "algorithms", "build-system", "developer-guide", "testing",

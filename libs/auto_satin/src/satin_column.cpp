@@ -466,6 +466,7 @@ build_ring_band_sections(Poly outer, Poly inner, const std::vector<Poly>& fullRe
         railA.reserve(static_cast<std::size_t>(perSection + 1));
         railB.reserve(static_cast<std::size_t>(perSection + 1));
         SatinColumnGeometry column;
+        column.method = RailConstructionMethod::IsoOffsetRing;
         column.section_index = static_cast<std::uint32_t>(section);
         column.section_count = 4;
         column.start_junction = static_cast<std::uint32_t>(section);
@@ -2994,6 +2995,7 @@ template <typename Column> SatinColumn to_satin_column(const Column& col) {
     out.rungs = col.rungs;
     out.start_junction = col.start_junction;
     out.end_junction = col.end_junction;
+    out.method = col.method;
     out.mean_width_um = col.mean_width_um;
     out.length_um = col.length_um;
     if (!out.rungs.empty()) {

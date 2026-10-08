@@ -2,11 +2,11 @@
 
 - **PDF** : `docs/build/OpenStitch-Studio-Documentation.pdf`
 - **Existe** : oui
-- **Pages** : 177
-- **Taille** : 801.8 Kio (821021 octets)
+- **Pages** : 185
+- **Taille** : 840.3 Kio (860422 octets)
 - **Chaîne** : python-markdown -> HTML/CSS -> xhtml2pdf (reportlab), SVG via svglib
 - **Commande** : `docs\scripts\build-docs.ps1` (ou `python docs/scripts/build-docs.py`)
-- **Chapitres produits** : 35
+- **Chapitres produits** : 36
 
 ## Chapitres
 - À propos de ce document
@@ -25,6 +25,7 @@
 - Remplissage tatami
 - Remplissage directionnel
 - Retouche des points et de la géométrie
+- Recherche brevets broderie
 - Palettes et fils
 - Simulation de couture
 - Analyse et validation
