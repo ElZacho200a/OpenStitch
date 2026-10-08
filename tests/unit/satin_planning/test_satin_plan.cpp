@@ -184,10 +184,9 @@ TEST_CASE("build_satin_sections : mode direct -- aucune subdivision SGSD sur une
     auto_satin::SatinColumnsParameters params;
     params.geometry_mode = auto_satin::SatinGeometryMode::Parametric;
 
-    const auto report =
-        build_satin_sections(shape("t"), params, Micrometers{400}, Micrometers{0}, true,
-                             Micrometers{12'000}, {}, Micrometers{48'000},
-                             SatinSectionBuildMode::DirectColumns);
+    const auto report = build_satin_sections(shape("t"), params, Micrometers{400}, Micrometers{0},
+                                             true, Micrometers{12'000}, {}, Micrometers{48'000},
+                                             SatinSectionBuildMode::DirectColumns);
 
     CHECK_FALSE(report.used_sgsd);
     CHECK_FALSE(report.sections.empty());

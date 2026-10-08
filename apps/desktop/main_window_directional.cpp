@@ -18,6 +18,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <iterator>
 
 #include "app_theme.hpp"
 #include "main_window.hpp"
@@ -112,6 +113,12 @@ void MainWindow::buildDirectionalActions(QMenu* embMenu) {
            "clic droit pour supprimer (D)."));
     connect(directionGuideModeAct_, &QAction::toggled, this,
             &MainWindow::onDirectionGuideModeToggled);
+    autoDirectionGuideAct_ = embMenu->addAction(tr("Generer un guide depuis la forme"));
+    autoDirectionGuideAct_->setObjectName(QStringLiteral("action_autoDirectionGuide"));
+    autoDirectionGuideAct_->setToolTip(
+        tr("Calcule un guide de direction editable depuis l'axe medial de la forme."));
+    connect(autoDirectionGuideAct_, &QAction::triggered, this,
+            &MainWindow::generateDirectionGuideFromShape);
     const auto startDrawing = [this](Tool tool) {
         if (!directionGuideModeAct_->isChecked()) {
             directionGuideModeAct_->setChecked(true);
@@ -164,6 +171,63 @@ void MainWindow::onDirectionGuideModeToggled(bool on) {
     }
     displayImage(processed_);
     updateActions();
+}
+
+void MainWindow::generateDirectionGuideFromShape() {
+    auto* emb = resolveSelectedEmbroidery();
+    const auto* source = emb != nullptr ? project_.findObject(emb->source_vector) : nullptr;
+    if (emb == nullptr || source == nullptr || source->paths.empty() ||
+        !(emb->is_tatami() || emb->is_directional())) {
+        return;
+    }
+
+    std::vector<geometry::Path> generated;
+    for (const auto& set : source->paths) {
+        auto guides = stitch_generation::directional_guides_from_region(set);
+        generated.insert(generated.end(), std::make_move_iterator(guides.begin()),
+                         std::make_move_iterator(guides.end()));
+    }
+    if (generated.empty()) {
+        QMessageBox::information(
+            this, tr("Guide impossible"),
+            tr("Aucun axe exploitable n'a pu etre construit pour cette forme."));
+        return;
+    }
+
+    document::DirectionalFillParams params;
+    if (const auto* directional = std::get_if<document::DirectionalFillParams>(&emb->params)) {
+        params = *directional;
+    } else {
+        auto converted = directionalParamsFor(*emb);
+        if (!converted) {
+            QMessageBox::warning(this, tr("Conversion impossible"),
+                                 tr("Aucun contour source pour le remplissage directionnel."));
+            return;
+        }
+        params = std::move(*converted);
+        params.guides.clear();
+    }
+    params.guides.insert(params.guides.end(), std::make_move_iterator(generated.begin()),
+                         std::make_move_iterator(generated.end()));
+
+    const ObjectId target = emb->id;
+    if (emb->is_directional()) {
+        undoStack_.execute(std::make_unique<commands::EditDirectionalFillCommand>(
+                               target, std::move(params), "Generer un guide de direction"),
+                           project_);
+    } else {
+        undoStack_.execute(std::make_unique<commands::ConvertFillGroupCommand>(
+                               target, std::move(params), "Generer un guide de direction"),
+                           project_);
+    }
+    showStitchesAct_->setChecked(true);
+    refreshImage();
+    if (const auto* updated = project_.findEmbroidery(target);
+        updated != nullptr && updated->is_directional() && !directionGuideModeAct_->isChecked()) {
+        directionGuideModeAct_->setChecked(true);
+    }
+    updateActions();
+    statusBar()->showMessage(tr("Guide de direction genere depuis la forme."));
 }
 
 void MainWindow::addDirectionGuidePoint(QPointF posMm) {
@@ -307,6 +371,11 @@ void MainWindow::updateDirectionGuideActions() {
         displayImage(processed_);
     }
     directionGuideModeAct_->setEnabled(context);
+    if (autoDirectionGuideAct_ != nullptr) {
+        const bool canGenerate = emb != nullptr && (emb->is_tatami() || emb->is_directional()) &&
+                                 project_.findObject(emb->source_vector) != nullptr;
+        autoDirectionGuideAct_->setEnabled(canGenerate);
+    }
     drawDirectionGuideAct_->setEnabled(context);
     drawBreakLineAct_->setEnabled(context);
 }

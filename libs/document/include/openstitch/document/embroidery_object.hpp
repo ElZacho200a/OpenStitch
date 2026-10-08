@@ -60,11 +60,11 @@ struct DirectionalFillParams {
     Micrometers inset{200};           // retrait du bord (compensation de contour)
     int stagger{2};                   // lignes avant répétition de la phase des pénétrations
     // Sous-couches (mêmes réglages et mêmes générateurs que le tatami).
-    bool underlay_edge{false};       // contour rentré
-    bool underlay_parallel{false};   // rangées droites perpendiculaires à la direction moyenne
-    Micrometers underlay_inset{600}; // retrait de la sous-couche de contour
+    bool underlay_edge{false};           // contour rentré
+    bool underlay_parallel{false};       // rangées droites perpendiculaires à la direction moyenne
+    Micrometers underlay_inset{600};     // retrait de la sous-couche de contour
     Micrometers underlay_spacing{2'000}; // écart des rangées de sous-couche
-    bool hidden_underpath{true}; // liaisons cousues cachées (au lieu de sauts) si trajet valide
+    bool hidden_underpath{true};     // liaisons cousues cachées (au lieu de sauts) si trajet valide
     Micrometers sector_overlap{250}; // chevauchement le long des ruptures (Phase 2)
     // Aspect « fait main » (Phase 3) : longueurs irrégulières, pénétrations
     // imbriquées, légère ondulation de la direction. Pseudo-aléatoire à graine
@@ -119,7 +119,7 @@ struct SatinParams {
     Micrometers density{400};
     Micrometers pull_compensation{0};
     bool center_underlay{true};
-    Micrometers max_width{9'000}; // au-delà, avertissement (satin trop large -> tatami)
+    Micrometers max_width{9'000};       // au-delà, avertissement (satin trop large -> tatami)
     Micrometers max_width_hard{48'000}; // plafond géométrique avant refus du corridor
 
     // Lot 3 — finitions (défauts = comportement inchangé).

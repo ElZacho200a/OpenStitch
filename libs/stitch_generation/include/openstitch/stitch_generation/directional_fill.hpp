@@ -95,6 +95,19 @@ directional_field_preview(const geometry::PathSet& region,
 // la forme par le centre de sa boîte englobante, pour que le résultat
 // initial reproduise l'orientation du tatami. `seed` fixe la graine de
 // l'aspect fait main (typiquement l'id de l'objet).
+// Assistant de guides : construit une courbe guide ouverte depuis l'axe medial
+// de la region (pipeline auto-satin : rasterisation, Zhang-Suen,
+// SkeletonGraph). Ne genere aucun satin ; le resultat va directement dans
+// DirectionalFillParams::guides.
+struct DirectionalGuideOptions {
+    Micrometers min_path_length{1'500};
+    Micrometers node_spacing{2'500};
+};
+
+[[nodiscard]] std::vector<geometry::Path>
+directional_guides_from_region(const geometry::PathSet& region,
+                               const DirectionalGuideOptions& options = {});
+
 [[nodiscard]] document::DirectionalFillParams
 directional_from_tatami(const document::TatamiParams& tatami,
                         const std::vector<geometry::PathSet>& shape, std::uint32_t seed);

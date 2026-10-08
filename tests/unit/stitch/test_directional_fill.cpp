@@ -133,6 +133,40 @@ private:
 
 // --- Phase 1 : champ et lignes de courant ------------------------------------
 
+TEST_CASE("directional guides: medial skeleton proposes one editable guide") {
+    const auto region = rect_mm(0, 0, 40, 10);
+    DirectionalGuideOptions options;
+    options.node_spacing = Micrometers{5'000};
+
+    const auto guides = directional_guides_from_region(region, options);
+
+    REQUIRE(guides.size() == 1);
+    const auto& guide = guides.front();
+    REQUIRE_FALSE(guide.closed);
+    REQUIRE(guide.nodes.size() >= 2);
+
+    std::int32_t minX = guide.nodes.front().pos.x.value;
+    std::int32_t maxX = minX;
+    std::int32_t minY = guide.nodes.front().pos.y.value;
+    std::int32_t maxY = minY;
+    for (const auto& node : guide.nodes) {
+        minX = std::min(minX, node.pos.x.value);
+        maxX = std::max(maxX, node.pos.x.value);
+        minY = std::min(minY, node.pos.y.value);
+        maxY = std::max(maxY, node.pos.y.value);
+    }
+    CHECK(maxX - minX > 25'000);
+    CHECK(maxY - minY < 3'000);
+}
+
+TEST_CASE("directional guides: minimum length can reject ambiguous tiny skeletons") {
+    const auto region = rect_mm(0, 0, 4, 4);
+    DirectionalGuideOptions options;
+    options.min_path_length = Micrometers{10'000};
+
+    CHECK(directional_guides_from_region(region, options).empty());
+}
+
 TEST_CASE("directional: horizontal guide matches tatami at 0 deg within 5 percent") {
     const auto region = rect_mm(0, 0, 30, 20);
     auto dp = base_params();

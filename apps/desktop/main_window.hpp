@@ -227,6 +227,7 @@ private slots:
     // Mode « Guides de direction » : affiche l'aperçu du champ, les guides et
     // les lignes de rupture de l'objet ciblé, avec poignées déplaçables.
     void onDirectionGuideModeToggled(bool on);
+    void generateDirectionGuideFromShape();
     void finishDirectionGuide();
     void cancelDirectionGuideDraw();
     void removeLastDirectionGuidePoint();
@@ -757,6 +758,7 @@ private:
     // à l'activation, jamais suivi automatiquement (même règle que les modes
     // satin). Tracé en cours : points posés (repère modèle) + aperçu.
     QAction* directionGuideModeAct_{nullptr};
+    QAction* autoDirectionGuideAct_{nullptr};
     QAction* drawDirectionGuideAct_{nullptr};
     QAction* drawBreakLineAct_{nullptr};
     std::optional<ObjectId> directionGuideTarget_;
