@@ -27,7 +27,7 @@ struct SequenceMetricsOptions {
 
 struct SequenceMetrics {
     std::size_t stitches{0};
-    std::size_t moves{0}; // arrivées de saut (une suite de Jump = un déplacement)
+    std::size_t moves{0};                   // arrivées de saut (une suite de Jump = un déplacement)
     std::size_t long_moves_without_trim{0}; // déplacements > trim_threshold sans Trim
     std::size_t trims{0};
     std::size_t color_changes{0};

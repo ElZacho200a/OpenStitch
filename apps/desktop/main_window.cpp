@@ -4882,6 +4882,11 @@ void MainWindow::onCanvasContextMenu(QPointF posMm, QPoint globalPos) {
             auto* rot = menu.addAction(tr("Orientation du remplissage…"));
             connect(rot, &QAction::triggered, this, &MainWindow::changeFillAngle);
         }
+        if (emb->is_tatami() || emb->is_directional()) {
+            auto* autoGuide = menu.addAction(tr("Generer un guide depuis la forme"));
+            connect(autoGuide, &QAction::triggered, this,
+                    &MainWindow::generateDirectionGuideFromShape);
+        }
         if (emb->is_directional()) {
             auto* guides = menu.addAction(tr("Guides de direction…"));
             connect(guides, &QAction::triggered, this, [this, embId] {
@@ -5739,9 +5744,11 @@ void MainWindow::updateContextToolbar() {
             contextToolbar_->addSeparator();
             auto* rot = contextToolbar_->addAction(tr("Orientation…"));
             connect(rot, &QAction::triggered, this, &MainWindow::changeFillAngle);
+            contextToolbar_->addAction(autoDirectionGuideAct_);
         }
         if (emb->is_directional()) {
             contextToolbar_->addSeparator();
+            contextToolbar_->addAction(autoDirectionGuideAct_);
             contextToolbar_->addAction(directionGuideModeAct_);
             if (directionGuideModeAct_->isChecked()) {
                 contextToolbar_->addAction(drawDirectionGuideAct_);

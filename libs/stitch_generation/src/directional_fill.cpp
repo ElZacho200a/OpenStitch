@@ -9,10 +9,12 @@
 #include <numbers>
 #include <utility>
 
+#include "openstitch/auto_satin/auto_satin.hpp"
 #include "openstitch/geometry/boolean.hpp"
 #include "openstitch/geometry/moments.hpp"
 #include "openstitch/geometry/offset.hpp"
 #include "openstitch/geometry/polyline.hpp"
+#include "openstitch/geometry/primitives.hpp"
 
 namespace openstitch::stitch_generation {
 
@@ -797,7 +799,7 @@ struct Traced {
     std::vector<P2> pts;
     std::vector<double> u; // coordonnée d'arc alignée sur la ligne mère (décalage des pénétrations)
     int depth{0};          // rang relatif (±1 d'une ligne à sa voisine)
-    double seedU{0.0}; // u de la graine (abscisses de la grille relatives à elle)
+    double seedU{0.0};     // u de la graine (abscisses de la grille relatives à elle)
 };
 
 // Grille de séparation : cellule = distance de séparation ; chaque point
@@ -1725,6 +1727,176 @@ document::DirectionalFillParams directional_from_tatami(const document::TatamiPa
                    {to_um(c + dir * (0.8 * pmax)), geometry::NodeType::Corner, {}, {}}};
     d.guides.push_back(std::move(guide));
     return d;
+}
+
+std::vector<geometry::Path> directional_guides_from_region(const geometry::PathSet& region,
+                                                           const DirectionalGuideOptions& options) {
+    std::vector<geometry::Path> out;
+
+    auto_satin::AutoSatinParameters params;
+    auto analysis = auto_satin::analyze_region(region, params);
+    if (!analysis) {
+        return out;
+    }
+
+    const auto& graph = analysis->debug.graph;
+    if (graph.edges.empty()) {
+        return out;
+    }
+
+    std::vector<std::vector<std::size_t>> incident(graph.nodes.size());
+    for (std::size_t i = 0; i < graph.edges.size(); ++i) {
+        const auto& edge = graph.edges[i];
+        if (edge.from < incident.size()) {
+            incident[edge.from].push_back(i);
+        }
+        if (edge.to < incident.size()) {
+            incident[edge.to].push_back(i);
+        }
+    }
+
+    const auto orientedEdge = [](const auto& edge, std::uint32_t from) {
+        std::vector<Vec2um> pts = edge.centerline;
+        if (from == edge.to) {
+            std::reverse(pts.begin(), pts.end());
+        }
+        return pts;
+    };
+    const auto otherNode = [](const auto& edge, std::uint32_t from) {
+        return from == edge.from ? edge.to : edge.from;
+    };
+    const auto pointKey = [](Vec2um p) { return std::pair(p.x.value, p.y.value); };
+    const auto pathKey = [&](const std::vector<Vec2um>& pts) {
+        if (pts.empty()) {
+            return std::pair(std::pair(0, 0), std::pair(0, 0));
+        }
+        const auto a = pointKey(pts.front());
+        const auto b = pointKey(pts.back());
+        return std::make_pair(std::min(a, b), std::max(a, b));
+    };
+    const auto pathLength = [](const std::vector<Vec2um>& pts) {
+        double len = 0.0;
+        for (std::size_t i = 1; i < pts.size(); ++i) {
+            len += length_um(pts[i] - pts[i - 1]);
+        }
+        return len;
+    };
+
+    std::vector<Vec2um> best;
+    double bestLen = -1.0;
+    std::vector<char> used(graph.edges.size(), 0);
+    std::vector<Vec2um> current;
+
+    const auto consider = [&] {
+        const double len = pathLength(current);
+        if (current.size() >= 2 && (len > bestLen + 1e-6 || (std::abs(len - bestLen) <= 1e-6 &&
+                                                             pathKey(current) < pathKey(best)))) {
+            bestLen = len;
+            best = current;
+        }
+    };
+
+    const auto dfs = [&](auto&& self, std::uint32_t node) -> void {
+        bool extended = false;
+        for (const std::size_t edgeIndex : incident[node]) {
+            if (used[edgeIndex]) {
+                continue;
+            }
+            const auto& edge = graph.edges[edgeIndex];
+            auto pts = orientedEdge(edge, node);
+            if (pts.size() < 2) {
+                continue;
+            }
+            used[edgeIndex] = 1;
+            const std::size_t oldSize = current.size();
+            if (current.empty()) {
+                current = pts;
+            } else {
+                current.insert(current.end(), pts.begin() + 1, pts.end());
+            }
+            extended = true;
+            self(self, otherNode(edge, node));
+            current.resize(oldSize);
+            used[edgeIndex] = 0;
+        }
+        if (!extended) {
+            consider();
+        }
+    };
+
+    std::vector<std::uint32_t> starts;
+    for (std::size_t i = 0; i < incident.size(); ++i) {
+        if (incident[i].size() != 2) {
+            starts.push_back(static_cast<std::uint32_t>(i));
+        }
+    }
+    if (starts.empty() || graph.edges.size() > 64) {
+        const auto* longest = &graph.edges.front();
+        for (const auto& edge : graph.edges) {
+            if (edge.length_um > longest->length_um ||
+                (edge.length_um == longest->length_um && edge.id < longest->id)) {
+                longest = &edge;
+            }
+        }
+        best = longest->centerline;
+        bestLen = pathLength(best);
+    } else {
+        for (const std::uint32_t node : starts) {
+            current.clear();
+            dfs(dfs, node);
+        }
+    }
+
+    const double minLen =
+        static_cast<double>(std::max<std::int32_t>(0, options.min_path_length.value));
+    if (best.size() < 2 || bestLen < minLen) {
+        return out;
+    }
+
+    best.erase(std::unique(best.begin(), best.end()), best.end());
+    if (best.size() < 2) {
+        return out;
+    }
+
+    const double spacing =
+        static_cast<double>(std::max<std::int32_t>(500, options.node_spacing.value));
+    std::vector<Vec2um> sampled;
+    sampled.push_back(best.front());
+    double next = spacing;
+    double traveled = 0.0;
+    for (std::size_t i = 1; i < best.size(); ++i) {
+        const Vec2um a = best[i - 1];
+        const Vec2um b = best[i];
+        const double seg = length_um(b - a);
+        if (seg < 1e-6) {
+            continue;
+        }
+        while (traveled + seg >= next) {
+            const double t = (next - traveled) / seg;
+            const P2 pa = to_p2(a);
+            const P2 pb = to_p2(b);
+            sampled.push_back(to_um(pa + (pb - pa) * t));
+            next += spacing;
+        }
+        traveled += seg;
+    }
+    if (sampled.back() != best.back()) {
+        sampled.push_back(best.back());
+    }
+    if (sampled.size() < 2) {
+        return out;
+    }
+
+    geometry::Path guide;
+    if (sampled.size() == 2) {
+        guide.closed = false;
+        guide.nodes = {{sampled[0], geometry::NodeType::Corner, {}, {}},
+                       {sampled[1], geometry::NodeType::Corner, {}, {}}};
+    } else {
+        guide = geometry::smooth_open_path(sampled);
+    }
+    out.push_back(std::move(guide));
+    return out;
 }
 
 } // namespace openstitch::stitch_generation

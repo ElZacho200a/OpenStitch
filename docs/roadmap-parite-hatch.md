@@ -819,6 +819,53 @@ plus.
   des fils, cf. HP-ENG-009) et ne tombent jamais silencieusement sur un
   tatami à angle fixe.
 
+### HP-STI-018.a — Assistant de guides directionnels par squelette [P1] — ☐ À faire
+- Contexte : le remplissage directionnel existe déjà (`DirectionalFillParams`
+  avec `guides` et `break_lines`), mais l'utilisateur doit tracer ses guides à
+  la main. Le moteur auto-satin possède déjà une brique déterministe de
+  médiane de forme : rasterisation → distance field → squelette Zhang-Suen
+  (`thin_zhang_suen`) → `SkeletonGraph` avec `SkeletonEdge::centerline`.
+- Objectif : proposer une action d'aide qui construit automatiquement un ou
+  plusieurs guides directionnels depuis la zone sélectionnée, afin de créer un
+  remplissage directionnel exploitable sans devoir dessiner le premier guide à
+  la main. Cette entrée ne doit PAS réintroduire de satin automatique dans
+  l'auto-broderie : elle sert uniquement d'assistant pour le type
+  directionnel.
+- Première étape obligatoire avant code : ouvrir une PR de plan/design depuis
+  `origin/main` (ex. `feature/directional-auto-guides`) et documenter les
+  décisions ci-dessous. Ne pas commencer par l'UI.
+- À faire cœur : ajouter une fonction pure du type
+  `directional_guides_from_region(region, options) -> vector<Path>` qui :
+  réutilise `auto_satin::analyze_region` / `SkeletonGraph`, filtre les arêtes
+  trop courtes, choisit un chemin principal déterministe pour les formes
+  simples, lisse/ré-échantillonne légèrement la centerline et retourne des
+  `geometry::Path` ouverts compatibles avec `DirectionalFillParams::guides`.
+- À faire UI : action sur un objet tatami ou directionnel sélectionné,
+  probablement « Générer un guide de direction depuis la forme ». Sur tatami,
+  convertir en remplissage directionnel puis ajouter le guide ; sur directionnel,
+  proposer au minimum Ajouter vs Remplacer les guides existants.
+- Décisions à trancher dans le plan avant implémentation : (1) forme branchée =
+  un guide principal ou plusieurs guides ? (2) guides existants = remplacer,
+  ajouter ou demander ? (3) action disponible depuis tatami uniquement,
+  directionnel uniquement, ou les deux ? (4) cas cercle/quasi rond = refus
+  propre, guide ambigu, ou plusieurs guides radiaux ?
+- Modules : `libs/auto_satin` (lecture squelette existant), nouveau helper
+  plutôt côté `libs/stitch_generation` ou petit module dédié sans Qt,
+  `libs/document` seulement si options persistantes nécessaires,
+  `libs/commands` + `apps/desktop/main_window_directional.cpp` pour l'action
+  annulable.
+- Tests cœur : rectangle long → guide central droit ; forme courbe simple →
+  guide courbe dans l'axe ; T/Y → résultat déterministe documenté ; cercle →
+  refus ou diagnostic stable ; aucun guide hors de la région ; sortie
+  identique entre deux exécutions.
+- Tests desktop : action disponible sur objet directionnel/tatami selon la
+  décision ; guide ajouté/remplacé ; undo/redo exact ; aucune mutation si la
+  génération échoue.
+- Acceptation : un utilisateur sélectionne une zone remplissable, déclenche
+  l'assistant, obtient un remplissage directionnel avec au moins un guide
+  éditable, puis peut ajuster ce guide avec les outils existants ; toute la
+  mutation est une seule commande annulable.
+
 ### HP-STI-019 — Broderie à main levée (freehand) [P2] — ☐ À faire
 - Hatch : dessiner directement un point de contour, triple, satin à la souris
   ou au stylet (pression → largeur).

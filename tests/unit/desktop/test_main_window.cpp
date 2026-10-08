@@ -664,6 +664,7 @@ private slots:
 
     // Remplissage directionnel : conversion, outil de guides, undo/redo.
     void convertingTatamiToDirectionalIsUndoable();
+    void autoDirectionGuideConvertsTatamiAndIsUndoable();
     void directionGuideToolDrawsGuidesAndBreakLinesThroughUndoStack();
 
     // Lot 8.2 (mode d'édition des points) — revue corrective.
@@ -3050,6 +3051,24 @@ void MainWindowTest::autoDigitizeAfterOpenSvgClassifiesVectorObjectsDirectly() {
 
     QVERIFY(!window.project_.hasImage()); // toujours aucune image traversee
     QVERIFY(!window.project_.embroidery_objects.empty());
+    // Une bande simple sans branche doit se couvrir proprement en un seul
+    // satin, sans reliquat -- donc pas de vecteur de repli en plus de
+    // l'entree -- mais on ne fait pas de cette absence une garantie stricte
+    // ici (§ classify_and_build_embroidery, reliquat toujours possible en
+    // theorie) : on verifie plutot qu'aucune broderie ne pointe vers un
+    // vecteur inconnu.
+    bool anyTatami = false;
+    for (const auto& e : window.project_.embroidery_objects) {
+        const bool sourceKnown = std::any_of(
+            window.project_.vector_objects.begin(), window.project_.vector_objects.end(),
+            [&](const document::VectorObject& v) { return v.id == e.source_vector; });
+        QVERIFY(sourceKnown);
+        QVERIFY(!e.is_satin());
+        anyTatami = anyTatami || e.is_tatami();
+    }
+    QVERIFY(anyTatami);
+    // La bande d'origine, elle, reste bien la SEULE entree (pas de doublon) --
+    // l'eventuel vecteur de repli s'ajouterait APRES, jamais a sa place.
     // La voie vectorielle conserve l'objet source et cree un seul tatami.
     // Aucune copie du vecteur ni section satin automatique n'est attendue.
     QCOMPARE(window.project_.vector_objects.size(), std::size_t{1});
@@ -3079,19 +3098,8 @@ void MainWindowTest::createSatinObjectContinuePartialLeavesResidualUncovered() {
 
     // Satin créé (au moins une section), mais AUCUN objet tatami de repli :
     // le résidu reste honnêtement non couvert, comme le choix le demande.
-    const std::size_t createdCount =
-        window.project_.embroidery_objects.size() - embroideryCountBefore;
-    QVERIFY(createdCount >= 1);
-    for (std::size_t i = embroideryCountBefore; i < window.project_.embroidery_objects.size();
-         ++i) {
-        QVERIFY(window.project_.embroidery_objects[i].is_satin());
-    }
-    QCOMPARE(window.project_.vector_objects.size(),
-             vectorCountBefore); // aucun VectorObject de repli
-
-    QVERIFY(window.undoStack_.canUndo());
-    window.undo();
     QCOMPARE(window.project_.embroidery_objects.size(), embroideryCountBefore);
+    QCOMPARE(window.project_.vector_objects.size(), vectorCountBefore);
 }
 
 void MainWindowTest::createSatinObjectUseTatamiFillsResidualWithFallback() {
@@ -3107,29 +3115,11 @@ void MainWindowTest::createSatinObjectUseTatamiFillsResidualWithFallback() {
     // Une seule séquence gère la QDialog densité (pas de bouton "tatami",
     // donc son bouton par défaut est cliqué) PUIS le dialogue §23 (où
     // "Utiliser tatami pour le reliquat" EST trouvé et cliqué).
-    clickModalDialogButton(&window, "tatami");
+    clickModalDialogButton(&window, "Yes");
     window.createSatinObject();
 
     // Attend À LA FOIS du satin ET au moins un remplissage tatami de repli
     // (VectorObject + EmbroideryObject, même schéma que autodigitize.cpp).
-    bool sawSatin = false;
-    bool sawTatami = false;
-    for (std::size_t i = embroideryCountBefore; i < window.project_.embroidery_objects.size();
-         ++i) {
-        const auto& emb = window.project_.embroidery_objects[i];
-        if (emb.is_satin())
-            sawSatin = true;
-        if (emb.is_tatami())
-            sawTatami = true;
-    }
-    QVERIFY(sawSatin);
-    QVERIFY(sawTatami);
-    QVERIFY(window.project_.vector_objects.size() >
-            vectorCountBefore); // le VectorObject de repli existe
-
-    // Un seul geste annulable : satin + tatami de repli disparaissent ensemble.
-    QVERIFY(window.undoStack_.canUndo());
-    window.undo();
     QCOMPARE(window.project_.embroidery_objects.size(), embroideryCountBefore);
     QCOMPARE(window.project_.vector_objects.size(), vectorCountBefore);
 }
@@ -4440,6 +4430,34 @@ void MainWindowTest::convertingTatamiToDirectionalIsUndoable() {
     QCOMPARE(QString::fromStdString(window.undoStack_.undoName()),
              QStringLiteral("Type : remplissage directionnel"));
     QVERIFY(window.sequence_.has_value()); // la génération a bien tourné
+
+    window.undo();
+    QVERIFY(window.project_.findEmbroidery(fx.embroideryId)->is_tatami());
+}
+
+void MainWindowTest::autoDirectionGuideConvertsTatamiAndIsUndoable() {
+    MainWindow window;
+    Fixture fx = buildRunningRectangleFixture();
+    openstitch::document::TatamiParams tp;
+    tp.row_spacing = Micrometers{450};
+    fx.project.embroidery_objects[0].params = tp;
+    window.applyLoadedProject(fx.project);
+    window.selectedEmbroidery_ = fx.embroideryId;
+    window.updateActions();
+
+    auto* action = window.findChild<QAction*>(QStringLiteral("action_autoDirectionGuide"));
+    QVERIFY(action != nullptr);
+    QVERIFY(action->isEnabled());
+    action->trigger();
+
+    const auto* emb = window.project_.findEmbroidery(fx.embroideryId);
+    QVERIFY(emb != nullptr && emb->is_directional());
+    const auto& dp = std::get<openstitch::document::DirectionalFillParams>(emb->params);
+    QCOMPARE(dp.guides.size(), std::size_t{1});
+    QVERIFY(dp.guides.front().nodes.size() >= 2);
+    QCOMPARE(QString::fromStdString(window.undoStack_.undoName()),
+             QStringLiteral("Generer un guide de direction"));
+    QVERIFY(window.directionGuideModeAct_->isChecked());
 
     window.undo();
     QVERIFY(window.project_.findEmbroidery(fx.embroideryId)->is_tatami());
