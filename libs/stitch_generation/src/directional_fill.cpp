@@ -799,7 +799,7 @@ struct Traced {
     std::vector<P2> pts;
     std::vector<double> u; // coordonnée d'arc alignée sur la ligne mère (décalage des pénétrations)
     int depth{0};          // rang relatif (±1 d'une ligne à sa voisine)
-    double seedU{0.0};     // u de la graine (abscisses de la grille relatives à elle)
+    double seedU{0.0}; // u de la graine (abscisses de la grille relatives à elle)
 };
 
 // Grille de séparation : cellule = distance de séparation ; chaque point
