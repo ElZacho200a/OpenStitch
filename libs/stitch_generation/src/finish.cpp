@@ -206,9 +206,14 @@ stitch::StitchSequence finish_sequence(const stitch::StitchSequence& sequence,
                 hasTrim = hasTrim || cmds[k].type == CommandType::Trim;
             }
             const bool boundary = last.source != first.source;
-            const bool needTrim =
-                !hasTrim && (length_um(first.pos - last.pos) > f.trim_threshold.value ||
-                             (colorChange && f.trim_before_color_change));
+            // Entre deux objets distincts, tout déplacement réel est coupé : le
+            // seuil ne protège que les sauts internes à un objet. Sans cela, un
+            // écart de moins de `trim_threshold` entre deux formes laissait un
+            // fil visible tendu d'une forme à l'autre (correctif 2026-10-08).
+            const double travel = length_um(first.pos - last.pos);
+            const bool objectGap = boundary && !colorChange && travel > 0.0;
+            const bool needTrim = !hasTrim && (travel > f.trim_threshold.value || objectGap ||
+                                               (colorChange && f.trim_before_color_change));
             const bool cut = needTrim || hasTrim || colorChange;
             if ((boundary || cut) && !ends_with_lock(cmds, *prev)) {
                 append(out.commands, lock_points(cmds, *prev, false, f));
