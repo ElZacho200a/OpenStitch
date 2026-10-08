@@ -62,7 +62,7 @@ important du module :
   `project.finishing` (`document::SequenceFinishing`) : tout déplacement plus
   long que `trim_threshold` (3 mm) devient point d'arrêt de sortie, `Trim`,
   déplacement, point d'arrêt d'entrée ; un changement d'objet reçoit toujours
-  un point d'arrêt de sortie et d'entrée (passe `Lock`, `lock_stitches`, posé
+  une coupe (quelle que soit la distance) et un point d'arrêt de sortie et d'entrée (passe `Lock`, `lock_stitches`, posé
   le long du point voisin du tracé) ; une coupe précède chaque changement de
   fil (`trim_before_color_change`). Un objet qui porte déjà ses verrous
   (satin `lock_start`/`lock_end`) n'est pas doublé. Elle ne modifie jamais la
