@@ -10,6 +10,7 @@
 #include "openstitch/auto_satin/shapes.hpp"
 #include "openstitch/geometry/boolean.hpp"
 #include "openstitch/satin_planning/satin_plan.hpp"
+#include "openstitch/satin_planning/satin_sections.hpp"
 
 using namespace openstitch;
 using namespace openstitch::satin_planning;
@@ -177,6 +178,20 @@ TEST_CASE("create_satin_plan : reseau en T -- decomposition automatique, intenti
     // Couverture agregee sur la region SOURCE entiere (pas seulement chaque
     // sous-region individuellement) doit rester elevee.
     CHECK(plan.aggregate_coverage->raw_coverage_ratio > 0.90);
+}
+
+TEST_CASE("build_satin_sections : mode direct -- aucune subdivision SGSD sur une forme branchee") {
+    auto_satin::SatinColumnsParameters params;
+    params.geometry_mode = auto_satin::SatinGeometryMode::Parametric;
+
+    const auto report =
+        build_satin_sections(shape("t"), params, Micrometers{400}, Micrometers{0}, true,
+                             Micrometers{12'000}, {}, Micrometers{48'000},
+                             SatinSectionBuildMode::DirectColumns);
+
+    CHECK_FALSE(report.used_sgsd);
+    CHECK_FALSE(report.sections.empty());
+    REQUIRE(report.aggregate_coverage.has_value());
 }
 
 TEST_CASE("create_satin_plan : reseau en T -- adjacence et recouvrement peuples") {

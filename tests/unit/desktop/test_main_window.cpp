@@ -726,12 +726,11 @@ private slots:
     // plutôt que sur l'heuristique naïve rails_from_contour (audit satin
     // demandé par l'utilisateur, § docs/source/satin.md).
     void createSatinObjectOnSuitableRectangleProducesOneSatinWithStitches();
-    // Planner satin récursif (`satin_planning::create_satin_plan`, § plan de
-    // refonte satin 2026-08-14) : sur une forme BRANCHÉE, createSatinObject()
-    // doit produire plusieurs sections satin (jamais un refus, jamais une
-    // seule colonne dégradée) — bout en bout depuis le VRAI chemin UI, pas
-    // seulement les tests de bibliothèque de libs/satin_planning.
-    void createSatinObjectOnBranchedShapeProducesMultipleSatinSectionsViaPlanner();
+    // Chemin direct HP-STI-018 : sur une forme BRANCHÉE, createSatinObject()
+    // doit produire les branches satin sans subdivision SGSD automatique —
+    // bout en bout depuis le VRAI chemin UI, pas seulement les tests de
+    // bibliothèque de libs/satin_planning.
+    void createSatinObjectOnBranchedShapeProducesMultipleSatinSectionsDirectly();
     // setStitchType() (conversion de type, cas satin) passe désormais par le
     // même point d'entrée unifié (autodigitize::build_satin_sections) que
     // les créations manuelles — vérifie que le résultat porte de vrais
@@ -769,8 +768,11 @@ private slots:
     void autoDigitizeDialogDoesNotSkipColoredFullFrameRegion();
     void autoDigitizeDialogSkipsNearWhiteFramingBackground();
     // Strategie « Contours » : choix de strategie, curseur de detail (defaut
-    // 50) et techniques presents dans le dialogue.
+    // 50) et techniques point droit presentes dans le dialogue.
     void autoDigitizeDialogOffersContoursStrategy();
+    // Vectorisation manuelle d'une region : expose le meme controle de detail
+    // sans forcer l'utilisateur a passer par l'auto-numerisation complete.
+    void vectorizeSelectedRegionOffersDetailSlider();
     // §23 du plan de refonte satin (2026-08-14) : le dialogue à choix
     // multiples (askAboutIncompleteSatinCoverage) remplace l'ancienne
     // information à sens unique -- un test par choix réel, bout en bout
@@ -2668,7 +2670,7 @@ void MainWindowTest::createSatinObjectOnSuitableRectangleProducesOneSatinWithSti
     QCOMPARE(window.project_.embroidery_objects.size(), embroideryCountBefore + 1);
 }
 
-void MainWindowTest::createSatinObjectOnBranchedShapeProducesMultipleSatinSectionsViaPlanner() {
+void MainWindowTest::createSatinObjectOnBranchedShapeProducesMultipleSatinSectionsDirectly() {
     MainWindow window;
     const Fixture fx = buildTShapeFixture();
     window.applyLoadedProject(fx.project);
@@ -2679,18 +2681,16 @@ void MainWindowTest::createSatinObjectOnBranchedShapeProducesMultipleSatinSectio
 
     // createSatinObject() ouvre la QDialog densité/compensation/sous-couche,
     // et potentiellement UNE SECONDE boîte modale ensuite
-    // (warnAboutIncompleteSatinCoverage()) si le planner récursif laisse un
-    // résidu significatif sur cette forme -- les deux sont acceptées au fur
+    // (warnAboutIncompleteSatinCoverage()) si la mesure de couverture laisse
+    // un résidu significatif sur cette forme -- les deux sont acceptées au fur
     // et à mesure qu'elles apparaissent.
     autoDismissModalDialogs(&window);
     window.createSatinObject();
 
-    // Intention SATIN sur une forme branchée : le planner récursif doit
-    // produire PLUSIEURS sections plutôt que refuser ou dégrader en une
-    // seule colonne (§7-8 du plan de refonte satin -- RequiresDecomposition
-    // reste une information interne, jamais une réponse finale « pas
-    // satinable »). C'est le VRAI chemin UI (MainWindow::createSatinObject),
-    // pas seulement satin_planning::create_satin_plan appelé directement.
+    // Intention SATIN sur une forme branchée : le chemin direct doit produire
+    // les sections de branche sans demander au planner récursif de subdiviser
+    // la région. C'est le VRAI chemin UI (MainWindow::createSatinObject), pas
+    // seulement `build_satin_sections(..., DirectColumns)` appelé directement.
     const std::size_t createdCount =
         window.project_.embroidery_objects.size() - embroideryCountBefore;
     QVERIFY2(
@@ -2707,7 +2707,7 @@ void MainWindowTest::createSatinObjectOnBranchedShapeProducesMultipleSatinSectio
         QVERIFY(!satin.rungs.empty());
     }
 
-    // Toute la décomposition arrive en un seul geste annulable
+    // Toute la création arrive en un seul geste annulable
     // (AddObjectBatchCommand), comme sur la forme simple.
     QVERIFY(window.undoStack_.canUndo());
     window.undo();
@@ -2917,9 +2917,14 @@ void MainWindowTest::autoDigitizeDialogOffersContoursStrategy() {
     bool seen = false;
     int detail = -1;
     bool shapesChecked = false;
+    int shapeDetail = -1;
+    bool shapesPanelEnabledBefore = false;
+    bool shapesPanelEnabledAfter = true;
     bool panelEnabledBefore = true;
     bool panelEnabledAfter = false;
     bool autoChecked = false;
+    bool runningPresent = false;
+    bool satinAbsent = false;
     QTimer::singleShot(0, &window, [&] {
         auto* dlg = qobject_cast<QDialog*>(QApplication::activeModalWidget());
         if (dlg == nullptr) {
@@ -2927,31 +2932,95 @@ void MainWindowTest::autoDigitizeDialogOffersContoursStrategy() {
         }
         auto* contours = dlg->findChild<QRadioButton*>("strategyContoursRadio");
         auto* shapes = dlg->findChild<QRadioButton*>("strategyShapesRadio");
+        auto* shapesPanel = dlg->findChild<QWidget*>("shapesPanel");
+        auto* shapeSlider = dlg->findChild<QSlider*>("shapeVectorizeDetailSlider");
         auto* slider = dlg->findChild<QSlider*>("contourDetailSlider");
         auto* panel = dlg->findChild<QWidget*>("contoursPanel");
         auto* autoRadio = dlg->findChild<QRadioButton*>("contourTechniqueAutoRadio");
-        if (contours == nullptr || shapes == nullptr || slider == nullptr || panel == nullptr ||
-            autoRadio == nullptr) {
+        auto* runningRadio = dlg->findChild<QRadioButton*>("contourTechniqueRunningRadio");
+        auto* satinRadio = dlg->findChild<QRadioButton*>("contourTechniqueSatinRadio");
+        if (contours == nullptr || shapes == nullptr || shapesPanel == nullptr ||
+            shapeSlider == nullptr || slider == nullptr || panel == nullptr || autoRadio == nullptr ||
+            runningRadio == nullptr) {
             dlg->reject();
             return;
         }
         seen = true;
         detail = slider->value();
+        shapeDetail = shapeSlider->value();
         shapesChecked = shapes->isChecked();
         autoChecked = autoRadio->isChecked();
+        runningPresent = runningRadio != nullptr;
+        satinAbsent = satinRadio == nullptr;
+        shapesPanelEnabledBefore = shapesPanel->isEnabled();
         panelEnabledBefore = panel->isEnabled();
         contours->setChecked(true);
+        shapesPanelEnabledAfter = shapesPanel->isEnabled();
         panelEnabledAfter = panel->isEnabled();
         dlg->reject();
     });
     window.autoDigitize();
     QVERIFY(seen);
     QCOMPARE(detail, 50);
+    QCOMPARE(shapeDetail, 50);
     QVERIFY(shapesChecked);
     QVERIFY(autoChecked);
+    QVERIFY(runningPresent);
+    QVERIFY(satinAbsent);
+    QVERIFY(shapesPanelEnabledBefore);
+    QVERIFY(!shapesPanelEnabledAfter);
     QVERIFY(!panelEnabledBefore);
     QVERIFY(panelEnabledAfter);
     QVERIFY(window.project_.embroidery_objects.empty()); // dialogue annule
+}
+
+void MainWindowTest::vectorizeSelectedRegionOffersDetailSlider() {
+    MainWindow window;
+    constexpr std::array<std::uint8_t, 3> fg{200, 30, 30};
+    auto project = opaqueSegmentedProject({250, 250, 250}, fg, 10, 8, 30, 22);
+
+    std::optional<RegionId> regionId;
+    for (const auto& slot : project.segmentation->region_slots) {
+        if (slot && slot->rgb == fg) {
+            regionId = slot->id;
+            break;
+        }
+    }
+    QVERIFY(regionId.has_value());
+
+    window.applyLoadedProject(project);
+    window.selectedRegion_ = *regionId;
+    window.updateActions();
+
+    bool seen = false;
+    int defaultDetail = -1;
+    QString valueAfterChange;
+    QTimer::singleShot(0, &window, [&] {
+        auto* dlg = qobject_cast<QDialog*>(QApplication::activeModalWidget());
+        if (dlg == nullptr) {
+            return;
+        }
+        auto* slider = dlg->findChild<QSlider*>("vectorizeDetailSlider");
+        auto* value = dlg->findChild<QLabel*>("vectorizeDetailValue");
+        if (slider == nullptr || value == nullptr) {
+            dlg->reject();
+            return;
+        }
+        seen = true;
+        defaultDetail = slider->value();
+        slider->setValue(100);
+        valueAfterChange = value->text();
+        dlg->accept();
+    });
+
+    window.vectorizeSelectedRegion();
+
+    QVERIFY(seen);
+    QCOMPARE(defaultDetail, 50);
+    QCOMPARE(valueAfterChange, QStringLiteral("100"));
+    QCOMPARE(window.project_.vector_objects.size(), std::size_t{1});
+    QVERIFY(window.selectedObject_.has_value());
+    QCOMPARE(*window.selectedObject_, window.project_.vector_objects.back().id);
 }
 
 void MainWindowTest::autoDigitizeAfterOpenSvgClassifiesVectorObjectsDirectly() {

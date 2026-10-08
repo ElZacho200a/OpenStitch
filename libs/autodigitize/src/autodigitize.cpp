@@ -9,31 +9,18 @@
 #include <numbers>
 #include <optional>
 #include <set>
-#include <sstream>
 #include <utility>
 
-#include "openstitch/auto_satin/satin_column.hpp"
 #include "openstitch/geometry/boolean.hpp"
 #include "openstitch/geometry/moments.hpp"
 #include "openstitch/geometry/offset.hpp"
 #include "openstitch/geometry/simplify.hpp"
 #include "openstitch/optimization/order.hpp"
-#include "openstitch/satin_planning/satin_sections.hpp"
-#include "openstitch/stitch_generation/satin.hpp"
 #include "openstitch/vectorization/vectorize.hpp"
 
 namespace openstitch::autodigitize {
 
 namespace {
-
-double perimeter_um(const geometry::Path& path) {
-    double p = 0.0;
-    const auto& n = path.nodes;
-    for (std::size_t i = 0; i < n.size(); ++i) {
-        p += length_um(n[(i + 1) % n.size()].pos - n[i].pos);
-    }
-    return p;
-}
 
 // Aire nette d'un PathSet (extérieur moins trous), en µm².
 double net_area_um2(const geometry::PathSet& set) {
@@ -44,23 +31,6 @@ double net_area_um2(const geometry::PathSet& set) {
     return std::max(0.0, area);
 }
 
-// RÉTRÉCIT légèrement chaque bande avant de l'utiliser comme découpe pour le
-// remplissage de repli : le territoire RESTANT (donc rempli en tatami)
-// déborde ainsi délibérément de `kCoverageOverlap` À L'INTÉRIEUR de la bande
-// satin, plutôt que de s'arrêter pile à son bord. Un recouvrement (léger
-// double-point) est anodin ; un interstice ne l'est pas -- au moindre écart
-// d'arrondi entre le contour vectorisé de la région et les rails aplatis
-// d'une section satin, une découpe qui s'arrête PILE au bord de la bande (ou
-// pire, l'élargit avant de la soustraire, ce qui recule le remplissage de
-// repli et élargit l'interstice) laisse une multitude de fins interstices le
-// long de chaque couture satin/tatami (défaut trouvé par revue : la première
-// version de ce correctif élargissait la bande AVANT soustraction, donc
-// RÉTRÉCISSAIT le territoire de repli -- l'inverse de l'effet recherché).
-// Même principe que le recouvrement de jonction (`extend_into_confluence`,
-// libs/auto_satin) et la pratique standard du métier (chevaucher plutôt que
-// raccorder pile, cf. audit Wilcom Hatch — Column B/miter joints, docs/source/satin.md).
-constexpr Micrometers kCoverageOverlap{400}; // 0,4 mm
-
 // La vectorisation trace les contours par les centres des pixels de bord : le
 // polygone perd un demi-pixel par arête de frontière. Le seuil de fragment
 // (Lot D) porte sur cette aire vectorisée, celle qui décide du type de point
@@ -68,55 +38,28 @@ constexpr Micrometers kCoverageOverlap{400}; // 0,4 mm
 // 2,5 mm²). Propriété de la vectorisation, pas un réglage.
 constexpr double kVectorizedBoundaryLoss = 0.5;
 
-std::vector<geometry::Path> shrink_strips_for_cutout(const std::vector<geometry::Path>& strips) {
-    std::vector<geometry::Path> out;
-    out.reserve(strips.size());
-    for (const auto& strip : strips) {
-        const auto shrunk =
-            geometry::inset_path_set(geometry::PathSet{strip, {}}, kCoverageOverlap);
-        if (shrunk && !shrunk->empty()) {
-            for (const auto& piece : *shrunk)
-                out.push_back(piece.outer);
-        } else {
-            out.push_back(strip); // repli : bande non rétrécie plutôt qu'absente
-        }
-    }
-    return out;
-}
-
 // Source d'un morceau à classifier : soit une région de segmentation
 // (`auto_digitize`), soit un objet vectoriel déjà existant, ex. import SVG
 // direct (`auto_digitize_vectors`, § "skip segmentation"). `label` sert de
-// base à tous les noms/avertissements produits ci-dessous ("Région 3" ou
-// "Import SVG 3" selon la source) -- seule différence de comportement entre
-// les deux chemins, tout le reste (classification satin/tatami/contour,
-// repli sur reliquat) est PARTAGÉ, jamais dupliqué.
+// base à tous les noms produits ci-dessous ("Région 3" ou "Import SVG 3"
+// selon la source) -- seule différence de comportement entre les deux chemins,
+// tout le reste (classification tatami/contour) est PARTAGÉ, jamais dupliqué.
 struct RegionSource {
     ObjectId vec_id;
     std::array<std::uint8_t, 3> rgb;
     std::string label;
-    // Présent seulement pour une région de segmentation -- reporté sur tout
-    // vecteur de repli créé ci-dessous, pour que les appelants puissent
-    // regrouper repli et couverture satin par région d'origine (ex.
-    // tests/integration/test_pipeline.cpp). Absent pour un objet vectoriel
-    // déjà existant (import SVG direct) : pas de région à relier.
-    std::optional<RegionId> region_id;
 };
 
 // Classification AutoChoice (§24) + construction des objets de broderie pour
 // UN morceau déjà vectorisé (`main`, le plus grand sous-chemin d'une région
-// ou d'un objet vectoriel importé). Ajoute à `result.embroideries` (et, pour
-// un reliquat satin non couvert, à `result.vectors`) -- ne touche jamais à
-// l'objet vectoriel source lui-même (déjà ajouté par l'appelant le cas
-// échéant).
+// ou d'un objet vectoriel importé). Ajoute à `result.embroideries` -- ne touche
+// jamais à l'objet vectoriel source lui-même (déjà ajouté par l'appelant le cas
+// échéant). Règle métier : l'auto-broderie ne produit que tatami ou contour ;
+// le satin reste un choix manuel.
 void classify_and_build_embroidery(const geometry::PathSet& main, const RegionSource& source,
                                    IdGenerator<ObjectId>& ids, const AutoOptions& options,
                                    AutoResult& result) {
     const double areaMm2 = net_area_um2(main) / 1e6;
-    double perim = perimeter_um(main.outer);
-    for (const auto& hole : main.holes)
-        perim += perimeter_um(hole);
-    const double meanWidthUm = perim > 0.0 ? 2.0 * net_area_um2(main) / perim : 0.0;
 
     document::EmbroideryObject emb;
     emb.source_vector = source.vec_id;
@@ -126,158 +69,21 @@ void classify_and_build_embroidery(const geometry::PathSet& main, const RegionSo
     // explicitement plutôt que silencieusement héritée.
     emb.intent = document::EmbroideryIntent::AutoChoice;
 
-    const bool bigEnoughToFill = areaMm2 >= options.min_fill_area_mm2;
-    // Bande fine : largeur moyenne sous la limite satin. Le moteur
-    // topologique peut produire plusieurs sections ouvertes partageant la
-    // meme source ; cela represente le reseau multi-rail sans casser le
-    // format SatinParams historique a deux rails.
-    const bool isThin =
-        meanWidthUm > 0.0 && meanWidthUm <= static_cast<double>(options.satin_max_width.value);
-    bool madeSatin = false;
-    bool emittedSatinNetwork = false;
-    if (options.use_auto_satin && bigEnoughToFill && isThin) {
-        // Mode Parametric (rails Bézier épars) préféré : jonctions plus
-        // propres, validé visuellement sur 6 formes (cf.
-        // docs/source/satin.md, § Objets satin paramétriques). Anneaux et
-        // cas refusés retombent automatiquement sur Legacy À L'INTÉRIEUR
-        // de build_satin_columns (`columns` peuplé au lieu de
-        // `parametric_columns`) — on lit simplement celui des deux qui a
-        // été rempli, comme les créations satin manuelles côté
-        // apps/desktop.
-        auto_satin::SatinColumnsParameters satinOptions;
-        satinOptions.analysis.thresholds.max_satin_width = options.satin_max_width;
-        satinOptions.geometry_mode = auto_satin::SatinGeometryMode::Parametric;
-        const document::SatinParams defaults;
-
-        // Point d'entrée UNIQUE partagé avec les créations satin
-        // manuelles (apps/desktop/main_window.cpp) : SGSD sur une région
-        // branchée, repli interne sur l'appel direct sinon -- mêmes
-        // garanties de couverture partout (§ build_satin_sections).
-        satin_planning::SatinBuildReport built = satin_planning::build_satin_sections(
-            main, satinOptions, defaults.density, defaults.pull_compensation,
-            defaults.center_underlay, options.satin_max_width, source.label);
-        for (auto& w : built.warnings) {
-            result.warnings.push_back(std::move(w));
-        }
-        std::vector<satin_planning::BuiltSatinSection>& sections = built.sections;
-        const bool structuralGap = built.structural_gap;
-
-        const std::size_t sectionCount = sections.size();
-        if (sectionCount > 0) {
-            std::vector<geometry::Path> strips;
-            strips.reserve(sectionCount);
-            for (std::size_t i = 0; i < sectionCount; ++i) {
-                document::EmbroideryObject section = emb;
-                section.id = ids.next();
-                section.name = "Satin " + source.label + " - section " + std::to_string(i + 1) +
-                               "/" + std::to_string(sectionCount);
-                section.params = std::move(sections[i].params);
-                result.embroideries.push_back(std::move(section));
-                strips.push_back(std::move(sections[i].strip));
-            }
-            madeSatin = true;
-            emittedSatinNetwork = true;
-
-            // Une branche de squelette rejetée (ex. trop large), ou une
-            // sous-région ACCEPTÉE mais dont la colonne ne couvre qu'une
-            // fraction de sa propre surface (ex. une boucle/contre-poinçon
-            // de lettre trop ronde pour un unique ruban satin), ne doit
-            // JAMAIS laisser une zone sans le moindre point. Ici,
-            // l'auto-numérisation reste la voie « AutoChoice » (§24 du
-            // plan de refonte satin, 2026-08-14) : classification
-            // automatique, sans utilisateur interactif à qui proposer un
-            // choix (§12/§23) -- le repli tatami automatique reste donc
-            // justifié dans CE contexte précis, mais ne doit JAMAIS être
-            // silencieux : un avertissement explicite (aire, pourcentage)
-            // est toujours poussé avant de créer le repli.
-            //
-            // `structuralGap`/`built.unresolved_residual` (§ build_satin_
-            // sections, qui délègue désormais à `satin_planning::
-            // create_satin_plan`) mesurent le reliquat géométrique RÉEL
-            // après une décomposition récursive et une réparation de
-            // résidu déjà tentées -- jamais un simple signal structurel.
-            if (structuralGap) {
-                if (built.aggregate_coverage) {
-                    std::ostringstream diag;
-                    diag.setf(std::ios::fixed);
-                    diag.precision(1);
-                    diag << source.label << " : satin incomplet : "
-                         << (built.aggregate_coverage->raw_coverage_ratio * 100.0)
-                         << "% de la région couverte par le satin, "
-                         << built.aggregate_coverage->missing_area_mm2
-                         << " mm² comblés par un remplissage tatami de repli (classification "
-                            "automatique)";
-                    result.warnings.push_back(diag.str());
-                }
-                // Seuil délibérément bas et INDÉPENDANT de
-                // `min_fill_area_mm2` (ce dernier répond à "cette région
-                // entière vaut-elle un remplissage plutôt qu'un simple
-                // contour ?", pas à "ce reliquat de zone déjà largement
-                // couverte mérite-t-il d'être comblé ?" -- réutiliser le
-                // même seuil laissait passer des trous de plusieurs mm²
-                // sous couvert d'être "trop petits", alors que l'objectif
-                // explicite est de ne JAMAIS laisser de zone sans point).
-                constexpr double kMinFallbackAreaMm2 = 0.5;
-                const auto leftover =
-                    geometry::subtract_polygons(main, shrink_strips_for_cutout(strips));
-                if (leftover) {
-                    for (const auto& piece : *leftover) {
-                        if (net_area_um2(piece) / 1e6 < kMinFallbackAreaMm2) {
-                            continue; // reliquat négligeable (bruit d'arrondi géométrique)
-                        }
-                        document::VectorObject fallbackVec;
-                        fallbackVec.id = ids.next();
-                        fallbackVec.name = source.label + " (zone non couverte par le satin)";
-                        fallbackVec.source_region = source.region_id;
-                        fallbackVec.rgb = source.rgb;
-                        fallbackVec.paths = {piece};
-                        const ObjectId fallbackVecId = fallbackVec.id;
-                        result.vectors.push_back(std::move(fallbackVec));
-
-                        document::EmbroideryObject fallback;
-                        fallback.source_vector = fallbackVecId;
-                        fallback.rgb = source.rgb;
-                        fallback.id = ids.next();
-                        fallback.params = document::TatamiParams{};
-                        fallback.intent = document::EmbroideryIntent::AutoChoice;
-                        fallback.name = "Remplissage repli " + source.label;
-                        result.embroideries.push_back(std::move(fallback));
-                    }
-                }
-            }
-        }
+    emb.id = ids.next();
+    if (areaMm2 >= options.min_fill_area_mm2) {
+        // Toute zone remplissable -> tatami. L'orientation des fils reste
+        // éditable ensuite.
+        document::TatamiParams tp;
+        emb.params = tp;
+        emb.name = "Remplissage " + source.label;
+    } else {
+        // Trop petite pour un bloc : simple contour cousu.
+        document::RunningStitchParams rp;
+        rp.repeats = 3;
+        emb.params = rp;
+        emb.name = "Contour " + source.label;
     }
-    if (!madeSatin && options.use_naive_satin && bigEnoughToFill && isThin && main.holes.empty()) {
-        if (auto rails = stitch_generation::rails_from_contour(main.outer)) {
-            document::SatinParams sp;
-            sp.rail_a = rails->first;
-            sp.rail_b = rails->second;
-            sp.max_width = options.satin_max_width;
-            emb.id = ids.next();
-            emb.params = sp;
-            emb.name = "Satin " + source.label;
-            madeSatin = true;
-        }
-    }
-    if (!madeSatin) {
-        emb.id = ids.next();
-        if (bigEnoughToFill) {
-            // Toute zone remplissable -> tatami (découpé sur la région, sans
-            // débordement). L'orientation des fils reste éditable ensuite.
-            document::TatamiParams tp;
-            emb.params = tp;
-            emb.name = "Remplissage " + source.label;
-        } else {
-            // Trop petite pour un bloc : simple contour cousu.
-            document::RunningStitchParams rp;
-            rp.repeats = 3;
-            emb.params = rp;
-            emb.name = "Contour " + source.label;
-        }
-    }
-    if (!emittedSatinNetwork) {
-        result.embroideries.push_back(std::move(emb));
-    }
+    result.embroideries.push_back(std::move(emb));
 }
 
 // Le plus grand sous-chemin (par aire nette) d'un ensemble de PathSet --
@@ -310,7 +116,7 @@ double row_angle_gap(double a, double b) {
 // chaque tatami créé par l'auto-numérisation, plutôt que `TatamiParams{}`
 // (tout à 0°, sans sous-couche). Post-passe sur le résultat complet :
 // l'angle d'un tatami dépend de ses VOISINS, qui ne sont connus qu'une fois
-// toutes les régions classées (satin/tatami/contour, replis compris).
+// toutes les régions classées (tatami/contour).
 // `adjacency` absent (import SVG direct, aucune segmentation) : orientation
 // naturelle seule, sans règle de voisinage.
 void configure_tatami_fills(AutoResult& result, const std::vector<document::VectorObject>& inputs,
@@ -510,8 +316,8 @@ void overlap_neighbor_fills(AutoResult& result,
             continue;
         }
         const auto& vec = result.vectors[*vi];
-        // Seul l'objet vectoriel PRINCIPAL d'une région (pas un repli satin,
-        // déjà en recouvrement avec ses bandes, cf. kCoverageOverlap).
+        // Seul l'objet vectoriel PRINCIPAL d'une région : les vecteurs importés
+        // ou générés ailleurs n'ont pas de voisinage de segmentation fiable.
         if (!vec.source_region || !regionVector.contains(vec.source_region->value) ||
             regionVector.at(vec.source_region->value) != vec.id) {
             continue;
@@ -555,9 +361,7 @@ void overlap_neighbor_fills(AutoResult& result,
 }
 
 // Lot C : ordre de couture en couches (optimization::LayeredColorThenProximity).
-// Unité d'ordre = suite CONTIGUË d'objets de même `source_vector` (sections
-// satin d'une région : `generate_sequence` ne route ensemble que des sections
-// contiguës, il ne faut jamais les séparer).
+// Unité d'ordre = suite CONTIGUË d'objets de même `source_vector`.
 void order_in_layers(AutoResult& result, const std::vector<document::VectorObject>& inputs,
                      const AutoOptions& options) {
     if (!options.order_by_layers || result.embroideries.size() < 2) {
@@ -717,7 +521,7 @@ Result<AutoResult> auto_digitize(const segmentation::Segmentation& input,
         // logique PARTAGÉE avec `auto_digitize_vectors` (§ classify_and_
         // build_embroidery ci-dessus), une région de segmentation n'étant
         // qu'une des deux sources possibles d'un morceau déjà vectorisé.
-        const RegionSource source{vecId, region->rgb, "Région " + std::to_string(id.value), id};
+        const RegionSource source{vecId, region->rgb, "Région " + std::to_string(id.value)};
         classify_and_build_embroidery(largest_piece(*sets), source, ids, options, result);
     }
 
@@ -749,10 +553,8 @@ Result<AutoResult> auto_digitize_vectors(const std::vector<document::VectorObjec
                       // vectorisable
         }
         // Aucun nouvel objet vectoriel créé pour la géométrie d'entrée : elle
-        // existe déjà (import SVG direct, § "skip segmentation") -- seul un
-        // éventuel reliquat satin non couvert en ajoute un (repli tatami, cf.
-        // classify_and_build_embroidery).
-        const RegionSource source{vec.id, vec.rgb, vec.name, std::nullopt};
+        // existe déjà (import SVG direct, § "skip segmentation").
+        const RegionSource source{vec.id, vec.rgb, vec.name};
         classify_and_build_embroidery(largest_piece(vec.paths), source, ids, options, result);
     }
 

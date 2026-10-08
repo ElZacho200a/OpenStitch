@@ -11,9 +11,7 @@
 #include <utility>
 #include <vector>
 
-#include "openstitch/auto_satin/satin_column.hpp"
 #include "openstitch/autodigitize/autodigitize.hpp"
-#include "openstitch/geometry/boolean.hpp"
 #include "openstitch/geometry/polyline.hpp"
 
 using namespace openstitch;
@@ -96,9 +94,9 @@ TEST_CASE("grande zone pleine -> tatami editable") {
     CHECK(result->embroideries[0].source_vector == result->vectors[0].id);
 }
 
-TEST_CASE("bande fine -> satin topologique par defaut") {
-    // Bande 40x3 mm. Le moteur topologique doit construire deux rails et des
-    // barreaux editables sans recourir au decoupage naif du contour.
+TEST_CASE("bande fine -> tatami par defaut") {
+    // En auto-broderie, meme une bande fine reste un remplissage tatami. Le
+    // satin est reserve aux actions manuelles.
     image::Image img = blank(44, 8);
     for (int y = 2; y < 5; ++y) {
         for (int x = 2; x < 42; ++x) {
@@ -110,19 +108,15 @@ TEST_CASE("bande fine -> satin topologique par defaut") {
     IdGenerator<ObjectId> ids;
     const auto result = auto_digitize(*seg, ids, opts());
     REQUIRE(result.has_value());
-    bool anySatin = false;
+    REQUIRE(result->embroideries.size() == 1);
     for (const auto& e : result->embroideries) {
-        anySatin = anySatin || e.is_satin();
-        if (e.is_satin()) {
-            const auto& satin = std::get<document::SatinParams>(e.params);
-            CHECK(satin.rungs.size() >= 2);
-        }
+        CHECK_FALSE(e.is_satin());
     }
-    CHECK(anySatin);
+    CHECK(result->embroideries.front().is_tatami());
 }
 
-TEST_CASE("bande fine -> satin quand use_naive_satin est active") {
-    // Meme bande, mais on reactive explicitement le satin naif.
+TEST_CASE("bande fine -> tatami meme quand use_naive_satin est active") {
+    // Option legacy ignoree : un vieux appel ne doit plus recreer de satin auto.
     image::Image img = blank(44, 8);
     for (int y = 2; y < 5; ++y) {
         for (int x = 2; x < 42; ++x) {
@@ -137,11 +131,11 @@ TEST_CASE("bande fine -> satin quand use_naive_satin est active") {
     o.use_naive_satin = true;
     const auto result = auto_digitize(*seg, ids, o);
     REQUIRE(result.has_value());
-    bool anySatin = false;
+    REQUIRE(result->embroideries.size() == 1);
     for (const auto& e : result->embroideries) {
-        anySatin = anySatin || e.is_satin();
+        CHECK_FALSE(e.is_satin());
     }
-    CHECK(anySatin);
+    CHECK(result->embroideries.front().is_tatami());
 }
 
 TEST_CASE("bande fine -> tatami si les deux moteurs satin sont desactives") {
@@ -163,27 +157,9 @@ TEST_CASE("bande fine -> tatami si les deux moteurs satin sont desactives") {
     CHECK(result->embroideries.front().is_tatami());
 }
 
-// Le comportement du moteur DIRECT seul (decomposition par arete a
-// l'interieur d'un seul appel build_satin_columns, topologie de jonction
-// partagee entre sections) reste couvert directement dans
-// tests/unit/auto_satin/test_columns.cpp -- SGSD (§ ci-dessous) est desormais
-// le seul chemin pour une region branchee au niveau autodigitize, sans
-// echappatoire cote AutoOptions.
-TEST_CASE("reseau en T -> decomposition en regions independantes via le planner recursif") {
-    // Region branchee (reseau en T) : decomposee d'abord (§ libs/satin_planning)
-    // -- la branche horizontale se fusionne en un seul chemin continu (angle
-    // ~180 deg, meilleure continuation), le pied vertical devient une region
-    // independante. Resultat : 2 sections, chacune une colonne INDEPENDANTE
-    // (`topology` absent, § document::SatinParams -- deux regions reanalysees
-    // separement n'ont plus de jonction comparable entre elles).
-    //
-    // Avec le planner recursif (`satin_planning::create_satin_plan`,
-    // 2026-08-14, § plan de refonte satin), le reliquat NATUREL pres de
-    // l'ancienne jonction (couverture SGSD deja mesuree a 97,7%, pas 100%,
-    // § docs/source/satin.md sgsd-debug) peut etre absorbe directement par
-    // le planner OU rester un tres petit repli tatami cote autodigitize --
-    // les deux sont corrects (§ garantie de couverture ci-dessous, jamais un
-    // compte exact d'objets, sensible aux details de calibration internes).
+TEST_CASE("reseau en T -> tatami sans decomposition satin automatique") {
+    // Region branchee (reseau en T) : l'auto-broderie ne subdivise plus en
+    // colonnes satin ; elle cree un remplissage tatami unique et editable.
     image::Image img = blank(64, 64);
     for (int y = 8; y < 58; ++y) {
         for (int x = 29; x < 35; ++x)
@@ -203,50 +179,15 @@ TEST_CASE("reseau en T -> decomposition en regions independantes via le planner 
     REQUIRE_FALSE(result->vectors.empty());
     const auto& sourceVec = result->vectors.front();
     CHECK(sourceVec.paths.size() == 1);
-
-    std::vector<const document::SatinParams*> satinSections;
-    std::vector<geometry::Path> covering;
+    REQUIRE(result->embroideries.size() == 1);
     for (const auto& e : result->embroideries) {
-        if (e.is_satin()) {
-            CHECK(e.source_vector == sourceVec.id);
-            const auto& satin = std::get<document::SatinParams>(e.params);
-            satinSections.push_back(&satin);
-            CHECK_FALSE(satin.rail_a.closed);
-            CHECK_FALSE(satin.rail_b.closed);
-            CHECK(satin.rungs.size() >= 2);
-            const auto flatA = geometry::flatten(satin.rail_a, Micrometers{30});
-            const auto flatB = geometry::flatten(satin.rail_b, Micrometers{30});
-            geometry::Path strip;
-            strip.closed = true;
-            for (const auto& pt : flatA.points)
-                strip.nodes.push_back({pt, geometry::NodeType::Corner});
-            for (auto it = flatB.points.rbegin(); it != flatB.points.rend(); ++it) {
-                strip.nodes.push_back({*it, geometry::NodeType::Corner});
-            }
-            covering.push_back(std::move(strip));
-        } else if (e.is_tatami() && e.name.find("repli") != std::string::npos) {
-            const auto fallbackVec = std::find_if(
-                result->vectors.begin(), result->vectors.end(),
-                [&](const document::VectorObject& v) { return v.id == e.source_vector; });
-            REQUIRE(fallbackVec != result->vectors.end());
-            for (const auto& piece : fallbackVec->paths)
-                covering.push_back(piece.outer);
-        }
+        CHECK_FALSE(e.is_satin());
     }
-    CHECK(satinSections.size() >= 2);
-
-    // Garantie qui compte vraiment : la région source est intégralement
-    // couverte (satin seul, ou satin + repli tatami), jamais un compte
-    // précis d'objets qui dépend de détails de calibration internes.
-    const auto leftover = geometry::subtract_polygons(sourceVec.paths.front(), covering);
-    REQUIRE(leftover.has_value());
-    double leftoverAreaMm2 = 0.0;
-    for (const auto& piece : *leftover)
-        leftoverAreaMm2 += std::abs(geometry::signed_area_um2(piece.outer)) / 1e6;
-    CHECK(leftoverAreaMm2 < 0.5);
+    CHECK(result->embroideries.front().is_tatami());
+    CHECK(result->embroideries.front().source_vector == sourceVec.id);
 }
 
-TEST_CASE("anneau fin -> quatre sections satin et trou preserve") {
+TEST_CASE("anneau fin -> tatami et trou preserve") {
     image::Image img = blank(64, 64);
     constexpr int center = 32;
     for (int y = 0; y < 64; ++y) {
@@ -266,37 +207,15 @@ TEST_CASE("anneau fin -> quatre sections satin et trou preserve") {
     o.satin_max_width = Micrometers{12'000};
     const auto result = auto_digitize(*seg, ids, o);
     REQUIRE(result.has_value());
-    // La région principale reste toujours le premier vecteur émis ; un
-    // éventuel petit repli tatami (§ planner récursif, sensible aux détails
-    // de calibration internes, pas une garantie structurelle de ce test)
-    // apparaîtrait ensuite, jamais avant.
     REQUIRE_FALSE(result->vectors.empty());
     REQUIRE(result->vectors.front().paths.size() == 1);
-    auto_satin::SatinColumnsParameters satinOptions;
-    satinOptions.analysis.thresholds.max_satin_width = o.satin_max_width;
-    const auto direct =
-        auto_satin::build_satin_columns(result->vectors.front().paths.front(), satinOptions);
-    INFO("refus anneau: " << direct.refusal);
     INFO("trous: " << result->vectors.front().paths.front().holes.size());
-    REQUIRE(direct.columns.size() == 4);
-
-    std::vector<const document::SatinParams*> satinSections;
+    REQUIRE(result->vectors.front().paths.front().holes.size() == 1);
+    REQUIRE(result->embroideries.size() == 1);
     for (const auto& e : result->embroideries) {
-        if (e.is_satin()) {
-            satinSections.push_back(&std::get<document::SatinParams>(e.params));
-        }
+        CHECK_FALSE(e.is_satin());
     }
-    REQUIRE(satinSections.size() == 4);
-    for (std::size_t i = 0; i < satinSections.size(); ++i) {
-        const auto& topology = satinSections[i]->topology;
-        REQUIRE(topology.has_value());
-        CHECK(topology->section_index == i);
-        CHECK(topology->section_count == 4);
-        CHECK(topology->start_junction ==
-              std::optional<std::uint32_t>{static_cast<std::uint32_t>(i)});
-        CHECK(topology->end_junction ==
-              std::optional<std::uint32_t>{static_cast<std::uint32_t>((i + 1) % 4)});
-    }
+    CHECK(result->embroideries.front().is_tatami());
 }
 
 TEST_CASE("petite region -> contour (point triple)") {
@@ -428,20 +347,9 @@ bool point_in_poly_mm(const std::vector<std::pair<double, double>>& poly, double
     return inside;
 }
 
-// Défaut trouvé sur un projet réel (lettre en T d'un logo, ~28 mm de
-// squelette rejetés en silence) : une branche de squelette individuellement
-// trop large pour du satin (largeur locale > satin_max_width, ici ~8,1 mm)
-// est purement et simplement IGNORÉE par build_satin_columns -- la zone
-// qu'elle couvre ne reçoit alors AUCUN point (ni satin, ni tatami), sans que
-// rien ne le signale, même quand la largeur/aire globale de la région reste
-// dans les clous (ce qui la fait entrer dans le chemin auto-satin en premier
-// lieu, avec statut RequiresDecomposition et 4 des 5 branches du squelette
-// qui réussissent). Géométrie EXACTE de cette lettre (37 sommets, cf.
-// tests/unit/auto_satin/test_columns.cpp § coin intérieur d'une lettre en
-// T), rasterisée ici pour passer par la VRAIE chaîne segmentation ->
-// vectorisation -> auto-satin, comme en usage réel (pas juste
-// build_satin_columns en isolation).
-TEST_CASE("branche squelette localement trop large -> avertissement (jamais silencieux)") {
+TEST_CASE("ancienne forme piege satin -> tatami sans avertissement auto-satin") {
+    // Ancien cas de squelette satin incomplet : l'auto-broderie ne passant plus
+    // par le satin, la forme doit simplement devenir un tatami.
     const std::vector<std::pair<double, double>> letterT = {
         {-101.859, 238.244}, {-89.160, 243.006},  {-87.043, 244.329},  {-87.572, 244.858},
         {-92.599, 245.123},  {-93.128, 245.652},  {-99.478, 261.526},  {-102.652, 270.786},
@@ -490,98 +398,12 @@ TEST_CASE("branche squelette localement trop large -> avertissement (jamais sile
     o.skip_largest_region = true; // exclut le fond blanc
     const auto result = auto_digitize(*seg, ids, o);
     REQUIRE(result.has_value());
-
-    REQUIRE_FALSE(result->warnings.empty());
-    const bool mentionsRejection =
-        std::any_of(result->warnings.begin(), result->warnings.end(), [](const std::string& w) {
-            return w.find("colonne refusee") != std::string::npos;
-        });
-    // Le planner récursif (§10 du plan de refonte satin, 2026-08-14) tente
-    // plusieurs décompositions successives avant d'abandonner une branche :
-    // un message "colonne refusee" peut donc apparaître pour une TENTATIVE
-    // intermédiaire qui échoue, même si la récursion finit par résoudre
-    // entièrement la région par un découpage différent -- ce test vérifie
-    // que ces tentatives intermédiaires restent TRACÉES (jamais un échec
-    // silencieux, même transitoire), pas que la région entière échoue.
-    CHECK(mentionsRejection);
-
-    // Le nombre exact de sections satin n'est plus une garantie testée ici
-    // (§ défaut réel trouvé sur tentabrode.png, 2026-08-14 : un seuil
-    // minimal de couverture, `SatinPlanConfig::min_fallback_coverage_ratio`,
-    // rejette désormais un "meilleur effort" clairement insuffisant plutôt
-    // que de l'accepter silencieusement — sur cette forme précise, cela peut
-    // légitimement mener à 0 section satin acceptée si aucune sous-région
-    // n'atteint une couverture correcte). La garantie qui compte reste la
-    // couverture de bout en bout ci-dessous, satin et/ou tatami confondus.
-
-    // Tout objet tatami (repli ciblé sur un résidu SGSD, OU repli générique
-    // sur la région entière si aucune section satin n'a été acceptée,
-    // `autodigitize.cpp` § `if (!madeSatin)`) compte pour la couverture.
-    const auto isFallbackTatami = [](const document::EmbroideryObject& e) { return e.is_tatami(); };
-
-    // Vérifie la couverture géométrique de bout en bout : région source
-    // (le premier objet vectoriel, "Région <id>", pas les objets de repli)
-    // moins (bandes satin des sections réussies + zones de repli tatami) ne
-    // doit rien laisser -- au-delà d'une tolérance d'arrondi de
-    // rasterisation/vectorisation, pas une simple absence d'erreur.
-    const auto sourceVec = std::find_if(
-        result->vectors.begin(), result->vectors.end(), [](const document::VectorObject& v) {
-            return v.name.find("zone non couverte") == std::string::npos;
-        });
-    REQUIRE(sourceVec != result->vectors.end());
-    REQUIRE_FALSE(sourceVec->paths.empty());
-    // Le plus grand morceau par aire nette, PAS le premier : à la résolution
-    // de rasterisation de ce test (0,5 mm/px), un rétrécissement sous 1 px
-    // (la lettre descend à 0,3 mm par endroits) peut fragmenter la région en
-    // plusieurs morceaux disjoints -- exactement le `main` que auto_digitize
-    // choisit en interne (`autodigitize.cpp`, std::max_element sur net_area_um2).
-    const auto& sourceRegion = *std::max_element(
-        sourceVec->paths.begin(), sourceVec->paths.end(), [](const auto& a, const auto& b) {
-            const auto netArea = [](const geometry::PathSet& s) {
-                double area = std::abs(geometry::signed_area_um2(s.outer));
-                for (const auto& h : s.holes)
-                    area -= std::abs(geometry::signed_area_um2(h));
-                return area;
-            };
-            return netArea(a) < netArea(b);
-        });
-
-    std::vector<geometry::Path> covering;
+    CHECK(result->warnings.empty());
+    REQUIRE(result->embroideries.size() == 1);
     for (const auto& e : result->embroideries) {
-        if (const auto* sp = std::get_if<document::SatinParams>(&e.params)) {
-            const auto flatA = geometry::flatten(sp->rail_a, Micrometers{30});
-            const auto flatB = geometry::flatten(sp->rail_b, Micrometers{30});
-            geometry::Path strip;
-            strip.closed = true;
-            for (const auto& pt : flatA.points) {
-                strip.nodes.push_back({pt, geometry::NodeType::Corner, std::nullopt, std::nullopt});
-            }
-            for (auto it = flatB.points.rbegin(); it != flatB.points.rend(); ++it) {
-                strip.nodes.push_back(
-                    {*it, geometry::NodeType::Corner, std::nullopt, std::nullopt});
-            }
-            covering.push_back(std::move(strip));
-        } else if (isFallbackTatami(e)) {
-            const auto fallbackVec = std::find_if(
-                result->vectors.begin(), result->vectors.end(),
-                [&](const document::VectorObject& v) { return v.id == e.source_vector; });
-            REQUIRE(fallbackVec != result->vectors.end());
-            for (const auto& piece : fallbackVec->paths) {
-                covering.push_back(piece.outer);
-            }
-        }
+        CHECK_FALSE(e.is_satin());
     }
-    const auto leftover = subtract_polygons(sourceRegion, covering);
-    REQUIRE(leftover.has_value());
-    double leftoverAreaMm2 = 0.0;
-    for (const auto& piece : *leftover) {
-        leftoverAreaMm2 += std::abs(geometry::signed_area_um2(piece.outer)) / 1e6;
-    }
-    // Tolérance = quelques pixels de rasterisation (0,5 mm/px), pas un vrai
-    // trou (~28 mm² de squelette rejeté, avant le correctif ; ~10 mm² de fins
-    // interstices le long de chaque couture satin/tatami avec le premier
-    // correctif, incomplet -- cf. `shrink_strips_for_cutout`).
-    CHECK(leftoverAreaMm2 < 0.5);
+    CHECK(result->embroideries.front().is_tatami());
 }
 
 // `auto_digitize_vectors` : même classification AutoChoice qu'`auto_digitize`,
@@ -597,30 +419,24 @@ TEST_CASE("auto_digitize_vectors : grande zone pleine -> tatami editable, sans n
     const auto result = auto_digitize_vectors({v}, ids, opts());
     REQUIRE(result.has_value());
     // L'objet vectoriel d'entrée existe déjà chez l'appelant (§ openSvg) --
-    // aucun nouveau vecteur ne doit être créé pour lui, seulement pour un
-    // éventuel reliquat satin (aucun ici, c'est du tatami).
+    // aucun nouveau vecteur ne doit être créé pour lui.
     CHECK(result->vectors.empty());
     REQUIRE(result->embroideries.size() == 1);
     CHECK(result->embroideries[0].is_tatami());
     CHECK(result->embroideries[0].source_vector == vecId);
 }
 
-TEST_CASE(
-    "auto_digitize_vectors : bande fine -> satin topologique, meme moteur que la segmentation") {
+TEST_CASE("auto_digitize_vectors : bande fine -> tatami, meme regle que la segmentation") {
     IdGenerator<ObjectId> ids;
     // Bande 40x3 mm, meme proportions que le test segmentation equivalent.
     document::VectorObject v = make_vector(ids.next(), rect_path_um(0, 0, 40'000, 3'000));
     const auto result = auto_digitize_vectors({v}, ids, opts());
     REQUIRE(result.has_value());
-    bool anySatin = false;
+    REQUIRE(result->embroideries.size() == 1);
     for (const auto& e : result->embroideries) {
-        anySatin = anySatin || e.is_satin();
-        if (e.is_satin()) {
-            const auto& satin = std::get<document::SatinParams>(e.params);
-            CHECK(satin.rungs.size() >= 2);
-        }
+        CHECK_FALSE(e.is_satin());
     }
-    CHECK(anySatin);
+    CHECK(result->embroideries.front().is_tatami());
 }
 
 TEST_CASE("auto_digitize_vectors : petit objet -> contour, comme la voie segmentation") {
@@ -645,8 +461,7 @@ TEST_CASE(
     for (const auto& e : result->embroideries) {
         sources.insert(e.source_vector);
     }
-    // Un objet source par forme d'entree au minimum (la bande peut en
-    // produire plusieurs si le planner topologique la decoupe en sections).
+    // Un objet source par forme d'entree.
     CHECK(sources.count(big.id) == 1);
     CHECK(sources.count(strip.id) == 1);
     CHECK(sources.count(tiny.id) == 1);

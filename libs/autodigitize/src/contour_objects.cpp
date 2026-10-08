@@ -4,15 +4,10 @@
 #include <algorithm>
 #include <cmath>
 #include <map>
-#include <set>
 #include <sstream>
 
-#include "openstitch/auto_satin/satin_column.hpp"
-#include "openstitch/geometry/boolean.hpp"
 #include "openstitch/geometry/clean.hpp"
 #include "openstitch/geometry/polyline.hpp"
-#include "openstitch/geometry/simplify.hpp"
-#include "openstitch/satin_planning/satin_sections.hpp"
 
 namespace openstitch::autodigitize {
 
@@ -42,197 +37,26 @@ SegmentPlan classify_segment(const ContourSegment& seg, ContourTechnique techniq
         return plan;
     }
     const double minSatin = static_cast<double>(lim.min_satin_width.value);
-    const double maxSatin = static_cast<double>(lim.max_satin_width.value);
     const double w = seg.mean_width_um;
-    // Point droit : simple sous la moitie de la largeur satin minimale, triple
-    // au-dessus (un trait plus large demande plus de matiere).
+    // Point droit : simple sous la moitie de l'ancien seuil satin minimal,
+    // triple au-dessus (un trait plus large demande plus de matiere).
     const ContourStrategy run =
         w < minSatin / 2.0 ? ContourStrategy::SingleRun : ContourStrategy::TripleRun;
 
-    if (technique == ContourTechnique::Running) {
-        plan.strategy = run;
-        return plan;
-    }
-    if (w < minSatin) {
-        plan.strategy = run;
-        if (technique == ContourTechnique::Satin) {
-            plan.fallback = true;
-            plan.reason = "largeur " + fmt_mm(w) + " mm < minimum satin " + fmt_mm(minSatin) +
-                          " mm : point droit";
-        }
-        return plan;
-    }
-    if (w > maxSatin) {
-        plan.strategy = ContourStrategy::TripleRun;
+    plan.strategy = run;
+    if (technique == ContourTechnique::Satin) {
         plan.fallback = true;
-        plan.reason = "largeur " + fmt_mm(w) + " mm > maximum satin " + fmt_mm(maxSatin) +
-                      " mm : point triple sur la ligne mediane (un remplissage serait plus adapte)";
-        return plan;
+        plan.reason = "satin automatique desactive : point droit";
     }
-    if (technique == ContourTechnique::Automatic) {
-        // Une colonne dont le 10e percentile passe sous le minimum satin se
-        // pincerait sous la limite physique (le planificateur la refuse ou la
-        // coupe en trous) : point droit plutot qu'un satin troue.
-        constexpr double kSatinMarginRatio = 0.9; // tolerance sur le bruit de mesure raster
-        if (seg.min_width_um < kSatinMarginRatio * minSatin) {
-            plan.strategy = run;
-            plan.fallback = true;
-            plan.reason = "largeur minimale " + fmt_mm(seg.min_width_um) + " mm < minimum satin " +
-                          fmt_mm(minSatin) + " mm : point droit";
-            return plan;
-        }
-        const double variation = seg.width_roughness;
-        if (variation > lim.max_width_variation) {
-            plan.strategy = run;
-            plan.fallback = true;
-            plan.reason =
-                "largeur irreguliere (variation " + fmt_mm(variation * 1000.0) + ") : point droit";
-            return plan;
-        }
-        if (seg.max_turn_deg > lim.max_turn_deg) {
-            plan.strategy = run;
-            plan.fallback = true;
-            plan.reason = "virage brusque (" + std::to_string(static_cast<int>(seg.max_turn_deg)) +
-                          " deg) : point droit";
-            return plan;
-        }
-    }
-    plan.strategy = ContourStrategy::Satin;
     return plan;
 }
 
 namespace {
 
-using geometry::Path;
 using geometry::PathNode;
 
 PathNode corner(Vec2um p) {
     return {p, geometry::NodeType::Corner, std::nullopt, std::nullopt};
-}
-
-// Bande autour d'une ligne mediane (largeur ~ largeur locale), prolongee d'un
-// demi-trait aux bouts pour recouvrir la confluence.
-constexpr double kTrimFactor = 0.5;
-
-Path strip_polygon(const std::vector<Vec2um>& pts, const std::vector<double>& half,
-                   bool extendStart = true, bool extendEnd = true) {
-    const std::size_t n = pts.size();
-    std::vector<double> nx(n), ny(n);
-    for (std::size_t i = 0; i < n; ++i) {
-        const Vec2um a = pts[i == 0 ? 0 : i - 1];
-        const Vec2um b = pts[i + 1 < n ? i + 1 : n - 1];
-        const double dx = static_cast<double>(b.x.value - a.x.value);
-        const double dy = static_cast<double>(b.y.value - a.y.value);
-        const double l = std::max(1.0, std::hypot(dx, dy));
-        nx[i] = -dy / l;
-        ny[i] = dx / l;
-    }
-    std::vector<Vec2um> left;
-    std::vector<Vec2um> right;
-    for (std::size_t i = 0; i < n; ++i) {
-        // Les largeurs mesurees pres d'un bout (jonction, pointe) sont faussees :
-        // on les borne par leur voisin interieur. Les points interieurs ne sont
-        // PAS bornes (un effilement change legitimement de largeur).
-        double hw = half[i];
-        if (n >= 3 && (i == 0 || i + 1 == n)) {
-            const double inner = half[i == 0 ? 1 : n - 2];
-            hw = std::clamp(hw, 0.7 * inner, 1.3 * inner);
-        }
-        const double h = hw * 1.25 + 50.0;
-        double ex = 0.0;
-        double ey = 0.0;
-        if (i == 0 || i + 1 == n) {
-            const Vec2um a = pts[i == 0 ? 1 : n - 2];
-            const Vec2um b = pts[i];
-            const double dx = static_cast<double>(b.x.value - a.x.value);
-            const double dy = static_cast<double>(b.y.value - a.y.value);
-            const double l = std::max(1.0, std::hypot(dx, dy));
-            // Vers l'exterieur du bout ; un bout NON prolonge (jonction d'une autre
-            // etoile) est meme legerement raccourci pour ne pas doubler la
-            // couverture du coeur de cette jonction.
-            const double reach = (i == 0 ? extendStart : extendEnd) ? hw : -kTrimFactor * hw;
-            ex = dx / l * reach;
-            ey = dy / l * reach;
-        }
-        const auto mk = [&](double s) {
-            return Vec2um{Micrometers{static_cast<std::int32_t>(std::lround(
-                              static_cast<double>(pts[i].x.value) + s * nx[i] * h + ex))},
-                          Micrometers{static_cast<std::int32_t>(std::lround(
-                              static_cast<double>(pts[i].y.value) + s * ny[i] * h + ey))}};
-        };
-        left.push_back(mk(1.0));
-        right.push_back(mk(-1.0));
-    }
-    Path poly;
-    poly.closed = true;
-    for (const Vec2um p : left) {
-        poly.nodes.push_back(corner(p));
-    }
-    for (std::size_t i = right.size(); i-- > 0;) {
-        poly.nodes.push_back(corner(right[i]));
-    }
-    return poly;
-}
-
-std::vector<Path> strips_for(const ContourSegment& s, bool extendStart = true,
-                             bool extendEnd = true) {
-    std::vector<Path> out;
-    if (s.centerline.size() < 2) {
-        return out;
-    }
-    if (s.closed) {
-        std::vector<Vec2um> p = s.centerline;
-        std::vector<double> h = s.half_width_um;
-        p.push_back(p.front());
-        h.push_back(h.front());
-        const std::size_t mid = p.size() / 2;
-        out.push_back(strip_polygon({p.begin(), p.begin() + static_cast<std::ptrdiff_t>(mid) + 1},
-                                    {h.begin(), h.begin() + static_cast<std::ptrdiff_t>(mid) + 1}));
-        out.push_back(strip_polygon({p.begin() + static_cast<std::ptrdiff_t>(mid), p.end()},
-                                    {h.begin() + static_cast<std::ptrdiff_t>(mid), h.end()}));
-    } else {
-        out.push_back(strip_polygon(s.centerline, s.half_width_um, extendStart, extendEnd));
-    }
-    return out;
-}
-
-bool point_in_polygon(Vec2um p, const std::vector<Vec2um>& poly) {
-    bool in = false;
-    const double px = static_cast<double>(p.x.value);
-    const double py = static_cast<double>(p.y.value);
-    for (std::size_t i = 0, j = poly.size() - 1; i < poly.size(); j = i++) {
-        const double xi = static_cast<double>(poly[i].x.value);
-        const double yi = static_cast<double>(poly[i].y.value);
-        const double xj = static_cast<double>(poly[j].x.value);
-        const double yj = static_cast<double>(poly[j].y.value);
-        if (((yi > py) != (yj > py)) && (px < (xj - xi) * (py - yi) / (yj - yi) + xi)) {
-            in = !in;
-        }
-    }
-    return in;
-}
-
-// Part de la ligne mediane (echantillonnee tous les 0,4 mm) couverte par les
-// bandes satin.
-double covered_fraction(const ContourSegment& s, const std::vector<std::vector<Vec2um>>& strips) {
-    std::vector<Vec2um> p = s.centerline;
-    if (s.closed) {
-        p.push_back(p.front());
-    }
-    const auto cum = geometry::cumulative_lengths(p);
-    const double total = cum.back();
-    const int n = std::max(2, static_cast<int>(total / 400.0));
-    int inside = 0;
-    for (int i = 0; i <= n; ++i) {
-        const Vec2um q = geometry::point_at_length(p, cum, total * i / n);
-        for (const auto& poly : strips) {
-            if (poly.size() >= 3 && point_in_polygon(q, poly)) {
-                ++inside;
-                break;
-            }
-        }
-    }
-    return static_cast<double>(inside) / static_cast<double>(n + 1);
 }
 
 std::vector<Vec2um> oriented(const ContourSegment& s, bool forward) {
@@ -435,155 +259,6 @@ Result<AutoResult> build_contour_objects(const ContourNetwork& net, IdGenerator<
             plans.push_back(classify_segment(comp.segments[si], options.technique, lim));
         }
 
-        if (comp.region.outer.nodes.size() < 3) {
-            // Voie pixel : pas de polygone, donc pas de satin possible.
-            for (std::size_t si = 0; si < plans.size(); ++si) {
-                if (plans[si].strategy == ContourStrategy::Satin) {
-                    plans[si].strategy = ContourStrategy::TripleRun;
-                    plans[si].fallback = true;
-                    plans[si].reason = "trait fin sans polygone : point droit";
-                }
-            }
-        }
-
-        // --- Satin : sous-reseau satinable ---------------------------------
-        std::vector<std::size_t> satinSegs;
-        bool wholeRegion = true;
-        for (std::size_t si = 0; si < plans.size(); ++si) {
-            if (plans[si].strategy == ContourStrategy::Satin) {
-                satinSegs.push_back(si);
-            } else if (plans[si].strategy != ContourStrategy::Rejected ||
-                       comp.segments[si].length_um >=
-                           static_cast<double>(lim.min_element_length.value)) {
-                wholeRegion = false;
-            }
-        }
-        std::vector<geometry::PathSet> satinRegions;
-        if (!satinSegs.empty()) {
-            // Region entiere seulement si le sous-reseau est petit et que rien
-            // n'a ete elague (les moignons elagues restent dans le polygone et
-            // feraient refuser les colonnes voisines). Sinon, le satin est
-            // planifie par ETOILES : chaque segment appartient a la jonction
-            // d'indice le plus bas de ses bouts, et la planification d'une
-            // etoile (une jonction et ses branches) garde le traitement de
-            // jonction du planificateur. La planification d'une region entiere
-            // est superlineaire en nombre de jonctions (grille 6x6 : 40 s en
-            // Debug) ; les etoiles la rendent lineaire. Une bande ne depasse
-            // son bout QUE sur le centre de son etoile, un bout libre ou un
-            // noeud de continuation : pas de recouvrement double aux jonctions
-            // voisines.
-            constexpr std::size_t kMaxJunctionsWhole = 2;
-            const auto isJunction = [&](std::int32_t n) {
-                return n >= 0 &&
-                       comp.nodes[static_cast<std::size_t>(n)].kind == ContourNodeKind::Junction;
-            };
-            std::set<std::int32_t> satinJunctions;
-            for (const std::size_t si : satinSegs) {
-                for (const std::int32_t n :
-                     {comp.segments[si].start_node, comp.segments[si].end_node}) {
-                    if (isJunction(n)) {
-                        satinJunctions.insert(n);
-                    }
-                }
-            }
-            if (wholeRegion && comp.removed_short_branches == 0 &&
-                satinJunctions.size() <= kMaxJunctionsWhole) {
-                satinRegions.push_back(comp.region);
-            } else {
-                // Cle d'etoile : indice de jonction le plus bas, sinon -(1 + indice
-                // du segment) pour un segment sans jonction (groupe a part).
-                std::map<std::int64_t, std::vector<std::size_t>> stars;
-                for (const std::size_t si : satinSegs) {
-                    const auto& sg = comp.segments[si];
-                    std::int64_t key = -1 - static_cast<std::int64_t>(si);
-                    for (const std::int32_t n : {sg.start_node, sg.end_node}) {
-                        if (isJunction(n) && (key < 0 || n < key)) {
-                            key = n;
-                        }
-                    }
-                    stars[key].push_back(si);
-                }
-                for (const auto& [centre, group] : stars) {
-                    std::vector<Path> strips;
-                    for (const std::size_t si : group) {
-                        const auto& sg = comp.segments[si];
-                        const auto extend = [&](std::int32_t n) {
-                            return !isJunction(n) || n == centre;
-                        };
-                        for (auto& p : strips_for(sg, extend(sg.start_node), extend(sg.end_node))) {
-                            strips.push_back(std::move(p));
-                        }
-                    }
-                    const auto uni = geometry::union_nonzero(strips);
-                    if (!uni) {
-                        continue;
-                    }
-                    // Tolerance de lissage proportionnelle a la largeur du groupe :
-                    // une bande large (effilement) a des marches de pixel plus
-                    // marquees qu'un trait fin.
-                    double groupWidth = 0.0;
-                    for (const std::size_t si : group) {
-                        groupWidth += comp.segments[si].mean_width_um;
-                    }
-                    groupWidth /= static_cast<double>(group.size());
-                    const Micrometers kSatinRegionTolerance{
-                        static_cast<std::int32_t>(std::clamp(0.12 * groupWidth, 200.0, 400.0))};
-                    const auto cut = geometry::intersect_polygons({comp.region}, *uni);
-                    if (cut) {
-                        for (auto piece : *cut) {
-                            // Lisse l'escalier de pixels du contour (marches de ~1 px
-                            // sur un effilement) : le planificateur y poserait des
-                            // barreaux de travers.
-                            piece.outer = geometry::simplify(piece.outer, kSatinRegionTolerance);
-                            for (auto& hole : piece.holes) {
-                                hole = geometry::simplify(hole, kSatinRegionTolerance);
-                            }
-                            satinRegions.push_back(std::move(piece));
-                        }
-                    }
-                }
-            }
-        }
-        std::vector<satin_planning::BuiltSatinSection> sections;
-        std::vector<std::size_t> sectionRegion;
-        std::vector<std::vector<Vec2um>> flatStrips;
-        if (!satinRegions.empty()) {
-            auto_satin::SatinColumnsParameters sp;
-            sp.analysis.cleanup.minimum_branch_length = net.thresholds.min_branch_length;
-            sp.analysis.thresholds.min_satin_width = lim.min_satin_width;
-            sp.analysis.thresholds.max_satin_width = lim.max_satin_width;
-            sp.geometry_mode = auto_satin::SatinGeometryMode::Parametric;
-            const document::SatinParams defaults;
-            for (std::size_t ri = 0; ri < satinRegions.size(); ++ri) {
-                auto built = satin_planning::build_satin_sections(
-                    satinRegions[ri], sp, defaults.density, defaults.pull_compensation,
-                    defaults.center_underlay, lim.max_satin_width, label);
-                for (auto& w : built.warnings) {
-                    result.warnings.push_back(std::move(w));
-                }
-                for (auto& s : built.sections) {
-                    flatStrips.push_back(geometry::flatten(s.strip, Micrometers{50}).points);
-                    sectionRegion.push_back(ri);
-                    sections.push_back(std::move(s));
-                }
-            }
-        }
-        // Couverture reelle par segment : un segment satin mal couvert retombe
-        // en point droit, avec diagnostic.
-        for (const std::size_t si : satinSegs) {
-            const double frac = covered_fraction(comp.segments[si], flatStrips);
-            if (frac < 0.7) {
-                plans[si].strategy = comp.segments[si].mean_width_um <
-                                             static_cast<double>(lim.min_satin_width.value) / 2.0
-                                         ? ContourStrategy::SingleRun
-                                         : ContourStrategy::TripleRun;
-                plans[si].fallback = true;
-                plans[si].reason = "couverture satin insuffisante (" +
-                                   std::to_string(static_cast<int>(frac * 100.0)) +
-                                   " %) : point droit";
-            }
-        }
-
         // Diagnostics et metriques par segment.
         for (std::size_t si = 0; si < plans.size(); ++si) {
             const auto& pl = plans[si];
@@ -603,36 +278,6 @@ Result<AutoResult> build_contour_objects(const ContourNetwork& net, IdGenerator<
             widthMax = std::max(widthMax, s.max_width_um);
             widthSum += s.mean_width_um * s.length_um;
             widthLen += s.length_um;
-            if (pl.strategy == ContourStrategy::Satin) {
-                m.satin_length_mm += s.length_um / 1000.0;
-            }
-        }
-
-        // --- Emission satin -------------------------------------------------
-        bool anySatin = false;
-        for (const auto& pl : plans) {
-            anySatin = anySatin || pl.strategy == ContourStrategy::Satin;
-        }
-        if (anySatin) {
-            std::map<std::size_t, ObjectId> vecOf;
-            std::size_t emitted = 0;
-            for (std::size_t k = 0; k < sections.size(); ++k) {
-                const std::size_t ri = sectionRegion[k];
-                if (!vecOf.contains(ri)) {
-                    const ObjectId vid = ids.next();
-                    vecOf[ri] = vid;
-                    result.vectors.push_back(
-                        make_vector(vid, label + " (satin)", comp.rgb, {satinRegions[ri]}));
-                }
-                document::EmbroideryObject e;
-                e.id = ids.next();
-                e.source_vector = vecOf[ri];
-                e.rgb = comp.rgb;
-                e.intent = document::EmbroideryIntent::AutoChoice;
-                e.name = "Satin " + label + " - section " + std::to_string(++emitted);
-                e.params = std::move(sections[k].params);
-                result.embroideries.push_back(std::move(e));
-            }
         }
 
         // --- Emission point droit ------------------------------------------

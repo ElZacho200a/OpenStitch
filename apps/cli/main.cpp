@@ -405,7 +405,7 @@ int run_digitize(const std::string& imagePath, const std::string& dstPath, doubl
                skipBg < 0 ? " (automatique)" : " (option explicite)");
 
     // Strategie « contours / dessin au trait » : lignes medianes cousues en
-    // point droit ou satin (autodigitize::auto_digitize_contours).
+    // point droit (satin legacy degrade en point droit).
     const bool contours = mode == "contours";
     autodigitize::ContourMetrics cm;
     autodigitize::ContourOptions co;
@@ -431,11 +431,10 @@ int run_digitize(const std::string& imagePath, const std::string& dstPath, doubl
                    cm.components, cm.segments, cm.junctions, cm.endpoints);
         fmt::print("  elagage : branches courtes={} elements petits={}\n",
                    cm.removed_short_branches, cm.removed_small_elements);
-        fmt::print("  longueur point droit {:.1f} mm | satin {:.1f} mm | largeur min/moy/max "
+        fmt::print("  longueur point droit {:.1f} mm | largeur min/moy/max "
                    "{:.2f}/{:.2f}/{:.2f} mm\n",
-                   cm.running_length_mm, cm.satin_length_mm, cm.min_width_mm, cm.mean_width_mm,
-                   cm.max_width_mm);
-        fmt::print("  replis satin->point droit={} rejets={}\n", cm.fallbacks, cm.rejected);
+                   cm.running_length_mm, cm.min_width_mm, cm.mean_width_mm, cm.max_width_mm);
+        fmt::print("  replis legacy->point droit={} rejets={}\n", cm.fallbacks, cm.rejected);
     }
     for (const auto& w : result->warnings) {
         fmt::print(stderr, "  ! {}\n", w);
@@ -962,7 +961,8 @@ int main(int argc, char** argv) {
         ->add_option("--detail", dz_detail, "Mode contours : niveau de détail 0..1 (défaut : 0.5)")
         ->check(CLI::Range(0.0, 1.0));
     dz_cmd
-        ->add_option("--technique", dz_technique, "Mode contours : auto (défaut) | running | satin")
+        ->add_option("--technique", dz_technique,
+                     "Mode contours : auto (défaut) | running | satin (legacy, point droit)")
         ->check(CLI::IsMember({"auto", "running", "satin"}));
     dz_cmd->add_option("--lock", dz_lock, "Point d'arrêt : none|backforth|triangle|zigzag")
         ->check(CLI::IsMember({"none", "backforth", "triangle", "zigzag"}));

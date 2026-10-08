@@ -348,6 +348,14 @@ constexpr double kMinDrawExtentMm = 0.5;
 // bruts (un évènement de déplacement souris par pixel).
 constexpr Micrometers kFreeformSimplifyTolerance{300};
 
+Micrometers vectorize_tolerance_from_detail(int detail) {
+    const double t = std::clamp(static_cast<double>(detail), 0.0, 100.0) / 100.0;
+    constexpr double kLooseUm = 1000.0; // detail 0 : lissage fort
+    constexpr double kFineUm = 40.0;    // detail 100 : contour tres fidele
+    return Micrometers{static_cast<std::int32_t>(
+        std::lround(kLooseUm * std::pow(kFineUm / kLooseUm, t)))};
+}
+
 namespace {
 // Étiquette à texte élidé (ligne d'indications) : le texte complet reste dans
 // l'infobulle ; l'élision suit la largeur courante, jamais l'inverse.
@@ -3419,10 +3427,44 @@ void MainWindow::vectorizeSelectedRegion() {
         return;
     }
     const auto* region = project_.segmentation->find(*selectedRegion_);
+    if (region == nullptr) {
+        return;
+    }
+
+    QDialog dialog(this);
+    dialog.setWindowTitle(tr("Vectorisation"));
+    auto* layout = new QFormLayout(&dialog);
+    auto* detailSlider = new QSlider(Qt::Horizontal, &dialog);
+    detailSlider->setObjectName("vectorizeDetailSlider");
+    detailSlider->setRange(0, 100);
+    detailSlider->setValue(50);
+    detailSlider->setToolTip(tr("Niveau de détail conservé dans le contour vectoriel."));
+    auto* detailValue = new QLabel(QStringLiteral("50"), &dialog);
+    detailValue->setObjectName("vectorizeDetailValue");
+    connect(detailSlider, &QSlider::valueChanged, detailValue,
+            [detailValue](int value) { detailValue->setText(QString::number(value)); });
+    auto* detailRow = new QWidget(&dialog);
+    auto* detailLayout = new QHBoxLayout(detailRow);
+    detailLayout->setContentsMargins(0, 0, 0, 0);
+    detailLayout->addWidget(new QLabel(tr("Faible"), detailRow));
+    detailLayout->addWidget(detailSlider, 1);
+    detailLayout->addWidget(new QLabel(tr("Élevé"), detailRow));
+    detailLayout->addWidget(detailValue);
+    layout->addRow(tr("Détail :"), detailRow);
+    auto* buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dialog);
+    connect(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
+    connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
+    layout->addRow(buttons);
+    if (dialog.exec() != QDialog::Accepted) {
+        return;
+    }
+
+    const Micrometers simplifyTolerance = vectorize_tolerance_from_detail(detailSlider->value());
+
     QGuiApplication::setOverrideCursor(Qt::WaitCursor);
     auto sets = vectorization::vectorize_region(
         *project_.segmentation, *selectedRegion_,
-        {.mm_per_px = project_.mm_per_px, .simplify_tolerance = Micrometers{200}});
+        {.mm_per_px = project_.mm_per_px, .simplify_tolerance = simplifyTolerance});
     QGuiApplication::restoreOverrideCursor();
     if (!sets) {
         QMessageBox::warning(this, tr("Vectorisation impossible"),
@@ -3668,10 +3710,35 @@ void MainWindow::autoDigitize() {
         auto* contoursRadio = new QRadioButton(tr("Contours (dessin au trait)"), &optsDialog);
         contoursRadio->setObjectName("strategyContoursRadio");
         contoursRadio->setToolTip(
-            tr("Coud les traits du dessin (lignes médianes) en point droit ou en satin selon "
-               "leur largeur, au lieu de remplir les formes."));
+            tr("Coud les traits du dessin (lignes médianes) en point droit, au lieu de remplir "
+               "les formes."));
         optsLayout->addWidget(shapesRadio);
         optsLayout->addWidget(contoursRadio);
+
+        auto* shapesPanel = new QWidget(&optsDialog);
+        shapesPanel->setObjectName("shapesPanel");
+        auto* shapesPanelLayout = new QVBoxLayout(shapesPanel);
+        shapesPanelLayout->setContentsMargins(0, 0, 0, 0);
+        auto* shapeDetailRow = new QHBoxLayout;
+        auto* shapeDetailSlider = new QSlider(Qt::Horizontal, shapesPanel);
+        shapeDetailSlider->setObjectName("shapeVectorizeDetailSlider");
+        shapeDetailSlider->setRange(0, 100);
+        shapeDetailSlider->setValue(50);
+        shapeDetailSlider->setToolTip(
+            tr("Niveau de détail des formes vectorisées : bas = contours lissés ; haut = plus "
+               "fidèle aux pixels segmentés."));
+        auto* shapeDetailValue = new QLabel(QStringLiteral("50"), shapesPanel);
+        shapeDetailValue->setObjectName("shapeVectorizeDetailValue");
+        connect(shapeDetailSlider, &QSlider::valueChanged, shapeDetailValue,
+                [shapeDetailValue](int v) { shapeDetailValue->setText(QString::number(v)); });
+        shapeDetailRow->addWidget(new QLabel(tr("Détail vectorisation :"), shapesPanel));
+        shapeDetailRow->addWidget(new QLabel(tr("Faible"), shapesPanel));
+        shapeDetailRow->addWidget(shapeDetailSlider, 1);
+        shapeDetailRow->addWidget(new QLabel(tr("Élevé"), shapesPanel));
+        shapeDetailRow->addWidget(shapeDetailValue);
+        shapesPanelLayout->addLayout(shapeDetailRow);
+        connect(shapesRadio, &QRadioButton::toggled, shapesPanel, &QWidget::setEnabled);
+        optsLayout->addWidget(shapesPanel);
 
         auto* contoursPanel = new QWidget(&optsDialog);
         contoursPanel->setObjectName("contoursPanel");
@@ -3700,12 +3767,9 @@ void MainWindow::autoDigitize() {
         techAutoRadio->setChecked(true);
         auto* techRunningRadio = new QRadioButton(tr("Running (point droit)"), contoursPanel);
         techRunningRadio->setObjectName("contourTechniqueRunningRadio");
-        auto* techSatinRadio = new QRadioButton(tr("Satin"), contoursPanel);
-        techSatinRadio->setObjectName("contourTechniqueSatinRadio");
         auto* techRow = new QHBoxLayout;
         techRow->addWidget(techAutoRadio);
         techRow->addWidget(techRunningRadio);
-        techRow->addWidget(techSatinRadio);
         panelLayout->addLayout(techRow);
         contoursPanel->setEnabled(false);
         connect(contoursRadio, &QRadioButton::toggled, contoursPanel, &QWidget::setEnabled);
@@ -3720,11 +3784,11 @@ void MainWindow::autoDigitize() {
             return;
         }
         opts.skip_largest_region = skipBgCheck->isChecked();
+        opts.simplify_tolerance = vectorize_tolerance_from_detail(shapeDetailSlider->value());
         contoursMode = contoursRadio->isChecked();
         contourOpts.skip_largest_region = skipBgCheck->isChecked();
         contourOpts.detail = static_cast<double>(detailSlider->value()) / 100.0;
-        contourOpts.technique = techSatinRadio->isChecked() ? autodigitize::ContourTechnique::Satin
-                                : techRunningRadio->isChecked()
+        contourOpts.technique = techRunningRadio->isChecked()
                                     ? autodigitize::ContourTechnique::Running
                                     : autodigitize::ContourTechnique::Automatic;
     }
@@ -3760,18 +3824,18 @@ void MainWindow::autoDigitize() {
         // logique metier ici) : resume en barre d'etat, details en dialogue.
         statusBar()->showMessage(
             tr("Contours : %1 objet(s), %2 segment(s), %3 jonction(s) — point droit %4 mm, "
-               "satin %5 mm, %6 repli(s), %7 rejet(s)")
+               "%5 repli(s), %6 rejet(s)")
                 .arg(embCount)
                 .arg(contourMetrics.segments)
                 .arg(contourMetrics.junctions)
                 .arg(QLocale().toString(contourMetrics.running_length_mm, 'f', 1))
-                .arg(QLocale().toString(contourMetrics.satin_length_mm, 'f', 1))
                 .arg(contourMetrics.fallbacks)
                 .arg(contourMetrics.rejected));
         if (!warnings.empty()) {
             constexpr std::size_t kMaxShown = 12;
-            QString text = tr("Certains traits n'ont pas pu être cousus tels quels (trop courts, "
-                              "trop larges ou trop irréguliers pour le satin) :\n\n");
+            QString text =
+                tr("Certains traits n'ont pas pu être cousus tels quels (trop courts ou trop "
+                   "dégradés après nettoyage) :\n\n");
             for (std::size_t i = 0; i < warnings.size() && i < kMaxShown; ++i) {
                 text += QStringLiteral("• ") + QString::fromStdString(warnings[i]) + "\n";
             }
@@ -4003,43 +4067,37 @@ void MainWindow::createSatinObject() {
         return;
     }
 
-    // Décomposition guidée par squelette (SGSD, `libs/satin_planning`) via
-    // `satin_planning::build_satin_sections` — même point d'entrée que
-    // l'auto-numérisation, gère les formes concaves/branchues sans faire
-    // sortir les barreaux de la région (cf. docs/source/satin.md, § Rails
-    // automatiques : l'heuristique naïve rails_from_contour — deux sommets
-    // les plus éloignés — en fait déborder jusqu'à 57 % sur une forme
-    // réelle). Mode Parametric (rails Bézier épars, jonctions plus propres) ;
-    // repli interne automatique (région non branchée, ou anneau) géré par la
-    // fonction partagée. La densité/compensation/sous-couche du dialogue
-    // n'affecte pas la géométrie des rails — construite ici avec les valeurs
-    // par défaut, réappliquée après le dialogue plutôt que de relancer tout
-    // le calcul (potentiellement coûteux : recherche à faisceau).
+    // Chemin direct HP-STI-018 via `satin_planning::build_satin_sections` :
+    // l'action manuelle "Colonne satin" construit les colonnes sur la région
+    // source sans repasser par la subdivision SGSD automatique. Mode
+    // Parametric (rails Bézier épars, jonctions plus propres). La densité/
+    // compensation/sous-couche du dialogue n'affecte pas la géométrie des
+    // rails — construite ici avec les valeurs par défaut, réappliquée après
+    // le dialogue plutôt que de relancer tout le calcul.
     //
     // §3/§4 de la mission de durcissement du contrat SatinPlanner
     // (2026-08-17) : l'ancien repli sur `rails_from_contour` (heuristique
     // naïve, débordante sur les formes concaves/branchues, cf. commentaire
     // ci-dessus) a été supprimé sur ce chemin `ForcedUserChoice::Satin` --
     // il substituait silencieusement une géométrie de qualité inférieure
-    // sans jamais consulter le planner récursif + réparation de résidu (qui
-    // AURAIT dû être la seule tentative). Un plan sans la moindre section
-    // (§6 : cas Incomplete/Impossible) est désormais traité honnêtement,
-    // pas contourné.
+    // au lieu d'utiliser le générateur satin commun. Un rapport sans la
+    // moindre section (§6 : cas Incomplete/Impossible) est désormais traité
+    // honnêtement, pas contourné.
     auto_satin::SatinColumnsParameters skeletonParams;
     skeletonParams.geometry_mode = auto_satin::SatinGeometryMode::Parametric;
     const document::SatinParams initialDefaults;
     satin_planning::SatinBuildReport built = satin_planning::build_satin_sections(
         source->paths.front(), skeletonParams, initialDefaults.density,
         initialDefaults.pull_compensation, initialDefaults.center_underlay,
-        initialDefaults.max_width);
+        initialDefaults.max_width, {}, initialDefaults.max_width_hard,
+        satin_planning::SatinSectionBuildMode::DirectColumns);
     const std::size_t skeletonColumnCount = built.sections.size();
 
     if (skeletonColumnCount == 0) {
-        // Le planner récursif (avec réparation de résidu) n'a produit
-        // AUCUNE section exploitable -- honnêtement rapporté (§6/§7), jamais
-        // contourné par une heuristique de moindre qualité. Seul choix
-        // encore actionnable : un remplissage tatami sur la région entière,
-        // ou annuler.
+        // Le générateur satin n'a produit AUCUNE section exploitable --
+        // honnêtement rapporté (§6/§7), jamais contourné par une heuristique
+        // de moindre qualité. Seul choix encore actionnable : un remplissage
+        // tatami sur la région entière, ou annuler.
         const auto answer = QMessageBox::question(
             this, tr("Satin impossible"),
             tr("Aucune colonne satin exploitable n'a pu être construite pour cette région "
@@ -4306,9 +4364,8 @@ bool MainWindow::createSatinObjectWithCutLine(Vec2um cutA, Vec2um cutB) {
     double worstWidthUm = 0.0;
     int idx = 0;
     // Chaque morceau issu de la coupe est traité indépendamment via le même
-    // point d'entrée partagé que createSatinObject() (SGSD, repli interne
-    // inclus) : un morceau qui ne produit aucune section (trop
-    // petit/dégénéré) est simplement ignoré plutôt que d'annuler toute
+    // point d'entrée direct que createSatinObject() : un morceau qui ne produit
+    // aucune section (trop petit/dégénéré) est simplement ignoré plutôt que d'annuler toute
     // l'opération -- la coupe a pu très bien fonctionner pour la jonction
     // visée même si un fragment marginal ne l'est pas.
     for (const auto& piece : *cutResult) {
@@ -4319,7 +4376,8 @@ bool MainWindow::createSatinObjectWithCutLine(Vec2um cutA, Vec2um cutB) {
         auto_satin::SatinColumnsParameters skeletonParams;
         skeletonParams.geometry_mode = auto_satin::SatinGeometryMode::Parametric;
         satin_planning::SatinBuildReport pieceBuilt = satin_planning::build_satin_sections(
-            piece, skeletonParams, density, compensation, underlay, defaults.max_width);
+            piece, skeletonParams, density, compensation, underlay, defaults.max_width, {},
+            defaults.max_width_hard, satin_planning::SatinSectionBuildMode::DirectColumns);
         for (auto& w : pieceBuilt.warnings)
             allWarnings.push_back(std::move(w));
         for (auto& r : pieceBuilt.unresolved_residual)
@@ -4480,21 +4538,17 @@ void MainWindow::autoConvertToSatin() {
         return;
     }
 
-    // Décomposition guidée par squelette (SGSD) via
-    // `satin_planning::build_satin_sections` — même point d'entrée que
-    // createSatinObject()/l'auto-numérisation. Mode Parametric (rails Bézier
-    // épars) préféré : jonctions plus propres, validé visuellement sur 6
-    // formes (cf. docs/source/satin.md, § Objets satin paramétriques). Repli
-    // interne automatique (région non branchée, ou anneau) géré par la
-    // fonction partagée. L'aperçu de satinabilité utilise l'analyse de la
-    // région ENTIÈRE (`whole_region_report`, toujours calculée en amont même
-    // quand SGSD décompose ensuite en plusieurs sous-régions).
+    // Même chemin direct que createSatinObject() : on construit les colonnes
+    // satin sur la région source sans subdivision SGSD automatique. L'aperçu
+    // de satinabilité utilise l'analyse de la région ENTIÈRE
+    // (`whole_region_report`, toujours calculée en amont).
     auto_satin::SatinColumnsParameters skeletonParams;
     skeletonParams.geometry_mode = auto_satin::SatinGeometryMode::Parametric;
     const document::SatinParams defaults;
     satin_planning::SatinBuildReport built = satin_planning::build_satin_sections(
         source->paths.front(), skeletonParams, defaults.density, defaults.pull_compensation,
-        defaults.center_underlay, defaults.max_width);
+        defaults.center_underlay, defaults.max_width, {}, defaults.max_width_hard,
+        satin_planning::SatinSectionBuildMode::DirectColumns);
     const std::size_t columnCount = built.sections.size();
 
     QString info;
@@ -4700,25 +4754,24 @@ void MainWindow::setStitchType(ObjectId embroideryId, int type) {
         // `SetStitchTypeCommand` ne sait remplacer qu'UN embroidery object
         // par UN seul jeu de paramètres (contrainte structurelle de cette
         // commande d'annulation/rétablissement, pas un choix arbitraire) --
-        // cette action reste donc hors du planner multi-régions complet
-        // (`createSatinObject`/`autoConvertToSatin`, qui créent une VRAIE
-        // décomposition en plusieurs objets). Elle passe néanmoins par le
-        // même point d'entrée unifié (`satin_planning::build_satin_sections`,
-        // § plan de refonte satin 2026-08-14) pour bénéficier de la même
-        // qualité de solveur (récursion, vérification de couverture) sur le
-        // cas courant (une seule section) plutôt que l'ancien appel direct.
+        // cette action reste donc hors des créations multi-sections complètes
+        // (`createSatinObject`/`autoConvertToSatin`). Elle passe néanmoins par
+        // le même point d'entrée unifié (`satin_planning::build_satin_sections`)
+        // en mode direct, pour rester alignée avec les actions satin manuelles
+        // sans réintroduire la subdivision SGSD automatique.
         auto_satin::SatinColumnsParameters skeletonParams;
         skeletonParams.geometry_mode = auto_satin::SatinGeometryMode::Parametric;
         const document::SatinParams defaults; // densité/compensation/sous-couche inchangées ici
         satin_planning::SatinBuildReport built = satin_planning::build_satin_sections(
             source->paths.front(), skeletonParams, defaults.density, defaults.pull_compensation,
-            defaults.center_underlay, defaults.max_width);
+            defaults.center_underlay, defaults.max_width, {}, defaults.max_width_hard,
+            satin_planning::SatinSectionBuildMode::DirectColumns);
         document::SatinParams sp;
         if (built.sections.size() == 1) {
             sp = std::move(built.sections.front().params);
         } else if (built.sections.size() > 1) {
-            // Décomposition multi-régions réussie, mais cette action ne peut
-            // représenter qu'UNE section : garde la plus grande (meilleure
+            // Plusieurs sections de branches ont ete construites, mais cette
+            // action ne peut representer qu'UNE section : garde la plus grande (meilleure
             // approximation locale unique) et le signale explicitement --
             // jamais une substitution silencieuse par une géométrie de
             // moindre qualité (§12 du plan de refonte satin).
@@ -4733,15 +4786,15 @@ void MainWindow::setStitchType(ObjectId embroideryId, int type) {
                 tr("Cette forme nécessite plusieurs sections satin pour être entièrement "
                    "représentée (%1 trouvées) ; « Type de points » ne peut convertir qu'un "
                    "seul objet à la fois et ne conserve donc que la section la plus grande. "
-                   "Utilisez « Colonne satin » (création) pour la décomposition complète.")
+                   "Utilisez « Colonne satin » (création) pour toutes les sections.")
                     .arg(built.sections.size()));
         } else {
             // §3/§4 de la mission de durcissement du contrat SatinPlanner
             // (2026-08-17) : l'ancien repli sur `rails_from_contour`
             // (heuristique naïve, débordante) a été supprimé ici aussi --
-            // le planner récursif + réparation de résidu (déjà tenté
-            // ci-dessus) est la seule tentative légitime pour une intention
-            // `ForcedUserChoice::Satin`. Un plan sans la moindre section est
+            // le générateur satin (déjà tenté ci-dessus) est la seule tentative
+            // légitime pour une intention `ForcedUserChoice::Satin`. Un rapport
+            // sans la moindre section est
             // rapporté honnêtement (statut du planificateur inclus), jamais
             // contourné par une géométrie de moindre qualité.
             QMessageBox::warning(

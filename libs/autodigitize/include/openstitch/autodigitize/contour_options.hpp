@@ -9,9 +9,9 @@ namespace openstitch::autodigitize {
 
 // Strategie "Contours / Line Art" : technique de couture des traits.
 enum class ContourTechnique : std::uint8_t {
-    Automatic, // classification par segment (fin -> point droit, regulier -> satin, sinon repli)
+    Automatic, // classification par segment en point droit simple/triple
     Running,   // force le point droit sur les lignes mediennes
-    Satin,     // force le satin quand la largeur le permet physiquement
+    Satin,     // legacy/deprecated : degrade en point droit, jamais en satin auto
 };
 
 struct ContourOptions {
@@ -35,7 +35,7 @@ struct ContourThresholds {
 };
 
 // Garde-fous PHYSIQUES, independants de `detail` (jamais abaisses par lui),
-// issus des constantes existantes : SatinabilityThresholds (largeurs satin),
+// issus des constantes existantes : seuils de largeur historiques et
 // RunningStitchParams::min_length (longueur de point minimale), pas DST.
 struct ContourLimits {
     Micrometers min_satin_width{0};
@@ -43,8 +43,8 @@ struct ContourLimits {
     Micrometers min_element_length{0}; // sous cette longueur : aucun point possible
     Micrometers min_loop_perimeter{0}; // 3 points minimum espaces de min_element_length
     Micrometers min_simplify_tolerance{0};
-    // Heuristiques de qualite satin (pas des limites physiques) : ignorees
-    // quand la technique est forcee a Satin.
+    // Heuristiques historiques gardees pour compatibilite des seuils ; le mode
+    // contour ne planifie plus de satin automatiquement.
     double max_width_variation{0.5}; // (max-min)/moyenne
     double max_turn_deg{60.0};       // virage brusque sur ~1 mm
 };

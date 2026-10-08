@@ -122,14 +122,29 @@ struct SatinBuildReport {
     std::vector<PlanningDiagnostic> diagnostics;
 };
 
-// Construit reellement les colonnes satin sur `region` en passant par le
-// planner recursif unifie (`create_satin_plan`, ce meme module) : tente le
+enum class SatinSectionBuildMode {
+    // Chemin historique de production : passe par `create_satin_plan`, donc
+    // peut decomposer la region en sous-regions SGSD pour ameliorer la
+    // couverture.
+    RecursiveSgsd,
+    // Chemin direct HP-STI-018 : construit les colonnes sur la region source
+    // en un seul appel a `auto_satin::build_satin_columns`, mesure la
+    // couverture, mais ne subdivise jamais la region en sous-regions SGSD.
+    DirectColumns
+};
+
+// Construit reellement les colonnes satin sur `region`. Par defaut, conserve
+// le planner recursif unifie (`create_satin_plan`, ce meme module) : tente le
 // solveur local, mesure sa couverture reelle, et decompose puis replanifie
 // RECURSIVEMENT chaque sous-region tant que la couverture mesuree ne suffit
 // pas -- une region fille encore mediocre peut elle-meme etre redecoupee
 // (§10 du plan de refonte satin, 2026-08-14). Une passe de reparation de
 // residu tente ensuite de replanifier toute composante manquante
 // significative comme une nouvelle region (§17).
+//
+// `SatinSectionBuildMode::DirectColumns` garde le meme format de rapport et
+// la meme mesure de couverture, mais saute volontairement `create_satin_plan`
+// pour ne jamais subdiviser automatiquement la region.
 //
 // Ne produit JAMAIS de repli automatique (tatami ou autre) : ce qui reste
 // non resolu apres ce processus est expose tel quel dans
@@ -148,6 +163,7 @@ build_satin_sections(const geometry::PathSet& region,
                      const auto_satin::SatinColumnsParameters& genParams, Micrometers density,
                      Micrometers pullCompensation, bool centerUnderlay, Micrometers maxWidth,
                      const std::string& warningLabel = {},
-                     Micrometers maxWidthHard = Micrometers{0});
+                     Micrometers maxWidthHard = Micrometers{0},
+                     SatinSectionBuildMode mode = SatinSectionBuildMode::RecursiveSgsd);
 
 } // namespace openstitch::satin_planning

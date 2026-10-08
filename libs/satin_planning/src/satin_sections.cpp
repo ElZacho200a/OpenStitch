@@ -51,6 +51,19 @@ BuiltSatinSection make_section(const ColumnLike& col, Micrometers density,
     return out;
 }
 
+template <typename ColumnLike>
+satin_coverage::SatinColumnInput to_coverage_input(const ColumnLike& col, Micrometers density) {
+    satin_coverage::SatinColumnInput in;
+    in.rail_a = col.rail_a;
+    in.rail_b = col.rail_b;
+    in.rungs.reserve(col.rungs.size());
+    for (const auto& r : col.rungs) {
+        in.rungs.emplace_back(r.a, r.b);
+    }
+    in.density = density;
+    return in;
+}
+
 std::vector<BuiltSatinSection> sections_from_result(const auto_satin::SatinColumnsResult& built,
                                                     Micrometers density,
                                                     Micrometers pullCompensation,
@@ -73,6 +86,23 @@ std::vector<BuiltSatinSection> sections_from_result(const auto_satin::SatinColum
     return out;
 }
 
+std::vector<satin_coverage::SatinColumnInput>
+coverage_inputs_from_result(const auto_satin::SatinColumnsResult& built, Micrometers density) {
+    std::vector<satin_coverage::SatinColumnInput> out;
+    if (!built.parametric_columns.empty()) {
+        out.reserve(built.parametric_columns.size());
+        for (const auto& col : built.parametric_columns) {
+            out.push_back(to_coverage_input(col, density));
+        }
+    } else {
+        out.reserve(built.columns.size());
+        for (const auto& col : built.columns) {
+            out.push_back(to_coverage_input(col, density));
+        }
+    }
+    return out;
+}
+
 } // namespace
 
 SatinBuildReport build_satin_sections(const geometry::PathSet& region,
@@ -80,10 +110,10 @@ SatinBuildReport build_satin_sections(const geometry::PathSet& region,
                                       Micrometers density, Micrometers pullCompensation,
                                       bool centerUnderlay, Micrometers maxWidth,
                                       const std::string& warningLabel,
-                                      Micrometers maxWidthHard) {
-    // Mémoïsation de l'étape squelette pour toute la planification de cette
-    // région (analyse initiale ci-dessous + `create_satin_plan`), libérée en
-    // sortie -- cf. auto_satin::SkeletonCacheScope.
+                                      Micrometers maxWidthHard, SatinSectionBuildMode mode) {
+    // Mémoïsation de l'étape squelette pour toute la construction de cette
+    // région (analyse initiale ci-dessous + génération), libérée en sortie
+    // -- cf. auto_satin::SkeletonCacheScope.
     const auto_satin::SkeletonCacheScope skeletonCache;
     SatinBuildReport report;
     const std::string prefix = warningLabel.empty() ? std::string() : (warningLabel + " : ");
@@ -98,46 +128,78 @@ SatinBuildReport build_satin_sections(const geometry::PathSet& region,
         report.whole_region_report = analysis->report;
     }
 
-    // Planner recursif unifie (§32 du plan de refonte satin, 2026-08-14 ;
-    // deplace ici §4 de la mission de durcissement du contrat, 2026-08-17) :
-    // seul point d'appel vers `create_satin_plan` -- ce module GERE lui-meme
-    // la recursion, la mesure de couverture et la reparation de residu.
-    satin_planning::SatinPlanConfig planConfig;
-    planConfig.genParams = planningParams;
-    planConfig.density = density;
-    const satin_planning::SatinPlan plan = satin_planning::create_satin_plan(region, planConfig);
-
-    report.status = plan.status;
-    report.diagnostics = plan.diagnostics;
-
-    for (const auto& w : plan.warnings) {
-        report.warnings.push_back(prefix + w);
-    }
-
-    report.sections.reserve(plan.regions.size());
-    for (const auto& r : plan.regions) {
-        if (r.depth > 0 || r.from_residual_repair) {
-            report.used_sgsd = true;
+    if (mode == SatinSectionBuildMode::DirectColumns) {
+        auto_satin::SatinColumnsResult built =
+            auto_satin::build_satin_columns(region, planningParams);
+        for (const auto& w : built.warnings) {
+            report.warnings.push_back(prefix + w);
         }
-        auto secs =
-            sections_from_result(r.columns, density, pullCompensation, centerUnderlay, maxWidth,
+        report.sections =
+            sections_from_result(built, density, pullCompensation, centerUnderlay, maxWidth,
                                  effectiveMaxWidthHard);
-        for (auto& s : secs)
-            report.sections.push_back(std::move(s));
-    }
 
-    // Le residu reste une geometrie BRUTE, complete et JAMAIS filtree -- c'est
-    // a l'appelant de decider quoi en faire (§12 du plan de refonte : « aucun
-    // fallback silencieux vers tatami »). `create_satin_plan` ne filtre deja
-    // plus les composantes individuellement negligeables hors de ce residu
-    // (defaut reel trouve et corrige le 2026-08-14 : de nombreux petits
-    // reliquats "negligeables" un par un peuvent s'additionner en un vrai
-    // trou de plusieurs centaines de mm² sur une forme complexe, § docs/
-    // source/satin.md) -- il ne fait plus que decider quelles composantes
-    // meritent une TENTATIVE de reparation individuelle, jamais ce qui est
-    // rapporte.
-    report.unresolved_residual = plan.unresolved_residual;
-    report.aggregate_coverage = plan.aggregate_coverage;
+        if (!report.sections.empty()) {
+            const auto coverage = satin_coverage::analyze_satin_coverage(
+                region, coverage_inputs_from_result(built, density));
+            if (coverage) {
+                report.aggregate_coverage = *coverage;
+                for (const auto& missing : coverage->missing_regions) {
+                    report.unresolved_residual.push_back(missing.region);
+                }
+                report.status = coverage->passed ? SatinPlanStatus::Complete
+                                                 : SatinPlanStatus::Incomplete;
+            } else {
+                report.status = SatinPlanStatus::Incomplete;
+                report.diagnostics.push_back(
+                    PlanningDiagnostic{"CoverageAnalysisFailed", coverage.error().message});
+            }
+        } else {
+            report.status = SatinPlanStatus::Impossible;
+            report.refusal = built.refusal;
+        }
+    } else {
+        // Planner recursif unifie (§32 du plan de refonte satin, 2026-08-14 ;
+        // deplace ici §4 de la mission de durcissement du contrat, 2026-08-17) :
+        // seul point d'appel vers `create_satin_plan` -- ce module GERE lui-meme
+        // la recursion, la mesure de couverture et la reparation de residu.
+        satin_planning::SatinPlanConfig planConfig;
+        planConfig.genParams = planningParams;
+        planConfig.density = density;
+        const satin_planning::SatinPlan plan =
+            satin_planning::create_satin_plan(region, planConfig);
+
+        report.status = plan.status;
+        report.diagnostics = plan.diagnostics;
+
+        for (const auto& w : plan.warnings) {
+            report.warnings.push_back(prefix + w);
+        }
+
+        report.sections.reserve(plan.regions.size());
+        for (const auto& r : plan.regions) {
+            if (r.depth > 0 || r.from_residual_repair) {
+                report.used_sgsd = true;
+            }
+            auto secs =
+                sections_from_result(r.columns, density, pullCompensation, centerUnderlay,
+                                     maxWidth, effectiveMaxWidthHard);
+            for (auto& s : secs)
+                report.sections.push_back(std::move(s));
+        }
+
+        // Le residu reste une geometrie BRUTE, complete et JAMAIS filtree -- c'est
+        // a l'appelant de decider quoi en faire (§12 du plan de refonte : « aucun
+        // fallback silencieux vers tatami »). `create_satin_plan` ne filtre deja
+        // plus les composantes individuellement negligeables hors de ce residu
+        // (defaut reel trouve et corrige le 2026-08-14 : de nombreux petits
+        // reliquats "negligeables" un par un peuvent s'additionner en un vrai
+        // trou de plusieurs centaines de mm² sur une forme complexe, § docs/
+        // source/satin.md) -- il ne fait plus que decider quelles composantes
+        // meritent une TENTATIVE de reparation individuelle, jamais ce qui est
+        // rapporte.
+        report.unresolved_residual = plan.unresolved_residual;
+        report.aggregate_coverage = plan.aggregate_coverage;
+    }
 
     // `structural_gap` est un raccourci booleen pour les appelants qui ne
     // veulent pas inspecter `unresolved_residual` en detail : significatif
@@ -155,7 +217,7 @@ SatinBuildReport build_satin_sections(const geometry::PathSet& region,
     report.structural_gap =
         residualAreaMm2 > std::max(kGapThresholdFloorMm2, kGapThresholdRatio * totalAreaMm2);
 
-    if (report.sections.empty()) {
+    if (report.sections.empty() && report.refusal.empty()) {
         report.refusal = "Aucune colonne satin n'a pu etre construite sur cette region.";
     }
 

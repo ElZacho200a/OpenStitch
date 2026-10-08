@@ -298,7 +298,7 @@ TEST_CASE("contour svg dump", "[.svg]") {
     }
 }
 
-TEST_CASE("contour straight line is one satin segment") {
+TEST_CASE("contour straight line is one running segment") {
     auto img = blank(200, 200);
     stroke(img, 20, 100, 180, 100, 5, kBlack);
     const auto r = run(img, opts());
@@ -307,14 +307,14 @@ TEST_CASE("contour straight line is one satin segment") {
     CHECK(r.metrics.segments == 1);
     CHECK(r.metrics.endpoints == 2);
     CHECK(r.metrics.junctions == 0);
-    CHECK(r.satin >= 1);
-    CHECK(r.running == 0);
+    CHECK(r.satin == 0);
+    CHECK(r.running == 1);
     CHECK(r.metrics.mean_width_mm > 1.0);
     CHECK(r.metrics.mean_width_mm < 1.5);
-    CHECK(r.metrics.satin_length_mm > 35.0);
+    CHECK(r.metrics.running_length_mm > 35.0);
 }
 
-TEST_CASE("contour T junction is routed as one satin network") {
+TEST_CASE("contour T junction is routed as running paths") {
     auto img = blank(200, 200);
     stroke(img, 20, 60, 180, 60, 5, kBlack);
     stroke(img, 100, 60, 100, 180, 5, kBlack);
@@ -324,8 +324,8 @@ TEST_CASE("contour T junction is routed as one satin network") {
     CHECK(r.metrics.junctions == 1);
     CHECK(r.metrics.endpoints == 3);
     CHECK(r.metrics.segments == 3);
-    CHECK(r.satin >= 2);
-    CHECK(r.running == 0);
+    CHECK(r.satin == 0);
+    CHECK(r.running >= 1);
 }
 
 TEST_CASE("contour X crossing has a degree 4 junction") {
@@ -387,11 +387,11 @@ TEST_CASE("contour figure eight keeps both loops around the pinch") {
     CHECK(r.metrics.junctions >= 1);
     CHECK(r.metrics.junctions <= 2); // pinch may keep two nodes joined by a short bridge
     CHECK(r.metrics.segments >= 2);
-    // Both loops are stitched somehow (satin or running), none silently lost.
-    CHECK(r.metrics.satin_length_mm + r.metrics.running_length_mm > 120.0);
+    // Both loops are stitched, none silently lost.
+    CHECK(r.metrics.running_length_mm > 120.0);
 }
 
-TEST_CASE("contour zigzag with sharp turns falls back to running with a reason") {
+TEST_CASE("contour zigzag with sharp turns stays running") {
     auto img = blank(200, 200);
     stroke(img, 20, 40, 180, 40, 5, kBlack);
     stroke(img, 180, 40, 180, 80, 5, kBlack);
@@ -402,19 +402,17 @@ TEST_CASE("contour zigzag with sharp turns falls back to running with a reason")
     dump("zigzag", r);
     CHECK(r.satin == 0);
     CHECK(r.running >= 1);
-    CHECK(r.metrics.fallbacks >= 1);
-    CHECK(any_warning(r, "virage brusque"));
+    CHECK(r.metrics.fallbacks == 0);
 }
 
-TEST_CASE("contour thick and thin mix uses satin and running") {
+TEST_CASE("contour thick and thin mix uses running only") {
     auto img = blank(200, 200);
     stroke(img, 20, 100, 110, 100, 7, kBlack);
     stroke(img, 110, 100, 180, 100, 2, kBlack);
     const auto r = run(img, opts());
     dump("mix", r);
-    CHECK(r.metrics.satin_length_mm > 5.0);
     CHECK(r.metrics.running_length_mm > 5.0);
-    CHECK(r.satin >= 1);
+    CHECK(r.satin == 0);
     CHECK(r.running >= 1);
 }
 
@@ -474,8 +472,8 @@ TEST_CASE("contour output is deterministic") {
 }
 
 TEST_CASE("contour physical guards hold at detail 1") {
-    // A forced-satin line thinner than the minimum satin width must degrade to
-    // running with a diagnostic, however high the detail.
+    // Legacy forced satin must degrade to running with a diagnostic, however
+    // high the detail.
     auto img = blank(200, 200);
     stroke(img, 20, 100, 180, 100, 2, kBlack);
     const auto r = run(img, opts(1.0, ContourTechnique::Satin));
@@ -483,15 +481,15 @@ TEST_CASE("contour physical guards hold at detail 1") {
     CHECK(r.satin == 0);
     CHECK(r.running == 1);
     CHECK(r.metrics.fallbacks == 1);
-    CHECK(any_warning(r, "minimum satin"));
+    CHECK(any_warning(r, "satin automatique desactive"));
 
-    // A stroke wider than the maximum satin width is never satin either.
+    // A wide stroke is never satin either.
     auto wide = blank(200, 200);
     stroke(wide, 20, 100, 180, 100, 40, kBlack); // 10 mm
     const auto w = run(wide, opts(1.0, ContourTechnique::Satin));
     dump("forced satin wide", w);
     CHECK(w.satin == 0);
-    CHECK(any_warning(w, "maximum satin"));
+    CHECK(any_warning(w, "satin automatique desactive"));
 
     // A dot has no centerline: rejected with a diagnostic, not silently lost.
     auto dotImg = blank(200, 200);
@@ -518,7 +516,7 @@ TEST_CASE("contour classify_segment guards are independent of technique") {
 }
 
 TEST_CASE("contour objects generate real stitches through effective_sequence") {
-    // Thin red open line + thick black T: running (open path) and satin.
+    // Thin red open line + thick black T: all emitted as running paths.
     auto img = blank(200, 200);
     stroke(img, 20, 30, 180, 30, 2, Rgb{200, 0, 0});
     stroke(img, 20, 100, 180, 100, 5, kBlack);
@@ -539,7 +537,7 @@ TEST_CASE("contour objects generate real stitches through effective_sequence") {
     }
     const auto stats = stitch::compute_stats(*seq);
     CHECK(stats.color_changes >= 1);
-    CHECK(stitches > 200);
+    CHECK(stitches > 100);
     // The red running line is 40 mm long, tripled or single: stitches along y = const.
     for (const auto& e : project.embroidery_objects) {
         if (e.rgb != Rgb{200, 0, 0}) {
@@ -636,9 +634,9 @@ TEST_CASE("contour isolated speck is counted as removed") {
     }
 }
 
-TEST_CASE("contour closed ring is split by width regime") {
-    // Thick ring (5 px) whose upper third narrows to 2 px: the narrow arc must
-    // be running, never satin-sectioned where it narrows.
+TEST_CASE("contour closed ring is running regardless of width regime") {
+    // Thick ring (5 px) whose upper third narrows to 2 px: no automatic satin
+    // is emitted where the stroke is wide.
     auto img = blank(260, 260);
     const int n = 1100;
     for (int i = 0; i < n; ++i) {
@@ -653,15 +651,13 @@ TEST_CASE("contour closed ring is split by width regime") {
         dump("regime ring", r);
         CHECK(r.metrics.segments >= 2);
         CHECK(r.running >= 1);
-        CHECK(r.satin >= 1);
+        CHECK(r.satin == 0);
         CHECK_FALSE(any_warning(r, "colonne refusee"));
         CHECK_FALSE(any_warning(r, "branche ignoree"));
         CHECK_FALSE(any_warning(r, "croisement local"));
         CHECK_FALSE(any_warning(r, "interpolee"));
 
-        CHECK(r.metrics.running_length_mm > 40.0);
-        CHECK(r.metrics.running_length_mm < 60.0);
-        CHECK(r.metrics.satin_length_mm > 90.0);
+        CHECK(r.metrics.running_length_mm > 120.0);
     }
 }
 
@@ -708,7 +704,7 @@ TEST_CASE("contour low resolution line art is covered by running objects") {
     CHECK(r.metrics.running_length_mm > 280.0);
 }
 
-TEST_CASE("contour dense junction network stays satin") {
+TEST_CASE("contour dense junction network stays running") {
     auto img = blank(400, 400);
     for (const double r : {40.0, 90.0, 140.0, 180.0}) {
         ring(img, 200, 200, r, 5, kBlack);
@@ -723,15 +719,14 @@ TEST_CASE("contour dense junction network stays satin") {
     if (const char* dir = std::getenv("CONTOUR_SVG_DIR")) {
         write_svg(std::string(dir) + "/rosette.svg", r);
     }
-    // 48 junctions, 84 segments of ~0.9-1.0 mm: satin everywhere, with at most a
-    // couple of honest fallbacks, never the 45 / 84 seen with a width margin.
+    // 48 junctions, 84 segments of ~0.9-1.0 mm: all running, no satin fallback churn.
     CHECK(r.metrics.segments >= 80);
-    CHECK(r.metrics.fallbacks <= 4);
-    CHECK(r.metrics.satin_length_mm >
-          0.95 * (r.metrics.satin_length_mm + r.metrics.running_length_mm));
+    CHECK(r.metrics.fallbacks == 0);
+    CHECK(r.satin == 0);
+    CHECK(r.metrics.running_length_mm > 0.0);
 }
 
-TEST_CASE("contour taper is split into a satin part and a running tip") {
+TEST_CASE("contour taper stays running") {
     // Stroke tapering linearly from 22 px (5.5 mm) to 1 px along 280 mm.
     auto img = blank(300, 100);
     const int n = 2000;
@@ -744,12 +739,10 @@ TEST_CASE("contour taper is split into a satin part and a running tip") {
         dump("taper", r);
         std::printf("   detail=%.1f segments=%zu satin=%zu running=%zu\n", d, r.metrics.segments,
                     r.satin, r.running);
-        CHECK(r.satin >= 1);
+        CHECK(r.satin == 0);
         CHECK(r.running >= 1);
-        // Exactly one transition: few segments (no oscillation near 0.8 mm).
+        // Few segments: no oscillation near the old satin threshold.
         CHECK(r.metrics.segments <= 4);
-        // The satin part is the wide one: its length is a real share of the stroke.
-        CHECK(r.metrics.satin_length_mm > 40.0);
-        CHECK(r.metrics.running_length_mm > 5.0);
+        CHECK(r.metrics.running_length_mm > 40.0);
     }
 }

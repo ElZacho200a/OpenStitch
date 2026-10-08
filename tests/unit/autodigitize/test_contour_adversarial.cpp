@@ -645,7 +645,7 @@ TEST_CASE("adv thick thin mix") {
     stroke(img, 20, 150, 280, 150, 3, kBlack);
     check_invariants("thick_thin", img, opts(), {2, 3});
     const auto r = exercise(img, opts());
-    CHECK(r.satin >= 1);
+    CHECK(r.satin == 0);
     CHECK(r.running >= 1);
 }
 
@@ -1231,16 +1231,18 @@ TEST_CASE("adv unbranched curve is not shredded into satin and running patches")
     CHECK(switches <= 4);
 }
 
-TEST_CASE("adv satin column covers the ink width") {
-    // Regression: a 6 px (1.5 mm) stroke must be sewn as a ~1.5 mm column
-    // (an earlier snapshot lost 1 px: polygon through pixel centres). 10 % tolerance.
+TEST_CASE("adv running contour covers the ink centerline") {
+    // No automatic satin: a 6 px stroke is sewn as a running contour along the
+    // extracted centerline.
     auto img = blank(300, 100);
     stroke(img, 20, 50, 280, 50, 6, kBlack);
     const auto r = exercise(img, opts(), 4, false);
     REQUIRE(r.ok);
-    std::printf("REPORT width6px nominal=1.50 measured_rung=%.2f metrics_w=%.2f\n", r.max_rung_mm,
-                r.metrics.mean_width_mm);
-    CHECK(r.max_rung_mm >= 1.5 * 0.9);
+    std::printf("REPORT width6px metrics_w=%.2f runLen=%.1f\n", r.metrics.mean_width_mm,
+                r.metrics.running_length_mm);
+    CHECK(r.satin == 0);
+    CHECK(r.running >= 1);
+    CHECK(r.metrics.running_length_mm > 50.0);
 }
 
 TEST_CASE("adv build time scales with grid size", "[.perf]") {

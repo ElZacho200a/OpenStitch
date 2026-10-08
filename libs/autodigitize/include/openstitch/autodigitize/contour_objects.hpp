@@ -14,14 +14,12 @@ namespace openstitch::autodigitize {
 enum class ContourStrategy : std::uint8_t {
     SingleRun, // point droit simple (trait tres fin)
     TripleRun, // point triple (trait fin mais visible)
-    Satin,
     Rejected, // impossible physiquement : non cousu, avec diagnostic
 };
 
 struct SegmentPlan {
     ContourStrategy strategy{ContourStrategy::Rejected};
-    // Vrai si le satin etait l'intention (technique forcee ou segment
-    // satinable) et qu'on a du retomber sur autre chose : jamais silencieux.
+    // Vrai si une option legacy demandait du satin et qu'elle a ete degradee.
     bool fallback{false};
     std::string reason; // toujours renseigne pour un repli ou un rejet
 };
@@ -38,18 +36,17 @@ struct ContourMetrics {
     std::size_t removed_short_branches{0};
     std::size_t removed_small_elements{0}; // boucles + elements isoles sous les seuils
     double running_length_mm{0.0};
-    double satin_length_mm{0.0};
+    double satin_length_mm{0.0}; // legacy, toujours 0 en auto-broderie
     double min_width_mm{0.0};
     double max_width_mm{0.0};
     double mean_width_mm{0.0}; // pondere par la longueur, segments cousus
-    std::size_t fallbacks{0};  // satin voulu -> point droit
+    std::size_t fallbacks{0};  // options legacy/degradations -> point droit
     std::size_t rejected{0};   // segments / composantes refuses (garde-fous)
 };
 
 // Reseau -> objets editables : une couleur = un groupe contigu (les plus
 // claires d'abord, la plus sombre en dernier), ordre deterministe. Les lignes
 // sont des objets Running dont le vecteur est un chemin OUVERT (closed=false).
-// Les jonctions satin passent par satin_planning::build_satin_sections.
 [[nodiscard]] Result<AutoResult> build_contour_objects(const ContourNetwork& network,
                                                        IdGenerator<ObjectId>& ids,
                                                        const ContourOptions& options,
