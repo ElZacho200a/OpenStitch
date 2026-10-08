@@ -690,8 +690,7 @@ SatinResult fill_satin_columns(const geometry::Path& rail_a, const geometry::Pat
         if (config.split_stitch != SplitStitchMode::Disabled && len > maxLen) {
             const int nsplit = std::max(1, static_cast<int>(std::ceil(len / maxLen)) - 1);
             const bool wideThrow =
-                w > static_cast<double>(config.wide_throw_width.value) && i > 0 &&
-                i + 1 < nThreads;
+                w > static_cast<double>(config.wide_throw_width.value) && i > 0 && i + 1 < nThreads;
             PointD tangent{0.0, 0.0};
             double wideOffset = 0.0;
             if (wideThrow) {
@@ -700,12 +699,10 @@ SatinResult fill_satin_columns(const geometry::Path& rail_a, const geometry::Pat
                 const double tn = dist(prevMid, nextMid);
                 if (tn > 1e-6) {
                     tangent = {(nextMid.x - prevMid.x) / tn, (nextMid.y - prevMid.y) / tn};
-                    const double advancePrev =
-                        cumMid[static_cast<std::size_t>(i)] -
-                        cumMid[static_cast<std::size_t>(i - 1)];
-                    const double advanceNext =
-                        cumMid[static_cast<std::size_t>(i + 1)] -
-                        cumMid[static_cast<std::size_t>(i)];
+                    const double advancePrev = cumMid[static_cast<std::size_t>(i)] -
+                                               cumMid[static_cast<std::size_t>(i - 1)];
+                    const double advanceNext = cumMid[static_cast<std::size_t>(i + 1)] -
+                                               cumMid[static_cast<std::size_t>(i)];
                     const double amp =
                         std::max(0.0, config.wide_throw_zigzag_amplitude) * (w * 0.5);
                     wideOffset = std::min(amp, 0.4 * std::min(advancePrev, advanceNext));

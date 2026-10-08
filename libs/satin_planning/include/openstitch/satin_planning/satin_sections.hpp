@@ -158,12 +158,10 @@ enum class SatinSectionBuildMode {
 // coupe du desktop, sans qu'aucun de ces appelants n'ait besoin de lier
 // `autodigitize`. `warningLabel`, si non vide, prefixe chaque message de
 // `warnings` (ex. "Region 12" cote auto-numerisation).
-[[nodiscard]] SatinBuildReport
-build_satin_sections(const geometry::PathSet& region,
-                     const auto_satin::SatinColumnsParameters& genParams, Micrometers density,
-                     Micrometers pullCompensation, bool centerUnderlay, Micrometers maxWidth,
-                     const std::string& warningLabel = {},
-                     Micrometers maxWidthHard = Micrometers{0},
-                     SatinSectionBuildMode mode = SatinSectionBuildMode::RecursiveSgsd);
+[[nodiscard]] SatinBuildReport build_satin_sections(
+    const geometry::PathSet& region, const auto_satin::SatinColumnsParameters& genParams,
+    Micrometers density, Micrometers pullCompensation, bool centerUnderlay, Micrometers maxWidth,
+    const std::string& warningLabel = {}, Micrometers maxWidthHard = Micrometers{0},
+    SatinSectionBuildMode mode = SatinSectionBuildMode::RecursiveSgsd);
 
 } // namespace openstitch::satin_planning

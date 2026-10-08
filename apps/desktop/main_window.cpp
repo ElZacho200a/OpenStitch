@@ -352,8 +352,8 @@ Micrometers vectorize_tolerance_from_detail(int detail) {
     const double t = std::clamp(static_cast<double>(detail), 0.0, 100.0) / 100.0;
     constexpr double kLooseUm = 1000.0; // detail 0 : lissage fort
     constexpr double kFineUm = 40.0;    // detail 100 : contour tres fidele
-    return Micrometers{static_cast<std::int32_t>(
-        std::lround(kLooseUm * std::pow(kFineUm / kLooseUm, t)))};
+    return Micrometers{
+        static_cast<std::int32_t>(std::lround(kLooseUm * std::pow(kFineUm / kLooseUm, t)))};
 }
 
 namespace {

@@ -418,7 +418,8 @@ TEST_CASE("split : grande traversee zigzague le long de l'axe sans activer le mo
     SatinConfig wideCfg = split_cfg(SplitStitchMode::Simple);
     wideCfg.wide_throw_width = Micrometers{9'000};
 
-    const auto disabled = fill_satin_columns(c.a, c.b, c.rungs, split_cfg(SplitStitchMode::Disabled));
+    const auto disabled =
+        fill_satin_columns(c.a, c.b, c.rungs, split_cfg(SplitStitchMode::Disabled));
     const auto simple = fill_satin_columns(c.a, c.b, c.rungs, simpleCfg);
     const auto wide = fill_satin_columns(c.a, c.b, c.rungs, wideCfg);
 

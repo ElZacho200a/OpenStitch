@@ -109,8 +109,8 @@ SatinBuildReport build_satin_sections(const geometry::PathSet& region,
                                       const auto_satin::SatinColumnsParameters& genParams,
                                       Micrometers density, Micrometers pullCompensation,
                                       bool centerUnderlay, Micrometers maxWidth,
-                                      const std::string& warningLabel,
-                                      Micrometers maxWidthHard, SatinSectionBuildMode mode) {
+                                      const std::string& warningLabel, Micrometers maxWidthHard,
+                                      SatinSectionBuildMode mode) {
     // Mémoïsation de l'étape squelette pour toute la construction de cette
     // région (analyse initiale ci-dessous + génération), libérée en sortie
     // -- cf. auto_satin::SkeletonCacheScope.
@@ -134,9 +134,8 @@ SatinBuildReport build_satin_sections(const geometry::PathSet& region,
         for (const auto& w : built.warnings) {
             report.warnings.push_back(prefix + w);
         }
-        report.sections =
-            sections_from_result(built, density, pullCompensation, centerUnderlay, maxWidth,
-                                 effectiveMaxWidthHard);
+        report.sections = sections_from_result(built, density, pullCompensation, centerUnderlay,
+                                               maxWidth, effectiveMaxWidthHard);
 
         if (!report.sections.empty()) {
             const auto coverage = satin_coverage::analyze_satin_coverage(
@@ -146,8 +145,8 @@ SatinBuildReport build_satin_sections(const geometry::PathSet& region,
                 for (const auto& missing : coverage->missing_regions) {
                     report.unresolved_residual.push_back(missing.region);
                 }
-                report.status = coverage->passed ? SatinPlanStatus::Complete
-                                                 : SatinPlanStatus::Incomplete;
+                report.status =
+                    coverage->passed ? SatinPlanStatus::Complete : SatinPlanStatus::Incomplete;
             } else {
                 report.status = SatinPlanStatus::Incomplete;
                 report.diagnostics.push_back(
@@ -180,9 +179,8 @@ SatinBuildReport build_satin_sections(const geometry::PathSet& region,
             if (r.depth > 0 || r.from_residual_repair) {
                 report.used_sgsd = true;
             }
-            auto secs =
-                sections_from_result(r.columns, density, pullCompensation, centerUnderlay,
-                                     maxWidth, effectiveMaxWidthHard);
+            auto secs = sections_from_result(r.columns, density, pullCompensation, centerUnderlay,
+                                             maxWidth, effectiveMaxWidthHard);
             for (auto& s : secs)
                 report.sections.push_back(std::move(s));
         }

@@ -8,6 +8,7 @@
 #include <limits>
 #include <map>
 #include <numeric>
+#include <variant>
 
 #include "openstitch/autodigitize/autodigitize.hpp"
 #include "openstitch/formats/dst.hpp"
@@ -172,14 +173,15 @@ TEST_CASE("fixture tentabrode : pipeline complexe deterministe et sans geometrie
         autodigitize::auto_digitize(*project.segmentation, project.object_ids, options);
     REQUIRE(digitized.has_value());
     REQUIRE_FALSE(digitized->embroideries.empty());
-    bool hasTopologicalSatin = false;
+    // AutoChoice produces tatami or running contours; satin is a manual choice.
+    bool hasTatami = false;
     for (const auto& embroidery : digitized->embroideries) {
-        if (!embroidery.is_satin())
-            continue;
-        const auto& satin = std::get<document::SatinParams>(embroidery.params);
-        hasTopologicalSatin = hasTopologicalSatin || satin.rungs.size() >= 2;
+        CHECK_FALSE(embroidery.is_satin());
+        CHECK((embroidery.is_tatami() ||
+               std::holds_alternative<document::RunningStitchParams>(embroidery.params)));
+        hasTatami = hasTatami || embroidery.is_tatami();
     }
-    REQUIRE(hasTopologicalSatin);
+    REQUIRE(hasTatami);
     for (auto& vector : digitized->vectors)
         project.vector_objects.push_back(std::move(vector));
     for (auto& embroidery : digitized->embroideries)

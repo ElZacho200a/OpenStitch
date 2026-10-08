@@ -253,7 +253,8 @@ bool select_feet(const std::vector<BoundaryFoot>& feet, const std::vector<bool>&
 std::vector<CorridorStation> trace_corridor(const std::vector<P2>& axis,
                                             const std::vector<Poly>& polys,
                                             const SatinColumnsParameters& params) {
-    const double softMaxWidth = static_cast<double>(params.analysis.thresholds.max_satin_width.value);
+    const double softMaxWidth =
+        static_cast<double>(params.analysis.thresholds.max_satin_width.value);
 
     std::vector<CorridorStation> stations;
     stations.reserve(axis.size());

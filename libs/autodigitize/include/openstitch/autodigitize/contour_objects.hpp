@@ -14,7 +14,7 @@ namespace openstitch::autodigitize {
 enum class ContourStrategy : std::uint8_t {
     SingleRun, // point droit simple (trait tres fin)
     TripleRun, // point triple (trait fin mais visible)
-    Rejected, // impossible physiquement : non cousu, avec diagnostic
+    Rejected,  // impossible physiquement : non cousu, avec diagnostic
 };
 
 struct SegmentPlan {

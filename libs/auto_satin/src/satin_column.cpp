@@ -948,7 +948,8 @@ std::optional<std::vector<Station>> compute_column_stations(const std::vector<Ve
         return std::nullopt;
     }
 
-    const double softMaxWidth = static_cast<double>(params.analysis.thresholds.max_satin_width.value);
+    const double softMaxWidth =
+        static_cast<double>(params.analysis.thresholds.max_satin_width.value);
     const double maxWidth = static_cast<double>(params.corridor_max_width_hard.value);
     // Plancher de largeur PAR STATION (§ audit anneaux/arcs fins, projet réel :
     // un anneau/arc très long et globalement fin passe le test d'éligibilité
@@ -3073,11 +3074,10 @@ SatinColumnsResult build_satin_columns(const geometry::PathSet& region,
     // `SuitableWithWarnings`. En cas d'echec (meme le premier anneau n'est pas
     // constructible), ne RETOURNE PAS ici : retombe dans le chemin de refus
     // existant plus bas, `r.status` etant reste inchange.
-    if (region.holes.empty() &&
-        (r.status == SatinabilityStatus::Ambiguous ||
-         ((r.status == SatinabilityStatus::Unsuitable ||
-           r.status == SatinabilityStatus::SuitableWithWarnings) &&
-          r.report.has_wide_area))) {
+    if (region.holes.empty() && (r.status == SatinabilityStatus::Ambiguous ||
+                                 ((r.status == SatinabilityStatus::Unsuitable ||
+                                   r.status == SatinabilityStatus::SuitableWithWarnings) &&
+                                  r.report.has_wide_area))) {
         std::string turningRefusal;
         auto turningSections =
             build_turning_satin_sections(region, params, turningRefusal, r.warnings);
