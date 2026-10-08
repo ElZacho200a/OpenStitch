@@ -71,6 +71,13 @@ foreach(suite test_main_window test_ui_invariants test_ui_adversarial test_ui_ch
     endforeach()
 endforeach()
 
+# Ces suites partagent le dossier d'autosave de QStandardPaths (mode test, persistant) :
+# jamais deux en parallele (ctest -j), thémées ou non.
+set_tests_properties(test_main_window test_ui_adversarial
+    test_main_window_themed_light_comfortable test_main_window_themed_dark_compact
+    test_ui_adversarial_themed_light_comfortable test_ui_adversarial_themed_dark_compact
+    PROPERTIES RESOURCE_LOCK autosave_dir)
+
 # Instantanés headless (plan L2 §4) : écrit des PNG pour relecture humaine dans
 # OPENSTITCH_UI_SNAPSHOT_DIR (sinon dossier temporaire : simple test de fumée).
 # Aucune comparaison de pixels. Une seconde entrée rejoue à l'échelle 2x.
