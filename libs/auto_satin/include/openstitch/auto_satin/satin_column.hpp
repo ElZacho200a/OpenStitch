@@ -250,7 +250,7 @@ struct JunctionCore {
     std::vector<Vec2um> boundary;
     double area_um2{0.0};
     double configured_radius_um{
-        0.0};                    // plafond de sécurité (`junction_core_radius`), PAS le rayon réel
+        0.0}; // plafond de sécurité (`junction_core_radius`), PAS le rayon réel
     double local_radius_um{0.0}; // rayon local réellement utilisé (données réelles, ≤ configured)
     double actual_max_radius_um{0.0}; // distance MESURÉE du point le plus éloigné du noyau au nœud
     bool requires_fill{false}; // aire au-delà du seuil de significativité : à remplir séparément
