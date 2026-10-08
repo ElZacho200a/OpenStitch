@@ -116,12 +116,14 @@ TEST_CASE("finish : un deplacement long entre deux objets -> arret, coupe, arret
     CHECK(done.commands.back().type == CmdType::End);
 }
 
-TEST_CASE("finish : deplacement court entre objets -> saut sans coupe, mais verrous") {
-    const auto project = two_squares(1'000); // 1 mm
+TEST_CASE("finish : deplacement court entre deux objets -> toujours coupe, avec verrous") {
+    // Regression 2026-10-08 : un ecart sous `trim_threshold` entre deux formes
+    // laissait le fil tendu (aucune coupe).
+    const auto project = two_squares(1'000); // 1 mm < seuil de 3 mm
     const auto raw = generate_sequence(project);
     REQUIRE(raw.has_value());
     const auto done = finish_sequence(*raw, project);
-    CHECK(count_type(done, CmdType::Trim) == 0);
+    CHECK(count_type(done, CmdType::Trim) == 1);
     CHECK(count_type(done, CmdType::Jump) == count_type(*raw, CmdType::Jump));
     CHECK(count_pass(done, Pass::Lock) > 0);
 }
@@ -147,8 +149,9 @@ TEST_CASE("finish : seuil de coupe et type de verrou configurables") {
     const auto raw = generate_sequence(project);
     REQUIRE(raw.has_value());
     CHECK(count_type(finish_sequence(*raw, project), CmdType::Trim) == 1);
+    // Entre deux objets, le seuil ne desactive plus la coupe.
     project.finishing.trim_threshold = Micrometers{6'000};
-    CHECK(count_type(finish_sequence(*raw, project), CmdType::Trim) == 0);
+    CHECK(count_type(finish_sequence(*raw, project), CmdType::Trim) == 1);
     project.finishing.lock_type = document::LockStitch::None;
     CHECK(count_pass(finish_sequence(*raw, project), Pass::Lock) == 0);
 }

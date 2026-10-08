@@ -27,7 +27,8 @@ set(CMAKE_AUTOMOC ON)
 function(openstitch_add_qt_test name)
     add_executable(${name} ${ARGN})
     target_link_libraries(${name} PRIVATE openstitch::desktop_widgets Qt6::Test openstitch::warnings)
-    add_test(NAME ${name} COMMAND ${name})
+    # Force text output to stdout, including Windows runners without a console.
+    add_test(NAME ${name} COMMAND ${name} -o -,txt)
     # Qt (hors vcpkg, cf. QT_ROOT) n'est déployé à côté de l'exécutable que
     # pour la cible `openstitch` (windeployqt) ; ici on ajoute simplement son
     # dossier bin au PATH plutôt que de dupliquer les DLL pour chaque test.

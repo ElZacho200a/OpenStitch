@@ -3030,11 +3030,8 @@ void MainWindowTest::autoDigitizeAfterOpenSvgClassifiesVectorObjectsDirectly() {
     const QString svgPath = dir.filePath("bande.svg");
     QFile file(svgPath);
     QVERIFY(file.open(QIODevice::WriteOnly | QIODevice::Text));
-    // Bande fine 50x3 mm (viewBox 500x30, 10 unites/mm) : assez large pour
-    // remplir (aire >= min_fill_area_mm2 par defaut) et assez fine pour
-    // etre classee satin (largeur moyenne < satin_max_width par defaut,
-    // 6 mm) -- meme forme que le test equivalent de la voie segmentation
-    // (tests/unit/autodigitize/test_autodigitize.cpp).
+    // Bande 50x3 mm : aire suffisante pour un tatami automatique.
+    // Le satin reste un choix manuel, meme pour une forme fine.
     file.write(QByteArrayLiteral("<svg viewBox=\"0 0 500 30\" width=\"50mm\" height=\"3mm\">"
                                  "<rect x=\"0\" y=\"0\" width=\"500\" height=\"30\"/>"
                                  "</svg>"));
@@ -3072,6 +3069,14 @@ void MainWindowTest::autoDigitizeAfterOpenSvgClassifiesVectorObjectsDirectly() {
     QVERIFY(anyTatami);
     // La bande d'origine, elle, reste bien la SEULE entree (pas de doublon) --
     // l'eventuel vecteur de repli s'ajouterait APRES, jamais a sa place.
+    // La voie vectorielle conserve l'objet source et cree un seul tatami.
+    // Aucune copie du vecteur ni section satin automatique n'est attendue.
+    QCOMPARE(window.project_.vector_objects.size(), std::size_t{1});
+    QCOMPARE(window.project_.embroidery_objects.size(), std::size_t{1});
+    const auto& embroidery = window.project_.embroidery_objects.front();
+    QVERIFY(embroidery.is_tatami());
+    QVERIFY(embroidery.intent == document::EmbroideryIntent::AutoChoice);
+    QCOMPARE(embroidery.source_vector, sourceVecId);
     QCOMPARE(window.project_.vector_objects.front().id, sourceVecId);
 }
 

@@ -196,7 +196,7 @@ points*) :
 
 | Réglage | Défaut | Rôle |
 |---|---|---|
-| `trim_threshold` | 3 mm | au-delà : arrêt de sortie, coupe, déplacement, arrêt d'entrée ; en deçà : simple saut |
+| `trim_threshold` | 3 mm | au-delà : arrêt de sortie, coupe, déplacement, arrêt d'entrée ; en deçà : simple saut dans un même objet ; entre deux objets, la coupe est toujours faite |
 | `trim_before_color_change` | oui | coupe avant chaque changement de fil |
 | `lock_type` | aller-retour | point d'arrêt à l'entrée/sortie de chaque objet et autour de chaque coupe |
 | `lock_length`, `lock_passes` | 0,8 mm, 2 | taille (bornée au point voisin) et répétitions |

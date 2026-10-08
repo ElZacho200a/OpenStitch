@@ -17,6 +17,8 @@ namespace openstitch::stitch_generation {
 // - Déplacement plus long que `trim_threshold` (ou changement de fil si
 //   `trim_before_color_change`) : point d'arrêt de sortie, `Trim`,
 //   déplacement, point d'arrêt d'entrée.
+// - Déplacement entre deux objets distincts : toujours une coupe, quelle que
+//   soit sa longueur (le seuil ne protège que les sauts internes à un objet).
 // - Déplacement plus court, dans le même objet : simple saut, sans coupe ni
 //   verrou.
 // - Changement d'objet : toujours un point d'arrêt de sortie et d'entrée
