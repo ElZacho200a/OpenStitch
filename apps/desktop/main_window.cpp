@@ -841,6 +841,7 @@ void MainWindow::buildMenus() {
     showStitchesAct_->setCheckable(true);
     showStitchesAct_->setChecked(true);
     connect(showStitchesAct_, &QAction::toggled, this, [this] { displayImage(processed_); });
+    buildRealisticMenu(viewMenu);
     viewMenu->addSeparator();
     auto* zoomInAct = viewMenu->addAction(tr("Zoom &avant"));
     zoomInAct->setShortcut(QKeySequence::ZoomIn);
@@ -3221,6 +3222,9 @@ void MainWindow::renderStitches() {
     stitchItems_.clear();
 
     if (showStitchesAct_ == nullptr || !showStitchesAct_->isChecked() || !sequence_) {
+        return;
+    }
+    if (renderRealisticStitches()) {
         return;
     }
 

@@ -24,6 +24,7 @@
 #include "openstitch/geometry/path.hpp"
 #include "openstitch/stitch/sequence.hpp"
 #include "openstitch/stitch_generation/overrides.hpp"
+#include "realistic_view_state.hpp"
 #include "tools.hpp"
 
 class QGraphicsScene;
@@ -672,6 +673,16 @@ private:
     void showGesturesDialog();
     void showQuickStartDialog();
     void buildNavigationMenu(QMenu* viewMenu);
+    // Rendu réaliste des points (main_window_realistic.cpp) : sous-menu
+    // Affichage > Rendu réaliste, fenêtre de réglages et peinture du cache.
+    void buildRealisticMenu(QMenu* viewMenu);
+    // Vrai si la couche points a été peinte en rendu réaliste (sinon l'appelant
+    // dessine les lignes : désactivé, simulation, dézoom fort, rien à peindre).
+    bool renderRealisticStitches();
+    void applyRealisticPreferences(const RealisticPreferences& prefs);
+    void showRealisticDialog();
+    QAction* realisticAct_{nullptr};
+    RealisticViewState realistic_;
     void applyNavigationPreset(Preset preset);
     // Duplique `ids` (copies exactes, même position) puis translate les COPIES de
     // `delta`, en un seul pas d'annulation (CompositeCommand) ; les copies deviennent

@@ -15,6 +15,12 @@ set(CMAKE_AUTOMOC ON)
 add_library(openstitch_desktop_widgets STATIC
     main_window.cpp
     main_window_directional.cpp
+    main_window_realistic.cpp
+    realistic_preferences.cpp
+    realistic_preferences.hpp
+    realistic_render_dialog.cpp
+    realistic_render_dialog.hpp
+    realistic_view_state.hpp
     main_window.hpp
     app_theme.cpp
     app_theme.hpp
@@ -78,7 +84,7 @@ target_link_libraries(openstitch_desktop_widgets
     # fonctionnalite (auto-numerisation), pas comme detour obligatoire vers
     # un adaptateur generique.
     PUBLIC Qt6::Widgets openstitch::core openstitch::image openstitch::document
-           openstitch::commands openstitch::vectorization openstitch::stitch
+           openstitch::commands openstitch::vectorization openstitch::stitch openstitch::stitch_render
            openstitch::stitch_generation openstitch::formats openstitch::project_io
            openstitch::stitch_analysis openstitch::optimization openstitch::autodigitize
            openstitch::auto_satin openstitch::satin_planning openstitch::segmentation
