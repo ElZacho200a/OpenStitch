@@ -19,7 +19,8 @@ struct Tokens {
     QColor surfaceRaised; // champs, éléments surélevés
     QColor border;        // séparateurs, bordures
     QColor text;          // texte principal
-    QColor textSecondary; // texte secondaire / aide
+    QColor textSecondary; // texte secondaire / aide (contraste >= 4,5:1)
+    QColor textDisabled;  // texte d'un contrôle désactivé (distinct du texte d'aide)
 
     // --- Accent & états (une SEULE couleur d'accent) ---
     QColor accent; // rappel « fil », sobre

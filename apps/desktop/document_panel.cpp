@@ -13,14 +13,14 @@
 #include <algorithm>
 #include <map>
 
+#include "ui_icons.hpp"
+
 namespace openstitch::desktop {
 
 namespace {
 
 QIcon swatch(const std::array<std::uint8_t, 3>& rgb) {
-    QPixmap pm(12, 12);
-    pm.fill(QColor(rgb[0], rgb[1], rgb[2]));
-    return QIcon(pm);
+    return icons::colorSwatch(QColor(rgb[0], rgb[1], rgb[2]));
 }
 
 QString type_label(const document::EmbroideryObject& e) {

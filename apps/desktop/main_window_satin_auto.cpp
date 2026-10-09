@@ -269,7 +269,8 @@ void MainWindow::createAutoSatin(bool askParameters) {
                                    "broderie."),
                                 &dialog);
         warn->setWordWrap(true);
-        warn->setStyleSheet("color:#8a5a00;");
+        warn->setStyleSheet(
+            QStringLiteral("color:%1;").arg(AppTheme::instance().tokens().warning.name()));
         layout->addRow(warn);
         auto* spacingSpin = new QDoubleSpinBox(&dialog);
         spacingSpin->setRange(0.1, 1.5);

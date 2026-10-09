@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 #include "workflow_panel.hpp"
 
+#include <QApplication>
 #include <QGridLayout>
 #include <QLabel>
 #include <QPainter>
@@ -63,7 +64,9 @@ QColor state_color(WorkflowPanel::State s, const Tokens& t) {
 }
 
 QPixmap dot(const QColor& color) {
-    QPixmap pm(10, 10);
+    const qreal dpr = qApp != nullptr ? qApp->devicePixelRatio() : 1.0;
+    QPixmap pm(QSize(10, 10) * dpr);
+    pm.setDevicePixelRatio(dpr);
     pm.fill(Qt::transparent);
     QPainter p(&pm);
     p.setRenderHint(QPainter::Antialiasing, true);
@@ -93,7 +96,7 @@ WorkflowPanel::WorkflowPanel(QWidget* parent) : QWidget(parent) {
         buttons_[i]->setCursor(Qt::PointingHandCursor);
         connect(buttons_[i], &QToolButton::clicked, this, [this, i] { emit stepClicked(i); });
         states_[i] = new QLabel(this);
-        states_[i]->setEnabled(false);
+        markSecondaryText(states_[i]);
 
         grid->addWidget(dots_[i], i, 0);
         grid->addWidget(buttons_[i], i, 1, Qt::AlignLeft);

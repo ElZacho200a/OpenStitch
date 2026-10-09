@@ -20,6 +20,8 @@ add_library(openstitch_desktop_widgets STATIC
     main_window_shapes.cpp
     main_window_workflow.cpp
     ui_memory.hpp
+    main_window_ux.cpp
+    main_window_analysis.cpp
     main_window.hpp
     app_theme.cpp
     app_theme.hpp
@@ -90,7 +92,7 @@ target_link_libraries(openstitch PRIVATE openstitch_desktop_widgets openstitch::
 # (Les DLL vcpkg — OpenCV, etc. — sont déjà copiées par VCPKG_APPLOCAL_DEPS.)
 if(WIN32 AND TARGET Qt6::windeployqt)
     add_custom_command(TARGET openstitch POST_BUILD
-        COMMAND Qt6::windeployqt --no-translations --no-system-d3d-compiler
+        COMMAND Qt6::windeployqt --translations fr --no-system-d3d-compiler
                 "$<TARGET_FILE:openstitch>"
         COMMENT "Déploiement des DLL Qt (windeployqt)")
 endif()

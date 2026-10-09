@@ -13,10 +13,11 @@ namespace openstitch::desktop {
 
 EmptyStateWidget::EmptyStateWidget(QWidget* parent) : QFrame(parent) {
     const Tokens& t = AppTheme::instance().tokens();
-    setStyleSheet(
-        QStringLiteral("QFrame { background:%1; border:1px solid %2; border-radius:%3px; }")
-            .arg(t.surface.name(), t.border.name())
-            .arg(t.radiusMd));
+    setObjectName(QStringLiteral("emptyState"));
+    setStyleSheet(QStringLiteral("#emptyState { background:%1; border:1px solid %2; "
+                                 "border-radius:%3px; }")
+                      .arg(t.surface.name(), t.border.name())
+                      .arg(t.radiusMd));
 
     auto* layout = new QVBoxLayout(this);
     layout->setContentsMargins(28, 24, 28, 24);
@@ -46,7 +47,7 @@ EmptyStateWidget::EmptyStateWidget(QWidget* parent) : QFrame(parent) {
                       "(un SVG évite l'étape de segmentation), ou ouvrez un projet existant."),
                    this);
     hint->setAlignment(Qt::AlignCenter);
-    hint->setEnabled(false);
+    markSecondaryText(hint);
     layout->addWidget(hint);
 
     // Liste des récents (HP-FILE-003) : vide au départ, remplie par le
@@ -65,7 +66,10 @@ void EmptyStateWidget::setRecentFiles(const QStringList& paths) {
         delete item->widget();
         delete item;
     }
-    for (const QString& path : paths) {
+    // Cinq récents au plus ici (le menu Fichier en garde dix) : l'écran d'accueil doit tenir dans
+    // un canevas bas sans être tronqué.
+    constexpr qsizetype kMaxShownRecents = 5;
+    for (const QString& path : paths.mid(0, kMaxShownRecents)) {
         auto* button = new QPushButton(QFileInfo(path).fileName(), this);
         button->setToolTip(path);
         button->setMinimumWidth(220);

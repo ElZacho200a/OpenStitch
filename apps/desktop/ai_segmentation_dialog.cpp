@@ -139,7 +139,7 @@ void AiSegmentationDialog::setupUi() {
                       "diviser par couleur, utilisez plutôt le menu Segmentation."),
                    this);
     explainer->setWordWrap(true);
-    explainer->setEnabled(false); // texte atténué : information, pas une alerte
+    markSecondaryText(explainer); // texte atténué : information, pas une alerte
     mainLayout->addWidget(explainer);
 
     auto* topRow = new QHBoxLayout;

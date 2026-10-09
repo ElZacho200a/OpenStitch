@@ -2,8 +2,12 @@
 #include "app_theme.hpp"
 
 #include <QApplication>
+#include <QGuiApplication>
 #include <QPalette>
 #include <QSettings>
+#include <QStyle>
+#include <QStyleHints>
+#include <QWidget>
 
 namespace openstitch::desktop {
 
@@ -31,9 +35,11 @@ QPalette build_palette(const Tokens& t) {
     p.setColor(QPalette::Mid, t.border);
     p.setColor(QPalette::Dark, t.border);
     // États désactivés reconnaissables (contraste réduit mais lisible).
-    p.setColor(QPalette::Disabled, QPalette::WindowText, t.textSecondary);
-    p.setColor(QPalette::Disabled, QPalette::Text, t.textSecondary);
-    p.setColor(QPalette::Disabled, QPalette::ButtonText, t.textSecondary);
+    // Teinte dédiée, distincte du texte d'aide (textSecondary) : un contrôle grisé ne doit
+    // pas se confondre avec une légende ordinaire.
+    p.setColor(QPalette::Disabled, QPalette::WindowText, t.textDisabled);
+    p.setColor(QPalette::Disabled, QPalette::Text, t.textDisabled);
+    p.setColor(QPalette::Disabled, QPalette::ButtonText, t.textDisabled);
     return p;
 }
 
@@ -86,8 +92,11 @@ QString build_stylesheet(const Tokens& t) {
     qss += QStringLiteral("QPushButton:hover { border-color: %1; }\n").arg(c(t.accent));
     qss += QStringLiteral("QPushButton:pressed { background: %1; }\n").arg(c(t.window));
     qss += QStringLiteral("QPushButton:focus { border: 1px solid %1; }\n").arg(c(t.focus));
-    qss += QStringLiteral("QPushButton:disabled { color: %1; border-color: %2; }\n")
-               .arg(c(t.textSecondary), c(t.border));
+    qss += QStringLiteral("QPushButton:disabled { color: %1; background: %2; border-color: %3; }\n")
+               .arg(c(t.textDisabled), c(t.window), c(t.surfaceRaised));
+    // Anneau de focus clavier sur les contrôles que le style natif ne dessine pas assez.
+    qss += QStringLiteral("QToolButton:focus, QTabBar::tab:focus { border: 1px solid %1; }\n")
+               .arg(c(t.focus));
 
     qss += QStringLiteral(
                "QLineEdit, QSpinBox, QDoubleSpinBox, QComboBox { background: %1; color: %2; "
@@ -114,6 +123,7 @@ QString build_stylesheet(const Tokens& t) {
                .arg(c(t.surface));
 
     qss += QStringLiteral("QLabel { color: %1; }\n").arg(c(t.text));
+    qss += QStringLiteral("QLabel[secondary=\"true\"] { color: %1; }\n").arg(c(t.textSecondary));
     qss += QStringLiteral(
                "QGroupBox { border: 1px solid %1; border-radius: %2px; margin-top: %3px; }\n")
                .arg(c(t.border))
@@ -125,13 +135,13 @@ QString build_stylesheet(const Tokens& t) {
                .arg(t.space1)
                .arg(c(t.textSecondary));
 
-    qss += QStringLiteral("QScrollBar:vertical { background: %1; width: 12px; margin: 0; }\n")
+    qss += QStringLiteral("QScrollBar:vertical { background: %1; width: 14px; margin: 0; }\n")
                .arg(c(t.surface));
     qss += QStringLiteral("QScrollBar::handle:vertical { background: %1; border-radius: %2px; "
                           "min-height: 24px; }\n")
                .arg(c(t.border))
                .arg(t.radiusSm);
-    qss += QStringLiteral("QScrollBar:horizontal { background: %1; height: 12px; margin: 0; }\n")
+    qss += QStringLiteral("QScrollBar:horizontal { background: %1; height: 14px; margin: 0; }\n")
                .arg(c(t.surface));
     qss += QStringLiteral("QScrollBar::handle:horizontal { background: %1; border-radius: %2px; "
                           "min-width: 24px; }\n")
@@ -143,6 +153,14 @@ QString build_stylesheet(const Tokens& t) {
 }
 
 } // namespace
+
+void markSecondaryText(QWidget* widget) {
+    if (widget != nullptr) {
+        widget->setProperty("secondary", true);
+        widget->style()->unpolish(widget);
+        widget->style()->polish(widget);
+    }
+}
 
 AppTheme& AppTheme::instance() {
     static AppTheme theme;
@@ -185,10 +203,20 @@ void AppTheme::setDensity(Density density) {
 
 void AppTheme::load() {
     auto s = settings();
-    mode_ = s.value(QStringLiteral("ui/theme"), QStringLiteral("light")).toString() ==
-                    QStringLiteral("dark")
-                ? ThemeMode::Dark
-                : ThemeMode::Light;
+    // Premier lancement (aucun choix enregistré) : suit le thème du système quand Qt le
+    // connaît ; sinon clair. Un choix explicite de l'utilisateur prime toujours.
+    const ThemeMode systemMode =
+        QGuiApplication::styleHints() != nullptr &&
+                QGuiApplication::styleHints()->colorScheme() == Qt::ColorScheme::Dark
+            ? ThemeMode::Dark
+            : ThemeMode::Light;
+    if (s.contains(QStringLiteral("ui/theme"))) {
+        mode_ = s.value(QStringLiteral("ui/theme")).toString() == QStringLiteral("dark")
+                    ? ThemeMode::Dark
+                    : ThemeMode::Light;
+    } else {
+        mode_ = systemMode;
+    }
     density_ = s.value(QStringLiteral("ui/density"), QStringLiteral("comfortable")).toString() ==
                        QStringLiteral("compact")
                    ? Density::Compact
