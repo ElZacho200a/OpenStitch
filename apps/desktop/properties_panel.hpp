@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 #pragma once
 
+#include <QColor>
 #include <QPointer>
 #include <QWidget>
 
@@ -35,6 +36,17 @@ public:
     void showEmbroidery(const document::EmbroideryObject& object);
     // Informations en lecture seule (région, objet vectoriel) ou état vide.
     void showInfo(const QString& title, const QString& details);
+    // Régions sélectionnées (segmentation) : résumé, pastille de couleur de la région active
+    // (un clic ouvre le sélecteur de couleur) et boutons d'édition. `canMerge` : au moins deux
+    // régions ; `canAbsorb` : exactement une région.
+    struct RegionSelectionInfo {
+        QString title;
+        QString summary;
+        QColor activeColor;
+        bool canMerge{false};
+        bool canAbsorb{false};
+    };
+    void showRegions(const RegionSelectionInfo& info);
     // Indicateur Clean/ManuallyEdited/Dirty (Lot 8.2) : mis à jour à CHAQUE
     // rafraîchissement, y compris quand la sélection elle-même n'a pas changé
     // (une retouche/undo/redo peut faire changer l'état sans changer la
@@ -54,6 +66,9 @@ public:
                            const QString& summary);
 
 signals:
+    // Bouton de l'inspecteur des régions : `actionName` = objectName de la QAction de MainWindow à
+    // déclencher (une seule source d'état, de raccourci et de grisage).
+    void regionActionRequested(const QString& actionName);
     void paramsEdited(ObjectId id, document::StitchParams params);
     // Émis par le bouton « Abandonner les retouches » (état ManuallyEdited ou
     // Dirty) : MainWindow demande confirmation puis exécute

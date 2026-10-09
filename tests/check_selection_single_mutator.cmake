@@ -28,7 +28,7 @@ endif()
 
 file(GLOB candidates "${SRC_DIR}/apps/desktop/*.cpp" "${SRC_DIR}/apps/desktop/*.hpp")
 
-set(members selectedObject_ selectedRegion_ selectedEmbroidery_ multiSelection_)
+set(members selectedObject_ selectedRegion_ selectedEmbroidery_ multiSelection_ extraRegions_)
 set(mutating_methods "reset|clear|push_back|emplace_back|emplace|pop_back|erase|insert|assign|swap|resize|emplace_front|push_front|pop_front|reserve|shrink_to_fit|merge|splice|remove|sort|reverse|unique")
 set(mutating_algos "sort|stable_sort|erase|erase_if|remove|remove_if|reverse|rotate|shuffle|swap|iter_swap|exchange|move|fill|fill_n|unique|replace|replace_if|partition|stable_partition|assign|ref|next_permutation|prev_permutation")
 set(read_algos "find|find_if|any_of|all_of|none_of|count|count_if|contains|binary_search|equal")

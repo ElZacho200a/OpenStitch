@@ -486,9 +486,12 @@ private:
     // sélection, le DERNIER est le principal. Un seul élément = cas legacy
     // (multiSelection_ reste vide, selectedObject_ porte l'objet).
     struct Selection {
-        std::optional<RegionId> region;
+        std::optional<RegionId> region; // région ACTIVE (la dernière cliquée)
         std::optional<ObjectId> embroidery;
         std::vector<ObjectId> objects;
+        // Autres régions sélectionnées avec la région active (sélection multiple de régions).
+        // Vide sans région active ; l'active n'y figure jamais.
+        std::vector<RegionId> extraRegions;
     };
     // SEUL écrivain de selectedObject_/selectedRegion_/selectedEmbroidery_/
     // multiSelection_ (garde CTest check_selection_single_mutator). Normalise :
@@ -509,6 +512,34 @@ private:
     [[nodiscard]] Selection currentSelection() const;
     // Objets vectoriels sélectionnés (ordre de sélection ; principal en dernier).
     [[nodiscard]] std::vector<ObjectId> selectedObjectIds() const;
+    // Régions sélectionnées : les autres d'abord, l'active en dernier. Vide sans sélection.
+    [[nodiscard]] std::vector<RegionId> selectedRegionIds() const;
+
+    // --- Segmentation : sélection multiple et édition par groupes (main_window_regions.cpp) ---
+    // Applique `mode` (Replace/Add/Toggle) à la sélection de régions ; la dernière région
+    // de `ids` devient l'active. Rafraîchit l'affichage, les actions et le message d'état.
+    void selectRegions(const std::vector<RegionId>& ids, SelectMode mode);
+    void selectAllRegions();
+    void selectRegionsWithSameColor();
+    void selectNeighbourRegions();
+    // Fusionne toutes les régions sélectionnées dans l'active (elle garde sa couleur) : un seul
+    // pas d'annulation. Nécessite au moins deux régions.
+    void mergeSelectedRegions();
+    // Fusionne la région sélectionnée dans sa voisine à la plus longue frontière.
+    void absorbSelectedRegionIntoNeighbour();
+    // Donne cette couleur à toutes les régions sélectionnées (un pas d'annulation).
+    void recolorRegions(const std::vector<RegionId>& ids, std::array<std::uint8_t, 3> rgb);
+    // Rend à chaque région sélectionnée sa couleur moyenne dans l'image segmentée.
+    void restoreSelectedRegionColors();
+    // Supprime toutes les régions sélectionnées (un pas d'annulation).
+    void deleteSelectedRegions();
+    // Menu contextuel d'une région (clic droit sur la carte des régions).
+    void showRegionContextMenu(RegionId clicked, QPoint globalPos);
+    // Message d'état décrivant la sélection de régions courante.
+    void announceRegionSelection();
+    [[nodiscard]] bool isRegionSelected(RegionId id) const;
+    // Tous les pixels de la région sont-ils dans le rectangle (en pixels) ?
+    [[nodiscard]] bool regionFullyInside(RegionId id, int x0, int y0, int x1, int y1) const;
     [[nodiscard]] bool hasMultiSelection() const { return !multiSelection_.empty(); }
     // Retire de la sélection les ids disparus (suppression/undo/redo/chargement).
     void pruneSelection();
@@ -554,6 +585,12 @@ private:
     QAction* cropAct_{nullptr};
     QAction* showSegAct_{nullptr};
     QAction* mergeAct_{nullptr};
+    QAction* mergeSelectionAct_{nullptr};
+    QAction* absorbAct_{nullptr};
+    QAction* selectSameColorAct_{nullptr};
+    QAction* selectNeighboursAct_{nullptr};
+    QAction* selectAllRegionsAct_{nullptr};
+    QAction* restoreColorAct_{nullptr};
     QAction* showVectorsAct_{nullptr};
     QAction* showImageAct_{nullptr};
     QAction* showStitchesAct_{nullptr};
@@ -733,6 +770,9 @@ private:
     QAction* autoDigitizeAct_{nullptr};
 
     std::optional<RegionId> selectedRegion_;
+    // Régions sélectionnées EN PLUS de selectedRegion_ (sélection multiple). Écrit uniquement
+    // par setSelection().
+    std::vector<RegionId> extraRegions_;
     std::optional<ObjectId> selectedObject_;
     std::optional<ObjectId> selectedEmbroidery_; // objet de broderie choisi dans l'ordre de couture
     // Multi-sélection d'objets vectoriels : VIDE dans le cas legacy (0 ou 1

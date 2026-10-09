@@ -39,10 +39,16 @@ public:
                      editStates = {});
     // Sélectionne la ligne correspondant à la sélection courante (sans réémettre).
     void syncSelection(Kind kind, std::uint64_t id);
+    // Sélection multiple de régions : coche toutes les lignes de `ids` (l'active devient la
+    // ligne courante), sans réémettre de signal.
+    void syncRegions(const std::vector<std::uint64_t>& ids, std::uint64_t active);
 
 signals:
     void embroiderySelected(ObjectId id);
     void regionSelected(RegionId id);
+    // Plusieurs régions cochées dans la liste (Ctrl/Maj + clic) : `ids` dans l'ordre de la
+    // liste, `active` = la ligne courante (la dernière cliquée).
+    void regionsSelected(const std::vector<std::uint64_t>& ids, std::uint64_t active);
 
 private:
     QTabWidget* tabs_{nullptr};

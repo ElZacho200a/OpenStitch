@@ -6,8 +6,10 @@
 #include <QDoubleSpinBox>
 #include <QFormLayout>
 #include <QFrame>
+#include <QIcon>
 #include <QLabel>
 #include <QListWidget>
+#include <QPixmap>
 #include <QPushButton>
 #include <QSignalBlocker>
 #include <QSpinBox>
@@ -99,6 +101,58 @@ QDoubleSpinBox* PropertiesPanel::mmSpin(double valueMm, double maxMm) {
     spin->setSuffix(tr(" mm"));
     spin->setValue(valueMm);
     return spin;
+}
+
+void PropertiesPanel::showRegions(const RegionSelectionInfo& info) {
+    clearBody();
+    header_->setText(info.title);
+    auto* summary = new QLabel(info.summary, body_);
+    summary->setWordWrap(true);
+    body_->layout()->addWidget(summary);
+
+    // Pastille de la couleur de la région active : un clic ouvre le sélecteur de couleur.
+    auto* colorButton = new QPushButton(
+        tr("Couleur : %1  (cliquer pour changer)").arg(info.activeColor.name().toUpper()), body_);
+    colorButton->setObjectName(QStringLiteral("button_regionColor"));
+    colorButton->setToolTip(tr("Change la couleur de toutes les régions sélectionnées."));
+    QPixmap pm(18, 18);
+    pm.fill(info.activeColor);
+    colorButton->setIcon(QIcon(pm));
+    connect(colorButton, &QPushButton::clicked, this,
+            [this] { emit regionActionRequested(QStringLiteral("action_recolorRegions")); });
+    body_->layout()->addWidget(colorButton);
+
+    const auto addButton = [this](const QString& text, const QString& actionName, bool enabled,
+                                  const QString& tip) {
+        auto* button = new QPushButton(text, body_);
+        button->setObjectName(QStringLiteral("button_") + actionName);
+        button->setEnabled(enabled);
+        button->setToolTip(tip);
+        connect(button, &QPushButton::clicked, this,
+                [this, actionName] { emit regionActionRequested(actionName); });
+        body_->layout()->addWidget(button);
+    };
+    addButton(tr("Fusionner la sélection"), QStringLiteral("action_mergeSelection"), info.canMerge,
+              tr("Fusionne toutes les régions sélectionnées dans la dernière cliquée (Ctrl+M)."));
+    addButton(tr("Fusionner dans la voisine principale"),
+              QStringLiteral("action_absorbIntoNeighbour"), info.canAbsorb,
+              tr("La région rejoint la voisine avec laquelle elle partage la plus longue "
+                 "frontière (Ctrl+Maj+M)."));
+    addButton(tr("Sélectionner la même couleur"), QStringLiteral("action_selectSameColor"), true,
+              tr("Ajoute à la sélection toutes les régions de cette couleur."));
+    addButton(tr("Sélectionner les voisines"), QStringLiteral("action_selectNeighbours"), true,
+              tr("Ajoute à la sélection les régions qui touchent la sélection."));
+    addButton(tr("Rétablir la couleur d'origine"), QStringLiteral("action_restoreRegionColors"),
+              true, tr("Rend à chaque région la couleur moyenne de l'image segmentée."));
+    addButton(tr("Supprimer"), QStringLiteral("action_deleteRegion"), true,
+              tr("Retire les régions sélectionnées (elles redeviennent du fond)."));
+    auto* hint = new QLabel(tr("Ctrl + clic : ajouter/retirer une région · Maj + clic : ajouter · "
+                               "glisser un cadre : sélectionner plusieurs régions."),
+                            body_);
+    hint->setWordWrap(true);
+    hint->setEnabled(false);
+    body_->layout()->addWidget(hint);
+    setEditState(std::nullopt, stitch_generation::ObjectEditState::Clean);
 }
 
 void PropertiesPanel::showInfo(const QString& title, const QString& details) {
