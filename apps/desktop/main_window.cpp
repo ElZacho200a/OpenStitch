@@ -101,6 +101,7 @@
 #include <QHBoxLayout>
 #include <QIcon>
 #include <QListWidget>
+#include <QProgressDialog>
 #include <QPushButton>
 #include <QScrollArea>
 #include <QSettings>
@@ -1039,6 +1040,31 @@ void showFriendlyError(QWidget* parent, const QString& title, const QString& exp
     }
     box.exec();
 }
+
+// Calcul synchrone long : curseur d'attente ET fenêtre « en cours » (indéterminée, sans bouton
+// Annuler : ces calculs ne sont pas interruptibles et le dire vaut mieux qu'un bouton muet).
+// Remplace le seul curseur d'attente, que rien n'expliquait sur une grande image.
+class BusyIndicator {
+public:
+    BusyIndicator(QWidget* parent, const QString& text) : dialog_(text, QString(), 0, 0, parent) {
+        dialog_.setWindowTitle(QObject::tr("Veuillez patienter"));
+        dialog_.setWindowModality(Qt::WindowModal);
+        dialog_.setCancelButton(nullptr);
+        dialog_.setMinimumDuration(0);
+        dialog_.show();
+        QGuiApplication::setOverrideCursor(Qt::WaitCursor);
+        QCoreApplication::processEvents(QEventLoop::ExcludeUserInputEvents);
+    }
+    ~BusyIndicator() {
+        QGuiApplication::restoreOverrideCursor();
+        dialog_.close();
+    }
+    BusyIndicator(const BusyIndicator&) = delete;
+    BusyIndicator& operator=(const BusyIndicator&) = delete;
+
+private:
+    QProgressDialog dialog_;
+};
 
 } // namespace
 
@@ -2016,7 +2042,7 @@ void MainWindow::updateSnapIndicator(std::optional<QPointF> snapSceneMm) {
     if (snapIndicatorItem_ == nullptr) {
         snapIndicatorItem_ = new QGraphicsEllipseItem(-5.0, -5.0, 10.0, 10.0);
         snapIndicatorItem_->setFlag(QGraphicsItem::ItemIgnoresTransformations);
-        snapIndicatorItem_->setPen(QPen(QColor(255, 140, 0), 2));
+        snapIndicatorItem_->setPen(QPen(AppTheme::instance().tokens().warning, 2));
         snapIndicatorItem_->setBrush(Qt::NoBrush);
         snapIndicatorItem_->setZValue(1002.0); // au-dessus des aperçus élastiques (1000)
         scene_->addItem(snapIndicatorItem_);
@@ -3485,11 +3511,12 @@ void MainWindow::segmentImage() {
 
     // Calcul synchrone (curseur d'attente) : le passage en tâche de fond est
     // prévu quand les images de travail deviendront grandes.
-    QGuiApplication::setOverrideCursor(Qt::WaitCursor);
+    std::optional<BusyIndicator> busy;
+    busy.emplace(this, tr("Segmentation de l'image en cours…"));
     auto seg = segmentation::segment(processed_, {.max_colors = colorsSpin->value(),
                                                   .min_region_px = minSizeSpin->value(),
                                                   .smoothing_radius_px = smoothingSpin->value()});
-    QGuiApplication::restoreOverrideCursor();
+    busy.reset();
     if (!seg) {
         QMessageBox::warning(this, tr("Segmentation impossible"),
                              QString::fromStdString(seg.error().message));
@@ -3548,11 +3575,12 @@ void MainWindow::vectorizeSelectedRegion() {
 
     const Micrometers simplifyTolerance = vectorize_tolerance_from_detail(detailSlider->value());
 
-    QGuiApplication::setOverrideCursor(Qt::WaitCursor);
+    std::optional<BusyIndicator> busy;
+    busy.emplace(this, tr("Vectorisation de la région en cours…"));
     auto sets = vectorization::vectorize_region(
         *project_.segmentation, *selectedRegion_,
         {.mm_per_px = project_.mm_per_px, .simplify_tolerance = simplifyTolerance});
-    QGuiApplication::restoreOverrideCursor();
+    busy.reset();
     if (!sets) {
         QMessageBox::warning(this, tr("Vectorisation impossible"),
                              QString::fromStdString(sets.error().message));
@@ -3880,7 +3908,8 @@ void MainWindow::autoDigitize() {
                                     : autodigitize::ContourTechnique::Automatic;
     }
 
-    QGuiApplication::setOverrideCursor(Qt::WaitCursor);
+    std::optional<BusyIndicator> busy;
+    busy.emplace(this, tr("Numérisation automatique en cours…"));
     autodigitize::ContourMetrics contourMetrics;
     auto result =
         contoursMode
@@ -3890,7 +3919,7 @@ void MainWindow::autoDigitize() {
             ? autodigitize::auto_digitize(*project_.segmentation, project_.object_ids, opts)
             : autodigitize::auto_digitize_vectors(project_.vector_objects, project_.object_ids,
                                                   opts);
-    QGuiApplication::restoreOverrideCursor();
+    busy.reset();
     if (!result) {
         QMessageBox::warning(this, tr("Numérisation impossible"),
                              QString::fromStdString(result.error().message));
@@ -3969,9 +3998,10 @@ void MainWindow::segmentWithAi() {
 
     autodigitize::AutoOptions opts;
     opts.mm_per_px = project_.mm_per_px;
-    QGuiApplication::setOverrideCursor(Qt::WaitCursor);
+    std::optional<BusyIndicator> busy;
+    busy.emplace(this, tr("Numérisation automatique en cours…"));
     auto result = autodigitize::auto_digitize(*seg, project_.object_ids, opts);
-    QGuiApplication::restoreOverrideCursor();
+    busy.reset();
     if (!result) {
         QMessageBox::warning(this, tr("Numérisation impossible"),
                              QString::fromStdString(result.error().message));

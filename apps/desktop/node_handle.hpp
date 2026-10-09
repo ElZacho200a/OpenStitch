@@ -48,10 +48,11 @@ public:
         setCursor(Qt::SizeAllCursor);
     }
 
-    // Zone cliquable élargie (14 px) autour du point visuel.
+    // Zone cliquable élargie (22 px, cible confortable à la souris comme au doigt)
+    // autour du point visuel.
     [[nodiscard]] QPainterPath shape() const override {
         QPainterPath path;
-        path.addEllipse(QRectF(-7.0, -7.0, 14.0, 14.0));
+        path.addEllipse(QRectF(-11.0, -11.0, 22.0, 22.0));
         return path;
     }
 

@@ -15,24 +15,33 @@ namespace {
 
 constexpr int kSize = 32;
 
-// Teinte neutre lisible sur fond clair ET sombre (icônes désactivées gérées par
-// l'opacité du widget). Un seul jeu, pas de recoloration par thème.
-const QColor kInk(0x5C, 0x62, 0x6A);
+// Gris moyen dont la luminance relative (≈ 0,21) donne au moins 3:1 (seuil WCAG des objets
+// graphiques) à la fois sur le fond clair de la fenêtre (3,6:1) et sur la surface sombre
+// (3,4:1). L'ancienne encre 5C626A tombait à 2,2:1 en thème sombre. Un seul jeu, sans
+// recoloration par thème.
+const QColor kInk(0x7C, 0x82, 0x8A);
 
+// Dessin en coordonnées logiques 32×32, rendu à 1× ET 2× : sur un écran HiDPI Qt choisit la
+// version 2× au lieu d'agrandir un bitmap 32 px réduit à 18-20 px (icônes floues).
 QIcon make(const std::function<void(QPainter&)>& draw) {
-    QPixmap pm(kSize, kSize);
-    pm.fill(Qt::transparent);
-    QPainter p(&pm);
-    p.setRenderHint(QPainter::Antialiasing, true);
-    QPen pen(kInk);
-    pen.setWidthF(2.2);
-    pen.setCapStyle(Qt::RoundCap);
-    pen.setJoinStyle(Qt::RoundJoin);
-    p.setPen(pen);
-    p.setBrush(Qt::NoBrush);
-    draw(p);
-    p.end();
-    return QIcon(pm);
+    QIcon icon;
+    for (const int scale : {1, 2}) {
+        QPixmap pm(kSize * scale, kSize * scale);
+        pm.setDevicePixelRatio(scale);
+        pm.fill(Qt::transparent);
+        QPainter p(&pm);
+        p.setRenderHint(QPainter::Antialiasing, true);
+        QPen pen(kInk);
+        pen.setWidthF(2.2);
+        pen.setCapStyle(Qt::RoundCap);
+        pen.setJoinStyle(Qt::RoundJoin);
+        p.setPen(pen);
+        p.setBrush(Qt::NoBrush);
+        draw(p);
+        p.end();
+        icon.addPixmap(pm);
+    }
+    return icon;
 }
 
 } // namespace
