@@ -116,7 +116,15 @@ région, et `inset` passe à 0 pour ne pas rentrer deux fois. Conséquence
 visible : l'objet vectoriel éditable déborde légèrement sur ses voisins.
 Toutes les surfaces sont calculées sur la géométrie d'origine avant d'être
 appliquées, donc le résultat ne dépend pas de l'ordre de traitement.
-`fill_overlap = 0` rétablit l'ancien comportement.
+**Désactivé par défaut (2026-10).** `fill_overlap` vaut maintenant 0 : la surface élargie
+était portée par l'objet vectoriel lui-même, donc tout autre type de points créé ensuite sur la
+région (satin, contour cousu, remplissage directionnel) débordait de sa zone (+14 à +57 %
+d'aire mesurés sur un projet réel). Les contours restent ceux de la segmentation, et chaque
+tatami garde son retrait `inset` (0,2 mm). Conséquence : un interstice réapparaît entre deux
+couleurs voisines ; une valeur de `fill_overlap` > 0 réactive la correction ci-dessus à la
+demande. Dans le bureau, créer un satin ou passer un objet en satin ramène en plus un
+contour agrandi par une ancienne auto-numérisation à celui de sa région (un seul pas
+d'annulation).
 
 Les remplissages de repli d'un satin incomplet ne sont pas concernés : ils
 recouvrent déjà leurs bandes satin (`kCoverageOverlap`).
