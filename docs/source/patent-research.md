@@ -129,57 +129,42 @@ tiré du code, pas de la doc :
 
 ## Objectif directeur : réintégrer l'auto-satin dans l'auto-numérisation
 
-Décision utilisateur (2026-10) : le but de la mission est de **réintroduire un
-auto-satin dans `autodigitize`, fondé sur ces brevets**. La politique actuelle
-(« auto-broderie = tatami/contour, pas d'auto-satin silencieux ») ne disparaît
-pas : elle est remplacée par un auto-satin **explicite, diagnostiqué et protégé**.
-Chaîne cible, avec la source de chaque maillon :
+Décision utilisateur (2026-10) : réintroduire un **auto-satin** dans
+`autodigitize`, fondé sur ces brevets, parce que l'ancien (retiré par `18de427`)
+était de mauvaise qualité. Il ne revient que s'il est **mesuré meilleur que le
+repli tatami/contour**, derrière un réglage explicite, avec repli diagnostiqué.
 
-1. **Décider** satin ou remplissage : statistiques de la transformée de distance
-   le long du squelette, μ/σ/max (famille Goldman, US7016757B2) ; seuils à
-   calibrer sur nos corpus, pas ceux du brevet.
-2. **Extraire** squelette et jonctions : déjà en place (`auto_satin`), à
-   comparer aux filtres despike/debow/defork (US6690988B2) et aux ancres
-   (US6947808B2).
-3. **Orienter et générer** : moteur de traversées P0 (EP0761860B1 pour le
-   concept, US6390005B1 pour l'espacement, le reste est notre conception).
-4. **Prouver** : `satin_coverage` rend un verdict mesurable (couverture, reliquats).
-5. **Se replier proprement** : si la couverture est insuffisante, retomber sur
-   tatami/contour avec un diagnostic visible (jamais en silence) ; réglage
-   utilisateur explicite pour activer l'auto-satin.
+Constat de l'audit et de la revue indépendante (vérifiés dans le code) :
 
-## Priorités (hypothèse de travail après recherche, à confirmer en revue)
+- Le moteur existant couvre déjà l'essentiel des « traversées » : rails et
+  barreaux persistés (`SatinParams`), rééchantillonnage à espacement médian
+  (`resample_by_medial_spacing`), découpe des longs points (`SatinSplit`), mode
+  paramétrique, planificateur SGSD, oracle `satin_coverage`.
+- Les éléments du P0 sans source brevet (échantillonnage d'axe, 0° par défaut,
+  interpolation mod 180°, `Lmax`/`y`, `h`) sont notre conception et ne sont à
+  construire que si un corpus prouve un manque.
+- La cause probable du retrait est l'**éligibilité trop permissive** et
+  l'acceptation d'une **couverture partielle** (mosaïque satin + pièces de
+  tatami), pas l'absence de traversées orientées (voir RD-PAT-000).
 
-1. **P0 : moteur de traversées guidé par squelette**, porté par une conception
-   propre appuyée sur EP0761860B1 (concept) et US6390005B1 (espacement).
-   Sortie matérialisée en rails + barreaux pour réutiliser `fill_satin_columns`,
-   finitions, sous-couches, routage ; aucun changement de format `.osp` tant que
-   l'API pure n'est pas validée. Le moteur historique reste le défaut. Il
-   alimente ensuite l'auto-satin d'`autodigitize` décrit ci-dessus (lot final
-   du P0, derrière un réglage explicite et un repli diagnostiqué).
-2. **P1 : angle de tatami automatique par minimisation des fragments**
-   (US8219238B2). Fonction pure, déterministe, gain net et faible risque.
-3. **P1 : règle d'analyse « points entièrement recouverts »** (US6633794B2),
-   en lecture seule dans `stitch_analysis`, exemptant sous-couches et trajets
-   structurels. Aucune suppression automatique.
-4. **P2 : règle de sous-couche en trois cas** (JP3922316B2) et liaisons
-   contenues dans le contour (US5823127A), après audit des cas où l'inset
-   Clipper2 produit réellement des morceaux sortant de la forme.
-5. **P2 : élagage topologique et boucles à col** (US6356648B1, US6690988B2) et
-   **ordre de couture par arbre de fragments** (US8532810B2, US5283747A),
-   uniquement si l'audit montre un manque par rapport à `SkeletonGraph` et au
-   routage existants.
-6. **P3 : nouveaux types de remplissage** : appliqué multi-passes (US5438520A,
-   JP3769602B2 ; HP-SPEC-001), remplissage polaire concentrique/radial
-   (US6937919B1), stippling (US6968255B1 ; HP-STI-013), remplissage curviligne
-   (US6587745B1). Utiles produit, indépendants du moteur satin.
-7. **Écartés ou différés** : modification de densité sur points existants
-   (US6253695B1, les points sont dérivés), lettrage sur arc (US5343401A),
-   numérisation manuelle (US4849902A), stylet (US7386361B2), types de point
-   rudimentaires (US5740056A, US5576968A), simplification générique
-   (US9200397B2), base d'apprentissage de jonctions (US6397120B1), panneau
-   d'analyse de points (US6167823B1, faible), import DST → objets
-   (US6510360B1, US6247420B1 : hors périmètre, seuils à calibrer par nous).
+Chaîne retenue : (1) banc de comparaison satin vs repli sur régions réelles
+(RD-PAT-003) ; (2) critère d'éligibilité strict, extension de l'idée de
+statistiques de transformée de distance (RD-PAT-004) ; (3) auto-satin minimal sur
+rubans simples via le planificateur existant, satin entier ou repli entier
+(RD-PAT-002) ; (4) moteur de traversées orientées seulement si le banc prouve un
+manque (RD-PAT-001).
+
+## Priorités (après revue du plan)
+
+1. **P0 : RD-PAT-003**, banc de comparaison ; **RD-PAT-002**, auto-satin minimal
+   protégé, derrière **RD-PAT-004** (éligibilité, P1).
+2. **P1 conditionnel : RD-PAT-001**, moteur de traversées, si le manque est prouvé.
+3. **P2** : critère alternatif d'angle de tatami (US8219238B2, un choix
+   automatique existe déjà), analyse des points recouverts (US6633794B2),
+   sous-couche en trois cas (JP3922316B2), élagage et ordre de couture par arbre.
+4. **Hors objectif directeur** : appliqué (HP-SPEC-001), remplissage polaire,
+   stippling.
+5. **Écartés** : voir `docs/roadmap-rd-brevets.md` (tableau des raisons).
 
 ## Garde-fous
 
@@ -199,9 +184,11 @@ brevets) et dans la section R&D complémentaire de cette roadmap.
 1. **Documentation et traçabilité brevets** : cette page et ses quatre fiches.
 2. **Provenance des rails** : `RailConstructionMethod` (livré).
 3. **HP-STI-018 Phase B.5b** : `extend_tip` direction-aware (livré).
-4. **P0 moteur de traversées** : lots L1 à L4 (géométrie pure, échantillonnage
-   de l'axe et pas `h`, passerelle vers `SatinColumn`, persistance et UI).
-5. **P1/P2/P3** : voir la liste de priorités ci-dessus.
+4. **Post-mortem de l'ancien auto-satin** (RD-PAT-000, analyse faite).
+5. **Banc de comparaison satin vs repli** (RD-PAT-003), puis éligibilité
+   (RD-PAT-004), puis auto-satin minimal protégé (RD-PAT-002).
+6. **Moteur de traversées** (RD-PAT-001) seulement si le banc prouve un manque ;
+   **P2/P3** : voir la liste de priorités ci-dessus.
 
 ## Questions ouvertes
 
