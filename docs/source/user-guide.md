@@ -1,7 +1,10 @@
 # Guide utilisateur détaillé
 
 Public : utilisateur débutant et avancé. Ce chapitre documente chaque menu,
-outil et raccourci **réellement présents** dans `apps/desktop/`.
+outil et raccourci **réellement présents** dans `apps/desktop/`. Pour un premier
+motif pas à pas, voir le [Guide de prise en main](getting-started.md) ; pour un
+problème, [Dépannage](troubleshooting.md) ; pour les mots techniques,
+[Glossaire](glossary.md).
 
 ## Disposition générale
 
@@ -40,8 +43,25 @@ Le **mode d'interaction** vient de la palette d'outils (à gauche) :
 - **Sélection** (`V`) : sélectionner une région/un objet (Maj ajoute, Ctrl bascule, glisser dans le vide trace un rectangle de sélection) ; la vue se déplace au clic molette ou à Espace + glisser.
 - **Déplacer la vue** (`H`) : déplacement pur (le clic ne sélectionne pas).
 - **Rectangle / Recadrage** (`M`) : sélection rectangulaire pour recadrer l'image.
+- **Outils de dessin** (palette de gauche) : **Rectangle** (`R`), **Ellipse** (`O`,
+  Maj = cercle), **Polygone** (`P`), **Polygone régulier** (`G`, nombre de côtés
+  dans la palette), **Courbe de Bézier** (`B`), **Main levée** (`L`) et **Colonne
+  satin** (`S`, clics alternés côté A / côté B). Entrée ou double-clic termine
+  le tracé, Retour arrière retire le dernier point, Échap l'annule.
 - **Zoom** : molette (ancrée sous le curseur) ou barre d'outils / menu Affichage.
 - **Échap** : revient à la Sélection et annule le mode fusion en cours.
+
+### Sélection multiple
+
+Avec l'outil Sélection, **Maj + clic** ajoute un objet à la sélection, **Ctrl +
+clic** le bascule, et **glisser dans le vide** trace un rectangle (vers la droite :
+objets entièrement englobés ; vers la gauche : objets touchés ; Maj/Ctrl
+s'appliquent aussi au rectangle). Une sélection de plusieurs **objets vectoriels**
+se déplace d'un bloc (glisser), se
+duplique (Alt + glisser) et se supprime ensemble (clic droit ▸ « Supprimer N
+objets »). Les entrées qui n'ont de sens que pour un seul objet (type de points,
+décaler, orientation) disparaissent alors du menu. **Les régions de segmentation
+se sélectionnent une par une** : la « région active » est unique.
 
 La sélection d'un objet est tracée en **double contraste** (halo clair + trait
 d'accent), lisible sur tout fond. Le rendu est organisé en deux couches
@@ -149,8 +169,11 @@ Précisions sur les gestes du tableau :
 | Enregistrer le projet | Ctrl+S | Réécrit le `.osp` courant (demande où enregistrer la première fois) |
 | Enregistrer le projet sous… | Ctrl+Maj+S | Écrit le document dans un nouveau `.osp`, qui devient le fichier courant |
 | Ouvrir un projet… | — | Recharge un `.osp` |
+| Récents | — | Sous-menu des 10 derniers projets ouverts ou enregistrés (voir ci-dessous) |
+| Vider la liste des récents | — | Efface la liste |
 | Exporter en DST… | Ctrl+E | Montre d'abord le résumé (dimensions, points, résultat de l'analyse), puis demande le fichier `.dst` (points uniquement) |
 | Importer un DST… | — | Relit un `.dst` comme séquence de points (propose d'enregistrer le projet en cours) |
+| Importer un DXF… / Exporter en DXF… | — | Échange de contours vectoriels avec un logiciel de dessin (les points ne sont pas concernés) |
 | Quitter | Ctrl+Q | Ferme l'application |
 
 **Nouveau projet** : si le document courant a été modifié, une garde propose
@@ -183,6 +206,25 @@ Le titre de la fenêtre affiche le nom du fichier courant (ou « Sans titre ») 
 un indicateur **modifié** (`*`) ; quitter avec des modifications non
 enregistrées propose **Enregistrer / Ignorer / Annuler**.
 
+### Projets récents
+
+**Fichier ▸ Récents** liste les derniers projets ouverts ou enregistrés (10 au plus, le
+plus récent en tête) et l'écran d'accueil les reprend. Un fichier qui n'existe plus est retiré
+de la liste à l'ouverture suivante. La liste est une préférence de l'application,
+pas du projet : elle est stockée avec les autres préférences (voir
+[Installation](installation.md), « Où l'application range ses données »).
+
+### Sauvegarde automatique et récupération
+
+Toutes les **2 minutes**, si le document a été modifié et n'est pas vide,
+l'application écrit un instantané dans son dossier de données (le message « Sauvegarde automatique à HH:MM » apparaît
+brièvement dans la barre d'état). Cet instantané **ne remplace jamais votre `.osp`** : c'est un fichier à part,
+dans `%APPDATA%\OpenStitch\OpenStitch Studio\autosave\`. Une fermeture normale le supprime. Si l'application
+s'arrête anormalement, le démarrage suivant affiche **Récupération après un arrêt
+anormal** : **Récupérer** ouvre l'instantané comme un document modifié, non
+rattaché à un fichier (pensez à *Enregistrer sous…*) ; **Ignorer** le supprime. Un
+projet jamais enregistré est proposé comme « projet sans nom ».
+
 ## Menu Édition
 
 | Action | Raccourci | Effet |
@@ -192,6 +234,7 @@ enregistrées propose **Enregistrer / Ignorer / Annuler**.
 | Supprimer la sélection | Suppr | Supprime la région, l'objet de broderie ou les objets vectoriels sélectionnés |
 | Dupliquer la forme | — | Duplique la forme sélectionnée |
 | Décaler la forme… | — | Décale ou rétrécit la forme sélectionnée |
+| Préférences — Intelligence artificielle… | — | Configure la segmentation par IA (voir *Menu Segmentation*) |
 
 L'annulation couvre les opérations d'image, la segmentation (segmenter, fusionner,
 supprimer, recolorer), la création et le déplacement de nœuds vectoriels, la
@@ -214,7 +257,8 @@ l'original) :
 ## Menu Segmentation
 
 - Segmenter l'image… (nombre de couleurs, taille min de région) ;
-- Segmenter avec l'IA… (même résultat, régions proposées par un modèle) ;
+- Segmenter avec l'IA… (même résultat, régions proposées par un modèle SAM 2 ; voir
+  *Segmentation par IA* ci-dessous) ;
 - Afficher la carte des régions (bascule) ;
 - Fusionner avec… (puis clic sur la région cible) ;
 - Supprimer : voir le menu Édition (Suppr) — une région supprimée redevient du fond ;
@@ -222,33 +266,119 @@ l'original) :
 - Convertir la région en objet vectoriel.
 
 Sélection : cliquez une région ; ses statistiques (pixels, mm², RGB) s'affichent.
+La région sélectionnée (« région active ») est **unique** : fusionner, supprimer,
+recolorer et vectoriser s'appliquent à elle.
+
+### Segmentation par IA
+
+La fonction est **facultative et n'est pas livrée avec les binaires de release** :
+elle s'appuie sur un petit programme Python séparé (le « worker », dossier
+`sam-worker/` du dépôt) que l'application lance et interroge. Prérequis, à
+préparer vous-même :
+
+- un **environnement Python** pour le worker, avec `torch` et `sam2` installés
+  (CPU ou CUDA) en plus de `sam-worker/requirements.txt` ;
+- les **fichiers de modèle** SAM 2.1 (par exemple `sam2.1_hiera_small.pt`) placés
+  dans le dossier des modèles ;
+- soit une distribution **WSL** (Ubuntu par défaut), soit un Python natif.
+
+Dans **Édition ▸ Préférences — Intelligence artificielle…** : case *Activer la
+segmentation par IA*, environnement (WSL ou Python natif), distribution WSL,
+Python du venv, script du worker, dossier des modèles, modèle par défaut
+(quatre tailles de SAM 2.1, de « Tiny (rapide) » à « Large »), processeur (automatique/CPU/GPU CUDA), résolution
+maximale d'analyse, conservation des fichiers de diagnostic et niveau de
+journalisation du worker. Le bouton **Tester la configuration** démarre le worker
+et affiche le résultat ou l'erreur exacte dans le journal du dialogue. Lancée
+depuis un dépôt cloné, l'application préremplit les chemins avec `sam-worker/` ;
+un build installé sans dépôt demande de les saisir.
 
 ## Menu Broderie
 
-- Numérisation automatique — crée des objets pour toutes les régions. Les zones
-  remplissables deviennent des **tatami** ; le satin se crée ensuite, région par région,
-  par « Créer un satin automatique » ;
-- Créer un objet de point de contour… (longueur, type simple/double/triple) ;
-- Créer un remplissage tatami… (espacement, longueur, angle) ;
+- **Numérisation automatique** — crée des objets pour toutes les régions. Les zones
+  remplissables deviennent des **tatamis** ; le satin se crée ensuite, région par région,
+  par « Créer un satin automatique ». Le dialogue propose :
+  - **Ignorer la plus grande région (probablement le fond)** : cochée d'office
+    seulement pour un fond quasi blanc qui encadre le motif (couleur, part de l'image
+    et bords touchés sont affichés) ;
+  - **Formes pleines** (remplissages ; curseur « Détail vectorisation ») ou
+    **Contours (dessin au trait / Line Art)** : coud les **lignes médianes** des
+    traits en point droit au lieu de remplir les formes ; curseur de détail (bas =
+    lignes très simplifiées, petits traits ignorés) et technique *Automatique* ou
+    *Running (point droit)*. La barre d'état résume (objets, segments, jonctions,
+    longueur de point droit, replis, rejets) et un dialogue liste les traits qui n'ont pas
+    pu être cousus tels quels ;
+- **Créer un objet de point de contour…** (longueur, type simple/double/triple) ;
+- **Créer un remplissage tatami…** (espacement, longueur, angle) ;
 - **Créer un satin automatique…** — satin par squelette et traversées orientées : aucun rail
-  à poser, l'aperçu annonce le nombre de colonnes et la couverture estimée, et refuse
-  avec une raison les formes qui ne s'y prêtent pas (disque, forme compacte) en proposant
-  un tatami. Réglages : espacement, compensation, sous-couche, fractionnement. Le contour
-  utilisé est celui de la région segmentée. **Non validé sur machine** : vérifiez le
-  résultat avant de broder ;
-- **Convertir automatiquement en satin (expérimental)…** — même moteur, avec confirmation ;
-- **Guides de direction…** / **Générer un guide depuis la forme** / **Tracer un guide de
-  direction** — orientent les fils d'un remplissage directionnel ; pour un satin, le bouton
-  « Placer un guide sur le canevas… » de l'inspecteur pose un guide d'orientation ;
+  à poser. Une **fenêtre de réglages** s'ouvre (espacement, compensation de tirage,
+  sous-couche centrale, fractionnement des traversées longues) avec l'avertissement « non
+  validé sur machine » ; l'aperçu annonce le nombre de colonnes et la couverture
+  estimée, et **refuse avec une raison** les formes qui ne s'y prêtent pas (disque,
+  forme compacte) en proposant un tatami. Le contour utilisé est celui de la région
+  segmentée. **Non validé sur machine** : vérifiez le résultat avant de broder ;
+- **Convertir automatiquement en satin (expérimental)…** — **même moteur, sans fenêtre de
+  réglages** : réglages par défaut et une seule confirmation (« Créer le satin ?
+  annulable »). *Choisissez « Créer un satin automatique » pour régler, « Convertir
+  automatiquement » pour aller vite* ;
 - **Orientation du remplissage…** — change l'angle des fils du tatami sélectionné
   (aussi réglable à la souris, voir *poignée de rotation* plus bas) ;
 - **Convertir les satins auto en tatami** — répare un projet dont les satins
   automatiques débordent ;
+- **Options de génération…** — finitions du projet : voir *Coupes et finitions DST*
+  ci-dessous ;
+- **Éditer les points…** (`E`) — déplace un à un les points cousus de l'objet
+  sélectionné (la forme source ne bouge pas) ;
+- **Modifier la colonne satin (rails + guides)…** (`Maj+E`) — nœuds des deux rails et
+  guides transversaux d'une colonne satin **à rails** ; le sous-menu **Remodelage
+  satin (avancé)** n'affiche que les guides ou que les rails, avec **Ajouter un guide
+  satin** (`Maj+G`) et **Supprimer le guide satin sélectionné**. Cette voie à rails
+  manuels est **en partie archivée** (voir [Colonne satin](satin.md)) ;
+- **Guides de direction…** (`D`) / **Générer un guide depuis la forme** / **Tracer un
+  guide de direction** / **Tracer une ligne de rupture** — orientent les fils d'un
+  remplissage directionnel (voir [Remplissage directionnel](directional-fill.md)) ; pour
+  un satin automatique, le bouton « Placer un guide sur le canevas… » de l'inspecteur
+  pose un guide d'orientation ;
 - Les **Statistiques…** (points, sauts, coupes, changements de couleur, dimensions,
   longueur de fil) sont dans le menu Analyse.
 
 Avertissement : si une colonne satin dépasse la largeur recommandée, un dialogue
 propose de continuer ou de préférer un remplissage tatami.
+
+### Coupes et finitions DST
+
+**Broderie ▸ Options de génération…** règle, pour tout le projet (annulable) :
+
+- **Finitions automatiques** (case générale : désactivée, la séquence reste telle
+  quelle ; activée par défaut pour un nouveau projet) ;
+- **Couper au-delà de** (seuil, 3 mm par défaut) : un déplacement plus long devient
+  *point d'arrêt, coupe, déplacement, point d'arrêt* ; plus court, un simple saut ;
+- **Couper avant chaque changement de fil** ;
+- **Point d'arrêt** : aucun, aller-retour, triangle ou micro-zigzag, avec sa longueur
+  et son nombre de répétitions ;
+- **Fusionner les points trop courts** et la longueur minimale de point.
+
+La séquence se termine toujours par une **coupe finale**, et à l'export vers une
+machine chaque coupe est écrite en **trois sauts de 0,1 mm non nuls** suivis du
+déplacement réel (certaines machines ignorent les sauts de déplacement nul : voir
+[Format DST](dst-format.md)). **À tester sur votre machine** : ces conventions n'ont
+pas été validées sur une machine réelle ; si la machine ne coupe pas, essayez un
+seuil plus bas ou signalez le modèle.
+
+## Formes : unir, soustraire, intersecter, découper, séparer
+
+> **À COMPLÉTER PAR LE MAINTENEUR.** Section réservée : ces opérations booléennes
+> sur les formes arrivent d'une autre branche et ne sont pas décrites tant
+> qu'elles ne sont pas dans le code. À documenter : menu et raccourci de chaque
+> opération (unir, soustraire, intersecter, découper, séparer), objets
+> concernés (sélection multiple d'objets vectoriels), résultat sur les objets de
+> broderie liés, annulation.
+
+## Rendu réaliste
+
+> **À COMPLÉTER PAR LE MAINTENEUR.** Section réservée : le rendu réaliste des
+> points arrive d'une autre branche. À documenter : où l'activer (Affichage), ce
+> qu'il montre par rapport au tracé de points actuel, son effet sur les
+> performances, ses limites.
 
 ## Menu Affichage
 
@@ -269,6 +399,9 @@ Le sous-menu **Calques** regroupe des interrupteurs indépendants :
 | Taille du cadre… | — | Définit la zone physique de broderie (voir ci-dessous) |
 | Thème | — | Clair / Sombre |
 | Densité | — | Confortable / Compact |
+| Navigation | — | Préréglage souris : **OpenStitch** (souris à trois boutons) ou **Pavé tactile** (Espace + glisser, Ctrl + molette) ; mémorisé |
+| Accrochage des nœuds au glisser | — | Voir *Souris et clavier* (désactivé par défaut) |
+| Panneaux | — | Affiche/masque chaque dock et **Réinitialiser la disposition** |
 | Masquer les panneaux | Ctrl+Shift+P | Mode canevas (masque puis restaure les docks) |
 
 **Taille du cadre** : largeur/hauteur en mm (10–500). Le cadre est une donnée du
@@ -379,6 +512,15 @@ renvoient une erreur structurée au lieu de provoquer un arrêt du programme.
 Aucun plantage n'a été observé dans le corpus de tests actuel — ce qui ne
 constitue pas une garantie absolue en version 0.1.0.
 
+## Où trouver les journaux
+
+L'application n'écrit **aucun fichier de log** : les messages (spdlog) sortent
+sur la **sortie d'erreur** de la console. Pour les lire, lancez `openstitch.exe` depuis
+un terminal (`.\openstitch.exe 2> journal.txt` pour les garder). Pour les
+**préférences** et la **sauvegarde automatique**, voir
+[Installation](installation.md). Le worker IA a son propre niveau de journalisation
+(préférences IA) et un journal visible dans le test de configuration.
+
 ## Menu Aide
 
 Le menu **Aide** compte trois entrées, chacune avec une infobulle et un texte
@@ -408,6 +550,9 @@ mis en avant) ; le choix est mémorisé entre deux sessions.
 
 ## Raccourcis
 
+Tous lus dans `apps/desktop/main_window.cpp` et `main_window_directional.cpp` ;
+la liste complète et filtrable est dans **Aide ▸ Gestes souris et clavier** (F1).
+
 | Raccourci | Action |
 |---|---|
 | Ctrl+N | Nouveau projet (garde des modifications non enregistrées) |
@@ -419,15 +564,26 @@ mis en avant) ; le choix est mémorisé entre deux sessions.
 | Ctrl++ / Ctrl+- / Ctrl+0 | Zoom avant / arrière / ajuster |
 | F | Ajuster au canevas |
 | F5 | Analyser le motif |
-| V / H / M | Outils : Sélection / Déplacer la vue / Rectangle |
-| Échap | Revenir à la Sélection (annule la fusion) |
+| V / H / M | Outils : Sélection / Déplacer la vue / Rectangle (recadrage) |
+| R / O / P / G / B / L | Dessin : rectangle / ellipse / polygone / polygone régulier / Bézier / main levée |
+| S | Outil Colonne satin (rails manuels) |
+| **E** | **Éditer les points** de l'objet de broderie sélectionné (bascule) |
+| **Maj+E** | **Modifier la colonne satin** (rails + guides) d'une colonne satin à rails |
+| **Maj+G** | **Ajouter un guide satin** (partage le plus grand intervalle) |
+| D | Guides de direction d'un remplissage directionnel (bascule) |
+| Entrée / Retour arrière | Terminer / retirer le dernier point d'un tracé |
+| Échap | Revenir à la Sélection, annuler le tracé ou la fusion |
+| Flèches / Maj + flèches | Déplacer l'objet de 0,1 mm / 1 mm |
 | F1 | Ouvrir « Gestes souris et clavier » |
 | Ctrl+Shift+P | Masquer / afficher les panneaux |
 | Ctrl+Q | Quitter |
 
+Attention à ne pas confondre : `G` choisit l'outil *Polygone régulier* tandis que
+`Maj+G` ajoute un guide satin ; `E` édite les **points cousus** tandis que `Maj+E`
+remodèle une **colonne satin**.
+
 Les raccourcis standard proviennent des séquences Qt (Rétablir suit la convention de la
-plateforme) ; `Ctrl+0`, `F5`, `F`,
-`V/H/M`, `Ctrl+Shift+P` sont définis explicitement, sans conflit avec la
+plateforme) ; les autres sont définis explicitement, sans conflit avec la
 navigation clavier (Tab reste réservé au parcours des contrôles).
 
 ## Implémentation associée
@@ -440,3 +596,7 @@ navigation clavier (Tab reste réservé au parcours des contrôles).
 - `apps/desktop/canvas_view.cpp` — zoom, déplacement, grille, cadre, rendu points.
 - `apps/desktop/ruler.cpp` — règles en mm.
 - `apps/desktop/import_dialog.cpp`, `brightness_dialog.cpp` — dialogues.
+- `apps/desktop/generation_options_dialog.cpp` — options de génération (coupes, points d'arrêt).
+- `apps/desktop/main_window_satin_auto.cpp` — « Créer un satin automatique » / « Convertir automatiquement ».
+- `apps/desktop/autosave.*`, `recent_files.*` — sauvegarde automatique, récents.
+- `apps/desktop/ai_preferences*.cpp` — préférences et test de la segmentation par IA.
