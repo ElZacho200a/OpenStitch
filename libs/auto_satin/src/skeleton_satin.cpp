@@ -2,10 +2,13 @@
 #include "openstitch/auto_satin/skeleton_satin.hpp"
 
 #include <algorithm>
+#include <bit>
 #include <cmath>
 #include <cstdio>
 #include <limits>
+#include <list>
 #include <map>
+#include <mutex>
 #include <numbers>
 #include <optional>
 #include <string>
@@ -130,7 +133,10 @@ std::optional<std::pair<double, double>> segment_hit(P2 p, P2 r, P2 q, P2 w) {
 int trim_crossings(std::vector<SkeletonSatinCrossing>& chords, const std::vector<P2>& axisPoints,
                    double min_len, double min_sep, bool closedRing) {
     const std::size_t n = chords.size();
-    if (n < 3) {
+    // Au-delà, la passe (quadratique, itérée) coûterait plus qu'elle ne vaut : une colonne de
+    // plus de 6000 cordes (≈ 2,4 m de bord à 0,4 mm) n'a pas de cas d'usage.
+    constexpr std::size_t kMaxChordsForTrim = 6000;
+    if (n < 3 || n > kMaxChordsForTrim) {
         return 0;
     }
     // Chaque corde passe par son échantillon d'axe : on le retrouve comme l'intersection
@@ -749,10 +755,123 @@ void measure_coverage(const geometry::PathSet& region, SkeletonSatinResult& resu
 
 } // namespace
 
+Result<SkeletonSatinResult> generate_skeleton_satin_uncached(const geometry::PathSet& region,
+                                                             const SkeletonSatinParameters& params);
+
+namespace {
+
+// Clé EXACTE d'une génération : tous les nœuds (positions, types, tangentes) de
+// l'extérieur et des trous, et tous les paramètres. Comparée intégralement : aucune
+// collision de hachage possible, donc un résultat en cache est identique octet pour octet
+// à un recalcul.
+using CacheKey = std::vector<std::int64_t>;
+
+void push_path(CacheKey& key, const geometry::Path& path) {
+    key.push_back(path.closed ? 1 : 0);
+    key.push_back(static_cast<std::int64_t>(path.nodes.size()));
+    for (const auto& n : path.nodes) {
+        key.push_back(n.pos.x.value);
+        key.push_back(n.pos.y.value);
+        key.push_back(static_cast<std::int64_t>(n.type));
+        for (const auto& t : {n.tan_in, n.tan_out}) {
+            key.push_back(t ? 1 : 0);
+            key.push_back(t ? t->x.value : 0);
+            key.push_back(t ? t->y.value : 0);
+        }
+    }
+}
+
+CacheKey make_key(const geometry::PathSet& region, const SkeletonSatinParameters& p) {
+    CacheKey key;
+    push_path(key, region.outer);
+    key.push_back(static_cast<std::int64_t>(region.holes.size()));
+    for (const auto& h : region.holes) {
+        push_path(key, h);
+    }
+    const auto bits = [](double v) { return std::bit_cast<std::int64_t>(v); };
+    const auto& a = p.analysis;
+    key.insert(key.end(), {a.raster.pixel_size.value, a.raster.max_dimension, a.raster.margin_px,
+                           a.cleanup.minimum_branch_length.value,
+                           bits(a.cleanup.minimum_length_to_radius_ratio),
+                           a.cleanup.maximum_iterations, a.thresholds.min_satin_width.value,
+                           a.thresholds.max_satin_width.value, bits(a.thresholds.min_elongation),
+                           p.spacing.value, p.min_thread_length.value, p.cell_overlap.value,
+                           bits(p.bend_threshold_deg), static_cast<std::int64_t>(p.guides.size())});
+    for (const auto& g : p.guides) {
+        key.insert(key.end(),
+                   {g.anchor.x.value, g.anchor.y.value, bits(g.angle_rad), g.absolute ? 1 : 0});
+    }
+    return key;
+}
+
+// Mémoire bornée (LRU) partagée par la génération de points, l'aperçu, le résumé de
+// l'inspecteur et la couche de guides : une modification qui ne change pas la forme ou ses
+// paramètres ne relance plus le squelette (~100-300 ms par objet).
+struct ResultCache {
+    struct Entry {
+        CacheKey key;
+        SkeletonSatinResult value; // couverture mesurée ou non selon `value.diagnostics`
+    };
+    std::mutex mutex;
+    std::list<Entry> entries; // le plus récent en tête
+    static constexpr std::size_t kCapacity = 32;
+};
+
+ResultCache& result_cache() {
+    static ResultCache cache;
+    return cache;
+}
+
+} // namespace
+
 Result<SkeletonSatinResult> generate_skeleton_satin(const geometry::PathSet& region,
                                                     const SkeletonSatinParameters& params) {
+    CacheKey key = make_key(region, params);
+    auto& cache = result_cache();
+    {
+        const std::lock_guard<std::mutex> lock(cache.mutex);
+        for (auto it = cache.entries.begin(); it != cache.entries.end(); ++it) {
+            if (it->key != key) {
+                continue;
+            }
+            cache.entries.splice(cache.entries.begin(), cache.entries, it);
+            auto& entry = cache.entries.front().value;
+            // La couverture est un diagnostic ajouté À LA DEMANDE : une entrée sans
+            // couverture est complétée (puis conservée), une entrée avec couverture est
+            // rendue sans elle à qui n'en veut pas (même résultat qu'un calcul à neuf).
+            if (params.measure_coverage && !entry.diagnostics.coverage_measured) {
+                measure_coverage(region, entry);
+            }
+            SkeletonSatinResult out = entry;
+            if (!params.measure_coverage) {
+                out.diagnostics.coverage_measured = false;
+                out.diagnostics.coverage_ratio = 0.0;
+                out.diagnostics.overlap_ratio = 0.0;
+                out.diagnostics.uncovered_area_mm2 = 0.0;
+            }
+            return out;
+        }
+    }
+    auto computed = generate_skeleton_satin_uncached(region, params);
+    if (computed) {
+        const std::lock_guard<std::mutex> lock(cache.mutex);
+        cache.entries.push_front({std::move(key), *computed});
+        while (cache.entries.size() > ResultCache::kCapacity) {
+            cache.entries.pop_back();
+        }
+    }
+    return computed;
+}
+
+Result<SkeletonSatinResult>
+generate_skeleton_satin_uncached(const geometry::PathSet& region,
+                                 const SkeletonSatinParameters& params) {
     SkeletonSatinResult result;
     auto& diag = result.diagnostics;
+    if (params.spacing.value < 50) {
+        return std::unexpected(
+            Error{ErrorCategory::UserInput, "auto-satin : espacement inférieur à 0,05 mm"});
+    }
 
     const auto analysis = analyze_region(region, params.analysis);
     if (!analysis) {

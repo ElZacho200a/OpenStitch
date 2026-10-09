@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <array>
 #include <limits>
+#include <optional>
 #include <unordered_map>
 
 namespace openstitch::project_io::detail {
@@ -454,6 +455,57 @@ Result<document::StitchParams> params_from_json(const json& j) {
         // Auto-satin : toutes les clés sauf `type` sont optionnelles (défauts du
         // modèle), pour qu'un fichier écrit par une version ultérieure reste lisible.
         document::AutoSatinParams p;
+        // Un fichier édité à la main ou corrompu ne doit jamais figer la génération
+        // (espacement nul), tronquer une coordonnée ni fabriquer une énumération invalide.
+        const auto badNumber = [](const json& v, const char* name, std::int64_t lo,
+                                  std::int64_t hi) -> std::optional<std::string> {
+            if (v.is_null()) {
+                return std::nullopt; // absent : valeur par défaut
+            }
+            if (!v.is_number_integer()) {
+                return std::string("autoSatin : « ") + name + " » doit être un entier";
+            }
+            const auto n =
+                v.is_number_unsigned()
+                    ? static_cast<std::int64_t>(std::min<std::uint64_t>(
+                          v.get<std::uint64_t>(),
+                          static_cast<std::uint64_t>(std::numeric_limits<std::int64_t>::max())))
+                    : v.get<std::int64_t>();
+            if (n < lo || n > hi) {
+                return std::string("autoSatin : « ") + name + " » hors limites";
+            }
+            return std::nullopt;
+        };
+        constexpr std::int64_t kCoordMax = 1'000'000'000;
+        const auto field = [&](const char* name) {
+            return j.contains(name) ? j.at(name) : json(nullptr);
+        };
+        struct Range {
+            const char* name;
+            std::int64_t lo, hi;
+        };
+        for (const Range& r :
+             {Range{"spacing", 50, 5'000}, Range{"splitThreshold", 500, 1'000'000},
+              Range{"splitLength", 500, 1'000'000}, Range{"splitStitch", 0, 3},
+              Range{"shortStitch", 0, 3}, Range{"capStart", 0, 3}, Range{"capEnd", 0, 3},
+              Range{"lockStart", 0, 3}, Range{"lockEnd", 0, 3}, Range{"lockPasses", 0, 10},
+              Range{"lockLength", 0, 20'000}, Range{"pullCompensation", -5'000, 5'000},
+              Range{"pullLeft", -5'000, 5'000}, Range{"pullRight", -5'000, 5'000},
+              Range{"pushStart", -5'000, 5'000}, Range{"pushEnd", -5'000, 5'000}}) {
+            if (const auto err = badNumber(field(r.name), r.name, r.lo, r.hi)) {
+                return fail(ErrorCategory::InvalidFile, *err);
+            }
+        }
+        if (j.contains("guides")) {
+            for (const auto& g : j.at("guides")) {
+                for (const char* axis : {"x", "y"}) {
+                    if (const auto err = badNumber(g.contains(axis) ? g.at(axis) : json(nullptr),
+                                                   axis, -kCoordMax, kCoordMax)) {
+                        return fail(ErrorCategory::InvalidFile, *err);
+                    }
+                }
+            }
+        }
         if (j.contains("guides")) {
             for (const auto& g : j.at("guides")) {
                 document::AutoSatinGuide guide;

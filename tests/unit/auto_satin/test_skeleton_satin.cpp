@@ -628,3 +628,36 @@ TEST_CASE("pipeline: coude serre, ni croisement de fils ni secteur exterieur vid
     CHECK(coverage_of(region, res) >= 0.95);
     CHECK(overlap_ratio(region, res) <= 1.10);
 }
+
+TEST_CASE("cache: un second appel rend exactement le meme resultat, couverture a la demande",
+          "[skeleton_satin]") {
+    const auto region = as::make_shape("y");
+    REQUIRE(region.has_value());
+    as::SkeletonSatinParameters plain;
+    as::SkeletonSatinParameters measured;
+    measured.measure_coverage = true;
+    const auto a = as::generate_skeleton_satin(*region, plain);    // calcul a neuf
+    const auto b = as::generate_skeleton_satin(*region, plain);    // depuis le cache
+    const auto c = as::generate_skeleton_satin(*region, measured); // complete la couverture
+    const auto d = as::generate_skeleton_satin(*region, plain);    // sans couverture
+    REQUIRE((a && b && c && d));
+    CHECK(same_result(*a, *b));
+    CHECK(same_result(*a, *c));
+    CHECK(same_result(*a, *d));
+    CHECK_FALSE(b->diagnostics.coverage_measured);
+    CHECK(c->diagnostics.coverage_measured);
+    CHECK(c->diagnostics.coverage_ratio > 0.9);
+    CHECK_FALSE(d->diagnostics.coverage_measured);
+    CHECK(d->diagnostics.coverage_ratio == 0.0);
+}
+
+TEST_CASE("entree: un espacement nul ou trop petit est refuse au lieu de figer",
+          "[skeleton_satin]") {
+    const auto region = as::make_shape("y");
+    REQUIRE(region.has_value());
+    as::SkeletonSatinParameters p;
+    p.spacing = openstitch::Micrometers{0};
+    CHECK_FALSE(as::generate_skeleton_satin(*region, p).has_value());
+    p.spacing = openstitch::Micrometers{10};
+    CHECK_FALSE(as::generate_skeleton_satin(*region, p).has_value());
+}
