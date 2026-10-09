@@ -25,9 +25,20 @@ public:
 
     void clear();
 
+    // Marqueur « document propre » (état enregistré). markClean() mémorise la
+    // position courante ; isClean() reste vrai après undo+redo qui y reviennent
+    // et devient faux si la branche « rétablir » contenant l'état propre est
+    // invalidée par une nouvelle commande.
+    void markClean() { cleanIndex_ = static_cast<long long>(undo_.size()); }
+    [[nodiscard]] bool isClean() const {
+        return cleanIndex_ == static_cast<long long>(undo_.size());
+    }
+
 private:
     std::vector<std::unique_ptr<ICommand>> undo_;
     std::vector<std::unique_ptr<ICommand>> redo_;
+    // Taille de undo_ à l'état propre ; -1 = état propre inatteignable.
+    long long cleanIndex_ = 0;
 };
 
 } // namespace openstitch::commands

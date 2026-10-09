@@ -871,7 +871,15 @@ private slots:
     void autosaveRecoveryAcceptLoadsAsUntitledDocumentAndPurgesSlot();
     // "Ignorer" purge aussi le créneau, mais sans rien charger : le document
     // par défaut de la fenêtre reste intact.
-    void autosaveRecoveryIgnoreDiscardsSlotWithoutLoading();
+    void autosaveRecoveryUntitledSlotIsKeptUntilFirstSuccessfulSave();
+    void autosaveRecoveryDiscardButtonDeletesButLaterAndEscapeKeep();
+    void autosaveRecoveryHandlesOneCandidatePerSession();
+    void autosaveSlotHeldByALiveInstanceIsNotOffered();
+    void openProjectIsGuardedByUnsavedChanges();
+    void windowModifiedMarkerFollowsTheUndoStackCleanState();
+    void imageOperationOnSegmentedImageAsksBeforeDroppingRegions();
+    void autoDigitizeReplaceRemovesPreviousAutoObjectsInOneUndoStep();
+    void autoDigitizeAddKeepsExistingObjects();
     // Une fermeture RÉELLEMENT acceptée (closeEvent) ne laisse rien à
     // récupérer au prochain lancement.
     void cleanCloseDiscardsTheCurrentAutosaveSlot();
@@ -4721,8 +4729,11 @@ void MainWindowTest::recentFilesAndMenuReflectTwoSavesAndOpensInOrder() {
     QVERIFY(window.recentMenu_ != nullptr);
     const auto actions = window.recentMenu_->actions();
     QCOMPARE(actions.size(), 2);
-    QCOMPARE(actions.at(0)->toolTip(), secondPath);
-    QCOMPARE(actions.at(1)->toolTip(), firstPath);
+    QCOMPARE(actions.at(0)->toolTip(), QDir::toNativeSeparators(secondPath));
+    QCOMPARE(actions.at(1)->toolTip(), QDir::toNativeSeparators(firstPath));
+    // Mnemoniques numerotes : acces clavier aux recents.
+    QVERIFY(actions.at(0)->text().startsWith(QStringLiteral("&1 ")));
+    QVERIFY(actions.at(1)->text().startsWith(QStringLiteral("&2 ")));
 }
 
 void MainWindowTest::clickingRecentButtonForDeletedFileWarnsAndPrunesWithoutCrashing() {
@@ -4863,31 +4874,70 @@ void MainWindowTest::autosaveRecoveryAcceptLoadsAsUntitledDocumentAndPurgesSlot(
     // encore vide.
     QCoreApplication::processEvents();
 
-    // Simule un créneau laissé par un arrêt anormal : écrit directement via
-    // writeAutosave() -- aucun MainWindow n'était vivant au moment du
-    // "plantage", comme en réalité.
+    // Simule un creneau laisse par un arret anormal : ecrit directement via
+    // writeAutosave() -- aucun MainWindow n'etait vivant au moment du
+    // "plantage", comme en realite.
     const Fixture fx = buildFixture();
-    const QString originalPath = QStringLiteral("C:/ancien/projet.osp"); // chemin affiché seulement
+    const QString originalPath = QStringLiteral("C:/ancien/projet.osp"); // chemin affiche seulement
     const auto slot = slotFor(originalPath);
     QVERIFY(writeAutosave(slot, fx.project, originalPath).has_value());
 
     clickModalDialogButton(&window, QStringLiteral("Récupérer"));
     window.checkAutosaveRecovery();
 
-    // Chargé en tant que document SANS NOM -- jamais réassocié au chemin
-    // d'origine ni au créneau autosave lui-même (invariant central, cf.
-    // specs/arch-plan/vision/20260929-102601-arm-1-ar-9.md).
-    QVERIFY(window.currentProjectPath_.isEmpty());
+    // Le chemin d'origine est restaure (Ctrl+S reecrit le bon fichier), le
+    // document est marque modifie et son contenu est charge.
+    QCOMPARE(window.currentProjectPath_, originalPath);
     QVERIFY(window.isWindowModified());
-    QVERIFY(!window.project_.vector_objects.empty()); // le contenu récupéré est bien chargé
+    QVERIFY(!window.project_.vector_objects.empty());
 
-    // Traité (récupéré) -> jamais reproposé au prochain démarrage.
+    // Le creneau n'est PAS supprime juste apres le chargement : il reste le seul
+    // exemplaire des donnees jusqu'a la premiere sauvegarde reussie.
+    QVERIFY(QFile::exists(slot.osp_path));
+    QVERIFY(!window.pendingRecoveryOsp_.isEmpty());
+
+    // Premier tick reussi : le creneau est reecrit (meme chemin d'origine) et plus
+    // aucune suppression en attente.
+    window.onAutosaveTick();
+    QVERIFY(QFile::exists(slot.osp_path));
+    QVERIFY(window.pendingRecoveryOsp_.isEmpty());
+
+    // Fermeture propre : plus rien a recuperer.
+    clickModalDialogButton(&window, QStringLiteral("Ne pas enregistrer"), 1);
+    window.close();
     QVERIFY(scanForRecoverableAutosaves().empty());
 
     clearAutosaveDir();
 }
 
-void MainWindowTest::autosaveRecoveryIgnoreDiscardsSlotWithoutLoading() {
+void MainWindowTest::autosaveRecoveryUntitledSlotIsKeptUntilFirstSuccessfulSave() {
+    clearAutosaveDir();
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+
+    MainWindow window;
+    QCoreApplication::processEvents();
+
+    const Fixture fx = buildFixture();
+    const auto slot = slotFor(QStringLiteral("C:/inconnu/sansnom.osp"));
+    // Sidecar sans chemin d'origine : projet « sans nom ».
+    QVERIFY(writeAutosave(slot, fx.project, QString()).has_value());
+
+    clickModalDialogButton(&window, QStringLiteral("Récupérer"));
+    window.checkAutosaveRecovery();
+    QVERIFY(window.currentProjectPath_.isEmpty());
+    QVERIFY(window.isWindowModified());
+    QVERIFY(QFile::exists(slot.osp_path));
+
+    // Enregistrement reussi : le creneau recupere est libere.
+    QVERIFY(window.saveProjectToPath(dir.filePath(QStringLiteral("sauve.osp"))));
+    QVERIFY(!QFile::exists(slot.osp_path));
+    QVERIFY(!window.isWindowModified());
+
+    clearAutosaveDir();
+}
+
+void MainWindowTest::autosaveRecoveryDiscardButtonDeletesButLaterAndEscapeKeep() {
     clearAutosaveDir();
 
     MainWindow window;
@@ -4898,18 +4948,180 @@ void MainWindowTest::autosaveRecoveryIgnoreDiscardsSlotWithoutLoading() {
     const auto slot = slotFor(originalPath);
     QVERIFY(writeAutosave(slot, fx.project, originalPath).has_value());
 
-    clickModalDialogButton(&window, QStringLiteral("Ignorer"));
+    // « Decider plus tard » : rien n'est charge, rien n'est supprime.
+    clickModalDialogButton(&window, QStringLiteral("plus tard"), 1);
     window.checkAutosaveRecovery();
-
-    // Document courant inchangé : "Ignorer" ne charge rien.
     QVERIFY(window.currentProjectPath_.isEmpty());
     QVERIFY(!window.isWindowModified());
     QVERIFY(window.project_.vector_objects.empty());
+    QVERIFY(QFile::exists(slot.osp_path));
 
-    // Traité (ignoré) -> jamais reproposé non plus.
+    // Echap (fermeture du dialogue) : idem, la sauvegarde est conservee.
+    QTimer::singleShot(0, &window, [] {
+        if (auto* widget = QApplication::activeModalWidget()) {
+            QTest::keyClick(widget, Qt::Key_Escape);
+        }
+    });
+    window.checkAutosaveRecovery();
+    QVERIFY(QFile::exists(slot.osp_path));
+    QVERIFY(window.project_.vector_objects.empty());
+
+    // Choix explicite « Supprimer » : seule action destructrice.
+    clickModalDialogButton(&window, QStringLiteral("Supprimer"), 1);
+    window.checkAutosaveRecovery();
+    QVERIFY(!QFile::exists(slot.osp_path));
     QVERIFY(scanForRecoverableAutosaves().empty());
+    QVERIFY(window.project_.vector_objects.empty());
 
     clearAutosaveDir();
+}
+
+void MainWindowTest::autosaveRecoveryHandlesOneCandidatePerSession() {
+    clearAutosaveDir();
+
+    MainWindow window;
+    QCoreApplication::processEvents();
+
+    const Fixture fx = buildFixture();
+    const auto slotA = slotFor(QStringLiteral("C:/a/premier.osp"));
+    const auto slotB = slotFor(QStringLiteral("C:/b/second.osp"));
+    QVERIFY(writeAutosave(slotA, fx.project, QStringLiteral("C:/a/premier.osp")).has_value());
+    QVERIFY(writeAutosave(slotB, fx.project, QStringLiteral("C:/b/second.osp")).has_value());
+
+    // Accepte la recuperation a chaque dialogue : un seul doit etre traite, le
+    // second ne doit pas ecraser le premier.
+    clickModalDialogButton(&window, QStringLiteral("Récupérer"), 3);
+    window.checkAutosaveRecovery();
+    const QString recoveredPath = window.currentProjectPath_;
+    QVERIFY(recoveredPath == QStringLiteral("C:/a/premier.osp") ||
+            recoveredPath == QStringLiteral("C:/b/second.osp"));
+    // Les deux creneaux existent toujours (l'autre est repropose au prochain demarrage).
+    QVERIFY(QFile::exists(slotA.osp_path));
+    QVERIFY(QFile::exists(slotB.osp_path));
+
+    clearAutosaveDir();
+}
+
+void MainWindowTest::autosaveSlotHeldByALiveInstanceIsNotOffered() {
+    clearAutosaveDir();
+
+    const Fixture fx = buildFixture();
+    const auto slot = slotFor(QStringLiteral("C:/vivant/projet.osp"));
+    QVERIFY(writeAutosave(slot, fx.project, QStringLiteral("C:/vivant/projet.osp")).has_value());
+    QCOMPARE(scanForRecoverableAutosaves().size(), std::size_t{1});
+
+    // Une instance vivante revendique son creneau : il n'est plus propose.
+    claimAutosaveSlot(slot);
+    QVERIFY(scanForRecoverableAutosaves().empty());
+
+    // Fenetre fermee/plantee (verrou libere) : recuperable de nouveau.
+    releaseAutosaveSlot(slot);
+    QCOMPARE(scanForRecoverableAutosaves().size(), std::size_t{1});
+
+    clearAutosaveDir();
+}
+
+void MainWindowTest::openProjectIsGuardedByUnsavedChanges() {
+    MainWindow window;
+    const Fixture fx = buildFixture();
+    window.applyLoadedProject(fx.project);
+    window.setWindowModified(true);
+
+    // Annuler dans la garde : aucun dialogue de fichier, document intact.
+    clickModalDialogButton(&window, QStringLiteral("Annuler"), 1);
+    window.loadProject();
+    QCOMPARE(window.project_.vector_objects.size(), fx.project.vector_objects.size());
+    QVERIFY(window.isWindowModified());
+}
+
+void MainWindowTest::windowModifiedMarkerFollowsTheUndoStackCleanState() {
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    MainWindow window;
+    const Fixture fx = buildFixture();
+    window.applyLoadedProject(fx.project);
+    QVERIFY(!window.isWindowModified());
+
+    // La fixture porte une segmentation : l'operation demande confirmation.
+    clickModalDialogButton(&window, QStringLiteral("Continuer"), 1);
+    window.executeOp(image::GrayscaleOp{});
+    QVERIFY(window.isWindowModified());
+    QVERIFY(window.saveProjectToPath(dir.filePath(QStringLiteral("p.osp"))));
+    QVERIFY(!window.isWindowModified());
+
+    window.undo(); // avant l'etat enregistre : modifie
+    QVERIFY(window.isWindowModified());
+    window.redo(); // retour a l'etat enregistre : propre
+    QVERIFY(!window.isWindowModified());
+}
+
+void MainWindowTest::imageOperationOnSegmentedImageAsksBeforeDroppingRegions() {
+    MainWindow window;
+    window.applyLoadedProject(
+        opaqueSegmentedProject({250, 250, 250}, {200, 30, 30}, 10, 8, 30, 22));
+    QVERIFY(window.project_.segmentation.has_value());
+
+    // Annuler : la segmentation et la pile d'operations sont intactes.
+    clickModalDialogButton(&window, QStringLiteral("Annuler"), 1);
+    window.executeOp(image::GrayscaleOp{});
+    QVERIFY(window.project_.segmentation.has_value());
+    QVERIFY(window.project_.ops.empty());
+
+    // Continuer : l'operation est appliquee, la segmentation revient avec Ctrl+Z.
+    clickModalDialogButton(&window, QStringLiteral("Continuer"), 1);
+    window.executeOp(image::GrayscaleOp{});
+    QVERIFY(!window.project_.segmentation.has_value());
+    QCOMPARE(window.project_.ops.size(), std::size_t{1});
+    window.undo();
+    QVERIFY(window.project_.segmentation.has_value());
+}
+
+void MainWindowTest::autoDigitizeReplaceRemovesPreviousAutoObjectsInOneUndoStep() {
+    MainWindow window;
+    window.applyLoadedProject(
+        opaqueSegmentedProject({250, 250, 250}, {200, 30, 30}, 10, 8, 30, 22));
+
+    // 1re numerisation : dialogue d'options accepte (aucune question, rien n'existe).
+    autoDismissModalDialogs(&window, 2);
+    window.autoDigitize();
+    QVERIFY(!window.project_.embroidery_objects.empty());
+    std::vector<ObjectId> firstIds;
+    for (const auto& e : window.project_.embroidery_objects) {
+        firstIds.push_back(e.id);
+    }
+    const std::size_t firstVectors = window.project_.vector_objects.size();
+
+    // 2e numerisation, « Remplacer » : memes quantites (pas de doublon), ids neufs.
+    clickModalDialogButton(&window, QStringLiteral("Remplacer"), 3);
+    window.autoDigitize();
+    QCOMPARE(window.project_.embroidery_objects.size(), firstIds.size());
+    QCOMPARE(window.project_.vector_objects.size(), firstVectors);
+    for (const auto& e : window.project_.embroidery_objects) {
+        QVERIFY(std::find(firstIds.begin(), firstIds.end(), e.id) == firstIds.end());
+    }
+
+    // Un seul Ctrl+Z restitue exactement le premier lot.
+    window.undo();
+    QCOMPARE(window.project_.embroidery_objects.size(), firstIds.size());
+    for (std::size_t i = 0; i < firstIds.size(); ++i) {
+        QCOMPARE(window.project_.embroidery_objects[i].id, firstIds[i]);
+    }
+    QCOMPARE(window.project_.vector_objects.size(), firstVectors);
+}
+
+void MainWindowTest::autoDigitizeAddKeepsExistingObjects() {
+    MainWindow window;
+    window.applyLoadedProject(
+        opaqueSegmentedProject({250, 250, 250}, {200, 30, 30}, 10, 8, 30, 22));
+    autoDismissModalDialogs(&window, 2);
+    window.autoDigitize();
+    const std::size_t before = window.project_.embroidery_objects.size();
+    QVERIFY(before > 0);
+
+    // Le bouton par defaut de la question est « Ajouter » : les objets s'accumulent.
+    clickModalDialogButton(&window, QStringLiteral("Ajouter"), 3);
+    window.autoDigitize();
+    QCOMPARE(window.project_.embroidery_objects.size(), before * 2);
 }
 
 void MainWindowTest::cleanCloseDiscardsTheCurrentAutosaveSlot() {

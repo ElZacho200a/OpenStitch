@@ -4,6 +4,7 @@ add_executable(test_project_io
     test_intent_persistence.cpp
     test_finishing_persistence.cpp
     test_machine_file.cpp
+    test_load_robustness.cpp
 )
 target_link_libraries(test_project_io
     PRIVATE openstitch::project_io openstitch::formats openstitch::stitch_generation

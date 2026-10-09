@@ -1972,3 +1972,33 @@ TEST_CASE("SetStitchTypeCommand : tatami -> auto-satin annulable") {
     CHECK(stack.undo(project));
     CHECK(project.embroidery_objects[0].is_tatami());
 }
+
+TEST_CASE("marqueur propre: markClean, undo-redo et branche redo invalidee") {
+    document::Project project;
+    UndoStack stack;
+    CHECK(stack.isClean());
+
+    stack.execute(std::make_unique<AppendImageOpCommand>(image::GrayscaleOp{}), project);
+    CHECK_FALSE(stack.isClean());
+    stack.markClean();
+    CHECK(stack.isClean());
+
+    stack.execute(std::make_unique<AppendImageOpCommand>(image::GrayscaleOp{}), project);
+    CHECK_FALSE(stack.isClean());
+    CHECK(stack.undo(project));
+    CHECK(stack.isClean());
+    CHECK(stack.redo(project));
+    CHECK_FALSE(stack.isClean());
+
+    // Revenir avant l'état enregistré puis exécuter une autre commande : plus jamais propre.
+    stack.markClean();
+    CHECK(stack.undo(project));
+    CHECK_FALSE(stack.isClean());
+    stack.execute(std::make_unique<AppendImageOpCommand>(image::GrayscaleOp{}), project);
+    CHECK_FALSE(stack.isClean());
+    CHECK(stack.undo(project));
+    CHECK_FALSE(stack.isClean());
+
+    stack.clear();
+    CHECK(stack.isClean());
+}

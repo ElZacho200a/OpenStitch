@@ -8,11 +8,14 @@
 #include <QFileInfo>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QLockFile>
 #include <QSaveFile>
 #include <QStandardPaths>
 
 #include <algorithm>
 #include <filesystem>
+#include <map>
+#include <memory>
 
 #include "openstitch/project_io/project_io.hpp"
 
@@ -26,6 +29,18 @@ namespace {
 QString autosaveDirPath() {
     return QStandardPaths::writableLocation(QStandardPaths::AppDataLocation) +
            QStringLiteral("/autosave");
+}
+
+// Verrous d'instance tenus par ce processus, par chemin .osp de créneau.
+std::map<QString, std::unique_ptr<QLockFile>>& heldLocks() {
+    static std::map<QString, std::unique_ptr<QLockFile>> locks;
+    return locks;
+}
+
+QString lockPathFor(const QString& ospPath) {
+    const QFileInfo info(ospPath);
+    return info.absolutePath() + QStringLiteral("/") + info.completeBaseName() +
+           QStringLiteral(".lock");
 }
 
 } // namespace
@@ -84,7 +99,25 @@ Result<void> writeAutosave(const AutosaveSlot& slot, const document::Project& pr
     return written;
 }
 
+void claimAutosaveSlot(const AutosaveSlot& slot) {
+    auto& locks = heldLocks();
+    if (locks.count(QDir::cleanPath(slot.osp_path)) != 0) {
+        return;
+    }
+    QDir().mkpath(QFileInfo(slot.osp_path).absolutePath());
+    auto lock = std::make_unique<QLockFile>(lockPathFor(slot.osp_path));
+    lock->setStaleLockTime(0); // périmé seulement si le processus propriétaire est mort
+    if (lock->tryLock(0)) {
+        locks.emplace(QDir::cleanPath(slot.osp_path), std::move(lock));
+    }
+}
+
+void releaseAutosaveSlot(const AutosaveSlot& slot) {
+    heldLocks().erase(QDir::cleanPath(slot.osp_path));
+}
+
 void discardAutosave(const AutosaveSlot& slot) {
+    releaseAutosaveSlot(slot);
     // QFile::remove() renvoie simplement `false` si le fichier n'existe
     // pas -- no-op silencieux, jamais une erreur à faire remonter.
     QFile::remove(slot.osp_path);
@@ -101,6 +134,18 @@ std::vector<AutosaveCandidate> scanForRecoverableAutosaves() {
     for (const QString& name : ospFiles) {
         AutosaveCandidate candidate;
         candidate.slot.osp_path = dir.filePath(name);
+        // Créneau tenu par une instance vivante (ce processus compris) : pas
+        // un reste de plantage, on ne le propose pas.
+        if (heldLocks().count(QDir::cleanPath(candidate.slot.osp_path)) != 0) {
+            continue;
+        }
+        {
+            QLockFile probe(lockPathFor(candidate.slot.osp_path));
+            probe.setStaleLockTime(0);
+            if (!probe.tryLock(0)) {
+                continue;
+            }
+        }
         candidate.slot.sidecar_path =
             dir.filePath(QFileInfo(name).completeBaseName() + QStringLiteral(".json"));
 
