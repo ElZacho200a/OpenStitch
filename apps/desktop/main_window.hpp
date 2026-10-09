@@ -452,6 +452,38 @@ private:
     // reste le seul point d'entrée en usage réel.
     void offsetVectorObjectCore(ObjectId id, Micrometers delta);
 
+    // --- Auto-satin par squelette et traversées (main_window_satin_auto.cpp) ---
+    // Aperçu avant création / résumé de l'inspecteur : nombre de colonnes,
+    // couverture estimée, fil en double, guides ignorés, refus nommés. Calculé par
+    // le moteur (libs/auto_satin), jamais par l'interface.
+    struct AutoSatinPreview {
+        std::size_t columns{0};
+        bool measured{false};
+        double coverage{0.0};
+        double overlap{0.0};
+        double uncoveredMm2{0.0};
+        int orphanGuides{0};
+        QStringList messages;
+    };
+    struct AutoSatinSummaryCache {
+        ObjectId id{};
+        std::uint64_t key{0};
+        QString text;
+        bool valid{false};
+    };
+    [[nodiscard]] AutoSatinPreview previewAutoSatin(const document::VectorObject& source,
+                                                    const document::AutoSatinParams& params) const;
+    [[nodiscard]] QString describeAutoSatinPreview(const AutoSatinPreview& preview) const;
+    [[nodiscard]] QString autoSatinSummary(const document::EmbroideryObject& emb);
+    void createAutoSatin(bool askParameters);
+    void applyAutoSatinEdit(ObjectId id, document::AutoSatinParams params, const QString& label);
+    void addAutoSatinGuideFromStroke(ObjectId id, Vec2um from, Vec2um to);
+    void changeAutoSatinGuide(ObjectId id, int index, double angleDeg, bool absolute);
+    void removeAutoSatinGuide(ObjectId id, int index);
+    void renderAutoSatinOverlay(const document::EmbroideryObject& obj,
+                                const document::AutoSatinParams& params,
+                                const document::VectorObject& source);
+
     // --- Remplissage directionnel (main_window_directional.cpp) ---
     // Paramètres directionnels de départ pour `emb` (réglages du tatami
     // repris le cas échéant, guide initial à son angle) ; nullopt sans forme
@@ -762,6 +794,7 @@ private:
     QAction* drawDirectionGuideAct_{nullptr};
     QAction* drawBreakLineAct_{nullptr};
     std::optional<ObjectId> directionGuideTarget_;
+    AutoSatinSummaryCache autoSatinSummaryCache_;
     std::vector<Vec2um> pendingGuidePoints_;
     QGraphicsPathItem* guidePreviewItem_{nullptr};
     // État Clean/ManuallyEdited/Dirty des objets retouchés (absents = Clean),

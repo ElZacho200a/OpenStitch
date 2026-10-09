@@ -448,7 +448,7 @@ int run_digitize(const std::string& imagePath, const std::string& dstPath, doubl
 
     int nSatin = 0, nTatami = 0, nRunning = 0;
     for (const auto& e : project.embroidery_objects) {
-        if (e.is_satin())
+        if (e.is_satin() || e.is_auto_satin())
             ++nSatin;
         else if (e.is_tatami())
             ++nTatami;

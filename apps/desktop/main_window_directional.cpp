@@ -154,7 +154,7 @@ void MainWindow::onDirectionGuideModeToggled(bool on) {
             }
         }
         if (const auto* emb = resolveSelectedEmbroidery();
-            emb != nullptr && emb->is_directional()) {
+            emb != nullptr && (emb->is_directional() || emb->is_auto_satin())) {
             directionGuideTarget_ = emb->id;
         }
         if (!directionGuideTarget_) {
@@ -317,6 +317,16 @@ void MainWindow::finishDirectionGuide() {
         return;
     }
     const auto* emb = project_.findEmbroidery(*directionGuideTarget_);
+    if (emb != nullptr && emb->is_auto_satin()) {
+        // Auto-satin : le trait tracé (premier -> dernier point) fixe l'ancre du
+        // guide et la direction des fils.
+        if (pts.size() < 2) {
+            statusBar()->showMessage(tr("Au moins 2 points sont nécessaires."));
+            return;
+        }
+        addAutoSatinGuideFromStroke(emb->id, pts.front(), pts.back());
+        return;
+    }
     const auto* dir =
         emb != nullptr ? std::get_if<document::DirectionalFillParams>(&emb->params) : nullptr;
     if (dir == nullptr) {
@@ -357,7 +367,7 @@ void MainWindow::updateDirectionGuideActions() {
         return;
     }
     const auto* emb = resolveSelectedEmbroidery();
-    const bool context = emb != nullptr && emb->is_directional();
+    const bool context = emb != nullptr && (emb->is_directional() || emb->is_auto_satin());
     const bool sameTarget =
         directionGuideTarget_.has_value() && emb != nullptr && *directionGuideTarget_ == emb->id;
     if (directionGuideModeAct_->isChecked() && (!context || !sameTarget)) {
@@ -377,7 +387,7 @@ void MainWindow::updateDirectionGuideActions() {
         autoDirectionGuideAct_->setEnabled(canGenerate);
     }
     drawDirectionGuideAct_->setEnabled(context);
-    drawBreakLineAct_->setEnabled(context);
+    drawBreakLineAct_->setEnabled(context && emb->is_directional());
 }
 
 void MainWindow::renderDirectionGuides() {
@@ -389,6 +399,10 @@ void MainWindow::renderDirectionGuides() {
     const auto* dir =
         obj != nullptr ? std::get_if<document::DirectionalFillParams>(&obj->params) : nullptr;
     const auto* source = obj != nullptr ? project_.findObject(obj->source_vector) : nullptr;
+    if (obj != nullptr && obj->is_auto_satin() && source != nullptr) {
+        renderAutoSatinOverlay(*obj, std::get<document::AutoSatinParams>(obj->params), *source);
+        return;
+    }
     if (dir == nullptr || source == nullptr) {
         return;
     }

@@ -7,7 +7,9 @@
 #include <QFormLayout>
 #include <QFrame>
 #include <QLabel>
+#include <QListWidget>
 #include <QPushButton>
+#include <QSignalBlocker>
 #include <QSpinBox>
 #include <QVBoxLayout>
 
@@ -73,6 +75,11 @@ PropertiesPanel::PropertiesPanel(QWidget* parent) : QWidget(parent) {
 
 void PropertiesPanel::clearBody() {
     currentId_.reset();
+    satinGuideList_.clear();
+    satinSummary_.clear();
+    satinGuideAngle_.clear();
+    satinGuideAbsolute_.clear();
+    satinGuideRemove_.clear();
     if (auto* lay = body_->layout()) {
         while (QLayoutItem* item = lay->takeAt(0)) {
             delete item->widget();
@@ -137,6 +144,60 @@ void PropertiesPanel::setEditState(std::optional<ObjectId> id,
     }
 }
 
+void PropertiesPanel::setAutoSatinState(std::optional<ObjectId> id,
+                                        const document::AutoSatinParams* params,
+                                        const QString& summary) {
+    if (!id || params == nullptr || !currentId_ || *currentId_ != *id) {
+        return;
+    }
+    if (satinSummary_ != nullptr && !summary.isEmpty()) {
+        satinSummary_->setText(summary);
+    }
+    if (satinGuideList_ == nullptr) {
+        return;
+    }
+    const int keep = satinGuideList_->currentRow();
+    const bool wasBuilding = building_;
+    building_ = true;
+    {
+        const QSignalBlocker block(satinGuideList_);
+        satinGuideList_->clear();
+        int n = 0;
+        for (const auto& g : params->guides) {
+            const int deg =
+                static_cast<int>(std::lround(g.angle.radians * 180.0 / std::numbers::pi));
+            auto* item = new QListWidgetItem(tr("Guide %1 — %2 mm, %3 mm — %4° (%5)")
+                                                 .arg(++n)
+                                                 .arg(to_millimeters(g.anchor.x).value, 0, 'f', 1)
+                                                 .arg(to_millimeters(g.anchor.y).value, 0, 'f', 1)
+                                                 .arg(deg)
+                                                 .arg(g.absolute ? tr("absolu") : tr("relatif")));
+            item->setData(Qt::UserRole, deg);
+            item->setData(Qt::UserRole + 1, g.absolute);
+            satinGuideList_->addItem(item);
+        }
+        if (keep >= 0 && keep < satinGuideList_->count()) {
+            satinGuideList_->setCurrentRow(keep);
+        }
+    }
+    const int row = satinGuideList_->currentRow();
+    const bool has = row >= 0;
+    if (satinGuideAngle_ != nullptr && satinGuideAbsolute_ != nullptr &&
+        satinGuideRemove_ != nullptr) {
+        satinGuideAngle_->setEnabled(has);
+        satinGuideAbsolute_->setEnabled(has);
+        satinGuideRemove_->setEnabled(has);
+        if (has) {
+            const QSignalBlocker b1(satinGuideAngle_);
+            const QSignalBlocker b2(satinGuideAbsolute_);
+            satinGuideAngle_->setValue(satinGuideList_->item(row)->data(Qt::UserRole).toInt());
+            satinGuideAbsolute_->setChecked(
+                satinGuideList_->item(row)->data(Qt::UserRole + 1).toBool());
+        }
+    }
+    building_ = wasBuilding;
+}
+
 void PropertiesPanel::showEmbroidery(const document::EmbroideryObject& object) {
     clearBody();
     currentId_ = object.id;
@@ -148,7 +209,8 @@ void PropertiesPanel::showEmbroidery(const document::EmbroideryObject& object) {
 
     const QString typeName = object.is_tatami()        ? tr("Remplissage tatami")
                              : object.is_directional() ? tr("Remplissage directionnel")
-                             : object.is_satin()       ? tr("Colonne satin (expérimental)")
+                             : object.is_auto_satin()  ? tr("Satin (squelette et traversées)")
+                             : object.is_satin()       ? tr("Colonne satin à rails (manuelle)")
                                                        : tr("Contour cousu");
     form->addRow(tr("Type :"), new QLabel(typeName, body_));
 
@@ -454,6 +516,183 @@ void PropertiesPanel::showEmbroidery(const document::EmbroideryObject& object) {
                 connect(maxHard, &QDoubleSpinBox::valueChanged, this, emitEdit);
                 connect(lockStart, &QComboBox::currentIndexChanged, this, emitEdit);
                 connect(lockEnd, &QComboBox::currentIndexChanged, this, emitEdit);
+            } else if constexpr (std::is_same_v<T, document::AutoSatinParams>) {
+                // Guides : édités par signaux dédiés (liste ci-dessous, rafraîchie par
+                // setAutoSatinState). Les réglages scalaires passent par paramsEdited ;
+                // MainWindow reprend alors les guides ACTUELS du document.
+                const document::AutoSatinParams base = p;
+                auto* summary = new QLabel(body_);
+                summary->setObjectName(QStringLiteral("label_autoSatinSummary"));
+                summary->setWordWrap(true);
+                satinSummary_ = summary;
+                auto* spacing = mmSpin(to_millimeters(p.spacing).value, 2.0);
+                spacing->setMinimum(0.1);
+                spacing->setToolTip(tr("Espacement cible entre deux traversées, mesuré au bord le "
+                                       "plus écarté d'un virage."));
+                auto* threshold = mmSpin(to_millimeters(p.split_threshold).value, 20.0);
+                threshold->setMinimum(1.0);
+                threshold->setToolTip(tr("Longueur de traversée au-delà de laquelle elle est "
+                                         "fractionnée (Lmax)."));
+                auto* splitLen = mmSpin(to_millimeters(p.split_length).value, 20.0);
+                splitLen->setMinimum(1.0);
+                splitLen->setToolTip(tr("Longueur maximale des segments après fractionnement (y), "
+                                        "bornée à Lmax."));
+                auto* splitCombo = new QComboBox(body_);
+                splitCombo->addItems({tr("Désactivé"), tr("Simple"), tr("Décalé"), tr("Jitter")});
+                splitCombo->setCurrentIndex(static_cast<int>(p.split_stitch));
+                auto* shortCombo = new QComboBox(body_);
+                shortCombo->addItems({tr("Désactivés"), tr("Retirer/redistribuer"),
+                                      tr("Inset simple"), tr("Inset multi-niveaux")});
+                shortCombo->setCurrentIndex(static_cast<int>(p.short_stitch));
+                auto* comp = mmSpin(to_millimeters(p.pull_compensation).value, 2.0);
+                auto* underlay = new QCheckBox(tr("Sous-couche centrale"), body_);
+                underlay->setChecked(p.center_underlay);
+                auto* edgeU = new QCheckBox(tr("Sous-couche de bord"), body_);
+                edgeU->setChecked(p.underlay_edge);
+                auto* zigU = new QCheckBox(tr("Sous-couche zigzag"), body_);
+                zigU->setChecked(p.underlay_zigzag);
+                auto* pullL = mmSpin(to_millimeters(p.pull_left).value, 3.0);
+                auto* pullR = mmSpin(to_millimeters(p.pull_right).value, 3.0);
+                const QStringList capItems{tr("Plat"), tr("Arrondi"), tr("Effilé"), tr("Auto")};
+                auto* capStart = new QComboBox(body_);
+                capStart->addItems(capItems);
+                capStart->setCurrentIndex(static_cast<int>(p.cap_start));
+                auto* capEnd = new QComboBox(body_);
+                capEnd->addItems(capItems);
+                capEnd->setCurrentIndex(static_cast<int>(p.cap_end));
+                const QStringList lockItems{tr("Aucun"), tr("Aller-retour"), tr("Triangle"),
+                                            tr("Micro-zigzag")};
+                auto* lockStart = new QComboBox(body_);
+                lockStart->addItems(lockItems);
+                lockStart->setCurrentIndex(static_cast<int>(p.lock_start));
+                auto* lockEnd = new QComboBox(body_);
+                lockEnd->addItems(lockItems);
+                lockEnd->setCurrentIndex(static_cast<int>(p.lock_end));
+
+                // --- Guides d'orientation ---
+                auto* guideList = new QListWidget(body_);
+                guideList->setObjectName(QStringLiteral("list_satinGuides"));
+                guideList->setMaximumHeight(110);
+                satinGuideList_ = guideList;
+                auto* guideAngle = new QSpinBox(body_);
+                guideAngle->setObjectName(QStringLiteral("spin_satinGuideAngle"));
+                guideAngle->setRange(-179, 179);
+                guideAngle->setSuffix(tr(" °"));
+                guideAngle->setEnabled(false);
+                satinGuideAngle_ = guideAngle;
+                auto* guideAbs = new QCheckBox(tr("Angle absolu (repère du dessin)"), body_);
+                guideAbs->setObjectName(QStringLiteral("check_satinGuideAbsolute"));
+                guideAbs->setToolTip(tr("Décoché : écart à la perpendiculaire de l'axe (0° = "
+                                        "perpendiculaire). Coché : angle fixe dans le dessin."));
+                guideAbs->setEnabled(false);
+                satinGuideAbsolute_ = guideAbs;
+                auto* guideRemove = new QPushButton(tr("Supprimer le guide"), body_);
+                guideRemove->setObjectName(QStringLiteral("button_satinGuideRemove"));
+                guideRemove->setEnabled(false);
+                satinGuideRemove_ = guideRemove;
+                auto* guideAdd = new QPushButton(tr("Placer un guide sur le canevas…"), body_);
+                guideAdd->setObjectName(QStringLiteral("button_editSatinGuides"));
+                guideAdd->setToolTip(tr("Tracez un trait : sa position ancre le guide et sa "
+                                        "direction fixe l'angle des fils (D)."));
+
+                form->addRow(QString(), summary);
+                form->addRow(tr("Espacement :"), spacing);
+                form->addRow(tr("Seuil de fractionnement (Lmax) :"), threshold);
+                form->addRow(tr("Longueur des segments (y) :"), splitLen);
+                form->addRow(tr("Fractionnement :"), splitCombo);
+                form->addRow(tr("Points courts (virages) :"), shortCombo);
+                form->addRow(tr("Compensation de tirage :"), comp);
+                form->addRow(QString(), underlay);
+                form->addRow(QString(), edgeU);
+                form->addRow(QString(), zigU);
+                form->addRow(tr("Compensation gauche :"), pullL);
+                form->addRow(tr("Compensation droite :"), pullR);
+                form->addRow(tr("Terminaison (début) :"), capStart);
+                form->addRow(tr("Terminaison (fin) :"), capEnd);
+                form->addRow(tr("Fixation (début) :"), lockStart);
+                form->addRow(tr("Fixation (fin) :"), lockEnd);
+                form->addRow(tr("Guides d'orientation :"), guideList);
+                form->addRow(tr("Angle du guide :"), guideAngle);
+                form->addRow(QString(), guideAbs);
+                form->addRow(QString(), guideRemove);
+                form->addRow(QString(), guideAdd);
+
+                const auto emitEdit = [this, id, base, spacing, threshold, splitLen, splitCombo,
+                                       shortCombo, comp, underlay, edgeU, zigU, pullL, pullR,
+                                       capStart, capEnd, lockStart, lockEnd] {
+                    if (building_)
+                        return;
+                    document::AutoSatinParams s =
+                        base; // guides, entrée/sortie : repris du document
+                    s.spacing = to_um(spacing->value());
+                    s.split_threshold = to_um(threshold->value());
+                    s.split_length = to_um(std::min(splitLen->value(), threshold->value()));
+                    s.split_stitch = static_cast<document::SatinSplit>(splitCombo->currentIndex());
+                    s.short_stitch =
+                        static_cast<document::SatinShortStitch>(shortCombo->currentIndex());
+                    s.pull_compensation = to_um(comp->value());
+                    s.center_underlay = underlay->isChecked();
+                    s.underlay_edge = edgeU->isChecked();
+                    s.underlay_zigzag = zigU->isChecked();
+                    s.pull_left = to_um(pullL->value());
+                    s.pull_right = to_um(pullR->value());
+                    s.cap_start = static_cast<document::SatinCap>(capStart->currentIndex());
+                    s.cap_end = static_cast<document::SatinCap>(capEnd->currentIndex());
+                    s.lock_start = static_cast<document::SatinLock>(lockStart->currentIndex());
+                    s.lock_end = static_cast<document::SatinLock>(lockEnd->currentIndex());
+                    emit paramsEdited(id, s);
+                };
+                connect(spacing, &QDoubleSpinBox::valueChanged, this, emitEdit);
+                connect(threshold, &QDoubleSpinBox::valueChanged, this, emitEdit);
+                connect(splitLen, &QDoubleSpinBox::valueChanged, this, emitEdit);
+                connect(splitCombo, &QComboBox::currentIndexChanged, this, emitEdit);
+                connect(shortCombo, &QComboBox::currentIndexChanged, this, emitEdit);
+                connect(comp, &QDoubleSpinBox::valueChanged, this, emitEdit);
+                connect(underlay, &QCheckBox::toggled, this, emitEdit);
+                connect(edgeU, &QCheckBox::toggled, this, emitEdit);
+                connect(zigU, &QCheckBox::toggled, this, emitEdit);
+                connect(pullL, &QDoubleSpinBox::valueChanged, this, emitEdit);
+                connect(pullR, &QDoubleSpinBox::valueChanged, this, emitEdit);
+                connect(capStart, &QComboBox::currentIndexChanged, this, emitEdit);
+                connect(capEnd, &QComboBox::currentIndexChanged, this, emitEdit);
+                connect(lockStart, &QComboBox::currentIndexChanged, this, emitEdit);
+                connect(lockEnd, &QComboBox::currentIndexChanged, this, emitEdit);
+
+                connect(guideAdd, &QPushButton::clicked, this,
+                        [this, id] { emit editSatinGuidesRequested(id); });
+                connect(guideList, &QListWidget::currentRowChanged, this,
+                        [this, guideList, guideAngle, guideAbs, guideRemove](int row) {
+                            const bool has = row >= 0;
+                            guideAngle->setEnabled(has);
+                            guideAbs->setEnabled(has);
+                            guideRemove->setEnabled(has);
+                            if (!has) {
+                                return;
+                            }
+                            // Valeurs portées par l'item (cf. setAutoSatinState).
+                            const QSignalBlocker b1(guideAngle);
+                            const QSignalBlocker b2(guideAbs);
+                            guideAngle->setValue(guideList->item(row)->data(Qt::UserRole).toInt());
+                            guideAbs->setChecked(
+                                guideList->item(row)->data(Qt::UserRole + 1).toBool());
+                        });
+                const auto emitGuide = [this, id, guideList, guideAngle, guideAbs] {
+                    if (building_ || guideList->currentRow() < 0) {
+                        return;
+                    }
+                    emit satinGuideChangeRequested(id, guideList->currentRow(),
+                                                   static_cast<double>(guideAngle->value()),
+                                                   guideAbs->isChecked());
+                };
+                connect(guideAngle, &QSpinBox::valueChanged, this, emitGuide);
+                connect(guideAbs, &QCheckBox::toggled, this, emitGuide);
+                connect(guideRemove, &QPushButton::clicked, this, [this, id, guideList] {
+                    if (guideList->currentRow() >= 0) {
+                        emit satinGuideRemoveRequested(id, guideList->currentRow());
+                    }
+                });
+                // Premier remplissage de la liste et du résumé.
+                setAutoSatinState(id, &p, QString());
             }
         },
         object.params);

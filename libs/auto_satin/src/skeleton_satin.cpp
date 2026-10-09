@@ -3,6 +3,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdio>
 #include <limits>
 #include <map>
 #include <numbers>
@@ -696,6 +697,78 @@ Result<SkeletonSatinResult> generate_skeleton_satin(const geometry::PathSet& reg
         measure_coverage(region, result);
     }
     return result;
+}
+
+std::string skeleton_satin_to_svg(const geometry::PathSet& region,
+                                  const SkeletonSatinResult& result) {
+    double minx = 1e18, miny = 1e18, maxx = -1e18, maxy = -1e18;
+    const auto grow = [&](Vec2um v) {
+        const double x = v.x.value / 1000.0;
+        const double y = -v.y.value / 1000.0;
+        minx = std::min(minx, x);
+        maxx = std::max(maxx, x);
+        miny = std::min(miny, y);
+        maxy = std::max(maxy, y);
+    };
+    for (const auto& n : region.outer.nodes) {
+        grow(n.pos);
+    }
+    if (minx > maxx) {
+        return "<svg xmlns=\"http://www.w3.org/2000/svg\"/>\n";
+    }
+    const auto num = [](double v) {
+        char buf[48];
+        std::snprintf(buf, sizeof(buf), "%.3f", v);
+        return std::string(buf);
+    };
+    const auto pt = [&](Vec2um v) {
+        return num(v.x.value / 1000.0) + "," + num(-v.y.value / 1000.0);
+    };
+    const double margin = 2.0;
+    std::string svg;
+    svg += "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"" + num(minx - margin) + " " +
+           num(miny - margin) + " " + num(maxx - minx + 2 * margin) + " " +
+           num(maxy - miny + 2 * margin) + "\">\n";
+    const auto ring = [&](const geometry::Path& path) {
+        std::string d;
+        for (std::size_t i = 0; i < path.nodes.size(); ++i) {
+            d += (i == 0 ? "M" : "L") + pt(path.nodes[i].pos);
+        }
+        return d + "Z";
+    };
+    svg += "<path d=\"" + ring(region.outer);
+    for (const auto& hole : region.holes) {
+        svg += ring(hole);
+    }
+    svg += "\" fill=\"#f4f6fa\" stroke=\"#8a94a6\" stroke-width=\"0.15\" fill-rule=\"evenodd\"/>\n";
+    // Traversées.
+    svg += "<path d=\"";
+    for (const auto& column : result.columns) {
+        for (const auto& c : column.crossings) {
+            svg += "M" + pt(c.a) + "L" + pt(c.b);
+        }
+    }
+    svg += "\" fill=\"none\" stroke=\"#2f6fdc\" stroke-width=\"0.06\" stroke-opacity=\"0.7\"/>\n";
+    // Zigzag cousu de chaque colonne : A0 B0 A1 B1 ...
+    for (const auto& column : result.columns) {
+        svg += "<polyline fill=\"none\" stroke=\"#d9472b\" stroke-width=\"0.04\" "
+               "stroke-opacity=\"0.5\" points=\"";
+        for (const auto& c : column.crossings) {
+            svg += pt(c.a) + " " + pt(c.b) + " ";
+        }
+        svg += "\"/>\n";
+    }
+    // Axes de référence.
+    for (const auto& axis : result.axes) {
+        svg += "<polyline fill=\"none\" stroke=\"#1c8a4a\" stroke-width=\"0.12\" "
+               "stroke-dasharray=\"0.6 0.4\" points=\"";
+        for (const auto& v : axis) {
+            svg += pt(v) + " ";
+        }
+        svg += "\"/>\n";
+    }
+    svg += "</svg>\n";
+    return svg;
 }
 
 } // namespace openstitch::auto_satin

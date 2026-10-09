@@ -116,7 +116,7 @@ TEST_CASE("generation: Lmax et y sont distincts et bornent la longueur des point
     CHECK(rawLongest > 15'000.0);
 }
 
-TEST_CASE("generation: le seuil Lmax ne fractionne pas les traversées plus courtes",
+TEST_CASE("generation: le seuil Lmax ne fractionne pas les traversees plus courtes",
           "[skeleton_satin]") {
     // 'capsule' : traversées de moins de 7 mm -> aucune subdivision, même avec y petit.
     document::AutoSatinParams a;

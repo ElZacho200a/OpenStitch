@@ -69,7 +69,7 @@ TEST_CASE("chord: un trou donne deux intervalles et on choisit celui qui contien
     CHECK(right->t_hi == Approx(2000.0));
 }
 
-TEST_CASE("chord: une droite passant par deux sommets garde une parité correcte",
+TEST_CASE("chord: une droite passant par deux sommets garde une parite correcte",
           "[skeleton_satin]") {
     // Losange |x| + |y| <= 1000 ; la droite y = 0 passe par ses sommets gauche et droit.
     const std::vector<Poly> polys{Poly{{1000, 0}, {0, 1000}, {-1000, 0}, {0, -1000}}};
@@ -78,7 +78,7 @@ TEST_CASE("chord: une droite passant par deux sommets garde une parité correcte
     CHECK(iv[0].length() == Approx(2000.0));
 }
 
-TEST_CASE("chord: tolérance pour un point juste hors région", "[skeleton_satin]") {
+TEST_CASE("chord: tolerance pour un point juste hors region", "[skeleton_satin]") {
     const std::vector<Poly> polys{rect(0, 0, 20000, 4000)};
     // Point 30 µm sous le bord bas : hors région, mais corde horizontale proche.
     CHECK_FALSE(chord_through(polys, {10000, -30}, {1, 0}, 0.0).has_value());

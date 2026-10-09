@@ -88,4 +88,11 @@ struct SkeletonSatinResult {
 [[nodiscard]] Result<SkeletonSatinResult>
 generate_skeleton_satin(const geometry::PathSet& region, const SkeletonSatinParameters& params);
 
+// SVG de diagnostic (mm, Y vers le bas) : contour de la région, axes de référence
+// (tirets), traversées (trait fin) et zigzag de chaque colonne. Pour inspecter
+// traversées, orientations et zones non couvertes sans lancer l'interface. Pure,
+// déterministe.
+[[nodiscard]] std::string skeleton_satin_to_svg(const geometry::PathSet& region,
+                                                const SkeletonSatinResult& result);
+
 } // namespace openstitch::auto_satin

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 #include <catch2/catch_test_macros.hpp>
 
+#include <chrono>
 #include <filesystem>
 #include <fstream>
 
@@ -121,7 +122,12 @@ document::Project rich_project() {
 }
 
 fs::path temp_osp() {
-    return fs::temp_directory_path() / "openstitch_roundtrip.osp";
+    // Unique par processus ET par appel : CTest lance chaque TEST_CASE dans son propre
+    // processus, en parallèle ; un chemin fixe faisait entrer ces tests en collision.
+    static int counter = 0;
+    const auto ticks = std::chrono::steady_clock::now().time_since_epoch().count();
+    return fs::temp_directory_path() / ("openstitch_roundtrip_" + std::to_string(ticks) + "_" +
+                                        std::to_string(counter++) + ".osp");
 }
 
 } // namespace

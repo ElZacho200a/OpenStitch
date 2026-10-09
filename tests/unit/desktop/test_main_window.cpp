@@ -36,6 +36,7 @@
 #include <cmath>
 #include <filesystem>
 #include <functional>
+#include <numbers>
 
 #include "autosave.hpp"
 #include "canvas_view.hpp"
@@ -737,14 +738,6 @@ private slots:
     // les créations manuelles — vérifie que le résultat porte de vrais
     // rails/barreaux (pas un objet SatinParams vide) et reste annulable.
     void setStitchTypeSatinCaseProducesRealRailsAndIsUndoable();
-    // Défaut réel signalé par l'utilisateur (2026-09-04, « résidu de satin
-    // qui reste même en revenant en tatami ») : un réseau satin
-    // auto-généré en plusieurs sections (buildTShapeFixture + createSatin
-    // Object, comme le test ci-dessus) partage un seul source_vector entre
-    // plusieurs EmbroideryObject. setStitchType() ne doit JAMAIS laisser
-    // les autres sections en satin réel une fois qu'une seule est
-    // convertie -- bout en bout depuis le VRAI chemin UI.
-    void setStitchTypeOnMultiSectionSatinNetworkRemovesSiblingsInsteadOfLeavingResidue();
     // Import SVG direct (2026-09-11, demande utilisateur : "éviter la
     // segmentation" quand le tracé existe déjà) -- vérifie le VRAI chemin
     // UI (openSvg(), appelé directement comme le ferait openImage() une
@@ -774,14 +767,12 @@ private slots:
     // Vectorisation manuelle d'une region : expose le meme controle de detail
     // sans forcer l'utilisateur a passer par l'auto-numerisation complete.
     void vectorizeSelectedRegionOffersDetailSlider();
-    // §23 du plan de refonte satin (2026-08-14) : le dialogue à choix
-    // multiples (askAboutIncompleteSatinCoverage) remplace l'ancienne
-    // information à sens unique -- un test par choix réel, bout en bout
-    // depuis createSatinObject() sur une forme dont le reliquat est
-    // significatif (buildPinchShapeFixture()).
-    void createSatinObjectContinuePartialLeavesResidualUncovered();
-    void createSatinObjectUseTatamiFillsResidualWithFallback();
     void createSatinObjectCancelLeavesDocumentUnchanged();
+    // Guides d'orientation de l'auto-satin : un trait tracé fixe l'ancre et l'angle
+    // (absolu), tout geste est une commande annulable, un trait trop court est ignoré.
+    void autoSatinGuideFromStrokeIsAbsoluteAndUndoable();
+    void autoSatinGuideTooShortStrokeIsIgnored();
+    void autoSatinGuideChangeAndRemoveAreUndoable();
 
     // Panneau Workflow (audit ergonomie) : les étapes « Régions »/« Vecteurs »
     // ne doivent jamais rester « à faire » quand des objets vectoriels
@@ -2625,9 +2616,7 @@ void MainWindowTest::createSatinObjectOnSuitableRectangleProducesOneSatinWithSti
     auto* view = window.findChild<CanvasView*>();
     QVERIFY(view != nullptr);
 
-    // Rectangle allongé 40 x 5 mm : Suitable côté satinabilité (même forme
-    // que la fixture "rectangle" de libs/auto_satin), une seule colonne
-    // attendue -- ni décomposition en branches, ni refus.
+    // Rectangle allongé 40 x 5 mm : un ruban, une seule colonne attendue.
     window.setTool(Tool::DrawRectangle);
     view->boxDrawnMm(QRectF(0.0, 0.0, 40.0, 5.0), Qt::NoModifier);
     QVERIFY(window.selectedObject_.has_value());
@@ -2635,10 +2624,8 @@ void MainWindowTest::createSatinObjectOnSuitableRectangleProducesOneSatinWithSti
 
     const std::size_t embroideryCountBefore = window.project_.embroidery_objects.size();
 
-    // createSatinObject() ouvre une QDialog modale (densité/compensation/
-    // sous-couche) : programmé avant l'appel, comme les autres tests de ce
-    // fichier qui pilotent une boîte modale (cf. discardOverrides ci-dessus)
-    // -- exec() pompe la boucle d'événements en interne.
+    // createSatinObject() ouvre une QDialog modale (espacement/compensation/
+    // sous-couche) : programmée avant l'appel, exec() pompe la boucle d'événements.
     QTimer::singleShot(0, &window, [] {
         if (auto* dlg = qobject_cast<QDialog*>(QApplication::activeModalWidget())) {
             dlg->accept();
@@ -2649,21 +2636,17 @@ void MainWindowTest::createSatinObjectOnSuitableRectangleProducesOneSatinWithSti
     QCOMPARE(window.project_.embroidery_objects.size(), embroideryCountBefore + 1);
     const auto& emb = window.project_.embroidery_objects.back();
     QCOMPARE(emb.source_vector, vectorId);
-    QVERIFY(emb.is_satin());
-    const auto& satin = std::get<openstitch::document::SatinParams>(emb.params);
-    QVERIFY(satin.rail_a.nodes.size() >= 2);
-    QVERIFY(satin.rail_b.nodes.size() >= 2);
-    // Le moteur squelette pose des barreaux par défaut (correspondance
-    // ladder) : sans eux, la génération retomberait sur fill_satin seul.
-    QVERIFY(!satin.rungs.empty());
+    // Auto-satin par squelette : un objet dérivé de la région, sans rails stockés.
+    QVERIFY(emb.is_auto_satin());
+    QVERIFY(!emb.is_satin());
+    QVERIFY(emb.intent == openstitch::document::EmbroideryIntent::ForcedUserChoice);
 
     window.refreshImage();
     QVERIFY(window.sequence_.has_value());
     const auto stats = openstitch::stitch::compute_stats(*window.sequence_);
     QVERIFY(stats.stitches > 0);
 
-    // Annulable en un seul geste (AddObjectBatchCommand), comme les autres
-    // créations de forme de ce fichier.
+    // Annulable en un seul geste.
     QVERIFY(window.undoStack_.canUndo());
     window.undo();
     QCOMPARE(window.project_.embroidery_objects.size(), embroideryCountBefore);
@@ -2680,36 +2663,32 @@ void MainWindowTest::createSatinObjectOnBranchedShapeProducesMultipleSatinSectio
 
     const std::size_t embroideryCountBefore = window.project_.embroidery_objects.size();
 
-    // createSatinObject() ouvre la QDialog densité/compensation/sous-couche,
-    // et potentiellement UNE SECONDE boîte modale ensuite
-    // (warnAboutIncompleteSatinCoverage()) si la mesure de couverture laisse
-    // un résidu significatif sur cette forme -- les deux sont acceptées au fur
-    // et à mesure qu'elles apparaissent.
     autoDismissModalDialogs(&window);
     window.createSatinObject();
 
-    // Intention SATIN sur une forme branchée : le chemin direct doit produire
-    // les sections de branche sans demander au planner récursif de subdiviser
-    // la région. C'est le VRAI chemin UI (MainWindow::createSatinObject), pas
-    // seulement `build_satin_sections(..., DirectColumns)` appelé directement.
-    const std::size_t createdCount =
-        window.project_.embroidery_objects.size() - embroideryCountBefore;
-    QVERIFY2(
-        createdCount >= 2,
-        qPrintable(QStringLiteral("attendu >= 2 sections satin, obtenu %1").arg(createdCount)));
-    for (std::size_t i = embroideryCountBefore; i < window.project_.embroidery_objects.size();
-         ++i) {
-        const auto& emb = window.project_.embroidery_objects[i];
-        QCOMPARE(emb.source_vector, fx.vectorId);
-        QVERIFY(emb.is_satin());
-        const auto& satin = std::get<openstitch::document::SatinParams>(emb.params);
-        QVERIFY(satin.rail_a.nodes.size() >= 2);
-        QVERIFY(satin.rail_b.nodes.size() >= 2);
-        QVERIFY(!satin.rungs.empty());
-    }
+    // Forme branchée : UN seul objet auto-satin couvre toute la forme (le moteur
+    // produit une colonne par branche à l'intérieur de l'objet, plus de sections
+    // séparées à ordonner et à convertir une à une).
+    QCOMPARE(window.project_.embroidery_objects.size(), embroideryCountBefore + 1);
+    const auto& emb = window.project_.embroidery_objects.back();
+    QCOMPARE(emb.source_vector, fx.vectorId);
+    QVERIFY(emb.is_auto_satin());
 
-    // Toute la création arrive en un seul geste annulable
-    // (AddObjectBatchCommand), comme sur la forme simple.
+    const auto* vec = window.project_.findObject(fx.vectorId);
+    QVERIFY(vec != nullptr);
+    const auto preview =
+        window.previewAutoSatin(*vec, std::get<openstitch::document::AutoSatinParams>(emb.params));
+    QVERIFY2(
+        preview.columns >= 3,
+        qPrintable(
+            QStringLiteral("attendu >= 3 colonnes (3 branches), obtenu %1").arg(preview.columns)));
+    QVERIFY(preview.measured);
+    QVERIFY(preview.coverage > 0.85);
+
+    window.refreshImage();
+    QVERIFY(window.sequence_.has_value());
+    QVERIFY(openstitch::stitch::compute_stats(*window.sequence_).stitches > 0);
+
     QVERIFY(window.undoStack_.canUndo());
     window.undo();
     QCOMPARE(window.project_.embroidery_objects.size(), embroideryCountBefore);
@@ -2724,83 +2703,19 @@ void MainWindowTest::setStitchTypeSatinCaseProducesRealRailsAndIsUndoable() {
 
     const auto* emb = window.project_.findEmbroidery(fx.embroideryId);
     QVERIFY(emb != nullptr);
-    QVERIFY(emb->is_satin());
-    const auto& satin = std::get<openstitch::document::SatinParams>(emb->params);
-    // Le point clé de cette migration (§ plan de refonte satin, 2026-08-14) :
-    // passe par autodigitize::build_satin_sections (planner unifié), jamais
-    // l'ancien appel direct à build_satin_columns -- vérifié indirectement
-    // par la présence de rails/barreaux RÉELS (une géométrie vide ou
-    // dégénérée trahirait un chemin cassé), pas seulement le type du variant.
-    QVERIFY(satin.rail_a.nodes.size() >= 2);
-    QVERIFY(satin.rail_b.nodes.size() >= 2);
-    QVERIFY(!satin.rungs.empty());
+    // Le type « satin » est désormais le satin par squelette : dérivé de la région
+    // source, sans rails ni barreaux stockés.
+    QVERIFY(emb->is_auto_satin());
+    QVERIFY(emb->intent == openstitch::document::EmbroideryIntent::ForcedUserChoice);
+    window.refreshImage();
+    QVERIFY(window.sequence_.has_value());
+    QVERIFY(openstitch::stitch::compute_stats(*window.sequence_).stitches > 0);
 
     QVERIFY(window.undoStack_.canUndo());
     window.undo();
     const auto* restored = window.project_.findEmbroidery(fx.embroideryId);
     QVERIFY(restored != nullptr);
-    QVERIFY(!restored->is_satin());
-}
-
-void MainWindowTest::
-    setStitchTypeOnMultiSectionSatinNetworkRemovesSiblingsInsteadOfLeavingResidue() {
-    MainWindow window;
-    const Fixture fx = buildTShapeFixture();
-    window.applyLoadedProject(fx.project);
-    window.selectedObject_ = fx.vectorId;
-    window.updateActions();
-
-    autoDismissModalDialogs(&window);
-    window.createSatinObject();
-
-    // Même garde-fou que le test de création ci-dessus : au moins 2
-    // sections satin partageant fx.vectorId, sinon ce test ne prouve rien.
-    std::vector<ObjectId> sectionIds;
-    for (const auto& emb : window.project_.embroidery_objects) {
-        if (emb.source_vector == fx.vectorId) {
-            sectionIds.push_back(emb.id);
-        }
-    }
-    QVERIFY2(sectionIds.size() >= 2,
-             qPrintable(
-                 QStringLiteral("attendu >= 2 sections satin, obtenu %1").arg(sectionIds.size())));
-    const std::size_t totalEmbroideryBefore = window.project_.embroidery_objects.size();
-
-    // `setStitchType` résout l'objet cible via `embroideryForVector` (le
-    // premier trouvé) exactement comme le VRAI menu contextuel "Type de
-    // points" -- même chemin que l'utilisateur emprunte.
-    window.setStitchType(sectionIds.front(), /*type=*/1); // 1 = tatami
-
-    // Plus AUCUNE section satin ne doit rester pour ce vecteur -- c'est
-    // exactement le résidu signalé par l'utilisateur.
-    std::size_t remainingForVector = 0;
-    for (const auto& emb : window.project_.embroidery_objects) {
-        if (emb.source_vector == fx.vectorId) {
-            ++remainingForVector;
-            QVERIFY2(emb.is_tatami(), "aucune section satin residuelle attendue apres conversion");
-        }
-    }
-    QCOMPARE(remainingForVector, std::size_t{1});
-    // Les sections supprimées ont bien disparu du document (pas seulement
-    // masquées) -- vérifie qu'aucun autre objet du projet ne pointe
-    // dessus non plus (source_vector orphelin), même garde-fou que
-    // RemoveVectorObjectCommand.
-    QCOMPARE(window.project_.embroidery_objects.size(),
-             totalEmbroideryBefore - (sectionIds.size() - 1));
-
-    // Annulation : reconstitue le réseau satin complet, section par
-    // section, dans l'ordre d'origine.
-    QVERIFY(window.undoStack_.canUndo());
-    window.undo();
-    QCOMPARE(window.project_.embroidery_objects.size(), totalEmbroideryBefore);
-    std::size_t satinCountAfterUndo = 0;
-    for (const auto& emb : window.project_.embroidery_objects) {
-        if (emb.source_vector == fx.vectorId) {
-            QVERIFY(emb.is_satin());
-            ++satinCountAfterUndo;
-        }
-    }
-    QCOMPARE(satinCountAfterUndo, sectionIds.size());
+    QVERIFY(!restored->is_auto_satin());
 }
 
 void MainWindowTest::openSvgCreatesVectorObjectsDirectlySkippingImage() {
@@ -3080,50 +2995,6 @@ void MainWindowTest::autoDigitizeAfterOpenSvgClassifiesVectorObjectsDirectly() {
     QCOMPARE(window.project_.vector_objects.front().id, sourceVecId);
 }
 
-void MainWindowTest::createSatinObjectContinuePartialLeavesResidualUncovered() {
-    MainWindow window;
-    const Fixture fx = buildPinchShapeFixture();
-    window.applyLoadedProject(fx.project);
-    window.selectedObject_ = fx.vectorId;
-    window.updateActions();
-
-    const std::size_t embroideryCountBefore = window.project_.embroidery_objects.size();
-    const std::size_t vectorCountBefore = window.project_.vector_objects.size();
-
-    // Ferme la QDialog densité (bouton par défaut = Ok), PUIS le dialogue
-    // §23 avec son propre bouton par défaut ("Continuer avec satin
-    // partiel") -- le choix testé ici.
-    autoDismissModalDialogs(&window);
-    window.createSatinObject();
-
-    // Satin créé (au moins une section), mais AUCUN objet tatami de repli :
-    // le résidu reste honnêtement non couvert, comme le choix le demande.
-    QCOMPARE(window.project_.embroidery_objects.size(), embroideryCountBefore);
-    QCOMPARE(window.project_.vector_objects.size(), vectorCountBefore);
-}
-
-void MainWindowTest::createSatinObjectUseTatamiFillsResidualWithFallback() {
-    MainWindow window;
-    const Fixture fx = buildPinchShapeFixture();
-    window.applyLoadedProject(fx.project);
-    window.selectedObject_ = fx.vectorId;
-    window.updateActions();
-
-    const std::size_t embroideryCountBefore = window.project_.embroidery_objects.size();
-    const std::size_t vectorCountBefore = window.project_.vector_objects.size();
-
-    // Une seule séquence gère la QDialog densité (pas de bouton "tatami",
-    // donc son bouton par défaut est cliqué) PUIS le dialogue §23 (où
-    // "Utiliser tatami pour le reliquat" EST trouvé et cliqué).
-    clickModalDialogButton(&window, "Yes");
-    window.createSatinObject();
-
-    // Attend À LA FOIS du satin ET au moins un remplissage tatami de repli
-    // (VectorObject + EmbroideryObject, même schéma que autodigitize.cpp).
-    QCOMPARE(window.project_.embroidery_objects.size(), embroideryCountBefore);
-    QCOMPARE(window.project_.vector_objects.size(), vectorCountBefore);
-}
-
 void MainWindowTest::createSatinObjectCancelLeavesDocumentUnchanged() {
     MainWindow window;
     const Fixture fx = buildPinchShapeFixture();
@@ -3135,15 +3006,104 @@ void MainWindowTest::createSatinObjectCancelLeavesDocumentUnchanged() {
     const std::size_t vectorCountBefore = window.project_.vector_objects.size();
     const bool couldUndoBefore = window.undoStack_.canUndo();
 
-    clickModalDialogButton(&window, "Annuler");
+    // La boîte de dialogue des réglages est refusée : rien ne doit être créé.
+    QTimer::singleShot(0, &window, [] {
+        if (auto* dlg = qobject_cast<QDialog*>(QApplication::activeModalWidget())) {
+            dlg->reject();
+        }
+    });
     window.createSatinObject();
 
-    // Document totalement inchangé : "Annuler" doit rester possible SANS
-    // avoir rien créé (§23), pas un "undo" après coup sur quelque chose de
-    // déjà committé.
     QCOMPARE(window.project_.embroidery_objects.size(), embroideryCountBefore);
     QCOMPARE(window.project_.vector_objects.size(), vectorCountBefore);
     QCOMPARE(window.undoStack_.canUndo(), couldUndoBefore);
+}
+
+void MainWindowTest::autoSatinGuideFromStrokeIsAbsoluteAndUndoable() {
+    MainWindow window;
+    const Fixture fx = buildRunningRectangleFixture();
+    window.applyLoadedProject(fx.project);
+    window.setStitchType(fx.embroideryId, /*type=*/2);
+    const ObjectId id = fx.embroideryId;
+
+    // Trait à 45° partant du milieu de la bande.
+    window.addAutoSatinGuideFromStroke(id, Vec2um{Micrometers{20'000}, Micrometers{2'500}},
+                                       Vec2um{Micrometers{25'000}, Micrometers{7'500}});
+    const auto* emb = window.project_.findEmbroidery(id);
+    QVERIFY(emb != nullptr);
+    const auto* sat = std::get_if<openstitch::document::AutoSatinParams>(&emb->params);
+    QVERIFY(sat != nullptr);
+    QCOMPARE(sat->guides.size(), std::size_t{1});
+    QVERIFY(sat->guides[0].absolute);
+    QVERIFY(std::abs(sat->guides[0].angle.radians - std::numbers::pi / 4.0) < 1e-6);
+    QCOMPARE(sat->guides[0].anchor.x.value, 20'000);
+
+    window.undo();
+    const auto* undone = std::get_if<openstitch::document::AutoSatinParams>(
+        &window.project_.findEmbroidery(id)->params);
+    QVERIFY(undone != nullptr);
+    QVERIFY(undone->guides.empty());
+    window.redo();
+    QCOMPARE(
+        std::get<openstitch::document::AutoSatinParams>(window.project_.findEmbroidery(id)->params)
+            .guides.size(),
+        std::size_t{1});
+}
+
+void MainWindowTest::autoSatinGuideTooShortStrokeIsIgnored() {
+    MainWindow window;
+    const Fixture fx = buildRunningRectangleFixture();
+    window.applyLoadedProject(fx.project);
+    window.setStitchType(fx.embroideryId, /*type=*/2);
+    const bool couldUndoBefore = window.undoStack_.canUndo();
+
+    window.addAutoSatinGuideFromStroke(fx.embroideryId,
+                                       Vec2um{Micrometers{20'000}, Micrometers{2'500}},
+                                       Vec2um{Micrometers{20'100}, Micrometers{2'550}});
+    const auto& sat = std::get<openstitch::document::AutoSatinParams>(
+        window.project_.findEmbroidery(fx.embroideryId)->params);
+    QVERIFY(sat.guides.empty());
+    QCOMPARE(window.undoStack_.canUndo(), couldUndoBefore); // aucun historique fantôme
+}
+
+void MainWindowTest::autoSatinGuideChangeAndRemoveAreUndoable() {
+    MainWindow window;
+    const Fixture fx = buildRunningRectangleFixture();
+    window.applyLoadedProject(fx.project);
+    window.setStitchType(fx.embroideryId, /*type=*/2);
+    const ObjectId id = fx.embroideryId;
+    window.addAutoSatinGuideFromStroke(id, Vec2um{Micrometers{10'000}, Micrometers{2'500}},
+                                       Vec2um{Micrometers{15'000}, Micrometers{2'500}});
+
+    window.changeAutoSatinGuide(id, 0, 30.0, /*absolute=*/false);
+    {
+        const auto& sat = std::get<openstitch::document::AutoSatinParams>(
+            window.project_.findEmbroidery(id)->params);
+        QCOMPARE(sat.guides.size(), std::size_t{1});
+        QVERIFY(!sat.guides[0].absolute);
+        QVERIFY(std::abs(sat.guides[0].angle.radians - 30.0 * std::numbers::pi / 180.0) < 1e-9);
+    }
+    window.undo();
+    QVERIFY(
+        std::get<openstitch::document::AutoSatinParams>(window.project_.findEmbroidery(id)->params)
+            .guides[0]
+            .absolute);
+
+    window.removeAutoSatinGuide(id, 0);
+    QVERIFY(
+        std::get<openstitch::document::AutoSatinParams>(window.project_.findEmbroidery(id)->params)
+            .guides.empty());
+    window.undo();
+    QCOMPARE(
+        std::get<openstitch::document::AutoSatinParams>(window.project_.findEmbroidery(id)->params)
+            .guides.size(),
+        std::size_t{1});
+
+    // Index hors bornes : aucun effet, aucune commande.
+    const bool couldUndo = window.undoStack_.canUndo();
+    window.removeAutoSatinGuide(id, 7);
+    window.changeAutoSatinGuide(id, -1, 10.0, true);
+    QCOMPARE(window.undoStack_.canUndo(), couldUndo);
 }
 
 void MainWindowTest::
