@@ -582,7 +582,8 @@ MainWindow::~MainWindow() {
 
 void MainWindow::buildMenus() {
     auto* fileMenu = menuBar()->addMenu(tr("&Fichier"));
-    auto* newAct = fileMenu->addAction(tr("&Nouveau projet"));
+    newProjectAct_ = fileMenu->addAction(tr("&Nouveau projet"));
+    auto* newAct = newProjectAct_;
     newAct->setObjectName(QStringLiteral("action_newProject"));
     newAct->setShortcut(QKeySequence::New);
     connect(newAct, &QAction::triggered, this, &MainWindow::newProject);
@@ -604,7 +605,8 @@ void MainWindow::buildMenus() {
     saveProjectAsAct->setObjectName(QStringLiteral("action_saveProjectAs"));
     saveProjectAsAct->setShortcut(QKeySequence::SaveAs);
     connect(saveProjectAsAct, &QAction::triggered, this, &MainWindow::saveProjectAs);
-    auto* loadProjectAct = fileMenu->addAction(tr("Ou&vrir un projet…"));
+    loadProjectAct_ = fileMenu->addAction(tr("Ou&vrir un projet…"));
+    auto* loadProjectAct = loadProjectAct_;
     connect(loadProjectAct, &QAction::triggered, this, &MainWindow::loadProject);
     fileMenu->addSeparator();
     // Rempli par refreshRecentFilesUi() (appelée une première fois depuis le
@@ -619,6 +621,7 @@ void MainWindow::buildMenus() {
         refreshRecentFilesUi();
     });
     exportDstAct_ = fileMenu->addAction(tr("&Exporter en DST…"));
+    exportDstAct_->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_E));
     connect(exportDstAct_, &QAction::triggered, this, &MainWindow::exportDst);
     auto* importDstAct = fileMenu->addAction(tr("&Importer un DST…"));
     connect(importDstAct, &QAction::triggered, this, &MainWindow::importDst);
@@ -642,6 +645,21 @@ void MainWindow::buildMenus() {
     redoAct_->setObjectName(QStringLiteral("action_redo"));
     redoAct_->setShortcut(QKeySequence::Redo);
     connect(redoAct_, &QAction::triggered, this, &MainWindow::redo);
+    editMenu->addSeparator();
+    duplicateSelectionAct_ = editMenu->addAction(tr("&Dupliquer la forme"));
+    duplicateSelectionAct_->setObjectName(QStringLiteral("action_duplicateSelection"));
+    connect(duplicateSelectionAct_, &QAction::triggered, this, [this] {
+        if (selectedObject_ && !hasMultiSelection()) {
+            duplicateVectorObject(*selectedObject_);
+        }
+    });
+    offsetSelectionAct_ = editMenu->addAction(tr("Dé&caler la forme…"));
+    offsetSelectionAct_->setObjectName(QStringLiteral("action_offsetSelection"));
+    connect(offsetSelectionAct_, &QAction::triggered, this, [this] {
+        if (selectedObject_ && !hasMultiSelection()) {
+            offsetVectorObject(*selectedObject_);
+        }
+    });
     editMenu->addSeparator();
     auto* aiPrefsAct = editMenu->addAction(tr("Préférences — &Intelligence artificielle…"));
     connect(aiPrefsAct, &QAction::triggered, this, &MainWindow::openAiPreferences);
@@ -699,7 +717,9 @@ void MainWindow::buildMenus() {
     // Suppr universel (L5-T4a) : l'objectName historique « action_deleteRegion »
     // est conservé (tests, snapshot d'actions) ; l'action est activée par
     // updateActions() selon la sélection (pas via regionActions_).
-    deleteSelectionAct_ = segMenu->addAction(tr("Su&pprimer la sélection"));
+    deleteSelectionAct_ = editMenu->addAction(tr("Su&pprimer la sélection"));
+    // Dans Édition, juste avant Dupliquer/Décaler (et non en fin de menu).
+    editMenu->insertAction(duplicateSelectionAct_, deleteSelectionAct_);
     deleteSelectionAct_->setObjectName(QStringLiteral("action_deleteRegion"));
     deleteSelectionAct_->setShortcut(QKeySequence::Delete);
     connect(deleteSelectionAct_, &QAction::triggered, this, &MainWindow::deleteSelection);
@@ -719,7 +739,7 @@ void MainWindow::buildMenus() {
     autoDigitizeAct_->setObjectName(QStringLiteral("action_autoDigitize"));
     auto* autoAct = autoDigitizeAct_;
     connect(autoAct, &QAction::triggered, this, &MainWindow::autoDigitize);
-    auto* aiSegmentAct = embMenu->addAction(icons::aiSegment(), tr("Segmenter avec l'&IA…"));
+    auto* aiSegmentAct = segMenu->addAction(icons::aiSegment(), tr("Segmenter avec l'&IA…"));
     aiSegmentAct->setObjectName(QStringLiteral("action_segmentWithAi"));
     connect(aiSegmentAct, &QAction::triggered, this, &MainWindow::segmentWithAi);
     embMenu->addSeparator();
@@ -728,12 +748,12 @@ void MainWindow::buildMenus() {
     connect(createStitchAct_, &QAction::triggered, this, &MainWindow::createRunningStitchObject);
     createTatamiAct_ = embMenu->addAction(tr("Créer un remplissage &tatami…"));
     connect(createTatamiAct_, &QAction::triggered, this, &MainWindow::createTatamiObject);
-    createSatinAct_ = embMenu->addAction(tr("Créer une colonne &satin…"));
+    createSatinAct_ = embMenu->addAction(tr("Créer un &satin automatique…"));
     connect(createSatinAct_, &QAction::triggered, this, &MainWindow::createSatinObject);
     autoSatinAct_ = embMenu->addAction(tr("Convertir automatiquement en satin (expérimental)…"));
     autoSatinAct_->setToolTip(
-        tr("Expérimental : construit des colonnes satin (rails + barreaux) depuis le squelette "
-           "de la forme. Le résultat est à vérifier."));
+        tr("Expérimental : construit le satin par squelette et traversées orientées (sans "
+           "rails à poser). Le résultat est à vérifier avant broderie."));
     connect(autoSatinAct_, &QAction::triggered, this, &MainWindow::autoConvertToSatin);
     embMenu->addSeparator();
     fillAngleAct_ = embMenu->addAction(tr("&Orientation du remplissage…"));
@@ -819,7 +839,7 @@ void MainWindow::buildMenus() {
     embMenu->addSeparator();
     buildDirectionalActions(embMenu);
     embMenu->addSeparator();
-    statsAct_ = embMenu->addAction(tr("Statisti&ques…"));
+    statsAct_ = new QAction(tr("Statisti&ques…"), this);
     connect(statsAct_, &QAction::triggered, this, &MainWindow::showStatistics);
 
     auto* viewMenu = menuBar()->addMenu(tr("&Affichage"));
@@ -839,14 +859,18 @@ void MainWindow::buildMenus() {
     showStitchesAct_->setChecked(true);
     connect(showStitchesAct_, &QAction::toggled, this, [this] { displayImage(processed_); });
     viewMenu->addSeparator();
-    auto* zoomInAct = viewMenu->addAction(tr("Zoom &avant"));
+    zoomInAct_ = viewMenu->addAction(tr("Zoom &avant"));
+    auto* zoomInAct = zoomInAct_;
     zoomInAct->setShortcut(QKeySequence::ZoomIn);
     connect(zoomInAct, &QAction::triggered, view_, &CanvasView::zoomIn);
-    auto* zoomOutAct = viewMenu->addAction(tr("Zoom a&rrière"));
+    zoomOutAct_ = viewMenu->addAction(tr("Zoom a&rrière"));
+    auto* zoomOutAct = zoomOutAct_;
     zoomOutAct->setShortcut(QKeySequence::ZoomOut);
     connect(zoomOutAct, &QAction::triggered, view_, &CanvasView::zoomOut);
-    auto* fitAct = viewMenu->addAction(tr("A&juster au canevas"));
-    fitAct->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_0));
+    fitCanvasAct_ = viewMenu->addAction(tr("A&juster au canevas"));
+    auto* fitAct = fitCanvasAct_;
+    // Ctrl+0 et F sur la MÊME action : les deux sont alors affichés dans le menu.
+    fitAct->setShortcuts({QKeySequence(Qt::CTRL | Qt::Key_0), QKeySequence(Qt::Key_F)});
     connect(fitAct, &QAction::triggered, view_, &CanvasView::fitCanvas);
 
     viewMenu->addSeparator();
@@ -4842,10 +4866,6 @@ void MainWindow::showDebugDump(ObjectId embroideryId) {
 }
 
 void MainWindow::buildHelpMenu() {
-    // « Ajuster au canevas » aussi sur la touche F (en plus de Ctrl+0). On
-    // n'intercepte PAS Tab (réservé à la navigation clavier, accessibilité).
-    auto* fitShortcut = new QShortcut(QKeySequence(Qt::Key_F), this);
-    connect(fitShortcut, &QShortcut::activated, view_, &CanvasView::fitCanvas);
 
     auto* helpMenu = menuBar()->addMenu(tr("Aid&e"));
     helpMenu->setObjectName(QStringLiteral("menu_help"));
@@ -5022,32 +5042,36 @@ void MainWindow::buildMainToolbar() {
     mainToolbar_->setMovable(false);
     mainToolbar_->setIconSize(QSize(18, 18));
 
-    const auto add = [this](const QIcon& icon, const QString& text, auto slot) {
-        auto* act = mainToolbar_->addAction(icon, text);
-        act->setToolTip(text);
-        connect(act, &QAction::triggered, this, slot);
-        return act;
+    // Les mêmes QAction que dans les menus : grisées, raccourcies et décrites de la même façon.
+    const auto addShared = [this](QAction* act, const QIcon& icon) {
+        act->setIcon(icon);
+        QString tip = act->text();
+        tip.remove(QLatin1Char('&'));
+        tip.remove(QStringLiteral("…"));
+        if (!act->shortcut().isEmpty()) {
+            tip += QStringLiteral(" (%1)").arg(act->shortcut().toString(QKeySequence::NativeText));
+        }
+        act->setToolTip(tip);
+        mainToolbar_->addAction(act);
     };
-    add(icons::newProject(), tr("Nouveau projet"), &MainWindow::newProject);
-    add(icons::openImage(), tr("Ouvrir une image"), &MainWindow::openImage);
-    add(icons::openProject(), tr("Ouvrir un projet"), &MainWindow::loadProject);
-    add(icons::save(), tr("Enregistrer le projet"), &MainWindow::saveProject);
+    addShared(newProjectAct_, icons::newProject());
+    addShared(openImageAct_, icons::openImage());
+    addShared(loadProjectAct_, icons::openProject());
+    addShared(saveProjectAct_, icons::save());
     mainToolbar_->addSeparator();
     undoAct_->setIcon(icons::undo());
     redoAct_->setIcon(icons::redo());
     mainToolbar_->addAction(undoAct_);
     mainToolbar_->addAction(redoAct_);
     mainToolbar_->addSeparator();
-    add(icons::zoomOut(), tr("Zoom arrière"), [this] { view_->zoomOut(); });
-    add(icons::fit(), tr("Ajuster au canevas"), [this] { view_->fitCanvas(); });
-    add(icons::zoomIn(), tr("Zoom avant"), [this] { view_->zoomIn(); });
+    addShared(zoomOutAct_, icons::zoomOut());
+    addShared(fitCanvasAct_, icons::fit());
+    addShared(zoomInAct_, icons::zoomIn());
     mainToolbar_->addSeparator();
-    analyzeAct_->setIcon(icons::analyze());
-    mainToolbar_->addAction(analyzeAct_);
+    addShared(analyzeAct_, icons::analyze());
     showStitchesAct_->setIcon(icons::stitches());
     mainToolbar_->addAction(showStitchesAct_);
-    exportDstAct_->setIcon(icons::exportDst());
-    mainToolbar_->addAction(exportDstAct_);
+    addShared(exportDstAct_, icons::exportDst());
 }
 
 void MainWindow::buildContextToolbar() {
@@ -5273,7 +5297,15 @@ void MainWindow::buildToolPalette() {
                              const QKeySequence& key) {
         auto* act = toolPalette_->addAction(icon, text);
         act->setCheckable(true);
-        act->setToolTip(tr("%1 (%2)").arg(text, key.toString()));
+        // « Nom (aide) » devient « Nom (touche) » puis l'aide sur la ligne suivante.
+        const int paren = text.indexOf(QStringLiteral(" ("));
+        if (paren > 0 && text.endsWith(QLatin1Char(')'))) {
+            const QString shortName = text.left(paren);
+            const QString help = text.mid(paren + 2, text.size() - paren - 3);
+            act->setToolTip(tr("%1 (%2)\n%3").arg(shortName, key.toString(), help));
+        } else {
+            act->setToolTip(tr("%1 (%2)").arg(text, key.toString()));
+        }
         act->setShortcut(key);
         group->addAction(act);
         connect(act, &QAction::triggered, this, [this, tool] { setTool(tool); });
@@ -5858,6 +5890,7 @@ void MainWindow::buildAnalysisPanel() {
 
     auto* analyseMenu = menuBar()->addMenu(tr("A&nalyse"));
     analyzeAct_ = analyseMenu->addAction(tr("&Analyser le motif"));
+    analyseMenu->addAction(statsAct_);
     analyzeAct_->setShortcut(QKeySequence(Qt::Key_F5));
     connect(analyzeAct_, &QAction::triggered, this, &MainWindow::runAnalysis);
 }
@@ -7358,52 +7391,87 @@ void MainWindow::recolorSelectedRegion() {
     updateActions();
 }
 
+namespace {
+
+// Active/désactive une action ET explique, dans l'info-bulle et la barre d'état, ce qu'il faut
+// faire pour l'activer. L'info-bulle d'origine est mémorisée à la première utilisation.
+void setEnabledWithReason(QAction* act, bool enabled, const QString& whyDisabled) {
+    if (act == nullptr) {
+        return;
+    }
+    if (!act->property("baseToolTip").isValid()) {
+        act->setProperty("baseToolTip", act->toolTip());
+        act->setProperty("baseStatusTip", act->statusTip());
+    }
+    act->setEnabled(enabled);
+    const QString baseTip = act->property("baseToolTip").toString();
+    if (enabled) {
+        act->setToolTip(baseTip);
+        act->setStatusTip(act->property("baseStatusTip").toString());
+    } else {
+        act->setToolTip(baseTip + QStringLiteral("\n") + whyDisabled);
+        act->setStatusTip(whyDisabled);
+    }
+}
+
+} // namespace
+
 void MainWindow::updateActions() {
     const bool hasImage = project_.hasImage();
     for (QAction* act : imageActions_) {
-        act->setEnabled(hasImage);
+        setEnabledWithReason(act, hasImage, tr("Ouvrez d'abord une image."));
     }
-    showSegAct_->setEnabled(project_.segmentation.has_value());
-    showVectorsAct_->setEnabled(!project_.vector_objects.empty());
-    showStitchesAct_->setEnabled(!project_.embroidery_objects.empty());
+    setEnabledWithReason(showSegAct_, project_.segmentation.has_value(),
+                         tr("Segmentez d'abord l'image (menu Segmentation)."));
+    const QString noVectors = tr("Aucun objet vectoriel : vectorisez une région ou dessinez.");
+    setEnabledWithReason(showVectorsAct_, !project_.vector_objects.empty(), noVectors);
+    setEnabledWithReason(showStitchesAct_, !project_.embroidery_objects.empty(),
+                         tr("Aucune broderie : créez un objet de broderie."));
     // Actions mono-objet : désactivées dès que la multi-sélection compte > 1 objet.
     const bool singleObject = selectedObject_.has_value() && !hasMultiSelection();
-    createStitchAct_->setEnabled(singleObject);
-    createTatamiAct_->setEnabled(singleObject);
-    createSatinAct_->setEnabled(singleObject);
-    autoSatinAct_->setEnabled(singleObject);
-    fillAngleAct_->setEnabled(currentFillObject() != nullptr);
-    convertSatinAct_->setEnabled(std::any_of(project_.embroidery_objects.begin(),
-                                             project_.embroidery_objects.end(),
-                                             [](const auto& e) { return e.is_satin(); }));
-    statsAct_->setEnabled(sequence_.has_value());
-    exportDstAct_->setEnabled(sequence_.has_value());
+    QString needOneShape = tr("Sélectionnez d'abord une forme (clic sur le motif).");
+    if (hasMultiSelection()) {
+        needOneShape = tr("Une seule forme à la fois : plusieurs sont sélectionnées.");
+    }
+    setEnabledWithReason(createStitchAct_, singleObject, needOneShape);
+    setEnabledWithReason(createTatamiAct_, singleObject, needOneShape);
+    setEnabledWithReason(createSatinAct_, singleObject, needOneShape);
+    setEnabledWithReason(autoSatinAct_, singleObject, needOneShape);
+    setEnabledWithReason(duplicateSelectionAct_, singleObject, needOneShape);
+    setEnabledWithReason(offsetSelectionAct_, singleObject, needOneShape);
+    setEnabledWithReason(fillAngleAct_, currentFillObject() != nullptr,
+                         tr("Sélectionnez un objet à remplissage (tatami ou directionnel)."));
+    setEnabledWithReason(convertSatinAct_,
+                         std::any_of(project_.embroidery_objects.begin(),
+                                     project_.embroidery_objects.end(),
+                                     [](const auto& e) { return e.is_satin(); }),
+                         tr("Aucun satin dans le projet."));
+    const QString needStitches =
+        tr("Aucun point généré : créez d'abord un objet de broderie (tatami, satin…).");
+    setEnabledWithReason(statsAct_, sequence_.has_value(), needStitches);
+    setEnabledWithReason(exportDstAct_, sequence_.has_value(), needStitches);
     // Actions « document requis » : mêmes gardes que leurs slots (qui restent en place).
     // « Contenu » = même critère que updateEmptyState()/onAutosaveTick() (image, vecteurs ou
     // broderie) ; Enregistrer reste actif dès que le document a un fichier.
     const bool hasDocument =
         hasImage || !project_.vector_objects.empty() || !project_.embroidery_objects.empty();
-    if (saveProjectAct_ != nullptr) {
-        saveProjectAct_->setEnabled(hasDocument || !currentProjectPath_.isEmpty());
-    }
-    if (saveProjectAsAct_ != nullptr) {
-        saveProjectAsAct_->setEnabled(hasDocument);
-    }
-    if (exportDxfAct_ != nullptr) {
-        exportDxfAct_->setEnabled(!project_.vector_objects.empty());
-    }
-    if (analyzeAct_ != nullptr) {
-        analyzeAct_->setEnabled(sequence_.has_value());
-    }
+    setEnabledWithReason(saveProjectAct_, hasDocument || !currentProjectPath_.isEmpty(),
+                         tr("Rien à enregistrer : ouvrez une image ou dessinez une forme."));
+    setEnabledWithReason(saveProjectAsAct_, hasDocument,
+                         tr("Rien à enregistrer : ouvrez une image ou dessinez une forme."));
+    setEnabledWithReason(exportDxfAct_, !project_.vector_objects.empty(),
+                         tr("Aucun objet vectoriel à exporter."));
+    setEnabledWithReason(analyzeAct_, sequence_.has_value(), needStitches);
     const bool hasSelection = selectedRegion_.has_value() && project_.segmentation.has_value();
     for (QAction* act : regionActions_) {
-        act->setEnabled(hasSelection);
+        setEnabledWithReason(act, hasSelection,
+                             tr("Sélectionnez d'abord une région dans l'image segmentée."));
     }
     // Suppr universel : région, objet(s) vectoriel(s) ou objet de broderie.
-    if (deleteSelectionAct_ != nullptr) {
-        deleteSelectionAct_->setEnabled(hasSelection || selectedObject_.has_value() ||
-                                        selectedEmbroidery_.has_value());
-    }
+    setEnabledWithReason(deleteSelectionAct_,
+                         hasSelection || selectedObject_.has_value() ||
+                             selectedEmbroidery_.has_value(),
+                         tr("Sélectionnez d'abord une région ou un objet."));
     if (!mergeAct_->isEnabled()) {
         mergeAct_->setChecked(false);
     }

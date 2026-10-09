@@ -65,7 +65,7 @@ public:
         project.segmentation = std::move(previous_);
         previous_.reset();
     }
-    [[nodiscard]] std::string name() const override { return "Segmentation"; }
+    [[nodiscard]] std::string name() const override { return "Segmenter l'image"; }
 
 private:
     std::optional<segmentation::Segmentation> next_;
@@ -92,7 +92,7 @@ public:
         seg.region_slots[absorb_.value - 1] = absorbedRegion_;
         seg.find(keep_)->pixel_count -= changed_.size();
     }
-    [[nodiscard]] std::string name() const override { return "Fusion de régions"; }
+    [[nodiscard]] std::string name() const override { return "Fusionner des régions"; }
 
 private:
     RegionId keep_;
@@ -165,7 +165,7 @@ public:
 
     void apply(document::Project& project) override { project.vector_objects.push_back(object_); }
     void revert(document::Project& project) override { project.vector_objects.pop_back(); }
-    [[nodiscard]] std::string name() const override { return "Objet vectoriel"; }
+    [[nodiscard]] std::string name() const override { return "Ajouter un objet vectoriel"; }
 
 private:
     document::VectorObject object_;
@@ -182,7 +182,7 @@ public:
         project.embroidery_objects.push_back(object_);
     }
     void revert(document::Project& project) override { project.embroidery_objects.pop_back(); }
-    [[nodiscard]] std::string name() const override { return "Objet de broderie"; }
+    [[nodiscard]] std::string name() const override { return "Ajouter un objet de broderie"; }
 
 private:
     document::EmbroideryObject object_;
@@ -576,7 +576,7 @@ public:
 
     void apply(document::Project& project) override { setHandle(project, newHandle_); }
     void revert(document::Project& project) override { setHandle(project, oldHandle_); }
-    [[nodiscard]] std::string name() const override { return "Poignée Bézier"; }
+    [[nodiscard]] std::string name() const override { return "Déplacer une poignée Bézier"; }
 
 private:
     void setHandle(document::Project& project, std::optional<Vec2um> handle) {
@@ -618,7 +618,7 @@ public:
             }
         }
     }
-    [[nodiscard]] std::string name() const override { return "Type de nœud"; }
+    [[nodiscard]] std::string name() const override { return "Changer le type de nœud"; }
 
 private:
     ObjectId object_;
@@ -794,7 +794,7 @@ public:
         }
         previous_.clear();
     }
-    [[nodiscard]] std::string name() const override { return "Conversion en tatami"; }
+    [[nodiscard]] std::string name() const override { return "Convertir en tatami"; }
 
 private:
     std::vector<ObjectId> targets_;
@@ -957,7 +957,7 @@ public:
         project.canvas = canvas_;
     }
     void revert(document::Project& project) override { project.canvas = previous_; }
-    [[nodiscard]] std::string name() const override { return "Taille du cadre"; }
+    [[nodiscard]] std::string name() const override { return "Modifier la taille du cadre"; }
 
 private:
     document::Canvas canvas_;
@@ -983,7 +983,7 @@ public:
             obj->params = previous_;
         }
     }
-    [[nodiscard]] std::string name() const override { return "Paramètres de couture"; }
+    [[nodiscard]] std::string name() const override { return "Modifier les paramètres de couture"; }
 
 private:
     ObjectId id_;
@@ -1013,7 +1013,7 @@ public:
             }
         }
     }
-    [[nodiscard]] std::string name() const override { return "Orientation du remplissage"; }
+    [[nodiscard]] std::string name() const override { return "Modifier l'orientation du remplissage"; }
 
 private:
     ObjectId id_;
@@ -1271,7 +1271,7 @@ public:
     void revert(document::Project& project) override {
         detail::end_stitch_edit(project, id_, base_index_, ctx_);
     }
-    [[nodiscard]] std::string name() const override { return "Type de point"; }
+    [[nodiscard]] std::string name() const override { return "Changer le type de point"; }
 
 private:
     ObjectId id_;
@@ -1336,7 +1336,7 @@ public:
     void revert(document::Project& project) override {
         detail::end_stitch_edit(project, id_, base_index_, ctx_);
     }
-    [[nodiscard]] std::string name() const override { return "Coupe de fil"; }
+    [[nodiscard]] std::string name() const override { return "Modifier la coupe de fil"; }
 
 private:
     ObjectId id_;
@@ -1833,7 +1833,7 @@ public:
 
     void apply(document::Project& project) override { setHandle(project, newHandle_); }
     void revert(document::Project& project) override { setHandle(project, oldHandle_); }
-    [[nodiscard]] std::string name() const override { return "Poignée de rail satin"; }
+    [[nodiscard]] std::string name() const override { return "Déplacer une poignée de rail satin"; }
 
 private:
     void setHandle(document::Project& project, std::optional<Vec2um> handle) {
@@ -1877,7 +1877,7 @@ public:
             }
         }
     }
-    [[nodiscard]] std::string name() const override { return "Type de nœud de rail satin"; }
+    [[nodiscard]] std::string name() const override { return "Changer le type de nœud de rail satin"; }
 
 private:
     ObjectId id_;

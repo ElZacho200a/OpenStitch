@@ -645,6 +645,17 @@ private:
     // `sequenceImported_`, §17).
     std::optional<stitch::StitchSequence> sequence_;
     QAction* exportDstAct_{nullptr};
+
+    // Actions partagées entre menus et barre principale (une seule action : état,
+    // raccourci et info-bulle identiques aux deux endroits).
+    QAction* newProjectAct_{nullptr};
+    QAction* loadProjectAct_{nullptr};
+    QAction* zoomInAct_{nullptr};
+    QAction* zoomOutAct_{nullptr};
+    QAction* fitCanvasAct_{nullptr};
+    QAction* duplicateSelectionAct_{nullptr};
+    QAction* offsetSelectionAct_{nullptr};
+
     QAction* saveProjectAct_{nullptr};
     QAction* saveProjectAsAct_{nullptr};
     QAction* exportDxfAct_{nullptr};

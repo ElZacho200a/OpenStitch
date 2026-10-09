@@ -113,10 +113,10 @@ void MainWindow::buildDirectionalActions(QMenu* embMenu) {
            "clic droit pour supprimer (D)."));
     connect(directionGuideModeAct_, &QAction::toggled, this,
             &MainWindow::onDirectionGuideModeToggled);
-    autoDirectionGuideAct_ = embMenu->addAction(tr("Generer un guide depuis la forme"));
+    autoDirectionGuideAct_ = embMenu->addAction(tr("Générer un guide depuis la forme"));
     autoDirectionGuideAct_->setObjectName(QStringLiteral("action_autoDirectionGuide"));
     autoDirectionGuideAct_->setToolTip(
-        tr("Calcule un guide de direction editable depuis l'axe medial de la forme."));
+        tr("Calcule un guide de direction éditable depuis l'axe médian de la forme."));
     connect(autoDirectionGuideAct_, &QAction::triggered, this,
             &MainWindow::generateDirectionGuideFromShape);
     const auto startDrawing = [this](Tool tool) {
