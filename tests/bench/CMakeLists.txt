@@ -21,3 +21,12 @@ if(TARGET openstitch_desktop_widgets)
     target_link_libraries(openstitch-bench-ui
         PRIVATE openstitch::desktop_widgets openstitch::project_io openstitch::warnings)
 endif()
+
+# Captures d'écran headless de l'interface pour les audits d'ergonomie (hors build par défaut) :
+#   cmake --build --preset msvc-release --target openstitch-ui-shots
+#   build\msvc\tests\bench\Release\openstitch-ui-shots.exe projet.osp dossier-sortie
+if(TARGET openstitch_desktop_widgets)
+    add_executable(openstitch-ui-shots EXCLUDE_FROM_ALL ui_shots.cpp)
+    target_link_libraries(openstitch-ui-shots
+        PRIVATE openstitch::desktop_widgets openstitch::project_io openstitch::warnings)
+endif()
