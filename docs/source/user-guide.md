@@ -75,8 +75,9 @@ s'appliquent aussi au rectangle). Une sélection de plusieurs **objets vectoriel
 se déplace d'un bloc (glisser), se
 duplique (Alt + glisser) et se supprime ensemble (clic droit ▸ « Supprimer N
 objets »). Les entrées qui n'ont de sens que pour un seul objet (type de points,
-décaler, orientation) disparaissent alors du menu. **Les régions de segmentation
-se sélectionnent une par une** : la « région active » est unique.
+décaler, orientation) disparaissent alors du menu. **Les régions de segmentation**
+ont leur propre sélection multiple (voir *Menu Segmentation*) ; la dernière région cliquée est la
+« région active ».
 
 La sélection d'un objet est tracée en **double contraste** (halo clair + trait
 d'accent), lisible sur tout fond. Le rendu est organisé en deux couches
@@ -322,8 +323,8 @@ fusionner la sélection ou « Fusionner dans… » (voisines classées de la plu
 lointaine, avec leur couleur), recolorer, sélectionner, vectoriser, supprimer.
 
 Sélection : cliquez une région ; ses statistiques (pixels, mm², RGB) s'affichent.
-La région sélectionnée (« région active ») est **unique** : fusionner, supprimer,
-recolorer et vectoriser s'appliquent à elle.
+La dernière région cliquée est la « région active » ; fusionner, recolorer, supprimer et
+vectoriser s'appliquent à toute la sélection.
 
 ### Segmentation par IA
 
@@ -453,22 +454,6 @@ déplacement réel (certaines machines ignorent les sauts de déplacement nul : 
 [Format DST](dst-format.md)). **À tester sur votre machine** : ces conventions n'ont
 pas été validées sur une machine réelle ; si la machine ne coupe pas, essayez un
 seuil plus bas ou signalez le modèle.
-
-## Formes : unir, soustraire, intersecter, découper, séparer
-
-> **À COMPLÉTER PAR LE MAINTENEUR.** Section réservée : ces opérations booléennes
-> sur les formes arrivent d'une autre branche et ne sont pas décrites tant
-> qu'elles ne sont pas dans le code. À documenter : menu et raccourci de chaque
-> opération (unir, soustraire, intersecter, découper, séparer), objets
-> concernés (sélection multiple d'objets vectoriels), résultat sur les objets de
-> broderie liés, annulation.
-
-## Rendu réaliste
-
-> **À COMPLÉTER PAR LE MAINTENEUR.** Section réservée : le rendu réaliste des
-> points arrive d'une autre branche. À documenter : où l'activer (Affichage), ce
-> qu'il montre par rapport au tracé de points actuel, son effet sur les
-> performances, ses limites.
 
 ## Menu Affichage
 

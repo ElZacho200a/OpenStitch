@@ -35,7 +35,7 @@ voisins sont nécessaires). Ces builds ne sont pas forcément validés par les t
 6. **numérisation automatique** (image → objets éditables), en *formes pleines* ou en mode **Contours / Line Art** (dessins au trait) ;
 7. **auto-satin par squelette** (« Créer un satin automatique ») — **expérimental, non validé sur machine** : il refuse
    les formes qui ne s'y prêtent pas et propose un tatami ;
-8. **édition par groupes** : sélection multiple d'objets (Maj/Ctrl, rectangle), déplacement, duplication et suppression d'un bloc ;
+8. **édition par groupes** : sélection multiple d'objets et de régions (Maj/Ctrl, rectangle), fusion, recoloration, déplacement, duplication et suppression d'un bloc ; **opérations sur les formes** (unir, soustraire, intersecter, couteau) ;
 9. ordre de couture manuel et optimisé (par couleur / proximité, verrous) ;
 10. **coupes DST** visibles par la machine (seuil réglable, coupe avant changement de fil, points d'arrêt, coupe finale) —
     **à tester sur votre machine** ;
