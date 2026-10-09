@@ -13,6 +13,9 @@ add_library(openstitch_auto_satin
     src/corridor.cpp
     src/debug_export.cpp
     src/shapes.cpp
+    src/chord.cpp
+    src/axis.cpp
+    src/axis_sampler.cpp
 )
 add_library(openstitch::auto_satin ALIAS openstitch_auto_satin)
 

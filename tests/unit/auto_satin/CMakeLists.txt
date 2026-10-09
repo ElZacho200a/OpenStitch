@@ -7,6 +7,7 @@ add_executable(test_auto_satin
     test_medial_field.cpp
     test_corridor.cpp
     test_turning_satin.cpp
+    test_skeleton_satin.cpp
 )
 target_link_libraries(test_auto_satin
     PRIVATE openstitch::auto_satin openstitch::stitch_generation openstitch::satin_coverage
