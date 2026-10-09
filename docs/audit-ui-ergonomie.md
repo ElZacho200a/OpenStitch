@@ -89,3 +89,46 @@ d'autosave · vérification clavier réelle des touches simples depuis les docks
 **Constat retiré** : « l'image apparaît en miniature au chargement » est un artefact de l'outil de
 captures (le projet est chargé avant l'affichage de la fenêtre) ; `applyLoadedProject` appelle bien
 `fitCanvas()`.
+
+### Segmentation et workflow (audit A, branche `claude/ux-segmentation-workflow`)
+
+Numérotation du rapport d'audit « import → prétraitement → segmentation → vectorisation ».
+
+**Corrigé** :
+
+- **A4/A5** — « Vectoriser la sélection » (F7) traite **toutes** les régions sélectionnées en un
+  `CompositeCommand` ; une région déjà vectorisée n'est plus dupliquée (Remplacer / Ignorer ou
+  sélectionner l'objet existant / Annuler). Dernier niveau de détail mémorisé.
+- **A7** — mode « Fusionner avec… » : message d'état, curseur « main », clic sur une région déjà
+  sélectionnée ou dans le vide expliqué (le mode reste actif, Échap annule).
+- **A8** — surbrillance de la région sous le curseur (un item raster réutilisé, masque indexé) et
+  glissière d'**opacité de la carte** (20–100 %, mémorisée) dans le menu Segmentation.
+- **A9** — outil `M` renommé « Recadrer l'image (glisser un cadre) », message d'état au choix de
+  l'outil, confirmation si des objets existent (ils ne suivent pas l'image).
+- **A10** — cadre de sélection avec objets vectoriels affichés : il choisit les régions s'il ne
+  touche aucun objet, sinon un message dit de masquer les objets.
+- **A11/A12** — la segmentation IA peut créer des **régions éditables** (segmentation du document,
+  régions recolorées à leur couleur moyenne) ou des objets directs ; options *ignorer le fond* et
+  *détail de vectorisation*, question « objets déjà présents » sur le chemin direct.
+- **A13–A17** — dialogue IA : « Annuler l'analyse » fiable pendant le démarrage du worker
+  (identifiant de requête périmé effacé) ; « Valider » grisé + curseur d'attente + message ;
+  confirmation avant d'écraser des masques en revue (relance, fermeture) ; réglages mémorisés ;
+  erreurs en rouge avec « Ouvrir les préférences… » et « Afficher le détail » ; en-têtes
+  expliqués, tableau trié numériquement, aperçus redimensionnés avec la fenêtre.
+- **A18** — aperçu du masque sélectionné écrit par `scanLine` (au lieu de `setPixelColor`).
+- **A19/A20** — import : taille initiale ≤ cadre, « Ajuster au cadre », dpi affiché, bornes des
+  champs qui préservent le ratio, alerte d'étirement quand les proportions sont libres.
+- **A21** — quantification avec aperçu en direct (différé de 150 ms) et valeur mémorisée.
+- **A23/A24** — Numérisation automatique et IA grisées avec leur raison ; les étapes du panneau
+  Workflow lancent l'action (ou donnent la raison) avec les vrais noms de menus.
+- **Mineurs** — A26 (dossier du dernier import), A28 (message après suppression de régions),
+  A29 (fusion/suppression d'une région vectorisée : conserver ou supprimer l'objet, un seul pas
+  d'annulation), A30 (la barre contextuelle réutilise les actions *Vectoriser* et *Supprimer*),
+  A32 (F6 Segmenter, F7 Vectoriser, F8 Numérisation automatique), A34 (l'IA s'enchaîne après
+  l'activation dans les préférences), A36 (derniers réglages de segmentation, vectorisation,
+  numérisation mémorisés), A38 (taille minimale de région avec son équivalent mm²), A39 (infobulle
+  IA), A40 (nombre de régions en barre d'état permanente).
+
+**Non traité ici** : A1–A3 (confirmations de destruction, agent « sécurité »), A6 (calcul asynchrone
+annulable), A22 (erreurs du moteur), A25 (glisser-déposer), A27, A31 (touches simples depuis les
+docks), A33, A35, A37 (aperçu du contour de vectorisation).

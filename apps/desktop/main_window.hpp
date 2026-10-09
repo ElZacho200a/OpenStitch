@@ -31,6 +31,7 @@
 class QGraphicsScene;
 class QGraphicsItem;
 class QGraphicsPathItem;
+class QGraphicsPixmapItem;
 class QGraphicsEllipseItem;
 class QLabel;
 class QAction;
@@ -550,6 +551,31 @@ private:
     // Message d'état décrivant la sélection de régions courante.
     void announceRegionSelection();
     [[nodiscard]] bool isRegionSelected(RegionId id) const;
+
+    // --- Segmentation : flux de travail (main_window_regions.cpp / main_window_workflow.cpp) ---
+    // Fusionne `sources` dans `keep` (couleur de `keep` gardée) en UN pas d'annulation. Si des
+    // objets vectoriels ont été créés depuis ces régions, demande quoi en faire (jamais d'objet
+    // orphelin silencieux). `false` si l'utilisateur annule.
+    bool mergeRegions(const std::vector<RegionId>& sources, RegionId keep);
+    // Objets vectoriels issus de `regions` : si il y en a, propose de les conserver, de les
+    // supprimer (ajoutés à `toRemove`) ou d'annuler (`false`). `verb` : « fusionnées », etc.
+    [[nodiscard]] bool resolveLinkedVectorObjects(const std::vector<RegionId>& regions,
+                                                  const QString& verb,
+                                                  std::vector<ObjectId>& toRemove);
+    // Mode « Fusionner avec… » : message d'état explicite + curseur « main » sur la vue.
+    void setMergeMode(bool on);
+    // Surbrillance de la région sous le curseur (carte des régions affichée, outil Sélection).
+    void updateRegionHover(std::optional<QPointF> sceneMm);
+    void hideRegionHover();
+    // Opacité de la carte des régions (0,2 – 1,0) : réglable pour voir la photo dessous.
+    void setRegionMapOpacity(double opacity);
+    void buildRegionViewControls(QMenu* segMenu);
+    // Actions grisées avec raison (Numérisation automatique, IA), nombre de régions affiché en
+    // permanence : appelé par updateActions().
+    void updateSegmentationWorkflowActions();
+    // Clic sur une étape du panneau Workflow : lance l'action si elle est disponible, sinon dit
+    // pourquoi elle ne l'est pas.
+    void onWorkflowStepClicked(int step);
     // Tous les pixels de la région sont-ils dans le rectangle (en pixels) ?
     [[nodiscard]] bool regionFullyInside(RegionId id, int x0, int y0, int x1, int y1) const;
     [[nodiscard]] bool hasMultiSelection() const { return !multiSelection_.empty(); }
@@ -786,6 +812,13 @@ private:
     QAction* segmentAct_{nullptr};
     QAction* vectorizeRegionAct_{nullptr};
     QAction* autoDigitizeAct_{nullptr};
+    QAction* aiSegmentAct_{nullptr};
+    // Segmentation : nombre de régions (barre d'état permanente), surbrillance de survol d'une
+    // région (un seul item, réutilisé) et opacité de la carte des régions.
+    QLabel* regionCountLabel_{nullptr};
+    QGraphicsPixmapItem* regionHoverItem_{nullptr};
+    std::optional<RegionId> regionHoverId_;
+    double regionMapOpacity_{0.9};
 
     std::optional<RegionId> selectedRegion_;
     // Régions sélectionnées EN PLUS de selectedRegion_ (sélection multiple). Écrit uniquement

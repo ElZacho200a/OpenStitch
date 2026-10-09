@@ -4,16 +4,31 @@
 // logique métier ici : la carte des régions, les voisinages et les couleurs viennent de
 // libs/segmentation, et toute mutation du document passe par une commande annulable (un seul
 // pas d'annulation par geste, via CompositeCommand).
+#include <QAbstractButton>
+#include <QColor>
 #include <QColorDialog>
+#include <QGraphicsPixmapItem>
+#include <QGraphicsScene>
+#include <QHBoxLayout>
 #include <QIcon>
+#include <QImage>
+#include <QLabel>
 #include <QMenu>
 #include <QMessageBox>
 #include <QPixmap>
+#include <QPushButton>
+#include <QSettings>
+#include <QSlider>
 #include <QStatusBar>
+#include <QTransform>
+#include <QWidgetAction>
 
 #include <algorithm>
+#include <cmath>
 #include <memory>
 
+#include "app_theme.hpp"
+#include "canvas_view.hpp"
 #include "main_window.hpp"
 #include "openstitch/commands/composite_command.hpp"
 #include "openstitch/commands/project_commands.hpp"
@@ -171,20 +186,84 @@ void MainWindow::mergeSelectedRegions() {
             4000);
         return;
     }
-    const RegionId keep = ids.back();
-    auto group = std::make_unique<commands::CompositeCommand>(
-        tr("Fusionner %1 régions").arg(ids.size()).toStdString());
-    for (const RegionId id : ids) {
-        if (id != keep) {
-            group->add(std::make_unique<commands::MergeRegionsCommand>(keep, id));
+    mergeRegions(ids, ids.back());
+}
+
+bool MainWindow::mergeRegions(const std::vector<RegionId>& sources, RegionId keep) {
+    if (!project_.segmentation) {
+        return false;
+    }
+    std::vector<RegionId> absorbed;
+    for (const RegionId id : sources) {
+        if (id != keep && !contains(absorbed, id)) {
+            absorbed.push_back(id);
         }
+    }
+    if (absorbed.empty()) {
+        return false;
+    }
+    std::vector<ObjectId> toRemove;
+    if (!resolveLinkedVectorObjects(absorbed, tr("fusionnées"), toRemove)) {
+        return false;
+    }
+    const std::size_t involved = absorbed.size() + 1;
+    auto group = std::make_unique<commands::CompositeCommand>(
+        involved == 2 ? tr("Fusionner des régions").toStdString()
+                      : tr("Fusionner %1 régions").arg(involved).toStdString());
+    for (const ObjectId object : toRemove) {
+        group->add(std::make_unique<commands::RemoveVectorObjectCommand>(object));
+    }
+    for (const RegionId id : absorbed) {
+        group->add(std::make_unique<commands::MergeRegionsCommand>(keep, id));
     }
     undoStack_.execute(std::move(group), project_);
     setSelection({.region = keep, .embroidery = std::nullopt, .objects = {}, .extraRegions = {}});
-    statusBar()->showMessage(
-        tr("%1 régions fusionnées dans la région %2.").arg(ids.size()).arg(keep.value));
     refreshImage();
     updateActions();
+    QString message;
+    if (involved == 2) {
+        message = tr("Région %1 fusionnée dans la région %2.")
+                      .arg(absorbed.front().value)
+                      .arg(keep.value);
+    } else {
+        message = tr("%1 régions fusionnées dans la région %2.").arg(involved).arg(keep.value);
+    }
+    statusBar()->showMessage(message);
+    return true;
+}
+
+bool MainWindow::resolveLinkedVectorObjects(const std::vector<RegionId>& regions,
+                                            const QString& verb, std::vector<ObjectId>& toRemove) {
+    std::vector<ObjectId> linked;
+    for (const auto& object : project_.vector_objects) {
+        if (object.source_region && contains(regions, *object.source_region)) {
+            linked.push_back(object.id);
+        }
+    }
+    if (linked.empty()) {
+        return true;
+    }
+    QMessageBox box(QMessageBox::Warning, tr("Régions déjà vectorisées"),
+                    tr("%n région(s) concernée(s) ont déjà un objet vectoriel, qui ne sera pas "
+                       "mis à jour une fois les régions %1.\n\nQue faire de ces objets "
+                       "(et des objets de broderie qui en dépendent) ?",
+                       "", static_cast<int>(linked.size()))
+                        .arg(verb),
+                    QMessageBox::NoButton, this);
+    box.setObjectName(QStringLiteral("linkedObjectsBox"));
+    QAbstractButton* keepButton =
+        box.addButton(tr("Conserver les objets"), QMessageBox::AcceptRole);
+    QAbstractButton* removeButton =
+        box.addButton(tr("Supprimer les objets"), QMessageBox::DestructiveRole);
+    QAbstractButton* cancelButton = box.addButton(tr("Annuler"), QMessageBox::RejectRole);
+    box.setDefaultButton(qobject_cast<QPushButton*>(keepButton));
+    box.setEscapeButton(cancelButton);
+    box.exec();
+    if (box.clickedButton() == removeButton) {
+        toRemove.insert(toRemove.end(), linked.begin(), linked.end());
+        return true;
+    }
+    return box.clickedButton() == keepButton;
 }
 
 void MainWindow::absorbSelectedRegionIntoNeighbour() {
@@ -198,13 +277,11 @@ void MainWindow::absorbSelectedRegionIntoNeighbour() {
         return;
     }
     const RegionId target = neighbours.front(); // la plus longue frontière commune
-    undoStack_.execute(std::make_unique<commands::MergeRegionsCommand>(target, id), project_);
-    setSelection({.region = target, .embroidery = std::nullopt, .objects = {}, .extraRegions = {}});
-    statusBar()->showMessage(tr("Région %1 fusionnée dans sa voisine principale (région %2).")
-                                 .arg(id.value)
-                                 .arg(target.value));
-    refreshImage();
-    updateActions();
+    if (mergeRegions({id}, target)) {
+        statusBar()->showMessage(tr("Région %1 fusionnée dans sa voisine principale (région %2).")
+                                     .arg(id.value)
+                                     .arg(target.value));
+    }
 }
 
 void MainWindow::recolorRegions(const std::vector<RegionId>& ids, std::array<std::uint8_t, 3> rgb) {
@@ -273,11 +350,18 @@ void MainWindow::deleteSelectedRegions() {
         return;
     }
     const std::vector<RegionId> ids = selectedRegionIds();
-    if (ids.size() == 1) {
+    std::vector<ObjectId> toRemove;
+    if (!resolveLinkedVectorObjects(ids, tr("supprimées"), toRemove)) {
+        return;
+    }
+    if (ids.size() == 1 && toRemove.empty()) {
         undoStack_.execute(std::make_unique<commands::RemoveRegionCommand>(ids.front()), project_);
     } else {
         auto group = std::make_unique<commands::CompositeCommand>(
             tr("Supprimer %1 régions").arg(ids.size()).toStdString());
+        for (const ObjectId object : toRemove) {
+            group->add(std::make_unique<commands::RemoveVectorObjectCommand>(object));
+        }
         for (const RegionId id : ids) {
             group->add(std::make_unique<commands::RemoveRegionCommand>(id));
         }
@@ -287,6 +371,9 @@ void MainWindow::deleteSelectedRegions() {
         {.region = std::nullopt, .embroidery = std::nullopt, .objects = {}, .extraRegions = {}});
     refreshImage();
     updateActions();
+    statusBar()->showMessage(
+        ids.size() == 1 ? tr("Région supprimée — Ctrl+Z pour annuler.")
+                        : tr("%1 régions supprimées — Ctrl+Z pour annuler.").arg(ids.size()));
 }
 
 void MainWindow::showRegionContextMenu(RegionId clicked, QPoint globalPos) {
@@ -321,16 +408,8 @@ void MainWindow::showRegionContextMenu(RegionId clicked, QPoint globalPos) {
                     into->addAction(swatch(region->rgb),
                                     tr("Région %1 (%2 px)").arg(n.value).arg(region->pixel_count));
                 const RegionId source = ids.front();
-                connect(act, &QAction::triggered, this, [this, n, source] {
-                    undoStack_.execute(std::make_unique<commands::MergeRegionsCommand>(n, source),
-                                       project_);
-                    setSelection({.region = n,
-                                  .embroidery = std::nullopt,
-                                  .objects = {},
-                                  .extraRegions = {}});
-                    refreshImage();
-                    updateActions();
-                });
+                connect(act, &QAction::triggered, this,
+                        [this, n, source] { mergeRegions({source}, n); });
             }
         }
     }
@@ -346,6 +425,119 @@ void MainWindow::showRegionContextMenu(RegionId clicked, QPoint globalPos) {
     auto* del = menu.addAction(tr("&Supprimer"));
     connect(del, &QAction::triggered, this, &MainWindow::deleteSelectedRegions);
     menu.exec(globalPos);
+}
+
+void MainWindow::setMergeMode(bool on) {
+    mergeMode_ = on;
+    if (view_ == nullptr || statusBar() == nullptr) {
+        return;
+    }
+    if (on) {
+        view_->viewport()->setCursor(Qt::PointingHandCursor);
+        statusBar()->showMessage(tr("Fusion : cliquez la région CIBLE (la sélection y sera "
+                                    "absorbée, elle garde sa couleur) — Échap : annuler"));
+        hideRegionHover();
+    } else if (currentTool_ == Tool::Select) {
+        view_->viewport()->setCursor(Qt::ArrowCursor);
+    }
+}
+
+void MainWindow::hideRegionHover() {
+    regionHoverId_.reset();
+    if (regionHoverItem_ != nullptr) {
+        regionHoverItem_->setVisible(false);
+    }
+}
+
+void MainWindow::updateRegionHover(std::optional<QPointF> sceneMm) {
+    // Survol d'une région (carte des régions affichée, outil Sélection) : sans cela l'utilisateur
+    // ne sait quelle région il va saisir qu'après le clic. Une région déjà sélectionnée est déjà
+    // éclaircie par la carte : pas de second repère dessus.
+    std::optional<RegionId> under;
+    if (sceneMm && project_.segmentation && currentTool_ == Tool::Select &&
+        interactionContext() == Context::Select && showSegAct_ != nullptr &&
+        showSegAct_->isChecked()) {
+        if (const auto px = mmToImagePixel(*sceneMm)) {
+            under = segmentation::region_at(*project_.segmentation, px->x(), px->y());
+        }
+    }
+    if (under && isRegionSelected(*under)) {
+        under.reset();
+    }
+    if (!under) {
+        hideRegionHover();
+        return;
+    }
+    if (regionHoverItem_ != nullptr && regionHoverId_ == under) {
+        regionHoverItem_->setVisible(true);
+        return;
+    }
+    const auto& seg = *project_.segmentation;
+    if (seg.width <= 0 || seg.height <= 0) {
+        hideRegionHover();
+        return;
+    }
+    // Masque 1 octet/pixel (palette : transparent / accent translucide), écrit ligne à ligne.
+    QImage mask(seg.width, seg.height, QImage::Format_Indexed8);
+    const QColor accent = AppTheme::instance().tokens().accent;
+    mask.setColorCount(2);
+    mask.setColor(0, qRgba(0, 0, 0, 0));
+    mask.setColor(1, qRgba(accent.red(), accent.green(), accent.blue(), 150));
+    const std::uint32_t wanted = static_cast<std::uint32_t>(under->value);
+    for (int y = 0; y < seg.height; ++y) {
+        uchar* line = mask.scanLine(y);
+        const std::uint32_t* labels =
+            seg.labels.data() + static_cast<std::size_t>(y) * static_cast<std::size_t>(seg.width);
+        for (int x = 0; x < seg.width; ++x) {
+            line[x] = labels[x] == wanted ? 1 : 0;
+        }
+    }
+    if (regionHoverItem_ == nullptr) {
+        regionHoverItem_ = new QGraphicsPixmapItem();
+        regionHoverItem_->setZValue(11.0);
+        regionHoverItem_->setAcceptedMouseButtons(Qt::NoButton);
+        scene_->addItem(regionHoverItem_);
+    }
+    const double mmPerPx = project_.mm_per_px.value;
+    regionHoverItem_->setPixmap(QPixmap::fromImage(mask));
+    regionHoverItem_->setTransform(QTransform::fromScale(mmPerPx, mmPerPx));
+    regionHoverItem_->setPos(-seg.width * mmPerPx / 2.0, -seg.height * mmPerPx / 2.0);
+    regionHoverItem_->setVisible(true);
+    regionHoverId_ = under;
+}
+
+void MainWindow::setRegionMapOpacity(double opacity) {
+    regionMapOpacity_ = std::clamp(opacity, 0.2, 1.0);
+    QSettings().setValue(QStringLiteral("ui/regionMapOpacity"), regionMapOpacity_);
+    for (QGraphicsItem* item : baseItems_) {
+        if (item->data(0).toString() == QLatin1String("regionMap")) {
+            item->setOpacity(regionMapOpacity_);
+        }
+    }
+}
+
+void MainWindow::buildRegionViewControls(QMenu* segMenu) {
+    regionMapOpacity_ = std::clamp(
+        QSettings().value(QStringLiteral("ui/regionMapOpacity"), 0.9).toDouble(), 0.2, 1.0);
+    // Glissière d'opacité de la carte : à 100 % elle masque la photo ; plus bas, on juge la
+    // région d'après l'image sous-jacente.
+    auto* holder = new QWidget(segMenu);
+    holder->setObjectName(QStringLiteral("regionMapOpacityControl"));
+    auto* row = new QHBoxLayout(holder);
+    row->setContentsMargins(24, 2, 12, 2);
+    row->addWidget(new QLabel(tr("Opacité de la carte"), holder));
+    auto* slider = new QSlider(Qt::Horizontal, holder);
+    slider->setObjectName(QStringLiteral("regionMapOpacitySlider"));
+    slider->setRange(20, 100);
+    slider->setValue(static_cast<int>(std::lround(regionMapOpacity_ * 100.0)));
+    slider->setMinimumWidth(120);
+    slider->setToolTip(tr("Baissez l'opacité pour voir l'image sous la carte des régions."));
+    row->addWidget(slider);
+    auto* action = new QWidgetAction(segMenu);
+    action->setDefaultWidget(holder);
+    segMenu->addAction(action);
+    connect(slider, &QSlider::valueChanged, this,
+            [this](int value) { setRegionMapOpacity(value / 100.0); });
 }
 
 } // namespace openstitch::desktop
