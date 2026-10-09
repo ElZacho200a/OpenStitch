@@ -965,6 +965,9 @@ l'utilisateur ne voit pas. OpenStitch a les briques mais peu d'automatismes.
 ### HP-ENG-003 — Espacement satin automatique selon la largeur [P1] — ☐ À faire
 - Hatch : Auto spacing : colonnes étroites plus lâches, larges plus serrées.
 - Modules : `libs/stitch_generation/satin`.
+- R&D brevets : US5343401A donne un exemple chiffré de densité modulée par la
+  largeur ; suivi RD-PAT-013 (`docs/roadmap-rd-brevets.md`). Absent du code
+  (vérifié 2026-10).
 
 ### HP-ENG-004 — Découpe automatique des satins trop larges [P1] — ◐ Partiel
 - État OpenStitch : split stitch disponible mais désactivé par défaut ;

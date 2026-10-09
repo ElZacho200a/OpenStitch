@@ -29,6 +29,36 @@ planificateur SGSD, `satin_coverage`) couvre déjà l'essentiel des traversées.
 moteur de traversées des brevets n'est donc construit que si le corpus prouve un
 manque sur une classe de formes définie.
 
+## Innovations retenues (tri après lecture des PDF)
+
+Critère de tri : une idée est **gardée** si elle est (a) étayée par le texte
+primaire, (b) absente du code ou meilleure que lui (vérifié), (c) implémentable
+indépendamment sans constante de brevet. Les seuils sont toujours calibrés chez
+nous. « Existant » = vérifié dans le code.
+
+| Innovation | Source | Existant | Décision | Entrée |
+|---|---|---|---|---|
+| Éligibilité satin par statistiques de distance (σ/μ, max) le long du squelette | US7016757B2 (idée), notre extension | partiel (`satinability.cpp` : largeur, variation, élongation) | **Garder** | RD-PAT-004 |
+| Satin entier ou repli entier, rejet tracé (leçon du retrait) | post-mortem | absent | **Garder** | RD-PAT-002 |
+| Mesure de l'espacement du côté intérieur d'une courbe (distance ⟂ au point précédent) comme **métrique** | US6390005B1 | absent comme métrique | **Garder** | RD-PAT-003 |
+| Densité satin modulée par la largeur de colonne (colonnes étroites plus lâches, larges plus serrées) | US5343401A | **absent** (HP-ENG-003 « À faire ») | **Garder** | RD-PAT-013 |
+| Orientation ∥ à la corde entre intersections de contour au branchement, interpolée avec ⟂ en extrémité ; découpe par bissectrices avec rotation anti-collision | EP0761860B1 | partiel (junction anchoring) | **Garder, conditionnel** | RD-PAT-001 |
+| Orientation radiale pour un disque (axe réduit à un point) | EP0761860B1 [0019] | partiel (`IsoOffsetRing`) | **Garder, conditionnel** | RD-PAT-001 |
+| Règle de sous-couche en trois cas (dedans / pont / exclu), liaisons par l'axe du goulot | JP3922316B2, US5823127A | à auditer | **Garder, après audit** | RD-PAT-007 |
+| Ordre de couture : élagage de feuilles vers le point final ; bâti puis retour à la fourche | US5957068A, US5283747A, US8532810B2 | partiel (`route_columns`) | **Garder, après comparaison** | RD-PAT-008 |
+| Critère alternatif d'angle de tatami (moins de fragments) | US8219238B2 | partiel (`auto_fill_angle`) | **Garder, optionnel** | RD-PAT-005 |
+| Analyse « points entièrement recouverts » en lecture seule | US6633794B2 | absent | **Garder** | RD-PAT-006 |
+| Graphes de longueur et d'angle par point (diagnostic) | US6167823B1 | absent | **Garder, P3** | RD-PAT-014 |
+| Appliqué multi-passes (placement, bâti, couverture satin, arrêts, contour de coupe) | US5438520A, JP3769602B2 | absent | **Garder, hors objectif directeur** | HP-SPEC-001 |
+| Remplissage concentrique / radial / elliptique avec profil de densité | US6937919B1 | absent | **Garder, P3** | RD-PAT-010 |
+| Stippling par courbe de remplissage d'espace, jitter à graine fixe | US6968255B1 | absent | **Garder, P3** | HP-STI-013 |
+| Import DST → objets (reconnaissance FILL/SATIN par alternance de signes) ; tableaux 1 et 2 récupérés | US6510360B1 | absent | **Différer** (hors périmètre, tableaux archivés dans la fiche) | — |
+
+Écartées (sans valeur ajoutée démontrée) : densité sur points existants, lettrage
+sur arc, numérisation manuelle, stylet, types de point rudimentaires, simplification
+générique, apprentissage de jonctions, remplissage curviligne (doublon du champ de
+flux), formules d'ancres de la famille Goldman (inutilisables sans plafond propre).
+
 ## RD-PAT-000 — Post-mortem de l'ancien auto-satin [P0] — ☑ Fait (analyse, à confirmer)
 
 - État : analyse du diff de `18de427` (le message du commit est vide : **cause
@@ -67,7 +97,9 @@ manque sur une classe de formes définie.
   segmentation + vectorisation), produit la sortie satin (planificateur
   existant) et le repli, et mesure avec une métrique **neutre fondée sur la
   séquence** (`project_metrics`) : couverture, nombre de points, sauts + coupes,
-  points courts, alignement fil/normale du squelette. Troisième référence :
+  points courts, alignement fil/normale du squelette, et **espacement du côté
+  intérieur d'une courbe** (distance perpendiculaire de l'extrémité de chaque point
+  à la droite du précédent, mesure inspirée de US6390005B1). Troisième référence :
   l'ancien auto-satin, reconstruit dans un worktree jetable depuis `18de427^`,
   jamais sur `main`. Sortie : tableau et SVG déterministes.
 - Modules : `apps/cli`, `tests/unit/`, `libs/stitch_analysis` (lecture). Pas de
@@ -187,6 +219,30 @@ Méthode de calibration des seuils :
 ### RD-PAT-008 — Élagage topologique et ordre de couture par arbre [P2] — ☐ À faire
 - Source : US6356648B1, US6690988B2, US8532810B2, US5283747A. Comparer à
   `SkeletonGraph` et au routage existants ; ne coder que les manques démontrés.
+
+### RD-PAT-013 — Densité satin modulée par la largeur [P1] — ☐ À faire
+- Source : US5343401A (exemple imprimé : une densité de base de 56,4 points par
+  pouce devient 28,2 pour 2 mm et 84,6 pour 30 mm). La loi de modulation n'est
+  pas donnée : notre conception, calibrée sur nos corpus. Rattaché à HP-ENG-003.
+- État OpenStitch (vérifié) : aucune densité dépendant de la largeur dans
+  `libs/stitch_generation/src/satin.cpp` ni dans `libs/satin_planning` ; la densité
+  est un paramètre uniforme de `SatinParams`.
+- À faire : mode « Auto » de densité (défaut pour les nouveaux objets, anciens
+  projets inchangés), fonction pure `density_for_width`, chaîne complète
+  (modèle, sérialisation, commande, génération, UI, tests) par la procédure
+  `openstitch-stitch-param`.
+- Modules : `libs/stitch_generation`, `libs/document`, `libs/project_io`,
+  `libs/commands`, `apps/desktop`.
+- Acceptation : une colonne étroite et une large ont des densités différentes
+  selon la loi documentée ; un ancien `.osp` produit la même séquence ; déterminisme.
+
+### RD-PAT-014 — Graphes de longueur et d'angle par point (diagnostic) [P3] — ☐ À faire
+- Source : US6167823B1 (angle entre vecteurs consécutifs ramené à [0, 180] ;
+  signatures : course au plancher, zigzag vers 90°, satin vers 180°). L'accrochage
+  « B>D » du brevet est inversé par rapport à son texte : ne pas le reprendre.
+- À faire : sortie CLI (CSV/SVG) de longueur et d'angle par point depuis
+  `effective_sequence`, utilisable par le banc RD-PAT-003.
+- Modules : `libs/stitch_analysis`, `apps/cli`.
 
 ## Hors objectif directeur (suivis ailleurs, non prioritaires pour cette mission)
 
