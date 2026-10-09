@@ -89,3 +89,48 @@ d'autosave · vérification clavier réelle des touches simples depuis les docks
 **Constat retiré** : « l'image apparaît en miniature au chargement » est un artefact de l'outil de
 captures (le projet est chargé avant l'affichage de la fenêtre) ; `applyLoadedProject` appelle bien
 `fitCanvas()`.
+
+## Deuxième audit — état des correctifs
+
+### Inspecteur et édition sur canevas (branche `claude/ux-inspecteur-edition`)
+
+**Corrigé**
+- **Inspecteur périmé (critique)** : la garde « même sélection, pas de reconstruction »
+  laissait un formulaire obsolète après annulation, rotation au canevas ou changement de type
+  de points qui garde le même id (`ConvertFillGroupCommand`) ; le premier champ touché écrasait
+  des `DirectionalFillParams` par un `TatamiParams`. `PropertiesPanel::showsParams` compare le
+  formulaire au document à chaque rafraîchissement et `updateInspector` reconstruit en cas
+  d'écart. Tests : annulation puis champ, conversion tatami → directionnel puis champ.
+- **Bornes (critique)** : espacement des rangées ≥ 0,1 mm, longueurs de point ≥ 0,5–1 mm,
+  infobulles avec plage.
+- **Écrasement silencieux** : chaque widget ne modifie que son champ (plus de relecture ni
+  d'arrondi des autres : angle entier, µm arrondis à 10) ; angle en 0,1°.
+- **Coalescence d'annulation** : `ICommand::mergeKey/mergeWith`, fenêtre de 600 ms dans
+  `UndoStack` (ajout additif, `breakMergeChain`) ; paramètres, flèches, angle de guide ;
+  noms « Modifier : <champ> ».
+- **Molette** : `WheelGuard` (focus au clic, transmission au parent sinon).
+- **Dépendances de champs** : sous-couches grisées, y ≤ Lmax dynamique, vocabulaire commun
+  satin / auto-satin (forme du bout, point d'arrêt), unité et référence de 0° de l'angle des
+  guides, clic sur un guide = anneau sur l'ancre.
+- **Poignées** : seuil de glisser des nœuds (Mi9), coordonnées et repère d'accroche pendant le
+  glisser, Échap annule, Maj ne suspend plus l'accroche, bascule d'accroche dans la barre
+  d'état ; redimensionnement : zone 22 px, curseur par coin, planchers 5 % sans miroir, Maj =
+  proportions, cadre d'aperçu et « Taille : L × H mm ».
+- **Verrou** : renommé « Figer l'ordre » partout (il ne protégeait que de l'optimisation de
+  l'ordre) ; le champ `locked` du `.osp` est inchangé.
+- **Panneau Ordre** : libellés partagés avec Document, Monter/Descendre grisés aux bornes avec
+  infobulles et Alt+Haut/Bas, bouton à bascule sans emoji, plus de clignotement (signaux bloqués
+  pendant le rafraîchissement), « Trajet estimé ».
+- **Multi-sélection et boîte** : bloc « Appliquer à N objets » (type, espacement, angle) en un
+  pas ; Édition ▸ Aligner (6 actions) ; X/Y/L/H en mm + proportions pour un objet vectoriel.
+- **Panneau Document** : rang de couture, cases Vis./Figé, renommage au double-clic,
+  suppression au clavier, clic sur un groupe = toute la forme, noms accessibles.
+- **Historique** : libellés à l'infinitif (« Déplacer la forme », « Supprimer une région »,
+  « Déplacer un point »… ; tests mis à jour) et panneau **Historique** (clic = saut).
+
+**Partiel / non fait**
+- Type « directionnel » et « satin » absents du bloc multi-sélection (guides propres à chaque
+  forme) ; les noms de commandes d'images (« Niveaux de gris »…) restent des noms de menu.
+- Les rafales de X/Y/L/H du formulaire d'une forme ne fusionnent pas (un pas par validation).
+- Un objet « figé » reste modifiable : si un vrai verrou d'édition est voulu, il faudra un
+  champ dédié dans le document.

@@ -132,12 +132,23 @@ Précisions sur les gestes du tableau :
   faut lui en créer un), de même que la commande « Dupliquer ». En dessin de
   rectangle, ellipse ou polygone régulier, *Alt* dessine le cadre depuis son centre
   (le point d'appui).
-- **Maj** pendant un glisser verrouille l'axe dominant (objets et nœuds). **Ctrl**
-  suspend l'accroche pendant le tracé d'un polygone ou d'une colonne satin.
+- **Maj** pendant un glisser verrouille l'axe dominant (objets et nœuds) ; il ne
+  suspend **pas** l'accroche. **Ctrl** suspend l'accroche pendant le tracé d'un polygone
+  ou d'une colonne satin et pendant le glisser d'un nœud.
+- **Glisser un nœud** : le nœud ne bouge qu'après le seuil de glisser (un clic légèrement
+  tremblé ne crée ni déplacement ni pas d'annulation) ; la barre d'état affiche ses
+  coordonnées en mm et un cercle marque le sommet visé quand l'accroche est active ;
+  **Échap** annule le glisser sans rien modifier.
+- **Redimensionner** : les quatre poignées carrées (zone de 22 px, curseur diagonal propre
+  à chaque coin) redimensionnent autour du coin opposé ; **Maj** conserve les proportions,
+  un cadre en pointillés et « Taille : L × H mm » (barre d'état) montrent le résultat,
+  **Échap** annule. La forme ne peut ni être retournée par inadvertance (miroir) ni
+  tomber sous 5 % de sa taille.
 - **Accrochage des nœuds au glisser** (Affichage ▸ *Accrochage des nœuds au
   glisser*, réglage `edit/snapNodesOnDrag`, **désactivé par défaut**) : un nœud
   relâché à moins de 1 mm (et 10 px) d'un sommet d'un autre objet s'y accroche ;
-  Ctrl ou Maj au relâchement l'évitent. Glisser un objet entier n'a pas d'accroche.
+  Ctrl pendant le glisser l'évite. La bascule **Accroche** de la barre d'état reflète
+  et pilote ce réglage. Glisser un objet entier n'a pas d'accroche.
 
 
 ## Menu Fichier
@@ -192,11 +203,18 @@ enregistrées propose **Enregistrer / Ignorer / Annuler**.
 | Supprimer la sélection | Suppr | Supprime la région, l'objet de broderie ou les objets vectoriels sélectionnés |
 | Dupliquer la forme | — | Duplique la forme sélectionnée |
 | Décaler la forme… | — | Décale ou rétrécit la forme sélectionnée |
+| Aligner la sélection | — | À gauche, centrés, à droite, en haut, centrés verticalement, en bas : range les formes sélectionnées (au moins deux) sur la boîte de la sélection, en un seul pas d'annulation |
 
 L'annulation couvre les opérations d'image, la segmentation (segmenter, fusionner,
 supprimer, recolorer), la création et le déplacement de nœuds vectoriels, la
 création d'objets de broderie, le **changement de type**, l'**orientation** d'un
 remplissage, la conversion satin→tatami et le réordonnancement.
+
+Les libellés d'historique sont des verbes à l'infinitif (« Déplacer la forme », « Modifier :
+Espacement des rangées »). Une **rafale** de modifications du même champ du même objet
+(molette d'un champ, flèches du clavier, angle d'un guide) dans une fenêtre de 0,6 s ne forme
+qu'**un** pas d'annulation. Le panneau **Historique** (Affichage ▸ Panneaux) liste les pas :
+un clic revient à cet état, les pas annulés (en italique) restent rétablissables.
 
 ## Menu Image
 
@@ -332,9 +350,33 @@ Sous la barre principale, son contenu **suit la sélection** :
 Dock (droite) affichant l'élément sélectionné. Pour un **objet de broderie**, il
 expose ses **paramètres de couture éditables après création** (contour :
 longueur/min/passages ; tatami : espacement/longueur/angle/retrait/décalage ;
-satin : densité/compensation/sous-couche). Chaque changement passe par une
-commande **annulable** et régénère les points. Une région ou un objet vectoriel
-y affiche ses informations en lecture seule.
+satin : espacement/compensation/sous-couche). Chaque changement passe par une
+commande **annulable** et régénère les points.
+
+- **Un champ = une modification** : seul le champ touché change dans le document (les autres
+  valeurs ne sont ni relues ni arrondies ; l'angle se règle au dixième de degré). Après une
+  annulation ou un changement de type de points, le formulaire est reconstruit d'après le
+  document. L'historique nomme le champ modifié.
+- **Bornes** : espacement des rangées ≥ 0,1 mm ; longueurs de point ≥ 0,5 mm (contour) ou
+  1 mm (tatami, directionnel, satin) ; l'infobulle de chaque champ donne sa plage.
+- **Molette** : un champ ne réagit à la molette que s'il a le focus (clic ou Tab) ; sinon la
+  molette fait défiler l'inspecteur.
+- **Champs dépendants** : retrait et espacement de sous-couche grisés si la case est
+  décochée ; en auto-satin, « Longueur max des segments (y) » est bornée par Lmax et les deux
+  sont grisées si le fractionnement est désactivé. Satin manuel et auto-satin emploient les
+  mêmes termes : *Forme du bout* (début/fin) et *Point d'arrêt* (début/fin).
+- **Guides d'orientation** (auto-satin) : l'angle est en degrés ; relatif = écart à la
+  perpendiculaire de l'axe (0° = perpendiculaire), absolu = depuis l'horizontale du dessin,
+  sens trigonométrique. Cliquer un guide dans la liste entoure son ancre sur le canevas.
+- **Objet vectoriel** : *X*, *Y* (coin bas-gauche, Y vers le haut comme l'indicateur de
+  curseur), *Largeur* et *Hauteur* en mm, avec « Conserver les proportions » ; le
+  déplacement/redimensionnement est un seul pas d'annulation.
+- **Plusieurs objets sélectionnés** : le bloc « Appliquer à N objets » règle le type de
+  points (contour cousu ou tatami), l'espacement des rangées et l'angle (tatami) des coutures
+  de tous les objets, en un seul pas d'annulation. Directionnel et satin se règlent objet par
+  objet.
+
+Une région affiche ses informations en lecture seule.
 
 ## Panneau Document
 
@@ -342,6 +384,12 @@ Dock (gauche) à deux onglets, **Objets** et **Régions**, tabifié avec l'**Ord
 de couture**. Sélectionner une ligne met l'élément en évidence au canevas et dans
 l'inspecteur ; une sélection au canevas surligne la ligne correspondante
 (synchronisation bidirectionnelle).
+
+Chaque ligne d'objet commence par son **rang de couture** (« 3. Satin — … »). Deux cases :
+**Vis.** (visible : décocher masque l'objet, qui n'est plus ni dessiné ni cousu) et **Figé**
+(ordre figé, voir ci-dessous) ; un **double-clic** sur le nom le renomme ; **Suppr** supprime
+l'objet sélectionné ; un clic sur le nœud d'un **groupe de sections** (même forme) sélectionne
+toute la forme. Toutes ces actions sont des pas d'annulation.
 
 ## Indicateur de workflow
 
@@ -358,10 +406,14 @@ localisation.
 
 ## Panneau Ordre de couture
 
-Onglet du panneau Document listant les objets de broderie dans l'ordre. Vous
-pouvez monter/descendre un objet, le verrouiller (il ne bougera plus lors de
-l'optimisation), et appliquer une stratégie (ordre du document, par couleur, par
-proximité, couleur puis proximité). Un libellé affiche le coût estimé.
+Onglet du panneau Document listant les objets de broderie dans l'ordre, avec les mêmes
+libellés que le panneau Document (rang, type, nom, masqué, ordre figé). **Monter**
+(Alt+Haut) et **Descendre** (Alt+Bas) sont grisés aux extrémités. **Figer l'ordre**
+(bouton à bascule) empêche *Optimiser l'ordre* de déplacer l'objet : ce n'est **pas** un
+verrou d'édition (l'objet reste déplaçable et modifiable ; l'ancien nom « Verrouiller » prêtait
+à confusion). Les stratégies : ordre du document, par couleur, par proximité, couleur puis
+proximité. Le libellé *Trajet estimé* donne la distance à vide entre objets et le nombre de
+changements de fil.
 
 ## Barre de simulation
 
