@@ -57,7 +57,7 @@ void MainWindow::buildShapeMenu() {
         tr("Ne garde que la partie commune à toutes les formes sélectionnées."),
         [this] { runBooleanOp(commands::BooleanOp::Intersect); });
     shapeMenu_->addSeparator();
-    add(breakApartAct_, tr("&Séparer les morceaux"), QStringLiteral("action_shapeBreakApart"),
+    add(breakApartAct_, tr("Sépa&rer les morceaux"), QStringLiteral("action_shapeBreakApart"),
         QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_B),
         tr("Transforme chaque morceau disjoint de la forme en un objet distinct."),
         [this] { breakApartSelected(); });

@@ -151,9 +151,9 @@ private slots:
         const QList<QKeySequence> redo = window.redoAct_->shortcuts();
         QVERIFY(redo.contains(QKeySequence(Qt::CTRL | Qt::Key_Y)));
         QVERIFY(redo.contains(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_Z)));
-        QCOMPARE(window.statsAct_->shortcut(), QKeySequence(Qt::Key_F6));
-        QCOMPARE(window.autoDigitizeAct_->shortcut(),
-                 QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_A));
+        // F6 segmente et F8 numérise (workflow de segmentation) : les statistiques sont en F9.
+        QCOMPARE(window.statsAct_->shortcut(), QKeySequence(Qt::Key_F9));
+        QCOMPARE(window.autoDigitizeAct_->shortcut(), QKeySequence(Qt::Key_F8));
     }
 
     void enterAndBackspaceShortcutsOnlyWhileDrawing() {
