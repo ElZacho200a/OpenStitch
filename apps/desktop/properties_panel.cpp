@@ -150,6 +150,7 @@ PropertiesPanel::PropertiesPanel(QWidget* parent) : QWidget(parent) {
 
 void PropertiesPanel::clearBody() {
     currentId_.reset();
+    vectorId_.reset();
     hasShown_ = false;
     satinGuideList_.clear();
     satinSummary_.clear();
@@ -179,6 +180,151 @@ QDoubleSpinBox* PropertiesPanel::mmSpin(double valueMm, double maxMm, double min
     const QString range = tr("Plage : %1 – %2 mm").arg(minMm, 0, 'f', 2).arg(maxMm, 0, 'f', 2);
     spin->setToolTip(tip.isEmpty() ? range : tip + QLatin1Char('\n') + range);
     return spin;
+}
+
+void PropertiesPanel::showVectorObject(ObjectId id, const QString& title, const QString& details,
+                                       QRectF boxMm) {
+    clearBody();
+    vectorId_ = id;
+    vectorBox_ = boxMm;
+    header_->setText(title);
+    setEditState(std::nullopt, stitch_generation::ObjectEditState::Clean);
+    auto* label = new QLabel(details, body_);
+    label->setWordWrap(true);
+    label->setTextInteractionFlags(Qt::TextSelectableByMouse);
+    body_->layout()->addWidget(label);
+    if (boxMm.width() <= 0.0 || boxMm.height() <= 0.0) {
+        return; // forme dégénérée : pas de redimensionnement possible
+    }
+    auto* form = new QFormLayout();
+    form->setLabelAlignment(Qt::AlignRight);
+    const auto makeSpin = [this](const char* name, double value, double minMm, double maxMm,
+                                 const QString& tip) {
+        auto* spin = new QDoubleSpinBox(body_);
+        spin->setObjectName(QString::fromLatin1(name));
+        spin->setKeyboardTracking(false);
+        spin->setRange(minMm, maxMm);
+        spin->setDecimals(2);
+        spin->setSingleStep(0.5);
+        spin->setSuffix(tr(" mm"));
+        spin->setValue(value);
+        spin->setToolTip(tip + QLatin1Char('\n') +
+                         tr("Plage : %1 – %2 mm").arg(minMm, 0, 'f', 2).arg(maxMm, 0, 'f', 2));
+        return spin;
+    };
+    auto* x = makeSpin("spin_vectorX", boxMm.x(), -5000.0, 5000.0,
+                       tr("Position du bord gauche de la forme."));
+    auto* y = makeSpin("spin_vectorY", boxMm.y(), -5000.0, 5000.0,
+                       tr("Position du bord bas de la forme (Y vers le haut)."));
+    auto* w = makeSpin("spin_vectorW", boxMm.width(), 0.1, 5000.0, tr("Largeur de la forme."));
+    auto* h = makeSpin("spin_vectorH", boxMm.height(), 0.1, 5000.0, tr("Hauteur de la forme."));
+    auto* keep = new QCheckBox(tr("Conserver les proportions"), body_);
+    keep->setObjectName(QStringLiteral("check_vectorProportions"));
+    keep->setChecked(true);
+    form->addRow(tr("X :"), x);
+    form->addRow(tr("Y :"), y);
+    form->addRow(tr("Largeur :"), w);
+    form->addRow(tr("Hauteur :"), h);
+    form->addRow(QString(), keep);
+    const double ratio = boxMm.width() / boxMm.height();
+    const auto emitBox = [this, id, x, y, w, h] {
+        emit vectorBoxEdited(id, QRectF(x->value(), y->value(), w->value(), h->value()));
+    };
+    connect(x, &QDoubleSpinBox::valueChanged, this, emitBox);
+    connect(y, &QDoubleSpinBox::valueChanged, this, emitBox);
+    connect(w, &QDoubleSpinBox::valueChanged, this, [h, keep, ratio, emitBox](double value) {
+        if (keep->isChecked()) {
+            const QSignalBlocker block(h);
+            h->setValue(value / ratio);
+        }
+        emitBox();
+    });
+    connect(h, &QDoubleSpinBox::valueChanged, this, [w, keep, ratio, emitBox](double value) {
+        if (keep->isChecked()) {
+            const QSignalBlocker block(w);
+            w->setValue(value * ratio);
+        }
+        emitBox();
+    });
+    auto* holder = new QWidget(body_);
+    holder->setLayout(form);
+    body_->layout()->addWidget(holder);
+    wheelGuard_->guardAll(body_);
+}
+
+bool PropertiesPanel::showsVectorBox(ObjectId id, QRectF boxMm) const {
+    if (!vectorId_ || *vectorId_ != id) {
+        return false;
+    }
+    constexpr double tol = 0.02;
+    return std::abs(vectorBox_.x() - boxMm.x()) <= tol &&
+           std::abs(vectorBox_.y() - boxMm.y()) <= tol &&
+           std::abs(vectorBox_.width() - boxMm.width()) <= tol &&
+           std::abs(vectorBox_.height() - boxMm.height()) <= tol;
+}
+
+void PropertiesPanel::showMultiSelection(int objectCount, int embroideryCount) {
+    clearBody();
+    header_->setText(tr("%1 objets").arg(objectCount));
+    setEditState(std::nullopt, stitch_generation::ObjectEditState::Clean);
+    auto* label = new QLabel(
+        tr("%1 objets vectoriels sélectionnés (%2 avec une couture).\nSupprimer ou déplacer "
+           "(flèches) les agit sur tous ; Édition > Aligner les range sur la sélection.")
+            .arg(objectCount)
+            .arg(embroideryCount),
+        body_);
+    label->setWordWrap(true);
+    body_->layout()->addWidget(label);
+    if (embroideryCount == 0) {
+        auto* none = new QLabel(tr("Créez d'abord les coutures (menu Broderie) pour régler leurs "
+                                   "paramètres en une fois."),
+                                body_);
+        none->setWordWrap(true);
+        none->setEnabled(false);
+        body_->layout()->addWidget(none);
+        return;
+    }
+    auto* form = new QFormLayout();
+    form->setLabelAlignment(Qt::AlignRight);
+    auto* type = new QComboBox(body_);
+    type->setObjectName(QStringLiteral("combo_multiType"));
+    type->addItems({tr("(inchangé)"), tr("Contour cousu"), tr("Tatami")});
+    type->setToolTip(tr("Directionnel et satin se règlent objet par objet (guides propres à "
+                        "chaque forme)."));
+    auto* useSpacing = new QCheckBox(tr("Espacement des rangées"), body_);
+    useSpacing->setObjectName(QStringLiteral("check_multiSpacing"));
+    auto* spacing = mmSpin(0.4, 5.0, 0.1, tr("Écart entre rangées (tatami, directionnel, satin)."));
+    spacing->setObjectName(QStringLiteral("spin_multiSpacing"));
+    spacing->setEnabled(false);
+    auto* useAngle = new QCheckBox(tr("Angle (tatami)"), body_);
+    useAngle->setObjectName(QStringLiteral("check_multiAngle"));
+    auto* angle = new QDoubleSpinBox(body_);
+    angle->setObjectName(QStringLiteral("spin_multiAngle"));
+    angle->setKeyboardTracking(false);
+    angle->setRange(0.0, 179.9);
+    angle->setDecimals(1);
+    angle->setWrapping(true);
+    angle->setSuffix(tr(" °"));
+    angle->setEnabled(false);
+    angle->setToolTip(tr("0° = horizontal, sens trigonométrique. Plage : 0 – 179,9°."));
+    connect(useSpacing, &QCheckBox::toggled, spacing, &QWidget::setEnabled);
+    connect(useAngle, &QCheckBox::toggled, angle, &QWidget::setEnabled);
+    auto* apply = new QPushButton(tr("Appliquer à %1 objets").arg(objectCount), body_);
+    apply->setObjectName(QStringLiteral("button_multiApply"));
+    apply->setToolTip(tr("Applique les réglages cochés aux coutures des objets sélectionnés, "
+                         "en une seule étape annulable."));
+    form->addRow(tr("Type de points :"), type);
+    form->addRow(useSpacing, spacing);
+    form->addRow(useAngle, angle);
+    form->addRow(QString(), apply);
+    connect(apply, &QPushButton::clicked, this, [this, type, useSpacing, spacing, useAngle, angle] {
+        emit applyToSelectionRequested(type->currentIndex() - 1, useSpacing->isChecked(),
+                                       spacing->value(), useAngle->isChecked(), angle->value());
+    });
+    auto* holder = new QWidget(body_);
+    holder->setLayout(form);
+    body_->layout()->addWidget(holder);
+    wheelGuard_->guardAll(body_);
 }
 
 bool PropertiesPanel::showsParams(const document::StitchParams& params) const {

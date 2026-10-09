@@ -410,6 +410,8 @@ MainWindow::MainWindow() {
     buildDocumentPanel();
     buildWorkflowPanel();
     buildFilterPanel();
+    buildHistoryPanel();
+    panelsMenu_->addAction(historyDock_->toggleViewAction());
     for (auto* d :
          {documentDock_, propertiesDock_, workflowDock_, orderDock_, filterDock_, analysisDock_}) {
         panelsMenu_->addAction(d->toggleViewAction());
@@ -698,6 +700,7 @@ void MainWindow::buildMenus() {
             offsetVectorObject(*selectedObject_);
         }
     });
+    buildAlignMenu(editMenu);
     editMenu->addSeparator();
     auto* aiPrefsAct = editMenu->addAction(tr("Préférences — &Intelligence artificielle…"));
     connect(aiPrefsAct, &QAction::triggered, this, &MainWindow::openAiPreferences);
@@ -964,8 +967,9 @@ void MainWindow::buildMenus() {
     hidePanelsAct->setToolTip(tr("Mode canevas : masque tous les panneaux."));
     connect(hidePanelsAct, &QAction::toggled, this, [this](bool hide) {
         hidePanelsMode_ = hide;
-        const std::vector<QDockWidget*> docks{documentDock_, propertiesDock_, workflowDock_,
-                                              orderDock_,    filterDock_,     analysisDock_};
+        std::vector<QDockWidget*> docks{documentDock_, propertiesDock_, workflowDock_,
+                                        orderDock_,    filterDock_,     analysisDock_};
+        docks.push_back(historyDock_);
         if (hide) {
             panelsToRestore_.clear();
             for (auto* d : docks) {
@@ -4713,7 +4717,7 @@ QString MainWindow::buildDebugDump(ObjectId embroideryId) const {
                     : emb->is_directional() ? QStringLiteral("Remplissage directionnel")
                                             : QStringLiteral("Contour (running stitch)"))
         << QStringLiteral("Visible : %1").arg(fmtBool(emb->visible))
-        << QStringLiteral("Verrouillé : %1").arg(fmtBool(emb->locked))
+        << QStringLiteral("Ordre figé : %1").arg(fmtBool(emb->locked))
         << QStringLiteral("Couleur RGB : (%1, %2, %3)  #%4")
                .arg(emb->rgb[0])
                .arg(emb->rgb[1])
@@ -5799,6 +5803,44 @@ void MainWindow::buildDocumentPanel() {
         displayImage(processed_);
         updateActions();
     });
+    // Clic sur un groupe de sections : la forme source (donc toutes les sections) est visée.
+    connect(documentPanel_, &DocumentPanel::groupSelected, this,
+            [this](ObjectId sourceVector, int sections) {
+                if (project_.findObject(sourceVector) == nullptr) {
+                    return;
+                }
+                setSelection({.region = std::nullopt,
+                              .embroidery = std::nullopt,
+                              .objects = {sourceVector}});
+                displayImage(processed_);
+                updateActions();
+                statusBar()->showMessage(
+                    tr("Forme sélectionnée : %1 section(s) de couture.").arg(sections));
+            });
+    // Cases de la liste et renommage : commandes annulables (jamais de mutation directe).
+    connect(documentPanel_, &DocumentPanel::visibilityToggled, this,
+            [this](ObjectId id, bool visible) {
+                undoStack_.execute(
+                    std::make_unique<commands::SetEmbroideryVisibleCommand>(id, visible), project_);
+                refreshImage();
+                updateActions();
+            });
+    connect(documentPanel_, &DocumentPanel::orderLockToggled, this,
+            [this](ObjectId id, bool locked) {
+                undoStack_.execute(std::make_unique<commands::SetEmbroideryLockCommand>(id, locked),
+                                   project_);
+                refreshOrderPanel();
+                refreshImage();
+                updateActions();
+            });
+    connect(documentPanel_, &DocumentPanel::renameRequested, this,
+            [this](ObjectId id, const QString& name) {
+                undoStack_.execute(
+                    std::make_unique<commands::RenameEmbroideryCommand>(id, name.toStdString()),
+                    project_);
+                refreshImage();
+                updateActions();
+            });
     connect(documentPanel_, &DocumentPanel::regionSelected, this, [this](RegionId id) {
         setSelection({.region = id, .embroidery = std::nullopt, .objects = {}});
         displayImage(processed_);
@@ -5939,6 +5981,7 @@ void MainWindow::buildPropertiesPanel() {
             &MainWindow::changeAutoSatinGuide);
     connect(propertiesPanel_, &PropertiesPanel::satinGuideSelected, this,
             &MainWindow::highlightAutoSatinGuide);
+    connectInspectorEditing();
     connect(propertiesPanel_, &PropertiesPanel::satinGuideRemoveRequested, this,
             &MainWindow::removeAutoSatinGuide);
     connect(propertiesPanel_, &PropertiesPanel::editDirectionGuidesRequested, this,
@@ -5998,7 +6041,13 @@ void MainWindow::updateInspector() {
     // les paramètres du document ne sont plus ceux que montre le formulaire (annulation,
     // changement de type de points qui garde le même id, rotation au canevas...) : sinon
     // le premier champ touché écraserait le document avec des valeurs périmées.
-    const bool formStale = kind == 0 && !propertiesPanel_->showsParams(emb->params);
+    bool formStale = kind == 0 && !propertiesPanel_->showsParams(emb->params);
+    if (kind == 1) {
+        // Boîte X/Y/L/H : reconstruite si la forme a changé (annulation, glisser, flèches...).
+        const auto* current = project_.findObject(*selectedObject_);
+        const auto box = current != nullptr ? vectorBoxMm(*current) : std::nullopt;
+        formStale = box && !propertiesPanel_->showsVectorBox(*selectedObject_, *box);
+    }
     if (kind == inspectedKind_ && id == inspectedId_ && !formStale) {
         return;
     }
@@ -6012,11 +6061,14 @@ void MainWindow::updateInspector() {
                 emb->id, &std::get<document::AutoSatinParams>(emb->params), autoSatinSummary(*emb));
         }
     } else if (kind == 3) {
-        propertiesPanel_->showInfo(
-            tr("%1 objets").arg(multiSelection_.size()),
-            tr("%1 objets vectoriels sélectionnés.\nSupprimer : les retire tous en une seule "
-               "étape annulable. Sélectionnez un seul objet pour le modifier.")
-                .arg(multiSelection_.size()));
+        int withStitches = 0;
+        for (const ObjectId vectorId : multiSelection_) {
+            if (embroideryForVector(vectorId) != nullptr) {
+                ++withStitches;
+            }
+        }
+        propertiesPanel_->showMultiSelection(static_cast<int>(multiSelection_.size()),
+                                             withStitches);
     } else if (kind == 1) {
         const auto* vec = project_.findObject(*selectedObject_);
         int nodes = 0;
@@ -6027,12 +6079,20 @@ void MainWindow::updateInspector() {
                     nodes += static_cast<int>(h.nodes.size());
             }
         }
-        propertiesPanel_->showInfo(
-            vec != nullptr ? QString::fromStdString(vec->name) : tr("Objet vectoriel"),
+        const QString details =
             tr("Objet vectoriel — %1 morceau(x), %2 nœud(s).\n"
                "Créez un objet de broderie (menu Broderie) pour régler la couture.")
                 .arg(vec != nullptr ? vec->paths.size() : 0)
-                .arg(nodes));
+                .arg(nodes);
+        const auto box = vec != nullptr ? vectorBoxMm(*vec) : std::nullopt;
+        if (vec != nullptr && box) {
+            propertiesPanel_->showVectorObject(vec->id, QString::fromStdString(vec->name), details,
+                                               *box);
+        } else {
+            propertiesPanel_->showInfo(vec != nullptr ? QString::fromStdString(vec->name)
+                                                      : tr("Objet vectoriel"),
+                                       details);
+        }
     } else if (kind == 2) {
         const auto* region = project_.segmentation->find(*selectedRegion_);
         if (region != nullptr) {
@@ -6169,17 +6229,32 @@ void MainWindow::buildOrderPanel() {
         }
     });
 
+    orderList_->setAccessibleName(tr("Ordre de couture des objets"));
     auto* buttons = new QHBoxLayout();
-    auto* upBtn = new QPushButton(tr("↑ Monter"), panel);
-    auto* downBtn = new QPushButton(tr("↓ Descendre"), panel);
-    auto* lockBtn = new QPushButton(tr("🔒 Verrou"), panel);
-    connect(upBtn, &QPushButton::clicked, this, &MainWindow::moveObjectUp);
-    connect(downBtn, &QPushButton::clicked, this, &MainWindow::moveObjectDown);
-    connect(lockBtn, &QPushButton::clicked, this, &MainWindow::toggleObjectLock);
-    buttons->addWidget(upBtn);
-    buttons->addWidget(downBtn);
-    buttons->addWidget(lockBtn);
+    orderUpBtn_ = new QPushButton(tr("↑ Monter"), panel);
+    orderUpBtn_->setObjectName(QStringLiteral("button_orderUp"));
+    orderUpBtn_->setShortcut(QKeySequence(Qt::ALT | Qt::Key_Up));
+    orderUpBtn_->setToolTip(tr("Coudre cet objet plus tôt (Alt+Haut)."));
+    orderDownBtn_ = new QPushButton(tr("↓ Descendre"), panel);
+    orderDownBtn_->setObjectName(QStringLiteral("button_orderDown"));
+    orderDownBtn_->setShortcut(QKeySequence(Qt::ALT | Qt::Key_Down));
+    orderDownBtn_->setToolTip(tr("Coudre cet objet plus tard (Alt+Bas)."));
+    // « Figer l'ordre » : l'optimisation de l'ordre ne déplace pas l'objet (ce n'est PAS un
+    // verrou d'édition : il reste déplaçable et modifiable).
+    orderLockBtn_ = new QPushButton(tr("Figer l'ordre"), panel);
+    orderLockBtn_->setObjectName(QStringLiteral("button_orderLock"));
+    orderLockBtn_->setCheckable(true);
+    orderLockBtn_->setToolTip(tr("Figer la position de cet objet dans l'ordre de couture : "
+                                 "« Optimiser l'ordre » ne le déplace pas. L'objet reste "
+                                 "modifiable."));
+    connect(orderUpBtn_, &QPushButton::clicked, this, &MainWindow::moveObjectUp);
+    connect(orderDownBtn_, &QPushButton::clicked, this, &MainWindow::moveObjectDown);
+    connect(orderLockBtn_, &QPushButton::clicked, this, &MainWindow::toggleObjectLock);
+    buttons->addWidget(orderUpBtn_);
+    buttons->addWidget(orderDownBtn_);
+    buttons->addWidget(orderLockBtn_);
     layout->addLayout(buttons);
+    connect(orderList_, &QListWidget::currentRowChanged, this, [this] { updateOrderButtons(); });
 
     orderStrategyCombo_ = new QComboBox(panel);
     orderStrategyCombo_->addItem(tr("Par couleur"),
@@ -6194,7 +6269,9 @@ void MainWindow::buildOrderPanel() {
     layout->addWidget(applyBtn);
 
     orderCostLabel_ = new QLabel(panel);
+    orderCostLabel_->setWordWrap(true);
     layout->addWidget(orderCostLabel_);
+    updateOrderButtons();
 
     orderDock_->setWidget(panel);
     addDockWidget(Qt::LeftDockWidgetArea, orderDock_);
@@ -6206,29 +6283,60 @@ void MainWindow::refreshOrderPanel() {
         return;
     }
     const int previousRow = orderList_->currentRow();
-    orderList_->clear();
     std::vector<optimization::OrderItem> items;
-    for (const auto& obj : project_.embroidery_objects) {
-        QString label = QString::fromStdString(obj.name);
-        if (obj.locked) {
-            label = tr("🔒 ") + label;
+    {
+        // Signaux bloqués : clear() émettait currentRowChanged(-1), qui vidait la sélection de
+        // broderie avant de la rétablir (clignotement de l'inspecteur et du canevas).
+        const QSignalBlocker block(orderList_);
+        orderList_->clear();
+        int rank = 0;
+        for (const auto& obj : project_.embroidery_objects) {
+            // Même libellé que le panneau Document (rang, type, nom, masqué, ordre figé).
+            auto* item = new QListWidgetItem(DocumentPanel::itemText(obj, ++rank));
+            QPixmap swatch(12, 12);
+            swatch.fill(QColor(obj.rgb[0], obj.rgb[1], obj.rgb[2]));
+            item->setIcon(QIcon(swatch));
+            orderList_->addItem(item);
+            items.push_back({obj.id, obj.rgb, embroideryCentroid(obj), obj.locked});
         }
-        auto* item = new QListWidgetItem(label);
-        QPixmap swatch(12, 12);
-        swatch.fill(QColor(obj.rgb[0], obj.rgb[1], obj.rgb[2]));
-        item->setIcon(QIcon(swatch));
-        orderList_->addItem(item);
-        items.push_back({obj.id, obj.rgb, embroideryCentroid(obj), obj.locked});
+        // La ligne courante suit la sélection de broderie si elle existe, sinon l'ancienne.
+        int row = previousRow;
+        if (selectedEmbroidery_) {
+            for (std::size_t i = 0; i < project_.embroidery_objects.size(); ++i) {
+                if (project_.embroidery_objects[i].id == *selectedEmbroidery_) {
+                    row = static_cast<int>(i);
+                    break;
+                }
+            }
+        }
+        if (row >= 0 && row < orderList_->count()) {
+            orderList_->setCurrentRow(row);
+        }
     }
-    if (previousRow >= 0 && previousRow < orderList_->count()) {
-        orderList_->setCurrentRow(previousRow);
-    }
+    updateOrderButtons();
 
     const auto cost = optimization::compute_cost(items);
-    orderCostLabel_->setText(tr("Trajet : %1 mm — %2 changement(s) de fil")
+    orderCostLabel_->setText(tr("Trajet estimé : %1 mm — %2 changement(s) de fil")
                                  .arg(cost.travel_um / 1000.0, 0, 'f', 1)
                                  .arg(cost.color_changes));
+    orderCostLabel_->setToolTip(tr("Distance à vide entre objets successifs (estimation sur les "
+                                   "centres), hors points de couture."));
     setDockAutoVisible(orderDock_, !project_.embroidery_objects.empty());
+}
+
+void MainWindow::updateOrderButtons() {
+    if (orderList_ == nullptr || orderUpBtn_ == nullptr) {
+        return;
+    }
+    // Monter/Descendre grisés aux bornes ; le bouton Figer reflète l'objet de la ligne.
+    const int row = orderList_->currentRow();
+    const int count = static_cast<int>(project_.embroidery_objects.size());
+    orderUpBtn_->setEnabled(row > 0);
+    orderDownBtn_->setEnabled(row >= 0 && row < count - 1);
+    orderLockBtn_->setEnabled(row >= 0 && row < count);
+    const QSignalBlocker block(orderLockBtn_);
+    orderLockBtn_->setChecked(row >= 0 && row < count &&
+                              project_.embroidery_objects[static_cast<std::size_t>(row)].locked);
 }
 
 int MainWindow::stitchTypeIndex(const document::EmbroideryObject& object) {
@@ -7636,6 +7744,8 @@ void MainWindow::updateActions() {
     setEnabledWithReason(autoSatinAct_, singleObject, needOneShape);
     setEnabledWithReason(duplicateSelectionAct_, singleObject, needOneShape);
     setEnabledWithReason(offsetSelectionAct_, singleObject, needOneShape);
+    updateAlignActions();
+    refreshHistoryPanel();
     setEnabledWithReason(fillAngleAct_, currentFillObject() != nullptr,
                          tr("Sélectionnez un objet à remplissage (tatami ou directionnel)."));
     setEnabledWithReason(convertSatinAct_,

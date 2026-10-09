@@ -2,6 +2,7 @@
 #pragma once
 
 #include <QPointer>
+#include <QRectF>
 #include <QWidget>
 
 #include <optional>
@@ -37,6 +38,14 @@ public:
     void showEmbroidery(const document::EmbroideryObject& object);
     // Informations en lecture seule (région, objet vectoriel) ou état vide.
     void showInfo(const QString& title, const QString& details);
+    // Objet vectoriel : informations + position (X, Y du coin bas-gauche) et taille (L, H)
+    // en mm, dans le repère du document (Y vers le haut, comme l'indicateur de curseur).
+    void showVectorObject(ObjectId id, const QString& title, const QString& details, QRectF boxMm);
+    // Vrai si le formulaire montre déjà cette boîte (tolérance 0,02 mm) : sinon MainWindow
+    // le reconstruit (annulation, déplacement au canevas...).
+    [[nodiscard]] bool showsVectorBox(ObjectId id, QRectF boxMm) const;
+    // Multi-sélection : bloc « Appliquer à N objets » (type de points, espacement, angle).
+    void showMultiSelection(int objectCount, int embroideryCount);
     // Indicateur Clean/ManuallyEdited/Dirty (Lot 8.2) : mis à jour à CHAQUE
     // rafraîchissement, y compris quand la sélection elle-même n'a pas changé
     // (une retouche/undo/redo peut faire changer l'état sans changer la
@@ -65,6 +74,12 @@ public:
     void adoptParams(ObjectId id, const document::StitchParams& params);
 
 signals:
+    // Nouvelle boîte demandée pour un objet vectoriel (X, Y, L, H en mm, Y vers le haut).
+    void vectorBoxEdited(ObjectId id, QRectF boxMm);
+    // Bouton « Appliquer à N objets » : `stitchType` -1 = inchangé, 0 = contour cousu,
+    // 1 = tatami ; espacement/angle seulement si leur case est cochée.
+    void applyToSelectionRequested(int stitchType, bool setSpacing, double spacingMm, bool setAngle,
+                                   double angleDeg);
     // `field` : libellé du champ modifié (« Espacement des rangées »), repris dans le
     // nom d'historique et utilisé pour fusionner une rafale en un seul pas d'annulation.
     // Seul ce champ diffère de la copie courante : aucun autre n'est relu ni arrondi.
@@ -105,6 +120,8 @@ private:
     // Copie des paramètres représentés par le formulaire (cf. showsParams).
     document::StitchParams shown_{document::RunningStitchParams{}};
     bool hasShown_{false};
+    std::optional<ObjectId> vectorId_;
+    QRectF vectorBox_;
     WheelGuard* wheelGuard_{nullptr};
     bool building_{false}; // évite d'émettre pendant le peuplement
     // Auto-satin : widgets mis à jour hors reconstruction (cf. setAutoSatinState).
