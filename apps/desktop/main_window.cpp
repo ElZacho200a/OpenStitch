@@ -102,9 +102,11 @@
 #include <QIcon>
 #include <QListWidget>
 #include <QPushButton>
+#include <QScrollArea>
 #include <QSettings>
 #include <QShortcut>
 #include <QSlider>
+#include <QTime>
 #include <QTimer>
 #include <QToolBar>
 #include <QToolButton>
@@ -411,6 +413,19 @@ MainWindow::MainWindow() {
          {documentDock_, propertiesDock_, workflowDock_, orderDock_, filterDock_, analysisDock_}) {
         panelsMenu_->addAction(d->toggleViewAction());
     }
+    // Filtres d'affichage en onglet derrière les propriétés : l'inspecteur garde toute la
+    // hauteur de la colonne de droite au lieu de la partager à parts égales.
+    tabifyDockWidget(propertiesDock_, filterDock_);
+    propertiesDock_->raise();
+    panelsMenu_->addSeparator();
+    auto* resetLayoutAct = panelsMenu_->addAction(tr("&Réinitialiser la disposition"));
+    resetLayoutAct->setObjectName(QStringLiteral("action_resetLayout"));
+    resetLayoutAct->setToolTip(tr("Remet les panneaux et les barres à leur place d'origine."));
+    connect(resetLayoutAct, &QAction::triggered, this, [this] {
+        if (!defaultWindowState_.isEmpty()) {
+            restoreState(defaultWindowState_);
+        }
+    });
     buildMainToolbar();
     addToolBarBreak(); // la barre contextuelle sur sa propre rangée
     buildContextToolbar();
@@ -429,6 +444,11 @@ MainWindow::MainWindow() {
             d->setAccessibleName(d->windowTitle());
         }
     }
+
+    // Tailles par défaut : le canevas reste prioritaire (les panneaux ne prennent pas la
+    // largeur que leur contenu réclamerait), puis capture pour « Réinitialiser la disposition ».
+    resizeDocks({documentDock_, propertiesDock_}, {260, 320}, Qt::Horizontal);
+    defaultWindowState_ = saveState();
 
     // Restaure la disposition de l'interface (préférences UI, pas de données
     // métier — celles-ci restent dans le .osp). Les panneaux vides seront
@@ -5705,7 +5725,14 @@ void MainWindow::buildPropertiesPanel() {
     propertiesDock_->setObjectName(QStringLiteral("propertiesDock"));
     propertiesDock_->setAllowedAreas(Qt::LeftDockWidgetArea | Qt::RightDockWidgetArea);
     propertiesPanel_ = new PropertiesPanel(propertiesDock_);
-    propertiesDock_->setWidget(propertiesPanel_);
+    // Zone défilante : un inspecteur de 20 champs ne doit pas imposer sa hauteur à la
+    // fenêtre (hauteur minimale mesurée : 934 px avec un satin sélectionné).
+    auto* propertiesScroll = new QScrollArea(propertiesDock_);
+    propertiesScroll->setWidgetResizable(true);
+    propertiesScroll->setFrameShape(QFrame::NoFrame);
+    propertiesScroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    propertiesScroll->setWidget(propertiesPanel_);
+    propertiesDock_->setWidget(propertiesScroll);
     addDockWidget(Qt::RightDockWidgetArea, propertiesDock_);
 
     // Édition d'un paramètre -> commande annulable -> régénération.
@@ -6144,7 +6171,12 @@ void MainWindow::buildFilterPanel() {
     layout->addWidget(colorContainer);
 
     layout->addStretch(1);
-    filterDock_->setWidget(panel);
+    auto* filterScroll = new QScrollArea(filterDock_);
+    filterScroll->setWidgetResizable(true);
+    filterScroll->setFrameShape(QFrame::NoFrame);
+    filterScroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    filterScroll->setWidget(panel);
+    filterDock_->setWidget(filterScroll);
     addDockWidget(Qt::RightDockWidgetArea, filterDock_);
     filterDock_->hide();
 }
@@ -6531,7 +6563,10 @@ void MainWindow::onAutosaveTick() {
         // que saveProjectToPath pour un échec d'enregistrement normal.
         statusBar()->showMessage(tr("Sauvegarde automatique impossible : %1")
                                      .arg(QString::fromStdString(written.error().message)));
+        return;
     }
+    const QString when = QTime::currentTime().toString(QStringLiteral("HH:mm"));
+    statusBar()->showMessage(tr("Sauvegarde automatique à %1").arg(when), 4000);
 }
 
 void MainWindow::checkAutosaveRecovery() {

@@ -605,22 +605,45 @@ void PropertiesPanel::showEmbroidery(const document::EmbroideryObject& object) {
                 guideAdd->setToolTip(tr("Tracez un trait : sa position ancre le guide et sa "
                                         "direction fixe l'angle des fils (D)."));
 
+                // Intertitres : 20 champs à plat sont illisibles ; on les regroupe par sujet.
+                const auto section = [this, form](const QString& title) {
+                    auto* heading = new QLabel(title, body_);
+                    QFont f = heading->font();
+                    f.setBold(true);
+                    heading->setFont(f);
+                    heading->setContentsMargins(0, 8, 0, 0);
+                    form->addRow(heading);
+                };
                 form->addRow(QString(), summary);
+                section(tr("Remplissage"));
                 form->addRow(tr("Espacement :"), spacing);
                 form->addRow(tr("Seuil de fractionnement (Lmax) :"), threshold);
                 form->addRow(tr("Longueur des segments (y) :"), splitLen);
                 form->addRow(tr("Fractionnement :"), splitCombo);
-                form->addRow(tr("Points courts (virages) :"), shortCombo);
+                form->addRow(tr("Points courts dans les virages :"), shortCombo);
+                section(tr("Compensation"));
                 form->addRow(tr("Compensation de tirage :"), comp);
+                form->addRow(tr("Compensation gauche :"), pullL);
+                form->addRow(tr("Compensation droite :"), pullR);
+                section(tr("Sous-couches"));
                 form->addRow(QString(), underlay);
                 form->addRow(QString(), edgeU);
                 form->addRow(QString(), zigU);
-                form->addRow(tr("Compensation gauche :"), pullL);
-                form->addRow(tr("Compensation droite :"), pullR);
-                form->addRow(tr("Terminaison (début) :"), capStart);
-                form->addRow(tr("Terminaison (fin) :"), capEnd);
-                form->addRow(tr("Fixation (début) :"), lockStart);
-                form->addRow(tr("Fixation (fin) :"), lockEnd);
+                section(tr("Extrémités"));
+                form->addRow(tr("Forme du bout (début) :"), capStart);
+                form->addRow(tr("Forme du bout (fin) :"), capEnd);
+                form->addRow(tr("Point d'arrêt (début) :"), lockStart);
+                form->addRow(tr("Point d'arrêt (fin) :"), lockEnd);
+                section(tr("Orientation des fils"));
+                if (p.guides.empty()) {
+                    auto* none = new QLabel(tr("Aucun guide : les fils sont perpendiculaires à "
+                                               "l'axe de la forme. Placez un guide pour les "
+                                               "orienter autrement."),
+                                            body_);
+                    none->setWordWrap(true);
+                    none->setEnabled(false);
+                    form->addRow(none);
+                }
                 form->addRow(tr("Guides d'orientation :"), guideList);
                 form->addRow(tr("Angle du guide :"), guideAngle);
                 form->addRow(QString(), guideAbs);

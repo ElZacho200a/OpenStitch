@@ -654,6 +654,9 @@ private:
     QAction* zoomOutAct_{nullptr};
     QAction* fitCanvasAct_{nullptr};
     QAction* duplicateSelectionAct_{nullptr};
+    // Disposition des panneaux d'origine (capturée avant la restauration des
+    // préférences) : « Réinitialiser la disposition ».
+    QByteArray defaultWindowState_;
     QAction* offsetSelectionAct_{nullptr};
 
     QAction* saveProjectAct_{nullptr};
