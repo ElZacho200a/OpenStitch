@@ -5,6 +5,7 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <limits>
 #include <optional>
 #include <unordered_map>
 #include <utility>
@@ -64,7 +65,7 @@ public:
         project.segmentation = std::move(previous_);
         previous_.reset();
     }
-    [[nodiscard]] std::string name() const override { return "Segmentation"; }
+    [[nodiscard]] std::string name() const override { return "Segmenter l'image"; }
 
 private:
     std::optional<segmentation::Segmentation> next_;
@@ -91,7 +92,7 @@ public:
         seg.region_slots[absorb_.value - 1] = absorbedRegion_;
         seg.find(keep_)->pixel_count -= changed_.size();
     }
-    [[nodiscard]] std::string name() const override { return "Fusion de régions"; }
+    [[nodiscard]] std::string name() const override { return "Fusionner des régions"; }
 
 private:
     RegionId keep_;
@@ -164,7 +165,7 @@ public:
 
     void apply(document::Project& project) override { project.vector_objects.push_back(object_); }
     void revert(document::Project& project) override { project.vector_objects.pop_back(); }
-    [[nodiscard]] std::string name() const override { return "Objet vectoriel"; }
+    [[nodiscard]] std::string name() const override { return "Ajouter un objet vectoriel"; }
 
 private:
     document::VectorObject object_;
@@ -181,7 +182,7 @@ public:
         project.embroidery_objects.push_back(object_);
     }
     void revert(document::Project& project) override { project.embroidery_objects.pop_back(); }
-    [[nodiscard]] std::string name() const override { return "Objet de broderie"; }
+    [[nodiscard]] std::string name() const override { return "Ajouter un objet de broderie"; }
 
 private:
     document::EmbroideryObject object_;
@@ -304,6 +305,34 @@ private:
     bool applied_{false};
 };
 
+// Remplace TOUTE la géométrie d'un objet vectoriel (instantané pour un revert exact). Sert à
+// rendre à un objet le contour brut de sa région de segmentation, par exemple quand le
+// recouvrement des tatamis voisins y avait été intégré et ne convient pas à un satin.
+class SetVectorPathsCommand final : public ICommand {
+public:
+    SetVectorPathsCommand(ObjectId object, std::vector<geometry::PathSet> paths, std::string label)
+        : object_(object), paths_(std::move(paths)), label_(std::move(label)) {}
+
+    void apply(document::Project& project) override {
+        if (auto* object = project.findObject(object_)) {
+            before_ = object->paths;
+            object->paths = paths_;
+        }
+    }
+    void revert(document::Project& project) override {
+        if (auto* object = project.findObject(object_)) {
+            object->paths = before_;
+        }
+    }
+    [[nodiscard]] std::string name() const override { return label_; }
+
+private:
+    ObjectId object_;
+    std::vector<geometry::PathSet> paths_;
+    std::string label_;
+    std::vector<geometry::PathSet> before_;
+};
+
 // Déplace un objet vectoriel ENTIER (tous les morceaux, tous les trous)
 // d'un même delta — glisser la forme au lieu de déplacer chaque nœud un par
 // un (défaut remonté en usage réel : aucune commande n'existait pour ça,
@@ -350,6 +379,19 @@ private:
                     }
                 }
             }
+            // Idem pour les ancres de guides d'un auto-satin (et ses points
+            // d'entrée/sortie), exprimées dans le repère de la région suivie.
+            if (auto* sat = std::get_if<document::AutoSatinParams>(&emb.params)) {
+                for (auto& guide : sat->guides) {
+                    guide.anchor = guide.anchor + delta;
+                }
+                if (sat->entry_point) {
+                    sat->entry_point = *sat->entry_point + delta;
+                }
+                if (sat->exit_point) {
+                    sat->exit_point = *sat->exit_point + delta;
+                }
+            }
         }
     }
 
@@ -367,7 +409,8 @@ private:
 class ScaleVectorObjectCommand final : public ICommand {
 public:
     ScaleVectorObjectCommand(ObjectId object, Vec2um anchor, double scaleX, double scaleY)
-        : object_(object), anchor_(anchor), scaleX_(scaleX), scaleY_(scaleY) {}
+        : object_(object), anchor_(anchor), scaleX_(std::isfinite(scaleX) ? scaleX : 1.0),
+          scaleY_(std::isfinite(scaleY) ? scaleY : 1.0) {}
 
     void apply(document::Project& project) override {
         auto* object = project.findObject(object_);
@@ -388,6 +431,7 @@ public:
         // Guides/ruptures d'un remplissage directionnel : mis à l'échelle avec
         // la forme ; instantané pour un revert exact (cf. before_).
         directionalBefore_.clear();
+        autoSatinBefore_.clear();
         for (auto& emb : project.embroidery_objects) {
             if (emb.source_vector != object_) {
                 continue;
@@ -402,11 +446,31 @@ public:
                     }
                 }
             }
+            if (auto* sat = std::get_if<document::AutoSatinParams>(&emb.params)) {
+                autoSatinBefore_.emplace_back(emb.id, *sat);
+                for (auto& guide : sat->guides) {
+                    guide.anchor = scalePoint(guide.anchor);
+                    guide.angle = scaleGuideAngle(guide.angle, guide.absolute);
+                }
+                if (sat->entry_point) {
+                    sat->entry_point = scalePoint(*sat->entry_point);
+                }
+                if (sat->exit_point) {
+                    sat->exit_point = scalePoint(*sat->exit_point);
+                }
+            }
         }
     }
     void revert(document::Project& project) override {
         if (auto* object = project.findObject(object_)) {
             object->paths = before_;
+        }
+        for (const auto& [id, params] : autoSatinBefore_) {
+            if (auto* emb = project.findEmbroidery(id)) {
+                if (auto* sat = std::get_if<document::AutoSatinParams>(&emb->params)) {
+                    *sat = params;
+                }
+            }
         }
         for (const auto& [id, params] : directionalBefore_) {
             if (auto* emb = project.findEmbroidery(id)) {
@@ -419,12 +483,37 @@ public:
     [[nodiscard]] std::string name() const override { return "Redimensionnement de forme"; }
 
 private:
+    [[nodiscard]] static std::int32_t clampToInt32(double v) {
+        constexpr double kMax = static_cast<double>(std::numeric_limits<std::int32_t>::max());
+        constexpr double kMin = static_cast<double>(std::numeric_limits<std::int32_t>::min());
+        return static_cast<std::int32_t>(std::lround(std::clamp(v, kMin, kMax)));
+    }
     [[nodiscard]] Vec2um scalePoint(Vec2um p) const {
         const double dx = static_cast<double>((p.x - anchor_.x).value);
         const double dy = static_cast<double>((p.y - anchor_.y).value);
         return Vec2um{
-            Micrometers{anchor_.x.value + static_cast<std::int32_t>(std::lround(dx * scaleX_))},
-            Micrometers{anchor_.y.value + static_cast<std::int32_t>(std::lround(dy * scaleY_))}};
+            Micrometers{clampToInt32(static_cast<double>(anchor_.x.value) + dx * scaleX_)},
+            Micrometers{clampToInt32(static_cast<double>(anchor_.y.value) + dy * scaleY_)}};
+    }
+    // Angle d'un guide d'auto-satin après mise à l'échelle (éventuellement anisotrope ou en
+    // miroir). Absolu : la direction (cos a, sin a) est transformée comme un vecteur.
+    // Relatif (écart à la perpendiculaire de l'axe, qui suit déjà la forme) : un miroir
+    // (déterminant négatif) inverse le sens de rotation, donc le signe de l'écart.
+    [[nodiscard]] Angle scaleGuideAngle(Angle a, bool absolute) const {
+        constexpr double kPi = 3.14159265358979323846;
+        const auto wrapHalf = [&](double v) {
+            v = std::fmod(v, kPi);
+            return v < 0.0 ? v + kPi : v;
+        };
+        if (absolute) {
+            const double x = std::cos(a.radians) * scaleX_;
+            const double y = std::sin(a.radians) * scaleY_;
+            if (x == 0.0 && y == 0.0) {
+                return a;
+            }
+            return Angle{wrapHalf(std::atan2(y, x))};
+        }
+        return scaleX_ * scaleY_ < 0.0 ? Angle{wrapHalf(-a.radians)} : a;
     }
     [[nodiscard]] std::optional<Vec2um> scaleTangent(std::optional<Vec2um> t) const {
         if (!t) {
@@ -445,6 +534,7 @@ private:
     double scaleY_;
     std::vector<geometry::PathSet> before_;
     std::vector<std::pair<ObjectId, document::DirectionalFillParams>> directionalBefore_;
+    std::vector<std::pair<ObjectId, document::AutoSatinParams>> autoSatinBefore_;
 };
 
 // Déplace un nœud d'un objet vectoriel.
@@ -486,7 +576,7 @@ public:
 
     void apply(document::Project& project) override { setHandle(project, newHandle_); }
     void revert(document::Project& project) override { setHandle(project, oldHandle_); }
-    [[nodiscard]] std::string name() const override { return "Poignée Bézier"; }
+    [[nodiscard]] std::string name() const override { return "Déplacer une poignée Bézier"; }
 
 private:
     void setHandle(document::Project& project, std::optional<Vec2um> handle) {
@@ -528,7 +618,7 @@ public:
             }
         }
     }
-    [[nodiscard]] std::string name() const override { return "Type de nœud"; }
+    [[nodiscard]] std::string name() const override { return "Changer le type de nœud"; }
 
 private:
     ObjectId object_;
@@ -704,7 +794,7 @@ public:
         }
         previous_.clear();
     }
-    [[nodiscard]] std::string name() const override { return "Conversion en tatami"; }
+    [[nodiscard]] std::string name() const override { return "Convertir en tatami"; }
 
 private:
     std::vector<ObjectId> targets_;
@@ -867,7 +957,7 @@ public:
         project.canvas = canvas_;
     }
     void revert(document::Project& project) override { project.canvas = previous_; }
-    [[nodiscard]] std::string name() const override { return "Taille du cadre"; }
+    [[nodiscard]] std::string name() const override { return "Modifier la taille du cadre"; }
 
 private:
     document::Canvas canvas_;
@@ -893,7 +983,7 @@ public:
             obj->params = previous_;
         }
     }
-    [[nodiscard]] std::string name() const override { return "Paramètres de couture"; }
+    [[nodiscard]] std::string name() const override { return "Modifier les paramètres de couture"; }
 
 private:
     ObjectId id_;
@@ -923,7 +1013,9 @@ public:
             }
         }
     }
-    [[nodiscard]] std::string name() const override { return "Orientation du remplissage"; }
+    [[nodiscard]] std::string name() const override {
+        return "Modifier l'orientation du remplissage";
+    }
 
 private:
     ObjectId id_;
@@ -970,6 +1062,46 @@ private:
     document::DirectionalFillParams params_;
     std::string label_;
     document::DirectionalFillParams previous_{};
+    bool applied_{false};
+};
+
+// Édition des paramètres d'un AUTO-SATIN (espacement, fractionnement, finitions)
+// et de ses guides d'orientation depuis l'inspecteur ou le canevas. Les nouveaux
+// paramètres complets sont construits par l'appelant ; la commande n'agit que si
+// l'objet porte TOUJOURS un auto-satin (sinon no-op). `label` nomme le geste
+// dans l'historique (« Ajouter un guide d'orientation »…). Annulation exacte.
+class EditAutoSatinCommand final : public ICommand {
+public:
+    EditAutoSatinCommand(ObjectId id, document::AutoSatinParams params, std::string label)
+        : id_(id), params_(std::move(params)), label_(std::move(label)) {}
+
+    void apply(document::Project& project) override {
+        applied_ = false;
+        if (auto* obj = project.findEmbroidery(id_)) {
+            if (auto* sat = std::get_if<document::AutoSatinParams>(&obj->params)) {
+                previous_ = *sat;
+                *sat = params_;
+                applied_ = true;
+            }
+        }
+    }
+    void revert(document::Project& project) override {
+        if (!applied_) {
+            return;
+        }
+        if (auto* obj = project.findEmbroidery(id_)) {
+            if (auto* sat = std::get_if<document::AutoSatinParams>(&obj->params)) {
+                *sat = previous_;
+            }
+        }
+    }
+    [[nodiscard]] std::string name() const override { return label_; }
+
+private:
+    ObjectId id_;
+    document::AutoSatinParams params_;
+    std::string label_;
+    document::AutoSatinParams previous_{};
     bool applied_{false};
 };
 
@@ -1141,7 +1273,7 @@ public:
     void revert(document::Project& project) override {
         detail::end_stitch_edit(project, id_, base_index_, ctx_);
     }
-    [[nodiscard]] std::string name() const override { return "Type de point"; }
+    [[nodiscard]] std::string name() const override { return "Changer le type de point"; }
 
 private:
     ObjectId id_;
@@ -1206,7 +1338,7 @@ public:
     void revert(document::Project& project) override {
         detail::end_stitch_edit(project, id_, base_index_, ctx_);
     }
-    [[nodiscard]] std::string name() const override { return "Coupe de fil"; }
+    [[nodiscard]] std::string name() const override { return "Modifier la coupe de fil"; }
 
 private:
     ObjectId id_;
@@ -1703,7 +1835,7 @@ public:
 
     void apply(document::Project& project) override { setHandle(project, newHandle_); }
     void revert(document::Project& project) override { setHandle(project, oldHandle_); }
-    [[nodiscard]] std::string name() const override { return "Poignée de rail satin"; }
+    [[nodiscard]] std::string name() const override { return "Déplacer une poignée de rail satin"; }
 
 private:
     void setHandle(document::Project& project, std::optional<Vec2um> handle) {
@@ -1747,7 +1879,9 @@ public:
             }
         }
     }
-    [[nodiscard]] std::string name() const override { return "Type de nœud de rail satin"; }
+    [[nodiscard]] std::string name() const override {
+        return "Changer le type de nœud de rail satin";
+    }
 
 private:
     ObjectId id_;

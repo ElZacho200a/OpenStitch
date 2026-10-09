@@ -9,6 +9,7 @@
 #include "openstitch/document/project.hpp"
 #include "openstitch/stitch_generation/overrides.hpp"
 
+class QLineEdit;
 class QListWidget;
 class QTabWidget;
 class QTreeWidget;
@@ -52,7 +53,10 @@ private:
     // plus d'une ; un objet seul reste un simple item de premier niveau,
     // visuellement identique à l'ancienne liste plate.
     QTreeWidget* objectsList_{nullptr};
+    QLineEdit* filterEdit_{nullptr};
     QListWidget* regionsList_{nullptr};
+    // Masque les lignes qui ne contiennent pas le texte du champ de recherche.
+    void applyFilter();
     bool syncing_{false}; // évite la boucle sélection -> signal -> sélection
 };
 

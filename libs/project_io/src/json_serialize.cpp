@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <array>
 #include <limits>
+#include <optional>
 #include <unordered_map>
 
 namespace openstitch::project_io::detail {
@@ -260,6 +261,42 @@ json params_to_json(const document::StitchParams& params) {
                      {"handmade", p.handmade},
                      {"handmadeIntensity", p.handmade_intensity},
                      {"seed", p.seed}};
+            } else if constexpr (std::is_same_v<T, document::AutoSatinParams>) {
+                json guides = json::array();
+                for (const auto& g : p.guides) {
+                    guides.push_back({{"x", g.anchor.x.value},
+                                      {"y", g.anchor.y.value},
+                                      {"angle", g.angle.radians},
+                                      {"absolute", g.absolute}});
+                }
+                j = {{"type", "autoSatin"},
+                     {"guides", std::move(guides)},
+                     {"spacing", p.spacing.value},
+                     {"splitStitch", static_cast<int>(p.split_stitch)},
+                     {"splitThreshold", p.split_threshold.value},
+                     {"splitLength", p.split_length.value},
+                     {"shortStitch", static_cast<int>(p.short_stitch)},
+                     {"pullCompensation", p.pull_compensation.value},
+                     {"centerUnderlay", p.center_underlay},
+                     {"underlayEdge", p.underlay_edge},
+                     {"underlayZigzag", p.underlay_zigzag},
+                     {"pullLeft", p.pull_left.value},
+                     {"pullRight", p.pull_right.value},
+                     {"pushStart", p.push_start.value},
+                     {"pushEnd", p.push_end.value},
+                     {"capStart", static_cast<int>(p.cap_start)},
+                     {"capEnd", static_cast<int>(p.cap_end)},
+                     {"lockStart", static_cast<int>(p.lock_start)},
+                     {"lockEnd", static_cast<int>(p.lock_end)},
+                     {"lockLength", p.lock_length.value},
+                     {"lockPasses", p.lock_passes}};
+                if (p.entry_point) {
+                    j["entryPoint"] = {{"x", p.entry_point->x.value},
+                                       {"y", p.entry_point->y.value}};
+                }
+                if (p.exit_point) {
+                    j["exitPoint"] = {{"x", p.exit_point->x.value}, {"y", p.exit_point->y.value}};
+                }
             }
             return j;
         },
@@ -411,6 +448,101 @@ Result<document::StitchParams> params_from_json(const json& j) {
                 return std::unexpected(seed.error());
             }
             p.seed = *seed;
+        }
+        return document::StitchParams{p};
+    }
+    if (type == "autoSatin") {
+        // Auto-satin : toutes les clés sauf `type` sont optionnelles (défauts du
+        // modèle), pour qu'un fichier écrit par une version ultérieure reste lisible.
+        document::AutoSatinParams p;
+        // Un fichier édité à la main ou corrompu ne doit jamais figer la génération
+        // (espacement nul), tronquer une coordonnée ni fabriquer une énumération invalide.
+        const auto badNumber = [](const json& v, const char* name, std::int64_t lo,
+                                  std::int64_t hi) -> std::optional<std::string> {
+            if (v.is_null()) {
+                return std::nullopt; // absent : valeur par défaut
+            }
+            if (!v.is_number_integer()) {
+                return std::string("autoSatin : « ") + name + " » doit être un entier";
+            }
+            const auto n =
+                v.is_number_unsigned()
+                    ? static_cast<std::int64_t>(std::min<std::uint64_t>(
+                          v.get<std::uint64_t>(),
+                          static_cast<std::uint64_t>(std::numeric_limits<std::int64_t>::max())))
+                    : v.get<std::int64_t>();
+            if (n < lo || n > hi) {
+                return std::string("autoSatin : « ") + name + " » hors limites";
+            }
+            return std::nullopt;
+        };
+        constexpr std::int64_t kCoordMax = 1'000'000'000;
+        const auto field = [&](const char* name) {
+            return j.contains(name) ? j.at(name) : json(nullptr);
+        };
+        struct Range {
+            const char* name;
+            std::int64_t lo, hi;
+        };
+        for (const Range& r :
+             {Range{"spacing", 50, 5'000}, Range{"splitThreshold", 500, 1'000'000},
+              Range{"splitLength", 500, 1'000'000}, Range{"splitStitch", 0, 3},
+              Range{"shortStitch", 0, 3}, Range{"capStart", 0, 3}, Range{"capEnd", 0, 3},
+              Range{"lockStart", 0, 3}, Range{"lockEnd", 0, 3}, Range{"lockPasses", 0, 10},
+              Range{"lockLength", 0, 20'000}, Range{"pullCompensation", -5'000, 5'000},
+              Range{"pullLeft", -5'000, 5'000}, Range{"pullRight", -5'000, 5'000},
+              Range{"pushStart", -5'000, 5'000}, Range{"pushEnd", -5'000, 5'000}}) {
+            if (const auto err = badNumber(field(r.name), r.name, r.lo, r.hi)) {
+                return fail(ErrorCategory::InvalidFile, *err);
+            }
+        }
+        if (j.contains("guides")) {
+            for (const auto& g : j.at("guides")) {
+                for (const char* axis : {"x", "y"}) {
+                    if (const auto err = badNumber(g.contains(axis) ? g.at(axis) : json(nullptr),
+                                                   axis, -kCoordMax, kCoordMax)) {
+                        return fail(ErrorCategory::InvalidFile, *err);
+                    }
+                }
+            }
+        }
+        if (j.contains("guides")) {
+            for (const auto& g : j.at("guides")) {
+                document::AutoSatinGuide guide;
+                guide.anchor = Vec2um{Micrometers{g.at("x")}, Micrometers{g.at("y")}};
+                guide.angle = Angle{g.value("angle", 0.0)};
+                guide.absolute = g.value("absolute", false);
+                p.guides.push_back(guide);
+            }
+        }
+        p.spacing = Micrometers{j.value("spacing", 400)};
+        p.split_stitch = static_cast<document::SatinSplit>(
+            j.value("splitStitch", static_cast<int>(p.split_stitch)));
+        p.split_threshold = Micrometers{j.value("splitThreshold", 7'000)};
+        p.split_length = Micrometers{j.value("splitLength", 4'000)};
+        p.short_stitch = static_cast<document::SatinShortStitch>(
+            j.value("shortStitch", static_cast<int>(p.short_stitch)));
+        p.pull_compensation = Micrometers{j.value("pullCompensation", 0)};
+        p.center_underlay = j.value("centerUnderlay", true);
+        p.underlay_edge = j.value("underlayEdge", false);
+        p.underlay_zigzag = j.value("underlayZigzag", false);
+        p.pull_left = Micrometers{j.value("pullLeft", 0)};
+        p.pull_right = Micrometers{j.value("pullRight", 0)};
+        p.push_start = Micrometers{j.value("pushStart", 0)};
+        p.push_end = Micrometers{j.value("pushEnd", 0)};
+        p.cap_start = static_cast<document::SatinCap>(j.value("capStart", 0));
+        p.cap_end = static_cast<document::SatinCap>(j.value("capEnd", 0));
+        p.lock_start = static_cast<document::SatinLock>(j.value("lockStart", 0));
+        p.lock_end = static_cast<document::SatinLock>(j.value("lockEnd", 0));
+        p.lock_length = Micrometers{j.value("lockLength", 800)};
+        p.lock_passes = j.value("lockPasses", 2);
+        if (j.contains("entryPoint")) {
+            p.entry_point = Vec2um{Micrometers{j.at("entryPoint").at("x")},
+                                   Micrometers{j.at("entryPoint").at("y")}};
+        }
+        if (j.contains("exitPoint")) {
+            p.exit_point = Vec2um{Micrometers{j.at("exitPoint").at("x")},
+                                  Micrometers{j.at("exitPoint").at("y")}};
         }
         return document::StitchParams{p};
     }

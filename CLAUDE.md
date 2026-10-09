@@ -11,8 +11,9 @@ Widgets for the desktop UI only, Apache-2.0. The core never depends on Qt or on
 any GPL code (verified by a Linux CI build of the core+CLI without Qt).
 
 Full documentation lives in `docs/source/*.md` (one chapter per topic) and is
-compiled into a PDF via `docs/scripts/build-docs.ps1`. Read `docs/source/satin.md`
-before touching anything satin-related — it's the detailed technical reference
+compiled into a PDF via `docs/scripts/build-docs.ps1`. Read `docs/source/satin-squelette.md`
+(auto-satin) and `docs/source/satin.md` (manual two-rail satin, partly archived)
+before touching anything satin-related — they're the detailed technical reference
 for that subsystem (skeleton extraction, junction anchoring, routing, guides),
 including root-cause writeups for every non-trivial bug fixed there.
 
@@ -121,7 +122,7 @@ table and "where do I change X" shortcuts):
 | `document` | project/object data model |
 | `stitch` | machine commands, stats |
 | `stitch_generation` | running/tatami/satin point generation, routing, manual overrides |
-| `auto_satin` | skeleton extraction → satinability → auto rails/rungs, multi-section networks |
+| `auto_satin` | skeleton primitives, satinability, skeleton-guided auto-satin (axis, oriented chords, guides) |
 | `stitch_analysis` | pre-export validation rules |
 | `optimization` | stitch order |
 | `autodigitize` | image → editable objects automatically |
@@ -171,7 +172,7 @@ immutable snapshots so it stays compatible with a future background-task move.
   DST round-trip is checked byte-for-byte.
 - Golden SVGs under `tests/golden/` are diagnostic references, never rewritten by
   tests — regenerate explicitly via `openstitch-cli stitchdebug` /
-  `auto-satin-debug --output-svg`.
+  `satin-auto-debug --output-svg`.
 - To add a test: a `TEST_CASE` in the module's `test_*.cpp`, or a new file wired
   into that test dir's `CMakeLists.txt`. For desktop: a function in an existing
   QTest suite, or a new file + `openstitch_add_qt_test(...)`.

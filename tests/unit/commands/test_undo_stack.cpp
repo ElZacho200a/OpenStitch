@@ -2,6 +2,9 @@
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 
+#include <cmath>
+#include <memory>
+#include <numbers>
 #include <variant>
 
 #include "openstitch/commands/project_commands.hpp"
@@ -1799,4 +1802,173 @@ TEST_CASE("SetSegmentationCommand : cycles undo/redo restituent exactement A pui
         REQUIRE(stack.redo(project));
     }
     CHECK(project.segmentation->labels == bCopy.labels);
+}
+
+namespace {
+
+document::Project auto_satin_project() {
+    document::Project project;
+    document::VectorObject object;
+    object.id = project.object_ids.next();
+    geometry::Path outer;
+    outer.closed = true;
+    for (const auto& [x, y] : {std::pair{0, 0}, {30'000, 0}, {30'000, 4'000}, {0, 4'000}}) {
+        outer.nodes.push_back(geometry::PathNode{Vec2um{Micrometers{x}, Micrometers{y}},
+                                                 geometry::NodeType::Corner, std::nullopt,
+                                                 std::nullopt});
+    }
+    object.paths.push_back(geometry::PathSet{outer, {}});
+    project.vector_objects.push_back(object);
+
+    document::AutoSatinParams sp;
+    sp.guides.push_back({Vec2um{Micrometers{10'000}, Micrometers{2'000}}, Angle{0.3}, false});
+    sp.guides.push_back({Vec2um{Micrometers{20'000}, Micrometers{2'000}}, Angle{-0.4}, true});
+    sp.entry_point = Vec2um{Micrometers{100}, Micrometers{2'000}};
+    sp.exit_point = Vec2um{Micrometers{29'900}, Micrometers{2'000}};
+    document::EmbroideryObject emb;
+    emb.id = project.object_ids.next();
+    emb.source_vector = object.id;
+    emb.params = sp;
+    project.embroidery_objects.push_back(emb);
+    return project;
+}
+
+} // namespace
+
+TEST_CASE("TranslateVectorObjectCommand : les guides d'un auto-satin suivent la forme") {
+    auto project = auto_satin_project();
+    UndoStack stack;
+    const ObjectId vecId = project.vector_objects[0].id;
+    const auto before = std::get<document::AutoSatinParams>(project.embroidery_objects[0].params);
+
+    stack.execute(std::make_unique<TranslateVectorObjectCommand>(
+                      vecId, Vec2um{Micrometers{700}, Micrometers{-300}}),
+                  project);
+    const auto& moved = std::get<document::AutoSatinParams>(project.embroidery_objects[0].params);
+    CHECK(moved.guides[0].anchor == Vec2um{Micrometers{10'700}, Micrometers{1'700}});
+    CHECK(moved.guides[1].anchor == Vec2um{Micrometers{20'700}, Micrometers{1'700}});
+    CHECK(moved.guides[0].angle.radians == before.guides[0].angle.radians); // l'angle ne change pas
+    CHECK(*moved.entry_point == Vec2um{Micrometers{800}, Micrometers{1'700}});
+    CHECK(*moved.exit_point == Vec2um{Micrometers{30'600}, Micrometers{1'700}});
+
+    CHECK(stack.undo(project));
+    CHECK(std::get<document::AutoSatinParams>(project.embroidery_objects[0].params) == before);
+}
+
+TEST_CASE(
+    "ScaleVectorObjectCommand : les guides d'un auto-satin sont mis a l'echelle, undo exact") {
+    auto project = auto_satin_project();
+    UndoStack stack;
+    const ObjectId vecId = project.vector_objects[0].id;
+    const auto before = std::get<document::AutoSatinParams>(project.embroidery_objects[0].params);
+
+    stack.execute(std::make_unique<ScaleVectorObjectCommand>(
+                      vecId, Vec2um{Micrometers{0}, Micrometers{0}}, 1.5, 0.5),
+                  project);
+    const auto scaled = std::get<document::AutoSatinParams>(project.embroidery_objects[0].params);
+    CHECK(scaled.guides[0].anchor == Vec2um{Micrometers{15'000}, Micrometers{1'000}});
+    CHECK(*scaled.exit_point == Vec2um{Micrometers{44'850}, Micrometers{1'000}});
+
+    CHECK(stack.undo(project));
+    CHECK(std::get<document::AutoSatinParams>(project.embroidery_objects[0].params) == before);
+    CHECK(stack.redo(project));
+    CHECK(std::get<document::AutoSatinParams>(project.embroidery_objects[0].params) == scaled);
+}
+
+TEST_CASE("ScaleVectorObjectCommand : l'angle d'un guide absolu suit une echelle anisotrope") {
+    auto project = auto_satin_project();
+    UndoStack stack;
+    const ObjectId vecId = project.vector_objects[0].id;
+    auto& guide =
+        std::get<document::AutoSatinParams>(project.embroidery_objects[0].params).guides[0];
+    guide.absolute = true;
+    guide.angle = Angle{std::numbers::pi / 4.0};
+    const auto before = std::get<document::AutoSatinParams>(project.embroidery_objects[0].params);
+
+    // x double, y inchange : la direction 45 deg devient atan(1 / 2).
+    stack.execute(std::make_unique<ScaleVectorObjectCommand>(
+                      vecId, Vec2um{Micrometers{0}, Micrometers{0}}, 2.0, 1.0),
+                  project);
+    const auto& scaled =
+        std::get<document::AutoSatinParams>(project.embroidery_objects[0].params).guides[0];
+    CHECK(scaled.angle.radians == Catch::Approx(std::atan(0.5)).margin(1e-9));
+
+    // Miroir en x : 45 deg devient 135 deg.
+    stack.execute(std::make_unique<ScaleVectorObjectCommand>(
+                      vecId, Vec2um{Micrometers{0}, Micrometers{0}}, -1.0, 1.0),
+                  project);
+    const auto& mirrored =
+        std::get<document::AutoSatinParams>(project.embroidery_objects[0].params).guides[0];
+    CHECK(mirrored.angle.radians == Catch::Approx(std::numbers::pi - std::atan(0.5)).margin(1e-9));
+
+    CHECK(stack.undo(project));
+    CHECK(stack.undo(project));
+    CHECK(std::get<document::AutoSatinParams>(project.embroidery_objects[0].params) == before);
+}
+
+TEST_CASE("SetVectorPathsCommand : remplace la geometrie, undo exact") {
+    auto project = auto_satin_project();
+    UndoStack stack;
+    const ObjectId vecId = project.vector_objects[0].id;
+    const auto before = project.vector_objects[0].paths;
+    auto replaced = before;
+    for (auto& node : replaced[0].outer.nodes) {
+        node.pos = node.pos + Vec2um{Micrometers{100}, Micrometers{-50}};
+    }
+    stack.execute(std::make_unique<SetVectorPathsCommand>(vecId, replaced, "Contour brut"),
+                  project);
+    CHECK(project.vector_objects[0].paths == replaced);
+    CHECK(stack.undoName() == "Contour brut");
+    CHECK(stack.undo(project));
+    CHECK(project.vector_objects[0].paths == before);
+    CHECK(stack.redo(project));
+    CHECK(project.vector_objects[0].paths == replaced);
+}
+
+TEST_CASE("EditAutoSatinCommand : edition de guides annulable et nommee") {
+    auto project = auto_satin_project();
+    UndoStack stack;
+    const ObjectId embId = project.embroidery_objects[0].id;
+    auto edited = std::get<document::AutoSatinParams>(project.embroidery_objects[0].params);
+    const auto before = edited;
+    edited.guides.pop_back();
+    edited.spacing = Micrometers{300};
+
+    stack.execute(std::make_unique<EditAutoSatinCommand>(embId, edited, "Supprimer un guide"),
+                  project);
+    const auto& now = std::get<document::AutoSatinParams>(project.embroidery_objects[0].params);
+    CHECK(now.guides.size() == 1);
+    CHECK(now.spacing.value == 300);
+    CHECK(stack.undo(project));
+    CHECK(std::get<document::AutoSatinParams>(project.embroidery_objects[0].params) == before);
+    CHECK(stack.redo(project));
+    CHECK(std::get<document::AutoSatinParams>(project.embroidery_objects[0].params) == edited);
+}
+
+TEST_CASE("EditAutoSatinCommand : sans effet sur un objet qui n'est pas un auto-satin") {
+    auto project = auto_satin_project();
+    project.embroidery_objects[0].params = document::TatamiParams{};
+    UndoStack stack;
+    stack.execute(std::make_unique<EditAutoSatinCommand>(project.embroidery_objects[0].id,
+                                                         document::AutoSatinParams{}, "x"),
+                  project);
+    CHECK(project.embroidery_objects[0].is_tatami());
+    stack.undo(project);
+    CHECK(project.embroidery_objects[0].is_tatami());
+}
+
+TEST_CASE("SetStitchTypeCommand : tatami -> auto-satin annulable") {
+    auto project = auto_satin_project();
+    UndoStack stack;
+    const ObjectId embId = project.embroidery_objects[0].id;
+    const auto autoSatin =
+        std::get<document::AutoSatinParams>(project.embroidery_objects[0].params);
+    project.embroidery_objects[0].params = document::TatamiParams{};
+
+    stack.execute(std::make_unique<SetStitchTypeCommand>(embId, autoSatin, "Type : satin"),
+                  project);
+    CHECK(project.embroidery_objects[0].is_auto_satin());
+    CHECK(project.embroidery_objects[0].intent == document::EmbroideryIntent::ForcedUserChoice);
+    CHECK(stack.undo(project));
+    CHECK(project.embroidery_objects[0].is_tatami());
 }

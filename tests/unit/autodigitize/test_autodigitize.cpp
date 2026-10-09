@@ -738,7 +738,10 @@ TEST_CASE("Lot C : tatami voisins -> debord de 0,3 mm sur le bord partage, retra
                               {.max_colors = 2, .min_region_px = 1});
     REQUIRE(seg.has_value());
     IdGenerator<ObjectId> ids;
-    const auto r = auto_digitize(*seg, ids, tatami_only_opts());
+    // Le recouvrement n'est plus actif par défaut : on le demande explicitement.
+    AutoOptions withOverlap = tatami_only_opts();
+    withOverlap.fill_overlap = Micrometers{300};
+    const auto r = auto_digitize(*seg, ids, withOverlap);
     REQUIRE(r.has_value());
     const document::TatamiParams* redParams = nullptr;
     const auto* red = tatami_vector(*r, kRed, &redParams);
@@ -770,6 +773,24 @@ TEST_CASE("Lot C : tatami voisins -> debord de 0,3 mm sur le bord partage, retra
     REQUIRE(red2 != nullptr);
     CHECK(bounds_mm(*red2).x1 == -0.5); // demi-pixel en retrait de la frontière
     CHECK(p2->inset.value == 200);
+}
+
+TEST_CASE("Par defaut aucun recouvrement : le contour vectoriel reste celui de la region") {
+    // Regression : le recouvrement integre a la geometrie du vecteur faisait deborder tout
+    // satin, contour ou remplissage directionnel cree ensuite sur la region.
+    const auto seg =
+        segmentation::segment(paint(50, 30, {{5, 5, 25, 25, kRed}, {25, 5, 45, 25, kBlue}}),
+                              {.max_colors = 2, .min_region_px = 1});
+    REQUIRE(seg.has_value());
+    CHECK(AutoOptions{}.fill_overlap.value == 0);
+    IdGenerator<ObjectId> ids;
+    const auto r = auto_digitize(*seg, ids, tatami_only_opts());
+    REQUIRE(r.has_value());
+    const document::TatamiParams* redParams = nullptr;
+    const auto* red = tatami_vector(*r, kRed, &redParams);
+    REQUIRE(red != nullptr);
+    CHECK(bounds_mm(*red).x1 == -0.5); // demi-pixel en retrait de la frontiere, pas de debord
+    CHECK(redParams->inset.value == 200);
 }
 
 TEST_CASE("Lot C : pas de debord vers le fond ignore") {

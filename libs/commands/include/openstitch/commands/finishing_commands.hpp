@@ -21,7 +21,7 @@ public:
         project.finishing = finishing_;
     }
     void revert(document::Project& project) override { project.finishing = previous_; }
-    [[nodiscard]] std::string name() const override { return "Options de génération"; }
+    [[nodiscard]] std::string name() const override { return "Modifier les options de génération"; }
 
 private:
     document::SequenceFinishing finishing_;

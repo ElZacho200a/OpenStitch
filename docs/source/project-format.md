@@ -27,7 +27,10 @@ labels peut faire plusieurs mégaoctets).
 - `vectorObjects` : id, nom, couleur, visibilité, région source, `paths`
   (chemins avec nœuds et tangentes optionnelles) ;
 - `embroideryObjects` : id, nom, couleur, visibilité, vecteur source, et
-  `params` (variant `running` | `tatami` | `satin` | `directional`). Le `satin` porte ses deux
+  `params` (variant `running` | `tatami` | `satin` | `directional` | `autoSatin`). Le variant
+  `autoSatin` (schéma v5) ne stocke **aucun rail** : colonnes et traversées sont dérivées du
+  contour source ; il porte espacement, seuil `Lmax` et longueur `y`, réglages de finition,
+  entrée/sortie et la liste de **guides** (`anchor` en µm, `angle`, `absolute`). Le `satin` porte ses deux
   rails et, depuis le schéma v2, ses **barreaux** (`rungs` : liste de segments
   `{ax, ay, bx, by}` en µm), ses réglages de finition (points courts, split,
   terminaisons), de sous-couche/compensation, et de **fixation/entrée-sortie**
@@ -69,9 +72,10 @@ labels peut faire plusieurs mégaoctets).
 
 ## Versionnement et validation
 
-`schemaVersion` vaut **3** (v1 → v2 : cadre `canvas` et barreaux satin
+`schemaVersion` vaut **5** (v1 → v2 : cadre `canvas` et barreaux satin
 `rungs` ; v2 → v3 : retouches manuelles `overrides`/`editedFingerprint`/
-`editedPointCount` par objet de broderie, Lot 8.1). La lecture est
+`editedPointCount` par objet de broderie, Lot 8.1 ; v3 → v4 : intermédiaire ; v4 → v5 :
+variant `autoSatin`, auto-satin par squelette). La lecture est
 **rétrocompatible** : un fichier v1 ou v2 se charge (cadre 100×100 par défaut
 si absent, aucun barreau, aucune retouche → état `Clean`). Une version
 **supérieure** à celle du binaire est refusée proprement (`UnsupportedFormat`) ;

@@ -1809,7 +1809,6 @@ void MainWindowTest::hintsForEveryToolModifierAndPresetAreDeterministicAndSane()
                           Tool::DrawBezier,
                           Tool::DrawFreeform,
                           Tool::DrawSatinColumn,
-                          Tool::DrawSatinCutLine,
                           Tool::DrawDirectionGuide,
                           Tool::DrawBreakLine};
     QStringList emptyWithModifier;

@@ -5,6 +5,7 @@
 #include <QList>
 #include <QMainWindow>
 #include <QPainterPath>
+#include <QPixmap>
 #include <QPointer>
 #include <QRectF>
 #include <QString>
@@ -76,18 +77,6 @@ protected:
     void closeEvent(QCloseEvent* event) override;
 
 private:
-    // Réponse de l'utilisateur au choix multiple §23 du plan de refonte
-    // satin (2026-08-14 : « Continuer avec satin partiel / Utiliser tatami
-    // pour le reliquat / Annuler »). `Cancel` doit rester possible SANS
-    // avoir encore rien committé au document -- c'est pourquoi ce choix est
-    // demandé AVANT `undoStack_.execute(...)`, jamais après (contrairement à
-    // l'ancienne information post-hoc qu'il remplace). Déclaré ici (avant
-    // `private slots:`) : un type utilisé comme retour d'une declaration
-    // doit être visible textuellement avant cette declaration -- moc peine
-    // en plus a parser une declaration de type au milieu d'une liste de
-    // slots.
-    enum class SatinCoverageChoice { ContinuePartial, UseTatami, Cancel };
-
 private slots:
     // Document vierge (Ctrl+N, HP-FILE-001) : garde des modifications non
     // enregistrées, puis remplacement complet du document par un `Project`
@@ -137,42 +126,10 @@ private slots:
     // jamais silencieuses (openstitch/formats/svg_import.hpp), jamais non
     // plus bloquantes pour le reste de l'import.
     void warnAboutSkippedSvgFeatures(const std::vector<std::string>& warnings);
-    // Choix explicite quand une intention SATIN n'a pu être satisfaite qu'en
-    // partie (§12/§23 du plan de refonte satin, 2026-08-14 : « aucun
-    // fallback silencieux vers tatami », mais un VRAI choix actionnable
-    // plutôt qu'une simple information). Retourne `ContinuePartial`
-    // directement, sans dialogue, si le reliquat est négligeable (bruit de
-    // pointe/jonction, même seuil que l'ancienne fonction). `sourceAreaMm2`
-    // sert à exprimer le reliquat en pourcentage, pas seulement en mm² brut.
-    SatinCoverageChoice
-    askAboutIncompleteSatinCoverage(const std::vector<geometry::PathSet>& unresolvedResidual,
-                                    double sourceAreaMm2);
-    // Construit un remplissage tatami (VectorObject + EmbroideryObject,
-    // même schéma que le repli automatique de `autodigitize.cpp`, jamais
-    // réimplémenté différemment ici) pour chaque morceau de `residual` dont
-    // l'aire dépasse un seuil de bruit géométrique -- réponse concrète au
-    // choix "Utiliser tatami pour le reliquat" ci-dessus.
-    void appendTatamiFallbackObjects(const std::vector<geometry::PathSet>& residual,
-                                     const document::VectorObject& source,
-                                     std::vector<document::VectorObject>& vectorsOut,
-                                     std::vector<document::EmbroideryObject>& embroideriesOut);
     void openAiPreferences();
     void createRunningStitchObject();
     void createTatamiObject();
     void createSatinObject();
-    // Ligne de coupe (outil DrawSatinCutLine, façon Ink/Stitch "cut line") :
-    // découpe géométriquement `source->paths.front()` en morceaux
-    // (`geometry::cut_path_set`) puis convertit chacun en colonne(s) satin
-    // indépendamment (auto_satin::build_satin_columns par morceau) -- guide
-    // manuel de décomposition aux jonctions difficiles, en complément de la
-    // détection automatique de `createSatinObject()`. `cutA`/`cutB` : les
-    // deux points du glisser, coordonnées modèle. Renvoie `true` si au moins
-    // une colonne satin a été créée (l'appelant repasse alors en outil
-    // Sélection), `false` si la coupe n'a rien produit (reste sur l'outil
-    // pour laisser l'utilisateur réessayer).
-    bool createSatinObjectWithCutLine(Vec2um cutA, Vec2um cutB);
-    void onSatinCutLineDragging(QPointF anchorMm, QPointF currentMm);
-    void onSatinCutLineCommitted(QPointF anchorMm, QPointF handleMm);
     void autoConvertToSatin();
     void changeFillAngle();
     void convertSatinsToTatami();
@@ -452,6 +409,43 @@ private:
     // reste le seul point d'entrée en usage réel.
     void offsetVectorObjectCore(ObjectId id, Micrometers delta);
 
+    // --- Auto-satin par squelette et traversées (main_window_satin_auto.cpp) ---
+    // Aperçu avant création / résumé de l'inspecteur : nombre de colonnes,
+    // couverture estimée, fil en double, guides ignorés, refus nommés. Calculé par
+    // le moteur (libs/auto_satin), jamais par l'interface.
+    struct AutoSatinPreview {
+        std::size_t columns{0};
+        bool measured{false};
+        double coverage{0.0};
+        double overlap{0.0};
+        double uncoveredMm2{0.0};
+        int orphanGuides{0};
+        QStringList messages;
+    };
+    struct AutoSatinSummaryCache {
+        ObjectId id{};
+        std::uint64_t key{0};
+        QString text;
+        bool valid{false};
+    };
+    [[nodiscard]] AutoSatinPreview previewAutoSatin(const document::VectorObject& source,
+                                                    const document::AutoSatinParams& params) const;
+    [[nodiscard]] QString describeAutoSatinPreview(const AutoSatinPreview& preview) const;
+    // Contour brut de la région de segmentation d'un vecteur, si le contour actuel le dépasse
+    // nettement (le recouvrement des tatamis voisins y a été intégré à l'auto-numérisation :
+    // utile au tatami, mais un satin y déborderait de sa région). Aucun si pas de région.
+    [[nodiscard]] std::optional<std::vector<geometry::PathSet>>
+    pristineSatinContour(const document::VectorObject& vector) const;
+    [[nodiscard]] QString autoSatinSummary(const document::EmbroideryObject& emb);
+    void createAutoSatin(bool askParameters);
+    void applyAutoSatinEdit(ObjectId id, document::AutoSatinParams params, const QString& label);
+    void addAutoSatinGuideFromStroke(ObjectId id, Vec2um from, Vec2um to);
+    void changeAutoSatinGuide(ObjectId id, int index, double angleDeg, bool absolute);
+    void removeAutoSatinGuide(ObjectId id, int index);
+    void renderAutoSatinOverlay(const document::EmbroideryObject& obj,
+                                const document::AutoSatinParams& params,
+                                const document::VectorObject& source);
+
     // --- Remplissage directionnel (main_window_directional.cpp) ---
     // Paramètres directionnels de départ pour `emb` (réglages du tatami
     // repris le cas échéant, guide initial à son angle) ; nullopt sans forme
@@ -595,7 +589,6 @@ private:
     QAction* toolDrawBezierAct_{nullptr};
     QAction* toolDrawFreeformAct_{nullptr};
     QAction* toolDrawSatinColumnAct_{nullptr};
-    QAction* toolDrawSatinCutLineAct_{nullptr};
     // Boutons génériques partagés par tout outil de tracé multi-clics
     // (polygone/bézier/satin) : Terminer (Entrée) et Annuler (Échap),
     // toujours visibles dans la palette d'outils, actifs seulement pendant
@@ -635,7 +628,6 @@ private:
     std::vector<geometry::PathNode> pendingBezierNodes_;
     QGraphicsPathItem* bezierPreviewItem_{nullptr};       // tracé confirmé + segment élastique
     QGraphicsPathItem* bezierHandlePreviewItem_{nullptr}; // poignée en cours de glisser
-    QGraphicsPathItem* cutLinePreviewItem_{nullptr};      // ligne de coupe en cours de glisser
 
     QList<QAction*> imageActions_;
     QList<QAction*> regionActions_; // nécessitent une région sélectionnée
@@ -653,6 +645,20 @@ private:
     // `sequenceImported_`, §17).
     std::optional<stitch::StitchSequence> sequence_;
     QAction* exportDstAct_{nullptr};
+
+    // Actions partagées entre menus et barre principale (une seule action : état,
+    // raccourci et info-bulle identiques aux deux endroits).
+    QAction* newProjectAct_{nullptr};
+    QAction* loadProjectAct_{nullptr};
+    QAction* zoomInAct_{nullptr};
+    QAction* zoomOutAct_{nullptr};
+    QAction* fitCanvasAct_{nullptr};
+    QAction* duplicateSelectionAct_{nullptr};
+    // Disposition des panneaux d'origine (capturée avant la restauration des
+    // préférences) : « Réinitialiser la disposition ».
+    QByteArray defaultWindowState_;
+    QAction* offsetSelectionAct_{nullptr};
+
     QAction* saveProjectAct_{nullptr};
     QAction* saveProjectAsAct_{nullptr};
     QAction* exportDxfAct_{nullptr};
@@ -696,6 +702,13 @@ private:
     };
     std::vector<HoverShape> hoverCache_;
     bool hoverCacheValid_{false};
+
+    // Pixmap de l'image de base mémorisé : la conversion QImage -> QPixmap (copie complète) était
+    // refaite à chaque rafraîchissement, même quand seule la broderie changeait.
+    QPixmap basePixmapCache_;
+    std::uint64_t basePixmapKey_{0};
+    bool basePixmapKeyValid_{false};
+
     QTimer* hoverTimer_{nullptr};
     std::optional<QPointF> hoverPending_;
     int hoverComputations_{0}; // compteurs (tests) : calculs de survol, contours construits
@@ -762,6 +775,7 @@ private:
     QAction* drawDirectionGuideAct_{nullptr};
     QAction* drawBreakLineAct_{nullptr};
     std::optional<ObjectId> directionGuideTarget_;
+    AutoSatinSummaryCache autoSatinSummaryCache_;
     std::vector<Vec2um> pendingGuidePoints_;
     QGraphicsPathItem* guidePreviewItem_{nullptr};
     // État Clean/ManuallyEdited/Dirty des objets retouchés (absents = Clean),

@@ -2,6 +2,7 @@
 #include "document_panel.hpp"
 
 #include <QIcon>
+#include <QLineEdit>
 #include <QListWidget>
 #include <QPixmap>
 #include <QTabWidget>
@@ -21,10 +22,10 @@ QIcon swatch(const std::array<std::uint8_t, 3>& rgb) {
 }
 
 QString type_label(const document::EmbroideryObject& e) {
-    return e.is_tatami()        ? QObject::tr("Tatami")
-           : e.is_directional() ? QObject::tr("Directionnel")
-           : e.is_satin()       ? QObject::tr("Satin")
-                                : QObject::tr("Contour");
+    return e.is_tatami()                       ? QObject::tr("Tatami")
+           : e.is_directional()                ? QObject::tr("Directionnel")
+           : e.is_satin() || e.is_auto_satin() ? QObject::tr("Satin")
+                                               : QObject::tr("Contour");
 }
 
 // Suffixe + infobulle d'état (Lot 8.2) : "" / tooltip vide pour Clean, l'état
@@ -58,8 +59,16 @@ QString intent_tooltip(document::EmbroideryIntent intent) {
 QString embroidery_item_text(const document::EmbroideryObject& e, const QString& suffix) {
     const QString vis = e.visible ? QString() : QObject::tr("  (masqué)");
     const QString lock = e.locked ? QObject::tr("  [verrouillé]") : QString();
-    return QObject::tr("%1 — %2%3%4%5")
-        .arg(type_label(e), QString::fromStdString(e.name), vis, lock, suffix);
+    // Le type est déjà dit par le préfixe : « Satin — Région 1156 » plutôt que
+    // « Satin — Remplissage Région 1156 ».
+    QString name = QString::fromStdString(e.name);
+    for (const QString& prefix : {QObject::tr("Remplissage "), QObject::tr("Contour ")}) {
+        if (name.startsWith(prefix) && name.size() > prefix.size()) {
+            name = name.mid(prefix.size());
+            break;
+        }
+    }
+    return QObject::tr("%1 — %2%3%4%5").arg(type_label(e), name, vis, lock, suffix);
 }
 
 } // namespace
@@ -67,8 +76,15 @@ QString embroidery_item_text(const document::EmbroideryObject& e, const QString&
 DocumentPanel::DocumentPanel(QWidget* parent) : QWidget(parent) {
     auto* layout = new QVBoxLayout(this);
     layout->setContentsMargins(0, 0, 0, 0);
+    filterEdit_ = new QLineEdit(this);
+    filterEdit_->setObjectName(QStringLiteral("edit_documentFilter"));
+    filterEdit_->setPlaceholderText(tr("Rechercher un objet ou une région…"));
+    filterEdit_->setClearButtonEnabled(true);
+    filterEdit_->setAccessibleName(tr("Rechercher dans le document"));
+    layout->addWidget(filterEdit_);
     tabs_ = new QTabWidget(this);
     layout->addWidget(tabs_);
+    connect(filterEdit_, &QLineEdit::textChanged, this, [this] { applyFilter(); });
 
     objectsList_ = new QTreeWidget(tabs_);
     objectsList_->setHeaderHidden(true);
@@ -181,6 +197,28 @@ void DocumentPanel::refresh(
     }
 
     syncing_ = false;
+    applyFilter();
+}
+
+void DocumentPanel::applyFilter() {
+    const QString needle = filterEdit_ != nullptr ? filterEdit_->text().trimmed() : QString();
+    const auto matches = [&needle](const QString& text) {
+        return needle.isEmpty() || text.contains(needle, Qt::CaseInsensitive);
+    };
+    for (int i = 0; i < objectsList_->topLevelItemCount(); ++i) {
+        QTreeWidgetItem* top = objectsList_->topLevelItem(i);
+        bool any = matches(top->text(0));
+        for (int c = 0; c < top->childCount(); ++c) {
+            QTreeWidgetItem* child = top->child(c);
+            const bool childMatches = matches(child->text(0)) || matches(top->text(0));
+            child->setHidden(!childMatches);
+            any = any || childMatches;
+        }
+        top->setHidden(!any);
+    }
+    for (int i = 0; i < regionsList_->count(); ++i) {
+        regionsList_->item(i)->setHidden(!matches(regionsList_->item(i)->text()));
+    }
 }
 
 void DocumentPanel::syncSelection(Kind kind, std::uint64_t id) {

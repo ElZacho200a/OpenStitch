@@ -67,11 +67,13 @@ struct AutoOptions {
 
     // --- Chevauchement et ordre (Lot C) ---
     // Débord de chaque tatami sur ses voisins BRODÉS, uniquement le long des
-    // bords partagés (au lieu du retrait `TatamiParams::inset`, qui laissait
-    // un interstice de chaque côté). Bords extérieurs du motif et contact du
-    // fond ignoré : retrait conservé. La surface élargie est portée par
-    // l'objet vectoriel (le paramètre `inset` passe alors à 0). 0 = désactivé.
-    Micrometers fill_overlap{300};
+    // bords partagés. DÉSACTIVÉ PAR DÉFAUT (0) : la surface élargie était portée par
+    // l'objet vectoriel lui-même, si bien que tout autre type de points créé ensuite sur
+    // cette région (satin, contour, remplissage directionnel) débordait de sa zone
+    // (+14 à +57 % d'aire mesurés). Les contours restent ceux de la segmentation ;
+    // une valeur > 0 réactive le comportement historique (le paramètre `inset` des
+    // tatamis voisins passe alors à 0).
+    Micrometers fill_overlap{0};
     // Ordre de couture du résultat en « couches » (`optimization::
     // OrderStrategy::LayeredColorThenProximity`) : grandes zones de fond
     // d'abord, détails posés dessus ensuite, couleurs toujours regroupées.

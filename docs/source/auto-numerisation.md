@@ -116,7 +116,15 @@ région, et `inset` passe à 0 pour ne pas rentrer deux fois. Conséquence
 visible : l'objet vectoriel éditable déborde légèrement sur ses voisins.
 Toutes les surfaces sont calculées sur la géométrie d'origine avant d'être
 appliquées, donc le résultat ne dépend pas de l'ordre de traitement.
-`fill_overlap = 0` rétablit l'ancien comportement.
+**Désactivé par défaut (2026-10).** `fill_overlap` vaut maintenant 0 : la surface élargie
+était portée par l'objet vectoriel lui-même, donc tout autre type de points créé ensuite sur la
+région (satin, contour cousu, remplissage directionnel) débordait de sa zone (+14 à +57 %
+d'aire mesurés sur un projet réel). Les contours restent ceux de la segmentation, et chaque
+tatami garde son retrait `inset` (0,2 mm). Conséquence : un interstice réapparaît entre deux
+couleurs voisines ; une valeur de `fill_overlap` > 0 réactive la correction ci-dessus à la
+demande. Dans le bureau, créer un satin ou passer un objet en satin ramène en plus un
+contour agrandi par une ancienne auto-numérisation à celui de sa région (un seul pas
+d'annulation).
 
 Les remplissages de repli d'un satin incomplet ne sont pas concernés : ils
 recouvrent déjà leurs bandes satin (`kCoverageOverlap`).
@@ -257,8 +265,8 @@ fusion de traits proches, simplification Douglas-Peucker) → classification
 par segment (`classify_segment` : point droit simple, point triple, satin,
 rejeté) → objets : une couleur = un groupe contigu (les plus claires d'abord,
 la plus sombre en dernier), ordre déterministe. Les lignes sont des objets
-Running à chemin ouvert ; les jonctions satin passent par
-`satin_planning::build_satin_sections`.
+Running à chemin ouvert ; l'auto-numérisation ne produit pas de satin
+(`satin_planning` a été supprimé) : l'utilisateur convertit ensuite en satin automatique.
 
 **Détail → seuils** (`contour_thresholds`, fonction pure et monotone ; facteur
 `f = 4^(1 - 2*detail)`, 0,5 = réglages historiques) :
@@ -289,8 +297,8 @@ satin, sinon repli), Running (point droit sur la ligne médiane), Satin (satin
 quand la largeur le permet).
 
 **Jonctions** : croisements (X, T) conservés comme nœuds du réseau ; les
-colonnes satin aboutissant à une jonction sont ancrées par les sections
-satin_planning existantes (voir `satin.md`).
+colonnes satin aboutissant à une jonction étaient ancrées par l'ancien `satin_planning`
+(supprimé) ; le satin par squelette traite les jonctions par cellules (voir `satin-squelette.md`).
 
 **Métriques** (`ContourMetrics`) : composantes, segments, jonctions,
 extrémités, branches courtes et éléments petits supprimés, longueur point

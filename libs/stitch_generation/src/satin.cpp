@@ -467,15 +467,11 @@ std::vector<SatinStation> satin_stations(const geometry::Path& rail_a, const geo
     return stations;
 }
 
-SatinResult fill_satin_columns(const geometry::Path& rail_a, const geometry::Path& rail_b,
-                               const std::vector<SatinRungSeg>& rungs, const SatinConfig& config) {
-    if (rungs.size() < 2) {
-        return fill_satin(rail_a, rail_b, config); // satin manuel / legacy
-    }
+SatinResult finish_satin_stations(const std::vector<SatinStation>& stations,
+                                  const SatinConfig& config) {
     SatinResult result;
-    const auto stations = satin_stations(rail_a, rail_b, rungs, config.density);
     if (stations.size() < 2) {
-        return fill_satin(rail_a, rail_b, config);
+        return result;
     }
     const double comp = static_cast<double>(config.pull_compensation.value);
     const double density = static_cast<double>(std::max<std::int32_t>(1, config.density.value));
@@ -662,6 +658,7 @@ SatinResult fill_satin_columns(const geometry::Path& rail_a, const geometry::Pat
         static_cast<double>(std::max<std::int32_t>(1, config.max_stitch_length.value));
     const double pmax = static_cast<double>(config.pull_max.value);
     int emitted = 0;
+    PointD prevB{0.0, 0.0};
     for (int i = 0; i < nThreads; ++i) {
         const auto& t = threads[static_cast<std::size_t>(i)];
         if (t.dropped) {
@@ -685,10 +682,41 @@ SatinResult fill_satin_columns(const geometry::Path& rail_a, const geometry::Pat
             pa = {pa.x + ux * offA, pa.y + uy * offA};
             pb = {pb.x - ux * offB, pb.y - uy * offB};
         }
+        // Trajet retour B_{i-1} -> A_i : un point de fil à part entière, fractionné
+        // comme les traversées quand l'option est active.
+        if (config.split_connecting_throws && config.split_stitch != SplitStitchMode::Disabled &&
+            emitted > 0 && !t.jump_before) {
+            const double back = dist(prevB, pa);
+            if (back > maxLen) {
+                const double segLen =
+                    config.split_length.value > 0
+                        ? std::min(maxLen, static_cast<double>(config.split_length.value))
+                        : maxLen;
+                const int nback = std::max(1, static_cast<int>(std::ceil(back / segLen)) - 1);
+                for (int s = 1; s <= nback; ++s) {
+                    double frac = static_cast<double>(s) / (nback + 1);
+                    const double amp = 0.35 / (nback + 1);
+                    if (config.split_stitch == SplitStitchMode::Staggered) {
+                        frac += (emitted % 2 == 0 ? -amp : amp); // opposé à la traversée
+                    } else if (config.split_stitch == SplitStitchMode::DeterministicJitter) {
+                        const std::uint64_t h = config.split_seed * 1000003ull +
+                                                static_cast<std::uint64_t>(emitted) * 97ull +
+                                                static_cast<std::uint64_t>(s) + 50021ull;
+                        frac += (jitter01(h) * 2.0 - 1.0) * amp;
+                    }
+                    frac = std::clamp(frac, 0.05, 0.95);
+                    result.satin.push_back(toUm(lerpP(prevB, pa, frac)));
+                }
+            }
+        }
         result.satin.push_back(toUm(pa));
         const double len = dist(pa, pb);
         if (config.split_stitch != SplitStitchMode::Disabled && len > maxLen) {
-            const int nsplit = std::max(1, static_cast<int>(std::ceil(len / maxLen)) - 1);
+            const double segLen =
+                config.split_length.value > 0
+                    ? std::min(maxLen, static_cast<double>(config.split_length.value))
+                    : maxLen;
+            const int nsplit = std::max(1, static_cast<int>(std::ceil(len / segLen)) - 1);
             const bool wideThrow =
                 w > static_cast<double>(config.wide_throw_width.value) && i > 0 && i + 1 < nThreads;
             PointD tangent{0.0, 0.0};
@@ -730,9 +758,22 @@ SatinResult fill_satin_columns(const geometry::Path& rail_a, const geometry::Pat
             }
         }
         result.satin.push_back(toUm(pb));
+        prevB = pb;
         ++emitted;
     }
     return result;
+}
+
+SatinResult fill_satin_columns(const geometry::Path& rail_a, const geometry::Path& rail_b,
+                               const std::vector<SatinRungSeg>& rungs, const SatinConfig& config) {
+    if (rungs.size() < 2) {
+        return fill_satin(rail_a, rail_b, config); // satin manuel / legacy
+    }
+    const auto stations = satin_stations(rail_a, rail_b, rungs, config.density);
+    if (stations.size() < 2) {
+        return fill_satin(rail_a, rail_b, config);
+    }
+    return finish_satin_stations(stations, config);
 }
 
 SatinResult fill_satin(const geometry::Path& rail_a, const geometry::Path& rail_b,

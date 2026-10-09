@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 #include <QCheckBox>
+#include <QComboBox>
 #include <QDoubleSpinBox>
+#include <QLabel>
+#include <QListWidget>
 #include <QPushButton>
 #include <QSpinBox>
 #include <QTest>
@@ -14,6 +17,8 @@
 using openstitch::Micrometers;
 using openstitch::Millimeters;
 using openstitch::desktop::PropertiesPanel;
+using openstitch::document::AutoSatinGuide;
+using openstitch::document::AutoSatinParams;
 using openstitch::document::EmbroideryObject;
 using openstitch::document::RunningStitchParams;
 using openstitch::document::StitchParams;
@@ -32,6 +37,20 @@ EmbroideryObject runningStitchObject(std::uint64_t id) {
     return e;
 }
 
+EmbroideryObject autoSatinObject(std::uint64_t id) {
+    EmbroideryObject e;
+    e.id = openstitch::ObjectId{id};
+    e.name = "satin auto";
+    AutoSatinParams p;
+    p.guides.push_back({openstitch::Vec2um{Micrometers{10'000}, Micrometers{2'000}},
+                        openstitch::Angle{0.5}, true});
+    p.guides.push_back({openstitch::Vec2um{Micrometers{20'000}, Micrometers{2'000}},
+                        openstitch::Angle{-0.2}, false});
+    p.entry_point = openstitch::Vec2um{Micrometers{5}, Micrometers{6}};
+    e.params = p;
+    return e;
+}
+
 } // namespace
 
 // PropertiesPanel est l'inspecteur contextuel : il se reconstruit selon la
@@ -46,6 +65,9 @@ private slots:
     void switchingToInfoRemovesThePreviousFormControls();
     void tatamiOffersConversionToDirectionalFill();
     void directionalEditKeepsGuidesAndSeed();
+    void autoSatinInspectorListsGuidesAndEditsScalars();
+    void autoSatinGuideAngleEditAndRemoveEmitDedicatedSignals();
+    void autoSatinStateRefreshUpdatesListWithoutRebuildingTheForm();
 };
 
 void PropertiesPanelTest::showEmbroideryPopulatesSpinBoxesWithoutEmittingWhileBuilding() {
@@ -163,6 +185,107 @@ void PropertiesPanelTest::directionalEditKeepsGuidesAndSeed() {
     const auto& reseeded = std::get<openstitch::document::DirectionalFillParams>(*emitted);
     QVERIFY(reseeded.seed != 77U);
     QVERIFY(reseeded.handmade);
+}
+
+void PropertiesPanelTest::autoSatinInspectorListsGuidesAndEditsScalars() {
+    PropertiesPanel panel;
+    panel.showEmbroidery(autoSatinObject(21));
+
+    auto* list = panel.findChild<QListWidget*>(QStringLiteral("list_satinGuides"));
+    QVERIFY(list != nullptr);
+    QCOMPARE(list->count(), 2);
+
+    std::optional<StitchParams> emitted;
+    QObject::connect(&panel, &PropertiesPanel::paramsEdited, &panel,
+                     [&](openstitch::ObjectId, StitchParams params) { emitted = params; });
+    // Premier QDoubleSpinBox du formulaire : l'espacement.
+    const auto spins = panel.findChildren<QDoubleSpinBox*>();
+    QVERIFY(!spins.isEmpty());
+    spins.at(0)->setValue(0.55);
+    QVERIFY(emitted.has_value());
+    const auto& out = std::get<AutoSatinParams>(*emitted);
+    QCOMPARE(out.spacing.value, 550);
+    // Les guides ne sont PAS édités par ce flux (MainWindow reprend ceux du document) :
+    // la copie du panneau les contient encore, mais seul le document fait foi.
+    QCOMPARE(out.guides.size(), std::size_t{2});
+}
+
+void PropertiesPanelTest::autoSatinGuideAngleEditAndRemoveEmitDedicatedSignals() {
+    PropertiesPanel panel;
+    panel.showEmbroidery(autoSatinObject(22));
+    auto* list = panel.findChild<QListWidget*>(QStringLiteral("list_satinGuides"));
+    auto* angle = panel.findChild<QSpinBox*>(QStringLiteral("spin_satinGuideAngle"));
+    auto* absolute = panel.findChild<QCheckBox*>(QStringLiteral("check_satinGuideAbsolute"));
+    auto* remove = panel.findChild<QPushButton*>(QStringLiteral("button_satinGuideRemove"));
+    auto* place = panel.findChild<QPushButton*>(QStringLiteral("button_editSatinGuides"));
+    QVERIFY(list && angle && absolute && remove && place);
+    QVERIFY(!angle->isEnabled()); // aucun guide sélectionné
+    QVERIFY(!remove->isEnabled());
+
+    int changeCount = 0;
+    int lastIndex = -1;
+    double lastAngle = 0.0;
+    bool lastAbsolute = false;
+    QObject::connect(&panel, &PropertiesPanel::satinGuideChangeRequested, &panel,
+                     [&](openstitch::ObjectId, int index, double deg, bool abs) {
+                         ++changeCount;
+                         lastIndex = index;
+                         lastAngle = deg;
+                         lastAbsolute = abs;
+                     });
+    int removedIndex = -1;
+    QObject::connect(&panel, &PropertiesPanel::satinGuideRemoveRequested, &panel,
+                     [&](openstitch::ObjectId, int index) { removedIndex = index; });
+    int placeCount = 0;
+    QObject::connect(&panel, &PropertiesPanel::editSatinGuidesRequested, &panel,
+                     [&](openstitch::ObjectId) { ++placeCount; });
+
+    list->setCurrentRow(1); // second guide : relatif, -0,2 rad (~ -11°)
+    QVERIFY(angle->isEnabled());
+    QVERIFY(remove->isEnabled());
+    QVERIFY(!absolute->isChecked());
+    QCOMPARE(changeCount, 0); // sélectionner ne modifie rien
+
+    angle->setValue(25);
+    QCOMPARE(changeCount, 1);
+    QCOMPARE(lastIndex, 1);
+    QCOMPARE(lastAngle, 25.0);
+    QVERIFY(!lastAbsolute);
+
+    absolute->setChecked(true);
+    QCOMPARE(changeCount, 2);
+    QVERIFY(lastAbsolute);
+
+    remove->click();
+    QCOMPARE(removedIndex, 1);
+    place->click();
+    QCOMPARE(placeCount, 1);
+}
+
+void PropertiesPanelTest::autoSatinStateRefreshUpdatesListWithoutRebuildingTheForm() {
+    PropertiesPanel panel;
+    const EmbroideryObject obj = autoSatinObject(23);
+    panel.showEmbroidery(obj);
+    auto* list = panel.findChild<QListWidget*>(QStringLiteral("list_satinGuides"));
+    auto* summary = panel.findChild<QLabel*>(QStringLiteral("label_autoSatinSummary"));
+    QVERIFY(list != nullptr);
+    QVERIFY(summary != nullptr);
+    QCOMPARE(list->count(), 2);
+
+    AutoSatinParams updated = std::get<AutoSatinParams>(obj.params);
+    updated.guides.pop_back();
+    panel.setAutoSatinState(obj.id, &updated, QStringLiteral("2 colonne(s) · couverture 99 %"));
+    QCOMPARE(panel.findChild<QListWidget*>(QStringLiteral("list_satinGuides")),
+             list); // même widget
+    QCOMPARE(list->count(), 1);
+    QCOMPARE(summary->text(), QStringLiteral("2 colonne(s) · couverture 99 %"));
+
+    // Un identifiant différent est ignoré (retard d'affichage évité).
+    AutoSatinParams other = updated;
+    other.guides.clear();
+    panel.setAutoSatinState(openstitch::ObjectId{999}, &other, QStringLiteral("autre"));
+    QCOMPARE(list->count(), 1);
+    QCOMPARE(summary->text(), QStringLiteral("2 colonne(s) · couverture 99 %"));
 }
 
 QTEST_MAIN(PropertiesPanelTest)

@@ -38,6 +38,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstring>
 #include <filesystem>
 #include <limits>
 #include <map>
@@ -59,7 +60,6 @@
 #include "import_dialog.hpp"
 #include "node_handle.hpp"
 
-#include "openstitch/auto_satin/satin_column.hpp"
 #include "openstitch/autodigitize/autodigitize.hpp"
 #include "openstitch/autodigitize/contour_objects.hpp"
 #include "openstitch/commands/composite_command.hpp"
@@ -80,7 +80,6 @@
 #include "openstitch/optimization/order.hpp"
 #include "openstitch/project_io/machine_file.hpp"
 #include "openstitch/project_io/project_io.hpp"
-#include "openstitch/satin_planning/satin_sections.hpp"
 #include "openstitch/stitch_analysis/analyze.hpp"
 #include "openstitch/stitch_generation/generate.hpp"
 #include "openstitch/stitch_generation/overrides.hpp"
@@ -102,10 +101,13 @@
 #include <QHBoxLayout>
 #include <QIcon>
 #include <QListWidget>
+#include <QProgressDialog>
 #include <QPushButton>
+#include <QScrollArea>
 #include <QSettings>
 #include <QShortcut>
 #include <QSlider>
+#include <QTime>
 #include <QTimer>
 #include <QToolBar>
 #include <QToolButton>
@@ -412,6 +414,19 @@ MainWindow::MainWindow() {
          {documentDock_, propertiesDock_, workflowDock_, orderDock_, filterDock_, analysisDock_}) {
         panelsMenu_->addAction(d->toggleViewAction());
     }
+    // Filtres d'affichage en onglet derrière les propriétés : l'inspecteur garde toute la
+    // hauteur de la colonne de droite au lieu de la partager à parts égales.
+    tabifyDockWidget(propertiesDock_, filterDock_);
+    propertiesDock_->raise();
+    panelsMenu_->addSeparator();
+    auto* resetLayoutAct = panelsMenu_->addAction(tr("&Réinitialiser la disposition"));
+    resetLayoutAct->setObjectName(QStringLiteral("action_resetLayout"));
+    resetLayoutAct->setToolTip(tr("Remet les panneaux et les barres à leur place d'origine."));
+    connect(resetLayoutAct, &QAction::triggered, this, [this] {
+        if (!defaultWindowState_.isEmpty()) {
+            restoreState(defaultWindowState_);
+        }
+    });
     buildMainToolbar();
     addToolBarBreak(); // la barre contextuelle sur sa propre rangée
     buildContextToolbar();
@@ -430,6 +445,11 @@ MainWindow::MainWindow() {
             d->setAccessibleName(d->windowTitle());
         }
     }
+
+    // Tailles par défaut : le canevas reste prioritaire (les panneaux ne prennent pas la
+    // largeur que leur contenu réclamerait), puis capture pour « Réinitialiser la disposition ».
+    resizeDocks({documentDock_, propertiesDock_}, {260, 320}, Qt::Horizontal);
+    defaultWindowState_ = saveState();
 
     // Restaure la disposition de l'interface (préférences UI, pas de données
     // métier — celles-ci restent dans le .osp). Les panneaux vides seront
@@ -510,8 +530,6 @@ MainWindow::MainWindow() {
     connect(view_, &CanvasView::freeformStrokeFinished, this, &MainWindow::finishFreeform);
     connect(view_, &CanvasView::bezierPointDraggingMm, this, &MainWindow::onBezierPointDragging);
     connect(view_, &CanvasView::bezierPointCommittedMm, this, &MainWindow::onBezierPointCommitted);
-    connect(view_, &CanvasView::bezierPointDraggingMm, this, &MainWindow::onSatinCutLineDragging);
-    connect(view_, &CanvasView::bezierPointCommittedMm, this, &MainWindow::onSatinCutLineCommitted);
 
     connect(view_, &CanvasView::canvasClickedMm, this, &MainWindow::onCanvasClicked);
     connect(view_, &CanvasView::selectionClickedMm, this, &MainWindow::onSelectionClicked);
@@ -585,7 +603,8 @@ MainWindow::~MainWindow() {
 
 void MainWindow::buildMenus() {
     auto* fileMenu = menuBar()->addMenu(tr("&Fichier"));
-    auto* newAct = fileMenu->addAction(tr("&Nouveau projet"));
+    newProjectAct_ = fileMenu->addAction(tr("&Nouveau projet"));
+    auto* newAct = newProjectAct_;
     newAct->setObjectName(QStringLiteral("action_newProject"));
     newAct->setShortcut(QKeySequence::New);
     connect(newAct, &QAction::triggered, this, &MainWindow::newProject);
@@ -607,7 +626,8 @@ void MainWindow::buildMenus() {
     saveProjectAsAct->setObjectName(QStringLiteral("action_saveProjectAs"));
     saveProjectAsAct->setShortcut(QKeySequence::SaveAs);
     connect(saveProjectAsAct, &QAction::triggered, this, &MainWindow::saveProjectAs);
-    auto* loadProjectAct = fileMenu->addAction(tr("Ou&vrir un projet…"));
+    loadProjectAct_ = fileMenu->addAction(tr("Ou&vrir un projet…"));
+    auto* loadProjectAct = loadProjectAct_;
     connect(loadProjectAct, &QAction::triggered, this, &MainWindow::loadProject);
     fileMenu->addSeparator();
     // Rempli par refreshRecentFilesUi() (appelée une première fois depuis le
@@ -622,6 +642,7 @@ void MainWindow::buildMenus() {
         refreshRecentFilesUi();
     });
     exportDstAct_ = fileMenu->addAction(tr("&Exporter en DST…"));
+    exportDstAct_->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_E));
     connect(exportDstAct_, &QAction::triggered, this, &MainWindow::exportDst);
     auto* importDstAct = fileMenu->addAction(tr("&Importer un DST…"));
     connect(importDstAct, &QAction::triggered, this, &MainWindow::importDst);
@@ -645,6 +666,21 @@ void MainWindow::buildMenus() {
     redoAct_->setObjectName(QStringLiteral("action_redo"));
     redoAct_->setShortcut(QKeySequence::Redo);
     connect(redoAct_, &QAction::triggered, this, &MainWindow::redo);
+    editMenu->addSeparator();
+    duplicateSelectionAct_ = editMenu->addAction(tr("&Dupliquer la forme"));
+    duplicateSelectionAct_->setObjectName(QStringLiteral("action_duplicateSelection"));
+    connect(duplicateSelectionAct_, &QAction::triggered, this, [this] {
+        if (selectedObject_ && !hasMultiSelection()) {
+            duplicateVectorObject(*selectedObject_);
+        }
+    });
+    offsetSelectionAct_ = editMenu->addAction(tr("Dé&caler la forme…"));
+    offsetSelectionAct_->setObjectName(QStringLiteral("action_offsetSelection"));
+    connect(offsetSelectionAct_, &QAction::triggered, this, [this] {
+        if (selectedObject_ && !hasMultiSelection()) {
+            offsetVectorObject(*selectedObject_);
+        }
+    });
     editMenu->addSeparator();
     auto* aiPrefsAct = editMenu->addAction(tr("Préférences — &Intelligence artificielle…"));
     connect(aiPrefsAct, &QAction::triggered, this, &MainWindow::openAiPreferences);
@@ -702,7 +738,9 @@ void MainWindow::buildMenus() {
     // Suppr universel (L5-T4a) : l'objectName historique « action_deleteRegion »
     // est conservé (tests, snapshot d'actions) ; l'action est activée par
     // updateActions() selon la sélection (pas via regionActions_).
-    deleteSelectionAct_ = segMenu->addAction(tr("Su&pprimer la sélection"));
+    deleteSelectionAct_ = editMenu->addAction(tr("Su&pprimer la sélection"));
+    // Dans Édition, juste avant Dupliquer/Décaler (et non en fin de menu).
+    editMenu->insertAction(duplicateSelectionAct_, deleteSelectionAct_);
     deleteSelectionAct_->setObjectName(QStringLiteral("action_deleteRegion"));
     deleteSelectionAct_->setShortcut(QKeySequence::Delete);
     connect(deleteSelectionAct_, &QAction::triggered, this, &MainWindow::deleteSelection);
@@ -722,7 +760,7 @@ void MainWindow::buildMenus() {
     autoDigitizeAct_->setObjectName(QStringLiteral("action_autoDigitize"));
     auto* autoAct = autoDigitizeAct_;
     connect(autoAct, &QAction::triggered, this, &MainWindow::autoDigitize);
-    auto* aiSegmentAct = embMenu->addAction(icons::aiSegment(), tr("Segmenter avec l'&IA…"));
+    auto* aiSegmentAct = segMenu->addAction(icons::aiSegment(), tr("Segmenter avec l'&IA…"));
     aiSegmentAct->setObjectName(QStringLiteral("action_segmentWithAi"));
     connect(aiSegmentAct, &QAction::triggered, this, &MainWindow::segmentWithAi);
     embMenu->addSeparator();
@@ -731,12 +769,12 @@ void MainWindow::buildMenus() {
     connect(createStitchAct_, &QAction::triggered, this, &MainWindow::createRunningStitchObject);
     createTatamiAct_ = embMenu->addAction(tr("Créer un remplissage &tatami…"));
     connect(createTatamiAct_, &QAction::triggered, this, &MainWindow::createTatamiObject);
-    createSatinAct_ = embMenu->addAction(tr("Créer une colonne &satin…"));
+    createSatinAct_ = embMenu->addAction(tr("Créer un &satin automatique…"));
     connect(createSatinAct_, &QAction::triggered, this, &MainWindow::createSatinObject);
     autoSatinAct_ = embMenu->addAction(tr("Convertir automatiquement en satin (expérimental)…"));
     autoSatinAct_->setToolTip(
-        tr("Expérimental : construit des colonnes satin (rails + barreaux) depuis le squelette "
-           "de la forme. Le résultat est à vérifier."));
+        tr("Expérimental : construit le satin par squelette et traversées orientées (sans "
+           "rails à poser). Le résultat est à vérifier avant broderie."));
     connect(autoSatinAct_, &QAction::triggered, this, &MainWindow::autoConvertToSatin);
     embMenu->addSeparator();
     fillAngleAct_ = embMenu->addAction(tr("&Orientation du remplissage…"));
@@ -822,7 +860,7 @@ void MainWindow::buildMenus() {
     embMenu->addSeparator();
     buildDirectionalActions(embMenu);
     embMenu->addSeparator();
-    statsAct_ = embMenu->addAction(tr("Statisti&ques…"));
+    statsAct_ = new QAction(tr("Statisti&ques…"), this);
     connect(statsAct_, &QAction::triggered, this, &MainWindow::showStatistics);
 
     auto* viewMenu = menuBar()->addMenu(tr("&Affichage"));
@@ -842,14 +880,18 @@ void MainWindow::buildMenus() {
     showStitchesAct_->setChecked(true);
     connect(showStitchesAct_, &QAction::toggled, this, [this] { displayImage(processed_); });
     viewMenu->addSeparator();
-    auto* zoomInAct = viewMenu->addAction(tr("Zoom &avant"));
+    zoomInAct_ = viewMenu->addAction(tr("Zoom &avant"));
+    auto* zoomInAct = zoomInAct_;
     zoomInAct->setShortcut(QKeySequence::ZoomIn);
     connect(zoomInAct, &QAction::triggered, view_, &CanvasView::zoomIn);
-    auto* zoomOutAct = viewMenu->addAction(tr("Zoom a&rrière"));
+    zoomOutAct_ = viewMenu->addAction(tr("Zoom a&rrière"));
+    auto* zoomOutAct = zoomOutAct_;
     zoomOutAct->setShortcut(QKeySequence::ZoomOut);
     connect(zoomOutAct, &QAction::triggered, view_, &CanvasView::zoomOut);
-    auto* fitAct = viewMenu->addAction(tr("A&juster au canevas"));
-    fitAct->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_0));
+    fitCanvasAct_ = viewMenu->addAction(tr("A&juster au canevas"));
+    auto* fitAct = fitCanvasAct_;
+    // Ctrl+0 et F sur la MÊME action : les deux sont alors affichés dans le menu.
+    fitAct->setShortcuts({QKeySequence(Qt::CTRL | Qt::Key_0), QKeySequence(Qt::Key_F)});
     connect(fitAct, &QAction::triggered, view_, &CanvasView::fitCanvas);
 
     viewMenu->addSeparator();
@@ -972,11 +1014,6 @@ void MainWindow::resetDocumentState() {
     cancelBezierDraw();
     cancelDirectionGuideDraw();
     updateSnapIndicator(std::nullopt);
-    if (cutLinePreviewItem_ != nullptr) {
-        scene_->removeItem(cutLinePreviewItem_);
-        delete cutLinePreviewItem_;
-        cutLinePreviewItem_ = nullptr;
-    }
 
     // Simulation : jamais laissée en lecture sur une séquence qui disparaît.
     // (updateSimulationRange() remettra l'étiquette et les bornes en phase.)
@@ -990,6 +1027,46 @@ void MainWindow::resetDocumentState() {
     }
     simStep_ = -1;
 }
+
+namespace {
+
+// Erreur montrable à l'utilisateur : un titre qui dit ce qui a échoué, une phrase d'explication
+// et le message technique du moteur en détail repliable (jamais comme seul texte).
+void showFriendlyError(QWidget* parent, const QString& title, const QString& explanation,
+                       const std::string& technical) {
+    QMessageBox box(QMessageBox::Warning, title, explanation, QMessageBox::Ok, parent);
+    if (!technical.empty()) {
+        box.setDetailedText(QString::fromStdString(technical));
+    }
+    box.exec();
+}
+
+// Calcul synchrone long : curseur d'attente ET fenêtre « en cours » (indéterminée, sans bouton
+// Annuler : ces calculs ne sont pas interruptibles et le dire vaut mieux qu'un bouton muet).
+// Remplace le seul curseur d'attente, que rien n'expliquait sur une grande image.
+class BusyIndicator {
+public:
+    BusyIndicator(QWidget* parent, const QString& text) : dialog_(text, QString(), 0, 0, parent) {
+        dialog_.setWindowTitle(QObject::tr("Veuillez patienter"));
+        dialog_.setWindowModality(Qt::WindowModal);
+        dialog_.setCancelButton(nullptr);
+        dialog_.setMinimumDuration(0);
+        dialog_.show();
+        QGuiApplication::setOverrideCursor(Qt::WaitCursor);
+        QCoreApplication::processEvents(QEventLoop::ExcludeUserInputEvents);
+    }
+    ~BusyIndicator() {
+        QGuiApplication::restoreOverrideCursor();
+        dialog_.close();
+    }
+    BusyIndicator(const BusyIndicator&) = delete;
+    BusyIndicator& operator=(const BusyIndicator&) = delete;
+
+private:
+    QProgressDialog dialog_;
+};
+
+} // namespace
 
 bool MainWindow::confirmDiscardChanges(const QString& question) {
     if (!isWindowModified()) {
@@ -1047,7 +1124,10 @@ void MainWindow::openImage() {
 
     auto loaded = image::load_image(std::filesystem::path(file.toStdWString()));
     if (!loaded) {
-        QMessageBox::warning(this, tr("Erreur"), QString::fromStdString(loaded.error().message));
+        showFriendlyError(this, tr("Image illisible"),
+                          tr("Ce fichier n'a pas pu être ouvert comme image. Formats acceptés : "
+                             "PNG, JPEG, BMP, TIFF."),
+                          loaded.error().message);
         return;
     }
 
@@ -1061,7 +1141,14 @@ void MainWindow::openImage() {
     }
     const auto placement = dialog.placement();
     if (!placement) {
-        QMessageBox::warning(this, tr("Erreur"), tr("Taille physique invalide."));
+        QMessageBox::warning(this, tr("Taille invalide"),
+                             tr("La taille physique de l'image doit être strictement positive."));
+        return;
+    }
+    // Garde « modifications non enregistrées » : placée après le choix de l'image et de sa
+    // taille (rien n'est détruit tant que l'utilisateur peut encore annuler).
+    if (!confirmDiscardChanges(
+            tr("Le projet a été modifié. Enregistrer avant d'ouvrir cette image ?"))) {
         return;
     }
 
@@ -1083,7 +1170,13 @@ void MainWindow::openImage() {
 void MainWindow::openSvg(const QString& file) {
     auto imported = formats::read_svg_file(std::filesystem::path(file.toStdWString()));
     if (!imported) {
-        QMessageBox::warning(this, tr("Erreur"), QString::fromStdString(imported.error().message));
+        showFriendlyError(this, tr("SVG illisible"),
+                          tr("Ce fichier n'a pas pu être importé comme dessin SVG."),
+                          imported.error().message);
+        return;
+    }
+    if (!confirmDiscardChanges(
+            tr("Le projet a été modifié. Enregistrer avant d'ouvrir ce SVG ?"))) {
         return;
     }
 
@@ -1949,7 +2042,7 @@ void MainWindow::updateSnapIndicator(std::optional<QPointF> snapSceneMm) {
     if (snapIndicatorItem_ == nullptr) {
         snapIndicatorItem_ = new QGraphicsEllipseItem(-5.0, -5.0, 10.0, 10.0);
         snapIndicatorItem_->setFlag(QGraphicsItem::ItemIgnoresTransformations);
-        snapIndicatorItem_->setPen(QPen(QColor(255, 140, 0), 2));
+        snapIndicatorItem_->setPen(QPen(AppTheme::instance().tokens().warning, 2));
         snapIndicatorItem_->setBrush(Qt::NoBrush);
         snapIndicatorItem_->setZValue(1002.0); // au-dessus des aperçus élastiques (1000)
         scene_->addItem(snapIndicatorItem_);
@@ -2418,8 +2511,9 @@ void MainWindow::refreshImage() {
     if (!processedUpToDate) {
         const auto result = image::apply_pipeline(project_.original, project_.ops);
         if (!result) {
-            QMessageBox::warning(this, tr("Erreur"),
-                                 QString::fromStdString(result.error().message));
+            showFriendlyError(this, tr("Traitement de l'image impossible"),
+                              tr("Une des opérations appliquées à l'image a échoué."),
+                              result.error().message);
             return;
         }
         processed_ = *result;
@@ -2494,9 +2588,28 @@ void MainWindow::renderBase(const image::Image& img) {
     hideHoverHighlight();     // la sélection/les objets ont pu changer
 
     if (!img.empty() && (showImageAct_ == nullptr || showImageAct_->isChecked())) {
-        const QImage qimg(img.rgba.data(), img.width, img.height, img.width * 4,
-                          QImage::Format_RGBA8888);
-        const QPixmap pixmap = QPixmap::fromImage(qimg.copy());
+        // Empreinte exacte du contenu (FNV-1a par mots de 64 bits, ~3 ms pour 9 Mo) : la
+        // conversion en pixmap n'est refaite que si l'image a vraiment changé.
+        std::uint64_t key = 1469598103934665603ULL ^ (static_cast<std::uint64_t>(img.width) << 32) ^
+                            static_cast<std::uint64_t>(img.height);
+        const std::size_t bytes = img.rgba.size();
+        const std::size_t words = bytes / 8;
+        for (std::size_t i = 0; i < words; ++i) {
+            std::uint64_t w = 0;
+            std::memcpy(&w, img.rgba.data() + i * 8, 8);
+            key = (key ^ w) * 1099511628211ULL;
+        }
+        for (std::size_t i = words * 8; i < bytes; ++i) {
+            key = (key ^ img.rgba[i]) * 1099511628211ULL;
+        }
+        if (!basePixmapKeyValid_ || key != basePixmapKey_ || basePixmapCache_.isNull()) {
+            const QImage qimg(img.rgba.data(), img.width, img.height, img.width * 4,
+                              QImage::Format_RGBA8888);
+            basePixmapCache_ = QPixmap::fromImage(qimg.copy());
+            basePixmapKey_ = key;
+            basePixmapKeyValid_ = true;
+        }
+        const QPixmap pixmap = basePixmapCache_;
         auto* item = scene_->addPixmap(pixmap);
         const double mmPerPx = project_.mm_per_px.value;
         const double wMm = img.width * mmPerPx;
@@ -3398,11 +3511,12 @@ void MainWindow::segmentImage() {
 
     // Calcul synchrone (curseur d'attente) : le passage en tâche de fond est
     // prévu quand les images de travail deviendront grandes.
-    QGuiApplication::setOverrideCursor(Qt::WaitCursor);
+    std::optional<BusyIndicator> busy;
+    busy.emplace(this, tr("Segmentation de l'image en cours…"));
     auto seg = segmentation::segment(processed_, {.max_colors = colorsSpin->value(),
                                                   .min_region_px = minSizeSpin->value(),
                                                   .smoothing_radius_px = smoothingSpin->value()});
-    QGuiApplication::restoreOverrideCursor();
+    busy.reset();
     if (!seg) {
         QMessageBox::warning(this, tr("Segmentation impossible"),
                              QString::fromStdString(seg.error().message));
@@ -3461,11 +3575,12 @@ void MainWindow::vectorizeSelectedRegion() {
 
     const Micrometers simplifyTolerance = vectorize_tolerance_from_detail(detailSlider->value());
 
-    QGuiApplication::setOverrideCursor(Qt::WaitCursor);
+    std::optional<BusyIndicator> busy;
+    busy.emplace(this, tr("Vectorisation de la région en cours…"));
     auto sets = vectorization::vectorize_region(
         *project_.segmentation, *selectedRegion_,
         {.mm_per_px = project_.mm_per_px, .simplify_tolerance = simplifyTolerance});
-    QGuiApplication::restoreOverrideCursor();
+    busy.reset();
     if (!sets) {
         QMessageBox::warning(this, tr("Vectorisation impossible"),
                              QString::fromStdString(sets.error().message));
@@ -3793,7 +3908,8 @@ void MainWindow::autoDigitize() {
                                     : autodigitize::ContourTechnique::Automatic;
     }
 
-    QGuiApplication::setOverrideCursor(Qt::WaitCursor);
+    std::optional<BusyIndicator> busy;
+    busy.emplace(this, tr("Numérisation automatique en cours…"));
     autodigitize::ContourMetrics contourMetrics;
     auto result =
         contoursMode
@@ -3803,7 +3919,7 @@ void MainWindow::autoDigitize() {
             ? autodigitize::auto_digitize(*project_.segmentation, project_.object_ids, opts)
             : autodigitize::auto_digitize_vectors(project_.vector_objects, project_.object_ids,
                                                   opts);
-    QGuiApplication::restoreOverrideCursor();
+    busy.reset();
     if (!result) {
         QMessageBox::warning(this, tr("Numérisation impossible"),
                              QString::fromStdString(result.error().message));
@@ -3882,9 +3998,10 @@ void MainWindow::segmentWithAi() {
 
     autodigitize::AutoOptions opts;
     opts.mm_per_px = project_.mm_per_px;
-    QGuiApplication::setOverrideCursor(Qt::WaitCursor);
+    std::optional<BusyIndicator> busy;
+    busy.emplace(this, tr("Numérisation automatique en cours…"));
     auto result = autodigitize::auto_digitize(*seg, project_.object_ids, opts);
-    QGuiApplication::restoreOverrideCursor();
+    busy.reset();
     if (!result) {
         QMessageBox::warning(this, tr("Numérisation impossible"),
                              QString::fromStdString(result.error().message));
@@ -3950,106 +4067,6 @@ void MainWindow::warnAboutSkippedSvgFeatures(const std::vector<std::string>& war
     QMessageBox::warning(this, tr("Import SVG partiel"), text);
 }
 
-MainWindow::SatinCoverageChoice MainWindow::askAboutIncompleteSatinCoverage(
-    const std::vector<geometry::PathSet>& unresolvedResidual, double sourceAreaMm2) {
-    if (unresolvedResidual.empty() || sourceAreaMm2 <= 0.0) {
-        return SatinCoverageChoice::ContinuePartial;
-    }
-    double residualAreaMm2 = 0.0;
-    for (const auto& piece : unresolvedResidual) {
-        residualAreaMm2 += std::abs(geometry::signed_area_um2(piece.outer)) / 1e6;
-    }
-    // Seuil mixte fixe+proportionnel, même calibration que `autodigitize::
-    // build_satin_sections` (2026-08-14) : tolère le reliquat NATUREL d'une
-    // pointe/jonction (quelques mm² même sur une décomposition réussie)
-    // sans interrompre l'utilisateur à chaque colonne créée -- mais jamais
-    // une zone significativement incomplète acceptée sans un vrai choix.
-    constexpr double kThresholdFloorMm2 = 1.0;
-    constexpr double kThresholdRatio = 0.03;
-    if (residualAreaMm2 <= std::max(kThresholdFloorMm2, kThresholdRatio * sourceAreaMm2)) {
-        return SatinCoverageChoice::ContinuePartial;
-    }
-    const double coveredPercent = 100.0 * (1.0 - residualAreaMm2 / sourceAreaMm2);
-
-    // §23 du plan de refonte satin (2026-08-14) : un VRAI choix actionnable
-    // ("Continuer avec satin partiel / Utiliser tatami pour le reliquat /
-    // Annuler"), remplaçant l'ancienne information à sens unique --
-    // `Annuler` doit rester possible sans avoir déjà créé quoi que ce soit,
-    // donc cette boîte de dialogue est appelée AVANT `undoStack_.execute(...)`
-    // par chaque appelant, jamais après.
-    QMessageBox box(this);
-    box.setIcon(QMessageBox::Warning);
-    box.setWindowTitle(tr("Satin incomplet"));
-    box.setText(tr("%1 % de la région a pu être converti en satin. %2 mm² restent sans point "
-                   "(satin ni tatami) — la forme comporte une zone que le découpage automatique "
-                   "n'a pas su rendre en satin de qualité suffisante.")
-                    .arg(coveredPercent, 0, 'f', 1)
-                    .arg(residualAreaMm2, 0, 'f', 1));
-    QString detail = tr("Zone(s) non résolue(s) (%1) :\n").arg(unresolvedResidual.size());
-    for (const auto& piece : unresolvedResidual) {
-        const double pieceAreaMm2 = std::abs(geometry::signed_area_um2(piece.outer)) / 1e6;
-        detail += QStringLiteral("• %1 mm²\n").arg(pieceAreaMm2, 0, 'f', 2);
-    }
-    box.setDetailedText(
-        detail); // "Voir le problème" -- bouton "Détails" ajouté automatiquement par Qt
-    auto* partialButton =
-        box.addButton(tr("Continuer avec satin partiel"), QMessageBox::AcceptRole);
-    auto* tatamiButton =
-        box.addButton(tr("Utiliser tatami pour le reliquat"), QMessageBox::ActionRole);
-    box.addButton(tr("Annuler"), QMessageBox::RejectRole);
-    box.setDefaultButton(partialButton);
-    box.exec();
-
-    if (box.clickedButton() == tatamiButton) {
-        return SatinCoverageChoice::UseTatami;
-    }
-    if (box.clickedButton() == partialButton) {
-        return SatinCoverageChoice::ContinuePartial;
-    }
-    return SatinCoverageChoice::Cancel;
-}
-
-void MainWindow::appendTatamiFallbackObjects(
-    const std::vector<geometry::PathSet>& residual, const document::VectorObject& source,
-    std::vector<document::VectorObject>& vectorsOut,
-    std::vector<document::EmbroideryObject>& embroideriesOut) {
-    // Même schéma que le repli automatique de `autodigitize.cpp` (§ AutoChoice,
-    // 2026-08-14) : une paire VectorObject+EmbroideryObject par morceau, le
-    // remplissage tatami suivant `source_vector` (`TatamiParams` ne porte
-    // aucune géométrie propre, cf. embroidery_object.hpp) -- jamais
-    // réimplémenté différemment ici, seulement rejoué côté desktop pour un
-    // choix EXPLICITE de l'utilisateur plutôt qu'une classification
-    // automatique.
-    constexpr double kMinFallbackAreaMm2 = 0.5;
-    for (const auto& piece : residual) {
-        const double areaMm2 = std::abs(geometry::signed_area_um2(piece.outer)) / 1e6;
-        if (areaMm2 < kMinFallbackAreaMm2) {
-            continue; // reliquat négligeable (bruit d'arrondi géométrique)
-        }
-        document::VectorObject fallbackVec;
-        fallbackVec.id = project_.object_ids.next();
-        fallbackVec.name =
-            tr("Reliquat de %1 (tatami)").arg(QString::fromStdString(source.name)).toStdString();
-        fallbackVec.rgb = source.rgb;
-        fallbackVec.paths = {piece};
-        const ObjectId fallbackVecId = fallbackVec.id;
-        vectorsOut.push_back(std::move(fallbackVec));
-
-        document::EmbroideryObject fallback;
-        fallback.id = project_.object_ids.next();
-        fallback.source_vector = fallbackVecId;
-        fallback.rgb = source.rgb;
-        fallback.params = document::TatamiParams{};
-        // §21/§24 : l'utilisateur a EXPLICITEMENT choisi "Utiliser tatami
-        // pour le reliquat" (§23) -- jamais une classification automatique,
-        // même si le résultat ressemble au repli d'autodigitize.cpp.
-        fallback.intent = document::EmbroideryIntent::ForcedUserChoice;
-        fallback.name =
-            tr("Tatami de repli (%1)").arg(QString::fromStdString(source.name)).toStdString();
-        embroideriesOut.push_back(std::move(fallback));
-    }
-}
-
 void MainWindow::openAiPreferences() {
     AiPreferencesDialog dialog(this);
     dialog.setPreferences(loadAiPreferences());
@@ -4059,410 +4076,7 @@ void MainWindow::openAiPreferences() {
 }
 
 void MainWindow::createSatinObject() {
-    if (!selectedObject_ || hasMultiSelection()) {
-        return;
-    }
-    const auto* source = project_.findObject(*selectedObject_);
-    if (source == nullptr || source->paths.empty()) {
-        return;
-    }
-
-    // Chemin direct HP-STI-018 via `satin_planning::build_satin_sections` :
-    // l'action manuelle "Colonne satin" construit les colonnes sur la région
-    // source sans repasser par la subdivision SGSD automatique. Mode
-    // Parametric (rails Bézier épars, jonctions plus propres). La densité/
-    // compensation/sous-couche du dialogue n'affecte pas la géométrie des
-    // rails — construite ici avec les valeurs par défaut, réappliquée après
-    // le dialogue plutôt que de relancer tout le calcul.
-    //
-    // §3/§4 de la mission de durcissement du contrat SatinPlanner
-    // (2026-08-17) : l'ancien repli sur `rails_from_contour` (heuristique
-    // naïve, débordante sur les formes concaves/branchues, cf. commentaire
-    // ci-dessus) a été supprimé sur ce chemin `ForcedUserChoice::Satin` --
-    // il substituait silencieusement une géométrie de qualité inférieure
-    // au lieu d'utiliser le générateur satin commun. Un rapport sans la
-    // moindre section (§6 : cas Incomplete/Impossible) est désormais traité
-    // honnêtement, pas contourné.
-    auto_satin::SatinColumnsParameters skeletonParams;
-    skeletonParams.geometry_mode = auto_satin::SatinGeometryMode::Parametric;
-    const document::SatinParams initialDefaults;
-    satin_planning::SatinBuildReport built = satin_planning::build_satin_sections(
-        source->paths.front(), skeletonParams, initialDefaults.density,
-        initialDefaults.pull_compensation, initialDefaults.center_underlay,
-        initialDefaults.max_width, {}, initialDefaults.max_width_hard,
-        satin_planning::SatinSectionBuildMode::DirectColumns);
-    const std::size_t skeletonColumnCount = built.sections.size();
-
-    if (skeletonColumnCount == 0) {
-        // Le générateur satin n'a produit AUCUNE section exploitable --
-        // honnêtement rapporté (§6/§7), jamais contourné par une heuristique
-        // de moindre qualité. Seul choix encore actionnable : un remplissage
-        // tatami sur la région entière, ou annuler.
-        const auto answer = QMessageBox::question(
-            this, tr("Satin impossible"),
-            tr("Aucune colonne satin exploitable n'a pu être construite pour cette région "
-               "(statut du planificateur : %1). Utiliser un remplissage tatami à la place ?")
-                .arg(QString::fromStdString(satin_planning::to_string(built.status))),
-            QMessageBox::Yes | QMessageBox::No);
-        if (answer != QMessageBox::Yes) {
-            return;
-        }
-        std::vector<document::EmbroideryObject> tatamiObjects;
-        std::vector<document::VectorObject> tatamiVectors;
-        appendTatamiFallbackObjects(built.unresolved_residual, *source, tatamiVectors,
-                                    tatamiObjects);
-        if (tatamiObjects.empty()) {
-            QMessageBox::warning(
-                this, tr("Satin impossible"),
-                tr("Le remplissage tatami de repli n'a lui non plus rien pu construire "
-                   "(région dégénérée)."));
-            return;
-        }
-        undoStack_.execute(std::make_unique<commands::AddObjectBatchCommand>(
-                               std::move(tatamiVectors), std::move(tatamiObjects),
-                               "Remplissage tatami (satin impossible)"),
-                           project_);
-        showStitchesAct_->setChecked(true);
-        refreshImage();
-        updateActions();
-        if (sequence_) {
-            const auto stats = stitch::compute_stats(*sequence_);
-            statusBar()->showMessage(
-                tr("Remplissage tatami de repli : %1 points").arg(stats.stitches));
-        }
-        return;
-    }
-
-    QDialog dialog(this);
-    dialog.setWindowTitle(tr("Colonne satin"));
-    auto* layout = new QFormLayout(&dialog);
-    auto* warn =
-        new QLabel(tr("⚠ Le satin automatique est expérimental. Vérifiez impérativement le "
-                      "résultat (densité, virages, extrémités) avant tout passage sur machine."),
-                   &dialog);
-    warn->setWordWrap(true);
-    warn->setStyleSheet("color:#8a5a00;");
-    layout->addRow(warn);
-    auto* densitySpin = new QDoubleSpinBox(&dialog);
-    densitySpin->setRange(0.1, 1.5);
-    densitySpin->setValue(0.4);
-    densitySpin->setDecimals(2);
-    densitySpin->setSuffix(tr(" mm"));
-    auto* compSpin = new QDoubleSpinBox(&dialog);
-    compSpin->setRange(0.0, 1.0);
-    compSpin->setValue(0.0);
-    compSpin->setDecimals(2);
-    compSpin->setSuffix(tr(" mm"));
-    auto* underlayCheck = new QCheckBox(tr("Sous-couche centrale"), &dialog);
-    underlayCheck->setChecked(true);
-    layout->addRow(tr("Densité (écart) :"), densitySpin);
-    layout->addRow(tr("Compensation de tirage :"), compSpin);
-    layout->addRow(underlayCheck);
-    auto* buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dialog);
-    connect(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
-    connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
-    layout->addRow(buttons);
-    if (dialog.exec() != QDialog::Accepted) {
-        return;
-    }
-
-    const Micrometers density = to_micrometers(Millimeters{densitySpin->value()});
-    const Micrometers compensation = to_micrometers(Millimeters{compSpin->value()});
-    const bool underlay = underlayCheck->isChecked();
-    const document::SatinParams defaults; // pour le seuil max_width (§5.3)
-
-    std::vector<document::EmbroideryObject> objects;
-    double worstWidthUm = 0.0;
-    // `skeletonColumnCount > 0` est garanti ici -- le cas 0 a déjà retourné
-    // plus haut (repli tatami honnête ou annulation), jamais une géométrie
-    // de repli de moindre qualité substituée silencieusement.
-    int idx = 0;
-    for (auto& section : built.sections) {
-        section.params.density = density;
-        section.params.pull_compensation = compensation;
-        section.params.center_underlay = underlay;
-        stitch_generation::SatinConfig probe;
-        probe.density = density;
-        worstWidthUm =
-            std::max(worstWidthUm, stitch_generation::fill_satin(section.params.rail_a,
-                                                                 section.params.rail_b, probe)
-                                       .max_width_um);
-
-        document::EmbroideryObject object;
-        object.id = project_.object_ids.next();
-        object.name =
-            (skeletonColumnCount > 1
-                 ? tr("Satin de %1 (%2)").arg(QString::fromStdString(source->name)).arg(++idx)
-                 : tr("Satin de %1").arg(QString::fromStdString(source->name)))
-                .toStdString();
-        object.source_vector = source->id;
-        object.rgb = source->rgb;
-        object.params = std::move(section.params);
-        // §21/§24 : choix EXPLICITE de l'utilisateur (action "Colonne
-        // satin"), jamais une classification automatique.
-        object.intent = document::EmbroideryIntent::ForcedUserChoice;
-        objects.push_back(std::move(object));
-    }
-
-    // Avertissement de largeur excessive (§5.3) : ne masque jamais la limite
-    // physique — on prévient et on suggère le tatami.
-    if (worstWidthUm > static_cast<double>(defaults.max_width.value)) {
-        const auto answer = QMessageBox::warning(
-            this, tr("Satin large"),
-            tr("La colonne atteint %1 mm de large — au-delà de la limite recommandée "
-               "(%2 mm), le fil risque d'accrocher. Un remplissage tatami serait plus "
-               "solide. Créer quand même le satin ?")
-                .arg(worstWidthUm / 1000.0, 0, 'f', 1)
-                .arg(defaults.max_width.value / 1000.0, 0, 'f', 1),
-            QMessageBox::Yes | QMessageBox::No);
-        if (answer != QMessageBox::Yes) {
-            return;
-        }
-    }
-
-    // §23 du plan de refonte satin : le choix (partiel / tatami / annuler)
-    // est demandé AVANT toute création, jamais après -- `Annuler` doit
-    // pouvoir laisser le document totalement inchangé.
-    const double sourceAreaMm2 =
-        std::abs(geometry::signed_area_um2(source->paths.front().outer)) / 1e6;
-    const SatinCoverageChoice coverageChoice =
-        askAboutIncompleteSatinCoverage(built.unresolved_residual, sourceAreaMm2);
-    if (coverageChoice == SatinCoverageChoice::Cancel) {
-        return;
-    }
-    const std::size_t satinCount = objects.size();
-    std::vector<document::VectorObject> extraVectors;
-    if (coverageChoice == SatinCoverageChoice::UseTatami) {
-        appendTatamiFallbackObjects(built.unresolved_residual, *source, extraVectors, objects);
-    }
-
-    undoStack_.execute(
-        std::make_unique<commands::AddObjectBatchCommand>(
-            std::move(extraVectors), std::move(objects), "Colonne satin (création manuelle)"),
-        project_);
-    showStitchesAct_->setChecked(true);
-    refreshImage();
-    updateActions();
-    if (sequence_) {
-        const auto stats = stitch::compute_stats(*sequence_);
-        QString msg =
-            tr("%1 colonne(s) satin générée(s) : %2 points").arg(satinCount).arg(stats.stitches);
-        if (coverageChoice == SatinCoverageChoice::UseTatami) {
-            msg += tr(" (+ remplissage tatami pour le reliquat)");
-        }
-        statusBar()->showMessage(msg);
-    }
-    warnAboutSkippedAutoSatinBranches(built.warnings);
-}
-
-void MainWindow::onSatinCutLineDragging(QPointF anchorMm, QPointF currentMm) {
-    if (currentTool_ != Tool::DrawSatinCutLine) {
-        return;
-    }
-    if (cutLinePreviewItem_ == nullptr) {
-        cutLinePreviewItem_ = new QGraphicsPathItem();
-        cutLinePreviewItem_->setZValue(1001.0);
-        QPen pen(QColor(0xB0, 0x30, 0x30));
-        pen.setWidthF(0.15);
-        pen.setStyle(Qt::DashLine);
-        cutLinePreviewItem_->setPen(pen);
-        scene_->addItem(cutLinePreviewItem_);
-    }
-    QPainterPath path;
-    path.moveTo(anchorMm);
-    path.lineTo(currentMm);
-    cutLinePreviewItem_->setPath(path);
-    statusBar()->showMessage(
-        tr("Ligne de coupe : relâchez pour séparer la forme sélectionnée en colonnes satin."));
-}
-
-void MainWindow::onSatinCutLineCommitted(QPointF anchorMm, QPointF handleMm) {
-    if (currentTool_ != Tool::DrawSatinCutLine) {
-        return;
-    }
-    if (cutLinePreviewItem_ != nullptr) {
-        cutLinePreviewItem_->setPath(QPainterPath());
-    }
-    // Un seul geste = une seule coupe (v1) : succès -> retour à Sélection
-    // pour enchaîner naturellement sur la retouche du résultat ; échec ->
-    // reste sur l'outil pour laisser l'utilisateur retracer la ligne.
-    if (createSatinObjectWithCutLine(sceneMmToModel(anchorMm), sceneMmToModel(handleMm))) {
-        setTool(Tool::Select);
-    }
-}
-
-bool MainWindow::createSatinObjectWithCutLine(Vec2um cutA, Vec2um cutB) {
-    if (!selectedObject_ || hasMultiSelection()) {
-        statusBar()->showMessage(
-            tr("Sélectionnez d'abord la forme à découper avant de tracer la ligne de coupe."),
-            4000);
-        return false;
-    }
-    const auto* source = project_.findObject(*selectedObject_);
-    if (source == nullptr || source->paths.empty()) {
-        return false;
-    }
-    // Glisser quasi nul (clic net plutôt que tracé) : probablement
-    // involontaire, on ignore silencieusement plutôt que de découper au
-    // hasard sur un segment dégénéré.
-    constexpr double kMinCutLengthUm = 200.0;
-    if (length_um(cutB - cutA) < kMinCutLengthUm) {
-        return false;
-    }
-
-    const auto cutResult = geometry::cut_path_set(source->paths.front(), cutA, cutB);
-    if (!cutResult || cutResult->size() < 2) {
-        QMessageBox::warning(this, tr("Coupe sans effet"),
-                             tr("La ligne tracée ne sépare pas la forme en deux morceaux. "
-                                "Tracez-la bien d'un bord à l'autre de la forme, à travers "
-                                "la jonction visée."));
-        return false;
-    }
-
-    QDialog dialog(this);
-    dialog.setWindowTitle(tr("Colonnes satin (ligne de coupe)"));
-    auto* layout = new QFormLayout(&dialog);
-    auto* warn =
-        new QLabel(tr("⚠ Le satin automatique est expérimental. Vérifiez impérativement le "
-                      "résultat (densité, virages, extrémités) avant tout passage sur machine."),
-                   &dialog);
-    warn->setWordWrap(true);
-    warn->setStyleSheet("color:#8a5a00;");
-    layout->addRow(warn);
-    auto* densitySpin = new QDoubleSpinBox(&dialog);
-    densitySpin->setRange(0.1, 1.5);
-    densitySpin->setValue(0.4);
-    densitySpin->setDecimals(2);
-    densitySpin->setSuffix(tr(" mm"));
-    auto* compSpin = new QDoubleSpinBox(&dialog);
-    compSpin->setRange(0.0, 1.0);
-    compSpin->setValue(0.0);
-    compSpin->setDecimals(2);
-    compSpin->setSuffix(tr(" mm"));
-    auto* underlayCheck = new QCheckBox(tr("Sous-couche centrale"), &dialog);
-    underlayCheck->setChecked(true);
-    layout->addRow(tr("Densité (écart) :"), densitySpin);
-    layout->addRow(tr("Compensation de tirage :"), compSpin);
-    layout->addRow(underlayCheck);
-    auto* buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dialog);
-    connect(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
-    connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
-    layout->addRow(buttons);
-    if (dialog.exec() != QDialog::Accepted) {
-        return false;
-    }
-
-    const Micrometers density = to_micrometers(Millimeters{densitySpin->value()});
-    const Micrometers compensation = to_micrometers(Millimeters{compSpin->value()});
-    const bool underlay = underlayCheck->isChecked();
-    const document::SatinParams defaults; // pour le seuil max_width (§5.3)
-
-    std::vector<document::EmbroideryObject> objects;
-    std::vector<std::string> allWarnings;
-    std::vector<geometry::PathSet> allResidual;
-    double totalPieceAreaMm2 = 0.0;
-    double worstWidthUm = 0.0;
-    int idx = 0;
-    // Chaque morceau issu de la coupe est traité indépendamment via le même
-    // point d'entrée direct que createSatinObject() : un morceau qui ne produit
-    // aucune section (trop petit/dégénéré) est simplement ignoré plutôt que d'annuler toute
-    // l'opération -- la coupe a pu très bien fonctionner pour la jonction
-    // visée même si un fragment marginal ne l'est pas.
-    for (const auto& piece : *cutResult) {
-        if (piece.outer.nodes.empty()) {
-            continue;
-        }
-        totalPieceAreaMm2 += std::abs(geometry::signed_area_um2(piece.outer)) / 1e6;
-        auto_satin::SatinColumnsParameters skeletonParams;
-        skeletonParams.geometry_mode = auto_satin::SatinGeometryMode::Parametric;
-        satin_planning::SatinBuildReport pieceBuilt = satin_planning::build_satin_sections(
-            piece, skeletonParams, density, compensation, underlay, defaults.max_width, {},
-            defaults.max_width_hard, satin_planning::SatinSectionBuildMode::DirectColumns);
-        for (auto& w : pieceBuilt.warnings)
-            allWarnings.push_back(std::move(w));
-        for (auto& r : pieceBuilt.unresolved_residual)
-            allResidual.push_back(std::move(r));
-        if (pieceBuilt.sections.empty()) {
-            continue;
-        }
-
-        for (auto& section : pieceBuilt.sections) {
-            stitch_generation::SatinConfig probe;
-            probe.density = density;
-            worstWidthUm =
-                std::max(worstWidthUm, stitch_generation::fill_satin(section.params.rail_a,
-                                                                     section.params.rail_b, probe)
-                                           .max_width_um);
-
-            document::EmbroideryObject object;
-            object.id = project_.object_ids.next();
-            object.name = tr("Satin de %1 (%2)")
-                              .arg(QString::fromStdString(source->name))
-                              .arg(++idx)
-                              .toStdString();
-            object.source_vector = source->id;
-            object.rgb = source->rgb;
-            object.params = std::move(section.params);
-            object.intent = document::EmbroideryIntent::ForcedUserChoice;
-            objects.push_back(std::move(object));
-        }
-    }
-
-    if (objects.empty()) {
-        QMessageBox::warning(this, tr("Satin impossible"),
-                             tr("Aucun des morceaux issus de la coupe n'est utilisable pour une "
-                                "colonne satin (trop petit ou trop complexe)."));
-        return false;
-    }
-
-    // Avertissement de largeur excessive (§5.3), identique à createSatinObject().
-    if (worstWidthUm > static_cast<double>(defaults.max_width.value)) {
-        const auto answer = QMessageBox::warning(
-            this, tr("Satin large"),
-            tr("La colonne atteint %1 mm de large — au-delà de la limite recommandée "
-               "(%2 mm), le fil risque d'accrocher. Un remplissage tatami serait plus "
-               "solide. Créer quand même le satin ?")
-                .arg(worstWidthUm / 1000.0, 0, 'f', 1)
-                .arg(defaults.max_width.value / 1000.0, 0, 'f', 1),
-            QMessageBox::Yes | QMessageBox::No);
-        if (answer != QMessageBox::Yes) {
-            return false;
-        }
-    }
-
-    // §23 du plan de refonte satin : même choix explicite qu'`createSatinObject()`,
-    // demandé AVANT creation -- `Annuler` laisse le document inchangé malgré
-    // la découpe géométrique déjà calculée localement (jamais committée).
-    const SatinCoverageChoice coverageChoice =
-        askAboutIncompleteSatinCoverage(allResidual, totalPieceAreaMm2);
-    if (coverageChoice == SatinCoverageChoice::Cancel) {
-        return false;
-    }
-    const std::size_t satinCount = objects.size();
-    std::vector<document::VectorObject> extraVectors;
-    if (coverageChoice == SatinCoverageChoice::UseTatami) {
-        appendTatamiFallbackObjects(allResidual, *source, extraVectors, objects);
-    }
-
-    undoStack_.execute(
-        std::make_unique<commands::AddObjectBatchCommand>(
-            std::move(extraVectors), std::move(objects), "Colonne satin (ligne de coupe)"),
-        project_);
-    showStitchesAct_->setChecked(true);
-    refreshImage();
-    updateActions();
-    if (sequence_) {
-        const auto stats = stitch::compute_stats(*sequence_);
-        QString msg = tr("Coupe : %1 colonne(s) satin générée(s) : %2 points")
-                          .arg(satinCount)
-                          .arg(stats.stitches);
-        if (coverageChoice == SatinCoverageChoice::UseTatami) {
-            msg += tr(" (+ remplissage tatami pour le reliquat)");
-        }
-        statusBar()->showMessage(msg);
-    }
-    warnAboutSkippedAutoSatinBranches(allWarnings);
-    return true;
+    createAutoSatin(true);
 }
 
 document::EmbroideryObject* MainWindow::currentFillObject() {
@@ -4530,129 +4144,7 @@ document::EmbroideryObject* MainWindow::embroideryForVector(ObjectId vectorId) {
 }
 
 void MainWindow::autoConvertToSatin() {
-    if (!selectedObject_ || hasMultiSelection()) {
-        return;
-    }
-    const auto* source = project_.findObject(*selectedObject_);
-    if (source == nullptr || source->paths.empty()) {
-        return;
-    }
-
-    // Même chemin direct que createSatinObject() : on construit les colonnes
-    // satin sur la région source sans subdivision SGSD automatique. L'aperçu
-    // de satinabilité utilise l'analyse de la région ENTIÈRE
-    // (`whole_region_report`, toujours calculée en amont).
-    auto_satin::SatinColumnsParameters skeletonParams;
-    skeletonParams.geometry_mode = auto_satin::SatinGeometryMode::Parametric;
-    const document::SatinParams defaults;
-    satin_planning::SatinBuildReport built = satin_planning::build_satin_sections(
-        source->paths.front(), skeletonParams, defaults.density, defaults.pull_compensation,
-        defaults.center_underlay, defaults.max_width, {}, defaults.max_width_hard,
-        satin_planning::SatinSectionBuildMode::DirectColumns);
-    const std::size_t columnCount = built.sections.size();
-
-    QString info;
-    if (built.whole_region_report) {
-        const auto& rep = *built.whole_region_report;
-        info = tr("Satinabilité : %1 (confiance %2)\n"
-                  "Largeur min / moy / max : %3 / %4 / %5 mm\n"
-                  "Branches : %6   ·   Colonnes proposées : %7")
-                   .arg(QString::fromUtf8(auto_satin::to_string(rep.status)))
-                   .arg(rep.confidence, 0, 'f', 2)
-                   .arg(rep.minimum_width_mm, 0, 'f', 2)
-                   .arg(rep.mean_width_mm, 0, 'f', 2)
-                   .arg(rep.maximum_width_mm, 0, 'f', 2)
-                   .arg(rep.branch_count)
-                   .arg(columnCount);
-    } else {
-        info = tr("Colonnes proposées : %1").arg(columnCount);
-    }
-    // Couverture estimée (§23 du plan de refonte satin, 2026-08-14) :
-    // affichée dans l'APERÇU avant toute création, jamais découverte après
-    // coup -- l'utilisateur décide en connaissance de cause plutôt que de
-    // voir une intention SATIN silencieusement réalisée à moitié.
-    const double sourceAreaMm2 =
-        std::abs(geometry::signed_area_um2(source->paths.front().outer)) / 1e6;
-    double residualAreaMm2 = 0.0;
-    for (const auto& piece : built.unresolved_residual) {
-        residualAreaMm2 += std::abs(geometry::signed_area_um2(piece.outer)) / 1e6;
-    }
-    constexpr double kThresholdFloorMm2 = 1.0;
-    constexpr double kThresholdRatio = 0.03;
-    const bool residualSignificant =
-        columnCount > 0 && sourceAreaMm2 > 0.0 &&
-        residualAreaMm2 > std::max(kThresholdFloorMm2, kThresholdRatio * sourceAreaMm2);
-    if (columnCount > 0 && sourceAreaMm2 > 0.0) {
-        const double coveredPercent = 100.0 * (1.0 - residualAreaMm2 / sourceAreaMm2);
-        info += tr("\nCouverture estimée : %1 %").arg(coveredPercent, 0, 'f', 1);
-        if (residualSignificant) {
-            info += tr("\n⚠ %1 mm² resteraient sans point (satin ni tatami).")
-                        .arg(residualAreaMm2, 0, 'f', 1);
-        }
-    }
-    for (const auto& w : built.warnings) {
-        info += tr("\nAttention : %1").arg(QString::fromStdString(w));
-    }
-
-    if (columnCount == 0) {
-        QMessageBox::information(this, tr("Conversion en satin"),
-                                 tr("Conversion impossible : %1\n\n%2")
-                                     .arg(QString::fromStdString(built.refusal), info));
-        return;
-    }
-
-    // §23 : quand le reliquat est significatif, le VRAI choix à trois voies
-    // remplace le simple Oui/Non -- sinon (conversion propre) la question
-    // Oui/Non habituelle reste le geste de confirmation le plus léger.
-    SatinCoverageChoice coverageChoice = SatinCoverageChoice::ContinuePartial;
-    if (residualSignificant) {
-        coverageChoice = askAboutIncompleteSatinCoverage(built.unresolved_residual, sourceAreaMm2);
-        if (coverageChoice == SatinCoverageChoice::Cancel) {
-            return;
-        }
-    } else {
-        const auto answer = QMessageBox::question(
-            this, tr("Convertir en satin"),
-            tr("%1\n\nCréer %2 colonne(s) satin ? (annulable)").arg(info).arg(columnCount));
-        if (answer != QMessageBox::Yes) {
-            return;
-        }
-    }
-
-    std::vector<document::EmbroideryObject> objects;
-    int idx = 0;
-    for (auto& section : built.sections) {
-        document::EmbroideryObject emb;
-        emb.id = project_.object_ids.next();
-        emb.name = tr("Satin auto de %1 (%2)")
-                       .arg(QString::fromStdString(source->name))
-                       .arg(++idx)
-                       .toStdString();
-        emb.source_vector = source->id;
-        emb.rgb = source->rgb;
-        emb.params = std::move(section.params);
-        // §21/§24 : l'utilisateur a explicitement déclenché la conversion
-        // (action "Convertir en satin") -- "auto" dans le nom qualifie la
-        // génération des rails (automatique, pas de retouche manuelle),
-        // jamais l'intention, qui reste EXPLICITE.
-        emb.intent = document::EmbroideryIntent::ForcedUserChoice;
-        objects.push_back(std::move(emb));
-    }
-    std::vector<document::VectorObject> extraVectors;
-    if (coverageChoice == SatinCoverageChoice::UseTatami) {
-        appendTatamiFallbackObjects(built.unresolved_residual, *source, extraVectors, objects);
-    }
-    undoStack_.execute(std::make_unique<commands::AddObjectBatchCommand>(std::move(extraVectors),
-                                                                         std::move(objects)),
-                       project_);
-    showStitchesAct_->setChecked(true);
-    refreshImage();
-    updateActions();
-    QString msg = tr("%1 colonne(s) satin créée(s).").arg(columnCount);
-    if (coverageChoice == SatinCoverageChoice::UseTatami) {
-        msg += tr(" (+ remplissage tatami pour le reliquat)");
-    }
-    statusBar()->showMessage(msg);
+    createAutoSatin(false);
 }
 
 void MainWindow::changeFillAngle() {
@@ -4721,6 +4213,7 @@ void MainWindow::setStitchType(ObjectId embroideryId, int type) {
     }
     document::StitchParams params;
     std::string label;
+    std::optional<std::vector<geometry::PathSet>> restoredContour; // satin : contour brut
     switch (type) {
     case 0: { // contour cousu
         document::RunningStitchParams rp;
@@ -4744,64 +4237,33 @@ void MainWindow::setStitchType(ObjectId embroideryId, int type) {
         label = "Type : remplissage directionnel";
         break;
     }
-    case 2: { // satin : exige deux rails, construits depuis le contour source
-        const auto* source = project_.findObject(emb->source_vector);
-        if (source == nullptr || source->paths.empty()) {
+    case 2: { // satin par squelette et traversées orientées
+        const auto* currentSource = project_.findObject(emb->source_vector);
+        if (currentSource == nullptr || currentSource->paths.empty()) {
             QMessageBox::warning(this, tr("Satin impossible"),
-                                 tr("Aucun contour source pour construire les rails."));
+                                 tr("Aucun contour source pour construire le satin."));
             return;
         }
-        // `SetStitchTypeCommand` ne sait remplacer qu'UN embroidery object
-        // par UN seul jeu de paramètres (contrainte structurelle de cette
-        // commande d'annulation/rétablissement, pas un choix arbitraire) --
-        // cette action reste donc hors des créations multi-sections complètes
-        // (`createSatinObject`/`autoConvertToSatin`). Elle passe néanmoins par
-        // le même point d'entrée unifié (`satin_planning::build_satin_sections`)
-        // en mode direct, pour rester alignée avec les actions satin manuelles
-        // sans réintroduire la subdivision SGSD automatique.
-        auto_satin::SatinColumnsParameters skeletonParams;
-        skeletonParams.geometry_mode = auto_satin::SatinGeometryMode::Parametric;
-        const document::SatinParams defaults; // densité/compensation/sous-couche inchangées ici
-        satin_planning::SatinBuildReport built = satin_planning::build_satin_sections(
-            source->paths.front(), skeletonParams, defaults.density, defaults.pull_compensation,
-            defaults.center_underlay, defaults.max_width, {}, defaults.max_width_hard,
-            satin_planning::SatinSectionBuildMode::DirectColumns);
-        document::SatinParams sp;
-        if (built.sections.size() == 1) {
-            sp = std::move(built.sections.front().params);
-        } else if (built.sections.size() > 1) {
-            // Plusieurs sections de branches ont ete construites, mais cette
-            // action ne peut representer qu'UNE section : garde la plus grande (meilleure
-            // approximation locale unique) et le signale explicitement --
-            // jamais une substitution silencieuse par une géométrie de
-            // moindre qualité (§12 du plan de refonte satin).
-            const auto& best = *std::max_element(
-                built.sections.begin(), built.sections.end(), [](const auto& a, const auto& b) {
-                    return std::abs(geometry::signed_area_um2(a.strip)) <
-                           std::abs(geometry::signed_area_um2(b.strip));
-                });
-            sp = best.params;
-            QMessageBox::information(
-                this, tr("Satin partiel"),
-                tr("Cette forme nécessite plusieurs sections satin pour être entièrement "
-                   "représentée (%1 trouvées) ; « Type de points » ne peut convertir qu'un "
-                   "seul objet à la fois et ne conserve donc que la section la plus grande. "
-                   "Utilisez « Colonne satin » (création) pour toutes les sections.")
-                    .arg(built.sections.size()));
-        } else {
-            // §3/§4 de la mission de durcissement du contrat SatinPlanner
-            // (2026-08-17) : l'ancien repli sur `rails_from_contour`
-            // (heuristique naïve, débordante) a été supprimé ici aussi --
-            // le générateur satin (déjà tenté ci-dessus) est la seule tentative
-            // légitime pour une intention `ForcedUserChoice::Satin`. Un rapport
-            // sans la moindre section est
-            // rapporté honnêtement (statut du planificateur inclus), jamais
-            // contourné par une géométrie de moindre qualité.
+        // Le satin suit la région telle que segmentée, pas le contour agrandi par le
+        // recouvrement des tatamis voisins (sinon il déborde de sa zone).
+        restoredContour = pristineSatinContour(*currentSource);
+        document::VectorObject restoredCopy;
+        const document::VectorObject* source = currentSource;
+        if (restoredContour) {
+            restoredCopy = *currentSource;
+            restoredCopy.paths = *restoredContour;
+            source = &restoredCopy;
+        }
+        document::AutoSatinParams sp;
+        const AutoSatinPreview preview = previewAutoSatin(*source, sp);
+        if (preview.columns == 0) {
+            // Refus nommé, jamais contourné par une géométrie de moindre qualité.
             QMessageBox::warning(
                 this, tr("Satin impossible"),
-                tr("Aucune colonne satin exploitable n'a pu être construite pour cette région "
-                   "(statut du planificateur : %1). Essayez un tatami.")
-                    .arg(QString::fromStdString(satin_planning::to_string(built.status))));
+                tr("Aucune colonne satin n'a pu être construite pour cette région :\n%1\n\n"
+                   "Essayez un tatami.")
+                    .arg(preview.messages.isEmpty() ? tr("forme non exploitable")
+                                                    : preview.messages.join(QLatin1Char('\n'))));
             return;
         }
         params = sp;
@@ -4820,9 +4282,17 @@ void MainWindow::setStitchType(ObjectId embroideryId, int type) {
     // -- exactement le défaut réel signalé (« résidu de satin qui reste
     // même en revenant en tatami », 2026-09-04, cf. le commentaire de la
     // commande pour le détail complet).
-    undoStack_.execute(std::make_unique<commands::ConvertFillGroupCommand>(
-                           embroideryId, std::move(params), std::move(label)),
-                       project_);
+    using Convert = commands::ConvertFillGroupCommand;
+    auto convert = std::make_unique<Convert>(embroideryId, std::move(params), std::move(label));
+    if (restoredContour) {
+        auto group = std::make_unique<commands::CompositeCommand>("Type : satin");
+        group->add(std::make_unique<commands::SetVectorPathsCommand>(
+            emb->source_vector, *restoredContour, "Contour brut de la région"));
+        group->add(std::move(convert));
+        undoStack_.execute(std::move(group), project_);
+    } else {
+        undoStack_.execute(std::move(convert), project_);
+    }
     showStitchesAct_->setChecked(true);
     refreshImage();
     updateActions();
@@ -5125,7 +4595,8 @@ QString MainWindow::buildDebugDump(ObjectId embroideryId) const {
         << QStringLiteral("ObjectId : %1").arg(emb->id.value)
         << QStringLiteral("Nom : \"%1\"").arg(QString::fromStdString(emb->name))
         << QStringLiteral("Type de points : %1")
-               .arg(emb->is_satin()         ? QStringLiteral("Satin")
+               .arg(emb->is_auto_satin()    ? QStringLiteral("Satin (squelette)")
+                    : emb->is_satin()       ? QStringLiteral("Satin (rails)")
                     : emb->is_tatami()      ? QStringLiteral("Tatami")
                     : emb->is_directional() ? QStringLiteral("Remplissage directionnel")
                                             : QStringLiteral("Contour (running stitch)"))
@@ -5208,6 +4679,36 @@ QString MainWindow::buildDebugDump(ObjectId embroideryId) const {
                 }
                 for (std::size_t i = 0; i < p.break_lines.size(); ++i) {
                     dumpPath(out, p.break_lines[i], QStringLiteral("break_line[%1]").arg(i));
+                }
+            } else if constexpr (std::is_same_v<T, document::AutoSatinParams>) {
+                out << QStringLiteral("Variant : AutoSatinParams")
+                    << QStringLiteral("spacing : %1").arg(fmtUm(p.spacing))
+                    << QStringLiteral("split_stitch : %1").arg(fmtSplit(p.split_stitch))
+                    << QStringLiteral("split_threshold (Lmax) : %1").arg(fmtUm(p.split_threshold))
+                    << QStringLiteral("split_length (y) : %1").arg(fmtUm(p.split_length))
+                    << QStringLiteral("short_stitch : %1").arg(fmtShortStitch(p.short_stitch))
+                    << QStringLiteral("pull_compensation : %1").arg(fmtUm(p.pull_compensation))
+                    << QStringLiteral("center_underlay : %1").arg(fmtBool(p.center_underlay))
+                    << QStringLiteral("underlay_edge : %1").arg(fmtBool(p.underlay_edge))
+                    << QStringLiteral("underlay_zigzag : %1").arg(fmtBool(p.underlay_zigzag))
+                    << QStringLiteral("pull_left : %1").arg(fmtUm(p.pull_left))
+                    << QStringLiteral("pull_right : %1").arg(fmtUm(p.pull_right))
+                    << QStringLiteral("push_start : %1").arg(fmtUm(p.push_start))
+                    << QStringLiteral("push_end : %1").arg(fmtUm(p.push_end))
+                    << QStringLiteral("cap_start : %1").arg(fmtCap(p.cap_start))
+                    << QStringLiteral("cap_end : %1").arg(fmtCap(p.cap_end))
+                    << QStringLiteral("lock_start : %1").arg(fmtLock(p.lock_start))
+                    << QStringLiteral("lock_end : %1").arg(fmtLock(p.lock_end))
+                    << QStringLiteral("guides : %1").arg(p.guides.size());
+                for (std::size_t i = 0; i < p.guides.size(); ++i) {
+                    const auto& g = p.guides[i];
+                    out << QStringLiteral("guide[%1] : ancre (%2, %3) µm, angle %4 rad (%5)")
+                               .arg(i)
+                               .arg(g.anchor.x.value)
+                               .arg(g.anchor.y.value)
+                               .arg(g.angle.radians)
+                               .arg(g.absolute ? QStringLiteral("absolu")
+                                               : QStringLiteral("relatif"));
                 }
             } else if constexpr (std::is_same_v<T, document::SatinParams>) {
                 out << QStringLiteral("Variant : SatinParams")
@@ -5403,7 +4904,9 @@ void MainWindow::showDebugDump(ObjectId embroideryId) {
         if (file.open(QIODevice::WriteOnly | QIODevice::Text)) {
             file.write(text.toUtf8());
         } else {
-            QMessageBox::warning(this, tr("Erreur"), tr("Impossible d'écrire le fichier."));
+            QMessageBox::warning(this, tr("Écriture impossible"),
+                                 tr("Le fichier n'a pas pu être écrit. Vérifiez le dossier "
+                                    "choisi et vos droits d'écriture."));
         }
     });
     connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
@@ -5413,10 +4916,6 @@ void MainWindow::showDebugDump(ObjectId embroideryId) {
 }
 
 void MainWindow::buildHelpMenu() {
-    // « Ajuster au canevas » aussi sur la touche F (en plus de Ctrl+0). On
-    // n'intercepte PAS Tab (réservé à la navigation clavier, accessibilité).
-    auto* fitShortcut = new QShortcut(QKeySequence(Qt::Key_F), this);
-    connect(fitShortcut, &QShortcut::activated, view_, &CanvasView::fitCanvas);
 
     auto* helpMenu = menuBar()->addMenu(tr("Aid&e"));
     helpMenu->setObjectName(QStringLiteral("menu_help"));
@@ -5593,32 +5092,36 @@ void MainWindow::buildMainToolbar() {
     mainToolbar_->setMovable(false);
     mainToolbar_->setIconSize(QSize(18, 18));
 
-    const auto add = [this](const QIcon& icon, const QString& text, auto slot) {
-        auto* act = mainToolbar_->addAction(icon, text);
-        act->setToolTip(text);
-        connect(act, &QAction::triggered, this, slot);
-        return act;
+    // Les mêmes QAction que dans les menus : grisées, raccourcies et décrites de la même façon.
+    const auto addShared = [this](QAction* act, const QIcon& icon) {
+        act->setIcon(icon);
+        QString tip = act->text();
+        tip.remove(QLatin1Char('&'));
+        tip.remove(QStringLiteral("…"));
+        if (!act->shortcut().isEmpty()) {
+            tip += QStringLiteral(" (%1)").arg(act->shortcut().toString(QKeySequence::NativeText));
+        }
+        act->setToolTip(tip);
+        mainToolbar_->addAction(act);
     };
-    add(icons::newProject(), tr("Nouveau projet"), &MainWindow::newProject);
-    add(icons::openImage(), tr("Ouvrir une image"), &MainWindow::openImage);
-    add(icons::openProject(), tr("Ouvrir un projet"), &MainWindow::loadProject);
-    add(icons::save(), tr("Enregistrer le projet"), &MainWindow::saveProject);
+    addShared(newProjectAct_, icons::newProject());
+    addShared(openImageAct_, icons::openImage());
+    addShared(loadProjectAct_, icons::openProject());
+    addShared(saveProjectAct_, icons::save());
     mainToolbar_->addSeparator();
     undoAct_->setIcon(icons::undo());
     redoAct_->setIcon(icons::redo());
     mainToolbar_->addAction(undoAct_);
     mainToolbar_->addAction(redoAct_);
     mainToolbar_->addSeparator();
-    add(icons::zoomOut(), tr("Zoom arrière"), [this] { view_->zoomOut(); });
-    add(icons::fit(), tr("Ajuster au canevas"), [this] { view_->fitCanvas(); });
-    add(icons::zoomIn(), tr("Zoom avant"), [this] { view_->zoomIn(); });
+    addShared(zoomOutAct_, icons::zoomOut());
+    addShared(fitCanvasAct_, icons::fit());
+    addShared(zoomInAct_, icons::zoomIn());
     mainToolbar_->addSeparator();
-    analyzeAct_->setIcon(icons::analyze());
-    mainToolbar_->addAction(analyzeAct_);
+    addShared(analyzeAct_, icons::analyze());
     showStitchesAct_->setIcon(icons::stitches());
     mainToolbar_->addAction(showStitchesAct_);
-    exportDstAct_->setIcon(icons::exportDst());
-    mainToolbar_->addAction(exportDstAct_);
+    addShared(exportDstAct_, icons::exportDst());
 }
 
 void MainWindow::buildContextToolbar() {
@@ -5844,7 +5347,15 @@ void MainWindow::buildToolPalette() {
                              const QKeySequence& key) {
         auto* act = toolPalette_->addAction(icon, text);
         act->setCheckable(true);
-        act->setToolTip(tr("%1 (%2)").arg(text, key.toString()));
+        // « Nom (aide) » devient « Nom (touche) » puis l'aide sur la ligne suivante.
+        const int paren = text.indexOf(QStringLiteral(" ("));
+        if (paren > 0 && text.endsWith(QLatin1Char(')'))) {
+            const QString shortName = text.left(paren);
+            const QString help = text.mid(paren + 2, text.size() - paren - 3);
+            act->setToolTip(tr("%1 (%2)\n%3").arg(shortName, key.toString(), help));
+        } else {
+            act->setToolTip(tr("%1 (%2)").arg(text, key.toString()));
+        }
         act->setShortcut(key);
         group->addAction(act);
         connect(act, &QAction::triggered, this, [this, tool] { setTool(tool); });
@@ -5879,10 +5390,6 @@ void MainWindow::buildToolPalette() {
     toolDrawSatinColumnAct_ =
         addTool(icons::satinColumn(), tr("Colonne satin (clics alternés côté A / côté B)"),
                 Tool::DrawSatinColumn, QKeySequence(Qt::Key_S));
-    toolDrawSatinCutLineAct_ = addTool(
-        icons::satinCutLine(),
-        tr("Ligne de coupe satin (découpe la forme sélectionnée pour guider le satin auto)"),
-        Tool::DrawSatinCutLine, QKeySequence(Qt::Key_C));
     toolSelectAct_->setChecked(true);
 
     toolPalette_->addSeparator();
@@ -5999,10 +5506,6 @@ void MainWindow::setTool(Tool tool) {
     if (drawingDirectionGuide() && tool != currentTool_) {
         cancelDirectionGuideDraw();
     }
-    if (currentTool_ == Tool::DrawSatinCutLine && tool != Tool::DrawSatinCutLine &&
-        cutLinePreviewItem_ != nullptr) {
-        cutLinePreviewItem_->setPath(QPainterPath());
-    }
     // Un changement d'outil peut laisser le repère d'accroche affiché à une
     // position qui ne correspond plus à rien (ex. sorti du mode Polygone
     // sans bouger la souris) : masqué jusqu'au prochain mouvement pertinent.
@@ -6026,7 +5529,6 @@ void MainWindow::setTool(Tool tool) {
     sync(toolDrawBezierAct_, tool == Tool::DrawBezier);
     sync(toolDrawFreeformAct_, tool == Tool::DrawFreeform);
     sync(toolDrawSatinColumnAct_, tool == Tool::DrawSatinColumn);
-    sync(toolDrawSatinCutLineAct_, tool == Tool::DrawSatinCutLine);
     if (cropAct_ != nullptr) {
         QSignalBlocker block(cropAct_);
         cropAct_->setChecked(tool == Tool::Rect);
@@ -6044,7 +5546,7 @@ void MainWindow::setTool(Tool tool) {
                           tool == Tool::DrawPolygonRegular);
     view_->setPolygonDrawMode(tool == Tool::DrawPolygon || tool == Tool::DrawDirectionGuide ||
                               tool == Tool::DrawBreakLine);
-    view_->setBezierDrawMode(tool == Tool::DrawBezier || tool == Tool::DrawSatinCutLine);
+    view_->setBezierDrawMode(tool == Tool::DrawBezier);
     view_->setFreeformDrawMode(tool == Tool::DrawFreeform);
     view_->setSatinPairDrawMode(tool == Tool::DrawSatinColumn);
     if (tool == Tool::Pan) {
@@ -6064,9 +5566,8 @@ void MainWindow::setTool(Tool tool) {
                              : tool == Tool::DrawPolygon   ? tr("Dessiner un polygone")
                              : tool == Tool::DrawPolygonRegular
                                  ? tr("Dessiner un polygone régulier")
-                             : tool == Tool::DrawBezier       ? tr("Dessiner une courbe de Bézier")
-                             : tool == Tool::DrawFreeform     ? tr("Dessiner à main levée")
-                             : tool == Tool::DrawSatinCutLine ? tr("Ligne de coupe satin")
+                             : tool == Tool::DrawBezier   ? tr("Dessiner une courbe de Bézier")
+                             : tool == Tool::DrawFreeform ? tr("Dessiner à main levée")
                              : tool == Tool::DrawDirectionGuide ? tr("Guide de direction")
                              : tool == Tool::DrawBreakLine      ? tr("Ligne de rupture")
                                                                 : tr("Colonne satin");
@@ -6097,10 +5598,6 @@ void MainWindow::setTool(Tool tool) {
         statusBar()->showMessage(
             tr("Cliquez alternativement côté A puis côté B de chaque paire — Entrée/"
                "double-clic/bouton ✓ pour terminer (2 paires min.), Échap pour annuler."));
-    } else if (tool == Tool::DrawSatinCutLine) {
-        statusBar()->showMessage(
-            tr("Sélectionnez d'abord une forme, puis cliquez-glissez pour tracer la ligne de "
-               "coupe qui la sépare en colonnes satin."));
     } else if (tool == Tool::DrawDirectionGuide) {
         statusBar()->showMessage(
             tr("Cliquez les points de la courbe que le fil doit suivre — Entrée/double-clic "
@@ -6258,12 +5755,36 @@ void MainWindow::buildPropertiesPanel() {
     propertiesDock_->setObjectName(QStringLiteral("propertiesDock"));
     propertiesDock_->setAllowedAreas(Qt::LeftDockWidgetArea | Qt::RightDockWidgetArea);
     propertiesPanel_ = new PropertiesPanel(propertiesDock_);
-    propertiesDock_->setWidget(propertiesPanel_);
+    // Zone défilante : un inspecteur de 20 champs ne doit pas imposer sa hauteur à la
+    // fenêtre (hauteur minimale mesurée : 934 px avec un satin sélectionné).
+    auto* propertiesScroll = new QScrollArea(propertiesDock_);
+    propertiesScroll->setWidgetResizable(true);
+    propertiesScroll->setFrameShape(QFrame::NoFrame);
+    propertiesScroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    propertiesScroll->setWidget(propertiesPanel_);
+    propertiesDock_->setWidget(propertiesScroll);
     addDockWidget(Qt::RightDockWidgetArea, propertiesDock_);
 
     // Édition d'un paramètre -> commande annulable -> régénération.
     connect(propertiesPanel_, &PropertiesPanel::paramsEdited, this,
             [this](ObjectId id, document::StitchParams params) {
+                // Auto-satin : l'inspecteur n'édite que les réglages scalaires ; les
+                // guides (aussi posés depuis le canevas), l'entrée/sortie et les champs
+                // sans widget viennent du document ACTUEL, jamais d'une copie périmée.
+                if (auto* edited = std::get_if<document::AutoSatinParams>(&params)) {
+                    if (const auto* current = project_.findEmbroidery(id)) {
+                        if (const auto* cur =
+                                std::get_if<document::AutoSatinParams>(&current->params)) {
+                            edited->guides = cur->guides;
+                            edited->entry_point = cur->entry_point;
+                            edited->exit_point = cur->exit_point;
+                            edited->push_start = cur->push_start;
+                            edited->push_end = cur->push_end;
+                            edited->lock_length = cur->lock_length;
+                            edited->lock_passes = cur->lock_passes;
+                        }
+                    }
+                }
                 undoStack_.execute(
                     std::make_unique<commands::SetStitchParamsCommand>(id, std::move(params)),
                     project_);
@@ -6282,6 +5803,23 @@ void MainWindow::buildPropertiesPanel() {
             &MainWindow::discardOverrides);
     connect(propertiesPanel_, &PropertiesPanel::convertToDirectionalRequested, this,
             &MainWindow::convertToDirectional);
+    connect(
+        propertiesPanel_, &PropertiesPanel::editSatinGuidesRequested, this, [this](ObjectId id) {
+            if (auto* emb = project_.findEmbroidery(id); emb != nullptr && emb->is_auto_satin()) {
+                editSelection([id](Selection& sel) { sel.embroidery = id; });
+                if (directionGuideModeAct_->isChecked()) {
+                    directionGuideModeAct_->setChecked(false);
+                }
+                directionGuideModeAct_->setChecked(true);
+                if (directionGuideTarget_) {
+                    setTool(Tool::DrawDirectionGuide);
+                }
+            }
+        });
+    connect(propertiesPanel_, &PropertiesPanel::satinGuideChangeRequested, this,
+            &MainWindow::changeAutoSatinGuide);
+    connect(propertiesPanel_, &PropertiesPanel::satinGuideRemoveRequested, this,
+            &MainWindow::removeAutoSatinGuide);
     connect(propertiesPanel_, &PropertiesPanel::editDirectionGuidesRequested, this,
             [this](ObjectId id) {
                 if (auto* emb = project_.findEmbroidery(id);
@@ -6328,6 +5866,13 @@ void MainWindow::updateInspector() {
                                    emb != nullptr ? editStateOf(emb->id)
                                                   : stitch_generation::ObjectEditState::Clean);
 
+    // Auto-satin : liste des guides et diagnostic mis à jour à chaque appel (les
+    // guides se posent aussi depuis le canevas), sans reconstruire le formulaire.
+    if (emb != nullptr && emb->is_auto_satin()) {
+        propertiesPanel_->setAutoSatinState(
+            emb->id, &std::get<document::AutoSatinParams>(emb->params), autoSatinSummary(*emb));
+    }
+
     // Ne reconstruit que si la sélection a changé (n'interrompt pas une édition).
     if (kind == inspectedKind_ && id == inspectedId_) {
         return;
@@ -6337,6 +5882,10 @@ void MainWindow::updateInspector() {
 
     if (kind == 0) {
         propertiesPanel_->showEmbroidery(*emb);
+        if (emb->is_auto_satin()) {
+            propertiesPanel_->setAutoSatinState(
+                emb->id, &std::get<document::AutoSatinParams>(emb->params), autoSatinSummary(*emb));
+        }
     } else if (kind == 3) {
         propertiesPanel_->showInfo(
             tr("%1 objets").arg(multiSelection_.size()),
@@ -6398,6 +5947,7 @@ void MainWindow::buildAnalysisPanel() {
 
     auto* analyseMenu = menuBar()->addMenu(tr("A&nalyse"));
     analyzeAct_ = analyseMenu->addAction(tr("&Analyser le motif"));
+    analyseMenu->addAction(statsAct_);
     analyzeAct_->setShortcut(QKeySequence(Qt::Key_F5));
     connect(analyzeAct_, &QAction::triggered, this, &MainWindow::runAnalysis);
 }
@@ -6557,7 +6107,10 @@ void MainWindow::refreshOrderPanel() {
 }
 
 int MainWindow::stitchTypeIndex(const document::EmbroideryObject& object) {
-    return object.is_tatami() ? 1 : object.is_satin() ? 2 : object.is_directional() ? 3 : 0;
+    return object.is_tatami()                            ? 1
+           : object.is_satin() || object.is_auto_satin() ? 2
+           : object.is_directional()                     ? 3
+                                                         : 0;
 }
 
 double MainWindow::regionAreaMm2(const document::EmbroideryObject& object) const {
@@ -6648,7 +6201,12 @@ void MainWindow::buildFilterPanel() {
     layout->addWidget(colorContainer);
 
     layout->addStretch(1);
-    filterDock_->setWidget(panel);
+    auto* filterScroll = new QScrollArea(filterDock_);
+    filterScroll->setWidgetResizable(true);
+    filterScroll->setFrameShape(QFrame::NoFrame);
+    filterScroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    filterScroll->setWidget(panel);
+    filterDock_->setWidget(filterScroll);
     addDockWidget(Qt::RightDockWidgetArea, filterDock_);
     filterDock_->hide();
 }
@@ -7035,7 +6593,10 @@ void MainWindow::onAutosaveTick() {
         // que saveProjectToPath pour un échec d'enregistrement normal.
         statusBar()->showMessage(tr("Sauvegarde automatique impossible : %1")
                                      .arg(QString::fromStdString(written.error().message)));
+        return;
     }
+    const QString when = QTime::currentTime().toString(QStringLiteral("HH:mm"));
+    statusBar()->showMessage(tr("Sauvegarde automatique à %1").arg(when), 4000);
 }
 
 void MainWindow::checkAutosaveRecovery() {
@@ -7118,13 +6679,8 @@ void MainWindow::exportDst() {
     if (!sequence_) {
         return;
     }
-    const QString file = QFileDialog::getSaveFileName(this, tr("Exporter en DST"), QString(),
-                                                      tr("Broderie Tajima (*.dst)"));
-    if (file.isEmpty()) {
-        return;
-    }
-
     // Résumé pré-export : décision réelle -> dialogue de confirmation.
+    bool hasAnalysisErrors = false;
     const auto stats = stitch::compute_stats(*sequence_);
     const double wMm = to_millimeters(stats.bounds.max.x - stats.bounds.min.x).value;
     const double hMm = to_millimeters(stats.bounds.max.y - stats.bounds.min.y).value;
@@ -7133,19 +6689,39 @@ void MainWindow::exportDst() {
                           stats.bounds.max.x.value > cv.width.value / 2 ||
                           stats.bounds.min.y.value < -cv.height.value / 2 ||
                           stats.bounds.max.y.value > cv.height.value / 2;
-    QString summary =
-        tr("Dimensions : %1 × %2 mm\nPoints : %3\nSauts : %4\nCoupes : %5\n"
-           "Changements de couleur : %6\nFil estimé : %7 m\nCadre : %8 × %9 mm\nFichier : %10")
-            .arg(wMm, 0, 'f', 1)
-            .arg(hMm, 0, 'f', 1)
-            .arg(stats.stitches)
-            .arg(stats.jumps)
-            .arg(stats.trims)
-            .arg(stats.color_changes)
-            .arg(stats.thread_length_um / 1e9, 0, 'f', 2)
-            .arg(to_millimeters(cv.width).value, 0, 'f', 0)
-            .arg(to_millimeters(cv.height).value, 0, 'f', 0)
-            .arg(QFileInfo(file).fileName());
+    QString summary = tr("Dimensions : %1 × %2 mm\nPoints : %3\nSauts : %4\nCoupes : %5\n"
+                         "Changements de couleur : %6\nFil estimé : %7 m\nCadre : %8 × %9 mm")
+                          .arg(wMm, 0, 'f', 1)
+                          .arg(hMm, 0, 'f', 1)
+                          .arg(stats.stitches)
+                          .arg(stats.jumps)
+                          .arg(stats.trims)
+                          .arg(stats.color_changes)
+                          .arg(stats.thread_length_um / 1e9, 0, 'f', 2)
+                          .arg(to_millimeters(cv.width).value, 0, 'f', 0)
+                          .arg(to_millimeters(cv.height).value, 0, 'f', 0);
+    // Résultat de l'analyse AVANT l'export : l'utilisateur voit les erreurs sans avoir à
+    // penser à lancer « Analyser le motif ».
+    {
+        stitch_analysis::AnalysisOptions aopts;
+        aopts.hoop = stitch::BoundsUm{
+            Vec2um{Micrometers{-cv.width.value / 2}, Micrometers{-cv.height.value / 2}},
+            Vec2um{Micrometers{cv.width.value / 2}, Micrometers{cv.height.value / 2}}};
+        const auto findings = stitch_analysis::analyze(*sequence_, aopts);
+        std::size_t errors = 0;
+        std::size_t warnings = 0;
+        for (const auto& f : findings) {
+            errors += f.severity == stitch_analysis::Severity::Error ? 1 : 0;
+            warnings += f.severity == stitch_analysis::Severity::Warning ? 1 : 0;
+        }
+        summary += errors + warnings == 0
+                       ? tr("\n\nAnalyse : aucun problème détecté.")
+                       : tr("\n\nAnalyse : %1 erreur(s), %2 avertissement(s) — voir Analyse ▸ "
+                            "Analyser le motif.")
+                             .arg(errors)
+                             .arg(warnings);
+        hasAnalysisErrors = errors > 0;
+    }
     if (overflow) {
         summary += tr("\n\nAttention : le motif dépasse le cadre.");
     }
@@ -7157,10 +6733,17 @@ void MainWindow::exportDst() {
     box.setWindowTitle(tr("Exporter en DST"));
     box.setText(tr("Résumé de l'export"));
     box.setInformativeText(summary);
-    box.setIcon(overflow ? QMessageBox::Warning : QMessageBox::Information);
+    box.setIcon((overflow || hasAnalysisErrors) ? QMessageBox::Warning : QMessageBox::Information);
     box.setStandardButtons(QMessageBox::Ok | QMessageBox::Cancel);
+    box.button(QMessageBox::Ok)->setText(tr("Choisir le fichier…"));
+    box.button(QMessageBox::Cancel)->setText(tr("Annuler"));
     box.setDefaultButton(QMessageBox::Ok);
     if (box.exec() != QMessageBox::Ok) {
+        return;
+    }
+    const QString file = QFileDialog::getSaveFileName(this, tr("Exporter en DST"), QString(),
+                                                      tr("Broderie Tajima (*.dst)"));
+    if (file.isEmpty()) {
         return;
     }
 
@@ -7190,9 +6773,9 @@ void MainWindow::importDst() {
     // n'est qu'une copie d'affichage, cf. main_window.hpp).
     if (project_.hasImage() || project_.imported_design || !project_.vector_objects.empty() ||
         !project_.embroidery_objects.empty()) {
-        const auto answer = QMessageBox::question(
-            this, tr("Importer un DST"), tr("L'import remplace le document en cours. Continuer ?"));
-        if (answer != QMessageBox::Yes) {
+        if (!confirmDiscardChanges(
+                tr("L'import remplace le document en cours. Enregistrer le projet avant "
+                   "d'importer ce DST ?"))) {
             return;
         }
     }
@@ -7200,8 +6783,9 @@ void MainWindow::importDst() {
     // (AI-03b), partagée avec la CLI.
     auto imported = project_io::import_machine_file(std::filesystem::path(file.toStdWString()));
     if (!imported) {
-        QMessageBox::warning(this, tr("Import impossible"),
-                             QString::fromStdString(imported.error().message));
+        showFriendlyError(this, tr("Import du DST impossible"),
+                          tr("Ce fichier n'a pas pu être lu comme broderie Tajima (DST)."),
+                          imported.error().message);
         return;
     }
 
@@ -7871,52 +7455,87 @@ void MainWindow::recolorSelectedRegion() {
     updateActions();
 }
 
+namespace {
+
+// Active/désactive une action ET explique, dans l'info-bulle et la barre d'état, ce qu'il faut
+// faire pour l'activer. L'info-bulle d'origine est mémorisée à la première utilisation.
+void setEnabledWithReason(QAction* act, bool enabled, const QString& whyDisabled) {
+    if (act == nullptr) {
+        return;
+    }
+    if (!act->property("baseToolTip").isValid()) {
+        act->setProperty("baseToolTip", act->toolTip());
+        act->setProperty("baseStatusTip", act->statusTip());
+    }
+    act->setEnabled(enabled);
+    const QString baseTip = act->property("baseToolTip").toString();
+    if (enabled) {
+        act->setToolTip(baseTip);
+        act->setStatusTip(act->property("baseStatusTip").toString());
+    } else {
+        act->setToolTip(baseTip + QStringLiteral("\n") + whyDisabled);
+        act->setStatusTip(whyDisabled);
+    }
+}
+
+} // namespace
+
 void MainWindow::updateActions() {
     const bool hasImage = project_.hasImage();
     for (QAction* act : imageActions_) {
-        act->setEnabled(hasImage);
+        setEnabledWithReason(act, hasImage, tr("Ouvrez d'abord une image."));
     }
-    showSegAct_->setEnabled(project_.segmentation.has_value());
-    showVectorsAct_->setEnabled(!project_.vector_objects.empty());
-    showStitchesAct_->setEnabled(!project_.embroidery_objects.empty());
+    setEnabledWithReason(showSegAct_, project_.segmentation.has_value(),
+                         tr("Segmentez d'abord l'image (menu Segmentation)."));
+    const QString noVectors = tr("Aucun objet vectoriel : vectorisez une région ou dessinez.");
+    setEnabledWithReason(showVectorsAct_, !project_.vector_objects.empty(), noVectors);
+    setEnabledWithReason(showStitchesAct_, !project_.embroidery_objects.empty(),
+                         tr("Aucune broderie : créez un objet de broderie."));
     // Actions mono-objet : désactivées dès que la multi-sélection compte > 1 objet.
     const bool singleObject = selectedObject_.has_value() && !hasMultiSelection();
-    createStitchAct_->setEnabled(singleObject);
-    createTatamiAct_->setEnabled(singleObject);
-    createSatinAct_->setEnabled(singleObject);
-    autoSatinAct_->setEnabled(singleObject);
-    fillAngleAct_->setEnabled(currentFillObject() != nullptr);
-    convertSatinAct_->setEnabled(std::any_of(project_.embroidery_objects.begin(),
-                                             project_.embroidery_objects.end(),
-                                             [](const auto& e) { return e.is_satin(); }));
-    statsAct_->setEnabled(sequence_.has_value());
-    exportDstAct_->setEnabled(sequence_.has_value());
+    QString needOneShape = tr("Sélectionnez d'abord une forme (clic sur le motif).");
+    if (hasMultiSelection()) {
+        needOneShape = tr("Une seule forme à la fois : plusieurs sont sélectionnées.");
+    }
+    setEnabledWithReason(createStitchAct_, singleObject, needOneShape);
+    setEnabledWithReason(createTatamiAct_, singleObject, needOneShape);
+    setEnabledWithReason(createSatinAct_, singleObject, needOneShape);
+    setEnabledWithReason(autoSatinAct_, singleObject, needOneShape);
+    setEnabledWithReason(duplicateSelectionAct_, singleObject, needOneShape);
+    setEnabledWithReason(offsetSelectionAct_, singleObject, needOneShape);
+    setEnabledWithReason(fillAngleAct_, currentFillObject() != nullptr,
+                         tr("Sélectionnez un objet à remplissage (tatami ou directionnel)."));
+    setEnabledWithReason(convertSatinAct_,
+                         std::any_of(project_.embroidery_objects.begin(),
+                                     project_.embroidery_objects.end(),
+                                     [](const auto& e) { return e.is_satin(); }),
+                         tr("Aucun satin dans le projet."));
+    const QString needStitches =
+        tr("Aucun point généré : créez d'abord un objet de broderie (tatami, satin…).");
+    setEnabledWithReason(statsAct_, sequence_.has_value(), needStitches);
+    setEnabledWithReason(exportDstAct_, sequence_.has_value(), needStitches);
     // Actions « document requis » : mêmes gardes que leurs slots (qui restent en place).
     // « Contenu » = même critère que updateEmptyState()/onAutosaveTick() (image, vecteurs ou
     // broderie) ; Enregistrer reste actif dès que le document a un fichier.
     const bool hasDocument =
         hasImage || !project_.vector_objects.empty() || !project_.embroidery_objects.empty();
-    if (saveProjectAct_ != nullptr) {
-        saveProjectAct_->setEnabled(hasDocument || !currentProjectPath_.isEmpty());
-    }
-    if (saveProjectAsAct_ != nullptr) {
-        saveProjectAsAct_->setEnabled(hasDocument);
-    }
-    if (exportDxfAct_ != nullptr) {
-        exportDxfAct_->setEnabled(!project_.vector_objects.empty());
-    }
-    if (analyzeAct_ != nullptr) {
-        analyzeAct_->setEnabled(sequence_.has_value());
-    }
+    setEnabledWithReason(saveProjectAct_, hasDocument || !currentProjectPath_.isEmpty(),
+                         tr("Rien à enregistrer : ouvrez une image ou dessinez une forme."));
+    setEnabledWithReason(saveProjectAsAct_, hasDocument,
+                         tr("Rien à enregistrer : ouvrez une image ou dessinez une forme."));
+    setEnabledWithReason(exportDxfAct_, !project_.vector_objects.empty(),
+                         tr("Aucun objet vectoriel à exporter."));
+    setEnabledWithReason(analyzeAct_, sequence_.has_value(), needStitches);
     const bool hasSelection = selectedRegion_.has_value() && project_.segmentation.has_value();
     for (QAction* act : regionActions_) {
-        act->setEnabled(hasSelection);
+        setEnabledWithReason(act, hasSelection,
+                             tr("Sélectionnez d'abord une région dans l'image segmentée."));
     }
     // Suppr universel : région, objet(s) vectoriel(s) ou objet de broderie.
-    if (deleteSelectionAct_ != nullptr) {
-        deleteSelectionAct_->setEnabled(hasSelection || selectedObject_.has_value() ||
-                                        selectedEmbroidery_.has_value());
-    }
+    setEnabledWithReason(deleteSelectionAct_,
+                         hasSelection || selectedObject_.has_value() ||
+                             selectedEmbroidery_.has_value(),
+                         tr("Sélectionnez d'abord une région ou un objet."));
     if (!mergeAct_->isEnabled()) {
         mergeAct_->setChecked(false);
     }

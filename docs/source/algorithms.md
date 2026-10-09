@@ -68,6 +68,9 @@ fill_tatami(région, params):
 
 ## Satin
 
+L'auto-satin (squelette, traversées orientées, pas adaptatif) est décrit dans
+`satin-squelette.md` ; le pseudo-code ci-dessous ne concerne que le satin manuel à deux rails.
+
 ```
 fill_satin(railA, railB, cfg):
   pour u de 0 à 1 par pas dérivé de la densité:

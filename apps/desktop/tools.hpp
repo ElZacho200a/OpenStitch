@@ -24,7 +24,6 @@ enum class Tool {
     // manuel de décomposition aux jonctions où la détection automatique
     // (auto_satin, squelette) peine, en complément (pas en remplacement)
     // d'elle.
-    DrawSatinCutLine,
     // Remplissage directionnel (mode « Guides de direction ») : clics
     // successifs, terminés par Entrée/double-clic. Le guide devient une courbe
     // lisse passant par les points ; la ligne de rupture reste une polyligne

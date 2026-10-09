@@ -44,6 +44,13 @@ struct SatinConfig {
     // --- Split (traversées longues) ---
     SplitStitchMode split_stitch{SplitStitchMode::Disabled};
     Micrometers max_stitch_length{7'000}; // au-delà, on fractionne la traversée
+    // Longueur maximale des segments après fractionnement (y). 0 = `max_stitch_length`
+    // (comportement historique : seuil et longueur de segment confondus).
+    Micrometers split_length{0};
+    // Fractionne AUSSI le trajet retour B_i -> A_{i+1} du zigzag (un point de fil de pleine
+    // largeur lui aussi). Faux = comportement historique (seules les traversées A_i -> B_i
+    // sont fractionnées).
+    bool split_connecting_throws{false};
     Micrometers wide_throw_width{10'000}; // au-delà, les splits zigzaguent le long de l'axe
     double wide_throw_zigzag_amplitude{0.35};
     std::uint64_t split_seed{1}; // graine déterministe (jitter)
@@ -148,6 +155,19 @@ struct SatinStation {
 // pas le long de la colonne.
 [[nodiscard]] SatinResult fill_satin(const geometry::Path& rail_a, const geometry::Path& rail_b,
                                      const SatinConfig& config);
+
+// Finitions d'une colonne satin à partir de STATIONS déjà calculées (couples
+// A/B), indépendamment de la façon dont elles ont été obtenues (appariement de
+// rails + barreaux pour `fill_satin_columns`, ou traversées calculées
+// directement depuis la région). Applique, dans l'ordre : terminaisons, points
+// courts, push, sous-couches (centre, bords, zigzag), puis l'émission du
+// zigzag avec compensation pull, split et sauts (`SatinStation::jump_before`).
+// Les stations doivent être consécutives le long de la colonne et avoir un côté
+// A cohérent (même côté de l'axe) : l'émission est A0,B0,A1,B1,... sans
+// alternance. Moins de 2 stations : résultat vide. Comportement strictement
+// identique à celui qu'avait `fill_satin_columns` avant cette extraction.
+[[nodiscard]] SatinResult finish_satin_stations(const std::vector<SatinStation>& stations,
+                                                const SatinConfig& config);
 
 // Génère une colonne satin en respectant des BARREAUX (correspondance par
 // sections, cf. auto-satin). Chaque paire de barreaux consécutifs découpe les

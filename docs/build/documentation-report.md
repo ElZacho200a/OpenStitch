@@ -2,11 +2,11 @@
 
 - **PDF** : `docs/build/OpenStitch-Studio-Documentation.pdf`
 - **Existe** : oui
-- **Pages** : 177
-- **Taille** : 801.8 Kio (821021 octets)
+- **Pages** : 225
+- **Taille** : 1012.6 Kio (1036953 octets)
 - **Chaîne** : python-markdown -> HTML/CSS -> xhtml2pdf (reportlab), SVG via svglib
 - **Commande** : `docs\scripts\build-docs.ps1` (ou `python docs/scripts/build-docs.py`)
-- **Chapitres produits** : 35
+- **Chapitres produits** : 41
 
 ## Chapitres
 - À propos de ce document
@@ -21,10 +21,16 @@
 - Numérisation automatique
 - Génération de points — point droit et fondations
 - Moteur de génération de points
+- Satin par squelette et traversées orientées
 - Colonne satin
 - Remplissage tatami
 - Remplissage directionnel
 - Retouche des points et de la géométrie
+- Recherche brevets broderie
+- Fiches brevets : satin, squelette et jonctions
+- Fiches brevets : auto-numérisation (famille Goldman et Brother)
+- Fiches brevets : sous-couches, contours auto-intersectés et points cachés
+- Fiches brevets : stippling, analyse de points et appliqué
 - Palettes et fils
 - Simulation de couture
 - Analyse et validation

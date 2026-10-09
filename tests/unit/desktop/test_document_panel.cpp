@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
+#include <QLineEdit>
 #include <QListWidget>
 #include <QTabWidget>
 #include <QTest>
@@ -109,6 +110,7 @@ private slots:
     void selectingAGroupedSectionEmitsItsOwnId();
     void selectingTheGroupHeaderEmitsNothing();
     void syncSelectionFindsAGroupedChildAcrossLevels();
+    void searchFieldHidesRowsThatDoNotMatch();
 };
 
 void DocumentPanelTest::refreshPopulatesObjectsAndRegionsLists() {
@@ -292,6 +294,35 @@ void DocumentPanelTest::syncSelectionFindsAGroupedChildAcrossLevels() {
     QVERIFY(objects->currentItem() != nullptr);
     QCOMPARE(objects->currentItem()->data(0, Qt::UserRole).toULongLong(),
              static_cast<qulonglong>(sectionIds[2].value));
+}
+
+void DocumentPanelTest::searchFieldHidesRowsThatDoNotMatch() {
+    DocumentPanel panel;
+    openstitch::ObjectId first{};
+    openstitch::ObjectId second{};
+    panel.refresh(projectWithTwoObjectsAndTwoRegions(first, second));
+    auto* filter = panel.findChild<QLineEdit*>(QStringLiteral("edit_documentFilter"));
+    QVERIFY(filter != nullptr);
+    auto* objects = objectsList(panel);
+    QCOMPARE(objects->topLevelItemCount(), 2);
+
+    filter->setText(QStringLiteral("tige")); // insensible à la casse
+    QVERIFY(objects->topLevelItem(0)->isHidden());
+    QVERIFY(!objects->topLevelItem(1)->isHidden());
+
+    filter->setText(QStringLiteral("absent"));
+    QVERIFY(objects->topLevelItem(0)->isHidden());
+    QVERIFY(objects->topLevelItem(1)->isHidden());
+
+    filter->clear();
+    QVERIFY(!objects->topLevelItem(0)->isHidden());
+    QVERIFY(!objects->topLevelItem(1)->isHidden());
+
+    // Le filtre survit à un rafraîchissement (la liste est reconstruite).
+    filter->setText(QStringLiteral("feuille"));
+    panel.refresh(projectWithTwoObjectsAndTwoRegions(first, second));
+    QVERIFY(!objects->topLevelItem(0)->isHidden());
+    QVERIFY(objects->topLevelItem(1)->isHidden());
 }
 
 QTEST_MAIN(DocumentPanelTest)

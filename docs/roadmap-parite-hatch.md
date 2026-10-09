@@ -596,7 +596,7 @@ prénumérisées et la conversion des polices TrueType.
 ### HP-TXT-004 — Lettrage satin automatique par lettre [P0] — ☐ À faire
 - Hatch : une lettre TrueType devient des colonnes satin qui suivent les
   traits, pas un tatami.
-- À faire : réutiliser `auto_satin` / `satin_planning` sur chaque glyphe
+- À faire : réutiliser l'auto-satin par squelette (`auto_satin`) sur chaque glyphe
   (formes fines idéales) avec repli tatami pour les empattements larges et
   repli contour pour les très petites tailles ; ordre des sections et
   connecteurs internes à la lettre.
@@ -804,6 +804,18 @@ plus.
   indépendamment, mais rien ne les relie : une forme large/ronde refusée par
   l'auto-satin tombe en tatami à **angle fixe** (ou sans repli du tout),
   jamais en direction tournante.
+- Recherche brevets : EP0761860B1 motive les axes/lignes caractéristiques et
+  orientations interpolées ; US6390005B1 motive la vigilance sur l'espacement
+  des points en virage. Voir `docs/source/patent-research.md`.
+- État R&D 2026-10 : le satin tournant `IsoOffsetRing` existe pour les formes
+  compactes/anneaux et expose désormais sa provenance via
+  `RailConstructionMethod::IsoOffsetRing` dans `satin_column_view`, ce qui évite
+  aux consommateurs de confondre anneau iso-offset et colonne issue d'un axe
+  médian. Reste expérimental, sans validation machine.
+- État R&D 2026-10, suite : HP-STI-018 Phase B.5b est câblée côté
+  `extend_tip`. Les fourches `y`/`y_symmetric` passent désormais sous le chemin
+  corridor sans croisement des premiers barreaux ; `trident` reste rapporté
+  comme pointe effilée distincte.
 - Hatch : Turning satin / Complex turning — le remplissage **satin lui-même**
   suit la courbure (la direction du point tourne), sans jamais changer de
   type de point.
@@ -813,11 +825,19 @@ plus.
   mode satin tournant (zigzag entre deux rails radiaux courbes) pour une
   parité réelle avec Hatch. Valider sur cercle, disque, pétale.
 - Modules : `libs/autodigitize`, `libs/stitch_generation`, `libs/auto_satin`
-  si (b).
+  si (b) ; la couverture se vérifie via `SkeletonSatinDiagnostics` (`satin_coverage` supprimé).
 - Acceptation : un disque de 15 mm et un pétale produisent un remplissage
   dont la direction suit la courbure (métrique : régularité de la direction
   des fils, cf. HP-ENG-009) et ne tombent jamais silencieusement sur un
   tatami à angle fixe.
+- R&D brevets (2026-10) : le moteur de traversées guidé par squelette
+  (RD-PAT-001) et la réintégration d'un auto-satin explicite et protégé dans
+  `autodigitize` (RD-PAT-002) sont suivis dans `docs/roadmap-rd-brevets.md`.
+  Prérequis bloquant : corpus et métriques satin vs repli (RD-PAT-003).
+- Suite recommandée : préparer le cutover Phase F seulement après validation du
+  corpus complet et décision explicite sur les limites restantes (`trident`,
+  `multi_neck`) ; ne pas prolonger SGSD comme stratégie principale sans preuve
+  de couverture sur le corpus.
 
 ### HP-STI-018.a — Assistant de guides directionnels par squelette [P1] — ☐ À faire
 - Contexte : le remplissage directionnel existe déjà (`DirectionalFillParams`
@@ -890,7 +910,10 @@ plus.
 - À faire : satin dont les pénétrations dessinent un motif (pas uniquement
   split).
 
-### HP-STI-024 — Satin complexe avec trous [P2] — ☐ À faire
+### HP-STI-024 — Satin complexe avec trous [P2] — ◐ Partiel
+- **Mise à jour 2026-10** : le moteur par squelette (branche de recherche, non fusionné sur `main`,
+  sans essai machine) traite les anneaux par axe fermé (couverture estimée ≥ 0,99) et `two_holes`
+  (0,994) sur le corpus ; `satin_planning` n'existe plus. Reste : essais machine et grands trous.
 - État OpenStitch : l'auto-satin refuse les anneaux larges / formes à trous
   complexes ; un anneau fin est géré, mais en le **découpant** en 4 sections
   (`satin_planning`), pas par une vraie gestion native des trous. Une région
@@ -904,8 +927,7 @@ plus.
   squelette, concavité, JunctionSeparator — ne s'applique à un contour
   convexe) ; ne pas patcher les familles existantes sous la pression de
   cette seule fixture.
-- Modules : `libs/auto_satin`, `libs/satin_planning`. Lire `satin.md`
-  (§ Limitations connues).
+- Modules : `libs/auto_satin`. Lire `satin-squelette.md`.
 - Acceptation : la fixture `two_holes` (`test_torture_corpus.cpp`) atteint
   une couverture significative sans refus total.
 
@@ -943,8 +965,13 @@ l'utilisateur ne voit pas. OpenStitch a les briques mais peu d'automatismes.
 - Modules : `libs/stitch_generation`, `libs/document` (enum Auto/Manuel).
 
 ### HP-ENG-003 — Espacement satin automatique selon la largeur [P1] — ☐ À faire
+- Note 2026-10 : le moteur par squelette adapte déjà le **pas le long de l'axe** à la
+  courbure/rotation de l'orientation (US6390005B1), pas la densité selon la largeur : l'item reste ouvert.
 - Hatch : Auto spacing : colonnes étroites plus lâches, larges plus serrées.
 - Modules : `libs/stitch_generation/satin`.
+- R&D brevets : US5343401A donne un exemple chiffré de densité modulée par la
+  largeur ; suivi RD-PAT-013 (`docs/roadmap-rd-brevets.md`). Absent du code
+  (vérifié 2026-10).
 
 ### HP-ENG-004 — Découpe automatique des satins trop larges [P1] — ◐ Partiel
 - État OpenStitch : split stitch disponible mais désactivé par défaut ;
@@ -1002,6 +1029,10 @@ l'utilisateur ne voit pas. OpenStitch a les briques mais peu d'automatismes.
 - À faire : soustraction booléenne (Clipper2) des objets suivants avec une
   marge de recouvrement ; option par objet ; recalcul automatique.
 - Modules : `libs/geometry`, `libs/stitch_generation`.
+- R&D brevets : US6633794B2 documente la détection de points recouverts par des
+  couches ultérieures ; garde-fou : ne jamais supprimer sous-couche ni trajet
+  structurel. Règle d'analyse en lecture seule : RD-PAT-006
+  (`docs/roadmap-rd-brevets.md`).
 
 ### HP-ENG-012 — Qualité générale du tatami [P1] — ◐ Partiel
 - À faire : audit visuel/physique du tatami (bords, rangées orphelines,
@@ -1113,6 +1144,9 @@ SAM via un worker **WSL**. ~18 s sur l'image de référence.
   mais aucune métrique satin/tatami n'est enregistrée.
 - À faire : fait partie de HP-AUTO-001 ; métrique spécifique : taux de bandes
   fines cousues en satin, zéro satin > largeur max.
+- R&D brevets : critère de régularité par statistiques de la transformée de
+  distance (RD-PAT-004) et réintégration protégée de l'auto-satin (RD-PAT-002),
+  voir `docs/roadmap-rd-brevets.md`.
 
 ### HP-AUTO-010 — Suppression des recouvrements après numérisation [P1] — ☐ À faire
 - Voir HP-ENG-011, appliqué automatiquement aux objets auto-numérisés.
@@ -1685,6 +1719,9 @@ Aujourd'hui : rien (aucune occurrence « appliqué » dans le code métier).
   passes avec `Stop` machine ; export du contour de découpe via `formats`.
 - Modules : `libs/document`, `libs/stitch_generation`, `libs/formats`, UI.
 - Dépend de : HP-STI-003, HP-STI-004.
+- R&D brevets : US5438520A et JP3769602B2 (Barudan) décrivent le flux
+  « un contour → coupe, positionnement, bâti, satin » ; suivi RD-PAT-009
+  (`docs/roadmap-rd-brevets.md`).
 
 ### HP-SPEC-002 — Appliqué partiel / multiple [P2] — ☐ À faire
 - À faire : plusieurs tissus d'appliqué ordonnés, côtés recouverts par un

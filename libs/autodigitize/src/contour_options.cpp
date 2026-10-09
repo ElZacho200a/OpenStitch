@@ -47,7 +47,10 @@ ContourThresholds contour_thresholds(double detail) {
     t.simplify_tolerance =
         std::max(lim.min_simplify_tolerance,
                  scaled(static_cast<double>(anchors.simplify_tolerance.value) * std::sqrt(f)));
-    t.merge_distance = scaled(static_cast<double>(anchors.fill_overlap.value) * f);
+    // Distance de fusion des tracés : ancrée sur 0,3 mm (l'ancien recouvrement par défaut),
+    // indépendamment du réglage de recouvrement des tatamis qui est désormais nul.
+    constexpr double kMergeAnchorUm = 300.0;
+    t.merge_distance = scaled(kMergeAnchorUm * f);
     return t;
 }
 

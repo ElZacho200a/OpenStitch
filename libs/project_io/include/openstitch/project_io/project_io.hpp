@@ -19,7 +19,7 @@ namespace openstitch::project_io {
 // champ absent -> 48 mm.
 // Lecture rétrocompatible : un fichier v1/v2/v3 se charge (champs absents
 // remplacés par leurs valeurs par défaut).
-inline constexpr int kSchemaVersion = 4;
+inline constexpr int kSchemaVersion = 5;
 
 // Enregistre le projet dans une archive .osp (ZIP : project.json + image
 // originale PNG + carte de segmentation binaire). Écriture atomique :

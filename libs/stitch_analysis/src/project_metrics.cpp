@@ -65,7 +65,7 @@ ProjectMetrics project_metrics(const document::Project& project,
         for (const auto& obj : project.embroidery_objects) {
             kindOf[obj.id.value] =
                 obj.is_tatami()                                                     ? "tatami"
-                : obj.is_satin()                                                    ? "satin"
+                : obj.is_satin() || obj.is_auto_satin()                             ? "satin"
                 : std::holds_alternative<document::RunningStitchParams>(obj.params) ? "contour"
                                                                                     : "autre";
         }

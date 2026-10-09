@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 #pragma once
 
+#include <QPointer>
 #include <QWidget>
 
 #include <optional>
@@ -8,8 +9,11 @@
 #include "openstitch/document/project.hpp"
 #include "openstitch/stitch_generation/overrides.hpp"
 
+class QCheckBox;
 class QFormLayout;
 class QLabel;
+class QListWidget;
+class QSpinBox;
 class QVBoxLayout;
 class QDoubleSpinBox;
 class QPushButton;
@@ -41,6 +45,13 @@ public:
     // (nullopt si aucune broderie n'est inspectée) : un id différent est
     // ignoré (retard d'affichage évité plutôt qu'un mauvais bouton affiché).
     void setEditState(std::optional<ObjectId> id, stitch_generation::ObjectEditState state);
+    // Auto-satin (spec specs/plans/satin-squelette-traversees.md) : met à jour la
+    // liste des guides et le résumé de diagnostic de l'objet inspecté. Comme
+    // `setEditState`, appelé à CHAQUE rafraîchissement sans reconstruire le
+    // formulaire (les guides se posent aussi depuis le canevas). `id` doit
+    // correspondre à l'objet montré ; sinon ignoré.
+    void setAutoSatinState(std::optional<ObjectId> id, const document::AutoSatinParams* params,
+                           const QString& summary);
 
 signals:
     void paramsEdited(ObjectId id, document::StitchParams params);
@@ -54,6 +65,12 @@ signals:
     // Bouton « Éditer les guides » d'un remplissage directionnel : active
     // l'outil de guides du canevas sur cet objet.
     void editDirectionGuidesRequested(ObjectId id);
+    // Auto-satin : bouton « Placer un guide » (active l'outil de guides du canevas),
+    // modification de l'angle d'un guide et suppression d'un guide. MainWindow
+    // construit la commande annulable à partir des guides ACTUELS du document.
+    void editSatinGuidesRequested(ObjectId id);
+    void satinGuideChangeRequested(ObjectId id, int index, double angleDeg, bool absolute);
+    void satinGuideRemoveRequested(ObjectId id, int index);
 
 private:
     void clearBody();
@@ -67,6 +84,12 @@ private:
     std::optional<ObjectId> currentId_;
     std::optional<ObjectId> editStateId_;
     bool building_{false}; // évite d'émettre pendant le peuplement
+    // Auto-satin : widgets mis à jour hors reconstruction (cf. setAutoSatinState).
+    QPointer<QListWidget> satinGuideList_;
+    QPointer<QLabel> satinSummary_;
+    QPointer<QSpinBox> satinGuideAngle_;
+    QPointer<QCheckBox> satinGuideAbsolute_;
+    QPointer<QPushButton> satinGuideRemove_;
 };
 
 } // namespace openstitch::desktop

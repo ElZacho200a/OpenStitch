@@ -6,7 +6,7 @@ add_executable(openstitch-cli
 target_link_libraries(openstitch-cli
     PRIVATE CLI11::CLI11 openstitch::core openstitch::image openstitch::formats
             openstitch::stitch openstitch::geometry openstitch::stitch_generation
-            openstitch::auto_satin openstitch::satin_coverage openstitch::satin_planning
-            openstitch::segmentation openstitch::autodigitize openstitch::stitch_analysis
+            openstitch::auto_satin
+            openstitch::segmentation openstitch::project_io openstitch::autodigitize openstitch::stitch_analysis
             openstitch::warnings
 )
