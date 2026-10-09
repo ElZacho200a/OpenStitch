@@ -39,7 +39,10 @@ Le **mode d'interaction** vient de la palette d'outils (à gauche) :
 
 - **Sélection** (`V`) : sélectionner une région/un objet (Maj ajoute, Ctrl bascule, glisser dans le vide trace un rectangle de sélection) ; la vue se déplace au clic molette ou à Espace + glisser.
 - **Déplacer la vue** (`H`) : déplacement pur (le clic ne sélectionne pas).
-- **Rectangle / Recadrage** (`M`) : sélection rectangulaire pour recadrer l'image.
+- **Recadrer l'image** (`M`) : glissez le cadre à conserver ; l'image est recadrée **au
+  relâchement** (Échap : annuler). Le message de la barre d'état le rappelle, et une confirmation est
+  demandée si des objets existent déjà (ils ne suivraient pas l'image). Pour dessiner un rectangle,
+  utilisez l'outil `R`.
 - **Zoom** : molette (ancrée sous le curseur) ou barre d'outils / menu Affichage.
 - **Échap** : revient à la Sélection et annule le mode fusion en cours.
 
@@ -164,8 +167,11 @@ Sélection. Cette réinitialisation est partagée par tous les chemins qui
 remplacent le document (ouvrir une image, un SVG, un projet, importer un DST).
 
 **Import** : le dialogue affiche un aperçu, les dimensions en pixels, la
-résolution **mm/pixel** en direct, la taille du cadre, et **alerte si l'image
-dépasse le cadre**. **Export DST** : un **résumé** (dimensions, points, sauts,
+résolution (**mm/pixel et dpi**) en direct, la taille du cadre, et **alerte si l'image
+dépasse le cadre**. La taille proposée d'emblée **tient dans le cadre** (96 dpi, ramenée au cadre
+si besoin) et **Ajuster au cadre** y revient en un clic. Avec « Conserver les proportions », les
+bornes des champs empêchent de dépasser la plage 1–1000 mm sans respecter le ratio ; décochée,
+une alerte indique de combien l'image est étirée. Le dossier du dernier import est mémorisé. **Export DST** : un **résumé** (dimensions, points, sauts,
 coupes, changements de couleur, fil estimé, cadre, dépassement éventuel) est
 présenté avant écriture, avec un rappel que le DST ne conserve pas les objets.
 
@@ -206,33 +212,54 @@ l'original) :
 - Niveaux de gris ;
 - Luminosité/contraste… (aperçu en direct) ;
 - Débruitage léger / moyen (médian) ;
-- Quantifier les couleurs… (k-means, nombre de couleurs 2–64) ;
+- Quantifier les couleurs… (k-means, nombre de couleurs 2–64, **aperçu en direct** sur le canevas,
+  dernier choix mémorisé) ;
 - Symétrie horizontale / verticale ;
 - Rotation 90° horaire / antihoraire ;
-- Recadrer (sélection) — dessinez un rectangle sur le canevas.
+- Recadrer l'image (glisser un cadre) — voir l'outil `M` ci-dessus.
 
 ## Menu Segmentation
 
-- Segmenter l'image… (nombre de couleurs, taille min de région) ;
-- Segmenter avec l'IA… (même résultat, régions proposées par un modèle) ;
-- Afficher la carte des régions (bascule) ;
+- Segmenter l'image… (**F6** ; nombre de couleurs, taille min de région avec son équivalent en
+  mm², lissage — les derniers réglages sont mémorisés) ;
+- Segmenter avec l'IA… (régions proposées par un modèle ; grisée tant qu'aucune image n'est
+  ouverte) ;
+- Afficher la carte des régions (bascule) et **Opacité de la carte** (glissière 20–100 %,
+  mémorisée) : baissez-la pour juger les régions d'après la photo dessous ;
 - **Fusionner la sélection** (Ctrl+M) — fusionne toutes les régions sélectionnées dans la
   dernière cliquée (la **région active**, qui garde sa couleur), en un seul pas d'annulation ;
 - **Fusionner dans la voisine principale** (Ctrl+Maj+M) — la région rejoint la voisine avec
   laquelle elle partage la plus longue frontière ;
 - Fusionner avec… (puis clic sur la région cible) — absorbe toute la sélection dans la région
-  cliquée ;
+  cliquée. Le mode s'annonce dans la barre d'état et par un curseur « main » ; un clic sur une
+  région déjà sélectionnée ou dans le vide n'annule pas le mode mais explique quoi cliquer
+  (Échap annule) ;
 - **Sélectionner la même couleur**, **Sélectionner les voisines**, **Tout sélectionner** (Ctrl+A) ;
 - **Recolorer la sélection…** — un sélecteur de couleur, appliqué à toutes les régions
   sélectionnées (un pas d'annulation) ;
 - **Rétablir la couleur d'origine** — rend à chaque région sa couleur moyenne dans l'image ;
 - Supprimer : voir le menu Édition (Suppr) — les régions supprimées redeviennent du fond ;
-- Convertir la région en objet vectoriel.
+- **Vectoriser la sélection** (**F7**) — convertit **toutes** les régions sélectionnées en objets
+  vectoriels, en un seul pas d'annulation (le niveau de détail demandé s'applique à toutes et
+  est mémorisé). Une région déjà vectorisée n'est jamais dupliquée : la boîte propose de
+  **remplacer** son objet, de l'**ignorer** (ou de sélectionner l'objet existant) ou d'annuler.
+
+Fusionner ou supprimer des régions **déjà vectorisées** demande quoi faire de leurs objets
+(les conserver — ils ne sont pas mis à jour —, les supprimer avec les objets de broderie qui en
+dépendent, ou annuler), en un seul pas d'annulation. La barre d'état permanente affiche le
+**nombre de régions** de la segmentation (trop de petites régions : fusionnez-les dans leur
+voisine principale).
+
+**Survol** : sur la carte des régions, la région sous le curseur est surlignée avant le clic
+(sauf si elle est déjà sélectionnée).
 
 **Sélection multiple de régions** (carte des régions affichée) : clic = une région ;
 **Ctrl + clic** ajoute ou retire une région ; **Maj + clic** en ajoute une ; un **cadre** tracé
 sur la carte (objets vectoriels masqués) sélectionne les régions qu'il touche — vers la gauche —
-ou qu'il contient entièrement — vers la droite ; Ctrl/Maj + cadre ajoute ou bascule. La liste
+ou qu'il contient entièrement — vers la droite ; Ctrl/Maj + cadre ajoute ou bascule. Objets
+vectoriels affichés : un cadre qui ne touche aucun objet sélectionne les régions ; un cadre qui en
+touche saisit les objets, et un message rappelle de les masquer (menu Affichage) pour viser les
+régions. La liste
 *Régions* du panneau Document accepte aussi Ctrl/Maj + clic. L'**inspecteur** montre alors le
 nombre de régions, l'aire totale, la pastille de couleur de la région active (un clic ouvre le
 sélecteur) et les boutons des actions ci-dessus. Le **clic droit** sur une région ouvre un menu :
@@ -241,9 +268,22 @@ lointaine, avec leur couleur), recolorer, sélectionner, vectoriser, supprimer.
 
 Sélection : cliquez une région ; ses statistiques (pixels, mm², RGB) s'affichent.
 
+**Segmenter avec l'IA** : le dialogue détecte des formes (pas des couleurs) avec SAM 2. Choisissez
+le modèle et le profil, **Analyser** (« Annuler l'analyse » fonctionne aussi pendant le démarrage
+du worker), cochez les masques à garder, **protégez** ceux que le nettoyage ne doit pas absorber
+(les infobulles des en-têtes *IoU*, *Stabilité* et *Protéger* expliquent les colonnes ; un clic sur
+un en-tête trie le tableau), puis **Valider** (bouton grisé pendant le calcul). Relancer l'analyse
+ou fermer avec des masques en cours de revue demande confirmation ; les réglages sont mémorisés.
+« **Après validation, créer** » choisit le résultat : des **régions éditables** (la segmentation
+du document, à fusionner, recolorer puis vectoriser comme après « Segmenter l'image… »), ou
+directement les **objets de broderie** (avec les options *ignorer le fond* et *détail de
+vectorisation*). Une erreur de configuration s'affiche en rouge avec **Ouvrir les préférences…** et
+**Afficher le détail** ; l'analyse relancée utilise alors les nouveaux réglages.
+
 ## Menu Broderie
 
-- Numérisation automatique — crée des objets pour toutes les régions. Les zones
+- Numérisation automatique (**F8**) — crée des objets pour toutes les régions (grisée tant qu'il
+  n'y a ni segmentation ni objets vectoriels, avec la raison dans l'infobulle). Les zones
   remplissables deviennent des **tatami** ; le satin se crée ensuite, région par région,
   par « Créer un satin automatique » ;
 - Créer un objet de point de contour… (longueur, type simple/double/triple) ;
@@ -342,7 +382,8 @@ Sous la barre principale, son contenu **suit la sélection** :
 - **objet de broderie** : bascule rapide du type (Contour/Tatami/Satin) +
   *Orientation…* si tatami ;
 - **objet vectoriel** : boutons de création rapide (Contour/Tatami/Satin) ;
-- **région** : aire + *Fusionner* / *Supprimer* / *Vectoriser* ;
+- **région** : aire + *Fusionner* / *Supprimer* / *Vectoriser la sélection* (les mêmes actions
+  que les menus, avec leurs raccourcis) ;
 - **aucune sélection** : résumé du motif + bouton *Cadre…*.
 
 ## Inspecteur de propriétés
@@ -366,7 +407,9 @@ l'inspecteur ; une sélection au canevas surligne la ligne correspondante
 Bandeau (sous Document) listant les étapes **Image → Régions → Vecteurs →
 Broderie → Vérification → Export**. L'état de chaque étape (à faire / disponible /
 en cours / terminé / attention) est déduit du document et rendu par pastille +
-libellé + mot d'état. Un clic rappelle en barre d'état l'action à faire.
+libellé + mot d'état. Un clic **lance l'action de l'étape** quand elle est disponible (ouvrir une
+image, segmenter, vectoriser la sélection, numérisation automatique, analyser, exporter) ;
+sinon la barre d'état en donne la raison et le chemin de menu exact.
 
 ## Menu Analyse et panneau
 
@@ -437,14 +480,15 @@ mis en avant) ; le choix est mémorisé entre deux sessions.
 | Ctrl++ / Ctrl+- / Ctrl+0 | Zoom avant / arrière / ajuster |
 | F | Ajuster au canevas |
 | F5 | Analyser le motif |
-| V / H / M | Outils : Sélection / Déplacer la vue / Rectangle |
+| F6 / F7 / F8 | Segmenter l'image / Vectoriser la sélection / Numérisation automatique |
+| V / H / M | Outils : Sélection / Déplacer la vue / Recadrer l'image |
 | Échap | Revenir à la Sélection (annule la fusion) |
 | F1 | Ouvrir « Gestes souris et clavier » |
 | Ctrl+Shift+P | Masquer / afficher les panneaux |
 | Ctrl+Q | Quitter |
 
 Les raccourcis standard proviennent des séquences Qt (Rétablir suit la convention de la
-plateforme) ; `Ctrl+0`, `F5`, `F`,
+plateforme) ; `Ctrl+0`, `F5`–`F8`, `F`,
 `V/H/M`, `Ctrl+Shift+P` sont définis explicitement, sans conflit avec la
 navigation clavier (Tab reste réservé au parcours des contrôles).
 
