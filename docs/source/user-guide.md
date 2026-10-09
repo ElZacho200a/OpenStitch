@@ -471,6 +471,8 @@ Le sous-menu **Calques** regroupe des interrupteurs indépendants :
 | Zoom avant | Ctrl++ | Agrandit |
 | Zoom arrière | Ctrl+- | Réduit |
 | Ajuster au canevas | Ctrl+0 ou F | Cadre la vue sur le canevas |
+| Rendu réaliste ▸ Activer | Ctrl+Maj+R | Dessine chaque point comme un fil texturé (voir ci-dessous) |
+| Rendu réaliste ▸ Réglages… | — | Épaisseur du fil, relief, brillance, torsion, ombre, tissu, qualité |
 | Taille du cadre… | — | Définit la zone physique de broderie (voir ci-dessous) |
 | Thème | — | Clair / Sombre |
 | Densité | — | Confortable / Compact |
@@ -488,6 +490,42 @@ Les points cousus sont tracés **dans la couleur de fil de chaque objet** (un fi
 très clair est légèrement assombri pour rester visible) ; les **sauts** en
 pointillés orange ; des pastilles marquent les pénétrations (masquées au-delà de
 4000 points pour la fluidité, et pendant la simulation).
+
+### Rendu réaliste (façon « TrueView »)
+
+**Affichage ▸ Rendu réaliste ▸ Activer** (Ctrl+Maj+R) remplace les lignes par un
+aperçu proche de la broderie réelle : chaque point est dessiné comme un **fil**
+d'une épaisseur donnée, à section cylindrique éclairée (relief), avec reflet
+brillant, torsion visible, extrémités qui plongent dans le tissu et **ombre
+portée** sur le tissu et sur les points déjà cousus dessous. Les fils sont
+empilés dans l'ordre de couture réel (un point plus tardif passe par-dessus).
+
+![Rendu réaliste : satin, tatami et contour](../assets/screenshots/rendu-realiste.png)
+
+**Affichage ▸ Rendu réaliste ▸ Réglages…** ouvre une fenêtre non modale : chaque
+changement se voit tout de suite sur le canevas et est mémorisé entre deux
+sessions (comme les autres préférences d'affichage).
+
+| Réglage | Effet |
+|---|---|
+| Épaisseur | Diamètre apparent du fil, 0,10–1,00 mm (un fil 40 wt fait environ 0,3 mm ; défaut 0,35 mm) |
+| Relief | Intensité de l'ombrage cylindrique sur la largeur du fil |
+| Brillance | Intensité du reflet de la lumière sur le fil |
+| Torsion | Visibilité des stries obliques de torsion (visibles dès ~10 px/mm de zoom) |
+| Ombre portée | Intensité de l'ombre du fil sur le tissu et les points dessous |
+| Tissu | Fond opaque ou transparent (l'image reste alors visible), couleur, texture (Uni, Toile tissée, Feutrine) et relief de la texture |
+| Qualité | **Haute** : torsion, ombre et texture fine du tissu ; **Rapide** : fils ombrés seulement, pour les très gros motifs |
+
+Le rendu est calculé **une seule fois** puis mis en cache : il n'est recalculé
+que lorsque les points, les réglages, le zoom ou la zone visible changent
+(avec un court délai après un zoom ou un défilement), jamais à chaque
+mouvement de souris. Il est limité à la zone visible, donc reste fluide sur un
+motif de plus de 50 000 points. Deux cas retombent volontairement sur
+l'affichage en **lignes colorées** : un **dézoom fort** (quand le fil fait
+moins de ~1,6 pixel d'épaisseur, l'ombrage n'est plus lisible) et la
+**simulation** de couture. Les objets masqués par les filtres d'affichage ne
+sont pas dessinés. Le tissu est peint autour du motif (zone englobante), pas
+sur tout le cadre.
 
 ## Menu contextuel (clic droit)
 
@@ -676,6 +714,7 @@ la liste complète et filtrable est dans **Aide ▸ Gestes souris et clavier** (
 | K | Outil Couteau |
 | F1 | Ouvrir « Gestes souris et clavier » |
 | Ctrl+Shift+P | Masquer / afficher les panneaux |
+| Ctrl+Shift+R | Activer / désactiver le rendu réaliste des points |
 | Ctrl+Q | Quitter |
 
 Attention à ne pas confondre : `G` choisit l'outil *Polygone régulier* tandis que
@@ -715,6 +754,12 @@ Ctrl+= zoome aussi (Ctrl++ demande Maj sur un clavier AZERTY).
   `empty_state_widget.*` — panneaux.
 - `apps/desktop/tools.hpp`, `ui_icons.*` — modes d'interaction et icônes.
 - `apps/desktop/canvas_view.cpp` — zoom, déplacement, grille, cadre, rendu points.
+- `apps/desktop/main_window_realistic.cpp`, `realistic_render_dialog.*`,
+  `realistic_preferences.*`, `realistic_view_state.hpp` — rendu réaliste :
+  sous-menu, fenêtre de réglages, préférences QSettings (`view/realistic/*`)
+  et peinture du pixmap en cache. Le calcul (brins de fil, ombrage, tissu)
+  vit dans `libs/stitch_render` (sans Qt, testé par Catch2 ; image RGBA
+  rendue en bandes parallèles, déterministe).
 - `apps/desktop/ruler.cpp` — règles en mm.
 - `apps/desktop/import_dialog.cpp`, `brightness_dialog.cpp` — dialogues.
 - `apps/desktop/generation_options_dialog.cpp` — options de génération (coupes, points d'arrêt).

@@ -968,6 +968,7 @@ void MainWindow::buildMenus() {
     showStitchesAct_->setCheckable(true);
     showStitchesAct_->setChecked(true);
     connect(showStitchesAct_, &QAction::toggled, this, [this] { displayImage(processed_); });
+    buildRealisticMenu(viewMenu);
     viewMenu->addSeparator();
     zoomInAct_ = viewMenu->addAction(tr("Zoom &avant"));
     auto* zoomInAct = zoomInAct_;
@@ -3638,6 +3639,9 @@ void MainWindow::renderStitches() {
     simWalkValid_ = false;
 
     if (showStitchesAct_ == nullptr || !showStitchesAct_->isChecked() || !sequence_) {
+        return;
+    }
+    if (renderRealisticStitches()) {
         return;
     }
 
