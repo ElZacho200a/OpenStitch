@@ -467,15 +467,11 @@ std::vector<SatinStation> satin_stations(const geometry::Path& rail_a, const geo
     return stations;
 }
 
-SatinResult fill_satin_columns(const geometry::Path& rail_a, const geometry::Path& rail_b,
-                               const std::vector<SatinRungSeg>& rungs, const SatinConfig& config) {
-    if (rungs.size() < 2) {
-        return fill_satin(rail_a, rail_b, config); // satin manuel / legacy
-    }
+SatinResult finish_satin_stations(const std::vector<SatinStation>& stations,
+                                  const SatinConfig& config) {
     SatinResult result;
-    const auto stations = satin_stations(rail_a, rail_b, rungs, config.density);
     if (stations.size() < 2) {
-        return fill_satin(rail_a, rail_b, config);
+        return result;
     }
     const double comp = static_cast<double>(config.pull_compensation.value);
     const double density = static_cast<double>(std::max<std::int32_t>(1, config.density.value));
@@ -733,6 +729,18 @@ SatinResult fill_satin_columns(const geometry::Path& rail_a, const geometry::Pat
         ++emitted;
     }
     return result;
+}
+
+SatinResult fill_satin_columns(const geometry::Path& rail_a, const geometry::Path& rail_b,
+                               const std::vector<SatinRungSeg>& rungs, const SatinConfig& config) {
+    if (rungs.size() < 2) {
+        return fill_satin(rail_a, rail_b, config); // satin manuel / legacy
+    }
+    const auto stations = satin_stations(rail_a, rail_b, rungs, config.density);
+    if (stations.size() < 2) {
+        return fill_satin(rail_a, rail_b, config);
+    }
+    return finish_satin_stations(stations, config);
 }
 
 SatinResult fill_satin(const geometry::Path& rail_a, const geometry::Path& rail_b,
