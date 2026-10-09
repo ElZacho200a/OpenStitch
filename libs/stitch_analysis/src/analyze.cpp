@@ -14,25 +14,47 @@ bool outside(Vec2um p, const stitch::BoundsUm& hoop) {
 
 } // namespace
 
+std::string format_mm_fr(double micrometers) {
+    // Dixièmes de millimètre entiers (troncature), puis assemblage manuel :
+    // ni std::to_string ni locale (le séparateur décimal est la virgule).
+    const auto tenths = static_cast<long long>(micrometers / 100.0);
+    const long long abs_t = tenths < 0 ? -tenths : tenths;
+    std::string out = tenths < 0 ? "-" : "";
+    out += std::to_string(abs_t / 10);
+    out += ',';
+    out += std::to_string(abs_t % 10);
+    return out;
+}
+
 std::vector<Finding> analyze(const stitch::StitchSequence& sequence,
                              const AnalysisOptions& options) {
+    return analyze_detailed(sequence, options).findings;
+}
+
+AnalysisReport analyze_detailed(const stitch::StitchSequence& sequence,
+                                const AnalysisOptions& options) {
     std::vector<Finding> findings;
     std::map<std::string, std::size_t> perCategory;
 
     // Ajoute un problème en respectant le plafond par catégorie.
     const auto add = [&](Severity sev, const std::string& cat, std::string msg, Vec2um loc,
-                         ObjectId obj) {
+                         ObjectId obj, std::string hint = {}) {
         std::size_t& count = perCategory[cat];
         if (count < options.max_findings_per_category) {
-            findings.push_back({sev, cat, std::move(msg), loc, obj});
+            findings.push_back({sev, cat, std::move(msg), loc, obj, std::move(hint)});
         }
         ++count;
     };
 
     const auto stats = stitch::compute_stats(sequence);
     if (stats.stitches == 0) {
-        findings.push_back({Severity::Error, "vide", "Le motif ne contient aucun point.", {}, {}});
-        return findings;
+        findings.push_back({Severity::Error,
+                            "vide",
+                            "Le motif ne contient aucun point.",
+                            {},
+                            {},
+                            "Créez un objet puis générez les points."});
+        return {std::move(findings), {}};
     }
 
     bool hasPrevStitch = false;
@@ -53,9 +75,10 @@ std::vector<Finding> analyze(const stitch::StitchSequence& sequence,
                 const double moved = length_um(cmd.pos - lastStitch);
                 if (moved > static_cast<double>(options.trim_threshold.value)) {
                     add(Severity::Warning, "saut-sans-coupe",
-                        "Déplacement de " + std::to_string(static_cast<int>(moved / 100.0) / 10.0) +
+                        "Déplacement de " + format_mm_fr(moved) +
                             " mm sans coupe : le fil traîne sur le tissu.",
-                        cmd.pos, cmd.source);
+                        cmd.pos, cmd.source,
+                        "Activez les coupes automatiques ou rapprochez les objets.");
                 }
             }
             inMove = false;
@@ -67,20 +90,19 @@ std::vector<Finding> analyze(const stitch::StitchSequence& sequence,
                 const double len = length_um(cmd.pos - prevStitch);
                 if (len < static_cast<double>(options.min_stitch.value)) {
                     add(Severity::Warning, "point-court",
-                        "Point très court (" +
-                            std::to_string(static_cast<int>(len / 1000.0 * 10) / 10.0) +
+                        "Point très court (" + format_mm_fr(len) +
                             " mm) : risque de casse du fil et de sur-densité.",
-                        cmd.pos, cmd.source);
+                        cmd.pos, cmd.source,
+                        "Augmentez l'espacement ou simplifiez le contour de l'objet.");
                 } else if (len > static_cast<double>(options.max_stitch.value)) {
                     add(Severity::Warning, "point-long",
-                        "Point long (" + std::to_string(static_cast<int>(len / 100.0) / 10.0) +
-                            " mm) : risque d'accrochage.",
-                        cmd.pos, cmd.source);
+                        "Point long (" + format_mm_fr(len) + " mm) : risque d'accrochage.", cmd.pos,
+                        cmd.source, "Réduisez la longueur de point ou découpez l'objet.");
                 }
             }
             if (options.hoop && outside(cmd.pos, *options.hoop)) {
                 add(Severity::Error, "hors-cadre", "Point hors du cadre de broderie.", cmd.pos,
-                    cmd.source);
+                    cmd.source, "Déplacez l'objet dans le cadre ou agrandissez le canevas.");
             }
             prevStitch = cmd.pos;
             hasPrevStitch = true;
@@ -92,9 +114,9 @@ std::vector<Finding> analyze(const stitch::StitchSequence& sequence,
                 const double len = length_um(cmd.pos - prevPos);
                 if (len > static_cast<double>(options.max_jump.value)) {
                     add(Severity::Warning, "saut-long",
-                        "Saut long (" + std::to_string(static_cast<int>(len / 100.0) / 10.0) +
-                            " mm) : envisagez une coupe.",
-                        cmd.pos, cmd.source);
+                        "Saut long (" + format_mm_fr(len) + " mm) : envisagez une coupe.", cmd.pos,
+                        cmd.source,
+                        "Réordonnez les objets pour réduire les sauts, ou ajoutez une coupe.");
                 }
             }
             // Un saut lève l'aiguille : le fil n'est plus continu. Sans ce
@@ -123,13 +145,20 @@ std::vector<Finding> analyze(const stitch::StitchSequence& sequence,
         add(Severity::Warning, "trop-de-points",
             "Le motif compte " + std::to_string(stats.stitches) +
                 " points : temps de broderie très long.",
-            {}, {});
+            {}, {}, "Augmentez l'espacement ou réduisez la taille du motif.");
     }
 
     // Tri par gravité décroissante (stable pour rester déterministe).
     std::stable_sort(findings.begin(), findings.end(),
                      [](const Finding& a, const Finding& b) { return a.severity > b.severity; });
-    return findings;
+    AnalysisReport report;
+    report.findings = std::move(findings);
+    for (const auto& [cat, count] : perCategory) {
+        if (count > options.max_findings_per_category) {
+            report.suppressed[cat] = count - options.max_findings_per_category;
+        }
+    }
+    return report;
 }
 
 } // namespace openstitch::stitch_analysis

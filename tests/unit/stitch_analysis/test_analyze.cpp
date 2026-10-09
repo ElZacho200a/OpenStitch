@@ -143,3 +143,32 @@ TEST_CASE("deterministe") {
         CHECK(a[i].category == b[i].category);
     }
 }
+
+TEST_CASE("messages d'analyse : virgule decimale francaise et indice de correction") {
+    CHECK(format_mm_fr(3'500.0) == "3,5");
+    CHECK(format_mm_fr(51'400.0) == "51,4");
+    CHECK(format_mm_fr(200.0) == "0,2");
+    stitch::StitchSequence seq;
+    seq.commands = {
+        {um(0, 0), CommandType::Stitch, ObjectId{1}},
+        {um(9'500, 0), CommandType::Stitch, ObjectId{1}},
+    };
+    const auto f = analyze(seq);
+    REQUIRE(f.size() == 1);
+    CHECK(f[0].message.find("9,5 mm") != std::string::npos);
+    CHECK(f[0].message.find("9.5") == std::string::npos);
+    CHECK_FALSE(f[0].hint.empty());
+}
+
+TEST_CASE("plafond par categorie : le nombre masque est rapporte") {
+    stitch::StitchSequence seq;
+    for (int i = 0; i < 20; ++i) {
+        seq.commands.push_back({um(i * 10'000, 0), CommandType::Stitch, ObjectId{1}});
+    }
+    AnalysisOptions opts;
+    opts.max_findings_per_category = 5;
+    const auto r = analyze_detailed(seq, opts);
+    CHECK(count_category(r.findings, "point-long") == 5);
+    REQUIRE(r.suppressed.count("point-long") == 1);
+    CHECK(r.suppressed.at("point-long") == 14);
+}
