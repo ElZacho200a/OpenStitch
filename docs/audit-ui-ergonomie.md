@@ -60,3 +60,32 @@ audit. Efforts : S < 1 h, M < 1 jour, L > 1 jour.
 2. **M1** (M) : fenêtre utilisable à 1366×768, canevas prioritaire.
 3. **M2 + M3 + M4** (S/M) : progression, export précédé du résumé, erreurs lisibles.
 4. Lot d'harmonisation S : M5, accents, libellés, raccourcis, noms d'historique.
+
+## État des correctifs (2026-10, branche de recherche)
+
+**Corrigé** : B1, B2 (garde « modifications non enregistrées » sur ouvrir image/SVG et importer
+DST) · M1 (panneaux défilants : hauteur minimale 934 → 374 px, fenêtre utilisable à 1024×640 ;
+Filtres en onglet derrière Propriétés ; tailles de panneaux par défaut ; « Réinitialiser la
+disposition ») · M3 (résumé + analyse avant le sélecteur d'export) · M4 (erreurs d'ouverture et
+d'import : titre précis, explication, détail technique repliable) · M5 (barre principale =
+actions des menus) · M6 (raison de désactivation dans l'infobulle et la barre d'état) · M7
+(Supprimer/Dupliquer/Décaler dans Édition, IA dans Segmentation, Statistiques dans Analyse) ·
+M8 (icônes 1×/2× et encre ≥ 3:1 sur clair et sombre) · inspecteur satin regroupé avec texte
+d'aide · recherche et libellés allégés dans le panneau Document · accents, infobulles de
+palette, noms d'historique avec verbe · Ctrl+E, Ctrl+0 + F sur la même action · contrastes des
+bordures (≈ 3:1) et du saut (4,0:1) · poignées 22 px · repère d'aimantation thémé ·
+message d'autosave · guide utilisateur mis à jour.
+
+**Partiel** : M2 (une fenêtre « en cours » sans bouton Annuler : le calcul reste synchrone et non
+interruptible, la tâche de fond reste à faire) · M9 (les champs de l'inspecteur sont nommés par le
+libellé du `QFormLayout` ; pas de `setTabOrder` explicite) · noms d'historique : « Suppression de
+région » et « Déplacement de point » gardés tels quels (des tests s'y réfèrent).
+
+**Non fait** : double codage par forme pour le daltonisme (rouge/vert, rails G/D) · tailles de
+police pilotées par les jetons et pixels codés en dur restants · vignettes dans la liste Document ·
+raccourcis pour Statistiques et Numérisation automatique · aperçu dans le dialogue de récupération
+d'autosave · vérification clavier réelle des touches simples depuis les docks (supposé).
+
+**Constat retiré** : « l'image apparaît en miniature au chargement » est un artefact de l'outil de
+captures (le projet est chargé avant l'affichage de la fenêtre) ; `applyLoadedProject` appelle bien
+`fitCanvas()`.

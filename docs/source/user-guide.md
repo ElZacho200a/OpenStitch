@@ -145,12 +145,12 @@ Précisions sur les gestes du tableau :
 | Action | Raccourci | Effet |
 |---|---|---|
 | Nouveau projet | Ctrl+N | Repart d'un document vierge (voir ci-dessous) |
-| Ouvrir une image… | Ctrl+O | Charge PNG/JPEG/BMP/TIFF puis demande la taille physique |
+| Ouvrir une image… | Ctrl+O | Charge PNG/JPEG/BMP/TIFF ou SVG puis demande la taille physique ; propose d'enregistrer le projet en cours |
 | Enregistrer le projet | Ctrl+S | Réécrit le `.osp` courant (demande où enregistrer la première fois) |
 | Enregistrer le projet sous… | Ctrl+Maj+S | Écrit le document dans un nouveau `.osp`, qui devient le fichier courant |
 | Ouvrir un projet… | — | Recharge un `.osp` |
-| Exporter en DST… | — | Écrit un fichier `.dst` (points uniquement) |
-| Importer un DST… | — | Relit un `.dst` comme séquence de points |
+| Exporter en DST… | Ctrl+E | Montre d'abord le résumé (dimensions, points, résultat de l'analyse), puis demande le fichier `.dst` (points uniquement) |
+| Importer un DST… | — | Relit un `.dst` comme séquence de points (propose d'enregistrer le projet en cours) |
 | Quitter | Ctrl+Q | Ferme l'application |
 
 **Nouveau projet** : si le document courant a été modifié, une garde propose
@@ -188,7 +188,10 @@ enregistrées propose **Enregistrer / Ignorer / Annuler**.
 | Action | Raccourci | Effet |
 |---|---|---|
 | Annuler | Ctrl+Z | Défait la dernière opération (le libellé nomme l'action) |
-| Rétablir | Ctrl+Y | Refait l'opération annulée |
+| Rétablir | Ctrl+Maj+Z (Ctrl+Y sous Windows) | Refait l'opération annulée |
+| Supprimer la sélection | Suppr | Supprime la région, l'objet de broderie ou les objets vectoriels sélectionnés |
+| Dupliquer la forme | — | Duplique la forme sélectionnée |
+| Décaler la forme… | — | Décale ou rétrécit la forme sélectionnée |
 
 L'annulation couvre les opérations d'image, la segmentation (segmenter, fusionner,
 supprimer, recolorer), la création et le déplacement de nœuds vectoriels, la
@@ -211,9 +214,10 @@ l'original) :
 ## Menu Segmentation
 
 - Segmenter l'image… (nombre de couleurs, taille min de région) ;
+- Segmenter avec l'IA… (même résultat, régions proposées par un modèle) ;
 - Afficher la carte des régions (bascule) ;
 - Fusionner avec… (puis clic sur la région cible) ;
-- Supprimer la région sélectionnée (Suppr) — la région redevient du fond ;
+- Supprimer : voir le menu Édition (Suppr) — une région supprimée redevient du fond ;
 - Recolorer la région sélectionnée… ;
 - Convertir la région en objet vectoriel.
 
@@ -222,17 +226,26 @@ Sélection : cliquez une région ; ses statistiques (pixels, mm², RGB) s'affich
 ## Menu Broderie
 
 - Numérisation automatique — crée des objets pour toutes les régions. Les zones
-  remplissables deviennent des **tatami** (le satin automatique naïf, qui
-  débordait, est désactivé par défaut) ;
+  remplissables deviennent des **tatami** ; le satin se crée ensuite, région par région,
+  par « Créer un satin automatique » ;
 - Créer un objet de point de contour… (longueur, type simple/double/triple) ;
 - Créer un remplissage tatami… (espacement, longueur, angle) ;
-- Créer une colonne satin… (densité, compensation, sous-couche centrale) ;
+- **Créer un satin automatique…** — satin par squelette et traversées orientées : aucun rail
+  à poser, l'aperçu annonce le nombre de colonnes et la couverture estimée, et refuse
+  avec une raison les formes qui ne s'y prêtent pas (disque, forme compacte) en proposant
+  un tatami. Réglages : espacement, compensation, sous-couche, fractionnement. Le contour
+  utilisé est celui de la région segmentée. **Non validé sur machine** : vérifiez le
+  résultat avant de broder ;
+- **Convertir automatiquement en satin (expérimental)…** — même moteur, avec confirmation ;
+- **Guides de direction…** / **Générer un guide depuis la forme** / **Tracer un guide de
+  direction** — orientent les fils d'un remplissage directionnel ; pour un satin, le bouton
+  « Placer un guide sur le canevas… » de l'inspecteur pose un guide d'orientation ;
 - **Orientation du remplissage…** — change l'angle des fils du tatami sélectionné
   (aussi réglable à la souris, voir *poignée de rotation* plus bas) ;
 - **Convertir les satins auto en tatami** — répare un projet dont les satins
   automatiques débordent ;
-- Statistiques… (points, sauts, coupes, changements de couleur, dimensions,
-  longueur de fil).
+- Les **Statistiques…** (points, sauts, coupes, changements de couleur, dimensions,
+  longueur de fil) sont dans le menu Analyse.
 
 Avertissement : si une colonne satin dépasse la largeur recommandée, un dialogue
 propose de continuer ou de préférer un remplissage tatami.
@@ -298,9 +311,11 @@ Ces filtres n'affectent que **l'affichage** (pas l'export ni les points génér�
 
 ## Barre d'outils principale
 
-Actions fréquentes, icônes monochromes avec infobulle : ouvrir image/projet,
-enregistrer, annuler/rétablir, zoom −/ajuster/+, analyser, aperçu des points,
-exporter DST. Les actions indisponibles dans le contexte courant sont désactivées.
+Actions fréquentes, icônes monochromes avec infobulle (qui rappelle le raccourci) : ouvrir
+image/projet, enregistrer, annuler/rétablir, zoom −/ajuster/+, analyser, aperçu des points,
+exporter DST. Ce sont les mêmes actions que dans les menus : une action indisponible est
+grisée aux deux endroits, et son infobulle (et la barre d'état) dit quoi faire pour
+l'activer.
 
 ## Barre d'outils contextuelle
 
@@ -398,7 +413,8 @@ mis en avant) ; le choix est mémorisé entre deux sessions.
 | Ctrl+N | Nouveau projet (garde des modifications non enregistrées) |
 | Ctrl+O / Ctrl+S | Ouvrir une image / Enregistrer le projet (sans redemander le chemin) |
 | Ctrl+Maj+S | Enregistrer le projet sous… |
-| Ctrl+Z / Ctrl+Y | Annuler / Rétablir |
+| Ctrl+Z / Ctrl+Maj+Z (Ctrl+Y sous Windows) | Annuler / Rétablir |
+| Ctrl+E | Exporter en DST (résumé puis choix du fichier) |
 | Suppr | Supprimer la sélection (région, objet de broderie ou objets vectoriels) |
 | Ctrl++ / Ctrl+- / Ctrl+0 | Zoom avant / arrière / ajuster |
 | F | Ajuster au canevas |
@@ -409,7 +425,8 @@ mis en avant) ; le choix est mémorisé entre deux sessions.
 | Ctrl+Shift+P | Masquer / afficher les panneaux |
 | Ctrl+Q | Quitter |
 
-Les raccourcis standard proviennent des séquences Qt ; `Ctrl+0`, `F5`, `F`,
+Les raccourcis standard proviennent des séquences Qt (Rétablir suit la convention de la
+plateforme) ; `Ctrl+0`, `F5`, `F`,
 `V/H/M`, `Ctrl+Shift+P` sont définis explicitement, sans conflit avec la
 navigation clavier (Tab reste réservé au parcours des contrôles).
 
