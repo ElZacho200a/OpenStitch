@@ -228,7 +228,8 @@ TEST_CASE("large render with many segments completes and is deterministic across
     for (int i = 0; i < 50'000; ++i) {
         const float x = static_cast<float>((i * 37) % 3000) * 0.05F;
         const float y = static_cast<float>((i * 91) % 2000) * 0.05F;
-        segs.push_back(ThreadSegment{x, y, x + 2.5F, y + 0.4F, {static_cast<std::uint8_t>(i), 80, 200}});
+        segs.push_back(
+            ThreadSegment{x, y, x + 2.5F, y + 0.4F, {static_cast<std::uint8_t>(i), 80, 200}});
     }
     const RasterView view = plan_view(RectMm{0, 0, 160, 110}, 8.0, 4'000'000);
     const RenderParams p;

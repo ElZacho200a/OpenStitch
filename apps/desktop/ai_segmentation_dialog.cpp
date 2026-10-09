@@ -292,14 +292,12 @@ void AiSegmentationDialog::setupUi() {
     // directement les objets de broderie. Annoncé ici, pas découvert après coup.
     auto* outputBox = new QGroupBox(tr("Après validation, créer"), this);
     auto* outputLayout = new QVBoxLayout(outputBox);
-    editableRegionsRadio_ =
-        new QRadioButton(tr("Des régions éditables (puis fusionner, recolorer, vectoriser)"),
-                         outputBox);
+    editableRegionsRadio_ = new QRadioButton(
+        tr("Des régions éditables (puis fusionner, recolorer, vectoriser)"), outputBox);
     editableRegionsRadio_->setObjectName(QStringLiteral("aiOutputRegionsRadio"));
     editableRegionsRadio_->setChecked(true);
-    embroideryObjectsRadio_ =
-        new QRadioButton(tr("Directement les objets de broderie (numérisation automatique)"),
-                         outputBox);
+    embroideryObjectsRadio_ = new QRadioButton(
+        tr("Directement les objets de broderie (numérisation automatique)"), outputBox);
     embroideryObjectsRadio_->setObjectName(QStringLiteral("aiOutputObjectsRadio"));
     outputLayout->addWidget(editableRegionsRadio_);
     outputLayout->addWidget(embroideryObjectsRadio_);
@@ -693,8 +691,8 @@ void AiSegmentationDialog::loadMasksIntoTable() {
         maskTable_->insertRow(r);
         maskTable_->setItem(r, 0, makeCheckableItem(Qt::Checked));
         maskTable_->setItem(r, 1, makeNumberItem(entry.id, 0));
-        maskTable_->setItem(
-            r, 2, makeNumberItem(static_cast<double>(entry.area_pixels) * mm2PerPx, 2));
+        maskTable_->setItem(r, 2,
+                            makeNumberItem(static_cast<double>(entry.area_pixels) * mm2PerPx, 2));
         maskTable_->setItem(r, 3, makeNumberItem(entry.predicted_iou, 2));
         maskTable_->setItem(r, 4, makeNumberItem(entry.stability_score, 2));
         maskTable_->setItem(r, 5, makeCheckableItem(Qt::Unchecked));

@@ -165,16 +165,16 @@ private slots:
         window.applyLoadedProject(threeBandProject());
         window.selectRegions({regionAt(window, 5, 5)}, SelectMode::Replace);
         runModalScript(&window, {[](QWidget* modal) {
-                           modal->findChild<QSlider*>("vectorizeDetailSlider")->setValue(80);
-                           static_cast<QDialog*>(modal)->accept();
-                       }});
+            modal->findChild<QSlider*>("vectorizeDetailSlider")->setValue(80);
+            static_cast<QDialog*>(modal)->accept();
+        }});
         window.vectorizeSelectedRegion();
         window.selectRegions({regionAt(window, 30, 5)}, SelectMode::Replace);
         int seen = -1;
         runModalScript(&window, {[&seen](QWidget* modal) {
-                           seen = modal->findChild<QSlider*>("vectorizeDetailSlider")->value();
-                           static_cast<QDialog*>(modal)->reject();
-                       }});
+            seen = modal->findChild<QSlider*>("vectorizeDetailSlider")->value();
+            static_cast<QDialog*>(modal)->reject();
+        }});
         window.vectorizeSelectedRegion();
         QCOMPARE(seen, 80);
     }
@@ -415,9 +415,9 @@ private slots:
         window.updateActions();
         bool dialogSeen = false;
         runModalScript(&window, {[&dialogSeen](QWidget* modal) {
-                           dialogSeen = modal->windowTitle() == QStringLiteral("Segmenter l'image");
-                           static_cast<QDialog*>(modal)->reject();
-                       }});
+            dialogSeen = modal->windowTitle() == QStringLiteral("Segmenter l'image");
+            static_cast<QDialog*>(modal)->reject();
+        }});
         window.onWorkflowStepClicked(1);
         QVERIFY(dialogSeen);
     }
@@ -429,19 +429,19 @@ private slots:
         window.applyLoadedProject(project);
         QString mmText;
         runModalScript(&window, {[&mmText](QWidget* modal) {
-                           modal->findChild<QSpinBox*>()->setValue(5);
-                           mmText = modal->findChild<QLabel*>("segmentMinSizeMm")->text();
-                           static_cast<QDialog*>(modal)->accept();
-                       }});
+            modal->findChild<QSpinBox*>()->setValue(5);
+            mmText = modal->findChild<QLabel*>("segmentMinSizeMm")->text();
+            static_cast<QDialog*>(modal)->accept();
+        }});
         window.segmentImage();
         QVERIFY(mmText.contains(QStringLiteral("mm²")));
         QVERIFY(window.project_.segmentation.has_value());
 
         int remembered = -1;
         runModalScript(&window, {[&remembered](QWidget* modal) {
-                           remembered = modal->findChild<QSpinBox*>()->value();
-                           static_cast<QDialog*>(modal)->reject();
-                       }});
+            remembered = modal->findChild<QSpinBox*>()->value();
+            static_cast<QDialog*>(modal)->reject();
+        }});
         window.segmentImage();
         QCOMPARE(remembered, 5);
     }
@@ -464,8 +464,8 @@ private slots:
         window.vectorizeSelectedRegion();
         const auto before = window.project_.ops.size();
         runModalScript(&window, {[](QWidget* modal) {
-                           static_cast<QMessageBox*>(modal)->button(QMessageBox::No)->click();
-                       }});
+            static_cast<QMessageBox*>(modal)->button(QMessageBox::No)->click();
+        }});
         const double mm = window.project_.mm_per_px.value;
         window.onCropSelected(QRectF(-10 * mm, -10 * mm, 20 * mm, 20 * mm));
         QCOMPARE(window.project_.ops.size(), before); // refusé : image intacte
@@ -477,20 +477,20 @@ private slots:
         project.segmentation.reset();
         window.applyLoadedProject(project);
         runModalScript(&window, {[](QWidget* modal) {
-                           auto* spin = modal->findChild<QSpinBox*>("quantizeColorsSpin");
-                           spin->setValue(5);
-                           QTest::qWait(250); // laisse passer l'aperçu différé
-                           static_cast<QDialog*>(modal)->accept();
-                       }});
+            auto* spin = modal->findChild<QSpinBox*>("quantizeColorsSpin");
+            spin->setValue(5);
+            QTest::qWait(250); // laisse passer l'aperçu différé
+            static_cast<QDialog*>(modal)->accept();
+        }});
         window.quantizeColors();
         QCOMPARE(window.project_.ops.size(), std::size_t{1});
         QCOMPARE(std::get<image::QuantizeOp>(window.project_.ops.back()).colors, 5);
 
         int seen = -1;
         runModalScript(&window, {[&seen](QWidget* modal) {
-                           seen = modal->findChild<QSpinBox*>("quantizeColorsSpin")->value();
-                           static_cast<QDialog*>(modal)->reject();
-                       }});
+            seen = modal->findChild<QSpinBox*>("quantizeColorsSpin")->value();
+            static_cast<QDialog*>(modal)->reject();
+        }});
         window.quantizeColors();
         QCOMPARE(seen, 5);
         QCOMPARE(window.project_.ops.size(), std::size_t{1}); // annulé : rien d'ajouté

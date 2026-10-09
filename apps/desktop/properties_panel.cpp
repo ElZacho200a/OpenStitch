@@ -63,28 +63,28 @@ using EditFn = std::function<void(const QString&, const std::function<void(T&)>&
 // Liaisons widget -> champ : chaque widget ne modifie QUE son champ (cf. showEmbroidery).
 template <class T>
 void bindMmField(QObject* ctx, const EditFn<T>& edit, QDoubleSpinBox* spin, const QString& label,
-                 Micrometers T::* member) {
+                 Micrometers T::*member) {
     QObject::connect(spin, &QDoubleSpinBox::valueChanged, ctx, [edit, label, member](double v) {
         edit(label, [v, member](T& t) { t.*member = to_um(v); });
     });
 }
 template <class T>
 void bindIntField(QObject* ctx, const EditFn<T>& edit, QSpinBox* spin, const QString& label,
-                  int T::* member) {
+                  int T::*member) {
     QObject::connect(spin, &QSpinBox::valueChanged, ctx, [edit, label, member](int v) {
         edit(label, [v, member](T& t) { t.*member = v; });
     });
 }
 template <class T>
 void bindBoolField(QObject* ctx, const EditFn<T>& edit, QCheckBox* box, const QString& label,
-                   bool T::* member) {
+                   bool T::*member) {
     QObject::connect(box, &QCheckBox::toggled, ctx, [edit, label, member](bool v) {
         edit(label, [v, member](T& t) { t.*member = v; });
     });
 }
 template <class T, class E>
 void bindEnumField(QObject* ctx, const EditFn<T>& edit, QComboBox* combo, const QString& label,
-                   E T::* member) {
+                   E T::*member) {
     QObject::connect(combo, &QComboBox::currentIndexChanged, ctx, [edit, label, member](int index) {
         edit(label, [index, member](T& t) { t.*member = static_cast<E>(index); });
     });
@@ -543,15 +543,15 @@ void PropertiesPanel::showEmbroidery(const document::EmbroideryObject& object) {
                 }
             };
             [[maybe_unused]] const auto bindMm =
-                [this, &edit](QDoubleSpinBox* spin, const QString& label, Micrometers T::* member) {
+                [this, &edit](QDoubleSpinBox* spin, const QString& label, Micrometers T::*member) {
                     bindMmField<T>(this, edit, spin, label, member);
                 };
             [[maybe_unused]] const auto bindInt =
-                [this, &edit](QSpinBox* spin, const QString& label, int T::* member) {
+                [this, &edit](QSpinBox* spin, const QString& label, int T::*member) {
                     bindIntField<T>(this, edit, spin, label, member);
                 };
             [[maybe_unused]] const auto bindBool =
-                [this, &edit](QCheckBox* box, const QString& label, bool T::* member) {
+                [this, &edit](QCheckBox* box, const QString& label, bool T::*member) {
                     bindBoolField<T>(this, edit, box, label, member);
                 };
             // Grise `field` (et son libellé) tant que `box` est décochée (Mo8).

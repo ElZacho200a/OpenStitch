@@ -38,8 +38,8 @@
 #include <QStandardPaths>
 #include <QStatusBar>
 #include <QTextStream>
-#include <QUrl>
 #include <QTimer>
+#include <QUrl>
 
 #include <algorithm>
 #include <chrono>

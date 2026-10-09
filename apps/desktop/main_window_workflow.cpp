@@ -105,9 +105,9 @@ void MainWindow::vectorizeSelectedRegion() {
     std::vector<RegionId> already;
     std::vector<ObjectId> existing; // objets déjà issus de ces régions
     for (const RegionId id : picked) {
-        const auto it = std::find_if(
-            project_.vector_objects.begin(), project_.vector_objects.end(),
-            [id](const document::VectorObject& o) { return o.source_region == id; });
+        const auto it =
+            std::find_if(project_.vector_objects.begin(), project_.vector_objects.end(),
+                         [id](const document::VectorObject& o) { return o.source_region == id; });
         if (it == project_.vector_objects.end()) {
             fresh.push_back(id);
         } else {
@@ -123,8 +123,8 @@ void MainWindow::vectorizeSelectedRegion() {
         if (already.size() == 1) {
             question = tr("La région %1 a déjà un objet vectoriel.").arg(already.front().value);
         } else {
-            question = tr("%1 des régions sélectionnées ont déjà un objet vectoriel.")
-                           .arg(already.size());
+            question =
+                tr("%1 des régions sélectionnées ont déjà un objet vectoriel.").arg(already.size());
         }
         QMessageBox box(QMessageBox::Question, tr("Région déjà vectorisée"), question,
                         QMessageBox::NoButton, this);
@@ -176,9 +176,8 @@ void MainWindow::vectorizeSelectedRegion() {
     dialog.setWindowTitle(tr("Vectorisation"));
     auto* layout = new QFormLayout(&dialog);
     if (todo.size() > 1) {
-        layout->addRow(new QLabel(tr("%1 régions seront vectorisées avec ce réglage.")
-                                      .arg(todo.size()),
-                                  &dialog));
+        layout->addRow(new QLabel(
+            tr("%1 régions seront vectorisées avec ce réglage.").arg(todo.size()), &dialog));
     }
     auto* detailSlider = new QSlider(Qt::Horizontal, &dialog);
     detailSlider->setObjectName("vectorizeDetailSlider");
@@ -285,11 +284,10 @@ void MainWindow::vectorizeSelectedRegion() {
     refreshImage();
     updateActions();
     if (!failures.isEmpty()) {
-        QMessageBox::warning(
-            this, tr("Vectorisation partielle"),
-            tr("%1 région(s) n'ont pas pu être vectorisées :\n\n%2")
-                .arg(failures.size())
-                .arg(failures.join(QLatin1Char('\n'))));
+        QMessageBox::warning(this, tr("Vectorisation partielle"),
+                             tr("%1 région(s) n'ont pas pu être vectorisées :\n\n%2")
+                                 .arg(failures.size())
+                                 .arg(failures.join(QLatin1Char('\n'))));
     }
     QString message = tr("Objet vectoriel créé — cliquez-le pour éditer ses nœuds");
     if (created.size() > 1) {
@@ -395,8 +393,7 @@ void MainWindow::segmentWithAi() {
     busy.reset();
     if (!result) {
         QMessageBox box(QMessageBox::Warning, tr("Numérisation impossible"),
-                        tr("La numérisation des formes retenues a échoué."), QMessageBox::Ok,
-                        this);
+                        tr("La numérisation des formes retenues a échoué."), QMessageBox::Ok, this);
         box.setDetailedText(QString::fromStdString(result.error().message));
         box.exec();
         return;
@@ -434,8 +431,8 @@ void MainWindow::quantizeColors() {
     colorsSpin->setRange(2, 64);
     colorsSpin->setValue(ui_memory::intValue(QStringLiteral("quantize/colors"), 8, 2, 64));
     layout->addRow(tr("Nombre maximal de couleurs :"), colorsSpin);
-    auto* hint = new QLabel(tr("L'aperçu s'affiche sur le canevas ; Annuler rétablit l'image."),
-                            &dialog);
+    auto* hint =
+        new QLabel(tr("L'aperçu s'affiche sur le canevas ; Annuler rétablit l'image."), &dialog);
     hint->setWordWrap(true);
     hint->setEnabled(false);
     layout->addRow(hint);

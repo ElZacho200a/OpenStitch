@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 #include "document_panel.hpp"
 
-#include <QAbstractItemView>
 #include <QAbstractItemDelegate>
+#include <QAbstractItemView>
 #include <QHeaderView>
 #include <QIcon>
 #include <QLineEdit>

@@ -176,8 +176,8 @@ background_candidate(const Segmentation& seg, const BackgroundCandidateOptions& 
 
 // Régions ayant au moins un pixel dans le rectangle [x0, x1] × [y0, y1] (bornes incluses, les
 // coordonnées sont ramenées à l'image), par identifiant croissant (sélection au cadre).
-[[nodiscard]] std::vector<RegionId> regions_in_rect(const Segmentation& seg, int x0, int y0,
-                                                    int x1, int y1);
+[[nodiscard]] std::vector<RegionId> regions_in_rect(const Segmentation& seg, int x0, int y0, int x1,
+                                                    int y1);
 
 // Couleur moyenne, dans `original` (image de la même taille que la segmentation), des pixels de
 // la région : permet de rendre à une région recolorée sa couleur d'origine.
