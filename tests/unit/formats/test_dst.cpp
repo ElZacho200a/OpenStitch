@@ -132,6 +132,48 @@ TEST_CASE("trim et changement de couleur : aller-retour") {
     CHECK(stats.stitches == 3);
 }
 
+TEST_CASE("coupe a sauts non nuls : aucun saut nul, relue comme une coupe, position exacte") {
+    // Certaines machines et logiciels de transfert ignorent les sauts de delta nul : la coupe
+    // est alors perdue (fils non coupes entre objets). Option machine : triangle de 0,1 mm.
+    stitch::StitchSequence seq;
+    seq.commands = {
+        {um(0, 0), CommandType::Stitch, ObjectId{1}},
+        {um(3'000, 0), CommandType::Stitch, ObjectId{1}},
+        {um(3'000, 0), CommandType::Trim, ObjectId{1}},
+        {um(8'000, 2'000), CommandType::Jump, ObjectId{2}},
+        {um(8'000, 2'000), CommandType::Stitch, ObjectId{2}},
+        {um(9'000, 2'000), CommandType::Stitch, ObjectId{2}},
+        {um(9'000, 2'000), CommandType::Trim, ObjectId{2}}, // coupe finale
+        {um(9'000, 2'000), CommandType::End, ObjectId{}},
+    };
+    DstWriteOptions options;
+    options.trim_jumps_with_movement = true;
+    const auto bytes = encode_dst(seq, options);
+    REQUIRE(bytes.has_value());
+
+    // Aucun enregistrement « saut de delta nul » (octets 00 00 83) dans le corps.
+    bool zeroJump = false;
+    for (std::size_t i = 512; i + 2 < bytes->size(); i += 3) {
+        zeroJump =
+            zeroJump || ((*bytes)[i] == 0x00 && (*bytes)[i + 1] == 0x00 && (*bytes)[i + 2] == 0x83);
+    }
+    CHECK_FALSE(zeroJump);
+
+    const auto decoded = decode_dst(*bytes);
+    REQUIRE(decoded.has_value());
+    const auto stats = stitch::compute_stats(*decoded);
+    CHECK(stats.trims == 2);
+    CHECK(stats.stitches == 4);
+    // Le premier point cousu après la coupe est bien à (8 mm, 2 mm).
+    bool arrived = false;
+    for (const auto& c : decoded->commands) {
+        arrived = arrived || (c.type == CommandType::Stitch && c.pos == um(8'000, 2'000));
+    }
+    CHECK(arrived);
+    // Octets historiques conservés par défaut.
+    CHECK(encode_dst(seq).value() != *bytes);
+}
+
 TEST_CASE("determinisme : memes octets a chaque encodage") {
     const auto a = encode_dst(simple_square());
     const auto b = encode_dst(simple_square());

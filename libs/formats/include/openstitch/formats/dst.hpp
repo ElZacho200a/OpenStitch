@@ -28,6 +28,9 @@ namespace openstitch::formats {
 struct DstWriteOptions {
     std::string design_name{"OPENSTITCH"}; // champ LA:, tronqué à 16 caractères
     int trim_jumps{3}; // un Trim logique = N sauts de délta nul (convention machine)
+    // Sauts de coupe NON nuls (triangle de 0,1 mm) : voir MachineConstraints. Faux par défaut
+    // (octets historiques) ; vrai pour l'export vers une machine.
+    bool trim_jumps_with_movement{false};
 };
 
 // Encode la séquence en octets DST. Déterministe : même séquence -> mêmes

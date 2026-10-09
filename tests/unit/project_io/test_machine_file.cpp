@@ -60,7 +60,9 @@ TEST_CASE("export_machine_file('dst') : memes octets que encode_dst(effective_se
 
     const auto sequence = stitch_generation::effective_sequence(project);
     REQUIRE(sequence.has_value());
-    const auto expectedBytes = formats::encode_dst(*sequence);
+    formats::DstWriteOptions machineOptions;
+    machineOptions.trim_jumps_with_movement = true; // coupes visibles par la machine
+    const auto expectedBytes = formats::encode_dst(*sequence, machineOptions);
     REQUIRE(expectedBytes.has_value());
 
     std::ifstream file(path, std::ios::binary);

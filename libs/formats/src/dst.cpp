@@ -125,6 +125,7 @@ MachineConstraints write_constraints(const DstWriteOptions& options) {
     c.max_record_delta = kMaxDelta;
     c.trim_encoding = MachineConstraints::TrimEncoding::RepeatedZeroJumps;
     c.trim_zero_jump_count = std::max(1, options.trim_jumps);
+    c.trim_jumps_with_movement = options.trim_jumps_with_movement;
     c.merge_stop_into_color_change = true;
     return c;
 }
@@ -139,6 +140,7 @@ MachineConstraints read_constraints() {
     c.max_record_delta = kMaxDelta;
     c.trim_encoding = MachineConstraints::TrimEncoding::RepeatedZeroJumps;
     c.trim_zero_jump_count = 3;
+    c.trim_jumps_with_movement = true; // relit aussi nos coupes à sauts non nuls
     c.merge_stop_into_color_change = true;
     return c;
 }

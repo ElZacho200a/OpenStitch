@@ -16,7 +16,11 @@ namespace {
 // publique inchangée (cf. `docs/source/dst-format.md`), ceci n'en est qu'un
 // alias pour la ligne de registre ci-dessous.
 Result<std::vector<std::uint8_t>> encode_dst_for_registry(const stitch::StitchSequence& sequence) {
-    return encode_dst(sequence);
+    // Export vers une machine : coupes en sauts NON nuls (les sauts nuls sont ignorés ou
+    // supprimés par certaines machines et logiciels de transfert, d'où des fils non coupés).
+    DstWriteOptions options;
+    options.trim_jumps_with_movement = true;
+    return encode_dst(sequence, options);
 }
 Result<stitch::StitchSequence> decode_dst_for_registry(std::span<const std::uint8_t> bytes) {
     return decode_dst(bytes);

@@ -84,7 +84,24 @@ Result<MachineSequence> normalize_for_machine(const stitch::StitchSequence& sequ
             lastWasZeroJump = (dx == 0 && dy == 0);
             break;
         case stitch::CommandType::Trim:
-            if (repeatedZeroJumps) {
+            if (repeatedZeroJumps && constraints.trim_jumps_with_movement) {
+                // Sauts non nuls d'une unité en triangle ; le déplacement réel est corrigé du
+                // petit décalage cumulé, donc la position d'arrivée est exacte.
+                static constexpr int kTriangle[3][2] = {{1, 0}, {0, 1}, {-1, -1}};
+                int netX = 0;
+                int netY = 0;
+                for (int i = 0; i < trimCount; ++i) {
+                    const int sx = kTriangle[i % 3][0];
+                    const int sy = kTriangle[i % 3][1];
+                    emit_move(result.records, sx, sy, MachineRecordType::Jump, maxDelta);
+                    netX += sx;
+                    netY += sy;
+                }
+                if (dx - netX != 0 || dy - netY != 0) {
+                    emit_move(result.records, dx - netX, dy - netY, MachineRecordType::Jump,
+                              maxDelta);
+                }
+            } else if (repeatedZeroJumps) {
                 for (int i = 0; i < trimCount; ++i) {
                     emit_move(result.records, 0, 0, MachineRecordType::Jump, maxDelta);
                 }
@@ -121,27 +138,34 @@ stitch::StitchSequence sequence_from_machine_records(std::span<const MachineReco
 
     std::int32_t px = 0;
     std::int32_t py = 0;
-    int pendingZeroJumps = 0;
+    // Rafale de sauts « de coupe » en attente : nuls (convention classique) ou, si
+    // `trim_jumps_with_movement`, d'au plus une unité. Chaque saut garde sa position pour
+    // être restitué tel quel quand la rafale est trop courte pour valoir une coupe.
+    std::vector<Vec2um> pendingJumps;
 
     const auto make_pos = [&] {
         return Vec2um{Micrometers{px * constraints.resolution_um},
                       Micrometers{py * constraints.resolution_um}};
     };
     const auto flush_pending = [&] {
-        if (repeatedZeroJumps && pendingZeroJumps >= trimCount) {
+        if (repeatedZeroJumps && static_cast<int>(pendingJumps.size()) >= trimCount) {
             sequence.commands.push_back({make_pos(), stitch::CommandType::Trim, ObjectId{}});
         } else {
-            for (int i = 0; i < pendingZeroJumps; ++i) {
-                sequence.commands.push_back({make_pos(), stitch::CommandType::Jump, ObjectId{}});
+            for (const Vec2um& jumpPos : pendingJumps) {
+                sequence.commands.push_back({jumpPos, stitch::CommandType::Jump, ObjectId{}});
             }
         }
-        pendingZeroJumps = 0;
+        pendingJumps.clear();
     };
 
     for (const auto& rec : records) {
-        if (repeatedZeroJumps && rec.type == MachineRecordType::Jump && rec.dx == 0 &&
-            rec.dy == 0) {
-            ++pendingZeroJumps;
+        const bool zeroJump = rec.dx == 0 && rec.dy == 0;
+        const bool tinyJump =
+            constraints.trim_jumps_with_movement && std::abs(rec.dx) <= 1 && std::abs(rec.dy) <= 1;
+        if (repeatedZeroJumps && rec.type == MachineRecordType::Jump && (zeroJump || tinyJump)) {
+            px += rec.dx;
+            py += rec.dy;
+            pendingJumps.push_back(make_pos());
             continue;
         }
         flush_pending();

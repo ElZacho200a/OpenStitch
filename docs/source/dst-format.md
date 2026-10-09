@@ -46,7 +46,7 @@ sur les trois octets. Les bits hauts de l'octet 3 donnent le **type** :
 | `Stitch` (point) | bits bas `11`, point normal |
 | `Jump` (saut) | bit 7 de l'octet 3 |
 | `ColorChange` / `Stop` | bits 7 + 6 de l'octet 3 |
-| `Trim` (coupe) | convention : N sauts de délta nul (défaut 3) |
+| `Trim` (coupe) | convention : N sauts (défaut 3) — de délta nul (historique) ou de 0,1 mm non nuls en triangle (export machine) |
 | `End` (fin) | `0x00 0x00 0xF3` |
 
 ## Encodage (sans dérive)
@@ -63,6 +63,21 @@ déplacement éventuel. Les coupes automatiques de la séquence effective (Lot E
 résolution** (délta nul une fois quantifié) ne porte aucune information :
 l'encodeur n'en garde qu'un par série, faute de quoi trois sauts minuscules
 consécutifs seraient relus comme une coupe fantôme.
+
+**Coupes à sauts non nuls (export machine).** Les sauts de délta nul sont ignorés ou supprimés
+par certaines machines et certains logiciels de transfert : la coupe est alors perdue et le fil
+reste tendu d'un objet à l'autre. L'export vers une machine (`export_machine_file`, donc le
+bureau et la CLI) écrit chaque coupe comme trois sauts de 0,1 mm **non nuls** formant un triangle
+`(+1,0) (0,+1) (−1,−1)` suivis du déplacement réel, corrigé du décalage cumulé (position
+d'arrivée exacte). `DstWriteOptions::trim_jumps_with_movement` (faux par défaut : octets
+historiques inchangés) active cette forme ; `decode_dst` relit les deux formes comme une coupe.
+
+**Coupe finale.** La séquence effective se termine par une coupe (`finish_sequence`) : sans elle la
+machine s'arrête fil attaché au dernier point. Le fichier finit donc par la coupe puis `00 00 F3`.
+
+**À valider sur machine** : la forme à sauts non nuls est la convention la plus répandue mais n'a
+pas été essayée sur votre machine ; le seuil de trois sauts (`trim_jumps`) peut devoir être
+augmenté selon le modèle.
 
 ## Décodage (tolérant)
 

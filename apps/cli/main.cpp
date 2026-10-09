@@ -28,6 +28,7 @@
 #include "openstitch/formats/svg.hpp"
 #include "openstitch/geometry/boolean.hpp"
 #include "openstitch/image/image.hpp"
+#include "openstitch/project_io/machine_file.hpp"
 #include "openstitch/project_io/project_io.hpp"
 #include "openstitch/segmentation/segmentation.hpp"
 #include "openstitch/stitch/sequence.hpp"
@@ -515,6 +516,25 @@ int run_digitize(const std::string& imagePath, const std::string& dstPath, doubl
     return 0;
 }
 
+// Exporte un projet .osp en DST par le MÊME chemin que le bureau (export_machine_file) :
+// permet d'inspecter les coupes et la fin du fichier sans passer par l'interface.
+int run_osp2dst(const std::string& ospPath, const std::string& outDst) {
+    using namespace openstitch;
+    const auto project = project_io::load_project(std::filesystem::path(ospPath));
+    if (!project) {
+        fmt::print(stderr, "Erreur : {}\n", project.error().message);
+        return 1;
+    }
+    const auto written =
+        project_io::export_machine_file(*project, "dst", std::filesystem::path(outDst));
+    if (!written) {
+        fmt::print(stderr, "Erreur : {}\n", written.error().message);
+        return 1;
+    }
+    fmt::print("DST écrit : {}\n", outDst);
+    return 0;
+}
+
 // Séquence effective d'un projet .osp (la même que l'aperçu, l'export et l'analyse) en SVG de
 // diagnostic ; `--outlines` superpose le contour des vecteurs sources (en gris) pour voir
 // d'un coup d'œil les points qui débordent de leur forme. `--only` limite à un objet brodé.
@@ -825,6 +845,11 @@ int main(int argc, char** argv) {
     std::string sa_out;
     std::string sa_osp;
     std::string os_in, os_out;
+    std::string od_in, od_out;
+    auto* od_cmd =
+        app.add_subcommand("osp2dst", "Exporte un projet .osp en DST (chemin du bureau)");
+    od_cmd->add_option("--osp", od_in, "Projet .osp")->required();
+    od_cmd->add_option("--output", od_out, "DST à produire")->required();
     bool os_outlines = false;
     std::uint64_t os_only = 0;
     auto* os_cmd =
@@ -871,6 +896,9 @@ int main(int argc, char** argv) {
     }
     if (sd_cmd->parsed()) {
         return run_stitchdebug(sd_shape, sd_length, sd_repeats, sd_out, sd_underlay, sd_underpath);
+    }
+    if (od_cmd->parsed()) {
+        return run_osp2dst(od_in, od_out);
     }
     if (os_cmd->parsed()) {
         return run_osp2svg(os_in, os_out, os_outlines, os_only);

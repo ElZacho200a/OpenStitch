@@ -37,6 +37,12 @@ struct MachineConstraints {
     // convention du FORMAT, pas de l'outil qui a écrit le fichier).
     int trim_zero_jump_count{3};
 
+    // Coupe visible par la machine : au lieu de N sauts de delta NUL (que certains logiciels de
+    // transfert et certaines machines ignorent ou suppriment comme « sans effet »), N sauts
+    // de 0,1 mm NON nuls qui reviennent au point de départ (triangle (+1,0) (0,+1) (−1,−1)).
+    // La LECTURE reconnaît aussi cette forme (rafale de sauts d'au plus 0,1 mm).
+    bool trim_jumps_with_movement{false};
+
     // Un format qui ne distingue pas un arrêt machine (`Stop`) d'un
     // changement de fil (`ColorChange`) -- DST, notamment -- fond les deux
     // dans un seul type d'enregistrement `ColorChange`.

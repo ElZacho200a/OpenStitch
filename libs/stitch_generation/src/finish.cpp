@@ -242,6 +242,17 @@ stitch::StitchSequence finish_sequence(const stitch::StitchSequence& sequence,
     if (prev != nullptr && !ends_with_lock(cmds, *prev)) {
         append(out.commands, lock_points(cmds, *prev, false, f));
     }
+    // Coupe FINALE : sans elle la machine s'arrête fil attaché au dernier point (fil volant à
+    // couper à la main). Pas de doublon si la suite de la séquence en porte déjà une.
+    if (prev != nullptr && !out.commands.empty()) {
+        const bool tailHasTrim =
+            std::any_of(cmds.begin() + static_cast<std::ptrdiff_t>(cursor), cmds.end(),
+                        [](const StitchCommand& c) { return c.type == CommandType::Trim; });
+        if (!tailHasTrim) {
+            const StitchCommand& tip = out.commands.back();
+            out.commands.push_back({tip.pos, CommandType::Trim, tip.source, StitchPass::Travel});
+        }
+    }
     out.commands.insert(out.commands.end(), cmds.begin() + static_cast<std::ptrdiff_t>(cursor),
                         cmds.end());
     return out;

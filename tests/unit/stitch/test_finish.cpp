@@ -96,7 +96,7 @@ TEST_CASE("finish : un deplacement long entre deux objets -> arret, coupe, arret
     CHECK(long_moves_without_trim(*raw, 3'000.0) == 1); // le défaut de l'audit
 
     const auto done = finish_sequence(*raw, project);
-    CHECK(count_type(done, CmdType::Trim) == 1);
+    CHECK(count_type(done, CmdType::Trim) == 2);
     CHECK(long_moves_without_trim(done, 3'000.0) == 0);
     // Un verrou d'entrée et de sortie par objet : 4 verrous au total.
     std::size_t lockRuns = 0;
@@ -116,6 +116,23 @@ TEST_CASE("finish : un deplacement long entre deux objets -> arret, coupe, arret
     CHECK(done.commands.back().type == CmdType::End);
 }
 
+TEST_CASE("finish : la sequence se termine par une coupe (fil non laisse attache)") {
+    // Sans coupe finale la machine s'arrete fil attache au dernier point : fil volant.
+    const auto project = two_squares(5'000);
+    const auto raw = generate_sequence(project);
+    REQUIRE(raw.has_value());
+    const auto done = finish_sequence(*raw, project);
+    REQUIRE(done.commands.size() >= 3);
+    const auto& cmds = done.commands;
+    // ... dernier verrou, Trim, End.
+    CHECK(cmds[cmds.size() - 1].type == CmdType::End);
+    CHECK(cmds[cmds.size() - 2].type == CmdType::Trim);
+    CHECK(cmds[cmds.size() - 3].type == CmdType::Stitch);
+    CHECK(cmds[cmds.size() - 2].pos == cmds[cmds.size() - 3].pos);
+    // Une seule coupe finale : la finition est idempotente sur ce point.
+    CHECK(count_type(done, CmdType::Trim) == 2);
+}
+
 TEST_CASE("finish : deplacement court entre deux objets -> toujours coupe, avec verrous") {
     // Regression 2026-10-08 : un ecart sous `trim_threshold` entre deux formes
     // laissait le fil tendu (aucune coupe).
@@ -123,7 +140,7 @@ TEST_CASE("finish : deplacement court entre deux objets -> toujours coupe, avec 
     const auto raw = generate_sequence(project);
     REQUIRE(raw.has_value());
     const auto done = finish_sequence(*raw, project);
-    CHECK(count_type(done, CmdType::Trim) == 1);
+    CHECK(count_type(done, CmdType::Trim) == 2);
     CHECK(count_type(done, CmdType::Jump) == count_type(*raw, CmdType::Jump));
     CHECK(count_pass(done, Pass::Lock) > 0);
 }
@@ -133,7 +150,7 @@ TEST_CASE("finish : coupe avant un changement de fil") {
     const auto raw = generate_sequence(project);
     REQUIRE(raw.has_value());
     const auto done = finish_sequence(*raw, project);
-    REQUIRE(count_type(done, CmdType::Trim) == 1);
+    REQUIRE(count_type(done, CmdType::Trim) == 2);
     const auto trimIt = std::find_if(done.commands.begin(), done.commands.end(),
                                      [](const auto& c) { return c.type == CmdType::Trim; });
     REQUIRE(std::next(trimIt) != done.commands.end());
@@ -141,17 +158,17 @@ TEST_CASE("finish : coupe avant un changement de fil") {
 
     auto noTrim = project;
     noTrim.finishing.trim_before_color_change = false;
-    CHECK(count_type(finish_sequence(*raw, noTrim), CmdType::Trim) == 0);
+    CHECK(count_type(finish_sequence(*raw, noTrim), CmdType::Trim) == 1); // la coupe finale reste
 }
 
 TEST_CASE("finish : seuil de coupe et type de verrou configurables") {
     auto project = two_squares(5'000);
     const auto raw = generate_sequence(project);
     REQUIRE(raw.has_value());
-    CHECK(count_type(finish_sequence(*raw, project), CmdType::Trim) == 1);
+    CHECK(count_type(finish_sequence(*raw, project), CmdType::Trim) == 2);
     // Entre deux objets, le seuil ne desactive plus la coupe.
     project.finishing.trim_threshold = Micrometers{6'000};
-    CHECK(count_type(finish_sequence(*raw, project), CmdType::Trim) == 1);
+    CHECK(count_type(finish_sequence(*raw, project), CmdType::Trim) == 2);
     project.finishing.lock_type = document::LockStitch::None;
     CHECK(count_pass(finish_sequence(*raw, project), Pass::Lock) == 0);
 }
@@ -215,7 +232,7 @@ TEST_CASE("finish : effective_sequence applique les finitions, deterministe") {
     const auto b = effective_sequence(project);
     REQUIRE((a.has_value() && b.has_value()));
     CHECK(a->commands == b->commands);
-    CHECK(count_type(*a, CmdType::Trim) == 1);
+    CHECK(count_type(*a, CmdType::Trim) == 2);
     const auto ctx = refresh_context(project, std::nullopt);
     REQUIRE(ctx.has_value());
     CHECK(ctx->effective.commands == a->commands);
@@ -357,5 +374,5 @@ TEST_CASE("finish : la coupe se decide sur le point d'atterrissage reel (verrou 
     REQUIRE(raw.has_value());
     const auto done = finish_sequence(*raw, project);
     CHECK(long_moves_without_trim(done, 3'000.0) == 0);
-    CHECK(count_type(done, CmdType::Trim) == 1);
+    CHECK(count_type(done, CmdType::Trim) == 2);
 }
