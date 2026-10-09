@@ -10,6 +10,23 @@ Convention de sources : **[BREVET]** = présent dans le texte primaire d'un brev
 par mesure. Aucun seuil numérique ci-dessous n'est une vérité textile : ce sont des
 valeurs de départ à calibrer (voir §9).
 
+## 0. Décisions du propriétaire (2026-10)
+
+1. **Anneaux : cas limite traité**, pas refusé (voir §6.5).
+2. **Squelette : celui qui donne la meilleure qualité.** Zhang-Suen reste pour le reste
+   du logiciel (auto-numérisation, remplissage directionnel). Pour le satin, la
+   qualité est décidée **par mesure** sur le corpus (§9) entre le squelette actuel et
+   un axe médian calculé sur le polygone (diagramme de Voronoï de segments en
+   coordonnées entières, aucun bruit de pixel). Hypothèse de travail : l'axe sur
+   polygone gagne sur les problèmes 7, 8 et 16 ; à confirmer avant de l'adopter. Si
+   retenu, il ajoute une dépendance (Boost.Polygon, licence BSL-1.0, compatible
+   Apache-2.0, aucune GPL) à valider explicitement à ce moment.
+3. **`satin_planning` est supprimé** (planificateur et SGSD, mort en production), à la
+   fin de la migration seulement, après que les nouveaux tests existent.
+4. Toujours ouvertes (proposées, non encore validées) : défaut perpendiculaire par
+   branche ; nouvelle alternative de `StitchParams` dérivée du vecteur source avec
+   montée de schéma 4 → 5.
+
 ## 1. Constat structurant
 
 Les « deux rails » de l'ancien moteur étaient déjà les extrémités de cordes
@@ -56,7 +73,7 @@ et doit être traité ; M = le symptôme change de forme.
 | 21 | **Angle absolu sur une branche courbe** : `sin(g−α)` varie sans contrôle | | P | stocker `δ` avec drapeau « absolu » ; si `|sin(g−α)| < s_min`, le mode rangées (§6.4) remplace les cordes | branche courbe avec guide absolu : pas de corde > `Lmax_dur` |
 | 22 | **Couverture au nœud : carré `w×w` doublé (T), jusqu'à 4× (croix)** | cordes de deux branches se recouvrant | P | cellules disjointes + marge `ε` ; l'onglet des bissectrices répartit le carré (§4) | T, croix : recouvrement ≤ `ε·longueur` |
 | 23 | **Mosaïque satin + pièces de tatami** (satin seul 21,3 % de couverture, deux régions à 46,6 % et 59,3 % sans repli) | éligibilité lâche (`2A/P ≤ max`), couverture partielle acceptée | V si un objet par région et « tout ou rien » | **un objet par région** ; en auto-numérisation : satin entier ou repli entier, rejet tracé ; en conversion explicite par l'utilisateur : zones non couvertes affichées (§8) | image réelle (`tentabrode.png`) : jamais de mosaïque |
-| 24 | **Anneau, disque, deux trous** | topologie annulaire ou axe réduit à un point | P | **hors périmètre V1, refus explicite et diagnostiqué** (disque et blobs : tatami ou directionnel ; anneau simple : cycle coupé avec couture, traité en V2) | `ring`, `disc_15mm`, `two_holes` : refus avec raison ; pas de crash |
+| 24 | **Anneau, disque, deux trous** | topologie annulaire ou axe réduit à un point | P | **anneau : cas limite traité** (§6.5) ; disque et blobs compacts : tatami ou directionnel avec refus tracé ; plusieurs trous : cycles ordinaires entre jonctions (§4), cas pur réservé à la V2 | `ring` : couverture ≥ plancher, couture sans saut ; `disc_15mm`, `two_holes` : verdict explicite, pas de crash |
 | 25 | **Résidus naturels aux coins et noyaux de jonction** (rectangle 0,98995 ; y/t/cross/h/trident à 85,8–88,7 %) | les cordes ne couvrent pas les coins | P | l'onglet de §4 réduit le résidu ; le reste est mesuré (planchers du corpus) et affiché | planchers de `test_coverage_regression` conservés ou relevés |
 | 26 | **Coût : squelette recalculé à chaque `effective_sequence`** (aucun cache) | | P | cache par empreinte de la géométrie source (`SkeletonCacheScope` existe) ; mesure de performance dans les tests | 100 régénérations d'un même objet : un seul calcul de squelette |
 | 27 | **Orientation A/B incohérente** si `g` croise `α` | l'émission suppose `A` du même côté | P | `A` = extrémité du côté `−n_ref` (normale lissée du squelette) ; plancher `|sin(g−α)| ≥ s_min` interdit l'inversion | S-courbe avec guide : jamais d'inversion de côté |
@@ -176,6 +193,21 @@ branche est couverte en **rangées** : niveaux `c = n_g·x` espacés de `ρ`, d�
 la cellule. Pour `g ∥ α` on retrouve un remplissage en rangées le long de la branche ;
 pour `g ⟂ α` on retrouve §6.3. [NOTRE ; proposé par l'analyse]
 
+### 6.5 Anneau (cas limite)
+
+Squelette réduit à un **cycle sans nœud** (région avec un trou, sans branche) :
+
+- Point de départ canonique et déterministe : sommet du cycle de plus petit `x`, puis
+  plus petit `y`. Sens de parcours fixé (anti-horaire).
+- `s ∈ [0, L_tot)` périodique ; `g = α + π/2` est périodique, donc continu à la couture.
+- Dernière corde = première corde (aucun doublon), avec le recouvrement `ε` à la
+  couture ; pas de saut ni de coupe de fil sur le tour.
+- Chaque droite coupe la région en deux intervalles (bande extérieure et opposée) :
+  l'intervalle **contenant `P`** est retenu, donc la bande locale.
+- Cycles entre jonctions (anneau avec branches, plusieurs trous) : arêtes ordinaires
+  traitées par §4 ; seule l'arête sans nœud demande ce traitement.
+- Le pas §6.2 s'applique tel quel (`κ` constante = `1/R`).
+
 ## 7. Guides
 
 - Modèle : `Guide = { p ∈ ℝ²_µm (repère du modèle), θ, relatif | absolu }`.
@@ -220,12 +252,13 @@ SVG ou un test numérique ne la remplace pas.
 
 ## 10. Hors périmètre de la première version, et questions ouvertes
 
-- Disques et formes compactes, plusieurs trous, anneaux avec branches : refus explicite
-  (problème 24). Le satin tournant par anneaux de l'ancien code disparaît avec lui ; si
-  un besoin de satin tournant subsiste, il sera traité séparément (HP-STI-018).
-- Axe médian sous-pixel calculé directement sur le polygone (au lieu de Zhang-Suen),
-  qui supprimerait la classe de problèmes 7, 8 et 16 à la source : à étudier si les
-  mesures montrent que le bruit du squelette domine l'erreur.
+- Disques et formes compactes : refus explicite, tatami ou directionnel (problème 24).
+  Le satin tournant par anneaux de l'ancien code disparaît avec lui ; si un besoin de
+  satin tournant subsiste, il sera traité séparément (HP-STI-018). Plusieurs trous avec
+  cycles sans nœud : V2.
+- Axe médian sur polygone (décision §0.2) : lot dédié avec comparaison chiffrée
+  (stabilité aux tailles de pixel, erreur de tangente, nombre de branches parasites)
+  face au squelette actuel, avant toute adoption.
 - Valeur de `θ_coude`, de `ε` et du pas de rotation des lignes de division : à calibrer.
 - Nombre de cordes de pure rotation aux sommets très aigus : plafond à fixer.
 
