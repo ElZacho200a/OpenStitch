@@ -260,6 +260,42 @@ json params_to_json(const document::StitchParams& params) {
                      {"handmade", p.handmade},
                      {"handmadeIntensity", p.handmade_intensity},
                      {"seed", p.seed}};
+            } else if constexpr (std::is_same_v<T, document::AutoSatinParams>) {
+                json guides = json::array();
+                for (const auto& g : p.guides) {
+                    guides.push_back({{"x", g.anchor.x.value},
+                                      {"y", g.anchor.y.value},
+                                      {"angle", g.angle.radians},
+                                      {"absolute", g.absolute}});
+                }
+                j = {{"type", "autoSatin"},
+                     {"guides", std::move(guides)},
+                     {"spacing", p.spacing.value},
+                     {"splitStitch", static_cast<int>(p.split_stitch)},
+                     {"splitThreshold", p.split_threshold.value},
+                     {"splitLength", p.split_length.value},
+                     {"shortStitch", static_cast<int>(p.short_stitch)},
+                     {"pullCompensation", p.pull_compensation.value},
+                     {"centerUnderlay", p.center_underlay},
+                     {"underlayEdge", p.underlay_edge},
+                     {"underlayZigzag", p.underlay_zigzag},
+                     {"pullLeft", p.pull_left.value},
+                     {"pullRight", p.pull_right.value},
+                     {"pushStart", p.push_start.value},
+                     {"pushEnd", p.push_end.value},
+                     {"capStart", static_cast<int>(p.cap_start)},
+                     {"capEnd", static_cast<int>(p.cap_end)},
+                     {"lockStart", static_cast<int>(p.lock_start)},
+                     {"lockEnd", static_cast<int>(p.lock_end)},
+                     {"lockLength", p.lock_length.value},
+                     {"lockPasses", p.lock_passes}};
+                if (p.entry_point) {
+                    j["entryPoint"] = {{"x", p.entry_point->x.value},
+                                       {"y", p.entry_point->y.value}};
+                }
+                if (p.exit_point) {
+                    j["exitPoint"] = {{"x", p.exit_point->x.value}, {"y", p.exit_point->y.value}};
+                }
             }
             return j;
         },
@@ -411,6 +447,50 @@ Result<document::StitchParams> params_from_json(const json& j) {
                 return std::unexpected(seed.error());
             }
             p.seed = *seed;
+        }
+        return document::StitchParams{p};
+    }
+    if (type == "autoSatin") {
+        // Auto-satin : toutes les clés sauf `type` sont optionnelles (défauts du
+        // modèle), pour qu'un fichier écrit par une version ultérieure reste lisible.
+        document::AutoSatinParams p;
+        if (j.contains("guides")) {
+            for (const auto& g : j.at("guides")) {
+                document::AutoSatinGuide guide;
+                guide.anchor = Vec2um{Micrometers{g.at("x")}, Micrometers{g.at("y")}};
+                guide.angle = Angle{g.value("angle", 0.0)};
+                guide.absolute = g.value("absolute", false);
+                p.guides.push_back(guide);
+            }
+        }
+        p.spacing = Micrometers{j.value("spacing", 400)};
+        p.split_stitch = static_cast<document::SatinSplit>(
+            j.value("splitStitch", static_cast<int>(p.split_stitch)));
+        p.split_threshold = Micrometers{j.value("splitThreshold", 7'000)};
+        p.split_length = Micrometers{j.value("splitLength", 4'000)};
+        p.short_stitch = static_cast<document::SatinShortStitch>(
+            j.value("shortStitch", static_cast<int>(p.short_stitch)));
+        p.pull_compensation = Micrometers{j.value("pullCompensation", 0)};
+        p.center_underlay = j.value("centerUnderlay", true);
+        p.underlay_edge = j.value("underlayEdge", false);
+        p.underlay_zigzag = j.value("underlayZigzag", false);
+        p.pull_left = Micrometers{j.value("pullLeft", 0)};
+        p.pull_right = Micrometers{j.value("pullRight", 0)};
+        p.push_start = Micrometers{j.value("pushStart", 0)};
+        p.push_end = Micrometers{j.value("pushEnd", 0)};
+        p.cap_start = static_cast<document::SatinCap>(j.value("capStart", 0));
+        p.cap_end = static_cast<document::SatinCap>(j.value("capEnd", 0));
+        p.lock_start = static_cast<document::SatinLock>(j.value("lockStart", 0));
+        p.lock_end = static_cast<document::SatinLock>(j.value("lockEnd", 0));
+        p.lock_length = Micrometers{j.value("lockLength", 800)};
+        p.lock_passes = j.value("lockPasses", 2);
+        if (j.contains("entryPoint")) {
+            p.entry_point = Vec2um{Micrometers{j.at("entryPoint").at("x")},
+                                   Micrometers{j.at("entryPoint").at("y")}};
+        }
+        if (j.contains("exitPoint")) {
+            p.exit_point = Vec2um{Micrometers{j.at("exitPoint").at("x")},
+                                  Micrometers{j.at("exitPoint").at("y")}};
         }
         return document::StitchParams{p};
     }

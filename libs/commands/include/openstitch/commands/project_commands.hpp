@@ -350,6 +350,19 @@ private:
                     }
                 }
             }
+            // Idem pour les ancres de guides d'un auto-satin (et ses points
+            // d'entrée/sortie), exprimées dans le repère de la région suivie.
+            if (auto* sat = std::get_if<document::AutoSatinParams>(&emb.params)) {
+                for (auto& guide : sat->guides) {
+                    guide.anchor = guide.anchor + delta;
+                }
+                if (sat->entry_point) {
+                    sat->entry_point = *sat->entry_point + delta;
+                }
+                if (sat->exit_point) {
+                    sat->exit_point = *sat->exit_point + delta;
+                }
+            }
         }
     }
 
@@ -388,6 +401,7 @@ public:
         // Guides/ruptures d'un remplissage directionnel : mis à l'échelle avec
         // la forme ; instantané pour un revert exact (cf. before_).
         directionalBefore_.clear();
+        autoSatinBefore_.clear();
         for (auto& emb : project.embroidery_objects) {
             if (emb.source_vector != object_) {
                 continue;
@@ -402,11 +416,30 @@ public:
                     }
                 }
             }
+            if (auto* sat = std::get_if<document::AutoSatinParams>(&emb.params)) {
+                autoSatinBefore_.emplace_back(emb.id, *sat);
+                for (auto& guide : sat->guides) {
+                    guide.anchor = scalePoint(guide.anchor);
+                }
+                if (sat->entry_point) {
+                    sat->entry_point = scalePoint(*sat->entry_point);
+                }
+                if (sat->exit_point) {
+                    sat->exit_point = scalePoint(*sat->exit_point);
+                }
+            }
         }
     }
     void revert(document::Project& project) override {
         if (auto* object = project.findObject(object_)) {
             object->paths = before_;
+        }
+        for (const auto& [id, params] : autoSatinBefore_) {
+            if (auto* emb = project.findEmbroidery(id)) {
+                if (auto* sat = std::get_if<document::AutoSatinParams>(&emb->params)) {
+                    *sat = params;
+                }
+            }
         }
         for (const auto& [id, params] : directionalBefore_) {
             if (auto* emb = project.findEmbroidery(id)) {
@@ -445,6 +478,7 @@ private:
     double scaleY_;
     std::vector<geometry::PathSet> before_;
     std::vector<std::pair<ObjectId, document::DirectionalFillParams>> directionalBefore_;
+    std::vector<std::pair<ObjectId, document::AutoSatinParams>> autoSatinBefore_;
 };
 
 // Déplace un nœud d'un objet vectoriel.
@@ -970,6 +1004,46 @@ private:
     document::DirectionalFillParams params_;
     std::string label_;
     document::DirectionalFillParams previous_{};
+    bool applied_{false};
+};
+
+// Édition des paramètres d'un AUTO-SATIN (espacement, fractionnement, finitions)
+// et de ses guides d'orientation depuis l'inspecteur ou le canevas. Les nouveaux
+// paramètres complets sont construits par l'appelant ; la commande n'agit que si
+// l'objet porte TOUJOURS un auto-satin (sinon no-op). `label` nomme le geste
+// dans l'historique (« Ajouter un guide d'orientation »…). Annulation exacte.
+class EditAutoSatinCommand final : public ICommand {
+public:
+    EditAutoSatinCommand(ObjectId id, document::AutoSatinParams params, std::string label)
+        : id_(id), params_(std::move(params)), label_(std::move(label)) {}
+
+    void apply(document::Project& project) override {
+        applied_ = false;
+        if (auto* obj = project.findEmbroidery(id_)) {
+            if (auto* sat = std::get_if<document::AutoSatinParams>(&obj->params)) {
+                previous_ = *sat;
+                *sat = params_;
+                applied_ = true;
+            }
+        }
+    }
+    void revert(document::Project& project) override {
+        if (!applied_) {
+            return;
+        }
+        if (auto* obj = project.findEmbroidery(id_)) {
+            if (auto* sat = std::get_if<document::AutoSatinParams>(&obj->params)) {
+                *sat = previous_;
+            }
+        }
+    }
+    [[nodiscard]] std::string name() const override { return label_; }
+
+private:
+    ObjectId id_;
+    document::AutoSatinParams params_;
+    std::string label_;
+    document::AutoSatinParams previous_{};
     bool applied_{false};
 };
 

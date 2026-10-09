@@ -658,6 +658,7 @@ SatinResult finish_satin_stations(const std::vector<SatinStation>& stations,
         static_cast<double>(std::max<std::int32_t>(1, config.max_stitch_length.value));
     const double pmax = static_cast<double>(config.pull_max.value);
     int emitted = 0;
+    PointD prevB{0.0, 0.0};
     for (int i = 0; i < nThreads; ++i) {
         const auto& t = threads[static_cast<std::size_t>(i)];
         if (t.dropped) {
@@ -681,10 +682,41 @@ SatinResult finish_satin_stations(const std::vector<SatinStation>& stations,
             pa = {pa.x + ux * offA, pa.y + uy * offA};
             pb = {pb.x - ux * offB, pb.y - uy * offB};
         }
+        // Trajet retour B_{i-1} -> A_i : un point de fil à part entière, fractionné
+        // comme les traversées quand l'option est active.
+        if (config.split_connecting_throws && config.split_stitch != SplitStitchMode::Disabled &&
+            emitted > 0 && !t.jump_before) {
+            const double back = dist(prevB, pa);
+            if (back > maxLen) {
+                const double segLen =
+                    config.split_length.value > 0
+                        ? std::min(maxLen, static_cast<double>(config.split_length.value))
+                        : maxLen;
+                const int nback = std::max(1, static_cast<int>(std::ceil(back / segLen)) - 1);
+                for (int s = 1; s <= nback; ++s) {
+                    double frac = static_cast<double>(s) / (nback + 1);
+                    const double amp = 0.35 / (nback + 1);
+                    if (config.split_stitch == SplitStitchMode::Staggered) {
+                        frac += (emitted % 2 == 0 ? -amp : amp); // opposé à la traversée
+                    } else if (config.split_stitch == SplitStitchMode::DeterministicJitter) {
+                        const std::uint64_t h = config.split_seed * 1000003ull +
+                                                static_cast<std::uint64_t>(emitted) * 97ull +
+                                                static_cast<std::uint64_t>(s) + 50021ull;
+                        frac += (jitter01(h) * 2.0 - 1.0) * amp;
+                    }
+                    frac = std::clamp(frac, 0.05, 0.95);
+                    result.satin.push_back(toUm(lerpP(prevB, pa, frac)));
+                }
+            }
+        }
         result.satin.push_back(toUm(pa));
         const double len = dist(pa, pb);
         if (config.split_stitch != SplitStitchMode::Disabled && len > maxLen) {
-            const int nsplit = std::max(1, static_cast<int>(std::ceil(len / maxLen)) - 1);
+            const double segLen =
+                config.split_length.value > 0
+                    ? std::min(maxLen, static_cast<double>(config.split_length.value))
+                    : maxLen;
+            const int nsplit = std::max(1, static_cast<int>(std::ceil(len / segLen)) - 1);
             const bool wideThrow =
                 w > static_cast<double>(config.wide_throw_width.value) && i > 0 && i + 1 < nThreads;
             PointD tangent{0.0, 0.0};
@@ -726,6 +758,7 @@ SatinResult finish_satin_stations(const std::vector<SatinStation>& stations,
             }
         }
         result.satin.push_back(toUm(pb));
+        prevB = pb;
         ++emitted;
     }
     return result;

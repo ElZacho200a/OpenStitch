@@ -37,6 +37,10 @@ struct SkeletonSatinParameters {
     double bend_threshold_deg{35.0};    // virage assimilé à un coude (coupe en onglet)
 
     std::vector<SkeletonSatinGuide> guides;
+
+    // Calcule la couverture estimée (diagnostic non bloquant) : coûteux, donc à la
+    // demande (aperçu, inspecteur), jamais pendant la génération de points.
+    bool measure_coverage{false};
 };
 
 // Une traversée : extrémité A du côté droit de l'axe, B du côté gauche.
@@ -60,10 +64,21 @@ struct SkeletonSatinDiagnostics {
     int orphan_guides{0};              // guides trop loin de l'axe pour être appliqués
     int pieces{0};                     // morceaux de colonne après coupe aux coudes
     std::vector<std::string> messages; // refus et avertissements nommés
+
+    // Remplis seulement si `measure_coverage` : part de la région balayée par les fils
+    // (0 à 1), recouvrement moyen (1 = aucun fil en double) et aire non couverte.
+    bool coverage_measured{false};
+    double coverage_ratio{0.0};
+    double overlap_ratio{0.0};
+    double uncovered_area_mm2{0.0};
 };
 
 struct SkeletonSatinResult {
     std::vector<SkeletonSatinColumn> columns;
+    // Axes de référence lissés (une polyligne par colonne, dans le même ordre que
+    // les chaînes du squelette) : pour visualiser le squelette. Un axe fermé
+    // (anneau) répète son premier point en dernier.
+    std::vector<std::vector<Vec2um>> axes;
     SkeletonSatinDiagnostics diagnostics;
 };
 

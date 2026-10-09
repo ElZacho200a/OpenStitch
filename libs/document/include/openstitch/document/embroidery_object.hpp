@@ -60,11 +60,11 @@ struct DirectionalFillParams {
     Micrometers inset{200};           // retrait du bord (compensation de contour)
     int stagger{2};                   // lignes avant répétition de la phase des pénétrations
     // Sous-couches (mêmes réglages et mêmes générateurs que le tatami).
-    bool underlay_edge{false};       // contour rentré
-    bool underlay_parallel{false};   // rangées droites perpendiculaires à la direction moyenne
-    Micrometers underlay_inset{600}; // retrait de la sous-couche de contour
+    bool underlay_edge{false};           // contour rentré
+    bool underlay_parallel{false};       // rangées droites perpendiculaires à la direction moyenne
+    Micrometers underlay_inset{600};     // retrait de la sous-couche de contour
     Micrometers underlay_spacing{2'000}; // écart des rangées de sous-couche
-    bool hidden_underpath{true}; // liaisons cousues cachées (au lieu de sauts) si trajet valide
+    bool hidden_underpath{true};     // liaisons cousues cachées (au lieu de sauts) si trajet valide
     Micrometers sector_overlap{250}; // chevauchement le long des ruptures (Phase 2)
     // Aspect « fait main » (Phase 3) : longueurs irrégulières, pénétrations
     // imbriquées, légère ondulation de la direction. Pseudo-aléatoire à graine
@@ -146,14 +146,63 @@ struct SatinParams {
     std::optional<Vec2um> exit_point;  // fin de couture souhaitée
 };
 
+// Guide d'orientation d'un auto-satin. Ancré GÉOMÉTRIQUEMENT (point du repère
+// du modèle, comme les guides du remplissage directionnel) : il est projeté sur
+// l'axe de la forme à la génération et suit la forme quand elle est déplacée ou
+// redimensionnée. Aucun identifiant de branche du squelette n'est persisté (ces
+// identifiants changent à chaque édition du contour).
+struct AutoSatinGuide {
+    Vec2um anchor{};
+    // Angle modulo π. Relatif (défaut) : écart à la perpendiculaire à l'axe, 0 =
+    // perpendiculaire. Absolu : angle dans le repère du modèle.
+    Angle angle{0.0};
+    bool absolute{false};
+
+    bool operator==(const AutoSatinGuide&) const = default;
+};
+
+// Paramètres de l'AUTO-SATIN par squelette et traversées orientées (spec
+// specs/plans/satin-squelette-traversees.md). Comme le tatami et le directionnel,
+// l'objet suit la région de son objet vectoriel source : les traversées sont
+// recalculées à la demande (ADR-014), jamais stockées. Aucun rail ni barreau.
+struct AutoSatinParams {
+    std::vector<AutoSatinGuide> guides;
+    Micrometers spacing{400}; // espacement cible entre traversées (au bord le plus écarté)
+    // Fractionnement des traversées longues : au-delà de `split_threshold` (Lmax),
+    // la traversée est découpée en segments d'au plus `split_length` (y).
+    SatinSplit split_stitch{SatinSplit::Staggered};
+    Micrometers split_threshold{7'000};
+    Micrometers split_length{4'000};
+    // Finitions (mêmes réglages et mêmes générateurs que le satin à rails).
+    SatinShortStitch short_stitch{SatinShortStitch::SingleInset};
+    Micrometers pull_compensation{0};
+    bool center_underlay{true};
+    bool underlay_edge{false};
+    bool underlay_zigzag{false};
+    Micrometers pull_left{0};
+    Micrometers pull_right{0};
+    Micrometers push_start{0};
+    Micrometers push_end{0};
+    SatinCap cap_start{SatinCap::Flat};
+    SatinCap cap_end{SatinCap::Flat};
+    SatinLock lock_start{SatinLock::None};
+    SatinLock lock_end{SatinLock::None};
+    Micrometers lock_length{800};
+    int lock_passes{2};
+    std::optional<Vec2um> entry_point; // début de couture souhaité
+    std::optional<Vec2um> exit_point;  // fin de couture souhaitée
+
+    bool operator==(const AutoSatinParams&) const = default;
+};
+
 // Un objet de broderie porte un TYPE de point sous forme de variant. Chaque
 // type suit la géométrie d'un objet vectoriel source (contour pour running,
 // région pleine pour tatami) ou porte la sienne (satin). La séparation
 // intention/points (ADR-014) tient : les points sont régénérés à la demande.
-// L'alternative directionnelle est AJOUTÉE en fin de variant : les index des
-// types historiques ne changent pas.
-using StitchParams =
-    std::variant<RunningStitchParams, TatamiParams, SatinParams, DirectionalFillParams>;
+// Les alternatives directionnelle puis auto-satin sont AJOUTÉES en fin de
+// variant : les index des types historiques ne changent pas.
+using StitchParams = std::variant<RunningStitchParams, TatamiParams, SatinParams,
+                                  DirectionalFillParams, AutoSatinParams>;
 
 // Type de point autorisé après retouche manuelle (Lot 8 MVP, §2 du cadrage) :
 // seule transition permise, Stitch <-> Jump — pas de Trim/ColorChange/Stop,
@@ -211,6 +260,9 @@ struct EmbroideryObject {
     [[nodiscard]] bool is_satin() const { return std::holds_alternative<SatinParams>(params); }
     [[nodiscard]] bool is_directional() const {
         return std::holds_alternative<DirectionalFillParams>(params);
+    }
+    [[nodiscard]] bool is_auto_satin() const {
+        return std::holds_alternative<AutoSatinParams>(params);
     }
 };
 

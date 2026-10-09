@@ -546,3 +546,35 @@ TEST_CASE("pipeline: un guide trop loin de l'axe est signale orphelin", "[skelet
     REQUIRE(res.has_value());
     CHECK(res->diagnostics.orphan_guides == 1);
 }
+
+TEST_CASE("couverture estimee : concorde avec la mesure independante par grille",
+          "[skeleton_satin]") {
+    for (const char* name : {"capsule", "t", "ring", "star5", "deep_channel"}) {
+        INFO(name);
+        const auto region = as::make_shape(name);
+        REQUIRE(region.has_value());
+        as::SkeletonSatinParameters prm;
+        prm.measure_coverage = true;
+        const auto res = as::generate_skeleton_satin(*region, prm);
+        REQUIRE(res.has_value());
+        REQUIRE(res->diagnostics.coverage_measured);
+        CHECK(res->diagnostics.coverage_ratio == Approx(coverage_of(*region, *res)).margin(0.02));
+        CHECK(res->diagnostics.overlap_ratio >= res->diagnostics.coverage_ratio - 1e-9);
+        CHECK(res->diagnostics.uncovered_area_mm2 >= 0.0);
+    }
+    // deep_channel : la couverture manquante est rapportée, pas seulement observée en test.
+    as::SkeletonSatinParameters prm;
+    prm.measure_coverage = true;
+    const auto region = as::make_shape("deep_channel");
+    const auto res = as::generate_skeleton_satin(*region, prm);
+    REQUIRE(res.has_value());
+    CHECK(res->diagnostics.coverage_ratio < 0.80);
+    CHECK(res->diagnostics.uncovered_area_mm2 > 50.0);
+}
+
+TEST_CASE("couverture estimee : non calculee par defaut", "[skeleton_satin]") {
+    const auto region = as::make_shape("capsule");
+    const auto res = as::generate_skeleton_satin(*region, {});
+    REQUIRE(res.has_value());
+    CHECK_FALSE(res->diagnostics.coverage_measured);
+}

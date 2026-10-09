@@ -5,6 +5,7 @@
 #include <cmath>
 #include <variant>
 
+#include "openstitch/auto_satin/skeleton_satin.hpp"
 #include "openstitch/geometry/offset.hpp"
 #include "openstitch/stitch_generation/directional_fill.hpp"
 #include "openstitch/stitch_generation/lock.hpp"
@@ -192,6 +193,156 @@ void generate_satin(stitch::StitchSequence& sequence, const document::Embroidery
                                       static_cast<LockType>(static_cast<int>(params.lock_end)),
                                       params.lock_length, params.lock_passes);
         emit_polyline(sequence, lk, object.id, stitch::StitchPass::Lock);
+    }
+}
+
+// Auto-satin par squelette et traversées orientées (spec
+// specs/plans/satin-squelette-traversees.md) : l'objet suit la région de son
+// vecteur source, les traversées sont recalculées à chaque génération. Chaque
+// colonne (branche du squelette) passe par les finitions communes du satin
+// (`finish_satin_stations`) ; les colonnes sont enchaînées au plus proche.
+void generate_auto_satin(stitch::StitchSequence& sequence, const document::VectorObject& source,
+                         const document::EmbroideryObject& object,
+                         const document::AutoSatinParams& params) {
+    auto_satin::SkeletonSatinParameters engine;
+    engine.spacing = params.spacing;
+    for (const auto& g : params.guides) {
+        engine.guides.push_back({g.anchor, g.angle.radians, g.absolute});
+    }
+
+    SatinConfig config;
+    config.density = params.spacing;
+    config.pull_compensation = params.pull_compensation;
+    config.center_underlay = params.center_underlay;
+    config.short_stitch = static_cast<ShortStitchMode>(static_cast<int>(params.short_stitch));
+    config.split_stitch = static_cast<SplitStitchMode>(static_cast<int>(params.split_stitch));
+    config.max_stitch_length = params.split_threshold;
+    config.split_length = params.split_length;
+    config.split_connecting_throws = true;
+    config.split_seed = object.id.value;
+    config.cap_start = static_cast<SatinCapType>(static_cast<int>(params.cap_start));
+    config.cap_end = static_cast<SatinCapType>(static_cast<int>(params.cap_end));
+    config.underlay_edge = params.underlay_edge;
+    config.underlay_zigzag = params.underlay_zigzag;
+    config.pull_left = params.pull_left;
+    config.pull_right = params.pull_right;
+    config.push_start = params.push_start;
+    config.push_end = params.push_end;
+
+    std::vector<std::vector<SatinStation>> columns;
+    for (const geometry::PathSet& set : source.paths) {
+        const auto result = auto_satin::generate_skeleton_satin(set, engine);
+        if (!result) {
+            continue; // région non analysable : aucun point pour ce morceau
+        }
+        for (const auto& column : result->columns) {
+            std::vector<SatinStation> stations;
+            stations.reserve(column.crossings.size());
+            for (const auto& c : column.crossings) {
+                stations.push_back({c.a, c.b, false, false});
+            }
+            if (stations.size() >= 2) {
+                columns.push_back(std::move(stations));
+            }
+        }
+    }
+    if (columns.empty()) {
+        return;
+    }
+
+    const auto midpoint = [](const SatinStation& st) {
+        return Vec2um{Micrometers{(st.a.x.value + st.b.x.value) / 2},
+                      Micrometers{(st.a.y.value + st.b.y.value) / 2}};
+    };
+    // Enchaînement glouton au plus proche : à chaque pas, la colonne et le sens
+    // dont le DÉBUT est le plus proche de la position courante.
+    struct Step {
+        std::size_t column;
+        bool reversed;
+    };
+    std::vector<Step> order;
+    std::vector<char> taken(columns.size(), 0);
+    Vec2um here = params.entry_point          ? *params.entry_point
+                  : sequence.commands.empty() ? midpoint(columns.front().front())
+                                              : sequence.commands.back().pos;
+    for (std::size_t n = 0; n < columns.size(); ++n) {
+        double best = -1.0;
+        Step pick{0, false};
+        for (std::size_t c = 0; c < columns.size(); ++c) {
+            if (taken[c]) {
+                continue;
+            }
+            for (const bool rev : {false, true}) {
+                const auto& st = rev ? columns[c].back() : columns[c].front();
+                const double d = length_um(midpoint(st) - here);
+                if (best < 0.0 || d < best) {
+                    best = d;
+                    pick = {c, rev};
+                }
+            }
+        }
+        taken[pick.column] = 1;
+        order.push_back(pick);
+        const auto& last =
+            pick.reversed ? columns[pick.column].front() : columns[pick.column].back();
+        here = midpoint(last);
+    }
+    // Entrée/sortie : on inverse tout le parcours si cela rapproche le début de
+    // l'entrée et la fin de la sortie (même règle que `generate_satin`).
+    if (params.entry_point || params.exit_point) {
+        const auto start = [&](const std::vector<Step>& o) {
+            const auto& c = columns[o.front().column];
+            return midpoint(o.front().reversed ? c.back() : c.front());
+        };
+        const auto finish = [&](const std::vector<Step>& o) {
+            const auto& c = columns[o.back().column];
+            return midpoint(o.back().reversed ? c.front() : c.back());
+        };
+        std::vector<Step> flipped(order.rbegin(), order.rend());
+        for (auto& st : flipped) {
+            st.reversed = !st.reversed;
+        }
+        const auto cost = [&](const std::vector<Step>& o) {
+            double total = 0.0;
+            if (params.entry_point) {
+                total += length_um(*params.entry_point - start(o));
+            }
+            if (params.exit_point) {
+                total += length_um(*params.exit_point - finish(o));
+            }
+            return total;
+        };
+        if (cost(flipped) < cost(order)) {
+            order = std::move(flipped);
+        }
+    }
+
+    for (std::size_t i = 0; i < order.size(); ++i) {
+        auto stations = columns[order[i].column];
+        if (order[i].reversed) {
+            std::reverse(stations.begin(), stations.end());
+        }
+        const SatinResult result = finish_satin_stations(stations, config);
+        for (const auto& u : result.underlays) {
+            emit_polyline(sequence, u.points, object.id, stitch::StitchPass::Underlay);
+        }
+        if (i == 0 && params.lock_start != document::SatinLock::None && result.satin.size() >= 2) {
+            const auto lk =
+                lock_stitches(result.satin.front(), result.satin[1],
+                              static_cast<LockType>(static_cast<int>(params.lock_start)),
+                              params.lock_length, params.lock_passes);
+            emit_polyline(sequence, lk, object.id, stitch::StitchPass::Lock);
+        }
+        emit_polyline_with_breaks(sequence, result.satin, result.jump_before, object.id,
+                                  stitch::StitchPass::TopStitch);
+        if (i + 1 == order.size() && params.lock_end != document::SatinLock::None &&
+            result.satin.size() >= 2) {
+            const std::size_t n = result.satin.size();
+            const auto lk = lock_stitches(result.satin[n - 1], result.satin[n - 2],
+                                          static_cast<LockType>(static_cast<int>(params.lock_end)),
+                                          params.lock_length, params.lock_passes);
+            emit_polyline(sequence, lk, object.id, stitch::StitchPass::Lock);
+        }
     }
 }
 
@@ -452,6 +603,8 @@ Result<stitch::StitchSequence> generate_sequence(const document::Project& projec
                     generate_satin(sequence, object, params);
                 } else if constexpr (std::is_same_v<T, document::DirectionalFillParams>) {
                     generate_directional(sequence, *source, object, params);
+                } else if constexpr (std::is_same_v<T, document::AutoSatinParams>) {
+                    generate_auto_satin(sequence, *source, object, params);
                 }
             },
             object.params);

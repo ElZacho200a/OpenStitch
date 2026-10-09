@@ -296,3 +296,60 @@ TEST_CASE("remplissage directionnel : save puis load = memes parametres") {
     CHECK(std::get<document::DirectionalFillParams>(loaded->embroidery_objects[0].params) == dp);
     fs::remove(path);
 }
+
+TEST_CASE("auto-satin : save puis load = memes parametres, guides compris") {
+    document::Project project;
+    document::VectorObject vec;
+    vec.id = project.object_ids.next();
+    vec.paths.push_back(geometry::PathSet{square_path(), {}});
+    project.vector_objects.push_back(vec);
+
+    document::AutoSatinParams sp;
+    sp.guides.push_back({um(1'000, 2'000), Angle{0.35}, false});
+    sp.guides.push_back({um(4'000, 500), Angle{-1.2}, true});
+    sp.spacing = Micrometers{350};
+    sp.split_stitch = document::SatinSplit::DeterministicJitter;
+    sp.split_threshold = Micrometers{6'500};
+    sp.split_length = Micrometers{3'800};
+    sp.short_stitch = document::SatinShortStitch::MultiLevelInset;
+    sp.pull_compensation = Micrometers{120};
+    sp.center_underlay = false;
+    sp.underlay_edge = true;
+    sp.underlay_zigzag = true;
+    sp.pull_left = Micrometers{40};
+    sp.pull_right = Micrometers{50};
+    sp.push_start = Micrometers{60};
+    sp.push_end = Micrometers{70};
+    sp.cap_start = document::SatinCap::Tapered;
+    sp.cap_end = document::SatinCap::Rounded;
+    sp.lock_start = document::SatinLock::Triangle;
+    sp.lock_end = document::SatinLock::BackAndForth;
+    sp.lock_length = Micrometers{900};
+    sp.lock_passes = 3;
+    sp.entry_point = um(10, 20);
+    sp.exit_point = um(4'990, 4'980);
+
+    document::EmbroideryObject emb;
+    emb.id = project.object_ids.next();
+    emb.name = "satin auto";
+    emb.source_vector = vec.id;
+    emb.params = sp;
+    project.embroidery_objects.push_back(emb);
+
+    const auto path = temp_osp();
+    REQUIRE(project_io::save_project(path, project).has_value());
+    const auto loaded = project_io::load_project(path);
+    REQUIRE(loaded.has_value());
+    REQUIRE(loaded->embroidery_objects.size() == 1);
+    REQUIRE(loaded->embroidery_objects[0].is_auto_satin());
+    CHECK_FALSE(loaded->embroidery_objects[0].is_satin());
+    CHECK(std::get<document::AutoSatinParams>(loaded->embroidery_objects[0].params) == sp);
+    fs::remove(path);
+}
+
+TEST_CASE("auto-satin : le schema du fichier annonce la version qui porte ce type") {
+    // Un auto-satin n'existe qu'a partir du schema 5 : un ancien executable doit
+    // refuser le fichier proprement (version trop recente) plutot que d'echouer sur
+    // un type de point inconnu.
+    CHECK(project_io::kSchemaVersion >= 5);
+}
