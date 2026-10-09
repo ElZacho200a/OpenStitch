@@ -21,6 +21,7 @@
 
 #include "interaction_map.hpp"
 #include "openstitch/commands/undo_stack.hpp"
+#include "openstitch/commands/vector_ops.hpp"
 #include "openstitch/document/project.hpp"
 #include "openstitch/geometry/path.hpp"
 #include "openstitch/stitch/sequence.hpp"
@@ -368,6 +369,17 @@ private:
     void onFreeformPointAdded(QPointF posMm);
     void finishFreeform();
     void cancelFreeformDraw();
+    // Formes vectorielles : unir / soustraire / intersecter / séparer / couteau
+    // (main_window_shapes.cpp).
+    void buildShapeMenu();
+    void updateShapeActions();
+    void runBooleanOp(commands::BooleanOp op);
+    void breakApartSelected();
+    void finishCut();
+    // Exécute la commande (un pas d'annulation), sélectionne le premier de `keep` encore présent
+    // et annonce `done` ; en cas d'échec, affiche la raison dans la barre d'état.
+    void applyShapeCommand(commands::VectorOpResult result, const QString& done,
+                           const std::vector<ObjectId>& keep);
     // Colonne satin manuelle (outil DrawSatinColumn) : mêmes principes que le
     // polygone (aperçu élastique, terminé par double-clic/Entrée/bouton,
     // annulé par Échap, dernier point retirable par Retour arrière), mais
@@ -626,6 +638,12 @@ private:
     QAction* toolDrawBezierAct_{nullptr};
     QAction* toolDrawFreeformAct_{nullptr};
     QAction* toolDrawSatinColumnAct_{nullptr};
+    QAction* toolCutAct_{nullptr};
+    QMenu* shapeMenu_{nullptr};
+    QAction* unionAct_{nullptr};
+    QAction* subtractAct_{nullptr};
+    QAction* intersectAct_{nullptr};
+    QAction* breakApartAct_{nullptr};
     // Boutons génériques partagés par tout outil de tracé multi-clics
     // (polygone/bézier/satin) : Terminer (Entrée) et Annuler (Échap),
     // toujours visibles dans la palette d'outils, actifs seulement pendant

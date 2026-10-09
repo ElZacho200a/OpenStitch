@@ -241,6 +241,27 @@ lointaine, avec leur couleur), recolorer, sélectionner, vectoriser, supprimer.
 
 Sélection : cliquez une région ; ses statistiques (pixels, mm², RGB) s'affichent.
 
+## Menu Forme
+
+Opérations sur les formes vectorielles, façon « Pathfinder » : chacune est **un seul pas
+d'annulation** et garde les objets de broderie de la forme conservée.
+
+- **Unir** (Ctrl+Maj+U) — fusionne au moins deux formes sélectionnées (Maj + clic) en une seule ;
+  la dernière sélectionnée garde son identité, ses réglages de point et son nom. Les autres formes
+  (et leurs broderies) disparaissent.
+- **Soustraire** (Ctrl+Alt+S) — retire de la forme la plus **basse** du document toutes les autres
+  formes sélectionnées, qui sont supprimées. Un résultat vide est refusé.
+- **Intersecter** (Ctrl+Alt+I) — ne garde que la partie commune à toutes les formes.
+- **Séparer les morceaux** (Ctrl+Maj+B) — une forme composée de plusieurs morceaux disjoints
+  devient autant d'objets.
+- **Couteau** (touche **K**) — cliquez-glissez une ligne à travers une ou plusieurs formes pour
+  les découper. Sans sélection, toutes les formes visibles traversées sont coupées ; avec une
+  sélection, seules les formes sélectionnées le sont. Le plus grand morceau garde l'identité de la
+  forme d'origine ; chaque autre morceau devient un nouvel objet, avec une **copie des réglages de
+  broderie** (tatami, directionnel, auto-satin ; les satins à rails et les retouches manuelles
+  point par point ne sont pas copiés). La coupe retire une bande de 0,02 mm, sans effet sur la
+  couture.
+
 ## Menu Broderie
 
 - Numérisation automatique — crée des objets pour toutes les régions. Les zones

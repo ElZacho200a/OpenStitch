@@ -390,6 +390,7 @@ Context InteractionMap::contextFor(Tool tool, bool nodeEditActive, bool stitchEd
     case Tool::DrawBezier:
         return Context::DrawBezier;
     case Tool::DrawFreeform:
+    case Tool::Cut:
         return Context::DrawFreeform;
     }
     return Context::Select;

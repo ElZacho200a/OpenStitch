@@ -123,6 +123,17 @@ QIcon freeform() {
     });
 }
 
+QIcon knife() {
+    return make([](QPainter& p) {
+        // Une forme coupée par une ligne en pointillés : l'outil Couteau.
+        p.drawRoundedRect(QRectF(5, 9, 22, 14), 2, 2);
+        QPen dash = p.pen();
+        dash.setStyle(Qt::DashLine);
+        p.setPen(dash);
+        p.drawLine(QPointF(16, 3), QPointF(16, 29));
+    });
+}
+
 QIcon bezierCurve() {
     return make([](QPainter& p) {
         // Une courbe (deux ancres, poignées visibles) — distincte du polygone

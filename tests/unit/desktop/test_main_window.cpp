@@ -612,6 +612,8 @@ private slots:
     void absorbIntoNeighbourPicksTheLongestBorder();
     void regionRectangleSelectionHonoursWindowAndCrossing();
     void documentListMultiSelectionDrivesRegionSelection();
+    void shapeUnionActionIsOneUndoStep();
+    void knifeToolSplitsSelectedShape();
     void togglingPrimaryPromotesPrevious();
     void addOfAlreadySelectedObjectIsNoOp();
     void clickOnEmptyReplaceDeselectsButModifiersKeepSelection();
@@ -6111,6 +6113,80 @@ void MainWindowTest::documentListMultiSelectionDrivesRegionSelection() {
     QCOMPARE(ids_of(window.selectedRegionIds()), (std::vector<std::uint32_t>{1, 3}));
     docPanel->regionSelected(RegionId{2});
     QCOMPARE(ids_of(window.selectedRegionIds()), (std::vector<std::uint32_t>{2}));
+}
+
+namespace {
+
+openstitch::document::Project twoOverlappingRectangles() {
+    openstitch::document::Project project;
+    project.original.width = 2;
+    project.original.height = 2;
+    project.original.rgba.assign(2 * 2 * 4, 255);
+    const auto rect = [](std::int32_t x0, std::int32_t x1) {
+        openstitch::geometry::Path path;
+        path.closed = true;
+        for (const auto& p : {std::pair{x0, 0}, std::pair{x1, 0}, std::pair{x1, 10'000},
+                              std::pair{x0, 10'000}}) {
+            path.nodes.push_back(openstitch::geometry::PathNode{
+                Vec2um{Micrometers{p.first}, Micrometers{p.second}},
+                openstitch::geometry::NodeType::Corner, std::nullopt, std::nullopt});
+        }
+        return path;
+    };
+    for (const auto& [x0, x1] : {std::pair{0, 10'000}, std::pair{5'000, 15'000}}) {
+        openstitch::document::VectorObject object;
+        object.id = project.object_ids.next();
+        object.name = "Rect";
+        object.paths.push_back(openstitch::geometry::PathSet{rect(x0, x1), {}});
+        project.vector_objects.push_back(object);
+    }
+    return project;
+}
+
+} // namespace
+
+void MainWindowTest::shapeUnionActionIsOneUndoStep() {
+    MainWindow window;
+    window.applyLoadedProject(twoOverlappingRectangles());
+    QAction* unite = window.findChild<QAction*>(QStringLiteral("action_shapeUnion"));
+    QVERIFY(unite != nullptr);
+    window.updateActions();
+    QVERIFY(!unite->isEnabled()); // rien de sélectionné
+
+    const ObjectId a = window.project_.vector_objects[0].id;
+    const ObjectId b = window.project_.vector_objects[1].id;
+    window.setSelection({.region = std::nullopt, .embroidery = std::nullopt, .objects = {a, b}});
+    window.updateActions();
+    QVERIFY(unite->isEnabled());
+
+    unite->trigger();
+    QCOMPARE(window.project_.vector_objects.size(), std::size_t{1});
+    QCOMPARE(window.project_.vector_objects[0].id, b);
+    QVERIFY(window.checkSelectionInvariants());
+
+    window.undo();
+    QCOMPARE(window.project_.vector_objects.size(), std::size_t{2});
+}
+
+void MainWindowTest::knifeToolSplitsSelectedShape() {
+    MainWindow window;
+    window.applyLoadedProject(twoOverlappingRectangles());
+    auto* view = window.findChild<CanvasView*>();
+    QVERIFY(view != nullptr);
+    const ObjectId a = window.project_.vector_objects[0].id;
+    window.setSelection({.region = std::nullopt, .embroidery = std::nullopt, .objects = {a}});
+
+    window.setTool(Tool::Cut);
+    // Verticale à x = 5 mm, de bas en haut de la forme (repère scène : Y vers le bas).
+    view->freeformPointMm(QPointF(5.0, 2.0));
+    view->freeformPointMm(QPointF(5.0, -12.0));
+    QVERIFY(window.freeformPreviewItem_ != nullptr);
+    view->freeformStrokeFinished();
+
+    QCOMPARE(window.project_.vector_objects.size(), std::size_t{3});
+    QVERIFY(window.freeformPreviewItem_ == nullptr);
+    window.undo();
+    QCOMPARE(window.project_.vector_objects.size(), std::size_t{2});
 }
 
 } // namespace openstitch::desktop

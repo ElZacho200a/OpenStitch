@@ -792,6 +792,8 @@ void MainWindow::buildMenus() {
     connect(vectorizeAct, &QAction::triggered, this, &MainWindow::vectorizeSelectedRegion);
     regionActions_.append(vectorizeAct);
 
+    buildShapeMenu();
+
     auto* embMenu = menuBar()->addMenu(tr("&Broderie"));
     autoDigitizeAct_ = embMenu->addAction(tr("Numérisation &automatique"));
     autoDigitizeAct_->setObjectName(QStringLiteral("action_autoDigitize"));
@@ -2450,7 +2452,7 @@ void MainWindow::updateDrawActionsState() {
 }
 
 void MainWindow::onFreeformPointAdded(QPointF posMm) {
-    if (currentTool_ != Tool::DrawFreeform) {
+    if (currentTool_ != Tool::DrawFreeform && currentTool_ != Tool::Cut) {
         return; // sécurité : signal reçu hors mode dessin (ne devrait pas arriver)
     }
     pendingFreeformPoints_.push_back(sceneMmToModel(posMm));
@@ -2465,13 +2467,22 @@ void MainWindow::onFreeformPointAdded(QPointF posMm) {
     }
     QPainterPath path;
     path.moveTo(modelToSceneMm(pendingFreeformPoints_.front()));
-    for (std::size_t i = 1; i < pendingFreeformPoints_.size(); ++i) {
-        path.lineTo(modelToSceneMm(pendingFreeformPoints_[i]));
+    if (currentTool_ == Tool::Cut) {
+        // Couteau : droite du point d'appui au curseur.
+        path.lineTo(modelToSceneMm(pendingFreeformPoints_.back()));
+    } else {
+        for (std::size_t i = 1; i < pendingFreeformPoints_.size(); ++i) {
+            path.lineTo(modelToSceneMm(pendingFreeformPoints_[i]));
+        }
     }
     freeformPreviewItem_->setPath(path);
 }
 
 void MainWindow::finishFreeform() {
+    if (currentTool_ == Tool::Cut) {
+        finishCut();
+        return;
+    }
     // La simplification (Douglas-Peucker) peut retomber sous 3 sommets même
     // avec un tracé brut suffisant (points quasi colinéaires, jitter sous la
     // tolérance) : on vérifie le résultat RÉEL, pas seulement le nombre de
@@ -5455,6 +5466,12 @@ void MainWindow::buildToolPalette() {
     toolDrawSatinColumnAct_ =
         addTool(icons::satinColumn(), tr("Colonne satin (clics alternés côté A / côté B)"),
                 Tool::DrawSatinColumn, QKeySequence(Qt::Key_S));
+    toolCutAct_ = addTool(icons::knife(),
+                          tr("Couteau (tracez une ligne pour découper les formes qu'elle traverse)"),
+                          Tool::Cut, QKeySequence(Qt::Key_K));
+    if (shapeMenu_ != nullptr) {
+        shapeMenu_->addAction(toolCutAct_);
+    }
     toolSelectAct_->setChecked(true);
 
     toolPalette_->addSeparator();
@@ -5559,7 +5576,9 @@ void MainWindow::setTool(Tool tool) {
     if (currentTool_ == Tool::DrawPolygon && tool != Tool::DrawPolygon) {
         cancelPolygonDraw();
     }
-    if (currentTool_ == Tool::DrawFreeform && tool != Tool::DrawFreeform) {
+    const bool leavingStroke =
+        (currentTool_ == Tool::DrawFreeform || currentTool_ == Tool::Cut) && tool != currentTool_;
+    if (leavingStroke) {
         cancelFreeformDraw();
     }
     if (currentTool_ == Tool::DrawSatinColumn && tool != Tool::DrawSatinColumn) {
@@ -5594,6 +5613,7 @@ void MainWindow::setTool(Tool tool) {
     sync(toolDrawBezierAct_, tool == Tool::DrawBezier);
     sync(toolDrawFreeformAct_, tool == Tool::DrawFreeform);
     sync(toolDrawSatinColumnAct_, tool == Tool::DrawSatinColumn);
+    sync(toolCutAct_, tool == Tool::Cut);
     if (cropAct_ != nullptr) {
         QSignalBlocker block(cropAct_);
         cropAct_->setChecked(tool == Tool::Rect);
@@ -5612,7 +5632,7 @@ void MainWindow::setTool(Tool tool) {
     view_->setPolygonDrawMode(tool == Tool::DrawPolygon || tool == Tool::DrawDirectionGuide ||
                               tool == Tool::DrawBreakLine);
     view_->setBezierDrawMode(tool == Tool::DrawBezier);
-    view_->setFreeformDrawMode(tool == Tool::DrawFreeform);
+    view_->setFreeformDrawMode(tool == Tool::DrawFreeform || tool == Tool::Cut);
     view_->setSatinPairDrawMode(tool == Tool::DrawSatinColumn);
     if (tool == Tool::Pan) {
         view_->setCursor(Qt::OpenHandCursor);
@@ -5635,6 +5655,7 @@ void MainWindow::setTool(Tool tool) {
                              : tool == Tool::DrawFreeform ? tr("Dessiner à main levée")
                              : tool == Tool::DrawDirectionGuide ? tr("Guide de direction")
                              : tool == Tool::DrawBreakLine      ? tr("Ligne de rupture")
+                             : tool == Tool::Cut                ? tr("Couteau")
                                                                 : tr("Colonne satin");
         toolLabel_->setText(tr("Outil : %1").arg(name));
     }
@@ -5659,6 +5680,10 @@ void MainWindow::setTool(Tool tool) {
                "Entrée/double-clic/bouton ✓ pour terminer (2 nœuds min.), Échap pour annuler."));
     } else if (tool == Tool::DrawFreeform) {
         statusBar()->showMessage(tr("Cliquez-glissez pour tracer la forme à main levée."));
+    } else if (tool == Tool::Cut) {
+        statusBar()->showMessage(
+            tr("Couteau : cliquez-glissez une ligne à travers la ou les formes à découper "
+               "(sans sélection, toutes les formes traversées sont coupées)."));
     } else if (tool == Tool::DrawSatinColumn) {
         statusBar()->showMessage(
             tr("Cliquez alternativement côté A puis côté B de chaque paire — Entrée/"
@@ -7695,6 +7720,7 @@ void setEnabledWithReason(QAction* act, bool enabled, const QString& whyDisabled
 } // namespace
 
 void MainWindow::updateActions() {
+    updateShapeActions();
     const bool hasImage = project_.hasImage();
     for (QAction* act : imageActions_) {
         setEnabledWithReason(act, hasImage, tr("Ouvrez d'abord une image."));
