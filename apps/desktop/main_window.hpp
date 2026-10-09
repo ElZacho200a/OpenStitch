@@ -431,6 +431,11 @@ private:
     [[nodiscard]] AutoSatinPreview previewAutoSatin(const document::VectorObject& source,
                                                     const document::AutoSatinParams& params) const;
     [[nodiscard]] QString describeAutoSatinPreview(const AutoSatinPreview& preview) const;
+    // Contour brut de la région de segmentation d'un vecteur, si le contour actuel le dépasse
+    // nettement (le recouvrement des tatamis voisins y a été intégré à l'auto-numérisation :
+    // utile au tatami, mais un satin y déborderait de sa région). Aucun si pas de région.
+    [[nodiscard]] std::optional<std::vector<geometry::PathSet>>
+    pristineSatinContour(const document::VectorObject& vector) const;
     [[nodiscard]] QString autoSatinSummary(const document::EmbroideryObject& emb);
     void createAutoSatin(bool askParameters);
     void applyAutoSatinEdit(ObjectId id, document::AutoSatinParams params, const QString& label);

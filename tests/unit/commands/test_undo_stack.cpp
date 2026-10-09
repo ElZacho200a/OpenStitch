@@ -1906,6 +1906,25 @@ TEST_CASE("ScaleVectorObjectCommand : l'angle d'un guide absolu suit une echelle
     CHECK(std::get<document::AutoSatinParams>(project.embroidery_objects[0].params) == before);
 }
 
+TEST_CASE("SetVectorPathsCommand : remplace la geometrie, undo exact") {
+    auto project = auto_satin_project();
+    UndoStack stack;
+    const ObjectId vecId = project.vector_objects[0].id;
+    const auto before = project.vector_objects[0].paths;
+    auto replaced = before;
+    for (auto& node : replaced[0].outer.nodes) {
+        node.pos = node.pos + Vec2um{Micrometers{100}, Micrometers{-50}};
+    }
+    stack.execute(std::make_unique<SetVectorPathsCommand>(vecId, replaced, "Contour brut"),
+                  project);
+    CHECK(project.vector_objects[0].paths == replaced);
+    CHECK(stack.undoName() == "Contour brut");
+    CHECK(stack.undo(project));
+    CHECK(project.vector_objects[0].paths == before);
+    CHECK(stack.redo(project));
+    CHECK(project.vector_objects[0].paths == replaced);
+}
+
 TEST_CASE("EditAutoSatinCommand : edition de guides annulable et nommee") {
     auto project = auto_satin_project();
     UndoStack stack;

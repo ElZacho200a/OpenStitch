@@ -28,8 +28,11 @@
 #include "main_window.hpp"
 #include "node_handle.hpp"
 #include "openstitch/auto_satin/skeleton_satin.hpp"
+#include "openstitch/commands/composite_command.hpp"
 #include "openstitch/commands/project_commands.hpp"
 #include "openstitch/geometry/boolean.hpp"
+#include "openstitch/geometry/path.hpp"
+#include "openstitch/vectorization/vectorize.hpp"
 
 namespace openstitch::desktop {
 
@@ -99,6 +102,33 @@ double wrap_half_pi(double a) {
 }
 
 } // namespace
+
+std::optional<std::vector<geometry::PathSet>>
+MainWindow::pristineSatinContour(const document::VectorObject& vector) const {
+    if (!vector.source_region || !project_.segmentation) {
+        return std::nullopt;
+    }
+    vectorization::VectorizeOptions options;
+    options.mm_per_px = project_.mm_per_px;
+    const auto raw =
+        vectorization::vectorize_region(*project_.segmentation, *vector.source_region, options);
+    if (!raw || raw->empty()) {
+        return std::nullopt;
+    }
+    double current = 0.0;
+    for (const auto& set : vector.paths) {
+        current += geometry::path_set_area_um2(set);
+    }
+    double pristine = 0.0;
+    for (const auto& set : *raw) {
+        pristine += geometry::path_set_area_um2(set);
+    }
+    // Moins de 3 % de plus : le contour est déjà celui de la région (ou retouché à la main).
+    if (pristine <= 0.0 || current <= pristine * 1.03) {
+        return std::nullopt;
+    }
+    return *raw;
+}
 
 MainWindow::AutoSatinPreview
 MainWindow::previewAutoSatin(const document::VectorObject& source,
@@ -180,9 +210,19 @@ void MainWindow::createAutoSatin(bool askParameters) {
     if (!selectedObject_ || hasMultiSelection()) {
         return;
     }
-    const auto* source = project_.findObject(*selectedObject_);
-    if (source == nullptr || source->paths.empty()) {
+    const auto* current = project_.findObject(*selectedObject_);
+    if (current == nullptr || current->paths.empty()) {
         return;
+    }
+    // Le satin suit la région telle que segmentée, pas le contour agrandi par le recouvrement
+    // des tatamis voisins (sinon il déborde de sa zone).
+    const auto restored = pristineSatinContour(*current);
+    document::VectorObject restoredCopy;
+    const document::VectorObject* source = current;
+    if (restored) {
+        restoredCopy = *current;
+        restoredCopy.paths = *restored;
+        source = &restoredCopy;
     }
 
     document::AutoSatinParams params;
@@ -281,13 +321,23 @@ void MainWindow::createAutoSatin(bool askParameters) {
     // L'utilisateur a explicitement demandé un satin : jamais une classification
     // automatique (§21/§24 du plan de refonte satin).
     object.intent = document::EmbroideryIntent::ForcedUserChoice;
-    undoStack_.execute(std::make_unique<commands::AddEmbroideryObjectCommand>(std::move(object)),
-                       project_);
+    if (restored) {
+        auto group = std::make_unique<commands::CompositeCommand>("Créer un satin");
+        group->add(std::make_unique<commands::SetVectorPathsCommand>(source->id, *restored,
+                                                                     "Contour brut de la région"));
+        group->add(std::make_unique<commands::AddEmbroideryObjectCommand>(std::move(object)));
+        undoStack_.execute(std::move(group), project_);
+    } else {
+        undoStack_.execute(
+            std::make_unique<commands::AddEmbroideryObjectCommand>(std::move(object)), project_);
+    }
     showStitchesAct_->setChecked(true);
     refreshImage();
     updateActions();
     statusBar()->showMessage(
-        tr("Satin créé : %1.").arg(describeAutoSatinPreview(preview).section('\n', 0, 0)));
+        tr("Satin créé : %1.").arg(describeAutoSatinPreview(preview).section('\n', 0, 0)) +
+        (restored ? tr(" Contour ramené à celui de la région (recouvrement tatami retiré).")
+                  : QString()));
 }
 
 void MainWindow::applyAutoSatinEdit(ObjectId id, document::AutoSatinParams params,

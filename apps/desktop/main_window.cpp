@@ -4107,6 +4107,7 @@ void MainWindow::setStitchType(ObjectId embroideryId, int type) {
     }
     document::StitchParams params;
     std::string label;
+    std::optional<std::vector<geometry::PathSet>> restoredContour; // satin : contour brut
     switch (type) {
     case 0: { // contour cousu
         document::RunningStitchParams rp;
@@ -4131,11 +4132,21 @@ void MainWindow::setStitchType(ObjectId embroideryId, int type) {
         break;
     }
     case 2: { // satin par squelette et traversées orientées
-        const auto* source = project_.findObject(emb->source_vector);
-        if (source == nullptr || source->paths.empty()) {
+        const auto* currentSource = project_.findObject(emb->source_vector);
+        if (currentSource == nullptr || currentSource->paths.empty()) {
             QMessageBox::warning(this, tr("Satin impossible"),
                                  tr("Aucun contour source pour construire le satin."));
             return;
+        }
+        // Le satin suit la région telle que segmentée, pas le contour agrandi par le
+        // recouvrement des tatamis voisins (sinon il déborde de sa zone).
+        restoredContour = pristineSatinContour(*currentSource);
+        document::VectorObject restoredCopy;
+        const document::VectorObject* source = currentSource;
+        if (restoredContour) {
+            restoredCopy = *currentSource;
+            restoredCopy.paths = *restoredContour;
+            source = &restoredCopy;
         }
         document::AutoSatinParams sp;
         const AutoSatinPreview preview = previewAutoSatin(*source, sp);
@@ -4165,9 +4176,18 @@ void MainWindow::setStitchType(ObjectId embroideryId, int type) {
     // -- exactement le défaut réel signalé (« résidu de satin qui reste
     // même en revenant en tatami », 2026-09-04, cf. le commentaire de la
     // commande pour le détail complet).
-    undoStack_.execute(std::make_unique<commands::ConvertFillGroupCommand>(
-                           embroideryId, std::move(params), std::move(label)),
-                       project_);
+    auto convert = std::make_unique<commands::ConvertFillGroupCommand>(embroideryId,
+                                                                         std::move(params),
+                                                                         std::move(label));
+    if (restoredContour) {
+        auto group = std::make_unique<commands::CompositeCommand>("Type : satin");
+        group->add(std::make_unique<commands::SetVectorPathsCommand>(
+            emb->source_vector, *restoredContour, "Contour brut de la région"));
+        group->add(std::move(convert));
+        undoStack_.execute(std::move(group), project_);
+    } else {
+        undoStack_.execute(std::move(convert), project_);
+    }
     showStitchesAct_->setChecked(true);
     refreshImage();
     updateActions();

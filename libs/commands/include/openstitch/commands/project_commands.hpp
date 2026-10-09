@@ -305,6 +305,34 @@ private:
     bool applied_{false};
 };
 
+// Remplace TOUTE la géométrie d'un objet vectoriel (instantané pour un revert exact). Sert à
+// rendre à un objet le contour brut de sa région de segmentation, par exemple quand le
+// recouvrement des tatamis voisins y avait été intégré et ne convient pas à un satin.
+class SetVectorPathsCommand final : public ICommand {
+public:
+    SetVectorPathsCommand(ObjectId object, std::vector<geometry::PathSet> paths, std::string label)
+        : object_(object), paths_(std::move(paths)), label_(std::move(label)) {}
+
+    void apply(document::Project& project) override {
+        if (auto* object = project.findObject(object_)) {
+            before_ = object->paths;
+            object->paths = paths_;
+        }
+    }
+    void revert(document::Project& project) override {
+        if (auto* object = project.findObject(object_)) {
+            object->paths = before_;
+        }
+    }
+    [[nodiscard]] std::string name() const override { return label_; }
+
+private:
+    ObjectId object_;
+    std::vector<geometry::PathSet> paths_;
+    std::string label_;
+    std::vector<geometry::PathSet> before_;
+};
+
 // Déplace un objet vectoriel ENTIER (tous les morceaux, tous les trous)
 // d'un même delta — glisser la forme au lieu de déplacer chaque nœud un par
 // un (défaut remonté en usage réel : aucune commande n'existait pour ça,

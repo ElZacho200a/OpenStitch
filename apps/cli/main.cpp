@@ -1,9 +1,10 @@
-// SPDX-License-Identifier: Apache-2.0
+﻿// SPDX-License-Identifier: Apache-2.0
 #include <CLI/CLI.hpp>
 #include <fmt/core.h>
 
 #include <filesystem>
 #include <functional>
+#include <iterator>
 #include <optional>
 #include <sstream>
 #include <string>
@@ -25,7 +26,7 @@
 #include "openstitch/document/project.hpp"
 #include "openstitch/formats/dst.hpp"
 #include "openstitch/formats/svg.hpp"
-#include "openstitch/geometry/path.hpp"
+#include "openstitch/geometry/boolean.hpp"
 #include "openstitch/image/image.hpp"
 #include "openstitch/project_io/project_io.hpp"
 #include "openstitch/segmentation/segmentation.hpp"
@@ -38,6 +39,7 @@
 #include "openstitch/stitch_generation/running_stitch.hpp"
 #include "openstitch/stitch_generation/satin.hpp"
 #include "openstitch/stitch_generation/tatami.hpp"
+#include "openstitch/vectorization/vectorize.hpp"
 
 #ifdef _WIN32
 #include <windows.h>
@@ -513,13 +515,79 @@ int run_digitize(const std::string& imagePath, const std::string& dstPath, doubl
     return 0;
 }
 
+// Séquence effective d'un projet .osp (la même que l'aperçu, l'export et l'analyse) en SVG de
+// diagnostic ; `--outlines` superpose le contour des vecteurs sources (en gris) pour voir
+// d'un coup d'œil les points qui débordent de leur forme. `--only` limite à un objet brodé.
+int run_osp2svg(const std::string& ospPath, const std::string& outSvg, bool outlines,
+                std::uint64_t onlyObject) {
+    using namespace openstitch;
+    auto project = project_io::load_project(std::filesystem::path(ospPath));
+    if (!project) {
+        fmt::print(stderr, "Erreur : {}\n", project.error().message);
+        return 1;
+    }
+    if (onlyObject != 0) {
+        std::erase_if(project->embroidery_objects,
+                      [&](const auto& e) { return e.id.value != onlyObject; });
+    }
+    const auto seq = stitch_generation::effective_sequence(*project);
+    if (!seq) {
+        fmt::print(stderr, "Erreur : {}\n", seq.error().message);
+        return 1;
+    }
+    const auto written = formats::write_svg_file(std::filesystem::path(outSvg), *seq);
+    if (!written) {
+        fmt::print(stderr, "Erreur : {}\n", written.error().message);
+        return 1;
+    }
+    if (outlines) {
+        std::ifstream in(outSvg, std::ios::binary);
+        std::string svg((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+        in.close();
+        std::string extra;
+        for (const auto& v : project->vector_objects) {
+            bool used = onlyObject == 0;
+            for (const auto& e : project->embroidery_objects) {
+                used = used || e.source_vector == v.id;
+            }
+            if (!used) {
+                continue;
+            }
+            for (const auto& set : v.paths) {
+                std::vector<const geometry::Path*> rings{&set.outer};
+                for (const auto& h : set.holes) {
+                    rings.push_back(&h);
+                }
+                for (const auto* ring : rings) {
+                    std::string d;
+                    for (std::size_t i = 0; i < ring->nodes.size(); ++i) {
+                        d += fmt::format("{}{:.3f},{:.3f}", i == 0 ? "M" : "L",
+                                         ring->nodes[i].pos.x.value / 1000.0,
+                                         -ring->nodes[i].pos.y.value / 1000.0);
+                    }
+                    extra += "<path d=\"" + d +
+                             "Z\" fill=\"none\" stroke=\"#888\" stroke-width=\"0.08\"/>\n";
+                }
+            }
+        }
+        const auto close = svg.rfind("</svg>");
+        if (close != std::string::npos) {
+            svg.insert(close, extra);
+        }
+        std::ofstream out(outSvg, std::ios::binary | std::ios::trunc);
+        out << svg;
+    }
+    fmt::print("Points : {}  |  SVG : {}\n", seq->commands.size(), outSvg);
+    return 0;
+}
+
 // Auto-satin par squelette et traversées orientées (spec
 // specs/plans/satin-squelette-traversees.md) sur une forme de référence : résume
 // colonnes, longueurs de traversées et diagnostics, et écrit un SVG (contour, axes,
 // traversées, zigzag) pour inspecter orientations et zones non couvertes.
 int run_satin_auto_debug(const std::string& shape, double spacingMm,
                          const std::vector<std::string>& guides, const std::string& outSvg,
-                         const std::string& ospPath, std::uint64_t vectorId) {
+                         const std::string& ospPath, std::uint64_t vectorId, bool pristine) {
     using namespace openstitch;
     std::optional<geometry::PathSet> region;
     if (!ospPath.empty()) {
@@ -531,6 +599,27 @@ int run_satin_auto_debug(const std::string& shape, double spacingMm,
         for (const auto& v : project->vector_objects) {
             if (v.id.value == vectorId && !v.paths.empty()) {
                 region = v.paths.front();
+                if (pristine && v.source_region && project->segmentation) {
+                    // Contour brut de la région de segmentation (sans le recouvrement tatami).
+                    vectorization::VectorizeOptions vo;
+                    vo.mm_per_px = project->mm_per_px;
+                    const auto raw = vectorization::vectorize_region(*project->segmentation,
+                                                                     *v.source_region, vo);
+                    if (raw && !raw->empty()) {
+                        double cur = 0.0, base = 0.0;
+                        for (const auto& st : v.paths) {
+                            cur += geometry::path_set_area_um2(st);
+                        }
+                        for (const auto& st : *raw) {
+                            base += geometry::path_set_area_um2(st);
+                        }
+                        fmt::print(
+                            "Contour brut : aire {:.1f} mm2 (contour du projet : {:.1f} mm2, "
+                            "{:+.1f} %)\n",
+                            base / 1e6, cur / 1e6, 100.0 * (cur - base) / base);
+                        region = raw->front();
+                    }
+                }
             }
         }
         if (!region) {
@@ -735,7 +824,17 @@ int main(int argc, char** argv) {
     std::vector<std::string> sa_guides;
     std::string sa_out;
     std::string sa_osp;
+    std::string os_in, os_out;
+    bool os_outlines = false;
+    std::uint64_t os_only = 0;
+    auto* os_cmd =
+        app.add_subcommand("osp2svg", "Séquence effective d'un projet .osp en SVG de diagnostic");
+    os_cmd->add_option("--osp", os_in, "Projet .osp")->required();
+    os_cmd->add_option("--output", os_out, "SVG à produire")->required();
+    os_cmd->add_flag("--outlines", os_outlines, "Superpose le contour des vecteurs");
+    os_cmd->add_option("--only", os_only, "Id d'un objet brodé (les autres sont ignorés)");
     std::uint64_t sa_vector = 0;
+    bool sa_pristine = false;
     auto* sa_cmd = app.add_subcommand(
         "satin-auto-debug",
         "Auto-satin par squelette et traversées orientées sur une forme de référence");
@@ -751,6 +850,8 @@ int main(int argc, char** argv) {
     sa_cmd->add_option("--osp", sa_osp,
                        "Projet .osp dont on prend un vecteur (au lieu de --shape)");
     sa_cmd->add_option("--vector", sa_vector, "Id du vecteur dans le projet .osp");
+    sa_cmd->add_flag("--pristine", sa_pristine,
+                     "Avec --osp : utilise le contour brut de la région de segmentation");
 
     CLI11_PARSE(app, argc, argv);
 
@@ -771,8 +872,12 @@ int main(int argc, char** argv) {
     if (sd_cmd->parsed()) {
         return run_stitchdebug(sd_shape, sd_length, sd_repeats, sd_out, sd_underlay, sd_underpath);
     }
+    if (os_cmd->parsed()) {
+        return run_osp2svg(os_in, os_out, os_outlines, os_only);
+    }
     if (sa_cmd->parsed()) {
-        return run_satin_auto_debug(sa_shape, sa_spacing, sa_guides, sa_out, sa_osp, sa_vector);
+        return run_satin_auto_debug(sa_shape, sa_spacing, sa_guides, sa_out, sa_osp, sa_vector,
+                                    sa_pristine);
     }
     return 0;
 }
