@@ -388,7 +388,6 @@ Context InteractionMap::contextFor(Tool tool, bool nodeEditActive, bool stitchEd
     case Tool::DrawBreakLine:
         return Context::DrawClicks;
     case Tool::DrawBezier:
-    case Tool::DrawSatinCutLine:
         return Context::DrawBezier;
     case Tool::DrawFreeform:
         return Context::DrawFreeform;

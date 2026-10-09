@@ -311,8 +311,6 @@ private slots:
         QCOMPARE(InteractionMap::contextFor(Tool::DrawEllipse, false, false), Context::DrawBox);
         QCOMPARE(InteractionMap::contextFor(Tool::DrawSatinColumn, false, false),
                  Context::DrawClicks);
-        QCOMPARE(InteractionMap::contextFor(Tool::DrawSatinCutLine, false, false),
-                 Context::DrawBezier);
         QCOMPARE(InteractionMap::contextFor(Tool::DrawFreeform, false, false),
                  Context::DrawFreeform);
         QCOMPARE(InteractionMap::contextFor(Tool::Select, true, false), Context::NodeEdit);

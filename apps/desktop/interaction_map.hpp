@@ -29,7 +29,7 @@ enum class Context : std::uint8_t {
     Crop,       // outil Rectangle / recadrage
     DrawBox,    // DrawRectangle, DrawEllipse, DrawPolygonRegular (cadre glissé)
     DrawClicks, // DrawPolygon, DrawSatinColumn, DrawDirectionGuide, DrawBreakLine
-    DrawBezier, // DrawBezier, DrawSatinCutLine
+    DrawBezier,
     DrawFreeform,
     NodeEdit,  // poignées de nœuds / rails
     StitchEdit // édition des points de couture

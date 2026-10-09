@@ -76,18 +76,6 @@ protected:
     void closeEvent(QCloseEvent* event) override;
 
 private:
-    // Réponse de l'utilisateur au choix multiple §23 du plan de refonte
-    // satin (2026-08-14 : « Continuer avec satin partiel / Utiliser tatami
-    // pour le reliquat / Annuler »). `Cancel` doit rester possible SANS
-    // avoir encore rien committé au document -- c'est pourquoi ce choix est
-    // demandé AVANT `undoStack_.execute(...)`, jamais après (contrairement à
-    // l'ancienne information post-hoc qu'il remplace). Déclaré ici (avant
-    // `private slots:`) : un type utilisé comme retour d'une declaration
-    // doit être visible textuellement avant cette declaration -- moc peine
-    // en plus a parser une declaration de type au milieu d'une liste de
-    // slots.
-    enum class SatinCoverageChoice { ContinuePartial, UseTatami, Cancel };
-
 private slots:
     // Document vierge (Ctrl+N, HP-FILE-001) : garde des modifications non
     // enregistrées, puis remplacement complet du document par un `Project`
@@ -137,42 +125,10 @@ private slots:
     // jamais silencieuses (openstitch/formats/svg_import.hpp), jamais non
     // plus bloquantes pour le reste de l'import.
     void warnAboutSkippedSvgFeatures(const std::vector<std::string>& warnings);
-    // Choix explicite quand une intention SATIN n'a pu être satisfaite qu'en
-    // partie (§12/§23 du plan de refonte satin, 2026-08-14 : « aucun
-    // fallback silencieux vers tatami », mais un VRAI choix actionnable
-    // plutôt qu'une simple information). Retourne `ContinuePartial`
-    // directement, sans dialogue, si le reliquat est négligeable (bruit de
-    // pointe/jonction, même seuil que l'ancienne fonction). `sourceAreaMm2`
-    // sert à exprimer le reliquat en pourcentage, pas seulement en mm² brut.
-    SatinCoverageChoice
-    askAboutIncompleteSatinCoverage(const std::vector<geometry::PathSet>& unresolvedResidual,
-                                    double sourceAreaMm2);
-    // Construit un remplissage tatami (VectorObject + EmbroideryObject,
-    // même schéma que le repli automatique de `autodigitize.cpp`, jamais
-    // réimplémenté différemment ici) pour chaque morceau de `residual` dont
-    // l'aire dépasse un seuil de bruit géométrique -- réponse concrète au
-    // choix "Utiliser tatami pour le reliquat" ci-dessus.
-    void appendTatamiFallbackObjects(const std::vector<geometry::PathSet>& residual,
-                                     const document::VectorObject& source,
-                                     std::vector<document::VectorObject>& vectorsOut,
-                                     std::vector<document::EmbroideryObject>& embroideriesOut);
     void openAiPreferences();
     void createRunningStitchObject();
     void createTatamiObject();
     void createSatinObject();
-    // Ligne de coupe (outil DrawSatinCutLine, façon Ink/Stitch "cut line") :
-    // découpe géométriquement `source->paths.front()` en morceaux
-    // (`geometry::cut_path_set`) puis convertit chacun en colonne(s) satin
-    // indépendamment (auto_satin::build_satin_columns par morceau) -- guide
-    // manuel de décomposition aux jonctions difficiles, en complément de la
-    // détection automatique de `createSatinObject()`. `cutA`/`cutB` : les
-    // deux points du glisser, coordonnées modèle. Renvoie `true` si au moins
-    // une colonne satin a été créée (l'appelant repasse alors en outil
-    // Sélection), `false` si la coupe n'a rien produit (reste sur l'outil
-    // pour laisser l'utilisateur réessayer).
-    bool createSatinObjectWithCutLine(Vec2um cutA, Vec2um cutB);
-    void onSatinCutLineDragging(QPointF anchorMm, QPointF currentMm);
-    void onSatinCutLineCommitted(QPointF anchorMm, QPointF handleMm);
     void autoConvertToSatin();
     void changeFillAngle();
     void convertSatinsToTatami();
@@ -627,7 +583,6 @@ private:
     QAction* toolDrawBezierAct_{nullptr};
     QAction* toolDrawFreeformAct_{nullptr};
     QAction* toolDrawSatinColumnAct_{nullptr};
-    QAction* toolDrawSatinCutLineAct_{nullptr};
     // Boutons génériques partagés par tout outil de tracé multi-clics
     // (polygone/bézier/satin) : Terminer (Entrée) et Annuler (Échap),
     // toujours visibles dans la palette d'outils, actifs seulement pendant
@@ -667,7 +622,6 @@ private:
     std::vector<geometry::PathNode> pendingBezierNodes_;
     QGraphicsPathItem* bezierPreviewItem_{nullptr};       // tracé confirmé + segment élastique
     QGraphicsPathItem* bezierHandlePreviewItem_{nullptr}; // poignée en cours de glisser
-    QGraphicsPathItem* cutLinePreviewItem_{nullptr};      // ligne de coupe en cours de glisser
 
     QList<QAction*> imageActions_;
     QList<QAction*> regionActions_; // nécessitent une région sélectionnée
