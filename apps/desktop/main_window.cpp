@@ -983,6 +983,21 @@ void MainWindow::resetDocumentState() {
     simStep_ = -1;
 }
 
+namespace {
+
+// Erreur montrable à l'utilisateur : un titre qui dit ce qui a échoué, une phrase d'explication
+// et le message technique du moteur en détail repliable (jamais comme seul texte).
+void showFriendlyError(QWidget* parent, const QString& title, const QString& explanation,
+                       const std::string& technical) {
+    QMessageBox box(QMessageBox::Warning, title, explanation, QMessageBox::Ok, parent);
+    if (!technical.empty()) {
+        box.setDetailedText(QString::fromStdString(technical));
+    }
+    box.exec();
+}
+
+} // namespace
+
 bool MainWindow::confirmDiscardChanges(const QString& question) {
     if (!isWindowModified()) {
         return true;
@@ -1039,7 +1054,10 @@ void MainWindow::openImage() {
 
     auto loaded = image::load_image(std::filesystem::path(file.toStdWString()));
     if (!loaded) {
-        QMessageBox::warning(this, tr("Erreur"), QString::fromStdString(loaded.error().message));
+        showFriendlyError(this, tr("Image illisible"),
+                          tr("Ce fichier n'a pas pu être ouvert comme image. Formats acceptés : "
+                             "PNG, JPEG, BMP, TIFF."),
+                          loaded.error().message);
         return;
     }
 
@@ -1053,7 +1071,14 @@ void MainWindow::openImage() {
     }
     const auto placement = dialog.placement();
     if (!placement) {
-        QMessageBox::warning(this, tr("Erreur"), tr("Taille physique invalide."));
+        QMessageBox::warning(this, tr("Taille invalide"),
+                             tr("La taille physique de l'image doit être strictement positive."));
+        return;
+    }
+    // Garde « modifications non enregistrées » : placée après le choix de l'image et de sa
+    // taille (rien n'est détruit tant que l'utilisateur peut encore annuler).
+    if (!confirmDiscardChanges(
+            tr("Le projet a été modifié. Enregistrer avant d'ouvrir cette image ?"))) {
         return;
     }
 
@@ -1075,7 +1100,13 @@ void MainWindow::openImage() {
 void MainWindow::openSvg(const QString& file) {
     auto imported = formats::read_svg_file(std::filesystem::path(file.toStdWString()));
     if (!imported) {
-        QMessageBox::warning(this, tr("Erreur"), QString::fromStdString(imported.error().message));
+        showFriendlyError(this, tr("SVG illisible"),
+                          tr("Ce fichier n'a pas pu être importé comme dessin SVG."),
+                          imported.error().message);
+        return;
+    }
+    if (!confirmDiscardChanges(
+            tr("Le projet a été modifié. Enregistrer avant d'ouvrir ce SVG ?"))) {
         return;
     }
 
@@ -2410,8 +2441,9 @@ void MainWindow::refreshImage() {
     if (!processedUpToDate) {
         const auto result = image::apply_pipeline(project_.original, project_.ops);
         if (!result) {
-            QMessageBox::warning(this, tr("Erreur"),
-                                 QString::fromStdString(result.error().message));
+            showFriendlyError(this, tr("Traitement de l'image impossible"),
+                              tr("Une des opérations appliquées à l'image a échoué."),
+                              result.error().message);
             return;
         }
         processed_ = *result;
@@ -4798,7 +4830,9 @@ void MainWindow::showDebugDump(ObjectId embroideryId) {
         if (file.open(QIODevice::WriteOnly | QIODevice::Text)) {
             file.write(text.toUtf8());
         } else {
-            QMessageBox::warning(this, tr("Erreur"), tr("Impossible d'écrire le fichier."));
+            QMessageBox::warning(this, tr("Écriture impossible"),
+                                 tr("Le fichier n'a pas pu être écrit. Vérifiez le dossier "
+                                    "choisi et vos droits d'écriture."));
         }
     });
     connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
@@ -6547,13 +6581,8 @@ void MainWindow::exportDst() {
     if (!sequence_) {
         return;
     }
-    const QString file = QFileDialog::getSaveFileName(this, tr("Exporter en DST"), QString(),
-                                                      tr("Broderie Tajima (*.dst)"));
-    if (file.isEmpty()) {
-        return;
-    }
-
     // Résumé pré-export : décision réelle -> dialogue de confirmation.
+    bool hasAnalysisErrors = false;
     const auto stats = stitch::compute_stats(*sequence_);
     const double wMm = to_millimeters(stats.bounds.max.x - stats.bounds.min.x).value;
     const double hMm = to_millimeters(stats.bounds.max.y - stats.bounds.min.y).value;
@@ -6564,7 +6593,7 @@ void MainWindow::exportDst() {
                           stats.bounds.max.y.value > cv.height.value / 2;
     QString summary =
         tr("Dimensions : %1 × %2 mm\nPoints : %3\nSauts : %4\nCoupes : %5\n"
-           "Changements de couleur : %6\nFil estimé : %7 m\nCadre : %8 × %9 mm\nFichier : %10")
+           "Changements de couleur : %6\nFil estimé : %7 m\nCadre : %8 × %9 mm")
             .arg(wMm, 0, 'f', 1)
             .arg(hMm, 0, 'f', 1)
             .arg(stats.stitches)
@@ -6573,8 +6602,29 @@ void MainWindow::exportDst() {
             .arg(stats.color_changes)
             .arg(stats.thread_length_um / 1e9, 0, 'f', 2)
             .arg(to_millimeters(cv.width).value, 0, 'f', 0)
-            .arg(to_millimeters(cv.height).value, 0, 'f', 0)
-            .arg(QFileInfo(file).fileName());
+            .arg(to_millimeters(cv.height).value, 0, 'f', 0);
+    // Résultat de l'analyse AVANT l'export : l'utilisateur voit les erreurs sans avoir à
+    // penser à lancer « Analyser le motif ».
+    {
+        stitch_analysis::AnalysisOptions aopts;
+        aopts.hoop = stitch::BoundsUm{
+            Vec2um{Micrometers{-cv.width.value / 2}, Micrometers{-cv.height.value / 2}},
+            Vec2um{Micrometers{cv.width.value / 2}, Micrometers{cv.height.value / 2}}};
+        const auto findings = stitch_analysis::analyze(*sequence_, aopts);
+        std::size_t errors = 0;
+        std::size_t warnings = 0;
+        for (const auto& f : findings) {
+            errors += f.severity == stitch_analysis::Severity::Error ? 1 : 0;
+            warnings += f.severity == stitch_analysis::Severity::Warning ? 1 : 0;
+        }
+        summary += errors + warnings == 0
+                       ? tr("\n\nAnalyse : aucun problème détecté.")
+                       : tr("\n\nAnalyse : %1 erreur(s), %2 avertissement(s) — voir Analyse ▸ "
+                            "Analyser le motif.")
+                             .arg(errors)
+                             .arg(warnings);
+        hasAnalysisErrors = errors > 0;
+    }
     if (overflow) {
         summary += tr("\n\nAttention : le motif dépasse le cadre.");
     }
@@ -6586,10 +6636,17 @@ void MainWindow::exportDst() {
     box.setWindowTitle(tr("Exporter en DST"));
     box.setText(tr("Résumé de l'export"));
     box.setInformativeText(summary);
-    box.setIcon(overflow ? QMessageBox::Warning : QMessageBox::Information);
+    box.setIcon((overflow || hasAnalysisErrors) ? QMessageBox::Warning : QMessageBox::Information);
     box.setStandardButtons(QMessageBox::Ok | QMessageBox::Cancel);
+    box.button(QMessageBox::Ok)->setText(tr("Choisir le fichier…"));
+    box.button(QMessageBox::Cancel)->setText(tr("Annuler"));
     box.setDefaultButton(QMessageBox::Ok);
     if (box.exec() != QMessageBox::Ok) {
+        return;
+    }
+    const QString file = QFileDialog::getSaveFileName(this, tr("Exporter en DST"), QString(),
+                                                      tr("Broderie Tajima (*.dst)"));
+    if (file.isEmpty()) {
         return;
     }
 
@@ -6619,9 +6676,9 @@ void MainWindow::importDst() {
     // n'est qu'une copie d'affichage, cf. main_window.hpp).
     if (project_.hasImage() || project_.imported_design || !project_.vector_objects.empty() ||
         !project_.embroidery_objects.empty()) {
-        const auto answer = QMessageBox::question(
-            this, tr("Importer un DST"), tr("L'import remplace le document en cours. Continuer ?"));
-        if (answer != QMessageBox::Yes) {
+        if (!confirmDiscardChanges(
+                tr("L'import remplace le document en cours. Enregistrer le projet avant "
+                   "d'importer ce DST ?"))) {
             return;
         }
     }
@@ -6629,8 +6686,9 @@ void MainWindow::importDst() {
     // (AI-03b), partagée avec la CLI.
     auto imported = project_io::import_machine_file(std::filesystem::path(file.toStdWString()));
     if (!imported) {
-        QMessageBox::warning(this, tr("Import impossible"),
-                             QString::fromStdString(imported.error().message));
+        showFriendlyError(this, tr("Import du DST impossible"),
+                          tr("Ce fichier n'a pas pu être lu comme broderie Tajima (DST)."),
+                          imported.error().message);
         return;
     }
 
