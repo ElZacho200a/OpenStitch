@@ -89,3 +89,48 @@ d'autosave · vérification clavier réelle des touches simples depuis les docks
 **Constat retiré** : « l'image apparaît en miniature au chargement » est un artefact de l'outil de
 captures (le projet est chargé avant l'affichage de la fenêtre) ; `applyLoadedProject` appelle bien
 `fitCanvas()`.
+
+## Deuxième audit — état des correctifs
+
+Périmètre « perte de travail et fichiers » (branche `claude/ux-securite-donnees`).
+
+**Corrigé**
+- **Ouvrir un projet** : `loadProject` passe par `confirmDiscardChanges` (comme les Récents) et
+  repart du dossier du projet courant. La question « non enregistré » nomme le projet concerné.
+- **Récupération d'autosave** : Échap, la croix et « Décider plus tard » ne suppriment plus rien ;
+  seul « Supprimer la sauvegarde » détruit. Un seul candidat est récupéré par session (les autres
+  sont reproposés), après `confirmDiscardChanges`. Le créneau récupéré n'est supprimé qu'à
+  l'enregistrement ou au premier tick d'autosave réussi (`pendingRecoveryOsp_`). Le chemin
+  d'origine est restauré (Ctrl+S réécrit le bon fichier ; pas d'ajout aux Récents).
+  Plusieurs instances : chaque instance verrouille son créneau (`QLockFile`, `claimAutosaveSlot`) ;
+  un créneau tenu par une instance vivante n'est pas proposé, celui d'un processus mort l'est.
+- **`load_project`** : aucune exception ne fuit (JSON valide mais structure invalide → erreur
+  `InvalidFile`) ; message « créé par une version plus récente, mettez à jour OpenStitch » ;
+  `LoadInfo` (version lue, migration) affichée dans la barre d'état ; au premier enregistrement par
+  dessus un fichier migré (v1 à v4), copie `<nom>.vN.osp.bak` (annule l'enregistrement si la copie
+  échoue).
+- **Écritures atomiques** : l'export DST passe par `.tmp` puis renommage (l'ancien fichier survit à
+  un échec) ; le repli de renommage de `save_project` garde l'ancien projet (`.old`) et cite le
+  `.tmp` dans l'erreur ; chemins d'erreur et chemins minizip en UTF-8 (`u8string`).
+- **Marqueur « modifié »** : `UndoStack::markClean/isClean` ; `setWindowModified(!isClean())` après
+  undo/redo et dans `refreshImage` ; l'enregistrement et l'import DST rendent le document propre.
+- **Segmentation** : opérations d'image et resegmentation demandent confirmation (« Continuer »
+  / « Annuler », Ctrl+Z restitue) ; numérisation automatique : Ajouter / Remplacer / Annuler,
+  « Remplacer » retire les broderies à choix automatique non verrouillées et non retouchées et leurs
+  formes issues de la segmentation en une seule entrée d'annulation.
+- **Erreurs** : `showFriendlyError` pour ouverture/enregistrement `.osp`, récupération, exports
+  DST/DXF, segmentation, vectorisation, numérisation, opérations d'image.
+- **Exports** : nom suggéré `<projet>.dst|dxf` dans le dossier du projet ou le dernier dossier
+  utilisé, extension forcée, bouton par défaut « Annuler » et « Voir les problèmes » (ouvre
+  l'analyse) s'il y a des erreurs d'analyse, action « Ouvrir le dossier » après un export réussi.
+  « Enregistrer sous » : nom suggéré et accepte un document réduit à un design importé.
+- **Récents** : chemin complet en info-bulle, mnémoniques `&1` à `&9`/`1&0`, purge
+  (`QFileInfo::exists`) à l'ouverture du menu et après un échec d'ouverture seulement, plus à
+  chaque enregistrement.
+
+**Reporté / limites**
+- Le verrou d'instance repose sur `QLockFile` : deux instances sur des profils utilisateur
+  différents ne se voient pas. Le sidecar ne porte pas le PID.
+- « Remplacer » ne conserve pas les formes vectorielles que l'utilisateur a re-liées à une région
+  à la main (elles portent `source_region` comme les formes automatiques).
+- Pas d'aperçu du contenu dans le dialogue de récupération.

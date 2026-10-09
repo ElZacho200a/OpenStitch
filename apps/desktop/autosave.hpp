@@ -48,12 +48,22 @@ struct AutosaveCandidate {
                                          const QString& originalPathForDisplay);
 
 // Supprime les deux fichiers du créneau s'ils existent ; no-op silencieux
-// sinon (best-effort, jamais un échec à signaler à l'appelant).
+// sinon (best-effort, jamais un échec à signaler à l'appelant). Libère aussi
+// le verrou d'instance du créneau (claimAutosaveSlot).
 void discardAutosave(const AutosaveSlot& slot);
 
-// Énumère autosave/*.osp (tous PID, un arrêt anormal précédent a par
-// définition un autre PID que le processus courant), lit chaque sidecar si
-// présent.
+// Revendique le créneau pour CE processus (QLockFile `<slug>.lock`, tenu
+// jusqu'à discardAutosave/releaseAutosaveSlot ou la fin du processus) : une
+// autre instance vivante ne le propose alors pas à la récupération.
+// Un processus mort laisse un verrou périmé, que le scan ignore. Idempotent.
+void claimAutosaveSlot(const AutosaveSlot& slot);
+
+// Libère le verrou sans supprimer les fichiers (destruction d'une fenêtre).
+void releaseAutosaveSlot(const AutosaveSlot& slot);
+
+// Énumère autosave/*.osp, lit chaque sidecar si présent. Les créneaux
+// verrouillés par une instance vivante (claimAutosaveSlot) sont omis : ils
+// appartiennent à un document en cours d'édition, pas à un arrêt anormal.
 [[nodiscard]] std::vector<AutosaveCandidate> scanForRecoverableAutosaves();
 
 } // namespace openstitch::desktop

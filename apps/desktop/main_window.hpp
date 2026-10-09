@@ -248,8 +248,26 @@ private:
     // synchrone : setCurrentProjectPath() et le constructeur le lisent et le
     // persistent sans attendre de cycle d'évènements, avant qu'aucun appel
     // différé n'ait pu s'exécuter.
-    void refreshRecentFilesUi();
+    // `prune` : applique aussi la purge des fichiers disparus (QFileInfo::exists,
+    // potentiellement bloquant sur réseau) -- réservé à l'ouverture du menu et
+    // à un échec d'ouverture, jamais à chaque enregistrement.
+    void refreshRecentFilesUi(bool prune = false);
+    // Reconstruit synchroniquement sous-menu Récents + écran d'accueil.
+    void rebuildRecentUi();
     void updateWindowTitle();
+    // Chemin proposé dans un dialogue d'enregistrement/export : nom du projet
+    // (ou « sans-titre ») + `suffix`, dans le dossier du projet, sinon le dernier
+    // dossier utilisé, sinon Documents.
+    [[nodiscard]] QString suggestedFilePath(const QString& suffix) const;
+    // Mémorise le dossier de `file` comme dernier dossier utilisé.
+    void rememberLastDirectory(const QString& file);
+    // Message d'état + bouton temporaire « Ouvrir le dossier » après un export.
+    void offerRevealInFolder(const QString& file, const QString& message);
+    // Prévient avant de supprimer la segmentation (opération image, resegmentation) ;
+    // `true` si l'on peut continuer (aucune segmentation, ou « Continuer »).
+    [[nodiscard]] bool confirmDestroySegmentation(const QString& action);
+    // Supprime le créneau autosave conservé après une récupération (cf. checkAutosaveRecovery).
+    void discardPendingRecoverySlot();
     // Objet de broderie ciblé par la sélection courante (broderie choisie
     // dans l'ordre de couture, sinon remplissage rattaché à l'objet vectoriel
     // sélectionné au canevas ; nullptr sinon). Résolution partagée par
@@ -528,6 +546,15 @@ private:
     // Fichier `.osp` auquel le document est rattaché (vide tant qu'il n'a
     // jamais été enregistré) : cible de Ctrl+S et nom affiché dans le titre.
     QString currentProjectPath_;
+    // Version du format du fichier ouvert quand il a été migré depuis un ancien
+    // schéma (0 = pas de migration) et son chemin : au premier enregistrement
+    // par-dessus, une copie `.vN.osp.bak` est faite.
+    int migratedFromVersion_{0};
+    QString migratedFromPath_;
+    // Créneau autosave récupéré, conservé tant qu'aucun enregistrement ni
+    // sauvegarde automatique n'a réussi depuis la récupération (vide sinon).
+    QString pendingRecoveryOsp_;
+    QString pendingRecoverySidecar_;
     // Fichiers récents (le plus récent en tête), persistés via QSettings
     // (recent_files.hpp) -- HP-FILE-003. Menu Fichier ▸ Récents et écran
     // d'accueil reconstruits à partir de cette liste par refreshRecentFilesUi().

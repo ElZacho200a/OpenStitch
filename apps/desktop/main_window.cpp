@@ -7,8 +7,10 @@
 #include <QClipboard>
 #include <QColorDialog>
 #include <QDateTime>
+#include <QDesktopServices>
 #include <QDialog>
 #include <QDialogButtonBox>
+#include <QDir>
 #include <QFile>
 #include <QFileDialog>
 #include <QFileInfo>
@@ -33,8 +35,10 @@
 #include <QRadioButton>
 #include <QSizePolicy>
 #include <QSpinBox>
+#include <QStandardPaths>
 #include <QStatusBar>
 #include <QTextStream>
+#include <QUrl>
 
 #include <algorithm>
 #include <cmath>
@@ -43,6 +47,7 @@
 #include <limits>
 #include <map>
 #include <numbers>
+#include <set>
 #include <unordered_map>
 #include <variant>
 
@@ -599,6 +604,9 @@ MainWindow::~MainWindow() {
     for (QObject* child : findChildren<QObject*>()) {
         QObject::disconnect(child, nullptr, this, nullptr);
     }
+    // Rend le créneau à la récupération (sans le supprimer) : une fenêtre qui
+    // disparaît sans passer par closeEvent ressemble à un arrêt anormal.
+    releaseAutosaveSlot(slotFor(currentProjectPath_));
 }
 
 void MainWindow::buildMenus() {
@@ -633,6 +641,13 @@ void MainWindow::buildMenus() {
     // Rempli par refreshRecentFilesUi() (appelée une première fois depuis le
     // constructeur, après la construction de emptyState_) -- HP-FILE-003.
     recentMenu_ = fileMenu->addMenu(tr("&Récents"));
+    // Purge des fichiers disparus à l'affichage du menu seulement (pas à chaque
+    // enregistrement : QFileInfo::exists bloque sur un lecteur réseau).
+    connect(recentMenu_, &QMenu::aboutToShow, this, [this] {
+        recentFiles_ = pruneMissingRecentFiles(loadRecentFiles());
+        saveRecentFiles(recentFiles_);
+        rebuildRecentUi();
+    });
     // « Vider la liste » vit dans le menu Fichier et non dans le sous-menu : le sous-menu
     // ne contient que les fichiers (un test et refreshRecentFilesUi() comptent ses actions).
     clearRecentAct_ = fileMenu->addAction(tr("Vider &la liste des récents"));
@@ -978,6 +993,8 @@ void MainWindow::resetDocumentState() {
     // après) : sans ça, un Ctrl+S après « Nouveau » écraserait le projet
     // précédent sans rien demander (HP-FILE-002).
     setCurrentProjectPath(QString());
+    migratedFromVersion_ = 0;
+    migratedFromPath_.clear();
     undoStack_.clear();
     sequence_.reset();
     editStates_.clear();
@@ -1077,6 +1094,11 @@ bool MainWindow::confirmDiscardChanges(const QString& question) {
     // (HP-I18N-001 n'existe pas encore).
     QMessageBox box(QMessageBox::Warning, tr("Modifications non enregistrées"), question,
                     QMessageBox::Save | QMessageBox::Discard | QMessageBox::Cancel, this);
+    // Nomme le projet concerné : « le projet » seul ne dit pas lequel on perd.
+    box.setInformativeText(tr("Projet concerné : « %1 ».")
+                               .arg(currentProjectPath_.isEmpty()
+                                        ? tr("Sans titre")
+                                        : QFileInfo(currentProjectPath_).fileName()));
     box.button(QMessageBox::Save)->setText(tr("Enregistrer"));
     box.button(QMessageBox::Discard)->setText(tr("Ne pas enregistrer"));
     box.button(QMessageBox::Cancel)->setText(tr("Annuler"));
@@ -1216,8 +1238,14 @@ void MainWindow::executeOp(image::ImageOp op) {
     // Validation avant mutation : une opération invalide n'entre pas dans la pile.
     auto preview = image::apply_op(processed_, op);
     if (!preview) {
-        QMessageBox::warning(this, tr("Opération impossible"),
-                             QString::fromStdString(preview.error().message));
+        showFriendlyError(this, tr("Opération impossible"),
+                          tr("Cette opération ne peut pas être appliquée à l'image."),
+                          preview.error().message);
+        return;
+    }
+    // Toute opération sur l'image invalide la segmentation (elle ne correspond
+    // plus aux pixels) : on prévient au lieu de la perdre en silence.
+    if (!confirmDestroySegmentation(tr("Cette opération sur l'image"))) {
         return;
     }
     undoStack_.execute(std::make_unique<commands::AppendImageOpCommand>(std::move(op)), project_);
@@ -1225,9 +1253,28 @@ void MainWindow::executeOp(image::ImageOp op) {
     updateActions();
 }
 
+bool MainWindow::confirmDestroySegmentation(const QString& action) {
+    if (!project_.segmentation) {
+        return true;
+    }
+    QMessageBox box(QMessageBox::Question, tr("Segmentation existante"),
+                    tr("%1 supprime la segmentation actuelle : ses régions seront perdues. "
+                       "Vous pourrez revenir en arrière avec Ctrl+Z.")
+                        .arg(action),
+                    QMessageBox::NoButton, this);
+    auto* proceed = box.addButton(tr("Continuer"), QMessageBox::AcceptRole);
+    auto* cancel = box.addButton(tr("Annuler"), QMessageBox::RejectRole);
+    box.setDefaultButton(cancel);
+    box.setEscapeButton(cancel);
+    box.exec();
+    return box.clickedButton() == proceed;
+}
+
 void MainWindow::undo() {
     if (undoStack_.undo(project_)) {
         refreshImage();
+        // Revenir à l'état enregistré rend le document propre.
+        setWindowModified(!undoStack_.isClean());
         updateActions();
     }
 }
@@ -1235,6 +1282,7 @@ void MainWindow::undo() {
 void MainWindow::redo() {
     if (undoStack_.redo(project_)) {
         refreshImage();
+        setWindowModified(!undoStack_.isClean());
         updateActions();
     }
 }
@@ -1561,6 +1609,7 @@ void MainWindow::closeEvent(QCloseEvent* event) {
     if (event->isAccepted()) {
         autosaveTimer_->stop();
         discardAutosave(slotFor(currentProjectPath_));
+        discardPendingRecoverySlot();
     }
 }
 
@@ -2484,8 +2533,10 @@ void MainWindow::addVectorPrimitive(geometry::Path path, const QString& name) {
 }
 
 void MainWindow::refreshImage() {
-    applyCanvasToView();     // taille du cadre (peut avoir changé : réglage, undo, chargement)
-    setWindowModified(true); // toute régénération suit une mutation du document
+    applyCanvasToView(); // taille du cadre (peut avoir changé : réglage, undo, chargement)
+    // Marqueur « modifié » dérivé de la pile d'annulation (et non forcé à true) :
+    // un undo qui revient à l'état enregistré rend le document propre.
+    setWindowModified(!undoStack_.isClean());
     // Une sélection qui ne correspond plus à une région, un objet vectoriel ou
     // de broderie vivant est élaguée (undo/redo, nouvelle segmentation,
     // suppression, rechargement) ; le dernier objet restant devient le principal.
@@ -3508,6 +3559,11 @@ void MainWindow::segmentImage() {
     if (dialog.exec() != QDialog::Accepted) {
         return;
     }
+    // Resegmenter remplace les régions existantes (fusions, couleurs, régions
+    // supprimées à la main comprises) : confirmation avant de les écraser.
+    if (!confirmDestroySegmentation(tr("Segmenter à nouveau"))) {
+        return;
+    }
 
     // Calcul synchrone (curseur d'attente) : le passage en tâche de fond est
     // prévu quand les images de travail deviendront grandes.
@@ -3518,8 +3574,9 @@ void MainWindow::segmentImage() {
                                                   .smoothing_radius_px = smoothingSpin->value()});
     busy.reset();
     if (!seg) {
-        QMessageBox::warning(this, tr("Segmentation impossible"),
-                             QString::fromStdString(seg.error().message));
+        showFriendlyError(this, tr("Segmentation impossible"),
+                          tr("L'image n'a pas pu être segmentée avec ces réglages."),
+                          seg.error().message);
         return;
     }
     const auto regionCount = seg->region_count();
@@ -3582,8 +3639,9 @@ void MainWindow::vectorizeSelectedRegion() {
         {.mm_per_px = project_.mm_per_px, .simplify_tolerance = simplifyTolerance});
     busy.reset();
     if (!sets) {
-        QMessageBox::warning(this, tr("Vectorisation impossible"),
-                             QString::fromStdString(sets.error().message));
+        showFriendlyError(this, tr("Vectorisation impossible"),
+                          tr("Cette région n'a pas pu être convertie en contour vectoriel."),
+                          sets.error().message);
         return;
     }
 
@@ -3750,12 +3808,27 @@ void MainWindow::autoDigitize() {
     const bool alreadyDigitized =
         hasSegmentation ? (!project_.embroidery_objects.empty() || !project_.vector_objects.empty())
                         : !project_.embroidery_objects.empty();
+    bool replacePrevious = false;
     if (alreadyDigitized) {
-        const auto answer = QMessageBox::question(
-            this, tr("Numérisation automatique"),
-            tr("Des objets existent déjà ; la numérisation ajoute de nouveaux objets. "
-               "Continuer ?"));
-        if (answer != QMessageBox::Yes) {
+        QMessageBox box(
+            QMessageBox::Question, tr("Numérisation automatique"),
+            tr("Des objets existent déjà. Ajouter les nouveaux objets à côté des existants, ou "
+               "remplacer les objets créés précédemment par la numérisation automatique ?"),
+            QMessageBox::NoButton, this);
+        box.setInformativeText(
+            tr("« Remplacer » supprime les objets de broderie à choix automatique et les formes "
+               "issues de la segmentation qui leur servent de source ; les objets verrouillés, "
+               "retouchés à la main ou dessinés par vous sont conservés. Un seul Ctrl+Z "
+               "annule le remplacement."));
+        auto* addBtn = box.addButton(tr("Ajouter"), QMessageBox::AcceptRole);
+        auto* replaceBtn = box.addButton(tr("Remplacer"), QMessageBox::DestructiveRole);
+        auto* cancelBtn = box.addButton(tr("Annuler"), QMessageBox::RejectRole);
+        box.setDefaultButton(addBtn);
+        box.setEscapeButton(cancelBtn);
+        box.exec();
+        if (box.clickedButton() == replaceBtn) {
+            replacePrevious = true;
+        } else if (box.clickedButton() != addBtn) {
             return;
         }
     }
@@ -3921,17 +3994,42 @@ void MainWindow::autoDigitize() {
                                                   opts);
     busy.reset();
     if (!result) {
-        QMessageBox::warning(this, tr("Numérisation impossible"),
-                             QString::fromStdString(result.error().message));
+        showFriendlyError(this, tr("Numérisation impossible"),
+                          tr("L'image n'a pas pu être numérisée automatiquement."),
+                          result.error().message);
         return;
     }
     const std::size_t vecCount = result->vectors.size();
     const std::size_t embCount = result->embroideries.size();
     const std::vector<std::string> warnings = std::move(result->warnings);
 
-    undoStack_.execute(std::make_unique<commands::AddObjectBatchCommand>(
-                           std::move(result->vectors), std::move(result->embroideries)),
-                       project_);
+    auto batch = std::make_unique<commands::AddObjectBatchCommand>(std::move(result->vectors),
+                                                                   std::move(result->embroideries));
+    if (replacePrevious) {
+        // Une seule entrée d'annulation : retraits des objets auto-créés puis
+        // ajout du nouveau lot (revert dans l'ordre inverse).
+        auto composite =
+            std::make_unique<commands::CompositeCommand>("Numérisation automatique (remplacement)");
+        std::set<ObjectId> keptSources;
+        for (const auto& emb : project_.embroidery_objects) {
+            const bool removable = emb.intent == document::EmbroideryIntent::AutoChoice &&
+                                   emb.overrides.empty() && !emb.locked;
+            if (removable) {
+                composite->add(std::make_unique<commands::RemoveEmbroideryObjectCommand>(emb.id));
+            } else {
+                keptSources.insert(emb.source_vector);
+            }
+        }
+        for (const auto& vec : project_.vector_objects) {
+            if (vec.source_region && keptSources.count(vec.id) == 0) {
+                composite->add(std::make_unique<commands::RemoveVectorObjectCommand>(vec.id));
+            }
+        }
+        composite->add(std::move(batch));
+        undoStack_.execute(std::move(composite), project_);
+    } else {
+        undoStack_.execute(std::move(batch), project_);
+    }
     showStitchesAct_->setChecked(true);
     refreshImage();
     updateActions();
@@ -4003,8 +4101,9 @@ void MainWindow::segmentWithAi() {
     auto result = autodigitize::auto_digitize(*seg, project_.object_ids, opts);
     busy.reset();
     if (!result) {
-        QMessageBox::warning(this, tr("Numérisation impossible"),
-                             QString::fromStdString(result.error().message));
+        showFriendlyError(this, tr("Numérisation impossible"),
+                          tr("L'image n'a pas pu être numérisée automatiquement."),
+                          result.error().message);
         return;
     }
     const std::size_t vecCount = result->vectors.size();
@@ -6457,17 +6556,20 @@ void MainWindow::saveProject() {
 }
 
 void MainWindow::saveProjectAs() {
+    // Un design importé (DST) est un contenu à part entière du document.
     if (!project_.hasImage() && project_.vector_objects.empty() &&
-        project_.embroidery_objects.empty()) {
+        project_.embroidery_objects.empty() && !project_.imported_design) {
         QMessageBox::information(this, tr("Rien à enregistrer"),
                                  tr("Ouvrez une image et créez des objets d'abord."));
         return;
     }
     // Le dialogue repart du fichier courant quand il y en a un (dossier et nom
-    // présélectionnés), comportement attendu d'un « Enregistrer sous ».
+    // présélectionnés), sinon d'un nom suggéré dans le dernier dossier utilisé.
     const QString filter = tr("Projet OpenStitch (*.osp)");
-    QString file = QFileDialog::getSaveFileName(this, tr("Enregistrer le projet sous"),
-                                                currentProjectPath_, filter);
+    const QString start = currentProjectPath_.isEmpty() ? suggestedFilePath(QStringLiteral("osp"))
+                                                        : currentProjectPath_;
+    QString file =
+        QFileDialog::getSaveFileName(this, tr("Enregistrer le projet sous"), start, filter);
     if (file.isEmpty()) {
         return;
     }
@@ -6479,25 +6581,101 @@ void MainWindow::saveProjectAs() {
     (void)saveProjectToPath(file);
 }
 
+QString MainWindow::suggestedFilePath(const QString& suffix) const {
+    // Dossier : celui du projet courant, sinon le dernier dossier d'enregistrement
+    // ou d'export, sinon Documents. Nom : celui du projet, sinon « sans-titre ».
+    QString dir;
+    QString base = tr("sans-titre");
+    if (!currentProjectPath_.isEmpty()) {
+        const QFileInfo info(currentProjectPath_);
+        dir = info.absolutePath();
+        base = info.completeBaseName();
+    } else {
+        QSettings settings;
+        dir = settings.value(QStringLiteral("files/lastDir")).toString();
+    }
+    if (dir.isEmpty() || !QFileInfo(dir).isDir()) {
+        dir = QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation);
+    }
+    return QDir(dir).filePath(base + QLatin1Char('.') + suffix);
+}
+
+void MainWindow::rememberLastDirectory(const QString& file) {
+    QSettings settings;
+    settings.setValue(QStringLiteral("files/lastDir"), QFileInfo(file).absolutePath());
+}
+
+void MainWindow::offerRevealInFolder(const QString& file, const QString& message) {
+    // Message d'état persistant + action « Ouvrir le dossier » (QPushButton
+    // temporaire dans la barre d'état) : le fichier exporté se retrouve en un clic.
+    statusBar()->showMessage(message);
+    auto* button = new QPushButton(tr("Ouvrir le dossier"), this);
+    button->setFlat(true);
+    button->setCursor(Qt::PointingHandCursor);
+    button->setObjectName(QStringLiteral("action_revealExport"));
+    statusBar()->addWidget(button);
+    const auto remove = [this, button] {
+        statusBar()->removeWidget(button);
+        button->deleteLater();
+    };
+    connect(button, &QPushButton::clicked, this, [file, remove] {
+        QDesktopServices::openUrl(QUrl::fromLocalFile(QFileInfo(file).absolutePath()));
+        remove();
+    });
+    QTimer::singleShot(20000, button, remove);
+}
+
 bool MainWindow::saveProjectToPath(const QString& file) {
+    const std::filesystem::path path(file.toStdWString());
+    // Premier enregistrement par-dessus un fichier migré depuis un ancien
+    // format : copie de sécurité `.vN.osp.bak` (l'ancien format n'est plus
+    // lisible par les versions précédentes une fois réécrit).
+    if (migratedFromVersion_ > 0 &&
+        QFileInfo(file).canonicalFilePath() == QFileInfo(migratedFromPath_).canonicalFilePath()) {
+        const auto backup = project_io::backup_before_migrated_save(path, migratedFromVersion_);
+        if (!backup) {
+            showFriendlyError(this, tr("Copie de sécurité impossible"),
+                              tr("L'ancien fichier n'a pas pu être sauvegardé avant migration. "
+                                 "L'enregistrement est annulé pour ne pas l'écraser."),
+                              backup.error().message);
+            return false;
+        }
+    }
     // L'écriture atomique (temporaire + renommage) est assurée par
     // project_io::save_project : un échec en cours d'écriture laisse le
     // fichier précédent intact.
-    const auto written =
-        project_io::save_project(std::filesystem::path(file.toStdWString()), project_);
+    const auto written = project_io::save_project(path, project_);
     if (!written) {
-        QMessageBox::warning(this, tr("Enregistrement impossible"),
-                             QString::fromStdString(written.error().message));
+        showFriendlyError(this, tr("Enregistrement impossible"),
+                          tr("Le projet n'a pas pu être enregistré dans « %1 ». Vérifiez "
+                             "l'espace disque et que le fichier n'est pas ouvert ailleurs.")
+                              .arg(QFileInfo(file).fileName()),
+                          written.error().message);
         return false;
     }
+    migratedFromVersion_ = 0;
+    migratedFromPath_.clear();
     setCurrentProjectPath(file);
+    rememberLastDirectory(file);
+    undoStack_.markClean();
+    // Les données sont désormais dans le fichier : la sauvegarde automatique
+    // issue d'une récupération (conservée jusqu'ici) n'a plus de raison d'être.
+    discardPendingRecoverySlot();
     statusBar()->showMessage(tr("Projet enregistré : %1").arg(QFileInfo(file).fileName()));
     setWindowModified(false);
     return true;
 }
 
 void MainWindow::loadProject() {
-    const QString file = QFileDialog::getOpenFileName(this, tr("Ouvrir un projet"), QString(),
+    // Même garde que « Nouveau projet » et les Récents : ouvrir un projet
+    // remplace le document en cours.
+    if (!confirmDiscardChanges(
+            tr("Le projet a été modifié. Enregistrer avant d'ouvrir un autre projet ?"))) {
+        return;
+    }
+    const QString start =
+        currentProjectPath_.isEmpty() ? QString() : QFileInfo(currentProjectPath_).absolutePath();
+    const QString file = QFileDialog::getOpenFileName(this, tr("Ouvrir un projet"), start,
                                                       tr("Projet OpenStitch (*.osp)"));
     if (file.isEmpty()) {
         return;
@@ -6506,15 +6684,21 @@ void MainWindow::loadProject() {
 }
 
 bool MainWindow::openProjectFile(const QString& file) {
-    auto loaded = project_io::load_project(std::filesystem::path(file.toStdWString()));
+    project_io::LoadInfo info;
+    auto loaded = project_io::load_project(std::filesystem::path(file.toStdWString()), &info);
     if (!loaded) {
-        QMessageBox::warning(this, tr("Ouverture impossible"),
-                             QString::fromStdString(loaded.error().message));
+        showFriendlyError(this, tr("Ouverture impossible"),
+                          loaded.error().category == ErrorCategory::UnsupportedFormat
+                              ? QString::fromStdString(loaded.error().message)
+                              : tr("Le fichier « %1 » n'a pas pu être ouvert comme projet "
+                                   "OpenStitch.")
+                                    .arg(QFileInfo(file).fileName()),
+                          loaded.error().message);
         // Purge immédiate (AD-S11-2) : si `file` provenait d'un item
         // Récents, l'échec prouve qu'il n'existe plus -- pruneMissingRecentFiles
         // (appliqué par refreshRecentFilesUi) le retire sans attendre une
         // prochaine reconstruction du menu/de l'écran d'accueil.
-        refreshRecentFilesUi();
+        refreshRecentFilesUi(/*prune=*/true);
         return false;
     }
     applyLoadedProject(std::move(*loaded));
@@ -6522,11 +6706,20 @@ bool MainWindow::openProjectFile(const QString& file) {
     // d'enregistrement (tout remplacement de document l'oublie), c'est
     // l'ouverture qui en installe une nouvelle.
     setCurrentProjectPath(file);
-    statusBar()->showMessage(tr("Projet ouvert : %1 — %2 objet(s) vectoriel(s), %3 objet(s) de "
-                                "broderie")
-                                 .arg(QFileInfo(file).fileName())
-                                 .arg(project_.vector_objects.size())
-                                 .arg(project_.embroidery_objects.size()));
+    rememberLastDirectory(file);
+    QString message = tr("Projet ouvert : %1 — %2 objet(s) vectoriel(s), %3 objet(s) de "
+                         "broderie")
+                          .arg(QFileInfo(file).fileName())
+                          .arg(project_.vector_objects.size())
+                          .arg(project_.embroidery_objects.size());
+    if (info.migrated) {
+        migratedFromVersion_ = info.fileVersion;
+        migratedFromPath_ = file;
+        message += tr(" — converti depuis le format v%1 (copie .v%1.osp.bak créée à "
+                      "l'enregistrement)")
+                       .arg(info.fileVersion);
+    }
+    statusBar()->showMessage(message);
     return true;
 }
 
@@ -6556,27 +6749,46 @@ void MainWindow::openRecentFile(const QString& path) {
     }
 }
 
-void MainWindow::refreshRecentFilesUi() {
+void MainWindow::refreshRecentFilesUi(bool prune) {
     // Synchrone : recentFiles_ doit être à jour dès le retour de cet appel,
     // pas seulement après un cycle d'évènements -- setCurrentProjectPath()
     // (et tout appelant futur) le relit et le persiste immédiatement.
-    recentFiles_ = pruneMissingRecentFiles(loadRecentFiles());
+    // La purge des fichiers disparus (QFileInfo::exists, bloquant sur un
+    // lecteur réseau) n'a lieu qu'à l'ouverture du menu ou après un échec
+    // d'ouverture, pas à chaque enregistrement.
+    recentFiles_ = loadRecentFiles();
+    if (prune) {
+        recentFiles_ = pruneMissingRecentFiles(std::move(recentFiles_));
+    }
     saveRecentFiles(recentFiles_);
 
     // Seule la reconstruction des widgets est différée (réentrance : ne pas
     // détruire, depuis son propre gestionnaire de clic, le QAction ou le
     // QPushButton qui vient de déclencher cet appel).
-    QTimer::singleShot(0, this, [this] {
-        recentMenu_->clear();
-        recentMenu_->setEnabled(!recentFiles_.isEmpty());
-        clearRecentAct_->setEnabled(!recentFiles_.isEmpty());
-        for (const QString& path : recentFiles_) {
-            auto* action = recentMenu_->addAction(QFileInfo(path).fileName());
-            action->setToolTip(path);
-            connect(action, &QAction::triggered, this, [this, path] { openRecentFile(path); });
-        }
-        emptyState_->setRecentFiles(recentFiles_);
-    });
+    QTimer::singleShot(0, this, [this] { rebuildRecentUi(); });
+}
+
+void MainWindow::rebuildRecentUi() {
+    recentMenu_->clear();
+    recentMenu_->setEnabled(!recentFiles_.isEmpty());
+    recentMenu_->setToolTipsVisible(true);
+    clearRecentAct_->setEnabled(!recentFiles_.isEmpty());
+    int index = 1;
+    for (const QString& path : recentFiles_) {
+        // Mnémonique 1-9 (puis 0) : accès clavier sans souris ; le chemin
+        // complet est en info-bulle (deux projets peuvent porter le même nom).
+        QString name = QFileInfo(path).fileName();
+        name.replace(QLatin1Char('&'), QStringLiteral("&&"));
+        const QString label = index <= 9    ? QStringLiteral("&%1 %2").arg(index).arg(name)
+                              : index == 10 ? QStringLiteral("1&0 %1").arg(name)
+                                            : name;
+        auto* action = recentMenu_->addAction(label);
+        action->setToolTip(QDir::toNativeSeparators(path));
+        action->setStatusTip(QDir::toNativeSeparators(path));
+        connect(action, &QAction::triggered, this, [this, path] { openRecentFile(path); });
+        ++index;
+    }
+    emptyState_->setRecentFiles(recentFiles_);
 }
 
 void MainWindow::onAutosaveTick() {
@@ -6587,7 +6799,11 @@ void MainWindow::onAutosaveTick() {
     if (!isWindowModified() || empty) {
         return;
     }
-    const auto written = writeAutosave(slotFor(currentProjectPath_), project_, currentProjectPath_);
+    const AutosaveSlot slot = slotFor(currentProjectPath_);
+    // Revendique le créneau : une autre instance vivante ne le proposera pas à la
+    // récupération comme s'il s'agissait d'un reste de plantage.
+    claimAutosaveSlot(slot);
+    const auto written = writeAutosave(slot, project_, currentProjectPath_);
     if (!written) {
         // Best-effort (jamais bloquant) : message transitoire, même gabarit
         // que saveProjectToPath pour un échec d'enregistrement normal.
@@ -6595,48 +6811,111 @@ void MainWindow::onAutosaveTick() {
                                      .arg(QString::fromStdString(written.error().message)));
         return;
     }
+    // Première sauvegarde automatique réussie depuis une récupération : les données
+    // récupérées sont désormais couvertes par le créneau courant, l'ancien peut partir.
+    if (QDir::cleanPath(pendingRecoveryOsp_) != QDir::cleanPath(slot.osp_path)) {
+        discardPendingRecoverySlot();
+    } else {
+        pendingRecoveryOsp_.clear();
+        pendingRecoverySidecar_.clear();
+    }
     const QString when = QTime::currentTime().toString(QStringLiteral("HH:mm"));
     statusBar()->showMessage(tr("Sauvegarde automatique à %1").arg(when), 4000);
 }
 
+void MainWindow::discardPendingRecoverySlot() {
+    if (pendingRecoveryOsp_.isEmpty()) {
+        return;
+    }
+    discardAutosave(AutosaveSlot{pendingRecoveryOsp_, pendingRecoverySidecar_});
+    pendingRecoveryOsp_.clear();
+    pendingRecoverySidecar_.clear();
+}
+
 void MainWindow::checkAutosaveRecovery() {
     // Différé après le premier passage de la boucle d'évènements qui suit la
-    // construction : à ce point le document est toujours le défaut neuf,
-    // jamais modifié -- aucune garde confirmDiscardChanges n'est donc
-    // nécessaire avant de le remplacer par une récupération acceptée.
-    for (const auto& candidate : scanForRecoverableAutosaves()) {
+    // construction : à ce point le document est normalement le défaut neuf. La
+    // garde confirmDiscardChanges reste appliquée avant tout remplacement, au cas
+    // où l'utilisateur aurait déjà commencé à travailler.
+    //
+    // Un seul candidat récupéré par session : une 2e récupération écraserait la
+    // 1re ; les autres restent proposés au prochain démarrage. « Décider plus
+    // tard » (et Échap / croix) ne supprime jamais rien : seule l'action
+    // explicite « Supprimer » détruit une sauvegarde.
+    const auto candidates = scanForRecoverableAutosaves();
+    for (std::size_t i = 0; i < candidates.size(); ++i) {
+        const auto& candidate = candidates[i];
+        const QString when =
+            candidate.saved_at.isValid()
+                ? QLocale().toString(candidate.saved_at.toLocalTime(), QLocale::ShortFormat)
+                : tr("date inconnue");
         QMessageBox box(QMessageBox::Warning, tr("Récupération après un arrêt anormal"),
                         candidate.original_path.isEmpty()
-                            ? tr("Un projet sans nom non enregistré a été retrouvé (%1).")
-                                  .arg(candidate.saved_at.toLocalTime().toString())
+                            ? tr("Un projet sans nom non enregistré a été retrouvé (%1).").arg(when)
                             : tr("Une sauvegarde automatique de « %1 » a été retrouvée (%2).")
-                                  .arg(QFileInfo(candidate.original_path).fileName(),
-                                       candidate.saved_at.toLocalTime().toString()),
+                                  .arg(QFileInfo(candidate.original_path).fileName(), when),
                         QMessageBox::NoButton, this);
+        if (candidates.size() > 1) {
+            box.setInformativeText(
+                tr("%1 sauvegarde(s) automatique(s) au total. Une seule est récupérée par "
+                   "session ; les autres seront reproposées au prochain démarrage.")
+                    .arg(candidates.size()));
+        }
         auto* recoverBtn = box.addButton(tr("Récupérer"), QMessageBox::AcceptRole);
         recoverBtn->setObjectName(QStringLiteral("action_autosaveRecover"));
-        box.addButton(tr("Ignorer"), QMessageBox::RejectRole)
-            ->setObjectName(QStringLiteral("action_autosaveIgnore"));
+        auto* laterBtn = box.addButton(tr("Décider plus tard"), QMessageBox::RejectRole);
+        laterBtn->setObjectName(QStringLiteral("action_autosaveLater"));
+        auto* deleteBtn =
+            box.addButton(tr("Supprimer la sauvegarde"), QMessageBox::DestructiveRole);
+        deleteBtn->setObjectName(QStringLiteral("action_autosaveDiscard"));
+        box.setDefaultButton(recoverBtn);
+        box.setEscapeButton(laterBtn);
         box.exec();
-        if (box.clickedButton() == recoverBtn) {
-            auto loaded = project_io::load_project(
-                std::filesystem::path(candidate.slot.osp_path.toStdWString()));
-            if (!loaded) {
-                QMessageBox::warning(this, tr("Récupération impossible"),
-                                     QString::fromStdString(loaded.error().message));
-            } else {
-                applyLoadedProject(std::move(*loaded));
-                // PAS de second setCurrentProjectPath(QString()) explicite :
-                // applyLoadedProject() appelle déjà resetDocumentState(), qui
-                // appelle déjà setCurrentProjectPath(QString()) -- un second
-                // appel ici serait un 4e site d'appel redondant pour la même
-                // valeur (cf. specs/plans/autosave-implementation.md §8).
-                setWindowModified(true);
-            }
+        if (box.clickedButton() == deleteBtn) {
+            discardAutosave(candidate.slot);
+            continue; // décision explicite : on passe au candidat suivant
         }
-        // Traité (récupéré ou ignoré) -> jamais reproposé au prochain
-        // démarrage.
-        discardAutosave(candidate.slot);
+        if (box.clickedButton() != recoverBtn) {
+            return; // « plus tard », Échap ou croix : tout est conservé
+        }
+        if (!confirmDiscardChanges(
+                tr("Le projet en cours a été modifié. Enregistrer avant de récupérer la "
+                   "sauvegarde automatique ?"))) {
+            return;
+        }
+        auto loaded =
+            project_io::load_project(std::filesystem::path(candidate.slot.osp_path.toStdWString()));
+        if (!loaded) {
+            showFriendlyError(this, tr("Récupération impossible"),
+                              tr("La sauvegarde automatique n'a pas pu être relue. Elle est "
+                                 "conservée : vous pourrez réessayer au prochain démarrage."),
+                              loaded.error().message);
+            return;
+        }
+        applyLoadedProject(std::move(*loaded));
+        // Le projet récupéré reprend le chemin d'origine quand il est connu : un
+        // Ctrl+S réécrit alors le bon fichier (et pas un « Sans titre »). Le chemin est
+        // posé sans passer par setCurrentProjectPath() : une récupération ne doit ni
+        // alimenter les Récents ni supprimer le créneau qu'on vient de lire.
+        if (!candidate.original_path.isEmpty()) {
+            currentProjectPath_ = candidate.original_path;
+            updateWindowTitle();
+        }
+        setWindowModified(true);
+        // Le créneau n'est PAS supprimé ici : il reste le seul exemplaire des
+        // données tant qu'un enregistrement ou une sauvegarde automatique n'a pas
+        // réussi (onAutosaveTick / saveProjectToPath le libèrent).
+        pendingRecoveryOsp_ = candidate.slot.osp_path;
+        pendingRecoverySidecar_ = candidate.slot.sidecar_path;
+        if (candidates.size() > i + 1) {
+            statusBar()->showMessage(
+                tr("Sauvegarde récupérée. %1 autre(s) seront proposées au prochain démarrage.")
+                    .arg(candidates.size() - i - 1));
+        } else {
+            statusBar()->showMessage(
+                tr("Sauvegarde automatique récupérée — enregistrez le projet pour la conserver."));
+        }
+        return;
     }
 }
 
@@ -6734,17 +7013,33 @@ void MainWindow::exportDst() {
     box.setText(tr("Résumé de l'export"));
     box.setInformativeText(summary);
     box.setIcon((overflow || hasAnalysisErrors) ? QMessageBox::Warning : QMessageBox::Information);
-    box.setStandardButtons(QMessageBox::Ok | QMessageBox::Cancel);
-    box.button(QMessageBox::Ok)->setText(tr("Choisir le fichier…"));
-    box.button(QMessageBox::Cancel)->setText(tr("Annuler"));
-    box.setDefaultButton(QMessageBox::Ok);
-    if (box.exec() != QMessageBox::Ok) {
+    auto* chooseBtn = box.addButton(tr("Choisir le fichier…"), QMessageBox::AcceptRole);
+    QPushButton* problemsBtn = nullptr;
+    if (hasAnalysisErrors) {
+        problemsBtn = box.addButton(tr("Voir les problèmes"), QMessageBox::ActionRole);
+        problemsBtn->setObjectName(QStringLiteral("action_exportViewProblems"));
+    }
+    auto* cancelBtn = box.addButton(tr("Annuler"), QMessageBox::RejectRole);
+    // Des erreurs d'analyse : le choix sûr (Annuler) est le défaut, exporter reste possible.
+    box.setDefaultButton(hasAnalysisErrors ? cancelBtn : chooseBtn);
+    box.setEscapeButton(cancelBtn);
+    box.exec();
+    if (problemsBtn != nullptr && box.clickedButton() == problemsBtn) {
+        runAnalysis();
         return;
     }
-    const QString file = QFileDialog::getSaveFileName(this, tr("Exporter en DST"), QString(),
-                                                      tr("Broderie Tajima (*.dst)"));
+    if (box.clickedButton() != chooseBtn) {
+        return;
+    }
+    QString file = QFileDialog::getSaveFileName(this, tr("Exporter en DST"),
+                                                suggestedFilePath(QStringLiteral("dst")),
+                                                tr("Broderie Tajima (*.dst)"));
     if (file.isEmpty()) {
         return;
+    }
+    // Extension forcée : sans elle la machine ne reconnaît pas le fichier.
+    if (QFileInfo(file).suffix().compare(QStringLiteral("dst"), Qt::CaseInsensitive) != 0) {
+        file += QStringLiteral(".dst");
     }
 
     // Rappel honnête (§17) : le DST ne conserve ni objets ni couleurs réelles.
@@ -6754,11 +7049,16 @@ void MainWindow::exportDst() {
     const auto written = project_io::export_machine_file(
         project_, "dst", std::filesystem::path(file.toStdWString()));
     if (!written) {
-        QMessageBox::warning(this, tr("Export impossible"),
-                             QString::fromStdString(written.error().message));
+        showFriendlyError(this, tr("Export impossible"),
+                          tr("Le fichier DST n'a pas pu être écrit dans « %1 ». L'ancien fichier, "
+                             "s'il existait, est intact.")
+                              .arg(QFileInfo(file).fileName()),
+                          written.error().message);
         return;
     }
-    statusBar()->showMessage(
+    rememberLastDirectory(file);
+    offerRevealInFolder(
+        file,
         tr("DST exporté : %1 (%2 points).").arg(QFileInfo(file).fileName()).arg(stats.stitches));
 }
 
@@ -6802,6 +7102,9 @@ void MainWindow::importDst() {
     refreshImage(); // regenere sequence_ via effective_sequence, qui voit project_.imported_design
     view_->fitCanvas();
     updateActions();
+    // Le design importé EST l'état de départ du document : propre, comme un projet ouvert.
+    undoStack_.markClean();
+    setWindowModified(false);
 
     if (sequence_) {
         const auto stats = stitch::compute_stats(*sequence_);
@@ -6854,10 +7157,14 @@ void MainWindow::exportDxf() {
                                  tr("Aucun objet vectoriel à exporter."));
         return;
     }
-    const QString file = QFileDialog::getSaveFileName(this, tr("Exporter en DXF"), QString(),
-                                                      tr("Dessin AutoCAD (*.dxf)"));
+    QString file = QFileDialog::getSaveFileName(this, tr("Exporter en DXF"),
+                                                suggestedFilePath(QStringLiteral("dxf")),
+                                                tr("Dessin AutoCAD (*.dxf)"));
     if (file.isEmpty()) {
         return;
+    }
+    if (QFileInfo(file).suffix().compare(QStringLiteral("dxf"), Qt::CaseInsensitive) != 0) {
+        file += QStringLiteral(".dxf");
     }
     std::vector<geometry::Path> paths;
     for (const auto& object : project_.vector_objects) {
@@ -6870,12 +7177,15 @@ void MainWindow::exportDxf() {
     }
     const auto result = formats::write_dxf_file(std::filesystem::path(file.toStdWString()), paths);
     if (!result) {
-        QMessageBox::warning(this, tr("Export impossible"),
-                             QString::fromStdString(result.error().message));
+        showFriendlyError(
+            this, tr("Export impossible"),
+            tr("Le fichier DXF n'a pas pu être écrit dans « %1 ».").arg(QFileInfo(file).fileName()),
+            result.error().message);
         return;
     }
-    statusBar()->showMessage(
-        tr("%1 — %2 tracé(s) exporté(s)").arg(QFileInfo(file).fileName()).arg(paths.size()));
+    rememberLastDirectory(file);
+    offerRevealInFolder(
+        file, tr("%1 — %2 tracé(s) exporté(s)").arg(QFileInfo(file).fileName()).arg(paths.size()));
 }
 
 void MainWindow::onCanvasClicked(QPointF posMm) {
