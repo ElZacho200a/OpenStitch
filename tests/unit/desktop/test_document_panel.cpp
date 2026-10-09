@@ -111,6 +111,10 @@ private slots:
     void selectingTheGroupHeaderEmitsNothing();
     void syncSelectionFindsAGroupedChildAcrossLevels();
     void searchFieldHidesRowsThatDoNotMatch();
+    void rowsStartWithTheSewingOrderAndShowAFrozenOrderMarker();
+    void visibleAndFrozenOrderCheckBoxesEmitSignals();
+    void doubleClickRenameEmitsRequestAndRestoresTheFormattedLabel();
+    void clickingAGroupNodeSelectsAllItsSections();
 };
 
 void DocumentPanelTest::refreshPopulatesObjectsAndRegionsLists() {
@@ -323,6 +327,90 @@ void DocumentPanelTest::searchFieldHidesRowsThatDoNotMatch() {
     panel.refresh(projectWithTwoObjectsAndTwoRegions(first, second));
     QVERIFY(!objects->topLevelItem(0)->isHidden());
     QVERIFY(objects->topLevelItem(1)->isHidden());
+}
+
+void DocumentPanelTest::rowsStartWithTheSewingOrderAndShowAFrozenOrderMarker() {
+    DocumentPanel panel;
+    openstitch::ObjectId first{};
+    openstitch::ObjectId second{};
+    Project project = projectWithTwoObjectsAndTwoRegions(first, second);
+    project.embroidery_objects[1].locked = true;
+    panel.refresh(project);
+    auto* objects = objectsList(panel);
+    QVERIFY(objects->topLevelItem(0)->text(0).startsWith(QStringLiteral("1. ")));
+    QVERIFY(objects->topLevelItem(1)->text(0).startsWith(QStringLiteral("2. ")));
+    QVERIFY(objects->topLevelItem(1)->text(0).contains(QStringLiteral("[ordre figé]")));
+    QVERIFY(!objects->topLevelItem(0)->text(0).contains(QStringLiteral("[ordre figé]")));
+    // Même libellé que le panneau Ordre (fonction partagée).
+    QCOMPARE(objects->topLevelItem(1)->text(0),
+             DocumentPanel::itemText(project.embroidery_objects[1], 2));
+    QVERIFY(!objects->accessibleName().isEmpty());
+    QVERIFY(!regionsList(panel)->accessibleName().isEmpty());
+}
+
+void DocumentPanelTest::visibleAndFrozenOrderCheckBoxesEmitSignals() {
+    DocumentPanel panel;
+    openstitch::ObjectId first{};
+    openstitch::ObjectId second{};
+    panel.refresh(projectWithTwoObjectsAndTwoRegions(first, second));
+    std::optional<std::pair<std::uint64_t, bool>> visible;
+    std::optional<std::pair<std::uint64_t, bool>> locked;
+    QObject::connect(&panel, &DocumentPanel::visibilityToggled, &panel,
+                     [&](openstitch::ObjectId id, bool on) { visible = {id.value, on}; });
+    QObject::connect(&panel, &DocumentPanel::orderLockToggled, &panel,
+                     [&](openstitch::ObjectId id, bool on) { locked = {id.value, on}; });
+    auto* objects = objectsList(panel);
+    // Le peuplement initial n'émet rien ; seuls les clics de l'utilisateur le font.
+    QVERIFY(!visible.has_value());
+    QCOMPARE(objects->topLevelItem(0)->checkState(1), Qt::Checked);
+    QCOMPARE(objects->topLevelItem(0)->checkState(2), Qt::Unchecked);
+    objects->topLevelItem(1)->setCheckState(1, Qt::Unchecked);
+    QTRY_VERIFY(visible.has_value()); // émission différée (la liste est reconstruite ensuite)
+    QCOMPARE(visible->first, second.value);
+    QVERIFY(!visible->second);
+    objects->topLevelItem(0)->setCheckState(2, Qt::Checked);
+    QTRY_VERIFY(locked.has_value());
+    QCOMPARE(locked->first, first.value);
+    QVERIFY(locked->second);
+}
+
+void DocumentPanelTest::doubleClickRenameEmitsRequestAndRestoresTheFormattedLabel() {
+    DocumentPanel panel;
+    openstitch::ObjectId first{};
+    openstitch::ObjectId second{};
+    panel.refresh(projectWithTwoObjectsAndTwoRegions(first, second));
+    std::optional<std::pair<std::uint64_t, QString>> renamed;
+    QObject::connect(&panel, &DocumentPanel::renameRequested, &panel,
+                     [&](openstitch::ObjectId id, QString name) { renamed = {id.value, name}; });
+    auto* objects = objectsList(panel);
+    QTreeWidgetItem* item = objects->topLevelItem(0);
+    const QString shown = item->text(0);
+    emit objects->itemDoubleClicked(item, 0);
+    QCOMPARE(item->text(0), QStringLiteral("Feuille")); // nom brut proposé à l'édition
+    item->setText(0, QStringLiteral("  Pétale  "));
+    QTRY_VERIFY(renamed.has_value());
+    QCOMPARE(renamed->first, first.value);
+    QCOMPARE(renamed->second, QStringLiteral("Pétale")); // espaces retirés
+    QCOMPARE(item->text(0), shown); // libellé formaté restauré (le document fait foi)
+}
+
+void DocumentPanelTest::clickingAGroupNodeSelectsAllItsSections() {
+    DocumentPanel panel;
+    openstitch::ObjectId sourceVectorId{};
+    std::vector<openstitch::ObjectId> sectionIds;
+    openstitch::ObjectId standaloneId{};
+    panel.refresh(projectWithGroupedSatinSections(sourceVectorId, sectionIds, standaloneId));
+    std::optional<std::pair<std::uint64_t, int>> grouped;
+    QObject::connect(
+        &panel, &DocumentPanel::groupSelected, &panel,
+        [&](openstitch::ObjectId source, int count) { grouped = {source.value, count}; });
+    auto* objects = objectsList(panel);
+    QTreeWidgetItem* group = objects->topLevelItem(0)->childCount() > 0 ? objects->topLevelItem(0)
+                                                                        : objects->topLevelItem(1);
+    objects->setCurrentItem(group);
+    QVERIFY(grouped.has_value());
+    QCOMPARE(grouped->first, sourceVectorId.value);
+    QCOMPARE(grouped->second, 3);
 }
 
 QTEST_MAIN(DocumentPanelTest)

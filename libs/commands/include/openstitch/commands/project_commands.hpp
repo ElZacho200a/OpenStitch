@@ -125,7 +125,7 @@ public:
             seg.find(absorber_)->pixel_count -= changed_.size();
         }
     }
-    [[nodiscard]] std::string name() const override { return "Suppression de région"; }
+    [[nodiscard]] std::string name() const override { return "Supprimer une région"; }
 
 private:
     RegionId id_;
@@ -148,7 +148,7 @@ public:
         [[maybe_unused]] auto restored =
             segmentation::recolor_region(*project.segmentation, id_, oldRgb_);
     }
-    [[nodiscard]] std::string name() const override { return "Recoloration de région"; }
+    [[nodiscard]] std::string name() const override { return "Recolorer une région"; }
 
 private:
     RegionId id_;
@@ -345,7 +345,22 @@ public:
     void revert(document::Project& project) override {
         shift(project, Vec2um{-delta_.x, -delta_.y});
     }
-    [[nodiscard]] std::string name() const override { return "Déplacement de forme"; }
+    [[nodiscard]] std::string name() const override { return "Déplacer la forme"; }
+    // Fusion : une rafale de pas aux flèches sur le même objet = un seul pas
+    // (opt-in via `setCoalescable`, jamais pour un glisser souris).
+    [[nodiscard]] std::string mergeKey() const override {
+        return coalescable_ ? "translate:" + std::to_string(object_.value) : std::string{};
+    }
+    bool mergeWith(const ICommand& newer) override {
+        const auto* other = dynamic_cast<const TranslateVectorObjectCommand*>(&newer);
+        if (other == nullptr || other->object_.value != object_.value) {
+            return false;
+        }
+        delta_ = Vec2um{Micrometers{delta_.x.value + other->delta_.x.value},
+                        Micrometers{delta_.y.value + other->delta_.y.value}};
+        return true;
+    }
+    void setCoalescable(bool on) { coalescable_ = on; }
 
 private:
     void shift(document::Project& project, Vec2um delta) const {
@@ -397,6 +412,7 @@ private:
 
     ObjectId object_;
     Vec2um delta_;
+    bool coalescable_{false};
 };
 
 // Redimensionne un objet vectoriel ENTIER autour d'un point d'ancrage FIXE
@@ -480,7 +496,7 @@ public:
             }
         }
     }
-    [[nodiscard]] std::string name() const override { return "Redimensionnement de forme"; }
+    [[nodiscard]] std::string name() const override { return "Redimensionner la forme"; }
 
 private:
     [[nodiscard]] static std::int32_t clampToInt32(double v) {
@@ -545,7 +561,7 @@ public:
 
     void apply(document::Project& project) override { setPos(project, newPos_); }
     void revert(document::Project& project) override { setPos(project, oldPos_); }
-    [[nodiscard]] std::string name() const override { return "Déplacement de nœud"; }
+    [[nodiscard]] std::string name() const override { return "Déplacer un nœud"; }
 
 private:
     void setPos(document::Project& project, Vec2um pos) {
@@ -669,7 +685,7 @@ public:
         }
         removedApplied_ = false;
     }
-    [[nodiscard]] std::string name() const override { return "Suppression de nœud"; }
+    [[nodiscard]] std::string name() const override { return "Supprimer un nœud"; }
 
 private:
     ObjectId object_;
@@ -759,13 +775,64 @@ public:
         }
     }
     [[nodiscard]] std::string name() const override {
-        return locked_ ? "Verrouiller l'objet" : "Déverrouiller l'objet";
+        return locked_ ? "Figer l'ordre de l'objet" : "Libérer l'ordre de l'objet";
     }
 
 private:
     ObjectId id_;
     bool locked_;
     bool previous_{false};
+};
+
+// Affiche/masque un objet de broderie (case « visible » du panneau Document). Un objet
+// masqué n'est ni dessiné ni cousu : annulable comme toute mutation du document.
+class SetEmbroideryVisibleCommand final : public ICommand {
+public:
+    SetEmbroideryVisibleCommand(ObjectId id, bool visible) : id_(id), visible_(visible) {}
+
+    void apply(document::Project& project) override {
+        if (auto* obj = project.findEmbroidery(id_)) {
+            previous_ = obj->visible;
+            obj->visible = visible_;
+        }
+    }
+    void revert(document::Project& project) override {
+        if (auto* obj = project.findEmbroidery(id_)) {
+            obj->visible = previous_;
+        }
+    }
+    [[nodiscard]] std::string name() const override {
+        return visible_ ? "Afficher l'objet" : "Masquer l'objet";
+    }
+
+private:
+    ObjectId id_;
+    bool visible_;
+    bool previous_{true};
+};
+
+// Renomme un objet de broderie (double-clic dans le panneau Document).
+class RenameEmbroideryCommand final : public ICommand {
+public:
+    RenameEmbroideryCommand(ObjectId id, std::string name) : id_(id), name_(std::move(name)) {}
+
+    void apply(document::Project& project) override {
+        if (auto* obj = project.findEmbroidery(id_)) {
+            previous_ = obj->name;
+            obj->name = name_;
+        }
+    }
+    void revert(document::Project& project) override {
+        if (auto* obj = project.findEmbroidery(id_)) {
+            obj->name = previous_;
+        }
+    }
+    [[nodiscard]] std::string name() const override { return "Renommer l'objet"; }
+
+private:
+    ObjectId id_;
+    std::string name_;
+    std::string previous_;
 };
 
 // Convertit des objets de broderie en remplissage tatami (conserve id, source,
@@ -969,8 +1036,11 @@ private:
 // retour exact. Généralise `SetFillAngleCommand` à tous les champs.
 class SetStitchParamsCommand final : public ICommand {
 public:
-    SetStitchParamsCommand(ObjectId id, document::StitchParams params)
-        : id_(id), params_(std::move(params)) {}
+    // `field` : libellé du champ modifié (« Espacement des rangées »), repris dans
+    // le nom d'historique ; une rafale de modifications du MÊME champ du même
+    // objet est fusionnée en un seul pas par `UndoStack` (cf. `mergeKey`).
+    SetStitchParamsCommand(ObjectId id, document::StitchParams params, std::string field = {})
+        : id_(id), params_(std::move(params)), field_(std::move(field)) {}
 
     void apply(document::Project& project) override {
         if (auto* obj = project.findEmbroidery(id_)) {
@@ -983,11 +1053,26 @@ public:
             obj->params = previous_;
         }
     }
-    [[nodiscard]] std::string name() const override { return "Modifier les paramètres de couture"; }
+    [[nodiscard]] std::string name() const override {
+        return field_.empty() ? "Modifier les paramètres de couture" : "Modifier : " + field_;
+    }
+    [[nodiscard]] std::string mergeKey() const override {
+        return field_.empty() ? std::string{}
+                              : "params:" + std::to_string(id_.value) + ":" + field_;
+    }
+    bool mergeWith(const ICommand& newer) override {
+        const auto* other = dynamic_cast<const SetStitchParamsCommand*>(&newer);
+        if (other == nullptr || other->id_.value != id_.value || other->field_ != field_) {
+            return false;
+        }
+        params_ = other->params_; // `previous_` reste l'état d'avant la première
+        return true;
+    }
 
 private:
     ObjectId id_;
     document::StitchParams params_;
+    std::string field_;
     document::StitchParams previous_{document::RunningStitchParams{}};
 };
 
@@ -1096,11 +1181,26 @@ public:
         }
     }
     [[nodiscard]] std::string name() const override { return label_; }
+    // Fusion opt-in (pas de molette sur l'angle d'un guide : un pas par rafale).
+    [[nodiscard]] std::string mergeKey() const override {
+        return mergeTag_.empty() ? std::string{}
+                                 : "autosatin:" + std::to_string(id_.value) + ":" + mergeTag_;
+    }
+    bool mergeWith(const ICommand& newer) override {
+        const auto* other = dynamic_cast<const EditAutoSatinCommand*>(&newer);
+        if (other == nullptr || other->id_.value != id_.value) {
+            return false;
+        }
+        params_ = other->params_;
+        return true;
+    }
+    void setMergeTag(std::string tag) { mergeTag_ = std::move(tag); }
 
 private:
     ObjectId id_;
     document::AutoSatinParams params_;
     std::string label_;
+    std::string mergeTag_;
     document::AutoSatinParams previous_{};
     bool applied_{false};
 };
@@ -1243,7 +1343,7 @@ public:
     void revert(document::Project& project) override {
         detail::end_stitch_edit(project, id_, base_index_, ctx_);
     }
-    [[nodiscard]] std::string name() const override { return "Déplacement de point"; }
+    [[nodiscard]] std::string name() const override { return "Déplacer un point"; }
 
 private:
     ObjectId id_;
@@ -1805,7 +1905,7 @@ public:
 
     void apply(document::Project& project) override { setPos(project, newPos_); }
     void revert(document::Project& project) override { setPos(project, oldPos_); }
-    [[nodiscard]] std::string name() const override { return "Déplacement de nœud de rail satin"; }
+    [[nodiscard]] std::string name() const override { return "Déplacer un nœud de rail satin"; }
 
 private:
     void setPos(document::Project& project, Vec2um pos) {

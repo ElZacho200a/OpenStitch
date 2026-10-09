@@ -34,9 +34,11 @@ class QGraphicsItem;
 class QGraphicsPathItem;
 class QGraphicsPixmapItem;
 class QGraphicsEllipseItem;
+class QGraphicsRectItem;
 class QLabel;
 class QAction;
 class QListWidget;
+class QPushButton;
 class QDockWidget;
 class QSlider;
 class QTimer;
@@ -525,9 +527,35 @@ private:
     pristineSatinContour(const document::VectorObject& vector) const;
     [[nodiscard]] QString autoSatinSummary(const document::EmbroideryObject& emb);
     void createAutoSatin(bool askParameters);
-    void applyAutoSatinEdit(ObjectId id, document::AutoSatinParams params, const QString& label);
+    void applyAutoSatinEdit(ObjectId id, document::AutoSatinParams params, const QString& label,
+                            const QString& mergeTag = {});
     void addAutoSatinGuideFromStroke(ObjectId id, Vec2um from, Vec2um to);
     void changeAutoSatinGuide(ObjectId id, int index, double angleDeg, bool absolute);
+    // Clic sur un guide de la liste de l'inspecteur : cercle temporaire sur son ancre.
+    void highlightAutoSatinGuide(ObjectId id, int index);
+    QGraphicsItem* guideHighlight_{nullptr}; // propriété de la scène (baseItems_)
+    // Édition multi-objets, boîte de forme, alignement, historique (main_window_editing.cpp).
+    void connectInspectorEditing();
+    void applyVectorBox(ObjectId id, QRectF boxMm);
+    void applyToSelection(int stitchType, bool setSpacing, double spacingMm, bool setAngle,
+                          double angleDeg);
+    void buildAlignMenu(QMenu* editMenu);
+    void updateAlignActions();
+    void alignSelection(int mode);
+    void buildHistoryPanel();
+    void refreshHistoryPanel();
+    void jumpToHistory(int row);
+    [[nodiscard]] static std::optional<QRectF> vectorBoxMm(const document::VectorObject& object);
+    QDockWidget* historyDock_{nullptr};
+    QListWidget* historyList_{nullptr};
+    QList<QAction*> alignActs_;
+    // Aperçus de glisser (poignées) : repère d'accroche, cadre de redimensionnement.
+    void showNodeDragFeedback(QPointF sceneMm, ObjectId objectId);
+    void hideNodeDragFeedback();
+    void showResizePreview(QPointF anchorSceneMm, QPointF cornerSceneMm);
+    void hideResizePreview();
+    QGraphicsItem* snapIndicator_{nullptr};
+    QGraphicsRectItem* resizePreview_{nullptr};
     void removeAutoSatinGuide(ObjectId id, int index);
     void renderAutoSatinOverlay(const document::EmbroideryObject& obj,
                                 const document::AutoSatinParams& params,
@@ -592,7 +620,7 @@ private:
     void editSelection(const std::function<void(Selection&)>& edit);
     // Translate des objets vectoriels en UN pas d'annulation (CompositeCommand si
     // > 1) puis rafraîchit : partagé par les flèches et le glisser de corps.
-    void translateObjects(const std::vector<ObjectId>& ids, Vec2um delta);
+    void translateObjects(const std::vector<ObjectId>& ids, Vec2um delta, bool coalesce = false);
     [[nodiscard]] bool isObjectSelected(ObjectId id) const;
     // Lecture : état courant sous forme de Selection (objets = multiSelection_
     // ou {selectedObject_}), pour les modifications partielles.
@@ -1015,6 +1043,10 @@ private:
     // Ordre de couture.
     QDockWidget* orderDock_{nullptr};
     QListWidget* orderList_{nullptr};
+    QPushButton* orderUpBtn_{nullptr};
+    QPushButton* orderDownBtn_{nullptr};
+    QPushButton* orderLockBtn_{nullptr};
+    void updateOrderButtons();
     QLabel* orderCostLabel_{nullptr};
     QComboBox* orderStrategyCombo_{nullptr};
 

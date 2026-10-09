@@ -7,6 +7,7 @@
 #include <QCoreApplication>
 #include <QDialog>
 #include <QDir>
+#include <QDockWidget>
 #include <QDoubleSpinBox>
 #include <QFile>
 #include <QFileInfo>
@@ -24,6 +25,7 @@
 #include <QShortcut>
 #include <QSignalSpy>
 #include <QSlider>
+#include <QSpinBox>
 #include <QStandardPaths>
 #include <QStatusBar>
 #include <QTabWidget>
@@ -36,6 +38,7 @@
 #include <cmath>
 #include <filesystem>
 #include <functional>
+#include <limits>
 #include <numbers>
 
 #include "autosave.hpp"
@@ -676,6 +679,17 @@ private slots:
 
     // Remplissage directionnel : conversion, outil de guides, undo/redo.
     void convertingTatamiToDirectionalIsUndoable();
+    void inspectorRebuildsAfterUndoOfAParameterEdit();
+    void inspectorRebuildsAfterTypeChangeKeepingTheSameId();
+    void parameterBurstIsOneNamedUndoStep();
+    void multiSelectionBlockAppliesSettingsToAllObjectsInOneStep();
+    void multiSelectionBlockCanConvertEveryObjectToContourInOneStep();
+    void alignMenuMovesSelectedShapesInOneUndoStep();
+    void vectorObjectInspectorEditsPositionAndSizeInMillimetres();
+    void orderPanelKeepsSelectionOnRefreshAndDisablesMovesAtBounds();
+    void documentPanelCheckBoxesAndRenameAreUndoableCommands();
+    void groupClickSelectsTheSourceShapeAndDeleteKeyWorksFromTheTree();
+    void historyPanelListsStepsAndJumpsToAnyState();
     void autoDirectionGuideConvertsTatamiAndIsUndoable();
     void directionGuideToolDrawsGuidesAndBreakLinesThroughUndoStack();
 
@@ -1609,7 +1623,7 @@ void MainWindowTest::deleteOnRegionKeepsLegacyBehaviour() {
     window.deleteSelection();
     QVERIFY(window.project_.segmentation->find(fx.regionId) == nullptr);
     QVERIFY(!window.selectedRegion_.has_value());
-    QCOMPARE(window.undoStack_.undoName(), std::string("Suppression de région"));
+    QCOMPARE(window.undoStack_.undoName(), std::string("Supprimer une région"));
     QVERIFY(window.project_.findObject(fx.vectorId) != nullptr); // rien d'autre supprimé
     window.undo();
     QVERIFY(window.project_.segmentation->find(fx.regionId) != nullptr);
@@ -2334,7 +2348,7 @@ void MainWindowTest::dragFirstStitchHandle(MainWindow& window, ObjectId embroide
     // La commande est différée (QTimer::singleShot(0), cf. renderBase) pour ne
     // pas détruire la poignée pendant son propre événement souris.
     QTRY_VERIFY(window.undoStack_.canUndo());
-    QCOMPARE(window.undoStack_.undoName(), std::string("Déplacement de point"));
+    QCOMPARE(window.undoStack_.undoName(), std::string("Déplacer un point"));
 
     const auto* obj = window.project_.findEmbroidery(embroideryId);
     QVERIFY(obj != nullptr);
@@ -3351,11 +3365,12 @@ void MainWindowTest::arrowKeyNudgesSelectedObjectByFixedStepAndShiftUsesBiggerSt
     QCOMPARE(window.project_.findObject(squareId)->paths[0].outer.nodes[0].pos,
              (Vec2um{Micrometers{-4'900}, Micrometers{-5'900}}));
 
-    // Chaque appui pousse une commande distincte -- annulable individuellement.
+    // Coalescence : une rafale d'appuis sur les flèches (même objet, fenêtre de fusion de la
+    // pile) forme UN seul pas d'annulation, qui ramène au point de départ.
     QVERIFY(window.undoStack_.canUndo());
     window.undo();
     QCOMPARE(window.project_.findObject(squareId)->paths[0].outer.nodes[0].pos,
-             (Vec2um{Micrometers{-4'900}, Micrometers{-4'900}}));
+             (Vec2um{Micrometers{-5'000}, Micrometers{-5'000}}));
 }
 
 void MainWindowTest::drawRectangleToolWithRealMouseDragOnMainWindowCreatesObject() {
@@ -4054,7 +4069,7 @@ void MainWindowTest::satinRailEditModeDragsNodeAndUndoRestoresIt() {
 
     QTRY_VERIFY_WITH_TIMEOUT(window.undoStack_.canUndo(), 1000);
     QCOMPARE(QString::fromStdString(window.undoStack_.undoName()),
-             QStringLiteral("Déplacement de nœud de rail satin"));
+             QStringLiteral("Déplacer un nœud de rail satin"));
     const auto& moved = std::get<openstitch::document::SatinParams>(
         window.project_.findEmbroidery(fx.embroideryId)->params);
     QVERIFY(moved.rail_a.nodes[0].pos.x.value != 0);
@@ -6399,6 +6414,369 @@ void MainWindowTest::knifeToolSplitsSelectedShape() {
     QVERIFY(window.freeformPreviewItem_ == nullptr);
     window.undo();
     QCOMPARE(window.project_.vector_objects.size(), std::size_t{2});
+}
+
+// Inspecteur périmé (audit ergonomique, critique) : après annulation, le formulaire doit
+// refléter le document ; sinon le premier champ touché écrase les paramètres annulés.
+void MainWindowTest::inspectorRebuildsAfterUndoOfAParameterEdit() {
+    MainWindow window;
+    const Fixture fx = buildTatamiSquareFixture();
+    window.applyLoadedProject(fx.project);
+    window.selectedEmbroidery_ = fx.embroideryId;
+    window.updateActions();
+    auto* panel = window.findChild<PropertiesPanel*>();
+    QVERIFY(panel != nullptr);
+    const auto spacingOf = [&] {
+        return std::get<openstitch::document::TatamiParams>(
+                   window.project_.findEmbroidery(fx.embroideryId)->params)
+            .row_spacing.value;
+    };
+
+    auto* spacing = panel->findChild<QDoubleSpinBox*>(QStringLiteral("spin_rowSpacing"));
+    QVERIFY(spacing != nullptr);
+    spacing->setValue(0.80);
+    QCOMPARE(spacingOf(), 800);
+
+    window.undo();
+    QCOMPARE(spacingOf(), 450);
+    spacing = panel->findChild<QDoubleSpinBox*>(QStringLiteral("spin_rowSpacing"));
+    QVERIFY(spacing != nullptr);
+    QCOMPARE(spacing->value(), 0.45); // formulaire reconstruit d'après le document
+
+    // Un autre champ touché ensuite ne ressuscite pas l'espacement annulé.
+    auto* stagger = panel->findChildren<QSpinBox*>().front();
+    stagger->setValue(5);
+    QCOMPARE(spacingOf(), 450);
+
+    window.undo();
+    window.redo();
+    spacing = panel->findChild<QDoubleSpinBox*>(QStringLiteral("spin_rowSpacing"));
+    QCOMPARE(spacing->value(), 0.45);
+    QCOMPARE(std::get<openstitch::document::TatamiParams>(
+                 window.project_.findEmbroidery(fx.embroideryId)->params)
+                 .stagger,
+             5);
+}
+
+void MainWindowTest::inspectorRebuildsAfterTypeChangeKeepingTheSameId() {
+    MainWindow window;
+    const Fixture fx = buildTatamiSquareFixture();
+    window.applyLoadedProject(fx.project);
+    window.selectedEmbroidery_ = fx.embroideryId;
+    window.updateActions();
+    auto* panel = window.findChild<PropertiesPanel*>();
+    QVERIFY(panel != nullptr);
+    QVERIFY(panel->findChild<QDoubleSpinBox*>(QStringLiteral("spin_tatamiAngle")) != nullptr);
+
+    window.convertToDirectional(fx.embroideryId);
+    QVERIFY(panel->findChild<QLabel*>(QStringLiteral("label_directionalSummary")) != nullptr);
+    QVERIFY(panel->findChild<QDoubleSpinBox*>(QStringLiteral("spin_tatamiAngle")) == nullptr);
+
+    // Premier champ touché : les paramètres restent DIRECTIONNELS (guides conservés).
+    panel->findChild<QDoubleSpinBox*>(QStringLiteral("spin_rowSpacing"))->setValue(0.9);
+    const auto* emb = window.project_.findEmbroidery(fx.embroideryId);
+    QVERIFY(emb != nullptr && emb->is_directional());
+    const auto& dp = std::get<openstitch::document::DirectionalFillParams>(emb->params);
+    QCOMPARE(dp.row_spacing.value, 900);
+    QCOMPARE(dp.guides.size(), std::size_t{1});
+
+    window.undo(); // retour à l'espacement d'origine (directionnel)
+    window.undo(); // retour au tatami : le formulaire redevient celui du tatami
+    QVERIFY(window.project_.findEmbroidery(fx.embroideryId)->is_tatami());
+    QVERIFY(panel->findChild<QDoubleSpinBox*>(QStringLiteral("spin_tatamiAngle")) != nullptr);
+}
+
+void MainWindowTest::parameterBurstIsOneNamedUndoStep() {
+    MainWindow window;
+    const Fixture fx = buildTatamiSquareFixture();
+    window.applyLoadedProject(fx.project);
+    window.selectedEmbroidery_ = fx.embroideryId;
+    window.updateActions();
+    auto* panel = window.findChild<PropertiesPanel*>();
+    QVERIFY(panel != nullptr);
+    const auto stepsBefore = window.undoStack_.undoNames().size();
+
+    for (const double mm : {0.5, 0.6, 0.7}) {
+        panel->findChild<QDoubleSpinBox*>(QStringLiteral("spin_rowSpacing"))->setValue(mm);
+    }
+    QCOMPARE(window.undoStack_.undoNames().size(), stepsBefore + 1);
+    QCOMPARE(QString::fromStdString(window.undoStack_.undoName()),
+             QStringLiteral("Modifier : Espacement des rangées"));
+    window.undo();
+    QCOMPARE(std::get<openstitch::document::TatamiParams>(
+                 window.project_.findEmbroidery(fx.embroideryId)->params)
+                 .row_spacing.value,
+             450);
+}
+
+} // namespace openstitch::desktop
+
+namespace {
+
+// Deux triangles (A en x = 0, B en x = 3 mm) portant chacun un tatami d'espacement 0,4 mm.
+TrianglesFixture buildTwoTatamiTriangles(ObjectId& embA, ObjectId& embB) {
+    TrianglesFixture fx = buildTriangles();
+    for (const ObjectId vectorId : {fx.a, fx.b}) {
+        openstitch::document::EmbroideryObject emb;
+        emb.id = fx.project.object_ids.next();
+        emb.name = vectorId == fx.a ? "Tatami A" : "Tatami B";
+        emb.source_vector = vectorId;
+        emb.params = openstitch::document::TatamiParams{};
+        (vectorId == fx.a ? embA : embB) = emb.id;
+        fx.project.embroidery_objects.push_back(emb);
+    }
+    return fx;
+}
+
+std::int32_t minNodeX(const openstitch::document::Project& project, ObjectId id) {
+    std::int32_t best = std::numeric_limits<std::int32_t>::max();
+    for (const auto& node : project.findObject(id)->paths[0].outer.nodes) {
+        best = std::min(best, node.pos.x.value);
+    }
+    return best;
+}
+
+} // namespace
+
+namespace openstitch::desktop {
+
+void MainWindowTest::multiSelectionBlockAppliesSettingsToAllObjectsInOneStep() {
+    MainWindow window;
+    ObjectId embA{};
+    ObjectId embB{};
+    const TrianglesFixture fx = buildTwoTatamiTriangles(embA, embB);
+    window.applyLoadedProject(fx.project);
+    window.applySelectionClick(fx.a, SelectMode::Replace);
+    window.applySelectionClick(fx.b, SelectMode::Add);
+    auto* panel = window.findChild<PropertiesPanel*>();
+    QVERIFY(panel != nullptr);
+
+    auto* useSpacing = panel->findChild<QCheckBox*>(QStringLiteral("check_multiSpacing"));
+    auto* spacing = panel->findChild<QDoubleSpinBox*>(QStringLiteral("spin_multiSpacing"));
+    auto* useAngle = panel->findChild<QCheckBox*>(QStringLiteral("check_multiAngle"));
+    auto* angle = panel->findChild<QDoubleSpinBox*>(QStringLiteral("spin_multiAngle"));
+    auto* apply = panel->findChild<QPushButton*>(QStringLiteral("button_multiApply"));
+    QVERIFY(useSpacing && spacing && useAngle && angle && apply);
+    QVERIFY(!spacing->isEnabled()); // grisé tant que la case est décochée
+    useSpacing->setChecked(true);
+    spacing->setValue(0.7);
+    useAngle->setChecked(true);
+    angle->setValue(30.0);
+
+    const auto stepsBefore = window.undoStack_.undoNames().size();
+    apply->click();
+    QCOMPARE(window.undoStack_.undoNames().size(), stepsBefore + 1); // un seul pas
+    for (const ObjectId id : {embA, embB}) {
+        const auto& t = std::get<openstitch::document::TatamiParams>(
+            window.project_.findEmbroidery(id)->params);
+        QCOMPARE(t.row_spacing.value, 700);
+        QVERIFY(std::abs(t.angle.radians - 30.0 * std::numbers::pi / 180.0) < 1e-9);
+    }
+    window.undo();
+    for (const ObjectId id : {embA, embB}) {
+        const auto& t = std::get<openstitch::document::TatamiParams>(
+            window.project_.findEmbroidery(id)->params);
+        QCOMPARE(t.row_spacing.value, 400);
+        QCOMPARE(t.angle.radians, 0.0);
+    }
+}
+
+void MainWindowTest::multiSelectionBlockCanConvertEveryObjectToContourInOneStep() {
+    MainWindow window;
+    ObjectId embA{};
+    ObjectId embB{};
+    const TrianglesFixture fx = buildTwoTatamiTriangles(embA, embB);
+    window.applyLoadedProject(fx.project);
+    window.applySelectionClick(fx.a, SelectMode::Replace);
+    window.applySelectionClick(fx.b, SelectMode::Add);
+    auto* panel = window.findChild<PropertiesPanel*>();
+    auto* type = panel->findChild<QComboBox*>(QStringLiteral("combo_multiType"));
+    auto* apply = panel->findChild<QPushButton*>(QStringLiteral("button_multiApply"));
+    QVERIFY(type && apply);
+    type->setCurrentIndex(1); // contour cousu
+    apply->click();
+    QVERIFY(!window.project_.findEmbroidery(embA)->is_tatami());
+    QVERIFY(!window.project_.findEmbroidery(embB)->is_tatami());
+    window.undo();
+    QVERIFY(window.project_.findEmbroidery(embA)->is_tatami());
+    QVERIFY(window.project_.findEmbroidery(embB)->is_tatami());
+}
+
+void MainWindowTest::alignMenuMovesSelectedShapesInOneUndoStep() {
+    MainWindow window;
+    const TrianglesFixture fx = buildTriangles();
+    window.applyLoadedProject(fx.project);
+    auto* alignLeft = window.findChild<QAction*>(QStringLiteral("action_alignLeft"));
+    auto* alignBottom = window.findChild<QAction*>(QStringLiteral("action_alignBottom"));
+    QVERIFY(alignLeft != nullptr && alignBottom != nullptr);
+    window.applySelectionClick(fx.b, SelectMode::Replace);
+    QVERIFY(!alignLeft->isEnabled()); // une seule forme : rien à aligner
+
+    window.applySelectionClick(fx.a, SelectMode::Add);
+    QVERIFY(alignLeft->isEnabled());
+    const auto stepsBefore = window.undoStack_.undoNames().size();
+    alignLeft->trigger();
+    QCOMPARE(minNodeX(window.project_, fx.a), minNodeX(window.project_, fx.b));
+    QCOMPARE(window.undoStack_.undoNames().size(), stepsBefore + 1);
+    window.undo();
+    QCOMPARE(minNodeX(window.project_, fx.b), 3000);
+    QCOMPARE(minNodeX(window.project_, fx.a), 0);
+    // Déjà alignés sur Y (bas à 0) : aucune commande vide empilée.
+    const auto steps = window.undoStack_.undoNames().size();
+    alignBottom->trigger();
+    QCOMPARE(window.undoStack_.undoNames().size(), steps);
+}
+
+void MainWindowTest::vectorObjectInspectorEditsPositionAndSizeInMillimetres() {
+    MainWindow window;
+    const TrianglesFixture fx = buildTriangles();
+    window.applyLoadedProject(fx.project);
+    window.applySelectionClick(fx.a, SelectMode::Replace);
+    auto* panel = window.findChild<PropertiesPanel*>();
+    auto* x = panel->findChild<QDoubleSpinBox*>(QStringLiteral("spin_vectorX"));
+    auto* w = panel->findChild<QDoubleSpinBox*>(QStringLiteral("spin_vectorW"));
+    QVERIFY(x != nullptr && w != nullptr);
+    QCOMPARE(x->value(), 0.0);
+    QCOMPARE(w->value(), 1.0);
+
+    x->setValue(5.0);
+    QCOMPARE(minNodeX(window.project_, fx.a), 5000);
+    // Largeur 2 mm avec « conserver les proportions » : la hauteur suit (triangle carré 1 x 1).
+    panel->findChild<QDoubleSpinBox*>(QStringLiteral("spin_vectorW"))->setValue(2.0);
+    const auto* obj = window.project_.findObject(fx.a);
+    std::int32_t maxX = std::numeric_limits<std::int32_t>::min();
+    std::int32_t maxY = std::numeric_limits<std::int32_t>::min();
+    for (const auto& n : obj->paths[0].outer.nodes) {
+        maxX = std::max(maxX, n.pos.x.value);
+        maxY = std::max(maxY, n.pos.y.value);
+    }
+    QCOMPARE(maxX - 5000, 2000);
+    QCOMPARE(maxY, 2000); // bas inchangé à 0, hauteur doublée aussi
+    window.undo(); // annule le redimensionnement : la forme reprend 1 mm de large, X inchangé
+    QCOMPARE(minNodeX(window.project_, fx.a), 5000);
+    QCOMPARE(panel->findChild<QDoubleSpinBox*>(QStringLiteral("spin_vectorW"))->value(), 1.0);
+    window.undo();
+    QCOMPARE(minNodeX(window.project_, fx.a), 0);
+    // Le formulaire a suivi l'annulation (reconstruit d'après la forme).
+    QCOMPARE(panel->findChild<QDoubleSpinBox*>(QStringLiteral("spin_vectorX"))->value(), 0.0);
+}
+
+void MainWindowTest::orderPanelKeepsSelectionOnRefreshAndDisablesMovesAtBounds() {
+    MainWindow window;
+    ObjectId embA{};
+    ObjectId embB{};
+    const TrianglesFixture fx = buildTwoTatamiTriangles(embA, embB);
+    window.applyLoadedProject(fx.project);
+    window.setSelection({.region = std::nullopt, .embroidery = embB, .objects = {}});
+    window.updateActions();
+    window.refreshOrderPanel();
+    QVERIFY(window.selectedEmbroidery_.has_value()); // plus de clignotement : jamais vidée
+    QCOMPARE(window.selectedEmbroidery_->value, embB.value);
+    QCOMPARE(window.orderList_->currentRow(), 1);
+
+    auto* up = window.findChild<QPushButton*>(QStringLiteral("button_orderUp"));
+    auto* down = window.findChild<QPushButton*>(QStringLiteral("button_orderDown"));
+    auto* lock = window.findChild<QPushButton*>(QStringLiteral("button_orderLock"));
+    QVERIFY(up && down && lock);
+    QVERIFY(up->isEnabled());
+    QVERIFY(!down->isEnabled()); // dernier objet
+    QVERIFY(lock->isCheckable());
+    QVERIFY(!lock->text().contains(QStringLiteral("🔒"))); // pas d'emoji dépendant de la police
+    window.orderList_->setCurrentRow(0);
+    QVERIFY(!up->isEnabled()); // premier objet
+    QVERIFY(down->isEnabled());
+
+    // Mêmes libellés que le panneau Document : rang, type, nom.
+    QCOMPARE(window.orderList_->item(0)->text(),
+             DocumentPanel::itemText(*window.project_.findEmbroidery(embA), 1));
+    // Figer l'ordre : le bouton reflète l'état, annulable, libellé sans « verrou ».
+    lock->click();
+    QVERIFY(window.project_.findEmbroidery(embA)->locked);
+    QVERIFY(lock->isChecked());
+    QVERIFY(window.orderList_->item(0)->text().contains(QStringLiteral("[ordre figé]")));
+    QCOMPARE(QString::fromStdString(window.undoStack_.undoName()),
+             QStringLiteral("Figer l'ordre de l'objet"));
+}
+
+void MainWindowTest::documentPanelCheckBoxesAndRenameAreUndoableCommands() {
+    MainWindow window;
+    ObjectId embA{};
+    ObjectId embB{};
+    const TrianglesFixture fx = buildTwoTatamiTriangles(embA, embB);
+    window.applyLoadedProject(fx.project);
+    auto* tree = window.documentPanel_->findChild<QTreeWidget*>();
+    QVERIFY(tree != nullptr && tree->topLevelItemCount() == 2);
+
+    tree->topLevelItem(0)->setCheckState(1, Qt::Unchecked); // Visible
+    QTRY_VERIFY(!window.project_.findEmbroidery(embA)->visible);
+    window.undo();
+    QVERIFY(window.project_.findEmbroidery(embA)->visible);
+
+    tree = window.documentPanel_->findChild<QTreeWidget*>(); // même arbre, lignes reconstruites
+    tree->topLevelItem(1)->setCheckState(2, Qt::Checked);    // Ordre figé
+    QTRY_VERIFY(window.project_.findEmbroidery(embB)->locked);
+    window.undo();
+    QVERIFY(!window.project_.findEmbroidery(embB)->locked);
+
+    QTreeWidgetItem* item = tree->topLevelItem(0);
+    emit tree->itemDoubleClicked(item, 0);
+    item->setText(0, QStringLiteral("Pétale"));
+    QTRY_COMPARE(window.project_.findEmbroidery(embA)->name, std::string("Pétale"));
+    QCOMPARE(QString::fromStdString(window.undoStack_.undoName()),
+             QStringLiteral("Renommer l'objet"));
+    window.undo();
+    QCOMPARE(window.project_.findEmbroidery(embA)->name, std::string("Tatami A"));
+}
+
+void MainWindowTest::groupClickSelectsTheSourceShapeAndDeleteKeyWorksFromTheTree() {
+    MainWindow window;
+    ObjectId embA{};
+    ObjectId embB{};
+    const TrianglesFixture fx = buildTwoTatamiTriangles(embA, embB);
+    window.applyLoadedProject(fx.project);
+    window.resize(1400, 900);
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+    window.activateWindow();
+    QVERIFY(QTest::qWaitForWindowActive(&window));
+    auto* tree = window.documentPanel_->findChild<QTreeWidget*>();
+    QVERIFY(tree != nullptr);
+    tree->setCurrentItem(tree->topLevelItem(1));
+    QVERIFY(window.selectedEmbroidery_.has_value());
+    tree->setFocus();
+    QTest::keyClick(tree, Qt::Key_Delete);
+    QVERIFY(window.project_.findEmbroidery(embB) == nullptr); // Suppr depuis l'arbre
+    window.undo();
+    QVERIFY(window.project_.findEmbroidery(embB) != nullptr);
+}
+
+void MainWindowTest::historyPanelListsStepsAndJumpsToAnyState() {
+    MainWindow window;
+    ObjectId embA{};
+    ObjectId embB{};
+    const TrianglesFixture fx = buildTwoTatamiTriangles(embA, embB);
+    window.applyLoadedProject(fx.project);
+    window.resize(1400, 900);
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+    window.historyDock_->show();
+    window.undoStack_.breakMergeChain();
+    window.undoStack_.execute(std::make_unique<commands::RenameEmbroideryCommand>(embA, "Un"),
+                              window.project_);
+    window.undoStack_.execute(std::make_unique<commands::RenameEmbroideryCommand>(embA, "Deux"),
+                              window.project_);
+    window.updateActions();
+    QCOMPARE(window.historyList_->count(), 3); // État initial + 2 pas
+    QCOMPARE(window.historyList_->currentRow(), 2);
+
+    window.jumpToHistory(0);
+    QCOMPARE(window.project_.findEmbroidery(embA)->name, std::string("Tatami A"));
+    QCOMPARE(window.historyList_->count(), 3); // les pas annulés restent listés (rétablissables)
+    QCOMPARE(window.historyList_->currentRow(), 0);
+    window.jumpToHistory(1);
+    QCOMPARE(window.project_.findEmbroidery(embA)->name, std::string("Un"));
+    window.jumpToHistory(2);
+    QCOMPARE(window.project_.findEmbroidery(embA)->name, std::string("Deux"));
 }
 
 } // namespace openstitch::desktop

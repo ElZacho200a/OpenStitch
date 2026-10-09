@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
+#include <QApplication>
 #include <QCheckBox>
 #include <QComboBox>
 #include <QDoubleSpinBox>
@@ -7,6 +8,7 @@
 #include <QPushButton>
 #include <QSpinBox>
 #include <QTest>
+#include <QWheelEvent>
 
 #include <optional>
 #include <variant>
@@ -68,6 +70,13 @@ private slots:
     void autoSatinInspectorListsGuidesAndEditsScalars();
     void autoSatinGuideAngleEditAndRemoveEmitDedicatedSignals();
     void autoSatinStateRefreshUpdatesListWithoutRebuildingTheForm();
+    void tatamiEditChangesOnlyTheTouchedFieldWithoutRounding();
+    void rowSpacingAndLengthsAreBoundedWithRangeTooltips();
+    void wheelDoesNotChangeAnUnfocusedField();
+    void underlayFieldsAreGreyedWhenTheirBoxIsUnchecked();
+    void showsParamsTracksTheDocumentCopy();
+    void autoSatinSplitLengthIsBoundedByLmaxAndFollowsIt();
+    void selectingAGuideRowAsksForCanvasHighlight();
 };
 
 void PropertiesPanelTest::showEmbroideryPopulatesSpinBoxesWithoutEmittingWhileBuilding() {
@@ -214,7 +223,7 @@ void PropertiesPanelTest::autoSatinGuideAngleEditAndRemoveEmitDedicatedSignals()
     PropertiesPanel panel;
     panel.showEmbroidery(autoSatinObject(22));
     auto* list = panel.findChild<QListWidget*>(QStringLiteral("list_satinGuides"));
-    auto* angle = panel.findChild<QSpinBox*>(QStringLiteral("spin_satinGuideAngle"));
+    auto* angle = panel.findChild<QDoubleSpinBox*>(QStringLiteral("spin_satinGuideAngle"));
     auto* absolute = panel.findChild<QCheckBox*>(QStringLiteral("check_satinGuideAbsolute"));
     auto* remove = panel.findChild<QPushButton*>(QStringLiteral("button_satinGuideRemove"));
     auto* place = panel.findChild<QPushButton*>(QStringLiteral("button_editSatinGuides"));
@@ -286,6 +295,150 @@ void PropertiesPanelTest::autoSatinStateRefreshUpdatesListWithoutRebuildingTheFo
     panel.setAutoSatinState(openstitch::ObjectId{999}, &other, QStringLiteral("autre"));
     QCOMPARE(list->count(), 1);
     QCOMPARE(summary->text(), QStringLiteral("2 colonne(s) · couverture 99 %"));
+}
+
+void PropertiesPanelTest::tatamiEditChangesOnlyTheTouchedFieldWithoutRounding() {
+    PropertiesPanel panel;
+    EmbroideryObject e;
+    e.id = openstitch::ObjectId{31};
+    openstitch::document::TatamiParams tp;
+    tp.angle = openstitch::Angle{0.5876}; // 33,67 deg : non entier
+    tp.inset = Micrometers{237};          // non multiple de 10 um
+    tp.row_spacing = Micrometers{437};
+    e.params = tp;
+    panel.showEmbroidery(e);
+
+    std::optional<StitchParams> emitted;
+    QString field;
+    QObject::connect(&panel, &PropertiesPanel::paramsEdited, &panel,
+                     [&](openstitch::ObjectId, StitchParams p, QString f) {
+                         emitted = p;
+                         field = f;
+                     });
+    panel.findChild<QDoubleSpinBox*>(QStringLiteral("spin_rowSpacing"))->setValue(0.60);
+    QVERIFY(emitted.has_value());
+    const auto& out = std::get<openstitch::document::TatamiParams>(*emitted);
+    QCOMPARE(out.row_spacing.value, 600);
+    QCOMPARE(out.angle.radians, 0.5876); // ni arrondi ni relu depuis le widget
+    QCOMPARE(out.inset.value, 237);
+    QCOMPARE(field, QStringLiteral("Espacement des rangées"));
+
+    // L'angle s'édite à 0,1 degré près (et non plus en entiers).
+    auto* angle = panel.findChild<QDoubleSpinBox*>(QStringLiteral("spin_tatamiAngle"));
+    QVERIFY(angle != nullptr);
+    QCOMPARE(angle->decimals(), 1);
+    angle->setValue(45.5);
+    QCOMPARE(std::get<openstitch::document::TatamiParams>(*emitted).angle.radians,
+             45.5 * 3.14159265358979323846 / 180.0);
+}
+
+void PropertiesPanelTest::rowSpacingAndLengthsAreBoundedWithRangeTooltips() {
+    PropertiesPanel panel;
+    EmbroideryObject e;
+    e.id = openstitch::ObjectId{32};
+    e.params = openstitch::document::TatamiParams{};
+    panel.showEmbroidery(e);
+    auto* spacing = panel.findChild<QDoubleSpinBox*>(QStringLiteral("spin_rowSpacing"));
+    QVERIFY(spacing != nullptr);
+    QVERIFY(spacing->minimum() >= 0.1);
+    spacing->setValue(0.0);
+    QVERIFY(spacing->value() >= 0.1); // 0 mm = amas de fil : refusé
+    QVERIFY(spacing->toolTip().contains(QStringLiteral("Plage")));
+
+    PropertiesPanel directional;
+    EmbroideryObject d;
+    d.id = openstitch::ObjectId{33};
+    d.params = openstitch::document::DirectionalFillParams{};
+    directional.showEmbroidery(d);
+    QVERIFY(directional.findChild<QDoubleSpinBox*>(QStringLiteral("spin_rowSpacing"))->minimum() >=
+            0.1);
+
+    PropertiesPanel running;
+    running.showEmbroidery(runningStitchObject(34));
+    for (auto* spin : running.findChildren<QDoubleSpinBox*>()) {
+        QVERIFY(spin->minimum() >= 0.1);
+    }
+    QVERIFY(running.findChildren<QDoubleSpinBox*>().at(0)->minimum() >= 0.5);
+}
+
+void PropertiesPanelTest::wheelDoesNotChangeAnUnfocusedField() {
+    PropertiesPanel panel;
+    panel.showEmbroidery(runningStitchObject(35));
+    panel.show();
+    auto* spin = panel.findChildren<QDoubleSpinBox*>().at(0);
+    QCOMPARE(spin->focusPolicy(), Qt::StrongFocus);
+    const double before = spin->value();
+    QVERIFY(!spin->hasFocus());
+    QWheelEvent wheel(QPointF(5, 5), spin->mapToGlobal(QPointF(5, 5)), QPoint(), QPoint(0, 120),
+                      Qt::NoButton, Qt::NoModifier, Qt::NoScrollPhase, false);
+    QApplication::sendEvent(spin, &wheel);
+    QCOMPARE(spin->value(), before);
+}
+
+void PropertiesPanelTest::underlayFieldsAreGreyedWhenTheirBoxIsUnchecked() {
+    PropertiesPanel panel;
+    EmbroideryObject e;
+    e.id = openstitch::ObjectId{36};
+    e.params = openstitch::document::TatamiParams{};
+    panel.showEmbroidery(e);
+    auto* edge = panel.findChild<QCheckBox*>(QStringLiteral("check_underlayEdge"));
+    auto* inset = panel.findChild<QDoubleSpinBox*>(QStringLiteral("spin_underlayInset"));
+    auto* par = panel.findChild<QCheckBox*>(QStringLiteral("check_underlayParallel"));
+    auto* spacing = panel.findChild<QDoubleSpinBox*>(QStringLiteral("spin_underlaySpacing"));
+    QVERIFY(edge && inset && par && spacing);
+    QVERIFY(!inset->isEnabled());
+    QVERIFY(!spacing->isEnabled());
+    edge->setChecked(true);
+    QVERIFY(inset->isEnabled());
+    par->setChecked(true);
+    QVERIFY(spacing->isEnabled());
+    edge->setChecked(false);
+    QVERIFY(!inset->isEnabled());
+}
+
+void PropertiesPanelTest::showsParamsTracksTheDocumentCopy() {
+    PropertiesPanel panel;
+    EmbroideryObject e;
+    e.id = openstitch::ObjectId{37};
+    e.params = openstitch::document::TatamiParams{};
+    QVERIFY(!panel.showsParams(e.params)); // rien affiché
+    panel.showEmbroidery(e);
+    QVERIFY(panel.showsParams(e.params));
+    openstitch::document::TatamiParams other;
+    other.row_spacing = Micrometers{999};
+    QVERIFY(!panel.showsParams(other)); // document modifié ailleurs (undo...) : périmé
+    QVERIFY(!panel.showsParams(openstitch::document::DirectionalFillParams{})); // autre type
+    panel.adoptParams(e.id, other);
+    QVERIFY(panel.showsParams(other));
+}
+
+void PropertiesPanelTest::autoSatinSplitLengthIsBoundedByLmaxAndFollowsIt() {
+    PropertiesPanel panel;
+    panel.showEmbroidery(autoSatinObject(38));
+    auto* lmax = panel.findChild<QDoubleSpinBox*>(QStringLiteral("spin_autoSatinThreshold"));
+    auto* seg = panel.findChild<QDoubleSpinBox*>(QStringLiteral("spin_autoSatinSplitLength"));
+    QVERIFY(lmax && seg);
+    QCOMPARE(seg->maximum(), lmax->value());
+
+    std::optional<StitchParams> emitted;
+    QObject::connect(&panel, &PropertiesPanel::paramsEdited, &panel,
+                     [&](openstitch::ObjectId, StitchParams p, QString) { emitted = p; });
+    lmax->setValue(3.0);
+    QCOMPARE(seg->maximum(), 3.0);
+    QVERIFY(seg->value() <= 3.0);
+    QVERIFY(emitted.has_value());
+    const auto& out = std::get<AutoSatinParams>(*emitted);
+    QVERIFY(out.split_length.value <= out.split_threshold.value);
+}
+
+void PropertiesPanelTest::selectingAGuideRowAsksForCanvasHighlight() {
+    PropertiesPanel panel;
+    panel.showEmbroidery(autoSatinObject(39));
+    int selected = -1;
+    QObject::connect(&panel, &PropertiesPanel::satinGuideSelected, &panel,
+                     [&](openstitch::ObjectId, int index) { selected = index; });
+    panel.findChild<QListWidget*>(QStringLiteral("list_satinGuides"))->setCurrentRow(1);
+    QCOMPARE(selected, 1);
 }
 
 QTEST_MAIN(PropertiesPanelTest)

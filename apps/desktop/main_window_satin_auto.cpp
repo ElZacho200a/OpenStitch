@@ -342,10 +342,11 @@ void MainWindow::createAutoSatin(bool askParameters) {
 }
 
 void MainWindow::applyAutoSatinEdit(ObjectId id, document::AutoSatinParams params,
-                                    const QString& label) {
-    undoStack_.execute(std::make_unique<commands::EditAutoSatinCommand>(id, std::move(params),
-                                                                        label.toStdString()),
-                       project_);
+                                    const QString& label, const QString& mergeTag) {
+    auto cmd = std::make_unique<commands::EditAutoSatinCommand>(id, std::move(params),
+                                                                label.toStdString());
+    cmd->setMergeTag(mergeTag.toStdString());
+    undoStack_.execute(std::move(cmd), project_);
     refreshImage();
     updateActions();
 }
@@ -384,7 +385,36 @@ void MainWindow::changeAutoSatinGuide(ObjectId id, int index, double angleDeg, b
     }
     guide.angle = next;
     guide.absolute = absolute;
-    applyAutoSatinEdit(id, std::move(params), tr("Modifier un guide d'orientation"));
+    applyAutoSatinEdit(id, std::move(params), tr("Modifier un guide d'orientation"),
+                       QStringLiteral("guide-%1").arg(index));
+}
+
+void MainWindow::highlightAutoSatinGuide(ObjectId id, int index) {
+    const auto* emb = project_.findEmbroidery(id);
+    const auto* sat =
+        emb != nullptr ? std::get_if<document::AutoSatinParams>(&emb->params) : nullptr;
+    if (sat == nullptr || index < 0 || static_cast<std::size_t>(index) >= sat->guides.size()) {
+        return;
+    }
+    if (guideHighlight_ != nullptr) {
+        baseItems_.removeAll(guideHighlight_);
+        delete guideHighlight_;
+        guideHighlight_ = nullptr;
+    }
+    const auto& tokens = AppTheme::instance().tokens();
+    const QPointF c = toScene(sat->guides[static_cast<std::size_t>(index)].anchor);
+    auto* ring = new QGraphicsEllipseItem(-13.0, -13.0, 26.0, 26.0);
+    ring->setFlag(QGraphicsItem::ItemIgnoresTransformations);
+    QPen pen(tokens.warning, 3.0);
+    ring->setPen(pen);
+    ring->setBrush(Qt::NoBrush);
+    ring->setPos(c);
+    ring->setZValue(102);
+    ring->setToolTip(tr("Guide d'orientation #%1").arg(index + 1));
+    scene_->addItem(ring);
+    baseItems_.append(ring);
+    guideHighlight_ = ring;
+    statusBar()->showMessage(tr("Guide #%1 mis en évidence sur le canevas.").arg(index + 1), 3000);
 }
 
 void MainWindow::removeAutoSatinGuide(ObjectId id, int index) {
