@@ -121,6 +121,7 @@ table and "where do I change X" shortcuts):
 | `document` | project/object data model |
 | `stitch` | machine commands, stats |
 | `stitch_generation` | running/tatami/satin point generation, routing, manual overrides |
+| `stitch_render` | realistic thread view: sequence → thread segments → shaded RGBA image (Qt-free; painting stays in `apps/desktop`) |
 | `auto_satin` | skeleton extraction → satinability → auto rails/rungs, multi-section networks |
 | `stitch_analysis` | pre-export validation rules |
 | `optimization` | stitch order |
