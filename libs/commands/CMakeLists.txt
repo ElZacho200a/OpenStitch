@@ -1,6 +1,7 @@
 add_library(openstitch_commands
     src/undo_stack.cpp
     src/composite_command.cpp
+    src/vector_ops.cpp
 )
 add_library(openstitch::commands ALIAS openstitch_commands)
 
