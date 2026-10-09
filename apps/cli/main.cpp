@@ -7,12 +7,14 @@
 #include <string>
 
 #include <cmath>
+#include <cstdio>
+#include <fstream>
+#include <vector>
 #include <numbers>
 
 #include "openstitch/auto_satin/auto_satin.hpp"
-#include "openstitch/auto_satin/debug_export.hpp"
-#include "openstitch/auto_satin/satin_column.hpp"
 #include "openstitch/auto_satin/shapes.hpp"
+#include "openstitch/auto_satin/skeleton_satin.hpp"
 #include "openstitch/autodigitize/autodigitize.hpp"
 #include "openstitch/autodigitize/contour_objects.hpp"
 #include "openstitch/core/app_info.hpp"
@@ -23,14 +25,6 @@
 #include "openstitch/formats/svg.hpp"
 #include "openstitch/geometry/path.hpp"
 #include "openstitch/image/image.hpp"
-#include "openstitch/satin_coverage/coverage.hpp"
-#include "openstitch/satin_planning/beam_search.hpp"
-#include "openstitch/satin_planning/merge_pass.hpp"
-#include "openstitch/satin_planning/overlap.hpp"
-#include "openstitch/satin_planning/region_oracle.hpp"
-#include "openstitch/satin_planning/region_routing.hpp"
-#include "openstitch/satin_planning/region_satinability.hpp"
-#include "openstitch/satin_planning/region_split.hpp"
 #include "openstitch/segmentation/segmentation.hpp"
 #include "openstitch/stitch/sequence.hpp"
 #include "openstitch/stitch_analysis/metrics.hpp"
@@ -516,373 +510,74 @@ int run_digitize(const std::string& imagePath, const std::string& dstPath, doubl
     return 0;
 }
 
-openstitch::satin_coverage::SatinColumnInput
-to_coverage_input(const openstitch::geometry::Path& railA, const openstitch::geometry::Path& railB,
-                  const std::vector<openstitch::auto_satin::SatinRung>& rungs) {
-    openstitch::satin_coverage::SatinColumnInput in;
-    in.rail_a = railA;
-    in.rail_b = railB;
-    in.rungs.reserve(rungs.size());
-    for (const auto& r : rungs) {
-        in.rungs.emplace_back(r.a, r.b);
-    }
-    in.density = openstitch::Micrometers{400};
-    return in;
-}
-
-// Calcule et écrit le SVG de couverture géométrique (§ satin_coverage) pour
-// les colonnes déjà construites, en plus du diagnostic texte affiché sur la
-// sortie standard -- ne modifie ni `region` ni `columns`.
-void write_coverage_svg(const openstitch::geometry::PathSet& region,
-                        const std::vector<openstitch::satin_coverage::SatinColumnInput>& columns,
-                        const std::string& path) {
-    using namespace openstitch;
-    const auto report = satin_coverage::analyze_satin_coverage(region, columns);
-    if (!report) {
-        fmt::print(stderr, "Erreur de couverture : {}\n", report.error().message);
-        return;
-    }
-    fmt::print("\n{}\n", report->diagnostic);
-    const std::string svg = satin_coverage::coverage_to_svg(region, columns, *report);
-    std::ofstream f(std::filesystem::path(path), std::ios::binary | std::ios::trunc);
-    if (!f) {
-        fmt::print(stderr, "Impossible d'écrire {}\n", path);
-        return;
-    }
-    f << svg;
-    fmt::print("SVG de couverture écrit : {}\n", path);
-}
-
-int run_auto_satin_debug(const std::string& shape, double pixelMm, const std::string& outSvg,
-                         int capEnd, int shortMode, int splitMode, int underlayMask, int lockMode,
-                         bool route, const std::string& geometryMode,
-                         const std::string& coverageSvg) {
+// Auto-satin par squelette et traversées orientées (spec
+// specs/plans/satin-squelette-traversees.md) sur une forme de référence : résume
+// colonnes, longueurs de traversées et diagnostics, et écrit un SVG (contour, axes,
+// traversées, zigzag) pour inspecter orientations et zones non couvertes.
+int run_satin_auto_debug(const std::string& shape, double spacingMm,
+                         const std::vector<std::string>& guides, const std::string& outSvg) {
     using namespace openstitch;
     const auto region = auto_satin::make_shape(shape);
     if (!region) {
         fmt::print(stderr, "Forme inconnue : {}\n", shape);
         return 1;
     }
-    const bool parametric = geometryMode == "parametric";
-    auto_satin::SatinColumnsParameters params;
-    params.analysis.raster.pixel_size = to_micrometers(Millimeters{pixelMm});
-    params.geometry_mode = parametric ? auto_satin::SatinGeometryMode::Parametric
-                                      : auto_satin::SatinGeometryMode::Legacy;
-    const auto result = auto_satin::build_satin_columns(*region, params);
-    const auto& r = result.report;
-    fmt::print("Forme            : {}\n", shape);
-    fmt::print("Geometrie        : {}\n", geometryMode);
-    fmt::print("Satinabilité     : {} (confiance {:.2f})\n", auto_satin::to_string(r.status),
-               r.confidence);
-    fmt::print("Aire / périmètre : {:.1f} mm² / {:.1f} mm\n", r.area_mm2, r.perimeter_mm);
-    fmt::print("Largeur moy/min/max : {:.2f} / {:.2f} / {:.2f} mm\n", r.mean_width_mm,
-               r.minimum_width_mm, r.maximum_width_mm);
-    fmt::print("Longueur d'axe   : {:.1f} mm  (allongée : {})\n", r.estimated_length_mm,
-               r.is_elongated ? "oui" : "non");
-    fmt::print("Squelette (élagué) : {} arêtes, {} extrémités, {} jonctions\n", r.branch_count,
-               r.endpoint_count, r.junction_count);
-    fmt::print("Trous            : {}\n", r.hole_count);
-    if (parametric) {
-        fmt::print("Objets satin     : {}\n", result.parametric_columns.size());
-        for (std::size_t i = 0; i < result.parametric_columns.size(); ++i) {
-            const auto& c = result.parametric_columns[i];
-            fmt::print("  objet {} : {} stations brutes -> {} paires structurantes, {} segments "
-                       "bezier, erreur max {:.3f} mm, largeur moy {:.2f} mm, long {:.1f} mm\n",
-                       i, c.raw_station_count, c.control_pairs.size(),
-                       c.rail_a.nodes.empty() ? 0 : c.rail_a.nodes.size() - 1,
-                       c.max_fit_error_um / 1000.0, c.mean_width_um / 1000.0, c.length_um / 1000.0);
-        }
-        for (const auto& plan : result.junction_plans) {
-            fmt::print("  jonction {} : ordre de couture =", plan.junction_id);
-            for (auto idx : plan.stitch_order) {
-                fmt::print(" {}", idx);
-            }
-            fmt::print("\n");
-        }
-    } else {
-        fmt::print("Colonnes satin   : {}\n", result.columns.size());
-        for (std::size_t i = 0; i < result.columns.size(); ++i) {
-            const auto& c = result.columns[i];
-            fmt::print(
-                "  colonne {} : {} stations, {} barreaux, largeur moy {:.2f} mm, long {:.1f} mm\n",
-                i, c.rail_a.nodes.size(), c.rungs.size(), c.mean_width_um / 1000.0,
-                c.length_um / 1000.0);
-        }
-    }
-    if (!result.refusal.empty()) {
-        fmt::print("Refus            : {}\n", result.refusal);
-    }
-    for (const auto& w : result.warnings) {
-        fmt::print("  ! {}\n", w);
-    }
-    if (!coverageSvg.empty()) {
-        // Lit la liste RÉELLEMENT peuplée, pas celle demandée par
-        // `--satin-geometry` : certaines formes (anneaux, cas refusés en
-        // Parametric) retombent automatiquement sur `columns` (Legacy) à
-        // l'intérieur de `build_satin_columns` même quand Parametric est
-        // demandé (§ docs/source/satin.md) -- se fier au seul indicateur
-        // `parametric` ferait lire `parametric_columns` vide dans ce cas et
-        // rapporterait une couverture nulle alors que des colonnes existent
-        // bel et bien côté `columns` (défaut trouvé en balayant le corpus de
-        // formes avec l'analyseur de couverture, 2026-08-13).
-        std::vector<satin_coverage::SatinColumnInput> coverageColumns;
-        if (!result.parametric_columns.empty()) {
-            for (const auto& obj : result.parametric_columns) {
-                coverageColumns.push_back(to_coverage_input(obj.rail_a, obj.rail_b, obj.rungs));
-            }
-        } else {
-            for (const auto& col : result.columns) {
-                coverageColumns.push_back(to_coverage_input(col.rail_a, col.rail_b, col.rungs));
-            }
-        }
-        write_coverage_svg(*region, coverageColumns, coverageSvg);
-    }
-    if (!outSvg.empty() && parametric) {
-        std::string svg = auto_satin::parametric_to_svg(*region, result);
-        std::string overlay;
-        for (const auto& obj : result.parametric_columns) {
-            std::vector<stitch_generation::SatinRungSeg> rungs;
-            for (const auto& rr : obj.rungs) {
-                rungs.emplace_back(rr.a, rr.b);
-            }
-            stitch_generation::SatinConfig scfg;
-            scfg.cap_end = static_cast<stitch_generation::SatinCapType>(capEnd);
-            scfg.short_stitch = static_cast<stitch_generation::ShortStitchMode>(shortMode);
-            scfg.split_stitch = static_cast<stitch_generation::SplitStitchMode>(splitMode);
-            scfg.center_underlay = (underlayMask & 1) != 0;
-            scfg.underlay_edge = (underlayMask & 2) != 0;
-            scfg.underlay_zigzag = (underlayMask & 4) != 0;
-            const auto sat =
-                stitch_generation::fill_satin_columns(obj.rail_a, obj.rail_b, rungs, scfg);
-            const auto polylineSvg = [&](const std::vector<Vec2um>& pts, const char* stroke,
-                                         double w) {
-                if (pts.size() < 2)
-                    return;
-                overlay += "<path d=\"M";
-                for (std::size_t i = 0; i < pts.size(); ++i) {
-                    overlay += fmt::format("{}{:.3f} {:.3f} ", i ? "L" : "",
-                                           pts[i].x.value / 1000.0, -pts[i].y.value / 1000.0);
-                }
-                overlay += fmt::format("\" fill=\"none\" stroke=\"{}\" stroke-width=\"{}\"/>\n",
-                                       stroke, w);
-            };
-            for (const auto& u : sat.underlays) {
-                polylineSvg(u.points, "#0a9", 0.05);
-            }
-            polylineSvg(sat.satin, "#333", 0.06);
-        }
-        if (const auto pos = svg.rfind("</svg>"); pos != std::string::npos) {
-            svg.insert(pos, overlay);
-        }
-        std::ofstream f(std::filesystem::path(outSvg), std::ios::binary | std::ios::trunc);
-        if (!f) {
-            fmt::print(stderr, "Impossible d'écrire {}\n", outSvg);
+    auto_satin::SkeletonSatinParameters params;
+    params.spacing = to_micrometers(Millimeters{spacingMm});
+    params.measure_coverage = true;
+    for (const auto& g : guides) {
+        double xMm = 0.0, yMm = 0.0, deg = 0.0;
+        int absolute = 0;
+        const int n = sscanf_s(g.c_str(), "%lf,%lf,%lf,%d", &xMm, &yMm, &deg, &absolute);
+        if (n < 3) {
+            fmt::print(stderr, "Guide invalide « {} » (attendu : x_mm,y_mm,angle_deg[,1=absolu])\n",
+                       g);
             return 1;
         }
-        f << svg;
-        fmt::print("SVG écrit : {}\n", outSvg);
-        return 0;
+        params.guides.push_back(
+            {Vec2um{to_micrometers(Millimeters{xMm}), to_micrometers(Millimeters{yMm})},
+             deg * std::numbers::pi / 180.0, absolute != 0});
+    }
+    const auto result = auto_satin::generate_skeleton_satin(*region, params);
+    if (!result) {
+        fmt::print(stderr, "Erreur : {}\n", result.error().message);
+        return 1;
+    }
+    std::size_t total = 0;
+    fmt::print("Forme : {}  |  colonnes : {}\n", shape, result->columns.size());
+    for (std::size_t c = 0; c < result->columns.size(); ++c) {
+        const auto& cr = result->columns[c].crossings;
+        double lo = 1e18, hi = 0.0, sum = 0.0;
+        for (const auto& x : cr) {
+            const double len = length_um(x.b - x.a) / 1000.0;
+            lo = (std::min)(lo, len);
+            hi = (std::max)(hi, len);
+            sum += len;
+        }
+        total += cr.size();
+        fmt::print("  colonne {} : {} traversées, longueur {:.2f} / {:.2f} / {:.2f} mm (min/moy/max)\n",
+                   c + 1, cr.size(), cr.empty() ? 0.0 : lo,
+                   cr.empty() ? 0.0 : sum / static_cast<double>(cr.size()), hi);
+    }
+    const auto& d = result->diagnostics;
+    fmt::print("Traversées : {}  |  morceaux : {}\n", total, d.pieces);
+    fmt::print("Diagnostics : hors région {}  |  trop courtes {}  |  angle ramené {}  |  garde de "
+               "rayon {}  |  guides orphelins {}\n",
+               d.outside_samples, d.too_short, d.clamped_angle, d.radius_guard_hits,
+               d.orphan_guides);
+    if (d.coverage_measured) {
+        fmt::print("Couverture estimée : {:.1f} %  |  fil en double : x{:.2f}  |  non couvert : "
+                   "{:.1f} mm²\n",
+                   d.coverage_ratio * 100.0, d.overlap_ratio, d.uncovered_area_mm2);
+    }
+    for (const auto& m : d.messages) {
+        fmt::print("  ! {}\n", m);
     }
     if (!outSvg.empty()) {
-        std::string svg = auto_satin::columns_to_svg(*region, result);
-        // Superpose le zigzag satin généré (fil réel) pour inspection visuelle.
-        std::string overlay;
-        for (const auto& col : result.columns) {
-            std::vector<stitch_generation::SatinRungSeg> rungs;
-            for (const auto& rung : col.rungs) {
-                rungs.emplace_back(rung.a, rung.b);
-            }
-            stitch_generation::SatinConfig scfg;
-            scfg.cap_end = static_cast<stitch_generation::SatinCapType>(capEnd);
-            scfg.short_stitch = static_cast<stitch_generation::ShortStitchMode>(shortMode);
-            scfg.split_stitch = static_cast<stitch_generation::SplitStitchMode>(splitMode);
-            scfg.center_underlay = (underlayMask & 1) != 0;
-            scfg.underlay_edge = (underlayMask & 2) != 0;
-            scfg.underlay_zigzag = (underlayMask & 4) != 0;
-            const auto sat =
-                stitch_generation::fill_satin_columns(col.rail_a, col.rail_b, rungs, scfg);
-            const auto polylineSvg = [&](const std::vector<Vec2um>& pts, const char* stroke,
-                                         double w) {
-                if (pts.size() < 2)
-                    return;
-                overlay += "<path d=\"M";
-                for (std::size_t i = 0; i < pts.size(); ++i) {
-                    overlay += fmt::format("{}{:.3f} {:.3f} ", i ? "L" : "",
-                                           pts[i].x.value / 1000.0, -pts[i].y.value / 1000.0);
-                }
-                overlay += fmt::format("\" fill=\"none\" stroke=\"{}\" stroke-width=\"{}\"/>\n",
-                                       stroke, w);
-            };
-            for (const auto& u : sat.underlays) {
-                polylineSvg(u.points, "#0a9", 0.05); // sous-couches (vert)
-            }
-            polylineSvg(sat.satin, "#333", 0.06); // couche supérieure
-            // Points de fixation (Lot 5) : ancrés aux extrémités du satin, rouge.
-            if (lockMode > 0 && sat.satin.size() >= 2) {
-                const auto type = static_cast<stitch_generation::LockType>(lockMode);
-                const std::size_t n = sat.satin.size();
-                polylineSvg(stitch_generation::lock_stitches(sat.satin.front(), sat.satin[1], type,
-                                                             Micrometers{800}, 2),
-                            "#c00", 0.06);
-                polylineSvg(stitch_generation::lock_stitches(sat.satin[n - 1], sat.satin[n - 2],
-                                                             type, Micrometers{800}, 2),
-                            "#c00", 0.06);
-            }
-        }
-        // Routage multi-colonnes (Lot 6) : construit un projet à partir des
-        // colonnes (même couleur/source), génère la séquence et superpose les
-        // liaisons — trajets cachés (bleu) vs sauts (rouge pointillé).
-        if (route && result.columns.size() >= 2) {
-            document::Project project;
-            document::VectorObject vec;
-            vec.id = project.object_ids.next();
-            project.vector_objects.push_back(vec);
-            for (const auto& col : result.columns) {
-                document::SatinParams sp;
-                sp.rail_a = col.rail_a;
-                sp.rail_b = col.rail_b;
-                sp.center_underlay = false; // lisibilité : une passe par colonne
-                for (const auto& rr : col.rungs) {
-                    sp.rungs.push_back(document::SatinRung{rr.a, rr.b});
-                }
-                document::EmbroideryObject emb;
-                emb.id = project.object_ids.next();
-                emb.source_vector = vec.id;
-                emb.rgb = {10, 20, 30};
-                emb.params = sp;
-                project.embroidery_objects.push_back(emb);
-            }
-            // Projet synthetique construit ici meme, jamais charge/sauvegarde,
-            // aucune retouche manuelle possible. raw-sequence-ok: generateur.
-            if (const auto seq = stitch_generation::generate_sequence(project)) {
-                const auto pt = [](Vec2um p) {
-                    return fmt::format("{:.3f} {:.3f}", p.x.value / 1000.0, -p.y.value / 1000.0);
-                };
-                // Une liaison = changement de colonne source. Saut (coupe) en
-                // rouge pointillé, trajet caché (cousu) en bleu.
-                for (std::size_t i = 1; i < seq->commands.size(); ++i) {
-                    const auto& prev = seq->commands[i - 1];
-                    const auto& cur = seq->commands[i];
-                    if (cur.source == prev.source || prev.source.value == 0 ||
-                        cur.source.value == 0 || cur.type == stitch::CommandType::End) {
-                        continue;
-                    }
-                    const bool jump = cur.type == stitch::CommandType::Jump;
-                    overlay += fmt::format("<path d=\"M{} L{}\" fill=\"none\" stroke=\"{}\" "
-                                           "stroke-width=\"0.15\"{}/>\n",
-                                           pt(prev.pos), pt(cur.pos), jump ? "#e00" : "#06c",
-                                           jump ? " stroke-dasharray=\"0.4 0.3\"" : "");
-                }
-            }
-        }
-        if (const auto pos = svg.rfind("</svg>"); pos != std::string::npos) {
-            svg.insert(pos, overlay);
-        }
-        std::ofstream f(std::filesystem::path(outSvg), std::ios::binary | std::ios::trunc);
-        if (!f) {
-            fmt::print(stderr, "Impossible d'écrire {}\n", outSvg);
-            return 1;
-        }
-        f << svg;
-        fmt::print("SVG écrit : {}\n", outSvg);
+        std::ofstream out(outSvg, std::ios::binary);
+        out << auto_satin::skeleton_satin_to_svg(*region, *result);
+        fmt::print("SVG : {}\n", outSvg);
     }
-    return 0;
-}
-
-// Fait tourner le pipeline SGSD complet (Skeleton-Guided Satin Decomposition,
-// phases 1 à 9, § docs/source/satin.md) sur une forme de référence et
-// affiche le rapport de chaque phase, plus une comparaison de couverture
-// agrégée contre l'appel direct à `build_satin_columns` sur la forme
-// entière (l'approche historique, non décomposée). N'écrit aucune
-// géométrie satin définitive : outil de diagnostic, comme
-// `auto-satin-debug`.
-int run_sgsd_debug(const std::string& shape, double pixelMm, int beamWidth) {
-    using namespace openstitch;
-    const auto region = auto_satin::make_shape(shape);
-    if (!region) {
-        fmt::print(stderr, "Forme inconnue : {}\n", shape);
-        return 1;
-    }
-
-    auto_satin::AutoSatinParameters analysisParams;
-    analysisParams.raster.pixel_size = to_micrometers(Millimeters{pixelMm});
-    const auto analysis = auto_satin::analyze_region(*region, analysisParams);
-    if (!analysis) {
-        fmt::print(stderr, "Erreur d'analyse : {}\n", analysis.error().message);
-        return 1;
-    }
-
-    fmt::print("========== Phases 1-2 : graphe de squelette + décomposition ==========\n");
-    const auto decomposition = satin_planning::decompose_into_paths(analysis->debug.graph);
-    fmt::print("{}\n",
-               satin_planning::format_decomposition_report(analysis->debug.graph, decomposition));
-
-    fmt::print("========== Phase 3/4/6 : découpage (candidats + garde-fou de satinabilité + "
-               "recherche à faisceau) ==========\n");
-    satin_planning::CutCandidateParams cutParams;
-    satin_planning::BeamSearchParams beamParams;
-    beamParams.beam_width = static_cast<std::size_t>(beamWidth > 0 ? beamWidth : 0);
-    beamParams.genParams.analysis.raster.pixel_size = analysisParams.raster.pixel_size;
-    beamParams.genParams.geometry_mode = auto_satin::SatinGeometryMode::Parametric;
-    satin_planning::OracleGuidedSelector selector(beamParams);
-    if (beamWidth > 0) {
-        cutParams.selector = std::ref(selector);
-        fmt::print("(recherche à faisceau active, largeur={})\n\n", beamWidth);
-    } else {
-        fmt::print("(recherche à faisceau désactivée : premier candidat valide retenu)\n\n");
-    }
-    const auto split =
-        satin_planning::split_region(*region, analysis->debug.graph, decomposition, cutParams);
-    fmt::print("{}\n", satin_planning::format_region_split_report(split, decomposition));
-
-    auto_satin::SatinColumnsParameters genParams;
-    genParams.analysis.raster.pixel_size = analysisParams.raster.pixel_size;
-    genParams.geometry_mode = auto_satin::SatinGeometryMode::Parametric;
-
-    fmt::print("========== Phase 5 : Auto-Satin réel + Coverage Analyzer par région ==========\n");
-    const auto genReport = satin_planning::evaluate_decomposition_generation(split, genParams);
-    fmt::print("{}\n", satin_planning::format_generation_report(genReport));
-
-    fmt::print("========== Phase 7 : passe de fusion ==========\n");
-    satin_planning::MergePassParams mergeParams;
-    mergeParams.genParams = genParams;
-    const auto mergeReport = satin_planning::evaluate_merge_pass(split, mergeParams);
-    fmt::print("{}\n", satin_planning::format_merge_pass_report(mergeReport));
-
-    fmt::print("========== Phase 8 : recouvrements entre régions adjacentes ==========\n");
-    const auto overlapReport = satin_planning::generate_overlaps(split);
-    fmt::print("{}\n", satin_planning::format_overlap_report(overlapReport));
-
-    fmt::print("========== Phase 9 : routage multi-régions ==========\n");
-    satin_planning::RegionRoutingParams routingParams;
-    routingParams.genParams = genParams;
-    const auto routingReport = satin_planning::route_regions(split, routingParams);
-    fmt::print("{}\n", satin_planning::format_region_routing_report(routingReport));
-
-    fmt::print("========== Comparaison : SGSD vs approche directe (build_satin_columns sur la "
-               "forme entière) ==========\n");
-    const auto direct = auto_satin::build_satin_columns(*region, genParams);
-    std::vector<satin_coverage::SatinColumnInput> directColumns;
-    if (!direct.parametric_columns.empty()) {
-        for (const auto& obj : direct.parametric_columns) {
-            directColumns.push_back(to_coverage_input(obj.rail_a, obj.rail_b, obj.rungs));
-        }
-    } else {
-        for (const auto& col : direct.columns) {
-            directColumns.push_back(to_coverage_input(col.rail_a, col.rail_b, col.rungs));
-        }
-    }
-    double directCoverage = 0.0;
-    if (!directColumns.empty()) {
-        const auto directReport = satin_coverage::analyze_satin_coverage(*region, directColumns);
-        if (directReport)
-            directCoverage = directReport->raw_coverage_ratio * 100.0;
-    }
-    fmt::print("SGSD (agrégé, {} région(s) résolue(s) sur {})   : {:.1f}%\n", split.regions.size(),
-               decomposition.paths.size(), genReport.aggregate_coverage_ratio);
-    fmt::print("Direct (build_satin_columns, non décomposé)     : {:.1f}%{}\n", directCoverage,
-               direct.refusal.empty() ? "" : fmt::format(" (refus : {})", direct.refusal));
-
     return 0;
 }
 
@@ -985,56 +680,22 @@ int main(int argc, char** argv) {
                        "Tatami (ring) : sous-couches (masque : 1 contour, 2 parallèle)");
     sd_cmd->add_flag("--underpath", sd_underpath, "Tatami (ring) : liaisons cousues cachées");
 
-    std::string as_shape = "rectangle";
-    double as_pixel = 0.05;
-    std::string as_out;
-    int as_cap = 0, as_short = 0, as_split = 0;
-    auto* as_cmd = app.add_subcommand(
-        "auto-satin-debug", "Analyse de satinabilité et squelette d'une forme de référence");
-    as_cmd->add_option("--shape", as_shape,
+    std::string sa_shape = "rectangle";
+    double sa_spacing = 0.4;
+    std::vector<std::string> sa_guides;
+    std::string sa_out;
+    auto* sa_cmd = app.add_subcommand(
+        "satin-auto-debug",
+        "Auto-satin par squelette et traversées orientées sur une forme de référence");
+    sa_cmd->add_option("--shape", sa_shape,
                        "rectangle|capsule|ribbon|s|y|t|cross|h|circle|ring|wide|tiny|notch|pinch|"
-                       "trident");
-    as_cmd->add_option("--pixel-size", as_pixel, "Taille de pixel de calcul en mm")
+                       "trident|star5|comb|E|e_trunk_isolated|multi_neck|two_holes|... "
+                       "(corpus de auto_satin::make_shape)");
+    sa_cmd->add_option("--spacing", sa_spacing, "Espacement des traversées en mm (défaut 0,4)")
         ->check(CLI::PositiveNumber);
-    as_cmd->add_option("--output-svg", as_out, "SVG de diagnostic à produire");
-    as_cmd->add_option("--cap-end", as_cap, "Terminaison fin : 0 plat, 1 arrondi, 2 effilé");
-    as_cmd->add_option("--short", as_short, "Points courts : 0 off, 2 inset, 3 multi-niveaux");
-    as_cmd->add_option("--split", as_split, "Split : 0 off, 1 simple, 2 décalé, 3 jitter");
-    int as_underlay = 0;
-    as_cmd->add_option("--underlay", as_underlay,
-                       "Sous-couches (masque : 1 center, 2 edge, 4 zigzag)");
-    int as_lock = 0;
-    as_cmd->add_option("--lock", as_lock,
-                       "Fixation : 0 off, 1 aller-retour, 2 triangle, 3 micro-zigzag");
-    bool as_route = false;
-    as_cmd->add_flag("--route", as_route,
-                     "Superpose le routage multi-colonnes (liaisons cachées bleu / sauts rouge)");
-    std::string as_geometry = "legacy";
-    as_cmd
-        ->add_option("--satin-geometry", as_geometry,
-                     "legacy (rails polyligne denses) | parametric (objets satin "
-                     "parametriques, rails Bezier epars)")
-        ->check(CLI::IsMember({"legacy", "parametric"}));
-    std::string as_coverage_svg;
-    as_cmd->add_option("--coverage-svg", as_coverage_svg,
-                       "SVG de couverture geometrique a produire (satin_coverage : cible grise, "
-                       "couverture verte, zones manquantes rouges, hors-forme orange)");
-
-    std::string sg_shape = "trident";
-    double sg_pixel = 0.05;
-    int sg_beam = 3;
-    auto* sg_cmd = app.add_subcommand(
-        "sgsd-debug",
-        "Pipeline complet de decomposition guidee par squelette (SGSD, phases 1-9) sur une forme "
-        "de reference");
-    sg_cmd->add_option("--shape", sg_shape,
-                       "rectangle|capsule|ribbon|s|y|t|cross|h|circle|ring|wide|tiny|notch|pinch|"
-                       "trident");
-    sg_cmd->add_option("--pixel-size", sg_pixel, "Taille de pixel de calcul en mm")
-        ->check(CLI::PositiveNumber);
-    sg_cmd->add_option("--beam-width", sg_beam,
-                       "Largeur de la recherche a faisceau (phase 6) ; 0 = premier candidat valide "
-                       "retenu (comportement par defaut de la phase 3)");
+    sa_cmd->add_option("--guide", sa_guides,
+                       "Guide d'orientation x_mm,y_mm,angle_deg[,1=absolu] (répétable)");
+    sa_cmd->add_option("--output-svg", sa_out, "SVG de diagnostic à produire");
 
     CLI11_PARSE(app, argc, argv);
 
@@ -1055,12 +716,8 @@ int main(int argc, char** argv) {
     if (sd_cmd->parsed()) {
         return run_stitchdebug(sd_shape, sd_length, sd_repeats, sd_out, sd_underlay, sd_underpath);
     }
-    if (as_cmd->parsed()) {
-        return run_auto_satin_debug(as_shape, as_pixel, as_out, as_cap, as_short, as_split,
-                                    as_underlay, as_lock, as_route, as_geometry, as_coverage_svg);
-    }
-    if (sg_cmd->parsed()) {
-        return run_sgsd_debug(sg_shape, sg_pixel, sg_beam);
+    if (sa_cmd->parsed()) {
+        return run_satin_auto_debug(sa_shape, sa_spacing, sa_guides, sa_out);
     }
     return 0;
 }
