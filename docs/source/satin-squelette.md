@@ -212,3 +212,25 @@ Mesures du 2026-10 (couverture / recouvrement, `make_shape`), planchers gelés d
 | `libs/auto_satin/src/skeleton_satin.cpp` | chaînes, coudes, cellules, guides, anneaux |
 | `libs/stitch_generation/src/generate.cpp` | `generate_auto_satin` |
 | `apps/desktop/main_window_satin_auto.cpp` | création, guides, aperçu, squelette |
+
+## Coudes serrés : croisements et éventail (2026-10)
+
+Sur des bandes courbes à coude serré (rayon du coude inférieur à la largeur), trois défauts
+ont été observés puis corrigés dans `libs/auto_satin` :
+
+- **Nœud de fils côté intérieur** : les traversées d'un coude se coupent au centre
+  instantané de rotation de l'orientation (`t* = −σ/g'`). Chaque traversée est bornée du
+  côté convergent (`converge_keep`), puis une passe `trim_crossings` raccourcit, à chaque
+  croisement résiduel, la traversée qui s'étend le plus loin de son point d'axe (l'autre
+  reste entière). Les traversées quasi confondues (recouvrement de cellules) sont
+  dédoublonnées, la plus courte étant retirée.
+- **Secteur extérieur vide** : couper un coude en deux pièces perdait la rotation située
+  juste à la coupe. `junction_fan` ajoute, côté extérieur uniquement, des cordes autour du
+  point de coupe dont l'angle suit la rotation de la tangente (pas angulaire `ρ/portée`).
+- **Saut après échec d'échantillon** : après une corde non émise, le pas retombe à `ρ/4`
+  au lieu de `ρ`, pour ne pas enjamber un coude.
+
+Garantie testée : sur tout le corpus, aucune paire de traversées d'une même colonne ne se
+coupe (`crossing_pairs == 0`). Coût mesuré : `s` passe de 0,99 à 0,975 et `two_holes` de
+0,985 à 0,980 de couverture estimée (planchers abaissés en conséquence). Non validé sur
+machine.

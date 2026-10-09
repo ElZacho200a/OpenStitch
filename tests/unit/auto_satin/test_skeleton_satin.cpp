@@ -378,6 +378,32 @@ bool same_result(const as::SkeletonSatinResult& a, const as::SkeletonSatinResult
     return true;
 }
 
+// Nombre de paires de traversées d'une même colonne qui se coupent strictement.
+int crossing_pairs(const as::SkeletonSatinResult& res) {
+    int count = 0;
+    for (const auto& col : res.columns) {
+        const auto& c = col.crossings;
+        for (std::size_t i = 0; i < c.size(); ++i) {
+            for (std::size_t j = i + 1; j < c.size(); ++j) {
+                const double x1 = c[i].a.x.value, y1 = c[i].a.y.value;
+                const double rx = c[i].b.x.value - x1, ry = c[i].b.y.value - y1;
+                const double x3 = c[j].a.x.value, y3 = c[j].a.y.value;
+                const double wx = c[j].b.x.value - x3, wy = c[j].b.y.value - y3;
+                const double den = rx * wy - ry * wx;
+                if (std::abs(den) < 1e-9) {
+                    continue;
+                }
+                const double t = ((x3 - x1) * wy - (y3 - y1) * wx) / den;
+                const double u = ((x3 - x1) * ry - (y3 - y1) * rx) / den;
+                if (t > 0.02 && t < 0.98 && u > 0.02 && u < 0.98) {
+                    ++count;
+                }
+            }
+        }
+    }
+    return count;
+}
+
 struct Floor {
     const char* name;
     double coverage; // plancher de couverture (mesures du 2026-10, marge ~0,5 point)
@@ -396,7 +422,7 @@ TEST_CASE("pipeline: planchers de couverture et recouvrement borne sur le corpus
         {"rectangle", 0.990, 1},
         {"capsule", 0.990, 1},
         {"ribbon", 0.990, 1},
-        {"s", 0.990, 1},
+        {"s", 0.975, 1},
         {"y", 0.990, 3},
         {"y_symmetric", 0.990, 3},
         {"t", 0.990, 3},
@@ -414,7 +440,7 @@ TEST_CASE("pipeline: planchers de couverture et recouvrement borne sur le corpus
         {"deep_recursive", 0.985, 3},
         {"multi_neck", 0.975, 1},
         {"dumbbell", 0.960, 1},
-        {"two_holes", 0.985, 3},
+        {"two_holes", 0.980, 3},
         {"ring", 0.990, 1},
         {"ring_branch", 0.990, 1},
         {"junction_with_hole", 0.990, 6},
@@ -431,6 +457,7 @@ TEST_CASE("pipeline: planchers de couverture et recouvrement borne sur le corpus
         const double ov = overlap_ratio(*region, res);
         CHECK(ov <= 1.10); // pas de fil en double notable
         CHECK(ov >= 0.90);
+        CHECK(crossing_pairs(res) == 0); // aucune traversee n'en coupe une autre (noeud de fils)
     }
 }
 
@@ -577,4 +604,27 @@ TEST_CASE("couverture estimee : non calculee par defaut", "[skeleton_satin]") {
     const auto res = as::generate_skeleton_satin(*region, {});
     REQUIRE(res.has_value());
     CHECK_FALSE(res->diagnostics.coverage_measured);
+}
+
+TEST_CASE("pipeline: coude serre, ni croisement de fils ni secteur exterieur vide",
+          "[skeleton_satin]") {
+    // Bande en L de 3 mm de large dont le coude est plus serre que la largeur : l'ancien
+    // moteur y croisait ses traversees (noeud de fils cote interieur) et la coupe du coude
+    // laissait un secteur exterieur sans fil.
+    using openstitch::Micrometers;
+    using openstitch::Vec2um;
+    const auto corner = [](int x, int y) {
+        return openstitch::geometry::PathNode{Vec2um{Micrometers{x}, Micrometers{y}},
+                                              openstitch::geometry::NodeType::Corner,
+                                              std::nullopt, std::nullopt};
+    };
+    openstitch::geometry::PathSet region;
+    region.outer.closed = true;
+    region.outer.nodes = {corner(0, 0),         corner(20000, 0),    corner(20000, 3000),
+                          corner(3000, 3000),   corner(3000, 20000), corner(0, 20000)};
+    const auto res = run(region);
+    INFO("colonnes " << res.columns.size());
+    CHECK(crossing_pairs(res) == 0);
+    CHECK(coverage_of(region, res) >= 0.95);
+    CHECK(overlap_ratio(region, res) <= 1.10);
 }

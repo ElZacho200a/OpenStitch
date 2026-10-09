@@ -60,6 +60,8 @@ struct SkeletonSatinDiagnostics {
     int outside_samples{0};            // échantillons abandonnés (hors région)
     int too_short{0};                  // traversées plus courtes que `min_thread_length`
     int clamped_angle{0};              // orientations ramenées au plancher |sin(g-α)|
+    int fan_chords{0};                 // cordes d'éventail ajoutées aux coupes de coude
+    int trimmed_crossings{0};          // traversées raccourcies pour ne couper aucune voisine
     int radius_guard_hits{0};          // traversées anormalement longues pour le rayon inscrit
     int orphan_guides{0};              // guides trop loin de l'axe pour être appliqués
     int pieces{0};                     // morceaux de colonne après coupe aux coudes

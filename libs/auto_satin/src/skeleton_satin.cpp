@@ -39,6 +39,240 @@ Vec2um to_um(P2 p) {
                   Micrometers{static_cast<std::int32_t>(std::lround(p.y))}};
 }
 
+// Éventail à la jonction de deux pièces. Un coude coupé en deux pièces perd la rotation
+// qui se produit juste à la coupe : la dernière corde de la première pièce et la première
+// de la suivante diffèrent de l'angle de virage et le secteur entre elles resterait sans
+// fil. On y ajoute des cordes autour du point de coupe, l'angle suivant la rotation de la
+// tangente, avec un pas angulaire tel que l'écart au bord extérieur vaut ρ.
+std::vector<SkeletonSatinCrossing> junction_fan(const std::vector<Poly>& polys,
+                                                const detail::AxisSample& prev,
+                                                const detail::AxisSample& next,
+                                                const SamplerParams& sp) {
+    std::vector<SkeletonSatinCrossing> out;
+    constexpr double kPi = 3.14159265358979323846;
+    double turn = next.alpha - prev.alpha;
+    while (turn > kPi) {
+        turn -= 2.0 * kPi;
+    }
+    while (turn <= -kPi) {
+        turn += 2.0 * kPi;
+    }
+    if (std::abs(turn) < 3.0 * kPi / 180.0) {
+        return out;
+    }
+    const P2 mid{0.5 * (prev.p.x + next.p.x), 0.5 * (prev.p.y + next.p.y)};
+    double theta = 0.0;
+    int guard = 0;
+    while (guard++ < 2000) {
+        const double g = prev.g + theta;
+        const P2 u{std::cos(g), std::sin(g)};
+        const auto chord = chord_through(polys, mid, u, sp.tolerance_um);
+        double reach = 500.0;
+        if (chord) {
+            reach = std::max({-chord->t_lo, chord->t_hi, 200.0});
+        }
+        theta += std::clamp(sp.spacing_um / reach, 0.005, 0.2) * (turn > 0.0 ? 1.0 : -1.0);
+        if (std::abs(theta) >= std::abs(turn)) {
+            break;
+        }
+        const double g2 = prev.g + theta;
+        const P2 u2{std::cos(g2), std::sin(g2)};
+        const auto c2 = chord_through(polys, mid, u2, sp.tolerance_um);
+        if (!c2 || c2->length() < sp.min_chord_um) {
+            continue;
+        }
+        // Seul le côté EXTÉRIEUR du virage est couvert par l'éventail : du côté intérieur,
+        // les cordes se croiseraient (centre de rotation) et les cordes régulières des
+        // pièces suffisent. La corde part donc d'un léger retrait côté intérieur.
+        const double alphaMid = prev.alpha + theta;
+        const P2 nLeft{-std::sin(alphaMid), std::cos(alphaMid)};
+        const double outerSign = turn > 0.0 ? -1.0 : 1.0; // tourner à gauche : extérieur = droite
+        const double along = (u2.x * nLeft.x + u2.y * nLeft.y) * outerSign >= 0.0 ? 1.0 : -1.0;
+        const double tOuter = along > 0.0 ? c2->t_hi : -c2->t_lo;
+        const double tInner = along > 0.0 ? -c2->t_lo : c2->t_hi;
+        constexpr double kOverlap = 150.0;
+        const double back = std::min(kOverlap, std::max(tInner, 0.0));
+        if (tOuter + back < sp.min_chord_um) {
+            continue;
+        }
+        const P2 dir{u2.x * along, u2.y * along};
+        const P2 outerEnd{mid.x + dir.x * tOuter, mid.y + dir.y * tOuter};
+        const P2 innerEnd{mid.x - dir.x * back, mid.y - dir.y * back};
+        // Convention des traversées : a = côté droit, b = côté gauche de l'axe.
+        const bool outerIsRight = outerSign < 0.0;
+        out.push_back(outerIsRight ? SkeletonSatinCrossing{to_um(outerEnd), to_um(innerEnd)}
+                                   : SkeletonSatinCrossing{to_um(innerEnd), to_um(outerEnd)});
+    }
+    return out;
+}
+
+// Intersection stricte de deux segments [p,p+r] et [q,q+w] : paramètres (t, u) si elle
+// existe dans les deux intérieurs, sinon rien.
+std::optional<std::pair<double, double>> segment_hit(P2 p, P2 r, P2 q, P2 w) {
+    const double den = r.x * w.y - r.y * w.x;
+    if (std::abs(den) < 1e-9) {
+        return std::nullopt;
+    }
+    const double t = ((q.x - p.x) * w.y - (q.y - p.y) * w.x) / den;
+    const double u = ((q.x - p.x) * r.y - (q.y - p.y) * r.x) / den;
+    constexpr double kEps = 1e-6;
+    if (t <= kEps || t >= 1.0 - kEps || u <= kEps || u >= 1.0 - kEps) {
+        return std::nullopt;
+    }
+    return std::make_pair(t, u);
+}
+
+// Aucune corde ne doit en couper une autre : un croisement est du fil cousu en double
+// et un nœud visible. Chaque corde est bornée, depuis son point d'axe, au premier
+// croisement rencontré de chaque côté (les deux cordes concernées s'arrêtent au point
+// de croisement). Les cordes devenues plus courtes que `min_len` sont retirées.
+// Rend le nombre de cordes raccourcies.
+int trim_crossings(std::vector<SkeletonSatinCrossing>& chords, const std::vector<P2>& axisPoints,
+                   double min_len, double min_sep, bool closedRing) {
+    const std::size_t n = chords.size();
+    if (n < 3) {
+        return 0;
+    }
+    // Chaque corde passe par son échantillon d'axe : on le retrouve comme l'intersection
+    // de la corde avec la polyligne d'axe (milieu de corde à défaut, bouts prolongés).
+    std::vector<P2> a(n), d(n), origin(n);
+    std::vector<double> originT(n, 0.5);
+    for (std::size_t i = 0; i < n; ++i) {
+        a[i] = to_p2(chords[i].a);
+        d[i] = to_p2(chords[i].b) - a[i];
+        double best = 0.5;
+        bool found = false;
+        for (std::size_t k = 0; k + 1 < axisPoints.size(); ++k) {
+            const P2 q = axisPoints[k];
+            const P2 w = axisPoints[k + 1] - q;
+            const double den = d[i].x * w.y - d[i].y * w.x;
+            if (std::abs(den) < 1e-9) {
+                continue;
+            }
+            const double t = ((q.x - a[i].x) * w.y - (q.y - a[i].y) * w.x) / den;
+            const double u = ((q.x - a[i].x) * d[i].y - (q.y - a[i].y) * d[i].x) / den;
+            if (t >= 0.0 && t <= 1.0 && u >= 0.0 && u <= 1.0) {
+                best = t;
+                found = true;
+                break;
+            }
+        }
+        originT[i] = found ? best : 0.5;
+        origin[i] = a[i] + d[i] * originT[i];
+    }
+    std::vector<double> lo(n, 0.0), hi(n, 1.0); // bornes de t gardées
+    std::vector<double> len(n);
+    for (std::size_t i = 0; i < n; ++i) {
+        len[i] = std::hypot(d[i].x, d[i].y);
+    }
+    // À chaque croisement, une seule des deux cordes est raccourcie : celle qui s'étend le
+    // plus loin de son point d'axe avant de croiser (la corde qui déborde). L'autre reste
+    // entière, donc elle continue de couvrir la zone ; on itère car raccourcir une corde
+    // peut en libérer une autre.
+    for (int round = 0; round < 40; ++round) {
+        std::vector<double> nlo = lo, nhi = hi;
+        bool any = false;
+        for (std::size_t i = 0; i < n; ++i) {
+            const P2 pi = a[i] + d[i] * lo[i];
+            const P2 ri = d[i] * (hi[i] - lo[i]);
+            const double minx = std::min(pi.x, pi.x + ri.x), maxx = std::max(pi.x, pi.x + ri.x);
+            const double miny = std::min(pi.y, pi.y + ri.y), maxy = std::max(pi.y, pi.y + ri.y);
+            for (std::size_t j = i + 1; j < n; ++j) {
+                if (closedRing && (j == n - 1 && i == 0)) {
+                    continue; // la clôture duplique la première corde
+                }
+                const P2 pj = a[j] + d[j] * lo[j];
+                const P2 rj = d[j] * (hi[j] - lo[j]);
+                if (std::min(pj.x, pj.x + rj.x) > maxx || std::max(pj.x, pj.x + rj.x) < minx ||
+                    std::min(pj.y, pj.y + rj.y) > maxy || std::max(pj.y, pj.y + rj.y) < miny) {
+                    continue;
+                }
+                const auto hit = segment_hit(pi, ri, pj, rj);
+                if (!hit) {
+                    continue;
+                }
+                const double ti = lo[i] + hit->first * (hi[i] - lo[i]);
+                const double tj = lo[j] + hit->second * (hi[j] - lo[j]);
+                const double di = std::abs(ti - originT[i]) * len[i];
+                const double dj = std::abs(tj - originT[j]) * len[j];
+                const bool victimI = di >= dj;
+                const std::size_t v = victimI ? i : j;
+                const double tv = victimI ? ti : tj;
+                if (tv > originT[v]) {
+                    nhi[v] = std::min(nhi[v], tv);
+                } else {
+                    nlo[v] = std::max(nlo[v], tv);
+                }
+                any = true;
+            }
+        }
+        if (!any) {
+            break;
+        }
+        lo = std::move(nlo);
+        hi = std::move(nhi);
+    }
+    int trimmed = 0;
+    std::vector<SkeletonSatinCrossing> kept;
+    kept.reserve(n);
+    for (std::size_t i = 0; i < n; ++i) {
+        if (lo[i] > 0.0 || hi[i] < 1.0) {
+            ++trimmed;
+        }
+        const P2 na = a[i] + d[i] * lo[i];
+        const P2 nb = a[i] + d[i] * hi[i];
+        const double keptLen = std::hypot(nb.x - na.x, nb.y - na.y);
+        if (keptLen < min_len) {
+            continue;
+        }
+        kept.push_back(
+            {lo[i] > 0.0 ? to_um(na) : chords[i].a, hi[i] < 1.0 ? to_um(nb) : chords[i].b});
+    }
+    chords = std::move(kept);
+    // Deux cordes quasi confondues (recouvrement de cellules, pièces voisines) ne servent
+    // qu'à coudre deux fois au même endroit : la plus courte est retirée. Un arrondi au
+    // micromètre les ferait sinon se croiser sous un angle infime.
+    const auto lineDist = [](P2 p, P2 q0, P2 q1) {
+        const P2 w = q1 - q0;
+        const double L = std::hypot(w.x, w.y);
+        return L < 1e-9 ? std::hypot(p.x - q0.x, p.y - q0.y)
+                        : std::abs((p.x - q0.x) * w.y - (p.y - q0.y) * w.x) / L;
+    };
+    std::vector<char> drop(chords.size(), 0);
+    for (std::size_t i = 0; i < chords.size(); ++i) {
+        if (drop[i]) {
+            continue;
+        }
+        for (std::size_t j = i + 1; j < chords.size() && j <= i + 4; ++j) {
+            if (drop[j]) {
+                continue;
+            }
+            const P2 ai = to_p2(chords[i].a), bi = to_p2(chords[i].b);
+            const P2 aj = to_p2(chords[j].a), bj = to_p2(chords[j].b);
+            const double li = std::hypot(bi.x - ai.x, bi.y - ai.y);
+            const double lj = std::hypot(bj.x - aj.x, bj.y - aj.y);
+            const bool jShorter = lj <= li;
+            const P2 s0 = jShorter ? aj : ai, s1 = jShorter ? bj : bi;
+            const P2 l0 = jShorter ? ai : aj, l1 = jShorter ? bi : bj;
+            if (lineDist(s0, l0, l1) < min_sep && lineDist(s1, l0, l1) < min_sep) {
+                drop[jShorter ? j : i] = 1;
+                if (!jShorter) {
+                    break;
+                }
+            }
+        }
+    }
+    std::vector<SkeletonSatinCrossing> unique;
+    unique.reserve(chords.size());
+    for (std::size_t i = 0; i < chords.size(); ++i) {
+        if (!drop[i]) {
+            unique.push_back(chords[i]);
+        }
+    }
+    chords = std::move(unique);
+    return trimmed;
+}
+
 // Chaîne d'arêtes du squelette entre deux nœuds qui ne sont pas des
 // continuations : les nœuds de degré 2 ne sont pas des coupures.
 struct Chain {
@@ -656,6 +890,7 @@ Result<SkeletonSatinResult> generate_skeleton_satin(const geometry::PathSet& reg
     result.columns.reserve(chains.size());
     for (std::size_t ci = 0; ci < chains.size(); ++ci) {
         SkeletonSatinColumn column;
+        std::optional<detail::AxisSample> prevLast;
         for (std::size_t pi = chainPieces[ci].first; pi < chainPieces[ci].second; ++pi) {
             const Piece& piece = pieces[pi];
             OrientationKeys keys;
@@ -676,8 +911,17 @@ Result<SkeletonSatinResult> generate_skeleton_satin(const geometry::PathSet& reg
             diag.too_short += sampled.diagnostics.too_short;
             diag.clamped_angle += sampled.diagnostics.clamped_angle;
             diag.radius_guard_hits += sampled.diagnostics.radius_guard_hits;
+            if (prevLast && !sampled.samples.empty()) {
+                for (const auto& fc : junction_fan(polys, *prevLast, sampled.samples.front(), sp)) {
+                    column.crossings.push_back(fc);
+                    ++diag.fan_chords;
+                }
+            }
             for (const auto& smp : sampled.samples) {
                 column.crossings.push_back({to_um(smp.a), to_um(smp.b)});
+            }
+            if (!sampled.samples.empty()) {
+                prevLast = sampled.samples.back();
             }
         }
         if (!column.crossings.empty()) {
@@ -687,7 +931,11 @@ Result<SkeletonSatinResult> generate_skeleton_satin(const geometry::PathSet& reg
                 axisPts.push_back(to_um(q));
             }
             result.axes.push_back(std::move(axisPts));
-            if (chains[ci].closed) {
+            diag.trimmed_crossings +=
+                trim_crossings(column.crossings, chainAxes[ci].points(),
+                               static_cast<double>(params.min_thread_length.value),
+                               0.25 * static_cast<double>(params.spacing.value), chains[ci].closed);
+            if (chains[ci].closed && !column.crossings.empty()) {
                 column.crossings.push_back(column.crossings.front()); // clôture à la couture
             }
             result.columns.push_back(std::move(column));

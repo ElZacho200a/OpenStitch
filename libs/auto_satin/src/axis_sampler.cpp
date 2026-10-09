@@ -131,6 +131,25 @@ SamplerResult sample_axis(const Axis& axis, const std::vector<Poly>& polys,
             ++out.diagnostics.outside_samples;
             return ev;
         }
+        // Non-croisement : deux cordes voisines se coupent au centre instantané de rotation
+        // de l'orientation, à t* = −σ/g' (σ = sin(α − g)). Du côté intérieur d'un virage
+        // serré, une corde qui dépasse ce centre traverse ses voisines (nœud de fils). On
+        // la borne là où l'espacement local retombe à `converge_keep` × celui de l'axe :
+        // |σ + t·g'| ≥ κ|σ|, soit |t| ≤ (1 − κ)|σ|/|g'| du côté qui converge.
+        const double sigma = std::sin(alpha - g);
+        const double gp = gradient(s);
+        if (std::abs(gp) > 1e-12) {
+            const double tLimit = (1.0 - prm.converge_keep) * std::abs(sigma) / std::abs(gp);
+            if (sigma * gp < 0.0) { // t > 0 converge
+                chord->t_hi = std::min(chord->t_hi, tLimit);
+            } else { // t < 0 converge
+                chord->t_lo = std::max(chord->t_lo, -tLimit);
+            }
+            if (chord->t_hi < chord->t_lo) {
+                ++out.diagnostics.too_short;
+                return ev;
+            }
+        }
         // Garde de rayon : une corde bien plus longue que le diamètre inscrit
         // traverse un bras sur sa longueur (orientation fausse près d'un coude, ou
         // corde qui rejoint une autre branche). Elle est ÉCRÊTÉE à la borne, jamais
@@ -159,8 +178,6 @@ SamplerResult sample_axis(const Axis& axis, const std::vector<Poly>& polys,
         // Pas : l'espacement perpendiculaire à distance t de l'axe vaut
         // h·|σ + t·g'|, avec σ = sin(α − g). On borne l'espacement au bord le
         // plus écarté à ρ.
-        const double sigma = std::sin(alpha - g);
-        const double gp = gradient(s);
         const double a = -chord->t_lo;
         const double b = chord->t_hi;
         const double m = std::max(std::abs(sigma - a * gp), std::abs(sigma + b * gp));
@@ -172,7 +189,7 @@ SamplerResult sample_axis(const Axis& axis, const std::vector<Poly>& polys,
     double s = out.s_begin;
     while (true) {
         const Evaluated ev = evaluate(s);
-        double h = prm.spacing_um;
+        double h = 0.25 * prm.spacing_um; // échec : petit pas, pour ne pas sauter un coude
         if (ev.ok) {
             out.samples.push_back(ev.sample);
             h = ev.h_next;

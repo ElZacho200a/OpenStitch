@@ -21,13 +21,14 @@ namespace openstitch::auto_satin::detail {
 
 struct SamplerParams {
     double spacing_um{400.0};       // ρ : espacement cible au bord le plus écarté
-    double h_min_um{50.0};          // pas minimal sur l'axe
+    double h_min_um{10.0};          // pas minimal sur l'axe
     double h_max_ratio{3.0};        // pas maximal = ratio × ρ
     double min_chord_um{300.0};     // sous cette longueur, la corde n'est pas émise
     double min_sin{0.17};           // |sin(g − α)| minimal (≈ 10°) : jamais de corde ∥ à l'axe
     double tolerance_um{60.0};      // écart toléré d'un échantillon au bord (raster ≠ polygone)
     double max_extension_um{40000}; // plafond absolu du prolongement de chaque bout (le plafond
                                     // effectif est 3 r + 1 mm, r = rayon inscrit au bout)
+    double converge_keep{0.1};      // espacement local min. côté convergent, rapport à l'axe
     double radius_guard{2.5};       // chorde > garde × rayon inscrit : diagnostic
 };
 

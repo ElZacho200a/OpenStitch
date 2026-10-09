@@ -583,6 +583,8 @@ int run_satin_auto_debug(const std::string& shape, double spacingMm,
     }
     const auto& d = result->diagnostics;
     fmt::print("Traversées : {}  |  morceaux : {}\n", total, d.pieces);
+    fmt::print("Eventail : {} cordes  |  traversees raccourcies : {}\n", d.fan_chords,
+               d.trimmed_crossings);
     fmt::print("Diagnostics : hors région {}  |  trop courtes {}  |  angle ramené {}  |  garde de "
                "rayon {}  |  guides orphelins {}\n",
                d.outside_samples, d.too_short, d.clamped_angle, d.radius_guard_hits,
