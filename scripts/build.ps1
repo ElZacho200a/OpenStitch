@@ -3,12 +3,16 @@
     Configure et compile OpenStitch Studio (Debug et/ou Release).
 .DESCRIPTION
     Enveloppe autour de CMake/CTest (voir docs/source/build-system.md et
-    CLAUDE.md). Par defaut, bootstrap automatiquement et silencieusement
-    toute la chaine d'outils manquante (CMake, Visual Studio Build Tools
-    avec le workload C++, vcpkg, Qt 6.8.3 via aqtinstall) avant de
-    configurer/compiler -- aucune installation manuelle prealable requise
-    sur un PC Windows vierge. Utilisez -SkipBootstrap pour desactiver ces
-    verifications (poste deja entierement configure) et gagner du temps.
+    CLAUDE.md). VOIE RAPIDE : si la chaine d'outils est incomplete (CMake,
+    Visual Studio Build Tools avec le workload C++, vcpkg, Qt 6.8.3 via
+    aqtinstall), le script LISTE ce qui manque, DEMANDE CONFIRMATION puis
+    l'installe (telechargements de plusieurs Go, variables utilisateur
+    VCPKG_ROOT/QT_ROOT ecrites de facon permanente) avant de
+    configurer/compiler. -Yes confirme d'avance (CI, scripts) ;
+    -SkipBootstrap ne verifie ni n'installe rien (poste deja configure :
+    utilise VCPKG_ROOT et QT_ROOT tels que definis). VOIE MANUELLE : voir
+    docs/source/installation.md.
+    En cas d'echec, le script leve une erreur (code de sortie non nul).
 .PARAMETER Configuration
     Debug, Release, ou Both (defaut : Both).
 .PARAMETER Test
@@ -20,10 +24,16 @@
     Ignore la verification/installation automatique de CMake, Visual
     Studio Build Tools, vcpkg et Qt -- utilise directement VCPKG_ROOT et
     QT_ROOT tels que definis dans l'environnement.
+.PARAMETER Yes
+    Confirme d'avance l'installation des outils manquants (sans invite).
+    Sans -Yes et sans console interactive, le script refuse d'installer.
 .EXAMPLE
     .\scripts\build.ps1
-    Bootstrap la chaine d'outils si necessaire, puis configure et compile
-    Debug et Release.
+    Liste les outils manquants, demande confirmation, les installe puis
+    configure et compile Debug et Release.
+.EXAMPLE
+    .\scripts\build.ps1 -SkipBootstrap -Configuration Release
+    Poste deja configure : aucune verification, aucune installation.
 .EXAMPLE
     .\scripts\build.ps1 -Configuration Debug -Test
     Compile Debug seulement puis lance les tests.
@@ -34,7 +44,8 @@ param(
     [string]$Configuration = 'Both',
     [switch]$Test,
     [switch]$Clean,
-    [switch]$SkipBootstrap
+    [switch]$SkipBootstrap,
+    [switch]$Yes
 )
 
 $ErrorActionPreference = 'Stop'
@@ -65,8 +76,7 @@ function Ensure-Winget {
     if (Test-CommandExists 'winget') {
         return
     }
-    Write-Error "winget est introuvable. Installez 'App Installer' depuis le Microsoft Store (present par defaut sur Windows 10 22H2+/Windows 11), ou installez CMake/Visual Studio manuellement puis relancez avec -SkipBootstrap."
-    exit 1
+    throw "winget est introuvable. Installez 'App Installer' depuis le Microsoft Store (present par defaut sur Windows 10 22H2+/Windows 11), ou installez CMake/Visual Studio manuellement puis relancez avec -SkipBootstrap."
 }
 
 function Ensure-CMake {
@@ -78,18 +88,40 @@ function Ensure-CMake {
     winget install --id Kitware.CMake -e --silent --accept-source-agreements --accept-package-agreements
     Update-SessionPath
     if (-not (Test-CommandExists 'cmake')) {
-        Write-Error "CMake reste introuvable apres installation. Ouvrez un nouveau terminal (PATH mis a jour) et relancez le script."
-        exit 1
+        throw "CMake reste introuvable apres installation. Ouvrez un nouveau terminal (PATH mis a jour) et relancez le script."
     }
 }
 
-function Ensure-VisualStudioBuildTools {
+function Test-VisualStudio {
     $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
     if (Test-Path $vswhere) {
         $vsPath = & $vswhere -latest -products * -requires $VsRequiredComponent -property installationPath
-        if (-not [string]::IsNullOrWhiteSpace($vsPath)) {
-            return
+        return -not [string]::IsNullOrWhiteSpace($vsPath)
+    }
+    return $false
+}
+
+function Test-Vcpkg {
+    $existing = [System.Environment]::GetEnvironmentVariable('VCPKG_ROOT')
+    return [bool]($existing -and (Test-Path (Join-Path $existing 'scripts\buildsystems\vcpkg.cmake')))
+}
+
+function Test-Qt {
+    $existing = [System.Environment]::GetEnvironmentVariable('QT_ROOT')
+    if ($existing -and (Test-Path (Join-Path $existing 'bin\qmake.exe'))) {
+        return $true
+    }
+    foreach ($candidate in @((Join-Path $HOME "Qt\$QtVersion\msvc2022_64"), "C:\Qt\$QtVersion\msvc2022_64")) {
+        if (Test-Path (Join-Path $candidate 'bin\qmake.exe')) {
+            return $true
         }
+    }
+    return $false
+}
+
+function Ensure-VisualStudioBuildTools {
+    if (Test-VisualStudio) {
+        return
     }
     Write-Host "== Visual Studio (workload C++) introuvable : installation de Visual Studio Build Tools ==" -ForegroundColor Cyan
     Write-Host "   (telechargement ~5 Go, plusieurs minutes ; une invite d'elevation peut apparaitre)" -ForegroundColor DarkGray
@@ -103,8 +135,7 @@ function Ensure-VisualStudioBuildTools {
     ) -Wait -PassThru
     # 3010 = succes, redemarrage recommande (pas bloquant pour compiler).
     if ($proc.ExitCode -ne 0 -and $proc.ExitCode -ne 3010) {
-        Write-Error "Installation de Visual Studio Build Tools echouee (code $($proc.ExitCode))."
-        exit 1
+        throw "Installation de Visual Studio Build Tools echouee (code $($proc.ExitCode))."
     }
     Update-SessionPath
 }
@@ -124,8 +155,7 @@ function Ensure-Vcpkg {
         git clone https://github.com/microsoft/vcpkg.git $target
         & "$target\bootstrap-vcpkg.bat" -disableMetrics
         if ($LASTEXITCODE -ne 0) {
-            Write-Error "Bootstrap de vcpkg echoue."
-            exit 1
+            throw "Bootstrap de vcpkg echoue."
         }
     }
     [System.Environment]::SetEnvironmentVariable('VCPKG_ROOT', $target, 'User')
@@ -152,19 +182,16 @@ function Ensure-Qt {
     }
     Write-Host "== Qt $QtVersion introuvable : installation via aqtinstall (pas de compte requis) ==" -ForegroundColor Cyan
     if (-not (Test-CommandExists 'python')) {
-        Write-Error "Python est requis pour installer Qt automatiquement (aqtinstall). Installez Python (winget install Python.Python.3.12) puis relancez, ou installez Qt vous-meme et definissez QT_ROOT."
-        exit 1
+        throw "Python est requis pour installer Qt automatiquement (aqtinstall). Installez Python (winget install Python.Python.3.12) puis relancez, ou installez Qt vous-meme et definissez QT_ROOT."
     }
     python -m pip install --quiet --upgrade aqtinstall
     if ($LASTEXITCODE -ne 0) {
-        Write-Error "Installation d'aqtinstall (pip) echouee."
-        exit 1
+        throw "Installation d'aqtinstall (pip) echouee."
     }
     $qtBase = Join-Path $HOME 'Qt'
     python -m aqt install-qt windows desktop $QtVersion $QtArch -O $qtBase
     if ($LASTEXITCODE -ne 0) {
-        Write-Error "Installation de Qt via aqtinstall echouee."
-        exit 1
+        throw "Installation de Qt via aqtinstall echouee."
     }
     $installed = Join-Path $qtBase "$QtVersion\msvc2022_64"
     [System.Environment]::SetEnvironmentVariable('QT_ROOT', $installed, 'User')
@@ -175,17 +202,43 @@ function Assert-EnvVar {
     param([string]$Name)
     $value = [System.Environment]::GetEnvironmentVariable($Name)
     if ([string]::IsNullOrWhiteSpace($value)) {
-        Write-Error "$Name n'est pas defini. Voir README.md (section Compilation) : `$env:$Name = 'chemin'."
-        exit 1
+        throw "$Name n'est pas defini. Voir README.md (section Compilation) : `$env:$Name = 'chemin'."
     }
     if (-not (Test-Path $value)) {
-        Write-Error "$Name pointe vers un chemin inexistant : $value"
-        exit 1
+        throw "$Name pointe vers un chemin inexistant : $value"
+    }
+}
+
+# Annonce et confirmation : le bootstrap telecharge plusieurs Go et ecrit des
+# variables d'environnement utilisateur permanentes -- jamais en silence.
+function Confirm-Bootstrap {
+    $missing = @()
+    if (-not (Test-CommandExists 'cmake')) { $missing += 'CMake (winget, Kitware.CMake)' }
+    if (-not (Test-VisualStudio)) { $missing += 'Visual Studio Build Tools + workload C++ (telechargement ~5 Go, elevation possible)' }
+    if (-not (Test-Vcpkg)) { $missing += "vcpkg (clone dans $HOME\.local\vcpkg ; ecrit VCPKG_ROOT dans l'environnement utilisateur)" }
+    if (-not (Test-Qt)) { $missing += "Qt $QtVersion via aqtinstall (dans $HOME\Qt, necessite Python ; ecrit QT_ROOT dans l'environnement utilisateur)" }
+    if ($missing.Count -eq 0) {
+        Write-Host "== Chaine d'outils complete : rien a installer ==" -ForegroundColor Green
+        return
+    }
+    Write-Host "== Outils manquants : ce script va les INSTALLER ==" -ForegroundColor Yellow
+    foreach ($m in $missing) { Write-Host "   - $m" -ForegroundColor Yellow }
+    Write-Host "   (voie manuelle equivalente : docs/source/installation.md ; -SkipBootstrap pour ne rien installer)" -ForegroundColor DarkGray
+    if ($Yes) {
+        return
+    }
+    if (-not [Environment]::UserInteractive -or [Console]::IsInputRedirected) {
+        throw "Installation des outils manquants non confirmee (console non interactive). Relancez avec -Yes pour accepter, ou avec -SkipBootstrap apres avoir installe les outils vous-meme."
+    }
+    $answer = Read-Host "Installer maintenant ? (o/N)"
+    if ($answer -notmatch '^(o|oui|y|yes)$') {
+        throw "Installation refusee : rien n'a ete modifie. Installez les outils vous-meme (docs/source/installation.md) puis relancez avec -SkipBootstrap."
     }
 }
 
 if (-not $SkipBootstrap) {
     Write-Host "== Verification de la chaine d'outils (CMake, Visual Studio, vcpkg, Qt) ==" -ForegroundColor Cyan
+    Confirm-Bootstrap
     Ensure-CMake
     Ensure-VisualStudioBuildTools
     Ensure-Vcpkg
@@ -202,7 +255,7 @@ if ($Clean -and (Test-Path 'build\msvc')) {
 
 Write-Host "== Configuration (cmake --preset msvc) ==" -ForegroundColor Cyan
 cmake --preset msvc
-if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+if ($LASTEXITCODE -ne 0) { throw "cmake --preset msvc a echoue (code $LASTEXITCODE)." }
 
 $configs = if ($Configuration -eq 'Both') { @('Debug', 'Release') } else { @($Configuration) }
 
@@ -213,12 +266,12 @@ foreach ($cfg in $configs) {
     # seulement l'executable desktop -- comprend aussi CLI, libs et tests.
     Write-Host "== Compilation ($preset) : tout (aucune cible restreinte) ==" -ForegroundColor Cyan
     cmake --build --preset $preset
-    if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+    if ($LASTEXITCODE -ne 0) { throw "La compilation ($preset) a echoue (code $LASTEXITCODE)." }
 
     if ($Test) {
         Write-Host "== Tests ($preset) ==" -ForegroundColor Cyan
         ctest --preset $preset --output-on-failure
-        if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+        if ($LASTEXITCODE -ne 0) { throw "Des tests ont echoue ($preset, code $LASTEXITCODE)." }
     }
 }
 
