@@ -14,15 +14,8 @@ liberté d'exploitation. Les fiches détaillées sont dans quatre chapitres :
 
 ## Limites de la recherche (à lire d'abord)
 
-- Source unique : pages `patents.google.com/patent/<ID>/en`, lues par un outil
-  qui renvoie un **résumé automatique** du texte, pas le texte brut ni les PDF.
-  Les figures ne sont connues que par leurs légendes. Les formules rendues en
-  image sont absentes ; aucune n'a été reconstituée.
-- Toute équation est étiquetée « du brevet » (à revérifier sur le PDF) ou
-  « notre proposition ». Plusieurs formules rapportées sont **corrompues ou
-  contradictoires** (exposants de distance de recherche d'ancre dans la famille
-  Goldman, Bézier de US6968255B1, `p,q,r` réutilisés dans US6390005B1) : ne pas
-  les implémenter avant lecture du PDF.
+- Sources : les fiches ont d'abord été écrites d'après des résumés automatiques de pages Google Patents, puis **les 32 brevets ont été relus sur leur texte primaire** (PDF téléchargés depuis Google Patents ; texte extrait, équations et tableaux abîmés par l'OCR relus sur rendu image ; les deux scans japonais lus visuellement). Les corrections sont dans la section « Errata après lecture des PDF » de chaque fiche et priment sur le corps. Les figures n'ont été regardées que lorsqu'une équation en dépendait. Les PDF ne sont pas versionnés dans le dépôt.
+- Toute équation est étiquetée « du brevet » ou « notre proposition ». Plusieurs formules sont **ambiguës ou probablement fautives dans le brevet lui-même** : exposants de distance de recherche de la famille Goldman (rayons énormes, signe de l'exposant de fusion de bifurcation non tranché entre relectures, `c` jamais défini), règle de sélection « B>D » de US6167823B1 (choisit le plus éloigné alors que le texte dit le plus proche), Bézier de US6968255B1 (`/3` final, `m_len` non défini), seuil 20 % / 30 % de US6510360B1, `p,q,r` réutilisés dans US6390005B1. Ne rien implémenter littéralement : redériver et calibrer chez nous.
 - Les statuts juridiques sont ceux affichés par Google (« hypothèse, pas une
   conclusion juridique »). Des anomalies sont signalées (US8219238B2 :
   taxes payées après l'expiration affichée ; US8532810B2 : deux dates de

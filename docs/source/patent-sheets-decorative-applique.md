@@ -94,3 +94,15 @@ La source mentionne aussi du texte parasite (« nutritional blend ») et deux nu
 ## Synthèse rapide
 - Vraiment nouveau et implémentable : (a) objet appliqué multi-passes avec arrêts + export de contour de coupe (brevets 3 et 4) ; (b) stipple par courbe d'espace clippée avec jitter déterministe (brevet 2) ; (c) panneau d'analyse longueur/angle (brevet 1), faible priorité.
 - Limites de ce travail : résumés par outil (pas de texte brut), figures non vues, citations de 6167823 non lues, texte de 6968255 corrompu à plusieurs endroits.
+
+
+---
+
+## Errata après lecture des PDF (2026-10)
+
+Ces fiches ont été écrites à partir de résumés de pages web. Les 32 brevets ont ensuite été relus sur leur **texte primaire** (PDF Google Patents ; équations et tableaux abîmés par l'OCR relus sur rendu image ; scans japonais lus visuellement). Les points ci-dessous **corrigent ou précisent** le corps de cette page ; en cas de conflit, ils priment. Les figures n'ont été regardées que lorsqu'une équation en dépendait.
+
+- **US6167823B1** : l'ambiguïté « B>D » est levée : le signe est « > » partout (colonnes 10 et 12, figure 11C), mais la règle imprimée choisit le point le plus éloigné alors que le texte dit « le plus proche ». C'est une erreur du brevet ; à corriger côté implémentation. Le double-clic entre deux longs points (figure 11E) et les manipulations sur la sélection manquaient. L'accrochage n'est pas revendiqué (revendications 1 à 13).
+- **US6968255B1** : le texte imprime Pulse Microsystems seul (« actuel Tajima » non confirmé). Les formules Bézier sont imprimées exactement comme transcrites (avec le `/3` final et `theAngle += -PI`) : **ce n'est pas une corruption d'OCR, c'est probablement une bévue du brevet**, donc à ne pas reprendre. `m_len` est lisible mais **non défini** dans le texte (lecture plausible, confiance faible : une longueur de référence qui met l'amplitude de l'aléa à l'échelle). Le cas parallèle de la table 1 est mal parenthésé à l'impression.
+- **US5438520A** : le texte imprime « Ippon Denpa » (la fiche écrivait Nippon) ; Raytheon n'y apparaît pas. Quatre priorités JP lues sur l'image. Retour d'au moins 4 points, de préférence 6 puis 10 (description). La revendication 1 inclut la broderie effective. **Aucune distance de décalage D4/D6** n'est donnée. Tables 1 et 2 cohérentes avec la fiche.
+- **JP3769602B2** : enregistrement le 17/02/2006 (bulletin du 26/04/2006) ; un recours contre rejet (不服2003-7905, 07/05/2003) était omis. La revendication unique va de D1 à D4 et D5 puis D7 ; elle ne mentionne ni bâti, ni arrêt, ni E-stitch. L'arrêt D6 vient de D4/D5 avec direction et nombre de points saisis au clavier. Aucun pas, largeur ni nombre de sections. Le rendu image de la description est blanc (polices CJK non embarquées) ; le texte a été lu dans la couche texte du PDF.

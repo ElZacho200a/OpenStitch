@@ -101,3 +101,18 @@ Ce qui est réellement NOUVEAU et implémentable :
 4. Import DST -> objets (US6510360B1 / US6247420B1) : fonction hors périmètre actuel, à planifier plus tard ; seuils à calibrer sur nos propres corpus.
 Peu de valeur : découpe d'auto-intersections par O(n au carré) (Clipper2 fait mieux).
 Tous les brevets sont en fin de vie ou expirés selon Google ; analyse préliminaire, pas un avis juridique.
+
+
+---
+
+## Errata après lecture des PDF (2026-10)
+
+Ces fiches ont été écrites à partir de résumés de pages web. Les 32 brevets ont ensuite été relus sur leur **texte primaire** (PDF Google Patents ; équations et tableaux abîmés par l'OCR relus sur rendu image ; scans japonais lus visuellement). Les points ci-dessous **corrigent ou précisent** le corps de cette page ; en cas de conflit, ils priment. Les figures n'ont été regardées que lorsqu'une équation en dépendait.
+
+- **US6510360B1** : tableaux lus avec confiance haute. Tableau 1 (longueur → angle) : ∞→0, 170→3, 140→6, 130→8, 120→9, 90→10, 70→12, 60→13, 45→14, 40→15, 30→24, 25→29, 20→37, 15→50, 10→55, 5→60, 0→70. Tableau 2 : ∞→0, 500→6, 110→8, 90→10, 45→13, 40→15, puis comme le tableau 1 de 30 à 0. Règle : `M(L)` est l'angle de la plus grande longueur du tableau ≤ L (fonction en escalier) ; l'unité annoncée est le millimètre mais les ordres de grandeur suggèrent 0,1 mm (inférence). L'incohérence 20 % (description) / 30 % (résumé, revendications 4, 22, 23) est **réelle** et non tranchée : en faire un paramètre. L'angle FILL est mesuré par rapport à la verticale et sur le tiers central. 25 revendications. Absents : pourcentage d'écart de longueur, facteur de correction de densité, densité par défaut.
+- **US5934209A** : l'auto-référence est la revendication 17 (non 18). Un `t = 1` avec `r = K` donnerait une fausse intersection en implémentation littérale (segment `PK-P1` adjacent à `P1-P2`).
+- **US6247420B1** : aucun cessionnaire imprimé sur le document ; 3 revendications ; aucun seuil dans l'invention elle-même (ceux de la fiche viennent de l'art antérieur cité).
+- **US5957068A** : CIP de **trois** demandes (08/990,816 ; 08/990,814 = US5823127 ; 08/990,733 = US5934209). Étape S10 omise par la fiche : sous-couche oui/non par zone. L'ordre est un élagage de feuilles depuis les extrémités vers la zone du point final ; le test « arbre sans cycle » est une déduction de la fiche.
+- **US5823127A** : le brevet **traite** plus de deux intersections (étapes S93/S94 prennent la plus proche de `pi`) ; « le milieu suppose un contour convexe » ne vient pas du brevet. `Bi` est le milieu de `[pi, pi']`, traversée du goulot d'un bord à l'autre. Choix du chemin `A1 → A2` « automatique » sans règle.
+- **JP3922316B2** (scan japonais, 13 pages, lisible) : contenu de la fiche confirmé (trois cas, aucun nombre). Enregistré le 2007-03-02, gazette le 2007-05-30. La formulation « noeud d'articulation / pont / feuilles pendantes » est **notre proposition** (équivalente pour une chaîne ou un arbre ; le brevet est muet pour un graphe avec cycles). L'exclusion de `P4` tient à ce qu'une zone fine en bout n'a pas besoin de sous-couche ([0052]). Le critère « sort de la zone » n'a aucun algorithme dans ce brevet. Lecture non juridique : la portée exacte des revendications n'est pas garantie.
+- **US6633794B2** : fiche exacte. Revendications indépendantes 1, 8, 17, 22 ; ajustement de durée 147 jours ; seuil de recouvrement partiel absent du texte.
