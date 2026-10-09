@@ -4176,9 +4176,8 @@ void MainWindow::setStitchType(ObjectId embroideryId, int type) {
     // -- exactement le défaut réel signalé (« résidu de satin qui reste
     // même en revenant en tatami », 2026-09-04, cf. le commentaire de la
     // commande pour le détail complet).
-    auto convert = std::make_unique<commands::ConvertFillGroupCommand>(embroideryId,
-                                                                         std::move(params),
-                                                                         std::move(label));
+    using Convert = commands::ConvertFillGroupCommand;
+    auto convert = std::make_unique<Convert>(embroideryId, std::move(params), std::move(label));
     if (restoredContour) {
         auto group = std::make_unique<commands::CompositeCommand>("Type : satin");
         group->add(std::make_unique<commands::SetVectorPathsCommand>(
