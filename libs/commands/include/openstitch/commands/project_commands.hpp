@@ -1013,7 +1013,9 @@ public:
             }
         }
     }
-    [[nodiscard]] std::string name() const override { return "Modifier l'orientation du remplissage"; }
+    [[nodiscard]] std::string name() const override {
+        return "Modifier l'orientation du remplissage";
+    }
 
 private:
     ObjectId id_;
@@ -1877,7 +1879,9 @@ public:
             }
         }
     }
-    [[nodiscard]] std::string name() const override { return "Changer le type de nœud de rail satin"; }
+    [[nodiscard]] std::string name() const override {
+        return "Changer le type de nœud de rail satin";
+    }
 
 private:
     ObjectId id_;

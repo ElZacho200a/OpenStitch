@@ -6689,18 +6689,17 @@ void MainWindow::exportDst() {
                           stats.bounds.max.x.value > cv.width.value / 2 ||
                           stats.bounds.min.y.value < -cv.height.value / 2 ||
                           stats.bounds.max.y.value > cv.height.value / 2;
-    QString summary =
-        tr("Dimensions : %1 × %2 mm\nPoints : %3\nSauts : %4\nCoupes : %5\n"
-           "Changements de couleur : %6\nFil estimé : %7 m\nCadre : %8 × %9 mm")
-            .arg(wMm, 0, 'f', 1)
-            .arg(hMm, 0, 'f', 1)
-            .arg(stats.stitches)
-            .arg(stats.jumps)
-            .arg(stats.trims)
-            .arg(stats.color_changes)
-            .arg(stats.thread_length_um / 1e9, 0, 'f', 2)
-            .arg(to_millimeters(cv.width).value, 0, 'f', 0)
-            .arg(to_millimeters(cv.height).value, 0, 'f', 0);
+    QString summary = tr("Dimensions : %1 × %2 mm\nPoints : %3\nSauts : %4\nCoupes : %5\n"
+                         "Changements de couleur : %6\nFil estimé : %7 m\nCadre : %8 × %9 mm")
+                          .arg(wMm, 0, 'f', 1)
+                          .arg(hMm, 0, 'f', 1)
+                          .arg(stats.stitches)
+                          .arg(stats.jumps)
+                          .arg(stats.trims)
+                          .arg(stats.color_changes)
+                          .arg(stats.thread_length_um / 1e9, 0, 'f', 2)
+                          .arg(to_millimeters(cv.width).value, 0, 'f', 0)
+                          .arg(to_millimeters(cv.height).value, 0, 'f', 0);
     // Résultat de l'analyse AVANT l'export : l'utilisateur voit les erreurs sans avoir à
     // penser à lancer « Analyser le motif ».
     {
