@@ -144,9 +144,12 @@ flux), formules d'ancres de la famille Goldman (inutilisables sans plafond propr
   `autodigitize`) ; option activée jamais pire que le repli sur le corpus ;
   100 % des replis tracés.
 
-### RD-PAT-001 — Moteur de traversées orientées [P1] — ☐ À faire (conditionnel)
-- **À ne construire que si RD-PAT-003 prouve un manque** sur une classe de formes
-  définie (formes compactes, satin tournant) que le moteur existant ne traite pas.
+### RD-PAT-001 — Moteur de traversées orientées [P0] — ☐ À faire
+- **Décision du propriétaire (2026-10) : remplacement intégral de l'ancien moteur
+  d'auto-satin.** Ce n'est plus conditionnel. Spécification révisée après audit
+  critique : `specs/plans/satin-squelette-traversees.md` (30 problèmes, solutions,
+  pipeline). Le banc RD-PAT-003 sert alors de validation et de référence, pas de
+  condition d'ouverture.
 - Source : EP0761860B1 (axe médian, orientation ⟂ interpolée) et US6390005B1
   (espacement ; l'objectif de pas ⟂ est déjà réalisé par
   `resample_by_medial_spacing`). **Échantillonnage de l'axe, 0° par défaut,
