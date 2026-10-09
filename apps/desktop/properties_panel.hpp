@@ -9,6 +9,8 @@
 #include "openstitch/document/project.hpp"
 #include "openstitch/stitch_generation/overrides.hpp"
 
+#include "wheel_guard.hpp"
+
 class QCheckBox;
 class QFormLayout;
 class QLabel;
@@ -53,8 +55,22 @@ public:
     void setAutoSatinState(std::optional<ObjectId> id, const document::AutoSatinParams* params,
                            const QString& summary);
 
+    // Paramètres que le formulaire représente actuellement. MainWindow compare
+    // `showsParams` au document à chaque rafraîchissement : un écart (annulation,
+    // changement de type de points, rotation au canevas...) reconstruit le
+    // formulaire, au lieu de laisser un formulaire périmé écraser le document.
+    [[nodiscard]] bool showsParams(const document::StitchParams& params) const;
+    // Resynchronise la copie interne SANS reconstruire (après qu'une édition du
+    // formulaire a été appliquée au document, qui peut l'avoir complétée).
+    void adoptParams(ObjectId id, const document::StitchParams& params);
+
 signals:
-    void paramsEdited(ObjectId id, document::StitchParams params);
+    // `field` : libellé du champ modifié (« Espacement des rangées »), repris dans le
+    // nom d'historique et utilisé pour fusionner une rafale en un seul pas d'annulation.
+    // Seul ce champ diffère de la copie courante : aucun autre n'est relu ni arrondi.
+    void paramsEdited(ObjectId id, document::StitchParams params, QString field);
+    // Clic sur un guide d'orientation de la liste : MainWindow le met en évidence.
+    void satinGuideSelected(ObjectId id, int index);
     // Émis par le bouton « Abandonner les retouches » (état ManuallyEdited ou
     // Dirty) : MainWindow demande confirmation puis exécute
     // DiscardOverridesCommand (annulable), jamais de mutation directe ici.
@@ -74,7 +90,10 @@ signals:
 
 private:
     void clearBody();
-    [[nodiscard]] QDoubleSpinBox* mmSpin(double valueMm, double maxMm);
+    void updateGuideAngleLabel(bool absolute);
+    // Champ en mm borné [minMm ; maxMm] ; l'infobulle porte la plage (« Plage : … »).
+    [[nodiscard]] QDoubleSpinBox* mmSpin(double valueMm, double maxMm, double minMm = 0.0,
+                                         const QString& tip = {});
 
     QVBoxLayout* root_{nullptr};
     QLabel* header_{nullptr};
@@ -83,11 +102,16 @@ private:
     QWidget* body_{nullptr};
     std::optional<ObjectId> currentId_;
     std::optional<ObjectId> editStateId_;
+    // Copie des paramètres représentés par le formulaire (cf. showsParams).
+    document::StitchParams shown_{document::RunningStitchParams{}};
+    bool hasShown_{false};
+    WheelGuard* wheelGuard_{nullptr};
     bool building_{false}; // évite d'émettre pendant le peuplement
     // Auto-satin : widgets mis à jour hors reconstruction (cf. setAutoSatinState).
     QPointer<QListWidget> satinGuideList_;
     QPointer<QLabel> satinSummary_;
-    QPointer<QSpinBox> satinGuideAngle_;
+    QPointer<QDoubleSpinBox> satinGuideAngle_;
+    QPointer<QLabel> satinGuideAngleLabel_;
     QPointer<QCheckBox> satinGuideAbsolute_;
     QPointer<QPushButton> satinGuideRemove_;
 };

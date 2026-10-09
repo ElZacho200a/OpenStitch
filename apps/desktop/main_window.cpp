@@ -482,6 +482,22 @@ MainWindow::MainWindow() {
     cursorLabel_ = new QLabel(this);
     cursorLabel_->setMinimumWidth(180);
     statusBar()->addPermanentWidget(cursorLabel_);
+    // Bascule d'accroche des nœuds visible en permanence (même état que l'entrée du menu
+    // Affichage) : sans elle, savoir si le glisser va s'accrocher exige d'ouvrir le menu.
+    if (snapNodesAct_ != nullptr) {
+        auto* snapButton = new QToolButton(this);
+        snapButton->setObjectName(QStringLiteral("button_snapStatus"));
+        snapButton->setText(tr("Accroche"));
+        snapButton->setCheckable(true);
+        snapButton->setAutoRaise(true);
+        snapButton->setToolTip(tr("Accroche des nœuds aux sommets des autres objets pendant le "
+                                  "glisser (Ctrl : suspendre)."));
+        snapButton->setAccessibleName(tr("Accroche des nœuds"));
+        snapButton->setChecked(snapNodesAct_->isChecked());
+        connect(snapButton, &QToolButton::toggled, snapNodesAct_, &QAction::setChecked);
+        connect(snapNodesAct_, &QAction::toggled, snapButton, &QToolButton::setChecked);
+        statusBar()->addPermanentWidget(snapButton);
+    }
     // Les bascules des modes d'édition changent le contexte d'interaction du canevas.
     for (QAction* act : {stitchEditModeAct_, satinEditModeAct_, satinGuideModeAct_,
                          railEditModeAct_, directionGuideModeAct_}) {
@@ -557,7 +573,8 @@ MainWindow::MainWindow() {
             return;
         }
         // Multi-sélection : tout l'ensemble bouge, en UN pas d'annulation.
-        translateObjects(selectedObjectIds(), sceneMmToModel(deltaSceneMm));
+        // Rafale de flèches = un seul pas d'annulation (fenêtre de fusion de la pile).
+        translateObjects(selectedObjectIds(), sceneMmToModel(deltaSceneMm), /*coalesce=*/true);
     });
     // Un changement de thème redessine les couches (couleurs des points, repères).
     connect(&AppTheme::instance(), &AppTheme::changed, this, [this] { displayImage(processed_); });
@@ -930,8 +947,8 @@ void MainWindow::buildMenus() {
     snapNodesAct_->setChecked(
         QSettings().value(QStringLiteral("edit/snapNodesOnDrag"), false).toBool());
     snapNodesAct_->setToolTip(tr("Accroche un nœud glissé aux sommets des autres objets "
-                                 "(Ctrl ou Maj au relâchement : sans accroche). Désactivé par "
-                                 "défaut."));
+                                 "(Ctrl pendant le glisser : sans accroche ; Maj verrouille l'axe "
+                                 "et garde l'accroche). Désactivé par défaut."));
     snapNodesAct_->setStatusTip(snapNodesAct_->toolTip());
     connect(snapNodesAct_, &QAction::toggled, this,
             [](bool on) { QSettings().setValue(QStringLiteral("edit/snapNodesOnDrag"), on); });
@@ -1948,6 +1965,72 @@ std::optional<QPointF> MainWindow::findNodeSnapMm(QPointF cursorSceneMm, ObjectI
     return best;
 }
 
+void MainWindow::showNodeDragFeedback(QPointF sceneMm, ObjectId objectId) {
+    // Ctrl suspend l'accroche (comme au relâchement) ; Maj ne la suspend pas.
+    const bool snapActive = snapNodesAct_ != nullptr && snapNodesAct_->isChecked() &&
+                            (QGuiApplication::keyboardModifiers() & Qt::ControlModifier) == 0;
+    std::optional<QPointF> snap;
+    if (snapActive) {
+        snap = findNodeSnapMm(sceneMm, objectId);
+    }
+    const QPointF shown = snap.value_or(sceneMm);
+    statusBar()->showMessage(tr("Nœud : %1 mm ; %2 mm%3")
+                                 .arg(shown.x(), 0, 'f', 2)
+                                 .arg(-shown.y(), 0, 'f', 2)
+                                 .arg(snap ? tr("  — accroché à un sommet") : QString()));
+    if (!snap) {
+        hideNodeDragFeedback();
+        return;
+    }
+    if (snapIndicator_ == nullptr) {
+        auto* ring = new QGraphicsEllipseItem(-9.0, -9.0, 18.0, 18.0);
+        ring->setFlag(QGraphicsItem::ItemIgnoresTransformations);
+        ring->setPen(QPen(AppTheme::instance().tokens().accent, 2.0));
+        ring->setBrush(Qt::NoBrush);
+        ring->setZValue(103);
+        ring->setAcceptedMouseButtons(Qt::NoButton);
+        scene_->addItem(ring);
+        baseItems_.append(ring);
+        snapIndicator_ = ring;
+    }
+    snapIndicator_->setPos(*snap);
+}
+
+void MainWindow::hideNodeDragFeedback() {
+    if (snapIndicator_ != nullptr) {
+        baseItems_.removeAll(snapIndicator_);
+        delete snapIndicator_;
+        snapIndicator_ = nullptr;
+    }
+}
+
+void MainWindow::showResizePreview(QPointF anchorSceneMm, QPointF cornerSceneMm) {
+    const QRectF box = QRectF(anchorSceneMm, cornerSceneMm).normalized();
+    if (resizePreview_ == nullptr) {
+        auto* rect = new QGraphicsRectItem();
+        QPen pen(AppTheme::instance().tokens().canvasSelectionLine, 1.5, Qt::DashLine);
+        pen.setCosmetic(true);
+        rect->setPen(pen);
+        rect->setBrush(Qt::NoBrush);
+        rect->setZValue(99);
+        rect->setAcceptedMouseButtons(Qt::NoButton);
+        scene_->addItem(rect);
+        baseItems_.append(rect);
+        resizePreview_ = rect;
+    }
+    resizePreview_->setRect(box);
+    statusBar()->showMessage(
+        tr("Taille : %1 × %2 mm").arg(box.width(), 0, 'f', 2).arg(box.height(), 0, 'f', 2));
+}
+
+void MainWindow::hideResizePreview() {
+    if (resizePreview_ != nullptr) {
+        baseItems_.removeAll(resizePreview_);
+        delete resizePreview_;
+        resizePreview_ = nullptr;
+    }
+}
+
 void MainWindow::updateHoverHighlight(std::optional<QPointF> sceneMm) {
     // Surbrillance de pré-sélection (ligne S11) : contour de l'objet non sélectionné le plus
     // haut sous le curseur, outil Sélection seulement. Un seul item, indépendant de baseItems_,
@@ -2584,6 +2667,10 @@ void MainWindow::renderBase(const image::Image& img) {
         delete it;
     }
     baseItems_.clear();
+    // Les aperçus/surbrillances temporaires appartenaient à la couche base : détruits ci-dessus.
+    guideHighlight_ = nullptr;
+    snapIndicator_ = nullptr;
+    resizePreview_ = nullptr;
     hoverCacheValid_ = false; // les contours ont pu changer
     hideHoverHighlight();     // la sélection/les objets ont pu changer
 
@@ -2723,9 +2810,11 @@ void MainWindow::renderBase(const image::Image& img) {
                             const auto commitNodeMove = [this, objectId, ref,
                                                          pos](QPointF releasedSceneMm,
                                                               Qt::KeyboardModifiers mods) {
+                                hideNodeDragFeedback();
                                 QPointF newSceneMm = releasedSceneMm;
+                                // Ctrl seul suspend l'accroche : Maj (verrou d'axe) la garde.
                                 if (snapNodesAct_ != nullptr && snapNodesAct_->isChecked() &&
-                                    (mods & (Qt::ControlModifier | Qt::ShiftModifier)) == 0) {
+                                    (mods & Qt::ControlModifier) == 0) {
                                     newSceneMm =
                                         findNodeSnapMm(newSceneMm, objectId).value_or(newSceneMm);
                                 }
@@ -2745,7 +2834,12 @@ void MainWindow::renderBase(const image::Image& img) {
                                 });
                             };
                             auto* handle = new NodeHandleItem(
-                                sceneMm, {}, {},
+                                sceneMm, {},
+                                // Aperçu pendant le glisser : coordonnées en mm dans la barre
+                                // d'état et repère d'accroche si le nœud s'y colle.
+                                [this, objectId](QPointF movedSceneMm) {
+                                    showNodeDragFeedback(movedSceneMm, objectId);
+                                },
                                 // Clic droit sur un nœud : simplification manuelle d'une
                                 // forme (typiquement après vectorisation d'une région
                                 // segmentée — contour trop détaillé pour être exploitable
@@ -2776,6 +2870,10 @@ void MainWindow::renderBase(const image::Image& img) {
                                     nodeMenu.exec(globalPos);
                                 });
                             handle->setReleasedWithModifiers(commitNodeMove);
+                            handle->setCancelled([this] {
+                                hideNodeDragFeedback();
+                                statusBar()->showMessage(tr("Déplacement annulé."), 2000);
+                            });
                             scene_->addItem(handle);
                             baseItems_.append(handle);
 
@@ -2885,19 +2983,27 @@ void MainWindow::renderBase(const image::Image& img) {
                     for (std::size_t i = 0; i < 4; ++i) {
                         const Vec2um corner = corners[i];
                         const Vec2um anchor = corners[(i + 2) % 4]; // coin diagonalement opposé
+                        // Coins 0 et 2 (bas-gauche, haut-droite) : diagonale « / » ; coins 1 et
+                        // 3 : « \ ». Chaque coin a le curseur de sa propre diagonale.
+                        const Qt::CursorShape cursor =
+                            i % 2 == 0 ? Qt::SizeBDiagCursor : Qt::SizeFDiagCursor;
+                        const QPointF anchorScene = modelToSceneMm(anchor);
                         auto* handle = new ResizeHandleItem(
                             modelToSceneMm(corner),
                             [this, objectId, corner, anchor](QPointF newSceneMm) {
+                                hideResizePreview();
                                 const Vec2um newCorner = sceneMmToModel(newSceneMm);
                                 if (newCorner == corner) {
                                     return;
                                 }
-                                const double sx =
-                                    static_cast<double>((newCorner.x - anchor.x).value) /
-                                    static_cast<double>((corner.x - anchor.x).value);
-                                const double sy =
-                                    static_cast<double>((newCorner.y - anchor.y).value) /
-                                    static_cast<double>((corner.y - anchor.y).value);
+                                // Planchers : ni miroir involontaire ni forme écrasée à zéro
+                                // (la poignée les applique déjà ; garde de défense).
+                                const double sx = std::max(
+                                    0.05, static_cast<double>((newCorner.x - anchor.x).value) /
+                                              static_cast<double>((corner.x - anchor.x).value));
+                                const double sy = std::max(
+                                    0.05, static_cast<double>((newCorner.y - anchor.y).value) /
+                                              static_cast<double>((corner.y - anchor.y).value));
                                 // Diffère : refreshImage() détruirait cet item pendant
                                 // son propre événement souris (même défaut que
                                 // NodeHandleItem/VectorObjectBodyItem).
@@ -2909,8 +3015,14 @@ void MainWindow::renderBase(const image::Image& img) {
                                     refreshImage();
                                     updateActions();
                                 });
+                            },
+                            anchorScene, /*hasAnchor=*/true, cursor,
+                            [this, anchorScene](QPointF movedSceneMm) {
+                                showResizePreview(anchorScene, movedSceneMm);
                             });
-                        handle->setToolTip(tr("Glisser pour redimensionner (coin opposé fixe)"));
+                        handle->setCancelled([this] { hideResizePreview(); });
+                        handle->setToolTip(tr("Glisser pour redimensionner (coin opposé fixe) — "
+                                              "Maj : conserver les proportions, Échap : annuler"));
                         scene_->addItem(handle);
                         baseItems_.append(handle);
                     }
@@ -5767,7 +5879,7 @@ void MainWindow::buildPropertiesPanel() {
 
     // Édition d'un paramètre -> commande annulable -> régénération.
     connect(propertiesPanel_, &PropertiesPanel::paramsEdited, this,
-            [this](ObjectId id, document::StitchParams params) {
+            [this](ObjectId id, document::StitchParams params, QString field) {
                 // Auto-satin : l'inspecteur n'édite que les réglages scalaires ; les
                 // guides (aussi posés depuis le canevas), l'entrée/sortie et les champs
                 // sans widget viennent du document ACTUEL, jamais d'une copie périmée.
@@ -5785,9 +5897,16 @@ void MainWindow::buildPropertiesPanel() {
                         }
                     }
                 }
-                undoStack_.execute(
-                    std::make_unique<commands::SetStitchParamsCommand>(id, std::move(params)),
-                    project_);
+                // Le champ nomme le pas d'historique et sert de clé de fusion : une
+                // rafale (molette, flèches du spinbox) reste un seul pas d'annulation.
+                undoStack_.execute(std::make_unique<commands::SetStitchParamsCommand>(
+                                       id, std::move(params), field.toStdString()),
+                                   project_);
+                // Le formulaire correspond désormais au document (guides repris du
+                // document pour l'auto-satin) : pas de reconstruction ni de perte de focus.
+                if (const auto* now = project_.findEmbroidery(id)) {
+                    propertiesPanel_->adoptParams(id, now->params);
+                }
                 refreshImage();
                 // updateActions() (pas updateInspector() seul) : un changement de
                 // paramètres peut faire passer un objet retouché à Dirty (Lot 8.2)
@@ -5818,6 +5937,8 @@ void MainWindow::buildPropertiesPanel() {
         });
     connect(propertiesPanel_, &PropertiesPanel::satinGuideChangeRequested, this,
             &MainWindow::changeAutoSatinGuide);
+    connect(propertiesPanel_, &PropertiesPanel::satinGuideSelected, this,
+            &MainWindow::highlightAutoSatinGuide);
     connect(propertiesPanel_, &PropertiesPanel::satinGuideRemoveRequested, this,
             &MainWindow::removeAutoSatinGuide);
     connect(propertiesPanel_, &PropertiesPanel::editDirectionGuidesRequested, this,
@@ -5873,8 +5994,12 @@ void MainWindow::updateInspector() {
             emb->id, &std::get<document::AutoSatinParams>(emb->params), autoSatinSummary(*emb));
     }
 
-    // Ne reconstruit que si la sélection a changé (n'interrompt pas une édition).
-    if (kind == inspectedKind_ && id == inspectedId_) {
+    // Ne reconstruit que si la sélection a changé (n'interrompt pas une édition) OU si
+    // les paramètres du document ne sont plus ceux que montre le formulaire (annulation,
+    // changement de type de points qui garde le même id, rotation au canevas...) : sinon
+    // le premier champ touché écraserait le document avec des valeurs périmées.
+    const bool formStale = kind == 0 && !propertiesPanel_->showsParams(emb->params);
+    if (kind == inspectedKind_ && id == inspectedId_ && !formStale) {
         return;
     }
     inspectedKind_ = kind;
@@ -7180,18 +7305,26 @@ void MainWindow::setSelection(Selection selection) {
 
 // SELECTION-MUTATOR:END
 
-void MainWindow::translateObjects(const std::vector<ObjectId>& ids, Vec2um delta) {
+void MainWindow::translateObjects(const std::vector<ObjectId>& ids, Vec2um delta, bool coalesce) {
     if (ids.empty()) {
         return;
     }
     if (ids.size() == 1) {
-        undoStack_.execute(
-            std::make_unique<commands::TranslateVectorObjectCommand>(ids.front(), delta), project_);
+        auto cmd = std::make_unique<commands::TranslateVectorObjectCommand>(ids.front(), delta);
+        cmd->setCoalescable(coalesce);
+        undoStack_.execute(std::move(cmd), project_);
     } else {
         auto composite = std::make_unique<commands::CompositeCommand>(
             tr("Déplacer %1 objets").arg(ids.size()).toStdString());
+        std::string key = "translate-set";
         for (const ObjectId id : ids) {
-            composite->add(std::make_unique<commands::TranslateVectorObjectCommand>(id, delta));
+            auto cmd = std::make_unique<commands::TranslateVectorObjectCommand>(id, delta);
+            cmd->setCoalescable(coalesce);
+            key += ":" + std::to_string(id.value);
+            composite->add(std::move(cmd));
+        }
+        if (coalesce) {
+            composite->setMergeKey(std::move(key));
         }
         undoStack_.execute(std::move(composite), project_);
     }

@@ -2,6 +2,7 @@
 #include <QApplication>
 #include <QGraphicsScene>
 #include <QGraphicsView>
+#include <QKeyEvent>
 #include <QMouseEvent>
 #include <QTest>
 
@@ -12,7 +13,9 @@
 #include "node_handle.hpp"
 
 using openstitch::desktop::axisLockedPos;
+using openstitch::desktop::constrainResizeDrag;
 using openstitch::desktop::NodeHandleItem;
+using openstitch::desktop::ResizeHandleItem;
 using openstitch::desktop::VectorObjectBodyItem;
 
 // NodeHandleItem est le mécanisme Qt réellement utilisé pour déplacer un
@@ -31,6 +34,11 @@ private slots:
     void shiftLocksTheHandleAxisWhileDragging();
     void releaseCallbackWithModifiersReceivesTheReleaseModifiers();
     void bodyItemShiftLocksAxisAndReportsModifiers();
+    void jitterBelowTheDragThresholdDoesNotMoveTheHandle();
+    void escapeCancelsTheDragWithoutRelease();
+    void resizeConstraintFloorsScalesAndNeverMirrors();
+    void resizeConstraintWithShiftKeepsProportions();
+    void resizeHandleReportsConstrainedPositionAndHasWideHitArea();
 };
 
 namespace {
@@ -199,6 +207,105 @@ void NodeHandleTest::bodyItemShiftLocksAxisAndReportsModifiers() {
     QVERIFY(delta->y() > 1.0);
     QVERIFY((*mods & Qt::AltModifier) != 0);
     QVERIFY((*mods & Qt::ShiftModifier) != 0);
+}
+
+void NodeHandleTest::jitterBelowTheDragThresholdDoesNotMoveTheHandle() {
+    QGraphicsScene scene;
+    QGraphicsView view(&scene);
+    prepare(view);
+    int movedCount = 0;
+    std::optional<QPointF> released;
+    auto* handle = new NodeHandleItem(
+        QPointF(3.0, 4.0), [&](QPointF p) { released = p; }, [&](QPointF) { ++movedCount; });
+    scene.addItem(handle);
+    const QPoint start = view.mapFromScene(handle->pos());
+    sendMouse(view, QEvent::MouseButtonPress, start, Qt::LeftButton, Qt::LeftButton,
+              Qt::NoModifier);
+    sendMouse(view, QEvent::MouseMove, start + QPoint(2, 1), Qt::NoButton, Qt::LeftButton,
+              Qt::NoModifier);
+    sendMouse(view, QEvent::MouseButtonRelease, start + QPoint(2, 1), Qt::LeftButton, Qt::NoButton,
+              Qt::NoModifier);
+    QCOMPARE(movedCount, 0);
+    QVERIFY(released.has_value());
+    QCOMPARE(*released, QPointF(3.0, 4.0)); // position d'origine exacte : aucun déplacement
+}
+
+void NodeHandleTest::escapeCancelsTheDragWithoutRelease() {
+    QGraphicsScene scene;
+    QGraphicsView view(&scene);
+    prepare(view);
+    int releaseCount = 0;
+    int cancelCount = 0;
+    auto* handle = new NodeHandleItem(QPointF(0.0, 0.0), [&](QPointF) { ++releaseCount; });
+    handle->setCancelled([&] { ++cancelCount; });
+    scene.addItem(handle);
+    const QPoint start = view.mapFromScene(handle->pos());
+    sendMouse(view, QEvent::MouseButtonPress, start, Qt::LeftButton, Qt::LeftButton,
+              Qt::NoModifier);
+    sendMouse(view, QEvent::MouseMove, start + QPoint(50, 30), Qt::NoButton, Qt::LeftButton,
+              Qt::NoModifier);
+    QVERIFY(handle->pos() != QPointF(0.0, 0.0));
+    QKeyEvent esc(QEvent::KeyPress, Qt::Key_Escape, Qt::NoModifier);
+    QApplication::sendEvent(&scene, &esc);
+    QCOMPARE(handle->pos(), QPointF(0.0, 0.0));
+    QCOMPARE(cancelCount, 1);
+    sendMouse(view, QEvent::MouseButtonRelease, start + QPoint(50, 30), Qt::LeftButton,
+              Qt::NoButton, Qt::NoModifier);
+    QCOMPARE(releaseCount, 0); // aucune commande créée
+}
+
+void NodeHandleTest::resizeConstraintFloorsScalesAndNeverMirrors() {
+    const QPointF anchor(0.0, 0.0);
+    const QPointF corner(10.0, 20.0);
+    // Glisser au-delà de l'ancre (miroir) : plancher à 5 % de la taille d'origine.
+    const QPointF crossed = constrainResizeDrag(anchor, corner, QPointF(-30.0, -5.0), false);
+    QCOMPARE(crossed, QPointF(0.5, 1.0));
+    // Un seul axe sous le plancher : l'autre reste libre.
+    const QPointF oneAxis = constrainResizeDrag(anchor, corner, QPointF(20.0, -3.0), false);
+    QCOMPARE(oneAxis, QPointF(20.0, 1.0));
+    // Redimensionnement normal inchangé.
+    QCOMPARE(constrainResizeDrag(anchor, corner, QPointF(5.0, 40.0), false), QPointF(5.0, 40.0));
+    // Coin dont les coordonnées sont négatives par rapport à l'ancre : même plancher.
+    const QPointF c2(-10.0, -20.0);
+    QCOMPARE(constrainResizeDrag(anchor, c2, QPointF(8.0, 8.0), false), QPointF(-0.5, -1.0));
+}
+
+void NodeHandleTest::resizeConstraintWithShiftKeepsProportions() {
+    const QPointF anchor(0.0, 0.0);
+    const QPointF corner(10.0, 20.0);
+    const QPointF out = constrainResizeDrag(anchor, corner, QPointF(30.0, 20.0), true);
+    // Même facteur sur les deux axes : rapport 1:2 conservé.
+    QVERIFY(std::abs(out.y() - 2.0 * out.x()) < 1e-9);
+    QVERIFY(out.x() > 10.0);
+    // Plancher aussi en proportionnel.
+    const QPointF tiny = constrainResizeDrag(anchor, corner, QPointF(-50.0, -50.0), true);
+    QCOMPARE(tiny, QPointF(0.5, 1.0));
+}
+
+void NodeHandleTest::resizeHandleReportsConstrainedPositionAndHasWideHitArea() {
+    QGraphicsScene scene;
+    QGraphicsView view(&scene);
+    prepare(view);
+    std::vector<QPointF> moved;
+    std::optional<QPointF> released;
+    auto* handle = new ResizeHandleItem(
+        QPointF(40.0, 40.0), [&](QPointF p) { released = p; }, QPointF(0.0, 0.0), true,
+        Qt::SizeBDiagCursor, [&](QPointF p) { moved.push_back(p); });
+    scene.addItem(handle);
+    QVERIFY(handle->shape().boundingRect().width() >= 22.0);
+    QCOMPARE(handle->cursor().shape(), Qt::SizeBDiagCursor);
+    const QPoint start = view.mapFromScene(handle->pos());
+    sendMouse(view, QEvent::MouseButtonPress, start, Qt::LeftButton, Qt::LeftButton,
+              Qt::NoModifier);
+    // Traverse l'ancre : le résultat reste du bon côté (aucun miroir).
+    sendMouse(view, QEvent::MouseMove, start + QPoint(-120, -120), Qt::NoButton, Qt::LeftButton,
+              Qt::NoModifier);
+    sendMouse(view, QEvent::MouseButtonRelease, start + QPoint(-120, -120), Qt::LeftButton,
+              Qt::NoButton, Qt::NoModifier);
+    QVERIFY(!moved.empty());
+    QVERIFY(released.has_value());
+    QVERIFY(released->x() > 0.0);
+    QVERIFY(released->y() > 0.0);
 }
 
 QTEST_MAIN(NodeHandleTest)

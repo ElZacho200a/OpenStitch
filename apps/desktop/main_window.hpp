@@ -31,6 +31,7 @@ class QGraphicsScene;
 class QGraphicsItem;
 class QGraphicsPathItem;
 class QGraphicsEllipseItem;
+class QGraphicsRectItem;
 class QLabel;
 class QAction;
 class QListWidget;
@@ -438,9 +439,20 @@ private:
     pristineSatinContour(const document::VectorObject& vector) const;
     [[nodiscard]] QString autoSatinSummary(const document::EmbroideryObject& emb);
     void createAutoSatin(bool askParameters);
-    void applyAutoSatinEdit(ObjectId id, document::AutoSatinParams params, const QString& label);
+    void applyAutoSatinEdit(ObjectId id, document::AutoSatinParams params, const QString& label,
+                            const QString& mergeTag = {});
     void addAutoSatinGuideFromStroke(ObjectId id, Vec2um from, Vec2um to);
     void changeAutoSatinGuide(ObjectId id, int index, double angleDeg, bool absolute);
+    // Clic sur un guide de la liste de l'inspecteur : cercle temporaire sur son ancre.
+    void highlightAutoSatinGuide(ObjectId id, int index);
+    QGraphicsItem* guideHighlight_{nullptr}; // propriété de la scène (baseItems_)
+    // Aperçus de glisser (poignées) : repère d'accroche, cadre de redimensionnement.
+    void showNodeDragFeedback(QPointF sceneMm, ObjectId objectId);
+    void hideNodeDragFeedback();
+    void showResizePreview(QPointF anchorSceneMm, QPointF cornerSceneMm);
+    void hideResizePreview();
+    QGraphicsItem* snapIndicator_{nullptr};
+    QGraphicsRectItem* resizePreview_{nullptr};
     void removeAutoSatinGuide(ObjectId id, int index);
     void renderAutoSatinOverlay(const document::EmbroideryObject& obj,
                                 const document::AutoSatinParams& params,
@@ -502,7 +514,7 @@ private:
     void editSelection(const std::function<void(Selection&)>& edit);
     // Translate des objets vectoriels en UN pas d'annulation (CompositeCommand si
     // > 1) puis rafraîchit : partagé par les flèches et le glisser de corps.
-    void translateObjects(const std::vector<ObjectId>& ids, Vec2um delta);
+    void translateObjects(const std::vector<ObjectId>& ids, Vec2um delta, bool coalesce = false);
     [[nodiscard]] bool isObjectSelected(ObjectId id) const;
     // Lecture : état courant sous forme de Selection (objets = multiSelection_
     // ou {selectedObject_}), pour les modifications partielles.

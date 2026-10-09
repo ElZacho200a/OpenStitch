@@ -24,6 +24,7 @@
 #include <QShortcut>
 #include <QSignalSpy>
 #include <QSlider>
+#include <QSpinBox>
 #include <QStandardPaths>
 #include <QStatusBar>
 #include <QTabWidget>
@@ -665,6 +666,9 @@ private slots:
 
     // Remplissage directionnel : conversion, outil de guides, undo/redo.
     void convertingTatamiToDirectionalIsUndoable();
+    void inspectorRebuildsAfterUndoOfAParameterEdit();
+    void inspectorRebuildsAfterTypeChangeKeepingTheSameId();
+    void parameterBurstIsOneNamedUndoStep();
     void autoDirectionGuideConvertsTatamiAndIsUndoable();
     void directionGuideToolDrawsGuidesAndBreakLinesThroughUndoStack();
 
@@ -3332,11 +3336,12 @@ void MainWindowTest::arrowKeyNudgesSelectedObjectByFixedStepAndShiftUsesBiggerSt
     QCOMPARE(window.project_.findObject(squareId)->paths[0].outer.nodes[0].pos,
              (Vec2um{Micrometers{-4'900}, Micrometers{-5'900}}));
 
-    // Chaque appui pousse une commande distincte -- annulable individuellement.
+    // Coalescence : une rafale d'appuis sur les flèches (même objet, fenêtre de fusion de la
+    // pile) forme UN seul pas d'annulation, qui ramène au point de départ.
     QVERIFY(window.undoStack_.canUndo());
     window.undo();
     QCOMPARE(window.project_.findObject(squareId)->paths[0].outer.nodes[0].pos,
-             (Vec2um{Micrometers{-4'900}, Micrometers{-4'900}}));
+             (Vec2um{Micrometers{-5'000}, Micrometers{-5'000}}));
 }
 
 void MainWindowTest::drawRectangleToolWithRealMouseDragOnMainWindowCreatesObject() {
@@ -5892,6 +5897,99 @@ void MainWindowTest::selectBelowMenuDisambiguatesDuplicateAndEmptyNames() {
     menu = window.findChild<QMenu*>(QStringLiteral("selectBelowMenu"));
     QVERIFY(menu != nullptr);
     QCOMPARE(menu->actions().constFirst()->text(), QStringLiteral("A"));
+}
+
+// Inspecteur périmé (audit ergonomique, critique) : après annulation, le formulaire doit
+// refléter le document ; sinon le premier champ touché écrase les paramètres annulés.
+void MainWindowTest::inspectorRebuildsAfterUndoOfAParameterEdit() {
+    MainWindow window;
+    const Fixture fx = buildTatamiSquareFixture();
+    window.applyLoadedProject(fx.project);
+    window.selectedEmbroidery_ = fx.embroideryId;
+    window.updateActions();
+    auto* panel = window.findChild<PropertiesPanel*>();
+    QVERIFY(panel != nullptr);
+    const auto spacingOf = [&] {
+        return std::get<openstitch::document::TatamiParams>(
+                   window.project_.findEmbroidery(fx.embroideryId)->params)
+            .row_spacing.value;
+    };
+
+    auto* spacing = panel->findChild<QDoubleSpinBox*>(QStringLiteral("spin_rowSpacing"));
+    QVERIFY(spacing != nullptr);
+    spacing->setValue(0.80);
+    QCOMPARE(spacingOf(), 800);
+
+    window.undo();
+    QCOMPARE(spacingOf(), 450);
+    spacing = panel->findChild<QDoubleSpinBox*>(QStringLiteral("spin_rowSpacing"));
+    QVERIFY(spacing != nullptr);
+    QCOMPARE(spacing->value(), 0.45); // formulaire reconstruit d'après le document
+
+    // Un autre champ touché ensuite ne ressuscite pas l'espacement annulé.
+    auto* stagger = panel->findChildren<QSpinBox*>().front();
+    stagger->setValue(5);
+    QCOMPARE(spacingOf(), 450);
+
+    window.undo();
+    window.redo();
+    spacing = panel->findChild<QDoubleSpinBox*>(QStringLiteral("spin_rowSpacing"));
+    QCOMPARE(spacing->value(), 0.45);
+    QCOMPARE(std::get<openstitch::document::TatamiParams>(
+                 window.project_.findEmbroidery(fx.embroideryId)->params)
+                 .stagger,
+             5);
+}
+
+void MainWindowTest::inspectorRebuildsAfterTypeChangeKeepingTheSameId() {
+    MainWindow window;
+    const Fixture fx = buildTatamiSquareFixture();
+    window.applyLoadedProject(fx.project);
+    window.selectedEmbroidery_ = fx.embroideryId;
+    window.updateActions();
+    auto* panel = window.findChild<PropertiesPanel*>();
+    QVERIFY(panel != nullptr);
+    QVERIFY(panel->findChild<QDoubleSpinBox*>(QStringLiteral("spin_tatamiAngle")) != nullptr);
+
+    window.convertToDirectional(fx.embroideryId);
+    QVERIFY(panel->findChild<QLabel*>(QStringLiteral("label_directionalSummary")) != nullptr);
+    QVERIFY(panel->findChild<QDoubleSpinBox*>(QStringLiteral("spin_tatamiAngle")) == nullptr);
+
+    // Premier champ touché : les paramètres restent DIRECTIONNELS (guides conservés).
+    panel->findChild<QDoubleSpinBox*>(QStringLiteral("spin_rowSpacing"))->setValue(0.9);
+    const auto* emb = window.project_.findEmbroidery(fx.embroideryId);
+    QVERIFY(emb != nullptr && emb->is_directional());
+    const auto& dp = std::get<openstitch::document::DirectionalFillParams>(emb->params);
+    QCOMPARE(dp.row_spacing.value, 900);
+    QCOMPARE(dp.guides.size(), std::size_t{1});
+
+    window.undo(); // retour à l'espacement d'origine (directionnel)
+    window.undo(); // retour au tatami : le formulaire redevient celui du tatami
+    QVERIFY(window.project_.findEmbroidery(fx.embroideryId)->is_tatami());
+    QVERIFY(panel->findChild<QDoubleSpinBox*>(QStringLiteral("spin_tatamiAngle")) != nullptr);
+}
+
+void MainWindowTest::parameterBurstIsOneNamedUndoStep() {
+    MainWindow window;
+    const Fixture fx = buildTatamiSquareFixture();
+    window.applyLoadedProject(fx.project);
+    window.selectedEmbroidery_ = fx.embroideryId;
+    window.updateActions();
+    auto* panel = window.findChild<PropertiesPanel*>();
+    QVERIFY(panel != nullptr);
+    const auto stepsBefore = window.undoStack_.undoNames().size();
+
+    for (const double mm : {0.5, 0.6, 0.7}) {
+        panel->findChild<QDoubleSpinBox*>(QStringLiteral("spin_rowSpacing"))->setValue(mm);
+    }
+    QCOMPARE(window.undoStack_.undoNames().size(), stepsBefore + 1);
+    QCOMPARE(QString::fromStdString(window.undoStack_.undoName()),
+             QStringLiteral("Modifier : Espacement des rangées"));
+    window.undo();
+    QCOMPARE(std::get<openstitch::document::TatamiParams>(
+                 window.project_.findEmbroidery(fx.embroideryId)->params)
+                 .row_spacing.value,
+             450);
 }
 
 } // namespace openstitch::desktop
