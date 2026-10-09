@@ -166,7 +166,8 @@ private slots:
         MainWindow window;
         QCOMPARE(
             snapshot(window),
-            QStringLiteral("newProject=1 deleteRegion=0 segmentWithAi=1 generationOptions=1 undo=0 "
+            // segmentWithAi grisée sans image (avec sa raison) : plus de boîte « importez d'abord ».
+            QStringLiteral("newProject=1 deleteRegion=0 segmentWithAi=0 generationOptions=1 undo=0 "
                            "redo=0 createStitch=0 createTatami=0 createSatin=0 autoSatin=0 "
                            "fillAngle=0 convertSatin=0 stats=0 exportDst=0 stitchEdit=0 "
                            "satinEdit=0 satinGuides=0 satinRails=0 addGuide=0 removeGuide=0 "

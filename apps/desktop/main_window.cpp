@@ -92,6 +92,7 @@
 #include "satin_guide_item.hpp"
 #include "selection_hit_test.hpp"
 #include "ui_icons.hpp"
+#include "ui_memory.hpp"
 #include "workflow_panel.hpp"
 #include <QCheckBox>
 #include <QCloseEvent>
@@ -713,7 +714,7 @@ void MainWindow::buildMenus() {
     addOpAction(tr("Rotation 90° &antihoraire"), image::Rotate90Op{3});
 
     imageMenu->addSeparator();
-    cropAct_ = imageMenu->addAction(tr("&Recadrer (sélection)"));
+    cropAct_ = imageMenu->addAction(tr("&Recadrer l'image (glisser un cadre)"));
     cropAct_->setCheckable(true);
     connect(cropAct_, &QAction::toggled, this,
             [this](bool on) { setTool(on ? Tool::Rect : Tool::Select); });
@@ -722,12 +723,14 @@ void MainWindow::buildMenus() {
     auto* segMenu = menuBar()->addMenu(tr("&Segmentation"));
     segmentAct_ = segMenu->addAction(tr("&Segmenter l'image…"));
     auto* segAct = segmentAct_;
+    segmentAct_->setShortcut(QKeySequence(Qt::Key_F6));
     connect(segAct, &QAction::triggered, this, &MainWindow::segmentImage);
     imageActions_.append(segAct);
 
     showSegAct_ = segMenu->addAction(tr("&Afficher la carte des régions"));
     showSegAct_->setCheckable(true);
     connect(showSegAct_, &QAction::toggled, this, [this] { displayImage(processed_); });
+    buildRegionViewControls(segMenu);
 
     segMenu->addSeparator();
     mergeAct_ = segMenu->addAction(tr("&Fusionner avec… (cliquer la région cible)"));
@@ -735,7 +738,7 @@ void MainWindow::buildMenus() {
     mergeAct_->setToolTip(
         tr("Fusionne la région (ou toutes les régions sélectionnées) dans la région que vous "
            "cliquez ensuite ; elle garde sa couleur."));
-    connect(mergeAct_, &QAction::toggled, this, [this](bool on) { mergeMode_ = on; });
+    connect(mergeAct_, &QAction::toggled, this, [this](bool on) { setMergeMode(on); });
     regionActions_.append(mergeAct_);
     mergeSelectionAct_ = segMenu->addAction(tr("Fusionner la sélecti&on"));
     mergeSelectionAct_->setObjectName(QStringLiteral("action_mergeSelection"));
@@ -787,7 +790,11 @@ void MainWindow::buildMenus() {
     regionActions_.append(restoreColorAct_);
 
     segMenu->addSeparator();
-    vectorizeRegionAct_ = segMenu->addAction(tr("Convertir la région en objet &vectoriel"));
+    vectorizeRegionAct_ = segMenu->addAction(tr("&Vectoriser la sélection"));
+    vectorizeRegionAct_->setShortcut(QKeySequence(Qt::Key_F7));
+    vectorizeRegionAct_->setToolTip(
+        tr("Convertit la ou les régions sélectionnées en objets vectoriels éditables "
+           "(un seul pas d'annulation) — F7."));
     auto* vectorizeAct = vectorizeRegionAct_;
     connect(vectorizeAct, &QAction::triggered, this, &MainWindow::vectorizeSelectedRegion);
     regionActions_.append(vectorizeAct);
@@ -795,11 +802,15 @@ void MainWindow::buildMenus() {
     auto* embMenu = menuBar()->addMenu(tr("&Broderie"));
     autoDigitizeAct_ = embMenu->addAction(tr("Numérisation &automatique"));
     autoDigitizeAct_->setObjectName(QStringLiteral("action_autoDigitize"));
+    autoDigitizeAct_->setShortcut(QKeySequence(Qt::Key_F8));
     auto* autoAct = autoDigitizeAct_;
     connect(autoAct, &QAction::triggered, this, &MainWindow::autoDigitize);
-    auto* aiSegmentAct = segMenu->addAction(icons::aiSegment(), tr("Segmenter avec l'&IA…"));
-    aiSegmentAct->setObjectName(QStringLiteral("action_segmentWithAi"));
-    connect(aiSegmentAct, &QAction::triggered, this, &MainWindow::segmentWithAi);
+    aiSegmentAct_ = segMenu->addAction(icons::aiSegment(), tr("Segmenter avec l'&IA…"));
+    aiSegmentAct_->setObjectName(QStringLiteral("action_segmentWithAi"));
+    aiSegmentAct_->setToolTip(
+        tr("Détecte des formes avec SAM 2 : crée des régions éditables (à fusionner, recolorer "
+           "puis vectoriser) ou directement les objets de broderie, au choix."));
+    connect(aiSegmentAct_, &QAction::triggered, this, &MainWindow::segmentWithAi);
     embMenu->addSeparator();
     createStitchAct_ = embMenu->addAction(tr("Créer un objet de &point de contour…"));
     createStitchAct_->setObjectName(QStringLiteral("action_createStitch"));
@@ -1147,13 +1158,15 @@ void MainWindow::openImage() {
     // dessin", pas la distinction interne image/vecteur -- branché sur
     // l'extension juste après le dialogue, cf. openSvg().
     const QString file = QFileDialog::getOpenFileName(
-        this, tr("Ouvrir une image ou un SVG"), QString(),
+        this, tr("Ouvrir une image ou un SVG"),
+        QSettings().value(QStringLiteral("ui/lastImportDir")).toString(),
         tr("Images et SVG (*.png *.jpg *.jpeg *.bmp *.tif *.tiff *.svg);;"
            "Images (*.png *.jpg *.jpeg *.bmp *.tif *.tiff);;"
            "SVG (*.svg);;Tous les fichiers (*)"));
     if (file.isEmpty()) {
         return;
     }
+    QSettings().setValue(QStringLiteral("ui/lastImportDir"), QFileInfo(file).absolutePath());
     if (file.endsWith(QStringLiteral(".svg"), Qt::CaseInsensitive)) {
         openSvg(file);
         return;
@@ -1656,22 +1669,22 @@ void MainWindow::adjustBrightnessContrast() {
     }
 }
 
-void MainWindow::quantizeColors() {
-    if (!project_.hasImage()) {
-        return;
-    }
-    bool ok = false;
-    const int colors = QInputDialog::getInt(this, tr("Quantifier les couleurs"),
-                                            tr("Nombre maximal de couleurs :"), 8, 2, 64, 1, &ok);
-    if (ok) {
-        executeOp(image::QuantizeOp{colors});
-    }
-}
-
 void MainWindow::onCropSelected(QRectF rectMm) {
     cropAct_->setChecked(false);
     if (!project_.hasImage() || processed_.empty()) {
         return;
+    }
+    // Les objets sont placés en mm sur le cadre : recadrer recentre l'image et les laisse où ils
+    // sont, donc décalés par rapport à elle. Un glisser involontaire ne doit pas le faire seul.
+    if (!project_.vector_objects.empty() || !project_.embroidery_objects.empty()) {
+        const auto answer = QMessageBox::question(
+            this, tr("Recadrer l'image"),
+            tr("Recadrer l'image la recentre sur le cadre : les objets déjà créés ne la suivront "
+               "pas et seront décalés par rapport à elle. Recadrer quand même ?"),
+            QMessageBox::Yes | QMessageBox::No, QMessageBox::No);
+        if (answer != QMessageBox::Yes) {
+            return;
+        }
     }
     const double mmPerPx = project_.mm_per_px.value;
     const double wMm = processed_.width * mmPerPx;
@@ -2016,6 +2029,8 @@ void MainWindow::updateHoverHighlight(std::optional<QPointF> sceneMm) {
             }
         }
     }
+    // Région sous le curseur (carte des régions) quand aucun objet vectoriel n'est survolé.
+    updateRegionHover(under == nullptr ? sceneMm : std::nullopt);
     if (under == nullptr) {
         if (hoverItem_ != nullptr) {
             hoverItem_->setVisible(false);
@@ -2067,6 +2082,7 @@ void MainWindow::hideHoverHighlight() {
     if (hoverItem_ != nullptr) {
         hoverItem_->setVisible(false);
     }
+    hideRegionHover();
 }
 
 void MainWindow::updateSnapIndicator(std::optional<QPointF> snapSceneMm) {
@@ -3359,7 +3375,8 @@ void MainWindow::renderBase(const image::Image& img) {
         auto* mapItem = scene_->addPixmap(QPixmap::fromImage(mapImg.copy()));
         mapItem->setTransform(QTransform::fromScale(mmPerPx, mmPerPx));
         mapItem->setPos(-map.width * mmPerPx / 2.0, -map.height * mmPerPx / 2.0);
-        mapItem->setOpacity(0.9);
+        mapItem->setOpacity(regionMapOpacity_);
+        mapItem->setData(0, QStringLiteral("regionMap")); // retrouvé par setRegionMapOpacity
         baseItems_.append(mapItem);
     }
 }
@@ -3519,11 +3536,27 @@ void MainWindow::segmentImage() {
     auto* layout = new QFormLayout(&dialog);
     auto* colorsSpin = new QSpinBox(&dialog);
     colorsSpin->setRange(2, 64);
-    colorsSpin->setValue(8);
+    colorsSpin->setValue(ui_memory::intValue(QStringLiteral("segment/colors"), 8, 2, 64));
     auto* minSizeSpin = new QSpinBox(&dialog);
     minSizeSpin->setRange(1, 100'000);
-    minSizeSpin->setValue(16);
+    minSizeSpin->setValue(ui_memory::intValue(QStringLiteral("segment/minSize"), 16, 1, 100'000));
     minSizeSpin->setSuffix(tr(" px"));
+    // Équivalent physique de la taille minimale (l'échelle de l'image est connue depuis
+    // l'import) : l'IA raisonne en mm², la même unité ici évite de convertir de tête.
+    auto* minSizeMm = new QLabel(&dialog);
+    minSizeMm->setObjectName(QStringLiteral("segmentMinSizeMm"));
+    minSizeMm->setEnabled(false);
+    const auto refreshMinSizeMm = [this, minSizeSpin, minSizeMm] {
+        const double mm = project_.mm_per_px.value;
+        minSizeMm->setText(tr("≈ %1 mm²").arg(minSizeSpin->value() * mm * mm, 0, 'f', 2));
+    };
+    connect(minSizeSpin, &QSpinBox::valueChanged, &dialog, refreshMinSizeMm);
+    refreshMinSizeMm();
+    auto* minSizeRow = new QWidget(&dialog);
+    auto* minSizeLayout = new QHBoxLayout(minSizeRow);
+    minSizeLayout->setContentsMargins(0, 0, 0, 0);
+    minSizeLayout->addWidget(minSizeSpin);
+    minSizeLayout->addWidget(minSizeMm);
     // L'affectation pixel-à-pixel au centre de couleur le plus proche est
     // intrinsèquement bruitée (effet « poivre et sel » sur les photos,
     // dégradés, artefacts JPEG) : lissée par défaut par vote local
@@ -3531,13 +3564,13 @@ void MainWindow::segmentImage() {
     // nettes directement exploitables, sans étape de nettoyage manuel.
     auto* smoothingSpin = new QSpinBox(&dialog);
     smoothingSpin->setRange(0, 20);
-    smoothingSpin->setValue(3);
+    smoothingSpin->setValue(ui_memory::intValue(QStringLiteral("segment/smoothing"), 3, 0, 20));
     smoothingSpin->setSuffix(tr(" px"));
     smoothingSpin->setToolTip(
         tr("0 = désactivé. Arrondit les frontières et absorbe le bruit pixel à pixel ; "
            "une valeur trop élevée efface les détails plus fins qu'elle."));
     layout->addRow(tr("Nombre maximal de couleurs :"), colorsSpin);
-    layout->addRow(tr("Taille minimale de région :"), minSizeSpin);
+    layout->addRow(tr("Taille minimale de région :"), minSizeRow);
     layout->addRow(tr("Lissage des formes :"), smoothingSpin);
     auto* buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dialog);
     connect(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
@@ -3546,6 +3579,9 @@ void MainWindow::segmentImage() {
     if (dialog.exec() != QDialog::Accepted) {
         return;
     }
+    ui_memory::setIntValue(QStringLiteral("segment/colors"), colorsSpin->value());
+    ui_memory::setIntValue(QStringLiteral("segment/minSize"), minSizeSpin->value());
+    ui_memory::setIntValue(QStringLiteral("segment/smoothing"), smoothingSpin->value());
 
     // Calcul synchrone (curseur d'attente) : le passage en tâche de fond est
     // prévu quand les images de travail deviendront grandes.
@@ -3572,76 +3608,6 @@ void MainWindow::segmentImage() {
 
 QPainterPath MainWindow::objectPainterPath(const document::VectorObject& object) {
     return objectScenePath(object); // contour unique partagé avec la détection de sélection
-}
-
-void MainWindow::vectorizeSelectedRegion() {
-    if (!selectedRegion_ || !project_.segmentation) {
-        return;
-    }
-    const auto* region = project_.segmentation->find(*selectedRegion_);
-    if (region == nullptr) {
-        return;
-    }
-
-    QDialog dialog(this);
-    dialog.setWindowTitle(tr("Vectorisation"));
-    auto* layout = new QFormLayout(&dialog);
-    auto* detailSlider = new QSlider(Qt::Horizontal, &dialog);
-    detailSlider->setObjectName("vectorizeDetailSlider");
-    detailSlider->setRange(0, 100);
-    detailSlider->setValue(50);
-    detailSlider->setToolTip(tr("Niveau de détail conservé dans le contour vectoriel."));
-    auto* detailValue = new QLabel(QStringLiteral("50"), &dialog);
-    detailValue->setObjectName("vectorizeDetailValue");
-    connect(detailSlider, &QSlider::valueChanged, detailValue,
-            [detailValue](int value) { detailValue->setText(QString::number(value)); });
-    auto* detailRow = new QWidget(&dialog);
-    auto* detailLayout = new QHBoxLayout(detailRow);
-    detailLayout->setContentsMargins(0, 0, 0, 0);
-    detailLayout->addWidget(new QLabel(tr("Faible"), detailRow));
-    detailLayout->addWidget(detailSlider, 1);
-    detailLayout->addWidget(new QLabel(tr("Élevé"), detailRow));
-    detailLayout->addWidget(detailValue);
-    layout->addRow(tr("Détail :"), detailRow);
-    auto* buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dialog);
-    connect(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
-    connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
-    layout->addRow(buttons);
-    if (dialog.exec() != QDialog::Accepted) {
-        return;
-    }
-
-    const Micrometers simplifyTolerance = vectorize_tolerance_from_detail(detailSlider->value());
-
-    std::optional<BusyIndicator> busy;
-    busy.emplace(this, tr("Vectorisation de la région en cours…"));
-    auto sets = vectorization::vectorize_region(
-        *project_.segmentation, *selectedRegion_,
-        {.mm_per_px = project_.mm_per_px, .simplify_tolerance = simplifyTolerance});
-    busy.reset();
-    if (!sets) {
-        QMessageBox::warning(this, tr("Vectorisation impossible"),
-                             QString::fromStdString(sets.error().message));
-        return;
-    }
-
-    document::VectorObject object;
-    object.id = project_.object_ids.next();
-    object.name = tr("Région %1").arg(selectedRegion_->value).toStdString();
-    object.source_region = *selectedRegion_;
-    object.rgb = region->rgb;
-    object.paths = std::move(*sets);
-
-    undoStack_.execute(std::make_unique<commands::AddVectorObjectCommand>(std::move(object)),
-                       project_);
-    {
-        const ObjectId created = project_.vector_objects.back().id;
-        editSelection([created](Selection& sel) { sel.objects = {created}; });
-    }
-    showVectorsAct_->setChecked(true);
-    refreshImage();
-    updateActions();
-    statusBar()->showMessage(tr("Objet vectoriel créé — cliquez-le pour éditer ses nœuds"));
 }
 
 void MainWindow::createRunningStitchObject() {
@@ -3876,11 +3842,13 @@ void MainWindow::autoDigitize() {
         auto* shapeDetailSlider = new QSlider(Qt::Horizontal, shapesPanel);
         shapeDetailSlider->setObjectName("shapeVectorizeDetailSlider");
         shapeDetailSlider->setRange(0, 100);
-        shapeDetailSlider->setValue(50);
+        shapeDetailSlider->setValue(
+            ui_memory::intValue(QStringLiteral("autoDigitize/shapeDetail"), 50, 0, 100));
         shapeDetailSlider->setToolTip(
             tr("Niveau de détail des formes vectorisées : bas = contours lissés ; haut = plus "
                "fidèle aux pixels segmentés."));
-        auto* shapeDetailValue = new QLabel(QStringLiteral("50"), shapesPanel);
+        auto* shapeDetailValue =
+            new QLabel(QString::number(shapeDetailSlider->value()), shapesPanel);
         shapeDetailValue->setObjectName("shapeVectorizeDetailValue");
         connect(shapeDetailSlider, &QSlider::valueChanged, shapeDetailValue,
                 [shapeDetailValue](int v) { shapeDetailValue->setText(QString::number(v)); });
@@ -3901,11 +3869,12 @@ void MainWindow::autoDigitize() {
         auto* detailSlider = new QSlider(Qt::Horizontal, contoursPanel);
         detailSlider->setObjectName("contourDetailSlider");
         detailSlider->setRange(0, 100);
-        detailSlider->setValue(50);
+        detailSlider->setValue(
+            ui_memory::intValue(QStringLiteral("autoDigitize/contourDetail"), 50, 0, 100));
         detailSlider->setToolTip(
             tr("Niveau de détail : bas = lignes très simplifiées, petits traits ignorés ; "
                "haut = fidèle au dessin."));
-        auto* detailValue = new QLabel(QStringLiteral("50"), contoursPanel);
+        auto* detailValue = new QLabel(QString::number(detailSlider->value()), contoursPanel);
         detailValue->setObjectName("contourDetailValue");
         connect(detailSlider, &QSlider::valueChanged, detailValue,
                 [detailValue](int v) { detailValue->setText(QString::number(v)); });
@@ -3936,6 +3905,9 @@ void MainWindow::autoDigitize() {
         if (optsDialog.exec() != QDialog::Accepted) {
             return;
         }
+        ui_memory::setIntValue(QStringLiteral("autoDigitize/shapeDetail"),
+                               shapeDetailSlider->value());
+        ui_memory::setIntValue(QStringLiteral("autoDigitize/contourDetail"), detailSlider->value());
         opts.skip_largest_region = skipBgCheck->isChecked();
         opts.simplify_tolerance = vectorize_tolerance_from_detail(shapeDetailSlider->value());
         contoursMode = contoursRadio->isChecked();
@@ -4003,61 +3975,6 @@ void MainWindow::autoDigitize() {
     statusBar()->showMessage(
         tr("Numérisation automatique : %1 objet(s) vectoriel(s), %2 objet(s) de broderie — "
            "tous éditables")
-            .arg(vecCount)
-            .arg(embCount));
-    warnAboutSkippedAutoSatinBranches(warnings);
-}
-
-void MainWindow::segmentWithAi() {
-    if (!project_.hasImage() || processed_.empty()) {
-        QMessageBox::information(this, tr("Segmenter avec l'IA"),
-                                 tr("Importez d'abord une image."));
-        return;
-    }
-    const AiPreferences prefs = loadAiPreferences();
-    if (!prefs.enabled) {
-        const auto answer = QMessageBox::question(
-            this, tr("Segmenter avec l'IA"),
-            tr("La segmentation par IA n'est pas activée. Ouvrir les préférences maintenant ?"));
-        if (answer == QMessageBox::Yes) {
-            openAiPreferences();
-        }
-        return;
-    }
-
-    AiSegmentationDialog dialog(processed_, project_.mm_per_px, prefs, this);
-    if (dialog.exec() != QDialog::Accepted || !dialog.hasResult()) {
-        return;
-    }
-    auto seg = dialog.takeSegmentation();
-    if (!seg) {
-        return;
-    }
-
-    autodigitize::AutoOptions opts;
-    opts.mm_per_px = project_.mm_per_px;
-    std::optional<BusyIndicator> busy;
-    busy.emplace(this, tr("Numérisation automatique en cours…"));
-    auto result = autodigitize::auto_digitize(*seg, project_.object_ids, opts);
-    busy.reset();
-    if (!result) {
-        QMessageBox::warning(this, tr("Numérisation impossible"),
-                             QString::fromStdString(result.error().message));
-        return;
-    }
-    const std::size_t vecCount = result->vectors.size();
-    const std::size_t embCount = result->embroideries.size();
-    const std::vector<std::string> warnings = std::move(result->warnings);
-
-    undoStack_.execute(
-        std::make_unique<commands::AddObjectBatchCommand>(
-            std::move(result->vectors), std::move(result->embroideries), "Segmentation IA"),
-        project_);
-    showStitchesAct_->setChecked(true);
-    refreshImage();
-    updateActions();
-    statusBar()->showMessage(
-        tr("Segmentation IA : %1 objet(s) vectoriel(s), %2 objet(s) de broderie créés.")
             .arg(vecCount)
             .arg(embCount));
     warnAboutSkippedAutoSatinBranches(warnings);
@@ -5371,10 +5288,9 @@ void MainWindow::updateContextToolbar() {
         contextToolbar_->addAction(mergeAct_);          // Fusionner avec… (mode)
         auto* recolorButton = contextToolbar_->addAction(tr("Recolorer…"));
         connect(recolorButton, &QAction::triggered, this, &MainWindow::recolorSelectedRegion);
-        auto* del = contextToolbar_->addAction(tr("Supprimer"));
-        connect(del, &QAction::triggered, this, &MainWindow::deleteSelectedRegions);
-        auto* vec = contextToolbar_->addAction(tr("Vectoriser"));
-        connect(vec, &QAction::triggered, this, &MainWindow::vectorizeSelectedRegion);
+        // Les actions du menu elles-mêmes (libellé, raccourci et état identiques partout).
+        contextToolbar_->addAction(deleteSelectionAct_);
+        contextToolbar_->addAction(vectorizeRegionAct_);
     } else {
         if (project_.hasImage() && sequence_) {
             const auto st = stitch::compute_stats(*sequence_);
@@ -5429,8 +5345,8 @@ void MainWindow::buildToolPalette() {
     toolSelectAct_ =
         addTool(icons::select(), tr("Sélection"), Tool::Select, QKeySequence(Qt::Key_V));
     toolPanAct_ = addTool(icons::pan(), tr("Déplacer la vue"), Tool::Pan, QKeySequence(Qt::Key_H));
-    toolRectAct_ =
-        addTool(icons::rect(), tr("Rectangle / Recadrage"), Tool::Rect, QKeySequence(Qt::Key_M));
+    toolRectAct_ = addTool(icons::rect(), tr("Recadrer l'image (glisser un cadre)"), Tool::Rect,
+                           QKeySequence(Qt::Key_M));
     toolDrawRectAct_ = addTool(icons::drawRect(), tr("Dessiner un rectangle"), Tool::DrawRectangle,
                                QKeySequence(Qt::Key_R));
     toolDrawEllipseAct_ = addTool(icons::ellipse(), tr("Dessiner une ellipse (Maj = cercle)"),
@@ -5625,7 +5541,7 @@ void MainWindow::setTool(Tool tool) {
     if (toolLabel_ != nullptr) {
         const QString name = tool == Tool::Select          ? tr("Sélection")
                              : tool == Tool::Pan           ? tr("Déplacer la vue")
-                             : tool == Tool::Rect          ? tr("Rectangle")
+                             : tool == Tool::Rect          ? tr("Recadrer l'image")
                              : tool == Tool::DrawRectangle ? tr("Dessiner un rectangle")
                              : tool == Tool::DrawEllipse   ? tr("Dessiner une ellipse")
                              : tool == Tool::DrawPolygon   ? tr("Dessiner un polygone")
@@ -5642,7 +5558,11 @@ void MainWindow::setTool(Tool tool) {
     // trouvé en usage réel (rectangle/ellipse ne réagissaient « à rien » en
     // apparence pour qui cliquait sans glisser — le mécanisme fonctionnait,
     // mais rien n'indiquait qu'un GLISSER était nécessaire).
-    if (tool == Tool::DrawRectangle || tool == Tool::DrawEllipse) {
+    if (tool == Tool::Rect) {
+        statusBar()->showMessage(
+            tr("Glissez le cadre à conserver — l'image sera recadrée au relâchement (Échap : "
+               "annuler). Pour dessiner un rectangle, utilisez l'outil R."));
+    } else if (tool == Tool::DrawRectangle || tool == Tool::DrawEllipse) {
         statusBar()->showMessage(
             tr("Cliquez-glissez sur le canevas pour dessiner le cadre, puis relâchez."));
     } else if (tool == Tool::DrawPolygonRegular) {
@@ -5689,17 +5609,7 @@ void MainWindow::buildWorkflowPanel() {
         addDockWidget(Qt::LeftDockWidgetArea, workflowDock_);
     }
     connect(&AppTheme::instance(), &AppTheme::changed, workflowPanel_, &WorkflowPanel::applyTheme);
-    connect(workflowPanel_, &WorkflowPanel::stepClicked, this, [this](int step) {
-        static const char* hints[] = {
-            QT_TR_NOOP("Menu Fichier ▸ Ouvrir une image pour commencer."),
-            QT_TR_NOOP("Menu Segmentation ▸ Segmenter l'image, ou Broderie ▸ Segmenter avec l'IA."),
-            QT_TR_NOOP("Sélectionnez une région, puis Segmentation ▸ Vectoriser (ou passez par "
-                       "l'IA, qui vectorise directement)."),
-            QT_TR_NOOP("Menu Broderie ▸ Numérisation automatique, ou créez un objet."),
-            QT_TR_NOOP("Appuyez sur F5 (Analyse) pour vérifier le motif."),
-            QT_TR_NOOP("Menu Fichier ▸ Exporter en DST.")};
-        statusBar()->showMessage(tr(hints[step]), 6000);
-    });
+    connect(workflowPanel_, &WorkflowPanel::stepClicked, this, &MainWindow::onWorkflowStepClicked);
 }
 
 void MainWindow::refreshWorkflow() {
@@ -7163,20 +7073,22 @@ void MainWindow::onCanvasClicked(QPointF posMm) {
 
     if (mergeMode_ && selectedRegion_ && clicked && !isRegionSelected(*clicked)) {
         // Toutes les régions sélectionnées sont absorbées par la région cliquée (couleur gardée).
+        // Annulé par l'utilisateur (objets vectoriels liés) : le mode reste actif pour recliquer.
         const std::vector<RegionId> sources = selectedRegionIds();
-        auto group = std::make_unique<commands::CompositeCommand>(
-            sources.size() == 1 ? tr("Fusionner des régions").toStdString()
-                                : tr("Fusionner %1 régions").arg(sources.size()).toStdString());
-        for (const RegionId source : sources) {
-            group->add(std::make_unique<commands::MergeRegionsCommand>(*clicked, source));
-        }
-        undoStack_.execute(std::move(group), project_);
         mergeAct_->setChecked(false);
-        setSelection(
-            {.region = clicked, .embroidery = std::nullopt, .objects = {}, .extraRegions = {}});
-        announceRegionSelection();
-        refreshImage();
-        updateActions();
+        if (!mergeRegions(sources, *clicked)) {
+            mergeAct_->setChecked(true);
+        }
+        return;
+    }
+    if (mergeMode_) {
+        // Le mode reste actif : dire pourquoi ce clic n'a rien fusionné, au lieu de retomber
+        // silencieusement dans une sélection simple.
+        QString hint = tr("Fusion : cliquez la région cible sur la carte — Échap : annuler");
+        if (clicked && selectedRegion_) {
+            hint = tr("Fusion : cliquez une région NON sélectionnée (la cible) — Échap : annuler");
+        }
+        statusBar()->showMessage(hint);
         return;
     }
 
@@ -7257,10 +7169,25 @@ void MainWindow::onSelectionClicked(QPointF posMm, SelectMode mode) {
 }
 
 void MainWindow::onSelectionRectangle(QRectF rectMm, SelectMode mode, bool crossing) {
-    // Carte des régions affichée et objets vectoriels masqués : le cadre sélectionne des régions
-    // (fenêtre : régions entièrement dans le cadre ; croisement : régions que le cadre touche).
-    if (currentTool_ == Tool::Select && !mergeMode_ && !showVectorsAct_->isChecked() &&
-        showSegAct_->isChecked() && project_.segmentation && !processed_.empty()) {
+    // Carte des régions affichée et aucun objet vectoriel touché par le cadre : le cadre
+    // sélectionne des régions (fenêtre : régions entièrement dans le cadre ; croisement :
+    // régions que le cadre touche). Objets affichés ET touchés : ce sont eux qui sont saisis,
+    // et un message dit comment atteindre les régions (sinon le cadre semblait ne rien faire).
+    const bool vectorsShown = showVectorsAct_->isChecked();
+    std::vector<ObjectId> objectHits;
+    if (vectorsShown && currentTool_ == Tool::Select && !mergeMode_) {
+        objectHits = objectsInRectangleMm(project_, rectMm, crossing);
+    }
+    const bool regionsUsable = currentTool_ == Tool::Select && !mergeMode_ &&
+                               showSegAct_->isChecked() && project_.segmentation &&
+                               !processed_.empty();
+    if (regionsUsable && vectorsShown && !objectHits.empty()) {
+        statusBar()->showMessage(
+            tr("Le cadre a saisi des objets vectoriels. Masquez-les (menu Affichage) pour "
+               "sélectionner des régions au cadre."),
+            6000);
+    }
+    if (regionsUsable && objectHits.empty()) {
         const double mmPerPx = project_.mm_per_px.value;
         const double left = -processed_.width * mmPerPx / 2.0;
         const double top = -processed_.height * mmPerPx / 2.0;
@@ -7284,6 +7211,8 @@ void MainWindow::onSelectionRectangle(QRectF rectMm, SelectMode mode, bool cross
             editSelection([](Selection& sel) {
                 sel.region.reset();
                 sel.extraRegions.clear();
+                sel.objects.clear(); // cadre vide : aussi la sélection d'objets (comme sans carte)
+                sel.embroidery.reset();
             });
             displayImage(processed_);
             updateActions();
@@ -7292,12 +7221,12 @@ void MainWindow::onSelectionRectangle(QRectF rectMm, SelectMode mode, bool cross
         }
         return;
     }
-    if (currentTool_ != Tool::Select || !showVectorsAct_->isChecked() || mergeMode_) {
+    if (currentTool_ != Tool::Select || !vectorsShown || mergeMode_) {
         return;
     }
     // Fenêtre (glisser vers la droite) : objets entièrement dans le cadre ;
     // croisement (vers la gauche) : objets que le cadre coupe. Détection pure.
-    applySelectionRectangle(objectsInRectangleMm(project_, rectMm, crossing), mode);
+    applySelectionRectangle(objectHits, mode);
 }
 
 void MainWindow::onSelectBelow(QPointF posMm, QPoint globalPos, SelectMode mode) {
@@ -7871,6 +7800,7 @@ void MainWindow::updateActions() {
     updateInspector();
     syncDocumentSelection();
     updateContextToolbar();
+    updateSegmentationWorkflowActions();
     refreshWorkflow();
     updateEmptyState();
     refreshHints(); // les indications dépendent de la sélection (lignes de déplacement)

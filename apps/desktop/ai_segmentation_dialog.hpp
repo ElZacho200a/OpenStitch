@@ -3,6 +3,7 @@
 
 #include <QDialog>
 #include <QHash>
+#include <QPixmap>
 #include <QVector>
 
 #include <cstdint>
@@ -23,6 +24,9 @@ class QDoubleSpinBox;
 class QLabel;
 class QProgressBar;
 class QPushButton;
+class QResizeEvent;
+class QRadioButton;
+class QSlider;
 class QSpinBox;
 class QTableWidget;
 
@@ -52,6 +56,28 @@ public:
         return validationReport_;
     }
 
+    // Ce que l'appelant fait du résultat : des régions éditables (la suite du flux normal :
+    // fusionner, recolorer, vectoriser, numériser) ou directement des objets de broderie.
+    enum class Output { EditableRegions, EmbroideryObjects };
+    [[nodiscard]] Output output() const;
+    // Options de la numérisation directe (sans objet en mode « régions éditables »).
+    [[nodiscard]] bool skipBackground() const;
+    [[nodiscard]] int vectorDetail() const;
+    // Préférences IA modifiées pendant que le dialogue est ouvert (bouton « Ouvrir les
+    // préférences ») : le worker est reconfiguré, la prochaine analyse les utilise.
+    void setPreferences(AiPreferences prefs);
+
+signals:
+    // Demandé quand une erreur de configuration se règle dans les préférences : la fenêtre
+    // principale ouvre la boîte de préférences puis rappelle setPreferences().
+    void openPreferencesRequested();
+
+public slots:
+    void reject() override;
+
+protected:
+    void resizeEvent(QResizeEvent* event) override;
+
 private slots:
     void onAnalyzeClicked();
     void onCancelClicked();
@@ -70,6 +96,16 @@ private:
 
     void setupUi();
     void setStatus(const QString& text);
+    // Erreur : message coloré, détail technique en infobulle et derrière « Afficher le détail »,
+    // et « Ouvrir les préférences… » quand la cause se règle là.
+    void setError(const QString& message, const QString& detail, bool configurationIssue);
+    void clearError();
+    void rescalePreviews();
+    // Construit la segmentation validée depuis les masques cochés ; `false` (message affiché)
+    // si rien n'est retenu ou si un calcul échoue.
+    [[nodiscard]] bool buildValidatedSegmentation();
+    void restoreChoices();
+    void saveChoices() const;
     void loadMasksIntoTable();
     [[nodiscard]] QVector<std::uint8_t>
     loadMaskPixels(const ai_segmentation::MaskEntry& entry) const;
@@ -96,6 +132,16 @@ private:
     QProgressBar* progressBar_{nullptr};
     QLabel* previewLabel_{nullptr};
     QLabel* selectionPreviewLabel_{nullptr};
+    QPixmap previewPixmap_;          // aperçus à leur taille d'origine, remis à l'échelle au
+    QPixmap selectionPreviewPixmap_; // redimensionnement de la fenêtre
+    QPushButton* preferencesButton_{nullptr};
+    QPushButton* detailButton_{nullptr};
+    QString errorDetail_;
+    QRadioButton* editableRegionsRadio_{nullptr};
+    QRadioButton* embroideryObjectsRadio_{nullptr};
+    QCheckBox* skipBackgroundCheck_{nullptr};
+    QSlider* vectorDetailSlider_{nullptr};
+    bool validating_{false};
     QTableWidget* maskTable_{nullptr};
     QPushButton* mergeButton_{nullptr};
     QDoubleSpinBox* minIslandAreaSpin_{nullptr};
