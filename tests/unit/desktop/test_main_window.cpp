@@ -6125,8 +6125,8 @@ openstitch::document::Project twoOverlappingRectangles() {
     const auto rect = [](std::int32_t x0, std::int32_t x1) {
         openstitch::geometry::Path path;
         path.closed = true;
-        for (const auto& p : {std::pair{x0, 0}, std::pair{x1, 0}, std::pair{x1, 10'000},
-                              std::pair{x0, 10'000}}) {
+        for (const auto& p :
+             {std::pair{x0, 0}, std::pair{x1, 0}, std::pair{x1, 10'000}, std::pair{x0, 10'000}}) {
             path.nodes.push_back(openstitch::geometry::PathNode{
                 Vec2um{Micrometers{p.first}, Micrometers{p.second}},
                 openstitch::geometry::NodeType::Corner, std::nullopt, std::nullopt});

@@ -80,8 +80,8 @@ void add_piece_commands(document::Project& project, CompositeCommand& group,
                         const document::VectorObject& original, std::vector<PathSet> pieces,
                         const std::string& label) {
     sort_pieces(pieces);
-    group.add(std::make_unique<SetVectorPathsCommand>(
-        original.id, std::vector<PathSet>{pieces.front()}, label));
+    group.add(std::make_unique<SetVectorPathsCommand>(original.id,
+                                                      std::vector<PathSet>{pieces.front()}, label));
     const std::vector<document::EmbroideryObject> embroideries = [&] {
         std::vector<document::EmbroideryObject> found;
         for (const auto& emb : project.embroidery_objects) {

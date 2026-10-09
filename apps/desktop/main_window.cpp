@@ -5466,9 +5466,9 @@ void MainWindow::buildToolPalette() {
     toolDrawSatinColumnAct_ =
         addTool(icons::satinColumn(), tr("Colonne satin (clics alternés côté A / côté B)"),
                 Tool::DrawSatinColumn, QKeySequence(Qt::Key_S));
-    toolCutAct_ = addTool(icons::knife(),
-                          tr("Couteau (tracez une ligne pour découper les formes qu'elle traverse)"),
-                          Tool::Cut, QKeySequence(Qt::Key_K));
+    toolCutAct_ = addTool(
+        icons::knife(), tr("Couteau (tracez une ligne pour découper les formes qu'elle traverse)"),
+        Tool::Cut, QKeySequence(Qt::Key_K));
     if (shapeMenu_ != nullptr) {
         shapeMenu_->addAction(toolCutAct_);
     }
