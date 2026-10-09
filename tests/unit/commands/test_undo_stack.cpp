@@ -2,6 +2,9 @@
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 
+#include <cmath>
+#include <memory>
+#include <numbers>
 #include <variant>
 
 #include "openstitch/commands/project_commands.hpp"
@@ -1870,6 +1873,37 @@ TEST_CASE(
     CHECK(std::get<document::AutoSatinParams>(project.embroidery_objects[0].params) == before);
     CHECK(stack.redo(project));
     CHECK(std::get<document::AutoSatinParams>(project.embroidery_objects[0].params) == scaled);
+}
+
+TEST_CASE("ScaleVectorObjectCommand : l'angle d'un guide absolu suit une echelle anisotrope") {
+    auto project = auto_satin_project();
+    UndoStack stack;
+    const ObjectId vecId = project.vector_objects[0].id;
+    auto& guide =
+        std::get<document::AutoSatinParams>(project.embroidery_objects[0].params).guides[0];
+    guide.absolute = true;
+    guide.angle = Angle{std::numbers::pi / 4.0};
+    const auto before = std::get<document::AutoSatinParams>(project.embroidery_objects[0].params);
+
+    // x double, y inchange : la direction 45 deg devient atan(1 / 2).
+    stack.execute(std::make_unique<ScaleVectorObjectCommand>(
+                      vecId, Vec2um{Micrometers{0}, Micrometers{0}}, 2.0, 1.0),
+                  project);
+    const auto& scaled =
+        std::get<document::AutoSatinParams>(project.embroidery_objects[0].params).guides[0];
+    CHECK(scaled.angle.radians == Catch::Approx(std::atan(0.5)).margin(1e-9));
+
+    // Miroir en x : 45 deg devient 135 deg.
+    stack.execute(std::make_unique<ScaleVectorObjectCommand>(
+                      vecId, Vec2um{Micrometers{0}, Micrometers{0}}, -1.0, 1.0),
+                  project);
+    const auto& mirrored =
+        std::get<document::AutoSatinParams>(project.embroidery_objects[0].params).guides[0];
+    CHECK(mirrored.angle.radians == Catch::Approx(std::numbers::pi - std::atan(0.5)).margin(1e-9));
+
+    CHECK(stack.undo(project));
+    CHECK(stack.undo(project));
+    CHECK(std::get<document::AutoSatinParams>(project.embroidery_objects[0].params) == before);
 }
 
 TEST_CASE("EditAutoSatinCommand : edition de guides annulable et nommee") {

@@ -5,6 +5,7 @@
 #include <QList>
 #include <QMainWindow>
 #include <QPainterPath>
+#include <QPixmap>
 #include <QPointer>
 #include <QRectF>
 #include <QString>
@@ -682,6 +683,13 @@ private:
     };
     std::vector<HoverShape> hoverCache_;
     bool hoverCacheValid_{false};
+
+    // Pixmap de l'image de base mémorisé : la conversion QImage -> QPixmap (copie complète) était
+    // refaite à chaque rafraîchissement, même quand seule la broderie changeait.
+    QPixmap basePixmapCache_;
+    std::uint64_t basePixmapKey_{0};
+    bool basePixmapKeyValid_{false};
+
     QTimer* hoverTimer_{nullptr};
     std::optional<QPointF> hoverPending_;
     int hoverComputations_{0}; // compteurs (tests) : calculs de survol, contours construits

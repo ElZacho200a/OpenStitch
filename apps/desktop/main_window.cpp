@@ -38,6 +38,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstring>
 #include <filesystem>
 #include <limits>
 #include <map>
@@ -2485,9 +2486,28 @@ void MainWindow::renderBase(const image::Image& img) {
     hideHoverHighlight();     // la sélection/les objets ont pu changer
 
     if (!img.empty() && (showImageAct_ == nullptr || showImageAct_->isChecked())) {
-        const QImage qimg(img.rgba.data(), img.width, img.height, img.width * 4,
-                          QImage::Format_RGBA8888);
-        const QPixmap pixmap = QPixmap::fromImage(qimg.copy());
+        // Empreinte exacte du contenu (FNV-1a par mots de 64 bits, ~3 ms pour 9 Mo) : la
+        // conversion en pixmap n'est refaite que si l'image a vraiment changé.
+        std::uint64_t key = 1469598103934665603ULL ^ (static_cast<std::uint64_t>(img.width) << 32) ^
+                            static_cast<std::uint64_t>(img.height);
+        const std::size_t bytes = img.rgba.size();
+        const std::size_t words = bytes / 8;
+        for (std::size_t i = 0; i < words; ++i) {
+            std::uint64_t w = 0;
+            std::memcpy(&w, img.rgba.data() + i * 8, 8);
+            key = (key ^ w) * 1099511628211ULL;
+        }
+        for (std::size_t i = words * 8; i < bytes; ++i) {
+            key = (key ^ img.rgba[i]) * 1099511628211ULL;
+        }
+        if (!basePixmapKeyValid_ || key != basePixmapKey_ || basePixmapCache_.isNull()) {
+            const QImage qimg(img.rgba.data(), img.width, img.height, img.width * 4,
+                              QImage::Format_RGBA8888);
+            basePixmapCache_ = QPixmap::fromImage(qimg.copy());
+            basePixmapKey_ = key;
+            basePixmapKeyValid_ = true;
+        }
+        const QPixmap pixmap = basePixmapCache_;
         auto* item = scene_->addPixmap(pixmap);
         const double mmPerPx = project_.mm_per_px.value;
         const double wMm = img.width * mmPerPx;

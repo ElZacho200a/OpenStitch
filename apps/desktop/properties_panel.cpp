@@ -90,6 +90,9 @@ void PropertiesPanel::clearBody() {
 
 QDoubleSpinBox* PropertiesPanel::mmSpin(double valueMm, double maxMm) {
     auto* spin = new QDoubleSpinBox(body_);
+    // Frappe au clavier : une seule modification à la validation, pas une par chiffre
+    // (chaque modification régénère les points).
+    spin->setKeyboardTracking(false);
     spin->setRange(0.0, maxMm);
     spin->setDecimals(2);
     spin->setSingleStep(0.1);
@@ -222,6 +225,7 @@ void PropertiesPanel::showEmbroidery(const document::EmbroideryObject& object) {
                 auto* len = mmSpin(to_millimeters(p.stitch_length).value, 20.0);
                 auto* minl = mmSpin(to_millimeters(p.min_length).value, 20.0);
                 auto* rep = new QSpinBox(body_);
+                rep->setKeyboardTracking(false);
                 rep->setRange(1, 3);
                 rep->setValue(p.repeats);
                 rep->setToolTip(tr("1 = simple, 2 = aller-retour, 3 = point triple"));
@@ -244,6 +248,7 @@ void PropertiesPanel::showEmbroidery(const document::EmbroideryObject& object) {
                 auto* spacing = mmSpin(to_millimeters(p.row_spacing).value, 5.0);
                 auto* len = mmSpin(to_millimeters(p.stitch_length).value, 10.0);
                 auto* angle = new QSpinBox(body_);
+                angle->setKeyboardTracking(false);
                 angle->setRange(0, 179);
                 angle->setSuffix(tr(" °"));
                 angle->setValue(
@@ -251,6 +256,7 @@ void PropertiesPanel::showEmbroidery(const document::EmbroideryObject& object) {
                     180);
                 auto* inset = mmSpin(to_millimeters(p.inset).value, 5.0);
                 auto* stagger = new QSpinBox(body_);
+                stagger->setKeyboardTracking(false);
                 stagger->setRange(1, 8);
                 stagger->setValue(p.stagger);
                 // Tatami avancé (Lot 7).
@@ -331,6 +337,7 @@ void PropertiesPanel::showEmbroidery(const document::EmbroideryObject& object) {
                 len->setMinimum(1.0);
                 len->setToolTip(tr("Longueur cible, bornée entre 1 et 7 mm."));
                 auto* edge = new QSpinBox(body_);
+                edge->setKeyboardTracking(false);
                 edge->setRange(0, 100);
                 edge->setSuffix(tr(" %"));
                 edge->setValue(static_cast<int>(std::lround(p.edge_weight * 100.0)));
@@ -338,6 +345,7 @@ void PropertiesPanel::showEmbroidery(const document::EmbroideryObject& object) {
                                     "direction du fil (0 % = guides seuls)."));
                 auto* inset = mmSpin(to_millimeters(p.inset).value, 5.0);
                 auto* stagger = new QSpinBox(body_);
+                stagger->setKeyboardTracking(false);
                 stagger->setRange(1, 8);
                 stagger->setValue(p.stagger);
                 auto* overlap = mmSpin(to_millimeters(p.sector_overlap).value, 1.0);
@@ -358,6 +366,7 @@ void PropertiesPanel::showEmbroidery(const document::EmbroideryObject& object) {
                                         "légère ondulation, comme un passé empiétant. "
                                         "Reproductible : même projet, même résultat."));
                 auto* intensity = new QSpinBox(body_);
+                intensity->setKeyboardTracking(false);
                 intensity->setObjectName(QStringLiteral("spin_handmadeIntensity"));
                 intensity->setRange(0, 100);
                 intensity->setSuffix(tr(" %"));
@@ -575,6 +584,7 @@ void PropertiesPanel::showEmbroidery(const document::EmbroideryObject& object) {
                 guideList->setMaximumHeight(110);
                 satinGuideList_ = guideList;
                 auto* guideAngle = new QSpinBox(body_);
+                guideAngle->setKeyboardTracking(false);
                 guideAngle->setObjectName(QStringLiteral("spin_satinGuideAngle"));
                 guideAngle->setRange(-179, 179);
                 guideAngle->setSuffix(tr(" °"));

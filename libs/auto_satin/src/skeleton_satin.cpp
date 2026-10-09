@@ -5,6 +5,7 @@
 #include <bit>
 #include <cmath>
 #include <cstdio>
+#include <functional>
 #include <limits>
 #include <list>
 #include <map>
@@ -429,6 +430,8 @@ std::vector<Chain> recover_cycles(const AutoSatinDebug& dbg, const SkeletonGraph
     constexpr int kDy[8] = {0, 1, 0, -1, 1, 1, -1, -1};
 
     std::vector<char> seen(static_cast<std::size_t>(w) * static_cast<std::size_t>(h), 0);
+    std::vector<int> compGrid(static_cast<std::size_t>(w) * static_cast<std::size_t>(h), -1);
+    const std::function<std::size_t(int, int)> idxFn = [&](int px, int py) { return idx(px, py); };
     for (int y = 0; y < h; ++y) {
         for (int x = 0; x < w; ++x) {
             if (!sk.at(x, y) || covered[idx(x, y)] || seen[idx(x, y)]) {
@@ -450,13 +453,26 @@ std::vector<Chain> recover_cycles(const AutoSatinDebug& dbg, const SkeletonGraph
             if (comp.size() < 12) {
                 continue; // bruit
             }
-            const auto compIndex = [&](int px, int py) -> int {
-                for (std::size_t i = 0; i < comp.size(); ++i) {
-                    if (comp[i].first == px && comp[i].second == py) {
-                        return static_cast<int>(i);
+            // Index pixel -> rang dans la composante : accès en O(1) (le balayage linéaire
+            // rendait l'étape quadratique sur un grand anneau). Remis à -1 en sortie.
+            for (std::size_t i = 0; i < comp.size(); ++i) {
+                compGrid[idx(comp[i].first, comp[i].second)] = static_cast<int>(i);
+            }
+            struct GridReset {
+                std::vector<int>& grid;
+                const std::vector<std::pair<int, int>>& pixels;
+                const std::function<std::size_t(int, int)>& index;
+                ~GridReset() {
+                    for (const auto& q : pixels) {
+                        grid[index(q.first, q.second)] = -1;
                     }
                 }
-                return -1;
+            } gridReset{compGrid, comp, idxFn};
+            const auto compIndex = [&](int px, int py) -> int {
+                if (px < 0 || py < 0 || px >= w || py >= h) {
+                    return -1;
+                }
+                return compGrid[idx(px, py)];
             };
             // Extrémités : pixels n'ayant qu'un voisin dans la composante.
             std::vector<std::pair<int, int>> ends;

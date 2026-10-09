@@ -5,6 +5,7 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <limits>
 #include <optional>
 #include <unordered_map>
 #include <utility>
@@ -380,7 +381,8 @@ private:
 class ScaleVectorObjectCommand final : public ICommand {
 public:
     ScaleVectorObjectCommand(ObjectId object, Vec2um anchor, double scaleX, double scaleY)
-        : object_(object), anchor_(anchor), scaleX_(scaleX), scaleY_(scaleY) {}
+        : object_(object), anchor_(anchor), scaleX_(std::isfinite(scaleX) ? scaleX : 1.0),
+          scaleY_(std::isfinite(scaleY) ? scaleY : 1.0) {}
 
     void apply(document::Project& project) override {
         auto* object = project.findObject(object_);
@@ -420,6 +422,7 @@ public:
                 autoSatinBefore_.emplace_back(emb.id, *sat);
                 for (auto& guide : sat->guides) {
                     guide.anchor = scalePoint(guide.anchor);
+                    guide.angle = scaleGuideAngle(guide.angle, guide.absolute);
                 }
                 if (sat->entry_point) {
                     sat->entry_point = scalePoint(*sat->entry_point);
@@ -452,12 +455,37 @@ public:
     [[nodiscard]] std::string name() const override { return "Redimensionnement de forme"; }
 
 private:
+    [[nodiscard]] static std::int32_t clampToInt32(double v) {
+        constexpr double kMax = static_cast<double>(std::numeric_limits<std::int32_t>::max());
+        constexpr double kMin = static_cast<double>(std::numeric_limits<std::int32_t>::min());
+        return static_cast<std::int32_t>(std::lround(std::clamp(v, kMin, kMax)));
+    }
     [[nodiscard]] Vec2um scalePoint(Vec2um p) const {
         const double dx = static_cast<double>((p.x - anchor_.x).value);
         const double dy = static_cast<double>((p.y - anchor_.y).value);
         return Vec2um{
-            Micrometers{anchor_.x.value + static_cast<std::int32_t>(std::lround(dx * scaleX_))},
-            Micrometers{anchor_.y.value + static_cast<std::int32_t>(std::lround(dy * scaleY_))}};
+            Micrometers{clampToInt32(static_cast<double>(anchor_.x.value) + dx * scaleX_)},
+            Micrometers{clampToInt32(static_cast<double>(anchor_.y.value) + dy * scaleY_)}};
+    }
+    // Angle d'un guide d'auto-satin après mise à l'échelle (éventuellement anisotrope ou en
+    // miroir). Absolu : la direction (cos a, sin a) est transformée comme un vecteur.
+    // Relatif (écart à la perpendiculaire de l'axe, qui suit déjà la forme) : un miroir
+    // (déterminant négatif) inverse le sens de rotation, donc le signe de l'écart.
+    [[nodiscard]] Angle scaleGuideAngle(Angle a, bool absolute) const {
+        constexpr double kPi = 3.14159265358979323846;
+        const auto wrapHalf = [&](double v) {
+            v = std::fmod(v, kPi);
+            return v < 0.0 ? v + kPi : v;
+        };
+        if (absolute) {
+            const double x = std::cos(a.radians) * scaleX_;
+            const double y = std::sin(a.radians) * scaleY_;
+            if (x == 0.0 && y == 0.0) {
+                return a;
+            }
+            return Angle{wrapHalf(std::atan2(y, x))};
+        }
+        return scaleX_ * scaleY_ < 0.0 ? Angle{wrapHalf(-a.radians)} : a;
     }
     [[nodiscard]] std::optional<Vec2um> scaleTangent(std::optional<Vec2um> t) const {
         if (!t) {
