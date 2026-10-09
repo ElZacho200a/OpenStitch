@@ -8,9 +8,9 @@
 #include <cmath>
 #include <limits>
 #include <map>
-#include <utility>
-#include <string>
 #include <set>
+#include <string>
+#include <utility>
 
 namespace openstitch::segmentation {
 
@@ -801,9 +801,9 @@ std::vector<RegionId> regions_in_rect(const Segmentation& seg, int x0, int y0, i
     std::set<std::uint32_t> labels;
     for (int y = y0; y <= y1; ++y) {
         for (int x = x0; x <= x1; ++x) {
-            const std::uint32_t l = seg.labels[static_cast<std::size_t>(y) *
-                                                   static_cast<std::size_t>(seg.width) +
-                                               static_cast<std::size_t>(x)];
+            const std::uint32_t l =
+                seg.labels[static_cast<std::size_t>(y) * static_cast<std::size_t>(seg.width) +
+                           static_cast<std::size_t>(x)];
             if (l != 0) {
                 labels.insert(l);
             }

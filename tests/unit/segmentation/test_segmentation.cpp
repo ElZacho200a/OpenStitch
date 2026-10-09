@@ -689,7 +689,8 @@ TEST_CASE("carte avec plusieurs regions eclaircies") {
     const auto px = [&](const image::Image& m, int x, int y) {
         return m.rgba[(static_cast<std::size_t>(y) * static_cast<std::size_t>(m.width) +
                        static_cast<std::size_t>(x)) *
-                      4 + 1];
+                          4 +
+                      1];
     };
     CHECK(px(both, 1, 1) > px(plain, 1, 1));  // rouge eclairci
     CHECK(px(both, 6, 1) > px(plain, 6, 1));  // vert eclairci
