@@ -28,6 +28,26 @@ inline constexpr int kSchemaVersion = 5;
 [[nodiscard]] Result<void> save_project(const std::filesystem::path& path,
                                         const document::Project& project);
 
-[[nodiscard]] Result<document::Project> load_project(const std::filesystem::path& path);
+// Informations de chargement : version du schéma du fichier lu. Un fichier
+// plus ancien que kSchemaVersion est migré en mémoire (migrated == true).
+struct LoadInfo {
+    int fileVersion = 0;
+    bool migrated = false;
+};
+
+// `info` (optionnel) reçoit la version lue et l'indicateur de migration.
+// Ne lève jamais d'exception : un JSON valide mais de structure invalide
+// ressort en Result d'erreur (InvalidFile).
+[[nodiscard]] Result<document::Project> load_project(const std::filesystem::path& path,
+                                                     LoadInfo* info = nullptr);
+
+// Chemin de la copie de sécurité d'un fichier migré : `<nom>.v<N>.osp.bak`.
+[[nodiscard]] std::filesystem::path migration_backup_path(const std::filesystem::path& path,
+                                                          int fromVersion);
+
+// Copie `path` vers migration_backup_path(path, fromVersion) si la copie
+// n'existe pas encore (à appeler avant d'écraser un fichier migré).
+[[nodiscard]] Result<void> backup_before_migrated_save(const std::filesystem::path& path,
+                                                       int fromVersion);
 
 } // namespace openstitch::project_io
