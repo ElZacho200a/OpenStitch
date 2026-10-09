@@ -4,6 +4,8 @@
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 
+#include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <numbers>
 #include <vector>
@@ -11,6 +13,8 @@
 #include "axis.hpp"
 #include "axis_sampler.hpp"
 #include "chord.hpp"
+#include "openstitch/auto_satin/shapes.hpp"
+#include "openstitch/auto_satin/skeleton_satin.hpp"
 #include "orientation.hpp"
 
 using namespace openstitch::auto_satin::detail;
@@ -226,4 +230,319 @@ TEST_CASE("echantillonnage: un angle absolu parallele a l'axe est ramene au plan
     for (const auto& smp : res.samples) {
         CHECK(std::abs(std::sin(smp.g - smp.alpha)) >= 0.17 - 1e-9);
     }
+}
+
+namespace {
+
+namespace as = openstitch::auto_satin;
+
+struct Tri {
+    P2 a, b, c;
+};
+
+bool in_tri(const Tri& t, P2 p) {
+    const auto sign = [](P2 p1, P2 p2, P2 p3) {
+        return (p1.x - p3.x) * (p2.y - p3.y) - (p2.x - p3.x) * (p1.y - p3.y);
+    };
+    const double d1 = sign(p, t.a, t.b);
+    const double d2 = sign(p, t.b, t.c);
+    const double d3 = sign(p, t.c, t.a);
+    const bool neg = d1 < 0 || d2 < 0 || d3 < 0;
+    const bool pos = d1 > 0 || d2 > 0 || d3 > 0;
+    return !(neg && pos);
+}
+
+P2 to_p(openstitch::Vec2um v) {
+    return {static_cast<double>(v.x.value), static_cast<double>(v.y.value)};
+}
+
+// Part de la région (échantillonnée sur une grille de 100 µm) balayée par les
+// fils : triangles formés par deux traversées consécutives d'une même colonne.
+double coverage_of(const openstitch::geometry::PathSet& region, const as::SkeletonSatinResult& r) {
+    const auto polys = region_polys(region);
+    std::vector<Tri> tris;
+    for (const auto& col : r.columns) {
+        for (std::size_t i = 0; i + 1 < col.crossings.size(); ++i) {
+            const P2 a0 = to_p(col.crossings[i].a), b0 = to_p(col.crossings[i].b);
+            const P2 a1 = to_p(col.crossings[i + 1].a), b1 = to_p(col.crossings[i + 1].b);
+            tris.push_back({a0, b0, b1});
+            tris.push_back({a0, b1, a1});
+        }
+    }
+    double minx = 1e18, miny = 1e18, maxx = -1e18, maxy = -1e18;
+    for (const auto& poly : polys) {
+        for (const auto& q : poly) {
+            minx = std::min(minx, q.x);
+            maxx = std::max(maxx, q.x);
+            miny = std::min(miny, q.y);
+            maxy = std::max(maxy, q.y);
+        }
+    }
+    long inside = 0, covered = 0;
+    for (double y = miny + 50; y < maxy; y += 100.0) {
+        for (double x = minx + 50; x < maxx; x += 100.0) {
+            const P2 p{x, y};
+            if (!in_region(polys, p)) {
+                continue;
+            }
+            ++inside;
+            for (const auto& t : tris) {
+                if (in_tri(t, p)) {
+                    ++covered;
+                    break;
+                }
+            }
+        }
+    }
+    return inside > 0 ? static_cast<double>(covered) / static_cast<double>(inside) : 0.0;
+}
+
+// Aire totale des quadrilatères de fils rapportée à l'aire de la région : 1 = pas de
+// recouvrement, 1,3 = 30 % de fil en double.
+double overlap_ratio(const openstitch::geometry::PathSet& region,
+                     const as::SkeletonSatinResult& r) {
+    double area = 0.0;
+    const auto polys = region_polys(region);
+    for (std::size_t k = 0; k < polys.size(); ++k) {
+        double a = 0.0;
+        const auto& poly = polys[k];
+        for (std::size_t i = 0; i < poly.size(); ++i) {
+            const P2 p = poly[i], q = poly[(i + 1) % poly.size()];
+            a += p.x * q.y - q.x * p.y;
+        }
+        area += (k == 0 ? 1.0 : -1.0) * std::abs(a) * 0.5;
+    }
+    double quads = 0.0;
+    for (const auto& col : r.columns) {
+        for (std::size_t i = 0; i + 1 < col.crossings.size(); ++i) {
+            const P2 a0 = to_p(col.crossings[i].a), b0 = to_p(col.crossings[i].b);
+            const P2 a1 = to_p(col.crossings[i + 1].a), b1 = to_p(col.crossings[i + 1].b);
+            const auto tri = [](P2 x, P2 y, P2 z) {
+                return std::abs((y.x - x.x) * (z.y - x.y) - (z.x - x.x) * (y.y - x.y)) * 0.5;
+            };
+            quads += tri(a0, b0, b1) + tri(a0, b1, a1);
+        }
+    }
+    return area > 0.0 ? quads / area : 0.0;
+}
+
+} // namespace
+
+namespace {
+
+using openstitch::geometry::PathSet;
+
+// Applique une transformation de coordonnées à tous les noeuds d'une région.
+template <typename F> PathSet transformed(const PathSet& region, F f) {
+    PathSet out = region;
+    const auto apply = [&](openstitch::geometry::Path& path) {
+        for (auto& n : path.nodes) {
+            const auto [x, y] = f(static_cast<std::int32_t>(n.pos.x.value),
+                                  static_cast<std::int32_t>(n.pos.y.value));
+            n.pos.x = openstitch::Micrometers{x};
+            n.pos.y = openstitch::Micrometers{y};
+        }
+        if (f(1, 0).first * f(0, 1).second - f(0, 1).first * f(1, 0).second < 0) {
+            std::reverse(path.nodes.begin(), path.nodes.end()); // symétrie : garde l'orientation
+        }
+    };
+    apply(out.outer);
+    for (auto& h : out.holes) {
+        apply(h);
+    }
+    return out;
+}
+
+as::SkeletonSatinResult run(const PathSet& region) {
+    auto r = as::generate_skeleton_satin(region, {});
+    REQUIRE(r.has_value());
+    return std::move(*r);
+}
+
+bool same_result(const as::SkeletonSatinResult& a, const as::SkeletonSatinResult& b) {
+    if (a.columns.size() != b.columns.size()) {
+        return false;
+    }
+    for (std::size_t i = 0; i < a.columns.size(); ++i) {
+        if (a.columns[i].crossings.size() != b.columns[i].crossings.size()) {
+            return false;
+        }
+        for (std::size_t k = 0; k < a.columns[i].crossings.size(); ++k) {
+            const auto& x = a.columns[i].crossings[k];
+            const auto& y = b.columns[i].crossings[k];
+            if (!(x.a == y.a) || !(x.b == y.b)) {
+                return false;
+            }
+        }
+    }
+    return true;
+}
+
+struct Floor {
+    const char* name;
+    double coverage; // plancher de couverture (mesures du 2026-10, marge ~0,5 point)
+    int columns;     // nombre de colonnes (branches) attendu
+};
+
+} // namespace
+
+TEST_CASE("pipeline: planchers de couverture et recouvrement borne sur le corpus",
+          "[skeleton_satin]") {
+    // Planchers établis APRES mesure sur le corpus de formes historique (l'ancien
+    // moteur plafonnait à 85,8-88,7 % sur y/t/cross/h/trident et n'avait jamais
+    // réussi E, multi_neck ni star5). Ce sont des planchers de non-régression, pas
+    // des seuils de qualité textile : aucune validation sur machine n'a eu lieu.
+    const Floor floors[] = {
+        {"rectangle", 0.990, 1},
+        {"capsule", 0.990, 1},
+        {"ribbon", 0.990, 1},
+        {"s", 0.990, 1},
+        {"y", 0.990, 3},
+        {"y_symmetric", 0.990, 3},
+        {"t", 0.990, 3},
+        {"cross", 0.990, 4},
+        {"h", 0.990, 5},
+        {"wide", 0.990, 1},
+        {"notch", 0.990, 1},
+        {"pinch", 0.990, 1},
+        {"trident", 0.980, 3},
+        {"star5", 0.990, 7},
+        {"asymmetric_star", 0.985, 7},
+        {"comb", 0.980, 11},
+        {"E", 0.985, 3},
+        {"e_trunk_isolated", 0.985, 1},
+        {"deep_recursive", 0.985, 3},
+        {"multi_neck", 0.975, 1},
+        {"dumbbell", 0.960, 1},
+        {"two_holes", 0.985, 3},
+        {"ring", 0.990, 1},
+        {"ring_branch", 0.990, 1},
+        {"junction_with_hole", 0.990, 6},
+        {"polygonal_cut_fixture", 0.980, 3},
+        {"thick_diagonal_blob", 0.960, 1},
+    };
+    for (const auto& f : floors) {
+        INFO(f.name);
+        const auto region = as::make_shape(f.name);
+        REQUIRE(region.has_value());
+        const auto res = run(*region);
+        CHECK(static_cast<int>(res.columns.size()) == f.columns);
+        CHECK(coverage_of(*region, res) >= f.coverage);
+        const double ov = overlap_ratio(*region, res);
+        CHECK(ov <= 1.10); // pas de fil en double notable
+        CHECK(ov >= 0.90);
+    }
+}
+
+TEST_CASE("pipeline: limite connue, les bras larges (blocs) ne sont pas couverts",
+          "[skeleton_satin]") {
+    // deep_channel : un U dont les bras font 16 mm de large. Ce ne sont pas des
+    // rubans : l'élagage du squelette retire leurs branches courtes. Le moteur ne les
+    // couvre donc pas ; l'éligibilité doit refuser cette forme (voir RD-PAT-004).
+    const auto region = as::make_shape("deep_channel");
+    REQUIRE(region.has_value());
+    const auto res = run(*region);
+    CHECK(coverage_of(*region, res) < 0.80);
+}
+
+TEST_CASE("pipeline: formes compactes refusees avec un message explicite", "[skeleton_satin]") {
+    for (const char* name : {"disc_15mm", "circle", "petal", "disc_tight_inner_ring"}) {
+        INFO(name);
+        const auto region = as::make_shape(name);
+        REQUIRE(region.has_value());
+        const auto res = run(*region);
+        CHECK(res.columns.empty());
+        CHECK_FALSE(res.diagnostics.messages.empty());
+    }
+}
+
+TEST_CASE("pipeline: anneau, colonne fermee sans doublon ni saut a la couture",
+          "[skeleton_satin]") {
+    const auto region = as::make_shape("ring");
+    REQUIRE(region.has_value());
+    const auto res = run(*region);
+    REQUIRE(res.columns.size() == 1);
+    const auto& cr = res.columns[0].crossings;
+    REQUIRE(cr.size() > 20);
+    CHECK(cr.front().a == cr.back().a); // clôture : dernière traversée = première
+    CHECK(cr.front().b == cr.back().b);
+    // Pas de doublon à la couture avant la clôture : l'avant-dernière diffère de la première.
+    CHECK_FALSE(cr[cr.size() - 2].a == cr.front().a);
+}
+
+TEST_CASE("pipeline: deterministe, deux executions identiques", "[skeleton_satin]") {
+    for (const char* name : {"t", "star5", "ring", "e_trunk_isolated", "multi_neck"}) {
+        INFO(name);
+        const auto region = as::make_shape(name);
+        REQUIRE(region.has_value());
+        CHECK(same_result(run(*region), run(*region)));
+    }
+}
+
+TEST_CASE("pipeline: la decision et la couverture sont invariantes par rotation et miroir",
+          "[skeleton_satin]") {
+    for (const char* name : {"t", "cross", "s", "y", "E"}) {
+        INFO(name);
+        const auto region = as::make_shape(name);
+        REQUIRE(region.has_value());
+        const auto base = run(*region);
+        const double baseCov = coverage_of(*region, base);
+
+        const auto rot = transformed(*region, [](std::int32_t x, std::int32_t y) {
+            return std::pair<std::int32_t, std::int32_t>{-y, x};
+        });
+        const auto rotRes = run(rot);
+        CHECK(rotRes.columns.size() == base.columns.size());
+        CHECK(coverage_of(rot, rotRes) == Approx(baseCov).margin(0.02));
+
+        const auto mir = transformed(*region, [](std::int32_t x, std::int32_t y) {
+            return std::pair<std::int32_t, std::int32_t>{-x, y};
+        });
+        const auto mirRes = run(mir);
+        CHECK(mirRes.columns.size() == base.columns.size());
+        CHECK(coverage_of(mir, mirRes) == Approx(baseCov).margin(0.02));
+    }
+}
+
+TEST_CASE("pipeline: un guide absolu change l'orientation sans perdre la couverture",
+          "[skeleton_satin]") {
+    // Rectangle long : sans guide les traversées sont perpendiculaires à l'axe
+    // (verticales). Un guide relatif de 30° incline toutes les traversées.
+    const auto region = as::make_shape("rectangle");
+    REQUIRE(region.has_value());
+    // Guide au centre de la boîte englobante de la région.
+    std::int64_t sx = 0, sy = 0;
+    for (const auto& n : region->outer.nodes) {
+        sx += n.pos.x.value;
+        sy += n.pos.y.value;
+    }
+    const auto count = static_cast<std::int64_t>(region->outer.nodes.size());
+    as::SkeletonSatinParameters prm;
+    prm.guides.push_back(
+        {openstitch::Vec2um{openstitch::Micrometers{static_cast<std::int32_t>(sx / count)},
+                            openstitch::Micrometers{static_cast<std::int32_t>(sy / count)}},
+         30.0 * std::numbers::pi / 180.0, false});
+    const auto guided = as::generate_skeleton_satin(*region, prm);
+    REQUIRE(guided.has_value());
+    REQUIRE(guided->columns.size() == 1);
+    CHECK(guided->diagnostics.orphan_guides == 0);
+    const auto& mid = guided->columns[0].crossings[guided->columns[0].crossings.size() / 2];
+    const double dx = static_cast<double>(mid.b.x.value - mid.a.x.value);
+    const double dy = static_cast<double>(mid.b.y.value - mid.a.y.value);
+    // Écart à la verticale ≈ 30°.
+    CHECK(std::abs(std::atan2(std::abs(dx), std::abs(dy))) ==
+          Approx(30.0 * std::numbers::pi / 180.0).margin(0.05));
+    CHECK(coverage_of(*region, *guided) >= 0.90);
+}
+
+TEST_CASE("pipeline: un guide trop loin de l'axe est signale orphelin", "[skeleton_satin]") {
+    const auto region = as::make_shape("rectangle");
+    REQUIRE(region.has_value());
+    as::SkeletonSatinParameters prm;
+    prm.guides.push_back(
+        {openstitch::Vec2um{openstitch::Micrometers{0}, openstitch::Micrometers{500'000}}, 0.3,
+         false});
+    const auto res = as::generate_skeleton_satin(*region, prm);
+    REQUIRE(res.has_value());
+    CHECK(res->diagnostics.orphan_guides == 1);
 }

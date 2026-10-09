@@ -16,6 +16,7 @@ add_library(openstitch_auto_satin
     src/chord.cpp
     src/axis.cpp
     src/axis_sampler.cpp
+    src/skeleton_satin.cpp
 )
 add_library(openstitch::auto_satin ALIAS openstitch_auto_satin)
 

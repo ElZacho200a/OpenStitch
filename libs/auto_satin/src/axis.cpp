@@ -79,11 +79,67 @@ Axis Axis::build(const std::vector<P2>& raw, const AxisParams& params) {
     return axis;
 }
 
+Axis Axis::build_closed(const std::vector<P2>& raw, const AxisParams& params) {
+    Axis axis;
+    axis.tangent_window_um_ = std::max(params.resample_step_um, params.tangent_window_um);
+    if (raw.size() < 3) {
+        return axis;
+    }
+    // Polyligne fermée : on ajoute le premier point pour le calcul des longueurs.
+    std::vector<P2> loop = raw;
+    loop.push_back(raw.front());
+    const auto loopCum = cumulative_length(loop);
+    const double total = loopCum.back();
+    if (total < 1e-6) {
+        return axis;
+    }
+    const double step = std::max(1.0, params.resample_step_um);
+    const int n = std::max(3, static_cast<int>(std::ceil(total / step))); // points distincts
+    std::vector<P2> pts;
+    pts.reserve(static_cast<std::size_t>(n));
+    for (int k = 0; k < n; ++k) {
+        pts.push_back(point_at(loop, loopCum, total * k / n));
+    }
+    // Moyenne mobile circulaire (fenêtre complète : pas de bord).
+    const double actualStep = total / n;
+    const int radius =
+        std::min(std::max(0, static_cast<int>(std::lround(params.smooth_radius_um / actualStep))),
+                 (n - 1) / 2);
+    for (int pass = 0; pass < params.smooth_passes && radius > 0; ++pass) {
+        std::vector<P2> next(pts.size());
+        for (int i = 0; i < n; ++i) {
+            P2 acc{0.0, 0.0};
+            for (int j = -radius; j <= radius; ++j) {
+                acc = acc + pts[static_cast<std::size_t>(((i + j) % n + n) % n)];
+            }
+            next[static_cast<std::size_t>(i)] = acc * (1.0 / (2 * radius + 1));
+        }
+        pts = std::move(next);
+    }
+    pts.push_back(pts.front()); // clôture
+    axis.points_ = std::move(pts);
+    axis.cumulative_ = cumulative_length(axis.points_);
+    axis.closed_ = true;
+    return axis;
+}
+
 P2 Axis::position(double s) const {
+    if (closed_) {
+        const double total = cumulative_.back();
+        s = std::fmod(s, total);
+        if (s < 0.0) {
+            s += total;
+        }
+    }
     return point_at(points_, cumulative_, s);
 }
 
 double Axis::alpha(double s) const {
+    if (closed_) {
+        const double half = tangent_window_um_ * 0.5;
+        const P2 d = position(s + half) - position(s - half);
+        return std::atan2(d.y, d.x);
+    }
     const double total = length();
     const double sc = std::clamp(s, 0.0, total);
     // Fenêtre symétrique, réduite près des extrémités mais jamais nulle.

@@ -9,6 +9,8 @@
 // virage ; le côté intérieur, plus dense, relève des points courts.
 #pragma once
 
+#include <functional>
+#include <optional>
 #include <vector>
 
 #include "axis.hpp"
@@ -18,14 +20,15 @@
 namespace openstitch::auto_satin::detail {
 
 struct SamplerParams {
-    double spacing_um{400.0};      // ρ : espacement cible au bord le plus écarté
-    double h_min_um{50.0};         // pas minimal sur l'axe
-    double h_max_ratio{3.0};       // pas maximal = ratio × ρ
-    double min_chord_um{300.0};    // sous cette longueur, la corde n'est pas émise
-    double min_sin{0.17};          // |sin(g − α)| minimal (≈ 10°) : jamais de corde ∥ à l'axe
-    double tolerance_um{60.0};     // écart toléré d'un échantillon au bord (raster ≠ polygone)
-    double max_extension_um{6000}; // plafond du prolongement de chaque bout
-    double radius_guard{2.5};      // chorde > garde × rayon inscrit : diagnostic
+    double spacing_um{400.0};       // ρ : espacement cible au bord le plus écarté
+    double h_min_um{50.0};          // pas minimal sur l'axe
+    double h_max_ratio{3.0};        // pas maximal = ratio × ρ
+    double min_chord_um{300.0};     // sous cette longueur, la corde n'est pas émise
+    double min_sin{0.17};           // |sin(g − α)| minimal (≈ 10°) : jamais de corde ∥ à l'axe
+    double tolerance_um{60.0};      // écart toléré d'un échantillon au bord (raster ≠ polygone)
+    double max_extension_um{40000}; // plafond absolu du prolongement de chaque bout (le plafond
+                                    // effectif est 3 r + 1 mm, r = rayon inscrit au bout)
+    double radius_guard{2.5};       // chorde > garde × rayon inscrit : diagnostic
 };
 
 // Une traversée calculée. `a` est du côté droit de l'axe (−n), `b` du côté gauche.
@@ -53,8 +56,23 @@ struct SamplerResult {
     double s_end{0.0};   // abscisse du dernier (≥ L)
 };
 
+// Écrêtage optionnel d'une corde (par ex. à la cellule de sa branche) : reçoit
+// l'abscisse, le point d'axe, la direction unitaire et la corde brute, renvoie la
+// corde retenue ou nullopt pour abandonner l'échantillon.
+using ChordClip =
+    std::function<std::optional<ChordInterval>(double s, P2 p, P2 u, const ChordInterval& raw)>;
+
+// Contexte d'un appel : quels bouts de l'axe sont libres (prolongés jusqu'au bord)
+// et, éventuellement, l'écrêtage des cordes.
+struct SamplerContext {
+    bool extend_start{true};
+    bool extend_end{true};
+    ChordClip clip{};
+};
+
 // Échantillonne l'axe. Déterministe. `polys` est la région (extérieur + trous).
 [[nodiscard]] SamplerResult sample_axis(const Axis& axis, const std::vector<Poly>& polys,
-                                        const OrientationKeys& keys, const SamplerParams& params);
+                                        const OrientationKeys& keys, const SamplerParams& params,
+                                        const SamplerContext& context = {});
 
 } // namespace openstitch::auto_satin::detail

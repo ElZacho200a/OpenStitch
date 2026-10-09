@@ -31,6 +31,13 @@ public:
     // (`empty()`) si la polyligne est dégénérée.
     static Axis build(const std::vector<P2>& raw, const AxisParams& params);
 
+    // Axe FERMÉ (cycle sans extrémité, par ex. le squelette d'un anneau) : `raw`
+    // est le cycle sans répétition du premier point. L'axe est périodique
+    // (`position` et `alpha` prennent s modulo la longueur) et lissé circulairement.
+    static Axis build_closed(const std::vector<P2>& raw, const AxisParams& params);
+
+    [[nodiscard]] bool closed() const { return closed_; }
+
     [[nodiscard]] bool empty() const { return points_.size() < 2; }
     [[nodiscard]] double length() const { return empty() ? 0.0 : cumulative_.back(); }
     [[nodiscard]] const std::vector<P2>& points() const { return points_; }
@@ -47,6 +54,7 @@ private:
     std::vector<P2> points_;
     std::vector<double> cumulative_;
     double tangent_window_um_{600.0};
+    bool closed_{false};
 };
 
 } // namespace openstitch::auto_satin::detail

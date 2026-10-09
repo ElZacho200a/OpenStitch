@@ -29,6 +29,9 @@ struct ExtendedAxis {
     }
 
     [[nodiscard]] P2 position(double s) const {
+        if (axis.closed()) {
+            return axis.position(s);
+        }
         if (s < 0.0) {
             return startPoint + startTangent * s;
         }
@@ -70,7 +73,8 @@ struct Evaluated {
 } // namespace
 
 SamplerResult sample_axis(const Axis& axis, const std::vector<Poly>& polys,
-                          const OrientationKeys& keys, const SamplerParams& prm) {
+                          const OrientationKeys& keys, const SamplerParams& prm,
+                          const SamplerContext& ctx) {
     SamplerResult out;
     if (axis.empty() || polys.empty()) {
         return out;
@@ -79,10 +83,15 @@ SamplerResult sample_axis(const Axis& axis, const std::vector<Poly>& polys,
     const double h_max = prm.h_max_ratio * prm.spacing_um;
     const double sMin = std::asin(std::clamp(prm.min_sin, 0.0, 0.999));
 
-    out.s_begin =
-        -extension_length(polys, ext.startPoint, ext.startTangent * -1.0, prm.max_extension_um);
-    out.s_end =
-        ext.length + extension_length(polys, ext.endPoint, ext.endTangent, prm.max_extension_um);
+    const bool closed = axis.closed();
+    out.s_begin = (ctx.extend_start && !closed)
+                      ? -extension_length(polys, ext.startPoint, ext.startTangent * -1.0,
+                                          prm.max_extension_um)
+                      : 0.0;
+    out.s_end = ext.length +
+                ((ctx.extend_end && !closed)
+                     ? extension_length(polys, ext.endPoint, ext.endTangent, prm.max_extension_um)
+                     : 0.0);
 
     // Orientation g(s) avec plancher |sin(g − α)| ≥ min_sin.
     const auto orient = [&](double s, double alpha, bool count) {
@@ -114,22 +123,31 @@ SamplerResult sample_axis(const Axis& axis, const std::vector<Poly>& polys,
         const double alpha = ext.alpha(s);
         const double g = orient(s, alpha, true);
         const P2 u{std::cos(g), std::sin(g)};
-        const auto chord = chord_through(polys, p, u, prm.tolerance_um);
+        auto chord = chord_through(polys, p, u, prm.tolerance_um);
+        if (chord && ctx.clip) {
+            chord = ctx.clip(s, p, u, *chord);
+        }
         if (!chord) {
             ++out.diagnostics.outside_samples;
             return ev;
+        }
+        // Garde de rayon : une corde bien plus longue que le diamètre inscrit
+        // traverse un bras sur sa longueur (orientation fausse près d'un coude, ou
+        // corde qui rejoint une autre branche). Elle est ÉCRÊTÉE à la borne, jamais
+        // laissée à la longueur du bras. Le rayon est mesuré sur l'axe lui-même
+        // (pas au point prolongé, proche du bord, qui raccourcirait les bouts).
+        const double r = distance_to_polys(polys, ext.position(std::clamp(s, 0.0, ext.length)));
+        if (r > 0.0) {
+            const double bound = prm.radius_guard * r + prm.tolerance_um;
+            if (-chord->t_lo > bound || chord->t_hi > bound) {
+                ++out.diagnostics.radius_guard_hits;
+                chord = ChordInterval{std::max(chord->t_lo, -bound), std::min(chord->t_hi, bound)};
+            }
         }
         const double len = chord->length();
         if (len < prm.min_chord_um) {
             ++out.diagnostics.too_short;
             return ev;
-        }
-        // Rayon inscrit au point d'axe : une corde bien plus longue que le
-        // diamètre indique un bras traversé sur sa longueur.
-        const double r = distance_to_polys(polys, p);
-        if (r > 0.0 &&
-            std::max(-chord->t_lo, chord->t_hi) > prm.radius_guard * r + prm.tolerance_um) {
-            ++out.diagnostics.radius_guard_hits;
         }
         // Côté droit (−n) / gauche (+n) de l'axe, avec n = (−sin α, cos α).
         const P2 n{-std::sin(alpha), std::cos(alpha)};
@@ -163,6 +181,9 @@ SamplerResult sample_axis(const Axis& axis, const std::vector<Poly>& polys,
             break;
         }
         double next = s + h;
+        if (closed && next > out.s_end - 0.35 * h) {
+            break; // s = L est le point de départ : pas de doublon à la couture
+        }
         // Fusionne un dernier pas trop court avec la fin pour ne pas créer deux
         // traversées presque confondues au bout.
         if (next > out.s_end - 0.35 * h) {
