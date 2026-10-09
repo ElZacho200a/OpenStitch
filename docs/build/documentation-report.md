@@ -2,11 +2,11 @@
 
 - **PDF** : `docs/build/OpenStitch-Studio-Documentation.pdf`
 - **Existe** : oui
-- **Pages** : 186
-- **Taille** : 843.1 Kio (863319 octets)
+- **Pages** : 218
+- **Taille** : 972.6 Kio (995967 octets)
 - **Chaîne** : python-markdown -> HTML/CSS -> xhtml2pdf (reportlab), SVG via svglib
 - **Commande** : `docs\scripts\build-docs.ps1` (ou `python docs/scripts/build-docs.py`)
-- **Chapitres produits** : 36
+- **Chapitres produits** : 40
 
 ## Chapitres
 - À propos de ce document
@@ -26,6 +26,10 @@
 - Remplissage directionnel
 - Retouche des points et de la géométrie
 - Recherche brevets broderie
+- Fiches brevets : satin, squelette et jonctions
+- Fiches brevets : auto-numérisation (famille Goldman et Brother)
+- Fiches brevets : sous-couches, contours auto-intersectés et points cachés
+- Fiches brevets : stippling, analyse de points et appliqué
 - Palettes et fils
 - Simulation de couture
 - Analyse et validation
