@@ -4,13 +4,14 @@
 
 #include <filesystem>
 #include <functional>
+#include <optional>
 #include <string>
 
 #include <cmath>
 #include <cstdio>
 #include <fstream>
-#include <vector>
 #include <numbers>
+#include <vector>
 
 #include "openstitch/auto_satin/auto_satin.hpp"
 #include "openstitch/auto_satin/shapes.hpp"
@@ -25,6 +26,7 @@
 #include "openstitch/formats/svg.hpp"
 #include "openstitch/geometry/path.hpp"
 #include "openstitch/image/image.hpp"
+#include "openstitch/project_io/project_io.hpp"
 #include "openstitch/segmentation/segmentation.hpp"
 #include "openstitch/stitch/sequence.hpp"
 #include "openstitch/stitch_analysis/metrics.hpp"
@@ -515,9 +517,28 @@ int run_digitize(const std::string& imagePath, const std::string& dstPath, doubl
 // colonnes, longueurs de traversées et diagnostics, et écrit un SVG (contour, axes,
 // traversées, zigzag) pour inspecter orientations et zones non couvertes.
 int run_satin_auto_debug(const std::string& shape, double spacingMm,
-                         const std::vector<std::string>& guides, const std::string& outSvg) {
+                         const std::vector<std::string>& guides, const std::string& outSvg,
+                         const std::string& ospPath, std::uint64_t vectorId) {
     using namespace openstitch;
-    const auto region = auto_satin::make_shape(shape);
+    std::optional<geometry::PathSet> region;
+    if (!ospPath.empty()) {
+        const auto project = project_io::load_project(std::filesystem::path(ospPath));
+        if (!project) {
+            fmt::print(stderr, "Erreur : {}\n", project.error().message);
+            return 1;
+        }
+        for (const auto& v : project->vector_objects) {
+            if (v.id.value == vectorId && !v.paths.empty()) {
+                region = v.paths.front();
+            }
+        }
+        if (!region) {
+            fmt::print(stderr, "Vecteur {} introuvable dans {}\n", vectorId, ospPath);
+            return 1;
+        }
+    } else {
+        region = auto_satin::make_shape(shape);
+    }
     if (!region) {
         fmt::print(stderr, "Forme inconnue : {}\n", shape);
         return 1;
@@ -555,9 +576,10 @@ int run_satin_auto_debug(const std::string& shape, double spacingMm,
             sum += len;
         }
         total += cr.size();
-        fmt::print("  colonne {} : {} traversées, longueur {:.2f} / {:.2f} / {:.2f} mm (min/moy/max)\n",
-                   c + 1, cr.size(), cr.empty() ? 0.0 : lo,
-                   cr.empty() ? 0.0 : sum / static_cast<double>(cr.size()), hi);
+        fmt::print(
+            "  colonne {} : {} traversées, longueur {:.2f} / {:.2f} / {:.2f} mm (min/moy/max)\n",
+            c + 1, cr.size(), cr.empty() ? 0.0 : lo,
+            cr.empty() ? 0.0 : sum / static_cast<double>(cr.size()), hi);
     }
     const auto& d = result->diagnostics;
     fmt::print("Traversées : {}  |  morceaux : {}\n", total, d.pieces);
@@ -684,6 +706,8 @@ int main(int argc, char** argv) {
     double sa_spacing = 0.4;
     std::vector<std::string> sa_guides;
     std::string sa_out;
+    std::string sa_osp;
+    std::uint64_t sa_vector = 0;
     auto* sa_cmd = app.add_subcommand(
         "satin-auto-debug",
         "Auto-satin par squelette et traversées orientées sur une forme de référence");
@@ -696,6 +720,9 @@ int main(int argc, char** argv) {
     sa_cmd->add_option("--guide", sa_guides,
                        "Guide d'orientation x_mm,y_mm,angle_deg[,1=absolu] (répétable)");
     sa_cmd->add_option("--output-svg", sa_out, "SVG de diagnostic à produire");
+    sa_cmd->add_option("--osp", sa_osp,
+                       "Projet .osp dont on prend un vecteur (au lieu de --shape)");
+    sa_cmd->add_option("--vector", sa_vector, "Id du vecteur dans le projet .osp");
 
     CLI11_PARSE(app, argc, argv);
 
@@ -717,7 +744,7 @@ int main(int argc, char** argv) {
         return run_stitchdebug(sd_shape, sd_length, sd_repeats, sd_out, sd_underlay, sd_underpath);
     }
     if (sa_cmd->parsed()) {
-        return run_satin_auto_debug(sa_shape, sa_spacing, sa_guides, sa_out);
+        return run_satin_auto_debug(sa_shape, sa_spacing, sa_guides, sa_out, sa_osp, sa_vector);
     }
     return 0;
 }
