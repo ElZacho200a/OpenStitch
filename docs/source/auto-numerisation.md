@@ -47,8 +47,8 @@ Les seuils sont dans `BackgroundCandidateOptions`. Le dialogue *Numérisation
 automatique* coche la case seulement si `recommended`, et affiche la pastille
 de couleur, le pourcentage de surface, L* et le nombre de bords touchés. Le
 CLI (`openstitch-cli digitize`) applique la même règle avec
-`--skip-background -1` (défaut) et imprime la candidate ; `0`/`1` restent des
-choix explicites prioritaires. Sur la marine, le ciel (bleu, L* ≈ 43) n'est
+`--skip-background auto` (défaut ; anciennement `-1`) et imprime la candidate ;
+`yes`/`no` (anciennement `1`/`0`) restent des choix explicites prioritaires. Sur la marine, le ciel (bleu, L* ≈ 43) n'est
 plus ignoré.
 
 ## Orientation et sous-couche des remplissages (Lot B)
@@ -307,8 +307,8 @@ Affichées par `openstitch-cli digitize --mode contours` et dans la barre
 d'état du desktop.
 
 **Utilisation** : CLI `digitize image.png out.dst --mode contours --detail
-0.5 --technique auto|running|satin` (défaut `--mode shapes`, comportement
-inchangé) ; desktop : dialogue « Numérisation automatique » -> « Contours »,
+0.5 --technique auto|running|legacy-satin` (`satin` : ancien nom accepté ; défaut
+`--mode shapes`, comportement inchangé ; voir [Ligne de commande](cli.md)) ; desktop : dialogue « Numérisation automatique » -> « Contours »,
 curseur Détail 0-100 (défaut 50), technique Automatique / Running / Satin.
 Pas d'aperçu superposé dans le dialogue pour l'instant.
 

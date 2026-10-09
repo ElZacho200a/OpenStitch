@@ -32,7 +32,7 @@ PDF_NAME = "OpenStitch-Studio-Documentation.pdf"
 
 # Ordre éditorial des chapitres (le nom de fichier sans .md).
 CHAPTERS = [
-    "index", "introduction", "getting-started", "installation", "user-guide",
+    "index", "introduction", "getting-started", "installation", "user-guide", "cli",
     "image-processing", "segmentation", "vectorization", "embroidery-objects",
     "auto-numerisation",
     "stitch-generation", "moteur-de-points", "satin-squelette", "satin", "tatami", "directional-fill",
@@ -180,6 +180,10 @@ def toc_html(titles, pages=None):
 
 
 IMG_RE = re.compile(r'!\[[^\]]*\]\(([^)]+)\)')
+# Liens relatifs entre chapitres : [texte](installation.md) ou (installation.md#ancre).
+# Dans le PDF, un chapitre est un bloc <div id="ch_<nom>"> : le lien devient une ancre
+# interne cliquable ; une cible absente de CHAPTERS est un problème bloquant.
+CHAPTER_LINK_RE = re.compile(r'\]\((?:\./)?([A-Za-z0-9_-]+)\.md(?:#[^)]*)?\)')
 LINK_RE = re.compile(r'\]\(([^)]+)\)')
 TITLE_RE = re.compile(r'^#\s+(.*)$', re.M)
 
@@ -210,6 +214,15 @@ def build():
         if "TODO_DOC" in text:
             problems.append(f"Marqueur TODO_DOC non résolu dans {name}.md")
 
+        # Liens entre chapitres -> ancres internes du PDF
+        def _chapter_link(m, _name=name):
+            target = m.group(1)
+            if target not in CHAPTERS:
+                problems.append(f"Lien vers un chapitre inconnu ({_name}.md) : {target}.md")
+                return m.group(0)
+            return f"](#ch_{target})"
+        text = CHAPTER_LINK_RE.sub(_chapter_link, text)
+
         # Contrôles : images référencées existent
         for m in IMG_RE.finditer(text):
             ref = m.group(1).split()[0]
@@ -230,7 +243,8 @@ def build():
         html = style_admonitions(html)
         chapter_html.append(part_divider(name))
         cls = "chapter" if (i > 0 and name not in PARTS) else ""
-        chapter_html.append(f'<div class="{cls}" id="{cid}">{html}</div>')
+        # xhtml2pdf résout les liens internes (#ch_nom) vers <a name=...>, pas vers id=.
+        chapter_html.append(f'<div class="{cls}" id="{cid}"><a name="{cid}"></a>{html}</div>')
 
     # 3) Scan de secrets / chemins sensibles sur le HTML assemblé
     assembled_text = "\n".join(chapter_html)
