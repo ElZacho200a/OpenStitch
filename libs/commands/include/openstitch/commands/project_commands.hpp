@@ -346,6 +346,21 @@ public:
         shift(project, Vec2um{-delta_.x, -delta_.y});
     }
     [[nodiscard]] std::string name() const override { return "Déplacement de forme"; }
+    // Fusion : une rafale de pas aux flèches sur le même objet = un seul pas
+    // (opt-in via `setCoalescable`, jamais pour un glisser souris).
+    [[nodiscard]] std::string mergeKey() const override {
+        return coalescable_ ? "translate:" + std::to_string(object_.value) : std::string{};
+    }
+    bool mergeWith(const ICommand& newer) override {
+        const auto* other = dynamic_cast<const TranslateVectorObjectCommand*>(&newer);
+        if (other == nullptr || other->object_.value != object_.value) {
+            return false;
+        }
+        delta_ = Vec2um{Micrometers{delta_.x.value + other->delta_.x.value},
+                        Micrometers{delta_.y.value + other->delta_.y.value}};
+        return true;
+    }
+    void setCoalescable(bool on) { coalescable_ = on; }
 
 private:
     void shift(document::Project& project, Vec2um delta) const {
@@ -397,6 +412,7 @@ private:
 
     ObjectId object_;
     Vec2um delta_;
+    bool coalescable_{false};
 };
 
 // Redimensionne un objet vectoriel ENTIER autour d'un point d'ancrage FIXE
@@ -969,8 +985,11 @@ private:
 // retour exact. Généralise `SetFillAngleCommand` à tous les champs.
 class SetStitchParamsCommand final : public ICommand {
 public:
-    SetStitchParamsCommand(ObjectId id, document::StitchParams params)
-        : id_(id), params_(std::move(params)) {}
+    // `field` : libellé du champ modifié (« Espacement des rangées »), repris dans
+    // le nom d'historique ; une rafale de modifications du MÊME champ du même
+    // objet est fusionnée en un seul pas par `UndoStack` (cf. `mergeKey`).
+    SetStitchParamsCommand(ObjectId id, document::StitchParams params, std::string field = {})
+        : id_(id), params_(std::move(params)), field_(std::move(field)) {}
 
     void apply(document::Project& project) override {
         if (auto* obj = project.findEmbroidery(id_)) {
@@ -983,11 +1002,26 @@ public:
             obj->params = previous_;
         }
     }
-    [[nodiscard]] std::string name() const override { return "Modifier les paramètres de couture"; }
+    [[nodiscard]] std::string name() const override {
+        return field_.empty() ? "Modifier les paramètres de couture" : "Modifier : " + field_;
+    }
+    [[nodiscard]] std::string mergeKey() const override {
+        return field_.empty() ? std::string{}
+                              : "params:" + std::to_string(id_.value) + ":" + field_;
+    }
+    bool mergeWith(const ICommand& newer) override {
+        const auto* other = dynamic_cast<const SetStitchParamsCommand*>(&newer);
+        if (other == nullptr || other->id_.value != id_.value || other->field_ != field_) {
+            return false;
+        }
+        params_ = other->params_; // `previous_` reste l'état d'avant la première
+        return true;
+    }
 
 private:
     ObjectId id_;
     document::StitchParams params_;
+    std::string field_;
     document::StitchParams previous_{document::RunningStitchParams{}};
 };
 
@@ -1096,11 +1130,26 @@ public:
         }
     }
     [[nodiscard]] std::string name() const override { return label_; }
+    // Fusion opt-in (pas de molette sur l'angle d'un guide : un pas par rafale).
+    [[nodiscard]] std::string mergeKey() const override {
+        return mergeTag_.empty() ? std::string{}
+                                 : "autosatin:" + std::to_string(id_.value) + ":" + mergeTag_;
+    }
+    bool mergeWith(const ICommand& newer) override {
+        const auto* other = dynamic_cast<const EditAutoSatinCommand*>(&newer);
+        if (other == nullptr || other->id_.value != id_.value) {
+            return false;
+        }
+        params_ = other->params_;
+        return true;
+    }
+    void setMergeTag(std::string tag) { mergeTag_ = std::move(tag); }
 
 private:
     ObjectId id_;
     document::AutoSatinParams params_;
     std::string label_;
+    std::string mergeTag_;
     document::AutoSatinParams previous_{};
     bool applied_{false};
 };

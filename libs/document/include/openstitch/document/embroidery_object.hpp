@@ -20,6 +20,8 @@ struct RunningStitchParams {
     Micrometers stitch_length{3'000}; // longueur cible (3 mm)
     Micrometers min_length{500};      // en dessous, les points sont fusionnés
     int repeats{1};                   // 1 simple, 2 aller-retour, 3 point triple
+
+    bool operator==(const RunningStitchParams&) const = default;
 };
 
 // Paramètres du remplissage tatami (§5.4, §15).
@@ -36,6 +38,8 @@ struct TatamiParams {
     Micrometers underlay_spacing{2'000}; // écart des rangées de sous-couche
     bool hidden_underpath{false}; // liaisons cousues cachées (au lieu de sauts) si trajet valide
     std::optional<Vec2um> entry_point; // démarre le remplissage près de ce point
+
+    bool operator==(const TatamiParams&) const = default;
 };
 
 // Paramètres du remplissage DIRECTIONNEL (passé empiétant / peinture à
@@ -144,6 +148,8 @@ struct SatinParams {
     int lock_passes{2};
     std::optional<Vec2um> entry_point; // début de couture souhaité (projeté)
     std::optional<Vec2um> exit_point;  // fin de couture souhaitée
+
+    bool operator==(const SatinParams&) const = default;
 };
 
 // Guide d'orientation d'un auto-satin. Ancré GÉOMÉTRIQUEMENT (point du repère

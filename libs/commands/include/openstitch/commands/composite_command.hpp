@@ -39,7 +39,16 @@ public:
     void revert(document::Project& project) override;
     [[nodiscard]] std::string name() const override { return name_; }
 
+    // Fusion d'annulation opt-in (cf. ICommand::mergeKey) : deux composites de
+    // même clé et de même taille fusionnent sous-commande par sous-commande,
+    // à condition que chaque paire soit elle-même fusionnable. Clé vide
+    // (défaut) = jamais fusionnée.
+    void setMergeKey(std::string key) { mergeKey_ = std::move(key); }
+    [[nodiscard]] std::string mergeKey() const override { return mergeKey_; }
+    bool mergeWith(const ICommand& newer) override;
+
 private:
+    std::string mergeKey_;
     std::string name_;
     std::vector<std::unique_ptr<ICommand>> commands_;
 };
