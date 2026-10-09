@@ -2,6 +2,7 @@
 #include <CLI/CLI.hpp>
 #include <fmt/core.h>
 
+#include <algorithm>
 #include <filesystem>
 #include <functional>
 #include <iterator>
@@ -51,7 +52,9 @@ namespace {
 // Mesures de qualité d'une séquence (Lot G) : communes à `stats` (DST relu,
 // verrous reconnus par leur forme) et `digitize` (séquence effective, passes
 // connues).
-void print_sequence_metrics(const openstitch::stitch::StitchSequence& seq, bool fromDst) {
+void print_sequence_metrics(std::FILE* out, const openstitch::stitch::StitchSequence& seq,
+                            bool fromDst,
+                            openstitch::stitch_analysis::SequenceMetrics* result = nullptr) {
     using namespace openstitch;
     stitch_analysis::SequenceMetricsOptions opts;
     opts.infer_locks = fromDst;
@@ -59,10 +62,14 @@ void print_sequence_metrics(const openstitch::stitch::StitchSequence& seq, bool 
         opts.length_tolerance = Micrometers{100}; // résolution DST : 0,1 mm
     }
     const auto m = stitch_analysis::sequence_metrics(seq, opts);
-    fmt::print("Déplacements        : {}\n", m.moves);
-    fmt::print("  > {:.1f} mm sans coupe : {}\n", opts.trim_threshold.value / 1000.0,
+    if (result) {
+        *result = m;
+    }
+    fmt::print(out, "Déplacements        : {}\n", m.moves);
+    fmt::print(out, "  > {:.1f} mm sans coupe : {}\n", opts.trim_threshold.value / 1000.0,
                m.long_moves_without_trim);
-    fmt::print("Points < {:.1f} mm    : {} ({:.2f} %) hors points d'arrêt ; {} dans les points "
+    fmt::print(out,
+               "Points < {:.1f} mm    : {} ({:.2f} %) hors points d'arrêt ; {} dans les points "
                "d'arrêt{}\n",
                opts.short_stitch.value / 1000.0, m.short_stitches,
                m.stitches
@@ -78,41 +85,225 @@ void print_sequence_metrics(const openstitch::stitch::StitchSequence& seq, bool 
     }
     std::stable_sort(bins.begin(), bins.end(),
                      [](const auto& a, const auto& b) { return a.first > b.first; });
-    fmt::print("Directions (points >= 1 mm, modulo 180°) :");
+    fmt::print(out, "Directions (points >= 1 mm, modulo 180°) :");
     for (int k = 0; k < 6 && bins[static_cast<std::size_t>(k)].first > 0; ++k) {
-        fmt::print(" {}° {:.0f} %", bins[static_cast<std::size_t>(k)].second,
+        fmt::print(out, " {}° {:.0f} %", bins[static_cast<std::size_t>(k)].second,
                    100.0 * static_cast<double>(bins[static_cast<std::size_t>(k)].first) /
                        static_cast<double>(std::max<std::size_t>(1, total)));
     }
-    fmt::print("\n");
+    fmt::print(out, "\n");
 }
 
-int run_info(const std::string& path, double dpi) {
+// Codes de sortie (documentés dans `openstitch-cli --help` et docs/source/cli.md) :
+// 0 succès ; 1 entrée ou E/S (fichier illisible, option incohérente, rien à produire) ;
+// 2 contrôle qualité non satisfait (stitchdebug --shape ring). Les erreurs d'usage de
+// la ligne de commande (option inconnue, valeur hors plage…) gardent les codes de CLI11.
+constexpr int kExitOk = 0;
+constexpr int kExitInput = 1;
+constexpr int kExitQuality = 2;
+
+// Message d'erreur homogène : « openstitch-cli <sous-commande> : message », suivi
+// d'une piste de correction optionnelle. Renvoie kExitInput pour `return cli_error(...)`.
+int cli_error(const char* command, const std::string& message, const std::string& hint = {}) {
+    fmt::print(stderr, "openstitch-cli {} : {}\n", command, message);
+    if (!hint.empty()) {
+        fmt::print(stderr, "  Piste : {}\n", hint);
+    }
+    return kExitInput;
+}
+
+constexpr const char* kImageFormatsHint =
+    "formats acceptés : PNG, JPEG, BMP, TIFF ; vérifiez le chemin et l'extension du fichier";
+constexpr const char* kDstHint =
+    "attendu : un fichier .dst (Tajima) ; produisez-le avec `digitize` ou l'export du bureau";
+constexpr const char* kOspHint =
+    "attendu : un projet .osp enregistré par OpenStitch Studio (Fichier -> Enregistrer)";
+
+// Échappement minimal pour les chaînes du JSON (chemins, noms).
+std::string json_escape(const std::string& in) {
+    std::string out;
+    out.reserve(in.size() + 2);
+    for (const char ch : in) {
+        const auto c = static_cast<unsigned char>(ch);
+        switch (ch) {
+        case '"':
+            out += "\\\"";
+            break;
+        case '\\':
+            out += "\\\\";
+            break;
+        case '\n':
+            out += "\\n";
+            break;
+        case '\r':
+            out += "\\r";
+            break;
+        case '\t':
+            out += "\\t";
+            break;
+        default:
+            if (c < 0x20) {
+                out += fmt::format("\\u{:04x}", c);
+            } else {
+                out += ch;
+            }
+        }
+    }
+    return out;
+}
+
+std::string json_str(const std::string& s) {
+    return "\"" + json_escape(s) + "\"";
+}
+
+// Refuse tôt (avant tout calcul coûteux) une sortie impossible : dossier parent absent,
+// ou fichier existant avec --no-clobber. Renvoie un code de sortie si refus.
+std::optional<int> check_output_path(const char* command, const std::string& path, bool noClobber) {
+    if (path.empty()) {
+        return std::nullopt;
+    }
+    const std::filesystem::path p(path);
+    std::error_code ec;
+    const auto parent = p.parent_path();
+    if (!parent.empty() && !std::filesystem::is_directory(parent, ec)) {
+        return cli_error(command,
+                         fmt::format("le dossier de sortie « {} » n'existe pas", parent.string()),
+                         "créez-le d'abord ou choisissez un autre chemin");
+    }
+    if (noClobber && std::filesystem::exists(p, ec)) {
+        return cli_error(command, fmt::format("« {} » existe déjà (--no-clobber)", path),
+                         "retirez --no-clobber (ou ajoutez --force) pour l'écraser");
+    }
+    return std::nullopt;
+}
+
+// Résolution déclarée dans l'en-tête du fichier image (PNG pHYs, JPEG JFIF), en dpi.
+// Les autres formats, ou une valeur absente/aberrante, donnent nullopt.
+std::optional<double> read_file_dpi(const std::filesystem::path& path) {
+    std::ifstream in(path, std::ios::binary);
+    if (!in) {
+        return std::nullopt;
+    }
+    const auto readU32 = [](const unsigned char* b) {
+        return (static_cast<std::uint32_t>(b[0]) << 24) | (static_cast<std::uint32_t>(b[1]) << 16) |
+               (static_cast<std::uint32_t>(b[2]) << 8) | static_cast<std::uint32_t>(b[3]);
+    };
+    unsigned char sig[8] = {};
+    in.read(reinterpret_cast<char*>(sig), 8);
+    if (in.gcount() < 8) {
+        return std::nullopt;
+    }
+    std::optional<double> dpi;
+    if (sig[0] == 0x89 && sig[1] == 'P' && sig[2] == 'N' && sig[3] == 'G') {
+        for (int guard = 0; guard < 64; ++guard) {
+            unsigned char head[8];
+            in.read(reinterpret_cast<char*>(head), 8);
+            if (in.gcount() < 8) {
+                break;
+            }
+            const std::uint32_t len = readU32(head);
+            const std::string type(reinterpret_cast<char*>(head) + 4, 4);
+            if (type == "IDAT" || type == "IEND") {
+                break;
+            }
+            if (type == "pHYs" && len == 9) {
+                unsigned char d[9];
+                in.read(reinterpret_cast<char*>(d), 9);
+                if (in.gcount() == 9 && d[8] == 1) {
+                    dpi = readU32(d) * 0.0254;
+                }
+                break;
+            }
+            in.seekg(static_cast<std::streamoff>(len) + 4, std::ios::cur); // données + CRC
+        }
+    } else if (sig[0] == 0xFF && sig[1] == 0xD8) {
+        in.seekg(2, std::ios::beg);
+        for (int guard = 0; guard < 64; ++guard) {
+            unsigned char m[4];
+            in.read(reinterpret_cast<char*>(m), 4);
+            if (in.gcount() < 4 || m[0] != 0xFF || m[1] == 0xDA) {
+                break;
+            }
+            const std::uint32_t len = (static_cast<std::uint32_t>(m[2]) << 8) | m[3];
+            if (m[1] == 0xE0 && len >= 16) {
+                unsigned char d[14];
+                in.read(reinterpret_cast<char*>(d), 14);
+                if (in.gcount() == 14 && std::string(reinterpret_cast<char*>(d), 4) == "JFIF") {
+                    const double x = (d[8] << 8) | d[9];
+                    if (d[7] == 1) {
+                        dpi = x;
+                    } else if (d[7] == 2) {
+                        dpi = x * 2.54;
+                    }
+                }
+                break;
+            }
+            in.seekg(static_cast<std::streamoff>(len) - 2, std::ios::cur);
+        }
+    }
+    if (dpi && (*dpi < 10.0 || *dpi > 5000.0)) {
+        return std::nullopt;
+    }
+    return dpi;
+}
+
+int run_info(const std::string& path, std::optional<double> dpiOption, bool json) {
     const auto info = openstitch::image::read_image_info(std::filesystem::path(path));
     if (!info) {
-        fmt::print(stderr, "Erreur : {}\n", info.error().message);
-        return 1;
+        return cli_error("info", info.error().message, kImageFormatsHint);
+    }
+    double dpi = 96.0;
+    const char* dpiSource = "défaut (aucune résolution dans le fichier)";
+    if (dpiOption) {
+        dpi = *dpiOption;
+        dpiSource = "option --dpi";
+    } else if (const auto fileDpi = read_file_dpi(std::filesystem::path(path))) {
+        dpi = *fileDpi;
+        dpiSource = "lue dans le fichier";
     }
     const double mm_per_px = 25.4 / dpi;
+    const double wMm = info->width_px * mm_per_px;
+    const double hMm = info->height_px * mm_per_px;
+    if (json) {
+        fmt::print("{{\"file\":{},\"format\":{},\"width_px\":{},\"height_px\":{},\"channels\":{},"
+                   "\"has_alpha\":{},\"dpi\":{:g},\"dpi_source\":{},\"width_mm\":{:.2f},"
+                   "\"height_mm\":{:.2f}}}\n",
+                   json_str(path), json_str(info->format), info->width_px, info->height_px,
+                   info->channels, info->has_alpha ? "true" : "false", dpi, json_str(dpiSource),
+                   wMm, hMm);
+        return kExitOk;
+    }
     fmt::print("Fichier        : {}\n", path);
     fmt::print("Format         : {}\n", info->format);
     fmt::print("Dimensions     : {} x {} px\n", info->width_px, info->height_px);
     fmt::print("Canaux         : {}\n", info->channels);
     fmt::print("Canal alpha    : {}\n", info->has_alpha ? "oui" : "non");
-    fmt::print("Taille estimée : {:.1f} x {:.1f} mm (à {:g} dpi)\n", info->width_px * mm_per_px,
-               info->height_px * mm_per_px, dpi);
-    return 0;
+    fmt::print("Résolution     : {:g} dpi ({})\n", dpi, dpiSource);
+    fmt::print("Taille estimée : {:.1f} x {:.1f} mm (à {:g} dpi)\n", wMm, hMm, dpi);
+    return kExitOk;
 }
 
-int run_stats(const std::string& path) {
+int run_stats(const std::string& path, bool json) {
     const auto seq = openstitch::formats::read_dst_file(std::filesystem::path(path));
     if (!seq) {
-        fmt::print(stderr, "Erreur : {}\n", seq.error().message);
-        return 1;
+        return cli_error("stats", seq.error().message, kDstHint);
     }
     const auto stats = openstitch::stitch::compute_stats(*seq);
     const double wMm = (stats.bounds.max.x.value - stats.bounds.min.x.value) / 1000.0;
     const double hMm = (stats.bounds.max.y.value - stats.bounds.min.y.value) / 1000.0;
+    if (json) {
+        openstitch::stitch_analysis::SequenceMetrics m;
+        // Le détail lisible va sur stderr : stdout ne contient que le JSON.
+        print_sequence_metrics(stderr, *seq, true, &m);
+        fmt::print("{{\"file\":{},\"stitches\":{},\"jumps\":{},\"trims\":{},\"color_changes\":{},"
+                   "\"width_mm\":{:.2f},\"height_mm\":{:.2f},\"thread_m\":{:.3f},"
+                   "\"moves\":{},\"long_moves_without_trim\":{},\"short_stitches\":{},"
+                   "\"short_lock_stitches\":{}}}\n",
+                   json_str(path), stats.stitches, stats.jumps, stats.trims, stats.color_changes,
+                   wMm, hMm, stats.thread_length_um / 1e6, m.moves, m.long_moves_without_trim,
+                   m.short_stitches, m.short_lock_stitches);
+        return kExitOk;
+    }
     fmt::print("Fichier            : {}\n", path);
     fmt::print("Points             : {}\n", stats.stitches);
     fmt::print("Sauts              : {}\n", stats.jumps);
@@ -120,23 +311,24 @@ int run_stats(const std::string& path) {
     fmt::print("Changements de fil : {}\n", stats.color_changes);
     fmt::print("Dimensions         : {:.1f} x {:.1f} mm\n", wMm, hMm);
     fmt::print("Fil cousu estimé   : {:.2f} m\n", stats.thread_length_um / 1e6);
-    print_sequence_metrics(*seq, true);
-    return 0;
+    print_sequence_metrics(stdout, *seq, true);
+    return kExitOk;
 }
 
-int run_dst2svg(const std::string& input, const std::string& output) {
+int run_dst2svg(const std::string& input, const std::string& output, bool noClobber) {
+    if (const auto refused = check_output_path("dst2svg", output, noClobber)) {
+        return *refused;
+    }
     const auto seq = openstitch::formats::read_dst_file(std::filesystem::path(input));
     if (!seq) {
-        fmt::print(stderr, "Erreur : {}\n", seq.error().message);
-        return 1;
+        return cli_error("dst2svg", seq.error().message, kDstHint);
     }
     const auto written = openstitch::formats::write_svg_file(std::filesystem::path(output), *seq);
     if (!written) {
-        fmt::print(stderr, "Erreur : {}\n", written.error().message);
-        return 1;
+        return cli_error("dst2svg", written.error().message);
     }
     fmt::print("SVG écrit : {}\n", output);
-    return 0;
+    return kExitOk;
 }
 
 // Formes de référence procédurales pour inspecter le moteur (§34-35).
@@ -224,8 +416,7 @@ int run_filldebug(double lengthMm, const std::string& outSvg, int underlayMask, 
     // retouche manuelle possible. raw-sequence-ok: generateur de debug.
     const auto seq = stitch_generation::generate_sequence(project);
     if (!seq) {
-        fmt::print(stderr, "Erreur : {}\n", seq.error().message);
-        return 1;
+        return cli_error("stitchdebug", seq.error().message);
     }
     const auto stats = stitch::compute_stats(*seq);
 
@@ -289,18 +480,21 @@ int run_filldebug(double lengthMm, const std::string& outSvg, int underlayMask, 
             body + "</svg>\n";
         std::ofstream f(std::filesystem::path(outSvg), std::ios::binary | std::ios::trunc);
         if (!f) {
-            fmt::print(stderr, "Impossible d'écrire {}\n", outSvg);
-            return 1;
+            return cli_error("stitchdebug", fmt::format("impossible d'écrire {}", outSvg),
+                             "vérifiez que le dossier existe et que le fichier n'est pas ouvert");
         }
         f << svg;
         fmt::print("SVG écrit : {}\n", outSvg);
     }
-    return sewnCrossingHole == 0 ? 0 : 2;
+    return sewnCrossingHole == 0 ? kExitOk : kExitQuality;
 }
 
 int run_stitchdebug(const std::string& shape, double lengthMm, int repeats,
                     const std::string& outSvg, int underlayMask, bool underpath) {
     using namespace openstitch;
+    if (const auto refused = check_output_path("stitchdebug", outSvg, false)) {
+        return *refused;
+    }
     if (shape == "ring") {
         return run_filldebug(lengthMm, outSvg, underlayMask, underpath);
     }
@@ -336,13 +530,30 @@ int run_stitchdebug(const std::string& shape, double lengthMm, int repeats,
     if (!outSvg.empty()) {
         const auto written = formats::write_svg_file(std::filesystem::path(outSvg), seq);
         if (!written) {
-            fmt::print(stderr, "Erreur : {}\n", written.error().message);
-            return 1;
+            return cli_error("stitchdebug", written.error().message);
         }
         fmt::print("SVG écrit : {}\n", outSvg);
     }
-    return 0;
+    return kExitOk;
 }
+
+struct DigitizeArgs {
+    std::string image;
+    std::string dst;
+    std::string outSvg;
+    std::string lock = "backforth";
+    std::string mode = "shapes";
+    std::string technique = "auto";
+    double dpi = 96.0;
+    double trimMm = 3.0;
+    double detail = 0.5;
+    int maxColors = 8;
+    int minRegionPx = 16;
+    int smoothingPx = 3;
+    int skipBg = -1; // -1 = auto (segmentation::background_candidate), 0 = non, 1 = oui
+    bool json = false;
+    bool noClobber = false;
+};
 
 // Pipeline complet image -> DST (segmentation -> numerisation automatique ->
 // generation des points -> export), en ligne de commande, pour comparer le
@@ -352,89 +563,107 @@ int run_stitchdebug(const std::string& shape, double lengthMm, int repeats,
 // skip_largest_region coche par defaut seulement si la plus grande region est
 // un fond quasi blanc qui encadre le motif -- segmentation::background_candidate,
 // Lot A ; une valeur explicite de --skip-background reste prioritaire).
-int run_digitize(const std::string& imagePath, const std::string& dstPath, double dpi,
-                 int maxColors, int minRegionPx, int smoothingPx, int skipBg,
-                 const std::string& outSvg, double trimThresholdMm, const std::string& lockName,
-                 const std::string& mode, double detail, const std::string& technique) {
+//
+// Avec --json, stdout ne contient que le JSON final ; tous les messages d'état vont
+// sur stderr.
+int run_digitize(const DigitizeArgs& a) {
     using namespace openstitch;
+    std::FILE* const st = a.json ? stderr : stdout; // flux des messages d'état
 
-    const auto loaded = image::load_image(std::filesystem::path(imagePath));
-    if (!loaded) {
-        fmt::print(stderr, "Erreur de chargement : {}\n", loaded.error().message);
-        return 1;
+    if (const auto refused = check_output_path("digitize", a.dst, a.noClobber)) {
+        return *refused;
     }
-    fmt::print("Image : {} x {} px (alpha source : {})\n", loaded->width, loaded->height,
+    if (const auto refused = check_output_path("digitize", a.outSvg, a.noClobber)) {
+        return *refused;
+    }
+
+    const auto loaded = image::load_image(std::filesystem::path(a.image));
+    if (!loaded) {
+        return cli_error(
+            "digitize",
+            fmt::format("chargement de l'image impossible : {}", loaded.error().message),
+            kImageFormatsHint);
+    }
+    fmt::print(st, "Image : {} x {} px (alpha source : {})\n", loaded->width, loaded->height,
                loaded->source_had_alpha ? "oui" : "non");
 
     document::Project project;
-    project.mm_per_px = Millimeters{25.4 / dpi};
+    project.mm_per_px = Millimeters{25.4 / a.dpi};
     project.original = *loaded;
     // Finitions (Lots E/F) : nouveau projet -> activées ; réglables ici.
     project.finishing.trim_threshold =
-        Micrometers{static_cast<std::int32_t>(std::lround(trimThresholdMm * 1000.0))};
-    project.finishing.lock_type = lockName == "none"       ? document::LockStitch::None
-                                  : lockName == "triangle" ? document::LockStitch::Triangle
-                                  : lockName == "zigzag"   ? document::LockStitch::MicroZigzag
-                                                           : document::LockStitch::BackAndForth;
+        Micrometers{static_cast<std::int32_t>(std::lround(a.trimMm * 1000.0))};
+    project.finishing.lock_type = a.lock == "none"       ? document::LockStitch::None
+                                  : a.lock == "triangle" ? document::LockStitch::Triangle
+                                  : a.lock == "zigzag"   ? document::LockStitch::MicroZigzag
+                                                         : document::LockStitch::BackAndForth;
 
-    auto seg = segmentation::segment(project.original, {.max_colors = maxColors,
-                                                        .min_region_px = minRegionPx,
-                                                        .smoothing_radius_px = smoothingPx});
+    auto seg = segmentation::segment(project.original, {.max_colors = a.maxColors,
+                                                        .min_region_px = a.minRegionPx,
+                                                        .smoothing_radius_px = a.smoothingPx});
     if (!seg) {
-        fmt::print(stderr, "Erreur de segmentation : {}\n", seg.error().message);
-        return 1;
+        return cli_error("digitize",
+                         fmt::format("segmentation impossible : {}", seg.error().message),
+                         "essayez une image plus grande ou --max-colors différent");
     }
-    fmt::print("Régions segmentées : {}\n", seg->region_count());
+    const std::size_t regionCount = seg->region_count();
+    fmt::print(st, "Régions segmentées : {}\n", regionCount);
     project.segmentation = std::move(*seg);
 
     // Même règle que le dialogue desktop (Lot A) : jamais sur le seul
     // critère « pas d'alpha ».
     const auto candidate = segmentation::background_candidate(*project.segmentation);
     if (candidate) {
-        fmt::print(
-            "Région candidate au fond : #{:02X}{:02X}{:02X}, {:.1f} % de l'image, L* {:.0f}, "
-            "{} bord(s) touché(s)\n",
-            candidate->rgb[0], candidate->rgb[1], candidate->rgb[2], candidate->area_ratio * 100.0,
-            candidate->lightness, candidate->sides_touched);
+        fmt::print(st,
+                   "Région candidate au fond : #{:02X}{:02X}{:02X}, {:.1f} % de l'image, L* "
+                   "{:.0f}, {} bord(s) touché(s)\n",
+                   candidate->rgb[0], candidate->rgb[1], candidate->rgb[2],
+                   candidate->area_ratio * 100.0, candidate->lightness, candidate->sides_touched);
     }
-    const bool skipLargest = skipBg < 0 ? (candidate && candidate->recommended) : (skipBg != 0);
+    const bool skipLargest = a.skipBg < 0 ? (candidate && candidate->recommended) : (a.skipBg != 0);
     autodigitize::AutoOptions opts;
     opts.mm_per_px = project.mm_per_px;
     opts.skip_largest_region = skipLargest;
-    fmt::print("Ignorer la plus grande région (fond) : {}{}\n", skipLargest ? "oui" : "non",
-               skipBg < 0 ? " (automatique)" : " (option explicite)");
+    fmt::print(st, "Ignorer la plus grande région (fond) : {}{}\n", skipLargest ? "oui" : "non",
+               a.skipBg < 0 ? " (automatique)" : " (option explicite)");
 
     // Strategie « contours / dessin au trait » : lignes medianes cousues en
-    // point droit (satin legacy degrade en point droit).
-    const bool contours = mode == "contours";
+    // point droit (satin legacy degrade en point droit). « satin » est l'ancien
+    // nom de « legacy-satin » (accepté pour compatibilité).
+    const bool contours = a.mode == "contours";
     autodigitize::ContourMetrics cm;
     autodigitize::ContourOptions co;
     co.mm_per_px = project.mm_per_px;
     co.skip_largest_region = skipLargest;
-    co.detail = detail;
-    co.technique = technique == "running" ? autodigitize::ContourTechnique::Running
-                   : technique == "satin" ? autodigitize::ContourTechnique::Satin
-                                          : autodigitize::ContourTechnique::Automatic;
+    co.detail = a.detail;
+    co.technique = a.technique == "running" ? autodigitize::ContourTechnique::Running
+                   : (a.technique == "legacy-satin" || a.technique == "satin")
+                       ? autodigitize::ContourTechnique::Satin
+                       : autodigitize::ContourTechnique::Automatic;
     if (contours) {
-        fmt::print("Mode : contours (detail {:.2f}, technique {})\n", detail, technique);
+        fmt::print(st, "Mode : contours (detail {:.2f}, technique {})\n", a.detail, a.technique);
     }
     auto result =
         contours ? autodigitize::auto_digitize_contours(*project.segmentation, project.object_ids,
                                                         co, &cm)
                  : autodigitize::auto_digitize(*project.segmentation, project.object_ids, opts);
     if (!result) {
-        fmt::print(stderr, "Erreur de numérisation : {}\n", result.error().message);
-        return 1;
+        return cli_error("digitize",
+                         fmt::format("numérisation impossible : {}", result.error().message),
+                         "image trop uniforme, ou seul le fond a été détecté : essayez "
+                         "--skip-background no, --max-colors plus grand ou --min-region-px plus "
+                         "petit");
     }
     if (contours) {
-        fmt::print("Contours : composantes={} segments={} jonctions={} extremites={}\n",
+        fmt::print(st, "Contours : composantes={} segments={} jonctions={} extremites={}\n",
                    cm.components, cm.segments, cm.junctions, cm.endpoints);
-        fmt::print("  elagage : branches courtes={} elements petits={}\n",
+        fmt::print(st, "  elagage : branches courtes={} elements petits={}\n",
                    cm.removed_short_branches, cm.removed_small_elements);
-        fmt::print("  longueur point droit {:.1f} mm | largeur min/moy/max "
+        fmt::print(st,
+                   "  longueur point droit {:.1f} mm | largeur min/moy/max "
                    "{:.2f}/{:.2f}/{:.2f} mm\n",
                    cm.running_length_mm, cm.min_width_mm, cm.mean_width_mm, cm.max_width_mm);
-        fmt::print("  replis legacy->point droit={} rejets={}\n", cm.fallbacks, cm.rejected);
+        fmt::print(st, "  replis legacy->point droit={} rejets={}\n", cm.fallbacks, cm.rejected);
     }
     for (const auto& w : result->warnings) {
         fmt::print(stderr, "  ! {}\n", w);
@@ -444,6 +673,15 @@ int run_digitize(const std::string& imagePath, const std::string& dstPath, doubl
     }
     for (auto& e : result->embroideries) {
         project.embroidery_objects.push_back(std::move(e));
+    }
+    if (project.embroidery_objects.empty()) {
+        return cli_error(
+            "digitize",
+            fmt::format(
+                "aucun objet de broderie généré ({} région(s) segmentée(s)), aucun DST écrit",
+                regionCount),
+            "image trop uniforme ou régions trop petites : essayez --min-region-px plus petit, "
+            "--max-colors plus grand, ou --skip-background no si le fond a été ignoré");
     }
 
     int nSatin = 0, nTatami = 0, nRunning = 0;
@@ -455,110 +693,149 @@ int run_digitize(const std::string& imagePath, const std::string& dstPath, doubl
         else if (std::holds_alternative<document::RunningStitchParams>(e.params))
             ++nRunning;
     }
-    fmt::print("Objets brodés : {} (satin={} tatami={} running={})\n",
+    fmt::print(st, "Objets brodés : {} (satin={} tatami={} running={})\n",
                project.embroidery_objects.size(), nSatin, nTatami, nRunning);
 
     const auto sequence = stitch_generation::effective_sequence(project);
     if (!sequence) {
-        fmt::print(stderr, "Erreur de génération des points : {}\n", sequence.error().message);
-        return 1;
+        return cli_error("digitize", fmt::format("génération des points impossible : {}",
+                                                 sequence.error().message));
     }
     const auto stats = stitch::compute_stats(*sequence);
+    if (stats.stitches == 0) {
+        return cli_error("digitize", "aucun point généré, aucun DST écrit",
+                         "les objets obtenus sont vides : modifiez --min-region-px ou "
+                         "--max-colors");
+    }
     const double wMm = (stats.bounds.max.x.value - stats.bounds.min.x.value) / 1000.0;
     const double hMm = (stats.bounds.max.y.value - stats.bounds.min.y.value) / 1000.0;
-    fmt::print("Points : {}  |  sauts : {}  |  coupes : {}  |  changements de fil : {}\n",
+    fmt::print(st, "Points : {}  |  sauts : {}  |  coupes : {}  |  changements de fil : {}\n",
                stats.stitches, stats.jumps, stats.trims, stats.color_changes);
-    fmt::print("Dimensions : {:.1f} x {:.1f} mm  |  fil : {:.2f} m\n", wMm, hMm,
+    fmt::print(st, "Dimensions : {:.1f} x {:.1f} mm  |  fil : {:.2f} m\n", wMm, hMm,
                stats.thread_length_um / 1e6);
 
     // Mesures de qualité (Lot G).
-    print_sequence_metrics(*sequence, false);
+    stitch_analysis::SequenceMetrics metrics;
+    print_sequence_metrics(st, *sequence, false, &metrics);
     stitch_analysis::ProjectMetricsOptions pm;
     if (skipLargest && candidate) {
         pm.excluded_rgb = candidate->rgb;
     }
     const auto quality = stitch_analysis::project_metrics(project, *sequence, pm);
-    fmt::print("Objets brodés < {:.0f} mm² : {}\n", pm.small_object_mm2, quality.small_objects);
+    fmt::print(st, "Objets brodés < {:.0f} mm² : {}\n", pm.small_object_mm2, quality.small_objects);
     if (quality.uncovered_ratio) {
-        fmt::print("Surface non couverte (hors fond ignoré) : {:.2f} %\n",
+        fmt::print(st, "Surface non couverte (hors fond ignoré) : {:.2f} %\n",
                    *quality.uncovered_ratio * 100.0);
     }
-    fmt::print("Angles de remplissage ({} distincts) :", quality.fill_angles_deg.size());
+    fmt::print(st, "Angles de remplissage ({} distincts) :", quality.fill_angles_deg.size());
     for (const auto& [deg, n] : quality.fill_angles_deg) {
-        fmt::print(" {}°x{}", deg, n);
+        fmt::print(st, " {}°x{}", deg, n);
     }
-    fmt::print("\n");
-    fmt::print("Déplacements par source :");
+    fmt::print(st, "\n");
+    fmt::print(st, "Déplacements par source :");
     for (const auto& [kind, n] : quality.moves_by_kind) {
-        fmt::print(" {}={}", kind, n);
+        fmt::print(st, " {}={}", kind, n);
     }
-    fmt::print("\nPoints courts par source :");
+    fmt::print(st, "\nPoints courts par source :");
     for (const auto& [kind, n] : quality.short_stitches_by_kind) {
-        fmt::print(" {}={}", kind, n);
+        fmt::print(st, " {}={}", kind, n);
     }
-    fmt::print("\n");
+    fmt::print(st, "\n");
 
-    const auto written = formats::write_dst_file(std::filesystem::path(dstPath), *sequence);
+    const auto written = formats::write_dst_file(std::filesystem::path(a.dst), *sequence);
     if (!written) {
-        fmt::print(stderr, "Erreur d'écriture DST : {}\n", written.error().message);
-        return 1;
+        return cli_error("digitize",
+                         fmt::format("écriture du DST impossible : {}", written.error().message),
+                         "vérifiez les droits d'écriture et que le fichier n'est pas ouvert "
+                         "ailleurs");
     }
-    fmt::print("DST écrit : {}\n", dstPath);
+    fmt::print(st, "DST écrit : {}\n", a.dst);
 
-    if (!outSvg.empty()) {
-        const auto svgWritten = formats::write_svg_file(std::filesystem::path(outSvg), *sequence);
+    if (!a.outSvg.empty()) {
+        const auto svgWritten = formats::write_svg_file(std::filesystem::path(a.outSvg), *sequence);
         if (!svgWritten) {
-            fmt::print(stderr, "Erreur d'écriture SVG : {}\n", svgWritten.error().message);
-            return 1;
+            return cli_error("digitize", fmt::format("écriture du SVG impossible : {}",
+                                                     svgWritten.error().message));
         }
-        fmt::print("SVG écrit : {}\n", outSvg);
+        fmt::print(st, "SVG écrit : {}\n", a.outSvg);
     }
-    return 0;
+
+    if (a.json) {
+        std::string svgField = a.outSvg.empty() ? "null" : json_str(a.outSvg);
+        fmt::print(
+            "{{\"image\":{},\"dst\":{},\"svg\":{},\"image_width_px\":{},\"image_height_px\":{},"
+            "\"regions\":{},\"background_skipped\":{},\"objects\":{{\"total\":{},\"satin\":{},"
+            "\"tatami\":{},\"running\":{}}},\"stitches\":{},\"jumps\":{},\"trims\":{},"
+            "\"color_changes\":{},\"width_mm\":{:.2f},\"height_mm\":{:.2f},\"thread_m\":{:.3f},"
+            "\"moves\":{},\"long_moves_without_trim\":{},\"short_stitches\":{},"
+            "\"small_objects\":{},\"uncovered_ratio\":{}}}\n",
+            json_str(a.image), json_str(a.dst), svgField, loaded->width, loaded->height,
+            regionCount, skipLargest ? "true" : "false", project.embroidery_objects.size(), nSatin,
+            nTatami, nRunning, stats.stitches, stats.jumps, stats.trims, stats.color_changes, wMm,
+            hMm, stats.thread_length_um / 1e6, metrics.moves, metrics.long_moves_without_trim,
+            metrics.short_stitches, quality.small_objects,
+            quality.uncovered_ratio ? fmt::format("{:.4f}", *quality.uncovered_ratio) : "null");
+    }
+    return kExitOk;
 }
 
 // Exporte un projet .osp en DST par le MÊME chemin que le bureau (export_machine_file) :
 // permet d'inspecter les coupes et la fin du fichier sans passer par l'interface.
-int run_osp2dst(const std::string& ospPath, const std::string& outDst) {
+int run_osp2dst(const std::string& ospPath, const std::string& outDst, bool noClobber) {
     using namespace openstitch;
+    if (const auto refused = check_output_path("osp2dst", outDst, noClobber)) {
+        return *refused;
+    }
     const auto project = project_io::load_project(std::filesystem::path(ospPath));
     if (!project) {
-        fmt::print(stderr, "Erreur : {}\n", project.error().message);
-        return 1;
+        return cli_error("osp2dst", project.error().message, kOspHint);
     }
     const auto written =
         project_io::export_machine_file(*project, "dst", std::filesystem::path(outDst));
     if (!written) {
-        fmt::print(stderr, "Erreur : {}\n", written.error().message);
-        return 1;
+        return cli_error("osp2dst", written.error().message);
     }
     fmt::print("DST écrit : {}\n", outDst);
-    return 0;
+    return kExitOk;
 }
 
 // Séquence effective d'un projet .osp (la même que l'aperçu, l'export et l'analyse) en SVG de
 // diagnostic ; `--outlines` superpose le contour des vecteurs sources (en gris) pour voir
 // d'un coup d'œil les points qui débordent de leur forme. `--only` limite à un objet brodé.
 int run_osp2svg(const std::string& ospPath, const std::string& outSvg, bool outlines,
-                std::uint64_t onlyObject) {
+                std::uint64_t onlyObject, bool noClobber) {
     using namespace openstitch;
+    if (const auto refused = check_output_path("osp2svg", outSvg, noClobber)) {
+        return *refused;
+    }
     auto project = project_io::load_project(std::filesystem::path(ospPath));
     if (!project) {
-        fmt::print(stderr, "Erreur : {}\n", project.error().message);
-        return 1;
+        return cli_error("osp2svg", project.error().message, kOspHint);
     }
     if (onlyObject != 0) {
+        const bool exists =
+            std::any_of(project->embroidery_objects.begin(), project->embroidery_objects.end(),
+                        [&](const auto& e) { return e.id.value == onlyObject; });
+        if (!exists) {
+            std::string ids;
+            for (const auto& e : project->embroidery_objects) {
+                ids += (ids.empty() ? "" : ", ") + std::to_string(e.id.value);
+            }
+            return cli_error("osp2svg",
+                             fmt::format("objet brodé {} introuvable dans {}", onlyObject, ospPath),
+                             ids.empty() ? "le projet ne contient aucun objet brodé"
+                                         : "ids disponibles : " + ids);
+        }
         std::erase_if(project->embroidery_objects,
                       [&](const auto& e) { return e.id.value != onlyObject; });
     }
     const auto seq = stitch_generation::effective_sequence(*project);
     if (!seq) {
-        fmt::print(stderr, "Erreur : {}\n", seq.error().message);
-        return 1;
+        return cli_error("osp2svg", seq.error().message);
     }
     const auto written = formats::write_svg_file(std::filesystem::path(outSvg), *seq);
     if (!written) {
-        fmt::print(stderr, "Erreur : {}\n", written.error().message);
-        return 1;
+        return cli_error("osp2svg", written.error().message);
     }
     if (outlines) {
         std::ifstream in(outSvg, std::ios::binary);
@@ -598,7 +875,52 @@ int run_osp2svg(const std::string& ospPath, const std::string& outSvg, bool outl
         out << svg;
     }
     fmt::print("Points : {}  |  SVG : {}\n", seq->commands.size(), outSvg);
-    return 0;
+    return kExitOk;
+}
+
+// Noms du corpus de auto_satin::make_shape (shapes.cpp). make_shape reste la source de
+// vérité : un nom absent de cette liste mais accepté par make_shape fonctionne quand même ;
+// la liste ne sert qu'à l'aide et au message d'erreur.
+const std::vector<std::string> kSatinShapeNames = {"rectangle",
+                                                   "capsule",
+                                                   "ribbon",
+                                                   "s",
+                                                   "y",
+                                                   "y_symmetric",
+                                                   "t",
+                                                   "cross",
+                                                   "h",
+                                                   "circle",
+                                                   "disc_15mm",
+                                                   "disc_tight_inner_ring",
+                                                   "petal",
+                                                   "ring",
+                                                   "wide",
+                                                   "tiny",
+                                                   "notch",
+                                                   "pinch",
+                                                   "trident",
+                                                   "star5",
+                                                   "asymmetric_star",
+                                                   "comb",
+                                                   "E",
+                                                   "e_trunk_isolated",
+                                                   "deep_recursive",
+                                                   "multi_neck",
+                                                   "dumbbell",
+                                                   "deep_channel",
+                                                   "two_holes",
+                                                   "ring_branch",
+                                                   "junction_with_hole",
+                                                   "polygonal_cut_fixture",
+                                                   "thick_diagonal_blob"};
+
+std::string join_names(const std::vector<std::string>& names) {
+    std::string out;
+    for (const auto& n : names) {
+        out += (out.empty() ? "" : ", ") + n;
+    }
+    return out;
 }
 
 // Auto-satin par squelette et traversées orientées (spec
@@ -609,13 +931,29 @@ int run_satin_auto_debug(const std::string& shape, double spacingMm,
                          const std::vector<std::string>& guides, const std::string& outSvg,
                          const std::string& ospPath, std::uint64_t vectorId, bool pristine) {
     using namespace openstitch;
+    if (const auto refused = check_output_path("satin-auto-debug", outSvg, false)) {
+        return *refused;
+    }
     std::optional<geometry::PathSet> region;
+    std::string sourceLabel = fmt::format("forme {}", shape);
     if (!ospPath.empty()) {
         const auto project = project_io::load_project(std::filesystem::path(ospPath));
         if (!project) {
-            fmt::print(stderr, "Erreur : {}\n", project.error().message);
-            return 1;
+            return cli_error("satin-auto-debug", project.error().message, kOspHint);
         }
+        std::string available;
+        for (const auto& v : project->vector_objects) {
+            if (!v.paths.empty()) {
+                available += (available.empty() ? "" : ", ") + std::to_string(v.id.value);
+            }
+        }
+        if (vectorId == 0) {
+            return cli_error("satin-auto-debug", "--osp demande aussi --vector <id>",
+                             available.empty() ? "le projet ne contient aucun vecteur"
+                                               : "ids de vecteurs disponibles : " + available);
+        }
+        sourceLabel = fmt::format("vecteur {} de {}", vectorId,
+                                  std::filesystem::path(ospPath).filename().string());
         for (const auto& v : project->vector_objects) {
             if (v.id.value == vectorId && !v.paths.empty()) {
                 region = v.paths.front();
@@ -643,15 +981,18 @@ int run_satin_auto_debug(const std::string& shape, double spacingMm,
             }
         }
         if (!region) {
-            fmt::print(stderr, "Vecteur {} introuvable dans {}\n", vectorId, ospPath);
-            return 1;
+            return cli_error("satin-auto-debug",
+                             fmt::format("vecteur {} introuvable dans {}", vectorId, ospPath),
+                             available.empty() ? "le projet ne contient aucun vecteur"
+                                               : "ids de vecteurs disponibles : " + available);
         }
     } else {
         region = auto_satin::make_shape(shape);
     }
     if (!region) {
-        fmt::print(stderr, "Forme inconnue : {}\n", shape);
-        return 1;
+        return cli_error("satin-auto-debug", fmt::format("forme inconnue « {} »", shape),
+                         "formes valides : " + join_names(kSatinShapeNames) +
+                             " (voir --list-shapes)");
     }
     auto_satin::SkeletonSatinParameters params;
     params.spacing = to_micrometers(Millimeters{spacingMm});
@@ -686,9 +1027,8 @@ int run_satin_auto_debug(const std::string& shape, double spacingMm,
             }
         }
         if (n < 3) {
-            fmt::print(stderr, "Guide invalide « {} » (attendu : x_mm,y_mm,angle_deg[,1=absolu])\n",
-                       g);
-            return 1;
+            return cli_error("satin-auto-debug", fmt::format("guide invalide « {} »", g),
+                             "format attendu : x_mm,y_mm,angle_deg[,1=absolu]");
         }
         params.guides.push_back(
             {Vec2um{to_micrometers(Millimeters{xMm}), to_micrometers(Millimeters{yMm})},
@@ -696,11 +1036,10 @@ int run_satin_auto_debug(const std::string& shape, double spacingMm,
     }
     const auto result = auto_satin::generate_skeleton_satin(*region, params);
     if (!result) {
-        fmt::print(stderr, "Erreur : {}\n", result.error().message);
-        return 1;
+        return cli_error("satin-auto-debug", result.error().message);
     }
     std::size_t total = 0;
-    fmt::print("Forme : {}  |  colonnes : {}\n", shape, result->columns.size());
+    fmt::print("Source : {}  |  colonnes : {}\n", sourceLabel, result->columns.size());
     for (std::size_t c = 0; c < result->columns.size(); ++c) {
         const auto& cr = result->columns[c].crossings;
         double lo = 1e18, hi = 0.0, sum = 0.0;
@@ -734,10 +1073,14 @@ int run_satin_auto_debug(const std::string& shape, double spacingMm,
     }
     if (!outSvg.empty()) {
         std::ofstream out(outSvg, std::ios::binary);
+        if (!out) {
+            return cli_error("satin-auto-debug", fmt::format("impossible d'écrire {}", outSvg),
+                             "vérifiez que le dossier existe et que le fichier n'est pas ouvert");
+        }
         out << auto_satin::skeleton_satin_to_svg(*region, *result);
         fmt::print("SVG : {}\n", outSvg);
     }
-    return 0;
+    return kExitOk;
 }
 
 } // namespace
@@ -751,87 +1094,128 @@ int main(int argc, char** argv) {
     CLI::App app{fmt::format("{} — outils en ligne de commande", openstitch::kAppName)};
     app.set_version_flag("--version", openstitch::kAppVersion);
     app.require_subcommand(1);
+    app.footer("Exemple de pipeline :\n"
+               "  openstitch-cli info logo.png                 # dpi et taille estimée\n"
+               "  openstitch-cli digitize logo.png logo.dst --json > rapport.json\n"
+               "  openstitch-cli stats logo.dst                # relire le DST produit\n"
+               "  openstitch-cli dst2svg logo.dst logo.svg     # aperçu vectoriel\n"
+               "\n"
+               "Codes de sortie :\n"
+               "  0  succès\n"
+               "  1  entrée ou fichier invalide, rien à produire (message « openstitch-cli\n"
+               "     <sous-commande> : ... » avec une piste de correction)\n"
+               "  2  contrôle qualité non satisfait (stitchdebug --shape ring)\n"
+               "  autres : erreur d'usage de la ligne de commande (CLI11)\n"
+               "Les sous-commandes [diagnostic] inspectent le moteur : leur sortie n'est pas un\n"
+               "contrat stable.\n"
+               "Documentation : docs/source/cli.md");
+
+    constexpr const char* kMain = "Commandes";
+    constexpr const char* kDiag = "Diagnostic";
+
+    bool json_out = false;
+    app.add_flag("--json", json_out,
+                 "Sortie JSON unique sur stdout pour info, stats et digitize (messages d'état "
+                 "sur stderr)");
 
     std::string image_path;
-    double dpi = 96.0;
+    std::optional<double> dpi;
     auto* info_cmd = app.add_subcommand("info", "Affiche les métadonnées d'une image");
+    info_cmd->group(kMain);
     info_cmd->add_option("image", image_path, "Chemin de l'image (PNG, JPEG, BMP, TIFF)")
         ->required();
-    info_cmd->add_option("--dpi", dpi, "Résolution supposée pour l'estimation en mm (défaut : 96)")
+    info_cmd
+        ->add_option("--dpi", dpi,
+                     "Résolution pour l'estimation en mm (défaut : celle du fichier si elle "
+                     "est renseignée, sinon 96)")
         ->check(CLI::PositiveNumber);
+    info_cmd->add_flag("--json", json_out, "Sortie JSON sur stdout");
 
     std::string dst_path;
     auto* stats_cmd = app.add_subcommand("stats", "Statistiques d'un fichier de broderie DST");
+    stats_cmd->group(kMain);
     stats_cmd->add_option("fichier", dst_path, "Chemin du fichier .dst")->required();
+    stats_cmd->add_flag("--json", json_out, "Sortie JSON sur stdout");
 
     std::string svg_in;
     std::string svg_out;
-    auto* svg_cmd = app.add_subcommand("dst2svg", "Convertit un DST en SVG de diagnostic");
+    bool svg_noclobber = false;
+    bool svg_force = false;
+    auto* svg_cmd = app.add_subcommand("dst2svg", "Convertit un DST en SVG d'aperçu");
+    svg_cmd->group(kMain);
     svg_cmd->add_option("entree", svg_in, "Fichier .dst source")->required();
-    svg_cmd->add_option("sortie", svg_out, "Fichier .svg à produire")->required();
+    svg_cmd->add_option("sortie,--output-svg,--output", svg_out, "Fichier .svg à produire")
+        ->required();
+    auto* svg_nc =
+        svg_cmd->add_flag("--no-clobber", svg_noclobber, "Refuse d'écraser un fichier existant");
+    svg_cmd->add_flag("--force", svg_force, "Écrase la sortie existante (comportement par défaut)")
+        ->excludes(svg_nc);
 
-    std::string dz_image;
-    std::string dz_dst;
-    double dz_dpi = 96.0;
-    int dz_max_colors = 8;
-    int dz_min_region_px = 16;
-    int dz_smoothing_px = 3;
-    int dz_skip_bg = -1; // -1 = auto (segmentation::background_candidate), 0 = non, 1 = oui
-    std::string dz_out_svg;
-    double dz_trim_mm = 3.0;
-    std::string dz_lock = "backforth";
+    DigitizeArgs dz;
+    std::string dz_skip_bg = "auto";
+    bool dz_force = false;
     auto* dz_cmd = app.add_subcommand(
         "digitize", "Pipeline complet image -> DST (segmentation, numérisation automatique, "
                     "génération des points), sans IHM");
-    dz_cmd->add_option("image", dz_image, "Image source (PNG, JPEG, BMP, TIFF)")->required();
-    dz_cmd->add_option("sortie", dz_dst, "Fichier .dst à produire")->required();
-    dz_cmd->add_option("--dpi", dz_dpi, "Résolution supposée pour l'échelle mm/px (défaut : 96)")
+    dz_cmd->group(kMain);
+    dz_cmd->add_option("image", dz.image, "Image source (PNG, JPEG, BMP, TIFF)")->required();
+    dz_cmd->add_option("sortie", dz.dst, "Fichier .dst à produire")->required();
+    dz_cmd->add_option("--dpi", dz.dpi, "Résolution supposée pour l'échelle mm/px (défaut : 96)")
         ->check(CLI::PositiveNumber);
-    dz_cmd->add_option("--max-colors", dz_max_colors, "Nombre maximal de couleurs (défaut : 8)")
+    dz_cmd->add_option("--max-colors", dz.maxColors, "Nombre maximal de couleurs (défaut : 8)")
         ->check(CLI::Range(2, 64));
     dz_cmd
-        ->add_option("--min-region-px", dz_min_region_px,
+        ->add_option("--min-region-px", dz.minRegionPx,
                      "Taille minimale de région en px (défaut : 16)")
         ->check(CLI::PositiveNumber);
-    dz_cmd->add_option("--smoothing-px", dz_smoothing_px, "Lissage des formes en px (défaut : 3)")
+    dz_cmd->add_option("--smoothing-px", dz.smoothingPx, "Lissage des formes en px (défaut : 3)")
         ->check(CLI::NonNegativeNumber);
-    dz_cmd->add_option(
-        "--skip-background", dz_skip_bg,
-        "Ignorer la plus grande région : -1 auto (défaut : fond quasi blanc touchant "
-        "au moins 3 bords), 0 non, 1 oui");
-    dz_cmd->add_option("--output-svg", dz_out_svg, "SVG de diagnostic à produire en plus du DST");
     dz_cmd
-        ->add_option("--trim-threshold", dz_trim_mm,
+        ->add_option("--skip-background", dz_skip_bg,
+                     "Ignorer la plus grande région (le fond) : auto (défaut : seulement si c'est "
+                     "un fond quasi blanc touchant au moins 3 bords) | yes | no")
+        ->check(CLI::IsMember({"auto", "yes", "no", "-1", "0", "1"}));
+    dz_cmd->add_option("--output-svg", dz.outSvg, "SVG de diagnostic à produire en plus du DST");
+    dz_cmd
+        ->add_option("--trim-threshold", dz.trimMm,
                      "Coupe automatique au-delà de ce déplacement, en mm (défaut : 3)")
         ->check(CLI::PositiveNumber);
-    std::string dz_mode = "shapes";
-    double dz_detail = 0.5;
-    std::string dz_technique = "auto";
     dz_cmd
-        ->add_option("--mode", dz_mode,
+        ->add_option("--mode", dz.mode,
                      "Stratégie : shapes (formes pleines, défaut) | contours (dessin au trait)")
         ->check(CLI::IsMember({"shapes", "contours"}));
     dz_cmd
-        ->add_option("--detail", dz_detail, "Mode contours : niveau de détail 0..1 (défaut : 0.5)")
+        ->add_option("--detail", dz.detail, "Mode contours : niveau de détail 0..1 (défaut : 0.5)")
         ->check(CLI::Range(0.0, 1.0));
+    // « satin » (ancien nom, trompeur : ce n'est pas l'auto-satin) reste accepté mais
+    // n'apparaît plus dans l'aide.
     dz_cmd
-        ->add_option("--technique", dz_technique,
-                     "Mode contours : auto (défaut) | running | satin (legacy, point droit)")
-        ->check(CLI::IsMember({"auto", "running", "satin"}));
-    dz_cmd->add_option("--lock", dz_lock, "Point d'arrêt : none|backforth|triangle|zigzag")
+        ->add_option("--technique", dz.technique,
+                     "Mode contours : auto (défaut) | running | legacy-satin (ancien satin "
+                     "dégradé en point droit, pas l'auto-satin)")
+        ->check(CLI::IsMember({"auto", "running", "legacy-satin", "satin"}));
+    dz_cmd->add_option("--lock", dz.lock, "Point d'arrêt : none|backforth|triangle|zigzag")
         ->check(CLI::IsMember({"none", "backforth", "triangle", "zigzag"}));
+    dz_cmd->add_flag("--json", json_out,
+                     "JSON unique sur stdout ; les messages d'état passent sur stderr");
+    auto* dz_nc = dz_cmd->add_flag("--no-clobber", dz.noClobber,
+                                   "Refuse d'écraser un DST/SVG existant (par défaut : écrasé)");
+    dz_cmd->add_flag("--force", dz_force, "Écrase explicitement la sortie existante (défaut)")
+        ->excludes(dz_nc);
 
     std::string sd_shape = "circle";
     double sd_length = 3.0;
     int sd_repeats = 1;
     std::string sd_out;
-    auto* sd_cmd = app.add_subcommand("stitchdebug",
-                                      "Inspecte le moteur de points sur une forme de référence");
-    sd_cmd->add_option("--shape", sd_shape, "line|corner|circle|bezier|star|ring")
+    auto* sd_cmd = app.add_subcommand(
+        "stitchdebug", "[diagnostic] Inspecte le moteur de points sur une forme de référence");
+    sd_cmd->group(kDiag);
+    sd_cmd->add_option("--shape", sd_shape, "line|corner|circle|bezier|star|ring (défaut : circle)")
         ->check(CLI::IsMember({"line", "corner", "circle", "bezier", "star", "ring"}));
     sd_cmd->add_option("--length", sd_length, "Longueur de point en mm")
         ->check(CLI::PositiveNumber);
-    sd_cmd->add_option("--repeats", sd_repeats, "1 simple, 2 aller-retour, 3 bean");
+    sd_cmd->add_option("--repeats", sd_repeats, "1 simple, 2 aller-retour, 3 bean")
+        ->check(CLI::Range(1, 3));
     sd_cmd->add_option("--output-svg", sd_out, "Fichier SVG de diagnostic à produire");
     int sd_underlay = 0;
     bool sd_underpath = false;
@@ -846,66 +1230,100 @@ int main(int argc, char** argv) {
     std::string sa_osp;
     std::string os_in, os_out;
     std::string od_in, od_out;
+    bool od_noclobber = false;
+    bool od_force = false;
     auto* od_cmd =
         app.add_subcommand("osp2dst", "Exporte un projet .osp en DST (chemin du bureau)");
-    od_cmd->add_option("--osp", od_in, "Projet .osp")->required();
-    od_cmd->add_option("--output", od_out, "DST à produire")->required();
+    od_cmd->group(kMain);
+    od_cmd->add_option("osp,--osp", od_in, "Projet .osp")->required();
+    od_cmd->add_option("sortie,--output", od_out, "DST à produire")->required();
+    auto* od_nc =
+        od_cmd->add_flag("--no-clobber", od_noclobber, "Refuse d'écraser un fichier existant");
+    od_cmd->add_flag("--force", od_force, "Écrase la sortie existante (comportement par défaut)")
+        ->excludes(od_nc);
     bool os_outlines = false;
+    bool os_noclobber = false;
+    bool os_force = false;
     std::uint64_t os_only = 0;
-    auto* os_cmd =
-        app.add_subcommand("osp2svg", "Séquence effective d'un projet .osp en SVG de diagnostic");
-    os_cmd->add_option("--osp", os_in, "Projet .osp")->required();
-    os_cmd->add_option("--output", os_out, "SVG à produire")->required();
+    auto* os_cmd = app.add_subcommand(
+        "osp2svg", "[diagnostic] Séquence effective d'un projet .osp en SVG de diagnostic");
+    os_cmd->group(kDiag);
+    os_cmd->add_option("osp,--osp", os_in, "Projet .osp")->required();
+    os_cmd->add_option("sortie,--output-svg,--output", os_out, "SVG à produire")->required();
     os_cmd->add_flag("--outlines", os_outlines, "Superpose le contour des vecteurs");
     os_cmd->add_option("--only", os_only, "Id d'un objet brodé (les autres sont ignorés)");
+    auto* os_nc =
+        os_cmd->add_flag("--no-clobber", os_noclobber, "Refuse d'écraser un fichier existant");
+    os_cmd->add_flag("--force", os_force, "Écrase la sortie existante (comportement par défaut)")
+        ->excludes(os_nc);
     std::uint64_t sa_vector = 0;
     bool sa_pristine = false;
+    bool sa_list = false;
     auto* sa_cmd = app.add_subcommand(
         "satin-auto-debug",
-        "Auto-satin par squelette et traversées orientées sur une forme de référence");
-    sa_cmd->add_option("--shape", sa_shape,
-                       "rectangle|capsule|ribbon|s|y|t|cross|h|circle|ring|wide|tiny|notch|pinch|"
-                       "trident|star5|comb|E|e_trunk_isolated|multi_neck|two_holes|... "
-                       "(corpus de auto_satin::make_shape)");
+        "[diagnostic] Auto-satin par squelette et traversées orientées (forme de référence ou "
+        "vecteur d'un .osp)");
+    sa_cmd->group(kDiag);
+    auto* sa_shape_opt = sa_cmd->add_option(
+        "--shape", sa_shape,
+        "Forme de référence du corpus (défaut : rectangle ; liste : --list-shapes)");
+    sa_cmd->add_flag("--list-shapes", sa_list, "Liste les formes de référence valides et quitte");
     sa_cmd->add_option("--spacing", sa_spacing, "Espacement des traversées en mm (défaut 0,4)")
         ->check(CLI::PositiveNumber);
     sa_cmd->add_option("--guide", sa_guides,
                        "Guide d'orientation x_mm,y_mm,angle_deg[,1=absolu] (répétable)");
     sa_cmd->add_option("--output-svg", sa_out, "SVG de diagnostic à produire");
-    sa_cmd->add_option("--osp", sa_osp,
-                       "Projet .osp dont on prend un vecteur (au lieu de --shape)");
-    sa_cmd->add_option("--vector", sa_vector, "Id du vecteur dans le projet .osp");
-    sa_cmd->add_flag("--pristine", sa_pristine,
-                     "Avec --osp : utilise le contour brut de la région de segmentation");
+    auto* sa_osp_opt = sa_cmd->add_option(
+        "--osp", sa_osp, "Projet .osp dont on prend un vecteur (au lieu de --shape)");
+    sa_osp_opt->excludes(sa_shape_opt);
+    sa_cmd->add_option("--vector", sa_vector, "Id du vecteur dans le projet .osp (avec --osp)")
+        ->needs(sa_osp_opt);
+    sa_cmd
+        ->add_flag("--pristine", sa_pristine,
+                   "Avec --osp : utilise le contour brut de la région de segmentation")
+        ->needs(sa_osp_opt);
 
     CLI11_PARSE(app, argc, argv);
 
     if (info_cmd->parsed()) {
-        return run_info(image_path, dpi);
+        return run_info(image_path, dpi, json_out);
     }
     if (stats_cmd->parsed()) {
-        return run_stats(dst_path);
+        return run_stats(dst_path, json_out);
     }
     if (svg_cmd->parsed()) {
-        return run_dst2svg(svg_in, svg_out);
+        return run_dst2svg(svg_in, svg_out, svg_noclobber);
     }
     if (dz_cmd->parsed()) {
-        return run_digitize(dz_image, dz_dst, dz_dpi, dz_max_colors, dz_min_region_px,
-                            dz_smoothing_px, dz_skip_bg, dz_out_svg, dz_trim_mm, dz_lock, dz_mode,
-                            dz_detail, dz_technique);
+        dz.json = json_out;
+        dz.skipBg = (dz_skip_bg == "auto" || dz_skip_bg == "-1") ? -1
+                    : (dz_skip_bg == "yes" || dz_skip_bg == "1") ? 1
+                                                                 : 0;
+        if (dz.technique == "satin") {
+            fmt::print(stderr,
+                       "openstitch-cli digitize : --technique satin est un ancien nom, utilisez "
+                       "legacy-satin\n");
+        }
+        return run_digitize(dz);
     }
     if (sd_cmd->parsed()) {
         return run_stitchdebug(sd_shape, sd_length, sd_repeats, sd_out, sd_underlay, sd_underpath);
     }
     if (od_cmd->parsed()) {
-        return run_osp2dst(od_in, od_out);
+        return run_osp2dst(od_in, od_out, od_noclobber);
     }
     if (os_cmd->parsed()) {
-        return run_osp2svg(os_in, os_out, os_outlines, os_only);
+        return run_osp2svg(os_in, os_out, os_outlines, os_only, os_noclobber);
     }
     if (sa_cmd->parsed()) {
+        if (sa_list) {
+            for (const auto& n : kSatinShapeNames) {
+                fmt::print("{}\n", n);
+            }
+            return kExitOk;
+        }
         return run_satin_auto_debug(sa_shape, sa_spacing, sa_guides, sa_out, sa_osp, sa_vector,
                                     sa_pristine);
     }
-    return 0;
+    return kExitOk;
 }

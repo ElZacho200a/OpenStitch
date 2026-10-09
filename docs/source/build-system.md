@@ -59,11 +59,11 @@ L'interface graphique n'est pas construite sous Linux à ce stade.
 
 Un workflow GitHub Actions (`.github/workflows/ci.yml`) est présent : build MSVC
 Debug/Release + tests + artefacts, build Linux du cœur, et vérification du
-formatage. *Information non déterminée* : aucun dépôt distant n'étant déclaré, la
-CI n'a pas encore été exécutée.
+formatage ; sur `main` elle publie aussi la release « latest » (voir
+[Installation](installation.md)).
 
 ## Implémentation associée
 
 - `CMakeLists.txt`, `CMakePresets.json`, `vcpkg.json`.
 - `.github/workflows/ci.yml`, `.clang-format`.
-- `docs/build-windows.md`.
+- `docs/source/installation.md` — installation et compilation Windows (`docs/build-windows.md` y renvoie).
