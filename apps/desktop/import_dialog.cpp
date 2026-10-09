@@ -35,7 +35,7 @@ ImportDialog::ImportDialog(int widthPx, int heightPx, const QImage& preview, QSi
     }
     auto* infoLabel = new QLabel(info, this);
     infoLabel->setAlignment(Qt::AlignCenter);
-    infoLabel->setEnabled(false);
+    markSecondaryText(infoLabel);
     root->addWidget(infoLabel);
 
     auto* form = new QFormLayout();
@@ -63,7 +63,7 @@ ImportDialog::ImportDialog(int widthPx, int heightPx, const QImage& preview, QSi
     root->addLayout(form);
 
     resolutionLabel_ = new QLabel(this);
-    resolutionLabel_->setEnabled(false);
+    markSecondaryText(resolutionLabel_);
     root->addWidget(resolutionLabel_);
 
     warningLabel_ = new QLabel(this);

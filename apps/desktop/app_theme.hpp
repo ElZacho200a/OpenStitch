@@ -6,6 +6,7 @@
 #include "design_tokens.hpp"
 
 class QApplication;
+class QWidget;
 
 namespace openstitch::desktop {
 
@@ -45,5 +46,10 @@ private:
     Density density_{Density::Comfortable};
     Tokens tokens_{light_tokens()};
 };
+
+// Marque un widget (QLabel d'aide) comme texte secondaire : couleur `textSecondary` suivie
+// par le thème. À préférer à setEnabled(false), qui rend le texte « indisponible » pour les
+// lecteurs d'écran et le grise artificiellement.
+void markSecondaryText(QWidget* widget);
 
 } // namespace openstitch::desktop

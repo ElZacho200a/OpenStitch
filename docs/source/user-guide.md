@@ -25,7 +25,18 @@ d'interface, distinctes du projet `.osp`).
 ## État d'accueil
 
 Tant qu'aucun document n'est ouvert, le centre du canevas propose **Ouvrir une
-image**, **Ouvrir un projet** et **Importer un DST**, avec une courte explication.
+image**, **Ouvrir un projet** et **Importer un DST**, avec une courte explication
+et les cinq derniers projets (le menu Fichier ▸ Récents en garde dix).
+
+## Ouvrir un fichier depuis l'Explorateur ou par glisser-déposer
+
+Un fichier peut être ouvert sans passer par les menus : double-clic sur un `.osp`
+(ou « Ouvrir avec » OpenStitch Studio), nom de fichier passé en argument de la
+ligne de commande, ou glisser-déposer sur la fenêtre. L'application route par
+extension : `.osp` (projet), `.dst` (import machine), `.svg` et images PNG/JPEG/BMP/TIFF.
+Les mêmes gardes que les menus s'appliquent : si le projet courant a des
+modifications non enregistrées, l'application demande d'abord d'enregistrer. Une
+extension non prise en charge est signalée en barre d'état, sans rien ouvrir.
 
 ## Le canevas
 
@@ -353,8 +364,21 @@ libellé + mot d'état. Un clic rappelle en barre d'état l'action à faire.
 ## Menu Analyse et panneau
 
 **Analyser le motif** (F5) remplit le panneau *Analyse* (dock) avec les problèmes
-détectés, triés par gravité. Un double-clic sur un problème centre la vue sur sa
-localisation.
+détectés, triés par gravité.
+
+- Chaque ligne commence par la **gravité en toutes lettres** (Erreur, Avertissement,
+  Information), le **nom de l'objet fautif** entre guillemets, puis le message avec
+  les longueurs en millimètres à la française (« 3,5 mm »).
+- En tête du panneau : les **compteurs par gravité** et un **filtre** (Tout, Erreurs,
+  Avertissements, Informations).
+- Un **clic** ou **Entrée** sur un problème sélectionne l'objet concerné et centre la
+  vue sur lui (y compris quand le problème se trouve à l'origine du canevas). Le clic
+  droit propose « Sélectionner l'objet » et « Centrer la vue sur le problème ».
+- Sous la liste, une **piste de correction** accompagne le problème sélectionné.
+- Chaque catégorie est plafonnée à 50 problèmes ; une ligne « … et N autre(s)
+  problème(s) » dit combien n'ont pas été listés.
+- Quand le motif change, le résultat est marqué **périmé** puis recalculé après
+  300 ms si le panneau est visible (sinon à sa prochaine ouverture).
 
 ## Panneau Ordre de couture
 
@@ -366,7 +390,12 @@ proximité, couleur puis proximité). Un libellé affiche le coût estimé.
 ## Barre de simulation
 
 Boutons de lecture/pause et un curseur qui révèle la couture jusqu'à un index de
-point, avec un repère d'aiguille. La barre occupe une **zone réservée** (toujours
+point, avec un repère d'aiguille. Une liste **Vitesse** (×0,25, ×1, ×4, ×16) règle
+l'avance de la lecture ; la **pastille de couleur** et le **nom de l'objet** en cours de
+couture s'affichent à droite du compteur. Le dessin est incrémental : seul le tronçon
+nouveau est ajouté à chaque pas, la lecture reste fluide sur un gros motif.
+Toute modification du document **réinitialise** la simulation (elle ne continue pas sur
+des points qui n'existent plus). La barre occupe une **zone réservée** (toujours
 visible, contrôles grisés tant qu'aucune séquence n'existe) pour ne pas faire
 sauter la mise en page.
 
@@ -413,22 +442,45 @@ mis en avant) ; le choix est mémorisé entre deux sessions.
 | Ctrl+N | Nouveau projet (garde des modifications non enregistrées) |
 | Ctrl+O / Ctrl+S | Ouvrir une image / Enregistrer le projet (sans redemander le chemin) |
 | Ctrl+Maj+S | Enregistrer le projet sous… |
-| Ctrl+Z / Ctrl+Maj+Z (Ctrl+Y sous Windows) | Annuler / Rétablir |
+| Ctrl+Z | Annuler |
+| Ctrl+Y ou Ctrl+Maj+Z | Rétablir |
 | Ctrl+E | Exporter en DST (résumé puis choix du fichier) |
 | Suppr | Supprimer la sélection (région, objet de broderie ou objets vectoriels) |
 | Ctrl++ / Ctrl+- / Ctrl+0 | Zoom avant / arrière / ajuster |
 | F | Ajuster au canevas |
 | F5 | Analyser le motif |
+| F6 | Statistiques de broderie |
+| Ctrl+Maj+A | Numérisation automatique |
 | V / H / M | Outils : Sélection / Déplacer la vue / Rectangle |
-| Échap | Revenir à la Sélection (annule la fusion) |
+| Échap | Revenir à la Sélection (annule la fusion, le tracé ou le geste en cours) |
+| Entrée / Retour arrière | Terminer le tracé en cours / retirer le dernier point (actifs seulement pendant un tracé ; sinon ils servent aux champs et aux listes) |
 | F1 | Ouvrir « Gestes souris et clavier » |
 | Ctrl+Shift+P | Masquer / afficher les panneaux |
 | Ctrl+Q | Quitter |
 
-Les raccourcis standard proviennent des séquences Qt (Rétablir suit la convention de la
-plateforme) ; `Ctrl+0`, `F5`, `F`,
+Les raccourcis standard proviennent des séquences Qt ; `Ctrl+0`, `F5`, `F6`, `F`,
 `V/H/M`, `Ctrl+Shift+P` sont définis explicitement, sans conflit avec la
-navigation clavier (Tab reste réservé au parcours des contrôles).
+navigation clavier (Tab reste réservé au parcours des contrôles). Les **touches
+simples** des outils (V H M R O P G B L S E D F) ne sont **pas interceptées quand le
+focus est dans une liste ou une liste déroulante** (la frappe y sert à la recherche),
+et Entrée / Retour arrière / Échap restent disponibles pour les champs de saisie.
+Ctrl+= zoome aussi (Ctrl++ demande Maj sur un clavier AZERTY).
+
+## Interface : langue, thème, enregistrement
+
+- Les boutons standard de Qt (Annuler, Oui, Non, « Afficher les détails »…) sont en
+  **français** quand les traductions de Qt sont livrées avec l'application (dossier
+  `translations`) ; sinon l'interface reste utilisable avec les libellés anglais de Qt.
+- Au **premier lancement**, le thème suit celui du système (clair ou sombre) ; le choix
+  fait ensuite dans Affichage ▸ Thème est mémorisé.
+- La barre d'état affiche en permanence « **Enregistré à HH:mm** », « Non enregistré » ou
+  « Nouveau document ». Les messages d'état s'effacent d'eux-mêmes (10 s au plus).
+- Le mode **Masquer les panneaux** est levé à la fermeture : le lancement suivant ne
+  démarre jamais sans panneau. La taille de la fenêtre est bornée à l'écran disponible ;
+  une disposition enregistrée illisible est remplacée par la disposition par défaut.
+- Les calculs longs (segmentation, vectorisation, numérisation automatique) s'exécutent
+  en arrière-plan derrière la fenêtre « Veuillez patienter », qui reste animée ; Windows
+  ne marque plus la fenêtre « ne répond pas ».
 
 ## Implémentation associée
 

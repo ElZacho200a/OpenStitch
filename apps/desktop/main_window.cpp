@@ -35,11 +35,15 @@
 #include <QSpinBox>
 #include <QStatusBar>
 #include <QTextStream>
+#include <QTimer>
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <cstring>
 #include <filesystem>
+#include <future>
+#include <initializer_list>
 #include <limits>
 #include <map>
 #include <numbers>
@@ -385,6 +389,8 @@ private:
 MainWindow::MainWindow() {
     updateWindowTitle();
     resize(1100, 800);
+    fitWindowToScreen(0.92); // jamais plus grand que l'écran (portables à 125-150 %)
+    setAcceptDrops(true);
 
     scene_ = new QGraphicsScene(this);
     view_ = new CanvasView(scene_, this);
@@ -446,6 +452,8 @@ MainWindow::MainWindow() {
         }
     }
 
+    applyAccessibility();
+
     // Tailles par défaut : le canevas reste prioritaire (les panneaux ne prennent pas la
     // largeur que leur contenu réclamerait), puis capture pour « Réinitialiser la disposition ».
     resizeDocks({documentDock_, propertiesDock_}, {260, 320}, Qt::Horizontal);
@@ -454,19 +462,7 @@ MainWindow::MainWindow() {
     // Restaure la disposition de l'interface (préférences UI, pas de données
     // métier — celles-ci restent dans le .osp). Les panneaux vides seront
     // masqués ensuite par les refresh.
-    {
-        // QSettings() par défaut : lit l'organisation/application déjà posées sur
-        // QCoreApplication (main.cpp). Un test peut ainsi rediriger vers un fichier
-        // temporaire (QCoreApplication::setOrganizationName + QSettings::setPath)
-        // sans jamais toucher au registre réel de l'utilisateur.
-        QSettings s;
-        if (s.contains(QStringLiteral("ui/geometry"))) {
-            restoreGeometry(s.value(QStringLiteral("ui/geometry")).toByteArray());
-        }
-        if (s.contains(QStringLiteral("ui/windowState"))) {
-            restoreState(s.value(QStringLiteral("ui/windowState")).toByteArray());
-        }
-    }
+    restoreUiLayout();
 
     // Ligne d'indications des gestes (L5) : widget PERMANENT (un widget ajouté par
     // addWidget serait masqué pendant tout showMessage) ; largeur ignorée pour ne
@@ -479,6 +475,26 @@ MainWindow::MainWindow() {
     statusBar()->addPermanentWidget(hintsLabel_, 1);
     toolLabel_ = new QLabel(this);
     statusBar()->addPermanentWidget(toolLabel_);
+    savedLabel_ = new QLabel(this);
+    savedLabel_->setObjectName(QStringLiteral("savedLabel"));
+    savedLabel_->setAccessibleName(tr("État d'enregistrement"));
+    statusBar()->addPermanentWidget(savedLabel_);
+    updateSavedIndicator();
+    // Un message d'état ne reste jamais affiché indéfiniment : celui d'hier (« Projet
+    // enregistré ») ne doit pas survivre aux indications de geste. Les messages qui
+    // passent un délai explicite gardent leur délai ; les autres sont effacés après 10 s.
+    statusClearTimer_ = new QTimer(this);
+    statusClearTimer_->setSingleShot(true);
+    statusClearTimer_->setInterval(10000);
+    connect(statusClearTimer_, &QTimer::timeout, this, [this] { statusBar()->clearMessage(); });
+    connect(statusBar(), &QStatusBar::messageChanged, this, [this](const QString& text) {
+        if (text.isEmpty()) {
+            statusClearTimer_->stop();
+        } else {
+            statusClearTimer_->start();
+        }
+    });
+    qApp->installEventFilter(this); // ShortcutOverride, cf. main_window_ux.cpp
     cursorLabel_ = new QLabel(this);
     cursorLabel_->setMinimumWidth(180);
     statusBar()->addPermanentWidget(cursorLabel_);
@@ -486,8 +502,14 @@ MainWindow::MainWindow() {
     for (QAction* act : {stitchEditModeAct_, satinEditModeAct_, satinGuideModeAct_,
                          railEditModeAct_, directionGuideModeAct_}) {
         if (act != nullptr) {
-            connect(act, &QAction::toggled, this, [this] { updateInteractionContext(); });
+            connect(act, &QAction::toggled, this, [this] {
+                updateInteractionContext();
+                updateShortcutsState();
+            });
         }
+    }
+    if (mergeAct_ != nullptr) {
+        connect(mergeAct_, &QAction::toggled, this, [this] { updateShortcutsState(); });
     }
     setTool(Tool::Select);
     connect(view_, &CanvasView::cursorMovedMm, this, [this](QPointF mm) {
@@ -664,7 +686,8 @@ void MainWindow::buildMenus() {
     connect(undoAct_, &QAction::triggered, this, &MainWindow::undo);
     redoAct_ = editMenu->addAction(tr("&Rétablir"));
     redoAct_->setObjectName(QStringLiteral("action_redo"));
-    redoAct_->setShortcut(QKeySequence::Redo);
+    // Pluriel : Ctrl+Y ET Ctrl+Maj+Z (le geste des logiciels graphiques).
+    redoAct_->setShortcuts(QKeySequence::Redo);
     connect(redoAct_, &QAction::triggered, this, &MainWindow::redo);
     editMenu->addSeparator();
     duplicateSelectionAct_ = editMenu->addAction(tr("&Dupliquer la forme"));
@@ -758,6 +781,7 @@ void MainWindow::buildMenus() {
     auto* embMenu = menuBar()->addMenu(tr("&Broderie"));
     autoDigitizeAct_ = embMenu->addAction(tr("Numérisation &automatique"));
     autoDigitizeAct_->setObjectName(QStringLiteral("action_autoDigitize"));
+    autoDigitizeAct_->setShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_A));
     auto* autoAct = autoDigitizeAct_;
     connect(autoAct, &QAction::triggered, this, &MainWindow::autoDigitize);
     auto* aiSegmentAct = segMenu->addAction(icons::aiSegment(), tr("Segmenter avec l'&IA…"));
@@ -861,6 +885,7 @@ void MainWindow::buildMenus() {
     buildDirectionalActions(embMenu);
     embMenu->addSeparator();
     statsAct_ = new QAction(tr("Statisti&ques…"), this);
+    statsAct_->setShortcut(QKeySequence(Qt::Key_F6));
     connect(statsAct_, &QAction::triggered, this, &MainWindow::showStatistics);
 
     auto* viewMenu = menuBar()->addMenu(tr("&Affichage"));
@@ -882,7 +907,9 @@ void MainWindow::buildMenus() {
     viewMenu->addSeparator();
     zoomInAct_ = viewMenu->addAction(tr("Zoom &avant"));
     auto* zoomInAct = zoomInAct_;
-    zoomInAct->setShortcut(QKeySequence::ZoomIn);
+    // Ctrl++ demande Maj sur un clavier AZERTY : Ctrl+= (sans Maj) en plus.
+    zoomInAct->setShortcuts(
+        {QKeySequence(QKeySequence::ZoomIn), QKeySequence(Qt::CTRL | Qt::Key_Equal)});
     connect(zoomInAct, &QAction::triggered, view_, &CanvasView::zoomIn);
     zoomOutAct_ = viewMenu->addAction(tr("Zoom a&rrière"));
     auto* zoomOutAct = zoomOutAct_;
@@ -942,6 +969,7 @@ void MainWindow::buildMenus() {
     panelsMenu_ = viewMenu->addMenu(tr("&Panneaux"));
     panelsMenu_->setObjectName(QStringLiteral("menu_panels"));
     auto* hidePanelsAct = viewMenu->addAction(tr("&Masquer les panneaux"));
+    hidePanelsAct_ = hidePanelsAct;
     hidePanelsAct->setCheckable(true);
     hidePanelsAct->setShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_P));
     hidePanelsAct->setToolTip(tr("Mode canevas : masque tous les panneaux."));
@@ -1044,9 +1072,23 @@ void showFriendlyError(QWidget* parent, const QString& title, const QString& exp
 // Calcul synchrone long : curseur d'attente ET fenêtre « en cours » (indéterminée, sans bouton
 // Annuler : ces calculs ne sont pas interruptibles et le dire vaut mieux qu'un bouton muet).
 // Remplace le seul curseur d'attente, que rien n'expliquait sur une grande image.
+//
+// Le calcul lui-même passe par run() : il s'exécute dans un fil de travail pendant que le fil
+// de l'interface continue de traiter les évènements de peinture (hors saisie utilisateur, la
+// fenêtre d'attente étant modale). Sans cela, l'indicateur se figeait et Windows marquait la
+// fenêtre « ne répond pas » après quelques secondes. Le calcul ne doit lire que des données
+// que l'interface ne modifie pas pendant ce temps (instantané) ; les minuteurs qui lisent le
+// document (sauvegarde automatique, simulation) sont suspendus pendant l'attente.
 class BusyIndicator {
 public:
-    BusyIndicator(QWidget* parent, const QString& text) : dialog_(text, QString(), 0, 0, parent) {
+    BusyIndicator(QWidget* parent, const QString& text, std::initializer_list<QTimer*> pause = {})
+        : dialog_(text, QString(), 0, 0, parent) {
+        for (QTimer* timer : pause) {
+            if (timer != nullptr && timer->isActive()) {
+                timer->stop();
+                paused_.push_back(timer);
+            }
+        }
         dialog_.setWindowTitle(QObject::tr("Veuillez patienter"));
         dialog_.setWindowModality(Qt::WindowModal);
         dialog_.setCancelButton(nullptr);
@@ -1058,12 +1100,25 @@ public:
     ~BusyIndicator() {
         QGuiApplication::restoreOverrideCursor();
         dialog_.close();
+        for (QTimer* timer : paused_) {
+            timer->start();
+        }
     }
     BusyIndicator(const BusyIndicator&) = delete;
     BusyIndicator& operator=(const BusyIndicator&) = delete;
 
+    // Exécute `compute` hors du fil de l'interface et renvoie son résultat.
+    template <class F> auto run(F&& compute) {
+        auto future = std::async(std::launch::async, std::forward<F>(compute));
+        while (future.wait_for(std::chrono::milliseconds(25)) != std::future_status::ready) {
+            QCoreApplication::processEvents(QEventLoop::ExcludeUserInputEvents);
+        }
+        return future.get();
+    }
+
 private:
     QProgressDialog dialog_;
+    std::vector<QTimer*> paused_;
 };
 
 } // namespace
@@ -1117,6 +1172,10 @@ void MainWindow::openImage() {
     if (file.isEmpty()) {
         return;
     }
+    openImageFile(file);
+}
+
+void MainWindow::openImageFile(const QString& file) {
     if (file.endsWith(QStringLiteral(".svg"), Qt::CaseInsensitive)) {
         openSvg(file);
         return;
@@ -1544,11 +1603,7 @@ void MainWindow::updateEmptyState() {
 
 void MainWindow::closeEvent(QCloseEvent* event) {
     // Sauve les préférences d'interface (géométrie + disposition des panneaux).
-    {
-        QSettings s;
-        s.setValue(QStringLiteral("ui/geometry"), saveGeometry());
-        s.setValue(QStringLiteral("ui/windowState"), saveState());
-    }
+    saveUiLayout();
     // Même garde que « Nouveau projet » (HP-FILE-001) : enregistrement annulé
     // ou refusé -> la fenêtre reste ouverte.
     event->setAccepted(
@@ -2410,6 +2465,7 @@ void MainWindow::updateDrawActionsState() {
                          (drawingDirectionGuide() && !pendingGuidePoints_.empty());
     finishDrawAct_->setEnabled(drawing);
     cancelDrawAct_->setEnabled(drawing);
+    updateShortcutsState();
 }
 
 void MainWindow::onFreeformPointAdded(QPointF posMm) {
@@ -2562,6 +2618,7 @@ void MainWindow::refreshImage() {
     if (simToolbar_ != nullptr) {
         updateSimulationRange();
     }
+    markAnalysisStale(); // l'Analyse affichée ne décrit plus le motif : signalée, puis refaite
     if (orderDock_ != nullptr) {
         refreshOrderPanel();
     }
@@ -3326,29 +3383,34 @@ void MainWindow::renderBase(const image::Image& img) {
     }
 }
 
-void MainWindow::renderStitches() {
-    for (QGraphicsItem* it : stitchItems_) {
-        scene_->removeItem(it);
-        delete it;
-    }
-    stitchItems_.clear();
-
-    if (showStitchesAct_ == nullptr || !showStitchesAct_->isChecked() || !sequence_) {
-        return;
-    }
-
-    const int total = static_cast<int>(sequence_->commands.size());
-    const int limit = simulating() ? simStep_ : total;
-    // Les pastilles de pénétration (une ellipse par point) coûtent cher : on
-    // ne les dessine que pour les petits motifs et hors simulation.
-    const bool drawDots = !simulating() && total <= 4000;
-
-    // Visibilité (filtres) et couleur de fil par objet de broderie.
+struct MainWindow::StitchMaps {
     std::unordered_map<std::uint64_t, bool> visible;
     std::unordered_map<std::uint64_t, QRgb> colorOf;
+
+    [[nodiscard]] bool isVisible(std::uint64_t src) const {
+        const auto it = visible.find(src);
+        return it != visible.end() && it->second;
+    }
+    [[nodiscard]] QRgb colorFor(std::uint64_t src) const {
+        const auto it = colorOf.find(src);
+        return it != colorOf.end() ? it->second : QRgb{0};
+    }
+};
+
+// Tracés d'un tronçon de séquence : un tracé cousu par couleur de fil (pour afficher la
+// broderie en couleur), les sauts et les pastilles de pénétration.
+struct MainWindow::StitchPaths {
+    std::map<QRgb, QPainterPath> sewByColor;
+    QPainterPath jump;
+    QPainterPath dots;
+};
+
+MainWindow::StitchMaps MainWindow::buildStitchMaps() const {
+    StitchMaps maps;
+    // Visibilité (filtres) et couleur de fil par objet de broderie.
     for (const auto& emb : project_.embroidery_objects) {
-        visible[emb.id.value] = objectPassesFilter(emb);
-        colorOf[emb.id.value] = qRgb(emb.rgb[0], emb.rgb[1], emb.rgb[2]);
+        maps.visible[emb.id.value] = objectPassesFilter(emb);
+        maps.colorOf[emb.id.value] = qRgb(emb.rgb[0], emb.rgb[1], emb.rgb[2]);
     }
     // AD-04 : un design importé (DST aujourd'hui) porte ses commandes avec
     // `source == ObjectId{}` (0 = manuel/importé, cf. stitch/sequence.hpp) --
@@ -3361,67 +3423,65 @@ void MainWindow::renderStitches() {
         const auto& blocks = project_.imported_design->color_blocks;
         const std::array<std::uint8_t, 3> rgb =
             blocks.empty() ? std::array<std::uint8_t, 3>{0, 0, 0} : blocks.front().rgb;
-        visible[ObjectId{}.value] = true;
-        colorOf[ObjectId{}.value] = qRgb(rgb[0], rgb[1], rgb[2]);
+        maps.visible[ObjectId{}.value] = true;
+        maps.colorOf[ObjectId{}.value] = qRgb(rgb[0], rgb[1], rgb[2]);
     }
-    const auto isVisible = [&](std::uint64_t src) {
-        const auto it = visible.find(src);
-        return it != visible.end() && it->second;
-    };
+    return maps;
+}
 
-    // Un tracé cousu par couleur de fil (pour afficher la broderie en couleur).
-    std::map<QRgb, QPainterPath> sewByColor;
-    QPainterPath jumpPath;
-    QPainterPath dots;
-    bool hasPos = false;
-    QPointF last;
-    std::uint64_t lastSource = 0;
-    QPointF needle;
-    bool hasNeedle = false;
-    for (int i = 0; i < total && i <= limit; ++i) {
+// Parcourt les commandes [from, to] (bornes incluses) en prolongeant `state` : le même code
+// sert au rendu complet (from = 0) et à l'ajout incrémental de la simulation (from = state.next),
+// de sorte qu'un tronçon ajouté est exactement ce que le rendu complet aurait dessiné.
+void MainWindow::walkStitches(const StitchMaps& maps, int from, int to, SimWalkState& state,
+                              bool drawDots, StitchPaths& out) const {
+    const int total = static_cast<int>(sequence_->commands.size());
+    for (int i = std::max(from, 0); i < total && i <= to; ++i) {
         const auto& cmd = sequence_->commands[static_cast<std::size_t>(i)];
         const QPointF p(to_millimeters(cmd.pos.x).value, -to_millimeters(cmd.pos.y).value);
         const std::uint64_t src = cmd.source.value;
-        const bool vis = isVisible(src);
+        const bool vis = maps.isVisible(src);
         switch (cmd.type) {
         case stitch::CommandType::Stitch:
             // On ne relie que deux points du MÊME objet (jamais entre objets).
-            if (vis && hasPos && lastSource == src) {
-                QPainterPath& path = sewByColor[colorOf[src]];
-                path.moveTo(last);
+            if (vis && state.hasPos && state.lastSource == src) {
+                QPainterPath& path = out.sewByColor[maps.colorFor(src)];
+                path.moveTo(state.last);
                 path.lineTo(p);
             }
             if (vis && drawDots) {
-                dots.addEllipse(p, 0.15, 0.15);
+                out.dots.addEllipse(p, 0.15, 0.15);
             }
-            last = p;
-            hasPos = true;
-            lastSource = src;
+            state.last = p;
+            state.hasPos = true;
+            state.lastSource = src;
             if (vis) {
-                needle = p;
-                hasNeedle = true;
+                state.needle = p;
+                state.hasNeedle = true;
             }
             break;
         case stitch::CommandType::Jump:
-            if (vis && hasPos && lastSource == src) {
-                jumpPath.moveTo(last);
-                jumpPath.lineTo(p);
+            if (vis && state.hasPos && state.lastSource == src) {
+                out.jump.moveTo(state.last);
+                out.jump.lineTo(p);
             }
-            last = p;
-            hasPos = true;
-            lastSource = src;
+            state.last = p;
+            state.hasPos = true;
+            state.lastSource = src;
             if (vis) {
-                needle = p;
-                hasNeedle = true;
+                state.needle = p;
+                state.hasNeedle = true;
             }
             break;
         default:
-            hasPos = false; // ColorChange / End : rompt la continuité
+            state.hasPos = false; // ColorChange / End : rompt la continuité
             break;
         }
+        state.next = i + 1;
     }
+}
 
-    for (const auto& [rgb, path] : sewByColor) {
+void MainWindow::addStitchItems(const StitchPaths& paths, bool drawDots, bool skipEmpty) {
+    for (const auto& [rgb, path] : paths.sewByColor) {
         QColor c = QColor::fromRgb(rgb);
         // Un fil très clair serait invisible sur fond blanc : on l'assombrit un peu.
         if (c.lightnessF() > 0.85) {
@@ -3436,25 +3496,96 @@ void MainWindow::renderStitches() {
     }
 
     const Tokens& tk = AppTheme::instance().tokens();
-    QPen jumpPen(tk.canvasJump);
-    jumpPen.setCosmetic(true);
-    jumpPen.setStyle(Qt::DashLine);
-    auto* jumpItem = scene_->addPath(jumpPath, jumpPen);
-    jumpItem->setZValue(20);
-    stitchItems_.append(jumpItem);
+    if (!skipEmpty || !paths.jump.isEmpty()) {
+        QPen jumpPen(tk.canvasJump);
+        jumpPen.setCosmetic(true);
+        jumpPen.setStyle(Qt::DashLine);
+        auto* jumpItem = scene_->addPath(paths.jump, jumpPen);
+        jumpItem->setZValue(20);
+        stitchItems_.append(jumpItem);
+    }
 
     if (drawDots) {
-        auto* dotsItem = scene_->addPath(dots, Qt::NoPen, QBrush(tk.canvasStitch));
+        auto* dotsItem = scene_->addPath(paths.dots, Qt::NoPen, QBrush(tk.canvasStitch));
         dotsItem->setZValue(21);
         stitchItems_.append(dotsItem);
     }
+}
 
-    if (simulating() && hasNeedle) {
-        auto* marker = scene_->addEllipse(needle.x() - 0.6, needle.y() - 0.6, 1.2, 1.2,
-                                          QPen(Qt::NoPen), QBrush(tk.error));
-        marker->setZValue(30);
-        stitchItems_.append(marker);
+void MainWindow::renderStitches() {
+    for (QGraphicsItem* it : stitchItems_) {
+        scene_->removeItem(it);
+        delete it;
     }
+    stitchItems_.clear();
+    simMarker_ = nullptr;
+    simWalkValid_ = false;
+
+    if (showStitchesAct_ == nullptr || !showStitchesAct_->isChecked() || !sequence_) {
+        return;
+    }
+
+    const int total = static_cast<int>(sequence_->commands.size());
+    const int limit = simulating() ? simStep_ : total;
+    // Les pastilles de pénétration (une ellipse par point) coûtent cher : on
+    // ne les dessine que pour les petits motifs et hors simulation.
+    const bool drawDots = !simulating() && total <= 4000;
+
+    const StitchMaps maps = buildStitchMaps();
+    StitchPaths paths;
+    SimWalkState state;
+    walkStitches(maps, 0, limit, state, drawDots, paths);
+    addStitchItems(paths, drawDots, /*skipEmpty=*/false);
+
+    if (simulating()) {
+        simWalk_ = state;
+        simWalkValid_ = true;
+        placeSimulationMarker();
+    }
+}
+
+void MainWindow::placeSimulationMarker() {
+    if (simMarker_ != nullptr) {
+        stitchItems_.removeOne(simMarker_);
+        scene_->removeItem(simMarker_);
+        delete simMarker_;
+        simMarker_ = nullptr;
+    }
+    if (!simulating() || !simWalk_.hasNeedle) {
+        return;
+    }
+    const Tokens& tk = AppTheme::instance().tokens();
+    auto* marker = scene_->addEllipse(simWalk_.needle.x() - 0.6, simWalk_.needle.y() - 0.6, 1.2,
+                                      1.2, QPen(Qt::NoPen), QBrush(tk.error));
+    marker->setZValue(30);
+    stitchItems_.append(marker);
+    simMarker_ = marker;
+}
+
+// Avance incrémentale de la simulation : ne dessine que les commandes nouvelles (O(delta) par
+// pas, O(n) au total au lieu de O(n²) avec un rendu complet à chaque pas). Retombe sur le rendu
+// complet quand l'état dessiné ne peut pas être prolongé (retour en arrière, couche masquée,
+// trop d'éléments accumulés).
+void MainWindow::appendSimulation(int newLimit) {
+    if (!sequence_ || showStitchesAct_ == nullptr || !showStitchesAct_->isChecked()) {
+        renderStitches();
+        return;
+    }
+    const int total = static_cast<int>(sequence_->commands.size());
+    const int last = std::min(newLimit, total - 1);
+    constexpr int kMaxIncrementalItems = 800;
+    if (!simWalkValid_ || last + 1 < simWalk_.next || stitchItems_.size() > kMaxIncrementalItems) {
+        renderStitches();
+        return;
+    }
+    if (last + 1 == simWalk_.next) {
+        return; // rien de nouveau à dessiner
+    }
+    const StitchMaps maps = buildStitchMaps();
+    StitchPaths paths;
+    walkStitches(maps, simWalk_.next, last, simWalk_, /*drawDots=*/false, paths);
+    addStitchItems(paths, /*drawDots=*/false, /*skipEmpty=*/true);
+    placeSimulationMarker();
 }
 
 std::optional<QPoint> MainWindow::mmToImagePixel(QPointF mm) const {
@@ -3512,10 +3643,13 @@ void MainWindow::segmentImage() {
     // Calcul synchrone (curseur d'attente) : le passage en tâche de fond est
     // prévu quand les images de travail deviendront grandes.
     std::optional<BusyIndicator> busy;
-    busy.emplace(this, tr("Segmentation de l'image en cours…"));
-    auto seg = segmentation::segment(processed_, {.max_colors = colorsSpin->value(),
-                                                  .min_region_px = minSizeSpin->value(),
-                                                  .smoothing_radius_px = smoothingSpin->value()});
+    busy.emplace(this, tr("Segmentation de l'image en cours…"),
+                 std::initializer_list<QTimer*>{autosaveTimer_, simTimer_});
+    const segmentation::SegmentationOptions segmentOptions{.max_colors = colorsSpin->value(),
+                                                           .min_region_px = minSizeSpin->value(),
+                                                           .smoothing_radius_px =
+                                                               smoothingSpin->value()};
+    auto seg = busy->run([&] { return segmentation::segment(processed_, segmentOptions); });
     busy.reset();
     if (!seg) {
         QMessageBox::warning(this, tr("Segmentation impossible"),
@@ -3576,10 +3710,13 @@ void MainWindow::vectorizeSelectedRegion() {
     const Micrometers simplifyTolerance = vectorize_tolerance_from_detail(detailSlider->value());
 
     std::optional<BusyIndicator> busy;
-    busy.emplace(this, tr("Vectorisation de la région en cours…"));
-    auto sets = vectorization::vectorize_region(
-        *project_.segmentation, *selectedRegion_,
-        {.mm_per_px = project_.mm_per_px, .simplify_tolerance = simplifyTolerance});
+    busy.emplace(this, tr("Vectorisation de la région en cours…"),
+                 std::initializer_list<QTimer*>{autosaveTimer_, simTimer_});
+    auto sets = busy->run([&] {
+        return vectorization::vectorize_region(
+            *project_.segmentation, *selectedRegion_,
+            {.mm_per_px = project_.mm_per_px, .simplify_tolerance = simplifyTolerance});
+    });
     busy.reset();
     if (!sets) {
         QMessageBox::warning(this, tr("Vectorisation impossible"),
@@ -3909,16 +4046,18 @@ void MainWindow::autoDigitize() {
     }
 
     std::optional<BusyIndicator> busy;
-    busy.emplace(this, tr("Numérisation automatique en cours…"));
+    busy.emplace(this, tr("Numérisation automatique en cours…"),
+                 std::initializer_list<QTimer*>{autosaveTimer_, simTimer_});
     autodigitize::ContourMetrics contourMetrics;
-    auto result =
-        contoursMode
-            ? autodigitize::auto_digitize_contours(*project_.segmentation, project_.object_ids,
-                                                   contourOpts, &contourMetrics)
-        : hasSegmentation
-            ? autodigitize::auto_digitize(*project_.segmentation, project_.object_ids, opts)
-            : autodigitize::auto_digitize_vectors(project_.vector_objects, project_.object_ids,
-                                                  opts);
+    auto result = busy->run([&] {
+        return contoursMode ? autodigitize::auto_digitize_contours(*project_.segmentation,
+                                                                   project_.object_ids, contourOpts,
+                                                                   &contourMetrics)
+               : hasSegmentation
+                   ? autodigitize::auto_digitize(*project_.segmentation, project_.object_ids, opts)
+                   : autodigitize::auto_digitize_vectors(project_.vector_objects,
+                                                         project_.object_ids, opts);
+    });
     busy.reset();
     if (!result) {
         QMessageBox::warning(this, tr("Numérisation impossible"),
@@ -3999,8 +4138,10 @@ void MainWindow::segmentWithAi() {
     autodigitize::AutoOptions opts;
     opts.mm_per_px = project_.mm_per_px;
     std::optional<BusyIndicator> busy;
-    busy.emplace(this, tr("Numérisation automatique en cours…"));
-    auto result = autodigitize::auto_digitize(*seg, project_.object_ids, opts);
+    busy.emplace(this, tr("Numérisation automatique en cours…"),
+                 std::initializer_list<QTimer*>{autosaveTimer_, simTimer_});
+    auto result =
+        busy->run([&] { return autodigitize::auto_digitize(*seg, project_.object_ids, opts); });
     busy.reset();
     if (!result) {
         QMessageBox::warning(this, tr("Numérisation impossible"),
@@ -5238,7 +5379,9 @@ void MainWindow::updateContextToolbar() {
         for (int t = 0; t < 4; ++t) {
             auto* btn = new QToolButton(contextToolbar_);
             btn->setText(names[t]);
+            btn->setAccessibleName(tr("Type de points : %1").arg(names[t]));
             btn->setCheckable(true);
+            btn->setAutoExclusive(true); // un seul type actif : annoncé comme un groupe
             btn->setChecked(t == current);
             connect(btn, &QToolButton::clicked, this, [this, id, t] { setStitchType(id, t); });
             contextToolbar_->addWidget(btn);
@@ -5432,6 +5575,7 @@ void MainWindow::buildToolPalette() {
     // proprement : les poignées sont détruites/reconstruites à chaque
     // rafraîchissement, cf. renderBase), seulement une sortie propre du mode.
     auto* escape = new QShortcut(QKeySequence(Qt::Key_Escape), this);
+    escapeShortcut_ = escape;
     connect(escape, &QShortcut::activated, this, [this] {
         if (mergeAct_->isChecked()) {
             mergeAct_->setChecked(false);
@@ -5470,10 +5614,13 @@ void MainWindow::buildToolPalette() {
         }
     };
     auto* drawFinishReturn = new QShortcut(QKeySequence(Qt::Key_Return), this);
+    drawReturnShortcut_ = drawFinishReturn;
     connect(drawFinishReturn, &QShortcut::activated, this, finishDrawShortcut);
     auto* drawFinishEnter = new QShortcut(QKeySequence(Qt::Key_Enter), this);
+    drawEnterShortcut_ = drawFinishEnter;
     connect(drawFinishEnter, &QShortcut::activated, this, finishDrawShortcut);
     auto* drawBackspace = new QShortcut(QKeySequence(Qt::Key_Backspace), this);
+    drawBackspaceShortcut_ = drawBackspace;
     connect(drawBackspace, &QShortcut::activated, this, [this] {
         if (currentTool_ == Tool::DrawPolygon) {
             removeLastPolygonVertex();
@@ -5485,6 +5632,10 @@ void MainWindow::buildToolPalette() {
             removeLastDirectionGuidePoint();
         }
     });
+    // Ces trois touches ne servent qu'au tracé / aux modes : désactivées le reste du temps,
+    // sans quoi elles étaient volées à toute la fenêtre (Entrée dans un champ de
+    // l'inspecteur ou une liste, Retour arrière...).
+    updateShortcutsState();
 }
 
 void MainWindow::setTool(Tool tool) {
@@ -5928,67 +6079,6 @@ void MainWindow::updateInspector() {
     }
 }
 
-void MainWindow::buildAnalysisPanel() {
-    analysisDock_ = new QDockWidget(tr("Analyse"), this);
-    analysisDock_->setObjectName(QStringLiteral("analysisDock"));
-    analysisDock_->setAllowedAreas(Qt::RightDockWidgetArea | Qt::LeftDockWidgetArea);
-    analysisList_ = new QListWidget(analysisDock_);
-    analysisDock_->setWidget(analysisList_);
-    addDockWidget(Qt::RightDockWidgetArea, analysisDock_);
-    analysisDock_->hide();
-
-    // Double-clic sur un problème : centre la vue sur sa localisation.
-    connect(analysisList_, &QListWidget::itemDoubleClicked, this, [this](QListWidgetItem* item) {
-        const QPointF mm = item->data(Qt::UserRole).toPointF();
-        if (!mm.isNull()) {
-            view_->centerOn(mm);
-        }
-    });
-
-    auto* analyseMenu = menuBar()->addMenu(tr("A&nalyse"));
-    analyzeAct_ = analyseMenu->addAction(tr("&Analyser le motif"));
-    analyseMenu->addAction(statsAct_);
-    analyzeAct_->setShortcut(QKeySequence(Qt::Key_F5));
-    connect(analyzeAct_, &QAction::triggered, this, &MainWindow::runAnalysis);
-}
-
-void MainWindow::runAnalysis() {
-    if (!sequence_) {
-        QMessageBox::information(this, tr("Analyse"),
-                                 tr("Générez d'abord des points de broderie."));
-        return;
-    }
-    stitch_analysis::AnalysisOptions opts;
-    const document::Canvas& canvas = project_.canvas; // cadre défini par l'utilisateur
-    opts.hoop = stitch::BoundsUm{
-        Vec2um{Micrometers{-canvas.width.value / 2}, Micrometers{-canvas.height.value / 2}},
-        Vec2um{Micrometers{canvas.width.value / 2}, Micrometers{canvas.height.value / 2}}};
-    const auto findings = stitch_analysis::analyze(*sequence_, opts);
-
-    analysisList_->clear();
-    if (findings.empty()) {
-        analysisList_->addItem(tr("✓ Aucun problème détecté."));
-    } else {
-        for (const auto& f : findings) {
-            const QString prefix = f.severity == stitch_analysis::Severity::Error     ? tr("⛔ ")
-                                   : f.severity == stitch_analysis::Severity::Warning ? tr("⚠ ")
-                                                                                      : tr("ℹ ");
-            auto* item = new QListWidgetItem(prefix + QString::fromStdString(f.message));
-            item->setData(Qt::UserRole, QPointF(to_millimeters(f.location.x).value,
-                                                -to_millimeters(f.location.y).value));
-            analysisList_->addItem(item);
-        }
-    }
-    // Résultat d'une demande explicite (F5) : affiché d'office, sauf en mode canevas seul
-    // où le dock reste masqué (réaffiché à la sortie du mode) : seul le message d'état
-    // ci-dessous signale alors le résultat.
-    setDockAutoVisible(analysisDock_, true, /*force=*/true);
-    if (!hidePanelsMode_) {
-        analysisDock_->raise();
-    }
-    statusBar()->showMessage(tr("Analyse : %1 problème(s) détecté(s)").arg(findings.size()));
-}
-
 Vec2um MainWindow::embroideryCentroid(const document::EmbroideryObject& object) const {
     // Satin : moyenne des nœuds des deux rails. Autres : centre du contour
     // extérieur du premier morceau de l'objet vectoriel source.
@@ -6089,9 +6179,7 @@ void MainWindow::refreshOrderPanel() {
             label = tr("🔒 ") + label;
         }
         auto* item = new QListWidgetItem(label);
-        QPixmap swatch(12, 12);
-        swatch.fill(QColor(obj.rgb[0], obj.rgb[1], obj.rgb[2]));
-        item->setIcon(QIcon(swatch));
+        item->setIcon(icons::colorSwatch(QColor(obj.rgb[0], obj.rgb[1], obj.rgb[2])));
         orderList_->addItem(item);
         items.push_back({obj.id, obj.rgb, embroideryCentroid(obj), obj.locked});
     }
@@ -6233,9 +6321,7 @@ void MainWindow::refreshFilterPanel() {
                                   static_cast<std::uint32_t>(rgb[2]);
         auto* check = new QCheckBox();
         check->setChecked(hiddenColors_.count(key) == 0);
-        QPixmap swatch(12, 12);
-        swatch.fill(QColor(rgb[0], rgb[1], rgb[2]));
-        check->setIcon(QIcon(swatch));
+        check->setIcon(icons::colorSwatch(QColor(rgb[0], rgb[1], rgb[2])));
         check->setText(QStringLiteral("#%1%2%3")
                            .arg(rgb[0], 2, 16, QLatin1Char('0'))
                            .arg(rgb[1], 2, 16, QLatin1Char('0'))
@@ -6337,17 +6423,41 @@ void MainWindow::buildSimulationToolbar() {
 
     simPlayAct_ = simToolbar_->addAction(tr("▶ Lecture"));
     simPlayAct_->setCheckable(true);
+    simPlayAct_->setToolTip(tr("Lit la couture point par point."));
     connect(simPlayAct_, &QAction::toggled, this, &MainWindow::toggleSimulation);
 
     simSlider_ = new QSlider(Qt::Horizontal, simToolbar_);
     simSlider_->setMinimum(0);
     simSlider_->setEnabled(false);
+    simSlider_->setAccessibleName(tr("Position dans la simulation"));
     connect(simSlider_, &QSlider::valueChanged, this, &MainWindow::onSimSliderMoved);
     simToolbar_->addWidget(simSlider_);
 
     simLabel_ = new QLabel(tr("— / —"), simToolbar_);
     simLabel_->setMinimumWidth(120);
+    simLabel_->setAccessibleName(tr("Progression de la simulation"));
     simToolbar_->addWidget(simLabel_);
+
+    // Vitesse : multiplicateur de l'avance par pas (la base s'adapte déjà à la taille du motif).
+    simSpeedCombo_ = new QComboBox(simToolbar_);
+    simSpeedCombo_->setAccessibleName(tr("Vitesse de simulation"));
+    simSpeedCombo_->setToolTip(tr("Vitesse de lecture de la simulation"));
+    simSpeedCombo_->addItem(tr("×0,25"), 0.25);
+    simSpeedCombo_->addItem(tr("×1"), 1.0);
+    simSpeedCombo_->addItem(tr("×4"), 4.0);
+    simSpeedCombo_->addItem(tr("×16"), 16.0);
+    simSpeedCombo_->setCurrentIndex(1);
+    simToolbar_->addWidget(simSpeedCombo_);
+
+    // Couleur et objet en cours de couture.
+    simSwatch_ = new QLabel(simToolbar_);
+    simSwatch_->setFixedSize(14, 14);
+    simSwatch_->setAccessibleName(tr("Couleur du fil courant"));
+    simToolbar_->addWidget(simSwatch_);
+    simObjectLabel_ = new QLabel(simToolbar_);
+    simObjectLabel_->setMinimumWidth(140);
+    simObjectLabel_->setAccessibleName(tr("Objet en cours de couture"));
+    simToolbar_->addWidget(simObjectLabel_);
 
     simTimer_ = new QTimer(this);
     simTimer_->setInterval(16); // ~60 pas/seconde
@@ -6358,27 +6468,69 @@ void MainWindow::buildSimulationToolbar() {
     updateSimulationRange();
 }
 
+void MainWindow::updateSimulationInfo(int step) {
+    if (simSwatch_ == nullptr || simObjectLabel_ == nullptr) {
+        return;
+    }
+    if (!sequence_ || step < 0 || step >= static_cast<int>(sequence_->commands.size())) {
+        simSwatch_->clear();
+        simObjectLabel_->clear();
+        return;
+    }
+    const auto& cmd = sequence_->commands[static_cast<std::size_t>(step)];
+    QString name = tr("Design importé");
+    std::array<std::uint8_t, 3> rgb{0, 0, 0};
+    if (project_.imported_design && !project_.imported_design->color_blocks.empty()) {
+        rgb = project_.imported_design->color_blocks.front().rgb;
+    }
+    for (const auto& emb : project_.embroidery_objects) {
+        if (emb.id == cmd.source) {
+            name = QString::fromStdString(emb.name);
+            rgb = emb.rgb;
+            break;
+        }
+    }
+    simSwatch_->setPixmap(
+        icons::colorSwatch(QColor(rgb[0], rgb[1], rgb[2]), 12).pixmap(QSize(12, 12)));
+    simObjectLabel_->setText(simObjectLabel_->fontMetrics().elidedText(
+        tr("« %1 »").arg(name), Qt::ElideRight, simObjectLabel_->minimumWidth()));
+    simObjectLabel_->setToolTip(name);
+}
+
 void MainWindow::updateSimulationRange() {
     const bool hasSeq = sequence_ && !sequence_->commands.empty();
     simPlayAct_->setEnabled(hasSeq);
     simSlider_->setEnabled(hasSeq);
+    simSpeedCombo_->setEnabled(hasSeq);
+    // Le document a changé (cette fonction suit chaque régénération de la séquence) : une
+    // simulation en cours porte sur l'ancienne séquence ; elle est réinitialisée plutôt que
+    // de continuer sur des points qui n'existent plus.
+    if (simulating()) {
+        simTimer_->stop();
+        if (simPlayAct_->isChecked()) {
+            QSignalBlocker block(simPlayAct_);
+            simPlayAct_->setChecked(false);
+        }
+        simPlayAct_->setText(tr("▶ Lecture"));
+        simStep_ = -1;
+        simWalkValid_ = false;
+    }
     if (!hasSeq) {
         simTimer_->stop();
         simPlayAct_->setChecked(false);
         simStep_ = -1;
         simLabel_->setText(tr("— / —"));
+        updateSimulationInfo(-1);
         return;
     }
     const int n = static_cast<int>(sequence_->commands.size()) - 1;
     simSlider_->blockSignals(true);
     simSlider_->setMaximum(n);
     simSlider_->setEnabled(true);
-    if (simStep_ > n || simStep_ < 0) {
-        simStep_ = -1; // hors simulation : tout affiché
-        simSlider_->setValue(n);
-    }
+    simSlider_->setValue(n);
     simSlider_->blockSignals(false);
-    simLabel_->setText(tr("%1 / %2").arg(simulating() ? simStep_ : n).arg(n));
+    simLabel_->setText(tr("%1 / %2").arg(n).arg(n));
+    updateSimulationInfo(-1);
 }
 
 void MainWindow::toggleSimulation(/* play */) {
@@ -6390,6 +6542,8 @@ void MainWindow::toggleSimulation(/* play */) {
         // Démarre (ou redémarre depuis le début si on était à la fin).
         if (!simulating() || simStep_ >= static_cast<int>(sequence_->commands.size()) - 1) {
             simStep_ = 0;
+            simAccum_ = 0.0;
+            renderStitches();
         }
         simPlayAct_->setText(tr("⏸ Pause"));
         simTimer_->start();
@@ -6405,13 +6559,22 @@ void MainWindow::onSimTick() {
         return;
     }
     const int n = static_cast<int>(sequence_->commands.size()) - 1;
-    // Avance proportionnellement à la taille (motif long = plus rapide).
-    simStep_ = std::min(n, simStep_ + std::max(1, (n + 1) / 400));
+    // Avance proportionnellement à la taille (motif long = plus rapide), multipliée par la
+    // vitesse choisie ; le reste fractionnaire (x0,25) s'accumule d'un pas au suivant.
+    const double speed = simSpeedCombo_ != nullptr ? simSpeedCombo_->currentData().toDouble() : 1.0;
+    simAccum_ += std::max(1, (n + 1) / 400) * (speed > 0.0 ? speed : 1.0);
+    const int advance = static_cast<int>(simAccum_);
+    if (advance < 1) {
+        return;
+    }
+    simAccum_ -= advance;
+    simStep_ = std::min(n, simStep_ + advance);
     simSlider_->blockSignals(true);
     simSlider_->setValue(simStep_);
     simSlider_->blockSignals(false);
     simLabel_->setText(tr("%1 / %2").arg(simStep_).arg(n));
-    renderStitches(); // seule la couche points change pendant la simulation
+    updateSimulationInfo(simStep_);
+    appendSimulation(simStep_); // seule la couche points change, et seulement le tronçon neuf
     if (simStep_ >= n) {
         simTimer_->stop();
         simPlayAct_->setChecked(false);
@@ -6423,27 +6586,36 @@ void MainWindow::onSimSliderMoved(int value) {
     simStep_ = value;
     const int n = static_cast<int>(sequence_ ? sequence_->commands.size() : 1) - 1;
     simLabel_->setText(tr("%1 / %2").arg(value).arg(n));
-    renderStitches();
+    updateSimulationInfo(value);
+    appendSimulation(value);
 }
+
+namespace {
+// Résumé chiffré d'une séquence, partagé par la fenêtre Statistiques (et lisible par tout
+// futur écran qui doit afficher les mêmes chiffres sous la même forme).
+QString statsSummaryText(const stitch::StitchStats& stats) {
+    const double wMm = to_millimeters(stats.bounds.max.x - stats.bounds.min.x).value;
+    const double hMm = to_millimeters(stats.bounds.max.y - stats.bounds.min.y).value;
+    return QObject::tr("Points : %1\nSauts : %2\nCoupes : %3\nChangements de couleur : %4\n"
+                       "Dimensions : %5 × %6 mm\nFil cousu estimé : %7 m")
+        .arg(stats.stitches)
+        .arg(stats.jumps)
+        .arg(stats.trims)
+        .arg(stats.color_changes)
+        .arg(wMm, 0, 'f', 1)
+        .arg(hMm, 0, 'f', 1)
+        .arg(stats.thread_length_um / 1e9, 0, 'f', 2);
+}
+} // namespace
 
 void MainWindow::showStatistics() {
     if (!sequence_) {
+        statusBar()->showMessage(tr("Statistiques indisponibles : générez d'abord des points."),
+                                 6000);
         return;
     }
-    const auto stats = stitch::compute_stats(*sequence_);
-    const double wMm = to_millimeters(stats.bounds.max.x - stats.bounds.min.x).value;
-    const double hMm = to_millimeters(stats.bounds.max.y - stats.bounds.min.y).value;
-    QMessageBox::information(
-        this, tr("Statistiques de broderie"),
-        tr("Points : %1\nSauts : %2\nCoupes : %3\nChangements de couleur : %4\n"
-           "Dimensions : %5 × %6 mm\nFil cousu estimé : %7 m")
-            .arg(stats.stitches)
-            .arg(stats.jumps)
-            .arg(stats.trims)
-            .arg(stats.color_changes)
-            .arg(wMm, 0, 'f', 1)
-            .arg(hMm, 0, 'f', 1)
-            .arg(stats.thread_length_um / 1e9, 0, 'f', 2));
+    QMessageBox::information(this, tr("Statistiques de broderie"),
+                             statsSummaryText(stitch::compute_stats(*sequence_)));
 }
 
 void MainWindow::saveProject() {
@@ -6768,6 +6940,10 @@ void MainWindow::importDst() {
     if (file.isEmpty()) {
         return;
     }
+    importDstFile(file);
+}
+
+void MainWindow::importDstFile(const QString& file) {
     // AD-04 : « quelque chose à perdre » se lit maintenant sur le document
     // réel (le design importé en fait partie), plus sur `sequence_` (qui
     // n'est qu'une copie d'affichage, cf. main_window.hpp).

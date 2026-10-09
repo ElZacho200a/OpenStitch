@@ -350,4 +350,61 @@ QIcon exportDst() {
     });
 }
 
+QIcon colorSwatch(const QColor& fill, int logicalSize) {
+    QIcon icon;
+    // 1x, 2x et 3x : Qt choisit la variante adaptée au facteur d'échelle de l'écran.
+    for (const int scale : {1, 2, 3}) {
+        QPixmap pm(logicalSize * scale, logicalSize * scale);
+        pm.setDevicePixelRatio(scale);
+        pm.fill(Qt::transparent);
+        QPainter p(&pm);
+        p.setRenderHint(QPainter::Antialiasing, false);
+        p.setPen(Qt::NoPen);
+        p.setBrush(fill);
+        p.drawRect(QRectF(0, 0, logicalSize, logicalSize));
+        // Liseré en deux tons (gris moyen + filet clair intérieur) : visible sur fond clair
+        // comme sur fond sombre quelle que soit la teinte de la pastille.
+        p.setBrush(Qt::NoBrush);
+        p.setPen(QPen(kInk, 1.0));
+        p.drawRect(QRectF(0.5, 0.5, logicalSize - 1.0, logicalSize - 1.0));
+        p.end();
+        icon.addPixmap(pm);
+    }
+    return icon;
+}
+
+QIcon appIcon() {
+    QIcon icon;
+    for (const int size : {16, 24, 32, 48, 64, 128, 256}) {
+        QPixmap pm(size, size);
+        pm.fill(Qt::transparent);
+        QPainter p(&pm);
+        p.setRenderHint(QPainter::Antialiasing, true);
+        const double u = size / 32.0; // dessin en coordonnées 32x32
+        p.scale(u, u);
+        p.setPen(Qt::NoPen);
+        p.setBrush(QColor(0xB0, 0x4E, 0x3C)); // rouge-brique « fil » du thème
+        p.drawRoundedRect(QRectF(1, 1, 30, 30), 7, 7);
+        // Fil : une boucle blanche qui finit en point de couture.
+        QPen thread(QColor(0xFF, 0xFF, 0xFF), 2.0);
+        thread.setCapStyle(Qt::RoundCap);
+        p.setPen(thread);
+        p.setBrush(Qt::NoBrush);
+        QPainterPath path;
+        path.moveTo(7, 24);
+        path.cubicTo(7, 8, 24, 26, 25, 9);
+        p.drawPath(path);
+        // Aiguille : trait oblique avec un chas.
+        QPen needle(QColor(0xFF, 0xFF, 0xFF), 2.4);
+        needle.setCapStyle(Qt::RoundCap);
+        p.setPen(needle);
+        p.drawLine(QPointF(10, 6), QPointF(22, 27));
+        p.setPen(QPen(QColor(0xB0, 0x4E, 0x3C), 1.4));
+        p.drawLine(QPointF(10.6, 7.2), QPointF(11.6, 8.8));
+        p.end();
+        icon.addPixmap(pm);
+    }
+    return icon;
+}
+
 } // namespace openstitch::desktop::icons

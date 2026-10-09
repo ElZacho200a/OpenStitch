@@ -28,6 +28,7 @@
 #include <filesystem>
 #include <functional>
 
+#include "app_theme.hpp"
 #include "openstitch/ai_segmentation/color_refine.hpp"
 #include "openstitch/ai_segmentation/label_map.hpp"
 #include "openstitch/ai_segmentation/topology_cleanup.hpp"
@@ -78,7 +79,7 @@ void AiSegmentationDialog::setupUi() {
                       "diviser par couleur, utilisez plutôt le menu Segmentation."),
                    this);
     explainer->setWordWrap(true);
-    explainer->setEnabled(false); // texte atténué : information, pas une alerte
+    markSecondaryText(explainer); // texte atténué : information, pas une alerte
     mainLayout->addWidget(explainer);
 
     auto* topRow = new QHBoxLayout;

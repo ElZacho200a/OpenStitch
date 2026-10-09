@@ -45,6 +45,11 @@ class QDoubleSpinBox;
 class QSpinBox;
 class QMenu;
 class QActionGroup;
+class QShortcut;
+class QDragEnterEvent;
+class QDropEvent;
+class QListWidgetItem;
+class QUrl;
 
 namespace openstitch::desktop {
 
@@ -73,8 +78,20 @@ public:
     MainWindow();
     ~MainWindow() override;
 
+    // Ouvre un fichier désigné par chemin (argument de ligne de commande, glisser-déposer
+    // depuis l'Explorateur) en le routant par extension : .osp (projet), .dst (import
+    // machine), .svg et images. Passe par les mêmes gardes « modifications non
+    // enregistrées » que les menus ; reporté tant qu'un dialogue modal est ouvert.
+    void openPath(const QString& path);
+
 protected:
     void closeEvent(QCloseEvent* event) override;
+    void dragEnterEvent(QDragEnterEvent* event) override;
+    void dropEvent(QDropEvent* event) override;
+    void changeEvent(QEvent* event) override;
+    // Filtre d'application : ShortcutOverride (touches simples non volées aux listes et
+    // listes déroulantes) ; voir main_window_ux.cpp.
+    bool eventFilter(QObject* watched, QEvent* event) override;
 
 private:
 private slots:
@@ -201,6 +218,44 @@ private slots:
     void checkAutosaveRecovery();
 
 private:
+    // --- UX globale (main_window_ux.cpp) ---
+    void openImageFile(const QString& file);
+    void importDstFile(const QString& file);
+    // Chemin local du premier fichier déposé que l'application sait ouvrir (vide sinon).
+    [[nodiscard]] static QString firstOpenableLocalFile(const QList<QUrl>& urls);
+    // Disposition de l'interface : enregistrée à la fermeture (panneaux ré-affichés avant),
+    // restaurée au lancement (version, repli sur la disposition par défaut, bornée à l'écran).
+    void saveUiLayout();
+    void restoreUiLayout();
+    void fitWindowToScreen(double fraction = 1.0);
+    // Noms accessibles, ordre de tabulation, politique de focus.
+    void applyAccessibility();
+    // Entrée / Retour arrière / Échap : actifs seulement quand un tracé ou un mode est en cours.
+    void updateShortcutsState();
+    void updateSavedIndicator();
+    // Analyse (main_window_analysis.cpp).
+    void rebuildAnalysisList();
+    void markAnalysisStale();
+    void runAnalysisInternal(bool explicitRequest);
+    void activateAnalysisItem(QListWidgetItem* item, bool selectObject);
+    // Simulation (rendu incrémental, cf. main_window.cpp).
+    struct SimWalkState {
+        bool hasPos{false};
+        QPointF last;
+        std::uint64_t lastSource{0};
+        QPointF needle;
+        bool hasNeedle{false};
+        int next{0}; // prochain index de commande à parcourir
+    };
+    struct StitchMaps;
+    struct StitchPaths;
+    [[nodiscard]] StitchMaps buildStitchMaps() const;
+    void walkStitches(const StitchMaps& maps, int from, int to, SimWalkState& state, bool drawDots,
+                      StitchPaths& out) const;
+    void addStitchItems(const StitchPaths& paths, bool drawDots, bool skipEmpty);
+    void appendSimulation(int newLimit);
+    void updateSimulationInfo(int step);
+    void placeSimulationMarker();
     // Applique un projet déjà construit (charge depuis un fichier ou fixture
     // de test) : remplace le document, réinitialise undo/sélection, rafraîchit.
     void applyLoadedProject(document::Project project);
@@ -797,6 +852,22 @@ private:
     QDockWidget* analysisDock_{nullptr};
     QListWidget* analysisList_{nullptr};
     QAction* analyzeAct_{nullptr};
+    QLabel* analysisSummary_{nullptr};
+    QLabel* analysisStale_{nullptr};
+    QLabel* analysisHint_{nullptr};
+    QComboBox* analysisFilter_{nullptr};
+    QTimer* analysisTimer_{nullptr}; // ré-analyse différée (300 ms) quand le document change
+    bool analysisIsStale_{false};
+    bool analysisHasResult_{false};
+
+    // Raccourcis fenêtre dont l'activation dépend du contexte (cf. updateShortcutsState).
+    QShortcut* escapeShortcut_{nullptr};
+    QShortcut* drawReturnShortcut_{nullptr};
+    QShortcut* drawEnterShortcut_{nullptr};
+    QShortcut* drawBackspaceShortcut_{nullptr};
+    QAction* hidePanelsAct_{nullptr};
+    QLabel* savedLabel_{nullptr};
+    QTimer* statusClearTimer_{nullptr};
 
     // Structure du document (Objets / Régions).
     QDockWidget* documentDock_{nullptr};
@@ -832,6 +903,13 @@ private:
     QToolBar* simToolbar_{nullptr};
     QSlider* simSlider_{nullptr};
     QLabel* simLabel_{nullptr};
+    QLabel* simSwatch_{nullptr};      // pastille de la couleur du fil courant
+    QLabel* simObjectLabel_{nullptr}; // objet courant
+    QComboBox* simSpeedCombo_{nullptr};
+    double simAccum_{0.0}; // reste fractionnaire d'avance (vitesses < x1)
+    SimWalkState simWalk_;
+    bool simWalkValid_{false}; // simWalk_ décrit exactement ce qui est dessiné
+    QGraphicsItem* simMarker_{nullptr};
     QAction* simPlayAct_{nullptr};
     QTimer* simTimer_{nullptr};
     int simStep_{-1}; // -1 = simulation inactive (tout affiché)

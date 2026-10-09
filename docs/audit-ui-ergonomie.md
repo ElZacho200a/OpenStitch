@@ -86,6 +86,50 @@ police pilotées par les jetons et pixels codés en dur restants · vignettes da
 raccourcis pour Statistiques et Numérisation automatique · aperçu dans le dialogue de récupération
 d'autosave · vérification clavier réelle des touches simples depuis les docks (supposé).
 
+### UX globale et Analyse (branche claude/ux-globale-analyse)
+
+Traité à partir de l'audit transversal de `apps/desktop` (hors autosave et récupération,
+traités ailleurs) :
+
+- **Langue de Qt** : `windeployqt --translations fr` (au lieu de `--no-translations`) et
+  `QTranslator` `qtbase_fr` chargé dans `main.cpp` (dossier de Qt, puis `translations` à côté
+  de l'exécutable ; repli silencieux sur l'anglais de Qt si absent).
+- **Ouverture** : argument de ligne de commande et glisser-déposer routés par extension
+  (`MainWindow::openPath`, `openImageFile`, `importDstFile`) avec les gardes existantes ; reporté
+  tant qu'un dialogue modal est ouvert (récupération d'autosave).
+- **Touches** : Entrée / Retour arrière désactivés hors tracé (`updateShortcutsState`) ;
+  Échap reste armé (il abandonne aussi un geste du canevas) ; filtre `ShortcutOverride` qui rend
+  lettres seules aux `QComboBox` / vues et Entrée / Retour arrière / Échap aux champs.
+  Rétablir = Ctrl+Y et Ctrl+Maj+Z ; Ctrl+= zoome ; F6 Statistiques ; Ctrl+Maj+A numérisation
+  automatique. **Non changé** : Ctrl+O reste « Ouvrir une image » (changement non justifié sans
+  concertation sur la garde d'ouverture de projet).
+- **Disposition** : le mode « Masquer les panneaux » est levé avant `saveState` ; état versionné
+  (`saveState(1)`), repli sur l'état historique puis sur la disposition par défaut ; fenêtre
+  bornée à l'écran disponible (0,92 au premier lancement).
+- **Thème et accessibilité** : contrastes ≥ 4,5:1 vérifiés par test sur les trois fonds
+  (avertissement clair `#8F5A0F`, succès clair `#35703F`, succès/erreur/info sombres éclaircis),
+  `#8a5a00` en dur remplacé par le jeton, texte désactivé distinct (`textDisabled`) et bouton
+  désactivé lisible, anneau de focus des boutons d'outil et onglets, barres de défilement 14 px,
+  textes d'aide en couleur secondaire (`markSecondaryText`) au lieu de `setEnabled(false)`,
+  pastilles de couleur nettes en HiDPI avec liseré (`icons::colorSwatch`), noms accessibles
+  (nombre de côtés, curseur et vitesse de simulation, type de points), ordre de tabulation,
+  écran d'accueil sans cadre sur les libellés et limité à 5 récents, icône d'application, thème
+  initial suivant le système.
+- **Calculs longs** : segmentation, vectorisation et numérisation automatique tournent dans un
+  fil de travail (`BusyIndicator::run`), l'interface repeint la fenêtre d'attente ; les minuteurs
+  qui lisent le document (autosave, simulation) sont suspendus.
+- **Analyse** : nombres sans `std::to_string` (« 3,5 mm »), objet fautif nommé, gravité en mots,
+  compteurs et filtre, indice de correction (`Finding::hint`), clic / Entrée = sélection +
+  centrage (position (0, 0) correcte), menu contextuel, plafond par catégorie rendu visible
+  (`analyze_detailed`), résultat périmé signalé et ré-analyse à 300 ms.
+- **Simulation** : rendu incrémental (O(n) au total), vitesse ×0,25 à ×16, réinitialisation à
+  chaque changement du document, couleur et objet courants.
+- **Messages d'état** : effacés après 10 s ; indicateur permanent « Enregistré à HH:mm ».
+
+Reste à faire : Ctrl+O / Ctrl+I, menu Récents avec dossier, Préférences regroupées, dialogue
+« modifications non enregistrées » nommant le projet, double codage des rails pour le
+daltonisme, étapes du workflow qui lancent l'action.
+
 **Constat retiré** : « l'image apparaît en miniature au chargement » est un artefact de l'outil de
 captures (le projet est chargé avant l'affichage de la fenêtre) ; `applyLoadedProject` appelle bien
 `fitCanvas()`.
