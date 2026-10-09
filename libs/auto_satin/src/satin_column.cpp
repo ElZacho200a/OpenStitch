@@ -29,6 +29,7 @@ namespace {
 // l'identique, c'est un pur déplacement.
 using detail::ContourPolyline;
 using detail::ContourProjection;
+using detail::BoundaryFoot;
 using detail::distance_to_polys;
 using detail::in_region;
 using detail::P2;
@@ -200,6 +201,107 @@ bool segments_cross(P2 a, P2 b, P2 c, P2 d) {
     const auto o = [](P2 p, P2 q, P2 r) { return cross(q - p, r - p); };
     const double o1 = o(a, b, c), o2 = o(a, b, d), o3 = o(c, d, a), o4 = o(c, d, b);
     return (o1 > 0) != (o2 > 0) && (o3 > 0) != (o4 > 0) && o1 != 0 && o2 != 0 && o3 != 0 && o4 != 0;
+}
+
+bool foot_better(const BoundaryFoot& a, const BoundaryFoot& b) {
+    if (a.distance_um != b.distance_um) {
+        return a.distance_um < b.distance_um;
+    }
+    if (a.poly_index != b.poly_index) {
+        return a.poly_index < b.poly_index;
+    }
+    if (a.edge_index != b.edge_index) {
+        return a.edge_index < b.edge_index;
+    }
+    return a.edge_t < b.edge_t;
+}
+
+struct TipSideSection {
+    P2 railA;
+    P2 railB;
+    double width{0.0};
+};
+
+bool tip_section_crosses_previous(P2 prevA, P2 prevB, const TipSideSection& section) {
+    return segments_cross(prevA, section.railA, prevB, section.railB) ||
+           segments_cross(prevA, prevB, section.railA, section.railB);
+}
+
+void orient_tip_section_by_continuity(P2 prevA, P2 prevB, TipSideSection& section) {
+    const bool directCrosses = tip_section_crosses_previous(prevA, prevB, section);
+    const TipSideSection swapped{section.railB, section.railA, section.width};
+    const bool swappedCrosses = tip_section_crosses_previous(prevA, prevB, swapped);
+    if (directCrosses && !swappedCrosses) {
+        std::swap(section.railA, section.railB);
+    }
+}
+
+std::optional<TipSideSection> side_cone_tip_section(const std::vector<Poly>& polys, P2 p,
+                                                    P2 nrm, double maxWidth) {
+    if (!in_region(polys, p)) {
+        return std::nullopt;
+    }
+
+    // HP-STI-018 Phase B.5b : `extend_tip` marche tres pres d'un embout ouvert.
+    // Une requete "plus proche par demi-plan" y choisit facilement le mur
+    // d'embout (direction de marche) au lieu du rail lateral. On garde donc
+    // uniquement les pieds dont le vecteur depuis l'axe pointe franchement vers
+    // +/- normale locale ; les candidats de cap, quasi tangentiels, sont exclus.
+    constexpr double kMinNormalCos = 0.55; // cone ~56 deg autour de chaque normale
+    constexpr double kMinSignedDistanceUm = 1.0;
+
+    std::optional<BoundaryFoot> left;
+    std::optional<BoundaryFoot> right;
+
+    for (std::size_t polyIndex = 0; polyIndex < polys.size(); ++polyIndex) {
+        const Poly& poly = polys[polyIndex];
+        const std::size_t n = poly.size();
+        if (n < 3) {
+            continue;
+        }
+        for (std::size_t edgeIndex = 0; edgeIndex < n; ++edgeIndex) {
+            const P2 a = poly[edgeIndex];
+            const P2 b = poly[(edgeIndex + 1) % n];
+            const P2 ab = b - a;
+            const double len2 = dot(ab, ab);
+            const double t = len2 > 1e-12 ? std::clamp(dot(p - a, ab) / len2, 0.0, 1.0) : 0.0;
+            const P2 proj = a + ab * t;
+            const P2 delta = proj - p;
+            const double dist = norm(delta);
+            if (dist <= 1e-6) {
+                continue;
+            }
+            const double signedNormal = dot(delta, nrm);
+            if (std::abs(signedNormal) < kMinSignedDistanceUm) {
+                continue;
+            }
+            const double normalCos = std::abs(signedNormal) / dist;
+            if (normalCos < kMinNormalCos) {
+                continue;
+            }
+
+            const BoundaryFoot foot{proj, polyIndex, edgeIndex, t, dist};
+            if (signedNormal >= 0.0) {
+                if (!left || foot_better(foot, *left)) {
+                    left = foot;
+                }
+            } else if (!right || foot_better(foot, *right)) {
+                right = foot;
+            }
+        }
+    }
+
+    if (!left || !right) {
+        return std::nullopt;
+    }
+    const double width = norm(left->point - right->point);
+    if (!(width > 1.0) || width > maxWidth) {
+        return std::nullopt;
+    }
+    if (!in_region(polys, (left->point + right->point) * 0.5)) {
+        return std::nullopt;
+    }
+    return TipSideSection{left->point, right->point, width};
 }
 
 double signed_area(const Poly& poly) {
@@ -738,8 +840,8 @@ bool interpolated_station_valid(const std::vector<Poly>& polys, const Station& p
 // dégénéré). Bornée (200 pas de marche, 24 de bissection) ; jamais de boucle
 // infinie même sur une géométrie pathologique.
 std::vector<Station> extend_tip(const std::vector<Poly>& polys, P2 base, P2 marchDir, P2 orientTan,
-                                double lastWidth, double maxWidth, double stepLen,
-                                double tipMinWidth) {
+                                P2 baseRailA, P2 baseRailB, double lastWidth, double maxWidth,
+                                double stepLen, double tipMinWidth, bool useSideConeProbe) {
     std::vector<Station> ext;
     if (stepLen <= 0.0) {
         return ext;
@@ -747,6 +849,8 @@ std::vector<Station> extend_tip(const std::vector<Poly>& polys, P2 base, P2 marc
     const P2 nrm{-orientTan.y, orientTan.x};
     double prevWidth = lastWidth;
     P2 prevPoint = base;
+    P2 prevRailA = baseRailA;
+    P2 prevRailB = baseRailB;
     constexpr int kMaxSteps = 200;
     int stepsTaken = 0;
     for (int k = 1; k <= kMaxSteps; ++k) {
@@ -754,11 +858,19 @@ std::vector<Station> extend_tip(const std::vector<Poly>& polys, P2 base, P2 marc
         if (!in_region(polys, p)) {
             break;
         }
-        const auto sec = cross_section(polys, p, nrm, maxWidth);
-        if (!sec) {
+        auto sideSec =
+            useSideConeProbe ? side_cone_tip_section(polys, p, nrm, maxWidth) : std::nullopt;
+        std::optional<std::pair<double, double>> raySec;
+        if (!sideSec) {
+            const auto sec = cross_section(polys, p, nrm, maxWidth);
+            if (sec) {
+                raySec = *sec;
+            }
+        }
+        if (!sideSec && !raySec) {
             break;
         }
-        const double width = sec->second - sec->first;
+        const double width = sideSec ? sideSec->width : raySec->second - raySec->first;
         if (width > prevWidth * 1.05 + 1.0) {
             break; // ne rétrécit plus : on a dépassé la pointe (forme non convexe)
         }
@@ -775,11 +887,19 @@ std::vector<Station> extend_tip(const std::vector<Poly>& polys, P2 base, P2 marc
         Station st;
         st.axis = p;
         st.tangent = orientTan;
-        st.railA = p + nrm * sec->second;
-        st.railB = p + nrm * sec->first;
+        if (sideSec) {
+            orient_tip_section_by_continuity(prevRailA, prevRailB, *sideSec);
+            st.railA = sideSec->railA;
+            st.railB = sideSec->railB;
+        } else {
+            st.railA = p + nrm * raySec->second;
+            st.railB = p + nrm * raySec->first;
+        }
         st.width = width;
         ext.push_back(st);
         prevPoint = p;
+        prevRailA = st.railA;
+        prevRailB = st.railB;
         prevWidth = width;
         stepsTaken = k;
     }
@@ -811,8 +931,15 @@ std::vector<Station> extend_tip(const std::vector<Poly>& polys, P2 base, P2 marc
         closing.axis = tip;
         closing.tangent = orientTan;
         const double half = std::max(tipMinWidth * 0.5, 1.0);
-        closing.railA = tip + nrm * half;
-        closing.railB = tip - nrm * half;
+        TipSideSection closingSection{tip + nrm * half, tip - nrm * half, half * 2.0};
+        if (useSideConeProbe) {
+            orient_tip_section_by_continuity(prevRailA, prevRailB, closingSection);
+            if (tip_section_crosses_previous(prevRailA, prevRailB, closingSection)) {
+                return ext;
+            }
+        }
+        closing.railA = closingSection.railA;
+        closing.railB = closingSection.railB;
         closing.width = half * 2.0;
         ext.push_back(closing);
     }
@@ -1379,8 +1506,9 @@ std::optional<std::vector<Station>> compute_column_stations(const std::vector<Ve
             static_cast<double>(std::max<std::int32_t>(1, params.tip_min_width.value));
         if (extendEnd && params.extend_open_ends) {
             const Station& last = st.back();
-            auto tail = extend_tip(polys, last.axis, last.tangent, last.tangent, last.width,
-                                   maxWidth, stepLen, tipMin);
+            auto tail = extend_tip(polys, last.axis, last.tangent, last.tangent, last.railA,
+                                   last.railB, last.width, maxWidth, stepLen, tipMin,
+                                   params.use_corridor_tracing_dev_only);
             for (auto& s : tail) {
                 st.push_back(std::move(s));
             }
@@ -1389,7 +1517,8 @@ std::optional<std::vector<Station>> compute_column_stations(const std::vector<Ve
         if (extendStart && params.extend_open_ends) {
             const Station& first = st.front();
             auto head = extend_tip(polys, first.axis, first.tangent * -1.0, first.tangent,
-                                   first.width, maxWidth, stepLen, tipMin);
+                                   first.railA, first.railB, first.width, maxWidth, stepLen,
+                                   tipMin, params.use_corridor_tracing_dev_only);
             std::reverse(head.begin(), head.end());
             st.insert(st.begin(), head.begin(), head.end());
         }

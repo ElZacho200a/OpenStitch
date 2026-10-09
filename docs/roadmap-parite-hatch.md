@@ -812,6 +812,10 @@ plus.
   `RailConstructionMethod::IsoOffsetRing` dans `satin_column_view`, ce qui évite
   aux consommateurs de confondre anneau iso-offset et colonne issue d'un axe
   médian. Reste expérimental, sans validation machine.
+- État R&D 2026-10, suite : HP-STI-018 Phase B.5b est câblée côté
+  `extend_tip`. Les fourches `y`/`y_symmetric` passent désormais sous le chemin
+  corridor sans croisement des premiers barreaux ; `trident` reste rapporté
+  comme pointe effilée distincte.
 - Hatch : Turning satin / Complex turning — le remplissage **satin lui-même**
   suit la courbure (la direction du point tourne), sans jamais changer de
   type de point.
@@ -826,9 +830,10 @@ plus.
   dont la direction suit la courbure (métrique : régularité de la direction
   des fils, cf. HP-ENG-009) et ne tombent jamais silencieusement sur un
   tatami à angle fixe.
-- Suite recommandée : traiter la dette HP-STI-018 Phase B.5b (`extend_tip`
-  direction-aware) avant tout cutover plus large ; ne pas prolonger SGSD comme
-  stratégie principale sans preuve de couverture sur le corpus.
+- Suite recommandée : préparer le cutover Phase F seulement après validation du
+  corpus complet et décision explicite sur les limites restantes (`trident`,
+  `multi_neck`) ; ne pas prolonger SGSD comme stratégie principale sans preuve
+  de couverture sur le corpus.
 
 ### HP-STI-018.a — Assistant de guides directionnels par squelette [P1] — ☐ À faire
 - Contexte : le remplissage directionnel existe déjà (`DirectionalFillParams`

@@ -32,10 +32,8 @@
 //     celle visee par cette phase (confirme en isolant le probleme station
 //     par station, cf. commentaire sur `kKnownCurvatureLimitations`
 //     ci-dessous) -- reste dans `kKnownCurvatureLimitations`.
-//   - "y"/"y_symmetric"/"trident" : PAS corriges -- cf. le commentaire sur
-//     `kKnownAsymmetricJunctionLimitations` plus bas pour le detail par
-//     forme (deux mecanismes distincts identifies, ni l'un ni l'autre n'est
-//     le gathering direction-aveugle que cette phase corrige).
+//   - "y"/"y_symmetric" : corriges ensuite par Phase B.5b (`extend_tip`
+//     direction-aware) ; "trident" reste rapporte separement, cf. plus bas.
 #include "corridor.hpp"
 #include "geometry_detail.hpp"
 
@@ -251,11 +249,10 @@ constexpr const char* kFullCorpus[] = {
 // bonne premiere piste (elle a corrige "s"), mais ne suffit pas seule pour
 // "multi_neck".
 //
-// Tente egalement (puis REVERTE, cf. historique git de ce lot) : faire subir
-// le meme traitement a `extend_tip` (sonde de largeur par pas, satin_
-// column.cpp) pour "y"/"y_symmetric" -- cf. le commentaire sur
-// `kKnownAsymmetricJunctionLimitations` plus bas pour pourquoi ce chemin-la
-// est reste hors perimetre.
+// Tente d'abord (puis REVERTE, cf. historique git de ce lot) : faire subir
+// le meme traitement demi-plan a `extend_tip` (sonde de largeur par pas,
+// satin_column.cpp) pour "y"/"y_symmetric". Phase B.5b corrige finalement ce
+// cas avec une requete plus stricte par cone angulaire, cf. plus bas.
 constexpr const char* kNonJunctionCorpus[] = {
     "rectangle",
     "capsule",
@@ -740,6 +737,12 @@ TEST_CASE("corridor dev flag : E complet (avec jonction) -- rapport, pas d'affir
 // l'autre n'est "le meme bug pas encore completement corrige", ce sont deux
 // chantiers distincts, correctement non entrepris ici (hors mandat de cette
 // phase, cf. discipline de perimetre du lot).
+//
+// CORRECTIF Phase B.5b (2026-10) : le premier chantier ci-dessus est termine
+// pour "y"/"y_symmetric". `extend_tip` garde un repli `cross_section`, mais
+// tente d'abord une sonde laterale a cone angulaire et refuse localement une
+// station de fermeture qui croiserait la precedente. "trident" reste la seule
+// limitation rapportee ici, pour la pointe effilee distincte.
 // =============================================================================
 
 namespace {
@@ -756,7 +759,7 @@ constexpr const char* kJunctionSuccessCorpus[] = {"t", "cross", "h"};
 // RAPPORTEES, jamais asserees : deux limitations DISTINCTES, ni l'une ni
 // l'autre n'etant la famine par gathering aveugle que la Phase B.5 corrige
 // -- cf. le bloc de commentaire Phase B.5 ci-dessus pour le detail par forme.
-constexpr const char* kKnownAsymmetricJunctionLimitations[] = {"y", "y_symmetric", "trident"};
+constexpr const char* kKnownAsymmetricJunctionLimitations[] = {"trident"};
 
 } // namespace
 
@@ -1005,7 +1008,7 @@ TEST_CASE("corridor dev flag Phase C : t/cross/h -- colonnes completes, Junction
     }
 }
 
-TEST_CASE("corridor dev flag Phase C : y/y_symmetric/trident -- limitation anterieure rapportee, "
+TEST_CASE("corridor dev flag Phase C : trident -- limitation anterieure rapportee, "
           "pas une regression de cette phase",
           "[corridor][junction]") {
     for (const char* shape : kKnownAsymmetricJunctionLimitations) {
@@ -1013,6 +1016,33 @@ TEST_CASE("corridor dev flag Phase C : y/y_symmetric/trident -- limitation anter
         const auto r = build_with_flag(shape, /*use_corridor=*/true);
         WARN("forme=" << shape << " -- corridor: statut=" << to_string(r.status) << " refus=\""
                       << r.refusal << "\" colonnes=" << r.columns.size());
+        for (const auto& warning : r.warnings) {
+            WARN("  " << warning);
+        }
+    }
+}
+
+TEST_CASE("corridor dev flag Phase B.5b : y/y_symmetric -- extend_tip ne croise plus les "
+          "premiers barreaux",
+          "[corridor][junction]") {
+    for (const char* shape : {"y", "y_symmetric"}) {
+        INFO("forme = " << shape);
+        const auto r = build_with_flag(shape, /*use_corridor=*/true);
+        INFO("statut=" << to_string(r.status) << " refus=\"" << r.refusal
+                       << "\" colonnes=" << r.columns.size());
+        for (const auto& warning : r.warnings) {
+            INFO("  " << warning);
+        }
+        REQUIRE(r.refusal.empty());
+        REQUIRE(r.columns.size() == 3);
+        bool hasCoreFillWarning = false;
+        for (const auto& warning : r.warnings) {
+            CHECK(warning.find("croisement entre barreaux") == std::string::npos);
+            hasCoreFillWarning =
+                hasCoreFillWarning ||
+                warning.find("zone centrale significative") != std::string::npos;
+        }
+        CHECK(hasCoreFillWarning);
     }
 }
 

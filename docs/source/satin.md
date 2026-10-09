@@ -944,6 +944,36 @@ complète sans trou entre stations consécutives, avec tous les barreaux dans la
 région et aucun croisement entre barreaux — jamais un résultat partiel ;
 déterminisme vérifié (mêmes rails à chaque exécution sur les deux fixtures).
 
+### HP-STI-018 Phase B.5b : `extend_tip` direction-aware sur les fourches Y (2026-10)
+
+*État : Présent · Testé sur le chemin corridor.*
+
+Après la collecte direction-aware de Phase B.5, `y` et `y_symmetric`
+échouaient encore sous `SatinColumnsParameters::use_corridor_tracing_dev_only`
+avec un refus `croisement entre barreaux #0/1`. L'isolation
+`extend_open_ends=false` montrait que les trois branches étaient déjà
+construites : le défaut venait de l'extension du bout ouvert, pas de
+`trace_corridor` ni de `find_stable_corridor_end`.
+
+La tentative naïve de réutiliser directement le partage par demi-plan de
+`nearest_boundary_feet_oriented` n'était pas suffisante dans `extend_tip` :
+la marche d'embout interroge un point très proche du cap ouvert, donc le point
+le plus proche de chaque demi-plan peut être le mur d'embout lui-même au lieu
+du rail latéral.
+
+Correction : `extend_tip` tente d'abord une sonde latérale par cône angulaire
+autour de `+N` et `-N`, ce qui écarte les candidats quasi tangentiels du cap.
+Le résultat est raccordé à la station précédente par continuité A/B ; si la
+station finale au plancher `tip_min_width` croiserait immédiatement le barreau
+précédent, elle est simplement omise, et la dernière station saine reste le
+bout de colonne.
+
+Vérifié : le test corridor Phase B.5b affirme que `y` et `y_symmetric`
+produisent 3 colonnes, sans refus et sans diagnostic `croisement entre
+barreaux`. `trident` reste une limite distincte : sa branche en pointe est un
+effilement géométrique réel où les deux côtés convergent vers le même point du
+contour.
+
 ### Pointes de colonne réduites à quelques dizaines de µm : plancher franchi en un seul pas dans `extend_tip`
 
 *État : Présent · Testé numériquement (unitaire + intégration sur projet réel).*
