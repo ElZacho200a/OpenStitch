@@ -5,6 +5,7 @@
 #include <filesystem>
 #include <functional>
 #include <optional>
+#include <sstream>
 #include <string>
 
 #include <cmath>
@@ -549,7 +550,32 @@ int run_satin_auto_debug(const std::string& shape, double spacingMm,
     for (const auto& g : guides) {
         double xMm = 0.0, yMm = 0.0, deg = 0.0;
         int absolute = 0;
-        const int n = sscanf_s(g.c_str(), "%lf,%lf,%lf,%d", &xMm, &yMm, &deg, &absolute);
+        // Portable (sscanf_s n'existe pas sous GCC) : champs séparés par des virgules.
+        int n = 0;
+        {
+            std::istringstream in(g);
+            std::string field;
+            while (n < 4 && std::getline(in, field, ',')) {
+                try {
+                    std::size_t used = 0;
+                    if (n == 0) {
+                        xMm = std::stod(field, &used);
+                    } else if (n == 1) {
+                        yMm = std::stod(field, &used);
+                    } else if (n == 2) {
+                        deg = std::stod(field, &used);
+                    } else {
+                        absolute = std::stoi(field, &used);
+                    }
+                    if (used != field.size()) {
+                        break;
+                    }
+                } catch (const std::exception&) {
+                    break;
+                }
+                ++n;
+            }
+        }
         if (n < 3) {
             fmt::print(stderr, "Guide invalide « {} » (attendu : x_mm,y_mm,angle_deg[,1=absolu])\n",
                        g);

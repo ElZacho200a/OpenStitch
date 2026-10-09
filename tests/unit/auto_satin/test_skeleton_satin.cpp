@@ -615,13 +615,13 @@ TEST_CASE("pipeline: coude serre, ni croisement de fils ni secteur exterieur vid
     using openstitch::Vec2um;
     const auto corner = [](int x, int y) {
         return openstitch::geometry::PathNode{Vec2um{Micrometers{x}, Micrometers{y}},
-                                              openstitch::geometry::NodeType::Corner,
-                                              std::nullopt, std::nullopt};
+                                              openstitch::geometry::NodeType::Corner, std::nullopt,
+                                              std::nullopt};
     };
     openstitch::geometry::PathSet region;
     region.outer.closed = true;
-    region.outer.nodes = {corner(0, 0),         corner(20000, 0),    corner(20000, 3000),
-                          corner(3000, 3000),   corner(3000, 20000), corner(0, 20000)};
+    region.outer.nodes = {corner(0, 0),       corner(20000, 0),    corner(20000, 3000),
+                          corner(3000, 3000), corner(3000, 20000), corner(0, 20000)};
     const auto res = run(region);
     INFO("colonnes " << res.columns.size());
     CHECK(crossing_pairs(res) == 0);
