@@ -13,7 +13,8 @@ Trois documents, un rôle chacun — ne pas dupliquer leur contenu ici :
 
 ## Déjà livré (depuis la roadmap d'origine)
 
-- Moteur satin topologique (réseaux Y/T/anneaux, guides éditables, jonctions ancrées),
+- Auto-satin par squelette et traversées orientées (`satin-squelette.md`, branche de recherche brevets, **non fusionné sur `main`**, à essayer sur machine) ;
+- Moteur satin topologique historique (supprimé, remplacé ci-dessus) : réseaux Y/T/anneaux, guides éditables, jonctions ancrées,
   sous-couches, underpath caché, coupes et points d'arrêt, filtre de points courts
   (`satin.md`, `tatami.md`, `auto-numerisation.md`).
 - Auto-numérisation durcie (Lots A à G : fond présumé, angles et sous-couches des

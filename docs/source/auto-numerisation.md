@@ -257,8 +257,8 @@ fusion de traits proches, simplification Douglas-Peucker) → classification
 par segment (`classify_segment` : point droit simple, point triple, satin,
 rejeté) → objets : une couleur = un groupe contigu (les plus claires d'abord,
 la plus sombre en dernier), ordre déterministe. Les lignes sont des objets
-Running à chemin ouvert ; les jonctions satin passent par
-`satin_planning::build_satin_sections`.
+Running à chemin ouvert ; l'auto-numérisation ne produit pas de satin
+(`satin_planning` a été supprimé) : l'utilisateur convertit ensuite en satin automatique.
 
 **Détail → seuils** (`contour_thresholds`, fonction pure et monotone ; facteur
 `f = 4^(1 - 2*detail)`, 0,5 = réglages historiques) :
@@ -289,8 +289,8 @@ satin, sinon repli), Running (point droit sur la ligne médiane), Satin (satin
 quand la largeur le permet).
 
 **Jonctions** : croisements (X, T) conservés comme nœuds du réseau ; les
-colonnes satin aboutissant à une jonction sont ancrées par les sections
-satin_planning existantes (voir `satin.md`).
+colonnes satin aboutissant à une jonction étaient ancrées par l'ancien `satin_planning`
+(supprimé) ; le satin par squelette traite les jonctions par cellules (voir `satin-squelette.md`).
 
 **Métriques** (`ContourMetrics`) : composantes, segments, jonctions,
 extrémités, branches courtes et éléments petits supprimés, longueur point

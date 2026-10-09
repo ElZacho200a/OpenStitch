@@ -129,6 +129,9 @@ flux), formules d'ancres de la famille Goldman (inutilisables sans plafond propr
   miroir, translation.
 
 ### RD-PAT-002 — Auto-satin minimal, explicite et protégé [P0] — ☐ À faire
+- **Mise à jour 2026-10** : `satin_planning` et `satin_coverage` n'existent plus sur la branche
+  de recherche ; la fiche ci-dessous devra être réécrite sur le moteur par squelette
+  (éligibilité et verdict de couverture via `SkeletonSatinDiagnostics`) avant toute reprise.
 - Source : synthèse de RD-PAT-003/004 et du post-mortem RD-PAT-000.
 - À faire : nouveau champ **nommé** d'`AutoOptions` (défaut désactivé). Seuls les
   rubans simples sont éligibles (une colonne, sans trou, sans jonction), via le
@@ -144,7 +147,17 @@ flux), formules d'ancres de la famille Goldman (inutilisables sans plafond propr
   `autodigitize`) ; option activée jamais pire que le repli sur le corpus ;
   100 % des replis tracés.
 
-### RD-PAT-001 — Moteur de traversées orientées [P0] — ☐ À faire
+### RD-PAT-001 — Moteur de traversées orientées [P0] — ◐ Partiel (livré sur la branche de recherche, non fusionné sur `main`, aucun essai machine)
+- **Livré sur `claude/openstitch-patent-research-252787`** : moteur par squelette
+  (`libs/auto_satin/src/{chord,axis,axis_sampler,orientation}`, `skeleton_satin.cpp`), type
+  `AutoSatinParams` (`.osp` schéma 5), génération (`generate_auto_satin`), commandes
+  (`EditAutoSatinCommand`), interface (création avec aperçu et refus motivés, guides, inspecteur),
+  CLI `satin-auto-debug`, documentation `docs/source/satin-squelette.md`. L'ancien moteur
+  (rails/barreaux, `satin_planning`, `satin_coverage`) est supprimé de la branche.
+- **Reste** : essais machine (aucun), intégration à l'auto-numérisation (RD-PAT-002/003/004),
+  limite connue `deep_channel` (couverture ≈ 0,65 sur bras très larges), densité selon la
+  largeur (RD-PAT-013), fusion sur `main` après autorisation du propriétaire.
+- Texte d'origine de la fiche (conservé pour traçabilité) :
 - **Décision du propriétaire (2026-10) : remplacement intégral de l'ancien moteur
   d'auto-satin.** Ce n'est plus conditionnel. Spécification révisée après audit
   critique : `specs/plans/satin-squelette-traversees.md` (30 problèmes, solutions,

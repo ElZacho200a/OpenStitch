@@ -18,8 +18,7 @@ fonctionnalité. Chaque module est une cible `openstitch::<nom>` sous `libs/`.
 | `stitch_analysis` | règles de validation | core, stitch | `tests/unit/stitch_analysis` |
 | `optimization` | ordre de couture | core | `tests/unit/optimization` |
 | `autodigitize` | image → objets éditables | vectorization, stitch_generation | `tests/unit/autodigitize` |
-| `auto_satin` | squelette → satinabilité → rails/barreaux multi-sections | core, geometry (+OpenCV) | `tests/unit/auto_satin` |
-| `satin_coverage` | mesure la surface géométrique couverte par des colonnes satin | core, geometry, stitch_generation | `tests/unit/satin_coverage` |
+| `auto_satin` | squelette → satinabilité → auto-satin par traversées orientées (axe, chord, guides) | core, geometry (+OpenCV) | `tests/unit/auto_satin` |
 | `commands` | undo/redo | document | `tests/unit/commands` |
 | `formats` | codec DST, import DXF/SVG, export DXF/SVG diagnostic | core, geometry, stitch (+pugixml) | `tests/unit/formats` |
 | `project_io` | format `.osp` | core, document, image | `tests/unit/project_io` |
@@ -46,7 +45,7 @@ fonctionnalité. Chaque module est une cible `openstitch::<nom>` sous `libs/`.
 | l'outil de guides de direction (canevas) | `apps/desktop/main_window_directional.cpp` |
 | la colonne satin | `libs/stitch_generation/src/satin.cpp` |
 | le satin par squelette et ses sections | `libs/auto_satin/src/` |
-| la mesure de couverture géométrique du satin | `libs/satin_coverage/src/coverage.cpp` |
+| la mesure de couverture du satin automatique | `libs/auto_satin/src/skeleton_satin.cpp` (`measure_coverage`) |
 | le choix de type auto (tatami/satin), avec ou sans segmentation | `libs/autodigitize/src/autodigitize.cpp` (`auto_digitize`/`auto_digitize_vectors`) |
 | l'édition (type, orientation, filtres, calques) | `apps/desktop/main_window.cpp` |
 | l'encodage DST | `libs/formats/src/dst.cpp` |

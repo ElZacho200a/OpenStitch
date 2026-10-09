@@ -596,7 +596,7 @@ prénumérisées et la conversion des polices TrueType.
 ### HP-TXT-004 — Lettrage satin automatique par lettre [P0] — ☐ À faire
 - Hatch : une lettre TrueType devient des colonnes satin qui suivent les
   traits, pas un tatami.
-- À faire : réutiliser `auto_satin` / `satin_planning` sur chaque glyphe
+- À faire : réutiliser l'auto-satin par squelette (`auto_satin`) sur chaque glyphe
   (formes fines idéales) avec repli tatami pour les empattements larges et
   repli contour pour les très petites tailles ; ordre des sections et
   connecteurs internes à la lettre.
@@ -825,7 +825,7 @@ plus.
   mode satin tournant (zigzag entre deux rails radiaux courbes) pour une
   parité réelle avec Hatch. Valider sur cercle, disque, pétale.
 - Modules : `libs/autodigitize`, `libs/stitch_generation`, `libs/auto_satin`
-  si (b), `libs/satin_coverage` pour valider la couverture et les reliquats.
+  si (b) ; la couverture se vérifie via `SkeletonSatinDiagnostics` (`satin_coverage` supprimé).
 - Acceptation : un disque de 15 mm et un pétale produisent un remplissage
   dont la direction suit la courbure (métrique : régularité de la direction
   des fils, cf. HP-ENG-009) et ne tombent jamais silencieusement sur un
@@ -910,7 +910,10 @@ plus.
 - À faire : satin dont les pénétrations dessinent un motif (pas uniquement
   split).
 
-### HP-STI-024 — Satin complexe avec trous [P2] — ☐ À faire
+### HP-STI-024 — Satin complexe avec trous [P2] — ◐ Partiel
+- **Mise à jour 2026-10** : le moteur par squelette (branche de recherche, non fusionné sur `main`,
+  sans essai machine) traite les anneaux par axe fermé (couverture estimée ≥ 0,99) et `two_holes`
+  (0,994) sur le corpus ; `satin_planning` n'existe plus. Reste : essais machine et grands trous.
 - État OpenStitch : l'auto-satin refuse les anneaux larges / formes à trous
   complexes ; un anneau fin est géré, mais en le **découpant** en 4 sections
   (`satin_planning`), pas par une vraie gestion native des trous. Une région
@@ -924,8 +927,7 @@ plus.
   squelette, concavité, JunctionSeparator — ne s'applique à un contour
   convexe) ; ne pas patcher les familles existantes sous la pression de
   cette seule fixture.
-- Modules : `libs/auto_satin`, `libs/satin_planning`. Lire `satin.md`
-  (§ Limitations connues).
+- Modules : `libs/auto_satin`. Lire `satin-squelette.md`.
 - Acceptation : la fixture `two_holes` (`test_torture_corpus.cpp`) atteint
   une couverture significative sans refus total.
 
@@ -963,6 +965,8 @@ l'utilisateur ne voit pas. OpenStitch a les briques mais peu d'automatismes.
 - Modules : `libs/stitch_generation`, `libs/document` (enum Auto/Manuel).
 
 ### HP-ENG-003 — Espacement satin automatique selon la largeur [P1] — ☐ À faire
+- Note 2026-10 : le moteur par squelette adapte déjà le **pas le long de l'axe** à la
+  courbure/rotation de l'orientation (US6390005B1), pas la densité selon la largeur : l'item reste ouvert.
 - Hatch : Auto spacing : colonnes étroites plus lâches, larges plus serrées.
 - Modules : `libs/stitch_generation/satin`.
 - R&D brevets : US5343401A donne un exemple chiffré de densité modulée par la

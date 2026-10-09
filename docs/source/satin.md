@@ -1,5 +1,15 @@
 # Colonne satin
 
+> **Archive technique partielle (2026-10).** L'auto-satin décrit dans ce chapitre
+> (deux rails, barreaux, appariement, `satin_planning`, `satin_coverage`, SGSD) a été
+> **supprimé** et remplacé par l'auto-satin par squelette et traversées orientées,
+> documenté dans [satin-squelette.md](satin-squelette.md). Restent valables ici : le
+> satin **manuel** à deux rails (`SatinParams`, `fill_satin_columns`), les guides de
+> barreaux, les sous-couches, compensations, points courts, découpes, verrous et le
+> routage. Les sections sur la construction automatique de colonnes, le squelette
+> multi-sections, `satin_planning` et la couverture géométrique décrivent du code
+> qui n'existe plus ; ne pas s'y fier pour modifier le moteur actuel.
+
 Public : utilisateur avancé, développeur.
 
 > État : Présent dans le code : oui · Tests unitaires : oui · Tests visuels :
