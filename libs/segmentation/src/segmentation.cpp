@@ -8,6 +8,8 @@
 #include <cmath>
 #include <limits>
 #include <map>
+#include <utility>
+#include <string>
 #include <set>
 
 namespace openstitch::segmentation {
@@ -741,6 +743,125 @@ image::Image render_map(const Segmentation& seg, std::optional<RegionId> highlig
                     ? static_cast<std::uint8_t>(region.rgb[2] + (255 - region.rgb[2]) * 55 / 100)
                     : region.rgb[2];
         px[3] = 255;
+    }
+    return out;
+}
+
+std::vector<RegionId> all_regions(const Segmentation& seg) {
+    std::vector<RegionId> out;
+    for (const auto& slot : seg.region_slots) {
+        if (slot) {
+            out.push_back(slot->id);
+        }
+    }
+    return out; // les slots sont par identifiant croissant
+}
+
+std::vector<RegionId> regions_with_color(const Segmentation& seg, std::array<std::uint8_t, 3> rgb) {
+    std::vector<RegionId> out;
+    for (const auto& slot : seg.region_slots) {
+        if (slot && slot->rgb == rgb) {
+            out.push_back(slot->id);
+        }
+    }
+    return out;
+}
+
+std::vector<RegionId> neighbors_of(const Segmentation& seg, RegionId id) {
+    std::vector<std::pair<std::size_t, RegionId>> found;
+    for (const auto& border : region_adjacency(seg)) {
+        if (border.a == id) {
+            found.push_back({border.length, border.b});
+        } else if (border.b == id) {
+            found.push_back({border.length, border.a});
+        }
+    }
+    std::sort(found.begin(), found.end(), [](const auto& l, const auto& r) {
+        return l.first != r.first ? l.first > r.first : l.second.value < r.second.value;
+    });
+    std::vector<RegionId> out;
+    out.reserve(found.size());
+    for (const auto& f : found) {
+        out.push_back(f.second);
+    }
+    return out;
+}
+
+std::vector<RegionId> regions_in_rect(const Segmentation& seg, int x0, int y0, int x1, int y1) {
+    if (x0 > x1) {
+        std::swap(x0, x1);
+    }
+    if (y0 > y1) {
+        std::swap(y0, y1);
+    }
+    x0 = std::max(x0, 0);
+    y0 = std::max(y0, 0);
+    x1 = std::min(x1, seg.width - 1);
+    y1 = std::min(y1, seg.height - 1);
+    std::set<std::uint32_t> labels;
+    for (int y = y0; y <= y1; ++y) {
+        for (int x = x0; x <= x1; ++x) {
+            const std::uint32_t l = seg.labels[static_cast<std::size_t>(y) *
+                                                   static_cast<std::size_t>(seg.width) +
+                                               static_cast<std::size_t>(x)];
+            if (l != 0) {
+                labels.insert(l);
+            }
+        }
+    }
+    std::vector<RegionId> out;
+    for (const std::uint32_t l : labels) {
+        out.push_back(RegionId{l});
+    }
+    return out;
+}
+
+Result<std::array<std::uint8_t, 3>> region_mean_color(const Segmentation& seg,
+                                                      const image::Image& original, RegionId id) {
+    if (seg.find(id) == nullptr) {
+        return fail(ErrorCategory::Internal, "Région introuvable",
+                    "mean id=" + std::to_string(id.value));
+    }
+    if (original.width != seg.width || original.height != seg.height) {
+        return fail(ErrorCategory::UserInput,
+                    "L'image d'origine n'a pas la taille de la segmentation");
+    }
+    std::uint64_t sum[3] = {0, 0, 0};
+    std::uint64_t count = 0;
+    const auto label = static_cast<std::uint32_t>(id.value);
+    for (std::size_t i = 0; i < seg.labels.size(); ++i) {
+        if (seg.labels[i] != label) {
+            continue;
+        }
+        const std::uint8_t* px = original.rgba.data() + i * 4;
+        sum[0] += px[0];
+        sum[1] += px[1];
+        sum[2] += px[2];
+        ++count;
+    }
+    if (count == 0) {
+        return fail(ErrorCategory::Internal, "Région vide");
+    }
+    const auto avg = [count](std::uint64_t s) {
+        return static_cast<std::uint8_t>((s + count / 2) / count);
+    };
+    return std::array<std::uint8_t, 3>{avg(sum[0]), avg(sum[1]), avg(sum[2])};
+}
+
+image::Image render_map_multi(const Segmentation& seg, const std::vector<RegionId>& highlights) {
+    image::Image out = render_map(seg, std::nullopt);
+    for (std::size_t i = 0; i < seg.labels.size(); ++i) {
+        const std::uint32_t label = seg.labels[i];
+        if (label == 0) {
+            continue;
+        }
+        if (std::find(highlights.begin(), highlights.end(), RegionId{label}) == highlights.end()) {
+            continue;
+        }
+        std::uint8_t* px = out.rgba.data() + i * 4;
+        for (int c = 0; c < 3; ++c) { // même éclaircissement que `render_map` (55 % de blanc)
+            px[c] = static_cast<std::uint8_t>(px[c] + (255 - px[c]) * 55 / 100);
+        }
     }
     return out;
 }

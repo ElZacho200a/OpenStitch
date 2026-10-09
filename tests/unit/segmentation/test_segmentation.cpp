@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+﻿// SPDX-License-Identifier: Apache-2.0
 #include <algorithm>
 #include <catch2/catch_test_macros.hpp>
 #include <map>
@@ -628,4 +628,71 @@ TEST_CASE("merge_small_regions : taille effective = pixels - poids x frontiere")
     Segmentation weighted = *seg0;
     // 10 - 7 + 1 = 4 px effectifs (le polygone vectorisé fait 1 x 4 px) < 8.
     CHECK(merge_small_regions(weighted, 8, std::nullopt, 0.5) == 1);
+}
+
+TEST_CASE("aides de selection : regions, couleur, voisines, cadre") {
+    const auto seg = segment(quadrants(), {.max_colors = 4, .min_region_px = 1});
+    REQUIRE(seg.has_value());
+    const auto red = *region_at(*seg, 1, 1);
+    const auto green = *region_at(*seg, 6, 1);
+    const auto blue = *region_at(*seg, 1, 6);
+    const auto yellow = *region_at(*seg, 6, 6);
+
+    CHECK(all_regions(*seg).size() == 4);
+    CHECK(regions_with_color(*seg, seg->find(red)->rgb) == std::vector<RegionId>{red});
+    CHECK(regions_with_color(*seg, {1, 2, 3}).empty());
+
+    // Chaque quadrant touche deux voisins (4-connexite), 4 aretes communes chacun.
+    const auto n = neighbors_of(*seg, red);
+    CHECK(n.size() == 2);
+    CHECK(std::find(n.begin(), n.end(), green) != n.end());
+    CHECK(std::find(n.begin(), n.end(), blue) != n.end());
+    CHECK(std::find(n.begin(), n.end(), yellow) == n.end()); // en diagonale seulement
+
+    // Cadre : un seul quadrant, deux quadrants, tout ; coordonnees inversees ou hors image.
+    CHECK(regions_in_rect(*seg, 0, 0, 2, 2) == std::vector<RegionId>{red});
+    CHECK(regions_in_rect(*seg, 2, 2, 5, 2).size() == 2);
+    CHECK(regions_in_rect(*seg, 7, 7, 0, 0).size() == 4);
+    CHECK(regions_in_rect(*seg, -50, -50, 100, 100).size() == 4);
+    CHECK(regions_in_rect(*seg, 20, 20, 30, 30).empty());
+}
+
+TEST_CASE("couleur moyenne d'une region dans l'image d'origine") {
+    const image::Image original = quadrants();
+    auto seg = segment(original, {.max_colors = 4, .min_region_px = 1});
+    REQUIRE(seg.has_value());
+    const auto red = *region_at(*seg, 1, 1);
+    const auto mean = region_mean_color(*seg, original, red);
+    REQUIRE(mean.has_value());
+    CHECK((*mean == std::array<std::uint8_t, 3>{220, 30, 30}));
+
+    // Recolorer puis revenir a la couleur d'origine par la couleur moyenne.
+    REQUIRE(recolor_region(*seg, red, {0, 0, 0}).has_value());
+    CHECK((seg->find(red)->rgb == std::array<std::uint8_t, 3>{0, 0, 0}));
+    CHECK(recolor_region(*seg, red, *mean).has_value());
+    CHECK((seg->find(red)->rgb == *mean));
+
+    image::Image wrongSize = blank(3, 3);
+    CHECK_FALSE(region_mean_color(*seg, wrongSize, red).has_value());
+    CHECK_FALSE(region_mean_color(*seg, original, RegionId{99}).has_value());
+}
+
+TEST_CASE("carte avec plusieurs regions eclaircies") {
+    const auto seg = segment(quadrants(), {.max_colors = 4, .min_region_px = 1});
+    REQUIRE(seg.has_value());
+    const auto red = *region_at(*seg, 1, 1);
+    const auto green = *region_at(*seg, 6, 1);
+    const auto plain = render_map(*seg, std::nullopt);
+    const auto both = render_map_multi(*seg, {red, green});
+    const auto onlyRed = render_map_multi(*seg, {red});
+    CHECK(onlyRed.rgba == render_map(*seg, red).rgba); // meme eclaircissement qu'une seule
+    const auto px = [&](const image::Image& m, int x, int y) {
+        return m.rgba[(static_cast<std::size_t>(y) * static_cast<std::size_t>(m.width) +
+                       static_cast<std::size_t>(x)) *
+                      4 + 1];
+    };
+    CHECK(px(both, 1, 1) > px(plain, 1, 1));  // rouge eclairci
+    CHECK(px(both, 6, 1) > px(plain, 6, 1));  // vert eclairci
+    CHECK(px(both, 1, 6) == px(plain, 1, 6)); // bleu inchange
+    CHECK(px(both, 6, 6) == px(plain, 6, 6)); // jaune inchange
 }
