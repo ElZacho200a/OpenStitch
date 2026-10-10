@@ -332,9 +332,9 @@ std::vector<QuickStartStep> QuickStartDialog::defaultSteps() {
          nullptr,
          {},
          true},
-        {tr("Exporter en DST"),
-         tr("Exportez le fichier DST pour votre machine (menu Fichier). Les raccourcis sont "
-            "listés dans Aide, Gestes."),
+        {tr("Exporter la broderie"),
+         tr("Exportez le fichier pour votre machine (DST, PES, JEF ou EXP, menu Fichier). Les "
+            "raccourcis sont listés dans Aide, Gestes."),
          nullptr,
          {},
          true},

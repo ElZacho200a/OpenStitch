@@ -505,7 +505,7 @@ void MainWindow::onWorkflowStepClicked(int step) {
         {autoDigitizeAct_, tr("Broderie ▸ Numérisation automatique (F8), ou créez un objet de "
                               "broderie depuis une forme.")},
         {analyzeAct_, tr("Analyse ▸ Analyser le motif (F5) pour vérifier le motif.")},
-        {exportDstAct_, tr("Fichier ▸ Exporter en DST… (Ctrl+E).")},
+        {exportDstAct_, tr("Fichier ▸ Exporter une broderie machine… (Ctrl+E).")},
     }};
     if (step < 0 || step >= static_cast<int>(steps.size())) {
         return;

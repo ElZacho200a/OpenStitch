@@ -63,6 +63,8 @@ add_library(openstitch_desktop_widgets STATIC
     import_dialog.hpp
     brightness_dialog.cpp
     brightness_dialog.hpp
+machine_export_dialog.cpp
+machine_export_dialog.hpp
     generation_options_dialog.cpp
     generation_options_dialog.hpp
     node_handle.hpp
