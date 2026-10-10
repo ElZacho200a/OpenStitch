@@ -15,6 +15,14 @@ function(run)
     execute_process(COMMAND "${CLI}" ${ARGN}
         RESULT_VARIABLE rc OUTPUT_VARIABLE out ERROR_VARIABLE err
         WORKING_DIRECTORY "${WORK}")
+    # Le journal d'OpenCV (build Debug) peut s'écrire sur stdout avant le JSON : avec --json,
+    # on ne garde que le document (à partir de la première accolade).
+    if("--json" IN_LIST ARGN)
+        string(FIND "${out}" "{" brace)
+        if(brace GREATER 0)
+            string(SUBSTRING "${out}" ${brace} -1 out)
+        endif()
+    endif()
     set(RC "${rc}" PARENT_SCOPE)
     set(OUT "${out}" PARENT_SCOPE)
     set(ERR "${err}" PARENT_SCOPE)
