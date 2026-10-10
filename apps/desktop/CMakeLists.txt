@@ -29,6 +29,9 @@ add_library(openstitch_desktop_widgets STATIC
     realistic_render_dialog.hpp
     realistic_view_state.hpp
     main_window_editing.cpp
+    main_window_threads.cpp
+    thread_panel.cpp
+    thread_panel.hpp
     main_window.hpp
     app_theme.cpp
     app_theme.hpp

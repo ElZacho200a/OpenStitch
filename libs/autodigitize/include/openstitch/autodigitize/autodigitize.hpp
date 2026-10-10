@@ -93,6 +93,13 @@ struct AutoOptions {
     // (demi-pixel perdu le long des frontières, cf. merge_small_regions).
     // 0 = désactivé.
     double min_region_area_mm2{3.0};
+
+    // --- Palette de fils (HP-THR-011) ---
+    // Limite du nombre de COULEURS (donc de fils) du résultat : les couleurs de
+    // régions les plus proches sont fusionnées (CIEDE2000, la plus grosse région
+    // garde sa teinte) jusqu'à n'en garder que `max_threads`. Le fond ignoré ne
+    // compte pas. 0 = pas de limite (comportement historique).
+    std::size_t max_threads{0};
 };
 
 // Objets produits par l'autonumérisation : toujours EDITABLES (§13). Le type

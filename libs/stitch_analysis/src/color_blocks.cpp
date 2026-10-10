@@ -16,6 +16,7 @@ std::vector<stitch::ColorBlock> color_blocks(const document::Project& project,
             block.end = end;
             if (const auto* emb = project.findEmbroidery(cmds[start].source)) {
                 block.rgb = emb->rgb;
+                block.thread_key = emb->thread; // HP-THR-004 : vide tant qu'aucun fil assigné
             } else {
                 // Source inconnue (design importé, DST sans vraie couleur --
                 // roadmap §2 FMT-002) : couleur par défaut honnête, jamais

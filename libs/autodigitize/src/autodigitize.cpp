@@ -16,11 +16,37 @@
 #include "openstitch/geometry/offset.hpp"
 #include "openstitch/geometry/simplify.hpp"
 #include "openstitch/optimization/order.hpp"
+#include "openstitch/thread_palette/color_reduction.hpp"
 #include "openstitch/vectorization/vectorize.hpp"
 
 namespace openstitch::autodigitize {
 
 namespace {
+
+// « Limiter à N fils » (HP-THR-011) : fusionne les couleurs de régions les plus
+// proches (CIEDE2000) jusqu'à n'en garder que `max_threads`, la teinte de la
+// plus grosse région l'emportant. Les régions du fond ignoré ne comptent pas et
+// gardent leur couleur. Recolore seulement : la géométrie des régions est
+// intacte (les objets de même couleur restent contigus au routage).
+void limit_thread_count(segmentation::Segmentation& seg, std::size_t maxThreads,
+                        const std::optional<std::array<std::uint8_t, 3>>& background) {
+    if (maxThreads == 0) {
+        return;
+    }
+    std::vector<segmentation::Region*> regions;
+    std::vector<thread_palette::WeightedColor> colors;
+    for (auto& slot : seg.region_slots) {
+        if (!slot || (background && slot->rgb == *background)) {
+            continue;
+        }
+        regions.push_back(&*slot);
+        colors.push_back({slot->rgb, static_cast<double>(slot->pixel_count)});
+    }
+    const auto reduction = thread_palette::reduce_colors(colors, maxThreads);
+    for (std::size_t i = 0; i < regions.size(); ++i) {
+        regions[i]->rgb = reduction.palette[reduction.mapping[i]];
+    }
+}
 
 // Aire nette d'un PathSet (extérieur moins trous), en µm².
 double net_area_um2(const geometry::PathSet& set) {
@@ -486,6 +512,8 @@ Result<AutoResult> auto_digitize(const segmentation::Segmentation& input,
             static_cast<std::size_t>(std::ceil(options.min_region_area_mm2 / (mmPerPx * mmPerPx))),
             backgroundRgb, kVectorizedBoundaryLoss);
     }
+
+    limit_thread_count(seg, options.max_threads, backgroundRgb);
 
     const vectorization::VectorizeOptions vecOpts{options.mm_per_px, options.simplify_tolerance};
     // Objet vectoriel principal de chaque région numérisée (Lot C) : une

@@ -1,5 +1,6 @@
 add_executable(test_autodigitize
     test_autodigitize.cpp
+    test_thread_limit.cpp
 )
 target_link_libraries(test_autodigitize
     PRIVATE openstitch::autodigitize openstitch::segmentation Catch2::Catch2WithMain

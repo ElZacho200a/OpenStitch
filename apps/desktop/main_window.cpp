@@ -423,6 +423,7 @@ MainWindow::MainWindow() {
     buildWorkflowPanel();
     buildFilterPanel();
     buildHistoryPanel();
+    buildThreadPanel();
     panelsMenu_->addAction(historyDock_->toggleViewAction());
     for (auto* d :
          {documentDock_, propertiesDock_, workflowDock_, orderDock_, filterDock_, analysisDock_}) {
@@ -2827,6 +2828,7 @@ void MainWindow::refreshImage() {
     if (filterDock_ != nullptr) {
         refreshFilterPanel();
     }
+    refreshThreadPanel();
     refreshDocumentPanel();
     displayImage(processed_);
 }
@@ -4172,6 +4174,22 @@ void MainWindow::autoDigitize() {
             row->addWidget(info, 1);
             optsLayout->addLayout(row);
         }
+        // Palette de fils (HP-THR-011) : fusion des couleurs les plus proches (libs/autodigitize).
+        auto* maxThreadsRow = new QHBoxLayout;
+        maxThreadsRow->addWidget(new QLabel(tr("Limiter à :"), &optsDialog));
+        auto* maxThreadsSpin = new QSpinBox(&optsDialog);
+        maxThreadsSpin->setObjectName("maxThreadsSpin");
+        maxThreadsSpin->setRange(0, 99);
+        maxThreadsSpin->setSpecialValueText(tr("pas de limite"));
+        maxThreadsSpin->setSuffix(tr(" fils"));
+        maxThreadsSpin->setValue(
+            ui_memory::intValue(QStringLiteral("autoDigitize/maxThreads"), 0, 0, 99));
+        maxThreadsSpin->setToolTip(
+            tr("Fusionne les couleurs les plus proches pour n'utiliser que ce nombre de fils "
+               "(la couleur du plus grand aplat est conservée)."));
+        maxThreadsRow->addWidget(maxThreadsSpin);
+        maxThreadsRow->addStretch(1);
+        optsLayout->addLayout(maxThreadsRow);
         // Strategie : formes pleines (historique) ou contours (dessin au trait).
         auto* shapesRadio = new QRadioButton(tr("Formes pleines (remplissages)"), &optsDialog);
         shapesRadio->setObjectName("strategyShapesRadio");
@@ -4258,6 +4276,8 @@ void MainWindow::autoDigitize() {
         ui_memory::setIntValue(QStringLiteral("autoDigitize/shapeDetail"),
                                shapeDetailSlider->value());
         ui_memory::setIntValue(QStringLiteral("autoDigitize/contourDetail"), detailSlider->value());
+        ui_memory::setIntValue(QStringLiteral("autoDigitize/maxThreads"), maxThreadsSpin->value());
+        opts.max_threads = static_cast<std::size_t>(maxThreadsSpin->value());
         opts.skip_largest_region = skipBgCheck->isChecked();
         opts.simplify_tolerance = vectorize_tolerance_from_detail(shapeDetailSlider->value());
         contoursMode = contoursRadio->isChecked();
@@ -8432,6 +8452,7 @@ void MainWindow::updateActions() {
     setEnabledWithReason(offsetSelectionAct_, singleObject, needOneShape);
     updateAlignActions();
     refreshHistoryPanel();
+    refreshThreadSelectionInfo();
     setEnabledWithReason(fillAngleAct_, currentFillObject() != nullptr,
                          tr("Sélectionnez un objet à remplissage (tatami ou directionnel)."));
     setEnabledWithReason(convertSatinAct_,

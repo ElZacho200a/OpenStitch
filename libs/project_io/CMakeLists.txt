@@ -6,6 +6,7 @@ add_library(openstitch_project_io
     src/archive.cpp
     src/project_io.cpp
     src/machine_file.cpp
+    src/thread_chart_io.cpp
 )
 add_library(openstitch::project_io ALIAS openstitch_project_io)
 
