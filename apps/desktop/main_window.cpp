@@ -3932,11 +3932,9 @@ QPainterPath MainWindow::objectPainterPath(const document::VectorObject& object)
 }
 
 void MainWindow::createRunningStitchObject() {
-    if (!selectedObject_ || hasMultiSelection()) {
-        return;
-    }
-    const auto* source = project_.findObject(*selectedObject_);
-    if (source == nullptr) {
+    // Une ou plusieurs formes : un seul dialogue, un objet de contour par forme.
+    const std::vector<ObjectId> sourceIds = selectedObjectIds();
+    if (sourceIds.empty() || project_.findObject(sourceIds.front()) == nullptr) {
         return;
     }
 
@@ -3966,16 +3964,23 @@ void MainWindow::createRunningStitchObject() {
     params.stitch_length = to_micrometers(Millimeters{lengthSpin->value()});
     params.repeats = typeCombo->currentData().toInt();
 
-    document::EmbroideryObject object;
-    object.id = project_.object_ids.next();
-    object.name = tr("Contour de %1").arg(QString::fromStdString(source->name)).toStdString();
-    object.source_vector = source->id;
-    object.rgb = source->rgb;
-    object.params = params;
-    object.intent = document::EmbroideryIntent::ForcedUserChoice;
-
-    undoStack_.execute(std::make_unique<commands::AddEmbroideryObjectCommand>(std::move(object)),
-                       project_);
+    auto group = std::make_unique<commands::CompositeCommand>(
+        tr("Créer un contour pour %1 formes").arg(sourceIds.size()).toStdString());
+    for (const ObjectId sourceId : sourceIds) {
+        const auto* source = project_.findObject(sourceId);
+        if (source == nullptr) {
+            continue;
+        }
+        document::EmbroideryObject object;
+        object.id = project_.object_ids.next();
+        object.name = tr("Contour de %1").arg(QString::fromStdString(source->name)).toStdString();
+        object.source_vector = source->id;
+        object.rgb = source->rgb;
+        object.params = params;
+        object.intent = document::EmbroideryIntent::ForcedUserChoice;
+        group->add(std::make_unique<commands::AddEmbroideryObjectCommand>(std::move(object)));
+    }
+    undoStack_.execute(std::move(group), project_);
     showStitchesAct_->setChecked(true);
     refreshImage();
     updateActions();
@@ -3987,11 +3992,9 @@ void MainWindow::createRunningStitchObject() {
 }
 
 void MainWindow::createTatamiObject() {
-    if (!selectedObject_ || hasMultiSelection()) {
-        return;
-    }
-    const auto* source = project_.findObject(*selectedObject_);
-    if (source == nullptr) {
+    // Une ou plusieurs formes : un seul dialogue, un remplissage par forme.
+    const std::vector<ObjectId> sourceIds = selectedObjectIds();
+    if (sourceIds.empty() || project_.findObject(sourceIds.front()) == nullptr) {
         return;
     }
 
@@ -4028,20 +4031,31 @@ void MainWindow::createTatamiObject() {
     params.stitch_length = to_micrometers(Millimeters{lengthSpin->value()});
     params.angle = Angle{angleSpin->value() * std::numbers::pi / 180.0};
 
-    document::EmbroideryObject object;
-    object.id = project_.object_ids.next();
-    object.name = tr("Remplissage de %1").arg(QString::fromStdString(source->name)).toStdString();
-    object.source_vector = source->id;
-    object.rgb = source->rgb;
-    object.params = params;
-    object.intent = document::EmbroideryIntent::ForcedUserChoice;
-
-    // Sélectionne le nouveau remplissage (APRÈS l'exécution réussie, jamais un id
+    auto group = std::make_unique<commands::CompositeCommand>(
+        tr("Créer un remplissage pour %1 formes").arg(sourceIds.size()).toStdString());
+    std::optional<ObjectId> createdId;
+    for (const ObjectId sourceId : sourceIds) {
+        const auto* source = project_.findObject(sourceId);
+        if (source == nullptr) {
+            continue;
+        }
+        document::EmbroideryObject object;
+        object.id = project_.object_ids.next();
+        object.name =
+            tr("Remplissage de %1").arg(QString::fromStdString(source->name)).toStdString();
+        object.source_vector = source->id;
+        object.rgb = source->rgb;
+        object.params = params;
+        object.intent = document::EmbroideryIntent::ForcedUserChoice;
+        createdId = object.id;
+        group->add(std::make_unique<commands::AddEmbroideryObjectCommand>(std::move(object)));
+    }
+    // Forme seule : sélectionne le nouveau remplissage (APRÈS l'exécution réussie, jamais un id
     // inexistant) pour que « Orientation du remplissage… » s'applique à lui.
-    const ObjectId createdId = object.id;
-    undoStack_.execute(std::make_unique<commands::AddEmbroideryObjectCommand>(std::move(object)),
-                       project_);
-    editSelection([createdId](Selection& sel) { sel.embroidery = createdId; });
+    undoStack_.execute(std::move(group), project_);
+    if (createdId && sourceIds.size() == 1) {
+        editSelection([id = *createdId](Selection& sel) { sel.embroidery = id; });
+    }
     showStitchesAct_->setChecked(true);
     refreshImage();
     updateActions();
@@ -4524,43 +4538,37 @@ void MainWindow::convertSatinsToTatami() {
     }
 }
 
-void MainWindow::setStitchType(ObjectId embroideryId, int type) {
-    auto* emb = project_.findEmbroidery(embroideryId);
-    if (emb == nullptr) {
-        return;
-    }
-    document::StitchParams params;
-    std::string label;
-    std::optional<std::vector<geometry::PathSet>> restoredContour; // satin : contour brut
+bool MainWindow::stitchParamsForType(const document::EmbroideryObject& emb, int type,
+                                     document::StitchParams& params, std::string& label,
+                                     std::optional<std::vector<geometry::PathSet>>& restoredContour,
+                                     QString& error) {
     switch (type) {
     case 0: { // contour cousu
         document::RunningStitchParams rp;
         rp.repeats = 3;
         params = rp;
         label = "Type : contour";
-        break;
+        return true;
     }
     case 1: // tatami
         params = document::TatamiParams{};
         label = "Type : tatami";
-        break;
+        return true;
     case 3: { // remplissage directionnel (réglages du tatami repris s'il y a lieu)
-        auto directional = directionalParamsFor(*emb);
+        auto directional = directionalParamsFor(emb);
         if (!directional) {
-            QMessageBox::warning(this, tr("Conversion impossible"),
-                                 tr("Aucun contour source pour le remplissage directionnel."));
-            return;
+            error = tr("Aucun contour source pour le remplissage directionnel.");
+            return false;
         }
         params = std::move(*directional);
         label = "Type : remplissage directionnel";
-        break;
+        return true;
     }
     case 2: { // satin par squelette et traversées orientées
-        const auto* currentSource = project_.findObject(emb->source_vector);
+        const auto* currentSource = project_.findObject(emb.source_vector);
         if (currentSource == nullptr || currentSource->paths.empty()) {
-            QMessageBox::warning(this, tr("Satin impossible"),
-                                 tr("Aucun contour source pour construire le satin."));
-            return;
+            error = tr("Aucun contour source pour construire le satin.");
+            return false;
         }
         // Le satin suit la région telle que segmentée, pas le contour agrandi par le
         // recouvrement des tatamis voisins (sinon il déborde de sa zone).
@@ -4576,19 +4584,34 @@ void MainWindow::setStitchType(ObjectId embroideryId, int type) {
         const AutoSatinPreview preview = previewAutoSatin(*source, sp);
         if (preview.columns == 0) {
             // Refus nommé, jamais contourné par une géométrie de moindre qualité.
-            QMessageBox::warning(
-                this, tr("Satin impossible"),
-                tr("Aucune colonne satin n'a pu être construite pour cette région :\n%1\n\n"
-                   "Essayez un tatami.")
-                    .arg(preview.messages.isEmpty() ? tr("forme non exploitable")
-                                                    : preview.messages.join(QLatin1Char('\n'))));
-            return;
+            error = tr("Aucune colonne satin n'a pu être construite pour cette région :\n%1\n\n"
+                       "Essayez un tatami.")
+                        .arg(preview.messages.isEmpty() ? tr("forme non exploitable")
+                                                        : preview.messages.join(QLatin1Char('\n')));
+            return false;
         }
         params = sp;
         label = "Type : satin";
-        break;
+        return true;
     }
     default:
+        error = tr("Type de points inconnu.");
+        return false;
+    }
+}
+
+void MainWindow::setStitchType(ObjectId embroideryId, int type) {
+    auto* emb = project_.findEmbroidery(embroideryId);
+    if (emb == nullptr) {
+        return;
+    }
+    document::StitchParams params;
+    std::string label;
+    std::optional<std::vector<geometry::PathSet>> restoredContour; // satin : contour brut
+    QString error;
+    if (!stitchParamsForType(*emb, type, params, label, restoredContour, error)) {
+        QMessageBox::warning(this, type == 2 ? tr("Satin impossible") : tr("Conversion impossible"),
+                             error);
         return;
     }
     // `ConvertFillGroupCommand` (pas `SetStitchTypeCommand` seule) : un
@@ -4640,6 +4663,14 @@ void MainWindow::onCanvasContextMenu(QPointF posMm, QPoint globalPos) {
         // mono-objet -- type de points, dupliquer, décaler -- sont absentes).
         auto* title = menu.addAction(tr("%1 objets").arg(multiSelection_.size()));
         title->setEnabled(false);
+        menu.addSeparator();
+        auto* multiTypeMenu = menu.addMenu(tr("Type de points (tous)"));
+        const char* multiLabels[] = {"Contour cousu", "Remplissage tatami", "Colonne satin",
+                                     "Remplissage directionnel"};
+        for (int t = 0; t < 4; ++t) {
+            auto* act = multiTypeMenu->addAction(tr(multiLabels[t]));
+            connect(act, &QAction::triggered, this, [this, t] { setStitchTypeForSelection(t); });
+        }
         menu.addSeparator();
         auto* deleteAllAct = menu.addAction(tr("&Supprimer %1 objets").arg(multiSelection_.size()));
         deleteAllAct->setObjectName(QStringLiteral("contextDeleteSelection"));
@@ -8389,10 +8420,14 @@ void MainWindow::updateActions() {
     if (hasMultiSelection()) {
         needOneShape = tr("Une seule forme à la fois : plusieurs sont sélectionnées.");
     }
-    setEnabledWithReason(createStitchAct_, singleObject, needOneShape);
-    setEnabledWithReason(createTatamiAct_, singleObject, needOneShape);
-    setEnabledWithReason(createSatinAct_, singleObject, needOneShape);
-    setEnabledWithReason(autoSatinAct_, singleObject, needOneShape);
+    // Les types de points s'appliquent à une ou plusieurs formes sélectionnées.
+    const bool anyObject = !selectedObjectIds().empty();
+    const QString needShapes =
+        tr("Sélectionnez d'abord une ou plusieurs formes (clic sur le motif).");
+    setEnabledWithReason(createStitchAct_, anyObject, needShapes);
+    setEnabledWithReason(createTatamiAct_, anyObject, needShapes);
+    setEnabledWithReason(createSatinAct_, anyObject, needShapes);
+    setEnabledWithReason(autoSatinAct_, anyObject, needShapes);
     setEnabledWithReason(duplicateSelectionAct_, singleObject, needOneShape);
     setEnabledWithReason(offsetSelectionAct_, singleObject, needOneShape);
     updateAlignActions();

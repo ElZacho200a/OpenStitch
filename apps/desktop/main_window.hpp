@@ -158,6 +158,19 @@ private slots:
     // Change le type de points d'un objet de broderie (contour/tatami/satin).
     // Le type satin exige des rails, construits depuis le contour source.
     void setStitchType(ObjectId embroideryId, int type);
+    // Paramètres et libellé du type demandé (0 contour, 1 tatami, 2 satin, 3 directionnel) pour
+    // la forme source de `emb` ; faux + `error` si impossible. Satin : `restoredContour` reçoit le
+    // contour brut de la région quand il diffère du contour actuel.
+    bool stitchParamsForType(const document::EmbroideryObject& emb, int type,
+                             document::StitchParams& params, std::string& label,
+                             std::optional<std::vector<geometry::PathSet>>& restoredContour,
+                             QString& error);
+    // Donne ce type de points à TOUTES les formes sélectionnées, en un seul pas d'annulation :
+    // une forme déjà cousue est convertie (toutes ses sections), une forme sans couture reçoit un
+    // nouvel objet de broderie. `tweak` ajuste les paramètres (espacement, angle) avant usage.
+    // Les formes qui ne peuvent pas recevoir ce type (satin impossible) sont ignorées et listées.
+    void setStitchTypeForSelection(int type,
+                                   const std::function<void(document::StitchParams&)>& tweak = {});
     void showStatistics();
     void setHoopSize();
     void exportDst();
@@ -526,6 +539,7 @@ private:
     [[nodiscard]] std::optional<std::vector<geometry::PathSet>>
     pristineSatinContour(const document::VectorObject& vector) const;
     [[nodiscard]] QString autoSatinSummary(const document::EmbroideryObject& emb);
+    void createAutoSatinForSelection(bool askParameters);
     void createAutoSatin(bool askParameters);
     void applyAutoSatinEdit(ObjectId id, document::AutoSatinParams params, const QString& label,
                             const QString& mergeTag = {});

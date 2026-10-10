@@ -6,6 +6,7 @@
 #include <variant>
 
 #include "openstitch/auto_satin/skeleton_satin.hpp"
+#include "openstitch/core/parallel.hpp"
 #include "openstitch/geometry/offset.hpp"
 #include "openstitch/stitch_generation/directional_fill.hpp"
 #include "openstitch/stitch_generation/lock.hpp"
@@ -201,14 +202,21 @@ void generate_satin(stitch::StitchSequence& sequence, const document::Embroidery
 // vecteur source, les traversées sont recalculées à chaque génération. Chaque
 // colonne (branche du squelette) passe par les finitions communes du satin
 // (`finish_satin_stations`) ; les colonnes sont enchaînées au plus proche.
-void generate_auto_satin(stitch::StitchSequence& sequence, const document::VectorObject& source,
-                         const document::EmbroideryObject& object,
-                         const document::AutoSatinParams& params) {
+// Paramètres du moteur de squelette pour un auto-satin (partagés entre la génération et le
+// préchauffage parallèle du cache : mêmes entrées exactes, donc mêmes entrées de cache).
+auto_satin::SkeletonSatinParameters auto_satin_engine(const document::AutoSatinParams& params) {
     auto_satin::SkeletonSatinParameters engine;
     engine.spacing = params.spacing;
     for (const auto& g : params.guides) {
         engine.guides.push_back({g.anchor, g.angle.radians, g.absolute});
     }
+    return engine;
+}
+
+void generate_auto_satin(stitch::StitchSequence& sequence, const document::VectorObject& source,
+                         const document::EmbroideryObject& object,
+                         const document::AutoSatinParams& params) {
+    const auto_satin::SkeletonSatinParameters engine = auto_satin_engine(params);
 
     SatinConfig config;
     config.density = params.spacing;
@@ -540,8 +548,17 @@ Result<stitch::StitchSequence> generate_sequence(const document::Project& projec
     }
     stitch::StitchSequence sequence;
     const auto& objects = project.embroidery_objects;
-    const document::EmbroideryObject* previous = nullptr;
 
+    // Phase 1 -- plan : les « unités » de génération, dans l'ordre de couture. Une unité est un
+    // objet seul, ou un groupe contigu de colonnes satin routées ensemble (§13).
+    enum class Kind { Independent, AutoSatin, Sequential };
+    struct Unit {
+        std::size_t first{0};
+        std::size_t count{1};
+        const document::VectorObject* source{nullptr};
+        Kind kind{Kind::Sequential};
+    };
+    std::vector<Unit> units;
     for (std::size_t idx = 0; idx < objects.size();) {
         const document::EmbroideryObject& object = objects[idx];
         if (!object.visible) {
@@ -549,21 +566,85 @@ Result<stitch::StitchSequence> generate_sequence(const document::Project& projec
             continue;
         }
         // Le satin porte sa géométrie ; les autres types suivent un vecteur.
-        const document::VectorObject* source = nullptr;
+        Unit unit;
+        unit.first = idx;
         if (!object.is_satin()) {
             for (const auto& vec : project.vector_objects) {
                 if (vec.id == object.source_vector) {
-                    source = &vec;
+                    unit.source = &vec;
                     break;
                 }
             }
-            if (source == nullptr) {
+            if (unit.source == nullptr) {
                 return fail(ErrorCategory::Internal,
                             "Objet vectoriel source introuvable pour « " + object.name + " »",
                             "source_vector=" + std::to_string(object.source_vector.value));
             }
         }
+        if (is_routable_satin(object)) {
+            std::size_t j = idx + 1;
+            for (; j < objects.size(); ++j) {
+                const auto& o = objects[j];
+                if (!o.visible || !is_routable_satin(o) || o.rgb != object.rgb ||
+                    o.source_vector != object.source_vector) {
+                    break;
+                }
+            }
+            unit.count = j - idx;
+        } else if (object.is_auto_satin()) {
+            unit.kind = Kind::AutoSatin;
+        } else if (!object.is_satin()) {
+            unit.kind = Kind::Independent;
+        }
+        idx += unit.count;
+        units.push_back(unit);
+    }
 
+    // Phase 2 -- calcul parallèle de ce qui ne dépend pas de la position précédente. Les
+    // remplissages et contours sont générés dans une séquence locale (leur seul lien avec
+    // l'objet précédent est le saut d'entrée, toujours émis à une frontière d'objet) ; le
+    // squelette d'un auto-satin (partie coûteuse) est calculé dans le cache partagé, que la
+    // phase 3 relit sans recalcul. Chaque tâche n'écrit que dans sa propre case : le résultat ne
+    // dépend ni du nombre de fils ni de leur ordonnancement.
+    std::vector<std::size_t> parallelUnits;
+    for (std::size_t u = 0; u < units.size(); ++u) {
+        if (units[u].kind != Kind::Sequential) {
+            parallelUnits.push_back(u);
+        }
+    }
+    std::vector<stitch::StitchSequence> chunks(units.size());
+    parallel_for(parallelUnits.size(), [&](std::size_t k) {
+        const std::size_t u = parallelUnits[k];
+        const Unit& unit = units[u];
+        const document::EmbroideryObject& object = objects[unit.first];
+        if (unit.kind == Kind::AutoSatin) {
+            const auto& params = std::get<document::AutoSatinParams>(object.params);
+            const auto engine = auto_satin_engine(params);
+            for (const geometry::PathSet& set : unit.source->paths) {
+                (void)auto_satin::generate_skeleton_satin(set, engine);
+            }
+            return;
+        }
+        stitch::StitchSequence& chunk = chunks[u];
+        std::visit(
+            [&](const auto& params) {
+                using T = std::decay_t<decltype(params)>;
+                if constexpr (std::is_same_v<T, document::RunningStitchParams>) {
+                    generate_running(chunk, *unit.source, object, params);
+                } else if constexpr (std::is_same_v<T, document::TatamiParams>) {
+                    generate_tatami(chunk, *unit.source, object, params);
+                } else if constexpr (std::is_same_v<T, document::DirectionalFillParams>) {
+                    generate_directional(chunk, *unit.source, object, params);
+                }
+            },
+            object.params);
+    });
+
+    // Phase 3 -- assemblage séquentiel, dans l'ordre de couture.
+    const document::EmbroideryObject* previous = nullptr;
+    for (std::size_t u = 0; u < units.size(); ++u) {
+        const Unit& unit = units[u];
+        const document::EmbroideryObject& object = objects[unit.first];
         if (previous != nullptr && previous->rgb != object.rgb && !sequence.commands.empty()) {
             sequence.commands.push_back(
                 {sequence.commands.back().pos, stitch::CommandType::ColorChange, object.id});
@@ -572,15 +653,9 @@ Result<stitch::StitchSequence> generate_sequence(const document::Project& projec
         // Routage (§13) : un groupe **contigu** de colonnes satin auto de même
         // couleur et même source est ordonné/orienté ensemble, liaisons cachées.
         if (is_routable_satin(object)) {
-            std::vector<const document::EmbroideryObject*> group{&object};
-            std::size_t j = idx + 1;
-            for (; j < objects.size(); ++j) {
-                const auto& o = objects[j];
-                if (!o.visible || !is_routable_satin(o) || o.rgb != object.rgb ||
-                    o.source_vector != object.source_vector) {
-                    break;
-                }
-                group.push_back(&o);
+            std::vector<const document::EmbroideryObject*> group;
+            for (std::size_t j = unit.first; j < unit.first + unit.count; ++j) {
+                group.push_back(&objects[j]);
             }
             if (group.size() >= 2) {
                 generate_satin_group(sequence, group);
@@ -588,28 +663,27 @@ Result<stitch::StitchSequence> generate_sequence(const document::Project& projec
                 generate_satin(sequence, object, std::get<document::SatinParams>(object.params));
             }
             previous = group.back();
-            idx = j;
+            continue;
+        }
+
+        if (unit.kind == Kind::Independent) {
+            auto& chunk = chunks[u].commands;
+            sequence.commands.insert(sequence.commands.end(), chunk.begin(), chunk.end());
+            previous = &object;
             continue;
         }
 
         std::visit(
             [&](const auto& params) {
                 using T = std::decay_t<decltype(params)>;
-                if constexpr (std::is_same_v<T, document::RunningStitchParams>) {
-                    generate_running(sequence, *source, object, params);
-                } else if constexpr (std::is_same_v<T, document::TatamiParams>) {
-                    generate_tatami(sequence, *source, object, params);
-                } else if constexpr (std::is_same_v<T, document::SatinParams>) {
+                if constexpr (std::is_same_v<T, document::SatinParams>) {
                     generate_satin(sequence, object, params);
-                } else if constexpr (std::is_same_v<T, document::DirectionalFillParams>) {
-                    generate_directional(sequence, *source, object, params);
                 } else if constexpr (std::is_same_v<T, document::AutoSatinParams>) {
-                    generate_auto_satin(sequence, *source, object, params);
+                    generate_auto_satin(sequence, *unit.source, object, params);
                 }
             },
             object.params);
         previous = &object;
-        ++idx;
     }
 
     if (sequence.commands.empty()) {

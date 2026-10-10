@@ -400,6 +400,27 @@ d'annulation** et garde les objets de broderie de la forme conservée.
   point par point ne sont pas copiés). La coupe retire une bande de 0,02 mm, sans effet sur la
   couture.
 
+## Type de points pour plusieurs formes
+
+La sélection multiple de formes (Maj + clic, Ctrl + clic, rectangle) accepte **tous les types de
+points d'un coup**, exactement comme pour une forme seule :
+
+- **Inspecteur** : avec plusieurs formes sélectionnées, le bloc « Type de points » propose
+  *Contour cousu*, *Tatami*, *Satin automatique* et *Remplissage directionnel* ; l'espacement et
+  l'angle cochés s'appliquent aux nouveaux réglages. **Appliquer à N objets** valide.
+- **Menu Broderie** : « Créer un objet de point de contour… », « Créer un remplissage tatami… » et
+  « Créer un satin automatique… » s'appliquent à toute la sélection (un seul dialogue de réglages).
+- **Clic droit** sur une forme de la sélection : « Type de points (tous) ».
+
+Une forme déjà cousue est **convertie** (toutes ses sections), une forme sans couture en reçoit une
+nouvelle. Les formes qui ne peuvent pas être cousues en satin sont ignorées et listées (en satin
+automatique, on peut leur donner un tatami à la place). Tout le geste est **un seul pas
+d'annulation**.
+
+Le calcul des points se fait **en parallèle sur plusieurs coeurs** (contours, tatamis, remplissages
+directionnels et squelettes de satin) ; le résultat est identique quel que soit le nombre de coeurs.
+La variable d'environnement `OPENSTITCH_THREADS=1` force le calcul séquentiel (mesures, diagnostic).
+
 ## Menu Broderie
 
 - **Numérisation automatique** (**F8**, grisée tant qu'il n'y a ni segmentation ni objets

@@ -616,6 +616,7 @@ private slots:
     void regionRectangleSelectionHonoursWindowAndCrossing();
     void documentListMultiSelectionDrivesRegionSelection();
     void shapeUnionActionIsOneUndoStep();
+    void groupedStitchTypeCoversEverySelectedShapeInOneStep();
     void knifeToolSplitsSelectedShape();
     void togglingPrimaryPromotesPrevious();
     void addOfAlreadySelectedObjectIsNoOp();
@@ -1225,17 +1226,22 @@ void MainWindowTest::multiSelectionDisablesSingleObjectActions() {
     QVERIFY(window.autoSatinAct_->isEnabled());
 
     window.applySelectionClick(fx.b, SelectMode::Add);
-    QVERIFY(!window.createStitchAct_->isEnabled());
-    QVERIFY(!window.createTatamiAct_->isEnabled());
-    QVERIFY(!window.createSatinAct_->isEnabled());
-    QVERIFY(!window.autoSatinAct_->isEnabled());
+    // Les types de points valent pour toute la sélection ; dupliquer et décaler restent
+    // mono-objet.
+    QVERIFY(window.createStitchAct_->isEnabled());
+    QVERIFY(window.createTatamiAct_->isEnabled());
+    QVERIFY(window.createSatinAct_->isEnabled());
+    QVERIFY(window.autoSatinAct_->isEnabled());
+    QVERIFY(!window.duplicateSelectionAct_->isEnabled());
+    QVERIFY(!window.offsetSelectionAct_->isEnabled());
 
-    // Les slots eux-mêmes refusent d'agir (menus/barres qui contourneraient l'état d'action).
+    // Création d'un contour pour les deux formes en UN pas d'annulation (le dialogue est
+    // contourné : on passe par le changement de type groupé).
     const std::size_t embBefore = window.project_.embroidery_objects.size();
-    window.createRunningStitchObject();
-    window.createTatamiObject();
+    window.setStitchTypeForSelection(1);
+    QVERIFY(window.project_.embroidery_objects.size() >= embBefore);
+    window.undo();
     QCOMPARE(window.project_.embroidery_objects.size(), embBefore);
-    QVERIFY(!window.undoStack_.canUndo());
 
     // Retour à un seul objet : réactivées.
     window.applySelectionClick(fx.b, SelectMode::Toggle);
@@ -1261,7 +1267,8 @@ void MainWindowTest::inspectorShowsNObjets() {
 
     window.applySelectionClick(fx.b, SelectMode::Add);
     QVERIFY(hasText(QStringLiteral("2 objets")));
-    QCOMPARE(propsPanel->findChildren<QDoubleSpinBox*>().size(), 0); // texte seul
+    // Bloc « type de points » pour toute la sélection.
+    QVERIFY(propsPanel->findChild<QComboBox*>(QStringLiteral("combo_multiType")) != nullptr);
 
     window.applySelectionClick(fx.c, SelectMode::Add);
     QVERIFY(hasText(QStringLiteral("3 objets")));
@@ -6371,6 +6378,36 @@ openstitch::document::Project twoOverlappingRectangles() {
 }
 
 } // namespace
+
+void MainWindowTest::groupedStitchTypeCoversEverySelectedShapeInOneStep() {
+    MainWindow window;
+    window.applyLoadedProject(twoOverlappingRectangles());
+    const ObjectId a = window.project_.vector_objects[0].id;
+    const ObjectId b = window.project_.vector_objects[1].id;
+    window.setSelection({.region = std::nullopt, .embroidery = std::nullopt, .objects = {a, b}});
+    QVERIFY(window.project_.embroidery_objects.empty());
+
+    // Formes sans couture : un tatami chacune, en un seul pas.
+    window.setStitchTypeForSelection(1);
+    QCOMPARE(window.project_.embroidery_objects.size(), std::size_t{2});
+    for (const auto& emb : window.project_.embroidery_objects) {
+        QVERIFY(emb.is_tatami());
+    }
+
+    // Conversion groupée en contour cousu : les deux sont modifiées ensemble.
+    window.setStitchTypeForSelection(0);
+    for (const auto& emb : window.project_.embroidery_objects) {
+        QVERIFY(std::holds_alternative<openstitch::document::RunningStitchParams>(emb.params));
+    }
+
+    // Une annulation par geste.
+    window.undo();
+    for (const auto& emb : window.project_.embroidery_objects) {
+        QVERIFY(emb.is_tatami());
+    }
+    window.undo();
+    QVERIFY(window.project_.embroidery_objects.empty());
+}
 
 void MainWindowTest::shapeUnionActionIsOneUndoStep() {
     MainWindow window;

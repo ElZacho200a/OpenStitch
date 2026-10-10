@@ -322,29 +322,24 @@ void PropertiesPanel::showMultiSelection(int objectCount, int embroideryCount) {
     header_->setText(tr("%1 objets").arg(objectCount));
     setEditState(std::nullopt, stitch_generation::ObjectEditState::Clean);
     auto* label = new QLabel(
-        tr("%1 objets vectoriels sélectionnés (%2 avec une couture).\nSupprimer ou déplacer "
-           "(flèches) les agit sur tous ; Édition > Aligner les range sur la sélection.")
+        tr("%1 objets vectoriels sélectionnés (%2 avec une couture).\nLe type de points ci-dessous "
+           "s'applique à tous ; supprimer ou déplacer (flèches) aussi, et Édition > Aligner les "
+           "range sur la sélection.")
             .arg(objectCount)
             .arg(embroideryCount),
         body_);
     label->setWordWrap(true);
     body_->layout()->addWidget(label);
-    if (embroideryCount == 0) {
-        auto* none = new QLabel(tr("Créez d'abord les coutures (menu Broderie) pour régler leurs "
-                                   "paramètres en une fois."),
-                                body_);
-        none->setWordWrap(true);
-        none->setEnabled(false);
-        body_->layout()->addWidget(none);
-        return;
-    }
     auto* form = new QFormLayout();
     form->setLabelAlignment(Qt::AlignRight);
     auto* type = new QComboBox(body_);
     type->setObjectName(QStringLiteral("combo_multiType"));
-    type->addItems({tr("(inchangé)"), tr("Contour cousu"), tr("Tatami")});
-    type->setToolTip(tr("Directionnel et satin se règlent objet par objet (guides propres à "
-                        "chaque forme)."));
+    type->addItems({tr("(inchangé)"), tr("Contour cousu"), tr("Tatami"), tr("Satin automatique"),
+                    tr("Remplissage directionnel")});
+    type->setToolTip(
+        tr("Donne ce type de points à toutes les formes sélectionnées, comme le choix "
+           "de type d'une forme seule. Les formes sans couture en reçoivent une ; "
+           "celles qui ne peuvent pas être cousues en satin sont ignorées et listées."));
     auto* useSpacing = new QCheckBox(tr("Espacement des rangées"), body_);
     useSpacing->setObjectName(QStringLiteral("check_multiSpacing"));
     auto* spacing = mmSpin(0.4, 5.0, 0.1, tr("Écart entre rangées (tatami, directionnel, satin)."));

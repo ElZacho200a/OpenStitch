@@ -101,6 +101,56 @@ double wrap_half_pi(double a) {
     return a;
 }
 
+// Réglages du satin automatique (une fenêtre pour une ou plusieurs formes) ; faux si annulé.
+bool askAutoSatinParams(QWidget* parent, const QString& info, document::AutoSatinParams& params) {
+    QDialog dialog(parent);
+    dialog.setWindowTitle(QObject::tr("Satin"));
+    auto* layout = new QFormLayout(&dialog);
+    auto* infoLabel = new QLabel(info, &dialog);
+    infoLabel->setWordWrap(true);
+    layout->addRow(infoLabel);
+    auto* warn = new QLabel(QObject::tr("⚠ Le satin automatique n'a pas été validé sur machine. "
+                                        "Vérifiez le résultat (densité, virages, jonctions) avant "
+                                        "broderie."),
+                            &dialog);
+    warn->setWordWrap(true);
+    warn->setStyleSheet(
+        QStringLiteral("color:%1;").arg(AppTheme::instance().tokens().warning.name()));
+    layout->addRow(warn);
+    auto* spacingSpin = new QDoubleSpinBox(&dialog);
+    spacingSpin->setRange(0.1, 1.5);
+    spacingSpin->setDecimals(2);
+    spacingSpin->setSuffix(QObject::tr(" mm"));
+    spacingSpin->setValue(to_millimeters(params.spacing).value);
+    auto* compSpin = new QDoubleSpinBox(&dialog);
+    compSpin->setRange(0.0, 1.0);
+    compSpin->setDecimals(2);
+    compSpin->setSuffix(QObject::tr(" mm"));
+    compSpin->setValue(0.0);
+    auto* underlayCheck = new QCheckBox(QObject::tr("Sous-couche centrale"), &dialog);
+    underlayCheck->setChecked(params.center_underlay);
+    auto* splitCheck =
+        new QCheckBox(QObject::tr("Fractionner les traversées longues (> 7 mm)"), &dialog);
+    splitCheck->setChecked(params.split_stitch != document::SatinSplit::Disabled);
+    layout->addRow(QObject::tr("Espacement :"), spacingSpin);
+    layout->addRow(QObject::tr("Compensation de tirage :"), compSpin);
+    layout->addRow(underlayCheck);
+    layout->addRow(splitCheck);
+    auto* buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dialog);
+    QObject::connect(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
+    QObject::connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
+    layout->addRow(buttons);
+    if (dialog.exec() != QDialog::Accepted) {
+        return false;
+    }
+    params.spacing = to_micrometers(Millimeters{spacingSpin->value()});
+    params.pull_compensation = to_micrometers(Millimeters{compSpin->value()});
+    params.center_underlay = underlayCheck->isChecked();
+    params.split_stitch =
+        splitCheck->isChecked() ? document::SatinSplit::Staggered : document::SatinSplit::Disabled;
+    return true;
+}
+
 } // namespace
 
 std::optional<std::vector<geometry::PathSet>>
@@ -207,7 +257,11 @@ QString MainWindow::autoSatinSummary(const document::EmbroideryObject& emb) {
 }
 
 void MainWindow::createAutoSatin(bool askParameters) {
-    if (!selectedObject_ || hasMultiSelection()) {
+    if (hasMultiSelection()) {
+        createAutoSatinForSelection(askParameters);
+        return;
+    }
+    if (!selectedObject_) {
         return;
     }
     const auto* current = project_.findObject(*selectedObject_);
@@ -258,52 +312,9 @@ void MainWindow::createAutoSatin(bool askParameters) {
     }
 
     if (askParameters) {
-        QDialog dialog(this);
-        dialog.setWindowTitle(tr("Satin"));
-        auto* layout = new QFormLayout(&dialog);
-        auto* info = new QLabel(describeAutoSatinPreview(preview), &dialog);
-        info->setWordWrap(true);
-        layout->addRow(info);
-        auto* warn = new QLabel(tr("⚠ Le satin automatique n'a pas été validé sur machine. "
-                                   "Vérifiez le résultat (densité, virages, jonctions) avant "
-                                   "broderie."),
-                                &dialog);
-        warn->setWordWrap(true);
-        warn->setStyleSheet(
-            QStringLiteral("color:%1;").arg(AppTheme::instance().tokens().warning.name()));
-        layout->addRow(warn);
-        auto* spacingSpin = new QDoubleSpinBox(&dialog);
-        spacingSpin->setRange(0.1, 1.5);
-        spacingSpin->setDecimals(2);
-        spacingSpin->setSuffix(tr(" mm"));
-        spacingSpin->setValue(to_millimeters(params.spacing).value);
-        auto* compSpin = new QDoubleSpinBox(&dialog);
-        compSpin->setRange(0.0, 1.0);
-        compSpin->setDecimals(2);
-        compSpin->setSuffix(tr(" mm"));
-        compSpin->setValue(0.0);
-        auto* underlayCheck = new QCheckBox(tr("Sous-couche centrale"), &dialog);
-        underlayCheck->setChecked(params.center_underlay);
-        auto* splitCheck =
-            new QCheckBox(tr("Fractionner les traversées longues (> 7 mm)"), &dialog);
-        splitCheck->setChecked(params.split_stitch != document::SatinSplit::Disabled);
-        layout->addRow(tr("Espacement :"), spacingSpin);
-        layout->addRow(tr("Compensation de tirage :"), compSpin);
-        layout->addRow(underlayCheck);
-        layout->addRow(splitCheck);
-        auto* buttons =
-            new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dialog);
-        connect(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
-        connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
-        layout->addRow(buttons);
-        if (dialog.exec() != QDialog::Accepted) {
+        if (!askAutoSatinParams(this, describeAutoSatinPreview(preview), params)) {
             return;
         }
-        params.spacing = to_micrometers(Millimeters{spacingSpin->value()});
-        params.pull_compensation = to_micrometers(Millimeters{compSpin->value()});
-        params.center_underlay = underlayCheck->isChecked();
-        params.split_stitch = splitCheck->isChecked() ? document::SatinSplit::Staggered
-                                                      : document::SatinSplit::Disabled;
     } else {
         const auto answer = QMessageBox::question(
             this, tr("Convertir en satin"),
@@ -568,6 +579,118 @@ void MainWindow::renderAutoSatinOverlay(const document::EmbroideryObject& obj,
         scene_->addItem(handle);
         baseItems_.append(handle);
     }
+}
+
+// Satin automatique pour toutes les formes sélectionnées : un seul réglage, un satin par forme
+// (contour brut de la région, comme pour une forme seule). Les formes sans colonne possible
+// reçoivent un tatami si l'utilisateur l'accepte ; tout est un seul pas d'annulation.
+void MainWindow::createAutoSatinForSelection(bool askParameters) {
+    struct Candidate {
+        const document::VectorObject* source{nullptr};
+        std::optional<std::vector<geometry::PathSet>> restored;
+        bool ok{false};
+    };
+    std::vector<Candidate> candidates;
+    document::AutoSatinParams params;
+    QString firstInfo;
+    for (const ObjectId id : selectedObjectIds()) {
+        const auto* current = project_.findObject(id);
+        if (current == nullptr || current->paths.empty()) {
+            continue;
+        }
+        Candidate c;
+        c.source = current;
+        c.restored = pristineSatinContour(*current);
+        document::VectorObject copy = *current;
+        if (c.restored) {
+            copy.paths = *c.restored;
+        }
+        const AutoSatinPreview preview = previewAutoSatin(copy, params);
+        c.ok = preview.columns > 0;
+        if (c.ok && firstInfo.isEmpty()) {
+            firstInfo = describeAutoSatinPreview(preview);
+        }
+        candidates.push_back(std::move(c));
+    }
+    if (candidates.empty()) {
+        return;
+    }
+    const int okCount = static_cast<int>(std::count_if(candidates.begin(), candidates.end(),
+                                                       [](const Candidate& c) { return c.ok; }));
+    const int failCount = static_cast<int>(candidates.size()) - okCount;
+    bool tatamiForFailures = false;
+    if (failCount > 0) {
+        const auto answer = QMessageBox::question(
+            this, tr("Satin impossible pour certaines formes"),
+            tr("%1 forme(s) sur %2 ne peuvent pas être cousues en satin (forme non "
+               "exploitable).\n\n"
+               "Leur donner un remplissage tatami à la place ? (Non : elles sont ignorées.)")
+                .arg(failCount)
+                .arg(candidates.size()),
+            QMessageBox::Yes | QMessageBox::No | QMessageBox::Cancel);
+        if (answer == QMessageBox::Cancel) {
+            return;
+        }
+        tatamiForFailures = answer == QMessageBox::Yes;
+    }
+    if (okCount > 0) {
+        if (askParameters) {
+            const QString info =
+                tr("%1 forme(s) : mêmes réglages pour toutes.\n%2").arg(okCount).arg(firstInfo);
+            if (!askAutoSatinParams(this, info, params)) {
+                return;
+            }
+        } else {
+            const auto answer = QMessageBox::question(
+                this, tr("Convertir en satin"),
+                tr("Créer un satin pour %1 forme(s) ? (annulable en une étape)").arg(okCount));
+            if (answer != QMessageBox::Yes) {
+                return;
+            }
+        }
+    } else if (!tatamiForFailures) {
+        return;
+    }
+
+    auto group = std::make_unique<commands::CompositeCommand>(
+        tr("Créer un satin pour %1 formes").arg(candidates.size()).toStdString());
+    for (const Candidate& c : candidates) {
+        if (!c.ok && !tatamiForFailures) {
+            continue;
+        }
+        document::EmbroideryObject object;
+        object.id = project_.object_ids.next();
+        object.source_vector = c.source->id;
+        object.rgb = c.source->rgb;
+        object.intent = document::EmbroideryIntent::ForcedUserChoice;
+        if (c.ok) {
+            object.name =
+                tr("Satin de %1").arg(QString::fromStdString(c.source->name)).toStdString();
+            object.params = params;
+            if (c.restored) {
+                group->add(std::make_unique<commands::SetVectorPathsCommand>(
+                    c.source->id, *c.restored, "Contour brut de la région"));
+            }
+        } else {
+            object.name =
+                tr("Tatami de %1").arg(QString::fromStdString(c.source->name)).toStdString();
+            object.params = document::TatamiParams{};
+        }
+        group->add(std::make_unique<commands::AddEmbroideryObjectCommand>(std::move(object)));
+    }
+    if (group->empty()) {
+        return;
+    }
+    undoStack_.execute(std::move(group), project_);
+    showStitchesAct_->setChecked(true);
+    refreshImage();
+    updateActions();
+    statusBar()->showMessage(tr("Satin créé pour %1 forme(s)%2.")
+                                 .arg(okCount)
+                                 .arg(tatamiForFailures && failCount > 0
+                                          ? tr(", tatami pour %1 autre(s)").arg(failCount)
+                                          : QString()),
+                             12000);
 }
 
 } // namespace openstitch::desktop

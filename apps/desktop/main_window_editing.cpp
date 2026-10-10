@@ -9,6 +9,7 @@
 #include <QFont>
 #include <QListWidget>
 #include <QMenu>
+#include <QMessageBox>
 #include <QSignalBlocker>
 #include <QStatusBar>
 
@@ -117,13 +118,125 @@ void MainWindow::applyVectorBox(ObjectId id, QRectF want) {
     updateActions();
 }
 
+void MainWindow::setStitchTypeForSelection(
+    int type, const std::function<void(document::StitchParams&)>& tweak) {
+    const std::vector<ObjectId> ids = selectedObjectIds();
+    if (ids.empty()) {
+        if (selectedEmbroidery_) {
+            setStitchType(*selectedEmbroidery_, type);
+        }
+        return;
+    }
+    const QString typeNames[] = {tr("Contour cousu"), tr("Remplissage tatami"), tr("Colonne satin"),
+                                 tr("Remplissage directionnel")};
+    const QString typeName = type >= 0 && type < 4 ? typeNames[type] : tr("Type de points");
+    auto group = std::make_unique<commands::CompositeCommand>(
+        tr("Type : %1 (%2 formes)").arg(typeName).arg(ids.size()).toStdString());
+    QStringList skipped;
+    QString firstError;
+    int done = 0;
+    for (const ObjectId id : ids) {
+        const auto* vec = project_.findObject(id);
+        if (vec == nullptr) {
+            continue;
+        }
+        const document::EmbroideryObject* existing = nullptr;
+        for (const auto& emb : project_.embroidery_objects) {
+            if (emb.source_vector == id) {
+                existing = &emb;
+                break;
+            }
+        }
+        // Forme sans couture : un objet provisoire donne sa forme et ses couleurs au calcul.
+        document::EmbroideryObject provisional;
+        if (existing == nullptr) {
+            provisional.source_vector = id;
+            provisional.rgb = vec->rgb;
+            provisional.params = document::TatamiParams{};
+        }
+        document::StitchParams params;
+        std::string label;
+        std::optional<std::vector<geometry::PathSet>> restored;
+        QString error;
+        if (!stitchParamsForType(existing != nullptr ? *existing : provisional, type, params, label,
+                                 restored, error)) {
+            skipped << QString::fromStdString(vec->name);
+            if (firstError.isEmpty()) {
+                firstError = error;
+            }
+            continue;
+        }
+        if (tweak) {
+            tweak(params);
+        }
+        if (restored) {
+            group->add(std::make_unique<commands::SetVectorPathsCommand>(
+                id, *restored, "Contour brut de la région"));
+        }
+        if (existing != nullptr) {
+            group->add(std::make_unique<commands::ConvertFillGroupCommand>(
+                existing->id, std::move(params), std::move(label)));
+        } else {
+            document::EmbroideryObject object;
+            object.id = project_.object_ids.next();
+            object.name =
+                tr("%1 de %2").arg(typeName, QString::fromStdString(vec->name)).toStdString();
+            object.source_vector = id;
+            object.rgb = vec->rgb;
+            object.params = std::move(params);
+            object.intent = document::EmbroideryIntent::ForcedUserChoice;
+            group->add(std::make_unique<commands::AddEmbroideryObjectCommand>(std::move(object)));
+        }
+        ++done;
+    }
+    if (group->empty()) {
+        QMessageBox::warning(this, tr("Changement de type impossible"),
+                             firstError.isEmpty() ? tr("Aucune forme à modifier.") : firstError);
+        return;
+    }
+    undoStack_.execute(std::move(group), project_);
+    showStitchesAct_->setChecked(true);
+    refreshImage();
+    updateActions();
+    QString message =
+        tr("%1 : appliqué à %2 forme(s), en une seule étape annulable.").arg(typeName).arg(done);
+    if (!skipped.isEmpty()) {
+        message +=
+            tr(" Ignorées (%1) : %2.").arg(skipped.size()).arg(skipped.join(QStringLiteral(", ")));
+    }
+    statusBar()->showMessage(message, 12000);
+}
+
 void MainWindow::applyToSelection(int stitchType, bool setSpacing, double spacingMm, bool setAngle,
                                   double angleDeg) {
     const std::vector<ObjectId> ids = selectedObjectIds();
-    auto composite = std::make_unique<commands::CompositeCommand>(
-        tr("Appliquer les réglages à %1 objets").arg(ids.size()).toStdString());
     const Micrometers spacing = to_micrometers(Millimeters{spacingMm});
     const Angle angle{angleDeg * std::numbers::pi / 180.0};
+    if (stitchType >= 0) {
+        // Nouveau type pour toutes les formes (0 contour, 1 tatami, 2 satin, 3 directionnel),
+        // avec l'espacement / l'angle cochés appliqués aux paramètres de départ.
+        setStitchTypeForSelection(stitchType, [&](document::StitchParams& params) {
+            if (auto* t = std::get_if<document::TatamiParams>(&params)) {
+                if (setSpacing) {
+                    t->row_spacing = spacing;
+                }
+                if (setAngle) {
+                    t->angle = angle;
+                }
+            } else if (auto* d = std::get_if<document::DirectionalFillParams>(&params)) {
+                if (setSpacing) {
+                    d->row_spacing = spacing;
+                }
+            } else if (auto* a = std::get_if<document::AutoSatinParams>(&params)) {
+                if (setSpacing) {
+                    a->spacing = spacing;
+                }
+            }
+        });
+        return;
+    }
+    auto composite = std::make_unique<commands::CompositeCommand>(
+        tr("Appliquer les réglages à %1 objets").arg(ids.size()).toStdString());
     for (const ObjectId vectorId : ids) {
         std::vector<const document::EmbroideryObject*> targets;
         for (const auto& emb : project_.embroidery_objects) {
@@ -132,31 +245,6 @@ void MainWindow::applyToSelection(int stitchType, bool setSpacing, double spacin
             }
         }
         if (targets.empty()) {
-            continue;
-        }
-        if (stitchType >= 0) {
-            // Nouveau type : mêmes valeurs par défaut que le choix de type de l'inspecteur,
-            // converti pour tout le groupe de sections de la forme (ConvertFillGroupCommand).
-            document::StitchParams params;
-            std::string label;
-            if (stitchType == 0) {
-                document::RunningStitchParams rp;
-                rp.repeats = 3;
-                params = rp;
-                label = "Type : contour";
-            } else {
-                document::TatamiParams tp;
-                if (setSpacing) {
-                    tp.row_spacing = spacing;
-                }
-                if (setAngle) {
-                    tp.angle = angle;
-                }
-                params = tp;
-                label = "Type : tatami";
-            }
-            composite->add(std::make_unique<commands::ConvertFillGroupCommand>(
-                targets.front()->id, std::move(params), std::move(label)));
             continue;
         }
         for (const auto* emb : targets) {
