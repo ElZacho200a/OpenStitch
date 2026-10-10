@@ -54,8 +54,17 @@ struct QuantizeOp {
     bool operator==(const QuantizeOp&) const = default;
 };
 
+// Lissage bilatéral : adoucit les aplats et les dégradés (bruit, grain JPEG)
+// en gardant les contours nets, ce qu'un médian fait moins bien sur un
+// dégradé. Utile avant l'analyse de couleurs d'une région (fondu à deux fils).
+struct BilateralDenoiseOp {
+    int strength{2}; // 1..3 : noyau 5/7/9 px, tolérance de couleur 20/40/60
+    bool operator==(const BilateralDenoiseOp&) const = default;
+};
+
+// Nouvelles alternatives toujours AJOUTÉES EN FIN (index stables).
 using ImageOp = std::variant<CropOp, FlipOp, Rotate90Op, GrayscaleOp, BrightnessContrastOp,
-                             MedianDenoiseOp, QuantizeOp>;
+                             MedianDenoiseOp, QuantizeOp, BilateralDenoiseOp>;
 
 // Nom lisible de l'opération (menus, historique d'annulation).
 [[nodiscard]] std::string op_name(const ImageOp& op);

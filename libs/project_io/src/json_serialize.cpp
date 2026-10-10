@@ -121,6 +121,8 @@ json op_to_json(const image::ImageOp& op) {
                 j = {{"type", "medianDenoise"}, {"strength", o.strength}};
             } else if constexpr (std::is_same_v<T, image::QuantizeOp>) {
                 j = {{"type", "quantize"}, {"colors", o.colors}};
+            } else if constexpr (std::is_same_v<T, image::BilateralDenoiseOp>) {
+                j = {{"type", "bilateralDenoise"}, {"strength", o.strength}};
             }
             return j;
         },
@@ -149,6 +151,9 @@ Result<image::ImageOp> op_from_json(const json& j) {
     }
     if (type == "quantize") {
         return image::QuantizeOp{j.at("colors")};
+    }
+    if (type == "bilateralDenoise") {
+        return image::BilateralDenoiseOp{j.value("strength", 2)};
     }
     return fail(ErrorCategory::InvalidFile, "Opération d'image inconnue : " + type);
 }
