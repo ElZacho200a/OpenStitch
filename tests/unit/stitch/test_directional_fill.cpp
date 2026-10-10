@@ -852,6 +852,83 @@ TEST_CASE("directional spacing regularity evens out converging rows") {
     CHECK(mean_direction_gap_deg(region, even, evenLines) < 4.0);
 }
 
+TEST_CASE("directional density gradient keeps the row count at the integral of the density") {
+    // Nombre de lignes théorique le long d'une verticale : l'intégrale de 1/s(y)
+    // pour s linéaire de s0 à s1 sur 20 mm. Mesuré : 35/22/15 lignes pour
+    // 34,7/23,1/15,5 attendues (écart < 5 %) — c'est ce que garantissent les
+    // « graines par divergence » de Liu et al. ; le tracé actuel y suffit déjà
+    // (cf. docs/source/directional-fill.md, alternatives écartées).
+    const auto region = rect_mm(0, 0, 30, 20);
+    for (const double endMm : {0.8, 1.6, 3.0}) {
+        for (const double regularity : {0.0, 0.5}) {
+            auto dp = base_params();
+            dp.guides.push_back(line_mm(0, 10, 30, 10));
+            dp.density_gradient = vertical_gradient(
+                Micrometers{400}, Micrometers{static_cast<std::int32_t>(endMm * 1000)});
+            dp.spacing_regularity = regularity;
+            const auto ys = crossings_at_x(trace_directional_streamlines(region, dp), 15.0);
+            const double s0 = 0.4;
+            const double ideal = 20.0 / (endMm - s0) * std::log(endMm / s0);
+            CHECK(std::abs(static_cast<double>(ys.size()) - ideal) <= 0.1 * ideal);
+        }
+    }
+}
+
+TEST_CASE("directional routing leaves at most two jumps on branching shapes") {
+    // Mesuré avant d'écarter le parcours « arbre couvrant + profondeur d'abord »
+    // de Liu et al. : 0 à 2 sauts (10 à 22 mm) sur U, T et L, que l'arbre
+    // remplacerait par la même distance cousue en retour (docs/source/
+    // directional-fill.md, alternatives écartées). Garde-fou de non-régression.
+    struct Shape {
+        const char* name;
+        std::vector<Vec2um> outer;
+        std::vector<geometry::Path> guides;
+    };
+    const std::vector<Shape> shapes{
+        {"U vertical rows",
+         {um(0, 0), um(30, 0), um(30, 20), um(20, 20), um(20, 6), um(10, 6), um(10, 20), um(0, 20)},
+         {line_mm(15, 0, 15, 20)}},
+        {"U horizontal rows",
+         {um(0, 0), um(30, 0), um(30, 20), um(20, 20), um(20, 6), um(10, 6), um(10, 20), um(0, 20)},
+         {line_mm(0, 10, 30, 10)}},
+        {"T horizontal",
+         {um(10, 0), um(20, 0), um(20, 14), um(30, 14), um(30, 20), um(0, 20), um(0, 14),
+          um(10, 14)},
+         {line_mm(0, 10, 30, 10)}},
+        {"T vertical",
+         {um(10, 0), um(20, 0), um(20, 14), um(30, 14), um(30, 20), um(0, 20), um(0, 14),
+          um(10, 14)},
+         {line_mm(15, 0, 15, 20)}},
+        {"L horizontal",
+         {um(0, 0), um(30, 0), um(30, 8), um(10, 8), um(10, 20), um(0, 20)},
+         {line_mm(0, 10, 30, 10)}},
+    };
+    for (const auto& sh : shapes) {
+        for (const bool hidden : {true, false}) {
+            document::DirectionalFillParams dp = base_params();
+            dp.guides = sh.guides;
+            dp.hidden_underpath = hidden;
+            const geometry::PathSet region{polygon(sh.outer), {}};
+            const auto fill = fill_directional(region, dp);
+            std::size_t jumps = 0;
+            std::size_t travel = 0;
+            double jumpLen = 0.0;
+            for (std::size_t i = 1; i < fill.size(); ++i) {
+                if (fill[i].jump) {
+                    ++jumps;
+                    jumpLen += seg_len(fill[i - 1].pos, fill[i].pos);
+                }
+                travel += fill[i].travel ? 1 : 0;
+            }
+            INFO(sh.name << " hidden=" << hidden);
+            CHECK(fill.size() > 200);
+            CHECK(jumps <= 2);
+            CHECK(jumpLen <= 25'000.0); // µm : au plus 25 mm de saut au total
+            CHECK(travel == 0);         // ces formes n'ont pas de trajet caché possible
+        }
+    }
+}
+
 TEST_CASE("directional spacing regularity keeps every row inside the shape") {
     const auto region = rect_mm(0, 0, 30, 20);
     auto dp = fan_params();
