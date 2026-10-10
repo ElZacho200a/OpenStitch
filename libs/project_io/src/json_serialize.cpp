@@ -266,6 +266,9 @@ json params_to_json(const document::StitchParams& params) {
                      {"handmade", p.handmade},
                      {"handmadeIntensity", p.handmade_intensity},
                      {"seed", p.seed}};
+                if (p.spacing_regularity != 0.0) {
+                    j["spacingRegularity"] = p.spacing_regularity;
+                }
                 if (p.density_gradient) {
                     const auto& g = *p.density_gradient;
                     j["densityGradient"] = {{"fromX", g.from.x.value},
@@ -456,6 +459,8 @@ Result<document::StitchParams> params_from_json(const json& j) {
         p.sector_overlap = Micrometers{j.value("sectorOverlap", 250)};
         p.handmade = j.value("handmade", false);
         p.handmade_intensity = j.value("handmadeIntensity", 50);
+        // Valeur hors [0 ; 1] ou non finie : bornée (fichier édité à la main).
+        p.spacing_regularity = std::clamp(j.value("spacingRegularity", 0.0), 0.0, 1.0);
         if (j.contains("densityGradient") && j.at("densityGradient").is_object()) {
             const auto& g = j.at("densityGradient");
             document::DensityGradient grad;

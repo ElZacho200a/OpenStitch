@@ -750,6 +750,21 @@ void PropertiesPanel::showEmbroidery(const document::EmbroideryObject& object) {
                 form->addRow(QString(), gradOn);
                 form->addRow(tr("Écart de fin :"), gradEnd);
                 form->addRow(tr("Angle du dégradé :"), gradAngle);
+                auto* regular = new QSpinBox(body_);
+                regular->setObjectName(QStringLiteral("spin_spacingRegularity"));
+                regular->setKeyboardTracking(false);
+                regular->setRange(0, 100);
+                regular->setSuffix(tr(" %"));
+                regular->setValue(static_cast<int>(std::lround(p.spacing_regularity * 100.0)));
+                regular->setToolTip(tr("Égalise l'écart entre lignes voisines (utile quand les "
+                                       "directions convergent) en s'autorisant à dévier un peu "
+                                       "de la direction. 0 % = tracé brut ; autour de 50 % : "
+                                       "compromis. Calcul plus long."));
+                form->addRow(tr("Régularité de l'espacement :"), regular);
+                connect(regular, &QSpinBox::valueChanged, this, [edit](int v) {
+                    edit(tr("Régularité de l'espacement"),
+                         [v](T& t) { t.spacing_regularity = v / 100.0; });
+                });
                 form->addRow(tr("Longueur de point :"), len);
                 form->addRow(tr("Influence des bords :"), edge);
                 form->addRow(tr("Retrait de bord :"), inset);

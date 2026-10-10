@@ -47,7 +47,8 @@ labels peut faire plusieurs mégaoctets).
   et `breakLines` (listes de chemins ouverts), `rowSpacing`, `stitchLength`,
   `edgeWeight`, `inset`, `stagger`, les réglages de sous-couche du tatami,
   `hiddenUnderpath`, `sectorOverlap`, `handmade`, `handmadeIntensity`,
-  `seed` et l'objet `densityGradient` (`fromX`, `fromY`, `toX`, `toY`,
+  `seed`, `spacingRegularity` (réel [0 ; 1], absent = 0 ; borné à la
+  lecture) et l'objet `densityGradient` (`fromX`, `fromY`, `toX`, `toY`,
   `spacingFrom`, `spacingTo`, µm entiers ; absent = écart uniforme) — tous
   optionnels (défauts du modèle) ; son ajout n'a pas changé
   `schemaVersion`. Depuis le schéma v3, un objet

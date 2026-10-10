@@ -1322,6 +1322,358 @@ std::vector<P2> place_stitches(const Traced& line, const StitchPlan& plan, std::
 
 // --- Assemblage ----------------------------------------------------------------
 
+// --- Régularité de l'espacement (Liu et al., CGF 2023, §3.4) ------------------
+//
+// Après le tracé, les sommets des lignes sont déplacés par UNE résolution
+// linéaire creuse : minimiser une somme de carrés (E = w_den·E_den + w_dir·E_dir
+// + w_str·E_str + w_anc·E_anc). Tous les termes sont sans dimension (longueurs
+// divisées par l'écart local `s`) :
+//  - E_den : pour chaque paire de sommets voisins de lignes ADJACENTES, la
+//    distance mesurée selon la normale du champ doit valoir l'écart local ;
+//  - E_dir : chaque arête garde la direction qu'elle avait au tracé ;
+//  - E_str : un sommet ne glisse pas le long de sa ligne ;
+//  - E_anc : rappel faible vers la position initiale (fixe la translation).
+
+struct RegularityWeights {
+    double density{1.0};
+    double direction{0.1};
+    double stretch{100.0};
+    double anchor{0.1};
+};
+
+// `regularity` dans ]0 ; 1] : le poids de densité va de 0,1 à 2,5 (×25) face au
+// rappel fixe de 0,1. Calibré sur un éventail de guides convergents : la
+// dispersion des écarts passe de 0,23 à 0,16 vers 0,5 (l'optimum) pour une
+// direction écartée de ~2° en moyenne ; au-delà, trop de sommets butent sur le
+// plafond de déplacement et la géométrie se dégrade. Le poids d'étirement
+// (fort) interdit le glissement le long des lignes.
+RegularityWeights regularity_weights(double regularity) {
+    RegularityWeights w;
+    w.density = 0.1 * std::pow(10.0, 1.4 * std::clamp(regularity, 0.0, 1.0));
+    return w;
+}
+
+// Système linéaire creux symétrique défini positif A x = b, assemblé terme à
+// terme (w · (Σ c_k x_k − rhs)²) puis résolu par gradient conjugué
+// préconditionné (Jacobi). Mono-thread et en ordre fixe : déterministe.
+class QuadraticSystem {
+public:
+    struct Coef {
+        int var;
+        double coef;
+    };
+
+    explicit QuadraticSystem(std::size_t unknowns) : b_(unknowns, 0.0) {}
+
+    void add(double weight, const Coef* row, std::size_t n, double rhs) {
+        for (std::size_t a = 0; a < n; ++a) {
+            b_[static_cast<std::size_t>(row[a].var)] += weight * row[a].coef * rhs;
+            for (std::size_t c = 0; c < n; ++c) {
+                triplets_.push_back({row[a].var, row[c].var, weight * row[a].coef * row[c].coef});
+            }
+        }
+    }
+
+    // `x` : point de départ, remplacé par la solution.
+    void solve(std::vector<double>& x, int maxIterations, double tolerance) {
+        const std::size_t n = b_.size();
+        std::stable_sort(
+            triplets_.begin(), triplets_.end(),
+            [](const Triplet& a, const Triplet& b) { return a.r != b.r ? a.r < b.r : a.c < b.c; });
+        rowStart_.assign(n + 1, 0);
+        cols_.clear();
+        vals_.clear();
+        diag_.assign(n, 0.0);
+        for (std::size_t k = 0; k < triplets_.size();) {
+            std::size_t e = k;
+            double sum = 0.0;
+            while (e < triplets_.size() && triplets_[e].r == triplets_[k].r &&
+                   triplets_[e].c == triplets_[k].c) {
+                sum += triplets_[e].v;
+                ++e;
+            }
+            cols_.push_back(triplets_[k].c);
+            vals_.push_back(sum);
+            ++rowStart_[static_cast<std::size_t>(triplets_[k].r) + 1];
+            if (triplets_[k].r == triplets_[k].c) {
+                diag_[static_cast<std::size_t>(triplets_[k].r)] = sum;
+            }
+            k = e;
+        }
+        for (std::size_t i = 0; i < n; ++i) {
+            rowStart_[i + 1] += rowStart_[i];
+        }
+        triplets_.clear();
+        triplets_.shrink_to_fit();
+
+        std::vector<double> r(n);
+        std::vector<double> ax = multiply(x);
+        double bnorm = 0.0;
+        for (std::size_t i = 0; i < n; ++i) {
+            r[i] = b_[i] - ax[i];
+            bnorm += b_[i] * b_[i];
+        }
+        bnorm = std::sqrt(bnorm);
+        if (bnorm < 1e-300) {
+            return;
+        }
+        std::vector<double> z(n);
+        std::vector<double> p(n);
+        const auto precondition = [&] {
+            for (std::size_t i = 0; i < n; ++i) {
+                z[i] = diag_[i] > 1e-300 ? r[i] / diag_[i] : r[i];
+            }
+        };
+        precondition();
+        p = z;
+        double rz = dot(r, z);
+        for (int it = 0; it < maxIterations; ++it) {
+            const std::vector<double> ap = multiply(p);
+            const double pap = dot(p, ap);
+            if (pap < 1e-300) {
+                break;
+            }
+            const double alpha = rz / pap;
+            for (std::size_t i = 0; i < n; ++i) {
+                x[i] += alpha * p[i];
+                r[i] -= alpha * ap[i];
+            }
+            if (std::sqrt(dot(r, r)) <= tolerance * bnorm) {
+                break;
+            }
+            precondition();
+            const double rzNew = dot(r, z);
+            const double beta = rzNew / rz;
+            rz = rzNew;
+            for (std::size_t i = 0; i < n; ++i) {
+                p[i] = z[i] + beta * p[i];
+            }
+        }
+    }
+
+private:
+    struct Triplet {
+        int r;
+        int c;
+        double v;
+    };
+
+    [[nodiscard]] std::vector<double> multiply(const std::vector<double>& v) const {
+        std::vector<double> out(b_.size(), 0.0);
+        for (std::size_t i = 0; i < b_.size(); ++i) {
+            double s = 0.0;
+            for (std::size_t k = rowStart_[i]; k < rowStart_[i + 1]; ++k) {
+                s += vals_[k] * v[static_cast<std::size_t>(cols_[k])];
+            }
+            out[i] = s;
+        }
+        return out;
+    }
+
+    static double dot(const std::vector<double>& a, const std::vector<double>& b) {
+        double s = 0.0;
+        for (std::size_t i = 0; i < a.size(); ++i) {
+            s += a[i] * b[i];
+        }
+        return s;
+    }
+
+    std::vector<double> b_;
+    std::vector<Triplet> triplets_;
+    std::vector<std::size_t> rowStart_;
+    std::vector<int> cols_;
+    std::vector<double> vals_;
+    std::vector<double> diag_;
+};
+
+void regularize_lines(std::vector<Traced>& lines, const Sector& sector, const SpacingField& spacing,
+                      double regularity) {
+    if (regularity <= 0.0) {
+        return;
+    }
+    std::vector<std::size_t> offset(lines.size() + 1, 0);
+    for (std::size_t l = 0; l < lines.size(); ++l) {
+        offset[l + 1] = offset[l] + lines[l].pts.size();
+    }
+    const std::size_t total = offset.back();
+    if (total < 4) {
+        return;
+    }
+    std::vector<P2> p0(total);
+    std::vector<int> lineOf(total);
+    std::vector<double> sloc(total);
+    std::vector<P2> tang(total);
+    for (std::size_t l = 0; l < lines.size(); ++l) {
+        const auto& pts = lines[l].pts;
+        for (std::size_t k = 0; k < pts.size(); ++k) {
+            const std::size_t i = offset[l] + k;
+            p0[i] = pts[k];
+            lineOf[i] = static_cast<int>(l);
+            sloc[i] = spacing.at(pts[k]);
+            const P2 d = pts[std::min(k + 1, pts.size() - 1)] - pts[k == 0 ? 0 : k - 1];
+            const double n = norm(d);
+            tang[i] = n > 1e-9 ? d * (1.0 / n) : P2{1.0, 0.0};
+        }
+    }
+
+    const RegularityWeights w = regularity_weights(regularity);
+    QuadraticSystem sys(2 * total);
+    using Coef = QuadraticSystem::Coef;
+    for (std::size_t l = 0; l < lines.size(); ++l) {
+        for (std::size_t k = 0; k < lines[l].pts.size(); ++k) {
+            const std::size_t i = offset[l] + k;
+            const int xi = static_cast<int>(2 * i);
+            const int yi = xi + 1;
+            const double s = sloc[i];
+            // E_dir : l'arête (i, i+1) garde sa direction d'origine.
+            if (k + 1 < lines[l].pts.size()) {
+                const std::size_t j = i + 1;
+                const P2 e0 = p0[j] - p0[i];
+                const double len = norm(e0);
+                if (len > 1e-9) {
+                    const P2 nb{-e0.y / len, e0.x / len};
+                    const double se = 0.5 * (sloc[i] + sloc[j]);
+                    const Coef row[4] = {{static_cast<int>(2 * j), nb.x / se},
+                                         {static_cast<int>(2 * j + 1), nb.y / se},
+                                         {xi, -nb.x / se},
+                                         {yi, -nb.y / se}};
+                    sys.add(w.direction, row, 4, 0.0);
+                }
+            }
+            // E_str : pas de glissement le long de la ligne.
+            const Coef along[2] = {{xi, tang[i].x / s}, {yi, tang[i].y / s}};
+            sys.add(w.stretch, along, 2, dot(tang[i], p0[i]) / s);
+            // E_anc : rappel faible vers la position tracée.
+            const Coef ax[1] = {{xi, 1.0 / s}};
+            const Coef ay[1] = {{yi, 1.0 / s}};
+            sys.add(w.anchor, ax, 1, p0[i].x / s);
+            sys.add(w.anchor, ay, 1, p0[i].y / s);
+        }
+    }
+
+    // E_den : pour chaque sommet, le plus proche voisin d'une AUTRE ligne de
+    // chaque côté (à peu près en face : décalage le long de la ligne < 0,5 s).
+    {
+        P2 lo = p0[0];
+        P2 hi = p0[0];
+        for (const P2 p : p0) {
+            lo = {std::min(lo.x, p.x), std::min(lo.y, p.y)};
+            hi = {std::max(hi.x, p.x), std::max(hi.y, p.y)};
+        }
+        const double cell = spacing.cell();
+        const int nx = static_cast<int>(std::ceil((hi.x - lo.x) / cell)) + 1;
+        const int ny = static_cast<int>(std::ceil((hi.y - lo.y) / cell)) + 1;
+        const auto cellOf = [&](P2 p, int& cx, int& cy) {
+            cx = std::clamp(static_cast<int>(std::floor((p.x - lo.x) / cell)), 0, nx - 1);
+            cy = std::clamp(static_cast<int>(std::floor((p.y - lo.y) / cell)), 0, ny - 1);
+        };
+        std::vector<std::vector<int>> buckets(static_cast<std::size_t>(nx) *
+                                              static_cast<std::size_t>(ny));
+        for (std::size_t i = 0; i < total; ++i) {
+            int cx = 0;
+            int cy = 0;
+            cellOf(p0[i], cx, cy);
+            buckets[static_cast<std::size_t>(cy) * static_cast<std::size_t>(nx) +
+                    static_cast<std::size_t>(cx)]
+                .push_back(static_cast<int>(i));
+        }
+        std::vector<std::pair<int, int>> pairs;
+        for (std::size_t i = 0; i < total; ++i) {
+            const P2 n{-tang[i].y, tang[i].x};
+            const double reach = 1.6 * sloc[i];
+            int cx = 0;
+            int cy = 0;
+            cellOf(p0[i], cx, cy);
+            const int span = static_cast<int>(std::ceil(reach / cell));
+            int bestPos = -1;
+            int bestNeg = -1;
+            double dPos = reach;
+            double dNeg = reach;
+            for (int j = std::max(0, cy - span); j <= std::min(ny - 1, cy + span); ++j) {
+                for (int k = std::max(0, cx - span); k <= std::min(nx - 1, cx + span); ++k) {
+                    for (const int cand :
+                         buckets[static_cast<std::size_t>(j) * static_cast<std::size_t>(nx) +
+                                 static_cast<std::size_t>(k)]) {
+                        if (lineOf[static_cast<std::size_t>(cand)] == lineOf[i]) {
+                            continue;
+                        }
+                        const P2 d = p0[static_cast<std::size_t>(cand)] - p0[i];
+                        if (std::abs(dot(d, tang[i])) > 0.5 * sloc[i]) {
+                            continue;
+                        }
+                        const double across = dot(d, n);
+                        if (across > 0.0 && across < dPos) {
+                            dPos = across;
+                            bestPos = cand;
+                        } else if (across < 0.0 && -across < dNeg) {
+                            dNeg = -across;
+                            bestNeg = cand;
+                        }
+                    }
+                }
+            }
+            for (const int other : {bestPos, bestNeg}) {
+                if (other >= 0) {
+                    pairs.emplace_back(std::min(static_cast<int>(i), other),
+                                       std::max(static_cast<int>(i), other));
+                }
+            }
+        }
+        std::sort(pairs.begin(), pairs.end());
+        pairs.erase(std::unique(pairs.begin(), pairs.end()), pairs.end());
+        for (const auto& [a, b] : pairs) {
+            const auto ia = static_cast<std::size_t>(a);
+            const auto ib = static_cast<std::size_t>(b);
+            const P2 mid = (p0[ia] + p0[ib]) * 0.5;
+            const P2 f = sector.field.dir(mid);
+            const P2 nrm{-f.y, f.x};
+            const double d0 = dot(p0[ib] - p0[ia], nrm);
+            if (std::abs(d0) < 1e-6) {
+                continue;
+            }
+            const double sgn = d0 > 0.0 ? 1.0 : -1.0;
+            const double s = spacing.at(mid);
+            const Coef row[4] = {{2 * b, nrm.x / s},
+                                 {2 * b + 1, nrm.y / s},
+                                 {2 * a, -nrm.x / s},
+                                 {2 * a + 1, -nrm.y / s}};
+            sys.add(w.density, row, 4, sgn);
+        }
+    }
+
+    std::vector<double> x(2 * total);
+    for (std::size_t i = 0; i < total; ++i) {
+        x[2 * i] = p0[i].x;
+        x[2 * i + 1] = p0[i].y;
+    }
+    sys.solve(x, 400, 1e-7);
+
+    // Garde-fous : un sommet ne bouge pas de plus d'un demi-écart, et reste
+    // dans la zone de traçage (sinon on revient vers sa position d'origine).
+    for (std::size_t l = 0; l < lines.size(); ++l) {
+        for (std::size_t k = 0; k < lines[l].pts.size(); ++k) {
+            const std::size_t i = offset[l] + k;
+            P2 target{x[2 * i], x[2 * i + 1]};
+            const P2 move = target - p0[i];
+            const double len = norm(move);
+            const double cap = 0.5 * sloc[i];
+            if (len > cap) {
+                target = p0[i] + move * (cap / len);
+            }
+            if (!sector.trace.inside(target)) {
+                P2 in = p0[i];
+                P2 out = target;
+                for (int it = 0; it < 12; ++it) {
+                    const P2 m = (in + out) * 0.5;
+                    (sector.trace.inside(m) ? in : out) = m;
+                }
+                target = in;
+            }
+            lines[l].pts[k] = target;
+        }
+    }
+}
+
 struct SectorLines {
     std::vector<Traced> traced;
     std::vector<std::vector<P2>> stitched; // lignes retenues (≥ 2 pénétrations)
@@ -1341,6 +1693,7 @@ std::vector<SectorLines> compute_lines(const std::vector<Sector>& sectors,
         SectorLines sl;
         StreamlineTracer tracer(sectors[si], spacing);
         sl.traced = tracer.run();
+        regularize_lines(sl.traced, sectors[si], spacing, params.spacing_regularity);
         if (withStitches) {
             for (std::size_t li = 0; li < sl.traced.size(); ++li) {
                 const auto key =

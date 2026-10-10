@@ -743,6 +743,161 @@ TEST_CASE("density_gradient_across spans the shape along the requested direction
     CHECK_FALSE(density_gradient_across({}, Angle{0.0}, Micrometers{400}, Micrometers{800}));
 }
 
+// --- Régularité de l'espacement ------------------------------------------------
+
+namespace {
+
+// Dispersion de la distance au voisin le plus proche d'une autre ligne,
+// rapportée à l'écart attendu : 0 = espacement parfaitement régulier.
+struct SpacingStats {
+    double mean{0.0};
+    double stddev{0.0};
+    std::size_t samples{0};
+};
+
+SpacingStats spacing_stats(const std::vector<DirectionalStreamline>& lines, double spacingUm,
+                           double marginUm) {
+    PointBuckets buckets(spacingUm);
+    for (std::size_t li = 0; li < lines.size(); ++li) {
+        for (const Vec2um p : lines[li].points) {
+            buckets.add(p, li);
+        }
+    }
+    buckets.finalize();
+    double sum = 0.0;
+    double sum2 = 0.0;
+    std::size_t n = 0;
+    for (std::size_t li = 0; li < lines.size(); ++li) {
+        for (std::size_t k = 0; k < lines[li].points.size(); k += 3) {
+            const Vec2um p = lines[li].points[k];
+            if (p.x.value < marginUm || p.y.value < marginUm || p.x.value > 30'000 - marginUm ||
+                p.y.value > 20'000 - marginUm) {
+                continue;
+            }
+            const double d = buckets.nearest(p, 2.0 * spacingUm, li) / spacingUm;
+            if (d > 2.0) {
+                continue; // aucune voisine à portée
+            }
+            sum += d;
+            sum2 += d * d;
+            ++n;
+        }
+    }
+    SpacingStats s;
+    s.samples = n;
+    if (n > 0) {
+        s.mean = sum / static_cast<double>(n);
+        s.stddev = std::sqrt(std::max(0.0, sum2 / static_cast<double>(n) - s.mean * s.mean));
+    }
+    return s;
+}
+
+document::DirectionalFillParams fan_params() {
+    auto dp = base_params();
+    dp.guides.push_back(line_mm(0, 3, 30, 10));
+    dp.guides.push_back(line_mm(0, 17, 30, 10));
+    return dp;
+}
+
+} // namespace
+
+// Écart moyen (degrés) entre la direction des arêtes tracées et le champ.
+double mean_direction_gap_deg(const geometry::PathSet& region,
+                              const document::DirectionalFillParams& dp,
+                              const std::vector<DirectionalStreamline>& lines) {
+    std::vector<Vec2um> mids;
+    std::vector<double> angles;
+    for (const auto& line : lines) {
+        for (std::size_t k = 0; k + 1 < line.points.size(); k += 2) {
+            const Vec2um a = line.points[k];
+            const Vec2um b = line.points[k + 1];
+            mids.push_back(Vec2um{Micrometers{(a.x.value + b.x.value) / 2},
+                                  Micrometers{(a.y.value + b.y.value) / 2}});
+            angles.push_back(chord_angle(a, b));
+        }
+    }
+    const auto field = directional_field_at(region, dp, mids);
+    double sum = 0.0;
+    std::size_t n = 0;
+    for (std::size_t i = 0; i < mids.size(); ++i) {
+        if (field[i]) {
+            sum += orientation_gap_deg(angles[i], field[i]->radians);
+            ++n;
+        }
+    }
+    return n > 0 ? sum / static_cast<double>(n) : 0.0;
+}
+
+TEST_CASE("directional spacing regularity evens out converging rows") {
+    const auto region = rect_mm(0, 0, 30, 20);
+    auto raw = fan_params();
+    auto even = fan_params();
+    even.spacing_regularity = 0.5;
+
+    const auto rawLines = trace_directional_streamlines(region, raw);
+    const auto evenLines = trace_directional_streamlines(region, even);
+    // Même nombre de lignes : la régularisation déplace, elle n'en crée ni n'en retire.
+    REQUIRE(rawLines.size() == evenLines.size());
+
+    const auto rawStats = spacing_stats(rawLines, 400.0, 600.0);
+    const auto evenStats = spacing_stats(evenLines, 400.0, 600.0);
+    REQUIRE(rawStats.samples > 1'000);
+    REQUIRE(evenStats.samples > 1'000);
+    // Mesuré : 0,232 -> 0,158 (-32 %) ; on exige au moins -20 %.
+    CHECK(evenStats.stddev < 0.8 * rawStats.stddev);
+    CHECK(std::abs(evenStats.mean - 1.0) < 0.1); // l'écart moyen reste l'écart demandé
+
+    // Le compromis est payé en direction, mais reste faible (mesuré : ~1,9 degré).
+    CHECK(mean_direction_gap_deg(region, raw, rawLines) < 1.0);
+    CHECK(mean_direction_gap_deg(region, even, evenLines) < 4.0);
+}
+
+TEST_CASE("directional spacing regularity keeps every row inside the shape") {
+    const auto region = rect_mm(0, 0, 30, 20);
+    auto dp = fan_params();
+    dp.spacing_regularity = 1.0; // réglage maximal : pire cas pour les garde-fous
+    for (const auto& line : trace_directional_streamlines(region, dp)) {
+        for (const Vec2um p : line.points) {
+            CHECK(p.x.value >= -1);
+            CHECK(p.x.value <= 30'001);
+            CHECK(p.y.value >= -1);
+            CHECK(p.y.value <= 20'001);
+        }
+    }
+}
+
+TEST_CASE("directional spacing regularity is deterministic and off by default") {
+    const auto region = rect_mm(0, 0, 30, 20);
+    auto dp = fan_params();
+    CHECK(dp.spacing_regularity == 0.0);
+    dp.spacing_regularity = 0.6;
+    const auto a = fill_directional(region, dp);
+    const auto b = fill_directional(region, dp);
+    REQUIRE(a.size() > 100);
+    CHECK(a == b);
+    // Désactivée, le tracé est celui d'avant (aucun changement de l'existant).
+    dp.spacing_regularity = 0.0;
+    CHECK(trace_directional_streamlines(region, dp).size() ==
+          trace_directional_streamlines(region, fan_params()).size());
+}
+
+TEST_CASE("directional spacing regularity works together with a density gradient") {
+    const auto region = rect_mm(0, 0, 30, 20);
+    auto dp = base_params();
+    dp.guides.push_back(line_mm(0, 10, 30, 10));
+    dp.density_gradient = vertical_gradient(Micrometers{400}, Micrometers{1'600});
+    dp.spacing_regularity = 0.5;
+    const auto a = trace_directional_streamlines(region, dp);
+    const auto b = trace_directional_streamlines(region, dp);
+    REQUIRE(a.size() > 20);
+    REQUIRE(a.size() == b.size());
+    for (std::size_t i = 0; i < a.size(); ++i) {
+        CHECK(a[i].points == b[i].points);
+    }
+    const auto ys = crossings_at_x(a, 15.0);
+    CHECK(mean_gap_mm(ys, 13.0, 20.0) > 1.5 * mean_gap_mm(ys, 0.0, 7.0));
+}
+
 TEST_CASE("directional gradient clamps absurd spacings instead of stalling") {
     const auto region = rect_mm(0, 0, 6, 4);
     auto dp = base_params();

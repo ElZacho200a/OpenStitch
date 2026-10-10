@@ -288,6 +288,7 @@ TEST_CASE("remplissage directionnel : save puis load = memes parametres") {
     dp.handmade = true;
     dp.handmade_intensity = 65;
     dp.seed = 4'000'000'000U; // > int32 : doit survivre intact
+    dp.spacing_regularity = 0.35;
     dp.density_gradient = document::DensityGradient{um(0, 100), um(4'000, 5'100), Micrometers{300},
                                                     Micrometers{1'200}};
 
