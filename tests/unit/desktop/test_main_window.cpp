@@ -617,6 +617,8 @@ private slots:
     void documentListMultiSelectionDrivesRegionSelection();
     void shapeUnionActionIsOneUndoStep();
     void groupedStitchTypeCoversEverySelectedShapeInOneStep();
+    void groupInspectorEditsOneFieldOnEveryObjectInOneStep();
+    void groupGuideAngleIsPlacedOnEveryAutoSatin();
     void knifeToolSplitsSelectedShape();
     void togglingPrimaryPromotesPrevious();
     void addOfAlreadySelectedObjectIsNoOp();
@@ -6439,6 +6441,91 @@ void MainWindowTest::groupedStitchTypeCoversEverySelectedShapeInOneStep() {
     }
     window.undo();
     QVERIFY(window.project_.embroidery_objects.empty());
+}
+
+void MainWindowTest::groupInspectorEditsOneFieldOnEveryObjectInOneStep() {
+    MainWindow window;
+    window.applyLoadedProject(twoOverlappingRectangles());
+    const ObjectId a = window.project_.vector_objects[0].id;
+    const ObjectId b = window.project_.vector_objects[1].id;
+    window.setSelection({.region = std::nullopt, .embroidery = std::nullopt, .objects = {a, b}});
+    window.setStitchTypeForSelection(1); // un tatami chacun
+    // Réglages DIFFÉRENTS au départ : le champ commun ne doit pas écraser les autres.
+    std::get<openstitch::document::TatamiParams>(window.project_.embroidery_objects[0].params)
+        .stagger = 3;
+    window.updateActions();
+    window.updateInspector();
+
+    auto* panel = window.findChild<PropertiesPanel*>();
+    QVERIFY(panel != nullptr);
+    auto* spacing = panel->findChild<QDoubleSpinBox*>(QStringLiteral("spin_rowSpacing"));
+    QVERIFY(spacing != nullptr); // formulaire commun du tatami sous le bloc « type de points »
+    spacing->setValue(0.7);
+
+    for (const auto& emb : window.project_.embroidery_objects) {
+        QCOMPARE(std::get<openstitch::document::TatamiParams>(emb.params).row_spacing.value, 700);
+    }
+    // Les autres champs de chaque objet sont conservés tels quels.
+    QCOMPARE(
+        std::get<openstitch::document::TatamiParams>(window.project_.embroidery_objects[0].params)
+            .stagger,
+        3);
+    QCOMPARE(
+        std::get<openstitch::document::TatamiParams>(window.project_.embroidery_objects[1].params)
+            .stagger,
+        openstitch::document::TatamiParams{}.stagger);
+    window.undo();
+    for (const auto& emb : window.project_.embroidery_objects) {
+        QCOMPARE(std::get<openstitch::document::TatamiParams>(emb.params).row_spacing.value,
+                 openstitch::document::TatamiParams{}.row_spacing.value);
+    }
+}
+
+void MainWindowTest::groupGuideAngleIsPlacedOnEveryAutoSatin() {
+    MainWindow window;
+    // Deux rubans étroits (3 x 20 mm) : formes que le satin sait coudre.
+    auto project = twoOverlappingRectangles();
+    std::int32_t offset = 0;
+    for (auto& object : project.vector_objects) {
+        auto& nodes = object.paths[0].outer.nodes;
+        const std::int32_t xs[4] = {offset, offset + 3'000, offset + 3'000, offset};
+        const std::int32_t ys[4] = {0, 0, 20'000, 20'000};
+        for (std::size_t i = 0; i < 4; ++i) {
+            nodes[i].pos = Vec2um{Micrometers{xs[i]}, Micrometers{ys[i]}};
+        }
+        offset += 8'000;
+    }
+    window.applyLoadedProject(project);
+    const ObjectId a = window.project_.vector_objects[0].id;
+    const ObjectId b = window.project_.vector_objects[1].id;
+    window.setSelection({.region = std::nullopt, .embroidery = std::nullopt, .objects = {a, b}});
+    window.setStitchTypeForSelection(2); // satin automatique
+    QCOMPARE(window.project_.embroidery_objects.size(), std::size_t{2});
+    window.updateActions();
+    window.updateInspector();
+
+    auto* panel = window.findChild<PropertiesPanel*>();
+    auto* apply = panel->findChild<QPushButton*>(QStringLiteral("button_groupApplyGuide"));
+    auto* angle = panel->findChild<QDoubleSpinBox*>(QStringLiteral("spin_groupGuideAngle"));
+    QVERIFY(apply != nullptr && angle != nullptr);
+    angle->setValue(30.0);
+    apply->click();
+    for (const auto& emb : window.project_.embroidery_objects) {
+        const auto& sat = std::get<openstitch::document::AutoSatinParams>(emb.params);
+        QCOMPARE(sat.guides.size(), std::size_t{1});
+    }
+    // Retrait en lot, une seule étape annulable.
+    auto* clear = panel->findChild<QPushButton*>(QStringLiteral("button_groupClearSatinGuides"));
+    QVERIFY(clear != nullptr);
+    clear->click();
+    for (const auto& emb : window.project_.embroidery_objects) {
+        QVERIFY(std::get<openstitch::document::AutoSatinParams>(emb.params).guides.empty());
+    }
+    window.undo();
+    for (const auto& emb : window.project_.embroidery_objects) {
+        QCOMPARE(std::get<openstitch::document::AutoSatinParams>(emb.params).guides.size(),
+                 std::size_t{1});
+    }
 }
 
 void MainWindowTest::shapeUnionActionIsOneUndoStep() {

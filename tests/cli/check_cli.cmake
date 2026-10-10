@@ -17,7 +17,8 @@ function(run)
         WORKING_DIRECTORY "${WORK}")
     # Le journal d'OpenCV (build Debug) peut s'écrire sur stdout avant le JSON : avec --json,
     # on ne garde que le document (à partir de la première accolade).
-    if("--json" IN_LIST ARGN)
+    list(FIND ARGN "--json" json_flag)
+    if(NOT json_flag EQUAL -1)
         string(FIND "${out}" "{" brace)
         if(brace GREATER 0)
             string(SUBSTRING "${out}" ${brace} -1 out)

@@ -21,6 +21,7 @@
 #include "main_window.hpp"
 #include "openstitch/commands/composite_command.hpp"
 #include "openstitch/commands/project_commands.hpp"
+#include "openstitch/stitch_generation/directional_fill.hpp"
 #include "properties_panel.hpp"
 
 namespace openstitch::desktop {
@@ -79,6 +80,168 @@ void MainWindow::connectInspectorEditing() {
             [this](ObjectId id, QRectF want) { applyVectorBox(id, want); });
     connect(propertiesPanel_, &PropertiesPanel::applyToSelectionRequested, this,
             &MainWindow::applyToSelection);
+    connect(propertiesPanel_, &PropertiesPanel::groupParamsEdited, this,
+            &MainWindow::applyGroupParams);
+    connect(propertiesPanel_, &PropertiesPanel::groupActionRequested, this,
+            &MainWindow::applyGroupAction);
+    connect(propertiesPanel_, &PropertiesPanel::groupGuideAngleRequested, this,
+            &MainWindow::applyGroupGuideAngle);
+}
+
+MainWindow::EmbroideryGroup MainWindow::selectedEmbroideryGroup() const {
+    EmbroideryGroup group;
+    std::optional<std::size_t> kind;
+    group.sameType = true;
+    for (const ObjectId vectorId : selectedObjectIds()) {
+        for (const auto& emb : project_.embroidery_objects) {
+            if (emb.source_vector != vectorId) {
+                continue;
+            }
+            group.ids.push_back(emb.id);
+            if (!kind) {
+                kind = emb.params.index();
+            } else if (*kind != emb.params.index()) {
+                group.sameType = false;
+            }
+        }
+    }
+    if (group.ids.size() < 2) {
+        group.sameType = false;
+    }
+    return group;
+}
+
+void MainWindow::applyGroupParams(const QString& field,
+                                  const std::function<void(document::StitchParams&)>& apply) {
+    const EmbroideryGroup group = selectedEmbroideryGroup();
+    if (!group.sameType) {
+        return;
+    }
+    auto composite = std::make_unique<commands::CompositeCommand>(
+        tr("Modifier : %1 (%2 objets)").arg(field).arg(group.ids.size()).toStdString());
+    for (const ObjectId id : group.ids) {
+        const auto* emb = project_.findEmbroidery(id);
+        if (emb == nullptr) {
+            continue;
+        }
+        document::StitchParams params = emb->params;
+        apply(params);
+        if (params == emb->params) {
+            continue;
+        }
+        composite->add(std::make_unique<commands::SetStitchParamsCommand>(id, std::move(params),
+                                                                          field.toStdString()));
+    }
+    if (composite->empty()) {
+        return;
+    }
+    undoStack_.execute(std::move(composite), project_);
+    // Le formulaire montre le représentant : il reste cohérent sans reconstruction.
+    refreshImage();
+    updateActions();
+}
+
+void MainWindow::applyGroupGuideAngle(double angleDeg, bool absolute) {
+    const EmbroideryGroup group = selectedEmbroideryGroup();
+    auto composite = std::make_unique<commands::CompositeCommand>(
+        tr("Poser un guide d'orientation (%1 objets)").arg(group.ids.size()).toStdString());
+    const Angle angle{angleDeg * std::numbers::pi / 180.0};
+    for (const ObjectId id : group.ids) {
+        const auto* emb = project_.findEmbroidery(id);
+        const auto* sat =
+            emb != nullptr ? std::get_if<document::AutoSatinParams>(&emb->params) : nullptr;
+        const auto* source = emb != nullptr ? project_.findObject(emb->source_vector) : nullptr;
+        if (sat == nullptr || source == nullptr) {
+            continue;
+        }
+        const BoundsUm b = boundsOf(*source);
+        if (!b.valid) {
+            continue;
+        }
+        document::AutoSatinParams params = *sat;
+        // Guide unique, ancré au centre de la forme : angle relatif à l'axe ou absolu.
+        params.guides = {document::AutoSatinGuide{vec((b.minX + b.maxX) / 2, (b.minY + b.maxY) / 2),
+                                                  angle, absolute}};
+        if (params == *sat) {
+            continue;
+        }
+        composite->add(std::make_unique<commands::EditAutoSatinCommand>(
+            id, std::move(params), "Poser un guide d'orientation"));
+    }
+    if (composite->empty()) {
+        statusBar()->showMessage(tr("Rien à modifier : ces guides sont déjà posés."));
+        return;
+    }
+    undoStack_.execute(std::move(composite), project_);
+    refreshImage();
+    updateActions();
+    statusBar()->showMessage(
+        tr("Guide posé sur %1 forme(s), en une seule étape annulable.").arg(group.ids.size()),
+        8000);
+}
+
+void MainWindow::applyGroupAction(const QString& action) {
+    const EmbroideryGroup group = selectedEmbroideryGroup();
+    auto composite = std::make_unique<commands::CompositeCommand>(
+        tr("Guides (%1 objets)").arg(group.ids.size()).toStdString());
+    int touched = 0;
+    for (const ObjectId id : group.ids) {
+        const auto* emb = project_.findEmbroidery(id);
+        if (emb == nullptr) {
+            continue;
+        }
+        if (action == QLatin1String("clearSatinGuides")) {
+            const auto* sat = std::get_if<document::AutoSatinParams>(&emb->params);
+            if (sat == nullptr || sat->guides.empty()) {
+                continue;
+            }
+            document::AutoSatinParams params = *sat;
+            params.guides.clear();
+            composite->add(std::make_unique<commands::EditAutoSatinCommand>(
+                id, std::move(params), "Retirer les guides d'orientation"));
+            ++touched;
+        } else if (action == QLatin1String("clearDirectionGuides")) {
+            const auto* dir = std::get_if<document::DirectionalFillParams>(&emb->params);
+            if (dir == nullptr || (dir->guides.empty() && dir->break_lines.empty())) {
+                continue;
+            }
+            document::DirectionalFillParams params = *dir;
+            params.guides.clear();
+            params.break_lines.clear();
+            composite->add(std::make_unique<commands::EditDirectionalFillCommand>(
+                id, std::move(params), "Retirer guides et ruptures"));
+            ++touched;
+        } else if (action == QLatin1String("autoDirectionGuides")) {
+            const auto* dir = std::get_if<document::DirectionalFillParams>(&emb->params);
+            const auto* source = project_.findObject(emb->source_vector);
+            if (dir == nullptr || source == nullptr) {
+                continue;
+            }
+            std::vector<geometry::Path> generated;
+            for (const auto& set : source->paths) {
+                auto guides = stitch_generation::directional_guides_from_region(set);
+                generated.insert(generated.end(), std::make_move_iterator(guides.begin()),
+                                 std::make_move_iterator(guides.end()));
+            }
+            if (generated.empty()) {
+                continue;
+            }
+            document::DirectionalFillParams params = *dir;
+            params.guides = std::move(generated); // remplace : un lot reproductible
+            composite->add(std::make_unique<commands::EditDirectionalFillCommand>(
+                id, std::move(params), "Générer les guides de direction"));
+            ++touched;
+        }
+    }
+    if (composite->empty()) {
+        statusBar()->showMessage(tr("Rien à modifier pour cette action."));
+        return;
+    }
+    undoStack_.execute(std::move(composite), project_);
+    refreshImage();
+    updateActions();
+    statusBar()->showMessage(
+        tr("%1 forme(s) modifiée(s), en une seule étape annulable.").arg(touched), 8000);
 }
 
 void MainWindow::applyVectorBox(ObjectId id, QRectF want) {

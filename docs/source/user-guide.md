@@ -412,6 +412,21 @@ points d'un coup**, exactement comme pour une forme seule :
   « Créer un satin automatique… » s'appliquent à toute la sélection (un seul dialogue de réglages).
 - **Clic droit** sur une forme de la sélection : « Type de points (tous) ».
 
+**Réglages communs.** Quand toutes les coutures des formes sélectionnées ont le **même type**
+(par exemple plusieurs tatamis, plusieurs satins automatiques), l'inspecteur affiche sous le bloc
+« type de points » le **même formulaire que pour une forme seule**. Chaque champ modifié est
+appliqué à **toutes** les formes, **champ par champ** : les autres réglages de chaque forme
+(angle, retrait, guides…) ne sont pas touchés. Une modification est un seul pas d'annulation,
+nommé d'après le champ.
+
+**Guides en lot.**
+- *Satin automatique* : choisissez un angle (relatif à l'axe de chaque forme, ou absolu dans le
+  dessin) puis **Poser ce guide sur toutes les formes** (un guide ancré au centre de chaque
+  forme, qui remplace les guides existants) ; **Retirer les guides de toutes** les supprime.
+- *Remplissage directionnel* : **Guides automatiques pour tous** calcule le guide de chaque forme
+  d'après son axe ; **Retirer guides et ruptures de tous** les efface. Le tracé fin d'un guide
+  reste propre à chaque forme (sélectionnez-la seule).
+
 Une forme déjà cousue est **convertie** (toutes ses sections), une forme sans couture en reçoit une
 nouvelle. Les formes qui ne peuvent pas être cousues en satin sont ignorées et listées (en satin
 automatique, on peut leur donner un tatami à la place). Tout le geste est **un seul pas
