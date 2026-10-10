@@ -258,6 +258,10 @@ std::vector<FillStitch> fill_tatami(const geometry::PathSet& region,
     const double stitchLen =
         static_cast<double>(std::max<std::int32_t>(1, params.stitch_length.value));
     const int stagger = std::max(1, params.stagger);
+    // HP-ENG-001 : dépassement des rangées dans l'axe du fil (borné à 3 mm : un fichier
+    // aberrant ne doit pas étaler la couture hors de toute proportion).
+    const double pull =
+        static_cast<double>(std::clamp<std::int32_t>(params.pull_compensation.value, 0, 3'000));
 
     const double cosA = std::cos(-params.angle.radians);
     const double sinA = std::sin(-params.angle.radians);
@@ -335,6 +339,11 @@ std::vector<FillStitch> fill_tatami(const geometry::PathSet& region,
                 }
             }
             s.pens.push_back(hi);
+            // Compensation du tirage : seules les pénétrations d'extrémité dépassent ; les
+            // bornes `lo`/`hi` du segment restent celles de la région (adjacence, validation
+            // des liaisons).
+            s.pens.front() = lo - pull;
+            s.pens.back() = hi + pull;
             byRow[rowIndex].push_back(static_cast<int>(segs.size()));
             segs.push_back(std::move(s));
         }
@@ -388,6 +397,10 @@ std::vector<FillStitch> fill_tatami(const geometry::PathSet& region,
     std::vector<char> visited(static_cast<std::size_t>(n), 0);
     bool hasPrev = false;
     PointD prev{};
+    // Dernière pénétration ramenée dans la région (identique à `prev` sans compensation) :
+    // c'est elle qui valide les liaisons, un dépassement de rangée n'étant pas un point
+    // de la région.
+    PointD prevC{};
     int visitedCount = 0;
     int current = -1;
     bool jumpStart = true; // true = on ARRIVE sur ce segment par un déplacement
@@ -400,6 +413,7 @@ std::vector<FillStitch> fill_tatami(const geometry::PathSet& region,
         prev = rotate({static_cast<double>(params.entry_point->x.value),
                        static_cast<double>(params.entry_point->y.value)},
                       cosA, sinA);
+        prevC = prev;
         hasPrev = true;
     }
     // Cap du trajet cousu caché : au-delà, on saute (déplacement à découvert).
@@ -514,6 +528,7 @@ std::vector<FillStitch> fill_tatami(const geometry::PathSet& region,
             const double x = forward ? s.pens[static_cast<std::size_t>(k)]
                                      : s.pens[static_cast<std::size_t>(m - 1 - k)];
             const PointD rp{x, s.y};
+            const PointD rpC{std::clamp(x, s.lo, s.hi), s.y};
             // La liaison vers le premier point d'un segment est un SAUT (aiguille
             // levée) si l'on n'y est pas arrivé par une arête du graphe, OU si le
             // trajet cousu couperait un bord de la région ou d'un trou. Le
@@ -523,7 +538,7 @@ std::vector<FillStitch> fill_tatami(const geometry::PathSet& region,
             // `jump` l'exige, et la branche underpath exige `jump`) : ne pas
             // payer ce test en O(arêtes) à chaque pénétration (audit perf
             // 2026-09, docs/performance-audit.md).
-            const bool cross = (k == 0) && hasPrev && connector_invalid(edgeIndex, prev, rp);
+            const bool cross = (k == 0) && hasPrev && connector_invalid(edgeIndex, prevC, rpC);
             bool jump = (k == 0) && (jumpStart || !hasPrev || cross);
             // Liaison COUSUE vers une rangée voisine (arête du graphe, trajet
             // validé intérieur) : deux segments qui ne se chevauchent que sur
@@ -555,10 +570,10 @@ std::vector<FillStitch> fill_tatami(const geometry::PathSet& region,
             }
             if (jump && params.hidden_underpath && hasPrev) {
                 // 1) trajet DIRECT s'il reste intérieur et court ;
-                if (!cross && seglen(prev, rp) <= underpathCap) {
-                    emitTravel({prev, rp});
+                if (!cross && seglen(prevC, rpC) <= underpathCap) {
+                    emitTravel({prevC, rpC});
                     jump = false;
-                } else if (auto route = routeHighway(prev, rp); !route.empty()) {
+                } else if (auto route = routeHighway(prevC, rpC); !route.empty()) {
                     // 2) sinon on longe le contour rentré (contourne les trous).
                     emitTravel(route);
                     jump = false;
@@ -566,6 +581,7 @@ std::vector<FillStitch> fill_tatami(const geometry::PathSet& region,
             }
             out.push_back({to_um(rotate(rp, cosB, sinB)), jump, false});
             prev = rp;
+            prevC = rpC;
             hasPrev = true;
         }
         visited[static_cast<std::size_t>(current)] = 1;
@@ -639,6 +655,7 @@ std::vector<std::vector<Vec2um>> tatami_underlay(const geometry::PathSet& region
         up.row_spacing =
             Micrometers{std::max(params.underlay_spacing.value, params.row_spacing.value)};
         up.inset = Micrometers{0};
+        up.pull_compensation = Micrometers{0}; // la sous-couche reste dans la forme
         up.underlay_edge = false;
         up.underlay_parallel = false;
         // Trajets cachés hérités de l'objet : sous la couche supérieure, une

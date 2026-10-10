@@ -177,6 +177,13 @@ json params_to_json(const document::StitchParams& params) {
                      {"underlayInset", p.underlay_inset.value},
                      {"underlaySpacing", p.underlay_spacing.value},
                      {"hiddenUnderpath", p.hidden_underpath}};
+                // HP-ENG-001/002 : écrits seulement hors défaut, un .osp inchangé reste inchangé.
+                if (p.pull_compensation.value != 0) {
+                    j["pullCompensation"] = p.pull_compensation.value;
+                }
+                if (p.underlay_mode != document::UnderlayMode::Manual) {
+                    j["underlayMode"] = static_cast<int>(p.underlay_mode);
+                }
                 if (p.entry_point) {
                     j["entryPoint"] = {{"x", p.entry_point->x.value},
                                        {"y", p.entry_point->y.value}};
@@ -224,6 +231,16 @@ json params_to_json(const document::StitchParams& params) {
                 if (p.exit_point) {
                     j["exitPoint"] = {{"x", p.exit_point->x.value}, {"y", p.exit_point->y.value}};
                 }
+                if (p.underlay_mode != document::UnderlayMode::Manual) {
+                    j["underlayMode"] = static_cast<int>(p.underlay_mode);
+                }
+                if (p.border) {
+                    j["border"] = {{"width", p.border->width.value},
+                                   {"side", static_cast<int>(p.border->side)},
+                                   {"corner", static_cast<int>(p.border->corner)},
+                                   {"pathSet", p.border->path_set},
+                                   {"ring", p.border->ring}};
+                }
                 if (p.topology) {
                     json topology = {{"sectionIndex", p.topology->section_index},
                                      {"sectionCount", p.topology->section_count}};
@@ -261,6 +278,9 @@ json params_to_json(const document::StitchParams& params) {
                      {"handmade", p.handmade},
                      {"handmadeIntensity", p.handmade_intensity},
                      {"seed", p.seed}};
+                if (p.underlay_mode != document::UnderlayMode::Manual) {
+                    j["underlayMode"] = static_cast<int>(p.underlay_mode);
+                }
             } else if constexpr (std::is_same_v<T, document::AutoSatinParams>) {
                 json guides = json::array();
                 for (const auto& g : p.guides) {
@@ -290,6 +310,9 @@ json params_to_json(const document::StitchParams& params) {
                      {"lockEnd", static_cast<int>(p.lock_end)},
                      {"lockLength", p.lock_length.value},
                      {"lockPasses", p.lock_passes}};
+                if (p.underlay_mode != document::UnderlayMode::Manual) {
+                    j["underlayMode"] = static_cast<int>(p.underlay_mode);
+                }
                 if (p.entry_point) {
                     j["entryPoint"] = {{"x", p.entry_point->x.value},
                                        {"y", p.entry_point->y.value}};
@@ -325,6 +348,11 @@ Result<document::StitchParams> params_from_json(const json& j) {
         p.underlay_inset = Micrometers{j.value("underlayInset", 600)};
         p.underlay_spacing = Micrometers{j.value("underlaySpacing", 2'000)};
         p.hidden_underpath = j.value("hiddenUnderpath", false);
+        // HP-ENG-001/002 : absents d'un .osp antérieur -> défauts du modèle. Valeurs bornées :
+        // un fichier édité à la main ne doit pas produire une compensation absurde.
+        p.pull_compensation = Micrometers{std::clamp(j.value("pullCompensation", 0), 0, 3'000)};
+        p.underlay_mode =
+            static_cast<document::UnderlayMode>(std::clamp(j.value("underlayMode", 0), 0, 1));
         if (j.contains("entryPoint")) {
             p.entry_point = Vec2um{Micrometers{j.at("entryPoint").at("x")},
                                    Micrometers{j.at("entryPoint").at("y")}};
@@ -371,6 +399,20 @@ Result<document::StitchParams> params_from_json(const json& j) {
         p.lock_end = static_cast<document::SatinLock>(j.value("lockEnd", 0));
         p.lock_length = Micrometers{j.value("lockLength", 800)};
         p.lock_passes = j.value("lockPasses", 2);
+        p.underlay_mode =
+            static_cast<document::UnderlayMode>(std::clamp(j.value("underlayMode", 0), 0, 1));
+        if (j.contains("border") && j.at("border").is_object()) {
+            const auto& bj = j.at("border");
+            document::BorderSatinSpec spec;
+            spec.width = Micrometers{std::clamp(bj.value("width", 3'000), 500, 20'000)};
+            spec.side = static_cast<document::BorderSide>(std::clamp(bj.value("side", 0), 0, 2));
+            spec.corner =
+                static_cast<document::BorderCorner>(std::clamp(bj.value("corner", 0), 0, 1));
+            spec.path_set =
+                static_cast<std::uint32_t>(std::clamp(bj.value("pathSet", 0), 0, 100'000));
+            spec.ring = static_cast<std::uint32_t>(std::clamp(bj.value("ring", 0), 0, 100'000));
+            p.border = spec;
+        }
         if (j.contains("entryPoint")) {
             p.entry_point = Vec2um{Micrometers{j.at("entryPoint").at("x")},
                                    Micrometers{j.at("entryPoint").at("y")}};
@@ -442,6 +484,8 @@ Result<document::StitchParams> params_from_json(const json& j) {
         p.sector_overlap = Micrometers{j.value("sectorOverlap", 250)};
         p.handmade = j.value("handmade", false);
         p.handmade_intensity = j.value("handmadeIntensity", 50);
+        p.underlay_mode =
+            static_cast<document::UnderlayMode>(std::clamp(j.value("underlayMode", 0), 0, 1));
         if (j.contains("seed")) {
             auto seed = strict_uint32(j.at("seed"), "seed");
             if (!seed) {
@@ -491,7 +535,8 @@ Result<document::StitchParams> params_from_json(const json& j) {
               Range{"lockStart", 0, 3}, Range{"lockEnd", 0, 3}, Range{"lockPasses", 0, 10},
               Range{"lockLength", 0, 20'000}, Range{"pullCompensation", -5'000, 5'000},
               Range{"pullLeft", -5'000, 5'000}, Range{"pullRight", -5'000, 5'000},
-              Range{"pushStart", -5'000, 5'000}, Range{"pushEnd", -5'000, 5'000}}) {
+              Range{"pushStart", -5'000, 5'000}, Range{"pushEnd", -5'000, 5'000},
+              Range{"underlayMode", 0, 1}}) {
             if (const auto err = badNumber(field(r.name), r.name, r.lo, r.hi)) {
                 return fail(ErrorCategory::InvalidFile, *err);
             }
@@ -536,6 +581,7 @@ Result<document::StitchParams> params_from_json(const json& j) {
         p.lock_end = static_cast<document::SatinLock>(j.value("lockEnd", 0));
         p.lock_length = Micrometers{j.value("lockLength", 800)};
         p.lock_passes = j.value("lockPasses", 2);
+        p.underlay_mode = static_cast<document::UnderlayMode>(j.value("underlayMode", 0));
         if (j.contains("entryPoint")) {
             p.entry_point = Vec2um{Micrometers{j.at("entryPoint").at("x")},
                                    Micrometers{j.at("entryPoint").at("y")}};
@@ -799,6 +845,9 @@ json project_to_json(const document::Project& project) {
         // ForcedUserChoice=1 -- même convention que les autres enums de ce
         // fichier (int brut, jamais une table de correspondance texte).
         eo["intent"] = static_cast<int>(e.intent);
+        if (e.join != document::JoinMode::Inherit) {
+            eo["join"] = static_cast<int>(e.join); // HP-ENG-010 : absent = Inherit
+        }
         eo["params"] = params_to_json(e.params);
         if (!e.overrides.empty()) {
             eo["overrides"] = json::array();
@@ -821,7 +870,10 @@ json project_to_json(const document::Project& project) {
                       {"lockLength", f.lock_length.value},
                       {"lockPasses", f.lock_passes},
                       {"filterShortStitches", f.filter_short_stitches},
-                      {"minStitchLength", f.min_stitch_length.value}};
+                      {"minStitchLength", f.min_stitch_length.value},
+                      {"splitLongStitches", f.split_long_stitches},
+                      {"maxStitchLength", f.max_stitch_length.value},
+                      {"autoJoin", f.auto_join}};
 
     // AD-04 : design importé (DST aujourd'hui) -- donnée source immuable,
     // absente d'un projet qui n'en a pas (comportement historique inchangé).
@@ -918,6 +970,7 @@ Result<document::Project> project_from_json(const json& j) {
             // Absent (projets antérieurs au §21/§24, 2026-08-14) -> AutoChoice
             // (valeur 0, comportement historique implicite désormais explicite).
             e.intent = static_cast<document::EmbroideryIntent>(eo.value("intent", 0));
+            e.join = static_cast<document::JoinMode>(std::clamp(eo.value("join", 0), 0, 2));
             auto params = params_from_json(eo.at("params"));
             if (!params) {
                 return std::unexpected(params.error());
@@ -984,6 +1037,11 @@ Result<document::Project> project_from_json(const json& j) {
             f.filter_short_stitches = fj.value("filterShortStitches", d.filter_short_stitches);
             f.min_stitch_length =
                 Micrometers{fj.value("minStitchLength", d.min_stitch_length.value)};
+            // HP-ENG-008/010 : absents d'un projet antérieur -> désactivés (défauts du modèle).
+            f.split_long_stitches = fj.value("splitLongStitches", d.split_long_stitches);
+            f.max_stitch_length = Micrometers{
+                std::clamp(fj.value("maxStitchLength", d.max_stitch_length.value), 1'000, 12'100)};
+            f.auto_join = fj.value("autoJoin", d.auto_join);
         } else {
             project.finishing = document::SequenceFinishing::legacy();
         }

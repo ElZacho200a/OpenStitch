@@ -9,6 +9,9 @@ add_library(openstitch_stitch_generation
     src/finish.cpp
     src/generate.cpp
     src/overrides.cpp
+    src/underlay_auto.cpp
+    src/join.cpp
+    src/border_satin.cpp
 )
 add_library(openstitch::stitch_generation ALIAS openstitch_stitch_generation)
 

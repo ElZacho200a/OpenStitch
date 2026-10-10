@@ -24,6 +24,13 @@ struct RunningStitchParams {
     bool operator==(const RunningStitchParams&) const = default;
 };
 
+// Choix de la sous-couche (HP-ENG-002). `Manual` (défaut, comportement historique) :
+// les réglages `underlay_*` de l'objet s'appliquent tels quels. `Auto` : le moteur
+// choisit contour / rangées perpendiculaires / centre / zigzag selon le type, la
+// taille et la largeur de la forme (`stitch_generation::resolve_*_underlay`), les
+// réglages manuels étant alors ignorés. N'agit qu'à la génération.
+enum class UnderlayMode : std::uint8_t { Manual, Auto };
+
 // Paramètres du remplissage tatami (§5.4, §15).
 struct TatamiParams {
     Angle angle{0.0};                 // orientation des rangées (radians)
@@ -38,6 +45,11 @@ struct TatamiParams {
     Micrometers underlay_spacing{2'000}; // écart des rangées de sous-couche
     bool hidden_underpath{false}; // liaisons cousues cachées (au lieu de sauts) si trajet valide
     std::optional<Vec2um> entry_point; // démarre le remplissage près de ce point
+    // HP-ENG-001 : compensation du tirage. Chaque rangée dépasse du contour de cette
+    // longueur DANS L'AXE DU FIL (le fil tire dans sa direction : la forme cousue
+    // rétrécit dans ce sens), 0 = aucune. Plage [0 ; 3] mm, 0,2 à 0,4 mm typique.
+    Micrometers pull_compensation{0};
+    UnderlayMode underlay_mode{UnderlayMode::Manual}; // HP-ENG-002
 
     bool operator==(const TatamiParams&) const = default;
 };
@@ -76,6 +88,7 @@ struct DirectionalFillParams {
     bool handmade{false};
     int handmade_intensity{50}; // 0 à 100 %
     std::uint32_t seed{0};
+    UnderlayMode underlay_mode{UnderlayMode::Manual}; // HP-ENG-002
 
     bool operator==(const DirectionalFillParams&) const = default;
 };
@@ -111,6 +124,25 @@ enum class SatinShortStitch { Disabled, RemoveAndRedistribute, SingleInset, Mult
 enum class SatinSplit { Disabled, Simple, Staggered, DeterministicJitter };
 enum class SatinCap { Flat, Rounded, Tapered, Automatic };
 enum class SatinLock { None, BackAndForth, Triangle, MicroZigzag };
+
+// Origine « satin de bordure » (HP-STI-004) : un satin de largeur fixe suivant un
+// contour. Les rails/barreaux de `SatinParams` restent la vérité de la génération ;
+// cette spécification ne sert qu'à les REGÉNÉRER depuis le contour source quand
+// l'utilisateur change la largeur, le côté ou les coins dans l'inspecteur.
+enum class BorderSide : std::uint8_t { Centered, Inside, Outside };
+enum class BorderCorner : std::uint8_t { Sharp, Round };
+struct BorderSatinSpec {
+    Micrometers width{3'000};              // largeur de la colonne (3 mm), plage [0,5 ; 20] mm
+    BorderSide side{BorderSide::Centered}; // côté du contour où s'étend la colonne
+    BorderCorner corner{BorderCorner::Sharp};
+    // Anneau suivi dans l'objet vectoriel `source_vector` (pour régénérer les rails) :
+    // `path_set` = indice du PathSet, `ring` = 0 pour le contour extérieur, k pour le
+    // k-ième trou (1-based).
+    std::uint32_t path_set{0};
+    std::uint32_t ring{0};
+
+    bool operator==(const BorderSatinSpec&) const = default;
+};
 
 // Paramètres d'une colonne satin (§5.3). Contrairement aux autres types, le
 // satin porte sa propre géométrie (deux rails éditables), car il ne se déduit
@@ -148,6 +180,9 @@ struct SatinParams {
     int lock_passes{2};
     std::optional<Vec2um> entry_point; // début de couture souhaité (projeté)
     std::optional<Vec2um> exit_point;  // fin de couture souhaitée
+
+    UnderlayMode underlay_mode{UnderlayMode::Manual}; // HP-ENG-002
+    std::optional<BorderSatinSpec> border;            // HP-STI-004 : satin de bordure
 
     bool operator==(const SatinParams&) const = default;
 };
@@ -195,8 +230,9 @@ struct AutoSatinParams {
     SatinLock lock_end{SatinLock::None};
     Micrometers lock_length{800};
     int lock_passes{2};
-    std::optional<Vec2um> entry_point; // début de couture souhaité
-    std::optional<Vec2um> exit_point;  // fin de couture souhaitée
+    std::optional<Vec2um> entry_point;                // début de couture souhaité
+    std::optional<Vec2um> exit_point;                 // fin de couture souhaitée
+    UnderlayMode underlay_mode{UnderlayMode::Manual}; // HP-ENG-002
 
     bool operator==(const AutoSatinParams&) const = default;
 };
@@ -244,6 +280,11 @@ struct StitchOverride {
 // `AutoChoice`, jamais une supposition différente).
 enum class EmbroideryIntent : std::uint8_t { AutoChoice, ForcedUserChoice };
 
+// Entrée/sortie automatiques (HP-ENG-010) au niveau de l'objet : `Inherit` suit le
+// réglage du projet (`SequenceFinishing::auto_join`), `Auto` l'active pour cet
+// objet, `Off` le désactive (le sens naturel du générateur est conservé).
+enum class JoinMode : std::uint8_t { Inherit, Auto, Off };
+
 struct EmbroideryObject {
     ObjectId id;
     std::string name;
@@ -253,6 +294,7 @@ struct EmbroideryObject {
     bool visible{true};
     bool locked{false}; // l'optimisation d'ordre ne déplace pas un objet verrouillé
     EmbroideryIntent intent{EmbroideryIntent::AutoChoice};
+    JoinMode join{JoinMode::Inherit}; // HP-ENG-010
 
     // Retouches manuelles (Lot 8 MVP) — deltas épars, jamais O(nombre de
     // points). Vide = comportement actuel inchangé (Clean, rétrocompatible).

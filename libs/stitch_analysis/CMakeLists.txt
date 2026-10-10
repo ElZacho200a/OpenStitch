@@ -1,5 +1,6 @@
 add_library(openstitch_stitch_analysis
     src/analyze.cpp
+    src/limits.cpp
     src/metrics.cpp
     src/project_metrics.cpp
     src/color_blocks.cpp

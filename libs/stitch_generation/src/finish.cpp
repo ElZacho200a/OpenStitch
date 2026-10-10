@@ -2,6 +2,7 @@
 #include "openstitch/stitch_generation/finish.hpp"
 
 #include <algorithm>
+#include <cmath>
 #include <map>
 #include <optional>
 #include <vector>
@@ -149,6 +150,44 @@ std::vector<StitchCommand> filter_short_stitches(const std::vector<StitchCommand
     return out;
 }
 
+// HP-ENG-008 : aucun point cousu plus long que `max_stitch_length`. Un point trop long est
+// découpé en `ceil(L / max)` points égaux sur la MÊME droite (aucune pénétration ne quitte
+// la forme que le point traversait déjà), avec la passe et l'objet du point d'origine. Les
+// morceaux mesurent au moins max/2, donc jamais sous la longueur minimale usuelle. Seuls
+// les points enchaînés à un point cousu sont concernés (un point qui suit un saut n'a pas
+// de segment cousu derrière lui).
+std::vector<StitchCommand> split_long_stitches(const std::vector<StitchCommand>& cmds,
+                                               const document::SequenceFinishing& f) {
+    if (!f.split_long_stitches || f.max_stitch_length.value <= 0) {
+        return cmds;
+    }
+    const double maxLen = static_cast<double>(f.max_stitch_length.value);
+    std::vector<StitchCommand> out;
+    out.reserve(cmds.size());
+    for (std::size_t i = 0; i < cmds.size(); ++i) {
+        const StitchCommand& c = cmds[i];
+        if (c.type == CommandType::Stitch && i > 0 && cmds[i - 1].type == CommandType::Stitch) {
+            const Vec2um from = cmds[i - 1].pos;
+            const double len = length_um(c.pos - from);
+            if (len > maxLen) {
+                const int parts = static_cast<int>(std::ceil(len / maxLen));
+                for (int k = 1; k < parts; ++k) {
+                    const double t = static_cast<double>(k) / parts;
+                    const Vec2um mid{
+                        Micrometers{static_cast<std::int32_t>(std::lround(
+                            from.x.value + static_cast<double>(c.pos.x.value - from.x.value) * t))},
+                        Micrometers{static_cast<std::int32_t>(
+                            std::lround(from.y.value +
+                                        static_cast<double>(c.pos.y.value - from.y.value) * t))}};
+                    out.push_back({mid, CommandType::Stitch, c.source, c.pass});
+                }
+            }
+        }
+        out.push_back(c);
+    }
+    return out;
+}
+
 bool starts_with_lock(const std::vector<StitchCommand>& cmds, const Run& run) {
     return cmds[run.begin].pass == StitchPass::Lock ||
            (run.end - run.begin >= 2 && cmds[run.begin + 1].pass == StitchPass::Lock);
@@ -168,7 +207,8 @@ stitch::StitchSequence finish_sequence(const stitch::StitchSequence& sequence,
     }
     // Points courts d'abord (Lot F) : les verrous ajoutés ensuite ne sont
     // jamais filtrés.
-    const std::vector<StitchCommand> cmds = filter_short_stitches(sequence.commands, project, f);
+    const std::vector<StitchCommand> cmds =
+        split_long_stitches(filter_short_stitches(sequence.commands, project, f), f);
     const std::vector<Run> runs = find_runs(cmds);
 
     stitch::StitchSequence out;

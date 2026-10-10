@@ -8,6 +8,7 @@
 
 #include "openstitch/core/ids.hpp"
 #include "openstitch/core/units.hpp"
+#include "openstitch/document/project.hpp"
 #include "openstitch/stitch/sequence.hpp"
 
 namespace openstitch::stitch_analysis {
@@ -49,6 +50,18 @@ struct AnalysisReport {
 };
 [[nodiscard]] AnalysisReport analyze_detailed(const stitch::StitchSequence& sequence,
                                               const AnalysisOptions& options = {});
+
+// HP-ENG-008 : options d'analyse alignées sur les réglages du projet (longueurs minimale et
+// maximale de point, seuil de coupe), pour que l'analyse juge avec les mêmes limites que
+// celles que la génération applique (`SequenceFinishing`). Projet aux finitions
+// désactivées (ancien .osp) : options par défaut inchangées.
+[[nodiscard]] AnalysisOptions options_from_project(const document::Project& project);
+
+// HP-ENG-008 : avertissements AVANT export portant sur les RÉGLAGES des objets (longueur
+// de point demandée hors des limites du projet), sans générer les points : un objet
+// réglé à 9 mm produira des points trop longs, ce que l'on peut dire d'avance.
+// Catégorie « parametre-hors-limites », objet concerné renseigné, ordre du document.
+[[nodiscard]] std::vector<Finding> check_stitch_limits(const document::Project& project);
 
 // Nombre de millimètres formaté à la française, une décimale, sans dépendre
 // de la locale : 3500 µm -> « 3,5 ». Troncature vers zéro comme avant.
