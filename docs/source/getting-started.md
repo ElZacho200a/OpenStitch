@@ -113,7 +113,7 @@ la vue sur le problème.
 
 ## 10. Exporter en DST
 
-**Fichier → Exporter en DST…** (Ctrl+E) : un résumé (dimensions, points, coupes,
+**Fichier → Exporter une broderie machine…** (Ctrl+E ; DST, PES, JEF ou EXP) : un résumé (dimensions, points, coupes,
 changements de couleur) s'affiche avant l'écriture. Le DST **ne conserve pas**
 les objets éditables : gardez aussi votre projet `.osp` (**Ctrl+S**). Le seuil
 de coupe de fil, la coupe avant changement de couleur et les points d'arrêt se
