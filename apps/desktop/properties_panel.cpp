@@ -887,6 +887,41 @@ void PropertiesPanel::buildEmbroideryForm(const document::EmbroideryObject& obje
                 reseed->setToolTip(tr("Change la graine de l'aspect fait main (variation "
                                       "différente, toujours reproductible)."));
                 reseed->setEnabled(p.handmade);
+                // Dégradé de densité : l'axe dépend de la forme, donc c'est
+                // MainWindow qui le calcule (demande `densityGradientRequested`).
+                auto* gradOn = new QCheckBox(tr("Dégradé de densité"), body_);
+                gradOn->setObjectName(QStringLiteral("check_densityGradient"));
+                gradOn->setChecked(p.density_gradient.has_value());
+                gradOn->setToolTip(
+                    tr("L'écart entre lignes varie le long d'un axe, de « Espacement "
+                       "des lignes » au début à « Écart de fin » à l'autre bout."));
+                const double startMm = to_millimeters(p.row_spacing).value;
+                auto* gradEnd = mmSpin(
+                    p.density_gradient ? to_millimeters(p.density_gradient->spacing_to).value
+                                       : 2.0 * startMm,
+                    4.0, 0.1, tr("Écart entre lignes à la fin de l'axe. Plage : 0,1 – 4 mm."));
+                gradEnd->setObjectName(QStringLiteral("spin_gradientEndSpacing"));
+                auto* gradAngle = new QDoubleSpinBox(body_);
+                gradAngle->setObjectName(QStringLiteral("spin_gradientAngle"));
+                gradAngle->setKeyboardTracking(false);
+                gradAngle->setRange(0.0, 359.9);
+                gradAngle->setDecimals(1);
+                gradAngle->setWrapping(true);
+                gradAngle->setSuffix(tr(" °"));
+                gradAngle->setToolTip(
+                    tr("Direction de l'axe, du côté dense vers le côté clairsemé : "
+                       "0° = vers la droite, 90° = vers le haut."));
+                double axisDeg = 90.0;
+                if (p.density_gradient) {
+                    const auto& g = *p.density_gradient;
+                    axisDeg = std::atan2(static_cast<double>(g.to.y.value - g.from.y.value),
+                                         static_cast<double>(g.to.x.value - g.from.x.value)) *
+                              180.0 / std::numbers::pi;
+                    axisDeg = std::fmod(axisDeg + 360.0, 360.0);
+                }
+                gradAngle->setValue(axisDeg);
+                gradEnd->setEnabled(p.density_gradient.has_value());
+                gradAngle->setEnabled(p.density_gradient.has_value());
                 if (group) {
                     delete summary;
                     delete editGuides;
@@ -911,6 +946,24 @@ void PropertiesPanel::buildEmbroideryForm(const document::EmbroideryObject& obje
                     form->addRow(QString(), editGuides);
                 }
                 form->addRow(tr("Espacement des lignes :"), spacing);
+                form->addRow(QString(), gradOn);
+                form->addRow(tr("Écart de fin :"), gradEnd);
+                form->addRow(tr("Angle du dégradé :"), gradAngle);
+                auto* regular = new QSpinBox(body_);
+                regular->setObjectName(QStringLiteral("spin_spacingRegularity"));
+                regular->setKeyboardTracking(false);
+                regular->setRange(0, 100);
+                regular->setSuffix(tr(" %"));
+                regular->setValue(static_cast<int>(std::lround(p.spacing_regularity * 100.0)));
+                regular->setToolTip(tr("Égalise l'écart entre lignes voisines (utile quand les "
+                                       "directions convergent) en s'autorisant à dévier un peu "
+                                       "de la direction. 0 % = tracé brut ; autour de 50 % : "
+                                       "compromis. Calcul plus long."));
+                form->addRow(tr("Régularité de l'espacement :"), regular);
+                connect(regular, &QSpinBox::valueChanged, this, [edit](int v) {
+                    edit(tr("Régularité de l'espacement"),
+                         [v](T& t) { t.spacing_regularity = v / 100.0; });
+                });
                 form->addRow(tr("Longueur de point :"), len);
                 form->addRow(tr("Influence des bords :"), edge);
                 form->addRow(tr("Retrait de bord :"), inset);
@@ -939,7 +992,31 @@ void PropertiesPanel::buildEmbroideryForm(const document::EmbroideryObject& obje
                 connect(uMode, &QComboBox::currentIndexChanged, this,
                         [syncUnderlay](int) { syncUnderlay(); });
                 bindEnumField<T>(this, edit, uMode, tr("Sous-couche"), &T::underlay_mode);
-                bindMm(spacing, tr("Espacement des lignes"), &T::row_spacing);
+                // Le début du dégradé suit l'espacement de référence.
+                connect(spacing, &QDoubleSpinBox::valueChanged, this, [edit](double v) {
+                    edit(tr("Espacement des lignes"), [v](T& t) {
+                        t.row_spacing = to_um(v);
+                        if (t.density_gradient) {
+                            t.density_gradient->spacing_from = t.row_spacing;
+                        }
+                    });
+                });
+                const auto requestGradient = [this, id, gradOn, gradEnd, gradAngle] {
+                    if (!building_) {
+                        emit densityGradientRequested(id, gradOn->isChecked(), gradAngle->value(),
+                                                      gradEnd->value());
+                    }
+                };
+                connect(gradOn, &QCheckBox::toggled, this,
+                        [gradEnd, gradAngle, requestGradient](bool on) {
+                            gradEnd->setEnabled(on);
+                            gradAngle->setEnabled(on);
+                            requestGradient();
+                        });
+                connect(gradEnd, &QDoubleSpinBox::valueChanged, this,
+                        [requestGradient](double) { requestGradient(); });
+                connect(gradAngle, &QDoubleSpinBox::valueChanged, this,
+                        [requestGradient](double) { requestGradient(); });
                 bindMm(len, tr("Longueur de point"), &T::stitch_length);
                 connect(edge, &QSpinBox::valueChanged, this, [edit](int v) {
                     edit(tr("Influence des bords"), [v](T& t) { t.edge_weight = v / 100.0; });

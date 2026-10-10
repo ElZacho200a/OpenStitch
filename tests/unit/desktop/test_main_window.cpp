@@ -682,6 +682,7 @@ private slots:
 
     // Remplissage directionnel : conversion, outil de guides, undo/redo.
     void convertingTatamiToDirectionalIsUndoable();
+    void densityGradientIsUndoableAndSpansTheShape();
     void inspectorRebuildsAfterUndoOfAParameterEdit();
     void inspectorRebuildsAfterTypeChangeKeepingTheSameId();
     void parameterBurstIsOneNamedUndoStep();
@@ -4353,6 +4354,37 @@ void MainWindowTest::convertingTatamiToDirectionalIsUndoable() {
 
     window.undo();
     QVERIFY(window.project_.findEmbroidery(fx.embroideryId)->is_tatami());
+}
+
+void MainWindowTest::densityGradientIsUndoableAndSpansTheShape() {
+    MainWindow window;
+    const Fixture fx = buildTatamiSquareFixture();
+    window.applyLoadedProject(fx.project);
+    window.selectedEmbroidery_ = fx.embroideryId;
+    window.updateActions();
+    window.convertToDirectional(fx.embroideryId);
+    const auto gradientOf = [&] {
+        const auto* emb = window.project_.findEmbroidery(fx.embroideryId);
+        return std::get<openstitch::document::DirectionalFillParams>(emb->params).density_gradient;
+    };
+    QVERIFY(!gradientOf().has_value());
+
+    window.setDensityGradient(fx.embroideryId, true, 90.0, 1.2);
+    const auto gradient = gradientOf();
+    QVERIFY(gradient.has_value());
+    QCOMPARE(gradient->spacing_from.value, 450); // espacement de référence du tatami converti
+    QCOMPARE(gradient->spacing_to.value, 1'200);
+    QCOMPARE(gradient->from.x.value, gradient->to.x.value); // axe vertical
+    QVERIFY(gradient->from.y.value < gradient->to.y.value);
+    QVERIFY(window.sequence_.has_value()); // la génération a bien tourné
+
+    window.undo();
+    QVERIFY(!gradientOf().has_value());
+    window.redo();
+    QVERIFY(gradientOf().has_value());
+
+    window.setDensityGradient(fx.embroideryId, false, 0.0, 0.0);
+    QVERIFY(!gradientOf().has_value());
 }
 
 void MainWindowTest::autoDirectionGuideConvertsTatamiAndIsUndoable() {

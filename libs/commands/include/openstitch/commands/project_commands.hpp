@@ -393,6 +393,10 @@ private:
                         }
                     }
                 }
+                if (dir->density_gradient) {
+                    dir->density_gradient->from = dir->density_gradient->from + delta;
+                    dir->density_gradient->to = dir->density_gradient->to + delta;
+                }
             }
             // Satin de bordure (HP-STI-004) : ses rails/barreaux suivent le contour.
             if (auto* sat = std::get_if<document::SatinParams>(&emb.params);
@@ -479,6 +483,10 @@ public:
                             scaleNode(node);
                         }
                     }
+                }
+                if (dir->density_gradient) {
+                    dir->density_gradient->from = scalePoint(dir->density_gradient->from);
+                    dir->density_gradient->to = scalePoint(dir->density_gradient->to);
                 }
             }
             if (auto* sat = std::get_if<document::AutoSatinParams>(&emb.params)) {

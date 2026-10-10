@@ -34,6 +34,18 @@ struct AnalysisOptions {
     std::size_t max_stitches{100'000};
     std::optional<stitch::BoundsUm> hoop;      // cadre : hors limites = erreur
     std::size_t max_findings_per_category{50}; // anti-inondation
+    // Épaisseur de fil, en « couches de remplissage dense » (longueur de fil x
+    // largeur du fil / surface ; un remplissage dont l'écart égale la largeur du
+    // fil vaut 1, une sous-couche espacée de 2 mm ~0,2). Au-delà de ce seuil, le
+    // tissu s'épaissit et se déforme (Liu et al., CGF 2023, ne superposent que 2
+    // couches) : 2 remplissages + leurs sous-couches font ~2,4 (bords ~2,6),
+    // trois ~3,6 ; seuil 3,0. 0 = règle désactivée.
+    double max_layer_thickness{3.0};
+    Micrometers thread_width{400}; // largeur du fil retenue pour la mesure (0,4 mm)
+    // Grille de mesure : 2,5 mm. Une zone n'est signalée que si elle contient un
+    // bloc de 2 x 2 cases (5 mm) en excès : ni le bord d'un objet, ni des objets
+    // simplement voisins ne comptent.
+    Micrometers layer_cell{2'500};
 };
 
 // Analyse une séquence et renvoie les problèmes détectés, du plus grave au

@@ -3,6 +3,7 @@ add_library(openstitch_autodigitize
     src/contour_options.cpp
     src/contour_analysis.cpp
     src/contour_objects.cpp
+    src/two_color_blend.cpp
 )
 add_library(openstitch::autodigitize ALIAS openstitch_autodigitize)
 

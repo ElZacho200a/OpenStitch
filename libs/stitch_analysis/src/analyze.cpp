@@ -2,6 +2,8 @@
 #include "openstitch/stitch_analysis/analyze.hpp"
 
 #include <algorithm>
+#include <cmath>
+#include <cstdint>
 #include <map>
 
 namespace openstitch::stitch_analysis {
@@ -10,6 +12,123 @@ namespace {
 
 bool outside(Vec2um p, const stitch::BoundsUm& hoop) {
     return p.x < hoop.min.x || p.x > hoop.max.x || p.y < hoop.min.y || p.y > hoop.max.y;
+}
+
+// --- Couches de fil superposées ---------------------------------------------
+
+// Une zone contiguë de la grille où le fil s'épaissit trop.
+struct LayerHotspot {
+    Vec2um location{};     // centre de la première case (balayage ligne par ligne)
+    ObjectId object{};     // objet dont la couture est la plus longue dans cette case
+    double thickness{0.0}; // épaisseur maximale dans la zone (couches de remplissage dense)
+    std::size_t cells{0};  // nombre de cases de la zone
+};
+
+// Épaisseur de fil, en « couches de remplissage dense » : longueur de fil dans
+// la case x largeur du fil / surface de la case. Un remplissage dont l'écart
+// entre rangées égale la largeur du fil vaut 1 ; une sous-couche espacée de 2 mm
+// vaut ~0,2 ; les bords partiels d'un objet voisin valent peu. Contrairement à
+// un compte de passes, la mesure ne fait pas de la moindre sous-couche une
+// « couche » entière.
+std::vector<LayerHotspot> find_layer_hotspots(const stitch::StitchSequence& sequence,
+                                              double maxThickness, double threadWidth,
+                                              double cell) {
+    using Cell = std::pair<long long, long long>; // (y, x) : tri ligne par ligne
+    // Pour chaque case : longueur de fil par objet.
+    std::map<Cell, std::map<std::uint64_t, double>> grid;
+    const double step = cell / 2.0;
+
+    bool hasPrev = false;
+    Vec2um prev{};
+    for (const auto& cmd : sequence.commands) {
+        if (cmd.type != stitch::CommandType::Stitch) {
+            hasPrev = false; // saut, coupe, changement de fil : le fil est coupé
+            continue;
+        }
+        const bool counts = cmd.pass == stitch::StitchPass::Underlay ||
+                            cmd.pass == stitch::StitchPass::TopStitch ||
+                            cmd.pass == stitch::StitchPass::Manual;
+        if (hasPrev && counts) {
+            const double dx = static_cast<double>(cmd.pos.x.value - prev.x.value);
+            const double dy = static_cast<double>(cmd.pos.y.value - prev.y.value);
+            const double len = std::sqrt(dx * dx + dy * dy);
+            const auto key = static_cast<std::uint64_t>(cmd.source.value);
+            const int n = std::max(1, static_cast<int>(std::ceil(len / step)));
+            for (int i = 0; i < n; ++i) {
+                const double t = (i + 0.5) / n;
+                const double x = prev.x.value + dx * t;
+                const double y = prev.y.value + dy * t;
+                const Cell c{static_cast<long long>(std::floor(y / cell)),
+                             static_cast<long long>(std::floor(x / cell))};
+                grid[c][key] += len / n;
+            }
+        }
+        prev = cmd.pos;
+        hasPrev = true;
+    }
+
+    // Cases en excès.
+    std::map<Cell, double> over;
+    std::map<Cell, ObjectId> mainObject;
+    for (const auto& [c, perObject] : grid) {
+        double total = 0.0;
+        double bestLen = 0.0;
+        std::uint64_t bestKey = 0;
+        for (const auto& [key, len] : perObject) {
+            total += len;
+            if (len > bestLen) {
+                bestLen = len;
+                bestKey = key;
+            }
+        }
+        const double thickness = total * threadWidth / (cell * cell);
+        if (thickness > maxThickness) {
+            over[c] = thickness;
+            mainObject[c] = ObjectId{bestKey};
+        }
+    }
+
+    // Composantes 4-connexes, parcourues dans l'ordre de la grille (déterministe).
+    std::vector<LayerHotspot> out;
+    std::map<Cell, bool> seen;
+    for (const auto& [start, startCount] : over) {
+        if (seen[start]) {
+            continue;
+        }
+        LayerHotspot hot;
+        hot.location =
+            Vec2um{Micrometers{static_cast<std::int32_t>(std::lround((start.second + 0.5) * cell))},
+                   Micrometers{static_cast<std::int32_t>(std::lround((start.first + 0.5) * cell))}};
+        hot.object = mainObject[start];
+        std::vector<Cell> stack{start};
+        seen[start] = true;
+        std::vector<Cell> members;
+        while (!stack.empty()) {
+            const Cell c = stack.back();
+            stack.pop_back();
+            ++hot.cells;
+            members.push_back(c);
+            hot.thickness = std::max(hot.thickness, over[c]);
+            for (const Cell nb : {Cell{c.first + 1, c.second}, Cell{c.first - 1, c.second},
+                                  Cell{c.first, c.second + 1}, Cell{c.first, c.second - 1}}) {
+                if (over.count(nb) != 0 && !seen[nb]) {
+                    seen[nb] = true;
+                    stack.push_back(nb);
+                }
+            }
+        }
+        // Un vrai recouvrement contient au moins un bloc de 2 x 2 cases en excès :
+        // un anneau d'une case (bord d'un objet, connexions de rangées) n'en est pas un.
+        const bool solid = std::any_of(members.begin(), members.end(), [&](const Cell& c) {
+            return over.count({c.first + 1, c.second}) != 0 &&
+                   over.count({c.first, c.second + 1}) != 0 &&
+                   over.count({c.first + 1, c.second + 1}) != 0;
+        });
+        if (solid) {
+            out.push_back(hot);
+        }
+    }
+    return out;
 }
 
 } // namespace
@@ -146,6 +265,22 @@ AnalysisReport analyze_detailed(const stitch::StitchSequence& sequence,
             "Le motif compte " + std::to_string(stats.stitches) +
                 " points : temps de broderie très long.",
             {}, {}, "Augmentez l'espacement ou réduisez la taille du motif.");
+    }
+
+    if (options.max_layer_thickness > 0.0) {
+        const double cell = static_cast<double>(std::max(500, options.layer_cell.value));
+        const double width = static_cast<double>(std::max(50, options.thread_width.value));
+        for (const auto& hot :
+             find_layer_hotspots(sequence, options.max_layer_thickness, width, cell)) {
+            const double areaMm2 = static_cast<double>(hot.cells) * cell * cell / 1e6;
+            add(Severity::Warning, "couches-superposees",
+                "Le fil s'épaissit jusqu'à " + format_mm_fr(hot.thickness * 1000.0) +
+                    " couches de remplissage dense sur environ " +
+                    std::to_string(std::lround(areaMm2)) + " mm² : le tissu se déforme.",
+                hot.location, hot.object,
+                "Réduisez le chevauchement des objets, retirez une sous-couche ou supprimez "
+                "le remplissage caché sous un autre objet.");
+        }
     }
 
     // Tri par gravité décroissante (stable pour rester déterministe).

@@ -19,6 +19,7 @@
 #include <algorithm>
 #include <cmath>
 #include <iterator>
+#include <numbers>
 
 #include "app_theme.hpp"
 #include "main_window.hpp"
@@ -100,6 +101,34 @@ void MainWindow::convertToDirectional(ObjectId embroideryId) {
     statusBar()->showMessage(
         tr("Remplissage directionnel — « Guides de direction » (D) pour tracer des courbes "
            "guides et des lignes de rupture."));
+}
+
+void MainWindow::setDensityGradient(ObjectId embroideryId, bool enabled, double angleDeg,
+                                    double endSpacingMm) {
+    const auto* emb = project_.findEmbroidery(embroideryId);
+    const auto* params =
+        emb != nullptr ? std::get_if<document::DirectionalFillParams>(&emb->params) : nullptr;
+    const auto* source = emb != nullptr ? project_.findObject(emb->source_vector) : nullptr;
+    if (params == nullptr || source == nullptr) {
+        return;
+    }
+    auto next = *params;
+    if (enabled) {
+        const auto gradient = stitch_generation::density_gradient_across(
+            source->paths, Angle{angleDeg * std::numbers::pi / 180.0}, next.row_spacing,
+            to_micrometers(Millimeters{endSpacingMm}));
+        if (!gradient) {
+            statusBar()->showMessage(tr("Dégradé impossible : la forme n'a pas d'étendue."));
+            return;
+        }
+        next.density_gradient = gradient;
+    } else {
+        next.density_gradient.reset();
+    }
+    if (next == *params) {
+        return;
+    }
+    applyDirectionalEdit(embroideryId, std::move(next), tr("Dégradé de densité"));
 }
 
 void MainWindow::buildDirectionalActions(QMenu* embMenu) {

@@ -86,6 +86,29 @@ Result<Image> apply_median_denoise(const Image& in, const MedianDenoiseOp& op) {
     return image_from_mat_rgba(dst, in.source_had_alpha);
 }
 
+Result<Image> apply_bilateral_denoise(const Image& in, const BilateralDenoiseOp& op) {
+    if (op.strength < 1 || op.strength > 3) {
+        return fail(ErrorCategory::UserInput, "Force du lissage bilatéral invalide (1 à 3)");
+    }
+    const int diameter = 3 + 2 * op.strength; // 5, 7, 9
+    const double sigmaColor = 20.0 * op.strength;
+    const double sigmaSpace = static_cast<double>(diameter);
+    // cv::bilateralFilter n'accepte que 1 ou 3 canaux 8 bits : on filtre le
+    // RGB et on recolle l'alpha d'origine, intact.
+    const cv::Mat src = mat_view_rgba(in);
+    std::vector<cv::Mat> planes;
+    cv::split(src, planes);
+    cv::Mat rgb;
+    cv::merge(std::vector<cv::Mat>{planes[0], planes[1], planes[2]}, rgb);
+    cv::Mat filtered;
+    cv::bilateralFilter(rgb, filtered, diameter, sigmaColor, sigmaSpace);
+    std::vector<cv::Mat> out;
+    cv::split(filtered, out);
+    cv::Mat dst;
+    cv::merge(std::vector<cv::Mat>{out[0], out[1], out[2], planes[3]}, dst);
+    return image_from_mat_rgba(dst, in.source_had_alpha);
+}
+
 // Quantification simple par k-means sur un échantillon de pixels (RGB, alpha
 // conservé tel quel). Version de base : la segmentation perceptuelle (CIELAB,
 // régions connexes) est l'objet de la Phase 4.
@@ -160,6 +183,8 @@ std::string op_name(const ImageOp& op) {
                 return "Débruitage";
             if constexpr (std::is_same_v<T, QuantizeOp>)
                 return "Quantification";
+            if constexpr (std::is_same_v<T, BilateralDenoiseOp>)
+                return "Lissage bilatéral";
         },
         op);
 }
@@ -185,6 +210,8 @@ Result<Image> apply_op(const Image& input, const ImageOp& op) {
                 return apply_median_denoise(input, o);
             if constexpr (std::is_same_v<T, QuantizeOp>)
                 return apply_quantize(input, o);
+            if constexpr (std::is_same_v<T, BilateralDenoiseOp>)
+                return apply_bilateral_denoise(input, o);
         },
         op);
 }

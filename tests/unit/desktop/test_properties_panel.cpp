@@ -67,6 +67,8 @@ private slots:
     void switchingToInfoRemovesThePreviousFormControls();
     void tatamiOffersConversionToDirectionalFill();
     void directionalEditKeepsGuidesAndSeed();
+    void directionalGradientControlsRequestMainWindow();
+    void directionalSpacingRegularityIsEditable();
     void autoSatinInspectorListsGuidesAndEditsScalars();
     void autoSatinGuideAngleEditAndRemoveEmitDedicatedSignals();
     void autoSatinStateRefreshUpdatesListWithoutRebuildingTheForm();
@@ -196,6 +198,79 @@ void PropertiesPanelTest::directionalEditKeepsGuidesAndSeed() {
     const auto& reseeded = std::get<openstitch::document::DirectionalFillParams>(*emitted);
     QVERIFY(reseeded.seed != 77U);
     QVERIFY(reseeded.handmade);
+}
+
+void PropertiesPanelTest::directionalGradientControlsRequestMainWindow() {
+    PropertiesPanel panel;
+    EmbroideryObject e;
+    e.id = openstitch::ObjectId{13};
+    e.params = openstitch::document::DirectionalFillParams{}; // row_spacing 0,4 mm
+    panel.showEmbroidery(e);
+
+    auto* on = panel.findChild<QCheckBox*>(QStringLiteral("check_densityGradient"));
+    auto* end = panel.findChild<QDoubleSpinBox*>(QStringLiteral("spin_gradientEndSpacing"));
+    auto* angle = panel.findChild<QDoubleSpinBox*>(QStringLiteral("spin_gradientAngle"));
+    QVERIFY(on != nullptr && end != nullptr && angle != nullptr);
+    QVERIFY(!on->isChecked());
+    QVERIFY(!end->isEnabled());
+    QVERIFY(!angle->isEnabled());
+
+    int requests = 0;
+    std::optional<std::tuple<std::uint64_t, bool, double, double>> last;
+    int edits = 0;
+    QObject::connect(&panel, &PropertiesPanel::densityGradientRequested, &panel,
+                     [&](openstitch::ObjectId id, bool enabled, double deg, double mm) {
+                         ++requests;
+                         last = std::tuple{id.value, enabled, deg, mm};
+                     });
+    QObject::connect(&panel, &PropertiesPanel::paramsEdited, &panel,
+                     [&](openstitch::ObjectId, StitchParams) { ++edits; });
+
+    on->setChecked(true);
+    QVERIFY(end->isEnabled());
+    QVERIFY(angle->isEnabled());
+    QCOMPARE(requests, 1);
+    QVERIFY(last.has_value());
+    QCOMPARE(std::get<0>(*last), std::uint64_t{13});
+    QVERIFY(std::get<1>(*last));
+    QCOMPARE(std::get<2>(*last), 90.0); // axe vertical par défaut
+    QCOMPARE(std::get<3>(*last), 0.8);  // 2 x l'espacement de référence
+
+    end->setValue(1.5);
+    QCOMPARE(requests, 2);
+    QCOMPARE(std::get<3>(*last), 1.5);
+    angle->setValue(0.0);
+    QCOMPARE(requests, 3);
+    QCOMPARE(std::get<2>(*last), 0.0);
+    QCOMPARE(edits, 0); // le dégradé passe par MainWindow, jamais par un edit direct
+
+    on->setChecked(false);
+    QCOMPARE(requests, 4);
+    QVERIFY(!std::get<1>(*last));
+}
+
+void PropertiesPanelTest::directionalSpacingRegularityIsEditable() {
+    PropertiesPanel panel;
+    EmbroideryObject e;
+    e.id = openstitch::ObjectId{14};
+    openstitch::document::DirectionalFillParams dp;
+    dp.seed = 5;
+    dp.spacing_regularity = 0.25;
+    e.params = dp;
+    panel.showEmbroidery(e);
+
+    auto* spin = panel.findChild<QSpinBox*>(QStringLiteral("spin_spacingRegularity"));
+    QVERIFY(spin != nullptr);
+    QCOMPARE(spin->value(), 25); // valeur du modèle reflétée
+
+    std::optional<StitchParams> emitted;
+    QObject::connect(&panel, &PropertiesPanel::paramsEdited, &panel,
+                     [&](openstitch::ObjectId, StitchParams params) { emitted = params; });
+    spin->setValue(60);
+    QVERIFY(emitted.has_value());
+    const auto& out = std::get<openstitch::document::DirectionalFillParams>(*emitted);
+    QCOMPARE(out.spacing_regularity, 0.6);
+    QCOMPARE(out.seed, 5U); // les autres champs sont conservés
 }
 
 void PropertiesPanelTest::autoSatinInspectorListsGuidesAndEditsScalars() {

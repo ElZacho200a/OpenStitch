@@ -3,6 +3,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <limits>
 #include <numbers>
 
 namespace openstitch::thread_palette {
@@ -185,6 +186,69 @@ std::vector<ThreadMatch> nearest_threads(std::array<std::uint8_t, 3> rgb, const 
         matches.resize(top_n);
     }
     return matches;
+}
+
+namespace {
+
+// Luminance relative WCAG 2.x d'une couleur sRGB, dans [0 ; 1].
+double relative_luminance(std::array<std::uint8_t, 3> srgb) {
+    return 0.2126 * srgb_to_linear(static_cast<double>(srgb[0]) / 255.0) +
+           0.7152 * srgb_to_linear(static_cast<double>(srgb[1]) / 255.0) +
+           0.0722 * srgb_to_linear(static_cast<double>(srgb[2]) / 255.0);
+}
+
+double contrast_from_luminances(double l1, double l2) {
+    return (std::max(l1, l2) + 0.05) / (std::min(l1, l2) + 0.05);
+}
+
+} // namespace
+
+double wcag_contrast(std::array<std::uint8_t, 3> a, std::array<std::uint8_t, 3> b) noexcept {
+    return contrast_from_luminances(relative_luminance(a), relative_luminance(b));
+}
+
+std::optional<ThreadPairMatch> best_thread_pair(std::array<std::uint8_t, 3> first_target,
+                                                std::array<std::uint8_t, 3> second_target,
+                                                const ThreadChart& chart, double contrast_weight) {
+    const std::size_t n = chart.threads.size();
+    if (n == 0) {
+        return std::nullopt;
+    }
+    const CieLab lab1 = to_cielab(first_target);
+    const CieLab lab2 = to_cielab(second_target);
+    std::vector<double> d1(n);
+    std::vector<double> d2(n);
+    std::vector<double> lum(n);
+    for (std::size_t i = 0; i < n; ++i) {
+        const CieLab t = to_cielab(chart.threads[i].rgb);
+        d1[i] = ciede2000(lab1, t);
+        d2[i] = ciede2000(lab2, t);
+        lum[i] = relative_luminance(chart.threads[i].rgb);
+    }
+    const double wanted = wcag_contrast(first_target, second_target);
+
+    std::size_t bestI = 0;
+    std::size_t bestJ = 0;
+    double bestCost = std::numeric_limits<double>::infinity();
+    double bestContrast = 1.0;
+    for (std::size_t i = 0; i < n; ++i) {
+        for (std::size_t j = 0; j < n; ++j) {
+            const double c = contrast_from_luminances(lum[i], lum[j]);
+            const double cost = d1[i] + d2[j] + contrast_weight * std::max(wanted - c, 0.0);
+            if (cost < bestCost) { // strict : le premier en ordre de déclaration gagne
+                bestCost = cost;
+                bestI = i;
+                bestJ = j;
+                bestContrast = c;
+            }
+        }
+    }
+    return ThreadPairMatch{.first = chart.threads[bestI].key,
+                           .second = chart.threads[bestJ].key,
+                           .cost = bestCost,
+                           .distance_first = d1[bestI],
+                           .distance_second = d2[bestJ],
+                           .contrast = bestContrast};
 }
 
 } // namespace openstitch::thread_palette
