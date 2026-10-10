@@ -172,3 +172,116 @@ TEST_CASE("plafond par categorie : le nombre masque est rapporte") {
     REQUIRE(r.suppressed.count("point-long") == 1);
     CHECK(r.suppressed.at("point-long") == 14);
 }
+
+namespace {
+
+// Remplit le rectangle [x0 ; x1] x [y0 ; y1] (µm) de rangées en aller-retour
+// espacées de `spacing`, pour l'objet `id` et la passe `pass`, puis lève
+// l'aiguille (saut) pour que deux blocs ne se rejoignent pas.
+void add_block(stitch::StitchSequence& seq, std::uint64_t id, stitch::StitchPass pass,
+               std::int32_t x0, std::int32_t y0, std::int32_t x1, std::int32_t y1,
+               std::int32_t spacing) {
+    bool forward = true;
+    for (std::int32_t y = y0; y <= y1; y += spacing) {
+        const std::int32_t from = forward ? x0 : x1;
+        const std::int32_t to = forward ? x1 : x0;
+        seq.commands.push_back({um(from, y), CommandType::Stitch, ObjectId{id}, pass});
+        seq.commands.push_back({um(to, y), CommandType::Stitch, ObjectId{id}, pass});
+        forward = !forward;
+    }
+    seq.commands.push_back({um(x0, y0), CommandType::Jump, ObjectId{id}, pass});
+}
+
+// Un objet « normal » : sous-couche espacée de 2 mm + dessus à 0,4 mm.
+void add_object(stitch::StitchSequence& seq, std::uint64_t id, std::int32_t x0, std::int32_t y0,
+                std::int32_t x1, std::int32_t y1) {
+    add_block(seq, id, stitch::StitchPass::Underlay, x0, y0, x1, y1, 2'000);
+    add_block(seq, id, stitch::StitchPass::TopStitch, x0, y0, x1, y1, 400);
+}
+
+} // namespace
+
+TEST_CASE("couches : un objet seul (sous-couche + dessus) n'est pas signale") {
+    stitch::StitchSequence seq;
+    add_object(seq, 1, 0, 0, 20'000, 20'000);
+    CHECK_FALSE(has_category(analyze(seq), "couches-superposees"));
+}
+
+TEST_CASE("couches : deux objets superposes restent sous le seuil par defaut") {
+    // 2 remplissages denses + leurs sous-couches ~ 2,4 couches équivalentes < 3.
+    stitch::StitchSequence seq;
+    add_object(seq, 1, 0, 0, 20'000, 20'000);
+    add_object(seq, 2, 5'000, 5'000, 25'000, 25'000);
+    CHECK_FALSE(has_category(analyze(seq), "couches-superposees"));
+}
+
+TEST_CASE("couches : trois objets superposes sont signales une fois") {
+    stitch::StitchSequence seq;
+    add_object(seq, 1, 0, 0, 20'000, 20'000);
+    add_object(seq, 2, 5'000, 5'000, 25'000, 25'000);
+    add_object(seq, 3, 5'000, 5'000, 20'000, 20'000); // 3 couches sur 15 x 15 mm
+    const auto f = analyze(seq);
+    REQUIRE(count_category(f, "couches-superposees") == 1);
+    const auto hit = std::find_if(
+        f.begin(), f.end(), [](const Finding& x) { return x.category == "couches-superposees"; });
+    CHECK(hit->severity == Severity::Warning);
+    CHECK(hit->message.find("couches de remplissage dense") != std::string::npos);
+    // Le point signalé est dans la zone de recouvrement.
+    CHECK(hit->location.x.value >= 5'000);
+    CHECK(hit->location.x.value <= 20'000);
+    CHECK(hit->location.y.value >= 5'000);
+    CHECK(hit->location.y.value <= 20'000);
+    CHECK((hit->object == ObjectId{1} || hit->object == ObjectId{2} || hit->object == ObjectId{3}));
+}
+
+TEST_CASE("couches : deux objets voisins ou a peine empietants ne sont pas signales") {
+    // Mesuré au développement : un recouvrement de 1 mm entre deux remplissages
+    // (pratique courante contre les interstices) ne doit pas déclencher la règle.
+    for (const std::int32_t overlap : {-300, 0, 1'000}) {
+        stitch::StitchSequence seq;
+        add_object(seq, 1, 0, 0, 10'000, 20'000);
+        add_object(seq, 2, 10'000 - overlap, 0, 20'000 - overlap, 20'000);
+        INFO("recouvrement " << overlap << " um");
+        CHECK_FALSE(has_category(analyze(seq), "couches-superposees"));
+    }
+}
+
+TEST_CASE("couches : le seuil est reglable et la regle desactivable") {
+    stitch::StitchSequence seq;
+    add_object(seq, 1, 0, 0, 20'000, 20'000);
+    add_object(seq, 2, 0, 0, 20'000, 20'000);
+    CHECK_FALSE(has_category(analyze(seq), "couches-superposees")); // ~2,4 < 3
+    AnalysisOptions strict;
+    strict.max_layer_thickness = 2.0;
+    CHECK(has_category(analyze(seq, strict), "couches-superposees"));
+
+    add_object(seq, 3, 0, 0, 20'000, 20'000);
+    CHECK(has_category(analyze(seq), "couches-superposees"));
+    AnalysisOptions off;
+    off.max_layer_thickness = 0.0;
+    CHECK_FALSE(has_category(analyze(seq, off), "couches-superposees"));
+}
+
+TEST_CASE("couches : les points d'arret et les deplacements ne comptent pas") {
+    stitch::StitchSequence seq;
+    add_object(seq, 1, 0, 0, 20'000, 20'000);
+    add_block(seq, 2, stitch::StitchPass::Lock, 0, 0, 20'000, 20'000, 400);
+    add_block(seq, 3, stitch::StitchPass::Travel, 0, 0, 20'000, 20'000, 400);
+    add_block(seq, 4, stitch::StitchPass::Lock, 0, 0, 20'000, 20'000, 400);
+    CHECK_FALSE(has_category(analyze(seq), "couches-superposees"));
+}
+
+TEST_CASE("couches : meme sequence, meme resultat") {
+    stitch::StitchSequence seq;
+    add_object(seq, 1, 0, 0, 20'000, 20'000);
+    add_object(seq, 2, 5'000, 5'000, 25'000, 25'000);
+    add_object(seq, 3, 5'000, 5'000, 20'000, 20'000);
+    const auto a = analyze(seq);
+    const auto b = analyze(seq);
+    REQUIRE(a.size() == b.size());
+    for (std::size_t i = 0; i < a.size(); ++i) {
+        CHECK(a[i].category == b[i].category);
+        CHECK(a[i].message == b[i].message);
+        CHECK(a[i].location == b[i].location);
+    }
+}

@@ -219,6 +219,33 @@ Intensité `I` = `handmade_intensity` / 100 (0 si `handmade` est faux ; à
   `std::uniform_*_distribution`, dont la sortie dépend de la bibliothèque
   standard : même projet, même résultat sur toute plateforme.
 
+## Alternatives écartées
+
+**Graines par divergence** (sources et puits d'après la divergence de ρ·v,
+arbre k-d, affectation puits ↔ ligne ; Liu et al., CGF 2023, §3.1–3.3). Elle
+garantit le nombre de lignes de courant d'un champ de densité variable. Mesure
+faite avant de la retenir : sur un dégradé de 20 mm (écart de 0,4 mm à 0,8,
+1,6 ou 3 mm), le tracé Jobard & Lefer actuel donne **35, 22 et 15 lignes pour
+34,7, 23,1 et 15,5 attendues** (intégrale de 1/s), soit moins de 5 % d'écart,
+avec ou sans régularisation (test de non-régression
+`directional density gradient keeps the row count at the integral of the
+density`). Elle exigerait en plus un champ **orienté** (vecteurs, alors que le
+champ est défini modulo 180°) et un solveur d'affectation. Coût et risque sans
+gain mesurable : non implémentée. À reconsidérer si un cas de lignes qui
+naissent ou meurent mal apparaît (champs très divergents).
+
+**Parcours par arbre couvrant + profondeur d'abord** (même article, §3.5 :
+arbre couvrant minimal sur les arêtes de Delaunay entre lignes, parcours qui
+double chaque arête de l'arbre, d'où un fil continu sans saut). Mesure faite
+avant de la retenir : sur des formes à branches (U, T, L, lignes horizontales
+ou verticales) le parcours actuel — Warnsdorff plus liaisons cousues, trajet
+caché le long du contour rentré — laisse **0 à 2 sauts, 10 à 22 mm au total**
+(test `directional routing leaves at most two jumps on branching shapes`).
+L'arbre ne supprimerait ces sauts qu'en recousant la même distance en retour
+sur une zone déjà cousue (surépaisseur, fil visible en haute densité) : c'est
+déjà ce que fait le trajet caché quand il est possible, avec un plafond de
+8 mm voulu. Pas de gain mesurable : non implémenté.
+
 ## Fondu de couleurs à deux fils
 
 Idée de Liu et al. (*Directionality-Aware Design of Embroidery Patterns*,
