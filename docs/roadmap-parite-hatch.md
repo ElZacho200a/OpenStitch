@@ -36,14 +36,14 @@ Audit du 2026-10-06 : chaque entrée a été confrontée au code de `main` (`40b
 
 | Priorité | ☑ Fait | ◐ Partiel | ☐ À faire | Total |
 |---|---|---|---|---|
-| P0 | 6 | 10 | 28 | 44 |
-| P1 | 0 | 30 | 91 | 121 |
+| P0 | 7 | 12 | 25 | 44 |
+| P1 | 0 | 31 | 90 | 121 |
 | P2 | 0 | 9 | 70 | 79 |
 | P3 | 0 | 0 | 12 | 12 |
-| **Total** | **6** | **49** | **201** | **256** |
+| **Total** | **7** | **52** | **197** | **256** |
 
-**Fait (6)** : FILE-001/002/003/004 (nouveau projet, enregistrer, récents, autosave),
-THR-001/003 (bibliothèque de fils, fil le plus proche).
+**Fait (7)** : FILE-001/002/003/004 (nouveau projet, enregistrer, récents, autosave),
+THR-001/003/004 (bibliothèque de fils, fil le plus proche, fil assigné à chaque objet).
 
 **En PR, non fusionné** : HP-FMT-001 (PR #5, couche de normalisation machine) ; plan de code
 S3 sélection/presse-papiers (PR #3, documentation seulement, **aucun code**).
@@ -52,7 +52,7 @@ S3 sélection/presse-papiers (PR #3, documentation seulement, **aucun code**).
 AUTO-001/002/005/008/009, VEC-002, STI-004 (brique), sans en clore aucune.
 
 **P0 encore ouverts, par thème** (38 entrées ; détail dans les sections) :
-formats machine (FMT-001…005) · fils (THR-002/004/005) · lettrage (TXT-001/003/004) ·
+formats machine (FMT-001…005) · fils (THR-002/005) · lettrage (TXT-001/003/004) ·
 moteur (STI-004, ENG-001/002/008/010) · auto-numérisation (AUTO-001/003/009) ·
 manipulation d'objets (VEC-002, OBJ-001/002/003/004/006/014/016/018, SEQ-003) ·
 visualisation et production (VIEW-001, PROD-001) · transverse (UX-006, PERF-001/002,
@@ -457,6 +457,12 @@ des nuanciers de fabricants : c'est ce que l'utilisateur achète en magasin.
   explicitement et cite l'URL à consulter. Passer cette entrée à `☑ Fait`
   seulement une fois les vraies cartes de couleurs transcrites depuis les
   sites officiels Madeira et Isacord.
+- 2026-10-10 : **nuancier Générique** libre de droits (28 couleurs usuelles, aucune donnée
+  de fabricant) et **import utilisateur CSV/JSON** (`project_io::read_thread_chart_file`,
+  format dans `docs/source/palettes-and-threads.md`) : les cartes de marques réelles ne sont
+  pas redistribuées, l'utilisateur charge les siennes ; les deux nuanciers placeholder sont
+  signalés « données de démonstration fictives » dans l'interface. L'entrée reste ◐ tant
+  que les cartes officielles ne sont pas transcrites.
 - Reste (hors entrée) : transcription réelle des deux nuanciers (ci-dessus) ;
   les autres nuanciers de la liste Hatch (Robison-Anton, Sulky, Gunold,
   Marathon, Floriani, Coats, Brother, Janome, Pantone approximé) restent à
@@ -481,13 +487,24 @@ des nuanciers de fabricants : c'est ce que l'utilisateur achète en magasin.
   distance croissante, égalités départagées par l'ordre de déclaration du
   nuancier, déterministe (testé par appels répétés). Filtre par gamme
   possédée explicitement hors périmètre (HP-THR-007, P1).
-- Reste (hors entrée) : pas de filtre par gamme possédée (HP-THR-007) ; pas
-  d'utilisation par un objet du document (HP-THR-004).
+- Reste (hors entrée) : pas de filtre par gamme possédée (HP-THR-007). Depuis
+  2026-10-10 la recherche est branchée à l'interface (`ThreadLibrary::nearest` : panneau
+  Fils ▸ Catalogues « Fils les plus proches de la sélection » et « Couleurs libres → fil
+  le plus proche », un pas d'annulation).
 
-### HP-THR-004 — Fil assigné à chaque objet + remplacer une couleur partout [P0] — ☐ À faire
-- État OpenStitch : `EmbroideryObject::rgb` seul ; pas de sélecteur de couleur
+### HP-THR-004 — Fil assigné à chaque objet + remplacer une couleur partout [P0] — ☑ Fait (2026-10-10)
+- Livré : `EmbroideryObject::thread` (`std::optional<ThreadKey>`, `rgb` reste la source de
+  rendu) ; `commands::SetObjectThreadCommand` (un ou plusieurs objets, un seul pas
+  d'annulation, états précédents restitués exactement) ; « remplacer ce fil par… » sur
+  tout le motif (panneau Fils ▸ Projet) ; `.osp` schéma **v6** (champ `thread`, absent =
+  couleur libre, migration testée depuis un v5) ; `ColorBlock::thread_key` renseigné ;
+  API Qt-free `stitch_analysis::thread_usage` / `objects_using_thread`. Tests :
+  `test_thread_commands.cpp`, `test_thread_persistence.cpp`, `test_thread_usage.cpp`,
+  `test_thread_panel.cpp`. Le sélecteur est le panneau **Fils** (clic sur un fil du
+  catalogue = assigner à la sélection multiple), pas la pastille de l'inspecteur
+  (HP-OBJ-018).
+- État avant : `EmbroideryObject::rgb` seul ; pas de sélecteur de couleur
   d'objet de broderie dans l'inspecteur (seulement la recoloration de région).
-  Démarrable : sa dépendance HP-THR-001 est ☑ (2026-10-05).
 - À faire : `EmbroideryObject` porte une référence de fil optionnelle
   (`ThreadRef`) en plus du RGB d'affichage ; commande `SetObjectThreadCommand`
   (un ou plusieurs objets) ; « remplacer ce fil par… » sur tout le design ;
@@ -496,7 +513,18 @@ des nuanciers de fabricants : c'est ce que l'utilisateur achète en magasin.
   `apps/desktop/properties_panel`.
 - Dépend de : HP-THR-001 ; skill `openstitch-stitch-param` pour le champ persistant.
 
-### HP-THR-005 — Film couleur / barre des couleurs du design [P0] — ☐ À faire
+### HP-THR-005 — Film couleur / barre des couleurs du design [P0] — ◐ Partiel (2026-10-10)
+- Livré : onglets *Projet* (fils utilisés, ordre de première couture, pastille, marque,
+  référence, objets, points, longueur, durée estimée) et *Film couleur* (blocs dans
+  l'ordre de couture) du panneau **Fils** (`apps/desktop/thread_panel.*`) ; sélection
+  des objets d'un fil ou d'un bloc ; réordonnancement par glisser ou Monter/Descendre
+  (`stitch_analysis::reorder_film_blocks` + `ReorderEmbroideryCommand`, un pas
+  d'annulation, objets figés immobiles) ; fusion des blocs de même fil
+  (`merge_same_thread_blocks`). Tests : `test_thread_usage.cpp`, `test_thread_panel.cpp`.
+- Reste : **masquage d'un fil** depuis le film (un objet masqué sort de la séquence donc
+  du film : il faut une vue qui garde les fils masqués) ; vignettes de motif par bloc ;
+  barre de couleurs compacte sur le canevas ; le réordonnancement vit dans
+  `stitch_analysis` et non dans `libs/optimization`.
 - Hatch : barre « Palette de couleurs » (fils du design) + « Color film »
   (liste des blocs de couleur dans l'ordre de couture, vignettes, glisser pour
   réordonner, clic pour sélectionner les objets de cette couleur).
@@ -542,8 +570,15 @@ des nuanciers de fabricants : c'est ce que l'utilisateur achète en magasin.
 - Modules : `libs/document`, `libs/formats`.
 - Dépend de : HP-HOOP-002.
 
-### HP-THR-011 — Réduire / fusionner les couleurs d'un design [P1] — ☐ À faire
-- État OpenStitch : la quantification existe au niveau **image** seulement.
+### HP-THR-011 — Réduire / fusionner les couleurs d'un design [P1] — ◐ Partiel (2026-10-10)
+- Livré : `thread_palette::reduce_colors` (fusion agglomérative CIEDE2000, la plus lourde
+  garde sa teinte, déterministe) ; bouton **Limiter à N fils** du panneau Fils (un seul
+  pas d'annulation, sans aperçu préalable) ; option « Limiter à N fils » de la
+  numérisation automatique (`AutoOptions::max_threads`). Tests : `test_library.cpp`,
+  `test_thread_limit.cpp`, `test_thread_panel.cpp`.
+- Reste : aperçu avant application ; fusion manuelle de deux fils choisis (le
+  « Remplacer ce fil par… » de HP-THR-004 couvre le cas du fil du catalogue).
+- État avant : la quantification existait au niveau **image** seulement.
 - À faire : au niveau objets : fusionner deux fils, « réduire à N couleurs »
   (regroupement CIELAB des fils des objets), avec aperçu et une seule commande
   annulable.
@@ -1382,7 +1417,13 @@ tout utilisateur de Hatch fait Ctrl+C/Ctrl+V, sélection rectangle, rotation.
 ### HP-OBJ-017 — Renommer les objets [P2] — ☐ À faire
 - À faire : F2 / double-clic dans la liste.
 
-### HP-OBJ-018 — Changer la couleur d'un objet de broderie [P0] — ☐ À faire
+### HP-OBJ-018 — Changer la couleur d'un objet de broderie [P0] — ◐ Partiel (2026-10-10)
+- Livré : la version « fil » (clic sur un fil du panneau Fils = assigner à la sélection
+  multiple, un pas d'annulation) et `SetObjectThreadCommand` avec fil vide = couleur
+  libre.
+- Reste : la pastille et le sélecteur **dans l'inspecteur** (nuancier + RGB libre
+  via `QColorDialog`) ; aucune entrée d'interface n'appelle encore la commande avec un
+  RGB libre.
 - État OpenStitch : pas de sélecteur de couleur dans l'inspecteur pour un
   objet de broderie (seule la recoloration de région existe).
 - À faire : pastille dans l'inspecteur → sélecteur (nuancier + RGB libre),
@@ -2240,3 +2281,4 @@ ci-dessus doit les respecter :
 | 2026-10-05 | Claude (session multi-agents) | Mode **Contours / Line Art** fusionné (PR #4) : `libs/autodigitize/contour_*`, CLI `digitize --mode contours`, dialogue desktop avec curseur de détail. |
 | 2026-10-06 | Claude (revue d'ensemble) | **Audit complet des 256 entrées contre `main`.** Statuts : AUTO-005, VEC-002, VEC-009, OBJ-003, SEQ-001, ENG-002 ☐ → ◐. « État OpenStitch » corrigé : FMT-001 (PR #5), FMT-014, FMT-021, THR-004, AUTO-001/002/006/008/009/012, STI-001, STI-004, ENG-010/014/015, QA-001/002, DIST-001 et introductions des sections 19 et 24. Ajout du tableau de bord et de la règle « ☑ = sur `main` ». |
 | 2026-10-06 | Claude (audit UI) | Audit du câblage et de l'ergonomie Qt : `docs/ui-audit-2026-10.md` (constats, tests d'invariants `test_ui_invariants`, plan multi-agents par lots). Aucun statut HP-UX modifié ; HP-UX-006/009/010/013/015 sont confirmés ouverts. |
+| 2026-10-10 | Claude (palettes de fils) | Fils branchés au document et à l'interface : HP-THR-004 ☑ (`EmbroideryObject::thread`, `SetObjectThreadCommand`, `.osp` v6), HP-THR-005 ◐ et HP-OBJ-018 ◐ (panneau **Fils** : projet, catalogues, film couleur), HP-THR-011 ◐ (« Limiter à N fils »), HP-THR-002 reste ◐ (nuancier Générique libre + import CSV/JSON, aucune carte de marque redistribuée). API Qt-free `stitch_analysis::thread_usage` pour la fiche de production. |

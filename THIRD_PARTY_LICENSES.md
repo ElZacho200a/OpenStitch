@@ -37,6 +37,12 @@ ligne documente la provenance exigée par la procédure de sourçage
 | Madeira | Polyneon 40 | **DONNÉES PLACEHOLDER — non sourcées** : à transcrire depuis https://www.madeira.co.uk (fiche couleurs Polyneon 40) | — (pas encore consultée ; voir `libs/thread_palette/data/madeira_polyneon.cpp`) |
 | Isacord | Isacord 40 | **DONNÉES PLACEHOLDER — non sourcées** : à transcrire depuis https://www.isacord.com (fiche couleurs Isacord 40) | — (pas encore consultée ; voir `libs/thread_palette/data/isacord_40.cpp`) |
 
+Le nuancier **Générique** (`generic`, `ThreadLibrary`) n'est pas une donnée de
+fabricant : ce sont des couleurs usuelles nommées (blanc, rouge, bleu marine…)
+dont les valeurs RGB ont été choisies pour ce projet, sous la licence du projet
+(Apache-2.0). Les nuanciers de marques réels ne sont **pas redistribués** : ils
+sont chargés par l'utilisateur (import CSV/JSON, voir `palettes-and-threads.md`).
+
 **Important** : les deux fichiers de données ci-dessus contiennent
 actuellement des codes/noms/RGB **inventés** (forme plausible d'un nuancier
 réel, pas une transcription) car l'environnement d'implémentation initial

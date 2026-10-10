@@ -63,8 +63,8 @@ associé lorsqu'il existe.
 | Objet de broderie | embroidery object | Intention de couture | `document::EmbroideryObject` |
 | Séquence de points | stitch sequence | Commandes machine | `stitch::StitchSequence` |
 | Cadre / tambour | hoop / canvas | Zone de broderie | `document::Canvas` |
-| Palette | palette | Ensemble de couleurs/fils | catalogue `thread_palette` (données de démonstration), non relié à l'interface |
-| Fil | thread | Fil de broderie | `thread_palette::Thread` (non relié à l'interface) |
+| Palette | palette | Ensemble de couleurs/fils | bibliothèque `thread_palette` (nuancier Générique libre + import utilisateur ; nuanciers de marques intégrés = démo), panneau Fils |
+| Fil | thread | Fil de broderie | `thread_palette::Thread` ; assigné à un objet par `EmbroideryObject::thread` |
 | Ordre de couture | sewing order | Ordre des objets | `optimization`, `SewingOrder` |
 | Micromètre | micrometer | Unité interne (1/1000 mm) | `Micrometers` |
 | Déplacement (interne) | travel | Liaison non cousue d'un remplissage | `FillStitch::travel` |
