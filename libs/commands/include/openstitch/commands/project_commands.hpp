@@ -394,6 +394,25 @@ private:
                     }
                 }
             }
+            // Satin de bordure (HP-STI-004) : ses rails/barreaux suivent le contour.
+            if (auto* sat = std::get_if<document::SatinParams>(&emb.params);
+                sat != nullptr && sat->border) {
+                for (auto* rail : {&sat->rail_a, &sat->rail_b}) {
+                    for (auto& node : rail->nodes) {
+                        node.pos = node.pos + delta;
+                    }
+                }
+                for (auto& rung : sat->rungs) {
+                    rung.a = rung.a + delta;
+                    rung.b = rung.b + delta;
+                }
+                if (sat->entry_point) {
+                    sat->entry_point = *sat->entry_point + delta;
+                }
+                if (sat->exit_point) {
+                    sat->exit_point = *sat->exit_point + delta;
+                }
+            }
             // Idem pour les ancres de guides d'un auto-satin (et ses points
             // d'entrée/sortie), exprimées dans le repère de la région suivie.
             if (auto* sat = std::get_if<document::AutoSatinParams>(&emb.params)) {
@@ -782,6 +801,31 @@ private:
     ObjectId id_;
     bool locked_;
     bool previous_{false};
+};
+
+// Entrée/sortie automatiques d'un objet (HP-ENG-010) : hérite du projet, force ou refuse
+// le choix automatique du sens de couture. Annulable ; sans effet si l'objet a disparu.
+class SetEmbroideryJoinModeCommand final : public ICommand {
+public:
+    SetEmbroideryJoinModeCommand(ObjectId id, document::JoinMode mode) : id_(id), mode_(mode) {}
+
+    void apply(document::Project& project) override {
+        if (auto* obj = project.findEmbroidery(id_)) {
+            previous_ = obj->join;
+            obj->join = mode_;
+        }
+    }
+    void revert(document::Project& project) override {
+        if (auto* obj = project.findEmbroidery(id_)) {
+            obj->join = previous_;
+        }
+    }
+    [[nodiscard]] std::string name() const override { return "Entrée/sortie automatiques"; }
+
+private:
+    ObjectId id_;
+    document::JoinMode mode_;
+    document::JoinMode previous_{document::JoinMode::Inherit};
 };
 
 // Affiche/masque un objet de broderie (case « visible » du panneau Document). Un objet

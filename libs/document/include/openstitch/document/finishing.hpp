@@ -40,6 +40,18 @@ struct SequenceFinishing {
     bool filter_short_stitches{true};
     Micrometers min_stitch_length{500};
 
+    // HP-ENG-008 -- longueur maximale de point cousu : un point plus long est découpé en
+    // points égaux (même droite, mêmes passes). Désactivé par défaut (`false`) : aucun
+    // projet existant ne change ; l'analyse signale de toute façon les points trop longs.
+    bool split_long_stitches{false};
+    Micrometers max_stitch_length{7'000};
+
+    // HP-ENG-010 -- entrée/sortie automatiques : le sens de couture de chaque objet
+    // (remplissage, contour, satin) est choisi pour minimiser le déplacement depuis la fin
+    // de l'objet précédent et vers le début du suivant. Désactivé par défaut ; chaque objet
+    // peut forcer (`JoinMode::Auto`) ou refuser (`JoinMode::Off`) ce réglage.
+    bool auto_join{false};
+
     bool operator==(const SequenceFinishing&) const = default;
 
     // Réglage d'un projet antérieur à ces finitions : rien n'est ajouté.

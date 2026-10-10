@@ -677,8 +677,87 @@ par rafraîchissement (`MainWindow::refreshImage`).
   dépôt (vérifié par lecture des deux seuls sites annotés, §1), mais ce n'est
   pas une garantie statique complète, seulement une convention outillée.
 
+## 10. Lot « moteur » : sous-couche automatique, entrée/sortie, longueurs, bordure
+
+Tous ces réglages sont **désactivés par défaut** : un projet existant produit
+exactement les mêmes points tant qu'on n'y touche pas (vérifié par la suite de
+tests complète et ses fichiers dorés, inchangés).
+
+### Sous-couche automatique (HP-ENG-002)
+
+`UnderlayMode::Auto` (tatami, directionnel, satin, auto-satin ; défaut `Manual`)
+fait choisir la sous-couche par le moteur (`underlay_auto.cpp`, fonctions pures).
+Mesure d'une forme : aire, périmètre et épaisseur moyenne `2·aire/périmètre`
+(largeur exacte d'une bande longue ; trous inclus dans le périmètre).
+
+| Objet | Condition | Sous-couche |
+|---|---|---|
+| Remplissage | aire < 6 mm² ou épaisseur < 0,8 mm | aucune |
+| Remplissage | aire < 60 mm² | contour seul |
+| Remplissage | aire ≥ 60 mm² | contour + rangées perpendiculaires (espacement 2 mm, 2,5 mm au-delà de 400 mm²) |
+| Satin | largeur < 1,0 mm | aucune |
+| Satin | 1,0 à 3,5 mm | centre |
+| Satin | 3,5 à 7,0 mm | contour (deux chemins internes) |
+| Satin | ≥ 7,0 mm | contour + zigzag léger |
+
+Le retrait du contour de remplissage vaut un quart de l'épaisseur, borné à
+[0,3 ; 0,6] mm. En mode Auto, les cases manuelles sont ignorées (grisées dans
+l'inspecteur). Les nouveaux objets créés à la main restent en `Manual` : le
+mode Auto se choisit dans l'inspecteur (« Sous-couche : Automatique »).
+
+### Entrée/sortie automatiques (HP-ENG-010)
+
+`SequenceFinishing::auto_join` (« Options de génération ») et, par objet,
+`EmbroideryObject::join` (Hérite / Automatique / Désactivée, commande annulable
+`SetEmbroideryJoinModeCommand`). Les points d'arrêt et coupes à l'entrée et à la
+sortie de chaque objet existaient déjà (`finish_sequence`) ; ce lot choisit le
+**sens** de couture. Pour un contour ou un remplissage, `orient_chunk` évalue
+les quatre combinaisons (sous-couche inversée ou non × couche supérieure
+inversée ou non) et garde celle qui minimise `|fin précédente → début| +
+½·|fin → début suivant| + sauts internes` ; mêmes pénétrations, ordre inversé,
+sous-couche toujours avant la couche supérieure. Une colonne satin ou un
+auto-satin reçoit la fin de l'objet précédent comme point d'entrée (sens du
+générateur existant). Un point d'entrée explicite de l'objet est respecté. Les
+colonnes d'un groupe routé gardent le routage existant (origine = fin
+précédente). Mesure (`openstitch-cli engine-debug`, trois tatami empilés plus
+une bordure) : 116,0 mm de sauts → 102,6 mm. **Non fait** : l'ordre des objets
+(`libs/optimization`) juge encore par centres, pas par extrémités, et les
+contours fermés ne sont pas ré-attaqués au sommet le plus proche.
+
+### Longueurs min/max (HP-ENG-008)
+
+`SequenceFinishing::split_long_stitches` + `max_stitch_length` (7 mm, borné à
+[1 ; 12,1] mm) découpent en points égaux sur la même droite tout point cousu
+trop long, pour **tous** les types ; les morceaux mesurent au moins la moitié du
+maximum. Le filtre des points courts (`min_stitch_length`) existait. Côté
+analyse, `stitch_analysis::options_from_project` fait juger les points avec
+ces limites, et `check_stitch_limits` avertit **avant génération** (catégorie
+`parametre-hors-limites`) d'un réglage d'objet hors plage.
+
+### Satin de bordure (HP-STI-004)
+
+`border_satin_from_path` (`border_satin.cpp`) transforme un contour (fermé ou
+ouvert) en `SatinParams` à largeur constante : un barreau perpendiculaire par
+sommet aplati, rails décalés le long des normales, côté centré / intérieur /
+extérieur (la matière d'un trou est du côté opposé à son centre), coins vifs
+(onglet, biseau au-delà d'un rapport de 3) ou arrondis (arc, un barreau tous
+les 12°, éventail autour du point intérieur). Le côté intérieur du virage est
+ramené à la moitié de l'arête voisine : jamais de croisement de rails, mais une
+bordure plus large que le rayon de courbure local se déforme. Construction
+analytique (pas d'offset Clipper2) : déterministe et sans arrondi entier
+intermédiaire. Un satin par anneau (extérieur puis trous), jamais routé avec
+ses voisins. `BorderSatinSpec` mémorise largeur/côté/coins/anneau : l'inspecteur
+régénère les rails depuis le vecteur source (`regenerate_border_satin`,
+`SetStitchParamsCommand`) ; déplacer le vecteur déplace la bordure
+(`TranslateVectorObjectCommand`), la mise à l'échelle du vecteur demande de
+modifier un réglage de bordure pour régénérer. Création : inspecteur d'un objet
+vectoriel, « Créer le satin de bordure » (un seul pas d'annulation).
+
 ## Implémentation associée
 
+- `libs/stitch_generation/{border_satin,join,underlay_auto}.*`,
+  `libs/stitch_analysis/src/limits.cpp`, `apps/desktop/main_window_engine.cpp`
+  — lot « moteur » (§10).
 - `libs/stitch/include/openstitch/stitch/sequence.hpp` — `StitchCommand`,
   `CommandType`, `StitchPass`, `StitchSequence`, `StitchStats`.
 - `libs/stitch/src/stats.cpp` — `compute_stats`.

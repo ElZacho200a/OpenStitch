@@ -83,6 +83,23 @@ editSequenceFinishing(QWidget* parent, const document::SequenceFinishing& curren
     form->addRow(QString(), filter);
     auto* minStitch = mmSpin(&dialog, "minStitchLength", current.min_stitch_length, 0.1, 2.0, 0.1);
     form->addRow(QObject::tr("Longueur minimale de point"), minStitch);
+    // HP-ENG-008 : aucun point cousu au-delà du maximum.
+    auto* splitLong = new QCheckBox(QObject::tr("Découper les points trop longs"), &dialog);
+    splitLong->setObjectName(QStringLiteral("splitLongStitches"));
+    splitLong->setChecked(current.split_long_stitches);
+    splitLong->setToolTip(QObject::tr(
+        "Un point plus long que le maximum est découpé en points égaux sur la même droite."));
+    form->addRow(QString(), splitLong);
+    auto* maxStitch = mmSpin(&dialog, "maxStitchLength", current.max_stitch_length, 1.0, 12.1, 0.5);
+    form->addRow(QObject::tr("Longueur maximale de point"), maxStitch);
+    // HP-ENG-010 : sens de couture choisi pour minimiser les sauts entre objets.
+    auto* autoJoin = new QCheckBox(QObject::tr("Entrée/sortie automatiques des objets"), &dialog);
+    autoJoin->setObjectName(QStringLiteral("autoJoin"));
+    autoJoin->setChecked(current.auto_join);
+    autoJoin->setToolTip(QObject::tr(
+        "Chaque objet est cousu dans le sens qui rapproche son début de la fin du précédent. "
+        "Réglable par objet dans l'inspecteur."));
+    form->addRow(QString(), autoJoin);
     layout->addLayout(form);
 
     auto* buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dialog);
@@ -102,6 +119,9 @@ editSequenceFinishing(QWidget* parent, const document::SequenceFinishing& curren
     out.lock_passes = lockPasses->value();
     out.filter_short_stitches = filter->isChecked();
     out.min_stitch_length = toUm(minStitch);
+    out.split_long_stitches = splitLong->isChecked();
+    out.max_stitch_length = toUm(maxStitch);
+    out.auto_join = autoJoin->isChecked();
     return out;
 }
 

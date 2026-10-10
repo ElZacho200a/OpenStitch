@@ -68,7 +68,19 @@ labels peut faire plusieurs mégaoctets).
   `filterShortStitches`, `minStitchLength` (µm). **Bloc absent** (projet
   antérieur) → finitions désactivées, séquence identique à avant ; clé absente
   dans un bloc présent → valeur par défaut. Ajout sans changement de
-  `schemaVersion`.
+  `schemaVersion`. Clés ajoutées par le lot « moteur » (absentes = désactivé) :
+  `splitLongStitches` (bool, défaut faux), `maxStitchLength` (µm, défaut 7000,
+  borné à [1000 ; 12100]), `autoJoin` (bool, défaut faux ; entrée/sortie
+  automatiques, HP-ENG-010).
+- Lot « moteur de points », clés additives d'un objet de broderie, écrites
+  seulement hors défaut et bornées à la lecture : `join` (0 hérite du projet, 1
+  automatique, 2 désactivé) ; dans `params` : tatami `pullCompensation` (µm,
+  [0 ; 3000], HP-ENG-001) et, pour tatami, directionnel, satin et auto-satin,
+  `underlayMode` (0 manuelle, 1 automatique, HP-ENG-002) ; satin `border`
+  (`width` µm [500 ; 20000], `side` 0 centré / 1 intérieur / 2 extérieur,
+  `corner` 0 vifs / 1 arrondis, `pathSet`, `ring` : anneau suivi du vecteur
+  source, HP-STI-004). Aucun changement de `schemaVersion` : un ancien lecteur
+  ignore ces clés.
 
 ### Fil de nuancier d'un objet (schéma v6)
 

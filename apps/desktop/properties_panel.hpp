@@ -14,6 +14,7 @@
 #include "wheel_guard.hpp"
 
 class QCheckBox;
+class QComboBox;
 class QFormLayout;
 class QLabel;
 class QListWidget;
@@ -75,6 +76,10 @@ public:
     // correspondre à l'objet montré ; sinon ignoré.
     void setAutoSatinState(std::optional<ObjectId> id, const document::AutoSatinParams* params,
                            const QString& summary);
+    // HP-ENG-010 : resynchronise le choix « Entrée/sortie » après une annulation/un
+    // rétablissement (le mode n'est pas dans `StitchParams`). `id` doit correspondre à
+    // l'objet montré ; sinon ignoré. Sans reconstruction ni émission.
+    void setJoinMode(std::optional<ObjectId> id, document::JoinMode mode);
 
     // Paramètres que le formulaire représente actuellement. MainWindow compare
     // `showsParams` au document à chaque rafraîchissement : un écart (annulation,
@@ -117,6 +122,15 @@ signals:
     void editSatinGuidesRequested(ObjectId id);
     void satinGuideChangeRequested(ObjectId id, int index, double angleDeg, bool absolute);
     void satinGuideRemoveRequested(ObjectId id, int index);
+    // HP-ENG-010 : mode d'entrée/sortie automatiques d'un objet (0 = hérite du projet,
+    // 1 = automatique, 2 = désactivé) ; MainWindow exécute SetEmbroideryJoinModeCommand.
+    void joinModeEdited(ObjectId id, int mode);
+    // HP-STI-004 : bordure satin. `createBorderSatinRequested` : depuis un objet vectoriel,
+    // largeur (mm), côté (0 centré, 1 intérieur, 2 extérieur), coins (0 vifs, 1 arrondis).
+    // `borderSatinEdited` : changement de ces réglages d'un satin de bordure existant
+    // (MainWindow régénère les rails depuis le contour source, commande annulable).
+    void createBorderSatinRequested(ObjectId vectorId, double widthMm, int side, int corner);
+    void borderSatinEdited(ObjectId id, double widthMm, int side, int corner);
 
 private:
     void clearBody();
@@ -146,6 +160,7 @@ private:
     QPointer<QLabel> satinGuideAngleLabel_;
     QPointer<QCheckBox> satinGuideAbsolute_;
     QPointer<QPushButton> satinGuideRemove_;
+    QPointer<QComboBox> joinCombo_;
 };
 
 } // namespace openstitch::desktop

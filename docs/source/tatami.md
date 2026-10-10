@@ -191,6 +191,25 @@ Valeurs par défaut lues dans `TatamiParams`
 | `underlay_spacing` | mm | 2,0 | rangées de sous-couche plus espacées | plus denses |
 | `hidden_underpath` | bool | off | coud et cache les liaisons courtes (Lot 7) | plus de sauts |
 | `entry_point` | µm | — | démarre le remplissage près de ce point (Lot 7) | — |
+| `pull_compensation` | mm | 0 | chaque rangée dépasse du contour de cette longueur, dans l'axe du fil (HP-ENG-001) ; plage [0 ; 3] mm | aucune compensation |
+| `underlay_mode` | Manuelle / Automatique | Manuelle | Automatique : le moteur choisit la sous-couche (voir *Moteur de génération de points*), les réglages `underlay_*` sont ignorés | réglages manuels appliqués tels quels |
+
+### Compensation du tirage (HP-ENG-001)
+
+Le fil tire dans sa propre direction : une zone cousue en rangées rétrécit dans
+l'axe des rangées, pas perpendiculairement. `pull_compensation` allonge donc
+chaque rangée de `pull` **aux deux bouts**, dans l'axe du fil, quel que soit
+l'`angle`. Seules les pénétrations d'extrémité de rangée dépassent ; la
+validation des liaisons (cousues cachées ou sauts) et l'adjacence des rangées
+se font sur les bornes réelles de la région (`prevC`/`rpC` dans `fill_tatami`),
+donc le nombre de sauts ne change pas. Près d'un trou, les rangées dépassent
+dans le trou d'au plus `pull` (le trou se rétrécit à la couture comme le
+reste). La sous-couche en rangées reste dans la forme (`pull` forcé à 0). À 0
+(défaut), la sortie est identique octet pour octet à celle d'avant ; la valeur
+est bornée à 3 mm à la génération et à la lecture du .osp. Il n'existe pas de
+notion de tissu dans le modèle : le réglage est manuel (0,2 à 0,4 mm est courant).
+Le remplissage directionnel n'a pas encore cette compensation (HP-ENG-001
+reste partiel). Tests : `tests/unit/stitch/test_engine_points.cpp` (« tirage : … »).
 
 Le paramètre principal de **densité** est `row_spacing` (entre rangées) — à ne
 pas confondre avec `stitch_length` (le long d'une rangée). Le retrait de bord

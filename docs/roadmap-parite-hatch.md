@@ -763,7 +763,14 @@ plus.
   chemin.
 - Modules : `libs/stitch_generation`.
 
-### HP-STI-004 — Satin de bordure à largeur fixe le long d'un chemin [P0] — ☐ À faire
+### HP-STI-004 — Satin de bordure à largeur fixe le long d'un chemin [P0] — ☑ Fait (2026-10-10)
+- Livré : `border_satin_from_path/_region` (`libs/stitch_generation/border_satin.cpp`),
+  `BorderSatinSpec` (largeur 0,5–20 mm, côté centré/intérieur/extérieur, coins vifs
+  ou arrondis, anneaux extérieur et trous, tracés ouverts), création et régénération
+  dans l'inspecteur (`main_window_engine.cpp`), `.osp`, suit le déplacement du vecteur.
+  Tests `test_engine_points.cpp` (« bordure : … ») : cercle et tracé en S réguliers, sans
+  croisement de barreaux. Reste : largeur variable par nœud, coins intelligents (HP-ENG-005),
+  mise à l'échelle du vecteur sans régénération manuelle, validation physique.
 - Brique existante : `strip_polygon(centerline, demi-largeur)` (`contour_objects.cpp`) sert au
   mode Contours ; aucun outil utilisateur ni commande `libs/commands` pour « chemin ouvert + largeur fixe ».
 - État OpenStitch : le satin exige deux rails ou un contour fermé découpé ;
@@ -993,7 +1000,11 @@ plus.
 Hatch applique automatiquement des règles de métier (« stitch processing ») que
 l'utilisateur ne voit pas. OpenStitch a les briques mais peu d'automatismes.
 
-### HP-ENG-001 — Compensation d'étirement du tatami [P0] — ☐ À faire
+### HP-ENG-001 — Compensation d'étirement du tatami [P0] — ◐ Partiel (2026-10-10)
+- Livré (tatami) : `TatamiParams::pull_compensation` (0–3 mm, défaut 0, réglage manuel :
+  le modèle n'a pas de notion de tissu), rangées allongées dans l'axe du fil, test
+  géométrique exact (dépassement = `pull` au µm près), inspecteur, `.osp`, annulable.
+  Reste : remplissage directionnel, validation physique HP-PHYS-001.
 - État OpenStitch : compensation **satin seulement** (`limitations.md`,
   « Compensation directionnelle : Partiel ») ; le tatami a un `inset`, qui fait
   l'inverse (rentre le bord).
@@ -1006,7 +1017,11 @@ l'utilisateur ne voit pas. OpenStitch a les briques mais peu d'automatismes.
   `pull` ± 0,1 mm) ; validation physique HP-PHYS-001.
 
 ### HP-ENG-002 — Sous-couche automatique selon la forme [P0] — ◐ Partiel (2026-10-06)
-- Livré : l'auto-numérisation choisit la sous-couche du tatami selon l'aire (Lot B,
+- Livré 2026-10-10 : `UnderlayMode::Auto` (défaut Manual) pour tatami, directionnel, satin
+  et auto-satin, seuils documentés (`moteur-de-points.md` §10) et testés, réglable et
+  désactivable dans l'inspecteur. Reste : Auto n'est pas encore le défaut des objets créés
+  à la main (créés en Manual pour ne rien changer) ; pas de zigzag pour les grands tatamis.
+- Livré avant : l'auto-numérisation choisit la sous-couche du tatami selon l'aire (Lot B,
   `auto_fill_underlay`) ; le satin a `center_underlay` par défaut. Manque : mode
   Auto/Manuel au niveau du document pour les objets créés à la main, et seuils par
   largeur de satin.
@@ -1053,6 +1068,11 @@ l'utilisateur ne voit pas. OpenStitch a les briques mais peu d'automatismes.
 - Modules : `apps/desktop`.
 
 ### HP-ENG-008 — Longueurs min/max appliquées à tous les générateurs [P0] — ◐ Partiel
+- Livré 2026-10-10 : `split_long_stitches`/`max_stitch_length` dans les finitions
+  (découpage de tout point cousu trop long, tous types, testé : aucun point > max),
+  options d'analyse alignées sur le projet, avertissements pré-export
+  `parametre-hors-limites`. Reste : désactivé par défaut (aucun fichier existant ne
+  change), invariant non testé sur tout le corpus.
 - État OpenStitch : filtre des points trop courts dans les finitions (Lot F),
   `max_stitch_length` satin ; l'analyse signale > 7 mm.
 - À faire : garantie globale (post-génération) : aucun point cousu > max
@@ -1066,6 +1086,12 @@ l'utilisateur ne voit pas. OpenStitch a les briques mais peu d'automatismes.
   mieux (mesure : régularité de la direction des fils).
 
 ### HP-ENG-010 — Entrée et sortie automatiques au plus proche [P0] — ◐ Partiel
+- Livré 2026-10-10 : choix automatique du sens de couture de chaque objet
+  (`auto_join` global + `join` par objet, `orient_chunk`), entrée des satins depuis la
+  fin de l'objet précédent ; scène de référence : sauts 116,0 → 102,6 mm
+  (`openstitch-cli engine-debug`). Reste : coût d'ordre par extrémités
+  (`libs/optimization`), départ d'un contour fermé au sommet le plus proche, mesure sur
+  les corpus « marine » et `tentabrode` (absents de ce dépôt).
 - État OpenStitch : points d'entrée/sortie réglables (satin, tatami) ;
   routage multi-colonnes satin ; ordre des objets par centres (pas par
   extrémités : `OrderItem` n'a que `centroid`).

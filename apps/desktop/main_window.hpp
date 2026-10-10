@@ -218,6 +218,11 @@ private slots:
     // Conversion d'un objet en remplissage directionnel (paramètres
     // équivalents calculés par le cœur, ConvertFillGroupCommand annulable).
     void convertToDirectional(ObjectId embroideryId);
+    // Moteur de points (main_window_engine.cpp) : satin de bordure (HP-STI-004) et
+    // entrée/sortie automatiques par objet (HP-ENG-010), commandes annulables.
+    void createBorderSatin(ObjectId vectorId, double widthMm, int side, int corner);
+    void editBorderSatin(ObjectId id, double widthMm, int side, int corner);
+    void setJoinMode(ObjectId id, int mode);
     // Mode « Guides de direction » : affiche l'aperçu du champ, les guides et
     // les lignes de rupture de l'objet ciblé, avec poignées déplaçables.
     void onDirectionGuideModeToggled(bool on);
