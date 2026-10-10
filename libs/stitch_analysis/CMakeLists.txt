@@ -3,6 +3,7 @@ add_library(openstitch_stitch_analysis
     src/metrics.cpp
     src/project_metrics.cpp
     src/color_blocks.cpp
+    src/text_rules.cpp
 )
 add_library(openstitch::stitch_analysis ALIAS openstitch_stitch_analysis)
 

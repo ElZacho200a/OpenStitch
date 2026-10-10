@@ -10,6 +10,7 @@
 #include "openstitch/document/embroidery_object.hpp"
 #include "openstitch/document/finishing.hpp"
 #include "openstitch/document/imported_design.hpp"
+#include "openstitch/document/text_object.hpp"
 #include "openstitch/document/vector_object.hpp"
 #include "openstitch/image/image.hpp"
 #include "openstitch/image/ops.hpp"
@@ -39,6 +40,10 @@ struct Project {
     // Objets de broderie (Phase 6), dans l'ordre de couture.
     std::vector<EmbroideryObject> embroidery_objects;
 
+    // Objets texte (lettrage, HP-TXT-001) : l'intention ; les lettres sont des
+    // objets vectoriels (`VectorObject::text_owner`) et de broderie dérivés.
+    std::vector<TextObject> text_objects;
+
     IdGenerator<ObjectId> object_ids; // partagé par tous les types d'objets
 
     // Finitions de la séquence (coupes, points d'arrêt, points courts),
@@ -64,6 +69,25 @@ struct Project {
     }
     [[nodiscard]] const VectorObject* findObject(ObjectId id) const {
         return const_cast<Project*>(this)->findObject(id);
+    }
+    [[nodiscard]] TextObject* findText(ObjectId id) {
+        for (auto& object : text_objects) {
+            if (object.id == id) {
+                return &object;
+            }
+        }
+        return nullptr;
+    }
+    [[nodiscard]] const TextObject* findText(ObjectId id) const {
+        return const_cast<Project*>(this)->findText(id);
+    }
+    // Objet texte propriétaire d'un objet de broderie (via son vecteur source), ou nullptr.
+    [[nodiscard]] const TextObject* textOwnerOf(const EmbroideryObject& object) const {
+        const VectorObject* vector = findObject(object.source_vector);
+        if (vector == nullptr || !vector->text_owner) {
+            return nullptr;
+        }
+        return findText(*vector->text_owner);
     }
     [[nodiscard]] EmbroideryObject* findEmbroidery(ObjectId id) {
         for (auto& object : embroidery_objects) {
