@@ -70,12 +70,27 @@ labels peut faire plusieurs mégaoctets).
   dans un bloc présent → valeur par défaut. Ajout sans changement de
   `schemaVersion`.
 
+### Fil de nuancier d'un objet (schéma v6)
+
+Un objet de broderie peut référencer un fil : `"thread": {"chart": "<id du
+nuancier>", "code": "<référence fabricant>"}` (= `thread_palette::ThreadKey`).
+Le champ est **facultatif** : absent → couleur libre. Le `rgb` de l'objet reste
+la **seule source de rendu** et de blocs de couleur ; assigner un fil copie la
+couleur du fil dans `rgb`. Un fil dont le nuancier n'est pas chargé (nuancier
+importé retiré) n'altère donc ni l'affichage ni l'export : seul son nom n'est
+plus résolu. **Migration** : un projet v1 à v5 se charge sans `thread` (couleurs
+libres) ; il est enregistré en v6 à la prochaine sauvegarde (copie `.vN.osp.bak`
+conservée, comme pour les autres migrations). Un `thread` sans `chart` ou `code`
+texte est refusé (`InvalidFile`). Les **nuanciers eux-mêmes** ne sont jamais
+stockés dans le `.osp` (voir *Palettes et fils*).
+
 ## Versionnement et validation
 
-`schemaVersion` vaut **5** (v1 → v2 : cadre `canvas` et barreaux satin
+`schemaVersion` vaut **6** (v1 → v2 : cadre `canvas` et barreaux satin
 `rungs` ; v2 → v3 : retouches manuelles `overrides`/`editedFingerprint`/
 `editedPointCount` par objet de broderie, Lot 8.1 ; v3 → v4 : intermédiaire ; v4 → v5 :
-variant `autoSatin`, auto-satin par squelette). La lecture est
+variant `autoSatin`, auto-satin par squelette ; v5 → v6 : fil de nuancier
+`thread` d'un objet de broderie, HP-THR-004). La lecture est
 **rétrocompatible** : un fichier v1 ou v2 se charge (cadre 100×100 par défaut
 si absent, aucun barreau, aucune retouche → état `Clean`). Une version
 **supérieure** à celle du binaire est refusée proprement (`UnsupportedFormat`) ;

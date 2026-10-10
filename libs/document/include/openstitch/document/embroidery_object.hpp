@@ -12,6 +12,7 @@
 #include "openstitch/core/ids.hpp"
 #include "openstitch/core/units.hpp"
 #include "openstitch/geometry/path.hpp"
+#include "openstitch/thread_palette/thread.hpp"
 
 namespace openstitch::document {
 
@@ -261,6 +262,14 @@ struct EmbroideryObject {
     // réussie ; ne sont significatifs que si `overrides` n'est pas vide.
     std::uint64_t edited_fingerprint{0};
     std::uint32_t edited_point_count{0};
+
+    // HP-THR-004 : fil de nuancier assigné (marque + référence). FACULTATIF :
+    // vide = couleur libre (comportement historique). `rgb` reste la SEULE
+    // source du rendu et des blocs de couleur ; assigner un fil copie la
+    // couleur du fil dans `rgb` (SetObjectThreadCommand) et un fil absent de la
+    // bibliothèque courante (nuancier utilisateur non chargé) n'altère pas
+    // l'affichage. Écrit/lu dans le .osp (schéma v6, champ `thread`).
+    std::optional<thread_palette::ThreadKey> thread;
 
     [[nodiscard]] bool is_tatami() const { return std::holds_alternative<TatamiParams>(params); }
     [[nodiscard]] bool is_satin() const { return std::holds_alternative<SatinParams>(params); }

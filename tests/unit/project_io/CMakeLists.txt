@@ -2,6 +2,7 @@ add_executable(test_project_io
     test_roundtrip.cpp
     test_overrides_persistence.cpp
     test_intent_persistence.cpp
+    test_thread_persistence.cpp
     test_finishing_persistence.cpp
     test_machine_file.cpp
     test_load_robustness.cpp

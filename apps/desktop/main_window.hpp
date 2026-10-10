@@ -26,6 +26,7 @@
 #include "openstitch/geometry/path.hpp"
 #include "openstitch/stitch/sequence.hpp"
 #include "openstitch/stitch_generation/overrides.hpp"
+#include "openstitch/thread_palette/thread_library.hpp"
 #include "realistic_view_state.hpp"
 #include "tools.hpp"
 
@@ -63,6 +64,7 @@ class GesturesDialog;
 class QuickStartDialog;
 class PropertiesPanel;
 class DocumentPanel;
+class ThreadPanel;
 class WorkflowPanel;
 class EmptyStateWidget;
 // Seam de test unique (déclaré ici pour le friend ci-dessous) : donne à
@@ -366,6 +368,11 @@ private:
     void buildSimulationToolbar();
     void buildOrderPanel();
     void refreshOrderPanel();
+    // Panneau Fils / film couleur (HP-THR-004/005) : tout est dans main_window_threads.cpp.
+    void buildThreadPanel();
+    void refreshThreadPanel();
+    void refreshThreadSelectionInfo();
+    [[nodiscard]] std::vector<ObjectId> selectedEmbroideryIds() const;
     void buildFilterPanel();
     void refreshFilterPanel();
     // Affiche/masque un dock sur ordre d'un rafraîchissement, sans défaire « Masquer les
@@ -1034,6 +1041,13 @@ private:
     QTimer* analysisTimer_{nullptr}; // ré-analyse différée (300 ms) quand le document change
     bool analysisIsStale_{false};
     bool analysisHasResult_{false};
+
+    // Fils (main_window_threads.cpp) : bibliothèque active (intégrés + nuanciers de
+    // l'utilisateur) et panneau.
+    QDockWidget* threadDock_{nullptr};
+    ThreadPanel* threadPanel_{nullptr};
+    thread_palette::ThreadLibrary threadLibrary_{thread_palette::ThreadLibrary::with_builtin()};
+    QHash<QString, QString> userChartFiles_; // identifiant de nuancier -> fichier copié
 
     // Raccourcis fenêtre dont l'activation dépend du contexte (cf. updateShortcutsState).
     QShortcut* escapeShortcut_{nullptr};

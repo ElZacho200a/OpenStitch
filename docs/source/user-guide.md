@@ -699,6 +699,39 @@ verrou d'édition (l'objet reste déplaçable et modifiable ; l'ancien nom « Ve
 proximité. Le libellé *Trajet estimé* donne la distance à vide entre objets et le nombre de
 changements de fil.
 
+## Panneau Fils et menu Fils
+
+Le panneau **Fils** (menu *Fils* ou *Affichage ▸ Panneaux*, masqué par défaut) relie le
+motif aux fils réels. Il a trois onglets ; une ligne en tête rappelle la sélection courante.
+
+- **Projet** — les fils utilisés dans l'ordre de première couture (pastille, marque et
+  référence ou `#RRGGBB` pour une couleur libre, nombre d'objets, de points, longueur de fil
+  et durée estimée en infobulle). *Sélectionner les objets de ce fil* ; *Remplacer ce fil par
+  celui du catalogue* (tout le motif, un seul pas d'annulation) ; *Couleurs libres → fil le
+  plus proche* (associe chaque objet sans fil au fil le plus proche du nuancier choisi, sur la
+  sélection ou sur tout le motif) ; **Limiter à N fils** (fusionne les couleurs les plus
+  proches jusqu'à N, la couleur du plus grand aplat l'emporte) ; *Exporter la liste des
+  fils (CSV)…* (tableur : ordre, marque, nuancier, référence, nom, couleur, objets, points,
+  longueur, durée).
+- **Catalogues** — un nuancier à la fois (ou tous), recherche par référence, nom ou gamme.
+  **Un clic sur un fil l'assigne à tous les objets sélectionnés** (sélection multiple
+  comprise ; un seul Ctrl+Z annule l'ensemble). La couleur de l'objet devient celle du fil.
+  *Fils les plus proches de la sélection* classe les 8 fils les plus proches (distance
+  CIEDE2000) de la couleur du premier objet sélectionné. *Importer un nuancier…* charge un
+  fichier CSV ou JSON (format décrit dans *Fils ▸ Format d'import des nuanciers…*) ; les
+  nuanciers importés sont conservés d'une session à l'autre et peuvent être retirés. Le
+  nuancier **Générique** (couleurs usuelles sans marque) est toujours disponible ; les
+  nuanciers de marques intégrés sont des **données de démonstration fictives**, signalées
+  comme telles : importez vos propres cartes de fils.
+- **Film couleur** — les blocs de couleur dans l'ordre de couture. Glissez un bloc (ou
+  *Monter*/*Descendre*) pour réordonner les couleurs ; les objets dont l'ordre est figé ne
+  bougent pas. *Fusionner les blocs de même fil* regroupe les passages d'un même fil pour
+  réduire les changements ; attention, un fil cousu plus tard passe plus tôt (ordre des
+  couches), d'où l'annulation en un pas.
+
+Dans la numérisation automatique, la case **Limiter à N fils** applique la même fusion des
+couleurs proches avant de créer les objets.
+
 ## Barre de simulation
 
 Boutons de lecture/pause et un curseur qui révèle la couture jusqu'à un index de

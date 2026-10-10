@@ -800,6 +800,10 @@ json project_to_json(const document::Project& project) {
         // fichier (int brut, jamais une table de correspondance texte).
         eo["intent"] = static_cast<int>(e.intent);
         eo["params"] = params_to_json(e.params);
+        // Schéma v6 (HP-THR-004) : fil de nuancier assigné, écrit seulement s'il existe.
+        if (e.thread) {
+            eo["thread"] = {{"chart", e.thread->chart_id}, {"code", e.thread->code}};
+        }
         if (!e.overrides.empty()) {
             eo["overrides"] = json::array();
             for (const auto& ov : e.overrides) {
@@ -923,6 +927,18 @@ Result<document::Project> project_from_json(const json& j) {
                 return std::unexpected(params.error());
             }
             e.params = std::move(*params);
+
+            // Fil de nuancier (schéma v6) : absent dans un projet v1..v5 -> couleur libre.
+            if (eo.contains("thread")) {
+                const auto& tj = eo.at("thread");
+                if (!tj.is_object() || !tj.contains("chart") || !tj.contains("code") ||
+                    !tj.at("chart").is_string() || !tj.at("code").is_string()) {
+                    return fail(ErrorCategory::InvalidFile,
+                                "Fil invalide : « thread » doit porter « chart » et « code »");
+                }
+                e.thread = thread_palette::ThreadKey{tj.at("chart").get<std::string>(),
+                                                     tj.at("code").get<std::string>()};
+            }
 
             // Retouches manuelles (Lot 8.1) : champs absents = Clean, comportement
             // v1/v2 inchangé (overrides vide, fingerprint/compteur à zéro).

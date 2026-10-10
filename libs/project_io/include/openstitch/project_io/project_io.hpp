@@ -17,9 +17,12 @@ namespace openstitch::project_io {
 // v3 -> v4 : les satins séparent `maxWidth` (seuil doux/avertissement) de
 // `maxWidthHard` (plafond géométrique du corridor). Lecture tolérante :
 // champ absent -> 48 mm.
+// v5 -> v6 : un objet de broderie peut référencer un fil de nuancier
+// (`thread` : `{chart, code}`, HP-THR-004). Migration : champ absent -> aucun
+// fil (couleur libre), `rgb` reste la source de rendu.
 // Lecture rétrocompatible : un fichier v1/v2/v3 se charge (champs absents
 // remplacés par leurs valeurs par défaut).
-inline constexpr int kSchemaVersion = 5;
+inline constexpr int kSchemaVersion = 6;
 
 // Enregistre le projet dans une archive .osp (ZIP : project.json + image
 // originale PNG + carte de segmentation binaire). Écriture atomique :
