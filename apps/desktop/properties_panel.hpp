@@ -6,6 +6,7 @@
 #include <QRectF>
 #include <QWidget>
 
+#include <functional>
 #include <optional>
 
 #include "openstitch/document/project.hpp"
@@ -58,7 +59,17 @@ public:
     // le reconstruit (annulation, déplacement au canevas...).
     [[nodiscard]] bool showsVectorBox(ObjectId id, QRectF boxMm) const;
     // Multi-sélection : bloc « Appliquer à N objets » (type de points, espacement, angle).
-    void showMultiSelection(int objectCount, int embroideryCount);
+    // `groupRep` (facultatif) : quand TOUTES les coutures des formes sélectionnées ont le même
+    // type, un exemplaire représentatif ; le formulaire de ce type s'ajoute sous le bloc « type de
+    // points » et chaque champ modifié est appliqué à `groupCount` objets (champ par champ : les
+    // autres valeurs de chaque objet restent intactes).
+    void showMultiSelection(int objectCount, int embroideryCount,
+                            const document::EmbroideryObject* groupRep = nullptr,
+                            int groupCount = 0);
+    // Vrai si le formulaire montre un groupe dont le représentant a ces paramètres.
+    [[nodiscard]] bool showsGroupParams(const document::StitchParams& params) const {
+        return groupCount_ > 1 && showsParams(params);
+    }
     // Indicateur Clean/ManuallyEdited/Dirty (Lot 8.2) : mis à jour à CHAQUE
     // rafraîchissement, y compris quand la sélection elle-même n'a pas changé
     // (une retouche/undo/redo peut faire changer l'état sans changer la
@@ -100,6 +111,14 @@ signals:
     // Bouton « Modifier le texte… » du bandeau lettrage (cf. setTextInfo) : MainWindow rouvre
     // le dialogue de texte (même chemin que le double-clic et F2).
     void editTextRequested();
+    // Réglage modifié sur un GROUPE d'objets de même type : `apply` modifie uniquement ce champ
+    // dans les paramètres de chaque objet. `field` nomme le pas d'historique.
+    void groupParamsEdited(QString field, std::function<void(document::StitchParams&)> apply);
+    // Actions de lot sur les guides : « autoDirectionGuides », « clearDirectionGuides »,
+    // « clearSatinGuides ».
+    void groupActionRequested(QString action);
+    // Pose, sur chaque auto-satin du groupe, un guide d'angle donné (en remplaçant les guides).
+    void groupGuideAngleRequested(double angleDeg, bool absolute);
     // Bouton de l'inspecteur des régions : `actionName` = objectName de la QAction de MainWindow à
     // déclencher (une seule source d'état, de raccourci et de grisage).
     void regionActionRequested(const QString& actionName);
@@ -143,6 +162,8 @@ signals:
 
 private:
     void clearBody();
+    // Corps du formulaire d'une couture (champs du type), sans effacer ni titrer.
+    void buildEmbroideryForm(const document::EmbroideryObject& object);
     void updateGuideAngleLabel(bool absolute);
     // Champ en mm borné [minMm ; maxMm] ; l'infobulle porte la plage (« Plage : … »).
     [[nodiscard]] QDoubleSpinBox* mmSpin(double valueMm, double maxMm, double minMm = 0.0,
@@ -155,6 +176,7 @@ private:
     QLabel* textInfoLabel_{nullptr};
     QPushButton* textEditButton_{nullptr};
     QWidget* body_{nullptr};
+    int groupCount_{1};
     std::optional<ObjectId> currentId_;
     std::optional<ObjectId> editStateId_;
     // Copie des paramètres représentés par le formulaire (cf. showsParams).

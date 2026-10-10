@@ -6362,8 +6362,21 @@ void MainWindow::updateInspector() {
         kind = 0;
         id = emb->id.value;
     } else if (hasMultiSelection()) {
-        kind = 3; // « N objets » : texte seul, pas d'édition
-        id = multiSelection_.size();
+        kind = 3; // « N objets » : type de points commun et réglages de groupe
+        // Clé : la sélection ET le type de chaque couture (un changement de type regroupe ou
+        // dégroupe le formulaire).
+        std::uint64_t key = 1469598103934665603ULL;
+        const auto mix = [&key](std::uint64_t v) { key = (key ^ v) * 1099511628211ULL; };
+        for (const ObjectId vectorId : multiSelection_) {
+            mix(vectorId.value);
+            for (const auto& e : project_.embroidery_objects) {
+                if (e.source_vector == vectorId) {
+                    mix(e.id.value);
+                    mix(e.params.index());
+                }
+            }
+        }
+        id = key;
     } else if (selectedObject_) {
         kind = 1;
         id = selectedObject_->value;
@@ -6408,6 +6421,12 @@ void MainWindow::updateInspector() {
     // changement de type de points qui garde le même id, rotation au canevas...) : sinon
     // le premier champ touché écraserait le document avec des valeurs périmées.
     bool formStale = kind == 0 && !propertiesPanel_->showsParams(emb->params);
+    if (kind == 3) {
+        // Groupe de même type : le formulaire montre le premier ; annulation => reconstruction.
+        const EmbroideryGroup group = selectedEmbroideryGroup();
+        const auto* rep = group.sameType ? project_.findEmbroidery(group.ids.front()) : nullptr;
+        formStale = rep != nullptr && !propertiesPanel_->showsGroupParams(rep->params);
+    }
     if (kind == 1) {
         // Boîte X/Y/L/H : reconstruite si la forme a changé (annulation, glisser, flèches...).
         const auto* current = project_.findObject(*selectedObject_);
@@ -6433,8 +6452,10 @@ void MainWindow::updateInspector() {
                 ++withStitches;
             }
         }
-        propertiesPanel_->showMultiSelection(static_cast<int>(multiSelection_.size()),
-                                             withStitches);
+        const EmbroideryGroup group = selectedEmbroideryGroup();
+        const auto* rep = group.sameType ? project_.findEmbroidery(group.ids.front()) : nullptr;
+        propertiesPanel_->showMultiSelection(static_cast<int>(multiSelection_.size()), withStitches,
+                                             rep, static_cast<int>(group.ids.size()));
     } else if (kind == 1) {
         const auto* vec = project_.findObject(*selectedObject_);
         int nodes = 0;
