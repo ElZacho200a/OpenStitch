@@ -54,3 +54,11 @@ vraie transcription avant toute utilisation hors développement/test — voir
 ## Dépendances prévues (non encore intégrées)
 
 _(Toutes les dépendances prévues en Phase 0 sont désormais intégrées.)_
+
+## Tables de fils des formats machine (PES, JEF)
+
+`libs/formats/src/machine_palettes.cpp` : tables de 64 fils PEC (Brother) et de 78 fils JEF
+(Janome), valeurs RGB factuelles transcrites depuis **pyembroidery** (EmbThreadPec.py,
+EmbThreadJef.py), licence MIT, (c) The Embroidermodder Team / contributeurs pyembroidery.
+Aucun code n'est repris : les codecs PES/JEF/EXP sont réécrits d'après la structure des formats.
+Voir `docs/source/formats-pes-jef-exp.md`.

@@ -40,7 +40,7 @@ CHAPTERS = [
     "patent-research", "patent-sheets-satin", "patent-sheets-autodigitize",
     "patent-sheets-underlay-geometry", "patent-sheets-decorative-applique",
     "palettes-and-threads", "simulation", "analysis-and-validation", "production-sheet",
-    "dst-format", "project-format", "architecture", "module-reference",
+    "dst-format", "formats-pes-jef-exp", "project-format", "architecture", "module-reference",
     "data-model", "algorithms", "build-system", "developer-guide", "testing",
     "contributing", "troubleshooting", "limitations", "roadmap", "glossary",
     "licenses", "generated-project-audit",

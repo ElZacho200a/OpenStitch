@@ -28,6 +28,8 @@
 #include "openstitch/document/embroidery_object.hpp"
 #include "openstitch/document/project.hpp"
 #include "openstitch/formats/dst.hpp"
+#include "openstitch/formats/format_registry.hpp"
+#include "openstitch/formats/machine_design.hpp"
 #include "openstitch/formats/svg.hpp"
 #include "openstitch/geometry/boolean.hpp"
 #include "openstitch/image/image.hpp"
@@ -118,7 +120,8 @@ int cli_error(const char* command, const std::string& message, const std::string
 constexpr const char* kImageFormatsHint =
     "formats acceptés : PNG, JPEG, BMP, TIFF ; vérifiez le chemin et l'extension du fichier";
 constexpr const char* kDstHint =
-    "attendu : un fichier .dst (Tajima) ; produisez-le avec `digitize` ou l'export du bureau";
+    "attendu : un fichier de broderie machine (.dst, .pes, .jef ou .exp) ; produisez-le avec "
+    "`digitize` ou l'export du bureau";
 constexpr const char* kOspHint =
     "attendu : un projet .osp enregistré par OpenStitch Studio (Fichier -> Enregistrer)";
 
@@ -286,8 +289,30 @@ int run_info(const std::string& path, std::optional<double> dpiOption, bool json
     return kExitOk;
 }
 
+// Lit un fichier de broderie machine ; le format vient de l'extension (registre de formats :
+// dst, pes, jef, exp), repli DST pour une extension inconnue (comportement historique).
+openstitch::Result<openstitch::stitch::StitchSequence>
+read_machine_sequence(const std::string& path) {
+    using namespace openstitch;
+    std::string ext = std::filesystem::path(path).extension().string();
+    if (!ext.empty() && ext.front() == '.') {
+        ext.erase(ext.begin());
+    }
+    const auto* info = formats::find_format_for_extension(ext);
+    if (info == nullptr || !info->can_read || info->decode == nullptr) {
+        return formats::read_dst_file(std::filesystem::path(path));
+    }
+    std::ifstream file(std::filesystem::path(path), std::ios::binary);
+    if (!file) {
+        return fail(ErrorCategory::UserInput, "Fichier introuvable ou illisible : " + path);
+    }
+    const std::vector<std::uint8_t> bytes((std::istreambuf_iterator<char>(file)),
+                                          std::istreambuf_iterator<char>());
+    return info->decode(bytes);
+}
+
 int run_stats(const std::string& path, bool json) {
-    const auto seq = openstitch::formats::read_dst_file(std::filesystem::path(path));
+    const auto seq = read_machine_sequence(path);
     if (!seq) {
         return cli_error("stats", seq.error().message, kDstHint);
     }
@@ -322,7 +347,7 @@ int run_dst2svg(const std::string& input, const std::string& output, bool noClob
     if (const auto refused = check_output_path("dst2svg", output, noClobber)) {
         return *refused;
     }
-    const auto seq = openstitch::formats::read_dst_file(std::filesystem::path(input));
+    const auto seq = read_machine_sequence(input);
     if (!seq) {
         return cli_error("dst2svg", seq.error().message, kDstHint);
     }
@@ -784,7 +809,8 @@ int run_digitize(const DigitizeArgs& a) {
 
 // Exporte un projet .osp en DST par le MÊME chemin que le bureau (export_machine_file) :
 // permet d'inspecter les coupes et la fin du fichier sans passer par l'interface.
-int run_osp2dst(const std::string& ospPath, const std::string& outDst, bool noClobber) {
+int run_osp2dst(const std::string& ospPath, const std::string& outDst, bool noClobber,
+                const openstitch::formats::MachineExportOptions& machineOptions) {
     using namespace openstitch;
     if (const auto refused = check_output_path("osp2dst", outDst, noClobber)) {
         return *refused;
@@ -793,12 +819,24 @@ int run_osp2dst(const std::string& ospPath, const std::string& outDst, bool noCl
     if (!project) {
         return cli_error("osp2dst", project.error().message, kOspHint);
     }
-    const auto written =
-        project_io::export_machine_file(*project, "dst", std::filesystem::path(outDst));
+    // Format machine déduit de l'extension de sortie (dst par défaut, pes, jef, exp).
+    std::string formatId = "dst";
+    {
+        std::string ext = std::filesystem::path(outDst).extension().string();
+        if (!ext.empty() && ext.front() == '.') {
+            ext.erase(ext.begin());
+        }
+        if (const auto* info = formats::find_format_for_extension(ext);
+            info != nullptr && info->can_write) {
+            formatId = info->id;
+        }
+    }
+    const auto written = project_io::export_machine_file(
+        *project, formatId, std::filesystem::path(outDst), machineOptions);
     if (!written) {
         return cli_error("osp2dst", written.error().message);
     }
-    fmt::print("DST écrit : {}\n", outDst);
+    fmt::print("{} écrit : {}\n", formats::find_format(formatId)->display_name, outDst);
     return kExitOk;
 }
 
@@ -1244,9 +1282,10 @@ int main(int argc, char** argv) {
     info_cmd->add_flag("--json", json_out, "Sortie JSON sur stdout");
 
     std::string dst_path;
-    auto* stats_cmd = app.add_subcommand("stats", "Statistiques d'un fichier de broderie DST");
+    auto* stats_cmd =
+        app.add_subcommand("stats", "Statistiques d'un fichier de broderie (DST, PES, JEF, EXP)");
     stats_cmd->group(kMain);
-    stats_cmd->add_option("fichier", dst_path, "Chemin du fichier .dst")->required();
+    stats_cmd->add_option("fichier", dst_path, "Chemin du fichier .dst/.pes/.jef/.exp")->required();
     stats_cmd->add_flag("--json", json_out, "Sortie JSON sur stdout");
 
     ProductionArgs pr;
@@ -1268,9 +1307,10 @@ int main(int argc, char** argv) {
     std::string svg_out;
     bool svg_noclobber = false;
     bool svg_force = false;
-    auto* svg_cmd = app.add_subcommand("dst2svg", "Convertit un DST en SVG d'aperçu");
+    auto* svg_cmd = app.add_subcommand(
+        "dst2svg", "Convertit un fichier de broderie (DST, PES, JEF, EXP) en SVG d'aperçu");
     svg_cmd->group(kMain);
-    svg_cmd->add_option("entree", svg_in, "Fichier .dst source")->required();
+    svg_cmd->add_option("entree", svg_in, "Fichier .dst/.pes/.jef/.exp source")->required();
     svg_cmd->add_option("sortie,--output-svg,--output", svg_out, "Fichier .svg à produire")
         ->required();
     auto* svg_nc =
@@ -1360,10 +1400,20 @@ int main(int argc, char** argv) {
     bool od_noclobber = false;
     bool od_force = false;
     auto* od_cmd =
-        app.add_subcommand("osp2dst", "Exporte un projet .osp en DST (chemin du bureau)");
+        app.add_subcommand("osp2dst", "Exporte un projet .osp en broderie machine : format "
+                                      "choisi par l'extension de sortie (.dst, .pes, .jef, .exp)");
     od_cmd->group(kMain);
     od_cmd->add_option("osp,--osp", od_in, "Projet .osp")->required();
-    od_cmd->add_option("sortie,--output", od_out, "DST à produire")->required();
+    od_cmd->add_option("sortie,--output", od_out, "Fichier à produire (.dst, .pes, .jef ou .exp)")
+        ->required();
+    bool od_no_trims = false;
+    bool od_no_color_changes = false;
+    std::string od_stops = "native";
+    od_cmd->add_flag("--no-trims", od_no_trims, "Supprime les coupes (elles deviennent des sauts)");
+    od_cmd->add_flag("--no-color-changes", od_no_color_changes,
+                     "Supprime les changements de couleur (motif monochrome)");
+    od_cmd->add_option("--stops", od_stops, "Arrêts machine : native, as-color-change ou drop")
+        ->check(CLI::IsMember({"native", "as-color-change", "drop"}));
     auto* od_nc =
         od_cmd->add_flag("--no-clobber", od_noclobber, "Refuse d'écraser un fichier existant");
     od_cmd->add_flag("--force", od_force, "Écrase la sortie existante (comportement par défaut)")
@@ -1441,7 +1491,18 @@ int main(int argc, char** argv) {
         return run_stitchdebug(sd_shape, sd_length, sd_repeats, sd_out, sd_underlay, sd_underpath);
     }
     if (od_cmd->parsed()) {
-        return run_osp2dst(od_in, od_out, od_noclobber);
+        openstitch::formats::MachineExportOptions machineOptions;
+        if (od_no_trims) {
+            machineOptions.trims = openstitch::formats::TrimMode::Drop;
+        }
+        if (od_no_color_changes) {
+            machineOptions.color_changes = openstitch::formats::ColorChangeMode::Drop;
+        }
+        machineOptions.stops = od_stops == "drop" ? openstitch::formats::StopMode::Drop
+                               : od_stops == "as-color-change"
+                                   ? openstitch::formats::StopMode::AsColorChange
+                                   : openstitch::formats::StopMode::Native;
+        return run_osp2dst(od_in, od_out, od_noclobber, machineOptions);
     }
     if (os_cmd->parsed()) {
         return run_osp2svg(os_in, os_out, os_outlines, os_only, os_noclobber);

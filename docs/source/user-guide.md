@@ -198,9 +198,9 @@ Précisions sur les gestes du tableau :
 | Ouvrir un projet… | — | Recharge un `.osp` |
 | Récents | — | Sous-menu des 10 derniers projets ouverts ou enregistrés (voir ci-dessous) |
 | Vider la liste des récents | — | Efface la liste |
-| Exporter en DST… | Ctrl+E | Montre d'abord le résumé (dimensions, points, résultat de l'analyse), puis demande le fichier `.dst` (points uniquement) |
+| Exporter une broderie machine… | Ctrl+E | Dialogue : format (DST, PES, JEF, EXP), options (coupes, arrêts, changements de couleur) et résumé pré-export (dimensions, points, analyse, limites du format) ; puis le fichier, avec l'extension du format (points uniquement) |
+| Importer une broderie machine… | — | Relit un `.dst`, `.pes`, `.jef` ou `.exp` comme séquence de points, avec les couleurs de fil pour PES et JEF (propose d'enregistrer le projet en cours) ; le glisser-déposer accepte les mêmes extensions |
 | Fiche de production… | — | Aperçu, impression ou export PDF A4 d'une fiche (dimensions, points, temps estimé, blocs de couleur, avertissements, notes) ; voir [fiche de production](production-sheet.md) |
-| Importer un DST… | — | Relit un `.dst` comme séquence de points (propose d'enregistrer le projet en cours) |
 | Importer un DXF… / Exporter en DXF… | — | Échange de contours vectoriels avec un logiciel de dessin (les points ne sont pas concernés) |
 | Quitter | Ctrl+Q | Ferme l'application |
 
@@ -801,7 +801,7 @@ la liste complète et filtrable est dans **Aide ▸ Gestes souris et clavier** (
 | Ctrl+Maj+S | Enregistrer le projet sous… |
 | Ctrl+Z | Annuler |
 | Ctrl+Y ou Ctrl+Maj+Z | Rétablir |
-| Ctrl+E | Exporter en DST (résumé puis choix du fichier) |
+| Ctrl+E | Exporter une broderie machine (format et résumé, puis choix du fichier) |
 | Suppr | Supprimer la sélection (région, objet de broderie ou objets vectoriels) |
 | Ctrl++ / Ctrl+- / Ctrl+0 | Zoom avant / arrière / ajuster |
 | F | Ajuster au canevas |

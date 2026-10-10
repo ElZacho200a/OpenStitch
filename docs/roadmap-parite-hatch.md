@@ -208,7 +208,7 @@ graphiques. C'est **le premier mur** : la majorité des machines domestiques
   aiguillage par nature de `commands::ICommand` pour éditer un design importé
   (S3, AD-05, hors P0).
 
-### HP-FMT-002 — Export PES (Brother / Babylock / Bernette) [P0] — ☐ À faire
+### HP-FMT-002 — Export PES (Brother / Babylock / Bernette) [P0] — ◐ Partiel
 - État OpenStitch : absent.
 - Hatch : écrit PES (versions 1 à 6+), avec bloc PEC (aperçu monochrome et
   index de couleurs de la palette Brother).
@@ -228,7 +228,12 @@ graphiques. C'est **le premier mur** : la majorité des machines domestiques
   pas de 0,1 mm ; test de déterminisme (2 exports = mêmes octets) ; essai sur
   une vraie machine Brother (HP-PHYS-001).
 
-### HP-FMT-003 — Import PES [P0] — ☐ À faire
+- Livré (2026-10-10) : PES v1 complet + bloc PEC (palette Brother 64, vignettes) ; v6 non fait ; options machine (coupes, arrêts, couleurs), dialogue
+  d'export et import du bureau, CLI (`osp2dst`/`stats`/`dst2svg` par extension), analyse
+  pré-export (`check_export_limits`), tests Catch2 (octets calculés à la main, aller-retour,
+  déterminisme, fuzz). **Reste** : validation par visualiseurs tiers et machine réelle
+  (non faite, aucun fichier de référence réel). Voir `docs/source/formats-pes-jef-exp.md`.
+### HP-FMT-003 — Import PES [P0] — ◐ Partiel
 - État OpenStitch : absent. Seul DST s'importe comme séquence de points.
 - Hatch : ouvre PES et récupère les couleurs.
 - À faire : décodeur PES/PEC tolérant (même politique que `decode_dst` : ne
@@ -238,7 +243,12 @@ graphiques. C'est **le premier mur** : la majorité des machines domestiques
 - Acceptation : corpus de PES réels (versions variées) importés, fuzzing
   (HP-QA-003) sans crash.
 
-### HP-FMT-004 — JEF / JEF+ (Janome, Elna) lecture + écriture [P0] — ☐ À faire
+- Livré (2026-10-10) : décodeur PES/PEC tolérant, couleurs PEC relues ; options machine (coupes, arrêts, couleurs), dialogue
+  d'export et import du bureau, CLI (`osp2dst`/`stats`/`dst2svg` par extension), analyse
+  pré-export (`check_export_limits`), tests Catch2 (octets calculés à la main, aller-retour,
+  déterminisme, fuzz). **Reste** : validation par visualiseurs tiers et machine réelle
+  (non faite, aucun fichier de référence réel). Voir `docs/source/formats-pes-jef-exp.md`.
+### HP-FMT-004 — JEF / JEF+ (Janome, Elna) lecture + écriture [P0] — ◐ Partiel
 - État OpenStitch : absent.
 - Hatch : oui, avec choix du cadre Janome dans l'en-tête.
 - À faire : codec JEF (table de couleurs Janome, code de cadre dans l'en-tête
@@ -247,13 +257,23 @@ graphiques. C'est **le premier mur** : la majorité des machines domestiques
 - Dépend de : HP-FMT-001, HP-THR-001.
 - Acceptation : idem HP-FMT-002.
 
-### HP-FMT-005 — EXP (Melco / Bernina) lecture + écriture [P0] — ☐ À faire
+- Livré (2026-10-10) : codec JEF (palette 78, code de cadre déduit de la taille) ; options machine (coupes, arrêts, couleurs), dialogue
+  d'export et import du bureau, CLI (`osp2dst`/`stats`/`dst2svg` par extension), analyse
+  pré-export (`check_export_limits`), tests Catch2 (octets calculés à la main, aller-retour,
+  déterminisme, fuzz). **Reste** : validation par visualiseurs tiers et machine réelle
+  (non faite, aucun fichier de référence réel). Voir `docs/source/formats-pes-jef-exp.md`.
+### HP-FMT-005 — EXP (Melco / Bernina) lecture + écriture [P0] — ◐ Partiel
 - État OpenStitch : absent.
 - Hatch : oui. Format simple, très répandu chez Bernina et en industriel.
 - À faire : codec EXP (+ fichier compagnon de couleurs `.inf` optionnel).
 - Modules : `libs/formats`.
 - Dépend de : HP-FMT-001.
 
+- Livré (2026-10-10) : codec EXP ; `.inf` non fait ; options machine (coupes, arrêts, couleurs), dialogue
+  d'export et import du bureau, CLI (`osp2dst`/`stats`/`dst2svg` par extension), analyse
+  pré-export (`check_export_limits`), tests Catch2 (octets calculés à la main, aller-retour,
+  déterminisme, fuzz). **Reste** : validation par visualiseurs tiers et machine réelle
+  (non faite, aucun fichier de référence réel). Voir `docs/source/formats-pes-jef-exp.md`.
 ### HP-FMT-006 — VP3 / VIP / HUS (Husqvarna Viking, Pfaff) [P1] — ☐ À faire
 - État OpenStitch : absent.
 - Hatch : oui.
