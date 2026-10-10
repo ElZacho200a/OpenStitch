@@ -17,6 +17,18 @@ add_library(openstitch_desktop_widgets STATIC
     main_window_directional.cpp
     main_window_satin_auto.cpp
     main_window_regions.cpp
+    main_window_shapes.cpp
+    main_window_workflow.cpp
+    ui_memory.hpp
+    main_window_ux.cpp
+    main_window_analysis.cpp
+    main_window_realistic.cpp
+    realistic_preferences.cpp
+    realistic_preferences.hpp
+    realistic_render_dialog.cpp
+    realistic_render_dialog.hpp
+    realistic_view_state.hpp
+    main_window_editing.cpp
     main_window.hpp
     app_theme.cpp
     app_theme.hpp
@@ -72,7 +84,7 @@ add_library(openstitch::desktop_widgets ALIAS openstitch_desktop_widgets)
 target_include_directories(openstitch_desktop_widgets PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(openstitch_desktop_widgets
     PUBLIC Qt6::Widgets openstitch::core openstitch::image openstitch::document
-           openstitch::commands openstitch::vectorization openstitch::stitch
+           openstitch::commands openstitch::vectorization openstitch::stitch openstitch::stitch_render
            openstitch::stitch_generation openstitch::formats openstitch::project_io
            openstitch::stitch_analysis openstitch::optimization openstitch::autodigitize
            openstitch::auto_satin openstitch::segmentation
@@ -87,7 +99,7 @@ target_link_libraries(openstitch PRIVATE openstitch_desktop_widgets openstitch::
 # (Les DLL vcpkg — OpenCV, etc. — sont déjà copiées par VCPKG_APPLOCAL_DEPS.)
 if(WIN32 AND TARGET Qt6::windeployqt)
     add_custom_command(TARGET openstitch POST_BUILD
-        COMMAND Qt6::windeployqt --no-translations --no-system-d3d-compiler
+        COMMAND Qt6::windeployqt --translations fr --no-system-d3d-compiler
                 "$<TARGET_FILE:openstitch>"
         COMMENT "Déploiement des DLL Qt (windeployqt)")
 endif()

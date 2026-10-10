@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 #pragma once
 
+#include <map>
 #include <optional>
 #include <string>
 #include <vector>
@@ -19,6 +20,7 @@ struct Finding {
     std::string message;  // phrase montrable à l'utilisateur
     Vec2um location{};    // où, sur le canevas
     ObjectId object{};    // objet concerné (0 = global)
+    std::string hint;     // piste de correction (vide = aucune)
 };
 
 struct AnalysisOptions {
@@ -37,5 +39,19 @@ struct AnalysisOptions {
 // moins grave (§15). Ne modifie rien ; les corrections restent manuelles.
 [[nodiscard]] std::vector<Finding> analyze(const stitch::StitchSequence& sequence,
                                            const AnalysisOptions& options = {});
+
+// Résultat détaillé : en plus des problèmes retenus, le nombre de problèmes
+// masqués par le plafond `max_findings_per_category` pour chaque catégorie
+// (clé absente = rien de masqué), afin que l'IHM puisse écrire « … et N autres ».
+struct AnalysisReport {
+    std::vector<Finding> findings;
+    std::map<std::string, std::size_t> suppressed;
+};
+[[nodiscard]] AnalysisReport analyze_detailed(const stitch::StitchSequence& sequence,
+                                              const AnalysisOptions& options = {});
+
+// Nombre de millimètres formaté à la française, une décimale, sans dépendre
+// de la locale : 3500 µm -> « 3,5 ». Troncature vers zéro comme avant.
+[[nodiscard]] std::string format_mm_fr(double micrometers);
 
 } // namespace openstitch::stitch_analysis

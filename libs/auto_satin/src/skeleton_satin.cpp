@@ -830,7 +830,7 @@ struct ResultCache {
     };
     std::mutex mutex;
     std::list<Entry> entries; // le plus récent en tête
-    static constexpr std::size_t kCapacity = 32;
+    static constexpr std::size_t kCapacity = 128;
 };
 
 ResultCache& result_cache() {

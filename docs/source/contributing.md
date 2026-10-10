@@ -2,6 +2,18 @@
 
 Public : contributeur.
 
+## Prérequis
+
+- Les outils de compilation : voir [Installation](installation.md) (voie rapide
+  `scriptsuild.ps1`, qui demande confirmation avant d'installer quoi que ce soit,
+  ou voie manuelle).
+- **Python 3.10+** et `pip` pour régénérer la documentation. Le script
+  `docs\scriptsuild-docs.ps1` crée lui-même un environnement virtuel local
+  `docs\.venv` (ignoré par Git, voir `.gitignore`), y installe
+  `docs/requirements.txt` et produit le PDF ; ne l'installez pas globalement.
+- `clang-format` pour la vérification de formatage de la CI
+  (`git ls-files '*.cpp' '*.hpp' | xargs clang-format --dry-run --Werror`).
+
 ## Flux
 
 1. Cloner le dépôt et créer une **branche** dédiée (le développement se fait sur
@@ -42,14 +54,19 @@ Co-Authored-By: ...
 
 ## Signaler un bug / proposer une fonctionnalité
 
-*Information non déterminée dans le dépôt* : aucun gestionnaire d'issues public
-n'est configuré (dépôt local). En interne, documentez le problème avec un cas
-minimal reproductible et, si possible, un test qui échoue.
+Sur le dépôt GitHub du projet (<https://github.com/ElZacho200a/OpenStitch>),
+onglet *Issues* s'il est activé. Dans tous les cas, documentez le problème avec
+un cas minimal reproductible (le projet `.osp` si possible) et, pour un
+contributeur, un test qui échoue.
 
 ## Documentation
 
 Toute fonctionnalité visible doit être reflétée dans `docs/source/` puis le PDF
-régénéré (voir *docs/README.md*). Les affirmations doivent rester **vérifiables**
+régénéré (`.\docs\scriptsuild-docs.ps1`, voir *docs/README.md*) ; une option ou
+un code de sortie de `openstitch-cli` va dans [Ligne de commande](cli.md). Un
+lien vers un autre chapitre est un lien Markdown relatif vers son fichier `.md` :
+le script le transforme en ancre cliquable dans le PDF et échoue sur une cible
+inconnue. Les affirmations doivent rester **vérifiables**
 dans le code (section « Implémentation associée »).
 
 ## Implémentation associée

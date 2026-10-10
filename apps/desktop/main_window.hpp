@@ -21,19 +21,24 @@
 
 #include "interaction_map.hpp"
 #include "openstitch/commands/undo_stack.hpp"
+#include "openstitch/commands/vector_ops.hpp"
 #include "openstitch/document/project.hpp"
 #include "openstitch/geometry/path.hpp"
 #include "openstitch/stitch/sequence.hpp"
 #include "openstitch/stitch_generation/overrides.hpp"
+#include "realistic_view_state.hpp"
 #include "tools.hpp"
 
 class QGraphicsScene;
 class QGraphicsItem;
 class QGraphicsPathItem;
+class QGraphicsPixmapItem;
 class QGraphicsEllipseItem;
+class QGraphicsRectItem;
 class QLabel;
 class QAction;
 class QListWidget;
+class QPushButton;
 class QDockWidget;
 class QSlider;
 class QTimer;
@@ -45,6 +50,11 @@ class QDoubleSpinBox;
 class QSpinBox;
 class QMenu;
 class QActionGroup;
+class QShortcut;
+class QDragEnterEvent;
+class QDropEvent;
+class QListWidgetItem;
+class QUrl;
 
 namespace openstitch::desktop {
 
@@ -73,8 +83,20 @@ public:
     MainWindow();
     ~MainWindow() override;
 
+    // Ouvre un fichier désigné par chemin (argument de ligne de commande, glisser-déposer
+    // depuis l'Explorateur) en le routant par extension : .osp (projet), .dst (import
+    // machine), .svg et images. Passe par les mêmes gardes « modifications non
+    // enregistrées » que les menus ; reporté tant qu'un dialogue modal est ouvert.
+    void openPath(const QString& path);
+
 protected:
     void closeEvent(QCloseEvent* event) override;
+    void dragEnterEvent(QDragEnterEvent* event) override;
+    void dropEvent(QDropEvent* event) override;
+    void changeEvent(QEvent* event) override;
+    // Filtre d'application : ShortcutOverride (touches simples non volées aux listes et
+    // listes déroulantes) ; voir main_window_ux.cpp.
+    bool eventFilter(QObject* watched, QEvent* event) override;
 
 private:
 private slots:
@@ -136,6 +158,19 @@ private slots:
     // Change le type de points d'un objet de broderie (contour/tatami/satin).
     // Le type satin exige des rails, construits depuis le contour source.
     void setStitchType(ObjectId embroideryId, int type);
+    // Paramètres et libellé du type demandé (0 contour, 1 tatami, 2 satin, 3 directionnel) pour
+    // la forme source de `emb` ; faux + `error` si impossible. Satin : `restoredContour` reçoit le
+    // contour brut de la région quand il diffère du contour actuel.
+    bool stitchParamsForType(const document::EmbroideryObject& emb, int type,
+                             document::StitchParams& params, std::string& label,
+                             std::optional<std::vector<geometry::PathSet>>& restoredContour,
+                             QString& error);
+    // Donne ce type de points à TOUTES les formes sélectionnées, en un seul pas d'annulation :
+    // une forme déjà cousue est convertie (toutes ses sections), une forme sans couture reçoit un
+    // nouvel objet de broderie. `tweak` ajuste les paramètres (espacement, angle) avant usage.
+    // Les formes qui ne peuvent pas recevoir ce type (satin impossible) sont ignorées et listées.
+    void setStitchTypeForSelection(int type,
+                                   const std::function<void(document::StitchParams&)>& tweak = {});
     void showStatistics();
     void setHoopSize();
     void exportDst();
@@ -201,6 +236,44 @@ private slots:
     void checkAutosaveRecovery();
 
 private:
+    // --- UX globale (main_window_ux.cpp) ---
+    void openImageFile(const QString& file);
+    void importDstFile(const QString& file);
+    // Chemin local du premier fichier déposé que l'application sait ouvrir (vide sinon).
+    [[nodiscard]] static QString firstOpenableLocalFile(const QList<QUrl>& urls);
+    // Disposition de l'interface : enregistrée à la fermeture (panneaux ré-affichés avant),
+    // restaurée au lancement (version, repli sur la disposition par défaut, bornée à l'écran).
+    void saveUiLayout();
+    void restoreUiLayout();
+    void fitWindowToScreen(double fraction = 1.0);
+    // Noms accessibles, ordre de tabulation, politique de focus.
+    void applyAccessibility();
+    // Entrée / Retour arrière / Échap : actifs seulement quand un tracé ou un mode est en cours.
+    void updateShortcutsState();
+    void updateSavedIndicator();
+    // Analyse (main_window_analysis.cpp).
+    void rebuildAnalysisList();
+    void markAnalysisStale();
+    void runAnalysisInternal(bool explicitRequest);
+    void activateAnalysisItem(QListWidgetItem* item, bool selectObject);
+    // Simulation (rendu incrémental, cf. main_window.cpp).
+    struct SimWalkState {
+        bool hasPos{false};
+        QPointF last;
+        std::uint64_t lastSource{0};
+        QPointF needle;
+        bool hasNeedle{false};
+        int next{0}; // prochain index de commande à parcourir
+    };
+    struct StitchMaps;
+    struct StitchPaths;
+    [[nodiscard]] StitchMaps buildStitchMaps() const;
+    void walkStitches(const StitchMaps& maps, int from, int to, SimWalkState& state, bool drawDots,
+                      StitchPaths& out) const;
+    void addStitchItems(const StitchPaths& paths, bool drawDots, bool skipEmpty);
+    void appendSimulation(int newLimit);
+    void updateSimulationInfo(int step);
+    void placeSimulationMarker();
     // Applique un projet déjà construit (charge depuis un fichier ou fixture
     // de test) : remplace le document, réinitialise undo/sélection, rafraîchit.
     void applyLoadedProject(document::Project project);
@@ -248,8 +321,26 @@ private:
     // synchrone : setCurrentProjectPath() et le constructeur le lisent et le
     // persistent sans attendre de cycle d'évènements, avant qu'aucun appel
     // différé n'ait pu s'exécuter.
-    void refreshRecentFilesUi();
+    // `prune` : applique aussi la purge des fichiers disparus (QFileInfo::exists,
+    // potentiellement bloquant sur réseau) -- réservé à l'ouverture du menu et
+    // à un échec d'ouverture, jamais à chaque enregistrement.
+    void refreshRecentFilesUi(bool prune = false);
+    // Reconstruit synchroniquement sous-menu Récents + écran d'accueil.
+    void rebuildRecentUi();
     void updateWindowTitle();
+    // Chemin proposé dans un dialogue d'enregistrement/export : nom du projet
+    // (ou « sans-titre ») + `suffix`, dans le dossier du projet, sinon le dernier
+    // dossier utilisé, sinon Documents.
+    [[nodiscard]] QString suggestedFilePath(const QString& suffix) const;
+    // Mémorise le dossier de `file` comme dernier dossier utilisé.
+    void rememberLastDirectory(const QString& file);
+    // Message d'état + bouton temporaire « Ouvrir le dossier » après un export.
+    void offerRevealInFolder(const QString& file, const QString& message);
+    // Prévient avant de supprimer la segmentation (opération image, resegmentation) ;
+    // `true` si l'on peut continuer (aucune segmentation, ou « Continuer »).
+    [[nodiscard]] bool confirmDestroySegmentation(const QString& action);
+    // Supprime le créneau autosave conservé après une récupération (cf. checkAutosaveRecovery).
+    void discardPendingRecoverySlot();
     // Objet de broderie ciblé par la sélection courante (broderie choisie
     // dans l'ordre de couture, sinon remplissage rattaché à l'objet vectoriel
     // sélectionné au canevas ; nullptr sinon). Résolution partagée par
@@ -368,6 +459,17 @@ private:
     void onFreeformPointAdded(QPointF posMm);
     void finishFreeform();
     void cancelFreeformDraw();
+    // Formes vectorielles : unir / soustraire / intersecter / séparer / couteau
+    // (main_window_shapes.cpp).
+    void buildShapeMenu();
+    void updateShapeActions();
+    void runBooleanOp(commands::BooleanOp op);
+    void breakApartSelected();
+    void finishCut();
+    // Exécute la commande (un pas d'annulation), sélectionne le premier de `keep` encore présent
+    // et annonce `done` ; en cas d'échec, affiche la raison dans la barre d'état.
+    void applyShapeCommand(commands::VectorOpResult result, const QString& done,
+                           const std::vector<ObjectId>& keep);
     // Colonne satin manuelle (outil DrawSatinColumn) : mêmes principes que le
     // polygone (aperçu élastique, terminé par double-clic/Entrée/bouton,
     // annulé par Échap, dernier point retirable par Retour arrière), mais
@@ -437,10 +539,37 @@ private:
     [[nodiscard]] std::optional<std::vector<geometry::PathSet>>
     pristineSatinContour(const document::VectorObject& vector) const;
     [[nodiscard]] QString autoSatinSummary(const document::EmbroideryObject& emb);
+    void createAutoSatinForSelection(bool askParameters);
     void createAutoSatin(bool askParameters);
-    void applyAutoSatinEdit(ObjectId id, document::AutoSatinParams params, const QString& label);
+    void applyAutoSatinEdit(ObjectId id, document::AutoSatinParams params, const QString& label,
+                            const QString& mergeTag = {});
     void addAutoSatinGuideFromStroke(ObjectId id, Vec2um from, Vec2um to);
     void changeAutoSatinGuide(ObjectId id, int index, double angleDeg, bool absolute);
+    // Clic sur un guide de la liste de l'inspecteur : cercle temporaire sur son ancre.
+    void highlightAutoSatinGuide(ObjectId id, int index);
+    QGraphicsItem* guideHighlight_{nullptr}; // propriété de la scène (baseItems_)
+    // Édition multi-objets, boîte de forme, alignement, historique (main_window_editing.cpp).
+    void connectInspectorEditing();
+    void applyVectorBox(ObjectId id, QRectF boxMm);
+    void applyToSelection(int stitchType, bool setSpacing, double spacingMm, bool setAngle,
+                          double angleDeg);
+    void buildAlignMenu(QMenu* editMenu);
+    void updateAlignActions();
+    void alignSelection(int mode);
+    void buildHistoryPanel();
+    void refreshHistoryPanel();
+    void jumpToHistory(int row);
+    [[nodiscard]] static std::optional<QRectF> vectorBoxMm(const document::VectorObject& object);
+    QDockWidget* historyDock_{nullptr};
+    QListWidget* historyList_{nullptr};
+    QList<QAction*> alignActs_;
+    // Aperçus de glisser (poignées) : repère d'accroche, cadre de redimensionnement.
+    void showNodeDragFeedback(QPointF sceneMm, ObjectId objectId);
+    void hideNodeDragFeedback();
+    void showResizePreview(QPointF anchorSceneMm, QPointF cornerSceneMm);
+    void hideResizePreview();
+    QGraphicsItem* snapIndicator_{nullptr};
+    QGraphicsRectItem* resizePreview_{nullptr};
     void removeAutoSatinGuide(ObjectId id, int index);
     void renderAutoSatinOverlay(const document::EmbroideryObject& obj,
                                 const document::AutoSatinParams& params,
@@ -505,7 +634,7 @@ private:
     void editSelection(const std::function<void(Selection&)>& edit);
     // Translate des objets vectoriels en UN pas d'annulation (CompositeCommand si
     // > 1) puis rafraîchit : partagé par les flèches et le glisser de corps.
-    void translateObjects(const std::vector<ObjectId>& ids, Vec2um delta);
+    void translateObjects(const std::vector<ObjectId>& ids, Vec2um delta, bool coalesce = false);
     [[nodiscard]] bool isObjectSelected(ObjectId id) const;
     // Lecture : état courant sous forme de Selection (objets = multiSelection_
     // ou {selectedObject_}), pour les modifications partielles.
@@ -538,6 +667,31 @@ private:
     // Message d'état décrivant la sélection de régions courante.
     void announceRegionSelection();
     [[nodiscard]] bool isRegionSelected(RegionId id) const;
+
+    // --- Segmentation : flux de travail (main_window_regions.cpp / main_window_workflow.cpp) ---
+    // Fusionne `sources` dans `keep` (couleur de `keep` gardée) en UN pas d'annulation. Si des
+    // objets vectoriels ont été créés depuis ces régions, demande quoi en faire (jamais d'objet
+    // orphelin silencieux). `false` si l'utilisateur annule.
+    bool mergeRegions(const std::vector<RegionId>& sources, RegionId keep);
+    // Objets vectoriels issus de `regions` : si il y en a, propose de les conserver, de les
+    // supprimer (ajoutés à `toRemove`) ou d'annuler (`false`). `verb` : « fusionnées », etc.
+    [[nodiscard]] bool resolveLinkedVectorObjects(const std::vector<RegionId>& regions,
+                                                  const QString& verb,
+                                                  std::vector<ObjectId>& toRemove);
+    // Mode « Fusionner avec… » : message d'état explicite + curseur « main » sur la vue.
+    void setMergeMode(bool on);
+    // Surbrillance de la région sous le curseur (carte des régions affichée, outil Sélection).
+    void updateRegionHover(std::optional<QPointF> sceneMm);
+    void hideRegionHover();
+    // Opacité de la carte des régions (0,2 – 1,0) : réglable pour voir la photo dessous.
+    void setRegionMapOpacity(double opacity);
+    void buildRegionViewControls(QMenu* segMenu);
+    // Actions grisées avec raison (Numérisation automatique, IA), nombre de régions affiché en
+    // permanence : appelé par updateActions().
+    void updateSegmentationWorkflowActions();
+    // Clic sur une étape du panneau Workflow : lance l'action si elle est disponible, sinon dit
+    // pourquoi elle ne l'est pas.
+    void onWorkflowStepClicked(int step);
     // Tous les pixels de la région sont-ils dans le rectangle (en pixels) ?
     [[nodiscard]] bool regionFullyInside(RegionId id, int x0, int y0, int x1, int y1) const;
     [[nodiscard]] bool hasMultiSelection() const { return !multiSelection_.empty(); }
@@ -559,6 +713,15 @@ private:
     // Fichier `.osp` auquel le document est rattaché (vide tant qu'il n'a
     // jamais été enregistré) : cible de Ctrl+S et nom affiché dans le titre.
     QString currentProjectPath_;
+    // Version du format du fichier ouvert quand il a été migré depuis un ancien
+    // schéma (0 = pas de migration) et son chemin : au premier enregistrement
+    // par-dessus, une copie `.vN.osp.bak` est faite.
+    int migratedFromVersion_{0};
+    QString migratedFromPath_;
+    // Créneau autosave récupéré, conservé tant qu'aucun enregistrement ni
+    // sauvegarde automatique n'a réussi depuis la récupération (vide sinon).
+    QString pendingRecoveryOsp_;
+    QString pendingRecoverySidecar_;
     // Fichiers récents (le plus récent en tête), persistés via QSettings
     // (recent_files.hpp) -- HP-FILE-003. Menu Fichier ▸ Récents et écran
     // d'accueil reconstruits à partir de cette liste par refreshRecentFilesUi().
@@ -626,6 +789,12 @@ private:
     QAction* toolDrawBezierAct_{nullptr};
     QAction* toolDrawFreeformAct_{nullptr};
     QAction* toolDrawSatinColumnAct_{nullptr};
+    QAction* toolCutAct_{nullptr};
+    QMenu* shapeMenu_{nullptr};
+    QAction* unionAct_{nullptr};
+    QAction* subtractAct_{nullptr};
+    QAction* intersectAct_{nullptr};
+    QAction* breakApartAct_{nullptr};
     // Boutons génériques partagés par tout outil de tracé multi-clics
     // (polygone/bézier/satin) : Terminer (Entrée) et Annuler (Échap),
     // toujours visibles dans la palette d'outils, actifs seulement pendant
@@ -715,6 +884,16 @@ private:
     void showGesturesDialog();
     void showQuickStartDialog();
     void buildNavigationMenu(QMenu* viewMenu);
+    // Rendu réaliste des points (main_window_realistic.cpp) : sous-menu
+    // Affichage > Rendu réaliste, fenêtre de réglages et peinture du cache.
+    void buildRealisticMenu(QMenu* viewMenu);
+    // Vrai si la couche points a été peinte en rendu réaliste (sinon l'appelant
+    // dessine les lignes : désactivé, simulation, dézoom fort, rien à peindre).
+    bool renderRealisticStitches();
+    void applyRealisticPreferences(const RealisticPreferences& prefs);
+    void showRealisticDialog();
+    QAction* realisticAct_{nullptr};
+    RealisticViewState realistic_;
     void applyNavigationPreset(Preset preset);
     // Duplique `ids` (copies exactes, même position) puis translate les COPIES de
     // `delta`, en un seul pas d'annulation (CompositeCommand) ; les copies deviennent
@@ -768,6 +947,13 @@ private:
     QAction* segmentAct_{nullptr};
     QAction* vectorizeRegionAct_{nullptr};
     QAction* autoDigitizeAct_{nullptr};
+    QAction* aiSegmentAct_{nullptr};
+    // Segmentation : nombre de régions (barre d'état permanente), surbrillance de survol d'une
+    // région (un seul item, réutilisé) et opacité de la carte des régions.
+    QLabel* regionCountLabel_{nullptr};
+    QGraphicsPixmapItem* regionHoverItem_{nullptr};
+    std::optional<RegionId> regionHoverId_;
+    double regionMapOpacity_{0.9};
 
     std::optional<RegionId> selectedRegion_;
     // Régions sélectionnées EN PLUS de selectedRegion_ (sélection multiple). Écrit uniquement
@@ -837,6 +1023,22 @@ private:
     QDockWidget* analysisDock_{nullptr};
     QListWidget* analysisList_{nullptr};
     QAction* analyzeAct_{nullptr};
+    QLabel* analysisSummary_{nullptr};
+    QLabel* analysisStale_{nullptr};
+    QLabel* analysisHint_{nullptr};
+    QComboBox* analysisFilter_{nullptr};
+    QTimer* analysisTimer_{nullptr}; // ré-analyse différée (300 ms) quand le document change
+    bool analysisIsStale_{false};
+    bool analysisHasResult_{false};
+
+    // Raccourcis fenêtre dont l'activation dépend du contexte (cf. updateShortcutsState).
+    QShortcut* escapeShortcut_{nullptr};
+    QShortcut* drawReturnShortcut_{nullptr};
+    QShortcut* drawEnterShortcut_{nullptr};
+    QShortcut* drawBackspaceShortcut_{nullptr};
+    QAction* hidePanelsAct_{nullptr};
+    QLabel* savedLabel_{nullptr};
+    QTimer* statusClearTimer_{nullptr};
 
     // Structure du document (Objets / Régions).
     QDockWidget* documentDock_{nullptr};
@@ -855,6 +1057,10 @@ private:
     // Ordre de couture.
     QDockWidget* orderDock_{nullptr};
     QListWidget* orderList_{nullptr};
+    QPushButton* orderUpBtn_{nullptr};
+    QPushButton* orderDownBtn_{nullptr};
+    QPushButton* orderLockBtn_{nullptr};
+    void updateOrderButtons();
     QLabel* orderCostLabel_{nullptr};
     QComboBox* orderStrategyCombo_{nullptr};
 
@@ -872,6 +1078,13 @@ private:
     QToolBar* simToolbar_{nullptr};
     QSlider* simSlider_{nullptr};
     QLabel* simLabel_{nullptr};
+    QLabel* simSwatch_{nullptr};      // pastille de la couleur du fil courant
+    QLabel* simObjectLabel_{nullptr}; // objet courant
+    QComboBox* simSpeedCombo_{nullptr};
+    double simAccum_{0.0}; // reste fractionnaire d'avance (vitesses < x1)
+    SimWalkState simWalk_;
+    bool simWalkValid_{false}; // simWalk_ décrit exactement ce qui est dessiné
+    QGraphicsItem* simMarker_{nullptr};
     QAction* simPlayAct_{nullptr};
     QTimer* simTimer_{nullptr};
     int simStep_{-1}; // -1 = simulation inactive (tout affiché)

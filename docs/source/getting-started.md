@@ -1,19 +1,28 @@
 # Guide de prise en main
 
 Public : utilisateur débutant. Ce tutoriel suit un flux réaliste, **adapté à ce
-qui est réellement implémenté**. Les étapes non disponibles dans l'interface sont
-signalées.
+qui est réellement implémenté**. Il n'a qu'une voie pour débuter : **image →
+numérisation automatique → auto-satin sur les bandes fines → export DST**. Le
+détail de chaque menu est dans le [Guide utilisateur détaillé](user-guide.md) ;
+l'installation (sans compiler) est dans [Installation](installation.md).
+
+Important : le fichier produit **n'a pas encore été validé sur une machine à
+broder réelle** (voir [Limitations](limitations.md)). Faites un essai sur chute de
+tissu avant tout ouvrage.
 
 ## Vue d'ensemble
 
-Le flux typique est : importer une image → la préparer → la segmenter en régions
-→ vectoriser → créer des objets de broderie (ou laisser l'auto-numérisation le
-faire) → régler les points → organiser l'ordre → analyser → exporter en DST.
+Image → préparation → segmentation en régions de couleur → **numérisation
+automatique** (objets éditables) → **satin automatique** pour les formes allongées
+→ vérification (analyse, simulation) → export DST. Tout est annulable
+(**Ctrl+Z**) et le projet `.osp` conserve l'image, les régions et les objets
+éditables, ce que le DST ne fait pas.
 
 ## 1. Ouvrir une image
 
-**Fichier → Ouvrir une image…** (Ctrl+O). Choisissez un PNG, JPEG, BMP ou TIFF.
-Un logo simple à quelques couleurs franches donne les meilleurs résultats.
+**Fichier → Ouvrir une image…** (Ctrl+O). Choisissez un PNG, JPEG, BMP, TIFF ou
+SVG. Un logo simple à quelques couleurs franches donne les meilleurs résultats.
+Les fichiers récents sont dans **Fichier → Récents**.
 
 ## 2. Choisir les dimensions physiques
 
@@ -23,7 +32,8 @@ suppose 96 dpi. C'est ici que se fixe la résolution de travail (mm par pixel) �
 elle ne changera plus ensuite.
 
 Conseil : visez une taille qui tient dans le cadre affiché (100 × 100 mm par
-défaut) ; sinon le motif dépassera du tambour.
+défaut, réglable par **Affichage → Taille du cadre…**) ; sinon le motif dépassera
+du tambour.
 
 ## 3. Préparer l'image
 
@@ -32,84 +42,111 @@ symétries, rotations 90°, recadrage (par sélection au rectangle) et quantific
 des couleurs. Toutes ces opérations sont **non destructives** : l'original est
 conservé, chaque opération s'annule (Ctrl+Z).
 
-## 4. Réduire les couleurs et segmenter
+## 4. Segmenter en régions
 
 **Segmentation → Segmenter l'image…** : choisissez le nombre maximal de couleurs
 et la taille minimale de région. Le logiciel quantifie en espace perceptuel
 CIELAB puis extrait les **régions connexes**. Activez **Afficher la carte des
-régions** pour les visualiser.
+régions** pour les visualiser. Cliquez une région pour la sélectionner (ses
+infos s'affichent dans la barre d'état) ; vous pouvez la **supprimer** (elle
+redevient du fond), la **recolorer** ou la **fusionner** avec une voisine
+(« Fusionner avec… » puis clic sur la cible).
 
-## 5. Nettoyer les régions
+## 5. Numériser automatiquement
 
-Cliquez une région pour la sélectionner (ses infos s'affichent dans la barre
-d'état). Vous pouvez la **supprimer** (elle redevient du fond), la **recolorer**,
-ou en **fusionner** deux (« Fusionner avec… » puis clic sur la cible).
+**Broderie → Numérisation automatique** crée d'un coup les objets éditables de
+toutes les régions. Le dialogue propose :
 
-## 6. Vectoriser
+- **Ignorer la plus grande région** : cochée d'office seulement si elle ressemble
+  à un fond quasi blanc qui encadre le motif (la couleur et la part de l'image
+  sont affichées pour vous laisser trancher) ;
+- la stratégie **Formes pleines** (remplissages) ou **Contours (dessin au
+  trait)**, pour un dessin fait de traits ;
+- un curseur de détail.
 
-Avec une région sélectionnée : **Segmentation → Convertir la région en objet
-vectoriel**. Le contour (et ses trous) devient un objet éditable ; ses **nœuds**
-apparaissent et se déplacent à la souris.
+Les zones remplissables deviennent des **tatamis**, les petites formes des
+contours cousus. Le satin n'est **pas** posé automatiquement : on le demande
+région par région, à l'étape suivante. Pour comprendre ce qui se passe, voir
+[Numérisation automatique](auto-numerisation.md).
 
-## 7. Créer des objets de broderie
+## 6. Auto-satin pour les bandes fines
 
-Sur un objet vectoriel sélectionné, menu **Broderie** :
+Pour une forme allongée (lettre, trait épais, bordure), sélectionnez la forme
+puis **Broderie → Créer un satin automatique…**. Le logiciel construit la
+colonne par **squelette** de la forme, **sans que vous posiez de rails** :
+l'aperçu annonce le nombre de colonnes et la couverture estimée. S'il **refuse**
+la forme (disque, forme compacte…), il explique pourquoi et propose un tatami à
+la place. Réglages : espacement, compensation de tirage, sous-couche,
+fractionnement des traversées longues.
 
-- **Créer un objet de point de contour…** (point simple, double ou triple) ;
-- **Créer un remplissage tatami…** (densité, longueur, angle) ;
-- **Créer une colonne satin…** (densité, compensation, sous-couche) — avec un
-  avertissement si la colonne est trop large.
+L'entrée voisine **Convertir automatiquement en satin (expérimental)…** utilise
+le même moteur avec des réglages par défaut et une simple confirmation.
 
-Alternative rapide : **Broderie → Numérisation automatique** crée des objets pour
-toutes les régions : **satin topologique** pour les bandes fines compatibles,
-**tatami** si le moteur satin refuse la forme, **contour** cousu pour les petites.
-Le satin automatique naïf qui débordait reste désactivé. On change ensuite le
-type d'une forme par **clic droit ▸ Type de points**, et on règle l'orientation
-d'un tatami à la souris (poignée de rotation).
+> Limitation : l'auto-satin par squelette est **expérimental et non validé sur
+> machine**. Vérifiez l'aperçu et la simulation avant de broder, et préférez un
+> tatami en cas de doute (clic droit ▸ Type de points).
 
-Pour une colonne satin sélectionnée, **Broderie ▸ Éditer les guides satin…**
-(`Maj+E`) affiche les barreaux d'orientation. Glissez une extrémité le long de son
-rail pour infléchir localement les points ; plusieurs barreaux pilotent des
-orientations successives. Cliquez sur un barreau pour le sélectionner, utilisez
-**Ajouter un guide satin** (`Maj+G`) pour partager le plus grand intervalle ou
-**Supprimer le guide satin sélectionné** pour l'enlever. Le logiciel conserve
-toujours au moins deux guides et chaque geste est annulable avec `Ctrl+Z`.
+On change ensuite le type d'une forme par **clic droit ▸ Type de points**, et on
+règle l'orientation d'un tatami à la souris (poignée de rotation) ou par
+**Orientation du remplissage…**.
 
-## 8. Régler les points et les couleurs
+## 7. Régler les points et les couleurs
 
-Les points se régénèrent automatiquement à chaque changement. La couleur d'un
-objet reprend celle de sa région.
+Les points se régénèrent automatiquement à chaque changement ; l'**inspecteur**
+(à droite) expose les paramètres de couture de l'objet sélectionné (densité,
+longueur, compensation, sous-couche…). La couleur d'un objet reprend celle de sa
+région : le logiciel gère des couleurs **RGB libres**, pas encore des références
+de fils de fabricant (voir [Palettes et fils](palettes-and-threads.md)).
 
-Limitation : il n'existe pas encore de **palette de fils** réelle ni de
-sélection de fil par référence fabricant (voir *Palettes et fils*).
-
-## 9. Organiser l'ordre de couture
+## 8. Organiser l'ordre de couture
 
 Le panneau **Ordre de couture** liste les objets ; vous pouvez les monter/descendre,
 les verrouiller, et appliquer une stratégie automatique (par couleur, par
 proximité) avec une estimation de coût.
 
-## 10. Simuler et analyser
+## 9. Simuler et analyser
 
 La **barre de simulation** rejoue la couture point par point (lecture/pause,
 curseur). **Analyse → Analyser le motif** (F5) liste les problèmes détectés
 (points trop courts/longs, sauts trop longs, hors cadre) ; un double-clic centre
 la vue sur le problème.
 
-## 11. Exporter en DST
+## 10. Exporter en DST
 
-**Fichier → Exporter en DST…**. Le logiciel rappelle qu'un DST **ne conserve pas**
-les objets éditables : gardez aussi votre projet `.osp`.
+**Fichier → Exporter en DST…** (Ctrl+E) : un résumé (dimensions, points, coupes,
+changements de couleur) s'affiche avant l'écriture. Le DST **ne conserve pas**
+les objets éditables : gardez aussi votre projet `.osp` (**Ctrl+S**). Le seuil
+de coupe de fil, la coupe avant changement de couleur et les points d'arrêt se
+règlent dans **Broderie → Options de génération…** ; le fichier se termine par
+une coupe finale. Ces coupes sont **à tester sur votre machine** (voir
+[Format DST](dst-format.md)).
 
-## 12. Vérifier le fichier
+## 11. Vérifier le fichier
 
 En ligne de commande : `openstitch-cli stats motif.dst` affiche points, sauts,
 dimensions et longueur de fil estimée ; `openstitch-cli dst2svg motif.dst
-apercu.svg` produit un aperçu vectoriel.
+apercu.svg` produit un aperçu vectoriel. Voir [Ligne de commande](cli.md).
+
+Si la machine ne lit pas le fichier ou si quelque chose ne va pas :
+[Dépannage](troubleshooting.md).
+
+## Avancé : colonne satin à rails manuels
+
+Réservé aux besoins que l'auto-satin ne couvre pas. **Cette voie est en partie
+archivée** (voir [Colonne satin](satin.md) : seules certaines parties sont encore
+maintenues). L'outil **Colonne satin** (touche `S` dans la palette) trace deux
+rails à la main. Pour une colonne satin sélectionnée, **Broderie ▸ Modifier la
+colonne satin (rails + guides)…** (`Maj+E`) affiche les nœuds des rails et les
+barreaux d'orientation : glissez une extrémité le long de son rail pour infléchir
+localement les points ; **Ajouter un guide satin** (`Maj+G`) partage le plus grand
+intervalle ; le logiciel garde au moins deux guides et chaque geste est annulable.
+Le sous-menu **Remodelage satin (avancé)** n'affiche que les rails ou que les
+guides.
 
 ## Implémentation associée
 
 - `apps/desktop/main_window.cpp` — tous les menus et actions ci-dessus.
+- `apps/desktop/main_window_satin_auto.cpp` — « Créer un satin automatique ».
 - `apps/desktop/import_dialog.cpp` — dialogue de taille physique.
 - `libs/autodigitize/src/autodigitize.cpp` — numérisation automatique.
 - `apps/cli/main.cpp` — `stats`, `dst2svg`.

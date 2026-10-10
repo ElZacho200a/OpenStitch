@@ -15,6 +15,13 @@ namespace openstitch::project_io::detail {
 
 using Blob = std::vector<std::uint8_t>;
 
+// Chemin -> texte UTF-8 (path::string() passerait par la page de code ANSI
+// sous Windows et corromprait les chemins accentués dans les messages).
+inline std::string path_utf8(const std::filesystem::path& path) {
+    const auto u8 = path.u8string();
+    return std::string(reinterpret_cast<const char*>(u8.data()), u8.size());
+}
+
 // Écrit toutes les entrées dans un ZIP (compression deflate).
 [[nodiscard]] Result<void> write_zip(const std::filesystem::path& path,
                                      const std::map<std::string, Blob>& entries);

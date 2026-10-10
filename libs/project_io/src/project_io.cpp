@@ -4,6 +4,9 @@
 #include <nlohmann/json.hpp>
 
 #include <cstring>
+#include <exception>
+#include <filesystem>
+#include <string>
 #include <system_error>
 
 #include "archive.hpp"
@@ -76,20 +79,62 @@ Result<void> save_project(const std::filesystem::path& path, const document::Pro
     std::error_code ec;
     std::filesystem::rename(tmp, path, ec);
     if (ec) {
-        // Sur certains systèmes, rename échoue si la cible existe : on remplace.
-        std::filesystem::remove(path, ec);
-        std::filesystem::rename(tmp, path, ec);
-        if (ec) {
-            std::filesystem::remove(tmp, ec);
+        // Sur certains systèmes, rename échoue si la cible existe : on remplace
+        // via un fichier de repli, pour ne jamais perdre l'ancien projet.
+        std::filesystem::path old = path;
+        old += ".old";
+        std::error_code ec2;
+        std::filesystem::remove(old, ec2);
+        std::filesystem::rename(path, old, ec2);
+        if (ec2) {
+            // Cible verrouillée : le .tmp (complet) est conservé et cité.
             return fail(ErrorCategory::Internal,
-                        "Impossible de finaliser l'enregistrement : " + path.string(),
-                        ec.message());
+                        "Impossible de finaliser l'enregistrement : " + detail::path_utf8(path) +
+                            " (fichier ouvert ailleurs ?). Vos données sont conservées dans " +
+                            detail::path_utf8(tmp),
+                        ec2.message());
         }
+        std::error_code ec3;
+        std::filesystem::rename(tmp, path, ec3);
+        if (ec3) {
+            // On restaure l'ancien projet ; le .tmp reste disponible.
+            std::error_code ec4;
+            std::filesystem::rename(old, path, ec4);
+            return fail(ErrorCategory::Internal,
+                        "Impossible de finaliser l'enregistrement : " + detail::path_utf8(path) +
+                            ". Vos données sont conservées dans " + detail::path_utf8(tmp),
+                        ec3.message());
+        }
+        std::filesystem::remove(old, ec2);
     }
     return {};
 }
 
-Result<document::Project> load_project(const std::filesystem::path& path) {
+std::filesystem::path migration_backup_path(const std::filesystem::path& path, int fromVersion) {
+    std::filesystem::path out = path;
+    out.replace_extension();
+    out += ".v" + std::to_string(fromVersion) + ".osp.bak";
+    return out;
+}
+
+Result<void> backup_before_migrated_save(const std::filesystem::path& path, int fromVersion) {
+    const auto bak = migration_backup_path(path, fromVersion);
+    std::error_code ec;
+    if (!std::filesystem::exists(path, ec) || std::filesystem::exists(bak, ec)) {
+        return {};
+    }
+    std::filesystem::copy_file(path, bak, std::filesystem::copy_options::skip_existing, ec);
+    if (ec) {
+        return fail(ErrorCategory::Internal,
+                    "Impossible de créer la copie de sécurité : " + detail::path_utf8(bak),
+                    ec.message());
+    }
+    return {};
+}
+
+namespace {
+
+Result<document::Project> load_project_impl(const std::filesystem::path& path, LoadInfo* info) {
     auto entries = detail::read_zip(path);
     if (!entries) {
         return std::unexpected(entries.error());
@@ -106,12 +151,28 @@ Result<document::Project> load_project(const std::filesystem::path& path) {
         return fail(ErrorCategory::InvalidFile, "project.json illisible", ex.what());
     }
 
-    const int version = root.value("schemaVersion", 0);
+    const int version = root.is_object() ? root.value("schemaVersion", 0) : 0;
     if (version <= 0 || version > kSchemaVersion) {
-        return fail(ErrorCategory::UnsupportedFormat,
-                    "Version de projet non prise en charge (" + std::to_string(version) + ")");
+        if (version > kSchemaVersion) {
+            return fail(ErrorCategory::UnsupportedFormat,
+                        "Ce projet a été créé par une version plus récente d'OpenStitch "
+                        "(format v" +
+                            std::to_string(version) + ", cette version lit jusqu'à v" +
+                            std::to_string(kSchemaVersion) +
+                            "). Mettez à jour OpenStitch pour l'ouvrir.");
+        }
+        return fail(ErrorCategory::InvalidFile,
+                    "Version de projet invalide (" + std::to_string(version) + ")");
+    }
+    if (info != nullptr) {
+        info->fileVersion = version;
+        info->migrated = version < kSchemaVersion;
     }
 
+    if (!root.contains("document")) {
+        return fail(ErrorCategory::InvalidFile,
+                    "project.json incomplet : section document absente");
+    }
     auto project = detail::project_from_json(root.at("document"));
     if (!project) {
         return std::unexpected(project.error());
@@ -141,6 +202,21 @@ Result<document::Project> load_project(const std::filesystem::path& path) {
     }
 
     return project;
+}
+
+} // namespace
+
+Result<document::Project> load_project(const std::filesystem::path& path, LoadInfo* info) {
+    // Un JSON syntaxiquement valide mais de structure inattendue lève des
+    // exceptions nlohmann (type_error, out_of_range...) : aucune ne doit fuir.
+    try {
+        return load_project_impl(path, info);
+    } catch (const nlohmann::json::exception& ex) {
+        return fail(ErrorCategory::InvalidFile, "Fichier projet invalide (structure inattendue)",
+                    ex.what());
+    } catch (const std::exception& ex) {
+        return fail(ErrorCategory::InvalidFile, "Fichier projet illisible", ex.what());
+    }
 }
 
 } // namespace openstitch::project_io

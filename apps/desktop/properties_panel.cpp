@@ -17,7 +17,10 @@
 
 #include <algorithm>
 #include <cmath>
+#include <functional>
 #include <numbers>
+#include <type_traits>
+#include <utility>
 #include <variant>
 
 namespace openstitch::desktop {
@@ -28,9 +31,81 @@ Micrometers to_um(double mm) {
     return to_micrometers(Millimeters{mm});
 }
 
+double to_deg(Angle a) {
+    return a.radians * 180.0 / std::numbers::pi;
+}
+
+Angle from_deg(double deg) {
+    return Angle{deg * std::numbers::pi / 180.0};
+}
+
+// Libellés et bornes partagés (satin manuel et auto-satin parlent la même langue).
+QStringList shortStitchItems() {
+    return {QObject::tr("Désactivés"), QObject::tr("Retirer/redistribuer"),
+            QObject::tr("Inset simple"), QObject::tr("Inset multi-niveaux")};
+}
+QStringList splitItems() {
+    return {QObject::tr("Désactivé"), QObject::tr("Simple"), QObject::tr("Décalé"),
+            QObject::tr("Jitter")};
+}
+QStringList capItems() {
+    return {QObject::tr("Plat"), QObject::tr("Arrondi"), QObject::tr("Effilé"),
+            QObject::tr("Auto")};
+}
+QStringList lockItems() {
+    return {QObject::tr("Aucun"), QObject::tr("Aller-retour"), QObject::tr("Triangle"),
+            QObject::tr("Micro-zigzag")};
+}
+
+template <class T>
+using EditFn = std::function<void(const QString&, const std::function<void(T&)>&)>;
+
+// Liaisons widget -> champ : chaque widget ne modifie QUE son champ (cf. showEmbroidery).
+template <class T>
+void bindMmField(QObject* ctx, const EditFn<T>& edit, QDoubleSpinBox* spin, const QString& label,
+                 Micrometers T::*member) {
+    QObject::connect(spin, &QDoubleSpinBox::valueChanged, ctx, [edit, label, member](double v) {
+        edit(label, [v, member](T& t) { t.*member = to_um(v); });
+    });
+}
+template <class T>
+void bindIntField(QObject* ctx, const EditFn<T>& edit, QSpinBox* spin, const QString& label,
+                  int T::*member) {
+    QObject::connect(spin, &QSpinBox::valueChanged, ctx, [edit, label, member](int v) {
+        edit(label, [v, member](T& t) { t.*member = v; });
+    });
+}
+template <class T>
+void bindBoolField(QObject* ctx, const EditFn<T>& edit, QCheckBox* box, const QString& label,
+                   bool T::*member) {
+    QObject::connect(box, &QCheckBox::toggled, ctx, [edit, label, member](bool v) {
+        edit(label, [v, member](T& t) { t.*member = v; });
+    });
+}
+template <class T, class E>
+void bindEnumField(QObject* ctx, const EditFn<T>& edit, QComboBox* combo, const QString& label,
+                   E T::*member) {
+    QObject::connect(combo, &QComboBox::currentIndexChanged, ctx, [edit, label, member](int index) {
+        edit(label, [index, member](T& t) { t.*member = static_cast<E>(index); });
+    });
+}
+
+// Grise `field` (et son libellé de ligne) tant que `box` est décochée.
+void dependOnField(QFormLayout* form, QCheckBox* box, QWidget* field) {
+    const auto apply = [form, field](bool on) {
+        field->setEnabled(on);
+        if (QWidget* label = form->labelForField(field)) {
+            label->setEnabled(on);
+        }
+    };
+    apply(box->isChecked());
+    QObject::connect(box, &QCheckBox::toggled, field, apply);
+}
+
 } // namespace
 
 PropertiesPanel::PropertiesPanel(QWidget* parent) : QWidget(parent) {
+    wheelGuard_ = new WheelGuard(this);
     root_ = new QVBoxLayout(this);
     root_->setContentsMargins(8, 8, 8, 8);
     root_->setSpacing(6);
@@ -77,9 +152,12 @@ PropertiesPanel::PropertiesPanel(QWidget* parent) : QWidget(parent) {
 
 void PropertiesPanel::clearBody() {
     currentId_.reset();
+    vectorId_.reset();
+    hasShown_ = false;
     satinGuideList_.clear();
     satinSummary_.clear();
     satinGuideAngle_.clear();
+    satinGuideAngleLabel_.clear();
     satinGuideAbsolute_.clear();
     satinGuideRemove_.clear();
     if (auto* lay = body_->layout()) {
@@ -90,16 +168,19 @@ void PropertiesPanel::clearBody() {
     }
 }
 
-QDoubleSpinBox* PropertiesPanel::mmSpin(double valueMm, double maxMm) {
+QDoubleSpinBox* PropertiesPanel::mmSpin(double valueMm, double maxMm, double minMm,
+                                        const QString& tip) {
     auto* spin = new QDoubleSpinBox(body_);
     // Frappe au clavier : une seule modification à la validation, pas une par chiffre
     // (chaque modification régénère les points).
     spin->setKeyboardTracking(false);
-    spin->setRange(0.0, maxMm);
+    spin->setRange(minMm, maxMm);
     spin->setDecimals(2);
     spin->setSingleStep(0.1);
     spin->setSuffix(tr(" mm"));
     spin->setValue(valueMm);
+    const QString range = tr("Plage : %1 – %2 mm").arg(minMm, 0, 'f', 2).arg(maxMm, 0, 'f', 2);
+    spin->setToolTip(tip.isEmpty() ? range : tip + QLatin1Char('\n') + range);
     return spin;
 }
 
@@ -155,6 +236,156 @@ void PropertiesPanel::showRegions(const RegionSelectionInfo& info) {
     setEditState(std::nullopt, stitch_generation::ObjectEditState::Clean);
 }
 
+void PropertiesPanel::showVectorObject(ObjectId id, const QString& title, const QString& details,
+                                       QRectF boxMm) {
+    clearBody();
+    vectorId_ = id;
+    vectorBox_ = boxMm;
+    header_->setText(title);
+    setEditState(std::nullopt, stitch_generation::ObjectEditState::Clean);
+    auto* label = new QLabel(details, body_);
+    label->setWordWrap(true);
+    label->setTextInteractionFlags(Qt::TextSelectableByMouse);
+    body_->layout()->addWidget(label);
+    if (boxMm.width() <= 0.0 || boxMm.height() <= 0.0) {
+        return; // forme dégénérée : pas de redimensionnement possible
+    }
+    auto* form = new QFormLayout();
+    form->setLabelAlignment(Qt::AlignRight);
+    const auto makeSpin = [this](const char* name, double value, double minMm, double maxMm,
+                                 const QString& tip) {
+        auto* spin = new QDoubleSpinBox(body_);
+        spin->setObjectName(QString::fromLatin1(name));
+        spin->setKeyboardTracking(false);
+        spin->setRange(minMm, maxMm);
+        spin->setDecimals(2);
+        spin->setSingleStep(0.5);
+        spin->setSuffix(tr(" mm"));
+        spin->setValue(value);
+        spin->setToolTip(tip + QLatin1Char('\n') +
+                         tr("Plage : %1 – %2 mm").arg(minMm, 0, 'f', 2).arg(maxMm, 0, 'f', 2));
+        return spin;
+    };
+    auto* x = makeSpin("spin_vectorX", boxMm.x(), -5000.0, 5000.0,
+                       tr("Position du bord gauche de la forme."));
+    auto* y = makeSpin("spin_vectorY", boxMm.y(), -5000.0, 5000.0,
+                       tr("Position du bord bas de la forme (Y vers le haut)."));
+    auto* w = makeSpin("spin_vectorW", boxMm.width(), 0.1, 5000.0, tr("Largeur de la forme."));
+    auto* h = makeSpin("spin_vectorH", boxMm.height(), 0.1, 5000.0, tr("Hauteur de la forme."));
+    auto* keep = new QCheckBox(tr("Conserver les proportions"), body_);
+    keep->setObjectName(QStringLiteral("check_vectorProportions"));
+    keep->setChecked(true);
+    form->addRow(tr("X :"), x);
+    form->addRow(tr("Y :"), y);
+    form->addRow(tr("Largeur :"), w);
+    form->addRow(tr("Hauteur :"), h);
+    form->addRow(QString(), keep);
+    const double ratio = boxMm.width() / boxMm.height();
+    const auto emitBox = [this, id, x, y, w, h] {
+        emit vectorBoxEdited(id, QRectF(x->value(), y->value(), w->value(), h->value()));
+    };
+    connect(x, &QDoubleSpinBox::valueChanged, this, emitBox);
+    connect(y, &QDoubleSpinBox::valueChanged, this, emitBox);
+    connect(w, &QDoubleSpinBox::valueChanged, this, [h, keep, ratio, emitBox](double value) {
+        if (keep->isChecked()) {
+            const QSignalBlocker block(h);
+            h->setValue(value / ratio);
+        }
+        emitBox();
+    });
+    connect(h, &QDoubleSpinBox::valueChanged, this, [w, keep, ratio, emitBox](double value) {
+        if (keep->isChecked()) {
+            const QSignalBlocker block(w);
+            w->setValue(value * ratio);
+        }
+        emitBox();
+    });
+    auto* holder = new QWidget(body_);
+    holder->setLayout(form);
+    body_->layout()->addWidget(holder);
+    wheelGuard_->guardAll(body_);
+}
+
+bool PropertiesPanel::showsVectorBox(ObjectId id, QRectF boxMm) const {
+    if (!vectorId_ || *vectorId_ != id) {
+        return false;
+    }
+    constexpr double tol = 0.02;
+    return std::abs(vectorBox_.x() - boxMm.x()) <= tol &&
+           std::abs(vectorBox_.y() - boxMm.y()) <= tol &&
+           std::abs(vectorBox_.width() - boxMm.width()) <= tol &&
+           std::abs(vectorBox_.height() - boxMm.height()) <= tol;
+}
+
+void PropertiesPanel::showMultiSelection(int objectCount, int embroideryCount) {
+    clearBody();
+    header_->setText(tr("%1 objets").arg(objectCount));
+    setEditState(std::nullopt, stitch_generation::ObjectEditState::Clean);
+    auto* label = new QLabel(
+        tr("%1 objets vectoriels sélectionnés (%2 avec une couture).\nLe type de points ci-dessous "
+           "s'applique à tous ; supprimer ou déplacer (flèches) aussi, et Édition > Aligner les "
+           "range sur la sélection.")
+            .arg(objectCount)
+            .arg(embroideryCount),
+        body_);
+    label->setWordWrap(true);
+    body_->layout()->addWidget(label);
+    auto* form = new QFormLayout();
+    form->setLabelAlignment(Qt::AlignRight);
+    auto* type = new QComboBox(body_);
+    type->setObjectName(QStringLiteral("combo_multiType"));
+    type->addItems({tr("(inchangé)"), tr("Contour cousu"), tr("Tatami"), tr("Satin automatique"),
+                    tr("Remplissage directionnel")});
+    type->setToolTip(
+        tr("Donne ce type de points à toutes les formes sélectionnées, comme le choix "
+           "de type d'une forme seule. Les formes sans couture en reçoivent une ; "
+           "celles qui ne peuvent pas être cousues en satin sont ignorées et listées."));
+    auto* useSpacing = new QCheckBox(tr("Espacement des rangées"), body_);
+    useSpacing->setObjectName(QStringLiteral("check_multiSpacing"));
+    auto* spacing = mmSpin(0.4, 5.0, 0.1, tr("Écart entre rangées (tatami, directionnel, satin)."));
+    spacing->setObjectName(QStringLiteral("spin_multiSpacing"));
+    spacing->setEnabled(false);
+    auto* useAngle = new QCheckBox(tr("Angle (tatami)"), body_);
+    useAngle->setObjectName(QStringLiteral("check_multiAngle"));
+    auto* angle = new QDoubleSpinBox(body_);
+    angle->setObjectName(QStringLiteral("spin_multiAngle"));
+    angle->setKeyboardTracking(false);
+    angle->setRange(0.0, 179.9);
+    angle->setDecimals(1);
+    angle->setWrapping(true);
+    angle->setSuffix(tr(" °"));
+    angle->setEnabled(false);
+    angle->setToolTip(tr("0° = horizontal, sens trigonométrique. Plage : 0 – 179,9°."));
+    connect(useSpacing, &QCheckBox::toggled, spacing, &QWidget::setEnabled);
+    connect(useAngle, &QCheckBox::toggled, angle, &QWidget::setEnabled);
+    auto* apply = new QPushButton(tr("Appliquer à %1 objets").arg(objectCount), body_);
+    apply->setObjectName(QStringLiteral("button_multiApply"));
+    apply->setToolTip(tr("Applique les réglages cochés aux coutures des objets sélectionnés, "
+                         "en une seule étape annulable."));
+    form->addRow(tr("Type de points :"), type);
+    form->addRow(useSpacing, spacing);
+    form->addRow(useAngle, angle);
+    form->addRow(QString(), apply);
+    connect(apply, &QPushButton::clicked, this, [this, type, useSpacing, spacing, useAngle, angle] {
+        emit applyToSelectionRequested(type->currentIndex() - 1, useSpacing->isChecked(),
+                                       spacing->value(), useAngle->isChecked(), angle->value());
+    });
+    auto* holder = new QWidget(body_);
+    holder->setLayout(form);
+    body_->layout()->addWidget(holder);
+    wheelGuard_->guardAll(body_);
+}
+
+bool PropertiesPanel::showsParams(const document::StitchParams& params) const {
+    return hasShown_ && shown_ == params;
+}
+
+void PropertiesPanel::adoptParams(ObjectId id, const document::StitchParams& params) {
+    if (hasShown_ && currentId_ && *currentId_ == id) {
+        shown_ = params;
+    }
+}
+
 void PropertiesPanel::showInfo(const QString& title, const QString& details) {
     clearBody();
     header_->setText(title);
@@ -201,11 +432,25 @@ void PropertiesPanel::setEditState(std::optional<ObjectId> id,
     }
 }
 
+void PropertiesPanel::updateGuideAngleLabel(bool absolute) {
+    if (satinGuideAngleLabel_ == nullptr) {
+        return;
+    }
+    satinGuideAngleLabel_->setText(
+        absolute ? tr("Angle absolu (° depuis l'horizontale, sens trigonométrique) :")
+                 : tr("Écart à la perpendiculaire de l'axe (°, 0° = perpendiculaire) :"));
+}
+
 void PropertiesPanel::setAutoSatinState(std::optional<ObjectId> id,
                                         const document::AutoSatinParams* params,
                                         const QString& summary) {
     if (!id || params == nullptr || !currentId_ || *currentId_ != *id) {
         return;
+    }
+    // Les guides se posent aussi depuis le canevas : la copie interne les suit pour que
+    // `showsParams` ne voie pas d'écart (sinon le formulaire serait reconstruit).
+    if (auto* shown = std::get_if<document::AutoSatinParams>(&shown_)) {
+        shown->guides = params->guides;
     }
     if (satinSummary_ != nullptr && !summary.isEmpty()) {
         satinSummary_->setText(summary);
@@ -221,13 +466,12 @@ void PropertiesPanel::setAutoSatinState(std::optional<ObjectId> id,
         satinGuideList_->clear();
         int n = 0;
         for (const auto& g : params->guides) {
-            const int deg =
-                static_cast<int>(std::lround(g.angle.radians * 180.0 / std::numbers::pi));
+            const double deg = to_deg(g.angle);
             auto* item = new QListWidgetItem(tr("Guide %1 — %2 mm, %3 mm — %4° (%5)")
                                                  .arg(++n)
                                                  .arg(to_millimeters(g.anchor.x).value, 0, 'f', 1)
                                                  .arg(to_millimeters(g.anchor.y).value, 0, 'f', 1)
-                                                 .arg(deg)
+                                                 .arg(deg, 0, 'f', 1)
                                                  .arg(g.absolute ? tr("absolu") : tr("relatif")));
             item->setData(Qt::UserRole, deg);
             item->setData(Qt::UserRole + 1, g.absolute);
@@ -247,9 +491,10 @@ void PropertiesPanel::setAutoSatinState(std::optional<ObjectId> id,
         if (has) {
             const QSignalBlocker b1(satinGuideAngle_);
             const QSignalBlocker b2(satinGuideAbsolute_);
-            satinGuideAngle_->setValue(satinGuideList_->item(row)->data(Qt::UserRole).toInt());
-            satinGuideAbsolute_->setChecked(
-                satinGuideList_->item(row)->data(Qt::UserRole + 1).toBool());
+            satinGuideAngle_->setValue(satinGuideList_->item(row)->data(Qt::UserRole).toDouble());
+            const bool absolute = satinGuideList_->item(row)->data(Qt::UserRole + 1).toBool();
+            satinGuideAbsolute_->setChecked(absolute);
+            updateGuideAngleLabel(absolute);
         }
     }
     building_ = wasBuilding;
@@ -258,6 +503,8 @@ void PropertiesPanel::setAutoSatinState(std::optional<ObjectId> id,
 void PropertiesPanel::showEmbroidery(const document::EmbroideryObject& object) {
     clearBody();
     currentId_ = object.id;
+    shown_ = object.params;
+    hasShown_ = true;
     const ObjectId id = object.id;
     header_->setText(QString::fromStdString(object.name));
 
@@ -275,9 +522,43 @@ void PropertiesPanel::showEmbroidery(const document::EmbroideryObject& object) {
     std::visit(
         [&](const auto& p) {
             using T = std::decay_t<decltype(p)>;
+
+            // --- Émission champ par champ -------------------------------------------
+            // Chaque widget ne modifie QUE son champ de la copie `shown_` : les autres
+            // valeurs (jamais relues dans les widgets, donc jamais arrondies) sont
+            // conservées telles quelles. `label` nomme l'étape d'historique.
+            const EditFn<T> edit = [this, id](const QString& label,
+                                              const std::function<void(T&)>& fn) {
+                if (building_) {
+                    return;
+                }
+                if (auto* t = std::get_if<T>(&shown_)) {
+                    fn(*t);
+                    emit paramsEdited(id, shown_, label);
+                }
+            };
+            [[maybe_unused]] const auto bindMm =
+                [this, &edit](QDoubleSpinBox* spin, const QString& label, Micrometers T::*member) {
+                    bindMmField<T>(this, edit, spin, label, member);
+                };
+            [[maybe_unused]] const auto bindInt =
+                [this, &edit](QSpinBox* spin, const QString& label, int T::*member) {
+                    bindIntField<T>(this, edit, spin, label, member);
+                };
+            [[maybe_unused]] const auto bindBool =
+                [this, &edit](QCheckBox* box, const QString& label, bool T::*member) {
+                    bindBoolField<T>(this, edit, box, label, member);
+                };
+            // Grise `field` (et son libellé) tant que `box` est décochée (Mo8).
+            [[maybe_unused]] const auto dependOn = [form](QCheckBox* box, QWidget* field) {
+                dependOnField(form, box, field);
+            };
+
             if constexpr (std::is_same_v<T, document::RunningStitchParams>) {
-                auto* len = mmSpin(to_millimeters(p.stitch_length).value, 20.0);
-                auto* minl = mmSpin(to_millimeters(p.min_length).value, 20.0);
+                auto* len = mmSpin(to_millimeters(p.stitch_length).value, 20.0, 0.5,
+                                   tr("Distance cible entre deux pénétrations."));
+                auto* minl = mmSpin(to_millimeters(p.min_length).value, 20.0, 0.1,
+                                    tr("En dessous de cette longueur, les points sont fusionnés."));
                 auto* rep = new QSpinBox(body_);
                 rep->setKeyboardTracking(false);
                 rep->setRange(1, 3);
@@ -286,41 +567,44 @@ void PropertiesPanel::showEmbroidery(const document::EmbroideryObject& object) {
                 form->addRow(tr("Longueur de point :"), len);
                 form->addRow(tr("Longueur minimale :"), minl);
                 form->addRow(tr("Passages :"), rep);
-                const auto emitEdit = [this, id, len, minl, rep] {
-                    if (building_)
-                        return;
-                    document::RunningStitchParams r;
-                    r.stitch_length = to_um(len->value());
-                    r.min_length = to_um(minl->value());
-                    r.repeats = rep->value();
-                    emit paramsEdited(id, r);
-                };
-                connect(len, &QDoubleSpinBox::valueChanged, this, emitEdit);
-                connect(minl, &QDoubleSpinBox::valueChanged, this, emitEdit);
-                connect(rep, &QSpinBox::valueChanged, this, emitEdit);
+                bindMm(len, tr("Longueur de point"), &T::stitch_length);
+                bindMm(minl, tr("Longueur minimale"), &T::min_length);
+                bindInt(rep, tr("Passages"), &T::repeats);
             } else if constexpr (std::is_same_v<T, document::TatamiParams>) {
-                auto* spacing = mmSpin(to_millimeters(p.row_spacing).value, 5.0);
-                auto* len = mmSpin(to_millimeters(p.stitch_length).value, 10.0);
-                auto* angle = new QSpinBox(body_);
+                auto* spacing = mmSpin(to_millimeters(p.row_spacing).value, 5.0, 0.1,
+                                       tr("Écart entre deux rangées (densité)."));
+                spacing->setObjectName(QStringLiteral("spin_rowSpacing"));
+                auto* len = mmSpin(to_millimeters(p.stitch_length).value, 10.0, 1.0,
+                                   tr("Longueur de point le long d'une rangée."));
+                auto* angle = new QDoubleSpinBox(body_);
+                angle->setObjectName(QStringLiteral("spin_tatamiAngle"));
                 angle->setKeyboardTracking(false);
-                angle->setRange(0, 179);
+                angle->setRange(0.0, 179.9);
+                angle->setDecimals(1);
+                angle->setWrapping(true);
                 angle->setSuffix(tr(" °"));
-                angle->setValue(
-                    static_cast<int>(std::lround(p.angle.radians * 180.0 / std::numbers::pi)) %
-                    180);
-                auto* inset = mmSpin(to_millimeters(p.inset).value, 5.0);
+                angle->setToolTip(tr("Orientation des rangées : 0° = horizontal, sens "
+                                     "trigonométrique. Plage : 0 – 179,9°."));
+                angle->setValue(std::fmod(std::fmod(to_deg(p.angle), 180.0) + 180.0, 180.0));
+                auto* inset = mmSpin(to_millimeters(p.inset).value, 5.0, 0.0,
+                                     tr("Retrait des points par rapport au bord."));
                 auto* stagger = new QSpinBox(body_);
                 stagger->setKeyboardTracking(false);
                 stagger->setRange(1, 8);
                 stagger->setValue(p.stagger);
+                stagger->setToolTip(tr("Nombre de rangées avant répétition de la phase des "
+                                       "pénétrations. Plage : 1 – 8."));
                 // Tatami avancé (Lot 7).
-                const document::TatamiParams tbase = p;
                 auto* uEdge = new QCheckBox(tr("Sous-couche de contour"), body_);
+                uEdge->setObjectName(QStringLiteral("check_underlayEdge"));
                 uEdge->setChecked(p.underlay_edge);
-                auto* uInset = mmSpin(to_millimeters(p.underlay_inset).value, 5.0);
+                auto* uInset = mmSpin(to_millimeters(p.underlay_inset).value, 5.0, 0.0);
+                uInset->setObjectName(QStringLiteral("spin_underlayInset"));
                 auto* uPar = new QCheckBox(tr("Sous-couche parallèle"), body_);
+                uPar->setObjectName(QStringLiteral("check_underlayParallel"));
                 uPar->setChecked(p.underlay_parallel);
-                auto* uSpacing = mmSpin(to_millimeters(p.underlay_spacing).value, 10.0);
+                auto* uSpacing = mmSpin(to_millimeters(p.underlay_spacing).value, 10.0, 0.1);
+                uSpacing->setObjectName(QStringLiteral("spin_underlaySpacing"));
                 auto* underpath = new QCheckBox(tr("Liaisons cousues cachées"), body_);
                 underpath->setChecked(p.hidden_underpath);
                 form->addRow(tr("Espacement des rangées :"), spacing);
@@ -333,33 +617,20 @@ void PropertiesPanel::showEmbroidery(const document::EmbroideryObject& object) {
                 form->addRow(QString(), uPar);
                 form->addRow(tr("Espacement de la sous-couche :"), uSpacing);
                 form->addRow(QString(), underpath);
-                const auto emitEdit = [this, id, tbase, spacing, len, angle, inset, stagger, uEdge,
-                                       uInset, uPar, uSpacing, underpath] {
-                    if (building_)
-                        return;
-                    document::TatamiParams t = tbase; // conserve sous-couche fine + entrée
-                    t.row_spacing = to_um(spacing->value());
-                    t.stitch_length = to_um(len->value());
-                    t.angle = Angle{angle->value() * std::numbers::pi / 180.0};
-                    t.inset = to_um(inset->value());
-                    t.stagger = stagger->value();
-                    t.underlay_edge = uEdge->isChecked();
-                    t.underlay_inset = to_um(uInset->value());
-                    t.underlay_parallel = uPar->isChecked();
-                    t.underlay_spacing = to_um(uSpacing->value());
-                    t.hidden_underpath = underpath->isChecked();
-                    emit paramsEdited(id, t);
-                };
-                connect(spacing, &QDoubleSpinBox::valueChanged, this, emitEdit);
-                connect(len, &QDoubleSpinBox::valueChanged, this, emitEdit);
-                connect(angle, &QSpinBox::valueChanged, this, emitEdit);
-                connect(inset, &QDoubleSpinBox::valueChanged, this, emitEdit);
-                connect(stagger, &QSpinBox::valueChanged, this, emitEdit);
-                connect(uEdge, &QCheckBox::toggled, this, emitEdit);
-                connect(uInset, &QDoubleSpinBox::valueChanged, this, emitEdit);
-                connect(uPar, &QCheckBox::toggled, this, emitEdit);
-                connect(uSpacing, &QDoubleSpinBox::valueChanged, this, emitEdit);
-                connect(underpath, &QCheckBox::toggled, this, emitEdit);
+                dependOn(uEdge, uInset);
+                dependOn(uPar, uSpacing);
+                bindMm(spacing, tr("Espacement des rangées"), &T::row_spacing);
+                bindMm(len, tr("Longueur de point"), &T::stitch_length);
+                connect(angle, &QDoubleSpinBox::valueChanged, this, [edit](double v) {
+                    edit(tr("Angle"), [v](T& t) { t.angle = from_deg(v); });
+                });
+                bindMm(inset, tr("Retrait de bord"), &T::inset);
+                bindInt(stagger, tr("Décalage"), &T::stagger);
+                bindBool(uEdge, tr("Sous-couche de contour"), &T::underlay_edge);
+                bindMm(uInset, tr("Retrait de la sous-couche"), &T::underlay_inset);
+                bindBool(uPar, tr("Sous-couche parallèle"), &T::underlay_parallel);
+                bindMm(uSpacing, tr("Espacement de la sous-couche"), &T::underlay_spacing);
+                bindBool(underpath, tr("Liaisons cousues cachées"), &T::hidden_underpath);
                 // Conversion vers le remplissage directionnel (points qui
                 // suivent la forme) : un seul clic, annulable.
                 auto* toDirectional =
@@ -373,8 +644,7 @@ void PropertiesPanel::showEmbroidery(const document::EmbroideryObject& object) {
                 connect(toDirectional, &QPushButton::clicked, this,
                         [this, id] { emit convertToDirectionalRequested(id); });
             } else if constexpr (std::is_same_v<T, document::DirectionalFillParams>) {
-                // Guides et ruptures ne s'éditent pas ici (canevas) : conservés.
-                const document::DirectionalFillParams dbase = p;
+                // Guides et ruptures ne s'éditent pas ici (canevas) : jamais touchés.
                 auto* summary = new QLabel(tr("%1 guide(s) · %2 ligne(s) de rupture")
                                                .arg(p.guides.size())
                                                .arg(p.break_lines.size()),
@@ -386,31 +656,39 @@ void PropertiesPanel::showEmbroidery(const document::EmbroideryObject& object) {
                                           "les lignes de rupture sur le canevas (D)."));
                 connect(editGuides, &QPushButton::clicked, this,
                         [this, id] { emit editDirectionGuidesRequested(id); });
-                auto* spacing = mmSpin(to_millimeters(p.row_spacing).value, 5.0);
-                auto* len = mmSpin(to_millimeters(p.stitch_length).value, 7.0);
-                len->setMinimum(1.0);
-                len->setToolTip(tr("Longueur cible, bornée entre 1 et 7 mm."));
+                auto* spacing = mmSpin(to_millimeters(p.row_spacing).value, 5.0, 0.1,
+                                       tr("Écart entre deux lignes de couture (densité)."));
+                spacing->setObjectName(QStringLiteral("spin_rowSpacing"));
+                auto* len = mmSpin(to_millimeters(p.stitch_length).value, 7.0, 1.0,
+                                   tr("Longueur cible, bornée entre 1 et 7 mm."));
                 auto* edge = new QSpinBox(body_);
                 edge->setKeyboardTracking(false);
                 edge->setRange(0, 100);
                 edge->setSuffix(tr(" %"));
                 edge->setValue(static_cast<int>(std::lround(p.edge_weight * 100.0)));
                 edge->setToolTip(tr("Influence de la tangente du bord le plus proche sur la "
-                                    "direction du fil (0 % = guides seuls)."));
-                auto* inset = mmSpin(to_millimeters(p.inset).value, 5.0);
+                                    "direction du fil (0 % = guides seuls). Plage : 0 – 100 %."));
+                auto* inset = mmSpin(to_millimeters(p.inset).value, 5.0, 0.0,
+                                     tr("Retrait des points par rapport au bord."));
                 auto* stagger = new QSpinBox(body_);
                 stagger->setKeyboardTracking(false);
                 stagger->setRange(1, 8);
                 stagger->setValue(p.stagger);
-                auto* overlap = mmSpin(to_millimeters(p.sector_overlap).value, 1.0);
-                overlap->setToolTip(tr("Chevauchement des secteurs le long des lignes de "
-                                       "rupture (0,2 à 0,3 mm évite les interstices)."));
+                stagger->setToolTip(tr("Nombre de lignes avant répétition de la phase des "
+                                       "pénétrations. Plage : 1 – 8."));
+                auto* overlap = mmSpin(to_millimeters(p.sector_overlap).value, 1.0, 0.0,
+                                       tr("Chevauchement des secteurs le long des lignes de "
+                                          "rupture (0,2 à 0,3 mm évite les interstices)."));
                 auto* uEdge = new QCheckBox(tr("Sous-couche de contour"), body_);
+                uEdge->setObjectName(QStringLiteral("check_underlayEdge"));
                 uEdge->setChecked(p.underlay_edge);
-                auto* uInset = mmSpin(to_millimeters(p.underlay_inset).value, 5.0);
+                auto* uInset = mmSpin(to_millimeters(p.underlay_inset).value, 5.0, 0.0);
+                uInset->setObjectName(QStringLiteral("spin_underlayInset"));
                 auto* uPar = new QCheckBox(tr("Sous-couche perpendiculaire"), body_);
+                uPar->setObjectName(QStringLiteral("check_underlayParallel"));
                 uPar->setChecked(p.underlay_parallel);
-                auto* uSpacing = mmSpin(to_millimeters(p.underlay_spacing).value, 10.0);
+                auto* uSpacing = mmSpin(to_millimeters(p.underlay_spacing).value, 10.0, 0.1);
+                uSpacing->setObjectName(QStringLiteral("spin_underlaySpacing"));
                 auto* underpath = new QCheckBox(tr("Liaisons cousues cachées"), body_);
                 underpath->setChecked(p.hidden_underpath);
                 auto* handmade = new QCheckBox(tr("Aspect fait main"), body_);
@@ -447,165 +725,127 @@ void PropertiesPanel::showEmbroidery(const document::EmbroideryObject& object) {
                 form->addRow(QString(), handmade);
                 form->addRow(tr("Intensité :"), intensity);
                 form->addRow(QString(), reseed);
-                const auto build = [dbase, spacing, len, edge, inset, stagger, overlap, uEdge,
-                                    uInset, uPar, uSpacing, underpath, handmade, intensity] {
-                    document::DirectionalFillParams d = dbase; // conserve guides + graine
-                    d.row_spacing = to_um(spacing->value());
-                    d.stitch_length = to_um(len->value());
-                    d.edge_weight = edge->value() / 100.0;
-                    d.inset = to_um(inset->value());
-                    d.stagger = stagger->value();
-                    d.sector_overlap = to_um(overlap->value());
-                    d.underlay_edge = uEdge->isChecked();
-                    d.underlay_inset = to_um(uInset->value());
-                    d.underlay_parallel = uPar->isChecked();
-                    d.underlay_spacing = to_um(uSpacing->value());
-                    d.hidden_underpath = underpath->isChecked();
-                    d.handmade = handmade->isChecked();
-                    d.handmade_intensity = intensity->value();
-                    return d;
-                };
-                const auto emitEdit = [this, id, build] {
-                    if (building_)
-                        return;
-                    emit paramsEdited(id, build());
-                };
-                connect(spacing, &QDoubleSpinBox::valueChanged, this, emitEdit);
-                connect(len, &QDoubleSpinBox::valueChanged, this, emitEdit);
-                connect(edge, &QSpinBox::valueChanged, this, emitEdit);
-                connect(inset, &QDoubleSpinBox::valueChanged, this, emitEdit);
-                connect(stagger, &QSpinBox::valueChanged, this, emitEdit);
-                connect(overlap, &QDoubleSpinBox::valueChanged, this, emitEdit);
-                connect(uEdge, &QCheckBox::toggled, this, emitEdit);
-                connect(uInset, &QDoubleSpinBox::valueChanged, this, emitEdit);
-                connect(uPar, &QCheckBox::toggled, this, emitEdit);
-                connect(uSpacing, &QDoubleSpinBox::valueChanged, this, emitEdit);
-                connect(underpath, &QCheckBox::toggled, this, emitEdit);
-                connect(intensity, &QSpinBox::valueChanged, this, emitEdit);
+                dependOn(uEdge, uInset);
+                dependOn(uPar, uSpacing);
+                bindMm(spacing, tr("Espacement des lignes"), &T::row_spacing);
+                bindMm(len, tr("Longueur de point"), &T::stitch_length);
+                connect(edge, &QSpinBox::valueChanged, this, [edit](int v) {
+                    edit(tr("Influence des bords"), [v](T& t) { t.edge_weight = v / 100.0; });
+                });
+                bindMm(inset, tr("Retrait de bord"), &T::inset);
+                bindInt(stagger, tr("Décalage"), &T::stagger);
+                bindMm(overlap, tr("Chevauchement des secteurs"), &T::sector_overlap);
+                bindBool(uEdge, tr("Sous-couche de contour"), &T::underlay_edge);
+                bindMm(uInset, tr("Retrait de la sous-couche"), &T::underlay_inset);
+                bindBool(uPar, tr("Sous-couche perpendiculaire"), &T::underlay_parallel);
+                bindMm(uSpacing, tr("Espacement de la sous-couche"), &T::underlay_spacing);
+                bindBool(underpath, tr("Liaisons cousues cachées"), &T::hidden_underpath);
+                bindInt(intensity, tr("Intensité"), &T::handmade_intensity);
                 connect(handmade, &QCheckBox::toggled, this, [intensity, reseed](bool on) {
                     intensity->setEnabled(on);
                     reseed->setEnabled(on);
                 });
-                connect(handmade, &QCheckBox::toggled, this, emitEdit);
-                connect(reseed, &QPushButton::clicked, this, [this, id, build] {
-                    auto d = build();
+                bindBool(handmade, tr("Aspect fait main"), &T::handmade);
+                connect(reseed, &QPushButton::clicked, this, [this, edit] {
                     // Graine suivante d'un générateur congruentiel : déterministe,
-                    // jamais tirée de l'horloge (projet reproductible).
-                    d.seed = d.seed * 1'664'525U + 1'013'904'223U;
-                    emit paramsEdited(id, d);
+                    // jamais tirée de l'horloge (projet reproductible). Pas de fusion
+                    // d'annulation : chaque tirage est un pas distinct.
+                    edit(tr("Autre tirage"),
+                         [](T& t) { t.seed = t.seed * 1'664'525U + 1'013'904'223U; });
                 });
             } else if constexpr (std::is_same_v<T, document::SatinParams>) {
-                // Les rails ne sont pas édités ici ; on les conserve tels quels.
-                const document::SatinParams base = p;
-                auto* density = mmSpin(to_millimeters(p.density).value, 2.0);
+                // Les rails ne sont pas édités ici ; ils ne sont jamais touchés.
+                auto* density = mmSpin(to_millimeters(p.density).value, 2.0, 0.1,
+                                       tr("Écart entre deux traversées (densité)."));
                 auto* comp = mmSpin(to_millimeters(p.pull_compensation).value, 2.0);
                 auto* underlay = new QCheckBox(tr("Sous-couche centrale"), body_);
                 underlay->setChecked(p.center_underlay);
                 auto* shortCombo = new QComboBox(body_);
-                shortCombo->addItems({tr("Désactivés"), tr("Retirer/redistribuer"),
-                                      tr("Inset simple"), tr("Inset multi-niveaux")});
+                shortCombo->addItems(shortStitchItems());
                 shortCombo->setCurrentIndex(static_cast<int>(p.short_stitch));
                 auto* splitCombo = new QComboBox(body_);
-                splitCombo->addItems({tr("Désactivé"), tr("Simple"), tr("Décalé"), tr("Jitter")});
+                splitCombo->addItems(splitItems());
                 splitCombo->setCurrentIndex(static_cast<int>(p.split_stitch));
-                auto* capCombo = new QComboBox(body_);
-                capCombo->addItems({tr("Plat"), tr("Arrondi"), tr("Effilé"), tr("Auto")});
-                capCombo->setCurrentIndex(static_cast<int>(p.cap_end));
-                auto* maxLen = mmSpin(to_millimeters(p.max_stitch_length).value, 15.0);
-                auto* maxHard = mmSpin(to_millimeters(p.max_width_hard).value, 60.0);
-                maxHard->setMinimum(1.0);
+                auto* capStart = new QComboBox(body_);
+                capStart->addItems(capItems());
+                capStart->setCurrentIndex(static_cast<int>(p.cap_start));
+                auto* capEnd = new QComboBox(body_);
+                capEnd->addItems(capItems());
+                capEnd->setCurrentIndex(static_cast<int>(p.cap_end));
+                auto* maxLen =
+                    mmSpin(to_millimeters(p.max_stitch_length).value, 15.0, 1.0,
+                           tr("Longueur maximale d'un point satin avant fractionnement."));
+                auto* maxHard = mmSpin(to_millimeters(p.max_width_hard).value, 60.0, 1.0);
                 auto* edgeU = new QCheckBox(tr("Sous-couche de bord"), body_);
                 edgeU->setChecked(p.underlay_edge);
                 auto* zigU = new QCheckBox(tr("Sous-couche zigzag"), body_);
                 zigU->setChecked(p.underlay_zigzag);
                 auto* pullL = mmSpin(to_millimeters(p.pull_left).value, 3.0);
                 auto* pullR = mmSpin(to_millimeters(p.pull_right).value, 3.0);
-                const QStringList lockItems{tr("Aucun"), tr("Aller-retour"), tr("Triangle"),
-                                            tr("Micro-zigzag")};
                 auto* lockStart = new QComboBox(body_);
-                lockStart->addItems(lockItems);
+                lockStart->addItems(lockItems());
                 lockStart->setCurrentIndex(static_cast<int>(p.lock_start));
                 auto* lockEnd = new QComboBox(body_);
-                lockEnd->addItems(lockItems);
+                lockEnd->addItems(lockItems());
                 lockEnd->setCurrentIndex(static_cast<int>(p.lock_end));
-                form->addRow(tr("Densité :"), density);
+                form->addRow(tr("Espacement :"), density);
                 form->addRow(tr("Compensation de tirage :"), comp);
                 form->addRow(QString(), underlay);
                 form->addRow(QString(), edgeU);
                 form->addRow(QString(), zigU);
                 form->addRow(tr("Compensation gauche :"), pullL);
                 form->addRow(tr("Compensation droite :"), pullR);
-                form->addRow(tr("Points courts (virages) :"), shortCombo);
+                form->addRow(tr("Points courts dans les virages :"), shortCombo);
                 form->addRow(tr("Fractionnement :"), splitCombo);
                 form->addRow(tr("Longueur max de point :"), maxLen);
                 form->addRow(tr("Largeur max dure :"), maxHard);
-                form->addRow(tr("Terminaison (fin) :"), capCombo);
-                form->addRow(tr("Fixation (début) :"), lockStart);
-                form->addRow(tr("Fixation (fin) :"), lockEnd);
-                const auto emitEdit = [this, id, base, density, comp, underlay, shortCombo,
-                                       splitCombo, capCombo, maxLen, maxHard, edgeU, zigU, pullL,
-                                       pullR, lockStart, lockEnd] {
-                    if (building_)
-                        return;
-                    document::SatinParams s = base; // conserve rails + barreaux
-                    s.density = to_um(density->value());
-                    s.pull_compensation = to_um(comp->value());
-                    s.center_underlay = underlay->isChecked();
-                    s.underlay_edge = edgeU->isChecked();
-                    s.underlay_zigzag = zigU->isChecked();
-                    s.pull_left = to_um(pullL->value());
-                    s.pull_right = to_um(pullR->value());
-                    s.short_stitch =
-                        static_cast<document::SatinShortStitch>(shortCombo->currentIndex());
-                    s.split_stitch = static_cast<document::SatinSplit>(splitCombo->currentIndex());
-                    s.cap_end = static_cast<document::SatinCap>(capCombo->currentIndex());
-                    s.max_stitch_length = to_um(maxLen->value());
-                    s.max_width_hard = to_um(maxHard->value());
-                    s.lock_start = static_cast<document::SatinLock>(lockStart->currentIndex());
-                    s.lock_end = static_cast<document::SatinLock>(lockEnd->currentIndex());
-                    emit paramsEdited(id, s);
-                };
-                connect(density, &QDoubleSpinBox::valueChanged, this, emitEdit);
-                connect(comp, &QDoubleSpinBox::valueChanged, this, emitEdit);
-                connect(underlay, &QCheckBox::toggled, this, emitEdit);
-                connect(edgeU, &QCheckBox::toggled, this, emitEdit);
-                connect(zigU, &QCheckBox::toggled, this, emitEdit);
-                connect(pullL, &QDoubleSpinBox::valueChanged, this, emitEdit);
-                connect(pullR, &QDoubleSpinBox::valueChanged, this, emitEdit);
-                connect(shortCombo, &QComboBox::currentIndexChanged, this, emitEdit);
-                connect(splitCombo, &QComboBox::currentIndexChanged, this, emitEdit);
-                connect(capCombo, &QComboBox::currentIndexChanged, this, emitEdit);
-                connect(maxLen, &QDoubleSpinBox::valueChanged, this, emitEdit);
-                connect(maxHard, &QDoubleSpinBox::valueChanged, this, emitEdit);
-                connect(lockStart, &QComboBox::currentIndexChanged, this, emitEdit);
-                connect(lockEnd, &QComboBox::currentIndexChanged, this, emitEdit);
+                form->addRow(tr("Forme du bout (début) :"), capStart);
+                form->addRow(tr("Forme du bout (fin) :"), capEnd);
+                form->addRow(tr("Point d'arrêt (début) :"), lockStart);
+                form->addRow(tr("Point d'arrêt (fin) :"), lockEnd);
+                bindMm(density, tr("Espacement"), &T::density);
+                bindMm(comp, tr("Compensation de tirage"), &T::pull_compensation);
+                bindBool(underlay, tr("Sous-couche centrale"), &T::center_underlay);
+                bindBool(edgeU, tr("Sous-couche de bord"), &T::underlay_edge);
+                bindBool(zigU, tr("Sous-couche zigzag"), &T::underlay_zigzag);
+                bindMm(pullL, tr("Compensation gauche"), &T::pull_left);
+                bindMm(pullR, tr("Compensation droite"), &T::pull_right);
+                bindEnumField<T>(this, edit, shortCombo, tr("Points courts"), &T::short_stitch);
+                bindEnumField<T>(this, edit, splitCombo, tr("Fractionnement"), &T::split_stitch);
+                bindMm(maxLen, tr("Longueur max de point"), &T::max_stitch_length);
+                bindMm(maxHard, tr("Largeur max dure"), &T::max_width_hard);
+                bindEnumField<T>(this, edit, capStart, tr("Forme du bout (début)"), &T::cap_start);
+                bindEnumField<T>(this, edit, capEnd, tr("Forme du bout (fin)"), &T::cap_end);
+                bindEnumField<T>(this, edit, lockStart, tr("Point d'arrêt (début)"),
+                                 &T::lock_start);
+                bindEnumField<T>(this, edit, lockEnd, tr("Point d'arrêt (fin)"), &T::lock_end);
             } else if constexpr (std::is_same_v<T, document::AutoSatinParams>) {
                 // Guides : édités par signaux dédiés (liste ci-dessous, rafraîchie par
                 // setAutoSatinState). Les réglages scalaires passent par paramsEdited ;
                 // MainWindow reprend alors les guides ACTUELS du document.
-                const document::AutoSatinParams base = p;
                 auto* summary = new QLabel(body_);
                 summary->setObjectName(QStringLiteral("label_autoSatinSummary"));
                 summary->setWordWrap(true);
                 satinSummary_ = summary;
-                auto* spacing = mmSpin(to_millimeters(p.spacing).value, 2.0);
-                spacing->setMinimum(0.1);
-                spacing->setToolTip(tr("Espacement cible entre deux traversées, mesuré au bord le "
-                                       "plus écarté d'un virage."));
-                auto* threshold = mmSpin(to_millimeters(p.split_threshold).value, 20.0);
-                threshold->setMinimum(1.0);
-                threshold->setToolTip(tr("Longueur de traversée au-delà de laquelle elle est "
-                                         "fractionnée (Lmax)."));
-                auto* splitLen = mmSpin(to_millimeters(p.split_length).value, 20.0);
-                splitLen->setMinimum(1.0);
-                splitLen->setToolTip(tr("Longueur maximale des segments après fractionnement (y), "
-                                        "bornée à Lmax."));
+                auto* spacing = mmSpin(to_millimeters(p.spacing).value, 2.0, 0.1,
+                                       tr("Espacement cible entre deux traversées, mesuré au "
+                                          "bord le plus écarté d'un virage."));
+                spacing->setObjectName(QStringLiteral("spin_rowSpacing"));
+                auto* threshold = mmSpin(to_millimeters(p.split_threshold).value, 20.0, 1.0,
+                                         tr("Une traversée plus longue que cette valeur (Lmax) "
+                                            "est fractionnée."));
+                threshold->setObjectName(QStringLiteral("spin_autoSatinThreshold"));
+                auto* splitLen = mmSpin(to_millimeters(p.split_length).value,
+                                        to_millimeters(p.split_threshold).value, 0.5,
+                                        tr("Longueur maximale des segments après fractionnement "
+                                           "(y). Ne peut pas dépasser Lmax."));
+                splitLen->setObjectName(QStringLiteral("spin_autoSatinSplitLength"));
                 auto* splitCombo = new QComboBox(body_);
-                splitCombo->addItems({tr("Désactivé"), tr("Simple"), tr("Décalé"), tr("Jitter")});
+                splitCombo->setObjectName(QStringLiteral("combo_autoSatinSplit"));
+                splitCombo->addItems(splitItems());
                 splitCombo->setCurrentIndex(static_cast<int>(p.split_stitch));
                 auto* shortCombo = new QComboBox(body_);
-                shortCombo->addItems({tr("Désactivés"), tr("Retirer/redistribuer"),
-                                      tr("Inset simple"), tr("Inset multi-niveaux")});
+                shortCombo->addItems(shortStitchItems());
                 shortCombo->setCurrentIndex(static_cast<int>(p.short_stitch));
                 auto* comp = mmSpin(to_millimeters(p.pull_compensation).value, 2.0);
                 auto* underlay = new QCheckBox(tr("Sous-couche centrale"), body_);
@@ -616,38 +856,41 @@ void PropertiesPanel::showEmbroidery(const document::EmbroideryObject& object) {
                 zigU->setChecked(p.underlay_zigzag);
                 auto* pullL = mmSpin(to_millimeters(p.pull_left).value, 3.0);
                 auto* pullR = mmSpin(to_millimeters(p.pull_right).value, 3.0);
-                const QStringList capItems{tr("Plat"), tr("Arrondi"), tr("Effilé"), tr("Auto")};
                 auto* capStart = new QComboBox(body_);
-                capStart->addItems(capItems);
+                capStart->addItems(capItems());
                 capStart->setCurrentIndex(static_cast<int>(p.cap_start));
                 auto* capEnd = new QComboBox(body_);
-                capEnd->addItems(capItems);
+                capEnd->addItems(capItems());
                 capEnd->setCurrentIndex(static_cast<int>(p.cap_end));
-                const QStringList lockItems{tr("Aucun"), tr("Aller-retour"), tr("Triangle"),
-                                            tr("Micro-zigzag")};
                 auto* lockStart = new QComboBox(body_);
-                lockStart->addItems(lockItems);
+                lockStart->addItems(lockItems());
                 lockStart->setCurrentIndex(static_cast<int>(p.lock_start));
                 auto* lockEnd = new QComboBox(body_);
-                lockEnd->addItems(lockItems);
+                lockEnd->addItems(lockItems());
                 lockEnd->setCurrentIndex(static_cast<int>(p.lock_end));
 
                 // --- Guides d'orientation ---
                 auto* guideList = new QListWidget(body_);
                 guideList->setObjectName(QStringLiteral("list_satinGuides"));
+                guideList->setAccessibleName(tr("Guides d'orientation"));
                 guideList->setMaximumHeight(110);
                 satinGuideList_ = guideList;
-                auto* guideAngle = new QSpinBox(body_);
+                auto* guideAngle = new QDoubleSpinBox(body_);
                 guideAngle->setKeyboardTracking(false);
                 guideAngle->setObjectName(QStringLiteral("spin_satinGuideAngle"));
-                guideAngle->setRange(-179, 179);
+                guideAngle->setRange(-179.9, 179.9);
+                guideAngle->setDecimals(1);
                 guideAngle->setSuffix(tr(" °"));
                 guideAngle->setEnabled(false);
                 satinGuideAngle_ = guideAngle;
+                auto* guideAngleLabel = new QLabel(body_);
+                satinGuideAngleLabel_ = guideAngleLabel;
+                updateGuideAngleLabel(false);
                 auto* guideAbs = new QCheckBox(tr("Angle absolu (repère du dessin)"), body_);
                 guideAbs->setObjectName(QStringLiteral("check_satinGuideAbsolute"));
                 guideAbs->setToolTip(tr("Décoché : écart à la perpendiculaire de l'axe (0° = "
-                                        "perpendiculaire). Coché : angle fixe dans le dessin."));
+                                        "perpendiculaire). Coché : angle fixe dans le dessin "
+                                        "(0° = horizontal, sens trigonométrique)."));
                 guideAbs->setEnabled(false);
                 satinGuideAbsolute_ = guideAbs;
                 auto* guideRemove = new QPushButton(tr("Supprimer le guide"), body_);
@@ -671,9 +914,9 @@ void PropertiesPanel::showEmbroidery(const document::EmbroideryObject& object) {
                 form->addRow(QString(), summary);
                 section(tr("Remplissage"));
                 form->addRow(tr("Espacement :"), spacing);
-                form->addRow(tr("Seuil de fractionnement (Lmax) :"), threshold);
-                form->addRow(tr("Longueur des segments (y) :"), splitLen);
                 form->addRow(tr("Fractionnement :"), splitCombo);
+                form->addRow(tr("Fractionner au-delà de (Lmax) :"), threshold);
+                form->addRow(tr("Longueur max des segments (y ≤ Lmax) :"), splitLen);
                 form->addRow(tr("Points courts dans les virages :"), shortCombo);
                 section(tr("Compensation"));
                 form->addRow(tr("Compensation de tirage :"), comp);
@@ -699,56 +942,59 @@ void PropertiesPanel::showEmbroidery(const document::EmbroideryObject& object) {
                     form->addRow(none);
                 }
                 form->addRow(tr("Guides d'orientation :"), guideList);
-                form->addRow(tr("Angle du guide :"), guideAngle);
+                form->addRow(guideAngleLabel, guideAngle);
                 form->addRow(QString(), guideAbs);
                 form->addRow(QString(), guideRemove);
                 form->addRow(QString(), guideAdd);
 
-                const auto emitEdit = [this, id, base, spacing, threshold, splitLen, splitCombo,
-                                       shortCombo, comp, underlay, edgeU, zigU, pullL, pullR,
-                                       capStart, capEnd, lockStart, lockEnd] {
-                    if (building_)
-                        return;
-                    document::AutoSatinParams s =
-                        base; // guides, entrée/sortie : repris du document
-                    s.spacing = to_um(spacing->value());
-                    s.split_threshold = to_um(threshold->value());
-                    s.split_length = to_um(std::min(splitLen->value(), threshold->value()));
-                    s.split_stitch = static_cast<document::SatinSplit>(splitCombo->currentIndex());
-                    s.short_stitch =
-                        static_cast<document::SatinShortStitch>(shortCombo->currentIndex());
-                    s.pull_compensation = to_um(comp->value());
-                    s.center_underlay = underlay->isChecked();
-                    s.underlay_edge = edgeU->isChecked();
-                    s.underlay_zigzag = zigU->isChecked();
-                    s.pull_left = to_um(pullL->value());
-                    s.pull_right = to_um(pullR->value());
-                    s.cap_start = static_cast<document::SatinCap>(capStart->currentIndex());
-                    s.cap_end = static_cast<document::SatinCap>(capEnd->currentIndex());
-                    s.lock_start = static_cast<document::SatinLock>(lockStart->currentIndex());
-                    s.lock_end = static_cast<document::SatinLock>(lockEnd->currentIndex());
-                    emit paramsEdited(id, s);
+                // Fractionnement : Lmax et y n'ont de sens que si le mode est actif ; y est
+                // borné dynamiquement par Lmax (Mo9).
+                const auto syncSplitFields = [form, splitCombo, threshold, splitLen] {
+                    const bool on = splitCombo->currentIndex() != 0;
+                    for (QWidget* w :
+                         {static_cast<QWidget*>(threshold), static_cast<QWidget*>(splitLen)}) {
+                        w->setEnabled(on);
+                        if (QWidget* label = form->labelForField(w)) {
+                            label->setEnabled(on);
+                        }
+                    }
                 };
-                connect(spacing, &QDoubleSpinBox::valueChanged, this, emitEdit);
-                connect(threshold, &QDoubleSpinBox::valueChanged, this, emitEdit);
-                connect(splitLen, &QDoubleSpinBox::valueChanged, this, emitEdit);
-                connect(splitCombo, &QComboBox::currentIndexChanged, this, emitEdit);
-                connect(shortCombo, &QComboBox::currentIndexChanged, this, emitEdit);
-                connect(comp, &QDoubleSpinBox::valueChanged, this, emitEdit);
-                connect(underlay, &QCheckBox::toggled, this, emitEdit);
-                connect(edgeU, &QCheckBox::toggled, this, emitEdit);
-                connect(zigU, &QCheckBox::toggled, this, emitEdit);
-                connect(pullL, &QDoubleSpinBox::valueChanged, this, emitEdit);
-                connect(pullR, &QDoubleSpinBox::valueChanged, this, emitEdit);
-                connect(capStart, &QComboBox::currentIndexChanged, this, emitEdit);
-                connect(capEnd, &QComboBox::currentIndexChanged, this, emitEdit);
-                connect(lockStart, &QComboBox::currentIndexChanged, this, emitEdit);
-                connect(lockEnd, &QComboBox::currentIndexChanged, this, emitEdit);
+                syncSplitFields();
+                connect(splitCombo, &QComboBox::currentIndexChanged, this,
+                        [syncSplitFields](int) { syncSplitFields(); });
+                connect(threshold, &QDoubleSpinBox::valueChanged, this, [splitLen](double lmax) {
+                    // Abaisser Lmax ramène y dessous : la modification de y qui en résulte
+                    // est émise par son propre signal (un pas d'annulation fusionné).
+                    splitLen->setMaximum(lmax);
+                });
+
+                bindMm(spacing, tr("Espacement"), &T::spacing);
+                connect(threshold, &QDoubleSpinBox::valueChanged, this, [edit](double v) {
+                    edit(tr("Seuil de fractionnement (Lmax)"), [v](T& t) {
+                        t.split_threshold = to_um(v);
+                        t.split_length =
+                            Micrometers{std::min(t.split_length.value, t.split_threshold.value)};
+                    });
+                });
+                bindMm(splitLen, tr("Longueur des segments (y)"), &T::split_length);
+                bindEnumField<T>(this, edit, splitCombo, tr("Fractionnement"), &T::split_stitch);
+                bindEnumField<T>(this, edit, shortCombo, tr("Points courts"), &T::short_stitch);
+                bindMm(comp, tr("Compensation de tirage"), &T::pull_compensation);
+                bindBool(underlay, tr("Sous-couche centrale"), &T::center_underlay);
+                bindBool(edgeU, tr("Sous-couche de bord"), &T::underlay_edge);
+                bindBool(zigU, tr("Sous-couche zigzag"), &T::underlay_zigzag);
+                bindMm(pullL, tr("Compensation gauche"), &T::pull_left);
+                bindMm(pullR, tr("Compensation droite"), &T::pull_right);
+                bindEnumField<T>(this, edit, capStart, tr("Forme du bout (début)"), &T::cap_start);
+                bindEnumField<T>(this, edit, capEnd, tr("Forme du bout (fin)"), &T::cap_end);
+                bindEnumField<T>(this, edit, lockStart, tr("Point d'arrêt (début)"),
+                                 &T::lock_start);
+                bindEnumField<T>(this, edit, lockEnd, tr("Point d'arrêt (fin)"), &T::lock_end);
 
                 connect(guideAdd, &QPushButton::clicked, this,
                         [this, id] { emit editSatinGuidesRequested(id); });
                 connect(guideList, &QListWidget::currentRowChanged, this,
-                        [this, guideList, guideAngle, guideAbs, guideRemove](int row) {
+                        [this, id, guideList, guideAngle, guideAbs, guideRemove](int row) {
                             const bool has = row >= 0;
                             guideAngle->setEnabled(has);
                             guideAbs->setEnabled(has);
@@ -757,21 +1003,28 @@ void PropertiesPanel::showEmbroidery(const document::EmbroideryObject& object) {
                                 return;
                             }
                             // Valeurs portées par l'item (cf. setAutoSatinState).
-                            const QSignalBlocker b1(guideAngle);
-                            const QSignalBlocker b2(guideAbs);
-                            guideAngle->setValue(guideList->item(row)->data(Qt::UserRole).toInt());
-                            guideAbs->setChecked(
-                                guideList->item(row)->data(Qt::UserRole + 1).toBool());
+                            {
+                                const QSignalBlocker b1(guideAngle);
+                                const QSignalBlocker b2(guideAbs);
+                                guideAngle->setValue(
+                                    guideList->item(row)->data(Qt::UserRole).toDouble());
+                                guideAbs->setChecked(
+                                    guideList->item(row)->data(Qt::UserRole + 1).toBool());
+                            }
+                            updateGuideAngleLabel(guideAbs->isChecked());
+                            if (!building_) {
+                                emit satinGuideSelected(id, row);
+                            }
                         });
                 const auto emitGuide = [this, id, guideList, guideAngle, guideAbs] {
                     if (building_ || guideList->currentRow() < 0) {
                         return;
                     }
-                    emit satinGuideChangeRequested(id, guideList->currentRow(),
-                                                   static_cast<double>(guideAngle->value()),
+                    updateGuideAngleLabel(guideAbs->isChecked());
+                    emit satinGuideChangeRequested(id, guideList->currentRow(), guideAngle->value(),
                                                    guideAbs->isChecked());
                 };
-                connect(guideAngle, &QSpinBox::valueChanged, this, emitGuide);
+                connect(guideAngle, &QDoubleSpinBox::valueChanged, this, emitGuide);
                 connect(guideAbs, &QCheckBox::toggled, this, emitGuide);
                 connect(guideRemove, &QPushButton::clicked, this, [this, id, guideList] {
                     if (guideList->currentRow() >= 0) {
@@ -788,6 +1041,8 @@ void PropertiesPanel::showEmbroidery(const document::EmbroideryObject& object) {
     auto* holder = new QWidget(body_);
     holder->setLayout(form);
     body_->layout()->addWidget(holder);
+    // Molette : ne change une valeur que sur un champ ayant le focus.
+    wheelGuard_->guardAll(body_);
 }
 
 } // namespace openstitch::desktop

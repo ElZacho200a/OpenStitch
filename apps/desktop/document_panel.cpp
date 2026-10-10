@@ -1,26 +1,29 @@
 // SPDX-License-Identifier: Apache-2.0
 #include "document_panel.hpp"
 
+#include <QAbstractItemDelegate>
 #include <QAbstractItemView>
+#include <QHeaderView>
 #include <QIcon>
 #include <QLineEdit>
 #include <QListWidget>
 #include <QPixmap>
 #include <QTabWidget>
+#include <QTimer>
 #include <QTreeWidget>
 #include <QVBoxLayout>
 
 #include <algorithm>
 #include <map>
 
+#include "ui_icons.hpp"
+
 namespace openstitch::desktop {
 
 namespace {
 
 QIcon swatch(const std::array<std::uint8_t, 3>& rgb) {
-    QPixmap pm(12, 12);
-    pm.fill(QColor(rgb[0], rgb[1], rgb[2]));
-    return QIcon(pm);
+    return icons::colorSwatch(QColor(rgb[0], rgb[1], rgb[2]));
 }
 
 QString type_label(const document::EmbroideryObject& e) {
@@ -58,11 +61,8 @@ QString intent_tooltip(document::EmbroideryIntent intent) {
                : QObject::tr("Classifié automatiquement (auto-numérisation)");
 }
 
-QString embroidery_item_text(const document::EmbroideryObject& e, const QString& suffix) {
-    const QString vis = e.visible ? QString() : QObject::tr("  (masqué)");
-    const QString lock = e.locked ? QObject::tr("  [verrouillé]") : QString();
-    // Le type est déjà dit par le préfixe : « Satin — Région 1156 » plutôt que
-    // « Satin — Remplissage Région 1156 ».
+// Nom affiché sans le préfixe de type (« Remplissage Région 12 » -> « Région 12 »).
+QString display_name(const document::EmbroideryObject& e) {
     QString name = QString::fromStdString(e.name);
     for (const QString& prefix : {QObject::tr("Remplissage "), QObject::tr("Contour ")}) {
         if (name.startsWith(prefix) && name.size() > prefix.size()) {
@@ -70,10 +70,26 @@ QString embroidery_item_text(const document::EmbroideryObject& e, const QString&
             break;
         }
     }
-    return QObject::tr("%1 — %2%3%4%5").arg(type_label(e), name, vis, lock, suffix);
+    return name;
 }
 
+constexpr int kRawNameRole = Qt::UserRole + 1;     // nom brut (édition)
+constexpr int kShownTextRole = Qt::UserRole + 2;   // libellé formaté (restauré après édition)
+constexpr int kGroupSourceRole = Qt::UserRole + 3; // objet vectoriel source d'un groupe
+constexpr int kVisibleCol = 1;
+constexpr int kLockCol = 2;
+
 } // namespace
+
+QString DocumentPanel::itemText(const document::EmbroideryObject& e, int order,
+                                const QString& suffix) {
+    const QString vis = e.visible ? QString() : QObject::tr("  (masqué)");
+    const QString lock = e.locked ? QObject::tr("  [ordre figé]") : QString();
+    // Le type est déjà dit par le préfixe : « Satin — Région 1156 » plutôt que
+    // « Satin — Remplissage Région 1156 ». Le rang de couture ouvre la ligne.
+    return QObject::tr("%1. %2 — %3%4%5")
+        .arg(QString::number(order), type_label(e), display_name(e), vis, lock + suffix);
+}
 
 DocumentPanel::DocumentPanel(QWidget* parent) : QWidget(parent) {
     auto* layout = new QVBoxLayout(this);
@@ -89,10 +105,23 @@ DocumentPanel::DocumentPanel(QWidget* parent) : QWidget(parent) {
     connect(filterEdit_, &QLineEdit::textChanged, this, [this] { applyFilter(); });
 
     objectsList_ = new QTreeWidget(tabs_);
-    objectsList_->setHeaderHidden(true);
+    objectsList_->setObjectName(QStringLiteral("tree_documentObjects"));
+    objectsList_->setAccessibleName(tr("Objets de broderie"));
+    objectsList_->setColumnCount(3);
+    objectsList_->setHeaderLabels({tr("Objet"), tr("Vis."), tr("Figé")});
+    objectsList_->headerItem()->setToolTip(
+        kVisibleCol, tr("Afficher ou masquer l'objet (un objet masqué n'est pas cousu)."));
+    objectsList_->headerItem()->setToolTip(
+        kLockCol, tr("Figer l'ordre de couture : l'optimisation de l'ordre ne déplace pas "
+                     "cet objet."));
+    objectsList_->header()->setStretchLastSection(false);
+    objectsList_->header()->setSectionResizeMode(0, QHeaderView::Stretch);
+    objectsList_->header()->setSectionResizeMode(kVisibleCol, QHeaderView::ResizeToContents);
+    objectsList_->header()->setSectionResizeMode(kLockCol, QHeaderView::ResizeToContents);
     objectsList_->setIndentation(12);
     objectsList_->setRootIsDecorated(true);
     regionsList_ = new QListWidget(tabs_);
+    regionsList_->setAccessibleName(tr("Régions de segmentation"));
     tabs_->addTab(objectsList_, tr("Objets"));
     tabs_->addTab(regionsList_, tr("Régions"));
 
@@ -103,8 +132,14 @@ DocumentPanel::DocumentPanel(QWidget* parent) : QWidget(parent) {
                 // Un nœud de groupe (plan satin multi-sections) ne porte pas
                 // d'ObjectId propre -- rien à sélectionner côté document.
                 const QVariant data = item->data(0, Qt::UserRole);
-                if (!data.isValid())
+                if (!data.isValid()) {
+                    // Nœud de groupe : sélectionne la forme source, donc toutes ses sections.
+                    const QVariant source = item->data(0, kGroupSourceRole);
+                    if (source.isValid()) {
+                        emit groupSelected(ObjectId{source.toULongLong()}, item->childCount());
+                    }
                     return;
+                }
                 emit embroiderySelected(ObjectId{data.toULongLong()});
             });
     // Ctrl/Maj + clic : sélection multiple de régions (comme sur le canevas).
@@ -125,6 +160,48 @@ DocumentPanel::DocumentPanel(QWidget* parent) : QWidget(parent) {
                                          : (ids.empty() ? 0 : ids.back());
         emit regionsSelected(ids, active);
     });
+    // Cases Visible / Ordre figé (colonnes 1 et 2) et renommage (colonne 0).
+    connect(objectsList_, &QTreeWidget::itemChanged, this, [this](QTreeWidgetItem* item, int col) {
+        if (syncing_) {
+            return;
+        }
+        const QVariant data = item->data(0, Qt::UserRole);
+        if (!data.isValid()) {
+            return;
+        }
+        const ObjectId id{data.toULongLong()};
+        // Émission DIFFÉRÉE : la commande qui s'ensuit reconstruit toute la liste (refresh) et
+        // détruirait la ligne en plein traitement de son propre signal.
+        if (col == kVisibleCol) {
+            const bool on = item->checkState(kVisibleCol) == Qt::Checked;
+            QTimer::singleShot(0, this, [this, id, on] { emit visibilityToggled(id, on); });
+        } else if (col == kLockCol) {
+            const bool on = item->checkState(kLockCol) == Qt::Checked;
+            QTimer::singleShot(0, this, [this, id, on] { emit orderLockToggled(id, on); });
+        } else if (col == 0 && item == renamingItem_) {
+            const QString name = item->text(0).trimmed();
+            if (!name.isEmpty() && name != item->data(0, kRawNameRole).toString()) {
+                QTimer::singleShot(0, this, [this, id, name] { emit renameRequested(id, name); });
+            }
+            restoreRenamedText();
+        }
+    });
+    // Double-clic sur le nom : édition en place du nom brut (annulable ensuite, Ctrl+Z).
+    connect(objectsList_, &QTreeWidget::itemDoubleClicked, this,
+            [this](QTreeWidgetItem* item, int col) {
+                if (col != 0 || !item->data(0, Qt::UserRole).isValid()) {
+                    return;
+                }
+                renamingItem_ = item;
+                syncing_ = true;
+                item->setFlags(item->flags() | Qt::ItemIsEditable);
+                item->setText(0, item->data(0, kRawNameRole).toString());
+                syncing_ = false;
+                objectsList_->editItem(item, 0);
+            });
+    // Fin d'édition (validée ou annulée par Échap) : le libellé formaté revient.
+    connect(objectsList_->itemDelegate(), &QAbstractItemDelegate::closeEditor, this,
+            [this] { restoreRenamedText(); });
     connect(regionsList_, &QListWidget::currentItemChanged, this,
             [this](QListWidgetItem* item, QListWidgetItem*) {
                 if (syncing_ || item == nullptr)
@@ -139,6 +216,7 @@ void DocumentPanel::refresh(
     const std::vector<std::pair<ObjectId, stitch_generation::ObjectEditState>>& editStates) {
     syncing_ = true;
 
+    renamingItem_ = nullptr; // les lignes sont reconstruites
     objectsList_->clear();
 
     // §21 : regroupe les sections d'un même plan satin (même `source_vector`,
@@ -167,7 +245,9 @@ void DocumentPanel::refresh(
         return QObject::tr("(vecteur inconnu)");
     };
 
+    int order = 0;
     for (const auto& e : project.embroidery_objects) {
+        ++order;
         stitch_generation::ObjectEditState state = stitch_generation::ObjectEditState::Clean;
         for (const auto& [id, s] : editStates) {
             if (id == e.id) {
@@ -189,16 +269,24 @@ void DocumentPanel::refresh(
                                                  .arg(find_vector_name(e.source_vector))
                                                  .arg(countBySourceVector[e.source_vector.value])});
                 group->setExpanded(true);
+                group->setData(0, kGroupSourceRole, static_cast<qulonglong>(e.source_vector.value));
+                group->setToolTip(0, tr("Cliquer sélectionne toutes les sections de cette forme."));
                 // Pas de Qt::UserRole ici (isValid() == false) : un clic sur
                 // le groupe lui-même ne sélectionne rien côté document.
             }
-            item = new QTreeWidgetItem(group, {embroidery_item_text(e, suffix)});
+            item = new QTreeWidgetItem(group, {itemText(e, order, suffix)});
         } else {
-            item = new QTreeWidgetItem(objectsList_, {embroidery_item_text(e, suffix)});
+            item = new QTreeWidgetItem(objectsList_, {itemText(e, order, suffix)});
         }
         item->setIcon(0, swatch(e.rgb));
         item->setData(0, Qt::UserRole, static_cast<qulonglong>(e.id.value));
-        item->setToolTip(0, fullTooltip);
+        item->setData(0, kRawNameRole, QString::fromStdString(e.name));
+        item->setData(0, kShownTextRole, itemText(e, order, suffix));
+        item->setToolTip(0, fullTooltip + tr("\nDouble-clic : renommer."));
+        item->setCheckState(kVisibleCol, e.visible ? Qt::Checked : Qt::Unchecked);
+        item->setCheckState(kLockCol, e.locked ? Qt::Checked : Qt::Unchecked);
+        item->setToolTip(kVisibleCol, tr("Visible : décocher masque l'objet (annulable)."));
+        item->setToolTip(kLockCol, tr("Ordre figé : l'optimisation ne déplace pas cet objet."));
     }
 
     regionsList_->clear();
@@ -218,6 +306,18 @@ void DocumentPanel::refresh(
 
     syncing_ = false;
     applyFilter();
+}
+
+void DocumentPanel::restoreRenamedText() {
+    if (renamingItem_ == nullptr) {
+        return;
+    }
+    QTreeWidgetItem* item = renamingItem_;
+    renamingItem_ = nullptr;
+    syncing_ = true;
+    item->setText(0, item->data(0, kShownTextRole).toString());
+    item->setFlags(item->flags() & ~Qt::ItemIsEditable);
+    syncing_ = false;
 }
 
 void DocumentPanel::applyFilter() {

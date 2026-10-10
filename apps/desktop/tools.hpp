@@ -30,6 +30,8 @@ enum class Tool {
     // (angles vifs voulus pour les chevrons).
     DrawDirectionGuide,
     DrawBreakLine,
+    // Couteau : trace une ligne qui découpe les formes vectorielles qu'elle traverse.
+    Cut,
 };
 
 } // namespace openstitch::desktop

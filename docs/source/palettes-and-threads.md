@@ -87,7 +87,12 @@ paie pas le coût de la conversion couleur) :
 
 ## Ce qui n'existe pas encore
 
-Limitation : le catalogue existe mais n'est **pas encore relié** au document :
+Limitation : dans l'application (menus, inspecteur, panneaux), **aucun
+sélecteur de fil, nuancier ni pipette n'est branché** : on travaille en couleurs
+RGB libres. Le catalogue existe en bibliothèque et son seul point d'accroche est
+le champ facultatif `thread_key` d'un bloc de couleur du design importé
+(`stitch::ColorBlock`, relu depuis le `.osp`), sans interface pour le renseigner.
+Il n'est **pas encore relié** au document :
 
 - pas d'association objet ↔ fil de nuancier (`ThreadRef` sur
   `EmbroideryObject`, HP-THR-004) ;

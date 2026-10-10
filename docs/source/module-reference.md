@@ -16,6 +16,7 @@ fonctionnalité. Chaque module est une cible `openstitch::<nom>` sous `libs/`.
 | `stitch` | commandes machine, statistiques | core | `tests/unit/stitch` |
 | `stitch_generation` | running / tatami / satin / directionnel | core, geometry, stitch, document | `tests/unit/stitch` |
 | `stitch_analysis` | règles de validation | core, stitch | `tests/unit/stitch_analysis` |
+| `stitch_render` | rendu réaliste des points (brins de fil, ombrage, tissu, image RGBA ; sans Qt) | core, stitch | `tests/unit/stitch_render` |
 | `optimization` | ordre de couture | core | `tests/unit/optimization` |
 | `autodigitize` | image → objets éditables | vectorization, stitch_generation | `tests/unit/autodigitize` |
 | `auto_satin` | squelette → satinabilité → auto-satin par traversées orientées (axe, chord, guides) | core, geometry (+OpenCV) | `tests/unit/auto_satin` |

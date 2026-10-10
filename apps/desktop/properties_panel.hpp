@@ -3,12 +3,15 @@
 
 #include <QColor>
 #include <QPointer>
+#include <QRectF>
 #include <QWidget>
 
 #include <optional>
 
 #include "openstitch/document/project.hpp"
 #include "openstitch/stitch_generation/overrides.hpp"
+
+#include "wheel_guard.hpp"
 
 class QCheckBox;
 class QFormLayout;
@@ -47,6 +50,14 @@ public:
         bool canAbsorb{false};
     };
     void showRegions(const RegionSelectionInfo& info);
+    // Objet vectoriel : informations + position (X, Y du coin bas-gauche) et taille (L, H)
+    // en mm, dans le repère du document (Y vers le haut, comme l'indicateur de curseur).
+    void showVectorObject(ObjectId id, const QString& title, const QString& details, QRectF boxMm);
+    // Vrai si le formulaire montre déjà cette boîte (tolérance 0,02 mm) : sinon MainWindow
+    // le reconstruit (annulation, déplacement au canevas...).
+    [[nodiscard]] bool showsVectorBox(ObjectId id, QRectF boxMm) const;
+    // Multi-sélection : bloc « Appliquer à N objets » (type de points, espacement, angle).
+    void showMultiSelection(int objectCount, int embroideryCount);
     // Indicateur Clean/ManuallyEdited/Dirty (Lot 8.2) : mis à jour à CHAQUE
     // rafraîchissement, y compris quand la sélection elle-même n'a pas changé
     // (une retouche/undo/redo peut faire changer l'état sans changer la
@@ -65,11 +76,31 @@ public:
     void setAutoSatinState(std::optional<ObjectId> id, const document::AutoSatinParams* params,
                            const QString& summary);
 
+    // Paramètres que le formulaire représente actuellement. MainWindow compare
+    // `showsParams` au document à chaque rafraîchissement : un écart (annulation,
+    // changement de type de points, rotation au canevas...) reconstruit le
+    // formulaire, au lieu de laisser un formulaire périmé écraser le document.
+    [[nodiscard]] bool showsParams(const document::StitchParams& params) const;
+    // Resynchronise la copie interne SANS reconstruire (après qu'une édition du
+    // formulaire a été appliquée au document, qui peut l'avoir complétée).
+    void adoptParams(ObjectId id, const document::StitchParams& params);
+
 signals:
     // Bouton de l'inspecteur des régions : `actionName` = objectName de la QAction de MainWindow à
     // déclencher (une seule source d'état, de raccourci et de grisage).
     void regionActionRequested(const QString& actionName);
-    void paramsEdited(ObjectId id, document::StitchParams params);
+    // Nouvelle boîte demandée pour un objet vectoriel (X, Y, L, H en mm, Y vers le haut).
+    void vectorBoxEdited(ObjectId id, QRectF boxMm);
+    // Bouton « Appliquer à N objets » : `stitchType` -1 = inchangé, 0 = contour cousu,
+    // 1 = tatami ; espacement/angle seulement si leur case est cochée.
+    void applyToSelectionRequested(int stitchType, bool setSpacing, double spacingMm, bool setAngle,
+                                   double angleDeg);
+    // `field` : libellé du champ modifié (« Espacement des rangées »), repris dans le
+    // nom d'historique et utilisé pour fusionner une rafale en un seul pas d'annulation.
+    // Seul ce champ diffère de la copie courante : aucun autre n'est relu ni arrondi.
+    void paramsEdited(ObjectId id, document::StitchParams params, QString field);
+    // Clic sur un guide d'orientation de la liste : MainWindow le met en évidence.
+    void satinGuideSelected(ObjectId id, int index);
     // Émis par le bouton « Abandonner les retouches » (état ManuallyEdited ou
     // Dirty) : MainWindow demande confirmation puis exécute
     // DiscardOverridesCommand (annulable), jamais de mutation directe ici.
@@ -89,7 +120,10 @@ signals:
 
 private:
     void clearBody();
-    [[nodiscard]] QDoubleSpinBox* mmSpin(double valueMm, double maxMm);
+    void updateGuideAngleLabel(bool absolute);
+    // Champ en mm borné [minMm ; maxMm] ; l'infobulle porte la plage (« Plage : … »).
+    [[nodiscard]] QDoubleSpinBox* mmSpin(double valueMm, double maxMm, double minMm = 0.0,
+                                         const QString& tip = {});
 
     QVBoxLayout* root_{nullptr};
     QLabel* header_{nullptr};
@@ -98,11 +132,18 @@ private:
     QWidget* body_{nullptr};
     std::optional<ObjectId> currentId_;
     std::optional<ObjectId> editStateId_;
+    // Copie des paramètres représentés par le formulaire (cf. showsParams).
+    document::StitchParams shown_{document::RunningStitchParams{}};
+    bool hasShown_{false};
+    std::optional<ObjectId> vectorId_;
+    QRectF vectorBox_;
+    WheelGuard* wheelGuard_{nullptr};
     bool building_{false}; // évite d'émettre pendant le peuplement
     // Auto-satin : widgets mis à jour hors reconstruction (cf. setAutoSatinState).
     QPointer<QListWidget> satinGuideList_;
     QPointer<QLabel> satinSummary_;
-    QPointer<QSpinBox> satinGuideAngle_;
+    QPointer<QDoubleSpinBox> satinGuideAngle_;
+    QPointer<QLabel> satinGuideAngleLabel_;
     QPointer<QCheckBox> satinGuideAbsolute_;
     QPointer<QPushButton> satinGuideRemove_;
 };

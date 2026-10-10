@@ -12,7 +12,7 @@ Public : utilisateur avancé, développeur.
 | Objets de broderie | paramètres (longueur, densité, angle, type) | Implémenté |
 | Objets de broderie | **changer le type** (contour/tatami/satin), clic droit | Implémenté |
 | Objets de broderie | **orientation** des fils (poignée dans la scène) | Implémenté |
-| Ordre de couture | monter/descendre, verrouiller | Implémenté |
+| Ordre de couture | monter/descendre, figer l'ordre | Implémenté |
 | Points générés | **déplacement** d'un point (mode d'édition dédié), indicateurs `Clean`/`ManuallyEdited`/`Dirty`, abandon des retouches | Partiel (Lot 8.2 — déplacement seul ; Stitch↔Jump et coupe de fil restent cœur seul, sans UI, cf. Lot 8.3) |
 
 ## Régénération vs édition manuelle

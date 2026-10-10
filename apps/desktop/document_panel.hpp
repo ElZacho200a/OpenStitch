@@ -13,6 +13,7 @@ class QLineEdit;
 class QListWidget;
 class QTabWidget;
 class QTreeWidget;
+class QTreeWidgetItem;
 
 namespace openstitch::desktop {
 
@@ -43,12 +44,24 @@ public:
     // ligne courante), sans réémettre de signal.
     void syncRegions(const std::vector<std::uint64_t>& ids, std::uint64_t active);
 
+    // Libellé d'un objet de broderie, partagé avec le panneau Ordre de couture : « 3. Satin —
+    // Région 12  (masqué)  [ordre figé] ». `order` = rang de couture (à partir de 1).
+    [[nodiscard]] static QString itemText(const document::EmbroideryObject& object, int order,
+                                          const QString& suffix = {});
+
 signals:
     void embroiderySelected(ObjectId id);
     void regionSelected(RegionId id);
     // Plusieurs régions cochées dans la liste (Ctrl/Maj + clic) : `ids` dans l'ordre de la
     // liste, `active` = la ligne courante (la dernière cliquée).
     void regionsSelected(const std::vector<std::uint64_t>& ids, std::uint64_t active);
+    // Clic sur le nœud d'un groupe de sections (même forme source) : toutes sont visées.
+    void groupSelected(ObjectId sourceVector, int sectionCount);
+    // Cases de la ligne (colonnes Visible / Ordre figé) et renommage au double-clic :
+    // MainWindow exécute la commande annulable, jamais de mutation ici.
+    void visibilityToggled(ObjectId id, bool visible);
+    void orderLockToggled(ObjectId id, bool locked);
+    void renameRequested(ObjectId id, QString name);
 
 private:
     QTabWidget* tabs_{nullptr};
@@ -63,7 +76,9 @@ private:
     QListWidget* regionsList_{nullptr};
     // Masque les lignes qui ne contiennent pas le texte du champ de recherche.
     void applyFilter();
-    bool syncing_{false}; // évite la boucle sélection -> signal -> sélection
+    void restoreRenamedText();
+    bool syncing_{false};                    // évite la boucle sélection -> signal -> sélection
+    QTreeWidgetItem* renamingItem_{nullptr}; // ligne en cours d'édition de nom
 };
 
 } // namespace openstitch::desktop

@@ -21,8 +21,9 @@ Result<void> write_zip(const std::filesystem::path& path,
         ~WriterGuard() { mz_zip_writer_delete(&w); }
     } guard{writer};
 
-    if (mz_zip_writer_open_file(writer, path.string().c_str(), 0, 0) != MZ_OK) {
-        return fail(ErrorCategory::UserInput, "Impossible d'écrire le fichier : " + path.string());
+    if (mz_zip_writer_open_file(writer, path_utf8(path).c_str(), 0, 0) != MZ_OK) {
+        return fail(ErrorCategory::UserInput,
+                    "Impossible d'écrire le fichier : " + path_utf8(path));
     }
 
     for (const auto& [name, blob] : entries) {
@@ -53,9 +54,9 @@ Result<std::map<std::string, Blob>> read_zip(const std::filesystem::path& path) 
         ~ReaderGuard() { mz_zip_reader_delete(&r); }
     } guard{reader};
 
-    if (mz_zip_reader_open_file(reader, path.string().c_str()) != MZ_OK) {
+    if (mz_zip_reader_open_file(reader, path_utf8(path).c_str()) != MZ_OK) {
         return fail(ErrorCategory::InvalidFile,
-                    "Fichier projet illisible ou introuvable : " + path.string());
+                    "Fichier projet illisible ou introuvable : " + path_utf8(path));
     }
 
     std::map<std::string, Blob> entries;
