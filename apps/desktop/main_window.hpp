@@ -550,6 +550,21 @@ private:
     QGraphicsItem* guideHighlight_{nullptr}; // propriété de la scène (baseItems_)
     // Édition multi-objets, boîte de forme, alignement, historique (main_window_editing.cpp).
     void connectInspectorEditing();
+    // Coutures des formes sélectionnées (toutes les sections) : `sameType` si elles ont toutes
+    // le même type de points (formulaire commun de l'inspecteur).
+    struct EmbroideryGroup {
+        std::vector<ObjectId> ids;
+        bool sameType{false};
+    };
+    [[nodiscard]] EmbroideryGroup selectedEmbroideryGroup() const;
+    // Applique `apply` aux paramètres de chaque couture du groupe, en un seul pas d'annulation
+    // nommé d'après `field` (les objets qui ne changent pas sont laissés tels quels).
+    void applyGroupParams(const QString& field,
+                          const std::function<void(document::StitchParams&)>& apply);
+    // Actions de lot sur les guides (« autoDirectionGuides », « clearDirectionGuides »,
+    // « clearSatinGuides ») et pose d'un guide d'angle donné sur chaque auto-satin.
+    void applyGroupAction(const QString& action);
+    void applyGroupGuideAngle(double angleDeg, bool absolute);
     void applyVectorBox(ObjectId id, QRectF boxMm);
     void applyToSelection(int stitchType, bool setSpacing, double spacingMm, bool setAngle,
                           double angleDeg);
