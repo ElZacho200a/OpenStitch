@@ -29,7 +29,8 @@ std::string lower_extension(const std::filesystem::path& path) {
 } // namespace
 
 Result<void> export_machine_file(const document::Project& project, const std::string& format_id,
-                                 const std::filesystem::path& path) {
+                                 const std::filesystem::path& path,
+                                 const formats::MachineExportOptions& options) {
     const auto* info = formats::find_format(format_id);
     if (info == nullptr || !info->can_write || info->encode == nullptr) {
         return fail(ErrorCategory::UnsupportedFormat,
@@ -41,7 +42,14 @@ Result<void> export_machine_file(const document::Project& project, const std::st
     if (!sequence) {
         return std::unexpected(sequence.error());
     }
-    auto bytes = info->encode(*sequence);
+    formats::MachineExportOptions effective = options;
+    if (effective.block_colors.empty() && info->carries_colors) {
+        for (const auto& block : stitch_analysis::color_blocks(project, *sequence)) {
+            effective.block_colors.push_back(block.rgb);
+        }
+    }
+    auto bytes = info->encode_ex != nullptr ? info->encode_ex(*sequence, effective)
+                                            : info->encode(*sequence);
     if (!bytes) {
         return std::unexpected(bytes.error());
     }
@@ -98,15 +106,40 @@ Result<document::ImportedDesign> import_machine_file(const std::filesystem::path
     }
     std::vector<std::uint8_t> bytes((std::istreambuf_iterator<char>(file)),
                                     std::istreambuf_iterator<char>());
-    auto sequence = info->decode(bytes);
-    if (!sequence) {
-        return std::unexpected(sequence.error());
+    formats::DecodedDesign design;
+    if (info->decode_ex != nullptr) {
+        auto decoded = info->decode_ex(bytes);
+        if (!decoded) {
+            return std::unexpected(decoded.error());
+        }
+        design = std::move(*decoded);
+    } else {
+        auto sequence = info->decode(bytes);
+        if (!sequence) {
+            return std::unexpected(sequence.error());
+        }
+        design.sequence = std::move(*sequence);
     }
 
     document::ImportedDesign imported;
     imported.source_format = info->id;
-    imported.color_blocks = stitch_analysis::color_blocks(document::Project{}, *sequence);
-    imported.sequence = std::move(*sequence);
+    imported.color_blocks = stitch_analysis::color_blocks(document::Project{}, design.sequence);
+    // Couleurs lues dans le fichier (PES, JEF) : le bloc dont la première commande suit k
+    // changements de couleur/arrêts reçoit la couleur du k-ième segment.
+    if (!design.block_colors.empty()) {
+        for (auto& block : imported.color_blocks) {
+            std::size_t segment = 0;
+            for (std::size_t i = 0; i < block.start && i < design.sequence.commands.size(); ++i) {
+                const auto type = design.sequence.commands[i].type;
+                segment +=
+                    (type == stitch::CommandType::ColorChange || type == stitch::CommandType::Stop)
+                        ? 1
+                        : 0;
+            }
+            block.rgb = design.block_colors[std::min(segment, design.block_colors.size() - 1)];
+        }
+    }
+    imported.sequence = std::move(design.sequence);
     return imported;
 }
 

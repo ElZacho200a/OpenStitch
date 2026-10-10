@@ -7,6 +7,7 @@
 #include "openstitch/core/error.hpp"
 #include "openstitch/document/imported_design.hpp"
 #include "openstitch/document/project.hpp"
+#include "openstitch/formats/machine_design.hpp"
 
 namespace openstitch::project_io {
 
@@ -19,15 +20,20 @@ namespace openstitch::project_io {
 // d'aucune modification ici, seulement d'une ligne de registre (cf.
 // `libs/formats/src/format_registry.cpp`).
 //
-// `format_id` nomme une entrée du registre ; "dst" est la seule disponible
-// tant que S2b/S2c ne sont pas faits.
+// `format_id` nomme une entrée du registre : "dst", "pes", "jef", "exp".
 
 // Exporte `project` (sa séquence EFFECTIVE -- retouches manuelles incluses,
 // cf. `stitch_generation::effective_sequence`, jamais `generate_sequence`
 // directement) vers un fichier du format `format_id`, à `path`.
+//
+// `options` (HP-FMT-002..005) : coupes, arrêts, changements de couleur, nom du motif. Si
+// `options.block_colors` est vide, les couleurs des blocs sont celles des objets du projet
+// (`stitch_analysis::color_blocks`) ; elles ne servent qu'aux formats qui portent des couleurs
+// (PES, JEF). Sans effet sur le DST (octets inchangés).
 [[nodiscard]] Result<void> export_machine_file(const document::Project& project,
                                                const std::string& format_id,
-                                               const std::filesystem::path& path);
+                                               const std::filesystem::path& path,
+                                               const formats::MachineExportOptions& options = {});
 
 // Importe un fichier machine comme design importé (AD-04, AI-04) --
 // construit la valeur à placer dans `Project::imported_design` (l'appelant

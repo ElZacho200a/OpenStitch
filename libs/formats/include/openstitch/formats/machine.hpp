@@ -52,6 +52,11 @@ struct MachineConstraints {
     // limite connue). Non utilisé par la normalisation DST (aucune vraie
     // couleur) ; réservé pour PES/JEF (S2b/S2c).
     std::optional<int> max_colors{};
+
+    // Étendue maximale (largeur ou hauteur, µm) que le format sait coder, si limitée (PES :
+    // coordonnées 16 bits). Absent = pas de limite pratique. Consommé par les encodeurs
+    // (erreur claire) et par l'analyse pré-export (`check_export_limits`).
+    std::optional<std::int64_t> max_extent_um{};
 };
 
 // Enregistrement machine NORMALISÉ : delta en unités natives (déjà quantifié
