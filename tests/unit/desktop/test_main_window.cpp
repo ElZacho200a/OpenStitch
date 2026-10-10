@@ -603,6 +603,15 @@ private slots:
     void regionAndVectorSelectionToggleContextActionsOppositely();
     // ---- L5-T4a : modèle de sélection (multi-sélection) et Suppr universel ----
     void selectionAddAndToggleKeepInvariants();
+
+    // Segmentation : sélection multiple de régions et édition par groupes.
+    void regionSelectionAddToggleAndActiveRegion();
+    void mergeSelectedRegionsIsOneUndoStep();
+    void recolorRegionsIsOneUndoStepAndSkipsUnchanged();
+    void sameColorAndNeighbourSelection();
+    void absorbIntoNeighbourPicksTheLongestBorder();
+    void regionRectangleSelectionHonoursWindowAndCrossing();
+    void documentListMultiSelectionDrivesRegionSelection();
     void togglingPrimaryPromotesPrevious();
     void addOfAlreadySelectedObjectIsNoOp();
     void clickOnEmptyReplaceDeselectsButModifiersKeepSelection();
@@ -5892,6 +5901,216 @@ void MainWindowTest::selectBelowMenuDisambiguatesDuplicateAndEmptyNames() {
     menu = window.findChild<QMenu*>(QStringLiteral("selectBelowMenu"));
     QVERIFY(menu != nullptr);
     QCOMPARE(menu->actions().constFirst()->text(), QStringLiteral("A"));
+}
+
+// ---------------------------------------------------------------------------
+// Segmentation : sélection multiple de régions et édition par groupes.
+// ---------------------------------------------------------------------------
+namespace {
+
+// Image 4x2, trois régions : 1 = colonnes 0-1, 2 = (2,0), 3 = (3,0)(2,1)(3,1). La région 2 touche
+// la 1 par UNE arête et la 3 par DEUX : sa voisine principale est la 3.
+openstitch::document::Project buildRegionProject() {
+    openstitch::document::Project project;
+    project.original.width = 4;
+    project.original.height = 2;
+    project.original.rgba.assign(4 * 2 * 4, 255);
+    const std::array<std::array<std::uint8_t, 3>, 3> colors{
+        {{200, 30, 30}, {30, 200, 30}, {30, 30, 200}}};
+    const std::uint32_t labels[8] = {1, 1, 2, 3, 1, 1, 3, 3};
+    openstitch::segmentation::Segmentation seg;
+    seg.width = 4;
+    seg.height = 2;
+    seg.labels.assign(labels, labels + 8);
+    for (std::uint32_t id = 1; id <= 3; ++id) {
+        std::size_t count = 0;
+        for (const std::uint32_t l : labels) {
+            count += l == id ? 1 : 0;
+        }
+        for (std::size_t i = 0; i < 8; ++i) { // la couleur de l'image = celle de la région
+            if (labels[i] == id) {
+                std::uint8_t* px = project.original.rgba.data() + i * 4;
+                px[0] = colors[id - 1][0];
+                px[1] = colors[id - 1][1];
+                px[2] = colors[id - 1][2];
+            }
+        }
+        seg.region_slots.push_back(
+            openstitch::segmentation::Region{RegionId{id}, colors[id - 1], count});
+    }
+    project.segmentation = std::move(seg);
+    return project;
+}
+
+std::vector<std::uint32_t> ids_of(const std::vector<RegionId>& regions) {
+    std::vector<std::uint32_t> out;
+    for (const RegionId r : regions) {
+        out.push_back(static_cast<std::uint32_t>(r.value));
+    }
+    return out;
+}
+
+} // namespace
+
+void MainWindowTest::regionSelectionAddToggleAndActiveRegion() {
+    MainWindow window;
+    window.applyLoadedProject(buildRegionProject());
+
+    window.selectRegions({RegionId{1}}, SelectMode::Replace);
+    window.selectRegions({RegionId{2}}, SelectMode::Add);
+    window.selectRegions({RegionId{3}}, SelectMode::Add);
+    QCOMPARE(ids_of(window.selectedRegionIds()), (std::vector<std::uint32_t>{1, 2, 3}));
+    QVERIFY(window.selectedRegion_.has_value());
+    QCOMPARE(window.selectedRegion_->value, std::uint64_t{3}); // la dernière cliquée est active
+    QVERIFY(window.checkSelectionInvariants());
+
+    // Ctrl+clic sur une région déjà sélectionnée : elle sort de la sélection.
+    window.selectRegions({RegionId{2}}, SelectMode::Toggle);
+    QCOMPARE(ids_of(window.selectedRegionIds()), (std::vector<std::uint32_t>{1, 3}));
+    // Ajouter une région déjà présente la rend active.
+    window.selectRegions({RegionId{1}}, SelectMode::Add);
+    QCOMPARE(window.selectedRegion_->value, std::uint64_t{1});
+    // Remplacer vide le reste.
+    window.selectRegions({RegionId{2}}, SelectMode::Replace);
+    QCOMPARE(ids_of(window.selectedRegionIds()), (std::vector<std::uint32_t>{2}));
+    // Une région inconnue est ignorée.
+    window.selectRegions({RegionId{99}}, SelectMode::Add);
+    QCOMPARE(ids_of(window.selectedRegionIds()), (std::vector<std::uint32_t>{2}));
+}
+
+void MainWindowTest::mergeSelectedRegionsIsOneUndoStep() {
+    MainWindow window;
+    window.applyLoadedProject(buildRegionProject());
+    auto* mergeAct = window.findChild<QAction*>(QStringLiteral("action_mergeSelection"));
+    QVERIFY(mergeAct != nullptr);
+
+    window.selectRegions({RegionId{1}}, SelectMode::Replace);
+    QVERIFY(!mergeAct->isEnabled()); // une seule région : rien à fusionner
+    window.selectRegions({RegionId{2}, RegionId{3}}, SelectMode::Add);
+    QVERIFY(mergeAct->isEnabled());
+
+    mergeAct->trigger();
+    QCOMPARE(window.project_.segmentation->region_count(), std::size_t{1});
+    QCOMPARE(window.project_.segmentation->find(RegionId{3})->pixel_count, std::size_t{8});
+    for (const std::uint32_t l : window.project_.segmentation->labels) {
+        QCOMPARE(l, std::uint32_t{3}); // tout est dans l'active
+    }
+    QCOMPARE(ids_of(window.selectedRegionIds()), (std::vector<std::uint32_t>{3}));
+
+    window.undo(); // UN seul pas pour toute la fusion
+    QCOMPARE(window.project_.segmentation->region_count(), std::size_t{3});
+    QCOMPARE(window.project_.segmentation->find(RegionId{1})->pixel_count, std::size_t{4});
+    window.redo();
+    QCOMPARE(window.project_.segmentation->region_count(), std::size_t{1});
+}
+
+void MainWindowTest::recolorRegionsIsOneUndoStepAndSkipsUnchanged() {
+    MainWindow window;
+    window.applyLoadedProject(buildRegionProject());
+    const std::array<std::uint8_t, 3> grey{90, 90, 90};
+
+    window.recolorRegions({RegionId{1}, RegionId{2}}, grey);
+    QCOMPARE(window.project_.segmentation->find(RegionId{1})->rgb, grey);
+    QCOMPARE(window.project_.segmentation->find(RegionId{2})->rgb, grey);
+    QCOMPARE(window.project_.segmentation->find(RegionId{3})->rgb,
+             (std::array<std::uint8_t, 3>{30, 30, 200}));
+    window.undo();
+    QCOMPARE(window.project_.segmentation->find(RegionId{1})->rgb,
+             (std::array<std::uint8_t, 3>{200, 30, 30}));
+    QCOMPARE(window.project_.segmentation->find(RegionId{2})->rgb,
+             (std::array<std::uint8_t, 3>{30, 200, 30}));
+
+    // Même couleur partout : aucune commande empilée (pas de pas d'annulation vide).
+    window.recolorRegions({RegionId{1}}, grey);
+    window.recolorRegions({RegionId{1}}, grey);
+    window.undo();
+    QCOMPARE(window.project_.segmentation->find(RegionId{1})->rgb,
+             (std::array<std::uint8_t, 3>{200, 30, 30}));
+
+    // « Rétablir la couleur d'origine » : retrouve la couleur moyenne de l'image.
+    window.recolorRegions({RegionId{2}, RegionId{3}}, grey);
+    window.selectRegions({RegionId{2}, RegionId{3}}, SelectMode::Replace);
+    window.restoreSelectedRegionColors();
+    QCOMPARE(window.project_.segmentation->find(RegionId{2})->rgb,
+             (std::array<std::uint8_t, 3>{30, 200, 30}));
+    QCOMPARE(window.project_.segmentation->find(RegionId{3})->rgb,
+             (std::array<std::uint8_t, 3>{30, 30, 200}));
+}
+
+void MainWindowTest::sameColorAndNeighbourSelection() {
+    MainWindow window;
+    window.applyLoadedProject(buildRegionProject());
+    window.recolorRegions({RegionId{3}}, {200, 30, 30}); // la 3 prend la couleur de la 1
+
+    window.selectRegions({RegionId{1}}, SelectMode::Replace);
+    window.selectRegionsWithSameColor();
+    QCOMPARE(ids_of(window.selectedRegionIds()), (std::vector<std::uint32_t>{3, 1}));
+    QCOMPARE(window.selectedRegion_->value, std::uint64_t{1}); // l'active reste la 1
+
+    window.selectRegions({RegionId{2}}, SelectMode::Replace);
+    window.selectNeighbourRegions(); // la 2 touche la 1 et la 3
+    QCOMPARE(window.selectedRegionIds().size(), std::size_t{3});
+    QCOMPARE(window.selectedRegion_->value, std::uint64_t{2}); // l'active reste la 2
+}
+
+void MainWindowTest::absorbIntoNeighbourPicksTheLongestBorder() {
+    MainWindow window;
+    window.applyLoadedProject(buildRegionProject());
+    window.selectRegions({RegionId{2}}, SelectMode::Replace);
+    window.absorbSelectedRegionIntoNeighbour();
+    // La région 2 partage 2 arêtes avec la 3 et 1 avec la 1 : elle rejoint la 3.
+    QCOMPARE(window.project_.segmentation->region_count(), std::size_t{2});
+    QVERIFY(window.project_.segmentation->find(RegionId{2}) == nullptr);
+    QCOMPARE(window.project_.segmentation->find(RegionId{3})->pixel_count, std::size_t{4});
+    QCOMPARE(window.selectedRegion_->value, std::uint64_t{3});
+    window.undo();
+    QVERIFY(window.project_.segmentation->find(RegionId{2}) != nullptr);
+}
+
+void MainWindowTest::regionRectangleSelectionHonoursWindowAndCrossing() {
+    MainWindow window;
+    window.applyLoadedProject(buildRegionProject());
+    window.showSegAct_->setChecked(true);
+    window.showVectorsAct_->setChecked(false);
+    const double mm = window.project_.mm_per_px.value;
+    // Image 4x2 centrée : x de -2mm à +2mm (en pixels), y de -1 à +1 ; un pixel = `mm`.
+    const double left = -4 * mm / 2.0;
+    const double top = -2 * mm / 2.0;
+
+    // Cadre sur le pixel (2,0) seulement : la région 2 est entièrement dedans.
+    const QRectF onlyRegion2(left + 2.1 * mm, top + 0.1 * mm, 0.8 * mm, 0.8 * mm);
+    window.onSelectionRectangle(onlyRegion2, SelectMode::Replace, /*crossing=*/false);
+    QCOMPARE(ids_of(window.selectedRegionIds()), (std::vector<std::uint32_t>{2}));
+
+    // Cadre sur les colonnes 1 et 2, rangée du haut : fenêtre = régions ENTIÈREMENT dedans (la 2,
+    // la 1 déborde du cadre), croisement = toutes celles que le cadre touche (1 et 2).
+    const QRectF cols12(left + 1.1 * mm, top + 0.1 * mm, 1.8 * mm, 0.8 * mm);
+    window.selectRegions({}, SelectMode::Replace);
+    window.onSelectionRectangle(cols12, SelectMode::Replace, /*crossing=*/false);
+    QCOMPARE(ids_of(window.selectedRegionIds()), (std::vector<std::uint32_t>{2}));
+    window.onSelectionRectangle(cols12, SelectMode::Replace, /*crossing=*/true);
+    QCOMPARE(ids_of(window.selectedRegionIds()), (std::vector<std::uint32_t>{1, 2}));
+
+    // Ctrl + cadre : bascule (la 2 sort, la 3 entre).
+    window.onSelectionRectangle(QRectF(left + 2.1 * mm, top + 0.1 * mm, 1.8 * mm, 1.8 * mm),
+                                SelectMode::Toggle, /*crossing=*/true);
+    QCOMPARE(ids_of(window.selectedRegionIds()), (std::vector<std::uint32_t>{1, 3}));
+}
+
+void MainWindowTest::documentListMultiSelectionDrivesRegionSelection() {
+    MainWindow window;
+    window.applyLoadedProject(buildRegionProject());
+    auto* docPanel = window.findChild<DocumentPanel*>();
+    QVERIFY(docPanel != nullptr);
+
+    emit docPanel->regionsSelected({1, 3}, 3);
+    QCOMPARE(ids_of(window.selectedRegionIds()), (std::vector<std::uint32_t>{1, 3}));
+    QCOMPARE(window.selectedRegion_->value, std::uint64_t{3});
+    // Une seule ligne : le chemin historique (regionSelected) reste le seul à agir.
+    emit docPanel->regionsSelected({2}, 2);
+    QCOMPARE(ids_of(window.selectedRegionIds()), (std::vector<std::uint32_t>{1, 3}));
+    docPanel->regionSelected(RegionId{2});
+    QCOMPARE(ids_of(window.selectedRegionIds()), (std::vector<std::uint32_t>{2}));
 }
 
 } // namespace openstitch::desktop

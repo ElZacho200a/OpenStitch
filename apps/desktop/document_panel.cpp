@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 #include "document_panel.hpp"
 
+#include <QAbstractItemView>
 #include <QIcon>
 #include <QLineEdit>
 #include <QListWidget>
@@ -9,6 +10,7 @@
 #include <QTreeWidget>
 #include <QVBoxLayout>
 
+#include <algorithm>
 #include <map>
 
 namespace openstitch::desktop {
@@ -105,6 +107,24 @@ DocumentPanel::DocumentPanel(QWidget* parent) : QWidget(parent) {
                     return;
                 emit embroiderySelected(ObjectId{data.toULongLong()});
             });
+    // Ctrl/Maj + clic : sélection multiple de régions (comme sur le canevas).
+    regionsList_->setSelectionMode(QAbstractItemView::ExtendedSelection);
+    connect(regionsList_, &QListWidget::itemSelectionChanged, this, [this] {
+        if (syncing_) {
+            return;
+        }
+        std::vector<std::uint64_t> ids;
+        for (int i = 0; i < regionsList_->count(); ++i) {
+            if (regionsList_->item(i)->isSelected()) {
+                ids.push_back(regionsList_->item(i)->data(Qt::UserRole).toULongLong());
+            }
+        }
+        const QListWidgetItem* current = regionsList_->currentItem();
+        const std::uint64_t active = current != nullptr && current->isSelected()
+                                         ? current->data(Qt::UserRole).toULongLong()
+                                         : (ids.empty() ? 0 : ids.back());
+        emit regionsSelected(ids, active);
+    });
     connect(regionsList_, &QListWidget::currentItemChanged, this,
             [this](QListWidgetItem* item, QListWidgetItem*) {
                 if (syncing_ || item == nullptr)
@@ -219,6 +239,21 @@ void DocumentPanel::applyFilter() {
     for (int i = 0; i < regionsList_->count(); ++i) {
         regionsList_->item(i)->setHidden(!matches(regionsList_->item(i)->text()));
     }
+}
+
+void DocumentPanel::syncRegions(const std::vector<std::uint64_t>& ids, std::uint64_t active) {
+    syncing_ = true;
+    regionsList_->clearSelection();
+    for (int i = 0; i < regionsList_->count(); ++i) {
+        QListWidgetItem* item = regionsList_->item(i);
+        const std::uint64_t id = item->data(Qt::UserRole).toULongLong();
+        const bool picked = std::find(ids.begin(), ids.end(), id) != ids.end();
+        item->setSelected(picked);
+        if (picked && id == active) {
+            regionsList_->setCurrentItem(item, QItemSelectionModel::NoUpdate);
+        }
+    }
+    syncing_ = false;
 }
 
 void DocumentPanel::syncSelection(Kind kind, std::uint64_t id) {

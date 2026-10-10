@@ -216,10 +216,28 @@ l'original) :
 - Segmenter l'image… (nombre de couleurs, taille min de région) ;
 - Segmenter avec l'IA… (même résultat, régions proposées par un modèle) ;
 - Afficher la carte des régions (bascule) ;
-- Fusionner avec… (puis clic sur la région cible) ;
-- Supprimer : voir le menu Édition (Suppr) — une région supprimée redevient du fond ;
-- Recolorer la région sélectionnée… ;
+- **Fusionner la sélection** (Ctrl+M) — fusionne toutes les régions sélectionnées dans la
+  dernière cliquée (la **région active**, qui garde sa couleur), en un seul pas d'annulation ;
+- **Fusionner dans la voisine principale** (Ctrl+Maj+M) — la région rejoint la voisine avec
+  laquelle elle partage la plus longue frontière ;
+- Fusionner avec… (puis clic sur la région cible) — absorbe toute la sélection dans la région
+  cliquée ;
+- **Sélectionner la même couleur**, **Sélectionner les voisines**, **Tout sélectionner** (Ctrl+A) ;
+- **Recolorer la sélection…** — un sélecteur de couleur, appliqué à toutes les régions
+  sélectionnées (un pas d'annulation) ;
+- **Rétablir la couleur d'origine** — rend à chaque région sa couleur moyenne dans l'image ;
+- Supprimer : voir le menu Édition (Suppr) — les régions supprimées redeviennent du fond ;
 - Convertir la région en objet vectoriel.
+
+**Sélection multiple de régions** (carte des régions affichée) : clic = une région ;
+**Ctrl + clic** ajoute ou retire une région ; **Maj + clic** en ajoute une ; un **cadre** tracé
+sur la carte (objets vectoriels masqués) sélectionne les régions qu'il touche — vers la gauche —
+ou qu'il contient entièrement — vers la droite ; Ctrl/Maj + cadre ajoute ou bascule. La liste
+*Régions* du panneau Document accepte aussi Ctrl/Maj + clic. L'**inspecteur** montre alors le
+nombre de régions, l'aire totale, la pastille de couleur de la région active (un clic ouvre le
+sélecteur) et les boutons des actions ci-dessus. Le **clic droit** sur une région ouvre un menu :
+fusionner la sélection ou « Fusionner dans… » (voisines classées de la plus proche à la plus
+lointaine, avec leur couleur), recolorer, sélectionner, vectoriser, supprimer.
 
 Sélection : cliquez une région ; ses statistiques (pixels, mm², RGB) s'affichent.
 

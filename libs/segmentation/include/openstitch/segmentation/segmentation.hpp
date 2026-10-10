@@ -160,4 +160,32 @@ background_candidate(const Segmentation& seg, const BackgroundCandidateOptions& 
 [[nodiscard]] image::Image render_map(const Segmentation& seg,
                                       std::optional<RegionId> highlight = {});
 
+// --- Aides de sélection et d'édition par groupes de régions (ergonomie de la segmentation) ---
+
+// Toutes les régions vivantes, par identifiant croissant.
+[[nodiscard]] std::vector<RegionId> all_regions(const Segmentation& seg);
+
+// Régions vivantes dont la couleur représentative vaut exactement `rgb`, par identifiant
+// croissant (« sélectionner tout ce qui a cette couleur »).
+[[nodiscard]] std::vector<RegionId> regions_with_color(const Segmentation& seg,
+                                                       std::array<std::uint8_t, 3> rgb);
+
+// Voisines de `id` (4-connexité), de la frontière commune la plus longue à la plus courte
+// (égalité -> plus petit identifiant). Le fond n'est jamais une voisine.
+[[nodiscard]] std::vector<RegionId> neighbors_of(const Segmentation& seg, RegionId id);
+
+// Régions ayant au moins un pixel dans le rectangle [x0, x1] × [y0, y1] (bornes incluses, les
+// coordonnées sont ramenées à l'image), par identifiant croissant (sélection au cadre).
+[[nodiscard]] std::vector<RegionId> regions_in_rect(const Segmentation& seg, int x0, int y0, int x1,
+                                                    int y1);
+
+// Couleur moyenne, dans `original` (image de la même taille que la segmentation), des pixels de
+// la région : permet de rendre à une région recolorée sa couleur d'origine.
+[[nodiscard]] Result<std::array<std::uint8_t, 3>>
+region_mean_color(const Segmentation& seg, const image::Image& original, RegionId id);
+
+// Comme `render_map`, avec plusieurs régions éclaircies (sélection multiple).
+[[nodiscard]] image::Image render_map_multi(const Segmentation& seg,
+                                            const std::vector<RegionId>& highlights);
+
 } // namespace openstitch::segmentation

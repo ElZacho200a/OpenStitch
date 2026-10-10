@@ -732,8 +732,38 @@ void MainWindow::buildMenus() {
     segMenu->addSeparator();
     mergeAct_ = segMenu->addAction(tr("&Fusionner avec… (cliquer la région cible)"));
     mergeAct_->setCheckable(true);
+    mergeAct_->setToolTip(
+        tr("Fusionne la région (ou toutes les régions sélectionnées) dans la région que vous "
+           "cliquez ensuite ; elle garde sa couleur."));
     connect(mergeAct_, &QAction::toggled, this, [this](bool on) { mergeMode_ = on; });
     regionActions_.append(mergeAct_);
+    mergeSelectionAct_ = segMenu->addAction(tr("Fusionner la sélecti&on"));
+    mergeSelectionAct_->setObjectName(QStringLiteral("action_mergeSelection"));
+    mergeSelectionAct_->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_M));
+    mergeSelectionAct_->setToolTip(
+        tr("Fusionne toutes les régions sélectionnées dans la dernière cliquée (Ctrl+M)."));
+    connect(mergeSelectionAct_, &QAction::triggered, this, &MainWindow::mergeSelectedRegions);
+    absorbAct_ = segMenu->addAction(tr("Fusionner dans la voisine &principale"));
+    absorbAct_->setObjectName(QStringLiteral("action_absorbIntoNeighbour"));
+    absorbAct_->setShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_M));
+    absorbAct_->setToolTip(
+        tr("Fusionne la région dans la voisine avec laquelle elle partage la plus longue "
+           "frontière (Ctrl+Maj+M)."));
+    connect(absorbAct_, &QAction::triggered, this, &MainWindow::absorbSelectedRegionIntoNeighbour);
+    segMenu->addSeparator();
+    selectSameColorAct_ = segMenu->addAction(tr("Sélectionner la &même couleur"));
+    selectSameColorAct_->setObjectName(QStringLiteral("action_selectSameColor"));
+    connect(selectSameColorAct_, &QAction::triggered, this,
+            &MainWindow::selectRegionsWithSameColor);
+    regionActions_.append(selectSameColorAct_);
+    selectNeighboursAct_ = segMenu->addAction(tr("Sélectionner les voisi&nes"));
+    selectNeighboursAct_->setObjectName(QStringLiteral("action_selectNeighbours"));
+    connect(selectNeighboursAct_, &QAction::triggered, this, &MainWindow::selectNeighbourRegions);
+    regionActions_.append(selectNeighboursAct_);
+    selectAllRegionsAct_ = segMenu->addAction(tr("&Tout sélectionner"));
+    selectAllRegionsAct_->setObjectName(QStringLiteral("action_selectAllRegions"));
+    selectAllRegionsAct_->setShortcut(QKeySequence::SelectAll);
+    connect(selectAllRegionsAct_, &QAction::triggered, this, &MainWindow::selectAllRegions);
 
     // Suppr universel (L5-T4a) : l'objectName historique « action_deleteRegion »
     // est conservé (tests, snapshot d'actions) ; l'action est activée par
@@ -745,9 +775,16 @@ void MainWindow::buildMenus() {
     deleteSelectionAct_->setShortcut(QKeySequence::Delete);
     connect(deleteSelectionAct_, &QAction::triggered, this, &MainWindow::deleteSelection);
 
-    auto* recolorAct = segMenu->addAction(tr("&Recolorer la région sélectionnée…"));
+    auto* recolorAct = segMenu->addAction(tr("&Recolorer la sélection…"));
+    recolorAct->setObjectName(QStringLiteral("action_recolorRegions"));
     connect(recolorAct, &QAction::triggered, this, &MainWindow::recolorSelectedRegion);
     regionActions_.append(recolorAct);
+    restoreColorAct_ = segMenu->addAction(tr("Rétablir la &couleur d'origine"));
+    restoreColorAct_->setObjectName(QStringLiteral("action_restoreRegionColors"));
+    restoreColorAct_->setToolTip(
+        tr("Rend à chaque région sélectionnée la couleur moyenne de l'image segmentée."));
+    connect(restoreColorAct_, &QAction::triggered, this, &MainWindow::restoreSelectedRegionColors);
+    regionActions_.append(restoreColorAct_);
 
     segMenu->addSeparator();
     vectorizeRegionAct_ = segMenu->addAction(tr("Convertir la région en objet &vectoriel"));
@@ -3315,7 +3352,8 @@ void MainWindow::renderBase(const image::Image& img) {
     // Carte des régions par-dessus l'image (mode d'affichage segmentation).
     if (showSegAct_ != nullptr && showSegAct_->isChecked() && project_.segmentation) {
         const double mmPerPx = project_.mm_per_px.value;
-        const auto map = segmentation::render_map(*project_.segmentation, selectedRegion_);
+        const auto map =
+            segmentation::render_map_multi(*project_.segmentation, selectedRegionIds());
         const QImage mapImg(map.rgba.data(), map.width, map.height, map.width * 4,
                             QImage::Format_RGBA8888);
         auto* mapItem = scene_->addPixmap(QPixmap::fromImage(mapImg.copy()));
@@ -4300,6 +4338,18 @@ void MainWindow::setStitchType(ObjectId embroideryId, int type) {
 
 void MainWindow::onCanvasContextMenu(QPointF posMm, QPoint globalPos) {
     const auto hit = objectAt(posMm);
+    // Carte des régions affichée, aucun objet sous le curseur : menu de la région pointée.
+    if (!hit && showSegAct_ != nullptr && showSegAct_->isChecked() && project_.segmentation &&
+        satinEmbroideryAt(posMm) == nullptr) {
+        const auto px = mmToImagePixel(posMm);
+        if (px) {
+            if (const auto region =
+                    segmentation::region_at(*project_.segmentation, px->x(), px->y())) {
+                showRegionContextMenu(*region, globalPos);
+                return;
+            }
+        }
+    }
     QMenu menu(this);
     document::EmbroideryObject* emb = nullptr;
     std::optional<ObjectId> vecId; // objet vectoriel à supprimer/dupliquer, si pertinent
@@ -5301,13 +5351,28 @@ void MainWindow::updateContextToolbar() {
         if (region != nullptr) {
             const double mmPerPx = project_.mm_per_px.value;
             const double areaMm2 = region->pixel_count * mmPerPx * mmPerPx;
-            contextToolbar_->addWidget(new QLabel(
-                tr("Région %1  ·  %2 mm²    ").arg(region->id.value).arg(areaMm2, 0, 'f', 1),
-                contextToolbar_));
+            const std::vector<RegionId> picked = selectedRegionIds();
+            QString label =
+                tr("Région %1  ·  %2 mm²    ").arg(region->id.value).arg(areaMm2, 0, 'f', 1);
+            if (picked.size() > 1) {
+                std::size_t pixels = 0;
+                for (const RegionId r : picked) {
+                    if (const auto* rr = project_.segmentation->find(r)) {
+                        pixels += rr->pixel_count;
+                    }
+                }
+                label = tr("%1 régions  ·  %2 mm²    ")
+                            .arg(picked.size())
+                            .arg(static_cast<double>(pixels) * mmPerPx * mmPerPx, 0, 'f', 1);
+            }
+            contextToolbar_->addWidget(new QLabel(label, contextToolbar_));
         }
-        contextToolbar_->addAction(mergeAct_); // Fusionner (mode)
+        contextToolbar_->addAction(mergeSelectionAct_); // Fusionner la sélection (>= 2 régions)
+        contextToolbar_->addAction(mergeAct_);          // Fusionner avec… (mode)
+        auto* recolorButton = contextToolbar_->addAction(tr("Recolorer…"));
+        connect(recolorButton, &QAction::triggered, this, &MainWindow::recolorSelectedRegion);
         auto* del = contextToolbar_->addAction(tr("Supprimer"));
-        connect(del, &QAction::triggered, this, &MainWindow::deleteSelectedRegion);
+        connect(del, &QAction::triggered, this, &MainWindow::deleteSelectedRegions);
         auto* vec = contextToolbar_->addAction(tr("Vectoriser"));
         connect(vec, &QAction::triggered, this, &MainWindow::vectorizeSelectedRegion);
     } else {
@@ -5687,6 +5752,26 @@ void MainWindow::buildDocumentPanel() {
         displayImage(processed_);
         updateActions();
     });
+    connect(
+        documentPanel_, &DocumentPanel::regionsSelected, this,
+        [this](const std::vector<std::uint64_t>& ids, std::uint64_t active) {
+            if (ids.size() < 2) {
+                return; // une seule ligne : traitée par regionSelected (comportement historique)
+            }
+            std::vector<RegionId> others;
+            for (const std::uint64_t id : ids) {
+                if (id != active) {
+                    others.push_back(RegionId{static_cast<std::uint32_t>(id)});
+                }
+            }
+            setSelection({.region = RegionId{static_cast<std::uint32_t>(active)},
+                          .embroidery = std::nullopt,
+                          .objects = {},
+                          .extraRegions = others});
+            announceRegionSelection();
+            displayImage(processed_);
+            updateActions();
+        });
     connect(documentPanel_, &DocumentPanel::regionSelected, this, [this](RegionId id) {
         setSelection({.region = id, .embroidery = std::nullopt, .objects = {}});
         displayImage(processed_);
@@ -5744,7 +5829,11 @@ void MainWindow::syncDocumentSelection() {
     if (emb != nullptr) {
         documentPanel_->syncSelection(DocumentPanel::Kind::Embroidery, emb->id.value);
     } else if (selectedRegion_) {
-        documentPanel_->syncSelection(DocumentPanel::Kind::Region, selectedRegion_->value);
+        std::vector<std::uint64_t> ids;
+        for (const RegionId r : selectedRegionIds()) {
+            ids.push_back(r.value);
+        }
+        documentPanel_->syncRegions(ids, selectedRegion_->value);
     } else {
         documentPanel_->syncSelection(DocumentPanel::Kind::None, 0);
     }
@@ -5766,6 +5855,15 @@ void MainWindow::buildPropertiesPanel() {
     addDockWidget(Qt::RightDockWidgetArea, propertiesDock_);
 
     // Édition d'un paramètre -> commande annulable -> régénération.
+    // Boutons de l'inspecteur des régions : déclenchent l'action de menu du même nom (même état,
+    // même grisage, même annulation).
+    connect(propertiesPanel_, &PropertiesPanel::regionActionRequested, this,
+            [this](const QString& actionName) {
+                if (auto* act = findChild<QAction*>(actionName);
+                    act != nullptr && act->isEnabled()) {
+                    act->trigger();
+                }
+            });
     connect(propertiesPanel_, &PropertiesPanel::paramsEdited, this,
             [this](ObjectId id, document::StitchParams params) {
                 // Auto-satin : l'inspecteur n'édite que les réglages scalaires ; les
@@ -5854,7 +5952,20 @@ void MainWindow::updateInspector() {
         id = selectedObject_->value;
     } else if (selectedRegion_ && project_.segmentation) {
         kind = 2;
-        id = selectedRegion_->value;
+        // Clé : toutes les régions sélectionnées ET la couleur de l'active (un recolorage ou une
+        // fusion doit reconstruire la pastille et les boutons, sans toucher aux autres
+        // inspecteurs).
+        std::uint64_t key = 1469598103934665603ULL;
+        const auto mix = [&key](std::uint64_t v) { key = (key ^ v) * 1099511628211ULL; };
+        for (const RegionId r : selectedRegionIds()) {
+            mix(r.value);
+        }
+        if (const auto* active = project_.segmentation->find(*selectedRegion_)) {
+            mix(active->rgb[0]);
+            mix(active->rgb[1]);
+            mix(active->rgb[2]);
+        }
+        id = key;
     }
 
     // Indicateur Clean/ManuallyEdited/Dirty (Lot 8.2) : mis à jour à CHAQUE
@@ -5911,15 +6022,36 @@ void MainWindow::updateInspector() {
     } else if (kind == 2) {
         const auto* region = project_.segmentation->find(*selectedRegion_);
         if (region != nullptr) {
+            const std::vector<RegionId> picked = selectedRegionIds();
+            std::size_t pixels = 0;
+            for (const RegionId r : picked) {
+                if (const auto* rr = project_.segmentation->find(r)) {
+                    pixels += rr->pixel_count;
+                }
+            }
             const double mmPerPx = project_.mm_per_px.value;
-            const double areaMm2 = region->pixel_count * mmPerPx * mmPerPx;
-            propertiesPanel_->showInfo(tr("Région %1").arg(region->id.value),
-                                       tr("Aire : %1 mm²   ·   %2 pixels\nCouleur : #%3%4%5")
-                                           .arg(areaMm2, 0, 'f', 1)
-                                           .arg(region->pixel_count)
-                                           .arg(region->rgb[0], 2, 16, QLatin1Char('0'))
-                                           .arg(region->rgb[1], 2, 16, QLatin1Char('0'))
-                                           .arg(region->rgb[2], 2, 16, QLatin1Char('0')));
+            const double areaMm2 = static_cast<double>(pixels) * mmPerPx * mmPerPx;
+            PropertiesPanel::RegionSelectionInfo info;
+            info.activeColor = QColor(region->rgb[0], region->rgb[1], region->rgb[2]);
+            info.canMerge = picked.size() >= 2;
+            info.canAbsorb = picked.size() == 1;
+            if (picked.size() == 1) {
+                const auto neighbours =
+                    segmentation::neighbors_of(*project_.segmentation, region->id);
+                info.title = tr("Région %1").arg(region->id.value);
+                info.summary = tr("Aire : %1 mm²   ·   %2 pixels\nVoisines : %3")
+                                   .arg(areaMm2, 0, 'f', 1)
+                                   .arg(pixels)
+                                   .arg(neighbours.size());
+            } else {
+                info.title = tr("%1 régions").arg(picked.size());
+                info.summary = tr("Aire totale : %1 mm²   ·   %2 pixels\nRégion active : %3 "
+                                  "(la dernière cliquée)")
+                                   .arg(areaMm2, 0, 'f', 1)
+                                   .arg(pixels)
+                                   .arg(region->id.value);
+            }
+            propertiesPanel_->showRegions(info);
         }
     } else {
         propertiesPanel_->showInfo(
@@ -7029,30 +7161,60 @@ void MainWindow::onCanvasClicked(QPointF posMm) {
     const auto clicked =
         px ? segmentation::region_at(*project_.segmentation, px->x(), px->y()) : std::nullopt;
 
-    if (mergeMode_ && selectedRegion_ && clicked && *clicked != *selectedRegion_) {
-        undoStack_.execute(
-            std::make_unique<commands::MergeRegionsCommand>(*selectedRegion_, *clicked), project_);
+    if (mergeMode_ && selectedRegion_ && clicked && !isRegionSelected(*clicked)) {
+        // Toutes les régions sélectionnées sont absorbées par la région cliquée (couleur gardée).
+        const std::vector<RegionId> sources = selectedRegionIds();
+        auto group = std::make_unique<commands::CompositeCommand>(
+            sources.size() == 1 ? tr("Fusionner des régions").toStdString()
+                                : tr("Fusionner %1 régions").arg(sources.size()).toStdString());
+        for (const RegionId source : sources) {
+            group->add(std::make_unique<commands::MergeRegionsCommand>(*clicked, source));
+        }
+        undoStack_.execute(std::move(group), project_);
         mergeAct_->setChecked(false);
+        setSelection(
+            {.region = clicked, .embroidery = std::nullopt, .objects = {}, .extraRegions = {}});
+        announceRegionSelection();
         refreshImage();
         updateActions();
         return;
     }
 
-    editSelection([clicked](Selection& sel) { sel.region = clicked; });
+    // Clic simple : la sélection de régions est remplacée par la région cliquée (ou vidée).
+    editSelection([clicked](Selection& sel) {
+        sel.region = clicked;
+        sel.extraRegions.clear();
+    });
     if (clicked) {
-        const auto* region = project_.segmentation->find(*clicked);
-        const double mm2 = static_cast<double>(region->pixel_count) * project_.mm_per_px.value *
-                           project_.mm_per_px.value;
-        statusBar()->showMessage(tr("Région %1 — %2 px (%3 mm²) — RGB(%4, %5, %6)")
-                                     .arg(region->id.value)
-                                     .arg(region->pixel_count)
-                                     .arg(mm2, 0, 'f', 1)
-                                     .arg(region->rgb[0])
-                                     .arg(region->rgb[1])
-                                     .arg(region->rgb[2]));
+        announceRegionSelection();
     }
     displayImage(processed_);
     updateActions();
+}
+
+bool MainWindow::regionFullyInside(RegionId id, int x0, int y0, int x1, int y1) const {
+    const auto* region = project_.segmentation ? project_.segmentation->find(id) : nullptr;
+    if (region == nullptr) {
+        return false;
+    }
+    const auto& seg = *project_.segmentation;
+    x0 = std::max(x0, 0);
+    y0 = std::max(y0, 0);
+    x1 = std::min(x1, seg.width - 1);
+    y1 = std::min(y1, seg.height - 1);
+    std::size_t inside = 0;
+    for (int y = y0; y <= y1; ++y) {
+        for (int x = x0; x <= x1; ++x) {
+            inside += seg.labels[static_cast<std::size_t>(y) * static_cast<std::size_t>(seg.width) +
+                                 static_cast<std::size_t>(x)] == id.value;
+        }
+    }
+    return inside == region->pixel_count;
+}
+
+bool MainWindow::isRegionSelected(RegionId id) const {
+    const std::vector<RegionId> ids = selectedRegionIds();
+    return std::find(ids.begin(), ids.end(), id) != ids.end();
 }
 
 void MainWindow::onSelectionClicked(QPointF posMm, SelectMode mode) {
@@ -7064,7 +7226,8 @@ void MainWindow::onSelectionClicked(QPointF posMm, SelectMode mode) {
         return;
     }
     // Maj/Ctrl + clic : ajout/bascule d'un objet vectoriel (affiché, hors fusion).
-    // Régions et broderies restent en mono-sélection (Maj/Ctrl = Replace, documenté).
+    // Régions : Maj/Ctrl + clic = sélection multiple de régions (cf. plus bas) ; broderies en
+    // mono-sélection (Maj/Ctrl = Replace, documenté).
     if (showVectorsAct_->isChecked() && !mergeMode_) {
         const std::vector<ObjectId> under = objectsAtPointMm(project_, posMm);
         if (!under.empty()) {
@@ -7078,8 +7241,15 @@ void MainWindow::onSelectionClicked(QPointF posMm, SelectMode mode) {
     }
     if (showSegAct_->isChecked() && project_.segmentation) {
         const auto px = mmToImagePixel(posMm);
-        if (px && segmentation::region_at(*project_.segmentation, px->x(), px->y())) {
-            onCanvasClicked(posMm);
+        const auto region =
+            px ? segmentation::region_at(*project_.segmentation, px->x(), px->y()) : std::nullopt;
+        if (region) {
+            if (mergeMode_) {
+                onCanvasClicked(posMm); // la région cliquée est la cible de la fusion
+            } else {
+                // Maj + clic : ajoute la région ; Ctrl + clic : la bascule (sélection multiple).
+                selectRegions({*region}, mode);
+            }
             return;
         }
     }
@@ -7087,6 +7257,41 @@ void MainWindow::onSelectionClicked(QPointF posMm, SelectMode mode) {
 }
 
 void MainWindow::onSelectionRectangle(QRectF rectMm, SelectMode mode, bool crossing) {
+    // Carte des régions affichée et objets vectoriels masqués : le cadre sélectionne des régions
+    // (fenêtre : régions entièrement dans le cadre ; croisement : régions que le cadre touche).
+    if (currentTool_ == Tool::Select && !mergeMode_ && !showVectorsAct_->isChecked() &&
+        showSegAct_->isChecked() && project_.segmentation && !processed_.empty()) {
+        const double mmPerPx = project_.mm_per_px.value;
+        const double left = -processed_.width * mmPerPx / 2.0;
+        const double top = -processed_.height * mmPerPx / 2.0;
+        const auto toPx = [&](double mm, double origin) {
+            return static_cast<int>(std::floor((mm - origin) / mmPerPx));
+        };
+        const int x0 = toPx(rectMm.left(), left);
+        const int y0 = toPx(rectMm.top(), top);
+        const int x1 = toPx(rectMm.right(), left);
+        const int y1 = toPx(rectMm.bottom(), top);
+        std::vector<RegionId> hits =
+            segmentation::regions_in_rect(*project_.segmentation, x0, y0, x1, y1);
+        if (!crossing) {
+            hits.erase(
+                std::remove_if(hits.begin(), hits.end(),
+                               [&](RegionId id) { return !regionFullyInside(id, x0, y0, x1, y1); }),
+                hits.end());
+        }
+        // Remplacer/Ajouter/Basculer comme pour un clic ; cadre vide en mode Replace : désélection.
+        if (hits.empty() && mode == SelectMode::Replace) {
+            editSelection([](Selection& sel) {
+                sel.region.reset();
+                sel.extraRegions.clear();
+            });
+            displayImage(processed_);
+            updateActions();
+        } else if (!hits.empty()) {
+            selectRegions(hits, mode);
+        }
+        return;
+    }
     if (currentTool_ != Tool::Select || !showVectorsAct_->isChecked() || mergeMode_) {
         return;
     }
@@ -7162,6 +7367,19 @@ void MainWindow::setSelection(Selection selection) {
         objects = {objects.back()};
     }
     selectedRegion_ = selection.region;
+    // Régions supplémentaires : sans doublon, ni l'active, ni région disparue ; vides sans active.
+    extraRegions_.clear();
+    if (selection.region) {
+        for (const RegionId r : selection.extraRegions) {
+            const bool known = project_.segmentation && project_.segmentation->find(r) != nullptr;
+            const bool dup =
+                r == *selection.region ||
+                std::find(extraRegions_.begin(), extraRegions_.end(), r) != extraRegions_.end();
+            if (known && !dup) {
+                extraRegions_.push_back(r);
+            }
+        }
+    }
     selectedEmbroidery_ = selection.embroidery;
     if (objects.empty()) {
         selectedObject_.reset();
@@ -7206,7 +7424,7 @@ void MainWindow::editSelection(const std::function<void(Selection&)>& edit) {
 }
 
 MainWindow::Selection MainWindow::currentSelection() const {
-    return Selection{selectedRegion_, selectedEmbroidery_, selectedObjectIds()};
+    return Selection{selectedRegion_, selectedEmbroidery_, selectedObjectIds(), extraRegions_};
 }
 
 std::vector<ObjectId> MainWindow::selectedObjectIds() const {
@@ -7426,13 +7644,7 @@ void MainWindow::deleteSelection() {
 }
 
 void MainWindow::deleteSelectedRegion() {
-    if (!selectedRegion_ || !project_.segmentation) {
-        return;
-    }
-    undoStack_.execute(std::make_unique<commands::RemoveRegionCommand>(*selectedRegion_), project_);
-    editSelection([](Selection& sel) { sel.region.reset(); });
-    refreshImage();
-    updateActions();
+    deleteSelectedRegions();
 }
 
 void MainWindow::recolorSelectedRegion() {
@@ -7440,19 +7652,21 @@ void MainWindow::recolorSelectedRegion() {
         return;
     }
     const auto* region = project_.segmentation->find(*selectedRegion_);
+    if (region == nullptr) {
+        return;
+    }
     const QColor initial(region->rgb[0], region->rgb[1], region->rgb[2]);
-    const QColor color = QColorDialog::getColor(initial, this, tr("Couleur de la région"));
+    const std::vector<RegionId> ids = selectedRegionIds();
+    const QColor color =
+        QColorDialog::getColor(initial, this,
+                               ids.size() == 1 ? tr("Couleur de la région")
+                                               : tr("Couleur des %1 régions").arg(ids.size()));
     if (!color.isValid()) {
         return;
     }
-    undoStack_.execute(
-        std::make_unique<commands::RecolorRegionCommand>(
-            *selectedRegion_, std::array<std::uint8_t, 3>{static_cast<std::uint8_t>(color.red()),
-                                                          static_cast<std::uint8_t>(color.green()),
-                                                          static_cast<std::uint8_t>(color.blue())}),
-        project_);
-    refreshImage();
-    updateActions();
+    recolorRegions(ids, {static_cast<std::uint8_t>(color.red()),
+                         static_cast<std::uint8_t>(color.green()),
+                         static_cast<std::uint8_t>(color.blue())});
 }
 
 namespace {
@@ -7531,6 +7745,16 @@ void MainWindow::updateActions() {
         setEnabledWithReason(act, hasSelection,
                              tr("Sélectionnez d'abord une région dans l'image segmentée."));
     }
+    const std::size_t pickedRegions = selectedRegionIds().size();
+    setEnabledWithReason(mergeSelectionAct_, pickedRegions >= 2,
+                         tr("Sélectionnez au moins deux régions (Ctrl+clic ou Maj+clic)."));
+    setEnabledWithReason(
+        absorbAct_, pickedRegions == 1,
+        tr("Sélectionnez une seule région : elle sera fusionnée dans sa voisine."));
+    setEnabledWithReason(selectAllRegionsAct_,
+                         project_.segmentation.has_value() &&
+                             project_.segmentation->region_count() > 0,
+                         tr("Segmentez d'abord l'image (menu Segmentation)."));
     // Suppr universel : région, objet(s) vectoriel(s) ou objet de broderie.
     setEnabledWithReason(deleteSelectionAct_,
                          hasSelection || selectedObject_.has_value() ||
