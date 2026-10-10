@@ -23,10 +23,10 @@ void set_text(document::Project& project, cmd::UndoStack& stack, document::TextO
               const char* label = "Texte") {
     auto built = lettering::build_text_objects(vera_bold(), t, project.object_ids);
     REQUIRE(built.has_value());
-    stack.execute(std::make_unique<cmd::SetTextObjectCommand>(
-                      std::move(t), std::move(built->vectors), std::move(built->embroideries),
-                      label),
-                  project);
+    stack.execute(
+        std::make_unique<cmd::SetTextObjectCommand>(std::move(t), std::move(built->vectors),
+                                                    std::move(built->embroideries), label),
+        project);
 }
 
 document::TextObject new_text(document::Project& project, const std::string& s) {

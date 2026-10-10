@@ -1008,8 +1008,9 @@ void PropertiesPanel::buildEmbroideryForm(const document::EmbroideryObject& obje
                     hf.setBold(true);
                     heading->setFont(hf);
                     form->addRow(heading);
-                    auto* bWidth = mmSpin(to_millimeters(p.border->width).value, 20.0, 0.5,
-                                          tr("Largeur constante de la colonne le long du contour."));
+                    auto* bWidth =
+                        mmSpin(to_millimeters(p.border->width).value, 20.0, 0.5,
+                               tr("Largeur constante de la colonne le long du contour."));
                     bWidth->setObjectName(QStringLiteral("spin_borderWidth"));
                     auto* bSide = new QComboBox(body_);
                     bSide->setObjectName(QStringLiteral("combo_borderSide"));

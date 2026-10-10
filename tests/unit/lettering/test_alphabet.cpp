@@ -16,10 +16,9 @@ using namespace lettering_test;
 
 namespace {
 
-const std::u32string kAlphabet =
-    U"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"
-    U"àâäçéèêëîïôöùûü"
-    U"ÀÉÇ";
+const std::u32string kAlphabet = U"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"
+                                 U"àâäçéèêëîïôöùûü"
+                                 U"ÀÉÇ";
 
 struct Totals {
     int satin{0};

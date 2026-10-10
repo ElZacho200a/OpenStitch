@@ -49,10 +49,10 @@ TEST_CASE("schema v5 file without text loads and is flagged as migrated") {
 }
 
 TEST_CASE("minimal text block takes model defaults and clamps bad enums") {
-    const auto path = write_json(
-        "osp_text_min.osp",
-        document_json(6, R"("textObjects":[{"id":1,"text":"Hi","align":99,"fill":-4}],)",
-                      R"(,"textOwner":1)"));
+    const auto path =
+        write_json("osp_text_min.osp",
+                   document_json(6, R"("textObjects":[{"id":1,"text":"Hi","align":99,"fill":-4}],)",
+                                 R"(,"textOwner":1)"));
     const auto loaded = project_io::load_project(path);
     REQUIRE(loaded.has_value());
     REQUIRE(loaded->text_objects.size() == 1);

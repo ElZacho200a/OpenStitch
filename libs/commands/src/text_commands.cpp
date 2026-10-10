@@ -45,15 +45,13 @@ void restore_letters(document::Project& project, const VectorList& vectors,
     // Réinsertion en ordre CROISSANT d'index d'origine : reproduit la disposition.
     for (const auto& [index, object] : vectors) {
         const std::size_t pos = std::min(index, project.vector_objects.size());
-        project.vector_objects.insert(project.vector_objects.begin() +
-                                          static_cast<std::ptrdiff_t>(pos),
-                                      object);
+        project.vector_objects.insert(
+            project.vector_objects.begin() + static_cast<std::ptrdiff_t>(pos), object);
     }
     for (const auto& [index, object] : embroideries) {
         const std::size_t pos = std::min(index, project.embroidery_objects.size());
-        project.embroidery_objects.insert(project.embroidery_objects.begin() +
-                                              static_cast<std::ptrdiff_t>(pos),
-                                          object);
+        project.embroidery_objects.insert(
+            project.embroidery_objects.begin() + static_cast<std::ptrdiff_t>(pos), object);
     }
 }
 
@@ -63,8 +61,8 @@ SetTextObjectCommand::SetTextObjectCommand(document::TextObject text,
                                            std::vector<document::VectorObject> vectors,
                                            std::vector<document::EmbroideryObject> embroideries,
                                            std::string label)
-    : text_(std::move(text)), vectors_(std::move(vectors)),
-      embroideries_(std::move(embroideries)), label_(std::move(label)) {}
+    : text_(std::move(text)), vectors_(std::move(vectors)), embroideries_(std::move(embroideries)),
+      label_(std::move(label)) {}
 
 void SetTextObjectCommand::apply(document::Project& project) {
     oldText_.reset();
@@ -83,10 +81,10 @@ void SetTextObjectCommand::apply(document::Project& project) {
     const std::size_t vecAt =
         oldVectors_.empty() ? project.vector_objects.size()
                             : std::min(oldVectors_.front().first, project.vector_objects.size());
-    const std::size_t embAt = oldEmbroideries_.empty()
-                                  ? project.embroidery_objects.size()
-                                  : std::min(oldEmbroideries_.front().first,
-                                             project.embroidery_objects.size());
+    const std::size_t embAt =
+        oldEmbroideries_.empty()
+            ? project.embroidery_objects.size()
+            : std::min(oldEmbroideries_.front().first, project.embroidery_objects.size());
     project.vector_objects.insert(project.vector_objects.begin() +
                                       static_cast<std::ptrdiff_t>(vecAt),
                                   vectors_.begin(), vectors_.end());

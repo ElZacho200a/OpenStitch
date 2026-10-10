@@ -81,16 +81,17 @@ void FontCatalog::scan() {
         entries_.push_back(e);
     }
 
-    const QStringList dirs =
-        overrideDirs_ ? *overrideDirs_
-                      : QStandardPaths::standardLocations(QStandardPaths::FontsLocation);
+    const QStringList dirs = overrideDirs_
+                                 ? *overrideDirs_
+                                 : QStandardPaths::standardLocations(QStandardPaths::FontsLocation);
     QList<FontEntry> installed;
     std::set<QString> seen; // dédoublonne les familles/styles présents dans plusieurs dossiers
     int files = 0;
     constexpr int kMaxFiles = 4000; // garde-fou : un dossier de polices absurde ne fige pas l'IHM
     for (const QString& dir : dirs) {
-        QDirIterator it(dir, {QStringLiteral("*.ttf"), QStringLiteral("*.otf"),
-                              QStringLiteral("*.ttc"), QStringLiteral("*.otc")},
+        QDirIterator it(dir,
+                        {QStringLiteral("*.ttf"), QStringLiteral("*.otf"), QStringLiteral("*.ttc"),
+                         QStringLiteral("*.otc")},
                         QDir::Files | QDir::Readable, QDirIterator::Subdirectories);
         while (it.hasNext() && files < kMaxFiles) {
             const QString path = it.next();
@@ -200,7 +201,8 @@ std::shared_ptr<lettering::Font> FontCatalog::load(const document::TextFontRef& 
                 return remember(key, std::make_shared<lettering::Font>(std::move(*font)));
             }
         }
-        return fail(QObject::tr("Police intégrée inconnue : %1").arg(QString::fromStdString(ref.builtin)));
+        return fail(
+            QObject::tr("Police intégrée inconnue : %1").arg(QString::fromStdString(ref.builtin)));
     }
 
     if (!ref.file.empty()) {

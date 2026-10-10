@@ -54,7 +54,8 @@ TEST_CASE("text rule: under 5 mm satin is fragile, under 3 mm unreadable") {
     CHECK(findings[0].message.find("illisible") != std::string::npos);
 
     // Un contour ne craint pas la fragilité du satin (seul « illisible » compte).
-    project = project_with_text(4'000, document::TextFill::Contour, document::RunningStitchParams{});
+    project =
+        project_with_text(4'000, document::TextFill::Contour, document::RunningStitchParams{});
     CHECK(stitch_analysis::analyze_text_objects(project).empty());
 }
 

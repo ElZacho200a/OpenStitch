@@ -10,9 +10,9 @@
 
 #include "main_window.hpp"
 #include "openstitch/commands/composite_command.hpp"
-#include "properties_panel.hpp"
 #include "openstitch/commands/project_commands.hpp"
 #include "openstitch/stitch_generation/border_satin.hpp"
+#include "properties_panel.hpp"
 
 namespace openstitch::desktop {
 
@@ -33,15 +33,15 @@ void MainWindow::createBorderSatin(ObjectId vectorId, double widthMm, int side, 
     if (source == nullptr) {
         return;
     }
-    auto satins = stitch_generation::border_satin_from_paths(
-        source->paths, makeSpec(widthMm, side, corner));
+    auto satins =
+        stitch_generation::border_satin_from_paths(source->paths, makeSpec(widthMm, side, corner));
     if (satins.empty()) {
         QMessageBox::warning(this, tr("Satin de bordure"),
                              tr("Ce contour est trop petit ou dégénéré pour un satin de bordure."));
         return;
     }
-    auto group = std::make_unique<commands::CompositeCommand>(
-        tr("Créer un satin de bordure").toStdString());
+    auto group =
+        std::make_unique<commands::CompositeCommand>(tr("Créer un satin de bordure").toStdString());
     std::optional<ObjectId> firstId;
     for (auto& params : satins) {
         document::EmbroideryObject object;

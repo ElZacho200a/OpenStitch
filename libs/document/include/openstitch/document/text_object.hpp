@@ -15,7 +15,8 @@ namespace openstitch::document {
 inline constexpr Micrometers kTextSatinMinCapHeight{5'000}; // en dessous : satin fragile
 inline constexpr Micrometers kTextMinCapHeight{3'000};      // en dessous : illisible
 inline constexpr Micrometers kTextMinStrokeWidth{1'000};    // trait < 1 mm : pas de satin
-inline constexpr Micrometers kTextSmallLetterHeight{8'000}; // en dessous : réglages « petites lettres »
+inline constexpr Micrometers kTextSmallLetterHeight{
+    8'000}; // en dessous : réglages « petites lettres »
 
 // Alignement horizontal des lignes d'un texte, par rapport à `TextObject::origin`.
 enum class TextAlign : std::uint8_t {

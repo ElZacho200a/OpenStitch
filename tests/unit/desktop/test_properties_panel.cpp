@@ -72,8 +72,8 @@ private slots:
     void autoSatinStateRefreshUpdatesListWithoutRebuildingTheForm();
     void tatamiEditChangesOnlyTheTouchedFieldWithoutRounding();
     void engineSettingsEmitDedicatedEdits();
-void borderSatinInspectorEmitsRegenerationRequests();
-void rowSpacingAndLengthsAreBoundedWithRangeTooltips();
+    void borderSatinInspectorEmitsRegenerationRequests();
+    void rowSpacingAndLengthsAreBoundedWithRangeTooltips();
     void wheelDoesNotChangeAnUnfocusedField();
     void underlayFieldsAreGreyedWhenTheirBoxIsUnchecked();
     void showsParamsTracksTheDocumentCopy();

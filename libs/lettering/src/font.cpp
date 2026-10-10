@@ -122,8 +122,8 @@ std::vector<FontFaceInfo> inspect_font_file(const std::filesystem::path& path) {
     }
     const auto open = [&](long index, FT_Face* face) {
         return ascii ? FT_New_Face(library, file.c_str(), index, face)
-                     : FT_New_Memory_Face(library, bytes.data(),
-                                          static_cast<FT_Long>(bytes.size()), index, face);
+                     : FT_New_Memory_Face(library, bytes.data(), static_cast<FT_Long>(bytes.size()),
+                                          index, face);
     };
     // Index -1 : ne renvoie que le nombre de visages (lecture minimale du fichier).
     FT_Face probe = nullptr;

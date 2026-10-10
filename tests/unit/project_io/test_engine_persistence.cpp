@@ -36,8 +36,8 @@ document::Project load_from_json(const std::string& embroideryObjectsJson,
         embroideryObjectsJson + "]" + extraDocumentKeys + "}}";
     // Nom unique : ctest lance chaque TEST_CASE dans un processus distinct, parfois en parallèle.
     const auto unique = std::chrono::steady_clock::now().time_since_epoch().count();
-    const auto path = fs::temp_directory_path() /
-                      ("openstitch_engine_legacy_" + std::to_string(unique) + ".osp");
+    const auto path =
+        fs::temp_directory_path() / ("openstitch_engine_legacy_" + std::to_string(unique) + ".osp");
     std::map<std::string, project_io::detail::Blob> entries;
     entries.emplace("project.json", project_io::detail::Blob(json.begin(), json.end()));
     REQUIRE(project_io::detail::write_zip(path, entries).has_value());

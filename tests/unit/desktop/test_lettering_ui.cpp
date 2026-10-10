@@ -74,7 +74,8 @@ private slots:
     void catalogScansSystemDirectoriesAndFallsBackByFamily() {
         QTemporaryDir dir;
         QVERIFY(dir.isValid());
-        QVERIFY(QFile::copy(QStringLiteral(":/fonts/Vera.ttf"), dir.filePath(QStringLiteral("Mon Vera.ttf"))));
+        QVERIFY(QFile::copy(QStringLiteral(":/fonts/Vera.ttf"),
+                            dir.filePath(QStringLiteral("Mon Vera.ttf"))));
         auto& cat = FontCatalog::instance();
         cat.setSystemFontDirsForTesting({dir.path()});
         bool found = false;

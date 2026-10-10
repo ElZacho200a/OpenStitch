@@ -33,8 +33,7 @@ std::vector<Finding> analyze_text_objects(const document::Project& project) {
         } else if (text.cap_height < document::kTextSatinMinCapHeight &&
                    text.fill != document::TextFill::Contour) {
             findings.push_back({Severity::Warning, "texte-trop-petit",
-                                "Texte de " + mm +
-                                    " mm : en dessous de 5 mm le satin est fragile.",
+                                "Texte de " + mm + " mm : en dessous de 5 mm le satin est fragile.",
                                 text.origin, first,
                                 "Agrandissez le texte ou choisissez une police à traits épais."});
         }

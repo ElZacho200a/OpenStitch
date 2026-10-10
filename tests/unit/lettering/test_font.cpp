@@ -16,7 +16,7 @@ TEST_CASE("font loads an embedded TrueType file") {
     // Hauteur de capitale de Vera : 1493 unités.
     CHECK(f.cap_height_units() == Approx(1493.0).margin(2.0));
     CHECK(f.has_glyph(U'A'));
-    CHECK(f.has_glyph(U'é')); // é
+    CHECK(f.has_glyph(U'é'));        // é
     CHECK_FALSE(f.has_glyph(U'中')); // idéogramme absent
 }
 

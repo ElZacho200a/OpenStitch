@@ -598,8 +598,8 @@ int run_engine_debug(double pullMm, bool underlayAuto, double borderMm, const st
             document::TatamiParams tp;
             tp.inset = Micrometers{0};
             tp.pull_compensation = to_micrometers(Millimeters{pullMm});
-            tp.underlay_mode = underlayAuto ? document::UnderlayMode::Auto
-                                            : document::UnderlayMode::Manual;
+            tp.underlay_mode =
+                underlayAuto ? document::UnderlayMode::Auto : document::UnderlayMode::Manual;
             emb.params = tp;
             project.embroidery_objects.push_back(emb);
         }
@@ -608,9 +608,9 @@ int run_engine_debug(double pullMm, bool underlayAuto, double borderMm, const st
             ring.closed = true;
             for (int k = 0; k < 72; ++k) {
                 const double a = 2.0 * std::numbers::pi * k / 72.0;
-                ring.nodes.push_back(corner(
-                    30'000 + static_cast<std::int32_t>(std::lround(8'000.0 * std::cos(a))),
-                    static_cast<std::int32_t>(std::lround(8'000.0 * std::sin(a)))));
+                ring.nodes.push_back(
+                    corner(30'000 + static_cast<std::int32_t>(std::lround(8'000.0 * std::cos(a))),
+                           static_cast<std::int32_t>(std::lround(8'000.0 * std::sin(a)))));
             }
             document::BorderSatinSpec spec;
             spec.width = to_micrometers(Millimeters{borderMm});

@@ -52,7 +52,8 @@ lettering::TextLayout layout(const document::TextObject& t) {
 TEST_CASE("utf8 decoding handles multibyte and invalid sequences") {
     CHECK(lettering::decode_utf8("A\xC3\xA9\xE2\x82\xAC") ==
           std::vector<char32_t>{U'A', U'é', U'€'});
-    const auto bad = lettering::decode_utf8("a\xFF" "b\xC3");
+    const auto bad = lettering::decode_utf8("a\xFF"
+                                            "b\xC3");
     REQUIRE(bad.size() == 4);
     CHECK(bad[1] == 0xFFFD);
     CHECK(bad[3] == 0xFFFD);
@@ -147,7 +148,8 @@ TEST_CASE("rotation by 90 degrees turns the baseline vertical") {
 }
 
 TEST_CASE("missing glyphs are omitted with a warning, never silently squared") {
-    const auto l = layout(make_text("A\xE4\xB8\xAD" "B"));
+    const auto l = layout(make_text("A\xE4\xB8\xAD"
+                                    "B"));
     CHECK(l.glyphs.size() == 2);
     REQUIRE(l.warnings.size() == 1);
     CHECK(l.warnings[0].code == "glyphe-absent");

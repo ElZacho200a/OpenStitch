@@ -140,7 +140,8 @@ TextDialog::TextDialog(const document::TextObject& initial, bool isNew, QWidget*
     lineSpacing_->setDecimals(2);
     lineSpacing_->setPrefix(QStringLiteral("× "));
     lineSpacing_->setValue(initial.line_spacing);
-    lineSpacing_->setToolTip(tr("Distance entre deux lignes, en multiple de la hauteur de capitale."));
+    lineSpacing_->setToolTip(
+        tr("Distance entre deux lignes, en multiple de la hauteur de capitale."));
 
     align_ = new QComboBox(this);
     align_->setObjectName(QStringLiteral("align_combo"));
@@ -166,7 +167,8 @@ TextDialog::TextDialog(const document::TextObject& initial, bool isNew, QWidget*
     guard->guard(fill_);
     maxSatin_ = mmSpin(this, QStringLiteral("max_satin_spin"), 1.0, 30.0, 0.5);
     maxSatin_->setValue(toMm(initial.max_satin_width));
-    maxSatin_->setToolTip(tr("Largeur de trait au-delà de laquelle une lettre est cousue en tatami."));
+    maxSatin_->setToolTip(
+        tr("Largeur de trait au-delà de laquelle une lettre est cousue en tatami."));
     density_ = mmSpin(this, QStringLiteral("density_spin"), 0.2, 2.0, 0.05, 2);
     density_->setValue(toMm(initial.density));
     density_->setToolTip(tr("Écart entre les points de satin / les rangées de tatami."));
@@ -332,8 +334,9 @@ void TextDialog::refresh() {
     loadSelectedFont();
     justifyWidth_->setEnabled(align_->currentData().toInt() ==
                               static_cast<int>(document::TextAlign::Justify));
-    const bool needsSatin = fill_->currentData().toInt() != static_cast<int>(document::TextFill::Tatami) &&
-                            fill_->currentData().toInt() != static_cast<int>(document::TextFill::Contour);
+    const bool needsSatin =
+        fill_->currentData().toInt() != static_cast<int>(document::TextFill::Tatami) &&
+        fill_->currentData().toInt() != static_cast<int>(document::TextFill::Contour);
     maxSatin_->setEnabled(needsSatin);
 
     warnings_.clear();

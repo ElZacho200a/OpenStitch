@@ -188,7 +188,8 @@ Result<TextBuild> build_text_objects(const Font& font, const document::TextObjec
             const double stroke = mean_stroke_width_um(groups[k]);
             document::VectorObject vector;
             vector.id = ids.next();
-            vector.name = "Lettre " + letter + (emitted > 0 ? " (" + std::to_string(emitted + 1) + ")" : "");
+            vector.name =
+                "Lettre " + letter + (emitted > 0 ? " (" + std::to_string(emitted + 1) + ")" : "");
             vector.rgb = text.rgb;
             vector.paths = std::move(groups[k]);
             vector.text_owner = text.id;
@@ -218,10 +219,10 @@ Result<TextBuild> build_text_objects(const Font& font, const document::TextObjec
 
     if (!thin_letters.empty()) {
         build.warnings.push_back(
-            {"trait-trop-fin", "Traits de moins de " + mm_fr(min_stroke) +
-                                   " mm, trop fins pour du satin : cousus en contour (" +
-                                   thin_letters +
-                                   "). Agrandissez le texte ou choisissez une police plus grasse."});
+            {"trait-trop-fin",
+             "Traits de moins de " + mm_fr(min_stroke) +
+                 " mm, trop fins pour du satin : cousus en contour (" + thin_letters +
+                 "). Agrandissez le texte ou choisissez une police plus grasse."});
     }
     if (!wide_letters.empty()) {
         build.warnings.push_back(

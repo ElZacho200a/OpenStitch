@@ -65,7 +65,8 @@ void MainWindow::buildTextMenu() {
     connect(toolTextAct_, &QAction::triggered, this, [this] { setTool(Tool::Text); });
     if (toolPalette_ != nullptr) {
         const QList<QAction*> actions = toolPalette_->actions();
-        const int cut = toolCutAct_ != nullptr ? static_cast<int>(actions.indexOf(toolCutAct_)) : -1;
+        const int cut =
+            toolCutAct_ != nullptr ? static_cast<int>(actions.indexOf(toolCutAct_)) : -1;
         QAction* before = (cut >= 0 && cut + 1 < actions.size()) ? actions.at(cut + 1) : nullptr;
         toolPalette_->insertAction(before, toolTextAct_);
     }
@@ -123,7 +124,8 @@ void MainWindow::updateTextActions() {
         QString summary;
         if (id) {
             const document::TextObject* text = project_.findText(*id);
-            const QString first = QString::fromStdString(text->text).section(QLatin1Char('\n'), 0, 0);
+            const QString first =
+                QString::fromStdString(text->text).section(QLatin1Char('\n'), 0, 0);
             summary = tr("Texte « %1 » — %2, %3 mm")
                           .arg(first.size() > 24 ? first.left(23) + QStringLiteral("…") : first,
                                QString::fromStdString(text->font.family),

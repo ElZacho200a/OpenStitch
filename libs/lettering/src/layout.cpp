@@ -81,9 +81,8 @@ std::vector<char32_t> decode_utf8(const std::string& text) {
             }
         }
         // Surrogates, hors plage et formes non minimales : invalides.
-        if (valid && (cp > 0x10FFFF || (cp >= 0xD800 && cp <= 0xDFFF) ||
-                      (len == 2 && cp < 0x80) || (len == 3 && cp < 0x800) ||
-                      (len == 4 && cp < 0x10000))) {
+        if (valid && (cp > 0x10FFFF || (cp >= 0xD800 && cp <= 0xDFFF) || (len == 2 && cp < 0x80) ||
+                      (len == 3 && cp < 0x800) || (len == 4 && cp < 0x10000))) {
             valid = false;
         }
         if (!valid) {
@@ -105,8 +104,9 @@ std::vector<TextWarning> check_text_size(const document::TextObject& text) {
     std::string shown = buf;
     std::replace(shown.begin(), shown.end(), '.', ',');
     if (text.cap_height < document::kTextMinCapHeight) {
-        out.push_back({"texte-trop-petit",
-                       "Texte de " + shown + " mm : illisible une fois brodé (minimum conseillé 5 mm)."});
+        out.push_back(
+            {"texte-trop-petit",
+             "Texte de " + shown + " mm : illisible une fois brodé (minimum conseillé 5 mm)."});
     } else if (text.cap_height < document::kTextSatinMinCapHeight &&
                text.fill != document::TextFill::Contour) {
         out.push_back({"texte-trop-petit",
@@ -278,8 +278,10 @@ Result<TextLayout> layout_text(const Font& font, const document::TextObject& tex
                 for (const FontPoint& p : loop) {
                     const double x = px + p.x * scale;
                     const double y = base_y + p.y * scale;
-                    const double rx = x * cos_r - y * sin_r + static_cast<double>(text.origin.x.value);
-                    const double ry = x * sin_r + y * cos_r + static_cast<double>(text.origin.y.value);
+                    const double rx =
+                        x * cos_r - y * sin_r + static_cast<double>(text.origin.x.value);
+                    const double ry =
+                        x * sin_r + y * cos_r + static_cast<double>(text.origin.y.value);
                     geometry::PathNode node;
                     node.pos = Vec2um{Micrometers{round_um(rx)}, Micrometers{round_um(ry)}};
                     path.nodes.push_back(node);
@@ -290,11 +292,10 @@ Result<TextLayout> layout_text(const Font& font, const document::TextObject& tex
             glyph.code_point = it.cp;
             glyph.line = static_cast<int>(li);
             const double gx = px;
-            glyph.pen = Vec2um{
-                Micrometers{round_um(gx * cos_r - base_y * sin_r +
-                                     static_cast<double>(text.origin.x.value))},
-                Micrometers{round_um(gx * sin_r + base_y * cos_r +
-                                     static_cast<double>(text.origin.y.value))}};
+            glyph.pen = Vec2um{Micrometers{round_um(gx * cos_r - base_y * sin_r +
+                                                    static_cast<double>(text.origin.x.value))},
+                               Micrometers{round_um(gx * sin_r + base_y * cos_r +
+                                                    static_cast<double>(text.origin.y.value))}};
             auto sets = geometry::union_nonzero(raw);
             if (!sets) {
                 return std::unexpected(sets.error());
@@ -307,11 +308,12 @@ Result<TextLayout> layout_text(const Font& font, const document::TextObject& tex
     }
 
     layout.width = Micrometers{round_um(max_width)};
-    layout.height = Micrometers{round_um(cap_um + line_pitch * static_cast<double>(lines.size() - 1))};
+    layout.height =
+        Micrometers{round_um(cap_um + line_pitch * static_cast<double>(lines.size() - 1))};
     for (char32_t cp : missing) {
-        layout.warnings.push_back({"glyphe-absent",
-                                   "Le caractère « " + encode_utf8(cp) +
-                                       " » n'existe pas dans cette police : il est omis."});
+        layout.warnings.push_back(
+            {"glyphe-absent", "Le caractère « " + encode_utf8(cp) +
+                                  " » n'existe pas dans cette police : il est omis."});
     }
     return layout;
 }
