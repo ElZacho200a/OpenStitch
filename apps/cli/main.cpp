@@ -3,6 +3,8 @@
 #include <fmt/core.h>
 
 #include <algorithm>
+#include <chrono>
+#include <ctime>
 #include <filesystem>
 #include <functional>
 #include <iterator>
@@ -34,6 +36,7 @@
 #include "openstitch/segmentation/segmentation.hpp"
 #include "openstitch/stitch/sequence.hpp"
 #include "openstitch/stitch_analysis/metrics.hpp"
+#include "openstitch/stitch_analysis/production_sheet.hpp"
 #include "openstitch/stitch_analysis/project_metrics.hpp"
 #include "openstitch/stitch_generation/generate.hpp"
 #include "openstitch/stitch_generation/lock.hpp"
@@ -1083,6 +1086,115 @@ int run_satin_auto_debug(const std::string& shape, double spacingMm,
     return kExitOk;
 }
 
+struct ProductionArgs {
+    std::string file;
+    std::string output;
+    std::string name;
+    std::string date;
+    std::string notes;
+    double speed{700.0};
+    bool json{false};
+    bool noClobber{false};
+};
+
+// Fiche de production (HP-PROD-001) d'un .osp (séquence effective) ou d'un .dst. Sans --output :
+// texte lisible, ou JSON avec --json. Avec --output : page HTML autonome (le PDF/impression sont
+// produits par le bureau, qui seul dépend de Qt).
+int run_production(const ProductionArgs& a) {
+    using namespace openstitch;
+    if (const auto refused = check_output_path("production", a.output, a.noClobber)) {
+        return *refused;
+    }
+    const std::filesystem::path path(a.file);
+    std::string ext = path.extension().string();
+    std::transform(ext.begin(), ext.end(), ext.begin(),
+                   [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+    document::Project project;
+    stitch::StitchSequence sequence;
+    stitch_analysis::ProductionOptions opts;
+    if (ext == ".dst") {
+        auto seq = formats::read_dst_file(path);
+        if (!seq) {
+            return cli_error("production", seq.error().message, kDstHint);
+        }
+        sequence = std::move(*seq);
+        opts.use_project_canvas = false; // un DST ne porte pas de cadre
+    } else if (ext == ".osp") {
+        auto loaded = project_io::load_project(path);
+        if (!loaded) {
+            return cli_error("production", loaded.error().message, kOspHint);
+        }
+        project = std::move(*loaded);
+        auto seq = stitch_generation::effective_sequence(project);
+        if (!seq) {
+            return cli_error("production", seq.error().message);
+        }
+        sequence = std::move(*seq);
+    } else {
+        return cli_error("production", fmt::format("extension « {} » non reconnue", ext),
+                         "attendu : un projet .osp ou un fichier .dst");
+    }
+    opts.project_name = a.name.empty() ? path.stem().string() : a.name;
+    if (a.date.empty()) {
+        const auto now = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
+        std::tm tm{};
+#ifdef _WIN32
+        localtime_s(&tm, &now);
+#else
+        localtime_r(&now, &tm);
+#endif
+        opts.date = fmt::format("{:04}-{:02}-{:02}", tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday);
+    } else {
+        opts.date = a.date;
+    }
+    opts.notes = a.notes;
+    opts.stitches_per_minute = a.speed;
+    const auto sheet = stitch_analysis::make_production_sheet(project, sequence, opts);
+
+    if (!a.output.empty()) {
+        std::ofstream out(a.output, std::ios::binary);
+        out << stitch_analysis::production_to_html(sheet);
+        if (!out) {
+            return cli_error("production", fmt::format("écriture impossible : {}", a.output));
+        }
+        fmt::print(a.json ? stderr : stdout, "Fiche de production (HTML) écrite : {}\n", a.output);
+        if (!a.json) {
+            return kExitOk;
+        }
+    }
+    if (a.json) {
+        fmt::print("{}", stitch_analysis::production_to_json(sheet));
+        return kExitOk;
+    }
+    if (!a.output.empty()) {
+        return kExitOk;
+    }
+    fmt::print("Fiche de production : {} ({})\n", sheet.project_name, sheet.date);
+    fmt::print("Dimensions         : {:.1f} x {:.1f} mm\n", sheet.width_mm, sheet.height_mm);
+    if (sheet.frame_mm) {
+        fmt::print("Cadre              : {:.1f} x {:.1f} mm{}\n", sheet.frame_mm->first,
+                   sheet.frame_mm->second, sheet.fits_frame ? "" : " (le motif dépasse)");
+    }
+    fmt::print("Points             : {}\n", sheet.stitches);
+    fmt::print("Sauts              : {}\n", sheet.jumps);
+    fmt::print("Coupes             : {}\n", sheet.trims);
+    fmt::print("Changements de fil : {}\n", sheet.color_changes);
+    fmt::print("Fil estimé         : {:.2f} m\n", sheet.thread_length_m);
+    fmt::print("Temps estimé       : {} ({:g} points/min)\n",
+               stitch_analysis::format_duration_fr(sheet.estimated_minutes),
+               sheet.stitches_per_minute);
+    fmt::print("Blocs de couleur   :\n");
+    for (const auto& b : sheet.blocks) {
+        fmt::print("  {:>2}. #{:02x}{:02x}{:02x}  {:>8} points  {:>5} sauts  {}\n", b.number,
+                   b.rgb[0], b.rgb[1], b.rgb[2], b.stitches, b.jumps, b.thread_label);
+    }
+    fmt::print("Avertissements     : {}\n", sheet.findings.size());
+    for (const auto& f : sheet.findings) {
+        fmt::print("  - {}\n", f.message);
+    }
+    return kExitOk;
+}
+
 } // namespace
 
 int main(int argc, char** argv) {
@@ -1136,6 +1248,21 @@ int main(int argc, char** argv) {
     stats_cmd->group(kMain);
     stats_cmd->add_option("fichier", dst_path, "Chemin du fichier .dst")->required();
     stats_cmd->add_flag("--json", json_out, "Sortie JSON sur stdout");
+
+    ProductionArgs pr;
+    auto* pr_cmd = app.add_subcommand(
+        "production", "Fiche de production d'un projet .osp ou d'un DST (texte, --json ou HTML)");
+    pr_cmd->group(kMain);
+    pr_cmd->add_option("fichier", pr.file, "Projet .osp ou fichier .dst")->required();
+    pr_cmd->add_option("--output,-o", pr.output,
+                       "Écrit la fiche en page HTML autonome (le PDF s'exporte depuis le bureau)");
+    pr_cmd->add_option("--name", pr.name, "Nom du projet (défaut : nom du fichier)");
+    pr_cmd->add_option("--date", pr.date, "Date AAAA-MM-JJ (défaut : aujourd'hui)");
+    pr_cmd->add_option("--notes", pr.notes, "Notes libres");
+    pr_cmd->add_option("--speed", pr.speed, "Vitesse supposée en points/min (défaut : 700)")
+        ->check(CLI::Range(100.0, 2000.0));
+    pr_cmd->add_flag("--json", json_out, "JSON stable sur stdout");
+    pr_cmd->add_flag("--no-clobber", pr.noClobber, "Refuse d'écraser un fichier existant");
 
     std::string svg_in;
     std::string svg_out;
@@ -1290,6 +1417,10 @@ int main(int argc, char** argv) {
     }
     if (stats_cmd->parsed()) {
         return run_stats(dst_path, json_out);
+    }
+    if (pr_cmd->parsed()) {
+        pr.json = json_out;
+        return run_production(pr);
     }
     if (svg_cmd->parsed()) {
         return run_dst2svg(svg_in, svg_out, svg_noclobber);

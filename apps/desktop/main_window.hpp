@@ -894,6 +894,10 @@ private:
     void showRealisticDialog();
     QAction* realisticAct_{nullptr};
     RealisticViewState realistic_;
+    // Fiche de production imprimable / PDF (main_window_production.cpp).
+    void buildProductionMenu(QMenu* fileMenu);
+    void showProductionSheet();
+    QAction* productionAct_{nullptr};
     void applyNavigationPreset(Preset preset);
     // Duplique `ids` (copies exactes, même position) puis translate les COPIES de
     // `delta`, en un seul pas d'annulation (CompositeCommand) ; les copies deviennent

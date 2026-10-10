@@ -701,6 +701,7 @@ void MainWindow::buildMenus() {
     exportDstAct_ = fileMenu->addAction(tr("&Exporter en DST…"));
     exportDstAct_->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_E));
     connect(exportDstAct_, &QAction::triggered, this, &MainWindow::exportDst);
+    buildProductionMenu(fileMenu);
     auto* importDstAct = fileMenu->addAction(tr("&Importer un DST…"));
     connect(importDstAct, &QAction::triggered, this, &MainWindow::importDst);
     fileMenu->addSeparator();
@@ -8443,6 +8444,7 @@ void MainWindow::updateActions() {
         tr("Aucun point généré : créez d'abord un objet de broderie (tatami, satin…).");
     setEnabledWithReason(statsAct_, sequence_.has_value(), needStitches);
     setEnabledWithReason(exportDstAct_, sequence_.has_value(), needStitches);
+    setEnabledWithReason(productionAct_, sequence_.has_value(), needStitches);
     // Actions « document requis » : mêmes gardes que leurs slots (qui restent en place).
     // « Contenu » = même critère que updateEmptyState()/onAutosaveTick() (image, vecteurs ou
     // broderie) ; Enregistrer reste actif dès que le document a un fichier.
