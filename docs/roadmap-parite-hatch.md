@@ -563,7 +563,10 @@ Aujourd'hui : **aucun objet texte**. Le lettrage est une des premières raisons
 d'acheter Hatch (même le niveau Personalizer), avec des dizaines de polices
 prénumérisées et la conversion des polices TrueType.
 
-### HP-TXT-001 — Objet texte dans le modèle [P0] — ☐ À faire
+### HP-TXT-001 — Objet texte dans le modèle [P0] — ☑ Fait (2026-10-10)
+- Fait : `document::TextObject`, lettres dérivées annotées `text_owner`, commandes
+  `SetTextObjectCommand`/`RemoveTextObjectCommand`, `.osp` v6 + migration (voir
+  `docs/source/lettering.md`, ADR). La base est une ligne droite (autres bases : HP-TXT-005).
 - À faire : `TextObject` (ou alternative de `StitchParams` / nouveau type
   d'objet) : chaîne UTF-8, police, hauteur de capitale en mm, espacements,
   base (HP-TXT-005), alignement, type de point par défaut ; les lettres
@@ -583,7 +586,9 @@ prénumérisées et la conversion des polices TrueType.
 - Modules : `libs/lettering` (nouvelle lib cœur), `docs/`.
 - Dépend de : HP-TXT-001.
 
-### HP-TXT-003 — Conversion de polices TrueType/OpenType [P0] — ☐ À faire
+### HP-TXT-003 — Conversion de polices TrueType/OpenType [P0] — ◐ Partiel (2026-10-10)
+- Fait : FreeType (FTL) encapsulé dans `libs/lettering`, contours → `PathSet` µm, crénage `kern`,
+  catalogue des polices installées côté desktop. Reste : HarfBuzz (GPOS, ligatures).
 - Hatch : convertit n'importe quelle police installée.
 - À faire : lecture des contours de glyphes via **FreeType** (licence FTL,
   compatible — **pas l'option GPLv2**) et mise en forme via **HarfBuzz** (MIT)
@@ -593,7 +598,10 @@ prénumérisées et la conversion des polices TrueType.
   `vcpkg.json`, `THIRD_PARTY_LICENSES.md`.
 - Dépend de : HP-TXT-001.
 
-### HP-TXT-004 — Lettrage satin automatique par lettre [P0] — ☐ À faire
+### HP-TXT-004 — Lettrage satin automatique par lettre [P0] — ◐ Partiel (2026-10-10)
+- Fait : auto-satin par squelette par morceau de glyphe, repli tatami (trait large, squelette
+  insuffisant : 4, 6, 9, R en Vera) ou contour, alphabet complet 100 % cousu sans débordement
+  (test). Reste : SVG dorés, ordre/connecteurs internes à la lettre.
 - Hatch : une lettre TrueType devient des colonnes satin qui suivent les
   traits, pas un tatami.
 - À faire : réutiliser l'auto-satin par squelette (`auto_satin`) sur chaque glyphe
@@ -619,7 +627,9 @@ prénumérisées et la conversion des polices TrueType.
   génération.
 - Modules : `libs/lettering`, `libs/geometry`.
 
-### HP-TXT-007 — Espacement, crénage, alignement, interligne [P1] — ☐ À faire
+### HP-TXT-007 — Espacement, crénage, alignement, interligne [P1] — ◐ Partiel (2026-10-10)
+- Fait : espacements lettres/mots, interligne, gauche/centre/droite/justifié, multilignes,
+  crénage `kern`. Reste : crénage manuel par paire.
 - À faire : espacement des lettres / des mots, interligne, alignement
   gauche/centre/droite/justifié, texte multilignes, crénage automatique
   (police) + manuel par paire.
@@ -632,7 +642,9 @@ prénumérisées et la conversion des polices TrueType.
   les overrides de points), poignées dédiées.
 - Modules : `libs/lettering`, `libs/commands`, `apps/desktop`.
 
-### HP-TXT-009 — Avertissement taille minimale [P1] — ☐ À faire
+### HP-TXT-009 — Avertissement taille minimale [P1] — ☑ Fait (2026-10-10)
+- Fait : `stitch_analysis::analyze_text_objects` (< 5 mm satin fragile, < 3 mm illisible, trait
+  < 1 mm), affiché dans le panneau Analyse et le dialogue de texte.
 - À faire : règle d'analyse « texte trop petit » (hauteur < ~5 mm en satin,
   trait < 1 mm), suggestion de police adaptée aux petites tailles.
 - Modules : `libs/stitch_analysis`.
@@ -657,7 +669,9 @@ prénumérisées et la conversion des polices TrueType.
   avertissement, jamais un carré silencieux).
 - Modules : `libs/lettering`.
 
-### HP-TXT-013 — Réglages adaptés aux petites lettres [P1] — ☐ À faire
+### HP-TXT-013 — Réglages adaptés aux petites lettres [P1] — ◐ Partiel (2026-10-10)
+- Fait : sous 8 mm, sans compensation ni bord, sous-couche centrale selon le trait, satin →
+  contour sous 1 mm (règles dans `lettering.md`). Reste : densité ajustée, tests de rendu.
 - À faire : sous la hauteur X : pas de sous-couche ou sous-couche centrale
   seulement, densité ajustée, compensation réduite, satin → contour sous le
   seuil de largeur ; règles documentées et testées.
