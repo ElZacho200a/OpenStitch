@@ -23,6 +23,7 @@
 #include "document_panel.hpp"
 #include "main_window.hpp"
 #include "openstitch/stitch_analysis/analyze.hpp"
+#include "openstitch/stitch_analysis/text_rules.hpp"
 
 namespace openstitch::desktop {
 
@@ -182,7 +183,11 @@ void MainWindow::runAnalysisInternal(bool explicitRequest) {
     opts.hoop = stitch::BoundsUm{
         Vec2um{Micrometers{-canvas.width.value / 2}, Micrometers{-canvas.height.value / 2}},
         Vec2um{Micrometers{canvas.width.value / 2}, Micrometers{canvas.height.value / 2}}};
-    const auto report = stitch_analysis::analyze_detailed(*sequence_, opts);
+    auto report = stitch_analysis::analyze_detailed(*sequence_, opts);
+    // Règles du lettrage (texte trop petit, trait trop fin) : elles lisent l'intention du texte.
+    for (auto& finding : stitch_analysis::analyze_text_objects(project_)) {
+        report.findings.push_back(std::move(finding));
+    }
 
     analysisList_->clear();
     std::map<std::string, int> severityOfCategory;

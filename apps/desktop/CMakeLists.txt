@@ -7,6 +7,7 @@ if(NOT Qt6_FOUND)
 endif()
 
 set(CMAKE_AUTOMOC ON)
+set(CMAKE_AUTORCC ON) # polices intégrées du lettrage (lettering_fonts.qrc)
 
 # Bibliothèque des widgets desktop (tout sauf main()) : permet de lier les
 # mêmes sources dans l'exécutable et dans les tests Qt (tests/unit/desktop),
@@ -29,6 +30,12 @@ add_library(openstitch_desktop_widgets STATIC
     realistic_render_dialog.hpp
     realistic_view_state.hpp
     main_window_editing.cpp
+    main_window_lettering.cpp
+    font_catalog.cpp
+    font_catalog.hpp
+    text_dialog.cpp
+    text_dialog.hpp
+    lettering_fonts.qrc
     main_window.hpp
     app_theme.cpp
     app_theme.hpp
@@ -87,7 +94,7 @@ target_link_libraries(openstitch_desktop_widgets
            openstitch::commands openstitch::vectorization openstitch::stitch openstitch::stitch_render
            openstitch::stitch_generation openstitch::formats openstitch::project_io
            openstitch::stitch_analysis openstitch::optimization openstitch::autodigitize
-           openstitch::auto_satin openstitch::segmentation
+           openstitch::auto_satin openstitch::segmentation openstitch::lettering
            openstitch::ai_segmentation
     PRIVATE openstitch::warnings
 )

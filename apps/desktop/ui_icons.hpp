@@ -18,6 +18,7 @@ namespace openstitch::desktop::icons {
 [[nodiscard]] QIcon regularPolygon();
 [[nodiscard]] QIcon freeform();
 [[nodiscard]] QIcon knife();
+[[nodiscard]] QIcon text();
 [[nodiscard]] QIcon bezierCurve();
 [[nodiscard]] QIcon satinColumn();
 [[nodiscard]] QIcon checkmark();

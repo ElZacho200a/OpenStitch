@@ -76,6 +76,12 @@ public:
     void setAutoSatinState(std::optional<ObjectId> id, const document::AutoSatinParams* params,
                            const QString& summary);
 
+    // Lettrage : bandeau « Texte « … » » + bouton « Modifier le texte… » en tête de l'inspecteur
+    // quand la sélection est une lettre d'un texte (`summary` vide = masqué). Persistant comme
+    // l'indicateur d'état : mis à jour à chaque rafraîchissement, sans reconstruire le formulaire.
+    void setTextInfo(const QString& summary);
+    [[nodiscard]] bool textInfoVisible() const;
+
     // Paramètres que le formulaire représente actuellement. MainWindow compare
     // `showsParams` au document à chaque rafraîchissement : un écart (annulation,
     // changement de type de points, rotation au canevas...) reconstruit le
@@ -86,6 +92,9 @@ public:
     void adoptParams(ObjectId id, const document::StitchParams& params);
 
 signals:
+    // Bouton « Modifier le texte… » du bandeau lettrage (cf. setTextInfo) : MainWindow rouvre
+    // le dialogue de texte (même chemin que le double-clic et F2).
+    void editTextRequested();
     // Bouton de l'inspecteur des régions : `actionName` = objectName de la QAction de MainWindow à
     // déclencher (une seule source d'état, de raccourci et de grisage).
     void regionActionRequested(const QString& actionName);
@@ -129,6 +138,8 @@ private:
     QLabel* header_{nullptr};
     QLabel* editStateLabel_{nullptr};
     QPushButton* discardButton_{nullptr};
+    QLabel* textInfoLabel_{nullptr};
+    QPushButton* textEditButton_{nullptr};
     QWidget* body_{nullptr};
     std::optional<ObjectId> currentId_;
     std::optional<ObjectId> editStateId_;
