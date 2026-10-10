@@ -1603,20 +1603,31 @@ Aujourd'hui : statistiques (points, sauts, coupes, couleurs, dimensions,
 fil), analyse par règles (points courts/longs, sauts longs, trop de points,
 hors cadre, déplacement sans coupe), résumé avant export DST.
 
-### HP-PROD-001 — Fiche de production imprimable [P0] — ☐ À faire
+### HP-PROD-001 — Fiche de production imprimable [P0] — ◐ Partiel
 - Hatch : Production worksheet : aperçu du design, dimensions, nombre de
   points, temps estimé, cadre, **liste des fils dans l'ordre** (marque, code,
   nom, pastille), notes, client.
-- À faire : cœur : structure de données de la fiche ; desktop : aperçu avant
-  impression + impression + export PDF (`QPdfWriter`, Qt est LGPL, OK côté
-  desktop seulement) ; CLI : export texte/JSON.
+- Fait : `stitch_analysis::make_production_sheet` (données pures, séquence
+  effective) ; JSON stable et HTML ; Fichier ▸ Fiche de production… (aperçu avant
+  impression, impression `QPrinter`, export PDF A4 `QPdfWriter`) ; `openstitch-cli
+  production` (texte / `--json` / HTML) ; aperçu réaliste, dimensions, cadre,
+  compteurs, temps (hypothèse réglable, défaut 700 pts/min), blocs dans l'ordre
+  de couture avec pastille + code hexadécimal, objets, avertissements, notes.
+  Voir `docs/source/production-sheet.md`.
+- Reste : la **référence de fil** (marque, code, nom) n'apparaît que lorsqu'un bloc
+  porte un `thread_key` — les objets du document n'en portent pas encore
+  (HP-THR-004) ; champ « client » dédié (aujourd'hui : dans les notes) ; PDF depuis
+  le CLI (Qt-free : HTML seulement).
 - Modules : `libs/stitch_analysis` (données), `apps/desktop`, `apps/cli`.
 - Dépend de : HP-THR-004 (liste de fils), HP-PROD-002.
 
-### HP-PROD-002 — Estimation de la durée de couture [P1] — ☐ À faire
+### HP-PROD-002 — Estimation de la durée de couture [P1] — ◐ Partiel
 - À faire : points / vitesse machine (profil) + temps par changement de fil,
   par coupe, par saut ; affichée dans les statistiques, le résumé d'export,
   la fiche.
+- Fait (fiche de production) : points / vitesse réglable + temps par changement de fil
+  (30 s) et par coupe (2 s). Reste : profil machine (HP-HOOP-002), affichage dans les
+  statistiques et le résumé d'export.
 - Modules : `libs/stitch_analysis`.
 - Dépend de : HP-HOOP-002 (vitesse).
 

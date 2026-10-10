@@ -199,6 +199,7 @@ Précisions sur les gestes du tableau :
 | Récents | — | Sous-menu des 10 derniers projets ouverts ou enregistrés (voir ci-dessous) |
 | Vider la liste des récents | — | Efface la liste |
 | Exporter en DST… | Ctrl+E | Montre d'abord le résumé (dimensions, points, résultat de l'analyse), puis demande le fichier `.dst` (points uniquement) |
+| Fiche de production… | — | Aperçu, impression ou export PDF A4 d'une fiche (dimensions, points, temps estimé, blocs de couleur, avertissements, notes) ; voir [fiche de production](production-sheet.md) |
 | Importer un DST… | — | Relit un `.dst` comme séquence de points (propose d'enregistrer le projet en cours) |
 | Importer un DXF… / Exporter en DXF… | — | Échange de contours vectoriels avec un logiciel de dessin (les points ne sont pas concernés) |
 | Quitter | Ctrl+Q | Ferme l'application |

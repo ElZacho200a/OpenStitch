@@ -39,7 +39,7 @@ CHAPTERS = [
     "stitch-editing",
     "patent-research", "patent-sheets-satin", "patent-sheets-autodigitize",
     "patent-sheets-underlay-geometry", "patent-sheets-decorative-applique",
-    "palettes-and-threads", "simulation", "analysis-and-validation",
+    "palettes-and-threads", "simulation", "analysis-and-validation", "production-sheet",
     "dst-format", "project-format", "architecture", "module-reference",
     "data-model", "algorithms", "build-system", "developer-guide", "testing",
     "contributing", "troubleshooting", "limitations", "roadmap", "glossary",

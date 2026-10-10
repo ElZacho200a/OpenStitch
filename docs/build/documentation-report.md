@@ -2,11 +2,11 @@
 
 - **PDF** : `docs/build/OpenStitch-Studio-Documentation.pdf`
 - **Existe** : oui
-- **Pages** : 243
-- **Taille** : 2049.9 Kio (2099110 octets)
+- **Pages** : 245
+- **Taille** : 2059.3 Kio (2108728 octets)
 - **Chaîne** : python-markdown -> HTML/CSS -> xhtml2pdf (reportlab), SVG via svglib
 - **Commande** : `docs\scripts\build-docs.ps1` (ou `python docs/scripts/build-docs.py`)
-- **Chapitres produits** : 42
+- **Chapitres produits** : 43
 
 ## Chapitres
 - À propos de ce document
@@ -35,6 +35,7 @@
 - Palettes et fils
 - Simulation de couture
 - Analyse et validation
+- Fiche de production
 - Format DST (Tajima)
 - Format de projet `.osp`
 - Architecture logicielle

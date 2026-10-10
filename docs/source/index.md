@@ -71,7 +71,8 @@ associée** listant les fichiers, classes, fonctions et tests réels.
   [tatami](tatami.md), [remplissage directionnel](directional-fill.md)
 - [Retouche des points](stitch-editing.md)
 - [Palettes et fils](palettes-and-threads.md), [simulation](simulation.md),
-  [analyse et validation](analysis-and-validation.md)
+  [analyse et validation](analysis-and-validation.md),
+  [fiche de production](production-sheet.md)
 
 **Formats, architecture et développement**
 

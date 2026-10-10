@@ -15,7 +15,7 @@ fonctionnalité. Chaque module est une cible `openstitch::<nom>` sous `libs/`.
 | `document` | modèle métier (projet, objets) | core, geometry, image, segmentation | via commands/project_io |
 | `stitch` | commandes machine, statistiques | core | `tests/unit/stitch` |
 | `stitch_generation` | running / tatami / satin / directionnel | core, geometry, stitch, document | `tests/unit/stitch` |
-| `stitch_analysis` | règles de validation | core, stitch | `tests/unit/stitch_analysis` |
+| `stitch_analysis` | règles de validation, fiche de production (`production_sheet`) | core, stitch | `tests/unit/stitch_analysis` |
 | `stitch_render` | rendu réaliste des points (brins de fil, ombrage, tissu, image RGBA ; sans Qt) | core, stitch | `tests/unit/stitch_render` |
 | `optimization` | ordre de couture | core | `tests/unit/optimization` |
 | `autodigitize` | image → objets éditables | vectorization, stitch_generation | `tests/unit/autodigitize` |
