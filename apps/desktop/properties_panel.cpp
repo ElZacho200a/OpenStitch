@@ -57,6 +57,18 @@ QStringList lockItems() {
             QObject::tr("Micro-zigzag")};
 }
 
+// Adapte une modification typée (un champ de T) en modification de StitchParams : sans effet si
+// les paramètres ne portent pas un T. (Fonction à part : une lambda imbriquée dans la lambda
+// générique d'édition met MSVC en échec.)
+template <class T>
+std::function<void(document::StitchParams&)> toGroupApply(const std::function<void(T&)>& fn) {
+    return [fn](document::StitchParams& params) {
+        if (auto* target = std::get_if<T>(&params)) {
+            fn(*target);
+        }
+    };
+}
+
 template <class T>
 using EditFn = std::function<void(const QString&, const std::function<void(T&)>&)>;
 
@@ -317,8 +329,11 @@ bool PropertiesPanel::showsVectorBox(ObjectId id, QRectF boxMm) const {
            std::abs(vectorBox_.height() - boxMm.height()) <= tol;
 }
 
-void PropertiesPanel::showMultiSelection(int objectCount, int embroideryCount) {
+void PropertiesPanel::showMultiSelection(int objectCount, int embroideryCount,
+                                         const document::EmbroideryObject* groupRep,
+                                         int groupCount) {
     clearBody();
+    groupCount_ = 1;
     header_->setText(tr("%1 objets").arg(objectCount));
     setEditState(std::nullopt, stitch_generation::ObjectEditState::Clean);
     auto* label = new QLabel(
@@ -373,6 +388,17 @@ void PropertiesPanel::showMultiSelection(int objectCount, int embroideryCount) {
     auto* holder = new QWidget(body_);
     holder->setLayout(form);
     body_->layout()->addWidget(holder);
+    if (groupRep != nullptr && groupCount >= 2) {
+        auto* heading =
+            new QLabel(tr("Réglages communs (%1 couture(s) de même type)").arg(groupCount), body_);
+        QFont f = heading->font();
+        f.setBold(true);
+        heading->setFont(f);
+        heading->setContentsMargins(0, 10, 0, 0);
+        body_->layout()->addWidget(heading);
+        groupCount_ = groupCount;
+        buildEmbroideryForm(*groupRep);
+    }
     wheelGuard_->guardAll(body_);
 }
 
@@ -502,11 +528,17 @@ void PropertiesPanel::setAutoSatinState(std::optional<ObjectId> id,
 
 void PropertiesPanel::showEmbroidery(const document::EmbroideryObject& object) {
     clearBody();
+    groupCount_ = 1;
+    header_->setText(QString::fromStdString(object.name));
+    buildEmbroideryForm(object);
+}
+
+void PropertiesPanel::buildEmbroideryForm(const document::EmbroideryObject& object) {
     currentId_ = object.id;
     shown_ = object.params;
     hasShown_ = true;
     const ObjectId id = object.id;
-    header_->setText(QString::fromStdString(object.name));
+    const bool group = groupCount_ > 1;
 
     auto* form = new QFormLayout();
     form->setLabelAlignment(Qt::AlignRight);
@@ -534,7 +566,12 @@ void PropertiesPanel::showEmbroidery(const document::EmbroideryObject& object) {
                 }
                 if (auto* t = std::get_if<T>(&shown_)) {
                     fn(*t);
-                    emit paramsEdited(id, shown_, label);
+                    if (groupCount_ > 1) {
+                        // Groupe : seul ce champ est appliqué, à chaque objet du groupe.
+                        emit groupParamsEdited(label, toGroupApply<T>(fn));
+                    } else {
+                        emit paramsEdited(id, shown_, label);
+                    }
                 }
             };
             [[maybe_unused]] const auto bindMm =
@@ -640,9 +677,13 @@ void PropertiesPanel::showEmbroidery(const document::EmbroideryObject& object) {
                     tr("Remplace les rangées droites par des lignes qui suivent des courbes "
                        "guides (passé empiétant). Les réglages actuels sont conservés ; un "
                        "guide droit reproduit l'angle courant. Annulable (Ctrl+Z)."));
-                form->addRow(QString(), toDirectional);
-                connect(toDirectional, &QPushButton::clicked, this,
-                        [this, id] { emit convertToDirectionalRequested(id); });
+                if (group) {
+                    delete toDirectional; // conversion de type : bloc « Type de points »
+                } else {
+                    form->addRow(QString(), toDirectional);
+                    connect(toDirectional, &QPushButton::clicked, this,
+                            [this, id] { emit convertToDirectionalRequested(id); });
+                }
             } else if constexpr (std::is_same_v<T, document::DirectionalFillParams>) {
                 // Guides et ruptures ne s'éditent pas ici (canevas) : jamais touchés.
                 auto* summary = new QLabel(tr("%1 guide(s) · %2 ligne(s) de rupture")
@@ -709,8 +750,29 @@ void PropertiesPanel::showEmbroidery(const document::EmbroideryObject& object) {
                 reseed->setToolTip(tr("Change la graine de l'aspect fait main (variation "
                                       "différente, toujours reproductible)."));
                 reseed->setEnabled(p.handmade);
-                form->addRow(QString(), summary);
-                form->addRow(QString(), editGuides);
+                if (group) {
+                    delete summary;
+                    delete editGuides;
+                    auto* autoAll = new QPushButton(tr("Guides automatiques pour tous"), body_);
+                    autoAll->setObjectName(QStringLiteral("button_groupAutoDirectionGuides"));
+                    autoAll->setToolTip(tr("Ajoute à chaque forme un guide calculé d'après son axe "
+                                           "(les remplissages tatami du groupe ne sont pas "
+                                           "concernés : convertissez-les d'abord)."));
+                    connect(autoAll, &QPushButton::clicked, this, [this] {
+                        emit groupActionRequested(QStringLiteral("autoDirectionGuides"));
+                    });
+                    auto* clearAll =
+                        new QPushButton(tr("Retirer guides et ruptures de tous"), body_);
+                    clearAll->setObjectName(QStringLiteral("button_groupClearDirectionGuides"));
+                    connect(clearAll, &QPushButton::clicked, this, [this] {
+                        emit groupActionRequested(QStringLiteral("clearDirectionGuides"));
+                    });
+                    form->addRow(QString(), autoAll);
+                    form->addRow(QString(), clearAll);
+                } else {
+                    form->addRow(QString(), summary);
+                    form->addRow(QString(), editGuides);
+                }
                 form->addRow(tr("Espacement des lignes :"), spacing);
                 form->addRow(tr("Longueur de point :"), len);
                 form->addRow(tr("Influence des bords :"), edge);
@@ -826,7 +888,9 @@ void PropertiesPanel::showEmbroidery(const document::EmbroideryObject& object) {
                 auto* summary = new QLabel(body_);
                 summary->setObjectName(QStringLiteral("label_autoSatinSummary"));
                 summary->setWordWrap(true);
-                satinSummary_ = summary;
+                if (!group) {
+                    satinSummary_ = summary;
+                }
                 auto* spacing = mmSpin(to_millimeters(p.spacing).value, 2.0, 0.1,
                                        tr("Espacement cible entre deux traversées, mesuré au "
                                           "bord le plus écarté d'un virage."));
@@ -874,7 +938,9 @@ void PropertiesPanel::showEmbroidery(const document::EmbroideryObject& object) {
                 guideList->setObjectName(QStringLiteral("list_satinGuides"));
                 guideList->setAccessibleName(tr("Guides d'orientation"));
                 guideList->setMaximumHeight(110);
-                satinGuideList_ = guideList;
+                if (!group) {
+                    satinGuideList_ = guideList;
+                }
                 auto* guideAngle = new QDoubleSpinBox(body_);
                 guideAngle->setKeyboardTracking(false);
                 guideAngle->setObjectName(QStringLiteral("spin_satinGuideAngle"));
@@ -882,21 +948,27 @@ void PropertiesPanel::showEmbroidery(const document::EmbroideryObject& object) {
                 guideAngle->setDecimals(1);
                 guideAngle->setSuffix(tr(" °"));
                 guideAngle->setEnabled(false);
-                satinGuideAngle_ = guideAngle;
                 auto* guideAngleLabel = new QLabel(body_);
-                satinGuideAngleLabel_ = guideAngleLabel;
-                updateGuideAngleLabel(false);
+                if (!group) {
+                    satinGuideAngle_ = guideAngle;
+                    satinGuideAngleLabel_ = guideAngleLabel;
+                    updateGuideAngleLabel(false);
+                }
                 auto* guideAbs = new QCheckBox(tr("Angle absolu (repère du dessin)"), body_);
                 guideAbs->setObjectName(QStringLiteral("check_satinGuideAbsolute"));
                 guideAbs->setToolTip(tr("Décoché : écart à la perpendiculaire de l'axe (0° = "
                                         "perpendiculaire). Coché : angle fixe dans le dessin "
                                         "(0° = horizontal, sens trigonométrique)."));
                 guideAbs->setEnabled(false);
-                satinGuideAbsolute_ = guideAbs;
+                if (!group) {
+                    satinGuideAbsolute_ = guideAbs;
+                }
                 auto* guideRemove = new QPushButton(tr("Supprimer le guide"), body_);
                 guideRemove->setObjectName(QStringLiteral("button_satinGuideRemove"));
                 guideRemove->setEnabled(false);
-                satinGuideRemove_ = guideRemove;
+                if (!group) {
+                    satinGuideRemove_ = guideRemove;
+                }
                 auto* guideAdd = new QPushButton(tr("Placer un guide sur le canevas…"), body_);
                 guideAdd->setObjectName(QStringLiteral("button_editSatinGuides"));
                 guideAdd->setToolTip(tr("Tracez un trait : sa position ancre le guide et sa "
@@ -911,7 +983,11 @@ void PropertiesPanel::showEmbroidery(const document::EmbroideryObject& object) {
                     heading->setContentsMargins(0, 8, 0, 0);
                     form->addRow(heading);
                 };
-                form->addRow(QString(), summary);
+                if (!group) {
+                    form->addRow(QString(), summary);
+                } else {
+                    delete summary;
+                }
                 section(tr("Remplissage"));
                 form->addRow(tr("Espacement :"), spacing);
                 form->addRow(tr("Fractionnement :"), splitCombo);
@@ -932,7 +1008,39 @@ void PropertiesPanel::showEmbroidery(const document::EmbroideryObject& object) {
                 form->addRow(tr("Point d'arrêt (début) :"), lockStart);
                 form->addRow(tr("Point d'arrêt (fin) :"), lockEnd);
                 section(tr("Orientation des fils"));
-                if (p.guides.empty()) {
+                if (group) {
+                    // Guides en lot : un même angle pour toutes les formes du groupe.
+                    delete guideList;
+                    delete guideAbs;
+                    delete guideRemove;
+                    delete guideAdd;
+                    delete guideAngleLabel;
+                    guideAngle->setEnabled(true);
+                    guideAngle->setValue(0.0);
+                    auto* absolute = new QCheckBox(tr("Angle absolu (repère du dessin)"), body_);
+                    absolute->setObjectName(QStringLiteral("check_groupGuideAbsolute"));
+                    absolute->setToolTip(tr("Décoché : écart à la perpendiculaire de l'axe de "
+                                            "chaque forme (0° = perpendiculaire). Coché : angle "
+                                            "fixe dans le dessin (0° = horizontal)."));
+                    guideAngle->setObjectName(QStringLiteral("spin_groupGuideAngle"));
+                    auto* apply =
+                        new QPushButton(tr("Poser ce guide sur toutes les formes"), body_);
+                    apply->setObjectName(QStringLiteral("button_groupApplyGuide"));
+                    apply->setToolTip(tr("Remplace les guides de chaque forme par un guide unique "
+                                         "à cet angle, ancré au centre de la forme."));
+                    auto* clear = new QPushButton(tr("Retirer les guides de toutes"), body_);
+                    clear->setObjectName(QStringLiteral("button_groupClearSatinGuides"));
+                    form->addRow(tr("Angle du guide (° ) :"), guideAngle);
+                    form->addRow(QString(), absolute);
+                    form->addRow(QString(), apply);
+                    form->addRow(QString(), clear);
+                    connect(apply, &QPushButton::clicked, this, [this, guideAngle, absolute] {
+                        emit groupGuideAngleRequested(guideAngle->value(), absolute->isChecked());
+                    });
+                    connect(clear, &QPushButton::clicked, this, [this] {
+                        emit groupActionRequested(QStringLiteral("clearSatinGuides"));
+                    });
+                } else if (p.guides.empty()) {
                     auto* none = new QLabel(tr("Aucun guide : les fils sont perpendiculaires à "
                                                "l'axe de la forme. Placez un guide pour les "
                                                "orienter autrement."),
@@ -941,11 +1049,13 @@ void PropertiesPanel::showEmbroidery(const document::EmbroideryObject& object) {
                     none->setEnabled(false);
                     form->addRow(none);
                 }
-                form->addRow(tr("Guides d'orientation :"), guideList);
-                form->addRow(guideAngleLabel, guideAngle);
-                form->addRow(QString(), guideAbs);
-                form->addRow(QString(), guideRemove);
-                form->addRow(QString(), guideAdd);
+                if (!group) {
+                    form->addRow(tr("Guides d'orientation :"), guideList);
+                    form->addRow(guideAngleLabel, guideAngle);
+                    form->addRow(QString(), guideAbs);
+                    form->addRow(QString(), guideRemove);
+                    form->addRow(QString(), guideAdd);
+                }
 
                 // Fractionnement : Lmax et y n'ont de sens que si le mode est actif ; y est
                 // borné dynamiquement par Lmax (Mo9).
@@ -991,48 +1101,52 @@ void PropertiesPanel::showEmbroidery(const document::EmbroideryObject& object) {
                                  &T::lock_start);
                 bindEnumField<T>(this, edit, lockEnd, tr("Point d'arrêt (fin)"), &T::lock_end);
 
-                connect(guideAdd, &QPushButton::clicked, this,
-                        [this, id] { emit editSatinGuidesRequested(id); });
-                connect(guideList, &QListWidget::currentRowChanged, this,
-                        [this, id, guideList, guideAngle, guideAbs, guideRemove](int row) {
-                            const bool has = row >= 0;
-                            guideAngle->setEnabled(has);
-                            guideAbs->setEnabled(has);
-                            guideRemove->setEnabled(has);
-                            if (!has) {
-                                return;
-                            }
-                            // Valeurs portées par l'item (cf. setAutoSatinState).
-                            {
-                                const QSignalBlocker b1(guideAngle);
-                                const QSignalBlocker b2(guideAbs);
-                                guideAngle->setValue(
-                                    guideList->item(row)->data(Qt::UserRole).toDouble());
-                                guideAbs->setChecked(
-                                    guideList->item(row)->data(Qt::UserRole + 1).toBool());
-                            }
-                            updateGuideAngleLabel(guideAbs->isChecked());
-                            if (!building_) {
-                                emit satinGuideSelected(id, row);
-                            }
-                        });
-                const auto emitGuide = [this, id, guideList, guideAngle, guideAbs] {
-                    if (building_ || guideList->currentRow() < 0) {
-                        return;
-                    }
-                    updateGuideAngleLabel(guideAbs->isChecked());
-                    emit satinGuideChangeRequested(id, guideList->currentRow(), guideAngle->value(),
-                                                   guideAbs->isChecked());
-                };
-                connect(guideAngle, &QDoubleSpinBox::valueChanged, this, emitGuide);
-                connect(guideAbs, &QCheckBox::toggled, this, emitGuide);
-                connect(guideRemove, &QPushButton::clicked, this, [this, id, guideList] {
-                    if (guideList->currentRow() >= 0) {
-                        emit satinGuideRemoveRequested(id, guideList->currentRow());
-                    }
-                });
-                // Premier remplissage de la liste et du résumé.
-                setAutoSatinState(id, &p, QString());
+                if (!group) {
+                    connect(guideAdd, &QPushButton::clicked, this,
+                            [this, id] { emit editSatinGuidesRequested(id); });
+                    connect(guideList, &QListWidget::currentRowChanged, this,
+                            [this, id, guideList, guideAngle, guideAbs, guideRemove](int row) {
+                                const bool has = row >= 0;
+                                guideAngle->setEnabled(has);
+                                guideAbs->setEnabled(has);
+                                guideRemove->setEnabled(has);
+                                if (!has) {
+                                    return;
+                                }
+                                // Valeurs portées par l'item (cf. setAutoSatinState).
+                                {
+                                    const QSignalBlocker b1(guideAngle);
+                                    const QSignalBlocker b2(guideAbs);
+                                    guideAngle->setValue(
+                                        guideList->item(row)->data(Qt::UserRole).toDouble());
+                                    guideAbs->setChecked(
+                                        guideList->item(row)->data(Qt::UserRole + 1).toBool());
+                                }
+                                updateGuideAngleLabel(guideAbs->isChecked());
+                                if (!building_) {
+                                    emit satinGuideSelected(id, row);
+                                }
+                            });
+                    const auto emitGuide = [this, id, guideList, guideAngle, guideAbs] {
+                        if (building_ || guideList->currentRow() < 0) {
+                            return;
+                        }
+                        updateGuideAngleLabel(guideAbs->isChecked());
+                        emit satinGuideChangeRequested(id, guideList->currentRow(),
+                                                       guideAngle->value(), guideAbs->isChecked());
+                    };
+                    connect(guideAngle, &QDoubleSpinBox::valueChanged, this, emitGuide);
+                    connect(guideAbs, &QCheckBox::toggled, this, emitGuide);
+                    connect(guideRemove, &QPushButton::clicked, this, [this, id, guideList] {
+                        if (guideList->currentRow() >= 0) {
+                            emit satinGuideRemoveRequested(id, guideList->currentRow());
+                        }
+                    });
+                }
+                // Premier remplissage de la liste et du résumé (formulaire d'un seul objet).
+                if (!group) {
+                    setAutoSatinState(id, &p, QString());
+                }
             }
         },
         object.params);
