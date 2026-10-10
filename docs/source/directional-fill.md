@@ -182,6 +182,34 @@ Intensité `I` = `handmade_intensity` / 100 (0 si `handmade` est faux ; à
   `std::uniform_*_distribution`, dont la sortie dépend de la bibliothèque
   standard : même projet, même résultat sur toute plateforme.
 
+## Fondu de couleurs à deux fils
+
+Idée de Liu et al. (*Directionality-Aware Design of Embroidery Patterns*,
+CGF 42(2), 2023, §4.3), reprise sans code tiers. Une région dont les couleurs
+s'étalent entre deux teintes se coud en **deux passes** : un fond uni de
+couleur s1, puis un remplissage de couleur s2 dont l'écart entre lignes varie.
+Avec `b` la largeur visible du fil de s2 et `1/ρ` l'écart entre ses lignes,
+une période montre `b` de s2 et `1/ρ − b` de s1 : la proportion de s2 est
+`t = b·ρ`, donc **`écart = b / t`** (borné à [`min_spacing` ; `max_spacing`]).
+
+`autodigitize::analyze_two_color_blend(samples, options)`
+(`libs/autodigitize/src/two_color_blend.cpp`) :
+
+1. ACP des couleurs en **CMY** (première composante, itération de la
+   puissance, signe canonique) ; s1 et s2 sont les extrémités de l'axe après
+   rejet de 2,5 % de valeurs aberrantes de chaque côté ;
+2. s1 (fond) est la couleur la mieux représentée : si `t` moyen dépasse 0,5, les
+   rôles s'échangent ;
+3. plan `t(x, y)` par moindres carrés → un `DensityGradient` (axe + écarts)
+   directement utilisable comme `DirectionalFillParams::density_gradient`
+   du remplissage de dessus ; sous `min_ramp` (0,05) de variation, l'axe est
+   nul et l'écart uniforme `b / t̄`.
+
+Le choix des fils réels (`thread_palette::best_thread_pair`) et le lissage
+préalable (`BilateralDenoiseOp`) complètent la chaîne. Déterministe : aucune
+graine, itération dans l'ordre d'entrée. Limites : un seul plan (un dégradé
+linéaire par région, pas de courbe), deux couleurs maximum par région.
+
 ## Interface
 
 - **Conversion** : bouton « Convertir en remplissage directionnel » de
@@ -241,7 +269,10 @@ Aussi : `test_roundtrip.cpp` (sérialisation), `test_undo_stack.cpp`
   le tatami).
 - Pas d'édition des poignées de tangente des guides (seulement les points).
 - Aucune validation sur machine réelle.
-- Phase 4 (fondu de couleurs) : non implémentée.
+- Phase 4 (fondu de couleurs) : **moteur et analyse faits, pas d'action dans
+  l'interface** — voir la section *Fondu de couleurs à deux fils*. Reste à
+  brancher : échantillonner l'image sous une région, créer le fond et le
+  remplissage de dessus (deux objets liés), choisir les fils.
 
 ## Implémentation associée
 
