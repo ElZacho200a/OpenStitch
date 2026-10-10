@@ -25,6 +25,8 @@ historiques ne changent pas).
 | `guides` | vide | courbes guides (polylignes ou Béziers, ouvertes), µm, repère du modèle |
 | `break_lines` | vide | lignes de rupture (secteurs indépendants) |
 | `row_spacing` | 0,4 mm | écart entre lignes de couture (densité) |
+| `density_gradient` | absent | dégradé de densité (voir ci-dessous) ; remplace `row_spacing` pour le tracé |
+| `spacing_regularity` | 0 | régularité de l'espacement [0 ; 1] (voir *Régularisation*) ; 0 = tracé brut |
 | `stitch_length` | 3 mm | longueur cible, **bornée à [1 ; 7] mm** à la génération |
 | `edge_weight` | 0 | influence de la tangente du bord le plus proche, [0 ; 1] |
 | `inset` | 0,2 mm | retrait de bord (comme le tatami) |
@@ -41,8 +43,20 @@ vectoriel source : `TranslateVectorObjectCommand` et
 `ScaleVectorObjectCommand` les déplacent / redimensionnent avec la forme
 (undo exact).
 
+**Dégradé de densité** (`DensityGradient`, HP-STI-010) : l'écart entre lignes
+varie **linéairement** le long de l'axe `from` → `to` (µm, repère du modèle),
+de `spacing_from` à `spacing_to`, constant au-delà des extrémités. Les écarts
+sont bornés à **[0,1 ; 4] mm** à la génération ; un axe nul (`from == to`)
+donne un écart uniforme `spacing_from`. Sans dégradé le tracé est identique
+octet pour octet à l'ancien. L'axe suit la forme (déplacement, redimensionnement)
+comme les guides ; les écarts, longueurs physiques, ne sont pas mis à l'échelle.
+`row_spacing` reste la référence des seuils de parcours (liaisons cousables,
+trajet caché), non du tracé.
+
 **Format `.osp`** : type `"directional"`, toutes les clés sauf `type` sont
-optionnelles (défauts du modèle). `schemaVersion` n'a pas changé : un projet
+optionnelles (défauts du modèle) ; le dégradé est l'objet optionnel
+`densityGradient` (`fromX`, `fromY`, `toX`, `toY`, `spacingFrom`, `spacingTo`,
+µm entiers). `schemaVersion` n'a pas changé : un projet
 ancien se relit à l'identique. Un projet contenant un remplissage directionnel
 n'est pas lisible par une version antérieure (« Type de point inconnu »).
 
@@ -93,7 +107,11 @@ Algorithme de *Creating Evenly-Spaced Streamlines of Arbitrary Density*
 (Jobard & Lefer, 1997) :
 
 - distance de séparation `d_sep` = espacement, distance de test
-  `d_test` = 0,5 × espacement ;
+  `d_test` = 0,5 × espacement ; avec un dégradé de densité, ces deux distances
+  sont **locales** (`d_sep(p)` évalué au point considéré) : un écart plus grand
+  à un bout fait naître moins de lignes. Pas d'intégration `0,2 × d_sep_min`,
+  fenêtre d'auto-proximité `3 × d_sep_max`, cellule de la grille =
+  moyenne géométrique de `d_sep_min` et `d_sep_max` ;
 - intégration RK2 à pas fixe 0,2 × `d_sep`, dans les deux sens depuis la
   graine, le sens étant maintenu d'un pas à l'autre ;
 - arrêt : sortie de la zone ou entrée dans un trou (le point de bord exact est
@@ -114,6 +132,42 @@ Structures d'accélération : `RegionIndex` (grille dont chaque case connaît
 ses arêtes et l'état intérieur/extérieur de son centre — point intérieur,
 segment intérieur et bord le plus proche en temps quasi constant) et
 `SeparationGrid` (cases de `d_sep`).
+
+### 3 bis. Régularisation de l'espacement (optionnelle)
+
+Quand les directions convergent, Jobard & Lefer coupe les lignes qui se
+rapprochent trop mais laisse un espacement irrégulier (mesuré sur un éventail
+de deux guides : écart au plus proche voisin, dispersion 0,23 de l'écart
+demandé). Avec `spacing_regularity > 0`, les sommets des lignes sont déplacés
+par **une résolution linéaire creuse** (Liu et al., CGF 2023, §3.4), après le
+tracé et avant la découpe en points. Énergie sans dimension (distances
+divisées par l'écart local `s`) :
+
+- **densité** : pour chaque sommet, son plus proche voisin d'une autre ligne de
+  chaque côté (à peu près en face) doit se trouver à `±s` selon la normale du
+  champ — l'ensemble des paires est la version « voisins » de l'arête de
+  Delaunay de l'article, sans triangulation ;
+- **direction** : chaque arête garde sa direction de tracé ;
+- **étirement** : un sommet ne glisse pas le long de sa ligne (poids fort) ;
+- **rappel** (poids 0,1) vers la position tracée.
+
+Le curseur `spacing_regularity` règle le poids de densité de 0,1 à 2,5 face au
+rappel fixe. Résolution par gradient conjugué préconditionné (Jacobi), 400
+itérations au plus, mono-thread : déterministe. Garde-fous : déplacement
+plafonné à `s/2` et sommet ramené (dichotomie) dans la zone de traçage s'il en
+sortait. Le nombre de lignes ne change pas.
+
+**Calibrage mesuré** (éventail de deux guides, 30 × 20 mm, écart 0,4 mm) :
+
+| `spacing_regularity` | dispersion de l'écart | écart à la direction |
+|---|---|---|
+| 0 (brut) | 0,232 | 0,2° |
+| 0,5 | 0,158 | 1,9° |
+
+Au-delà, trop de sommets butent sur le plafond de déplacement et la géométrie
+se dégrade : l'optimum est vers 0,5. Coût : proportionnel au nombre de sommets
+(synchrone, comme le reste de la génération) ; réservé aux objets qui en ont
+besoin.
 
 ### 4. Découpe en points
 
@@ -164,6 +218,61 @@ Intensité `I` = `handmade_intensity` / 100 (0 si `handmade` est faux ; à
 - tout tirage passe par un hachage splitmix64 de (graine, clés) — jamais
   `std::uniform_*_distribution`, dont la sortie dépend de la bibliothèque
   standard : même projet, même résultat sur toute plateforme.
+
+## Alternatives écartées
+
+**Graines par divergence** (sources et puits d'après la divergence de ρ·v,
+arbre k-d, affectation puits ↔ ligne ; Liu et al., CGF 2023, §3.1–3.3). Elle
+garantit le nombre de lignes de courant d'un champ de densité variable. Mesure
+faite avant de la retenir : sur un dégradé de 20 mm (écart de 0,4 mm à 0,8,
+1,6 ou 3 mm), le tracé Jobard & Lefer actuel donne **35, 22 et 15 lignes pour
+34,7, 23,1 et 15,5 attendues** (intégrale de 1/s), soit moins de 5 % d'écart,
+avec ou sans régularisation (test de non-régression
+`directional density gradient keeps the row count at the integral of the
+density`). Elle exigerait en plus un champ **orienté** (vecteurs, alors que le
+champ est défini modulo 180°) et un solveur d'affectation. Coût et risque sans
+gain mesurable : non implémentée. À reconsidérer si un cas de lignes qui
+naissent ou meurent mal apparaît (champs très divergents).
+
+**Parcours par arbre couvrant + profondeur d'abord** (même article, §3.5 :
+arbre couvrant minimal sur les arêtes de Delaunay entre lignes, parcours qui
+double chaque arête de l'arbre, d'où un fil continu sans saut). Mesure faite
+avant de la retenir : sur des formes à branches (U, T, L, lignes horizontales
+ou verticales) le parcours actuel — Warnsdorff plus liaisons cousues, trajet
+caché le long du contour rentré — laisse **0 à 2 sauts, 10 à 22 mm au total**
+(test `directional routing leaves at most two jumps on branching shapes`).
+L'arbre ne supprimerait ces sauts qu'en recousant la même distance en retour
+sur une zone déjà cousue (surépaisseur, fil visible en haute densité) : c'est
+déjà ce que fait le trajet caché quand il est possible, avec un plafond de
+8 mm voulu. Pas de gain mesurable : non implémenté.
+
+## Fondu de couleurs à deux fils
+
+Idée de Liu et al. (*Directionality-Aware Design of Embroidery Patterns*,
+CGF 42(2), 2023, §4.3), reprise sans code tiers. Une région dont les couleurs
+s'étalent entre deux teintes se coud en **deux passes** : un fond uni de
+couleur s1, puis un remplissage de couleur s2 dont l'écart entre lignes varie.
+Avec `b` la largeur visible du fil de s2 et `1/ρ` l'écart entre ses lignes,
+une période montre `b` de s2 et `1/ρ − b` de s1 : la proportion de s2 est
+`t = b·ρ`, donc **`écart = b / t`** (borné à [`min_spacing` ; `max_spacing`]).
+
+`autodigitize::analyze_two_color_blend(samples, options)`
+(`libs/autodigitize/src/two_color_blend.cpp`) :
+
+1. ACP des couleurs en **CMY** (première composante, itération de la
+   puissance, signe canonique) ; s1 et s2 sont les extrémités de l'axe après
+   rejet de 2,5 % de valeurs aberrantes de chaque côté ;
+2. s1 (fond) est la couleur la mieux représentée : si `t` moyen dépasse 0,5, les
+   rôles s'échangent ;
+3. plan `t(x, y)` par moindres carrés → un `DensityGradient` (axe + écarts)
+   directement utilisable comme `DirectionalFillParams::density_gradient`
+   du remplissage de dessus ; sous `min_ramp` (0,05) de variation, l'axe est
+   nul et l'écart uniforme `b / t̄`.
+
+Le choix des fils réels (`thread_palette::best_thread_pair`) et le lissage
+préalable (`BilateralDenoiseOp`) complètent la chaîne. Déterministe : aucune
+graine, itération dans l'ordre d'entrée. Limites : un seul plan (un dégradé
+linéaire par région, pas de courbe), deux couleurs maximum par région.
 
 ## Interface
 
@@ -224,7 +333,10 @@ Aussi : `test_roundtrip.cpp` (sérialisation), `test_undo_stack.cpp`
   le tatami).
 - Pas d'édition des poignées de tangente des guides (seulement les points).
 - Aucune validation sur machine réelle.
-- Phase 4 (fondu de couleurs) : non implémentée.
+- Phase 4 (fondu de couleurs) : **moteur et analyse faits, pas d'action dans
+  l'interface** — voir la section *Fondu de couleurs à deux fils*. Reste à
+  brancher : échantillonner l'image sous une région, créer le fond et le
+  remplissage de dessus (deux objets liés), choisir les fils.
 
 ## Implémentation associée
 

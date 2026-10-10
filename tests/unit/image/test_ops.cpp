@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 #include <catch2/catch_test_macros.hpp>
 
+#include <algorithm>
 #include <set>
 
 #include "openstitch/image/ops.hpp"
@@ -122,6 +123,84 @@ TEST_CASE("quantification : nombre de couleurs reduit, deterministe") {
     const auto b = apply_op(img, QuantizeOp{4});
     REQUIRE(b.has_value());
     CHECK(a->rgba == b->rgba); // determinisme (graine RNG fixee)
+}
+
+namespace {
+
+// 32x16 : moitié gauche rouge, moitié droite bleue, bruit pseudo-aléatoire
+// reproductible de +-8 par canal ; alpha = 100 + x (pour vérifier sa conservation).
+Image make_noisy_two_tone() {
+    Image img;
+    img.width = 32;
+    img.height = 16;
+    img.source_had_alpha = true;
+    img.rgba.resize(32 * 16 * 4);
+    std::uint32_t state = 12345;
+    const auto noise = [&state] {
+        state = state * 1'664'525U + 1'013'904'223U;
+        return static_cast<int>((state >> 24) % 17U) - 8;
+    };
+    for (int y = 0; y < 16; ++y) {
+        for (int x = 0; x < 32; ++x) {
+            std::uint8_t* px = img.rgba.data() + (y * 32 + x) * 4;
+            const bool left = x < 16;
+            const int base[3] = {left ? 200 : 40, 40, left ? 40 : 200};
+            for (int c = 0; c < 3; ++c) {
+                px[c] = static_cast<std::uint8_t>(std::clamp(base[c] + noise(), 0, 255));
+            }
+            px[3] = static_cast<std::uint8_t>(100 + x);
+        }
+    }
+    return img;
+}
+
+double red_spread(const Image& img, int x0, int x1) {
+    double sum = 0.0;
+    double sum2 = 0.0;
+    int n = 0;
+    for (int y = 0; y < img.height; ++y) {
+        for (int x = x0; x < x1; ++x) {
+            const double r = pixel(img, x, y)[0];
+            sum += r;
+            sum2 += r * r;
+            ++n;
+        }
+    }
+    const double mean = sum / n;
+    return sum2 / n - mean * mean; // variance
+}
+
+} // namespace
+
+TEST_CASE("lissage bilateral : bruit reduit, contour conserve, alpha intact, deterministe") {
+    const Image img = make_noisy_two_tone();
+    const auto a = apply_op(img, BilateralDenoiseOp{2});
+    REQUIRE(a.has_value());
+    REQUIRE(a->width == 32);
+    REQUIRE(a->height == 16);
+
+    // Zone intérieure gauche (loin du contour) : la variance du rouge baisse nettement.
+    CHECK(red_spread(*a, 2, 12) < 0.5 * red_spread(img, 2, 12));
+    // Le contour reste net : pas de dégradé de 16 px entre rouge et bleu.
+    CHECK(pixel(*a, 14, 8)[0] > 150);
+    CHECK(pixel(*a, 14, 8)[2] < 90);
+    CHECK(pixel(*a, 17, 8)[2] > 150);
+    CHECK(pixel(*a, 17, 8)[0] < 90);
+    // Alpha recollé tel quel.
+    for (int x = 0; x < 32; ++x) {
+        CHECK(pixel(*a, x, 5)[3] == 100 + x);
+    }
+
+    const auto b = apply_op(img, BilateralDenoiseOp{2});
+    REQUIRE(b.has_value());
+    CHECK(a->rgba == b->rgba);
+}
+
+TEST_CASE("lissage bilateral : force hors plage refusee, nom lisible") {
+    const Image img = make_noisy_two_tone();
+    CHECK_FALSE(apply_op(img, BilateralDenoiseOp{0}).has_value());
+    CHECK_FALSE(apply_op(img, BilateralDenoiseOp{4}).has_value());
+    CHECK(op_name(BilateralDenoiseOp{1}) == "Lissage bilatéral");
 }
 
 TEST_CASE("pipeline : l'original n'est jamais modifie") {

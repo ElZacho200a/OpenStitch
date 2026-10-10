@@ -1709,6 +1709,9 @@ document::Project directional_project() {
                      geometry::PathNode{Vec2um{Micrometers{5'000}, Micrometers{10'000}},
                                         geometry::NodeType::Corner, std::nullopt, std::nullopt}};
     dp.break_lines.push_back(rupture);
+    dp.density_gradient = document::DensityGradient{Vec2um{Micrometers{0}, Micrometers{1'000}},
+                                                    Vec2um{Micrometers{0}, Micrometers{9'000}},
+                                                    Micrometers{400}, Micrometers{1'200}};
     document::EmbroideryObject emb;
     emb.id = project.object_ids.next();
     emb.source_vector = object.id;
@@ -1734,6 +1737,10 @@ TEST_CASE("TranslateVectorObjectCommand : les guides directionnels suivent la fo
     CHECK(moved.guides[0].nodes[0].pos == Vec2um{Micrometers{1'700}, Micrometers{1'700}});
     CHECK(moved.guides[0].nodes[0].tan_out == Vec2um{Micrometers{400}, Micrometers{0}});
     CHECK(moved.break_lines[0].nodes[1].pos == Vec2um{Micrometers{5'700}, Micrometers{9'700}});
+    REQUIRE(moved.density_gradient.has_value());
+    CHECK(moved.density_gradient->from == Vec2um{Micrometers{700}, Micrometers{700}});
+    CHECK(moved.density_gradient->to == Vec2um{Micrometers{700}, Micrometers{8'700}});
+    CHECK(moved.density_gradient->spacing_to == Micrometers{1'200});
 
     CHECK(stack.undo(project));
     CHECK(std::get<document::DirectionalFillParams>(project.embroidery_objects[0].params) ==
@@ -1755,6 +1762,9 @@ TEST_CASE("ScaleVectorObjectCommand : les guides directionnels sont mis a l'eche
     CHECK(scaled.guides[0].nodes[1].pos == Vec2um{Micrometers{13'500}, Micrometers{4'000}});
     CHECK(scaled.guides[0].nodes[0].tan_out == Vec2um{Micrometers{600}, Micrometers{0}});
     CHECK(scaled.break_lines[0].nodes[1].pos == Vec2um{Micrometers{7'500}, Micrometers{5'000}});
+    REQUIRE(scaled.density_gradient.has_value());
+    CHECK(scaled.density_gradient->to == Vec2um{Micrometers{0}, Micrometers{4'500}});
+    CHECK(scaled.density_gradient->spacing_from == Micrometers{400}); // longueurs physiques
 
     CHECK(stack.undo(project));
     CHECK(std::get<document::DirectionalFillParams>(project.embroidery_objects[0].params) ==

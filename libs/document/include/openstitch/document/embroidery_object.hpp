@@ -42,6 +42,20 @@ struct TatamiParams {
     bool operator==(const TatamiParams&) const = default;
 };
 
+// Dégradé de densité d'un remplissage directionnel : l'écart entre lignes de
+// couture varie linéairement le long de l'axe `from` → `to` (repère du modèle,
+// comme les guides), de `spacing_from` à `spacing_to`, et reste constant de
+// part et d'autre des extrémités. `from == to` : axe dégénéré, espacement
+// uniforme `spacing_from`. Écart borné à la génération (cf. directional_fill).
+struct DensityGradient {
+    Vec2um from{};
+    Vec2um to{};
+    Micrometers spacing_from{400}; // 0,4 mm
+    Micrometers spacing_to{400};   // 0,4 mm
+
+    bool operator==(const DensityGradient&) const = default;
+};
+
 // Paramètres du remplissage DIRECTIONNEL (passé empiétant / peinture à
 // l'aiguille, cf. docs/source/directional-fill.md). Contrairement au tatami
 // (rangées droites à angle fixe), les points suivent un CHAMP de directions
@@ -58,7 +72,15 @@ struct DirectionalFillParams {
     // champs sont calculés indépendamment (chevrons). Une rupture doit
     // traverser la forme (bord à bord ou jusqu'à une autre rupture).
     std::vector<geometry::Path> break_lines;
-    Micrometers row_spacing{400};     // écart entre lignes de couture (densité) — 0,4 mm
+    Micrometers row_spacing{400}; // écart entre lignes de couture (densité) — 0,4 mm
+    // Dégradé de densité : si présent, il remplace `row_spacing` pour le tracé
+    // des lignes (`row_spacing` reste la référence des seuils de parcours).
+    std::optional<DensityGradient> density_gradient;
+    // Régularité de l'espacement, [0 ; 1] : 0 = tracé brut (comportement
+    // historique, défaut) ; au-delà, les lignes sont déplacées par une
+    // résolution quadratique qui égalise l'écart entre lignes voisines aux
+    // dépens, au besoin, de leur direction d'origine (1 = espacement d'abord).
+    double spacing_regularity{0.0};
     Micrometers stitch_length{3'000}; // longueur cible, bornée à [1 ; 7] mm à la génération
     double edge_weight{0.0};          // influence de la tangente du bord le plus proche, [0 ; 1]
     Micrometers inset{200};           // retrait du bord (compensation de contour)

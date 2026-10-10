@@ -754,13 +754,27 @@ plus.
 - À faire : spirale continue depuis un centre, sans coupe.
 - Modules : `libs/stitch_generation`.
 
-### HP-STI-010 — Remplissage en dégradé (densité variable) [P1] — ☐ À faire
+### HP-STI-010 — Remplissage en dégradé (densité variable) [P1] — ◐ Partiel (directionnel)
+- Fait : `DirectionalFillParams::density_gradient` (axe + écart de début/fin,
+  interpolation linéaire, borné à [0,1 ; 4] mm), tracé Jobard & Lefer à
+  écart local, `.osp`, déplacement/échelle, inspecteur (case, écart de fin,
+  angle). Reste : tatami à espacement variable, satin, plusieurs points de
+  contrôle, poignée d'axe sur le canevas.
+- Source de la méthode : Liu et al., *Directionality-Aware Design of
+  Embroidery Patterns*, CGF 42(2), 2023 (DOI 10.1111/cgf.14770), reprise de
+  l'idée sans code tiers.
 - Hatch : Gradient fill : densité qui varie dans la forme (transparence).
 - À faire : profil de densité le long d'un axe (points de contrôle), tatami à
   espacement variable ; option satin à densité variable.
 - Modules : `libs/stitch_generation`.
 
-### HP-STI-011 — Mélange de couleurs (color blending) [P2] — ☐ À faire
+### HP-STI-011 — Mélange de couleurs (color blending) [P2] — ◐ Partiel (analyse)
+- Fait : `autodigitize::analyze_two_color_blend` (ACP en CMY → deux couleurs,
+  plan de proportion → `DensityGradient`), `thread_palette::best_thread_pair`
+  (ΔE2000 + contraste WCAG), `BilateralDenoiseOp`. Voir *Fondu de couleurs à
+  deux fils* dans `directional-fill.md`. Reste : action dans l'interface
+  (échantillonner l'image sous la région, créer le fond et le remplissage de
+  dessus liés, choisir les fils), dégradés non linéaires.
 - Hatch : deux couches de dégradés inverses qui se mélangent.
 - À faire : couple d'objets liés à dégradés complémentaires générés ensemble.
 - Dépend de : HP-STI-010.

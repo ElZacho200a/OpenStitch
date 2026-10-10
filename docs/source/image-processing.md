@@ -29,6 +29,13 @@ Chaque opération est une alternative du variant `image::ImageOp` :
 | Luminosité/contraste | `BrightnessContrastOp` | −100..100 | Ajuste (alpha conservé) |
 | Débruitage | `MedianDenoiseOp` | force 1–2 (noyau 3/5) | Médian |
 | Quantification | `QuantizeOp` | 2–64 couleurs | k-means déterministe (RGB) |
+| Lissage bilatéral | `BilateralDenoiseOp` | force 1–3 (noyau 5/7/9 px, tolérance de couleur 20/40/60) | Adoucit aplats et dégradés en gardant les contours ; alpha conservé |
+
+Le lissage bilatéral est la 8ᵉ alternative du variant (ajoutée **en fin** :
+les index existants ne bougent pas). Dans le `.osp`, `"bilateralDenoise"` avec
+`strength` ; une version antérieure refuse un projet qui le contient
+(« Opération d'image inconnue »). Il sert surtout avant l'analyse de couleurs
+d'une région pour un fondu à deux fils (*Remplissage directionnel*).
 
 Note : Le **rééchantillonnage** (redimensionnement de la résolution de travail)
 est volontairement absent de cette pile : il changerait le rapport mm/pixel. La

@@ -108,6 +108,14 @@ struct DirectionalGuideOptions {
 directional_guides_from_region(const geometry::PathSet& region,
                                const DirectionalGuideOptions& options = {});
 
+// Dégradé de densité couvrant toute la forme : l'axe est parallèle à
+// `direction` (radians, repère Y vers le haut), centré sur la boîte englobante
+// et d'une longueur égale à l'étendue de la forme dans cette direction (nœuds
+// des contours extérieurs). nullopt pour une forme vide ou d'étendue nulle.
+[[nodiscard]] std::optional<document::DensityGradient>
+density_gradient_across(const std::vector<geometry::PathSet>& shape, Angle direction,
+                        Micrometers spacing_from, Micrometers spacing_to);
+
 [[nodiscard]] document::DirectionalFillParams
 directional_from_tatami(const document::TatamiParams& tatami,
                         const std::vector<geometry::PathSet>& shape, std::uint32_t seed);

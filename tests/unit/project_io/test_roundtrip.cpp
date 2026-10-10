@@ -46,6 +46,7 @@ document::Project rich_project() {
     project.ops.push_back(image::GrayscaleOp{});
     project.ops.push_back(image::QuantizeOp{4});
     project.ops.push_back(image::BrightnessContrastOp{10.0, -5.0});
+    project.ops.push_back(image::BilateralDenoiseOp{3});
 
     segmentation::Segmentation seg;
     seg.width = 4;
@@ -151,9 +152,11 @@ TEST_CASE("projet complet : save puis load = memes donnees") {
     CHECK(loaded->original.rgba == original.original.rgba);
 
     // Ops.
-    REQUIRE(loaded->ops.size() == 3);
+    REQUIRE(loaded->ops.size() == 4);
     CHECK(std::holds_alternative<image::GrayscaleOp>(loaded->ops[0]));
     CHECK(std::holds_alternative<image::QuantizeOp>(loaded->ops[1]));
+    REQUIRE(std::holds_alternative<image::BilateralDenoiseOp>(loaded->ops[3]));
+    CHECK(std::get<image::BilateralDenoiseOp>(loaded->ops[3]).strength == 3);
 
     // Segmentation.
     REQUIRE(loaded->segmentation.has_value());
@@ -285,6 +288,9 @@ TEST_CASE("remplissage directionnel : save puis load = memes parametres") {
     dp.handmade = true;
     dp.handmade_intensity = 65;
     dp.seed = 4'000'000'000U; // > int32 : doit survivre intact
+    dp.spacing_regularity = 0.35;
+    dp.density_gradient = document::DensityGradient{um(0, 100), um(4'000, 5'100), Micrometers{300},
+                                                    Micrometers{1'200}};
 
     document::EmbroideryObject emb;
     emb.id = project.object_ids.next();
@@ -300,6 +306,19 @@ TEST_CASE("remplissage directionnel : save puis load = memes parametres") {
     REQUIRE(loaded->embroidery_objects.size() == 1);
     REQUIRE(loaded->embroidery_objects[0].is_directional());
     CHECK(std::get<document::DirectionalFillParams>(loaded->embroidery_objects[0].params) == dp);
+    fs::remove(path);
+
+    // Sans dégradé, la clé est absente et la relecture redonne « pas de dégradé »
+    // (les fichiers antérieurs à cette clé se relisent à l'identique).
+    dp.density_gradient.reset();
+    project.embroidery_objects[0].params = dp;
+    REQUIRE(project_io::save_project(path, project).has_value());
+    const auto plain = project_io::load_project(path);
+    REQUIRE(plain.has_value());
+    const auto& back =
+        std::get<document::DirectionalFillParams>(plain->embroidery_objects[0].params);
+    CHECK_FALSE(back.density_gradient.has_value());
+    CHECK(back == dp);
     fs::remove(path);
 }
 

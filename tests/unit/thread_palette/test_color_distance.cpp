@@ -4,6 +4,8 @@
 #include <array>
 #include <cmath>
 #include <cstddef>
+#include <string>
+#include <vector>
 
 #include "openstitch/thread_palette/color_distance.hpp"
 
@@ -220,4 +222,78 @@ TEST_CASE("nearest_threads is deterministic across repeated calls") {
         CHECK(first[i].key == second[i].key);
         CHECK(first[i].distance == second[i].distance);
     }
+}
+
+namespace {
+
+// Nuancier synthétique de test (aucune donnée de fabricant).
+ThreadChart synthetic_chart(const std::vector<std::array<std::uint8_t, 3>>& colors) {
+    ThreadChart chart;
+    chart.chart_id = "synthetic";
+    chart.display_name = "Synthetic";
+    for (std::size_t i = 0; i < colors.size(); ++i) {
+        Thread t;
+        t.key = ThreadKey{"synthetic", std::to_string(i)};
+        t.rgb = colors[i];
+        chart.threads.push_back(t);
+    }
+    return chart;
+}
+
+} // namespace
+
+TEST_CASE("wcag_contrast spans 1 to 21 and is symmetric") {
+    CHECK(approx(wcag_contrast({0, 0, 0}, {255, 255, 255}), 21.0, 0.01));
+    CHECK(approx(wcag_contrast({255, 255, 255}, {0, 0, 0}), 21.0, 0.01));
+    CHECK(approx(wcag_contrast({120, 40, 200}, {120, 40, 200}), 1.0, 1e-12));
+    CHECK(wcag_contrast({10, 200, 90}, {250, 30, 30}) ==
+          wcag_contrast({250, 30, 30}, {10, 200, 90}));
+}
+
+TEST_CASE("best_thread_pair finds the exact threads when they exist") {
+    const auto chart = synthetic_chart({{255, 0, 0}, {255, 180, 190}, {255, 255, 255}, {0, 0, 0}});
+    const auto pair = best_thread_pair({255, 0, 0}, {255, 255, 255}, chart);
+    REQUIRE(pair.has_value());
+    CHECK(pair->first.code == "0");
+    CHECK(pair->second.code == "2");
+    CHECK(approx(pair->cost, 0.0, 1e-9));
+    CHECK(approx(pair->distance_first, 0.0, 1e-9));
+    CHECK(approx(pair->distance_second, 0.0, 1e-9));
+}
+
+TEST_CASE("best_thread_pair keeps the contrast of the original colours") {
+    // Deux gris proches : le fil le plus proche des deux est le même (75), ce
+    // qui écraserait le fondu (contraste 1). Une forte pondération impose deux
+    // fils contrastés au moins autant que les couleurs d'origine.
+    const std::array<std::uint8_t, 3> s1{60, 60, 60};
+    const std::array<std::uint8_t, 3> s2{90, 90, 90};
+    const auto chart = synthetic_chart({{75, 75, 75}, {0, 0, 0}, {150, 150, 150}});
+
+    const auto free = best_thread_pair(s1, s2, chart, 0.0);
+    REQUIRE(free.has_value());
+    CHECK(free->first.code == "0");
+    CHECK(free->second.code == "0");
+    CHECK(approx(free->contrast, 1.0, 1e-12));
+
+    const auto kept = best_thread_pair(s1, s2, chart, 1000.0);
+    REQUIRE(kept.has_value());
+    CHECK(kept->first.code != kept->second.code);
+    CHECK(kept->contrast >= wcag_contrast(s1, s2));
+}
+
+TEST_CASE("best_thread_pair is deterministic and breaks ties by chart order") {
+    const auto chart = synthetic_chart({{200, 30, 30}, {200, 30, 30}, {30, 30, 200}});
+    const auto a = best_thread_pair({200, 30, 30}, {30, 30, 200}, chart);
+    const auto b = best_thread_pair({200, 30, 30}, {30, 30, 200}, chart);
+    REQUIRE(a.has_value());
+    REQUIRE(b.has_value());
+    CHECK(a->first == b->first);
+    CHECK(a->second == b->second);
+    CHECK(a->cost == b->cost);
+    CHECK(a->first.code == "0"); // doublon identique : le premier déclaré gagne
+    CHECK(a->second.code == "2");
+}
+
+TEST_CASE("best_thread_pair on an empty chart returns nothing") {
+    CHECK_FALSE(best_thread_pair({1, 2, 3}, {4, 5, 6}, ThreadChart{}).has_value());
 }

@@ -84,6 +84,15 @@ paie pas le coût de la conversion couleur) :
 - `nearest_threads(rgb, chart, top_n)` — top-N fils les plus proches d'une
   couleur, triés par distance CIEDE2000 croissante, égalités départagées par
   l'ordre de déclaration du nuancier (déterministe).
+- `wcag_contrast(a, b)` — contraste relatif WCAG 2.x (luminance relative sRGB),
+  dans [1 ; 21].
+- `best_thread_pair(s1, s2, chart, w = 10)` — meilleure paire de fils pour un
+  fondu à deux fils : minimise `dE00(s1, t1) + dE00(s2, t2) + w · max(C(s1, s2)
+  − C(t1, t2), 0)` sur toutes les paires du nuancier (recherche exhaustive,
+  O(n²)). Le terme de contraste empêche de choisir deux fils trop proches l'un
+  de l'autre quand les couleurs d'origine sont contrastées. Égalités :
+  premier fil puis second dans l'ordre de déclaration. Critère de Liu et al.,
+  *Directionality-Aware Design of Embroidery Patterns*, CGF 42(2), 2023.
 
 ## Ce qui n'existe pas encore
 

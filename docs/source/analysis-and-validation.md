@@ -20,6 +20,22 @@ appliquer de correction automatique silencieuse.
 | `saut-sans-coupe` | déplacement > `trim_threshold` (3 mm) sans `Trim` | Avertissement |
 | `hors-cadre` | point hors du cadre (si fourni) | Erreur |
 | `trop-de-points` | > 100 000 points | Avertissement |
+| `couches-superposees` | épaisseur de fil > `max_layer_thickness` (3,0 couches de remplissage dense) sur un bloc d'au moins 2 × 2 cases de 2,5 mm | Avertissement |
+
+**Épaisseur de fil** (`couches-superposees`). Grille de `layer_cell` (2,5 mm) ;
+dans chaque case, épaisseur = longueur de fil × `thread_width` (0,4 mm) /
+surface de la case, en « couches de remplissage dense » : un remplissage dont
+l'écart entre rangées égale la largeur du fil vaut 1, une sous-couche espacée de
+2 mm vaut environ 0,2. Deux remplissages superposés avec leurs sous-couches
+font ~2,4 (les bords ~2,6), trois ~3,6 ; le seuil de 3,0 les départage. Les
+passes `Lock` et `Travel` ne comptent pas. Seule une zone contenant un bloc de
+2 × 2 cases en excès est signalée : le bord d'un objet, ses connexions de
+rangées et deux objets voisins ou empiétant d'1 mm (pratique courante contre
+les interstices) ne déclenchent rien. Un seul résultat par zone, localisé sur
+sa première case. Motivation : Liu et al. (CGF 2023) ne superposent que deux
+couches pour limiter la déformation du tissu. `max_layer_thickness = 0`
+désactive la règle. Les seuils sont des heuristiques d'ingénierie, pas des
+valeurs de l'article.
 
 Chaque problème porte une **gravité** (`Info`/`Warning`/`Error`), un **message**,
 une **localisation** et l'**objet** concerné. Un plafond par catégorie évite

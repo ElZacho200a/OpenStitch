@@ -121,6 +121,8 @@ json op_to_json(const image::ImageOp& op) {
                 j = {{"type", "medianDenoise"}, {"strength", o.strength}};
             } else if constexpr (std::is_same_v<T, image::QuantizeOp>) {
                 j = {{"type", "quantize"}, {"colors", o.colors}};
+            } else if constexpr (std::is_same_v<T, image::BilateralDenoiseOp>) {
+                j = {{"type", "bilateralDenoise"}, {"strength", o.strength}};
             }
             return j;
         },
@@ -149,6 +151,9 @@ Result<image::ImageOp> op_from_json(const json& j) {
     }
     if (type == "quantize") {
         return image::QuantizeOp{j.at("colors")};
+    }
+    if (type == "bilateralDenoise") {
+        return image::BilateralDenoiseOp{j.value("strength", 2)};
     }
     return fail(ErrorCategory::InvalidFile, "Opération d'image inconnue : " + type);
 }
@@ -261,6 +266,18 @@ json params_to_json(const document::StitchParams& params) {
                      {"handmade", p.handmade},
                      {"handmadeIntensity", p.handmade_intensity},
                      {"seed", p.seed}};
+                if (p.spacing_regularity != 0.0) {
+                    j["spacingRegularity"] = p.spacing_regularity;
+                }
+                if (p.density_gradient) {
+                    const auto& g = *p.density_gradient;
+                    j["densityGradient"] = {{"fromX", g.from.x.value},
+                                            {"fromY", g.from.y.value},
+                                            {"toX", g.to.x.value},
+                                            {"toY", g.to.y.value},
+                                            {"spacingFrom", g.spacing_from.value},
+                                            {"spacingTo", g.spacing_to.value}};
+                }
             } else if constexpr (std::is_same_v<T, document::AutoSatinParams>) {
                 json guides = json::array();
                 for (const auto& g : p.guides) {
@@ -442,6 +459,17 @@ Result<document::StitchParams> params_from_json(const json& j) {
         p.sector_overlap = Micrometers{j.value("sectorOverlap", 250)};
         p.handmade = j.value("handmade", false);
         p.handmade_intensity = j.value("handmadeIntensity", 50);
+        // Valeur hors [0 ; 1] ou non finie : bornée (fichier édité à la main).
+        p.spacing_regularity = std::clamp(j.value("spacingRegularity", 0.0), 0.0, 1.0);
+        if (j.contains("densityGradient") && j.at("densityGradient").is_object()) {
+            const auto& g = j.at("densityGradient");
+            document::DensityGradient grad;
+            grad.from = Vec2um{Micrometers{g.value("fromX", 0)}, Micrometers{g.value("fromY", 0)}};
+            grad.to = Vec2um{Micrometers{g.value("toX", 0)}, Micrometers{g.value("toY", 0)}};
+            grad.spacing_from = Micrometers{g.value("spacingFrom", 400)};
+            grad.spacing_to = Micrometers{g.value("spacingTo", 400)};
+            p.density_gradient = grad;
+        }
         if (j.contains("seed")) {
             auto seed = strict_uint32(j.at("seed"), "seed");
             if (!seed) {

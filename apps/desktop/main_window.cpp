@@ -760,6 +760,7 @@ void MainWindow::buildMenus() {
 
     addOpAction(tr("Dé&bruitage léger"), image::MedianDenoiseOp{1});
     addOpAction(tr("Débruitage &moyen"), image::MedianDenoiseOp{2});
+    addOpAction(tr("Lissage bilatéral (conserve les &contours)"), image::BilateralDenoiseOp{2});
 
     auto* quantAct = imageMenu->addAction(tr("&Quantifier les couleurs…"));
     connect(quantAct, &QAction::triggered, this, &MainWindow::quantizeColors);
@@ -6274,6 +6275,8 @@ void MainWindow::buildPropertiesPanel() {
             &MainWindow::discardOverrides);
     connect(propertiesPanel_, &PropertiesPanel::convertToDirectionalRequested, this,
             &MainWindow::convertToDirectional);
+    connect(propertiesPanel_, &PropertiesPanel::densityGradientRequested, this,
+            &MainWindow::setDensityGradient);
     connect(
         propertiesPanel_, &PropertiesPanel::editSatinGuidesRequested, this, [this](ObjectId id) {
             if (auto* emb = project_.findEmbroidery(id); emb != nullptr && emb->is_auto_satin()) {
