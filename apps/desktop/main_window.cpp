@@ -6274,6 +6274,11 @@ void MainWindow::buildPropertiesPanel() {
             &MainWindow::discardOverrides);
     connect(propertiesPanel_, &PropertiesPanel::convertToDirectionalRequested, this,
             &MainWindow::convertToDirectional);
+    connect(propertiesPanel_, &PropertiesPanel::createBorderSatinRequested, this,
+            &MainWindow::createBorderSatin);
+    connect(propertiesPanel_, &PropertiesPanel::borderSatinEdited, this,
+            &MainWindow::editBorderSatin);
+    connect(propertiesPanel_, &PropertiesPanel::joinModeEdited, this, &MainWindow::setJoinMode);
     connect(
         propertiesPanel_, &PropertiesPanel::editSatinGuidesRequested, this, [this](ObjectId id) {
             if (auto* emb = project_.findEmbroidery(id); emb != nullptr && emb->is_auto_satin()) {
@@ -6352,6 +6357,8 @@ void MainWindow::updateInspector() {
     propertiesPanel_->setEditState(emb != nullptr ? std::optional<ObjectId>(emb->id) : std::nullopt,
                                    emb != nullptr ? editStateOf(emb->id)
                                                   : stitch_generation::ObjectEditState::Clean);
+    propertiesPanel_->setJoinMode(emb != nullptr ? std::optional<ObjectId>(emb->id) : std::nullopt,
+                                  emb != nullptr ? emb->join : document::JoinMode::Inherit);
 
     // Auto-satin : liste des guides et diagnostic mis à jour à chaque appel (les
     // guides se posent aussi depuis le canevas), sans reconstruire le formulaire.

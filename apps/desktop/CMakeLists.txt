@@ -15,6 +15,7 @@ set(CMAKE_AUTOMOC ON)
 add_library(openstitch_desktop_widgets STATIC
     main_window.cpp
     main_window_directional.cpp
+    main_window_engine.cpp
     main_window_satin_auto.cpp
     main_window_regions.cpp
     main_window_shapes.cpp

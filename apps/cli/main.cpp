@@ -35,7 +35,9 @@
 #include "openstitch/stitch/sequence.hpp"
 #include "openstitch/stitch_analysis/metrics.hpp"
 #include "openstitch/stitch_analysis/project_metrics.hpp"
+#include "openstitch/stitch_generation/border_satin.hpp"
 #include "openstitch/stitch_generation/generate.hpp"
+#include "openstitch/stitch_generation/join.hpp"
 #include "openstitch/stitch_generation/lock.hpp"
 #include "openstitch/stitch_generation/overrides.hpp"
 #include "openstitch/stitch_generation/running_stitch.hpp"
@@ -531,6 +533,92 @@ int run_stitchdebug(const std::string& shape, double lengthMm, int repeats,
         const auto written = formats::write_svg_file(std::filesystem::path(outSvg), seq);
         if (!written) {
             return cli_error("stitchdebug", written.error().message);
+        }
+        fmt::print("SVG écrit : {}\n", outSvg);
+    }
+    return kExitOk;
+}
+
+// Moteur de points (HP-ENG-001/002/010, HP-STI-004) : scène de référence de trois tatami
+// empilés plus un satin de bordure circulaire ; affiche les mesures et compare l'entrée/sortie
+// automatique au sens naturel (longueur totale des sauts).
+int run_engine_debug(double pullMm, bool underlayAuto, double borderMm, const std::string& outSvg) {
+    using namespace openstitch;
+    if (const auto refused = check_output_path("engine-debug", outSvg, false)) {
+        return *refused;
+    }
+    const auto corner = [](std::int32_t x, std::int32_t y) {
+        return geometry::PathNode{Vec2um{Micrometers{x}, Micrometers{y}},
+                                  geometry::NodeType::Corner, std::nullopt, std::nullopt};
+    };
+    const auto build = [&](bool autoJoin) {
+        document::Project project;
+        project.finishing.auto_join = autoJoin;
+        for (int i = 0; i < 3; ++i) {
+            const std::int32_t y0 = -i * 12'000;
+            document::VectorObject vec;
+            vec.id = project.object_ids.next();
+            geometry::Path sq;
+            sq.closed = true;
+            sq.nodes = {corner(0, y0), corner(10'000, y0), corner(10'000, y0 + 10'000),
+                        corner(0, y0 + 10'000)};
+            vec.paths.push_back(geometry::PathSet{sq, {}});
+            project.vector_objects.push_back(vec);
+            document::EmbroideryObject emb;
+            emb.id = project.object_ids.next();
+            emb.source_vector = vec.id;
+            document::TatamiParams tp;
+            tp.inset = Micrometers{0};
+            tp.pull_compensation = to_micrometers(Millimeters{pullMm});
+            tp.underlay_mode = underlayAuto ? document::UnderlayMode::Auto
+                                            : document::UnderlayMode::Manual;
+            emb.params = tp;
+            project.embroidery_objects.push_back(emb);
+        }
+        if (borderMm > 0.0) {
+            geometry::Path ring;
+            ring.closed = true;
+            for (int k = 0; k < 72; ++k) {
+                const double a = 2.0 * std::numbers::pi * k / 72.0;
+                ring.nodes.push_back(corner(
+                    30'000 + static_cast<std::int32_t>(std::lround(8'000.0 * std::cos(a))),
+                    static_cast<std::int32_t>(std::lround(8'000.0 * std::sin(a)))));
+            }
+            document::BorderSatinSpec spec;
+            spec.width = to_micrometers(Millimeters{borderMm});
+            if (auto sp = stitch_generation::border_satin_from_path(ring, spec)) {
+                document::EmbroideryObject emb;
+                emb.id = project.object_ids.next();
+                emb.rgb = {200, 0, 0};
+                emb.params = std::move(*sp);
+                project.embroidery_objects.push_back(emb);
+            }
+        }
+        return project;
+    };
+    // Projet synthétique construit ici même. raw-sequence-ok: générateur de debug.
+    const auto natural = stitch_generation::generate_sequence(build(false)); // raw-sequence-ok
+    const auto joined = stitch_generation::generate_sequence(build(true));   // raw-sequence-ok
+    if (!natural || !joined) {
+        return cli_error("engine-debug", "génération impossible");
+    }
+    const auto count = [](const stitch::StitchSequence& s, stitch::StitchPass pass) {
+        return std::count_if(s.commands.begin(), s.commands.end(), [pass](const auto& c) {
+            return c.type == stitch::CommandType::Stitch && c.pass == pass;
+        });
+    };
+    fmt::print("Compensation du tirage : {:g} mm | sous-couche : {} | bordure : {:g} mm\n", pullMm,
+               underlayAuto ? "automatique" : "manuelle", borderMm);
+    fmt::print("Points couche supérieure : {}\n", count(*natural, stitch::StitchPass::TopStitch));
+    fmt::print("Points de sous-couche    : {}\n", count(*natural, stitch::StitchPass::Underlay));
+    fmt::print("Sauts (sens naturel)     : {:.1f} mm\n",
+               stitch_generation::total_jump_length_um(*natural) / 1000.0);
+    fmt::print("Sauts (entrée/sortie auto) : {:.1f} mm\n",
+               stitch_generation::total_jump_length_um(*joined) / 1000.0);
+    if (!outSvg.empty()) {
+        const auto written = formats::write_svg_file(std::filesystem::path(outSvg), *joined);
+        if (!written) {
+            return cli_error("engine-debug", written.error().message);
         }
         fmt::print("SVG écrit : {}\n", outSvg);
     }
@@ -1223,6 +1311,22 @@ int main(int argc, char** argv) {
                        "Tatami (ring) : sous-couches (masque : 1 contour, 2 parallèle)");
     sd_cmd->add_flag("--underpath", sd_underpath, "Tatami (ring) : liaisons cousues cachées");
 
+    double ed_pull = 0.0;
+    double ed_border = 3.0;
+    bool ed_underlay_auto = false;
+    std::string ed_out;
+    auto* ed_cmd = app.add_subcommand(
+        "engine-debug",
+        "[diagnostic] Tirage du tatami, sous-couche auto, entrée/sortie auto et satin de bordure "
+        "sur une scène de référence");
+    ed_cmd->group(kDiag);
+    ed_cmd->add_option("--pull", ed_pull, "Compensation du tirage du tatami, en mm (défaut 0)")
+        ->check(CLI::Range(0.0, 3.0));
+    ed_cmd->add_flag("--underlay-auto", ed_underlay_auto, "Sous-couche automatique");
+    ed_cmd->add_option("--border", ed_border, "Largeur du satin de bordure en mm (0 = aucun)")
+        ->check(CLI::Range(0.0, 20.0));
+    ed_cmd->add_option("--output-svg", ed_out, "SVG de diagnostic (avec entrée/sortie auto)");
+
     std::string sa_shape = "rectangle";
     double sa_spacing = 0.4;
     std::vector<std::string> sa_guides;
@@ -1308,6 +1412,9 @@ int main(int argc, char** argv) {
     }
     if (sd_cmd->parsed()) {
         return run_stitchdebug(sd_shape, sd_length, sd_repeats, sd_out, sd_underlay, sd_underpath);
+    }
+    if (ed_cmd->parsed()) {
+        return run_engine_debug(ed_pull, ed_underlay_auto, ed_border, ed_out);
     }
     if (od_cmd->parsed()) {
         return run_osp2dst(od_in, od_out, od_noclobber);
