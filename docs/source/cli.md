@@ -23,6 +23,7 @@ openstitch-cli <sous-commande> --help
 | Commandes | `osp2dst` | Exporte un projet `.osp` en DST par le même chemin que le bureau |
 | Diagnostic | `osp2svg` | `[diagnostic]` Séquence effective d'un `.osp` en SVG (contours des vecteurs, un seul objet) |
 | Diagnostic | `stitchdebug` | `[diagnostic]` Moteur de points sur une forme de référence |
+| Diagnostic | `engine-debug` | `[diagnostic]` Tirage du tatami (`--pull`), sous-couche auto (`--underlay-auto`), satin de bordure (`--border`) et sauts avec/sans entrée/sortie auto sur une scène de référence |
 | Diagnostic | `satin-auto-debug` | `[diagnostic]` Auto-satin par squelette sur une forme de référence ou un vecteur d'un `.osp` |
 
 Les sous-commandes **`[diagnostic]`** inspectent le moteur : leur sortie texte

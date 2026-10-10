@@ -485,7 +485,25 @@ propose de continuer ou de préférer un remplissage tatami.
 - **Couper avant chaque changement de fil** ;
 - **Point d'arrêt** : aucun, aller-retour, triangle ou micro-zigzag, avec sa longueur
   et son nombre de répétitions ;
-- **Fusionner les points trop courts** et la longueur minimale de point.
+- **Fusionner les points trop courts** et la longueur minimale de point ;
+- **Découper les points trop longs** et la longueur maximale de point (7 mm) ;
+- **Entrée/sortie automatiques des objets** : chaque objet est cousu dans le sens qui
+  rapproche son début de la fin du précédent (moins de sauts). Chaque objet peut
+  suivre ou refuser ce réglage (« Entrée/sortie » dans l'inspecteur).
+
+### Réglages de moteur par objet (inspecteur)
+
+- **Compensation du tirage** (tatami) : les rangées dépassent du contour de la
+  valeur choisie (0 à 3 mm ; 0,2 à 0,4 mm est courant) pour compenser le
+  rétrécissement dans l'axe du fil.
+- **Sous-couche : Automatique** (tatami, directionnel, satin, auto-satin) : le
+  moteur choisit la sous-couche selon la taille et la largeur de la forme ; les
+  cases manuelles sont alors grisées.
+- **Satin de bordure** : sélectionnez une forme, réglez *Satin de bordure*
+  (largeur, côté centré/intérieur/extérieur, coins vifs/arrondis) puis
+  **Créer le satin de bordure** ; un satin par contour et par trou. Changer les
+  réglages du satin créé le régénère depuis le contour.
+- Ces réglages ne sont **pas validés sur machine réelle**.
 
 La séquence se termine toujours par une **coupe finale**, et à l'export vers une
 machine chaque coupe est écrite en **trois sauts de 0,1 mm non nuls** suivis du

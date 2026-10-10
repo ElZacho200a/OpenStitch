@@ -10,7 +10,7 @@ namespace openstitch::stitch_generation {
 // Sous-couche AUTOMATIQUE (HP-ENG-002, `UnderlayMode::Auto`) : le moteur choisit les
 // sous-couches d'un objet selon son type, sa taille et sa largeur, au lieu de laisser
 // l'utilisateur cocher les cases. Fonctions pures et déterministes ; les seuils sont
-// ceux de `docs/source/underlay-auto.md` et sont testés (test_underlay_auto.cpp).
+// ceux de `docs/source/moteur-de-points.md` (section « Sous-couche automatique ») et sont testés (test_underlay_auto.cpp).
 
 // Mesures d'une forme. L'épaisseur moyenne est `2 × aire / périmètre` (trous compris
 // dans le périmètre) : exacte pour une bande longue (sa largeur), égale au rayon pour un
