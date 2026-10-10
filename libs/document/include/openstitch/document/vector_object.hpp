@@ -21,6 +21,10 @@ struct VectorObject {
     std::array<std::uint8_t, 3> rgb{};
     std::vector<geometry::PathSet> paths; // plusieurs morceaux possibles
     bool visible{true};
+    // Lettrage (HP-TXT-001) : si renseigné, cet objet est une lettre dérivée de
+    // l'objet texte `Project::text_objects[id]` ; il est régénéré quand le texte
+    // est édité. Absent = objet vectoriel ordinaire.
+    std::optional<ObjectId> text_owner;
 };
 
 // Adresse d'un nœud dans un objet : morceau, chemin (0 = extérieur,

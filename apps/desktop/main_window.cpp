@@ -863,6 +863,7 @@ void MainWindow::buildMenus() {
     regionActions_.append(vectorizeAct);
 
     buildShapeMenu();
+    buildTextMenu();
 
     auto* embMenu = menuBar()->addMenu(tr("&Broderie"));
     autoDigitizeAct_ = embMenu->addAction(tr("Numérisation &automatique"));
@@ -1908,6 +1909,11 @@ void MainWindow::onBoxDrawn(QRectF rectMm, Qt::KeyboardModifiers modifiers) {
 }
 
 void MainWindow::onCanvasDoubleClicked(QPointF posMm) {
+    // Double-clic sur une lettre : rouvre le texte (le premier clic l'a sélectionnée).
+    if (currentTool_ == Tool::Select && selectedTextId()) {
+        editSelectedText();
+        return;
+    }
     if (currentTool_ == Tool::DrawPolygon) {
         finishPolygon();
         return;
@@ -5947,6 +5953,7 @@ void MainWindow::setTool(Tool tool) {
     sync(toolDrawFreeformAct_, tool == Tool::DrawFreeform);
     sync(toolDrawSatinColumnAct_, tool == Tool::DrawSatinColumn);
     sync(toolCutAct_, tool == Tool::Cut);
+    sync(toolTextAct_, tool == Tool::Text);
     if (cropAct_ != nullptr) {
         QSignalBlocker block(cropAct_);
         cropAct_->setChecked(tool == Tool::Rect);
@@ -5989,6 +5996,7 @@ void MainWindow::setTool(Tool tool) {
                              : tool == Tool::DrawDirectionGuide ? tr("Guide de direction")
                              : tool == Tool::DrawBreakLine      ? tr("Ligne de rupture")
                              : tool == Tool::Cut                ? tr("Couteau")
+                             : tool == Tool::Text               ? tr("Texte")
                                                                 : tr("Colonne satin");
         toolLabel_->setText(tr("Outil : %1").arg(name));
     }
@@ -6017,6 +6025,10 @@ void MainWindow::setTool(Tool tool) {
                "Entrée/double-clic/bouton ✓ pour terminer (2 nœuds min.), Échap pour annuler."));
     } else if (tool == Tool::DrawFreeform) {
         statusBar()->showMessage(tr("Cliquez-glissez pour tracer la forme à main levée."));
+    } else if (tool == Tool::Text) {
+        statusBar()->showMessage(
+            tr("Texte : cliquez sur le canevas pour poser le texte (bord gauche de la ligne de "
+               "base), puis réglez police, hauteur et type de point."));
     } else if (tool == Tool::Cut) {
         statusBar()->showMessage(
             tr("Couteau : cliquez-glissez une ligne à travers la ou les formes à découper "
@@ -7769,6 +7781,10 @@ void MainWindow::onCanvasClicked(QPointF posMm) {
     if (currentTool_ == Tool::Pan) {
         return;
     }
+    if (currentTool_ == Tool::Text) {
+        placeTextAt(posMm);
+        return;
+    }
     if (drawingDirectionGuide()) {
         addDirectionGuidePoint(posMm);
         return;
@@ -8477,6 +8493,7 @@ void setEnabledWithReason(QAction* act, bool enabled, const QString& whyDisabled
 
 void MainWindow::updateActions() {
     updateShapeActions();
+    updateTextActions();
     const bool hasImage = project_.hasImage();
     for (QAction* act : imageActions_) {
         setEnabledWithReason(act, hasImage, tr("Ouvrez d'abord une image."));

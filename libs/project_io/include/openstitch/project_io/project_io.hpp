@@ -21,6 +21,10 @@ namespace openstitch::project_io {
 // (`thread` : `{chart, code}`, HP-THR-004). Migration : champ absent -> aucun
 // fil (couleur libre), `rgb` reste la source de rendu.
 // Lecture rétrocompatible : un fichier v1/v2/v3 se charge (champs absents
+// v5 -> v6 : objets texte (lettrage, HP-TXT-001) : clé `textObjects` et
+// `textOwner` sur les objets vectoriels. Un lecteur v5 ne peut pas ignorer
+// ces lettres sans perdre l'éditabilité du texte : il refuse le fichier v6.
+// Lecture rétrocompatible : un fichier v1..v5 se charge (champs absents
 // remplacés par leurs valeurs par défaut).
 inline constexpr int kSchemaVersion = 6;
 

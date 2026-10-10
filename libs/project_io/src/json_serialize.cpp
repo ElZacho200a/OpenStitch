@@ -785,6 +785,61 @@ Result<std::vector<document::StitchOverride>> overrides_from_json(const json& ar
     return result;
 }
 
+// --- Lettrage (HP-TXT-001) ---------------------------------------------------
+
+json text_to_json(const document::TextObject& t) {
+    json j;
+    j["id"] = t.id.value;
+    j["text"] = t.text;
+    j["fontFamily"] = t.font.family;
+    j["fontFile"] = t.font.file;
+    j["fontBuiltin"] = t.font.builtin;
+    j["faceIndex"] = t.font.face_index;
+    j["capHeight"] = t.cap_height.value;
+    j["letterSpacing"] = t.letter_spacing.value;
+    j["wordSpacing"] = t.word_spacing.value;
+    j["lineSpacing"] = t.line_spacing;
+    j["kerning"] = t.kerning;
+    j["align"] = static_cast<int>(t.align);
+    j["justifyWidth"] = t.justify_width.value;
+    j["origin"] = vec_to_json(t.origin);
+    j["rotation"] = t.rotation.radians;
+    j["rgb"] = rgb_to_json(t.rgb);
+    j["fill"] = static_cast<int>(t.fill);
+    j["maxSatinWidth"] = t.max_satin_width.value;
+    j["density"] = t.density.value;
+    return j;
+}
+
+document::TextObject text_from_json(const json& j) {
+    const document::TextObject d;
+    document::TextObject t;
+    t.id = ObjectId{j.at("id").get<std::uint64_t>()};
+    t.text = j.value("text", std::string{});
+    t.font.family = j.value("fontFamily", std::string{});
+    t.font.file = j.value("fontFile", std::string{});
+    t.font.builtin = j.value("fontBuiltin", std::string{});
+    t.font.face_index = j.value("faceIndex", 0);
+    t.cap_height = Micrometers{j.value("capHeight", d.cap_height.value)};
+    t.letter_spacing = Micrometers{j.value("letterSpacing", d.letter_spacing.value)};
+    t.word_spacing = Micrometers{j.value("wordSpacing", d.word_spacing.value)};
+    t.line_spacing = j.value("lineSpacing", d.line_spacing);
+    t.kerning = j.value("kerning", d.kerning);
+    t.align = static_cast<document::TextAlign>(std::clamp(j.value("align", 0), 0, 3));
+    t.justify_width = Micrometers{j.value("justifyWidth", d.justify_width.value)};
+    if (j.contains("origin")) {
+        t.origin = vec_from_json(j.at("origin"));
+    }
+    t.rotation = Angle{j.value("rotation", 0.0)};
+    if (j.contains("rgb")) {
+        t.rgb = rgb_from_json(j.at("rgb"));
+    }
+    t.fill = static_cast<document::TextFill>(std::clamp(j.value("fill", 0), 0, 3));
+    t.max_satin_width = Micrometers{j.value("maxSatinWidth", d.max_satin_width.value)};
+    t.density = Micrometers{j.value("density", d.density.value)};
+    return t;
+}
+
 } // namespace
 
 json project_to_json(const document::Project& project) {
@@ -826,11 +881,22 @@ json project_to_json(const document::Project& project) {
         if (v.source_region) {
             vo["sourceRegion"] = v.source_region->value;
         }
+        if (v.text_owner) {
+            vo["textOwner"] = v.text_owner->value;
+        }
         vo["paths"] = json::array();
         for (const auto& ps : v.paths) {
             vo["paths"].push_back(path_set_to_json(ps));
         }
         j["vectorObjects"].push_back(vo);
+    }
+
+    // Objets texte (schéma v6) : clé absente quand le projet n'en a pas.
+    if (!project.text_objects.empty()) {
+        j["textObjects"] = json::array();
+        for (const auto& t : project.text_objects) {
+            j["textObjects"].push_back(text_to_json(t));
+        }
     }
 
     j["embroideryObjects"] = json::array();
@@ -958,10 +1024,19 @@ Result<document::Project> project_from_json(const json& j) {
             if (vo.contains("sourceRegion")) {
                 v.source_region = RegionId{vo.at("sourceRegion").get<std::uint64_t>()};
             }
+            if (vo.contains("textOwner")) {
+                v.text_owner = ObjectId{vo.at("textOwner").get<std::uint64_t>()};
+            }
             for (const auto& ps : vo.at("paths")) {
                 v.paths.push_back(path_set_from_json(ps));
             }
             project.vector_objects.push_back(std::move(v));
+        }
+
+        if (j.contains("textObjects")) {
+            for (const auto& tj : j.at("textObjects")) {
+                project.text_objects.push_back(text_from_json(tj));
+            }
         }
 
         for (const auto& eo : j.at("embroideryObjects")) {

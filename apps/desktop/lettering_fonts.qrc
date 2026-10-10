@@ -1,0 +1,6 @@
+<RCC>
+    <qresource prefix="/fonts">
+        <file alias="Vera.ttf">../../resources/fonts/Vera.ttf</file>
+        <file alias="VeraBd.ttf">../../resources/fonts/VeraBd.ttf</file>
+    </qresource>
+</RCC>

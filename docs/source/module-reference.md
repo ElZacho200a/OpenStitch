@@ -19,6 +19,7 @@ fonctionnalité. Chaque module est une cible `openstitch::<nom>` sous `libs/`.
 | `stitch_render` | rendu réaliste des points (brins de fil, ombrage, tissu, image RGBA ; sans Qt) | core, stitch | `tests/unit/stitch_render` |
 | `optimization` | ordre de couture | core | `tests/unit/optimization` |
 | `autodigitize` | image → objets éditables | vectorization, stitch_generation | `tests/unit/autodigitize` |
+| `lettering` | texte → contours de glyphes (FreeType) → lettres satin/tatami/contour éditables ; voir `lettering.md` | core, geometry, document, auto_satin (+FreeType) | `tests/unit/lettering` |
 | `auto_satin` | squelette → satinabilité → auto-satin par traversées orientées (axe, chord, guides) | core, geometry (+OpenCV) | `tests/unit/auto_satin` |
 | `commands` | undo/redo | document | `tests/unit/commands` |
 | `formats` | codec DST, import DXF/SVG, export DXF/SVG diagnostic | core, geometry, stitch (+pugixml) | `tests/unit/formats` |

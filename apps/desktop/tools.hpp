@@ -32,6 +32,9 @@ enum class Tool {
     DrawBreakLine,
     // Couteau : trace une ligne qui découpe les formes vectorielles qu'elle traverse.
     Cut,
+    // Texte (T, lettrage HP-TXT-*) : un clic sur le canevas pose l'origine du texte et
+    // ouvre le dialogue de texte. Contexte d'interaction = Sélection (clic simple).
+    Text,
 };
 
 } // namespace openstitch::desktop

@@ -165,6 +165,20 @@ PropertiesPanel::PropertiesPanel(QWidget* parent) : QWidget(parent) {
     });
     root_->addWidget(discardButton_);
 
+    // Lettrage : bandeau persistant, masqué hors d'une lettre de texte (cf. setTextInfo).
+    textInfoLabel_ = new QLabel(this);
+    textInfoLabel_->setObjectName(QStringLiteral("text_info_label"));
+    textInfoLabel_->setWordWrap(true);
+    textInfoLabel_->setVisible(false);
+    root_->addWidget(textInfoLabel_);
+    textEditButton_ = new QPushButton(tr("Modifier le texte…"), this);
+    textEditButton_->setObjectName(QStringLiteral("text_edit_button"));
+    textEditButton_->setToolTip(
+        tr("Rouvre le texte : police, hauteur, espacement, alignement, type de point (F2)."));
+    textEditButton_->setVisible(false);
+    connect(textEditButton_, &QPushButton::clicked, this, &PropertiesPanel::editTextRequested);
+    root_->addWidget(textEditButton_);
+
     auto* line = new QFrame(this);
     line->setFrameShape(QFrame::HLine);
     line->setFrameShadow(QFrame::Plain);
@@ -178,6 +192,16 @@ PropertiesPanel::PropertiesPanel(QWidget* parent) : QWidget(parent) {
 
     showInfo(tr("Aucune sélection"),
              tr("Sélectionnez une région, un objet vectoriel ou un objet de broderie."));
+}
+
+void PropertiesPanel::setTextInfo(const QString& summary) {
+    textInfoLabel_->setText(summary);
+    textInfoLabel_->setVisible(!summary.isEmpty());
+    textEditButton_->setVisible(!summary.isEmpty());
+}
+
+bool PropertiesPanel::textInfoVisible() const {
+    return !textInfoLabel_->isHidden();
 }
 
 void PropertiesPanel::clearBody() {

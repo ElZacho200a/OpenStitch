@@ -401,6 +401,25 @@ d'annulation** et garde les objets de broderie de la forme conservée.
   point par point ne sont pas copiés). La coupe retire une bande de 0,02 mm, sans effet sur la
   couture.
 
+## Menu Texte (lettrage)
+
+Voir [Lettrage](lettering.md) pour le fonctionnement détaillé.
+
+- **Outil Texte** (touche **T**) — cliquez sur le canevas : le dialogue s'ouvre, le texte est
+  posé à cet endroit (début de la ligne de base, ou centre / bord droit selon l'alignement).
+- **Nouveau texte…** — idem, au centre du cadre.
+- **Modifier le texte…** (**F2**, double-clic sur une lettre, ou bouton de l'inspecteur) — rouvre
+  le dialogue ; les lettres sont régénérées (un seul pas d'annulation). Un déplacement du texte
+  entier est conservé ; les retouches faites à la main sur une lettre sont remplacées.
+- **Supprimer le texte** — retire toutes les lettres.
+
+Dans le dialogue : police (deux polices intégrées, puis polices installées), hauteur de
+capitale, couleur, type de point (**Automatique** : satin pour les traits fins, tatami pour les
+gros ; **Satin**, **Tatami**, **Contour**), alignement, espaces entre lettres et mots,
+interligne, crénage, position, rotation. L'aperçu montre les contours ; les avertissements
+(texte sous 5 mm, trait trop fin, lettre cousue en tatami faute de satin possible, caractère
+absent de la police) s'affichent sous l'aperçu et dans le panneau Analyse.
+
 ## Type de points pour plusieurs formes
 
 La sélection multiple de formes (Maj + clic, Ctrl + clic, rectangle) accepte **tous les types de

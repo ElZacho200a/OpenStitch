@@ -12,6 +12,10 @@
     "minizip-ng",
     "pugixml",
     {
+      "name": "freetype",
+      "default-features": false
+    },
+    {
       "name": "opencv4",
       "default-features": false,
       "features": ["png", "jpeg", "tiff"]

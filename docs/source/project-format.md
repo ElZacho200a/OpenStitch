@@ -98,7 +98,11 @@ stockés dans le `.osp` (voir *Palettes et fils*).
 
 ## Versionnement et validation
 
-`schemaVersion` vaut **6** (v1 → v2 : cadre `canvas` et barreaux satin
+`schemaVersion` vaut **6** (v5 → v6 : fil de nuancier `thread` des objets de broderie (`{chart, code}`, voir *Palettes et fils*) ; objets texte du lettrage, clé `textObjects`
+(id, text, fontFamily/fontFile/fontBuiltin/faceIndex, capHeight, letterSpacing, wordSpacing,
+lineSpacing, kerning, align, justifyWidth, origin, rotation, rgb, fill, maxSatinWidth, density ;
+µm entiers, rotation en radians) et `textOwner` sur les objets vectoriels, voir `lettering.md` ;
+v1 → v2 : cadre `canvas` et barreaux satin
 `rungs` ; v2 → v3 : retouches manuelles `overrides`/`editedFingerprint`/
 `editedPointCount` par objet de broderie, Lot 8.1 ; v3 → v4 : intermédiaire ; v4 → v5 :
 variant `autoSatin`, auto-satin par squelette ; v5 → v6 : fil de nuancier

@@ -471,6 +471,20 @@ private:
     void onFreeformPointAdded(QPointF posMm);
     void finishFreeform();
     void cancelFreeformDraw();
+    // Lettrage (outil Texte, HP-TXT-*) : menu Texte, dialogue, création/édition/suppression
+    // d'un texte en UN pas d'annulation (main_window_lettering.cpp). Aucune logique de
+    // lettrage ici : tout vient de libs/lettering.
+    void buildTextMenu();
+    void updateTextActions();
+    void placeTextAt(QPointF posMm);
+    void editSelectedText();
+    void removeSelectedText();
+    // Texte propriétaire de la sélection (lettre = objet vectoriel ou de broderie), s'il existe.
+    [[nodiscard]] std::optional<ObjectId> selectedTextId() const;
+    // Génère les lettres de `text` puis applique la commande ; false (message affiché) si la
+    // police est illisible ou si le texte ne produit aucune lettre.
+    bool applyText(document::TextObject text, bool isNew);
+    bool openTextDialog(document::TextObject initial, bool isNew);
     // Formes vectorielles : unir / soustraire / intersecter / séparer / couteau
     // (main_window_shapes.cpp).
     void buildShapeMenu();
@@ -802,6 +816,11 @@ private:
     QAction* toolDrawFreeformAct_{nullptr};
     QAction* toolDrawSatinColumnAct_{nullptr};
     QAction* toolCutAct_{nullptr};
+    QAction* toolTextAct_{nullptr};
+    QAction* newTextAct_{nullptr};
+    QAction* editTextAct_{nullptr};
+    QAction* removeTextAct_{nullptr};
+    QMenu* textMenu_{nullptr};
     QMenu* shapeMenu_{nullptr};
     QAction* unionAct_{nullptr};
     QAction* subtractAct_{nullptr};

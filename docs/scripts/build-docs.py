@@ -36,6 +36,7 @@ CHAPTERS = [
     "image-processing", "segmentation", "vectorization", "embroidery-objects",
     "auto-numerisation",
     "stitch-generation", "moteur-de-points", "satin-squelette", "satin", "tatami", "directional-fill",
+    "lettering",
     "stitch-editing",
     "patent-research", "patent-sheets-satin", "patent-sheets-autodigitize",
     "patent-sheets-underlay-geometry", "patent-sheets-decorative-applique",
