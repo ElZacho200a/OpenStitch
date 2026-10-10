@@ -5,6 +5,9 @@
 #include <cctype>
 
 #include "openstitch/formats/dst.hpp"
+#include "openstitch/formats/exp.hpp"
+#include "openstitch/formats/jef.hpp"
+#include "openstitch/formats/pes.hpp"
 
 namespace openstitch::formats {
 
@@ -26,6 +29,56 @@ Result<stitch::StitchSequence> decode_dst_for_registry(std::span<const std::uint
     return decode_dst(bytes);
 }
 
+// Les options de coupe/arrêt/couleur n'existent pas pour le DST (pas de couleur, coupes en
+// sauts) : seul le nom du motif est pris en compte.
+Result<std::vector<std::uint8_t>> encode_dst_ex(const stitch::StitchSequence& sequence,
+                                                const MachineExportOptions& options) {
+    DstWriteOptions dst;
+    dst.design_name = options.design_name;
+    dst.trim_jumps_with_movement = true;
+    return encode_dst(sequence, dst);
+}
+Result<DecodedDesign> decode_dst_ex(std::span<const std::uint8_t> bytes) {
+    auto sequence = decode_dst(bytes);
+    if (!sequence) {
+        return std::unexpected(sequence.error());
+    }
+    DecodedDesign design;
+    design.sequence = std::move(*sequence);
+    return design;
+}
+
+Result<std::vector<std::uint8_t>> encode_pes_simple(const stitch::StitchSequence& s) {
+    return encode_pes(s);
+}
+Result<stitch::StitchSequence> decode_pes_simple(std::span<const std::uint8_t> bytes) {
+    auto d = decode_pes(bytes);
+    if (!d) {
+        return std::unexpected(d.error());
+    }
+    return std::move(d->sequence);
+}
+Result<std::vector<std::uint8_t>> encode_jef_simple(const stitch::StitchSequence& s) {
+    return encode_jef(s);
+}
+Result<stitch::StitchSequence> decode_jef_simple(std::span<const std::uint8_t> bytes) {
+    auto d = decode_jef(bytes);
+    if (!d) {
+        return std::unexpected(d.error());
+    }
+    return std::move(d->sequence);
+}
+Result<std::vector<std::uint8_t>> encode_exp_simple(const stitch::StitchSequence& s) {
+    return encode_exp(s);
+}
+Result<stitch::StitchSequence> decode_exp_simple(std::span<const std::uint8_t> bytes) {
+    auto d = decode_exp(bytes);
+    if (!d) {
+        return std::unexpected(d.error());
+    }
+    return std::move(d->sequence);
+}
+
 const std::vector<FormatInfo>& all_formats() {
     static const std::vector<FormatInfo> formats = {
         FormatInfo{
@@ -37,10 +90,49 @@ const std::vector<FormatInfo>& all_formats() {
             .default_constraints = MachineConstraints{}, // valeurs DST par défaut (cf. machine.hpp)
             .encode = &encode_dst_for_registry,
             .decode = &decode_dst_for_registry,
+            .encode_ex = &encode_dst_ex,
+            .decode_ex = &decode_dst_ex,
+            .carries_colors = false,
         },
-        // Ligne de registre S2b (PES), S2c (JEF, EXP) : ajouter ici (droit
-        // d'inscription R3, cf. specs/arch-plan -- Shared-File and Section
-        // Ownership, ligne `libs/formats`).
+        FormatInfo{
+            .id = "pes",
+            .display_name = "Brother PES",
+            .extensions = {"pes"},
+            .can_read = true,
+            .can_write = true,
+            .default_constraints = pes_constraints(),
+            .encode = &encode_pes_simple,
+            .decode = &decode_pes_simple,
+            .encode_ex = &encode_pes,
+            .decode_ex = &decode_pes,
+            .carries_colors = true,
+        },
+        FormatInfo{
+            .id = "jef",
+            .display_name = "Janome JEF",
+            .extensions = {"jef"},
+            .can_read = true,
+            .can_write = true,
+            .default_constraints = jef_constraints(),
+            .encode = &encode_jef_simple,
+            .decode = &decode_jef_simple,
+            .encode_ex = &encode_jef,
+            .decode_ex = &decode_jef,
+            .carries_colors = true,
+        },
+        FormatInfo{
+            .id = "exp",
+            .display_name = "Melco EXP",
+            .extensions = {"exp"},
+            .can_read = true,
+            .can_write = true,
+            .default_constraints = exp_constraints(),
+            .encode = &encode_exp_simple,
+            .decode = &decode_exp_simple,
+            .encode_ex = &encode_exp,
+            .decode_ex = &decode_exp,
+            .carries_colors = false,
+        },
     };
     return formats;
 }

@@ -67,6 +67,7 @@
 #include "generation_options_dialog.hpp"
 #include "help_dialogs.hpp"
 #include "import_dialog.hpp"
+#include "machine_export_dialog.hpp"
 #include "node_handle.hpp"
 
 #include "openstitch/autodigitize/autodigitize.hpp"
@@ -80,6 +81,8 @@
 #include "openstitch/document/image_placement.hpp"
 #include "openstitch/formats/dst.hpp"
 #include "openstitch/formats/dxf.hpp"
+#include "openstitch/formats/export_limits.hpp"
+#include "openstitch/formats/format_registry.hpp"
 #include "openstitch/formats/svg_import.hpp"
 #include "openstitch/geometry/cut.hpp"
 #include "openstitch/geometry/offset.hpp"
@@ -423,6 +426,7 @@ MainWindow::MainWindow() {
     buildWorkflowPanel();
     buildFilterPanel();
     buildHistoryPanel();
+    buildThreadPanel();
     panelsMenu_->addAction(historyDock_->toggleViewAction());
     for (auto* d :
          {documentDock_, propertiesDock_, workflowDock_, orderDock_, filterDock_, analysisDock_}) {
@@ -698,10 +702,11 @@ void MainWindow::buildMenus() {
         saveRecentFiles(QStringList());
         refreshRecentFilesUi();
     });
-    exportDstAct_ = fileMenu->addAction(tr("&Exporter en DST…"));
+    exportDstAct_ = fileMenu->addAction(tr("&Exporter une broderie machine…"));
     exportDstAct_->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_E));
     connect(exportDstAct_, &QAction::triggered, this, &MainWindow::exportDst);
-    auto* importDstAct = fileMenu->addAction(tr("&Importer un DST…"));
+    buildProductionMenu(fileMenu);
+    auto* importDstAct = fileMenu->addAction(tr("&Importer une broderie machine…"));
     connect(importDstAct, &QAction::triggered, this, &MainWindow::importDst);
     fileMenu->addSeparator();
     auto* importDxfAct = fileMenu->addAction(tr("Importer un &DXF…"));
@@ -859,6 +864,7 @@ void MainWindow::buildMenus() {
     regionActions_.append(vectorizeAct);
 
     buildShapeMenu();
+    buildTextMenu();
 
     auto* embMenu = menuBar()->addMenu(tr("&Broderie"));
     autoDigitizeAct_ = embMenu->addAction(tr("Numérisation &automatique"));
@@ -1904,6 +1910,11 @@ void MainWindow::onBoxDrawn(QRectF rectMm, Qt::KeyboardModifiers modifiers) {
 }
 
 void MainWindow::onCanvasDoubleClicked(QPointF posMm) {
+    // Double-clic sur une lettre : rouvre le texte (le premier clic l'a sélectionnée).
+    if (currentTool_ == Tool::Select && selectedTextId()) {
+        editSelectedText();
+        return;
+    }
     if (currentTool_ == Tool::DrawPolygon) {
         finishPolygon();
         return;
@@ -2828,6 +2839,7 @@ void MainWindow::refreshImage() {
     if (filterDock_ != nullptr) {
         refreshFilterPanel();
     }
+    refreshThreadPanel();
     refreshDocumentPanel();
     displayImage(processed_);
 }
@@ -4173,6 +4185,22 @@ void MainWindow::autoDigitize() {
             row->addWidget(info, 1);
             optsLayout->addLayout(row);
         }
+        // Palette de fils (HP-THR-011) : fusion des couleurs les plus proches (libs/autodigitize).
+        auto* maxThreadsRow = new QHBoxLayout;
+        maxThreadsRow->addWidget(new QLabel(tr("Limiter à :"), &optsDialog));
+        auto* maxThreadsSpin = new QSpinBox(&optsDialog);
+        maxThreadsSpin->setObjectName("maxThreadsSpin");
+        maxThreadsSpin->setRange(0, 99);
+        maxThreadsSpin->setSpecialValueText(tr("pas de limite"));
+        maxThreadsSpin->setSuffix(tr(" fils"));
+        maxThreadsSpin->setValue(
+            ui_memory::intValue(QStringLiteral("autoDigitize/maxThreads"), 0, 0, 99));
+        maxThreadsSpin->setToolTip(
+            tr("Fusionne les couleurs les plus proches pour n'utiliser que ce nombre de fils "
+               "(la couleur du plus grand aplat est conservée)."));
+        maxThreadsRow->addWidget(maxThreadsSpin);
+        maxThreadsRow->addStretch(1);
+        optsLayout->addLayout(maxThreadsRow);
         // Strategie : formes pleines (historique) ou contours (dessin au trait).
         auto* shapesRadio = new QRadioButton(tr("Formes pleines (remplissages)"), &optsDialog);
         shapesRadio->setObjectName("strategyShapesRadio");
@@ -4259,6 +4287,8 @@ void MainWindow::autoDigitize() {
         ui_memory::setIntValue(QStringLiteral("autoDigitize/shapeDetail"),
                                shapeDetailSlider->value());
         ui_memory::setIntValue(QStringLiteral("autoDigitize/contourDetail"), detailSlider->value());
+        ui_memory::setIntValue(QStringLiteral("autoDigitize/maxThreads"), maxThreadsSpin->value());
+        opts.max_threads = static_cast<std::size_t>(maxThreadsSpin->value());
         opts.skip_largest_region = skipBgCheck->isChecked();
         opts.simplify_tolerance = vectorize_tolerance_from_detail(shapeDetailSlider->value());
         contoursMode = contoursRadio->isChecked();
@@ -5924,6 +5954,7 @@ void MainWindow::setTool(Tool tool) {
     sync(toolDrawFreeformAct_, tool == Tool::DrawFreeform);
     sync(toolDrawSatinColumnAct_, tool == Tool::DrawSatinColumn);
     sync(toolCutAct_, tool == Tool::Cut);
+    sync(toolTextAct_, tool == Tool::Text);
     if (cropAct_ != nullptr) {
         QSignalBlocker block(cropAct_);
         cropAct_->setChecked(tool == Tool::Rect);
@@ -5966,6 +5997,7 @@ void MainWindow::setTool(Tool tool) {
                              : tool == Tool::DrawDirectionGuide ? tr("Guide de direction")
                              : tool == Tool::DrawBreakLine      ? tr("Ligne de rupture")
                              : tool == Tool::Cut                ? tr("Couteau")
+                             : tool == Tool::Text               ? tr("Texte")
                                                                 : tr("Colonne satin");
         toolLabel_->setText(tr("Outil : %1").arg(name));
     }
@@ -5994,6 +6026,10 @@ void MainWindow::setTool(Tool tool) {
                "Entrée/double-clic/bouton ✓ pour terminer (2 nœuds min.), Échap pour annuler."));
     } else if (tool == Tool::DrawFreeform) {
         statusBar()->showMessage(tr("Cliquez-glissez pour tracer la forme à main levée."));
+    } else if (tool == Tool::Text) {
+        statusBar()->showMessage(
+            tr("Texte : cliquez sur le canevas pour poser le texte (bord gauche de la ligne de "
+               "base), puis réglez police, hauteur et type de point."));
     } else if (tool == Tool::Cut) {
         statusBar()->showMessage(
             tr("Couteau : cliquez-glissez une ligne à travers la ou les formes à découper "
@@ -6275,6 +6311,11 @@ void MainWindow::buildPropertiesPanel() {
             &MainWindow::discardOverrides);
     connect(propertiesPanel_, &PropertiesPanel::convertToDirectionalRequested, this,
             &MainWindow::convertToDirectional);
+    connect(propertiesPanel_, &PropertiesPanel::createBorderSatinRequested, this,
+            &MainWindow::createBorderSatin);
+    connect(propertiesPanel_, &PropertiesPanel::borderSatinEdited, this,
+            &MainWindow::editBorderSatin);
+    connect(propertiesPanel_, &PropertiesPanel::joinModeEdited, this, &MainWindow::setJoinMode);
     connect(propertiesPanel_, &PropertiesPanel::densityGradientRequested, this,
             &MainWindow::setDensityGradient);
     connect(
@@ -6368,6 +6409,8 @@ void MainWindow::updateInspector() {
     propertiesPanel_->setEditState(emb != nullptr ? std::optional<ObjectId>(emb->id) : std::nullopt,
                                    emb != nullptr ? editStateOf(emb->id)
                                                   : stitch_generation::ObjectEditState::Clean);
+    propertiesPanel_->setJoinMode(emb != nullptr ? std::optional<ObjectId>(emb->id) : std::nullopt,
+                                  emb != nullptr ? emb->join : document::JoinMode::Inherit);
 
     // Auto-satin : liste des guides et diagnostic mis à jour à chaque appel (les
     // guides se posent aussi depuis le canevas), sans reconstruire le formulaire.
@@ -7481,8 +7524,6 @@ void MainWindow::exportDst() {
     if (!sequence_) {
         return;
     }
-    // Résumé pré-export : décision réelle -> dialogue de confirmation.
-    bool hasAnalysisErrors = false;
     const auto stats = stitch::compute_stats(*sequence_);
     const double wMm = to_millimeters(stats.bounds.max.x - stats.bounds.min.x).value;
     const double hMm = to_millimeters(stats.bounds.max.y - stats.bounds.min.y).value;
@@ -7491,20 +7532,25 @@ void MainWindow::exportDst() {
                           stats.bounds.max.x.value > cv.width.value / 2 ||
                           stats.bounds.min.y.value < -cv.height.value / 2 ||
                           stats.bounds.max.y.value > cv.height.value / 2;
-    QString summary = tr("Dimensions : %1 × %2 mm\nPoints : %3\nSauts : %4\nCoupes : %5\n"
-                         "Changements de couleur : %6\nFil estimé : %7 m\nCadre : %8 × %9 mm")
-                          .arg(wMm, 0, 'f', 1)
-                          .arg(hMm, 0, 'f', 1)
-                          .arg(stats.stitches)
-                          .arg(stats.jumps)
-                          .arg(stats.trims)
-                          .arg(stats.color_changes)
-                          .arg(stats.thread_length_um / 1e9, 0, 'f', 2)
-                          .arg(to_millimeters(cv.width).value, 0, 'f', 0)
-                          .arg(to_millimeters(cv.height).value, 0, 'f', 0);
-    // Résultat de l'analyse AVANT l'export : l'utilisateur voit les erreurs sans avoir à
-    // penser à lancer « Analyser le motif ».
-    {
+
+    // Résumé pré-export : décision réelle, recalculé pour le format et les options choisis
+    // (HP-FMT-002..005 : limites propres au format = `formats::check_export_limits`).
+    const auto summarize = [&](const formats::FormatInfo& format,
+                               const formats::MachineExportOptions& options) {
+        MachineExportDialog::Summary result;
+        QString summary = tr("Dimensions : %1 × %2 mm\nPoints : %3\nSauts : %4\nCoupes : %5\n"
+                             "Changements de couleur : %6\nFil estimé : %7 m\nCadre : %8 × %9 mm")
+                              .arg(wMm, 0, 'f', 1)
+                              .arg(hMm, 0, 'f', 1)
+                              .arg(stats.stitches)
+                              .arg(stats.jumps)
+                              .arg(stats.trims)
+                              .arg(stats.color_changes)
+                              .arg(stats.thread_length_um / 1e9, 0, 'f', 2)
+                              .arg(to_millimeters(cv.width).value, 0, 'f', 0)
+                              .arg(to_millimeters(cv.height).value, 0, 'f', 0);
+        // Résultat de l'analyse AVANT l'export : l'utilisateur voit les erreurs sans avoir à
+        // penser à lancer « Analyser le motif ».
         stitch_analysis::AnalysisOptions aopts;
         aopts.hoop = stitch::BoundsUm{
             Vec2um{Micrometers{-cv.width.value / 2}, Micrometers{-cv.height.value / 2}},
@@ -7522,72 +7568,110 @@ void MainWindow::exportDst() {
                             "Analyser le motif.")
                              .arg(errors)
                              .arg(warnings);
-        hasAnalysisErrors = errors > 0;
-    }
-    if (overflow) {
-        summary += tr("\n\nAttention : le motif dépasse le cadre.");
-    }
-    summary += tr("\n\nLe DST ne conserve pas les objets éditables.");
-    if (!project_.embroidery_objects.empty()) {
-        summary += tr(" Pensez à enregistrer aussi le projet (.osp).");
-    }
-    QMessageBox box(this);
-    box.setWindowTitle(tr("Exporter en DST"));
-    box.setText(tr("Résumé de l'export"));
-    box.setInformativeText(summary);
-    box.setIcon((overflow || hasAnalysisErrors) ? QMessageBox::Warning : QMessageBox::Information);
-    auto* chooseBtn = box.addButton(tr("Choisir le fichier…"), QMessageBox::AcceptRole);
-    QPushButton* problemsBtn = nullptr;
-    if (hasAnalysisErrors) {
-        problemsBtn = box.addButton(tr("Voir les problèmes"), QMessageBox::ActionRole);
-        problemsBtn->setObjectName(QStringLiteral("action_exportViewProblems"));
-    }
-    auto* cancelBtn = box.addButton(tr("Annuler"), QMessageBox::RejectRole);
-    // Des erreurs d'analyse : le choix sûr (Annuler) est le défaut, exporter reste possible.
-    box.setDefaultButton(hasAnalysisErrors ? cancelBtn : chooseBtn);
-    box.setEscapeButton(cancelBtn);
-    box.exec();
-    if (problemsBtn != nullptr && box.clickedButton() == problemsBtn) {
+        result.has_analysis_errors = errors > 0;
+        if (overflow) {
+            summary += tr("\n\nAttention : le motif dépasse le cadre.");
+        }
+        // Limites du format cible (couleurs, étendue, cadres de la marque, déplacements découpés).
+        QString limits;
+        for (const auto& issue : formats::check_export_limits(*sequence_, format, options)) {
+            const QString text = QString::fromStdString(issue.message);
+            switch (issue.severity) {
+            case formats::ExportIssueSeverity::Error:
+                limits += tr("\nImpossible : %1").arg(text);
+                result.blocking = true;
+                break;
+            case formats::ExportIssueSeverity::Warning:
+                limits += tr("\nAttention : %1").arg(text);
+                break;
+            case formats::ExportIssueSeverity::Info:
+                limits += tr("\nÀ noter : %1").arg(text);
+                break;
+            }
+        }
+        if (!limits.isEmpty()) {
+            summary += QStringLiteral("\n") + limits;
+        }
+        summary += tr("\n\nLe format %1 ne conserve pas les objets éditables.")
+                       .arg(QString::fromStdString(format.display_name));
+        if (format.carries_colors) {
+            summary += tr(" Les couleurs sont approchées par la palette du format.");
+        }
+        if (!project_.embroidery_objects.empty()) {
+            summary += tr(" Pensez à enregistrer aussi le projet (.osp).");
+        }
+        result.text = summary;
+        return result;
+    };
+
+    MachineExportDialog dialog(summarize, QString(), this);
+    dialog.exec();
+    if (dialog.viewProblemsRequested()) {
         runAnalysis();
         return;
     }
-    if (box.clickedButton() != chooseBtn) {
+    if (dialog.result() != QDialog::Accepted) {
         return;
     }
-    QString file = QFileDialog::getSaveFileName(this, tr("Exporter en DST"),
-                                                suggestedFilePath(QStringLiteral("dst")),
-                                                tr("Broderie Tajima (*.dst)"));
+    const formats::FormatInfo* format = dialog.format();
+    if (format == nullptr || format->extensions.empty()) {
+        return;
+    }
+    const QString ext = QString::fromStdString(format->extensions.front());
+    QString file = QFileDialog::getSaveFileName(
+        this, tr("Exporter en %1").arg(QString::fromStdString(format->display_name)),
+        suggestedFilePath(ext),
+        tr("%1 (*.%2)").arg(QString::fromStdString(format->display_name), ext));
     if (file.isEmpty()) {
         return;
     }
     // Extension forcée : sans elle la machine ne reconnaît pas le fichier.
-    if (QFileInfo(file).suffix().compare(QStringLiteral("dst"), Qt::CaseInsensitive) != 0) {
-        file += QStringLiteral(".dst");
+    if (QFileInfo(file).suffix().compare(ext, Qt::CaseInsensitive) != 0) {
+        file += QLatin1Char('.') + ext;
     }
 
-    // Rappel honnête (§17) : le DST ne conserve ni objets ni couleurs réelles.
-    // AD-03 : composition projet -> fichier machine générique (AI-03b),
-    // partagée avec la CLI -- recalcule sa propre `effective_sequence`,
-    // garantie identique à `*sequence_` (même site de recalcul, refreshImage).
+    // AD-03 : composition projet -> fichier machine générique (AI-03b), partagée avec la CLI --
+    // recalcule sa propre `effective_sequence`, garantie identique à `*sequence_`.
+    auto options = dialog.options();
+    options.design_name = QFileInfo(file).completeBaseName().toStdString();
     const auto written = project_io::export_machine_file(
-        project_, "dst", std::filesystem::path(file.toStdWString()));
+        project_, format->id, std::filesystem::path(file.toStdWString()), options);
     if (!written) {
-        showFriendlyError(this, tr("Export impossible"),
-                          tr("Le fichier DST n'a pas pu être écrit dans « %1 ». L'ancien fichier, "
-                             "s'il existait, est intact.")
-                              .arg(QFileInfo(file).fileName()),
-                          written.error().message);
+        showFriendlyError(
+            this, tr("Export impossible"),
+            tr("Le fichier %1 n'a pas pu être écrit dans « %2 ». L'ancien fichier, "
+               "s'il existait, est intact.")
+                .arg(QString::fromStdString(format->display_name), QFileInfo(file).fileName()),
+            written.error().message);
         return;
     }
     rememberLastDirectory(file);
     offerRevealInFolder(
-        file,
-        tr("DST exporté : %1 (%2 points).").arg(QFileInfo(file).fileName()).arg(stats.stitches));
+        file, tr("%1 exporté : %2 (%3 points).")
+                  .arg(QString::fromStdString(format->display_name), QFileInfo(file).fileName())
+                  .arg(stats.stitches));
 }
 
 void MainWindow::importDst() {
-    const QString file = QFileDialog::getOpenFileName(this, tr("Importer un DST"), QString(),
-                                                      tr("Broderie Tajima (*.dst)"));
+    // Filtres construits depuis le registre de formats (HP-FMT-003..005) : tous les formats
+    // lisibles d'un coup, puis chacun séparément.
+    QStringList all;
+    QStringList each;
+    for (const auto& f : formats::registered_formats()) {
+        if (!f.can_read || f.decode == nullptr) {
+            continue;
+        }
+        QStringList patterns;
+        for (const auto& e : f.extensions) {
+            patterns << QStringLiteral("*.") + QString::fromStdString(e);
+        }
+        all << patterns;
+        each << tr("%1 (%2)").arg(QString::fromStdString(f.display_name), patterns.join(' '));
+    }
+    const QString filter = (QStringList{tr("Broderies machine (%1)").arg(all.join(' '))} + each)
+                               .join(QStringLiteral(";;"));
+    const QString file =
+        QFileDialog::getOpenFileName(this, tr("Importer une broderie machine"), QString(), filter);
     if (file.isEmpty()) {
         return;
     }
@@ -7602,7 +7686,7 @@ void MainWindow::importDstFile(const QString& file) {
         !project_.embroidery_objects.empty()) {
         if (!confirmDiscardChanges(
                 tr("L'import remplace le document en cours. Enregistrer le projet avant "
-                   "d'importer ce DST ?"))) {
+                   "d'importer cette broderie ?"))) {
             return;
         }
     }
@@ -7610,8 +7694,9 @@ void MainWindow::importDstFile(const QString& file) {
     // (AI-03b), partagée avec la CLI.
     auto imported = project_io::import_machine_file(std::filesystem::path(file.toStdWString()));
     if (!imported) {
-        showFriendlyError(this, tr("Import du DST impossible"),
-                          tr("Ce fichier n'a pas pu être lu comme broderie Tajima (DST)."),
+        showFriendlyError(this, tr("Import impossible"),
+                          tr("Ce fichier n'a pas pu être lu comme broderie machine (DST, PES, "
+                             "JEF ou EXP)."),
                           imported.error().message);
         return;
     }
@@ -7718,6 +7803,10 @@ void MainWindow::exportDxf() {
 void MainWindow::onCanvasClicked(QPointF posMm) {
     // En mode « Déplacer la vue », un clic ne sélectionne rien.
     if (currentTool_ == Tool::Pan) {
+        return;
+    }
+    if (currentTool_ == Tool::Text) {
+        placeTextAt(posMm);
         return;
     }
     if (drawingDirectionGuide()) {
@@ -8428,6 +8517,7 @@ void setEnabledWithReason(QAction* act, bool enabled, const QString& whyDisabled
 
 void MainWindow::updateActions() {
     updateShapeActions();
+    updateTextActions();
     const bool hasImage = project_.hasImage();
     for (QAction* act : imageActions_) {
         setEnabledWithReason(act, hasImage, tr("Ouvrez d'abord une image."));
@@ -8456,6 +8546,7 @@ void MainWindow::updateActions() {
     setEnabledWithReason(offsetSelectionAct_, singleObject, needOneShape);
     updateAlignActions();
     refreshHistoryPanel();
+    refreshThreadSelectionInfo();
     setEnabledWithReason(fillAngleAct_, currentFillObject() != nullptr,
                          tr("Sélectionnez un objet à remplissage (tatami ou directionnel)."));
     setEnabledWithReason(convertSatinAct_,
@@ -8467,6 +8558,7 @@ void MainWindow::updateActions() {
         tr("Aucun point généré : créez d'abord un objet de broderie (tatami, satin…).");
     setEnabledWithReason(statsAct_, sequence_.has_value(), needStitches);
     setEnabledWithReason(exportDstAct_, sequence_.has_value(), needStitches);
+    setEnabledWithReason(productionAct_, sequence_.has_value(), needStitches);
     // Actions « document requis » : mêmes gardes que leurs slots (qui restent en place).
     // « Contenu » = même critère que updateEmptyState()/onAutosaveTick() (image, vecteurs ou
     // broderie) ; Enregistrer reste actif dès que le document a un fichier.

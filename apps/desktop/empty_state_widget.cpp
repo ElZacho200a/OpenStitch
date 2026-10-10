@@ -35,7 +35,7 @@ EmptyStateWidget::EmptyStateWidget(QWidget* parent) : QFrame(parent) {
     buttons->setSpacing(6);
     auto* openImg = new QPushButton(tr("Ouvrir une image ou un SVG…"), this);
     auto* openPrj = new QPushButton(tr("Ouvrir un projet…"), this);
-    auto* importDst = new QPushButton(tr("Importer un DST…"), this);
+    auto* importDst = new QPushButton(tr("Importer une broderie machine…"), this);
     for (QPushButton* b : {openImg, openPrj, importDst}) {
         b->setMinimumWidth(220);
         buttons->addWidget(b, 0, Qt::AlignCenter);

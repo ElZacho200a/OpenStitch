@@ -1,5 +1,6 @@
 add_executable(test_autodigitize
     test_autodigitize.cpp
+    test_thread_limit.cpp
     test_two_color_blend.cpp
 )
 target_link_libraries(test_autodigitize

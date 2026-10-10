@@ -31,6 +31,7 @@
 #include "canvas_view.hpp"
 #include "document_panel.hpp"
 #include "main_window.hpp"
+#include "openstitch/formats/format_registry.hpp"
 #include "properties_panel.hpp"
 
 namespace openstitch::desktop {
@@ -49,8 +50,14 @@ constexpr int kUiLayoutVersion = 1;
     return kImages.contains(suffix);
 }
 
+// Formats de broderie machine lisibles (registre de formats : dst, pes, jef, exp).
+[[nodiscard]] bool isMachineSuffix(const QString& suffix) {
+    const auto* format = formats::find_format_for_extension(suffix.toStdString());
+    return format != nullptr && format->can_read && format->decode != nullptr;
+}
+
 [[nodiscard]] bool isOpenableSuffix(const QString& suffix) {
-    return suffix == QLatin1String("osp") || suffix == QLatin1String("dst") ||
+    return suffix == QLatin1String("osp") || isMachineSuffix(suffix) ||
            suffix == QLatin1String("svg") || isImageSuffix(suffix);
 }
 
@@ -76,7 +83,7 @@ void MainWindow::openPath(const QString& path) {
     if (suffix == QLatin1String("osp")) {
         openRecentFile(
             info.absoluteFilePath()); // garde « modifications non enregistrées » + ouverture
-    } else if (suffix == QLatin1String("dst")) {
+    } else if (isMachineSuffix(suffix)) {
         importDstFile(info.absoluteFilePath());
     } else if (suffix == QLatin1String("svg") || isImageSuffix(suffix)) {
         openImageFile(info.absoluteFilePath());

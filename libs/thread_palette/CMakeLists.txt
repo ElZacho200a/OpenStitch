@@ -1,6 +1,9 @@
 add_library(openstitch_thread_palette
     src/catalog.cpp
     src/color_distance.cpp
+    src/color_reduction.cpp
+    src/chart_import.cpp
+    src/thread_library.cpp
     data/madeira_polyneon.cpp
     data/isacord_40.cpp
 )

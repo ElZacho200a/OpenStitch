@@ -71,11 +71,12 @@ associée** listant les fichiers, classes, fonctions et tests réels.
   [tatami](tatami.md), [remplissage directionnel](directional-fill.md)
 - [Retouche des points](stitch-editing.md)
 - [Palettes et fils](palettes-and-threads.md), [simulation](simulation.md),
-  [analyse et validation](analysis-and-validation.md)
+  [analyse et validation](analysis-and-validation.md),
+  [fiche de production](production-sheet.md)
 
 **Formats, architecture et développement**
 
-- [Format DST](dst-format.md), [format de projet `.osp`](project-format.md)
+- [Format DST](dst-format.md), [formats PES, JEF et EXP](formats-pes-jef-exp.md), [format de projet `.osp`](project-format.md)
 - [Architecture](architecture.md), [référence des modules](module-reference.md),
   [modèle de données](data-model.md), [algorithmes](algorithms.md)
 - [Compilation et développement](build-system.md),

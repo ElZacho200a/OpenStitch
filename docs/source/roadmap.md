@@ -22,8 +22,9 @@ Trois documents, un rôle chacun — ne pas dupliquer leur contenu ici :
   Art** (traits → running/satin par couleur, curseur de détail, 2026-10-05).
 - Fichiers : Nouveau projet, Enregistrer / Enregistrer sous, fichiers récents, sauvegarde
   automatique avec récupération après plantage.
-- Bibliothèque de fils (`thread_palette`) avec distance perceptuelle ; nuanciers fabricants
-  encore partiels (données placeholder).
+- Bibliothèque de fils (`thread_palette`) reliée au document et à l'interface (fil par
+  objet, panneau Fils, film couleur, import de nuanciers CSV/JSON) ; nuanciers de marques
+  intégrés encore en données de démonstration.
 - Distribution : installateur Windows (Inno Setup), workflow de release sur tag, release
   « latest » publiée par la CI — **installateur non signé**.
 

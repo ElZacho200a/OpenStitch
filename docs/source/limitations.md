@@ -30,7 +30,7 @@ fonctionnalité, vérifié dans le code.
 | Export SVG diagnostic | Implémenté | CLI | formats | oui | — |
 | Format projet `.osp` | Implémenté | Fichier | project_io | oui | suivi « modifié » + garde partagée (fermeture et **Nouveau projet**, Ctrl+N) ; chemin mémorisé (Ctrl+S réécrit le fichier, Ctrl+Maj+S = Enregistrer sous), écriture atomique ; pas de fichiers récents ni d'autosave |
 | Cadre de broderie | Implémenté | Affichage | document | oui | taille réglable et persistée ; rectangle simple (pas de profils/formes) |
-| Palette de fils | Partiellement implémenté | — | thread_palette | oui | bibliothèque et distance perceptuelle livrées (HP-THR-001/003) ; nuanciers fabricants placeholder (HP-THR-002) ; pas de fil assigné par objet (RGB seul, HP-THR-004) |
+| Palette de fils | Partiellement implémenté | — | thread_palette | oui | fil assigné par objet, panneau Fils, film couleur, « limiter à N fils », import CSV/JSON (HP-THR-001/003/004, partiel 005/011) ; nuanciers de marques à importer par l'utilisateur, intégrés = démo (HP-THR-002) ; aucun format machine (DST) ne porte les noms de fils |
 | Édition manuelle des points | Partiel (Lot 8.2) | canevas | desktop/commands | QTest | déplacement d'un point + undo/redo ; Stitch/Jump/Trim UI restent à faire |
 | Remplissages courbe/radial/spirale/motif | Non implémenté | — | — | — | prévus |
 | Profils machine/cadres avancés | Non implémenté | — | — | — | cadre = rectangle simple (taille réglable) |

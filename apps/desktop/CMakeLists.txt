@@ -1,4 +1,4 @@
-find_package(Qt6 COMPONENTS Widgets QUIET)
+find_package(Qt6 COMPONENTS Widgets PrintSupport QUIET)
 if(NOT Qt6_FOUND)
     message(WARNING
         "Qt6 introuvable : l'application desktop ne sera pas construite. "
@@ -7,6 +7,7 @@ if(NOT Qt6_FOUND)
 endif()
 
 set(CMAKE_AUTOMOC ON)
+set(CMAKE_AUTORCC ON) # polices intégrées du lettrage (lettering_fonts.qrc)
 
 # Bibliothèque des widgets desktop (tout sauf main()) : permet de lier les
 # mêmes sources dans l'exécutable et dans les tests Qt (tests/unit/desktop),
@@ -15,6 +16,7 @@ set(CMAKE_AUTOMOC ON)
 add_library(openstitch_desktop_widgets STATIC
     main_window.cpp
     main_window_directional.cpp
+    main_window_engine.cpp
     main_window_satin_auto.cpp
     main_window_regions.cpp
     main_window_shapes.cpp
@@ -23,12 +25,24 @@ add_library(openstitch_desktop_widgets STATIC
     main_window_ux.cpp
     main_window_analysis.cpp
     main_window_realistic.cpp
+    main_window_production.cpp
+    production_dialog.cpp
+    production_dialog.hpp
     realistic_preferences.cpp
     realistic_preferences.hpp
     realistic_render_dialog.cpp
     realistic_render_dialog.hpp
     realistic_view_state.hpp
     main_window_editing.cpp
+    main_window_threads.cpp
+    thread_panel.cpp
+    thread_panel.hpp
+    main_window_lettering.cpp
+    font_catalog.cpp
+    font_catalog.hpp
+    text_dialog.cpp
+    text_dialog.hpp
+    lettering_fonts.qrc
     main_window.hpp
     app_theme.cpp
     app_theme.hpp
@@ -63,6 +77,8 @@ add_library(openstitch_desktop_widgets STATIC
     import_dialog.hpp
     brightness_dialog.cpp
     brightness_dialog.hpp
+machine_export_dialog.cpp
+machine_export_dialog.hpp
     generation_options_dialog.cpp
     generation_options_dialog.hpp
     node_handle.hpp
@@ -83,11 +99,11 @@ add_library(openstitch_desktop_widgets STATIC
 add_library(openstitch::desktop_widgets ALIAS openstitch_desktop_widgets)
 target_include_directories(openstitch_desktop_widgets PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(openstitch_desktop_widgets
-    PUBLIC Qt6::Widgets openstitch::core openstitch::image openstitch::document
+    PUBLIC Qt6::Widgets Qt6::PrintSupport openstitch::core openstitch::image openstitch::document
            openstitch::commands openstitch::vectorization openstitch::stitch openstitch::stitch_render
            openstitch::stitch_generation openstitch::formats openstitch::project_io
            openstitch::stitch_analysis openstitch::optimization openstitch::autodigitize
-           openstitch::auto_satin openstitch::segmentation
+           openstitch::auto_satin openstitch::segmentation openstitch::lettering
            openstitch::ai_segmentation
     PRIVATE openstitch::warnings
 )

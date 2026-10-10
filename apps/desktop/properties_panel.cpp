@@ -57,6 +57,36 @@ QStringList lockItems() {
             QObject::tr("Micro-zigzag")};
 }
 
+QStringList borderSideItems() {
+    return {QObject::tr("Centré sur le contour"), QObject::tr("Intérieur"),
+            QObject::tr("Extérieur")};
+}
+QStringList borderCornerItems() {
+    return {QObject::tr("Vifs (onglet)"), QObject::tr("Arrondis")};
+}
+
+// Choix « Manuelle / Automatique » de la sous-couche (HP-ENG-002).
+QComboBox* makeUnderlayModeCombo(QWidget* parent, document::UnderlayMode mode) {
+    auto* combo = new QComboBox(parent);
+    combo->setObjectName(QStringLiteral("combo_underlayMode"));
+    combo->addItems({QObject::tr("Manuelle"), QObject::tr("Automatique")});
+    combo->setCurrentIndex(static_cast<int>(mode));
+    combo->setToolTip(
+        QObject::tr("Automatique : le moteur choisit la sous-couche selon le type, la taille et "
+                    "la largeur de la forme (rien pour une petite forme, centre pour un satin "
+                    "étroit, contour et rangées perpendiculaires pour une grande surface). Les "
+                    "réglages manuels sont alors ignorés."));
+    return combo;
+}
+
+// Active ou grise un champ et son libellé de ligne.
+void setRowEnabled(QFormLayout* form, QWidget* field, bool on) {
+    field->setEnabled(on);
+    if (QWidget* label = form->labelForField(field)) {
+        label->setEnabled(on);
+    }
+}
+
 // Adapte une modification typée (un champ de T) en modification de StitchParams : sans effet si
 // les paramètres ne portent pas un T. (Fonction à part : une lambda imbriquée dans la lambda
 // générique d'édition met MSVC en échec.)
@@ -147,6 +177,20 @@ PropertiesPanel::PropertiesPanel(QWidget* parent) : QWidget(parent) {
     });
     root_->addWidget(discardButton_);
 
+    // Lettrage : bandeau persistant, masqué hors d'une lettre de texte (cf. setTextInfo).
+    textInfoLabel_ = new QLabel(this);
+    textInfoLabel_->setObjectName(QStringLiteral("text_info_label"));
+    textInfoLabel_->setWordWrap(true);
+    textInfoLabel_->setVisible(false);
+    root_->addWidget(textInfoLabel_);
+    textEditButton_ = new QPushButton(tr("Modifier le texte…"), this);
+    textEditButton_->setObjectName(QStringLiteral("text_edit_button"));
+    textEditButton_->setToolTip(
+        tr("Rouvre le texte : police, hauteur, espacement, alignement, type de point (F2)."));
+    textEditButton_->setVisible(false);
+    connect(textEditButton_, &QPushButton::clicked, this, &PropertiesPanel::editTextRequested);
+    root_->addWidget(textEditButton_);
+
     auto* line = new QFrame(this);
     line->setFrameShape(QFrame::HLine);
     line->setFrameShadow(QFrame::Plain);
@@ -160,6 +204,16 @@ PropertiesPanel::PropertiesPanel(QWidget* parent) : QWidget(parent) {
 
     showInfo(tr("Aucune sélection"),
              tr("Sélectionnez une région, un objet vectoriel ou un objet de broderie."));
+}
+
+void PropertiesPanel::setTextInfo(const QString& summary) {
+    textInfoLabel_->setText(summary);
+    textInfoLabel_->setVisible(!summary.isEmpty());
+    textEditButton_->setVisible(!summary.isEmpty());
+}
+
+bool PropertiesPanel::textInfoVisible() const {
+    return !textInfoLabel_->isHidden();
 }
 
 void PropertiesPanel::clearBody() {
@@ -315,7 +369,49 @@ void PropertiesPanel::showVectorObject(ObjectId id, const QString& title, const 
     auto* holder = new QWidget(body_);
     holder->setLayout(form);
     body_->layout()->addWidget(holder);
+
+    // HP-STI-004 : création d'un satin de bordure à largeur fixe le long du contour.
+    auto* borderForm = new QFormLayout();
+    borderForm->setLabelAlignment(Qt::AlignRight);
+    auto* heading = new QLabel(tr("Satin de bordure"), body_);
+    QFont hf = heading->font();
+    hf.setBold(true);
+    heading->setFont(hf);
+    borderForm->addRow(heading);
+    auto* bWidth = makeSpin("spin_borderWidth", 3.0, 0.5, 20.0,
+                            tr("Largeur constante de la colonne le long du contour."));
+    bWidth->setSingleStep(0.1);
+    auto* bSide = new QComboBox(body_);
+    bSide->setObjectName(QStringLiteral("combo_borderSide"));
+    bSide->addItems(borderSideItems());
+    bSide->setToolTip(tr("Côté du contour où s'étend la colonne."));
+    auto* bCorner = new QComboBox(body_);
+    bCorner->setObjectName(QStringLiteral("combo_borderCorner"));
+    bCorner->addItems(borderCornerItems());
+    bCorner->setToolTip(tr("Vifs : onglet. Arrondis : arc dans les coins extérieurs."));
+    auto* bCreate = new QPushButton(tr("Créer le satin de bordure"), body_);
+    bCreate->setObjectName(QStringLiteral("button_createBorderSatin"));
+    bCreate->setToolTip(tr("Un satin par contour (extérieur et trous), annulable (Ctrl+Z)."));
+    borderForm->addRow(tr("Largeur :"), bWidth);
+    borderForm->addRow(tr("Côté :"), bSide);
+    borderForm->addRow(tr("Coins :"), bCorner);
+    borderForm->addRow(QString(), bCreate);
+    connect(bCreate, &QPushButton::clicked, this, [this, id, bWidth, bSide, bCorner] {
+        emit createBorderSatinRequested(id, bWidth->value(), bSide->currentIndex(),
+                                        bCorner->currentIndex());
+    });
+    auto* borderHolder = new QWidget(body_);
+    borderHolder->setLayout(borderForm);
+    body_->layout()->addWidget(borderHolder);
     wheelGuard_->guardAll(body_);
+}
+
+void PropertiesPanel::setJoinMode(std::optional<ObjectId> id, document::JoinMode mode) {
+    if (!id || !currentId_ || *id != *currentId_ || joinCombo_ == nullptr) {
+        return;
+    }
+    const QSignalBlocker block(joinCombo_);
+    joinCombo_->setCurrentIndex(static_cast<int>(mode));
 }
 
 bool PropertiesPanel::showsVectorBox(ObjectId id, QRectF boxMm) const {
@@ -550,6 +646,24 @@ void PropertiesPanel::buildEmbroideryForm(const document::EmbroideryObject& obje
                                                        : tr("Contour cousu");
     form->addRow(tr("Type :"), new QLabel(typeName, body_));
 
+    // HP-ENG-010 : sens de couture automatique, par objet (le réglage global est dans
+    // « Options de génération »). Le mode n'appartient pas aux `StitchParams` : signal dédié.
+    auto* joinCombo = new QComboBox(body_);
+    joinCombo->setObjectName(QStringLiteral("combo_joinMode"));
+    joinCombo->addItems({tr("Réglage du projet"), tr("Automatique"), tr("Désactivée")});
+    joinCombo->setCurrentIndex(static_cast<int>(object.join));
+    joinCombo->setToolTip(
+        tr("Entrée/sortie automatiques : l'objet est cousu dans le sens qui rapproche son début "
+           "de la fin de l'objet précédent (moins de sauts et de coupes). « Réglage du projet » "
+           "suit Broderie > Options de génération ; « Désactivée » garde le sens naturel."));
+    joinCombo_ = joinCombo;
+    form->addRow(tr("Entrée/sortie :"), joinCombo);
+    connect(joinCombo, &QComboBox::currentIndexChanged, this, [this, id](int index) {
+        if (!building_) {
+            emit joinModeEdited(id, index);
+        }
+    });
+
     building_ = true;
     std::visit(
         [&](const auto& p) {
@@ -644,11 +758,21 @@ void PropertiesPanel::buildEmbroideryForm(const document::EmbroideryObject& obje
                 uSpacing->setObjectName(QStringLiteral("spin_underlaySpacing"));
                 auto* underpath = new QCheckBox(tr("Liaisons cousues cachées"), body_);
                 underpath->setChecked(p.hidden_underpath);
+                // HP-ENG-001 : compensation du tirage (allongement des rangées dans l'axe du fil).
+                auto* pull =
+                    mmSpin(to_millimeters(p.pull_compensation).value, 3.0, 0.0,
+                           tr("Les rangées dépassent du contour de cette longueur, dans l'axe "
+                              "du fil : le fil tire dans sa direction et la forme cousue "
+                              "rétrécit. 0,2 à 0,4 mm est courant ; 0 = aucune."));
+                pull->setObjectName(QStringLiteral("spin_tatamiPull"));
+                auto* uMode = makeUnderlayModeCombo(body_, p.underlay_mode);
                 form->addRow(tr("Espacement des rangées :"), spacing);
                 form->addRow(tr("Longueur de point :"), len);
                 form->addRow(tr("Angle (orientation) :"), angle);
                 form->addRow(tr("Retrait de bord :"), inset);
+                form->addRow(tr("Compensation du tirage :"), pull);
                 form->addRow(tr("Décalage (stagger) :"), stagger);
+                form->addRow(tr("Sous-couche :"), uMode);
                 form->addRow(QString(), uEdge);
                 form->addRow(tr("Retrait de la sous-couche :"), uInset);
                 form->addRow(QString(), uPar);
@@ -656,6 +780,19 @@ void PropertiesPanel::buildEmbroideryForm(const document::EmbroideryObject& obje
                 form->addRow(QString(), underpath);
                 dependOn(uEdge, uInset);
                 dependOn(uPar, uSpacing);
+                // Mode automatique : les réglages manuels sont ignorés, donc grisés.
+                const auto syncUnderlay = [form, uMode, uEdge, uInset, uPar, uSpacing] {
+                    const bool manual = uMode->currentIndex() == 0;
+                    uEdge->setEnabled(manual);
+                    uPar->setEnabled(manual);
+                    setRowEnabled(form, uInset, manual && uEdge->isChecked());
+                    setRowEnabled(form, uSpacing, manual && uPar->isChecked());
+                };
+                syncUnderlay();
+                connect(uMode, &QComboBox::currentIndexChanged, this,
+                        [syncUnderlay](int) { syncUnderlay(); });
+                bindEnumField<T>(this, edit, uMode, tr("Sous-couche"), &T::underlay_mode);
+                bindMm(pull, tr("Compensation du tirage"), &T::pull_compensation);
                 bindMm(spacing, tr("Espacement des rangées"), &T::row_spacing);
                 bindMm(len, tr("Longueur de point"), &T::stitch_length);
                 connect(angle, &QDoubleSpinBox::valueChanged, this, [edit](double v) {
@@ -832,6 +969,8 @@ void PropertiesPanel::buildEmbroideryForm(const document::EmbroideryObject& obje
                 form->addRow(tr("Retrait de bord :"), inset);
                 form->addRow(tr("Décalage (stagger) :"), stagger);
                 form->addRow(tr("Chevauchement des secteurs :"), overlap);
+                auto* uMode = makeUnderlayModeCombo(body_, p.underlay_mode);
+                form->addRow(tr("Sous-couche :"), uMode);
                 form->addRow(QString(), uEdge);
                 form->addRow(tr("Retrait de la sous-couche :"), uInset);
                 form->addRow(QString(), uPar);
@@ -842,6 +981,17 @@ void PropertiesPanel::buildEmbroideryForm(const document::EmbroideryObject& obje
                 form->addRow(QString(), reseed);
                 dependOn(uEdge, uInset);
                 dependOn(uPar, uSpacing);
+                const auto syncUnderlay = [form, uMode, uEdge, uInset, uPar, uSpacing] {
+                    const bool manual = uMode->currentIndex() == 0;
+                    uEdge->setEnabled(manual);
+                    uPar->setEnabled(manual);
+                    setRowEnabled(form, uInset, manual && uEdge->isChecked());
+                    setRowEnabled(form, uSpacing, manual && uPar->isChecked());
+                };
+                syncUnderlay();
+                connect(uMode, &QComboBox::currentIndexChanged, this,
+                        [syncUnderlay](int) { syncUnderlay(); });
+                bindEnumField<T>(this, edit, uMode, tr("Sous-couche"), &T::underlay_mode);
                 // Le début du dégradé suit l'espacement de référence.
                 connect(spacing, &QDoubleSpinBox::valueChanged, this, [edit](double v) {
                     edit(tr("Espacement des lignes"), [v](T& t) {
@@ -927,11 +1077,59 @@ void PropertiesPanel::buildEmbroideryForm(const document::EmbroideryObject& obje
                 auto* lockEnd = new QComboBox(body_);
                 lockEnd->addItems(lockItems());
                 lockEnd->setCurrentIndex(static_cast<int>(p.lock_end));
+                // HP-STI-004 : satin de bordure -- largeur, côté et coins régénèrent les rails
+                // depuis le contour source (signal dédié, MainWindow exécute la commande).
+                if (p.border) {
+                    auto* heading = new QLabel(tr("Satin de bordure"), body_);
+                    QFont hf = heading->font();
+                    hf.setBold(true);
+                    heading->setFont(hf);
+                    form->addRow(heading);
+                    auto* bWidth =
+                        mmSpin(to_millimeters(p.border->width).value, 20.0, 0.5,
+                               tr("Largeur constante de la colonne le long du contour."));
+                    bWidth->setObjectName(QStringLiteral("spin_borderWidth"));
+                    auto* bSide = new QComboBox(body_);
+                    bSide->setObjectName(QStringLiteral("combo_borderSide"));
+                    bSide->addItems(borderSideItems());
+                    bSide->setCurrentIndex(static_cast<int>(p.border->side));
+                    bSide->setToolTip(tr("Côté du contour où s'étend la colonne."));
+                    auto* bCorner = new QComboBox(body_);
+                    bCorner->setObjectName(QStringLiteral("combo_borderCorner"));
+                    bCorner->addItems(borderCornerItems());
+                    bCorner->setCurrentIndex(static_cast<int>(p.border->corner));
+                    bCorner->setToolTip(tr("Vifs : jointure en onglet. Arrondis : le bord "
+                                           "extérieur décrit un arc dans les coins."));
+                    form->addRow(tr("Largeur de la bordure :"), bWidth);
+                    form->addRow(tr("Côté :"), bSide);
+                    form->addRow(tr("Coins :"), bCorner);
+                    const auto emitBorder = [this, id, bWidth, bSide, bCorner] {
+                        if (!building_) {
+                            emit borderSatinEdited(id, bWidth->value(), bSide->currentIndex(),
+                                                   bCorner->currentIndex());
+                        }
+                    };
+                    connect(bWidth, &QDoubleSpinBox::valueChanged, this, emitBorder);
+                    connect(bSide, &QComboBox::currentIndexChanged, this, emitBorder);
+                    connect(bCorner, &QComboBox::currentIndexChanged, this, emitBorder);
+                }
+                auto* uMode = makeUnderlayModeCombo(body_, p.underlay_mode);
                 form->addRow(tr("Espacement :"), density);
                 form->addRow(tr("Compensation de tirage :"), comp);
+                form->addRow(tr("Sous-couche :"), uMode);
                 form->addRow(QString(), underlay);
                 form->addRow(QString(), edgeU);
                 form->addRow(QString(), zigU);
+                const auto syncUnderlay = [uMode, underlay, edgeU, zigU] {
+                    const bool manual = uMode->currentIndex() == 0;
+                    underlay->setEnabled(manual);
+                    edgeU->setEnabled(manual);
+                    zigU->setEnabled(manual);
+                };
+                syncUnderlay();
+                connect(uMode, &QComboBox::currentIndexChanged, this,
+                        [syncUnderlay](int) { syncUnderlay(); });
+                bindEnumField<T>(this, edit, uMode, tr("Sous-couche"), &T::underlay_mode);
                 form->addRow(tr("Compensation gauche :"), pullL);
                 form->addRow(tr("Compensation droite :"), pullR);
                 form->addRow(tr("Points courts dans les virages :"), shortCombo);
@@ -1076,9 +1274,21 @@ void PropertiesPanel::buildEmbroideryForm(const document::EmbroideryObject& obje
                 form->addRow(tr("Compensation gauche :"), pullL);
                 form->addRow(tr("Compensation droite :"), pullR);
                 section(tr("Sous-couches"));
+                auto* uMode = makeUnderlayModeCombo(body_, p.underlay_mode);
+                form->addRow(tr("Sous-couche :"), uMode);
                 form->addRow(QString(), underlay);
                 form->addRow(QString(), edgeU);
                 form->addRow(QString(), zigU);
+                const auto syncUnderlay = [uMode, underlay, edgeU, zigU] {
+                    const bool manual = uMode->currentIndex() == 0;
+                    underlay->setEnabled(manual);
+                    edgeU->setEnabled(manual);
+                    zigU->setEnabled(manual);
+                };
+                syncUnderlay();
+                connect(uMode, &QComboBox::currentIndexChanged, this,
+                        [syncUnderlay](int) { syncUnderlay(); });
+                bindEnumField<T>(this, edit, uMode, tr("Sous-couche"), &T::underlay_mode);
                 section(tr("Extrémités"));
                 form->addRow(tr("Forme du bout (début) :"), capStart);
                 form->addRow(tr("Forme du bout (fin) :"), capEnd);

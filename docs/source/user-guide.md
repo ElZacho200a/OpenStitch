@@ -198,8 +198,9 @@ Précisions sur les gestes du tableau :
 | Ouvrir un projet… | — | Recharge un `.osp` |
 | Récents | — | Sous-menu des 10 derniers projets ouverts ou enregistrés (voir ci-dessous) |
 | Vider la liste des récents | — | Efface la liste |
-| Exporter en DST… | Ctrl+E | Montre d'abord le résumé (dimensions, points, résultat de l'analyse), puis demande le fichier `.dst` (points uniquement) |
-| Importer un DST… | — | Relit un `.dst` comme séquence de points (propose d'enregistrer le projet en cours) |
+| Exporter une broderie machine… | Ctrl+E | Dialogue : format (DST, PES, JEF, EXP), options (coupes, arrêts, changements de couleur) et résumé pré-export (dimensions, points, analyse, limites du format) ; puis le fichier, avec l'extension du format (points uniquement) |
+| Importer une broderie machine… | — | Relit un `.dst`, `.pes`, `.jef` ou `.exp` comme séquence de points, avec les couleurs de fil pour PES et JEF (propose d'enregistrer le projet en cours) ; le glisser-déposer accepte les mêmes extensions |
+| Fiche de production… | — | Aperçu, impression ou export PDF A4 d'une fiche (dimensions, points, temps estimé, blocs de couleur, avertissements, notes) ; voir [fiche de production](production-sheet.md) |
 | Importer un DXF… / Exporter en DXF… | — | Échange de contours vectoriels avec un logiciel de dessin (les points ne sont pas concernés) |
 | Quitter | Ctrl+Q | Ferme l'application |
 
@@ -400,6 +401,25 @@ d'annulation** et garde les objets de broderie de la forme conservée.
   point par point ne sont pas copiés). La coupe retire une bande de 0,02 mm, sans effet sur la
   couture.
 
+## Menu Texte (lettrage)
+
+Voir [Lettrage](lettering.md) pour le fonctionnement détaillé.
+
+- **Outil Texte** (touche **T**) — cliquez sur le canevas : le dialogue s'ouvre, le texte est
+  posé à cet endroit (début de la ligne de base, ou centre / bord droit selon l'alignement).
+- **Nouveau texte…** — idem, au centre du cadre.
+- **Modifier le texte…** (**F2**, double-clic sur une lettre, ou bouton de l'inspecteur) — rouvre
+  le dialogue ; les lettres sont régénérées (un seul pas d'annulation). Un déplacement du texte
+  entier est conservé ; les retouches faites à la main sur une lettre sont remplacées.
+- **Supprimer le texte** — retire toutes les lettres.
+
+Dans le dialogue : police (deux polices intégrées, puis polices installées), hauteur de
+capitale, couleur, type de point (**Automatique** : satin pour les traits fins, tatami pour les
+gros ; **Satin**, **Tatami**, **Contour**), alignement, espaces entre lettres et mots,
+interligne, crénage, position, rotation. L'aperçu montre les contours ; les avertissements
+(texte sous 5 mm, trait trop fin, lettre cousue en tatami faute de satin possible, caractère
+absent de la police) s'affichent sous l'aperçu et dans le panneau Analyse.
+
 ## Type de points pour plusieurs formes
 
 La sélection multiple de formes (Maj + clic, Ctrl + clic, rectangle) accepte **tous les types de
@@ -500,7 +520,25 @@ propose de continuer ou de préférer un remplissage tatami.
 - **Couper avant chaque changement de fil** ;
 - **Point d'arrêt** : aucun, aller-retour, triangle ou micro-zigzag, avec sa longueur
   et son nombre de répétitions ;
-- **Fusionner les points trop courts** et la longueur minimale de point.
+- **Fusionner les points trop courts** et la longueur minimale de point ;
+- **Découper les points trop longs** et la longueur maximale de point (7 mm) ;
+- **Entrée/sortie automatiques des objets** : chaque objet est cousu dans le sens qui
+  rapproche son début de la fin du précédent (moins de sauts). Chaque objet peut
+  suivre ou refuser ce réglage (« Entrée/sortie » dans l'inspecteur).
+
+### Réglages de moteur par objet (inspecteur)
+
+- **Compensation du tirage** (tatami) : les rangées dépassent du contour de la
+  valeur choisie (0 à 3 mm ; 0,2 à 0,4 mm est courant) pour compenser le
+  rétrécissement dans l'axe du fil.
+- **Sous-couche : Automatique** (tatami, directionnel, satin, auto-satin) : le
+  moteur choisit la sous-couche selon la taille et la largeur de la forme ; les
+  cases manuelles sont alors grisées.
+- **Satin de bordure** : sélectionnez une forme, réglez *Satin de bordure*
+  (largeur, côté centré/intérieur/extérieur, coins vifs/arrondis) puis
+  **Créer le satin de bordure** ; un satin par contour et par trou. Changer les
+  réglages du satin créé le régénère depuis le contour.
+- Ces réglages ne sont **pas validés sur machine réelle**.
 
 La séquence se termine toujours par une **coupe finale**, et à l'export vers une
 machine chaque coupe est écrite en **trois sauts de 0,1 mm non nuls** suivis du
@@ -713,6 +751,39 @@ verrou d'édition (l'objet reste déplaçable et modifiable ; l'ancien nom « Ve
 proximité. Le libellé *Trajet estimé* donne la distance à vide entre objets et le nombre de
 changements de fil.
 
+## Panneau Fils et menu Fils
+
+Le panneau **Fils** (menu *Fils* ou *Affichage ▸ Panneaux*, masqué par défaut) relie le
+motif aux fils réels. Il a trois onglets ; une ligne en tête rappelle la sélection courante.
+
+- **Projet** — les fils utilisés dans l'ordre de première couture (pastille, marque et
+  référence ou `#RRGGBB` pour une couleur libre, nombre d'objets, de points, longueur de fil
+  et durée estimée en infobulle). *Sélectionner les objets de ce fil* ; *Remplacer ce fil par
+  celui du catalogue* (tout le motif, un seul pas d'annulation) ; *Couleurs libres → fil le
+  plus proche* (associe chaque objet sans fil au fil le plus proche du nuancier choisi, sur la
+  sélection ou sur tout le motif) ; **Limiter à N fils** (fusionne les couleurs les plus
+  proches jusqu'à N, la couleur du plus grand aplat l'emporte) ; *Exporter la liste des
+  fils (CSV)…* (tableur : ordre, marque, nuancier, référence, nom, couleur, objets, points,
+  longueur, durée).
+- **Catalogues** — un nuancier à la fois (ou tous), recherche par référence, nom ou gamme.
+  **Un clic sur un fil l'assigne à tous les objets sélectionnés** (sélection multiple
+  comprise ; un seul Ctrl+Z annule l'ensemble). La couleur de l'objet devient celle du fil.
+  *Fils les plus proches de la sélection* classe les 8 fils les plus proches (distance
+  CIEDE2000) de la couleur du premier objet sélectionné. *Importer un nuancier…* charge un
+  fichier CSV ou JSON (format décrit dans *Fils ▸ Format d'import des nuanciers…*) ; les
+  nuanciers importés sont conservés d'une session à l'autre et peuvent être retirés. Le
+  nuancier **Générique** (couleurs usuelles sans marque) est toujours disponible ; les
+  nuanciers de marques intégrés sont des **données de démonstration fictives**, signalées
+  comme telles : importez vos propres cartes de fils.
+- **Film couleur** — les blocs de couleur dans l'ordre de couture. Glissez un bloc (ou
+  *Monter*/*Descendre*) pour réordonner les couleurs ; les objets dont l'ordre est figé ne
+  bougent pas. *Fusionner les blocs de même fil* regroupe les passages d'un même fil pour
+  réduire les changements ; attention, un fil cousu plus tard passe plus tôt (ordre des
+  couches), d'où l'annulation en un pas.
+
+Dans la numérisation automatique, la case **Limiter à N fils** applique la même fusion des
+couleurs proches avant de créer les objets.
+
 ## Barre de simulation
 
 Boutons de lecture/pause et un curseur qui révèle la couture jusqu'à un index de
@@ -782,7 +853,7 @@ la liste complète et filtrable est dans **Aide ▸ Gestes souris et clavier** (
 | Ctrl+Maj+S | Enregistrer le projet sous… |
 | Ctrl+Z | Annuler |
 | Ctrl+Y ou Ctrl+Maj+Z | Rétablir |
-| Ctrl+E | Exporter en DST (résumé puis choix du fichier) |
+| Ctrl+E | Exporter une broderie machine (format et résumé, puis choix du fichier) |
 | Suppr | Supprimer la sélection (région, objet de broderie ou objets vectoriels) |
 | Ctrl++ / Ctrl+- / Ctrl+0 | Zoom avant / arrière / ajuster |
 | F | Ajuster au canevas |

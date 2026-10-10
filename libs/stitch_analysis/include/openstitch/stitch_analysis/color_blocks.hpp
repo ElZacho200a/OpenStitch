@@ -18,13 +18,12 @@ namespace openstitch::stitch_analysis {
 // (ou au tout début de la séquence) et se termine juste avant le
 // `ColorChange`/`Stop`/`End` suivant. La couleur et l'identité de fil
 // viennent de l'objet source (`EmbroideryObject`) de la PREMIÈRE commande du
-// bloc ; `thread_key` reste vide en P0 (renseigné par S4 depuis le fil de
-// l'objet, sans changer le type, AD-02 bis). Un bloc dont aucun objet source
-// n'est trouvable (`source == ObjectId{}`, typiquement un design importé --
-// DST ne porte aucune vraie couleur, roadmap §2 FMT-002 -- ou tout autre
-// identifiant orphelin) reçoit une couleur par défaut NOIRE, `thread_key`
-// vide : une couleur inconnue honnête, jamais une supposition. Les blocs
-// vides (deux arrêts consécutifs sans point entre eux) sont omis.
+// bloc ; `thread_key` est le fil de nuancier assigné à cet objet
+// (`EmbroideryObject::thread`, HP-THR-004), vide pour une couleur libre. Un bloc dont aucun objet
+// source n'est trouvable (`source == ObjectId{}`, typiquement un design importé -- DST ne porte
+// aucune vraie couleur, roadmap §2 FMT-002 -- ou tout autre identifiant orphelin) reçoit une
+// couleur par défaut NOIRE, `thread_key` vide : une couleur inconnue honnête, jamais une
+// supposition. Les blocs vides (deux arrêts consécutifs sans point entre eux) sont omis.
 [[nodiscard]] std::vector<stitch::ColorBlock> color_blocks(const document::Project& project,
                                                            const stitch::StitchSequence& sequence);
 

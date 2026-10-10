@@ -73,6 +73,8 @@ private slots:
     void autoSatinGuideAngleEditAndRemoveEmitDedicatedSignals();
     void autoSatinStateRefreshUpdatesListWithoutRebuildingTheForm();
     void tatamiEditChangesOnlyTheTouchedFieldWithoutRounding();
+    void engineSettingsEmitDedicatedEdits();
+    void borderSatinInspectorEmitsRegenerationRequests();
     void rowSpacingAndLengthsAreBoundedWithRangeTooltips();
     void wheelDoesNotChangeAnUnfocusedField();
     void underlayFieldsAreGreyedWhenTheirBoxIsUnchecked();
@@ -405,6 +407,77 @@ void PropertiesPanelTest::tatamiEditChangesOnlyTheTouchedFieldWithoutRounding() 
     angle->setValue(45.5);
     QCOMPARE(std::get<openstitch::document::TatamiParams>(*emitted).angle.radians,
              45.5 * 3.14159265358979323846 / 180.0);
+}
+
+void PropertiesPanelTest::engineSettingsEmitDedicatedEdits() {
+    PropertiesPanel panel;
+    EmbroideryObject e;
+    e.id = openstitch::ObjectId{40};
+    e.params = openstitch::document::TatamiParams{};
+    panel.showEmbroidery(e);
+
+    std::optional<StitchParams> emitted;
+    QObject::connect(&panel, &PropertiesPanel::paramsEdited, &panel,
+                     [&](openstitch::ObjectId, StitchParams p, QString) { emitted = p; });
+    auto* pull = panel.findChild<QDoubleSpinBox*>(QStringLiteral("spin_tatamiPull"));
+    QVERIFY(pull != nullptr);
+    QCOMPARE(pull->maximum(), 3.0);
+    QVERIFY(pull->toolTip().contains(QStringLiteral("Plage")));
+    pull->setValue(0.3);
+    QVERIFY(emitted.has_value());
+    QCOMPARE(std::get<openstitch::document::TatamiParams>(*emitted).pull_compensation.value, 300);
+
+    auto* mode = panel.findChild<QComboBox*>(QStringLiteral("combo_underlayMode"));
+    QVERIFY(mode != nullptr);
+    mode->setCurrentIndex(1);
+    QCOMPARE(std::get<openstitch::document::TatamiParams>(*emitted).underlay_mode,
+             openstitch::document::UnderlayMode::Auto);
+    QVERIFY(!panel.findChild<QCheckBox*>(QStringLiteral("check_underlayEdge"))->isEnabled());
+
+    int joinMode = -1;
+    QObject::connect(&panel, &PropertiesPanel::joinModeEdited, &panel,
+                     [&](openstitch::ObjectId, int m) { joinMode = m; });
+    panel.findChild<QComboBox*>(QStringLiteral("combo_joinMode"))->setCurrentIndex(2);
+    QCOMPARE(joinMode, 2);
+    // Resynchronisation sans émission (annulation).
+    joinMode = -1;
+    panel.setJoinMode(e.id, openstitch::document::JoinMode::Auto);
+    QCOMPARE(joinMode, -1);
+    QCOMPARE(panel.findChild<QComboBox*>(QStringLiteral("combo_joinMode"))->currentIndex(), 1);
+}
+
+void PropertiesPanelTest::borderSatinInspectorEmitsRegenerationRequests() {
+    PropertiesPanel panel;
+    EmbroideryObject e;
+    e.id = openstitch::ObjectId{41};
+    openstitch::document::SatinParams satin;
+    satin.border = openstitch::document::BorderSatinSpec{};
+    e.params = satin;
+    panel.showEmbroidery(e);
+    double widthMm = 0;
+    int side = -1;
+    QObject::connect(&panel, &PropertiesPanel::borderSatinEdited, &panel,
+                     [&](openstitch::ObjectId, double w, int s, int) {
+                         widthMm = w;
+                         side = s;
+                     });
+    panel.findChild<QDoubleSpinBox*>(QStringLiteral("spin_borderWidth"))->setValue(4.5);
+    QCOMPARE(widthMm, 4.5);
+    panel.findChild<QComboBox*>(QStringLiteral("combo_borderSide"))->setCurrentIndex(1);
+    QCOMPARE(side, 1);
+
+    // Objet vectoriel : création.
+    bool requested = false;
+    QObject::connect(&panel, &PropertiesPanel::createBorderSatinRequested, &panel,
+                     [&](openstitch::ObjectId, double w, int, int) {
+                         requested = true;
+                         widthMm = w;
+                     });
+    panel.showVectorObject(openstitch::ObjectId{7}, QStringLiteral("forme"), QStringLiteral("d"),
+                           QRectF(0, 0, 10, 10));
+    panel.findChild<QPushButton*>(QStringLiteral("button_createBorderSatin"))->click();
+    QVERIFY(requested);
+    QCOMPARE(widthMm, 3.0);
 }
 
 void PropertiesPanelTest::rowSpacingAndLengthsAreBoundedWithRangeTooltips() {

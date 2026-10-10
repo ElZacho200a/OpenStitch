@@ -8,6 +8,7 @@
 
 #include "openstitch/core/error.hpp"
 #include "openstitch/formats/machine.hpp"
+#include "openstitch/formats/machine_design.hpp"
 #include "openstitch/stitch/sequence.hpp"
 
 namespace openstitch::formats {
@@ -33,6 +34,13 @@ struct FormatInfo {
     MachineConstraints default_constraints{};
     EncodeFn encode{nullptr};
     DecodeFn decode{nullptr};
+    // HP-FMT-002..005 : variantes AVEC options machine (coupes, arrêts, couleurs) et couleurs
+    // de blocs décodées. Renseignées pour tous les formats ; `encode`/`decode` restent les
+    // appels simples (options par défaut) pour la compatibilité.
+    EncodeExFn encode_ex{nullptr};
+    DecodeExFn decode_ex{nullptr};
+    // Le format porte-t-il des couleurs de fil réelles (PES, JEF) ?
+    bool carries_colors{false};
 };
 
 [[nodiscard]] std::span<const FormatInfo> registered_formats();

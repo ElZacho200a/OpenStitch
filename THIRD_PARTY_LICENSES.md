@@ -12,6 +12,8 @@ Ce fichier est mis à jour à **chaque** ajout ou retrait de dépendance.
 | Clipper2 | via vcpkg | BSL-1.0 | Opérations booléennes et offsets de polygones (encapsulée dans libs/geometry) | https://github.com/AngusJohnson/Clipper2 |
 | nlohmann/json | via vcpkg | MIT | Sérialisation du format projet (encapsulée dans libs/project_io) | https://github.com/nlohmann/json |
 | minizip-ng | via vcpkg | zlib | Archive ZIP du format projet .osp (encapsulée dans libs/project_io) | https://github.com/zlib-ng/minizip-ng |
+| FreeType | via vcpkg (sans fonctionnalités optionnelles) | **FTL** (FreeType License, BSD-like ; l'option GPLv2 n'est pas utilisée) | Lecture des contours de glyphes TrueType/OpenType (encapsulée dans libs/lettering) | https://freetype.org |
+| Bitstream Vera Sans (Roman, Gras) | fichiers dans `resources/fonts/` | Licence Bitstream Vera (redistribution libre, incluse : `resources/fonts/bitstream-vera-license.txt`) | Polices intégrées du lettrage | https://www.gnome.org/fonts/ |
 | Catch2 v3 | via vcpkg | BSL-1.0 | Tests (dev uniquement) | https://github.com/catchorg/Catch2 |
 | Qt 6.8 LTS (Widgets, Gui, Core) | binaires officiels | **LGPL-3.0** | Interface graphique | https://www.qt.io |
 
@@ -37,6 +39,12 @@ ligne documente la provenance exigée par la procédure de sourçage
 | Madeira | Polyneon 40 | **DONNÉES PLACEHOLDER — non sourcées** : à transcrire depuis https://www.madeira.co.uk (fiche couleurs Polyneon 40) | — (pas encore consultée ; voir `libs/thread_palette/data/madeira_polyneon.cpp`) |
 | Isacord | Isacord 40 | **DONNÉES PLACEHOLDER — non sourcées** : à transcrire depuis https://www.isacord.com (fiche couleurs Isacord 40) | — (pas encore consultée ; voir `libs/thread_palette/data/isacord_40.cpp`) |
 
+Le nuancier **Générique** (`generic`, `ThreadLibrary`) n'est pas une donnée de
+fabricant : ce sont des couleurs usuelles nommées (blanc, rouge, bleu marine…)
+dont les valeurs RGB ont été choisies pour ce projet, sous la licence du projet
+(Apache-2.0). Les nuanciers de marques réels ne sont **pas redistribués** : ils
+sont chargés par l'utilisateur (import CSV/JSON, voir `palettes-and-threads.md`).
+
 **Important** : les deux fichiers de données ci-dessus contiennent
 actuellement des codes/noms/RGB **inventés** (forme plausible d'un nuancier
 réel, pas une transcription) car l'environnement d'implémentation initial
@@ -48,3 +56,11 @@ vraie transcription avant toute utilisation hors développement/test — voir
 ## Dépendances prévues (non encore intégrées)
 
 _(Toutes les dépendances prévues en Phase 0 sont désormais intégrées.)_
+
+## Tables de fils des formats machine (PES, JEF)
+
+`libs/formats/src/machine_palettes.cpp` : tables de 64 fils PEC (Brother) et de 78 fils JEF
+(Janome), valeurs RGB factuelles transcrites depuis **pyembroidery** (EmbThreadPec.py,
+EmbThreadJef.py), licence MIT, (c) The Embroidermodder Team / contributeurs pyembroidery.
+Aucun code n'est repris : les codecs PES/JEF/EXP sont réécrits d'après la structure des formats.
+Voir `docs/source/formats-pes-jef-exp.md`.

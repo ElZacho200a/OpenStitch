@@ -8,12 +8,15 @@
 #include "openstitch/auto_satin/skeleton_satin.hpp"
 #include "openstitch/core/parallel.hpp"
 #include "openstitch/geometry/offset.hpp"
+#include "openstitch/geometry/polyline.hpp"
 #include "openstitch/stitch_generation/directional_fill.hpp"
+#include "openstitch/stitch_generation/join.hpp"
 #include "openstitch/stitch_generation/lock.hpp"
 #include "openstitch/stitch_generation/routing.hpp"
 #include "openstitch/stitch_generation/running_stitch.hpp"
 #include "openstitch/stitch_generation/satin.hpp"
 #include "openstitch/stitch_generation/tatami.hpp"
+#include "openstitch/stitch_generation/underlay_auto.hpp"
 
 namespace openstitch::stitch_generation {
 
@@ -132,6 +135,14 @@ void generate_satin(stitch::StitchSequence& sequence, const document::Embroidery
     config.pull_right = params.pull_right;
     config.push_start = params.push_start;
     config.push_end = params.push_end;
+    // Sous-couche automatique (HP-ENG-002) : selon la largeur réelle de la colonne.
+    if (params.underlay_mode == document::UnderlayMode::Auto) {
+        const SatinUnderlayChoice c =
+            choose_satin_underlay(satin_mean_width_mm(params.rail_a, params.rail_b));
+        config.center_underlay = c.center;
+        config.underlay_edge = c.edge;
+        config.underlay_zigzag = c.zigzag;
+    }
     // Avec barreaux (satin auto) : correspondance par sections + espacement
     // perpendiculaire. Sans barreaux (satin manuel/legacy) : ré-échantillonnage
     // par fraction d'abscisse.
@@ -236,6 +247,21 @@ void generate_auto_satin(stitch::StitchSequence& sequence, const document::Vecto
     config.pull_right = params.pull_right;
     config.push_start = params.push_start;
     config.push_end = params.push_end;
+    // Sous-couche automatique (HP-ENG-002) : largeur moyenne de la région source.
+    if (params.underlay_mode == document::UnderlayMode::Auto) {
+        double area = 0.0;
+        double perimeter = 0.0;
+        for (const geometry::PathSet& set : source.paths) {
+            const ShapeMetrics m = measure_shape(set);
+            area += m.area_mm2;
+            perimeter += m.perimeter_mm;
+        }
+        const SatinUnderlayChoice c =
+            choose_satin_underlay(perimeter > 1e-9 ? 2.0 * area / perimeter : 0.0);
+        config.center_underlay = c.center;
+        config.underlay_edge = c.edge;
+        config.underlay_zigzag = c.zigzag;
+    }
 
     std::vector<std::vector<SatinStation>> columns;
     for (const geometry::PathSet& set : source.paths) {
@@ -486,7 +512,7 @@ void generate_tatami(stitch::StitchSequence& sequence, const document::VectorObj
         }
         for (const geometry::PathSet& region : filled) {
             // Sous-couches d'abord (§15), puis couche supérieure.
-            for (const auto& up : tatami_underlay(region, params)) {
+            for (const auto& up : tatami_underlay(region, resolve_underlay(params, region))) {
                 emit_polyline(sequence, up, object.id, stitch::StitchPass::Underlay);
             }
             emit_fill(sequence, fill_tatami(region, params), object.id);
@@ -512,7 +538,7 @@ void generate_directional(stitch::StitchSequence& sequence, const document::Vect
             filled.push_back(set);
         }
         for (const geometry::PathSet& region : filled) {
-            for (const auto& up : directional_underlay(region, params)) {
+            for (const auto& up : directional_underlay(region, resolve_underlay(params, region))) {
                 emit_polyline(sequence, up, object.id, stitch::StitchPass::Underlay);
             }
             emit_fill(sequence, fill_directional(region, params), object.id);
@@ -530,7 +556,10 @@ bool is_routable_satin(const document::EmbroideryObject& o) {
     if (!o.is_satin()) {
         return false;
     }
-    return std::get<document::SatinParams>(o.params).rungs.size() >= 2;
+    const auto& p = std::get<document::SatinParams>(o.params);
+    // Un satin de bordure (HP-STI-004) est une boucle ou un tracé indépendant : jamais
+    // routé avec ses voisins (le routage supposerait un réseau de colonnes jointives).
+    return p.rungs.size() >= 2 && !p.border;
 }
 
 } // namespace
@@ -660,14 +689,36 @@ Result<stitch::StitchSequence> generate_sequence(const document::Project& projec
             if (group.size() >= 2) {
                 generate_satin_group(sequence, group);
             } else {
-                generate_satin(sequence, object, std::get<document::SatinParams>(object.params));
+                document::SatinParams single = std::get<document::SatinParams>(object.params);
+                // Entrée automatique (HP-ENG-010) : même règle que pour les autres colonnes.
+                if (join_active(project, object) && !sequence.commands.empty() &&
+                    !single.entry_point && !single.exit_point) {
+                    single.entry_point = sequence.commands.back().pos;
+                }
+                generate_satin(sequence, object, single);
             }
             previous = group.back();
             continue;
         }
 
+        // Entrée/sortie automatiques (HP-ENG-010) : l'objet est cousu dans le sens qui
+        // minimise le déplacement depuis la fin de l'objet précédent. Un point d'entrée
+        // explicite de l'objet est toujours respecté.
+        const bool joinHere = join_active(project, object) && !sequence.commands.empty();
+        const std::optional<Vec2um> previousEnd =
+            joinHere ? std::optional<Vec2um>{sequence.commands.back().pos} : std::nullopt;
+
         if (unit.kind == Kind::Independent) {
             auto& chunk = chunks[u].commands;
+            const auto* tatami = std::get_if<document::TatamiParams>(&object.params);
+            if (joinHere && !(tatami != nullptr && tatami->entry_point)) {
+                std::optional<Vec2um> nextStart;
+                if (u + 1 < units.size() && units[u + 1].kind == Kind::Independent &&
+                    !chunks[u + 1].commands.empty()) {
+                    nextStart = chunks[u + 1].commands.front().pos;
+                }
+                chunk = orient_chunk(chunk, previousEnd, nextStart);
+            }
             sequence.commands.insert(sequence.commands.end(), chunk.begin(), chunk.end());
             previous = &object;
             continue;
@@ -677,9 +728,21 @@ Result<stitch::StitchSequence> generate_sequence(const document::Project& projec
             [&](const auto& params) {
                 using T = std::decay_t<decltype(params)>;
                 if constexpr (std::is_same_v<T, document::SatinParams>) {
-                    generate_satin(sequence, object, params);
+                    if (previousEnd && !params.entry_point && !params.exit_point) {
+                        document::SatinParams joined = params;
+                        joined.entry_point = previousEnd;
+                        generate_satin(sequence, object, joined);
+                    } else {
+                        generate_satin(sequence, object, params);
+                    }
                 } else if constexpr (std::is_same_v<T, document::AutoSatinParams>) {
-                    generate_auto_satin(sequence, *unit.source, object, params);
+                    if (previousEnd && !params.entry_point && !params.exit_point) {
+                        document::AutoSatinParams joined = params;
+                        joined.entry_point = previousEnd;
+                        generate_auto_satin(sequence, *unit.source, object, joined);
+                    } else {
+                        generate_auto_satin(sequence, *unit.source, object, params);
+                    }
                 }
             },
             object.params);

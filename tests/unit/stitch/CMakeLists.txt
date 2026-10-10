@@ -11,6 +11,7 @@ add_executable(test_stitch
     test_satin_pairing_metrics.cpp
     test_routing.cpp
     test_overrides.cpp
+    test_engine_points.cpp
 )
 target_link_libraries(test_stitch
     PRIVATE openstitch::stitch openstitch::stitch_generation Catch2::Catch2WithMain

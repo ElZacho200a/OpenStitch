@@ -407,7 +407,8 @@ private slots:
         QVERIFY(window.statusBar()->currentMessage().contains(
             QStringLiteral("Numérisation automatique")));
         window.onWorkflowStepClicked(5); // export sans points
-        QVERIFY(window.statusBar()->currentMessage().contains(QStringLiteral("Exporter en DST")));
+        QVERIFY(window.statusBar()->currentMessage().contains(
+            QStringLiteral("Exporter une broderie machine")));
 
         // Étape « Régions » avec une image : lance « Segmenter l'image… » (dialogue refusé ici).
         window.applyLoadedProject(threeBandProject());

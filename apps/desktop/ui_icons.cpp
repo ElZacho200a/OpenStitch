@@ -134,6 +134,15 @@ QIcon knife() {
     });
 }
 
+QIcon text() {
+    return make([](QPainter& p) {
+        // Un « T » majuscule : l'outil Texte (lettrage).
+        p.drawLine(QPointF(7, 8), QPointF(25, 8));
+        p.drawLine(QPointF(16, 8), QPointF(16, 25));
+        p.drawLine(QPointF(12, 25), QPointF(20, 25));
+    });
+}
+
 QIcon bezierCurve() {
     return make([](QPainter& p) {
         // Une courbe (deux ancres, poignées visibles) — distincte du polygone

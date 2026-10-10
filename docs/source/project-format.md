@@ -71,14 +71,45 @@ labels peut faire plusieurs mégaoctets).
   `filterShortStitches`, `minStitchLength` (µm). **Bloc absent** (projet
   antérieur) → finitions désactivées, séquence identique à avant ; clé absente
   dans un bloc présent → valeur par défaut. Ajout sans changement de
-  `schemaVersion`.
+  `schemaVersion`. Clés ajoutées par le lot « moteur » (absentes = désactivé) :
+  `splitLongStitches` (bool, défaut faux), `maxStitchLength` (µm, défaut 7000,
+  borné à [1000 ; 12100]), `autoJoin` (bool, défaut faux ; entrée/sortie
+  automatiques, HP-ENG-010).
+- Lot « moteur de points », clés additives d'un objet de broderie, écrites
+  seulement hors défaut et bornées à la lecture : `join` (0 hérite du projet, 1
+  automatique, 2 désactivé) ; dans `params` : tatami `pullCompensation` (µm,
+  [0 ; 3000], HP-ENG-001) et, pour tatami, directionnel, satin et auto-satin,
+  `underlayMode` (0 manuelle, 1 automatique, HP-ENG-002) ; satin `border`
+  (`width` µm [500 ; 20000], `side` 0 centré / 1 intérieur / 2 extérieur,
+  `corner` 0 vifs / 1 arrondis, `pathSet`, `ring` : anneau suivi du vecteur
+  source, HP-STI-004). Aucun changement de `schemaVersion` : un ancien lecteur
+  ignore ces clés.
+
+### Fil de nuancier d'un objet (schéma v6)
+
+Un objet de broderie peut référencer un fil : `"thread": {"chart": "<id du
+nuancier>", "code": "<référence fabricant>"}` (= `thread_palette::ThreadKey`).
+Le champ est **facultatif** : absent → couleur libre. Le `rgb` de l'objet reste
+la **seule source de rendu** et de blocs de couleur ; assigner un fil copie la
+couleur du fil dans `rgb`. Un fil dont le nuancier n'est pas chargé (nuancier
+importé retiré) n'altère donc ni l'affichage ni l'export : seul son nom n'est
+plus résolu. **Migration** : un projet v1 à v5 se charge sans `thread` (couleurs
+libres) ; il est enregistré en v6 à la prochaine sauvegarde (copie `.vN.osp.bak`
+conservée, comme pour les autres migrations). Un `thread` sans `chart` ou `code`
+texte est refusé (`InvalidFile`). Les **nuanciers eux-mêmes** ne sont jamais
+stockés dans le `.osp` (voir *Palettes et fils*).
 
 ## Versionnement et validation
 
-`schemaVersion` vaut **5** (v1 → v2 : cadre `canvas` et barreaux satin
+`schemaVersion` vaut **6** (v5 → v6 : fil de nuancier `thread` des objets de broderie (`{chart, code}`, voir *Palettes et fils*) ; objets texte du lettrage, clé `textObjects`
+(id, text, fontFamily/fontFile/fontBuiltin/faceIndex, capHeight, letterSpacing, wordSpacing,
+lineSpacing, kerning, align, justifyWidth, origin, rotation, rgb, fill, maxSatinWidth, density ;
+µm entiers, rotation en radians) et `textOwner` sur les objets vectoriels, voir `lettering.md` ;
+v1 → v2 : cadre `canvas` et barreaux satin
 `rungs` ; v2 → v3 : retouches manuelles `overrides`/`editedFingerprint`/
 `editedPointCount` par objet de broderie, Lot 8.1 ; v3 → v4 : intermédiaire ; v4 → v5 :
-variant `autoSatin`, auto-satin par squelette). La lecture est
+variant `autoSatin`, auto-satin par squelette ; v5 → v6 : fil de nuancier
+`thread` d'un objet de broderie, HP-THR-004). La lecture est
 **rétrocompatible** : un fichier v1 ou v2 se charge (cadre 100×100 par défaut
 si absent, aucun barreau, aucune retouche → état `Clean`). Une version
 **supérieure** à celle du binaire est refusée proprement (`UnsupportedFormat`) ;

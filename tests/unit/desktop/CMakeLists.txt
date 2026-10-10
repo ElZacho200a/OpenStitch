@@ -54,6 +54,9 @@ openstitch_add_qt_test(test_wsl_path_converter test_wsl_path_converter.cpp)
 openstitch_add_qt_test(test_generation_options test_generation_options.cpp)
 openstitch_add_qt_test(test_segmentation_workflow test_segmentation_workflow.cpp)
 openstitch_add_qt_test(test_realistic_view test_realistic_view.cpp)
+openstitch_add_qt_test(test_production_dialog test_production_dialog.cpp)
+openstitch_add_qt_test(test_thread_panel test_thread_panel.cpp)
+openstitch_add_qt_test(test_lettering_ui test_lettering_ui.cpp)
 
 # Test d'intégration SamWorkerClient <-> faux worker Python (stdlib only,
 # aucune dépendance à un vrai environnement SAM 2/torch en CI).

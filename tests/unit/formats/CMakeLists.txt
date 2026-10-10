@@ -6,6 +6,10 @@ add_executable(test_formats
     test_dxf.cpp
     test_svg.cpp
     test_svg_import.cpp
+    test_pes.cpp
+    test_jef.cpp
+    test_exp.cpp
+    test_export_limits.cpp
 )
 target_link_libraries(test_formats
     PRIVATE openstitch::formats openstitch::stitch_generation Catch2::Catch2WithMain

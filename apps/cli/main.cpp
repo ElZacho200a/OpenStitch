@@ -3,6 +3,8 @@
 #include <fmt/core.h>
 
 #include <algorithm>
+#include <chrono>
+#include <ctime>
 #include <filesystem>
 #include <functional>
 #include <iterator>
@@ -26,6 +28,8 @@
 #include "openstitch/document/embroidery_object.hpp"
 #include "openstitch/document/project.hpp"
 #include "openstitch/formats/dst.hpp"
+#include "openstitch/formats/format_registry.hpp"
+#include "openstitch/formats/machine_design.hpp"
 #include "openstitch/formats/svg.hpp"
 #include "openstitch/geometry/boolean.hpp"
 #include "openstitch/image/image.hpp"
@@ -34,8 +38,11 @@
 #include "openstitch/segmentation/segmentation.hpp"
 #include "openstitch/stitch/sequence.hpp"
 #include "openstitch/stitch_analysis/metrics.hpp"
+#include "openstitch/stitch_analysis/production_sheet.hpp"
 #include "openstitch/stitch_analysis/project_metrics.hpp"
+#include "openstitch/stitch_generation/border_satin.hpp"
 #include "openstitch/stitch_generation/generate.hpp"
+#include "openstitch/stitch_generation/join.hpp"
 #include "openstitch/stitch_generation/lock.hpp"
 #include "openstitch/stitch_generation/overrides.hpp"
 #include "openstitch/stitch_generation/running_stitch.hpp"
@@ -115,7 +122,8 @@ int cli_error(const char* command, const std::string& message, const std::string
 constexpr const char* kImageFormatsHint =
     "formats acceptés : PNG, JPEG, BMP, TIFF ; vérifiez le chemin et l'extension du fichier";
 constexpr const char* kDstHint =
-    "attendu : un fichier .dst (Tajima) ; produisez-le avec `digitize` ou l'export du bureau";
+    "attendu : un fichier de broderie machine (.dst, .pes, .jef ou .exp) ; produisez-le avec "
+    "`digitize` ou l'export du bureau";
 constexpr const char* kOspHint =
     "attendu : un projet .osp enregistré par OpenStitch Studio (Fichier -> Enregistrer)";
 
@@ -283,8 +291,30 @@ int run_info(const std::string& path, std::optional<double> dpiOption, bool json
     return kExitOk;
 }
 
+// Lit un fichier de broderie machine ; le format vient de l'extension (registre de formats :
+// dst, pes, jef, exp), repli DST pour une extension inconnue (comportement historique).
+openstitch::Result<openstitch::stitch::StitchSequence>
+read_machine_sequence(const std::string& path) {
+    using namespace openstitch;
+    std::string ext = std::filesystem::path(path).extension().string();
+    if (!ext.empty() && ext.front() == '.') {
+        ext.erase(ext.begin());
+    }
+    const auto* info = formats::find_format_for_extension(ext);
+    if (info == nullptr || !info->can_read || info->decode == nullptr) {
+        return formats::read_dst_file(std::filesystem::path(path));
+    }
+    std::ifstream file(std::filesystem::path(path), std::ios::binary);
+    if (!file) {
+        return fail(ErrorCategory::UserInput, "Fichier introuvable ou illisible : " + path);
+    }
+    const std::vector<std::uint8_t> bytes((std::istreambuf_iterator<char>(file)),
+                                          std::istreambuf_iterator<char>());
+    return info->decode(bytes);
+}
+
 int run_stats(const std::string& path, bool json) {
-    const auto seq = openstitch::formats::read_dst_file(std::filesystem::path(path));
+    const auto seq = read_machine_sequence(path);
     if (!seq) {
         return cli_error("stats", seq.error().message, kDstHint);
     }
@@ -319,7 +349,7 @@ int run_dst2svg(const std::string& input, const std::string& output, bool noClob
     if (const auto refused = check_output_path("dst2svg", output, noClobber)) {
         return *refused;
     }
-    const auto seq = openstitch::formats::read_dst_file(std::filesystem::path(input));
+    const auto seq = read_machine_sequence(input);
     if (!seq) {
         return cli_error("dst2svg", seq.error().message, kDstHint);
     }
@@ -531,6 +561,92 @@ int run_stitchdebug(const std::string& shape, double lengthMm, int repeats,
         const auto written = formats::write_svg_file(std::filesystem::path(outSvg), seq);
         if (!written) {
             return cli_error("stitchdebug", written.error().message);
+        }
+        fmt::print("SVG écrit : {}\n", outSvg);
+    }
+    return kExitOk;
+}
+
+// Moteur de points (HP-ENG-001/002/010, HP-STI-004) : scène de référence de trois tatami
+// empilés plus un satin de bordure circulaire ; affiche les mesures et compare l'entrée/sortie
+// automatique au sens naturel (longueur totale des sauts).
+int run_engine_debug(double pullMm, bool underlayAuto, double borderMm, const std::string& outSvg) {
+    using namespace openstitch;
+    if (const auto refused = check_output_path("engine-debug", outSvg, false)) {
+        return *refused;
+    }
+    const auto corner = [](std::int32_t x, std::int32_t y) {
+        return geometry::PathNode{Vec2um{Micrometers{x}, Micrometers{y}},
+                                  geometry::NodeType::Corner, std::nullopt, std::nullopt};
+    };
+    const auto build = [&](bool autoJoin) {
+        document::Project project;
+        project.finishing.auto_join = autoJoin;
+        for (int i = 0; i < 3; ++i) {
+            const std::int32_t y0 = -i * 12'000;
+            document::VectorObject vec;
+            vec.id = project.object_ids.next();
+            geometry::Path sq;
+            sq.closed = true;
+            sq.nodes = {corner(0, y0), corner(10'000, y0), corner(10'000, y0 + 10'000),
+                        corner(0, y0 + 10'000)};
+            vec.paths.push_back(geometry::PathSet{sq, {}});
+            project.vector_objects.push_back(vec);
+            document::EmbroideryObject emb;
+            emb.id = project.object_ids.next();
+            emb.source_vector = vec.id;
+            document::TatamiParams tp;
+            tp.inset = Micrometers{0};
+            tp.pull_compensation = to_micrometers(Millimeters{pullMm});
+            tp.underlay_mode =
+                underlayAuto ? document::UnderlayMode::Auto : document::UnderlayMode::Manual;
+            emb.params = tp;
+            project.embroidery_objects.push_back(emb);
+        }
+        if (borderMm > 0.0) {
+            geometry::Path ring;
+            ring.closed = true;
+            for (int k = 0; k < 72; ++k) {
+                const double a = 2.0 * std::numbers::pi * k / 72.0;
+                ring.nodes.push_back(
+                    corner(30'000 + static_cast<std::int32_t>(std::lround(8'000.0 * std::cos(a))),
+                           static_cast<std::int32_t>(std::lround(8'000.0 * std::sin(a)))));
+            }
+            document::BorderSatinSpec spec;
+            spec.width = to_micrometers(Millimeters{borderMm});
+            if (auto sp = stitch_generation::border_satin_from_path(ring, spec)) {
+                document::EmbroideryObject emb;
+                emb.id = project.object_ids.next();
+                emb.rgb = {200, 0, 0};
+                emb.params = std::move(*sp);
+                project.embroidery_objects.push_back(emb);
+            }
+        }
+        return project;
+    };
+    // Projet synthétique construit ici même. raw-sequence-ok: générateur de debug.
+    const auto natural = stitch_generation::generate_sequence(build(false)); // raw-sequence-ok
+    const auto joined = stitch_generation::generate_sequence(build(true));   // raw-sequence-ok
+    if (!natural || !joined) {
+        return cli_error("engine-debug", "génération impossible");
+    }
+    const auto count = [](const stitch::StitchSequence& s, stitch::StitchPass pass) {
+        return std::count_if(s.commands.begin(), s.commands.end(), [pass](const auto& c) {
+            return c.type == stitch::CommandType::Stitch && c.pass == pass;
+        });
+    };
+    fmt::print("Compensation du tirage : {:g} mm | sous-couche : {} | bordure : {:g} mm\n", pullMm,
+               underlayAuto ? "automatique" : "manuelle", borderMm);
+    fmt::print("Points couche supérieure : {}\n", count(*natural, stitch::StitchPass::TopStitch));
+    fmt::print("Points de sous-couche    : {}\n", count(*natural, stitch::StitchPass::Underlay));
+    fmt::print("Sauts (sens naturel)     : {:.1f} mm\n",
+               stitch_generation::total_jump_length_um(*natural) / 1000.0);
+    fmt::print("Sauts (entrée/sortie auto) : {:.1f} mm\n",
+               stitch_generation::total_jump_length_um(*joined) / 1000.0);
+    if (!outSvg.empty()) {
+        const auto written = formats::write_svg_file(std::filesystem::path(outSvg), *joined);
+        if (!written) {
+            return cli_error("engine-debug", written.error().message);
         }
         fmt::print("SVG écrit : {}\n", outSvg);
     }
@@ -781,7 +897,8 @@ int run_digitize(const DigitizeArgs& a) {
 
 // Exporte un projet .osp en DST par le MÊME chemin que le bureau (export_machine_file) :
 // permet d'inspecter les coupes et la fin du fichier sans passer par l'interface.
-int run_osp2dst(const std::string& ospPath, const std::string& outDst, bool noClobber) {
+int run_osp2dst(const std::string& ospPath, const std::string& outDst, bool noClobber,
+                const openstitch::formats::MachineExportOptions& machineOptions) {
     using namespace openstitch;
     if (const auto refused = check_output_path("osp2dst", outDst, noClobber)) {
         return *refused;
@@ -790,12 +907,24 @@ int run_osp2dst(const std::string& ospPath, const std::string& outDst, bool noCl
     if (!project) {
         return cli_error("osp2dst", project.error().message, kOspHint);
     }
-    const auto written =
-        project_io::export_machine_file(*project, "dst", std::filesystem::path(outDst));
+    // Format machine déduit de l'extension de sortie (dst par défaut, pes, jef, exp).
+    std::string formatId = "dst";
+    {
+        std::string ext = std::filesystem::path(outDst).extension().string();
+        if (!ext.empty() && ext.front() == '.') {
+            ext.erase(ext.begin());
+        }
+        if (const auto* info = formats::find_format_for_extension(ext);
+            info != nullptr && info->can_write) {
+            formatId = info->id;
+        }
+    }
+    const auto written = project_io::export_machine_file(
+        *project, formatId, std::filesystem::path(outDst), machineOptions);
     if (!written) {
         return cli_error("osp2dst", written.error().message);
     }
-    fmt::print("DST écrit : {}\n", outDst);
+    fmt::print("{} écrit : {}\n", formats::find_format(formatId)->display_name, outDst);
     return kExitOk;
 }
 
@@ -1083,6 +1212,115 @@ int run_satin_auto_debug(const std::string& shape, double spacingMm,
     return kExitOk;
 }
 
+struct ProductionArgs {
+    std::string file;
+    std::string output;
+    std::string name;
+    std::string date;
+    std::string notes;
+    double speed{700.0};
+    bool json{false};
+    bool noClobber{false};
+};
+
+// Fiche de production (HP-PROD-001) d'un .osp (séquence effective) ou d'un .dst. Sans --output :
+// texte lisible, ou JSON avec --json. Avec --output : page HTML autonome (le PDF/impression sont
+// produits par le bureau, qui seul dépend de Qt).
+int run_production(const ProductionArgs& a) {
+    using namespace openstitch;
+    if (const auto refused = check_output_path("production", a.output, a.noClobber)) {
+        return *refused;
+    }
+    const std::filesystem::path path(a.file);
+    std::string ext = path.extension().string();
+    std::transform(ext.begin(), ext.end(), ext.begin(),
+                   [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+    document::Project project;
+    stitch::StitchSequence sequence;
+    stitch_analysis::ProductionOptions opts;
+    if (ext == ".dst") {
+        auto seq = formats::read_dst_file(path);
+        if (!seq) {
+            return cli_error("production", seq.error().message, kDstHint);
+        }
+        sequence = std::move(*seq);
+        opts.use_project_canvas = false; // un DST ne porte pas de cadre
+    } else if (ext == ".osp") {
+        auto loaded = project_io::load_project(path);
+        if (!loaded) {
+            return cli_error("production", loaded.error().message, kOspHint);
+        }
+        project = std::move(*loaded);
+        auto seq = stitch_generation::effective_sequence(project);
+        if (!seq) {
+            return cli_error("production", seq.error().message);
+        }
+        sequence = std::move(*seq);
+    } else {
+        return cli_error("production", fmt::format("extension « {} » non reconnue", ext),
+                         "attendu : un projet .osp ou un fichier .dst");
+    }
+    opts.project_name = a.name.empty() ? path.stem().string() : a.name;
+    if (a.date.empty()) {
+        const auto now = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
+        std::tm tm{};
+#ifdef _WIN32
+        localtime_s(&tm, &now);
+#else
+        localtime_r(&now, &tm);
+#endif
+        opts.date = fmt::format("{:04}-{:02}-{:02}", tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday);
+    } else {
+        opts.date = a.date;
+    }
+    opts.notes = a.notes;
+    opts.stitches_per_minute = a.speed;
+    const auto sheet = stitch_analysis::make_production_sheet(project, sequence, opts);
+
+    if (!a.output.empty()) {
+        std::ofstream out(a.output, std::ios::binary);
+        out << stitch_analysis::production_to_html(sheet);
+        if (!out) {
+            return cli_error("production", fmt::format("écriture impossible : {}", a.output));
+        }
+        fmt::print(a.json ? stderr : stdout, "Fiche de production (HTML) écrite : {}\n", a.output);
+        if (!a.json) {
+            return kExitOk;
+        }
+    }
+    if (a.json) {
+        fmt::print("{}", stitch_analysis::production_to_json(sheet));
+        return kExitOk;
+    }
+    if (!a.output.empty()) {
+        return kExitOk;
+    }
+    fmt::print("Fiche de production : {} ({})\n", sheet.project_name, sheet.date);
+    fmt::print("Dimensions         : {:.1f} x {:.1f} mm\n", sheet.width_mm, sheet.height_mm);
+    if (sheet.frame_mm) {
+        fmt::print("Cadre              : {:.1f} x {:.1f} mm{}\n", sheet.frame_mm->first,
+                   sheet.frame_mm->second, sheet.fits_frame ? "" : " (le motif dépasse)");
+    }
+    fmt::print("Points             : {}\n", sheet.stitches);
+    fmt::print("Sauts              : {}\n", sheet.jumps);
+    fmt::print("Coupes             : {}\n", sheet.trims);
+    fmt::print("Changements de fil : {}\n", sheet.color_changes);
+    fmt::print("Fil estimé         : {:.2f} m\n", sheet.thread_length_m);
+    fmt::print("Temps estimé       : {} ({:g} points/min)\n",
+               stitch_analysis::format_duration_fr(sheet.estimated_minutes),
+               sheet.stitches_per_minute);
+    fmt::print("Blocs de couleur   :\n");
+    for (const auto& b : sheet.blocks) {
+        fmt::print("  {:>2}. #{:02x}{:02x}{:02x}  {:>8} points  {:>5} sauts  {}\n", b.number,
+                   b.rgb[0], b.rgb[1], b.rgb[2], b.stitches, b.jumps, b.thread_label);
+    }
+    fmt::print("Avertissements     : {}\n", sheet.findings.size());
+    for (const auto& f : sheet.findings) {
+        fmt::print("  - {}\n", f.message);
+    }
+    return kExitOk;
+}
+
 } // namespace
 
 int main(int argc, char** argv) {
@@ -1132,18 +1370,35 @@ int main(int argc, char** argv) {
     info_cmd->add_flag("--json", json_out, "Sortie JSON sur stdout");
 
     std::string dst_path;
-    auto* stats_cmd = app.add_subcommand("stats", "Statistiques d'un fichier de broderie DST");
+    auto* stats_cmd =
+        app.add_subcommand("stats", "Statistiques d'un fichier de broderie (DST, PES, JEF, EXP)");
     stats_cmd->group(kMain);
-    stats_cmd->add_option("fichier", dst_path, "Chemin du fichier .dst")->required();
+    stats_cmd->add_option("fichier", dst_path, "Chemin du fichier .dst/.pes/.jef/.exp")->required();
     stats_cmd->add_flag("--json", json_out, "Sortie JSON sur stdout");
+
+    ProductionArgs pr;
+    auto* pr_cmd = app.add_subcommand(
+        "production", "Fiche de production d'un projet .osp ou d'un DST (texte, --json ou HTML)");
+    pr_cmd->group(kMain);
+    pr_cmd->add_option("fichier", pr.file, "Projet .osp ou fichier .dst")->required();
+    pr_cmd->add_option("--output,-o", pr.output,
+                       "Écrit la fiche en page HTML autonome (le PDF s'exporte depuis le bureau)");
+    pr_cmd->add_option("--name", pr.name, "Nom du projet (défaut : nom du fichier)");
+    pr_cmd->add_option("--date", pr.date, "Date AAAA-MM-JJ (défaut : aujourd'hui)");
+    pr_cmd->add_option("--notes", pr.notes, "Notes libres");
+    pr_cmd->add_option("--speed", pr.speed, "Vitesse supposée en points/min (défaut : 700)")
+        ->check(CLI::Range(100.0, 2000.0));
+    pr_cmd->add_flag("--json", json_out, "JSON stable sur stdout");
+    pr_cmd->add_flag("--no-clobber", pr.noClobber, "Refuse d'écraser un fichier existant");
 
     std::string svg_in;
     std::string svg_out;
     bool svg_noclobber = false;
     bool svg_force = false;
-    auto* svg_cmd = app.add_subcommand("dst2svg", "Convertit un DST en SVG d'aperçu");
+    auto* svg_cmd = app.add_subcommand(
+        "dst2svg", "Convertit un fichier de broderie (DST, PES, JEF, EXP) en SVG d'aperçu");
     svg_cmd->group(kMain);
-    svg_cmd->add_option("entree", svg_in, "Fichier .dst source")->required();
+    svg_cmd->add_option("entree", svg_in, "Fichier .dst/.pes/.jef/.exp source")->required();
     svg_cmd->add_option("sortie,--output-svg,--output", svg_out, "Fichier .svg à produire")
         ->required();
     auto* svg_nc =
@@ -1223,6 +1478,22 @@ int main(int argc, char** argv) {
                        "Tatami (ring) : sous-couches (masque : 1 contour, 2 parallèle)");
     sd_cmd->add_flag("--underpath", sd_underpath, "Tatami (ring) : liaisons cousues cachées");
 
+    double ed_pull = 0.0;
+    double ed_border = 3.0;
+    bool ed_underlay_auto = false;
+    std::string ed_out;
+    auto* ed_cmd = app.add_subcommand(
+        "engine-debug",
+        "[diagnostic] Tirage du tatami, sous-couche auto, entrée/sortie auto et satin de bordure "
+        "sur une scène de référence");
+    ed_cmd->group(kDiag);
+    ed_cmd->add_option("--pull", ed_pull, "Compensation du tirage du tatami, en mm (défaut 0)")
+        ->check(CLI::Range(0.0, 3.0));
+    ed_cmd->add_flag("--underlay-auto", ed_underlay_auto, "Sous-couche automatique");
+    ed_cmd->add_option("--border", ed_border, "Largeur du satin de bordure en mm (0 = aucun)")
+        ->check(CLI::Range(0.0, 20.0));
+    ed_cmd->add_option("--output-svg", ed_out, "SVG de diagnostic (avec entrée/sortie auto)");
+
     std::string sa_shape = "rectangle";
     double sa_spacing = 0.4;
     std::vector<std::string> sa_guides;
@@ -1233,10 +1504,20 @@ int main(int argc, char** argv) {
     bool od_noclobber = false;
     bool od_force = false;
     auto* od_cmd =
-        app.add_subcommand("osp2dst", "Exporte un projet .osp en DST (chemin du bureau)");
+        app.add_subcommand("osp2dst", "Exporte un projet .osp en broderie machine : format "
+                                      "choisi par l'extension de sortie (.dst, .pes, .jef, .exp)");
     od_cmd->group(kMain);
     od_cmd->add_option("osp,--osp", od_in, "Projet .osp")->required();
-    od_cmd->add_option("sortie,--output", od_out, "DST à produire")->required();
+    od_cmd->add_option("sortie,--output", od_out, "Fichier à produire (.dst, .pes, .jef ou .exp)")
+        ->required();
+    bool od_no_trims = false;
+    bool od_no_color_changes = false;
+    std::string od_stops = "native";
+    od_cmd->add_flag("--no-trims", od_no_trims, "Supprime les coupes (elles deviennent des sauts)");
+    od_cmd->add_flag("--no-color-changes", od_no_color_changes,
+                     "Supprime les changements de couleur (motif monochrome)");
+    od_cmd->add_option("--stops", od_stops, "Arrêts machine : native, as-color-change ou drop")
+        ->check(CLI::IsMember({"native", "as-color-change", "drop"}));
     auto* od_nc =
         od_cmd->add_flag("--no-clobber", od_noclobber, "Refuse d'écraser un fichier existant");
     od_cmd->add_flag("--force", od_force, "Écrase la sortie existante (comportement par défaut)")
@@ -1291,6 +1572,10 @@ int main(int argc, char** argv) {
     if (stats_cmd->parsed()) {
         return run_stats(dst_path, json_out);
     }
+    if (pr_cmd->parsed()) {
+        pr.json = json_out;
+        return run_production(pr);
+    }
     if (svg_cmd->parsed()) {
         return run_dst2svg(svg_in, svg_out, svg_noclobber);
     }
@@ -1309,8 +1594,22 @@ int main(int argc, char** argv) {
     if (sd_cmd->parsed()) {
         return run_stitchdebug(sd_shape, sd_length, sd_repeats, sd_out, sd_underlay, sd_underpath);
     }
+    if (ed_cmd->parsed()) {
+        return run_engine_debug(ed_pull, ed_underlay_auto, ed_border, ed_out);
+    }
     if (od_cmd->parsed()) {
-        return run_osp2dst(od_in, od_out, od_noclobber);
+        openstitch::formats::MachineExportOptions machineOptions;
+        if (od_no_trims) {
+            machineOptions.trims = openstitch::formats::TrimMode::Drop;
+        }
+        if (od_no_color_changes) {
+            machineOptions.color_changes = openstitch::formats::ColorChangeMode::Drop;
+        }
+        machineOptions.stops = od_stops == "drop" ? openstitch::formats::StopMode::Drop
+                               : od_stops == "as-color-change"
+                                   ? openstitch::formats::StopMode::AsColorChange
+                                   : openstitch::formats::StopMode::Native;
+        return run_osp2dst(od_in, od_out, od_noclobber, machineOptions);
     }
     if (os_cmd->parsed()) {
         return run_osp2svg(os_in, os_out, os_outlines, os_only, os_noclobber);

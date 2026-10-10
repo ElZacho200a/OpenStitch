@@ -26,6 +26,7 @@
 #include "openstitch/geometry/path.hpp"
 #include "openstitch/stitch/sequence.hpp"
 #include "openstitch/stitch_generation/overrides.hpp"
+#include "openstitch/thread_palette/thread_library.hpp"
 #include "realistic_view_state.hpp"
 #include "tools.hpp"
 
@@ -63,6 +64,7 @@ class GesturesDialog;
 class QuickStartDialog;
 class PropertiesPanel;
 class DocumentPanel;
+class ThreadPanel;
 class WorkflowPanel;
 class EmptyStateWidget;
 // Seam de test unique (déclaré ici pour le friend ci-dessous) : donne à
@@ -216,6 +218,11 @@ private slots:
     // Conversion d'un objet en remplissage directionnel (paramètres
     // équivalents calculés par le cœur, ConvertFillGroupCommand annulable).
     void convertToDirectional(ObjectId embroideryId);
+    // Moteur de points (main_window_engine.cpp) : satin de bordure (HP-STI-004) et
+    // entrée/sortie automatiques par objet (HP-ENG-010), commandes annulables.
+    void createBorderSatin(ObjectId vectorId, double widthMm, int side, int corner);
+    void editBorderSatin(ObjectId id, double widthMm, int side, int corner);
+    void setJoinMode(ObjectId id, int mode);
     void setDensityGradient(ObjectId embroideryId, bool enabled, double angleDeg,
                             double endSpacingMm);
     // Mode « Guides de direction » : affiche l'aperçu du champ, les guides et
@@ -368,6 +375,11 @@ private:
     void buildSimulationToolbar();
     void buildOrderPanel();
     void refreshOrderPanel();
+    // Panneau Fils / film couleur (HP-THR-004/005) : tout est dans main_window_threads.cpp.
+    void buildThreadPanel();
+    void refreshThreadPanel();
+    void refreshThreadSelectionInfo();
+    [[nodiscard]] std::vector<ObjectId> selectedEmbroideryIds() const;
     void buildFilterPanel();
     void refreshFilterPanel();
     // Affiche/masque un dock sur ordre d'un rafraîchissement, sans défaire « Masquer les
@@ -461,6 +473,20 @@ private:
     void onFreeformPointAdded(QPointF posMm);
     void finishFreeform();
     void cancelFreeformDraw();
+    // Lettrage (outil Texte, HP-TXT-*) : menu Texte, dialogue, création/édition/suppression
+    // d'un texte en UN pas d'annulation (main_window_lettering.cpp). Aucune logique de
+    // lettrage ici : tout vient de libs/lettering.
+    void buildTextMenu();
+    void updateTextActions();
+    void placeTextAt(QPointF posMm);
+    void editSelectedText();
+    void removeSelectedText();
+    // Texte propriétaire de la sélection (lettre = objet vectoriel ou de broderie), s'il existe.
+    [[nodiscard]] std::optional<ObjectId> selectedTextId() const;
+    // Génère les lettres de `text` puis applique la commande ; false (message affiché) si la
+    // police est illisible ou si le texte ne produit aucune lettre.
+    bool applyText(document::TextObject text, bool isNew);
+    bool openTextDialog(document::TextObject initial, bool isNew);
     // Formes vectorielles : unir / soustraire / intersecter / séparer / couteau
     // (main_window_shapes.cpp).
     void buildShapeMenu();
@@ -807,6 +833,11 @@ private:
     QAction* toolDrawFreeformAct_{nullptr};
     QAction* toolDrawSatinColumnAct_{nullptr};
     QAction* toolCutAct_{nullptr};
+    QAction* toolTextAct_{nullptr};
+    QAction* newTextAct_{nullptr};
+    QAction* editTextAct_{nullptr};
+    QAction* removeTextAct_{nullptr};
+    QMenu* textMenu_{nullptr};
     QMenu* shapeMenu_{nullptr};
     QAction* unionAct_{nullptr};
     QAction* subtractAct_{nullptr};
@@ -911,6 +942,10 @@ private:
     void showRealisticDialog();
     QAction* realisticAct_{nullptr};
     RealisticViewState realistic_;
+    // Fiche de production imprimable / PDF (main_window_production.cpp).
+    void buildProductionMenu(QMenu* fileMenu);
+    void showProductionSheet();
+    QAction* productionAct_{nullptr};
     void applyNavigationPreset(Preset preset);
     // Duplique `ids` (copies exactes, même position) puis translate les COPIES de
     // `delta`, en un seul pas d'annulation (CompositeCommand) ; les copies deviennent
@@ -1047,6 +1082,13 @@ private:
     QTimer* analysisTimer_{nullptr}; // ré-analyse différée (300 ms) quand le document change
     bool analysisIsStale_{false};
     bool analysisHasResult_{false};
+
+    // Fils (main_window_threads.cpp) : bibliothèque active (intégrés + nuanciers de
+    // l'utilisateur) et panneau.
+    QDockWidget* threadDock_{nullptr};
+    ThreadPanel* threadPanel_{nullptr};
+    thread_palette::ThreadLibrary threadLibrary_{thread_palette::ThreadLibrary::with_builtin()};
+    QHash<QString, QString> userChartFiles_; // identifiant de nuancier -> fichier copié
 
     // Raccourcis fenêtre dont l'activation dépend du contexte (cf. updateShortcutsState).
     QShortcut* escapeShortcut_{nullptr};

@@ -36,14 +36,14 @@ Audit du 2026-10-06 : chaque entrée a été confrontée au code de `main` (`40b
 
 | Priorité | ☑ Fait | ◐ Partiel | ☐ À faire | Total |
 |---|---|---|---|---|
-| P0 | 6 | 10 | 28 | 44 |
-| P1 | 0 | 30 | 91 | 121 |
+| P0 | 7 | 12 | 25 | 44 |
+| P1 | 0 | 31 | 90 | 121 |
 | P2 | 0 | 9 | 70 | 79 |
 | P3 | 0 | 0 | 12 | 12 |
-| **Total** | **6** | **49** | **201** | **256** |
+| **Total** | **7** | **52** | **197** | **256** |
 
-**Fait (6)** : FILE-001/002/003/004 (nouveau projet, enregistrer, récents, autosave),
-THR-001/003 (bibliothèque de fils, fil le plus proche).
+**Fait (7)** : FILE-001/002/003/004 (nouveau projet, enregistrer, récents, autosave),
+THR-001/003/004 (bibliothèque de fils, fil le plus proche, fil assigné à chaque objet).
 
 **En PR, non fusionné** : HP-FMT-001 (PR #5, couche de normalisation machine) ; plan de code
 S3 sélection/presse-papiers (PR #3, documentation seulement, **aucun code**).
@@ -52,7 +52,7 @@ S3 sélection/presse-papiers (PR #3, documentation seulement, **aucun code**).
 AUTO-001/002/005/008/009, VEC-002, STI-004 (brique), sans en clore aucune.
 
 **P0 encore ouverts, par thème** (38 entrées ; détail dans les sections) :
-formats machine (FMT-001…005) · fils (THR-002/004/005) · lettrage (TXT-001/003/004) ·
+formats machine (FMT-001…005) · fils (THR-002/005) · lettrage (TXT-001/003/004) ·
 moteur (STI-004, ENG-001/002/008/010) · auto-numérisation (AUTO-001/003/009) ·
 manipulation d'objets (VEC-002, OBJ-001/002/003/004/006/014/016/018, SEQ-003) ·
 visualisation et production (VIEW-001, PROD-001) · transverse (UX-006, PERF-001/002,
@@ -208,7 +208,7 @@ graphiques. C'est **le premier mur** : la majorité des machines domestiques
   aiguillage par nature de `commands::ICommand` pour éditer un design importé
   (S3, AD-05, hors P0).
 
-### HP-FMT-002 — Export PES (Brother / Babylock / Bernette) [P0] — ☐ À faire
+### HP-FMT-002 — Export PES (Brother / Babylock / Bernette) [P0] — ◐ Partiel
 - État OpenStitch : absent.
 - Hatch : écrit PES (versions 1 à 6+), avec bloc PEC (aperçu monochrome et
   index de couleurs de la palette Brother).
@@ -228,7 +228,12 @@ graphiques. C'est **le premier mur** : la majorité des machines domestiques
   pas de 0,1 mm ; test de déterminisme (2 exports = mêmes octets) ; essai sur
   une vraie machine Brother (HP-PHYS-001).
 
-### HP-FMT-003 — Import PES [P0] — ☐ À faire
+- Livré (2026-10-10) : PES v1 complet + bloc PEC (palette Brother 64, vignettes) ; v6 non fait ; options machine (coupes, arrêts, couleurs), dialogue
+  d'export et import du bureau, CLI (`osp2dst`/`stats`/`dst2svg` par extension), analyse
+  pré-export (`check_export_limits`), tests Catch2 (octets calculés à la main, aller-retour,
+  déterminisme, fuzz). **Reste** : validation par visualiseurs tiers et machine réelle
+  (non faite, aucun fichier de référence réel). Voir `docs/source/formats-pes-jef-exp.md`.
+### HP-FMT-003 — Import PES [P0] — ◐ Partiel
 - État OpenStitch : absent. Seul DST s'importe comme séquence de points.
 - Hatch : ouvre PES et récupère les couleurs.
 - À faire : décodeur PES/PEC tolérant (même politique que `decode_dst` : ne
@@ -238,7 +243,12 @@ graphiques. C'est **le premier mur** : la majorité des machines domestiques
 - Acceptation : corpus de PES réels (versions variées) importés, fuzzing
   (HP-QA-003) sans crash.
 
-### HP-FMT-004 — JEF / JEF+ (Janome, Elna) lecture + écriture [P0] — ☐ À faire
+- Livré (2026-10-10) : décodeur PES/PEC tolérant, couleurs PEC relues ; options machine (coupes, arrêts, couleurs), dialogue
+  d'export et import du bureau, CLI (`osp2dst`/`stats`/`dst2svg` par extension), analyse
+  pré-export (`check_export_limits`), tests Catch2 (octets calculés à la main, aller-retour,
+  déterminisme, fuzz). **Reste** : validation par visualiseurs tiers et machine réelle
+  (non faite, aucun fichier de référence réel). Voir `docs/source/formats-pes-jef-exp.md`.
+### HP-FMT-004 — JEF / JEF+ (Janome, Elna) lecture + écriture [P0] — ◐ Partiel
 - État OpenStitch : absent.
 - Hatch : oui, avec choix du cadre Janome dans l'en-tête.
 - À faire : codec JEF (table de couleurs Janome, code de cadre dans l'en-tête
@@ -247,13 +257,23 @@ graphiques. C'est **le premier mur** : la majorité des machines domestiques
 - Dépend de : HP-FMT-001, HP-THR-001.
 - Acceptation : idem HP-FMT-002.
 
-### HP-FMT-005 — EXP (Melco / Bernina) lecture + écriture [P0] — ☐ À faire
+- Livré (2026-10-10) : codec JEF (palette 78, code de cadre déduit de la taille) ; options machine (coupes, arrêts, couleurs), dialogue
+  d'export et import du bureau, CLI (`osp2dst`/`stats`/`dst2svg` par extension), analyse
+  pré-export (`check_export_limits`), tests Catch2 (octets calculés à la main, aller-retour,
+  déterminisme, fuzz). **Reste** : validation par visualiseurs tiers et machine réelle
+  (non faite, aucun fichier de référence réel). Voir `docs/source/formats-pes-jef-exp.md`.
+### HP-FMT-005 — EXP (Melco / Bernina) lecture + écriture [P0] — ◐ Partiel
 - État OpenStitch : absent.
 - Hatch : oui. Format simple, très répandu chez Bernina et en industriel.
 - À faire : codec EXP (+ fichier compagnon de couleurs `.inf` optionnel).
 - Modules : `libs/formats`.
 - Dépend de : HP-FMT-001.
 
+- Livré (2026-10-10) : codec EXP ; `.inf` non fait ; options machine (coupes, arrêts, couleurs), dialogue
+  d'export et import du bureau, CLI (`osp2dst`/`stats`/`dst2svg` par extension), analyse
+  pré-export (`check_export_limits`), tests Catch2 (octets calculés à la main, aller-retour,
+  déterminisme, fuzz). **Reste** : validation par visualiseurs tiers et machine réelle
+  (non faite, aucun fichier de référence réel). Voir `docs/source/formats-pes-jef-exp.md`.
 ### HP-FMT-006 — VP3 / VIP / HUS (Husqvarna Viking, Pfaff) [P1] — ☐ À faire
 - État OpenStitch : absent.
 - Hatch : oui.
@@ -457,6 +477,12 @@ des nuanciers de fabricants : c'est ce que l'utilisateur achète en magasin.
   explicitement et cite l'URL à consulter. Passer cette entrée à `☑ Fait`
   seulement une fois les vraies cartes de couleurs transcrites depuis les
   sites officiels Madeira et Isacord.
+- 2026-10-10 : **nuancier Générique** libre de droits (28 couleurs usuelles, aucune donnée
+  de fabricant) et **import utilisateur CSV/JSON** (`project_io::read_thread_chart_file`,
+  format dans `docs/source/palettes-and-threads.md`) : les cartes de marques réelles ne sont
+  pas redistribuées, l'utilisateur charge les siennes ; les deux nuanciers placeholder sont
+  signalés « données de démonstration fictives » dans l'interface. L'entrée reste ◐ tant
+  que les cartes officielles ne sont pas transcrites.
 - Reste (hors entrée) : transcription réelle des deux nuanciers (ci-dessus) ;
   les autres nuanciers de la liste Hatch (Robison-Anton, Sulky, Gunold,
   Marathon, Floriani, Coats, Brother, Janome, Pantone approximé) restent à
@@ -481,13 +507,24 @@ des nuanciers de fabricants : c'est ce que l'utilisateur achète en magasin.
   distance croissante, égalités départagées par l'ordre de déclaration du
   nuancier, déterministe (testé par appels répétés). Filtre par gamme
   possédée explicitement hors périmètre (HP-THR-007, P1).
-- Reste (hors entrée) : pas de filtre par gamme possédée (HP-THR-007) ; pas
-  d'utilisation par un objet du document (HP-THR-004).
+- Reste (hors entrée) : pas de filtre par gamme possédée (HP-THR-007). Depuis
+  2026-10-10 la recherche est branchée à l'interface (`ThreadLibrary::nearest` : panneau
+  Fils ▸ Catalogues « Fils les plus proches de la sélection » et « Couleurs libres → fil
+  le plus proche », un pas d'annulation).
 
-### HP-THR-004 — Fil assigné à chaque objet + remplacer une couleur partout [P0] — ☐ À faire
-- État OpenStitch : `EmbroideryObject::rgb` seul ; pas de sélecteur de couleur
+### HP-THR-004 — Fil assigné à chaque objet + remplacer une couleur partout [P0] — ☑ Fait (2026-10-10)
+- Livré : `EmbroideryObject::thread` (`std::optional<ThreadKey>`, `rgb` reste la source de
+  rendu) ; `commands::SetObjectThreadCommand` (un ou plusieurs objets, un seul pas
+  d'annulation, états précédents restitués exactement) ; « remplacer ce fil par… » sur
+  tout le motif (panneau Fils ▸ Projet) ; `.osp` schéma **v6** (champ `thread`, absent =
+  couleur libre, migration testée depuis un v5) ; `ColorBlock::thread_key` renseigné ;
+  API Qt-free `stitch_analysis::thread_usage` / `objects_using_thread`. Tests :
+  `test_thread_commands.cpp`, `test_thread_persistence.cpp`, `test_thread_usage.cpp`,
+  `test_thread_panel.cpp`. Le sélecteur est le panneau **Fils** (clic sur un fil du
+  catalogue = assigner à la sélection multiple), pas la pastille de l'inspecteur
+  (HP-OBJ-018).
+- État avant : `EmbroideryObject::rgb` seul ; pas de sélecteur de couleur
   d'objet de broderie dans l'inspecteur (seulement la recoloration de région).
-  Démarrable : sa dépendance HP-THR-001 est ☑ (2026-10-05).
 - À faire : `EmbroideryObject` porte une référence de fil optionnelle
   (`ThreadRef`) en plus du RGB d'affichage ; commande `SetObjectThreadCommand`
   (un ou plusieurs objets) ; « remplacer ce fil par… » sur tout le design ;
@@ -496,7 +533,18 @@ des nuanciers de fabricants : c'est ce que l'utilisateur achète en magasin.
   `apps/desktop/properties_panel`.
 - Dépend de : HP-THR-001 ; skill `openstitch-stitch-param` pour le champ persistant.
 
-### HP-THR-005 — Film couleur / barre des couleurs du design [P0] — ☐ À faire
+### HP-THR-005 — Film couleur / barre des couleurs du design [P0] — ◐ Partiel (2026-10-10)
+- Livré : onglets *Projet* (fils utilisés, ordre de première couture, pastille, marque,
+  référence, objets, points, longueur, durée estimée) et *Film couleur* (blocs dans
+  l'ordre de couture) du panneau **Fils** (`apps/desktop/thread_panel.*`) ; sélection
+  des objets d'un fil ou d'un bloc ; réordonnancement par glisser ou Monter/Descendre
+  (`stitch_analysis::reorder_film_blocks` + `ReorderEmbroideryCommand`, un pas
+  d'annulation, objets figés immobiles) ; fusion des blocs de même fil
+  (`merge_same_thread_blocks`). Tests : `test_thread_usage.cpp`, `test_thread_panel.cpp`.
+- Reste : **masquage d'un fil** depuis le film (un objet masqué sort de la séquence donc
+  du film : il faut une vue qui garde les fils masqués) ; vignettes de motif par bloc ;
+  barre de couleurs compacte sur le canevas ; le réordonnancement vit dans
+  `stitch_analysis` et non dans `libs/optimization`.
 - Hatch : barre « Palette de couleurs » (fils du design) + « Color film »
   (liste des blocs de couleur dans l'ordre de couture, vignettes, glisser pour
   réordonner, clic pour sélectionner les objets de cette couleur).
@@ -542,8 +590,15 @@ des nuanciers de fabricants : c'est ce que l'utilisateur achète en magasin.
 - Modules : `libs/document`, `libs/formats`.
 - Dépend de : HP-HOOP-002.
 
-### HP-THR-011 — Réduire / fusionner les couleurs d'un design [P1] — ☐ À faire
-- État OpenStitch : la quantification existe au niveau **image** seulement.
+### HP-THR-011 — Réduire / fusionner les couleurs d'un design [P1] — ◐ Partiel (2026-10-10)
+- Livré : `thread_palette::reduce_colors` (fusion agglomérative CIEDE2000, la plus lourde
+  garde sa teinte, déterministe) ; bouton **Limiter à N fils** du panneau Fils (un seul
+  pas d'annulation, sans aperçu préalable) ; option « Limiter à N fils » de la
+  numérisation automatique (`AutoOptions::max_threads`). Tests : `test_library.cpp`,
+  `test_thread_limit.cpp`, `test_thread_panel.cpp`.
+- Reste : aperçu avant application ; fusion manuelle de deux fils choisis (le
+  « Remplacer ce fil par… » de HP-THR-004 couvre le cas du fil du catalogue).
+- État avant : la quantification existait au niveau **image** seulement.
 - À faire : au niveau objets : fusionner deux fils, « réduire à N couleurs »
   (regroupement CIELAB des fils des objets), avec aperçu et une seule commande
   annulable.
@@ -563,7 +618,10 @@ Aujourd'hui : **aucun objet texte**. Le lettrage est une des premières raisons
 d'acheter Hatch (même le niveau Personalizer), avec des dizaines de polices
 prénumérisées et la conversion des polices TrueType.
 
-### HP-TXT-001 — Objet texte dans le modèle [P0] — ☐ À faire
+### HP-TXT-001 — Objet texte dans le modèle [P0] — ☑ Fait (2026-10-10)
+- Fait : `document::TextObject`, lettres dérivées annotées `text_owner`, commandes
+  `SetTextObjectCommand`/`RemoveTextObjectCommand`, `.osp` v6 + migration (voir
+  `docs/source/lettering.md`, ADR). La base est une ligne droite (autres bases : HP-TXT-005).
 - À faire : `TextObject` (ou alternative de `StitchParams` / nouveau type
   d'objet) : chaîne UTF-8, police, hauteur de capitale en mm, espacements,
   base (HP-TXT-005), alignement, type de point par défaut ; les lettres
@@ -583,7 +641,9 @@ prénumérisées et la conversion des polices TrueType.
 - Modules : `libs/lettering` (nouvelle lib cœur), `docs/`.
 - Dépend de : HP-TXT-001.
 
-### HP-TXT-003 — Conversion de polices TrueType/OpenType [P0] — ☐ À faire
+### HP-TXT-003 — Conversion de polices TrueType/OpenType [P0] — ◐ Partiel (2026-10-10)
+- Fait : FreeType (FTL) encapsulé dans `libs/lettering`, contours → `PathSet` µm, crénage `kern`,
+  catalogue des polices installées côté desktop. Reste : HarfBuzz (GPOS, ligatures).
 - Hatch : convertit n'importe quelle police installée.
 - À faire : lecture des contours de glyphes via **FreeType** (licence FTL,
   compatible — **pas l'option GPLv2**) et mise en forme via **HarfBuzz** (MIT)
@@ -593,7 +653,10 @@ prénumérisées et la conversion des polices TrueType.
   `vcpkg.json`, `THIRD_PARTY_LICENSES.md`.
 - Dépend de : HP-TXT-001.
 
-### HP-TXT-004 — Lettrage satin automatique par lettre [P0] — ☐ À faire
+### HP-TXT-004 — Lettrage satin automatique par lettre [P0] — ◐ Partiel (2026-10-10)
+- Fait : auto-satin par squelette par morceau de glyphe, repli tatami (trait large, squelette
+  insuffisant : 4, 6, 9, R en Vera) ou contour, alphabet complet 100 % cousu sans débordement
+  (test). Reste : SVG dorés, ordre/connecteurs internes à la lettre.
 - Hatch : une lettre TrueType devient des colonnes satin qui suivent les
   traits, pas un tatami.
 - À faire : réutiliser l'auto-satin par squelette (`auto_satin`) sur chaque glyphe
@@ -619,7 +682,9 @@ prénumérisées et la conversion des polices TrueType.
   génération.
 - Modules : `libs/lettering`, `libs/geometry`.
 
-### HP-TXT-007 — Espacement, crénage, alignement, interligne [P1] — ☐ À faire
+### HP-TXT-007 — Espacement, crénage, alignement, interligne [P1] — ◐ Partiel (2026-10-10)
+- Fait : espacements lettres/mots, interligne, gauche/centre/droite/justifié, multilignes,
+  crénage `kern`. Reste : crénage manuel par paire.
 - À faire : espacement des lettres / des mots, interligne, alignement
   gauche/centre/droite/justifié, texte multilignes, crénage automatique
   (police) + manuel par paire.
@@ -632,7 +697,9 @@ prénumérisées et la conversion des polices TrueType.
   les overrides de points), poignées dédiées.
 - Modules : `libs/lettering`, `libs/commands`, `apps/desktop`.
 
-### HP-TXT-009 — Avertissement taille minimale [P1] — ☐ À faire
+### HP-TXT-009 — Avertissement taille minimale [P1] — ☑ Fait (2026-10-10)
+- Fait : `stitch_analysis::analyze_text_objects` (< 5 mm satin fragile, < 3 mm illisible, trait
+  < 1 mm), affiché dans le panneau Analyse et le dialogue de texte.
 - À faire : règle d'analyse « texte trop petit » (hauteur < ~5 mm en satin,
   trait < 1 mm), suggestion de police adaptée aux petites tailles.
 - Modules : `libs/stitch_analysis`.
@@ -657,7 +724,9 @@ prénumérisées et la conversion des polices TrueType.
   avertissement, jamais un carré silencieux).
 - Modules : `libs/lettering`.
 
-### HP-TXT-013 — Réglages adaptés aux petites lettres [P1] — ☐ À faire
+### HP-TXT-013 — Réglages adaptés aux petites lettres [P1] — ◐ Partiel (2026-10-10)
+- Fait : sous 8 mm, sans compensation ni bord, sous-couche centrale selon le trait, satin →
+  contour sous 1 mm (règles dans `lettering.md`). Reste : densité ajustée, tests de rendu.
 - À faire : sous la hauteur X : pas de sous-couche ou sous-couche centrale
   seulement, densité ajustée, compensation réduite, satin → contour sous le
   seuil de largeur ; règles documentées et testées.
@@ -708,7 +777,14 @@ plus.
   chemin.
 - Modules : `libs/stitch_generation`.
 
-### HP-STI-004 — Satin de bordure à largeur fixe le long d'un chemin [P0] — ☐ À faire
+### HP-STI-004 — Satin de bordure à largeur fixe le long d'un chemin [P0] — ☑ Fait (2026-10-10)
+- Livré : `border_satin_from_path/_region` (`libs/stitch_generation/border_satin.cpp`),
+  `BorderSatinSpec` (largeur 0,5–20 mm, côté centré/intérieur/extérieur, coins vifs
+  ou arrondis, anneaux extérieur et trous, tracés ouverts), création et régénération
+  dans l'inspecteur (`main_window_engine.cpp`), `.osp`, suit le déplacement du vecteur.
+  Tests `test_engine_points.cpp` (« bordure : … ») : cercle et tracé en S réguliers, sans
+  croisement de barreaux. Reste : largeur variable par nœud, coins intelligents (HP-ENG-005),
+  mise à l'échelle du vecteur sans régénération manuelle, validation physique.
 - Brique existante : `strip_polygon(centerline, demi-largeur)` (`contour_objects.cpp`) sert au
   mode Contours ; aucun outil utilisateur ni commande `libs/commands` pour « chemin ouvert + largeur fixe ».
 - État OpenStitch : le satin exige deux rails ou un contour fermé découpé ;
@@ -952,7 +1028,11 @@ plus.
 Hatch applique automatiquement des règles de métier (« stitch processing ») que
 l'utilisateur ne voit pas. OpenStitch a les briques mais peu d'automatismes.
 
-### HP-ENG-001 — Compensation d'étirement du tatami [P0] — ☐ À faire
+### HP-ENG-001 — Compensation d'étirement du tatami [P0] — ◐ Partiel (2026-10-10)
+- Livré (tatami) : `TatamiParams::pull_compensation` (0–3 mm, défaut 0, réglage manuel :
+  le modèle n'a pas de notion de tissu), rangées allongées dans l'axe du fil, test
+  géométrique exact (dépassement = `pull` au µm près), inspecteur, `.osp`, annulable.
+  Reste : remplissage directionnel, validation physique HP-PHYS-001.
 - État OpenStitch : compensation **satin seulement** (`limitations.md`,
   « Compensation directionnelle : Partiel ») ; le tatami a un `inset`, qui fait
   l'inverse (rentre le bord).
@@ -965,7 +1045,11 @@ l'utilisateur ne voit pas. OpenStitch a les briques mais peu d'automatismes.
   `pull` ± 0,1 mm) ; validation physique HP-PHYS-001.
 
 ### HP-ENG-002 — Sous-couche automatique selon la forme [P0] — ◐ Partiel (2026-10-06)
-- Livré : l'auto-numérisation choisit la sous-couche du tatami selon l'aire (Lot B,
+- Livré 2026-10-10 : `UnderlayMode::Auto` (défaut Manual) pour tatami, directionnel, satin
+  et auto-satin, seuils documentés (`moteur-de-points.md` §10) et testés, réglable et
+  désactivable dans l'inspecteur. Reste : Auto n'est pas encore le défaut des objets créés
+  à la main (créés en Manual pour ne rien changer) ; pas de zigzag pour les grands tatamis.
+- Livré avant : l'auto-numérisation choisit la sous-couche du tatami selon l'aire (Lot B,
   `auto_fill_underlay`) ; le satin a `center_underlay` par défaut. Manque : mode
   Auto/Manuel au niveau du document pour les objets créés à la main, et seuils par
   largeur de satin.
@@ -1012,6 +1096,11 @@ l'utilisateur ne voit pas. OpenStitch a les briques mais peu d'automatismes.
 - Modules : `apps/desktop`.
 
 ### HP-ENG-008 — Longueurs min/max appliquées à tous les générateurs [P0] — ◐ Partiel
+- Livré 2026-10-10 : `split_long_stitches`/`max_stitch_length` dans les finitions
+  (découpage de tout point cousu trop long, tous types, testé : aucun point > max),
+  options d'analyse alignées sur le projet, avertissements pré-export
+  `parametre-hors-limites`. Reste : désactivé par défaut (aucun fichier existant ne
+  change), invariant non testé sur tout le corpus.
 - État OpenStitch : filtre des points trop courts dans les finitions (Lot F),
   `max_stitch_length` satin ; l'analyse signale > 7 mm.
 - À faire : garantie globale (post-génération) : aucun point cousu > max
@@ -1025,6 +1114,12 @@ l'utilisateur ne voit pas. OpenStitch a les briques mais peu d'automatismes.
   mieux (mesure : régularité de la direction des fils).
 
 ### HP-ENG-010 — Entrée et sortie automatiques au plus proche [P0] — ◐ Partiel
+- Livré 2026-10-10 : choix automatique du sens de couture de chaque objet
+  (`auto_join` global + `join` par objet, `orient_chunk`), entrée des satins depuis la
+  fin de l'objet précédent ; scène de référence : sauts 116,0 → 102,6 mm
+  (`openstitch-cli engine-debug`). Reste : coût d'ordre par extrémités
+  (`libs/optimization`), départ d'un contour fermé au sommet le plus proche, mesure sur
+  les corpus « marine » et `tentabrode` (absents de ce dépôt).
 - État OpenStitch : points d'entrée/sortie réglables (satin, tatami) ;
   routage multi-colonnes satin ; ordre des objets par centres (pas par
   extrémités : `OrderItem` n'a que `centroid`).
@@ -1396,7 +1491,13 @@ tout utilisateur de Hatch fait Ctrl+C/Ctrl+V, sélection rectangle, rotation.
 ### HP-OBJ-017 — Renommer les objets [P2] — ☐ À faire
 - À faire : F2 / double-clic dans la liste.
 
-### HP-OBJ-018 — Changer la couleur d'un objet de broderie [P0] — ☐ À faire
+### HP-OBJ-018 — Changer la couleur d'un objet de broderie [P0] — ◐ Partiel (2026-10-10)
+- Livré : la version « fil » (clic sur un fil du panneau Fils = assigner à la sélection
+  multiple, un pas d'annulation) et `SetObjectThreadCommand` avec fil vide = couleur
+  libre.
+- Reste : la pastille et le sélecteur **dans l'inspecteur** (nuancier + RGB libre
+  via `QColorDialog`) ; aucune entrée d'interface n'appelle encore la commande avec un
+  RGB libre.
 - État OpenStitch : pas de sélecteur de couleur dans l'inspecteur pour un
   objet de broderie (seule la recoloration de région existe).
 - À faire : pastille dans l'inspecteur → sélecteur (nuancier + RGB libre),
@@ -1617,20 +1718,31 @@ Aujourd'hui : statistiques (points, sauts, coupes, couleurs, dimensions,
 fil), analyse par règles (points courts/longs, sauts longs, trop de points,
 hors cadre, déplacement sans coupe), résumé avant export DST.
 
-### HP-PROD-001 — Fiche de production imprimable [P0] — ☐ À faire
+### HP-PROD-001 — Fiche de production imprimable [P0] — ◐ Partiel
 - Hatch : Production worksheet : aperçu du design, dimensions, nombre de
   points, temps estimé, cadre, **liste des fils dans l'ordre** (marque, code,
   nom, pastille), notes, client.
-- À faire : cœur : structure de données de la fiche ; desktop : aperçu avant
-  impression + impression + export PDF (`QPdfWriter`, Qt est LGPL, OK côté
-  desktop seulement) ; CLI : export texte/JSON.
+- Fait : `stitch_analysis::make_production_sheet` (données pures, séquence
+  effective) ; JSON stable et HTML ; Fichier ▸ Fiche de production… (aperçu avant
+  impression, impression `QPrinter`, export PDF A4 `QPdfWriter`) ; `openstitch-cli
+  production` (texte / `--json` / HTML) ; aperçu réaliste, dimensions, cadre,
+  compteurs, temps (hypothèse réglable, défaut 700 pts/min), blocs dans l'ordre
+  de couture avec pastille + code hexadécimal, objets, avertissements, notes.
+  Voir `docs/source/production-sheet.md`.
+- Reste : la **référence de fil** (marque, code, nom) n'apparaît que lorsqu'un bloc
+  porte un `thread_key` — les objets du document n'en portent pas encore
+  (HP-THR-004) ; champ « client » dédié (aujourd'hui : dans les notes) ; PDF depuis
+  le CLI (Qt-free : HTML seulement).
 - Modules : `libs/stitch_analysis` (données), `apps/desktop`, `apps/cli`.
 - Dépend de : HP-THR-004 (liste de fils), HP-PROD-002.
 
-### HP-PROD-002 — Estimation de la durée de couture [P1] — ☐ À faire
+### HP-PROD-002 — Estimation de la durée de couture [P1] — ◐ Partiel
 - À faire : points / vitesse machine (profil) + temps par changement de fil,
   par coupe, par saut ; affichée dans les statistiques, le résumé d'export,
   la fiche.
+- Fait (fiche de production) : points / vitesse réglable + temps par changement de fil
+  (30 s) et par coupe (2 s). Reste : profil machine (HP-HOOP-002), affichage dans les
+  statistiques et le résumé d'export.
 - Modules : `libs/stitch_analysis`.
 - Dépend de : HP-HOOP-002 (vitesse).
 
@@ -2254,3 +2366,4 @@ ci-dessus doit les respecter :
 | 2026-10-05 | Claude (session multi-agents) | Mode **Contours / Line Art** fusionné (PR #4) : `libs/autodigitize/contour_*`, CLI `digitize --mode contours`, dialogue desktop avec curseur de détail. |
 | 2026-10-06 | Claude (revue d'ensemble) | **Audit complet des 256 entrées contre `main`.** Statuts : AUTO-005, VEC-002, VEC-009, OBJ-003, SEQ-001, ENG-002 ☐ → ◐. « État OpenStitch » corrigé : FMT-001 (PR #5), FMT-014, FMT-021, THR-004, AUTO-001/002/006/008/009/012, STI-001, STI-004, ENG-010/014/015, QA-001/002, DIST-001 et introductions des sections 19 et 24. Ajout du tableau de bord et de la règle « ☑ = sur `main` ». |
 | 2026-10-06 | Claude (audit UI) | Audit du câblage et de l'ergonomie Qt : `docs/ui-audit-2026-10.md` (constats, tests d'invariants `test_ui_invariants`, plan multi-agents par lots). Aucun statut HP-UX modifié ; HP-UX-006/009/010/013/015 sont confirmés ouverts. |
+| 2026-10-10 | Claude (palettes de fils) | Fils branchés au document et à l'interface : HP-THR-004 ☑ (`EmbroideryObject::thread`, `SetObjectThreadCommand`, `.osp` v6), HP-THR-005 ◐ et HP-OBJ-018 ◐ (panneau **Fils** : projet, catalogues, film couleur), HP-THR-011 ◐ (« Limiter à N fils »), HP-THR-002 reste ◐ (nuancier Générique libre + import CSV/JSON, aucune carte de marque redistribuée). API Qt-free `stitch_analysis::thread_usage` pour la fiche de production. |

@@ -19,10 +19,12 @@ openstitch-cli <sous-commande> --help
 | Commandes | `info` | Métadonnées d'une image (dimensions, canaux, dpi, taille estimée) |
 | Commandes | `stats` | Statistiques et mesures de qualité d'un fichier DST |
 | Commandes | `digitize` | Pipeline complet image → DST (segmentation, numérisation automatique, points) |
+| Commandes | `production` | Fiche de production d'un `.osp` ou d'un DST (texte, JSON, HTML) |
 | Commandes | `dst2svg` | Aperçu SVG d'un DST |
 | Commandes | `osp2dst` | Exporte un projet `.osp` en DST par le même chemin que le bureau |
 | Diagnostic | `osp2svg` | `[diagnostic]` Séquence effective d'un `.osp` en SVG (contours des vecteurs, un seul objet) |
 | Diagnostic | `stitchdebug` | `[diagnostic]` Moteur de points sur une forme de référence |
+| Diagnostic | `engine-debug` | `[diagnostic]` Tirage du tatami (`--pull`), sous-couche auto (`--underlay-auto`), satin de bordure (`--border`) et sauts avec/sans entrée/sortie auto sur une scène de référence |
 | Diagnostic | `satin-auto-debug` | `[diagnostic]` Auto-satin par squelette sur une forme de référence ou un vecteur d'un `.osp` |
 
 Les sous-commandes **`[diagnostic]`** inspectent le moteur : leur sortie texte
@@ -69,6 +71,22 @@ courts hors points d'arrêt reconnus par leur forme, directions dominantes).
 JSON : `stitches`, `jumps`, `trims`, `color_changes`, `width_mm`, `height_mm`,
 `thread_m`, `moves`, `long_moves_without_trim`, `short_stitches`,
 `short_lock_stitches` (le détail lisible reste sur la sortie d'erreur).
+
+## production
+
+```
+openstitch-cli production <fichier.osp|fichier.dst> [--json] [-o fiche.html]
+    [--name NOM] [--date AAAA-MM-JJ] [--notes TEXTE] [--speed PTS_PAR_MIN] [--no-clobber]
+```
+
+Fiche de production ([détail](production-sheet.md)) : dimensions, points, sauts, coupes,
+changements de fil, fil et temps estimés, blocs de couleur dans l'ordre de couture,
+avertissements d'analyse. Un `.osp` passe par la séquence effective (et son cadre) ; un DST
+n'a pas de cadre. Sans option : texte lisible. `--json` : JSON stable sur stdout (`schema`,
+`project`, `date`, `notes`, `size_mm`, `frame_mm`, `fits_frame`, `totals`, `estimate`,
+`blocks[]`, `findings[]`, `suppressed`). `-o` écrit une page HTML autonome (aperçu SVG
+intégré) ; le PDF, lui, s'exporte depuis le bureau (le CLI reste sans Qt). `--speed` règle
+l'hypothèse de vitesse (défaut 700).
 
 ## digitize
 
