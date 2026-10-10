@@ -6274,6 +6274,8 @@ void MainWindow::buildPropertiesPanel() {
             &MainWindow::discardOverrides);
     connect(propertiesPanel_, &PropertiesPanel::convertToDirectionalRequested, this,
             &MainWindow::convertToDirectional);
+    connect(propertiesPanel_, &PropertiesPanel::densityGradientRequested, this,
+            &MainWindow::setDensityGradient);
     connect(
         propertiesPanel_, &PropertiesPanel::editSatinGuidesRequested, this, [this](ObjectId id) {
             if (auto* emb = project_.findEmbroidery(id); emb != nullptr && emb->is_auto_satin()) {

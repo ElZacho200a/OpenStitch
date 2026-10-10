@@ -111,6 +111,10 @@ signals:
     // Bouton « Éditer les guides » d'un remplissage directionnel : active
     // l'outil de guides du canevas sur cet objet.
     void editDirectionGuidesRequested(ObjectId id);
+    // Dégradé de densité d'un remplissage directionnel : l'axe dépend de la
+    // forme, donc MainWindow le calcule (cœur) et exécute la commande annulable.
+    // `angleDeg` : direction de l'axe, `endSpacingMm` : écart à son extrémité.
+    void densityGradientRequested(ObjectId id, bool enabled, double angleDeg, double endSpacingMm);
     // Auto-satin : bouton « Placer un guide » (active l'outil de guides du canevas),
     // modification de l'angle d'un guide et suppression d'un guide. MainWindow
     // construit la commande annulable à partir des guides ACTUELS du document.

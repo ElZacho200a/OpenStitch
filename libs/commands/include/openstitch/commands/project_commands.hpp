@@ -393,6 +393,10 @@ private:
                         }
                     }
                 }
+                if (dir->density_gradient) {
+                    dir->density_gradient->from = dir->density_gradient->from + delta;
+                    dir->density_gradient->to = dir->density_gradient->to + delta;
+                }
             }
             // Idem pour les ancres de guides d'un auto-satin (et ses points
             // d'entrée/sortie), exprimées dans le repère de la région suivie.
@@ -460,6 +464,10 @@ public:
                             scaleNode(node);
                         }
                     }
+                }
+                if (dir->density_gradient) {
+                    dir->density_gradient->from = scalePoint(dir->density_gradient->from);
+                    dir->density_gradient->to = scalePoint(dir->density_gradient->to);
                 }
             }
             if (auto* sat = std::get_if<document::AutoSatinParams>(&emb.params)) {

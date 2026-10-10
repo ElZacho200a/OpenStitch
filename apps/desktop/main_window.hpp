@@ -216,6 +216,8 @@ private slots:
     // Conversion d'un objet en remplissage directionnel (paramètres
     // équivalents calculés par le cœur, ConvertFillGroupCommand annulable).
     void convertToDirectional(ObjectId embroideryId);
+    void setDensityGradient(ObjectId embroideryId, bool enabled, double angleDeg,
+                            double endSpacingMm);
     // Mode « Guides de direction » : affiche l'aperçu du champ, les guides et
     // les lignes de rupture de l'objet ciblé, avec poignées déplaçables.
     void onDirectionGuideModeToggled(bool on);

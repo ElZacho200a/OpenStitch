@@ -25,6 +25,7 @@ historiques ne changent pas).
 | `guides` | vide | courbes guides (polylignes ou Béziers, ouvertes), µm, repère du modèle |
 | `break_lines` | vide | lignes de rupture (secteurs indépendants) |
 | `row_spacing` | 0,4 mm | écart entre lignes de couture (densité) |
+| `density_gradient` | absent | dégradé de densité (voir ci-dessous) ; remplace `row_spacing` pour le tracé |
 | `stitch_length` | 3 mm | longueur cible, **bornée à [1 ; 7] mm** à la génération |
 | `edge_weight` | 0 | influence de la tangente du bord le plus proche, [0 ; 1] |
 | `inset` | 0,2 mm | retrait de bord (comme le tatami) |
@@ -41,8 +42,20 @@ vectoriel source : `TranslateVectorObjectCommand` et
 `ScaleVectorObjectCommand` les déplacent / redimensionnent avec la forme
 (undo exact).
 
+**Dégradé de densité** (`DensityGradient`, HP-STI-010) : l'écart entre lignes
+varie **linéairement** le long de l'axe `from` → `to` (µm, repère du modèle),
+de `spacing_from` à `spacing_to`, constant au-delà des extrémités. Les écarts
+sont bornés à **[0,1 ; 4] mm** à la génération ; un axe nul (`from == to`)
+donne un écart uniforme `spacing_from`. Sans dégradé le tracé est identique
+octet pour octet à l'ancien. L'axe suit la forme (déplacement, redimensionnement)
+comme les guides ; les écarts, longueurs physiques, ne sont pas mis à l'échelle.
+`row_spacing` reste la référence des seuils de parcours (liaisons cousables,
+trajet caché), non du tracé.
+
 **Format `.osp`** : type `"directional"`, toutes les clés sauf `type` sont
-optionnelles (défauts du modèle). `schemaVersion` n'a pas changé : un projet
+optionnelles (défauts du modèle) ; le dégradé est l'objet optionnel
+`densityGradient` (`fromX`, `fromY`, `toX`, `toY`, `spacingFrom`, `spacingTo`,
+µm entiers). `schemaVersion` n'a pas changé : un projet
 ancien se relit à l'identique. Un projet contenant un remplissage directionnel
 n'est pas lisible par une version antérieure (« Type de point inconnu »).
 
@@ -93,7 +106,11 @@ Algorithme de *Creating Evenly-Spaced Streamlines of Arbitrary Density*
 (Jobard & Lefer, 1997) :
 
 - distance de séparation `d_sep` = espacement, distance de test
-  `d_test` = 0,5 × espacement ;
+  `d_test` = 0,5 × espacement ; avec un dégradé de densité, ces deux distances
+  sont **locales** (`d_sep(p)` évalué au point considéré) : un écart plus grand
+  à un bout fait naître moins de lignes. Pas d'intégration `0,2 × d_sep_min`,
+  fenêtre d'auto-proximité `3 × d_sep_max`, cellule de la grille =
+  moyenne géométrique de `d_sep_min` et `d_sep_max` ;
 - intégration RK2 à pas fixe 0,2 × `d_sep`, dans les deux sens depuis la
   graine, le sens étant maintenu d'un pas à l'autre ;
 - arrêt : sortie de la zone ou entrée dans un trou (le point de bord exact est

@@ -754,7 +754,15 @@ plus.
 - À faire : spirale continue depuis un centre, sans coupe.
 - Modules : `libs/stitch_generation`.
 
-### HP-STI-010 — Remplissage en dégradé (densité variable) [P1] — ☐ À faire
+### HP-STI-010 — Remplissage en dégradé (densité variable) [P1] — ◐ Partiel (directionnel)
+- Fait : `DirectionalFillParams::density_gradient` (axe + écart de début/fin,
+  interpolation linéaire, borné à [0,1 ; 4] mm), tracé Jobard & Lefer à
+  écart local, `.osp`, déplacement/échelle, inspecteur (case, écart de fin,
+  angle). Reste : tatami à espacement variable, satin, plusieurs points de
+  contrôle, poignée d'axe sur le canevas.
+- Source de la méthode : Liu et al., *Directionality-Aware Design of
+  Embroidery Patterns*, CGF 42(2), 2023 (DOI 10.1111/cgf.14770), reprise de
+  l'idée sans code tiers.
 - Hatch : Gradient fill : densité qui varie dans la forme (transparence).
 - À faire : profil de densité le long d'un axe (points de contrôle), tatami à
   espacement variable ; option satin à densité variable.

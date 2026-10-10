@@ -610,6 +610,61 @@ double clamp_spacing(const document::DirectionalFillParams& p) {
     return static_cast<double>(std::max<std::int32_t>(100, p.row_spacing.value));
 }
 
+// Écart entre lignes de couture en tout point : constant, ou interpolé
+// linéairement le long de l'axe d'un `DensityGradient` (constant au-delà des
+// extrémités). Le cas uniforme redonne exactement l'ancien `clamp_spacing`.
+struct SpacingField {
+    static constexpr double kGradientMin = 100.0;
+    static constexpr double kGradientMax = 4'000.0;
+
+    double lo{400.0}; // plus petit écart (pas d'intégration, grille)
+    double hi{400.0}; // plus grand écart (fenêtre d'auto-proximité)
+    P2 origin{};
+    P2 axis{};
+    double invLen2{0.0};
+    double from{400.0};
+    double to{400.0};
+
+    [[nodiscard]] bool uniform() const { return invLen2 == 0.0 || from == to; }
+
+    [[nodiscard]] double at(P2 p) const {
+        if (uniform()) {
+            return lo;
+        }
+        const double t = std::clamp(dot(p - origin, axis) * invLen2, 0.0, 1.0);
+        return from + (to - from) * t;
+    }
+
+    // Taille de case de la grille de séparation : la moyenne géométrique borne
+    // le nombre de cases visitées par requête sans dégrader le cas uniforme.
+    [[nodiscard]] double cell() const { return uniform() ? lo : std::sqrt(lo * hi); }
+};
+
+SpacingField make_spacing_field(const document::DirectionalFillParams& p) {
+    SpacingField f;
+    if (!p.density_gradient) {
+        f.lo = f.hi = f.from = f.to = clamp_spacing(p);
+        return f;
+    }
+    const auto& g = *p.density_gradient;
+    const auto bound = [](Micrometers v) {
+        return std::clamp(static_cast<double>(v.value), SpacingField::kGradientMin,
+                          SpacingField::kGradientMax);
+    };
+    f.from = bound(g.spacing_from);
+    f.to = bound(g.spacing_to);
+    f.lo = std::min(f.from, f.to);
+    f.hi = std::max(f.from, f.to);
+    f.origin = to_p2(g.from);
+    f.axis = to_p2(g.to) - f.origin;
+    const double len2 = dot(f.axis, f.axis);
+    f.invLen2 = len2 > 1.0 ? 1.0 / len2 : 0.0;
+    if (f.uniform()) {
+        f.lo = f.hi = f.from; // axe dégénéré ou écarts égaux
+    }
+    return f;
+}
+
 double handmade_intensity(const document::DirectionalFillParams& p) {
     return p.handmade ? std::clamp(p.handmade_intensity, 0, 100) / 100.0 : 0.0;
 }
@@ -890,9 +945,9 @@ private:
 
 class StreamlineTracer {
 public:
-    StreamlineTracer(const Sector& sector, double dsep)
-        : sector_(sector), dsep_(dsep), dtest_(0.5 * dsep), step_(0.2 * dsep),
-          selfWindow_(3.0 * dsep), grid_(make_grid(sector, dsep)) {
+    StreamlineTracer(const Sector& sector, const SpacingField& spacing)
+        : sector_(sector), spacing_(spacing), step_(0.2 * spacing.lo),
+          selfWindow_(3.0 * spacing.hi), grid_(make_grid(sector, spacing.cell())) {
         P2 lo;
         P2 hi;
         bounds(sector.tracePolys, lo, hi);
@@ -905,7 +960,7 @@ public:
         // 1) Graine initiale : point de grille intérieur le plus proche du
         //    centre de la zone (balayage déterministe).
         const P2 center{(lo_.x + hi_.x) / 2.0, (lo_.y + hi_.y) / 2.0};
-        const double g = dsep_ / 4.0;
+        const double g = spacing_.cell() / 4.0;
         std::optional<P2> first;
         double bestD = std::numeric_limits<double>::max();
         for (double y = lo_.y + g / 2.0; y < hi_.y; y += g) {
@@ -935,15 +990,16 @@ public:
     }
 
 private:
-    static SeparationGrid make_grid(const Sector& sector, double dsep) {
+    static SeparationGrid make_grid(const Sector& sector, double cell) {
         P2 lo;
         P2 hi;
         bounds(sector.tracePolys, lo, hi);
-        return SeparationGrid(lo, hi, dsep);
+        return SeparationGrid(lo, hi, cell);
     }
 
     [[nodiscard]] bool valid_seed(P2 c, double factor) const {
-        return sector_.trace.inside(c) && !grid_.too_close(c, factor * dsep_, -1, 0.0, 0.0);
+        return sector_.trace.inside(c) &&
+               !grid_.too_close(c, factor * spacing_.at(c), -1, 0.0, 0.0);
     }
 
     // Graine isolée : hérite de la ligne la plus proche (abscisse, rang,
@@ -955,7 +1011,7 @@ private:
         P2 d = sector_.field.dir(c);
         double u0 = 0.0;
         int depth = 0;
-        if (const auto ref = grid_.nearest(c, 3.0 * dsep_)) {
+        if (const auto ref = grid_.nearest(c, 3.0 * spacing_.at(c))) {
             const Traced& parent = lines_[static_cast<std::size_t>(ref->line)];
             const std::size_t k = index_of(parent, ref->s);
             const P2 t = tangent(parent, k);
@@ -977,11 +1033,12 @@ private:
                 if (parent.u[k] < nextU) {
                     continue;
                 }
-                nextU = parent.u[k] + 0.5 * dsep_;
+                const double local = spacing_.at(parent.pts[k]);
+                nextU = parent.u[k] + 0.5 * local;
                 const P2 t = tangent(parent, k);
                 const P2 n{-t.y, t.x};
                 for (const int side : {1, -1}) {
-                    const P2 cand = parent.pts[k] + n * (side * dsep_);
+                    const P2 cand = parent.pts[k] + n * (side * local);
                     if (!valid_seed(cand, 0.99)) {
                         continue;
                     }
@@ -1054,15 +1111,15 @@ private:
                     }
                 }
                 const double ds = dist(p, in);
-                if (ds > 1.0 &&
-                    !grid_.too_close(in, dtest_, lineId, sign * (s + ds), selfWindow_)) {
+                if (ds > 1.0 && !grid_.too_close(in, 0.5 * spacing_.at(in), lineId, sign * (s + ds),
+                                                 selfWindow_)) {
                     pts.push_back(in);
                     ss.push_back(s + ds);
                     grid_.add(in, lineId, sign * (s + ds));
                 }
                 break;
             }
-            if (grid_.too_close(q, dtest_, lineId, sign * (s + step_), selfWindow_)) {
+            if (grid_.too_close(q, 0.5 * spacing_.at(q), lineId, sign * (s + step_), selfWindow_)) {
                 break;
             }
             s += step_;
@@ -1101,8 +1158,7 @@ private:
     }
 
     const Sector& sector_;
-    double dsep_;
-    double dtest_;
+    SpacingField spacing_;
     double step_;
     double selfWindow_;
     SeparationGrid grid_;
@@ -1275,7 +1331,7 @@ std::vector<SectorLines> compute_lines(const std::vector<Sector>& sectors,
                                        const document::DirectionalFillParams& params,
                                        bool withStitches) {
     std::vector<SectorLines> result;
-    const double dsep = clamp_spacing(params);
+    const SpacingField spacing = make_spacing_field(params);
     StitchPlan plan;
     plan.target = static_cast<double>(params.stitch_length.value);
     plan.stagger = params.stagger;
@@ -1283,7 +1339,7 @@ std::vector<SectorLines> compute_lines(const std::vector<Sector>& sectors,
     plan.seed = params.seed;
     for (std::size_t si = 0; si < sectors.size(); ++si) {
         SectorLines sl;
-        StreamlineTracer tracer(sectors[si], dsep);
+        StreamlineTracer tracer(sectors[si], spacing);
         sl.traced = tracer.run();
         if (withStitches) {
             for (std::size_t li = 0; li < sl.traced.size(); ++li) {
@@ -1676,6 +1732,44 @@ std::vector<DirectionTick> directional_field_preview(const geometry::PathSet& re
         }
     }
     return out;
+}
+
+std::optional<document::DensityGradient>
+density_gradient_across(const std::vector<geometry::PathSet>& shape, Angle direction,
+                        Micrometers spacing_from, Micrometers spacing_to) {
+    const P2 dir{std::cos(direction.radians), std::sin(direction.radians)};
+    bool any = false;
+    P2 lo;
+    P2 hi;
+    double tmin = 0.0;
+    double tmax = 0.0;
+    for (const auto& set : shape) {
+        for (const auto& node : set.outer.nodes) {
+            const P2 p = to_p2(node.pos);
+            const double t = dot(p, dir);
+            if (!any) {
+                lo = hi = p;
+                tmin = tmax = t;
+                any = true;
+                continue;
+            }
+            lo = {std::min(lo.x, p.x), std::min(lo.y, p.y)};
+            hi = {std::max(hi.x, p.x), std::max(hi.y, p.y)};
+            tmin = std::min(tmin, t);
+            tmax = std::max(tmax, t);
+        }
+    }
+    if (!any || tmax - tmin < 1.0) {
+        return std::nullopt;
+    }
+    const P2 center{(lo.x + hi.x) / 2.0, (lo.y + hi.y) / 2.0};
+    const double tc = dot(center, dir);
+    document::DensityGradient g;
+    g.from = to_um(center + dir * (tmin - tc));
+    g.to = to_um(center + dir * (tmax - tc));
+    g.spacing_from = spacing_from;
+    g.spacing_to = spacing_to;
+    return g;
 }
 
 document::DirectionalFillParams directional_from_tatami(const document::TatamiParams& tatami,

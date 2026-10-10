@@ -605,3 +605,151 @@ TEST_CASE("directional: convex shape is sewn without any jump") {
         std::count_if(raw.begin() + 1, raw.end(), [](const FillStitch& fs) { return fs.jump; });
     CHECK(rawJumps >= jumps);
 }
+
+// --- Dégradé de densité ------------------------------------------------------
+
+namespace {
+
+// Ordonnées (µm) auxquelles les lignes de courant coupent la verticale x = xMm.
+std::vector<double> crossings_at_x(const std::vector<DirectionalStreamline>& lines, double xMm) {
+    const double target = xMm * 1000.0;
+    std::vector<double> ys;
+    for (const auto& line : lines) {
+        double bestDx = std::numeric_limits<double>::max();
+        double y = 0.0;
+        for (const Vec2um p : line.points) {
+            const double dx = std::abs(static_cast<double>(p.x.value) - target);
+            if (dx < bestDx) {
+                bestDx = dx;
+                y = static_cast<double>(p.y.value);
+            }
+        }
+        if (bestDx < 300.0) {
+            ys.push_back(y);
+        }
+    }
+    std::sort(ys.begin(), ys.end());
+    return ys;
+}
+
+// Écart moyen entre lignes voisines dont les deux ordonnées sont dans [lo ; hi] (mm).
+double mean_gap_mm(const std::vector<double>& ys, double loMm, double hiMm) {
+    double sum = 0.0;
+    int n = 0;
+    for (std::size_t i = 1; i < ys.size(); ++i) {
+        if (ys[i - 1] >= loMm * 1000.0 && ys[i] <= hiMm * 1000.0) {
+            sum += ys[i] - ys[i - 1];
+            ++n;
+        }
+    }
+    return n > 0 ? sum / n / 1000.0 : 0.0;
+}
+
+document::DensityGradient vertical_gradient(Micrometers from, Micrometers to) {
+    document::DensityGradient g;
+    g.from = um(15, 0);
+    g.to = um(15, 20);
+    g.spacing_from = from;
+    g.spacing_to = to;
+    return g;
+}
+
+} // namespace
+
+TEST_CASE("directional density gradient spreads rows towards the sparse end") {
+    const auto region = rect_mm(0, 0, 30, 20);
+    auto dp = base_params();
+    dp.guides.push_back(line_mm(0, 10, 30, 10)); // champ horizontal
+    dp.density_gradient = vertical_gradient(Micrometers{400}, Micrometers{1'600});
+
+    const auto ys = crossings_at_x(trace_directional_streamlines(region, dp), 15.0);
+    REQUIRE(ys.size() > 20);
+    const double dense = mean_gap_mm(ys, 0.0, 7.0);
+    const double sparse = mean_gap_mm(ys, 13.0, 20.0);
+    REQUIRE(dense > 0.0);
+    REQUIRE(sparse > 0.0);
+    // Espacement local moyen attendu ~0,7 mm en bas, ~1,4 mm en haut.
+    CHECK(sparse > 1.5 * dense);
+    CHECK(dense > 0.4);  // jamais plus serré que l'écart local
+    CHECK(sparse < 1.9); // ni plus lâche que le plus grand écart
+    // Aucune zone vide : pas d'écart supérieur à 2 x l'écart maximal.
+    for (std::size_t i = 1; i < ys.size(); ++i) {
+        CHECK(ys[i] - ys[i - 1] < 3'200.0);
+    }
+}
+
+TEST_CASE("directional density gradient is deterministic") {
+    const auto region = rect_mm(0, 0, 30, 20);
+    auto dp = base_params();
+    dp.guides.push_back(line_mm(0, 10, 30, 10));
+    dp.density_gradient = vertical_gradient(Micrometers{500}, Micrometers{1'200});
+    const auto a = fill_directional(region, dp);
+    const auto b = fill_directional(region, dp);
+    REQUIRE(a.size() > 50);
+    CHECK(a == b);
+}
+
+TEST_CASE("directional uniform gradient equals the plain spacing") {
+    const auto region = rect_mm(0, 0, 30, 20);
+    auto plain = base_params();
+    plain.guides.push_back(line_mm(0, 10, 30, 10));
+    auto graded = plain;
+    graded.density_gradient = vertical_gradient(Micrometers{400}, Micrometers{400});
+    const auto a = trace_directional_streamlines(region, plain);
+    const auto b = trace_directional_streamlines(region, graded);
+    REQUIRE(a.size() == b.size());
+    for (std::size_t i = 0; i < a.size(); ++i) {
+        CHECK(a[i].points == b[i].points);
+    }
+}
+
+TEST_CASE("directional gradient with a degenerate axis is uniform at spacing_from") {
+    const auto region = rect_mm(0, 0, 30, 20);
+    auto wide = base_params();
+    wide.row_spacing = Micrometers{800};
+    wide.guides.push_back(line_mm(0, 10, 30, 10));
+    auto degenerate = base_params();
+    degenerate.guides = wide.guides;
+    document::DensityGradient g;
+    g.from = um(5, 5);
+    g.to = um(5, 5);
+    g.spacing_from = Micrometers{800};
+    g.spacing_to = Micrometers{200}; // ignoré : axe nul
+    degenerate.density_gradient = g;
+    const auto a = trace_directional_streamlines(region, wide);
+    const auto b = trace_directional_streamlines(region, degenerate);
+    REQUIRE(a.size() == b.size());
+    for (std::size_t i = 0; i < a.size(); ++i) {
+        CHECK(a[i].points == b[i].points);
+    }
+}
+
+TEST_CASE("density_gradient_across spans the shape along the requested direction") {
+    const std::vector<geometry::PathSet> shape{rect_mm(0, 0, 30, 20)};
+    const auto vertical =
+        density_gradient_across(shape, Angle{kPi / 2.0}, Micrometers{400}, Micrometers{1'200});
+    REQUIRE(vertical.has_value());
+    CHECK(vertical->from == um(15, 0));
+    CHECK(vertical->to == um(15, 20));
+    CHECK(vertical->spacing_from == Micrometers{400});
+    CHECK(vertical->spacing_to == Micrometers{1'200});
+
+    const auto horizontal =
+        density_gradient_across(shape, Angle{0.0}, Micrometers{400}, Micrometers{800});
+    REQUIRE(horizontal.has_value());
+    CHECK(horizontal->from == um(0, 10));
+    CHECK(horizontal->to == um(30, 10));
+
+    CHECK_FALSE(density_gradient_across({}, Angle{0.0}, Micrometers{400}, Micrometers{800}));
+}
+
+TEST_CASE("directional gradient clamps absurd spacings instead of stalling") {
+    const auto region = rect_mm(0, 0, 6, 4);
+    auto dp = base_params();
+    dp.guides.push_back(line_mm(0, 2, 6, 2));
+    dp.density_gradient = vertical_gradient(Micrometers{0}, Micrometers{-50});
+    const auto lines = trace_directional_streamlines(region, dp);
+    CHECK(!lines.empty());
+    // Plancher de 0,1 mm : jamais plus de 41 lignes sur 4 mm de large.
+    CHECK(lines.size() <= 41);
+}
