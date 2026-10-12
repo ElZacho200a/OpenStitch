@@ -5,6 +5,7 @@
 // évolue. Un défaut connu est déclaré avec QEXPECT_FAIL(Continue) : la suite reste
 // verte, et dès que le défaut est corrigé le test échoue en « XPASS » jusqu'à ce que
 // le marqueur soit retiré — il ne peut donc pas rester périmé en silence.
+#include <QAbstractButton>
 #include <QAction>
 #include <QApplication>
 #include <QCoreApplication>
@@ -12,6 +13,8 @@
 #include <QKeySequence>
 #include <QMenu>
 #include <QMenuBar>
+#include <QMetaMethod>
+#include <QRegularExpression>
 #include <QSettings>
 #include <QShortcut>
 #include <QStringList>
@@ -21,8 +24,17 @@
 #include <map>
 #include <set>
 
+#include <QCheckBox>
+#include <QComboBox>
+#include <QDoubleSpinBox>
+#include <QPushButton>
+#include <QSpinBox>
+#include <QToolBar>
+#include <QToolButton>
+
 #include "interaction_map.hpp"
 #include "main_window.hpp"
+#include "properties_panel.hpp"
 
 using openstitch::desktop::MainWindow;
 
@@ -41,6 +53,17 @@ void collectMenuActions(const QMenu* menu, QList<QAction*>& out) {
         }
     }
 }
+
+// Accès à `QObject::isSignalConnected` (protégé) : une action dont aucun signal
+// n'est connecté ne fait rien quand on la déclenche. Technique usuelle de test ; la
+// classe dérivée n'est jamais instanciée.
+struct Peek : QObject {
+    static bool connected(const QObject* object, const char* signalSignature) {
+        const QMetaMethod method = object->metaObject()->method(
+            object->metaObject()->indexOfSignal(QMetaObject::normalizedSignature(signalSignature)));
+        return static_cast<const Peek*>(object)->isSignalConnected(method);
+    }
+};
 
 // Mnémonique d'un titre de menu ou d'action (« &Fichier » -> 'f'), 0 s'il n'y en a pas.
 QChar mnemonicOf(const QString& text) {
@@ -257,6 +280,187 @@ private slots:
              {"action_help_quickstart", "action_help_gestures", "action_about"}) {
             QVERIFY2(window.findChild<QAction*>(QString::fromLatin1(name)) != nullptr, name);
         }
+    }
+
+    // Une barre d'outils masquée doit pouvoir se rouvrir depuis un menu (comme les docks).
+    void everyToolbarIsReopenableFromAMenu() {
+        MainWindow window;
+        QList<QAction*> menuActions;
+        for (const QAction* top : window.menuBar()->actions()) {
+            if (top->menu() != nullptr) {
+                collectMenuActions(top->menu(), menuActions);
+            }
+        }
+        const auto bars = window.findChildren<QToolBar*>();
+        QVERIFY(!bars.isEmpty());
+        QStringList unreachable;
+        for (const QToolBar* bar : bars) {
+            if (!menuActions.contains(bar->toggleViewAction())) {
+                unreachable << bar->windowTitle();
+            }
+        }
+        QVERIFY2(unreachable.isEmpty(), qPrintable(unreachable.join(QStringLiteral(", "))));
+    }
+
+    // Une action visible (avec un libellé) dont aucun signal n'est connecté ne fait rien
+    // quand on la déclenche : câblage oublié.
+    void everyLabelledActionIsConnected() {
+        MainWindow window;
+        QStringList dead;
+        for (QAction* action : window.findChildren<QAction*>()) {
+            if (action->isSeparator() || action->menu() != nullptr || action->text().isEmpty()) {
+                continue;
+            }
+            if (!Peek::connected(action, "triggered(bool)") &&
+                !Peek::connected(action, "toggled(bool)")) {
+                dead << action->objectName() + QStringLiteral(" \"") + action->text() +
+                            QStringLiteral("\"");
+            }
+        }
+        QVERIFY2(dead.isEmpty(), qPrintable(dead.join(QStringLiteral(" | "))));
+    }
+
+    // Aucune action de menu ou de barre n'est orpheline : chacune est atteignable
+    // (présente dans un menu ou une barre) ou porte un raccourci.
+    void noActionIsOrphaned() {
+        MainWindow window;
+        QStringList orphans;
+        for (QAction* action : window.findChildren<QAction*>()) {
+            if (action->isSeparator() || action->menu() != nullptr || action->text().isEmpty()) {
+                continue;
+            }
+            if (action->associatedObjects().isEmpty() && action->shortcuts().isEmpty()) {
+                orphans << action->objectName() + QStringLiteral(" \"") + action->text() +
+                               QStringLiteral("\"");
+            }
+        }
+        QVERIFY2(orphans.isEmpty(), qPrintable(orphans.join(QStringLiteral(" | "))));
+    }
+
+    // Inspecteur : chaque widget de saisie, pour chaque type d'objet, émet quelque chose
+    // (un champ qui ne modifie rien est un réglage fantôme).
+    void everyInspectorWidgetIsConnectedForEveryObjectType() {
+        const std::vector<std::pair<QString, document::StitchParams>> types{
+            {QStringLiteral("running"), document::RunningStitchParams{}},
+            {QStringLiteral("tatami"), document::TatamiParams{}},
+            {QStringLiteral("satin"), document::SatinParams{}},
+            {QStringLiteral("directional"), document::DirectionalFillParams{}},
+            {QStringLiteral("autosatin"), document::AutoSatinParams{}}};
+        QStringList dead;
+        int total = 0;
+        for (const auto& [type, params] : types) {
+            PropertiesPanel panel;
+            document::EmbroideryObject object;
+            object.id = ObjectId{7};
+            object.params = params;
+            panel.showEmbroidery(object);
+            for (QWidget* w : panel.findChildren<QWidget*>()) {
+                if (w->parentWidget() != nullptr &&
+                    qobject_cast<QAbstractSpinBox*>(w->parentWidget()) != nullptr) {
+                    continue; // QLineEdit interne d'une boîte numérique
+                }
+                bool ok = true;
+                if (qobject_cast<QAbstractButton*>(w) != nullptr) {
+                    ok = Peek::connected(w, "clicked(bool)") ||
+                         Peek::connected(w, "toggled(bool)") || Peek::connected(w, "pressed()");
+                } else if (qobject_cast<QSpinBox*>(w) != nullptr) {
+                    ok = Peek::connected(w, "valueChanged(int)");
+                } else if (qobject_cast<QDoubleSpinBox*>(w) != nullptr) {
+                    ok = Peek::connected(w, "valueChanged(double)");
+                } else if (qobject_cast<QComboBox*>(w) != nullptr) {
+                    ok = Peek::connected(w, "currentIndexChanged(int)") ||
+                         Peek::connected(w, "activated(int)") ||
+                         Peek::connected(w, "currentTextChanged(QString)");
+                } else {
+                    continue;
+                }
+                ++total;
+                if (!ok) {
+                    dead << type + QStringLiteral(" / ") + w->objectName();
+                }
+            }
+        }
+        QVERIFY(total > 60); // 87 widgets de saisie au 2026-10-12 : le scan voit bien le panneau
+        QVERIFY2(dead.isEmpty(), qPrintable(dead.join(QStringLiteral(" | "))));
+    }
+
+    // Les boutons à raccourci (Alt+Haut/Bas de l'ordre de couture) ne doivent pas
+    // doubler un raccourci de la fenêtre : windowShortcutsAreUnique ne regarde que les actions.
+    void buttonShortcutsDoNotClashWithWindowShortcuts() {
+        MainWindow window;
+        const std::set<QString> actual = actualWindowShortcuts(window);
+        QStringList clashes;
+        int buttons = 0;
+        std::map<QString, int> seen;
+        for (const QAbstractButton* button : window.findChildren<QAbstractButton*>()) {
+            if (button->shortcut().isEmpty()) {
+                continue;
+            }
+            ++buttons;
+            const QString key = button->shortcut().toString();
+            if (actual.count(key) != 0 || ++seen[key] > 1) {
+                clashes << button->objectName() + QStringLiteral(" : ") + key;
+            }
+        }
+        QVERIFY(buttons >= 2); // button_orderUp / button_orderDown
+        QVERIFY2(clashes.isEmpty(), qPrintable(clashes.join(QStringLiteral(" | "))));
+    }
+
+    // Une infobulle qui annonce une touche « (D) » doit dire vrai : sinon l'aide ment.
+    void tooltipKeyHintsMatchTheRealShortcut() {
+        MainWindow window;
+        static const QRegularExpression hint(
+            QStringLiteral("\\(([A-Za-z0-9+ ]{1,14})\\)\\s*\\.?$"));
+        const auto normalise = [](QString s) {
+            s.remove(QLatin1Char(' '));
+            s.replace(QStringLiteral("Maj"), QStringLiteral("Shift"));
+            return s.toLower();
+        };
+        QStringList wrong;
+        for (const QAction* action : window.findChildren<QAction*>()) {
+            const auto m = hint.match(action->toolTip());
+            if (!m.hasMatch() || action->shortcuts().isEmpty() ||
+                m.captured(1).contains(QStringLiteral("clic"))) {
+                continue;
+            }
+            bool matches = false;
+            for (const QKeySequence& s : action->shortcuts()) {
+                matches =
+                    matches ||
+                    normalise(s.toString(QKeySequence::PortableText)) == normalise(m.captured(1)) ||
+                    normalise(s.toString(QKeySequence::NativeText)) == normalise(m.captured(1));
+            }
+            if (!matches) {
+                wrong << action->objectName() + QStringLiteral(" : infobulle (") + m.captured(1) +
+                             QStringLiteral(") / réel ") +
+                             action->shortcut().toString(QKeySequence::PortableText);
+            }
+        }
+        QVERIFY2(wrong.isEmpty(), qPrintable(wrong.join(QStringLiteral(" | "))));
+    }
+
+    // Dette connue (audit 2026-10-12) : ~80 actions sans objectName, donc introuvables par
+    // les tests et instables pour les technologies d'assistance. XFAIL : dès que tout est
+    // nommé, ce test échoue en XPASS et le marqueur doit être retiré.
+    void everyMenuActionHasAnObjectName() {
+        MainWindow window;
+        QList<QAction*> menuActions;
+        for (const QAction* top : window.menuBar()->actions()) {
+            if (top->menu() != nullptr) {
+                collectMenuActions(top->menu(), menuActions);
+            }
+        }
+        QStringList unnamed;
+        for (const QAction* action : menuActions) {
+            if (action->objectName().isEmpty() && !action->text().isEmpty() &&
+                action->parent() == &window) {
+                unnamed << action->text();
+            }
+        }
+        QEXPECT_FAIL("", "actions de menu sans objectName (audit 2026-10-12)", Continue);
+        QVERIFY2(unnamed.isEmpty(),
+                 qPrintable(QString::number(unnamed.size()) + QStringLiteral(" : ") +
+                            unnamed.join(QStringLiteral(" | "))));
     }
 
 private:
