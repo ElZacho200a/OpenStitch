@@ -344,6 +344,35 @@ cas synthétique CLI, `detail` 0,9 produit des colonnes refusées sur un anneau
 fin (« trou entre stations ») : le segment est alors découpé en plusieurs
 objets au lieu de rester continu.
 
+## Satin sur les bandes (`satin_bands`)
+
+Par défaut l'auto-numérisation ne produit que du tatami (zones) ou du contour
+(petites zones). `AutoOptions::satin_bands` (CLI : `--satin-bands`, désactivé
+par défaut) rend le satin aux **bandes étroites** : anneaux, rubans, traits
+épais, arcs.
+
+Une région devient un **auto-satin par squelette** (`AutoSatinParams` par
+défaut, éditable ensuite) si :
+
+- elle fait au plus 1 trou (un anneau) ;
+- sa largeur inscrite maximale est <= `satin_max_width` (6 mm) et sa largeur
+  moyenne >= 0,8 mm (seuil de `SatinabilityThresholds`) ;
+- elle est allongée : longueur >= 2,5 x largeur, avec longueur = périmètre
+  total (extérieur + trous) / 2. Le rapport de satinabilité n'est pas utilisé
+  ici : il ignore les trous dans le périmètre et un anneau n'a pas d'arête de
+  squelette ;
+- **la génération essayée** (`generate_skeleton_satin`, déterministe) couvre
+  au moins `satin_min_coverage` (0,9) de la région.
+
+Sinon : tatami, comme avant. Les disques et formes compactes restent donc en
+tatami (l'auto-satin les refuse : « région compacte »). Essai fait avec un
+anneau de 2,4 mm, un arc de 3,7 mm et un disque : anneau et arc en satin,
+disque en tatami.
+
+**Limites** : une région à plusieurs trous n'est pas tentée ; la couverture est
+géométrique, pas validée sur machine ; un satin radial pour les disques reste à
+faire (voir `satin-squelette.md`, limites restantes).
+
 ## Stippling (semis de points relié en un trait)
 
 `libs/stipple` (Qt-free, sans dépendance GPL) transforme une image en un

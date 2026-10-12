@@ -962,3 +962,69 @@ TEST_CASE("Lot D : seuil de fragment sur l'aire vectorisee, pas en pixels") {
         CHECK_FALSE(std::holds_alternative<document::RunningStitchParams>(e.params));
     }
 }
+
+// --- Satin sur les bandes ---------------------------------------------------
+
+namespace {
+
+// Image 200x200 blanche avec un anneau rouge (rayon ext. `outer`, int. `inner`)
+// ou un disque plein (`inner` = 0).
+image::Image ring_image_px(int outer, int inner) {
+    image::Image img;
+    img.width = 200;
+    img.height = 200;
+    img.rgba.assign(200 * 200 * 4, 255);
+    for (int y = 0; y < 200; ++y) {
+        for (int x = 0; x < 200; ++x) {
+            const double d = std::hypot(x - 99.5, y - 99.5);
+            if (d <= outer && d >= inner) {
+                std::uint8_t* p = img.rgba.data() + (static_cast<std::size_t>(y) * 200 + x) * 4;
+                p[0] = 200;
+                p[1] = 30;
+                p[2] = 30;
+            }
+        }
+    }
+    return img;
+}
+
+bool any_auto_satin(const AutoResult& r) {
+    return std::any_of(r.embroideries.begin(), r.embroideries.end(),
+                       [](const auto& e) { return e.is_auto_satin(); });
+}
+
+Result<AutoResult> digitize_ring(int outer, int inner, bool satinBands) {
+    const auto seg =
+        segmentation::segment(ring_image_px(outer, inner), {.max_colors = 2, .min_region_px = 4});
+    REQUIRE(seg.has_value());
+    IdGenerator<ObjectId> ids;
+    AutoOptions opt;
+    opt.mm_per_px = Millimeters{0.2};
+    opt.skip_largest_region = true; // le fond blanc
+    opt.satin_bands = satinBands;
+    return auto_digitize(*seg, ids, opt);
+}
+
+} // namespace
+
+TEST_CASE("satin bandes : anneau mince -> auto-satin, desactive -> tatami") {
+    // Anneau de 40 px de rayon, 7 px d'epaisseur = 1,4 mm.
+    const auto on = digitize_ring(40, 33, true);
+    REQUIRE(on.has_value());
+    CHECK(any_auto_satin(*on));
+
+    const auto off = digitize_ring(40, 33, false);
+    REQUIRE(off.has_value());
+    CHECK_FALSE(any_auto_satin(*off));
+}
+
+TEST_CASE("satin bandes : disque et bande trop large restent en tatami") {
+    const auto disc = digitize_ring(40, 0, true);
+    REQUIRE(disc.has_value());
+    CHECK_FALSE(any_auto_satin(*disc));
+
+    // Anneau de 60 px d'epaisseur (12 mm) : au-dessus de satin_max_width.
+    const auto wide = digitize_ring(80, 20, true);
+    REQUIRE(wide.has_value());
+    CHECK_FALSE(any_auto_satin(*wide));
+}

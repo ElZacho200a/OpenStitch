@@ -103,6 +103,7 @@ Mêmes valeurs par défaut que le dialogue **Numérisation automatique** du bure
 | `--min-region-px N` | 16 | Taille minimale d'une région |
 | `--smoothing-px N` | 3 | Lissage des formes |
 | `--curve-tolerance MM` | 0 (polygones) | Mode formes : contours en courbes de Bézier avec cet écart maximal ; prendre ~1,5 px ou plus (ex. 0.4) |
+| `--satin-bands` | désactivé | Mode formes : bandes étroites (anneaux, rubans, arcs) en auto-satin au lieu du tatami, repli tatami si la couverture est insuffisante |
 | `--coherent-lines` | désactivé | Mode contours : extrait d'abord des traits de la photo (lignes cohérentes, FDoG) |
 | `--stipple-points N` | 2000 | Mode stipple (`--mode stipple`) : nombre de points du semis (1..200000) |
 | `--stipple-seed S` | 1 | Mode stipple : graine du tirage initial |

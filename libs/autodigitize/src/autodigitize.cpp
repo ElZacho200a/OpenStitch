@@ -11,6 +11,7 @@
 #include <set>
 #include <utility>
 
+#include "openstitch/auto_satin/skeleton_satin.hpp"
 #include "openstitch/geometry/boolean.hpp"
 #include "openstitch/geometry/moments.hpp"
 #include "openstitch/geometry/offset.hpp"
@@ -76,12 +77,58 @@ struct RegionSource {
     std::string label;
 };
 
+// Une région est une « bande » satinable si elle est étroite, allongée, sans
+// forme compacte, et si le satin par squelette la couvre réellement : on ESSAIE
+// la génération (déterministe) et on mesure la couverture plutôt que de
+// deviner depuis la seule forme. Tout échec = pas de satin (repli tatami).
+bool is_satin_band(const geometry::PathSet& region, const AutoOptions& options) {
+    if (region.holes.size() > 1) {
+        return false; // plusieurs trous : cas non couvert par le satin squelette
+    }
+    auto_satin::SkeletonSatinParameters params;
+    const auto analysis = auto_satin::analyze_region(region, params.analysis);
+    if (!analysis) {
+        return false;
+    }
+    const auto& r = analysis->report;
+    // Le rapport de satinabilité ignore les trous dans le périmètre et n'a pas
+    // d'axe pour un anneau (squelette sans arête) : on mesure ici la bande
+    // elle-même. Une bande a deux bords de longueur ~L, d'où L = périmètre
+    // total / 2 ; W = diamètre inscrit maximal ; largeur moyenne = aire / L.
+    double perimeterUm = 0.0;
+    const auto addPerimeter = [&perimeterUm](const geometry::Path& path) {
+        for (std::size_t i = 0; i < path.nodes.size(); ++i) {
+            perimeterUm +=
+                length_um(path.nodes[(i + 1) % path.nodes.size()].pos - path.nodes[i].pos);
+        }
+    };
+    addPerimeter(region.outer);
+    for (const auto& hole : region.holes) {
+        addPerimeter(hole);
+    }
+    const double lengthUm = perimeterUm / 2.0;
+    const double widthUm = r.maximum_width_mm * 1000.0;
+    const double meanWidthUm = lengthUm > 0.0 ? r.area_mm2 * 1e6 / lengthUm : 0.0;
+    const double minWidth = static_cast<double>(params.analysis.thresholds.min_satin_width.value);
+    const double maxWidth = static_cast<double>(options.satin_max_width.value);
+    const double minElongation = params.analysis.thresholds.min_elongation;
+    if (meanWidthUm < minWidth || widthUm > maxWidth || lengthUm < minElongation * widthUm) {
+        return false;
+    }
+    params.measure_coverage = true;
+    const auto generated = auto_satin::generate_skeleton_satin(region, params);
+    if (!generated || generated->columns.empty() || !generated->diagnostics.coverage_measured) {
+        return false;
+    }
+    return generated->diagnostics.coverage_ratio >= options.satin_min_coverage;
+}
+
 // Classification AutoChoice (§24) + construction des objets de broderie pour
 // UN morceau déjà vectorisé (`main`, le plus grand sous-chemin d'une région
 // ou d'un objet vectoriel importé). Ajoute à `result.embroideries` -- ne touche
 // jamais à l'objet vectoriel source lui-même (déjà ajouté par l'appelant le cas
 // échéant). Règle métier : l'auto-broderie ne produit que tatami ou contour ;
-// le satin reste un choix manuel.
+// le satin n'est choisi que pour les bandes étroites (`satin_bands`).
 void classify_and_build_embroidery(const geometry::PathSet& main, const RegionSource& source,
                                    IdGenerator<ObjectId>& ids, const AutoOptions& options,
                                    AutoResult& result) {
@@ -96,7 +143,12 @@ void classify_and_build_embroidery(const geometry::PathSet& main, const RegionSo
     emb.intent = document::EmbroideryIntent::AutoChoice;
 
     emb.id = ids.next();
-    if (areaMm2 >= options.min_fill_area_mm2) {
+    if (areaMm2 >= options.min_fill_area_mm2 && options.satin_bands &&
+        is_satin_band(main, options)) {
+        // Bande étroite (anneau, ruban, trait épais) -> auto-satin par squelette.
+        emb.params = document::AutoSatinParams{};
+        emb.name = "Satin " + source.label;
+    } else if (areaMm2 >= options.min_fill_area_mm2) {
         // Toute zone remplissable -> tatami. L'orientation des fils reste
         // éditable ensuite.
         document::TatamiParams tp;

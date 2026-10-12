@@ -21,8 +21,8 @@ struct AutoOptions {
     // > 0 : contours des formes en courbes de Bézier (voir
     // `vectorization::VectorizeOptions::curve_tolerance`). 0 : polygones.
     Micrometers curve_tolerance{0};
-    // Ancien seuil satin : conserve pour compatibilite projet/API, ignore par
-    // l'auto-broderie (qui ne produit plus que tatami ou contour).
+    // Largeur maximale d'une bande satinable (voir `satin_bands`). Ignoré
+    // tant que `satin_bands` est faux.
     Micrometers satin_max_width{6'000};
     // Aire min (mm²) pour un remplissage ; en dessous, simple contour.
     double min_fill_area_mm2{4.0};
@@ -38,6 +38,16 @@ struct AutoOptions {
     // classification force maintenant tatami (zones) ou contour (petites zones).
     bool use_auto_satin{false};
     bool use_naive_satin{false};
+
+    // --- Satin sur les bandes (anneaux, rubans, traits épais) ---
+    // Vrai : une région ÉTROITE et allongée (largeur moyenne >= 0,8 mm, largeur
+    // max <= `satin_max_width`) devient un auto-satin par squelette au lieu d'un
+    // tatami -- anneaux et bandes courbes compris. Le satin n'est retenu que si
+    // la génération essayée couvre au moins `satin_min_coverage` de la région ;
+    // sinon repli sur le tatami (comportement historique). Les disques et formes
+    // compactes restent en tatami. Désactivé par défaut.
+    bool satin_bands{false};
+    double satin_min_coverage{0.9};
 
     // --- Remplissages tatami (Lot B, audit marine plein cadre 2026-09-22) ---
     // Réglages appliqués aux tatami CRÉÉS par l'auto-numérisation, jamais aux

@@ -670,6 +670,7 @@ struct DigitizeArgs {
     int smoothingPx = 3;
     int skipBg = -1; // -1 = auto (segmentation::background_candidate), 0 = non, 1 = oui
     double curveToleranceMm = 0.0; // mode formes : > 0 -> contours en courbes de Bézier
+    bool satinBands = false;       // mode formes : bandes étroites en auto-satin
     bool singlePath = false;       // mode contours : parcours eulérien (moins de coupes)
     bool coherentLines = false;    // mode contours : photo -> traits (FDoG) avant segmentation
     int stipplePoints = 2000;      // mode stipple : nombre de points du semis
@@ -769,6 +770,7 @@ int run_digitize(const DigitizeArgs& a) {
     autodigitize::AutoOptions opts;
     opts.mm_per_px = project.mm_per_px;
     opts.skip_largest_region = skipLargest;
+    opts.satin_bands = a.satinBands;
     opts.curve_tolerance =
         Micrometers{static_cast<std::int32_t>(std::lround(a.curveToleranceMm * 1000.0))};
     fmt::print(st, "Ignorer la plus grande région (fond) : {}{}\n", skipLargest ? "oui" : "non",
@@ -1510,6 +1512,10 @@ int main(int argc, char** argv) {
                      "Mode formes : contours en courbes de Bézier avec cet écart maximal en mm "
                      "(0 = polygones, défaut ; prendre ~1,5 px ou plus, ex. 0.4)")
         ->check(CLI::NonNegativeNumber);
+    dz_cmd->add_flag("--satin-bands", dz.satinBands,
+                     "Mode formes : les bandes étroites (anneaux, rubans, traits épais) deviennent "
+                     "de l'auto-satin au lieu d'un tatami ; repli tatami si la couverture est "
+                     "insuffisante");
     dz_cmd->add_flag("--single-path", dz.singlePath,
                      "Mode contours : relie les traits en un minimum de polylignes (parcours "
                      "eulérien, repasse un court tronçon plutôt que de couper le fil)");
