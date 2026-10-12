@@ -78,6 +78,7 @@
 #include "openstitch/commands/project_commands.hpp"
 #include "openstitch/core/app_info.hpp"
 #include "openstitch/document/canvas.hpp"
+#include "openstitch/document/hoop_presets.hpp"
 #include "openstitch/document/image_placement.hpp"
 #include "openstitch/formats/dst.hpp"
 #include "openstitch/formats/dxf.hpp"
@@ -1253,6 +1254,61 @@ bool MainWindow::confirmDiscardChanges(const QString& question) {
     return answer == QMessageBox::Discard;
 }
 
+namespace {
+
+// Dernier cadre choisi, rappelé pour les nouveaux projets (un projet ouvert garde le sien).
+document::Canvas rememberedCanvas() {
+    document::Canvas c;
+    c.width = Micrometers{
+        ui_memory::intValue(QStringLiteral("hoop/widthUm"), c.width.value, 10'000, 500'000)};
+    c.height = Micrometers{
+        ui_memory::intValue(QStringLiteral("hoop/heightUm"), c.height.value, 10'000, 500'000)};
+    c.margin = Micrometers{ui_memory::intValue(QStringLiteral("hoop/marginUm"), 0, 0, 100'000)};
+    return c;
+}
+
+void rememberCanvas(const document::Canvas& c) {
+    ui_memory::setIntValue(QStringLiteral("hoop/widthUm"), c.width.value);
+    ui_memory::setIntValue(QStringLiteral("hoop/heightUm"), c.height.value);
+    ui_memory::setIntValue(QStringLiteral("hoop/marginUm"), c.margin.value);
+}
+
+// Cadres enregistrés par l'utilisateur : « nom<TAB>largeur_mm<TAB>hauteur_mm ».
+struct CustomHoop {
+    QString name;
+    double widthMm{0.0};
+    double heightMm{0.0};
+};
+
+std::vector<CustomHoop> loadCustomHoops() {
+    std::vector<CustomHoop> out;
+    for (const QString& line : QSettings().value(QStringLiteral("hoops/custom")).toStringList()) {
+        const QStringList parts = line.split(QLatin1Char('\t'));
+        if (parts.size() != 3) {
+            continue;
+        }
+        bool okW = false;
+        bool okH = false;
+        const double w = parts[1].toDouble(&okW);
+        const double h = parts[2].toDouble(&okH);
+        if (okW && okH && !parts[0].isEmpty() && w >= 10.0 && h >= 10.0 && w <= 500.0 &&
+            h <= 500.0) {
+            out.push_back({parts[0], w, h});
+        }
+    }
+    return out;
+}
+
+void saveCustomHoops(const std::vector<CustomHoop>& hoops) {
+    QStringList lines;
+    for (const auto& h : hoops) {
+        lines << QStringLiteral("%1\t%2\t%3").arg(h.name).arg(h.widthMm).arg(h.heightMm);
+    }
+    QSettings().setValue(QStringLiteral("hoops/custom"), lines);
+}
+
+} // namespace
+
 void MainWindow::newProject() {
     if (!confirmDiscardChanges(
             tr("Le projet a été modifié. Enregistrer avant de créer un nouveau projet ?"))) {
@@ -1260,7 +1316,9 @@ void MainWindow::newProject() {
     }
     // Un `Project` par défaut passe par le même chemin qu'un projet chargé :
     // aucune réinitialisation spécifique à maintenir en double ici.
-    applyLoadedProject(document::Project{});
+    document::Project fresh;
+    fresh.canvas = rememberedCanvas();
+    applyLoadedProject(std::move(fresh));
     setTool(Tool::Select);
     statusBar()->showMessage(tr("Nouveau projet — ouvrez une image ou dessinez une forme."));
 }
@@ -1707,6 +1765,7 @@ void MainWindow::applyCanvasToView() {
     if (view_->canvasSizeMm() != want) {
         view_->setCanvasSizeMm(want);
     }
+    view_->setUsableMarginMm(to_millimeters(project_.canvas.margin).value);
 }
 
 void MainWindow::positionEmptyState() {
@@ -1756,23 +1815,147 @@ void MainWindow::closeEvent(QCloseEvent* event) {
 
 void MainWindow::setHoopSize() {
     QDialog dialog(this);
-    dialog.setWindowTitle(tr("Taille du cadre de broderie"));
+    dialog.setWindowTitle(tr("Cadre de broderie"));
     auto* layout = new QFormLayout(&dialog);
     layout->addRow(new QLabel(tr("Zone physique dans laquelle le motif doit tenir.\n"
-                                 "L'analyse signale les points hors de ce cadre."),
+                                 "L'analyse signale les points hors de la zone brodable."),
                               &dialog));
-    const auto makeSpin = [&](double valueMm) {
+    const auto makeSpin = [&](double valueMm, double maxMm) {
         auto* spin = new QDoubleSpinBox(&dialog);
-        spin->setRange(10.0, 500.0);
+        spin->setRange(0.0, maxMm);
         spin->setDecimals(1);
+        spin->setSingleStep(5.0);
         spin->setSuffix(tr(" mm"));
         spin->setValue(valueMm);
         return spin;
     };
-    auto* w = makeSpin(to_millimeters(project_.canvas.width).value);
-    auto* h = makeSpin(to_millimeters(project_.canvas.height).value);
+    auto* presetCombo = new QComboBox(&dialog);
+    presetCombo->setObjectName(QStringLiteral("hoopPresetCombo"));
+    auto* w = makeSpin(to_millimeters(project_.canvas.width).value, 500.0);
+    w->setMinimum(10.0);
+    w->setObjectName(QStringLiteral("hoopWidthSpin"));
+    auto* h = makeSpin(to_millimeters(project_.canvas.height).value, 500.0);
+    h->setMinimum(10.0);
+    h->setObjectName(QStringLiteral("hoopHeightSpin"));
+    auto* margin = makeSpin(to_millimeters(project_.canvas.margin).value, 100.0);
+    margin->setSingleStep(0.5);
+    margin->setObjectName(QStringLiteral("hoopMarginSpin"));
+    margin->setToolTip(tr("Bande de sécurité le long du cadre (pied presseur, collision avec le "
+                          "cadre) : le motif ne doit pas y passer. Hachurée sur le canevas."));
+    auto* usable = new QLabel(&dialog);
+    usable->setObjectName(QStringLiteral("hoopUsableLabel"));
+
+    // Entrées de la liste : « Personnalisé », modèles courants, puis cadres enregistrés.
+    std::vector<CustomHoop> custom = loadCustomHoops();
+    constexpr int kCustomRole = Qt::UserRole + 1;
+    const auto fillPresets = [&] {
+        presetCombo->clear();
+        presetCombo->addItem(tr("Personnalisé"), QSizeF{});
+        for (const auto& p : document::kHoopPresets) {
+            presetCombo->addItem(
+                QString::fromUtf8(p.name.data(), static_cast<qsizetype>(p.name.size())),
+                QSizeF(static_cast<double>(p.width_mm), static_cast<double>(p.height_mm)));
+        }
+        for (const auto& c : custom) {
+            presetCombo->addItem(tr("%1 (enregistré)").arg(c.name), QSizeF(c.widthMm, c.heightMm));
+            presetCombo->setItemData(presetCombo->count() - 1, c.name, kCustomRole);
+        }
+    };
+    fillPresets();
+
+    const auto selectMatchingPreset = [&] {
+        QSignalBlocker block(presetCombo);
+        int found = 0;
+        for (int i = 1; i < presetCombo->count(); ++i) {
+            const QSizeF size = presetCombo->itemData(i).toSizeF();
+            if (std::abs(size.width() - w->value()) < 0.05 &&
+                std::abs(size.height() - h->value()) < 0.05) {
+                found = i;
+                break;
+            }
+        }
+        presetCombo->setCurrentIndex(found);
+    };
+    const auto refreshUsable = [&] {
+        const double uw = std::max(0.0, w->value() - 2.0 * margin->value());
+        const double uh = std::max(0.0, h->value() - 2.0 * margin->value());
+        usable->setText(tr("Zone brodable : %1 × %2 mm").arg(uw, 0, 'f', 1).arg(uh, 0, 'f', 1));
+    };
+    selectMatchingPreset();
+    refreshUsable();
+
+    connect(presetCombo, &QComboBox::activated, &dialog, [&](int index) {
+        const QSizeF size = presetCombo->itemData(index).toSizeF();
+        if (size.isEmpty()) {
+            return; // « Personnalisé » : on garde les valeurs
+        }
+        w->setValue(size.width());
+        h->setValue(size.height());
+        selectMatchingPreset();
+    });
+    for (auto* spin : {w, h, margin}) {
+        connect(spin, &QDoubleSpinBox::valueChanged, &dialog, [&] {
+            selectMatchingPreset();
+            refreshUsable();
+        });
+    }
+
+    auto* swapBtn = new QPushButton(tr("Pivoter"), &dialog);
+    swapBtn->setToolTip(
+        tr("Échange la largeur et la hauteur (cadre à l'horizontale ou à la verticale)."));
+    connect(swapBtn, &QPushButton::clicked, &dialog, [&] {
+        const double previousWidth = w->value();
+        w->setValue(h->value());
+        h->setValue(previousWidth);
+    });
+    auto* saveBtn = new QPushButton(tr("Enregistrer ce cadre…"), &dialog);
+    saveBtn->setToolTip(tr("Garde cette taille dans la liste, pour les prochains projets."));
+    auto* deleteBtn = new QPushButton(tr("Supprimer"), &dialog);
+    deleteBtn->setToolTip(tr("Retire de la liste le cadre enregistré sélectionné."));
+    const auto refreshDelete = [&] {
+        deleteBtn->setEnabled(presetCombo->currentData(kCustomRole).isValid());
+    };
+    refreshDelete();
+    connect(presetCombo, &QComboBox::currentIndexChanged, &dialog, refreshDelete);
+    connect(saveBtn, &QPushButton::clicked, &dialog, [&] {
+        bool ok = false;
+        const QString name =
+            QInputDialog::getText(&dialog, tr("Enregistrer le cadre"), tr("Nom du cadre :"),
+                                  QLineEdit::Normal, QString(), &ok)
+                .trimmed();
+        if (!ok || name.isEmpty()) {
+            return;
+        }
+        std::erase_if(custom, [&](const CustomHoop& c) { return c.name == name; });
+        custom.push_back({name, w->value(), h->value()});
+        saveCustomHoops(custom);
+        fillPresets();
+        selectMatchingPreset();
+        refreshDelete();
+    });
+    connect(deleteBtn, &QPushButton::clicked, &dialog, [&] {
+        const QString name = presetCombo->currentData(kCustomRole).toString();
+        if (name.isEmpty()) {
+            return;
+        }
+        std::erase_if(custom, [&](const CustomHoop& c) { return c.name == name; });
+        saveCustomHoops(custom);
+        fillPresets();
+        selectMatchingPreset();
+        refreshDelete();
+    });
+
+    layout->addRow(tr("Modèle :"), presetCombo);
     layout->addRow(tr("Largeur :"), w);
     layout->addRow(tr("Hauteur :"), h);
+    auto* tools = new QHBoxLayout;
+    tools->addWidget(swapBtn);
+    tools->addWidget(saveBtn);
+    tools->addWidget(deleteBtn);
+    tools->addStretch(1);
+    layout->addRow(tools);
+    layout->addRow(tr("Marge de sécurité :"), margin);
+    layout->addRow(usable);
     auto* buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dialog);
     connect(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
     connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
@@ -1783,12 +1966,20 @@ void MainWindow::setHoopSize() {
     document::Canvas c;
     c.width = to_micrometers(Millimeters{w->value()});
     c.height = to_micrometers(Millimeters{h->value()});
+    c.margin = to_micrometers(Millimeters{margin->value()});
+    rememberCanvas(c);
+    if (c == project_.canvas) {
+        return;
+    }
     undoStack_.execute(std::make_unique<commands::SetCanvasCommand>(c), project_);
     applyCanvasToView();
     refreshImage();
     updateActions();
-    statusBar()->showMessage(
-        tr("Cadre : %1 × %2 mm").arg(w->value(), 0, 'f', 1).arg(h->value(), 0, 'f', 1));
+    statusBar()->showMessage(tr("Cadre : %1 × %2 mm, zone brodable %3 × %4 mm")
+                                 .arg(w->value(), 0, 'f', 1)
+                                 .arg(h->value(), 0, 'f', 1)
+                                 .arg(to_millimeters(c.usable_width()).value, 0, 'f', 1)
+                                 .arg(to_millimeters(c.usable_height()).value, 0, 'f', 1));
 }
 
 void MainWindow::adjustBrightnessContrast() {
@@ -2221,7 +2412,7 @@ void MainWindow::updateHoverHighlight(std::optional<QPointF> sceneMm) {
         if (!hoverCacheValid_) {
             hoverCache_.clear();
             for (const auto& object : project_.vector_objects) {
-                if (object.visible) {
+                if (object.visible && vectorPassesFilter(object)) {
                     QPainterPath path = objectScenePath(object);
                     const QRectF bounds = path.boundingRect();
                     hoverCache_.push_back({object.id, std::move(path), bounds});
@@ -2904,10 +3095,12 @@ void MainWindow::renderBase(const image::Image& img) {
     // Objets vectoriels (remplissage translucide + contour).
     if (showVectorsAct_ != nullptr && showVectorsAct_->isChecked()) {
         for (const auto& object : project_.vector_objects) {
-            if (!object.visible) {
+            // Filtres d'affichage : une forme sélectionnée reste visible (sinon la
+            // sélection deviendrait invisible et ses poignées orphelines).
+            const bool selected = isObjectSelected(object.id);
+            if (!object.visible || (!selected && !vectorPassesFilter(object))) {
                 continue;
             }
-            const bool selected = isObjectSelected(object.id);
             const QColor color(object.rgb[0], object.rgb[1], object.rgb[2]);
             const QPainterPath outline = objectPainterPath(object);
             // Sélection à DOUBLE contraste : un halo clair sous un trait d'accent,
@@ -4254,6 +4447,26 @@ void MainWindow::autoDigitize() {
         shapeDetailRow->addWidget(new QLabel(tr("Élevé"), shapesPanel));
         shapeDetailRow->addWidget(shapeDetailValue);
         shapesPanelLayout->addLayout(shapeDetailRow);
+        // Chevauchement des tatamis voisins (AutoOptions::fill_overlap), en µm
+        // dans la mémoire des réglages.
+        auto* overlapRow = new QHBoxLayout;
+        auto* overlapSpin = new QDoubleSpinBox(shapesPanel);
+        overlapSpin->setObjectName("fillOverlapSpin");
+        overlapSpin->setRange(0.0, 1.0);
+        overlapSpin->setSingleStep(0.05);
+        overlapSpin->setDecimals(2);
+        overlapSpin->setSuffix(tr(" mm"));
+        overlapSpin->setValue(
+            ui_memory::intValue(QStringLiteral("autoDigitize/fillOverlapUm"), 0, 0, 1000) / 1000.0);
+        overlapSpin->setToolTip(
+            tr("Débord de chaque remplissage sur ses voisins brodés, le long des bords partagés "
+               "uniquement : évite les jours entre deux couleurs. 0 = contours exacts de la "
+               "segmentation. Le débord fait partie de la forme vectorielle : un autre type de "
+               "points choisi ensuite sur cette forme débordera aussi."));
+        overlapRow->addWidget(new QLabel(tr("Chevauchement des remplissages :"), shapesPanel));
+        overlapRow->addWidget(overlapSpin);
+        overlapRow->addStretch(1);
+        shapesPanelLayout->addLayout(overlapRow);
         connect(shapesRadio, &QRadioButton::toggled, shapesPanel, &QWidget::setEnabled);
         optsLayout->addWidget(shapesPanel);
 
@@ -4311,6 +4524,9 @@ void MainWindow::autoDigitize() {
         ui_memory::setIntValue(QStringLiteral("autoDigitize/satinBands"),
                                satinBandsCheck->isChecked() ? 1 : 0);
         opts.simplify_tolerance = vectorize_tolerance_from_detail(shapeDetailSlider->value());
+        const int overlapUm = static_cast<int>(std::lround(overlapSpin->value() * 1000.0));
+        ui_memory::setIntValue(QStringLiteral("autoDigitize/fillOverlapUm"), overlapUm);
+        opts.fill_overlap = Micrometers{overlapUm};
         contoursMode = contoursRadio->isChecked();
         contourOpts.skip_largest_region = skipBgCheck->isChecked();
         contourOpts.detail = static_cast<double>(detailSlider->value()) / 100.0;
@@ -5260,9 +5476,10 @@ QString MainWindow::buildDebugDump(ObjectId embroideryId) const {
     } else {
         stitch_analysis::AnalysisOptions opts;
         const document::Canvas& canvas = project_.canvas;
-        opts.hoop = stitch::BoundsUm{
-            Vec2um{Micrometers{-canvas.width.value / 2}, Micrometers{-canvas.height.value / 2}},
-            Vec2um{Micrometers{canvas.width.value / 2}, Micrometers{canvas.height.value / 2}}};
+        opts.hoop = stitch::BoundsUm{Vec2um{Micrometers{-canvas.usable_width().value / 2},
+                                            Micrometers{-canvas.usable_height().value / 2}},
+                                     Vec2um{Micrometers{canvas.usable_width().value / 2},
+                                            Micrometers{canvas.usable_height().value / 2}}};
         const auto findings = stitch_analysis::analyze(*sequence_, opts);
         std::size_t count = 0;
         for (const auto& f : findings) {
@@ -6718,9 +6935,10 @@ int MainWindow::stitchTypeIndex(const document::EmbroideryObject& object) {
 
 double MainWindow::regionAreaMm2(const document::EmbroideryObject& object) const {
     const auto* vec = project_.findObject(object.source_vector);
-    if (vec == nullptr) {
-        return 0.0;
-    }
+    return vec == nullptr ? 0.0 : vectorAreaMm2(*vec);
+}
+
+double MainWindow::vectorAreaMm2(const document::VectorObject& vec) {
     const auto shoelace_um2 = [](const geometry::Path& path) {
         double a = 0.0;
         const auto& n = path.nodes;
@@ -6733,13 +6951,36 @@ double MainWindow::regionAreaMm2(const document::EmbroideryObject& object) const
         return std::abs(a) / 2.0;
     };
     double area_um2 = 0.0;
-    for (const auto& set : vec->paths) {
+    for (const auto& set : vec.paths) {
         area_um2 += shoelace_um2(set.outer);
         for (const auto& hole : set.holes) {
             area_um2 -= shoelace_um2(hole);
         }
     }
     return std::max(0.0, area_um2) / 1e6;
+}
+
+bool MainWindow::vectorPassesFilter(const document::VectorObject& object) const {
+    if (minAreaMm2_ > 0.0 && vectorAreaMm2(object) < minAreaMm2_) {
+        return false;
+    }
+    bool linked = false;
+    for (const auto& emb : project_.embroidery_objects) {
+        if (emb.source_vector != object.id) {
+            continue;
+        }
+        linked = true;
+        // Type et couleur seulement : la taille vient de la forme elle-même (ci-dessus).
+        const int typeIndex = stitchTypeIndex(emb);
+        const std::uint32_t key = (static_cast<std::uint32_t>(emb.rgb[0]) << 16) |
+                                  (static_cast<std::uint32_t>(emb.rgb[1]) << 8) |
+                                  static_cast<std::uint32_t>(emb.rgb[2]);
+        if (showType_[static_cast<std::size_t>(typeIndex == 3 ? 1 : typeIndex)] &&
+            hiddenColors_.count(key) == 0) {
+            return true;
+        }
+    }
+    return !linked;
 }
 
 bool MainWindow::objectPassesFilter(const document::EmbroideryObject& object) const {
@@ -7550,10 +7791,10 @@ void MainWindow::exportDst() {
     const double wMm = to_millimeters(stats.bounds.max.x - stats.bounds.min.x).value;
     const double hMm = to_millimeters(stats.bounds.max.y - stats.bounds.min.y).value;
     const auto& cv = project_.canvas;
-    const bool overflow = stats.bounds.min.x.value < -cv.width.value / 2 ||
-                          stats.bounds.max.x.value > cv.width.value / 2 ||
-                          stats.bounds.min.y.value < -cv.height.value / 2 ||
-                          stats.bounds.max.y.value > cv.height.value / 2;
+    const bool overflow = stats.bounds.min.x.value < -cv.usable_width().value / 2 ||
+                          stats.bounds.max.x.value > cv.usable_width().value / 2 ||
+                          stats.bounds.min.y.value < -cv.usable_height().value / 2 ||
+                          stats.bounds.max.y.value > cv.usable_height().value / 2;
 
     // Résumé pré-export : décision réelle, recalculé pour le format et les options choisis
     // (HP-FMT-002..005 : limites propres au format = `formats::check_export_limits`).
@@ -7574,9 +7815,10 @@ void MainWindow::exportDst() {
         // Résultat de l'analyse AVANT l'export : l'utilisateur voit les erreurs sans avoir à
         // penser à lancer « Analyser le motif ».
         stitch_analysis::AnalysisOptions aopts;
-        aopts.hoop = stitch::BoundsUm{
-            Vec2um{Micrometers{-cv.width.value / 2}, Micrometers{-cv.height.value / 2}},
-            Vec2um{Micrometers{cv.width.value / 2}, Micrometers{cv.height.value / 2}}};
+        aopts.hoop = stitch::BoundsUm{Vec2um{Micrometers{-cv.usable_width().value / 2},
+                                             Micrometers{-cv.usable_height().value / 2}},
+                                      Vec2um{Micrometers{cv.usable_width().value / 2},
+                                             Micrometers{cv.usable_height().value / 2}}};
         const auto findings = stitch_analysis::analyze(*sequence_, aopts);
         std::size_t errors = 0;
         std::size_t warnings = 0;
@@ -7893,7 +8135,8 @@ void MainWindow::onCanvasClicked(QPointF posMm) {
     if (showVectorsAct_->isChecked() && !mergeMode_) {
         std::optional<ObjectId> hit;
         for (const auto& object : project_.vector_objects) {
-            if (object.visible && objectPainterPath(object).contains(posMm)) {
+            if (object.visible && vectorPassesFilter(object) &&
+                objectPainterPath(object).contains(posMm)) {
                 hit = object.id; // le dernier dessiné (au-dessus) gagne
             }
         }

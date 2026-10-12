@@ -616,6 +616,9 @@ private slots:
     void regionRectangleSelectionHonoursWindowAndCrossing();
     void documentListMultiSelectionDrivesRegionSelection();
     void shapeUnionActionIsOneUndoStep();
+    void blendZonesActionMakesBaseAndGradedTopInOneUndoStep();
+    void displayFiltersApplyToVectorShapes();
+    void hoopMarginReachesTheCanvasView();
     void groupedStitchTypeCoversEverySelectedShapeInOneStep();
     void groupInspectorEditsOneFieldOnEveryObjectInOneStep();
     void groupGuideAngleIsPlacedOnEveryAutoSatin();
@@ -6600,6 +6603,93 @@ void MainWindowTest::shapeUnionActionIsOneUndoStep() {
 
     window.undo();
     QCOMPARE(window.project_.vector_objects.size(), std::size_t{2});
+}
+
+void MainWindowTest::blendZonesActionMakesBaseAndGradedTopInOneUndoStep() {
+    MainWindow window;
+    window.applyLoadedProject(twoOverlappingRectangles());
+    const ObjectId a = window.project_.vector_objects[0].id;
+    const ObjectId b = window.project_.vector_objects[1].id;
+    window.setSelection({.region = std::nullopt, .embroidery = std::nullopt, .objects = {a, b}});
+    window.setStitchTypeForSelection(1); // un tatami chacune
+    QCOMPARE(window.project_.embroidery_objects.size(), std::size_t{2});
+
+    QAction* blend = window.findChild<QAction*>(QStringLiteral("action_shapeBlendZones"));
+    QVERIFY(blend != nullptr);
+    window.updateActions();
+    QVERIFY(blend->isEnabled());
+    blend->trigger();
+
+    // Une seule forme (A absorbe B), le fond tatami de A, puis le dessus directionnel gradué.
+    QCOMPARE(window.project_.vector_objects.size(), std::size_t{1});
+    QCOMPARE(window.project_.vector_objects[0].id, a);
+    QCOMPARE(window.project_.embroidery_objects.size(), std::size_t{2});
+    const auto& base = window.project_.embroidery_objects[0];
+    const auto& top = window.project_.embroidery_objects[1];
+    QVERIFY(base.is_tatami());
+    QCOMPARE(base.source_vector, a);
+    QVERIFY(top.is_directional());
+    QCOMPARE(top.source_vector, a);
+    const auto& params = std::get<openstitch::document::DirectionalFillParams>(top.params);
+    QVERIFY(params.density_gradient.has_value());
+    QVERIFY(params.density_gradient->spacing_from.value >
+            params.density_gradient->spacing_to.value);
+    // Lignes perpendiculaires à l'axe horizontal A -> B : un guide vertical.
+    QCOMPARE(params.guides.size(), std::size_t{1});
+    QCOMPARE(params.guides[0].nodes.front().pos.x, params.guides[0].nodes.back().pos.x);
+    QVERIFY(window.checkSelectionInvariants());
+
+    window.undo();
+    QCOMPARE(window.project_.vector_objects.size(), std::size_t{2});
+    QCOMPARE(window.project_.embroidery_objects.size(), std::size_t{2});
+    QVERIFY(window.project_.embroidery_objects[1].is_tatami());
+}
+
+void MainWindowTest::displayFiltersApplyToVectorShapes() {
+    MainWindow window;
+    window.applyLoadedProject(twoOverlappingRectangles());
+    const ObjectId a = window.project_.vector_objects[0].id;
+    window.setSelection({.region = std::nullopt, .embroidery = std::nullopt, .objects = {a}});
+    window.setStitchTypeForSelection(1); // seule la forme A reçoit un tatami
+    const auto& withFill = window.project_.vector_objects[0];
+    const auto& bare = window.project_.vector_objects[1];
+
+    QVERIFY(window.vectorPassesFilter(withFill));
+    QVERIFY(window.vectorPassesFilter(bare));
+
+    // Type : masquer les remplissages cache la forme cousue, pas la forme sans couture.
+    window.showType_[1] = false;
+    QVERIFY(!window.vectorPassesFilter(withFill));
+    QVERIFY(window.vectorPassesFilter(bare));
+    window.showType_[1] = true;
+
+    // Couleur : masquer la couleur du fil cache la forme.
+    const auto& emb = window.project_.embroidery_objects[0];
+    window.hiddenColors_.insert((static_cast<std::uint32_t>(emb.rgb[0]) << 16) |
+                                (static_cast<std::uint32_t>(emb.rgb[1]) << 8) |
+                                static_cast<std::uint32_t>(emb.rgb[2]));
+    QVERIFY(!window.vectorPassesFilter(withFill));
+    window.hiddenColors_.clear();
+
+    // Taille : les rectangles font 10 x 10 mm = 100 mm2.
+    window.minAreaMm2_ = 50.0;
+    QVERIFY(window.vectorPassesFilter(withFill));
+    window.minAreaMm2_ = 150.0;
+    QVERIFY(!window.vectorPassesFilter(withFill));
+    QVERIFY(!window.vectorPassesFilter(bare));
+}
+
+void MainWindowTest::hoopMarginReachesTheCanvasView() {
+    MainWindow window;
+    auto* view = window.findChild<CanvasView*>();
+    QVERIFY(view != nullptr);
+    QCOMPARE(view->usableMarginMm(), 0.0);
+    window.project_.canvas.margin = Micrometers{5'000};
+    window.applyCanvasToView();
+    QCOMPARE(view->usableMarginMm(), 5.0);
+    // Un projet chargé sans marge la remet à zéro.
+    window.applyLoadedProject(openstitch::document::Project{});
+    QCOMPARE(view->usableMarginMm(), 0.0);
 }
 
 void MainWindowTest::knifeToolSplitsSelectedShape() {

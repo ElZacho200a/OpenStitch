@@ -119,6 +119,25 @@ directional_guides_from_region(const geometry::PathSet& region,
 density_gradient_across(const std::vector<geometry::PathSet>& shape, Angle direction,
                         Micrometers spacing_from, Micrometers spacing_to);
 
+// Fondu entre deux zones voisines : axe de dégradé du centre de la boîte
+// englobante de `zone_a` vers celui de `zone_b`, couvrant l'étendue des deux
+// zones le long de cet axe. `spacing_a` (côté A) et `spacing_b` (côté B) sont
+// les écarts entre lignes du remplissage de la couleur B : large côté A, serré
+// côté B pour que B domine progressivement. nullopt si une zone est vide ou si
+// les centres sont confondus.
+[[nodiscard]] std::optional<document::DensityGradient>
+density_gradient_between(const std::vector<geometry::PathSet>& zone_a,
+                         const std::vector<geometry::PathSet>& zone_b, Micrometers spacing_a,
+                         Micrometers spacing_b);
+
+// Fondu de couleurs : les lignes ne peuvent espacer leur écart que
+// perpendiculairement à elles-mêmes. Si `params.density_gradient` a un axe non
+// nul, remplace les guides par UN guide droit perpendiculaire à cet axe
+// (traversant la boîte englobante de `shape` par son centre) ; sinon ne change
+// rien. Les lignes de rupture sont conservées.
+void align_guides_across_density_gradient(document::DirectionalFillParams& params,
+                                          const std::vector<geometry::PathSet>& shape);
+
 [[nodiscard]] document::DirectionalFillParams
 directional_from_tatami(const document::TatamiParams& tatami,
                         const std::vector<geometry::PathSet>& shape, std::uint32_t seed);

@@ -11,6 +11,7 @@
 #include <QMouseEvent>
 #include <QNativeGestureEvent>
 #include <QPainter>
+#include <QPainterPath>
 #include <QPixmap>
 #include <QPlainTextEdit>
 #include <QRubberBand>
@@ -339,6 +340,15 @@ void CanvasView::setCanvasSizeMm(QSizeF sizeMm) {
                                           sizeMm.width() / 2.0, sizeMm.height() / 2.0));
     viewport()->update();
     emit viewChanged();
+}
+
+void CanvasView::setUsableMarginMm(double marginMm) {
+    marginMm = std::max(0.0, marginMm);
+    if (marginMm == marginMm_) {
+        return;
+    }
+    marginMm_ = marginMm;
+    viewport()->update();
 }
 
 double CanvasView::pixelsPerMm() const {
@@ -1135,6 +1145,28 @@ void CanvasView::drawForeground(QPainter* painter, const QRectF& rect) {
     painter->setPen(pen);
     painter->setBrush(Qt::NoBrush);
     painter->drawRect(canvas);
+
+    // Zone brodable : le cadre moins la marge de sécurité. La bande entre les deux est
+    // hachurée (le motif ne doit pas y passer), le contour de la zone brodable est plein.
+    const double m = std::min(marginMm_, std::min(canvas.width(), canvas.height()) / 2.0);
+    if (m > 0.0) {
+        const QRectF usable = canvas.adjusted(m, m, -m, -m);
+        QColor hatch = AppTheme::instance().tokens().canvasHoop;
+        hatch.setAlpha(110);
+        QPainterPath band;
+        band.addRect(canvas);
+        band.addRect(usable);
+        band.setFillRule(Qt::OddEvenFill);
+        painter->setPen(Qt::NoPen);
+        painter->setBrush(QBrush(hatch, Qt::BDiagPattern));
+        painter->drawPath(band);
+        QPen usablePen(AppTheme::instance().tokens().canvasHoop);
+        usablePen.setCosmetic(true);
+        usablePen.setWidth(1);
+        painter->setPen(usablePen);
+        painter->setBrush(Qt::NoBrush);
+        painter->drawRect(usable);
+    }
 }
 
 } // namespace openstitch::desktop

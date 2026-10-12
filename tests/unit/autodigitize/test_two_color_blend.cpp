@@ -253,6 +253,57 @@ TEST_CASE("region blend: uniform or empty regions are refused with a clear error
                     .has_value());
 }
 
+TEST_CASE("blend: rows are turned across the colour axis so the density can vary") {
+    // Rampe HORIZONTALE de couleur ; le guide hérité du tatami est lui aussi
+    // horizontal : les lignes courent le long de l'axe, leur écart ne peut pas
+    // varier. `align_guides_across_density_gradient` les tourne à 90 deg.
+    const auto samples = grid([](int i, int) { return lerp(kWarm, kCool, i / 20.0); });
+    const auto blend = analyze_two_color_blend(samples);
+    REQUIRE(blend.has_value());
+
+    geometry::Path square;
+    square.closed = true;
+    for (const Vec2um p : {at_mm(0, 0), at_mm(20, 0), at_mm(20, 10), at_mm(0, 10)}) {
+        square.nodes.push_back({p, geometry::NodeType::Corner, {}, {}});
+    }
+    geometry::Path guide;
+    guide.closed = false;
+    for (const Vec2um p : {at_mm(0, 5), at_mm(20, 5)}) {
+        guide.nodes.push_back({p, geometry::NodeType::Corner, {}, {}});
+    }
+    const std::vector<geometry::PathSet> shape{geometry::PathSet{square, {}}};
+
+    document::DirectionalFillParams params;
+    params.row_spacing = Micrometers{400};
+    params.inset = Micrometers{0};
+    params.guides.push_back(guide);
+    params.density_gradient = blend->foreground_density;
+
+    auto uniform = params;
+    uniform.density_gradient.reset();
+    const auto dense = stitch_generation::trace_directional_streamlines(shape[0], uniform);
+    const auto along = stitch_generation::trace_directional_streamlines(shape[0], params);
+    // Lignes le long de l'axe : le dégradé n'espace presque rien.
+    CHECK(along.size() * 10 > dense.size() * 8);
+
+    auto across = params;
+    stitch_generation::align_guides_across_density_gradient(across, shape);
+    REQUIRE(across.guides.size() == 1);
+    // Le guide est devenu vertical (perpendiculaire à l'axe horizontal).
+    const auto& g = across.guides.front().nodes;
+    REQUIRE(g.size() == 2);
+    CHECK(g.front().pos.x == g.back().pos.x);
+    CHECK(g.front().pos.y != g.back().pos.y);
+    const auto sparse = stitch_generation::trace_directional_streamlines(shape[0], across);
+    REQUIRE(!sparse.empty());
+    CHECK(sparse.size() * 10 < dense.size() * 7);
+
+    // Dégradé uniforme (axe nul) ou absent : les guides ne bougent pas.
+    auto flat = uniform;
+    stitch_generation::align_guides_across_density_gradient(flat, shape);
+    CHECK(flat.guides == uniform.guides);
+}
+
 TEST_CASE("blend: the density ramp drives the directional fill") {
     // Rampe verticale de couleur + rangées horizontales : le dégradé issu de
     // l'analyse espace les lignes, donc il y en a moins qu'à densité uniforme.

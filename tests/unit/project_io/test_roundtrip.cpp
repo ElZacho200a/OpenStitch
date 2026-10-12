@@ -32,6 +32,7 @@ document::Project rich_project() {
     project.mm_per_px = Millimeters{0.25};
     project.canvas.width = Micrometers{180'000};
     project.canvas.height = Micrometers{130'000};
+    project.canvas.margin = Micrometers{4'000};
 
     project.original.width = 4;
     project.original.height = 2;
@@ -146,6 +147,7 @@ TEST_CASE("projet complet : save puis load = memes donnees") {
     CHECK(loaded->object_ids.last() == original.object_ids.last());
     CHECK(loaded->canvas.width == original.canvas.width);
     CHECK(loaded->canvas.height == original.canvas.height);
+    CHECK(loaded->canvas.margin == original.canvas.margin);
 
     // Image restauree (PNG sans perte).
     CHECK(loaded->original.width == 4);

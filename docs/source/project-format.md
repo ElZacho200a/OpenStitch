@@ -19,8 +19,10 @@ labels peut faire plusieurs mégaoctets).
 
 - `schemaVersion` (entier) et un objet `document` ;
 - `mmPerPx` (résolution de travail) et `objectIdLast` (compteur d'ids) ;
-- `canvas` : taille du cadre de broderie (`width`, `height` en µm). **Optionnel
-  et rétrocompatible** : un projet antérieur sans ce champ retombe sur 100×100 mm ;
+- `canvas` : taille du cadre de broderie (`width`, `height` en µm) et marge de
+  sécurité optionnelle (`margin`, µm, écrite seulement si > 0 : la zone brodable est le
+  cadre réduit de cette marge). **Optionnel et rétrocompatible** : un projet
+  antérieur sans ce champ retombe sur 100×100 mm, et sans `margin` sur une marge nulle ;
 - `ops` : la pile d'opérations d'image (chaque opération porte son `type`) ;
 - `segmentation` : dimensions et régions (id, rgb, nombre de pixels ; les labels
   sont dans `segmentation.u32`) ;

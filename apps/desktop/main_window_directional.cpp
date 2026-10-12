@@ -28,6 +28,7 @@
 #include "openstitch/commands/composite_command.hpp"
 #include "openstitch/commands/project_commands.hpp"
 #include "openstitch/commands/thread_commands.hpp"
+#include "openstitch/commands/vector_ops.hpp"
 #include "openstitch/geometry/primitives.hpp"
 #include "openstitch/image/ops.hpp"
 #include "openstitch/stitch_generation/directional_fill.hpp"
@@ -176,6 +177,9 @@ void MainWindow::applyTwoColorBlend() {
     topParams.density_gradient = result->blend.foreground_density;
     topParams.underlay_edge = false; // la sous-couche appartient au fond
     topParams.underlay_parallel = false;
+    // Les lignes doivent être perpendiculaires à l'axe de couleur, sinon leur
+    // écart ne peut pas varier le long de cet axe (fondu écrasé).
+    stitch_generation::align_guides_across_density_gradient(topParams, source->paths);
 
     document::EmbroideryObject top = *emb;
     top.id = project_.object_ids.next();
@@ -224,6 +228,82 @@ void MainWindow::applyTwoColorBlend() {
             : tr("Fondu à deux fils créé en couleurs libres ; choisissez un nuancier dans le "
                  "panneau Fils pour les associer à de vrais fils."),
         8000);
+}
+
+void MainWindow::blendSelectedZones() {
+    const std::vector<ObjectId> ids = selectedObjectIds();
+    if (ids.size() != 2) {
+        statusBar()->showMessage(tr("Sélectionnez exactement deux zones à fondre."), 6000);
+        return;
+    }
+    // Zone A (première sélectionnée) = fond ; zone B (seconde) = dessus.
+    const ObjectId idA = ids[0];
+    const ObjectId idB = ids[1];
+    const auto* vecA = project_.findObject(idA);
+    const auto* vecB = project_.findObject(idB);
+    const auto fillOf = [this](ObjectId vector) -> const document::EmbroideryObject* {
+        for (const auto& emb : project_.embroidery_objects) {
+            if (emb.source_vector == vector && (emb.is_tatami() || emb.is_directional())) {
+                return &emb;
+            }
+        }
+        return nullptr;
+    };
+    const auto* embB = fillOf(idB);
+    if (vecA == nullptr || vecB == nullptr || fillOf(idA) == nullptr || embB == nullptr) {
+        statusBar()->showMessage(
+            tr("Fondre : chaque zone doit avoir un remplissage (tatami ou directionnel)."), 8000);
+        return;
+    }
+    const autodigitize::TwoColorBlendOptions limits;
+    const auto gradient = stitch_generation::density_gradient_between(
+        vecA->paths, vecB->paths, limits.max_spacing, limits.min_spacing);
+    if (!gradient) {
+        statusBar()->showMessage(tr("Fondre : les deux zones ont le même centre, aucun sens de "
+                                    "dégradé."),
+                                 8000);
+        return;
+    }
+
+    document::DirectionalFillParams topParams;
+    if (const auto* directional = std::get_if<document::DirectionalFillParams>(&embB->params)) {
+        topParams = *directional;
+    } else if (auto converted = directionalParamsFor(*embB)) {
+        topParams = std::move(*converted);
+    } else {
+        return;
+    }
+    topParams.density_gradient = gradient;
+    topParams.underlay_edge = false; // la sous-couche appartient au fond
+    topParams.underlay_parallel = false;
+    std::vector<geometry::PathSet> both = vecA->paths;
+    both.insert(both.end(), vecB->paths.begin(), vecB->paths.end());
+    stitch_generation::align_guides_across_density_gradient(topParams, both);
+
+    document::EmbroideryObject top = *embB;
+    top.id = project_.object_ids.next();
+    top.source_vector = idA; // la zone A absorbe B (union) : le dessus couvre l'ensemble
+    top.name = embB->name + " (fondu)";
+    top.params = topParams;
+    top.overrides.clear();
+    top.edited_fingerprint = 0;
+    top.edited_point_count = 0;
+
+    // Union d'abord (retient A, supprime B et sa broderie), puis ajout du dessus.
+    auto merged = commands::make_boolean_command(project_, commands::BooleanOp::Union, {idB, idA});
+    if (!merged.command) {
+        statusBar()->showMessage(QString::fromUtf8(merged.error.c_str()), 8000);
+        return;
+    }
+    auto batch = std::make_unique<commands::CompositeCommand>("Fondre deux zones");
+    batch->add(std::move(merged.command));
+    batch->add(std::make_unique<commands::AddEmbroideryObjectCommand>(std::move(top)));
+    commands::VectorOpResult result;
+    result.command = std::move(batch);
+    result.resulting_objects = 1;
+    applyShapeCommand(std::move(result),
+                      tr("Zones fondues : fond puis dessus. Ctrl+Z pour annuler."), {idA});
+    showStitchesAct_->setChecked(true);
 }
 
 void MainWindow::buildDirectionalActions(QMenu* embMenu) {

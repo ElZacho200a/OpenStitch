@@ -159,9 +159,10 @@ ProductionSheet make_production_sheet(const document::Project& project,
     if (options.use_project_canvas) {
         const document::Canvas& canvas = project.canvas;
         sheet.frame_mm = std::make_pair(canvas.width.value / 1000.0, canvas.height.value / 1000.0);
-        analysis.hoop = stitch::BoundsUm{
-            Vec2um{Micrometers{-canvas.width.value / 2}, Micrometers{-canvas.height.value / 2}},
-            Vec2um{Micrometers{canvas.width.value / 2}, Micrometers{canvas.height.value / 2}}};
+        analysis.hoop = stitch::BoundsUm{Vec2um{Micrometers{-canvas.usable_width().value / 2},
+                                                Micrometers{-canvas.usable_height().value / 2}},
+                                         Vec2um{Micrometers{canvas.usable_width().value / 2},
+                                                Micrometers{canvas.usable_height().value / 2}}};
         sheet.fits_frame =
             stats.stitches == 0 || (stats.bounds.min.x.value >= analysis.hoop->min.x.value &&
                                     stats.bounds.min.y.value >= analysis.hoop->min.y.value &&

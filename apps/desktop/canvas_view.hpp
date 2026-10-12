@@ -27,6 +27,9 @@ public:
 
     void setCanvasSizeMm(QSizeF sizeMm);
     [[nodiscard]] QSizeF canvasSizeMm() const { return canvasMm_; }
+    // Marge de sécurité (mm) entre le cadre et la zone réellement brodable ; 0 = pas de marge.
+    void setUsableMarginMm(double marginMm);
+    [[nodiscard]] double usableMarginMm() const { return marginMm_; }
 
     // Échelle courante en pixels d'écran par millimètre.
     [[nodiscard]] double pixelsPerMm() const;
@@ -199,6 +202,7 @@ private:
     void queueSelectBelow(QPointF posMm, QPoint globalPos);
 
     QSizeF canvasMm_{100.0, 100.0};
+    double marginMm_{0.0};
     bool cropMode_{false};
     bool boxDrawMode_{false};
     bool polygonDrawMode_{false};

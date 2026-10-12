@@ -854,7 +854,7 @@ struct Traced {
     std::vector<P2> pts;
     std::vector<double> u; // coordonnée d'arc alignée sur la ligne mère (décalage des pénétrations)
     int depth{0};          // rang relatif (±1 d'une ligne à sa voisine)
-    double seedU{0.0}; // u de la graine (abscisses de la grille relatives à elle)
+    double seedU{0.0};     // u de la graine (abscisses de la grille relatives à elle)
 };
 
 // Grille de séparation : cellule = distance de séparation ; chaque point
@@ -2123,6 +2123,89 @@ density_gradient_across(const std::vector<geometry::PathSet>& shape, Angle direc
     g.spacing_from = spacing_from;
     g.spacing_to = spacing_to;
     return g;
+}
+
+std::optional<document::DensityGradient>
+density_gradient_between(const std::vector<geometry::PathSet>& zone_a,
+                         const std::vector<geometry::PathSet>& zone_b, Micrometers spacing_a,
+                         Micrometers spacing_b) {
+    const auto center = [](const std::vector<geometry::PathSet>& zone) -> std::optional<P2> {
+        bool any = false;
+        P2 lo;
+        P2 hi;
+        for (const auto& set : zone) {
+            for (const auto& node : set.outer.nodes) {
+                const P2 p = to_p2(node.pos);
+                lo = any ? P2{std::min(lo.x, p.x), std::min(lo.y, p.y)} : p;
+                hi = any ? P2{std::max(hi.x, p.x), std::max(hi.y, p.y)} : p;
+                any = true;
+            }
+        }
+        if (!any) {
+            return std::nullopt;
+        }
+        return (lo + hi) * 0.5;
+    };
+    const auto ca = center(zone_a);
+    const auto cb = center(zone_b);
+    if (!ca || !cb) {
+        return std::nullopt;
+    }
+    const P2 d = *cb - *ca;
+    if (norm(d) < 1.0) {
+        return std::nullopt;
+    }
+    std::vector<geometry::PathSet> both = zone_a;
+    both.insert(both.end(), zone_b.begin(), zone_b.end());
+    return density_gradient_across(both, Angle{std::atan2(d.y, d.x)}, spacing_a, spacing_b);
+}
+
+void align_guides_across_density_gradient(document::DirectionalFillParams& params,
+                                          const std::vector<geometry::PathSet>& shape) {
+    if (!params.density_gradient) {
+        return;
+    }
+    const P2 axis = to_p2(params.density_gradient->to) - to_p2(params.density_gradient->from);
+    const double axisLen = norm(axis);
+    if (axisLen < 1.0 ||
+        params.density_gradient->spacing_from == params.density_gradient->spacing_to) {
+        return;
+    }
+    const P2 dir{-axis.y / axisLen, axis.x / axisLen}; // perpendiculaire à l'axe
+
+    bool any = false;
+    P2 lo;
+    P2 hi;
+    std::vector<P2> nodes;
+    for (const auto& set : shape) {
+        for (const auto& n : set.outer.nodes) {
+            const P2 p = to_p2(n.pos);
+            nodes.push_back(p);
+            lo = any ? P2{std::min(lo.x, p.x), std::min(lo.y, p.y)} : p;
+            hi = any ? P2{std::max(hi.x, p.x), std::max(hi.y, p.y)} : p;
+            any = true;
+        }
+    }
+    if (!any) {
+        return;
+    }
+    const P2 c = (lo + hi) * 0.5;
+    double pmin = 0.0;
+    double pmax = 0.0;
+    for (const P2 p : nodes) {
+        const double t = dot(p - c, dir);
+        pmin = std::min(pmin, t);
+        pmax = std::max(pmax, t);
+    }
+    if (pmax - pmin < 1'000.0) {
+        return;
+    }
+    geometry::Path guide;
+    guide.closed = false;
+    guide.nodes = {{to_um(c + dir * (0.8 * pmin)), geometry::NodeType::Corner, {}, {}},
+                   {to_um(c + dir * (0.8 * pmax)), geometry::NodeType::Corner, {}, {}}};
+    params.guides.clear();
+    params.guides.push_back(std::move(guide));
 }
 
 document::DirectionalFillParams directional_from_tatami(const document::TatamiParams& tatami,

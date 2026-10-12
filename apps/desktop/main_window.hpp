@@ -400,6 +400,12 @@ private:
     void updateInspector();
     // Un objet passe-t-il les filtres d'affichage (type, couleur, taille) ?
     [[nodiscard]] bool objectPassesFilter(const document::EmbroideryObject& object) const;
+    // Une forme vectorielle passe-t-elle les mêmes filtres ? Taille : sa propre aire ; type et
+    // couleur : au moins une de ses broderies doit les satisfaire (une forme sans broderie
+    // n'est filtrée que par sa taille). Ne regarde pas `visible` (géré par l'appelant).
+    [[nodiscard]] bool vectorPassesFilter(const document::VectorObject& object) const;
+    // Aire d'une forme vectorielle (mm², trous déduits).
+    [[nodiscard]] static double vectorAreaMm2(const document::VectorObject& object);
     // Aire de la région source d'un objet (mm²) ; 0 si introuvable.
     [[nodiscard]] double regionAreaMm2(const document::EmbroideryObject& object) const;
     // Index de type : 0 contour, 1 tatami, 2 satin, 3 remplissage directionnel.
@@ -494,6 +500,7 @@ private:
     void updateShapeActions();
     void runBooleanOp(commands::BooleanOp op);
     void breakApartSelected();
+    void blendSelectedZones();
     void finishCut();
     // Exécute la commande (un pas d'annulation), sélectionne le premier de `keep` encore présent
     // et annonce `done` ; en cas d'échec, affiche la raison dans la barre d'état.
@@ -844,6 +851,7 @@ private:
     QAction* subtractAct_{nullptr};
     QAction* intersectAct_{nullptr};
     QAction* breakApartAct_{nullptr};
+    QAction* blendZonesAct_{nullptr};
     // Boutons génériques partagés par tout outil de tracé multi-clics
     // (polygone/bézier/satin) : Terminer (Entrée) et Annuler (Échap),
     // toujours visibles dans la palette d'outils, actifs seulement pendant
