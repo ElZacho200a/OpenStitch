@@ -35,6 +35,7 @@ SequenceMetrics sequence_metrics(const stitch::StitchSequence& sequence,
 
     std::optional<Vec2um> needle;     // position courante de l'aiguille
     std::optional<Vec2um> lastStitch; // dernière piqûre
+    ObjectId lastSource{};
     bool inMove = false;
     bool trimmed = false;
     std::size_t k = 0;
@@ -58,6 +59,14 @@ SequenceMetrics sequence_metrics(const stitch::StitchSequence& sequence,
             ++m.stitches;
             if (inMove && lastStitch) {
                 ++m.moves;
+                const double travel = length_um(c.pos - *lastStitch);
+                if (lastSource.value != 0 && c.source.value != 0 && lastSource != c.source) {
+                    ++m.moves_between_objects;
+                    m.travel_between_objects_um += travel;
+                } else {
+                    ++m.moves_within_objects;
+                    m.travel_within_objects_um += travel;
+                }
                 if (!trimmed && length_um(c.pos - *lastStitch) >
                                     static_cast<double>(options.trim_threshold.value +
                                                         options.length_tolerance.value)) {
@@ -83,6 +92,7 @@ SequenceMetrics sequence_metrics(const stitch::StitchSequence& sequence,
                 }
             }
             lastStitch = c.pos;
+            lastSource = c.source;
             inMove = false;
             trimmed = false;
             ++k;

@@ -193,3 +193,19 @@ TEST_CASE("project_metrics : surface non couverte, petits objets, angles de remp
     REQUIRE(m2.uncovered_ratio.has_value());
     CHECK(*m2.uncovered_ratio < 0.05);
 }
+
+TEST_CASE("sequence_metrics : deplacements repartis entre objets / dans un objet") {
+    const auto at = [](std::int32_t x, std::uint64_t obj, CommandType t) {
+        return stitch::StitchCommand{um(x, 0), t, ObjectId{obj}, StitchPass::TopStitch};
+    };
+    stitch::StitchSequence seq;
+    seq.commands = {at(0, 1, CommandType::Stitch),    at(1'000, 1, CommandType::Stitch),
+                    at(5'000, 1, CommandType::Jump),  at(5'000, 1, CommandType::Stitch),   // 4 mm
+                    at(25'000, 2, CommandType::Jump), at(25'000, 2, CommandType::Stitch)}; // 20 mm
+    const auto m = sequence_metrics(seq);
+    CHECK(m.moves == 2);
+    CHECK(m.moves_within_objects == 1);
+    CHECK(m.travel_within_objects_um == 4'000.0);
+    CHECK(m.moves_between_objects == 1);
+    CHECK(m.travel_between_objects_um == 20'000.0);
+}

@@ -167,11 +167,17 @@ les outils de mesure du Lot G (*Analyse et validation*) :
   (625 sauts sur la marine). Elle hérite désormais de `hidden_underpath` :
   sous la couche supérieure, une liaison cousue de sous-couche est invisible.
 
-Limite restante : le trajet caché ne longe que le contour **extérieur**
-rentré, dans la limite de `underpathCap` (8 mm). Une forme criblée de trous
-(le ciel et ses nuages) garde de nombreux sauts internes, courts pour la
-plupart. Ils ne sont coupés qu'au-delà de 3 mm (*Moteur de génération de
-points*, finitions).
+Optimisation des déplacements (2026-10-12) : le trajet caché est désormais un
+**graphe de visibilité** (plus court chemin, Dijkstra) sur les sommets du contour
+rentré de la **région entière** -- extérieur rentré **et trous agrandis** --, borné
+par `underpathCap` (8 mm) et validé segment par segment (`connector_invalid`) :
+les trous sont contournés par leurs propres sommets, plus seulement par le
+contour extérieur. Sur une image de 380 x 290 mm (`sample/`), les déplacements
+passent de 1 619 à 860 et les coupes de 1 003 à 799. Les îlots d'un même objet
+sont cousus du plus proche au plus loin (boîte englobante) et non dans l'ordre de
+stockage. Limite restante : au-delà de `underpathCap` on saute -- porter le
+plafond à 16 mm ferait tomber les déplacements à ~580, au prix de coutures
+cachées plus longues (compromis visuel laissé à un futur réglage).
 
 ## Paramètres
 

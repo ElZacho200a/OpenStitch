@@ -31,6 +31,13 @@ struct SequenceMetrics {
     std::size_t long_moves_without_trim{0}; // déplacements > trim_threshold sans Trim
     std::size_t trims{0};
     std::size_t color_changes{0};
+    // Répartition des déplacements (distance directe piqûre -> piqûre) selon que
+    // l'objet change ou non. Sans identifiant d'objet (DST relu), tout est
+    // compté « dans un objet ».
+    std::size_t moves_between_objects{0};
+    double travel_between_objects_um{0.0};
+    std::size_t moves_within_objects{0};
+    double travel_within_objects_um{0.0};
     // Points plus courts que `short_stitch` (distance depuis la position
     // précédente de l'aiguille, saut compris : une piqûre de longueur nulle à
     // l'arrivée d'un saut compte), hors points d'arrêt...

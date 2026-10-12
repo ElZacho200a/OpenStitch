@@ -257,6 +257,97 @@ TEST_CASE("tirage : forme concave avec trou, aucune liaison cousue supplementair
     }
 }
 
+TEST_CASE("underpath : contourne les trous par leurs sommets, jamais a travers") {
+    // Bande de 60 x 40 mm criblee de trous (positions pseudo-aleatoires fixes,
+    // LCG portable). Le routage caché passe par les sommets du contour rentre
+    // de la REGION ENTIERE (trous compris) : sur ces graines, moins de sauts que
+    // le routage limite au contour exterieur (5/4/8 au lieu de 7/4/10 -> bornes
+    // ci-dessous), et aucune couture hors saut ne traverse un trou.
+    struct Case {
+        unsigned seed;
+        long maxJumps;
+    };
+    for (const Case c : {Case{3, 6}, Case{4, 3}, Case{5, 8}}) {
+        geometry::PathSet region;
+        region.outer = rect_at(0, 0, 60'000, 40'000);
+        struct Box {
+            int x, y, w, h;
+        };
+        std::vector<Box> boxes;
+        unsigned st = c.seed * 2654435761u;
+        const auto rnd = [&](unsigned m) {
+            st = st * 1664525u + 1013904223u;
+            return static_cast<int>((st >> 8) % m);
+        };
+        for (int k = 0; k < 14; ++k) {
+            const int w = 2'000 + rnd(6'000);
+            const int h = 2'000 + rnd(14'000);
+            const int x = 2'000 + rnd(50'000);
+            const int y = 2'000 + rnd(30'000);
+            bool ok = x + w <= 58'000 && y + h <= 38'000;
+            for (const Box& o : boxes) {
+                if (x < o.x + o.w + 2'500 && x + w > o.x - 2'500 && y < o.y + o.h + 2'500 &&
+                    y + h > o.y - 2'500) {
+                    ok = false;
+                }
+            }
+            if (ok) {
+                boxes.push_back({x, y, w, h});
+                region.holes.push_back(rect_at(x, y, w, h));
+            }
+        }
+        auto p = tatami();
+        p.hidden_underpath = true;
+        const auto fill = fill_tatami(region, p);
+        CHECK(fill == fill_tatami(region, p)); // deterministe
+        CHECK(std::count_if(fill.begin(), fill.end(), [](const FillStitch& f) { return f.jump; }) <=
+              c.maxJumps);
+        for (std::size_t i = 1; i < fill.size(); ++i) {
+            if (fill[i].jump) {
+                continue;
+            }
+            const double mx = (fill[i].pos.x.value + fill[i - 1].pos.x.value) / 2.0;
+            const double my = (fill[i].pos.y.value + fill[i - 1].pos.y.value) / 2.0;
+            for (const Box& b : boxes) {
+                const bool inCore = mx > b.x + 800 && mx < b.x + b.w - 800 && my > b.y + 100 &&
+                                    my < b.y + b.h - 100;
+                CHECK_FALSE(inCore);
+            }
+        }
+    }
+}
+
+TEST_CASE("remplissage multi-ilots : cousus du plus proche au plus loin, pas dans l'ordre stocke") {
+    // Ordre de stockage A (x=0), C (x=100 mm), B (x=15 mm) : l'aiguille ne doit pas
+    // aller et venir entre A et C.
+    document::Project project;
+    document::VectorObject vec;
+    vec.id = project.object_ids.next();
+    for (const std::int32_t x : {0, 100'000, 15'000}) {
+        vec.paths.push_back(geometry::PathSet{rect_at(x, 0, 10'000, 10'000), {}});
+    }
+    project.vector_objects.push_back(vec);
+    document::EmbroideryObject emb;
+    emb.id = project.object_ids.next();
+    emb.source_vector = vec.id;
+    emb.params = tatami();
+    std::get<document::TatamiParams>(emb.params).underlay_edge = false;
+    std::get<document::TatamiParams>(emb.params).underlay_parallel = false;
+    project.embroidery_objects.push_back(emb);
+    const auto seq = generate_sequence(project);
+    REQUIRE(seq.has_value());
+    std::vector<std::int32_t> islandOrder; // abscisse (en 50 mm) de chaque ilot, dans l'ordre cousu
+    for (const auto& c : seq->commands) {
+        if (c.type == stitch::CommandType::Stitch) {
+            const std::int32_t cell = c.pos.x.value / 50'000;
+            if (islandOrder.empty() || islandOrder.back() != cell) {
+                islandOrder.push_back(cell);
+            }
+        }
+    }
+    CHECK(islandOrder == std::vector<std::int32_t>{0, 2});
+}
+
 TEST_CASE("tirage : formes minuscules et borne a 3 mm, deterministe") {
     const geometry::PathSet tiny{rect_at(0, 0, 800, 800), {}};
     auto p = tatami(400, 3'000);
