@@ -13,7 +13,8 @@ Ne committer / pousser que sur demande explicite de l'utilisateur. Sur
 1. Build + tests des libs touchées (`openstitch-build-test`), boucle
    complète si `core`/`geometry`/`document` ont changé.
 2. Format : `clang-format -i` sur les fichiers `.cpp/.hpp` **modifiés
-   seulement** (clang-format 18, `.clang-format` du dépôt).
+   seulement** (clang-format **18** exactement, `.clang-format` du dépôt : pas celui de
+   `C:\Program Files\LLVM` qui est en 23 ; voir le piège dans `openstitch-build-test`).
 3. Aucun appel direct à `generate_sequence` ajouté hors
    `libs/stitch_generation/` ; aucun include Qt dans `libs/` ou `apps/cli`.
 4. Doc à jour (`openstitch-docs`) et **PDF régénéré** si `docs/source/` a
