@@ -28,8 +28,21 @@ struct SkeletonSatinGuide {
     bool absolute{false};
 };
 
+// Analyse par défaut de l'auto-satin : celle de `AutoSatinParameters` plus
+// l'élagage à erreur bornée (`GraphCleanupParameters::max_protrusion`, 0,4 mm ou
+// 15 % du rayon de la jonction). Sans effet sur un contour propre (corpus de
+// formes : mêmes colonnes, même couverture) ; sur un contour bruité (pixels,
+// vectorisation), il retire les rameaux dont la suppression ne change la forme
+// reconstruite que de moins que ce seuil, donc moins de colonnes parasites.
+inline AutoSatinParameters stable_skeleton_analysis() {
+    AutoSatinParameters p;
+    p.cleanup.max_protrusion = Micrometers{400};
+    p.cleanup.max_protrusion_to_radius = 0.15;
+    return p;
+}
+
 struct SkeletonSatinParameters {
-    AutoSatinParameters analysis{}; // rasterisation, élagage du graphe
+    AutoSatinParameters analysis{stable_skeleton_analysis()}; // rasterisation, élagage du graphe
 
     Micrometers spacing{400};           // ρ : espacement cible au bord le plus écarté
     Micrometers min_thread_length{300}; // sous cette longueur, une traversée n'est pas émise

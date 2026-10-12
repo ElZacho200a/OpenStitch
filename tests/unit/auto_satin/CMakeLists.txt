@@ -1,5 +1,6 @@
 add_executable(test_auto_satin
     test_pipeline.cpp
+    test_graph_prune.cpp
     test_skeleton_equivalence.cpp
     test_skeleton_satin.cpp
     test_skeleton_satin_generation.cpp

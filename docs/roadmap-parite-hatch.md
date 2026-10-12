@@ -924,6 +924,12 @@ plus.
   (RD-PAT-001) et la réintégration d'un auto-satin explicite et protégé dans
   `autodigitize` (RD-PAT-002) sont suivis dans `docs/roadmap-rd-brevets.md`.
   Prérequis bloquant : corpus et métriques satin vs repli (RD-PAT-003).
+- 2026-10-12 : squelette plus stable face au bruit de contour —
+  `GraphCleanupParameters::max_protrusion` / `max_protrusion_to_radius`
+  (élagage à erreur bornée, voir `satin-squelette.md`), activé par défaut dans
+  `SkeletonSatinParameters`. Corpus propre inchangé ; contours bruités : moins
+  de colonnes parasites (h : 19 -> 15, E : 53 -> 43 à ±0,3 mm). Reste :
+  mesure sur contours réels de photos, axe médian sur polygone.
 - Suite recommandée : préparer le cutover Phase F seulement après validation du
   corpus complet et décision explicite sur les limites restantes (`trident`,
   `multi_neck`) ; ne pas prolonger SGSD comme stratégie principale sans preuve
