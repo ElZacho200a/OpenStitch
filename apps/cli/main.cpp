@@ -75,6 +75,12 @@ void print_sequence_metrics(std::FILE* out, const openstitch::stitch::StitchSequ
         *result = m;
     }
     fmt::print(out, "Déplacements        : {}\n", m.moves);
+    if (!fromDst) {
+        fmt::print(out,
+                   "  entre objets : {} ({:.2f} m) ; dans un objet : {} ({:.2f} m) ; coupes : {}\n",
+                   m.moves_between_objects, m.travel_between_objects_um / 1e6,
+                   m.moves_within_objects, m.travel_within_objects_um / 1e6, m.trims);
+    }
     fmt::print(out, "  > {:.1f} mm sans coupe : {}\n", opts.trim_threshold.value / 1000.0,
                m.long_moves_without_trim);
     fmt::print(out,

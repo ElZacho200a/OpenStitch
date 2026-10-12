@@ -499,9 +499,15 @@ void generate_satin_group(stitch::StitchSequence& sequence,
     }
 }
 
-void generate_tatami(stitch::StitchSequence& sequence, const document::VectorObject& source,
-                     const document::EmbroideryObject& object,
-                     const document::TatamiParams& params) {
+// Régions (îlots) d'un objet de remplissage, retrait de bord appliqué, dans
+// l'ordre de COUTURE : plus proche voisin depuis la position courante de
+// l'aiguille (boîte englobante), au lieu de l'ordre de stockage -- qui
+// renvoyait l'aiguille d'un bout à l'autre de la forme à chaque îlot.
+// Déterministe (égalités départagées par l'indice).
+std::vector<geometry::PathSet> fill_regions_in_sewing_order(const stitch::StitchSequence& sequence,
+                                                            const document::VectorObject& source,
+                                                            Micrometers inset) {
+    std::vector<geometry::PathSet> regions;
     for (const geometry::PathSet& rawSet : source.paths) {
         // Les remplissages ne lisent que les positions de nœuds : les courbes
         // (vectorisation par Bézier, ellipses) sont aplaties d'abord.
@@ -509,22 +515,80 @@ void generate_tatami(stitch::StitchSequence& sequence, const document::VectorObj
         // Retrait de bord (compensation de contour). Si le retrait fait
         // disparaître la forme, on remplit la forme brute.
         std::vector<geometry::PathSet> filled;
-        if (params.inset.value > 0) {
-            if (auto inset = geometry::inset_path_set(set, params.inset);
-                inset && !inset->empty()) {
-                filled = std::move(*inset);
+        if (inset.value > 0) {
+            if (auto shrunk = geometry::inset_path_set(set, inset); shrunk && !shrunk->empty()) {
+                filled = std::move(*shrunk);
             }
         }
         if (filled.empty()) {
             filled.push_back(set);
         }
-        for (const geometry::PathSet& region : filled) {
-            // Sous-couches d'abord (§15), puis couche supérieure.
-            for (const auto& up : tatami_underlay(region, resolve_underlay(params, region))) {
-                emit_polyline(sequence, up, object.id, stitch::StitchPass::Underlay);
-            }
-            emit_fill(sequence, fill_tatami(region, params), object.id);
+        for (auto& region : filled) {
+            regions.push_back(std::move(region));
         }
+    }
+    if (regions.size() < 2) {
+        return regions;
+    }
+    struct Box {
+        double x0{0}, y0{0}, x1{0}, y1{0};
+    };
+    std::vector<Box> boxes;
+    boxes.reserve(regions.size());
+    for (const auto& region : regions) {
+        Box b{1e300, 1e300, -1e300, -1e300};
+        for (const auto& node : region.outer.nodes) {
+            b.x0 = std::min(b.x0, static_cast<double>(node.pos.x.value));
+            b.y0 = std::min(b.y0, static_cast<double>(node.pos.y.value));
+            b.x1 = std::max(b.x1, static_cast<double>(node.pos.x.value));
+            b.y1 = std::max(b.y1, static_cast<double>(node.pos.y.value));
+        }
+        boxes.push_back(b);
+    }
+    std::vector<geometry::PathSet> ordered;
+    ordered.reserve(regions.size());
+    std::vector<char> used(regions.size(), 0);
+    // Aiguille au repos (début de séquence) : on part du premier îlot stocké.
+    Vec2um at =
+        sequence.commands.empty()
+            ? Vec2um{Micrometers{static_cast<std::int32_t>((boxes[0].x0 + boxes[0].x1) / 2)},
+                     Micrometers{static_cast<std::int32_t>((boxes[0].y0 + boxes[0].y1) / 2)}}
+            : sequence.commands.back().pos;
+    for (std::size_t n = 0; n < regions.size(); ++n) {
+        std::size_t best = regions.size();
+        double bestD = 0.0;
+        for (std::size_t i = 0; i < regions.size(); ++i) {
+            if (used[i]) {
+                continue;
+            }
+            const double dx = std::max({boxes[i].x0 - at.x.value, 0.0, at.x.value - boxes[i].x1});
+            const double dy = std::max({boxes[i].y0 - at.y.value, 0.0, at.y.value - boxes[i].y1});
+            const double d = dx * dx + dy * dy;
+            if (best == regions.size() || d < bestD) {
+                best = i;
+                bestD = d;
+            }
+        }
+        used[best] = 1;
+        // Prochain point de départ : le centre de la boîte (la fin réelle de la
+        // couture dans cet îlot n'est pas connue avant génération).
+        at = Vec2um{Micrometers{static_cast<std::int32_t>((boxes[best].x0 + boxes[best].x1) / 2)},
+                    Micrometers{static_cast<std::int32_t>((boxes[best].y0 + boxes[best].y1) / 2)}};
+        ordered.push_back(std::move(regions[best]));
+    }
+    return ordered;
+}
+
+void generate_tatami(stitch::StitchSequence& sequence, const document::VectorObject& source,
+                     const document::EmbroideryObject& object,
+                     const document::TatamiParams& params) {
+    for (const geometry::PathSet& region :
+         fill_regions_in_sewing_order(sequence, source, params.inset)) {
+        // Sous-couches d'abord (§15), puis couche supérieure.
+        for (const auto& up : tatami_underlay(region, resolve_underlay(params, region))) {
+            emit_polyline(sequence, up, object.id, stitch::StitchPass::Underlay);
+        }
+        emit_fill(sequence, fill_tatami(region, params), object.id);
     }
 }
 
@@ -534,24 +598,12 @@ void generate_tatami(stitch::StitchSequence& sequence, const document::VectorObj
 void generate_directional(stitch::StitchSequence& sequence, const document::VectorObject& source,
                           const document::EmbroideryObject& object,
                           const document::DirectionalFillParams& params) {
-    for (const geometry::PathSet& rawSet : source.paths) {
-        const geometry::PathSet set = geometry::flatten_to_polygon(rawSet, kFillFlattenTolerance);
-        std::vector<geometry::PathSet> filled;
-        if (params.inset.value > 0) {
-            if (auto inset = geometry::inset_path_set(set, params.inset);
-                inset && !inset->empty()) {
-                filled = std::move(*inset);
-            }
+    for (const geometry::PathSet& region :
+         fill_regions_in_sewing_order(sequence, source, params.inset)) {
+        for (const auto& up : directional_underlay(region, resolve_underlay(params, region))) {
+            emit_polyline(sequence, up, object.id, stitch::StitchPass::Underlay);
         }
-        if (filled.empty()) {
-            filled.push_back(set);
-        }
-        for (const geometry::PathSet& region : filled) {
-            for (const auto& up : directional_underlay(region, resolve_underlay(params, region))) {
-                emit_polyline(sequence, up, object.id, stitch::StitchPass::Underlay);
-            }
-            emit_fill(sequence, fill_directional(region, params), object.id);
-        }
+        emit_fill(sequence, fill_directional(region, params), object.id);
     }
 }
 

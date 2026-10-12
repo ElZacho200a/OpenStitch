@@ -417,76 +417,99 @@ std::vector<FillStitch> fill_tatami(const geometry::PathSet& region,
         hasPrev = true;
     }
     // Cap du trajet cousu caché : au-delà, on saute (déplacement à découvert).
-    const double underpathCap = std::max(6.0 * spacing, 8'000.0);
+    const double underpathCap = std::max(6.0 * spacing, 16'000.0);
 
-    // Autoroute d'underpath (§15) : contour extérieur RENTRÉ (repère des rangées).
-    // Relier deux composantes en longeant ce contour reste intérieur et contourne
-    // les trous (le contour encercle la région). Régions sans contour : pas
-    // d'underpath (on saute).
-    std::vector<PointD> hw;
+    // Autoroute d'underpath (§15) : points de passage sur le contour RENTRÉ de la
+    // région entière -- extérieur rentré ET trous agrandis (repère des rangées).
+    // Longer ces contours reste intérieur ; les trous sont contournés par leurs
+    // propres sommets (et non plus seulement par le contour extérieur : une forme
+    // criblée de trous gardait des centaines de sauts internes). Régions sans
+    // contour exploitable : pas d'underpath (on saute).
+    std::vector<PointD> wps;
     if (params.hidden_underpath) {
-        if (auto r = geometry::inset_path_set(geometry::PathSet{region.outer, {}},
-                                              params.underlay_inset);
-            r && !r->empty() && r->front().outer.nodes.size() >= 3) {
-            for (const auto& nd : r->front().outer.nodes) {
-                hw.push_back(rotate(
-                    {static_cast<double>(nd.pos.x.value), static_cast<double>(nd.pos.y.value)},
-                    cosA, sinA));
+        if (auto r = geometry::inset_path_set(region, params.underlay_inset); r && !r->empty()) {
+            const auto addWaypoints = [&](const geometry::Path& path) {
+                if (path.nodes.size() < 3) {
+                    return;
+                }
+                for (const auto& nd : path.nodes) {
+                    wps.push_back(rotate(
+                        {static_cast<double>(nd.pos.x.value), static_cast<double>(nd.pos.y.value)},
+                        cosA, sinA));
+                }
+            };
+            for (const auto& set : *r) {
+                addWaypoints(set.outer);
+                for (const auto& hole : set.holes) {
+                    addWaypoints(hole);
+                }
             }
         }
     }
     const auto seglen = [](PointD a, PointD b) {
         return std::sqrt((a.x - b.x) * (a.x - b.x) + (a.y - b.y) * (a.y - b.y));
     };
-    // Trajet le long de l'autoroute entre a et b : renvoie [a, sommets…, b] pour
-    // la direction VALIDE (aucun segment ne coupe un bord/trou) la plus courte
-    // sous `underpathCap`, sinon vide.
+    // Trajet caché de a à b par graphe de visibilité sur les points de passage :
+    // plus court chemin (Dijkstra) dont CHAQUE segment est un trajet cousu valide
+    // (`connector_invalid`) et dont la longueur reste sous `underpathCap`. Seuls
+    // les points de passage de l'ellipse |aw| + |wb| <= cap sont candidats, donc
+    // le graphe reste petit. Déterministe : candidats dans l'ordre de création,
+    // égalités départagées par l'indice. Renvoie [a, points…, b], sinon vide.
     const auto routeHighway = [&](PointD a, PointD b) -> std::vector<PointD> {
-        const int H = static_cast<int>(hw.size());
-        if (H < 3) {
+        if (wps.empty()) {
             return {};
         }
-        const auto nearest = [&](PointD p) {
-            int bi = 0;
-            double bd = std::numeric_limits<double>::max();
-            for (int i = 0; i < H; ++i) {
-                const double d = seglen(p, hw[static_cast<std::size_t>(i)]);
-                if (d < bd) {
-                    bd = d;
-                    bi = i;
-                }
-            }
-            return bi;
-        };
-        const int ia = nearest(a);
-        const int ib = nearest(b);
-        std::vector<PointD> bestPath;
-        double bestLen = underpathCap;
-        for (const bool fwd : {true, false}) {
-            std::vector<PointD> v{a};
-            int i = ia;
-            for (int guard = 0; guard <= H; ++guard) {
-                v.push_back(hw[static_cast<std::size_t>(i)]);
-                if (i == ib)
-                    break;
-                i = fwd ? (i + 1) % H : (i - 1 + H) % H;
-            }
-            v.push_back(b);
-            double L = 0.0;
-            bool ok = true;
-            for (std::size_t k = 1; k < v.size(); ++k) {
-                L += seglen(v[k - 1], v[k]);
-                if (L > bestLen || connector_invalid(edgeIndex, v[k - 1], v[k])) {
-                    ok = false;
-                    break;
-                }
-            }
-            if (ok && L <= bestLen) {
-                bestLen = L;
-                bestPath = std::move(v);
+        std::vector<PointD> nodes{a};
+        for (const PointD& w : wps) {
+            if (seglen(a, w) + seglen(w, b) <= underpathCap) {
+                nodes.push_back(w);
             }
         }
-        return bestPath;
+        nodes.push_back(b);
+        const std::size_t N = nodes.size();
+        if (N == 2) {
+            return {};
+        }
+        constexpr double kInf = std::numeric_limits<double>::max();
+        std::vector<double> dist(N, kInf);
+        std::vector<int> from(N, -1);
+        std::vector<char> done(N, 0);
+        dist[0] = 0.0;
+        for (std::size_t iter = 0; iter < N; ++iter) {
+            std::size_t u = N;
+            for (std::size_t i = 0; i < N; ++i) {
+                if (!done[i] && dist[i] < kInf && (u == N || dist[i] < dist[u])) {
+                    u = i;
+                }
+            }
+            if (u == N || u == N - 1) {
+                break;
+            }
+            done[u] = 1;
+            for (std::size_t v = 1; v < N; ++v) {
+                if (done[v] || v == u) {
+                    continue;
+                }
+                const double nd = dist[u] + seglen(nodes[u], nodes[v]);
+                if (nd > underpathCap || nd >= dist[v]) {
+                    continue;
+                }
+                if (connector_invalid(edgeIndex, nodes[u], nodes[v])) {
+                    continue;
+                }
+                dist[v] = nd;
+                from[v] = static_cast<int>(u);
+            }
+        }
+        if (from[N - 1] < 0) {
+            return {};
+        }
+        std::vector<PointD> path;
+        for (int i = static_cast<int>(N) - 1; i >= 0; i = from[static_cast<std::size_t>(i)]) {
+            path.push_back(nodes[static_cast<std::size_t>(i)]);
+        }
+        std::reverse(path.begin(), path.end());
+        return path;
     };
 
     while (visitedCount < n) {
