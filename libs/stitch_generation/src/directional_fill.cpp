@@ -2232,6 +2232,7 @@ std::vector<geometry::Path> directional_guides_from_region(const geometry::PathS
     std::vector<Vec2um> best;
     double bestLen = -1.0;
     std::vector<char> used(graph.edges.size(), 0);
+    std::vector<char> bestUsed(graph.edges.size(), 0);
     std::vector<Vec2um> current;
 
     const auto consider = [&] {
@@ -2240,6 +2241,7 @@ std::vector<geometry::Path> directional_guides_from_region(const geometry::PathS
                                                              pathKey(current) < pathKey(best)))) {
             bestLen = len;
             best = current;
+            bestUsed = used;
         }
     };
 
@@ -2287,6 +2289,7 @@ std::vector<geometry::Path> directional_guides_from_region(const geometry::PathS
         }
         best = longest->centerline;
         bestLen = pathLength(best);
+        bestUsed[static_cast<std::size_t>(longest - graph.edges.data())] = 1;
     } else {
         for (const std::uint32_t node : starts) {
             current.clear();
@@ -2300,49 +2303,147 @@ std::vector<geometry::Path> directional_guides_from_region(const geometry::PathS
         return out;
     }
 
-    best.erase(std::unique(best.begin(), best.end()), best.end());
-    if (best.size() < 2) {
-        return out;
-    }
-
     const double spacing =
         static_cast<double>(std::max<std::int32_t>(500, options.node_spacing.value));
-    std::vector<Vec2um> sampled;
-    sampled.push_back(best.front());
-    double next = spacing;
-    double traveled = 0.0;
-    for (std::size_t i = 1; i < best.size(); ++i) {
-        const Vec2um a = best[i - 1];
-        const Vec2um b = best[i];
-        const double seg = length_um(b - a);
-        if (seg < 1e-6) {
-            continue;
+    // Polyligne du squelette -> guide ouvert rééchantillonné tous les `spacing`.
+    const auto makeGuide = [&](std::vector<Vec2um> pts) -> std::optional<geometry::Path> {
+        pts.erase(std::unique(pts.begin(), pts.end()), pts.end());
+        if (pts.size() < 2) {
+            return std::nullopt;
         }
-        while (traveled + seg >= next) {
-            const double t = (next - traveled) / seg;
-            const P2 pa = to_p2(a);
-            const P2 pb = to_p2(b);
-            sampled.push_back(to_um(pa + (pb - pa) * t));
-            next += spacing;
+        std::vector<Vec2um> sampled;
+        sampled.push_back(pts.front());
+        double next = spacing;
+        double traveled = 0.0;
+        for (std::size_t i = 1; i < pts.size(); ++i) {
+            const Vec2um a = pts[i - 1];
+            const Vec2um b = pts[i];
+            const double seg = length_um(b - a);
+            if (seg < 1e-6) {
+                continue;
+            }
+            while (traveled + seg >= next) {
+                const double t = (next - traveled) / seg;
+                const P2 pa = to_p2(a);
+                const P2 pb = to_p2(b);
+                sampled.push_back(to_um(pa + (pb - pa) * t));
+                next += spacing;
+            }
+            traveled += seg;
         }
-        traveled += seg;
+        if (sampled.back() != pts.back()) {
+            sampled.push_back(pts.back());
+        }
+        if (sampled.size() < 2) {
+            return std::nullopt;
+        }
+        geometry::Path guide;
+        if (sampled.size() == 2) {
+            guide.closed = false;
+            guide.nodes = {{sampled[0], geometry::NodeType::Corner, {}, {}},
+                           {sampled[1], geometry::NodeType::Corner, {}, {}}};
+        } else {
+            guide = geometry::smooth_open_path(sampled);
+        }
+        return guide;
+    };
+
+    if (auto guide = makeGuide(best)) {
+        out.push_back(std::move(*guide));
     }
-    if (sampled.back() != best.back()) {
-        sampled.push_back(best.back());
-    }
-    if (sampled.size() < 2) {
+    if (out.empty()) {
         return out;
     }
 
-    geometry::Path guide;
-    if (sampled.size() == 2) {
-        guide.closed = false;
-        guide.nodes = {{sampled[0], geometry::NodeType::Corner, {}, {}},
-                       {sampled[1], geometry::NodeType::Corner, {}, {}}};
-    } else {
-        guide = geometry::smooth_open_path(sampled);
+    // Branches : le chemin principal ne couvre qu'une partie d'une forme
+    // ramifiée. On ajoute, tant qu'il reste des arêtes, un guide par branche
+    // significative, ancré sur le squelette déjà couvert (ou, pour une
+    // composante déconnectée, sur sa plus longue arête). Glouton et ordonné
+    // par (longueur décroissante, id) : déterministe.
+    std::vector<char> covered = bestUsed;
+    std::vector<char> nodeCovered(graph.nodes.size(), 0);
+    const auto coverNodesOf = [&](std::size_t edgeIndex) {
+        const auto& edge = graph.edges[edgeIndex];
+        if (edge.from < nodeCovered.size()) {
+            nodeCovered[edge.from] = 1;
+        }
+        if (edge.to < nodeCovered.size()) {
+            nodeCovered[edge.to] = 1;
+        }
+    };
+    for (std::size_t i = 0; i < covered.size(); ++i) {
+        if (covered[i]) {
+            coverNodesOf(i);
+        }
     }
-    out.push_back(std::move(guide));
+    const auto longer = [&](std::size_t a, std::size_t b) {
+        const auto& ea = graph.edges[a];
+        const auto& eb = graph.edges[b];
+        return ea.length_um > eb.length_um || (ea.length_um == eb.length_um && ea.id < eb.id);
+    };
+
+    while (out.size() < options.max_guides) {
+        std::optional<std::size_t> pick;
+        bool anchored = false;
+        for (std::size_t i = 0; i < graph.edges.size(); ++i) {
+            if (covered[i]) {
+                continue;
+            }
+            const auto& e = graph.edges[i];
+            const bool touches = (e.from < nodeCovered.size() && nodeCovered[e.from]) ||
+                                 (e.to < nodeCovered.size() && nodeCovered[e.to]);
+            // Une arête ancrée l'emporte toujours sur une composante isolée.
+            if ((touches && !anchored) || (touches == anchored && (!pick || longer(i, *pick)))) {
+                pick = i;
+                anchored = touches;
+            }
+        }
+        if (!pick) {
+            break;
+        }
+
+        const auto& first = graph.edges[*pick];
+        std::uint32_t node = (first.from < nodeCovered.size() && nodeCovered[first.from])
+                                 ? first.from
+                                 : (anchored ? first.to : first.from);
+        std::vector<Vec2um> pts = orientedEdge(first, node);
+        std::vector<std::size_t> taken{*pick};
+        covered[*pick] = 1;
+        node = otherNode(first, node);
+        // Prolonge par la plus longue arête libre jusqu'au bout de la branche
+        // (ou jusqu'au squelette déjà couvert).
+        while (!nodeCovered[node]) {
+            std::optional<std::size_t> next;
+            for (const std::size_t i : incident[node]) {
+                if (!covered[i] && (!next || longer(i, *next))) {
+                    next = i;
+                }
+            }
+            if (!next) {
+                break;
+            }
+            const auto& e = graph.edges[*next];
+            const auto more = orientedEdge(e, node);
+            if (more.size() < 2) {
+                covered[*next] = 1;
+                continue;
+            }
+            pts.insert(pts.end(), more.begin() + 1, more.end());
+            covered[*next] = 1;
+            taken.push_back(*next);
+            node = otherNode(e, node);
+        }
+
+        if (pathLength(pts) < minLen) {
+            continue; // épine trop courte : bruit du squelette
+        }
+        if (auto guide = makeGuide(std::move(pts))) {
+            out.push_back(std::move(*guide));
+            for (const std::size_t i : taken) {
+                coverNodesOf(i);
+            }
+        }
+    }
     return out;
 }
 

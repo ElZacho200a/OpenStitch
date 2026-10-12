@@ -159,6 +159,58 @@ TEST_CASE("directional guides: medial skeleton proposes one editable guide") {
     CHECK(maxY - minY < 3'000);
 }
 
+namespace {
+
+// T : barre horizontale en haut, pied vertical dessous.
+geometry::PathSet t_shape_mm() {
+    return geometry::PathSet{polygon({um(0, 20), um(16, 20), um(16, 0), um(24, 0), um(24, 20),
+                                      um(40, 20), um(40, 28), um(0, 28)}),
+                             {}};
+}
+
+bool any_node_below(const std::vector<geometry::Path>& guides, std::int32_t y_um) {
+    for (const auto& guide : guides) {
+        for (const auto& node : guide.nodes) {
+            if (node.pos.y.value < y_um) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+} // namespace
+
+TEST_CASE("directional guides: branched shape gets one guide per significant branch") {
+    const auto region = t_shape_mm();
+
+    const auto guides = directional_guides_from_region(region);
+
+    CHECK(guides.size() >= 2);
+    CHECK(any_node_below(guides, 10'000)); // le pied du T est couvert
+    for (const auto& guide : guides) {
+        CHECK_FALSE(guide.closed);
+        CHECK(guide.nodes.size() >= 2);
+    }
+}
+
+TEST_CASE("directional guides: max_guides caps the result and output is deterministic") {
+    const auto region = t_shape_mm();
+    DirectionalGuideOptions capped;
+    capped.max_guides = 1;
+    CHECK(directional_guides_from_region(region, capped).size() == 1);
+
+    const auto a = directional_guides_from_region(region);
+    const auto b = directional_guides_from_region(region);
+    REQUIRE(a.size() == b.size());
+    for (std::size_t i = 0; i < a.size(); ++i) {
+        REQUIRE(a[i].nodes.size() == b[i].nodes.size());
+        for (std::size_t j = 0; j < a[i].nodes.size(); ++j) {
+            CHECK(a[i].nodes[j].pos == b[i].nodes[j].pos);
+        }
+    }
+}
+
 TEST_CASE("directional guides: minimum length can reject ambiguous tiny skeletons") {
     const auto region = rect_mm(0, 0, 4, 4);
     DirectionalGuideOptions options;
