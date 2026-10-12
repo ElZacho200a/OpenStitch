@@ -987,6 +987,10 @@ plus.
   l'assistant, obtient un remplissage directionnel avec au moins un guide
   éditable, puis peut ajuster ce guide avec les outils existants ; toute la
   mutation est une seule commande annulable.
+- Décisions tranchées (2026-10) : (1) forme branchée = un guide par branche
+  significative (principal + branches, max 8) ; (2) guides existants = remplacés,
+  y compris le guide par défaut issu de la conversion tatami. Voir
+  `docs/source/directional-fill.md` § Interface.
 
 ### HP-STI-019 — Broderie à main levée (freehand) [P2] — ☐ À faire
 - Hatch : dessiner directement un point de contour, triple, satin à la souris

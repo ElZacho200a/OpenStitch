@@ -95,13 +95,16 @@ directional_field_preview(const geometry::PathSet& region,
 // la forme par le centre de sa boîte englobante, pour que le résultat
 // initial reproduise l'orientation du tatami. `seed` fixe la graine de
 // l'aspect fait main (typiquement l'id de l'objet).
-// Assistant de guides : construit une courbe guide ouverte depuis l'axe medial
-// de la region (pipeline auto-satin : rasterisation, Zhang-Suen,
-// SkeletonGraph). Ne genere aucun satin ; le resultat va directement dans
-// DirectionalFillParams::guides.
+// Assistant de guides : construit des courbes guides ouvertes depuis l'axe
+// medial de la region (pipeline auto-satin : rasterisation, Zhang-Suen,
+// SkeletonGraph). Le chemin le plus long donne le guide principal ; chaque
+// branche significative restante (>= min_path_length) recoit son propre guide,
+// ancre sur le squelette deja couvert, jusqu'a max_guides. Ne genere aucun
+// satin ; le resultat va directement dans DirectionalFillParams::guides.
 struct DirectionalGuideOptions {
     Micrometers min_path_length{1'500};
     Micrometers node_spacing{2'500};
+    std::size_t max_guides{8};
 };
 
 [[nodiscard]] std::vector<geometry::Path>

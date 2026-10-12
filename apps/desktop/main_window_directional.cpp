@@ -226,6 +226,7 @@ void MainWindow::generateDirectionGuideFromShape() {
     document::DirectionalFillParams params;
     if (const auto* directional = std::get_if<document::DirectionalFillParams>(&emb->params)) {
         params = *directional;
+        params.guides.clear(); // remplace : le guide par defaut ne doit pas survivre
     } else {
         auto converted = directionalParamsFor(*emb);
         if (!converted) {

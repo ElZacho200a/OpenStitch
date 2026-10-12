@@ -295,6 +295,17 @@ linéaire par région, pas de courbe), deux couleurs maximum par région.
   dernier point, Échap pour annuler. Un guide devient une courbe lisse passant
   par les points cliqués (`geometry::smooth_open_path`, Catmull-Rom → Béziers) ;
   une rupture reste une polyligne (angles vifs des chevrons).
+- **Générer un guide depuis la forme** (`directional_guides_from_region`,
+  axe médian du pipeline auto-satin, sans aucun satin) : le chemin le plus long
+  du squelette donne le guide principal ; chaque branche restante d'au moins
+  `min_path_length` (1,5 mm) reçoit son propre guide, ancré sur le squelette
+  déjà couvert (composante déconnectée : sur sa plus longue arête), dans la
+  limite de `max_guides` (8). Glouton, ordonné par (longueur décroissante, id) :
+  déterministe. Avant (2026-10), un seul guide était produit : les lobes d'une
+  forme ramifiée n'avaient aucun guide proche et restaient mal couverts. L'action
+  **remplace** les guides existants — y compris le guide droit posé par la
+  conversion depuis un tatami — au lieu de s'y ajouter ; les lignes de rupture
+  sont conservées.
 - Toute édition passe par `EditDirectionalFillCommand` (ou
   `SetStitchParamsCommand` depuis l'inspecteur) : undo/redo exact.
 
