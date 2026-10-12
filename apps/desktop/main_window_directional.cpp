@@ -24,9 +24,14 @@
 #include "app_theme.hpp"
 #include "main_window.hpp"
 #include "node_handle.hpp"
+#include "openstitch/autodigitize/two_color_blend.hpp"
+#include "openstitch/commands/composite_command.hpp"
 #include "openstitch/commands/project_commands.hpp"
+#include "openstitch/commands/thread_commands.hpp"
 #include "openstitch/geometry/primitives.hpp"
+#include "openstitch/image/ops.hpp"
 #include "openstitch/stitch_generation/directional_fill.hpp"
+#include "thread_panel.hpp"
 
 namespace openstitch::desktop {
 
@@ -131,6 +136,96 @@ void MainWindow::setDensityGradient(ObjectId embroideryId, bool enabled, double 
     applyDirectionalEdit(embroideryId, std::move(next), tr("Dégradé de densité"));
 }
 
+void MainWindow::applyTwoColorBlend() {
+    const auto* emb = resolveSelectedEmbroidery();
+    const auto* source = emb != nullptr ? project_.findObject(emb->source_vector) : nullptr;
+    if (emb == nullptr || source == nullptr || project_.original.empty() ||
+        !(emb->is_tatami() || emb->is_directional())) {
+        return;
+    }
+    const auto working = image::apply_pipeline(project_.original, project_.ops);
+    if (!working) {
+        QMessageBox::warning(this, tr("Fondu impossible"),
+                             QString::fromStdString(working.error().message));
+        return;
+    }
+    // Nuancier choisi dans le panneau Fils (vide = couleurs libres).
+    const thread_palette::ThreadChart* chart = nullptr;
+    if (threadPanel_ != nullptr && !threadPanel_->currentChartId().isEmpty()) {
+        chart = threadLibrary_.find_chart(threadPanel_->currentChartId().toStdString());
+    }
+    const auto result =
+        autodigitize::analyze_region_blend(*working, project_.mm_per_px, source->paths, chart);
+    if (!result) {
+        QMessageBox::information(this, tr("Fondu impossible"),
+                                 QString::fromStdString(result.error().message));
+        return;
+    }
+
+    const ObjectId baseId = emb->id;
+    // L'objet sélectionné devient le FOND (il garde son rang, donc il est cousu
+    // avant) ; le dessus est un nouvel objet, ajouté en fin de liste.
+    document::DirectionalFillParams topParams;
+    if (const auto* directional = std::get_if<document::DirectionalFillParams>(&emb->params)) {
+        topParams = *directional;
+    } else if (auto converted = directionalParamsFor(*emb)) {
+        topParams = std::move(*converted);
+    } else {
+        return;
+    }
+    topParams.density_gradient = result->blend.foreground_density;
+    topParams.underlay_edge = false; // la sous-couche appartient au fond
+    topParams.underlay_parallel = false;
+
+    document::EmbroideryObject top = *emb;
+    top.id = project_.object_ids.next();
+    top.name = emb->name + " (dessus)";
+    top.params = topParams;
+    top.rgb = result->blend.foreground;
+    top.thread.reset();
+    top.overrides.clear();
+    top.edited_fingerprint = 0;
+    top.edited_point_count = 0;
+    std::optional<thread_palette::ThreadKey> baseThread;
+    std::array<std::uint8_t, 3> baseRgb = result->blend.background;
+    if (result->threads) {
+        const auto first = threadLibrary_.find(result->threads->first);
+        const auto second = threadLibrary_.find(result->threads->second);
+        if (first && second) {
+            baseThread = first->key;
+            baseRgb = first->rgb;
+            top.thread = second->key;
+            top.rgb = second->rgb;
+        }
+    }
+    // Pointeur vers le directionnel d'origine : un dégradé existant disparaît du fond.
+    std::optional<document::DirectionalFillParams> baseParams;
+    if (const auto* directional = std::get_if<document::DirectionalFillParams>(&emb->params);
+        directional != nullptr && directional->density_gradient) {
+        baseParams = *directional;
+        baseParams->density_gradient.reset();
+    }
+
+    auto batch = std::make_unique<commands::CompositeCommand>("Fondu de couleurs à deux fils");
+    if (baseParams) {
+        batch->add(
+            std::make_unique<commands::SetStitchParamsCommand>(baseId, *baseParams, std::string{}));
+    }
+    batch->add(std::make_unique<commands::SetObjectThreadCommand>(std::vector<ObjectId>{baseId},
+                                                                  baseThread, baseRgb));
+    batch->add(std::make_unique<commands::AddEmbroideryObjectCommand>(std::move(top)));
+    undoStack_.execute(std::move(batch), project_);
+    showStitchesAct_->setChecked(true);
+    refreshImage();
+    updateActions();
+    statusBar()->showMessage(
+        result->threads
+            ? tr("Fondu à deux fils créé avec les fils du nuancier (fond puis dessus).")
+            : tr("Fondu à deux fils créé en couleurs libres ; choisissez un nuancier dans le "
+                 "panneau Fils pour les associer à de vrais fils."),
+        8000);
+}
+
 void MainWindow::buildDirectionalActions(QMenu* embMenu) {
     directionGuideModeAct_ = embMenu->addAction(tr("Guides de &direction…"));
     directionGuideModeAct_->setObjectName(QStringLiteral("action_directionGuideMode"));
@@ -148,6 +243,14 @@ void MainWindow::buildDirectionalActions(QMenu* embMenu) {
         tr("Calcule un guide de direction éditable depuis l'axe médian de la forme."));
     connect(autoDirectionGuideAct_, &QAction::triggered, this,
             &MainWindow::generateDirectionGuideFromShape);
+    twoColorBlendAct_ = embMenu->addAction(tr("Fondu de couleurs à deux fils"));
+    twoColorBlendAct_->setObjectName(QStringLiteral("action_twoColorBlend"));
+    twoColorBlendAct_->setToolTip(
+        tr("Analyse les couleurs de l'image sous la forme : l'objet sélectionné devient le fond "
+           "uni, et un remplissage directionnel à densité variable de la seconde couleur est "
+           "ajouté par-dessus. Fils choisis dans le nuancier sélectionné du panneau Fils, s'il y "
+           "en a un. Annulable en une fois."));
+    connect(twoColorBlendAct_, &QAction::triggered, this, &MainWindow::applyTwoColorBlend);
     const auto startDrawing = [this](Tool tool) {
         if (!directionGuideModeAct_->isChecked()) {
             directionGuideModeAct_->setChecked(true);
@@ -417,6 +520,11 @@ void MainWindow::updateDirectionGuideActions() {
     }
     drawDirectionGuideAct_->setEnabled(context);
     drawBreakLineAct_->setEnabled(context && emb->is_directional());
+    if (twoColorBlendAct_ != nullptr) {
+        twoColorBlendAct_->setEnabled(
+            emb != nullptr && (emb->is_tatami() || emb->is_directional()) &&
+            !project_.original.empty() && project_.findObject(emb->source_vector) != nullptr);
+    }
 }
 
 void MainWindow::renderDirectionGuides() {

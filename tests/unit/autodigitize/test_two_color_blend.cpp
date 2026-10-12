@@ -5,6 +5,8 @@
 #include <array>
 #include <cmath>
 #include <cstdint>
+#include <set>
+#include <string>
 #include <vector>
 
 #include "openstitch/autodigitize/two_color_blend.hpp"
@@ -136,6 +138,119 @@ TEST_CASE("blend: same input, same result") {
     CHECK(a->foreground == b->foreground);
     CHECK(a->mean_t == b->mean_t);
     CHECK(a->foreground_density == b->foreground_density);
+}
+
+namespace {
+
+// Image 40 x 20 px, dégradé horizontal kWarm -> kCool, 0,5 mm par pixel (20 x 10 mm).
+image::Image gradient_image() {
+    image::Image img;
+    img.width = 40;
+    img.height = 20;
+    img.rgba.resize(40 * 20 * 4);
+    for (int y = 0; y < 20; ++y) {
+        for (int x = 0; x < 40; ++x) {
+            const Rgb c = lerp(kWarm, kCool, x / 39.0);
+            std::uint8_t* px = img.rgba.data() + (static_cast<std::size_t>(y) * 40 + x) * 4;
+            px[0] = c[0];
+            px[1] = c[1];
+            px[2] = c[2];
+            px[3] = 255;
+        }
+    }
+    return img;
+}
+
+geometry::PathSet rect_um(int x0, int y0, int x1, int y1) {
+    geometry::Path p;
+    p.closed = true;
+    for (const Vec2um v :
+         {Vec2um{Micrometers{x0}, Micrometers{y0}}, Vec2um{Micrometers{x1}, Micrometers{y0}},
+          Vec2um{Micrometers{x1}, Micrometers{y1}}, Vec2um{Micrometers{x0}, Micrometers{y1}}}) {
+        p.nodes.push_back({v, geometry::NodeType::Corner, {}, {}});
+    }
+    return geometry::PathSet{p, {}};
+}
+
+thread_palette::ThreadChart colour_chart() {
+    thread_palette::ThreadChart chart;
+    chart.chart_id = "test";
+    const std::vector<Rgb> colors{{255, 255, 255}, kWarm, {0, 0, 0}, kCool, {120, 120, 120}};
+    for (std::size_t i = 0; i < colors.size(); ++i) {
+        thread_palette::Thread t;
+        t.key = {"test", std::to_string(i)};
+        t.rgb = colors[i];
+        chart.threads.push_back(t);
+    }
+    return chart;
+}
+
+} // namespace
+
+TEST_CASE("region blend: samples follow the image under the shape") {
+    const auto img = gradient_image();
+    // Moitié gauche de l'image : x de -10 mm à 0 (la forme est centrée sur l'image).
+    const auto left =
+        sample_region_colors(img, Millimeters{0.5}, {rect_um(-10'000, -5'000, 0, 5'000)});
+    const auto all =
+        sample_region_colors(img, Millimeters{0.5}, {rect_um(-10'000, -5'000, 10'000, 5'000)});
+    REQUIRE(!left.empty());
+    CHECK(all.size() > left.size());
+    CHECK(all.size() <= 20'000);
+    // Les pixels de gauche sont plus chauds (rouge élevé) que la moyenne de la forme entière.
+    double leftRed = 0.0;
+    for (const auto& s : left) {
+        leftRed += s.rgb[0];
+        CHECK(s.pos.x.value <= 0);
+    }
+    double allRed = 0.0;
+    for (const auto& s : all) {
+        allRed += s.rgb[0];
+    }
+    CHECK(leftRed / static_cast<double>(left.size()) > allRed / static_cast<double>(all.size()));
+    // Forme hors de l'image ou image vide : rien.
+    CHECK(sample_region_colors(img, Millimeters{0.5}, {rect_um(50'000, 50'000, 60'000, 60'000)})
+              .empty());
+    CHECK(sample_region_colors({}, Millimeters{0.5}, {rect_um(0, 0, 1'000, 1'000)}).empty());
+}
+
+TEST_CASE("region blend: full chain finds two threads and a horizontal density ramp") {
+    const auto img = gradient_image();
+    const auto chart = colour_chart();
+    const auto r = analyze_region_blend(img, Millimeters{0.5},
+                                        {rect_um(-10'000, -5'000, 10'000, 5'000)}, &chart);
+    REQUIRE(r.has_value());
+    CHECK(r->blend.foreground_density.from.y == r->blend.foreground_density.to.y);
+    CHECK(std::abs(r->blend.foreground_density.to.x.value -
+                   r->blend.foreground_density.from.x.value) > 10'000);
+    REQUIRE(r->threads.has_value());
+    // Les fils choisis sont le rouge et le bleu du nuancier, dans un ordre ou dans l'autre.
+    const std::set<std::string> codes{r->threads->first.code, r->threads->second.code};
+    CHECK(codes == std::set<std::string>{"1", "3"});
+    // Sans nuancier : pas de fils, mais l'analyse est la même.
+    const auto free =
+        analyze_region_blend(img, Millimeters{0.5}, {rect_um(-10'000, -5'000, 10'000, 5'000)});
+    REQUIRE(free.has_value());
+    CHECK_FALSE(free->threads.has_value());
+    CHECK(free->blend.background == r->blend.background);
+}
+
+TEST_CASE("region blend: uniform or empty regions are refused with a clear error") {
+    image::Image flat = gradient_image();
+    for (std::size_t i = 0; i < flat.rgba.size(); i += 4) {
+        flat.rgba[i] = 90;
+        flat.rgba[i + 1] = 90;
+        flat.rgba[i + 2] = 90;
+    }
+    const auto uniform =
+        analyze_region_blend(flat, Millimeters{0.5}, {rect_um(-10'000, -5'000, 10'000, 5'000)});
+    REQUIRE_FALSE(uniform.has_value());
+    CHECK(uniform.error().category == ErrorCategory::UserInput);
+    CHECK_FALSE(
+        analyze_region_blend({}, Millimeters{0.5}, {rect_um(0, 0, 1'000, 1'000)}).has_value());
+    CHECK_FALSE(analyze_region_blend(gradient_image(), Millimeters{0.5},
+                                     {rect_um(50'000, 50'000, 60'000, 60'000)})
+                    .has_value());
 }
 
 TEST_CASE("blend: the density ramp drives the directional fill") {

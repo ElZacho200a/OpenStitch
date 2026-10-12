@@ -270,7 +270,18 @@ une période montre `b` de s2 et `1/ρ − b` de s1 : la proportion de s2 est
    nul et l'écart uniforme `b / t̄`.
 
 Le choix des fils réels (`thread_palette::best_thread_pair`) et le lissage
-préalable (`BilateralDenoiseOp`) complètent la chaîne. Déterministe : aucune
+préalable (`BilateralDenoiseOp`) complètent la chaîne :
+`autodigitize::analyze_region_blend` lisse l'image de travail, échantillonne les
+pixels sous la forme (`sample_region_colors`, au plus 20 000, repère du modèle),
+analyse, puis choisit la paire de fils dans le nuancier fourni.
+
+**Action de l'interface** (`MainWindow::applyTwoColorBlend`, menu Broderie et
+barre contextuelle d'un objet tatami ou directionnel) : l'objet sélectionné
+devient le **fond** (il garde son rang, donc il est cousu avant ; son dégradé
+éventuel est retiré) et un **nouvel objet directionnel** de la seconde couleur,
+à densité variable et sans sous-couche, est ajouté par-dessus. Les fils viennent
+du nuancier sélectionné dans le panneau Fils ; sans nuancier, les couleurs
+analysées restent libres. Une seule annulation défait l'ensemble. Déterministe : aucune
 graine, itération dans l'ordre d'entrée. Limites : un seul plan (un dégradé
 linéaire par région, pas de courbe), deux couleurs maximum par région.
 
@@ -333,10 +344,11 @@ Aussi : `test_roundtrip.cpp` (sérialisation), `test_undo_stack.cpp`
   le tatami).
 - Pas d'édition des poignées de tangente des guides (seulement les points).
 - Aucune validation sur machine réelle.
-- Phase 4 (fondu de couleurs) : **moteur et analyse faits, pas d'action dans
-  l'interface** — voir la section *Fondu de couleurs à deux fils*. Reste à
-  brancher : échantillonner l'image sous une région, créer le fond et le
-  remplissage de dessus (deux objets liés), choisir les fils.
+- Phase 4 (fondu de couleurs) : disponible via **Broderie ▸ Fondu de couleurs à
+  deux fils** (voir la section du même nom). Limites : un dégradé linéaire par
+  région ; les deux objets ne sont pas « liés » (modifier l'un ne met pas l'autre
+  à jour) ; un objet de dessus est ajouté en fin de liste, donc cousu après les
+  objets intermédiaires.
 
 ## Implémentation associée
 
