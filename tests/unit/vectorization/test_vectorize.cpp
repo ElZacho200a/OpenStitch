@@ -1,8 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
+#include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 
 #include <cmath>
 
+#include "openstitch/geometry/polyline.hpp"
 #include "openstitch/vectorization/vectorize.hpp"
 
 using namespace openstitch;
@@ -129,4 +131,105 @@ TEST_CASE("deux morceaux de meme region... deviennent deux PathSet") {
     const auto setsA = vectorize_region(*seg, *a, {.mm_per_px = Millimeters{1.0}});
     REQUIRE(setsA.has_value());
     CHECK(setsA->size() == 1);
+}
+
+namespace {
+
+// Disque rouge de rayon `r` px (anneau si `hole` > 0) sur fond blanc.
+image::Image disc_image(int size, int r, int hole) {
+    image::Image img;
+    img.width = size;
+    img.height = size;
+    img.rgba.assign(static_cast<std::size_t>(size) * static_cast<std::size_t>(size) * 4, 0);
+    const double c = (size - 1) / 2.0;
+    for (int y = 0; y < size; ++y) {
+        for (int x = 0; x < size; ++x) {
+            const double d = std::hypot(x - c, y - c);
+            if (d <= r && d >= hole) {
+                set_px(img, x, y, 220, 30, 30);
+            } else {
+                set_px(img, x, y, 250, 250, 250);
+            }
+        }
+    }
+    return img;
+}
+
+std::size_t total_nodes(const std::vector<geometry::PathSet>& sets) {
+    std::size_t n = 0;
+    for (const auto& s : sets) {
+        n += s.outer.nodes.size();
+        for (const auto& h : s.holes) {
+            n += h.nodes.size();
+        }
+    }
+    return n;
+}
+
+} // namespace
+
+TEST_CASE("courbes : un disque tient en au moins 3 fois moins de noeuds qu'en polygone") {
+    const auto img = disc_image(240, 100, 0);
+    const auto seg = segmentation::segment(img, {.max_colors = 2, .min_region_px = 1});
+    REQUIRE(seg.has_value());
+    const auto red = segmentation::region_at(*seg, 120, 120);
+    REQUIRE(red.has_value());
+
+    constexpr double kMmPerPx = 0.2646; // 96 dpi
+    const Micrometers tol{400};         // ~1,5 px
+    const VectorizeOptions poly{.mm_per_px = Millimeters{kMmPerPx}, .simplify_tolerance = tol};
+    VectorizeOptions curved = poly;
+    curved.curve_tolerance = tol;
+
+    const auto a = vectorize_region(*seg, *red, poly);
+    const auto b = vectorize_region(*seg, *red, curved);
+    REQUIRE(a.has_value());
+    REQUIRE(b.has_value());
+    REQUIRE(b->size() == 1);
+
+    // Critere de la feuille de route : nombre de noeuds divise par >= 3.
+    CHECK(total_nodes(*b) * 3 <= total_nodes(*a));
+    // Les courbes sont bien presentes (tangentes de Bezier).
+    bool any_curve = false;
+    for (const auto& nd : (*b)[0].outer.nodes) {
+        any_curve = any_curve || nd.tan_out.has_value();
+    }
+    CHECK(any_curve);
+    // Meme emprise et meme aire qu'en polygone (a quelques % pres).
+    const double areaPoly = std::abs(geometry::signed_area_um2((*a)[0].outer));
+    const geometry::Polyline flat = geometry::flatten((*b)[0].outer, Micrometers{20});
+    geometry::Path flatPath;
+    for (const Vec2um& p : flat.points) {
+        flatPath.nodes.push_back({p, geometry::NodeType::Corner, std::nullopt, std::nullopt});
+    }
+    const double areaCurve = std::abs(geometry::signed_area_um2(flatPath));
+    CHECK(areaCurve == Catch::Approx(areaPoly).epsilon(0.03));
+}
+
+TEST_CASE("courbes : un anneau garde son trou, resultat deterministe, defaut inchange") {
+    const auto img = disc_image(240, 100, 50);
+    const auto seg = segmentation::segment(img, {.max_colors = 2, .min_region_px = 1});
+    REQUIRE(seg.has_value());
+    const auto red = segmentation::region_at(*seg, 120, 20);
+    REQUIRE(red.has_value());
+
+    VectorizeOptions curved{.mm_per_px = Millimeters{0.2646},
+                            .simplify_tolerance = Micrometers{400}};
+    curved.curve_tolerance = Micrometers{400};
+    const auto a = vectorize_region(*seg, *red, curved);
+    const auto b = vectorize_region(*seg, *red, curved);
+    REQUIRE(a.has_value());
+    REQUIRE(b.has_value());
+    REQUIRE(a->size() == 1);
+    CHECK((*a)[0].holes.size() == 1);
+    CHECK(*a == *b);
+
+    // curve_tolerance = 0 (defaut) : strictement le comportement polygonal historique.
+    const VectorizeOptions legacy{.mm_per_px = Millimeters{0.2646},
+                                  .simplify_tolerance = Micrometers{400}};
+    const auto p = vectorize_region(*seg, *red, legacy);
+    REQUIRE(p.has_value());
+    for (const auto& nd : (*p)[0].outer.nodes) {
+        CHECK_FALSE(nd.tan_out.has_value());
+    }
 }

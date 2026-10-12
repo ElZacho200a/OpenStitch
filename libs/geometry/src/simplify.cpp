@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 #include "openstitch/geometry/simplify.hpp"
 
+#include "openstitch/geometry/polyline.hpp"
+
 #include <algorithm>
 #include <cmath>
 
@@ -47,7 +49,10 @@ void douglas_peucker(const std::vector<PathNode>& nodes, std::size_t first, std:
 
 } // namespace
 
-double signed_area_um2(const Path& path) {
+double signed_area_um2(const Path& rawPath) {
+    // Une courbe est mesurée sur sa forme réelle (aplatie), pas sur le polygone
+    // de ses seuls nœuds ; sans tangente, aucun changement.
+    const Path path = flatten_to_polygon(rawPath, Micrometers{20});
     double area = 0.0;
     const auto& n = path.nodes;
     for (std::size_t i = 0; i < n.size(); ++i) {

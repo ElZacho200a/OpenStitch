@@ -1211,7 +1211,7 @@ SAM via un worker **WSL**. ~18 s sur l'image de référence.
   « contour seulement ».
 - Modules : `libs/segmentation` (croissance locale), `apps/desktop`.
 
-### HP-AUTO-004 — Vectorisation par courbes [P1] — ☐ À faire
+### HP-AUTO-004 — Vectorisation par courbes [P1] — ◐ Partiel (2026-10-12)
 - État OpenStitch : la vectorisation produit des polygones (Douglas-Peucker),
   pas de courbes de Bézier ; les formes gardent des facettes et beaucoup de
   nœuds à éditer.
@@ -1220,6 +1220,12 @@ SAM via un worker **WSL**. ~18 s sur l'image de référence.
   ne pas l'utiliser), détection des coins.
 - Modules : `libs/vectorization`.
 - Acceptation : nombre de nœuds divisé par ≥ 3 à erreur de contour égale.
+- 2026-10-12 : `geometry::fit_curves` (Schneider + détection des coins, écart
+  réel dans les deux sens) et `VectorizeOptions::curve_tolerance` /
+  `digitize --curve-tolerance`. Critère ÷3 vérifié par test pour une tolérance
+  ≥ 1,5 px (≈ ÷2 vers 1,2 px, bruit de trame). Reste : réglage dans le
+  dialogue desktop, raffinement par contours actifs, et réduction des points
+  courts du tatami sur formes rondes.
 
 ### HP-AUTO-005 — Détection des contours noirs (outlines) [P1] — ◐ Partiel (2026-10-06)
 - État OpenStitch : le mode **Contours / Line Art** (fusionné 2026-10-05, PR #4) coud

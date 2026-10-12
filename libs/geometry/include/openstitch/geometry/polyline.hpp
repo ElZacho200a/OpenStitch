@@ -23,6 +23,14 @@ struct Polyline {
 // sans tangente restent droits. Les points consécutifs identiques sont fusionnés.
 [[nodiscard]] Polyline flatten(const Path& path, Micrometers tolerance);
 
+// Version « polygone » d'un chemin : les segments à tangentes sont aplatis
+// (voir `flatten`), tous les nœuds deviennent des coins sans tangente. Un chemin
+// qui n'a AUCUNE tangente est rendu identique (aucun changement pour les formes
+// polygonales). À utiliser avant tout traitement qui ne lit que les positions
+// des nœuds (remplissages, booléens, mesures d'aire).
+[[nodiscard]] Path flatten_to_polygon(const Path& path, Micrometers tolerance);
+[[nodiscard]] PathSet flatten_to_polygon(const PathSet& set, Micrometers tolerance);
+
 // Longueurs cumulées le long d'une polyligne (taille = points.size()).
 [[nodiscard]] std::vector<double> cumulative_lengths(const std::vector<Vec2um>& points);
 

@@ -22,6 +22,9 @@ namespace openstitch::stitch_generation {
 
 namespace {
 
+// Tolérance d'aplatissement des courbes avant remplissage (µm).
+constexpr Micrometers kFillFlattenTolerance{50};
+
 // Ajoute une polyligne à la séquence : un saut vers son premier point, puis
 // les points cousus. Ignore les tracés dégénérés.
 void emit_polyline(stitch::StitchSequence& sequence, const std::vector<Vec2um>& points,
@@ -251,8 +254,9 @@ void generate_auto_satin(stitch::StitchSequence& sequence, const document::Vecto
     if (params.underlay_mode == document::UnderlayMode::Auto) {
         double area = 0.0;
         double perimeter = 0.0;
-        for (const geometry::PathSet& set : source.paths) {
-            const ShapeMetrics m = measure_shape(set);
+        for (const geometry::PathSet& rawSet : source.paths) {
+            const ShapeMetrics m =
+                measure_shape(geometry::flatten_to_polygon(rawSet, kFillFlattenTolerance));
             area += m.area_mm2;
             perimeter += m.perimeter_mm;
         }
@@ -264,7 +268,8 @@ void generate_auto_satin(stitch::StitchSequence& sequence, const document::Vecto
     }
 
     std::vector<std::vector<SatinStation>> columns;
-    for (const geometry::PathSet& set : source.paths) {
+    for (const geometry::PathSet& rawSet : source.paths) {
+        const geometry::PathSet set = geometry::flatten_to_polygon(rawSet, kFillFlattenTolerance);
         const auto result = auto_satin::generate_skeleton_satin(set, engine);
         if (!result) {
             continue; // région non analysable : aucun point pour ce morceau
@@ -497,7 +502,10 @@ void generate_satin_group(stitch::StitchSequence& sequence,
 void generate_tatami(stitch::StitchSequence& sequence, const document::VectorObject& source,
                      const document::EmbroideryObject& object,
                      const document::TatamiParams& params) {
-    for (const geometry::PathSet& set : source.paths) {
+    for (const geometry::PathSet& rawSet : source.paths) {
+        // Les remplissages ne lisent que les positions de nœuds : les courbes
+        // (vectorisation par Bézier, ellipses) sont aplaties d'abord.
+        const geometry::PathSet set = geometry::flatten_to_polygon(rawSet, kFillFlattenTolerance);
         // Retrait de bord (compensation de contour). Si le retrait fait
         // disparaître la forme, on remplit la forme brute.
         std::vector<geometry::PathSet> filled;
@@ -526,7 +534,8 @@ void generate_tatami(stitch::StitchSequence& sequence, const document::VectorObj
 void generate_directional(stitch::StitchSequence& sequence, const document::VectorObject& source,
                           const document::EmbroideryObject& object,
                           const document::DirectionalFillParams& params) {
-    for (const geometry::PathSet& set : source.paths) {
+    for (const geometry::PathSet& rawSet : source.paths) {
+        const geometry::PathSet set = geometry::flatten_to_polygon(rawSet, kFillFlattenTolerance);
         std::vector<geometry::PathSet> filled;
         if (params.inset.value > 0) {
             if (auto inset = geometry::inset_path_set(set, params.inset);
@@ -649,8 +658,9 @@ Result<stitch::StitchSequence> generate_sequence(const document::Project& projec
         if (unit.kind == Kind::AutoSatin) {
             const auto& params = std::get<document::AutoSatinParams>(object.params);
             const auto engine = auto_satin_engine(params);
-            for (const geometry::PathSet& set : unit.source->paths) {
-                (void)auto_satin::generate_skeleton_satin(set, engine);
+            for (const geometry::PathSet& rawSet : unit.source->paths) {
+                (void)auto_satin::generate_skeleton_satin(
+                    geometry::flatten_to_polygon(rawSet, kFillFlattenTolerance), engine);
             }
             return;
         }

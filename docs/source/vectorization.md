@@ -24,6 +24,43 @@ nettoyés.
    auto-intersections. Une région en plusieurs morceaux produit plusieurs
    `PathSet`.
 
+### Variante courbes de Bézier (`curve_tolerance`)
+
+Option `VectorizeOptions::curve_tolerance` (> 0 ; défaut 0 = polygones, rien ne
+change pour les projets existants). Les étapes 1 à 3 et le nettoyage Clipper2
+sont identiques, mais le contour dense n'est **pas** simplifié par
+Douglas-Peucker : il est ajusté par `geometry::fit_curves` *après* le
+nettoyage (la topologie extérieur/trous est déjà corrigée).
+
+`fit_curves` implémente l'ajustement de Schneider (*An Algorithm for
+Automatically Fitting Digitized Curves*, Graphics Gems, 1990) : 1) détection des
+**coins** (changement de direction mesuré sur une fenêtre d'arc de part et
+d'autre du sommet, maximum local, seuil 55° par défaut) ; 2) par tronçon entre
+coins : moindres carrés sur la longueur des poignées, reparamétrisation de
+Newton-Raphson, découpe récursive au point d'écart maximal ; 3) l'écart est
+mesuré **géométriquement dans les deux sens** (données → courbe et courbe →
+données), pas seulement sur le paramètre. Les parties droites restent des
+segments sans tangente ; les jonctions internes sont des nœuds *Lisses*, les
+coins des nœuds *Coin*. Écrit d'après la publication (Potrace, sous GPL, n'est
+ni utilisé ni copié). Déterministe.
+
+Mesures (tests `test_curve_fit`, `test_vectorize`) sur un disque rastérisé à
+96 dpi : à tolérance égale de 1,5 px (0,4 mm) ou plus, le nombre de nœuds est
+divisé par **≥ 3** par rapport à Douglas-Peucker (critère HP-AUTO-004) et l'écart
+au vrai cercle reste dans la tolérance. **Limite :** le contour de pixels est un
+escalier de ±0,5 px ; une tolérance inférieure à ~1 px ne fait qu'ajuster ce bruit
+(à 1,2 px le gain tombe vers ÷2). Le raffinement par contours actifs
+(Álvarez–Morel 2026) et la bissection/symétrie (Zhu–You–Zhang 2023) ne sont pas
+implémentés.
+
+Les remplissages (tatami, directionnel, auto-satin, mesures d'aire) lisent les
+positions de nœuds : `generate.cpp` aplatit les courbes avant (`geometry::
+flatten_to_polygon`, tolérance 50 µm), et la couche Clipper2 de `geometry` ainsi
+que `signed_area_um2` font de même. Ces fonctions sont sans effet sur un
+chemin sans tangente. Effet connu : sur une forme réellement ronde, les rangées
+de tatami proches de la tangente produisent davantage de points courts
+(< 0,5 mm) qu'avec un contour à facettes. Option CLI : `digitize --curve-tolerance`.
+
 ## Résultat
 
 Un `document::VectorObject` contient un ou plusieurs `geometry::PathSet`

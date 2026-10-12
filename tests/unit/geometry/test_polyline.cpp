@@ -1,10 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
+#include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 
 #include <cmath>
 #include <numbers>
 
 #include "openstitch/geometry/polyline.hpp"
+#include "openstitch/geometry/primitives.hpp"
 
 using namespace openstitch;
 using namespace openstitch::geometry;
@@ -76,4 +78,25 @@ TEST_CASE("point_at_length : milieu exact") {
     CHECK(mid == Vec2um{Micrometers{4'000}, Micrometers{0}});
     const Vec2um q = point_at_length(pts, cum, 5'500.0);
     CHECK(q == Vec2um{Micrometers{4'000}, Micrometers{1'500}});
+}
+
+TEST_CASE("flatten_to_polygon : sans tangente identique, courbe aplatie sans tangente") {
+    Path poly;
+    poly.closed = true;
+    poly.nodes = {{Vec2um{Micrometers{0}, Micrometers{0}}, NodeType::Corner, {}, {}},
+                  {Vec2um{Micrometers{1000}, Micrometers{0}}, NodeType::Corner, {}, {}},
+                  {Vec2um{Micrometers{0}, Micrometers{1000}}, NodeType::Corner, {}, {}}};
+    CHECK(flatten_to_polygon(poly, Micrometers{20}) == poly);
+
+    const Path ellipse = ellipse_path(Vec2um{Micrometers{-5000}, Micrometers{-3000}},
+                                      Vec2um{Micrometers{5000}, Micrometers{3000}});
+    const Path flat = flatten_to_polygon(ellipse, Micrometers{20});
+    CHECK(flat.nodes.size() > ellipse.nodes.size());
+    for (const auto& n : flat.nodes) {
+        CHECK_FALSE(n.tan_in.has_value());
+        CHECK_FALSE(n.tan_out.has_value());
+    }
+    // L'aire d'une ellipse (pi*a*b) n'est plus celle du losange de ses 4 noeuds.
+    const double exact = 3.14159265358979 * 5000.0 * 3000.0;
+    CHECK(std::abs(signed_area_um2(ellipse)) == Catch::Approx(exact).epsilon(0.005));
 }

@@ -18,6 +18,9 @@ namespace openstitch::autodigitize {
 struct AutoOptions {
     Millimeters mm_per_px{25.4 / 96.0};
     Micrometers simplify_tolerance{200};
+    // > 0 : contours des formes en courbes de Bézier (voir
+    // `vectorization::VectorizeOptions::curve_tolerance`). 0 : polygones.
+    Micrometers curve_tolerance{0};
     // Ancien seuil satin : conserve pour compatibilite projet/API, ignore par
     // l'auto-broderie (qui ne produit plus que tatami ou contour).
     Micrometers satin_max_width{6'000};

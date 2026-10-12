@@ -102,6 +102,8 @@ Mêmes valeurs par défaut que le dialogue **Numérisation automatique** du bure
 | `--max-colors N` | 8 | Couleurs maximales (2 à 64) |
 | `--min-region-px N` | 16 | Taille minimale d'une région |
 | `--smoothing-px N` | 3 | Lissage des formes |
+| `--curve-tolerance MM` | 0 (polygones) | Mode formes : contours en courbes de Bézier avec cet écart maximal ; prendre ~1,5 px ou plus (ex. 0.4) |
+| `--coherent-lines` | désactivé | Mode contours : extrait d'abord des traits de la photo (lignes cohérentes, FDoG) |
 | `--skip-background` | `auto` | `auto`, `yes` ou `no` : ignorer la plus grande région (le fond). `auto` : seulement si c'est un fond quasi blanc qui encadre le motif. Les anciennes valeurs `-1`, `0`, `1` restent acceptées. |
 | `--trim-threshold MM` | 3 | Coupe au-delà de ce déplacement |
 | `--lock` | `backforth` | Point d'arrêt : `none`, `backforth`, `triangle` ou `zigzag` |

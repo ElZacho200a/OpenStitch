@@ -667,8 +667,9 @@ struct DigitizeArgs {
     int maxColors = 8;
     int minRegionPx = 16;
     int smoothingPx = 3;
-    int skipBg = -1;            // -1 = auto (segmentation::background_candidate), 0 = non, 1 = oui
-    bool coherentLines = false; // mode contours : photo -> traits (FDoG) avant segmentation
+    int skipBg = -1; // -1 = auto (segmentation::background_candidate), 0 = non, 1 = oui
+    double curveToleranceMm = 0.0; // mode formes : > 0 -> contours en courbes de Bézier
+    bool coherentLines = false;    // mode contours : photo -> traits (FDoG) avant segmentation
     bool json = false;
     bool noClobber = false;
 };
@@ -755,6 +756,8 @@ int run_digitize(const DigitizeArgs& a) {
     autodigitize::AutoOptions opts;
     opts.mm_per_px = project.mm_per_px;
     opts.skip_largest_region = skipLargest;
+    opts.curve_tolerance =
+        Micrometers{static_cast<std::int32_t>(std::lround(a.curveToleranceMm * 1000.0))};
     fmt::print(st, "Ignorer la plus grande région (fond) : {}{}\n", skipLargest ? "oui" : "non",
                a.skipBg < 0 ? " (automatique)" : " (option explicite)");
 
@@ -1464,6 +1467,11 @@ int main(int argc, char** argv) {
                      "Mode contours : auto (défaut) | running | legacy-satin (ancien satin "
                      "dégradé en point droit, pas l'auto-satin)")
         ->check(CLI::IsMember({"auto", "running", "legacy-satin", "satin"}));
+    dz_cmd
+        ->add_option("--curve-tolerance", dz.curveToleranceMm,
+                     "Mode formes : contours en courbes de Bézier avec cet écart maximal en mm "
+                     "(0 = polygones, défaut ; prendre ~1,5 px ou plus, ex. 0.4)")
+        ->check(CLI::NonNegativeNumber);
     dz_cmd->add_flag("--coherent-lines", dz.coherentLines,
                      "Mode contours : extrait d'abord des traits de la photo (lignes cohérentes, "
                      "FDoG) avant la segmentation");
