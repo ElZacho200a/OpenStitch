@@ -63,7 +63,7 @@ Contrôles que la CI fera de toute façon :
 
   **Piège : la version de clang-format.** La CI installe celui d'Ubuntu (**18**).
   Sur cette machine, `clang-format` n'est pas dans le PATH Bash ; celui de
-  `C:\Program Files\LLVMin` est en **23** et formate différemment (il a
+  `C:\Program Files\LLVM\bin` est en **23** et formate différemment (il a
   réaligné un commentaire existant et fait échouer le job `format` de la PR #25).
   Utiliser la 18.1.8 installée via pip :
   `%APPDATA%\Python\Python314\Scripts\clang-format.exe` (vérifier
