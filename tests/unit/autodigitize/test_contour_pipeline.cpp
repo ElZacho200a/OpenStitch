@@ -746,3 +746,43 @@ TEST_CASE("contour taper stays running") {
         CHECK(r.metrics.running_length_mm > 40.0);
     }
 }
+
+TEST_CASE("contour SinglePath : moins de polylignes que l'assemblage historique, meme couverture") {
+    // Grille de traits + diagonale : beaucoup de jonctions, l'appariement par
+    // alignement laisse des chaines supplementaires.
+    auto img = blank(220, 220);
+    for (int i = 0; i < 3; ++i) {
+        stroke(img, 30.0 + 80.0 * i, 30, 30.0 + 80.0 * i, 190, 3, kBlack);
+        stroke(img, 30, 30.0 + 80.0 * i, 190, 30.0 + 80.0 * i, 3, kBlack);
+    }
+    stroke(img, 30, 30, 190, 190, 3, kBlack);
+    const auto seg = seg_of(img, 2);
+
+    IdGenerator<ObjectId> ids1;
+    IdGenerator<ObjectId> ids2;
+    ContourOptions chains;
+    chains.mm_per_px = Millimeters{0.2646};
+    ContourOptions single = chains;
+    single.routing = ContourRouting::SinglePath;
+
+    ContourMetrics mc;
+    ContourMetrics ms;
+    const auto a = auto_digitize_contours(seg, ids1, chains, &mc);
+    const auto b = auto_digitize_contours(seg, ids2, single, &ms);
+    REQUIRE(a.has_value());
+    REQUIRE(b.has_value());
+    CHECK(ms.trails <= mc.trails);
+    CHECK(ms.trails >= 1);
+    // Meme matiere de trait : les segments sont tous cousus, au plus repasses.
+    CHECK(ms.running_length_mm == mc.running_length_mm);
+    CHECK(mc.retraced_mm == 0.0);
+
+    // Deterministe.
+    IdGenerator<ObjectId> ids3;
+    const auto c = auto_digitize_contours(seg, ids3, single, nullptr);
+    REQUIRE(c.has_value());
+    REQUIRE(b->vectors.size() == c->vectors.size());
+    for (std::size_t i = 0; i < b->vectors.size(); ++i) {
+        CHECK(b->vectors[i].paths == c->vectors[i].paths);
+    }
+}

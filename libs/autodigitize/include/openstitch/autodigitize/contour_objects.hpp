@@ -40,6 +40,8 @@ struct ContourMetrics {
     double min_width_mm{0.0};
     double max_width_mm{0.0};
     double mean_width_mm{0.0}; // pondere par la longueur, segments cousus
+    std::size_t trails{0};     // polylignes produites (une par chemin cousu d'un trait)
+    double retraced_mm{0.0};   // SinglePath : longueur repassée pour éviter des coupes
     std::size_t fallbacks{0};  // options legacy/degradations -> point droit
     std::size_t rejected{0};   // segments / composantes refuses (garde-fous)
 };

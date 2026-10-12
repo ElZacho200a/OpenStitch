@@ -300,8 +300,33 @@ quand la largeur le permet).
 colonnes satin aboutissant à une jonction étaient ancrées par l'ancien `satin_planning`
 (supprimé) ; le satin par squelette traite les jonctions par cellules (voir `satin-squelette.md`).
 
+**Routage en chemin unique** (`ContourOptions::routing = SinglePath`,
+`digitize --single-path`, défaut `Chains` = comportement historique inchangé).
+L'assemblage historique (`assemble_chains`) n'apparie à une jonction que des
+branches « alignées » (virage < 90°) : un éventail de branches serrées reste en
+autant de polylignes, donc autant de sauts et de coupes. `route_single_path`
+(`contour_route.cpp`) cherche à la place un **parcours eulérien** du réseau
+(problème du postier chinois, version gloutonne déterministe) : 1) les
+nœuds de degré impair sont les extrémités de polylignes inévitables (au minimum
+`impairs / 2`) ; 2) deux impairs distants d'au moins `trim_threshold` (3 mm, au-delà
+duquel un saut coûte une coupe) sont reliés en **repassant** sur le plus court
+chemin du réseau s'il fait au plus `max_retrace` (12 mm) ; 3) les impairs
+restants sont appariés au plus proche (liaison par saut) ; 4) circuit
+d'Euler par Hierholzer, en continuant toujours par la branche la plus alignée,
+coupé aux liaisons par saut. Un réseau sans nœud impair donne un seul circuit
+fermé. Sur une grille de traits de test : 7 -> 5 polylignes et 7 -> 5 coupes.
+Les idées viennent de la théorie des graphes ; l'outil libre Ink/Stitch, sous
+GPL, n'a pas été consulté. Limites : la paire de repassage est choisie
+gloutonnement (pas l'appariement optimal) ; les tronçons repassés sont cousus
+deux fois (visible en point simple, absorbé en point triple).
+
+**Lignes cohérentes** (photo -> traits) : appliquer d'abord l'opération
+d'image `CoherentLinesOp` (voir [Traitement d'image](image-processing.md)), ou
+`digitize --coherent-lines` ; le mode Contours reçoit alors un dessin au trait
+net au lieu d'une photo.
+
 **Métriques** (`ContourMetrics`) : composantes, segments, jonctions,
-extrémités, branches courtes et éléments petits supprimés, longueur point
+extrémités, polylignes (`trails`) et longueur repassée, branches courtes et éléments petits supprimés, longueur point
 droit / satin (mm), largeur min / moyenne pondérée / max, replis, rejets.
 Affichées par `openstitch-cli digitize --mode contours` et dans la barre
 d'état du desktop.

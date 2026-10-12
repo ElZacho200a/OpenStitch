@@ -669,6 +669,7 @@ struct DigitizeArgs {
     int smoothingPx = 3;
     int skipBg = -1; // -1 = auto (segmentation::background_candidate), 0 = non, 1 = oui
     double curveToleranceMm = 0.0; // mode formes : > 0 -> contours en courbes de Bézier
+    bool singlePath = false;       // mode contours : parcours eulérien (moins de coupes)
     bool coherentLines = false;    // mode contours : photo -> traits (FDoG) avant segmentation
     bool json = false;
     bool noClobber = false;
@@ -770,6 +771,8 @@ int run_digitize(const DigitizeArgs& a) {
     co.mm_per_px = project.mm_per_px;
     co.skip_largest_region = skipLargest;
     co.detail = a.detail;
+    co.routing = a.singlePath ? autodigitize::ContourRouting::SinglePath
+                              : autodigitize::ContourRouting::Chains;
     co.technique = a.technique == "running" ? autodigitize::ContourTechnique::Running
                    : (a.technique == "legacy-satin" || a.technique == "satin")
                        ? autodigitize::ContourTechnique::Satin
@@ -798,6 +801,7 @@ int run_digitize(const DigitizeArgs& a) {
                    "{:.2f}/{:.2f}/{:.2f} mm\n",
                    cm.running_length_mm, cm.min_width_mm, cm.mean_width_mm, cm.max_width_mm);
         fmt::print(st, "  replis legacy->point droit={} rejets={}\n", cm.fallbacks, cm.rejected);
+        fmt::print(st, "  polylignes={} repassage={:.1f} mm\n", cm.trails, cm.retraced_mm);
     }
     for (const auto& w : result->warnings) {
         fmt::print(stderr, "  ! {}\n", w);
@@ -1472,6 +1476,9 @@ int main(int argc, char** argv) {
                      "Mode formes : contours en courbes de Bézier avec cet écart maximal en mm "
                      "(0 = polygones, défaut ; prendre ~1,5 px ou plus, ex. 0.4)")
         ->check(CLI::NonNegativeNumber);
+    dz_cmd->add_flag("--single-path", dz.singlePath,
+                     "Mode contours : relie les traits en un minimum de polylignes (parcours "
+                     "eulérien, repasse un court tronçon plutôt que de couper le fil)");
     dz_cmd->add_flag("--coherent-lines", dz.coherentLines,
                      "Mode contours : extrait d'abord des traits de la photo (lignes cohérentes, "
                      "FDoG) avant la segmentation");

@@ -1132,6 +1132,12 @@ l'utilisateur ne voit pas. OpenStitch a les briques mais peu d'automatismes.
 - Acceptation : longueur totale des sauts réduite sur le corpus « marine » et
   `tentabrode` (mesurée, rapportée dans le commit).
 
+- 2026-10-12 : pour le mode Contours, `ContourRouting::SinglePath`
+  (`digitize --single-path`) relie les traits par un parcours eulérien
+  (`route_single_path`) : moins de polylignes donc moins de sauts/coupes
+  (grille de test : 7 -> 5 coupes), en repassant un court tronçon plutôt que
+  de couper. L'ordre entre objets reste à faire.
+
 ### HP-ENG-011 — Ne pas coudre sous les objets qui recouvrent [P1] — ☐ À faire
 - Hatch : Remove overlaps : la partie d'un remplissage cachée par un objet
   cousu au-dessus n'est pas cousue (moins de points, moins d'épaisseur).
