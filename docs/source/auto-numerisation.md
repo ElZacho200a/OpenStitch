@@ -347,8 +347,8 @@ objets au lieu de rester continu.
 ## Satin sur les bandes (`satin_bands`)
 
 Par défaut l'auto-numérisation ne produit que du tatami (zones) ou du contour
-(petites zones). `AutoOptions::satin_bands` (CLI : `--satin-bands`, désactivé
-par défaut) rend le satin aux **bandes étroites** : anneaux, rubans, traits
+(petites zones). `AutoOptions::satin_bands` (CLI : `--satin-bands` ; desktop : case « Satin automatique pour les bandes
+étroites » du dialogue, mémorisée ; désactivé par défaut) rend le satin aux **bandes étroites** : anneaux, rubans, traits
 épais, arcs.
 
 Une région devient un **auto-satin par squelette** (`AutoSatinParams` par
@@ -369,7 +369,8 @@ tatami (l'auto-satin les refuse : « région compacte »). Essai fait avec un
 anneau de 2,4 mm, un arc de 3,7 mm et un disque : anneau et arc en satin,
 disque en tatami.
 
-**Limites** : une région à plusieurs trous n'est pas tentée ; la couverture est
+**Limites** : la case du desktop n'a pas été compilée dans l'environnement de
+développement Linux (Qt absent), à vérifier au prochain build Windows ; une région à plusieurs trous n'est pas tentée ; la couverture est
 géométrique, pas validée sur machine ; un satin radial pour les disques reste à
 faire (voir `satin-squelette.md`, limites restantes).
 
