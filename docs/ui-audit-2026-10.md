@@ -226,3 +226,30 @@ les modificateurs (clic molette, Ctrl, Maj, Alt) sont une priorité de premier r
 Fusion (liste dans « Sources et degré de confirmation ») ; bibliothèque d'icônes SVG (licence compatible Apache-2.0 requise,
 ex. Lucide en ISC / Tabler en MIT) ; densité par défaut ; ordre de L8 (le plus gros gain d'ergonomie, mais
 le plus risqué).
+
+## 6. Suivi du 2026-10-12 : audit de câblage automatisé
+
+Audit refait **par des invariants exécutables** (`tests/unit/desktop/test_ui_invariants.cpp`, 16 tests)
+plutôt que par relecture : ils vérifient sur la vraie `MainWindow`, à chaque exécution de la suite.
+
+| Invariant | Résultat |
+|---|---|
+| Raccourcis de fenêtre uniques (actions + `QShortcut`) | OK, aucun conflit |
+| **Boutons à raccourci** (Alt+Haut/Bas de l'ordre de couture) sans conflit avec les raccourcis de fenêtre ni entre eux | OK (nouveau : l'invariant précédent ne regardait que les actions) |
+| Mnémoniques uniques par menu et au premier niveau | OK |
+| Docks réouvrables depuis un menu | OK |
+| **Barres d'outils réouvrables depuis un menu** | **Corrigé** : les 4 barres (principale, contextuelle, outils, simulation) n'avaient pas de bascule dans un menu ; elles sont maintenant dans Affichage ▸ Panneaux |
+| **Toute action avec libellé a un signal connecté** | OK : aucune action « fantôme » |
+| **Aucune action orpheline** (ni dans un menu/une barre, ni de raccourci) | OK après la correction ci-dessus |
+| **Inspecteur : tous les widgets de saisie émettent**, pour les 5 types d'objets (87 widgets : contour, tatami, satin, directionnel, auto-satin) | OK : aucun réglage fantôme |
+| **Infobulles annonçant une touche** (« (D) ») égales au raccourci réel | OK |
+| Actions de menu avec `objectName` | **Dette connue** : ~80 actions sans nom (introuvables par les tests, instables pour les technologies d'assistance). Déclarée en échec attendu : le test échoue en XPASS dès que tout est nommé |
+
+Un même raccourci n'est porté que par une `QAction` unique (ajoutée à la barre contextuelle et au menu) :
+le test lit les mêmes actions que l'utilisateur voit.
+
+Méthode : `QObject::isSignalConnected` est protégé ; les tests y accèdent par une structure dérivée jamais
+instanciée (technique de test usuelle, hors production). Limites : ces invariants prouvent qu'un signal est
+**connecté**, pas que son effet est correct (c'est le rôle des tests fonctionnels) ; les actions créées
+dynamiquement (barre contextuelle selon l'objet) ne sont vues que dans l'état de la fenêtre au moment du
+test ; les points d'ergonomie de la §3 ne sont pas rouverts ici.
