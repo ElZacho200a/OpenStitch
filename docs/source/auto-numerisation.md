@@ -300,8 +300,33 @@ quand la largeur le permet).
 colonnes satin aboutissant à une jonction étaient ancrées par l'ancien `satin_planning`
 (supprimé) ; le satin par squelette traite les jonctions par cellules (voir `satin-squelette.md`).
 
+**Routage en chemin unique** (`ContourOptions::routing = SinglePath`,
+`digitize --single-path`, défaut `Chains` = comportement historique inchangé).
+L'assemblage historique (`assemble_chains`) n'apparie à une jonction que des
+branches « alignées » (virage < 90°) : un éventail de branches serrées reste en
+autant de polylignes, donc autant de sauts et de coupes. `route_single_path`
+(`contour_route.cpp`) cherche à la place un **parcours eulérien** du réseau
+(problème du postier chinois, version gloutonne déterministe) : 1) les
+nœuds de degré impair sont les extrémités de polylignes inévitables (au minimum
+`impairs / 2`) ; 2) deux impairs distants d'au moins `trim_threshold` (3 mm, au-delà
+duquel un saut coûte une coupe) sont reliés en **repassant** sur le plus court
+chemin du réseau s'il fait au plus `max_retrace` (12 mm) ; 3) les impairs
+restants sont appariés au plus proche (liaison par saut) ; 4) circuit
+d'Euler par Hierholzer, en continuant toujours par la branche la plus alignée,
+coupé aux liaisons par saut. Un réseau sans nœud impair donne un seul circuit
+fermé. Sur une grille de traits de test : 7 -> 5 polylignes et 7 -> 5 coupes.
+Les idées viennent de la théorie des graphes ; l'outil libre Ink/Stitch, sous
+GPL, n'a pas été consulté. Limites : la paire de repassage est choisie
+gloutonnement (pas l'appariement optimal) ; les tronçons repassés sont cousus
+deux fois (visible en point simple, absorbé en point triple).
+
+**Lignes cohérentes** (photo -> traits) : appliquer d'abord l'opération
+d'image `CoherentLinesOp` (voir [Traitement d'image](image-processing.md)), ou
+`digitize --coherent-lines` ; le mode Contours reçoit alors un dessin au trait
+net au lieu d'une photo.
+
 **Métriques** (`ContourMetrics`) : composantes, segments, jonctions,
-extrémités, branches courtes et éléments petits supprimés, longueur point
+extrémités, polylignes (`trails`) et longueur repassée, branches courtes et éléments petits supprimés, longueur point
 droit / satin (mm), largeur min / moyenne pondérée / max, replis, rejets.
 Affichées par `openstitch-cli digitize --mode contours` et dans la barre
 d'état du desktop.
@@ -318,6 +343,64 @@ point droit + avertissement) ; segments entre nœuds < 0,5 mm rejetés ; images
 cas synthétique CLI, `detail` 0,9 produit des colonnes refusées sur un anneau
 fin (« trou entre stations ») : le segment est alors découpé en plusieurs
 objets au lieu de rester continu.
+
+## Satin sur les bandes (`satin_bands`)
+
+Par défaut l'auto-numérisation ne produit que du tatami (zones) ou du contour
+(petites zones). `AutoOptions::satin_bands` (CLI : `--satin-bands`, désactivé
+par défaut) rend le satin aux **bandes étroites** : anneaux, rubans, traits
+épais, arcs.
+
+Une région devient un **auto-satin par squelette** (`AutoSatinParams` par
+défaut, éditable ensuite) si :
+
+- elle fait au plus 1 trou (un anneau) ;
+- sa largeur inscrite maximale est <= `satin_max_width` (6 mm) et sa largeur
+  moyenne >= 0,8 mm (seuil de `SatinabilityThresholds`) ;
+- elle est allongée : longueur >= 2,5 x largeur, avec longueur = périmètre
+  total (extérieur + trous) / 2. Le rapport de satinabilité n'est pas utilisé
+  ici : il ignore les trous dans le périmètre et un anneau n'a pas d'arête de
+  squelette ;
+- **la génération essayée** (`generate_skeleton_satin`, déterministe) couvre
+  au moins `satin_min_coverage` (0,9) de la région.
+
+Sinon : tatami, comme avant. Les disques et formes compactes restent donc en
+tatami (l'auto-satin les refuse : « région compacte »). Essai fait avec un
+anneau de 2,4 mm, un arc de 3,7 mm et un disque : anneau et arc en satin,
+disque en tatami.
+
+**Limites** : une région à plusieurs trous n'est pas tentée ; la couverture est
+géométrique, pas validée sur machine ; un satin radial pour les disques reste à
+faire (voir `satin-squelette.md`, limites restantes).
+
+## Stippling (semis de points relié en un trait)
+
+`libs/stipple` (Qt-free, sans dépendance GPL) transforme une image en un
+**unique trait de points droits** dont la densité reproduit les tons.
+
+1. **Densité** : luminance Rec. 601 → `(1 - L)^gamma` (alpha < 128 = vide),
+   moyenne par blocs jusqu'à 600 px max (`--stipple-invert` : zones claires
+   denses, pour un fil clair sur fond sombre).
+2. **Semis** (Secord, « Weighted Voronoi Stippling », NPAR 2002) : tirage par
+   rejet selon la densité (générateur xorshift64* portable, graine fixe), puis
+   relaxations de Lloyd où chaque point va au centroïde **pondéré par la
+   densité** de sa cellule de Voronoï (cellules exactes sur la grille). On
+   obtient un bruit bleu, dense dans les zones sombres.
+3. **Tour** : ordre de Hilbert, puis 2-opt (listes de voisins, bits
+   « don't look ») et Or-opt. Concorde n'est volontairement pas utilisé
+   (licence académique). Le tour fermé est coupé à son arête la plus longue
+   et aux liaisons > 8 mm : aucune liaison ne traverse un grand vide.
+4. **Objets** : un `VectorObject` (chemins ouverts) + un objet brodé point
+   droit (longueur 1,5 mm), fil noir par défaut.
+
+**Utilisation** : `openstitch-cli digitize image.png out.dst --mode stipple
+[--stipple-points N] [--stipple-seed S] [--stipple-invert]` (défaut 2000
+points). Résultat déterministe pour une graine donnée.
+
+**Limites connues** : pas de couleur (une seule couche monochrome) ; pas de
+bouton dans le desktop pour l'instant ; le trait reste un tour de points, pas
+une trame de lignes de densité variable (PhotoStitch complet = HP-STI-017
+partiel) ; un tour TSP heuristique est ~5 % au-dessus de l'optimum.
 
 ## Implémentation associée
 

@@ -3,6 +3,7 @@ find_package(OpenCV CONFIG REQUIRED COMPONENTS core imgproc imgcodecs)
 add_library(openstitch_image
     src/load.cpp
     src/ops.cpp
+    src/coherent_lines.cpp
     src/mat_convert.cpp
 )
 add_library(openstitch::image ALIAS openstitch_image)

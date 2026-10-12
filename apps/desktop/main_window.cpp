@@ -766,6 +766,7 @@ void MainWindow::buildMenus() {
     addOpAction(tr("Dé&bruitage léger"), image::MedianDenoiseOp{1});
     addOpAction(tr("Débruitage &moyen"), image::MedianDenoiseOp{2});
     addOpAction(tr("Lissage bilatéral (conserve les &contours)"), image::BilateralDenoiseOp{2});
+    addOpAction(tr("&Lignes cohérentes (photo → dessin au trait)"), image::CoherentLinesOp{});
 
     auto* quantAct = imageMenu->addAction(tr("&Quantifier les couleurs…"));
     connect(quantAct, &QAction::triggered, this, &MainWindow::quantizeColors);

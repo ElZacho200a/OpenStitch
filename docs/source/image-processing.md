@@ -30,12 +30,26 @@ Chaque opération est une alternative du variant `image::ImageOp` :
 | Débruitage | `MedianDenoiseOp` | force 1–2 (noyau 3/5) | Médian |
 | Quantification | `QuantizeOp` | 2–64 couleurs | k-means déterministe (RGB) |
 | Lissage bilatéral | `BilateralDenoiseOp` | force 1–3 (noyau 5/7/9 px, tolérance de couleur 20/40/60) | Adoucit aplats et dégradés en gardant les contours ; alpha conservé |
+| Lignes cohérentes | `CoherentLinesOp` | `sigma_c` 0,3–5 · `sigma_m` 0–10 · `rho` 0,9–1 · `tau` 0,5–1 · ETF : 0–10 passes, rayon 1–15 | Photo/dessin → traits noirs sur fond blanc (FDoG) ; alpha conservé |
 
 Le lissage bilatéral est la 8ᵉ alternative du variant (ajoutée **en fin** :
 les index existants ne bougent pas). Dans le `.osp`, `"bilateralDenoise"` avec
 `strength` ; une version antérieure refuse un projet qui le contient
 (« Opération d'image inconnue »). Il sert surtout avant l'analyse de couleurs
 d'une région pour un fondu à deux fils (*Remplissage directionnel*).
+
+**Lignes cohérentes** (`CoherentLinesOp`, 9ᵉ alternative, `"coherentLines"` dans
+le `.osp`). Implémentation à partir de la publication *Coherent Line Drawing*
+(Kang, Lee & Chui, NPAR 2007), sans code tiers : un champ de flux de tangentes
+(ETF) est calculé depuis le gradient puis lissé itérativement ; une différence
+de gaussiennes 1D est évaluée dans la direction du gradient puis lissée **le
+long du flux**, enfin seuillée (`F < 0` et `1 + tanh(F) < tau`). Le résultat est
+binaire (noir/blanc), l'alpha d'origine est conservé et un pixel transparent
+n'est jamais tracé. Comparé à un seuillage de gradient, les traits sont continus
+et le bruit isolé disparaît. Calcul séquentiel en `float` : déterministe. À
+utiliser avant le mode *Contours / Line Art* (menu Image, ou
+`openstitch-cli digitize --mode contours --coherent-lines`). Un trait épais
+donne ses deux bords ; le squelette du mode Contours les fusionne ensuite.
 
 Note : Le **rééchantillonnage** (redimensionnement de la résolution de travail)
 est volontairement absent de cette pile : il changerait le rapport mm/pixel. La

@@ -103,6 +103,33 @@ Polyline flatten(const Path& path, Micrometers tolerance) {
     return out;
 }
 
+Path flatten_to_polygon(const Path& path, Micrometers tolerance) {
+    const bool curved = std::any_of(path.nodes.begin(), path.nodes.end(), [](const PathNode& n) {
+        return n.tan_in.has_value() || n.tan_out.has_value();
+    });
+    if (!curved) {
+        return path;
+    }
+    const Polyline flat = flatten(path, tolerance);
+    Path out;
+    out.closed = path.closed;
+    out.nodes.reserve(flat.points.size());
+    for (const Vec2um& p : flat.points) {
+        out.nodes.push_back(PathNode{p, NodeType::Corner, std::nullopt, std::nullopt});
+    }
+    return out;
+}
+
+PathSet flatten_to_polygon(const PathSet& set, Micrometers tolerance) {
+    PathSet out;
+    out.outer = flatten_to_polygon(set.outer, tolerance);
+    out.holes.reserve(set.holes.size());
+    for (const Path& hole : set.holes) {
+        out.holes.push_back(flatten_to_polygon(hole, tolerance));
+    }
+    return out;
+}
+
 std::vector<double> cumulative_lengths(const std::vector<Vec2um>& points) {
     std::vector<double> cum(points.size(), 0.0);
     for (std::size_t i = 1; i < points.size(); ++i) {

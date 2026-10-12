@@ -6,6 +6,7 @@
 #include <map>
 #include <sstream>
 
+#include "openstitch/autodigitize/contour_route.hpp"
 #include "openstitch/geometry/clean.hpp"
 #include "openstitch/geometry/polyline.hpp"
 
@@ -294,7 +295,19 @@ Result<AutoResult> build_contour_objects(const ContourNetwork& net, IdGenerator<
                 continue;
             }
             std::vector<geometry::PathSet> paths;
-            for (auto& chain : assemble_chains(comp, segs)) {
+            std::vector<ChainOut> chains;
+            if (options.routing == ContourRouting::SinglePath) {
+                RouteStats rs;
+                for (auto& t : route_single_path(
+                         comp, segs, {options.trim_threshold, options.max_retrace}, &rs)) {
+                    chains.push_back({std::move(t.points), t.closed});
+                }
+                m.retraced_mm += rs.retraced_um / 1000.0;
+            } else {
+                chains = assemble_chains(comp, segs);
+            }
+            m.trails += chains.size();
+            for (auto& chain : chains) {
                 geometry::PathSet ps;
                 ps.outer.closed = chain.closed;
                 for (const Vec2um p : chain.pts) {

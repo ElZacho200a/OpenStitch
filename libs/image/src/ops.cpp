@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <random>
 
+#include "coherent_lines.hpp"
 #include "mat_convert.hpp"
 
 namespace openstitch::image {
@@ -185,6 +186,8 @@ std::string op_name(const ImageOp& op) {
                 return "Quantification";
             if constexpr (std::is_same_v<T, BilateralDenoiseOp>)
                 return "Lissage bilatéral";
+            if constexpr (std::is_same_v<T, CoherentLinesOp>)
+                return "Lignes cohérentes";
         },
         op);
 }
@@ -212,6 +215,8 @@ Result<Image> apply_op(const Image& input, const ImageOp& op) {
                 return apply_quantize(input, o);
             if constexpr (std::is_same_v<T, BilateralDenoiseOp>)
                 return apply_bilateral_denoise(input, o);
+            if constexpr (std::is_same_v<T, CoherentLinesOp>)
+                return detail::apply_coherent_lines(input, o);
         },
         op);
 }

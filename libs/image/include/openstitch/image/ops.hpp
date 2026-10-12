@@ -62,9 +62,27 @@ struct BilateralDenoiseOp {
     bool operator==(const BilateralDenoiseOp&) const = default;
 };
 
+// Lignes cohérentes (Kang, Lee & Chui, « Coherent Line Drawing », NPAR 2007) :
+// transforme une photo ou un dessin en traits noirs sur fond blanc. Un champ de
+// flux de tangentes (ETF) suit les contours de l'image ; une différence de
+// gaussiennes (DoG) est évaluée dans la direction du gradient puis lissée LE
+// LONG du flux, ce qui donne des traits continus et nets, bien moins bruités
+// qu'un seuillage de gradient. Le résultat alimente directement le mode
+// « Contours / dessin au trait » (segmentation à deux couleurs). L'alpha
+// d'origine est conservé ; le fond transparent reste transparent.
+struct CoherentLinesOp {
+    double sigma_c{1.0};   // échelle du détail détecté, px (0,3..5) ; sigma_s = 1,6 * sigma_c
+    double sigma_m{3.0};   // longueur de lissage le long du flux, px (0..10)
+    double rho{0.997};     // équilibre de la DoG (0,9..1) ; proche de 1 = traits fins
+    double tau{0.98};      // seuil (0,5..1) ; plus bas = moins de traits, plus nets
+    int etf_iterations{3}; // 0..10 passes de lissage du champ de tangentes
+    int etf_radius{5};     // rayon (px) du voisinage ETF, 1..15
+    bool operator==(const CoherentLinesOp&) const = default;
+};
+
 // Nouvelles alternatives toujours AJOUTÉES EN FIN (index stables).
 using ImageOp = std::variant<CropOp, FlipOp, Rotate90Op, GrayscaleOp, BrightnessContrastOp,
-                             MedianDenoiseOp, QuantizeOp, BilateralDenoiseOp>;
+                             MedianDenoiseOp, QuantizeOp, BilateralDenoiseOp, CoherentLinesOp>;
 
 // Nom lisible de l'opération (menus, historique d'annulation).
 [[nodiscard]] std::string op_name(const ImageOp& op);

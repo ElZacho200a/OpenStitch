@@ -806,13 +806,15 @@ CacheKey make_key(const geometry::PathSet& region, const SkeletonSatinParameters
     }
     const auto bits = [](double v) { return std::bit_cast<std::int64_t>(v); };
     const auto& a = p.analysis;
-    key.insert(key.end(), {a.raster.pixel_size.value, a.raster.max_dimension, a.raster.margin_px,
-                           a.cleanup.minimum_branch_length.value,
-                           bits(a.cleanup.minimum_length_to_radius_ratio),
-                           a.cleanup.maximum_iterations, a.thresholds.min_satin_width.value,
-                           a.thresholds.max_satin_width.value, bits(a.thresholds.min_elongation),
-                           p.spacing.value, p.min_thread_length.value, p.cell_overlap.value,
-                           bits(p.bend_threshold_deg), static_cast<std::int64_t>(p.guides.size())});
+    key.insert(key.end(),
+               {a.raster.pixel_size.value, a.raster.max_dimension, a.raster.margin_px,
+                a.cleanup.minimum_branch_length.value,
+                bits(a.cleanup.minimum_length_to_radius_ratio), a.cleanup.maximum_iterations,
+                a.cleanup.max_protrusion.value, bits(a.cleanup.max_protrusion_to_radius),
+                a.thresholds.min_satin_width.value, a.thresholds.max_satin_width.value,
+                bits(a.thresholds.min_elongation), p.spacing.value, p.min_thread_length.value,
+                p.cell_overlap.value, bits(p.bend_threshold_deg),
+                static_cast<std::int64_t>(p.guides.size())});
     for (const auto& g : p.guides) {
         key.insert(key.end(),
                    {g.anchor.x.value, g.anchor.y.value, bits(g.angle_rad), g.absolute ? 1 : 0});

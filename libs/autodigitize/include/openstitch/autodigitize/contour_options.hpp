@@ -14,6 +14,12 @@ enum class ContourTechnique : std::uint8_t {
     Satin,     // legacy/deprecated : degrade en point droit, jamais en satin auto
 };
 
+// Enchaînement des traits en polylignes cousues.
+enum class ContourRouting : std::uint8_t {
+    Chains,     // historique : à une jonction, on apparie les branches les plus alignées
+    SinglePath, // parcours eulérien : minimum de polylignes, repassage court plutôt que coupe
+};
+
 struct ContourOptions {
     // Niveau de detail continu 0..1 (0 = tres simplifie, 1 = fidele). 0,5 =
     // reglages historiques d'auto-numerisation. Voir `contour_thresholds`.
@@ -22,6 +28,11 @@ struct ContourOptions {
     Millimeters mm_per_px{25.4 / 96.0};
     // Meme semantique que AutoOptions::skip_largest_region (fond presume).
     bool skip_largest_region{false};
+    // Voir `route_single_path`. `Chains` (défaut) laisse le comportement
+    // historique intact.
+    ContourRouting routing{ContourRouting::Chains};
+    Micrometers trim_threshold{3'000}; // SinglePath : distance au-delà de laquelle un saut coupe
+    Micrometers max_retrace{12'000};   // SinglePath : repassage maximal pour éviter une coupe
 };
 
 // Seuils concrets derives de `detail` (fonction pure, monotone : un detail

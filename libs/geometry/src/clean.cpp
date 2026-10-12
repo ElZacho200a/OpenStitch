@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 #include "openstitch/geometry/clean.hpp"
+#include "openstitch/geometry/polyline.hpp"
 
 #include <clipper2/clipper.h>
 
@@ -7,7 +8,10 @@ namespace openstitch::geometry {
 
 namespace {
 
-Clipper2Lib::Path64 to_clipper(const Path& path) {
+Clipper2Lib::Path64 to_clipper(const Path& rawPath) {
+    // Clipper ne connaît que des polygones : les courbes sont aplaties d'abord
+    // (sans effet pour un chemin sans tangente).
+    const Path path = flatten_to_polygon(rawPath, Micrometers{20});
     Clipper2Lib::Path64 out;
     out.reserve(path.nodes.size());
     for (const PathNode& node : path.nodes) {

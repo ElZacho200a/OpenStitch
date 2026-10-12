@@ -201,6 +201,38 @@ Mesures du 2026-10 (couverture / recouvrement, `make_shape`), planchers gelés d
 - Le fil peut se croiser du côté intérieur d'un virage très serré
   (`κ·d_intérieur ≥ 1`) : les points courts atténuent, ne garantissent pas.
 
+## Élagage à erreur bornée (2026-10-12)
+
+Le squelette de Zhang-Suen d'un contour de pixels (ou d'un contour vectorisé)
+porte des rameaux parasites. L'ancienne règle de `prune_graph` retire une branche
+terminale si elle est courte en absolu (1,5 mm) *et* faible devant son rayon moyen ;
+elle ignore combien la branche dépasse réellement de la forme.
+
+`GraphCleanupParameters::max_protrusion` / `max_protrusion_to_radius` ajoutent un
+critère à **erreur bornée**, dans l'esprit de l'élagage par résidu de frontière
+(Ogniewicz) et des mesures de stabilité du squelette (λ-axe médian, *scale axis
+transform*) : une branche terminale de longueur `L`, d'extrémité de rayon `r_E`,
+issue d'une jonction de rayon `r_J`, ne dépasse du disque de la jonction que de
+`h = L + r_E − r_J`. Tout disque `(c(s), r(s))` de la branche est contenu dans le
+disque `(J, r_J + h)` parce que `s + r(s)` ne décroît pas (le rayon varie au plus
+comme l'abscisse, propriété 1-lipschitzienne de la distance au bord). Retirer la
+branche déplace donc la forme reconstruite de **au plus `h`** : on la retire si
+`h <= max(max_protrusion, max_protrusion_to_radius · r_J)`. Une branche courte mais
+saillante est conservée ; une branche longue mais noyée dans un gros disque est
+retirée. Les candidates sont traitées par `h` croissant (égalité : indice
+d'arête), jamais jusqu'à vider le graphe, et chaque retrait est diagnostiqué
+(« branche terminale non significative »).
+
+Valeurs par défaut du moteur (`stable_skeleton_analysis()`) : 0,4 mm et 15 % du rayon.
+`AutoSatinParameters` seul, et donc le mode Contours, gardent 0 / 0 (inchangés).
+Les clés de cache du squelette incluent ces champs. Mesures : corpus de formes
+propres, mêmes colonnes et même couverture ; contours bruités (densifiés tous les
+0,4 mm, bruit ±0,2 mm) : colonnes en moins (h 19 → 15, comb 23 → 21, cross
+14 → 12, E inchangé) et couverture égale ou meilleure ; ±0,3 mm : E 53 → 43. Le bruit blanc
+non corrélé de ces mesures est plus sévère que celui d'une photo : à confirmer sur
+des contours réels. Ne traite pas les boucles parasites ni les ponts de bruit
+(non terminaux).
+
 ## Fichiers
 
 | Fichier | Contenu |

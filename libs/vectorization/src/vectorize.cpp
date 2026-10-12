@@ -8,6 +8,7 @@
 #include <cmath>
 
 #include "openstitch/geometry/clean.hpp"
+#include "openstitch/geometry/curve_fit.hpp"
 #include "openstitch/geometry/simplify.hpp"
 
 namespace openstitch::vectorization {
@@ -107,7 +108,8 @@ Result<std::vector<geometry::PathSet>> vectorize_region(const segmentation::Segm
         }
         const auto adaptiveTol = Micrometers{static_cast<std::int32_t>(
             std::min<double>(static_cast<double>(options.simplify_tolerance.value), perim / 16.0))};
-        raw.push_back(geometry::simplify(path, adaptiveTol));
+        raw.push_back(options.curve_tolerance.value > 0 ? path
+                                                        : geometry::simplify(path, adaptiveTol));
     }
 
     auto sets = geometry::clean_to_path_sets(raw);
@@ -117,6 +119,26 @@ Result<std::vector<geometry::PathSet>> vectorize_region(const segmentation::Segm
     if (sets->empty()) {
         return fail(ErrorCategory::OperationImpossible,
                     "La région est trop petite pour produire une forme vectorielle exploitable");
+    }
+    if (options.curve_tolerance.value > 0) {
+        // Ajustement de courbes APRÈS le nettoyage : la topologie (trous,
+        // auto-intersections) est déjà corrigée sur les contours denses.
+        const auto fit = [&](const geometry::Path& path) {
+            double perim = 0.0;
+            for (std::size_t i = 0; i < path.nodes.size(); ++i) {
+                perim += length_um(path.nodes[(i + 1) % path.nodes.size()].pos - path.nodes[i].pos);
+            }
+            const auto tol = Micrometers{static_cast<std::int32_t>(
+                std::max(1.0, std::min<double>(static_cast<double>(options.curve_tolerance.value),
+                                               perim / 16.0)))};
+            return geometry::fit_curves(path, {.tolerance = tol});
+        };
+        for (geometry::PathSet& set : *sets) {
+            set.outer = fit(set.outer);
+            for (geometry::Path& hole : set.holes) {
+                hole = fit(hole);
+            }
+        }
     }
     return sets;
 }

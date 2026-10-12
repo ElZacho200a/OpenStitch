@@ -861,8 +861,11 @@ plus.
   image pixélisée en grille, fil par cellule.
 - Modules : `libs/stitch_generation`, `apps/desktop`.
 
-### HP-STI-013 — Stipple / méandre (quilting) [P2] — ☐ À faire
-- À faire : chemin aléatoire (graine fixe) qui remplit une zone sans se croiser
+### HP-STI-013 — Stipple / méandre (quilting) [P2] — ◐ Partiel
+- État OpenStitch : stippling d'image ✓ (`libs/stipple`, `digitize --mode
+  stipple`, voir `auto-numerisation.md`) ; reste le remplissage d'une zone
+  vectorielle (méandre) et le réglage dans le desktop.
+- À faire (zone) : chemin aléatoire (graine fixe) qui remplit une zone sans se croiser
   (courbe de remplissage type Hilbert ou TSP-art), espacement réglable.
 - Modules : `libs/stitch_generation`.
 
@@ -881,7 +884,10 @@ plus.
 ### HP-STI-016 — Trapunto [P3] — ☐ À faire
 - Hatch : zones surélevées par contours à l'intérieur d'un remplissage.
 
-### HP-STI-017 — PhotoStitch (photo en lignes) [P2] — ☐ À faire
+### HP-STI-017 — PhotoStitch (photo en lignes) [P2] — ◐ Partiel
+- État OpenStitch : version monochrome en semis de points reliés par un tour
+  TSP (`digitize --mode stipple`). Reste : trame par lignes, couleur par
+  couches.
 - Hatch : PhotoFlash / Color PhotoStitch : une photo devient des lignes de
   points de densité variable.
 - À faire : trame par lignes dont la densité suit la luminance (mono), puis
@@ -924,6 +930,12 @@ plus.
   (RD-PAT-001) et la réintégration d'un auto-satin explicite et protégé dans
   `autodigitize` (RD-PAT-002) sont suivis dans `docs/roadmap-rd-brevets.md`.
   Prérequis bloquant : corpus et métriques satin vs repli (RD-PAT-003).
+- 2026-10-12 : squelette plus stable face au bruit de contour —
+  `GraphCleanupParameters::max_protrusion` / `max_protrusion_to_radius`
+  (élagage à erreur bornée, voir `satin-squelette.md`), activé par défaut dans
+  `SkeletonSatinParameters`. Corpus propre inchangé ; contours bruités : moins
+  de colonnes parasites (bruit ±0,2 mm : h 19 -> 15 ; ±0,3 mm : E 53 -> 43). Reste :
+  mesure sur contours réels de photos, axe médian sur polygone.
 - Suite recommandée : préparer le cutover Phase F seulement après validation du
   corpus complet et décision explicite sur les limites restantes (`trident`,
   `multi_neck`) ; ne pas prolonger SGSD comme stratégie principale sans preuve
@@ -1132,6 +1144,12 @@ l'utilisateur ne voit pas. OpenStitch a les briques mais peu d'automatismes.
 - Acceptation : longueur totale des sauts réduite sur le corpus « marine » et
   `tentabrode` (mesurée, rapportée dans le commit).
 
+- 2026-10-12 : pour le mode Contours, `ContourRouting::SinglePath`
+  (`digitize --single-path`) relie les traits par un parcours eulérien
+  (`route_single_path`) : moins de polylignes donc moins de sauts/coupes
+  (grille de test : 7 -> 5 coupes), en repassant un court tronçon plutôt que
+  de couper. L'ordre entre objets reste à faire.
+
 ### HP-ENG-011 — Ne pas coudre sous les objets qui recouvrent [P1] — ☐ À faire
 - Hatch : Remove overlaps : la partie d'un remplissage cachée par un objet
   cousu au-dessus n'est pas cousue (moins de points, moins d'épaisseur).
@@ -1211,7 +1229,7 @@ SAM via un worker **WSL**. ~18 s sur l'image de référence.
   « contour seulement ».
 - Modules : `libs/segmentation` (croissance locale), `apps/desktop`.
 
-### HP-AUTO-004 — Vectorisation par courbes [P1] — ☐ À faire
+### HP-AUTO-004 — Vectorisation par courbes [P1] — ◐ Partiel (2026-10-12)
 - État OpenStitch : la vectorisation produit des polygones (Douglas-Peucker),
   pas de courbes de Bézier ; les formes gardent des facettes et beaucoup de
   nœuds à éditer.
@@ -1220,6 +1238,12 @@ SAM via un worker **WSL**. ~18 s sur l'image de référence.
   ne pas l'utiliser), détection des coins.
 - Modules : `libs/vectorization`.
 - Acceptation : nombre de nœuds divisé par ≥ 3 à erreur de contour égale.
+- 2026-10-12 : `geometry::fit_curves` (Schneider + détection des coins, écart
+  réel dans les deux sens) et `VectorizeOptions::curve_tolerance` /
+  `digitize --curve-tolerance`. Critère ÷3 vérifié par test pour une tolérance
+  ≥ 1,5 px (≈ ÷2 vers 1,2 px, bruit de trame). Reste : réglage dans le
+  dialogue desktop, raffinement par contours actifs, et réduction des points
+  courts du tatami sur formes rondes.
 
 ### HP-AUTO-005 — Détection des contours noirs (outlines) [P1] — ◐ Partiel (2026-10-06)
 - État OpenStitch : le mode **Contours / Line Art** (fusionné 2026-10-05, PR #4) coud
@@ -1231,6 +1255,10 @@ SAM via un worker **WSL**. ~18 s sur l'image de référence.
   deviennent des objets contour/satin **par-dessus** les remplissages, au lieu
   de régions noires tatamisées.
 - Modules : `libs/autodigitize`, `libs/auto_satin`.
+- 2026-10-12 : extraction de traits depuis une **photo** par lignes cohérentes
+  (FDoG, Kang/Lee/Chui 2007) — `image::CoherentLinesOp`, menu Image et
+  `digitize --coherent-lines`. Alimente le mode Contours ; la pose par-dessus
+  des remplissages reste à faire.
 
 ### HP-AUTO-006 — Suppression du fond [P1] — ◐ Partiel
 - État OpenStitch : option « ignorer le fond » et **détection automatique du fond**
