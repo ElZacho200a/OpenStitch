@@ -256,6 +256,9 @@ struct AutoSatinParams {
     std::optional<Vec2um> entry_point;                // début de couture souhaité
     std::optional<Vec2um> exit_point;                 // fin de couture souhaitée
     UnderlayMode underlay_mode{UnderlayMode::Manual}; // HP-ENG-002
+    // Forme compacte (disque, pétale) : axe synthétique le long de l'axe principal
+    // au lieu d'un refus (`SkeletonSatinParameters::compact_axis`). Faux par défaut.
+    bool compact_axis{false};
 
     bool operator==(const AutoSatinParams&) const = default;
 };

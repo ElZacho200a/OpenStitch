@@ -364,15 +364,17 @@ défaut, éditable ensuite) si :
 - **la génération essayée** (`generate_skeleton_satin`, déterministe) couvre
   au moins `satin_min_coverage` (0,9) de la région.
 
-Sinon : tatami, comme avant. Les disques et formes compactes restent donc en
-tatami (l'auto-satin les refuse : « région compacte »). Essai fait avec un
-anneau de 2,4 mm, un arc de 3,7 mm et un disque : anneau et arc en satin,
-disque en tatami.
+Sinon : tatami, comme avant. Les **formes compactes sans trou** (disques,
+pétales) de largeur <= `satin_compact_max_width` (12 mm, 0 = désactivé) sont
+cousues en satin à cordes parallèles (`AutoSatinParams::compact_axis`, voir
+`satin-squelette.md`), sous la même condition de couverture. Au-delà, tatami.
+Essai CLI (anneau 2,4 mm, arc 3,7 mm, disque 11,6 mm) : les trois en satin,
+7 sauts au lieu de 12 et plus de points courts de tatami.
 
 **Limites** : la case du desktop n'a pas été compilée dans l'environnement de
 développement Linux (Qt absent), à vérifier au prochain build Windows ; une région à plusieurs trous n'est pas tentée ; la couverture est
-géométrique, pas validée sur machine ; un satin radial pour les disques reste à
-faire (voir `satin-squelette.md`, limites restantes).
+géométrique, pas validée sur machine ; pas de satin en éventail ou concentrique pour les grands disques
+(voir `satin-squelette.md`).
 
 ## Stippling (semis de points relié en un trait)
 

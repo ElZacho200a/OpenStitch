@@ -19,6 +19,7 @@
 #include "axis_sampler.hpp"
 #include "chord.hpp"
 #include "geometry_detail.hpp"
+#include "openstitch/geometry/moments.hpp"
 #include "orientation.hpp"
 
 namespace openstitch::auto_satin {
@@ -362,6 +363,70 @@ std::vector<Chain> build_chains(const SkeletonGraph& g, SkeletonSatinDiagnostics
         }
     }
     return chains;
+}
+
+// Axe synthétique d'une région compacte (squelette réduit à un point) : segment
+// droit porté par l'axe principal d'inertie, centré sur le centroïde, restreint à
+// la corde intérieure qui le contient et raccourci de 5 % à chaque bout (les bouts
+// sont libres : le sampler les prolonge jusqu'au bord). Le rayon en chaque point
+// est la demi-corde perpendiculaire. nullopt si la région est dégénérée.
+std::optional<Chain> synthetic_compact_chain(const geometry::PathSet& region,
+                                             const std::vector<Poly>& polys) {
+    // Centroïde (extérieur moins trous, formule de l'aire signée).
+    double area = 0.0;
+    double cx = 0.0;
+    double cy = 0.0;
+    for (std::size_t k = 0; k < polys.size(); ++k) {
+        const Poly& poly = polys[k];
+        double a2 = 0.0;
+        double px = 0.0;
+        double py = 0.0;
+        for (std::size_t i = 0; i < poly.size(); ++i) {
+            const P2 p = poly[i];
+            const P2 q = poly[(i + 1) % poly.size()];
+            const double cross = p.x * q.y - q.x * p.y;
+            a2 += cross;
+            px += (p.x + q.x) * cross;
+            py += (p.y + q.y) * cross;
+        }
+        const double sign = k == 0 ? 1.0 : -1.0;
+        const double orient = a2 < 0.0 ? -1.0 : 1.0; // contour horaire ou anti-horaire
+        area += sign * std::abs(a2) / 2.0;
+        cx += sign * orient * px / 6.0;
+        cy += sign * orient * py / 6.0;
+    }
+    if (!(area > 0.0)) {
+        return std::nullopt;
+    }
+    const P2 center{cx / area, cy / area};
+
+    double angle = 0.0; // quasi isotrope : axe sans sens stable, horizontal par convention
+    if (const auto pa = geometry::principal_axis({region}); pa && pa->anisotropy > 1.3) {
+        angle = pa->angle.radians;
+    }
+    const P2 u{std::cos(angle), std::sin(angle)};
+    const P2 n{-u.y, u.x};
+
+    const auto interval = detail::chord_through(polys, center, u, 200.0);
+    if (!interval || interval->length() < 600.0) {
+        return std::nullopt;
+    }
+    const double margin = 0.05 * interval->length();
+    const double lo = interval->t_lo + margin;
+    const double hi = interval->t_hi - margin;
+    Chain chain;
+    chain.free_start = true;
+    chain.free_end = true;
+    constexpr double kStep = 100.0;
+    const int steps = std::max(2, static_cast<int>(std::ceil((hi - lo) / kStep)));
+    for (int i = 0; i <= steps; ++i) {
+        const double t = lo + (hi - lo) * i / steps;
+        const P2 p = center + u * t;
+        chain.points.push_back(p);
+        const auto perp = detail::chord_through(polys, p, n, 200.0);
+        chain.radii.push_back(perp ? 0.5 * perp->length() : 0.0);
+    }
+    return chain;
 }
 
 // Composantes du squelette BRUT que le graphe n'a pas tracées : un cycle pur n'a
@@ -812,8 +877,8 @@ CacheKey make_key(const geometry::PathSet& region, const SkeletonSatinParameters
                 bits(a.cleanup.minimum_length_to_radius_ratio), a.cleanup.maximum_iterations,
                 a.cleanup.max_protrusion.value, bits(a.cleanup.max_protrusion_to_radius),
                 a.thresholds.min_satin_width.value, a.thresholds.max_satin_width.value,
-                bits(a.thresholds.min_elongation), p.spacing.value, p.min_thread_length.value,
-                p.cell_overlap.value, bits(p.bend_threshold_deg),
+                bits(a.thresholds.min_elongation), p.compact_axis ? 1 : 0, p.spacing.value,
+                p.min_thread_length.value, p.cell_overlap.value, bits(p.bend_threshold_deg),
                 static_cast<std::int64_t>(p.guides.size())});
     for (const auto& g : p.guides) {
         key.insert(key.end(),
@@ -904,6 +969,14 @@ generate_skeleton_satin_uncached(const geometry::PathSet& region,
     std::vector<Chain> chains = build_chains(graph, diag);
     for (auto& c : recover_cycles(analysis->debug, graph, chains)) {
         chains.push_back(std::move(c));
+    }
+    if (chains.empty() && params.compact_axis) {
+        if (auto synthetic = synthetic_compact_chain(region, polys)) {
+            chains.push_back(std::move(*synthetic));
+            diag.messages.clear(); // le refus « région compacte » ne s'applique plus
+            diag.messages.push_back(
+                "region compacte : axe synthetique le long de l'axe principal (cordes paralleles)");
+        }
     }
     if (chains.empty() && diag.messages.empty()) {
         diag.messages.push_back("region compacte ou sans axe exploitable (disque, forme peu "

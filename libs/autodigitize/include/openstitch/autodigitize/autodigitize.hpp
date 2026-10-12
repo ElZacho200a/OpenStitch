@@ -48,6 +48,11 @@ struct AutoOptions {
     // compactes restent en tatami. Désactivé par défaut.
     bool satin_bands{false};
     double satin_min_coverage{0.9};
+    // Avec `satin_bands` : un disque ou une forme compacte (sans trou) dont la
+    // largeur ne dépasse pas cette valeur est cousu en satin à cordes parallèles
+    // (`AutoSatinParams::compact_axis`), sous les mêmes conditions de couverture.
+    // 0 : les formes compactes restent en tatami.
+    Micrometers satin_compact_max_width{12'000};
 
     // --- Remplissages tatami (Lot B, audit marine plein cadre 2026-09-22) ---
     // Réglages appliqués aux tatami CRÉÉS par l'auto-numérisation, jamais aux

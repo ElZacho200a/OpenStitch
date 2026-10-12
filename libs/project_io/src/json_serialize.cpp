@@ -347,6 +347,9 @@ json params_to_json(const document::StitchParams& params) {
                 if (p.underlay_mode != document::UnderlayMode::Manual) {
                     j["underlayMode"] = static_cast<int>(p.underlay_mode);
                 }
+                if (p.compact_axis) {
+                    j["compactAxis"] = true;
+                }
                 if (p.entry_point) {
                     j["entryPoint"] = {{"x", p.entry_point->x.value},
                                        {"y", p.entry_point->y.value}};
@@ -627,6 +630,7 @@ Result<document::StitchParams> params_from_json(const json& j) {
         p.lock_length = Micrometers{j.value("lockLength", 800)};
         p.lock_passes = j.value("lockPasses", 2);
         p.underlay_mode = static_cast<document::UnderlayMode>(j.value("underlayMode", 0));
+        p.compact_axis = j.value("compactAxis", false);
         if (j.contains("entryPoint")) {
             p.entry_point = Vec2um{Micrometers{j.at("entryPoint").at("x")},
                                    Micrometers{j.at("entryPoint").at("y")}};

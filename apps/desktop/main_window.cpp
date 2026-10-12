@@ -4166,14 +4166,15 @@ void MainWindow::autoDigitize() {
                "partie du dessin."));
         optsLayout->addWidget(skipBgCheck);
         auto* satinBandsCheck =
-            new QCheckBox(tr("Satin automatique pour les bandes étroites"), &optsDialog);
+            new QCheckBox(tr("Satin automatique (bandes étroites, petits disques)"), &optsDialog);
         satinBandsCheck->setObjectName("satinBandsCheck");
         satinBandsCheck->setChecked(
             ui_memory::intValue(QStringLiteral("autoDigitize/satinBands"), 0, 0, 1) != 0);
         satinBandsCheck->setToolTip(
             tr("Mode formes : les anneaux, rubans et traits de 0,8 à 6 mm de large sont cousus en "
                "auto-satin au lieu d'un tatami (repli tatami si le satin couvre mal la forme). "
-               "Les disques et formes larges restent en tatami."));
+               "Les petits disques (jusqu'à 12 mm) sont cousus en cordes parallèles ; les formes "
+               "plus larges restent en tatami."));
         optsLayout->addWidget(satinBandsCheck);
         if (candidate) {
             auto* row = new QHBoxLayout;

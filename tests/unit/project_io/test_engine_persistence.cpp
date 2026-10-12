@@ -66,6 +66,7 @@ TEST_CASE("moteur : round-trip des nouveaux reglages (tatami, directionnel, sati
                                              document::BorderCorner::Round, 2, 1};
     document::AutoSatinParams autoSatin;
     autoSatin.underlay_mode = document::UnderlayMode::Auto;
+    autoSatin.compact_axis = true;
 
     std::uint64_t id = 10;
     for (const document::StitchParams& params :

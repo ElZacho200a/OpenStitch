@@ -49,6 +49,14 @@ struct SkeletonSatinParameters {
     Micrometers cell_overlap{200};      // recouvrement entre cellules voisines (ε)
     double bend_threshold_deg{35.0};    // virage assimilé à un coude (coupe en onglet)
 
+    // Forme compacte (disque, pétale) : le squelette se réduit à un point et la
+    // région est normalement refusée. Vrai : un axe synthétique droit, porté par
+    // l'axe principal d'inertie et passant par le centre, remplace le squelette ;
+    // les traversées lui sont perpendiculaires (satin « en cordes parallèles »,
+    // comme on coud un rond à la main). Les cordes valent au plus le diamètre :
+    // à borner par l'appelant (fractionnement `Lmax` ensuite). Faux par défaut.
+    bool compact_axis{false};
+
     std::vector<SkeletonSatinGuide> guides;
 
     // Calcule la couverture estimée (diagnostic non bloquant) : coûteux, donc à la

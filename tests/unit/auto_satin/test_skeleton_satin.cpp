@@ -661,3 +661,26 @@ TEST_CASE("entree: un espacement nul ou trop petit est refuse au lieu de figer",
     p.spacing = openstitch::Micrometers{10};
     CHECK_FALSE(as::generate_skeleton_satin(*region, p).has_value());
 }
+
+TEST_CASE("pipeline: axe compact synthetique, disque couvert en cordes paralleles",
+          "[skeleton_satin]") {
+    for (const char* name : {"disc_15mm", "circle", "petal"}) {
+        INFO(name);
+        const auto region = as::make_shape(name);
+        REQUIRE(region.has_value());
+        as::SkeletonSatinParameters params;
+        params.analysis = as::stable_skeleton_analysis();
+        params.compact_axis = true;
+        const auto gen = as::generate_skeleton_satin(*region, params);
+        REQUIRE(gen.has_value());
+        REQUIRE(gen->columns.size() == 1);
+        CHECK(coverage_of(*region, *gen) >= 0.9);
+        CHECK_FALSE(gen->diagnostics.messages.empty());
+
+        // Deterministe.
+        const auto again = as::generate_skeleton_satin(*region, params);
+        REQUIRE(again.has_value());
+        CHECK(gen->columns[0].crossings.size() == again->columns[0].crossings.size());
+        CHECK(gen->columns[0].crossings.front().a == again->columns[0].crossings.front().a);
+    }
+}

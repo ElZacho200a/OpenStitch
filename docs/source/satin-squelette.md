@@ -182,6 +182,32 @@ Mesures du 2026-10 (couverture / recouvrement, `make_shape`), planchers gelés d
 | deux trous | 0,994 | 1,06 | n/d |
 | anneau, anneau + branche | 0,9998 | 1,00 | 0 région en SGSD |
 
+## Formes compactes : axe synthétique (`compact_axis`)
+
+Le squelette d'un disque se réduit à un point : sans axe, pas de traversée. Avec
+`SkeletonSatinParameters::compact_axis` (`AutoSatinParams::compact_axis`, faux par
+défaut, clé `.osp` optionnelle `compactAxis`), si aucune chaîne n'existe, le moteur
+construit un **axe droit synthétique** :
+
+1. centroïde de la région (extérieur moins trous) ;
+2. direction = axe principal d'inertie (`geometry::principal_axis`) ; forme quasi
+   isotrope (anisotropie <= 1,3) : horizontal par convention, déterministe ;
+3. corde intérieure qui contient le centroïde, raccourcie de 5 % à chaque bout
+   (bouts libres, prolongés par le sampler) ; le rayon en chaque point est la
+   demi-corde perpendiculaire.
+
+Les traversées sont perpendiculaires à l'axe : des cordes **parallèles** de
+longueur variable (0 -> diamètre -> 0), comme un rond cousu à la main. Elles
+valent au plus le diamètre : au-delà de `split_threshold` (7 mm) elles sont
+fractionnées (décalé). Mesure : `disc_15mm`, `circle`, `petal` >= 90 % de
+couverture (test). Le message « région compacte » est remplacé par un message
+d'information. Sans l'option, le refus et ses tests sont inchangés.
+
+**Limites** : pas de satin « en éventail » ou concentrique (le fil passe toujours
+en ligne droite d'un bord à l'autre) ; un grand disque donne de longs points
+fractionnés, d'où la borne `satin_compact_max_width` (12 mm) côté
+auto-numérisation ; non validé sur machine.
+
 ## Limites restantes
 
 - **Aucune validation sur machine.** La couverture géométrique n'est pas la
@@ -189,8 +215,9 @@ Mesures du 2026-10 (couverture / recouvrement, `make_shape`), planchers gelés d
 - `deep_channel` (U dont les bras font 16 mm de large) : les bras sont des blocs,
   pas des rubans, et l'élagage retire leurs branches ; la couverture reste
   autour de 65 %. Le moteur le **rapporte** (diagnostic) mais ne le résout pas.
-- Disques, pétales et formes compactes : refus explicite (« région compacte »).
-  Le satin tournant par anneaux de l'ancien code a disparu avec lui.
+- Disques, pétales et formes compactes : refus explicite (« région compacte »)
+  par défaut. Option `compact_axis` (voir ci-dessous) pour les coudre en cordes
+  parallèles. Le satin tournant par anneaux de l'ancien code a disparu.
 - Anneau avec plusieurs trous et cycles sans nœud : cas non couverts.
 - Le squelette reste celui de Zhang-Suen (bruit de pixel, tangentes lissées sur
   600 µm). Un axe médian calculé sur le polygone (diagramme de Voronoï de

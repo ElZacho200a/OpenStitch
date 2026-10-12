@@ -51,6 +51,7 @@ auto_satin::SkeletonSatinParameters engine_parameters(const document::AutoSatinP
                                                       bool measureCoverage) {
     auto_satin::SkeletonSatinParameters e;
     e.spacing = p.spacing;
+    e.compact_axis = p.compact_axis;
     e.measure_coverage = measureCoverage;
     for (const auto& g : p.guides) {
         e.guides.push_back({g.anchor, g.angle.radians, g.absolute});

@@ -77,18 +77,27 @@ struct RegionSource {
     std::string label;
 };
 
-// Une région est une « bande » satinable si elle est étroite, allongée, sans
-// forme compacte, et si le satin par squelette la couvre réellement : on ESSAIE
-// la génération (déterministe) et on mesure la couverture plutôt que de
-// deviner depuis la seule forme. Tout échec = pas de satin (repli tatami).
-bool is_satin_band(const geometry::PathSet& region, const AutoOptions& options) {
+// Résultat de l'essai de satin sur une région.
+struct SatinChoice {
+    bool satin{false};
+    bool compact_axis{false}; // forme compacte : axe synthétique (cordes parallèles)
+};
+
+// Une région est satinable si le satin par squelette la couvre réellement : on
+// ESSAIE la génération (déterministe) et on mesure la couverture plutôt que de
+// deviner depuis la seule forme. Deux voies :
+//  1. bande étroite et allongée (anneau, ruban, arc) : squelette normal ;
+//  2. forme compacte sans trou (disque, pétale) : axe synthétique, si sa largeur
+//     reste sous `satin_compact_max_width`.
+// Tout échec = pas de satin (repli tatami).
+SatinChoice choose_satin(const geometry::PathSet& region, const AutoOptions& options) {
     if (region.holes.size() > 1) {
-        return false; // plusieurs trous : cas non couvert par le satin squelette
+        return {}; // plusieurs trous : cas non couvert par le satin squelette
     }
     auto_satin::SkeletonSatinParameters params;
     const auto analysis = auto_satin::analyze_region(region, params.analysis);
     if (!analysis) {
-        return false;
+        return {};
     }
     const auto& r = analysis->report;
     // Le rapport de satinabilité ignore les trous dans le périmètre et n'a pas
@@ -112,15 +121,28 @@ bool is_satin_band(const geometry::PathSet& region, const AutoOptions& options) 
     const double minWidth = static_cast<double>(params.analysis.thresholds.min_satin_width.value);
     const double maxWidth = static_cast<double>(options.satin_max_width.value);
     const double minElongation = params.analysis.thresholds.min_elongation;
-    if (meanWidthUm < minWidth || widthUm > maxWidth || lengthUm < minElongation * widthUm) {
-        return false;
+
+    const auto covered = [&](bool compact) {
+        auto_satin::SkeletonSatinParameters p;
+        p.measure_coverage = true;
+        p.compact_axis = compact;
+        const auto generated = auto_satin::generate_skeleton_satin(region, p);
+        return generated && !generated->columns.empty() &&
+               generated->diagnostics.coverage_measured &&
+               generated->diagnostics.coverage_ratio >= options.satin_min_coverage;
+    };
+
+    const bool bandLike =
+        meanWidthUm >= minWidth && widthUm <= maxWidth && lengthUm >= minElongation * widthUm;
+    if (bandLike && covered(false)) {
+        return {true, false};
     }
-    params.measure_coverage = true;
-    const auto generated = auto_satin::generate_skeleton_satin(region, params);
-    if (!generated || generated->columns.empty() || !generated->diagnostics.coverage_measured) {
-        return false;
+    const double compactMax = static_cast<double>(options.satin_compact_max_width.value);
+    if (!bandLike && compactMax > 0.0 && region.holes.empty() && widthUm >= minWidth &&
+        widthUm <= compactMax && covered(true)) {
+        return {true, true};
     }
-    return generated->diagnostics.coverage_ratio >= options.satin_min_coverage;
+    return {};
 }
 
 // Classification AutoChoice (§24) + construction des objets de broderie pour
@@ -143,10 +165,14 @@ void classify_and_build_embroidery(const geometry::PathSet& main, const RegionSo
     emb.intent = document::EmbroideryIntent::AutoChoice;
 
     emb.id = ids.next();
-    if (areaMm2 >= options.min_fill_area_mm2 && options.satin_bands &&
-        is_satin_band(main, options)) {
-        // Bande étroite (anneau, ruban, trait épais) -> auto-satin par squelette.
-        emb.params = document::AutoSatinParams{};
+    const SatinChoice satin = areaMm2 >= options.min_fill_area_mm2 && options.satin_bands
+                                  ? choose_satin(main, options)
+                                  : SatinChoice{};
+    if (satin.satin) {
+        // Bande étroite (anneau, ruban, arc) ou petit disque -> auto-satin.
+        document::AutoSatinParams sp;
+        sp.compact_axis = satin.compact_axis;
+        emb.params = sp;
         emb.name = "Satin " + source.label;
     } else if (areaMm2 >= options.min_fill_area_mm2) {
         // Toute zone remplissable -> tatami. L'orientation des fils reste
