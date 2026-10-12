@@ -417,7 +417,7 @@ std::vector<FillStitch> fill_tatami(const geometry::PathSet& region,
         hasPrev = true;
     }
     // Cap du trajet cousu caché : au-delà, on saute (déplacement à découvert).
-    const double underpathCap = std::max(6.0 * spacing, 8'000.0);
+    const double underpathCap = std::max(6.0 * spacing, 16'000.0);
 
     // Autoroute d'underpath (§15) : points de passage sur le contour RENTRÉ de la
     // région entière -- extérieur rentré ET trous agrandis (repère des rangées).
