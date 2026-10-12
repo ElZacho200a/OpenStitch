@@ -1231,6 +1231,10 @@ SAM via un worker **WSL**. ~18 s sur l'image de référence.
   deviennent des objets contour/satin **par-dessus** les remplissages, au lieu
   de régions noires tatamisées.
 - Modules : `libs/autodigitize`, `libs/auto_satin`.
+- 2026-10-12 : extraction de traits depuis une **photo** par lignes cohérentes
+  (FDoG, Kang/Lee/Chui 2007) — `image::CoherentLinesOp`, menu Image et
+  `digitize --coherent-lines`. Alimente le mode Contours ; la pose par-dessus
+  des remplissages reste à faire.
 
 ### HP-AUTO-006 — Suppression du fond [P1] — ◐ Partiel
 - État OpenStitch : option « ignorer le fond » et **détection automatique du fond**

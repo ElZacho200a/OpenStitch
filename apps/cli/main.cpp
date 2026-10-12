@@ -33,6 +33,7 @@
 #include "openstitch/formats/svg.hpp"
 #include "openstitch/geometry/boolean.hpp"
 #include "openstitch/image/image.hpp"
+#include "openstitch/image/ops.hpp"
 #include "openstitch/project_io/machine_file.hpp"
 #include "openstitch/project_io/project_io.hpp"
 #include "openstitch/segmentation/segmentation.hpp"
@@ -666,7 +667,8 @@ struct DigitizeArgs {
     int maxColors = 8;
     int minRegionPx = 16;
     int smoothingPx = 3;
-    int skipBg = -1; // -1 = auto (segmentation::background_candidate), 0 = non, 1 = oui
+    int skipBg = -1;            // -1 = auto (segmentation::background_candidate), 0 = non, 1 = oui
+    bool coherentLines = false; // mode contours : photo -> traits (FDoG) avant segmentation
     bool json = false;
     bool noClobber = false;
 };
@@ -706,6 +708,19 @@ int run_digitize(const DigitizeArgs& a) {
     document::Project project;
     project.mm_per_px = Millimeters{25.4 / a.dpi};
     project.original = *loaded;
+    // Lignes cohérentes (FDoG) : la photo devient des traits noirs sur fond
+    // blanc ; la segmentation et le mode contours travaillent ensuite dessus.
+    if (a.coherentLines) {
+        const auto lines = image::apply_op(project.original, image::CoherentLinesOp{});
+        if (!lines) {
+            return cli_error(
+                "digitize",
+                fmt::format("extraction des lignes impossible : {}", lines.error().message),
+                "retirez --coherent-lines ou essayez une image plus grande");
+        }
+        project.original = *lines;
+        fmt::print(st, "Lignes cohérentes (FDoG) appliquées avant la segmentation\n");
+    }
     // Finitions (Lots E/F) : nouveau projet -> activées ; réglables ici.
     project.finishing.trim_threshold =
         Micrometers{static_cast<std::int32_t>(std::lround(a.trimMm * 1000.0))};
@@ -1449,6 +1464,9 @@ int main(int argc, char** argv) {
                      "Mode contours : auto (défaut) | running | legacy-satin (ancien satin "
                      "dégradé en point droit, pas l'auto-satin)")
         ->check(CLI::IsMember({"auto", "running", "legacy-satin", "satin"}));
+    dz_cmd->add_flag("--coherent-lines", dz.coherentLines,
+                     "Mode contours : extrait d'abord des traits de la photo (lignes cohérentes, "
+                     "FDoG) avant la segmentation");
     dz_cmd->add_option("--lock", dz.lock, "Point d'arrêt : none|backforth|triangle|zigzag")
         ->check(CLI::IsMember({"none", "backforth", "triangle", "zigzag"}));
     dz_cmd->add_flag("--json", json_out,

@@ -47,6 +47,7 @@ document::Project rich_project() {
     project.ops.push_back(image::QuantizeOp{4});
     project.ops.push_back(image::BrightnessContrastOp{10.0, -5.0});
     project.ops.push_back(image::BilateralDenoiseOp{3});
+    project.ops.push_back(image::CoherentLinesOp{1.5, 2.0, 0.99, 0.9, 2, 4});
 
     segmentation::Segmentation seg;
     seg.width = 4;
@@ -152,11 +153,14 @@ TEST_CASE("projet complet : save puis load = memes donnees") {
     CHECK(loaded->original.rgba == original.original.rgba);
 
     // Ops.
-    REQUIRE(loaded->ops.size() == 4);
+    REQUIRE(loaded->ops.size() == 5);
     CHECK(std::holds_alternative<image::GrayscaleOp>(loaded->ops[0]));
     CHECK(std::holds_alternative<image::QuantizeOp>(loaded->ops[1]));
     REQUIRE(std::holds_alternative<image::BilateralDenoiseOp>(loaded->ops[3]));
     CHECK(std::get<image::BilateralDenoiseOp>(loaded->ops[3]).strength == 3);
+    REQUIRE(std::holds_alternative<image::CoherentLinesOp>(loaded->ops[4]));
+    CHECK(std::get<image::CoherentLinesOp>(loaded->ops[4]) ==
+          image::CoherentLinesOp{1.5, 2.0, 0.99, 0.9, 2, 4});
 
     // Segmentation.
     REQUIRE(loaded->segmentation.has_value());

@@ -123,6 +123,14 @@ json op_to_json(const image::ImageOp& op) {
                 j = {{"type", "quantize"}, {"colors", o.colors}};
             } else if constexpr (std::is_same_v<T, image::BilateralDenoiseOp>) {
                 j = {{"type", "bilateralDenoise"}, {"strength", o.strength}};
+            } else if constexpr (std::is_same_v<T, image::CoherentLinesOp>) {
+                j = {{"type", "coherentLines"},
+                     {"sigmaC", o.sigma_c},
+                     {"sigmaM", o.sigma_m},
+                     {"rho", o.rho},
+                     {"tau", o.tau},
+                     {"etfIterations", o.etf_iterations},
+                     {"etfRadius", o.etf_radius}};
             }
             return j;
         },
@@ -154,6 +162,15 @@ Result<image::ImageOp> op_from_json(const json& j) {
     }
     if (type == "bilateralDenoise") {
         return image::BilateralDenoiseOp{j.value("strength", 2)};
+    }
+    if (type == "coherentLines") {
+        const image::CoherentLinesOp d;
+        return image::CoherentLinesOp{j.value("sigmaC", d.sigma_c),
+                                      j.value("sigmaM", d.sigma_m),
+                                      j.value("rho", d.rho),
+                                      j.value("tau", d.tau),
+                                      j.value("etfIterations", d.etf_iterations),
+                                      j.value("etfRadius", d.etf_radius)};
     }
     return fail(ErrorCategory::InvalidFile, "Opération d'image inconnue : " + type);
 }
