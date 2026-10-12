@@ -669,6 +669,7 @@ void MainWindow::buildMenus() {
     connect(newAct, &QAction::triggered, this, &MainWindow::newProject);
     fileMenu->addSeparator();
     openImageAct_ = fileMenu->addAction(tr("&Ouvrir une image…"));
+    openImageAct_->setObjectName(QStringLiteral("action_openImage"));
     auto* openAct = openImageAct_;
     openAct->setShortcut(QKeySequence::Open);
     connect(openAct, &QAction::triggered, this, &MainWindow::openImage);
@@ -686,6 +687,7 @@ void MainWindow::buildMenus() {
     saveProjectAsAct->setShortcut(QKeySequence::SaveAs);
     connect(saveProjectAsAct, &QAction::triggered, this, &MainWindow::saveProjectAs);
     loadProjectAct_ = fileMenu->addAction(tr("Ou&vrir un projet…"));
+    loadProjectAct_->setObjectName(QStringLiteral("action_openProject"));
     auto* loadProjectAct = loadProjectAct_;
     connect(loadProjectAct, &QAction::triggered, this, &MainWindow::loadProject);
     fileMenu->addSeparator();
@@ -708,19 +710,24 @@ void MainWindow::buildMenus() {
         refreshRecentFilesUi();
     });
     exportDstAct_ = fileMenu->addAction(tr("&Exporter une broderie machine…"));
+    exportDstAct_->setObjectName(QStringLiteral("action_exportDst"));
     exportDstAct_->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_E));
     connect(exportDstAct_, &QAction::triggered, this, &MainWindow::exportDst);
     buildProductionMenu(fileMenu);
     auto* importDstAct = fileMenu->addAction(tr("&Importer une broderie machine…"));
+    importDstAct->setObjectName(QStringLiteral("action_importDst"));
     connect(importDstAct, &QAction::triggered, this, &MainWindow::importDst);
     fileMenu->addSeparator();
     auto* importDxfAct = fileMenu->addAction(tr("Importer un &DXF…"));
+    importDxfAct->setObjectName(QStringLiteral("action_importDxf"));
     connect(importDxfAct, &QAction::triggered, this, &MainWindow::importDxf);
     exportDxfAct_ = fileMenu->addAction(tr("Exporter en D&XF…"));
+    exportDxfAct_->setObjectName(QStringLiteral("action_exportDxf"));
     auto* exportDxfAct = exportDxfAct_;
     connect(exportDxfAct, &QAction::triggered, this, &MainWindow::exportDxf);
     fileMenu->addSeparator();
     auto* quitAct = fileMenu->addAction(tr("&Quitter"));
+    quitAct->setObjectName(QStringLiteral("action_quit"));
     quitAct->setShortcut(QKeySequence::Quit);
     connect(quitAct, &QAction::triggered, this, &QWidget::close);
 
@@ -752,39 +759,47 @@ void MainWindow::buildMenus() {
     buildAlignMenu(editMenu);
     editMenu->addSeparator();
     auto* aiPrefsAct = editMenu->addAction(tr("Préférences — &Intelligence artificielle…"));
+    aiPrefsAct->setObjectName(QStringLiteral("action_aiPreferences"));
     connect(aiPrefsAct, &QAction::triggered, this, &MainWindow::openAiPreferences);
 
     auto* imageMenu = menuBar()->addMenu(tr("&Image"));
-    const auto addOpAction = [this, imageMenu](const QString& text, image::ImageOp op) {
+    const auto addOpAction = [this, imageMenu](const QString& text, image::ImageOp op,
+                                               const char* name) {
         auto* act = imageMenu->addAction(text);
+        act->setObjectName(QString::fromLatin1(name));
         connect(act, &QAction::triggered, this, [this, op] { executeOp(op); });
         imageActions_.append(act);
         return act;
     };
 
-    addOpAction(tr("Niveaux de &gris"), image::GrayscaleOp{});
+    addOpAction(tr("Niveaux de &gris"), image::GrayscaleOp{}, "action_imageGrayscale");
 
     auto* bcAct = imageMenu->addAction(tr("&Luminosité/contraste…"));
+    bcAct->setObjectName(QStringLiteral("action_imageBrightnessContrast"));
     connect(bcAct, &QAction::triggered, this, &MainWindow::adjustBrightnessContrast);
     imageActions_.append(bcAct);
 
-    addOpAction(tr("Dé&bruitage léger"), image::MedianDenoiseOp{1});
-    addOpAction(tr("Débruitage &moyen"), image::MedianDenoiseOp{2});
-    addOpAction(tr("Lissage bilatéral (conserve les &contours)"), image::BilateralDenoiseOp{2});
-    addOpAction(tr("Lignes cohérentes (photo → &dessin au trait)"), image::CoherentLinesOp{});
+    addOpAction(tr("Dé&bruitage léger"), image::MedianDenoiseOp{1}, "action_imageDenoiseLight");
+    addOpAction(tr("Débruitage &moyen"), image::MedianDenoiseOp{2}, "action_imageDenoiseMedium");
+    addOpAction(tr("Lissage bilatéral (conserve les &contours)"), image::BilateralDenoiseOp{2},
+                "action_imageBilateralDenoise");
+    addOpAction(tr("Lignes cohérentes (photo → &dessin au trait)"), image::CoherentLinesOp{},
+                "action_imageCoherentLines");
 
     auto* quantAct = imageMenu->addAction(tr("&Quantifier les couleurs…"));
+    quantAct->setObjectName(QStringLiteral("action_imageQuantize"));
     connect(quantAct, &QAction::triggered, this, &MainWindow::quantizeColors);
     imageActions_.append(quantAct);
 
     imageMenu->addSeparator();
-    addOpAction(tr("Symétrie &horizontale"), image::FlipOp{true});
-    addOpAction(tr("Symétrie &verticale"), image::FlipOp{false});
-    addOpAction(tr("Rotation 90° h&oraire"), image::Rotate90Op{1});
-    addOpAction(tr("Rotation 90° &antihoraire"), image::Rotate90Op{3});
+    addOpAction(tr("Symétrie &horizontale"), image::FlipOp{true}, "action_imageFlipHorizontal");
+    addOpAction(tr("Symétrie &verticale"), image::FlipOp{false}, "action_imageFlipVertical");
+    addOpAction(tr("Rotation 90° h&oraire"), image::Rotate90Op{1}, "action_imageRotateCw");
+    addOpAction(tr("Rotation 90° &antihoraire"), image::Rotate90Op{3}, "action_imageRotateCcw");
 
     imageMenu->addSeparator();
     cropAct_ = imageMenu->addAction(tr("&Recadrer l'image (glisser un cadre)"));
+    cropAct_->setObjectName(QStringLiteral("action_imageCrop"));
     cropAct_->setCheckable(true);
     connect(cropAct_, &QAction::toggled, this,
             [this](bool on) { setTool(on ? Tool::Rect : Tool::Select); });
@@ -792,18 +807,21 @@ void MainWindow::buildMenus() {
 
     auto* segMenu = menuBar()->addMenu(tr("&Segmentation"));
     segmentAct_ = segMenu->addAction(tr("&Segmenter l'image…"));
+    segmentAct_->setObjectName(QStringLiteral("action_segmentImage"));
     auto* segAct = segmentAct_;
     segmentAct_->setShortcut(QKeySequence(Qt::Key_F6));
     connect(segAct, &QAction::triggered, this, &MainWindow::segmentImage);
     imageActions_.append(segAct);
 
     showSegAct_ = segMenu->addAction(tr("&Afficher la carte des régions"));
+    showSegAct_->setObjectName(QStringLiteral("action_showSegmentation"));
     showSegAct_->setCheckable(true);
     connect(showSegAct_, &QAction::toggled, this, [this] { displayImage(processed_); });
     buildRegionViewControls(segMenu);
 
     segMenu->addSeparator();
     mergeAct_ = segMenu->addAction(tr("&Fusionner avec… (cliquer la région cible)"));
+    mergeAct_->setObjectName(QStringLiteral("action_mergeRegions"));
     mergeAct_->setCheckable(true);
     mergeAct_->setToolTip(
         tr("Fusionne la région (ou toutes les régions sélectionnées) dans la région que vous "
@@ -861,6 +879,7 @@ void MainWindow::buildMenus() {
 
     segMenu->addSeparator();
     vectorizeRegionAct_ = segMenu->addAction(tr("&Vectoriser la sélection"));
+    vectorizeRegionAct_->setObjectName(QStringLiteral("action_vectorizeSelection"));
     vectorizeRegionAct_->setShortcut(QKeySequence(Qt::Key_F7));
     vectorizeRegionAct_->setToolTip(
         tr("Convertit la ou les régions sélectionnées en objets vectoriels éditables "
@@ -889,21 +908,26 @@ void MainWindow::buildMenus() {
     createStitchAct_->setObjectName(QStringLiteral("action_createStitch"));
     connect(createStitchAct_, &QAction::triggered, this, &MainWindow::createRunningStitchObject);
     createTatamiAct_ = embMenu->addAction(tr("Créer un remplissage &tatami…"));
+    createTatamiAct_->setObjectName(QStringLiteral("action_createTatami"));
     connect(createTatamiAct_, &QAction::triggered, this, &MainWindow::createTatamiObject);
     createSatinAct_ = embMenu->addAction(tr("Créer un &satin automatique…"));
+    createSatinAct_->setObjectName(QStringLiteral("action_createAutoSatin"));
     connect(createSatinAct_, &QAction::triggered, this, &MainWindow::createSatinObject);
     autoSatinAct_ = embMenu->addAction(tr("Convertir automatiquement en satin (expérimental)…"));
+    autoSatinAct_->setObjectName(QStringLiteral("action_autoConvertSatin"));
     autoSatinAct_->setToolTip(
         tr("Expérimental : construit le satin par squelette et traversées orientées (sans "
            "rails à poser). Le résultat est à vérifier avant broderie."));
     connect(autoSatinAct_, &QAction::triggered, this, &MainWindow::autoConvertToSatin);
     embMenu->addSeparator();
     fillAngleAct_ = embMenu->addAction(tr("&Orientation du remplissage…"));
+    fillAngleAct_->setObjectName(QStringLiteral("action_fillAngle"));
     fillAngleAct_->setToolTip(
         tr("Change l'angle des fils du remplissage tatami sélectionné (clic sur la forme "
            "ou dans l'ordre de couture)."));
     connect(fillAngleAct_, &QAction::triggered, this, &MainWindow::changeFillAngle);
     convertSatinAct_ = embMenu->addAction(tr("Con&vertir les satins auto en tatami"));
+    convertSatinAct_->setObjectName(QStringLiteral("action_convertAutoSatinToTatami"));
     convertSatinAct_->setToolTip(
         tr("Remplace les colonnes satin automatiques (qui débordent sur les formes "
            "concaves) par des remplissages tatami découpés sur la région."));
@@ -982,38 +1006,45 @@ void MainWindow::buildMenus() {
     buildDirectionalActions(embMenu);
     embMenu->addSeparator();
     statsAct_ = new QAction(tr("Statisti&ques…"), this);
+    statsAct_->setObjectName(QStringLiteral("action_statistics"));
     statsAct_->setShortcut(QKeySequence(Qt::Key_F9));
     connect(statsAct_, &QAction::triggered, this, &MainWindow::showStatistics);
 
     auto* viewMenu = menuBar()->addMenu(tr("&Affichage"));
     auto* layersMenu = viewMenu->addMenu(tr("&Calques"));
     showImageAct_ = layersMenu->addAction(tr("&Image"));
+    showImageAct_->setObjectName(QStringLiteral("action_showImageLayer"));
     showImageAct_->setCheckable(true);
     showImageAct_->setChecked(true);
     connect(showImageAct_, &QAction::toggled, this, [this] { displayImage(processed_); });
     // La carte des régions (segmentation) : action partagée avec le menu Segmentation.
     layersMenu->addAction(showSegAct_);
     showVectorsAct_ = layersMenu->addAction(tr("&Vecteurs"));
+    showVectorsAct_->setObjectName(QStringLiteral("action_showVectorsLayer"));
     showVectorsAct_->setCheckable(true);
     showVectorsAct_->setChecked(true);
     connect(showVectorsAct_, &QAction::toggled, this, [this] { displayImage(processed_); });
     showStitchesAct_ = layersMenu->addAction(tr("&Broderie (points)"));
+    showStitchesAct_->setObjectName(QStringLiteral("action_showStitchesLayer"));
     showStitchesAct_->setCheckable(true);
     showStitchesAct_->setChecked(true);
     connect(showStitchesAct_, &QAction::toggled, this, [this] { displayImage(processed_); });
     buildRealisticMenu(viewMenu);
     viewMenu->addSeparator();
     zoomInAct_ = viewMenu->addAction(tr("Zoom &avant"));
+    zoomInAct_->setObjectName(QStringLiteral("action_zoomIn"));
     auto* zoomInAct = zoomInAct_;
     // Ctrl++ demande Maj sur un clavier AZERTY : Ctrl+= (sans Maj) en plus.
     zoomInAct->setShortcuts(
         {QKeySequence(QKeySequence::ZoomIn), QKeySequence(Qt::CTRL | Qt::Key_Equal)});
     connect(zoomInAct, &QAction::triggered, view_, &CanvasView::zoomIn);
     zoomOutAct_ = viewMenu->addAction(tr("Zoom a&rrière"));
+    zoomOutAct_->setObjectName(QStringLiteral("action_zoomOut"));
     auto* zoomOutAct = zoomOutAct_;
     zoomOutAct->setShortcut(QKeySequence::ZoomOut);
     connect(zoomOutAct, &QAction::triggered, view_, &CanvasView::zoomOut);
     fitCanvasAct_ = viewMenu->addAction(tr("A&juster au canevas"));
+    fitCanvasAct_->setObjectName(QStringLiteral("action_fitCanvas"));
     auto* fitAct = fitCanvasAct_;
     // Ctrl+0 et F sur la MÊME action : les deux sont alors affichés dans le menu.
     fitAct->setShortcuts({QKeySequence(Qt::CTRL | Qt::Key_0), QKeySequence(Qt::Key_F)});
@@ -1021,33 +1052,36 @@ void MainWindow::buildMenus() {
 
     viewMenu->addSeparator();
     auto* hoopAct = viewMenu->addAction(tr("Tai&lle du cadre…"));
+    hoopAct->setObjectName(QStringLiteral("action_hoopSize"));
     hoopAct->setToolTip(tr("Définit la zone physique de broderie (cadre)."));
     connect(hoopAct, &QAction::triggered, this, &MainWindow::setHoopSize);
 
     viewMenu->addSeparator();
     auto* themeMenu = viewMenu->addMenu(tr("&Thème"));
     auto* themeGroup = new QActionGroup(this);
-    const auto addThemeAct = [&](const QString& label, ThemeMode m) {
+    const auto addThemeAct = [&](const QString& label, ThemeMode m, const char* name) {
         auto* act = themeMenu->addAction(label);
+        act->setObjectName(QString::fromLatin1(name));
         act->setCheckable(true);
         act->setChecked(AppTheme::instance().mode() == m);
         themeGroup->addAction(act);
         connect(act, &QAction::triggered, this, [m] { AppTheme::instance().setMode(m); });
     };
-    addThemeAct(tr("Clair"), ThemeMode::Light);
-    addThemeAct(tr("Sombre"), ThemeMode::Dark);
+    addThemeAct(tr("Clair"), ThemeMode::Light, "action_themeLight");
+    addThemeAct(tr("Sombre"), ThemeMode::Dark, "action_themeDark");
 
     auto* densityMenu = viewMenu->addMenu(tr("&Densité"));
     auto* densityGroup = new QActionGroup(this);
-    const auto addDensityAct = [&](const QString& label, Density d) {
+    const auto addDensityAct = [&](const QString& label, Density d, const char* name) {
         auto* act = densityMenu->addAction(label);
+        act->setObjectName(QString::fromLatin1(name));
         act->setCheckable(true);
         act->setChecked(AppTheme::instance().density() == d);
         densityGroup->addAction(act);
         connect(act, &QAction::triggered, this, [d] { AppTheme::instance().setDensity(d); });
     };
-    addDensityAct(tr("Confortable"), Density::Comfortable);
-    addDensityAct(tr("Compact"), Density::Compact);
+    addDensityAct(tr("Confortable"), Density::Comfortable, "action_densityComfortable");
+    addDensityAct(tr("Compact"), Density::Compact, "action_densityCompact");
     buildNavigationMenu(viewMenu);
     snapNodesAct_ = viewMenu->addAction(tr("Accrochage des nœuds au glisser"));
     snapNodesAct_->setObjectName(QStringLiteral("action_snapNodesOnDrag"));
@@ -1067,6 +1101,7 @@ void MainWindow::buildMenus() {
     panelsMenu_ = viewMenu->addMenu(tr("&Panneaux"));
     panelsMenu_->setObjectName(QStringLiteral("menu_panels"));
     auto* hidePanelsAct = viewMenu->addAction(tr("&Masquer les panneaux"));
+    hidePanelsAct->setObjectName(QStringLiteral("action_hidePanels"));
     hidePanelsAct_ = hidePanelsAct;
     hidePanelsAct->setCheckable(true);
     hidePanelsAct->setShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_P));

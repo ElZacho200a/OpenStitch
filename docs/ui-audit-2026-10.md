@@ -243,7 +243,7 @@ plutôt que par relecture : ils vérifient sur la vraie `MainWindow`, à chaque 
 | **Aucune action orpheline** (ni dans un menu/une barre, ni de raccourci) | OK après la correction ci-dessus |
 | **Inspecteur : tous les widgets de saisie émettent**, pour les 5 types d'objets (87 widgets : contour, tatami, satin, directionnel, auto-satin) | OK : aucun réglage fantôme |
 | **Infobulles annonçant une touche** (« (D) ») égales au raccourci réel | OK |
-| Actions de menu avec `objectName` | **Dette connue** : ~80 actions sans nom (introuvables par les tests, instables pour les technologies d'assistance). Déclarée en échec attendu : le test échoue en XPASS dès que tout est nommé |
+| Actions de menu avec `objectName` | **Corrigé** : 45 actions de menu n'avaient pas de nom (introuvables par les tests, instables pour les technologies d'assistance) ; elles sont nommées (`action_openImage`, `action_zoomIn`, `action_themeDark`…) et l'invariant est strict. Le chiffre « ~80 » d'une première mesure incluait des actions internes de Qt (bascules de docks et de barres, champs de recherche), non concernées |
 
 Un même raccourci n'est porté que par une `QAction` unique (ajoutée à la barre contextuelle et au menu) :
 le test lit les mêmes actions que l'utilisateur voit.

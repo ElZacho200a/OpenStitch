@@ -439,9 +439,9 @@ private slots:
         QVERIFY2(wrong.isEmpty(), qPrintable(wrong.join(QStringLiteral(" | "))));
     }
 
-    // Dette connue (audit 2026-10-12) : ~80 actions sans objectName, donc introuvables par
-    // les tests et instables pour les technologies d'assistance. XFAIL : dès que tout est
-    // nommé, ce test échoue en XPASS et le marqueur doit être retiré.
+    // Toute action de menu porte un objectName : sans lui elle est introuvable par les tests
+    // et instable pour les technologies d'assistance (audit 2026-10-12 : 45 actions
+    // nommées d'un coup, l'invariant empêche de les laisser réapparaître).
     void everyMenuActionHasAnObjectName() {
         MainWindow window;
         QList<QAction*> menuActions;
@@ -452,12 +452,13 @@ private slots:
         }
         QStringList unnamed;
         for (const QAction* action : menuActions) {
+            // Les bascules des docks et des barres appartiennent à Qt (nom interne).
             if (action->objectName().isEmpty() && !action->text().isEmpty() &&
-                action->parent() == &window) {
+                qobject_cast<QDockWidget*>(action->parent()) == nullptr &&
+                qobject_cast<QToolBar*>(action->parent()) == nullptr) {
                 unnamed << action->text();
             }
         }
-        QEXPECT_FAIL("", "actions de menu sans objectName (audit 2026-10-12)", Continue);
         QVERIFY2(unnamed.isEmpty(),
                  qPrintable(QString::number(unnamed.size()) + QStringLiteral(" : ") +
                             unnamed.join(QStringLiteral(" | "))));

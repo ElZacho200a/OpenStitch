@@ -152,6 +152,7 @@ void MainWindow::buildAnalysisPanel() {
 
     auto* analyseMenu = menuBar()->addMenu(tr("A&nalyse"));
     analyzeAct_ = analyseMenu->addAction(tr("&Analyser le motif"));
+    analyzeAct_->setObjectName(QStringLiteral("action_analyze"));
     analyseMenu->addAction(statsAct_);
     analyzeAct_->setShortcut(QKeySequence(Qt::Key_F5));
     connect(analyzeAct_, &QAction::triggered, this, &MainWindow::runAnalysis);

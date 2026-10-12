@@ -89,6 +89,7 @@ void MainWindow::buildThreadPanel() {
     auto* importAct = menu->addAction(tr("&Importer un nuancier (CSV, JSON)…"));
     importAct->setObjectName(QStringLiteral("action_importThreadChart"));
     auto* formatAct = menu->addAction(tr("&Format d'import des nuanciers…"));
+    formatAct->setObjectName(QStringLiteral("action_threadChartFormat"));
     auto* exportAct = menu->addAction(tr("&Exporter la liste des fils (CSV)…"));
     exportAct->setObjectName(QStringLiteral("action_exportThreadList"));
 
