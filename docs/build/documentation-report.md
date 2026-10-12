@@ -2,11 +2,11 @@
 
 - **PDF** : `docs/build/OpenStitch-Studio-Documentation.pdf`
 - **Existe** : oui
-- **Pages** : 245
-- **Taille** : 2059.3 Kio (2108728 octets)
+- **Pages** : 259
+- **Taille** : 2133.4 Kio (2184570 octets)
 - **Chaîne** : python-markdown -> HTML/CSS -> xhtml2pdf (reportlab), SVG via svglib
 - **Commande** : `docs\scripts\build-docs.ps1` (ou `python docs/scripts/build-docs.py`)
-- **Chapitres produits** : 43
+- **Chapitres produits** : 45
 
 ## Chapitres
 - À propos de ce document
@@ -26,6 +26,7 @@
 - Colonne satin
 - Remplissage tatami
 - Remplissage directionnel
+- Lettrage (texte brodé)
 - Retouche des points et de la géométrie
 - Recherche brevets broderie
 - Fiches brevets : satin, squelette et jonctions
@@ -37,6 +38,7 @@
 - Analyse et validation
 - Fiche de production
 - Format DST (Tajima)
+- Formats PES, JEF et EXP
 - Format de projet `.osp`
 - Architecture logicielle
 - Référence des modules

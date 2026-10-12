@@ -5657,10 +5657,12 @@ void MainWindow::updateContextToolbar() {
             auto* rot = contextToolbar_->addAction(tr("Orientation…"));
             connect(rot, &QAction::triggered, this, &MainWindow::changeFillAngle);
             contextToolbar_->addAction(autoDirectionGuideAct_);
+            contextToolbar_->addAction(twoColorBlendAct_);
         }
         if (emb->is_directional()) {
             contextToolbar_->addSeparator();
             contextToolbar_->addAction(autoDirectionGuideAct_);
+            contextToolbar_->addAction(twoColorBlendAct_);
             contextToolbar_->addAction(directionGuideModeAct_);
             if (directionGuideModeAct_->isChecked()) {
                 contextToolbar_->addAction(drawDirectionGuideAct_);

@@ -683,6 +683,7 @@ private slots:
     // Remplissage directionnel : conversion, outil de guides, undo/redo.
     void convertingTatamiToDirectionalIsUndoable();
     void densityGradientIsUndoableAndSpansTheShape();
+    void twoColorBlendCreatesBackgroundAndTopInOneUndoStep();
     void inspectorRebuildsAfterUndoOfAParameterEdit();
     void inspectorRebuildsAfterTypeChangeKeepingTheSameId();
     void parameterBurstIsOneNamedUndoStep();
@@ -4385,6 +4386,56 @@ void MainWindowTest::densityGradientIsUndoableAndSpansTheShape() {
 
     window.setDensityGradient(fx.embroideryId, false, 0.0, 0.0);
     QVERIFY(!gradientOf().has_value());
+}
+
+void MainWindowTest::twoColorBlendCreatesBackgroundAndTopInOneUndoStep() {
+    MainWindow window;
+    Fixture fx = buildTatamiSquareFixture();
+    // Image 80 x 80 px de 0,125 mm (10 x 10 mm) : dégradé horizontal rouge -> bleu.
+    auto& img = fx.project.original;
+    img.width = 80;
+    img.height = 80;
+    img.rgba.assign(80 * 80 * 4, 255);
+    for (int y = 0; y < 80; ++y) {
+        for (int x = 0; x < 80; ++x) {
+            std::uint8_t* px = img.rgba.data() + (static_cast<std::size_t>(y) * 80 + x) * 4;
+            px[0] = static_cast<std::uint8_t>(220 - x * 2);
+            px[1] = 30;
+            px[2] = static_cast<std::uint8_t>(30 + x * 2);
+        }
+    }
+    fx.project.mm_per_px = openstitch::Millimeters{0.125};
+    window.applyLoadedProject(fx.project);
+    window.selectedEmbroidery_ = fx.embroideryId;
+    window.updateActions();
+
+    auto* action = window.findChild<QAction*>(QStringLiteral("action_twoColorBlend"));
+    QVERIFY(action != nullptr);
+    QVERIFY(action->isEnabled());
+    const auto baseColorBefore = window.project_.findEmbroidery(fx.embroideryId)->rgb;
+    QCOMPARE(window.project_.embroidery_objects.size(), std::size_t{1});
+
+    action->trigger();
+
+    QCOMPARE(window.project_.embroidery_objects.size(), std::size_t{2});
+    const auto* base = window.project_.findEmbroidery(fx.embroideryId);
+    QVERIFY(base != nullptr && base->is_tatami()); // le fond garde son rang et son type
+    const auto& top = window.project_.embroidery_objects.back(); // cousu après le fond
+    QVERIFY(top.id != fx.embroideryId);
+    QVERIFY(top.is_directional());
+    QCOMPARE(top.source_vector, base->source_vector);
+    const auto& dp = std::get<openstitch::document::DirectionalFillParams>(top.params);
+    QVERIFY(dp.density_gradient.has_value());
+    QVERIFY(!dp.underlay_edge && !dp.underlay_parallel);
+    QVERIFY(top.rgb != base->rgb); // deux couleurs distinctes
+    QVERIFY(QString::fromStdString(window.undoStack_.undoName()).contains(QStringLiteral("Fondu")));
+    QVERIFY(window.sequence_.has_value()); // la génération a bien tourné
+
+    window.undo(); // une seule annulation défait tout
+    QCOMPARE(window.project_.embroidery_objects.size(), std::size_t{1});
+    QVERIFY(window.project_.findEmbroidery(fx.embroideryId)->rgb == baseColorBefore);
+    window.redo();
+    QCOMPARE(window.project_.embroidery_objects.size(), std::size_t{2});
 }
 
 void MainWindowTest::autoDirectionGuideConvertsTatamiAndIsUndoable() {

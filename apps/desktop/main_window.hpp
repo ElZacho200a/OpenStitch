@@ -225,6 +225,7 @@ private slots:
     void setJoinMode(ObjectId id, int mode);
     void setDensityGradient(ObjectId embroideryId, bool enabled, double angleDeg,
                             double endSpacingMm);
+    void applyTwoColorBlend();
     // Mode « Guides de direction » : affiche l'aperçu du champ, les guides et
     // les lignes de rupture de l'objet ciblé, avec poignées déplaçables.
     void onDirectionGuideModeToggled(bool on);
@@ -1050,6 +1051,7 @@ private:
     // satin). Tracé en cours : points posés (repère modèle) + aperçu.
     QAction* directionGuideModeAct_{nullptr};
     QAction* autoDirectionGuideAct_{nullptr};
+    QAction* twoColorBlendAct_{nullptr};
     QAction* drawDirectionGuideAct_{nullptr};
     QAction* drawBreakLineAct_{nullptr};
     std::optional<ObjectId> directionGuideTarget_;

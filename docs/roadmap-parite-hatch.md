@@ -844,13 +844,14 @@ plus.
   espacement variable ; option satin à densité variable.
 - Modules : `libs/stitch_generation`.
 
-### HP-STI-011 — Mélange de couleurs (color blending) [P2] — ◐ Partiel (analyse)
+### HP-STI-011 — Mélange de couleurs (color blending) [P2] — ◐ Partiel (action disponible)
 - Fait : `autodigitize::analyze_two_color_blend` (ACP en CMY → deux couleurs,
   plan de proportion → `DensityGradient`), `thread_palette::best_thread_pair`
   (ΔE2000 + contraste WCAG), `BilateralDenoiseOp`. Voir *Fondu de couleurs à
-  deux fils* dans `directional-fill.md`. Reste : action dans l'interface
-  (échantillonner l'image sous la région, créer le fond et le remplissage de
-  dessus liés, choisir les fils), dégradés non linéaires.
+  deux fils* dans `directional-fill.md`. Action **Broderie ▸ Fondu de couleurs
+  à deux fils** (fond + remplissage de dessus, fils du nuancier du panneau Fils,
+  une seule annulation). Reste : liaison entre les deux objets, dégradés non
+  linéaires, réglage de la largeur de fil.
 - Hatch : deux couches de dégradés inverses qui se mélangent.
 - À faire : couple d'objets liés à dégradés complémentaires générés ensemble.
 - Dépend de : HP-STI-010.

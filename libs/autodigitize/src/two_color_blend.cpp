@@ -4,6 +4,10 @@
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
+#include <utility>
+
+#include "openstitch/geometry/polyline.hpp"
+#include "openstitch/image/ops.hpp"
 
 namespace openstitch::autodigitize {
 
@@ -230,6 +234,136 @@ std::optional<TwoColorBlend> analyze_two_color_blend(const std::vector<ColorSamp
             Micrometers{spacing_for(tFrom, options)}, Micrometers{spacing_for(tTo, options)}};
     }
     return out;
+}
+
+namespace {
+
+// Polygone aplati (contour extérieur ou trou) pour le test pair-impair.
+struct FlatRing {
+    std::vector<std::pair<double, double>> pts;
+};
+
+bool inside_even_odd(const std::vector<FlatRing>& rings, double x, double y) {
+    bool inside = false;
+    for (const auto& ring : rings) {
+        const auto& p = ring.pts;
+        for (std::size_t i = 0, j = p.size() - 1; i < p.size(); j = i++) {
+            const bool straddles = (p[i].second > y) != (p[j].second > y);
+            if (straddles &&
+                x < (p[j].first - p[i].first) * (y - p[i].second) / (p[j].second - p[i].second) +
+                        p[i].first) {
+                inside = !inside;
+            }
+        }
+    }
+    return inside;
+}
+
+} // namespace
+
+std::vector<ColorSample> sample_region_colors(const image::Image& image, Millimeters mm_per_px,
+                                              const std::vector<geometry::PathSet>& shape,
+                                              std::size_t max_samples) {
+    std::vector<ColorSample> out;
+    if (image.empty() || mm_per_px.value <= 0.0 || max_samples == 0) {
+        return out;
+    }
+    std::vector<FlatRing> rings;
+    for (const auto& set : shape) {
+        const auto flat = geometry::flatten_to_polygon(set, Micrometers{50});
+        const auto add = [&rings](const geometry::Path& path) {
+            if (path.nodes.size() < 3) {
+                return;
+            }
+            FlatRing ring;
+            for (const auto& node : path.nodes) {
+                ring.pts.emplace_back(static_cast<double>(node.pos.x.value),
+                                      static_cast<double>(node.pos.y.value));
+            }
+            rings.push_back(std::move(ring));
+        };
+        add(flat.outer);
+        for (const auto& hole : flat.holes) {
+            add(hole);
+        }
+    }
+    if (rings.empty()) {
+        return out;
+    }
+
+    const double pxUm = mm_per_px.value * 1000.0;
+    const double w = image.width;
+    const double h = image.height;
+    // Boîte englobante de la forme en pixels.
+    double minX = 1e300;
+    double maxX = -1e300;
+    double minY = 1e300;
+    double maxY = -1e300;
+    for (const auto& ring : rings) {
+        for (const auto& [x, y] : ring.pts) {
+            minX = std::min(minX, x);
+            maxX = std::max(maxX, x);
+            minY = std::min(minY, y);
+            maxY = std::max(maxY, y);
+        }
+    }
+    const int x0 = std::max(0, static_cast<int>(std::floor(minX / pxUm + w / 2.0 - 0.5)));
+    const int x1 = std::min(image.width - 1, static_cast<int>(std::ceil(maxX / pxUm + w / 2.0)));
+    const int y0 = std::max(0, static_cast<int>(std::floor(h / 2.0 - maxY / pxUm - 0.5)));
+    const int y1 = std::min(image.height - 1, static_cast<int>(std::ceil(h / 2.0 - minY / pxUm)));
+    if (x1 < x0 || y1 < y0) {
+        return out;
+    }
+    const double boxPixels = static_cast<double>(x1 - x0 + 1) * static_cast<double>(y1 - y0 + 1);
+    const int stride = std::max(
+        1, static_cast<int>(std::ceil(std::sqrt(boxPixels / static_cast<double>(max_samples)))));
+    for (int py = y0; py <= y1; py += stride) {
+        for (int px = x0; px <= x1; px += stride) {
+            const double xUm = (px + 0.5 - w / 2.0) * pxUm;
+            const double yUm = (h / 2.0 - (py + 0.5)) * pxUm;
+            if (!inside_even_odd(rings, xUm, yUm)) {
+                continue;
+            }
+            const std::uint8_t* pixel =
+                image.rgba.data() +
+                (static_cast<std::size_t>(py) * static_cast<std::size_t>(image.width) +
+                 static_cast<std::size_t>(px)) *
+                    4;
+            if (pixel[3] < 128) {
+                continue;
+            }
+            out.push_back({to_um(xUm, yUm), {pixel[0], pixel[1], pixel[2]}});
+        }
+    }
+    return out;
+}
+
+Result<RegionBlend> analyze_region_blend(const image::Image& image, Millimeters mm_per_px,
+                                         const std::vector<geometry::PathSet>& shape,
+                                         const thread_palette::ThreadChart* chart,
+                                         const TwoColorBlendOptions& options) {
+    if (image.empty()) {
+        return fail(ErrorCategory::UserInput, "Aucune image à analyser");
+    }
+    // Lissage bilatéral : le grain et le bruit JPEG ne doivent pas fausser l'ACP.
+    const auto smooth = image::apply_op(image, image::BilateralDenoiseOp{2});
+    const image::Image& source = smooth ? *smooth : image;
+    const auto samples = sample_region_colors(source, mm_per_px, shape);
+    if (samples.size() < 2) {
+        return fail(ErrorCategory::UserInput, "La forme ne recouvre aucun pixel de l'image");
+    }
+    const auto blend = analyze_two_color_blend(samples, options);
+    if (!blend) {
+        return fail(ErrorCategory::UserInput,
+                    "Les couleurs de cette forme sont trop uniformes pour un fondu à deux fils");
+    }
+    RegionBlend result;
+    result.blend = *blend;
+    if (chart != nullptr) {
+        result.threads =
+            thread_palette::best_thread_pair(blend->background, blend->foreground, *chart);
+    }
+    return result;
 }
 
 } // namespace openstitch::autodigitize

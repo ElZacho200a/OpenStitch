@@ -6,8 +6,13 @@
 #include <optional>
 #include <vector>
 
+#include "openstitch/core/error.hpp"
 #include "openstitch/core/units.hpp"
 #include "openstitch/document/embroidery_object.hpp"
+#include "openstitch/geometry/path.hpp"
+#include "openstitch/image/image.hpp"
+#include "openstitch/thread_palette/color_distance.hpp"
+#include "openstitch/thread_palette/thread.hpp"
 
 namespace openstitch::autodigitize {
 
@@ -48,6 +53,30 @@ struct TwoColorBlend {
     // la région n'a pas de dégradé net : écart uniforme selon `mean_t`.
     document::DensityGradient foreground_density;
 };
+
+// Échantillons d'une image sous une forme : un pixel sur `stride` (de sorte
+// qu'il y en ait au plus `max_samples`), centre de pixel converti dans le repère
+// du modèle (origine au centre de l'image, Y vers le haut, comme la
+// vectorisation). Pixels transparents (alpha < 128) ignorés ; intérieur au
+// sens pair-impair sur `shape` (contours extérieurs et trous). Déterministe.
+[[nodiscard]] std::vector<ColorSample>
+sample_region_colors(const image::Image& image, Millimeters mm_per_px,
+                     const std::vector<geometry::PathSet>& shape, std::size_t max_samples = 20'000);
+
+struct RegionBlend {
+    TwoColorBlend blend;
+    // Paire de fils réels du nuancier fourni (absente si aucun nuancier).
+    std::optional<thread_palette::ThreadPairMatch> threads;
+};
+
+// Chaîne complète pour une forme de l'image de travail : lissage bilatéral
+// (grain et bruit JPEG), échantillonnage, `analyze_two_color_blend`, puis choix
+// des fils dans `chart` s'il est fourni (`best_thread_pair`). Erreur
+// utilisateur si la forme est vide ou si ses couleurs sont trop uniformes pour
+// un fondu.
+[[nodiscard]] Result<RegionBlend> analyze_region_blend(
+    const image::Image& image, Millimeters mm_per_px, const std::vector<geometry::PathSet>& shape,
+    const thread_palette::ThreadChart* chart = nullptr, const TwoColorBlendOptions& options = {});
 
 // Analyse `samples` : ACP des couleurs en CMY (première composante), choix de
 // s1/s2 aux extrémités de l'axe après rejet des valeurs aberrantes, puis
