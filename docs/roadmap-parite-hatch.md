@@ -861,8 +861,11 @@ plus.
   image pixélisée en grille, fil par cellule.
 - Modules : `libs/stitch_generation`, `apps/desktop`.
 
-### HP-STI-013 — Stipple / méandre (quilting) [P2] — ☐ À faire
-- À faire : chemin aléatoire (graine fixe) qui remplit une zone sans se croiser
+### HP-STI-013 — Stipple / méandre (quilting) [P2] — ◐ Partiel
+- État OpenStitch : stippling d'image ✓ (`libs/stipple`, `digitize --mode
+  stipple`, voir `auto-numerisation.md`) ; reste le remplissage d'une zone
+  vectorielle (méandre) et le réglage dans le desktop.
+- À faire (zone) : chemin aléatoire (graine fixe) qui remplit une zone sans se croiser
   (courbe de remplissage type Hilbert ou TSP-art), espacement réglable.
 - Modules : `libs/stitch_generation`.
 
@@ -881,7 +884,10 @@ plus.
 ### HP-STI-016 — Trapunto [P3] — ☐ À faire
 - Hatch : zones surélevées par contours à l'intérieur d'un remplissage.
 
-### HP-STI-017 — PhotoStitch (photo en lignes) [P2] — ☐ À faire
+### HP-STI-017 — PhotoStitch (photo en lignes) [P2] — ◐ Partiel
+- État OpenStitch : version monochrome en semis de points reliés par un tour
+  TSP (`digitize --mode stipple`). Reste : trame par lignes, couleur par
+  couches.
 - Hatch : PhotoFlash / Color PhotoStitch : une photo devient des lignes de
   points de densité variable.
 - À faire : trame par lignes dont la densité suit la luminance (mono), puis

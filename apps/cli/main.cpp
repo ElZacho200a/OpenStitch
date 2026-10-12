@@ -23,6 +23,7 @@
 #include "openstitch/auto_satin/skeleton_satin.hpp"
 #include "openstitch/autodigitize/autodigitize.hpp"
 #include "openstitch/autodigitize/contour_objects.hpp"
+#include "openstitch/autodigitize/stipple_objects.hpp"
 #include "openstitch/core/app_info.hpp"
 #include "openstitch/core/log.hpp"
 #include "openstitch/document/embroidery_object.hpp"
@@ -671,6 +672,9 @@ struct DigitizeArgs {
     double curveToleranceMm = 0.0; // mode formes : > 0 -> contours en courbes de Bézier
     bool singlePath = false;       // mode contours : parcours eulérien (moins de coupes)
     bool coherentLines = false;    // mode contours : photo -> traits (FDoG) avant segmentation
+    int stipplePoints = 2000;      // mode stipple : nombre de points du semis
+    int stippleSeed = 1;           // mode stipple : graine du tirage initial
+    bool stippleInvert = false;    // mode stipple : densité sur les zones claires
     bool json = false;
     bool noClobber = false;
 };
@@ -731,21 +735,27 @@ int run_digitize(const DigitizeArgs& a) {
                                   : a.lock == "zigzag"   ? document::LockStitch::MicroZigzag
                                                          : document::LockStitch::BackAndForth;
 
-    auto seg = segmentation::segment(project.original, {.max_colors = a.maxColors,
-                                                        .min_region_px = a.minRegionPx,
-                                                        .smoothing_radius_px = a.smoothingPx});
-    if (!seg) {
-        return cli_error("digitize",
-                         fmt::format("segmentation impossible : {}", seg.error().message),
-                         "essayez une image plus grande ou --max-colors différent");
+    // Stippling : pas de segmentation, l'image est lue comme une carte de tons.
+    const bool stippling = a.mode == "stipple";
+    std::size_t regionCount = 0;
+    std::optional<segmentation::BackgroundCandidate> candidate;
+    if (!stippling) {
+        auto seg = segmentation::segment(project.original, {.max_colors = a.maxColors,
+                                                            .min_region_px = a.minRegionPx,
+                                                            .smoothing_radius_px = a.smoothingPx});
+        if (!seg) {
+            return cli_error("digitize",
+                             fmt::format("segmentation impossible : {}", seg.error().message),
+                             "essayez une image plus grande ou --max-colors différent");
+        }
+        regionCount = seg->region_count();
+        fmt::print(st, "Régions segmentées : {}\n", regionCount);
+        project.segmentation = std::move(*seg);
+        candidate = segmentation::background_candidate(*project.segmentation);
     }
-    const std::size_t regionCount = seg->region_count();
-    fmt::print(st, "Régions segmentées : {}\n", regionCount);
-    project.segmentation = std::move(*seg);
 
     // Même règle que le dialogue desktop (Lot A) : jamais sur le seul
     // critère « pas d'alpha ».
-    const auto candidate = segmentation::background_candidate(*project.segmentation);
     if (candidate) {
         fmt::print(st,
                    "Région candidate au fond : #{:02X}{:02X}{:02X}, {:.1f} % de l'image, L* "
@@ -753,7 +763,9 @@ int run_digitize(const DigitizeArgs& a) {
                    candidate->rgb[0], candidate->rgb[1], candidate->rgb[2],
                    candidate->area_ratio * 100.0, candidate->lightness, candidate->sides_touched);
     }
-    const bool skipLargest = a.skipBg < 0 ? (candidate && candidate->recommended) : (a.skipBg != 0);
+    const bool skipLargest =
+        stippling ? false
+                  : (a.skipBg < 0 ? (candidate && candidate->recommended) : (a.skipBg != 0));
     autodigitize::AutoOptions opts;
     opts.mm_per_px = project.mm_per_px;
     opts.skip_largest_region = skipLargest;
@@ -780,16 +792,37 @@ int run_digitize(const DigitizeArgs& a) {
     if (contours) {
         fmt::print(st, "Mode : contours (detail {:.2f}, technique {})\n", a.detail, a.technique);
     }
-    auto result =
-        contours ? autodigitize::auto_digitize_contours(*project.segmentation, project.object_ids,
-                                                        co, &cm)
-                 : autodigitize::auto_digitize(*project.segmentation, project.object_ids, opts);
+    autodigitize::StippleMetrics sm;
+    auto result = [&]() -> Result<autodigitize::AutoResult> {
+        if (stippling) {
+            autodigitize::StippleObjectOptions so;
+            so.mm_per_px = project.mm_per_px;
+            so.density.invert = a.stippleInvert;
+            so.stipple.point_count = a.stipplePoints;
+            so.stipple.seed = static_cast<std::uint32_t>(a.stippleSeed);
+            fmt::print(st, "Mode : stippling ({} points, graine {})\n", a.stipplePoints,
+                       a.stippleSeed);
+            return autodigitize::auto_digitize_stipple(project.original, project.object_ids, so,
+                                                       &sm);
+        }
+        return contours
+                   ? autodigitize::auto_digitize_contours(*project.segmentation, project.object_ids,
+                                                          co, &cm)
+                   : autodigitize::auto_digitize(*project.segmentation, project.object_ids, opts);
+    }();
     if (!result) {
         return cli_error("digitize",
                          fmt::format("numérisation impossible : {}", result.error().message),
                          "image trop uniforme, ou seul le fond a été détecté : essayez "
                          "--skip-background no, --max-colors plus grand ou --min-region-px plus "
                          "petit");
+    }
+    if (stippling) {
+        fmt::print(st,
+                   "Stippling : {} points, {} polyligne(s), tour {:.0f} mm (initial {:.0f} mm), "
+                   "{} relaxation(s)\n",
+                   sm.points, sm.polylines, sm.tour_length_mm, sm.initial_tour_length_mm,
+                   sm.lloyd_iterations);
     }
     if (contours) {
         fmt::print(st, "Contours : composantes={} segments={} jonctions={} extremites={}\n",
@@ -1459,8 +1492,9 @@ int main(int argc, char** argv) {
         ->check(CLI::PositiveNumber);
     dz_cmd
         ->add_option("--mode", dz.mode,
-                     "Stratégie : shapes (formes pleines, défaut) | contours (dessin au trait)")
-        ->check(CLI::IsMember({"shapes", "contours"}));
+                     "Stratégie : shapes (formes pleines, défaut) | contours (dessin au trait) | "
+                     "stipple (semis de points relié en un trait, rendu des tons)")
+        ->check(CLI::IsMember({"shapes", "contours", "stipple"}));
     dz_cmd
         ->add_option("--detail", dz.detail, "Mode contours : niveau de détail 0..1 (défaut : 0.5)")
         ->check(CLI::Range(0.0, 1.0));
@@ -1482,6 +1516,16 @@ int main(int argc, char** argv) {
     dz_cmd->add_flag("--coherent-lines", dz.coherentLines,
                      "Mode contours : extrait d'abord des traits de la photo (lignes cohérentes, "
                      "FDoG) avant la segmentation");
+    dz_cmd
+        ->add_option("--stipple-points", dz.stipplePoints,
+                     "Mode stipple : nombre de points (défaut : 2000)")
+        ->check(CLI::Range(1, 200000));
+    dz_cmd
+        ->add_option("--stipple-seed", dz.stippleSeed,
+                     "Mode stipple : graine du tirage initial (défaut : 1)")
+        ->check(CLI::NonNegativeNumber);
+    dz_cmd->add_flag("--stipple-invert", dz.stippleInvert,
+                     "Mode stipple : points denses sur les zones claires (fil clair, fond sombre)");
     dz_cmd->add_option("--lock", dz.lock, "Point d'arrêt : none|backforth|triangle|zigzag")
         ->check(CLI::IsMember({"none", "backforth", "triangle", "zigzag"}));
     dz_cmd->add_flag("--json", json_out,

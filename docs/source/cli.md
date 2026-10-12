@@ -104,10 +104,13 @@ Mêmes valeurs par défaut que le dialogue **Numérisation automatique** du bure
 | `--smoothing-px N` | 3 | Lissage des formes |
 | `--curve-tolerance MM` | 0 (polygones) | Mode formes : contours en courbes de Bézier avec cet écart maximal ; prendre ~1,5 px ou plus (ex. 0.4) |
 | `--coherent-lines` | désactivé | Mode contours : extrait d'abord des traits de la photo (lignes cohérentes, FDoG) |
+| `--stipple-points N` | 2000 | Mode stipple (`--mode stipple`) : nombre de points du semis (1..200000) |
+| `--stipple-seed S` | 1 | Mode stipple : graine du tirage initial |
+| `--stipple-invert` | désactivé | Mode stipple : points denses sur les zones claires |
 | `--skip-background` | `auto` | `auto`, `yes` ou `no` : ignorer la plus grande région (le fond). `auto` : seulement si c'est un fond quasi blanc qui encadre le motif. Les anciennes valeurs `-1`, `0`, `1` restent acceptées. |
 | `--trim-threshold MM` | 3 | Coupe au-delà de ce déplacement |
 | `--lock` | `backforth` | Point d'arrêt : `none`, `backforth`, `triangle` ou `zigzag` |
-| `--mode` | `shapes` | `shapes` : formes pleines ; `contours` : dessin au trait (lignes médianes en point droit) |
+| `--mode` | `shapes` | `shapes` : formes pleines ; `contours` : dessin au trait (lignes médianes en point droit) ; `stipple` : semis de points relié en un trait |
 | `--detail 0..1` | 0.5 | Mode contours : niveau de détail |
 | `--technique` | `auto` | Mode contours : `auto`, `running` ou `legacy-satin`. `legacy-satin` : ancien satin dégradé en point droit (**pas** l'auto-satin) ; l'ancien nom `satin` est accepté avec un avertissement. |
 | `--output-svg FICHIER` | — | SVG de diagnostic en plus du DST |

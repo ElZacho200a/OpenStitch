@@ -13,8 +13,9 @@ add_executable(test_contour
     test_contour_pipeline.cpp
     test_contour_adversarial.cpp
     test_contour_route.cpp
+    test_stipple_objects.cpp
 )
 target_link_libraries(test_contour
-    PRIVATE openstitch::autodigitize openstitch::segmentation openstitch::geometry
-            Catch2::Catch2WithMain openstitch::warnings)
+    PRIVATE openstitch::autodigitize openstitch::stipple openstitch::segmentation
+            openstitch::geometry Catch2::Catch2WithMain openstitch::warnings)
 catch_discover_tests(test_contour)

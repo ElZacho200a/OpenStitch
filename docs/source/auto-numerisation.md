@@ -344,6 +344,35 @@ cas synthétique CLI, `detail` 0,9 produit des colonnes refusées sur un anneau
 fin (« trou entre stations ») : le segment est alors découpé en plusieurs
 objets au lieu de rester continu.
 
+## Stippling (semis de points relié en un trait)
+
+`libs/stipple` (Qt-free, sans dépendance GPL) transforme une image en un
+**unique trait de points droits** dont la densité reproduit les tons.
+
+1. **Densité** : luminance Rec. 601 → `(1 - L)^gamma` (alpha < 128 = vide),
+   moyenne par blocs jusqu'à 600 px max (`--stipple-invert` : zones claires
+   denses, pour un fil clair sur fond sombre).
+2. **Semis** (Secord, « Weighted Voronoi Stippling », NPAR 2002) : tirage par
+   rejet selon la densité (générateur xorshift64* portable, graine fixe), puis
+   relaxations de Lloyd où chaque point va au centroïde **pondéré par la
+   densité** de sa cellule de Voronoï (cellules exactes sur la grille). On
+   obtient un bruit bleu, dense dans les zones sombres.
+3. **Tour** : ordre de Hilbert, puis 2-opt (listes de voisins, bits
+   « don't look ») et Or-opt. Concorde n'est volontairement pas utilisé
+   (licence académique). Le tour fermé est coupé à son arête la plus longue
+   et aux liaisons > 8 mm : aucune liaison ne traverse un grand vide.
+4. **Objets** : un `VectorObject` (chemins ouverts) + un objet brodé point
+   droit (longueur 1,5 mm), fil noir par défaut.
+
+**Utilisation** : `openstitch-cli digitize image.png out.dst --mode stipple
+[--stipple-points N] [--stipple-seed S] [--stipple-invert]` (défaut 2000
+points). Résultat déterministe pour une graine donnée.
+
+**Limites connues** : pas de couleur (une seule couche monochrome) ; pas de
+bouton dans le desktop pour l'instant ; le trait reste un tour de points, pas
+une trame de lignes de densité variable (PhotoStitch complet = HP-STI-017
+partiel) ; un tour TSP heuristique est ~5 % au-dessus de l'optimum.
+
 ## Implémentation associée
 
 - `libs/segmentation/include/openstitch/segmentation/segmentation.hpp` —
