@@ -4165,6 +4165,17 @@ void MainWindow::autoDigitize() {
                "motif : sur une image plein cadre, la plus grande région (ciel, mer...) fait "
                "partie du dessin."));
         optsLayout->addWidget(skipBgCheck);
+        auto* satinBandsCheck =
+            new QCheckBox(tr("Satin automatique (bandes étroites, petits disques)"), &optsDialog);
+        satinBandsCheck->setObjectName("satinBandsCheck");
+        satinBandsCheck->setChecked(
+            ui_memory::intValue(QStringLiteral("autoDigitize/satinBands"), 0, 0, 1) != 0);
+        satinBandsCheck->setToolTip(
+            tr("Mode formes : les anneaux, rubans et traits de 0,8 à 6 mm de large sont cousus en "
+               "auto-satin au lieu d'un tatami (repli tatami si le satin couvre mal la forme). "
+               "Les petits disques (jusqu'à 12 mm) sont cousus en cordes parallèles ; les formes "
+               "plus larges restent en tatami."));
+        optsLayout->addWidget(satinBandsCheck);
         if (candidate) {
             auto* row = new QHBoxLayout;
             auto* swatch = new QLabel(&optsDialog);
@@ -4291,6 +4302,9 @@ void MainWindow::autoDigitize() {
         ui_memory::setIntValue(QStringLiteral("autoDigitize/maxThreads"), maxThreadsSpin->value());
         opts.max_threads = static_cast<std::size_t>(maxThreadsSpin->value());
         opts.skip_largest_region = skipBgCheck->isChecked();
+        opts.satin_bands = satinBandsCheck->isChecked();
+        ui_memory::setIntValue(QStringLiteral("autoDigitize/satinBands"),
+                               satinBandsCheck->isChecked() ? 1 : 0);
         opts.simplify_tolerance = vectorize_tolerance_from_detail(shapeDetailSlider->value());
         contoursMode = contoursRadio->isChecked();
         contourOpts.skip_largest_region = skipBgCheck->isChecked();

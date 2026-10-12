@@ -221,6 +221,7 @@ void generate_satin(stitch::StitchSequence& sequence, const document::Embroidery
 auto_satin::SkeletonSatinParameters auto_satin_engine(const document::AutoSatinParams& params) {
     auto_satin::SkeletonSatinParameters engine;
     engine.spacing = params.spacing;
+    engine.compact_axis = params.compact_axis;
     for (const auto& g : params.guides) {
         engine.guides.push_back({g.anchor, g.angle.radians, g.absolute});
     }

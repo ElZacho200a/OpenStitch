@@ -1018,10 +1018,35 @@ TEST_CASE("satin bandes : anneau mince -> auto-satin, desactive -> tatami") {
     CHECK_FALSE(any_auto_satin(*off));
 }
 
-TEST_CASE("satin bandes : disque et bande trop large restent en tatami") {
-    const auto disc = digitize_ring(40, 0, true);
-    REQUIRE(disc.has_value());
-    CHECK_FALSE(any_auto_satin(*disc));
+TEST_CASE("satin bandes : petit disque en satin a cordes paralleles, grand disque en tatami") {
+    // Disque de 25 px de rayon a 0,2 mm/px : 10 mm de diametre.
+    const auto small = digitize_ring(25, 0, true);
+    REQUIRE(small.has_value());
+    REQUIRE(any_auto_satin(*small));
+    for (const auto& e : small->embroideries) {
+        if (e.is_auto_satin()) {
+            CHECK(std::get<document::AutoSatinParams>(e.params).compact_axis);
+        }
+    }
+    // Reglage a 0 : les formes compactes restent en tatami.
+    {
+        const auto seg =
+            segmentation::segment(ring_image_px(25, 0), {.max_colors = 2, .min_region_px = 4});
+        REQUIRE(seg.has_value());
+        IdGenerator<ObjectId> ids;
+        AutoOptions opt;
+        opt.mm_per_px = Millimeters{0.2};
+        opt.skip_largest_region = true;
+        opt.satin_bands = true;
+        opt.satin_compact_max_width = Micrometers{0};
+        const auto off = auto_digitize(*seg, ids, opt);
+        REQUIRE(off.has_value());
+        CHECK_FALSE(any_auto_satin(*off));
+    }
+    // Disque de 16 mm : au-dessus de satin_compact_max_width.
+    const auto big = digitize_ring(40, 0, true);
+    REQUIRE(big.has_value());
+    CHECK_FALSE(any_auto_satin(*big));
 
     // Anneau de 60 px d'epaisseur (12 mm) : au-dessus de satin_max_width.
     const auto wide = digitize_ring(80, 20, true);
