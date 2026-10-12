@@ -163,6 +163,10 @@ CanvasView::CanvasView(QGraphicsScene* scene, QWidget* parent) : QGraphicsView(s
     setTransformationAnchor(QGraphicsView::NoAnchor); // zoomAt() ancre à la main
     setFrameShape(QFrame::NoFrame);                   // le viewport s'aligne avec les règles
     setMouseTracking(true);
+    // Rectangle de scène dès la construction : `setCanvasSizeMm` n'est appelé que lorsque la
+    // taille change, donc avec le cadre par défaut il ne l'était jamais -- la scène se limitait
+    // alors aux items (aucune marge de défilement) et l'outil Déplacer la vue restait inerte.
+    updateSceneRect();
     // Sans focus, keyPressEvent ne reçoit jamais les flèches (nudge clavier)
     // -- StrongFocus inclut le focus au clic, déjà le geste naturel pour
     // sélectionner une forme avant de la déplacer au clavier.
@@ -331,13 +335,18 @@ void CanvasView::setBezierDrawMode(bool enabled) {
     applyModeCursor(enabled ? Qt::CrossCursor : Qt::ArrowCursor);
 }
 
-void CanvasView::setCanvasSizeMm(QSizeF sizeMm) {
-    canvasMm_ = sizeMm;
+void CanvasView::updateSceneRect() {
     // Marge de travail autour du canevas : la moitié de sa taille de chaque côté.
+    const QSizeF sizeMm = canvasMm_;
     const QRectF canvas(-sizeMm.width() / 2.0, -sizeMm.height() / 2.0, sizeMm.width(),
                         sizeMm.height());
     scene()->setSceneRect(canvas.adjusted(-sizeMm.width() / 2.0, -sizeMm.height() / 2.0,
                                           sizeMm.width() / 2.0, sizeMm.height() / 2.0));
+}
+
+void CanvasView::setCanvasSizeMm(QSizeF sizeMm) {
+    canvasMm_ = sizeMm;
+    updateSceneRect();
     viewport()->update();
     emit viewChanged();
 }

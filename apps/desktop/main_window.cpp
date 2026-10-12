@@ -8787,6 +8787,8 @@ void MainWindow::updateActions() {
     for (QAction* act : imageActions_) {
         setEnabledWithReason(act, hasImage, tr("Ouvrez d'abord une image."));
     }
+    // Outil Recadrer de la palette : sans image il ne peut rien faire (le glisser serait ignoré).
+    setEnabledWithReason(toolRectAct_, hasImage, tr("Ouvrez d'abord une image."));
     setEnabledWithReason(showSegAct_, project_.segmentation.has_value(),
                          tr("Segmentez d'abord l'image (menu Segmentation)."));
     const QString noVectors = tr("Aucun objet vectoriel : vectorisez une région ou dessinez.");

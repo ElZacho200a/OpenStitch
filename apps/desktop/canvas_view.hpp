@@ -182,6 +182,7 @@ private:
     // jamais depuis un seul flag isolé (cf. commentaire détaillé dans
     // canvas_view.cpp, défaut « rectangle/ellipse ne dessinent rien »).
     void updateDragMode();
+    void updateSceneRect();
 
     [[nodiscard]] Context currentContext() const;
     // Filtre applicatif : Espace (tenu) et Alt seul. true = évènement consommé.
