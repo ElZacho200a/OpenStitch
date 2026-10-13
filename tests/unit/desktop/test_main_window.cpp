@@ -638,6 +638,13 @@ private slots:
     void sidebarPanMovesAZoomedView();
     void sidebarToolsAreGreyedWithAReasonWhenUseless();
     void sidebarPanWorksAtDefaultZoom();
+    void copyPasteKeepsEmbroideryAndIsOneUndoStep();
+    void cutThenPasteInPlaceRestoresTheShape();
+    void duplicateWithStitchesClonesTheEmbroidery();
+    void rotateAndMirrorSelectionTurnTheFillAngle();
+    void wholeDesignCanBeCenteredFittedAndMirrored();
+    void selectAllObjectsAndSameColor();
+    void embroideryColorAppliesAFreeColorToTheSelection();
     void groupedStitchTypeCoversEverySelectedShapeInOneStep();
     void groupInspectorEditsOneFieldOnEveryObjectInOneStep();
     void groupGuideAngleIsPlacedOnEveryAutoSatin();
@@ -7064,6 +7071,213 @@ void MainWindowTest::sidebarPanWorksAtDefaultZoom() {
     auto* view = window.findChild<CanvasView*>();
     QVERIFY(view->horizontalScrollBar()->maximum() > view->horizontalScrollBar()->minimum());
     QVERIFY(view->verticalScrollBar()->maximum() > view->verticalScrollBar()->minimum());
+}
+
+void MainWindowTest::copyPasteKeepsEmbroideryAndIsOneUndoStep() {
+    MainWindow window;
+    window.applyLoadedProject(twoOverlappingRectangles());
+    const ObjectId a = window.project_.vector_objects[0].id;
+    window.updateActions();
+    QVERIFY(!window.copyAct_->isEnabled()); // rien de sélectionné
+    window.setSelection({.region = std::nullopt, .embroidery = std::nullopt, .objects = {a}});
+    window.setStitchTypeForSelection(1);
+    window.updateActions();
+    QVERIFY(window.copyAct_->isEnabled());
+
+    window.copyAct_->trigger();
+    window.updateActions();
+    QVERIFY(window.pasteAct_->isEnabled());
+    window.pasteAct_->trigger();
+    QCOMPARE(window.project_.vector_objects.size(), std::size_t{3});
+    QCOMPARE(window.project_.embroidery_objects.size(), std::size_t{2});
+    const auto& copy = window.project_.vector_objects.back();
+    QVERIFY(copy.id != a);
+    // Décalé de 5 mm vers la droite et le bas de l'écran (Y modèle vers le haut).
+    QCOMPARE(copy.paths[0].outer.nodes[0].pos.x.value, 5'000);
+    QCOMPARE(copy.paths[0].outer.nodes[0].pos.y.value, -5'000);
+    const auto& copyEmb = window.project_.embroidery_objects.back();
+    QVERIFY(copyEmb.is_tatami());
+    QCOMPARE(copyEmb.source_vector, copy.id);
+    QCOMPARE(window.selectedObjectIds(), std::vector<ObjectId>{copy.id});
+    QVERIFY(window.checkSelectionInvariants());
+
+    // Second collage : décalage cumulé ; collage sur place : position d'origine.
+    window.pasteAct_->trigger();
+    QCOMPARE(window.project_.vector_objects.back().paths[0].outer.nodes[0].pos.x.value, 10'000);
+    window.pasteInPlaceAct_->trigger();
+    QCOMPARE(window.project_.vector_objects.back().paths[0].outer.nodes[0].pos.x.value, 0);
+    QCOMPARE(window.project_.vector_objects.size(), std::size_t{5});
+
+    // Un Ctrl+Z par collage.
+    window.undo();
+    QCOMPARE(window.project_.vector_objects.size(), std::size_t{4});
+    QCOMPARE(window.project_.embroidery_objects.size(), std::size_t{3});
+    window.undo();
+    window.undo();
+    QCOMPARE(window.project_.vector_objects.size(), std::size_t{2});
+    QCOMPARE(window.project_.embroidery_objects.size(), std::size_t{1});
+}
+
+void MainWindowTest::cutThenPasteInPlaceRestoresTheShape() {
+    MainWindow window;
+    window.applyLoadedProject(twoOverlappingRectangles());
+    const ObjectId a = window.project_.vector_objects[0].id;
+    window.setSelection({.region = std::nullopt, .embroidery = std::nullopt, .objects = {a}});
+    window.setStitchTypeForSelection(1);
+    const auto original = window.project_.vector_objects[0].paths;
+
+    window.cutAct_->trigger();
+    QCOMPARE(window.project_.vector_objects.size(), std::size_t{1});
+    QVERIFY(window.project_.embroidery_objects.empty());
+    QVERIFY(window.selectedObjectIds().empty());
+    QVERIFY(window.checkSelectionInvariants());
+
+    window.pasteInPlaceAct_->trigger();
+    QCOMPARE(window.project_.vector_objects.size(), std::size_t{2});
+    QCOMPARE(window.project_.embroidery_objects.size(), std::size_t{1});
+    QVERIFY(window.project_.vector_objects.back().paths == original);
+
+    window.undo(); // collage
+    window.undo(); // coupe
+    QCOMPARE(window.project_.vector_objects.size(), std::size_t{2});
+    QCOMPARE(window.project_.vector_objects[0].id, a);
+    QCOMPARE(window.project_.embroidery_objects.size(), std::size_t{1});
+}
+
+void MainWindowTest::duplicateWithStitchesClonesTheEmbroidery() {
+    MainWindow window;
+    window.applyLoadedProject(twoOverlappingRectangles());
+    const ObjectId a = window.project_.vector_objects[0].id;
+    const ObjectId b = window.project_.vector_objects[1].id;
+    window.setSelection({.region = std::nullopt, .embroidery = std::nullopt, .objects = {a, b}});
+    window.setStitchTypeForSelection(1);
+    window.updateActions();
+    window.duplicateWithStitchesAct_->trigger();
+    QCOMPARE(window.project_.vector_objects.size(), std::size_t{4});
+    QCOMPARE(window.project_.embroidery_objects.size(), std::size_t{4});
+    QCOMPARE(window.selectedObjectIds().size(), std::size_t{2});
+    window.undo();
+    QCOMPARE(window.project_.vector_objects.size(), std::size_t{2});
+    QCOMPARE(window.project_.embroidery_objects.size(), std::size_t{2});
+}
+
+void MainWindowTest::rotateAndMirrorSelectionTurnTheFillAngle() {
+    MainWindow window;
+    window.applyLoadedProject(twoOverlappingRectangles());
+    const ObjectId a = window.project_.vector_objects[0].id;
+    window.setSelection({.region = std::nullopt, .embroidery = std::nullopt, .objects = {a}});
+    window.setStitchTypeForSelection(1);
+    const auto angleDeg = [&] {
+        return std::get<openstitch::document::TatamiParams>(
+                   window.project_.embroidery_objects[0].params)
+                   .angle.radians *
+               180.0 / std::numbers::pi;
+    };
+    const double start = angleDeg();
+    const auto original = window.project_.vector_objects[0].paths;
+    window.updateActions();
+
+    window.rotateLeftAct_->trigger(); // +90° autour du centre de la sélection
+    QVERIFY(std::abs(std::fmod(angleDeg() - start - 90.0 + 360.0, 180.0)) < 1e-6);
+    // Carré 10 x 10 mm tourné d'un quart de tour autour de son centre : même boîte.
+    QVERIFY(window.project_.vector_objects[0].paths != original);
+    window.rotateRightAct_->trigger();
+    QVERIFY(window.project_.vector_objects[0].paths == original);
+    QVERIFY(std::abs(std::fmod(angleDeg() - start + 360.0, 180.0)) < 1e-6);
+
+    window.rotateSelection(45.0);
+    QVERIFY(std::abs(std::fmod(angleDeg() - start - 45.0 + 360.0, 180.0)) < 1e-6);
+    window.undo();
+    QVERIFY(window.project_.vector_objects[0].paths == original);
+
+    window.mirrorHorizontalAct_->trigger();
+    QVERIFY(std::abs(std::fmod(angleDeg() + start + 360.0, 180.0)) < 1e-6 ||
+            std::abs(std::fmod(angleDeg() + start + 360.0, 180.0) - 180.0) < 1e-6);
+    window.mirrorHorizontalAct_->trigger();
+    QVERIFY(window.project_.vector_objects[0].paths == original);
+}
+
+void MainWindowTest::wholeDesignCanBeCenteredFittedAndMirrored() {
+    MainWindow window;
+    window.applyLoadedProject(twoOverlappingRectangles());
+    window.updateActions();
+    QVERIFY(window.designCenterAct_->isEnabled());
+    const auto bounds = [&] {
+        return *openstitch::commands::objects_bounds(
+            window.project_, openstitch::commands::all_object_ids(window.project_));
+    };
+    // Le design occupe x 0..15 mm, y 0..10 mm : pas centré.
+    QCOMPARE(bounds().center().x.value, 7'500);
+    window.designCenterAct_->trigger();
+    QCOMPARE(bounds().center().x.value, 0);
+    QCOMPARE(bounds().center().y.value, 0);
+
+    // Ajuster à la zone brodable (cadre 100 x 100 mm, marge 10 mm => 80 x 80 mm).
+    window.project_.canvas.margin = Micrometers{10'000};
+    window.designFitAct_->trigger();
+    const auto fitted = bounds();
+    QVERIFY(std::abs((fitted.max.x.value - fitted.min.x.value) - 80'000) <= 2);
+    QVERIFY(fitted.max.y.value - fitted.min.y.value <= 80'000);
+    QVERIFY(std::abs(fitted.center().x.value) <= 1);
+
+    window.scaleDesign(0.5);
+    QVERIFY(std::abs((bounds().max.x.value - bounds().min.x.value) - 40'000) <= 2);
+
+    const auto before = window.project_.vector_objects[0].paths;
+    window.designMirrorHorizontalAct_->trigger();
+    QVERIFY(window.project_.vector_objects[0].paths != before);
+    window.designMirrorHorizontalAct_->trigger();
+    QVERIFY(window.project_.vector_objects[0].paths == before);
+    window.designRotateAct_->trigger();
+    const auto turned = bounds();
+    QVERIFY(std::abs((turned.max.y.value - turned.min.y.value) - 40'000) <= 2);
+    window.undo();
+    QVERIFY(window.project_.vector_objects[0].paths == before);
+}
+
+void MainWindowTest::selectAllObjectsAndSameColor() {
+    MainWindow window;
+    auto project = twoOverlappingRectangles();
+    project.vector_objects[0].rgb = {200, 10, 10};
+    project.vector_objects[1].rgb = {10, 10, 200};
+    openstitch::document::VectorObject third = project.vector_objects[0];
+    third.id = project.object_ids.next();
+    project.vector_objects.push_back(third);
+    window.applyLoadedProject(project);
+    window.updateActions();
+    QVERIFY(window.selectAllObjectsAct_->isEnabled());
+    window.selectAllObjectsAct_->trigger();
+    QCOMPARE(window.selectedObjectIds().size(), std::size_t{3});
+    QVERIFY(window.checkSelectionInvariants());
+
+    const ObjectId a = window.project_.vector_objects[0].id;
+    window.setSelection({.region = std::nullopt, .embroidery = std::nullopt, .objects = {a}});
+    window.updateActions();
+    window.selectSameColorObjectsAct_->trigger();
+    const auto ids = window.selectedObjectIds();
+    QCOMPARE(ids.size(), std::size_t{2}); // les deux rouges, pas le bleu
+    QCOMPARE(ids.back(), a);              // la forme active reste l'active
+}
+
+void MainWindowTest::embroideryColorAppliesAFreeColorToTheSelection() {
+    MainWindow window;
+    window.applyLoadedProject(twoOverlappingRectangles());
+    const ObjectId a = window.project_.vector_objects[0].id;
+    const ObjectId b = window.project_.vector_objects[1].id;
+    window.setSelection({.region = std::nullopt, .embroidery = std::nullopt, .objects = {a, b}});
+    window.setStitchTypeForSelection(1);
+    window.updateActions();
+    QVERIFY(window.embroideryColorAct_->isEnabled());
+    const auto before = window.project_.embroidery_objects[0].rgb;
+    window.setEmbroideryColorForSelection({12, 200, 34});
+    for (const auto& emb : window.project_.embroidery_objects) {
+        QCOMPARE(emb.rgb[0], std::uint8_t{12});
+        QCOMPARE(emb.rgb[1], std::uint8_t{200});
+        QVERIFY(!emb.thread.has_value());
+    }
+    window.undo(); // un seul pas pour les deux objets
+    QCOMPARE(window.project_.embroidery_objects[0].rgb, before);
+    QCOMPARE(window.project_.embroidery_objects[1].rgb, before);
 }
 
 void MainWindowTest::knifeToolSplitsSelectedShape() {

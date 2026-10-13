@@ -20,8 +20,10 @@
 #include <vector>
 
 #include "interaction_map.hpp"
+#include "openstitch/commands/transform_ops.hpp"
 #include "openstitch/commands/undo_stack.hpp"
 #include "openstitch/commands/vector_ops.hpp"
+#include "openstitch/document/object_fragment.hpp"
 #include "openstitch/document/project.hpp"
 #include "openstitch/geometry/path.hpp"
 #include "openstitch/stitch/sequence.hpp"
@@ -497,6 +499,31 @@ private:
     // Formes vectorielles : unir / soustraire / intersecter / séparer / couteau
     // (main_window_shapes.cpp).
     void buildShapeMenu();
+    // Manipulation d'objets (main_window_objects.cpp, roadmap HP-OBJ-*).
+    void buildObjectEditActions(QMenu* editMenu);
+    void updateObjectEditActions();
+    // Formes visées par une action d'objet : la sélection, ou la forme source de la broderie
+    // sélectionnée dans l'ordre de couture.
+    [[nodiscard]] std::vector<ObjectId> transformTargets() const;
+    // Objets de broderie portés par ces formes.
+    [[nodiscard]] std::vector<ObjectId> targetEmbroideryIds() const;
+    void copySelection();
+    void cutSelection();
+    void pasteClipboard(bool inPlace);
+    void duplicateSelectionWithStitches();
+    void applyPastedFragment(const document::ObjectFragment& fragment, Vec2um delta,
+                             const QString& label, const QString& done);
+    void selectAllObjects();
+    void selectObjectsWithSameColor();
+    void setEmbroideryColorForSelection(std::array<std::uint8_t, 3> rgb);
+    void runTransform(const std::vector<ObjectId>& ids, const commands::AffineTransform& transform,
+                      const QString& label, const QString& done);
+    void rotateSelection(double degrees); // positif : anti-horaire
+    void mirrorSelection(bool horizontal);
+    void centerDesignInHoop();
+    void scaleDesign(double factor);
+    void fitDesignToHoop();
+    void transformDesign(int kind); // 1 : rotation 90° horaire, 2 : miroir horizontal, 3 : vertical
     void updateShapeActions();
     void runBooleanOp(commands::BooleanOp op);
     void breakApartSelected();
@@ -852,6 +879,27 @@ private:
     QAction* intersectAct_{nullptr};
     QAction* breakApartAct_{nullptr};
     QAction* blendZonesAct_{nullptr};
+    QAction* cutAct_{nullptr};
+    QAction* copyAct_{nullptr};
+    QAction* pasteAct_{nullptr};
+    QAction* pasteInPlaceAct_{nullptr};
+    QAction* duplicateWithStitchesAct_{nullptr};
+    QAction* selectAllObjectsAct_{nullptr};
+    QAction* selectSameColorObjectsAct_{nullptr};
+    QAction* embroideryColorAct_{nullptr};
+    QAction* rotateLeftAct_{nullptr};
+    QAction* rotateRightAct_{nullptr};
+    QAction* rotateAngleAct_{nullptr};
+    QAction* mirrorHorizontalAct_{nullptr};
+    QAction* mirrorVerticalAct_{nullptr};
+    QAction* designCenterAct_{nullptr};
+    QAction* designFitAct_{nullptr};
+    QAction* designScaleAct_{nullptr};
+    QAction* designRotateAct_{nullptr};
+    QAction* designMirrorHorizontalAct_{nullptr};
+    QAction* designMirrorVerticalAct_{nullptr};
+    int pasteRepeat_{0};           // collages successifs depuis la dernière copie (décalage)
+    double lastRotationDeg_{45.0}; // dernier angle saisi dans « Pivoter d'un angle… »
     // Boutons génériques partagés par tout outil de tracé multi-clics
     // (polygone/bézier/satin) : Terminer (Entrée) et Annuler (Échap),
     // toujours visibles dans la palette d'outils, actifs seulement pendant

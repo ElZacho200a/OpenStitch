@@ -410,3 +410,51 @@ TEST_CASE("save_project : le PNG en cache suit le contenu de l'image, pas son ad
     CHECK(loaded->original.height == project.original.height);
     fs::remove(path);
 }
+
+TEST_CASE("fragment d'objets : JSON aller-retour, deterministe, entrees invalides refusees") {
+    const auto project = rich_project();
+    document::ObjectFragment fragment;
+    fragment.vectors = project.vector_objects;
+    for (const auto& emb : project.embroidery_objects) {
+        const bool hasSource =
+            std::any_of(fragment.vectors.begin(), fragment.vectors.end(),
+                        [&](const auto& v) { return v.id == emb.source_vector; });
+        if (hasSource) {
+            fragment.embroideries.push_back(emb);
+        }
+    }
+    REQUIRE(!fragment.vectors.empty());
+    REQUIRE(!fragment.embroideries.empty());
+
+    const std::string text = project_io::fragment_to_json(fragment);
+    CHECK(text == project_io::fragment_to_json(fragment));
+    const auto back = project_io::fragment_from_json(text);
+    REQUIRE(back.has_value());
+    REQUIRE(back->vectors.size() == fragment.vectors.size());
+    REQUIRE(back->embroideries.size() == fragment.embroideries.size());
+    for (std::size_t i = 0; i < fragment.vectors.size(); ++i) {
+        CHECK(back->vectors[i].id == fragment.vectors[i].id);
+        CHECK(back->vectors[i].name == fragment.vectors[i].name);
+        CHECK(back->vectors[i].paths == fragment.vectors[i].paths);
+    }
+    for (std::size_t i = 0; i < fragment.embroideries.size(); ++i) {
+        CHECK(back->embroideries[i].source_vector == fragment.embroideries[i].source_vector);
+        CHECK(back->embroideries[i].params == fragment.embroideries[i].params);
+        CHECK(back->embroideries[i].rgb == fragment.embroideries[i].rgb);
+        CHECK(back->embroideries[i].overrides.size() == fragment.embroideries[i].overrides.size());
+    }
+    // Le second aller-retour redonne le meme texte.
+    CHECK(project_io::fragment_to_json(*back) == text);
+
+    CHECK_FALSE(project_io::fragment_from_json("").has_value());
+    CHECK_FALSE(project_io::fragment_from_json("bonjour").has_value());
+    CHECK_FALSE(project_io::fragment_from_json("{\"a\":1}").has_value());
+    CHECK_FALSE(project_io::fragment_from_json("[1,2,3]").has_value());
+    // Broderie sans sa forme : refuse.
+    document::ObjectFragment orphan;
+    orphan.vectors.push_back(fragment.vectors.front());
+    auto lonely = fragment.embroideries.front();
+    lonely.source_vector = ObjectId{123'456'789};
+    orphan.embroideries.push_back(lonely);
+    CHECK_FALSE(project_io::fragment_from_json(project_io::fragment_to_json(orphan)).has_value());
+}
