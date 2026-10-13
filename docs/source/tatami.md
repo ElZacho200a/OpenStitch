@@ -145,6 +145,50 @@ parallèle en vert, couche supérieure en gris, underpath en bleu, sauts en roug
 en tatami. Le remplissage contourne le trou ; aucune couture ne le traverse
 (seulement ~2 sauts).*
 
+## Sous-couche reliée au remplissage (2026-10-13)
+
+**Symptôme** : chaque tracé de sous-couche (contour rentré, puis chaque tracé de rangées
+parallèles) et le remplissage lui-même commençaient par un `Jump`. Au-delà de
+`trim_threshold` (3 mm), `finish_sequence` transforme ce saut en **coupe** avec verrous de
+sortie et d'entrée : sur le projet `BrodeSouslesMer.osp`, 347 des 1 229 coupes tombaient
+entre deux tracés de sous-couche d'un même objet tatami, pour un trajet qui disparaît de
+toute façon sous la couche supérieure.
+
+**Cause racine** : `generate_tatami` / `generate_directional` émettaient chaque passe par
+`emit_polyline` (un saut vers le premier point) puis `emit_fill` (un saut vers la première
+pénétration) ; la liaison cachée de `hidden_underpath` n'existait qu'**à l'intérieur** de
+`fill_tatami`, jamais **entre** la sous-couche et la couche supérieure.
+
+**Correctif** : avec `hidden_underpath`, la fin de chaque tracé est reliée au suivant, puis
+au remplissage, par des pénétrations cachées (passe `Travel`, au plus `stitch_length`).
+Le trajet vient de `HiddenRouter` (`tatami.hpp`) : droit s'il reste dans la région, sinon
+plus court chemin (A*, graphe de visibilité) par les sommets du contour rentré de
+`underlay_inset` -- trous contournés --, avec en secours les sommets du bord de la région
+pour les parties plus étroites que `2 x underlay_inset`. Chaque segment est validé par
+`segment_stays_in_region` : **jamais** de couture à travers un trou ni hors de la forme.
+Sans trajet valide (ou au-delà de 60 mm), le saut d'origine est conservé.
+
+**Plafond de 60 mm** : une liaison est découpée en pénétrations de `stitch_length`, donc 60
+mm font ~20 piqûres cachées (~1,7 s à 700 pts/min) contre une coupe (3 s) plus ses verrous.
+Le plafond de 16 mm des liaisons *internes* de `fill_tatami` (audit marine) ne s'applique
+pas ici : il visait de longs points uniques, pas des liaisons découpées.
+
+**Mesure** (`BrodeSouslesMer.osp`, 218 objets) : coupes 1 229 -> 1 150 (-79), sauts 5 535 ->
+5 249, points 61 427 -> 61 183 (les verrous évités compensent les liaisons), fil cousu
+96,76 -> 97,24 m (+0,5 %). Les liaisons sont limitées à 24 points de passage par trajet : 12 points
+donnent 1 174 coupes (+8 % de temps de génération), 24 points 1 150 (+16 %), 48 points 1 125
+(+27 %) ; le coût vient des tests de visibilité, et chaque coupe évitée vaut ~3 s de machine.
+
+**Hypothèses rejetées** : (1) un plafond plus haut (100 mm) et 120 points de passage ne
+gagnent que 28 coupes pour un temps de génération triplé ; (2) construire les points de
+passage paresseusement ne change pas le temps (le coût est dans les tests de visibilité,
+pas dans le décalage Clipper).
+
+**Limites connues** (non traitées ici) : il reste, sur ce projet, ~300 coupes `Top -> Top`
+à l'intérieur de remplissages tatami (liaisons internes au-delà de 16 mm ou sans trajet) et
+~280 coupes entre sous-couche et satin dans les objets auto-satin (réseaux multi-sections),
+qui relèvent du routage satin.
+
 ## Déplacements internes (audit marine plein cadre, 2026-09-22)
 
 Trois défauts mesurés sur le tatami d'un grand ciel percé de nuages, avec

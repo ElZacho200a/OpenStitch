@@ -382,6 +382,9 @@ private:
     // Panneau Fils / film couleur (HP-THR-004/005) : tout est dans main_window_threads.cpp.
     void buildThreadPanel();
     void refreshThreadPanel();
+    // Passe la couleur `from` à la position `to` de la liste des fils (tous ses objets, un seul
+    // pas d'annulation) : appelé par le panneau Fils et par la barre des fils.
+    void moveThreadColour(int from, int to);
     // Barre des fils (bas de fenêtre) : pastilles rondes des fils du motif, dans
     // main_window_threads.cpp.
     void buildThreadStrip();

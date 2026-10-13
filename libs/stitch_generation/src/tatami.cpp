@@ -19,14 +19,14 @@ struct PointD {
     double y{0.0};
 };
 
-// Rotation d'un point du repère modèle vers le repère « rangées horizontales »
+// Rotation d'un point du repÃ¨re modÃ¨le vers le repÃ¨re Â« rangÃ©es horizontales Â»
 // (rotation de -angle) et retour (+angle).
 PointD rotate(PointD p, double cosA, double sinA) {
     return {p.x * cosA - p.y * sinA, p.x * sinA + p.y * cosA};
 }
 
-// Intersections d'une horizontale y=scanY avec un polygone fermé (liste
-// d'arêtes), ajoutées à `xs`. Convention demi-ouverte sur y pour ne pas
+// Intersections d'une horizontale y=scanY avec un polygone fermÃ© (liste
+// d'arÃªtes), ajoutÃ©es Ã  `xs`. Convention demi-ouverte sur y pour ne pas
 // compter deux fois un sommet.
 void scan_polygon(const std::vector<PointD>& poly, double scanY, std::vector<double>& xs) {
     const std::size_t n = poly.size();
@@ -47,7 +47,7 @@ Vec2um to_um(PointD p) {
                   Micrometers{static_cast<std::int32_t>(std::lround(p.y))}};
 }
 
-// Distance au carré de p au segment [c,d].
+// Distance au carrÃ© de p au segment [c,d].
 double point_seg_dist2(PointD p, PointD c, PointD d) {
     const double dx = d.x - c.x;
     const double dy = d.y - c.y;
@@ -64,26 +64,26 @@ double point_seg_dist2(PointD p, PointD c, PointD d) {
     return fx * fx + fy * fy;
 }
 
-// Index des arêtes (extérieur + trous) par bandes horizontales, construit
+// Index des arÃªtes (extÃ©rieur + trous) par bandes horizontales, construit
 // une fois par remplissage (audit perf 2026-09, docs/performance-audit.md) :
-// les tests géométriques ci-dessous étaient en O(arêtes) et appelés des
-// dizaines de milliers de fois par génération (liaisons de rangées,
-// autoroute d'underpath), soit l'essentiel du coût du tatami.
+// les tests gÃ©omÃ©triques ci-dessous Ã©taient en O(arÃªtes) et appelÃ©s des
+// dizaines de milliers de fois par gÃ©nÃ©ration (liaisons de rangÃ©es,
+// autoroute d'underpath), soit l'essentiel du coÃ»t du tatami.
 //
-// Contrat d'EXACTITUDE : une requête renvoie un SUR-ENSEMBLE des arêtes
-// capables de satisfaire le prédicat d'origine (chaque arête est inscrite
-// dans toutes les bandes couvrant son intervalle en y élargi de `kMargin`),
-// et chaque candidate est évaluée avec exactement la même arithmétique
-// qu'avant ; les résultats ne dépendent pas de l'ordre de visite (parité,
-// liste de paramètres triée). Une arête hors des bandes interrogées est à
-// plus de `kMargin` en y du point/segment testé : elle ne pouvait ni
-// basculer la parité, ni être à moins de 0,01 µm, ni couper le segment.
+// Contrat d'EXACTITUDE : une requÃªte renvoie un SUR-ENSEMBLE des arÃªtes
+// capables de satisfaire le prÃ©dicat d'origine (chaque arÃªte est inscrite
+// dans toutes les bandes couvrant son intervalle en y Ã©largi de `kMargin`),
+// et chaque candidate est Ã©valuÃ©e avec exactement la mÃªme arithmÃ©tique
+// qu'avant ; les rÃ©sultats ne dÃ©pendent pas de l'ordre de visite (paritÃ©,
+// liste de paramÃ¨tres triÃ©e). Une arÃªte hors des bandes interrogÃ©es est Ã 
+// plus de `kMargin` en y du point/segment testÃ© : elle ne pouvait ni
+// basculer la paritÃ©, ni Ãªtre Ã  moins de 0,01 Âµm, ni couper le segment.
 class EdgeIndex {
 public:
     struct Edge {
         PointD c;            // poly[k]
         PointD d;            // poly[(k + 1) % n]
-        std::size_t poly{0}; // 0 = extérieur, >= 1 = trous
+        std::size_t poly{0}; // 0 = extÃ©rieur, >= 1 = trous
     };
 
     explicit EdgeIndex(const std::vector<std::vector<PointD>>& polys) : polyCount_(polys.size()) {
@@ -120,14 +120,14 @@ public:
     [[nodiscard]] bool empty() const { return polyCount_ == 0; }
     [[nodiscard]] std::size_t poly_count() const { return polyCount_; }
 
-    // Appelle f(edge) pour chaque arête candidate (sans doublon) dont
-    // l'intervalle en y élargi peut rencontrer [y0, y1].
+    // Appelle f(edge) pour chaque arÃªte candidate (sans doublon) dont
+    // l'intervalle en y Ã©largi peut rencontrer [y0, y1].
     template <typename F> void for_edges(double y0, double y1, F&& f) const {
         if (edges_.empty()) {
             return;
         }
         ++generation_;
-        if (generation_ == 0) { // débordement du compteur : réinitialise les marques
+        if (generation_ == 0) { // dÃ©bordement du compteur : rÃ©initialise les marques
             std::fill(stamp_.begin(), stamp_.end(), 0u);
             generation_ = 1;
         }
@@ -143,7 +143,7 @@ public:
     }
 
 private:
-    static constexpr double kMargin = 1.0; // 1 µm, très au-delà des tolérances des prédicats
+    static constexpr double kMargin = 1.0; // 1 Âµm, trÃ¨s au-delÃ  des tolÃ©rances des prÃ©dicats
 
     [[nodiscard]] int band(double y) const {
         const double b = std::floor((y - minY_) / bandH_);
@@ -163,20 +163,20 @@ private:
     mutable std::uint32_t generation_{0};
 };
 
-// p est-il dans la région = dans l'extérieur ET hors de tous les trous ?
+// p est-il dans la rÃ©gion = dans l'extÃ©rieur ET hors de tous les trous ?
 //
-// Un point (quasi) SUR une arête d'un des polygones (extérieur ou trou) est
-// traité comme faisant partie de la région, AVANT le test pair-impair : ce
-// dernier est ambigu pile sur une frontière — pour un trou, il classe même le
-// point comme « dans le trou » (cf. arête opposée qui bascule seule la
-// parité), ce qui rejetterait à tort un suivi de bord légitime. Pair-impair :
-// lancer de rayon horizontal, arête (a = poly[k+1], b = poly[k]) exactement
+// Un point (quasi) SUR une arÃªte d'un des polygones (extÃ©rieur ou trou) est
+// traitÃ© comme faisant partie de la rÃ©gion, AVANT le test pair-impair : ce
+// dernier est ambigu pile sur une frontiÃ¨re â€” pour un trou, il classe mÃªme le
+// point comme Â« dans le trou Â» (cf. arÃªte opposÃ©e qui bascule seule la
+// paritÃ©), ce qui rejetterait Ã  tort un suivi de bord lÃ©gitime. Pair-impair :
+// lancer de rayon horizontal, arÃªte (a = poly[k+1], b = poly[k]) exactement
 // comme la boucle `for (i = 0, j = n - 1; i < n; j = i++)` d'origine.
 bool in_region(const EdgeIndex& index, PointD p) {
     if (index.empty()) {
         return false;
     }
-    constexpr double kEps2 = 1e-4; // 0,01 µm : marge numérique, pas une tolérance géométrique
+    constexpr double kEps2 = 1e-4; // 0,01 Âµm : marge numÃ©rique, pas une tolÃ©rance gÃ©omÃ©trique
     bool onBoundary = false;
     std::vector<char> parity(index.poly_count(), 0);
     index.for_edges(p.y, p.y, [&](const EdgeIndex::Edge& e) {
@@ -203,17 +203,17 @@ bool in_region(const EdgeIndex& index, PointD p) {
     return true;
 }
 
-// La liaison [a,b] (dans le repère des rangées) est-elle un trajet cousu
-// INVALIDE ? Robuste à l'orientation du segment et aux contacts par
-// sommet/extrémité : on découpe [a,b] à CHAQUE intersection paramétrique avec
-// une arête d'un polygone (extérieur ou trou), y COMPRIS les contacts
-// dégénérés (le segment passe exactement par un sommet), puis on vérifie que
-// le MILIEU de chaque sous-segment ainsi obtenu reste dans la région. Une
-// arête colinéaire au segment (suivi de bord/frontière) ne produit aucune
-// découpe : longer un bord reste autorisé. Ce test ne dépend d'aucun seuil sur
-// l'écart en x — un connecteur parfaitement vertical qui traverse un trou de
-// part en part (même en touchant ses sommets, sans jamais le « croiser »
-// franchement) est donc détecté.
+// La liaison [a,b] (dans le repÃ¨re des rangÃ©es) est-elle un trajet cousu
+// INVALIDE ? Robuste Ã  l'orientation du segment et aux contacts par
+// sommet/extrÃ©mitÃ© : on dÃ©coupe [a,b] Ã  CHAQUE intersection paramÃ©trique avec
+// une arÃªte d'un polygone (extÃ©rieur ou trou), y COMPRIS les contacts
+// dÃ©gÃ©nÃ©rÃ©s (le segment passe exactement par un sommet), puis on vÃ©rifie que
+// le MILIEU de chaque sous-segment ainsi obtenu reste dans la rÃ©gion. Une
+// arÃªte colinÃ©aire au segment (suivi de bord/frontiÃ¨re) ne produit aucune
+// dÃ©coupe : longer un bord reste autorisÃ©. Ce test ne dÃ©pend d'aucun seuil sur
+// l'Ã©cart en x â€” un connecteur parfaitement vertical qui traverse un trou de
+// part en part (mÃªme en touchant ses sommets, sans jamais le Â« croiser Â»
+// franchement) est donc dÃ©tectÃ©.
 bool connector_invalid(const EdgeIndex& index, PointD a, PointD b) {
     const double abx = b.x - a.x;
     const double aby = b.y - a.y;
@@ -230,7 +230,7 @@ bool connector_invalid(const EdgeIndex& index, PointD a, PointD b) {
         const double cdLen = std::sqrt(dcx * dcx + dcy * dcy);
         const double denom = abx * dcy - aby * dcx;
         if (std::abs(denom) < 1e-9 * abLen * cdLen) {
-            return; // parallèle/colinéaire : suivi de bord, pas de découpe
+            return; // parallÃ¨le/colinÃ©aire : suivi de bord, pas de dÃ©coupe
         }
         const double t = ((c.x - a.x) * dcy - (c.y - a.y) * dcx) / denom;
         const double s = ((c.x - a.x) * aby - (c.y - a.y) * abx) / denom;
@@ -258,8 +258,8 @@ std::vector<FillStitch> fill_tatami(const geometry::PathSet& region,
     const double stitchLen =
         static_cast<double>(std::max<std::int32_t>(1, params.stitch_length.value));
     const int stagger = std::max(1, params.stagger);
-    // HP-ENG-001 : dépassement des rangées dans l'axe du fil (borné à 3 mm : un fichier
-    // aberrant ne doit pas étaler la couture hors de toute proportion).
+    // HP-ENG-001 : dÃ©passement des rangÃ©es dans l'axe du fil (bornÃ© Ã  3 mm : un fichier
+    // aberrant ne doit pas Ã©taler la couture hors de toute proportion).
     const double pull =
         static_cast<double>(std::clamp<std::int32_t>(params.pull_compensation.value, 0, 3'000));
 
@@ -268,7 +268,7 @@ std::vector<FillStitch> fill_tatami(const geometry::PathSet& region,
     const double cosB = std::cos(params.angle.radians);
     const double sinB = std::sin(params.angle.radians);
 
-    // Polygones (extérieur + trous) exprimés dans le repère des rangées.
+    // Polygones (extÃ©rieur + trous) exprimÃ©s dans le repÃ¨re des rangÃ©es.
     std::vector<std::vector<PointD>> polys;
     const auto addPoly = [&](const geometry::Path& path) {
         std::vector<PointD> poly;
@@ -300,14 +300,14 @@ std::vector<FillStitch> fill_tatami(const geometry::PathSet& region,
         }
     }
 
-    // 1) Construit les SEGMENTS de rangée (un par intervalle intérieur), avec
-    //    leurs pénétrations d'aiguille. Les segments sont les nœuds d'un graphe.
+    // 1) Construit les SEGMENTS de rangÃ©e (un par intervalle intÃ©rieur), avec
+    //    leurs pÃ©nÃ©trations d'aiguille. Les segments sont les nÅ“uds d'un graphe.
     struct Segment {
         int row{0};
         double y{0.0};
         double lo{0.0};
         double hi{0.0};
-        std::vector<double> pens; // pénétrations, ordonnées lo -> hi
+        std::vector<double> pens; // pÃ©nÃ©trations, ordonnÃ©es lo -> hi
     };
     std::vector<Segment> segs;
     std::map<int, std::vector<int>> byRow;
@@ -339,8 +339,8 @@ std::vector<FillStitch> fill_tatami(const geometry::PathSet& region,
                 }
             }
             s.pens.push_back(hi);
-            // Compensation du tirage : seules les pénétrations d'extrémité dépassent ; les
-            // bornes `lo`/`hi` du segment restent celles de la région (adjacence, validation
+            // Compensation du tirage : seules les pÃ©nÃ©trations d'extrÃ©mitÃ© dÃ©passent ; les
+            // bornes `lo`/`hi` du segment restent celles de la rÃ©gion (adjacence, validation
             // des liaisons).
             s.pens.front() = lo - pull;
             s.pens.back() = hi + pull;
@@ -353,10 +353,10 @@ std::vector<FillStitch> fill_tatami(const geometry::PathSet& region,
         return out;
     }
 
-    // 2) ADJACENCE : deux segments de rangées consécutives qui se chevauchent en
-    //    x sont voisins — la bande entre eux est intérieure à la région, donc
-    //    une liaison entre eux ne traverse jamais un trou (le trou aurait coupé
-    //    la rangée). C'est ce qui permet de contourner les trous (§15.5).
+    // 2) ADJACENCE : deux segments de rangÃ©es consÃ©cutives qui se chevauchent en
+    //    x sont voisins â€” la bande entre eux est intÃ©rieure Ã  la rÃ©gion, donc
+    //    une liaison entre eux ne traverse jamais un trou (le trou aurait coupÃ©
+    //    la rangÃ©e). C'est ce qui permet de contourner les trous (Â§15.5).
     std::vector<std::vector<int>> adj(static_cast<std::size_t>(n));
     for (const auto& [row, ids] : byRow) {
         const auto it = byRow.find(row + 1);
@@ -375,10 +375,10 @@ std::vector<FillStitch> fill_tatami(const geometry::PathSet& region,
         }
     }
 
-    // 3) PARCOURS glouton du graphe : on suit toujours un voisin non visité (la
-    //    liaison reste dans la région) ; à défaut, on saute (déplacement) vers le
-    //    segment non visité le plus proche. On entre chaque segment par l'extrémité
-    //    la plus proche du point courant. Déterministe (tie-break par index).
+    // 3) PARCOURS glouton du graphe : on suit toujours un voisin non visitÃ© (la
+    //    liaison reste dans la rÃ©gion) ; Ã  dÃ©faut, on saute (dÃ©placement) vers le
+    //    segment non visitÃ© le plus proche. On entre chaque segment par l'extrÃ©mitÃ©
+    //    la plus proche du point courant. DÃ©terministe (tie-break par index).
     const auto dist2 = [](PointD a, PointD b) {
         const double dx = a.x - b.x;
         const double dy = a.y - b.y;
@@ -397,17 +397,17 @@ std::vector<FillStitch> fill_tatami(const geometry::PathSet& region,
     std::vector<char> visited(static_cast<std::size_t>(n), 0);
     bool hasPrev = false;
     PointD prev{};
-    // Dernière pénétration ramenée dans la région (identique à `prev` sans compensation) :
-    // c'est elle qui valide les liaisons, un dépassement de rangée n'étant pas un point
-    // de la région.
+    // DerniÃ¨re pÃ©nÃ©tration ramenÃ©e dans la rÃ©gion (identique Ã  `prev` sans compensation) :
+    // c'est elle qui valide les liaisons, un dÃ©passement de rangÃ©e n'Ã©tant pas un point
+    // de la rÃ©gion.
     PointD prevC{};
     int visitedCount = 0;
     int current = -1;
-    bool jumpStart = true; // true = on ARRIVE sur ce segment par un déplacement
+    bool jumpStart = true; // true = on ARRIVE sur ce segment par un dÃ©placement
     std::size_t orderCursor = 0;
 
-    // Entrée (§15) : on démarre depuis ce point (repère des rangées) et l'on
-    // choisit à chaque nouvelle composante le segment non visité le plus proche.
+    // EntrÃ©e (Â§15) : on dÃ©marre depuis ce point (repÃ¨re des rangÃ©es) et l'on
+    // choisit Ã  chaque nouvelle composante le segment non visitÃ© le plus proche.
     const bool hasEntry = params.entry_point.has_value();
     if (hasEntry) {
         prev = rotate({static_cast<double>(params.entry_point->x.value),
@@ -416,14 +416,14 @@ std::vector<FillStitch> fill_tatami(const geometry::PathSet& region,
         prevC = prev;
         hasPrev = true;
     }
-    // Cap du trajet cousu caché : au-delà, on saute (déplacement à découvert).
+    // Cap du trajet cousu cachÃ© : au-delÃ , on saute (dÃ©placement Ã  dÃ©couvert).
     const double underpathCap = std::max(6.0 * spacing, 16'000.0);
 
-    // Autoroute d'underpath (§15) : points de passage sur le contour RENTRÉ de la
-    // région entière -- extérieur rentré ET trous agrandis (repère des rangées).
-    // Longer ces contours reste intérieur ; les trous sont contournés par leurs
-    // propres sommets (et non plus seulement par le contour extérieur : une forme
-    // criblée de trous gardait des centaines de sauts internes). Régions sans
+    // Autoroute d'underpath (Â§15) : points de passage sur le contour RENTRÃ‰ de la
+    // rÃ©gion entiÃ¨re -- extÃ©rieur rentrÃ© ET trous agrandis (repÃ¨re des rangÃ©es).
+    // Longer ces contours reste intÃ©rieur ; les trous sont contournÃ©s par leurs
+    // propres sommets (et non plus seulement par le contour extÃ©rieur : une forme
+    // criblÃ©e de trous gardait des centaines de sauts internes). RÃ©gions sans
     // contour exploitable : pas d'underpath (on saute).
     std::vector<PointD> wps;
     if (params.hidden_underpath) {
@@ -449,12 +449,12 @@ std::vector<FillStitch> fill_tatami(const geometry::PathSet& region,
     const auto seglen = [](PointD a, PointD b) {
         return std::sqrt((a.x - b.x) * (a.x - b.x) + (a.y - b.y) * (a.y - b.y));
     };
-    // Trajet caché de a à b par graphe de visibilité sur les points de passage :
+    // Trajet cachÃ© de a Ã  b par graphe de visibilitÃ© sur les points de passage :
     // plus court chemin (Dijkstra) dont CHAQUE segment est un trajet cousu valide
     // (`connector_invalid`) et dont la longueur reste sous `underpathCap`. Seuls
     // les points de passage de l'ellipse |aw| + |wb| <= cap sont candidats, donc
-    // le graphe reste petit. Déterministe : candidats dans l'ordre de création,
-    // égalités départagées par l'indice. Renvoie [a, points…, b], sinon vide.
+    // le graphe reste petit. DÃ©terministe : candidats dans l'ordre de crÃ©ation,
+    // Ã©galitÃ©s dÃ©partagÃ©es par l'indice. Renvoie [a, pointsâ€¦, b], sinon vide.
     const auto routeHighway = [&](PointD a, PointD b) -> std::vector<PointD> {
         if (wps.empty()) {
             return {};
@@ -514,11 +514,11 @@ std::vector<FillStitch> fill_tatami(const geometry::PathSet& region,
 
     while (visitedCount < n) {
         if (current == -1) {
-            // Nouvelle composante : reprise par le segment non visité le plus
-            // PROCHE du point courant (entrée demandée, ou fin de la
-            // composante précédente) -- l'ordre de balayage seul renvoyait à
+            // Nouvelle composante : reprise par le segment non visitÃ© le plus
+            // PROCHE du point courant (entrÃ©e demandÃ©e, ou fin de la
+            // composante prÃ©cÃ©dente) -- l'ordre de balayage seul renvoyait Ã 
             // l'autre bout de la forme (audit marine plein cadre : 2 470 sauts
-            // internes aux tatami, autant de piqûres nulles d'arrivée).
+            // internes aux tatami, autant de piqÃ»res nulles d'arrivÃ©e).
             if (hasPrev) {
                 int best = -1;
                 double bd = std::numeric_limits<double>::max();
@@ -553,26 +553,26 @@ std::vector<FillStitch> fill_tatami(const geometry::PathSet& region,
             const PointD rp{x, s.y};
             const PointD rpC{std::clamp(x, s.lo, s.hi), s.y};
             // La liaison vers le premier point d'un segment est un SAUT (aiguille
-            // levée) si l'on n'y est pas arrivé par une arête du graphe, OU si le
-            // trajet cousu couperait un bord de la région ou d'un trou. Le
-            // chevauchement des rangées ne donne que des candidats ; la validation
-            // géométrique (connector_invalid) tranche.
+            // levÃ©e) si l'on n'y est pas arrivÃ© par une arÃªte du graphe, OU si le
+            // trajet cousu couperait un bord de la rÃ©gion ou d'un trou. Le
+            // chevauchement des rangÃ©es ne donne que des candidats ; la validation
+            // gÃ©omÃ©trique (connector_invalid) tranche.
             // `cross` n'est lu que pour le premier point du segment (k == 0 :
             // `jump` l'exige, et la branche underpath exige `jump`) : ne pas
-            // payer ce test en O(arêtes) à chaque pénétration (audit perf
+            // payer ce test en O(arÃªtes) Ã  chaque pÃ©nÃ©tration (audit perf
             // 2026-09, docs/performance-audit.md).
             const bool cross = (k == 0) && hasPrev && connector_invalid(edgeIndex, prevC, rpC);
             bool jump = (k == 0) && (jumpStart || !hasPrev || cross);
-            // Liaison COUSUE vers une rangée voisine (arête du graphe, trajet
-            // validé intérieur) : deux segments qui ne se chevauchent que sur
-            // une petite portion peuvent être reliés sur des dizaines de mm
-            // (audit marine : points de 12 à 62 mm dans le ciel). La liaison
-            // est découpée en pénétrations cachées d'au plus `stitch_length`.
+            // Liaison COUSUE vers une rangÃ©e voisine (arÃªte du graphe, trajet
+            // validÃ© intÃ©rieur) : deux segments qui ne se chevauchent que sur
+            // une petite portion peuvent Ãªtre reliÃ©s sur des dizaines de mm
+            // (audit marine : points de 12 Ã  62 mm dans le ciel). La liaison
+            // est dÃ©coupÃ©e en pÃ©nÃ©trations cachÃ©es d'au plus `stitch_length`.
             const bool longLink = (k == 0) && !jump && hasPrev && seglen(prev, rp) > stitchLen;
-            // Underpath caché (§15) : au lieu d'un saut, on coud un trajet caché.
-            // Émet des pénétrations intermédiaires taguées `travel` le long du
-            // trajet, `rp` restant une pénétration normale. `emitTravel` échantillonne
-            // une polyligne (repère des rangées) sans son dernier point (== rp).
+            // Underpath cachÃ© (Â§15) : au lieu d'un saut, on coud un trajet cachÃ©.
+            // Ã‰met des pÃ©nÃ©trations intermÃ©diaires taguÃ©es `travel` le long du
+            // trajet, `rp` restant une pÃ©nÃ©tration normale. `emitTravel` Ã©chantillonne
+            // une polyligne (repÃ¨re des rangÃ©es) sans son dernier point (== rp).
             const auto emitTravel = [&](const std::vector<PointD>& poly) {
                 for (std::size_t s = 1; s < poly.size(); ++s) {
                     const double d = seglen(poly[s - 1], poly[s]);
@@ -592,12 +592,12 @@ std::vector<FillStitch> fill_tatami(const geometry::PathSet& region,
                 emitTravel({prev, rp});
             }
             if (jump && params.hidden_underpath && hasPrev) {
-                // 1) trajet DIRECT s'il reste intérieur et court ;
+                // 1) trajet DIRECT s'il reste intÃ©rieur et court ;
                 if (!cross && seglen(prevC, rpC) <= underpathCap) {
                     emitTravel({prevC, rpC});
                     jump = false;
                 } else if (auto route = routeHighway(prevC, rpC); !route.empty()) {
-                    // 2) sinon on longe le contour rentré (contourne les trous).
+                    // 2) sinon on longe le contour rentrÃ© (contourne les trous).
                     emitTravel(route);
                     jump = false;
                 }
@@ -610,7 +610,7 @@ std::vector<FillStitch> fill_tatami(const geometry::PathSet& region,
         visited[static_cast<std::size_t>(current)] = 1;
         ++visitedCount;
 
-        // Prochain voisin non visité, le plus proche d'une extrémité.
+        // Prochain voisin non visitÃ©, le plus proche d'une extrÃ©mitÃ©.
         int next = -1;
         double best = std::numeric_limits<double>::max();
         for (const int j : adj[static_cast<std::size_t>(current)]) {
@@ -625,7 +625,7 @@ std::vector<FillStitch> fill_tatami(const geometry::PathSet& region,
             }
         }
         current = next;
-        jumpStart = false; // atteint par une arête du graphe -> couture
+        jumpStart = false; // atteint par une arÃªte du graphe -> couture
     }
     return out;
 }
@@ -634,15 +634,15 @@ std::vector<std::vector<Vec2um>> tatami_underlay(const geometry::PathSet& region
                                                  const document::TatamiParams& params) {
     std::vector<std::vector<Vec2um>> passes;
 
-    // 1) Contour rentré : running le long du bord (et des trous), retrait
-    //    `underlay_inset`. Politique sûre EXPLICITE : si un retrait est demandé
-    //    (`underlay_inset` > 0) mais échoue ou fait disparaître la forme (pièce
-    //    trop petite pour ce retrait), on N'ÉMET AUCUNE sous-couche de contour
-    //    pour cette forme — jamais de repli silencieux sur le bord BRUT. Coudre
-    //    exactement sur l'arête finale n'offrirait aucune marge de stabilisation
-    //    et risquerait de déborder une fois la compensation de bord de la couche
-    //    supérieure appliquée par-dessus. Un retrait NUL est une intention
-    //    explicite distincte (pas un échec) : le bord brut est alors voulu.
+    // 1) Contour rentrÃ© : running le long du bord (et des trous), retrait
+    //    `underlay_inset`. Politique sÃ»re EXPLICITE : si un retrait est demandÃ©
+    //    (`underlay_inset` > 0) mais Ã©choue ou fait disparaÃ®tre la forme (piÃ¨ce
+    //    trop petite pour ce retrait), on N'Ã‰MET AUCUNE sous-couche de contour
+    //    pour cette forme â€” jamais de repli silencieux sur le bord BRUT. Coudre
+    //    exactement sur l'arÃªte finale n'offrirait aucune marge de stabilisation
+    //    et risquerait de dÃ©border une fois la compensation de bord de la couche
+    //    supÃ©rieure appliquÃ©e par-dessus. Un retrait NUL est une intention
+    //    explicite distincte (pas un Ã©chec) : le bord brut est alors voulu.
     if (params.underlay_edge) {
         std::vector<geometry::PathSet> shells;
         if (params.underlay_inset.value > 0) {
@@ -653,10 +653,10 @@ std::vector<std::vector<Vec2um>> tatami_underlay(const geometry::PathSet& region
         } else {
             shells.push_back(region);
         }
-        // On ne longe que le contour EXTÉRIEUR rentré : l'inset d'un trou le
-        // rétrécit (vers l'intérieur du trou), si bien qu'en longer le bord
+        // On ne longe que le contour EXTÃ‰RIEUR rentrÃ© : l'inset d'un trou le
+        // rÃ©trÃ©cit (vers l'intÃ©rieur du trou), si bien qu'en longer le bord
         // ferait passer la sous-couche AU-DESSUS du trou. Les bords de trous ne
-        // reçoivent donc pas de sous-couche de contour (sûreté).
+        // reÃ§oivent donc pas de sous-couche de contour (sÃ»retÃ©).
         for (const auto& shell : shells) {
             if (shell.outer.nodes.size() < 2) {
                 continue;
@@ -668,10 +668,10 @@ std::vector<std::vector<Vec2um>> tatami_underlay(const geometry::PathSet& region
         }
     }
 
-    // 2) Rangées perpendiculaires espacées : on réutilise le balayage tatami avec
-    //    un angle à +90° et un grand pas, puis on découpe en trajets cousus (on
-    //    ignore les sauts). Les options avancées sont neutralisées pour éviter
-    //    toute récursion.
+    // 2) RangÃ©es perpendiculaires espacÃ©es : on rÃ©utilise le balayage tatami avec
+    //    un angle Ã  +90Â° et un grand pas, puis on dÃ©coupe en trajets cousus (on
+    //    ignore les sauts). Les options avancÃ©es sont neutralisÃ©es pour Ã©viter
+    //    toute rÃ©cursion.
     if (params.underlay_parallel) {
         document::TatamiParams up = params;
         up.angle = Angle{params.angle.radians + std::numbers::pi / 2.0};
@@ -681,9 +681,9 @@ std::vector<std::vector<Vec2um>> tatami_underlay(const geometry::PathSet& region
         up.pull_compensation = Micrometers{0}; // la sous-couche reste dans la forme
         up.underlay_edge = false;
         up.underlay_parallel = false;
-        // Trajets cachés hérités de l'objet : sous la couche supérieure, une
+        // Trajets cachÃ©s hÃ©ritÃ©s de l'objet : sous la couche supÃ©rieure, une
         // liaison cousue de sous-couche est invisible (audit marine : 625
-        // sauts dans les sous-couches en rangées).
+        // sauts dans les sous-couches en rangÃ©es).
         up.hidden_underpath = params.hidden_underpath;
         up.entry_point.reset();
         const auto fill = fill_tatami(region, up);
@@ -705,7 +705,7 @@ std::vector<std::vector<Vec2um>> tatami_underlay(const geometry::PathSet& region
 
 namespace {
 
-// Polygones (extérieur + trous, >= 3 sommets) dans le repère du modèle.
+// Polygones (extÃ©rieur + trous, >= 3 sommets) dans le repÃ¨re du modÃ¨le.
 std::vector<std::vector<PointD>> model_polys(const geometry::PathSet& region) {
     std::vector<std::vector<PointD>> polys;
     const auto addPoly = [&](const geometry::Path& path) {
@@ -755,6 +755,188 @@ bool RegionSegmentTester::stays_inside(Vec2um a, Vec2um b) const {
     const PointD pa{static_cast<double>(a.x.value), static_cast<double>(a.y.value)};
     const PointD pb{static_cast<double>(b.x.value), static_cast<double>(b.y.value)};
     return !connector_invalid(impl_->index, pa, pb);
+}
+
+struct HiddenRouter::Impl {
+    // Au plus ce nombre de points de passage (les moins dÃ©tournÃ©s) sont retenus par trajet :
+    // le graphe de visibilitÃ© reste petit mÃªme sur une forme criblÃ©e de trous.
+    static constexpr std::size_t kMaxCandidates = 24;
+
+    Impl(const geometry::PathSet& region_, Micrometers inset_, double cap_um)
+        : region(region_), inset(inset_), tester(region_), cap(cap_um) {}
+
+    // Points de passage, calculÃ©s au premier besoin seulement : un trajet droit suffit dans la
+    // plupart des cas et le dÃ©calage du contour (Clipper) coÃ»te plus cher que le test.
+    void ensure_waypoints() const {
+        if (ready) {
+            return;
+        }
+        ready = true;
+        const auto add = [](std::vector<Vec2um>& out, const geometry::Path& path) {
+            if (path.nodes.size() >= 3) {
+                for (const auto& node : path.nodes) {
+                    out.push_back(node.pos);
+                }
+            }
+        };
+        // Sommets du contour RENTRÃ‰ de la rÃ©gion entiÃ¨re (extÃ©rieur rentrÃ© et trous agrandis).
+        // Les longer reste intÃ©rieur et contourne les trous.
+        if (auto r = geometry::inset_path_set(region, inset); r && !r->empty()) {
+            for (const auto& set : *r) {
+                add(waypoints, set.outer);
+                for (const auto& hole : set.holes) {
+                    add(waypoints, hole);
+                }
+            }
+        }
+        // Secours : sommets du bord de la rÃ©gion elle-mÃªme (extÃ©rieur et trous), pour les
+        // parties plus Ã©troites que 2 x `inset` oÃ¹ le contour rentrÃ© n'existe pas. Longer le
+        // bord reste un trajet valide (`stays_inside` accepte le suivi de frontiÃ¨re).
+        add(boundary, region.outer);
+        for (const auto& hole : region.holes) {
+            add(boundary, hole);
+        }
+    }
+
+    geometry::PathSet region;
+    Micrometers inset;
+    RegionSegmentTester tester;
+    double cap;
+    mutable bool ready{false};
+    mutable std::vector<Vec2um> waypoints;
+    mutable std::vector<Vec2um> boundary;
+};
+
+namespace {
+
+double distance_um(Vec2um a, Vec2um b) {
+    return std::hypot(static_cast<double>(a.x.value) - static_cast<double>(b.x.value),
+                      static_cast<double>(a.y.value) - static_cast<double>(b.y.value));
+}
+
+} // namespace
+
+HiddenRouter::HiddenRouter(const geometry::PathSet& region, Micrometers inset, double cap_um)
+    : impl_(std::make_unique<Impl>(region, inset, cap_um)) {}
+HiddenRouter::~HiddenRouter() = default;
+HiddenRouter::HiddenRouter(HiddenRouter&&) noexcept = default;
+HiddenRouter& HiddenRouter::operator=(HiddenRouter&&) noexcept = default;
+
+std::vector<Vec2um> HiddenRouter::route(Vec2um a, Vec2um b) const {
+    const double direct = distance_um(a, b);
+    if (direct <= 0.0) {
+        return {};
+    }
+    if (direct <= impl_->cap && impl_->tester.stays_inside(a, b)) {
+        return {a, b};
+    }
+
+    // Plus court chemin (Dijkstra) a -> b par ces points de passage, dont chaque segment reste
+    // dans la rÃ©gion. Candidats : ceux dont le dÃ©tour a -> w -> b tient sous le cap, les moins
+    // dÃ©tournÃ©s d'abord (Ã©galitÃ©s : ordre de crÃ©ation, donc dÃ©terministe).
+    const auto search = [&](const std::vector<Vec2um>& points) -> std::vector<Vec2um> {
+        struct Candidate {
+            double detour;
+            std::size_t index;
+        };
+        std::vector<Candidate> candidates;
+        for (std::size_t i = 0; i < points.size(); ++i) {
+            const double detour = distance_um(a, points[i]) + distance_um(points[i], b);
+            if (detour <= impl_->cap) {
+                candidates.push_back({detour, i});
+            }
+        }
+        std::sort(candidates.begin(), candidates.end(), [](const Candidate& l, const Candidate& r) {
+            return l.detour != r.detour ? l.detour < r.detour : l.index < r.index;
+        });
+        if (candidates.size() > Impl::kMaxCandidates) {
+            candidates.resize(Impl::kMaxCandidates);
+        }
+        if (candidates.empty()) {
+            return {};
+        }
+        std::vector<Vec2um> nodes{a};
+        for (const Candidate& c : candidates) {
+            nodes.push_back(points[c.index]);
+        }
+        nodes.push_back(b);
+        const std::size_t n = nodes.size();
+        const std::size_t last = n - 1;
+
+        // VisibilitÃ© depuis a et vers b, calculÃ©e UNE fois : si l'une des deux extrÃ©mitÃ©s ne
+        // voit aucun point de passage, aucun chemin n'existe et l'on s'arrÃªte tout de suite
+        // (la majoritÃ© des Ã©checs), sans explorer le graphe.
+        std::vector<char> seenFromA(n, 0), seesB(n, 0);
+        bool anyFromA = false;
+        bool anyToB = false;
+        for (std::size_t i = 1; i < last; ++i) {
+            seenFromA[i] = impl_->tester.stays_inside(a, nodes[i]) ? 1 : 0;
+            seesB[i] = impl_->tester.stays_inside(nodes[i], b) ? 1 : 0;
+            anyFromA = anyFromA || seenFromA[i];
+            anyToB = anyToB || seesB[i];
+        }
+        if (!anyFromA || !anyToB) {
+            return {};
+        }
+
+        // A* (heuristique : distance Ã  b) : les tests de visibilitÃ© entre points de passage ne
+        // sont faits que pour les nÅ“uds rÃ©ellement dÃ©veloppÃ©s, et jamais deux fois.
+        constexpr double kInf = std::numeric_limits<double>::max();
+        std::vector<double> dist(n, kInf);
+        std::vector<int> from(n, -1);
+        std::vector<char> done(n, 0);
+        dist[0] = 0.0;
+        for (std::size_t iter = 0; iter < n; ++iter) {
+            std::size_t u = n;
+            double bestF = kInf;
+            for (std::size_t i = 0; i < n; ++i) {
+                if (done[i] || dist[i] >= kInf) {
+                    continue;
+                }
+                const double f = dist[i] + distance_um(nodes[i], b);
+                if (f < bestF) {
+                    bestF = f;
+                    u = i;
+                }
+            }
+            if (u == n || u == last) {
+                break;
+            }
+            done[u] = 1;
+            for (std::size_t v = 1; v < n; ++v) {
+                if (done[v] || v == u) {
+                    continue;
+                }
+                const double nd = dist[u] + distance_um(nodes[u], nodes[v]);
+                if (nd > impl_->cap || nd >= dist[v]) {
+                    continue;
+                }
+                const bool visible = u == 0      ? seenFromA[v] != 0
+                                     : v == last ? seesB[u] != 0
+                                                 : impl_->tester.stays_inside(nodes[u], nodes[v]);
+                if (!visible) {
+                    continue;
+                }
+                dist[v] = nd;
+                from[v] = static_cast<int>(u);
+            }
+        }
+        if (from[last] < 0) {
+            return {};
+        }
+        std::vector<Vec2um> path;
+        for (int i = static_cast<int>(last); i >= 0; i = from[static_cast<std::size_t>(i)]) {
+            path.push_back(nodes[static_cast<std::size_t>(i)]);
+        }
+        std::reverse(path.begin(), path.end());
+        return path;
+    };
+
+    impl_->ensure_waypoints();
+    if (auto path = search(impl_->waypoints); !path.empty()) {
+        return path;
+    }
+    return search(impl_->boundary);
 }
 
 } // namespace openstitch::stitch_generation
