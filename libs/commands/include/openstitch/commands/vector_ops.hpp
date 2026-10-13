@@ -8,6 +8,7 @@
 #include "openstitch/commands/command.hpp"
 #include "openstitch/core/ids.hpp"
 #include "openstitch/core/units.hpp"
+#include "openstitch/document/object_fragment.hpp"
 #include "openstitch/document/project.hpp"
 
 namespace openstitch::commands {
@@ -48,5 +49,29 @@ struct VectorOpResult {
 // Sépare les morceaux disjoints d'un objet en objets distincts (mêmes règles de clonage).
 // Refusé si l'objet n'a qu'un morceau.
 [[nodiscard]] VectorOpResult make_break_apart_command(document::Project& project, ObjectId id);
+
+// --- Copier / coller (HP-OBJ-002) ---------------------------------------------
+// Fragment à copier : les objets vectoriels `ids` (ordre du document, doublons et
+// identifiants inconnus ignorés) et TOUTES les broderies qui en dépendent, dans leur
+// ordre de couture. Ne modifie pas le document.
+[[nodiscard]] document::ObjectFragment collect_fragment(const document::Project& project,
+                                                        const std::vector<ObjectId>& ids);
+
+struct PasteResult {
+    std::unique_ptr<ICommand> command; // nulle si le fragment est vide
+    std::vector<ObjectId> pasted;      // nouveaux objets vectoriels, dans l'ordre du fragment
+};
+
+// Colle `fragment` dans `project` en UNE commande annulable : nouveaux identifiants
+// (tirés de `project.object_ids`), `source_vector` des broderies réaligné, décalage
+// `delta` appliqué aux copies (formes, guides, rails de bordure, dégradés : même
+// règle que `TranslateVectorObjectCommand`). Les copies ne sont plus des lettres
+// d'un texte (`text_owner` retiré) ; `source_region` n'est gardé que si la région
+// existe dans le projet cible. Les retouches manuelles de points sont conservées
+// pour un collage sur place et retirées pour un collage décalé (leurs positions
+// seraient fausses).
+[[nodiscard]] PasteResult make_paste_command(document::Project& project,
+                                             const document::ObjectFragment& fragment, Vec2um delta,
+                                             const std::string& label = "Coller");
 
 } // namespace openstitch::commands

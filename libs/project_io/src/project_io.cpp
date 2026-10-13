@@ -2,6 +2,7 @@
 #include "openstitch/project_io/project_io.hpp"
 #include "openstitch/core/parallel.hpp"
 
+#include <algorithm>
 #include <mutex>
 #include <nlohmann/json.hpp>
 #include <optional>
@@ -272,6 +273,53 @@ Result<document::Project> load_project(const std::filesystem::path& path, LoadIn
                     ex.what());
     } catch (const std::exception& ex) {
         return fail(ErrorCategory::InvalidFile, "Fichier projet illisible", ex.what());
+    }
+}
+
+std::string fragment_to_json(const document::ObjectFragment& fragment) {
+    // Un projet temporaire ne portant QUE le fragment : on réutilise tel quel le
+    // sérialiseur du `.osp` (un seul schéma à maintenir).
+    document::Project carrier;
+    carrier.vector_objects = fragment.vectors;
+    carrier.embroidery_objects = fragment.embroideries;
+    nlohmann::json root;
+    root["openstitchFragment"] = 1;
+    root["schemaVersion"] = kSchemaVersion;
+    root["document"] = detail::project_to_json(carrier);
+    return root.dump();
+}
+
+Result<document::ObjectFragment> fragment_from_json(std::string_view text) {
+    try {
+        const nlohmann::json root = nlohmann::json::parse(text, nullptr, false);
+        if (!root.is_object() || !root.contains("openstitchFragment") ||
+            !root.contains("document")) {
+            return fail(ErrorCategory::InvalidFile,
+                        "Le presse-papiers ne contient pas d'objets OpenStitch");
+        }
+        if (root.value("schemaVersion", 0) > kSchemaVersion) {
+            return fail(ErrorCategory::InvalidFile,
+                        "Objets copiés depuis une version plus récente d'OpenStitch");
+        }
+        auto carrier = detail::project_from_json(root.at("document"));
+        if (!carrier) {
+            return std::unexpected(carrier.error());
+        }
+        document::ObjectFragment fragment;
+        fragment.vectors = std::move(carrier->vector_objects);
+        fragment.embroideries = std::move(carrier->embroidery_objects);
+        for (const auto& emb : fragment.embroideries) {
+            const bool hasSource = std::any_of(
+                fragment.vectors.begin(), fragment.vectors.end(),
+                [&](const document::VectorObject& v) { return v.id == emb.source_vector; });
+            if (!hasSource) {
+                return fail(ErrorCategory::InvalidFile,
+                            "Fragment incohérent : une broderie n'a pas sa forme source");
+            }
+        }
+        return fragment;
+    } catch (const std::exception& ex) {
+        return fail(ErrorCategory::InvalidFile, "Presse-papiers illisible", ex.what());
     }
 }
 

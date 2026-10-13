@@ -380,6 +380,35 @@ directement les **objets de broderie** (avec les options *ignorer le fond* et *d
 vectorisation*). Une erreur de configuration s'affiche en rouge avec **Ouvrir les préférences…** et
 **Afficher le détail** ; l'analyse relancée utilise alors les nouveaux réglages.
 
+## Copier, transformer, design entier (menu Édition)
+
+Ces actions visent les formes sélectionnées (ou la forme de la broderie
+sélectionnée dans l'ordre de couture) **avec leur broderie** ; chacune est un
+seul pas d'annulation.
+
+- **Couper / Copier / Coller** (Ctrl+X / Ctrl+C / Ctrl+V) : la copie emporte la
+  forme, ses objets de broderie, leurs réglages et leur fil. Chaque collage est
+  décalé de 5 mm de plus que le précédent ; **Coller sur place** (Ctrl+Maj+V)
+  garde la position d'origine. Le presse-papiers est du JSON au format du
+  `.osp` : on peut coller dans un autre projet ou une autre fenêtre
+  d'OpenStitch. Limites : un collage décalé ne garde pas les retouches manuelles
+  de points ; les lettres d'un texte collées deviennent des formes ordinaires.
+- **Dupliquer avec la broderie** (Ctrl+D) : copie décalée de 2 mm, broderie
+  comprise (« Dupliquer la forme » ne copie que le contour).
+- **Sélectionner tous les objets** (Ctrl+Maj+A) et **Sélectionner les objets de
+  même couleur** (couleur de la broderie, sinon de la forme). Ctrl+A reste
+  « toutes les régions ».
+- **Couleur de la broderie…** : couleur libre appliquée à la broderie de toute
+  la sélection (le fil de nuancier éventuel est retiré).
+- **Transformer** : pivoter de 90° à gauche / à droite (Ctrl+[ / Ctrl+]),
+  pivoter d'un angle (positif = sens anti-horaire), miroir horizontal /
+  vertical, autour du centre de la sélection. L'orientation des rangées, les
+  guides, les lignes de rupture, les dégradés et les rails des satins suivent.
+- **Design entier** : centrer dans le cadre, ajuster à la zone brodable
+  (réduit ou agrandit puis centre), redimensionner en %, pivoter de 90°,
+  miroirs. Les points sont recalculés à la nouvelle taille. Un design importé
+  d'un fichier machine (points sans formes) n'est pas concerné.
+
 ## Menu Forme
 
 Opérations sur les formes vectorielles, façon « Pathfinder » : chacune est **un seul pas

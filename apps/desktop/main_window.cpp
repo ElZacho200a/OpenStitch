@@ -751,6 +751,7 @@ void MainWindow::buildMenus() {
         }
     });
     buildAlignMenu(editMenu);
+    buildObjectEditActions(editMenu);
     editMenu->addSeparator();
     auto* aiPrefsAct = editMenu->addAction(tr("Préférences — &Intelligence artificielle…"));
     connect(aiPrefsAct, &QAction::triggered, this, &MainWindow::openAiPreferences);
@@ -8782,6 +8783,7 @@ void setEnabledWithReason(QAction* act, bool enabled, const QString& whyDisabled
 
 void MainWindow::updateActions() {
     updateShapeActions();
+    updateObjectEditActions();
     updateTextActions();
     const bool hasImage = project_.hasImage();
     for (QAction* act : imageActions_) {

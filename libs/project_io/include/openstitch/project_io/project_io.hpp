@@ -2,8 +2,11 @@
 #pragma once
 
 #include <filesystem>
+#include <string>
+#include <string_view>
 
 #include "openstitch/core/error.hpp"
+#include "openstitch/document/object_fragment.hpp"
 #include "openstitch/document/project.hpp"
 
 namespace openstitch::project_io {
@@ -55,5 +58,20 @@ struct LoadInfo {
 // n'existe pas encore (à appeler avant d'écraser un fichier migré).
 [[nodiscard]] Result<void> backup_before_migrated_save(const std::filesystem::path& path,
                                                        int fromVersion);
+
+// --- Presse-papiers (HP-OBJ-002) ---------------------------------------------
+// Type MIME du fragment d'objets copié : du JSON au schéma du `.osp`, lisible par
+// une autre instance d'OpenStitch.
+inline constexpr const char* kFragmentMimeType = "application/x-openstitch-objects+json";
+
+// Sérialise un fragment (objets vectoriels + broderies qui en dépendent) avec le
+// même schéma que le projet : paramètres, fil, retouches manuelles compris.
+// Déterministe (mêmes objets -> même texte).
+[[nodiscard]] std::string fragment_to_json(const document::ObjectFragment& fragment);
+
+// Relit un fragment. Ne lève jamais d'exception : texte quelconque, JSON d'une
+// autre nature, version de schéma plus récente ou broderie sans vecteur source
+// dans le fragment -> Result d'erreur (InvalidFile).
+[[nodiscard]] Result<document::ObjectFragment> fragment_from_json(std::string_view text);
 
 } // namespace openstitch::project_io

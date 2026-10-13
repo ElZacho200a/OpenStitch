@@ -56,6 +56,8 @@ aussi Release (`msvc-release`) quand le changement touche à de l'arithmétique
 flottante, de l'optimisation ou du code dépendant de l'ordre d'évaluation —
 la CI teste les deux.
 
+**Piège : objets périmés après un build interrompu.** Un build coupé (délai dépassé, `cl.exe` arrêté) peut laisser le suivi de dépendances de MSBuild incohérent : après un changement de `main_window.hpp` (membres ajoutés), certains `.cpp` ne sont pas recompilés et l'exécutable plante dès le constructeur, dans du code non modifié. Symptôme : violation d'accès dans un test qui ne touche pas au changement. Remède : `cmake --build --preset msvc-debug --target openstitch_desktop_widgets --clean-first`, puis reconstruire la cible de test. Lancer les builds longs en arrière-plan plutôt que de les laisser dépasser le délai.
+
 Contrôles que la CI fera de toute façon :
 
 - **Format** (Bash) : `git ls-files '*.cpp' '*.hpp' | xargs clang-format --dry-run --Werror`

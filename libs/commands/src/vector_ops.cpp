@@ -208,6 +208,79 @@ VectorOpResult make_boolean_command(document::Project& project, BooleanOp op,
     return out;
 }
 
+document::ObjectFragment collect_fragment(const document::Project& project,
+                                          const std::vector<ObjectId>& ids) {
+    document::ObjectFragment fragment;
+    const auto wanted = [&](ObjectId id) {
+        return std::find(ids.begin(), ids.end(), id) != ids.end();
+    };
+    for (const auto& vec : project.vector_objects) {
+        if (wanted(vec.id)) {
+            fragment.vectors.push_back(vec);
+        }
+    }
+    for (const auto& emb : project.embroidery_objects) {
+        if (wanted(emb.source_vector) && project.findObject(emb.source_vector) != nullptr) {
+            fragment.embroideries.push_back(emb);
+        }
+    }
+    return fragment;
+}
+
+PasteResult make_paste_command(document::Project& project, const document::ObjectFragment& fragment,
+                               Vec2um delta, const std::string& label) {
+    PasteResult out;
+    if (fragment.empty()) {
+        return out;
+    }
+    const bool moved = delta.x.value != 0 || delta.y.value != 0;
+    std::vector<std::pair<ObjectId, ObjectId>> remap; // ancien -> nouveau
+    std::vector<document::VectorObject> vectors;
+    vectors.reserve(fragment.vectors.size());
+    for (const auto& source : fragment.vectors) {
+        document::VectorObject copy = source;
+        copy.id = project.object_ids.next();
+        copy.text_owner.reset();
+        if (copy.source_region &&
+            (!project.segmentation || project.segmentation->find(*copy.source_region) == nullptr)) {
+            copy.source_region.reset();
+        }
+        remap.emplace_back(source.id, copy.id);
+        out.pasted.push_back(copy.id);
+        vectors.push_back(std::move(copy));
+    }
+    std::vector<document::EmbroideryObject> embroideries;
+    embroideries.reserve(fragment.embroideries.size());
+    for (const auto& source : fragment.embroideries) {
+        const auto it = std::find_if(remap.begin(), remap.end(), [&](const auto& pair) {
+            return pair.first == source.source_vector;
+        });
+        if (it == remap.end()) {
+            continue; // broderie orpheline : jamais collée
+        }
+        document::EmbroideryObject copy = source;
+        copy.id = project.object_ids.next();
+        copy.source_vector = it->second;
+        if (moved) {
+            copy.overrides.clear();
+            copy.edited_fingerprint = 0;
+            copy.edited_point_count = 0;
+        }
+        embroideries.push_back(std::move(copy));
+    }
+
+    auto group = std::make_unique<CompositeCommand>(label);
+    group->add(std::make_unique<AddObjectBatchCommand>(std::move(vectors), std::move(embroideries),
+                                                       label));
+    if (moved) {
+        for (const ObjectId id : out.pasted) {
+            group->add(std::make_unique<TranslateVectorObjectCommand>(id, delta));
+        }
+    }
+    out.command = std::move(group);
+    return out;
+}
+
 VectorOpResult make_split_command(document::Project& project, const std::vector<ObjectId>& ids,
                                   Vec2um a, Vec2um b) {
     if (a == b) {
