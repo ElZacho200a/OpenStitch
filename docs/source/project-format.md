@@ -79,6 +79,12 @@ Compression (2026-10) : l'image PNG, déjà compressée, est stockée telle quel
   `splitLongStitches` (bool, défaut faux), `maxStitchLength` (µm, défaut 7000,
   borné à [1000 ; 12100]), `autoJoin` (bool, défaut faux ; entrée/sortie
   automatiques, HP-ENG-010).
+  Sous-bloc `hiddenTravel` (HP-SEQ-006, absent = désactivé) : `enabled` (bool,
+  défaut faux), `maxHiddenJump` (µm, défaut 2000, [0 ; 20000]),
+  `maxBridgeLength` (µm, défaut 15000, [0 ; 100000]), `bridgeStitchLength` (µm,
+  défaut 2500, [500 ; 12100]), `coverThreadWidth` (µm, défaut 400, [100 ; 2000]),
+  `coverMargin` (µm, défaut 150, [0 ; 2000]), `allowSameColorSurface` (bool,
+  défaut faux).
 - Lot « moteur de points », clés additives d'un objet de broderie, écrites
   seulement hors défaut et bornées à la lecture : `join` (0 hérite du projet, 1
   automatique, 2 désactivé) ; dans `params` : tatami `pullCompensation` (µm,

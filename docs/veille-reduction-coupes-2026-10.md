@@ -4,7 +4,9 @@ Demande : réduire le nombre de coupes (par exemple avec des coutures cachées),
 appliquant l'optimisation **à la toute fin** du flux. Cette note rassemble ce
 que disent les pratiques et brevets lus, l'état du code, et une conception de
 passe finale. Entrées de roadmap : `HP-SEQ-006` et ses sous-entrées
-(`docs/roadmap-parite-hatch.md`). Rien n'est codé.
+(`docs/roadmap-parite-hatch.md`). **Mise à jour : le cœur est implémenté**
+(`libs/stitch_generation/src/hidden_travel.*`, voir §5) ; ce qui précède dans
+cette note reste la conception et les sources.
 
 ## 1. Ce qui a été lu
 
@@ -151,3 +153,34 @@ continu, donc ni coupe ni verrous à cet endroit.
   deux exécutions et `OPENSTITCH_THREADS=1` donnent le même DST.
 - Les corpus « marine » et `tentabrode` sont absents de ce dépôt (voir
   HP-ENG-010) : à fournir pour une mesure réelle.
+
+## 5. Réalisation et mesure (2026-10-13)
+
+Implémenté dans le cœur sans Qt : `HiddenTravel` dans `SequenceFinishing`,
+planificateur `hidden_travel.{hpp,cpp}`, branchement dans `finish_sequence`,
+`effective_sequence_report`, persistance `.osp`, CLI `digitize --hidden-travel`.
+Écarts par rapport à la conception : le plafond de longueur s'applique aussi à la
+distance directe ; la grille est reconstruite à la première demande seulement ;
+l'érosion est une fenêtre carrée (plus stricte qu'un disque) ; la surface de même
+fil (option .b) est incluse.
+
+Mesure sur `tests/fixtures/tentabrode.png`, mode formes, 442 coupes au départ :
+
+| Réglage | Coupes supprimées | Fil ajouté | Refus (trop long / extrémité / chemin) |
+|---|---|---|---|
+| `--hidden-travel` | 6 | 47 mm | 269 / 132 / 27 |
+| + `--hidden-travel-same-colour` | 6 | 47 mm | 271 / 32 / 125 |
+| + `--hidden-travel-max 40` | 20 | 371 mm | 100 / 76 / 238 |
+
+Lecture : l'idée est correcte (les tests couvrent chaque condition de la §3.2)
+mais le gain est faible sur une image auto-numérisée, parce que la segmentation
+produit des régions juxtaposées **sans recouvrement** : entre deux régions
+éloignées, il n'y a pas de matière cousue plus tard pour cacher le fil, et la
+passe refuse à raison. Les cas gagnants sont les designs dont les objets se
+chevauchent (lettrage, formes superposées, dessin vectoriel) et les enchaînements
+bien ordonnés en amont. Mesure sur machine et corpus « marine » : à faire.
+
+Limites connues : pas de parallélisation (`parallel_for`) des recherches de
+chemin ; pas de réglage dans l'inspecteur du desktop ; `cli_help` échoue dans cet
+environnement de test parce que la version de CLI11 installée par le système
+écrit « Positionals » et non « POSITIONALS » (sans rapport avec ce travail).

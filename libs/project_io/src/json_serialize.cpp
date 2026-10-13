@@ -995,7 +995,15 @@ json project_to_json(const document::Project& project) {
                       {"minStitchLength", f.min_stitch_length.value},
                       {"splitLongStitches", f.split_long_stitches},
                       {"maxStitchLength", f.max_stitch_length.value},
-                      {"autoJoin", f.auto_join}};
+                      {"autoJoin", f.auto_join},
+                      {"hiddenTravel",
+                       {{"enabled", f.hidden_travel.enabled},
+                        {"maxHiddenJump", f.hidden_travel.max_hidden_jump.value},
+                        {"maxBridgeLength", f.hidden_travel.max_bridge_length.value},
+                        {"bridgeStitchLength", f.hidden_travel.bridge_stitch_length.value},
+                        {"coverThreadWidth", f.hidden_travel.cover_thread_width.value},
+                        {"coverMargin", f.hidden_travel.cover_margin.value},
+                        {"allowSameColorSurface", f.hidden_travel.allow_same_color_surface}}}};
 
     // AD-04 : design importé (DST aujourd'hui) -- donnée source immuable,
     // absente d'un projet qui n'en a pas (comportement historique inchangé).
@@ -1186,6 +1194,26 @@ Result<document::Project> project_from_json(const json& j) {
             f.max_stitch_length = Micrometers{
                 std::clamp(fj.value("maxStitchLength", d.max_stitch_length.value), 1'000, 12'100)};
             f.auto_join = fj.value("autoJoin", d.auto_join);
+            // HP-SEQ-006.a : absent d'un projet antérieur -> désactivé (défauts du modèle). Bornes
+            // cohérentes avec la grille de preuve (largeur de fil >= 100 µm, longueurs positives).
+            if (fj.contains("hiddenTravel")) {
+                const auto& hj = fj.at("hiddenTravel");
+                const document::HiddenTravel hd;
+                auto& h = f.hidden_travel;
+                h.enabled = hj.value("enabled", hd.enabled);
+                h.max_hidden_jump = Micrometers{
+                    std::clamp(hj.value("maxHiddenJump", hd.max_hidden_jump.value), 0, 20'000)};
+                h.max_bridge_length = Micrometers{std::clamp(
+                    hj.value("maxBridgeLength", hd.max_bridge_length.value), 0, 100'000)};
+                h.bridge_stitch_length = Micrometers{std::clamp(
+                    hj.value("bridgeStitchLength", hd.bridge_stitch_length.value), 500, 12'100)};
+                h.cover_thread_width = Micrometers{std::clamp(
+                    hj.value("coverThreadWidth", hd.cover_thread_width.value), 100, 2'000)};
+                h.cover_margin = Micrometers{
+                    std::clamp(hj.value("coverMargin", hd.cover_margin.value), 0, 2'000)};
+                h.allow_same_color_surface =
+                    hj.value("allowSameColorSurface", hd.allow_same_color_surface);
+            }
         } else {
             project.finishing = document::SequenceFinishing::legacy();
         }

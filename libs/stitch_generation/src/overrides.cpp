@@ -217,9 +217,17 @@ std::vector<ObjectId> apply_manual_overrides(stitch::StitchSequence& sequence,
 }
 
 Result<stitch::StitchSequence> effective_sequence(const document::Project& project) {
+    auto result = effective_sequence_report(project);
+    if (!result) {
+        return std::unexpected(result.error());
+    }
+    return std::move(result->sequence);
+}
+
+Result<FinishResult> effective_sequence_report(const document::Project& project) {
     auto sequence = generate_sequence(project);
     if (!sequence) {
-        return sequence;
+        return std::unexpected(sequence.error());
     }
     // Liste des objets Dirty volontairement ignorée ici : effective_sequence
     // est un point d'entree "au mieux" (apercu/export/...), pas un canal de
@@ -229,7 +237,7 @@ Result<stitch::StitchSequence> effective_sequence(const document::Project& proje
     // Finitions (Lots E/F : coupes, points d'arrêt, points courts) en DERNIER,
     // après les retouches : elles ne touchent jamais la vue brute (raw_slice)
     // à laquelle les index des retouches se réfèrent.
-    return finish_sequence(*sequence, project);
+    return finish_sequence_report(*sequence, project);
 }
 
 // Corps de `edit_view`/`classify_all_edit_states`, factorisés pour opérer sur

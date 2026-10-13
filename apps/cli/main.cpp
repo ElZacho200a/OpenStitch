@@ -670,6 +670,9 @@ struct DigitizeArgs {
     std::string technique = "auto";
     double dpi = 96.0;
     double trimMm = 3.0;
+    bool hiddenTravel = false;    // HP-SEQ-006.a : coupes remplacées par des ponts cachés
+    bool hiddenSameColor = false; // HP-SEQ-006.b : surface déjà cousue du même fil = cachée
+    double hiddenMaxMm = 15.0;    // longueur maximale d'un pont, en mm
     double detail = 0.5;
     int maxColors = 8;
     int minRegionPx = 16;
@@ -744,6 +747,11 @@ int run_digitize(const DigitizeArgs& a) {
                                   : a.lock == "triangle" ? document::LockStitch::Triangle
                                   : a.lock == "zigzag"   ? document::LockStitch::MicroZigzag
                                                          : document::LockStitch::BackAndForth;
+
+    project.finishing.hidden_travel.enabled = a.hiddenTravel;
+    project.finishing.hidden_travel.allow_same_color_surface = a.hiddenSameColor;
+    project.finishing.hidden_travel.max_bridge_length =
+        Micrometers{static_cast<std::int32_t>(std::lround(a.hiddenMaxMm * 1000.0))};
 
     // Stippling : pas de segmentation, l'image est lue comme une carte de tons.
     const bool stippling = a.mode == "stipple";
@@ -884,12 +892,13 @@ int run_digitize(const DigitizeArgs& a) {
     fmt::print(st, "Objets brodés : {} (satin={} tatami={} running={})\n",
                project.embroidery_objects.size(), nSatin, nTatami, nRunning);
 
-    const auto sequence = stitch_generation::effective_sequence(project);
-    if (!sequence) {
+    const auto finished = stitch_generation::effective_sequence_report(project);
+    if (!finished) {
         return cli_error("digitize", fmt::format("génération des points impossible : {}",
-                                                 sequence.error().message));
+                                                 finished.error().message));
     }
-    const auto stats = stitch::compute_stats(*sequence);
+    const auto& sequence = finished->sequence;
+    const auto stats = stitch::compute_stats(sequence);
     if (stats.stitches == 0) {
         return cli_error("digitize", "aucun point généré, aucun DST écrit",
                          "les objets obtenus sont vides : modifiez --min-region-px ou "
@@ -901,15 +910,28 @@ int run_digitize(const DigitizeArgs& a) {
                stats.stitches, stats.jumps, stats.trims, stats.color_changes);
     fmt::print(st, "Dimensions : {:.1f} x {:.1f} mm  |  fil : {:.2f} m\n", wMm, hMm,
                stats.thread_length_um / 1e6);
+    if (a.hiddenTravel) {
+        const auto& r = finished->report;
+        fmt::print(st,
+                   "Ponts cachés : {} écart(s) candidat(s) -> {} saut(s) recouvert(s), {} pont(s) "
+                   "cousu(s) ({} points, {:.1f} mm de fil ajouté) ; {} coupe(s) supprimée(s)\n",
+                   r.candidate_gaps, r.hidden_jumps, r.bridges, r.bridge_stitches,
+                   r.bridge_length_um / 1000.0, r.trims_removed);
+        fmt::print(st,
+                   "  refus : trop long {} | extrémité non recouverte {} | aucun chemin {} ; "
+                   "coupes conservées : changement de fil {}, coupe posée {}\n",
+                   r.refused_too_long, r.refused_no_cover, r.refused_no_path, r.kept_color_change,
+                   r.kept_manual_trim);
+    }
 
     // Mesures de qualité (Lot G).
     stitch_analysis::SequenceMetrics metrics;
-    print_sequence_metrics(st, *sequence, false, &metrics);
+    print_sequence_metrics(st, sequence, false, &metrics);
     stitch_analysis::ProjectMetricsOptions pm;
     if (skipLargest && candidate) {
         pm.excluded_rgb = candidate->rgb;
     }
-    const auto quality = stitch_analysis::project_metrics(project, *sequence, pm);
+    const auto quality = stitch_analysis::project_metrics(project, sequence, pm);
     fmt::print(st, "Objets brodés < {:.0f} mm² : {}\n", pm.small_object_mm2, quality.small_objects);
     if (quality.uncovered_ratio) {
         fmt::print(st, "Surface non couverte (hors fond ignoré) : {:.2f} %\n",
@@ -930,7 +952,7 @@ int run_digitize(const DigitizeArgs& a) {
     }
     fmt::print(st, "\n");
 
-    const auto written = formats::write_dst_file(std::filesystem::path(a.dst), *sequence);
+    const auto written = formats::write_dst_file(std::filesystem::path(a.dst), sequence);
     if (!written) {
         return cli_error("digitize",
                          fmt::format("écriture du DST impossible : {}", written.error().message),
@@ -940,7 +962,7 @@ int run_digitize(const DigitizeArgs& a) {
     fmt::print(st, "DST écrit : {}\n", a.dst);
 
     if (!a.outSvg.empty()) {
-        const auto svgWritten = formats::write_svg_file(std::filesystem::path(a.outSvg), *sequence);
+        const auto svgWritten = formats::write_svg_file(std::filesystem::path(a.outSvg), sequence);
         if (!svgWritten) {
             return cli_error("digitize", fmt::format("écriture du SVG impossible : {}",
                                                      svgWritten.error().message));
@@ -1517,6 +1539,16 @@ int main(int argc, char** argv) {
         ->add_option("--trim-threshold", dz.trimMm,
                      "Coupe automatique au-delà de ce déplacement, en mm (défaut : 3)")
         ->check(CLI::PositiveNumber);
+    dz_cmd->add_flag("--hidden-travel", dz.hiddenTravel,
+                     "Remplace les coupes par des sauts ou des ponts cousus cachés sous les points "
+                     "cousus plus tard (passe finale, désactivé par défaut)");
+    dz_cmd->add_flag("--hidden-travel-same-colour", dz.hiddenSameColor,
+                     "Avec --hidden-travel : une surface déjà cousue du même fil compte aussi "
+                     "comme cachée (léger relief possible)");
+    dz_cmd
+        ->add_option("--hidden-travel-max", dz.hiddenMaxMm,
+                     "Avec --hidden-travel : longueur maximale d'un pont, en mm (défaut : 15)")
+        ->check(CLI::Range(0.0, 100.0));
     dz_cmd
         ->add_option("--mode", dz.mode,
                      "Stratégie : shapes (formes pleines, défaut) | contours (dessin au trait) | "

@@ -7,6 +7,7 @@
 #include <optional>
 #include <vector>
 
+#include "hidden_travel.hpp"
 #include "openstitch/stitch_generation/lock.hpp"
 #include "openstitch/stitch_generation/tatami.hpp"
 
@@ -201,15 +202,28 @@ bool ends_with_lock(const std::vector<StitchCommand>& cmds, const Run& run) {
 
 stitch::StitchSequence finish_sequence(const stitch::StitchSequence& sequence,
                                        const document::Project& project) {
+    return finish_sequence_report(sequence, project).sequence;
+}
+
+FinishResult finish_sequence_report(const stitch::StitchSequence& sequence,
+                                    const document::Project& project) {
     const document::SequenceFinishing& f = project.finishing;
+    TrimReport report;
     if (!f.enabled) {
-        return sequence;
+        return {sequence, report};
     }
     // Points courts d'abord (Lot F) : les verrous ajoutés ensuite ne sont
     // jamais filtrés.
     const std::vector<StitchCommand> cmds =
         split_long_stitches(filter_short_stitches(sequence.commands, project, f), f);
     const std::vector<Run> runs = find_runs(cmds);
+
+    // HP-SEQ-006.a : planificateur de ponts cachés, dernière décision de la passe. La grille de
+    // recouvrement n'est construite qu'à la première demande.
+    std::optional<HiddenTravelPlanner> planner;
+    if (f.hidden_travel.enabled && runs.size() > 1) {
+        planner.emplace(cmds, f);
+    }
 
     stitch::StitchSequence out;
     out.commands.reserve(cmds.size() + runs.size() * 8);
@@ -254,15 +268,65 @@ stitch::StitchSequence finish_sequence(const stitch::StitchSequence& sequence,
             const bool objectGap = boundary && !colorChange && travel > 0.0;
             const bool needTrim = !hasTrim && (travel > f.trim_threshold.value || objectGap ||
                                                (colorChange && f.trim_before_color_change));
-            const bool cut = needTrim || hasTrim || colorChange;
-            if ((boundary || cut) && !ends_with_lock(cmds, *prev)) {
+            // Pont caché : seulement un écart qui recevrait une coupe, de même fil, sans coupe
+            // retouchée, et fait uniquement de sauts (jamais Stop, changement de fil ni coupe).
+            TravelPlan travelPlan;
+            if (planner) {
+                const bool onlyJumps =
+                    std::all_of(cmds.begin() + static_cast<std::ptrdiff_t>(cursor),
+                                cmds.begin() + static_cast<std::ptrdiff_t>(run.begin),
+                                [](const StitchCommand& c) { return c.type == CommandType::Jump; });
+                if (needTrim && !colorChange && onlyJumps) {
+                    ++report.candidate_gaps;
+                    travelPlan = planner->plan(prev->end - 1, last.pos, cmds[run.begin].pos);
+                    switch (travelPlan.refusal) {
+                    case TravelRefusal::TooLong:
+                        ++report.refused_too_long;
+                        break;
+                    case TravelRefusal::NoCoverAtEnd:
+                        ++report.refused_no_cover;
+                        break;
+                    case TravelRefusal::NoPath:
+                        ++report.refused_no_path;
+                        break;
+                    case TravelRefusal::None:
+                        break;
+                    }
+                } else if (colorChange && needTrim) {
+                    ++report.kept_color_change;
+                } else if (hasTrim) {
+                    ++report.kept_manual_trim;
+                }
+            }
+            const bool bridged = travelPlan.decision != TravelDecision::Keep;
+            if (bridged) {
+                ++report.trims_removed;
+            }
+            const bool cut = !bridged && (needTrim || hasTrim || colorChange);
+            if (!bridged && (boundary || cut) && !ends_with_lock(cmds, *prev)) {
                 append(out.commands, lock_points(cmds, *prev, false, f));
             }
-            if (needTrim) {
+            if (needTrim && !bridged) {
                 out.commands.push_back(
                     {last.pos, CommandType::Trim, last.source, StitchPass::Travel});
             }
-            entryLock = boundary || cut;
+            entryLock = !bridged && (boundary || cut);
+            if (travelPlan.decision == TravelDecision::Bridge) {
+                // Les sauts d'origine sont remplacés par le trajet cousu, sur le même fil.
+                ++report.bridges;
+                Vec2um from = last.pos;
+                for (const Vec2um& p : travelPlan.via) {
+                    out.commands.push_back(
+                        {p, CommandType::Stitch, cmds[run.begin].source, StitchPass::Travel});
+                    report.bridge_length_um += length_um(p - from);
+                    from = p;
+                }
+                report.bridge_length_um += length_um(cmds[run.begin].pos - from);
+                report.bridge_stitches += travelPlan.via.size() + 1; // + la piqûre d'arrivée
+                cursor = run.begin;
+            } else if (travelPlan.decision == TravelDecision::HiddenJump) {
+                ++report.hidden_jumps;
+            }
         }
         // Déplacement(s)/coupe/changement de fil d'origine, puis le tracé.
         out.commands.insert(out.commands.end(), cmds.begin() + static_cast<std::ptrdiff_t>(cursor),
@@ -295,7 +359,7 @@ stitch::StitchSequence finish_sequence(const stitch::StitchSequence& sequence,
     }
     out.commands.insert(out.commands.end(), cmds.begin() + static_cast<std::ptrdiff_t>(cursor),
                         cmds.end());
-    return out;
+    return {std::move(out), report};
 }
 
 } // namespace openstitch::stitch_generation
