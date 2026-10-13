@@ -1,6 +1,7 @@
 # Fondu de couleurs et vérification des outils UI — 2026-10-13
 
-Base : `54d2828` (PR #36 fusionnée), branche `fix/blend-outils-ui-20261013`.
+Base initiale : `54d2828` (PR #36 fusionnée), branche `fix/blend-outils-ui-20261013`.
+Avant livraison, `main` intégré jusqu'à `f267afa` (PR #37 et #38), sans conflit.
 Ce bilan concerne ce lot, pas les validations du lot UX/UI précédent.
 
 ## Fondu livré
@@ -70,8 +71,22 @@ ne sont pas liés. Le format d'import raster reste proportionnel.
 Avant intégration des PR #37/#38 de `main` : builds complets et CTest
 **Release 1096/1096** et **Debug 1096/1096**, zéro échec. Clang-format **18.1.8**
 sur tous les C++ suivis et nouveaux, `git diff --check` : OK. PDF régénéré,
-45 chapitres, zéro problème/avertissement. La validation finale sur la base
-intégrée est indiquée à la livraison. Journaux locaux : `build/msvc/blend-ui-*-full.txt` ;
+45 chapitres, zéro problème/avertissement.
+
+**Validation finale après intégration de `main` (`f267afa`)** :
+
+| Contrôle exécuté | Résultat |
+|---|---|
+| Build complet + CTest Release (`-j 4`) | **1105/1105**, zéro échec, 30,41 s |
+| Build complet + CTest Debug (`-j 4`) | **1105/1105**, zéro échec, 205,44 s |
+| Trois nouvelles suites UI, relancées directement | 14 + 73 + 20 = **107 scénarios ciblés**, zéro échec/skip (hors init/cleanup) |
+| Clang-format 18.1.8 sur tous les C++ suivis | OK |
+| `git diff --check`, garde `check_no_raw_sequence_bypass` | OK |
+| PDF régénéré sur la base intégrée | **264 pages, 45 chapitres, zéro problème/avertissement** |
+
+Les temps sont ceux des suites, pas un banc de performance du moteur.
+Linux-core reste à la CI ; aucun code Qt/Windows n'a été ajouté dans les libs.
+Journaux locaux : `build/msvc/blend-ui-*-integrated-full.txt` ;
 repros : `blend-repro-qtest.txt`, `tools-repro-qtest.txt`,
 `actions-repro-qtest.txt`, `conversion-layers-repro.txt`, `import-ratio-repro.txt`.
 
