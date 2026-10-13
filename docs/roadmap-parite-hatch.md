@@ -33,15 +33,15 @@ prochaine entrée de ce fichier.
 > sur une branche ou une PR ouverte.
 
 Audit du 2026-10-06 : chaque entrée a été confrontée au code de `main` (`40bf4c0`).
-Revue partielle du 2026-10-13 (`main` = `4a8088b`) : vague 1 — objets, cadres, performance, rendu. Tableau recalculé depuis les titres des entrées. Les autres sections n'ont pas été revérifiées et peuvent être en retard sur le code.
+Revue partielle du 2026-10-13 (`main` = `4a8088b`) : vague 1 — objets, cadres, performance, rendu. Tableau recalculé depuis les titres des entrées (+1 P1 ☐ le 2026-10-13 : HP-ENG-001.a, issue de la veille `docs/veille-innovations-2026-10.md`). Les autres sections n'ont pas été revérifiées et peuvent être en retard sur le code.
 
 | Priorité | ☑ Fait | ◐ Partiel | ☐ À faire | Total |
 |---|---|---|---|---|
 | P0 | 12 | 25 | 7 | 44 |
-| P1 | 4 | 40 | 78 | 122 |
+| P1 | 4 | 40 | 79 | 123 |
 | P2 | 0 | 13 | 67 | 80 |
 | P3 | 0 | 0 | 12 | 12 |
-| **Total** | **16** | **78** | **164** | **258** |
+| **Total** | **16** | **78** | **165** | **259** |
 
 **Fait (16)** : FILE-001/002/003/004 (nouveau projet, enregistrer, récents, autosave),
 THR-001/003/004 (bibliothèque de fils, fil le plus proche, fil assigné à chaque objet),
@@ -882,6 +882,11 @@ plus.
   vectorielle (méandre) et le réglage dans le desktop.
 - À faire (zone) : chemin aléatoire (graine fixe) qui remplit une zone sans se croiser
   (courbe de remplissage type Hilbert ou TSP-art), espacement réglable.
+- Veille (§V6, résumés lus) : Kaplan & Bosch (Bridges 2005) distribuent des
+  « villes » par pointillé de Voronoï pondéré ou tramage ordonné, puis
+  résolvent un TSP heuristique ; Li & Mould (2014) remplacent la tournée par un
+  arbre. Risque : densité de fil non contrôlée ; l'imposer explicitement.
+  Priorité P3, après le pointillé d'image déjà livré.
 - Modules : `libs/stitch_generation`.
 
 ### HP-STI-014 — Remplissage croisé (crosshatch) [P2] — ☐ À faire
@@ -1074,6 +1079,34 @@ l'utilisateur ne voit pas. OpenStitch a les briques mais peu d'automatismes.
 - Modules : `libs/stitch_generation/tatami`, `directional_fill`, `libs/document`.
 - Acceptation : test géométrique (la rangée dépasse du contour de exactement
   `pull` ± 0,1 mm) ; validation physique HP-PHYS-001.
+
+### HP-ENG-001.a — Pièce-test de calibration et table de compensation par tissu [P1] — ☐ À faire
+- Source : veille `docs/veille-innovations-2026-10.md` §V1. Aucune source lue ne
+  fournit de modèle physique de l'étirement : les valeurs publiées sont des
+  règles empiriques, dépendantes du tissu et non vérifiées. On mesure donc
+  plutôt qu'on ne modélise. Idée de **notre conception** ; seule l'expression
+  de la compensation en pourcentage de sur-couture est reprise de US5343401A
+  (expiré selon Google, non vérifié par un juriste).
+- État OpenStitch : `pull_compensation` est un réglage manuel par objet, sans
+  lien avec la largeur de colonne ni le tissu (voir HP-ENG-001).
+- À faire : (1) générateur de pièce-test déterministe (colonnes satin de
+  largeurs croissantes, carré de tatami, disque, chacune de dimension nominale
+  connue) exporté en DST ; (2) saisie des dimensions mesurées après broderie ;
+  (3) table « largeur nominale → compensation » ajustée à ces mesures,
+  sérialisée dans le `.osp` sous un nom de profil de tissu ; (4) application de
+  la table par le générateur, via `effective_sequence`, quand la compensation
+  d'un objet est « Auto ».
+- **Ne pas** reproduire la compensation « push » par table largeur-de-bout /
+  tissu décrite dans US8851001B2/US9702070B2 (Melco, affichés actifs) ; voir
+  HP-FAB-001 et `docs/roadmap-rd-brevets.md` §« Brevets à éviter ».
+- Modules : `libs/stitch_generation` (pièce-test, application),
+  `libs/document` (profil), `libs/project_io` (schéma), `apps/desktop` (saisie).
+- Dépend de : HP-ENG-001 (tatami et directionnel), HP-FAB-001 pour le choix du
+  profil par projet.
+- Acceptation : deux générations de la pièce-test donnent des DST identiques
+  octet pour octet ; aller-retour `.osp` de la table ; avec une table nulle, la
+  séquence est strictement identique à l'actuelle ; validation physique
+  HP-PHYS-001 (broderie réelle, mesures consignées dans la doc).
 
 ### HP-ENG-002 — Sous-couche automatique selon la forme [P0] — ◐ Partiel (2026-10-06)
 - Livré 2026-10-10 : `UnderlayMode::Auto` (défaut Manual) pour tatami, directionnel, satin
@@ -1303,6 +1336,13 @@ SAM via un worker **WSL**. ~18 s sur l'image de référence.
 - R&D brevets : critère de régularité par statistiques de la transformée de
   distance (RD-PAT-004) et réintégration protégée de l'auto-satin (RD-PAT-002),
   voir `docs/roadmap-rd-brevets.md`.
+- Veille (`docs/veille-innovations-2026-10.md` §V2, article lu) : MSEmbGAN
+  (TVCG) classe flat / satin / tatami par **érosion** du masque avec deux
+  rayons (λ_f, λ_w), donc par seuils de largeur, sans apprentissage. Cela
+  confirme l'approche géométrique ; il n'y a rien à apprendre de leur
+  « classifieur » et leur jeu de données (dessiné sous Wilcom 9.0, licence non
+  vérifiée) ne doit pas être embarqué. Contrainte brevet : voir HP-FAB-001
+  (mesurer sur la géométrie, pas sur des points temporaires).
 
 ### HP-AUTO-010 — Suppression des recouvrements après numérisation [P1] — ☐ À faire
 - Voir HP-ENG-011, appliqué automatiquement aux objets auto-numérisés.
@@ -1669,6 +1709,11 @@ couches ; objets verrouillables ; coût estimé ; routage satin multi-colonnes.
 ### HP-SEQ-004 — Fusion de plusieurs objets en un seul parcours (branching) [P2] — ☐ À faire
 - Hatch : Branching : plusieurs objets de même couleur cousus d'un seul trajet
   (déplacements cachés sous les objets), sans coupe.
+- Piste de comparaison (veille §V5, principe lu) : Li & Mould (2014) montrent
+  qu'un arbre a un contour extérieur formant un seul trajet fermé sans
+  auto-intersection, obtenu en longeant l'arbre des deux côtés. Le squelette
+  d'une forme fine est déjà un arbre ; comparer à `route_columns` avant d'en
+  tirer quoi que ce soit (RD-PAT-008).
 - Modules : `libs/stitch_generation` (routage), `libs/optimization`.
 
 ### HP-SEQ-005 — Connecteurs réglables par objet [P2] — ☐ À faire
@@ -1746,6 +1791,11 @@ calques image/régions/vecteurs/broderie, filtres d'affichage, thème clair/somb
   HP-PERF-004).
 - À faire : rendu incrémental (seul l'objet modifié est redessiné),
   niveau de détail selon le zoom ; cible 200 000 points à 60 i/s au zoom/pan.
+- Piste (veille §V8, résumé de US8818773, « Expired - Fee Related » selon
+  Google, échéance affichée incohérente : à vérifier) : rendre chaque point en
+  prenant, dans une base d'images pré-rendues indexée par longueur et angle
+  d'éclairage, l'image correspondante. À mesurer avec le banc avant de choisir ;
+  à ne pas adopter sans gain démontré sur le rendu actuel.
 
 ### HP-VIEW-010 — Grille et guides configurables [P1] — ☐ À faire
 - À faire : pas de grille réglable, grille majeure/mineure, couleur, masquage.
@@ -1881,7 +1931,25 @@ Aujourd'hui : un cadre **rectangulaire** de taille libre (10–500 mm), persist�
 - Hatch Digitizer : Multi-hooping : placer plusieurs positions de cadre sur
   un grand design, découper les objets, points de repère d'alignement, un
   fichier par cadrage.
+- Veille (`docs/veille-innovations-2026-10.md` §V4, sources lues) : OriStitch
+  (SCF '25) place les cadres par heuristique gloutonne de recouvrement
+  d'ensemble : candidats = produit des x et y minimaux des boîtes englobantes,
+  deux orientations par candidat, on retient le cadre qui contient entièrement
+  le plus d'unités restantes, on retire, on recommence (O(N⁴)). **Limite** :
+  une unité doit tenir entière dans un cadre ; un objet plus grand qu'un cadre
+  fait échouer l'algorithme, donc il faut aussi découper les gros objets.
+  StitchOver (UIST '26) ajoute des points de jonction (zigzag en verrou) entre
+  deux cadrages pour garder la continuité d'un fil ; la documentation Wilcom
+  décrit des repères cousus dans la zone de recouvrement, non enregistrés dans
+  le design.
+- À faire (précisions) : placement glouton **déterministe** (candidats triés
+  explicitement) ; découpe des objets plus grands qu'un cadre ; zone de
+  recouvrement réglable ; repères de recalage cousus à l'export, absents du
+  projet ; un fichier machine par cadrage ; rapport des objets coupés.
 - Modules : `libs/stitch_generation` (découpe), `libs/formats`, `apps/desktop`.
+- Acceptation : deux exécutions donnent les mêmes cadrages ; l'union des
+  cadrages couvre tous les points du design ; aucun point n'est perdu ni
+  dupliqué hors recouvrement ; chaque fichier tient dans le cadre déclaré.
 
 ### HP-HOOP-005 — Rotation du cadre / design en paysage [P1] — ◐ Partiel (2026-10-13)
 - Livré (PR #25, fusionnée le 2026-10-13 et PR #27, fusionnée le 2026-10-13 (`296ff34`)) : bouton Pivoter du dialogue du cadre (échange largeur/hauteur) ; « Pivoter le design de 90° ».
@@ -1901,8 +1969,17 @@ Aujourd'hui : un cadre **rectangulaire** de taille libre (10–500 mm), persist�
 - À faire : `FabricProfile` (facteurs appliqués aux défauts « Auto »), choix
   par projet, régénération ; valeurs issues de la validation physique
   (HP-PHYS-001), documentées avec leur source.
+- **Risque brevet à instruire avant tout code** (veille §V3) : US8851001B2
+  (Melco, affiché actif jusqu'en 2032 par Google ; revendications 1 et 19 lues)
+  couvre le choix du type de point, dont la sous-couche, en comparant à un jeu
+  de valeurs la taille d'un élément mesurée sur des **points temporaires**, après
+  agrandissement ou changement de tissu. Le profil de tissu ne doit donc **pas**
+  changer le *type* de point en mesurant des points temporaires ; il ne règle que
+  des facteurs (densité, compensation). Mesure de taille sur la géométrie
+  (transformée de distance). Analyse non juridique : faire relire. Les
+  revendications de US9702070B2 n'ont pas pu être lues.
 - Modules : `libs/document`, `libs/stitch_generation`.
-- Dépend de : HP-ENG-002.
+- Dépend de : HP-ENG-002, HP-ENG-001.a (table de compensation).
 
 ### HP-FAB-002 — Stabilisateur recommandé [P2] — ☐ À faire
 - À faire : recommandation d'entoilage selon tissu + densité, affichée sur la
