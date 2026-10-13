@@ -368,6 +368,31 @@ void MainWindow::buildThreadPanel() {
         statusBar()->showMessage(tr("Liste des fils exportée : %1").arg(path), 6000);
     });
 
+    // ---- Ordre des couleurs (tous les objets d'un fil d'un coup) ----------------------------
+    connect(threadPanel_, &ThreadPanel::threadMoved, this, [this](int from, int to) {
+        if (!sequence_ || from < 0 || to < 0) {
+            refreshThreadPanel();
+            return;
+        }
+        const auto film = stitch_analysis::color_film(project_, *sequence_);
+        const auto order = stitch_analysis::reorder_threads(
+            project_, film, static_cast<std::size_t>(from), static_cast<std::size_t>(to));
+        std::vector<ObjectId> current;
+        for (const auto& obj : project_.embroidery_objects) {
+            current.push_back(obj.id);
+        }
+        if (!order || *order == current) {
+            statusBar()->showMessage(
+                tr("Cette couleur ne peut pas bouger : les objets figés gardent leur place."),
+                5000);
+            refreshThreadPanel();
+            return;
+        }
+        undoStack_.execute(std::make_unique<commands::ReorderEmbroideryCommand>(*order), project_);
+        refreshImage();
+        updateActions();
+    });
+
     // ---- Film couleur ----------------------------------------------------------------------
     connect(threadPanel_, &ThreadPanel::filmBlockMoved, this, [this](int from, int to) {
         if (!sequence_ || from < 0 || to < 0) {

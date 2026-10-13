@@ -206,7 +206,27 @@ ThreadPanel::ThreadPanel(QWidget* parent) : QWidget(parent) {
     usageList_->setAccessibleName(tr("Fils utilisés par le motif"));
     usageList_->setItemDelegate(new ThreadRowDelegate(true, usageList_));
     usageList_->setMouseTracking(true);
+    usageList_->setDragDropMode(QAbstractItemView::InternalMove);
+    usageList_->setDefaultDropAction(Qt::MoveAction);
+    usageList_->setToolTip(
+        tr("Les couleurs sont listées dans l'ordre de couture : une couleur plus "
+           "bas est cousue après, donc passe au-dessus. Glissez une couleur ou "
+           "utilisez les flèches pour la déplacer."));
     pl->addWidget(usageList_, 1);
+    auto* threadMoveRow = new QHBoxLayout();
+    threadMoveRow->setSpacing(8);
+    threadUpBtn_ = new QPushButton(tr("▲ Passer dessous"), projectTab);
+    threadUpBtn_->setObjectName(QStringLiteral("threadMoveUpBtn"));
+    threadUpBtn_->setToolTip(tr("Coud cette couleur plus tôt : elle passe sous la couleur "
+                                "précédente. Tous ses objets bougent ensemble (annulable)."));
+    threadDownBtn_ = new QPushButton(tr("▼ Passer dessus"), projectTab);
+    threadDownBtn_->setObjectName(QStringLiteral("threadMoveDownBtn"));
+    threadDownBtn_->setToolTip(
+        tr("Coud cette couleur plus tard : elle passe au-dessus de la "
+           "couleur suivante. Tous ses objets bougent ensemble (annulable)."));
+    threadMoveRow->addWidget(threadUpBtn_);
+    threadMoveRow->addWidget(threadDownBtn_);
+    pl->addLayout(threadMoveRow);
 
     selectUsageBtn_ = new QPushButton(tr("Sélectionner les objets de ce fil"), projectTab);
     selectUsageBtn_->setObjectName(QStringLiteral("threadSelectUsageBtn"));
@@ -369,6 +389,23 @@ ThreadPanel::ThreadPanel(QWidget* parent) : QWidget(parent) {
         }
     });
 
+    connect(usageList_->model(), &QAbstractItemModel::rowsMoved, this,
+            [this](const QModelIndex&, int start, int, const QModelIndex&, int destRow) {
+                const int to = destRow > start ? destRow - 1 : destRow;
+                emit threadMoved(start, to);
+            });
+    connect(threadUpBtn_, &QPushButton::clicked, this, [this] {
+        const int row = usageList_->currentRow();
+        if (row > 0) {
+            emit threadMoved(row, row - 1);
+        }
+    });
+    connect(threadDownBtn_, &QPushButton::clicked, this, [this] {
+        const int row = usageList_->currentRow();
+        if (row >= 0 && row + 1 < usageList_->count()) {
+            emit threadMoved(row, row + 1);
+        }
+    });
     connect(filmList_->model(), &QAbstractItemModel::rowsMoved, this,
             [this](const QModelIndex&, int start, int, const QModelIndex&, int destRow) {
                 const int to = destRow > start ? destRow - 1 : destRow;
@@ -629,6 +666,9 @@ int ThreadPanel::currentFilmRow() const {
 void ThreadPanel::updateButtons() {
     const bool usageSel = currentUsage().has_value();
     selectUsageBtn_->setEnabled(usageSel);
+    const int usageRow = usageList_->currentRow();
+    threadUpBtn_->setEnabled(usageRow > 0);
+    threadDownBtn_->setEnabled(usageRow >= 0 && usageRow + 1 < usageList_->count());
     replaceUsageBtn_->setEnabled(usageSel && currentCatalogThread().has_value());
     snapBtn_->setEnabled(!usage_.empty());
     reduceBtn_->setEnabled(usage_.size() > 1);

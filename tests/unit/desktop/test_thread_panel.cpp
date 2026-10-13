@@ -137,6 +137,61 @@ private slots:
         QVERIFY(!merge->isEnabled());
     }
 
+    void colourButtonsEmitThreadMovesAndAreDisabledAtTheEnds() {
+        ThreadPanel panel;
+        std::vector<stitch_analysis::ThreadUsage> usage(3);
+        usage[0].identity.rgb = {1, 1, 1};
+        usage[1].identity.rgb = {2, 2, 2};
+        usage[2].identity.rgb = {3, 3, 3};
+        panel.setUsage(usage);
+        auto* list = panel.findChild<QListWidget*>("threadUsageList");
+        auto* up = panel.findChild<QPushButton*>("threadMoveUpBtn");
+        auto* down = panel.findChild<QPushButton*>("threadMoveDownBtn");
+        QVERIFY(list != nullptr && up != nullptr && down != nullptr);
+        QCOMPARE(list->count(), 3);
+        QSignalSpy moved(&panel, &ThreadPanel::threadMoved);
+        list->setCurrentRow(1);
+        QVERIFY(up->isEnabled() && down->isEnabled());
+        down->click();
+        QCOMPARE(moved.count(), 1);
+        QCOMPARE(moved.at(0).at(0).toInt(), 1);
+        QCOMPARE(moved.at(0).at(1).toInt(), 2);
+        up->click();
+        QCOMPARE(moved.at(1).at(0).toInt(), 1);
+        QCOMPARE(moved.at(1).at(1).toInt(), 0);
+        list->setCurrentRow(0);
+        QVERIFY(!up->isEnabled());
+        list->setCurrentRow(2);
+        QVERIFY(!down->isEnabled());
+    }
+
+    void movingAColourReordersTheObjectsAndIsOneUndoStep() {
+        MainWindow window;
+        window.show();
+        window.applyLoadedProject(twoTrianglesProject());
+        auto* dock = window.findChild<QDockWidget*>("threadDock");
+        auto* panel = window.findChild<ThreadPanel*>();
+        QVERIFY(dock != nullptr && panel != nullptr);
+        dock->show();
+        QApplication::processEvents();
+
+        auto* usage = panel->findChild<QListWidget*>("threadUsageList");
+        auto* down = panel->findChild<QPushButton*>("threadMoveDownBtn");
+        QCOMPARE(usage->count(), 2);
+        QVERIFY(usage->item(0)->text().contains("#C8102E")); // rouge cousu d'abord
+        usage->setCurrentRow(0);
+        QVERIFY(down->isEnabled());
+        down->click(); // le rouge passe après (donc au-dessus du) bleu
+        QApplication::processEvents();
+        QVERIFY2(usage->item(0)->text().contains("#0072CE"), qPrintable(usage->item(0)->text()));
+        QVERIFY(usage->item(1)->text().contains("#C8102E"));
+
+        window.findChild<QAction*>("action_undo")->trigger(); // un seul pas d'annulation
+        QApplication::processEvents();
+        QVERIFY(usage->item(0)->text().contains("#C8102E"));
+        QVERIFY(usage->item(1)->text().contains("#0072CE"));
+    }
+
     void assigningAThreadToTheSelectionIsOneUndoStep() {
         MainWindow window;
         window.show();

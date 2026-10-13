@@ -112,6 +112,16 @@ struct ColorFilmBlock {
 reorder_film_blocks(const document::Project& project, const std::vector<ColorFilmBlock>& film,
                     std::size_t from, std::size_t to);
 
+// Nouvel ordre des objets après avoir déplacé la COULEUR (le fil, tous ses blocs) `from`
+// à la position `to` de la liste des fils distincts, dans l'ordre de première utilisation
+// du film (le même que `thread_usage`). Tous les objets de cette couleur passent d'un bloc :
+// la couleur est cousue après (donc au-dessus de) les couleurs qu'elle dépasse. Les autres
+// couleurs gardent leur ordre relatif ; chaque couleur garde l'ordre de ses objets. Mêmes
+// règles de verrouillage que `reorder_film_blocks`. `nullopt` si `from`/`to` sont hors liste.
+[[nodiscard]] std::optional<std::vector<ObjectId>>
+reorder_threads(const document::Project& project, const std::vector<ColorFilmBlock>& film,
+                std::size_t from, std::size_t to);
+
 // Nouvel ordre qui regroupe les blocs de MÊME fil (identité égale) à la place
 // de leur première apparition, pour réduire les changements de fil. Même
 // règles de verrouillage que `reorder_film_blocks`. ATTENTION : fusionner
