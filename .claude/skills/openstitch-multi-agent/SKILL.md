@@ -73,6 +73,17 @@ comment), ce qui ne l'a pas été, et tout écart de périmètre constaté.
 
 ## Pièges connus
 
+- **Le worktree d'un agent part de `main`, pas de la branche du chef de lot** (constaté
+  lors de la refonte UI : l'agent ne voyait ni les nouveaux jetons ni les règles QSS).
+  Conséquence : un agent ne peut pas s'appuyer sur du travail non fusionné dans `main`.
+  Soit lui demander de n'utiliser que ce que `main` fournit (il dérive localement ce
+  qui manque, et le chef de lot remplace après fusion), soit fusionner d'abord la base
+  dans `main`. Les périmètres de fichiers disjoints gardent la fusion propre.
+- Sous `ctest`, un test peut bloquer 300 s sans cause liée au changement (vu une fois
+  sur `satinJunctionGuideIsLockedInUi`) : relancer avec `--timeout 400` avant de conclure.
+- Lancer un `.exe` de test directement sans le PATH de Qt sort en `0xC0000135` : passer
+  par `ctest` ou ajouter `%QT_ROOT%in` au PATH.
+
 - Les captures d'écran du bureau capturent la mauvaise fenêtre si l'appli n'est
   pas au premier plan : utiliser `PrintWindow` sur le handle du processus.
 - Deux agents qui ajoutent chacun une règle au même fichier QSS global se
