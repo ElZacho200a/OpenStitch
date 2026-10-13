@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 #include "thread_strip.hpp"
 
+#include <QApplication>
 #include <QFontMetrics>
 #include <QHelpEvent>
 #include <QMouseEvent>
@@ -8,6 +9,7 @@
 #include <QToolTip>
 
 #include <algorithm>
+#include <cmath>
 
 #include "app_theme.hpp"
 
@@ -34,6 +36,7 @@ void ThreadStrip::setThreads(std::vector<Swatch> swatches, const QString& summar
     swatches_ = std::move(swatches);
     summary_ = summary;
     hovered_ = -1;
+    endDrag();
     update();
 }
 
@@ -43,6 +46,10 @@ QSize ThreadStrip::sizeHint() const {
 
 QSize ThreadStrip::minimumSizeHint() const {
     return {120, AppTheme::instance().tokens().controlHeight + 12};
+}
+
+QPointF ThreadStrip::swatchCenter(int index) const {
+    return swatchRect(index).center();
 }
 
 QRectF ThreadStrip::swatchRect(int index) const {
@@ -69,6 +76,23 @@ int ThreadStrip::indexAt(const QPointF& pos) const {
         }
     }
     return -1;
+}
+
+int ThreadStrip::dropSlotAt(qreal x) const {
+    const int n = visibleCount();
+    if (n <= 0) {
+        return -1;
+    }
+    const qreal first = swatchRect(0).left();
+    const int slot = int(std::floor((x - first + kGap / 2.0) / (kDot + kGap)));
+    return std::clamp(slot, 0, n - 1);
+}
+
+void ThreadStrip::endDrag() {
+    pressed_ = -1;
+    dragging_ = false;
+    dropSlot_ = -1;
+    unsetCursor();
 }
 
 void ThreadStrip::paintEvent(QPaintEvent*) {
@@ -98,6 +122,8 @@ void ThreadStrip::paintEvent(QPaintEvent*) {
             p.setBrush(Qt::NoBrush);
             p.drawEllipse(r.adjusted(-3, -3, 3, 3));
         }
+        const bool lifted = dragging_ && i == pressed_;
+        p.setOpacity(lifted ? 0.3 : 1.0);
         p.setPen(Qt::NoPen);
         p.setBrush(swatches_[std::size_t(i)].color);
         p.drawEllipse(r);
@@ -107,6 +133,23 @@ void ThreadStrip::paintEvent(QPaintEvent*) {
         p.drawEllipse(r.adjusted(2, 2, -2, -2));
         p.setPen(QPen(t.borderStrong, 1));
         p.drawEllipse(r.adjusted(0.5, 0.5, -0.5, -0.5));
+        p.setOpacity(1.0);
+    }
+    if (dragging_ && pressed_ >= 0 && pressed_ < shown && dropSlot_ >= 0) {
+        // Repère d'insertion : du côté où la pastille arrive, puis la pastille suit le curseur.
+        const QRectF target = swatchRect(dropSlot_);
+        if (dropSlot_ != pressed_) {
+            const qreal x =
+                dropSlot_ < pressed_ ? target.left() - kGap / 2.0 : target.right() + kGap / 2.0;
+            p.setPen(QPen(t.accent, 3, Qt::SolidLine, Qt::RoundCap));
+            p.drawLine(QPointF(x, target.top() - 4), QPointF(x, target.bottom() + 4));
+        }
+        const QRectF floating(dragX_ - kDot / 2.0, swatchRect(0).top(), kDot, kDot);
+        p.setOpacity(0.85);
+        p.setPen(QPen(t.accent, 2));
+        p.setBrush(swatches_[std::size_t(pressed_)].color);
+        p.drawEllipse(floating);
+        p.setOpacity(1.0);
     }
     const int hidden = threadCount() - shown;
     QString right = summary_;
@@ -118,6 +161,19 @@ void ThreadStrip::paintEvent(QPaintEvent*) {
 }
 
 void ThreadStrip::mouseMoveEvent(QMouseEvent* event) {
+    if (pressed_ >= 0 && (event->buttons() & Qt::LeftButton)) {
+        if (!dragging_ && (event->position() - pressPos_).manhattanLength() >=
+                              QApplication::startDragDistance()) {
+            dragging_ = true;
+            setCursor(Qt::ClosedHandCursor);
+        }
+        if (dragging_) {
+            dragX_ = event->position().x();
+            dropSlot_ = dropSlotAt(dragX_);
+            update();
+        }
+        return;
+    }
     const int idx = indexAt(event->position());
     if (idx != hovered_) {
         hovered_ = idx;
@@ -128,16 +184,37 @@ void ThreadStrip::mouseMoveEvent(QMouseEvent* event) {
 
 void ThreadStrip::mousePressEvent(QMouseEvent* event) {
     if (event->button() == Qt::LeftButton) {
-        const int idx = indexAt(event->position());
-        if (idx >= 0) {
-            emit threadClicked(idx);
+        pressed_ = indexAt(event->position());
+        pressPos_ = event->position();
+        dragging_ = false;
+    }
+}
+
+void ThreadStrip::mouseReleaseEvent(QMouseEvent* event) {
+    if (event->button() != Qt::LeftButton || pressed_ < 0) {
+        return;
+    }
+    const int from = pressed_;
+    const bool wasDragging = dragging_;
+    const int to = wasDragging ? dropSlotAt(event->position().x()) : -1;
+    endDrag();
+    update();
+    if (!wasDragging) {
+        if (indexAt(event->position()) == from) {
+            emit threadClicked(from); // un clic, pas un glissement
         }
+        return;
+    }
+    if (to >= 0 && to != from) {
+        emit threadMoved(from, to);
     }
 }
 
 void ThreadStrip::leaveEvent(QEvent*) {
     hovered_ = -1;
-    unsetCursor();
+    if (!dragging_) {
+        unsetCursor();
+    }
     update();
 }
 
@@ -146,7 +223,11 @@ bool ThreadStrip::event(QEvent* e) {
         const auto* help = static_cast<QHelpEvent*>(e);
         const int idx = indexAt(help->pos());
         if (idx >= 0) {
-            QToolTip::showText(help->globalPos(), swatches_[std::size_t(idx)].tooltip, this);
+            QToolTip::showText(help->globalPos(),
+                               swatches_[std::size_t(idx)].tooltip + QLatin1Char('\n') +
+                                   tr("Glisser : changer l'ordre (à droite = cousue après, "
+                                      "donc au-dessus)"),
+                               this);
         } else {
             QToolTip::hideText();
         }
