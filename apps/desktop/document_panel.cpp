@@ -89,16 +89,9 @@ constexpr int kLockCol = 2;
 constexpr int kSwatchSize = 14;
 constexpr int kSwatchGap = 6;
 
-// Mélange `over` sur `under` (ratio dans [0,1]) : dérive une teinte douce d'un jeton.
-QColor blend(const QColor& under, const QColor& over, double ratio) {
-    const auto mix = [ratio](int a, int b) { return static_cast<int>(a + (b - a) * ratio + 0.5); };
-    return QColor(mix(under.red(), over.red()), mix(under.green(), over.green()),
-                  mix(under.blue(), over.blue()));
-}
-
-// Teinte d'accent douce (fond de la ligne sélectionnée), dérivée des jetons.
+// Teinte d'accent douce (fond de la ligne sélectionnée) : jeton du thème.
 QColor soft_accent(const Tokens& t) {
-    return blend(t.surface, t.accent, 0.18);
+    return t.accentSoft;
 }
 
 QFont pill_font(const QFont& base) {
