@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 #include "properties_panel.hpp"
+#include "app_theme.hpp"
 #include "ui_icons.hpp"
 
 #include <QCheckBox>
@@ -7,6 +8,7 @@
 #include <QDoubleSpinBox>
 #include <QFormLayout>
 #include <QFrame>
+#include <QHBoxLayout>
 #include <QIcon>
 #include <QLabel>
 #include <QListWidget>
@@ -145,20 +147,85 @@ void dependOnField(QFormLayout* form, QCheckBox* box, QWidget* field) {
     QObject::connect(box, &QCheckBox::toggled, field, apply);
 }
 
+// Titre de section discret (petites capitales, couleur secondaire) : le style vient de la feuille
+// de style locale du panneau (propriété `propsSection`).
+QLabel* makeSectionLabel(const QString& title, QWidget* parent) {
+    auto* heading = new QLabel(title.toUpper(), parent);
+    heading->setProperty("propsSection", true);
+    heading->setContentsMargins(0, 8, 0, 0);
+    return heading;
+}
+
+// Grille libellé à gauche / contrôle à droite, espacement homogène de 8 px.
+void styleForm(QFormLayout* form) {
+    form->setLabelAlignment(Qt::AlignLeft | Qt::AlignVCenter);
+    form->setFormAlignment(Qt::AlignTop);
+    form->setFieldGrowthPolicy(QFormLayout::AllNonFixedFieldsGrow);
+    form->setHorizontalSpacing(8);
+    form->setVerticalSpacing(8);
+    form->setContentsMargins(0, 0, 0, 0);
+}
+
+// Feuille de style LOCALE au panneau, construite depuis les jetons (aucune couleur en dur).
+QString panelStyleSheet(const Tokens& t) {
+    const auto rgba = [](const QColor& c, int alpha) {
+        return QStringLiteral("rgba(%1,%2,%3,%4)")
+            .arg(c.red())
+            .arg(c.green())
+            .arg(c.blue())
+            .arg(alpha);
+    };
+    return QStringLiteral(
+               "QLabel[propsSection=\"true\"] { color: %1; font-size: 10px; font-weight: 700; "
+               "letter-spacing: 1px; }"
+               "QLabel#props_header { color: %2; font-weight: 700; }"
+               "QLabel[propsPill=\"true\"] { color: %3; background: %4; border: 1px solid %5; "
+               "border-radius: %6px; padding: 1px 8px; font-size: 11px; font-weight: 600; }"
+               "QGroupBox { border: 1px solid %7; border-radius: %8px; margin-top: 14px; "
+               "padding: %9px; }"
+               "QGroupBox::title { subcontrol-origin: margin; left: 8px; padding: 0 4px; "
+               "color: %1; font-weight: 700; }"
+               "QSpinBox, QDoubleSpinBox, QComboBox { min-height: %10px; }"
+               "QPushButton { min-height: %10px; }")
+        .arg(t.textSecondary.name(), t.text.name(), t.accent.name(), rgba(t.accent, 36),
+             rgba(t.accent, 90))
+        .arg(t.radiusMd * 3)
+        .arg(t.border.name())
+        .arg(t.radiusMd)
+        .arg(t.space3)
+        .arg(t.controlHeight);
+}
+
 } // namespace
 
 PropertiesPanel::PropertiesPanel(QWidget* parent) : QWidget(parent) {
     wheelGuard_ = new WheelGuard(this);
     root_ = new QVBoxLayout(this);
-    root_->setContentsMargins(8, 8, 8, 8);
-    root_->setSpacing(6);
+    root_->setContentsMargins(12, 12, 12, 12);
+    root_->setSpacing(8);
 
+    // En-tête : pastille de couleur, nom de l'objet, pastille de type.
+    auto* headerRow = new QHBoxLayout();
+    headerRow->setContentsMargins(0, 0, 0, 0);
+    headerRow->setSpacing(8);
+    colorDot_ = new QLabel(this);
+    colorDot_->setObjectName(QStringLiteral("props_colorDot"));
+    colorDot_->setFixedSize(16, 16);
+    colorDot_->setVisible(false);
+    headerRow->addWidget(colorDot_);
     header_ = new QLabel(tr("Aucune sélection"), this);
-    QFont hf = header_->font();
-    hf.setBold(true);
-    header_->setFont(hf);
+    header_->setObjectName(QStringLiteral("props_header"));
     header_->setWordWrap(true);
-    root_->addWidget(header_);
+    headerRow->addWidget(header_, 1);
+    typePill_ = new QLabel(this);
+    typePill_->setObjectName(QStringLiteral("props_typePill"));
+    typePill_->setProperty("propsPill", true);
+    typePill_->setVisible(false);
+    headerRow->addWidget(typePill_);
+    root_->addLayout(headerRow);
+
+    applyTheme();
+    connect(&AppTheme::instance(), &AppTheme::changed, this, &PropertiesPanel::applyTheme);
 
     // Indicateur Clean/ManuallyEdited/Dirty (Lot 8.2) : toujours présent,
     // masqué quand non pertinent — mis à jour indépendamment du corps du
@@ -207,6 +274,10 @@ PropertiesPanel::PropertiesPanel(QWidget* parent) : QWidget(parent) {
              tr("Sélectionnez une région, un objet vectoriel ou un objet de broderie."));
 }
 
+void PropertiesPanel::applyTheme() {
+    setStyleSheet(panelStyleSheet(AppTheme::instance().tokens()));
+}
+
 void PropertiesPanel::setTextInfo(const QString& summary) {
     textInfoLabel_->setText(summary);
     textInfoLabel_->setVisible(!summary.isEmpty());
@@ -220,6 +291,8 @@ bool PropertiesPanel::textInfoVisible() const {
 void PropertiesPanel::clearBody() {
     currentId_.reset();
     vectorId_.reset();
+    colorDot_->setVisible(false);
+    typePill_->setVisible(false);
     hasShown_ = false;
     satinGuideList_.clear();
     satinSummary_.clear();
@@ -318,7 +391,7 @@ void PropertiesPanel::showVectorObject(ObjectId id, const QString& title, const 
         return; // forme dégénérée : pas de redimensionnement possible
     }
     auto* form = new QFormLayout();
-    form->setLabelAlignment(Qt::AlignRight);
+    styleForm(form);
     const auto makeSpin = [this](const char* name, double value, double minMm, double maxMm,
                                  const QString& tip) {
         auto* spin = new QDoubleSpinBox(body_);
@@ -373,12 +446,8 @@ void PropertiesPanel::showVectorObject(ObjectId id, const QString& title, const 
 
     // HP-STI-004 : création d'un satin de bordure à largeur fixe le long du contour.
     auto* borderForm = new QFormLayout();
-    borderForm->setLabelAlignment(Qt::AlignRight);
-    auto* heading = new QLabel(tr("Satin de bordure"), body_);
-    QFont hf = heading->font();
-    hf.setBold(true);
-    heading->setFont(hf);
-    borderForm->addRow(heading);
+    styleForm(borderForm);
+    borderForm->addRow(makeSectionLabel(tr("Satin de bordure"), body_));
     auto* bWidth = makeSpin("spin_borderWidth", 3.0, 0.5, 20.0,
                             tr("Largeur constante de la colonne le long du contour."));
     bWidth->setSingleStep(0.1);
@@ -443,7 +512,7 @@ void PropertiesPanel::showMultiSelection(int objectCount, int embroideryCount,
     label->setWordWrap(true);
     body_->layout()->addWidget(label);
     auto* form = new QFormLayout();
-    form->setLabelAlignment(Qt::AlignRight);
+    styleForm(form);
     auto* type = new QComboBox(body_);
     type->setObjectName(QStringLiteral("combo_multiType"));
     type->addItems({tr("(inchangé)"), tr("Contour cousu"), tr("Tatami"), tr("Satin automatique"),
@@ -486,13 +555,8 @@ void PropertiesPanel::showMultiSelection(int objectCount, int embroideryCount,
     holder->setLayout(form);
     body_->layout()->addWidget(holder);
     if (groupRep != nullptr && groupCount >= 2) {
-        auto* heading =
-            new QLabel(tr("Réglages communs (%1 couture(s) de même type)").arg(groupCount), body_);
-        QFont f = heading->font();
-        f.setBold(true);
-        heading->setFont(f);
-        heading->setContentsMargins(0, 10, 0, 0);
-        body_->layout()->addWidget(heading);
+        body_->layout()->addWidget(makeSectionLabel(
+            tr("Réglages communs (%1 couture(s) de même type)").arg(groupCount), body_));
         groupCount_ = groupCount;
         buildEmbroideryForm(*groupRep);
     }
@@ -638,7 +702,7 @@ void PropertiesPanel::buildEmbroideryForm(const document::EmbroideryObject& obje
     const bool group = groupCount_ > 1;
 
     auto* form = new QFormLayout();
-    form->setLabelAlignment(Qt::AlignRight);
+    styleForm(form);
 
     const QString typeName = object.is_tatami()        ? tr("Remplissage tatami")
                              : object.is_directional() ? tr("Remplissage directionnel")
@@ -646,6 +710,15 @@ void PropertiesPanel::buildEmbroideryForm(const document::EmbroideryObject& obje
                              : object.is_satin()       ? tr("Colonne satin à rails (manuelle)")
                                                        : tr("Contour cousu");
     form->addRow(tr("Type :"), new QLabel(typeName, body_));
+    if (!group) {
+        // En-tête : pastille de couleur de l'objet et pastille de type.
+        colorDot_->setPixmap(
+            icons::colorSwatch(QColor(object.rgb[0], object.rgb[1], object.rgb[2]), 16)
+                .pixmap(16, 16));
+        colorDot_->setVisible(true);
+        typePill_->setText(typeName);
+        typePill_->setVisible(true);
+    }
 
     // HP-OBJ-018 : pastille de couleur. Un clic déclenche l'action « Couleur de la broderie… »
     // de MainWindow (une seule source d'état et de grisage), qui vise toute la sélection.
@@ -1098,11 +1171,7 @@ void PropertiesPanel::buildEmbroideryForm(const document::EmbroideryObject& obje
                 // HP-STI-004 : satin de bordure -- largeur, côté et coins régénèrent les rails
                 // depuis le contour source (signal dédié, MainWindow exécute la commande).
                 if (p.border) {
-                    auto* heading = new QLabel(tr("Satin de bordure"), body_);
-                    QFont hf = heading->font();
-                    hf.setBold(true);
-                    heading->setFont(hf);
-                    form->addRow(heading);
+                    form->addRow(makeSectionLabel(tr("Satin de bordure"), body_));
                     auto* bWidth =
                         mmSpin(to_millimeters(p.border->width).value, 20.0, 0.5,
                                tr("Largeur constante de la colonne le long du contour."));
@@ -1269,12 +1338,7 @@ void PropertiesPanel::buildEmbroideryForm(const document::EmbroideryObject& obje
 
                 // Intertitres : 20 champs à plat sont illisibles ; on les regroupe par sujet.
                 const auto section = [this, form](const QString& title) {
-                    auto* heading = new QLabel(title, body_);
-                    QFont f = heading->font();
-                    f.setBold(true);
-                    heading->setFont(f);
-                    heading->setContentsMargins(0, 8, 0, 0);
-                    form->addRow(heading);
+                    form->addRow(makeSectionLabel(title, body_));
                 };
                 if (!group) {
                     form->addRow(QString(), summary);

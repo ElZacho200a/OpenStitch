@@ -1,9 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 #include "ui_icons.hpp"
 
+#include <QIconEngine>
+#include <QPaintDevice>
 #include <QPainter>
 #include <QPainterPath>
 #include <QPixmap>
+
+#include "app_theme.hpp"
 
 #include <cmath>
 #include <functional>
@@ -21,27 +25,69 @@ constexpr int kSize = 32;
 // recoloration par thème.
 const QColor kInk(0x7C, 0x82, 0x8A);
 
-// Dessin en coordonnées logiques 32×32, rendu à 1× ET 2× : sur un écran HiDPI Qt choisit la
-// version 2× au lieu d'agrandir un bitmap 32 px réduit à 18-20 px (icônes floues).
-QIcon make(const std::function<void(QPainter&)>& draw) {
-    QIcon icon;
-    for (const int scale : {1, 2}) {
-        QPixmap pm(kSize * scale, kSize * scale);
-        pm.setDevicePixelRatio(scale);
+// Moteur d'icône vectoriel recoloré À L'AFFICHAGE : la teinte suit le thème courant et l'état du
+// widget (normal, survol, désactivé, sélectionné, coché) au lieu d'une encre grise figée. Le
+// dessin est refait à la taille exacte demandée (net en HiDPI, pas de bitmap étiré).
+class TintedEngine final : public QIconEngine {
+public:
+    explicit TintedEngine(std::function<void(QPainter&)> draw) : draw_(std::move(draw)) {}
+
+    void paint(QPainter* painter, const QRect& rect, QIcon::Mode mode,
+               QIcon::State state) override {
+        const qreal dpr =
+            painter->device() != nullptr ? painter->device()->devicePixelRatio() : 1.0;
+        painter->drawPixmap(rect.topLeft(), render(rect.size(), dpr, mode, state));
+    }
+
+    QPixmap pixmap(const QSize& size, QIcon::Mode mode, QIcon::State state) override {
+        return render(size, 1.0, mode, state);
+    }
+
+    QSize actualSize(const QSize& size, QIcon::Mode, QIcon::State) override { return size; }
+
+    QIconEngine* clone() const override { return new TintedEngine(draw_); }
+
+private:
+    static QColor tint(QIcon::Mode mode, QIcon::State state) {
+        const Tokens& t = AppTheme::instance().tokens();
+        if (mode == QIcon::Disabled) {
+            return t.textDisabled;
+        }
+        if (mode == QIcon::Selected) {
+            return t.selectionText;
+        }
+        if (state == QIcon::On) {
+            return t.accent;
+        }
+        return mode == QIcon::Active ? t.text : t.textSecondary;
+    }
+
+    QPixmap render(const QSize& logicalSize, qreal dpr, QIcon::Mode mode,
+                   QIcon::State state) const {
+        QPixmap pm(logicalSize * dpr);
+        pm.setDevicePixelRatio(dpr);
         pm.fill(Qt::transparent);
         QPainter p(&pm);
         p.setRenderHint(QPainter::Antialiasing, true);
-        QPen pen(kInk);
+        p.scale(logicalSize.width() / double(kSize), logicalSize.height() / double(kSize));
+        QPen pen(tint(mode, state));
         pen.setWidthF(2.2);
         pen.setCapStyle(Qt::RoundCap);
         pen.setJoinStyle(Qt::RoundJoin);
         p.setPen(pen);
         p.setBrush(Qt::NoBrush);
-        draw(p);
+        draw_(p);
         p.end();
-        icon.addPixmap(pm);
+        return pm;
     }
-    return icon;
+
+    std::function<void(QPainter&)> draw_;
+};
+
+// Dessin en coordonnées logiques 32×32 ; la couleur est celle du crayon courant
+// (`p.pen().color()` pour les remplissages).
+QIcon make(const std::function<void(QPainter&)>& draw) {
+    return QIcon(new TintedEngine(draw));
 }
 
 } // namespace
@@ -49,7 +95,7 @@ QIcon make(const std::function<void(QPainter&)>& draw) {
 QIcon select() {
     return make([](QPainter& p) {
         QPolygonF arrow({{8, 6}, {8, 24}, {13, 19}, {17, 26}, {20, 24}, {16, 17}, {23, 17}});
-        p.setBrush(kInk);
+        p.setBrush(p.pen().color());
         p.drawPolygon(arrow);
     });
 }
@@ -346,7 +392,7 @@ QIcon stitches() {
     return make([](QPainter& p) {
         QPolygonF zig({{5, 20}, {11, 12}, {17, 20}, {23, 12}, {27, 17}});
         p.drawPolyline(zig);
-        p.setBrush(kInk);
+        p.setBrush(p.pen().color());
         for (const QPointF& pt : zig) {
             p.drawEllipse(pt, 1.3, 1.3);
         }
@@ -359,12 +405,12 @@ QIcon editPoints() {
         // (petit cercle plein) : distinct du crayon seul (pas d'icône de
         // dessin vectoriel dans ce jeu) et du zigzag de « stitches ».
         QPolygonF pencil({{9, 25}, {7, 26}, {8, 24}, {21, 11}, {23, 13}});
-        p.setBrush(kInk);
+        p.setBrush(p.pen().color());
         p.drawPolygon(pencil);
         p.drawLine(21, 11, 25, 7);
         p.setBrush(Qt::NoBrush);
         p.drawEllipse(QPointF(25, 25), 3.0, 3.0);
-        p.setBrush(kInk);
+        p.setBrush(p.pen().color());
         p.drawEllipse(QPointF(25, 25), 1.1, 1.1);
     });
 }
@@ -413,7 +459,7 @@ QIcon appIcon() {
         const double u = size / 32.0; // dessin en coordonnées 32x32
         p.scale(u, u);
         p.setPen(Qt::NoPen);
-        p.setBrush(QColor(0xB0, 0x4E, 0x3C)); // rouge-brique « fil » du thème
+        p.setBrush(QColor(0x4B, 0x3F, 0xD1)); // indigo « soie » du thème
         p.drawRoundedRect(QRectF(1, 1, 30, 30), 7, 7);
         // Fil : une boucle blanche qui finit en point de couture.
         QPen thread(QColor(0xFF, 0xFF, 0xFF), 2.0);
@@ -429,7 +475,7 @@ QIcon appIcon() {
         needle.setCapStyle(Qt::RoundCap);
         p.setPen(needle);
         p.drawLine(QPointF(10, 6), QPointF(22, 27));
-        p.setPen(QPen(QColor(0xB0, 0x4E, 0x3C), 1.4));
+        p.setPen(QPen(QColor(0x4B, 0x3F, 0xD1), 1.4));
         p.drawLine(QPointF(10.6, 7.2), QPointF(11.6, 8.8));
         p.end();
         icon.addPixmap(pm);

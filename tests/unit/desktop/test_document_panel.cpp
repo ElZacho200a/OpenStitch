@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
+#include <QAction>
 #include <QLineEdit>
 #include <QListWidget>
+#include <QPixmap>
 #include <QTabWidget>
 #include <QTest>
 #include <QTreeWidget>
@@ -115,6 +117,7 @@ private slots:
     void visibleAndFrozenOrderCheckBoxesEmitSignals();
     void doubleClickRenameEmitsRequestAndRestoresTheFormattedLabel();
     void clickingAGroupNodeSelectsAllItsSections();
+    void themedFilterHasMagnifierAndRowsRenderWithoutCrash();
 };
 
 void DocumentPanelTest::refreshPopulatesObjectsAndRegionsLists() {
@@ -411,6 +414,25 @@ void DocumentPanelTest::clickingAGroupNodeSelectsAllItsSections() {
     QVERIFY(grouped.has_value());
     QCOMPARE(grouped->first, sourceVectorId.value);
     QCOMPARE(grouped->second, 3);
+}
+
+void DocumentPanelTest::themedFilterHasMagnifierAndRowsRenderWithoutCrash() {
+    DocumentPanel panel;
+    openstitch::ObjectId first{};
+    openstitch::ObjectId second{};
+    panel.refresh(projectWithTwoObjectsAndTwoRegions(first, second));
+    auto* filter = panel.findChild<QLineEdit*>(QStringLiteral("edit_documentFilter"));
+    QVERIFY(filter != nullptr);
+    QVERIFY(!filter->actions().isEmpty());
+    QVERIFY(!filter->actions().first()->icon().isNull());
+    QVERIFY(!panel.styleSheet().isEmpty());
+    panel.resize(320, 240);
+    panel.syncSelection(DocumentPanel::Kind::Embroidery, first.value);
+    // Rendu complet (délégué : pastille de couleur, pastille de type, sélection).
+    const QPixmap shot = panel.grab();
+    QVERIFY(!shot.isNull());
+    // Les données d'item exploitées par MainWindow restent intactes.
+    QCOMPARE(objectsList(panel)->topLevelItem(0)->data(0, Qt::UserRole).toULongLong(), first.value);
 }
 
 QTEST_MAIN(DocumentPanelTest)

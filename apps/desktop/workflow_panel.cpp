@@ -1,14 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 #include "workflow_panel.hpp"
 
-#include <QApplication>
-#include <QGridLayout>
+#include <QFrame>
+#include <QHBoxLayout>
 #include <QLabel>
-#include <QPainter>
-#include <QPixmap>
+#include <QStyle>
 #include <QToolButton>
-
-#include "app_theme.hpp"
+#include <QVBoxLayout>
 
 namespace openstitch::desktop {
 
@@ -47,62 +45,62 @@ QString state_word(WorkflowPanel::State s) {
     return {};
 }
 
-QColor state_color(WorkflowPanel::State s, const Tokens& t) {
+const char* state_key(WorkflowPanel::State s) {
     switch (s) {
     case WorkflowPanel::State::NotStarted:
-        return t.border;
+        return "todo";
     case WorkflowPanel::State::Available:
-        return t.info;
+        return "available";
     case WorkflowPanel::State::InProgress:
-        return t.accent;
+        return "progress";
     case WorkflowPanel::State::Done:
-        return t.success;
+        return "done";
     case WorkflowPanel::State::Attention:
-        return t.warning;
+        return "attention";
     }
-    return t.border;
+    return "todo";
 }
 
-QPixmap dot(const QColor& color) {
-    const qreal dpr = qApp != nullptr ? qApp->devicePixelRatio() : 1.0;
-    QPixmap pm(QSize(10, 10) * dpr);
-    pm.setDevicePixelRatio(dpr);
-    pm.fill(Qt::transparent);
-    QPainter p(&pm);
-    p.setRenderHint(QPainter::Antialiasing, true);
-    p.setPen(Qt::NoPen);
-    p.setBrush(color);
-    p.drawEllipse(0, 0, 10, 10);
-    p.end();
-    return pm;
+// Applique une propriété dynamique puis force la réévaluation de la feuille de style.
+void set_state_property(QWidget* w, const char* key) {
+    w->setProperty("state", QString::fromLatin1(key));
+    w->style()->unpolish(w);
+    w->style()->polish(w);
 }
 
 } // namespace
 
 WorkflowPanel::WorkflowPanel(QWidget* parent) : QWidget(parent) {
-    auto* grid = new QGridLayout(this);
-    grid->setContentsMargins(8, 8, 8, 8);
-    grid->setHorizontalSpacing(8);
-    grid->setVerticalSpacing(4);
+    auto* column = new QVBoxLayout(this);
+    column->setContentsMargins(10, 10, 10, 10);
+    column->setSpacing(6);
 
+    // Une carte par étape : badge numéroté (✓ quand terminé) · nom cliquable · mot d'état.
     for (int i = 0; i < kStepCount; ++i) {
         current_[i] = State::NotStarted;
-        dots_[i] = new QLabel(this);
-        dots_[i]->setPixmap(dot(palette().color(QPalette::Mid)));
-        buttons_[i] = new QToolButton(this);
+        auto* card = new QFrame(this);
+        card->setProperty("card", true);
+        auto* row = new QHBoxLayout(card);
+        row->setContentsMargins(8, 4, 8, 4);
+        row->setSpacing(8);
+
+        dots_[i] = new QLabel(QString::number(i + 1), card);
+        dots_[i]->setProperty("badge", true);
+        dots_[i]->setAlignment(Qt::AlignCenter);
+        buttons_[i] = new QToolButton(card);
         buttons_[i]->setText(tr(step_name(i)));
-        buttons_[i]->setAutoRaise(true);
         buttons_[i]->setToolButtonStyle(Qt::ToolButtonTextOnly);
         buttons_[i]->setCursor(Qt::PointingHandCursor);
         connect(buttons_[i], &QToolButton::clicked, this, [this, i] { emit stepClicked(i); });
-        states_[i] = new QLabel(this);
-        markSecondaryText(states_[i]);
+        states_[i] = new QLabel(card);
+        states_[i]->setProperty("pill", true);
 
-        grid->addWidget(dots_[i], i, 0);
-        grid->addWidget(buttons_[i], i, 1, Qt::AlignLeft);
-        grid->addWidget(states_[i], i, 2, Qt::AlignRight);
+        row->addWidget(dots_[i]);
+        row->addWidget(buttons_[i], 1, Qt::AlignLeft);
+        row->addWidget(states_[i]);
+        column->addWidget(card);
     }
-    grid->setColumnStretch(1, 1);
+    column->addStretch(1);
     applyTheme();
 }
 
@@ -112,10 +110,14 @@ void WorkflowPanel::setStates(const std::array<State, kStepCount>& states) {
 }
 
 void WorkflowPanel::applyTheme() {
-    const Tokens& t = AppTheme::instance().tokens();
+    // Les couleurs viennent de la feuille de style (propriété « state ») : rien à peindre ici.
     for (int i = 0; i < kStepCount; ++i) {
-        dots_[i]->setPixmap(dot(state_color(current_[i], t)));
+        const char* key = state_key(current_[i]);
+        dots_[i]->setText(current_[i] == State::Done ? QStringLiteral("✓")
+                                                     : QString::number(i + 1));
         states_[i]->setText(state_word(current_[i]));
+        set_state_property(dots_[i], key);
+        set_state_property(states_[i], key);
     }
 }
 

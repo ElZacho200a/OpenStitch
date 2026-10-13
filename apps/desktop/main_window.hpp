@@ -67,6 +67,7 @@ class QuickStartDialog;
 class PropertiesPanel;
 class DocumentPanel;
 class ThreadPanel;
+class ThreadStrip;
 class WorkflowPanel;
 class EmptyStateWidget;
 // Seam de test unique (déclaré ici pour le friend ci-dessous) : donne à
@@ -381,6 +382,10 @@ private:
     // Panneau Fils / film couleur (HP-THR-004/005) : tout est dans main_window_threads.cpp.
     void buildThreadPanel();
     void refreshThreadPanel();
+    // Barre des fils (bas de fenêtre) : pastilles rondes des fils du motif, dans
+    // main_window_threads.cpp.
+    void buildThreadStrip();
+    void refreshThreadStrip();
     void refreshThreadSelectionInfo();
     [[nodiscard]] std::vector<ObjectId> selectedEmbroideryIds() const;
     void buildFilterPanel();
@@ -1158,6 +1163,8 @@ private:
     // l'utilisateur) et panneau.
     QDockWidget* threadDock_{nullptr};
     ThreadPanel* threadPanel_{nullptr};
+    ThreadStrip* threadStrip_{nullptr};
+    QToolBar* threadStripBar_{nullptr};
     thread_palette::ThreadLibrary threadLibrary_{thread_palette::ThreadLibrary::with_builtin()};
     QHash<QString, QString> userChartFiles_; // identifiant de nuancier -> fichier copié
 

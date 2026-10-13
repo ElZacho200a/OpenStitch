@@ -12,35 +12,29 @@
 namespace openstitch::desktop {
 
 EmptyStateWidget::EmptyStateWidget(QWidget* parent) : QFrame(parent) {
-    const Tokens& t = AppTheme::instance().tokens();
     setObjectName(QStringLiteral("emptyState"));
-    setStyleSheet(QStringLiteral("#emptyState { background:%1; border:1px solid %2; "
-                                 "border-radius:%3px; }")
-                      .arg(t.surface.name(), t.border.name())
-                      .arg(t.radiusMd));
+    // Fond, bord et rayon suivent le thème (reconstruits au changement de thème).
+    const auto applyFrameStyle = [this] {
+        const Tokens& t = AppTheme::instance().tokens();
+        setStyleSheet(QStringLiteral("#emptyState { background:%1; border:1px solid %2; "
+                                     "border-radius:%3px; }")
+                          .arg(t.surfaceRaised.name(), t.border.name())
+                          .arg(t.radiusLg));
+    };
+    applyFrameStyle();
+    connect(&AppTheme::instance(), &AppTheme::changed, this, applyFrameStyle);
 
     auto* layout = new QVBoxLayout(this);
-    layout->setContentsMargins(28, 24, 28, 24);
-    layout->setSpacing(10);
+    layout->setContentsMargins(32, 28, 32, 28);
+    layout->setSpacing(12);
 
     auto* title = new QLabel(tr("Aucun document ouvert"), this);
     QFont tf = title->font();
-    tf.setPointSizeF(tf.pointSizeF() + 2.0);
+    tf.setPointSizeF(tf.pointSizeF() + 3.0);
     tf.setBold(true);
     title->setFont(tf);
     title->setAlignment(Qt::AlignCenter);
     layout->addWidget(title);
-
-    auto* buttons = new QVBoxLayout();
-    buttons->setSpacing(6);
-    auto* openImg = new QPushButton(tr("Ouvrir une image ou un SVG…"), this);
-    auto* openPrj = new QPushButton(tr("Ouvrir un projet…"), this);
-    auto* importDst = new QPushButton(tr("Importer une broderie machine…"), this);
-    for (QPushButton* b : {openImg, openPrj, importDst}) {
-        b->setMinimumWidth(220);
-        buttons->addWidget(b, 0, Qt::AlignCenter);
-    }
-    layout->addLayout(buttons);
 
     auto* hint =
         new QLabel(tr("Importez une image ou un fichier SVG pour commencer un nouveau motif\n"
@@ -49,6 +43,18 @@ EmptyStateWidget::EmptyStateWidget(QWidget* parent) : QFrame(parent) {
     hint->setAlignment(Qt::AlignCenter);
     markSecondaryText(hint);
     layout->addWidget(hint);
+
+    auto* buttons = new QVBoxLayout();
+    buttons->setSpacing(8);
+    auto* openImg = new QPushButton(tr("Ouvrir une image ou un SVG…"), this);
+    auto* openPrj = new QPushButton(tr("Ouvrir un projet…"), this);
+    auto* importDst = new QPushButton(tr("Importer une broderie machine…"), this);
+    openImg->setProperty("primary", true); // l'action la plus probable, mise en avant
+    for (QPushButton* b : {openImg, openPrj, importDst}) {
+        b->setMinimumWidth(260);
+        buttons->addWidget(b, 0, Qt::AlignCenter);
+    }
+    layout->addLayout(buttons);
 
     // Liste des récents (HP-FILE-003) : vide au départ, remplie par le
     // premier appel à setRecentFiles (MainWindow::refreshRecentFilesUi).

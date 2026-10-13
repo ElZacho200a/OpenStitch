@@ -38,6 +38,8 @@ add_library(openstitch_desktop_widgets STATIC
     main_window_threads.cpp
     thread_panel.cpp
     thread_panel.hpp
+    thread_strip.cpp
+    thread_strip.hpp
     main_window_lettering.cpp
     font_catalog.cpp
     font_catalog.hpp

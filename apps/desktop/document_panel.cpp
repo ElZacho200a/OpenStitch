@@ -3,11 +3,15 @@
 
 #include <QAbstractItemDelegate>
 #include <QAbstractItemView>
+#include <QAction>
 #include <QHeaderView>
 #include <QIcon>
 #include <QLineEdit>
 #include <QListWidget>
+#include <QPainter>
 #include <QPixmap>
+#include <QStyle>
+#include <QStyledItemDelegate>
 #include <QTabWidget>
 #include <QTimer>
 #include <QTreeWidget>
@@ -16,6 +20,7 @@
 #include <algorithm>
 #include <map>
 
+#include "app_theme.hpp"
 #include "ui_icons.hpp"
 
 namespace openstitch::desktop {
@@ -76,8 +81,128 @@ QString display_name(const document::EmbroideryObject& e) {
 constexpr int kRawNameRole = Qt::UserRole + 1;     // nom brut (édition)
 constexpr int kShownTextRole = Qt::UserRole + 2;   // libellé formaté (restauré après édition)
 constexpr int kGroupSourceRole = Qt::UserRole + 3; // objet vectoriel source d'un groupe
+constexpr int kSwatchRole = Qt::UserRole + 4;      // QColor du fil (pastille)
+constexpr int kTypeRole = Qt::UserRole + 5;        // libellé de type (pastille à droite)
 constexpr int kVisibleCol = 1;
 constexpr int kLockCol = 2;
+
+constexpr int kSwatchSize = 14;
+constexpr int kSwatchGap = 6;
+
+// Teinte d'accent douce (fond de la ligne sélectionnée) : jeton du thème.
+QColor soft_accent(const Tokens& t) {
+    return t.accentSoft;
+}
+
+QFont pill_font(const QFont& base) {
+    QFont f = base;
+    if (f.pointSizeF() > 1.0) {
+        f.setPointSizeF(f.pointSizeF() - 1.0);
+    }
+    return f;
+}
+
+// Rendu de la ligne : pastille de couleur du fil à gauche, libellé, pastille de type
+// discrète à droite, sélection en teinte d'accent douce. Les colonnes à cases
+// (Vis./Figé) ne reçoivent que le fond de sélection.
+class ObjectRowDelegate : public QStyledItemDelegate {
+public:
+    using QStyledItemDelegate::QStyledItemDelegate;
+
+    void paint(QPainter* painter, const QStyleOptionViewItem& option,
+               const QModelIndex& index) const override {
+        const Tokens& t = AppTheme::instance().tokens();
+        QStyleOptionViewItem opt = option;
+        initStyleOption(&opt, index);
+        const bool selected = (opt.state & QStyle::State_Selected) != 0;
+        if (selected) {
+            painter->fillRect(opt.rect, soft_accent(t));
+        }
+        opt.state &= ~(QStyle::State_Selected | QStyle::State_HasFocus);
+        opt.palette.setColor(QPalette::Text, t.text);
+        opt.palette.setColor(QPalette::HighlightedText, t.text);
+        if (index.column() != 0) {
+            QStyledItemDelegate::paint(painter, opt, index);
+            return;
+        }
+        const QVariant swatchData = index.data(kSwatchRole);
+        const QString type = index.data(kTypeRole).toString();
+        opt.features &= ~QStyleOptionViewItem::HasDecoration;
+        opt.icon = QIcon();
+        const QRect cell = opt.rect;
+        QRect textRect = cell;
+        int pillWidth = 0;
+        const QFont pf = pill_font(opt.font);
+        const QFontMetrics pfm(pf);
+        if (!type.isEmpty()) {
+            pillWidth = pfm.horizontalAdvance(type) + 2 * t.space3;
+            textRect.setRight(cell.right() - pillWidth - t.space2);
+        }
+        if (swatchData.isValid()) {
+            textRect.setLeft(cell.left() + t.space2 + kSwatchSize + kSwatchGap);
+        }
+        // Texte dessiné ici (et non par la peinture de base, qui redessinerait aussi l'icône
+        // d'origine) : le type est retiré du libellé, la pastille de droite le porte déjà.
+        QString text = opt.text;
+        if (!type.isEmpty()) {
+            text.remove(type + QStringLiteral(" — "));
+        }
+        const QRect labelRect = textRect.adjusted(t.space2, 0, -t.space2, 0);
+        painter->save();
+        painter->setFont(opt.font);
+        painter->setPen(t.text);
+        painter->drawText(labelRect, Qt::AlignVCenter | Qt::AlignLeft,
+                          opt.fontMetrics.elidedText(text, Qt::ElideRight, labelRect.width()));
+        painter->restore();
+
+        painter->save();
+        painter->setRenderHint(QPainter::Antialiasing, true);
+        if (swatchData.isValid()) {
+            const QRectF sw(cell.left() + t.space2, cell.center().y() - kSwatchSize / 2.0 + 0.5,
+                            kSwatchSize, kSwatchSize);
+            painter->setPen(QPen(t.border, 1));
+            painter->setBrush(swatchData.value<QColor>());
+            painter->drawRoundedRect(sw.adjusted(0.5, 0.5, -0.5, -0.5), t.radiusSm + 1,
+                                     t.radiusSm + 1);
+        }
+        if (!type.isEmpty()) {
+            const int h = pfm.height() + t.space1 * 2;
+            const QRectF pill(cell.right() - pillWidth - t.space2 + 1, cell.center().y() - h / 2.0,
+                              pillWidth, h);
+            painter->setPen(Qt::NoPen);
+            painter->setBrush(selected ? t.surface : t.surfaceRaised);
+            painter->drawRoundedRect(pill, h / 2.0, h / 2.0);
+            painter->setFont(pf);
+            painter->setPen(t.textSecondary);
+            painter->drawText(pill, Qt::AlignCenter, type);
+        }
+        painter->restore();
+    }
+
+    QSize sizeHint(const QStyleOptionViewItem& option, const QModelIndex& index) const override {
+        QSize s = QStyledItemDelegate::sizeHint(option, index);
+        s.setHeight(std::max(s.height(), AppTheme::instance().tokens().controlHeight));
+        return s;
+    }
+};
+
+// Loupe du champ de recherche, dessinée à la teinte secondaire du thème.
+QIcon search_icon(const QColor& color) {
+    constexpr int kLogical = 16;
+    constexpr int kScale = 2;
+    QPixmap pm(kLogical * kScale, kLogical * kScale);
+    pm.setDevicePixelRatio(kScale);
+    pm.fill(Qt::transparent);
+    QPainter p(&pm);
+    p.setRenderHint(QPainter::Antialiasing, true);
+    QPen pen(color, 1.5);
+    pen.setCapStyle(Qt::RoundCap);
+    p.setPen(pen);
+    p.drawEllipse(QRectF(2.5, 2.5, 7.5, 7.5));
+    p.drawLine(QPointF(9.8, 9.8), QPointF(13.2, 13.2));
+    p.end();
+    return QIcon(pm);
+}
 
 } // namespace
 
@@ -99,6 +224,7 @@ DocumentPanel::DocumentPanel(QWidget* parent) : QWidget(parent) {
     filterEdit_->setPlaceholderText(tr("Rechercher un objet ou une région…"));
     filterEdit_->setClearButtonEnabled(true);
     filterEdit_->setAccessibleName(tr("Rechercher dans le document"));
+    searchAction_ = filterEdit_->addAction(QIcon(), QLineEdit::LeadingPosition);
     layout->addWidget(filterEdit_);
     tabs_ = new QTabWidget(this);
     layout->addWidget(tabs_);
@@ -120,10 +246,14 @@ DocumentPanel::DocumentPanel(QWidget* parent) : QWidget(parent) {
     objectsList_->header()->setSectionResizeMode(kLockCol, QHeaderView::ResizeToContents);
     objectsList_->setIndentation(12);
     objectsList_->setRootIsDecorated(true);
+    objectsList_->setItemDelegate(new ObjectRowDelegate(objectsList_));
     regionsList_ = new QListWidget(tabs_);
     regionsList_->setAccessibleName(tr("Régions de segmentation"));
     tabs_->addTab(objectsList_, tr("Objets"));
     tabs_->addTab(regionsList_, tr("Régions"));
+
+    applyTheme();
+    connect(&AppTheme::instance(), &AppTheme::changed, this, [this] { applyTheme(); });
 
     connect(objectsList_, &QTreeWidget::currentItemChanged, this,
             [this](QTreeWidgetItem* item, QTreeWidgetItem*) {
@@ -279,6 +409,8 @@ void DocumentPanel::refresh(
             item = new QTreeWidgetItem(objectsList_, {itemText(e, order, suffix)});
         }
         item->setIcon(0, swatch(e.rgb));
+        item->setData(0, kSwatchRole, QColor(e.rgb[0], e.rgb[1], e.rgb[2]));
+        item->setData(0, kTypeRole, type_label(e));
         item->setData(0, Qt::UserRole, static_cast<qulonglong>(e.id.value));
         item->setData(0, kRawNameRole, QString::fromStdString(e.name));
         item->setData(0, kShownTextRole, itemText(e, order, suffix));
@@ -306,6 +438,38 @@ void DocumentPanel::refresh(
 
     syncing_ = false;
     applyFilter();
+}
+
+void DocumentPanel::applyTheme() {
+    const Tokens& t = AppTheme::instance().tokens();
+    const auto css = [](const QColor& c) { return c.name(QColor::HexRgb); };
+    const QString sheet =
+        QStringLiteral(
+            "QLineEdit { background: %1; color: %2; border: 1px solid %3; border-radius: %4px;"
+            " padding: %5px %6px; }"
+            "QLineEdit:focus { border-color: %7; }"
+            "QTabWidget::pane { border: none; border-top: 1px solid %3; }"
+            "QTabBar::tab { background: transparent; color: %8; border: none;"
+            " border-bottom: 2px solid transparent; padding: %5px %9px; margin-right: %5px; }"
+            "QTabBar::tab:selected { color: %2; border-bottom-color: %7; }"
+            "QTabBar::tab:hover:!selected { color: %2; }"
+            "QTreeWidget, QListWidget { background: %10; color: %2; border: none; outline: 0; }"
+            "QListWidget::item { padding: %5px %5px; }"
+            "QListWidget::item:selected { background: %11; color: %2; }"
+            "QHeaderView::section { background: %10; color: %8; border: none;"
+            " border-bottom: 1px solid %3; padding: %5px %6px; }")
+            .arg(css(t.surfaceRaised), css(t.text), css(t.border))
+            .arg(t.radiusMd * 2)
+            .arg(t.space2)
+            .arg(t.space3)
+            .arg(css(t.focus), css(t.textSecondary))
+            .arg(t.space4)
+            .arg(css(t.surface), css(soft_accent(t)));
+    setStyleSheet(sheet);
+    if (searchAction_ != nullptr) {
+        searchAction_->setIcon(search_icon(t.textSecondary));
+    }
+    objectsList_->viewport()->update();
 }
 
 void DocumentPanel::restoreRenamedText() {

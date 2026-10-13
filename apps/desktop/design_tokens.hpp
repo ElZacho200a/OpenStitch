@@ -17,7 +17,8 @@ struct Tokens {
     QColor window;        // fond de fenêtre
     QColor surface;       // panneaux
     QColor surfaceRaised; // champs, éléments surélevés
-    QColor border;        // séparateurs, bordures
+    QColor border;        // séparateurs de panneaux (discrets)
+    QColor borderStrong;  // limites des contrôles (champs, boutons) : contraste >= 3:1
     QColor text;          // texte principal
     QColor textSecondary; // texte secondaire / aide (contraste >= 4,5:1)
     QColor textDisabled;  // texte d'un contrôle désactivé (distinct du texte d'aide)
@@ -25,7 +26,8 @@ struct Tokens {
     // --- Accent & états (une SEULE couleur d'accent) ---
     QColor accent; // rappel « fil », sobre
     QColor accentHover;
-    QColor selection;     // sélection dans les listes
+    QColor accentSoft; // fond teinté (survol, ligne sélectionnée), texte principal lisible dessus
+    QColor selection;  // sélection dans les listes
     QColor selectionText; // texte sur sélection
     QColor focus;         // contour de focus clavier
     QColor success;
@@ -56,8 +58,9 @@ struct Tokens {
     int space3;        // 8
     int space4;        // 12
     int controlHeight; // hauteur des champs/boutons
-    int radiusSm;      // 3
-    int radiusMd;      // 5
+    int radiusSm;      // 6
+    int radiusMd;      // 8
+    int radiusLg;      // 10 (menus, infobulles, panneaux flottants)
     int iconSize;      // 16
 };
 

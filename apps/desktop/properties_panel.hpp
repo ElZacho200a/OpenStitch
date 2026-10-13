@@ -166,6 +166,8 @@ signals:
 
 private:
     void clearBody();
+    // Feuille de style locale (depuis les jetons), rafraîchie sur AppTheme::changed.
+    void applyTheme();
     // Corps du formulaire d'une couture (champs du type), sans effacer ni titrer.
     void buildEmbroideryForm(const document::EmbroideryObject& object);
     void updateGuideAngleLabel(bool absolute);
@@ -175,6 +177,8 @@ private:
 
     QVBoxLayout* root_{nullptr};
     QLabel* header_{nullptr};
+    QLabel* colorDot_{nullptr};
+    QLabel* typePill_{nullptr};
     QLabel* editStateLabel_{nullptr};
     QPushButton* discardButton_{nullptr};
     QLabel* textInfoLabel_{nullptr};

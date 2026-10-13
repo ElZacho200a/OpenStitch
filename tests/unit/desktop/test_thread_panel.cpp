@@ -16,11 +16,13 @@
 #include "canvas_view.hpp"
 #include "main_window.hpp"
 #include "thread_panel.hpp"
+#include "thread_strip.hpp"
 
 using namespace openstitch;
 using openstitch::desktop::CanvasView;
 using openstitch::desktop::MainWindow;
 using openstitch::desktop::ThreadPanel;
+using openstitch::desktop::ThreadStrip;
 
 Q_DECLARE_METATYPE(openstitch::thread_palette::Thread)
 
@@ -167,6 +169,43 @@ private slots:
         QApplication::processEvents();
         QVERIFY(usage->item(0)->text().contains("#C8102E"));
         QVERIFY(!usage->item(0)->text().contains("G01"));
+    }
+
+    void threadStripShowsOneSwatchPerThreadAndReportsClicks() {
+        ThreadStrip strip;
+        strip.resize(600, 40);
+        strip.show();
+        strip.setThreads({{QColor(200, 16, 46), QStringLiteral("rouge")},
+                          {QColor(0, 114, 206), QStringLiteral("bleu")},
+                          {QColor(10, 10, 10), QStringLiteral("noir")}},
+                         QStringLiteral("3 fils"));
+        QCOMPARE(strip.threadCount(), 3);
+
+        // Balaye la rangée : chaque pastille doit répondre par son propre indice, et aucun
+        // clic ne doit signaler un indice hors plage.
+        QSignalSpy spy(&strip, &ThreadStrip::threadClicked);
+        for (int x = 0; x < strip.width(); x += 3) {
+            QTest::mouseClick(&strip, Qt::LeftButton, Qt::NoModifier, QPoint(x, 20));
+        }
+        QSet<int> seen;
+        for (const auto& args : spy) {
+            seen.insert(args.at(0).toInt());
+        }
+        QCOMPARE(seen, (QSet<int>{0, 1, 2}));
+
+        strip.setThreads({}, QString());
+        QCOMPARE(strip.threadCount(), 0);
+    }
+
+    void threadStripFollowsTheThreadsOfTheLoadedPattern() {
+        MainWindow window;
+        window.show();
+        window.applyLoadedProject(twoTrianglesProject());
+        QApplication::processEvents();
+        // La barre des fils vit même quand le panneau Fils est fermé : deux couleurs libres.
+        auto* strip = window.findChild<ThreadStrip*>();
+        QVERIFY(strip != nullptr);
+        QCOMPARE(strip->threadCount(), 2);
     }
 
     void reducingToOneThreadMergesColoursInOneStep() {

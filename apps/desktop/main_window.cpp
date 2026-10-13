@@ -452,9 +452,10 @@ MainWindow::MainWindow() {
     buildToolPalette();
     addToolBarBreak(); // la barre de simulation occupe sa propre rangée
     buildSimulationToolbar();
+    buildThreadStrip();
     // Une barre masquée doit pouvoir se rouvrir depuis un menu, comme les panneaux.
     panelsMenu_->insertSeparator(resetLayoutAct);
-    for (auto* bar : {mainToolbar_, contextToolbar_, toolPalette_, simToolbar_}) {
+    for (auto* bar : {mainToolbar_, contextToolbar_, toolPalette_, simToolbar_, threadStripBar_}) {
         panelsMenu_->insertAction(resetLayoutAct, bar->toggleViewAction());
     }
 
@@ -5794,6 +5795,13 @@ void MainWindow::buildMainToolbar() {
     showStitchesAct_->setIcon(icons::stitches());
     mainToolbar_->addAction(showStitchesAct_);
     addShared(exportDstAct_, icons::exportDst());
+    // Action principale de la fenêtre : bouton plein, en texte (l'icône grise n'aurait pas le
+    // contraste voulu sur le fond d'accent).
+    if (auto* exportButton =
+            qobject_cast<QToolButton*>(mainToolbar_->widgetForAction(exportDstAct_))) {
+        exportButton->setProperty("primary", true);
+        exportButton->setToolButtonStyle(Qt::ToolButtonTextOnly);
+    }
 }
 
 void MainWindow::buildContextToolbar() {
@@ -6068,8 +6076,12 @@ void MainWindow::buildToolPalette() {
     polygonSidesSpin_ = new QSpinBox(toolPalette_);
     polygonSidesSpin_->setRange(3, 12);
     polygonSidesSpin_->setValue(6);
-    polygonSidesSpin_->setToolTip(tr("Nombre de côtés du polygone régulier"));
+    polygonSidesSpin_->setToolTip(
+        tr("Nombre de côtés du polygone régulier (molette ou flèches ↑ ↓)"));
     polygonSidesSpin_->setMaximumWidth(48);
+    polygonSidesSpin_->setAlignment(Qt::AlignCenter);
+    polygonSidesSpin_->setButtonSymbols(
+        QAbstractSpinBox::NoButtons); // trop étroit pour les flèches
     toolPalette_->addWidget(polygonSidesSpin_);
     toolDrawBezierAct_ =
         addTool(icons::bezierCurve(),
