@@ -259,6 +259,36 @@ std::optional<std::vector<ObjectId>> reorder_film_blocks(const document::Project
     return redistribute(project, film, desired);
 }
 
+std::optional<std::vector<ObjectId>> reorder_threads(const document::Project& project,
+                                                     const std::vector<ColorFilmBlock>& film,
+                                                     std::size_t from, std::size_t to) {
+    // Fils distincts dans l'ordre de première apparition du film.
+    std::vector<ThreadIdentity> threads;
+    for (const auto& b : film) {
+        if (std::find(threads.begin(), threads.end(), b.identity) == threads.end()) {
+            threads.push_back(b.identity);
+        }
+    }
+    if (from >= threads.size() || to >= threads.size()) {
+        return std::nullopt;
+    }
+    std::vector<std::size_t> perm(threads.size());
+    for (std::size_t i = 0; i < perm.size(); ++i) {
+        perm[i] = i;
+    }
+    perm.erase(perm.begin() + static_cast<std::ptrdiff_t>(from));
+    perm.insert(perm.begin() + static_cast<std::ptrdiff_t>(to), from);
+    std::vector<ObjectId> desired;
+    for (const std::size_t t : perm) {
+        for (const auto& b : film) {
+            if (b.identity == threads[t]) {
+                desired.insert(desired.end(), b.objects.begin(), b.objects.end());
+            }
+        }
+    }
+    return redistribute(project, film, desired);
+}
+
 std::vector<ObjectId> merge_same_thread_blocks(const document::Project& project,
                                                const std::vector<ColorFilmBlock>& film) {
     std::vector<std::size_t> perm;

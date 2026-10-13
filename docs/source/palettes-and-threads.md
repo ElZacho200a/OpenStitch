@@ -177,7 +177,17 @@ séquence **effective** (`stitch_generation::effective_sequence`).
 film)` renvoient le **nouvel ordre complet des objets** (à passer à
 `ReorderEmbroideryCommand`, un pas d'annulation). Les objets **figés** et les objets
 absents du film (masqués) gardent leur emplacement absolu ; seuls les objets libres
-sont redistribués dans les emplacements libres. Fusionner les blocs de même fil
+sont redistribués dans les emplacements libres.
+
+**Ordre par couleur.** `reorder_threads(project, film, from, to)` déplace une couleur
+**entière** (le fil, tous ses blocs) dans la liste des fils distincts, dans l'ordre de
+première utilisation (celui de `thread_usage`) : tous ses objets passent ensemble, la
+couleur est cousue après, donc **au-dessus**, de celles qu'elle dépasse. Les autres couleurs
+gardent leur ordre relatif, chaque couleur l'ordre de ses objets, et les mêmes règles de
+verrouillage s'appliquent. Dans l'onglet *Projet* du panneau Fils, on glisse une couleur ou
+on utilise *▲ Passer dessous* / *▼ Passer dessus* (un seul pas d'annulation). Le déplacement
+par bloc de l'onglet *Film couleur* reste disponible quand une même couleur est cousue en
+plusieurs passages à des endroits différents. Fusionner les blocs de même fil
 réduit les changements mais modifie l'empilement des couches (le fil cousu plus tard
 passe plus tôt) : l'interface le dit et l'opération reste annulable.
 

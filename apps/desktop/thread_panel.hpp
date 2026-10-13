@@ -60,6 +60,9 @@ signals:
     void nearestRequested(const QString& chartId);
     void importChartRequested();
     void removeChartRequested(const QString& chartId);
+    // Une couleur entière (ligne `from` de la liste des fils) passe à la ligne `to` : tous ses
+    // objets sont cousus ensemble, une couleur plus bas est cousue après donc dessus.
+    void threadMoved(int from, int to);
     void filmBlockMoved(int from, int to);
     void filmBlockSelected(int row);
     void mergeFilmBlocksRequested();
@@ -82,6 +85,8 @@ private:
     // Fils du projet.
     QListWidget* usageList_{nullptr};
     QLabel* usageSummary_{nullptr};
+    QPushButton* threadUpBtn_{nullptr};
+    QPushButton* threadDownBtn_{nullptr};
     QPushButton* selectUsageBtn_{nullptr};
     QPushButton* replaceUsageBtn_{nullptr};
     QPushButton* snapBtn_{nullptr};

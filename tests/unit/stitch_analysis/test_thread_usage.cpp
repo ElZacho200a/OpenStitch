@@ -140,6 +140,48 @@ TEST_CASE("reorder_film_blocks moves a block and honours locked objects") {
     CHECK(*lockedMove == std::vector<ObjectId>{ObjectId{3}, ObjectId{2}, ObjectId{1}});
 }
 
+TEST_CASE("reorder_threads moves a whole colour above another, whatever its block count") {
+    const auto p = three_objects(); // rouge(1), bleu(2), rouge(3) : deux fils, le rouge en 2 blocs
+    const auto film = color_film(p, sequence_for(p));
+
+    // Le bleu passe avant le rouge : le rouge (objets 1 et 3) est cousu après, donc dessus.
+    const auto blueFirst = reorder_threads(p, film, 1, 0);
+    REQUIRE(blueFirst.has_value());
+    CHECK(*blueFirst == std::vector<ObjectId>{ObjectId{2}, ObjectId{1}, ObjectId{3}});
+    // Le rouge passe après le bleu : même résultat, les deux objets rouges bougent ensemble.
+    CHECK(reorder_threads(p, film, 0, 1) == blueFirst);
+    // Déplacer un fil sur sa propre place ne change rien.
+    CHECK(reorder_threads(p, film, 0, 0) ==
+          std::optional{std::vector<ObjectId>{ObjectId{1}, ObjectId{3}, ObjectId{2}}});
+    CHECK_FALSE(reorder_threads(p, film, 2, 0).has_value()); // 2 fils seulement
+    CHECK_FALSE(reorder_threads(p, film, 0, 2).has_value());
+}
+
+TEST_CASE("reorder_threads keeps the relative order of the other colours and locked objects") {
+    document::Project p;
+    const std::array<std::uint8_t, 3> kGreen{0, 154, 68};
+    const std::array<std::uint8_t, 3> colors[4] = {kRed, kBlue, kRed, kGreen};
+    for (int i = 0; i < 4; ++i) {
+        document::EmbroideryObject e;
+        e.id = ObjectId{static_cast<std::uint64_t>(i + 1)};
+        e.rgb = colors[i];
+        p.embroidery_objects.push_back(e);
+    }
+    auto film = color_film(p, sequence_for(p));
+    // Fils : rouge, bleu, vert. Le rouge (objets 1 et 3) passe tout à la fin.
+    const auto redLast = reorder_threads(p, film, 0, 2);
+    REQUIRE(redLast.has_value());
+    CHECK(*redLast == std::vector<ObjectId>{ObjectId{2}, ObjectId{4}, ObjectId{1}, ObjectId{3}});
+
+    // L'objet 2 (bleu) figé garde sa place absolue (2e emplacement).
+    p.embroidery_objects[1].locked = true;
+    film = color_film(p, sequence_for(p));
+    const auto withLock = reorder_threads(p, film, 0, 2);
+    REQUIRE(withLock.has_value());
+    CHECK((*withLock)[1] == ObjectId{2});
+    CHECK(*withLock == std::vector<ObjectId>{ObjectId{4}, ObjectId{2}, ObjectId{1}, ObjectId{3}});
+}
+
 TEST_CASE("merge_same_thread_blocks groups equal threads and cuts colour changes") {
     const auto p = three_objects();
     const auto film = color_film(p, sequence_for(p));
