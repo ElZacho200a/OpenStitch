@@ -63,6 +63,7 @@ class PropertiesPanelTest : public QObject {
 
 private slots:
     void showEmbroideryPopulatesSpinBoxesWithoutEmittingWhileBuilding();
+    void headerShowsColorDotAndTypePillOnlyForAnEmbroideryObject();
     void editingASpinBoxEmitsParamsEditedWithUpdatedValueAndPreservesOthers();
     void switchingToInfoRemovesThePreviousFormControls();
     void tatamiOffersConversionToDirectionalFill();
@@ -587,6 +588,24 @@ void PropertiesPanelTest::selectingAGuideRowAsksForCanvasHighlight() {
                      [&](openstitch::ObjectId, int index) { selected = index; });
     panel.findChild<QListWidget*>(QStringLiteral("list_satinGuides"))->setCurrentRow(1);
     QCOMPARE(selected, 1);
+}
+
+void PropertiesPanelTest::headerShowsColorDotAndTypePillOnlyForAnEmbroideryObject() {
+    PropertiesPanel panel;
+    panel.show();
+    auto* dot = panel.findChild<QLabel*>(QStringLiteral("props_colorDot"));
+    auto* pill = panel.findChild<QLabel*>(QStringLiteral("props_typePill"));
+    QVERIFY(dot != nullptr && pill != nullptr);
+    QVERIFY(!dot->isVisible() && !pill->isVisible());
+
+    panel.showEmbroidery(runningStitchObject(5));
+    QVERIFY(dot->isVisible());
+    QVERIFY(pill->isVisible());
+    QVERIFY(!pill->text().isEmpty());
+    QVERIFY(!panel.styleSheet().isEmpty()); // feuille locale construite depuis les jetons
+
+    panel.showInfo(QStringLiteral("Info"), QStringLiteral("details"));
+    QVERIFY(!dot->isVisible() && !pill->isVisible());
 }
 
 QTEST_MAIN(PropertiesPanelTest)
