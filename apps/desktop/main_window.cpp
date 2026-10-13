@@ -452,9 +452,10 @@ MainWindow::MainWindow() {
     buildToolPalette();
     addToolBarBreak(); // la barre de simulation occupe sa propre rangée
     buildSimulationToolbar();
+    buildThreadStrip();
     // Une barre masquée doit pouvoir se rouvrir depuis un menu, comme les panneaux.
     panelsMenu_->insertSeparator(resetLayoutAct);
-    for (auto* bar : {mainToolbar_, contextToolbar_, toolPalette_, simToolbar_}) {
+    for (auto* bar : {mainToolbar_, contextToolbar_, toolPalette_, simToolbar_, threadStripBar_}) {
         panelsMenu_->insertAction(resetLayoutAct, bar->toggleViewAction());
     }
 

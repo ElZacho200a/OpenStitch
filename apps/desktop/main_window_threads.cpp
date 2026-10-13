@@ -14,6 +14,7 @@
 #include <QMessageBox>
 #include <QStandardPaths>
 #include <QStatusBar>
+#include <QToolBar>
 
 #include <algorithm>
 #include <map>
@@ -27,6 +28,7 @@
 #include "openstitch/thread_palette/chart_import.hpp"
 #include "openstitch/thread_palette/color_reduction.hpp"
 #include "thread_panel.hpp"
+#include "thread_strip.hpp"
 
 namespace openstitch::desktop {
 
@@ -431,7 +433,52 @@ void MainWindow::buildThreadPanel() {
     });
 }
 
+void MainWindow::buildThreadStrip() {
+    threadStripBar_ = new QToolBar(tr("Fils du motif"), this);
+    threadStripBar_->setObjectName(QStringLiteral("threadStripBar"));
+    threadStripBar_->setMovable(false);
+    threadStripBar_->setAllowedAreas(Qt::BottomToolBarArea);
+    threadStrip_ = new ThreadStrip(threadStripBar_);
+    threadStripBar_->addWidget(threadStrip_);
+    addToolBar(Qt::BottomToolBarArea, threadStripBar_);
+    // Un clic sur une pastille sélectionne les objets cousus avec ce fil (même chemin que le
+    // panneau Fils : la sélection reste une opération du document, pas du widget).
+    connect(threadStrip_, &ThreadStrip::threadClicked, this, [this](int index) {
+        if (!sequence_ || threadPanel_ == nullptr) {
+            return;
+        }
+        const auto usage = stitch_analysis::thread_usage(project_, *sequence_, &threadLibrary_);
+        if (index >= 0 && static_cast<std::size_t>(index) < usage.size()) {
+            emit threadPanel_->selectUsageObjectsRequested(usage[std::size_t(index)].identity);
+        }
+    });
+    refreshThreadStrip();
+}
+
+void MainWindow::refreshThreadStrip() {
+    if (threadStrip_ == nullptr) {
+        return;
+    }
+    std::vector<ThreadStrip::Swatch> swatches;
+    QString summary;
+    if (sequence_) {
+        const auto usage = stitch_analysis::thread_usage(project_, *sequence_, &threadLibrary_);
+        std::size_t stitches = 0;
+        for (const auto& u : usage) {
+            stitches += u.stitch_count;
+            swatches.push_back({QColor(u.identity.rgb[0], u.identity.rgb[1], u.identity.rgb[2]),
+                                tr("%1 · %2 objet(s) · %3 points")
+                                    .arg(QString::fromStdString(stitch_analysis::thread_label(u)))
+                                    .arg(u.objects.size())
+                                    .arg(u.stitch_count)});
+        }
+        summary = tr("%1 fil(s) · %2 points").arg(usage.size()).arg(stitches);
+    }
+    threadStrip_->setThreads(std::move(swatches), summary);
+}
+
 void MainWindow::refreshThreadPanel() {
+    refreshThreadStrip(); // la barre des fils vit même quand le panneau Fils est fermé
     if (threadPanel_ == nullptr || threadDock_ == nullptr || !threadDock_->isVisible()) {
         return;
     }

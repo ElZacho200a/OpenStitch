@@ -251,6 +251,19 @@ QString build_stylesheet(const Tokens& t) {
                           "QMainWindow > QTabBar::tab { padding: %1px %2px; margin-right: 1px; }\n")
                .arg(t.space2)
                .arg(t.space3);
+    // Barre des fils (bas de fenêtre) : même surface que la barre d'état, séparée par un filet.
+    qss += QStringLiteral("QToolBar#threadStripBar { background: %1; border-top: 1px solid %2; "
+                          "padding: 0px; spacing: 0px; }\n")
+               .arg(c(t.surface), c(t.border));
+    // Bouton principal d'un écran ou d'une boîte de dialogue : plein, couleur d'accent.
+    qss +=
+        QStringLiteral(
+            "QPushButton[primary=\"true\"] { background: %1; color: %2; border: 1px solid %1; "
+            "font-weight: 700; }\n"
+            "QPushButton[primary=\"true\"]:hover { background: %3; border-color: %3; }\n"
+            "QPushButton[primary=\"true\"]:disabled { background: %4; color: %5; "
+            "border-color: %4; }\n")
+            .arg(c(t.accent), c(t.selectionText), c(t.accentHover), c(t.border), c(t.textDisabled));
     // Barre contextuelle (message d'état + actions de l'objet sélectionné) : bandeau discret,
     // texte secondaire, actions en boutons « secondaires » à bord marqué.
     qss +=

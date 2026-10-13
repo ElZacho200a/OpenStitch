@@ -459,7 +459,7 @@ QIcon appIcon() {
         const double u = size / 32.0; // dessin en coordonnées 32x32
         p.scale(u, u);
         p.setPen(Qt::NoPen);
-        p.setBrush(QColor(0xB0, 0x4E, 0x3C)); // rouge-brique « fil » du thème
+        p.setBrush(QColor(0x4B, 0x3F, 0xD1)); // indigo « soie » du thème
         p.drawRoundedRect(QRectF(1, 1, 30, 30), 7, 7);
         // Fil : une boucle blanche qui finit en point de couture.
         QPen thread(QColor(0xFF, 0xFF, 0xFF), 2.0);
@@ -475,7 +475,7 @@ QIcon appIcon() {
         needle.setCapStyle(Qt::RoundCap);
         p.setPen(needle);
         p.drawLine(QPointF(10, 6), QPointF(22, 27));
-        p.setPen(QPen(QColor(0xB0, 0x4E, 0x3C), 1.4));
+        p.setPen(QPen(QColor(0x4B, 0x3F, 0xD1), 1.4));
         p.drawLine(QPointF(10.6, 7.2), QPointF(11.6, 8.8));
         p.end();
         icon.addPixmap(pm);
