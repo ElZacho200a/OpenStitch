@@ -853,6 +853,11 @@ plus.
 - Modules : `libs/stitch_generation`.
 
 ### HP-STI-011 — Mélange de couleurs (color blending) [P2] — ◐ Partiel (action disponible)
+- 2026-10-13 (intégration UI après PR #36) : dialogue avant mutation, aperçu
+  schématique, couleurs manuelles sans raster et proposition depuis l'image,
+  angle/écarts/inversion ; dessus inséré après le fond ; choix et édition des
+  couches dans Propriétés. Tests des gestes, conversion et round-trip `.osp`.
+  Le couple à dégradés complémentaires liés reste à faire.
 - 2026-10-13 (PR #25, fusionnée le 2026-10-13) : correction du fondu écrasé (lignes du dessus orientées perpendiculairement à l'axe de couleur) et nouvelle action **Forme ▸ Fondre deux zones**.
 - Fait : `autodigitize::analyze_two_color_blend` (ACP en CMY → deux couleurs,
   plan de proportion → `DensityGradient`), `thread_palette::best_thread_pair`

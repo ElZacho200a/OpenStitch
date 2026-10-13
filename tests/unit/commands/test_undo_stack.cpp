@@ -13,6 +13,27 @@
 using namespace openstitch;
 using namespace openstitch::commands;
 
+TEST_CASE("recovered content stays dirty after total undo until explicitly saved") {
+    document::Project project;
+    UndoStack stack;
+    stack.markDirty();
+    CHECK_FALSE(stack.isClean());
+    stack.execute(std::make_unique<AppendImageOpCommand>(image::GrayscaleOp{}), project);
+    CHECK_FALSE(stack.isClean());
+    REQUIRE(stack.undo(project));
+    CHECK_FALSE(stack.isClean());
+    REQUIRE(stack.redo(project));
+    CHECK_FALSE(stack.isClean());
+    stack.markClean();
+    CHECK(stack.isClean());
+    REQUIRE(stack.undo(project));
+    CHECK_FALSE(stack.isClean());
+    REQUIRE(stack.redo(project));
+    CHECK(stack.isClean());
+    stack.clear();
+    CHECK(stack.isClean());
+}
+
 TEST_CASE("execute / undo / redo sur la pile d'operations") {
     document::Project project;
     UndoStack stack;
@@ -838,6 +859,74 @@ TEST_CASE("ConvertFillGroupCommand : reseau satin multi-sections -- retire les s
     CHECK(project.findEmbroidery(section0.id)->is_tatami());
     CHECK(project.findEmbroidery(section1.id) == nullptr);
     CHECK(project.findEmbroidery(section2.id) == nullptr);
+}
+
+TEST_CASE("ConvertFillGroupCommand preserves independent layers sharing a vector") {
+    document::Project project;
+    UndoStack stack;
+    document::EmbroideryObject background;
+    background.id = project.object_ids.next();
+    background.source_vector = project.object_ids.next();
+    background.params = document::TatamiParams{};
+    background.rgb = {210, 30, 30};
+    auto foreground = background;
+    foreground.id = project.object_ids.next();
+    document::DirectionalFillParams directional;
+    directional.density_gradient = document::DensityGradient{{Micrometers{0}, Micrometers{0}},
+                                                             {Micrometers{10'000}, Micrometers{0}},
+                                                             Micrometers{4'000},
+                                                             Micrometers{400}};
+    foreground.params = directional;
+    foreground.rgb = {30, 30, 210};
+    project.embroidery_objects = {background, foreground};
+    ObjectId target = foreground.id;
+    document::StitchParams converted = document::TatamiParams{};
+    SECTION("converting foreground") {
+        target = foreground.id;
+    }
+    SECTION("converting background") {
+        target = background.id;
+        converted = document::RunningStitchParams{};
+    }
+    stack.execute(std::make_unique<ConvertFillGroupCommand>(target, converted, "conversion"),
+                  project);
+    REQUIRE(project.embroidery_objects.size() == 2);
+    CHECK(project.findEmbroidery(target)->params == converted);
+    const auto& untouched = target == background.id ? foreground : background;
+    CHECK(project.findEmbroidery(untouched.id)->params == untouched.params);
+    REQUIRE(stack.undo(project));
+    REQUIRE(project.embroidery_objects.size() == 2);
+    CHECK(project.embroidery_objects[0].id == background.id);
+    CHECK(project.embroidery_objects[0].params == background.params);
+    CHECK(project.embroidery_objects[1].id == foreground.id);
+    CHECK(project.embroidery_objects[1].params == foreground.params);
+    REQUIRE(stack.redo(project));
+    CHECK(project.embroidery_objects.size() == 2);
+}
+
+TEST_CASE("ConvertFillGroupCommand collapses satin sections without removing a background") {
+    document::Project project;
+    UndoStack stack;
+    document::EmbroideryObject background;
+    background.id = project.object_ids.next();
+    background.source_vector = project.object_ids.next();
+    background.params = document::TatamiParams{};
+    auto section = background;
+    section.id = project.object_ids.next();
+    section.params = document::SatinParams{};
+    auto sibling = section;
+    sibling.id = project.object_ids.next();
+    project.embroidery_objects = {background, section, sibling};
+    stack.execute(std::make_unique<ConvertFillGroupCommand>(
+                      section.id, document::RunningStitchParams{}, "contour"),
+                  project);
+    REQUIRE(project.embroidery_objects.size() == 2);
+    CHECK(project.embroidery_objects[0].id == background.id);
+    CHECK(project.embroidery_objects[0].params == background.params);
+    CHECK(project.findEmbroidery(sibling.id) == nullptr);
+    REQUIRE(stack.undo(project));
+    REQUIRE(project.embroidery_objects.size() == 3);
+    CHECK(project.embroidery_objects[2].id == sibling.id);
 }
 
 TEST_CASE("SetStitchParamsCommand : edite les parametres, undo restaure exact") {

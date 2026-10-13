@@ -23,6 +23,8 @@ class QSpinBox;
 class QVBoxLayout;
 class QDoubleSpinBox;
 class QPushButton;
+class QAction;
+class QToolButton;
 
 namespace openstitch::desktop {
 
@@ -106,8 +108,18 @@ public:
     // Resynchronise la copie interne SANS reconstruire (après qu'une édition du
     // formulaire a été appliquée au document, qui peut l'avoir complétée).
     void adoptParams(ObjectId id, const document::StitchParams& params);
+    struct FillLayer {
+        ObjectId id;
+        QString name;
+        QColor color;
+    };
+    // Contexte transitoire des couches d'une même forme, non persistant.
+    void setFillLayers(const QList<FillLayer>& layers, std::optional<ObjectId> selected);
+    void setBlendActions(QAction* single, QAction* zones, bool singleContext, bool zonesContext);
 
 signals:
+    void fillLayerSelected(ObjectId id);
+    void fillColorRequested(ObjectId id);
     // Bouton « Modifier le texte… » du bandeau lettrage (cf. setTextInfo) : MainWindow rouvre
     // le dialogue de texte (même chemin que le double-clic et F2).
     void editTextRequested();
@@ -183,6 +195,11 @@ private:
     QPushButton* discardButton_{nullptr};
     QLabel* textInfoLabel_{nullptr};
     QPushButton* textEditButton_{nullptr};
+    QWidget* layerRow_{nullptr};
+    QComboBox* fillLayers_{nullptr};
+    QPushButton* fillColor_{nullptr};
+    QToolButton* blendSingle_{nullptr};
+    QToolButton* blendZones_{nullptr};
     QWidget* body_{nullptr};
     int groupCount_{1};
     std::optional<ObjectId> currentId_;

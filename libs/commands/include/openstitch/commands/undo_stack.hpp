@@ -36,6 +36,12 @@ public:
         // de la pile : la chaîne est coupée pour que la commande suivante soit empilée à part.
         mergeable_ = false;
     }
+    // Contenu récupéré mais jamais enregistré : aucun état de la pile n'est propre.
+    // Un undo total ne doit pas effacer la garde d'enregistrement. markClean la rétablit.
+    void markDirty() {
+        cleanIndex_ = -1;
+        mergeable_ = false;
+    }
     [[nodiscard]] bool isClean() const {
         return cleanIndex_ == static_cast<long long>(undo_.size());
     }

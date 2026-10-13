@@ -636,7 +636,7 @@ private slots:
         QCOMPARE(width->value(), 100.0);
     }
 
-    void importDialogKeepsTheRatioWithinRangeAndReportsDistortion() {
+    void importDialogKeepsTheRatioWithinRangeAndExplainsTheConstraint() {
         const QImage preview(4, 4, QImage::Format_RGB32);
         ImportDialog dialog(4000, 100, preview, QSizeF(1000.0, 1000.0)); // bandeau 40:1
         auto* width = dialog.findChild<QDoubleSpinBox*>("importWidthSpin");
@@ -650,11 +650,12 @@ private slots:
         auto* keep = dialog.findChild<QCheckBox*>("importKeepRatioCheck");
         auto* ratio = dialog.findChild<QLabel*>("importRatioLabel");
         QVERIFY(ratio->isHidden());
-        keep->setChecked(false); // plages libres, ratio indiqué dès qu'il change
-        QCOMPARE(width->minimum(), 1.0);
-        height->setValue(250.0);
-        QVERIFY(!ratio->isHidden());
-        QVERIFY(ratio->text().contains(QStringLiteral("proportions")));
+        QVERIFY(keep->isChecked());
+        QVERIFY(!keep->isEnabled()); // pas d'étirement silencieusement ignoré à l'import
+        QVERIFY(!keep->toolTip().isEmpty());
+        height->setValue(20.0);
+        QCOMPARE(width->value(), 800.0);
+        QVERIFY(ratio->isHidden());
     }
 
     // ---- dialogue IA (audit A13-A17) ------------------------------------------------------------

@@ -542,6 +542,8 @@ private:
     void runBooleanOp(commands::BooleanOp op);
     void breakApartSelected();
     void blendSelectedZones();
+    [[nodiscard]] const document::EmbroideryObject* blendFillFor(ObjectId vector) const;
+    void createColorBlend(ObjectId baseId, std::optional<ObjectId> secondId);
     void removeHolesOfSelection(double maxAreaMm2); // 0 : tous les trous
     void finishCut();
     // Exécute la commande (un pas d'annulation), sélectionne le premier de `keep` encore présent

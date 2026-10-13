@@ -64,6 +64,12 @@ ImportDialog::ImportDialog(int widthPx, int heightPx, const QImage& preview, QSi
     keepRatio_ = new QCheckBox(tr("Conserver les proportions"), this);
     keepRatio_->setObjectName(QStringLiteral("importKeepRatioCheck"));
     keepRatio_->setChecked(true);
+    // Le projet porte UNE résolution mm/px : une hauteur indépendante serait ignorée.
+    // Ne pas promettre d'étirement tant qu'un placement anisotrope n'est pas implémenté.
+    keepRatio_->setEnabled(false);
+    keepRatio_->setToolTip(tr("Import raster proportionnel uniquement : le projet utilise une "
+                              "résolution unique. Modifier la largeur ou la hauteur ajuste "
+                              "automatiquement l'autre dimension."));
     applyRatioRanges();
 
     // Valeur par défaut : 96 dpi (métier : libs/document), mais jamais plus grande que le cadre

@@ -224,9 +224,13 @@ remplacent le document (ouvrir une image, un SVG, un projet, importer un DST).
 **Import** : le dialogue affiche un aperçu, les dimensions en pixels, la
 résolution (**mm/pixel et dpi**) en direct, la taille du cadre, et **alerte si l'image
 dépasse le cadre**. La taille proposée d'emblée **tient dans le cadre** (96 dpi, ramenée au cadre
-si besoin) et **Ajuster au cadre** y revient en un clic. Avec « Conserver les proportions », les
-bornes des champs empêchent de dépasser la plage 1–1000 mm sans respecter le ratio ; décochée,
-une alerte indique de combien l'image est étirée. Le dossier du dernier import est mémorisé. **Export DST** : un **résumé** (dimensions, points, sauts,
+si besoin) et **Ajuster au cadre** y revient en un clic ; le cadre et sa marge
+sont conservés à l'import. **Conserver les proportions** est imposé et expliqué
+dans son infobulle : le projet utilise une seule résolution mm/pixel. Modifier
+la hauteur ajuste la largeur et inversement ; les bornes des champs respectent
+le ratio. L'étirement raster anisotrope n'est pas implémenté (l'ancien choix
+de hauteur indépendante était ignoré). Le dossier du dernier import est mémorisé.
+**Export DST** : un **résumé** (dimensions, points, sauts,
 coupes, changements de couleur, fil estimé, cadre, dépassement éventuel) est
 présenté avant écriture, avec un rappel que le DST ne conserve pas les objets.
 
@@ -259,9 +263,14 @@ l'application écrit un instantané dans son dossier de données (le message « 
 brièvement dans la barre d'état). Cet instantané **ne remplace jamais votre `.osp`** : c'est un fichier à part,
 dans `%APPDATA%\OpenStitch\OpenStitch Studio\autosave\`. Une fermeture normale le supprime. Si l'application
 s'arrête anormalement, le démarrage suivant affiche **Récupération après un arrêt
-anormal** : **Récupérer** ouvre l'instantané comme un document modifié, non
-rattaché à un fichier (pensez à *Enregistrer sous…*) ; **Ignorer** le supprime. Un
+anormal** : **Récupérer** ouvre l'instantané comme un document modifié. Si son
+chemin d'origine est connu, **Ctrl+S** le réécrit ; sinon, utilisez
+**Enregistrer sous…**. **Ignorer** supprime l'instantané. Un
 projet jamais enregistré est proposé comme « projet sans nom ».
+
+Après récupération, revenir au début de l'historique avec **Annuler** ne marque
+pas le document comme enregistré : la demande de sauvegarde reste active
+jusqu'à un enregistrement explicite.
 
 Un document **sans image** reste un document : SVG/dessin/lettrage avec objets
 de broderie et import machine seul suivent le même rafraîchissement des points,
@@ -518,6 +527,12 @@ La variable d'environnement `OPENSTITCH_THREADS=1` force le calcul séquentiel (
 
 ## Menu Broderie
 
+- **Fondu de couleurs à deux fils…** : sélectionnez un remplissage tatami ou
+  directionnel unique, puis choisissez deux couleurs, l'angle et les écarts
+  début/fin dans un dialogue avec aperçu. Avec ou sans image ; l'analyse raster
+  est facultative. Valider crée fond puis dessus, annulables en une fois.
+  **Propriétés ▸ Couches de couture** permet ensuite de choisir et d'éditer
+  chaque couche séparément. Voir [Remplissage directionnel](directional-fill.md).
 - **Numérisation automatique** (**F8**, grisée tant qu'il n'y a ni segmentation ni objets
   vectoriels) — crée des objets pour toutes les régions. Les zones
   remplissables deviennent des **tatamis** ; le satin se crée ensuite, région par région,

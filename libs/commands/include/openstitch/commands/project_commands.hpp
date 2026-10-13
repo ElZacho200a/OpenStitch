@@ -975,8 +975,10 @@ private:
 // une fois qu'un objet du groupe couvre déjà tout le contour.
 //
 // Cette commande convertit l'objet ANCRE (`anyMemberId`, résolu par
-// l'appelant exactement comme avant) au nouveau type, puis RETIRE tous les
-// autres objets du même `source_vector` -- jamais une conversion en masse
+// l'appelant exactement comme avant) au nouveau type. Si l'ancre est un satin
+// à rails, elle RETIRE les autres sections satin du même `source_vector`.
+// Les couches indépendantes (notamment fond/ dessus du fondu) sont conservées.
+// Jamais une conversion en masse
 // (qui dupliquerait le remplissage tatami/contour N fois sur la même
 // surface, cf. docs/source/satin.md pour cette limitation connexe). Sans
 // sections sœurs (cas courant, un seul objet par `source_vector`), se
@@ -1003,6 +1005,7 @@ public:
         primaryId_ = anchorIt->id;
         previousParams_ = anchorIt->params;
         previousIntent_ = anchorIt->intent;
+        const bool collapseSatinSections = anchorIt->is_satin();
         anchorIt->params = params_;
         anchorIt->intent = document::EmbroideryIntent::ForcedUserChoice;
 
@@ -1019,7 +1022,8 @@ public:
         // en amont d'un retrait).
         std::vector<std::size_t> siblingIndices;
         for (std::size_t i = 0; i < embs.size(); ++i) {
-            if (embs[i].id != primaryId_ && embs[i].source_vector == sourceVector) {
+            if (collapseSatinSections && embs[i].is_satin() && embs[i].id != primaryId_ &&
+                embs[i].source_vector == sourceVector) {
                 siblingIndices.push_back(i);
             }
         }
