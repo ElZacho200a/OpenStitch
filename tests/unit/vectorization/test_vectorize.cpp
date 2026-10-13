@@ -233,3 +233,30 @@ TEST_CASE("courbes : un anneau garde son trou, resultat deterministe, defaut inc
         CHECK_FALSE(nd.tan_out.has_value());
     }
 }
+
+TEST_CASE("vectorize_regions : meme resultat que la boucle sequentielle, dans l'ordre demande") {
+    const auto seg = segmentation::segment(ring_image(), {.max_colors = 2, .min_region_px = 1});
+    REQUIRE(seg.has_value());
+    std::vector<RegionId> ids;
+    for (const auto& slot : seg->region_slots) {
+        if (slot) {
+            ids.push_back(slot->id);
+        }
+    }
+    REQUIRE(ids.size() >= 2);
+    // Une region inexistante au milieu : son erreur reste a SA place.
+    ids.insert(ids.begin() + 1, RegionId{987'654});
+    const VectorizeOptions options{.mm_per_px = Millimeters{1.0},
+                                   .simplify_tolerance = Micrometers{200}};
+    const auto batch = vectorize_regions(*seg, ids, options);
+    REQUIRE(batch.size() == ids.size());
+    for (std::size_t i = 0; i < ids.size(); ++i) {
+        const auto one = vectorize_region(*seg, ids[i], options);
+        REQUIRE(batch[i].has_value() == one.has_value());
+        if (one) {
+            CHECK(*batch[i] == *one);
+        }
+    }
+    CHECK_FALSE(batch[1].has_value());
+    CHECK(vectorize_regions(*seg, {}, options).empty());
+}

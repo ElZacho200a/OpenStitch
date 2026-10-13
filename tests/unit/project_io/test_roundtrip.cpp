@@ -384,3 +384,29 @@ TEST_CASE("auto-satin : le schema du fichier annonce la version qui porte ce typ
     // un type de point inconnu.
     CHECK(project_io::kSchemaVersion >= 5);
 }
+
+TEST_CASE("save_project : le PNG en cache suit le contenu de l'image, pas son adresse") {
+    auto project = rich_project();
+    const auto path = temp_osp();
+    // Deux enregistrements de la meme image (le second relit le cache), puis un pixel change.
+    REQUIRE(project_io::save_project(path, project).has_value());
+    REQUIRE(project_io::save_project(path, project).has_value());
+    auto loaded = project_io::load_project(path);
+    REQUIRE(loaded.has_value());
+    CHECK(loaded->original.rgba == project.original.rgba);
+
+    project.original.rgba[0] = static_cast<std::uint8_t>(project.original.rgba[0] ^ 0x5A);
+    REQUIRE(project_io::save_project(path, project).has_value());
+    loaded = project_io::load_project(path);
+    REQUIRE(loaded.has_value());
+    CHECK(loaded->original.rgba == project.original.rgba);
+
+    // Meme taille d'image, autres dimensions : pas de confusion non plus.
+    std::swap(project.original.width, project.original.height);
+    REQUIRE(project_io::save_project(path, project).has_value());
+    loaded = project_io::load_project(path);
+    REQUIRE(loaded.has_value());
+    CHECK(loaded->original.width == project.original.width);
+    CHECK(loaded->original.height == project.original.height);
+    fs::remove(path);
+}

@@ -1053,3 +1053,64 @@ TEST_CASE("satin bandes : petit disque en satin a cordes paralleles, grand disqu
     REQUIRE(wide.has_value());
     CHECK_FALSE(any_auto_satin(*wide));
 }
+
+namespace {
+
+// Force le nombre de fils de `parallel_for` le temps d'un bloc (OPENSTITCH_THREADS).
+struct ThreadCountOverride {
+    explicit ThreadCountOverride(const char* value) {
+#ifdef _WIN32
+        _putenv_s("OPENSTITCH_THREADS", value);
+#else
+        setenv("OPENSTITCH_THREADS", value, 1);
+#endif
+    }
+    ~ThreadCountOverride() {
+#ifdef _WIN32
+        _putenv_s("OPENSTITCH_THREADS", "");
+#else
+        unsetenv("OPENSTITCH_THREADS");
+#endif
+    }
+};
+
+} // namespace
+
+TEST_CASE("auto_digitize : meme resultat avec un seul fil et avec plusieurs") {
+    // Plusieurs regions de tailles et de formes variees (blocs, bande etroite, petit carre).
+    const auto img = paint(120, 90,
+                           {{4, 4, 50, 40, {200, 30, 30}},
+                            {54, 4, 116, 40, {30, 160, 60}},
+                            {4, 44, 116, 52, {30, 30, 200}},
+                            {4, 56, 60, 86, {220, 200, 40}},
+                            {64, 56, 72, 64, {120, 40, 160}},
+                            {80, 56, 116, 86, {40, 180, 190}}});
+    const auto seg = segmentation::segment(img, {.max_colors = 8, .min_region_px = 4});
+    REQUIRE(seg.has_value());
+    for (const bool satinBands : {false, true}) {
+        AutoOptions o = opts();
+        o.satin_bands = satinBands;
+        const auto run = [&](const char* threads) {
+            const ThreadCountOverride forced(threads);
+            IdGenerator<ObjectId> ids;
+            return auto_digitize(*seg, ids, o);
+        };
+        const auto single = run("1");
+        const auto many = run("8");
+        REQUIRE(single.has_value());
+        REQUIRE(many.has_value());
+        REQUIRE(single->vectors.size() == many->vectors.size());
+        REQUIRE(single->embroideries.size() == many->embroideries.size());
+        for (std::size_t i = 0; i < single->vectors.size(); ++i) {
+            CHECK(single->vectors[i].id == many->vectors[i].id);
+            CHECK(single->vectors[i].source_region == many->vectors[i].source_region);
+            CHECK(single->vectors[i].paths == many->vectors[i].paths);
+        }
+        for (std::size_t i = 0; i < single->embroideries.size(); ++i) {
+            CHECK(single->embroideries[i].id == many->embroideries[i].id);
+            CHECK(single->embroideries[i].source_vector == many->embroideries[i].source_vector);
+            CHECK(single->embroideries[i].name == many->embroideries[i].name);
+            CHECK(single->embroideries[i].params == many->embroideries[i].params);
+        }
+    }
+}
