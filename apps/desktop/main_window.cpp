@@ -6075,8 +6075,12 @@ void MainWindow::buildToolPalette() {
     polygonSidesSpin_ = new QSpinBox(toolPalette_);
     polygonSidesSpin_->setRange(3, 12);
     polygonSidesSpin_->setValue(6);
-    polygonSidesSpin_->setToolTip(tr("Nombre de côtés du polygone régulier"));
+    polygonSidesSpin_->setToolTip(
+        tr("Nombre de côtés du polygone régulier (molette ou flèches ↑ ↓)"));
     polygonSidesSpin_->setMaximumWidth(48);
+    polygonSidesSpin_->setAlignment(Qt::AlignCenter);
+    polygonSidesSpin_->setButtonSymbols(
+        QAbstractSpinBox::NoButtons); // trop étroit pour les flèches
     toolPalette_->addWidget(polygonSidesSpin_);
     toolDrawBezierAct_ =
         addTool(icons::bezierCurve(),

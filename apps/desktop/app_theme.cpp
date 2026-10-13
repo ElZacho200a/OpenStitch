@@ -181,6 +181,37 @@ QString build_stylesheet(const Tokens& t) {
                .arg(t.space2 + 1)
                .arg(c(t.text), c(t.accentSoft), c(t.accent), c(t.border))
                .arg(t.space3);
+    // Barre contextuelle (message d'état + actions de l'objet sélectionné) : bandeau discret,
+    // texte secondaire, actions en boutons « secondaires » à bord marqué.
+    qss +=
+        QStringLiteral(
+            "QToolBar#contextToolbar { background: %1; border-bottom: 1px solid %2; "
+            "padding: %3px %4px; spacing: %5px; }\n"
+            "QToolBar#contextToolbar QLabel { color: %6; background: transparent; "
+            "padding: 0 %3px; }\n"
+            "QToolBar#contextToolbar QToolButton { background: %7; color: %8; border: 1px solid "
+            "%9; border-radius: %10px; padding: %3px %11px; font-weight: 600; }\n"
+            "QToolBar#contextToolbar QToolButton:hover { background: %12; border-color: %13; }\n"
+            "QToolBar#contextToolbar QToolButton:disabled { background: transparent; color: %14; "
+            "border-color: %2; }\n")
+            .arg(c(t.surface), c(t.border))
+            .arg(t.space2)
+            .arg(t.space4)
+            .arg(t.space3)
+            .arg(c(t.textSecondary), c(t.surfaceRaised), c(t.text), c(t.borderStrong))
+            .arg(t.radiusMd)
+            .arg(t.space4 - 2)
+            .arg(c(t.accentSoft), c(t.accent), c(t.textDisabled));
+    // Nombre de côtés du polygone régulier (palette d'outils verticale) : pastille numérique
+    // compacte alignée sur les boutons d'outils.
+    qss += QStringLiteral("QToolBar#toolPalette QSpinBox { background: %1; color: %2; border: 1px "
+                          "solid %3; border-radius: %4px; padding: %5px 0px; font-weight: 700; "
+                          "min-height: 0px; }\n"
+                          "QToolBar#toolPalette QSpinBox:focus { border-color: %6; }\n")
+               .arg(c(t.surfaceRaised), c(t.text), c(t.borderStrong))
+               .arg(t.radiusMd)
+               .arg(t.space1)
+               .arg(c(t.focus));
     qss += QStringLiteral(
                "QToolButton[primary=\"true\"] { background: %1; color: %2; border: 1px solid %1; "
                "border-radius: %3px; padding: %4px %5px; font-weight: 700; }\n"
