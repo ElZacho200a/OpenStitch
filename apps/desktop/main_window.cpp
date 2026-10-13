@@ -4508,6 +4508,52 @@ void MainWindow::autoDigitize() {
         overlapRow->addWidget(overlapSpin);
         overlapRow->addStretch(1);
         shapesPanelLayout->addLayout(overlapRow);
+        // Nettoyage des fragments avant numérisation (AutoOptions::min_feature_width_mm et
+        // min_region_area_mm2) : il arrondit les coins et efface les détails fins ; à 0 le
+        // contour reste celui de la segmentation. Mémorisés en µm et en 1/100 mm².
+        auto* featureRow = new QHBoxLayout;
+        auto* featureSpin = new QDoubleSpinBox(shapesPanel);
+        featureSpin->setObjectName("minFeatureWidthSpin");
+        featureSpin->setRange(0.0, 5.0);
+        featureSpin->setSingleStep(0.1);
+        featureSpin->setDecimals(1);
+        featureSpin->setSuffix(tr(" mm"));
+        featureSpin->setSpecialValueText(tr("désactivé"));
+        featureSpin->setValue(
+            ui_memory::intValue(QStringLiteral("autoDigitize/minFeatureWidthUm"),
+                                static_cast<int>(std::lround(opts.min_feature_width_mm * 1000.0)),
+                                0, 5000) /
+            1000.0);
+        featureSpin->setToolTip(
+            tr("Les détails plus étroits que cette largeur (contours fins, anneaux, pointes) sont "
+               "retirés de leur forme et rendus à la voisine avant numérisation ; les coins "
+               "convexes sont aussi arrondis. Baissez ou désactivez pour des contours plus "
+               "fidèles à l'image."));
+        featureRow->addWidget(new QLabel(tr("Largeur minimale des détails :"), shapesPanel));
+        featureRow->addWidget(featureSpin);
+        featureRow->addStretch(1);
+        shapesPanelLayout->addLayout(featureRow);
+        auto* minAreaRow = new QHBoxLayout;
+        auto* minAreaSpin = new QDoubleSpinBox(shapesPanel);
+        minAreaSpin->setObjectName("minRegionAreaSpin");
+        minAreaSpin->setRange(0.0, 50.0);
+        minAreaSpin->setSingleStep(0.5);
+        minAreaSpin->setDecimals(2);
+        minAreaSpin->setSuffix(tr(" mm²"));
+        minAreaSpin->setSpecialValueText(tr("désactivé"));
+        minAreaSpin->setValue(
+            ui_memory::intValue(QStringLiteral("autoDigitize/minRegionAreaCmm2"),
+                                static_cast<int>(std::lround(opts.min_region_area_mm2 * 100.0)), 0,
+                                5000) /
+            100.0);
+        minAreaSpin->setToolTip(
+            tr("Les régions plus petites que cette aire sont fusionnées avec leur voisine de plus "
+               "longue frontière : elles disparaissent du résultat. 0 = toutes les régions "
+               "segmentées sont conservées."));
+        minAreaRow->addWidget(new QLabel(tr("Aire minimale des régions :"), shapesPanel));
+        minAreaRow->addWidget(minAreaSpin);
+        minAreaRow->addStretch(1);
+        shapesPanelLayout->addLayout(minAreaRow);
         connect(shapesRadio, &QRadioButton::toggled, shapesPanel, &QWidget::setEnabled);
         optsLayout->addWidget(shapesPanel);
 
@@ -4568,6 +4614,12 @@ void MainWindow::autoDigitize() {
         const int overlapUm = static_cast<int>(std::lround(overlapSpin->value() * 1000.0));
         ui_memory::setIntValue(QStringLiteral("autoDigitize/fillOverlapUm"), overlapUm);
         opts.fill_overlap = Micrometers{overlapUm};
+        const int featureUm = static_cast<int>(std::lround(featureSpin->value() * 1000.0));
+        ui_memory::setIntValue(QStringLiteral("autoDigitize/minFeatureWidthUm"), featureUm);
+        opts.min_feature_width_mm = featureUm / 1000.0;
+        const int minAreaCmm2 = static_cast<int>(std::lround(minAreaSpin->value() * 100.0));
+        ui_memory::setIntValue(QStringLiteral("autoDigitize/minRegionAreaCmm2"), minAreaCmm2);
+        opts.min_region_area_mm2 = minAreaCmm2 / 100.0;
         contoursMode = contoursRadio->isChecked();
         contourOpts.skip_largest_region = skipBgCheck->isChecked();
         contourOpts.detail = static_cast<double>(detailSlider->value()) / 100.0;
@@ -5195,8 +5247,8 @@ void MainWindow::offsetVectorObjectCore(ObjectId id, Micrometers delta) {
     // inset_path_set) travaille sur des polygones bruts, sans notion de
     // tangente -- même raison qu'à l'export DXF (geometry::flatten est la
     // même fonction, même tolérance).
-    constexpr Micrometers kFlattenTolerance{50};
-    const auto flattenToPath = [kFlattenTolerance](const geometry::Path& path) {
+    static constexpr Micrometers kFlattenTolerance{50};
+    const auto flattenToPath = [](const geometry::Path& path) {
         const geometry::Polyline flat = geometry::flatten(path, kFlattenTolerance);
         geometry::Path out;
         out.closed = flat.closed;

@@ -1,7 +1,7 @@
 # Premier lot de correctifs UX/UI — 2026-10-13
 
-*État : correctifs intégrés dans un worktree dédié ; suite Release complète et
-contrôle visuel ciblé réalisés, validation Debug en cours.*
+*État : correctifs intégrés dans un worktree dédié ; suites Release et Debug
+complètes sur la référence du lot, contrôle visuel ciblé réalisé.*
 
 ## Périmètre et référence
 
@@ -24,7 +24,7 @@ points ou de dépendance. Livraison sur une branche dédiée, sans fusion vers `
 
 | Sujet | Cause vérifiée | Correction et preuve ciblée |
 |---|---|---|
-| Build préalable | La lambda de `offsetVectorObjectCore` utilisait la constante locale `kFlattenTolerance` sans capture ; MSVC refusait l'application. | Capture explicite ; bibliothèque desktop et cibles de tests compilées en Release. |
+| Build préalable | La lambda de `offsetVectorObjectCore` utilisait la constante locale `kFlattenTolerance` sans capture ; MSVC refusait l'application. | Capture explicite lors de la reproduction, puis conservation du correctif `static constexpr` déjà livré dans `main` (#33) à l'intégration. Bibliothèque desktop et cibles de tests compilées en Release. |
 | UX-02 — document sans raster | `refreshImage` retournait avant génération, invalidation d'analyse et rafraîchissement des panneaux. Une ancienne séquence pouvait aussi survivre à l'undo d'un import machine. | Seule l'étape raster est conditionnelle ; régénération via `refresh_context` pour tous les contenus. Tests `vectorOnlySequenceTracksEditsDeletionAndUndoRedo`, `svgOnlyCreationGeneratesAnExportableSequence`, `importedOnlyUndoClearsThePreviewAndExportActions` : rouge puis vert. |
 | UX-08 — import machine seul | Accueil et sauvegarde réelle reconnaissaient `imported_design`, mais pas toutes les activations ni l'autosave. | `hasDocumentContent` partagé, affichage des points piloté par la séquence effective. Tests `importedOnlyDocumentEnablesSaveAndStitchVisibility`, `importedOnlyModifiedDocumentIsAutosavedAndReloadable` : rouge puis vert, relecture des `.osp` incluse. |
 | UX-06 — type déjà actif | Le choix actif repassait par les paramètres par défaut et une conversion de groupe, même sans changement de type. | Aucun effet si toutes les sections ont déjà le type demandé et qu'aucun réglage explicite n'est appliqué. Tests `selectingTheCurrentStitchTypeIsANoOp`, `selectingTheCurrentGroupStitchTypePreservesEverySection` : rouge puis vert. |
@@ -70,14 +70,16 @@ points ou de dépendance. Livraison sur une branche dédiée, sans fusion vers `
 - Build **Release complet**, application/CLI/tests inclus : réussi.
 - **CTest Release : 1087/1087**, dont les **21 suites desktop**, garde
   `check_no_raw_sequence_bypass` et synchronisation des gestes documentés.
+- **Build Debug complet et CTest Debug : 1087/1087** sur la même référence du
+  lot, en console UTF-8.
 - Première exécution : 1084/1087, trois contrats CLI échouant sur les accents
   (`cli_errors_prefix`, `cli_info_json`, `cli_digitize_json`). Sans changement
   de code, passage en console UTF-8 : 11/11 contrats CLI, puis 1087/1087 lors
   d'un nouveau passage complet. Il s'agit de l'encodage de capture du runner
   Windows/CMake, pas d'un correctif CLI dans ce lot.
 - **clang-format 18.1.8 : 450 fichiers C++ conformes** ; `git diff --check` OK.
-- Guide utilisateur actualisé ; **PDF régénéré : 261 pages, 45 chapitres,
-  0 problème et 0 avertissement**.
+- Guide utilisateur actualisé ; **PDF régénéré : 262 pages, 45 chapitres,
+  0 problème et 0 avertissement** après intégration des ajouts de `main`.
 - **Quatre captures natives Qt**, 1400 × 900 DIP, densité confortable : accueil
   et document vectoriel sans raster, en clair et sombre. Programme de contrôle
   temporaire lié aux bibliothèques Release, paramètres et projet synthétique
@@ -96,7 +98,12 @@ cmd /d /c "chcp 65001 > nul && ctest --preset msvc-release --output-on-failure -
 powershell -NoProfile -File docs/scripts/build-docs.ps1
 ```
 
-Debug en cours. Les journaux locaux sont sous `build/msvc/ux-*`, non versionnés.
+Les PR #32, #33 et #34 reçues ensuite sur `main` sont intégrées à la branche
+avant publication : leurs ajouts sont
+conservés, sans réécriture de l'historique. La validation ci-dessus précède cette
+intégration ; **build Release intégré et CTest : 1088/1088**. Le Debug intégré
+sera revérifié par la CI. Les journaux
+locaux sont sous `build/msvc/ux-*`, non versionnés.
 
 ## Reste hors de ce lot
 
@@ -104,3 +111,7 @@ UX-04 (asynchronisme/annulation), UX-07 (hauteur d'import), UX-10 (pré-export),
 UX-13/14 (Document/workflow), UX-15/16 (repli/annulation IA), UX-33/34
 (états mixtes/portée de groupe), et les autres constats de l'audit non listés
 ci-dessus. Ce premier lot n'est pas une résolution des 32 constats.
+
+Signalement complémentaire à la livraison : intégration UI du blend des couleurs
+jugée insuffisante par l'utilisateur ; parcours à examiner séparément, non
+corrigé dans cette PR.
