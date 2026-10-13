@@ -21,6 +21,7 @@ enum class BooleanOp {
     Union,     // somme des formes
     Subtract,  // la forme la plus basse (ordre du document) perd toutes les autres
     Intersect, // partie commune à toutes les formes
+    Exclude,   // ce qui appartient à une seule forme (différence symétrique)
 };
 
 struct VectorOpResult {
@@ -45,6 +46,13 @@ struct VectorOpResult {
 [[nodiscard]] VectorOpResult make_split_command(document::Project& project,
                                                 const std::vector<ObjectId>& ids, Vec2um a,
                                                 Vec2um b);
+
+// Retire les trous des objets `ids` (HP-VEC-005) : tous si `max_area_um2` <= 0, sinon
+// seulement ceux dont l'aire ne dépasse pas ce seuil (« combler les petits trous »). Une seule
+// commande ; refusé si aucun trou n'est concerné. `resulting_objects` = nombre de trous retirés.
+[[nodiscard]] VectorOpResult make_remove_holes_command(const document::Project& project,
+                                                       const std::vector<ObjectId>& ids,
+                                                       double max_area_um2 = 0.0);
 
 // Sépare les morceaux disjoints d'un objet en objets distincts (mêmes règles de clonage).
 // Refusé si l'objet n'a qu'un morceau.

@@ -15,6 +15,7 @@ namespace openstitch::desktop::icons {
 [[nodiscard]] QIcon drawRect();
 [[nodiscard]] QIcon ellipse();
 [[nodiscard]] QIcon polygon();
+[[nodiscard]] QIcon openPath(); // ligne brisée ouverte
 [[nodiscard]] QIcon regularPolygon();
 [[nodiscard]] QIcon freeform();
 [[nodiscard]] QIcon knife();

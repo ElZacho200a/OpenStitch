@@ -13,6 +13,7 @@
 #include <QStatusBar>
 
 #include <algorithm>
+#include <cmath>
 #include <numbers>
 
 #include "main_window.hpp"
@@ -369,6 +370,7 @@ void MainWindow::setEmbroideryColorForSelection(std::array<std::uint8_t, 3> rgb)
                        project_);
     refreshImage();
     updateActions();
+    updateInspector(); // la pastille de l'inspecteur suit la nouvelle couleur
     statusBar()->showMessage(tr("Couleur appliquée à %1 objet(s) de broderie.").arg(targets.size()),
                              6000);
 }
@@ -387,7 +389,31 @@ void MainWindow::runTransform(const std::vector<ObjectId>& ids,
 }
 
 void MainWindow::rotateSelection(double degrees) {
-    const std::vector<ObjectId> ids = transformTargets();
+    rotateObjects(transformTargets(), degrees);
+}
+
+double MainWindow::rotationDragDegrees(QPointF centerScene, QPointF handleScene,
+                                       QPointF releasedScene, bool snap) {
+    // Scène : Y vers le bas ; modèle : Y vers le haut. On inverse Y pour un angle anti-horaire.
+    const double before =
+        std::atan2(-(handleScene.y() - centerScene.y()), handleScene.x() - centerScene.x());
+    const double after =
+        std::atan2(-(releasedScene.y() - centerScene.y()), releasedScene.x() - centerScene.x());
+    double degrees = (after - before) * 180.0 / std::numbers::pi;
+    // Ramène dans ]-180 ; 180] : le plus court chemin angulaire.
+    while (degrees > 180.0) {
+        degrees -= 360.0;
+    }
+    while (degrees <= -180.0) {
+        degrees += 360.0;
+    }
+    if (snap) {
+        degrees = std::round(degrees / 15.0) * 15.0;
+    }
+    return std::abs(degrees) < 0.05 ? 0.0 : degrees;
+}
+
+void MainWindow::rotateObjects(const std::vector<ObjectId>& ids, double degrees) {
     const auto box = commands::objects_bounds(project_, ids);
     if (!box) {
         return;

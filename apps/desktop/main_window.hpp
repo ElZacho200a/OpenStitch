@@ -519,6 +519,12 @@ private:
     void runTransform(const std::vector<ObjectId>& ids, const commands::AffineTransform& transform,
                       const QString& label, const QString& done);
     void rotateSelection(double degrees); // positif : anti-horaire
+    void rotateObjects(const std::vector<ObjectId>& ids, double degrees);
+    // Angle (degrés, positif = anti-horaire) d'un glisser de la poignée de rotation : de
+    // `handleScene` à `releasedScene` autour de `centerScene` (repère scène, Y vers le bas).
+    // `snap` (Maj) arrondit au multiple de 15° ; un mouvement négligeable donne 0.
+    [[nodiscard]] static double rotationDragDegrees(QPointF centerScene, QPointF handleScene,
+                                                    QPointF releasedScene, bool snap);
     void mirrorSelection(bool horizontal);
     void centerDesignInHoop();
     void scaleDesign(double factor);
@@ -528,6 +534,7 @@ private:
     void runBooleanOp(commands::BooleanOp op);
     void breakApartSelected();
     void blendSelectedZones();
+    void removeHolesOfSelection(double maxAreaMm2); // 0 : tous les trous
     void finishCut();
     // Exécute la commande (un pas d'annulation), sélectionne le premier de `keep` encore présent
     // et annonce `done` ; en cas d'échec, affiche la raison dans la barre d'état.
@@ -879,6 +886,12 @@ private:
     QAction* intersectAct_{nullptr};
     QAction* breakApartAct_{nullptr};
     QAction* blendZonesAct_{nullptr};
+    // Option de la palette (HP-VEC-002) : le polygone et la courbe de Bézier se terminent
+    // SANS être fermés (ligne ou courbe ouverte, pour un contour ou un satin de bordure).
+    QAction* openPathAct_{nullptr};
+    QAction* excludeAct_{nullptr};
+    QAction* removeHolesAct_{nullptr};
+    QAction* fillSmallHolesAct_{nullptr};
     QAction* cutAct_{nullptr};
     QAction* copyAct_{nullptr};
     QAction* pasteAct_{nullptr};

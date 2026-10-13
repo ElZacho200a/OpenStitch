@@ -645,6 +645,10 @@ private slots:
     void wholeDesignCanBeCenteredFittedAndMirrored();
     void selectAllObjectsAndSameColor();
     void embroideryColorAppliesAFreeColorToTheSelection();
+    void inspectorColorSwatchFollowsTheEmbroideryColor();
+    void openPathOptionLeavesPolygonAndBezierOpen();
+    void rotationHandleTurnsTheSelectedShape();
+    void shapeExcludeAndRemoveHolesActions();
     void groupedStitchTypeCoversEverySelectedShapeInOneStep();
     void groupInspectorEditsOneFieldOnEveryObjectInOneStep();
     void groupGuideAngleIsPlacedOnEveryAutoSatin();
@@ -7278,6 +7282,178 @@ void MainWindowTest::embroideryColorAppliesAFreeColorToTheSelection() {
     window.undo(); // un seul pas pour les deux objets
     QCOMPARE(window.project_.embroidery_objects[0].rgb, before);
     QCOMPARE(window.project_.embroidery_objects[1].rgb, before);
+}
+
+void MainWindowTest::inspectorColorSwatchFollowsTheEmbroideryColor() {
+    MainWindow window;
+    window.applyLoadedProject(twoOverlappingRectangles());
+    const ObjectId a = window.project_.vector_objects[0].id;
+    window.setSelection({.region = std::nullopt, .embroidery = std::nullopt, .objects = {a}});
+    window.setStitchTypeForSelection(1);
+    window.updateActions();
+    window.updateInspector();
+    auto* panel = window.findChild<PropertiesPanel*>();
+    QVERIFY(panel != nullptr);
+    auto* swatch = panel->findChild<QPushButton*>(QStringLiteral("button_embroideryColor"));
+    QVERIFY(swatch != nullptr);
+    const QString before = swatch->text();
+
+    window.setEmbroideryColorForSelection({0x12, 0xC8, 0x22});
+    swatch = panel->findChild<QPushButton*>(QStringLiteral("button_embroideryColor"));
+    QVERIFY(swatch != nullptr);
+    QCOMPARE(swatch->text(), QStringLiteral("#12c822"));
+
+    window.undo();
+    window.updateInspector();
+    swatch = panel->findChild<QPushButton*>(QStringLiteral("button_embroideryColor"));
+    QVERIFY(swatch != nullptr);
+    QCOMPARE(swatch->text(), before);
+}
+
+void MainWindowTest::openPathOptionLeavesPolygonAndBezierOpen() {
+    MainWindow window;
+    window.resize(1200, 800);
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+    window.applyLoadedProject(imageProject());
+    auto* view = window.findChild<CanvasView*>();
+    QVERIFY(window.openPathAct_ != nullptr);
+    QVERIFY(!window.openPathAct_->isChecked()); // fermé par défaut : comportement historique
+
+    // Deux points seulement : refusé pour un polygone fermé, accepté pour une ligne ouverte.
+    window.setTool(Tool::DrawPolygon);
+    clickOnCanvas(view, QPointF(-20.0, 10.0));
+    clickOnCanvas(view, QPointF(20.0, 10.0));
+    window.finishPolygon();
+    QVERIFY(window.project_.vector_objects.empty());
+
+    window.openPathAct_->setChecked(true);
+    window.setTool(Tool::DrawPolygon);
+    clickOnCanvas(view, QPointF(-20.0, 10.0));
+    clickOnCanvas(view, QPointF(20.0, 10.0));
+    clickOnCanvas(view, QPointF(20.0, -10.0));
+    window.finishPolygon();
+    QCOMPARE(window.project_.vector_objects.size(), std::size_t{1});
+    const auto& line = window.project_.vector_objects[0].paths[0].outer;
+    QVERIFY(!line.closed);
+    QCOMPARE(line.nodes.size(), std::size_t{3});
+
+    // Courbe de Bézier ouverte.
+    window.setTool(Tool::DrawBezier);
+    clickOnCanvas(view, QPointF(-20.0, -20.0));
+    clickOnCanvas(view, QPointF(0.0, -30.0));
+    clickOnCanvas(view, QPointF(20.0, -20.0));
+    window.finishBezier();
+    QCOMPARE(window.project_.vector_objects.size(), std::size_t{2});
+    QVERIFY(!window.project_.vector_objects[1].paths[0].outer.closed);
+
+    // Un contour cousu sur la ligne ouverte ne revient pas à son point de départ.
+    const ObjectId lineId = window.project_.vector_objects[0].id;
+    window.setSelection({.region = std::nullopt, .embroidery = std::nullopt, .objects = {lineId}});
+    window.setStitchTypeForSelection(0);
+    QCOMPARE(window.project_.embroidery_objects.size(), std::size_t{1});
+    QVERIFY(window.sequence_.has_value());
+    Vec2um first{};
+    Vec2um last{};
+    bool any = false;
+    for (const auto& command : window.sequence_->commands) {
+        if (command.type == openstitch::stitch::CommandType::Stitch) {
+            if (!any) {
+                first = command.pos;
+                any = true;
+            }
+            last = command.pos;
+        }
+    }
+    QVERIFY(any);
+    QVERIFY(openstitch::length_um(last - first) > 20'000.0);
+
+    // Décoché : de nouveau fermé.
+    window.openPathAct_->setChecked(false);
+    window.setTool(Tool::DrawPolygon);
+    clickOnCanvas(view, QPointF(30.0, 30.0));
+    clickOnCanvas(view, QPointF(40.0, 30.0));
+    clickOnCanvas(view, QPointF(35.0, 40.0));
+    window.finishPolygon();
+    QVERIFY(window.project_.vector_objects.back().paths[0].outer.closed);
+}
+
+void MainWindowTest::rotationHandleTurnsTheSelectedShape() {
+    // Angle d'un glisser : scène Y vers le bas, résultat anti-horaire positif.
+    const QPointF c(0.0, 0.0);
+    const QPointF top(0.0, -10.0); // au-dessus du centre
+    QCOMPARE(MainWindow::rotationDragDegrees(c, top, QPointF(-10.0, 0.0), false), 90.0);
+    QCOMPARE(MainWindow::rotationDragDegrees(c, top, QPointF(10.0, 0.0), false), -90.0);
+    QCOMPARE(MainWindow::rotationDragDegrees(c, top, top, false), 0.0);
+    // Maj : pas de 15°.
+    const double free = MainWindow::rotationDragDegrees(c, top, QPointF(-3.0, -10.0), false);
+    QVERIFY(free > 16.0 && free < 17.5);
+    QCOMPARE(MainWindow::rotationDragDegrees(c, top, QPointF(-3.0, -10.0), true), 15.0);
+
+    MainWindow window;
+    window.resize(1200, 800);
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+    window.applyLoadedProject(twoOverlappingRectangles());
+    const ObjectId a = window.project_.vector_objects[0].id;
+    window.showVectorsAct_->setChecked(true);
+    window.setSelection({.region = std::nullopt, .embroidery = std::nullopt, .objects = {a}});
+    window.refreshImage();
+    // Quatre poignées de coin + la poignée de rotation.
+    int handles = 0;
+    for (QGraphicsItem* item : window.scene_->items()) {
+        handles += dynamic_cast<ResizeHandleItem*>(item) != nullptr ? 1 : 0;
+    }
+    QCOMPARE(handles, 5);
+
+    const auto original = window.project_.vector_objects[0].paths;
+    window.rotateObjects({a}, 90.0);
+    QVERIFY(window.project_.vector_objects[0].paths != original);
+    window.undo();
+    QVERIFY(window.project_.vector_objects[0].paths == original);
+}
+
+void MainWindowTest::shapeExcludeAndRemoveHolesActions() {
+    MainWindow window;
+    window.applyLoadedProject(twoOverlappingRectangles());
+    const ObjectId a = window.project_.vector_objects[0].id;
+    const ObjectId b = window.project_.vector_objects[1].id;
+    window.updateActions();
+    QVERIFY(!window.excludeAct_->isEnabled());
+    QVERIFY(!window.removeHolesAct_->isEnabled()); // aucune forme trouée sélectionnée
+
+    window.setSelection({.region = std::nullopt, .embroidery = std::nullopt, .objects = {a, b}});
+    window.updateActions();
+    QVERIFY(window.excludeAct_->isEnabled());
+    window.excludeAct_->trigger();
+    QCOMPARE(window.project_.vector_objects.size(), std::size_t{1});
+    QCOMPARE(window.project_.vector_objects[0].paths.size(), std::size_t{2});
+    window.undo();
+    QCOMPARE(window.project_.vector_objects.size(), std::size_t{2});
+
+    // Un trou de 2 x 2 mm dans la première forme, puis « Supprimer les trous ».
+    auto holed = window.project_;
+    openstitch::geometry::Path hole;
+    hole.closed = true;
+    for (const auto& p : {std::pair{2'000, 2'000}, std::pair{4'000, 2'000}, std::pair{4'000, 4'000},
+                          std::pair{2'000, 4'000}}) {
+        hole.nodes.push_back(openstitch::geometry::PathNode{
+            Vec2um{Micrometers{p.first}, Micrometers{p.second}},
+            openstitch::geometry::NodeType::Corner, std::nullopt, std::nullopt});
+    }
+    holed.vector_objects[0].paths[0].holes.push_back(hole);
+    window.applyLoadedProject(holed);
+    const ObjectId first = window.project_.vector_objects[0].id;
+    window.setSelection({.region = std::nullopt, .embroidery = std::nullopt, .objects = {first}});
+    window.updateActions();
+    QVERIFY(window.removeHolesAct_->isEnabled());
+    // Seuil trop petit : rien n'est retiré.
+    window.removeHolesOfSelection(1.0);
+    QCOMPARE(window.project_.vector_objects[0].paths[0].holes.size(), std::size_t{1});
+    window.removeHolesAct_->trigger();
+    QVERIFY(window.project_.vector_objects[0].paths[0].holes.empty());
+    window.undo();
+    QCOMPARE(window.project_.vector_objects[0].paths[0].holes.size(), std::size_t{1});
 }
 
 void MainWindowTest::knifeToolSplitsSelectedShape() {

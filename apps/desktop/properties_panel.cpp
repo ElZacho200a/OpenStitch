@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 #include "properties_panel.hpp"
+#include "ui_icons.hpp"
 
 #include <QCheckBox>
 #include <QComboBox>
@@ -645,6 +646,23 @@ void PropertiesPanel::buildEmbroideryForm(const document::EmbroideryObject& obje
                              : object.is_satin()       ? tr("Colonne satin à rails (manuelle)")
                                                        : tr("Contour cousu");
     form->addRow(tr("Type :"), new QLabel(typeName, body_));
+
+    // HP-OBJ-018 : pastille de couleur. Un clic déclenche l'action « Couleur de la broderie… »
+    // de MainWindow (une seule source d'état et de grisage), qui vise toute la sélection.
+    auto* colorButton = new QPushButton(body_);
+    colorButton->setObjectName(QStringLiteral("button_embroideryColor"));
+    colorButton->setIcon(
+        icons::colorSwatch(QColor(object.rgb[0], object.rgb[1], object.rgb[2]), 16));
+    colorButton->setText(QStringLiteral("#%1%2%3")
+                             .arg(object.rgb[0], 2, 16, QLatin1Char('0'))
+                             .arg(object.rgb[1], 2, 16, QLatin1Char('0'))
+                             .arg(object.rgb[2], 2, 16, QLatin1Char('0')));
+    colorButton->setToolTip(
+        tr("Couleur de la broderie : cliquez pour choisir une couleur libre (appliquée à toute la "
+           "sélection). Pour un fil de nuancier, utilisez le panneau Fils."));
+    form->addRow(tr("Couleur :"), colorButton);
+    connect(colorButton, &QPushButton::clicked, this,
+            [this] { emit regionActionRequested(QStringLiteral("action_embroideryColor")); });
 
     // HP-ENG-010 : sens de couture automatique, par objet (le réglage global est dans
     // « Options de génération »). Le mode n'appartient pas aux `StitchParams` : signal dédié.

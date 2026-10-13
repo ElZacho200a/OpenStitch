@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 #include <catch2/catch_test_macros.hpp>
 
+#include <cmath>
 #include <cstdint>
 #include <utility>
 #include <vector>
@@ -240,4 +241,53 @@ TEST_CASE("paste: text letters and foreign regions become plain shapes") {
     stack.execute(std::move(pasted.command), project);
     CHECK_FALSE(project.vector_objects.back().text_owner.has_value());
     CHECK_FALSE(project.vector_objects.back().source_region.has_value());
+}
+
+TEST_CASE("vector ops: exclude keeps what belongs to exactly one shape") {
+    document::Project project;
+    const ObjectId a = add_object(project, rect(0, 0, 10'000, 10'000), true);
+    const ObjectId b = add_object(project, rect(5'000, 0, 15'000, 10'000), false);
+    UndoStack stack;
+    auto result = make_boolean_command(project, BooleanOp::Exclude, {a, b});
+    REQUIRE(result.command != nullptr);
+    stack.execute(std::move(result.command), project);
+    REQUIRE(project.vector_objects.size() == 1);
+    CHECK(project.vector_objects[0].id == b);
+    // 150 mm2 d'union moins 50 mm2 communs = 100 mm2, en deux morceaux.
+    CHECK(project.vector_objects[0].paths.size() == 2);
+    CHECK(std::abs(area_mm2(project.vector_objects[0]) - 100.0) < 0.5);
+    stack.undo(project);
+    CHECK(project.vector_objects.size() == 2);
+}
+
+TEST_CASE("vector ops: holes are removed, all or only the small ones") {
+    document::Project project;
+    geometry::PathSet shape = rect(0, 0, 40'000, 40'000);
+    shape.holes.push_back(rect(2'000, 2'000, 4'000, 4'000).outer);     // 4 mm2
+    shape.holes.push_back(rect(10'000, 10'000, 30'000, 30'000).outer); // 400 mm2
+    const ObjectId id = add_object(project, shape, false);
+    const ObjectId solid = add_object(project, rect(50'000, 0, 60'000, 10'000), false);
+
+    UndoStack stack;
+    // Seuil 10 mm2 : seul le petit trou disparait.
+    auto small = make_remove_holes_command(project, {id, solid}, 10.0 * 1e6);
+    REQUIRE(small.command != nullptr);
+    CHECK(small.resulting_objects == 1);
+    stack.execute(std::move(small.command), project);
+    REQUIRE(project.vector_objects[0].paths[0].holes.size() == 1);
+    CHECK(std::abs(area_mm2(project.vector_objects[0]) - 1200.0) < 0.5);
+
+    auto all = make_remove_holes_command(project, {id});
+    REQUIRE(all.command != nullptr);
+    stack.execute(std::move(all.command), project);
+    CHECK(project.vector_objects[0].paths[0].holes.empty());
+
+    // Plus rien a retirer : refuse avec un message.
+    const auto none = make_remove_holes_command(project, {id, solid});
+    CHECK(none.command == nullptr);
+    CHECK_FALSE(none.error.empty());
+
+    stack.undo(project);
+    stack.undo(project);
+    CHECK(project.vector_objects[0].paths[0].holes.size() == 2);
 }

@@ -2195,10 +2195,17 @@ void MainWindow::updatePolygonPreview(QPointF cursorSceneMm) {
 }
 
 void MainWindow::finishPolygon() {
-    if (pendingPolygonVertices_.size() >= 3) {
+    const bool open = openPathAct_ != nullptr && openPathAct_->isChecked();
+    if (open && pendingPolygonVertices_.size() >= 2) {
+        // Ligne brisée ouverte (HP-VEC-002) : mêmes sommets, sans segment de fermeture.
+        geometry::Path path = geometry::polygon_path(pendingPolygonVertices_);
+        path.closed = false;
+        addVectorPrimitive(std::move(path), tr("Ligne"));
+    } else if (!open && pendingPolygonVertices_.size() >= 3) {
         addVectorPrimitive(geometry::polygon_path(pendingPolygonVertices_), tr("Polygone"));
     } else {
-        statusBar()->showMessage(tr("Polygone : au moins 3 sommets requis."));
+        statusBar()->showMessage(open ? tr("Ligne : au moins 2 points requis.")
+                                      : tr("Polygone : au moins 3 sommets requis."));
     }
     cancelPolygonDraw(); // nettoie l'état de tracé, succès ou échec
 }
@@ -2816,10 +2823,11 @@ void MainWindow::onBezierPointCommitted(QPointF anchorMm, QPointF handleMm) {
 
 void MainWindow::finishBezier() {
     if (pendingBezierNodes_.size() >= 2) {
+        const bool open = openPathAct_ != nullptr && openPathAct_->isChecked();
         geometry::Path path;
-        path.closed = true;
+        path.closed = !open;
         path.nodes = pendingBezierNodes_;
-        addVectorPrimitive(std::move(path), tr("Courbe"));
+        addVectorPrimitive(std::move(path), open ? tr("Courbe ouverte") : tr("Courbe"));
     } else {
         statusBar()->showMessage(tr("Courbe : au moins deux nœuds requis."));
     }
@@ -3415,6 +3423,40 @@ void MainWindow::renderBase(const image::Image& img) {
                         scene_->addItem(handle);
                         baseItems_.append(handle);
                     }
+                    // Poignée de rotation (HP-OBJ-004) : au-dessus du milieu du bord haut, à
+                    // distance fixe à l'écran. Glisser fait tourner la forme autour du centre de
+                    // sa boîte ; l'angle est validé au relâchement (une commande annulable).
+                    const Vec2um centerUm{
+                        Micrometers{static_cast<std::int32_t>(
+                            (static_cast<std::int64_t>(minX->value) + maxX->value) / 2)},
+                        Micrometers{static_cast<std::int32_t>(
+                            (static_cast<std::int64_t>(minY->value) + maxY->value) / 2)}};
+                    const QPointF centerScene = modelToSceneMm(centerUm);
+                    const double offsetMm = 26.0 / std::max(view_->pixelsPerMm(), 0.01);
+                    const QPointF handleScene(
+                        centerScene.x(), modelToSceneMm(Vec2um{centerUm.x, *maxY}).y() - offsetMm);
+                    auto* rotation = new ResizeHandleItem(
+                        handleScene,
+                        [this, objectId, centerScene, handleScene](QPointF releasedSceneMm) {
+                            const double degrees = rotationDragDegrees(
+                                centerScene, handleScene, releasedSceneMm,
+                                (QGuiApplication::keyboardModifiers() & Qt::ShiftModifier) != 0);
+                            // Différé : refreshImage() détruirait cet item pendant son évènement.
+                            QTimer::singleShot(0, this, [this, objectId, degrees] {
+                                if (degrees == 0.0) {
+                                    refreshImage(); // remet la poignée à sa place
+                                    return;
+                                }
+                                rotateObjects({objectId}, degrees);
+                            });
+                        },
+                        QPointF(), /*hasAnchor=*/false, Qt::CrossCursor);
+                    rotation->setBrush(QBrush(AppTheme::instance().tokens().canvasSelectionLine));
+                    rotation->setToolTip(tr("Glisser pour faire pivoter la forme autour de son "
+                                            "centre — Maj : pas de 15°, Échap : annuler"));
+                    rotation->setCancelled([] {});
+                    scene_->addItem(rotation);
+                    baseItems_.append(rotation);
                 }
             }
         }
@@ -6033,6 +6075,21 @@ void MainWindow::buildToolPalette() {
         addTool(icons::bezierCurve(),
                 tr("Dessiner une courbe de Bézier (clic = coin, clic-glisser = nœud lisse)"),
                 Tool::DrawBezier, QKeySequence(Qt::Key_B));
+    openPathAct_ = toolPalette_->addAction(icons::openPath(), tr("Tracé ouvert"));
+    openPathAct_->setObjectName(QStringLiteral("action_openPath"));
+    openPathAct_->setCheckable(true);
+    openPathAct_->setShortcut(QKeySequence(Qt::Key_U));
+    openPathAct_->setToolTip(
+        tr("Tracé ouvert (U)\nCoché : le polygone (P) et la courbe de Bézier (B) se terminent sans "
+           "être fermés — une ligne ou une courbe ouverte, pour un point de contour ou un satin de "
+           "bordure. 2 points suffisent."));
+    connect(openPathAct_, &QAction::toggled, this, [this](bool open) {
+        statusBar()->showMessage(open ? tr("Tracé ouvert : les prochains polygones et courbes "
+                                           "ne seront pas fermés.")
+                                      : tr("Tracé fermé : les prochains polygones et courbes "
+                                           "seront fermés."),
+                                 6000);
+    });
     toolDrawFreeformAct_ = addTool(icons::freeform(), tr("Dessiner à main levée (lasso)"),
                                    Tool::DrawFreeform, QKeySequence(Qt::Key_L));
     toolDrawSatinColumnAct_ =
@@ -6603,7 +6660,11 @@ void MainWindow::updateInspector() {
     std::uint64_t id = 0;
     if (emb != nullptr) {
         kind = 0;
-        id = emb->id.value;
+        // Clé : l'objet ET sa couleur (la pastille de l'inspecteur doit suivre un changement de
+        // couleur ou de fil, annulation comprise).
+        id = (emb->id.value << 24) ^ (static_cast<std::uint64_t>(emb->rgb[0]) << 16) ^
+             (static_cast<std::uint64_t>(emb->rgb[1]) << 8) ^
+             static_cast<std::uint64_t>(emb->rgb[2]);
     } else if (hasMultiSelection()) {
         kind = 3; // « N objets » : type de points commun et réglages de groupe
         // Clé : la sélection ET le type de chaque couture (un changement de type regroupe ou

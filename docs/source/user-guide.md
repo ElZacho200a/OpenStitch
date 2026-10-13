@@ -62,6 +62,7 @@ Le **mode d'interaction** vient de la palette d'outils (à gauche) :
   dans la palette), **Courbe de Bézier** (`B`), **Main levée** (`L`) et **Colonne
   satin** (`S`, clics alternés côté A / côté B). Entrée ou double-clic termine
   le tracé, Retour arrière retire le dernier point, Échap l'annule.
+- **Tracé ouvert** (`U`) : option, pas un outil. Cochée, le **Polygone** devient une ligne brisée ouverte (2 points suffisent) et la **Courbe de Bézier** une courbe ouverte : rien ne relie le dernier point au premier. À utiliser pour un point de contour ou un satin de bordure le long d'une ligne.
 - **Couteau** (`K`) : trace une ligne qui découpe les formes traversées (voir *Menu Forme*).
 - **Zoom** : molette (ancrée sous le curseur) ou barre d'outils / menu Affichage.
 - **Échap** : revient à la Sélection et annule le mode fusion en cours.
@@ -404,6 +405,11 @@ seul pas d'annulation.
   pivoter d'un angle (positif = sens anti-horaire), miroir horizontal /
   vertical, autour du centre de la sélection. L'orientation des rangées, les
   guides, les lignes de rupture, les dégradés et les rails des satins suivent.
+- **Poignée de rotation** : quand une seule forme est sélectionnée, un carré
+  plein au-dessus d'elle se glisse pour la faire pivoter autour de son centre
+  (Maj : pas de 15°). Les quatre carrés des coins redimensionnent toujours.
+- **Pastille de couleur de l'inspecteur** : sur un objet de broderie, le bouton
+  « Couleur » ouvre le même sélecteur que *Couleur de la broderie…*.
 - **Design entier** : centrer dans le cadre, ajuster à la zone brodable
   (réduit ou agrandit puis centre), redimensionner en %, pivoter de 90°,
   miroirs. Les points sont recalculés à la nouvelle taille. Un design importé
@@ -417,6 +423,10 @@ d'annulation** et garde les objets de broderie de la forme conservée.
 - **Fondre deux zones** (Ctrl+Maj+F) — unit deux formes remplies de couleurs différentes
   et crée un dégradé de fils entre elles (voir *Remplissage directionnel*, « Fondre deux
   zones voisines ») ;
+- **Exclure** (Ctrl+Alt+X) — ne garde que ce qui appartient à une seule des formes
+  sélectionnées (l'inverse d'Intersecter) ;
+- **Supprimer les trous** / **Combler les petits trous…** — retire tous les trous des formes
+  sélectionnées, ou seulement ceux sous une aire donnée en mm² ;
 - **Unir** (Ctrl+Maj+U) — fusionne au moins deux formes sélectionnées (Maj + clic) en une seule ;
   la dernière sélectionnée garde son identité, ses réglages de point et son nom. Les autres formes
   (et leurs broderies) disparaissent.
@@ -916,6 +926,7 @@ la liste complète et filtrable est dans **Aide ▸ Gestes souris et clavier** (
 | D | Guides de direction d'un remplissage directionnel (bascule) |
 | Flèches / Maj + flèches | Déplacer l'objet de 0,1 mm / 1 mm |
 | K | Outil Couteau |
+| U | Option « Tracé ouvert » (polygone et courbe non fermés) |
 | F1 | Ouvrir « Gestes souris et clavier » |
 | Ctrl+Shift+P | Masquer / afficher les panneaux |
 | Ctrl+Shift+R | Activer / désactiver le rendu réaliste des points |

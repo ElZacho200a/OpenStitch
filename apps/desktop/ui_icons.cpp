@@ -94,6 +94,16 @@ QIcon polygon() {
     });
 }
 
+QIcon openPath() {
+    return make([](QPainter& p) {
+        // Ligne brisée dont les deux bouts restent libres (pastilles) : tracé NON fermé.
+        const QPolygonF line({{5, 24}, {12, 9}, {20, 22}, {27, 8}});
+        p.drawPolyline(line);
+        p.drawEllipse(QPointF(5, 24), 1.6, 1.6);
+        p.drawEllipse(QPointF(27, 8), 1.6, 1.6);
+    });
+}
+
 QIcon regularPolygon() {
     return make([](QPainter& p) {
         // Hexagone régulier (distinct du polygone libre, irrégulier ci-dessus) :
