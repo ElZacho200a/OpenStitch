@@ -51,6 +51,7 @@
 #include "interaction_map.hpp"
 #include "main_window.hpp"
 #include "node_handle.hpp"
+#include "openstitch/commands/import_machine_design_command.hpp"
 #include "openstitch/commands/project_commands.hpp"
 #include "openstitch/document/project.hpp"
 #include "openstitch/project_io/project_io.hpp"
@@ -936,6 +937,16 @@ private slots:
     // Une fermeture RÉELLEMENT acceptée (closeEvent) ne laisse rien à
     // récupérer au prochain lancement.
     void cleanCloseDiscardsTheCurrentAutosaveSlot();
+
+    // Audit UX 2026-10-13 : vrais documents sans raster et absence de mutation
+    // quand l'utilisateur confirme le type de points déjà actif.
+    void vectorOnlySequenceTracksEditsDeletionAndUndoRedo();
+    void svgOnlyCreationGeneratesAnExportableSequence();
+    void importedOnlyDocumentEnablesSaveAndStitchVisibility();
+    void importedOnlyModifiedDocumentIsAutosavedAndReloadable();
+    void importedOnlyUndoClearsThePreviewAndExportActions();
+    void selectingTheCurrentStitchTypeIsANoOp();
+    void selectingTheCurrentGroupStitchTypePreservesEverySection();
 
 private:
     // Active le mode d'édition (sélection directe via selectedEmbroidery_,
@@ -4417,6 +4428,214 @@ void MainWindowTest::emptyStateHidesOnceContentExistsEvenWithoutImage() {
     QVERIFY(!window.project_.vector_objects.empty());
     QVERIFY(!window.project_.hasImage());      // toujours aucune image
     QVERIFY(!window.emptyState_->isVisible()); // mais la pastille s'est effacée
+}
+
+void MainWindowTest::vectorOnlySequenceTracksEditsDeletionAndUndoRedo() {
+    Fixture fx = buildRunningSquareFixture();
+    fx.project.original = {};
+    MainWindow window;
+    window.applyLoadedProject(fx.project);
+    QVERIFY(!window.project_.hasImage());
+    QVERIFY(window.sequence_.has_value());
+    QVERIFY(!window.sequence_->commands.empty());
+    QVERIFY(window.exportDstAct_->isEnabled());
+    QVERIFY(window.analyzeAct_->isEnabled());
+    const auto expected = stitch_generation::effective_sequence(window.project_);
+    QVERIFY(expected.has_value());
+    QVERIFY(window.sequence_->commands == expected->commands);
+    const auto before = window.sequence_->commands;
+
+    document::RunningStitchParams params;
+    params.stitch_length = Micrometers{1'000};
+    window.undoStack_.execute(std::make_unique<commands::SetStitchParamsCommand>(
+                                  fx.embroideryId, params, "Longueur de point"),
+                              window.project_);
+    window.refreshImage();
+    window.updateActions();
+    QVERIFY(window.sequence_.has_value());
+    QVERIFY(window.sequence_->commands != before);
+    const auto after = window.sequence_->commands;
+    window.undo();
+    QVERIFY(window.sequence_->commands == before);
+    window.redo();
+    QVERIFY(window.sequence_->commands == after);
+
+    window.setSelection(
+        {.region = std::nullopt, .embroidery = std::nullopt, .objects = {fx.vectorId}});
+    window.deleteSelection();
+    QVERIFY(!window.sequence_.has_value());
+    QVERIFY(!window.exportDstAct_->isEnabled());
+    QVERIFY(window.documentPanel_->findChild<QTreeWidget*>()->topLevelItemCount() == 0);
+    window.undo();
+    QVERIFY(window.sequence_.has_value());
+    QVERIFY(window.sequence_->commands == after);
+    QVERIFY(window.exportDstAct_->isEnabled());
+}
+
+void MainWindowTest::svgOnlyCreationGeneratesAnExportableSequence() {
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    const QString svgPath = dir.filePath(QStringLiteral("square.svg"));
+    QFile svg(svgPath);
+    QVERIFY(svg.open(QIODevice::WriteOnly));
+    svg.write("<svg xmlns='http://www.w3.org/2000/svg' width='20mm' height='20mm' "
+              "viewBox='0 0 20 20'><rect x='2' y='2' width='10' height='10'/></svg>");
+    svg.close();
+    MainWindow window;
+    window.openPath(svgPath);
+    QVERIFY(!window.project_.hasImage());
+    QVERIFY(!window.project_.vector_objects.empty());
+    window.setSelection({.region = std::nullopt,
+                         .embroidery = std::nullopt,
+                         .objects = {window.project_.vector_objects.front().id}});
+    window.setStitchTypeForSelection(0);
+    QVERIFY(window.sequence_.has_value());
+    QVERIFY(!window.sequence_->commands.empty());
+    QVERIFY(window.exportDstAct_->isEnabled());
+    const auto commands = window.sequence_->commands;
+    window.undo();
+    QVERIFY(!window.sequence_.has_value());
+    window.redo();
+    QVERIFY(window.sequence_->commands == commands);
+}
+
+void MainWindowTest::importedOnlyDocumentEnablesSaveAndStitchVisibility() {
+    const auto sequence =
+        stitch_generation::effective_sequence(buildRunningSquareFixture().project);
+    QVERIFY(sequence.has_value());
+    document::Project project;
+    document::ImportedDesign imported;
+    imported.source_format = "dst";
+    imported.sequence = *sequence;
+    for (auto& command : imported.sequence.commands) {
+        command.source = ObjectId{};
+    }
+    project.imported_design = imported;
+    MainWindow window;
+    window.applyLoadedProject(project);
+    QVERIFY(window.saveProjectAct_->isEnabled());
+    QVERIFY(window.saveProjectAsAct_->isEnabled());
+    QVERIFY(window.showStitchesAct_->isEnabled());
+    QVERIFY(window.sequence_.has_value());
+    QVERIFY(window.sequence_->commands == imported.sequence.commands);
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    const QString path = dir.filePath(QStringLiteral("imported.osp"));
+    QVERIFY(window.saveProjectToPath(path));
+    const auto loaded = project_io::load_project(std::filesystem::path(path.toStdWString()));
+    QVERIFY(loaded.has_value());
+    QVERIFY(loaded->imported_design.has_value());
+    QVERIFY(*loaded->imported_design == imported);
+}
+
+void MainWindowTest::importedOnlyModifiedDocumentIsAutosavedAndReloadable() {
+    clearAutosaveDir();
+    const auto cleanup = qScopeGuard([] { clearAutosaveDir(); });
+    MainWindow window;
+    QCoreApplication::processEvents();
+    const auto sequence =
+        stitch_generation::effective_sequence(buildRunningSquareFixture().project);
+    QVERIFY(sequence.has_value());
+    document::ImportedDesign imported;
+    imported.source_format = "dst";
+    imported.sequence = *sequence;
+    for (auto& command : imported.sequence.commands) {
+        command.source = ObjectId{};
+    }
+    window.undoStack_.execute(std::make_unique<commands::SetImportedDesignCommand>(imported),
+                              window.project_);
+    window.refreshImage();
+    window.updateActions();
+    QVERIFY(window.isWindowModified());
+    window.onAutosaveTick();
+    const auto slot = slotFor(QString());
+    QVERIFY(QFile::exists(slot.osp_path));
+    const auto loaded =
+        project_io::load_project(std::filesystem::path(slot.osp_path.toStdWString()));
+    QVERIFY(loaded.has_value());
+    QVERIFY(loaded->imported_design.has_value());
+    QVERIFY(*loaded->imported_design == imported);
+    QVERIFY(window.currentProjectPath_.isEmpty());
+    QVERIFY(window.isWindowModified());
+}
+
+void MainWindowTest::importedOnlyUndoClearsThePreviewAndExportActions() {
+    MainWindow window;
+    const auto sequence =
+        stitch_generation::effective_sequence(buildRunningSquareFixture().project);
+    QVERIFY(sequence.has_value());
+    document::ImportedDesign imported;
+    imported.source_format = "dst";
+    imported.sequence = *sequence;
+    for (auto& command : imported.sequence.commands) {
+        command.source = ObjectId{};
+    }
+    window.undoStack_.execute(std::make_unique<commands::SetImportedDesignCommand>(imported),
+                              window.project_);
+    window.refreshImage();
+    window.updateActions();
+    QVERIFY(window.sequence_.has_value());
+    window.undo();
+    QVERIFY(!window.project_.imported_design.has_value());
+    QVERIFY(!window.sequence_.has_value());
+    QVERIFY(!window.exportDstAct_->isEnabled());
+    QVERIFY(!window.saveProjectAsAct_->isEnabled());
+    window.redo();
+    QVERIFY(window.sequence_.has_value());
+    QVERIFY(window.sequence_->commands == imported.sequence.commands);
+    QVERIFY(window.saveProjectAsAct_->isEnabled());
+}
+
+void MainWindowTest::selectingTheCurrentStitchTypeIsANoOp() {
+    MainWindow window;
+    Fixture fx = buildRunningSquareFixture();
+    document::TatamiParams params;
+    params.row_spacing = Micrometers{700};
+    params.angle = openstitch::Angle{0.7};
+    fx.project.embroidery_objects.front().params = params;
+    window.applyLoadedProject(fx.project);
+    window.setSelection(
+        {.region = std::nullopt, .embroidery = fx.embroideryId, .objects = {fx.vectorId}});
+    window.updateActions();
+    QVERIFY(!window.undoStack_.canUndo());
+    auto* toolbar = window.findChild<QToolBar*>(QStringLiteral("contextToolbar"));
+    QVERIFY(toolbar != nullptr);
+    QToolButton* activeType = nullptr;
+    for (auto* button : toolbar->findChildren<QToolButton*>()) {
+        if (button->text() == QStringLiteral("Tatami")) {
+            activeType = button;
+            break;
+        }
+    }
+    QVERIFY(activeType != nullptr);
+    activeType->click();
+    QVERIFY(window.project_.findEmbroidery(fx.embroideryId)->params ==
+            document::StitchParams{params});
+    QVERIFY(!window.undoStack_.canUndo());
+    QVERIFY(!window.isWindowModified());
+}
+
+void MainWindowTest::selectingTheCurrentGroupStitchTypePreservesEverySection() {
+    Fixture fx = buildRunningSquareFixture();
+    document::TatamiParams first;
+    first.row_spacing = Micrometers{700};
+    fx.project.embroidery_objects.front().params = first;
+    auto second = fx.project.embroidery_objects.front();
+    second.id = fx.project.object_ids.next();
+    document::TatamiParams other;
+    other.row_spacing = Micrometers{900};
+    second.params = other;
+    fx.project.embroidery_objects.push_back(second);
+    MainWindow window;
+    window.applyLoadedProject(fx.project);
+    window.setSelection(
+        {.region = std::nullopt, .embroidery = std::nullopt, .objects = {fx.vectorId}});
+    window.setStitchTypeForSelection(1);
+    QCOMPARE(window.project_.embroidery_objects.size(), std::size_t{2});
+    QVERIFY(window.project_.findEmbroidery(fx.embroideryId)->params ==
+            document::StitchParams{first});
+    QVERIFY(window.project_.findEmbroidery(second.id)->params == document::StitchParams{other});
+    QVERIFY(!window.undoStack_.canUndo());
 }
 
 } // namespace openstitch::desktop

@@ -15,6 +15,7 @@
 #include <QMenuBar>
 #include <QMetaMethod>
 #include <QRegularExpression>
+#include <QScopeGuard>
 #include <QSettings>
 #include <QShortcut>
 #include <QStringList>
@@ -32,6 +33,7 @@
 #include <QToolBar>
 #include <QToolButton>
 
+#include "app_theme.hpp"
 #include "interaction_map.hpp"
 #include "main_window.hpp"
 #include "properties_panel.hpp"
@@ -122,6 +124,32 @@ private slots:
         QCoreApplication::setApplicationName(QStringLiteral("UiInvariantsTest"));
         QSettings::setDefaultFormat(QSettings::IniFormat);
         QSettings::setPath(QSettings::IniFormat, QSettings::UserScope, settingsDir_.path());
+    }
+
+    void themeStylesKeepHoverSeparateFromSelection() {
+        auto& theme = AppTheme::instance();
+        const auto originalMode = theme.mode();
+        const auto restore = qScopeGuard([&] { theme.setMode(originalMode); });
+        theme.applyToApp(*qApp);
+        for (const auto mode : {ThemeMode::Light, ThemeMode::Dark}) {
+            theme.setMode(mode);
+            const QString qss = qApp->styleSheet();
+            QVERIFY(qss.contains(QStringLiteral("QListView::item:hover:!selected")));
+            QVERIFY(qss.contains(QStringLiteral("QListWidget::item:hover:!selected")));
+            QVERIFY(!qss.contains(QStringLiteral("QListView::item:hover,")));
+        }
+    }
+
+    void primaryButtonsHaveAnExplicitKeyboardFocusStyle() {
+        auto& theme = AppTheme::instance();
+        const auto originalMode = theme.mode();
+        const auto restore = qScopeGuard([&] { theme.setMode(originalMode); });
+        theme.applyToApp(*qApp);
+        for (const auto mode : {ThemeMode::Light, ThemeMode::Dark}) {
+            theme.setMode(mode);
+            QVERIFY(
+                qApp->styleSheet().contains(QStringLiteral("QPushButton[primary=\"true\"]:focus")));
+        }
     }
 
     // Deux actions de la même fenêtre avec la même touche rendent le raccourci

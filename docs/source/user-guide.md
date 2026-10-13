@@ -100,6 +100,12 @@ Windows, un pavé tactile se distingue mal d'une molette : le préréglage de
 navigation « Pavé tactile » (Affichage ▸ Navigation) y met en avant
 Espace + glisser et Ctrl + molette.
 
+**Espace respecte le focus clavier** : si Tab a focalisé un bouton, une case,
+une liste ou un champ hors canevas, la touche reste à ce contrôle, même lorsque
+le pointeur survole le canevas. Revenez au canevas pour utiliser Espace + glisser.
+Les poignées conservent un dessin de 8 × 8 DIP et une cible de 22 DIP,
+indépendante du zoom et du facteur d'échelle de l'écran.
+
 Le tableau est **généré** par `openstitch_gesture_table --markdown` ; ne pas le
 modifier à la main (le test `docs_gestures_in_sync` échoue si la table du code
 et ce bloc divergent). Pour le régénérer, recopier la sortie de la commande
@@ -257,6 +263,11 @@ anormal** : **Récupérer** ouvre l'instantané comme un document modifié, non
 rattaché à un fichier (pensez à *Enregistrer sous…*) ; **Ignorer** le supprime. Un
 projet jamais enregistré est proposé comme « projet sans nom ».
 
+Un document **sans image** reste un document : SVG/dessin/lettrage avec objets
+de broderie et import machine seul suivent le même rafraîchissement des points,
+de la simulation et des panneaux. Un design machine seul peut être enregistré
+en `.osp` ; s'il est modifié, il entre aussi dans la sauvegarde automatique.
+
 ## Menu Édition
 
 | Action | Raccourci | Effet |
@@ -273,6 +284,10 @@ L'annulation couvre les opérations d'image, la segmentation (segmenter, fusionn
 supprimer, recolorer), la création et le déplacement de nœuds vectoriels, la
 création d'objets de broderie, le **changement de type**, l'**orientation** d'un
 remplissage, la conversion satin→tatami et le réordonnancement.
+
+Choisir à nouveau le **type de points déjà actif** ne réinitialise pas les
+paramètres, ne fusionne pas les sections d'une forme et n'ajoute pas d'étape
+d'annulation. Une commande explicite d'application de réglages reste distincte.
 
 Les libellés d'historique sont des verbes à l'infinitif (« Déplacer la forme », « Modifier :
 Espacement des rangées »). Une **rafale** de modifications du même champ du même objet
@@ -375,6 +390,9 @@ du worker), cochez les masques à garder, **protégez** ceux que le nettoyage ne
 (les infobulles des en-têtes *IoU*, *Stabilité* et *Protéger* expliquent les colonnes ; un clic sur
 un en-tête trie le tableau), puis **Valider** (bouton grisé pendant le calcul). Relancer l'analyse
 ou fermer avec des masques en cours de revue demande confirmation ; les réglages sont mémorisés.
+Les identifiants et statistiques sont **en lecture seule** ; trier le tableau
+ne change pas le masque visé par l'aperçu, la fusion ou la validation. Une fusion
+hérite de la protection si au moins un de ses masques sources est protégé.
 « **Après validation, créer** » choisit le résultat : des **régions éditables** (la segmentation
 du document, à fusionner, recolorer puis vectoriser comme après « Segmenter l'image… »), ou
 directement les **objets de broderie** (avec les options *ignorer le fond* et *détail de
@@ -957,9 +975,10 @@ Ctrl+= zoome aussi (Ctrl++ demande Maj sur un clavier AZERTY).
 - Le mode **Masquer les panneaux** est levé à la fermeture : le lancement suivant ne
   démarre jamais sans panneau. La taille de la fenêtre est bornée à l'écran disponible ;
   une disposition enregistrée illisible est remplacée par la disposition par défaut.
-- Les calculs longs (segmentation, vectorisation, numérisation automatique) s'exécutent
-  en arrière-plan derrière la fenêtre « Veuillez patienter », qui reste animée ; Windows
-  ne marque plus la fenêtre « ne répond pas ».
+- La segmentation et la numérisation automatique classiques utilisent une fenêtre
+  d'attente avec calcul en arrière-plan. Certains autres parcours (génération après
+  édition, vectorisation et validation IA notamment) restent synchrones : leur
+  réactivité et leur annulation ne sont pas garanties par ce premier lot de correctifs.
 
 ## Implémentation associée
 

@@ -51,12 +51,22 @@ public:
         setCursor(Qt::SizeAllCursor);
     }
 
-    // Zone cliquable élargie (22 px, cible confortable à la souris comme au doigt)
+    // Zone cliquable élargie (22 DIP, cible confortable à la souris comme au doigt)
     // autour du point visuel.
     [[nodiscard]] QPainterPath shape() const override {
         QPainterPath path;
         path.addEllipse(QRectF(-11.0, -11.0, 22.0, 22.0));
         return path;
+    }
+
+    // Qt préfiltre les hit-tests par boundingRect avant shape. L'ellipse héritée
+    // couvre shape avec le stylo normal, mais seulement rect avec NoPen/largeur nulle.
+    // Englober explicitement la cible ET le tracé peint, sans modifier le rect visuel.
+    [[nodiscard]] QRectF boundingRect() const override {
+        const qreal halfPen = pen().style() == Qt::NoPen ? 0.0 : pen().widthF() / 2.0;
+        return rect()
+            .adjusted(-halfPen, -halfPen, halfPen, halfPen)
+            .united(QRectF(-11.0, -11.0, 22.0, 22.0));
     }
 
     // Variante du rappel de relâchement qui reçoit AUSSI les modificateurs de
@@ -279,11 +289,17 @@ public:
         setCursor(cursor);
     }
 
-    // Zone cliquable de 22 px (cible confortable, même taille que les poignées de nœud).
+    // Zone cliquable de 22 DIP (cible confortable, même taille que les poignées de nœud).
     [[nodiscard]] QPainterPath shape() const override {
         QPainterPath path;
         path.addRect(QRectF(-11.0, -11.0, 22.0, 22.0));
         return path;
+    }
+
+    // Le boundingRect hérité ne connaît que le carré peint de 8 DIP (+ son stylo).
+    // Une cible hors de cette boîte serait écartée avant le hit-test précis.
+    [[nodiscard]] QRectF boundingRect() const override {
+        return QGraphicsRectItem::boundingRect().united(QRectF(-11.0, -11.0, 22.0, 22.0));
     }
 
     // Rappel d'annulation (Échap pendant le glisser) : l'appelant efface ses aperçus.

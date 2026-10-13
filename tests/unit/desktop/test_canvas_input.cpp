@@ -6,11 +6,15 @@
 // + setSelectionRectangleEnabled(true). Évènements injectés (QTest::mouse*,
 // QWheelEvent), aucun sleep, aucune comparaison de pixels.
 #include <QApplication>
+#include <QCheckBox>
 #include <QComboBox>
 #include <QDialog>
 #include <QGraphicsRectItem>
 #include <QGraphicsScene>
+#include <QLineEdit>
+#include <QListWidget>
 #include <QMenu>
+#include <QPlainTextEdit>
 #include <QPushButton>
 #include <QScopeGuard>
 #include <QScrollBar>
@@ -19,6 +23,7 @@
 #include <QSpinBox>
 #include <QTemporaryDir>
 #include <QTest>
+#include <QTextEdit>
 #include <QVBoxLayout>
 #include <QWheelEvent>
 
@@ -26,11 +31,14 @@
 
 #include "canvas_view.hpp"
 #include "native_gesture_helper.hpp"
+#include "node_handle.hpp"
 
 using openstitch::desktop::CanvasView;
 using openstitch::desktop::Context;
 using openstitch::desktop::InteractionMap;
+using openstitch::desktop::NodeHandleItem;
 using openstitch::desktop::Preset;
+using openstitch::desktop::ResizeHandleItem;
 using openstitch::desktop::SelectMode;
 
 namespace {
@@ -493,7 +501,7 @@ private slots:
         QVERIFY(!view.spaceHeld());
     }
 
-    void spaceDoesNotClickFocusedButton() {
+    void spaceActivatesFocusedButtonWhilePointerOverCanvas() {
         QWidget host;
         auto* layout = new QVBoxLayout(&host);
         auto* view = new CanvasView(new QGraphicsScene(&host));
@@ -504,7 +512,10 @@ private slots:
         host.resize(400, 500);
         host.show();
         QVERIFY(QTest::qWaitForWindowExposed(&host));
+        host.activateWindow();
+        QVERIFY(QTest::qWaitForWindowActive(&host));
         button->setFocus();
+        QVERIFY(button->hasFocus());
         QSignalSpy clicks(button, &QPushButton::clicked);
         QEvent initialLeave(QEvent::Leave); // l'offscreen peut avoir envoyé un Enter à l'affichage
         QApplication::sendEvent(view->viewport(), &initialLeave);
@@ -513,20 +524,173 @@ private slots:
         QTest::keyClick(button, Qt::Key_Space);
         QCOMPARE(clicks.count(), 1);
 
-        // Curseur sur le viewport : Espace est consommé, le bouton ne reçoit rien.
+        // UX-40 : le pointeur reste sur le viewport pendant que Tab focalise le bouton.
+        view->setFocus();
+        QVERIFY(view->hasFocus());
         QEnterEvent enter(QPointF(50, 50), QPointF(50, 50), QPointF(50, 50));
         QApplication::sendEvent(view->viewport(), &enter);
-        QTest::keyPress(button, Qt::Key_Space);
-        QVERIFY(view->spaceHeld());
-        QTest::keyRelease(button, Qt::Key_Space);
+        QTest::keyClick(QApplication::focusWidget(), Qt::Key_Tab);
+        QVERIFY(button->hasFocus());
+        QTest::keyPress(QApplication::focusWidget(), Qt::Key_Space);
+        QVERIFY(button->isDown());
         QVERIFY(!view->spaceHeld());
-        QCOMPARE(clicks.count(), 1);
+        QTest::keyRelease(QApplication::focusWidget(), Qt::Key_Space);
+        QVERIFY(!view->spaceHeld());
+        QCOMPARE(clicks.count(), 2);
 
         // Le curseur quitte le viewport : le comportement normal revient.
         QEvent leave(QEvent::Leave);
         QApplication::sendEvent(view->viewport(), &leave);
         QTest::keyClick(button, Qt::Key_Space);
-        QCOMPARE(clicks.count(), 2);
+        QCOMPARE(clicks.count(), 3);
+    }
+
+    void spaceTogglesFocusedCheckBoxWhilePointerOverCanvas() {
+        QWidget host;
+        auto* layout = new QVBoxLayout(&host);
+        auto* view = new CanvasView(new QGraphicsScene(&host));
+        auto* check = new QCheckBox(QStringLiteral("option"));
+        layout->addWidget(view, 1);
+        layout->addWidget(check);
+        host.resize(400, 500);
+        host.show();
+        QVERIFY(QTest::qWaitForWindowExposed(&host));
+        host.activateWindow();
+        QVERIFY(QTest::qWaitForWindowActive(&host));
+        view->setFocus();
+        QVERIFY(view->hasFocus());
+        QEnterEvent enter(QPointF(50, 50), QPointF(50, 50), QPointF(50, 50));
+        QApplication::sendEvent(view->viewport(), &enter);
+        QTest::keyClick(QApplication::focusWidget(), Qt::Key_Tab);
+        QVERIFY(check->hasFocus());
+        QSignalSpy toggled(check, &QCheckBox::toggled);
+
+        QTest::keyClick(QApplication::focusWidget(), Qt::Key_Space);
+
+        QVERIFY(check->isChecked());
+        QCOMPARE(toggled.count(), 1);
+        QVERIFY(!view->spaceHeld());
+    }
+
+    void spaceTogglesFocusedListItemWhilePointerOverCanvas() {
+        QWidget host;
+        auto* layout = new QVBoxLayout(&host);
+        auto* view = new CanvasView(new QGraphicsScene(&host));
+        auto* list = new QListWidget;
+        auto* item = new QListWidgetItem(QStringLiteral("objet"), list);
+        item->setFlags(item->flags() | Qt::ItemIsUserCheckable);
+        item->setCheckState(Qt::Unchecked);
+        list->setCurrentItem(item);
+        layout->addWidget(view, 1);
+        layout->addWidget(list);
+        host.resize(400, 500);
+        host.show();
+        QVERIFY(QTest::qWaitForWindowExposed(&host));
+        host.activateWindow();
+        QVERIFY(QTest::qWaitForWindowActive(&host));
+        view->setFocus();
+        QVERIFY(view->hasFocus());
+        QEnterEvent enter(QPointF(50, 50), QPointF(50, 50), QPointF(50, 50));
+        QApplication::sendEvent(view->viewport(), &enter);
+        QTest::keyClick(QApplication::focusWidget(), Qt::Key_Tab);
+        QVERIFY(list->hasFocus());
+        QSignalSpy changed(list, &QListWidget::itemChanged);
+
+        QTest::keyClick(QApplication::focusWidget(), Qt::Key_Space);
+
+        QCOMPARE(item->checkState(), Qt::Checked);
+        QCOMPARE(changed.count(), 1);
+        QVERIFY(!view->spaceHeld());
+    }
+
+    void spacePanStillWorksAfterReturningFocusToCanvas() {
+        QWidget host;
+        auto* layout = new QVBoxLayout(&host);
+        auto* view = new CanvasView(new QGraphicsScene(&host));
+        auto* button = new QPushButton(QStringLiteral("ok"));
+        layout->addWidget(view, 1);
+        layout->addWidget(button);
+        host.resize(400, 500);
+        host.show();
+        QVERIFY(QTest::qWaitForWindowExposed(&host));
+        host.activateWindow();
+        QVERIFY(QTest::qWaitForWindowActive(&host));
+        prepareSelectView(*view);
+        view->setFocus();
+        QVERIFY(view->hasFocus());
+        QEnterEvent enter(QPointF(50, 50), QPointF(50, 50), QPointF(50, 50));
+        QApplication::sendEvent(view->viewport(), &enter);
+        QTest::keyClick(QApplication::focusWidget(), Qt::Key_Tab);
+        QVERIFY(button->hasFocus());
+        QSignalSpy clicks(button, &QPushButton::clicked);
+        QTest::keyClick(QApplication::focusWidget(), Qt::Key_Space);
+        QCOMPARE(clicks.count(), 1);
+        QVERIFY(!view->spaceHeld());
+
+        QTest::keyClick(QApplication::focusWidget(), Qt::Key_Tab, Qt::ShiftModifier);
+        QVERIFY(view->hasFocus());
+        const QPoint before = scrollPos(*view);
+        QSignalSpy canvasClicked(view, &CanvasView::canvasClickedMm);
+        QSignalSpy selection(view, &CanvasView::selectionRectangleMm);
+        QTest::keyPress(QApplication::focusWidget(), Qt::Key_Space);
+        QVERIFY(view->spaceHeld());
+        drag(*view, Qt::LeftButton, QPoint(200, 200), QPoint(150, 170));
+        QTest::keyRelease(QApplication::focusWidget(), Qt::Key_Space);
+        QVERIFY(!view->spaceHeld());
+        QVERIFY(scrollPos(*view) != before);
+        QCOMPARE(canvasClicked.count(), 0);
+        QCOMPARE(selection.count(), 0);
+        QCOMPARE(clicks.count(), 1);
+    }
+
+    void spaceRemainsWithFocusedTextInput_data() {
+        QTest::addColumn<QString>("inputKind");
+        for (const auto& kind : {"line", "text", "plain", "combo"}) {
+            QTest::newRow(kind) << QString::fromLatin1(kind);
+        }
+    }
+
+    void spaceRemainsWithFocusedTextInput() {
+        QFETCH(QString, inputKind);
+        QWidget host;
+        auto* layout = new QVBoxLayout(&host);
+        auto* view = new CanvasView(new QGraphicsScene(&host));
+        QWidget* input = nullptr;
+        if (inputKind == QStringLiteral("line")) {
+            input = new QLineEdit;
+        } else if (inputKind == QStringLiteral("text")) {
+            input = new QTextEdit;
+        } else if (inputKind == QStringLiteral("plain")) {
+            input = new QPlainTextEdit;
+        } else {
+            auto* combo = new QComboBox;
+            combo->setEditable(true);
+            input = combo;
+        }
+        layout->addWidget(view, 1);
+        layout->addWidget(input);
+        host.resize(400, 500);
+        host.show();
+        QVERIFY(QTest::qWaitForWindowExposed(&host));
+        host.activateWindow();
+        QVERIFY(QTest::qWaitForWindowActive(&host));
+        input->setFocus();
+        QVERIFY(input->hasFocus());
+        QEnterEvent enter(QPointF(50, 50), QPointF(50, 50), QPointF(50, 50));
+        QApplication::sendEvent(view->viewport(), &enter);
+
+        QTest::keyPress(QApplication::focusWidget(), Qt::Key_Space);
+        QVERIFY(!view->spaceHeld());
+        QTest::keyRelease(QApplication::focusWidget(), Qt::Key_Space);
+        if (auto* line = qobject_cast<QLineEdit*>(input)) {
+            QCOMPARE(line->text(), QStringLiteral(" "));
+        } else if (auto* text = qobject_cast<QTextEdit*>(input)) {
+            QCOMPARE(text->toPlainText(), QStringLiteral(" "));
+        } else if (auto* plain = qobject_cast<QPlainTextEdit*>(input)) {
+            QCOMPARE(plain->toPlainText(), QStringLiteral(" "));
+        } else {
+            QCOMPARE(qobject_cast<QComboBox*>(input)->currentText(), QStringLiteral(" "));
+        }
     }
 
     void spaceIgnoredWhenSpinBoxHasFocus() {
@@ -687,6 +851,69 @@ private slots:
     }
 
     // ---- sélection (contexte Select, modèle activé) ---------------------------------------
+
+    void handleEdgeDragDoesNotStartCanvasSelection_data() {
+        QTest::addColumn<bool>("resizeHandle");
+        QTest::addColumn<bool>("selectionModel");
+        QTest::addColumn<double>("zoom");
+        QTest::addColumn<QPoint>("offset");
+        for (const bool resizeHandle : {false, true}) {
+            for (const bool selectionModel : {false, true}) {
+                for (const double zoom : {0.2, 4.0, 400.0}) {
+                    for (const QPoint offset :
+                         {QPoint(-10, 0), QPoint(10, 0), QPoint(0, -10), QPoint(0, 10)}) {
+                        const QByteArray name = QByteArray(resizeHandle ? "resize" : "node") +
+                                                (selectionModel ? "-select" : "-legacy") + "-zoom" +
+                                                QByteArray::number(zoom) + "-offset" +
+                                                QByteArray::number(offset.x()) + "," +
+                                                QByteArray::number(offset.y());
+                        QTest::newRow(name.constData())
+                            << resizeHandle << selectionModel << zoom << offset;
+                    }
+                }
+            }
+        }
+    }
+
+    void handleEdgeDragDoesNotStartCanvasSelection() {
+        QFETCH(bool, resizeHandle);
+        QFETCH(bool, selectionModel);
+        QFETCH(double, zoom);
+        QFETCH(QPoint, offset);
+        QGraphicsScene scene;
+        CanvasView view(&scene);
+        prepareView(view);
+        if (selectionModel) {
+            view.setBaseContext(Context::Select);
+            view.setSelectionRectangleEnabled(true);
+        }
+        view.zoomAt(zoom / view.pixelsPerMm(), QPointF(view.viewport()->rect().center()));
+        view.centerOn(0.0, 0.0);
+        int releasedCount = 0;
+        const auto onReleased = [&](QPointF) { ++releasedCount; };
+        QGraphicsItem* handle =
+            resizeHandle ? static_cast<QGraphicsItem*>(new ResizeHandleItem({}, onReleased))
+                         : static_cast<QGraphicsItem*>(new NodeHandleItem({}, onReleased));
+        scene.addItem(handle);
+        QSignalSpy clicked(&view, &CanvasView::canvasClickedMm);
+        QSignalSpy selection(&view, &CanvasView::selectionClickedMm);
+        QSignalSpy rectangle(&view, &CanvasView::selectionRectangleMm);
+        const QPoint at = view.mapFromScene(handle->pos()) + offset;
+        const QPoint to = at + QPoint(40, 30);
+
+        sendMouse(view, QEvent::MouseButtonPress, at, Qt::LeftButton, Qt::LeftButton,
+                  Qt::NoModifier);
+        sendMouse(view, QEvent::MouseMove, to, Qt::NoButton, Qt::LeftButton, Qt::NoModifier);
+        sendMouse(view, QEvent::MouseButtonRelease, to, Qt::LeftButton, Qt::NoButton,
+                  Qt::NoModifier);
+
+        QCOMPARE(releasedCount, 1);
+        QVERIFY(handle->pos() != QPointF());
+        QCOMPARE(clicked.count(), 0);
+        QCOMPARE(selection.count(), 0);
+        QCOMPARE(rectangle.count(), 0);
+        QVERIFY(!view.gestureActive());
+    }
 
     void plainClickEmitsCanvasClickedMm() {
         QGraphicsScene scene;
@@ -1008,14 +1235,15 @@ private slots:
         QVERIFY(QTest::qWaitForWindowExposed(&host));
         host.activateWindow();
         QVERIFY(QTest::qWaitForWindowActive(&host));
-        button->setFocus();
+        view->setFocus();
+        QVERIFY(view->hasFocus());
         QEnterEvent enter(QPointF(50, 50), QPointF(50, 50), QPointF(50, 50));
         QApplication::sendEvent(view->viewport(), &enter);
 
-        // Contrôle : actif, curseur sur le viewport -> consommé.
-        QTest::keyPress(button, Qt::Key_Space);
+        // Contrôle : canevas focalisé, actif, curseur sur le viewport -> consommé.
+        QTest::keyPress(view, Qt::Key_Space);
         QVERIFY(view->spaceHeld());
-        QTest::keyRelease(button, Qt::Key_Space);
+        QTest::keyRelease(view, Qt::Key_Space);
         QVERIFY(!view->spaceHeld());
 
         // Popup ouvert : Espace appartient au popup.

@@ -1,22 +1,17 @@
 // SPDX-License-Identifier: Apache-2.0
 #include "canvas_view.hpp"
 
-#include <QAbstractSpinBox>
 #include <QApplication>
-#include <QComboBox>
 #include <QContextMenuEvent>
 #include <QGraphicsItem>
 #include <QKeyEvent>
-#include <QLineEdit>
 #include <QMouseEvent>
 #include <QNativeGestureEvent>
 #include <QPainter>
 #include <QPainterPath>
 #include <QPixmap>
-#include <QPlainTextEdit>
 #include <QRubberBand>
 #include <QScrollBar>
-#include <QTextEdit>
 #include <QWheelEvent>
 
 #include <algorithm>
@@ -58,20 +53,6 @@ Qt::KeyboardModifiers effectiveMods(const QKeyEvent* e) {
         return m;
     }
     return e->type() == QEvent::KeyPress ? (m | flag) : (m & ~Qt::KeyboardModifiers(flag));
-}
-
-bool isTextInput(const QWidget* w) {
-    if (w == nullptr) {
-        return false;
-    }
-    if (qobject_cast<const QLineEdit*>(w) != nullptr ||
-        qobject_cast<const QAbstractSpinBox*>(w) != nullptr ||
-        qobject_cast<const QTextEdit*>(w) != nullptr ||
-        qobject_cast<const QPlainTextEdit*>(w) != nullptr) {
-        return true;
-    }
-    const auto* combo = qobject_cast<const QComboBox*>(w);
-    return combo != nullptr && combo->isEditable();
 }
 
 // Cadre élastique de sélection : double trait (halo + trait) et remplissage
@@ -139,8 +120,8 @@ double niceStepMm(double pxPerMm, double minPixels) {
 } // namespace
 
 // Filtre applicatif : Espace (panoramique) et Alt seul. Pas de setFocus dans
-// enterEvent : le filtre ne réagit que si le curseur est sur le viewport et que
-// le focus n'est pas dans un champ de saisie.
+// enterEvent : le survol ne vole pas le focus. Espace appartient en priorité au
+// contrôle focalisé hors canevas (bouton, case, liste, champ de saisie…).
 class SpaceKeyFilter : public QObject {
 public:
     explicit SpaceKeyFilter(CanvasView* view) : QObject(view), view_(view) {}
@@ -725,14 +706,17 @@ bool CanvasView::filterKey(QKeyEvent* event) {
     }
     if (press) {
         if (!spaceConsumed_) {
+            const QWidget* focus = QApplication::focusWidget();
             // Jamais pendant un menu/popup, une boîte modale ou si la fenêtre n'est
             // pas active : Espace y appartient à l'autre widget (activer un menu,
             // valider un bouton de dialogue).
+            // Hors canevas, le focus prime sur le survol, pas seulement pour les champs
+            // de saisie. Le viewport est admis (Qt peut lui déléguer le focus de la vue).
             if (!cursorOverViewport_ || !isVisible() || !isActiveWindow() ||
                 QApplication::activePopupWidget() != nullptr ||
                 QApplication::activeModalWidget() != nullptr ||
                 (event->modifiers() & ~Qt::KeypadModifier) != 0 ||
-                isTextInput(QApplication::focusWidget())) {
+                (focus != nullptr && focus != this && focus != viewport())) {
                 return false;
             }
             spaceConsumed_ = true;

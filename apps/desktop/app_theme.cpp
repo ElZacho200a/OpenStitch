@@ -168,7 +168,8 @@ QString build_stylesheet(const Tokens& t) {
     qss += QStringLiteral("QListView::item:selected, QListWidget::item:selected, "
                           "QTreeView::item:selected { background: %1; color: %2; }\n")
                .arg(c(t.selection), c(t.selectionText));
-    qss += QStringLiteral("QListView::item:hover, QListWidget::item:hover { background: %1; }\n")
+    qss += QStringLiteral("QListView::item:hover:!selected, QListWidget::item:hover:!selected { "
+                          "background: %1; }\n")
                .arg(c(t.accentSoft));
 
     qss += QStringLiteral("QLabel { color: %1; }\n").arg(c(t.text));
@@ -264,6 +265,10 @@ QString build_stylesheet(const Tokens& t) {
             "QPushButton[primary=\"true\"]:disabled { background: %4; color: %5; "
             "border-color: %4; }\n")
             .arg(c(t.accent), c(t.selectionText), c(t.accentHover), c(t.border), c(t.textDisabled));
+    // Le focus du bouton principal ne doit pas être écrasé par sa bordure
+    // d'accent. Le texte de sélection contraste déjà avec ce fond dans les deux thèmes.
+    qss += QStringLiteral("QPushButton[primary=\"true\"]:focus { border: 2px solid %1; }\n")
+               .arg(c(t.selectionText));
     // Barre contextuelle (message d'état + actions de l'objet sélectionné) : bandeau discret,
     // texte secondaire, actions en boutons « secondaires » à bord marqué.
     qss +=

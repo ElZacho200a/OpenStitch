@@ -7,7 +7,9 @@
 #include <QTest>
 
 #include <cmath>
+#include <functional>
 #include <optional>
+#include <utility>
 #include <vector>
 
 #include "node_handle.hpp"
@@ -28,6 +30,12 @@ class NodeHandleTest : public QObject {
     Q_OBJECT
 
 private slots:
+    void handleBoundsContainHitTargetWithoutChangingVisual_data();
+    void handleBoundsContainHitTargetWithoutChangingVisual();
+    void handleHitTargetEdgesSupportQueriesClicksAndDragging_data();
+    void handleHitTargetEdgesSupportQueriesClicksAndDragging();
+    void overlappingHitTargetsKeepResizeHandleAboveNode_data();
+    void overlappingHitTargetsKeepResizeHandleAboveNode();
     void draggingHandleInvokesMovedThenReleasedWithSceneCoordinates();
     void unmovedClickStillInvokesReleasedAtSamePosition();
     void axisLockKeepsTheDominantAxis();
@@ -56,7 +64,173 @@ void prepare(QGraphicsView& view) {
     QVERIFY(QTest::qWaitForWindowExposed(&view));
     view.centerOn(0.0, 0.0);
 }
+
+QAbstractGraphicsShapeItem* addHandle(QGraphicsScene& scene, bool resizeHandle,
+                                      std::function<void(QPointF)> onReleased,
+                                      std::function<void(QPointF)> onMoved = {}) {
+    QAbstractGraphicsShapeItem* handle = nullptr;
+    if (resizeHandle) {
+        handle = new ResizeHandleItem(QPointF(), std::move(onReleased), QPointF(), false,
+                                      Qt::SizeFDiagCursor, std::move(onMoved));
+    } else {
+        handle = new NodeHandleItem(QPointF(), std::move(onReleased), std::move(onMoved));
+    }
+    scene.addItem(handle);
+    return handle;
+}
+
+void applyPenMode(QAbstractGraphicsShapeItem& handle, int penMode) {
+    if (penMode == 1) {
+        handle.setPen(Qt::NoPen);
+    } else if (penMode == 2) {
+        QPen pen = handle.pen();
+        pen.setWidthF(0.0); // stylo cosmétique : autre chemin de boundingRect dans Qt
+        handle.setPen(pen);
+    }
+}
 } // namespace
+
+void NodeHandleTest::handleBoundsContainHitTargetWithoutChangingVisual_data() {
+    QTest::addColumn<bool>("resizeHandle");
+    QTest::addColumn<int>("penMode");
+    for (const bool resizeHandle : {false, true}) {
+        for (const int penMode : {0, 1, 2}) {
+            const QByteArray name =
+                QByteArray(resizeHandle ? "resize" : "node") + "-pen" + QByteArray::number(penMode);
+            QTest::newRow(name.constData()) << resizeHandle << penMode;
+        }
+    }
+}
+
+void NodeHandleTest::handleBoundsContainHitTargetWithoutChangingVisual() {
+    QFETCH(bool, resizeHandle);
+    QFETCH(int, penMode);
+    QGraphicsScene scene;
+    auto* handle = addHandle(scene, resizeHandle, {});
+    applyPenMode(*handle, penMode);
+
+    // Le rect peint reste 8 x 8 ; agrandir ce rect masquerait le défaut en agrandissant le visuel.
+    const QRectF visual = resizeHandle ? static_cast<ResizeHandleItem*>(handle)->rect()
+                                       : static_cast<NodeHandleItem*>(handle)->rect();
+    QCOMPARE(visual, QRectF(-4.0, -4.0, 8.0, 8.0));
+    QCOMPARE(handle->shape().boundingRect(), QRectF(-11.0, -11.0, 22.0, 22.0));
+    QVERIFY(handle->boundingRect().contains(handle->shape().boundingRect()));
+    QVERIFY(handle->flags().testFlag(QGraphicsItem::ItemIgnoresTransformations));
+    // L'ellipse n'est pas devenue une cible carrée pour satisfaire le préfiltre.
+    QCOMPARE(handle->contains(QPointF(10.0, 10.0)), resizeHandle);
+}
+
+void NodeHandleTest::handleHitTargetEdgesSupportQueriesClicksAndDragging_data() {
+    QTest::addColumn<bool>("resizeHandle");
+    QTest::addColumn<int>("penMode");
+    QTest::addColumn<double>("zoom");
+    QTest::addColumn<QPoint>("offset");
+    QTest::addColumn<bool>("indexed");
+    for (const bool resizeHandle : {false, true}) {
+        for (const int penMode : {0, 1, 2}) {
+            for (const double zoom : {0.2, 4.0, 400.0}) {
+                for (const QPoint offset :
+                     {QPoint(-10, 0), QPoint(10, 0), QPoint(0, -10), QPoint(0, 10)}) {
+                    for (const bool indexed : {false, true}) {
+                        const QByteArray name =
+                            QByteArray(resizeHandle ? "resize" : "node") + "-pen" +
+                            QByteArray::number(penMode) + "-zoom" + QByteArray::number(zoom) +
+                            "-offset" + QByteArray::number(offset.x()) + "," +
+                            QByteArray::number(offset.y()) + (indexed ? "-bsp" : "-noindex");
+                        QTest::newRow(name.constData())
+                            << resizeHandle << penMode << zoom << offset << indexed;
+                    }
+                }
+            }
+        }
+    }
+}
+
+void NodeHandleTest::handleHitTargetEdgesSupportQueriesClicksAndDragging() {
+    QFETCH(bool, resizeHandle);
+    QFETCH(int, penMode);
+    QFETCH(double, zoom);
+    QFETCH(QPoint, offset);
+    QFETCH(bool, indexed);
+    QGraphicsScene scene;
+    scene.setItemIndexMethod(indexed ? QGraphicsScene::BspTreeIndex : QGraphicsScene::NoIndex);
+    QGraphicsView view(&scene);
+    prepare(view);
+    view.setTransform(QTransform::fromScale(zoom, zoom));
+    view.centerOn(0.0, 0.0);
+    int releasedCount = 0;
+    int movedCount = 0;
+    std::optional<QPointF> released;
+    auto* handle = addHandle(
+        scene, resizeHandle,
+        [&](QPointF pos) {
+            ++releasedCount;
+            released = pos;
+        },
+        [&](QPointF) { ++movedCount; });
+    applyPenMode(*handle, penMode);
+    // Les coordonnées du viewport sont des DIP, indépendamment du DPR de l'offscreen.
+    const QPoint at = view.mapFromScene(handle->pos()) + offset;
+    const QTransform deviceTransform = handle->deviceTransform(view.viewportTransform());
+    QCOMPARE(deviceTransform.mapRect(handle->shape().boundingRect()).size(), QSizeF(22.0, 22.0));
+
+    // Repro par le vrai chemin Qt, pas seulement par shape().contains().
+    QTest::mouseClick(view.viewport(), Qt::LeftButton, Qt::NoModifier, at);
+    QCOMPARE(releasedCount, 1);
+    QCOMPARE(handle->pos(), QPointF());
+    QCOMPARE(movedCount, 0);
+
+    // Tous les pré-filtres utilisés par la vue, la scène et CanvasView doivent retrouver l'item.
+    QCOMPARE(view.itemAt(at), static_cast<QGraphicsItem*>(handle));
+    QVERIFY(view.items(at).contains(handle));
+    QVERIFY(view.items(QRect(at - QPoint(1, 1), QSize(3, 3))).contains(handle));
+    QCOMPARE(scene.itemAt(view.mapToScene(at), view.viewportTransform()),
+             static_cast<QGraphicsItem*>(handle));
+    QVERIFY(scene
+                .items(view.mapToScene(at), Qt::IntersectsItemShape, Qt::DescendingOrder,
+                       view.viewportTransform())
+                .contains(handle));
+    const QPoint outside = view.mapFromScene(handle->pos()) + offset * 2;
+    QCOMPARE(view.itemAt(outside), static_cast<QGraphicsItem*>(nullptr));
+
+    const QPoint to = at + QPoint(40, 30);
+    sendMouse(view, QEvent::MouseButtonPress, at, Qt::LeftButton, Qt::LeftButton, Qt::NoModifier);
+    QCOMPARE(scene.mouseGrabberItem(), static_cast<QGraphicsItem*>(handle));
+    sendMouse(view, QEvent::MouseMove, to, Qt::NoButton, Qt::LeftButton, Qt::NoModifier);
+    sendMouse(view, QEvent::MouseButtonRelease, to, Qt::LeftButton, Qt::NoButton, Qt::NoModifier);
+    QVERIFY(movedCount > 0);
+    QCOMPARE(releasedCount, 2);
+    QVERIFY(released.has_value());
+    QVERIFY(*released != QPointF());
+    QCOMPARE(*released, handle->pos());
+}
+
+void NodeHandleTest::overlappingHitTargetsKeepResizeHandleAboveNode_data() {
+    QTest::addColumn<double>("zoom");
+    for (const double zoom : {0.2, 4.0, 400.0}) {
+        QTest::newRow(QByteArray::number(zoom).constData()) << zoom;
+    }
+}
+
+void NodeHandleTest::overlappingHitTargetsKeepResizeHandleAboveNode() {
+    QFETCH(double, zoom);
+    QGraphicsScene scene;
+    QGraphicsView view(&scene);
+    prepare(view);
+    view.setTransform(QTransform::fromScale(zoom, zoom));
+    view.centerOn(0.0, 0.0);
+    int nodeReleased = 0;
+    int resizeReleased = 0;
+    auto* node = addHandle(scene, false, [&](QPointF) { ++nodeReleased; });
+    auto* resize = addHandle(scene, true, [&](QPointF) { ++resizeReleased; });
+    const QPoint at = view.mapFromScene(QPointF()) + QPoint(10, 0);
+    QTest::mouseClick(view.viewport(), Qt::LeftButton, Qt::NoModifier, at);
+    QCOMPARE(resizeReleased, 1);
+    QCOMPARE(nodeReleased, 0);
+    QCOMPARE(view.itemAt(at), static_cast<QGraphicsItem*>(resize));
+    QVERIFY(view.items(at).contains(node));
+    QVERIFY(view.items(at).contains(resize));
+}
 
 void NodeHandleTest::draggingHandleInvokesMovedThenReleasedWithSceneCoordinates() {
     QGraphicsScene scene;

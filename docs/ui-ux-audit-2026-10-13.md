@@ -2,6 +2,10 @@
 
 *État : revue heuristique et statique après refonte, mesures de couleurs réalisées ; compilation desktop en échec, validation visuelle et tests d'usage non réalisés. Aucun correctif d'interface appliqué.*
 
+> Ce rapport reste attaché au snapshot `fb00455`. Les corrections ultérieures
+> et leurs preuves sont suivies séparément dans
+> [le premier lot de correctifs UX/UI](ui-ux-correctifs-2026-10-13.md).
+
 ## 1. Synthèse
 
 **La refonte apporte de vrais progrès ; la priorité restante est la cohérence du document, des résultats et des interactions, avant une nouvelle refonte esthétique.** Sauvegarde et récupération sont mieux protégées, l'inspecteur est resynchronisé et défilable, les actions sont mieux expliquées, l'analyse est invalidée et les icônes suivent le thème.

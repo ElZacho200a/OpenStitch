@@ -84,7 +84,9 @@ Tokens dark_tokens(Density density) {
     t.info = QColor(0x8D, 0xB4, 0xFF);
 
     t.canvasBackground = QColor(0x0E, 0x0D, 0x20);
-    t.canvasGrid = QColor(255, 255, 255, 28);
+    // Le tissu reste blanc : une grille blanche y disparaît, quelle que soit
+    // son opacité. Ce ton est discernable sur le tissu ET le fond extérieur sombre.
+    t.canvasGrid = QColor(0x6F, 0x6B, 0xA8);
     t.canvasAxis = QColor(0x9A, 0x9A, 0xC0, 90);
     t.canvasHoop = QColor(0xD2, 0x5A, 0x5A);
     t.canvasStitch = QColor(0xC8, 0xCA, 0xD8);
