@@ -28,28 +28,40 @@ std::string lower_extension(const std::filesystem::path& path) {
 
 } // namespace
 
+Result<stitch_generation::FinishResult> export_sequence(const document::Project& project,
+                                                        const ExportOptimizations& optimizations) {
+    // Point d'entrée de production unique (jamais generate_sequence directement) :
+    // retouches manuelles incluses.
+    return stitch_generation::effective_sequence_report(
+        project, optimizations.reduce_trims ? &optimizations.hidden_travel : nullptr);
+}
+
 Result<void> export_machine_file(const document::Project& project, const std::string& format_id,
                                  const std::filesystem::path& path,
-                                 const formats::MachineExportOptions& options) {
+                                 const formats::MachineExportOptions& options,
+                                 const ExportOptimizations& optimizations,
+                                 stitch_generation::TrimReport* report) {
     const auto* info = formats::find_format(format_id);
     if (info == nullptr || !info->can_write || info->encode == nullptr) {
         return fail(ErrorCategory::UnsupportedFormat,
                     "Format d'export non pris en charge en écriture : " + format_id);
     }
-    // Point d'entrée de production unique (jamais generate_sequence directement) :
-    // retouches manuelles incluses.
-    auto sequence = stitch_generation::effective_sequence(project);
-    if (!sequence) {
-        return std::unexpected(sequence.error());
+    auto finished = export_sequence(project, optimizations);
+    if (!finished) {
+        return std::unexpected(finished.error());
     }
+    if (report != nullptr) {
+        *report = finished->report;
+    }
+    auto sequence = std::move(finished->sequence);
     formats::MachineExportOptions effective = options;
     if (effective.block_colors.empty() && info->carries_colors) {
-        for (const auto& block : stitch_analysis::color_blocks(project, *sequence)) {
+        for (const auto& block : stitch_analysis::color_blocks(project, sequence)) {
             effective.block_colors.push_back(block.rgb);
         }
     }
-    auto bytes = info->encode_ex != nullptr ? info->encode_ex(*sequence, effective)
-                                            : info->encode(*sequence);
+    auto bytes = info->encode_ex != nullptr ? info->encode_ex(sequence, effective)
+                                            : info->encode(sequence);
     if (!bytes) {
         return std::unexpected(bytes.error());
     }

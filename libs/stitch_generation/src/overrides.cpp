@@ -224,7 +224,8 @@ Result<stitch::StitchSequence> effective_sequence(const document::Project& proje
     return std::move(result->sequence);
 }
 
-Result<FinishResult> effective_sequence_report(const document::Project& project) {
+Result<FinishResult> effective_sequence_report(const document::Project& project,
+                                               const document::HiddenTravel* hiddenTravel) {
     auto sequence = generate_sequence(project);
     if (!sequence) {
         return std::unexpected(sequence.error());
@@ -237,6 +238,12 @@ Result<FinishResult> effective_sequence_report(const document::Project& project)
     // Finitions (Lots E/F : coupes, points d'arrêt, points courts) en DERNIER,
     // après les retouches : elles ne touchent jamais la vue brute (raw_slice)
     // à laquelle les index des retouches se réfèrent.
+    if (hiddenTravel != nullptr) {
+        document::SequenceFinishing finishing = project.finishing;
+        finishing.hidden_travel = *hiddenTravel;
+        finishing.hidden_travel.enabled = true;
+        return finish_sequence_report(*sequence, project, finishing);
+    }
     return finish_sequence_report(*sequence, project);
 }
 

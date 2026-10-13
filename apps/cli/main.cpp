@@ -992,7 +992,8 @@ int run_digitize(const DigitizeArgs& a) {
 // Exporte un projet .osp en DST par le MÊME chemin que le bureau (export_machine_file) :
 // permet d'inspecter les coupes et la fin du fichier sans passer par l'interface.
 int run_osp2dst(const std::string& ospPath, const std::string& outDst, bool noClobber,
-                const openstitch::formats::MachineExportOptions& machineOptions) {
+                const openstitch::formats::MachineExportOptions& machineOptions,
+                const openstitch::project_io::ExportOptimizations& optimizations) {
     using namespace openstitch;
     if (const auto refused = check_output_path("osp2dst", outDst, noClobber)) {
         return *refused;
@@ -1013,12 +1014,19 @@ int run_osp2dst(const std::string& ospPath, const std::string& outDst, bool noCl
             formatId = info->id;
         }
     }
+    stitch_generation::TrimReport report;
     const auto written = project_io::export_machine_file(
-        *project, formatId, std::filesystem::path(outDst), machineOptions);
+        *project, formatId, std::filesystem::path(outDst), machineOptions, optimizations, &report);
     if (!written) {
         return cli_error("osp2dst", written.error().message);
     }
     fmt::print("{} écrit : {}\n", formats::find_format(formatId)->display_name, outDst);
+    if (optimizations.reduce_trims) {
+        fmt::print("Coupes : {} supprimée(s) sur {} écart(s) candidat(s) ({} saut(s) recouvert(s), "
+                   "{} pont(s) cousu(s), {:.1f} mm de fil ajouté)\n",
+                   report.trims_removed, report.candidate_gaps, report.hidden_jumps, report.bridges,
+                   report.bridge_length_um / 1000.0);
+    }
     return kExitOk;
 }
 
@@ -1654,6 +1662,20 @@ int main(int argc, char** argv) {
     bool od_no_color_changes = false;
     std::string od_stops = "native";
     od_cmd->add_flag("--no-trims", od_no_trims, "Supprime les coupes (elles deviennent des sauts)");
+    bool od_reduce_trims = false;
+    bool od_reduce_same_colour = false;
+    double od_reduce_max_mm = 15.0;
+    od_cmd->add_flag(
+        "--reduce-trims", od_reduce_trims,
+        "Remplace des coupes par des sauts ou des ponts cousus cachés sous des points "
+        "cousus plus tard (appliqué à l'export seulement, le projet n'est pas modifié)");
+    od_cmd->add_flag("--reduce-trims-same-colour", od_reduce_same_colour,
+                     "Avec --reduce-trims : une surface déjà cousue du même fil compte aussi "
+                     "comme cachée");
+    od_cmd
+        ->add_option("--reduce-trims-max", od_reduce_max_mm,
+                     "Avec --reduce-trims : longueur maximale d'un pont, en mm (défaut : 15)")
+        ->check(CLI::Range(0.0, 100.0));
     od_cmd->add_flag("--no-color-changes", od_no_color_changes,
                      "Supprime les changements de couleur (motif monochrome)");
     od_cmd->add_option("--stops", od_stops, "Arrêts machine : native, as-color-change ou drop")
@@ -1749,7 +1771,12 @@ int main(int argc, char** argv) {
                                : od_stops == "as-color-change"
                                    ? openstitch::formats::StopMode::AsColorChange
                                    : openstitch::formats::StopMode::Native;
-        return run_osp2dst(od_in, od_out, od_noclobber, machineOptions);
+        project_io::ExportOptimizations optimizations;
+        optimizations.reduce_trims = od_reduce_trims;
+        optimizations.hidden_travel.allow_same_color_surface = od_reduce_same_colour;
+        optimizations.hidden_travel.max_bridge_length =
+            Micrometers{static_cast<std::int32_t>(std::lround(od_reduce_max_mm * 1000.0))};
+        return run_osp2dst(od_in, od_out, od_noclobber, machineOptions, optimizations);
     }
     if (os_cmd->parsed()) {
         return run_osp2svg(os_in, os_out, os_outlines, os_only, os_noclobber);

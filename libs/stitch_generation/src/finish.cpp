@@ -207,7 +207,13 @@ stitch::StitchSequence finish_sequence(const stitch::StitchSequence& sequence,
 
 FinishResult finish_sequence_report(const stitch::StitchSequence& sequence,
                                     const document::Project& project) {
-    const document::SequenceFinishing& f = project.finishing;
+    return finish_sequence_report(sequence, project, project.finishing);
+}
+
+FinishResult finish_sequence_report(const stitch::StitchSequence& sequence,
+                                    const document::Project& project,
+                                    const document::SequenceFinishing& finishing) {
+    const document::SequenceFinishing& f = finishing;
     TrimReport report;
     if (!f.enabled) {
         return {sequence, report};

@@ -787,6 +787,14 @@ réordonné ni régénéré : le gain dépend de l'ordre amont.
   plus tôt avec le même fil compte aussi comme cachée (relief léger possible,
   surtout sur un satin) ; la surface est reconstruite par avancement séquentiel
   et remise à zéro à chaque changement de fil.
+- **À la demande, à l'export** : `project_io::ExportOptimizations{reduce_trims,
+  hidden_travel}` est passé à `export_machine_file` (et à `export_sequence`, qui
+  donne la séquence exacte et le bilan pour l'aperçu). Les réglages remplacent ceux
+  du projet pour ce calcul seulement, `enabled` forcé ; le projet n'est pas
+  modifié. Bureau : case « Réduire les coupes » du dialogue
+  *Fichier ▸ Exporter une broderie machine…* (réglages mémorisés par poste, résumé
+  recalculé sur la séquence écrite, y compris l'analyse et les limites du format) ;
+  CLI : `osp2dst --reduce-trims`.
 - **Bilan** (`TrimReport`, `effective_sequence_report`) : écarts candidats, sauts
   recouverts, ponts, refus par raison (trop long, extrémité non recouverte,
   aucun chemin), coupes conservées (changement de fil, coupe posée), points et

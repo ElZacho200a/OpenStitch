@@ -1735,11 +1735,14 @@ couches ; objets verrouillables ; coût estimé ; routage satin multi-colonnes.
   (grille « dernier recouvrement », érosion, saut recouvert, A* déterministe)
   branché dans `finish_sequence` ; 13 cas de test (zone en L, couverture lâche,
   changement de couleur, coupe posée, recouvrement antérieur qui ne cache rien,
-  déterminisme). Mesure réelle (`docs/source/moteur-de-points.md`) : fixture
+  déterminisme). **Export à la demande (2026-10-13)** : `project_io::ExportOptimizations`
+  / `export_sequence` ; case « Réduire les coupes » du dialogue d'export du bureau (tous
+  formats, résumé recalculé sur la séquence réellement écrite, projet intact) ; CLI
+  `osp2dst --reduce-trims`. Mesure réelle (`docs/source/moteur-de-points.md`) : fixture
   `tentabrode`, 6 coupes sur 442 au réglage par défaut, car les régions segmentées
-  sont juxtaposées sans recouvrement. **Reste** : réglages dans l'inspecteur du
-  desktop (non buildable sur Linux, non fait), corpus « marine », validation
-  machine HP-PHYS-001, relecture juridique des brevets.
+  sont juxtaposées sans recouvrement. **Reste** : réglage persistant du projet dans les
+  « Options de génération » du bureau (l'export à la demande est fait), corpus « marine »,
+  validation machine HP-PHYS-001, relecture juridique des brevets.
 - État OpenStitch : `finish_sequence` (`libs/stitch_generation/src/finish.cpp`)
   coupe tout déplacement réel entre deux objets (`objectGap`) et tout
   déplacement de plus de `trim_threshold` (3 mm), avec verrous de sortie et

@@ -50,6 +50,7 @@
 #include <initializer_list>
 #include <limits>
 #include <map>
+#include <memory>
 #include <numbers>
 #include <set>
 #include <unordered_map>
@@ -7899,22 +7900,68 @@ void MainWindow::exportDst() {
                           stats.bounds.min.y.value < -cv.usable_height().value / 2 ||
                           stats.bounds.max.y.value > cv.usable_height().value / 2;
 
+    // HP-SEQ-006 : séquence réellement exportée quand l'utilisateur demande la réduction des
+    // coupes. Le calcul n'est refait que si les réglages changent ; `project_io::export_sequence`
+    // est le chemin même de l'écriture du fichier, donc le résumé décrit exactement ce qui sera
+    // écrit.
+    struct OptimizedCache {
+        bool valid{false};
+        project_io::ExportOptimizations key;
+        stitch_generation::FinishResult value;
+    };
+    auto cache = std::make_shared<OptimizedCache>();
+    const auto optimizedFor =
+        [this, cache](const project_io::ExportOptimizations& opt) -> const OptimizedCache* {
+        if (!opt.reduce_trims) {
+            return nullptr;
+        }
+        if (!cache->valid || !(cache->key == opt)) {
+            QGuiApplication::setOverrideCursor(Qt::WaitCursor);
+            auto computed = project_io::export_sequence(project_, opt);
+            QGuiApplication::restoreOverrideCursor();
+            if (!computed) {
+                cache->valid = false;
+                return nullptr;
+            }
+            cache->key = opt;
+            cache->value = std::move(*computed);
+            cache->valid = true;
+        }
+        return cache.get();
+    };
+
     // Résumé pré-export : décision réelle, recalculé pour le format et les options choisis
     // (HP-FMT-002..005 : limites propres au format = `formats::check_export_limits`).
     const auto summarize = [&](const formats::FormatInfo& format,
-                               const formats::MachineExportOptions& options) {
+                               const formats::MachineExportOptions& options,
+                               const project_io::ExportOptimizations& optimizations) {
         MachineExportDialog::Summary result;
+        const auto* optimized = optimizedFor(optimizations);
+        const stitch::StitchSequence& shown = optimized ? optimized->value.sequence : *sequence_;
+        const auto shownStats = stitch::compute_stats(shown);
         QString summary = tr("Dimensions : %1 × %2 mm\nPoints : %3\nSauts : %4\nCoupes : %5\n"
                              "Changements de couleur : %6\nFil estimé : %7 m\nCadre : %8 × %9 mm")
                               .arg(wMm, 0, 'f', 1)
                               .arg(hMm, 0, 'f', 1)
-                              .arg(stats.stitches)
-                              .arg(stats.jumps)
-                              .arg(stats.trims)
-                              .arg(stats.color_changes)
-                              .arg(stats.thread_length_um / 1e9, 0, 'f', 2)
+                              .arg(shownStats.stitches)
+                              .arg(shownStats.jumps)
+                              .arg(shownStats.trims)
+                              .arg(shownStats.color_changes)
+                              .arg(shownStats.thread_length_um / 1e9, 0, 'f', 2)
                               .arg(to_millimeters(cv.width).value, 0, 'f', 0)
                               .arg(to_millimeters(cv.height).value, 0, 'f', 0);
+        if (optimized != nullptr) {
+            const auto& r = optimized->value.report;
+            summary += tr("\nCoupes supprimées : %1 sur %2 écart(s) possible(s) (%3 saut(s) "
+                          "recouvert(s), %4 pont(s) cousu(s), +%5 mm de fil).")
+                           .arg(r.trims_removed)
+                           .arg(r.candidate_gaps)
+                           .arg(r.hidden_jumps)
+                           .arg(r.bridges)
+                           .arg(r.bridge_length_um / 1000.0, 0, 'f', 1);
+        } else if (optimizations.reduce_trims) {
+            summary += tr("\nL'optimisation des coupes n'a pas pu être calculée.");
+        }
         // Résultat de l'analyse AVANT l'export : l'utilisateur voit les erreurs sans avoir à
         // penser à lancer « Analyser le motif ».
         stitch_analysis::AnalysisOptions aopts;
@@ -7922,7 +7969,7 @@ void MainWindow::exportDst() {
                                              Micrometers{-cv.usable_height().value / 2}},
                                       Vec2um{Micrometers{cv.usable_width().value / 2},
                                              Micrometers{cv.usable_height().value / 2}}};
-        const auto findings = stitch_analysis::analyze(*sequence_, aopts);
+        const auto findings = stitch_analysis::analyze(shown, aopts);
         std::size_t errors = 0;
         std::size_t warnings = 0;
         for (const auto& f : findings) {
@@ -7941,7 +7988,7 @@ void MainWindow::exportDst() {
         }
         // Limites du format cible (couleurs, étendue, cadres de la marque, déplacements découpés).
         QString limits;
-        for (const auto& issue : formats::check_export_limits(*sequence_, format, options)) {
+        for (const auto& issue : formats::check_export_limits(shown, format, options)) {
             const QString text = QString::fromStdString(issue.message);
             switch (issue.severity) {
             case formats::ExportIssueSeverity::Error:
@@ -8001,8 +8048,11 @@ void MainWindow::exportDst() {
     // recalcule sa propre `effective_sequence`, garantie identique à `*sequence_`.
     auto options = dialog.options();
     options.design_name = QFileInfo(file).completeBaseName().toStdString();
-    const auto written = project_io::export_machine_file(
-        project_, format->id, std::filesystem::path(file.toStdWString()), options);
+    const auto optimizations = dialog.optimizations();
+    stitch_generation::TrimReport trimReport;
+    const auto written = project_io::export_machine_file(project_, format->id,
+                                                         std::filesystem::path(file.toStdWString()),
+                                                         options, optimizations, &trimReport);
     if (!written) {
         showFriendlyError(
             this, tr("Export impossible"),
@@ -8013,10 +8063,21 @@ void MainWindow::exportDst() {
         return;
     }
     rememberLastDirectory(file);
-    offerRevealInFolder(
-        file, tr("%1 exporté : %2 (%3 points).")
-                  .arg(QString::fromStdString(format->display_name), QFileInfo(file).fileName())
-                  .arg(stats.stitches));
+    // Nombre de points du fichier réellement écrit : celui de la séquence optimisée si demandée.
+    const auto* exportedSeq =
+        cache->valid && cache->key == optimizations && optimizations.reduce_trims
+            ? &cache->value.sequence
+            : nullptr;
+    const auto writtenStitches =
+        exportedSeq ? stitch::compute_stats(*exportedSeq).stitches : stats.stitches;
+    QString message =
+        tr("%1 exporté : %2 (%3 points).")
+            .arg(QString::fromStdString(format->display_name), QFileInfo(file).fileName())
+            .arg(writtenStitches);
+    if (optimizations.reduce_trims) {
+        message += tr(" Coupes supprimées : %1.").arg(trimReport.trims_removed);
+    }
+    offerRevealInFolder(file, message);
 }
 
 void MainWindow::importDst() {

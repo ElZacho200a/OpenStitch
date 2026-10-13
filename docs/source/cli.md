@@ -147,6 +147,12 @@ openstitch-cli osp2dst <projet.osp> <sortie.dst>
 coupes et la fin de fichier que la machine recevra (voir *Format DST*). Pour
 `dst2svg`, la sortie peut aussi s'écrire `--output-svg`/`--output`.
 
+`osp2dst --reduce-trims [--reduce-trims-same-colour] [--reduce-trims-max MM]`
+demande, **pour cet export seulement**, de remplacer des coupes par des sauts ou
+des ponts cousus prouvés cachés sous des points cousus plus tard (voir *Moteur de
+points*, « Ponts cachés ») ; le projet n'est pas modifié et la commande affiche le
+nombre de coupes supprimées. Sans le drapeau, le fichier est identique à avant.
+
 ## Sous-commandes de diagnostic
 
 ### osp2svg

@@ -71,7 +71,11 @@ enum class ObjectEditState : std::uint8_t { Clean, ManuallyEdited, Dirty };
 
 // Même séquence que `effective_sequence`, avec le bilan des ponts cachés (HP-SEQ-006.c). La
 // séquence est strictement celle d'`effective_sequence` : un seul chemin de calcul.
-[[nodiscard]] Result<FinishResult> effective_sequence_report(const document::Project& project);
+[[nodiscard]] Result<FinishResult>
+effective_sequence_report(const document::Project& project,
+                          const document::HiddenTravel* hiddenTravel = nullptr);
+// `hiddenTravel` non nul : ces réglages de ponts cachés remplacent ceux du projet, ACTIVÉS, pour ce
+// calcul seulement (export à la demande, aperçu du bilan) ; le projet n'est pas modifié.
 
 // Vue complète d'un objet pour un consommateur UI qui a besoin à la fois de
 // l'état dérivé (indicateur Clean/ManuallyEdited/Dirty), de la vue brute

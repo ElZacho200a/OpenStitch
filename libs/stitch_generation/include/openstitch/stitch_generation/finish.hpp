@@ -56,4 +56,10 @@ struct FinishResult {
 [[nodiscard]] FinishResult finish_sequence_report(const stitch::StitchSequence& sequence,
                                                   const document::Project& project);
 
+// Idem avec des finitions explicites au lieu de `project.finishing` : l'export peut demander les
+// ponts cachés pour UN fichier sans modifier le projet.
+[[nodiscard]] FinishResult finish_sequence_report(const stitch::StitchSequence& sequence,
+                                                  const document::Project& project,
+                                                  const document::SequenceFinishing& finishing);
+
 } // namespace openstitch::stitch_generation
