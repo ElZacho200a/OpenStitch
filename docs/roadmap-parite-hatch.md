@@ -33,15 +33,15 @@ prochaine entrée de ce fichier.
 > sur une branche ou une PR ouverte.
 
 Audit du 2026-10-06 : chaque entrée a été confrontée au code de `main` (`40bf4c0`).
-Revue partielle du 2026-10-13 (`main` = `4a8088b`) : vague 1 — objets, cadres, performance, rendu. Tableau recalculé depuis les titres des entrées (+1 P1 ☐ le 2026-10-13 : HP-ENG-001.a, issue de la veille `docs/veille-innovations-2026-10.md`). Les autres sections n'ont pas été revérifiées et peuvent être en retard sur le code.
+Revue partielle du 2026-10-13 (`main` = `4a8088b`) : vague 1 — objets, cadres, performance, rendu. Tableau recalculé depuis les titres des entrées (+4 le 2026-10-13, issues des veilles `docs/veille-innovations-2026-10.md` et `docs/veille-reduction-coupes-2026-10.md` : HP-ENG-001.a, HP-SEQ-006.a et .c en P1, HP-SEQ-006.b en P2). Les autres sections n'ont pas été revérifiées et peuvent être en retard sur le code.
 
 | Priorité | ☑ Fait | ◐ Partiel | ☐ À faire | Total |
 |---|---|---|---|---|
 | P0 | 12 | 25 | 7 | 44 |
-| P1 | 4 | 40 | 79 | 123 |
-| P2 | 0 | 13 | 67 | 80 |
+| P1 | 4 | 40 | 81 | 125 |
+| P2 | 0 | 13 | 68 | 81 |
 | P3 | 0 | 0 | 12 | 12 |
-| **Total** | **16** | **78** | **165** | **259** |
+| **Total** | **16** | **78** | **168** | **262** |
 
 **Fait (16)** : FILE-001/002/003/004 (nouveau projet, enregistrer, récents, autosave),
 THR-001/003/004 (bibliothèque de fils, fil le plus proche, fil assigné à chaque objet),
@@ -1723,6 +1723,62 @@ couches ; objets verrouillables ; coût estimé ; routage satin multi-colonnes.
 - À faire : préférer un déplacement cousu caché sous un objet cousu ensuite
   (même couleur ou couverture garantie) plutôt qu'une coupe ; métrique :
   nombre de coupes sur le corpus.
+- Découpé le 2026-10-13 en sous-entrées .a, .b, .c ci-dessous ; conception et
+  sources dans `docs/veille-reduction-coupes-2026-10.md`. Contrainte posée par le
+  mainteneur : l'optimisation s'applique **à la toute fin** du flux (dans
+  `finish_sequence`, dernière passe d'`effective_sequence`), sans réordonner les
+  objets ni régénérer quoi que ce soit en amont.
+
+### HP-SEQ-006.a — Pont caché entre objets en passe finale [P1] — ☐ À faire
+- État OpenStitch : `finish_sequence` (`libs/stitch_generation/src/finish.cpp`)
+  coupe tout déplacement réel entre deux objets (`objectGap`) et tout
+  déplacement de plus de `trim_threshold` (3 mm), avec verrous de sortie et
+  d'entrée autour de chaque coupe. Les trajets cachés n'existent qu'à
+  l'intérieur d'un objet (HP-ENG-015). La passe `StitchPass::Travel` existe.
+- Hatch / Wilcom : Branching et course de liaison « imbriquée » dont l'objet
+  suivant recouvre le trajet ; documentation et blogs publics, sources dans la
+  note de veille.
+- À faire : dans `finish_sequence`, pour chaque écart de même fil qui produirait
+  une coupe, chercher un trajet entièrement recouvert par des points cousus
+  **plus tard** ; preuve par une grille d'entiers « indice du dernier segment
+  `TopStitch` qui couvre la cellule », masque érodé de la demi-largeur du fil
+  plus une marge ; deux modes : saut caché sans coupe (écart court, aucun point
+  ajouté) et pont cousu (A* déterministe, points ≤ `bridge_stitch_length`,
+  passe `Travel`). Sans coupe, sans verrous à cet endroit. Jamais de pont à
+  travers un changement de couleur, un Stop ou une coupe retouchée. Réglages
+  dans `SequenceFinishing` (`.osp`), **désactivés par défaut**.
+- Modules : `libs/stitch_generation` (passe), `libs/document` (réglages),
+  `libs/project_io` (schéma `.osp`), `apps/desktop` (inspecteur) ; cœur sans Qt.
+- Dépend de : HP-ENG-010 (qualité de l'ordre amont, gain dépendant de lui).
+- Acceptation : scènes synthétiques `engine-debug` (chevauchement accepté,
+  formes séparées refusées, remplissage lâche refusé, changement de couleur
+  conservé, satin manuel sans surface) ; tout point d'un pont est dans le
+  masque érodé ; passe désactivée = séquence strictement identique ; idempotence ;
+  deux exécutions et `OPENSTITCH_THREADS=1` donnent le même DST ; nombre de
+  coupes (`compute_stats().trims`), de points de verrou supprimés et de longueur
+  ajoutée rapportés avant/après ; corpus réel (« marine », `tentabrode`, absents
+  du dépôt) et validation physique HP-PHYS-001. Brevets : relire avant livraison
+  (US8271123B2 affiché actif ; voir `docs/roadmap-rd-brevets.md`).
+
+### HP-SEQ-006.b — Déplacement sur surface déjà cousue de même couleur [P2] — ☐ À faire
+- À faire : option de HP-SEQ-006.a autorisant le trajet sur une surface déjà
+  cousue **de la même couleur** (équivalent du « travel on edges » de Hatch) quand
+  aucun recouvrement ultérieur n'existe. Moins sûr (relief visible sur un satin),
+  donc désactivé par défaut et réglable par objet.
+- Dépend de : HP-SEQ-006.a.
+- Acceptation : comme .a, plus un test montrant qu'un trajet ne traverse jamais
+  une surface d'une autre couleur non recouverte.
+
+### HP-SEQ-006.c — Rapport de réduction des coupes [P1] — ☐ À faire
+- À faire : rapport lisible (CLI `engine-debug` et panneau d'analyse) : coupes
+  avant/après, ponts acceptés et refusés **avec la raison** (changement de
+  couleur, pas de recouvrement, trop long, coupe retouchée), points de verrou
+  économisés, fil ajouté, estimation de durée (HP-PROD-002). Sert de mesure
+  d'acceptation de .a.
+- Modules : `libs/stitch_generation`, `apps/cli`, `libs/stitch_analysis`.
+- Dépend de : HP-SEQ-006.a.
+- Acceptation : les raisons de refus sont énumérées et testées ; le rapport est
+  déterministe.
 
 ### HP-SEQ-007 — Machines sans coupe automatique [P2] — ☐ À faire
 - À faire : profil « pas de coupe » : les coupes deviennent des arrêts
