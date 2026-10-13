@@ -33,22 +33,22 @@ prochaine entrée de ce fichier.
 > sur une branche ou une PR ouverte.
 
 Audit du 2026-10-06 : chaque entrée a été confrontée au code de `main` (`40bf4c0`).
-Revue partielle du 2026-10-13 (`main` = `9aacf23`) : vague 1 — objets, cadres, performance, rendu. Tableau recalculé depuis les titres des entrées. Les autres sections n'ont pas été revérifiées et peuvent être en retard sur le code.
+Revue partielle du 2026-10-13 (`main` = `4a8088b`) : vague 1 — objets, cadres, performance, rendu. Tableau recalculé depuis les titres des entrées. Les autres sections n'ont pas été revérifiées et peuvent être en retard sur le code.
 
 | Priorité | ☑ Fait | ◐ Partiel | ☐ À faire | Total |
 |---|---|---|---|---|
-| P0 | 10 | 27 | 7 | 44 |
-| P1 | 2 | 40 | 80 | 122 |
+| P0 | 12 | 25 | 7 | 44 |
+| P1 | 4 | 40 | 78 | 122 |
 | P2 | 0 | 13 | 67 | 80 |
 | P3 | 0 | 0 | 12 | 12 |
-| **Total** | **12** | **80** | **166** | **258** |
+| **Total** | **16** | **78** | **164** | **258** |
 
-**Fait (12)** : FILE-001/002/003/004 (nouveau projet, enregistrer, récents, autosave),
+**Fait (16)** : FILE-001/002/003/004 (nouveau projet, enregistrer, récents, autosave),
 THR-001/003/004 (bibliothèque de fils, fil le plus proche, fil assigné à chaque objet),
 FMT-001 (normalisation machine), TXT-001 et TXT-009 (lettrage), STI-004 (satin de bordure),
-PERF-005 (génération parallèle).
+PERF-005 (génération parallèle), OBJ-003 (déplacement au clavier), VEC-004 (couteau), OBJ-014 (design entier), PERF-003 (auto-numérisation rapide).
 
-**En PR au 2026-10-13, non fusionné** : #25 (fondu, fusion de zones, filtres vectoriels, cadre), #26 (performance), PR objets (OBJ-002/004/006/012/014/018). Historique du 2026-10-06 : HP-FMT-001 (PR #5, couche de normalisation machine) ; plan de code
+**Fusionné le 2026-10-13** : #25 (fondu, fusion de zones, filtres vectoriels, cadre), #26 (performance), #27 (objets : OBJ-002/004/006/012/014/018). **En PR** : second lot (OBJ-004 poignée, OBJ-018 pastille, VEC-002, VEC-003, VEC-005).
 S3 sélection/presse-papiers (PR #3, documentation seulement, **aucun code**).
 
 **Livré hors entrée dédiée** : mode Contours / Line Art (PR #4, 2026-10-05) — fait avancer
@@ -853,7 +853,7 @@ plus.
 - Modules : `libs/stitch_generation`.
 
 ### HP-STI-011 — Mélange de couleurs (color blending) [P2] — ◐ Partiel (action disponible)
-- 2026-10-13 (PR #25, non fusionnée) : correction du fondu écrasé (lignes du dessus orientées perpendiculairement à l'axe de couleur) et nouvelle action **Forme ▸ Fondre deux zones**.
+- 2026-10-13 (PR #25, fusionnée le 2026-10-13) : correction du fondu écrasé (lignes du dessus orientées perpendiculairement à l'axe de couleur) et nouvelle action **Forme ▸ Fondre deux zones**.
 - Fait : `autodigitize::analyze_two_color_blend` (ACP en CMY → deux couleurs,
   plan de proportion → `DensityGradient`), `thread_palette::best_thread_pair`
   (ΔE2000 + contraste WCAG), `BilateralDenoiseOp`. Voir *Fondu de couleurs à
@@ -1336,7 +1336,9 @@ libre, colonne satin manuelle, ligne de coupe satin ; édition de nœuds
   courbe : subdivision de De Casteljau) ; `InsertNodeCommand`.
 - Modules : `libs/geometry`, `libs/commands`, `apps/desktop`.
 
-### HP-VEC-002 — Tracé ouvert (ligne, polyligne, courbe ouverte) [P0] — ◐ Partiel (2026-10-06)
+### HP-VEC-002 — Tracé ouvert (ligne, polyligne, courbe ouverte) [P0] — ◐ Partiel (2026-10-13, en PR)
+- Livré (second lot du 2026-10-13, en PR) : option **Tracé ouvert** (U) de la palette : le polygone devient une ligne brisée ouverte (2 points suffisent) et la courbe de Bézier une courbe ouverte (`geometry::Path::closed = false`). Un contour cousu dessus ne revient pas au départ (test `openPathOptionLeavesPolygonAndBezierOpen`).
+- Reste : satin de bordure sur un chemin ouvert non vérifié dans l'interface (`border_satin.cpp` le prévoit) ; pas d'outil « ligne » distinct (c'est une option).
 - État OpenStitch : `geometry::Path::closed` existe et le mode Contours produit des
   objets running à tracé ouvert ; mais **aucun outil de dessin** de ligne ouverte
   (`apps/desktop/tools.hpp`) : les outils manuels ferment toujours la forme.
@@ -1347,7 +1349,9 @@ libre, colonne satin manuelle, ligne de coupe satin ; édition de nœuds
   (HP-STI-004) acceptent un chemin ouvert.
 - Modules : `libs/document`, `libs/geometry`, `apps/desktop`.
 
-### HP-VEC-003 — Opérations booléennes entre formes [P1] — ☐ À faire
+### HP-VEC-003 — Opérations booléennes entre formes [P1] — ◐ Partiel (2026-10-13, en PR)
+- Constaté sur `main` (`eee6188`) : Forme ▸ Unir / Soustraire / Intersecter, une commande annulable, broderies de la forme retenue conservées.
+- Livré (second lot du 2026-10-13, en PR) : **Exclure** (différence symétrique, Ctrl+Alt+X). Il ne reste que la fusion sur `main`.
 - Hatch : Weld (souder), Trim, Intersect, Exclude.
 - À faire : union / différence / intersection / exclusion sur la sélection via
   Clipper2 (déjà encapsulé : `geometry/boolean.hpp`) ; une commande annulable ;
@@ -1355,12 +1359,15 @@ libre, colonne satin manuelle, ligne de coupe satin ; édition de nœuds
 - Modules : `libs/commands`, `apps/desktop`.
 - Dépend de : HP-OBJ-001.
 
-### HP-VEC-004 — Couteau : couper une forme en deux [P1] — ◐ Partiel
+### HP-VEC-004 — Couteau : couper une forme en deux [P1] — ☑ Fait (2026-10-13, constaté sur `main`, `eee6188`)
+- Livré : outil **Couteau** (K) sur toute forme vectorielle (`commands::make_split_command`, `geometry/cut.hpp`) ; chaque morceau garde son type de broderie (remplissages clonés). Vérifié par vrais gestes souris (`sidebarKnifeRealGesture`, PR #25).
 - État OpenStitch : ligne de coupe **satin** uniquement (`DrawSatinCutLine`).
 - À faire : couteau général sur toute forme vectorielle (`geometry/cut.hpp`
   existe), les deux morceaux gardent le type de broderie.
 
-### HP-VEC-005 — Supprimer / remplir les trous [P1] — ☐ À faire
+### HP-VEC-005 — Supprimer / remplir les trous [P1] — ◐ Partiel (2026-10-13, en PR)
+- Livré (second lot du 2026-10-13, en PR) : Forme ▸ **Supprimer les trous** et **Combler les petits trous…** (seuil en mm²), `commands::make_remove_holes_command`, une commande.
+- Reste : « supprimer CE trou » (clic sur un trou précis).
 - Hatch : Remove holes / Fill holes.
 - À faire : commandes « supprimer tous les trous », « supprimer ce trou »,
   « combler les trous < X mm² ».
@@ -1416,13 +1423,13 @@ libre, colonne satin manuelle, ligne de coupe satin ; édition de nœuds
 
 État au 2026-10-13 : sélection multiple (clic modifié, rectangle, liste), translation et
 redimensionnement à la souris, alignement, dupliquer / décaler, supprimer, ordre de couture.
-En PR : copier/coller, rotation, miroir, transformation du design entier. Manquent encore les
+Sur `main` depuis le 2026-10-13 : copier/coller, rotation, miroir, transformation du design entier. Manquent encore les
 poignées de rotation sur le canevas, les groupes et la barre X/Y/L/H. C'est le **deuxième mur** après les formats :
 tout utilisateur de Hatch fait Ctrl+C/Ctrl+V, sélection rectangle, rotation.
 
 ### HP-OBJ-001 — Sélection multiple [P0] — ◐ Partiel (2026-10-13)
 - Constaté sur `main` (`1ab521a` et suivants) : Ctrl/Maj+clic, rectangle de sélection (fenêtre ou croisement), sélection multi-lignes depuis la liste Document, inspecteur de groupe ; tests `rectangleLeftToRightIsWindow…`, `shiftRectangleAddsToTheSelection`, `documentListMultiSelectionDrivesRegionSelection`. Les critères d'acceptation sont remplis.
-- Livré (PR du 2026-10-13, non fusionnée) : **Sélectionner tous les objets** (Ctrl+Maj+A ; Ctrl+A reste aux régions) et **Sélectionner les objets de même couleur** (`main_window_objects.cpp`).
+- Livré (PR #27, fusionnée le 2026-10-13 (`296ff34`)) : **Sélectionner tous les objets** (Ctrl+Maj+A ; Ctrl+A reste aux régions) et **Sélectionner les objets de même couleur** (`main_window_objects.cpp`).
 - Reste : boîte englobante commune avec poignées (avec HP-OBJ-005) ; modèle de sélection encore dans `MainWindow` (pas de classe `selection_model`).
 - À faire : Ctrl/Maj+clic, rectangle de sélection (glisser dans le vide),
   Ctrl+A, sélection depuis la liste Document (multi-lignes), sélection de
@@ -1433,9 +1440,9 @@ tout utilisateur de Hatch fait Ctrl+C/Ctrl+V, sélection rectangle, rotation.
 - Acceptation : QTest : sélection rectangle, ajout/retrait Ctrl+clic,
   synchronisation liste ↔ canevas.
 
-### HP-OBJ-002 — Couper / copier / coller [P0] — ◐ Partiel (2026-10-13, en PR)
-- Livré (PR du 2026-10-13, non fusionnée) : Ctrl+X / Ctrl+C / Ctrl+V / Ctrl+Maj+V (coller sur place). Fragment `document::ObjectFragment` sérialisé au schéma du `.osp` (`project_io::fragment_to_json` / `fragment_from_json`, MIME `application/x-openstitch-objects+json`) ; `commands::collect_fragment` et `make_paste_command` (nouveaux identifiants, broderies réalignées, une commande annulable par collage, décalage cumulé de 5 mm). Tests : `test_vector_ops.cpp` (paste), `test_roundtrip.cpp` (fragment), `copyPasteKeepsEmbroideryAndIsOneUndoStep`, `cutThenPasteInPlaceRestoresTheShape`.
-- Reste : fusion sur `main` ; collage entre deux instances non essayé à la main (testé dans un seul processus) ; un collage décalé retire les retouches manuelles de points ; les lettres d'un texte collées deviennent des formes ordinaires.
+### HP-OBJ-002 — Couper / copier / coller [P0] — ◐ Partiel (2026-10-13)
+- Livré (PR #27, fusionnée le 2026-10-13 (`296ff34`)) : Ctrl+X / Ctrl+C / Ctrl+V / Ctrl+Maj+V (coller sur place). Fragment `document::ObjectFragment` sérialisé au schéma du `.osp` (`project_io::fragment_to_json` / `fragment_from_json`, MIME `application/x-openstitch-objects+json`) ; `commands::collect_fragment` et `make_paste_command` (nouveaux identifiants, broderies réalignées, une commande annulable par collage, décalage cumulé de 5 mm). Tests : `test_vector_ops.cpp` (paste), `test_roundtrip.cpp` (fragment), `copyPasteKeepsEmbroideryAndIsOneUndoStep`, `cutThenPasteInPlaceRestoresTheShape`.
+- Reste : collage entre deux instances non essayé à la main (testé dans un seul processus) ; un collage décalé retire les retouches manuelles de points ; les lettres d'un texte collées deviennent des formes ordinaires.
 - À faire : Ctrl+X/C/V sur objets vectoriels **et** leurs objets de broderie
   (paramètres, fil, overrides) ; nouveaux identifiants à la collation ; collage
   décalé ou à la même position (Ctrl+Maj+V) ; entre deux projets / deux
@@ -1445,7 +1452,8 @@ tout utilisateur de Hatch fait Ctrl+C/Ctrl+V, sélection rectangle, rotation.
   `libs/commands`, `apps/desktop`.
 - Dépend de : HP-OBJ-001.
 
-### HP-OBJ-003 — Déplacement au clavier [P0] — ◐ Partiel (2026-10-06)
+### HP-OBJ-003 — Déplacement au clavier [P0] — ☑ Fait (2026-10-13, constaté sur `main`, `6a13ede`)
+- Livré : flèches = 0,1 mm, Maj = 1 mm, sélection multiple déplacée d'un bloc, rafale fusionnée en un seul pas d'annulation (`TranslateVectorObjectCommand::mergeWith`, `CompositeCommand::setMergeKey`). Tests `arrowKeyNudgesSelectedObject…`, `nudgeMovesWholeMultiSelectionInOneUndoStep`. Le pas de grille n'existe pas (pas de grille magnétique dans l'application).
 - État OpenStitch : flèches = 0,1 mm, Maj+flèches = 1 mm (`canvas_view.cpp`), testé ;
   manquent la fusion en un seul undo par rafale, le pas de grille et le multi-objet.
 - À faire : flèches = 0,1 mm (ou pas de grille), Maj+flèches = 1 mm ; une
@@ -1453,7 +1461,8 @@ tout utilisateur de Hatch fait Ctrl+C/Ctrl+V, sélection rectangle, rotation.
 - Modules : `apps/desktop`, `libs/commands` (fusion de commandes consécutives).
 
 ### HP-OBJ-004 — Rotation libre d'objets [P0] — ◐ Partiel (2026-10-13, en PR)
-- Livré (PR du 2026-10-13, non fusionnée) : `commands::make_transform_command` + `AffineTransform::rotation` (`libs/commands/transform_ops.*`) : contours, angle du tatami, guides et ruptures directionnels, dégradé, rails/barreaux/entrée-sortie des satins, guides d'auto-satin ; annulation exacte par instantané. Menu Édition ▸ Transformer : pivoter de 90° à gauche/droite (Ctrl+[ / Ctrl+]), pivoter d'un angle. Acceptation vérifiée par test : tatami 30° tourné de 45° → 75° ; 360° et quatre quarts de tour = géométrie identique.
+- Livré (second lot du 2026-10-13, en PR) : **poignée de rotation sur le canevas** (au-dessus de la forme sélectionnée, glisser = pivoter autour du centre, Maj = pas de 15°, une commande au relâchement). Reste révisé : pivot déplaçable, poignée pour une sélection multiple, aperçu pendant le glisser.
+- Livré (PR #27, fusionnée le 2026-10-13 (`296ff34`)) : `commands::make_transform_command` + `AffineTransform::rotation` (`libs/commands/transform_ops.*`) : contours, angle du tatami, guides et ruptures directionnels, dégradé, rails/barreaux/entrée-sortie des satins, guides d'auto-satin ; annulation exacte par instantané. Menu Édition ▸ Transformer : pivoter de 90° à gauche/droite (Ctrl+[ / Ctrl+]), pivoter d'un angle. Acceptation vérifiée par test : tatami 30° tourné de 45° → 75° ; 360° et quatre quarts de tour = géométrie identique.
 - Reste : poignées de rotation sur le canevas, Maj = pas de 15°, pivot déplaçable ; les retouches manuelles de points ne tournent pas.
 - État OpenStitch : rotation de l'**image** par 90° ; orientation des fils
   du tatami ; aucune rotation d'objet.
@@ -1473,9 +1482,9 @@ tout utilisateur de Hatch fait Ctrl+C/Ctrl+V, sélection rectangle, rotation.
   sélection multiple ; les paramètres dépendants suivent (guides, rails).
 - Dépend de : HP-OBJ-001.
 
-### HP-OBJ-006 — Miroir horizontal / vertical [P0] — ◐ Partiel (2026-10-13, en PR)
-- Livré (PR du 2026-10-13, non fusionnée) : miroir horizontal / vertical de la sélection autour de son centre (`AffineTransform::mirror`, même commande que la rotation), paramètres dépendants retournés (angles, guides, rails). Test `transform: mirror flips shape, row angle, guides and satin rails`.
-- Reste : fusion sur `main` ; les rails A/B d'un satin ne sont pas échangés (le sens de couture de la colonne est donc inversé).
+### HP-OBJ-006 — Miroir horizontal / vertical [P0] — ◐ Partiel (2026-10-13)
+- Livré (PR #27, fusionnée le 2026-10-13 (`296ff34`)) : miroir horizontal / vertical de la sélection autour de son centre (`AffineTransform::mirror`, même commande que la rotation), paramètres dépendants retournés (angles, guides, rails). Test `transform: mirror flips shape, row angle, guides and satin rails`.
+- Reste : les rails A/B d'un satin ne sont pas échangés (le sens de couture de la colonne est donc inversé).
 - À faire : `MirrorObjectsCommand` sur la sélection (axe = centre de la
   sélection), paramètres dépendants miroités (angles, rails échangés pour
   garder l'orientation, guides).
@@ -1510,8 +1519,8 @@ tout utilisateur de Hatch fait Ctrl+C/Ctrl+V, sélection rectangle, rotation.
   « premier plan / arrière-plan / avant / arrière » (Ctrl+Pg↑/↓ …).
 - Voir aussi HP-SEQ-002.
 
-### HP-OBJ-012 — Dupliquer les objets de broderie [P1] — ◐ Partiel (2026-10-13, en PR)
-- Livré (PR du 2026-10-13, non fusionnée) : **Dupliquer avec la broderie** (Ctrl+D) sur la sélection multiple : vecteur + broderie + fil, décalage de 2 mm, un pas d'annulation.
+### HP-OBJ-012 — Dupliquer les objets de broderie [P1] — ◐ Partiel (2026-10-13)
+- Livré (PR #27, fusionnée le 2026-10-13 (`296ff34`)) : **Dupliquer avec la broderie** (Ctrl+D) sur la sélection multiple : vecteur + broderie + fil, décalage de 2 mm, un pas d'annulation.
 - Reste : décalage paramétrable, duplication répétée au même décalage.
 - État OpenStitch : « Dupliquer » sur un vecteur.
 - À faire : Ctrl+D sur la sélection (vecteur + broderie + fil), décalage
@@ -1524,9 +1533,9 @@ tout utilisateur de Hatch fait Ctrl+C/Ctrl+V, sélection rectangle, rotation.
 - À faire : générateurs de copies transformées en une commande ; option
   « liées » (modifier l'original met à jour les copies) plus tard.
 
-### HP-OBJ-014 — Transformer le design entier [P0] — ◐ Partiel (2026-10-13, en PR)
-- Livré (PR du 2026-10-13, non fusionnée) : Édition ▸ Design entier : centrer dans le cadre, ajuster à la zone brodable (échelle + centrage), redimensionner en %, pivoter de 90°, miroirs. Les points sont régénérés. Test `wholeDesignCanBeCenteredFittedAndMirrored`.
-- Reste : fusion sur `main` ; un design importé (points sans objets) n'est pas transformé.
+### HP-OBJ-014 — Transformer le design entier [P0] — ☑ Fait (2026-10-13, `296ff34`)
+- Livré (PR #27, fusionnée le 2026-10-13 (`296ff34`)) : Édition ▸ Design entier : centrer dans le cadre, ajuster à la zone brodable (échelle + centrage), redimensionner en %, pivoter de 90°, miroirs. Les points sont régénérés. Test `wholeDesignCanBeCenteredFittedAndMirrored`.
+- Reste : un design importé (points sans objets) n'est pas transformé.
 - À faire : « centrer dans le cadre », « redimensionner le design » (toute la
   broderie, recalcul des points grâce à la régénération), rotation 90°/miroir
   du design complet — indispensable pour faire tenir un design dans le cadre
@@ -1550,8 +1559,9 @@ tout utilisateur de Hatch fait Ctrl+C/Ctrl+V, sélection rectangle, rotation.
 ### HP-OBJ-017 — Renommer les objets [P2] — ☐ À faire
 - À faire : F2 / double-clic dans la liste.
 
-### HP-OBJ-018 — Changer la couleur d'un objet de broderie [P0] — ◐ Partiel (2026-10-13)
-- Livré (PR du 2026-10-13, non fusionnée) : Édition ▸ **Couleur de la broderie…** (`QColorDialog`, RGB libre, sélection multiple, un pas d'annulation, fil de nuancier retiré).
+### HP-OBJ-018 — Changer la couleur d'un objet de broderie [P0] — ◐ Partiel (2026-10-13, en PR)
+- Livré (second lot du 2026-10-13, en PR) : **pastille de couleur dans l'inspecteur** (`button_embroideryColor`), qui ouvre le sélecteur de couleur libre pour toute la sélection et suit les changements (annulation comprise). Le nuancier reste dans le panneau Fils. Il ne reste que la fusion sur `main`.
+- Livré (PR #27, fusionnée le 2026-10-13 (`296ff34`)) : Édition ▸ **Couleur de la broderie…** (`QColorDialog`, RGB libre, sélection multiple, un pas d'annulation, fil de nuancier retiré).
 - Reste (révisé) : la pastille dans l'inspecteur.
 - Livré : la version « fil » (clic sur un fil du panneau Fils = assigner à la sélection
   multiple, un pas d'annulation) et `SetObjectThreadCommand` avec fil vide = couleur
@@ -1840,8 +1850,8 @@ hors cadre, déplacement sans coupe), résumé avant export DST.
 
 Aujourd'hui : un cadre **rectangulaire** de taille libre (10–500 mm), persisté.
 
-### HP-HOOP-001 — Bibliothèque de cadres par marque [P1] — ◐ Partiel (2026-10-13, en PR)
-- Livré (PR #25, non fusionnée) : 8 cadres rectangulaires usuels (`document/hoop_presets.hpp`), cadres enregistrés par l'utilisateur, bouton Pivoter, marge de sécurité (`Canvas::margin`) et zone brodable affichée et utilisée par l'analyse.
+### HP-HOOP-001 — Bibliothèque de cadres par marque [P1] — ◐ Partiel (2026-10-13)
+- Livré (PR #25, fusionnée le 2026-10-13) : 8 cadres rectangulaires usuels (`document/hoop_presets.hpp`), cadres enregistrés par l'utilisateur, bouton Pivoter, marge de sécurité (`Canvas::margin`) et zone brodable affichée et utilisée par l'analyse.
 - Reste : cadres par marque, formes non rectangulaires, gabarits.
 - Hatch : liste des cadres de chaque marque (Brother, Babylock, Janome,
   Bernina, Husqvarna, Pfaff, Singer, Tajima…) avec forme (rectangle, rond,
@@ -1868,11 +1878,11 @@ Aujourd'hui : un cadre **rectangulaire** de taille libre (10–500 mm), persist�
   fichier par cadrage.
 - Modules : `libs/stitch_generation` (découpe), `libs/formats`, `apps/desktop`.
 
-### HP-HOOP-005 — Rotation du cadre / design en paysage [P1] — ◐ Partiel (2026-10-13, en PR)
-- Livré (PR #25, non fusionnée et PR du 2026-10-13, non fusionnée) : bouton Pivoter du dialogue du cadre (échange largeur/hauteur) ; « Pivoter le design de 90° ».
+### HP-HOOP-005 — Rotation du cadre / design en paysage [P1] — ◐ Partiel (2026-10-13)
+- Livré (PR #25, fusionnée le 2026-10-13 et PR #27, fusionnée le 2026-10-13 (`296ff34`)) : bouton Pivoter du dialogue du cadre (échange largeur/hauteur) ; « Pivoter le design de 90° ».
 
-### HP-HOOP-006 — Centrer automatiquement dans le cadre [P1] — ◐ Partiel (2026-10-13, en PR)
-- Livré (PR du 2026-10-13, non fusionnée) : « Centrer dans le cadre » et « Ajuster à la zone brodable » (voir HP-OBJ-014). Pas de centrage automatique à l'import.
+### HP-HOOP-006 — Centrer automatiquement dans le cadre [P1] — ◐ Partiel (2026-10-13)
+- Livré (PR #27, fusionnée le 2026-10-13 (`296ff34`)) : « Centrer dans le cadre » et « Ajuster à la zone brodable » (voir HP-OBJ-014). Pas de centrage automatique à l'import.
 - Voir HP-OBJ-014.
 
 ---
@@ -2227,7 +2237,7 @@ fichier `.ts`. Hatch est disponible en une dizaine de langues.
 
 État au 2026-10-13 : segmentation et auto-numérisation tournent dans un fil de travail
 (`BusyIndicator::run`), génération parallèle par objet ; auto-numérisation < 1 s sur l'image
-de référence (PR #26). Restent : progression et annulation, régénération de toute la séquence
+de référence. Restent : progression et annulation, régénération de toute la séquence
 à chaque modification (~40 ms), scène reconstruite à chaque rafraîchissement.
 
 ### HP-PERF-001 — Tâches en arrière-plan avec progression et annulation [P0] — ◐ Partiel (2026-10-13)
@@ -2253,8 +2263,8 @@ de référence (PR #26). Restent : progression et annulation, régénération de
   (test d'équivalence comme `test_skeleton_equivalence.cpp`) ; modification
   d'un objet sur `tentabrode` < 50 ms.
 
-### HP-PERF-003 — Auto-numérisation plus rapide [P1] — ◐ Partiel (2026-10-13, en PR)
-- Livré (PR #26, non fusionnée) : régions vectorisées et essayées en satin en parallèle, résultat réassemblé dans l'ordre. `tentabrode.png` : 77 ms (922 ms avec « Satin automatique »), cible < 5 s atteinte. Voir `docs/performance-audit.md` §7.
+### HP-PERF-003 — Auto-numérisation plus rapide [P1] — ☑ Fait (2026-10-13, `ba54c07`)
+- Livré (PR #26, fusionnée le 2026-10-13 (`ba54c07`)) : régions vectorisées et essayées en satin en parallèle, résultat réassemblé dans l'ordre. `tentabrode.png` : 77 ms (922 ms avec « Satin automatique »), cible < 5 s atteinte. Voir `docs/performance-audit.md` §7.
 - État OpenStitch : 94,6 s → ~18 s (`docs/performance-audit.md`).
 - À faire : profiler de nouveau, paralléliser par région (résultat réassemblé
   dans un ordre déterministe) ; cible < 5 s sur `tentabrode.png`.
@@ -2440,3 +2450,5 @@ ci-dessus doit les respecter :
 | 2026-10-10 | Claude (palettes de fils) | Fils branchés au document et à l'interface : HP-THR-004 ☑ (`EmbroideryObject::thread`, `SetObjectThreadCommand`, `.osp` v6), HP-THR-005 ◐ et HP-OBJ-018 ◐ (panneau **Fils** : projet, catalogues, film couleur), HP-THR-011 ◐ (« Limiter à N fils »), HP-THR-002 reste ◐ (nuancier Générique libre + import CSV/JSON, aucune carte de marque redistribuée). API Qt-free `stitch_analysis::thread_usage` pour la fiche de production. |
 | 2026-10-13 | Claude (session pilotée) | **Revue de la vague 1 contre `main`** : OBJ-001, OBJ-008, OBJ-016, VIEW-001, PERF-001 ☐ → ◐ (déjà en grande partie sur `main`, statuts en retard) ; PERF-005 ☑ (génération parallèle). FMT-002…005 et THR-002 marqués « attend (humain) ». |
 | 2026-10-13 | Claude (session pilotée) | **Manipulation d'objets** (en PR) : OBJ-002 copier/couper/coller, OBJ-004 rotation, OBJ-006 miroir, OBJ-012 dupliquer avec broderie, OBJ-014 design entier, OBJ-018 couleur libre, OBJ-001 tout sélectionner / même couleur ; HOOP-001/005/006 ◐ (PR #25) ; PERF-003 ◐ (PR #26) ; STI-011 corrigé. Tableau de bord recalculé. |
+| 2026-10-13 | Claude (session pilotée) | **Second lot** (en PR) : OBJ-018 pastille de couleur dans l'inspecteur, OBJ-004 poignée de rotation sur le canevas, VEC-002 tracé ouvert, VEC-003 Exclure, VEC-005 trous. Constaté sur `main` : OBJ-003 ☑, VEC-004 ☑ (statuts en retard). Tableau recalculé. |
+| 2026-10-13 | Claude (session pilotée) | PR #25, #26 et #27 fusionnées : mentions « en PR » retirées du premier lot ; OBJ-014 ☑ et PERF-003 ☑ (critères remplis sur `main`). |

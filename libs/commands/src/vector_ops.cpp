@@ -175,6 +175,22 @@ VectorOpResult make_boolean_command(document::Project& project, BooleanOp op,
             return failure(diff.error().message);
         }
         result = std::move(*diff);
+    } else if (op == BooleanOp::Exclude) {
+        // Différence symétrique, de proche en proche : (A - B) et (B - A) sont disjoints, leur
+        // réunion est donc une simple concaténation.
+        result = objects.front()->paths;
+        for (std::size_t i = 1; i < objects.size(); ++i) {
+            auto onlyA = geometry::difference_polygons(result, objects[i]->paths);
+            auto onlyB = geometry::difference_polygons(objects[i]->paths, result);
+            if (!onlyA) {
+                return failure(onlyA.error().message);
+            }
+            if (!onlyB) {
+                return failure(onlyB.error().message);
+            }
+            result = std::move(*onlyA);
+            result.insert(result.end(), onlyB->begin(), onlyB->end());
+        }
     } else {
         result = objects.front()->paths;
         for (std::size_t i = 1; i < objects.size() && !result.empty(); ++i) {
@@ -192,9 +208,10 @@ VectorOpResult make_boolean_command(document::Project& project, BooleanOp op,
     }
     sort_pieces(result);
 
-    const char* label = op == BooleanOp::Union      ? "Unir les formes"
-                        : op == BooleanOp::Subtract ? "Soustraire des formes"
-                                                    : "Intersecter les formes";
+    const char* label = op == BooleanOp::Union       ? "Unir les formes"
+                        : op == BooleanOp::Subtract  ? "Soustraire des formes"
+                        : op == BooleanOp::Intersect ? "Intersecter les formes"
+                                                     : "Exclure les formes";
     auto group = std::make_unique<CompositeCommand>(label);
     group->add(std::make_unique<SetVectorPathsCommand>(kept->id, std::move(result), label));
     for (const auto* object : objects) {
@@ -277,6 +294,44 @@ PasteResult make_paste_command(document::Project& project, const document::Objec
             group->add(std::make_unique<TranslateVectorObjectCommand>(id, delta));
         }
     }
+    out.command = std::move(group);
+    return out;
+}
+
+VectorOpResult make_remove_holes_command(const document::Project& project,
+                                         const std::vector<ObjectId>& ids, double max_area_um2) {
+    auto group = std::make_unique<CompositeCommand>("Supprimer les trous");
+    std::size_t removed = 0;
+    for (const auto& object : project.vector_objects) {
+        if (std::find(ids.begin(), ids.end(), object.id) == ids.end()) {
+            continue;
+        }
+        std::vector<PathSet> paths = object.paths;
+        std::size_t here = 0;
+        for (PathSet& set : paths) {
+            const std::size_t before = set.holes.size();
+            std::erase_if(set.holes, [&](const geometry::Path& hole) {
+                if (max_area_um2 <= 0.0) {
+                    return true;
+                }
+                PathSet alone;
+                alone.outer = hole;
+                return geometry::path_set_area_um2(alone) <= max_area_um2;
+            });
+            here += before - set.holes.size();
+        }
+        if (here > 0) {
+            removed += here;
+            group->add(std::make_unique<SetVectorPathsCommand>(object.id, std::move(paths),
+                                                               "Supprimer les trous"));
+        }
+    }
+    if (removed == 0) {
+        return failure(max_area_um2 > 0.0 ? "Aucun trou sous ce seuil dans la sélection."
+                                          : "Les formes sélectionnées n'ont aucun trou.");
+    }
+    VectorOpResult out;
+    out.resulting_objects = removed;
     out.command = std::move(group);
     return out;
 }

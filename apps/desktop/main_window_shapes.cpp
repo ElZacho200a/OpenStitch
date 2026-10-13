@@ -3,6 +3,7 @@
 // (découpe le long d'une ligne). Aucune géométrie ici : tout est calculé par
 // commands/vector_ops.hpp (Clipper2 dans libs/geometry) et appliqué en UN pas d'annulation.
 #include <QAction>
+#include <QInputDialog>
 #include <QMenu>
 #include <QMenuBar>
 #include <QStatusBar>
@@ -56,6 +57,10 @@ void MainWindow::buildShapeMenu() {
         QKeySequence(Qt::CTRL | Qt::ALT | Qt::Key_I),
         tr("Ne garde que la partie commune à toutes les formes sélectionnées."),
         [this] { runBooleanOp(commands::BooleanOp::Intersect); });
+    add(excludeAct_, tr("E&xclure"), QStringLiteral("action_shapeExclude"),
+        QKeySequence(Qt::CTRL | Qt::ALT | Qt::Key_X),
+        tr("Ne garde que les parties qui n'appartiennent qu'à une seule des formes sélectionnées."),
+        [this] { runBooleanOp(commands::BooleanOp::Exclude); });
     add(blendZonesAct_, tr("&Fondre deux zones"), QStringLiteral("action_shapeBlendZones"),
         QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_F),
         tr("Unit deux zones voisines de couleurs différentes en une seule : la première "
@@ -67,6 +72,20 @@ void MainWindow::buildShapeMenu() {
         QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_B),
         tr("Transforme chaque morceau disjoint de la forme en un objet distinct."),
         [this] { breakApartSelected(); });
+    add(removeHolesAct_, tr("Supprimer les &trous"), QStringLiteral("action_shapeRemoveHoles"),
+        QKeySequence(), tr("Retire tous les trous des formes sélectionnées."),
+        [this] { removeHolesOfSelection(0.0); });
+    add(fillSmallHolesAct_, tr("Combler les &petits trous…"),
+        QStringLiteral("action_shapeFillSmallHoles"), QKeySequence(),
+        tr("Retire seulement les trous plus petits qu'une aire donnée."), [this] {
+            bool ok = false;
+            const double mm2 = QInputDialog::getDouble(
+                this, tr("Combler les petits trous"),
+                tr("Aire maximale d'un trou à combler (mm²) :"), 4.0, 0.1, 10'000.0, 1, &ok);
+            if (ok) {
+                removeHolesOfSelection(mm2);
+            }
+        });
     shapeMenu_->addSeparator();
     if (toolCutAct_ != nullptr) {
         shapeMenu_->addAction(toolCutAct_);
@@ -79,6 +98,18 @@ void MainWindow::updateShapeActions() {
     setShapeActionEnabled(unionAct_, count >= 2, needTwo);
     setShapeActionEnabled(subtractAct_, count >= 2, needTwo);
     setShapeActionEnabled(intersectAct_, count >= 2, needTwo);
+    setShapeActionEnabled(excludeAct_, count >= 2, needTwo);
+    bool anyHole = false;
+    for (const ObjectId id : selectedObjectIds()) {
+        if (const auto* object = project_.findObject(id)) {
+            for (const auto& set : object->paths) {
+                anyHole = anyHole || !set.holes.empty();
+            }
+        }
+    }
+    const QString needHole = tr("Sélectionnez une forme qui a au moins un trou.");
+    setShapeActionEnabled(removeHolesAct_, anyHole, needHole);
+    setShapeActionEnabled(fillSmallHolesAct_, anyHole, needHole);
     setShapeActionEnabled(blendZonesAct_, count == 2,
                           tr("Sélectionnez exactement deux zones remplies (Maj + clic)."));
     bool splittable = false;
@@ -120,13 +151,23 @@ void MainWindow::applyShapeCommand(commands::VectorOpResult result, const QStrin
 
 void MainWindow::runBooleanOp(commands::BooleanOp op) {
     const std::vector<ObjectId> ids = selectedObjectIds();
-    const QString label = op == commands::BooleanOp::Union      ? tr("Formes unies.")
-                          : op == commands::BooleanOp::Subtract ? tr("Formes soustraites.")
-                                                                : tr("Formes intersectées.");
+    const QString label = op == commands::BooleanOp::Union       ? tr("Formes unies.")
+                          : op == commands::BooleanOp::Subtract  ? tr("Formes soustraites.")
+                          : op == commands::BooleanOp::Intersect ? tr("Formes intersectées.")
+                                                                 : tr("Formes exclues.");
     // Le principal (dernier sélectionné) d'abord : c'est lui qui est retenu s'il survit.
     std::vector<ObjectId> keep(ids.rbegin(), ids.rend());
     applyShapeCommand(commands::make_boolean_command(project_, op, ids),
                       label + tr(" Ctrl+Z pour annuler."), keep);
+}
+
+void MainWindow::removeHolesOfSelection(double maxAreaMm2) {
+    const std::vector<ObjectId> ids = selectedObjectIds();
+    auto result = commands::make_remove_holes_command(project_, ids, maxAreaMm2 * 1e6);
+    const std::size_t removed = result.resulting_objects;
+    applyShapeCommand(std::move(result),
+                      tr("%1 trou(s) supprimé(s). Ctrl+Z pour annuler.").arg(removed),
+                      std::vector<ObjectId>(ids.rbegin(), ids.rend()));
 }
 
 void MainWindow::breakApartSelected() {
