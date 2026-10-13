@@ -5198,7 +5198,7 @@ void MainWindow::offsetVectorObjectCore(ObjectId id, Micrometers delta) {
     // inset_path_set) travaille sur des polygones bruts, sans notion de
     // tangente -- même raison qu'à l'export DXF (geometry::flatten est la
     // même fonction, même tolérance).
-    constexpr Micrometers kFlattenTolerance{50};
+    static constexpr Micrometers kFlattenTolerance{50};
     const auto flattenToPath = [](const geometry::Path& path) {
         const geometry::Polyline flat = geometry::flatten(path, kFlattenTolerance);
         geometry::Path out;
