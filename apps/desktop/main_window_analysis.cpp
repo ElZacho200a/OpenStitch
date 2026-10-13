@@ -180,9 +180,11 @@ void MainWindow::runAnalysisInternal(bool explicitRequest) {
     }
     stitch_analysis::AnalysisOptions opts;
     const document::Canvas& canvas = project_.canvas; // cadre défini par l'utilisateur
-    opts.hoop = stitch::BoundsUm{
-        Vec2um{Micrometers{-canvas.width.value / 2}, Micrometers{-canvas.height.value / 2}},
-        Vec2um{Micrometers{canvas.width.value / 2}, Micrometers{canvas.height.value / 2}}};
+    // Zone BRODABLE : le cadre moins la marge de sécurité.
+    opts.hoop = stitch::BoundsUm{Vec2um{Micrometers{-canvas.usable_width().value / 2},
+                                        Micrometers{-canvas.usable_height().value / 2}},
+                                 Vec2um{Micrometers{canvas.usable_width().value / 2},
+                                        Micrometers{canvas.usable_height().value / 2}}};
     auto report = stitch_analysis::analyze_detailed(*sequence_, opts);
     // Règles du lettrage (texte trop petit, trait trop fin) : elles lisent l'intention du texte.
     for (auto& finding : stitch_analysis::analyze_text_objects(project_)) {

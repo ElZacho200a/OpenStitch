@@ -211,14 +211,21 @@ void MainWindow::vectorizeSelectedRegion() {
     QStringList failures;
     {
         WorkIndicator busy(this, tr("Vectorisation en cours…"));
+        // Toutes les régions en parallèle (lib) ; les identifiants sont attribués ensuite, dans
+        // l'ordre des régions : même résultat qu'une boucle séquentielle.
+        std::vector<RegionId> present;
         for (const RegionId id : todo) {
-            const auto* region = project_.segmentation->find(id);
-            if (region == nullptr) {
-                continue;
+            if (project_.segmentation->find(id) != nullptr) {
+                present.push_back(id);
             }
-            auto sets = vectorization::vectorize_region(
-                *project_.segmentation, id,
-                {.mm_per_px = project_.mm_per_px, .simplify_tolerance = simplifyTolerance});
+        }
+        auto vectorized = vectorization::vectorize_regions(
+            *project_.segmentation, present,
+            {.mm_per_px = project_.mm_per_px, .simplify_tolerance = simplifyTolerance});
+        for (std::size_t i = 0; i < present.size(); ++i) {
+            const RegionId id = present[i];
+            const auto* region = project_.segmentation->find(id);
+            auto& sets = vectorized[i];
             if (!sets) {
                 failures << tr("Région %1 : %2")
                                 .arg(id.value)

@@ -60,6 +60,16 @@ Contrôles que la CI fera de toute façon :
 
 - **Format** (Bash) : `git ls-files '*.cpp' '*.hpp' | xargs clang-format --dry-run --Werror`
   — corriger avec `clang-format -i <fichiers modifiés>` uniquement, jamais tout le dépôt.
+
+  **Piège : la version de clang-format.** La CI installe celui d'Ubuntu (**18**).
+  Sur cette machine, `clang-format` n'est pas dans le PATH Bash ; celui de
+  `C:\Program Files\LLVM\bin` est en **23** et formate différemment (il a
+  réaligné un commentaire existant et fait échouer le job `format` de la PR #25).
+  Utiliser la 18.1.8 installée via pip :
+  `%APPDATA%\Python\Python314\Scripts\clang-format.exe` (vérifier
+  `--version` = 18.x ; sinon `python -m pip install clang-format==18.1.8`).
+  Avant de pousser, contrôler tout le dépôt avec cette version, fichier par fichier :
+  `for f in $(git ls-files '*.cpp' '*.hpp'); do <clang-format18> --dry-run --Werror $f; done`.
 - **Garde `effective_sequence`** : le test CTest `check_no_raw_sequence_bypass`
   échoue si un nouvel appel à `generate_sequence` apparaît hors de
   `libs/stitch_generation/` sans annotation `raw-sequence-ok: <raison>`.

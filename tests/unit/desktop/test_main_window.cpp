@@ -32,6 +32,8 @@
 #include <QTemporaryDir>
 #include <QTest>
 #include <QTimer>
+#include <QToolBar>
+#include <QToolButton>
 #include <QTreeWidget>
 
 #include <algorithm>
@@ -616,6 +618,26 @@ private slots:
     void regionRectangleSelectionHonoursWindowAndCrossing();
     void documentListMultiSelectionDrivesRegionSelection();
     void shapeUnionActionIsOneUndoStep();
+    void blendZonesActionMakesBaseAndGradedTopInOneUndoStep();
+    void displayFiltersApplyToVectorShapes();
+    void hoopMarginReachesTheCanvasView();
+    void sidebarToolButtonsActivateTheirTool();
+    void sidebarDrawRectangleRealGesture();
+    void sidebarDrawEllipseRealGesture();
+    void sidebarDrawRegularPolygonRealGesture();
+    void sidebarDrawPolygonRealGesture();
+    void sidebarDrawBezierRealGesture();
+    void sidebarDrawFreeformRealGesture();
+    void sidebarSatinColumnRealGesture();
+    void sidebarKnifeRealGesture();
+    void sidebarPanRealGesture();
+    void sidebarSelectRealGesture();
+    void sidebarCropRealGesture();
+    void sidebarKnifeEnabledAfterDrawingAShape();
+    void sidebarKnifeCutsAShapeJustDrawn();
+    void sidebarPanMovesAZoomedView();
+    void sidebarToolsAreGreyedWithAReasonWhenUseless();
+    void sidebarPanWorksAtDefaultZoom();
     void groupedStitchTypeCoversEverySelectedShapeInOneStep();
     void groupInspectorEditsOneFieldOnEveryObjectInOneStep();
     void groupGuideAngleIsPlacedOnEveryAutoSatin();
@@ -6600,6 +6622,448 @@ void MainWindowTest::shapeUnionActionIsOneUndoStep() {
 
     window.undo();
     QCOMPARE(window.project_.vector_objects.size(), std::size_t{2});
+}
+
+void MainWindowTest::blendZonesActionMakesBaseAndGradedTopInOneUndoStep() {
+    MainWindow window;
+    window.applyLoadedProject(twoOverlappingRectangles());
+    const ObjectId a = window.project_.vector_objects[0].id;
+    const ObjectId b = window.project_.vector_objects[1].id;
+    window.setSelection({.region = std::nullopt, .embroidery = std::nullopt, .objects = {a, b}});
+    window.setStitchTypeForSelection(1); // un tatami chacune
+    QCOMPARE(window.project_.embroidery_objects.size(), std::size_t{2});
+
+    QAction* blend = window.findChild<QAction*>(QStringLiteral("action_shapeBlendZones"));
+    QVERIFY(blend != nullptr);
+    window.updateActions();
+    QVERIFY(blend->isEnabled());
+    blend->trigger();
+
+    // Une seule forme (A absorbe B), le fond tatami de A, puis le dessus directionnel gradué.
+    QCOMPARE(window.project_.vector_objects.size(), std::size_t{1});
+    QCOMPARE(window.project_.vector_objects[0].id, a);
+    QCOMPARE(window.project_.embroidery_objects.size(), std::size_t{2});
+    const auto& base = window.project_.embroidery_objects[0];
+    const auto& top = window.project_.embroidery_objects[1];
+    QVERIFY(base.is_tatami());
+    QCOMPARE(base.source_vector, a);
+    QVERIFY(top.is_directional());
+    QCOMPARE(top.source_vector, a);
+    const auto& params = std::get<openstitch::document::DirectionalFillParams>(top.params);
+    QVERIFY(params.density_gradient.has_value());
+    QVERIFY(params.density_gradient->spacing_from.value >
+            params.density_gradient->spacing_to.value);
+    // Lignes perpendiculaires à l'axe horizontal A -> B : un guide vertical.
+    QCOMPARE(params.guides.size(), std::size_t{1});
+    QCOMPARE(params.guides[0].nodes.front().pos.x, params.guides[0].nodes.back().pos.x);
+    QVERIFY(window.checkSelectionInvariants());
+
+    window.undo();
+    QCOMPARE(window.project_.vector_objects.size(), std::size_t{2});
+    QCOMPARE(window.project_.embroidery_objects.size(), std::size_t{2});
+    QVERIFY(window.project_.embroidery_objects[1].is_tatami());
+}
+
+void MainWindowTest::displayFiltersApplyToVectorShapes() {
+    MainWindow window;
+    window.applyLoadedProject(twoOverlappingRectangles());
+    const ObjectId a = window.project_.vector_objects[0].id;
+    window.setSelection({.region = std::nullopt, .embroidery = std::nullopt, .objects = {a}});
+    window.setStitchTypeForSelection(1); // seule la forme A reçoit un tatami
+    const auto& withFill = window.project_.vector_objects[0];
+    const auto& bare = window.project_.vector_objects[1];
+
+    QVERIFY(window.vectorPassesFilter(withFill));
+    QVERIFY(window.vectorPassesFilter(bare));
+
+    // Type : masquer les remplissages cache la forme cousue, pas la forme sans couture.
+    window.showType_[1] = false;
+    QVERIFY(!window.vectorPassesFilter(withFill));
+    QVERIFY(window.vectorPassesFilter(bare));
+    window.showType_[1] = true;
+
+    // Couleur : masquer la couleur du fil cache la forme.
+    const auto& emb = window.project_.embroidery_objects[0];
+    window.hiddenColors_.insert((static_cast<std::uint32_t>(emb.rgb[0]) << 16) |
+                                (static_cast<std::uint32_t>(emb.rgb[1]) << 8) |
+                                static_cast<std::uint32_t>(emb.rgb[2]));
+    QVERIFY(!window.vectorPassesFilter(withFill));
+    window.hiddenColors_.clear();
+
+    // Taille : les rectangles font 10 x 10 mm = 100 mm2.
+    window.minAreaMm2_ = 50.0;
+    QVERIFY(window.vectorPassesFilter(withFill));
+    window.minAreaMm2_ = 150.0;
+    QVERIFY(!window.vectorPassesFilter(withFill));
+    QVERIFY(!window.vectorPassesFilter(bare));
+}
+
+void MainWindowTest::hoopMarginReachesTheCanvasView() {
+    MainWindow window;
+    auto* view = window.findChild<CanvasView*>();
+    QVERIFY(view != nullptr);
+    QCOMPARE(view->usableMarginMm(), 0.0);
+    window.project_.canvas.margin = Micrometers{5'000};
+    window.applyCanvasToView();
+    QCOMPARE(view->usableMarginMm(), 5.0);
+    // Un projet chargé sans marge la remet à zéro.
+    window.applyLoadedProject(openstitch::document::Project{});
+    QCOMPARE(view->usableMarginMm(), 0.0);
+}
+
+// --- Audit de la barre latérale d'outils : vrais clics sur les boutons, vrais gestes souris ---
+namespace {
+
+// Gestes réels sur le viewport, en mm (repère scène : Y vers le bas).
+QPoint canvasPoint(CanvasView* view, QPointF mm) {
+    return view->mapFromScene(mm);
+}
+
+void dragOnCanvas(CanvasView* view, QPointF fromMm, QPointF toMm) {
+    const QPoint a = canvasPoint(view, fromMm);
+    const QPoint b = canvasPoint(view, toMm);
+    QTest::mousePress(view->viewport(), Qt::LeftButton, Qt::NoModifier, a);
+    for (int i = 1; i <= 5; ++i) {
+        QTest::mouseMove(view->viewport(), a + (b - a) * i / 5);
+    }
+    QTest::mouseRelease(view->viewport(), Qt::LeftButton, Qt::NoModifier, b);
+}
+
+void clickOnCanvas(CanvasView* view, QPointF mm) {
+    QTest::mouseClick(view->viewport(), Qt::LeftButton, Qt::NoModifier, canvasPoint(view, mm));
+}
+
+void doubleClickOnCanvas(CanvasView* view, QPointF mm) {
+    QTest::mouseDClick(view->viewport(), Qt::LeftButton, Qt::NoModifier, canvasPoint(view, mm));
+}
+
+// Projet « d'usage réel » : une image chargée (donc un fond sous les formes), cadre par défaut.
+openstitch::document::Project imageProject() {
+    openstitch::document::Project project;
+    project.original.width = 200;
+    project.original.height = 200;
+    project.original.rgba.assign(static_cast<std::size_t>(200) * 200 * 4, 255);
+    return project;
+}
+
+} // namespace
+
+void MainWindowTest::sidebarToolButtonsActivateTheirTool() {
+    MainWindow window;
+    window.resize(1200, 800);
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+    auto project = twoOverlappingRectangles(); // image + formes : tous les outils disponibles
+    window.applyLoadedProject(project);
+    QCoreApplication::processEvents();
+    const std::pair<QAction*, Tool> tools[] = {
+        {window.toolSelectAct_, Tool::Select},
+        {window.toolPanAct_, Tool::Pan},
+        {window.toolRectAct_, Tool::Rect},
+        {window.toolDrawRectAct_, Tool::DrawRectangle},
+        {window.toolDrawEllipseAct_, Tool::DrawEllipse},
+        {window.toolDrawPolygonAct_, Tool::DrawPolygon},
+        {window.toolDrawPolygonRegularAct_, Tool::DrawPolygonRegular},
+        {window.toolDrawBezierAct_, Tool::DrawBezier},
+        {window.toolDrawFreeformAct_, Tool::DrawFreeform},
+        {window.toolDrawSatinColumnAct_, Tool::DrawSatinColumn},
+        {window.toolCutAct_, Tool::Cut},
+    };
+    for (const auto& [action, tool] : tools) {
+        QVERIFY(action != nullptr);
+        auto* button = qobject_cast<QToolButton*>(window.toolPalette_->widgetForAction(action));
+        QVERIFY2(button != nullptr, qPrintable(action->text()));
+        QVERIFY2(button->isVisible(), qPrintable(action->text() + " : bouton invisible"));
+        QVERIFY2(button->isEnabled(), qPrintable(action->text() + " : bouton grise"));
+        button->click();
+        QVERIFY2(window.currentTool_ == tool, qPrintable(action->text() + " : outil non active"));
+        QVERIFY2(action->isChecked(), qPrintable(action->text()));
+    }
+}
+
+void MainWindowTest::sidebarDrawRectangleRealGesture() {
+    MainWindow window;
+    window.resize(1200, 800);
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+    window.applyLoadedProject(imageProject());
+    auto* view = window.findChild<CanvasView*>();
+    QToolButton* button =
+        qobject_cast<QToolButton*>(window.toolPalette_->widgetForAction(window.toolDrawRectAct_));
+    QVERIFY(button != nullptr);
+    button->click();
+    QCoreApplication::processEvents();
+    dragOnCanvas(view, QPointF(-20.0, -20.0), QPointF(20.0, 20.0));
+    QCoreApplication::processEvents();
+    QCOMPARE(window.project_.vector_objects.size(), std::size_t{1});
+}
+
+void MainWindowTest::sidebarDrawEllipseRealGesture() {
+    MainWindow window;
+    window.resize(1200, 800);
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+    window.applyLoadedProject(imageProject());
+    auto* view = window.findChild<CanvasView*>();
+    qobject_cast<QToolButton*>(window.toolPalette_->widgetForAction(window.toolDrawEllipseAct_))
+        ->click();
+    QCoreApplication::processEvents();
+    dragOnCanvas(view, QPointF(-20.0, -20.0), QPointF(20.0, 20.0));
+    QCoreApplication::processEvents();
+    QCOMPARE(window.project_.vector_objects.size(), std::size_t{1});
+}
+
+void MainWindowTest::sidebarDrawRegularPolygonRealGesture() {
+    MainWindow window;
+    window.resize(1200, 800);
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+    window.applyLoadedProject(imageProject());
+    auto* view = window.findChild<CanvasView*>();
+    qobject_cast<QToolButton*>(
+        window.toolPalette_->widgetForAction(window.toolDrawPolygonRegularAct_))
+        ->click();
+    QCoreApplication::processEvents();
+    dragOnCanvas(view, QPointF(-20.0, -20.0), QPointF(20.0, 20.0));
+    QCoreApplication::processEvents();
+    QCOMPARE(window.project_.vector_objects.size(), std::size_t{1});
+}
+
+void MainWindowTest::sidebarDrawPolygonRealGesture() {
+    MainWindow window;
+    window.resize(1200, 800);
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+    window.applyLoadedProject(imageProject());
+    auto* view = window.findChild<CanvasView*>();
+    qobject_cast<QToolButton*>(window.toolPalette_->widgetForAction(window.toolDrawPolygonAct_))
+        ->click();
+    QCoreApplication::processEvents();
+    clickOnCanvas(view, QPointF(-20.0, 20.0));
+    clickOnCanvas(view, QPointF(20.0, 20.0));
+    clickOnCanvas(view, QPointF(0.0, -20.0));
+    doubleClickOnCanvas(view, QPointF(0.0, -20.0));
+    QCoreApplication::processEvents();
+    QCOMPARE(window.project_.vector_objects.size(), std::size_t{1});
+}
+
+void MainWindowTest::sidebarDrawBezierRealGesture() {
+    MainWindow window;
+    window.resize(1200, 800);
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+    window.applyLoadedProject(imageProject());
+    auto* view = window.findChild<CanvasView*>();
+    qobject_cast<QToolButton*>(window.toolPalette_->widgetForAction(window.toolDrawBezierAct_))
+        ->click();
+    QCoreApplication::processEvents();
+    clickOnCanvas(view, QPointF(-20.0, 20.0));
+    clickOnCanvas(view, QPointF(20.0, 20.0));
+    clickOnCanvas(view, QPointF(0.0, -20.0));
+    doubleClickOnCanvas(view, QPointF(0.0, -20.0));
+    QCoreApplication::processEvents();
+    QCOMPARE(window.project_.vector_objects.size(), std::size_t{1});
+}
+
+void MainWindowTest::sidebarDrawFreeformRealGesture() {
+    MainWindow window;
+    window.resize(1200, 800);
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+    window.applyLoadedProject(imageProject());
+    auto* view = window.findChild<CanvasView*>();
+    qobject_cast<QToolButton*>(window.toolPalette_->widgetForAction(window.toolDrawFreeformAct_))
+        ->click();
+    QCoreApplication::processEvents();
+    const QPointF pts[] = {{-20, 20}, {20, 20}, {20, -20}, {-20, -20}, {-20, 18}};
+    const QPoint first = canvasPoint(view, pts[0]);
+    QTest::mousePress(view->viewport(), Qt::LeftButton, Qt::NoModifier, first);
+    for (std::size_t i = 1; i < std::size(pts); ++i) {
+        QTest::mouseMove(view->viewport(), canvasPoint(view, pts[i]));
+    }
+    QTest::mouseRelease(view->viewport(), Qt::LeftButton, Qt::NoModifier,
+                        canvasPoint(view, pts[std::size(pts) - 1]));
+    QCoreApplication::processEvents();
+    QCOMPARE(window.project_.vector_objects.size(), std::size_t{1});
+}
+
+void MainWindowTest::sidebarSatinColumnRealGesture() {
+    MainWindow window;
+    window.resize(1200, 800);
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+    window.applyLoadedProject(imageProject());
+    auto* view = window.findChild<CanvasView*>();
+    qobject_cast<QToolButton*>(window.toolPalette_->widgetForAction(window.toolDrawSatinColumnAct_))
+        ->click();
+    QCoreApplication::processEvents();
+    clickOnCanvas(view, QPointF(-20.0, -5.0));
+    clickOnCanvas(view, QPointF(-20.0, 5.0));
+    clickOnCanvas(view, QPointF(20.0, -5.0));
+    clickOnCanvas(view, QPointF(20.0, 5.0));
+    doubleClickOnCanvas(view, QPointF(20.0, 5.0));
+    QCoreApplication::processEvents();
+    QVERIFY(!window.project_.embroidery_objects.empty());
+}
+
+void MainWindowTest::sidebarKnifeRealGesture() {
+    MainWindow window;
+    window.resize(1200, 800);
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+    window.applyLoadedProject(twoOverlappingRectangles());
+    auto* view = window.findChild<CanvasView*>();
+    // Une seule forme sélectionnée : seule elle est coupée.
+    const ObjectId a = window.project_.vector_objects[0].id;
+    window.setSelection({.region = std::nullopt, .embroidery = std::nullopt, .objects = {a}});
+    qobject_cast<QToolButton*>(window.toolPalette_->widgetForAction(window.toolCutAct_))->click();
+    QCoreApplication::processEvents();
+    dragOnCanvas(view, QPointF(5.0, 2.0), QPointF(5.0, -12.0));
+    QCoreApplication::processEvents();
+    QVERIFY(window.project_.vector_objects.size() > 2);
+}
+
+void MainWindowTest::sidebarPanRealGesture() {
+    MainWindow window;
+    window.resize(1200, 800);
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+    window.applyLoadedProject(imageProject());
+    auto* view = window.findChild<CanvasView*>();
+    qobject_cast<QToolButton*>(window.toolPalette_->widgetForAction(window.toolPanAct_))->click();
+    QCoreApplication::processEvents();
+    const QPointF before = view->mapToScene(view->viewport()->rect().center());
+    dragOnCanvas(view, QPointF(0.0, 0.0), QPointF(-30.0, 10.0));
+    QCoreApplication::processEvents();
+    const QPointF after = view->mapToScene(view->viewport()->rect().center());
+    QVERIFY2(before != after, "la vue n'a pas bouge");
+}
+
+void MainWindowTest::sidebarSelectRealGesture() {
+    MainWindow window;
+    window.resize(1200, 800);
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+    window.applyLoadedProject(twoOverlappingRectangles());
+    auto* view = window.findChild<CanvasView*>();
+    window.showVectorsAct_->setChecked(true);
+    QCoreApplication::processEvents();
+    qobject_cast<QToolButton*>(window.toolPalette_->widgetForAction(window.toolSelectAct_))
+        ->click();
+    window.refreshImage();
+    QCoreApplication::processEvents();
+    // Centre de la première forme (0..10 mm en x, 0..10 mm en y modèle => scène y -10..0).
+    clickOnCanvas(view, QPointF(2.0, -5.0));
+    QCoreApplication::processEvents();
+    QVERIFY2(!window.selectedObjectIds().empty(), "le clic n'a rien selectionne");
+}
+
+void MainWindowTest::sidebarCropRealGesture() {
+    MainWindow window;
+    window.resize(1200, 800);
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+    window.applyLoadedProject(imageProject());
+    auto* view = window.findChild<CanvasView*>();
+    const int widthBefore = window.project_.original.width;
+    qobject_cast<QToolButton*>(window.toolPalette_->widgetForAction(window.toolRectAct_))->click();
+    QCoreApplication::processEvents();
+    dragOnCanvas(view, QPointF(-20.0, -20.0), QPointF(20.0, 20.0));
+    QCoreApplication::processEvents();
+    QVERIFY2(!window.project_.ops.empty() || window.processed_.width != widthBefore,
+             "le recadrage n'a produit aucune operation");
+}
+
+void MainWindowTest::sidebarKnifeEnabledAfterDrawingAShape() {
+    MainWindow window;
+    window.resize(1200, 800);
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+    window.applyLoadedProject(imageProject());
+    auto* view = window.findChild<CanvasView*>();
+    auto* knife =
+        qobject_cast<QToolButton*>(window.toolPalette_->widgetForAction(window.toolCutAct_));
+    QVERIFY(knife != nullptr);
+    qobject_cast<QToolButton*>(window.toolPalette_->widgetForAction(window.toolDrawRectAct_))
+        ->click();
+    dragOnCanvas(view, QPointF(-20.0, -20.0), QPointF(20.0, 20.0));
+    QCoreApplication::processEvents();
+    QCOMPARE(window.project_.vector_objects.size(), std::size_t{1});
+    QVERIFY2(knife->isEnabled(), "le couteau reste grise apres avoir dessine une forme");
+}
+
+void MainWindowTest::sidebarKnifeCutsAShapeJustDrawn() {
+    MainWindow window;
+    window.resize(1200, 800);
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+    window.applyLoadedProject(imageProject());
+    auto* view = window.findChild<CanvasView*>();
+    qobject_cast<QToolButton*>(window.toolPalette_->widgetForAction(window.toolDrawRectAct_))
+        ->click();
+    dragOnCanvas(view, QPointF(-20.0, -20.0), QPointF(20.0, 20.0));
+    QCoreApplication::processEvents();
+    // Cas d'usage : la forme dessinée est sélectionnée ; on passe au couteau par le bouton.
+    qobject_cast<QToolButton*>(window.toolPalette_->widgetForAction(window.toolCutAct_))->click();
+    QCoreApplication::processEvents();
+    QCOMPARE(window.currentTool_, Tool::Cut);
+    dragOnCanvas(view, QPointF(0.0, -30.0), QPointF(0.0, 30.0));
+    QCoreApplication::processEvents();
+    QCOMPARE(window.project_.vector_objects.size(), std::size_t{2});
+}
+
+void MainWindowTest::sidebarPanMovesAZoomedView() {
+    MainWindow window;
+    window.resize(1200, 800);
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+    window.applyLoadedProject(imageProject());
+    auto* view = window.findChild<CanvasView*>();
+    view->scale(4.0, 4.0);
+    QCoreApplication::processEvents();
+    qobject_cast<QToolButton*>(window.toolPalette_->widgetForAction(window.toolPanAct_))->click();
+    const QPointF before = view->mapToScene(view->viewport()->rect().center());
+    QTest::mousePress(view->viewport(), Qt::LeftButton, Qt::NoModifier, QPoint(300, 300));
+    for (int i = 1; i <= 5; ++i) {
+        QTest::mouseMove(view->viewport(), QPoint(300 - 10 * i, 300 + 4 * i));
+    }
+    QTest::mouseRelease(view->viewport(), Qt::LeftButton, Qt::NoModifier, QPoint(250, 320));
+    QCoreApplication::processEvents();
+    const QPointF after = view->mapToScene(view->viewport()->rect().center());
+    QVERIFY2(before != after, "le panoramique ne deplace pas une vue zoomee");
+}
+
+void MainWindowTest::sidebarToolsAreGreyedWithAReasonWhenUseless() {
+    MainWindow window; // projet vide : ni image ni forme
+    window.resize(1200, 800);
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+    window.updateActions();
+    // Recadrer exige une image ; le couteau exige une forme ; les outils de dessin restent libres.
+    QVERIFY(!window.toolRectAct_->isEnabled());
+    QVERIFY(!window.toolRectAct_->toolTip().isEmpty());
+    QVERIFY(!window.toolCutAct_->isEnabled());
+    QVERIFY(window.toolDrawRectAct_->isEnabled());
+    QVERIFY(window.toolDrawPolygonAct_->isEnabled());
+    QVERIFY(window.toolSelectAct_->isEnabled());
+    QVERIFY(window.toolPanAct_->isEnabled());
+    window.applyLoadedProject(imageProject());
+    window.updateActions();
+    QVERIFY(window.toolRectAct_->isEnabled());
+}
+
+// Régression : avec le cadre par défaut (100 x 100 mm), le rectangle de scène n'était jamais
+// défini ; la vue n'avait aucune marge de défilement et l'outil Déplacer restait inerte.
+void MainWindowTest::sidebarPanWorksAtDefaultZoom() {
+    MainWindow window;
+    window.resize(1200, 800);
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+    window.applyLoadedProject(imageProject());
+    QCoreApplication::processEvents();
+    auto* view = window.findChild<CanvasView*>();
+    QVERIFY(view->horizontalScrollBar()->maximum() > view->horizontalScrollBar()->minimum());
+    QVERIFY(view->verticalScrollBar()->maximum() > view->verticalScrollBar()->minimum());
 }
 
 void MainWindowTest::knifeToolSplitsSelectedShape() {

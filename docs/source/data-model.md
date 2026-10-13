@@ -34,7 +34,7 @@ Fichier : `core/ids.hpp`.
 |---|---|---|
 | `original` | `image::Image` | image source intacte |
 | `mm_per_px` | `Millimeters` | résolution de travail |
-| `canvas` | `Canvas` | cadre de broderie (largeur/hauteur, défaut 100×100 mm) |
+| `canvas` | `Canvas` | cadre de broderie (largeur/hauteur, défaut 100×100 mm, marge de sécurité → zone brodable) |
 | `ops` | `vector<ImageOp>` | pile de prétraitements |
 | `segmentation` | `optional<Segmentation>` | carte de régions |
 | `vector_objects` | `vector<VectorObject>` | géométrie éditable |

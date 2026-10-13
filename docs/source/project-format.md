@@ -15,12 +15,16 @@ Un projet `.osp` est une **archive ZIP** (via minizip-ng) contenant :
 Le JSON et le binaire sont séparés pour ne pas alourdir le JSON (la carte des
 labels peut faire plusieurs mégaoctets).
 
+Compression (2026-10) : l'image PNG, déjà compressée, est stockée telle quelle dans le ZIP ; le JSON et les étiquettes sont en DEFLATE niveau rapide. Le fichier reste un ZIP standard, lisible par les versions précédentes.
+
 ## Contenu de `project.json`
 
 - `schemaVersion` (entier) et un objet `document` ;
 - `mmPerPx` (résolution de travail) et `objectIdLast` (compteur d'ids) ;
-- `canvas` : taille du cadre de broderie (`width`, `height` en µm). **Optionnel
-  et rétrocompatible** : un projet antérieur sans ce champ retombe sur 100×100 mm ;
+- `canvas` : taille du cadre de broderie (`width`, `height` en µm) et marge de
+  sécurité optionnelle (`margin`, µm, écrite seulement si > 0 : la zone brodable est le
+  cadre réduit de cette marge). **Optionnel et rétrocompatible** : un projet
+  antérieur sans ce champ retombe sur 100×100 mm, et sans `margin` sur une marge nulle ;
 - `ops` : la pile d'opérations d'image (chaque opération porte son `type`) ;
 - `segmentation` : dimensions et régions (id, rgb, nombre de pixels ; les labels
   sont dans `segmentation.u32`) ;

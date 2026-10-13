@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 #include "openstitch/project_io/project_io.hpp"
+#include "openstitch/core/parallel.hpp"
 
+#include <mutex>
 #include <nlohmann/json.hpp>
+#include <optional>
 
 #include <cstring>
 #include <exception>
@@ -48,24 +51,77 @@ std::vector<std::uint32_t> labels_from_bytes(const detail::Blob& bytes) {
 
 } // namespace
 
+namespace {
+
+// PNG de la dernière image enregistrée. L'image d'origine ne change presque jamais entre deux
+// enregistrements (sauvegarde automatique toutes les 2 min, Ctrl+S répétés), alors que son
+// encodage domine le temps d'écriture du projet. Clé EXACTE : dimensions + octets comparés un à
+// un (aucune empreinte, donc aucune collision possible). Une seule entrée, bornée à 64 Mio de
+// pixels : au-delà, pas de cache.
+Result<std::vector<std::uint8_t>> cached_png(const image::Image& image) {
+    constexpr std::size_t kMaxCachedBytes = 64U * 1024U * 1024U;
+    struct Cache {
+        std::mutex mutex;
+        int width{0};
+        int height{0};
+        std::vector<std::uint8_t> rgba;
+        std::vector<std::uint8_t> png;
+    };
+    static Cache cache;
+    if (image.rgba.size() > kMaxCachedBytes) {
+        return image::encode_png(image);
+    }
+    {
+        const std::lock_guard<std::mutex> lock(cache.mutex);
+        if (!cache.png.empty() && cache.width == image.width && cache.height == image.height &&
+            cache.rgba == image.rgba) {
+            return cache.png;
+        }
+    }
+    auto encoded = image::encode_png(image);
+    if (encoded) {
+        const std::lock_guard<std::mutex> lock(cache.mutex);
+        cache.width = image.width;
+        cache.height = image.height;
+        cache.rgba = image.rgba;
+        cache.png = *encoded;
+    }
+    return encoded;
+}
+
+} // namespace
+
 Result<void> save_project(const std::filesystem::path& path, const document::Project& project) {
-    nlohmann::json root;
-    root["schemaVersion"] = kSchemaVersion;
-    root["document"] = detail::project_to_json(project);
-    const std::string jsonText = root.dump(2);
+    // Les trois entrées (JSON, PNG de l'image, étiquettes) sont indépendantes et ne font que
+    // lire le projet : préparées en parallèle. L'encodage PNG domine sur une grande image.
+    std::string jsonText;
+    std::optional<Result<std::vector<std::uint8_t>>> png;
+    detail::Blob labels;
+    parallel_for(3, [&](std::size_t task) {
+        if (task == 0) {
+            nlohmann::json root;
+            root["schemaVersion"] = kSchemaVersion;
+            root["document"] = detail::project_to_json(project);
+            jsonText = root.dump(2);
+        } else if (task == 1) {
+            if (project.hasImage()) {
+                png = cached_png(project.original);
+            }
+        } else if (project.segmentation) {
+            labels = labels_to_bytes(project.segmentation->labels);
+        }
+    });
 
     std::map<std::string, detail::Blob> entries;
     entries.emplace(kJsonEntry, detail::Blob(jsonText.begin(), jsonText.end()));
-
-    if (project.hasImage()) {
-        auto png = image::encode_png(project.original);
-        if (!png) {
-            return std::unexpected(png.error());
+    if (png) {
+        if (!*png) {
+            return std::unexpected(png->error());
         }
-        entries.emplace(kImageEntry, std::move(*png));
+        entries.emplace(kImageEntry, std::move(**png));
     }
     if (project.segmentation) {
-        entries.emplace(kLabelsEntry, labels_to_bytes(project.segmentation->labels));
+        entries.emplace(kLabelsEntry, std::move(labels));
     }
 
     // Écriture atomique : fichier temporaire puis renommage.

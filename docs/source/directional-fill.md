@@ -281,9 +281,31 @@ devient le **fond** (il garde son rang, donc il est cousu avant ; son dégradé
 éventuel est retiré) et un **nouvel objet directionnel** de la seconde couleur,
 à densité variable et sans sous-couche, est ajouté par-dessus. Les fils viennent
 du nuancier sélectionné dans le panneau Fils ; sans nuancier, les couleurs
-analysées restent libres. Une seule annulation défait l'ensemble. Déterministe : aucune
+analysées restent libres. Une seule annulation défait l'ensemble. **Orientation des lignes** : l'écart entre lignes ne
+peut varier que perpendiculairement aux lignes ; le dessus hérite pourtant du
+guide du tatami (angle d'origine). Si les lignes courent le long de l'axe de
+couleur, le dégradé ne peut espacer presque rien et le fondu est écrasé (défaut
+trouvé 2026-10 : sur une rampe horizontale avec un guide horizontal, il restait
+plus de 80 % des lignes d'un remplissage uniforme). L'action remplace donc les
+guides du dessus par un guide droit perpendiculaire à l'axe
+(`stitch_generation::align_guides_across_density_gradient`, test
+`blend: rows are turned across the colour axis…`). Déterministe : aucune
 graine, itération dans l'ordre d'entrée. Limites : un seul plan (un dégradé
 linéaire par région, pas de courbe), deux couleurs maximum par région.
+
+### Fondre deux zones voisines
+
+**Forme ▸ Fondre deux zones** (Ctrl+Maj+F), avec exactement deux formes
+sélectionnées, chacune avec un remplissage (tatami ou directionnel) : les deux
+formes sont **unies** (comme *Unir* : la première sélectionnée, A, survit et
+garde son remplissage comme **fond**), et un remplissage directionnel de la
+couleur de B est ajouté **dessus**, sur toute la forme unie. Son dégradé de
+densité (`stitch_generation::density_gradient_between`) va du centre de A vers
+celui de B sur l'étendue des deux zones : écart large (4 mm) côté A, serré
+(0,4 mm) côté B ; les lignes sont perpendiculaires à cet axe. Contrairement au
+fondu à deux fils, les couleurs sont **celles des deux zones**, pas une analyse
+de l'image. Une seule annulation défait l'ensemble. Limite : rampe linéaire sur
+toute l'étendue (pas de zone de transition réglable).
 
 ## Interface
 

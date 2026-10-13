@@ -795,6 +795,28 @@ TEST_CASE("density_gradient_across spans the shape along the requested direction
     CHECK_FALSE(density_gradient_across({}, Angle{0.0}, Micrometers{400}, Micrometers{800}));
 }
 
+TEST_CASE("density_gradient_between runs from zone A to zone B over both zones") {
+    const std::vector<geometry::PathSet> a{rect_mm(0, 0, 10, 10)};
+    const std::vector<geometry::PathSet> b{rect_mm(10, 0, 30, 10)};
+    const auto g = density_gradient_between(a, b, Micrometers{4'000}, Micrometers{400});
+    REQUIRE(g.has_value());
+    // Axe horizontal (centres alignés), de l'extrémité de A à celle de B.
+    CHECK(g->from == um(0, 5));
+    CHECK(g->to == um(30, 5));
+    CHECK(g->spacing_from == Micrometers{4'000});
+    CHECK(g->spacing_to == Micrometers{400});
+
+    // Sens inversé : l'axe suit toujours A -> B.
+    const auto back = density_gradient_between(b, a, Micrometers{4'000}, Micrometers{400});
+    REQUIRE(back.has_value());
+    CHECK(back->from == um(30, 5));
+    CHECK(back->to == um(0, 5));
+
+    // Centres confondus ou zone vide : pas d'axe.
+    CHECK_FALSE(density_gradient_between(a, a, Micrometers{4'000}, Micrometers{400}));
+    CHECK_FALSE(density_gradient_between({}, b, Micrometers{4'000}, Micrometers{400}));
+}
+
 // --- Régularité de l'espacement ------------------------------------------------
 
 namespace {

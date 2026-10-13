@@ -126,6 +126,8 @@ demande. Dans le bureau, créer un satin ou passer un objet en satin ramène en 
 contour agrandi par une ancienne auto-numérisation à celui de sa région (un seul pas
 d'annulation).
 
+**Réglage dans l'interface (2026-10)** : la boîte *Numérisation automatique* (mode formes) propose « Chevauchement des remplissages » (0 à 1 mm, par pas de 0,05 mm, 0 par défaut) ; la valeur est mémorisée entre les sessions (`autoDigitize/fillOverlapUm`) et alimente `AutoOptions::fill_overlap`. Même réserve que ci-dessus : le débord fait partie de la forme vectorielle.
+
 Les remplissages de repli d'un satin incomplet ne sont pas concernés : ils
 recouvrent déjà leurs bandes satin (`kCoverageOverlap`).
 

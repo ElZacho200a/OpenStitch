@@ -26,12 +26,20 @@ Result<void> write_zip(const std::filesystem::path& path,
                     "Impossible d'écrire le fichier : " + path_utf8(path));
     }
 
+    // Niveau rapide : les étiquettes de segmentation (4 octets par pixel, très répétitives) et
+    // le JSON se compressent presque aussi bien qu'au niveau par défaut, en bien moins de temps
+    // (mesures dans docs/performance-audit.md). Le format reste du DEFLATE standard.
+    mz_zip_writer_set_compress_level(writer, MZ_COMPRESS_LEVEL_FAST);
     for (const auto& [name, blob] : entries) {
         mz_zip_file file_info;
         std::memset(&file_info, 0, sizeof(file_info));
         file_info.filename = name.c_str();
         file_info.flag = MZ_ZIP_FLAG_UTF8;
-        file_info.compression_method = MZ_COMPRESS_METHOD_DEFLATE;
+        // Un PNG est déjà compressé (DEFLATE) : le recompresser coûte du temps sans rien
+        // gagner en taille. Entrée simplement stockée ; tout lecteur ZIP la relit telle quelle.
+        const bool alreadyCompressed = name.size() >= 4 && name.ends_with(".png");
+        file_info.compression_method =
+            alreadyCompressed ? MZ_COMPRESS_METHOD_STORE : MZ_COMPRESS_METHOD_DEFLATE;
         file_info.zip64 = MZ_ZIP64_AUTO;
         if (mz_zip_writer_add_buffer(writer, const_cast<std::uint8_t*>(blob.data()),
                                      static_cast<std::int32_t>(blob.size()), &file_info) != MZ_OK) {

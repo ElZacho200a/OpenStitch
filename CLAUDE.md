@@ -93,6 +93,9 @@ watcher hangs on its `.venv-wsl/`).
 - `openstitch-cli-debug` — reproduce generation issues with `openstitch-cli`, regenerate goldens.
 - `openstitch-bugfix` — root-cause workflow (failing test first, rejected hypotheses documented).
 - `openstitch-commit` — pre-commit checks and commit message conventions.
+- `openstitch-performance` — measure with the bench, parallelise with `parallel_for`
+  (independent tasks, sequential assembly), keep heavy work off the UI thread, exact-key
+  caches; byte-identical output is the acceptance criterion.
 - `openstitch-roadmap` — **when driven without a precise instruction**
   ("continue", "next task", `/loop`…), pick the next item of
   `docs/roadmap-parite-hatch.md` (gap list vs Hatch Embroidery, P0→P3, delivery
@@ -155,9 +158,15 @@ and triggers recomputation; everything else (image ops, segmentation,
 generation, analysis, order, formats) lives in the libs — this is directly
 checkable since the CLI exercises the same modules without Qt.
 
-**No async task infrastructure exists yet** — heavy operations (segmentation,
-fills) run synchronously. Write new generation code as pure functions over
-immutable snapshots so it stays compatible with a future background-task move.
+**Parallelism is explicit and deterministic.** Independent work (per region, per
+object, per colour class, per image row) goes through `openstitch::parallel_for`
+(`libs/core/include/openstitch/core/parallel.hpp`, Qt-free): parallel tasks only
+read constant data and write their own slot; ids, document insertion and stitch
+order are assigned sequentially afterwards, so output never depends on the thread
+count (`OPENSTITCH_THREADS=1` forces sequential). In the desktop, long
+computations run off the UI thread through `BusyIndicator::run`; there is no
+general task queue. Write generation code as pure functions over immutable
+snapshots. See the `openstitch-performance` skill and `docs/performance-audit.md`.
 
 ## Testing conventions
 

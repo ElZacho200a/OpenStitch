@@ -385,6 +385,9 @@ vectorisation*). Une erreur de configuration s'affiche en rouge avec **Ouvrir le
 Opérations sur les formes vectorielles, façon « Pathfinder » : chacune est **un seul pas
 d'annulation** et garde les objets de broderie de la forme conservée.
 
+- **Fondre deux zones** (Ctrl+Maj+F) — unit deux formes remplies de couleurs différentes
+  et crée un dégradé de fils entre elles (voir *Remplissage directionnel*, « Fondre deux
+  zones voisines ») ;
 - **Unir** (Ctrl+Maj+U) — fusionne au moins deux formes sélectionnées (Maj + clic) en une seule ;
   la dernière sélectionnée garde son identité, ses réglages de point et son nom. Les autres formes
   (et leurs broderies) disparaissent.
@@ -573,9 +576,17 @@ Le sous-menu **Calques** regroupe des interrupteurs indépendants :
 | Panneaux | — | Affiche/masque chaque dock et **Réinitialiser la disposition** |
 | Masquer les panneaux | Ctrl+Shift+P | Mode canevas (masque puis restaure les docks) |
 
-**Taille du cadre** : largeur/hauteur en mm (10–500). Le cadre est une donnée du
-projet (persistée dans le `.osp`, annulable) ; l'analyse « hors cadre » et le
-rectangle rouge s'y réfèrent. Accessible aussi via le bouton **« Cadre : W×H
+**Cadre de broderie** : **modèle** courant (liste de cadres usuels, du 50×50 au
+300×400 mm, plus vos propres cadres), largeur/hauteur en mm (10–500), bouton
+**Pivoter** (échange largeur/hauteur) et **marge de sécurité**. La **zone
+brodable** est le cadre réduit de cette marge sur chaque côté : elle est
+affichée sur le canevas (la bande de marge est hachurée, le contour plein
+délimite la zone brodable) et c'est elle que l'analyse « hors cadre » et la
+fiche de production contrôlent. **Enregistrer ce cadre…** garde une taille sous
+un nom (mémorisée entre les sessions, **Supprimer** la retire) ; le dernier
+cadre choisi (taille et marge) est repris par les **nouveaux projets**. Le cadre
+est une donnée du projet (persistée dans le `.osp`, annulable ; marge à 0 pour
+un projet qui n'en avait pas). Accessible aussi via le bouton **« Cadre : W×H
 mm… »** de la barre contextuelle quand rien n'est sélectionné.
 
 Les points cousus sont tracés **dans la couleur de fil de chaque objet** (un fil
@@ -646,6 +657,11 @@ Dock (à droite, dès qu'il existe des objets) pour **isoler** ce qu'on regarde 
   certains fils.
 
 Ces filtres n'affectent que **l'affichage** (pas l'export ni les points générés).
+Ils s'appliquent aussi aux **formes vectorielles** : une forme est masquée si
+elle est plus petite que la taille minimale, ou si toutes ses broderies sont
+d'un type ou d'une couleur masqués (une forme sans broderie n'est filtrée que
+par sa taille). Une forme **sélectionnée** reste visible ; une forme masquée
+n'est ni survolée ni cliquable.
 
 ## Barre d'outils principale
 

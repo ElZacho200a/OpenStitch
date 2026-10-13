@@ -56,6 +56,12 @@ void MainWindow::buildShapeMenu() {
         QKeySequence(Qt::CTRL | Qt::ALT | Qt::Key_I),
         tr("Ne garde que la partie commune à toutes les formes sélectionnées."),
         [this] { runBooleanOp(commands::BooleanOp::Intersect); });
+    add(blendZonesAct_, tr("&Fondre deux zones"), QStringLiteral("action_shapeBlendZones"),
+        QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_F),
+        tr("Unit deux zones voisines de couleurs différentes en une seule : la première "
+           "sélectionnée reste le fond, la seconde devient un remplissage de dessus de plus en "
+           "plus dense vers son côté, pour un dégradé de fils. Annulable en une fois."),
+        [this] { blendSelectedZones(); });
     shapeMenu_->addSeparator();
     add(breakApartAct_, tr("Sépa&rer les morceaux"), QStringLiteral("action_shapeBreakApart"),
         QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_B),
@@ -73,6 +79,8 @@ void MainWindow::updateShapeActions() {
     setShapeActionEnabled(unionAct_, count >= 2, needTwo);
     setShapeActionEnabled(subtractAct_, count >= 2, needTwo);
     setShapeActionEnabled(intersectAct_, count >= 2, needTwo);
+    setShapeActionEnabled(blendZonesAct_, count == 2,
+                          tr("Sélectionnez exactement deux zones remplies (Maj + clic)."));
     bool splittable = false;
     if (count == 1) {
         const auto* object = project_.findObject(selectedObjectIds().front());

@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 #include "openstitch/autodigitize/autodigitize.hpp"
+#include "openstitch/core/parallel.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -151,9 +152,18 @@ SatinChoice choose_satin(const geometry::PathSet& region, const AutoOptions& opt
 // jamais à l'objet vectoriel source lui-même (déjà ajouté par l'appelant le cas
 // échéant). Règle métier : l'auto-broderie ne produit que tatami ou contour ;
 // le satin n'est choisi que pour les bandes étroites (`satin_bands`).
+// Essai de satin d'un morceau : la SEULE partie coûteuse de la classification (génération
+// d'essai + mesure de couverture). Fonction pure de (morceau, options) : calculée en parallèle
+// par les appelants, puis passée à `classify_and_build_embroidery`.
+SatinChoice satin_choice_for(const geometry::PathSet& main, const AutoOptions& options) {
+    const double areaMm2 = net_area_um2(main) / 1e6;
+    return areaMm2 >= options.min_fill_area_mm2 && options.satin_bands ? choose_satin(main, options)
+                                                                       : SatinChoice{};
+}
+
 void classify_and_build_embroidery(const geometry::PathSet& main, const RegionSource& source,
                                    IdGenerator<ObjectId>& ids, const AutoOptions& options,
-                                   AutoResult& result) {
+                                   const SatinChoice& satin, AutoResult& result) {
     const double areaMm2 = net_area_um2(main) / 1e6;
 
     document::EmbroideryObject emb;
@@ -165,9 +175,6 @@ void classify_and_build_embroidery(const geometry::PathSet& main, const RegionSo
     emb.intent = document::EmbroideryIntent::AutoChoice;
 
     emb.id = ids.next();
-    const SatinChoice satin = areaMm2 >= options.min_fill_area_mm2 && options.satin_bands
-                                  ? choose_satin(main, options)
-                                  : SatinChoice{};
     if (satin.satin) {
         // Bande étroite (anneau, ruban, arc) ou petit disque -> auto-satin.
         document::AutoSatinParams sp;
@@ -600,18 +607,35 @@ Result<AutoResult> auto_digitize(const segmentation::Segmentation& input,
     // brodée.
     std::map<std::uint64_t, ObjectId> regionVector;
 
-    for (const RegionId id : regions) {
-        const auto* region = seg.find(id);
-        if (region == nullptr) {
-            continue;
+    // Phase parallèle : vectorisation et essai de satin de chaque région, les deux étapes
+    // coûteuses. Chaque tâche lit la segmentation (constante ici) et n'écrit que dans sa case ;
+    // les identifiants sont attribués ensuite, en séquence et dans l'ordre des régions : le
+    // résultat ne dépend ni du nombre de fils ni de leur ordonnancement.
+    struct Vectorized {
+        std::vector<geometry::PathSet> sets; // vide : région ignorée
+        SatinChoice satin;
+    };
+    const segmentation::Segmentation& constSeg = seg;
+    std::vector<Vectorized> vectorized(regions.size());
+    parallel_for(regions.size(), [&](std::size_t i) {
+        const auto* region = constSeg.find(regions[i]);
+        if (region == nullptr || (backgroundRgb && region->rgb == *backgroundRgb)) {
+            return;
         }
-        if (backgroundRgb && region->rgb == *backgroundRgb) {
-            continue;
-        }
-        auto sets = vectorization::vectorize_region(seg, id, vecOpts);
+        auto sets = vectorization::vectorize_region(constSeg, regions[i], vecOpts);
         if (!sets || sets->empty()) {
-            continue; // région non vectorisable : ignorée sans erreur
+            return; // région non vectorisable : ignorée sans erreur
         }
+        vectorized[i].sets = std::move(*sets);
+        vectorized[i].satin = satin_choice_for(largest_piece(vectorized[i].sets), options);
+    });
+
+    for (std::size_t i = 0; i < regions.size(); ++i) {
+        if (vectorized[i].sets.empty()) {
+            continue;
+        }
+        const RegionId id = regions[i];
+        const auto* region = constSeg.find(id);
 
         // Objet vectoriel (toujours créé : c'est la géométrie éditable).
         document::VectorObject vec;
@@ -619,7 +643,7 @@ Result<AutoResult> auto_digitize(const segmentation::Segmentation& input,
         vec.name = "Région " + std::to_string(id.value);
         vec.source_region = id;
         vec.rgb = region->rgb;
-        vec.paths = *sets;
+        vec.paths = std::move(vectorized[i].sets);
         const ObjectId vecId = vec.id;
         result.vectors.push_back(std::move(vec));
         regionVector[id.value] = vecId;
@@ -629,7 +653,8 @@ Result<AutoResult> auto_digitize(const segmentation::Segmentation& input,
         // build_embroidery ci-dessus), une région de segmentation n'étant
         // qu'une des deux sources possibles d'un morceau déjà vectorisé.
         const RegionSource source{vecId, region->rgb, "Région " + std::to_string(id.value)};
-        classify_and_build_embroidery(largest_piece(*sets), source, ids, options, result);
+        classify_and_build_embroidery(largest_piece(result.vectors.back().paths), source, ids,
+                                      options, vectorized[i].satin, result);
     }
 
     if (result.vectors.empty()) {
@@ -654,7 +679,15 @@ Result<AutoResult> auto_digitize_vectors(const std::vector<document::VectorObjec
     }
 
     AutoResult result;
-    for (const auto& vec : vectors) {
+    // Essais de satin en parallèle (cf. `auto_digitize`), assemblage en séquence.
+    std::vector<SatinChoice> choices(vectors.size());
+    parallel_for(vectors.size(), [&](std::size_t i) {
+        if (!vectors[i].paths.empty()) {
+            choices[i] = satin_choice_for(largest_piece(vectors[i].paths), options);
+        }
+    });
+    for (std::size_t i = 0; i < vectors.size(); ++i) {
+        const auto& vec = vectors[i];
         if (vec.paths.empty()) {
             continue; // objet vectoriel vide : ignoré sans erreur, comme une région non
                       // vectorisable
@@ -662,7 +695,8 @@ Result<AutoResult> auto_digitize_vectors(const std::vector<document::VectorObjec
         // Aucun nouvel objet vectoriel créé pour la géométrie d'entrée : elle
         // existe déjà (import SVG direct, § "skip segmentation").
         const RegionSource source{vec.id, vec.rgb, vec.name};
-        classify_and_build_embroidery(largest_piece(vec.paths), source, ids, options, result);
+        classify_and_build_embroidery(largest_piece(vec.paths), source, ids, options, choices[i],
+                                      result);
     }
 
     if (result.embroideries.empty()) {

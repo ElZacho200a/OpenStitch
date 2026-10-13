@@ -697,3 +697,55 @@ TEST_CASE("carte avec plusieurs regions eclaircies") {
     CHECK(px(both, 1, 6) == px(plain, 1, 6)); // bleu inchange
     CHECK(px(both, 6, 6) == px(plain, 6, 6)); // jaune inchange
 }
+
+namespace {
+
+// Force le nombre de fils de `parallel_for` le temps d'un bloc (OPENSTITCH_THREADS).
+struct ThreadCountOverride {
+    explicit ThreadCountOverride(const char* value) {
+#ifdef _WIN32
+        _putenv_s("OPENSTITCH_THREADS", value);
+#else
+        setenv("OPENSTITCH_THREADS", value, 1);
+#endif
+    }
+    ~ThreadCountOverride() {
+#ifdef _WIN32
+        _putenv_s("OPENSTITCH_THREADS", "");
+#else
+        unsetenv("OPENSTITCH_THREADS");
+#endif
+    }
+};
+
+} // namespace
+
+TEST_CASE("segmentation : meme resultat avec un seul fil et avec plusieurs") {
+    const auto img = noisy_image(160, 120, 4242u);
+    for (const int smoothing : {0, 3}) {
+        const SegmentationOptions options{
+            .max_colors = 8, .min_region_px = 16, .smoothing_radius_px = smoothing};
+        Result<Segmentation> single = fail(ErrorCategory::Internal, "non calcule");
+        Result<Segmentation> many = fail(ErrorCategory::Internal, "non calcule");
+        {
+            const ThreadCountOverride one("1");
+            single = segment(img, options);
+        }
+        {
+            const ThreadCountOverride eight("8");
+            many = segment(img, options);
+        }
+        REQUIRE(single.has_value());
+        REQUIRE(many.has_value());
+        CHECK(single->labels == many->labels);
+        REQUIRE(single->region_slots.size() == many->region_slots.size());
+        for (std::size_t s = 0; s < single->region_slots.size(); ++s) {
+            REQUIRE(single->region_slots[s].has_value() == many->region_slots[s].has_value());
+            if (single->region_slots[s]) {
+                CHECK(single->region_slots[s]->id == many->region_slots[s]->id);
+                CHECK(single->region_slots[s]->rgb == many->region_slots[s]->rgb);
+                CHECK(single->region_slots[s]->pixel_count == many->region_slots[s]->pixel_count);
+            }
+        }
+    }
+}

@@ -1,8 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 #include "openstitch/vectorization/vectorize.hpp"
+#include "openstitch/core/parallel.hpp"
 
 #include <opencv2/core.hpp>
 #include <opencv2/imgproc.hpp>
+#include <optional>
 
 #include <algorithm>
 #include <cmath>
@@ -141,6 +143,21 @@ Result<std::vector<geometry::PathSet>> vectorize_region(const segmentation::Segm
         }
     }
     return sets;
+}
+
+std::vector<Result<std::vector<geometry::PathSet>>>
+vectorize_regions(const segmentation::Segmentation& seg, const std::vector<RegionId>& ids,
+                  const VectorizeOptions& options) {
+    // Result<T> n'est pas constructible par défaut : cases optionnelles remplies en parallèle.
+    std::vector<std::optional<Result<std::vector<geometry::PathSet>>>> slots(ids.size());
+    parallel_for(ids.size(),
+                 [&](std::size_t i) { slots[i] = vectorize_region(seg, ids[i], options); });
+    std::vector<Result<std::vector<geometry::PathSet>>> out;
+    out.reserve(ids.size());
+    for (auto& slot : slots) {
+        out.push_back(std::move(*slot));
+    }
+    return out;
 }
 
 } // namespace openstitch::vectorization
