@@ -41,9 +41,12 @@ ContourThresholds contour_thresholds(double detail) {
     t.min_loop_perimeter = std::max(
         lim.min_loop_perimeter,
         scaled(std::numbers::pi * static_cast<double>(cleanup.minimum_branch_length.value) * f));
-    // Element isole : deux fois la lamelle minimale de l'auto-numerisation.
+    // Element isole : deux fois la lamelle minimale historique de l'auto-numerisation (1,2 mm),
+    // figee ici : le nettoyage des fragments de `AutoOptions` est desormais desactive par defaut
+    // sans que le mode contours en depende.
+    constexpr double kIsolatedAnchorMm = 1.2;
     t.min_isolated_length =
-        std::max(lim.min_element_length, scaled(2.0 * anchors.min_feature_width_mm * 1000.0 * f));
+        std::max(lim.min_element_length, scaled(2.0 * kIsolatedAnchorMm * 1000.0 * f));
     t.simplify_tolerance =
         std::max(lim.min_simplify_tolerance,
                  scaled(static_cast<double>(anchors.simplify_tolerance.value) * std::sqrt(f)));

@@ -13,6 +13,7 @@
 
 #include "openstitch/autodigitize/autodigitize.hpp"
 #include "openstitch/geometry/polyline.hpp"
+#include "openstitch/vectorization/vectorize.hpp"
 
 using namespace openstitch;
 using namespace openstitch::autodigitize;
@@ -895,6 +896,60 @@ TEST_CASE("Lot D : seuil de fragment exprime en mm2, independant de la resolutio
     const auto r = auto_digitize(*seg, ids, coarse);
     REQUIRE(r.has_value());
     CHECK(r->vectors.size() == 3);
+}
+
+TEST_CASE("auto_digitize vectorise un reseau de lignes fines comme vectorize_region") {
+    // Réseau rouge de lignes de 3 px (0,45 mm à 0,15 mm/px : sous l'ancien noyau de 1,2 mm)
+    // sur fond bleu. Les défauts ne doivent ni découper ni amincir le réseau : le vecteur
+    // de l'auto-numérisation est celui de la vectorisation manuelle de la même région.
+    const auto seg = segmentation::segment(paint(60, 40,
+                                                 {{0, 0, 60, 40, kBlue},
+                                                  {0, 10, 60, 13, kRed},
+                                                  {0, 26, 60, 29, kRed},
+                                                  {20, 0, 23, 40, kRed},
+                                                  {40, 0, 43, 40, kRed}}),
+                                           {.max_colors = 2, .min_region_px = 1});
+    REQUIRE(seg.has_value());
+    std::optional<RegionId> redRegion;
+    for (const auto& slot : seg->region_slots) {
+        if (slot && slot->rgb[0] > slot->rgb[2]) { // couleur quantifiée : rouge = dominante R
+            redRegion = slot->id;
+        }
+    }
+    REQUIRE(redRegion.has_value());
+
+    AutoOptions o = tatami_only_opts(); // seuils de fragments laissés à leurs défauts
+    o.mm_per_px = Millimeters{0.15};
+    IdGenerator<ObjectId> ids;
+    const auto r = auto_digitize(*seg, ids, o);
+    REQUIRE(r.has_value());
+
+    vectorization::VectorizeOptions vo;
+    vo.mm_per_px = o.mm_per_px;
+    vo.simplify_tolerance = o.simplify_tolerance;
+    const auto manual = vectorization::vectorize_region(*seg, *redRegion, vo);
+    REQUIRE(manual.has_value());
+
+    const document::VectorObject* autoVector = nullptr;
+    for (const auto& v : r->vectors) {
+        if (v.source_region == redRegion) {
+            autoVector = &v;
+        }
+    }
+    REQUIRE(autoVector != nullptr);
+    CHECK(autoVector->paths == *manual);
+
+    // Contre-épreuve : l'ancienne ouverture de 1,2 mm (8 px) découpe ce réseau.
+    AutoOptions legacy = o;
+    legacy.min_feature_width_mm = 1.2;
+    IdGenerator<ObjectId> legacyIds;
+    const auto legacyResult = auto_digitize(*seg, legacyIds, legacy);
+    REQUIRE(legacyResult.has_value());
+    for (const auto& v : legacyResult->vectors) {
+        if (v.source_region == redRegion) {
+            CHECK(v.paths != *manual);
+        }
+    }
 }
 
 TEST_CASE("Lot D : fragment isole au milieu du fond ignore -> contour point triple") {

@@ -677,11 +677,14 @@ struct DigitizeArgs {
     int skipBg = -1; // -1 = auto (segmentation::background_candidate), 0 = non, 1 = oui
     double curveToleranceMm = 0.0; // mode formes : > 0 -> contours en courbes de Bézier
     bool satinBands = false;       // mode formes : bandes étroites en auto-satin
-    bool singlePath = false;       // mode contours : parcours eulérien (moins de coupes)
-    bool coherentLines = false;    // mode contours : photo -> traits (FDoG) avant segmentation
-    int stipplePoints = 2000;      // mode stipple : nombre de points du semis
-    int stippleSeed = 1;           // mode stipple : graine du tirage initial
-    bool stippleInvert = false;    // mode stipple : densité sur les zones claires
+    // Nettoyage des fragments avant numérisation (mode formes) ; absent = défaut de la lib.
+    std::optional<double> minFeatureMm; // largeur minimale d'un détail ; 0 = désactivé
+    std::optional<double> minRegionMm2; // aire minimale d'une région ; 0 = désactivé
+    bool singlePath = false;            // mode contours : parcours eulérien (moins de coupes)
+    bool coherentLines = false;         // mode contours : photo -> traits (FDoG) avant segmentation
+    int stipplePoints = 2000;           // mode stipple : nombre de points du semis
+    int stippleSeed = 1;                // mode stipple : graine du tirage initial
+    bool stippleInvert = false;         // mode stipple : densité sur les zones claires
     bool json = false;
     bool noClobber = false;
 };
@@ -779,6 +782,12 @@ int run_digitize(const DigitizeArgs& a) {
     opts.satin_bands = a.satinBands;
     opts.curve_tolerance =
         Micrometers{static_cast<std::int32_t>(std::lround(a.curveToleranceMm * 1000.0))};
+    if (a.minFeatureMm) {
+        opts.min_feature_width_mm = *a.minFeatureMm;
+    }
+    if (a.minRegionMm2) {
+        opts.min_region_area_mm2 = *a.minRegionMm2;
+    }
     fmt::print(st, "Ignorer la plus grande région (fond) : {}{}\n", skipLargest ? "oui" : "non",
                a.skipBg < 0 ? " (automatique)" : " (option explicite)");
 
@@ -1494,6 +1503,16 @@ int main(int argc, char** argv) {
                      "un fond quasi blanc touchant au moins 3 bords) | yes | no")
         ->check(CLI::IsMember({"auto", "yes", "no", "-1", "0", "1"}));
     dz_cmd->add_option("--output-svg", dz.outSvg, "SVG de diagnostic à produire en plus du DST");
+    dz_cmd
+        ->add_option("--min-feature-mm", dz.minFeatureMm,
+                     "Mode formes : les détails plus étroits que cette largeur (mm) sont rendus à "
+                     "leur voisin avant numérisation ; 0 = désactivé (défaut : 0)")
+        ->check(CLI::NonNegativeNumber);
+    dz_cmd
+        ->add_option("--min-region-mm2", dz.minRegionMm2,
+                     "Mode formes : les régions plus petites que cette aire (mm²) sont fusionnées "
+                     "avec leur voisine ; 0 = désactivé (défaut : 3)")
+        ->check(CLI::NonNegativeNumber);
     dz_cmd
         ->add_option("--trim-threshold", dz.trimMm,
                      "Coupe automatique au-delà de ce déplacement, en mm (défaut : 3)")

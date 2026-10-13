@@ -102,8 +102,11 @@ struct AutoOptions {
     // --- Fragments (Lot D) ---
     // Nettoyage d'une copie de travail de la segmentation avant numérisation.
     // Isthmes et lamelles plus étroits que cette largeur (ouverture
-    // morphologique) rendus à la région voisine. 0 = désactivé.
-    double min_feature_width_mm{1.2};
+    // morphologique) rendus à la région voisine. 0 = désactivé (défaut) : l'ouverture
+    // arrondit les coins et découpe les réseaux de lignes fines (contours d'un dessin au
+    // trait : 62 morceaux et -34 % de surface au lieu d'une pièce à 97 trous), donc le
+    // vecteur obtenu différait de `vectorize_region` appliqué à la même région.
+    double min_feature_width_mm{0.0};
     // Régions plus petites que cette aire fusionnées avec la voisine de plus
     // longue frontière (jamais avec le fond ignoré). Seules les régions sans
     // autre voisine restent, et deviennent un contour (sous
