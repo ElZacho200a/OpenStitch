@@ -351,6 +351,41 @@ TEST_CASE("remplissage directionnel : la sous-couche est reliee au remplissage s
     }
 }
 
+namespace {
+
+// Forme en U (mm) : base 30 x 10, deux branches de 10 x 15 espacées de 10 -- les rangées
+// horizontales d'une branche ne rejoignent l'autre que par la base.
+document::Project u_shaped_tatami(bool hiddenUnderpath) {
+    auto project = make_project(1);
+    auto& path = project.vector_objects[0].paths[0].outer;
+    const auto node = [](std::int32_t x, std::int32_t y) {
+        return geometry::PathNode{Vec2um{Micrometers{x * 1000}, Micrometers{y * 1000}},
+                                  geometry::NodeType::Corner, std::nullopt, std::nullopt};
+    };
+    path.nodes = {node(0, 0),   node(30, 0),  node(30, 25), node(20, 25),
+                  node(20, 10), node(10, 10), node(10, 25), node(0, 25)};
+    document::TatamiParams tp;
+    tp.row_spacing = Micrometers{1'000};
+    tp.inset = Micrometers{0};
+    tp.hidden_underpath = hiddenUnderpath;
+    project.embroidery_objects[0].params = tp;
+    return project;
+}
+
+} // namespace
+
+TEST_CASE("tatami : les sauts internes du remplissage sont relies par des liaisons cachees") {
+    const auto linked = generate_sequence(u_shaped_tatami(true));
+    const auto plain = generate_sequence(u_shaped_tatami(false));
+    REQUIRE(linked.has_value());
+    REQUIRE(plain.has_value());
+    UNSCOPED_INFO("sauts avec liaisons=" << count_type(*linked, stitch::CommandType::Jump)
+                                         << " sans="
+                                         << count_type(*plain, stitch::CommandType::Jump));
+    CHECK(count_type(*plain, stitch::CommandType::Jump) >= 2);
+    CHECK(count_type(*linked, stitch::CommandType::Jump) == 1);
+}
+
 TEST_CASE("la sequence est deterministe") {
     const auto a = generate_sequence(make_project(2));
     const auto b = generate_sequence(make_project(2));
