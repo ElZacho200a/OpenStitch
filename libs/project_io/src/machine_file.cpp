@@ -60,8 +60,8 @@ Result<void> export_machine_file(const document::Project& project, const std::st
             effective.block_colors.push_back(block.rgb);
         }
     }
-    auto bytes = info->encode_ex != nullptr ? info->encode_ex(sequence, effective)
-                                            : info->encode(sequence);
+    auto bytes =
+        info->encode_ex != nullptr ? info->encode_ex(sequence, effective) : info->encode(sequence);
     if (!bytes) {
         return std::unexpected(bytes.error());
     }

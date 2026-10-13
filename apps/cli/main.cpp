@@ -1771,11 +1771,11 @@ int main(int argc, char** argv) {
                                : od_stops == "as-color-change"
                                    ? openstitch::formats::StopMode::AsColorChange
                                    : openstitch::formats::StopMode::Native;
-        project_io::ExportOptimizations optimizations;
+        openstitch::project_io::ExportOptimizations optimizations;
         optimizations.reduce_trims = od_reduce_trims;
         optimizations.hidden_travel.allow_same_color_surface = od_reduce_same_colour;
-        optimizations.hidden_travel.max_bridge_length =
-            Micrometers{static_cast<std::int32_t>(std::lround(od_reduce_max_mm * 1000.0))};
+        optimizations.hidden_travel.max_bridge_length = openstitch::Micrometers{
+            static_cast<std::int32_t>(std::lround(od_reduce_max_mm * 1000.0))};
         return run_osp2dst(od_in, od_out, od_noclobber, machineOptions, optimizations);
     }
     if (os_cmd->parsed()) {
