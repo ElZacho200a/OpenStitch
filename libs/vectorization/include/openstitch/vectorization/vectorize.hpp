@@ -31,4 +31,12 @@ struct VectorizeOptions {
 vectorize_region(const segmentation::Segmentation& seg, RegionId id,
                  const VectorizeOptions& options);
 
+// Vectorise plusieurs régions EN PARALLÈLE (`parallel_for`) : `out[i]` est le résultat de
+// `vectorize_region(seg, ids[i], options)`, exactement. Chaque région est indépendante et la
+// segmentation n'est que lue : le résultat ne dépend ni du nombre de fils ni de leur
+// ordonnancement. À préférer à une boucle sur `vectorize_region` dès qu'il y a plusieurs régions.
+[[nodiscard]] std::vector<Result<std::vector<geometry::PathSet>>>
+vectorize_regions(const segmentation::Segmentation& seg, const std::vector<RegionId>& ids,
+                  const VectorizeOptions& options);
+
 } // namespace openstitch::vectorization

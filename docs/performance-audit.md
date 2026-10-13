@@ -271,3 +271,92 @@ recopiée, 30 tirages × 4 seuils, masques `bool`/`uint8`, masques vides.
   sont.
 - Tests : CTest complet Release et Debug 755/755, `test_main_window`
   69 fonctions, pytest worker 38/39 (échec préexistant ci-dessus).
+
+## 7. Audit du 2026-10-13 : parallélisme et sauvegarde
+
+Même machine, même protocole (section 1), mêmes fixtures. Règle inchangée :
+**sorties identiques octet pour octet**. Empreintes avant = après sur les deux
+images : segmentation `8de5fd6bee1aaae9` / `b73fb238150dc24a`, séquence
+effective `db5603d38ab9e82b` / `acb664aa210bd648` (et `a173e13502327f4e` pour
+tentabrode avec `--satin-bands`). Les empreintes de séquence diffèrent de la
+section 2 parce que le moteur a évolué depuis, pas à cause de cet audit.
+
+Constat de départ : après l'audit de septembre, seule `generate_sequence`
+utilisait `parallel_for` ; segmentation, vectorisation, auto-numérisation et
+écriture du `.osp` tournaient sur un seul cœur (sur 16 fils disponibles).
+OpenCV est compilé sans backend parallèle (`Enabled backends(0)`), donc ses
+filtres sont séquentiels eux aussi.
+
+### Résultats (Release, médianes à chaud)
+
+| Étape | tentabrode avant | après | sample avant | après |
+|---|---:|---:|---:|---:|
+| `segment` 8 coul., lissage 0 | 64 ms | 39 ms | 70 ms | 34 ms |
+| `segment` 8 coul., lissage 3 (défaut) | 111 ms | 51 ms | 131 ms | 47 ms |
+| `segment` 16 coul., lissage 3 | 197 ms | 88 ms | 276 ms | 82 ms |
+| vectorisation de toutes les régions | 197 ms | 20 ms | 125 ms | 12 ms |
+| `auto_digitize` (défauts) | 210 ms | 77 ms | 73 ms | 67 ms |
+| `auto_digitize` avec « Satin automatique » | 2 357 ms | 922 ms | — | — |
+| `save_project` | 154 ms | 28 ms | 197 ms | 26 ms |
+| taille du `.osp` | 888 Ko | 982 Ko | 1 449 Ko | 1 579 Ko |
+| pic mémoire du processus | 145 Mo | 184 Mo | 145 Mo | 227 Mo |
+
+Non modifiés (mesurés, pas de goulot ou pas de gain sûr) : `generate_sequence`
+35 ms (déjà parallèle ; 73 ms avec `OPENSTITCH_THREADS=1`), `load_project`
+40 ms, `apply_pipeline` 26 à 69 ms (filtres OpenCV), `refreshImage` 57 ms,
+peinture de la scène 12 ms, simulation ~1 ms par pas.
+
+### Corrections
+
+1. **Auto-numérisation** (`libs/autodigitize/src/autodigitize.cpp`) : la
+   vectorisation et l'essai de satin de chaque région (les deux étapes
+   coûteuses) se font en parallèle ; les identifiants, les objets et l'ordre
+   sont attribués ensuite en séquence, dans l'ordre des régions.
+   `classify_and_build_embroidery` reçoit le choix de satin précalculé
+   (`satin_choice_for`). Même traitement pour `auto_digitize_vectors`.
+2. **Vectorisation par lot** : `vectorization::vectorize_regions(seg, ids,
+   options)`, parallèle, résultat `out[i]` identique à
+   `vectorize_region(seg, ids[i], options)`. Utilisée par « Vectoriser » (F7)
+   du desktop, qui bouclait région par région sur le fil de l'interface.
+3. **Segmentation** (`libs/segmentation/src/segmentation.cpp`) : affectation
+   des pixels au centre le plus proche (une ligne = une tâche), lissage (une
+   classe de couleur = une tâche, puis vote par ligne), composantes connexes
+   (par lots de classes en parallèle, fusion séquentielle dans l'ordre des
+   classes, donc mêmes identifiants de région). Le lot est borné à ~256 Mio.
+   Les boucles par pixel passent par des pointeurs de ligne au lieu de
+   `at<>()` avec division et modulo.
+4. **Écriture du `.osp`** (`libs/project_io/src/`) :
+   - les trois entrées (JSON, PNG, étiquettes) sont préparées en parallèle ;
+   - le PNG, déjà compressé, est **stocké** au lieu d'être recompressé ;
+   - DEFLATE au niveau rapide pour le JSON et les étiquettes (c'était le
+     poste dominant : ~100 ms pour 6 Mo d'étiquettes) ;
+   - le PNG de la dernière image enregistrée est mis en cache, clé exacte
+     (dimensions + octets comparés), une entrée, 64 Mio max : la sauvegarde
+     automatique (toutes les 2 min, sur le fil de l'interface) ne réencode
+     plus une image inchangée.
+   Le format reste un ZIP/DEFLATE standard, relu par les versions
+   précédentes. Contrepartie mesurée : fichier ~10 % plus gros.
+
+### Contreparties et limites
+
+- **Mémoire** : +40 à +80 Mo de pic (cartes de composantes connexes de
+  plusieurs classes en même temps, plafonnées).
+- **Satin automatique** : 2,6× seulement sur 16 fils. Une ou deux régions à
+  jonctions de haut degré dominent (problème 1 de la section 5, inchangé) ;
+  le parallélisme entre régions ne peut pas les accélérer.
+- `parallel_for` crée ses fils à chaque appel (~1 ms) : pas de pool
+  persistant. Non justifié aux granularités actuelles (région, classe, ligne),
+  à revoir si une étape appelée à chaque mutation descend sous ~10 ms.
+- Interface mesurée headless, comme en section 6.
+
+### Tests ajoutés
+
+- « meme resultat avec un seul fil et avec plusieurs » pour `segment` et
+  `auto_digitize` (avec et sans `satin_bands`), via `OPENSTITCH_THREADS`.
+- `vectorize_regions` = boucle sur `vectorize_region`, erreur d'une région
+  inexistante conservée à sa place.
+- Cache PNG de `save_project` : invalidation quand un pixel ou les dimensions
+  changent.
+- Suite complète Release : 1078/1078.
+
+Méthode à suivre pour tout nouveau code : skill `openstitch-performance`.

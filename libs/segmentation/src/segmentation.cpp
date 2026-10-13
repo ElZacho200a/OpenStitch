@@ -1,5 +1,6 @@
 ﻿// SPDX-License-Identifier: Apache-2.0
 #include "openstitch/segmentation/segmentation.hpp"
+#include "openstitch/core/parallel.hpp"
 
 #include <opencv2/core.hpp>
 #include <opencv2/imgproc.hpp>
@@ -127,28 +128,35 @@ Result<Segmentation> segment(const image::Image& img, const SegmentationOptions&
     cv::cvtColor(centersLab8, centersRgb, cv::COLOR_Lab2RGB);
 
     // Affectation de chaque pixel opaque au centre Lab le plus proche.
+    // Parallèle par ligne : chaque pixel ne dépend que de lui-même et des centres (lus), chaque
+    // ligne n'écrit que dans la sienne -- même résultat quel que soit le nombre de fils.
     cv::Mat colorIdx(img.height, img.width, CV_32S, cv::Scalar(-1));
-    for (std::size_t i = 0; i < pixelCount; ++i) {
-        if (!opaque[i]) {
-            continue;
-        }
-        const int row = static_cast<int>(i / static_cast<std::size_t>(img.width));
-        const int col = static_cast<int>(i % static_cast<std::size_t>(img.width));
-        const auto* px = lab.ptr<std::uint8_t>(row, col);
-        int best = 0;
-        float bestDist = std::numeric_limits<float>::max();
-        for (int c = 0; c < k; ++c) {
-            const float dl = centers.at<float>(c, 0) - static_cast<float>(px[0]);
-            const float da = centers.at<float>(c, 1) - static_cast<float>(px[1]);
-            const float db = centers.at<float>(c, 2) - static_cast<float>(px[2]);
-            const float d = dl * dl + da * da + db * db;
-            if (d < bestDist) {
-                bestDist = d;
-                best = c;
+    parallel_for(static_cast<std::size_t>(img.height), [&](std::size_t rowIndex) {
+        const int row = static_cast<int>(rowIndex);
+        const std::uint8_t* opaqueRow =
+            opaque.data() + rowIndex * static_cast<std::size_t>(img.width);
+        const auto* labRow = lab.ptr<std::uint8_t>(row);
+        int* out = colorIdx.ptr<int>(row);
+        for (int col = 0; col < img.width; ++col) {
+            if (!opaqueRow[col]) {
+                continue;
             }
+            const std::uint8_t* px = labRow + col * 3;
+            int best = 0;
+            float bestDist = std::numeric_limits<float>::max();
+            for (int c = 0; c < k; ++c) {
+                const float dl = centers.at<float>(c, 0) - static_cast<float>(px[0]);
+                const float da = centers.at<float>(c, 1) - static_cast<float>(px[1]);
+                const float db = centers.at<float>(c, 2) - static_cast<float>(px[2]);
+                const float d = dl * dl + da * da + db * db;
+                if (d < bestDist) {
+                    bestDist = d;
+                    best = c;
+                }
+            }
+            out[col] = best;
         }
-        colorIdx.at<int>(row, col) = best;
-    }
+    });
 
     // Lissage optionnel : vote local majoritaire par classe de couleur, pour
     // absorber le bruit poivre-et-sel de l'affectation pixel-à-pixel
@@ -159,25 +167,33 @@ Result<Segmentation> segment(const image::Image& img, const SegmentationOptions&
     if (options.smoothing_radius_px > 0) {
         const int ksize = 2 * options.smoothing_radius_px + 1;
         std::vector<cv::Mat> density(static_cast<std::size_t>(k));
-        for (int c = 0; c < k; ++c) {
+        // Une classe = une tâche (masque + filtre moyenneur, indépendants d'une classe à l'autre).
+        parallel_for(static_cast<std::size_t>(k), [&](std::size_t classIndex) {
+            const int c = static_cast<int>(classIndex);
             cv::Mat classMask(img.height, img.width, CV_32F, cv::Scalar(0.0f));
             for (int y = 0; y < img.height; ++y) {
+                const int* idx = colorIdx.ptr<int>(y);
+                auto* mask = classMask.ptr<float>(y);
                 for (int x = 0; x < img.width; ++x) {
-                    if (colorIdx.at<int>(y, x) == c) {
-                        classMask.at<float>(y, x) = 1.0f;
+                    if (idx[x] == c) {
+                        mask[x] = 1.0f;
                     }
                 }
             }
-            cv::boxFilter(classMask, density[static_cast<std::size_t>(c)], CV_32F,
-                          cv::Size(ksize, ksize), cv::Point(-1, -1), false);
-        }
+            cv::boxFilter(classMask, density[classIndex], CV_32F, cv::Size(ksize, ksize),
+                          cv::Point(-1, -1), false);
+        });
+        // Vote : une ligne = une tâche (lit les densités, écrit sa ligne).
         cv::Mat smoothedColorIdx = colorIdx.clone();
-        for (int y = 0; y < img.height; ++y) {
+        parallel_for(static_cast<std::size_t>(img.height), [&](std::size_t rowIndex) {
+            const int y = static_cast<int>(rowIndex);
+            const int* idx = colorIdx.ptr<int>(y);
+            int* out = smoothedColorIdx.ptr<int>(y);
             for (int x = 0; x < img.width; ++x) {
-                if (colorIdx.at<int>(y, x) < 0) {
+                if (idx[x] < 0) {
                     continue; // pixel transparent : jamais reclasse
                 }
-                int bestClass = colorIdx.at<int>(y, x);
+                int bestClass = idx[x];
                 float bestDensity = 0.0f;
                 for (int c = 0; c < k; ++c) {
                     const float d = density[static_cast<std::size_t>(c)].at<float>(y, x);
@@ -186,9 +202,9 @@ Result<Segmentation> segment(const image::Image& img, const SegmentationOptions&
                         bestClass = c;
                     }
                 }
-                smoothedColorIdx.at<int>(y, x) = bestClass;
+                out[x] = bestClass;
             }
-        }
+        });
         colorIdx = smoothedColorIdx;
     }
 
@@ -197,33 +213,56 @@ Result<Segmentation> segment(const image::Image& img, const SegmentationOptions&
     seg.width = img.width;
     seg.height = img.height;
     seg.labels.assign(pixelCount, 0);
-    for (int c = 0; c < k; ++c) {
-        cv::Mat mask(img.height, img.width, CV_8U);
-        for (int y = 0; y < img.height; ++y) {
-            for (int x = 0; x < img.width; ++x) {
-                mask.at<std::uint8_t>(y, x) = (colorIdx.at<int>(y, x) == c) ? 255 : 0;
+    // Les composantes d'une couleur ne dépendent pas des autres couleurs : calculées par LOTS
+    // en parallèle, puis fusionnées en séquence dans l'ordre des classes (mêmes identifiants de
+    // région qu'en séquentiel). Le lot est borné en mémoire : une carte d'entiers par classe en
+    // cours (5 octets par pixel avec le masque), au plus ~256 Mio au total.
+    const std::size_t perClassBytes = pixelCount * 5;
+    const std::size_t batchSize = std::clamp<std::size_t>(
+        (std::size_t{256} * 1024 * 1024) / std::max<std::size_t>(perClassBytes, 1), 1,
+        parallel_workers());
+    for (int first = 0; first < k; first += static_cast<int>(batchSize)) {
+        const std::size_t count =
+            std::min<std::size_t>(batchSize, static_cast<std::size_t>(k - first));
+        std::vector<cv::Mat> components(count);
+        std::vector<int> componentCount(count, 0);
+        parallel_for(count, [&](std::size_t b) {
+            const int c = first + static_cast<int>(b);
+            cv::Mat mask(img.height, img.width, CV_8U);
+            for (int y = 0; y < img.height; ++y) {
+                const int* idx = colorIdx.ptr<int>(y);
+                auto* out = mask.ptr<std::uint8_t>(y);
+                for (int x = 0; x < img.width; ++x) {
+                    out[x] = idx[x] == c ? 255 : 0;
+                }
             }
-        }
-        cv::Mat cc;
-        const int n = cv::connectedComponents(mask, cc, 4, CV_32S);
-        if (n <= 1) {
-            continue;
-        }
-        const std::size_t base = seg.region_slots.size();
-        const auto* rgbPx = centersRgb.ptr<std::uint8_t>(0, c);
-        for (int comp = 1; comp < n; ++comp) {
-            Region region;
-            region.id = id_of_slot(base + static_cast<std::size_t>(comp) - 1);
-            region.rgb = {rgbPx[0], rgbPx[1], rgbPx[2]};
-            seg.region_slots.push_back(region);
-        }
-        for (int y = 0; y < img.height; ++y) {
-            for (int x = 0; x < img.width; ++x) {
-                const int comp = cc.at<int>(y, x);
-                if (comp > 0) {
-                    seg.labels[static_cast<std::size_t>(y) * static_cast<std::size_t>(img.width) +
-                               static_cast<std::size_t>(x)] =
-                        static_cast<std::uint32_t>(base + static_cast<std::size_t>(comp));
+            componentCount[b] = cv::connectedComponents(mask, components[b], 4, CV_32S);
+        });
+        for (std::size_t b = 0; b < count; ++b) {
+            const int c = first + static_cast<int>(b);
+            const int n = componentCount[b];
+            if (n <= 1) {
+                continue;
+            }
+            const cv::Mat& cc = components[b];
+            const std::size_t base = seg.region_slots.size();
+            const auto* rgbPx = centersRgb.ptr<std::uint8_t>(0, c);
+            for (int comp = 1; comp < n; ++comp) {
+                Region region;
+                region.id = id_of_slot(base + static_cast<std::size_t>(comp) - 1);
+                region.rgb = {rgbPx[0], rgbPx[1], rgbPx[2]};
+                seg.region_slots.push_back(region);
+            }
+            // Recopie simple et rapide : séquentielle (créer des fils coûterait plus qu'elle).
+            for (int y = 0; y < img.height; ++y) {
+                const int* ccRow = cc.ptr<int>(y);
+                std::uint32_t* labels = seg.labels.data() + static_cast<std::size_t>(y) *
+                                                                static_cast<std::size_t>(img.width);
+                for (int x = 0; x < img.width; ++x) {
+                    if (ccRow[x] > 0) {
+                        labels[x] =
+                            static_cast<std::uint32_t>(base + static_cast<std::size_t>(ccRow[x]));
+                    }
                 }
             }
         }

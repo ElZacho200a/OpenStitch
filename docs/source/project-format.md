@@ -15,6 +15,8 @@ Un projet `.osp` est une **archive ZIP** (via minizip-ng) contenant :
 Le JSON et le binaire sont séparés pour ne pas alourdir le JSON (la carte des
 labels peut faire plusieurs mégaoctets).
 
+Compression (2026-10) : l'image PNG, déjà compressée, est stockée telle quelle dans le ZIP ; le JSON et les étiquettes sont en DEFLATE niveau rapide. Le fichier reste un ZIP standard, lisible par les versions précédentes.
+
 ## Contenu de `project.json`
 
 - `schemaVersion` (entier) et un objet `document` ;
