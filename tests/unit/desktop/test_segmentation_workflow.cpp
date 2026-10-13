@@ -6,21 +6,30 @@
 #include <QApplication>
 #include <QCheckBox>
 #include <QDialog>
+#include <QDir>
 #include <QDoubleSpinBox>
+#include <QFile>
 #include <QGraphicsItem>
 #include <QHeaderView>
+#include <QImage>
+#include <QItemSelectionModel>
 #include <QLabel>
+#include <QLineEdit>
 #include <QMessageBox>
+#include <QPainter>
 #include <QPushButton>
 #include <QSettings>
+#include <QSignalSpy>
 #include <QSlider>
 #include <QSpinBox>
+#include <QStandardPaths>
 #include <QStatusBar>
 #include <QTableWidget>
 #include <QTemporaryDir>
 #include <QTest>
 #include <QTimer>
 
+#include <array>
 #include <functional>
 #include <memory>
 #include <variant>
@@ -111,6 +120,116 @@ std::function<void(QWidget*)> acceptDialog() {
             dialog->accept();
         }
     };
+}
+
+openstitch::image::Image syntheticMaskSource() {
+    openstitch::image::Image image;
+    image.width = 8;
+    image.height = 4;
+    image.rgba.assign(8 * 4 * 4, 255);
+    return image;
+}
+
+QString maskJobsRoot() {
+    return QStandardPaths::writableLocation(QStandardPaths::TempLocation) +
+           QStringLiteral("/OpenStitch/ai-jobs");
+}
+
+QString maskFixtureTemplate() {
+    const QString root = maskJobsRoot();
+    if (!QDir().mkpath(root)) {
+        return {};
+    }
+    return root + QStringLiteral("/ux-mask-test-XXXXXX");
+}
+
+// Résultat synthétique du worker, reçu par le vrai slot du dialogue. Aucun worker ni modèle
+// n'est lancé. Les PNG restent relatifs au dossier de tâche utilisé par le dialogue neuf.
+class SyntheticMaskFixture {
+public:
+    bool loadInto(AiSegmentationDialog& dialog) {
+        if (!directory_.isValid()) {
+            return false;
+        }
+        openstitch::ai_segmentation::MaskCollection collection;
+        collection.schema_version = 1;
+        collection.source_file = "input.png";
+        collection.model_worker_id = "synthetic";
+        collection.image_width = 8;
+        collection.image_height = 4;
+        const std::array<int, 3> ids{0, 2, 10};
+        const std::array<QRect, 3> bounds{QRect(1, 1, 1, 1), QRect(3, 1, 2, 1), QRect(6, 0, 2, 4)};
+        const std::array<double, 3> ious{0.7, 0.9, 0.8};
+        for (std::size_t i = 0; i < ids.size(); ++i) {
+            QImage mask(8, 4, QImage::Format_RGB32);
+            mask.fill(Qt::black);
+            {
+                QPainter painter(&mask);
+                painter.fillRect(bounds[i], Qt::white);
+            }
+            const QString path = directory_.filePath(QStringLiteral("mask_%1.png").arg(ids[i]));
+            if (!mask.save(path)) {
+                return false;
+            }
+            openstitch::ai_segmentation::MaskEntry entry;
+            entry.id = ids[i];
+            entry.file = QDir(maskJobsRoot()).relativeFilePath(path).toStdString();
+            entry.area_pixels = static_cast<std::size_t>(bounds[i].width() * bounds[i].height());
+            entry.bbox_xywh = {bounds[i].x(), bounds[i].y(), bounds[i].width(), bounds[i].height()};
+            entry.predicted_iou = ious[i];
+            entry.stability_score = 0.95;
+            collection.masks.push_back(entry);
+        }
+        const auto json = openstitch::ai_segmentation::serialize_masks_json(collection);
+        QFile file(directory_.filePath(QStringLiteral("masks.json")));
+        if (!file.open(QIODevice::WriteOnly) ||
+            file.write(json.data(), static_cast<qint64>(json.size())) !=
+                static_cast<qint64>(json.size())) {
+            return false;
+        }
+        file.close();
+        return QMetaObject::invokeMethod(
+            &dialog, "onSegmentResult", Qt::DirectConnection,
+            Q_ARG(QString, QStringLiteral("synthetic-result")), Q_ARG(QString, directory_.path()),
+            Q_ARG(QString, QStringLiteral("masks.json")), Q_ARG(int, 3));
+    }
+
+private:
+    QTemporaryDir directory_{maskFixtureTemplate()};
+};
+
+QPushButton* aiDialogButton(AiSegmentationDialog& dialog, const QString& text) {
+    for (auto* button : dialog.findChildren<QPushButton*>()) {
+        if (button->text() == text) {
+            return button;
+        }
+    }
+    return nullptr;
+}
+
+QLabel* selectedMaskPreview(AiSegmentationDialog& dialog) {
+    QLabel* preview = nullptr;
+    for (auto* label : dialog.findChildren<QLabel*>()) {
+        if (label->frameShape() == QFrame::StyledPanel) {
+            preview = label; // le second cadre est l'aperçu de sélection
+        }
+    }
+    return preview;
+}
+
+void disableMaskCleanup(AiSegmentationDialog& dialog) {
+    for (auto* spin : dialog.findChildren<QDoubleSpinBox*>()) {
+        spin->setValue(0.0);
+    }
+}
+
+void selectMaskRows(QTableWidget& table, const QTableWidgetItem* first,
+                    const QTableWidgetItem* second) {
+    table.clearSelection();
+    for (const auto* item : {first, second}) {
+        table.selectionModel()->select(table.model()->index(item->row(), 0),
+                                       QItemSelectionModel::Select | QItemSelectionModel::Rows);
+    }
 }
 
 } // namespace
@@ -560,6 +679,236 @@ private slots:
         dialog.reject();
         QVERIFY(!dialog.isVisible());
         QVERIFY(dialog.output() == AiSegmentationDialog::Output::EditableRegions);
+    }
+
+    void aiDialogNumericMaskCellsAreReadOnly_data() {
+        QTest::addColumn<bool>("mergeFirst");
+        QTest::newRow("loaded-masks") << false;
+        QTest::newRow("merged-mask") << true;
+    }
+
+    void aiDialogNumericMaskCellsAreReadOnly() {
+        QFETCH(bool, mergeFirst);
+        SyntheticMaskFixture fixture;
+        AiSegmentationDialog dialog(syntheticMaskSource(), Millimeters{0.2}, AiPreferences{});
+        QVERIFY(fixture.loadInto(dialog));
+        auto* table = dialog.findChild<QTableWidget*>();
+        QVERIFY(table != nullptr);
+        QCOMPARE(table->rowCount(), 3);
+        if (mergeFirst) {
+            auto* merge = aiDialogButton(dialog, QStringLiteral("Fusionner la sélection"));
+            QVERIFY(merge != nullptr);
+            selectMaskRows(*table, table->item(0, 1), table->item(1, 1));
+            merge->click();
+            QCOMPARE(table->rowCount(), 2);
+        }
+        dialog.show();
+        QApplication::processEvents();
+        for (int row = 0; row < table->rowCount(); ++row) {
+            for (const int column : {1, 2, 3, 4}) {
+                auto* item = table->item(row, column);
+                QVERIFY(item != nullptr);
+                QVERIFY(!item->flags().testFlag(Qt::ItemIsEditable));
+                const QString original = item->text();
+                table->setCurrentItem(item);
+                QTest::keyClick(table, Qt::Key_F2);
+                QVERIFY(table->findChild<QLineEdit*>() == nullptr);
+                QTest::mouseDClick(table->viewport(), Qt::LeftButton, Qt::NoModifier,
+                                   table->visualItemRect(item).center());
+                QVERIFY(table->findChild<QLineEdit*>() == nullptr);
+                QCOMPARE(item->text(), original);
+            }
+            for (const int column : {0, 5}) {
+                QVERIFY(table->item(row, column)->flags().testFlag(Qt::ItemIsUserCheckable));
+            }
+        }
+    }
+
+    void aiDialogSelectionUsesStableMaskIdentity() {
+        SyntheticMaskFixture fixture;
+        AiSegmentationDialog dialog(syntheticMaskSource(), Millimeters{0.2}, AiPreferences{});
+        QVERIFY(fixture.loadInto(dialog));
+        auto* table = dialog.findChild<QTableWidget*>();
+        auto* preview = selectedMaskPreview(dialog);
+        QVERIFY(table != nullptr && preview != nullptr);
+        QCOMPARE(table->rowCount(), 3);
+        auto* id = table->item(0, 1);       // masque 0 : un pixel, distinct des deux autres
+        id->setText(QStringLiteral("777")); // l'affichage n'est jamais l'identité
+        table->sortItems(2, Qt::DescendingOrder);
+        table->selectRow(id->row());
+        QVERIFY(!preview->pixmap().isNull());
+        QVERIFY(id->data(Qt::UserRole).isValid());
+        QCOMPARE(id->data(Qt::UserRole).toInt(), 0);
+    }
+
+    void aiDialogValidationUsesStableMaskIdentityAfterSorting() {
+        QSettings().setValue(QStringLiteral("ui/aiSegmentation/colorRefine"), false);
+        SyntheticMaskFixture fixture;
+        AiSegmentationDialog dialog(syntheticMaskSource(), Millimeters{0.2}, AiPreferences{});
+        QVERIFY(fixture.loadInto(dialog));
+        disableMaskCleanup(dialog);
+        auto* table = dialog.findChild<QTableWidget*>();
+        auto* validate = aiDialogButton(dialog, QStringLiteral("Valider"));
+        QVERIFY(table != nullptr && validate != nullptr);
+        QCOMPARE(table->rowCount(), 3);
+        auto* first = table->item(0, 1);
+        auto* excluded = table->item(1, 1);
+        table->item(first->row(), 5)->setCheckState(Qt::Checked);
+        table->item(excluded->row(), 0)->setCheckState(Qt::Unchecked);
+        first->setText(QStringLiteral("777"));
+        table->sortItems(2, Qt::DescendingOrder);
+        QCOMPARE(table->item(first->row(), 5)->checkState(), Qt::Checked);
+        QCOMPARE(table->item(excluded->row(), 0)->checkState(), Qt::Unchecked);
+        QSignalSpy accepted(&dialog, &QDialog::accepted);
+        validate->click();
+        QCOMPARE(accepted.count(), 1);
+        auto result = dialog.takeSegmentation();
+        QVERIFY(result.has_value());
+        QCOMPARE(result->region_count(), std::size_t{2});
+        const auto* firstRegion = result->find(RegionId{1});
+        const auto* lastRegion = result->find(RegionId{2});
+        QVERIFY(firstRegion != nullptr && lastRegion != nullptr);
+        QCOMPARE(firstRegion->pixel_count, std::size_t{1});
+        QCOMPARE(lastRegion->pixel_count, std::size_t{8});
+        QCOMPARE(firstRegion->rgb[0], std::uint8_t{60}); // couleur de l'ID 0, pas de "777"
+        QCOMPARE(lastRegion->rgb[0], std::uint8_t{230}); // couleur de l'ID 10
+    }
+
+    void aiDialogMergeUsesStableMaskIdentityAfterSorting() {
+        QSettings().setValue(QStringLiteral("ui/aiSegmentation/colorRefine"), false);
+        SyntheticMaskFixture fixture;
+        AiSegmentationDialog dialog(syntheticMaskSource(), Millimeters{0.2}, AiPreferences{});
+        QVERIFY(fixture.loadInto(dialog));
+        disableMaskCleanup(dialog);
+        auto* table = dialog.findChild<QTableWidget*>();
+        auto* merge = aiDialogButton(dialog, QStringLiteral("Fusionner la sélection"));
+        auto* validate = aiDialogButton(dialog, QStringLiteral("Valider"));
+        QVERIFY(table != nullptr && merge != nullptr && validate != nullptr);
+        QCOMPARE(table->rowCount(), 3);
+        auto* first = table->item(0, 1);
+        auto* second = table->item(1, 1);
+        first->setText(QStringLiteral("777"));
+        table->sortItems(3, Qt::DescendingOrder);
+        selectMaskRows(*table, first, second);
+        merge->click();
+        QCOMPARE(table->rowCount(), 2);
+        table->sortItems(1, Qt::AscendingOrder);
+        QCOMPARE(table->item(1, 1)->text(), QStringLiteral("11"));
+        QCOMPARE(table->item(1, 2)->text().toDouble(), 0.12);
+        QVERIFY(table->item(1, 1)->data(Qt::UserRole).isValid());
+        QCOMPARE(table->item(1, 1)->data(Qt::UserRole).toInt(), 11);
+        validate->click();
+        auto result = dialog.takeSegmentation();
+        QVERIFY(result.has_value());
+        QCOMPARE(result->region_count(), std::size_t{2});
+        const auto* merged = result->find(RegionId{2});
+        QVERIFY(merged != nullptr);
+        QCOMPARE(merged->pixel_count, std::size_t{3});
+    }
+
+    void aiDialogMergePreservesProtection_data() {
+        QTest::addColumn<bool>("protectFirst");
+        QTest::addColumn<bool>("protectSecond");
+        QTest::newRow("neither-protected") << false << false;
+        QTest::newRow("first-protected") << true << false;
+        QTest::newRow("second-protected") << false << true;
+        QTest::newRow("both-protected") << true << true;
+    }
+
+    void aiDialogMergePreservesProtection() {
+        QFETCH(bool, protectFirst);
+        QFETCH(bool, protectSecond);
+        QSettings().setValue(QStringLiteral("ui/aiSegmentation/colorRefine"), false);
+        SyntheticMaskFixture fixture;
+        AiSegmentationDialog dialog(syntheticMaskSource(), Millimeters{0.2}, AiPreferences{});
+        QVERIFY(fixture.loadInto(dialog));
+        if (!protectFirst && !protectSecond) {
+            disableMaskCleanup(dialog);
+        }
+        auto* table = dialog.findChild<QTableWidget*>();
+        auto* merge = aiDialogButton(dialog, QStringLiteral("Fusionner la sélection"));
+        auto* validate = aiDialogButton(dialog, QStringLiteral("Valider"));
+        QVERIFY(table != nullptr && merge != nullptr && validate != nullptr);
+        QCOMPARE(table->rowCount(), 3);
+        auto* first = table->item(0, 1);
+        auto* second = table->item(1, 1);
+        auto* untouched = table->item(2, 1);
+        table->item(first->row(), 5)->setCheckState(protectFirst ? Qt::Checked : Qt::Unchecked);
+        table->item(second->row(), 5)->setCheckState(protectSecond ? Qt::Checked : Qt::Unchecked);
+        table->item(untouched->row(), 0)->setCheckState(Qt::Unchecked);
+        table->item(untouched->row(), 5)->setCheckState(Qt::Checked);
+        table->sortItems(5, Qt::DescendingOrder);
+        selectMaskRows(*table, first, second);
+        merge->click();
+        QCOMPARE(table->rowCount(), 2);
+        table->sortItems(1, Qt::AscendingOrder);
+        QCOMPARE(table->item(1, 1)->text(), QStringLiteral("11"));
+        QCOMPARE(table->item(1, 5)->checkState(),
+                 protectFirst || protectSecond ? Qt::Checked : Qt::Unchecked);
+        QCOMPARE(table->item(untouched->row(), 0)->checkState(), Qt::Unchecked);
+        QCOMPARE(table->item(untouched->row(), 5)->checkState(), Qt::Checked);
+        validate->click();
+        auto result = dialog.takeSegmentation();
+        QVERIFY(result.has_value());
+        QCOMPARE(result->region_count(), std::size_t{1});
+        const auto* merged = result->find(RegionId{1});
+        QVERIFY(merged != nullptr);
+        QCOMPARE(merged->pixel_count, std::size_t{3}); // les deux îlots survivent au nettoyage
+    }
+
+    void aiDialogRejectsMissingMaskIdentity_data() {
+        QTest::addColumn<QString>("operation");
+        QTest::addColumn<QVariant>("identity");
+        for (const QString operation :
+             {QStringLiteral("preview"), QStringLiteral("merge"), QStringLiteral("validate")}) {
+            QTest::newRow(qPrintable(operation + QStringLiteral("-absent")))
+                << operation << QVariant{};
+            QTest::newRow(qPrintable(operation + QStringLiteral("-unknown")))
+                << operation << QVariant{1234};
+        }
+    }
+
+    void aiDialogRejectsMissingMaskIdentity() {
+        QFETCH(QString, operation);
+        QFETCH(QVariant, identity);
+        QSettings().setValue(QStringLiteral("ui/aiSegmentation/colorRefine"), false);
+        SyntheticMaskFixture fixture;
+        AiSegmentationDialog dialog(syntheticMaskSource(), Millimeters{0.2}, AiPreferences{});
+        QVERIFY(fixture.loadInto(dialog));
+        disableMaskCleanup(dialog);
+        auto* table = dialog.findChild<QTableWidget*>();
+        QVERIFY(table != nullptr);
+        QCOMPARE(table->rowCount(), 3);
+        auto* first = table->item(0, 1);
+        auto* invalid = table->item(1, 1);
+        invalid->setData(Qt::UserRole, identity);
+        table->sortItems(2, Qt::DescendingOrder);
+        if (operation == QLatin1String("preview")) {
+            auto* preview = selectedMaskPreview(dialog);
+            QVERIFY(preview != nullptr);
+            table->selectRow(first->row());
+            QVERIFY(!preview->pixmap().isNull());
+            table->selectRow(invalid->row());
+            QVERIFY(preview->pixmap().isNull());
+        } else if (operation == QLatin1String("merge")) {
+            auto* merge = aiDialogButton(dialog, QStringLiteral("Fusionner la sélection"));
+            QVERIFY(merge != nullptr);
+            selectMaskRows(*table, first, invalid);
+            merge->click();
+            QCOMPARE(table->rowCount(), 3); // aucun retrait partiel ni fusion avec le masque 0
+        } else {
+            auto* validate = aiDialogButton(dialog, QStringLiteral("Valider"));
+            QVERIFY(validate != nullptr);
+            for (int row = 0; row < table->rowCount(); ++row) {
+                table->item(row, 0)->setCheckState(row == invalid->row() ? Qt::Checked
+                                                                         : Qt::Unchecked);
+            }
+            QSignalSpy accepted(&dialog, &QDialog::accepted);
+            validate->click();
+            QCOMPARE(accepted.count(), 0);
+            QVERIFY(!dialog.hasResult());
+            QVERIFY(validate->isEnabled());
+        }
     }
 
 private:
