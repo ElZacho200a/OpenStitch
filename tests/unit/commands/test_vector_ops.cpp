@@ -172,3 +172,72 @@ TEST_CASE("vector ops: break apart separates disjoint pieces", "[vector_ops]") {
     auto again = make_break_apart_command(project, project.vector_objects[0].id);
     CHECK_FALSE(again.command);
 }
+
+TEST_CASE("paste: copies get new ids, keep their embroidery and undo in one step") {
+    document::Project project;
+    const ObjectId a = add_object(project, rect(0, 0, 10'000, 10'000), true);
+    const ObjectId b = add_object(project, rect(20'000, 0, 30'000, 10'000), false);
+    (void)b;
+    // Directionnel avec un guide : il doit suivre le decalage.
+    auto& emb = project.embroidery_objects[0];
+    document::DirectionalFillParams dir;
+    geometry::Path guide;
+    guide.nodes = {{pt(1'000, 5'000), geometry::NodeType::Corner, {}, {}},
+                   {pt(9'000, 5'000), geometry::NodeType::Corner, {}, {}}};
+    dir.guides.push_back(guide);
+    emb.params = dir;
+    emb.overrides.push_back({});
+
+    // Collecte : doublons et identifiant inconnu ignores, broderie dependante incluse.
+    const auto fragment = collect_fragment(project, {a, a, ObjectId{999'999}});
+    REQUIRE(fragment.vectors.size() == 1);
+    REQUIRE(fragment.embroideries.size() == 1);
+    CHECK(project.vector_objects.size() == 2); // document intact
+
+    UndoStack stack;
+    auto pasted = make_paste_command(project, fragment, pt(5'000, -5'000));
+    REQUIRE(pasted.command != nullptr);
+    REQUIRE(pasted.pasted.size() == 1);
+    stack.execute(std::move(pasted.command), project);
+
+    REQUIRE(project.vector_objects.size() == 3);
+    REQUIRE(project.embroidery_objects.size() == 2);
+    const auto& copy = project.vector_objects.back();
+    CHECK(copy.id == pasted.pasted[0]);
+    CHECK(copy.id != a);
+    CHECK(copy.paths[0].outer.nodes[0].pos == pt(5'000, -5'000));
+    const auto& copyEmb = project.embroidery_objects.back();
+    CHECK(copyEmb.id != project.embroidery_objects[0].id);
+    CHECK(copyEmb.source_vector == copy.id);
+    const auto& copyDir = std::get<document::DirectionalFillParams>(copyEmb.params);
+    CHECK(copyDir.guides[0].nodes[0].pos == pt(6'000, 0));
+    CHECK(copyEmb.overrides.empty()); // collage decale : retouches retirees
+    // L'original n'a pas bouge.
+    CHECK(project.vector_objects[0].paths[0].outer.nodes[0].pos == pt(0, 0));
+    CHECK(project.embroidery_objects[0].overrides.size() == 1);
+
+    stack.undo(project);
+    CHECK(project.vector_objects.size() == 2);
+    CHECK(project.embroidery_objects.size() == 1);
+
+    // Collage sur place : memes positions, retouches conservees.
+    auto inPlace = make_paste_command(project, fragment, pt(0, 0));
+    stack.execute(std::move(inPlace.command), project);
+    CHECK(project.vector_objects.back().paths[0].outer.nodes[0].pos == pt(0, 0));
+    CHECK(project.embroidery_objects.back().overrides.size() == 1);
+
+    // Fragment vide : aucune commande.
+    CHECK(make_paste_command(project, {}, pt(0, 0)).command == nullptr);
+}
+
+TEST_CASE("paste: text letters and foreign regions become plain shapes") {
+    document::Project project;
+    const ObjectId a = add_object(project, rect(0, 0, 10'000, 10'000), false);
+    project.vector_objects[0].text_owner = ObjectId{42};
+    project.vector_objects[0].source_region = RegionId{7}; // aucune segmentation dans la cible
+    auto pasted = make_paste_command(project, collect_fragment(project, {a}), pt(0, 0));
+    UndoStack stack;
+    stack.execute(std::move(pasted.command), project);
+    CHECK_FALSE(project.vector_objects.back().text_owner.has_value());
+    CHECK_FALSE(project.vector_objects.back().source_region.has_value());
+}
