@@ -84,13 +84,6 @@ QString build_stylesheet(const Tokens& t) {
     qss += QStringLiteral("QStatusBar { background: %1; }\n").arg(c(t.surface));
     qss += QStringLiteral("QStatusBar::item { border: none; }\n");
 
-    qss +=
-        QStringLiteral(
-            "QDockWidget::title { background: %1; padding: %2px; border-bottom: 1px solid %3; }\n")
-            .arg(c(t.surface))
-            .arg(t.space2)
-            .arg(c(t.border));
-
     qss += QStringLiteral("QPushButton { background: %1; color: %2; border: 1px solid %3; "
                           "border-radius: %4px; padding: %5px %6px; min-height: %7px; }\n")
                .arg(c(t.surfaceRaised), c(t.text), c(t.borderStrong))
@@ -160,6 +153,95 @@ QString build_stylesheet(const Tokens& t) {
                .arg(c(t.borderStrong))
                .arg(t.radiusSm);
     qss += QStringLiteral("QScrollBar::add-line, QScrollBar::sub-line { width: 0; height: 0; }\n");
+
+    // --- Composants « refonte » : boutons d'icônes, onglets, cartes, pastilles d'état ---
+    const auto tint = [](const QColor& col, int alpha) {
+        return QStringLiteral("rgba(%1,%2,%3,%4)")
+            .arg(col.red())
+            .arg(col.green())
+            .arg(col.blue())
+            .arg(alpha);
+    };
+    qss +=
+        QStringLiteral("QDockWidget { font-weight: 600; }\n"
+                       "QDockWidget::title { background: %1; padding: %2px %3px; text-align: left; "
+                       "border-bottom: 1px solid %4; }\n")
+            .arg(c(t.surface))
+            .arg(t.space3)
+            .arg(t.space4)
+            .arg(c(t.border));
+    qss += QStringLiteral(
+               "QToolBar QToolButton { background: transparent; border: 1px solid transparent; "
+               "border-radius: %1px; padding: %2px; color: %3; }\n"
+               "QToolBar QToolButton:hover { background: %4; }\n"
+               "QToolBar QToolButton:pressed { background: %4; border-color: %5; }\n"
+               "QToolBar QToolButton:checked { background: %4; border: 1px solid %5; }\n"
+               "QToolBar::separator { background: %6; width: 1px; margin: %7px %7px; }\n")
+               .arg(t.radiusMd)
+               .arg(t.space2 + 1)
+               .arg(c(t.text), c(t.accentSoft), c(t.accent), c(t.border))
+               .arg(t.space3);
+    qss += QStringLiteral(
+               "QToolButton[primary=\"true\"] { background: %1; color: %2; border: 1px solid %1; "
+               "border-radius: %3px; padding: %4px %5px; font-weight: 700; }\n"
+               "QToolButton[primary=\"true\"]:hover { background: %6; border-color: %6; }\n"
+               "QToolButton[primary=\"true\"]:disabled { background: %7; color: %8; "
+               "border-color: %7; }\n")
+               .arg(c(t.accent), c(t.selectionText))
+               .arg(t.radiusMd)
+               .arg(t.space2 + 1)
+               .arg(t.space4 + 2)
+               .arg(c(t.accentHover), c(t.border), c(t.textDisabled));
+    qss += QStringLiteral(
+               "QTabWidget::pane { border: none; border-top: 1px solid %1; }\n"
+               "QTabBar::tab { background: transparent; color: %2; padding: %3px %4px; "
+               "margin-right: %5px; border: none; border-bottom: 2px solid transparent; }\n"
+               "QTabBar::tab:selected { color: %6; font-weight: 700; border-bottom: 2px solid "
+               "%7; }\n"
+               "QTabBar::tab:hover:!selected { color: %6; background: %8; border-top-left-radius: "
+               "%9px; border-top-right-radius: %9px; }\n")
+               .arg(c(t.border), c(t.textSecondary))
+               .arg(t.space3 - 1)
+               .arg(t.space4)
+               .arg(t.space1)
+               .arg(c(t.text), c(t.accent), c(t.accentSoft))
+               .arg(t.radiusSm);
+    qss += QStringLiteral("QStatusBar { border-top: 1px solid %1; color: %2; }\n")
+               .arg(c(t.border), c(t.textSecondary));
+    // Cartes (étapes du workflow) : surface surélevée, bord discret, coins arrondis.
+    qss += QStringLiteral(
+               "QFrame[card=\"true\"] { background: %1; border: 1px solid %2; border-radius: %3px; "
+               "}\n"
+               "QFrame[card=\"true\"]:hover { border-color: %4; }\n"
+               "QFrame[card=\"true\"] QToolButton { background: transparent; border: none; "
+               "color: %5; font-weight: 600; padding: %6px %7px; text-align: left; }\n"
+               "QFrame[card=\"true\"] QLabel { background: transparent; border: none; }\n")
+               .arg(c(t.surfaceRaised), c(t.border))
+               .arg(t.radiusMd)
+               .arg(c(t.accent), c(t.text))
+               .arg(t.space2)
+               .arg(t.space3);
+    // Badge numéroté + pastille de mot d'état. L'état passe par la propriété dynamique
+    // « state » (todo / available / progress / done / attention) : jamais la couleur seule,
+    // le mot reste affiché.
+    qss += QStringLiteral(
+               "QLabel[badge=\"true\"] { min-width: 24px; max-width: 24px; min-height: 24px; "
+               "max-height: 24px; border-radius: 12px; background: %1; color: %2; "
+               "border: 1px solid %3; font-weight: 700; qproperty-alignment: AlignCenter; }\n"
+               "QLabel[pill=\"true\"] { background: %1; color: %2; border-radius: 9px; "
+               "padding: 1px 9px; font-size: 11px; font-weight: 600; }\n")
+               .arg(c(t.window), c(t.textSecondary), c(t.border));
+    const auto stateRule = [&](const char* key, const QColor& fill, const QColor& badgeText) {
+        qss +=
+            QStringLiteral("QLabel[badge=\"true\"][state=\"%1\"] { background: %2; color: %3; "
+                           "border-color: %2; }\n"
+                           "QLabel[pill=\"true\"][state=\"%1\"] { background: %4; color: %2; }\n")
+                .arg(QString::fromLatin1(key), c(fill), c(badgeText), tint(fill, 38));
+    };
+    stateRule("available", t.info, t.window);
+    stateRule("progress", t.accent, t.selectionText);
+    stateRule("done", t.success, t.window);
+    stateRule("attention", t.warning, t.window);
 
     return qss;
 }

@@ -5794,6 +5794,13 @@ void MainWindow::buildMainToolbar() {
     showStitchesAct_->setIcon(icons::stitches());
     mainToolbar_->addAction(showStitchesAct_);
     addShared(exportDstAct_, icons::exportDst());
+    // Action principale de la fenêtre : bouton plein, en texte (l'icône grise n'aurait pas le
+    // contraste voulu sur le fond d'accent).
+    if (auto* exportButton =
+            qobject_cast<QToolButton*>(mainToolbar_->widgetForAction(exportDstAct_))) {
+        exportButton->setProperty("primary", true);
+        exportButton->setToolButtonStyle(Qt::ToolButtonTextOnly);
+    }
 }
 
 void MainWindow::buildContextToolbar() {
