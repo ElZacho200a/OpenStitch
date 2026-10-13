@@ -780,3 +780,94 @@ TEST_CASE("segment_stays_in_region indexe : identique aux predicats naifs d'orig
     }
     CHECK(checked == 9000);
 }
+
+// ---------------------------------------------------------------------------------------------
+// HiddenRouter : trajet cousu caché DANS la région, qui contourne les trous.
+// ---------------------------------------------------------------------------------------------
+
+namespace {
+
+// Carré 40 mm avec un trou carré central (12..28 mm).
+geometry::PathSet square_with_hole() {
+    geometry::PathSet set;
+    set.outer = rect(40'000, 40'000);
+    geometry::Path hole = rect(16'000, 16'000);
+    for (auto& node : hole.nodes) {
+        node.pos.x.value += 12'000;
+        node.pos.y.value += 12'000;
+    }
+    set.holes.push_back(hole);
+    return set;
+}
+
+double route_length(const std::vector<Vec2um>& route) {
+    double len = 0.0;
+    for (std::size_t i = 1; i < route.size(); ++i) {
+        len += std::hypot(double(route[i].x.value - route[i - 1].x.value),
+                          double(route[i].y.value - route[i - 1].y.value));
+    }
+    return len;
+}
+
+} // namespace
+
+TEST_CASE("HiddenRouter : trajet droit quand il reste dans la region") {
+    const auto region = square_with_hole();
+    const HiddenRouter router(region, Micrometers{600}, 100'000.0);
+    const Vec2um a{Micrometers{3'000}, Micrometers{3'000}};
+    const Vec2um b{Micrometers{3'000}, Micrometers{37'000}}; // côté gauche, hors du trou
+    const auto route = router.route(a, b);
+    REQUIRE(route.size() == 2);
+    CHECK(route.front() == a);
+    CHECK(route.back() == b);
+}
+
+TEST_CASE(
+    "HiddenRouter : contourne un trou par des points de passage, chaque segment dans la region") {
+    const auto region = square_with_hole();
+    const HiddenRouter router(region, Micrometers{600}, 100'000.0);
+    const Vec2um a{Micrometers{6'000}, Micrometers{20'000}}; // à gauche du trou
+    const Vec2um b{Micrometers{34'000},
+                   Micrometers{20'000}}; // à droite : la droite traverse le trou
+    REQUIRE_FALSE(segment_stays_in_region(region, a, b));
+    const auto route = router.route(a, b);
+    REQUIRE(route.size() >= 3);
+    CHECK(route.front() == a);
+    CHECK(route.back() == b);
+    for (std::size_t i = 1; i < route.size(); ++i) {
+        CHECK(segment_stays_in_region(region, route[i - 1], route[i]));
+    }
+    // Plus long que la droite (28 mm) mais borné : un détour, pas un tour complet.
+    CHECK(route_length(route) > 28'000.0);
+    CHECK(route_length(route) < 60'000.0);
+}
+
+TEST_CASE("HiddenRouter : respecte le plafond de longueur et refuse un trajet nul") {
+    const auto region = square_with_hole();
+    const Vec2um a{Micrometers{6'000}, Micrometers{20'000}};
+    const Vec2um b{Micrometers{34'000}, Micrometers{20'000}};
+    // Plafond inférieur à la distance directe : aucun trajet, l'appelant saute.
+    CHECK(HiddenRouter(region, Micrometers{600}, 20'000.0).route(a, b).empty());
+    // Plafond inférieur au détour nécessaire (> 28 mm) : idem.
+    CHECK(HiddenRouter(region, Micrometers{600}, 30'000.0).route(a, b).empty());
+    // Départ = arrivée : rien à relier.
+    CHECK(HiddenRouter(region, Micrometers{600}, 100'000.0).route(a, a).empty());
+}
+
+TEST_CASE("HiddenRouter : un point hors de la region n'est relie a rien") {
+    const auto region = square_with_hole();
+    const HiddenRouter router(region, Micrometers{600}, 100'000.0);
+    const Vec2um inHole{Micrometers{20'000}, Micrometers{20'000}};
+    const Vec2um fine{Micrometers{3'000}, Micrometers{3'000}};
+    CHECK(router.route(fine, inHole).empty());
+}
+
+TEST_CASE("HiddenRouter : deterministe") {
+    const auto region = square_with_hole();
+    const Vec2um a{Micrometers{6'000}, Micrometers{20'000}};
+    const Vec2um b{Micrometers{34'000}, Micrometers{20'000}};
+    const HiddenRouter r1(region, Micrometers{600}, 100'000.0);
+    const HiddenRouter r2(region, Micrometers{600}, 100'000.0);
+    CHECK(r1.route(a, b) == r2.route(a, b));
+    CHECK(r1.route(a, b) == r1.route(a, b));
+}

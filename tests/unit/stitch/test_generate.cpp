@@ -6,6 +6,7 @@
 #include <numbers>
 
 #include "openstitch/stitch_generation/generate.hpp"
+#include "openstitch/stitch_generation/overrides.hpp"
 
 using namespace openstitch;
 using namespace openstitch::stitch_generation;
@@ -195,6 +196,159 @@ TEST_CASE("tatami : sous-couche taggee Underlay, remplissage TopStitch") {
     }
     CHECK(under > 0);
     CHECK(top > 0);
+}
+
+namespace {
+
+// Carré de `side` µm avec un seul objet tatami muni des deux sous-couches.
+document::Project tatami_with_underlays(std::int32_t side, bool hiddenUnderpath) {
+    auto project = make_project(1);
+    auto& path = project.vector_objects[0].paths[0].outer;
+    path.nodes[1].pos = Vec2um{Micrometers{side}, Micrometers{0}};
+    path.nodes[2].pos = Vec2um{Micrometers{side}, Micrometers{side}};
+    path.nodes[3].pos = Vec2um{Micrometers{0}, Micrometers{side}};
+    document::TatamiParams tp;
+    tp.row_spacing = Micrometers{1'000};
+    tp.underlay_edge = true;
+    tp.underlay_parallel = true;
+    tp.hidden_underpath = hiddenUnderpath;
+    project.embroidery_objects[0].params = tp;
+    return project;
+}
+
+std::size_t count_type(const stitch::StitchSequence& seq, stitch::CommandType type) {
+    return static_cast<std::size_t>(
+        std::count_if(seq.commands.begin(), seq.commands.end(),
+                      [type](const stitch::StitchCommand& c) { return c.type == type; }));
+}
+
+} // namespace
+
+TEST_CASE("tatami : la sous-couche est reliee au remplissage sans saut (liaisons cachees)") {
+    constexpr std::int32_t side = 40'000;
+    const auto linked = generate_sequence(tatami_with_underlays(side, true));
+    const auto plain = generate_sequence(tatami_with_underlays(side, false));
+    REQUIRE(linked.has_value());
+    REQUIRE(plain.has_value());
+
+    // Sans liaisons cachées : un saut par tracé de sous-couche et un vers le remplissage.
+    CHECK(count_type(*plain, stitch::CommandType::Jump) >= 3);
+    // Avec : on n'entre dans l'objet qu'une fois, tout le reste est cousu et caché.
+    CHECK(count_type(*linked, stitch::CommandType::Jump) == 1);
+
+    // Les liaisons restent DANS la forme (jamais de couture visible hors de la région) et
+    // portent la passe Travel ; la sous-couche et la couche supérieure gardent leurs passes.
+    int travel = 0, under = 0, top = 0;
+    for (const auto& c : linked->commands) {
+        if (c.type != stitch::CommandType::Stitch) {
+            continue;
+        }
+        CHECK(c.pos.x.value >= 0);
+        CHECK(c.pos.x.value <= side);
+        CHECK(c.pos.y.value >= 0);
+        CHECK(c.pos.y.value <= side);
+        travel += c.pass == stitch::StitchPass::Travel ? 1 : 0;
+        under += c.pass == stitch::StitchPass::Underlay ? 1 : 0;
+        top += c.pass == stitch::StitchPass::TopStitch ? 1 : 0;
+    }
+    CHECK(travel > 0);
+    CHECK(under > 0);
+    CHECK(top > 0);
+
+    // Aucun point cousu ne dépasse la longueur de point : les liaisons sont découpées.
+    const stitch::StitchCommand* prev = nullptr;
+    for (const auto& c : linked->commands) {
+        if (c.type == stitch::CommandType::Stitch && prev != nullptr &&
+            prev->type == stitch::CommandType::Stitch) {
+            CHECK(length_um(c.pos - prev->pos) <= 3'500.0);
+        }
+        prev = &c;
+    }
+}
+
+TEST_CASE("tatami a trou : les liaisons de sous-couche contournent le trou, sans le traverser") {
+    constexpr std::int32_t side = 40'000;
+    constexpr std::int32_t h0 = 12'000, h1 = 28'000; // trou carré central
+    const auto build = [&](bool hidden) {
+        auto project = tatami_with_underlays(side, hidden);
+        geometry::Path hole;
+        hole.closed = true;
+        const auto node = [](std::int32_t x, std::int32_t y) {
+            return geometry::PathNode{Vec2um{Micrometers{x}, Micrometers{y}},
+                                      geometry::NodeType::Corner, std::nullopt, std::nullopt};
+        };
+        hole.nodes = {node(h0, h0), node(h1, h0), node(h1, h1), node(h0, h1)};
+        project.vector_objects[0].paths[0].holes.push_back(hole);
+        return generate_sequence(project);
+    };
+    const auto linked = build(true);
+    const auto plain = build(false);
+    REQUIRE(linked.has_value());
+    REQUIRE(plain.has_value());
+
+    // Moins de sauts qu'en les laissant tels quels, et beaucoup moins que de tracés.
+    CHECK(count_type(*linked, stitch::CommandType::Jump) <
+          count_type(*plain, stitch::CommandType::Jump));
+
+    // Aucune couture (point ni segment échantillonné) ne tombe dans le trou.
+    const auto inHole = [&](double x, double y) { return x > h0 && x < h1 && y > h0 && y < h1; };
+    const stitch::StitchCommand* prev = nullptr;
+    for (const auto& c : linked->commands) {
+        if (c.type == stitch::CommandType::Stitch) {
+            CHECK_FALSE(inHole(c.pos.x.value, c.pos.y.value));
+            if (prev != nullptr && prev->type == stitch::CommandType::Stitch) {
+                for (int k = 1; k < 20; ++k) {
+                    const double f = k / 20.0;
+                    const double x = prev->pos.x.value + (c.pos.x.value - prev->pos.x.value) * f;
+                    const double y = prev->pos.y.value + (c.pos.y.value - prev->pos.y.value) * f;
+                    CHECK_FALSE(inHole(x, y));
+                }
+            }
+        }
+        prev = &c;
+    }
+}
+
+TEST_CASE("tatami : sous-couche reliee -> une seule coupe de plus que l'entree, apres finitions") {
+    constexpr std::int32_t side = 40'000;
+    const auto linked = effective_sequence(tatami_with_underlays(side, true));
+    const auto plain = effective_sequence(tatami_with_underlays(side, false));
+    REQUIRE(linked.has_value());
+    REQUIRE(plain.has_value());
+    // Seule la coupe finale reste quand tout est relié ; sinon chaque saut de plus de
+    // `trim_threshold` entre sous-couche et remplissage ajoute une coupe (et ses verrous).
+    CHECK(count_type(*linked, stitch::CommandType::Trim) == 1);
+    CHECK(count_type(*plain, stitch::CommandType::Trim) > 1);
+    CHECK(count_type(*linked, stitch::CommandType::Stitch) <
+          count_type(*plain, stitch::CommandType::Stitch) + 200); // pas d'explosion de points
+}
+
+TEST_CASE("remplissage directionnel : la sous-couche est reliee au remplissage sans saut") {
+    constexpr std::int32_t side = 40'000;
+    const auto build = [&](bool hidden) {
+        auto project = tatami_with_underlays(side, hidden);
+        document::DirectionalFillParams dp;
+        dp.row_spacing = Micrometers{1'000};
+        dp.underlay_edge = true;
+        dp.underlay_parallel = true;
+        dp.hidden_underpath = hidden;
+        project.embroidery_objects[0].params = dp;
+        return generate_sequence(project);
+    };
+    const auto linked = build(true);
+    const auto plain = build(false);
+    REQUIRE(linked.has_value());
+    REQUIRE(plain.has_value());
+    CHECK(count_type(*plain, stitch::CommandType::Jump) >= 3);
+    CHECK(count_type(*linked, stitch::CommandType::Jump) == 1);
+    for (const auto& c : linked->commands) {
+        if (c.type == stitch::CommandType::Stitch) {
+            CHECK(c.pos.x.value >= 0);
+            CHECK(c.pos.x.value <= side);
+            CHECK(c.pos.y.value >= 0);
+            CHECK(c.pos.y.value <= side);
+        }
+    }
 }
 
 TEST_CASE("la sequence est deterministe") {
