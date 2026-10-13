@@ -827,6 +827,7 @@ private slots:
     // Strategie « Contours » : choix de strategie, curseur de detail (defaut
     // 50) et techniques point droit presentes dans le dialogue.
     void autoDigitizeDialogOffersContoursStrategy();
+    void autoDigitizeDialogExposesFragmentThresholds();
     // Vectorisation manuelle d'une region : expose le meme controle de detail
     // sans forcer l'utilisateur a passer par l'auto-numerisation complete.
     void vectorizeSelectedRegionOffersDetailSlider();
@@ -2960,6 +2961,73 @@ void MainWindowTest::autoDigitizeDialogOffersContoursStrategy() {
     QVERIFY(!panelEnabledBefore);
     QVERIFY(panelEnabledAfter);
     QVERIFY(window.project_.embroidery_objects.empty()); // dialogue annule
+}
+
+// Seuils de nettoyage des fragments : les champs existent avec les défauts de la lib (1,2 mm,
+// 3 mm²), et leurs valeurs validées sont mémorisées pour la prochaine ouverture.
+void MainWindowTest::autoDigitizeDialogExposesFragmentThresholds() {
+    const QString widthKey = QStringLiteral("ui/memory/autoDigitize/minFeatureWidthUm");
+    const QString areaKey = QStringLiteral("ui/memory/autoDigitize/minRegionAreaCmm2");
+    QSettings().remove(widthKey);
+    QSettings().remove(areaKey);
+
+    MainWindow window;
+    window.applyLoadedProject(
+        opaqueSegmentedProject({250, 250, 250}, {200, 30, 30}, 10, 8, 30, 22));
+    bool seen = false;
+    double defaultWidth = -1.0;
+    double defaultArea = -1.0;
+    QTimer::singleShot(0, &window, [&] {
+        auto* dlg = qobject_cast<QDialog*>(QApplication::activeModalWidget());
+        if (dlg == nullptr) {
+            return;
+        }
+        auto* widthSpin = dlg->findChild<QDoubleSpinBox*>("minFeatureWidthSpin");
+        auto* areaSpin = dlg->findChild<QDoubleSpinBox*>("minRegionAreaSpin");
+        if (widthSpin == nullptr || areaSpin == nullptr) {
+            dlg->reject();
+            return;
+        }
+        seen = true;
+        defaultWidth = widthSpin->value();
+        defaultArea = areaSpin->value();
+        widthSpin->setValue(0.5);
+        areaSpin->setValue(0.0); // 0 = désactivé
+        dlg->accept();
+    });
+    window.autoDigitize();
+    QVERIFY(seen);
+    QCOMPARE(defaultWidth, 1.2);
+    QCOMPARE(defaultArea, 3.0);
+    QCOMPARE(QSettings().value(widthKey).toInt(), 500);
+    QCOMPARE(QSettings().value(areaKey).toInt(), 0);
+
+    // La réouverture (fenêtre neuve : la première a désormais des objets, donc poserait la
+    // question remplacer/ajouter) reprend les valeurs mémorisées.
+    MainWindow reopened;
+    reopened.applyLoadedProject(
+        opaqueSegmentedProject({250, 250, 250}, {200, 30, 30}, 10, 8, 30, 22));
+    double rememberedWidth = -1.0;
+    double rememberedArea = -1.0;
+    QTimer::singleShot(0, &reopened, [&] {
+        auto* dlg = qobject_cast<QDialog*>(QApplication::activeModalWidget());
+        if (dlg == nullptr) {
+            return;
+        }
+        if (auto* widthSpin = dlg->findChild<QDoubleSpinBox*>("minFeatureWidthSpin")) {
+            rememberedWidth = widthSpin->value();
+        }
+        if (auto* areaSpin = dlg->findChild<QDoubleSpinBox*>("minRegionAreaSpin")) {
+            rememberedArea = areaSpin->value();
+        }
+        dlg->reject();
+    });
+    reopened.autoDigitize();
+    QCOMPARE(rememberedWidth, 0.5);
+    QCOMPARE(rememberedArea, 0.0);
+
+    QSettings().remove(widthKey);
+    QSettings().remove(areaKey);
 }
 
 void MainWindowTest::vectorizeSelectedRegionOffersDetailSlider() {
