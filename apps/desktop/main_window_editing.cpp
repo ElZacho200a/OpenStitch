@@ -310,6 +310,16 @@ void MainWindow::setStitchTypeForSelection(
                 break;
             }
         }
+        // Confirmer le type déjà présent ne réinitialise aucun réglage et ne
+        // fusionne pas les sections d'une même forme. Une demande explicite
+        // d'espacement/angle (tweak) garde son effet, même avec le même type.
+        if (existing != nullptr && !tweak &&
+            std::all_of(project_.embroidery_objects.begin(), project_.embroidery_objects.end(),
+                        [id, type](const auto& emb) {
+                            return emb.source_vector != id || stitchTypeIndex(emb) == type;
+                        })) {
+            continue;
+        }
         // Forme sans couture : un objet provisoire donne sa forme et ses couleurs au calcul.
         document::EmbroideryObject provisional;
         if (existing == nullptr) {
@@ -353,6 +363,9 @@ void MainWindow::setStitchTypeForSelection(
         ++done;
     }
     if (group->empty()) {
+        if (skipped.isEmpty()) {
+            return; // tout est déjà du type demandé : pas de dialogue ni d'étape undo
+        }
         QMessageBox::warning(this, tr("Changement de type impossible"),
                              firstError.isEmpty() ? tr("Aucune forme à modifier.") : firstError);
         return;

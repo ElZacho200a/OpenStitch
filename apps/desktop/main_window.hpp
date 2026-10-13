@@ -692,6 +692,9 @@ private:
     // Applique la taille du cadre du document à la vue (si elle a changé).
     void applyCanvasToView();
     void refreshImage();
+    // Une définition de contenu partagée par l'accueil, la sauvegarde,
+    // l'autosave et les remplacements de document (y compris import machine).
+    [[nodiscard]] bool hasDocumentContent() const;
     void displayImage(const image::Image& img);
     // Rendu en deux couches persistantes : la couche « base » (image, vecteurs,
     // poignées, régions) n'est reconstruite qu'à l'édition ; la couche « points »

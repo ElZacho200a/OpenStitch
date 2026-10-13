@@ -1790,9 +1790,7 @@ void MainWindow::updateEmptyState() {
     // document::Canvas) -- défaut trouvé en usage réel, la pastille restait
     // affichée EN PERMANENCE par-dessus le canevas dès lors qu'aucune image
     // n'était chargée, même après avoir dessiné plusieurs formes.
-    const bool hasContent = project_.hasImage() || !project_.vector_objects.empty() ||
-                            !project_.embroidery_objects.empty() || project_.imported_design;
-    emptyState_->setVisible(!hasContent);
+    emptyState_->setVisible(!hasDocumentContent());
     positionEmptyState();
 }
 
@@ -2968,34 +2966,33 @@ void MainWindow::refreshImage() {
     // suppression, rechargement) ; le dernier objet restant devient le principal.
     pruneSelection();
     Q_ASSERT(checkSelectionInvariants());
-    if (!project_.hasImage() && !project_.imported_design) {
+    // Le raster est facultatif : SVG, dessin, texte et design machine doivent
+    // eux aussi régénérer leurs points et rafraîchir tous les panneaux.
+    if (!project_.hasImage()) {
         processed_ = {};
-        displayImage(processed_); // affiche quand même une séquence importée
-        return;
-    }
-    // L'image de travail ne dépend que de l'original et de la pile
-    // d'opérations : inutile de rejouer le pipeline (quantification,
-    // débruitage… plusieurs dizaines de ms) après une mutation qui ne touche
-    // ni l'un ni l'autre -- glisser de nœud, paramètre de point, sélection
-    // (audit perf 2026-09, docs/performance-audit.md). Comparaison de contenu
-    // exacte, pas d'horodatage.
-    const bool processedUpToDate =
-        !processed_.empty() && processedOps_ == project_.ops &&
-        processedSource_.width == project_.original.width &&
-        processedSource_.height == project_.original.height &&
-        processedSource_.source_had_alpha == project_.original.source_had_alpha &&
-        processedSource_.rgba == project_.original.rgba;
-    if (!processedUpToDate) {
-        const auto result = image::apply_pipeline(project_.original, project_.ops);
-        if (!result) {
-            showFriendlyError(this, tr("Traitement de l'image impossible"),
-                              tr("Une des opérations appliquées à l'image a échoué."),
-                              result.error().message);
-            return;
+        processedSource_ = {};
+        processedOps_.clear();
+    } else {
+        // Clé de contenu exacte : une édition vectorielle ne rejoue pas le
+        // pipeline raster tant que l'image source et ses opérations sont identiques.
+        const bool processedUpToDate =
+            !processed_.empty() && processedOps_ == project_.ops &&
+            processedSource_.width == project_.original.width &&
+            processedSource_.height == project_.original.height &&
+            processedSource_.source_had_alpha == project_.original.source_had_alpha &&
+            processedSource_.rgba == project_.original.rgba;
+        if (!processedUpToDate) {
+            const auto result = image::apply_pipeline(project_.original, project_.ops);
+            if (!result) {
+                showFriendlyError(this, tr("Traitement de l'image impossible"),
+                                  tr("Une des opérations appliquées à l'image a échoué."),
+                                  result.error().message);
+                return;
+            }
+            processed_ = *result;
+            processedSource_ = project_.original;
+            processedOps_ = project_.ops;
         }
-        processed_ = *result;
-        processedSource_ = project_.original;
-        processedOps_ = project_.ops;
     }
 
     // Régénération des points depuis le document (fonction pure). Un design
@@ -4913,7 +4910,7 @@ bool MainWindow::stitchParamsForType(const document::EmbroideryObject& emb, int 
 
 void MainWindow::setStitchType(ObjectId embroideryId, int type) {
     auto* emb = project_.findEmbroidery(embroideryId);
-    if (emb == nullptr) {
+    if (emb == nullptr || stitchTypeIndex(*emb) == type) {
         return;
     }
     document::StitchParams params;
@@ -6009,7 +6006,7 @@ void MainWindow::updateContextToolbar() {
         contextToolbar_->addAction(deleteSelectionAct_);
         contextToolbar_->addAction(vectorizeRegionAct_);
     } else {
-        if (project_.hasImage() && sequence_) {
+        if (sequence_) {
             const auto st = stitch::compute_stats(*sequence_);
             const double w = to_millimeters(st.bounds.max.x - st.bounds.min.x).value;
             const double h = to_millimeters(st.bounds.max.y - st.bounds.min.y).value;
@@ -7460,8 +7457,7 @@ void MainWindow::saveProject() {
 
 void MainWindow::saveProjectAs() {
     // Un design importé (DST) est un contenu à part entière du document.
-    if (!project_.hasImage() && project_.vector_objects.empty() &&
-        project_.embroidery_objects.empty() && !project_.imported_design) {
+    if (!hasDocumentContent()) {
         QMessageBox::information(this, tr("Rien à enregistrer"),
                                  tr("Ouvrez une image et créez des objets d'abord."));
         return;
@@ -7697,9 +7693,7 @@ void MainWindow::rebuildRecentUi() {
 void MainWindow::onAutosaveTick() {
     // Même garde que updateEmptyState() : un document vide n'a rien à
     // protéger, et écrire n'apporterait qu'un fichier autosave inutile.
-    const bool empty = !project_.hasImage() && project_.vector_objects.empty() &&
-                       project_.embroidery_objects.empty();
-    if (!isWindowModified() || empty) {
+    if (!isWindowModified() || !hasDocumentContent()) {
         return;
     }
     const AutosaveSlot slot = slotFor(currentProjectPath_);
@@ -7836,22 +7830,6 @@ void MainWindow::applyLoadedProject(document::Project project) {
     project_ = std::move(project);
     resetDocumentState();
     refreshImage();
-    // refreshImage() sort tôt quand le document n'a pas d'image (cf. son début) :
-    // les panneaux garderaient alors les entrées du document précédent. Un
-    // remplacement de document les rafraîchit toujours — c'est visible dès
-    // « Nouveau projet » après un travail en cours (HP-FILE-001).
-    if (!project_.hasImage()) {
-        if (simToolbar_ != nullptr) {
-            updateSimulationRange();
-        }
-        if (orderDock_ != nullptr) {
-            refreshOrderPanel();
-        }
-        if (filterDock_ != nullptr) {
-            refreshFilterPanel();
-        }
-        refreshDocumentPanel();
-    }
     view_->fitCanvas();
     updateActions();
     setWindowModified(false); // projet fraîchement chargé = propre
@@ -8020,8 +7998,7 @@ void MainWindow::importDstFile(const QString& file) {
     // AD-04 : « quelque chose à perdre » se lit maintenant sur le document
     // réel (le design importé en fait partie), plus sur `sequence_` (qui
     // n'est qu'une copie d'affichage, cf. main_window.hpp).
-    if (project_.hasImage() || project_.imported_design || !project_.vector_objects.empty() ||
-        !project_.embroidery_objects.empty()) {
+    if (hasDocumentContent()) {
         if (!confirmDiscardChanges(
                 tr("L'import remplace le document en cours. Enregistrer le projet avant "
                    "d'importer cette broderie ?"))) {
@@ -8854,6 +8831,12 @@ void setEnabledWithReason(QAction* act, bool enabled, const QString& whyDisabled
 
 } // namespace
 
+bool MainWindow::hasDocumentContent() const {
+    return project_.hasImage() || !project_.vector_objects.empty() ||
+           !project_.embroidery_objects.empty() || !project_.text_objects.empty() ||
+           project_.imported_design.has_value();
+}
+
 void MainWindow::updateActions() {
     updateShapeActions();
     updateObjectEditActions();
@@ -8868,7 +8851,7 @@ void MainWindow::updateActions() {
                          tr("Segmentez d'abord l'image (menu Segmentation)."));
     const QString noVectors = tr("Aucun objet vectoriel : vectorisez une région ou dessinez.");
     setEnabledWithReason(showVectorsAct_, !project_.vector_objects.empty(), noVectors);
-    setEnabledWithReason(showStitchesAct_, !project_.embroidery_objects.empty(),
+    setEnabledWithReason(showStitchesAct_, sequence_.has_value(),
                          tr("Aucune broderie : créez un objet de broderie."));
     // Actions mono-objet : désactivées dès que la multi-sélection compte > 1 objet.
     const bool singleObject = selectedObject_.has_value() && !hasMultiSelection();
@@ -8902,10 +8885,9 @@ void MainWindow::updateActions() {
     setEnabledWithReason(exportDstAct_, sequence_.has_value(), needStitches);
     setEnabledWithReason(productionAct_, sequence_.has_value(), needStitches);
     // Actions « document requis » : mêmes gardes que leurs slots (qui restent en place).
-    // « Contenu » = même critère que updateEmptyState()/onAutosaveTick() (image, vecteurs ou
-    // broderie) ; Enregistrer reste actif dès que le document a un fichier.
-    const bool hasDocument =
-        hasImage || !project_.vector_objects.empty() || !project_.embroidery_objects.empty();
+    // Même critère que l'accueil, l'autosave et les slots, import machine inclus.
+    // Enregistrer reste actif dès que le document a un fichier.
+    const bool hasDocument = hasDocumentContent();
     setEnabledWithReason(saveProjectAct_, hasDocument || !currentProjectPath_.isEmpty(),
                          tr("Rien à enregistrer : ouvrez une image ou dessinez une forme."));
     setEnabledWithReason(saveProjectAsAct_, hasDocument,

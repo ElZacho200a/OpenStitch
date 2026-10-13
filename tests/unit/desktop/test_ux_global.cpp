@@ -154,6 +154,29 @@ private slots:
         }
     }
 
+    void darkCanvasGridIsVisibleOnFabricAndOutsideTheHoop() {
+        const Tokens tokens = dark_tokens();
+        // drawBackground peint toujours le tissu en blanc, même en thème sombre.
+        // Mesurer les couleurs composées (pas les pixels d'une capture).
+        for (const QColor& background : {QColor(Qt::white), tokens.canvasBackground}) {
+            for (const bool fine : {false, true}) {
+                QColor grid = tokens.canvasGrid;
+                if (fine) {
+                    grid.setAlpha(grid.alpha() / 2);
+                }
+                const double alpha = grid.alphaF();
+                const QColor composite =
+                    QColor::fromRgbF(alpha * grid.redF() + (1.0 - alpha) * background.redF(),
+                                     alpha * grid.greenF() + (1.0 - alpha) * background.greenF(),
+                                     alpha * grid.blueF() + (1.0 - alpha) * background.blueF());
+                QVERIFY2(contrast(composite, background) >= (fine ? 1.25 : 3.0),
+                         qPrintable(QStringLiteral("grille %1 sur %2 : %3")
+                                        .arg(fine ? "fine" : "majeure", background.name())
+                                        .arg(contrast(composite, background))));
+            }
+        }
+    }
+
     // ---- raccourcis ---------------------------------------------------------------
 
     void redoHasTwoShortcutsAndNewShortcutsExist() {
