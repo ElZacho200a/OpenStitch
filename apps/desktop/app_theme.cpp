@@ -2,9 +2,14 @@
 #include "app_theme.hpp"
 
 #include <QApplication>
+#include <QDir>
+#include <QFile>
 #include <QGuiApplication>
+#include <QPainter>
 #include <QPalette>
+#include <QPixmap>
 #include <QSettings>
+#include <QStandardPaths>
 #include <QStyle>
 #include <QStyleHints>
 #include <QWidget>
@@ -41,6 +46,45 @@ QPalette build_palette(const Tokens& t) {
     p.setColor(QPalette::Disabled, QPalette::Text, t.textDisabled);
     p.setColor(QPalette::Disabled, QPalette::ButtonText, t.textDisabled);
     return p;
+}
+
+// Image de case cochée / indéterminée (QSS ne sait pas dessiner une coche) : PNG 1x et 2x
+// générés dans le dossier temporaire, nommés d'après leurs couleurs (donc jamais périmés).
+QString indicator_image(const QColor& fill, const QColor& mark, bool dash) {
+    const QString dir = QDir(QStandardPaths::writableLocation(QStandardPaths::TempLocation))
+                            .filePath(QStringLiteral("openstitch-theme"));
+    QDir().mkpath(dir);
+    const QString base = QStringLiteral("%1/ind-%2-%3-%4")
+                             .arg(dir, dash ? QStringLiteral("dash") : QStringLiteral("check"),
+                                  fill.name().mid(1), mark.name().mid(1));
+    for (const int scale : {1, 2}) {
+        const QString file =
+            scale == 1 ? base + QStringLiteral(".png") : base + QStringLiteral("@2x.png");
+        if (QFile::exists(file)) {
+            continue;
+        }
+        QPixmap pm(16 * scale, 16 * scale);
+        pm.fill(Qt::transparent);
+        QPainter p(&pm);
+        p.setRenderHint(QPainter::Antialiasing, true);
+        p.scale(scale, scale);
+        p.setPen(Qt::NoPen);
+        p.setBrush(fill);
+        p.drawRoundedRect(QRectF(0.5, 0.5, 15, 15), 4, 4);
+        QPen pen(mark, 2.0);
+        pen.setCapStyle(Qt::RoundCap);
+        pen.setJoinStyle(Qt::RoundJoin);
+        p.setPen(pen);
+        p.setBrush(Qt::NoBrush);
+        if (dash) {
+            p.drawLine(QPointF(4.5, 8), QPointF(11.5, 8));
+        } else {
+            p.drawPolyline(QPolygonF({{4.2, 8.4}, {7, 11.2}, {11.8, 5}}));
+        }
+        p.end();
+        pm.save(file);
+    }
+    return QString(base).replace(QLatin1Char('\\'), QLatin1Char('/'));
 }
 
 // Feuille de style CIBLÉE (widgets nommés), pas monolithique : elle raffine
@@ -180,6 +224,32 @@ QString build_stylesheet(const Tokens& t) {
                .arg(t.radiusMd)
                .arg(t.space2 + 1)
                .arg(c(t.text), c(t.accentSoft), c(t.accent), c(t.border))
+               .arg(t.space3);
+    // Cases à cocher (formulaires et colonnes « Vis. »/« Figé » des listes) : couleurs du thème
+    // au lieu de l'accent système de Windows.
+    {
+        const QString check = indicator_image(t.accent, t.selectionText, false);
+        const QString dash = indicator_image(t.accent, t.selectionText, true);
+        qss += QStringLiteral(
+                   "QCheckBox::indicator, QAbstractItemView::indicator { width: 16px; height: "
+                   "16px; border: 1px solid %1; border-radius: 4px; background: %2; }\n"
+                   "QCheckBox::indicator:hover, QAbstractItemView::indicator:hover { border-color: "
+                   "%3; }\n"
+                   "QCheckBox::indicator:checked, QAbstractItemView::indicator:checked { "
+                   "background: %3; border-color: %3; image: url(%4.png); }\n"
+                   "QCheckBox::indicator:indeterminate, "
+                   "QAbstractItemView::indicator:indeterminate { background: %3; border-color: "
+                   "%3; image: url(%5.png); }\n"
+                   "QCheckBox::indicator:disabled, QAbstractItemView::indicator:disabled { "
+                   "border-color: %6; background: %7; }\n")
+                   .arg(c(t.borderStrong), c(t.surfaceRaised), c(t.accent), check, dash)
+                   .arg(c(t.border), c(t.window));
+    }
+    // Onglets de docks regroupés (Document / Workflow / Ordre de couture…) : plus compacts,
+    // jamais tronqués ; défilement si le dock est vraiment trop étroit.
+    qss += QStringLiteral("QMainWindow > QTabBar { qproperty-elideMode: ElideNone; }\n"
+                          "QMainWindow > QTabBar::tab { padding: %1px %2px; margin-right: 1px; }\n")
+               .arg(t.space2)
                .arg(t.space3);
     // Barre contextuelle (message d'état + actions de l'objet sélectionné) : bandeau discret,
     // texte secondaire, actions en boutons « secondaires » à bord marqué.

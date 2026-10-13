@@ -141,8 +141,19 @@ public:
         if (swatchData.isValid()) {
             textRect.setLeft(cell.left() + t.space2 + kSwatchSize + kSwatchGap);
         }
-        opt.rect = textRect;
-        QStyledItemDelegate::paint(painter, opt, index);
+        // Texte dessiné ici (et non par la peinture de base, qui redessinerait aussi l'icône
+        // d'origine) : le type est retiré du libellé, la pastille de droite le porte déjà.
+        QString text = opt.text;
+        if (!type.isEmpty()) {
+            text.remove(type + QStringLiteral(" — "));
+        }
+        const QRect labelRect = textRect.adjusted(t.space2, 0, -t.space2, 0);
+        painter->save();
+        painter->setFont(opt.font);
+        painter->setPen(t.text);
+        painter->drawText(labelRect, Qt::AlignVCenter | Qt::AlignLeft,
+                          opt.fontMetrics.elidedText(text, Qt::ElideRight, labelRect.width()));
+        painter->restore();
 
         painter->save();
         painter->setRenderHint(QPainter::Antialiasing, true);
