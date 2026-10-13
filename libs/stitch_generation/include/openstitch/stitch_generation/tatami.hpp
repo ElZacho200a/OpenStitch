@@ -88,4 +88,29 @@ private:
     std::unique_ptr<Impl> impl_;
 };
 
+// Trajet COUSU caché d'un point à un autre DANS une région (extérieur moins les trous) : le
+// segment direct s'il reste dans la région, sinon le plus court chemin (graphe de visibilité,
+// Dijkstra) par les sommets du contour de la région rentré de `inset` (extérieur et trous),
+// dont chaque segment reste dans la région. Même principe que les liaisons cachées internes du
+// tatami (`hidden_underpath`), exposé pour relier une sous-couche au remplissage sans saut.
+// Construit une fois par région (index des arêtes, points de passage) ; déterministe ; un même
+// objet ne doit pas être interrogé depuis plusieurs threads à la fois.
+class HiddenRouter {
+public:
+    // `cap_um` : longueur maximale du trajet, en µm.
+    HiddenRouter(const geometry::PathSet& region, Micrometers inset, double cap_um);
+    ~HiddenRouter();
+    HiddenRouter(HiddenRouter&&) noexcept;
+    HiddenRouter& operator=(HiddenRouter&&) noexcept;
+    HiddenRouter(const HiddenRouter&) = delete;
+    HiddenRouter& operator=(const HiddenRouter&) = delete;
+
+    // [a, points de passage…, b], ou vide s'il n'existe aucun trajet sous le cap (ou si a == b).
+    [[nodiscard]] std::vector<Vec2um> route(Vec2um a, Vec2um b) const;
+
+private:
+    struct Impl;
+    std::unique_ptr<Impl> impl_;
+};
+
 } // namespace openstitch::stitch_generation

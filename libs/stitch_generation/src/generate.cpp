@@ -80,14 +80,102 @@ void emit_polyline_with_breaks(stitch::StitchSequence& sequence, const std::vect
     }
 }
 
+// Liaison COUSUE cachée entre les tracés d'une même région (sous-couche -> sous-couche ->
+// remplissage). Sans elle, chaque tracé commence par un saut ; au-delà de `trim_threshold`
+// ce saut devient une coupe (verrous de sortie et d'entrée, temps machine) alors que tout
+// ce trajet disparaît de toute façon sous la couche supérieure.
+// Le trajet de la dernière pénétration au point visé est cousu s'il existe DANS la région
+// (`HiddenRouter` : droit, sinon contournant les trous par le contour rentré) et ne dépasse
+// pas le plafond ; sinon le saut d'origine est conservé. Pénétrations cachées (passe Travel)
+// d'au plus `stitch_length`, comme les liaisons internes du tatami.
+class FillLinker {
+public:
+    // Plafond d'une liaison : elle est découpée en pénétrations de `stitch_length`, donc 60 mm
+    // font ~20 piqûres cachées (~1,7 s à 700 pts/min) contre une coupe (3 s) plus ses verrous
+    // de sortie et d'entrée : la liaison reste gagnante bien au-delà du seuil de coupe.
+    static constexpr double kMaxLinkUm = 60'000.0;
+
+    FillLinker(const geometry::PathSet& region, Micrometers stitch_length, Micrometers inset)
+        : router_(region, inset, kMaxLinkUm),
+          stitch_length_(std::max(1.0, double(stitch_length.value))) {}
+
+    // Dernière position cousue dans cette région (début d'une liaison).
+    void set_tail(Vec2um p) { tail_ = p; }
+
+    // Coud la liaison jusqu'à `target` INCLUS (dernière pénétration en `target`). Faux, sans
+    // rien émettre, si elle n'est pas possible : l'appelant émet alors son saut habituel.
+    bool link_to(stitch::StitchSequence& sequence, Vec2um target, ObjectId source) {
+        if (!tail_) {
+            return false;
+        }
+        const std::vector<Vec2um> route = router_.route(*tail_, target);
+        if (route.size() < 2) {
+            return false;
+        }
+        for (std::size_t leg = 1; leg < route.size(); ++leg) {
+            const Vec2um from = route[leg - 1];
+            const Vec2um to = route[leg];
+            const double dx = double(to.x.value) - double(from.x.value);
+            const double dy = double(to.y.value) - double(from.y.value);
+            const int steps =
+                std::max(1, static_cast<int>(std::ceil(std::hypot(dx, dy) / stitch_length_)));
+            for (int t = 1; t <= steps; ++t) {
+                Vec2um p = to;
+                if (t < steps) {
+                    const double f = double(t) / double(steps);
+                    p = Vec2um{Micrometers{static_cast<std::int32_t>(
+                                   std::lround(double(from.x.value) + dx * f))},
+                               Micrometers{static_cast<std::int32_t>(
+                                   std::lround(double(from.y.value) + dy * f))}};
+                }
+                sequence.commands.push_back(
+                    {p, stitch::CommandType::Stitch, source, stitch::StitchPass::Travel});
+            }
+        }
+        tail_ = target;
+        return true;
+    }
+
+private:
+    HiddenRouter router_;
+    double stitch_length_;
+    std::optional<Vec2um> tail_;
+};
+
+// Tracé de sous-couche d'une région : relié depuis la dernière pénétration quand c'est possible
+// (le premier point devient alors le dernier point de la liaison, passe Travel), sinon saut.
+void emit_underlay_pass(stitch::StitchSequence& sequence, const std::vector<Vec2um>& points,
+                        ObjectId source, FillLinker* linker) {
+    if (points.size() < 2) {
+        return;
+    }
+    if (linker != nullptr && linker->link_to(sequence, points.front(), source)) {
+        for (std::size_t i = 1; i < points.size(); ++i) {
+            sequence.commands.push_back(
+                {points[i], stitch::CommandType::Stitch, source, stitch::StitchPass::Underlay});
+        }
+    } else {
+        emit_polyline(sequence, points, source, stitch::StitchPass::Underlay);
+    }
+    if (linker != nullptr) {
+        linker->set_tail(points.back());
+    }
+}
+
 // Émet un remplissage : un point `jump` (ou le tout premier) devient un
 // déplacement (Jump, aiguille relevée, passe Travel), un point `travel` une
 // pénétration cachée (Stitch, passe Travel), les autres la couche supérieure
 // (Stitch, TopStitch). Garantit qu'aucune couture ne traverse un trou.
+// Avec `linker`, le premier point est atteint par une liaison cousue cachée depuis la
+// sous-couche quand le trajet reste dans la région (au lieu d'un saut).
 void emit_fill(stitch::StitchSequence& sequence, const std::vector<FillStitch>& fill,
-               ObjectId source) {
+               ObjectId source, FillLinker* linker = nullptr) {
     bool started = false;
     for (const FillStitch& fs : fill) {
+        if (!started && linker != nullptr && linker->link_to(sequence, fs.pos, source)) {
+            started = true;
+            continue;
+        }
         if (!started || fs.jump) {
             sequence.commands.push_back(
                 {fs.pos, stitch::CommandType::Jump, source, stitch::StitchPass::Travel});
@@ -585,11 +673,17 @@ void generate_tatami(stitch::StitchSequence& sequence, const document::VectorObj
                      const document::TatamiParams& params) {
     for (const geometry::PathSet& region :
          fill_regions_in_sewing_order(sequence, source, params.inset)) {
-        // Sous-couches d'abord (§15), puis couche supérieure.
-        for (const auto& up : tatami_underlay(region, resolve_underlay(params, region))) {
-            emit_polyline(sequence, up, object.id, stitch::StitchPass::Underlay);
+        // Sous-couches d'abord (§15), puis couche supérieure. Avec liaisons cachées, les
+        // tracés de sous-couche et le remplissage s'enchaînent sans saut (donc sans coupe).
+        const auto underlay = tatami_underlay(region, resolve_underlay(params, region));
+        std::optional<FillLinker> linker;
+        if (params.hidden_underpath && !underlay.empty()) {
+            linker.emplace(region, params.stitch_length, params.underlay_inset);
         }
-        emit_fill(sequence, fill_tatami(region, params), object.id);
+        for (const auto& up : underlay) {
+            emit_underlay_pass(sequence, up, object.id, linker ? &*linker : nullptr);
+        }
+        emit_fill(sequence, fill_tatami(region, params), object.id, linker ? &*linker : nullptr);
     }
 }
 
@@ -601,10 +695,16 @@ void generate_directional(stitch::StitchSequence& sequence, const document::Vect
                           const document::DirectionalFillParams& params) {
     for (const geometry::PathSet& region :
          fill_regions_in_sewing_order(sequence, source, params.inset)) {
-        for (const auto& up : directional_underlay(region, resolve_underlay(params, region))) {
-            emit_polyline(sequence, up, object.id, stitch::StitchPass::Underlay);
+        const auto underlay = directional_underlay(region, resolve_underlay(params, region));
+        std::optional<FillLinker> linker;
+        if (params.hidden_underpath && !underlay.empty()) {
+            linker.emplace(region, params.stitch_length, params.underlay_inset);
         }
-        emit_fill(sequence, fill_directional(region, params), object.id);
+        for (const auto& up : underlay) {
+            emit_underlay_pass(sequence, up, object.id, linker ? &*linker : nullptr);
+        }
+        emit_fill(sequence, fill_directional(region, params), object.id,
+                  linker ? &*linker : nullptr);
     }
 }
 
