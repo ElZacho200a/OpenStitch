@@ -1,5 +1,7 @@
 # Audit de l'interface Qt — 2026-10-06
 
+> Revue de l'état actuel : [audit UX/UI du 2026-10-13](ui-ux-audit-2026-10-13.md), qui distingue les défauts corrigés depuis cet audit, les constats actuels et la validation visuelle restant à réaliser.
+
 Public : mainteneur, contributeur, agents. Complète `docs/ui-redesign-{audit,plan,specification}.md`
 (refonte antérieure : tokens, inspecteur, barres d'outils, état vide) et la section 20 de
 `docs/roadmap-parite-hatch.md` (HP-UX-*). Ce document porte sur **le câblage et
