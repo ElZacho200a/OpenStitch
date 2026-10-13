@@ -6,17 +6,24 @@
 #include <QAbstractItemModel>
 #include <QColor>
 #include <QComboBox>
+#include <QFontMetrics>
+#include <QFrame>
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QLineEdit>
 #include <QListWidget>
+#include <QPainter>
 #include <QPushButton>
 #include <QSignalBlocker>
 #include <QSpinBox>
+#include <QStyledItemDelegate>
 #include <QTabWidget>
 #include <QVBoxLayout>
 
+#include <algorithm>
+
 #include "app_theme.hpp"
+#include "design_tokens.hpp"
 #include "openstitch/thread_palette/chart_import.hpp"
 #include "ui_icons.hpp"
 
@@ -39,18 +46,146 @@ QString formatDuration(double seconds) {
     return QObject::tr("%1 min %2 s").arg(total / 60).arg(total % 60, 2, 10, QLatin1Char('0'));
 }
 
+// Rôles ajoutés (en plus de DisplayRole / DecorationRole / ToolTipRole, inchangés) pour
+// que le délégué dessine la pastille et les deux textes sans réanalyser le texte affiché.
+constexpr int kSwatchRole = Qt::UserRole + 101;
+constexpr int kPrimaryRole = Qt::UserRole + 102;
+constexpr int kSecondaryRole = Qt::UserRole + 103;
+
+constexpr int kSwatchDiameter = 16;
+
+// Ligne de fil : pastille ronde de la couleur du fil, code/nom, puis compteurs en texte
+// secondaire (2e ligne si `twoLine`, sinon à droite). Couleurs de l'interface tirées des
+// jetons à chaque dessin : le changement de thème n'exige qu'un `update()` de la vue.
+class ThreadRowDelegate : public QStyledItemDelegate {
+public:
+    ThreadRowDelegate(bool twoLine, QObject* parent)
+        : QStyledItemDelegate(parent), twoLine_(twoLine) {}
+
+    void paint(QPainter* painter, const QStyleOptionViewItem& option,
+               const QModelIndex& index) const override {
+        const Tokens& t = AppTheme::instance().tokens();
+        const bool selected = option.state.testFlag(QStyle::State_Selected);
+        painter->save();
+        painter->setRenderHint(QPainter::Antialiasing, true);
+
+        const QRect r = option.rect.adjusted(2, 1, -2, -1);
+        if (selected) {
+            painter->setPen(Qt::NoPen);
+            painter->setBrush(t.selection);
+            painter->drawRoundedRect(r, t.radiusSm, t.radiusSm);
+        } else if (option.state.testFlag(QStyle::State_MouseOver)) {
+            QColor hover = t.selection;
+            hover.setAlpha(60);
+            painter->setPen(Qt::NoPen);
+            painter->setBrush(hover);
+            painter->drawRoundedRect(r, t.radiusSm, t.radiusSm);
+        }
+
+        const int pad = t.space3;
+        const QRect swatch(r.left() + pad, r.center().y() - kSwatchDiameter / 2 + 1,
+                           kSwatchDiameter, kSwatchDiameter);
+        const QColor fill = index.data(kSwatchRole).value<QColor>();
+        QColor rim = t.textSecondary; // liseré visible sur fond clair comme sombre
+        rim.setAlpha(170);
+        painter->setPen(QPen(rim, 1.0));
+        painter->setBrush(fill);
+        painter->drawEllipse(QRectF(swatch).adjusted(0.5, 0.5, -0.5, -0.5));
+
+        const QColor mainColor = selected ? t.selectionText : t.text;
+        const QColor subColor = selected ? t.selectionText : t.textSecondary;
+        const QString primary = index.data(kPrimaryRole).toString();
+        const QString secondary = index.data(kSecondaryRole).toString();
+        const int textLeft = swatch.right() + 1 + pad;
+        const int textRight = r.right() - pad;
+
+        QFont subFont = option.font;
+        if (option.font.pointSizeF() > 0) {
+            subFont.setPointSizeF(option.font.pointSizeF() * 0.9);
+        }
+        const QFontMetrics fm(option.font);
+        const QFontMetrics sfm(subFont);
+
+        if (twoLine_) {
+            const int width = textRight - textLeft + 1;
+            const int total = fm.height() + (secondary.isEmpty() ? 0 : sfm.height());
+            int y = r.center().y() - total / 2;
+            painter->setFont(option.font);
+            painter->setPen(mainColor);
+            painter->drawText(QRect(textLeft, y, width, fm.height()),
+                              Qt::AlignLeft | Qt::AlignVCenter,
+                              fm.elidedText(primary, Qt::ElideRight, width));
+            y += fm.height();
+            if (!secondary.isEmpty()) {
+                painter->setFont(subFont);
+                painter->setPen(subColor);
+                painter->drawText(QRect(textLeft, y, width, sfm.height()),
+                                  Qt::AlignLeft | Qt::AlignVCenter,
+                                  sfm.elidedText(secondary, Qt::ElideRight, width));
+            }
+        } else {
+            int right = textRight;
+            if (!secondary.isEmpty()) {
+                const int w = sfm.horizontalAdvance(secondary);
+                painter->setFont(subFont);
+                painter->setPen(subColor);
+                painter->drawText(QRect(right - w + 1, r.top(), w, r.height()),
+                                  Qt::AlignRight | Qt::AlignVCenter, secondary);
+                right -= w + pad;
+            }
+            painter->setFont(option.font);
+            painter->setPen(mainColor);
+            painter->drawText(QRect(textLeft, r.top(), right - textLeft + 1, r.height()),
+                              Qt::AlignLeft | Qt::AlignVCenter,
+                              fm.elidedText(primary, Qt::ElideRight, right - textLeft + 1));
+        }
+        painter->restore();
+    }
+
+    QSize sizeHint(const QStyleOptionViewItem& option, const QModelIndex&) const override {
+        const Tokens& t = AppTheme::instance().tokens();
+        const int lines = twoLine_ ? 2 : 1;
+        const int h = option.fontMetrics.height() * lines + 2 * t.space2 + 2;
+        return {option.rect.width(), std::max(h, kSwatchDiameter + 2 * t.space2 + 2)};
+    }
+
+private:
+    bool twoLine_;
+};
+
+void setThreadRow(QListWidgetItem* item, const QColor& color, const QString& primary,
+                  const QString& secondary) {
+    item->setData(kSwatchRole, color);
+    item->setData(kPrimaryRole, primary);
+    item->setData(kSecondaryRole, secondary);
+}
+
+// Résumé affiché dans une carte (QFrame[card="true"]) ; le style local ne dépend que des
+// jetons, il est ré-émis à chaque changement de thème.
+QFrame* wrapInCard(QLabel* label, QWidget* parent) {
+    auto* card = new QFrame(parent);
+    card->setProperty("card", true);
+    auto* lay = new QVBoxLayout(card);
+    const int m = AppTheme::instance().tokens().space3;
+    lay->setContentsMargins(m, m, m, m);
+    lay->setSpacing(0);
+    lay->addWidget(label);
+    return card;
+}
+
 } // namespace
 
 ThreadPanel::ThreadPanel(QWidget* parent) : QWidget(parent) {
     auto* root = new QVBoxLayout(this);
-    root->setContentsMargins(4, 4, 4, 4);
-    root->setSpacing(4);
+    root->setContentsMargins(8, 8, 8, 8);
+    root->setSpacing(8);
 
     selectionInfo_ = new QLabel(this);
     selectionInfo_->setObjectName(QStringLiteral("threadSelectionInfo"));
     selectionInfo_->setWordWrap(true);
     markSecondaryText(selectionInfo_);
-    root->addWidget(selectionInfo_);
+    cards_.push_back(wrapInCard(selectionInfo_, this));
+    root->addWidget(cards_.back());
 
     tabs_ = new QTabWidget(this);
     tabs_->setObjectName(QStringLiteral("threadTabs"));
@@ -59,14 +194,18 @@ ThreadPanel::ThreadPanel(QWidget* parent) : QWidget(parent) {
     // ---- Onglet « Projet » : fils utilisés ------------------------------------------------
     auto* projectTab = new QWidget(tabs_);
     auto* pl = new QVBoxLayout(projectTab);
-    pl->setContentsMargins(4, 4, 4, 4);
+    pl->setContentsMargins(8, 8, 8, 8);
+    pl->setSpacing(8);
     usageSummary_ = new QLabel(projectTab);
     usageSummary_->setWordWrap(true);
     usageSummary_->setObjectName(QStringLiteral("threadUsageSummary"));
-    pl->addWidget(usageSummary_);
+    cards_.push_back(wrapInCard(usageSummary_, projectTab));
+    pl->addWidget(cards_.back());
     usageList_ = new QListWidget(projectTab);
     usageList_->setObjectName(QStringLiteral("threadUsageList"));
     usageList_->setAccessibleName(tr("Fils utilisés par le motif"));
+    usageList_->setItemDelegate(new ThreadRowDelegate(true, usageList_));
+    usageList_->setMouseTracking(true);
     pl->addWidget(usageList_, 1);
 
     selectUsageBtn_ = new QPushButton(tr("Sélectionner les objets de ce fil"), projectTab);
@@ -85,6 +224,7 @@ ThreadPanel::ThreadPanel(QWidget* parent) : QWidget(parent) {
     pl->addWidget(snapBtn_);
 
     auto* reduceRow = new QHBoxLayout();
+    reduceRow->setSpacing(8);
     reduceRow->addWidget(new QLabel(tr("Limiter à"), projectTab));
     reduceSpin_ = new QSpinBox(projectTab);
     reduceSpin_->setObjectName(QStringLiteral("threadReduceSpin"));
@@ -109,7 +249,8 @@ ThreadPanel::ThreadPanel(QWidget* parent) : QWidget(parent) {
     // ---- Onglet « Catalogues » ------------------------------------------------------------
     auto* catalogTab = new QWidget(tabs_);
     auto* cl = new QVBoxLayout(catalogTab);
-    cl->setContentsMargins(4, 4, 4, 4);
+    cl->setContentsMargins(8, 8, 8, 8);
+    cl->setSpacing(8);
     chartCombo_ = new QComboBox(catalogTab);
     chartCombo_->setObjectName(QStringLiteral("threadChartCombo"));
     chartCombo_->setAccessibleName(tr("Nuancier"));
@@ -129,6 +270,8 @@ ThreadPanel::ThreadPanel(QWidget* parent) : QWidget(parent) {
     catalogList_->setObjectName(QStringLiteral("threadCatalogList"));
     catalogList_->setAccessibleName(tr("Fils du nuancier"));
     catalogList_->setToolTip(tr("Cliquez un fil pour l'assigner à la sélection."));
+    catalogList_->setItemDelegate(new ThreadRowDelegate(false, catalogList_));
+    catalogList_->setMouseTracking(true);
     cl->addWidget(catalogList_, 1);
     nearestBtn_ = new QPushButton(tr("Fils les plus proches de la sélection"), catalogTab);
     nearestBtn_->setObjectName(QStringLiteral("threadNearestBtn"));
@@ -144,11 +287,13 @@ ThreadPanel::ThreadPanel(QWidget* parent) : QWidget(parent) {
     // ---- Onglet « Film couleur » ----------------------------------------------------------
     auto* filmTab = new QWidget(tabs_);
     auto* fl = new QVBoxLayout(filmTab);
-    fl->setContentsMargins(4, 4, 4, 4);
+    fl->setContentsMargins(8, 8, 8, 8);
+    fl->setSpacing(8);
     filmSummary_ = new QLabel(filmTab);
     filmSummary_->setWordWrap(true);
     filmSummary_->setObjectName(QStringLiteral("threadFilmSummary"));
-    fl->addWidget(filmSummary_);
+    cards_.push_back(wrapInCard(filmSummary_, filmTab));
+    fl->addWidget(cards_.back());
     filmList_ = new QListWidget(filmTab);
     filmList_->setObjectName(QStringLiteral("threadFilmList"));
     filmList_->setAccessibleName(tr("Film couleur : blocs dans l'ordre de couture"));
@@ -156,8 +301,11 @@ ThreadPanel::ThreadPanel(QWidget* parent) : QWidget(parent) {
     filmList_->setDefaultDropAction(Qt::MoveAction);
     filmList_->setToolTip(tr("Glissez un bloc pour réordonner les couleurs (les objets figés "
                              "ne bougent pas)."));
+    filmList_->setItemDelegate(new ThreadRowDelegate(true, filmList_));
+    filmList_->setMouseTracking(true);
     fl->addWidget(filmList_, 1);
     auto* moveRow = new QHBoxLayout();
+    moveRow->setSpacing(8);
     filmUpBtn_ = new QPushButton(tr("▲ Monter"), filmTab);
     filmUpBtn_->setObjectName(QStringLiteral("threadFilmUpBtn"));
     filmDownBtn_ = new QPushButton(tr("▼ Descendre"), filmTab);
@@ -251,7 +399,25 @@ ThreadPanel::ThreadPanel(QWidget* parent) : QWidget(parent) {
     });
     connect(filmMergeBtn_, &QPushButton::clicked, this, &ThreadPanel::mergeFilmBlocksRequested);
 
+    connect(&AppTheme::instance(), &AppTheme::changed, this, [this] { applyTheme(); });
+    applyTheme();
     updateButtons();
+}
+
+void ThreadPanel::applyTheme() {
+    const Tokens& t = AppTheme::instance().tokens();
+    const QString css =
+        QStringLiteral("QFrame[card=\"true\"] { background: %1; border: 1px solid %2; "
+                       "border-radius: %3px; }")
+            .arg(t.surfaceRaised.name(), t.border.name())
+            .arg(t.radiusMd);
+    for (QFrame* card : cards_) {
+        card->setStyleSheet(css);
+    }
+    for (QListWidget* list : {usageList_, catalogList_, filmList_}) {
+        list->doItemsLayout();
+        list->viewport()->update();
+    }
 }
 
 void ThreadPanel::setLibrary(const thread_palette::ThreadLibrary* library) {
@@ -298,6 +464,8 @@ void ThreadPanel::rebuildCatalog() {
     for (const auto& t : catalogRows_) {
         auto* item = new QListWidgetItem(tr("%1 — %2").arg(fromStd(t.key.code), fromStd(t.name)));
         item->setIcon(icons::colorSwatch(toColor(t.rgb), 16));
+        setThreadRow(item, toColor(t.rgb), tr("%1 — %2").arg(fromStd(t.key.code), fromStd(t.name)),
+                     fromStd(thread_palette::to_hex_color(t.rgb)));
         item->setToolTip(tr("%1 %2 — %3\n%4")
                              .arg(fromStd(t.brand), fromStd(t.range), fromStd(t.name),
                                   fromStd(thread_palette::to_hex_color(t.rgb))));
@@ -328,6 +496,10 @@ void ThreadPanel::showMatches(const std::vector<thread_palette::Thread>& matches
             auto* item = new QListWidgetItem(
                 tr("%1 %2 — %3").arg(fromStd(t.brand), fromStd(t.key.code), fromStd(t.name)));
             item->setIcon(icons::colorSwatch(toColor(t.rgb), 16));
+            setThreadRow(
+                item, toColor(t.rgb),
+                tr("%1 %2 — %3").arg(fromStd(t.brand), fromStd(t.key.code), fromStd(t.name)),
+                fromStd(thread_palette::to_hex_color(t.rgb)));
             catalogList_->addItem(item);
         }
     }
@@ -376,6 +548,11 @@ void ThreadPanel::setUsage(std::vector<stitch_analysis::ThreadUsage> usage) {
                                     .arg(u.stitch_count)
                                     .arg(QLocale().toString(u.length_mm / 1000.0, 'f', 2)));
         item->setIcon(icons::colorSwatch(toColor(u.identity.rgb), 18));
+        setThreadRow(item, toColor(u.identity.rgb), fromStd(stitch_analysis::thread_label(u)),
+                     tr("%1 objet(s) · %2 points · %3 m")
+                         .arg(u.objects.size())
+                         .arg(u.stitch_count)
+                         .arg(QLocale().toString(u.length_mm / 1000.0, 'f', 2)));
         item->setToolTip(tr("%1 passage(s) · durée estimée %2")
                              .arg(u.color_blocks)
                              .arg(formatDuration(u.estimated_seconds)));
@@ -410,6 +587,12 @@ void ThreadPanel::setFilm(std::vector<stitch_analysis::ColorFilmBlock> film) {
                                                  .arg(b.stitch_count)
                                                  .arg(b.locked ? tr(" · ordre figé") : QString()));
             item->setIcon(icons::colorSwatch(toColor(b.identity.rgb), 18));
+            setThreadRow(item, toColor(b.identity.rgb),
+                         tr("%1. %2").arg(rank).arg(labelOf(b.identity)),
+                         tr("%1 objet(s) · %2 points%3")
+                             .arg(b.objects.size())
+                             .arg(b.stitch_count)
+                             .arg(b.locked ? tr(" · ordre figé") : QString()));
             filmList_->addItem(item);
         }
         if (previousRow >= 0 && previousRow < filmList_->count()) {

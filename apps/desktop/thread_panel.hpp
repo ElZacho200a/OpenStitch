@@ -12,6 +12,7 @@
 #include "openstitch/thread_palette/thread_library.hpp"
 
 class QComboBox;
+class QFrame;
 class QLabel;
 class QLineEdit;
 class QListWidget;
@@ -66,6 +67,7 @@ signals:
 private:
     void rebuildCatalog();
     void updateButtons();
+    void applyTheme();
     [[nodiscard]] QString labelOf(const stitch_analysis::ThreadIdentity& id) const;
 
     const thread_palette::ThreadLibrary* library_{nullptr};
@@ -73,6 +75,7 @@ private:
     std::vector<stitch_analysis::ColorFilmBlock> film_;
     std::vector<thread_palette::Thread> catalogRows_;
     bool showingMatches_{false};
+    std::vector<QFrame*> cards_; // cartes de résumé (style local issu des jetons)
 
     QTabWidget* tabs_{nullptr};
     QLabel* selectionInfo_{nullptr};
