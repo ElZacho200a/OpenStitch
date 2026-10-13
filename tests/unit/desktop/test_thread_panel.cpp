@@ -252,6 +252,87 @@ private slots:
         QCOMPARE(strip.threadCount(), 0);
     }
 
+    void draggingASwatchReordersAndAPlainClickStillSelects() {
+        ThreadStrip strip;
+        strip.resize(600, 40);
+        strip.show();
+        strip.setThreads({{QColor(200, 16, 46), QStringLiteral("rouge")},
+                          {QColor(0, 114, 206), QStringLiteral("bleu")},
+                          {QColor(10, 10, 10), QStringLiteral("noir")}},
+                         QStringLiteral("3 fils"));
+        QSignalSpy clicked(&strip, &ThreadStrip::threadClicked);
+        QSignalSpy moved(&strip, &ThreadStrip::threadMoved);
+        const auto dragTo = [&](const QPointF& pos) {
+            QMouseEvent move(QEvent::MouseMove, pos, strip.mapToGlobal(pos), Qt::NoButton,
+                             Qt::LeftButton, Qt::NoModifier);
+            QApplication::sendEvent(&strip, &move);
+        };
+
+        // Clic simple : sélection, aucun déplacement.
+        QTest::mouseClick(&strip, Qt::LeftButton, Qt::NoModifier, strip.swatchCenter(1).toPoint());
+        QCOMPARE(clicked.count(), 1);
+        QCOMPARE(clicked.at(0).at(0).toInt(), 1);
+        QCOMPARE(moved.count(), 0);
+
+        // Glisser la 1re pastille jusqu'à la 3e : la couleur passe en position 2.
+        QTest::mousePress(&strip, Qt::LeftButton, Qt::NoModifier, strip.swatchCenter(0).toPoint());
+        dragTo(strip.swatchCenter(1));
+        dragTo(strip.swatchCenter(2));
+        QTest::mouseRelease(&strip, Qt::LeftButton, Qt::NoModifier,
+                            strip.swatchCenter(2).toPoint());
+        QCOMPARE(moved.count(), 1);
+        QCOMPARE(moved.at(0).at(0).toInt(), 0);
+        QCOMPARE(moved.at(0).at(1).toInt(), 2);
+        QCOMPARE(clicked.count(), 1); // un glissement n'est pas un clic
+
+        // Relâchée sur sa propre place : rien ne bouge, et ce n'est pas un clic non plus.
+        QTest::mousePress(&strip, Qt::LeftButton, Qt::NoModifier, strip.swatchCenter(1).toPoint());
+        dragTo(strip.swatchCenter(1) + QPointF(0, 12));
+        dragTo(strip.swatchCenter(1) + QPointF(2, 12));
+        QTest::mouseRelease(&strip, Qt::LeftButton, Qt::NoModifier,
+                            (strip.swatchCenter(1) + QPointF(2, 12)).toPoint());
+        QCOMPARE(moved.count(), 1);
+        QCOMPARE(clicked.count(), 1);
+
+        // Glisser vers la gauche, au-delà de la première pastille : borné à la position 0.
+        QTest::mousePress(&strip, Qt::LeftButton, Qt::NoModifier, strip.swatchCenter(2).toPoint());
+        dragTo(strip.swatchCenter(1));
+        dragTo(QPointF(1, strip.swatchCenter(0).y()));
+        QTest::mouseRelease(&strip, Qt::LeftButton, Qt::NoModifier, QPoint(1, 20));
+        QCOMPARE(moved.count(), 2);
+        QCOMPARE(moved.at(1).at(0).toInt(), 2);
+        QCOMPARE(moved.at(1).at(1).toInt(), 0);
+    }
+
+    void draggingASwatchMovesTheColourAndIsOneUndoStep() {
+        MainWindow window;
+        window.show();
+        window.applyLoadedProject(twoTrianglesProject());
+        QApplication::processEvents();
+        auto* strip = window.findChild<ThreadStrip*>();
+        QVERIFY(strip != nullptr);
+        QCOMPARE(strip->threadCount(), 2); // rouge puis bleu
+
+        const auto dragTo = [&](const QPointF& pos) {
+            QMouseEvent move(QEvent::MouseMove, pos, strip->mapToGlobal(pos), Qt::NoButton,
+                             Qt::LeftButton, Qt::NoModifier);
+            QApplication::sendEvent(strip, &move);
+        };
+        QTest::mousePress(strip, Qt::LeftButton, Qt::NoModifier, strip->swatchCenter(0).toPoint());
+        dragTo(strip->swatchCenter(1));
+        QTest::mouseRelease(strip, Qt::LeftButton, Qt::NoModifier,
+                            strip->swatchCenter(1).toPoint());
+        QApplication::processEvents();
+        // Le rouge est maintenant cousu après le bleu : objets dans l'ordre bleu, rouge.
+        QCOMPARE(window.project_.embroidery_objects.front().rgb,
+                 (std::array<std::uint8_t, 3>{0, 114, 206}));
+
+        window.findChild<QAction*>("action_undo")->trigger(); // un seul pas d'annulation
+        QApplication::processEvents();
+        QCOMPARE(window.project_.embroidery_objects.front().rgb,
+                 (std::array<std::uint8_t, 3>{200, 16, 46}));
+    }
+
     void threadStripFollowsTheThreadsOfTheLoadedPattern() {
         MainWindow window;
         window.show();

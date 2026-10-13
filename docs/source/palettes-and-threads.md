@@ -184,8 +184,12 @@ sont redistribués dans les emplacements libres.
 première utilisation (celui de `thread_usage`) : tous ses objets passent ensemble, la
 couleur est cousue après, donc **au-dessus**, de celles qu'elle dépasse. Les autres couleurs
 gardent leur ordre relatif, chaque couleur l'ordre de ses objets, et les mêmes règles de
-verrouillage s'appliquent. Dans l'onglet *Projet* du panneau Fils, on glisse une couleur ou
-on utilise *▲ Passer dessous* / *▼ Passer dessus* (un seul pas d'annulation). Le déplacement
+verrouillage s'appliquent. **Directement dans la barre des fils** (bas de la fenêtre, toujours
+visible), on glisse une pastille : à droite = cousue après, donc au-dessus ; un repère
+d'insertion montre la place d'arrivée, et un simple clic continue de sélectionner les objets
+du fil. Le panneau Fils (caché par défaut, menu *Fils*), onglet *Projet*, offre la même
+opération par glisser-déposer ou par *▲ Passer dessous* / *▼ Passer dessus*. Dans les deux
+cas, un seul pas d'annulation. Le déplacement
 par bloc de l'onglet *Film couleur* reste disponible quand une même couleur est cousue en
 plusieurs passages à des endroits différents. Fusionner les blocs de même fil
 réduit les changements mais modifie l'empilement des couches (le fil cousu plus tard
