@@ -18,9 +18,12 @@
 #include <limits>
 #include <numbers>
 
+#include <QColorDialog>
+
 #include "main_window.hpp"
 #include "openstitch/commands/composite_command.hpp"
 #include "openstitch/commands/project_commands.hpp"
+#include "openstitch/commands/thread_commands.hpp"
 #include "openstitch/stitch_generation/directional_fill.hpp"
 #include "properties_panel.hpp"
 
@@ -76,6 +79,43 @@ std::optional<QRectF> MainWindow::vectorBoxMm(const document::VectorObject& obje
 }
 
 void MainWindow::connectInspectorEditing() {
+    connect(propertiesPanel_, &PropertiesPanel::editTextRequested, this,
+            &MainWindow::editSelectedText);
+    connect(propertiesPanel_, &PropertiesPanel::fillLayerSelected, this, [this](ObjectId id) {
+        if (const auto* layer = project_.findEmbroidery(id)) {
+            setSelection({.embroidery = id, .objects = {layer->source_vector}});
+            displayImage(processed_);
+            syncDocumentSelection();
+            updateActions();
+        }
+    });
+    connect(propertiesPanel_, &PropertiesPanel::fillColorRequested, this, [this](ObjectId id) {
+        const auto* emb = project_.findEmbroidery(id);
+        if (emb == nullptr) {
+            return;
+        }
+        QColorDialog dialog(QColor(emb->rgb[0], emb->rgb[1], emb->rgb[2]), this);
+        dialog.setObjectName(QStringLiteral("fillColorDialog"));
+        dialog.setWindowTitle(tr("Couleur de la couche"));
+        const auto generation = documentGeneration_;
+        if (dialog.exec() != QDialog::Accepted || generation != documentGeneration_) {
+            return;
+        }
+        const QColor chosen = dialog.selectedColor();
+        const std::array<std::uint8_t, 3> rgb{static_cast<std::uint8_t>(chosen.red()),
+                                              static_cast<std::uint8_t>(chosen.green()),
+                                              static_cast<std::uint8_t>(chosen.blue())};
+        const auto* current = project_.findEmbroidery(id);
+        if (current == nullptr || rgb == current->rgb) {
+            return;
+        }
+        undoStack_.execute(
+            std::make_unique<commands::SetObjectThreadCommand>(
+                std::vector<ObjectId>{id}, std::nullopt, rgb, "Couleur de la couche"),
+            project_);
+        refreshImage();
+        updateActions();
+    });
     connect(propertiesPanel_, &PropertiesPanel::vectorBoxEdited, this,
             [this](ObjectId id, QRectF want) { applyVectorBox(id, want); });
     connect(propertiesPanel_, &PropertiesPanel::applyToSelectionRequested, this,
@@ -304,8 +344,14 @@ void MainWindow::setStitchTypeForSelection(
             continue;
         }
         const document::EmbroideryObject* existing = nullptr;
+        if (selectedEmbroidery_) {
+            const auto* selected = project_.findEmbroidery(*selectedEmbroidery_);
+            if (selected != nullptr && selected->source_vector == id) {
+                existing = selected; // couche explicite de l'inspecteur, pas le premier fond trouvé
+            }
+        }
         for (const auto& emb : project_.embroidery_objects) {
-            if (emb.source_vector == id) {
+            if (existing == nullptr && emb.source_vector == id) {
                 existing = &emb;
                 break;
             }
@@ -314,10 +360,12 @@ void MainWindow::setStitchTypeForSelection(
         // fusionne pas les sections d'une même forme. Une demande explicite
         // d'espacement/angle (tweak) garde son effet, même avec le même type.
         if (existing != nullptr && !tweak &&
-            std::all_of(project_.embroidery_objects.begin(), project_.embroidery_objects.end(),
-                        [id, type](const auto& emb) {
-                            return emb.source_vector != id || stitchTypeIndex(emb) == type;
-                        })) {
+            ((selectedEmbroidery_ && existing->id == *selectedEmbroidery_ &&
+              stitchTypeIndex(*existing) == type) ||
+             std::all_of(project_.embroidery_objects.begin(), project_.embroidery_objects.end(),
+                         [id, type](const auto& emb) {
+                             return emb.source_vector != id || stitchTypeIndex(emb) == type;
+                         }))) {
             continue;
         }
         // Forme sans couture : un objet provisoire donne sa forme et ses couleurs au calcul.

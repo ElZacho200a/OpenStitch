@@ -16,6 +16,7 @@
 #include <QPushButton>
 #include <QSignalBlocker>
 #include <QSpinBox>
+#include <QToolButton>
 #include <QVBoxLayout>
 
 #include <algorithm>
@@ -259,6 +260,43 @@ PropertiesPanel::PropertiesPanel(QWidget* parent) : QWidget(parent) {
     connect(textEditButton_, &QPushButton::clicked, this, &PropertiesPanel::editTextRequested);
     root_->addWidget(textEditButton_);
 
+    layerRow_ = new QWidget(this);
+    auto* layersLayout = new QVBoxLayout(layerRow_);
+    layersLayout->setContentsMargins(0, 0, 0, 0);
+    layersLayout->addWidget(new QLabel(tr("Couches de couture · ordre de couture"), layerRow_));
+    fillLayers_ = new QComboBox(layerRow_);
+    fillLayers_->setObjectName(QStringLiteral("combo_fillLayer"));
+    fillLayers_->setAccessibleName(tr("Couche de remplissage à éditer"));
+    fillLayers_->setToolTip(tr("Chaque couche garde sa couleur et ses réglages. "
+                               "La liste suit l'ordre de couture, fond puis dessus."));
+    layersLayout->addWidget(fillLayers_);
+    connect(fillLayers_, &QComboBox::currentIndexChanged, this, [this](int index) {
+        if (index >= 0) {
+            emit fillLayerSelected(ObjectId{fillLayers_->itemData(index).toULongLong()});
+        }
+    });
+    root_->addWidget(layerRow_);
+    layerRow_->hide();
+    fillColor_ = new QPushButton(tr("Couleur de cette couche…"), this);
+    fillColor_->setObjectName(QStringLiteral("button_fillColor"));
+    connect(fillColor_, &QPushButton::clicked, this, [this] {
+        if (currentId_) {
+            emit fillColorRequested(*currentId_);
+        }
+    });
+    root_->addWidget(fillColor_);
+    fillColor_->hide();
+    blendSingle_ = new QToolButton(this);
+    blendSingle_->setObjectName(QStringLiteral("button_createColorBlend"));
+    blendSingle_->setToolButtonStyle(Qt::ToolButtonTextOnly);
+    blendZones_ = new QToolButton(this);
+    blendZones_->setObjectName(QStringLiteral("button_blendSelectedZones"));
+    blendZones_->setToolButtonStyle(Qt::ToolButtonTextOnly);
+    root_->addWidget(blendSingle_);
+    root_->addWidget(blendZones_);
+    blendSingle_->hide();
+    blendZones_->hide();
+
     auto* line = new QFrame(this);
     line->setFrameShape(QFrame::HLine);
     line->setFrameShadow(QFrame::Plain);
@@ -276,6 +314,39 @@ PropertiesPanel::PropertiesPanel(QWidget* parent) : QWidget(parent) {
 
 void PropertiesPanel::applyTheme() {
     setStyleSheet(panelStyleSheet(AppTheme::instance().tokens()));
+}
+
+void PropertiesPanel::setFillLayers(const QList<FillLayer>& layers,
+                                    std::optional<ObjectId> selected) {
+    const QSignalBlocker block(fillLayers_);
+    bool same = fillLayers_->count() == layers.size();
+    for (qsizetype i = 0; same && i < layers.size(); ++i) {
+        same = fillLayers_->itemData(static_cast<int>(i)).toULongLong() == layers[i].id.value &&
+               fillLayers_->itemText(static_cast<int>(i)) == layers[i].name &&
+               fillLayers_->itemData(static_cast<int>(i), Qt::DecorationRole).value<QColor>() ==
+                   layers[i].color;
+    }
+    if (!same) {
+        fillLayers_->clear();
+        for (const auto& layer : layers) {
+            fillLayers_->addItem(layer.name, QVariant::fromValue<qulonglong>(layer.id.value));
+            fillLayers_->setItemData(fillLayers_->count() - 1, layer.color, Qt::DecorationRole);
+        }
+    }
+    if (selected) {
+        fillLayers_->setCurrentIndex(
+            fillLayers_->findData(QVariant::fromValue<qulonglong>(selected->value)));
+    }
+    layerRow_->setVisible(layers.size() > 1);
+    fillColor_->setVisible(!layers.empty());
+}
+
+void PropertiesPanel::setBlendActions(QAction* single, QAction* zones, bool singleContext,
+                                      bool zonesContext) {
+    blendSingle_->setDefaultAction(single);
+    blendZones_->setDefaultAction(zones);
+    blendSingle_->setVisible(singleContext);
+    blendZones_->setVisible(zonesContext);
 }
 
 void PropertiesPanel::setTextInfo(const QString& summary) {
@@ -925,8 +996,11 @@ void PropertiesPanel::buildEmbroideryForm(const document::EmbroideryObject& obje
                                           "les lignes de rupture sur le canevas (D)."));
                 connect(editGuides, &QPushButton::clicked, this,
                         [this, id] { emit editDirectionGuidesRequested(id); });
-                auto* spacing = mmSpin(to_millimeters(p.row_spacing).value, 5.0, 0.1,
-                                       tr("Écart entre deux lignes de couture (densité)."));
+                auto* spacing =
+                    mmSpin(to_millimeters(p.density_gradient ? p.density_gradient->spacing_from
+                                                             : p.row_spacing)
+                               .value,
+                           5.0, 0.1, tr("Écart entre deux lignes de couture (densité)."));
                 spacing->setObjectName(QStringLiteral("spin_rowSpacing"));
                 auto* len = mmSpin(to_millimeters(p.stitch_length).value, 7.0, 1.0,
                                    tr("Longueur cible, bornée entre 1 et 7 mm."));
@@ -986,7 +1060,10 @@ void PropertiesPanel::buildEmbroideryForm(const document::EmbroideryObject& obje
                 gradOn->setToolTip(
                     tr("L'écart entre lignes varie le long d'un axe, de « Espacement "
                        "des lignes » au début à « Écart de fin » à l'autre bout."));
-                const double startMm = to_millimeters(p.row_spacing).value;
+                const double startMm =
+                    to_millimeters(p.density_gradient ? p.density_gradient->spacing_from
+                                                      : p.row_spacing)
+                        .value;
                 auto* gradEnd = mmSpin(
                     p.density_gradient ? to_millimeters(p.density_gradient->spacing_to).value
                                        : 2.0 * startMm,
@@ -1036,7 +1113,9 @@ void PropertiesPanel::buildEmbroideryForm(const document::EmbroideryObject& obje
                     form->addRow(QString(), summary);
                     form->addRow(QString(), editGuides);
                 }
-                form->addRow(tr("Espacement des lignes :"), spacing);
+                form->addRow(p.density_gradient ? tr("Écart au début du dégradé :")
+                                                : tr("Espacement des lignes :"),
+                             spacing);
                 form->addRow(QString(), gradOn);
                 form->addRow(tr("Écart de fin :"), gradEnd);
                 form->addRow(tr("Angle du dégradé :"), gradAngle);

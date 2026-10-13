@@ -248,6 +248,9 @@ private:
     }
 
     static void frame(MainWindow& window, double scale = 16.0) {
+        // Le dock contextuel peut changer de taille après applyLoadedProject : stabiliser
+        // le layout avant de convertir les coordonnées scène en coordonnées du viewport.
+        QCoreApplication::processEvents();
         window.view_->resetTransform();
         window.view_->scale(scale, scale);
         window.view_->centerOn(QPointF(0, 0));
@@ -1019,7 +1022,16 @@ private slots:
     void secondaryModesExitWhenSelectionChanges() {
         QFETCH(int, modeValue);
         const EditMode mode = static_cast<EditMode>(modeValue);
-        const auto fx = editFixture(mode);
+        auto fx = editFixture(mode);
+        std::optional<ObjectId> other;
+        if (mode == EditMode::SatinGuide || mode == EditMode::SatinRail) {
+            // En remodelage satin, le vide conserve intentionnellement la cible des rails.
+            // Un clic sur une autre forme visible est le vrai changement de sélection.
+            other = addRectangle(fx.project);
+            for (auto& node : fx.project.findObject(*other)->paths.front().outer.nodes) {
+                node.pos.y -= Micrometers{16'000};
+            }
+        }
         MainWindow window;
         window.applyLoadedProject(fx.project);
         expose(window);
@@ -1027,8 +1039,12 @@ private slots:
         enterEdit(window, fx, mode);
         QVERIFY(!QTest::currentTestFailed());
         // Un clic dans le vide est un vrai changement de sélection, pas une écriture du seam.
-        click(window, QPointF(0, 12));
-        QVERIFY(window.selectedObjectIds().empty());
+        click(window, QPointF(0, other ? 16 : 12));
+        if (other) {
+            QCOMPARE(window.selectedObjectIds(), (std::vector<ObjectId>{*other}));
+        } else {
+            QVERIFY(window.selectedObjectIds().empty());
+        }
         QVERIFY(!window.selectedEmbroidery_);
         QVERIFY(!window.stitchEditTarget_ && !window.satinGuideTarget_ && !window.railEditTarget_ &&
                 !window.directionGuideTarget_);
@@ -1064,6 +1080,9 @@ private slots:
         const ObjectId b = addRectangle(replacement, 12'000);
         window.applyLoadedProject(replacement);
         frame(window, 10.0);
+        // Le dock Ordre ouvert par enterEdit rétrécit le viewport : adapter le cadrage,
+        // pas les gestes ni leurs effets attendus, à la place réellement disponible.
+        window.view_->fitInView(QRectF(-25, -11, 50, 22), Qt::KeepAspectRatio);
         QVERIFY(window.selectedObjectIds().empty());
         QVERIFY(!window.stitchEditTarget_ && !window.satinGuideTarget_ && !window.railEditTarget_ &&
                 !window.directionGuideTarget_);
@@ -1334,6 +1353,65 @@ private slots:
         QVERIFY(!window.undoStack_.canRedo());
         QVERIFY(!window.stitchEditTarget_ && !window.satinGuideTarget_ && !window.railEditTarget_ &&
                 !window.directionGuideTarget_);
+    }
+
+    void deferredTransformReleaseCannotMutateReplacement_data() {
+        QTest::addColumn<int>("kind");
+        QTest::newRow("resize") << 0;
+        QTest::newRow("rotation") << 1;
+        QTest::newRow("fill-angle") << 2;
+    }
+
+    void deferredTransformReleaseCannotMutateReplacement() {
+        QFETCH(int, kind);
+        auto fx = editFixture(EditMode::Node);
+        if (kind == 2) {
+            document::EmbroideryObject fill;
+            fill.id = fx.project.object_ids.next();
+            fill.source_vector = fx.vector;
+            fill.params = document::TatamiParams{};
+            fx.embroidery = fill.id;
+            fx.project.embroidery_objects.push_back(fill);
+        }
+        MainWindow window;
+        window.applyLoadedProject(fx.project);
+        expose(window);
+        QVERIFY(!QTest::currentTestFailed());
+        window.setSelection(
+            {.embroidery = kind == 2 ? std::optional<ObjectId>{fx.embroidery} : std::nullopt,
+             .objects = {fx.vector}});
+        window.displayImage(window.processed_);
+        window.updateActions();
+        QCoreApplication::processEvents();
+        frame(window);
+        QGraphicsItem* handle = nullptr;
+        for (auto* item : window.baseItems_) {
+            if ((kind == 2 && dynamic_cast<NodeHandleItem*>(item) == nullptr) ||
+                (kind != 2 && dynamic_cast<ResizeHandleItem*>(item) == nullptr)) {
+                continue;
+            }
+            const auto text = item->toolTip();
+            if ((kind == 0 && text.contains(QStringLiteral("redimensionner"))) ||
+                (kind == 1 && text.contains(QStringLiteral("pivoter"))) ||
+                (kind == 2 && text.contains(QStringLiteral("orientation des fils")))) {
+                handle = item;
+                break;
+            }
+        }
+        QVERIFY(handle != nullptr);
+        const QPoint start = window.view_->mapFromScene(handle->scenePos());
+        QCOMPARE(window.view_->itemAt(start), static_cast<QGraphicsItem*>(handle));
+        drag(*window.view_, start, start + QPoint(30, 24));
+        QVERIFY(!window.undoStack_.canUndo());
+        window.applyLoadedProject(fx.project);
+        QCoreApplication::processEvents();
+        QCOMPARE(window.project_.findObject(fx.vector)->paths,
+                 fx.project.findObject(fx.vector)->paths);
+        if (kind == 2) {
+            QCOMPARE(window.project_.findEmbroidery(fx.embroidery)->params,
+                     fx.project.findEmbroidery(fx.embroidery)->params);
+        }
+        QVERIFY(!window.undoStack_.canUndo());
     }
 
     void textToolDialogCreateEditCancelDeleteRoundTrip() {

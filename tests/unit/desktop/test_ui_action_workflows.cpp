@@ -398,6 +398,33 @@ private slots:
         QCOMPARE(window.project_.canvas.margin.value, 3'000);
     }
 
+    void imageImportHeightSetsTheActualProportionalSize() {
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        const QString source = dir.filePath(QStringLiteral("height.png"));
+        QImage image(40, 20, QImage::Format_RGB32);
+        image.fill(Qt::white);
+        QVERIFY(image.save(source));
+        MainWindow window;
+        ModalScript script({[](QDialog* modal) -> QString {
+            if (qobject_cast<ImportDialog*>(modal) == nullptr) {
+                return QStringLiteral("Dialogue d'import attendu");
+            }
+            auto* keep = modal->findChild<QCheckBox*>(QStringLiteral("importKeepRatioCheck"));
+            auto* height = modal->findChild<QDoubleSpinBox*>(QStringLiteral("importHeightSpin"));
+            if (!keep || !height || keep->isEnabled() || !keep->isChecked()) {
+                return QStringLiteral("Import proportionnel obligatoire attendu");
+            }
+            height->setValue(30.0);
+            qobject_cast<ImportDialog*>(modal)->accept();
+            return {};
+        }});
+        window.openImageFile(source);
+        QVERIFY2(script.completed(), qPrintable(script.diagnostic()));
+        QCOMPARE(window.processed_.width * window.project_.mm_per_px.value, 60.0);
+        QCOMPARE(window.processed_.height * window.project_.mm_per_px.value, 30.0);
+    }
+
     void imageImportCancelKeepsDocumentAndHistory() {
         QTemporaryDir dir;
         QVERIFY(dir.isValid());
@@ -648,12 +675,18 @@ private slots:
         QTest::keyClick(window.simSlider_, Qt::Key_Home);
         QCOMPARE(window.simStep_, 0);
         QCOMPARE(sewnPathLength(window.scene_), 0.0);
-        QVERIFY(window.simMarker_ == nullptr);
+        // Le curseur montre la position du premier mouvement, même sans couture encore tracée.
+        QVERIFY(window.simMarker_ != nullptr);
     }
 
     void threadChartComboAndReplaceButtonChangeAllMatchingObjects() {
         MainWindow window;
+        window.show();
         window.applyLoadedProject(contourProject());
+        window.threadDock_->show();
+        window.threadDock_->raise();
+        QCoreApplication::processEvents(); // le contenu du dock est volontairement chargé à
+                                           // l'affichage
         const auto red = window.project_.embroidery_objects[0].rgb;
         const auto blue = window.project_.embroidery_objects[1].rgb;
         thread_palette::ThreadChart chartA{"workflow_a", "Workflow A", "Fictif", {}};
@@ -696,7 +729,11 @@ private slots:
 
     void filmButtonsSelectMoveMergeAndUndoRealBlocks() {
         MainWindow window;
+        window.show();
         window.applyLoadedProject(contourProject());
+        window.threadDock_->show();
+        window.threadDock_->raise();
+        QCoreApplication::processEvents();
         const auto id1 = window.project_.embroidery_objects[0].id;
         const auto id2 = window.project_.embroidery_objects[1].id;
         const auto id3 = window.project_.embroidery_objects[2].id;
@@ -808,5 +845,9 @@ private:
 
 } // namespace openstitch::desktop
 
-QTEST_MAIN(openstitch::desktop::MainWindowTest)
+int main(int argc, char** argv) {
+    QApplication application(argc, argv);
+    openstitch::desktop::MainWindowTest test;
+    return QTest::qExec(&test, argc, argv);
+}
 #include "test_ui_action_workflows.moc"

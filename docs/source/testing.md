@@ -132,6 +132,29 @@ poignée est relâchée) est déjà couverte côté cœur, sans Qt, par
 `tests/unit/commands/test_undo_stack.cpp` (cas « AddVectorObject et
 MoveNode ») — non dupliqué ici.
 
+### Parcours des outils et du fondu (2026-10-13)
+
+Trois suites supplémentaires réutilisent le friend privé `MainWindowTest` :
+
+- `test_color_blend` : 14 scénarios, dont six reproductions initialement rouges,
+  dialogue manuel/raster, couches, conversion indépendante, ordre, undo/redo,
+  couleur et relecture `.osp`.
+- `test_tool_workflows` : 73 scénarios paramétrés, couvrant les 14 valeurs de
+  `Tool` et les modes secondaires, avec événements du viewport et vrais
+  raccourcis. Les cas différés remplacent le document entre le relâchement et
+  `QTimer(0)` avec les mêmes ids : nœuds, points, rails, guides, redimensionnement,
+  rotation et angle du remplissage ne doivent pas modifier le nouveau document.
+- `test_ui_action_workflows` : 20 cas, dialogues, import/annulation,
+  récupération/undo, simulation, fils/film/CSV, analyse et exports
+  DST/PES/JEF/EXP/DXF écrits puis relus.
+
+Les fixtures sont préparées par le seam de chargement, mais les mutations
+testées viennent des actions/boutons/gestes. Ces suites ne remplacent ni les
+tests aval par injection, ni les invariants statiques, ni une validation
+physique sur machine. Pas de `QSKIP`, `QEXPECT_FAIL`, sommeil fixe ou
+comparaison de pixels dans ces nouvelles suites. Le bilan détaillé est dans
+`docs/blend-ui-verification-2026-10-13.md`.
+
 ### Revue corrective de la deuxième tranche (2026-08-01)
 
 Deux défauts trouvés indépendamment sur les commits `d49e660`/`37ffc27`,

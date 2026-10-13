@@ -110,8 +110,12 @@ void MainWindow::updateShapeActions() {
     const QString needHole = tr("Sélectionnez une forme qui a au moins un trou.");
     setShapeActionEnabled(removeHolesAct_, anyHole, needHole);
     setShapeActionEnabled(fillSmallHolesAct_, anyHole, needHole);
-    setShapeActionEnabled(blendZonesAct_, count == 2,
-                          tr("Sélectionnez exactement deux zones remplies (Maj + clic)."));
+    const auto blendIds = selectedObjectIds();
+    const bool canBlend =
+        count == 2 && blendFillFor(blendIds[0]) != nullptr && blendFillFor(blendIds[1]) != nullptr;
+    setShapeActionEnabled(blendZonesAct_, canBlend,
+                          tr("Sélectionnez exactement deux formes, chacune avec un seul "
+                             "remplissage tatami ou directionnel (Maj + clic)."));
     bool splittable = false;
     if (count == 1) {
         const auto* object = project_.findObject(selectedObjectIds().front());

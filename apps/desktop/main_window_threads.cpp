@@ -50,6 +50,7 @@ std::vector<ObjectId> MainWindow::selectedEmbroideryIds() const {
     };
     if (selectedEmbroidery_) {
         add(*selectedEmbroidery_);
+        return ids; // couche choisie explicitement, pas toutes les coutures de sa forme source
     }
     for (const ObjectId vectorId : selectedObjectIds()) {
         for (const auto& obj : project_.embroidery_objects) {
