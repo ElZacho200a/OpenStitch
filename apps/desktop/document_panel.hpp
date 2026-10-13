@@ -9,6 +9,7 @@
 #include "openstitch/document/project.hpp"
 #include "openstitch/stitch_generation/overrides.hpp"
 
+class QAction;
 class QLineEdit;
 class QListWidget;
 class QTabWidget;
@@ -77,6 +78,10 @@ private:
     // Masque les lignes qui ne contiennent pas le texte du champ de recherche.
     void applyFilter();
     void restoreRenamedText();
+    // Feuille de style locale + icône de loupe, reconstruites depuis les jetons du thème
+    // courant (appelé à la construction et à chaque AppTheme::changed).
+    void applyTheme();
+    QAction* searchAction_{nullptr};
     bool syncing_{false};                    // évite la boucle sélection -> signal -> sélection
     QTreeWidgetItem* renamingItem_{nullptr}; // ligne en cours d'édition de nom
 };
