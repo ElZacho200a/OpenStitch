@@ -139,6 +139,16 @@ private slots:
                                                                      .arg(contrast(fg, bg))));
                 }
             }
+            // Limites des contrôles (WCAG 1.4.11) : >= 3:1 sur les surfaces où elles s'appuient.
+            for (const QColor& bg : {t.window, t.surface, t.surfaceRaised}) {
+                QVERIFY2(contrast(t.borderStrong, bg) >= 3.0,
+                         qPrintable(QStringLiteral("borderStrong sur %1 : %2")
+                                        .arg(bg.name())
+                                        .arg(contrast(t.borderStrong, bg))));
+            }
+            // Texte sur l'accent (boutons, sélection) et sur le fond teinté (survol, ligne active).
+            QVERIFY(contrast(t.selectionText, t.accent) >= 4.5);
+            QVERIFY(contrast(t.text, t.accentSoft) >= 4.5);
             // Le texte désactivé est distinct du texte d'aide.
             QVERIFY(t.textDisabled != t.textSecondary);
         }

@@ -49,20 +49,29 @@ QString build_stylesheet(const Tokens& t) {
     const auto c = [](const QColor& col) { return col.name(QColor::HexRgb); };
     QString qss;
     qss += QStringLiteral("QMainWindow, QDialog { background: %1; }\n").arg(c(t.window));
-    qss += QStringLiteral(
-               "QToolTip { background: %1; color: %2; border: 1px solid %3; padding: %4px; }\n")
-               .arg(c(t.surfaceRaised), c(t.text), c(t.border))
-               .arg(t.space2);
+    qss += QStringLiteral("QToolTip { background: %1; color: %2; border: 1px solid %3; "
+                          "border-radius: %5px; padding: %4px; }\n")
+               .arg(c(t.surfaceRaised), c(t.text), c(t.borderStrong))
+               .arg(t.space2)
+               .arg(t.radiusMd);
 
     qss += QStringLiteral("QMenuBar { background: %1; }\n").arg(c(t.surface));
     qss += QStringLiteral("QMenuBar::item { padding: %1px %2px; }\n").arg(t.space1).arg(t.space3);
-    qss += QStringLiteral("QMenuBar::item:selected { background: %1; color: %2; }\n")
-               .arg(c(t.accent), c(t.selectionText));
-    qss += QStringLiteral("QMenu { background: %1; border: 1px solid %2; }\n")
-               .arg(c(t.surfaceRaised), c(t.border));
-    qss += QStringLiteral("QMenu::item { padding: %1px %2px; }\n").arg(t.space2).arg(t.space4);
+    qss += QStringLiteral("QMenuBar::item:selected { background: %1; color: %2; "
+                          "border-radius: %3px; }\n")
+               .arg(c(t.accentSoft), c(t.text))
+               .arg(t.radiusSm);
+    qss += QStringLiteral("QMenu { background: %1; border: 1px solid %2; border-radius: %3px; "
+                          "padding: %4px; }\n")
+               .arg(c(t.surfaceRaised), c(t.border))
+               .arg(t.radiusLg)
+               .arg(t.space2);
+    qss += QStringLiteral("QMenu::item { padding: %1px %2px; border-radius: %3px; }\n")
+               .arg(t.space2)
+               .arg(t.space4)
+               .arg(t.radiusSm);
     qss += QStringLiteral("QMenu::item:selected { background: %1; color: %2; }\n")
-               .arg(c(t.accent), c(t.selectionText));
+               .arg(c(t.accentSoft), c(t.text));
     qss += QStringLiteral("QMenu::separator { height: 1px; background: %1; margin: %2px 0; }\n")
                .arg(c(t.border))
                .arg(t.space1);
@@ -84,12 +93,13 @@ QString build_stylesheet(const Tokens& t) {
 
     qss += QStringLiteral("QPushButton { background: %1; color: %2; border: 1px solid %3; "
                           "border-radius: %4px; padding: %5px %6px; min-height: %7px; }\n")
-               .arg(c(t.surfaceRaised), c(t.text), c(t.border))
+               .arg(c(t.surfaceRaised), c(t.text), c(t.borderStrong))
                .arg(t.radiusSm)
                .arg(t.space1)
                .arg(t.space3)
                .arg(t.controlHeight);
-    qss += QStringLiteral("QPushButton:hover { border-color: %1; }\n").arg(c(t.accent));
+    qss += QStringLiteral("QPushButton:hover { border-color: %1; background: %2; }\n")
+               .arg(c(t.accent), c(t.accentSoft));
     qss += QStringLiteral("QPushButton:pressed { background: %1; }\n").arg(c(t.window));
     qss += QStringLiteral("QPushButton:focus { border: 1px solid %1; }\n").arg(c(t.focus));
     qss += QStringLiteral("QPushButton:disabled { color: %1; background: %2; border-color: %3; }\n")
@@ -102,7 +112,7 @@ QString build_stylesheet(const Tokens& t) {
                "QLineEdit, QSpinBox, QDoubleSpinBox, QComboBox { background: %1; color: %2; "
                "border: 1px solid %3; border-radius: %4px; padding: %5px %6px; min-height: %7px; "
                "selection-background-color: %8; selection-color: %9; }\n")
-               .arg(c(t.surfaceRaised), c(t.text), c(t.border))
+               .arg(c(t.surfaceRaised), c(t.text), c(t.borderStrong))
                .arg(t.radiusSm)
                .arg(t.space1)
                .arg(t.space2)
@@ -113,21 +123,23 @@ QString build_stylesheet(const Tokens& t) {
                        "border: 1px solid %1; }\n")
             .arg(c(t.focus));
 
-    qss += QStringLiteral(
-               "QListView, QListWidget, QTreeView { background: %1; border: 1px solid %2; }\n")
-               .arg(c(t.surfaceRaised), c(t.border));
+    qss +=
+        QStringLiteral("QListView, QListWidget, QTreeView { background: %1; border: 1px solid %2; "
+                       "border-radius: %3px; }\n")
+            .arg(c(t.surfaceRaised), c(t.borderStrong))
+            .arg(t.radiusSm);
     qss += QStringLiteral("QListView::item:selected, QListWidget::item:selected, "
                           "QTreeView::item:selected { background: %1; color: %2; }\n")
                .arg(c(t.selection), c(t.selectionText));
     qss += QStringLiteral("QListView::item:hover, QListWidget::item:hover { background: %1; }\n")
-               .arg(c(t.surface));
+               .arg(c(t.accentSoft));
 
     qss += QStringLiteral("QLabel { color: %1; }\n").arg(c(t.text));
     qss += QStringLiteral("QLabel[secondary=\"true\"] { color: %1; }\n").arg(c(t.textSecondary));
     qss += QStringLiteral(
                "QGroupBox { border: 1px solid %1; border-radius: %2px; margin-top: %3px; }\n")
                .arg(c(t.border))
-               .arg(t.radiusSm)
+               .arg(t.radiusMd)
                .arg(t.space3);
     qss += QStringLiteral("QGroupBox::title { subcontrol-origin: margin; left: %1px; padding: 0 "
                           "%2px; color: %3; }\n")
@@ -139,13 +151,13 @@ QString build_stylesheet(const Tokens& t) {
                .arg(c(t.surface));
     qss += QStringLiteral("QScrollBar::handle:vertical { background: %1; border-radius: %2px; "
                           "min-height: 24px; }\n")
-               .arg(c(t.border))
+               .arg(c(t.borderStrong))
                .arg(t.radiusSm);
     qss += QStringLiteral("QScrollBar:horizontal { background: %1; height: 14px; margin: 0; }\n")
                .arg(c(t.surface));
     qss += QStringLiteral("QScrollBar::handle:horizontal { background: %1; border-radius: %2px; "
                           "min-width: 24px; }\n")
-               .arg(c(t.border))
+               .arg(c(t.borderStrong))
                .arg(t.radiusSm);
     qss += QStringLiteral("QScrollBar::add-line, QScrollBar::sub-line { width: 0; height: 0; }\n");
 
