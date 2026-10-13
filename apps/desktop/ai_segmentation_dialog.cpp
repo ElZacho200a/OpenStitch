@@ -50,7 +50,9 @@ namespace {
 // Cellule triée par sa valeur numérique (« 10 » après « 9 », pas avant « 2 »).
 class NumericItem : public QTableWidgetItem {
 public:
-    NumericItem(const QString& text, double key) : QTableWidgetItem(text), key_(key) {}
+    NumericItem(const QString& text, double key) : QTableWidgetItem(text), key_(key) {
+        setFlags(flags() & ~Qt::ItemIsEditable);
+    }
     bool operator<(const QTableWidgetItem& other) const override {
         if (const auto* o = dynamic_cast<const NumericItem*>(&other)) {
             return key_ < o->key_;
@@ -79,6 +81,12 @@ QTableWidgetItem* makeCheckableItem(Qt::CheckState initial) {
 
 QTableWidgetItem* makeNumberItem(double value, int decimals) {
     return new NumericItem(QString::number(value, 'f', decimals), value);
+}
+
+QTableWidgetItem* makeMaskIdItem(int id) {
+    auto* item = makeNumberItem(id, 0);
+    item->setData(Qt::UserRole, id);
+    return item;
 }
 
 // Erreurs dont la cause se règle dans Préférences > Intelligence artificielle.
@@ -690,7 +698,7 @@ void AiSegmentationDialog::loadMasksIntoTable() {
         const int r = maskTable_->rowCount();
         maskTable_->insertRow(r);
         maskTable_->setItem(r, 0, makeCheckableItem(Qt::Checked));
-        maskTable_->setItem(r, 1, makeNumberItem(entry.id, 0));
+        maskTable_->setItem(r, kColId, makeMaskIdItem(entry.id));
         maskTable_->setItem(r, 2,
                             makeNumberItem(static_cast<double>(entry.area_pixels) * mm2PerPx, 2));
         maskTable_->setItem(r, 3, makeNumberItem(entry.predicted_iou, 2));
@@ -699,6 +707,19 @@ void AiSegmentationDialog::loadMasksIntoTable() {
     }
     maskTable_->setSortingEnabled(true);
     validateButton_->setEnabled(maskTable_->rowCount() > 0);
+}
+
+std::optional<int> AiSegmentationDialog::maskIdForRow(int row) const {
+    const auto* item = maskTable_->item(row, kColId);
+    if (item == nullptr) {
+        return std::nullopt;
+    }
+    bool valid = false;
+    const int id = item->data(Qt::UserRole).toInt(&valid);
+    if (!valid || !maskPixels_.contains(id)) {
+        return std::nullopt; // aucune identité : ne jamais revenir au texte ni au masque 0
+    }
+    return id;
 }
 
 void AiSegmentationDialog::onTableSelectionChanged() {
@@ -714,8 +735,8 @@ void AiSegmentationDialog::updateSelectedMaskPreview() {
         selectionPreviewPixmap_ = QPixmap();
         return;
     }
-    const int id = maskTable_->item(selectedRows.first().row(), kColId)->text().toInt();
-    const auto pixelsIt = maskPixels_.constFind(id);
+    const auto id = maskIdForRow(selectedRows.first().row());
+    const auto pixelsIt = id ? maskPixels_.constFind(*id) : maskPixels_.constEnd();
     if (pixelsIt == maskPixels_.constEnd() || pixelsIt->isEmpty()) {
         selectionPreviewLabel_->clear();
         selectionPreviewPixmap_ = QPixmap();
@@ -798,8 +819,17 @@ void AiSegmentationDialog::onMergeClicked() {
     }
 
     QVector<int> ids;
+    bool mergedProtected = false;
     for (const auto& index : selectedRows) {
-        ids.push_back(maskTable_->item(index.row(), kColId)->text().toInt());
+        const auto id = maskIdForRow(index.row());
+        if (!id) {
+            setStatus(tr("Impossible de fusionner : un masque sélectionné n'a pas d'identité "
+                         "valide."));
+            return;
+        }
+        ids.push_back(*id);
+        mergedProtected =
+            mergedProtected || maskTable_->item(index.row(), 5)->checkState() == Qt::Checked;
     }
 
     const int width = masks_.image_width;
@@ -860,12 +890,12 @@ void AiSegmentationDialog::onMergeClicked() {
     const int r = maskTable_->rowCount();
     maskTable_->insertRow(r);
     maskTable_->setItem(r, 0, makeCheckableItem(Qt::Checked));
-    maskTable_->setItem(r, 1, makeNumberItem(newId, 0));
+    maskTable_->setItem(r, kColId, makeMaskIdItem(newId));
     const double mm2PerPx = mmPerPx_.value * mmPerPx_.value;
     maskTable_->setItem(r, 2, makeNumberItem(static_cast<double>(mergedArea) * mm2PerPx, 2));
     maskTable_->setItem(r, 3, makeNumberItem(maxIou, 2));
     maskTable_->setItem(r, 4, makeNumberItem(maxStability, 2));
-    maskTable_->setItem(r, 5, makeCheckableItem(Qt::Unchecked));
+    maskTable_->setItem(r, 5, makeCheckableItem(mergedProtected ? Qt::Checked : Qt::Unchecked));
     maskTable_->setSortingEnabled(true);
 
     setStatus(tr("%1 masques fusionnés en un seul (id %2).").arg(ids.size()).arg(newId));
@@ -899,7 +929,11 @@ bool AiSegmentationDialog::buildValidatedSegmentation() {
         if (maskTable_->item(r, 0)->checkState() != Qt::Checked) {
             continue;
         }
-        const int id = maskTable_->item(r, kColId)->text().toInt();
+        const auto maskId = maskIdForRow(r);
+        if (!maskId) {
+            continue;
+        }
+        const int id = *maskId;
         const auto pixelsIt = maskPixels_.constFind(id);
         if (pixelsIt == maskPixels_.constEnd() || pixelsIt->isEmpty()) {
             continue;

@@ -107,6 +107,8 @@ private:
     void restoreChoices();
     void saveChoices() const;
     void loadMasksIntoTable();
+    // Identité portée par la ligne, indépendante du texte affiché et de l'ordre du tri.
+    [[nodiscard]] std::optional<int> maskIdForRow(int row) const;
     [[nodiscard]] QVector<std::uint8_t>
     loadMaskPixels(const ai_segmentation::MaskEntry& entry) const;
     void updateSelectedMaskPreview();
