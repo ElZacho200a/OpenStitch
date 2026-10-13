@@ -165,7 +165,8 @@ du projet n'est pas modifiée) et la nettoie avant de vectoriser :
 
 1. **Isthmes et lamelles** (`segmentation::remove_thin_parts`) : ouverture
    morphologique région par région, avec un noyau elliptique de
-   `min_feature_width_mm` (1,2 mm, converti en pixels avec `mm_per_px`). Les
+   `min_feature_width_mm` (**0 = désactivé par défaut** depuis le 2026-10 ;
+   ancienne valeur 1,2 mm, convertie en pixels avec `mm_per_px`). Les
    pixels retirés sont rendus de proche en proche à la région **voisine**
    majoritaire. Une partie qui ne touche aucune autre région (lamelle isolée
    dans le vide) reste en place.
@@ -190,8 +191,21 @@ marine. `merge_small_regions` reçoit donc un poids de frontière de ½
 (`boundary_weight`).
 
 **Compromis connu** : l'ouverture efface aussi les détails volontaires plus
-fins que 1,2 mm (par exemple un mât fin), rendus à la région qui les entoure.
-Pour les garder, baissez `min_feature_width_mm`.
+fins que le seuil (par exemple un mât fin), rendus à la région qui les entoure,
+et arrondit les coins convexes.
+
+**Pourquoi l'ouverture est désactivée par défaut (2026-10).** Sur un dessin au
+trait, le réseau de contours est lui-même une forme fine : avec un noyau de
+1,2 mm (8 px à 0,152 mm/px), la région 1 du projet `Homerde.osp` (contours
+bleu marine, 271 939 px) passait d'une pièce à 97 trous (250 686 px
+vectorisés) à **62 pièces, 2 trous et 166 604 px (-34 %)**. Le vecteur de
+l'auto-numérisation différait donc de celui de la vectorisation manuelle
+(`vectorize_region`, segmentation brute), qui est la référence. Seuil à 0, les
+deux sont identiques (même nombre de pièces, de trous et de nœuds, même aire).
+Le seuil reste réglable : `--min-feature-mm` (CLI), champ « Largeur minimale
+des détails » (dialogue de numérisation automatique). Contrepartie : plus de
+petites régions subsistent, que `min_region_area_mm2` fusionne ou transforme en
+contour.
 
 ## Coupes automatiques et points d'arrêt (Lot E)
 

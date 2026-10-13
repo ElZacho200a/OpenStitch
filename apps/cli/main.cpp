@@ -1506,7 +1506,7 @@ int main(int argc, char** argv) {
     dz_cmd
         ->add_option("--min-feature-mm", dz.minFeatureMm,
                      "Mode formes : les détails plus étroits que cette largeur (mm) sont rendus à "
-                     "leur voisin avant numérisation ; 0 = désactivé (défaut : 1.2)")
+                     "leur voisin avant numérisation ; 0 = désactivé (défaut : 0)")
         ->check(CLI::NonNegativeNumber);
     dz_cmd
         ->add_option("--min-region-mm2", dz.minRegionMm2,

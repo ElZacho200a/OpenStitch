@@ -2997,7 +2997,7 @@ void MainWindowTest::autoDigitizeDialogExposesFragmentThresholds() {
     });
     window.autoDigitize();
     QVERIFY(seen);
-    QCOMPARE(defaultWidth, 1.2);
+    QCOMPARE(defaultWidth, 0.0);
     QCOMPARE(defaultArea, 3.0);
     QCOMPARE(QSettings().value(widthKey).toInt(), 500);
     QCOMPARE(QSettings().value(areaKey).toInt(), 0);
