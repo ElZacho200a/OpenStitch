@@ -92,11 +92,9 @@ void MainWindow::buildRealisticMenu(QMenu* viewMenu) {
     realistic_.timer = new QTimer(this);
     realistic_.timer->setSingleShot(true);
     realistic_.timer->setInterval(kRefreshDelayMs);
-    connect(realistic_.timer, &QTimer::timeout, this, [this] {
-        if (realistic_.prefs.enabled) {
-            renderStitches();
-        }
-    });
+    // Une désactivation depuis le dialogue doit aussi retirer le pixmap :
+    // renderStitches choisit lui-même le retour aux lignes quand enabled=false.
+    connect(realistic_.timer, &QTimer::timeout, this, &MainWindow::renderStitches);
     // Zoom ou défilement : le niveau de détail et la zone visible changent.
     connect(view_, &CanvasView::viewChanged, this, [this] {
         if (realistic_.prefs.enabled && realistic_.timer != nullptr) {
