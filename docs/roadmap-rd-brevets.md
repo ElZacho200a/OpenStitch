@@ -68,7 +68,15 @@ de notre cas. US9200397 et US6860214B1 / US20050061220A1 (liaisons recouvertes e
 broderie en relief) : revendications non lues, statuts non vérifiés. Analyse non
 juridique : faire relire avant livraison.
 
-Revendications de US9702070B2 non lues (erreur 503) : à relire. Détail et
+Revue technique du 2026-10-14 (`docs/revue-brevets-optimisation-trajets-2026-10.md`, **pas un avis
+juridique**) : les 25 revendications de US8851001B2 et les 18 de US8271123B2 ont été lues en entier
+et comparées au code. US8851001B2 vise le choix du type de point d'après une taille mesurée sur des
+**points temporaires** : élément absent de nos chemins (mesure géométrique), sauf le mode
+`satin_bands` (essai de génération puis taux de couverture, désactivé par défaut) à soumettre au
+conseil. US8271123B2 vise la chaîne image → angles par pixel → segments → liaisons de même couleur ;
+la liaison recouverte n'est pas revendiquée. **Toujours non lus** (Google Patents bloque les
+requêtes automatisées) : US9702070B2, US9200397, US6860214B1, US20050061220A1, US10590580,
+US11727615. Détail et
 sources : `docs/veille-innovations-2026-10.md` §V3.
 
 Écartées (sans valeur ajoutée démontrée) : densité sur points existants, lettrage

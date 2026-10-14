@@ -1796,8 +1796,9 @@ couches ; objets verrouillables ; coût estimé ; routage satin multi-colonnes.
   deux exécutions et `OPENSTITCH_THREADS=1` donnent le même DST ; nombre de
   coupes (`compute_stats().trims`), de points de verrou supprimés et de longueur
   ajoutée rapportés avant/après ; corpus réel (« marine », `tentabrode`, absents
-  du dépôt) et validation physique HP-PHYS-001. Brevets : relire avant livraison
-  (US8271123B2 affiché actif ; voir `docs/roadmap-rd-brevets.md`).
+  du dépôt) et validation physique HP-PHYS-001. Brevets : revue technique faite le 2026-10-14 (revendications
+  de US8851001B2 et US8271123B2 lues, aucun élément repris par la passe ; voir
+  `docs/revue-brevets-optimisation-trajets-2026-10.md`), relecture par un conseil toujours à faire.
 
 ### HP-SEQ-006.b — Déplacement sur surface déjà cousue de même couleur [P2] — ◐ Partiel (2026-10-13, en PR)
 - Livré (cœur, en PR) : `HiddenTravel::allow_same_color_surface`, surface reconstruite
