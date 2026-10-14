@@ -10,6 +10,7 @@
 #include "hidden_travel.hpp"
 #include "openstitch/stitch_generation/lock.hpp"
 #include "openstitch/stitch_generation/tatami.hpp"
+#include "underlay_order.hpp"
 
 namespace openstitch::stitch_generation {
 
@@ -220,8 +221,13 @@ FinishResult finish_sequence_report(const stitch::StitchSequence& sequence,
     }
     // Points courts d'abord (Lot F) : les verrous ajoutés ensuite ne sont
     // jamais filtrés.
-    const std::vector<StitchCommand> cmds =
-        split_long_stitches(filter_short_stitches(sequence.commands, project, f), f);
+    // « Optimiser les trajets » niveau 3 : ordre et sens des passes de sous-couche (invisible,
+    // sous le remplissage), avant la détection des tracés et des coupes.
+    auto reordered = reorder_underlay_passes(
+        split_long_stitches(filter_short_stitches(sequence.commands, project, f), f), f);
+    report.underlay_blocks = reordered.blocks;
+    report.underlay_jump_saved_um = reordered.saved_um;
+    const std::vector<StitchCommand> cmds = std::move(reordered.commands);
     const std::vector<Run> runs = find_runs(cmds);
 
     // HP-SEQ-006.a : planificateur de ponts cachés, dernière décision de la passe. La grille de
@@ -304,7 +310,12 @@ FinishResult finish_sequence_report(const stitch::StitchSequence& sequence,
                     std::all_of(cmds.begin() + static_cast<std::ptrdiff_t>(cursor),
                                 cmds.begin() + static_cast<std::ptrdiff_t>(run.begin),
                                 [](const StitchCommand& c) { return c.type == CommandType::Jump; });
-                if (needTrim && !alwaysTrim && !colorChange && onlyJumps) {
+                const bool intraObject = last.source == cmds[run.begin].source;
+                const bool inScope =
+                    intraObject ? f.hidden_travel.within_object : f.hidden_travel.between_objects;
+                if (needTrim && !alwaysTrim && !colorChange && onlyJumps && !inScope) {
+                    ++report.skipped_by_scope;
+                } else if (needTrim && !alwaysTrim && !colorChange && onlyJumps) {
                     ++report.candidate_gaps;
                     travelPlan = planner->plan(prev->end - 1, last.pos, cmds[run.begin].pos);
                     switch (travelPlan.refusal) {

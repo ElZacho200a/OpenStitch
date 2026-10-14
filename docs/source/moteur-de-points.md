@@ -787,6 +787,18 @@ réordonné ni régénéré : le gain dépend de l'ordre amont.
   plus tôt avec le même fil compte aussi comme cachée (relief léger possible,
   surtout sur un satin) ; la surface est reconstruite par avancement séquentiel
   et remise à zéro à chaque changement de fil.
+- **Trois niveaux, un seul bouton** (« Optimiser les trajets », HP-SEQ-006.d), tous en toute
+  fin, sans réordonner les objets ni toucher à la couche supérieure : (1) `between_objects` :
+  pont caché entre deux objets ; (2) `within_object` : liens sous-couche ↔ remplissage d'un même
+  objet cachés par le remplissage ; (3) `reorder_underlay` : ordre et sens des passes de
+  sous-couche d'un même objet (`underlay_order.cpp`), invisible car recouvert. Le niveau 3
+  regroupe les passes de sous-couche consécutives (même objet, uniquement des points `Underlay`,
+  séparées par de purs sauts), essaie toutes les permutations et tous les sens jusqu'à 6 passes
+  (plus proche voisin au-delà), compte une coupe comme un déplacement très coûteux et ne modifie
+  un groupe que si le coût baisse strictement. **Garantie** : le remplissage visible est
+  strictement le même, point par point (testé). Mesure sur `tentabrode` : −16 coupes sur 442
+  et 1,84 m de saut en moins ; les écarts restants relient des îlots de remplissage séparés par
+  du tissu nu, qu'on ne peut ni cacher ni réordonner sans que cela se voie.
 - **À la demande, à l'export** : `project_io::ExportOptimizations{reduce_trims,
   hidden_travel}` est passé à `export_machine_file` (et à `export_sequence`, qui
   donne la séquence exacte et le bilan pour l'aperçu). Les réglages remplacent ceux

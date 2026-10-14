@@ -38,10 +38,10 @@ Revue partielle du 2026-10-13 (`main` = `4a8088b`) : vague 1 — objets, cadres,
 | Priorité | ☑ Fait | ◐ Partiel | ☐ À faire | Total |
 |---|---|---|---|---|
 | P0 | 12 | 25 | 7 | 44 |
-| P1 | 4 | 43 | 78 | 125 |
+| P1 | 4 | 44 | 78 | 126 |
 | P2 | 0 | 15 | 66 | 81 |
 | P3 | 0 | 0 | 12 | 12 |
-| **Total** | **16** | **83** | **163** | **262** |
+| **Total** | **16** | **84** | **163** | **263** |
 
 **Fait (16)** : FILE-001/002/003/004 (nouveau projet, enregistrer, récents, autosave),
 THR-001/003/004 (bibliothèque de fils, fil le plus proche, fil assigné à chaque objet),
@@ -1717,7 +1717,10 @@ couches ; objets verrouillables ; coût estimé ; routage satin multi-colonnes.
   **régénère les points**, avec un point d'entrée et un de sortie pour le groupe ; chaque objet
   doit toucher ou chevaucher un autre du groupe ; pour des lignes de point droit, il fusionne
   les doubles passes au milieu, là où Closest Join ne fait qu'échanger les bouts. Cela réordonne
-  et régénère : hors du périmètre « passe finale » de HP-SEQ-006, donc entrée séparée à décider.
+  et régénère : hors du périmètre « passe finale » de HP-SEQ-006. **Décision du mainteneur
+  (2026-10-14)** : pas de réordonnancement des régions ; le « branching » voulu est la liaison
+  cachée entre deux régions (HP-SEQ-006.a et .d), appliquée à la fin. Reste ouvert ici : fusionner
+  les doubles passes de lignes de point droit qui se touchent, à l'intérieur d'un objet.
 - Piste de comparaison (veille §V5, principe lu) : Li & Mould (2014) montrent
   qu'un arbre a un contour extérieur formant un seul trajet fermé sans
   auto-intersection, obtenu en longeant l'arbre des deux côtés. Le squelette
@@ -1809,6 +1812,39 @@ couches ; objets verrouillables ; coût estimé ; routage satin multi-colonnes.
 - Dépend de : HP-SEQ-006.a.
 - Acceptation : comme .a, plus un test montrant qu'un trajet ne traverse jamais
   une surface d'une autre couleur non recouverte.
+
+### HP-SEQ-006.d — « Optimiser les trajets » : un bouton, trois niveaux, tout à la fin [P1] — ◐ Partiel (2026-10-14, en PR)
+- Demande du mainteneur (2026-10-14) : l'utilisateur travaille sans penser aux déplacements ;
+  **avant l'export** il demande « Optimiser les trajets ». Rien n'est réordonné au niveau des
+  régions ; trois niveaux, tous appliqués à la toute fin : (1) **entre deux régions**, un pont
+  caché si le trajet est recouvert plus tard (branching au sens « liaison cachée ») ; (2) **dans
+  un objet**, les liens sous-couche ↔ remplissage ; (3) **au niveau atomique de la sous-couche**.
+  Impératif : sur le remplissage, **rien ne doit se voir**.
+- Livré (cœur, CLI, dialogue d'export, en PR) : `HiddenTravel::{between_objects, within_object,
+  reorder_underlay}` (trois niveaux indépendants, les trois actifs par défaut une fois
+  l'optimisation demandée) ; `reorder_underlay_passes` (`underlay_order.{hpp,cpp}`) : ordre et
+  sens des passes de sous-couche d'un même objet, coût = longueur + pénalité de coupe, exact
+  jusqu'à 6 passes (essai de toutes les permutations et sens), plus proche voisin au-delà, appliqué
+  seulement si le coût baisse strictement ; dialogue d'export : case « Optimiser les trajets » et
+  trois cases de niveau ; CLI `--reduce-trims-levels` / `--hidden-travel-levels`.
+- **Garantie testée** : la couche supérieure (tous les points `TopStitch`, dans l'ordre) est
+  strictement identique avec ou sans optimisation, sur une scène construite et sur un projet
+  généré ; les points de sous-couche sont les mêmes, seulement enchaînés autrement ; les passes
+  séparées par une coupe posée, un changement de fil ou un arrêt ne sont pas regroupées.
+- **Mesure** (fixture `tentabrode`, 442 coupes) : 426 avec les trois niveaux (−16), dont 23 groupes
+  de sous-couche réordonnés (1,84 m de saut en moins) et 12 ponts, tous dans un objet. Peu de
+  coupes disparaissent parce que la plupart des écarts restants relient deux ÎLOTS de
+  remplissage séparés par du tissu nu (haut du remplissage → bas du suivant) : aucun point
+  cousu plus tard ne peut les cacher et réordonner le remplissage se verrait.
+- **Reste** : ordre des îlots d'un même objet (invisible quand ils sont disjoints), lien
+  sous-couche → remplissage choisi au point d'entrée le plus proche, passage en tâche de fond
+  du calcul du résumé, validation machine HP-PHYS-001.
+- Modules : `libs/stitch_generation` (`finish.cpp`, `hidden_travel`, `underlay_order`),
+  `libs/document` (`finishing.hpp`), `libs/project_io`, `apps/desktop/machine_export_dialog`,
+  `apps/cli`.
+- Dépend de : HP-SEQ-006.a.
+- Acceptation : couche supérieure identique (test), déterminisme, désactivé = séquence
+  identique, `--reduce-trims-levels` limite chaque niveau, mesure avant/après rapportée.
 
 ### HP-SEQ-006.c — Rapport de réduction des coupes [P1] — ◐ Partiel (2026-10-13, en PR)
 - Livré (cœur, en PR) : `TrimReport` et `effective_sequence_report` (même chemin de

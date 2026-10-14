@@ -27,6 +27,15 @@ struct HiddenTravel {
     // recouverte.
     Micrometers cover_thread_width{400};
     Micrometers cover_margin{150};
+    // « Optimiser les trajets » : trois niveaux, tous appliqués en toute fin, sans jamais modifier
+    // la couche supérieure (remplissage, satin visible) ni l'ordre des objets.
+    //  1. entre deux objets : pont caché si le trajet est recouvert plus tard ;
+    //  2. à l'intérieur d'un objet : liens sous-couche <-> remplissage cachés par le remplissage ;
+    //  3. ordre et sens des passes de sous-couche d'un même objet (invisible : sous le
+    //  remplissage).
+    bool between_objects{true};
+    bool within_object{true};
+    bool reorder_underlay{true};
     // HP-SEQ-006.b -- une surface déjà cousue plus tôt avec le MÊME fil compte aussi comme cachée
     // (le fil de liaison s'y confond ; léger relief possible). Désactivé par défaut.
     bool allow_same_color_surface{false};

@@ -661,6 +661,39 @@ int run_engine_debug(double pullMm, bool underlayAuto, double borderMm, const st
     return kExitOk;
 }
 
+// « Optimiser les trajets » : niveaux choisis par une liste séparée par des virgules parmi
+// `between` (ponts entre objets), `within` (liens dans un objet) et `underlay` (ordre de la
+// sous-couche) ; `all` ou liste vide = les trois. Renvoie faux si un nom est inconnu.
+bool parse_route_levels(const std::string& list, openstitch::document::HiddenTravel& h,
+                        std::string& error) {
+    h.between_objects = h.within_object = h.reorder_underlay = false;
+    if (list.empty() || list == "all") {
+        h.between_objects = h.within_object = h.reorder_underlay = true;
+        return true;
+    }
+    std::size_t start = 0;
+    while (start <= list.size()) {
+        const auto comma = list.find(',', start);
+        const std::string name =
+            list.substr(start, comma == std::string::npos ? std::string::npos : comma - start);
+        if (name == "between") {
+            h.between_objects = true;
+        } else if (name == "within") {
+            h.within_object = true;
+        } else if (name == "underlay") {
+            h.reorder_underlay = true;
+        } else {
+            error = "niveau inconnu : « " + name + " » (between, within, underlay ou all)";
+            return false;
+        }
+        if (comma == std::string::npos) {
+            break;
+        }
+        start = comma + 1;
+    }
+    return true;
+}
+
 struct DigitizeArgs {
     std::string image;
     std::string dst;
@@ -670,9 +703,10 @@ struct DigitizeArgs {
     std::string technique = "auto";
     double dpi = 96.0;
     double trimMm = 3.0;
-    bool hiddenTravel = false;    // HP-SEQ-006.a : coupes remplacées par des ponts cachés
-    bool hiddenSameColor = false; // HP-SEQ-006.b : surface déjà cousue du même fil = cachée
-    double hiddenMaxMm = 15.0;    // longueur maximale d'un pont, en mm
+    bool hiddenTravel = false;        // HP-SEQ-006.a : coupes remplacées par des ponts cachés
+    bool hiddenSameColor = false;     // HP-SEQ-006.b : surface déjà cousue du même fil = cachée
+    std::string hiddenLevels = "all"; // niveaux : between, within, underlay
+    double hiddenMaxMm = 15.0;        // longueur maximale d'un pont, en mm
     double detail = 0.5;
     int maxColors = 8;
     int minRegionPx = 16;
@@ -750,6 +784,12 @@ int run_digitize(const DigitizeArgs& a) {
 
     project.finishing.hidden_travel.enabled = a.hiddenTravel;
     project.finishing.hidden_travel.allow_same_color_surface = a.hiddenSameColor;
+    {
+        std::string levelError;
+        if (!parse_route_levels(a.hiddenLevels, project.finishing.hidden_travel, levelError)) {
+            return cli_error("digitize", levelError);
+        }
+    }
     project.finishing.hidden_travel.max_bridge_length =
         Micrometers{static_cast<std::int32_t>(std::lround(a.hiddenMaxMm * 1000.0))};
 
@@ -917,6 +957,9 @@ int run_digitize(const DigitizeArgs& a) {
                    "cousu(s) ({} points, {:.1f} mm de fil ajouté) ; {} coupe(s) supprimée(s)\n",
                    r.candidate_gaps, r.hidden_jumps, r.bridges, r.bridge_stitches,
                    r.bridge_length_um / 1000.0, r.trims_removed);
+        fmt::print(
+            st, "Sous-couche : {} groupe(s) de passes réordonné(s), {:.1f} mm de saut en moins\n",
+            r.underlay_blocks, r.underlay_jump_saved_um / 1000.0);
         fmt::print(st,
                    "  refus : trop long {} | extrémité non recouverte {} | aucun chemin {} ; "
                    "coupes conservées : changement de fil {}, coupe posée {}\n",
@@ -1026,6 +1069,9 @@ int run_osp2dst(const std::string& ospPath, const std::string& outDst, bool noCl
                    "{} pont(s) cousu(s), {:.1f} mm de fil ajouté)\n",
                    report.trims_removed, report.candidate_gaps, report.hidden_jumps, report.bridges,
                    report.bridge_length_um / 1000.0);
+        fmt::print(
+            "Sous-couche : {} groupe(s) de passes réordonné(s), {:.1f} mm de saut en moins\n",
+            report.underlay_blocks, report.underlay_jump_saved_um / 1000.0);
     }
     return kExitOk;
 }
@@ -1550,6 +1596,11 @@ int main(int argc, char** argv) {
     dz_cmd->add_flag("--hidden-travel", dz.hiddenTravel,
                      "Remplace les coupes par des sauts ou des ponts cousus cachés sous les points "
                      "cousus plus tard (passe finale, désactivé par défaut)");
+    dz_cmd->add_option(
+        "--hidden-travel-levels", dz.hiddenLevels,
+        "Avec --hidden-travel : niveaux de l'optimisation, parmi between (ponts entre "
+        "objets), within (liens dans un objet), underlay (ordre de la sous-couche) ; "
+        "liste séparée par des virgules (défaut : all)");
     dz_cmd->add_flag("--hidden-travel-same-colour", dz.hiddenSameColor,
                      "Avec --hidden-travel : une surface déjà cousue du même fil compte aussi "
                      "comme cachée (léger relief possible)");
@@ -1664,11 +1715,17 @@ int main(int argc, char** argv) {
     od_cmd->add_flag("--no-trims", od_no_trims, "Supprime les coupes (elles deviennent des sauts)");
     bool od_reduce_trims = false;
     bool od_reduce_same_colour = false;
+    std::string od_reduce_levels = "all";
     double od_reduce_max_mm = 15.0;
     od_cmd->add_flag(
         "--reduce-trims", od_reduce_trims,
         "Remplace des coupes par des sauts ou des ponts cousus cachés sous des points "
         "cousus plus tard (appliqué à l'export seulement, le projet n'est pas modifié)");
+    od_cmd->add_option(
+        "--reduce-trims-levels", od_reduce_levels,
+        "Avec --reduce-trims : niveaux, parmi between (ponts entre objets), within "
+        "(liens dans un objet), underlay (ordre de la sous-couche) ; liste séparée par "
+        "des virgules (défaut : all)");
     od_cmd->add_flag("--reduce-trims-same-colour", od_reduce_same_colour,
                      "Avec --reduce-trims : une surface déjà cousue du même fil compte aussi "
                      "comme cachée");
@@ -1774,6 +1831,10 @@ int main(int argc, char** argv) {
         openstitch::project_io::ExportOptimizations optimizations;
         optimizations.reduce_trims = od_reduce_trims;
         optimizations.hidden_travel.allow_same_color_surface = od_reduce_same_colour;
+        if (std::string levelError;
+            !parse_route_levels(od_reduce_levels, optimizations.hidden_travel, levelError)) {
+            return cli_error("osp2dst", levelError);
+        }
         optimizations.hidden_travel.max_bridge_length = openstitch::Micrometers{
             static_cast<std::int32_t>(std::lround(od_reduce_max_mm * 1000.0))};
         return run_osp2dst(od_in, od_out, od_noclobber, machineOptions, optimizations);
