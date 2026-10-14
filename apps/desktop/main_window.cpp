@@ -6658,6 +6658,8 @@ void MainWindow::buildPropertiesPanel() {
     connect(propertiesPanel_, &PropertiesPanel::borderSatinEdited, this,
             &MainWindow::editBorderSatin);
     connect(propertiesPanel_, &PropertiesPanel::joinModeEdited, this, &MainWindow::setJoinMode);
+    connect(propertiesPanel_, &PropertiesPanel::connectorModeEdited, this,
+            &MainWindow::setConnectorMode);
     connect(propertiesPanel_, &PropertiesPanel::densityGradientRequested, this,
             &MainWindow::setDensityGradient);
     connect(
@@ -6772,6 +6774,9 @@ void MainWindow::updateInspector() {
                                                   : stitch_generation::ObjectEditState::Clean);
     propertiesPanel_->setJoinMode(emb != nullptr ? std::optional<ObjectId>(emb->id) : std::nullopt,
                                   emb != nullptr ? emb->join : document::JoinMode::Inherit);
+    propertiesPanel_->setConnectorMode(
+        emb != nullptr ? std::optional<ObjectId>(emb->id) : std::nullopt,
+        emb != nullptr ? emb->connector : document::ConnectorMode::Inherit);
 
     // Auto-satin : liste des guides et diagnostic mis à jour à chaque appel (les
     // guides se posent aussi depuis le canevas), sans reconstruire le formulaire.

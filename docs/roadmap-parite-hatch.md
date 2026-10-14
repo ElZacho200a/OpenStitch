@@ -39,9 +39,9 @@ Revue partielle du 2026-10-13 (`main` = `4a8088b`) : vague 1 — objets, cadres,
 |---|---|---|---|---|
 | P0 | 12 | 25 | 7 | 44 |
 | P1 | 4 | 43 | 78 | 125 |
-| P2 | 0 | 14 | 67 | 81 |
+| P2 | 0 | 15 | 66 | 81 |
 | P3 | 0 | 0 | 12 | 12 |
-| **Total** | **16** | **82** | **164** | **262** |
+| **Total** | **16** | **83** | **163** | **262** |
 
 **Fait (16)** : FILE-001/002/003/004 (nouveau projet, enregistrer, récents, autosave),
 THR-001/003/004 (bibliothèque de fils, fil le plus proche, fil assigné à chaque objet),
@@ -744,6 +744,9 @@ prénumérisées et la conversion des polices TrueType.
 - À faire : ordre de gauche à droite, fin d'une lettre près du début de la
   suivante, trajet caché si possible sinon saut + coupe selon le seuil,
   réglage « couper entre les lettres » / « entre les mots ».
+- Hatch (blog Wilcom *Minimizing thread trims*, 2020) : le connecteur d'un lettrage se règle
+  « à l'intérieur de l'objet » (entre lettres) ou « après l'objet » ; un lettrage système est
+  un seul objet. Pont possible avec HP-SEQ-006 pour les lettres qui se chevauchent.
 - Modules : `libs/lettering`, `libs/stitch_generation` (routage).
 
 ### HP-TXT-015 — Import de polices de broderie tierces [P3] — ☐ À faire
@@ -1709,6 +1712,12 @@ couches ; objets verrouillables ; coût estimé ; routage satin multi-colonnes.
 ### HP-SEQ-004 — Fusion de plusieurs objets en un seul parcours (branching) [P2] — ☐ À faire
 - Hatch : Branching : plusieurs objets de même couleur cousus d'un seul trajet
   (déplacements cachés sous les objets), sans coupe.
+- Hatch / Wilcom (aide *Apply automatic branching*, lue le 2026-10-14) : Branching regroupe les
+  objets sélectionnés en **un seul objet**, les **resequence**, minimise les connecteurs et
+  **régénère les points**, avec un point d'entrée et un de sortie pour le groupe ; chaque objet
+  doit toucher ou chevaucher un autre du groupe ; pour des lignes de point droit, il fusionne
+  les doubles passes au milieu, là où Closest Join ne fait qu'échanger les bouts. Cela réordonne
+  et régénère : hors du périmètre « passe finale » de HP-SEQ-006, donc entrée séparée à décider.
 - Piste de comparaison (veille §V5, principe lu) : Li & Mould (2014) montrent
   qu'un arbre a un contour extérieur formant un seul trajet fermé sans
   auto-intersection, obtenu en longeant l'arbre des deux côtés. Le squelette
@@ -1716,8 +1725,22 @@ couches ; objets verrouillables ; coût estimé ; routage satin multi-colonnes.
   tirer quoi que ce soit (RD-PAT-008).
 - Modules : `libs/stitch_generation` (routage), `libs/optimization`.
 
-### HP-SEQ-005 — Connecteurs réglables par objet [P2] — ☐ À faire
-- À faire : pour chaque liaison sortante : auto / saut / saut+coupe / cousu.
+### HP-SEQ-005 — Connecteurs réglables par objet [P2] — ◐ Partiel (2026-10-14, en PR)
+- Hatch (aide en ligne, lue le 2026-10-14) : propriétés d'objet ▸ onglet Stitching, trois
+  réglages de coupe — « Si le connecteur suivant ≥ X mm » (3 mm par défaut), « Toujours »
+  (outil *Always Tie-Off & Trim*), « Désactivé » (pas de coupe : un connecteur cousu caché
+  sous un autre objet est plus efficace qu'une coupe).
+- Livré (cœur et inspecteur, en PR) : `EmbroideryObject::connector` (`ConnectorMode` :
+  `Inherit`, `AlwaysTrim`, `NeverTrim`), connecteur APRÈS l'objet vers le suivant de même fil.
+  `AlwaysTrim` force point d'arrêt + coupe et n'est jamais remplacé par un pont caché ;
+  `NeverTrim` supprime coupe et points d'arrêt (le fil reste tendu en saut). Sans effet avant un
+  changement de fil, un arrêt ou une coupe posée à la main. Persistance `.osp` (clé
+  `connector`, absente = hérite), `SetEmbroideryConnectorModeCommand` annulable, menu
+  « Connecteur suivant » de l'inspecteur, compteurs `forced_trims` / `forced_no_trim` du bilan.
+- **Reste** : seuil de coupe propre à un objet (le « ≥ X mm » de Hatch), mode « saut + coupe »
+  vs « cousu » explicite, application à une sélection multiple (HP-OBJ-019), validation machine.
+- Modules : `libs/document`, `libs/stitch_generation/finish.cpp`, `libs/commands`,
+  `libs/project_io`, `apps/desktop/properties_panel`.
 
 ### HP-SEQ-006 — Minimiser les coupes [P1] — ◐ Partiel (2026-10-13, en PR)
 - À faire : préférer un déplacement cousu caché sous un objet cousu ensuite
@@ -1842,6 +1865,11 @@ calques image/régions/vecteurs/broderie, filtres d'affichage, thème clair/somb
 - À faire : cases à cocher Sous-couche / Couche supérieure / Déplacements /
   Verrous / Manuels, couleurs distinctes optionnelles ; afficher les
   pénétrations, les connecteurs.
+- Hatch (aide en ligne *View connectors*, lue le 2026-10-14) : *Afficher le design* propose
+  « Connecteurs » et « Fonctions » ; les fonctions s'affichent par des symboles — cercle pour
+  l'attache d'entrée, triangle pour la coupe et l'attache de sortie. Utile ici pour vérifier
+  les coupes avant l'export (HP-SEQ-006) : reprendre cet affichage, il rend visible ce que
+  la passe de ponts cachés a supprimé ou conservé.
 
 ### HP-VIEW-004 — Fond tissu et mise en situation sur vêtement [P2] — ☐ À faire
 - Hatch : afficher le design sur un produit (t-shirt, casquette, serviette).

@@ -795,6 +795,11 @@ réordonné ni régénéré : le gain dépend de l'ordre amont.
   *Fichier ▸ Exporter une broderie machine…* (réglages mémorisés par poste, résumé
   recalculé sur la séquence écrite, y compris l'analyse et les limites du format) ;
   CLI : `osp2dst --reduce-trims`.
+- **Connecteur d'objet** (HP-SEQ-005) : `EmbroideryObject::connector` règle ce qui suit l'objet,
+  vers l'objet suivant de même fil. `Inherit` suit les règles ci-dessus ; `AlwaysTrim` force point
+  d'arrêt et coupe et n'est jamais remplacé par un pont ; `NeverTrim` supprime coupe et points
+  d'arrêt (le fil reste tendu en saut, à charge de l'utilisateur de le cacher). Sans effet avant
+  un changement de fil, un arrêt ou une coupe posée à la main. Inspecteur : « Connecteur suivant ».
 - **Bilan** (`TrimReport`, `effective_sequence_report`) : écarts candidats, sauts
   recouverts, ponts, refus par raison (trop long, extrémité non recouverte,
   aucun chemin), coupes conservées (changement de fil, coupe posée), points et

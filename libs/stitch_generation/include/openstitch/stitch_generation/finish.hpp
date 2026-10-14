@@ -45,6 +45,8 @@ struct TrimReport {
     std::size_t bridge_stitches{0};   // points cousus ajoutés
     double bridge_length_um{0.0};     // longueur de fil ajoutée
     std::size_t trims_removed{0};     // coupes supprimées (= saut recouvert + ponts)
+    std::size_t forced_trims{0};      // connecteur d'objet « toujours couper » (HP-SEQ-005)
+    std::size_t forced_no_trim{0};    // connecteur d'objet « ne jamais couper » (HP-SEQ-005)
 };
 
 struct FinishResult {

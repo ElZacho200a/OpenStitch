@@ -101,4 +101,15 @@ void MainWindow::setJoinMode(ObjectId id, int mode) {
     updateActions();
 }
 
+void MainWindow::setConnectorMode(ObjectId id, int mode) {
+    if (project_.findEmbroidery(id) == nullptr) {
+        return;
+    }
+    undoStack_.execute(std::make_unique<commands::SetEmbroideryConnectorModeCommand>(
+                           id, static_cast<document::ConnectorMode>(std::clamp(mode, 0, 2))),
+                       project_);
+    refreshImage();
+    updateActions();
+}
+
 } // namespace openstitch::desktop

@@ -323,3 +323,67 @@ TEST_CASE("hidden travel : effective_sequence_report suit exactement effective_s
     REQUIRE(again.has_value());
     CHECK(again->sequence.commands == withReport->sequence.commands);
 }
+
+namespace {
+
+// Projet minimal portant les objets 1 et 2 de `overlap_scene`, avec le connecteur de l'objet 1.
+document::Project connector_project(document::ConnectorMode mode, bool bridges) {
+    auto project = project_with(bridges);
+    for (std::uint64_t id = 1; id <= 2; ++id) {
+        document::EmbroideryObject emb;
+        emb.id = obj(id);
+        emb.connector = id == 1 ? mode : document::ConnectorMode::Inherit;
+        project.embroidery_objects.push_back(emb);
+    }
+    return project;
+}
+
+} // namespace
+
+TEST_CASE("connecteur d'objet : jamais couper -> ni coupe ni points d'arret, le saut reste") {
+    const auto scene = overlap_scene();
+    const auto base =
+        finish_sequence_report(scene, connector_project(document::ConnectorMode::Inherit, false));
+    const auto never =
+        finish_sequence_report(scene, connector_project(document::ConnectorMode::NeverTrim, false));
+    CHECK(base.report.forced_no_trim == 0);
+    CHECK(never.report.forced_no_trim == 1);
+    CHECK(count_type(base.sequence, CmdType::Trim) == 2);
+    CHECK(count_type(never.sequence, CmdType::Trim) == 1); // la coupe finale seulement
+    CHECK(count_type(never.sequence, CmdType::Jump) == 1); // le fil reste tendu
+    CHECK(count_pass(never.sequence, Pass::Lock) < count_pass(base.sequence, Pass::Lock));
+}
+
+TEST_CASE("connecteur d'objet : toujours couper l'emporte sur un pont cache") {
+    const auto scene = overlap_scene();
+    const auto bridged =
+        finish_sequence_report(scene, connector_project(document::ConnectorMode::Inherit, true));
+    REQUIRE(bridged.report.bridges == 1); // sans connecteur forcé, le pont est accepté
+    const auto always =
+        finish_sequence_report(scene, connector_project(document::ConnectorMode::AlwaysTrim, true));
+    CHECK(always.report.forced_trims == 1);
+    CHECK(always.report.bridges == 0);
+    CHECK(always.report.candidate_gaps == 0); // le planificateur n'est même pas consulté
+    CHECK(count_type(always.sequence, CmdType::Trim) == 2);
+}
+
+TEST_CASE("connecteur d'objet : sans effet avant un changement de fil ni sur une coupe posee") {
+    auto scene = overlap_scene();
+    const auto it = std::find_if(scene.commands.begin(), scene.commands.end(),
+                                 [](const Cmd& c) { return c.type == CmdType::Jump; });
+    scene.commands.insert(it, Cmd{pt(3000, 0), CmdType::ColorChange, obj(2), Pass::Travel});
+    const auto never =
+        finish_sequence_report(scene, connector_project(document::ConnectorMode::NeverTrim, false));
+    CHECK(never.report.forced_no_trim == 0);
+    CHECK(count_type(never.sequence, CmdType::Trim) >=
+          2); // la coupe avant le changement de fil reste
+
+    auto withTrim = overlap_scene();
+    const auto jt = std::find_if(withTrim.commands.begin(), withTrim.commands.end(),
+                                 [](const Cmd& c) { return c.type == CmdType::Jump; });
+    withTrim.commands.insert(jt, Cmd{pt(3000, 0), CmdType::Trim, obj(1), Pass::Travel});
+    const auto kept = finish_sequence_report(
+        withTrim, connector_project(document::ConnectorMode::NeverTrim, false));
+    CHECK(kept.report.forced_no_trim == 0);
+    CHECK(count_type(kept.sequence, CmdType::Trim) >= 2);
+}

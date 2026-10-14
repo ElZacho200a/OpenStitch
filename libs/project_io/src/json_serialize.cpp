@@ -966,6 +966,9 @@ json project_to_json(const document::Project& project) {
         if (e.join != document::JoinMode::Inherit) {
             eo["join"] = static_cast<int>(e.join); // HP-ENG-010 : absent = Inherit
         }
+        if (e.connector != document::ConnectorMode::Inherit) {
+            eo["connector"] = static_cast<int>(e.connector); // HP-SEQ-005 : absent = Inherit
+        }
         eo["params"] = params_to_json(e.params);
         // Schéma v6 (HP-THR-004) : fil de nuancier assigné, écrit seulement s'il existe.
         if (e.thread) {
@@ -1111,6 +1114,8 @@ Result<document::Project> project_from_json(const json& j) {
             // (valeur 0, comportement historique implicite désormais explicite).
             e.intent = static_cast<document::EmbroideryIntent>(eo.value("intent", 0));
             e.join = static_cast<document::JoinMode>(std::clamp(eo.value("join", 0), 0, 2));
+            e.connector =
+                static_cast<document::ConnectorMode>(std::clamp(eo.value("connector", 0), 0, 2));
             auto params = params_from_json(eo.at("params"));
             if (!params) {
                 return std::unexpected(params.error());

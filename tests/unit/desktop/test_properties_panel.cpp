@@ -445,6 +445,20 @@ void PropertiesPanelTest::engineSettingsEmitDedicatedEdits() {
     panel.setJoinMode(e.id, openstitch::document::JoinMode::Auto);
     QCOMPARE(joinMode, -1);
     QCOMPARE(panel.findChild<QComboBox*>(QStringLiteral("combo_joinMode"))->currentIndex(), 1);
+
+    // HP-SEQ-005 : connecteur après l'objet -- signal dédié, resynchronisation sans émission.
+    int connectorMode = -1;
+    QObject::connect(&panel, &PropertiesPanel::connectorModeEdited, &panel,
+                     [&](openstitch::ObjectId, int m) { connectorMode = m; });
+    auto* connector = panel.findChild<QComboBox*>(QStringLiteral("combo_connectorMode"));
+    QVERIFY(connector != nullptr);
+    QCOMPARE(connector->currentIndex(), 0);
+    connector->setCurrentIndex(2);
+    QCOMPARE(connectorMode, 2);
+    connectorMode = -1;
+    panel.setConnectorMode(e.id, openstitch::document::ConnectorMode::AlwaysTrim);
+    QCOMPARE(connectorMode, -1);
+    QCOMPARE(connector->currentIndex(), 1);
 }
 
 void PropertiesPanelTest::borderSatinInspectorEmitsRegenerationRequests() {
