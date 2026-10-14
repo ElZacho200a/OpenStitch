@@ -24,6 +24,10 @@ constexpr const char* kSettingsColors = "export/colorChanges";
 constexpr const char* kSettingsReduceTrims = "export/reduceTrims";
 constexpr const char* kSettingsSameColour = "export/reduceTrimsSameColour";
 constexpr const char* kSettingsMaxBridge = "export/reduceTrimsMaxMm";
+constexpr const char* kSettingsBetween = "export/routesBetween";
+constexpr const char* kSettingsWithin = "export/routesWithin";
+constexpr const char* kSettingsUnderlay = "export/routesUnderlay";
+constexpr const char* kSettingsRegions = "export/routesRegions";
 
 } // namespace
 
@@ -69,13 +73,28 @@ MachineExportDialog::MachineExportDialog(SummaryFn summarize, const QString& ini
 
     // HP-SEQ-006 : optimisation des coupes demandée pour CET export, indépendante du format
     // (le DST en profite aussi). Appliquée à la toute fin, le projet n'est pas modifié.
-    reduceTrims_ = new QCheckBox(
-        tr("Réduire les coupes (ponts cachés sous des points cousus plus tard)"), this);
+    reduceTrims_ = new QCheckBox(tr("Optimiser les trajets (moins de coupes et de sauts)"), this);
     reduceTrims_->setObjectName(QStringLiteral("check_exportReduceTrims"));
     reduceTrims_->setToolTip(
-        tr("Remplace des coupes par un saut ou un trajet cousu entièrement recouvert par des "
-           "points cousus plus tard. Appliqué à l'export seulement ; le projet n'est pas "
-           "modifié. Une coupe n'est jamais supprimée avant un changement de fil."));
+        tr("Appliqué à l'export seulement, tout à la fin : le projet n'est pas modifié et le "
+           "remplissage visible n'est jamais changé. Une coupe n'est jamais supprimée avant un "
+           "changement de fil. Par défaut l'ordre des objets n'est pas modifié."));
+    between_ = new QCheckBox(
+        tr("Entre les objets : pont caché si le trajet est recouvert plus tard"), this);
+    between_->setObjectName(QStringLiteral("check_exportRoutesBetween"));
+    within_ = new QCheckBox(tr("Dans un objet : liens sous-couche ↔ remplissage cachés"), this);
+    within_->setObjectName(QStringLiteral("check_exportRoutesWithin"));
+    underlay_ = new QCheckBox(tr("Sous-couche : ordre et sens des passes (invisible)"), this);
+    underlay_->setObjectName(QStringLiteral("check_exportRoutesUnderlay"));
+    regions_ = new QCheckBox(
+        tr("Mode avancé : réordonner les régions d'une même couleur (plus invasif)"), this);
+    regions_->setObjectName(QStringLiteral("check_exportRoutesRegions"));
+    regions_->setToolTip(
+        tr("Change l'ordre de couture des objets d'une même couleur pour raccourcir les "
+           "déplacements. L'ordre de deux objets qui se touchent ou se recouvrent est conservé "
+           "(c'est lui qui décide de ce qui est cousu par-dessus), les objets verrouillés restent "
+           "en place et aucun objet n'est modifié ni retourné. À vérifier à l'aperçu : l'ordre de "
+           "couture influe aussi sur le tirage du tissu."));
     sameColour_ = new QCheckBox(tr("Accepter aussi une surface déjà cousue du même fil"), this);
     sameColour_->setObjectName(QStringLiteral("check_exportReduceTrimsSameColour"));
     sameColour_->setToolTip(tr("Le fil de liaison se confond avec le fil déjà cousu ; un léger "
@@ -87,6 +106,10 @@ MachineExportDialog::MachineExportDialog(SummaryFn summarize, const QString& ini
     maxBridge_->setSingleStep(1.0);
     maxBridge_->setSuffix(tr(" mm"));
     form->addRow(QString(), reduceTrims_);
+    form->addRow(QString(), between_);
+    form->addRow(QString(), within_);
+    form->addRow(QString(), underlay_);
+    form->addRow(QString(), regions_);
     form->addRow(QString(), sameColour_);
     form->addRow(tr("Longueur maximale d'un pont :"), maxBridge_);
 
@@ -127,6 +150,10 @@ MachineExportDialog::MachineExportDialog(SummaryFn summarize, const QString& ini
     reduceTrims_->setChecked(settings.value(kSettingsReduceTrims, false).toBool());
     sameColour_->setChecked(settings.value(kSettingsSameColour, false).toBool());
     maxBridge_->setValue(settings.value(kSettingsMaxBridge, 15.0).toDouble());
+    between_->setChecked(settings.value(kSettingsBetween, true).toBool());
+    within_->setChecked(settings.value(kSettingsWithin, true).toBool());
+    underlay_->setChecked(settings.value(kSettingsUnderlay, true).toBool());
+    regions_->setChecked(settings.value(kSettingsRegions, false).toBool());
 
     const auto onChange = [this] { refresh(); };
     connect(formatBox_, &QComboBox::currentIndexChanged, this, onChange);
@@ -135,6 +162,10 @@ MachineExportDialog::MachineExportDialog(SummaryFn summarize, const QString& ini
     connect(stops_, &QComboBox::currentIndexChanged, this, onChange);
     connect(reduceTrims_, &QCheckBox::toggled, this, onChange);
     connect(sameColour_, &QCheckBox::toggled, this, onChange);
+    connect(between_, &QCheckBox::toggled, this, onChange);
+    connect(within_, &QCheckBox::toggled, this, onChange);
+    connect(underlay_, &QCheckBox::toggled, this, onChange);
+    connect(regions_, &QCheckBox::toggled, this, onChange);
     connect(maxBridge_, &QDoubleSpinBox::editingFinished, this, onChange);
     connect(this, &QDialog::accepted, this, [this] {
         QSettings s;
@@ -145,6 +176,10 @@ MachineExportDialog::MachineExportDialog(SummaryFn summarize, const QString& ini
         s.setValue(kSettingsReduceTrims, reduceTrims_->isChecked());
         s.setValue(kSettingsSameColour, sameColour_->isChecked());
         s.setValue(kSettingsMaxBridge, maxBridge_->value());
+        s.setValue(kSettingsBetween, between_->isChecked());
+        s.setValue(kSettingsWithin, within_->isChecked());
+        s.setValue(kSettingsUnderlay, underlay_->isChecked());
+        s.setValue(kSettingsRegions, regions_->isChecked());
     });
     refresh();
 }
@@ -169,6 +204,10 @@ project_io::ExportOptimizations MachineExportDialog::optimizations() const {
         reduceTrims_->isChecked() && sameColour_->isChecked();
     o.hidden_travel.max_bridge_length =
         Micrometers{static_cast<std::int32_t>(std::lround(maxBridge_->value() * 1000.0))};
+    o.hidden_travel.between_objects = between_->isChecked();
+    o.hidden_travel.within_object = within_->isChecked();
+    o.hidden_travel.reorder_underlay = underlay_->isChecked();
+    o.hidden_travel.reorder_regions = regions_->isChecked();
     return o;
 }
 
@@ -185,6 +224,10 @@ void MachineExportDialog::refresh() {
     // Les réglages de ponts n'ont de sens que si l'option est cochée.
     sameColour_->setEnabled(reduceTrims_->isChecked());
     maxBridge_->setEnabled(reduceTrims_->isChecked());
+    between_->setEnabled(reduceTrims_->isChecked());
+    within_->setEnabled(reduceTrims_->isChecked());
+    underlay_->setEnabled(reduceTrims_->isChecked());
+    regions_->setEnabled(reduceTrims_->isChecked());
     const auto summary = summarize_(*f, options(), optimizations());
     summary_->setText(summary.text);
     problemsBtn_->setVisible(summary.has_analysis_errors);

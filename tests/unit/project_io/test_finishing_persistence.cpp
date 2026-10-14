@@ -58,6 +58,7 @@ TEST_CASE("finishing : projet anterieur sans le bloc -> finitions desactivees") 
 TEST_CASE("finishing : ponts caches -- round-trip, defaut desactive, ancien bloc relu") {
     // Défaut : désactivé, donc un projet sans le sous-bloc produit la même séquence qu'avant.
     CHECK_FALSE(document::Project{}.finishing.hidden_travel.enabled);
+    CHECK_FALSE(document::Project{}.finishing.hidden_travel.reorder_regions); // avancé
 
     document::Project project;
     project.original.width = 1;
@@ -70,6 +71,10 @@ TEST_CASE("finishing : ponts caches -- round-trip, defaut desactive, ancien bloc
     h.bridge_stitch_length = Micrometers{3'000};
     h.cover_thread_width = Micrometers{500};
     h.cover_margin = Micrometers{250};
+    h.between_objects = false;
+    h.within_object = true;
+    h.reorder_underlay = false;
+    h.reorder_regions = true;
     const auto path = fs::temp_directory_path() / "openstitch_hidden_travel_roundtrip.osp";
     REQUIRE(project_io::save_project(path, project).has_value());
     const auto loaded = project_io::load_project(path);
