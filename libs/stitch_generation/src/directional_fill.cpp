@@ -611,7 +611,7 @@ double clamp_spacing(const document::DirectionalFillParams& p) {
 }
 
 // Écart entre lignes de couture en tout point : constant, ou interpolé
-// linéairement le long de l'axe d'un `DensityGradient` (constant au-delà des
+// le long de l'axe d'un `DensityGradient` (écart ou densité linéaire, constant au-delà des
 // extrémités). Le cas uniforme redonne exactement l'ancien `clamp_spacing`.
 struct SpacingField {
     static constexpr double kGradientMin = 100.0;
@@ -624,6 +624,9 @@ struct SpacingField {
     double invLen2{0.0};
     double from{400.0};
     double to{400.0};
+    bool interpolateDensity{false};
+    double densityFrom{1.0 / 400.0};
+    double densityTo{1.0 / 400.0};
 
     [[nodiscard]] bool uniform() const { return invLen2 == 0.0 || from == to; }
 
@@ -632,6 +635,10 @@ struct SpacingField {
             return lo;
         }
         const double t = std::clamp(dot(p - origin, axis) * invLen2, 0.0, 1.0);
+        if (interpolateDensity) {
+            // Rampes opposées : rho_A(t) + rho_B(t) = rho_from + rho_to.
+            return 1.0 / (densityFrom + (densityTo - densityFrom) * t);
+        }
         return from + (to - from) * t;
     }
 
@@ -653,6 +660,9 @@ SpacingField make_spacing_field(const document::DirectionalFillParams& p) {
     };
     f.from = bound(g.spacing_from);
     f.to = bound(g.spacing_to);
+    f.interpolateDensity = g.interpolate_density;
+    f.densityFrom = 1.0 / f.from;
+    f.densityTo = 1.0 / f.to;
     f.lo = std::min(f.from, f.to);
     f.hi = std::max(f.from, f.to);
     f.origin = to_p2(g.from);

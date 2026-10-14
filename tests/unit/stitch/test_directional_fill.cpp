@@ -8,8 +8,10 @@
 #include <optional>
 #include <vector>
 
+#include "openstitch/stitch_generation/color_blend.hpp"
 #include "openstitch/stitch_generation/directional_fill.hpp"
 #include "openstitch/stitch_generation/generate.hpp"
+#include "openstitch/stitch_generation/overrides.hpp"
 #include "openstitch/stitch_generation/tatami.hpp"
 
 using namespace openstitch;
@@ -1058,4 +1060,302 @@ TEST_CASE("directional gradient clamps absurd spacings instead of stalling") {
     CHECK(!lines.empty());
     // Plancher de 0,1 mm : jamais plus de 41 lignes sur 4 mm de large.
     CHECK(lines.size() <= 41);
+}
+
+TEST_CASE("blend core: opposite density ramps keep the total density constant", "[blend_core]") {
+    const auto region = rect_mm(0, 0, 30, 20);
+    auto top = base_params();
+    top.guides = {line_mm(0, 10, 30, 10)};
+    top.density_gradient = vertical_gradient(Micrometers{400}, Micrometers{1'600});
+    top.density_gradient->interpolate_density = true;
+    auto bottom = top;
+    std::swap(bottom.density_gradient->spacing_from, bottom.density_gradient->spacing_to);
+    const auto topYs = crossings_at_x(trace_directional_streamlines(region, top), 15.0);
+    const auto bottomYs = crossings_at_x(trace_directional_streamlines(region, bottom), 15.0);
+    // Intégrale de la densité linéaire : 20 mm * (1/0,4 + 1/1,6)/2 = 31,25.
+    CHECK(std::abs(static_cast<double>(topYs.size()) - 31.25) < 3.2);
+    CHECK(std::abs(static_cast<double>(bottomYs.size()) - 31.25) < 3.2);
+    for (const auto [lo, hi] : {std::pair{0.0, 6.0}, std::pair{6.0, 14.0}, std::pair{14.0, 20.0}}) {
+        const double topGap = mean_gap_mm(topYs, lo, hi);
+        const double bottomGap = mean_gap_mm(bottomYs, lo, hi);
+        REQUIRE(topGap > 0.0);
+        REQUIRE(bottomGap > 0.0);
+        CHECK(std::abs(1.0 / topGap + 1.0 / bottomGap - 3.125) < 0.45);
+    }
+    CHECK(fill_directional(region, top) == fill_directional(region, top));
+    CHECK(fill_directional(region, bottom) == fill_directional(region, bottom));
+}
+
+TEST_CASE("blend core: density interpolation clamps endpoints and preserves uniform cases",
+          "[blend_core]") {
+    const auto region = rect_mm(0, 0, 6, 4);
+    auto params = base_params();
+    params.guides = {line_mm(0, 2, 6, 2)};
+    params.density_gradient = vertical_gradient(Micrometers{-1}, Micrometers{100'000});
+    params.density_gradient->to = um(3, 4);
+    params.density_gradient->interpolate_density = true;
+    auto bounded = params;
+    bounded.density_gradient->spacing_from = Micrometers{100};
+    bounded.density_gradient->spacing_to = Micrometers{4'000};
+    const auto fill = fill_directional(region, params);
+    REQUIRE_FALSE(fill.empty());
+    CHECK(fill == fill_directional(region, bounded));
+    for (const auto& stitch : fill) {
+        CHECK(stitch.pos.x.value >= 0);
+        CHECK(stitch.pos.x.value <= 6'000);
+        CHECK(stitch.pos.y.value >= 0);
+        CHECK(stitch.pos.y.value <= 4'000);
+    }
+    for (const bool density : {false, true}) {
+        auto uniform = base_params();
+        uniform.guides = params.guides;
+        auto graded = uniform;
+        graded.density_gradient = vertical_gradient(Micrometers{400}, Micrometers{400});
+        graded.density_gradient->interpolate_density = density;
+        CHECK(fill_directional(region, uniform) == fill_directional(region, graded));
+        graded.density_gradient->to = graded.density_gradient->from;
+        graded.density_gradient->spacing_to = Micrometers{1'600};
+        CHECK(fill_directional(region, uniform) == fill_directional(region, graded));
+    }
+}
+
+namespace {
+
+document::EmbroideryObject blend_layer(ObjectId id) {
+    document::EmbroideryObject object;
+    object.id = id;
+    object.source_vector = ObjectId{1};
+    object.name = "Couche " + std::to_string(id.value);
+    object.rgb = {static_cast<std::uint8_t>(id.value), 20, 30};
+    object.params = document::TatamiParams{};
+    object.visible = false;
+    object.locked = true;
+    object.intent = document::EmbroideryIntent::ForcedUserChoice;
+    object.join = document::JoinMode::Off;
+    object.connector = document::ConnectorMode::AlwaysTrim;
+    object.thread = thread_palette::ThreadKey{"test", "42"};
+    object.color_blend = document::ColorBlendLink{ObjectId{5 - id.value}, id.value == 3};
+    object.overrides = {{7, um(1, 2), document::StitchPointType::Jump, true}};
+    object.edited_fingerprint = 123;
+    object.edited_point_count = 45;
+    return object;
+}
+
+void check_blend_metadata(const document::EmbroideryObject& result,
+                          const document::EmbroideryObject& original) {
+    CHECK(result.id == original.id);
+    CHECK(result.source_vector == original.source_vector);
+    CHECK(result.name == original.name);
+    CHECK(result.rgb == original.rgb);
+    CHECK(result.visible == original.visible);
+    CHECK(result.locked == original.locked);
+    CHECK(result.intent == original.intent);
+    CHECK(result.join == original.join);
+    CHECK(result.connector == original.connector);
+    CHECK(result.thread == original.thread);
+    CHECK(result.color_blend == original.color_blend);
+    CHECK(result.overrides == original.overrides);
+    CHECK(result.edited_fingerprint == original.edited_fingerprint);
+    CHECK(result.edited_point_count == original.edited_point_count);
+}
+
+} // namespace
+
+TEST_CASE("blend core: complementary helper preserves metadata and removes both underlays",
+          "[blend_core]") {
+    const auto background = blend_layer(ObjectId{2});
+    auto foreground = blend_layer(ObjectId{3});
+    auto params = base_params();
+    params.underlay_mode = document::UnderlayMode::Auto;
+    params.underlay_edge = params.underlay_parallel = true;
+    params.break_lines = {line_mm(0, 10, 30, 10)};
+    params.handmade = true;
+    params.spacing_regularity = 0.5;
+    foreground.params = params;
+    const std::vector<geometry::PathSet> shape{rect_mm(0, 0, 30, 20)};
+    auto gradient = vertical_gradient(Micrometers{1'600}, Micrometers{400});
+    const auto result = make_color_blend_layers(background, foreground, shape, gradient, true);
+    REQUIRE(result);
+    check_blend_metadata(result->first, background);
+    check_blend_metadata(result->second, foreground);
+    gradient.interpolate_density = true;
+    auto expectedTop = params;
+    expectedTop.row_spacing = gradient.spacing_from;
+    expectedTop.density_gradient = gradient;
+    expectedTop.underlay_mode = document::UnderlayMode::Manual;
+    expectedTop.underlay_edge = expectedTop.underlay_parallel = false;
+    align_guides_across_density_gradient(expectedTop, shape);
+    CHECK(result->second.params == document::StitchParams{expectedTop});
+    auto expectedBase =
+        directional_from_tatami(std::get<document::TatamiParams>(background.params), shape, 2);
+    std::swap(gradient.spacing_from, gradient.spacing_to);
+    expectedBase.row_spacing = gradient.spacing_from;
+    expectedBase.density_gradient = gradient;
+    expectedBase.underlay_mode = document::UnderlayMode::Manual;
+    expectedBase.underlay_edge = expectedBase.underlay_parallel = false;
+    align_guides_across_density_gradient(expectedBase, shape);
+    CHECK(result->first.params == document::StitchParams{expectedBase});
+    CHECK(
+        make_color_blend_layers(background, foreground, shape, *expectedTop.density_gradient, true)
+            ->second.params == result->second.params);
+    CHECK(background.params == document::StitchParams{document::TatamiParams{}});
+    CHECK(foreground.params == document::StitchParams{params});
+}
+
+TEST_CASE("blend core: legacy helper clears only the base gradient and keeps requested mode",
+          "[blend_core]") {
+    auto background = blend_layer(ObjectId{2});
+    auto base = base_params();
+    base.density_gradient = vertical_gradient(Micrometers{400}, Micrometers{800});
+    base.underlay_mode = document::UnderlayMode::Auto;
+    base.underlay_edge = true;
+    background.params = base;
+    const auto foreground = blend_layer(ObjectId{3});
+    const std::vector<geometry::PathSet> shape{rect_mm(0, 0, 30, 20)};
+    for (const bool density : {false, true}) {
+        auto gradient = vertical_gradient(Micrometers{1'600}, Micrometers{400});
+        gradient.interpolate_density = density;
+        const auto result = make_color_blend_layers(background, foreground, shape, gradient, false);
+        REQUIRE(result);
+        auto expectedBase = base;
+        expectedBase.density_gradient.reset();
+        CHECK(result->first.params == document::StitchParams{expectedBase});
+        const auto& top = std::get<document::DirectionalFillParams>(result->second.params);
+        CHECK(top.density_gradient == gradient);
+        CHECK(top.row_spacing == gradient.spacing_from);
+        CHECK(top.underlay_mode == document::UnderlayMode::Manual);
+        CHECK_FALSE(top.underlay_edge);
+        CHECK_FALSE(top.underlay_parallel);
+        REQUIRE(top.guides.size() == 1);
+        CHECK(top.guides[0].nodes[0].pos.y == top.guides[0].nodes[1].pos.y);
+        check_blend_metadata(result->first, background);
+        check_blend_metadata(result->second, foreground);
+    }
+    // Un fond tatami garde rigoureusement ses réglages, y compris sa sous-couche.
+    background.params = document::TatamiParams{};
+    const auto result =
+        make_color_blend_layers(background, foreground, shape, *base.density_gradient, false);
+    REQUIRE(result);
+    CHECK(result->first.params == background.params);
+}
+
+TEST_CASE("blend core: helper rejects empty shapes and invalid fill parameters", "[blend_core]") {
+    auto background = blend_layer(ObjectId{2});
+    auto foreground = blend_layer(ObjectId{3});
+    const auto gradient = vertical_gradient(Micrometers{400}, Micrometers{1'600});
+    const std::vector<geometry::PathSet> shape{rect_mm(0, 0, 30, 20)};
+    CHECK_FALSE(make_color_blend_layers(background, foreground, {}, gradient, true));
+    CHECK_FALSE(
+        make_color_blend_layers(background, foreground, {rect_mm(0, 0, 0, 0)}, gradient, true));
+    auto open = shape;
+    open[0].outer.closed = false;
+    CHECK_FALSE(make_color_blend_layers(background, foreground, open, gradient, true));
+    auto badGradient = gradient;
+    badGradient.spacing_from = Micrometers{0};
+    CHECK_FALSE(make_color_blend_layers(background, foreground, shape, badGradient, true));
+    foreground.params = document::RunningStitchParams{};
+    CHECK_FALSE(make_color_blend_layers(background, foreground, shape, gradient, true));
+    foreground.params = document::TatamiParams{};
+    background.params = document::SatinParams{};
+    CHECK_FALSE(make_color_blend_layers(background, foreground, shape, gradient, false));
+    background.params = document::TatamiParams{};
+    std::get<document::TatamiParams>(background.params).angle.radians =
+        std::numeric_limits<double>::quiet_NaN();
+    CHECK_FALSE(make_color_blend_layers(background, foreground, shape, gradient, true));
+}
+
+TEST_CASE("blend core: uniform ramps still align guides and degenerate ramps remain valid",
+          "[blend_core]") {
+    const auto background = blend_layer(ObjectId{2});
+    const auto foreground = blend_layer(ObjectId{3});
+    const std::vector<geometry::PathSet> shape{rect_mm(0, 0, 30, 20)};
+    auto gradient = vertical_gradient(Micrometers{800}, Micrometers{800});
+    const auto result = make_color_blend_layers(background, foreground, shape, gradient, true);
+    REQUIRE(result);
+    for (const auto* layer : {&result->first, &result->second}) {
+        const auto& params = std::get<document::DirectionalFillParams>(layer->params);
+        REQUIRE(params.guides.size() == 1);
+        CHECK(params.guides[0].nodes[0].pos.y == params.guides[0].nodes[1].pos.y);
+        CHECK(params.density_gradient->interpolate_density);
+    }
+    gradient.to = gradient.from;
+    CHECK(make_color_blend_layers(background, foreground, shape, gradient, true));
+}
+
+TEST_CASE("blend core: relation metadata never changes generation and underlays stay off",
+          "[blend_core]") {
+    document::Project project;
+    document::VectorObject vector;
+    vector.id = ObjectId{1};
+    vector.paths = {rect_mm(0, 0, 30, 20)};
+    project.vector_objects.push_back(vector);
+    auto background = blend_layer(ObjectId{2});
+    auto foreground = blend_layer(ObjectId{3});
+    for (auto* layer : {&background, &foreground}) {
+        layer->visible = true;
+        layer->overrides.clear();
+        auto& params = std::get<document::TatamiParams>(layer->params);
+        params.underlay_mode = document::UnderlayMode::Auto;
+        params.underlay_edge = params.underlay_parallel = true;
+    }
+    const auto result =
+        make_color_blend_layers(background, foreground, vector.paths,
+                                vertical_gradient(Micrometers{400}, Micrometers{1'600}), true);
+    REQUIRE(result);
+    project.embroidery_objects = {result->first, result->second};
+    const auto linked = effective_sequence(project);
+    REQUIRE(linked);
+    CHECK(std::none_of(linked->commands.begin(), linked->commands.end(), [](const auto& command) {
+        return command.pass == stitch::StitchPass::Underlay;
+    }));
+    project.embroidery_objects[0].color_blend.reset();
+    project.embroidery_objects[1].color_blend.reset();
+    const auto unlinked = effective_sequence(project);
+    REQUIRE(unlinked);
+    CHECK(linked->commands == unlinked->commands);
+    project.embroidery_objects[0].color_blend = document::ColorBlendLink{ObjectId{42}, true};
+    const auto orphaned = effective_sequence(project);
+    REQUIRE(orphaned);
+    CHECK(orphaned->commands == unlinked->commands);
+}
+
+TEST_CASE("blend core: helper retains overrides and pipeline invalidates changed parameters",
+          "[blend_core]") {
+    document::Project project;
+    document::VectorObject vector;
+    vector.id = ObjectId{1};
+    vector.paths = {rect_mm(0, 0, 30, 20)};
+    project.vector_objects.push_back(vector);
+    auto background = blend_layer(ObjectId{2});
+    auto foreground = blend_layer(ObjectId{3});
+    background.visible = foreground.visible = true;
+    background.overrides.clear();
+    foreground.overrides.clear();
+    project.embroidery_objects = {background, foreground};
+    const auto before = edit_view(project, foreground.id);
+    REQUIRE(before);
+    const auto point = std::find_if(before->raw.begin(), before->raw.end(), is_movable_point);
+    REQUIRE(point != before->raw.end());
+    foreground.overrides = {
+        {static_cast<std::size_t>(point - before->raw.begin()), um(3, 4), {}, false}};
+    foreground.edited_fingerprint = before->fingerprint;
+    foreground.edited_point_count = before->point_count;
+    project.embroidery_objects[1] = foreground;
+    REQUIRE(edit_view(project, foreground.id)->state == ObjectEditState::ManuallyEdited);
+    const auto result =
+        make_color_blend_layers(background, foreground, vector.paths,
+                                vertical_gradient(Micrometers{400}, Micrometers{1'600}), true);
+    REQUIRE(result);
+    CHECK(result->second.overrides == foreground.overrides);
+    project.embroidery_objects = {result->first, result->second};
+    const auto after = edit_view(project, foreground.id);
+    REQUIRE(after);
+    CHECK(after->state == ObjectEditState::Dirty);
+    CHECK(after->fingerprint != before->fingerprint);
+    const auto dirty = effective_sequence(project);
+    REQUIRE(dirty);
+    project.embroidery_objects[1].overrides.clear();
+    const auto clean = effective_sequence(project);
+    REQUIRE(clean);
+    CHECK(dirty->commands == clean->commands);
 }
