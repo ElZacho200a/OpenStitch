@@ -314,6 +314,9 @@ json params_to_json(const document::StitchParams& params) {
                                             {"toY", g.to.y.value},
                                             {"spacingFrom", g.spacing_from.value},
                                             {"spacingTo", g.spacing_to.value}};
+                    if (g.interpolate_density) {
+                        j["densityGradient"]["interpolateDensity"] = true;
+                    }
                 }
             } else if constexpr (std::is_same_v<T, document::AutoSatinParams>) {
                 json guides = json::array();
@@ -532,6 +535,7 @@ Result<document::StitchParams> params_from_json(const json& j) {
             grad.to = Vec2um{Micrometers{g.value("toX", 0)}, Micrometers{g.value("toY", 0)}};
             grad.spacing_from = Micrometers{g.value("spacingFrom", 400)};
             grad.spacing_to = Micrometers{g.value("spacingTo", 400)};
+            grad.interpolate_density = g.value("interpolateDensity", false);
             p.density_gradient = grad;
         }
         if (j.contains("seed")) {
@@ -974,6 +978,10 @@ json project_to_json(const document::Project& project) {
         if (e.thread) {
             eo["thread"] = {{"chart", e.thread->chart_id}, {"code", e.thread->code}};
         }
+        if (e.color_blend) {
+            eo["colorBlend"] = {{"partner", e.color_blend->partner.value},
+                                {"foreground", e.color_blend->foreground}};
+        }
         if (!e.overrides.empty()) {
             eo["overrides"] = json::array();
             for (const auto& ov : e.overrides) {
@@ -1125,6 +1133,23 @@ Result<document::Project> project_from_json(const json& j) {
                 return std::unexpected(params.error());
             }
             e.params = std::move(*params);
+
+            // Métadonnée facultative : entier uint64 exact (jamais via double) et rôle
+            // strictement booléen. Les liens orphelins restent lisibles mais ne se résolvent pas.
+            if (eo.contains("colorBlend")) {
+                const auto& link = eo.at("colorBlend");
+                if (!link.is_object() || !link.contains("partner") ||
+                    !link.contains("foreground") || !link.at("foreground").is_boolean()) {
+                    return fail(ErrorCategory::InvalidFile,
+                                "Fondu invalide : colorBlend doit porter partner et foreground");
+                }
+                auto partner = strict_uint64(link.at("partner"), "colorBlend.partner");
+                if (!partner) {
+                    return std::unexpected(partner.error());
+                }
+                e.color_blend =
+                    document::ColorBlendLink{ObjectId{*partner}, link.at("foreground").get<bool>()};
+            }
 
             // Fil de nuancier (schéma v6) : absent dans un projet v1..v5 -> couleur libre.
             if (eo.contains("thread")) {
