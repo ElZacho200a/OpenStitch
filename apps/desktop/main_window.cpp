@@ -8432,16 +8432,16 @@ void MainWindow::onSelectionRectangle(QRectF rectMm, SelectMode mode, bool cross
         // Même règle que le rendu : un objet masqué par les filtres d'affichage (type, couleur,
         // taille) n'est pas saisi par le cadre, sauf s'il est déjà sélectionné (donc affiché).
         const std::vector<ObjectId> selected = currentSelection().objects;
-        objectHits.erase(
-            std::remove_if(objectHits.begin(), objectHits.end(),
-                           [&](ObjectId id) {
-                               const document::VectorObject* vec = project_.findObject(id);
-                               return vec != nullptr &&
-                                      std::find(selected.begin(), selected.end(), id) ==
-                                          selected.end() &&
-                                      !vectorPassesFilter(*vec);
-                           }),
-            objectHits.end());
+        objectHits.erase(std::remove_if(objectHits.begin(), objectHits.end(),
+                                        [&](ObjectId id) {
+                                            const document::VectorObject* vec =
+                                                project_.findObject(id);
+                                            return vec != nullptr &&
+                                                   std::find(selected.begin(), selected.end(),
+                                                             id) == selected.end() &&
+                                                   !vectorPassesFilter(*vec);
+                                        }),
+                         objectHits.end());
     }
     const bool regionsUsable = currentTool_ == Tool::Select && !mergeMode_ &&
                                showSegAct_->isChecked() && project_.segmentation &&
