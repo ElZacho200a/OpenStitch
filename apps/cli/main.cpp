@@ -666,9 +666,9 @@ int run_engine_debug(double pullMm, bool underlayAuto, double borderMm, const st
 // sous-couche) ; `all` ou liste vide = les trois. Renvoie faux si un nom est inconnu.
 bool parse_route_levels(const std::string& list, openstitch::document::HiddenTravel& h,
                         std::string& error) {
-    h.between_objects = h.within_object = h.reorder_underlay = false;
+    h.between_objects = h.within_object = h.reorder_underlay = h.reorder_regions = false;
     if (list.empty() || list == "all") {
-        h.between_objects = h.within_object = h.reorder_underlay = true;
+        h.between_objects = h.within_object = h.reorder_underlay = true; // sans le mode avancé
         return true;
     }
     std::size_t start = 0;
@@ -682,8 +682,12 @@ bool parse_route_levels(const std::string& list, openstitch::document::HiddenTra
             h.within_object = true;
         } else if (name == "underlay") {
             h.reorder_underlay = true;
+        } else if (name == "all") {
+            h.between_objects = h.within_object = h.reorder_underlay = true;
+        } else if (name == "regions") {
+            h.reorder_regions = true;
         } else {
-            error = "niveau inconnu : « " + name + " » (between, within, underlay ou all)";
+            error = "niveau inconnu : « " + name + " » (between, within, underlay, regions ou all)";
             return false;
         }
         if (comma == std::string::npos) {
@@ -960,6 +964,13 @@ int run_digitize(const DigitizeArgs& a) {
         fmt::print(
             st, "Sous-couche : {} groupe(s) de passes réordonné(s), {:.1f} mm de saut en moins\n",
             r.underlay_blocks, r.underlay_jump_saved_um / 1000.0);
+        if (r.region_groups > 0) {
+            fmt::print(
+                st,
+                "Régions : {} groupe(s) réordonné(s), {} région(s) déplacée(s), {:.1f} mm de "
+                "saut en moins\n",
+                r.region_groups, r.regions_moved, r.region_jump_saved_um / 1000.0);
+        }
         fmt::print(st,
                    "  refus : trop long {} | extrémité non recouverte {} | aucun chemin {} ; "
                    "coupes conservées : changement de fil {}, coupe posée {}\n",
@@ -1072,6 +1083,12 @@ int run_osp2dst(const std::string& ospPath, const std::string& outDst, bool noCl
         fmt::print(
             "Sous-couche : {} groupe(s) de passes réordonné(s), {:.1f} mm de saut en moins\n",
             report.underlay_blocks, report.underlay_jump_saved_um / 1000.0);
+        if (report.region_groups > 0) {
+            fmt::print(
+                "Régions : {} groupe(s) réordonné(s), {} région(s) déplacée(s), {:.1f} mm de "
+                "saut en moins\n",
+                report.region_groups, report.regions_moved, report.region_jump_saved_um / 1000.0);
+        }
     }
     return kExitOk;
 }

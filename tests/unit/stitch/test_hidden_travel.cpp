@@ -541,3 +541,134 @@ TEST_CASE("optimiser les trajets : sur un projet genere, la couche superieure re
     // Jamais plus de coupes qu'avec la passe désactivée.
     CHECK(count_type(opt->sequence, CmdType::Trim) <= count_type(off->sequence, CmdType::Trim));
 }
+
+namespace {
+
+// Une région d'un seul trait horizontal : saut d'entrée, deux piqûres de couche supérieure.
+void region(stitch::StitchSequence& s, std::uint64_t id, std::int32_t x0, std::int32_t x1,
+            std::int32_t y = 0) {
+    jump_to(s, pt(x0, y), obj(id));
+    stitch_to(s, pt(x0, y), obj(id));
+    stitch_to(s, pt(x1, y), obj(id));
+}
+
+document::Project advanced_project(bool reorderRegions) {
+    auto project = project_with(true);
+    project.finishing.lock_type = document::LockStitch::None;
+    project.finishing.hidden_travel.between_objects = false;
+    project.finishing.hidden_travel.within_object = false;
+    project.finishing.hidden_travel.reorder_underlay = false;
+    project.finishing.hidden_travel.reorder_regions = reorderRegions;
+    for (std::uint64_t id = 1; id <= 4; ++id) {
+        document::EmbroideryObject emb;
+        emb.id = obj(id);
+        project.embroidery_objects.push_back(emb);
+    }
+    return project;
+}
+
+// Ordre des objets tel qu'ils apparaissent dans la séquence (une entrée par suite).
+std::vector<std::uint64_t> object_order(const stitch::StitchSequence& s) {
+    std::vector<std::uint64_t> order;
+    for (const Cmd& c : s.commands) {
+        if (c.type == CmdType::Stitch && c.pass == Pass::TopStitch &&
+            (order.empty() || order.back() != c.source.value)) {
+            order.push_back(c.source.value);
+        }
+    }
+    return order;
+}
+
+double total_jump_um(const stitch::StitchSequence& s) {
+    double total = 0.0;
+    Vec2um at{};
+    bool have = false;
+    for (const Cmd& c : s.commands) {
+        if (c.type == CmdType::Jump && have) {
+            total += length_um(c.pos - at);
+        }
+        if (c.type == CmdType::Stitch || c.type == CmdType::Jump) {
+            at = c.pos;
+            have = true;
+        }
+    }
+    return total;
+}
+
+} // namespace
+
+TEST_CASE("mode avance : les regions d'une meme couleur sont reordonnees, chacune intacte") {
+    stitch::StitchSequence s;
+    region(s, 1, 0, 5'000);       // A
+    region(s, 2, 50'000, 55'000); // B (loin)
+    region(s, 3, 6'000, 11'000);  // C (près de A)
+    const auto off = finish_sequence_report(s, advanced_project(false));
+    const auto on = finish_sequence_report(s, advanced_project(true));
+    CHECK(object_order(off.sequence) == std::vector<std::uint64_t>{1, 2, 3});
+    CHECK(object_order(on.sequence) == std::vector<std::uint64_t>{1, 3, 2});
+    CHECK(on.report.region_groups == 1);
+    CHECK(on.report.regions_moved >= 1);
+    CHECK(on.report.region_jump_saved_um > 0.0);
+    CHECK(total_jump_um(on.sequence) < total_jump_um(off.sequence));
+    // Chaque région est intacte : mêmes piqûres, même sens.
+    for (const std::uint64_t id : {1, 2, 3}) {
+        std::vector<Vec2um> a;
+        std::vector<Vec2um> b;
+        for (const Cmd& c : off.sequence.commands) {
+            if (c.type == CmdType::Stitch && c.source.value == id) {
+                a.push_back(c.pos);
+            }
+        }
+        for (const Cmd& c : on.sequence.commands) {
+            if (c.type == CmdType::Stitch && c.source.value == id) {
+                b.push_back(c.pos);
+            }
+        }
+        CHECK(a == b);
+    }
+    // Déterminisme.
+    CHECK(finish_sequence_report(s, advanced_project(true)).sequence.commands ==
+          on.sequence.commands);
+}
+
+TEST_CASE("mode avance : deux regions dont les emprises se touchent gardent leur ordre") {
+    stitch::StitchSequence s;
+    region(s, 1, 0, 5'000);
+    region(s, 2, 50'000, 55'000);
+    region(s, 3, 5'200, 11'000); // touche A (moins de 0,7 mm) : doit rester après A
+    region(s, 4, 56'000, 60'000);
+    const auto on = finish_sequence_report(s, advanced_project(true));
+    const auto order = object_order(on.sequence);
+    const auto pos = [&](std::uint64_t id) {
+        return std::find(order.begin(), order.end(), id) - order.begin();
+    };
+    CHECK(pos(1) < pos(3)); // A avant C : C recouvre A, cet ordre décide de ce qui est dessus
+}
+
+TEST_CASE("mode avance : desactive par defaut, region verrouillee et changement de fil respectes") {
+    stitch::StitchSequence s;
+    region(s, 1, 0, 5'000);
+    region(s, 2, 50'000, 55'000);
+    region(s, 3, 6'000, 11'000);
+    // Désactivé : séquence strictement identique.
+    CHECK(finish_sequence(s, advanced_project(false)).commands ==
+          finish_sequence(s, advanced_project(false)).commands);
+    auto off = advanced_project(true);
+    off.finishing.hidden_travel.reorder_regions = false;
+    CHECK(object_order(finish_sequence(s, off)) == std::vector<std::uint64_t>{1, 2, 3});
+
+    // Région B verrouillée : elle reste à sa place, C ne peut pas la dépasser.
+    auto locked = advanced_project(true);
+    locked.embroidery_objects[1].locked = true;
+    CHECK(object_order(finish_sequence(s, locked)) == std::vector<std::uint64_t>{1, 2, 3});
+
+    // Un changement de fil sépare les groupes : C ne remonte pas avant le changement.
+    stitch::StitchSequence withColor;
+    region(withColor, 1, 0, 5'000);
+    region(withColor, 2, 50'000, 55'000);
+    withColor.commands.push_back({pt(55'000, 0), CmdType::ColorChange, obj(2), Pass::Travel});
+    region(withColor, 3, 6'000, 11'000);
+    const auto res = finish_sequence_report(withColor, advanced_project(true));
+    CHECK(object_order(res.sequence) == std::vector<std::uint64_t>{1, 2, 3});
+    CHECK(count_type(res.sequence, CmdType::ColorChange) == 1);
+}

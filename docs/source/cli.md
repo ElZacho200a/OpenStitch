@@ -112,7 +112,7 @@ Mêmes valeurs par défaut que le dialogue **Numérisation automatique** du bure
 | `--trim-threshold MM` | 3 | Coupe au-delà de ce déplacement |
 | `--lock` | `backforth` | Point d'arrêt : `none`, `backforth`, `triangle` ou `zigzag` |
 | `--hidden-travel` | désactivé | Remplace les coupes par des sauts ou des ponts cousus prouvés cachés sous des points cousus plus tard (passe finale, voir *Moteur de points*) ; affiche un bilan |
-| `--hidden-travel-levels LISTE` | `all` | Avec `--hidden-travel` : niveaux parmi `between` (ponts entre objets), `within` (liens dans un objet), `underlay` (ordre de la sous-couche), séparés par des virgules |
+| `--hidden-travel-levels LISTE` | `all` | Avec `--hidden-travel` : niveaux parmi `between` (ponts entre objets), `within` (liens dans un objet), `underlay` (ordre de la sous-couche), séparés par des virgules ; `regions` (mode avancé, plus invasif : ordre des régions d'une même couleur) n'est jamais inclus dans `all` |
 | `--hidden-travel-same-colour` | désactivé | Avec `--hidden-travel` : une surface déjà cousue du même fil compte aussi comme cachée |
 | `--hidden-travel-max MM` | 15 | Avec `--hidden-travel` : longueur maximale d'un pont |
 | `--mode` | `shapes` | `shapes` : formes pleines ; `contours` : dessin au trait (lignes médianes en point droit) ; `stipple` : semis de points relié en un trait |
@@ -148,7 +148,7 @@ openstitch-cli osp2dst <projet.osp> <sortie.dst>
 coupes et la fin de fichier que la machine recevra (voir *Format DST*). Pour
 `dst2svg`, la sortie peut aussi s'écrire `--output-svg`/`--output`.
 
-`osp2dst --reduce-trims [--reduce-trims-levels between,within,underlay] [--reduce-trims-same-colour] [--reduce-trims-max MM]`
+`osp2dst --reduce-trims [--reduce-trims-levels between,within,underlay,regions] [--reduce-trims-same-colour] [--reduce-trims-max MM]`
 demande, **pour cet export seulement**, de remplacer des coupes par des sauts ou
 des ponts cousus prouvés cachés sous des points cousus plus tard (voir *Moteur de
 points*, « Ponts cachés ») ; le projet n'est pas modifié et la commande affiche le

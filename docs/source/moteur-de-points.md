@@ -799,6 +799,15 @@ réordonné ni régénéré : le gain dépend de l'ordre amont.
   strictement le même, point par point (testé). Mesure sur `tentabrode` : −16 coupes sur 442
   et 1,84 m de saut en moins ; les écarts restants relient des îlots de remplissage séparés par
   du tissu nu, qu'on ne peut ni cacher ni réordonner sans que cela se voie.
+- **Mode avancé, plus invasif** (`reorder_regions`, HP-SEQ-006.e, désactivé par défaut) :
+  réordonne les régions d'une même couleur (`region_order.cpp`), avant les trois niveaux
+  ci-dessus. Entre deux changements de fil, les régions sont des suites de commandes de même objet.
+  Deux régions dont les emprises se touchent ou se recouvrent gardent leur ordre relatif (c'est
+  lui qui décide de ce qui est cousu par-dessus) ; une région est déplacée entière, sans retour de
+  sens ; les régions verrouillées ou à connecteur choisi bornent les groupes. Mesure sur
+  `tentabrode` : 149 régions déplacées, 1,87 m de saut en moins, une coupe de plus supprimée
+  seulement (chaque frontière entre objets reste coupée). À vérifier à l'aperçu : l'ordre de couture
+  influe aussi sur le tirage du tissu.
 - **À la demande, à l'export** : `project_io::ExportOptimizations{reduce_trims,
   hidden_travel}` est passé à `export_machine_file` (et à `export_sequence`, qui
   donne la séquence exacte et le bilan pour l'aperçu). Les réglages remplacent ceux

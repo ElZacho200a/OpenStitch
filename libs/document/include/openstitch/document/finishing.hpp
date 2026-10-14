@@ -36,6 +36,11 @@ struct HiddenTravel {
     bool between_objects{true};
     bool within_object{true};
     bool reorder_underlay{true};
+    // Mode avancé, plus invasif (désactivé par défaut) : réordonner les régions d'une MÊME couleur
+    // pour raccourcir les déplacements. L'ordre relatif de deux régions dont les emprises se
+    // touchent est conservé, les régions verrouillées restent en place, aucune région n'est
+    // modifiée ni retournée. Appliqué avant les autres niveaux.
+    bool reorder_regions{false};
     // HP-SEQ-006.b -- une surface déjà cousue plus tôt avec le MÊME fil compte aussi comme cachée
     // (le fil de liaison s'y confond ; léger relief possible). Désactivé par défaut.
     bool allow_same_color_surface{false};

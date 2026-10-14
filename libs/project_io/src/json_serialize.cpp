@@ -1009,7 +1009,8 @@ json project_to_json(const document::Project& project) {
                         {"allowSameColorSurface", f.hidden_travel.allow_same_color_surface},
                         {"betweenObjects", f.hidden_travel.between_objects},
                         {"withinObject", f.hidden_travel.within_object},
-                        {"reorderUnderlay", f.hidden_travel.reorder_underlay}}}};
+                        {"reorderUnderlay", f.hidden_travel.reorder_underlay},
+                        {"reorderRegions", f.hidden_travel.reorder_regions}}}};
 
     // AD-04 : design importé (DST aujourd'hui) -- donnée source immuable,
     // absente d'un projet qui n'en a pas (comportement historique inchangé).
@@ -1224,6 +1225,7 @@ Result<document::Project> project_from_json(const json& j) {
                 h.between_objects = hj.value("betweenObjects", hd.between_objects);
                 h.within_object = hj.value("withinObject", hd.within_object);
                 h.reorder_underlay = hj.value("reorderUnderlay", hd.reorder_underlay);
+                h.reorder_regions = hj.value("reorderRegions", hd.reorder_regions);
             }
         } else {
             project.finishing = document::SequenceFinishing::legacy();

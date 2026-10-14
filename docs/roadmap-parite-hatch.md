@@ -39,9 +39,9 @@ Revue partielle du 2026-10-13 (`main` = `4a8088b`) : vague 1 — objets, cadres,
 |---|---|---|---|---|
 | P0 | 12 | 25 | 7 | 44 |
 | P1 | 4 | 44 | 78 | 126 |
-| P2 | 0 | 15 | 66 | 81 |
+| P2 | 0 | 16 | 66 | 82 |
 | P3 | 0 | 0 | 12 | 12 |
-| **Total** | **16** | **84** | **163** | **263** |
+| **Total** | **16** | **85** | **163** | **264** |
 
 **Fait (16)** : FILE-001/002/003/004 (nouveau projet, enregistrer, récents, autosave),
 THR-001/003/004 (bibliothèque de fils, fil le plus proche, fil assigné à chaque objet),
@@ -1845,6 +1845,33 @@ couches ; objets verrouillables ; coût estimé ; routage satin multi-colonnes.
 - Dépend de : HP-SEQ-006.a.
 - Acceptation : couche supérieure identique (test), déterminisme, désactivé = séquence
   identique, `--reduce-trims-levels` limite chaque niveau, mesure avant/après rapportée.
+
+### HP-SEQ-006.e — Mode avancé : réordonner les régions d'une même couleur [P2] — ◐ Partiel (2026-10-14, en PR)
+- Demande du mainteneur (2026-10-14) : une option « plus efficace mais plus invasive » qui peut
+  réarranger les régions à l'intérieur d'une même couleur (on suppose les régions déjà triées par
+  couleur, ce qui est le cas courant).
+- Livré (cœur, CLI, dialogue d'export, en PR) : `HiddenTravel::reorder_regions` (désactivé par
+  défaut, persisté) ; `reorder_regions_same_color` (`region_order.{hpp,cpp}`). Garde-fous : jamais
+  d'échange entre couleurs (changement de fil, arrêt, fin = barrières) ; **l'ordre relatif de deux
+  régions dont les emprises se touchent ou se recouvrent est conservé** (emprise = points élargis
+  de la demi-largeur de fil plus la marge, grille de 0,25 mm) ; chaque région reste intacte (mêmes
+  points, même sens, jamais retournée) ; régions verrouillées, connecteur choisi à la main ou sans
+  objet source = épinglées, elles bornent les groupes. Ordre : plus proche voisin sous contrainte
+  d'ordre, puis déplacements d'une région tant que le coût baisse ; groupe modifié seulement si le
+  coût baisse strictement. CLI `--reduce-trims-levels regions` (jamais inclus dans `all`).
+- **Mesure** (fixture `tentabrode`, 442 coupes) : 149 régions déplacées, 1,87 m de saut en moins,
+  mais **seulement 1 coupe en moins de plus** : chaque frontière entre deux objets reste coupée
+  (règle `objectGap`, correctif du 2026-10-08), l'ordre ne la supprime pas ; le gain est en
+  longueur de déplacement et en temps, et rend les ponts cachés plus probables.
+- **Reste** : prise en compte des ponts possibles dans le coût (aujourd'hui : distance seule),
+  garde-fou sur le tirage du tissu (l'ordre de couture influe sur la déformation), validation
+  machine HP-PHYS-001.
+- Modules : `libs/stitch_generation` (`region_order`, `finish.cpp`), `libs/document`,
+  `libs/project_io`, `apps/desktop/machine_export_dialog`, `apps/cli`.
+- Dépend de : HP-SEQ-006.d.
+- Acceptation : ordre relatif des régions qui se touchent conservé, régions verrouillées en
+  place, changements de fil intacts, chaque région identique (tests), désactivé = séquence
+  identique, déterminisme.
 
 ### HP-SEQ-006.c — Rapport de réduction des coupes [P1] — ◐ Partiel (2026-10-13, en PR)
 - Livré (cœur, en PR) : `TrimReport` et `effective_sequence_report` (même chemin de

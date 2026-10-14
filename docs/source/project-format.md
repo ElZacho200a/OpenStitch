@@ -85,7 +85,7 @@ Compression (2026-10) : l'image PNG, déjà compressée, est stockée telle quel
   défaut 2500, [500 ; 12100]), `coverThreadWidth` (µm, défaut 400, [100 ; 2000]),
   `coverMargin` (µm, défaut 150, [0 ; 2000]), `allowSameColorSurface` (bool,
   défaut faux), `betweenObjects`, `withinObject`, `reorderUnderlay` (bool, défaut vrai : niveaux de
-  l'optimisation des trajets).
+  l'optimisation des trajets), `reorderRegions` (bool, défaut faux : mode avancé).
 - Lot « moteur de points », clés additives d'un objet de broderie, écrites
   seulement hors défaut et bornées à la lecture : `join` (0 hérite du projet, 1
   automatique, 2 désactivé) ; `connector` (HP-SEQ-005 : 0 hérite, 1 toujours couper, 2 ne jamais couper) ; dans `params` : tatami `pullCompensation` (µm,

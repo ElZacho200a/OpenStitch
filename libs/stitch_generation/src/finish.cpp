@@ -10,6 +10,7 @@
 #include "hidden_travel.hpp"
 #include "openstitch/stitch_generation/lock.hpp"
 #include "openstitch/stitch_generation/tatami.hpp"
+#include "region_order.hpp"
 #include "underlay_order.hpp"
 
 namespace openstitch::stitch_generation {
@@ -223,8 +224,13 @@ FinishResult finish_sequence_report(const stitch::StitchSequence& sequence,
     // jamais filtrés.
     // « Optimiser les trajets » niveau 3 : ordre et sens des passes de sous-couche (invisible,
     // sous le remplissage), avant la détection des tracés et des coupes.
-    auto reordered = reorder_underlay_passes(
-        split_long_stitches(filter_short_stitches(sequence.commands, project, f), f), f);
+    // Mode avancé : ordre des régions d'une même couleur, AVANT tout le reste.
+    auto regionOrder = reorder_regions_same_color(
+        split_long_stitches(filter_short_stitches(sequence.commands, project, f), f), project, f);
+    report.region_groups = regionOrder.groups;
+    report.regions_moved = regionOrder.regions_moved;
+    report.region_jump_saved_um = regionOrder.saved_um;
+    auto reordered = reorder_underlay_passes(regionOrder.commands, f);
     report.underlay_blocks = reordered.blocks;
     report.underlay_jump_saved_um = reordered.saved_um;
     const std::vector<StitchCommand> cmds = std::move(reordered.commands);
