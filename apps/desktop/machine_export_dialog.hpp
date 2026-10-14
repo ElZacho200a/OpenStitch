@@ -53,6 +53,10 @@ private:
     QComboBox* stops_{nullptr};
     QCheckBox* colorChanges_{nullptr};
     QCheckBox* reduceTrims_{nullptr};
+    QCheckBox* between_{nullptr};
+    QCheckBox* within_{nullptr};
+    QCheckBox* underlay_{nullptr};
+    QCheckBox* regions_{nullptr};
     QCheckBox* sameColour_{nullptr};
     QDoubleSpinBox* maxBridge_{nullptr};
     QLabel* summary_{nullptr};

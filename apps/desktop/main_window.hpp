@@ -226,6 +226,7 @@ private slots:
     void createBorderSatin(ObjectId vectorId, double widthMm, int side, int corner);
     void editBorderSatin(ObjectId id, double widthMm, int side, int corner);
     void setJoinMode(ObjectId id, int mode);
+    void setConnectorMode(ObjectId id, int mode);
     void setDensityGradient(ObjectId embroideryId, bool enabled, double angleDeg,
                             double endSpacingMm);
     void applyTwoColorBlend();

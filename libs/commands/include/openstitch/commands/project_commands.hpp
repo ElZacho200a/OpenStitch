@@ -836,6 +836,32 @@ private:
     document::JoinMode previous_{document::JoinMode::Inherit};
 };
 
+// Connecteur après l'objet (HP-SEQ-005) : suit le projet, force la coupe ou la supprime. Annulable
+// ; sans effet si l'objet a disparu.
+class SetEmbroideryConnectorModeCommand final : public ICommand {
+public:
+    SetEmbroideryConnectorModeCommand(ObjectId id, document::ConnectorMode mode)
+        : id_(id), mode_(mode) {}
+
+    void apply(document::Project& project) override {
+        if (auto* obj = project.findEmbroidery(id_)) {
+            previous_ = obj->connector;
+            obj->connector = mode_;
+        }
+    }
+    void revert(document::Project& project) override {
+        if (auto* obj = project.findEmbroidery(id_)) {
+            obj->connector = previous_;
+        }
+    }
+    [[nodiscard]] std::string name() const override { return "Connecteur après l'objet"; }
+
+private:
+    ObjectId id_;
+    document::ConnectorMode mode_;
+    document::ConnectorMode previous_{document::ConnectorMode::Inherit};
+};
+
 // Affiche/masque un objet de broderie (case « visible » du panneau Document). Un objet
 // masqué n'est ni dessiné ni cousu : annulable comme toute mutation du document.
 class SetEmbroideryVisibleCommand final : public ICommand {

@@ -83,6 +83,39 @@ private slots:
         QVERIFY(!dialog.optimizations().hidden_travel.allow_same_color_surface);
     }
 
+    void threeLevelsAreSelectableAndReachTheCaller() {
+        MachineExportDialog dialog(summarizeNothing(), QStringLiteral("dst"), nullptr);
+        auto* reduce = dialog.findChild<QCheckBox*>(QStringLiteral("check_exportReduceTrims"));
+        auto* between = dialog.findChild<QCheckBox*>(QStringLiteral("check_exportRoutesBetween"));
+        auto* within = dialog.findChild<QCheckBox*>(QStringLiteral("check_exportRoutesWithin"));
+        auto* underlay = dialog.findChild<QCheckBox*>(QStringLiteral("check_exportRoutesUnderlay"));
+        QVERIFY(reduce != nullptr && between != nullptr && within != nullptr &&
+                underlay != nullptr);
+        // Par défaut les trois niveaux sont demandés, mais grisés tant que l'option est décochée.
+        QVERIFY(between->isChecked() && within->isChecked() && underlay->isChecked());
+        QVERIFY(!between->isEnabled() && !within->isEnabled() && !underlay->isEnabled());
+        reduce->setChecked(true);
+        QVERIFY(between->isEnabled() && within->isEnabled() && underlay->isEnabled());
+        within->setChecked(false);
+        underlay->setChecked(false);
+        const auto opt = dialog.optimizations();
+        QVERIFY(opt.hidden_travel.between_objects);
+        QVERIFY(!opt.hidden_travel.within_object);
+        QVERIFY(!opt.hidden_travel.reorder_underlay);
+    }
+
+    void advancedRegionModeIsOffByDefaultAndExplicit() {
+        MachineExportDialog dialog(summarizeNothing(), QStringLiteral("dst"), nullptr);
+        auto* reduce = dialog.findChild<QCheckBox*>(QStringLiteral("check_exportReduceTrims"));
+        auto* regions = dialog.findChild<QCheckBox*>(QStringLiteral("check_exportRoutesRegions"));
+        QVERIFY(reduce != nullptr && regions != nullptr);
+        QVERIFY(!regions->isChecked()); // plus invasif : jamais coché sans demande
+        reduce->setChecked(true);
+        QVERIFY(!dialog.optimizations().hidden_travel.reorder_regions);
+        regions->setChecked(true);
+        QVERIFY(dialog.optimizations().hidden_travel.reorder_regions);
+    }
+
     void optionIsAvailableForDstToo() {
         // Le DST garde son codage des coupes (cases grisées) mais profite de la réduction.
         MachineExportDialog dialog(summarizeNothing(), QStringLiteral("dst"), nullptr);

@@ -10,6 +10,8 @@
 #include "hidden_travel.hpp"
 #include "openstitch/stitch_generation/lock.hpp"
 #include "openstitch/stitch_generation/tatami.hpp"
+#include "region_order.hpp"
+#include "underlay_order.hpp"
 
 namespace openstitch::stitch_generation {
 
@@ -220,8 +222,18 @@ FinishResult finish_sequence_report(const stitch::StitchSequence& sequence,
     }
     // Points courts d'abord (Lot F) : les verrous ajoutés ensuite ne sont
     // jamais filtrés.
-    const std::vector<StitchCommand> cmds =
-        split_long_stitches(filter_short_stitches(sequence.commands, project, f), f);
+    // « Optimiser les trajets » niveau 3 : ordre et sens des passes de sous-couche (invisible,
+    // sous le remplissage), avant la détection des tracés et des coupes.
+    // Mode avancé : ordre des régions d'une même couleur, AVANT tout le reste.
+    auto regionOrder = reorder_regions_same_color(
+        split_long_stitches(filter_short_stitches(sequence.commands, project, f), f), project, f);
+    report.region_groups = regionOrder.groups;
+    report.regions_moved = regionOrder.regions_moved;
+    report.region_jump_saved_um = regionOrder.saved_um;
+    auto reordered = reorder_underlay_passes(regionOrder.commands, f);
+    report.underlay_blocks = reordered.blocks;
+    report.underlay_jump_saved_um = reordered.saved_um;
+    const std::vector<StitchCommand> cmds = std::move(reordered.commands);
     const std::vector<Run> runs = find_runs(cmds);
 
     // HP-SEQ-006.a : planificateur de ponts cachés, dernière décision de la passe. La grille de
@@ -230,6 +242,18 @@ FinishResult finish_sequence_report(const stitch::StitchSequence& sequence,
     if (f.hidden_travel.enabled && runs.size() > 1) {
         planner.emplace(cmds, f);
     }
+
+    // HP-SEQ-005 : connecteur choisi par l'objet qui précède l'écart.
+    std::map<std::uint64_t, document::ConnectorMode> connectors;
+    for (const auto& obj : project.embroidery_objects) {
+        if (obj.connector != document::ConnectorMode::Inherit) {
+            connectors.emplace(obj.id.value, obj.connector);
+        }
+    }
+    const auto connectorOf = [&](ObjectId id) {
+        const auto it = connectors.find(id.value);
+        return it == connectors.end() ? document::ConnectorMode::Inherit : it->second;
+    };
 
     stitch::StitchSequence out;
     out.commands.reserve(cmds.size() + runs.size() * 8);
@@ -272,8 +296,18 @@ FinishResult finish_sequence_report(const stitch::StitchSequence& sequence,
             // fil visible tendu d'une forme à l'autre (correctif 2026-10-08).
             const double travel = length_um(first.pos - last.pos);
             const bool objectGap = boundary && !colorChange && travel > 0.0;
-            const bool needTrim = !hasTrim && (travel > f.trim_threshold.value || objectGap ||
-                                               (colorChange && f.trim_before_color_change));
+            // Connecteur d'objet : seulement entre deux objets de même fil, sans coupe déjà posée.
+            const document::ConnectorMode connector = boundary && !hasTrim && !colorChange
+                                                          ? connectorOf(last.source)
+                                                          : document::ConnectorMode::Inherit;
+            const bool neverTrim = connector == document::ConnectorMode::NeverTrim;
+            const bool alwaysTrim = connector == document::ConnectorMode::AlwaysTrim;
+            report.forced_no_trim += neverTrim ? 1 : 0;
+            report.forced_trims += alwaysTrim ? 1 : 0;
+            const bool needTrim =
+                !neverTrim &&
+                (alwaysTrim || (!hasTrim && (travel > f.trim_threshold.value || objectGap ||
+                                             (colorChange && f.trim_before_color_change))));
             // Pont caché : seulement un écart qui recevrait une coupe, de même fil, sans coupe
             // retouchée, et fait uniquement de sauts (jamais Stop, changement de fil ni coupe).
             TravelPlan travelPlan;
@@ -282,7 +316,12 @@ FinishResult finish_sequence_report(const stitch::StitchSequence& sequence,
                     std::all_of(cmds.begin() + static_cast<std::ptrdiff_t>(cursor),
                                 cmds.begin() + static_cast<std::ptrdiff_t>(run.begin),
                                 [](const StitchCommand& c) { return c.type == CommandType::Jump; });
-                if (needTrim && !colorChange && onlyJumps) {
+                const bool intraObject = last.source == cmds[run.begin].source;
+                const bool inScope =
+                    intraObject ? f.hidden_travel.within_object : f.hidden_travel.between_objects;
+                if (needTrim && !alwaysTrim && !colorChange && onlyJumps && !inScope) {
+                    ++report.skipped_by_scope;
+                } else if (needTrim && !alwaysTrim && !colorChange && onlyJumps) {
                     ++report.candidate_gaps;
                     travelPlan = planner->plan(prev->end - 1, last.pos, cmds[run.begin].pos);
                     switch (travelPlan.refusal) {
@@ -309,14 +348,14 @@ FinishResult finish_sequence_report(const stitch::StitchSequence& sequence,
                 ++report.trims_removed;
             }
             const bool cut = !bridged && (needTrim || hasTrim || colorChange);
-            if (!bridged && (boundary || cut) && !ends_with_lock(cmds, *prev)) {
+            if (!bridged && !neverTrim && (boundary || cut) && !ends_with_lock(cmds, *prev)) {
                 append(out.commands, lock_points(cmds, *prev, false, f));
             }
             if (needTrim && !bridged) {
                 out.commands.push_back(
                     {last.pos, CommandType::Trim, last.source, StitchPass::Travel});
             }
-            entryLock = !bridged && (boundary || cut);
+            entryLock = !bridged && !neverTrim && (boundary || cut);
             if (travelPlan.decision == TravelDecision::Bridge) {
                 // Les sauts d'origine sont remplacés par le trajet cousu, sur le même fil.
                 ++report.bridges;

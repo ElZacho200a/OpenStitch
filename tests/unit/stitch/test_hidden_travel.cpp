@@ -323,3 +323,352 @@ TEST_CASE("hidden travel : effective_sequence_report suit exactement effective_s
     REQUIRE(again.has_value());
     CHECK(again->sequence.commands == withReport->sequence.commands);
 }
+
+namespace {
+
+// Projet minimal portant les objets 1 et 2 de `overlap_scene`, avec le connecteur de l'objet 1.
+document::Project connector_project(document::ConnectorMode mode, bool bridges) {
+    auto project = project_with(bridges);
+    for (std::uint64_t id = 1; id <= 2; ++id) {
+        document::EmbroideryObject emb;
+        emb.id = obj(id);
+        emb.connector = id == 1 ? mode : document::ConnectorMode::Inherit;
+        project.embroidery_objects.push_back(emb);
+    }
+    return project;
+}
+
+} // namespace
+
+TEST_CASE("connecteur d'objet : jamais couper -> ni coupe ni points d'arret, le saut reste") {
+    const auto scene = overlap_scene();
+    const auto base =
+        finish_sequence_report(scene, connector_project(document::ConnectorMode::Inherit, false));
+    const auto never =
+        finish_sequence_report(scene, connector_project(document::ConnectorMode::NeverTrim, false));
+    CHECK(base.report.forced_no_trim == 0);
+    CHECK(never.report.forced_no_trim == 1);
+    CHECK(count_type(base.sequence, CmdType::Trim) == 2);
+    CHECK(count_type(never.sequence, CmdType::Trim) == 1); // la coupe finale seulement
+    CHECK(count_type(never.sequence, CmdType::Jump) == 1); // le fil reste tendu
+    CHECK(count_pass(never.sequence, Pass::Lock) < count_pass(base.sequence, Pass::Lock));
+}
+
+TEST_CASE("connecteur d'objet : toujours couper l'emporte sur un pont cache") {
+    const auto scene = overlap_scene();
+    const auto bridged =
+        finish_sequence_report(scene, connector_project(document::ConnectorMode::Inherit, true));
+    REQUIRE(bridged.report.bridges == 1); // sans connecteur forcé, le pont est accepté
+    const auto always =
+        finish_sequence_report(scene, connector_project(document::ConnectorMode::AlwaysTrim, true));
+    CHECK(always.report.forced_trims == 1);
+    CHECK(always.report.bridges == 0);
+    CHECK(always.report.candidate_gaps == 0); // le planificateur n'est même pas consulté
+    CHECK(count_type(always.sequence, CmdType::Trim) == 2);
+}
+
+TEST_CASE("connecteur d'objet : sans effet avant un changement de fil ni sur une coupe posee") {
+    auto scene = overlap_scene();
+    const auto it = std::find_if(scene.commands.begin(), scene.commands.end(),
+                                 [](const Cmd& c) { return c.type == CmdType::Jump; });
+    scene.commands.insert(it, Cmd{pt(3000, 0), CmdType::ColorChange, obj(2), Pass::Travel});
+    const auto never =
+        finish_sequence_report(scene, connector_project(document::ConnectorMode::NeverTrim, false));
+    CHECK(never.report.forced_no_trim == 0);
+    CHECK(count_type(never.sequence, CmdType::Trim) >=
+          2); // la coupe avant le changement de fil reste
+
+    auto withTrim = overlap_scene();
+    const auto jt = std::find_if(withTrim.commands.begin(), withTrim.commands.end(),
+                                 [](const Cmd& c) { return c.type == CmdType::Jump; });
+    withTrim.commands.insert(jt, Cmd{pt(3000, 0), CmdType::Trim, obj(1), Pass::Travel});
+    const auto kept = finish_sequence_report(
+        withTrim, connector_project(document::ConnectorMode::NeverTrim, false));
+    CHECK(kept.report.forced_no_trim == 0);
+    CHECK(count_type(kept.sequence, CmdType::Trim) >= 2);
+}
+
+namespace {
+
+// Objet 1 : trois passes de sous-couche dans un mauvais ordre (A, B loin, C près de A), puis un
+// remplissage (couche supérieure) qui les recouvre.
+stitch::StitchSequence underlay_scene() {
+    stitch::StitchSequence s;
+    const auto run = [&](std::int32_t x0, std::int32_t x1) {
+        jump_to(s, pt(x0, 0), obj(1));
+        stitch_to(s, pt(x0, 0), obj(1), Pass::Underlay);
+        stitch_to(s, pt((x0 + x1) / 2, 0), obj(1), Pass::Underlay);
+        stitch_to(s, pt(x1, 0), obj(1), Pass::Underlay);
+    };
+    run(0, 5'000);       // A
+    run(30'000, 35'000); // B (loin)
+    run(6'000, 9'000);   // C (près de A)
+    jump_to(s, pt(0, 0), obj(1));
+    fill_rows(s, 0, 40'000, 0, 2'000, 400, obj(1));
+    return s;
+}
+
+std::vector<Cmd> top_layer(const stitch::StitchSequence& s) {
+    std::vector<Cmd> out;
+    for (const Cmd& c : s.commands) {
+        if (c.type == CmdType::Stitch && c.pass == Pass::TopStitch) {
+            out.push_back(c);
+        }
+    }
+    return out;
+}
+
+std::vector<std::pair<std::int32_t, std::int32_t>>
+underlay_points_sorted(const stitch::StitchSequence& s) {
+    std::vector<std::pair<std::int32_t, std::int32_t>> out;
+    for (const Cmd& c : s.commands) {
+        if (c.type == CmdType::Stitch && c.pass == Pass::Underlay) {
+            out.emplace_back(c.pos.x.value, c.pos.y.value);
+        }
+    }
+    std::sort(out.begin(), out.end());
+    return out;
+}
+
+} // namespace
+
+TEST_CASE(
+    "optimiser les trajets : les passes de sous-couche sont reordonnees, le remplissage intact") {
+    const auto scene = underlay_scene();
+    auto off = project_with(false);
+    auto on = project_with(true);
+    // Sans points d'arrêt : un verrou d'entrée remplace la piqûre d'arrivée d'un tracé, ce qui
+    // ferait varier le décompte sans rapport avec l'ordre des passes.
+    off.finishing.lock_type = document::LockStitch::None;
+    on.finishing.lock_type = document::LockStitch::None;
+    // Seul le niveau 3 : pas de pont, pour isoler l'effet du réordonnancement.
+    on.finishing.hidden_travel.between_objects = false;
+    on.finishing.hidden_travel.within_object = false;
+
+    const auto before = finish_sequence_report(scene, off);
+    const auto after = finish_sequence_report(scene, on);
+    CHECK(after.report.underlay_blocks == 1);
+    CHECK(after.report.underlay_jump_saved_um > 0.0);
+    // Deux coupes de moins : la dernière passe finit là où le remplissage commence, et A et C
+    // sont voisines.
+    CHECK(count_type(after.sequence, CmdType::Trim) + 2 ==
+          count_type(before.sequence, CmdType::Trim));
+    // Impératif : la couche supérieure est strictement identique (même points, même ordre) ...
+    CHECK(top_layer(after.sequence) == top_layer(before.sequence));
+    // ... et la sous-couche garde exactement les mêmes points, seulement enchaînés autrement.
+    CHECK(underlay_points_sorted(after.sequence) == underlay_points_sorted(before.sequence));
+    // Déterminisme.
+    CHECK(finish_sequence_report(scene, on).sequence.commands == after.sequence.commands);
+}
+
+TEST_CASE("optimiser les trajets : niveau 3 coupe -> sequence strictement identique") {
+    const auto scene = underlay_scene();
+    auto base = project_with(false);
+    auto offLevel = project_with(true);
+    offLevel.finishing.hidden_travel.between_objects = false;
+    offLevel.finishing.hidden_travel.within_object = false;
+    offLevel.finishing.hidden_travel.reorder_underlay = false;
+    CHECK(finish_sequence(scene, offLevel).commands == finish_sequence(scene, base).commands);
+}
+
+TEST_CASE(
+    "optimiser les trajets : des passes separees par une coupe posee ne sont pas reordonnees") {
+    auto scene = underlay_scene();
+    // Coupe posée à la main entre A et B : le groupe est coupé en deux, rien à réordonner.
+    const auto it = std::find_if(scene.commands.begin(), scene.commands.end(), [](const Cmd& c) {
+        return c.pos == pt(30'000, 0) && c.type == CmdType::Jump;
+    });
+    REQUIRE(it != scene.commands.end());
+    scene.commands.insert(it, Cmd{pt(5'000, 0), CmdType::Trim, obj(1), Pass::Travel});
+    auto on = project_with(true);
+    on.finishing.lock_type = document::LockStitch::None;
+    on.finishing.hidden_travel.between_objects = false;
+    on.finishing.hidden_travel.within_object = false;
+    const auto res = finish_sequence_report(scene, on);
+    // B et C restent un groupe de deux et peuvent être réordonnées, mais A n'est pas déplacée
+    // au-delà de la coupe : son premier point reste le premier point cousu de la séquence.
+    const auto firstStitch =
+        std::find_if(res.sequence.commands.begin(), res.sequence.commands.end(), [](const Cmd& c) {
+            return c.type == CmdType::Stitch && c.pass == Pass::Underlay;
+        });
+    REQUIRE(firstStitch != res.sequence.commands.end());
+    CHECK(firstStitch->pos == pt(0, 0));
+}
+
+TEST_CASE("optimiser les trajets : portee entre objets / dans un objet") {
+    // Écart entre deux objets (overlap_scene) : exclu quand « entre objets » est coupé.
+    auto project = project_with(true);
+    project.finishing.hidden_travel.between_objects = false;
+    const auto res = finish_sequence_report(overlap_scene(), project);
+    CHECK(res.report.bridges == 0);
+    CHECK(res.report.skipped_by_scope == 1);
+    CHECK(count_type(res.sequence, CmdType::Trim) == 2);
+    project.finishing.hidden_travel.between_objects = true;
+    CHECK(finish_sequence_report(overlap_scene(), project).report.bridges == 1);
+}
+
+TEST_CASE("optimiser les trajets : sur un projet genere, la couche superieure reste identique") {
+    // Deux grands tatamis de la même couleur qui se chevauchent, sous-couche automatique, liaisons
+    // non cachées : c'est le cas où des coupes peuvent disparaître.
+    document::Project project;
+    for (int i = 0; i < 2; ++i) {
+        document::VectorObject vec;
+        vec.id = project.object_ids.next();
+        vec.paths.push_back(geometry::PathSet{square_path(i * 20'000, 0, 30'000), {}});
+        project.vector_objects.push_back(vec);
+        document::EmbroideryObject emb;
+        emb.id = project.object_ids.next();
+        emb.source_vector = vec.id;
+        emb.rgb = {200, 30, 30};
+        document::TatamiParams tp;
+        tp.hidden_underpath = false;
+        tp.underlay_mode = document::UnderlayMode::Auto;
+        emb.params = tp;
+        project.embroidery_objects.push_back(emb);
+    }
+    project.finishing.lock_type = document::LockStitch::None;
+    const auto off = effective_sequence_report(project);
+    REQUIRE(off.has_value());
+
+    auto on = project;
+    on.finishing.hidden_travel.enabled = true;
+    on.finishing.hidden_travel.max_bridge_length = Micrometers{60'000};
+    const auto opt = effective_sequence_report(on);
+    REQUIRE(opt.has_value());
+
+    // Impératif : le remplissage (couche supérieure) est strictement le même, point par point.
+    CHECK(top_layer(opt->sequence) == top_layer(off->sequence));
+    // Jamais plus de coupes qu'avec la passe désactivée.
+    CHECK(count_type(opt->sequence, CmdType::Trim) <= count_type(off->sequence, CmdType::Trim));
+}
+
+namespace {
+
+// Une région d'un seul trait horizontal : saut d'entrée, deux piqûres de couche supérieure.
+void region(stitch::StitchSequence& s, std::uint64_t id, std::int32_t x0, std::int32_t x1,
+            std::int32_t y = 0) {
+    jump_to(s, pt(x0, y), obj(id));
+    stitch_to(s, pt(x0, y), obj(id));
+    stitch_to(s, pt(x1, y), obj(id));
+}
+
+document::Project advanced_project(bool reorderRegions) {
+    auto project = project_with(true);
+    project.finishing.lock_type = document::LockStitch::None;
+    project.finishing.hidden_travel.between_objects = false;
+    project.finishing.hidden_travel.within_object = false;
+    project.finishing.hidden_travel.reorder_underlay = false;
+    project.finishing.hidden_travel.reorder_regions = reorderRegions;
+    for (std::uint64_t id = 1; id <= 4; ++id) {
+        document::EmbroideryObject emb;
+        emb.id = obj(id);
+        project.embroidery_objects.push_back(emb);
+    }
+    return project;
+}
+
+// Ordre des objets tel qu'ils apparaissent dans la séquence (une entrée par suite).
+std::vector<std::uint64_t> object_order(const stitch::StitchSequence& s) {
+    std::vector<std::uint64_t> order;
+    for (const Cmd& c : s.commands) {
+        if (c.type == CmdType::Stitch && c.pass == Pass::TopStitch &&
+            (order.empty() || order.back() != c.source.value)) {
+            order.push_back(c.source.value);
+        }
+    }
+    return order;
+}
+
+double total_jump_um(const stitch::StitchSequence& s) {
+    double total = 0.0;
+    Vec2um at{};
+    bool have = false;
+    for (const Cmd& c : s.commands) {
+        if (c.type == CmdType::Jump && have) {
+            total += length_um(c.pos - at);
+        }
+        if (c.type == CmdType::Stitch || c.type == CmdType::Jump) {
+            at = c.pos;
+            have = true;
+        }
+    }
+    return total;
+}
+
+} // namespace
+
+TEST_CASE("mode avance : les regions d'une meme couleur sont reordonnees, chacune intacte") {
+    stitch::StitchSequence s;
+    region(s, 1, 0, 5'000);       // A
+    region(s, 2, 50'000, 55'000); // B (loin)
+    region(s, 3, 6'000, 11'000);  // C (près de A)
+    const auto off = finish_sequence_report(s, advanced_project(false));
+    const auto on = finish_sequence_report(s, advanced_project(true));
+    CHECK(object_order(off.sequence) == std::vector<std::uint64_t>{1, 2, 3});
+    CHECK(object_order(on.sequence) == std::vector<std::uint64_t>{1, 3, 2});
+    CHECK(on.report.region_groups == 1);
+    CHECK(on.report.regions_moved >= 1);
+    CHECK(on.report.region_jump_saved_um > 0.0);
+    CHECK(total_jump_um(on.sequence) < total_jump_um(off.sequence));
+    // Chaque région est intacte : mêmes piqûres, même sens.
+    for (const std::uint64_t id : {1, 2, 3}) {
+        std::vector<Vec2um> a;
+        std::vector<Vec2um> b;
+        for (const Cmd& c : off.sequence.commands) {
+            if (c.type == CmdType::Stitch && c.source.value == id) {
+                a.push_back(c.pos);
+            }
+        }
+        for (const Cmd& c : on.sequence.commands) {
+            if (c.type == CmdType::Stitch && c.source.value == id) {
+                b.push_back(c.pos);
+            }
+        }
+        CHECK(a == b);
+    }
+    // Déterminisme.
+    CHECK(finish_sequence_report(s, advanced_project(true)).sequence.commands ==
+          on.sequence.commands);
+}
+
+TEST_CASE("mode avance : deux regions dont les emprises se touchent gardent leur ordre") {
+    stitch::StitchSequence s;
+    region(s, 1, 0, 5'000);
+    region(s, 2, 50'000, 55'000);
+    region(s, 3, 5'200, 11'000); // touche A (moins de 0,7 mm) : doit rester après A
+    region(s, 4, 56'000, 60'000);
+    const auto on = finish_sequence_report(s, advanced_project(true));
+    const auto order = object_order(on.sequence);
+    const auto pos = [&](std::uint64_t id) {
+        return std::find(order.begin(), order.end(), id) - order.begin();
+    };
+    CHECK(pos(1) < pos(3)); // A avant C : C recouvre A, cet ordre décide de ce qui est dessus
+}
+
+TEST_CASE("mode avance : desactive par defaut, region verrouillee et changement de fil respectes") {
+    stitch::StitchSequence s;
+    region(s, 1, 0, 5'000);
+    region(s, 2, 50'000, 55'000);
+    region(s, 3, 6'000, 11'000);
+    // Désactivé : séquence strictement identique.
+    CHECK(finish_sequence(s, advanced_project(false)).commands ==
+          finish_sequence(s, advanced_project(false)).commands);
+    auto off = advanced_project(true);
+    off.finishing.hidden_travel.reorder_regions = false;
+    CHECK(object_order(finish_sequence(s, off)) == std::vector<std::uint64_t>{1, 2, 3});
+
+    // Région B verrouillée : elle reste à sa place, C ne peut pas la dépasser.
+    auto locked = advanced_project(true);
+    locked.embroidery_objects[1].locked = true;
+    CHECK(object_order(finish_sequence(s, locked)) == std::vector<std::uint64_t>{1, 2, 3});
+
+    // Un changement de fil sépare les groupes : C ne remonte pas avant le changement.
+    stitch::StitchSequence withColor;
+    region(withColor, 1, 0, 5'000);
+    region(withColor, 2, 50'000, 55'000);
+    withColor.commands.push_back({pt(55'000, 0), CmdType::ColorChange, obj(2), Pass::Travel});
+    region(withColor, 3, 6'000, 11'000);
+    const auto res = finish_sequence_report(withColor, advanced_project(true));
+    CHECK(object_order(res.sequence) == std::vector<std::uint64_t>{1, 2, 3});
+    CHECK(count_type(res.sequence, CmdType::ColorChange) == 1);
+}

@@ -36,7 +36,7 @@ Dans la CLI : `osp2dst projet.osp sortie.pes [--no-trims] [--no-color-changes]
 [--stops native|as-color-change|drop]` (le format vient de l'extension). Dans le bureau :
 **Fichier ▸ Exporter une broderie machine…** ouvre un dialogue (format, coupes, arrêts,
 changements de couleur, résumé recalculé), puis le choix du fichier avec l'extension du format.
-La case **Réduire les coupes** (tous formats, DST compris) applique à l'export seulement la
+La case **Optimiser les trajets** (tous formats, DST compris ; trois niveaux : entre les objets, dans un objet, ordre de la sous-couche) applique à l'export seulement la
 passe de ponts cachés : le résumé décrit alors la séquence réellement écrite, avec le nombre de
 coupes supprimées, et le projet n'est pas modifié (CLI : `--reduce-trims`).
 

@@ -6658,6 +6658,8 @@ void MainWindow::buildPropertiesPanel() {
     connect(propertiesPanel_, &PropertiesPanel::borderSatinEdited, this,
             &MainWindow::editBorderSatin);
     connect(propertiesPanel_, &PropertiesPanel::joinModeEdited, this, &MainWindow::setJoinMode);
+    connect(propertiesPanel_, &PropertiesPanel::connectorModeEdited, this,
+            &MainWindow::setConnectorMode);
     connect(propertiesPanel_, &PropertiesPanel::densityGradientRequested, this,
             &MainWindow::setDensityGradient);
     connect(
@@ -6772,6 +6774,9 @@ void MainWindow::updateInspector() {
                                                   : stitch_generation::ObjectEditState::Clean);
     propertiesPanel_->setJoinMode(emb != nullptr ? std::optional<ObjectId>(emb->id) : std::nullopt,
                                   emb != nullptr ? emb->join : document::JoinMode::Inherit);
+    propertiesPanel_->setConnectorMode(
+        emb != nullptr ? std::optional<ObjectId>(emb->id) : std::nullopt,
+        emb != nullptr ? emb->connector : document::ConnectorMode::Inherit);
 
     // Auto-satin : liste des guides et diagnostic mis à jour à chaque appel (les
     // guides se posent aussi depuis le canevas), sans reconstruire le formulaire.
@@ -7959,6 +7964,20 @@ void MainWindow::exportDst() {
                            .arg(r.hidden_jumps)
                            .arg(r.bridges)
                            .arg(r.bridge_length_um / 1000.0, 0, 'f', 1);
+            if (r.region_groups > 0) {
+                summary +=
+                    tr("\nRégions : %1 déplacée(s) dans %2 groupe(s), %3 mm de saut en moins.")
+                        .arg(r.regions_moved)
+                        .arg(r.region_groups)
+                        .arg(r.region_jump_saved_um / 1000.0, 0, 'f', 0);
+            }
+            if (r.underlay_blocks > 0) {
+                summary +=
+                    tr("\nSous-couche : %1 groupe(s) de passes réordonné(s), %2 mm de saut en "
+                       "moins.")
+                        .arg(r.underlay_blocks)
+                        .arg(r.underlay_jump_saved_um / 1000.0, 0, 'f', 0);
+            }
         } else if (optimizations.reduce_trims) {
             summary += tr("\nL'optimisation des coupes n'a pas pu être calculée.");
         }

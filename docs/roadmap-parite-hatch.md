@@ -38,10 +38,10 @@ Revue partielle du 2026-10-13 (`main` = `4a8088b`) : vague 1 — objets, cadres,
 | Priorité | ☑ Fait | ◐ Partiel | ☐ À faire | Total |
 |---|---|---|---|---|
 | P0 | 12 | 25 | 7 | 44 |
-| P1 | 4 | 43 | 78 | 125 |
-| P2 | 0 | 14 | 67 | 81 |
+| P1 | 4 | 44 | 78 | 126 |
+| P2 | 0 | 16 | 66 | 82 |
 | P3 | 0 | 0 | 12 | 12 |
-| **Total** | **16** | **82** | **164** | **262** |
+| **Total** | **16** | **85** | **163** | **264** |
 
 **Fait (16)** : FILE-001/002/003/004 (nouveau projet, enregistrer, récents, autosave),
 THR-001/003/004 (bibliothèque de fils, fil le plus proche, fil assigné à chaque objet),
@@ -744,6 +744,9 @@ prénumérisées et la conversion des polices TrueType.
 - À faire : ordre de gauche à droite, fin d'une lettre près du début de la
   suivante, trajet caché si possible sinon saut + coupe selon le seuil,
   réglage « couper entre les lettres » / « entre les mots ».
+- Hatch (blog Wilcom *Minimizing thread trims*, 2020) : le connecteur d'un lettrage se règle
+  « à l'intérieur de l'objet » (entre lettres) ou « après l'objet » ; un lettrage système est
+  un seul objet. Pont possible avec HP-SEQ-006 pour les lettres qui se chevauchent.
 - Modules : `libs/lettering`, `libs/stitch_generation` (routage).
 
 ### HP-TXT-015 — Import de polices de broderie tierces [P3] — ☐ À faire
@@ -1709,6 +1712,15 @@ couches ; objets verrouillables ; coût estimé ; routage satin multi-colonnes.
 ### HP-SEQ-004 — Fusion de plusieurs objets en un seul parcours (branching) [P2] — ☐ À faire
 - Hatch : Branching : plusieurs objets de même couleur cousus d'un seul trajet
   (déplacements cachés sous les objets), sans coupe.
+- Hatch / Wilcom (aide *Apply automatic branching*, lue le 2026-10-14) : Branching regroupe les
+  objets sélectionnés en **un seul objet**, les **resequence**, minimise les connecteurs et
+  **régénère les points**, avec un point d'entrée et un de sortie pour le groupe ; chaque objet
+  doit toucher ou chevaucher un autre du groupe ; pour des lignes de point droit, il fusionne
+  les doubles passes au milieu, là où Closest Join ne fait qu'échanger les bouts. Cela réordonne
+  et régénère : hors du périmètre « passe finale » de HP-SEQ-006. **Décision du mainteneur
+  (2026-10-14)** : pas de réordonnancement des régions ; le « branching » voulu est la liaison
+  cachée entre deux régions (HP-SEQ-006.a et .d), appliquée à la fin. Reste ouvert ici : fusionner
+  les doubles passes de lignes de point droit qui se touchent, à l'intérieur d'un objet.
 - Piste de comparaison (veille §V5, principe lu) : Li & Mould (2014) montrent
   qu'un arbre a un contour extérieur formant un seul trajet fermé sans
   auto-intersection, obtenu en longeant l'arbre des deux côtés. Le squelette
@@ -1716,8 +1728,22 @@ couches ; objets verrouillables ; coût estimé ; routage satin multi-colonnes.
   tirer quoi que ce soit (RD-PAT-008).
 - Modules : `libs/stitch_generation` (routage), `libs/optimization`.
 
-### HP-SEQ-005 — Connecteurs réglables par objet [P2] — ☐ À faire
-- À faire : pour chaque liaison sortante : auto / saut / saut+coupe / cousu.
+### HP-SEQ-005 — Connecteurs réglables par objet [P2] — ◐ Partiel (2026-10-14, en PR)
+- Hatch (aide en ligne, lue le 2026-10-14) : propriétés d'objet ▸ onglet Stitching, trois
+  réglages de coupe — « Si le connecteur suivant ≥ X mm » (3 mm par défaut), « Toujours »
+  (outil *Always Tie-Off & Trim*), « Désactivé » (pas de coupe : un connecteur cousu caché
+  sous un autre objet est plus efficace qu'une coupe).
+- Livré (cœur et inspecteur, en PR) : `EmbroideryObject::connector` (`ConnectorMode` :
+  `Inherit`, `AlwaysTrim`, `NeverTrim`), connecteur APRÈS l'objet vers le suivant de même fil.
+  `AlwaysTrim` force point d'arrêt + coupe et n'est jamais remplacé par un pont caché ;
+  `NeverTrim` supprime coupe et points d'arrêt (le fil reste tendu en saut). Sans effet avant un
+  changement de fil, un arrêt ou une coupe posée à la main. Persistance `.osp` (clé
+  `connector`, absente = hérite), `SetEmbroideryConnectorModeCommand` annulable, menu
+  « Connecteur suivant » de l'inspecteur, compteurs `forced_trims` / `forced_no_trim` du bilan.
+- **Reste** : seuil de coupe propre à un objet (le « ≥ X mm » de Hatch), mode « saut + coupe »
+  vs « cousu » explicite, application à une sélection multiple (HP-OBJ-019), validation machine.
+- Modules : `libs/document`, `libs/stitch_generation/finish.cpp`, `libs/commands`,
+  `libs/project_io`, `apps/desktop/properties_panel`.
 
 ### HP-SEQ-006 — Minimiser les coupes [P1] — ◐ Partiel (2026-10-13, en PR)
 - À faire : préférer un déplacement cousu caché sous un objet cousu ensuite
@@ -1770,8 +1796,9 @@ couches ; objets verrouillables ; coût estimé ; routage satin multi-colonnes.
   deux exécutions et `OPENSTITCH_THREADS=1` donnent le même DST ; nombre de
   coupes (`compute_stats().trims`), de points de verrou supprimés et de longueur
   ajoutée rapportés avant/après ; corpus réel (« marine », `tentabrode`, absents
-  du dépôt) et validation physique HP-PHYS-001. Brevets : relire avant livraison
-  (US8271123B2 affiché actif ; voir `docs/roadmap-rd-brevets.md`).
+  du dépôt) et validation physique HP-PHYS-001. Brevets : revue technique faite le 2026-10-14 (revendications
+  de US8851001B2 et US8271123B2 lues, aucun élément repris par la passe ; voir
+  `docs/revue-brevets-optimisation-trajets-2026-10.md`), relecture par un conseil toujours à faire.
 
 ### HP-SEQ-006.b — Déplacement sur surface déjà cousue de même couleur [P2] — ◐ Partiel (2026-10-13, en PR)
 - Livré (cœur, en PR) : `HiddenTravel::allow_same_color_surface`, surface reconstruite
@@ -1786,6 +1813,66 @@ couches ; objets verrouillables ; coût estimé ; routage satin multi-colonnes.
 - Dépend de : HP-SEQ-006.a.
 - Acceptation : comme .a, plus un test montrant qu'un trajet ne traverse jamais
   une surface d'une autre couleur non recouverte.
+
+### HP-SEQ-006.d — « Optimiser les trajets » : un bouton, trois niveaux, tout à la fin [P1] — ◐ Partiel (2026-10-14, en PR)
+- Demande du mainteneur (2026-10-14) : l'utilisateur travaille sans penser aux déplacements ;
+  **avant l'export** il demande « Optimiser les trajets ». Rien n'est réordonné au niveau des
+  régions ; trois niveaux, tous appliqués à la toute fin : (1) **entre deux régions**, un pont
+  caché si le trajet est recouvert plus tard (branching au sens « liaison cachée ») ; (2) **dans
+  un objet**, les liens sous-couche ↔ remplissage ; (3) **au niveau atomique de la sous-couche**.
+  Impératif : sur le remplissage, **rien ne doit se voir**.
+- Livré (cœur, CLI, dialogue d'export, en PR) : `HiddenTravel::{between_objects, within_object,
+  reorder_underlay}` (trois niveaux indépendants, les trois actifs par défaut une fois
+  l'optimisation demandée) ; `reorder_underlay_passes` (`underlay_order.{hpp,cpp}`) : ordre et
+  sens des passes de sous-couche d'un même objet, coût = longueur + pénalité de coupe, exact
+  jusqu'à 6 passes (essai de toutes les permutations et sens), plus proche voisin au-delà, appliqué
+  seulement si le coût baisse strictement ; dialogue d'export : case « Optimiser les trajets » et
+  trois cases de niveau ; CLI `--reduce-trims-levels` / `--hidden-travel-levels`.
+- **Garantie testée** : la couche supérieure (tous les points `TopStitch`, dans l'ordre) est
+  strictement identique avec ou sans optimisation, sur une scène construite et sur un projet
+  généré ; les points de sous-couche sont les mêmes, seulement enchaînés autrement ; les passes
+  séparées par une coupe posée, un changement de fil ou un arrêt ne sont pas regroupées.
+- **Mesure** (fixture `tentabrode`, 442 coupes) : 426 avec les trois niveaux (−16), dont 23 groupes
+  de sous-couche réordonnés (1,84 m de saut en moins) et 12 ponts, tous dans un objet. Peu de
+  coupes disparaissent parce que la plupart des écarts restants relient deux ÎLOTS de
+  remplissage séparés par du tissu nu (haut du remplissage → bas du suivant) : aucun point
+  cousu plus tard ne peut les cacher et réordonner le remplissage se verrait.
+- **Reste** : ordre des îlots d'un même objet (invisible quand ils sont disjoints), lien
+  sous-couche → remplissage choisi au point d'entrée le plus proche, passage en tâche de fond
+  du calcul du résumé, validation machine HP-PHYS-001.
+- Modules : `libs/stitch_generation` (`finish.cpp`, `hidden_travel`, `underlay_order`),
+  `libs/document` (`finishing.hpp`), `libs/project_io`, `apps/desktop/machine_export_dialog`,
+  `apps/cli`.
+- Dépend de : HP-SEQ-006.a.
+- Acceptation : couche supérieure identique (test), déterminisme, désactivé = séquence
+  identique, `--reduce-trims-levels` limite chaque niveau, mesure avant/après rapportée.
+
+### HP-SEQ-006.e — Mode avancé : réordonner les régions d'une même couleur [P2] — ◐ Partiel (2026-10-14, en PR)
+- Demande du mainteneur (2026-10-14) : une option « plus efficace mais plus invasive » qui peut
+  réarranger les régions à l'intérieur d'une même couleur (on suppose les régions déjà triées par
+  couleur, ce qui est le cas courant).
+- Livré (cœur, CLI, dialogue d'export, en PR) : `HiddenTravel::reorder_regions` (désactivé par
+  défaut, persisté) ; `reorder_regions_same_color` (`region_order.{hpp,cpp}`). Garde-fous : jamais
+  d'échange entre couleurs (changement de fil, arrêt, fin = barrières) ; **l'ordre relatif de deux
+  régions dont les emprises se touchent ou se recouvrent est conservé** (emprise = points élargis
+  de la demi-largeur de fil plus la marge, grille de 0,25 mm) ; chaque région reste intacte (mêmes
+  points, même sens, jamais retournée) ; régions verrouillées, connecteur choisi à la main ou sans
+  objet source = épinglées, elles bornent les groupes. Ordre : plus proche voisin sous contrainte
+  d'ordre, puis déplacements d'une région tant que le coût baisse ; groupe modifié seulement si le
+  coût baisse strictement. CLI `--reduce-trims-levels regions` (jamais inclus dans `all`).
+- **Mesure** (fixture `tentabrode`, 442 coupes) : 149 régions déplacées, 1,87 m de saut en moins,
+  mais **seulement 1 coupe en moins de plus** : chaque frontière entre deux objets reste coupée
+  (règle `objectGap`, correctif du 2026-10-08), l'ordre ne la supprime pas ; le gain est en
+  longueur de déplacement et en temps, et rend les ponts cachés plus probables.
+- **Reste** : prise en compte des ponts possibles dans le coût (aujourd'hui : distance seule),
+  garde-fou sur le tirage du tissu (l'ordre de couture influe sur la déformation), validation
+  machine HP-PHYS-001.
+- Modules : `libs/stitch_generation` (`region_order`, `finish.cpp`), `libs/document`,
+  `libs/project_io`, `apps/desktop/machine_export_dialog`, `apps/cli`.
+- Dépend de : HP-SEQ-006.d.
+- Acceptation : ordre relatif des régions qui se touchent conservé, régions verrouillées en
+  place, changements de fil intacts, chaque région identique (tests), désactivé = séquence
+  identique, déterminisme.
 
 ### HP-SEQ-006.c — Rapport de réduction des coupes [P1] — ◐ Partiel (2026-10-13, en PR)
 - Livré (cœur, en PR) : `TrimReport` et `effective_sequence_report` (même chemin de
@@ -1842,6 +1929,11 @@ calques image/régions/vecteurs/broderie, filtres d'affichage, thème clair/somb
 - À faire : cases à cocher Sous-couche / Couche supérieure / Déplacements /
   Verrous / Manuels, couleurs distinctes optionnelles ; afficher les
   pénétrations, les connecteurs.
+- Hatch (aide en ligne *View connectors*, lue le 2026-10-14) : *Afficher le design* propose
+  « Connecteurs » et « Fonctions » ; les fonctions s'affichent par des symboles — cercle pour
+  l'attache d'entrée, triangle pour la coupe et l'attache de sortie. Utile ici pour vérifier
+  les coupes avant l'export (HP-SEQ-006) : reprendre cet affichage, il rend visible ce que
+  la passe de ponts cachés a supprimé ou conservé.
 
 ### HP-VIEW-004 — Fond tissu et mise en situation sur vêtement [P2] — ☐ À faire
 - Hatch : afficher le design sur un produit (t-shirt, casquette, serviette).

@@ -555,6 +555,14 @@ void PropertiesPanel::setJoinMode(std::optional<ObjectId> id, document::JoinMode
     joinCombo_->setCurrentIndex(static_cast<int>(mode));
 }
 
+void PropertiesPanel::setConnectorMode(std::optional<ObjectId> id, document::ConnectorMode mode) {
+    if (!id || !currentId_ || *id != *currentId_ || connectorCombo_ == nullptr) {
+        return;
+    }
+    const QSignalBlocker block(connectorCombo_);
+    connectorCombo_->setCurrentIndex(static_cast<int>(mode));
+}
+
 bool PropertiesPanel::showsVectorBox(ObjectId id, QRectF boxMm) const {
     if (!vectorId_ || *vectorId_ != id) {
         return false;
@@ -823,6 +831,25 @@ void PropertiesPanel::buildEmbroideryForm(const document::EmbroideryObject& obje
     connect(joinCombo, &QComboBox::currentIndexChanged, this, [this, id](int index) {
         if (!building_) {
             emit joinModeEdited(id, index);
+        }
+    });
+
+    // HP-SEQ-005 : connecteur après l'objet (vers le suivant de même fil), par objet.
+    auto* connectorCombo = new QComboBox(body_);
+    connectorCombo->setObjectName(QStringLiteral("combo_connectorMode"));
+    connectorCombo->addItems(
+        {tr("Réglage du projet"), tr("Toujours couper"), tr("Ne jamais couper")});
+    connectorCombo->setCurrentIndex(static_cast<int>(object.connector));
+    connectorCombo->setToolTip(
+        tr("Ce qui suit cet objet jusqu'au suivant de même fil. « Toujours couper » : point "
+           "d'arrêt et coupe, jamais remplacés par un pont caché. « Ne jamais couper » : ni "
+           "coupe ni point d'arrêt, le fil reste tendu jusqu'à l'objet suivant ; vérifiez qu'il "
+           "sera caché. Sans effet avant un changement de fil."));
+    connectorCombo_ = connectorCombo;
+    form->addRow(tr("Connecteur suivant :"), connectorCombo);
+    connect(connectorCombo, &QComboBox::currentIndexChanged, this, [this, id](int index) {
+        if (!building_) {
+            emit connectorModeEdited(id, index);
         }
     });
 

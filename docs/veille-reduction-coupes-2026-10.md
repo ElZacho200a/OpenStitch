@@ -184,3 +184,28 @@ Limites connues : pas de parallélisation (`parallel_for`) des recherches de
 chemin ; pas de réglage dans l'inspecteur du desktop ; `cli_help` échoue dans cet
 environnement de test parce que la version de CLI11 installée par le système
 écrit « Positionals » et non « POSITIONALS » (sans rapport avec ce travail).
+
+## 6. Ce que propose Hatch, comparé à OpenStitch (2026-10-14)
+
+Sources lues : aide en ligne Hatch 3 (*Automatic connectors*, *Closest joins*, *Closest join
+limitations*, *View connectors*, *Join method*) et aide Wilcom EmbroideryStudio (*Apply automatic
+branching*, *Apply closest join*, *Trim functions*) ; blogs Wilcom *Branching*, *Travel
+Toolbar*, *Minimizing thread trims*. Je n'ai trouvé dans cette documentation **aucune
+détection automatique d'un trajet caché sous un objet cousu plus tard** : Hatch laisse
+l'utilisateur placer lui-même ces connecteurs (Branching, *nesting* d'une course de liaison).
+
+| Outil Hatch / Wilcom | Ce qu'il fait (source) | OpenStitch aujourd'hui |
+|---|---|---|
+| Réglage de coupe par objet : « si connecteur ≥ X mm » (3 mm), « Toujours », « Désactivé » | décide coupe ou connecteur cousu, par objet ou pour tout le design | **fait en partie** : seuil global (`trim_threshold`) + connecteur d'objet `Inherit` / `AlwaysTrim` / `NeverTrim` (HP-SEQ-005, en PR) |
+| Closest Join (J) | place entrée et sortie au plus près ; à réappliquer après déplacement ou resequençage | `auto_join` (HP-ENG-010), calculé à chaque génération donc toujours à jour |
+| Branching | resequence, regroupe en un objet, régénère ; double passe fusionnée pour les lignes | non fait (HP-SEQ-004) ; réordonne et régénère, donc hors passe finale |
+| Travel toolbar + « imbriquer » une course de liaison | liaison manuelle entre deux objets, cachée par l'objet suivant | **automatisé** par la passe de ponts cachés (HP-SEQ-006.a), avec preuve de recouvrement |
+| Connecteurs « à l'intérieur de l'objet » (lettrage) | pas de coupe entre lettres d'un même objet | HP-TXT-014 (à faire) |
+| Affichage des connecteurs et fonctions (cercle = attache, triangle = coupe) | contrôle visuel avant l'export | HP-VIEW-003 (à faire) |
+| Format machine : sortie des coupes, nombre de sauts-coupes | s'adapte à la machine, ignore les coupes si pas de coupe-fil | `TrimMode`, `trim_zero_jump_count` ; machines sans coupe : HP-SEQ-007 (à faire) |
+| Redwork (lignes d'une couleur) | minimise sauts et coupes, deux passes par ligne | mode contours + parcours eulérien (`SinglePath`) |
+
+Lecture : sur le fond, Hatch n'a pas d'outil que nous ne couvririons pas déjà ou n'aurions pas
+planifié ; son avantage tient à **Branching** (réordonner et fusionner) et à l'**affichage des
+connecteurs**. Les deux demandent une décision : Branching sort du cadre « à la toute fin », et
+l'affichage est du travail d'interface.

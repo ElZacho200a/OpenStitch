@@ -93,6 +93,7 @@ public:
     // rétablissement (le mode n'est pas dans `StitchParams`). `id` doit correspondre à
     // l'objet montré ; sinon ignoré. Sans reconstruction ni émission.
     void setJoinMode(std::optional<ObjectId> id, document::JoinMode mode);
+    void setConnectorMode(std::optional<ObjectId> id, document::ConnectorMode mode);
 
     // Lettrage : bandeau « Texte « … » » + bouton « Modifier le texte… » en tête de l'inspecteur
     // quand la sélection est une lettre d'un texte (`summary` vide = masqué). Persistant comme
@@ -169,6 +170,9 @@ signals:
     // HP-ENG-010 : mode d'entrée/sortie automatiques d'un objet (0 = hérite du projet,
     // 1 = automatique, 2 = désactivé) ; MainWindow exécute SetEmbroideryJoinModeCommand.
     void joinModeEdited(ObjectId id, int mode);
+    // HP-SEQ-005 : connecteur après l'objet (0 = suit le projet, 1 = toujours couper, 2 = ne
+    // jamais couper) ; MainWindow exécute SetEmbroideryConnectorModeCommand.
+    void connectorModeEdited(ObjectId id, int mode);
     // HP-STI-004 : bordure satin. `createBorderSatinRequested` : depuis un objet vectoriel,
     // largeur (mm), côté (0 centré, 1 intérieur, 2 extérieur), coins (0 vifs, 1 arrondis).
     // `borderSatinEdited` : changement de ces réglages d'un satin de bordure existant
@@ -219,6 +223,7 @@ private:
     QPointer<QCheckBox> satinGuideAbsolute_;
     QPointer<QPushButton> satinGuideRemove_;
     QPointer<QComboBox> joinCombo_;
+    QPointer<QComboBox> connectorCombo_;
 };
 
 } // namespace openstitch::desktop
