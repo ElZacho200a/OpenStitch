@@ -184,10 +184,36 @@ gagnent que 28 coupes pour un temps de génération triplé ; (2) construire les
 passage paresseusement ne change pas le temps (le coût est dans les tests de visibilité,
 pas dans le décalage Clipper).
 
-**Limites connues** (non traitées ici) : il reste, sur ce projet, ~300 coupes `Top -> Top`
-à l'intérieur de remplissages tatami (liaisons internes au-delà de 16 mm ou sans trajet) et
-~280 coupes entre sous-couche et satin dans les objets auto-satin (réseaux multi-sections),
-qui relèvent du routage satin.
+### Sauts internes du remplissage (2026-10-13, suite)
+
+**Symptôme** : même avec `hidden_underpath`, des coupes `Top -> Top` subsistent à l'intérieur
+d'un objet tatami (308 sur `BrodeSouslesMer.osp`).
+
+**Cause racine, par mesure** (coupes `Top -> Top` d'un même objet tatami) : 72 viennent
+d'objets où `hidden_underpath` est **désactivé** (case « Liaisons cousues cachées » du panneau
+Propriétés : un réglage, pas un défaut ; les objets de l'auto-numérisation l'ont actif par
+défaut) ; 236 d'objets qui l'ont actif mais dont `fill_tatami` n'a pas su relier les rangées :
+liaison au-delà de son plafond de 16 mm, ou sans trajet par le contour rentré. Un seul objet
+(le réseau de lignes marine, 32 morceaux disjoints sur 173 x 206 mm) en porte 158.
+
+**Correctif** : `emit_fill` reprend, pour un saut interne plus long que 3 mm (le seuil de coupe
+par défaut), le même `HiddenRouter` que la sous-couche (60 mm, 24 points de passage, secours
+par le bord) quand `fill_tatami` a laissé un saut. Les sauts de 3 mm ou moins restent des sauts
+(pas de coupe, donc rien à gagner). Le routeur n'est plus construit qu'à la première liaison
+tentée, pour ne rien coûter aux régions sans saut.
+
+**Mesure** : coupes 1 150 -> 1 118 (-32 ; 1 229 au départ de la série), dont 235 -> 203 pour les
+coupes internes au remplissage ; sauts 5 249 -> 5 214 ; fil cousu 97,24 -> 97,32 m ; génération
+inchangée (~5,1 s).
+
+**Ce qui reste, et pourquoi ce n'est pas un défaut de génération** : (1) les 72 coupes des objets
+sans `hidden_underpath` ; (2) les sauts **entre morceaux disjoints** d'un même objet (aucun
+trajet caché n'existe : les morceaux ne se touchent pas) -- l'objet marine en compte 32 morceaux ;
+(3) les parties plus fines que le décalage du routeur, où un tatami sur une ligne de 0,5 à 0,9 mm
+ne convient de toute façon pas (satin ou point droit).
+
+**Limites connues** (non traitées ici) : ~280 coupes entre sous-couche et satin dans les objets
+auto-satin (réseaux multi-sections), qui relèvent du routage satin.
 
 ## Déplacements internes (audit marine plein cadre, 2026-09-22)
 
