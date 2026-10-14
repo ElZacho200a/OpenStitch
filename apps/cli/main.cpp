@@ -670,6 +670,9 @@ struct DigitizeArgs {
     std::string technique = "auto";
     double dpi = 96.0;
     double trimMm = 3.0;
+    bool hiddenTravel = false;    // HP-SEQ-006.a : coupes remplacées par des ponts cachés
+    bool hiddenSameColor = false; // HP-SEQ-006.b : surface déjà cousue du même fil = cachée
+    double hiddenMaxMm = 15.0;    // longueur maximale d'un pont, en mm
     double detail = 0.5;
     int maxColors = 8;
     int minRegionPx = 16;
@@ -744,6 +747,11 @@ int run_digitize(const DigitizeArgs& a) {
                                   : a.lock == "triangle" ? document::LockStitch::Triangle
                                   : a.lock == "zigzag"   ? document::LockStitch::MicroZigzag
                                                          : document::LockStitch::BackAndForth;
+
+    project.finishing.hidden_travel.enabled = a.hiddenTravel;
+    project.finishing.hidden_travel.allow_same_color_surface = a.hiddenSameColor;
+    project.finishing.hidden_travel.max_bridge_length =
+        Micrometers{static_cast<std::int32_t>(std::lround(a.hiddenMaxMm * 1000.0))};
 
     // Stippling : pas de segmentation, l'image est lue comme une carte de tons.
     const bool stippling = a.mode == "stipple";
@@ -884,12 +892,13 @@ int run_digitize(const DigitizeArgs& a) {
     fmt::print(st, "Objets brodés : {} (satin={} tatami={} running={})\n",
                project.embroidery_objects.size(), nSatin, nTatami, nRunning);
 
-    const auto sequence = stitch_generation::effective_sequence(project);
-    if (!sequence) {
+    const auto finished = stitch_generation::effective_sequence_report(project);
+    if (!finished) {
         return cli_error("digitize", fmt::format("génération des points impossible : {}",
-                                                 sequence.error().message));
+                                                 finished.error().message));
     }
-    const auto stats = stitch::compute_stats(*sequence);
+    const auto& sequence = finished->sequence;
+    const auto stats = stitch::compute_stats(sequence);
     if (stats.stitches == 0) {
         return cli_error("digitize", "aucun point généré, aucun DST écrit",
                          "les objets obtenus sont vides : modifiez --min-region-px ou "
@@ -901,15 +910,28 @@ int run_digitize(const DigitizeArgs& a) {
                stats.stitches, stats.jumps, stats.trims, stats.color_changes);
     fmt::print(st, "Dimensions : {:.1f} x {:.1f} mm  |  fil : {:.2f} m\n", wMm, hMm,
                stats.thread_length_um / 1e6);
+    if (a.hiddenTravel) {
+        const auto& r = finished->report;
+        fmt::print(st,
+                   "Ponts cachés : {} écart(s) candidat(s) -> {} saut(s) recouvert(s), {} pont(s) "
+                   "cousu(s) ({} points, {:.1f} mm de fil ajouté) ; {} coupe(s) supprimée(s)\n",
+                   r.candidate_gaps, r.hidden_jumps, r.bridges, r.bridge_stitches,
+                   r.bridge_length_um / 1000.0, r.trims_removed);
+        fmt::print(st,
+                   "  refus : trop long {} | extrémité non recouverte {} | aucun chemin {} ; "
+                   "coupes conservées : changement de fil {}, coupe posée {}\n",
+                   r.refused_too_long, r.refused_no_cover, r.refused_no_path, r.kept_color_change,
+                   r.kept_manual_trim);
+    }
 
     // Mesures de qualité (Lot G).
     stitch_analysis::SequenceMetrics metrics;
-    print_sequence_metrics(st, *sequence, false, &metrics);
+    print_sequence_metrics(st, sequence, false, &metrics);
     stitch_analysis::ProjectMetricsOptions pm;
     if (skipLargest && candidate) {
         pm.excluded_rgb = candidate->rgb;
     }
-    const auto quality = stitch_analysis::project_metrics(project, *sequence, pm);
+    const auto quality = stitch_analysis::project_metrics(project, sequence, pm);
     fmt::print(st, "Objets brodés < {:.0f} mm² : {}\n", pm.small_object_mm2, quality.small_objects);
     if (quality.uncovered_ratio) {
         fmt::print(st, "Surface non couverte (hors fond ignoré) : {:.2f} %\n",
@@ -930,7 +952,7 @@ int run_digitize(const DigitizeArgs& a) {
     }
     fmt::print(st, "\n");
 
-    const auto written = formats::write_dst_file(std::filesystem::path(a.dst), *sequence);
+    const auto written = formats::write_dst_file(std::filesystem::path(a.dst), sequence);
     if (!written) {
         return cli_error("digitize",
                          fmt::format("écriture du DST impossible : {}", written.error().message),
@@ -940,7 +962,7 @@ int run_digitize(const DigitizeArgs& a) {
     fmt::print(st, "DST écrit : {}\n", a.dst);
 
     if (!a.outSvg.empty()) {
-        const auto svgWritten = formats::write_svg_file(std::filesystem::path(a.outSvg), *sequence);
+        const auto svgWritten = formats::write_svg_file(std::filesystem::path(a.outSvg), sequence);
         if (!svgWritten) {
             return cli_error("digitize", fmt::format("écriture du SVG impossible : {}",
                                                      svgWritten.error().message));
@@ -970,7 +992,8 @@ int run_digitize(const DigitizeArgs& a) {
 // Exporte un projet .osp en DST par le MÊME chemin que le bureau (export_machine_file) :
 // permet d'inspecter les coupes et la fin du fichier sans passer par l'interface.
 int run_osp2dst(const std::string& ospPath, const std::string& outDst, bool noClobber,
-                const openstitch::formats::MachineExportOptions& machineOptions) {
+                const openstitch::formats::MachineExportOptions& machineOptions,
+                const openstitch::project_io::ExportOptimizations& optimizations) {
     using namespace openstitch;
     if (const auto refused = check_output_path("osp2dst", outDst, noClobber)) {
         return *refused;
@@ -991,12 +1014,19 @@ int run_osp2dst(const std::string& ospPath, const std::string& outDst, bool noCl
             formatId = info->id;
         }
     }
+    stitch_generation::TrimReport report;
     const auto written = project_io::export_machine_file(
-        *project, formatId, std::filesystem::path(outDst), machineOptions);
+        *project, formatId, std::filesystem::path(outDst), machineOptions, optimizations, &report);
     if (!written) {
         return cli_error("osp2dst", written.error().message);
     }
     fmt::print("{} écrit : {}\n", formats::find_format(formatId)->display_name, outDst);
+    if (optimizations.reduce_trims) {
+        fmt::print("Coupes : {} supprimée(s) sur {} écart(s) candidat(s) ({} saut(s) recouvert(s), "
+                   "{} pont(s) cousu(s), {:.1f} mm de fil ajouté)\n",
+                   report.trims_removed, report.candidate_gaps, report.hidden_jumps, report.bridges,
+                   report.bridge_length_um / 1000.0);
+    }
     return kExitOk;
 }
 
@@ -1517,6 +1547,16 @@ int main(int argc, char** argv) {
         ->add_option("--trim-threshold", dz.trimMm,
                      "Coupe automatique au-delà de ce déplacement, en mm (défaut : 3)")
         ->check(CLI::PositiveNumber);
+    dz_cmd->add_flag("--hidden-travel", dz.hiddenTravel,
+                     "Remplace les coupes par des sauts ou des ponts cousus cachés sous les points "
+                     "cousus plus tard (passe finale, désactivé par défaut)");
+    dz_cmd->add_flag("--hidden-travel-same-colour", dz.hiddenSameColor,
+                     "Avec --hidden-travel : une surface déjà cousue du même fil compte aussi "
+                     "comme cachée (léger relief possible)");
+    dz_cmd
+        ->add_option("--hidden-travel-max", dz.hiddenMaxMm,
+                     "Avec --hidden-travel : longueur maximale d'un pont, en mm (défaut : 15)")
+        ->check(CLI::Range(0.0, 100.0));
     dz_cmd
         ->add_option("--mode", dz.mode,
                      "Stratégie : shapes (formes pleines, défaut) | contours (dessin au trait) | "
@@ -1622,6 +1662,20 @@ int main(int argc, char** argv) {
     bool od_no_color_changes = false;
     std::string od_stops = "native";
     od_cmd->add_flag("--no-trims", od_no_trims, "Supprime les coupes (elles deviennent des sauts)");
+    bool od_reduce_trims = false;
+    bool od_reduce_same_colour = false;
+    double od_reduce_max_mm = 15.0;
+    od_cmd->add_flag(
+        "--reduce-trims", od_reduce_trims,
+        "Remplace des coupes par des sauts ou des ponts cousus cachés sous des points "
+        "cousus plus tard (appliqué à l'export seulement, le projet n'est pas modifié)");
+    od_cmd->add_flag("--reduce-trims-same-colour", od_reduce_same_colour,
+                     "Avec --reduce-trims : une surface déjà cousue du même fil compte aussi "
+                     "comme cachée");
+    od_cmd
+        ->add_option("--reduce-trims-max", od_reduce_max_mm,
+                     "Avec --reduce-trims : longueur maximale d'un pont, en mm (défaut : 15)")
+        ->check(CLI::Range(0.0, 100.0));
     od_cmd->add_flag("--no-color-changes", od_no_color_changes,
                      "Supprime les changements de couleur (motif monochrome)");
     od_cmd->add_option("--stops", od_stops, "Arrêts machine : native, as-color-change ou drop")
@@ -1717,7 +1771,12 @@ int main(int argc, char** argv) {
                                : od_stops == "as-color-change"
                                    ? openstitch::formats::StopMode::AsColorChange
                                    : openstitch::formats::StopMode::Native;
-        return run_osp2dst(od_in, od_out, od_noclobber, machineOptions);
+        openstitch::project_io::ExportOptimizations optimizations;
+        optimizations.reduce_trims = od_reduce_trims;
+        optimizations.hidden_travel.allow_same_color_surface = od_reduce_same_colour;
+        optimizations.hidden_travel.max_bridge_length = openstitch::Micrometers{
+            static_cast<std::int32_t>(std::lround(od_reduce_max_mm * 1000.0))};
+        return run_osp2dst(od_in, od_out, od_noclobber, machineOptions, optimizations);
     }
     if (os_cmd->parsed()) {
         return run_osp2svg(os_in, os_out, os_outlines, os_only, os_noclobber);

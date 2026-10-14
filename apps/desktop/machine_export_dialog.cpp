@@ -4,11 +4,14 @@
 #include <QCheckBox>
 #include <QComboBox>
 #include <QDialogButtonBox>
+#include <QDoubleSpinBox>
 #include <QFormLayout>
 #include <QLabel>
 #include <QPushButton>
 #include <QSettings>
 #include <QVBoxLayout>
+
+#include <cmath>
 
 namespace openstitch::desktop {
 
@@ -18,6 +21,9 @@ constexpr const char* kSettingsFormat = "export/format";
 constexpr const char* kSettingsTrims = "export/trims";
 constexpr const char* kSettingsStops = "export/stops";
 constexpr const char* kSettingsColors = "export/colorChanges";
+constexpr const char* kSettingsReduceTrims = "export/reduceTrims";
+constexpr const char* kSettingsSameColour = "export/reduceTrimsSameColour";
+constexpr const char* kSettingsMaxBridge = "export/reduceTrimsMaxMm";
 
 } // namespace
 
@@ -61,6 +67,29 @@ MachineExportDialog::MachineExportDialog(SummaryFn summarize, const QString& ini
     form->addRow(tr("Arrêts machine :"), stops_);
     form->addRow(QString(), colorChanges_);
 
+    // HP-SEQ-006 : optimisation des coupes demandée pour CET export, indépendante du format
+    // (le DST en profite aussi). Appliquée à la toute fin, le projet n'est pas modifié.
+    reduceTrims_ = new QCheckBox(
+        tr("Réduire les coupes (ponts cachés sous des points cousus plus tard)"), this);
+    reduceTrims_->setObjectName(QStringLiteral("check_exportReduceTrims"));
+    reduceTrims_->setToolTip(
+        tr("Remplace des coupes par un saut ou un trajet cousu entièrement recouvert par des "
+           "points cousus plus tard. Appliqué à l'export seulement ; le projet n'est pas "
+           "modifié. Une coupe n'est jamais supprimée avant un changement de fil."));
+    sameColour_ = new QCheckBox(tr("Accepter aussi une surface déjà cousue du même fil"), this);
+    sameColour_->setObjectName(QStringLiteral("check_exportReduceTrimsSameColour"));
+    sameColour_->setToolTip(tr("Le fil de liaison se confond avec le fil déjà cousu ; un léger "
+                               "relief reste possible, surtout sur un satin."));
+    maxBridge_ = new QDoubleSpinBox(this);
+    maxBridge_->setObjectName(QStringLiteral("spin_exportReduceTrimsMax"));
+    maxBridge_->setRange(1.0, 100.0);
+    maxBridge_->setDecimals(1);
+    maxBridge_->setSingleStep(1.0);
+    maxBridge_->setSuffix(tr(" mm"));
+    form->addRow(QString(), reduceTrims_);
+    form->addRow(QString(), sameColour_);
+    form->addRow(tr("Longueur maximale d'un pont :"), maxBridge_);
+
     summary_ = new QLabel(this);
     summary_->setObjectName(QStringLiteral("label_exportSummary"));
     summary_->setWordWrap(true);
@@ -95,17 +124,27 @@ MachineExportDialog::MachineExportDialog(SummaryFn summarize, const QString& ini
         stops_->setCurrentIndex(idx);
     }
 
+    reduceTrims_->setChecked(settings.value(kSettingsReduceTrims, false).toBool());
+    sameColour_->setChecked(settings.value(kSettingsSameColour, false).toBool());
+    maxBridge_->setValue(settings.value(kSettingsMaxBridge, 15.0).toDouble());
+
     const auto onChange = [this] { refresh(); };
     connect(formatBox_, &QComboBox::currentIndexChanged, this, onChange);
     connect(trims_, &QCheckBox::toggled, this, onChange);
     connect(colorChanges_, &QCheckBox::toggled, this, onChange);
     connect(stops_, &QComboBox::currentIndexChanged, this, onChange);
+    connect(reduceTrims_, &QCheckBox::toggled, this, onChange);
+    connect(sameColour_, &QCheckBox::toggled, this, onChange);
+    connect(maxBridge_, &QDoubleSpinBox::editingFinished, this, onChange);
     connect(this, &QDialog::accepted, this, [this] {
         QSettings s;
         s.setValue(kSettingsFormat, formatBox_->currentData().toString());
         s.setValue(kSettingsTrims, trims_->isChecked());
         s.setValue(kSettingsColors, colorChanges_->isChecked());
         s.setValue(kSettingsStops, stops_->currentData().toInt());
+        s.setValue(kSettingsReduceTrims, reduceTrims_->isChecked());
+        s.setValue(kSettingsSameColour, sameColour_->isChecked());
+        s.setValue(kSettingsMaxBridge, maxBridge_->value());
     });
     refresh();
 }
@@ -123,6 +162,16 @@ formats::MachineExportOptions MachineExportDialog::options() const {
     return o;
 }
 
+project_io::ExportOptimizations MachineExportDialog::optimizations() const {
+    project_io::ExportOptimizations o;
+    o.reduce_trims = reduceTrims_->isChecked();
+    o.hidden_travel.allow_same_color_surface =
+        reduceTrims_->isChecked() && sameColour_->isChecked();
+    o.hidden_travel.max_bridge_length =
+        Micrometers{static_cast<std::int32_t>(std::lround(maxBridge_->value() * 1000.0))};
+    return o;
+}
+
 void MachineExportDialog::refresh() {
     const auto* f = format();
     if (f == nullptr) {
@@ -133,7 +182,10 @@ void MachineExportDialog::refresh() {
     trims_->setEnabled(!dst);
     stops_->setEnabled(!dst);
     colorChanges_->setEnabled(!dst);
-    const auto summary = summarize_(*f, options());
+    // Les réglages de ponts n'ont de sens que si l'option est cochée.
+    sameColour_->setEnabled(reduceTrims_->isChecked());
+    maxBridge_->setEnabled(reduceTrims_->isChecked());
+    const auto summary = summarize_(*f, options(), optimizations());
     summary_->setText(summary.text);
     problemsBtn_->setVisible(summary.has_analysis_errors);
     chooseBtn_->setEnabled(!summary.blocking);

@@ -54,3 +54,41 @@ TEST_CASE("finishing : projet anterieur sans le bloc -> finitions desactivees") 
     CHECK(document::Project{}.finishing.enabled);
     fs::remove(path);
 }
+
+TEST_CASE("finishing : ponts caches -- round-trip, defaut desactive, ancien bloc relu") {
+    // Défaut : désactivé, donc un projet sans le sous-bloc produit la même séquence qu'avant.
+    CHECK_FALSE(document::Project{}.finishing.hidden_travel.enabled);
+
+    document::Project project;
+    project.original.width = 1;
+    project.original.height = 1;
+    project.original.rgba.assign(4, 255);
+    auto& h = project.finishing.hidden_travel;
+    h.enabled = true;
+    h.max_hidden_jump = Micrometers{1'500};
+    h.max_bridge_length = Micrometers{22'000};
+    h.bridge_stitch_length = Micrometers{3'000};
+    h.cover_thread_width = Micrometers{500};
+    h.cover_margin = Micrometers{250};
+    const auto path = fs::temp_directory_path() / "openstitch_hidden_travel_roundtrip.osp";
+    REQUIRE(project_io::save_project(path, project).has_value());
+    const auto loaded = project_io::load_project(path);
+    REQUIRE(loaded.has_value());
+    CHECK(loaded->finishing.hidden_travel == project.finishing.hidden_travel);
+    fs::remove(path);
+
+    // Bloc `finishing` d'avant cette fonction (sans `hiddenTravel`) : ponts désactivés.
+    const std::string json =
+        R"({"schemaVersion":3,"document":{"mmPerPx":0.5,"objectIdLast":0,"ops":[],)"
+        R"("vectorObjects":[],"embroideryObjects":[],)"
+        R"("finishing":{"enabled":true,"trimThreshold":3000}}})";
+    const auto legacy = fs::temp_directory_path() / "openstitch_hidden_travel_legacy.osp";
+    std::map<std::string, project_io::detail::Blob> entries;
+    entries.emplace("project.json", project_io::detail::Blob(json.begin(), json.end()));
+    REQUIRE(project_io::detail::write_zip(legacy, entries).has_value());
+    const auto old = project_io::load_project(legacy);
+    REQUIRE(old.has_value());
+    CHECK(old->finishing.enabled);
+    CHECK_FALSE(old->finishing.hidden_travel.enabled);
+    fs::remove(legacy);
+}

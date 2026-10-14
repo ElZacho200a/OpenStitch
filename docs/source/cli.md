@@ -111,6 +111,9 @@ Mêmes valeurs par défaut que le dialogue **Numérisation automatique** du bure
 | `--skip-background` | `auto` | `auto`, `yes` ou `no` : ignorer la plus grande région (le fond). `auto` : seulement si c'est un fond quasi blanc qui encadre le motif. Les anciennes valeurs `-1`, `0`, `1` restent acceptées. |
 | `--trim-threshold MM` | 3 | Coupe au-delà de ce déplacement |
 | `--lock` | `backforth` | Point d'arrêt : `none`, `backforth`, `triangle` ou `zigzag` |
+| `--hidden-travel` | désactivé | Remplace les coupes par des sauts ou des ponts cousus prouvés cachés sous des points cousus plus tard (passe finale, voir *Moteur de points*) ; affiche un bilan |
+| `--hidden-travel-same-colour` | désactivé | Avec `--hidden-travel` : une surface déjà cousue du même fil compte aussi comme cachée |
+| `--hidden-travel-max MM` | 15 | Avec `--hidden-travel` : longueur maximale d'un pont |
 | `--mode` | `shapes` | `shapes` : formes pleines ; `contours` : dessin au trait (lignes médianes en point droit) ; `stipple` : semis de points relié en un trait |
 | `--detail 0..1` | 0.5 | Mode contours : niveau de détail |
 | `--technique` | `auto` | Mode contours : `auto`, `running` ou `legacy-satin`. `legacy-satin` : ancien satin dégradé en point droit (**pas** l'auto-satin) ; l'ancien nom `satin` est accepté avec un avertissement. |
@@ -143,6 +146,12 @@ openstitch-cli osp2dst <projet.osp> <sortie.dst>
 `osp2dst` passe par la fonction d'export du bureau : on y voit exactement les
 coupes et la fin de fichier que la machine recevra (voir *Format DST*). Pour
 `dst2svg`, la sortie peut aussi s'écrire `--output-svg`/`--output`.
+
+`osp2dst --reduce-trims [--reduce-trims-same-colour] [--reduce-trims-max MM]`
+demande, **pour cet export seulement**, de remplacer des coupes par des sauts ou
+des ponts cousus prouvés cachés sous des points cousus plus tard (voir *Moteur de
+points*, « Ponts cachés ») ; le projet n'est pas modifié et la commande affiche le
+nombre de coupes supprimées. Sans le drapeau, le fichier est identique à avant.
 
 ## Sous-commandes de diagnostic
 

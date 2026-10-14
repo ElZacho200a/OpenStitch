@@ -54,6 +54,23 @@ nous. « Existant » = vérifié dans le code.
 | Stippling par courbe de remplissage d'espace, jitter à graine fixe | US6968255B1 | absent | **Garder, P3** | HP-STI-013 |
 | Import DST → objets (reconnaissance FILL/SATIN par alternance de signes) ; tableaux 1 et 2 récupérés | US6510360B1 | absent | **Différer** (hors périmètre, tableaux archivés dans la fiche) | — |
 
+## Brevets à éviter (actifs selon Google Patents, non juridique)
+
+| Brevet | Objet | Pourquoi | Garde-fou |
+|---|---|---|---|
+| US8851001B2 (Melco, échéance affichée 2032-09-23) ; famille US9702070B2 | choix du type de point et de sous-couche d'après la taille d'un élément mesurée sur des points temporaires (revendications 1 et 19, lues) ; description : compensation « push » par table largeur-de-bout / tissu, sous-couche continue par parcours de graphe | concerne HP-AUTO-009, RD-PAT-004, HP-FAB-001 et HP-ENG-001.a | mesurer la taille sur la géométrie, jamais sur des points temporaires ; le profil de tissu ne change pas le type de point ; pas de table « push » ; faire relire |
+
+À surveiller pour HP-SEQ-006.a (ponts cachés, `docs/veille-reduction-coupes-2026-10.md`) :
+US8271123B2 (Brother, affiché actif, échéance 2031-04-22) décrit dans sa
+description un point droit sur un segment de liaison recouvert ensuite ; sa
+revendication 1 (lue) porte sur la génération de segments depuis une image, hors
+de notre cas. US9200397 et US6860214B1 / US20050061220A1 (liaisons recouvertes en
+broderie en relief) : revendications non lues, statuts non vérifiés. Analyse non
+juridique : faire relire avant livraison.
+
+Revendications de US9702070B2 non lues (erreur 503) : à relire. Détail et
+sources : `docs/veille-innovations-2026-10.md` §V3.
+
 Écartées (sans valeur ajoutée démontrée) : densité sur points existants, lettrage
 sur arc, numérisation manuelle, stylet, types de point rudimentaires, simplification
 générique, apprentissage de jonctions, remplissage curviligne (doublon du champ de

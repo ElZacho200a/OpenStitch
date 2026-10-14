@@ -7,6 +7,7 @@ add_library(openstitch_stitch_generation
     src/lock.cpp
     src/routing.cpp
     src/finish.cpp
+    src/hidden_travel.cpp
     src/generate.cpp
     src/overrides.cpp
     src/underlay_auto.cpp

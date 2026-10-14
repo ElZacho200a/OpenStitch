@@ -66,3 +66,4 @@ openstitch_add_qt_test(test_lettering_ui test_lettering_ui.cpp)
 openstitch_add_qt_test(test_sam_worker_client test_sam_worker_client.cpp)
 target_compile_definitions(test_sam_worker_client PRIVATE
     OPENSTITCH_FIXTURES_DIR="${CMAKE_SOURCE_DIR}/tests/fixtures")
+openstitch_add_qt_test(test_machine_export_dialog test_machine_export_dialog.cpp)
