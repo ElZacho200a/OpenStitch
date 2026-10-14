@@ -392,6 +392,31 @@ développement Linux (Qt absent), à vérifier au prochain build Windows ; une r
 géométrique, pas validée sur machine ; pas de satin en éventail ou concentrique pour les grands disques
 (voir `satin-squelette.md`).
 
+## Couche de traits sombres (`--dark-lines`, HP-AUTO-005)
+
+Sur une illustration à contours noirs (mâts, haubans, bords de nuages), le mode formes seul traite
+un trait comme n'importe quelle région : il fusionne avec les aplats sombres voisins et devient un
+amas de blocs. `auto_digitize_with_lines` (`line_layer.cpp`) sépare les traits :
+
+1. **Détection sur l'image**, pas sur les régions quantifiées : `segmentation::dark_thin_mask`
+   garde les pixels opaques de clarté L* <= `dark_max_lightness` (25) qui appartiennent à une partie
+   plus étroite que `max_line_width_mm` (1,6 mm) de l'ensemble des pixels sombres (ouverture
+   morphologique). Un trait fin anti-crénelé est découpé et mélangé aux voisines par la
+   quantification ; sur l'image il reste continu.
+2. **Remplissages** : ces pixels sont rendus aux régions voisines (`reassign_to_neighbours`, vote
+   4-connexe), les aplats que le trait coupait en deux sont refusionnés (même couleur, redevenus
+   adjacents), et une région presque entièrement faite de pixels de trait quitte les remplissages.
+   Les remplissages passent donc sous le trait, sans trou.
+3. **Traits** : une segmentation à une seule couleur (la moyenne des pixels de trait) passe par
+   `analyze_contours` et `build_contour_objects` : lignes médianes en point droit, parcours
+   eulérien, mêmes garde-fous que le mode contours. Les objets de ligne sont ajoutés **après** tous
+   les remplissages : ils sont cousus en dernier.
+
+Limites : un seul fil pour tous les traits ; point droit seulement (pas de satin à largeur
+constante) ; un trait contre un aplat sombre de même teinte n'est pas détecté (il serait invisible).
+Chaque trait étant un tracé séparé, la couche ajoute des coupes (+486 sur l'illustration de test) ;
+`--detail` plus bas en réduit le nombre.
+
 ## Stippling (semis de points relié en un trait)
 
 `libs/stipple` (Qt-free, sans dépendance GPL) transforme une image en un

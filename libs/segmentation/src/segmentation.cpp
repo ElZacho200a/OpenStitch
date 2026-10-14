@@ -7,6 +7,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <functional>
 #include <limits>
 #include <map>
 #include <set>
@@ -451,9 +452,10 @@ std::vector<RegionBorder> region_adjacency(const Segmentation& seg) {
     return out;
 }
 
-std::size_t remove_thin_parts(Segmentation& seg, int min_width_px) {
+std::vector<char> thin_part_mask(const Segmentation& seg, int min_width_px,
+                                 const std::function<bool(const Region&)>& include) {
     if (min_width_px < 2 || seg.width <= 0 || seg.height <= 0) {
-        return 0;
+        return {};
     }
     const int w = seg.width;
     const int h = seg.height;
@@ -486,7 +488,8 @@ std::size_t remove_thin_parts(Segmentation& seg, int min_width_px) {
     const std::vector<std::uint32_t> orig = seg.labels;
     std::vector<char> pending(orig.size(), 0);
     for (std::uint32_t l = 1; l <= slots; ++l) {
-        if (!seen[l] || !seg.region_slots[l - 1]) {
+        if (!seen[l] || !seg.region_slots[l - 1] ||
+            (include && !include(*seg.region_slots[l - 1]))) {
             continue;
         }
         // ROI élargie du diamètre du noyau ; hors image, OpenCV traite le
@@ -513,10 +516,24 @@ std::size_t remove_thin_parts(Segmentation& seg, int min_width_px) {
             }
         }
     }
+    return pending;
+}
 
+std::size_t reassign_to_neighbours(Segmentation& seg, std::vector<char> pending,
+                                   bool leftover_to_background) {
+    if (seg.width <= 0 || seg.height <= 0 || pending.size() != seg.labels.size()) {
+        return 0;
+    }
     // Réaffectation de proche en proche depuis les régions VOISINES (jamais
     // depuis la région d'origine du pixel) ; passes synchrones pour rester
     // indépendant de l'ordre de balayage.
+    const std::vector<std::uint32_t> orig = seg.labels;
+    const int w = seg.width;
+    const int h = seg.height;
+    const auto idx = [w](int x, int y) {
+        return static_cast<std::size_t>(y) * static_cast<std::size_t>(w) +
+               static_cast<std::size_t>(x);
+    };
     std::size_t moved = 0;
     for (;;) {
         std::vector<std::pair<std::size_t, std::uint32_t>> assign;
@@ -559,6 +576,14 @@ std::size_t remove_thin_parts(Segmentation& seg, int min_width_px) {
         moved += assign.size();
     }
 
+    if (leftover_to_background) {
+        for (std::size_t i = 0; i < pending.size(); ++i) {
+            if (pending[i]) {
+                seg.labels[i] = 0; // aucune voisine : le pixel n'appartient plus à aucune région
+            }
+        }
+    }
+
     // Comptes de pixels ; une région vidée disparaît.
     for (auto& slot : seg.region_slots) {
         if (slot) {
@@ -576,6 +601,59 @@ std::size_t remove_thin_parts(Segmentation& seg, int min_width_px) {
         }
     }
     return moved;
+}
+
+std::vector<char> dark_thin_mask(const image::Image& img, double max_lightness, int min_width_px,
+                                 std::array<std::uint8_t, 3>* mean_rgb) {
+    if (min_width_px < 2 || img.width <= 0 || img.height <= 0 ||
+        img.rgba.size() < static_cast<std::size_t>(img.width) * img.height * 4) {
+        return {};
+    }
+    const int w = img.width;
+    const int h = img.height;
+    cv::Mat dark(h, w, CV_8U, cv::Scalar(0));
+    for (int y = 0; y < h; ++y) {
+        for (int x = 0; x < w; ++x) {
+            const std::uint8_t* p =
+                &img.rgba[(static_cast<std::size_t>(y) * w + static_cast<std::size_t>(x)) * 4];
+            if (p[3] >= 128 && cielab_lightness({p[0], p[1], p[2]}) <= max_lightness) {
+                dark.at<std::uint8_t>(y, x) = 255;
+            }
+        }
+    }
+    const cv::Mat kernel =
+        cv::getStructuringElement(cv::MORPH_ELLIPSE, cv::Size(min_width_px, min_width_px));
+    cv::Mat opened;
+    cv::morphologyEx(dark, opened, cv::MORPH_OPEN, kernel);
+    std::vector<char> mask(static_cast<std::size_t>(w) * h, 0);
+    std::uint64_t sum[3] = {0, 0, 0};
+    std::uint64_t count = 0;
+    for (int y = 0; y < h; ++y) {
+        for (int x = 0; x < w; ++x) {
+            if (dark.at<std::uint8_t>(y, x) != 0 && opened.at<std::uint8_t>(y, x) == 0) {
+                mask[static_cast<std::size_t>(y) * w + x] = 1;
+                const std::uint8_t* p =
+                    &img.rgba[(static_cast<std::size_t>(y) * w + static_cast<std::size_t>(x)) * 4];
+                sum[0] += p[0];
+                sum[1] += p[1];
+                sum[2] += p[2];
+                ++count;
+            }
+        }
+    }
+    if (mean_rgb != nullptr && count > 0) {
+        *mean_rgb = {static_cast<std::uint8_t>(sum[0] / count),
+                     static_cast<std::uint8_t>(sum[1] / count),
+                     static_cast<std::uint8_t>(sum[2] / count)};
+    }
+    return mask;
+}
+
+std::size_t remove_thin_parts(Segmentation& seg, int min_width_px) {
+    if (min_width_px < 2 || seg.width <= 0 || seg.height <= 0) {
+        return 0;
+    }
+    return reassign_to_neighbours(seg, thin_part_mask(seg, min_width_px, {}), false);
 }
 
 std::size_t merge_small_regions(Segmentation& seg, std::size_t min_px,

@@ -23,6 +23,7 @@
 #include "openstitch/auto_satin/skeleton_satin.hpp"
 #include "openstitch/autodigitize/autodigitize.hpp"
 #include "openstitch/autodigitize/contour_objects.hpp"
+#include "openstitch/autodigitize/line_layer.hpp"
 #include "openstitch/autodigitize/stipple_objects.hpp"
 #include "openstitch/core/app_info.hpp"
 #include "openstitch/core/log.hpp"
@@ -707,6 +708,9 @@ struct DigitizeArgs {
     std::string technique = "auto";
     double dpi = 96.0;
     double trimMm = 3.0;
+    bool darkLines = false;           // HP-AUTO-005 : traits sombres cousus par-dessus
+    double darkLinesWidthMm = 1.6;    // largeur maximale d'un trait, en mm
+    double darkLinesLightness = 25.0; // clarté CIELAB L* maximale d'un pixel de trait
     bool hiddenTravel = false;        // HP-SEQ-006.a : coupes remplacées par des ponts cachés
     bool hiddenSameColor = false;     // HP-SEQ-006.b : surface déjà cousue du même fil = cachée
     std::string hiddenLevels = "all"; // niveaux : between, within, underlay
@@ -862,6 +866,7 @@ int run_digitize(const DigitizeArgs& a) {
         fmt::print(st, "Mode : contours (detail {:.2f}, technique {})\n", a.detail, a.technique);
     }
     autodigitize::StippleMetrics sm;
+    autodigitize::LineLayerMetrics lm;
     auto result = [&]() -> Result<autodigitize::AutoResult> {
         if (stippling) {
             autodigitize::StippleObjectOptions so;
@@ -873,6 +878,26 @@ int run_digitize(const DigitizeArgs& a) {
                        a.stippleSeed);
             return autodigitize::auto_digitize_stipple(project.original, project.object_ids, so,
                                                        &sm);
+        }
+        if (!contours && a.darkLines) {
+            autodigitize::LineLayerOptions lo;
+            lo.enabled = true;
+            lo.max_line_width_mm = a.darkLinesWidthMm;
+            lo.dark_max_lightness = a.darkLinesLightness;
+            co.technique = autodigitize::ContourTechnique::Running;
+            // Un réseau de traits se coud en parcours eulérien : moins de polylignes, donc moins
+            // de coupes, au prix d'un court repassage.
+            co.routing = autodigitize::ContourRouting::SinglePath;
+            auto layered = autodigitize::auto_digitize_with_lines(
+                *project.segmentation, project.original, project.object_ids, opts, lo, co, &lm);
+            if (layered) {
+                fmt::print(st,
+                           "Traits sombres : {} px séparés des remplissages, {} objet(s) de ligne "
+                           "({} segment(s), {:.0f} mm de point droit)\n",
+                           lm.line_pixels, lm.line_objects, lm.contours.segments,
+                           lm.contours.running_length_mm);
+            }
+            return layered;
         }
         return contours
                    ? autodigitize::auto_digitize_contours(*project.segmentation, project.object_ids,
@@ -1610,6 +1635,18 @@ int main(int argc, char** argv) {
         ->add_option("--trim-threshold", dz.trimMm,
                      "Coupe automatique au-delà de ce déplacement, en mm (défaut : 3)")
         ->check(CLI::PositiveNumber);
+    dz_cmd->add_flag("--dark-lines", dz.darkLines,
+                     "Mode formes : les traits sombres fins (contours noirs, mâts, haubans) sont "
+                     "séparés des remplissages et cousus par-dessus, en dernier, en point droit");
+    dz_cmd
+        ->add_option("--dark-lines-width", dz.darkLinesWidthMm,
+                     "Avec --dark-lines : largeur maximale d'un trait, en mm (défaut : 1.6)")
+        ->check(CLI::Range(0.3, 6.0));
+    dz_cmd
+        ->add_option("--dark-lines-lightness", dz.darkLinesLightness,
+                     "Avec --dark-lines : clarté CIELAB L* maximale d'un pixel de trait "
+                     "(défaut : 25)")
+        ->check(CLI::Range(5.0, 70.0));
     dz_cmd->add_flag("--hidden-travel", dz.hiddenTravel,
                      "Remplace les coupes par des sauts ou des ponts cousus cachés sous les points "
                      "cousus plus tard (passe finale, désactivé par défaut)");

@@ -3,6 +3,7 @@
 
 #include <array>
 #include <cstdint>
+#include <functional>
 #include <optional>
 #include <utility>
 #include <vector>
@@ -107,6 +108,29 @@ struct RegionBorder {
 // `min_width_px` < 2 : sans effet. Renvoie le nombre de pixels réaffectés.
 // Déterministe.
 std::size_t remove_thin_parts(Segmentation& seg, int min_width_px);
+
+// Couche de traits (HP-AUTO-005) : même ouverture morphologique que `remove_thin_parts`, mais
+// SANS modifier la segmentation : renvoie le masque (1 = pixel d'une partie plus étroite que
+// `min_width_px`) des seules régions pour lesquelles `include` est vrai (toutes si `include` est
+// vide). Vide si `min_width_px` < 2. Déterministe.
+[[nodiscard]] std::vector<char> thin_part_mask(const Segmentation& seg, int min_width_px,
+                                               const std::function<bool(const Region&)>& include);
+
+// Traits sombres lus sur l'IMAGE (HP-AUTO-005), pas sur les régions quantifiées : un trait fin
+// anti-crénelé est découpé et mélangé aux voisines par la quantification, alors que sur l'image il
+// reste continu. Renvoie le masque (1 = pixel opaque de clarté L* <= `max_lightness` appartenant à
+// une partie plus étroite que `min_width_px` de l'ensemble des pixels sombres) ; `mean_rgb` reçoit
+// la couleur moyenne des pixels du masque. Vide si `min_width_px` < 2. Déterministe.
+[[nodiscard]] std::vector<char> dark_thin_mask(const image::Image& img, double max_lightness,
+                                               int min_width_px,
+                                               std::array<std::uint8_t, 3>* mean_rgb = nullptr);
+
+// Rend les pixels du masque à leurs régions VOISINES (vote 4-connexe, passes synchrones, jamais
+// la région d'origine du pixel). Si `leftover_to_background`, un pixel sans voisine passe au fond
+// (label 0) ; sinon il garde son label. Recompte les pixels ; une région vidée disparaît.
+// Renvoie le nombre de pixels réaffectés à une voisine.
+std::size_t reassign_to_neighbours(Segmentation& seg, std::vector<char> pending,
+                                   bool leftover_to_background);
 
 // Fusionne chaque région de moins de `min_px` pixels avec la voisine qui
 // partage la plus longue frontière (égalité -> plus petit identifiant), en
