@@ -18,7 +18,8 @@ namespace openstitch::desktop {
 
 // Dialogue d'import : l'utilisateur fixe la taille physique de l'image. Affiche
 // un aperçu, la résolution (mm/pixel et dpi) résultante, une alerte si l'image dépasse
-// le cadre et si ses proportions sont modifiées. La taille proposée d'emblée tient dans le
+// le cadre. L'import reste proportionnel (une seule résolution mm/px dans le projet).
+// La taille proposée d'emblée tient dans le
 // cadre ; « Ajuster au cadre » y ramène l'image en un clic. Le calcul du placement est délégué
 // à libs/document (aucune logique métier ici, seulement le couplage largeur/hauteur et
 // l'affichage).

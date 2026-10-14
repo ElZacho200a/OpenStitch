@@ -57,6 +57,27 @@ TEST_CASE("SetEmbroideryJoinModeCommand : apply, undo, redo exacts") {
     CHECK(project.embroidery_objects[0].join == document::JoinMode::Auto);
 }
 
+TEST_CASE("SetEmbroideryConnectorModeCommand : apply, undo, redo exacts (HP-SEQ-005)") {
+    auto project = project_with_tatami();
+    const ObjectId id = project.embroidery_objects[0].id;
+    CHECK(project.embroidery_objects[0].connector == document::ConnectorMode::Inherit);
+    UndoStack stack;
+    stack.execute(
+        std::make_unique<SetEmbroideryConnectorModeCommand>(id, document::ConnectorMode::NeverTrim),
+        project);
+    CHECK(project.embroidery_objects[0].connector == document::ConnectorMode::NeverTrim);
+    stack.execute(std::make_unique<SetEmbroideryConnectorModeCommand>(
+                      id, document::ConnectorMode::AlwaysTrim),
+                  project);
+    CHECK(project.embroidery_objects[0].connector == document::ConnectorMode::AlwaysTrim);
+    stack.undo(project);
+    CHECK(project.embroidery_objects[0].connector == document::ConnectorMode::NeverTrim);
+    stack.undo(project);
+    CHECK(project.embroidery_objects[0].connector == document::ConnectorMode::Inherit);
+    stack.redo(project);
+    CHECK(project.embroidery_objects[0].connector == document::ConnectorMode::NeverTrim);
+}
+
 TEST_CASE("SetEmbroideryJoinModeCommand : objet introuvable = sans effet") {
     auto project = project_with_tatami();
     UndoStack stack;

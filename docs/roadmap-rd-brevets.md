@@ -54,6 +54,31 @@ nous. « Existant » = vérifié dans le code.
 | Stippling par courbe de remplissage d'espace, jitter à graine fixe | US6968255B1 | absent | **Garder, P3** | HP-STI-013 |
 | Import DST → objets (reconnaissance FILL/SATIN par alternance de signes) ; tableaux 1 et 2 récupérés | US6510360B1 | absent | **Différer** (hors périmètre, tableaux archivés dans la fiche) | — |
 
+## Brevets à éviter (actifs selon Google Patents, non juridique)
+
+| Brevet | Objet | Pourquoi | Garde-fou |
+|---|---|---|---|
+| US8851001B2 (Melco, échéance affichée 2032-09-23) ; famille US9702070B2 | choix du type de point et de sous-couche d'après la taille d'un élément mesurée sur des points temporaires (revendications 1 et 19, lues) ; description : compensation « push » par table largeur-de-bout / tissu, sous-couche continue par parcours de graphe | concerne HP-AUTO-009, RD-PAT-004, HP-FAB-001 et HP-ENG-001.a | mesurer la taille sur la géométrie, jamais sur des points temporaires ; le profil de tissu ne change pas le type de point ; pas de table « push » ; faire relire |
+
+À surveiller pour HP-SEQ-006.a (ponts cachés, `docs/veille-reduction-coupes-2026-10.md`) :
+US8271123B2 (Brother, affiché actif, échéance 2031-04-22) décrit dans sa
+description un point droit sur un segment de liaison recouvert ensuite ; sa
+revendication 1 (lue) porte sur la génération de segments depuis une image, hors
+de notre cas. US9200397 et US6860214B1 / US20050061220A1 (liaisons recouvertes en
+broderie en relief) : revendications non lues, statuts non vérifiés. Analyse non
+juridique : faire relire avant livraison.
+
+Revue technique du 2026-10-14 (`docs/revue-brevets-optimisation-trajets-2026-10.md`, **pas un avis
+juridique**) : les 25 revendications de US8851001B2 et les 18 de US8271123B2 ont été lues en entier
+et comparées au code. US8851001B2 vise le choix du type de point d'après une taille mesurée sur des
+**points temporaires** : élément absent de nos chemins (mesure géométrique), sauf le mode
+`satin_bands` (essai de génération puis taux de couverture, désactivé par défaut) à soumettre au
+conseil. US8271123B2 vise la chaîne image → angles par pixel → segments → liaisons de même couleur ;
+la liaison recouverte n'est pas revendiquée. **Toujours non lus** (Google Patents bloque les
+requêtes automatisées) : US9702070B2, US9200397, US6860214B1, US20050061220A1, US10590580,
+US11727615. Détail et
+sources : `docs/veille-innovations-2026-10.md` §V3.
+
 Écartées (sans valeur ajoutée démontrée) : densité sur points existants, lettrage
 sur arc, numérisation manuelle, stylet, types de point rudimentaires, simplification
 générique, apprentissage de jonctions, remplissage curviligne (doublon du champ de

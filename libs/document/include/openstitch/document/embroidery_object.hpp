@@ -311,6 +311,13 @@ enum class EmbroideryIntent : std::uint8_t { AutoChoice, ForcedUserChoice };
 // objet, `Off` le désactive (le sens naturel du générateur est conservé).
 enum class JoinMode : std::uint8_t { Inherit, Auto, Off };
 
+// Connecteur APRÈS l'objet (HP-SEQ-005), vers l'objet suivant de même fil. `Inherit` suit les
+// règles du projet (seuil de coupe, ponts cachés) ; `AlwaysTrim` force toujours point d'arrêt +
+// coupe (jamais remplacée par un pont) ; `NeverTrim` supprime coupe et points d'arrêt à cet endroit
+// : le fil reste tendu (saut), c'est à l'utilisateur de s'assurer qu'il sera caché. Sans effet
+// avant un changement de fil, un arrêt ou une coupe posée à la main.
+enum class ConnectorMode : std::uint8_t { Inherit, AlwaysTrim, NeverTrim };
+
 struct EmbroideryObject {
     ObjectId id;
     std::string name;
@@ -320,7 +327,8 @@ struct EmbroideryObject {
     bool visible{true};
     bool locked{false}; // l'optimisation d'ordre ne déplace pas un objet verrouillé
     EmbroideryIntent intent{EmbroideryIntent::AutoChoice};
-    JoinMode join{JoinMode::Inherit}; // HP-ENG-010
+    JoinMode join{JoinMode::Inherit};                // HP-ENG-010
+    ConnectorMode connector{ConnectorMode::Inherit}; // HP-SEQ-005
 
     // Retouches manuelles (Lot 8 MVP) — deltas épars, jamais O(nombre de
     // points). Vide = comportement actuel inchangé (Clean, rétrocompatible).

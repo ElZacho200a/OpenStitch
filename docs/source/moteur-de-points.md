@@ -753,9 +753,90 @@ régénère les rails depuis le vecteur source (`regenerate_border_satin`,
 modifier un réglage de bordure pour régénérer. Création : inspecteur d'un objet
 vectoriel, « Créer le satin de bordure » (un seul pas d'annulation).
 
+### Ponts cachés : moins de coupes, en passe finale (HP-SEQ-006)
+
+`finish_sequence` est la **dernière** passe d'`effective_sequence` : après la
+génération, les retouches manuelles, les points courts et longs. Quand
+`SequenceFinishing::hidden_travel.enabled` est vrai (défaut : faux, donc aucun
+projet existant ne change), elle remplace une coupe entre deux tracés par un
+saut ou un trajet cousu **prouvé caché** (`hidden_travel.cpp`). Aucun objet n'est
+réordonné ni régénéré : le gain dépend de l'ordre amont.
+
+- **Écart éligible** : un écart qui recevrait une coupe (déplacement au-delà de
+  `trim_threshold`, ou entre deux objets), fait uniquement de sauts. Un
+  changement de fil, un arrêt ou une coupe déjà présente (retouche manuelle) ne
+  sont **jamais** modifiés.
+- **Preuve de recouvrement, sur la séquence** : une grille d'entiers (cellule de
+  0,1 mm, agrandie au-delà de 4 millions de cellules) retient pour chaque cellule
+  l'indice de la dernière commande de passe `TopStitch` dont le segment la
+  couvre à `cover_thread_width / 2` près. Un écart situé après la commande `g`
+  ne s'appuie que sur les cellules d'indice `> g`. Le masque est érodé
+  (fenêtre carrée, plus stricte qu'un disque) de la demi-largeur du fil plus
+  `cover_margin` ; autour des deux piqûres d'extrémité, déjà existantes, un
+  simple recouvrement suffit. Une fin de tracé non recouverte plus tard refuse le
+  pont.
+- **Deux issues** : *saut recouvert* (écart direct ≤ `max_hidden_jump`, ligne de
+  vue dans le masque : on garde le saut, sans coupe ni point d'arrêt, aucun point
+  ajouté) ; sinon *pont cousu* (A* à 8 voisins, coûts entiers 10/14, voisins dans
+  un ordre fixe, file départagée par (coût, indice) ; simplifié par lignes de vue,
+  redécoupé à `bridge_stitch_length` ; passe `Travel`, longueur ≤
+  `max_bridge_length`, aucun point sous `min_stitch_length` si la polyligne reste
+  dans le masque). Sans coupe, les points d'arrêt de sortie et d'entrée autour de
+  l'écart disparaissent : le fil est continu.
+- **Option `allow_same_color_surface`** (HP-SEQ-006.b) : une surface déjà cousue
+  plus tôt avec le même fil compte aussi comme cachée (relief léger possible,
+  surtout sur un satin) ; la surface est reconstruite par avancement séquentiel
+  et remise à zéro à chaque changement de fil.
+- **Trois niveaux, un seul bouton** (« Optimiser les trajets », HP-SEQ-006.d), tous en toute
+  fin, sans réordonner les objets ni toucher à la couche supérieure : (1) `between_objects` :
+  pont caché entre deux objets ; (2) `within_object` : liens sous-couche ↔ remplissage d'un même
+  objet cachés par le remplissage ; (3) `reorder_underlay` : ordre et sens des passes de
+  sous-couche d'un même objet (`underlay_order.cpp`), invisible car recouvert. Le niveau 3
+  regroupe les passes de sous-couche consécutives (même objet, uniquement des points `Underlay`,
+  séparées par de purs sauts), essaie toutes les permutations et tous les sens jusqu'à 6 passes
+  (plus proche voisin au-delà), compte une coupe comme un déplacement très coûteux et ne modifie
+  un groupe que si le coût baisse strictement. **Garantie** : le remplissage visible est
+  strictement le même, point par point (testé). Mesure sur `tentabrode` : −16 coupes sur 442
+  et 1,84 m de saut en moins ; les écarts restants relient des îlots de remplissage séparés par
+  du tissu nu, qu'on ne peut ni cacher ni réordonner sans que cela se voie.
+- **Mode avancé, plus invasif** (`reorder_regions`, HP-SEQ-006.e, désactivé par défaut) :
+  réordonne les régions d'une même couleur (`region_order.cpp`), avant les trois niveaux
+  ci-dessus. Entre deux changements de fil, les régions sont des suites de commandes de même objet.
+  Deux régions dont les emprises se touchent ou se recouvrent gardent leur ordre relatif (c'est
+  lui qui décide de ce qui est cousu par-dessus) ; une région est déplacée entière, sans retour de
+  sens ; les régions verrouillées ou à connecteur choisi bornent les groupes. Mesure sur
+  `tentabrode` : 149 régions déplacées, 1,87 m de saut en moins, une coupe de plus supprimée
+  seulement (chaque frontière entre objets reste coupée). À vérifier à l'aperçu : l'ordre de couture
+  influe aussi sur le tirage du tissu.
+- **À la demande, à l'export** : `project_io::ExportOptimizations{reduce_trims,
+  hidden_travel}` est passé à `export_machine_file` (et à `export_sequence`, qui
+  donne la séquence exacte et le bilan pour l'aperçu). Les réglages remplacent ceux
+  du projet pour ce calcul seulement, `enabled` forcé ; le projet n'est pas
+  modifié. Bureau : case « Réduire les coupes » du dialogue
+  *Fichier ▸ Exporter une broderie machine…* (réglages mémorisés par poste, résumé
+  recalculé sur la séquence écrite, y compris l'analyse et les limites du format) ;
+  CLI : `osp2dst --reduce-trims`.
+- **Connecteur d'objet** (HP-SEQ-005) : `EmbroideryObject::connector` règle ce qui suit l'objet,
+  vers l'objet suivant de même fil. `Inherit` suit les règles ci-dessus ; `AlwaysTrim` force point
+  d'arrêt et coupe et n'est jamais remplacé par un pont ; `NeverTrim` supprime coupe et points
+  d'arrêt (le fil reste tendu en saut, à charge de l'utilisateur de le cacher). Sans effet avant
+  un changement de fil, un arrêt ou une coupe posée à la main. Inspecteur : « Connecteur suivant ».
+- **Bilan** (`TrimReport`, `effective_sequence_report`) : écarts candidats, sauts
+  recouverts, ponts, refus par raison (trop long, extrémité non recouverte,
+  aucun chemin), coupes conservées (changement de fil, coupe posée), points et
+  longueur de fil ajoutés. CLI : `digitize --hidden-travel
+  [--hidden-travel-same-colour] [--hidden-travel-max MM]`.
+- **Mesure réelle** (fixture `tests/fixtures/tentabrode.png`, mode formes, 442
+  coupes) : `--hidden-travel` supprime 6 coupes (434 écarts candidats : 269 trop
+  longs, 132 à extrémité non recouverte, 27 sans chemin) ; avec la surface de même
+  fil et un plafond de 40 mm, 20 coupes pour 371 mm de fil ajouté. Les formes
+  segmentées sont juxtaposées sans recouvrement, donc rarement cachables : le
+  gain réel vient des designs dont les objets se chevauchent, ou d'un meilleur
+  ordre amont (HP-ENG-010, HP-SEQ-001). **Non validé sur machine** (HP-PHYS-001).
+
 ## Implémentation associée
 
-- `libs/stitch_generation/{border_satin,join,underlay_auto}.*`,
+- `libs/stitch_generation/{border_satin,join,underlay_auto,hidden_travel}.*`,
   `libs/stitch_analysis/src/limits.cpp`, `apps/desktop/main_window_engine.cpp`
   — lot « moteur » (§10).
 - `libs/stitch/include/openstitch/stitch/sequence.hpp` — `StitchCommand`,

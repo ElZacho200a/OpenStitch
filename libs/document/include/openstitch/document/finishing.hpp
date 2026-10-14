@@ -8,6 +8,46 @@ namespace openstitch::document {
 // Type de point d'arrêt (mêmes valeurs/ordre que `stitch_generation::LockType`).
 enum class LockStitch { None, BackAndForth, Triangle, MicroZigzag };
 
+// HP-SEQ-006.a -- ponts cachés : une coupe entre deux tracés est remplacée par un saut sans
+// coupe ou par un trajet cousu quand ce trajet est PROUVÉ recouvert par des points de couche
+// supérieure cousus plus tard (preuve calculée sur la séquence, jamais sur les objets). Passe
+// finale de `finish_sequence` : aucun objet n'est réordonné. Désactivé par défaut -- un projet
+// existant produit le même fichier machine.
+struct HiddenTravel {
+    bool enabled{false};
+    // Écart (distance directe) jusqu'auquel un saut recouvert reste un simple saut, sans coupe
+    // ni point d'arrêt. 0 : jamais de saut sans coupe.
+    Micrometers max_hidden_jump{2'000};
+    // Longueur maximale du trajet cousu (mesurée le long du chemin).
+    Micrometers max_bridge_length{15'000};
+    // Longueur des points du trajet cousu.
+    Micrometers bridge_stitch_length{2'500};
+    // Largeur de fil supposée de la couche qui recouvre, et marge de sécurité ajoutée de chaque
+    // côté du trajet : le trajet doit rester à plus de (largeur/2 + marge) de toute zone non
+    // recouverte.
+    Micrometers cover_thread_width{400};
+    Micrometers cover_margin{150};
+    // « Optimiser les trajets » : trois niveaux, tous appliqués en toute fin, sans jamais modifier
+    // la couche supérieure (remplissage, satin visible) ni l'ordre des objets.
+    //  1. entre deux objets : pont caché si le trajet est recouvert plus tard ;
+    //  2. à l'intérieur d'un objet : liens sous-couche <-> remplissage cachés par le remplissage ;
+    //  3. ordre et sens des passes de sous-couche d'un même objet (invisible : sous le
+    //  remplissage).
+    bool between_objects{true};
+    bool within_object{true};
+    bool reorder_underlay{true};
+    // Mode avancé, plus invasif (désactivé par défaut) : réordonner les régions d'une MÊME couleur
+    // pour raccourcir les déplacements. L'ordre relatif de deux régions dont les emprises se
+    // touchent est conservé, les régions verrouillées restent en place, aucune région n'est
+    // modifiée ni retournée. Appliqué avant les autres niveaux.
+    bool reorder_regions{false};
+    // HP-SEQ-006.b -- une surface déjà cousue plus tôt avec le MÊME fil compte aussi comme cachée
+    // (le fil de liaison s'y confond ; léger relief possible). Désactivé par défaut.
+    bool allow_same_color_surface{false};
+
+    bool operator==(const HiddenTravel&) const = default;
+};
+
 // Finitions appliquées à la séquence de points APRÈS génération et retouches
 // (`stitch_generation::finish_sequence`, Lots E et F de l'audit marine plein
 // cadre, 2026-09-22). Réglages de projet : sérialisés dans le .osp, donc le
@@ -51,6 +91,9 @@ struct SequenceFinishing {
     // de l'objet précédent et vers le début du suivant. Désactivé par défaut ; chaque objet
     // peut forcer (`JoinMode::Auto`) ou refuser (`JoinMode::Off`) ce réglage.
     bool auto_join{false};
+
+    // HP-SEQ-006.a -- ponts cachés (désactivés par défaut).
+    HiddenTravel hidden_travel{};
 
     bool operator==(const SequenceFinishing&) const = default;
 

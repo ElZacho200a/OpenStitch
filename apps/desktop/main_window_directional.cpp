@@ -121,7 +121,8 @@ void MainWindow::setDensityGradient(ObjectId embroideryId, bool enabled, double 
     auto next = *params;
     if (enabled) {
         const auto gradient = stitch_generation::density_gradient_across(
-            source->paths, Angle{angleDeg * std::numbers::pi / 180.0}, next.row_spacing,
+            source->paths, Angle{angleDeg * std::numbers::pi / 180.0},
+            next.density_gradient ? next.density_gradient->spacing_from : next.row_spacing,
             to_micrometers(Millimeters{endSpacingMm}));
         if (!gradient) {
             statusBar()->showMessage(tr("Dégradé impossible : la forme n'a pas d'étendue."));
@@ -135,175 +136,6 @@ void MainWindow::setDensityGradient(ObjectId embroideryId, bool enabled, double 
         return;
     }
     applyDirectionalEdit(embroideryId, std::move(next), tr("Dégradé de densité"));
-}
-
-void MainWindow::applyTwoColorBlend() {
-    const auto* emb = resolveSelectedEmbroidery();
-    const auto* source = emb != nullptr ? project_.findObject(emb->source_vector) : nullptr;
-    if (emb == nullptr || source == nullptr || project_.original.empty() ||
-        !(emb->is_tatami() || emb->is_directional())) {
-        return;
-    }
-    const auto working = image::apply_pipeline(project_.original, project_.ops);
-    if (!working) {
-        QMessageBox::warning(this, tr("Fondu impossible"),
-                             QString::fromStdString(working.error().message));
-        return;
-    }
-    // Nuancier choisi dans le panneau Fils (vide = couleurs libres).
-    const thread_palette::ThreadChart* chart = nullptr;
-    if (threadPanel_ != nullptr && !threadPanel_->currentChartId().isEmpty()) {
-        chart = threadLibrary_.find_chart(threadPanel_->currentChartId().toStdString());
-    }
-    const auto result =
-        autodigitize::analyze_region_blend(*working, project_.mm_per_px, source->paths, chart);
-    if (!result) {
-        QMessageBox::information(this, tr("Fondu impossible"),
-                                 QString::fromStdString(result.error().message));
-        return;
-    }
-
-    const ObjectId baseId = emb->id;
-    // L'objet sélectionné devient le FOND (il garde son rang, donc il est cousu
-    // avant) ; le dessus est un nouvel objet, ajouté en fin de liste.
-    document::DirectionalFillParams topParams;
-    if (const auto* directional = std::get_if<document::DirectionalFillParams>(&emb->params)) {
-        topParams = *directional;
-    } else if (auto converted = directionalParamsFor(*emb)) {
-        topParams = std::move(*converted);
-    } else {
-        return;
-    }
-    topParams.density_gradient = result->blend.foreground_density;
-    topParams.underlay_edge = false; // la sous-couche appartient au fond
-    topParams.underlay_parallel = false;
-    // Les lignes doivent être perpendiculaires à l'axe de couleur, sinon leur
-    // écart ne peut pas varier le long de cet axe (fondu écrasé).
-    stitch_generation::align_guides_across_density_gradient(topParams, source->paths);
-
-    document::EmbroideryObject top = *emb;
-    top.id = project_.object_ids.next();
-    top.name = emb->name + " (dessus)";
-    top.params = topParams;
-    top.rgb = result->blend.foreground;
-    top.thread.reset();
-    top.overrides.clear();
-    top.edited_fingerprint = 0;
-    top.edited_point_count = 0;
-    std::optional<thread_palette::ThreadKey> baseThread;
-    std::array<std::uint8_t, 3> baseRgb = result->blend.background;
-    if (result->threads) {
-        const auto first = threadLibrary_.find(result->threads->first);
-        const auto second = threadLibrary_.find(result->threads->second);
-        if (first && second) {
-            baseThread = first->key;
-            baseRgb = first->rgb;
-            top.thread = second->key;
-            top.rgb = second->rgb;
-        }
-    }
-    // Pointeur vers le directionnel d'origine : un dégradé existant disparaît du fond.
-    std::optional<document::DirectionalFillParams> baseParams;
-    if (const auto* directional = std::get_if<document::DirectionalFillParams>(&emb->params);
-        directional != nullptr && directional->density_gradient) {
-        baseParams = *directional;
-        baseParams->density_gradient.reset();
-    }
-
-    auto batch = std::make_unique<commands::CompositeCommand>("Fondu de couleurs à deux fils");
-    if (baseParams) {
-        batch->add(
-            std::make_unique<commands::SetStitchParamsCommand>(baseId, *baseParams, std::string{}));
-    }
-    batch->add(std::make_unique<commands::SetObjectThreadCommand>(std::vector<ObjectId>{baseId},
-                                                                  baseThread, baseRgb));
-    batch->add(std::make_unique<commands::AddEmbroideryObjectCommand>(std::move(top)));
-    undoStack_.execute(std::move(batch), project_);
-    showStitchesAct_->setChecked(true);
-    refreshImage();
-    updateActions();
-    statusBar()->showMessage(
-        result->threads
-            ? tr("Fondu à deux fils créé avec les fils du nuancier (fond puis dessus).")
-            : tr("Fondu à deux fils créé en couleurs libres ; choisissez un nuancier dans le "
-                 "panneau Fils pour les associer à de vrais fils."),
-        8000);
-}
-
-void MainWindow::blendSelectedZones() {
-    const std::vector<ObjectId> ids = selectedObjectIds();
-    if (ids.size() != 2) {
-        statusBar()->showMessage(tr("Sélectionnez exactement deux zones à fondre."), 6000);
-        return;
-    }
-    // Zone A (première sélectionnée) = fond ; zone B (seconde) = dessus.
-    const ObjectId idA = ids[0];
-    const ObjectId idB = ids[1];
-    const auto* vecA = project_.findObject(idA);
-    const auto* vecB = project_.findObject(idB);
-    const auto fillOf = [this](ObjectId vector) -> const document::EmbroideryObject* {
-        for (const auto& emb : project_.embroidery_objects) {
-            if (emb.source_vector == vector && (emb.is_tatami() || emb.is_directional())) {
-                return &emb;
-            }
-        }
-        return nullptr;
-    };
-    const auto* embB = fillOf(idB);
-    if (vecA == nullptr || vecB == nullptr || fillOf(idA) == nullptr || embB == nullptr) {
-        statusBar()->showMessage(
-            tr("Fondre : chaque zone doit avoir un remplissage (tatami ou directionnel)."), 8000);
-        return;
-    }
-    const autodigitize::TwoColorBlendOptions limits;
-    const auto gradient = stitch_generation::density_gradient_between(
-        vecA->paths, vecB->paths, limits.max_spacing, limits.min_spacing);
-    if (!gradient) {
-        statusBar()->showMessage(tr("Fondre : les deux zones ont le même centre, aucun sens de "
-                                    "dégradé."),
-                                 8000);
-        return;
-    }
-
-    document::DirectionalFillParams topParams;
-    if (const auto* directional = std::get_if<document::DirectionalFillParams>(&embB->params)) {
-        topParams = *directional;
-    } else if (auto converted = directionalParamsFor(*embB)) {
-        topParams = std::move(*converted);
-    } else {
-        return;
-    }
-    topParams.density_gradient = gradient;
-    topParams.underlay_edge = false; // la sous-couche appartient au fond
-    topParams.underlay_parallel = false;
-    std::vector<geometry::PathSet> both = vecA->paths;
-    both.insert(both.end(), vecB->paths.begin(), vecB->paths.end());
-    stitch_generation::align_guides_across_density_gradient(topParams, both);
-
-    document::EmbroideryObject top = *embB;
-    top.id = project_.object_ids.next();
-    top.source_vector = idA; // la zone A absorbe B (union) : le dessus couvre l'ensemble
-    top.name = embB->name + " (fondu)";
-    top.params = topParams;
-    top.overrides.clear();
-    top.edited_fingerprint = 0;
-    top.edited_point_count = 0;
-
-    // Union d'abord (retient A, supprime B et sa broderie), puis ajout du dessus.
-    auto merged = commands::make_boolean_command(project_, commands::BooleanOp::Union, {idB, idA});
-    if (!merged.command) {
-        statusBar()->showMessage(QString::fromUtf8(merged.error.c_str()), 8000);
-        return;
-    }
-    auto batch = std::make_unique<commands::CompositeCommand>("Fondre deux zones");
-    batch->add(std::move(merged.command));
-    batch->add(std::make_unique<commands::AddEmbroideryObjectCommand>(std::move(top)));
-    commands::VectorOpResult result;
-    result.command = std::move(batch);
-    result.resulting_objects = 1;
-    applyShapeCommand(std::move(result),
-                      tr("Zones fondues : fond puis dessus. Ctrl+Z pour annuler."), {idA});
-    showStitchesAct_->setChecked(true);
 }
 
 void MainWindow::buildDirectionalActions(QMenu* embMenu) {
@@ -323,13 +155,12 @@ void MainWindow::buildDirectionalActions(QMenu* embMenu) {
         tr("Calcule un guide de direction éditable depuis l'axe médian de la forme."));
     connect(autoDirectionGuideAct_, &QAction::triggered, this,
             &MainWindow::generateDirectionGuideFromShape);
-    twoColorBlendAct_ = embMenu->addAction(tr("Fondu de couleurs à deux fils"));
+    twoColorBlendAct_ = embMenu->addAction(tr("Fondu de couleurs à deux fils…"));
     twoColorBlendAct_->setObjectName(QStringLiteral("action_twoColorBlend"));
     twoColorBlendAct_->setToolTip(
-        tr("Analyse les couleurs de l'image sous la forme : l'objet sélectionné devient le fond "
-           "uni, et un remplissage directionnel à densité variable de la seconde couleur est "
-           "ajouté par-dessus. Fils choisis dans le nuancier sélectionné du panneau Fils, s'il y "
-           "en a un. Annulable en une fois."));
+        tr("Choisir deux couleurs, l'angle et la densité du fondu, avec aperçu avant validation. "
+           "Sans image : couleurs manuelles. Avec image : analyse facultative et nuancier actif "
+           "du panneau Fils. Annulable en une fois."));
     connect(twoColorBlendAct_, &QAction::triggered, this, &MainWindow::applyTwoColorBlend);
     const auto startDrawing = [this](Tool tool) {
         if (!directionGuideModeAct_->isChecked()) {
@@ -358,16 +189,16 @@ void MainWindow::buildDirectionalActions(QMenu* embMenu) {
 void MainWindow::onDirectionGuideModeToggled(bool on) {
     directionGuideTarget_.reset();
     if (on) {
+        if (const auto* emb = resolveSelectedEmbroidery();
+            emb != nullptr && (emb->is_directional() || emb->is_auto_satin())) {
+            directionGuideTarget_ = emb->id;
+        }
         // Mode exclusif : un seul jeu de poignées éditables à la fois.
         for (QAction* other :
              {stitchEditModeAct_, satinEditModeAct_, satinGuideModeAct_, railEditModeAct_}) {
             if (other != nullptr && other->isChecked()) {
                 other->setChecked(false);
             }
-        }
-        if (const auto* emb = resolveSelectedEmbroidery();
-            emb != nullptr && (emb->is_directional() || emb->is_auto_satin())) {
-            directionGuideTarget_ = emb->id;
         }
         if (!directionGuideTarget_) {
             QSignalBlocker block(directionGuideModeAct_);
@@ -602,9 +433,14 @@ void MainWindow::updateDirectionGuideActions() {
     drawDirectionGuideAct_->setEnabled(context);
     drawBreakLineAct_->setEnabled(context && emb->is_directional());
     if (twoColorBlendAct_ != nullptr) {
-        twoColorBlendAct_->setEnabled(
-            emb != nullptr && (emb->is_tatami() || emb->is_directional()) &&
-            !project_.original.empty() && project_.findObject(emb->source_vector) != nullptr);
+        const bool canBlend = emb != nullptr && blendFillFor(emb->source_vector) == emb &&
+                              project_.findObject(emb->source_vector) != nullptr;
+        twoColorBlendAct_->setEnabled(canBlend);
+        twoColorBlendAct_->setStatusTip(
+            canBlend ? QString()
+                     : tr("Sélectionnez une forme avec un seul remplissage tatami "
+                          "ou directionnel. Un fondu existant s'édite par couche "
+                          "dans Propriétés."));
     }
 }
 

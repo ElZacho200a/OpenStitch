@@ -23,6 +23,8 @@ class QSpinBox;
 class QVBoxLayout;
 class QDoubleSpinBox;
 class QPushButton;
+class QAction;
+class QToolButton;
 
 namespace openstitch::desktop {
 
@@ -91,6 +93,7 @@ public:
     // rétablissement (le mode n'est pas dans `StitchParams`). `id` doit correspondre à
     // l'objet montré ; sinon ignoré. Sans reconstruction ni émission.
     void setJoinMode(std::optional<ObjectId> id, document::JoinMode mode);
+    void setConnectorMode(std::optional<ObjectId> id, document::ConnectorMode mode);
 
     // Lettrage : bandeau « Texte « … » » + bouton « Modifier le texte… » en tête de l'inspecteur
     // quand la sélection est une lettre d'un texte (`summary` vide = masqué). Persistant comme
@@ -106,8 +109,18 @@ public:
     // Resynchronise la copie interne SANS reconstruire (après qu'une édition du
     // formulaire a été appliquée au document, qui peut l'avoir complétée).
     void adoptParams(ObjectId id, const document::StitchParams& params);
+    struct FillLayer {
+        ObjectId id;
+        QString name;
+        QColor color;
+    };
+    // Contexte transitoire des couches d'une même forme, non persistant.
+    void setFillLayers(const QList<FillLayer>& layers, std::optional<ObjectId> selected);
+    void setBlendActions(QAction* single, QAction* zones, bool singleContext, bool zonesContext);
 
 signals:
+    void fillLayerSelected(ObjectId id);
+    void fillColorRequested(ObjectId id);
     // Bouton « Modifier le texte… » du bandeau lettrage (cf. setTextInfo) : MainWindow rouvre
     // le dialogue de texte (même chemin que le double-clic et F2).
     void editTextRequested();
@@ -157,6 +170,9 @@ signals:
     // HP-ENG-010 : mode d'entrée/sortie automatiques d'un objet (0 = hérite du projet,
     // 1 = automatique, 2 = désactivé) ; MainWindow exécute SetEmbroideryJoinModeCommand.
     void joinModeEdited(ObjectId id, int mode);
+    // HP-SEQ-005 : connecteur après l'objet (0 = suit le projet, 1 = toujours couper, 2 = ne
+    // jamais couper) ; MainWindow exécute SetEmbroideryConnectorModeCommand.
+    void connectorModeEdited(ObjectId id, int mode);
     // HP-STI-004 : bordure satin. `createBorderSatinRequested` : depuis un objet vectoriel,
     // largeur (mm), côté (0 centré, 1 intérieur, 2 extérieur), coins (0 vifs, 1 arrondis).
     // `borderSatinEdited` : changement de ces réglages d'un satin de bordure existant
@@ -183,6 +199,11 @@ private:
     QPushButton* discardButton_{nullptr};
     QLabel* textInfoLabel_{nullptr};
     QPushButton* textEditButton_{nullptr};
+    QWidget* layerRow_{nullptr};
+    QComboBox* fillLayers_{nullptr};
+    QPushButton* fillColor_{nullptr};
+    QToolButton* blendSingle_{nullptr};
+    QToolButton* blendZones_{nullptr};
     QWidget* body_{nullptr};
     int groupCount_{1};
     std::optional<ObjectId> currentId_;
@@ -202,6 +223,7 @@ private:
     QPointer<QCheckBox> satinGuideAbsolute_;
     QPointer<QPushButton> satinGuideRemove_;
     QPointer<QComboBox> joinCombo_;
+    QPointer<QComboBox> connectorCombo_;
 };
 
 } // namespace openstitch::desktop

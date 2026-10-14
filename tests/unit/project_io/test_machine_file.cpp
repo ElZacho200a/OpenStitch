@@ -4,6 +4,7 @@
 // (AD-04, bloc additif de `json_serialize.cpp`).
 #include <catch2/catch_test_macros.hpp>
 
+#include <algorithm>
 #include <filesystem>
 #include <fstream>
 
@@ -145,4 +146,76 @@ TEST_CASE("imported_design : absent d'un projet anterieur -> nullopt, pas une er
     REQUIRE(loaded.has_value());
     CHECK_FALSE(loaded->imported_design.has_value());
     fs::remove(path);
+}
+
+namespace {
+// Deux tatamis de la même couleur qui se chevauchent de 4 mm.
+document::Project overlapping_tatamis() {
+    document::Project project;
+    for (int i = 0; i < 2; ++i) {
+        document::VectorObject vec;
+        vec.id = project.object_ids.next();
+        geometry::PathSet set;
+        set.outer.closed = true;
+        const std::int32_t x0 = i * 6'000;
+        set.outer.nodes = {
+            {um(x0, 0), geometry::NodeType::Corner, std::nullopt, std::nullopt},
+            {um(x0 + 10'000, 0), geometry::NodeType::Corner, std::nullopt, std::nullopt},
+            {um(x0 + 10'000, 10'000), geometry::NodeType::Corner, std::nullopt, std::nullopt},
+            {um(x0, 10'000), geometry::NodeType::Corner, std::nullopt, std::nullopt},
+        };
+        vec.paths = {set};
+        project.vector_objects.push_back(vec);
+        document::EmbroideryObject emb;
+        emb.id = project.object_ids.next();
+        emb.source_vector = vec.id;
+        emb.rgb = {200, 30, 30};
+        emb.params = document::TatamiParams{};
+        project.embroidery_objects.push_back(emb);
+    }
+    return project;
+}
+
+std::size_t trims_of(const stitch::StitchSequence& s) {
+    return static_cast<std::size_t>(
+        std::count_if(s.commands.begin(), s.commands.end(),
+                      [](const auto& c) { return c.type == stitch::CommandType::Trim; }));
+}
+} // namespace
+
+TEST_CASE("export_machine_file : optimisation des coupes a la demande, projet intact") {
+    const auto project = overlapping_tatamis();
+    const auto before = project.finishing;
+
+    // Sans demande : exactement la séquence effective historique.
+    const auto plain = stitch_generation::effective_sequence(project);
+    REQUIRE(plain.has_value());
+    const auto asked = project_io::export_sequence(project);
+    REQUIRE(asked.has_value());
+    CHECK(asked->sequence.commands == plain->commands);
+    CHECK(asked->report.trims_removed == 0);
+
+    // Avec demande : le bilan compte chaque coupe supprimée ; le projet n'est pas modifié.
+    project_io::ExportOptimizations opt;
+    opt.reduce_trims = true;
+    const auto optimized = project_io::export_sequence(project, opt);
+    REQUIRE(optimized.has_value());
+    CHECK(trims_of(optimized->sequence) + optimized->report.trims_removed == trims_of(*plain));
+    CHECK(project.finishing == before);
+    CHECK_FALSE(project.finishing.hidden_travel.enabled);
+
+    // Le fichier écrit est celui de la séquence optimisée ; le rapport est renvoyé.
+    const auto path = fs::temp_directory_path() / "openstitch_export_trims.dst";
+    stitch_generation::TrimReport report;
+    REQUIRE(project_io::export_machine_file(project, "dst", path, {}, opt, &report).has_value());
+    CHECK(report.trims_removed == optimized->report.trims_removed);
+    const auto plainPath = fs::temp_directory_path() / "openstitch_export_plain.dst";
+    REQUIRE(project_io::export_machine_file(project, "dst", plainPath).has_value());
+    const auto imported = project_io::import_machine_file(path);
+    const auto importedPlain = project_io::import_machine_file(plainPath);
+    REQUIRE(imported.has_value());
+    REQUIRE(importedPlain.has_value());
+    CHECK(trims_of(imported->sequence) <= trims_of(importedPlain->sequence));
+    fs::remove(path);
+    fs::remove(plainPath);
 }

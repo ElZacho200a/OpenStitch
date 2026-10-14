@@ -76,6 +76,8 @@ TEST_CASE("moteur : round-trip des nouveaux reglages (tatami, directionnel, sati
         e.name = "o";
         e.params = params;
         e.join = (id % 2) ? document::JoinMode::Auto : document::JoinMode::Off;
+        // HP-SEQ-005 : les trois valeurs, dont la valeur par défaut (clé absente du fichier).
+        e.connector = static_cast<document::ConnectorMode>(id % 3);
         project.embroidery_objects.push_back(e);
     }
 
@@ -88,6 +90,7 @@ TEST_CASE("moteur : round-trip des nouveaux reglages (tatami, directionnel, sati
     for (std::size_t i = 0; i < project.embroidery_objects.size(); ++i) {
         CHECK(loaded->embroidery_objects[i].params == project.embroidery_objects[i].params);
         CHECK(loaded->embroidery_objects[i].join == project.embroidery_objects[i].join);
+        CHECK(loaded->embroidery_objects[i].connector == project.embroidery_objects[i].connector);
     }
     // Deux sauvegardes successives du même projet sont identiques (déterminisme).
     const auto second = fs::temp_directory_path() / "openstitch_engine_roundtrip2.osp";

@@ -275,13 +275,23 @@ préalable (`BilateralDenoiseOp`) complètent la chaîne :
 pixels sous la forme (`sample_region_colors`, au plus 20 000, repère du modèle),
 analyse, puis choisit la paire de fils dans le nuancier fourni.
 
-**Action de l'interface** (`MainWindow::applyTwoColorBlend`, menu Broderie et
-barre contextuelle d'un objet tatami ou directionnel) : l'objet sélectionné
+**Action de l'interface** (`MainWindow::applyTwoColorBlend`, menu Broderie,
+barre contextuelle et inspecteur d'un objet tatami ou directionnel) : le dialogue
+**Fondu de couleurs · deux fils** propose les couleurs du fond et du dessus,
+l'angle, les écarts au début/à la fin (0,1 à 4 mm), l'inversion et un **aperçu
+schématique** (pas une simulation des points ni du tissu). Il fonctionne **sans
+image**, avec des couleurs manuelles. Avec une image, **Proposer les couleurs
+depuis l'image** lance l'analyse hors du fil d'interface, avec le nuancier actif
+du panneau Fils. La proposition reste modifiable et l'analyse ne crée rien.
+Annuler ferme le dialogue sans toucher au document ni à l'historique.
+
+Après validation, l'objet sélectionné
 devient le **fond** (il garde son rang, donc il est cousu avant ; son dégradé
 éventuel est retiré) et un **nouvel objet directionnel** de la seconde couleur,
-à densité variable et sans sous-couche, est ajouté par-dessus. Les fils viennent
-du nuancier sélectionné dans le panneau Fils ; sans nuancier, les couleurs
-analysées restent libres. Une seule annulation défait l'ensemble. **Orientation des lignes** : l'écart entre lignes ne
+à densité variable et sans sous-couche, est inséré **immédiatement après le fond**,
+pas en fin du motif. Les fils de la proposition sont conservés si leurs couleurs
+n'ont pas été modifiées ; les couleurs manuelles restent libres. Une seule
+annulation défait l'ensemble. **Orientation des lignes** : l'écart entre lignes ne
 peut varier que perpendiculairement aux lignes ; le dessus hérite pourtant du
 guide du tatami (angle d'origine). Si les lignes courent le long de l'axe de
 couleur, le dégradé ne peut espacer presque rien et le fondu est écrasé (défaut
@@ -303,9 +313,41 @@ couleur de B est ajouté **dessus**, sur toute la forme unie. Son dégradé de
 densité (`stitch_generation::density_gradient_between`) va du centre de A vers
 celui de B sur l'étendue des deux zones : écart large (4 mm) côté A, serré
 (0,4 mm) côté B ; les lignes sont perpendiculaires à cet axe. Contrairement au
-fondu à deux fils, les couleurs sont **celles des deux zones**, pas une analyse
-de l'image. Une seule annulation défait l'ensemble. Limite : rampe linéaire sur
+fondu à deux fils, le même dialogue propose initialement **les couleurs des deux
+zones**, sans analyse de l'image. Les couleurs, l'angle et les écarts sont
+modifiables avant l'union ; Annuler préserve les deux zones. Les couleurs doivent
+être distinctes. Chaque forme doit avoir un seul remplissage compatible ; une
+forme non remplie ou un couple de couches déjà créé désactive l'action.
+Une seule annulation défait l'ensemble. Limite : rampe linéaire sur
 toute l'étendue (pas de zone de transition réglable).
+
+### Éditer les couches et preuve des correctifs UI (2026-10-13)
+
+Dans **Propriétés**, **Couches de couture · ordre de couture** sélectionne
+explicitement le fond ou le dessus d'une même forme. **Couleur de cette couche…**
+modifie uniquement la couche choisie, en retirant son association à un fil réel
+si nécessaire ; undo restaure couleur et fil. Le panneau Fils respecte aussi
+cette sélection explicite. Convertir une couche en tatami ou en contour ne
+supprime pas l'autre couche.
+
+Deux causes racines ont été reproduites :
+
+- L'inspecteur affichait `row_spacing` (0,4 mm) au lieu du réel
+  `density_gradient->spacing_from` (3,2 mm dans la repro). Modifier l'angle
+  écrasait alors l'écart initial. Affichage et recalcul utilisent désormais
+  la valeur du gradient, sans modifier l'écart initial lors d'une rotation.
+- `ConvertFillGroupCommand` supprimait **tous** les objets de même
+  `source_vector`, confondant les sections d'un ancien réseau satin avec les
+  couches indépendantes d'un fondu. Elle ne retire désormais que les sections
+  satin à rails lorsque l'ancre était elle-même de ce type. Le test de
+  non-régression du réseau satin multi-sections reste applicable.
+
+Preuves : les six reproductions initiales de `test_color_blend` étaient rouges ;
+la suite vérifie aussi création manuelle, proposition raster, validation,
+inversion, ordre, choix de couche, couleur, conversion, undo/redo et relecture
+`.osp`. `test_undo_stack.cpp` vérifie les conversions des deux couches et le
+cas mixte fond + sections satin. Aucun champ persistant ni algorithme de
+génération n'a été ajouté pour cette intégration UI.
 
 ## Interface
 
@@ -379,9 +421,11 @@ Aussi : `test_roundtrip.cpp` (sérialisation), `test_undo_stack.cpp`
 - Aucune validation sur machine réelle.
 - Phase 4 (fondu de couleurs) : disponible via **Broderie ▸ Fondu de couleurs à
   deux fils** (voir la section du même nom). Limites : un dégradé linéaire par
-  région ; les deux objets ne sont pas « liés » (modifier l'un ne met pas l'autre
-  à jour) ; un objet de dessus est ajouté en fin de liste, donc cousu après les
-  objets intermédiaires.
+  région ; les deux objets partagent leur forme source, mais leurs paramètres
+  ne sont pas liés (modifier l'un ne met pas l'autre à jour). L'ordre initial
+  fond puis dessus est garanti à la création ; il peut ensuite être modifié
+  volontairement dans le panneau Ordre. Pas de profils non linéaires ni de
+  validation sur machine réelle.
 
 ## Implémentation associée
 

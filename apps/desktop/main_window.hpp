@@ -226,6 +226,7 @@ private slots:
     void createBorderSatin(ObjectId vectorId, double widthMm, int side, int corner);
     void editBorderSatin(ObjectId id, double widthMm, int side, int corner);
     void setJoinMode(ObjectId id, int mode);
+    void setConnectorMode(ObjectId id, int mode);
     void setDensityGradient(ObjectId embroideryId, bool enabled, double angleDeg,
                             double endSpacingMm);
     void applyTwoColorBlend();
@@ -382,6 +383,9 @@ private:
     // Panneau Fils / film couleur (HP-THR-004/005) : tout est dans main_window_threads.cpp.
     void buildThreadPanel();
     void refreshThreadPanel();
+    // Passe la couleur `from` à la position `to` de la liste des fils (tous ses objets, un seul
+    // pas d'annulation) : appelé par le panneau Fils et par la barre des fils.
+    void moveThreadColour(int from, int to);
     // Barre des fils (bas de fenêtre) : pastilles rondes des fils du motif, dans
     // main_window_threads.cpp.
     void buildThreadStrip();
@@ -539,6 +543,8 @@ private:
     void runBooleanOp(commands::BooleanOp op);
     void breakApartSelected();
     void blendSelectedZones();
+    [[nodiscard]] const document::EmbroideryObject* blendFillFor(ObjectId vector) const;
+    void createColorBlend(ObjectId baseId, std::optional<ObjectId> secondId);
     void removeHolesOfSelection(double maxAreaMm2); // 0 : tous les trous
     void finishCut();
     // Exécute la commande (un pas d'annulation), sélectionne le premier de `keep` encore présent

@@ -13,6 +13,7 @@
 #include <QFileInfo>
 #include <QGraphicsItem>
 #include <QLabel>
+#include <QLineEdit>
 #include <QListWidget>
 #include <QMenu>
 #include <QMessageBox>
@@ -45,6 +46,7 @@
 
 #include "autosave.hpp"
 #include "canvas_view.hpp"
+#include "color_blend_dialog.hpp"
 #include "document_panel.hpp"
 #include "empty_state_widget.hpp"
 #include "help_dialogs.hpp"
@@ -4735,6 +4737,13 @@ void MainWindowTest::twoColorBlendCreatesBackgroundAndTopInOneUndoStep() {
     const auto baseColorBefore = window.project_.findEmbroidery(fx.embroideryId)->rgb;
     QCOMPARE(window.project_.embroidery_objects.size(), std::size_t{1});
 
+    QTimer::singleShot(0, &window, [] {
+        auto* dialog =
+            qobject_cast<openstitch::desktop::ColorBlendDialog*>(QApplication::activeModalWidget());
+        QVERIFY(dialog != nullptr);
+        dialog->findChild<QPushButton*>(QStringLiteral("button_blendAnalyze"))->click();
+        dialog->accept();
+    });
     action->trigger();
 
     QCOMPARE(window.project_.embroidery_objects.size(), std::size_t{2});
@@ -6935,6 +6944,13 @@ void MainWindowTest::blendZonesActionMakesBaseAndGradedTopInOneUndoStep() {
     QVERIFY(blend != nullptr);
     window.updateActions();
     QVERIFY(blend->isEnabled());
+    QTimer::singleShot(0, &window, [] {
+        auto* dialog =
+            qobject_cast<openstitch::desktop::ColorBlendDialog*>(QApplication::activeModalWidget());
+        QVERIFY(dialog != nullptr);
+        dialog->findChild<QLineEdit*>(QStringLiteral("edit_blendForeground"))->setText("#2244cc");
+        dialog->findChild<QDialogButtonBox*>()->button(QDialogButtonBox::Ok)->click();
+    });
     blend->trigger();
 
     // Une seule forme (A absorbe B), le fond tatami de A, puis le dessus directionnel gradué.

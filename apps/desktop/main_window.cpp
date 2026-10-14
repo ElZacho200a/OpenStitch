@@ -50,6 +50,7 @@
 #include <initializer_list>
 #include <limits>
 #include <map>
+#include <memory>
 #include <numbers>
 #include <set>
 #include <unordered_map>
@@ -61,6 +62,7 @@
 #include "app_theme.hpp"
 #include "autosave.hpp"
 #include "brightness_dialog.hpp"
+#include "busy_indicator.hpp"
 #include "canvas_view.hpp"
 #include "document_panel.hpp"
 #include "empty_state_widget.hpp"
@@ -1183,48 +1185,6 @@ void showFriendlyError(QWidget* parent, const QString& title, const QString& exp
 // fenêtre « ne répond pas » après quelques secondes. Le calcul ne doit lire que des données
 // que l'interface ne modifie pas pendant ce temps (instantané) ; les minuteurs qui lisent le
 // document (sauvegarde automatique, simulation) sont suspendus pendant l'attente.
-class BusyIndicator {
-public:
-    BusyIndicator(QWidget* parent, const QString& text, std::initializer_list<QTimer*> pause = {})
-        : dialog_(text, QString(), 0, 0, parent) {
-        for (QTimer* timer : pause) {
-            if (timer != nullptr && timer->isActive()) {
-                timer->stop();
-                paused_.push_back(timer);
-            }
-        }
-        dialog_.setWindowTitle(QObject::tr("Veuillez patienter"));
-        dialog_.setWindowModality(Qt::WindowModal);
-        dialog_.setCancelButton(nullptr);
-        dialog_.setMinimumDuration(0);
-        dialog_.show();
-        QGuiApplication::setOverrideCursor(Qt::WaitCursor);
-        QCoreApplication::processEvents(QEventLoop::ExcludeUserInputEvents);
-    }
-    ~BusyIndicator() {
-        QGuiApplication::restoreOverrideCursor();
-        dialog_.close();
-        for (QTimer* timer : paused_) {
-            timer->start();
-        }
-    }
-    BusyIndicator(const BusyIndicator&) = delete;
-    BusyIndicator& operator=(const BusyIndicator&) = delete;
-
-    // Exécute `compute` hors du fil de l'interface et renvoie son résultat.
-    template <class F> auto run(F&& compute) {
-        auto future = std::async(std::launch::async, std::forward<F>(compute));
-        while (future.wait_for(std::chrono::milliseconds(25)) != std::future_status::ready) {
-            QCoreApplication::processEvents(QEventLoop::ExcludeUserInputEvents);
-        }
-        return future.get();
-    }
-
-private:
-    QProgressDialog dialog_;
-    std::vector<QTimer*> paused_;
-};
-
 } // namespace
 
 bool MainWindow::confirmDiscardChanges(const QString& question) {
@@ -1379,7 +1339,9 @@ void MainWindow::openImageFile(const QString& file) {
         return;
     }
 
+    const auto canvas = project_.canvas; // même cadre que celui proposé dans ImportDialog
     project_ = document::Project{};
+    project_.canvas = canvas;
     project_.mm_per_px = document::mm_per_pixel(*placement, loaded->width);
     project_.original = std::move(*loaded);
     resetDocumentState();
@@ -1502,6 +1464,15 @@ void MainWindow::onStitchEditModeToggled(bool on) {
     stitchEditTarget_.reset();
     stitchEditView_.reset();
     if (on) {
+        // Poser la nouvelle cible AVANT de quitter un autre mode : ses slots relancent
+        // updateActions(), qui annulerait l'activation si la cible était encore absente.
+        if (const auto* emb = resolveSelectedEmbroidery()) {
+            if (auto view = stitch_generation::edit_view(project_, emb->id);
+                view && view->state != stitch_generation::ObjectEditState::Dirty) {
+                stitchEditTarget_ = emb->id;
+                stitchEditView_ = std::move(*view);
+            }
+        }
         if (satinGuideModeAct_ != nullptr && satinGuideModeAct_->isChecked()) {
             satinGuideModeAct_->setChecked(false);
         }
@@ -1519,13 +1490,6 @@ void MainWindow::onStitchEditModeToggled(bool on) {
         if (satinEditModeAct_ != nullptr && satinEditModeAct_->isChecked()) {
             QSignalBlocker block(satinEditModeAct_);
             satinEditModeAct_->setChecked(false);
-        }
-        if (const auto* emb = resolveSelectedEmbroidery()) {
-            if (auto view = stitch_generation::edit_view(project_, emb->id);
-                view && view->state != stitch_generation::ObjectEditState::Dirty) {
-                stitchEditTarget_ = emb->id;
-                stitchEditView_ = std::move(*view);
-            }
         }
         if (!stitchEditTarget_) {
             // Contexte devenu invalide entre le clic et ce traitement (perte de
@@ -1545,14 +1509,14 @@ void MainWindow::onSatinGuideModeToggled(bool on) {
     satinGuideTarget_.reset();
     selectedSatinGuide_.reset();
     if (on) {
-        if (stitchEditModeAct_ != nullptr && stitchEditModeAct_->isChecked()) {
-            stitchEditModeAct_->setChecked(false);
-        }
         if (const auto* emb = resolveSelectedEmbroidery()) {
             if (const auto* satin = std::get_if<document::SatinParams>(&emb->params);
                 satin != nullptr && satin->rungs.size() >= 2) {
                 satinGuideTarget_ = emb->id;
             }
+        }
+        if (stitchEditModeAct_ != nullptr && stitchEditModeAct_->isChecked()) {
+            stitchEditModeAct_->setChecked(false);
         }
         if (!satinGuideTarget_) {
             QSignalBlocker block(satinGuideModeAct_);
@@ -3202,7 +3166,8 @@ void MainWindow::renderBase(const image::Image& img) {
                             // par l'item), Ctrl = suspend l'accroche (lignes N2/N2b). Avec le
                             // réglage « Accrochage des nœuds au glisser » (désactivé par défaut),
                             // le nœud s'accroche aux SOMMETS des autres objets.
-                            const auto commitNodeMove = [this, objectId, ref,
+                            const auto generation = documentGeneration_;
+                            const auto commitNodeMove = [this, objectId, ref, generation,
                                                          pos](QPointF releasedSceneMm,
                                                               Qt::KeyboardModifiers mods) {
                                 hideNodeDragFeedback();
@@ -3220,13 +3185,18 @@ void MainWindow::renderBase(const image::Image& img) {
                                 }
                                 // Diffère : refreshImage() détruirait cette poignée
                                 // pendant son propre événement souris (crash).
-                                QTimer::singleShot(0, this, [this, objectId, ref, pos, newPos] {
-                                    undoStack_.execute(std::make_unique<commands::MoveNodeCommand>(
-                                                           objectId, ref, pos, newPos),
-                                                       project_);
-                                    refreshImage();
-                                    updateActions();
-                                });
+                                QTimer::singleShot(
+                                    0, this, [this, objectId, ref, pos, newPos, generation] {
+                                        if (generation != documentGeneration_) {
+                                            return;
+                                        }
+                                        undoStack_.execute(
+                                            std::make_unique<commands::MoveNodeCommand>(
+                                                objectId, ref, pos, newPos),
+                                            project_);
+                                        refreshImage();
+                                        updateActions();
+                                    });
                             };
                             auto* handle = new NodeHandleItem(
                                 sceneMm, {},
@@ -3373,6 +3343,7 @@ void MainWindow::renderBase(const image::Image& img) {
                 // plutôt que de diviser par zéro.
                 if (minX && maxX && minY && maxY && *minX != *maxX && *minY != *maxY) {
                     const ObjectId objectId = object->id;
+                    const auto generation = documentGeneration_;
                     const Vec2um corners[4] = {Vec2um{*minX, *minY}, Vec2um{*maxX, *minY},
                                                Vec2um{*maxX, *maxY}, Vec2um{*minX, *maxY}};
                     for (std::size_t i = 0; i < 4; ++i) {
@@ -3385,7 +3356,7 @@ void MainWindow::renderBase(const image::Image& img) {
                         const QPointF anchorScene = modelToSceneMm(anchor);
                         auto* handle = new ResizeHandleItem(
                             modelToSceneMm(corner),
-                            [this, objectId, corner, anchor](QPointF newSceneMm) {
+                            [this, objectId, corner, anchor, generation](QPointF newSceneMm) {
                                 hideResizePreview();
                                 const Vec2um newCorner = sceneMmToModel(newSceneMm);
                                 if (newCorner == corner) {
@@ -3402,14 +3373,18 @@ void MainWindow::renderBase(const image::Image& img) {
                                 // Diffère : refreshImage() détruirait cet item pendant
                                 // son propre événement souris (même défaut que
                                 // NodeHandleItem/VectorObjectBodyItem).
-                                QTimer::singleShot(0, this, [this, objectId, anchor, sx, sy] {
-                                    undoStack_.execute(
-                                        std::make_unique<commands::ScaleVectorObjectCommand>(
-                                            objectId, anchor, sx, sy),
-                                        project_);
-                                    refreshImage();
-                                    updateActions();
-                                });
+                                QTimer::singleShot(
+                                    0, this, [this, objectId, anchor, sx, sy, generation] {
+                                        if (generation != documentGeneration_) {
+                                            return;
+                                        }
+                                        undoStack_.execute(
+                                            std::make_unique<commands::ScaleVectorObjectCommand>(
+                                                objectId, anchor, sx, sy),
+                                            project_);
+                                        refreshImage();
+                                        updateActions();
+                                    });
                             },
                             anchorScene, /*hasAnchor=*/true, cursor,
                             [this, anchorScene](QPointF movedSceneMm) {
@@ -3435,12 +3410,16 @@ void MainWindow::renderBase(const image::Image& img) {
                         centerScene.x(), modelToSceneMm(Vec2um{centerUm.x, *maxY}).y() - offsetMm);
                     auto* rotation = new ResizeHandleItem(
                         handleScene,
-                        [this, objectId, centerScene, handleScene](QPointF releasedSceneMm) {
+                        [this, objectId, centerScene, handleScene,
+                         generation](QPointF releasedSceneMm) {
                             const double degrees = rotationDragDegrees(
                                 centerScene, handleScene, releasedSceneMm,
                                 (QGuiApplication::keyboardModifiers() & Qt::ShiftModifier) != 0);
                             // Différé : refreshImage() détruirait cet item pendant son évènement.
-                            QTimer::singleShot(0, this, [this, objectId, degrees] {
+                            QTimer::singleShot(0, this, [this, objectId, degrees, generation] {
+                                if (generation != documentGeneration_) {
+                                    return;
+                                }
                                 if (degrees == 0.0) {
                                     refreshImage(); // remet la poignée à sa place
                                     return;
@@ -3484,9 +3463,10 @@ void MainWindow::renderBase(const image::Image& img) {
         baseItems_.append(axis);
 
         const ObjectId fillId = fill->id;
+        const auto generation = documentGeneration_;
         auto* knob = new NodeHandleItem(
             QPointF(c.x() + dx, c.y() + dy),
-            [this, fillId, c](QPointF released) {
+            [this, fillId, c, generation](QPointF released) {
                 double angle = std::atan2(-(released.y() - c.y()), released.x() - c.x());
                 angle = std::fmod(angle, std::numbers::pi);
                 if (angle < 0.0) {
@@ -3495,7 +3475,10 @@ void MainWindow::renderBase(const image::Image& img) {
                 // Diffère la commande : refreshImage() reconstruit la scène et
                 // détruirait cette poignée pendant son propre événement souris
                 // (usage après libération → crash).
-                QTimer::singleShot(0, this, [this, fillId, angle] {
+                QTimer::singleShot(0, this, [this, fillId, angle, generation] {
+                    if (generation != documentGeneration_) {
+                        return;
+                    }
                     undoStack_.execute(
                         std::make_unique<commands::SetFillAngleCommand>(fillId, Angle{angle}),
                         project_);
@@ -4982,7 +4965,8 @@ void MainWindow::setStitchType(ObjectId embroideryId, int type) {
     // première section et laisserait les autres en satin réel, inchangées
     // -- exactement le défaut réel signalé (« résidu de satin qui reste
     // même en revenant en tatami », 2026-09-04, cf. le commentaire de la
-    // commande pour le détail complet).
+    // commande pour le détail complet). Elle ne regroupe que les sections satin à rails,
+    // pas les couches indépendantes d'un fondu partageant elles aussi un source_vector.
     using Convert = commands::ConvertFillGroupCommand;
     auto convert = std::make_unique<Convert>(embroideryId, std::move(params), std::move(label));
     if (restoredContour) {
@@ -6674,6 +6658,8 @@ void MainWindow::buildPropertiesPanel() {
     connect(propertiesPanel_, &PropertiesPanel::borderSatinEdited, this,
             &MainWindow::editBorderSatin);
     connect(propertiesPanel_, &PropertiesPanel::joinModeEdited, this, &MainWindow::setJoinMode);
+    connect(propertiesPanel_, &PropertiesPanel::connectorModeEdited, this,
+            &MainWindow::setConnectorMode);
     connect(propertiesPanel_, &PropertiesPanel::densityGradientRequested, this,
             &MainWindow::setDensityGradient);
     connect(
@@ -6716,6 +6702,21 @@ void MainWindow::updateInspector() {
     // Cible : objet de broderie (dock Ordre) > remplissage rattaché à l'objet
     // vectoriel sélectionné > objet vectoriel > région > rien.
     const document::EmbroideryObject* emb = resolveSelectedEmbroidery();
+
+    QList<PropertiesPanel::FillLayer> layers;
+    if (emb != nullptr) {
+        for (const auto& layer : project_.embroidery_objects) {
+            if (layer.source_vector == emb->source_vector) {
+                layers.push_back(
+                    {layer.id,
+                     tr("%1 · %2").arg(layers.size() + 1).arg(QString::fromStdString(layer.name)),
+                     QColor(layer.rgb[0], layer.rgb[1], layer.rgb[2])});
+            }
+        }
+    }
+    propertiesPanel_->setFillLayers(layers, emb ? std::optional<ObjectId>{emb->id} : std::nullopt);
+    propertiesPanel_->setBlendActions(twoColorBlendAct_, blendZonesAct_, !layers.empty(),
+                                      hasMultiSelection());
 
     int kind = -1;
     std::uint64_t id = 0;
@@ -6773,6 +6774,9 @@ void MainWindow::updateInspector() {
                                                   : stitch_generation::ObjectEditState::Clean);
     propertiesPanel_->setJoinMode(emb != nullptr ? std::optional<ObjectId>(emb->id) : std::nullopt,
                                   emb != nullptr ? emb->join : document::JoinMode::Inherit);
+    propertiesPanel_->setConnectorMode(
+        emb != nullptr ? std::optional<ObjectId>(emb->id) : std::nullopt,
+        emb != nullptr ? emb->connector : document::ConnectorMode::Inherit);
 
     // Auto-satin : liste des guides et diagnostic mis à jour à chaque appel (les
     // guides se posent aussi depuis le canevas), sans reconstruire le formulaire.
@@ -7842,6 +7846,7 @@ void MainWindow::checkAutosaveRecovery() {
             return;
         }
         applyLoadedProject(std::move(*loaded));
+        undoStack_.markDirty(); // la récupération n'est pas un enregistrement du document
         // Le projet récupéré reprend le chemin d'origine quand il est connu : un
         // Ctrl+S réécrit alors le bon fichier (et pas un « Sans titre »). Le chemin est
         // posé sans passer par setCurrentProjectPath() : une récupération ne doit ni
@@ -7900,22 +7905,82 @@ void MainWindow::exportDst() {
                           stats.bounds.min.y.value < -cv.usable_height().value / 2 ||
                           stats.bounds.max.y.value > cv.usable_height().value / 2;
 
+    // HP-SEQ-006 : séquence réellement exportée quand l'utilisateur demande la réduction des
+    // coupes. Le calcul n'est refait que si les réglages changent ; `project_io::export_sequence`
+    // est le chemin même de l'écriture du fichier, donc le résumé décrit exactement ce qui sera
+    // écrit.
+    struct OptimizedCache {
+        bool valid{false};
+        project_io::ExportOptimizations key;
+        stitch_generation::FinishResult value;
+    };
+    auto cache = std::make_shared<OptimizedCache>();
+    const auto optimizedFor =
+        [this, cache](const project_io::ExportOptimizations& opt) -> const OptimizedCache* {
+        if (!opt.reduce_trims) {
+            return nullptr;
+        }
+        if (!cache->valid || !(cache->key == opt)) {
+            QGuiApplication::setOverrideCursor(Qt::WaitCursor);
+            auto computed = project_io::export_sequence(project_, opt);
+            QGuiApplication::restoreOverrideCursor();
+            if (!computed) {
+                cache->valid = false;
+                return nullptr;
+            }
+            cache->key = opt;
+            cache->value = std::move(*computed);
+            cache->valid = true;
+        }
+        return cache.get();
+    };
+
     // Résumé pré-export : décision réelle, recalculé pour le format et les options choisis
     // (HP-FMT-002..005 : limites propres au format = `formats::check_export_limits`).
     const auto summarize = [&](const formats::FormatInfo& format,
-                               const formats::MachineExportOptions& options) {
+                               const formats::MachineExportOptions& options,
+                               const project_io::ExportOptimizations& optimizations) {
         MachineExportDialog::Summary result;
+        const auto* optimized = optimizedFor(optimizations);
+        const stitch::StitchSequence& shown = optimized ? optimized->value.sequence : *sequence_;
+        const auto shownStats = stitch::compute_stats(shown);
         QString summary = tr("Dimensions : %1 × %2 mm\nPoints : %3\nSauts : %4\nCoupes : %5\n"
                              "Changements de couleur : %6\nFil estimé : %7 m\nCadre : %8 × %9 mm")
                               .arg(wMm, 0, 'f', 1)
                               .arg(hMm, 0, 'f', 1)
-                              .arg(stats.stitches)
-                              .arg(stats.jumps)
-                              .arg(stats.trims)
-                              .arg(stats.color_changes)
-                              .arg(stats.thread_length_um / 1e9, 0, 'f', 2)
+                              .arg(shownStats.stitches)
+                              .arg(shownStats.jumps)
+                              .arg(shownStats.trims)
+                              .arg(shownStats.color_changes)
+                              .arg(shownStats.thread_length_um / 1e9, 0, 'f', 2)
                               .arg(to_millimeters(cv.width).value, 0, 'f', 0)
                               .arg(to_millimeters(cv.height).value, 0, 'f', 0);
+        if (optimized != nullptr) {
+            const auto& r = optimized->value.report;
+            summary += tr("\nCoupes supprimées : %1 sur %2 écart(s) possible(s) (%3 saut(s) "
+                          "recouvert(s), %4 pont(s) cousu(s), +%5 mm de fil).")
+                           .arg(r.trims_removed)
+                           .arg(r.candidate_gaps)
+                           .arg(r.hidden_jumps)
+                           .arg(r.bridges)
+                           .arg(r.bridge_length_um / 1000.0, 0, 'f', 1);
+            if (r.region_groups > 0) {
+                summary +=
+                    tr("\nRégions : %1 déplacée(s) dans %2 groupe(s), %3 mm de saut en moins.")
+                        .arg(r.regions_moved)
+                        .arg(r.region_groups)
+                        .arg(r.region_jump_saved_um / 1000.0, 0, 'f', 0);
+            }
+            if (r.underlay_blocks > 0) {
+                summary +=
+                    tr("\nSous-couche : %1 groupe(s) de passes réordonné(s), %2 mm de saut en "
+                       "moins.")
+                        .arg(r.underlay_blocks)
+                        .arg(r.underlay_jump_saved_um / 1000.0, 0, 'f', 0);
+            }
+        } else if (optimizations.reduce_trims) {
+            summary += tr("\nL'optimisation des coupes n'a pas pu être calculée.");
+        }
         // Résultat de l'analyse AVANT l'export : l'utilisateur voit les erreurs sans avoir à
         // penser à lancer « Analyser le motif ».
         stitch_analysis::AnalysisOptions aopts;
@@ -7923,7 +7988,7 @@ void MainWindow::exportDst() {
                                              Micrometers{-cv.usable_height().value / 2}},
                                       Vec2um{Micrometers{cv.usable_width().value / 2},
                                              Micrometers{cv.usable_height().value / 2}}};
-        const auto findings = stitch_analysis::analyze(*sequence_, aopts);
+        const auto findings = stitch_analysis::analyze(shown, aopts);
         std::size_t errors = 0;
         std::size_t warnings = 0;
         for (const auto& f : findings) {
@@ -7942,7 +8007,7 @@ void MainWindow::exportDst() {
         }
         // Limites du format cible (couleurs, étendue, cadres de la marque, déplacements découpés).
         QString limits;
-        for (const auto& issue : formats::check_export_limits(*sequence_, format, options)) {
+        for (const auto& issue : formats::check_export_limits(shown, format, options)) {
             const QString text = QString::fromStdString(issue.message);
             switch (issue.severity) {
             case formats::ExportIssueSeverity::Error:
@@ -8002,8 +8067,11 @@ void MainWindow::exportDst() {
     // recalcule sa propre `effective_sequence`, garantie identique à `*sequence_`.
     auto options = dialog.options();
     options.design_name = QFileInfo(file).completeBaseName().toStdString();
-    const auto written = project_io::export_machine_file(
-        project_, format->id, std::filesystem::path(file.toStdWString()), options);
+    const auto optimizations = dialog.optimizations();
+    stitch_generation::TrimReport trimReport;
+    const auto written = project_io::export_machine_file(project_, format->id,
+                                                         std::filesystem::path(file.toStdWString()),
+                                                         options, optimizations, &trimReport);
     if (!written) {
         showFriendlyError(
             this, tr("Export impossible"),
@@ -8014,10 +8082,21 @@ void MainWindow::exportDst() {
         return;
     }
     rememberLastDirectory(file);
-    offerRevealInFolder(
-        file, tr("%1 exporté : %2 (%3 points).")
-                  .arg(QString::fromStdString(format->display_name), QFileInfo(file).fileName())
-                  .arg(stats.stitches));
+    // Nombre de points du fichier réellement écrit : celui de la séquence optimisée si demandée.
+    const auto* exportedSeq =
+        cache->valid && cache->key == optimizations && optimizations.reduce_trims
+            ? &cache->value.sequence
+            : nullptr;
+    const auto writtenStitches =
+        exportedSeq ? stitch::compute_stats(*exportedSeq).stitches : stats.stitches;
+    QString message =
+        tr("%1 exporté : %2 (%3 points).")
+            .arg(QString::fromStdString(format->display_name), QFileInfo(file).fileName())
+            .arg(writtenStitches);
+    if (optimizations.reduce_trims) {
+        message += tr(" Coupes supprimées : %1.").arg(trimReport.trims_removed);
+    }
+    offerRevealInFolder(file, message);
 }
 
 void MainWindow::importDst() {
@@ -9094,7 +9173,9 @@ void MainWindow::updateActions() {
     updateSegmentationWorkflowActions();
     refreshWorkflow();
     updateEmptyState();
-    refreshHints(); // les indications dépendent de la sélection (lignes de déplacement)
+    // Les sorties automatiques bloquent QAction::toggled : synchroniser le contexte réel,
+    // pas seulement les indications, sinon le prochain rectangle devient un panoramique.
+    updateInteractionContext();
 }
 
 } // namespace openstitch::desktop

@@ -1,0 +1,141 @@
+// SPDX-License-Identifier: Apache-2.0
+// Dialogue d'export machine : option « Réduire les coupes » (HP-SEQ-006), demandée pour un export
+// seulement. Le dialogue ne calcule rien : il transmet les réglages au résumé et à l'appelant.
+#include <QApplication>
+#include <QCheckBox>
+#include <QComboBox>
+#include <QDoubleSpinBox>
+#include <QSettings>
+#include <QTemporaryDir>
+#include <QTest>
+
+#include "machine_export_dialog.hpp"
+
+using openstitch::desktop::MachineExportDialog;
+namespace project_io = openstitch::project_io;
+
+class MachineExportDialogTest : public QObject {
+    Q_OBJECT
+
+private slots:
+    void initTestCase() {
+        QVERIFY(settingsDir_.isValid());
+        QCoreApplication::setOrganizationName(QStringLiteral("OpenStitchUITest"));
+        QCoreApplication::setApplicationName(QStringLiteral("MachineExportDialog"));
+        QSettings::setDefaultFormat(QSettings::IniFormat);
+        QSettings::setPath(QSettings::IniFormat, QSettings::UserScope, settingsDir_.path());
+        QSettings().clear();
+    }
+
+    void reductionIsOffByDefault() {
+        MachineExportDialog dialog(summarizeNothing(), QStringLiteral("dst"), nullptr);
+        auto* reduce = dialog.findChild<QCheckBox*>(QStringLiteral("check_exportReduceTrims"));
+        auto* same =
+            dialog.findChild<QCheckBox*>(QStringLiteral("check_exportReduceTrimsSameColour"));
+        auto* maxBridge =
+            dialog.findChild<QDoubleSpinBox*>(QStringLiteral("spin_exportReduceTrimsMax"));
+        QVERIFY(reduce != nullptr && same != nullptr && maxBridge != nullptr);
+        QVERIFY(!reduce->isChecked());
+        QVERIFY(!dialog.optimizations().reduce_trims);
+        // Les réglages n'ont de sens que si l'option est cochée.
+        QVERIFY(!same->isEnabled());
+        QVERIFY(!maxBridge->isEnabled());
+        QCOMPARE(maxBridge->value(), 15.0);
+    }
+
+    void optionReachesTheSummaryAndTheCaller() {
+        project_io::ExportOptimizations seen;
+        int calls = 0;
+        MachineExportDialog dialog(
+            [&](const openstitch::formats::FormatInfo&,
+                const openstitch::formats::MachineExportOptions&,
+                const project_io::ExportOptimizations& opt) {
+                seen = opt;
+                ++calls;
+                return MachineExportDialog::Summary{};
+            },
+            QStringLiteral("dst"), nullptr);
+        const int before = calls;
+        auto* reduce = dialog.findChild<QCheckBox*>(QStringLiteral("check_exportReduceTrims"));
+        auto* same =
+            dialog.findChild<QCheckBox*>(QStringLiteral("check_exportReduceTrimsSameColour"));
+        auto* maxBridge =
+            dialog.findChild<QDoubleSpinBox*>(QStringLiteral("spin_exportReduceTrimsMax"));
+        QVERIFY(reduce != nullptr && same != nullptr && maxBridge != nullptr);
+
+        reduce->setChecked(true);
+        QVERIFY(calls > before); // résumé recalculé
+        QVERIFY(seen.reduce_trims);
+        QVERIFY(same->isEnabled());
+        same->setChecked(true);
+        maxBridge->setValue(22.5);
+        maxBridge->editingFinished();
+
+        const auto opt = dialog.optimizations();
+        QVERIFY(opt.reduce_trims);
+        QVERIFY(opt.hidden_travel.allow_same_color_surface);
+        QCOMPARE(opt.hidden_travel.max_bridge_length.value, 22'500);
+        QVERIFY(seen == opt);
+
+        // Décocher l'option annule aussi « même fil » côté appelant.
+        reduce->setChecked(false);
+        QVERIFY(!dialog.optimizations().reduce_trims);
+        QVERIFY(!dialog.optimizations().hidden_travel.allow_same_color_surface);
+    }
+
+    void threeLevelsAreSelectableAndReachTheCaller() {
+        MachineExportDialog dialog(summarizeNothing(), QStringLiteral("dst"), nullptr);
+        auto* reduce = dialog.findChild<QCheckBox*>(QStringLiteral("check_exportReduceTrims"));
+        auto* between = dialog.findChild<QCheckBox*>(QStringLiteral("check_exportRoutesBetween"));
+        auto* within = dialog.findChild<QCheckBox*>(QStringLiteral("check_exportRoutesWithin"));
+        auto* underlay = dialog.findChild<QCheckBox*>(QStringLiteral("check_exportRoutesUnderlay"));
+        QVERIFY(reduce != nullptr && between != nullptr && within != nullptr &&
+                underlay != nullptr);
+        // Par défaut les trois niveaux sont demandés, mais grisés tant que l'option est décochée.
+        QVERIFY(between->isChecked() && within->isChecked() && underlay->isChecked());
+        QVERIFY(!between->isEnabled() && !within->isEnabled() && !underlay->isEnabled());
+        reduce->setChecked(true);
+        QVERIFY(between->isEnabled() && within->isEnabled() && underlay->isEnabled());
+        within->setChecked(false);
+        underlay->setChecked(false);
+        const auto opt = dialog.optimizations();
+        QVERIFY(opt.hidden_travel.between_objects);
+        QVERIFY(!opt.hidden_travel.within_object);
+        QVERIFY(!opt.hidden_travel.reorder_underlay);
+    }
+
+    void advancedRegionModeIsOffByDefaultAndExplicit() {
+        MachineExportDialog dialog(summarizeNothing(), QStringLiteral("dst"), nullptr);
+        auto* reduce = dialog.findChild<QCheckBox*>(QStringLiteral("check_exportReduceTrims"));
+        auto* regions = dialog.findChild<QCheckBox*>(QStringLiteral("check_exportRoutesRegions"));
+        QVERIFY(reduce != nullptr && regions != nullptr);
+        QVERIFY(!regions->isChecked()); // plus invasif : jamais coché sans demande
+        reduce->setChecked(true);
+        QVERIFY(!dialog.optimizations().hidden_travel.reorder_regions);
+        regions->setChecked(true);
+        QVERIFY(dialog.optimizations().hidden_travel.reorder_regions);
+    }
+
+    void optionIsAvailableForDstToo() {
+        // Le DST garde son codage des coupes (cases grisées) mais profite de la réduction.
+        MachineExportDialog dialog(summarizeNothing(), QStringLiteral("dst"), nullptr);
+        auto* trims = dialog.findChild<QCheckBox*>(QStringLiteral("check_exportTrims"));
+        auto* reduce = dialog.findChild<QCheckBox*>(QStringLiteral("check_exportReduceTrims"));
+        QVERIFY(trims != nullptr && reduce != nullptr);
+        QVERIFY(!trims->isEnabled());
+        QVERIFY(reduce->isEnabled());
+    }
+
+private:
+    static MachineExportDialog::SummaryFn summarizeNothing() {
+        return
+            [](const openstitch::formats::FormatInfo&,
+               const openstitch::formats::MachineExportOptions&,
+               const project_io::ExportOptimizations&) { return MachineExportDialog::Summary{}; };
+    }
+
+    QTemporaryDir settingsDir_;
+};
+
+QTEST_MAIN(MachineExportDialogTest)
+#include "test_machine_export_dialog.moc"

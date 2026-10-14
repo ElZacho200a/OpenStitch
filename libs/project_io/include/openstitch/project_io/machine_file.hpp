@@ -8,6 +8,7 @@
 #include "openstitch/document/imported_design.hpp"
 #include "openstitch/document/project.hpp"
 #include "openstitch/formats/machine_design.hpp"
+#include "openstitch/stitch_generation/finish.hpp"
 
 namespace openstitch::project_io {
 
@@ -30,10 +31,27 @@ namespace openstitch::project_io {
 // `options.block_colors` est vide, les couleurs des blocs sont celles des objets du projet
 // (`stitch_analysis::color_blocks`) ; elles ne servent qu'aux formats qui portent des couleurs
 // (PES, JEF). Sans effet sur le DST (octets inchangés).
+// Optimisations demandées pour CET export (HP-SEQ-006) : appliquées en toute fin, sur la séquence
+// effective, sans modifier le projet. `reduce_trims` : remplace des coupes par des sauts ou des
+// ponts cousus prouvés cachés (`document::HiddenTravel` ; `enabled` est forcé). Désactivé : les
+// réglages de ponts cachés du PROJET s'appliquent seuls, comme pour l'aperçu.
+struct ExportOptimizations {
+    bool reduce_trims{false};
+    document::HiddenTravel hidden_travel{};
+
+    bool operator==(const ExportOptimizations&) const = default;
+};
+
+// Séquence exactement exportée pour ces options, avec le bilan des coupes (aperçu avant export).
+[[nodiscard]] Result<stitch_generation::FinishResult>
+export_sequence(const document::Project& project, const ExportOptimizations& optimizations = {});
+
 [[nodiscard]] Result<void> export_machine_file(const document::Project& project,
                                                const std::string& format_id,
                                                const std::filesystem::path& path,
-                                               const formats::MachineExportOptions& options = {});
+                                               const formats::MachineExportOptions& options = {},
+                                               const ExportOptimizations& optimizations = {},
+                                               stitch_generation::TrimReport* report = nullptr);
 
 // Importe un fichier machine comme design importé (AD-04, AI-04) --
 // construit la valeur à placer dans `Project::imported_design` (l'appelant

@@ -85,10 +85,7 @@ void MainWindow::buildTextMenu() {
     removeTextAct_->setToolTip(tr("Supprime le texte entier (toutes ses lettres)."));
     connect(removeTextAct_, &QAction::triggered, this, &MainWindow::removeSelectedText);
 
-    if (propertiesPanel_ != nullptr) {
-        connect(propertiesPanel_, &PropertiesPanel::editTextRequested, this,
-                &MainWindow::editSelectedText);
-    }
+    // L'inspecteur est construit après les menus : liaison dans connectInspectorEditing().
     updateTextActions();
 }
 

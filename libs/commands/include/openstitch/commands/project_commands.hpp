@@ -836,6 +836,32 @@ private:
     document::JoinMode previous_{document::JoinMode::Inherit};
 };
 
+// Connecteur après l'objet (HP-SEQ-005) : suit le projet, force la coupe ou la supprime. Annulable
+// ; sans effet si l'objet a disparu.
+class SetEmbroideryConnectorModeCommand final : public ICommand {
+public:
+    SetEmbroideryConnectorModeCommand(ObjectId id, document::ConnectorMode mode)
+        : id_(id), mode_(mode) {}
+
+    void apply(document::Project& project) override {
+        if (auto* obj = project.findEmbroidery(id_)) {
+            previous_ = obj->connector;
+            obj->connector = mode_;
+        }
+    }
+    void revert(document::Project& project) override {
+        if (auto* obj = project.findEmbroidery(id_)) {
+            obj->connector = previous_;
+        }
+    }
+    [[nodiscard]] std::string name() const override { return "Connecteur après l'objet"; }
+
+private:
+    ObjectId id_;
+    document::ConnectorMode mode_;
+    document::ConnectorMode previous_{document::ConnectorMode::Inherit};
+};
+
 // Affiche/masque un objet de broderie (case « visible » du panneau Document). Un objet
 // masqué n'est ni dessiné ni cousu : annulable comme toute mutation du document.
 class SetEmbroideryVisibleCommand final : public ICommand {
@@ -975,8 +1001,10 @@ private:
 // une fois qu'un objet du groupe couvre déjà tout le contour.
 //
 // Cette commande convertit l'objet ANCRE (`anyMemberId`, résolu par
-// l'appelant exactement comme avant) au nouveau type, puis RETIRE tous les
-// autres objets du même `source_vector` -- jamais une conversion en masse
+// l'appelant exactement comme avant) au nouveau type. Si l'ancre est un satin
+// à rails, elle RETIRE les autres sections satin du même `source_vector`.
+// Les couches indépendantes (notamment fond/ dessus du fondu) sont conservées.
+// Jamais une conversion en masse
 // (qui dupliquerait le remplissage tatami/contour N fois sur la même
 // surface, cf. docs/source/satin.md pour cette limitation connexe). Sans
 // sections sœurs (cas courant, un seul objet par `source_vector`), se
@@ -1003,6 +1031,7 @@ public:
         primaryId_ = anchorIt->id;
         previousParams_ = anchorIt->params;
         previousIntent_ = anchorIt->intent;
+        const bool collapseSatinSections = anchorIt->is_satin();
         anchorIt->params = params_;
         anchorIt->intent = document::EmbroideryIntent::ForcedUserChoice;
 
@@ -1019,7 +1048,8 @@ public:
         // en amont d'un retrait).
         std::vector<std::size_t> siblingIndices;
         for (std::size_t i = 0; i < embs.size(); ++i) {
-            if (embs[i].id != primaryId_ && embs[i].source_vector == sourceVector) {
+            if (collapseSatinSections && embs[i].is_satin() && embs[i].id != primaryId_ &&
+                embs[i].source_vector == sourceVector) {
                 siblingIndices.push_back(i);
             }
         }
