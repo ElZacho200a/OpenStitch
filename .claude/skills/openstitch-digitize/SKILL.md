@@ -26,11 +26,31 @@ automatique. Chaque règle porte la mesure qui la justifie. Documentation de ré
 Binaire : `openstitch-cli` (voir `openstitch-build-test` pour le build). Sorties dans le
 **scratchpad**, jamais à la racine du dépôt.
 
+**Méthode recommandée : le script `scripts/workflow.sh`** (image → `.osp` → DST → cadre →
+contrôle → palette réelle → rendu, en une commande ; il encode les pièges de la section 8) :
+
+```bash
+CLI=/chemin/openstitch-cli .claude/skills/openstitch-digitize/scripts/workflow.sh \
+    img.png $SCRATCH/v1 300 210 122.6 --max-colors 12 --dark-lines --island-cleanup 20
+```
+
+Arguments : image, dossier de sortie, largeur et hauteur du cadre (mm), dpi, puis les options de
+`digitize`. Une variante = un nouveau dossier ; comparer les blocs `stats` à la main.
+
+Commandes unitaires (si besoin de plus fin) :
+
 ```bash
 openstitch-cli digitize img.png sortie.dst --dpi 122.6 --max-colors 12 --output-svg diag.svg
 openstitch-cli stats sortie.dst        # points, sauts, coupes, changements de fil, dimensions
-python3 -I .claude/skills/openstitch-digitize/scripts/render_dst.py sortie.dst rendu.png --source img.png
+openstitch-cli project digitize img.png -o p.osp --dst sortie.dst --dpi 122.6 ...   # .osp éditable
+openstitch-cli project inspect p.osp --json | python3 -I scripts/osp_palette.py pal.json --report
+python3 -I scripts/render_dst.py sortie.dst rendu.png --palette pal.json
 ```
+
+**Le rendu doit se faire avec `--palette` (vraie palette de l'`.osp`), pas avec `--source`** : la
+couleur déduite de l'image source est fausse dès que le DST est recadré ou que deux fils
+voisins se ressemblent, et un crème sur le fond beige du rendu est quasi invisible (voir §8,
+fausse alerte « le crème a disparu »).
 
 Lire **dans cet ordre** :
 
@@ -121,8 +141,47 @@ juste avant l'export, jamais avant : il ne modifie ni l'ordre des couleurs ni la
   ou `libs/segmentation` (Qt-free), pas dans `apps/desktop`.
 - Écrire des fichiers de travail dans le dépôt (les `.dst`, `.png` d'essai vont au scratchpad).
 
-## 8. Ce skill s'enrichit
+## 8. Journal d'apprentissage (erreurs faites, règles qui en sortent)
 
-Quand une nouvelle image révèle un échec ou une règle (seuil, option, ordre), l'ajouter ici avec
-**la mesure qui la justifie** (chiffre avant/après, image de référence), dans la section concernée,
-et l'écrire aussi dans `docs/source/auto-numerisation.md`. Ne pas y mettre d'hypothèse non vérifiée.
+Chaque entrée : ce qui s'est passé, ce qui l'a corrigé, la mesure. Image de référence : le navire
+au soleil couchant (1448 × 1086 px, 7 teintes + fond beige `#E3D4BB`, `--dpi 122.6` → 290 × 201 mm).
+
+**Essai 1 (2026-10-15, environnement cloud Linux, CLI seul).**
+
+| # | Erreur / piège | Cause | Règle |
+|---|---|---|---|
+| 1 | Fausse alerte « le crème (soleil, écume) a disparu » : soleil rendu bleu, écume absente | Le rendu colorait les blocs par la **médiane de l'image source** ; le crème `#FCEEC2` était bien segmenté (7,7 %) et brodé (32 objets, 4 933 mm²) | Vérifier la palette réelle (`osp_palette.py --report`) **avant** de conclure à un défaut de numérisation, et rendre avec `--palette` |
+| 2 | `project check` : 50 erreurs « hors-cadre » | `project digitize` laisse le cadre à 100 × 100 mm | `project set --width-mm --height-mm` à la taille de la pièce (+ marge) avant tout contrôle ; `workflow.sh` le fait |
+| 3 | Pas de points/coupes dans la sortie de `project digitize` | Seul `digitize` imprime ces lignes | Passer `--dst` et lire `stats` ; c'est la source des chiffres comparés |
+| 4 | Le JSON de `digitize` ne dit pas quelles couleurs sont brodées ; le SVG de diagnostic n'a pas de couleurs | — | Passer par l'`.osp` (`project inspect --json`) |
+
+Mesures de l'essai 1 (même `--dpi 122.6`, `--max-colors 12`, fond ignoré automatiquement) :
+
+| Variante | Objets | Points | Coupes | Fils | Observation |
+|---|---|---|---|---|---|
+| base | 344 | 80 393 | 887 | 6 chg. | mâts/haubans/contours de nuages absents (~8 % non couvert) |
+| `--max-colors 8` | 300 | 80 285 | 893 | 5 chg. | le crème est quand même brodé (le défaut n'est pas la palette) |
+| `--island-cleanup 20` | 173 | 78 420 | 681 | 6 chg. | −49 % d'objets, −23 % de coupes |
+| `--dark-lines` | 492 | 92 698 | 1 459 | 7 chg. | gréement lisible, +64 % de coupes |
+| `--dark-lines --island-cleanup 20` | 369 | 91 755 | 1 359 | 7 chg. | **meilleur compromis visuel** ; 214 traits cousus en dernier |
+| idem `--hidden-travel` | — | 91 475 | 1 317 | 7 chg. | −3 % de coupes, 0 erreur de contrôle, **sortie déterministe** (octets identiques sur 2 exécutions) |
+| `--skip-background no` | 346 | 107 096 | 941 | 7 chg. | 299 × 224 mm : le fond beige est brodé (+33 % de points) |
+
+Constats à retenir :
+
+- `--dark-lines` ajoute **un fil quasi noir distinct** (`#0C121C`) du noir déjà segmenté
+  (`#08080F`) : 8 blocs au lieu de 7, un changement de fil de plus. Piste d'amélioration non
+  traitée : fusionner ces deux noirs.
+- `project check` plafonne l'affichage à 100 avertissements (sauts longs, points très courts) ;
+  seul le verdict de la première ligne est fiable pour un résumé.
+- Non testé volontairement : `--satin-bands` (point brevet, §4). À essayer sur demande explicite.
+- Non fait : comparaison pixel à pixel avec l'image source (pas d'outil de score de fidélité) ;
+  le jugement reste visuel. Idée : script qui reprojette les régions brodées et mesure l'écart ΔE.
+
+## 9. Ce skill s'enrichit
+
+Quand une nouvelle image révèle un échec ou une règle (seuil, option, ordre), l'ajouter au
+journal (§8) avec **la mesure qui la justifie** (chiffre avant/après, image de référence), et
+l'écrire aussi dans `docs/source/auto-numerisation.md`. Ne pas y mettre d'hypothèse non vérifiée.
+Toute erreur de méthode (fausse alerte, option oubliée) va dans le tableau d'erreurs : c'est ce
+qui évite de la refaire.
