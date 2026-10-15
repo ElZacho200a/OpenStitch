@@ -725,6 +725,8 @@ struct DigitizeArgs {
     // Nettoyage des fragments avant numérisation (mode formes) ; absent = défaut de la lib.
     std::optional<double> minFeatureMm; // largeur minimale d'un détail ; 0 = désactivé
     std::optional<double> minRegionMm2; // aire minimale d'une région ; 0 = désactivé
+    double islandMm2 = 0.0;             // nettoyage des îlots (voisine de couleur la plus proche)
+    double islandMaxDeltaE = 0.0;       // ΔE maximal d'une fusion d'îlot ; 0 = sans limite
     bool singlePath = false;            // mode contours : parcours eulérien (moins de coupes)
     bool coherentLines = false;         // mode contours : photo -> traits (FDoG) avant segmentation
     int stipplePoints = 2000;           // mode stipple : nombre de points du semis
@@ -844,6 +846,8 @@ int run_digitize(const DigitizeArgs& a) {
     if (a.minRegionMm2) {
         opts.min_region_area_mm2 = *a.minRegionMm2;
     }
+    opts.island_area_mm2 = a.islandMm2;
+    opts.island_max_delta_e = a.islandMaxDeltaE;
     fmt::print(st, "Ignorer la plus grande région (fond) : {}{}\n", skipLargest ? "oui" : "non",
                a.skipBg < 0 ? " (automatique)" : " (option explicite)");
 
@@ -1630,6 +1634,17 @@ int main(int argc, char** argv) {
         ->add_option("--min-region-mm2", dz.minRegionMm2,
                      "Mode formes : les régions plus petites que cette aire (mm²) sont fusionnées "
                      "avec leur voisine ; 0 = désactivé (défaut : 3)")
+        ->check(CLI::NonNegativeNumber);
+    dz_cmd
+        ->add_option("--island-cleanup", dz.islandMm2,
+                     "Mode formes : les îlots plus petits que cette aire (mm²) sont fusionnés dans "
+                     "la voisine de COULEUR la plus proche (pas la plus longue frontière) ; "
+                     "0 = désactivé (défaut)")
+        ->check(CLI::NonNegativeNumber);
+    dz_cmd
+        ->add_option("--island-max-delta-e", dz.islandMaxDeltaE,
+                     "Avec --island-cleanup : refuse une voisine plus éloignée que cet écart de "
+                     "couleur CIELAB (ΔE) ; 0 = pas de limite (défaut)")
         ->check(CLI::NonNegativeNumber);
     dz_cmd
         ->add_option("--trim-threshold", dz.trimMm,

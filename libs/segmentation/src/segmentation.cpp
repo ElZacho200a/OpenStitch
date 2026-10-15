@@ -656,9 +656,45 @@ std::size_t remove_thin_parts(Segmentation& seg, int min_width_px) {
     return reassign_to_neighbours(seg, thin_part_mask(seg, min_width_px, {}), false);
 }
 
+namespace {
+struct Lab {
+    double l, a, b;
+};
+
+Lab cielab(std::array<std::uint8_t, 3> rgb) {
+    const auto linear = [](std::uint8_t v) {
+        const double c = static_cast<double>(v) / 255.0;
+        return c <= 0.04045 ? c / 12.92 : std::pow((c + 0.055) / 1.055, 2.4);
+    };
+    const double r = linear(rgb[0]);
+    const double g = linear(rgb[1]);
+    const double bl = linear(rgb[2]);
+    // sRGB -> XYZ (D65), normalisé par le blanc de référence.
+    const double x = (0.4124564 * r + 0.3575761 * g + 0.1804375 * bl) / 0.95047;
+    const double y = 0.2126729 * r + 0.7151522 * g + 0.0721750 * bl;
+    const double z = (0.0193339 * r + 0.1191920 * g + 0.9503041 * bl) / 1.08883;
+    constexpr double kEpsilon = 216.0 / 24389.0;
+    constexpr double kKappa = 24389.0 / 27.0;
+    const auto f = [&](double t) {
+        return t > kEpsilon ? std::cbrt(t) : (kKappa * t + 16.0) / 116.0;
+    };
+    const double fx = f(x);
+    const double fy = f(y);
+    const double fz = f(z);
+    return {116.0 * fy - 16.0, 500.0 * (fx - fy), 200.0 * (fy - fz)};
+}
+} // namespace
+
+double cielab_delta_e(std::array<std::uint8_t, 3> a, std::array<std::uint8_t, 3> b) {
+    const Lab p = cielab(a);
+    const Lab q = cielab(b);
+    return std::sqrt((p.l - q.l) * (p.l - q.l) + (p.a - q.a) * (p.a - q.a) +
+                     (p.b - q.b) * (p.b - q.b));
+}
+
 std::size_t merge_small_regions(Segmentation& seg, std::size_t min_px,
                                 std::optional<std::array<std::uint8_t, 3>> excluded,
-                                double boundary_weight) {
+                                double boundary_weight, MergeTarget target, double max_delta_e) {
     const std::size_t slots = seg.region_slots.size();
     std::vector<std::size_t> count(slots + 1, 0);
     for (std::size_t s = 0; s < slots; ++s) {
@@ -710,8 +746,26 @@ std::size_t merge_small_regions(Segmentation& seg, std::size_t min_px,
         queue.erase(queue.begin());
         std::uint32_t keep = 0;
         std::size_t best = 0;
+        double bestDelta = 0.0;
         for (const auto& [other, length] : nb[small]) {
-            if (!isExcluded(other) && length > best) {
+            if (isExcluded(other)) {
+                continue;
+            }
+            if (target == MergeTarget::ClosestColour) {
+                const double delta = cielab_delta_e(seg.region_slots[small - 1]->rgb,
+                                                    seg.region_slots[other - 1]->rgb);
+                if (max_delta_e > 0.0 && delta > max_delta_e) {
+                    continue;
+                }
+                // Couleur la plus proche ; à égalité (à 1e-9 près), frontière la plus longue puis
+                // plus petit identifiant (l'itération de `nb` est par identifiant croissant).
+                if (keep == 0 || delta < bestDelta - 1e-9 ||
+                    (delta <= bestDelta + 1e-9 && length > best)) {
+                    best = length;
+                    bestDelta = delta;
+                    keep = other;
+                }
+            } else if (length > best) {
                 best = length;
                 keep = other;
             }

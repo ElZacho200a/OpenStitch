@@ -64,6 +64,7 @@ n'est pas le bon choix : `--skip-background yes|no`. Cas vécu : fond beige non 
 | Besoin | Option | Réserve |
 |---|---|---|
 | Traits noirs fins lisibles (mâts, haubans, contours) | `--dark-lines` (`--dark-lines-width 1.6`, `--dark-lines-lightness 25`) | +40 à +60 % de coupes mesurées (1 181 → 1 675 ; 941 → 1 499) : chaque trait est un tracé séparé, cousu en dernier. Point droit seulement. |
+| **Îlots collés à de grands aplats** (enclaves) | `--island-cleanup MM2` (essayer 20 ; `--island-max-delta-e` pour limiter l'écart de couleur) ; dans l'application : *Segmentation → Nettoyer les petits îlots…* | Fusionne dans la voisine de **couleur** la plus proche. Mesuré : 344 → 173 objets, 887 → 681 coupes à 20 mm². Les traits fins sombres (haubans) sont aussi des îlots : **associer à `--dark-lines`**. |
 | Petites zones parasites | `--min-region-mm2` (défaut 3), `--min-feature-mm` (défaut 0 = désactivé ; une valeur retire les détails plus étroits que cette largeur, à essayer par petits pas) | Trop haut : on perd des détails voulus. |
 | Bandes étroites en satin (rayons de nuages, écume, rubans) | `--satin-bands` | **Désactivé par défaut volontairement** : la décision par génération d'essai est un point à faire relire au regard du brevet US8851001B2 (`docs/revue-brevets-optimisation-trajets-2026-10.md`). Ne pas l'activer par défaut sans cette relecture ; l'activer sur demande explicite de l'utilisateur pour son propre projet est possible. |
 | Moins de coupes avant export | `--hidden-travel` (et niveaux) | Gain surtout en longueur de saut, peu en nombre de coupes sur des régions juxtaposées. |
@@ -82,7 +83,7 @@ contre ~500 en automatique) :
 2. **Bandes étroites en satin** : ~80 % des objets étaient en auto-satin ; le tatami n'était
    gardé que pour les grandes surfaces.
 3. **Régions fusionnées** : moins d'objets, plus grands ; les îlots et morceaux de même couleur
-   regroupés.
+   regroupés (`--island-cleanup` automatise cette passe).
 4. **Ordre des couleurs réfléchi** : la grande base sombre (bleu marine) d'abord, puis les
    couleurs claires par-dessus, les traits quasi noirs en dernier. Une base sombre sous les
    surfaces claires absorbe les interstices entre régions voisines (`fill_overlap` vaut 0 par
@@ -106,7 +107,7 @@ juste avant l'export, jamais avant : il ne modifie ni l'ordre des couleurs ni la
 | Pièce trop grande / bordure brodée | fond non ignoré ou `--dpi` oublié | §1 et §3 |
 | Mâts et contours fusionnés en blocs sombres | traits fins quantifiés comme des régions | `--dark-lines` |
 | Zones de ciel/nuage en lignes pointillées, aspect de grille | tatami sur bandes étroites | satin sur ces bandes (§4) |
-| Plus de 3 000 coupes | beaucoup d'objets séparés (satin, traits, îlots) | monter `--min-region-mm2`, baisser `--detail`, fusionner à la main |
+| Plus de 3 000 coupes | beaucoup d'objets séparés (satin, traits, îlots) | `--island-cleanup`, monter `--min-region-mm2`, baisser `--detail`, fusionner à la main |
 | Interstices entre couleurs voisines | `fill_overlap` = 0 | base sombre sous les couleurs claires (§4 bis), ou chevauchement dans la boîte de dialogue |
 | Beaucoup de changements de fil | `--max-colors` trop haut, quasi-doublons | le baisser |
 | Petits points parasites | îlots | `--min-region-mm2`, `--min-feature-mm` |

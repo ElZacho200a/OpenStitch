@@ -591,6 +591,12 @@ Result<AutoResult> auto_digitize(const segmentation::Segmentation& input,
         segmentation::remove_thin_parts(
             seg, static_cast<int>(std::lround(options.min_feature_width_mm / mmPerPx)));
     }
+    if (options.island_area_mm2 > 0.0 && mmPerPx > 0.0) {
+        segmentation::merge_small_regions(
+            seg, static_cast<std::size_t>(std::ceil(options.island_area_mm2 / (mmPerPx * mmPerPx))),
+            backgroundRgb, kVectorizedBoundaryLoss, segmentation::MergeTarget::ClosestColour,
+            options.island_max_delta_e);
+    }
     if (options.min_region_area_mm2 > 0.0 && mmPerPx > 0.0) {
         segmentation::merge_small_regions(
             seg,

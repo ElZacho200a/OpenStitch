@@ -1169,3 +1169,47 @@ TEST_CASE("auto_digitize : meme resultat avec un seul fil et avec plusieurs") {
         }
     }
 }
+
+TEST_CASE("nettoyage des ilots : fusion par couleur proche, desactive par defaut") {
+    // Rouge à gauche, bleu à droite, un îlot 8x8 (64 mm² à 1 mm/px) de teinte proche du bleu mais
+    // collé au rouge par la plus longue frontière.
+    segmentation::Segmentation seg;
+    seg.width = 40;
+    seg.height = 20;
+    seg.labels.assign(800, 0);
+    for (int y = 0; y < 20; ++y) {
+        for (int x = 0; x < 40; ++x) {
+            seg.labels[static_cast<std::size_t>(y * 40 + x)] = x < 20 ? 1U : 2U;
+        }
+    }
+    for (int y = 0; y < 8; ++y) {
+        for (int x = 12; x < 20; ++x) {
+            seg.labels[static_cast<std::size_t>(y * 40 + x)] = 3U;
+        }
+    }
+    seg.region_slots.resize(3);
+    seg.region_slots[0] = segmentation::Region{RegionId{1}, {200, 30, 30}, 400 - 64};
+    seg.region_slots[1] = segmentation::Region{RegionId{2}, {15, 101, 186}, 400};
+    seg.region_slots[2] = segmentation::Region{RegionId{3}, {20, 90, 200}, 64};
+
+    AutoOptions base = opts();
+    base.mm_per_px = Millimeters{1.0};
+    base.min_region_area_mm2 = 3.0;
+    IdGenerator<ObjectId> idsA;
+    const auto before = auto_digitize(seg, idsA, base);
+    REQUIRE(before.has_value());
+    CHECK(before->embroideries.size() == 3);
+
+    AutoOptions cleaned = base;
+    cleaned.island_area_mm2 = 100.0;
+    IdGenerator<ObjectId> idsB;
+    const auto after = auto_digitize(seg, idsB, cleaned);
+    REQUIRE(after.has_value());
+    CHECK(after->embroideries.size() == 2);
+
+    // Déterminisme.
+    IdGenerator<ObjectId> idsC;
+    const auto again = auto_digitize(seg, idsC, cleaned);
+    REQUIRE(again.has_value());
+    CHECK(again->embroideries.size() == after->embroideries.size());
+}

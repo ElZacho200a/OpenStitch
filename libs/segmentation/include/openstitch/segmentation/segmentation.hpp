@@ -147,9 +147,21 @@ std::size_t reassign_to_neighbours(Segmentation& seg, std::vector<char> pending,
 // décide du type de point. 0,5 aligne donc le seuil sur l'aire vectorisée
 // (audit marine : des régions de 3 mm² en pixels donnaient des contours de
 // 2,5 mm²).
+//
+// `target` : voisine qui absorbe. `LongestBorder` (défaut) : la plus longue frontière commune.
+// `ClosestColour` (nettoyage des îlots) : la voisine de couleur la plus proche en CIELAB (écart
+// ΔE76), égalité -> frontière la plus longue puis plus petit identifiant ; `max_delta_e` > 0 refuse
+// toute voisine plus éloignée (l'îlot reste alors tel quel), 0 = pas de limite.
+enum class MergeTarget { LongestBorder, ClosestColour };
+
 std::size_t merge_small_regions(Segmentation& seg, std::size_t min_px,
                                 std::optional<std::array<std::uint8_t, 3>> excluded = {},
-                                double boundary_weight = 0.0);
+                                double boundary_weight = 0.0,
+                                MergeTarget target = MergeTarget::LongestBorder,
+                                double max_delta_e = 0.0);
+
+// Écart de couleur CIELAB (ΔE76, illuminant D65) entre deux couleurs sRGB 8 bits.
+[[nodiscard]] double cielab_delta_e(std::array<std::uint8_t, 3> a, std::array<std::uint8_t, 3> b);
 
 // Seuils de la recommandation « ignorer le fond » (§ Lot A, audit marine).
 struct BackgroundCandidateOptions {

@@ -828,6 +828,12 @@ void MainWindow::buildMenus() {
         tr("Fusionne la région dans la voisine avec laquelle elle partage la plus longue "
            "frontière (Ctrl+Maj+M)."));
     connect(absorbAct_, &QAction::triggered, this, &MainWindow::absorbSelectedRegionIntoNeighbour);
+    cleanIslandsAct_ = segMenu->addAction(tr("Nettoyer les petits &îlots…"));
+    cleanIslandsAct_->setObjectName(QStringLiteral("action_cleanIslands"));
+    cleanIslandsAct_->setToolTip(
+        tr("Sur toute l'image : fusionne chaque petite région dans la voisine dont la couleur est "
+           "la plus proche (comme « boucher les trous »)."));
+    connect(cleanIslandsAct_, &QAction::triggered, this, &MainWindow::cleanIslands);
     segMenu->addSeparator();
     selectSameColorAct_ = segMenu->addAction(tr("Sélectionner la &même couleur"));
     selectSameColorAct_->setObjectName(QStringLiteral("action_selectSameColor"));
@@ -9050,6 +9056,10 @@ void MainWindow::updateActions() {
     setEnabledWithReason(
         absorbAct_, pickedRegions == 1,
         tr("Sélectionnez une seule région : elle sera fusionnée dans sa voisine."));
+    setEnabledWithReason(cleanIslandsAct_,
+                         project_.segmentation.has_value() &&
+                             project_.segmentation->region_count() > 1,
+                         tr("Segmentez d'abord l'image (menu Segmentation)."));
     setEnabledWithReason(selectAllRegionsAct_,
                          project_.segmentation.has_value() &&
                              project_.segmentation->region_count() > 0,

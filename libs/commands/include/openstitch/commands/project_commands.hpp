@@ -134,6 +134,55 @@ private:
     segmentation::Region removedRegion_;
 };
 
+// Nettoyage des îlots : chaque région de moins de `min_px` pixels est fusionnée dans la voisine
+// de couleur la plus proche (`segmentation::merge_small_regions`, `ClosestColour`). L'annulation
+// restaure les étiquettes modifiées et les régions fusionnées (copie des emplacements de régions,
+// peu volumineuse ; les étiquettes ne sont retenues que pour les pixels réaffectés).
+class CleanIslandsCommand final : public ICommand {
+public:
+    CleanIslandsCommand(std::size_t min_px, std::optional<std::array<std::uint8_t, 3>> excluded,
+                        double max_delta_e, double boundary_weight = 0.0)
+        : minPx_(min_px), excluded_(excluded), maxDeltaE_(max_delta_e),
+          boundaryWeight_(boundary_weight) {}
+
+    void apply(document::Project& project) override {
+        auto& seg = *project.segmentation;
+        const std::vector<std::uint32_t> before = seg.labels;
+        slots_ = seg.region_slots;
+        merges_ =
+            segmentation::merge_small_regions(seg, minPx_, excluded_, boundaryWeight_,
+                                              segmentation::MergeTarget::ClosestColour, maxDeltaE_);
+        changed_.clear();
+        oldLabels_.clear();
+        for (std::size_t i = 0; i < before.size(); ++i) {
+            if (before[i] != seg.labels[i]) {
+                changed_.push_back(static_cast<std::uint32_t>(i));
+                oldLabels_.push_back(before[i]);
+            }
+        }
+    }
+    void revert(document::Project& project) override {
+        auto& seg = *project.segmentation;
+        for (std::size_t k = 0; k < changed_.size(); ++k) {
+            seg.labels[changed_[k]] = oldLabels_[k];
+        }
+        seg.region_slots = slots_;
+    }
+    [[nodiscard]] std::string name() const override { return "Nettoyer les îlots"; }
+    // Nombre de régions fusionnées par le dernier `apply`.
+    [[nodiscard]] std::size_t merges() const { return merges_; }
+
+private:
+    std::size_t minPx_;
+    std::optional<std::array<std::uint8_t, 3>> excluded_;
+    double maxDeltaE_;
+    double boundaryWeight_;
+    std::size_t merges_{0};
+    std::vector<std::uint32_t> changed_;
+    std::vector<std::uint32_t> oldLabels_;
+    std::vector<std::optional<segmentation::Region>> slots_;
+};
+
 // Change la couleur représentative d'une région.
 class RecolorRegionCommand final : public ICommand {
 public:

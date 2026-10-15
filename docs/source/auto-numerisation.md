@@ -100,6 +100,42 @@ comportement historique. L'import SVG direct (`auto_digitize_vectors`) reçoit
 l'angle naturel et la sous-couche, mais pas la règle de voisinage (aucune
 segmentation, donc aucune adjacence connue) — limite documentée.
 
+## Nettoyage des îlots (fusion par couleur proche)
+
+La quantification laisse de petits îlots collés à de grands aplats : des enclaves qui deviennent
+chacune un objet (et au moins une coupe). Le nettoyage des îlots fait **une passe sur toute
+l'image** : chaque région de moins de *A* mm² est fusionnée dans la voisine dont la **couleur est
+la plus proche**, au sens CIELAB (ΔE76), et non dans celle qui partage la plus longue frontière
+(règle de `min_region_area_mm2`). C'est l'équivalent « segmentation » de la fonction *boucher les
+trous*.
+
+- **Règle de choix** : voisine de ΔE minimal ; à égalité (1e-9), frontière commune la plus longue,
+  puis plus petit identifiant. La région absorbante garde sa couleur. Les plus petites régions sont
+  traitées d'abord, donc un amas d'îlots se résorbe de proche en proche. `max_delta_e` > 0 refuse
+  une voisine plus éloignée (l'îlot reste tel quel) ; 0 = sans limite.
+- **Lib** : `segmentation::merge_small_regions(seg, min_px, excluded, boundary_weight,
+  MergeTarget::ClosestColour, max_delta_e)` et `cielab_delta_e(a, b)`.
+- **CLI** : `digitize --island-cleanup MM2 [--island-max-delta-e N]` (`AutoOptions::island_area_mm2`,
+  `island_max_delta_e`), appliqué avant `--min-region-mm2`. Désactivé par défaut.
+- **Bureau** : menu *Segmentation → Nettoyer les petits îlots…* (aire maximale en mm², écart de
+  couleur maximal). Un seul pas d'annulation (`commands::CleanIslandsCommand`, qui restaure les
+  étiquettes réaffectées et les régions fusionnées). Si des objets vectoriels existent déjà pour des
+  régions fusionnées, le même choix que pour *Fusionner* est proposé (conserver ou supprimer).
+
+**Mesures** (illustration de navire 300 mm, 12 couleurs, fond ignoré ; coupes du DST sans
+optimisation) :
+
+| `--island-cleanup` | objets | coupes | surface non couverte |
+|---|---|---|---|
+| 0 (désactivé) | 344 | 887 | 8,0 % |
+| 20 mm² | 173 | 681 | 6,9 % |
+| 60 mm² | 113 | 592 | 6,0 % |
+
+**Réserve.** Un trait fin sombre (mât, hauban) est un îlot comme un autre : à 20 mm², les haubans
+du navire se fondent dans les voiles sombres. À associer à `--dark-lines`, qui sépare les traits
+avant le nettoyage : 369 objets, 1 359 coupes, haubans lisibles (contre 1 499 coupes avec les
+traits seuls).
+
 ## Chevauchement entre remplissages voisins et ordre en couches (Lot C)
 
 **Cause des interstices.** Trois écarts s'additionnaient le long de chaque

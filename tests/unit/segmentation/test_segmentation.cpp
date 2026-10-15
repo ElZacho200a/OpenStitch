@@ -768,3 +768,83 @@ TEST_CASE("segmentation : meme resultat avec un seul fil et avec plusieurs") {
         }
     }
 }
+
+namespace {
+
+// Rouge à gauche (1), bleu à droite (2) ; un îlot 2x2 (3) en haut, au bord de la zone rouge : il
+// partage 4 arêtes avec le rouge et 2 avec le bleu, mais sa couleur est proche du bleu.
+Segmentation island_scene() {
+    Segmentation seg;
+    seg.width = 12;
+    seg.height = 6;
+    seg.labels.assign(72, 0);
+    for (int y = 0; y < 6; ++y) {
+        for (int x = 0; x < 12; ++x) {
+            seg.labels[static_cast<std::size_t>(y * 12 + x)] = x < 6 ? 1U : 2U;
+        }
+    }
+    for (int y = 0; y < 2; ++y) {
+        for (int x = 4; x < 6; ++x) {
+            seg.labels[static_cast<std::size_t>(y * 12 + x)] = 3U;
+        }
+    }
+    seg.region_slots.resize(3);
+    seg.region_slots[0] = Region{RegionId{1}, {200, 30, 30}, 32};
+    seg.region_slots[1] = Region{RegionId{2}, {15, 101, 186}, 36};
+    seg.region_slots[2] = Region{RegionId{3}, {20, 90, 200}, 4};
+    return seg;
+}
+
+} // namespace
+
+TEST_CASE("cielab_delta_e : nul pour la meme couleur, grand entre rouge et bleu") {
+    CHECK(cielab_delta_e({10, 20, 30}, {10, 20, 30}) == 0.0);
+    CHECK(cielab_delta_e({200, 30, 30}, {15, 101, 186}) > 50.0);
+    CHECK(cielab_delta_e({20, 90, 200}, {15, 101, 186}) < 20.0);
+    // Symétrique.
+    CHECK(cielab_delta_e({1, 2, 3}, {200, 100, 50}) == cielab_delta_e({200, 100, 50}, {1, 2, 3}));
+}
+
+TEST_CASE("ilot : voisine de couleur la plus proche, pas de plus longue frontiere") {
+    // Par frontière : le rouge (4 arêtes contre 2).
+    auto byBorder = island_scene();
+    CHECK(merge_small_regions(byBorder, 10) == 1);
+    CHECK(byBorder.labels[4] == 1U);
+    // Par couleur : le bleu.
+    auto byColour = island_scene();
+    CHECK(merge_small_regions(byColour, 10, std::nullopt, 0.0, MergeTarget::ClosestColour) == 1);
+    CHECK(byColour.labels[4] == 2U);
+    CHECK_FALSE(byColour.region_slots[2].has_value());
+    CHECK(byColour.region_slots[1]->pixel_count == 40);
+    CHECK(byColour.region_slots[0]->pixel_count == 32);
+    // La région absorbante garde sa couleur.
+    CHECK(byColour.region_slots[1]->rgb == std::array<std::uint8_t, 3>{15, 101, 186});
+}
+
+TEST_CASE("ilot : ecart de couleur maximal refuse une voisine trop eloignee") {
+    auto seg = island_scene();
+    seg.region_slots[2]->rgb = {120, 120, 120}; // gris : loin des deux voisines
+    CHECK(merge_small_regions(seg, 10, std::nullopt, 0.0, MergeTarget::ClosestColour, 5.0) == 0);
+    CHECK(seg.labels[4] == 3U);
+    CHECK(seg.region_slots[2].has_value());
+    // Sans limite : fusionné quand même.
+    CHECK(merge_small_regions(seg, 10, std::nullopt, 0.0, MergeTarget::ClosestColour, 0.0) == 1);
+}
+
+TEST_CASE("ilot : une grande region n'est jamais fusionnee, le fond ignore n'absorbe pas") {
+    auto big = island_scene();
+    CHECK(merge_small_regions(big, 3, std::nullopt, 0.0, MergeTarget::ClosestColour) == 0);
+    auto excluded = island_scene();
+    // Le bleu est le fond ignoré : l'îlot se rabat sur le rouge malgré la couleur.
+    CHECK(merge_small_regions(excluded, 10, std::array<std::uint8_t, 3>{15, 101, 186}, 0.0,
+                              MergeTarget::ClosestColour) == 1);
+    CHECK(excluded.labels[4] == 1U);
+}
+
+TEST_CASE("ilot : resultat deterministe") {
+    auto a = island_scene();
+    auto b = island_scene();
+    (void)merge_small_regions(a, 10, std::nullopt, 0.0, MergeTarget::ClosestColour);
+    (void)merge_small_regions(b, 10, std::nullopt, 0.0, MergeTarget::ClosestColour);
+    CHECK(a.labels == b.labels);
+}
