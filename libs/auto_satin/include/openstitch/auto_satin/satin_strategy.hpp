@@ -14,20 +14,22 @@
 
 namespace openstitch::auto_satin {
 
-enum class SatinStrategy {
-    Skeleton, // Zhang-Suen, axes, traversées orientées (moteur actuel, défaut)
-};
-
 // Identifiant stable (CLI, rapports) et libellé lisible (interface).
 [[nodiscard]] std::string_view strategy_id(SatinStrategy strategy);
 [[nodiscard]] std::string_view strategy_label(SatinStrategy strategy);
 [[nodiscard]] std::vector<SatinStrategy> available_strategies();
 
-// Génère les traversées de la région avec la stratégie demandée. Le défaut reproduit
-// exactement `generate_skeleton_satin`. Déterministe.
+// Génère les traversées de la région avec la stratégie `params.strategy`. Le défaut reproduit
+// exactement `generate_skeleton_satin`. Déterministe. Toute génération de satin automatique
+// passe par ici (pas par `generate_skeleton_satin` directement) pour respecter le choix de
+// l'utilisateur.
+[[nodiscard]] Result<SkeletonSatinResult> generate_satin(const geometry::PathSet& region,
+                                                         const SkeletonSatinParameters& params);
+
+// Même chose en imposant la stratégie (comparaisons, tests).
 [[nodiscard]] Result<SkeletonSatinResult> generate_satin(SatinStrategy strategy,
                                                          const geometry::PathSet& region,
-                                                         const SkeletonSatinParameters& params);
+                                                         SkeletonSatinParameters params);
 
 // Mesures géométriques du résultat d'une stratégie, comparables d'une stratégie à l'autre.
 // Elles décrivent les traversées AVANT finitions : une bonne couverture ici ne prouve pas

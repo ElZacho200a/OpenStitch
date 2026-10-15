@@ -40,12 +40,17 @@ bool same_crossings(const as::SkeletonSatinResult& a, const as::SkeletonSatinRes
 
 } // namespace
 
-TEST_CASE("strategy: le squelette est la seule strategie livree", "[satin_strategy]") {
+TEST_CASE("strategy: strategies livrees, identifiants stables, squelette par defaut",
+          "[satin_strategy]") {
     const auto all = as::available_strategies();
-    REQUIRE(all.size() == 1);
+    REQUIRE(all.size() == 2);
     CHECK(all.front() == as::SatinStrategy::Skeleton);
+    CHECK(as::SkeletonSatinParameters{}.strategy == as::SatinStrategy::Skeleton);
     CHECK(as::strategy_id(as::SatinStrategy::Skeleton) == "skeleton");
-    CHECK_FALSE(as::strategy_label(as::SatinStrategy::Skeleton).empty());
+    CHECK(as::strategy_id(as::SatinStrategy::ParallelSweep) == "parallel_sweep");
+    for (const auto s : all) {
+        CHECK_FALSE(as::strategy_label(s).empty());
+    }
 }
 
 TEST_CASE("strategy: la facade reproduit generate_skeleton_satin octet pour octet",
@@ -57,6 +62,9 @@ TEST_CASE("strategy: la facade reproduit generate_skeleton_satin octet pour octe
         const as::SkeletonSatinParameters params;
         const auto direct = as::generate_skeleton_satin(*region, params);
         const auto viaFacade = as::generate_satin(as::SatinStrategy::Skeleton, *region, params);
+        const auto viaParams = as::generate_satin(*region, params);
+        REQUIRE(viaParams.has_value());
+        CHECK(same_crossings(*direct, *viaParams));
         REQUIRE(direct.has_value());
         REQUIRE(viaFacade.has_value());
         CHECK(same_crossings(*direct, *viaFacade));

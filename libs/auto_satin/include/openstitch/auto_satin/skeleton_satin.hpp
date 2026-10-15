@@ -41,7 +41,24 @@ inline AutoSatinParameters stable_skeleton_analysis() {
     return p;
 }
 
+// Méthode de génération des traversées d'une région (docs/auto-satin-research.md).
+// Le squelette est la référence et le défaut ; une méthode n'est ajoutée ici que
+// lorsqu'elle est réellement livrée.
+enum class SatinStrategy {
+    Skeleton,      // Zhang-Suen, axes, traversées orientées (moteur actuel)
+    ParallelSweep, // balayage parallèle : droites à angle constant, bandes continues
+};
+
 struct SkeletonSatinParameters {
+    // Méthode utilisée par `generate_satin` (façade). `generate_skeleton_satin` l'ignore.
+    SatinStrategy strategy{SatinStrategy::Skeleton};
+
+    // Balayage parallèle seulement : angle global des traversées. Auto (défaut) : perpendiculaire
+    // à l'axe principal d'inertie de la région (les fils traversent la largeur de la forme) ;
+    // horizontal si la forme est quasi isotrope. Sinon `sweep_angle_rad` (radians, repère modèle).
+    bool sweep_auto_angle{true};
+    double sweep_angle_rad{0.0};
+
     AutoSatinParameters analysis{stable_skeleton_analysis()}; // rasterisation, élagage du graphe
 
     Micrometers spacing{400};           // ρ : espacement cible au bord le plus écarté
