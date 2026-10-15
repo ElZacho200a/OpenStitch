@@ -111,6 +111,16 @@ struct SkeletonSatinResult {
 [[nodiscard]] Result<SkeletonSatinResult>
 generate_skeleton_satin(const geometry::PathSet& region, const SkeletonSatinParameters& params);
 
+// État de la mémoire des résultats de `generate_skeleton_satin` (partagée par tout le processus,
+// bornée en octets) : pour les tests et le banc, jamais pour décider d'un résultat.
+struct SkeletonResultCacheStats {
+    std::size_t entries{0};
+    std::size_t bytes{0};
+    std::size_t hits{0};
+    std::size_t misses{0};
+};
+[[nodiscard]] SkeletonResultCacheStats skeleton_result_cache_stats();
+
 // SVG de diagnostic (mm, Y vers le bas) : contour de la région, axes de référence
 // (tirets), traversées (trait fin) et zigzag de chaque colonne. Pour inspecter
 // traversées, orientations et zones non couvertes sans lancer l'interface. Pure,
