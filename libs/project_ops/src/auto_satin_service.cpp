@@ -2,7 +2,7 @@
 // Service auto-satin Qt-free : équivalent de `MainWindow::stitchParamsForType` (type « satin »),
 // `previewAutoSatin` et `pristineSatinContour` du bureau. Aucun algorithme n'est réimplémenté :
 // contour brut = `vectorization::vectorize_region`, colonnes =
-// `auto_satin::generate_skeleton_satin`, statut = `auto_satin::analyze_region`.
+// `auto_satin::generate_satin`, statut = `auto_satin::analyze_region`.
 #include "openstitch/project_ops/auto_satin_service.hpp"
 
 #include <algorithm>
@@ -11,25 +11,15 @@
 #include <vector>
 
 #include "openstitch/auto_satin/auto_satin.hpp"
+#include "openstitch/auto_satin/satin_strategy.hpp"
 #include "openstitch/auto_satin/skeleton_satin.hpp"
 #include "openstitch/geometry/boolean.hpp"
+#include "openstitch/stitch_generation/auto_satin_engine.hpp"
 #include "openstitch/vectorization/vectorize.hpp"
 
 namespace openstitch::project_ops {
 
 namespace {
-
-// Paramètres du moteur déduits des réglages du document (même correspondance que le bureau).
-auto_satin::SkeletonSatinParameters engine_parameters(const document::AutoSatinParams& p) {
-    auto_satin::SkeletonSatinParameters e;
-    e.spacing = p.spacing;
-    e.compact_axis = p.compact_axis;
-    e.measure_coverage = true;
-    for (const auto& g : p.guides) {
-        e.guides.push_back({g.anchor, g.angle.radians, g.absolute});
-    }
-    return e;
-}
 
 void add_message(std::vector<std::string>& messages, const std::string& message) {
     if (std::find(messages.begin(), messages.end(), message) == messages.end()) {
@@ -88,6 +78,8 @@ Result<AutoSatinPlan> plan_auto_satin(const document::Project& project, ObjectId
         plan.params.spacing = *request.spacing;
     }
     plan.params.compact_axis = request.compact_axis;
+    plan.params.strategy = request.strategy;
+    plan.params.sweep_angle = request.sweep_angle;
     plan.params.guides = request.guides;
 
     if (current->paths.empty()) {
@@ -105,7 +97,8 @@ Result<AutoSatinPlan> plan_auto_satin(const document::Project& project, ObjectId
         }
     }
 
-    const auto engine = engine_parameters(plan.params);
+    auto engine = stitch_generation::auto_satin_engine(plan.params);
+    engine.measure_coverage = true;
     double area_sum = 0.0;
     double covered_sum = 0.0;
     double uncovered_mm2 = 0.0;
@@ -115,7 +108,7 @@ Result<AutoSatinPlan> plan_auto_satin(const document::Project& project, ObjectId
     const auto analysis_params = auto_satin::stable_skeleton_analysis();
 
     for (const auto& set : *source_paths) {
-        const auto res = auto_satin::generate_skeleton_satin(set, engine);
+        const auto res = auto_satin::generate_satin(set, engine);
         if (!res) {
             add_message(plan.messages, res.error().message);
             continue;

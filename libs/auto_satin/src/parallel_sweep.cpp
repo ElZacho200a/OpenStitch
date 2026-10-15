@@ -12,6 +12,7 @@
 #include "coverage.hpp"
 #include "geometry_detail.hpp"
 #include "openstitch/geometry/moments.hpp"
+#include "openstitch/geometry/polyline.hpp"
 
 namespace openstitch::auto_satin {
 
@@ -50,8 +51,11 @@ struct Band {
 
 } // namespace
 
-Result<SkeletonSatinResult> generate_parallel_sweep(const geometry::PathSet& region,
+Result<SkeletonSatinResult> generate_parallel_sweep(const geometry::PathSet& curved,
                                                     const SkeletonSatinParameters& params) {
+    // Les courbes sont aplaties (50 µm, comme la génération de points) : la région est ensuite
+    // un polygone, quelle que soit l'origine de l'appelant (aperçu, API, export).
+    const geometry::PathSet region = geometry::flatten_to_polygon(curved, Micrometers{50});
     SkeletonSatinResult result;
     auto& diag = result.diagnostics;
     diag.orphan_guides = static_cast<int>(params.guides.size());

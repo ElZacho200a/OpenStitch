@@ -27,6 +27,7 @@
 #include "openstitch/auto_satin/graph_cleanup.hpp"
 #include "openstitch/auto_satin/medial_axis_satin.hpp"
 #include "openstitch/geometry/moments.hpp"
+#include "openstitch/geometry/polyline.hpp"
 #include "orientation.hpp"
 
 namespace openstitch::auto_satin {
@@ -1177,8 +1178,11 @@ generate_skeleton_satin_uncached(const geometry::PathSet& region,
     return finish_from_chains(region, params, std::move(chains), std::move(result));
 }
 
-Result<SkeletonSatinResult> generate_medial_axis_satin(const geometry::PathSet& region,
+Result<SkeletonSatinResult> generate_medial_axis_satin(const geometry::PathSet& curved,
                                                        const SkeletonSatinParameters& params) {
+    // Les courbes sont aplaties (50 µm, comme la génération de points) : le diagramme de
+    // Voronoï ne traite que des segments.
+    const geometry::PathSet region = geometry::flatten_to_polygon(curved, Micrometers{50});
     SkeletonSatinResult result;
     if (params.spacing.value < 50) {
         return std::unexpected(

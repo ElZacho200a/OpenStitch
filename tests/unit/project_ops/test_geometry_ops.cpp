@@ -3,6 +3,7 @@
 // dispatcher `apply_batch`.
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
+#include <numbers>
 
 #include <cmath>
 #include <sstream>
@@ -565,4 +566,40 @@ TEST_CASE("geometry_ops sont deterministes", "[project_ops][geometry]") {
     REQUIRE(s1 != nullptr);
     REQUIRE(s2 != nullptr);
     CHECK(s1->params == s2->params);
+}
+
+TEST_CASE("auto_satin accepte une methode et la pose sur l'objet",
+          "[project_ops][geometry][auto_satin]") {
+    Env env;
+    const auto shape =
+        env.run("add_shape", json{{"shape", "ellipse"}, {"width_mm", 10.0}, {"height_mm", 10.0}});
+    REQUIRE(shape.ok);
+    const std::uint64_t id = shape.result["id"].get<std::uint64_t>();
+    const std::string original = signature(env.project);
+
+    // Methode inconnue ou mal typee : erreur d'usage, document intact.
+    CHECK(env.run("auto_satin", json{{"object", id}, {"strategy", "voronoi_v9"}}).error.code ==
+          "E_USAGE");
+    CHECK(env.run("auto_satin", json{{"object", id}, {"strategy", 3}}).error.code == "E_USAGE");
+    CHECK(env.run("auto_satin", json{{"object", id}, {"sweep_angle_deg", 900.0}}).error.code ==
+          "E_OUT_OF_RANGE");
+    CHECK(signature(env.project) == original);
+
+    const auto r =
+        env.run("auto_satin",
+                json{{"object", id}, {"strategy", "parallel_sweep"}, {"sweep_angle_deg", 30.0}});
+    REQUIRE(r.ok);
+    const auto& params =
+        std::get<document::AutoSatinParams>(env.project.findEmbroidery(ObjectId{id})->params);
+    CHECK(params.strategy == document::AutoSatinStrategy::ParallelSweep);
+    REQUIRE(params.sweep_angle.has_value());
+    CHECK(params.sweep_angle->radians == std::numbers::pi / 6.0);
+    REQUIRE(env.stack.undo(env.project));
+    CHECK(signature(env.project) == original);
+
+    // Le meme champ se regle ensuite par set_params, et se relit par inspect.
+    const auto again = env.run("auto_satin", json{{"object", id}, {"strategy", "medial_axis"}});
+    REQUIRE(again.ok);
+    CHECK(std::get<document::AutoSatinParams>(env.project.findEmbroidery(ObjectId{id})->params)
+              .strategy == document::AutoSatinStrategy::MedialAxis);
 }

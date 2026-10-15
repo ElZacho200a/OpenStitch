@@ -353,6 +353,14 @@ json params_to_json(const document::StitchParams& params) {
                 if (p.compact_axis) {
                     j["compactAxis"] = true;
                 }
+                // Méthode : par nom, seulement si elle n'est pas le défaut (le fichier reste
+                // lisible par une version antérieure tant que le squelette est utilisé).
+                if (p.strategy != document::AutoSatinStrategy::Skeleton) {
+                    j["strategy"] = std::string(document::auto_satin_strategy_id(p.strategy));
+                }
+                if (p.sweep_angle) {
+                    j["sweepAngle"] = p.sweep_angle->radians;
+                }
                 if (p.entry_point) {
                     j["entryPoint"] = {{"x", p.entry_point->x.value},
                                        {"y", p.entry_point->y.value}};
@@ -635,6 +643,30 @@ Result<document::StitchParams> params_from_json(const json& j) {
         p.lock_passes = j.value("lockPasses", 2);
         p.underlay_mode = static_cast<document::UnderlayMode>(j.value("underlayMode", 0));
         p.compact_axis = j.value("compactAxis", false);
+        if (j.contains("strategy")) {
+            // Une méthode inconnue (fichier d'une version plus récente) est REFUSÉE : la
+            // remplacer par le squelette ferait changer le satin à l'insu de l'utilisateur.
+            const auto id = j.at("strategy");
+            const auto parsed = id.is_string()
+                                    ? document::parse_auto_satin_strategy(id.get<std::string>())
+                                    : std::nullopt;
+            if (!parsed) {
+                return fail(ErrorCategory::UnsupportedFormat,
+                            "Méthode d'auto-satin inconnue dans le projet (" +
+                                (id.is_string() ? "« " + id.get<std::string>() + " »"
+                                                : std::string("valeur invalide")) +
+                                "). Ce projet vient peut-être d'une version plus récente "
+                                "d'OpenStitch.");
+            }
+            p.strategy = *parsed;
+        }
+        if (j.contains("sweepAngle")) {
+            const auto& a = j.at("sweepAngle");
+            if (!a.is_number() || !std::isfinite(a.get<double>())) {
+                return fail(ErrorCategory::InvalidFile, "sweepAngle : angle invalide");
+            }
+            p.sweep_angle = Angle{a.get<double>()};
+        }
         if (j.contains("entryPoint")) {
             p.entry_point = Vec2um{Micrometers{j.at("entryPoint").at("x")},
                                    Micrometers{j.at("entryPoint").at("y")}};

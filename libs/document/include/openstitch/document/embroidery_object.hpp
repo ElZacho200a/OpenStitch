@@ -6,6 +6,7 @@
 #include <cstdint>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <variant>
 #include <vector>
 
@@ -232,7 +233,45 @@ struct AutoSatinGuide {
 // specs/plans/satin-squelette-traversees.md). Comme le tatami et le directionnel,
 // l'objet suit la région de son objet vectoriel source : les traversées sont
 // recalculées à la demande (ADR-014), jamais stockées. Aucun rail ni barreau.
+// Méthode de calcul des traversées d'un auto-satin (docs/auto-satin-research.md). Les valeurs
+// sont persistées par NOM dans le `.osp` (jamais par entier) ; le squelette est le défaut.
+enum class AutoSatinStrategy : std::uint8_t {
+    Skeleton = 0,      // squelette raster Zhang-Suen (moteur historique)
+    ParallelSweep = 1, // balayage parallèle à angle constant
+    MedialAxis = 2,    // axe médian vectoriel (Voronoï des segments du contour)
+};
+
+// Identifiant stable (fichier `.osp`, CLI, API programmatique) et lecture inverse. `nullopt` pour
+// un nom inconnu : l'appelant refuse explicitement, il ne substitue jamais une autre méthode.
+[[nodiscard]] constexpr std::string_view auto_satin_strategy_id(AutoSatinStrategy strategy) {
+    switch (strategy) {
+    case AutoSatinStrategy::Skeleton:
+        return "skeleton";
+    case AutoSatinStrategy::ParallelSweep:
+        return "parallel_sweep";
+    case AutoSatinStrategy::MedialAxis:
+        return "medial_axis";
+    }
+    return "skeleton";
+}
+
+[[nodiscard]] constexpr std::optional<AutoSatinStrategy>
+parse_auto_satin_strategy(std::string_view id) {
+    for (const auto s : {AutoSatinStrategy::Skeleton, AutoSatinStrategy::ParallelSweep,
+                         AutoSatinStrategy::MedialAxis}) {
+        if (id == auto_satin_strategy_id(s)) {
+            return s;
+        }
+    }
+    return std::nullopt;
+}
+
 struct AutoSatinParams {
+    // Choix de l'utilisateur pour cette région. Un changement régénère le satin : annulable.
+    AutoSatinStrategy strategy{AutoSatinStrategy::Skeleton};
+    // Balayage parallèle seulement : angle des traversées (modèle, Y vers le haut). Absent :
+    // automatique (perpendiculaire à l'axe principal de la forme).
+    std::optional<Angle> sweep_angle;
     std::vector<AutoSatinGuide> guides;
     Micrometers spacing{400}; // espacement cible entre traversées (au bord le plus écarté)
     // Fractionnement des traversées longues : au-delà de `split_threshold` (Lmax),
