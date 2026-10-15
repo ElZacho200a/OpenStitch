@@ -27,8 +27,21 @@ enum class StopMode : std::uint8_t { Native, AsColorChange, Drop };
 // Changements de couleur : `Emit` = écrits ; `Drop` = supprimés (design monochrome).
 enum class ColorChangeMode : std::uint8_t { Emit, Drop };
 
+// Point de départ de la machine (origine du fichier). Les formats machine codent des déplacements
+// relatifs : `FirstPoint` (historique) place l'origine sur le premier point cousu ; `Center` sur le
+// centre de la boîte englobante des points cousus ; `Custom` sur `ExportStart::point`. Seul le
+// saut d'approche initial change : l'ordre et la position des points du motif sont intacts.
+// Appliqué par `project_io::export_machine_file`, jamais par les codecs.
+enum class StartMode : std::uint8_t { FirstPoint, Center, Custom };
+
+struct ExportStart {
+    StartMode mode{StartMode::FirstPoint};
+    Vec2um point{}; // µm, repère du document ; lu seulement si mode == Custom
+};
+
 struct MachineExportOptions {
     std::string design_name{"OPENSTITCH"}; // nom du motif (PES : 16 caractères max, ASCII)
+    ExportStart start{};
     // Couleur RGB de chaque BLOC de couleur, dans l'ordre (cf. `stitch::ColorBlock` /
     // `stitch_analysis::color_blocks`). Vide = couleurs par défaut déterministes ; trop court =
     // la dernière couleur est répétée.

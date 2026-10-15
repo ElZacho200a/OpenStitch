@@ -27,6 +27,30 @@ private slots:
         QSettings().clear();
     }
 
+    void startPointDefaultsToFirstPointAndReachesTheCaller() {
+        using openstitch::formats::StartMode;
+        MachineExportDialog dialog(summarizeNothing(), QStringLiteral("dst"), nullptr);
+        auto* mode = dialog.findChild<QComboBox*>(QStringLiteral("combo_exportStartMode"));
+        auto* x = dialog.findChild<QDoubleSpinBox*>(QStringLiteral("spin_exportStartX"));
+        auto* y = dialog.findChild<QDoubleSpinBox*>(QStringLiteral("spin_exportStartY"));
+        QVERIFY(mode != nullptr && x != nullptr && y != nullptr);
+        QCOMPARE(dialog.options().start.mode, StartMode::FirstPoint);
+        QVERIFY(!x->isEnabled() && !y->isEnabled());
+
+        mode->setCurrentIndex(mode->findData(static_cast<int>(StartMode::Center)));
+        QCOMPARE(dialog.options().start.mode, StartMode::Center);
+        QVERIFY(!x->isEnabled());
+
+        mode->setCurrentIndex(mode->findData(static_cast<int>(StartMode::Custom)));
+        QVERIFY(x->isEnabled() && y->isEnabled());
+        x->setValue(-12.5);
+        y->setValue(30.0);
+        const auto options = dialog.options();
+        QCOMPARE(options.start.mode, StartMode::Custom);
+        QCOMPARE(options.start.point.x.value, -12'500);
+        QCOMPARE(options.start.point.y.value, 30'000);
+    }
+
     void reductionIsOffByDefault() {
         MachineExportDialog dialog(summarizeNothing(), QStringLiteral("dst"), nullptr);
         auto* reduce = dialog.findChild<QCheckBox*>(QStringLiteral("check_exportReduceTrims"));
