@@ -52,6 +52,9 @@ private:
     QCheckBox* trims_{nullptr};
     QComboBox* stops_{nullptr};
     QCheckBox* colorChanges_{nullptr};
+    QComboBox* startMode_{nullptr};
+    QDoubleSpinBox* startX_{nullptr};
+    QDoubleSpinBox* startY_{nullptr};
     QCheckBox* reduceTrims_{nullptr};
     QCheckBox* between_{nullptr};
     QCheckBox* within_{nullptr};

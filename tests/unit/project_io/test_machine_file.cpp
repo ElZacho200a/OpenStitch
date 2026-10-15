@@ -75,6 +75,68 @@ TEST_CASE("export_machine_file('dst') : memes octets que encode_dst(effective_se
     fs::remove(path);
 }
 
+TEST_CASE("with_start_point : FirstPoint est l'identite, sinon deux sauts de tete seulement") {
+    const auto effective = stitch_generation::effective_sequence(square_project());
+    REQUIRE(effective.has_value());
+
+    CHECK(project_io::with_start_point(*effective, {}).commands == effective->commands);
+
+    formats::ExportStart start;
+    start.mode = formats::StartMode::Custom;
+    start.point = um(-40'000, 25'000);
+    const auto moved = project_io::with_start_point(*effective, start);
+    REQUIRE(moved.commands.size() == effective->commands.size() + 2);
+    CHECK(moved.commands[0].pos == start.point);
+    CHECK(moved.commands[0].type == stitch::CommandType::Jump);
+    CHECK(moved.commands[1].pos == effective->commands.front().pos);
+    CHECK(moved.commands[1].type == stitch::CommandType::Jump);
+    // Ordre et positions du motif intacts.
+    CHECK(std::equal(effective->commands.begin(), effective->commands.end(),
+                     moved.commands.begin() + 2));
+
+    start.mode = formats::StartMode::Center;
+    const auto centered = project_io::with_start_point(*effective, start);
+    const auto bounds = stitch::compute_stats(*effective).bounds;
+    CHECK(centered.commands[0].pos.x.value == (bounds.min.x.value + bounds.max.x.value) / 2);
+    CHECK(centered.commands[0].pos.y.value == (bounds.min.y.value + bounds.max.y.value) / 2);
+}
+
+TEST_CASE("export_machine_file('dst') : point de depart relu, points inchanges, deterministe") {
+    const document::Project project = square_project();
+    const auto path = fs::temp_directory_path() / "openstitch_export_start.dst";
+    formats::MachineExportOptions options;
+    options.start.mode = formats::StartMode::Custom;
+    options.start.point = um(-20'000, 15'000);
+
+    REQUIRE(project_io::export_machine_file(project, "dst", path, options).has_value());
+    const auto first = formats::read_dst_file(path);
+    REQUIRE(project_io::export_machine_file(project, "dst", path, options).has_value());
+    const auto second = formats::read_dst_file(path);
+    REQUIRE(first.has_value());
+    REQUIRE(second.has_value());
+    CHECK(first->commands == second->commands);
+
+    // Le DST relu est relatif à l'origine machine = le point de départ choisi (au pas de 0,1 mm).
+    const auto effective = stitch_generation::effective_sequence(project);
+    REQUIRE(effective.has_value());
+    REQUIRE(first->commands.size() >= 2);
+    // Le saut d'approche (> 12,1 mm) est découpé : on cherche le point d'arrivée parmi les
+    // premières commandes relues.
+    CHECK(first->commands[0].pos == um(0, 0));
+    const Vec2um expectedFirst =
+        um(effective->commands.front().pos.x.value - options.start.point.x.value,
+           effective->commands.front().pos.y.value - options.start.point.y.value);
+    const bool reached =
+        std::any_of(first->commands.begin(),
+                    first->commands.begin() + std::min<std::size_t>(5, first->commands.size()),
+                    [&](const stitch::StitchCommand& c) {
+                        return std::abs(c.pos.x.value - expectedFirst.x.value) <= 50 &&
+                               std::abs(c.pos.y.value - expectedFirst.y.value) <= 50;
+                    });
+    CHECK(reached);
+    fs::remove(path);
+}
+
 TEST_CASE("import_machine_file : format inconnu (extension) refuse proprement") {
     const auto path = fs::temp_directory_path() / "openstitch_import_unknown.xyz";
     {

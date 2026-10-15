@@ -1804,6 +1804,11 @@ int main(int argc, char** argv) {
         ->check(CLI::Range(0.0, 100.0));
     od_cmd->add_flag("--no-color-changes", od_no_color_changes,
                      "Supprime les changements de couleur (motif monochrome)");
+    std::string od_start = "first";
+    od_cmd->add_option("--start", od_start,
+                       "Point de départ machine : first (premier point, défaut), center (centre "
+                       "de la broderie) ou X,Y en mm dans le repère du document ; l'ordre des "
+                       "points n'est pas modifié");
     od_cmd->add_option("--stops", od_stops, "Arrêts machine : native, as-color-change ou drop")
         ->check(CLI::IsMember({"native", "as-color-change", "drop"}));
     auto* od_nc =
@@ -1897,6 +1902,20 @@ int main(int argc, char** argv) {
                                : od_stops == "as-color-change"
                                    ? openstitch::formats::StopMode::AsColorChange
                                    : openstitch::formats::StopMode::Native;
+        if (od_start == "center") {
+            machineOptions.start.mode = openstitch::formats::StartMode::Center;
+        } else if (od_start != "first") {
+            double xMm = 0.0;
+            double yMm = 0.0;
+            char tail = 0;
+            if (std::sscanf(od_start.c_str(), "%lf,%lf%c", &xMm, &yMm, &tail) != 2) {
+                return cli_error("osp2dst", "--start : attendu first, center ou X,Y en mm");
+            }
+            machineOptions.start.mode = openstitch::formats::StartMode::Custom;
+            machineOptions.start.point = openstitch::Vec2um{
+                openstitch::Micrometers{static_cast<std::int32_t>(std::lround(xMm * 1000.0))},
+                openstitch::Micrometers{static_cast<std::int32_t>(std::lround(yMm * 1000.0))}};
+        }
         openstitch::project_io::ExportOptimizations optimizations;
         optimizations.reduce_trims = od_reduce_trims;
         optimizations.hidden_travel.allow_same_color_surface = od_reduce_same_colour;
