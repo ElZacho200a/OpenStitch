@@ -23,6 +23,9 @@
 #include "chord.hpp"
 #include "coverage.hpp"
 #include "geometry_detail.hpp"
+#include "medial_axis.hpp"
+#include "openstitch/auto_satin/graph_cleanup.hpp"
+#include "openstitch/auto_satin/medial_axis_satin.hpp"
 #include "openstitch/geometry/moments.hpp"
 #include "orientation.hpp"
 
@@ -946,30 +949,18 @@ Result<SkeletonSatinResult> generate_skeleton_satin(const geometry::PathSet& reg
     return computed;
 }
 
-Result<SkeletonSatinResult>
-generate_skeleton_satin_uncached(const geometry::PathSet& region,
-                                 const SkeletonSatinParameters& params) {
-    SkeletonSatinResult result;
+namespace {
+
+// Fin commune des méthodes à axe : à partir des chaînes d'axe (squelette raster ou axe médian
+// vectoriel), coupe aux coudes, guides, échantillonnage des traversées, cellules, éventails,
+// croisements et couverture. Les chaînes décrivent seulement l'axe et son rayon ; tout le reste
+// est identique d'une méthode à l'autre.
+Result<SkeletonSatinResult> finish_from_chains(const geometry::PathSet& region,
+                                               const SkeletonSatinParameters& params,
+                                               std::vector<Chain> chains,
+                                               SkeletonSatinResult result) {
     auto& diag = result.diagnostics;
-    if (params.spacing.value < 50) {
-        return std::unexpected(
-            Error{ErrorCategory::UserInput, "auto-satin : espacement inférieur à 0,05 mm"});
-    }
-
-    const auto analysis = analyze_region(region, params.analysis);
-    if (!analysis) {
-        return std::unexpected(analysis.error());
-    }
-    const SkeletonGraph& graph = analysis->debug.graph;
     const std::vector<Poly> polys = detail::region_polys(region);
-    if (polys.empty()) {
-        return result;
-    }
-
-    std::vector<Chain> chains = build_chains(graph, diag);
-    for (auto& c : recover_cycles(analysis->debug, graph, chains)) {
-        chains.push_back(std::move(c));
-    }
     if (chains.empty() && params.compact_axis) {
         if (auto synthetic = synthetic_compact_chain(region, polys)) {
             chains.push_back(std::move(*synthetic));
@@ -1155,6 +1146,65 @@ generate_skeleton_satin_uncached(const geometry::PathSet& region,
         detail::measure_coverage(region, result);
     }
     return result;
+}
+
+} // namespace
+
+Result<SkeletonSatinResult>
+generate_skeleton_satin_uncached(const geometry::PathSet& region,
+                                 const SkeletonSatinParameters& params) {
+    SkeletonSatinResult result;
+    auto& diag = result.diagnostics;
+    if (params.spacing.value < 50) {
+        return std::unexpected(
+            Error{ErrorCategory::UserInput, "auto-satin : espacement inférieur à 0,05 mm"});
+    }
+
+    const auto analysis = analyze_region(region, params.analysis);
+    if (!analysis) {
+        return std::unexpected(analysis.error());
+    }
+    const SkeletonGraph& graph = analysis->debug.graph;
+    const std::vector<Poly> polys = detail::region_polys(region);
+    if (polys.empty()) {
+        return result;
+    }
+
+    std::vector<Chain> chains = build_chains(graph, diag);
+    for (auto& c : recover_cycles(analysis->debug, graph, chains)) {
+        chains.push_back(std::move(c));
+    }
+    return finish_from_chains(region, params, std::move(chains), std::move(result));
+}
+
+Result<SkeletonSatinResult> generate_medial_axis_satin(const geometry::PathSet& region,
+                                                       const SkeletonSatinParameters& params) {
+    SkeletonSatinResult result;
+    if (params.spacing.value < 50) {
+        return std::unexpected(
+            Error{ErrorCategory::UserInput, "auto-satin : espacement inférieur à 0,05 mm"});
+    }
+    if (detail::region_polys(region).empty()) {
+        return result;
+    }
+    auto medial = detail::build_medial_axis_graph(region);
+    if (!medial) {
+        return std::unexpected(medial.error());
+    }
+    // Même élagage à erreur bornée que le squelette raster : l'axe médian du polygone est exact
+    // mais sensible au bruit du contour (chaque sommet convexe y porte un rameau).
+    const GraphCleanupResult cleaned = prune_graph(medial->graph, params.analysis.cleanup);
+    std::vector<Chain> chains = build_chains(cleaned.graph, result.diagnostics);
+    for (const auto& loop : medial->loops) {
+        Chain chain;
+        chain.closed = true;
+        for (std::size_t i = 0; i < loop.points.size(); ++i) {
+            chain.points.push_back(to_p2(loop.points[i]));
+            chain.radii.push_back(loop.radii[i]);
+        }
+        chains.push_back(std::move(chain));
+    }
+    return finish_from_chains(region, params, std::move(chains), std::move(result));
 }
 
 std::string skeleton_satin_to_svg(const geometry::PathSet& region,

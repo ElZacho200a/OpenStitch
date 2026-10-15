@@ -206,6 +206,7 @@ Les noms des primitives (Zhang-Suen, Voronoï) peuvent rester dans les infobulle
    `satin-compare`) ; mesures sur séquence (sauts, coupes, points) restantes.*
 2. **Lot B — Voronoï** : extraction vectorielle et déterminisme, sans changement
    du défaut ; comparaison chiffrée avant de l'exposer comme amélioration.
+   *Livré le 2026-10-15 (`SatinStrategy::MedialAxis`, dépendance Boost.Polygon) ; voir `satin-squelette.md`.*
 3. **Lot C — choix utilisateur** : paramètre, `.osp`, commande, inspecteur,
    tests du chemin UI et de l'export, documentation utilisateur.
 4. **Lot D — balayage direct** : bandes, trous et concavités, angle global,
