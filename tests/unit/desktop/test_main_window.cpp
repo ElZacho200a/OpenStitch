@@ -826,6 +826,8 @@ private slots:
     // un fond quasi blanc qui encadre le motif ; pastille + pourcentage
     // affichés dans les deux cas.
     void autoDigitizeDialogDoesNotSkipColoredFullFrameRegion();
+    void autoDigitizeDialogOffersDarkLinesAndIslandCleanup();
+    void autoDigitizeDialogSkipsBeigeFramingBackground();
     void autoDigitizeDialogSkipsNearWhiteFramingBackground();
     // Strategie « Contours » : choix de strategie, curseur de detail (defaut
     // 50) et techniques point droit presentes dans le dialogue.
@@ -2900,6 +2902,52 @@ void MainWindowTest::autoDigitizeDialogDoesNotSkipColoredFullFrameRegion() {
     QVERIFY(!state.checked);
     QVERIFY(state.info.contains('%'));
     QVERIFY(window.project_.embroidery_objects.empty()); // dialogue annulé
+}
+
+void MainWindowTest::autoDigitizeDialogSkipsBeigeFramingBackground() {
+    // Fond crème (L* ~ 86, sous le seuil « quasi blanc ») qui occupe tout le pourtour.
+    MainWindow window;
+    window.applyLoadedProject(
+        opaqueSegmentedProject({227, 212, 187}, {15, 101, 186}, 10, 8, 30, 22));
+    const auto state = inspectBackgroundDialog(window, [&] { window.autoDigitize(); });
+    QVERIFY(state.seen);
+    QVERIFY(state.checked);
+}
+
+void MainWindowTest::autoDigitizeDialogOffersDarkLinesAndIslandCleanup() {
+    MainWindow window;
+    window.applyLoadedProject(
+        opaqueSegmentedProject({250, 250, 250}, {200, 30, 30}, 10, 8, 30, 22));
+    bool seen = false;
+    bool linesUnchecked = false;
+    bool optionsDisabledBefore = false;
+    bool optionsEnabledAfter = false;
+    bool islandOffByDefault = false;
+    QTimer::singleShot(0, &window, [&] {
+        auto* dlg = qobject_cast<QDialog*>(QApplication::activeModalWidget());
+        if (dlg == nullptr) {
+            return;
+        }
+        auto* lines = dlg->findChild<QCheckBox*>("darkLinesCheck");
+        auto* width = dlg->findChild<QDoubleSpinBox*>("darkLinesWidthSpin");
+        auto* light = dlg->findChild<QDoubleSpinBox*>("darkLinesLightnessSpin");
+        auto* island = dlg->findChild<QDoubleSpinBox*>("islandAreaSpin");
+        seen = lines != nullptr && width != nullptr && light != nullptr && island != nullptr;
+        if (seen) {
+            linesUnchecked = !lines->isChecked();
+            optionsDisabledBefore = !width->isEnabled() && !light->isEnabled();
+            islandOffByDefault = island->value() == 0.0;
+            lines->setChecked(true);
+            optionsEnabledAfter = width->isEnabled() && light->isEnabled();
+        }
+        dlg->reject();
+    });
+    window.autoDigitize();
+    QVERIFY(seen);
+    QVERIFY(linesUnchecked);
+    QVERIFY(optionsDisabledBefore);
+    QVERIFY(optionsEnabledAfter);
+    QVERIFY(islandOffByDefault);
 }
 
 void MainWindowTest::autoDigitizeDialogSkipsNearWhiteFramingBackground() {

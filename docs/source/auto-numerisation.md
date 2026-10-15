@@ -457,6 +457,12 @@ amas de blocs. `auto_digitize_with_lines` (`line_layer.cpp`) sépare les traits 
    eulérien, mêmes garde-fous que le mode contours. Les objets de ligne sont ajoutés **après** tous
    les remplissages : ils sont cousus en dernier.
 
+**Dans le bureau** : la boîte *Numérisation automatique* (mode formes) propose « Traits sombres
+cousus par-dessus » (largeur maximale en mm et clarté L\* maximale, mémorisées entre les sessions) et
+« Nettoyage des îlots » (mm²). L'image lue est l'image de travail (opérations appliquées) quand elle a
+les dimensions de la segmentation, sinon l'image d'origine. Même routage que le CLI : point droit,
+parcours eulérien.
+
 Limites : un seul fil pour tous les traits ; point droit seulement (pas de satin à largeur
 constante) ; un trait contre un aplat sombre de même teinte n'est pas détecté (il serait invisible).
 Chaque trait étant un tracé séparé, la couche ajoute des coupes (+486 sur l'illustration de test) ;
