@@ -4,6 +4,8 @@
 #include <algorithm>
 #include <cmath>
 
+#include "openstitch/auto_satin/parallel_sweep.hpp"
+
 namespace openstitch::auto_satin {
 
 namespace {
@@ -36,6 +38,8 @@ std::string_view strategy_id(SatinStrategy strategy) {
     switch (strategy) {
     case SatinStrategy::Skeleton:
         return "skeleton";
+    case SatinStrategy::ParallelSweep:
+        return "parallel_sweep";
     }
     return "skeleton";
 }
@@ -44,21 +48,31 @@ std::string_view strategy_label(SatinStrategy strategy) {
     switch (strategy) {
     case SatinStrategy::Skeleton:
         return "Squelette (actuel)";
+    case SatinStrategy::ParallelSweep:
+        return "Balayage parallèle";
     }
     return "Squelette (actuel)";
 }
 
 std::vector<SatinStrategy> available_strategies() {
-    return {SatinStrategy::Skeleton};
+    return {SatinStrategy::Skeleton, SatinStrategy::ParallelSweep};
+}
+
+Result<SkeletonSatinResult> generate_satin(const geometry::PathSet& region,
+                                           const SkeletonSatinParameters& params) {
+    switch (params.strategy) {
+    case SatinStrategy::Skeleton:
+        return generate_skeleton_satin(region, params);
+    case SatinStrategy::ParallelSweep:
+        return generate_parallel_sweep(region, params);
+    }
+    return generate_skeleton_satin(region, params);
 }
 
 Result<SkeletonSatinResult> generate_satin(SatinStrategy strategy, const geometry::PathSet& region,
-                                           const SkeletonSatinParameters& params) {
-    switch (strategy) {
-    case SatinStrategy::Skeleton:
-        return generate_skeleton_satin(region, params);
-    }
-    return generate_skeleton_satin(region, params);
+                                           SkeletonSatinParameters params) {
+    params.strategy = strategy;
+    return generate_satin(region, params);
 }
 
 SatinMetrics measure_result(const SkeletonSatinResult& result) {

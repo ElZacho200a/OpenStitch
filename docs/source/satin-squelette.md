@@ -263,9 +263,11 @@ des contours réels. Ne traite pas les boucles parasites ni les ponts de bruit
 ## Façade des stratégies et comparaison (lot A, 2026-10-15)
 
 `libs/auto_satin/include/openstitch/auto_satin/satin_strategy.hpp` introduit
-`SatinStrategy` et `generate_satin(strategy, region, params)`. Une seule valeur est
-livrée, `Skeleton` : la façade appelle `generate_skeleton_satin` sans rien changer
-(test d'égalité octet pour octet sur neuf formes). Une stratégie n'est ajoutée à
+`generate_satin(region, params)`, qui aiguille selon `SkeletonSatinParameters::strategy`
+(`SatinStrategy` est défini dans `skeleton_satin.hpp`). `Skeleton` appelle
+`generate_skeleton_satin` sans rien changer (test d'égalité octet pour octet sur neuf
+formes) ; c'est le défaut. Toute génération de satin automatique doit passer par la façade,
+pas par `generate_skeleton_satin`, pour respecter le choix de l'utilisateur. Une stratégie n'est ajoutée à
 l'énumération que lorsqu'elle est réellement livrée ; aucun réglage n'est encore
 persisté dans `AutoSatinParams` ni dans le `.osp` (lot C).
 
@@ -291,6 +293,42 @@ Sans `--timing`, la sortie est déterministe : on peut la diffuser avant/après 
 changement du moteur. Elle sert de **référence chiffrée** du moteur actuel avant d'y
 comparer un axe médian vectoriel (lot B).
 
+## Balayage parallèle (lot D, 2026-10-15)
+
+`SatinStrategy::ParallelSweep` (`parallel_sweep.hpp`, `parallel_sweep.cpp`) ne passe pas par
+le squelette. Des droites à angle constant, espacées de `spacing` (ajusté pour tomber juste
+sur l'étendue de la forme, donc un peu inférieur), sont intersectées avec la région par la
+même primitive de corde que le moteur de squelette (`line_intervals`, règle demi-ouverte,
+trous inclus). Chaque intervalle intérieur est une traversée.
+
+- **Bandes** : les intervalles de deux droites consécutives qui se recouvrent **un à un**
+  prolongent la même colonne. Une division (un intervalle en recouvre deux) ou une fusion
+  ferme les colonnes concernées et en ouvre de nouvelles : le fil ne traverse jamais le
+  vide d'une concavité ou d'un trou (testé : tous les points intérieurs de toutes les
+  traversées sont dans la région, sur dix formes dont `E`, `comb`, `star5`, `two_holes`).
+- **Angle global** : par défaut perpendiculaire à l'axe principal d'inertie quand la forme
+  est allongée (anisotropie > 1,3), horizontal sinon ; ou `sweep_angle_rad` si
+  `sweep_auto_angle` est faux. Les **guides locaux ne sont pas appliqués** : ils sont
+  comptés dans `orphan_guides` et signalés dans `messages`, jamais ignorés en silence.
+- **Pas de cache** : coût linéaire, aucun raster (le raster de la couverture reste à la
+  demande).
+- Les colonnes d'un seul fil sont ignorées (pas de zigzag possible) et comptées.
+
+Mesures du 2026-10-15 (`openstitch-cli satin-compare`, espacement 0,4 mm) : le balayage
+couvre sans refus les formes compactes que le squelette refuse (`circle`, `petal` :
+couverture 99,5 à 99,7 %), et la forme `deep_channel`, limite connue du squelette
+(65 % → 99 %). Il est moins bon sur les formes branchées : une seule grande colonne
+pour `cross`, `E`, `comb` (couverture 97,5 à 98,1 %, fils de 15 à 40 mm que le
+fractionnement `Lmax` devra couper) ; `ring` donne 4 bandes à 96 %. Ce n'est pas un
+« meilleur » moteur : c'est un autre compromis, choisi par l'utilisateur. Non validé sur
+machine.
+
+**Mesure de couverture corrigée** : les triangles de fil étaient échantillonnés aux coins
+des pixels de 100 µm ; des traversées parallèles à un axe, espacées d'un multiple du pixel,
+passaient exactement par les échantillons et étaient comptées deux fois (faux recouvrement
+de 1,2 sur un rectangle) ou plus du tout. L'échantillon est désormais décalé d'un sous-pixel
+fixe et irrégulier. Les planchers du corpus et leurs tests sont inchangés.
+
 ## Fichiers
 
 | Fichier | Contenu |
@@ -302,6 +340,8 @@ comparer un axe médian vectoriel (lot B).
 | `libs/auto_satin/src/skeleton_satin.cpp` | chaînes, coudes, cellules, guides, anneaux |
 | `libs/stitch_generation/src/generate.cpp` | `generate_auto_satin` |
 | `libs/auto_satin/src/satin_strategy.cpp` | façade des stratégies, mesures comparables |
+| `libs/auto_satin/src/parallel_sweep.cpp` | balayage parallèle |
+| `libs/auto_satin/src/coverage.cpp` | mesure de couverture partagée par les stratégies |
 | `apps/desktop/main_window_satin_auto.cpp` | création, guides, aperçu, squelette |
 
 ## Coudes serrés : croisements et éventail (2026-10)

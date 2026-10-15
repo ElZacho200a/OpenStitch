@@ -210,6 +210,7 @@ Les noms des primitives (Zhang-Suen, Voronoï) peuvent rester dans les infobulle
    tests du chemin UI et de l'export, documentation utilisateur.
 4. **Lot D — balayage direct** : bandes, trous et concavités, angle global,
    réutilisation des finitions et comparaison au squelette sur formes compactes.
+   *Livré le 2026-10-15 (`SatinStrategy::ParallelSweep`) ; voir `satin-squelette.md`.*
 5. **Lot E — aperçus comparatifs** : calculs sans mutation, application annulable.
 
 Comparer couverture **et localisation des manques**, recouvrement et pics de
