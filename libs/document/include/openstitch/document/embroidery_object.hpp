@@ -56,7 +56,7 @@ struct TatamiParams {
 };
 
 // Dégradé de densité d'un remplissage directionnel : l'écart entre lignes de
-// couture varie linéairement le long de l'axe `from` → `to` (repère du modèle,
+// couture varie le long de l'axe `from` → `to` (repère du modèle,
 // comme les guides), de `spacing_from` à `spacing_to`, et reste constant de
 // part et d'autre des extrémités. `from == to` : axe dégénéré, espacement
 // uniforme `spacing_from`. Écart borné à la génération (cf. directional_fill).
@@ -65,6 +65,9 @@ struct DensityGradient {
     Vec2um to{};
     Micrometers spacing_from{400}; // 0,4 mm
     Micrometers spacing_to{400};   // 0,4 mm
+    // Faux : interpolation linéaire de l'écart (historique). Vrai : interpolation
+    // linéaire de son inverse (densité), pour des rampes de couleurs complémentaires.
+    bool interpolate_density{false};
 
     bool operator==(const DensityGradient&) const = default;
 };
@@ -318,6 +321,15 @@ enum class JoinMode : std::uint8_t { Inherit, Auto, Off };
 // avant un changement de fil, un arrêt ou une coupe posée à la main.
 enum class ConnectorMode : std::uint8_t { Inherit, AlwaysTrim, NeverTrim };
 
+// Relation explicite entre les deux couches d'un fondu rééditable. Pure métadonnée :
+// seule la génération depuis `params` détermine les points, jamais ce lien.
+struct ColorBlendLink {
+    ObjectId partner;
+    bool foreground{false};
+
+    bool operator==(const ColorBlendLink&) const = default;
+};
+
 struct EmbroideryObject {
     ObjectId id;
     std::string name;
@@ -345,6 +357,7 @@ struct EmbroideryObject {
     // bibliothèque courante (nuancier utilisateur non chargé) n'altère pas
     // l'affichage. Écrit/lu dans le .osp (schéma v6, champ `thread`).
     std::optional<thread_palette::ThreadKey> thread;
+    std::optional<ColorBlendLink> color_blend;
 
     [[nodiscard]] bool is_tatami() const { return std::holds_alternative<TatamiParams>(params); }
     [[nodiscard]] bool is_satin() const { return std::holds_alternative<SatinParams>(params); }

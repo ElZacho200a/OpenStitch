@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <cstdint>
 #include <limits>
+#include <map>
 #include <utility>
 #include <variant>
 
@@ -17,6 +18,38 @@ namespace openstitch::commands {
 namespace {
 
 using geometry::PathSet;
+
+// Deux passes : tous les ids sont attribués avant de remapper les relations.
+// Un partenaire absent/non réciproque est retiré, jamais conservé vers l'original.
+void remap_color_blend_links(std::vector<document::EmbroideryObject>& copies,
+                             const std::map<ObjectId, ObjectId>& remap) {
+    std::map<ObjectId, const document::EmbroideryObject*> byId;
+    for (auto& copy : copies) {
+        byId.emplace(copy.id, &copy);
+        if (copy.color_blend) {
+            const auto partner = remap.find(copy.color_blend->partner);
+            if (partner == remap.end()) {
+                copy.color_blend.reset();
+            } else {
+                copy.color_blend->partner = partner->second;
+            }
+        }
+    }
+    for (auto& copy : copies) {
+        if (!copy.color_blend) {
+            continue;
+        }
+        const auto partner = byId.find(copy.color_blend->partner);
+        if (partner == byId.end() || partner->first == copy.id ||
+            !(copy.is_tatami() || copy.is_directional()) ||
+            !(partner->second->is_tatami() || partner->second->is_directional()) ||
+            partner->second->source_vector != copy.source_vector || !partner->second->color_blend ||
+            partner->second->color_blend->partner != copy.id ||
+            partner->second->color_blend->foreground == copy.color_blend->foreground) {
+            copy.color_blend.reset();
+        }
+    }
+}
 
 struct Box {
     double x0{std::numeric_limits<double>::max()};
@@ -98,6 +131,9 @@ void add_piece_commands(document::Project& project, CompositeCommand& group,
         clone.paths = {pieces[i]};
         const ObjectId newId = clone.id;
         group.add(std::make_unique<AddVectorObjectCommand>(std::move(clone)));
+        std::vector<document::EmbroideryObject> copies;
+        copies.reserve(embroideries.size());
+        std::map<ObjectId, ObjectId> embroideryRemap;
         for (const auto& emb : embroideries) {
             // Un satin à rails porte sa propre géométrie : la dupliquer n'aurait aucun sens.
             if (emb.is_satin()) {
@@ -105,6 +141,7 @@ void add_piece_commands(document::Project& project, CompositeCommand& group,
             }
             document::EmbroideryObject copy = emb;
             copy.id = project.object_ids.next();
+            embroideryRemap.emplace(emb.id, copy.id);
             copy.source_vector = newId;
             copy.name = emb.name + " (" + std::to_string(i + 1) + ")";
             copy.overrides.clear();
@@ -113,6 +150,10 @@ void add_piece_commands(document::Project& project, CompositeCommand& group,
             if (auto* autoSatin = std::get_if<document::AutoSatinParams>(&copy.params)) {
                 keep_guides_inside(*autoSatin, pieces[i]);
             }
+            copies.push_back(std::move(copy));
+        }
+        remap_color_blend_links(copies, embroideryRemap);
+        for (auto& copy : copies) {
             group.add(std::make_unique<AddEmbroideryObjectCommand>(std::move(copy)));
         }
     }
@@ -267,6 +308,7 @@ PasteResult make_paste_command(document::Project& project, const document::Objec
         vectors.push_back(std::move(copy));
     }
     std::vector<document::EmbroideryObject> embroideries;
+    std::map<ObjectId, ObjectId> embroideryRemap;
     embroideries.reserve(fragment.embroideries.size());
     for (const auto& source : fragment.embroideries) {
         const auto it = std::find_if(remap.begin(), remap.end(), [&](const auto& pair) {
@@ -277,6 +319,7 @@ PasteResult make_paste_command(document::Project& project, const document::Objec
         }
         document::EmbroideryObject copy = source;
         copy.id = project.object_ids.next();
+        embroideryRemap.emplace(source.id, copy.id);
         copy.source_vector = it->second;
         if (moved) {
             copy.overrides.clear();
@@ -285,6 +328,7 @@ PasteResult make_paste_command(document::Project& project, const document::Objec
         }
         embroideries.push_back(std::move(copy));
     }
+    remap_color_blend_links(embroideries, embroideryRemap);
 
     auto group = std::make_unique<CompositeCommand>(label);
     group->add(std::make_unique<AddObjectBatchCommand>(std::move(vectors), std::move(embroideries),

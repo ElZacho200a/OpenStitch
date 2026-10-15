@@ -6,13 +6,19 @@
 #include <optional>
 
 #include "openstitch/document/embroidery_object.hpp"
+#include "openstitch/stitch/sequence.hpp"
 
+class QComboBox;
 class QDoubleSpinBox;
 class QLineEdit;
 class QLabel;
 class QPushButton;
+class QShowEvent;
+class QTimer;
 
 namespace openstitch::desktop {
+
+class BlendStitchPreview;
 
 // Proposition transitoire : aucune mutation du projet avant la validation.
 class ColorBlendDialog : public QDialog {
@@ -23,6 +29,13 @@ public:
                      QWidget* parent = nullptr);
     void setProposal(Rgb background, Rgb foreground, const document::DensityGradient& gradient);
     void setAnalysisMessage(const QString& message);
+    [[nodiscard]] bool complementary() const;
+    void setComplementary(bool complementary);
+    void setEditing(bool editing);
+    // Le contrôleur fournit la séquence EFFECTIVE calculée sur un instantané.
+    void setStitchPreview(const stitch::StitchSequence& sequence, ObjectId background,
+                          ObjectId foreground, Rgb backgroundRgb, Rgb foregroundRgb);
+    void setPreviewMessage(const QString& message);
     [[nodiscard]] Rgb backgroundColor() const;
     [[nodiscard]] Rgb foregroundColor() const;
     [[nodiscard]] double angleDegrees() const;
@@ -33,17 +46,41 @@ public:
 
 signals:
     void analysisRequested();
+    // Demande différée ; réponse synchrone du contrôleur (avec BusyIndicator).
+    void previewRequested();
+
+protected:
+    void showEvent(QShowEvent* event) override;
 
 private:
-    void updatePreview();
+    [[nodiscard]] bool validSettings() const;
+    void settingsChanged();
+    void requestPreview();
+    void updateExplanation();
+    void updatePreviewDetails();
     QLineEdit* background_;
     QLineEdit* foreground_;
     QDoubleSpinBox* start_;
     QDoubleSpinBox* end_;
     QDoubleSpinBox* angle_;
-    QLabel* preview_;
+    QComboBox* profile_;
+    QComboBox* previewLayer_;
+    BlendStitchPreview* preview_;
+    QLabel* explanation_;
+    QLabel* profileNote_;
+    QLabel* previewStats_;
+    QLabel* previewLegend_;
     QLabel* message_;
+    QPushButton* refresh_;
     QPushButton* accept_;
+    QTimer* previewTimer_;
+    bool mergesZones_;
+    bool editing_{false};
+    bool shown_{false};
+    bool requestingPreview_{false};
+    bool previewPending_{false};
+    std::uint64_t settingsRevision_{0};
+    std::uint64_t requestedRevision_{0};
     std::optional<document::DensityGradient> proposal_;
 };
 

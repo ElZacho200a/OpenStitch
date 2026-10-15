@@ -2,9 +2,11 @@
 #include "color_blend_dialog.hpp"
 
 #include <QColorDialog>
+#include <QComboBox>
 #include <QDialogButtonBox>
 #include <QDoubleSpinBox>
 #include <QFormLayout>
+#include <QGroupBox>
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QLineEdit>
@@ -12,14 +14,18 @@
 #include <QPushButton>
 #include <QRegularExpression>
 #include <QRegularExpressionValidator>
+#include <QShowEvent>
 #include <QSignalBlocker>
+#include <QTimer>
 #include <QVBoxLayout>
+#include <QVariant>
 
 #include <algorithm>
 #include <cmath>
 #include <numbers>
 
 #include "app_theme.hpp"
+#include "openstitch/stitch_render/segments.hpp"
 #include "wheel_guard.hpp"
 
 namespace openstitch::desktop {
@@ -34,23 +40,166 @@ ColorBlendDialog::Rgb rgb(const QString& text) {
 }
 } // namespace
 
+// Peinture uniquement : aucune génération de points, ni mutation du document.
+class BlendStitchPreview : public QWidget {
+public:
+    explicit BlendStitchPreview(QWidget* parent) : QWidget(parent) {
+        setObjectName(QStringLiteral("blend_preview"));
+        setMinimumSize(460, 260);
+        setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+        setAccessibleName(tr("Aperçu des points calculés sur la forme"));
+        invalidate(tr("L’aperçu sera calculé à l’ouverture."));
+        connect(&AppTheme::instance(), &AppTheme::changed, this, [this] { update(); });
+    }
+
+    void setSequence(const stitch::StitchSequence& sequence, ObjectId background,
+                     ObjectId foreground, ColorBlendDialog::Rgb backgroundRgb,
+                     ColorBlendDialog::Rgb foregroundRgb) {
+        sequence_ = sequence;
+        background_ = background;
+        foreground_ = foreground;
+        backgroundRgb_ = backgroundRgb;
+        foregroundRgb_ = foregroundRgb;
+        counts_ = {};
+        for (const auto& command : sequence_.commands) {
+            if (command.type != stitch::CommandType::Stitch) {
+                continue;
+            }
+            if (command.source == background_) {
+                ++counts_[0];
+            } else if (command.source == foreground_) {
+                ++counts_[1];
+            }
+        }
+        segments_ = buildSegments(0);
+        bounds_ = stitch_render::segments_bounds(segments_);
+        if (layer_ != 0) {
+            segments_ = buildSegments(layer_);
+        }
+        current_ = true;
+        message_.clear();
+        updateState();
+    }
+
+    void invalidate(const QString& message) {
+        // On garde la dernière séquence pour les changements de filtre/thème,
+        // mais on ne présente jamais ses anciens points comme un aperçu actuel.
+        current_ = false;
+        message_ = message;
+        updateState();
+    }
+
+    void setLayer(int layer) {
+        if (layer_ == layer) {
+            return;
+        }
+        layer_ = layer;
+        if (current_) {
+            segments_ = buildSegments(layer_);
+        }
+        updateState();
+    }
+
+    [[nodiscard]] bool current() const { return current_; }
+    [[nodiscard]] std::size_t stitchCount() const {
+        if (!current_) {
+            return 0;
+        }
+        return layer_ == 1 ? counts_[0] : layer_ == 2 ? counts_[1] : counts_[0] + counts_[1];
+    }
+    [[nodiscard]] std::size_t segmentCount() const { return current_ ? segments_.size() : 0; }
+    [[nodiscard]] std::size_t backgroundCount() const { return counts_[0]; }
+    [[nodiscard]] std::size_t foregroundCount() const { return counts_[1]; }
+    [[nodiscard]] ColorBlendDialog::Rgb backgroundRgb() const { return backgroundRgb_; }
+    [[nodiscard]] ColorBlendDialog::Rgb foregroundRgb() const { return foregroundRgb_; }
+
+protected:
+    void paintEvent(QPaintEvent*) override {
+        const auto& tokens = AppTheme::instance().tokens();
+        QPainter painter(this);
+        painter.setRenderHint(QPainter::Antialiasing);
+        painter.fillRect(rect(), tokens.canvasBackground);
+        painter.setPen(tokens.border);
+        painter.drawRect(rect().adjusted(0, 0, -1, -1));
+        if (!current_ || segments_.empty()) {
+            painter.setPen(tokens.textSecondary);
+            painter.drawText(rect().adjusted(24, 24, -24, -24), Qt::AlignCenter | Qt::TextWordWrap,
+                             current_ ? tr("Aucun segment cousu dans cette couche.") : message_);
+            return;
+        }
+        const QRectF viewport = QRectF(rect()).adjusted(22, 22, -22, -22);
+        const double scale = std::min(viewport.width() / std::max(1.0, bounds_.width()),
+                                      viewport.height() / std::max(1.0, bounds_.height()));
+        painter.translate(viewport.center());
+        painter.scale(scale, scale);
+        painter.translate(-(bounds_.x0 + bounds_.x1) / 2.0, -(bounds_.y0 + bounds_.y1) / 2.0);
+        // build_thread_segments convertit déjà Y haut en Y bas, en mm.
+        QPen pen;
+        pen.setWidthF(0.25); // diamètre de fil physique approximatif, en mm
+        pen.setCapStyle(Qt::RoundCap);
+        pen.setJoinStyle(Qt::RoundJoin);
+        for (const auto& segment : segments_) {
+            pen.setColor(color(segment.rgb));
+            painter.setPen(pen);
+            painter.drawLine(QPointF(segment.ax, segment.ay), QPointF(segment.bx, segment.by));
+        }
+    }
+
+private:
+    [[nodiscard]] std::vector<stitch_render::ThreadSegment> buildSegments(int layer) const {
+        return stitch_render::build_thread_segments(
+            sequence_, sequence_.commands.size(),
+            [this, layer](ObjectId source) -> std::optional<ColorBlendDialog::Rgb> {
+                if (source == background_ && layer != 2) {
+                    return backgroundRgb_;
+                }
+                if (source == foreground_ && layer != 1) {
+                    return foregroundRgb_;
+                }
+                return std::nullopt;
+            });
+    }
+
+    void updateState() {
+        // État d'affichage inspectable, également décrit pour l'accessibilité.
+        setProperty("hasStitchPreview", current_ && !segments_.empty());
+        setProperty("stitchCount", static_cast<qulonglong>(stitchCount()));
+        setProperty("segmentCount", static_cast<qulonglong>(segmentCount()));
+        setAccessibleDescription(current_ ? tr("%1 points cousus · %2 segments de fil visibles.")
+                                                .arg(static_cast<qulonglong>(stitchCount()))
+                                                .arg(static_cast<qulonglong>(segmentCount()))
+                                          : message_);
+        update();
+    }
+
+    stitch::StitchSequence sequence_;
+    ObjectId background_{};
+    ObjectId foreground_{};
+    ColorBlendDialog::Rgb backgroundRgb_{};
+    ColorBlendDialog::Rgb foregroundRgb_{};
+    std::array<std::size_t, 2> counts_{};
+    std::vector<stitch_render::ThreadSegment> segments_;
+    stitch_render::RectMm bounds_{};
+    QString message_;
+    int layer_{0};
+    bool current_{false};
+};
+
 ColorBlendDialog::ColorBlendDialog(Rgb background, Rgb foreground, bool canAnalyze,
                                    bool mergesZones, QWidget* parent)
-    : QDialog(parent) {
+    : QDialog(parent), mergesZones_(mergesZones) {
     setObjectName(QStringLiteral("colorBlendDialog"));
-    setWindowTitle(tr("Fondu de couleurs · deux fils"));
-    setMinimumWidth(490);
+    setMinimumWidth(970);
     auto* layout = new QVBoxLayout(this);
     layout->setSpacing(12);
-    auto* explanation = new QLabel(
-        mergesZones
-            ? tr("Les deux zones seront unies. Le fond sera cousu en premier ; le dessus, à "
-                 "densité variable, sera cousu juste après. Annulable en une fois.")
-            : tr("Un fond uni et un dessus à densité variable, sur la même forme. "
-                 "Choisissez deux couleurs, avec ou sans image. Annulable en une fois."),
-        this);
-    explanation->setWordWrap(true);
-    layout->addWidget(explanation);
+    explanation_ = new QLabel(this);
+    explanation_->setObjectName(QStringLiteral("blend_explanation"));
+    explanation_->setWordWrap(true);
+    layout->addWidget(explanation_);
+    auto* content = new QHBoxLayout();
+    auto* settings = new QVBoxLayout();
+    auto* layers = new QGroupBox(tr("1 · Choisir les deux couches"), this);
+    auto* layersLayout = new QVBoxLayout(layers);
     auto* form = new QFormLayout();
     const auto colorRow = [this, form](const QString& label, const QString& name, Rgb value) {
         auto* row = new QWidget(this);
@@ -81,7 +230,22 @@ ColorBlendDialog::ColorBlendDialog(Rgb background, Rgb foreground, bool canAnaly
         colorRow(tr("Fond · premier fil :"), QStringLiteral("edit_blendBackground"), background);
     foreground_ =
         colorRow(tr("Dessus · second fil :"), QStringLiteral("edit_blendForeground"), foreground);
-    const auto spacing = [this, form](const QString& title, const char* name, double value) {
+    profile_ = new QComboBox(this);
+    profile_->setObjectName(QStringLiteral("combo_blendProfile"));
+    profile_->addItems({tr("Densités complémentaires"), tr("Fond uniforme")});
+    form->addRow(tr("Profil du fondu :"), profile_);
+    layersLayout->addLayout(form);
+    profileNote_ = new QLabel(this);
+    profileNote_->setObjectName(QStringLiteral("blend_profileNote"));
+    profileNote_->setWordWrap(true);
+    markSecondaryText(profileNote_);
+    layersLayout->addWidget(profileNote_);
+    settings->addWidget(layers);
+
+    auto* ramp = new QGroupBox(tr("2 · Régler la transition"), this);
+    auto* rampLayout = new QVBoxLayout(ramp);
+    auto* rampForm = new QFormLayout();
+    const auto spacing = [this, rampForm](const QString& title, const char* name, double value) {
         auto* spin = new QDoubleSpinBox(this);
         spin->setObjectName(QString::fromLatin1(name));
         spin->setRange(0.1, 4.0);
@@ -92,7 +256,7 @@ ColorBlendDialog::ColorBlendDialog(Rgb background, Rgb foreground, bool canAnaly
         spin->setValue(value);
         spin->setToolTip(tr("Écart entre lignes du dessus. Petit écart : le dessus domine ; "
                             "grand écart : le fond reste visible. Plage : 0,1 – 4 mm."));
-        form->addRow(title, spin);
+        rampForm->addRow(title, spin);
         return spin;
     };
     start_ = spacing(tr("Écart du dessus au début :"), "spin_blendStart", 4.0);
@@ -106,30 +270,20 @@ ColorBlendDialog::ColorBlendDialog(Rgb background, Rgb foreground, bool canAnaly
     angle_->setKeyboardTracking(false);
     angle_->setToolTip(tr("Sens début → fin dans le document : 0° vers la droite, "
                           "90° vers le haut. Les lignes du dessus sont perpendiculaires."));
-    form->addRow(tr("Angle du fondu :"), angle_);
-    layout->addLayout(form);
+    rampForm->addRow(tr("Angle du fondu :"), angle_);
+    rampLayout->addLayout(rampForm);
 
     auto* reverse = new QPushButton(tr("Inverser le sens du fondu"), this);
     reverse->setObjectName(QStringLiteral("button_blendReverse"));
     connect(reverse, &QPushButton::clicked, this, [this] {
         const double start = start_->value();
-        const QSignalBlocker block(start_);
+        const QSignalBlocker b1(start_), b2(end_);
         start_->setValue(end_->value());
         end_->setValue(start);
-        updatePreview();
+        settingsChanged();
     });
-    layout->addWidget(reverse);
-    preview_ = new QLabel(this);
-    preview_->setObjectName(QStringLiteral("blend_preview"));
-    preview_->setMinimumHeight(84);
-    preview_->setAlignment(Qt::AlignCenter);
-    preview_->setAccessibleName(tr("Aperçu schématique du fondu, du début à la fin"));
-    layout->addWidget(preview_);
-    auto* note = new QLabel(tr("Début → fin · aperçu schématique des couleurs, "
-                               "pas une simulation des points ni du tissu."),
-                            this);
-    note->setWordWrap(true);
-    layout->addWidget(note);
+    rampLayout->addWidget(reverse);
+    settings->addWidget(ramp);
     auto* analyze = new QPushButton(tr("Proposer les couleurs depuis l'image"), this);
     analyze->setObjectName(QStringLiteral("button_blendAnalyze"));
     analyze->setEnabled(canAnalyze);
@@ -138,60 +292,215 @@ ColorBlendDialog::ColorBlendDialog(Rgb background, Rgb foreground, bool canAnaly
                                    : tr("Une image raster sous une forme unique est nécessaire. "
                                         "Le fondu manuel reste disponible."));
     connect(analyze, &QPushButton::clicked, this, &ColorBlendDialog::analysisRequested);
-    layout->addWidget(analyze);
+    settings->addWidget(analyze);
     message_ = new QLabel(this);
     message_->setObjectName(QStringLiteral("blend_message"));
     message_->setWordWrap(true);
-    layout->addWidget(message_);
+    settings->addWidget(message_);
+    settings->addStretch();
+    content->addLayout(settings);
+
+    auto* previewGroup = new QGroupBox(tr("3 · Vérifier les points sur la forme"), this);
+    auto* previewLayout = new QVBoxLayout(previewGroup);
+    auto* previewControls = new QHBoxLayout();
+    previewLayer_ = new QComboBox(this);
+    previewLayer_->setObjectName(QStringLiteral("combo_blendPreviewLayer"));
+    previewLayer_->setAccessibleName(tr("Couches affichées dans l’aperçu"));
+    previewLayer_->addItems({tr("Deux couches"), tr("Fond seul"), tr("Dessus seul")});
+    previewControls->addWidget(previewLayer_, 1);
+    refresh_ = new QPushButton(tr("Actualiser l’aperçu"), this);
+    refresh_->setObjectName(QStringLiteral("button_blendPreview"));
+    previewControls->addWidget(refresh_);
+    previewLayout->addLayout(previewControls);
+    preview_ = new BlendStitchPreview(this);
+    previewLayout->addWidget(preview_, 1);
+    previewStats_ = new QLabel(this);
+    previewStats_->setObjectName(QStringLiteral("blend_previewStats"));
+    previewLayout->addWidget(previewStats_);
+    previewLegend_ = new QLabel(this);
+    previewLegend_->setObjectName(QStringLiteral("blend_previewLegend"));
+    previewLegend_->setTextFormat(Qt::RichText);
+    previewLegend_->setWordWrap(true);
+    previewLayout->addWidget(previewLegend_);
+    auto* note = new QLabel(tr("Aperçu des points calculés, sans simulation du tissu. "
+                               "Les sauts ne sont pas tracés. Vue ajustée à la forme."),
+                            this);
+    note->setWordWrap(true);
+    markSecondaryText(note);
+    previewLayout->addWidget(note);
+    content->addWidget(previewGroup, 1);
+    layout->addLayout(content, 1);
     auto* buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, this);
     accept_ = buttons->button(QDialogButtonBox::Ok);
-    accept_->setText(tr("Créer le fondu"));
+    accept_->setObjectName(QStringLiteral("button_blendAccept"));
     buttons->button(QDialogButtonBox::Cancel)->setText(tr("Annuler"));
     connect(buttons, &QDialogButtonBox::accepted, this, &QDialog::accept);
     connect(buttons, &QDialogButtonBox::rejected, this, &QDialog::reject);
     layout->addWidget(buttons);
+    previewTimer_ = new QTimer(this);
+    previewTimer_->setObjectName(QStringLiteral("timer_blendPreview"));
+    previewTimer_->setSingleShot(true);
+    previewTimer_->setInterval(180);
+    connect(previewTimer_, &QTimer::timeout, this, &ColorBlendDialog::requestPreview);
+    connect(refresh_, &QPushButton::clicked, this, &ColorBlendDialog::settingsChanged);
+    connect(previewLayer_, &QComboBox::currentIndexChanged, this, [this](int layer) {
+        preview_->setLayer(layer);
+        updatePreviewDetails();
+    });
+    connect(profile_, &QComboBox::currentIndexChanged, this, [this] {
+        updateExplanation();
+        settingsChanged();
+    });
     for (auto* edit : {background_, foreground_}) {
-        connect(edit, &QLineEdit::textChanged, this, &ColorBlendDialog::updatePreview);
+        connect(edit, &QLineEdit::textChanged, this, &ColorBlendDialog::settingsChanged);
     }
     for (auto* spin : {start_, end_, angle_}) {
-        connect(spin, &QDoubleSpinBox::valueChanged, this, &ColorBlendDialog::updatePreview);
+        connect(spin, &QDoubleSpinBox::valueChanged, this, &ColorBlendDialog::settingsChanged);
     }
     auto* guard = new WheelGuard(this);
     guard->guardAll(this);
-    connect(&AppTheme::instance(), &AppTheme::changed, this, &ColorBlendDialog::updatePreview);
-    updatePreview();
+    setEditing(false);
+    settingsChanged();
 }
 
-void ColorBlendDialog::updatePreview() {
+bool ColorBlendDialog::validSettings() const {
+    return background_->hasAcceptableInput() && foreground_->hasAcceptableInput() &&
+           QColor(background_->text()) != QColor(foreground_->text());
+}
+
+void ColorBlendDialog::settingsChanged() {
+    ++settingsRevision_;
     const bool valid = background_->hasAcceptableInput() && foreground_->hasAcceptableInput();
-    const bool distinct = valid && QColor(background_->text()) != QColor(foreground_->text());
+    const bool distinct = validSettings();
     accept_->setEnabled(distinct);
+    refresh_->setEnabled(distinct);
+    previewTimer_->stop();
     if (!distinct) {
-        preview_->clear();
+        previewPending_ = false;
         message_->setText(valid ? tr("Choisissez deux couleurs différentes.")
                                 : tr("Saisissez deux couleurs valides au format #RRGGBB."));
+        preview_->invalidate(tr("Aperçu indisponible : corrigez les couleurs des deux fils."));
+        updatePreviewDetails();
         return;
     }
     message_->clear();
-    QPixmap swatch(440, 84);
-    swatch.fill(Qt::transparent);
-    QPainter painter(&swatch);
-    const QColor base(background_->text());
-    const QColor top(foreground_->text());
-    QLinearGradient gradient(0, 0, swatch.width(), 0);
-    for (int i = 0; i <= 16; ++i) {
-        const double t = i / 16.0;
-        const double gap = start_->value() * (1.0 - t) + end_->value() * t;
-        const double cover = std::clamp(0.4 / gap, 0.0, 1.0);
-        gradient.setColorAt(t,
-                            QColor::fromRgbF(base.redF() * (1.0 - cover) + top.redF() * cover,
-                                             base.greenF() * (1.0 - cover) + top.greenF() * cover,
-                                             base.blueF() * (1.0 - cover) + top.blueF() * cover));
+    preview_->invalidate(tr("Aperçu à actualiser · les réglages ont changé."));
+    updatePreviewDetails();
+    if (requestingPreview_) {
+        previewPending_ = true;
+    } else if (shown_ && isVisible()) {
+        previewTimer_->start();
     }
-    painter.setBrush(gradient);
-    painter.setPen(AppTheme::instance().tokens().border);
-    painter.drawRoundedRect(swatch.rect().adjusted(0, 0, -1, -1), 8, 8);
-    preview_->setPixmap(swatch);
+}
+
+void ColorBlendDialog::showEvent(QShowEvent* event) {
+    QDialog::showEvent(event);
+    const bool needsPreview = !shown_ || !preview_->current();
+    shown_ = true;
+    if (needsPreview && !requestingPreview_ && validSettings()) {
+        previewTimer_->start();
+    }
+}
+
+void ColorBlendDialog::requestPreview() {
+    if (!validSettings() || !isVisible()) {
+        return;
+    }
+    if (requestingPreview_) {
+        previewPending_ = true;
+        return;
+    }
+    requestingPreview_ = true;
+    previewPending_ = false;
+    requestedRevision_ = settingsRevision_;
+    preview_->invalidate(tr("Calcul de l’aperçu des points…"));
+    updatePreviewDetails();
+    emit previewRequested();
+    requestingPreview_ = false;
+    // BusyIndicator peut ouvrir une boucle d'événements pendant le calcul.
+    // Un résultat ne déclenche jamais à lui seul une seconde génération.
+    if (previewPending_ && validSettings() && isVisible()) {
+        previewTimer_->start();
+    }
+}
+
+void ColorBlendDialog::setStitchPreview(const stitch::StitchSequence& sequence, ObjectId background,
+                                        ObjectId foreground, Rgb backgroundRgb, Rgb foregroundRgb) {
+    if (!validSettings() || (requestingPreview_ && requestedRevision_ != settingsRevision_)) {
+        return;
+    }
+    previewTimer_->stop();
+    previewPending_ = false;
+    preview_->setSequence(sequence, background, foreground, backgroundRgb, foregroundRgb);
+    updatePreviewDetails();
+}
+
+void ColorBlendDialog::setPreviewMessage(const QString& message) {
+    if (requestingPreview_ && requestedRevision_ != settingsRevision_) {
+        return;
+    }
+    previewTimer_->stop();
+    previewPending_ = false;
+    preview_->invalidate(message);
+    updatePreviewDetails();
+}
+
+void ColorBlendDialog::updatePreviewDetails() {
+    if (!preview_->current()) {
+        previewStats_->setText(tr("Aucun aperçu actuel des points."));
+        previewLegend_->clear();
+        return;
+    }
+    previewStats_->setText(tr("%1 points cousus · %2 segments affichés")
+                               .arg(static_cast<qulonglong>(preview_->stitchCount()))
+                               .arg(static_cast<qulonglong>(preview_->segmentCount())));
+    const auto legend = [this](const QString& name, Rgb value, std::size_t count) {
+        const QString hex = color(value).name();
+        return tr("<span style=\"color:%1\">●</span> %2 · %1 · %3 points")
+            .arg(hex, name.toHtmlEscaped())
+            .arg(static_cast<qulonglong>(count));
+    };
+    previewLegend_->setText(
+        legend(tr("Fond, premier fil"), preview_->backgroundRgb(), preview_->backgroundCount()) +
+        QStringLiteral("<br>") +
+        legend(tr("Dessus, second fil"), preview_->foregroundRgb(), preview_->foregroundCount()));
+}
+
+bool ColorBlendDialog::complementary() const {
+    return profile_->currentIndex() == 0;
+}
+
+void ColorBlendDialog::setComplementary(bool complementary) {
+    profile_->setCurrentIndex(complementary ? 0 : 1);
+}
+
+void ColorBlendDialog::setEditing(bool editing) {
+    editing_ = editing;
+    setWindowTitle(editing ? tr("Modifier le fondu de couleurs · deux fils")
+                           : tr("Fondu de couleurs · deux fils"));
+    accept_->setText(editing ? tr("Appliquer les modifications") : tr("Créer le fondu"));
+    updateExplanation();
+}
+
+void ColorBlendDialog::updateExplanation() {
+    explanation_->setText(
+        editing_       ? tr("Modifiez les deux couches du fondu existant. Le fond et le dessus "
+                                  "conservent leurs identifiants (IDs) et leur ordre de couture. "
+                                  "Aucune couche supplémentaire n’est créée. Annulable en une fois.")
+        : mergesZones_ ? tr("Les deux zones seront unies en une forme avec deux couches. "
+                            "Le fond sera cousu en premier, puis le dessus juste après. "
+                            "Annulable en une fois.")
+                       : tr("Deux couches sur la même forme : le fond est cousu en premier, "
+                            "puis le dessus juste après. Choisissez deux fils et le profil "
+                            "du fondu, avec ou sans image. Annulable en une fois."));
+    profileNote_->setText(
+        complementary()
+            ? tr("Les densités du fond et du dessus évoluent en sens opposés : une couche "
+                 "prend le relais de l’autre. La sous-couche est désactivée sur les deux "
+                 "couches pour ne pas surcharger le fondu.")
+            : tr("Le fond reste uniforme ; seul l’écart entre les lignes du dessus varie. "
+                 "Les grands écarts laissent voir le premier fil. La sous-couche du dessus "
+                 "reste désactivée."));
 }
 
 void ColorBlendDialog::setProposal(Rgb background, Rgb foreground,
@@ -206,7 +515,7 @@ void ColorBlendDialog::setProposal(Rgb background, Rgb foreground,
                    static_cast<double>(gradient.to.x.value - gradient.from.x.value));
     angle_->setValue(std::fmod(angle * 180.0 / std::numbers::pi + 360.0, 360.0));
     proposal_ = gradient;
-    updatePreview();
+    settingsChanged();
 }
 
 void ColorBlendDialog::setAnalysisMessage(const QString& message) {
