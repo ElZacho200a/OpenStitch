@@ -260,6 +260,37 @@ non corrélé de ces mesures est plus sévère que celui d'une photo : à confir
 des contours réels. Ne traite pas les boucles parasites ni les ponts de bruit
 (non terminaux).
 
+## Façade des stratégies et comparaison (lot A, 2026-10-15)
+
+`libs/auto_satin/include/openstitch/auto_satin/satin_strategy.hpp` introduit
+`SatinStrategy` et `generate_satin(strategy, region, params)`. Une seule valeur est
+livrée, `Skeleton` : la façade appelle `generate_skeleton_satin` sans rien changer
+(test d'égalité octet pour octet sur neuf formes). Une stratégie n'est ajoutée à
+l'énumération que lorsqu'elle est réellement livrée ; aucun réglage n'est encore
+persisté dans `AutoSatinParams` ni dans le `.osp` (lot C).
+
+`SatinMetrics` (`measure_satin` / `measure_result`) fixe les mesures **géométriques**
+communes aux stratégies, avant finitions : colonnes, traversées, paires de traversées
+qui se coupent, longueur minimale / moyenne / maximale d'une traversée, plus long retour
+`B_i -> A_{i+1}` du zigzag, couverture, recouvrement, pic de densité (`overlap_peak`,
+triangles de fil sur un pixel de 100 µm), aire non couverte et **boîte englobante des
+manques** (`uncovered_min` / `uncovered_max`). Elles ne disent rien des sauts, des coupes
+ni du nombre de points exportés : ces mesures dépendent de `stitch_generation` et
+viendront avec la comparaison sur séquence. Temps et mémoire ne sont pas dans la
+bibliothèque (non déterministes).
+
+Commande CLI :
+
+```powershell
+openstitch-cli satin-compare                           # tout le corpus, tableau markdown
+openstitch-cli satin-compare --shape E --shape comb --format csv
+openstitch-cli satin-compare --svg-dir out/satin --timing
+```
+
+Sans `--timing`, la sortie est déterministe : on peut la diffuser avant/après un
+changement du moteur. Elle sert de **référence chiffrée** du moteur actuel avant d'y
+comparer un axe médian vectoriel (lot B).
+
 ## Fichiers
 
 | Fichier | Contenu |
@@ -270,6 +301,7 @@ des contours réels. Ne traite pas les boucles parasites ni les ponts de bruit
 | `libs/auto_satin/src/axis_sampler.*` | pas adaptatif, bouts, garde de rayon |
 | `libs/auto_satin/src/skeleton_satin.cpp` | chaînes, coudes, cellules, guides, anneaux |
 | `libs/stitch_generation/src/generate.cpp` | `generate_auto_satin` |
+| `libs/auto_satin/src/satin_strategy.cpp` | façade des stratégies, mesures comparables |
 | `apps/desktop/main_window_satin_auto.cpp` | création, guides, aperçu, squelette |
 
 ## Coudes serrés : croisements et éventail (2026-10)

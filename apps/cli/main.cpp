@@ -19,6 +19,7 @@
 #include <vector>
 
 #include "openstitch/auto_satin/auto_satin.hpp"
+#include "openstitch/auto_satin/satin_strategy.hpp"
 #include "openstitch/auto_satin/shapes.hpp"
 #include "openstitch/auto_satin/skeleton_satin.hpp"
 #include "openstitch/autodigitize/autodigitize.hpp"
@@ -1226,6 +1227,116 @@ int run_satin_auto_debug(const std::string& shape, double spacingMm,
     return kExitOk;
 }
 
+// Compare les stratégies d'auto-satin livrées sur le corpus de formes (lot A de
+// docs/auto-satin-research.md) : un tableau de mesures géométriques par forme et par
+// stratégie, et, sur demande, un SVG par couple. Sans --timing, la sortie est
+// déterministe (aucune mesure de temps), donc diffable entre deux commits.
+int run_satin_compare(const std::vector<std::string>& shapes, double spacingMm,
+                      const std::string& format, const std::string& svgDir, bool timing) {
+    using namespace openstitch;
+    std::vector<std::string> names = shapes.empty() ? kSatinShapeNames : shapes;
+    if (format != "md" && format != "csv") {
+        return cli_error("satin-compare", fmt::format("format inconnu « {} »", format),
+                         "formats valides : md, csv");
+    }
+    if (!svgDir.empty()) {
+        std::error_code ec;
+        std::filesystem::create_directories(svgDir, ec);
+        if (ec) {
+            return cli_error("satin-compare", fmt::format("impossible de créer {}", svgDir),
+                             ec.message());
+        }
+    }
+    const bool csv = format == "csv";
+    const auto cell = [&](const std::string& v) { return csv ? v : " " + v + " "; };
+    std::string header = "forme,stratégie,colonnes,traversées,croisements,longueur max mm,retour "
+                         "max mm,couverture %,recouvrement,pic,manque mm2,zone des manques mm";
+    if (timing) {
+        header += ",ms";
+    }
+    if (csv) {
+        fmt::print("{}\n", header);
+    } else {
+        std::string line = "|";
+        std::string rule = "|";
+        std::istringstream in(header);
+        std::string col;
+        while (std::getline(in, col, ',')) {
+            line += " " + col + " |";
+            rule += " --- |";
+        }
+        fmt::print("{}\n{}\n", line, rule);
+    }
+    int failures = 0;
+    for (const auto& name : names) {
+        const auto region = auto_satin::make_shape(name);
+        if (!region) {
+            return cli_error("satin-compare", fmt::format("forme inconnue « {} »", name),
+                             "formes valides : " + join_names(kSatinShapeNames));
+        }
+        for (const auto strategy : auto_satin::available_strategies()) {
+            auto_satin::SkeletonSatinParameters params;
+            params.spacing = to_micrometers(Millimeters{spacingMm});
+            params.measure_coverage = true;
+            const auto t0 = std::chrono::steady_clock::now();
+            const auto result = auto_satin::generate_satin(strategy, *region, params);
+            const auto ms =
+                std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0)
+                    .count();
+            std::string row = csv ? "" : "|";
+            const auto add = [&](const std::string& v) {
+                row += cell(v);
+                row += csv ? "," : "|";
+            };
+            add(name);
+            add(std::string(auto_satin::strategy_id(strategy)));
+            if (!result) {
+                ++failures;
+                add("ECHEC : " + result.error().message);
+                if (csv) {
+                    row.pop_back();
+                }
+                fmt::print("{}\n", row);
+                continue;
+            }
+            const auto m = auto_satin::measure_result(*result);
+            add(std::to_string(m.columns));
+            add(std::to_string(m.crossings));
+            add(std::to_string(m.crossing_pairs));
+            add(fmt::format("{:.2f}", m.max_crossing_mm));
+            add(fmt::format("{:.2f}", m.max_return_mm));
+            add(fmt::format("{:.1f}", m.coverage_ratio * 100.0));
+            add(fmt::format("{:.2f}", m.overlap_ratio));
+            add(std::to_string(m.overlap_peak));
+            add(fmt::format("{:.1f}", m.uncovered_area_mm2));
+            add(m.uncovered_area_mm2 > 0.0 ? fmt::format("{:.1f}..{:.1f} x {:.1f}..{:.1f}",
+                                                         m.uncovered_min.x.value / 1000.0,
+                                                         m.uncovered_max.x.value / 1000.0,
+                                                         m.uncovered_min.y.value / 1000.0,
+                                                         m.uncovered_max.y.value / 1000.0)
+                                           : std::string("-"));
+            if (timing) {
+                add(fmt::format("{:.1f}", ms));
+            }
+            if (csv) {
+                row.pop_back();
+            }
+            fmt::print("{}\n", row);
+            if (!svgDir.empty()) {
+                const auto path = std::filesystem::path(svgDir) /
+                                  fmt::format("{}_{}.svg", name, auto_satin::strategy_id(strategy));
+                std::ofstream out(path, std::ios::binary);
+                if (!out) {
+                    return cli_error("satin-compare",
+                                     fmt::format("impossible d'écrire {}", path.string()));
+                }
+                out << auto_satin::skeleton_satin_to_svg(*region, *result);
+            }
+        }
+    }
+    return failures == 0 ? kExitOk : 1;
+}
+
 struct ProductionArgs {
     std::string file;
     std::string output;
@@ -1473,6 +1584,24 @@ int main(int argc, char** argv) {
         ->check(CLI::Range(0.0, 20.0));
     ed_cmd->add_option("--output-svg", ed_out, "SVG de diagnostic (avec entrée/sortie auto)");
 
+    std::vector<std::string> sc_shapes;
+    double sc_spacing = 0.4;
+    std::string sc_format = "md";
+    std::string sc_svg_dir;
+    bool sc_timing = false;
+    auto* sc_cmd = app.add_subcommand(
+        "satin-compare",
+        "[diagnostic] Compare les stratégies d'auto-satin sur le corpus de formes (tableau de "
+        "mesures, SVG par forme)");
+    sc_cmd->group(kDiag);
+    sc_cmd->add_option("--shape", sc_shapes,
+                       "Forme du corpus (répétable ; défaut : tout le corpus)");
+    sc_cmd->add_option("--spacing", sc_spacing, "Espacement des traversées en mm (défaut 0,4)")
+        ->check(CLI::PositiveNumber);
+    sc_cmd->add_option("--format", sc_format, "Format du tableau : md (défaut) ou csv");
+    sc_cmd->add_option("--svg-dir", sc_svg_dir, "Dossier où écrire un SVG par forme et stratégie");
+    sc_cmd->add_flag("--timing", sc_timing,
+                     "Ajoute le temps de génération (rend la sortie non déterministe)");
     std::string sa_shape = "rectangle";
     double sa_spacing = 0.4;
     std::vector<std::string> sa_guides;
@@ -1645,6 +1774,9 @@ int main(int argc, char** argv) {
     }
     if (os_cmd->parsed()) {
         return run_osp2svg(os_in, os_out, os_outlines, os_only, os_noclobber);
+    }
+    if (sc_cmd->parsed()) {
+        return run_satin_compare(sc_shapes, sc_spacing, sc_format, sc_svg_dir, sc_timing);
     }
     if (sa_cmd->parsed()) {
         if (sa_list) {
