@@ -96,6 +96,8 @@ watcher hangs on its `.venv-wsl/`).
 - `openstitch-performance` — measure with the bench, parallelise with `parallel_for`
   (independent tasks, sequential assembly), keep heavy work off the UI thread, exact-key
   caches; byte-identical output is the acceptance criterion.
+- `openstitch-digitize` — numériser une image en broderie : inspecter l'image, `digitize` + `stats`
+  + rendu, fond, couleurs, `--dark-lines`, satin des bandes, diagnostic des échecs courants.
 - `openstitch-multi-agent` — work split across sub-agents in isolated worktrees
   (disjoint file scopes, lead integrates sequentially and re-runs the tests itself).
   The user prefers this whenever a task splits cleanly.

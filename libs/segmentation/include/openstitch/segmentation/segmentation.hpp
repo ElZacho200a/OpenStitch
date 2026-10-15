@@ -155,6 +155,10 @@ std::size_t merge_small_regions(Segmentation& seg, std::size_t min_px,
 struct BackgroundCandidateOptions {
     double min_lightness{90.0}; // L* au-dessus duquel la couleur est jugée quasi blanche
     int min_sides_touched{3};   // nombre minimal de bords de l'image touchés (sur 4)
+    // Fond COLORÉ (papier beige, tissu, aplat) : une couleur, même sombre, qui occupe au moins
+    // cette part du pourtour de l'image ET touche les quatre bords encadre le motif -- un ciel ou
+    // une mer plein cadre ne remplit jamais le pourtour entier. > 1 : désactivé.
+    double min_border_ratio{0.85};
 };
 
 // Fond présumé d'une image opaque : la couleur de la plus grande région
@@ -165,10 +169,12 @@ struct BackgroundCandidateOptions {
 struct BackgroundCandidate {
     RegionId region; // plus grande région (la candidate)
     std::array<std::uint8_t, 3> rgb{};
-    double area_ratio{0.0}; // part de l'image (0..1) couverte par cette couleur
-    double lightness{0.0};  // L* CIELAB de la couleur
-    int sides_touched{0};   // bords de l'image touchés (0..4)
-    // Vrai seulement pour un fond quasi blanc qui encadre le motif : sur une
+    double area_ratio{0.0};   // part de l'image (0..1) couverte par cette couleur
+    double lightness{0.0};    // L* CIELAB de la couleur
+    int sides_touched{0};     // bords de l'image touchés (0..4)
+    double border_ratio{0.0}; // part du pourtour de l'image (0..1) occupée par cette couleur
+    // Vrai pour un fond quasi blanc qui encadre le motif, ou pour une couleur quelconque qui
+    // occupe presque tout le pourtour (`min_border_ratio`) : sur une
     // image plein cadre, la plus grande région est un vrai élément du motif
     // (ciel, mer...) et ne doit JAMAIS être ignorée par défaut.
     bool recommended{false};

@@ -41,7 +41,8 @@ qui mesure pour la couleur de la plus grande région :
 | `area_ratio` | part de l'image couverte par cette couleur (toutes régions) |
 | `lightness` | clarté CIELAB L* de la couleur (`cielab_lightness`, calcul analytique D65) |
 | `sides_touched` | nombre de bords de l'image touchés (0 à 4) |
-| `recommended` | `lightness > min_lightness` (90) **et** `sides_touched >= min_sides_touched` (3) |
+| `border_ratio` | part du **pourtour** de l'image (0 à 1) occupée par cette couleur |
+| `recommended` | fond clair : `lightness > min_lightness` (90) **et** `sides_touched >= min_sides_touched` (3) ; **ou** fond coloré : `sides_touched == 4` **et** `border_ratio >= min_border_ratio` (0,85) |
 
 Les seuils sont dans `BackgroundCandidateOptions`. Le dialogue *Numérisation
 automatique* coche la case seulement si `recommended`, et affiche la pastille
@@ -50,6 +51,14 @@ CLI (`openstitch-cli digitize`) applique la même règle avec
 `--skip-background auto` (défaut ; anciennement `-1`) et imprime la candidate ;
 `yes`/`no` (anciennement `1`/`0`) restent des choix explicites prioritaires. Sur la marine, le ciel (bleu, L* ≈ 43) n'est
 plus ignoré.
+
+**Fond coloré (2026-10-15).** Le critère « quasi blanc » laissait broder un papier ou un tissu
+beige (L* ≈ 86) : sur une illustration de navire à fond crème, le fond entier était cousu (299 × 224 mm
+et +22 % de points, contre 290 × 200 mm une fois le fond ignoré). Une couleur qui occupe au moins
+85 % du pourtour **et** touche les quatre bords encadre le motif, quelle que soit sa clarté ; un
+ciel ou une mer plein cadre ne remplit jamais tout le pourtour (le cas de test « image plein cadre »
+reste non recommandé). `BackgroundCandidateOptions::min_border_ratio` règle le seuil ; une valeur
+supérieure à 1 désactive cette voie.
 
 ## Orientation et sous-couche des remplissages (Lot B)
 

@@ -294,6 +294,24 @@ TEST_CASE("fond blanc qui encadre le motif -> ignorer recommande") {
     CHECK(cand->recommended);
 }
 
+TEST_CASE("fond colore (beige) qui encadre le motif -> ignorer recommande") {
+    // Papier beige (L* ~ 86, sous le seuil « quasi blanc ») autour d'un motif bleu : il occupe
+    // tout le pourtour, donc c'est un fond.
+    const auto img = framed(40, 30, {227, 212, 187}, {15, 101, 186}, 8, 6, 32, 24);
+    const auto seg = segment(img, {.max_colors = 2, .min_region_px = 1});
+    REQUIRE(seg.has_value());
+    const auto cand = background_candidate(*seg);
+    REQUIRE(cand.has_value());
+    CHECK(cand->lightness < 90.0);
+    CHECK(cand->sides_touched == 4);
+    CHECK(cand->border_ratio > 0.99);
+    CHECK(cand->recommended);
+    // Réglage : > 1 désactive la voie « pourtour ».
+    const auto off = background_candidate(*seg, {.min_border_ratio = 2.0});
+    REQUIRE(off.has_value());
+    CHECK_FALSE(off->recommended);
+}
+
 TEST_CASE("image plein cadre dont la plus grande region est coloree -> jamais ignoree") {
     // Ciel bleu sur la moitié haute, mer verte (plus petite) en bas : la plus
     // grande région touche 3 bords mais n'est pas claire -- c'est un vrai
@@ -305,6 +323,7 @@ TEST_CASE("image plein cadre dont la plus grande region est coloree -> jamais ig
     REQUIRE(cand.has_value());
     CHECK(cand->rgb[2] > cand->rgb[1]); // le bleu est bien la candidate
     CHECK(cand->sides_touched == 3);
+    CHECK(cand->border_ratio < 0.85);
     CHECK_FALSE(cand->recommended);
 }
 

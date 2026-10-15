@@ -820,17 +820,29 @@ std::optional<BackgroundCandidate> background_candidate(const Segmentation& seg,
                      (static_cast<double>(seg.width) * static_cast<double>(seg.height));
 
     bool top = false, bottom = false, left = false, right = false;
+    std::size_t borderBg = 0;
     for (int x = 0; x < seg.width; ++x) {
         top = top || isBg(x, 0);
         bottom = bottom || isBg(x, seg.height - 1);
+        borderBg += (isBg(x, 0) ? 1 : 0) + (seg.height > 1 && isBg(x, seg.height - 1) ? 1 : 0);
+    }
+    for (int y = 1; y + 1 < seg.height; ++y) {
+        borderBg += (isBg(0, y) ? 1 : 0) + (seg.width > 1 && isBg(seg.width - 1, y) ? 1 : 0);
     }
     for (int y = 0; y < seg.height; ++y) {
         left = left || isBg(0, y);
         right = right || isBg(seg.width - 1, y);
     }
     out.sides_touched = int{top} + int{bottom} + int{left} + int{right};
-    out.recommended =
+    const std::size_t borderPixels = 2U * static_cast<std::size_t>(seg.width) +
+                                     2U * static_cast<std::size_t>(std::max(seg.height - 2, 0));
+    out.border_ratio =
+        borderPixels > 0 ? static_cast<double>(borderBg) / static_cast<double>(borderPixels) : 0.0;
+    const bool lightFrame =
         out.lightness > options.min_lightness && out.sides_touched >= options.min_sides_touched;
+    const bool colouredFrame =
+        out.sides_touched == 4 && out.border_ratio >= options.min_border_ratio;
+    out.recommended = lightFrame || colouredFrame;
     return out;
 }
 
