@@ -1,6 +1,7 @@
 add_executable(test_stitch_analysis
     test_analyze.cpp
     test_metrics.cpp
+    test_object_coverage.cpp
     test_color_blocks.cpp
     test_production_sheet.cpp
     test_thread_usage.cpp
