@@ -6,6 +6,7 @@
 #include <QDialogButtonBox>
 #include <QDoubleSpinBox>
 #include <QFormLayout>
+#include <QHBoxLayout>
 #include <QLabel>
 #include <QPushButton>
 #include <QSettings>
@@ -70,6 +71,38 @@ MachineExportDialog::MachineExportDialog(SummaryFn summarize, const QString& ini
     form->addRow(QString(), trims_);
     form->addRow(tr("Arrêts machine :"), stops_);
     form->addRow(QString(), colorChanges_);
+
+    // Point de départ de la machine : ne change que le saut d'approche initial, jamais l'ordre
+    // des régions (utile pour broder en plusieurs étapes, en repositionnant le cadre).
+    startMode_ = new QComboBox(this);
+    startMode_->setObjectName(QStringLiteral("combo_exportStartMode"));
+    startMode_->addItem(tr("Premier point du motif"),
+                        static_cast<int>(formats::StartMode::FirstPoint));
+    startMode_->addItem(tr("Centre de la broderie"), static_cast<int>(formats::StartMode::Center));
+    startMode_->addItem(tr("Point choisi (X / Y)"), static_cast<int>(formats::StartMode::Custom));
+    startMode_->setToolTip(tr("Position de l'aiguille au démarrage de la machine. Seul le premier "
+                              "déplacement change ; l'ordre et la position des points sont "
+                              "conservés. X / Y en mm dans le repère du document (0 = centre du "
+                              "canevas, Y vers le haut)."));
+    const auto makeStartSpin = [this](const char* name, const QString& prefix) {
+        auto* spin = new QDoubleSpinBox(this);
+        spin->setObjectName(QString::fromLatin1(name));
+        spin->setRange(-1000.0, 1000.0);
+        spin->setDecimals(1);
+        spin->setSingleStep(1.0);
+        spin->setPrefix(prefix);
+        spin->setSuffix(tr(" mm"));
+        return spin;
+    };
+    startX_ = makeStartSpin("spin_exportStartX", tr("X "));
+    startY_ = makeStartSpin("spin_exportStartY", tr("Y "));
+    auto* startPoint = new QWidget(this);
+    auto* startRow = new QHBoxLayout(startPoint);
+    startRow->setContentsMargins(0, 0, 0, 0);
+    startRow->addWidget(startX_);
+    startRow->addWidget(startY_);
+    form->addRow(tr("Point de départ :"), startMode_);
+    form->addRow(QString(), startPoint);
 
     // HP-SEQ-006 : optimisation des coupes demandée pour CET export, indépendante du format
     // (le DST en profite aussi). Appliquée à la toute fin, le projet n'est pas modifié.
@@ -160,6 +193,9 @@ MachineExportDialog::MachineExportDialog(SummaryFn summarize, const QString& ini
     connect(trims_, &QCheckBox::toggled, this, onChange);
     connect(colorChanges_, &QCheckBox::toggled, this, onChange);
     connect(stops_, &QComboBox::currentIndexChanged, this, onChange);
+    connect(startMode_, &QComboBox::currentIndexChanged, this, onChange);
+    connect(startX_, &QDoubleSpinBox::editingFinished, this, onChange);
+    connect(startY_, &QDoubleSpinBox::editingFinished, this, onChange);
     connect(reduceTrims_, &QCheckBox::toggled, this, onChange);
     connect(sameColour_, &QCheckBox::toggled, this, onChange);
     connect(between_, &QCheckBox::toggled, this, onChange);
@@ -194,6 +230,10 @@ formats::MachineExportOptions MachineExportDialog::options() const {
     o.color_changes = colorChanges_->isChecked() ? formats::ColorChangeMode::Emit
                                                  : formats::ColorChangeMode::Drop;
     o.stops = static_cast<formats::StopMode>(stops_->currentData().toInt());
+    o.start.mode = static_cast<formats::StartMode>(startMode_->currentData().toInt());
+    o.start.point =
+        Vec2um{Micrometers{static_cast<std::int32_t>(std::lround(startX_->value() * 1000.0))},
+               Micrometers{static_cast<std::int32_t>(std::lround(startY_->value() * 1000.0))}};
     return o;
 }
 
@@ -221,6 +261,10 @@ void MachineExportDialog::refresh() {
     trims_->setEnabled(!dst);
     stops_->setEnabled(!dst);
     colorChanges_->setEnabled(!dst);
+    const bool customStart = static_cast<formats::StartMode>(startMode_->currentData().toInt()) ==
+                             formats::StartMode::Custom;
+    startX_->setEnabled(customStart);
+    startY_->setEnabled(customStart);
     // Les réglages de ponts n'ont de sens que si l'option est cochée.
     sameColour_->setEnabled(reduceTrims_->isChecked());
     maxBridge_->setEnabled(reduceTrims_->isChecked());
