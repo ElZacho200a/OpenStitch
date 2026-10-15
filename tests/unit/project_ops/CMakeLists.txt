@@ -1,6 +1,8 @@
 add_executable(test_project_ops
     test_factory_inspect.cpp
     test_operations.cpp
+    test_param_ops.cpp
+    test_geometry_ops.cpp
     test_quality.cpp
     test_auto_satin_service.cpp
 )
