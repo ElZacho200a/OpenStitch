@@ -1,8 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 #pragma once
 
+#include <array>
+#include <cstdint>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include "openstitch/core/error.hpp"
@@ -36,6 +39,10 @@ struct InspectOptions {
 // même texte (clés triées par construction, aucun horodatage).
 [[nodiscard]] Result<std::string> inspect_project_json(const document::Project& project,
                                                        const InspectOptions& options = {});
+
+// Résumé lisible (texte) du même contenu : cadre, totaux, une ligne par objet, avertissements.
+[[nodiscard]] Result<std::string> inspect_project_text(const document::Project& project,
+                                                      const InspectOptions& options = {});
 
 // Un objet de broderie (id d'objet de broderie) : paramètres complets, géométrie source,
 // statistiques de ses points, avertissements qui le concernent. Erreur

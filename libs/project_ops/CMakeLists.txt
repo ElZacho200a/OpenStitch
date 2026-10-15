@@ -9,6 +9,8 @@ add_library(openstitch_project_ops
     src/factory.cpp
     src/inspect.cpp
     src/json_common.cpp
+    src/project_file.cpp
+    src/report.cpp
     src/operations.cpp
     src/op_params.cpp
     src/op_geometry.cpp

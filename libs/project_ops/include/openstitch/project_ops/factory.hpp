@@ -10,11 +10,16 @@
 #include <string_view>
 #include <vector>
 
+#include "openstitch/autodigitize/contour_objects.hpp"
+#include "openstitch/autodigitize/stipple_objects.hpp"
 #include "openstitch/core/error.hpp"
 #include "openstitch/document/project.hpp"
 #include "openstitch/segmentation/segmentation.hpp"
 
 namespace openstitch::project_ops {
+
+// Convention d'erreur de cette lib : `Error::message` = phrase montrable, `Error::detail` =
+// piste de correction (vide = aucune), comme le « Piste : » de la CLI.
 
 // --- Création de projets -------------------------------------------------------
 struct NewProjectOptions {
@@ -78,6 +83,8 @@ struct DigitizeReport {
     std::size_t satin{0};
     std::size_t tatami{0};
     std::size_t running{0};
+    std::optional<autodigitize::ContourMetrics> contour; // mode contours
+    std::optional<autodigitize::StippleMetrics> stipple; // mode stipple
     std::vector<std::string> warnings; // avertissements non bloquants du moteur
 };
 
