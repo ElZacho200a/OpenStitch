@@ -383,8 +383,8 @@ TEST_CASE("param ops set_params on satin types", "[project_ops][params]") {
     REQUIRE(s != nullptr);
     CHECK(s->density == Micrometers{300});
     CHECK(s->underlay_zigzag);
-    // Les rails ne sont pas des paramètres scalaires : refus nommé.
-    expect_refused(p, R"({"op":"set_params","object":4,"params":{"rail_a":[]}})",
+    // La topologie et la bordure ne sont pas modifiables ici : refus nommé.
+    expect_refused(p, R"({"op":"set_params","object":4,"params":{"topology":{}}})",
                    project_ops::code::kWrongType);
 }
 

@@ -5,6 +5,8 @@
 #include <fmt/format.h>
 
 #include <algorithm>
+#include <cctype>
+#include <cmath>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -12,6 +14,8 @@
 #include <optional>
 #include <sstream>
 
+#include "openstitch/formats/format_registry.hpp"
+#include "openstitch/formats/machine_design.hpp"
 #include "openstitch/formats/svg.hpp"
 #include "openstitch/project_io/machine_file.hpp"
 #include "openstitch/project_ops/errors.hpp"
@@ -651,6 +655,131 @@ CLI::App* register_project_commands(CLI::App& app, bool& jsonOut) {
         }
         g_exit = run_batch_flow(
             *setFlow, "{\"schema\":\"openstitch.batch/1\",\"operations\":[" + ops + "]}", false);
+    });
+
+    // export ----------------------------------------------------------------------------
+    struct ExportArgs {
+        std::string osp, out, format, stops{"native"}, levels{"all"};
+        bool noTrims{false}, noColorChanges{false}, reduceTrims{false}, sameColour{false};
+        bool outlines{false}, noClobber{false};
+        double reduceMax{15.0};
+        std::uint64_t only{0};
+    };
+    auto exArgs = std::make_shared<ExportArgs>();
+    c = project->add_subcommand("export", "Exporte un projet en broderie machine (dst, pes, jef, "
+                                          "exp) ou en SVG ; les points sont régénérés depuis le "
+                                          ".osp (mêmes octets que osp2dst)");
+    c->add_option("osp", exArgs->osp, "Projet .osp")->required();
+    c->add_option("--output,-o", exArgs->out, "Fichier à produire (format déduit de l'extension)")
+        ->required();
+    c->add_option("--format", exArgs->format, "Force le format : dst|pes|jef|exp|svg")
+        ->check(CLI::IsMember({"dst", "pes", "jef", "exp", "svg"}));
+    c->add_flag("--no-trims", exArgs->noTrims, "Supprime les coupes (elles deviennent des sauts)");
+    c->add_flag("--no-color-changes", exArgs->noColorChanges,
+                "Supprime les changements de couleur");
+    c->add_option("--stops", exArgs->stops, "Arrêts machine : native, as-color-change ou drop")
+        ->check(CLI::IsMember({"native", "as-color-change", "drop"}));
+    c->add_flag("--reduce-trims", exArgs->reduceTrims,
+                "Remplace des coupes par des ponts cousus cachés (export seulement)");
+    c->add_option("--reduce-trims-levels", exArgs->levels,
+                  "between, within, underlay, regions ou all (liste séparée par des virgules)");
+    c->add_flag("--reduce-trims-same-colour", exArgs->sameColour,
+                "Une surface déjà cousue du même fil compte comme cachée");
+    c->add_option("--reduce-trims-max", exArgs->reduceMax, "Longueur maximale d'un pont, en mm")
+        ->check(CLI::Range(0.0, 100.0));
+    c->add_flag("--outlines", exArgs->outlines, "SVG : superpose les contours des régions");
+    c->add_option("--only", exArgs->only, "SVG : limite à un objet de broderie");
+    c->add_flag("--no-clobber", exArgs->noClobber, "Refuse d'écraser le fichier de sortie");
+    c->add_flag("--json", jsonOut, "Rapport JSON (openstitch.export/1) sur stdout");
+    c->callback([exArgs, &jsonOut] {
+        const auto& a = *exArgs;
+        if (const auto refused = check_output("export", jsonOut, a.out, a.noClobber)) {
+            g_exit = *refused;
+            return;
+        }
+        std::string format = a.format;
+        if (format.empty()) {
+            format = fs::path(a.out).extension().string();
+            if (!format.empty() && format.front() == '.') {
+                format.erase(format.begin());
+            }
+            std::transform(format.begin(), format.end(), format.begin(),
+                           [](unsigned char ch) { return static_cast<char>(std::tolower(ch)); });
+        }
+        const auto* info = openstitch::formats::find_format_for_extension(format);
+        if (format != "svg" && (info == nullptr || !info->can_write)) {
+            g_exit = fail_with("export", jsonOut, po::code::kUsage,
+                               "format de sortie « " + format + " » non pris en charge",
+                               "extensions : .dst .pes .jef .exp .svg (ou --format)");
+            return;
+        }
+        int rc = 0;
+        auto opened = load("export", jsonOut, a.osp, rc);
+        if (!opened) {
+            g_exit = rc;
+            return;
+        }
+        std::string extra;
+        if (format == "svg") {
+            po::QualitySvgOptions so;
+            so.outlines = a.outlines;
+            so.directions = false;
+            so.findings = false;
+            so.only_object = openstitch::ObjectId{a.only};
+            const auto svg = po::render_quality_svg(opened->project, so);
+            if (!svg) {
+                g_exit = fail_err("export", jsonOut, po::code::kRefused, svg.error());
+                return;
+            }
+            std::string err;
+            if (!write_text(fs::path(a.out), *svg, err)) {
+                g_exit = fail_with("export", jsonOut, po::code::kIo, err);
+                return;
+            }
+        } else {
+            openstitch::formats::MachineExportOptions options;
+            if (a.noTrims) {
+                options.trims = openstitch::formats::TrimMode::Drop;
+            }
+            if (a.noColorChanges) {
+                options.color_changes = openstitch::formats::ColorChangeMode::Drop;
+            }
+            options.stops = a.stops == "drop" ? openstitch::formats::StopMode::Drop
+                            : a.stops == "as-color-change"
+                                ? openstitch::formats::StopMode::AsColorChange
+                                : openstitch::formats::StopMode::Native;
+            openstitch::project_io::ExportOptimizations optimizations;
+            optimizations.reduce_trims = a.reduceTrims;
+            optimizations.hidden_travel.allow_same_color_surface = a.sameColour;
+            if (auto levels = po::parse_route_levels(a.levels, optimizations.hidden_travel);
+                !levels) {
+                g_exit = fail_err("export", jsonOut, po::code::kUsage, levels.error());
+                return;
+            }
+            optimizations.hidden_travel.max_bridge_length = openstitch::Micrometers{
+                static_cast<std::int32_t>(std::lround(a.reduceMax * 1000.0))};
+            openstitch::stitch_generation::TrimReport trimReport;
+            if (auto w = openstitch::project_io::export_machine_file(opened->project, info->id,
+                                                                     fs::path(a.out), options,
+                                                                     optimizations, &trimReport);
+                !w) {
+                g_exit = fail_err("export", jsonOut, po::code::kRefused, w.error());
+                return;
+            }
+            if (a.reduceTrims) {
+                extra = fmt::format(",\"trims_removed\":{}", trimReport.trims_removed);
+            }
+        }
+        std::error_code ec;
+        const auto bytes = fs::file_size(fs::path(a.out), ec);
+        if (jsonOut) {
+            fmt::print("{{\"schema\":\"openstitch.export/1\",\"ok\":true,\"format\":{},"
+                       "\"output\":{},\"bytes\":{}{}}}\n",
+                       po::json_quote(format), po::json_quote(a.out), ec ? 0 : bytes, extra);
+        } else {
+            fmt::print("Exporté ({}) : {}\n", format, a.out);
+        }
+        g_exit = 0;
     });
 
     // operations ------------------------------------------------------------------------

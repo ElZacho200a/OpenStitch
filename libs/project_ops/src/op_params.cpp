@@ -429,6 +429,220 @@ template <class P, class Proj> Field<P> point_field(std::string name, Proj proj)
     return f;
 }
 
+// --- Géométrie des guides, ruptures, rails et dégradés (polylignes en mm) ---------------------
+// Les chemins se lisent/écrivent en POLYLIGNES de sommets [x_mm, y_mm] (repère du modèle). Un
+// chemin dont les sommets sont inchangés est conservé tel quel (tangentes de Bézier comprises) :
+// relire l'inspection puis la réécrire ne dégrade jamais une courbe. Un chemin modifié devient
+// une polyligne.
+
+json polyline_json(const geometry::Path& path) {
+    json out = json::array();
+    for (const auto& n : path.nodes) {
+        out.push_back(json::array({to_millimeters(n.pos.x).value, to_millimeters(n.pos.y).value}));
+    }
+    return out;
+}
+
+json point_json(Vec2um p) {
+    return json::array({to_millimeters(p.x).value, to_millimeters(p.y).value});
+}
+
+Vec2um point_from_json(const std::string& name, const json& v) {
+    if (!v.is_array() || v.size() != 2 || !v[0].is_number() || !v[1].is_number()) {
+        refuse(code::kUsage, "champ « " + name + " » : point [x_mm, y_mm] attendu");
+    }
+    const double x = number_in_range(name, v[0], -5000.0, 5000.0, "mm");
+    const double y = number_in_range(name, v[1], -5000.0, 5000.0, "mm");
+    return Vec2um{to_micrometers(Millimeters{x}), to_micrometers(Millimeters{y})};
+}
+
+geometry::Path path_from_json(const std::string& name, const json& v,
+                              const geometry::Path* existing, std::size_t minPoints) {
+    if (!v.is_array() || v.size() < minPoints || v.size() > 2000) {
+        refuse(code::kUsage, "champ « " + name + " » : polyligne [[x_mm,y_mm],...] de " +
+                                 std::to_string(minPoints) + " à 2000 points attendue");
+    }
+    geometry::Path path;
+    path.closed = false;
+    for (const auto& p : v) {
+        geometry::PathNode node;
+        node.pos = point_from_json(name, p);
+        path.nodes.push_back(node);
+    }
+    if (existing != nullptr && existing->nodes.size() == path.nodes.size()) {
+        bool same = true;
+        for (std::size_t i = 0; i < path.nodes.size(); ++i) {
+            same = same && existing->nodes[i].pos == path.nodes[i].pos;
+        }
+        if (same) {
+            return *existing;
+        }
+    }
+    return path;
+}
+
+// std::vector<geometry::Path> (guides et lignes de rupture du remplissage directionnel).
+template <class P, class Proj> Field<P> paths_field(std::string name, Proj proj) {
+    Field<P> f;
+    f.name = name;
+    f.type = "array";
+    f.unit = "mm";
+    f.range = "liste (au plus 64) de polylignes [[x,y],...] d'au moins 2 points, [] pour effacer";
+    f.set = [=](P& p, const json& v) {
+        if (!v.is_array() || v.size() > 64) {
+            refuse(code::kUsage, "champ « " + name + " » : liste de polylignes (64 au plus)");
+        }
+        auto& target = std::invoke(proj, p);
+        std::vector<geometry::Path> out;
+        for (std::size_t i = 0; i < v.size(); ++i) {
+            out.push_back(path_from_json(name, v[i], i < target.size() ? &target[i] : nullptr, 2));
+        }
+        target = std::move(out);
+    };
+    f.get = [=](const P& p) {
+        json out = json::array();
+        for (const auto& path : std::invoke(proj, p)) {
+            out.push_back(polyline_json(path));
+        }
+        return out;
+    };
+    return f;
+}
+
+// Un rail de satin (Path) : polyligne d'au moins 2 points.
+template <class P, class Proj> Field<P> rail_field(std::string name, Proj proj) {
+    Field<P> f;
+    f.name = name;
+    f.type = "array";
+    f.unit = "mm";
+    f.range = "polyligne [[x,y],...] de 2 à 2000 points";
+    f.set = [=](P& p, const json& v) {
+        auto& target = std::invoke(proj, p);
+        target = path_from_json(name, v, &target, 2);
+    };
+    f.get = [=](const P& p) { return polyline_json(std::invoke(proj, p)); };
+    return f;
+}
+
+// Barreaux d'un satin : [{a_mm:[x,y], b_mm:[x,y]}]. Un barreau inchangé garde son lien.
+template <class P, class Proj> Field<P> rungs_field(std::string name, Proj proj) {
+    Field<P> f;
+    f.name = name;
+    f.type = "array";
+    f.unit = "mm";
+    f.range = "liste (au plus 2000) de {a_mm:[x,y], b_mm:[x,y]}";
+    f.set = [=](P& p, const json& v) {
+        if (!v.is_array() || v.size() > 2000) {
+            refuse(code::kUsage, "champ « " + name + " » : liste de {a_mm, b_mm} (2000 au plus)");
+        }
+        auto& target = std::invoke(proj, p);
+        std::vector<document::SatinRung> out;
+        for (std::size_t i = 0; i < v.size(); ++i) {
+            if (!v[i].is_object() || !v[i].contains("a_mm") || !v[i].contains("b_mm")) {
+                refuse(code::kUsage, "champ « " + name + " » : chaque barreau est {a_mm, b_mm}");
+            }
+            document::SatinRung rung;
+            rung.a = point_from_json(name, v[i]["a_mm"]);
+            rung.b = point_from_json(name, v[i]["b_mm"]);
+            if (i < target.size() && target[i].a == rung.a && target[i].b == rung.b) {
+                rung.link_id = target[i].link_id;
+            }
+            out.push_back(rung);
+        }
+        target = std::move(out);
+    };
+    f.get = [=](const P& p) {
+        json out = json::array();
+        for (const auto& r : std::invoke(proj, p)) {
+            out.push_back({{"a_mm", point_json(r.a)}, {"b_mm", point_json(r.b)}});
+        }
+        return out;
+    };
+    return f;
+}
+
+// Guides d'orientation de l'auto-satin : [{anchor_mm:[x,y], angle_deg, absolute?}].
+template <class P> Field<P> auto_satin_guides_field(std::string name) {
+    Field<P> f;
+    f.name = name;
+    f.type = "array";
+    f.unit = "mm / deg";
+    f.range = "au plus 64 guides {anchor_mm:[x,y], angle_deg, absolute?}, [] pour effacer";
+    f.set = [=](P& p, const json& v) {
+        if (!v.is_array() || v.size() > 64) {
+            refuse(code::kUsage, "champ « " + name + " » : liste de guides (64 au plus)");
+        }
+        std::vector<document::AutoSatinGuide> out;
+        for (const auto& g : v) {
+            if (!g.is_object() || !g.contains("anchor_mm") || !g.contains("angle_deg")) {
+                refuse(code::kUsage, "champ « " + name + " » : guide {anchor_mm, angle_deg}");
+            }
+            document::AutoSatinGuide guide;
+            guide.anchor = point_from_json(name, g["anchor_mm"]);
+            const double a = number_in_range(name, g["angle_deg"], -360.0, 360.0, "deg");
+            guide.angle = Angle{a * std::numbers::pi / 180.0};
+            guide.absolute = g.value("absolute", false);
+            out.push_back(guide);
+        }
+        p.guides = std::move(out);
+    };
+    f.get = [=](const P& p) {
+        json out = json::array();
+        for (const auto& g : p.guides) {
+            out.push_back({{"anchor_mm", point_json(g.anchor)},
+                           {"angle_deg", round6(g.angle.radians * 180.0 / std::numbers::pi)},
+                           {"absolute", g.absolute}});
+        }
+        return out;
+    };
+    return f;
+}
+
+// Dégradé de densité du remplissage directionnel (ou null pour le retirer).
+template <class P> Field<P> gradient_field(std::string name) {
+    Field<P> f;
+    f.name = name;
+    f.type = "object";
+    f.unit = "mm";
+    f.range = "{from_mm:[x,y], to_mm:[x,y], spacing_from_mm, spacing_to_mm [0,1 ; 5], "
+              "interpolate_density?} ou null";
+    f.set = [=](P& p, const json& v) {
+        if (v.is_null()) {
+            p.density_gradient.reset();
+            return;
+        }
+        if (!v.is_object()) {
+            refuse(code::kUsage, "champ « " + name + " » : objet ou null attendu");
+        }
+        for (const char* key : {"from_mm", "to_mm", "spacing_from_mm", "spacing_to_mm"}) {
+            if (!v.contains(key)) {
+                refuse(code::kUsage, "champ « " + name + " » : « " + key + " » manquant");
+            }
+        }
+        document::DensityGradient g;
+        g.from = point_from_json(name, v["from_mm"]);
+        g.to = point_from_json(name, v["to_mm"]);
+        g.spacing_from = to_micrometers(
+            Millimeters{number_in_range(name, v["spacing_from_mm"], 0.1, 5.0, "mm")});
+        g.spacing_to =
+            to_micrometers(Millimeters{number_in_range(name, v["spacing_to_mm"], 0.1, 5.0, "mm")});
+        g.interpolate_density = v.value("interpolate_density", false);
+        p.density_gradient = g;
+    };
+    f.get = [=](const P& p) {
+        if (!p.density_gradient) {
+            return json(nullptr);
+        }
+        const auto& g = *p.density_gradient;
+        return json{{"from_mm", point_json(g.from)},
+                    {"to_mm", point_json(g.to)},
+                    {"spacing_from_mm", to_millimeters(g.spacing_from).value},
+                    {"spacing_to_mm", to_millimeters(g.spacing_to).value},
+                    {"interpolate_density", g.interpolate_density}};
+    };
+    return f;
+}
+
 template <class P> std::vector<std::string> field_names(const std::vector<Field<P>>& fields) {
     std::vector<std::string> names;
     for (const auto& f : fields) {
@@ -530,6 +744,9 @@ fields_of<document::DirectionalFillParams>() {
         v.push_back(int_field<P>("handmade_intensity", &P::handmade_intensity, 0, 100));
         v.push_back(int_field<P>("seed", &P::seed, 0, 4'294'967'295LL));
         v.push_back(enum_field<P>("underlay_mode", &P::underlay_mode, underlay_mode_table()));
+        v.push_back(paths_field<P>("guides", &P::guides));
+        v.push_back(paths_field<P>("break_lines", &P::break_lines));
+        v.push_back(gradient_field<P>("density_gradient"));
         return v;
     }();
     return fields;
@@ -543,6 +760,9 @@ template <> const std::vector<Field<document::SatinParams>>& fields_of<document:
         v.push_back(mm_field<P>("max_width_mm", &P::max_width, 1.0, 60.0));
         v.push_back(mm_field<P>("max_width_hard_mm", &P::max_width_hard, 1.0, 60.0));
         v.push_back(mm_field<P>("max_stitch_length_mm", &P::max_stitch_length, 1.0, 15.0));
+        v.push_back(rail_field<P>("rail_a", &P::rail_a));
+        v.push_back(rail_field<P>("rail_b", &P::rail_b));
+        v.push_back(rungs_field<P>("rungs", &P::rungs));
         add_satin_common<P>(v);
         return v;
     }();
@@ -558,6 +778,7 @@ const std::vector<Field<document::AutoSatinParams>>& fields_of<document::AutoSat
         v.push_back(mm_field<P>("split_threshold_mm", &P::split_threshold, 1.0, 20.0));
         v.push_back(mm_field<P>("split_length_mm", &P::split_length, 0.5, 20.0));
         v.push_back(bool_field<P>("compact_axis", &P::compact_axis));
+        v.push_back(auto_satin_guides_field<P>("guides"));
         add_satin_common<P>(v);
         return v;
     }();

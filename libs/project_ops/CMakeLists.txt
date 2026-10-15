@@ -14,6 +14,7 @@ add_library(openstitch_project_ops
     src/operations.cpp
     src/op_params.cpp
     src/op_geometry.cpp
+    src/op_import.cpp
     src/auto_satin_service.cpp
     src/quality.cpp
 )
@@ -25,6 +26,6 @@ target_link_libraries(openstitch_project_ops
            openstitch::project_io openstitch::stitch_analysis
     PRIVATE nlohmann_json::nlohmann_json openstitch::image openstitch::segmentation
             openstitch::autodigitize openstitch::stitch_generation openstitch::auto_satin
-            openstitch::optimization openstitch::formats openstitch::stitch
+            openstitch::optimization openstitch::lettering openstitch::formats openstitch::stitch
             openstitch::geometry openstitch::thread_palette openstitch::warnings
 )

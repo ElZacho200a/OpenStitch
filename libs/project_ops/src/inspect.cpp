@@ -36,6 +36,20 @@ double deg(Angle a) {
 json point_mm(Vec2um p) {
     return json::array({mm(p.x), mm(p.y)});
 }
+json polyline_mm(const geometry::Path& path) {
+    json out = json::array();
+    for (const auto& n : path.nodes) {
+        out.push_back(point_mm(n.pos));
+    }
+    return out;
+}
+json paths_mm(const std::vector<geometry::Path>& paths) {
+    json out = json::array();
+    for (const auto& p : paths) {
+        out.push_back(polyline_mm(p));
+    }
+    return out;
+}
 json rgb_json(const std::array<std::uint8_t, 3>& rgb) {
     return rgb_to_hex(rgb);
 }
@@ -194,9 +208,13 @@ json params_json(const document::StitchParams& params, bool full) {
                 j["lock_length_mm"] = mm(p.lock_length);
                 j["lock_passes"] = p.lock_passes;
                 j["underlay_mode"] = underlay_mode_name(p.underlay_mode);
-                j["rungs"] = p.rungs.size();
-                j["rail_a_nodes"] = p.rail_a.nodes.size();
-                j["rail_b_nodes"] = p.rail_b.nodes.size();
+                j["rail_a"] = polyline_mm(p.rail_a);
+                j["rail_b"] = polyline_mm(p.rail_b);
+                json rungs = json::array();
+                for (const auto& r : p.rungs) {
+                    rungs.push_back(json{{"a_mm", point_mm(r.a)}, {"b_mm", point_mm(r.b)}});
+                }
+                j["rungs"] = rungs;
                 if (p.border) {
                     j["border_width_mm"] = mm(p.border->width);
                 }
@@ -217,9 +235,18 @@ json params_json(const document::StitchParams& params, bool full) {
                 j["handmade_intensity"] = p.handmade_intensity;
                 j["seed"] = p.seed;
                 j["underlay_mode"] = underlay_mode_name(p.underlay_mode);
-                j["guides"] = p.guides.size();
-                j["break_lines"] = p.break_lines.size();
-                j["density_gradient"] = p.density_gradient.has_value();
+                j["guides"] = paths_mm(p.guides);
+                j["break_lines"] = paths_mm(p.break_lines);
+                if (p.density_gradient) {
+                    const auto& g = *p.density_gradient;
+                    j["density_gradient"] = json{{"from_mm", point_mm(g.from)},
+                                                 {"to_mm", point_mm(g.to)},
+                                                 {"spacing_from_mm", mm(g.spacing_from)},
+                                                 {"spacing_to_mm", mm(g.spacing_to)},
+                                                 {"interpolate_density", g.interpolate_density}};
+                } else {
+                    j["density_gradient"] = nullptr;
+                }
             } else if constexpr (std::is_same_v<T, document::AutoSatinParams>) {
                 j["spacing_mm"] = mm(p.spacing);
                 j["split_stitch"] = split_name(p.split_stitch);
@@ -242,7 +269,13 @@ json params_json(const document::StitchParams& params, bool full) {
                 j["lock_passes"] = p.lock_passes;
                 j["underlay_mode"] = underlay_mode_name(p.underlay_mode);
                 j["compact_axis"] = p.compact_axis;
-                j["guides"] = p.guides.size();
+                json guides = json::array();
+                for (const auto& g : p.guides) {
+                    guides.push_back(json{{"anchor_mm", point_mm(g.anchor)},
+                                          {"angle_deg", deg(g.angle)},
+                                          {"absolute", g.absolute}});
+                }
+                j["guides"] = guides;
             }
         },
         params);
@@ -487,6 +520,43 @@ Result<json> build_project_doc(const document::Project& project, const InspectOp
         vectors.push_back(std::move(vj));
     }
     doc["vector_objects"] = vectors;
+
+    json texts = json::array();
+    for (const auto& t : project.text_objects) {
+        json letters = json::array();
+        for (const auto& v : project.vector_objects) {
+            if (v.text_owner && *v.text_owner == t.id) {
+                letters.push_back(v.id.value);
+            }
+        }
+        const char* align = t.align == document::TextAlign::Center    ? "center"
+                            : t.align == document::TextAlign::Right   ? "right"
+                            : t.align == document::TextAlign::Justify ? "justify"
+                                                                      : "left";
+        const char* fill = t.fill == document::TextFill::Satin     ? "satin"
+                           : t.fill == document::TextFill::Tatami  ? "tatami"
+                           : t.fill == document::TextFill::Contour ? "contour"
+                                                                   : "auto";
+        texts.push_back(json{{"id", t.id.value},
+                             {"text", t.text},
+                             {"font", json{{"family", t.font.family},
+                                           {"file", t.font.file},
+                                           {"builtin", t.font.builtin},
+                                           {"face_index", t.font.face_index}}},
+                             {"cap_height_mm", mm(t.cap_height)},
+                             {"letter_spacing_mm", mm(t.letter_spacing)},
+                             {"word_spacing_mm", mm(t.word_spacing)},
+                             {"line_spacing", t.line_spacing},
+                             {"kerning", t.kerning},
+                             {"align", align},
+                             {"origin_mm", point_mm(t.origin)},
+                             {"rotation_deg", deg(t.rotation)},
+                             {"color", rgb_json(t.rgb)},
+                             {"fill", fill},
+                             {"density_mm", mm(t.density)},
+                             {"letter_vector_ids", letters}});
+    }
+    doc["text_objects"] = texts;
 
     std::map<std::uint64_t, ObjectStitches> stitches;
     std::optional<stitch::StitchStats> stats;

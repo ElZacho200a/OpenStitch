@@ -45,6 +45,7 @@ const Registry& registry() {
         Registry r;
         detail::register_param_ops(r.ops);
         detail::register_geometry_ops(r.ops);
+        detail::register_import_ops(r.ops);
         std::stable_sort(r.ops.begin(), r.ops.end(),
                          [](const OpSpec& a, const OpSpec& b) { return a.name < b.name; });
         for (std::size_t i = 1; i < r.ops.size(); ++i) {

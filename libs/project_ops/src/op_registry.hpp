@@ -71,6 +71,7 @@ struct OpSpec {
 // refuse un nom en double.
 void register_param_ops(
     std::vector<OpSpec>& out); // op_params.cpp   : style, paramètres, ordre, projet
+void register_import_ops(std::vector<OpSpec>& out); // op_import.cpp   : import SVG, lettrage
 void register_geometry_ops(
     std::vector<OpSpec>& out); // op_geometry.cpp : forme, transformation, fusion, auto-satin
 

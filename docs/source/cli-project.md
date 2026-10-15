@@ -163,12 +163,18 @@ partenaires de fondu, compteur d'identifiants) puis contrôle qualité. Code 2 s
 Liste machine-lisible de toutes les commandes et options de la CLI
 (`openstitch.commands/1`, générée par introspection de CLI11 : toujours à jour).
 
-### Export
+### `project export <projet.osp> -o <sortie>`
 
-Inchangés : `openstitch-cli osp2dst projet.osp sortie.dst|pes|jef|exp` et
-`osp2svg`. Les points sont régénérés depuis le `.osp` (`effective_sequence`) à
-chaque export : modifier un objet puis exporter suffit, il n'y a rien à
-« régénérer » dans le fichier.
+Exporte en `dst`, `pes`, `jef`, `exp` ou `svg` (format déduit de l'extension, ou
+`--format`). Options machine identiques à `osp2dst` : `--no-trims`,
+`--no-color-changes`, `--stops native|as-color-change|drop`, `--reduce-trims`
+(`--reduce-trims-levels`, `--reduce-trims-same-colour`, `--reduce-trims-max`).
+SVG : `--outlines` (contours des régions) et `--only ID`. Rapport
+`openstitch.export/1` avec `--json`. L'export machine passe par le **même appel**
+(`project_io::export_machine_file`) que `osp2dst` : les octets sont identiques (testé
+par empreinte SHA-256). `osp2dst` et `osp2svg` restent disponibles, inchangés.
+Les points sont régénérés depuis le `.osp` (`effective_sequence`) à chaque export :
+modifier un objet puis exporter suffit, il n'y a rien à « régénérer » dans le fichier.
 
 ## Inspection JSON (`openstitch.project-inspect/1`)
 
@@ -238,6 +244,7 @@ Un objet est désigné par `object` = **identifiant d'objet de broderie**.
 | Ordre | `set_order` (position, before, after, to_front, to_back), `optimize_order` (document, by_color, by_proximity, color_then_proximity, layered ; objets verrouillés immobiles) |
 | Création / suppression | `add_shape` (rect, ellipse, polygone), `duplicate_object`, `remove_object` |
 | Géométrie | `translate`, `rotate`, `scale`, `mirror`, `set_geometry`, `merge` (union, subtract, intersect, exclude), `split`, `break_apart`, `remove_holes` |
+| Import et texte | `import_svg` (path, rect, circle, ellipse, line, polyline, polygon), `add_text`, `set_text`, `remove_text` |
 | Auto-satin | `auto_satin` (espacement, `compact_axis`, guides) : vrai pipeline, refus nommé si aucune colonne |
 | Projet | `set_canvas`, `set_finishing` |
 
@@ -249,8 +256,27 @@ Détail exact des arguments : `openstitch-cli project operations` (texte) ou
   critères et les mêmes diagnostics que l'application.
 - `set_params` ne laisse **aucun champ silencieusement ignoré** : champ absent du
   type = `E_WRONG_STITCH_TYPE` ; hors plage = `E_OUT_OF_RANGE`. Un seul pas
-  d'annulation par opération. Non modifiables par cette voie : guides, lignes de
-  rupture, dégradé de densité, rails, barreaux, bordure.
+  d'annulation par opération. Champs géométriques (coordonnées en mm, repère du
+  modèle) : remplissage directionnel `guides` et `break_lines` (liste de polylignes
+  `[[x,y],...]`), `density_gradient` (`{from_mm,to_mm,spacing_from_mm,spacing_to_mm,
+  interpolate_density}` ou `null`) ; satin `rail_a`, `rail_b` (polyligne), `rungs`
+  (`[{a_mm,b_mm}]`) ; auto-satin `guides` (`[{anchor_mm,angle_deg,absolute?}]`).
+  `inspect` publie ces champs sous les **mêmes noms et formes** : relire puis réécrire
+  ne change rien, et un chemin dont les sommets sont inchangés garde ses tangentes de
+  Bézier ; un chemin modifié devient une polyligne. Non modifiable par cette voie : la
+  topologie de réseau satin et la bordure.
+- `import_svg` : `file`, `stitch_type` (`auto` = classification tatami/contour de
+  l'auto-numérisation, `tatami`, `running`), `rgb`, `name`. Mêmes formes et mêmes
+  diagnostics que l'ouverture d'un SVG dans l'application : `<text>`, dégradés,
+  filtres… sont **signalés dans `result.warnings`**, jamais ignorés en silence ; les
+  couleurs du SVG ne sont pas reprises (une couleur de fil unique).
+- `add_text` / `set_text` / `remove_text` : lettrage de l'application (un objet texte +
+  une lettre = un objet vectoriel et un objet de broderie). `font_file` (TTF/OTF) est
+  **obligatoire** : les polices intégrées de l'application sont des ressources Qt,
+  inaccessibles à la CLI sans Qt. `result.id` = identifiant de l'objet **texte**
+  (`text_objects[]` de l'inspection) ; `set_text` désigne `text_object` et repart de la
+  position visible des lettres si `origin_mm` est absent. Avertissements du lettrage
+  (texte trop petit, glyphe absent…) dans `result.warnings`.
 - `remove_object` conserve la forme vectorielle source (comme le bureau) sauf
   `with_source=true` et si plus aucun objet ne l'utilise.
 - `set_geometry` remplace **toute** la géométrie du vecteur ; `dropped_pieces` /
@@ -335,10 +361,13 @@ un essai physique reste nécessaire.
 
 ## Limites connues
 
-- Un lot opère sur les objets existants ; pas d'import SVG ni de création de
-  texte/lettrage en ligne de commande (planifié).
-- Guides, lignes de rupture, dégradés, rails satin manuels : non éditables par
-  `set_params` (seul `auto_satin` pose des guides).
+- Guides, ruptures et rails s'éditent en polylignes : pas de poignées de Bézier en
+  ligne de commande (les courbes existantes sont conservées tant que leurs sommets ne
+  changent pas).
+- Lettrage : police fournie par fichier ; pas de texte sur courbe ni de justification
+  (mêmes limites que l'application, voir lettering.md).
+- Import SVG : couleurs non reprises, formes de `<g>` aplaties, pas de détection de
+  trous entre éléments distincts (limites de `formats::decode_svg`).
 - La couverture par objet est mesurée sur une grille de 0,25 mm : indicative
   au-dessous de ce pas.
 - `merge`/`split`/`duplicate_object` ne rembobinent pas le compteur d'identifiants
