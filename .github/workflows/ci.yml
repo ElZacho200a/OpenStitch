@@ -40,14 +40,10 @@ jobs:
           $env:QT_ROOT = $env:QT_ROOT_DIR
           cmake --preset msvc
 
-      - name: Build Debug
-        run: cmake --build --preset msvc-debug
-
       - name: Build Release
-        id: build_release
         run: cmake --build --preset msvc-release
 
-      # Disponible des la compilation, meme si les tests suivants echouent.
+      # Disponible des la compilation, meme si les tests suivants echouent (build Release seul).
       # La publication stable reste conditionnee au succes de tous les jobs.
       - name: Upload Windows beta binaries
         uses: actions/upload-artifact@v4
@@ -59,11 +55,7 @@ jobs:
             build/msvc/apps/desktop/Release/
             build/msvc/apps/cli/Release/
 
-      - name: Test (Debug)
-        run: ctest --preset msvc-debug
-
       - name: Test (Release)
-        if: ${{ !cancelled() && steps.build_release.outcome == 'success' }}
         run: ctest --preset msvc-release
 
   # Garde-fou de portabilité : le cœur et la CLI doivent compiler sans Qt

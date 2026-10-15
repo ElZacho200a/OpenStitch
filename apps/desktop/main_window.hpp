@@ -777,6 +777,9 @@ private:
     [[nodiscard]] bool resolveLinkedVectorObjects(const std::vector<RegionId>& regions,
                                                   const QString& verb,
                                                   std::vector<ObjectId>& toRemove);
+    // Nettoyage des îlots : demande l'aire maximale (mm²) et l'écart de couleur, puis fusionne
+    // chaque petit îlot dans la voisine de couleur la plus proche, en UN pas d'annulation.
+    void cleanIslands();
     // Mode « Fusionner avec… » : message d'état explicite + curseur « main » sur la vue.
     void setMergeMode(bool on);
     // Surbrillance de la région sous le curseur (carte des régions affichée, outil Sélection).
@@ -849,6 +852,7 @@ private:
     QAction* mergeAct_{nullptr};
     QAction* mergeSelectionAct_{nullptr};
     QAction* absorbAct_{nullptr};
+    QAction* cleanIslandsAct_{nullptr};
     QAction* selectSameColorAct_{nullptr};
     QAction* selectNeighboursAct_{nullptr};
     QAction* selectAllRegionsAct_{nullptr};

@@ -360,3 +360,44 @@ peinture de la scène 12 ms, simulation ~1 ms par pas.
 - Suite complète Release : 1078/1078.
 
 Méthode à suivre pour tout nouveau code : skill `openstitch-performance`.
+
+## 8. Audit du 2026-10-15 : la mémoire des squelettes auto-satin
+
+**Constat** (projet retouché à la main, 344 objets dont 275 en auto-satin, 120 738 points ;
+Release, 4 cœurs) : `generate_sequence` coûtait **1,9 s à chaud comme à froid**, donc chaque
+modification (glisser un nœud, changer un réglage) rejouait presque 2 s de calcul. Isolé par
+visibilité : les 69 tatami seuls = 55 ms ; les auto-satin seuls = 1,9 s.
+
+**Cause racine.** `generate_skeleton_satin` possède une mémoire de résultats (clé exacte, LRU),
+mais bornée à **128 entrées**. Un projet de plus de 128 auto-satin parcourt ses objets dans
+l'ordre : chaque calcul évince l'entrée qu'on relira 128 pas plus tard (balayage séquentiel d'un
+LRU trop petit : zéro succès). Le préchauffage parallèle de `generate_sequence` (phase 2) remplissait
+la mémoire pour rien : les entrées étaient évincées avant la relecture de la phase 3, ce qui explique
+aussi que 4 cœurs ne donnaient que 3,2 s → 1,9 s.
+
+**Correction.** Mémoire bornée en **octets** (192 Mio, une entrée de plus de la moitié du budget
+n'est pas mémorisée) et retrouvée par empreinte 64 bits (FNV-1a) au lieu d'un balayage de clés ;
+l'égalité reste confirmée sur la clé entière, donc le résultat servi est identique à un recalcul.
+`skeleton_result_cache_stats()` expose entrées, octets, succès et échecs (tests et banc seulement).
+
+| Mesure (Release, même projet) | avant | après |
+|---|---:|---:|
+| `generate_sequence`, à chaud | 1 910 ms | 60 ms |
+| `generate_sequence`, à froid | 1 910 ms | 428 ms |
+| `effective_sequence` | 1 840 ms | 83 ms |
+| équivalent de `refreshImage` | 1 900 ms | 120 ms |
+
+Empreinte de la séquence effective **identique** avant et après (`f1d2347c3dbdfff0`).
+Test : `memoire des squelettes : plus de 128 regions distinctes, 2e passe sans recalcul`
+(échoue avec un budget minuscule, réussit avec le budget réel).
+
+**Contrepartie.** Jusqu'à 192 Mio de mémoire conservée par processus (estimé à quelques Mio pour ce
+projet : environ 30 000 traversées et les clés de contour). Reste ouvert : le premier calcul à froid
+(428 ms ici) ; un projet de plusieurs milliers d'auto-satin dépasserait le budget et retrouverait
+l'éviction.
+
+**Ce que cela change pour le clipping demandé.** La régénération complète n'est plus le goulot
+sur ce projet (120 ms par modification). Un clipping de fenêtre ne s'applique de toute façon pas à
+la séquence : l'ordre, les changements de couleur, les coupes et les liaisons dépendent de tous les
+objets, et l'export doit rester identique. Il resterait utile pour le rendu (peindre les objets
+visibles) et pour calculer le froid en arrière-plan ; à décider après mesure sur un plus gros projet.

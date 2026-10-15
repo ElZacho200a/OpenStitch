@@ -11,6 +11,7 @@
 #include <vector>
 
 #include "openstitch/autodigitize/contour_objects.hpp"
+#include "openstitch/autodigitize/line_layer.hpp"
 #include "openstitch/autodigitize/stipple_objects.hpp"
 #include "openstitch/core/error.hpp"
 #include "openstitch/document/project.hpp"
@@ -65,6 +66,13 @@ struct DigitizeSettings {
     bool satin_bands{false};        // shapes
     bool single_path{false};        // contours
     bool coherent_lines{false};     // contours : FDoG avant segmentation
+    // HP-AUTO-005 : traits sombres fins cousus par-dessus les remplissages (mode formes).
+    bool dark_lines{false};
+    double dark_lines_width_mm{1.6};
+    double dark_lines_lightness{25.0};
+    // Nettoyage des îlots (voisine de couleur la plus proche) ; 0 = désactivé.
+    double island_cleanup_mm2{0.0};
+    double island_max_delta_e{0.0}; // 0 = sans limite
     int stipple_points{2000};
     int stipple_seed{1};
     bool stipple_invert{false};
@@ -83,9 +91,10 @@ struct DigitizeReport {
     std::size_t satin{0};
     std::size_t tatami{0};
     std::size_t running{0};
-    std::optional<autodigitize::ContourMetrics> contour; // mode contours
-    std::optional<autodigitize::StippleMetrics> stipple; // mode stipple
-    std::vector<std::string> warnings;                   // avertissements non bloquants du moteur
+    std::optional<autodigitize::ContourMetrics> contour;      // mode contours
+    std::optional<autodigitize::StippleMetrics> stipple;      // mode stipple
+    std::optional<autodigitize::LineLayerMetrics> dark_lines; // couche de traits sombres
+    std::vector<std::string> warnings; // avertissements non bloquants du moteur
 };
 
 // Journal d'état optionnel (une ligne lisible par étape) : la CLI le branche sur stderr/stdout.

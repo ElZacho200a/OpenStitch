@@ -4,6 +4,7 @@ add_library(openstitch_autodigitize
     src/contour_analysis.cpp
     src/contour_objects.cpp
     src/contour_route.cpp
+    src/line_layer.cpp
     src/stipple_objects.cpp
     src/two_color_blend.cpp
 )

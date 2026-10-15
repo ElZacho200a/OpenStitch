@@ -1314,6 +1314,21 @@ SAM via un worker **WSL**. ~18 s sur l'image de référence.
   (FDoG, Kang/Lee/Chui 2007) — `image::CoherentLinesOp`, menu Image et
   `digitize --coherent-lines`. Alimente le mode Contours ; la pose par-dessus
   des remplissages reste à faire.
+- **Livré le 2026-10-14 (en PR) : couche de traits sombres par-dessus les remplissages**
+  (`digitize --dark-lines`, `autodigitize::auto_digitize_with_lines`). Les parties plus
+  étroites que `--dark-lines-width` (1,6 mm) de l'ensemble des **pixels sombres de l'image**
+  (L* <= `--dark-lines-lightness`, 25) sont lues sur l'image et non sur les régions quantifiées
+  (où un trait fin anti-crénelé est découpé), retirées de la segmentation des remplissages
+  (rendues aux régions voisines, puis les aplats que le trait coupait sont refusionnés : une seule
+  pièce, sans trou) et cousues **en dernier** comme lignes médianes en point droit, parcours
+  eulérien (mêmes analyse et garde-fous que le mode contours ; `--detail` règle le nettoyage).
+  Mesure sur une illustration plate de navire (382 x 287 mm, 12 couleurs) : 55 000 px de traits
+  séparés, 163 objets de ligne, 4,3 m de point droit ; mâts, vergues et haubans lisibles alors
+  qu'ils fusionnaient avec les aplats sombres en un amas de blocs. **Coût** : +486 coupes
+  (1 181 -> 1 675) car chaque trait est un tracé séparé. **Reste** : satin à largeur constante
+  pour les traits d'environ 1 mm ou plus (point droit aujourd'hui), traits clairs (contours
+  crème), réglage dans la boîte de dialogue d'auto-numérisation du bureau, couleur de trait
+  unique (moyenne des pixels).
 
 ### HP-AUTO-006 — Suppression du fond [P1] — ◐ Partiel
 - État OpenStitch : option « ignorer le fond » et **détection automatique du fond**

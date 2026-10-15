@@ -114,6 +114,13 @@ struct AutoOptions {
     // (demi-pixel perdu le long des frontières, cf. merge_small_regions).
     // 0 = désactivé.
     double min_region_area_mm2{3.0};
+    // Nettoyage des îlots : les régions plus petites que cette aire (mm²) sont fusionnées dans la
+    // voisine de COULEUR la plus proche (CIELAB), et non de plus longue frontière -- les petits
+    // morceaux collés à un grand aplat y retournent au lieu de former des enclaves. Passe faite
+    // AVANT `min_region_area_mm2`. `island_max_delta_e` > 0 refuse une voisine plus éloignée que
+    // cet écart (ΔE76) ; 0 = pas de limite. 0 mm² = désactivé (défaut : sortie inchangée).
+    double island_area_mm2{0.0};
+    double island_max_delta_e{0.0};
 
     // --- Palette de fils (HP-THR-011) ---
     // Limite du nombre de COULEURS (donc de fils) du résultat : les couleurs de

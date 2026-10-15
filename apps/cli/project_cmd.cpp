@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <cctype>
 #include <cmath>
+#include <cstdio>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -344,9 +345,28 @@ void add_digitize_options(CLI::App* cmd, DigitizeOptionValues& v) {
                     "Mode formes : les régions plus petites que cette aire (mm²) sont fusionnées "
                     "avec leur voisine ; 0 = désactivé (défaut : 3)")
         ->check(CLI::NonNegativeNumber);
+    cmd->add_option("--island-cleanup", s.island_cleanup_mm2,
+                    "Mode formes : les îlots plus petits que cette aire (mm²) sont fusionnés dans "
+                    "la voisine de COULEUR la plus proche (pas la plus longue frontière) ; 0 = "
+                    "désactivé (défaut)")
+        ->check(CLI::NonNegativeNumber);
+    cmd->add_option("--island-max-delta-e", s.island_max_delta_e,
+                    "Avec --island-cleanup : refuse une voisine plus éloignée que cet écart de "
+                    "couleur CIELAB (ΔE) ; 0 = pas de limite (défaut)")
+        ->check(CLI::NonNegativeNumber);
     cmd->add_option("--trim-threshold", s.trim_threshold_mm,
                     "Coupe automatique au-delà de ce déplacement, en mm (défaut : 3)")
         ->check(CLI::PositiveNumber);
+    cmd->add_flag("--dark-lines", s.dark_lines,
+                  "Mode formes : les traits sombres fins (contours noirs, mâts, haubans) sont "
+                  "séparés des remplissages et cousus par-dessus, en dernier, en point droit");
+    cmd->add_option("--dark-lines-width", s.dark_lines_width_mm,
+                    "Avec --dark-lines : largeur maximale d'un trait, en mm (défaut : 1.6)")
+        ->check(CLI::Range(0.3, 6.0));
+    cmd->add_option(
+           "--dark-lines-lightness", s.dark_lines_lightness,
+           "Avec --dark-lines : clarté CIELAB L* maximale d'un pixel de trait (défaut : 25)")
+        ->check(CLI::Range(5.0, 70.0));
     cmd->add_flag("--hidden-travel", s.hidden_travel,
                   "Remplace les coupes par des sauts ou des ponts cousus cachés sous les points "
                   "cousus plus tard (passe finale, désactivé par défaut)");
@@ -659,7 +679,7 @@ CLI::App* register_project_commands(CLI::App& app, bool& jsonOut) {
 
     // export ----------------------------------------------------------------------------
     struct ExportArgs {
-        std::string osp, out, format, stops{"native"}, levels{"all"};
+        std::string osp, out, format, stops{"native"}, levels{"all"}, start{"first"};
         bool noTrims{false}, noColorChanges{false}, reduceTrims{false}, sameColour{false};
         bool outlines{false}, noClobber{false};
         double reduceMax{15.0};
@@ -679,6 +699,9 @@ CLI::App* register_project_commands(CLI::App& app, bool& jsonOut) {
                 "Supprime les changements de couleur");
     c->add_option("--stops", exArgs->stops, "Arrêts machine : native, as-color-change ou drop")
         ->check(CLI::IsMember({"native", "as-color-change", "drop"}));
+    c->add_option("--start", exArgs->start,
+                  "Point de départ machine : first (défaut), center ou X,Y en mm ; l'ordre des "
+                  "points n'est pas modifié");
     c->add_flag("--reduce-trims", exArgs->reduceTrims,
                 "Remplace des coupes par des ponts cousus cachés (export seulement)");
     c->add_option("--reduce-trims-levels", exArgs->levels,
@@ -748,6 +771,22 @@ CLI::App* register_project_commands(CLI::App& app, bool& jsonOut) {
                             : a.stops == "as-color-change"
                                 ? openstitch::formats::StopMode::AsColorChange
                                 : openstitch::formats::StopMode::Native;
+            if (a.start == "center") {
+                options.start.mode = openstitch::formats::StartMode::Center;
+            } else if (a.start != "first") {
+                double xMm = 0.0;
+                double yMm = 0.0;
+                char tail = 0;
+                if (std::sscanf(a.start.c_str(), "%lf,%lf%c", &xMm, &yMm, &tail) != 2) {
+                    g_exit = fail_with("export", jsonOut, po::code::kUsage,
+                                       "--start : attendu first, center ou X,Y en mm");
+                    return;
+                }
+                options.start.mode = openstitch::formats::StartMode::Custom;
+                options.start.point = openstitch::Vec2um{
+                    openstitch::Micrometers{static_cast<std::int32_t>(std::lround(xMm * 1000.0))},
+                    openstitch::Micrometers{static_cast<std::int32_t>(std::lround(yMm * 1000.0))}};
+            }
             openstitch::project_io::ExportOptimizations optimizations;
             optimizations.reduce_trims = a.reduceTrims;
             optimizations.hidden_travel.allow_same_color_surface = a.sameColour;

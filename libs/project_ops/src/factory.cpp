@@ -218,6 +218,8 @@ Result<DigitizeReport> digitize_image_into(document::Project& project,
     if (s.min_region_mm2) {
         opts.min_region_area_mm2 = *s.min_region_mm2;
     }
+    opts.island_area_mm2 = s.island_cleanup_mm2;
+    opts.island_max_delta_e = s.island_max_delta_e;
     say(log, std::string("Ignorer la plus grande région (fond) : ") +
                  (skipLargest ? "oui" : "non") +
                  (report.background_auto ? " (automatique)" : " (option explicite)"));
@@ -242,6 +244,8 @@ Result<DigitizeReport> digitize_image_into(document::Project& project,
     }
     autodigitize::ContourMetrics cm;
     autodigitize::StippleMetrics sm;
+    autodigitize::LineLayerMetrics lm;
+    bool usedDarkLines = false;
     auto result = [&]() -> Result<autodigitize::AutoResult> {
         if (stippling) {
             autodigitize::StippleObjectOptions so;
@@ -253,6 +257,19 @@ Result<DigitizeReport> digitize_image_into(document::Project& project,
                          std::to_string(s.stipple_seed) + ")");
             return autodigitize::auto_digitize_stipple(project.original, project.object_ids, so,
                                                        &sm);
+        }
+        if (!contours && s.dark_lines) {
+            autodigitize::LineLayerOptions lo;
+            lo.enabled = true;
+            lo.max_line_width_mm = s.dark_lines_width_mm;
+            lo.dark_max_lightness = s.dark_lines_lightness;
+            co.technique = autodigitize::ContourTechnique::Running;
+            // Un réseau de traits se coud en parcours eulérien : moins de polylignes, donc moins
+            // de coupes, au prix d'un court repassage.
+            co.routing = autodigitize::ContourRouting::SinglePath;
+            usedDarkLines = true;
+            return autodigitize::auto_digitize_with_lines(*project.segmentation, project.original,
+                                                          project.object_ids, opts, lo, co, &lm);
         }
         return contours
                    ? autodigitize::auto_digitize_contours(*project.segmentation, project.object_ids,
@@ -270,6 +287,16 @@ Result<DigitizeReport> digitize_image_into(document::Project& project,
     }
     if (contours) {
         report.contour = cm;
+    }
+    if (usedDarkLines) {
+        report.dark_lines = lm;
+        char buf[200];
+        std::snprintf(buf, sizeof buf,
+                      "Traits sombres : %zu px séparés des remplissages, %zu objet(s) de ligne "
+                      "(%zu segment(s), %.0f mm de point droit)",
+                      lm.line_pixels, lm.line_objects, lm.contours.segments,
+                      lm.contours.running_length_mm);
+        say(log, buf);
     }
     report.warnings = std::move(result->warnings);
     for (auto& v : result->vectors) {

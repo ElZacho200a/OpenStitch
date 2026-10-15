@@ -3,6 +3,7 @@
 
 #include <array>
 #include <cstdint>
+#include <functional>
 #include <optional>
 #include <utility>
 #include <vector>
@@ -108,6 +109,29 @@ struct RegionBorder {
 // Déterministe.
 std::size_t remove_thin_parts(Segmentation& seg, int min_width_px);
 
+// Couche de traits (HP-AUTO-005) : même ouverture morphologique que `remove_thin_parts`, mais
+// SANS modifier la segmentation : renvoie le masque (1 = pixel d'une partie plus étroite que
+// `min_width_px`) des seules régions pour lesquelles `include` est vrai (toutes si `include` est
+// vide). Vide si `min_width_px` < 2. Déterministe.
+[[nodiscard]] std::vector<char> thin_part_mask(const Segmentation& seg, int min_width_px,
+                                               const std::function<bool(const Region&)>& include);
+
+// Traits sombres lus sur l'IMAGE (HP-AUTO-005), pas sur les régions quantifiées : un trait fin
+// anti-crénelé est découpé et mélangé aux voisines par la quantification, alors que sur l'image il
+// reste continu. Renvoie le masque (1 = pixel opaque de clarté L* <= `max_lightness` appartenant à
+// une partie plus étroite que `min_width_px` de l'ensemble des pixels sombres) ; `mean_rgb` reçoit
+// la couleur moyenne des pixels du masque. Vide si `min_width_px` < 2. Déterministe.
+[[nodiscard]] std::vector<char> dark_thin_mask(const image::Image& img, double max_lightness,
+                                               int min_width_px,
+                                               std::array<std::uint8_t, 3>* mean_rgb = nullptr);
+
+// Rend les pixels du masque à leurs régions VOISINES (vote 4-connexe, passes synchrones, jamais
+// la région d'origine du pixel). Si `leftover_to_background`, un pixel sans voisine passe au fond
+// (label 0) ; sinon il garde son label. Recompte les pixels ; une région vidée disparaît.
+// Renvoie le nombre de pixels réaffectés à une voisine.
+std::size_t reassign_to_neighbours(Segmentation& seg, std::vector<char> pending,
+                                   bool leftover_to_background);
+
 // Fusionne chaque région de moins de `min_px` pixels avec la voisine qui
 // partage la plus longue frontière (égalité -> plus petit identifiant), en
 // traitant toujours la plus petite région restante d'abord ; la région
@@ -123,14 +147,30 @@ std::size_t remove_thin_parts(Segmentation& seg, int min_width_px);
 // décide du type de point. 0,5 aligne donc le seuil sur l'aire vectorisée
 // (audit marine : des régions de 3 mm² en pixels donnaient des contours de
 // 2,5 mm²).
+//
+// `target` : voisine qui absorbe. `LongestBorder` (défaut) : la plus longue frontière commune.
+// `ClosestColour` (nettoyage des îlots) : la voisine de couleur la plus proche en CIELAB (écart
+// ΔE76), égalité -> frontière la plus longue puis plus petit identifiant ; `max_delta_e` > 0 refuse
+// toute voisine plus éloignée (l'îlot reste alors tel quel), 0 = pas de limite.
+enum class MergeTarget { LongestBorder, ClosestColour };
+
 std::size_t merge_small_regions(Segmentation& seg, std::size_t min_px,
                                 std::optional<std::array<std::uint8_t, 3>> excluded = {},
-                                double boundary_weight = 0.0);
+                                double boundary_weight = 0.0,
+                                MergeTarget target = MergeTarget::LongestBorder,
+                                double max_delta_e = 0.0);
+
+// Écart de couleur CIELAB (ΔE76, illuminant D65) entre deux couleurs sRGB 8 bits.
+[[nodiscard]] double cielab_delta_e(std::array<std::uint8_t, 3> a, std::array<std::uint8_t, 3> b);
 
 // Seuils de la recommandation « ignorer le fond » (§ Lot A, audit marine).
 struct BackgroundCandidateOptions {
     double min_lightness{90.0}; // L* au-dessus duquel la couleur est jugée quasi blanche
     int min_sides_touched{3};   // nombre minimal de bords de l'image touchés (sur 4)
+    // Fond COLORÉ (papier beige, tissu, aplat) : une couleur, même sombre, qui occupe au moins
+    // cette part du pourtour de l'image ET touche les quatre bords encadre le motif -- un ciel ou
+    // une mer plein cadre ne remplit jamais le pourtour entier. > 1 : désactivé.
+    double min_border_ratio{0.85};
 };
 
 // Fond présumé d'une image opaque : la couleur de la plus grande région
@@ -141,10 +181,12 @@ struct BackgroundCandidateOptions {
 struct BackgroundCandidate {
     RegionId region; // plus grande région (la candidate)
     std::array<std::uint8_t, 3> rgb{};
-    double area_ratio{0.0}; // part de l'image (0..1) couverte par cette couleur
-    double lightness{0.0};  // L* CIELAB de la couleur
-    int sides_touched{0};   // bords de l'image touchés (0..4)
-    // Vrai seulement pour un fond quasi blanc qui encadre le motif : sur une
+    double area_ratio{0.0};   // part de l'image (0..1) couverte par cette couleur
+    double lightness{0.0};    // L* CIELAB de la couleur
+    int sides_touched{0};     // bords de l'image touchés (0..4)
+    double border_ratio{0.0}; // part du pourtour de l'image (0..1) occupée par cette couleur
+    // Vrai pour un fond quasi blanc qui encadre le motif, ou pour une couleur quelconque qui
+    // occupe presque tout le pourtour (`min_border_ratio`) : sur une
     // image plein cadre, la plus grande région est un vrai élément du motif
     // (ciel, mer...) et ne doit JAMAIS être ignorée par défaut.
     bool recommended{false};

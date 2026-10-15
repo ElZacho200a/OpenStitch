@@ -79,6 +79,23 @@ machine s'arrête fil attaché au dernier point. Le fichier finit donc par la co
 pas été essayée sur votre machine ; le seuil de trois sauts (`trim_jumps`) peut devoir être
 augmenté selon le modèle.
 
+## Point de départ de la machine
+
+Un DST ne contient que des déplacements relatifs : l'origine (0, 0) est l'endroit où
+l'aiguille se trouve au lancement. Par défaut c'est le **premier point cousu**. L'option
+d'export `MachineExportOptions::start` (`formats::ExportStart`) permet de choisir à la place le
+**centre de la broderie** (centre de la boîte englobante des points cousus) ou un **point choisi**
+(X / Y en mm, repère du document) — utile pour broder en plusieurs étapes en repositionnant le
+cadre.
+
+Implémentation : `project_io::with_start_point` insère deux sauts de tête (origine, puis premier
+point) devant la séquence effective, dans `export_machine_file`, après le calcul des couleurs de
+blocs. Les codecs ne changent pas, et les commandes d'origine ne sont ni réordonnées ni
+modifiées : seul le déplacement d'approche initial diffère. Valable pour tous les formats machine
+du registre. Désactivé (`FirstPoint`), la sortie est octet-identique à l'ancienne. CLI :
+`osp2dst --start first|center|X,Y`. Un point éloigné de plus de 12,1 mm est découpé en sauts
+comme tout autre déplacement.
+
 ## Décodage (tolérant)
 
 `decode_dst` lit l'en-tête de façon **laxiste** (la vérité est le corps),

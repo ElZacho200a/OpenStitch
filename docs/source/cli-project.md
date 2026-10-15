@@ -90,7 +90,8 @@ Numérise l'image (mêmes réglages et défauts que `digitize` : `--mode
 shapes|contours|stipple`, `--max-colors`, `--min-region-px`, `--smoothing-px`,
 `--skip-background auto|yes|no`, `--min-feature-mm`, `--min-region-mm2`,
 `--curve-tolerance`, `--satin-bands`, `--detail`, `--technique`, `--single-path`,
-`--coherent-lines`, `--stipple-*`, `--trim-threshold`, `--lock`, `--hidden-travel*`,
+`--coherent-lines`, `--island-cleanup`, `--island-max-delta-e`, `--dark-lines`
+(`--dark-lines-width`, `--dark-lines-lightness`), `--stipple-*`, `--trim-threshold`, `--lock`, `--hidden-travel*`,
 `--dpi`). En plus : `--dst f.dst` et `--output-svg f.svg` (exports secondaires),
 `--report rapport.json` (rapport de numérisation, schéma
 `openstitch.digitize-report/1`), `--no-clobber`.
@@ -167,7 +168,7 @@ Liste machine-lisible de toutes les commandes et options de la CLI
 
 Exporte en `dst`, `pes`, `jef`, `exp` ou `svg` (format déduit de l'extension, ou
 `--format`). Options machine identiques à `osp2dst` : `--no-trims`,
-`--no-color-changes`, `--stops native|as-color-change|drop`, `--reduce-trims`
+`--no-color-changes`, `--stops native|as-color-change|drop`, `--start first|center|X,Y`, `--reduce-trims`
 (`--reduce-trims-levels`, `--reduce-trims-same-colour`, `--reduce-trims-max`).
 SVG : `--outlines` (contours des régions) et `--only ID`. Rapport
 `openstitch.export/1` avec `--json`. L'export machine passe par le **même appel**

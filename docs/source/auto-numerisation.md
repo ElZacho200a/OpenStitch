@@ -41,7 +41,8 @@ qui mesure pour la couleur de la plus grande région :
 | `area_ratio` | part de l'image couverte par cette couleur (toutes régions) |
 | `lightness` | clarté CIELAB L* de la couleur (`cielab_lightness`, calcul analytique D65) |
 | `sides_touched` | nombre de bords de l'image touchés (0 à 4) |
-| `recommended` | `lightness > min_lightness` (90) **et** `sides_touched >= min_sides_touched` (3) |
+| `border_ratio` | part du **pourtour** de l'image (0 à 1) occupée par cette couleur |
+| `recommended` | fond clair : `lightness > min_lightness` (90) **et** `sides_touched >= min_sides_touched` (3) ; **ou** fond coloré : `sides_touched == 4` **et** `border_ratio >= min_border_ratio` (0,85) |
 
 Les seuils sont dans `BackgroundCandidateOptions`. Le dialogue *Numérisation
 automatique* coche la case seulement si `recommended`, et affiche la pastille
@@ -50,6 +51,14 @@ CLI (`openstitch-cli digitize`) applique la même règle avec
 `--skip-background auto` (défaut ; anciennement `-1`) et imprime la candidate ;
 `yes`/`no` (anciennement `1`/`0`) restent des choix explicites prioritaires. Sur la marine, le ciel (bleu, L* ≈ 43) n'est
 plus ignoré.
+
+**Fond coloré (2026-10-15).** Le critère « quasi blanc » laissait broder un papier ou un tissu
+beige (L* ≈ 86) : sur une illustration de navire à fond crème, le fond entier était cousu (299 × 224 mm
+et +22 % de points, contre 290 × 200 mm une fois le fond ignoré). Une couleur qui occupe au moins
+85 % du pourtour **et** touche les quatre bords encadre le motif, quelle que soit sa clarté ; un
+ciel ou une mer plein cadre ne remplit jamais tout le pourtour (le cas de test « image plein cadre »
+reste non recommandé). `BackgroundCandidateOptions::min_border_ratio` règle le seuil ; une valeur
+supérieure à 1 désactive cette voie.
 
 ## Orientation et sous-couche des remplissages (Lot B)
 
@@ -90,6 +99,42 @@ minimal. C'est donc toujours la plus petite qui cède.
 comportement historique. L'import SVG direct (`auto_digitize_vectors`) reçoit
 l'angle naturel et la sous-couche, mais pas la règle de voisinage (aucune
 segmentation, donc aucune adjacence connue) — limite documentée.
+
+## Nettoyage des îlots (fusion par couleur proche)
+
+La quantification laisse de petits îlots collés à de grands aplats : des enclaves qui deviennent
+chacune un objet (et au moins une coupe). Le nettoyage des îlots fait **une passe sur toute
+l'image** : chaque région de moins de *A* mm² est fusionnée dans la voisine dont la **couleur est
+la plus proche**, au sens CIELAB (ΔE76), et non dans celle qui partage la plus longue frontière
+(règle de `min_region_area_mm2`). C'est l'équivalent « segmentation » de la fonction *boucher les
+trous*.
+
+- **Règle de choix** : voisine de ΔE minimal ; à égalité (1e-9), frontière commune la plus longue,
+  puis plus petit identifiant. La région absorbante garde sa couleur. Les plus petites régions sont
+  traitées d'abord, donc un amas d'îlots se résorbe de proche en proche. `max_delta_e` > 0 refuse
+  une voisine plus éloignée (l'îlot reste tel quel) ; 0 = sans limite.
+- **Lib** : `segmentation::merge_small_regions(seg, min_px, excluded, boundary_weight,
+  MergeTarget::ClosestColour, max_delta_e)` et `cielab_delta_e(a, b)`.
+- **CLI** : `digitize --island-cleanup MM2 [--island-max-delta-e N]` (`AutoOptions::island_area_mm2`,
+  `island_max_delta_e`), appliqué avant `--min-region-mm2`. Désactivé par défaut.
+- **Bureau** : menu *Segmentation → Nettoyer les petits îlots…* (aire maximale en mm², écart de
+  couleur maximal). Un seul pas d'annulation (`commands::CleanIslandsCommand`, qui restaure les
+  étiquettes réaffectées et les régions fusionnées). Si des objets vectoriels existent déjà pour des
+  régions fusionnées, le même choix que pour *Fusionner* est proposé (conserver ou supprimer).
+
+**Mesures** (illustration de navire 300 mm, 12 couleurs, fond ignoré ; coupes du DST sans
+optimisation) :
+
+| `--island-cleanup` | objets | coupes | surface non couverte |
+|---|---|---|---|
+| 0 (désactivé) | 344 | 887 | 8,0 % |
+| 20 mm² | 173 | 681 | 6,9 % |
+| 60 mm² | 113 | 592 | 6,0 % |
+
+**Réserve.** Un trait fin sombre (mât, hauban) est un îlot comme un autre : à 20 mm², les haubans
+du navire se fondent dans les voiles sombres. À associer à `--dark-lines`, qui sépare les traits
+avant le nettoyage : 369 objets, 1 359 coupes, haubans lisibles (contre 1 499 coupes avec les
+traits seuls).
 
 ## Chevauchement entre remplissages voisins et ordre en couches (Lot C)
 
@@ -391,6 +436,37 @@ Essai CLI (anneau 2,4 mm, arc 3,7 mm, disque 11,6 mm) : les trois en satin,
 développement Linux (Qt absent), à vérifier au prochain build Windows ; une région à plusieurs trous n'est pas tentée ; la couverture est
 géométrique, pas validée sur machine ; pas de satin en éventail ou concentrique pour les grands disques
 (voir `satin-squelette.md`).
+
+## Couche de traits sombres (`--dark-lines`, HP-AUTO-005)
+
+Sur une illustration à contours noirs (mâts, haubans, bords de nuages), le mode formes seul traite
+un trait comme n'importe quelle région : il fusionne avec les aplats sombres voisins et devient un
+amas de blocs. `auto_digitize_with_lines` (`line_layer.cpp`) sépare les traits :
+
+1. **Détection sur l'image**, pas sur les régions quantifiées : `segmentation::dark_thin_mask`
+   garde les pixels opaques de clarté L* <= `dark_max_lightness` (25) qui appartiennent à une partie
+   plus étroite que `max_line_width_mm` (1,6 mm) de l'ensemble des pixels sombres (ouverture
+   morphologique). Un trait fin anti-crénelé est découpé et mélangé aux voisines par la
+   quantification ; sur l'image il reste continu.
+2. **Remplissages** : ces pixels sont rendus aux régions voisines (`reassign_to_neighbours`, vote
+   4-connexe), les aplats que le trait coupait en deux sont refusionnés (même couleur, redevenus
+   adjacents), et une région presque entièrement faite de pixels de trait quitte les remplissages.
+   Les remplissages passent donc sous le trait, sans trou.
+3. **Traits** : une segmentation à une seule couleur (la moyenne des pixels de trait) passe par
+   `analyze_contours` et `build_contour_objects` : lignes médianes en point droit, parcours
+   eulérien, mêmes garde-fous que le mode contours. Les objets de ligne sont ajoutés **après** tous
+   les remplissages : ils sont cousus en dernier.
+
+**Dans le bureau** : la boîte *Numérisation automatique* (mode formes) propose « Traits sombres
+cousus par-dessus » (largeur maximale en mm et clarté L\* maximale, mémorisées entre les sessions) et
+« Nettoyage des îlots » (mm²). L'image lue est l'image de travail (opérations appliquées) quand elle a
+les dimensions de la segmentation, sinon l'image d'origine. Même routage que le CLI : point droit,
+parcours eulérien.
+
+Limites : un seul fil pour tous les traits ; point droit seulement (pas de satin à largeur
+constante) ; un trait contre un aplat sombre de même teinte n'est pas détecté (il serait invisible).
+Chaque trait étant un tracé séparé, la couche ajoute des coupes (+486 sur l'illustration de test) ;
+`--detail` plus bas en réduit le nombre.
 
 ## Stippling (semis de points relié en un trait)
 

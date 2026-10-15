@@ -107,6 +107,9 @@ Mêmes valeurs par défaut que le dialogue **Numérisation automatique** du bure
 | `--smoothing-px N` | 3 | Lissage des formes |
 | `--curve-tolerance MM` | 0 (polygones) | Mode formes : contours en courbes de Bézier avec cet écart maximal ; prendre ~1,5 px ou plus (ex. 0.4) |
 | `--satin-bands` | désactivé | Mode formes : bandes étroites (anneaux, rubans, arcs) en auto-satin au lieu du tatami, repli tatami si la couverture est insuffisante |
+| `--dark-lines` | désactivé | Mode formes : les traits sombres fins (contours noirs, mâts, haubans) sont séparés des remplissages et cousus par-dessus, en dernier, en point droit (parcours eulérien) |
+| `--dark-lines-width MM` | 1.6 | Avec `--dark-lines` : largeur maximale d'un trait |
+| `--dark-lines-lightness L` | 25 | Avec `--dark-lines` : clarté CIELAB L* maximale d'un pixel de trait |
 | `--coherent-lines` | désactivé | Mode contours : extrait d'abord des traits de la photo (lignes cohérentes, FDoG) |
 | `--stipple-points N` | 2000 | Mode stipple (`--mode stipple`) : nombre de points du semis (1..200000) |
 | `--stipple-seed S` | 1 | Mode stipple : graine du tirage initial |

@@ -28,6 +28,30 @@ std::string lower_extension(const std::filesystem::path& path) {
 
 } // namespace
 
+stitch::StitchSequence with_start_point(stitch::StitchSequence sequence,
+                                        const formats::ExportStart& start) {
+    if (start.mode == formats::StartMode::FirstPoint || sequence.commands.empty()) {
+        return sequence;
+    }
+    Vec2um origin = start.point;
+    if (start.mode == formats::StartMode::Center) {
+        const auto bounds = stitch::compute_stats(sequence).bounds;
+        origin = Vec2um{Micrometers{(bounds.min.x.value + bounds.max.x.value) / 2},
+                        Micrometers{(bounds.min.y.value + bounds.max.y.value) / 2}};
+    }
+    // Deux sauts de tête : l'aiguille part de l'origine puis rejoint le premier point, de sorte
+    // que le premier enregistrement du motif d'origine garde un delta nul (rien n'est cousu).
+    const auto first = sequence.commands.front().pos;
+    if (origin == first) {
+        return sequence;
+    }
+    sequence.commands.insert(
+        sequence.commands.begin(),
+        {{origin, stitch::CommandType::Jump, ObjectId{}, stitch::StitchPass::Travel},
+         {first, stitch::CommandType::Jump, ObjectId{}, stitch::StitchPass::Travel}});
+    return sequence;
+}
+
 Result<stitch_generation::FinishResult> export_sequence(const document::Project& project,
                                                         const ExportOptimizations& optimizations) {
     // Point d'entrée de production unique (jamais generate_sequence directement) :
@@ -60,6 +84,8 @@ Result<void> export_machine_file(const document::Project& project, const std::st
             effective.block_colors.push_back(block.rgb);
         }
     }
+    // Après le calcul des blocs de couleur (indices de la séquence d'origine).
+    sequence = with_start_point(std::move(sequence), options.start);
     auto bytes =
         info->encode_ex != nullptr ? info->encode_ex(sequence, effective) : info->encode(sequence);
     if (!bytes) {
