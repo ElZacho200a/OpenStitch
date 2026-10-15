@@ -2,11 +2,11 @@
 
 - **PDF** : `docs/build/OpenStitch-Studio-Documentation.pdf`
 - **Existe** : oui
-- **Pages** : 264
-- **Taille** : 2155.0 Kio (2206714 octets)
+- **Pages** : 273
+- **Taille** : 2199.6 Kio (2252353 octets)
 - **Chaîne** : python-markdown -> HTML/CSS -> xhtml2pdf (reportlab), SVG via svglib
 - **Commande** : `docs\scripts\build-docs.ps1` (ou `python docs/scripts/build-docs.py`)
-- **Chapitres produits** : 45
+- **Chapitres produits** : 46
 
 ## Chapitres
 - À propos de ce document
@@ -15,6 +15,7 @@
 - Installation et premier démarrage
 - Guide utilisateur détaillé
 - Ligne de commande (openstitch-cli)
+- Interface programmatique : projets `.osp` en ligne de commande
 - Traitement d'image
 - Segmentation
 - Vectorisation

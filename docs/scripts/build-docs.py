@@ -32,7 +32,7 @@ PDF_NAME = "OpenStitch-Studio-Documentation.pdf"
 
 # Ordre éditorial des chapitres (le nom de fichier sans .md).
 CHAPTERS = [
-    "index", "introduction", "getting-started", "installation", "user-guide", "cli",
+    "index", "introduction", "getting-started", "installation", "user-guide", "cli", "cli-project",
     "image-processing", "segmentation", "vectorization", "embroidery-objects",
     "auto-numerisation",
     "stitch-generation", "moteur-de-points", "satin-squelette", "satin", "tatami", "directional-fill",
