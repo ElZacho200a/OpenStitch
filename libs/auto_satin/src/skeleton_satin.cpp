@@ -4,8 +4,10 @@
 #include <algorithm>
 #include <bit>
 #include <cmath>
+#include <cstdint>
 #include <cstdio>
 #include <functional>
+#include <iterator>
 #include <limits>
 #include <list>
 #include <map>
@@ -13,6 +15,7 @@
 #include <numbers>
 #include <optional>
 #include <string>
+#include <unordered_map>
 #include <utility>
 
 #include "axis.hpp"
@@ -887,17 +890,71 @@ CacheKey make_key(const geometry::PathSet& region, const SkeletonSatinParameters
     return key;
 }
 
+// Empreinte 64 bits (FNV-1a) de la clé : sert SEULEMENT à trouver les candidats ; l'égalité est
+// toujours confirmée sur la clé entière (aucune collision possible sur le résultat).
+std::uint64_t key_hash(const CacheKey& key) {
+    std::uint64_t h = 1469598103934665603ULL;
+    for (const std::int64_t v : key) {
+        h ^= static_cast<std::uint64_t>(v);
+        h *= 1099511628211ULL;
+    }
+    return h;
+}
+
+// Taille approximative (octets) d'un résultat mémorisé : sert au budget du cache.
+std::size_t result_bytes(const SkeletonSatinResult& r) {
+    std::size_t bytes = sizeof(SkeletonSatinResult);
+    for (const auto& c : r.columns) {
+        bytes += sizeof(c) + c.crossings.capacity() * sizeof(SkeletonSatinCrossing);
+    }
+    for (const auto& a : r.axes) {
+        bytes += sizeof(a) + a.capacity() * sizeof(Vec2um);
+    }
+    for (const auto& m : r.diagnostics.messages) {
+        bytes += sizeof(m) + m.capacity();
+    }
+    return bytes;
+}
+
 // Mémoire bornée (LRU) partagée par la génération de points, l'aperçu, le résumé de
 // l'inspecteur et la couche de guides : une modification qui ne change pas la forme ou ses
-// paramètres ne relance plus le squelette (~100-300 ms par objet).
+// paramètres ne relance plus le squelette (~7 ms par objet en Release, jusqu'à 100-300 ms sur
+// une forme complexe).
+//
+// Borne en OCTETS, pas en nombre d'entrées : avec 128 entrées, un projet de plus de 128 auto-satin
+// parcourait ses objets dans l'ordre et chaque objet évincait celui qu'on relirait 128 pas plus
+// tard (balayage séquentiel d'un LRU trop petit : 0 succès, 1,9 s à chaque modification sur un
+// projet de 275 auto-satin). Les entrées sont retrouvées par empreinte, pas par balayage.
 struct ResultCache {
     struct Entry {
         CacheKey key;
+        std::uint64_t hash{0};
+        std::size_t bytes{0};
         SkeletonSatinResult value; // couverture mesurée ou non selon `value.diagnostics`
     };
+    using List = std::list<Entry>;
     std::mutex mutex;
-    std::list<Entry> entries; // le plus récent en tête
-    static constexpr std::size_t kCapacity = 128;
+    List entries; // le plus récent en tête
+    std::unordered_multimap<std::uint64_t, List::iterator> index;
+    std::size_t total_bytes{0};
+    std::size_t hits{0};
+    std::size_t misses{0};
+    static constexpr std::size_t kCapacityBytes = 192U * 1024U * 1024U;
+    // Une entrée seule plus grosse que la moitié du budget n'est pas mémorisée.
+    static constexpr std::size_t kMaxEntryBytes = kCapacityBytes / 2U;
+
+    void erase_back() {
+        auto last = std::prev(entries.end());
+        auto range = index.equal_range(last->hash);
+        for (auto it = range.first; it != range.second; ++it) {
+            if (it->second == last) {
+                index.erase(it);
+                break;
+            }
+        }
+        total_bytes -= last->bytes;
+        entries.pop_back();
+    }
 };
 
 ResultCache& result_cache() {
@@ -907,16 +964,26 @@ ResultCache& result_cache() {
 
 } // namespace
 
+SkeletonResultCacheStats skeleton_result_cache_stats() {
+    auto& cache = result_cache();
+    const std::lock_guard<std::mutex> lock(cache.mutex);
+    return {cache.entries.size(), cache.total_bytes, cache.hits, cache.misses};
+}
+
 Result<SkeletonSatinResult> generate_skeleton_satin(const geometry::PathSet& region,
                                                     const SkeletonSatinParameters& params) {
     CacheKey key = make_key(region, params);
     auto& cache = result_cache();
     {
         const std::lock_guard<std::mutex> lock(cache.mutex);
-        for (auto it = cache.entries.begin(); it != cache.entries.end(); ++it) {
+        const std::uint64_t hash = key_hash(key);
+        const auto range = cache.index.equal_range(hash);
+        for (auto found = range.first; found != range.second; ++found) {
+            const auto it = found->second;
             if (it->key != key) {
                 continue;
             }
+            ++cache.hits;
             cache.entries.splice(cache.entries.begin(), cache.entries, it);
             auto& entry = cache.entries.front().value;
             // La couverture est un diagnostic ajouté À LA DEMANDE : une entrée sans
@@ -935,12 +1002,22 @@ Result<SkeletonSatinResult> generate_skeleton_satin(const geometry::PathSet& reg
             return out;
         }
     }
+    {
+        const std::lock_guard<std::mutex> lock(cache.mutex);
+        ++cache.misses;
+    }
     auto computed = generate_skeleton_satin_uncached(region, params);
     if (computed) {
-        const std::lock_guard<std::mutex> lock(cache.mutex);
-        cache.entries.push_front({std::move(key), *computed});
-        while (cache.entries.size() > ResultCache::kCapacity) {
-            cache.entries.pop_back();
+        const std::size_t bytes = result_bytes(*computed) + key.capacity() * sizeof(std::int64_t);
+        if (bytes <= ResultCache::kMaxEntryBytes) {
+            const std::uint64_t hash = key_hash(key);
+            const std::lock_guard<std::mutex> lock(cache.mutex);
+            cache.entries.push_front({std::move(key), hash, bytes, *computed});
+            cache.index.emplace(hash, cache.entries.begin());
+            cache.total_bytes += bytes;
+            while (cache.total_bytes > ResultCache::kCapacityBytes && cache.entries.size() > 1) {
+                cache.erase_back();
+            }
         }
     }
     return computed;

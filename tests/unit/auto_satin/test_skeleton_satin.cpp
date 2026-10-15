@@ -684,3 +684,41 @@ TEST_CASE("pipeline: axe compact synthetique, disque couvert en cordes parallele
         CHECK(gen->columns[0].crossings.front().a == again->columns[0].crossings.front().a);
     }
 }
+
+// Régression : la mémoire des résultats était bornée à 128 ENTRÉES. Un projet de plus de 128
+// auto-satin parcourt ses objets dans l'ordre, donc chacun évinçait celui qu'on relirait 128 pas
+// plus tard : aucun succès, et la régénération complète (1,9 s sur 275 objets) à chaque
+// modification. Borne en octets + index par empreinte : la 2e passe est servie par la mémoire.
+TEST_CASE("memoire des squelettes : plus de 128 regions distinctes, 2e passe sans recalcul") {
+    const auto base = as::make_shape("rectangle");
+    REQUIRE(base.has_value());
+    constexpr int kRegions = 200;
+    const auto shifted = [&](int i) {
+        PathSet set = *base;
+        const auto move = [i](openstitch::geometry::Path& path) {
+            for (auto& n : path.nodes) {
+                n.pos.x.value += i * 37; // chaque région a une clé exacte distincte
+            }
+        };
+        move(set.outer);
+        for (auto& h : set.holes) {
+            move(h);
+        }
+        return set;
+    };
+    std::vector<as::SkeletonSatinResult> first;
+    first.reserve(kRegions);
+    for (int i = 0; i < kRegions; ++i) {
+        first.push_back(run(shifted(i)));
+    }
+    const auto afterFirst = as::skeleton_result_cache_stats();
+    for (int i = 0; i < kRegions; ++i) {
+        const auto again = run(shifted(i));
+        CHECK(same_result(first[static_cast<std::size_t>(i)], again));
+    }
+    const auto afterSecond = as::skeleton_result_cache_stats();
+    CHECK(afterSecond.hits - afterFirst.hits >= static_cast<std::size_t>(kRegions));
+    CHECK(afterSecond.misses == afterFirst.misses); // aucun recalcul
+    CHECK(afterSecond.entries >= static_cast<std::size_t>(kRegions));
+    CHECK(afterSecond.bytes > 0);
+}

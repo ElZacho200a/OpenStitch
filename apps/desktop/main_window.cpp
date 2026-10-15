@@ -74,6 +74,7 @@
 
 #include "openstitch/autodigitize/autodigitize.hpp"
 #include "openstitch/autodigitize/contour_objects.hpp"
+#include "openstitch/autodigitize/line_layer.hpp"
 #include "openstitch/commands/composite_command.hpp"
 #include "openstitch/commands/finishing_commands.hpp"
 #include "openstitch/commands/import_machine_design_command.hpp"
@@ -828,6 +829,12 @@ void MainWindow::buildMenus() {
         tr("Fusionne la région dans la voisine avec laquelle elle partage la plus longue "
            "frontière (Ctrl+Maj+M)."));
     connect(absorbAct_, &QAction::triggered, this, &MainWindow::absorbSelectedRegionIntoNeighbour);
+    cleanIslandsAct_ = segMenu->addAction(tr("Nettoyer les petits &îlots…"));
+    cleanIslandsAct_->setObjectName(QStringLiteral("action_cleanIslands"));
+    cleanIslandsAct_->setToolTip(
+        tr("Sur toute l'image : fusionne chaque petite région dans la voisine dont la couleur est "
+           "la plus proche (comme « boucher les trous »)."));
+    connect(cleanIslandsAct_, &QAction::triggered, this, &MainWindow::cleanIslands);
     segMenu->addSeparator();
     selectSameColorAct_ = segMenu->addAction(tr("Sélectionner la &même couleur"));
     selectSameColorAct_->setObjectName(QStringLiteral("action_selectSameColor"));
@@ -4357,6 +4364,9 @@ void MainWindow::autoDigitize() {
     bool contoursMode = false;
     autodigitize::ContourOptions contourOpts;
     contourOpts.mm_per_px = project_.mm_per_px;
+    // Couche de traits sombres (mode formes, option du dialogue ; HP-AUTO-005).
+    bool useDarkLines = false;
+    autodigitize::LineLayerOptions lineOpts;
 
     if (hasSegmentation) {
         // Fond présumé (Lot A, audit marine plein cadre 2026-09-22) : la
@@ -4537,6 +4547,68 @@ void MainWindow::autoDigitize() {
         minAreaRow->addWidget(minAreaSpin);
         minAreaRow->addStretch(1);
         shapesPanelLayout->addLayout(minAreaRow);
+        // Nettoyage des îlots (AutoOptions::island_area_mm2) : fusion dans la voisine de couleur la
+        // plus proche. Mémorisé en 1/100 mm².
+        auto* islandRow = new QHBoxLayout;
+        auto* islandSpin = new QDoubleSpinBox(shapesPanel);
+        islandSpin->setObjectName("islandAreaSpin");
+        islandSpin->setRange(0.0, 500.0);
+        islandSpin->setSingleStep(1.0);
+        islandSpin->setDecimals(1);
+        islandSpin->setSuffix(tr(" mm²"));
+        islandSpin->setSpecialValueText(tr("désactivé"));
+        islandSpin->setValue(
+            ui_memory::intValue(QStringLiteral("autoDigitize/islandAreaCmm2"), 0, 0, 50000) /
+            100.0);
+        islandSpin->setToolTip(
+            tr("Les petits îlots collés à un grand aplat sont fusionnés dans la voisine dont la "
+               "couleur est la plus proche (et non celle de plus longue frontière). Les traits "
+               "fins sombres sont aussi des îlots : cochez « Traits sombres » pour les garder."));
+        islandRow->addWidget(new QLabel(tr("Nettoyage des îlots :"), shapesPanel));
+        islandRow->addWidget(islandSpin);
+        islandRow->addStretch(1);
+        shapesPanelLayout->addLayout(islandRow);
+        // Couche de traits sombres (HP-AUTO-005) : contours noirs, mâts, haubans, séparés des
+        // remplissages et cousus par-dessus, en dernier.
+        auto* darkLinesCheck = new QCheckBox(tr("Traits sombres cousus par-dessus"), shapesPanel);
+        darkLinesCheck->setObjectName("darkLinesCheck");
+        darkLinesCheck->setChecked(
+            ui_memory::intValue(QStringLiteral("autoDigitize/darkLines"), 0, 0, 1) != 0);
+        darkLinesCheck->setToolTip(tr(
+            "Les traits sombres fins de l'image (contours noirs, mâts, haubans) sont séparés des "
+            "remplissages et cousus en point droit par-dessus, en dernier ; les remplissages "
+            "passent dessous sans trou. Coûte des coupes : chaque trait est un tracé séparé."));
+        shapesPanelLayout->addWidget(darkLinesCheck);
+        auto* darkWidthRow = new QHBoxLayout;
+        auto* darkWidthSpin = new QDoubleSpinBox(shapesPanel);
+        darkWidthSpin->setObjectName("darkLinesWidthSpin");
+        darkWidthSpin->setRange(0.3, 6.0);
+        darkWidthSpin->setSingleStep(0.1);
+        darkWidthSpin->setDecimals(1);
+        darkWidthSpin->setSuffix(tr(" mm"));
+        darkWidthSpin->setValue(
+            ui_memory::intValue(QStringLiteral("autoDigitize/darkLinesWidthUm"), 1600, 300, 6000) /
+            1000.0);
+        darkWidthSpin->setToolTip(tr("Largeur maximale d'un trait : au-delà, c'est un aplat."));
+        auto* darkLightSpin = new QDoubleSpinBox(shapesPanel);
+        darkLightSpin->setObjectName("darkLinesLightnessSpin");
+        darkLightSpin->setRange(5.0, 70.0);
+        darkLightSpin->setSingleStep(1.0);
+        darkLightSpin->setDecimals(0);
+        darkLightSpin->setValue(
+            ui_memory::intValue(QStringLiteral("autoDigitize/darkLinesLightness"), 25, 5, 70));
+        darkLightSpin->setToolTip(
+            tr("Clarté CIELAB L* maximale d'un pixel de trait (0 = noir, 100 = blanc)."));
+        darkWidthRow->addWidget(new QLabel(tr("Largeur max. :"), shapesPanel));
+        darkWidthRow->addWidget(darkWidthSpin);
+        darkWidthRow->addWidget(new QLabel(tr("Clarté max. (L*) :"), shapesPanel));
+        darkWidthRow->addWidget(darkLightSpin);
+        darkWidthRow->addStretch(1);
+        shapesPanelLayout->addLayout(darkWidthRow);
+        darkWidthSpin->setEnabled(darkLinesCheck->isChecked());
+        darkLightSpin->setEnabled(darkLinesCheck->isChecked());
+        connect(darkLinesCheck, &QCheckBox::toggled, darkWidthSpin, &QWidget::setEnabled);
+        connect(darkLinesCheck, &QCheckBox::toggled, darkLightSpin, &QWidget::setEnabled);
         connect(shapesRadio, &QRadioButton::toggled, shapesPanel, &QWidget::setEnabled);
         optsLayout->addWidget(shapesPanel);
 
@@ -4603,6 +4675,17 @@ void MainWindow::autoDigitize() {
         const int minAreaCmm2 = static_cast<int>(std::lround(minAreaSpin->value() * 100.0));
         ui_memory::setIntValue(QStringLiteral("autoDigitize/minRegionAreaCmm2"), minAreaCmm2);
         opts.min_region_area_mm2 = minAreaCmm2 / 100.0;
+        const int islandCmm2 = static_cast<int>(std::lround(islandSpin->value() * 100.0));
+        ui_memory::setIntValue(QStringLiteral("autoDigitize/islandAreaCmm2"), islandCmm2);
+        opts.island_area_mm2 = islandCmm2 / 100.0;
+        useDarkLines = darkLinesCheck->isChecked();
+        ui_memory::setIntValue(QStringLiteral("autoDigitize/darkLines"), useDarkLines ? 1 : 0);
+        const int darkWidthUm = static_cast<int>(std::lround(darkWidthSpin->value() * 1000.0));
+        ui_memory::setIntValue(QStringLiteral("autoDigitize/darkLinesWidthUm"), darkWidthUm);
+        lineOpts.max_line_width_mm = darkWidthUm / 1000.0;
+        lineOpts.dark_max_lightness = darkLightSpin->value();
+        ui_memory::setIntValue(QStringLiteral("autoDigitize/darkLinesLightness"),
+                               static_cast<int>(std::lround(darkLightSpin->value())));
         contoursMode = contoursRadio->isChecked();
         contourOpts.skip_largest_region = skipBgCheck->isChecked();
         contourOpts.detail = static_cast<double>(detailSlider->value()) / 100.0;
@@ -4619,6 +4702,26 @@ void MainWindow::autoDigitize() {
         return contoursMode ? autodigitize::auto_digitize_contours(*project_.segmentation,
                                                                    project_.object_ids, contourOpts,
                                                                    &contourMetrics)
+               : hasSegmentation && useDarkLines
+                   ? [&] {
+                         // Même image que la segmentation (opérations appliquées) si les
+                         // dimensions concordent, sinon l'image d'origine.
+                         const image::Image& lineSource =
+                             processed_.width == project_.segmentation->width &&
+                                     processed_.height == project_.segmentation->height
+                                 ? processed_
+                                 : project_.original;
+                         lineOpts.enabled = true;
+                         // Un réseau de traits se coud en parcours eulérien : moins de polylignes,
+                         // donc moins de coupes, au prix d'un court repassage.
+                         autodigitize::ContourOptions lineContour = contourOpts;
+                         lineContour.technique = autodigitize::ContourTechnique::Running;
+                         lineContour.routing = autodigitize::ContourRouting::SinglePath;
+                         lineContour.skip_largest_region = opts.skip_largest_region;
+                         return autodigitize::auto_digitize_with_lines(
+                             *project_.segmentation, lineSource, project_.object_ids, opts,
+                             lineOpts, lineContour);
+                     }()
                : hasSegmentation
                    ? autodigitize::auto_digitize(*project_.segmentation, project_.object_ids, opts)
                    : autodigitize::auto_digitize_vectors(project_.vector_objects,
@@ -9052,6 +9155,10 @@ void MainWindow::updateActions() {
     setEnabledWithReason(
         absorbAct_, pickedRegions == 1,
         tr("Sélectionnez une seule région : elle sera fusionnée dans sa voisine."));
+    setEnabledWithReason(cleanIslandsAct_,
+                         project_.segmentation.has_value() &&
+                             project_.segmentation->region_count() > 1,
+                         tr("Segmentez d'abord l'image (menu Segmentation)."));
     setEnabledWithReason(selectAllRegionsAct_,
                          project_.segmentation.has_value() &&
                              project_.segmentation->region_count() > 0,
