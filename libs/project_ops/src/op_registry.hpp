@@ -19,11 +19,12 @@ namespace openstitch::project_ops::detail {
 // Argument d'une opération, pour le catalogue ET la validation de type du dispatcher.
 struct ArgSpec {
     std::string name;
-    std::string type;        // "object_id" | "number" | "integer" | "string" | "boolean" | "array" | "object"
+    std::string
+        type; // "object_id" | "number" | "integer" | "string" | "boolean" | "array" | "object"
     std::string unit;        // "mm", "deg", "um", "" …
     std::string description; // une phrase
     bool required{false};
-    std::string range;       // texte libre « [0.1 ; 10] », "" = aucune
+    std::string range; // texte libre « [0.1 ; 10] », "" = aucune
 };
 
 // Résultat d'un gestionnaire. `result` (objet JSON ou null) est copié dans le rapport ;
@@ -68,8 +69,10 @@ struct OpSpec {
 
 // Chaque famille ajoute ses opérations à `out` ; `operations.cpp` appelle les deux et
 // refuse un nom en double.
-void register_param_ops(std::vector<OpSpec>& out);    // op_params.cpp   : style, paramètres, ordre, projet
-void register_geometry_ops(std::vector<OpSpec>& out); // op_geometry.cpp : forme, transformation, fusion, auto-satin
+void register_param_ops(
+    std::vector<OpSpec>& out); // op_params.cpp   : style, paramètres, ordre, projet
+void register_geometry_ops(
+    std::vector<OpSpec>& out); // op_geometry.cpp : forme, transformation, fusion, auto-satin
 
 // Aides communes (implémentées dans json_common.cpp).
 // Lit un identifiant d'objet de broderie existant dans `ctx.args[key]` ; refus nommé sinon.

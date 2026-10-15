@@ -39,9 +39,9 @@ struct OpenedProject {
 // vide = intègre. Ne génère aucun point.
 [[nodiscard]] std::vector<std::string> check_integrity(const document::Project& project);
 
-// Sélection d'objets de broderie (initiative) : « color=#RRGGBB », « type=tatami », « visible=true »,
-// « locked=false », « name=texte » (sous-chaîne), « id=1,2,3 », « area_gt=mm2 », « area_lt=mm2 »,
-// « within=x0,y0,x1,y1 » (mm, objet entièrement dans le rectangle). Critères combinés en ET.
+// Sélection d'objets de broderie (initiative) : « color=#RRGGBB », « type=tatami », « visible=true
+// », « locked=false », « name=texte » (sous-chaîne), « id=1,2,3 », « area_gt=mm2 », « area_lt=mm2
+// », « within=x0,y0,x1,y1 » (mm, objet entièrement dans le rectangle). Critères combinés en ET.
 // Résultat : identifiants d'objets de broderie dans l'ordre de couture. Un critère inconnu
 // ou mal formé est une erreur nommée (jamais ignoré).
 [[nodiscard]] Result<std::vector<ObjectId>>

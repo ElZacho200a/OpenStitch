@@ -121,8 +121,7 @@ Result<DigitizeReport> digitize_image_into(document::Project& project,
                     "créez un projet neuf (project digitize) ou supprimez les objets d'abord");
     }
     if (!(s.dpi > 0.0)) {
-        return fail(ErrorCategory::UserInput,
-                    "la résolution (dpi) doit être strictement positive");
+        return fail(ErrorCategory::UserInput, "la résolution (dpi) doit être strictement positive");
     }
     const bool stippling = s.mode == "stipple";
     const bool contours = s.mode == "contours";
@@ -202,10 +201,10 @@ Result<DigitizeReport> digitize_image_into(document::Project& project,
         say(log, buf);
     }
     report.background_auto = s.skip_background < 0;
-    const bool skipLargest =
-        stippling ? false
-                  : (s.skip_background < 0 ? (candidate && candidate->recommended)
-                                           : (s.skip_background != 0));
+    const bool skipLargest = stippling
+                                 ? false
+                                 : (s.skip_background < 0 ? (candidate && candidate->recommended)
+                                                          : (s.skip_background != 0));
     report.background_skipped = skipLargest;
 
     autodigitize::AutoOptions opts;

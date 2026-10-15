@@ -19,24 +19,24 @@ namespace openstitch::project_ops {
 // moindre qualité : si le moteur ne construit aucune colonne, le plan est refusé avec ses
 // messages.
 struct AutoSatinPlanRequest {
-    std::optional<Micrometers> spacing;       // défaut : celui d'`AutoSatinParams` (0,4 mm)
-    bool compact_axis{false};                 // formes compactes : axe synthétique (cf. moteur)
-    bool use_pristine_contour{true};          // contour brut de la région source si disponible
+    std::optional<Micrometers> spacing; // défaut : celui d'`AutoSatinParams` (0,4 mm)
+    bool compact_axis{false};           // formes compactes : axe synthétique (cf. moteur)
+    bool use_pristine_contour{true};    // contour brut de la région source si disponible
     std::vector<document::AutoSatinGuide> guides;
 };
 
 struct AutoSatinPlan {
-    bool accepted{false};                 // faux : `refusal` dit pourquoi, `params` inutilisable
-    document::AutoSatinParams params;     // à poser avec ConvertFillGroupCommand / SetStitchParams
+    bool accepted{false};             // faux : `refusal` dit pourquoi, `params` inutilisable
+    document::AutoSatinParams params; // à poser avec ConvertFillGroupCommand / SetStitchParams
     // Contour à restaurer avant conversion (comme le bureau) ; absent = contour source inchangé.
     std::optional<std::vector<geometry::PathSet>> restored_contour;
     // Diagnostics du moteur et de la satinabilité (`auto_satin::evaluate_satinability`).
-    std::string satinability_status;      // « Suitable », « RequiresDecomposition », …
+    std::string satinability_status; // « Suitable », « RequiresDecomposition », …
     std::size_t columns{0};
-    double coverage_ratio{0.0};           // 0 si non mesurée
+    double coverage_ratio{0.0}; // 0 si non mesurée
     bool coverage_measured{false};
-    std::vector<std::string> messages;    // refus et avertissements nommés du moteur
-    std::string refusal;                  // phrase de refus (vide si accepté)
+    std::vector<std::string> messages; // refus et avertissements nommés du moteur
+    std::string refusal;               // phrase de refus (vide si accepté)
 };
 
 // `vector_object` = objet VECTORIEL source de l'objet de broderie visé. Erreur

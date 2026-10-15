@@ -100,7 +100,8 @@ std::vector<std::string> split(const std::string& s, char sep) {
     std::size_t start = 0;
     while (true) {
         const auto pos = s.find(sep, start);
-        parts.push_back(s.substr(start, pos == std::string::npos ? std::string::npos : pos - start));
+        parts.push_back(
+            s.substr(start, pos == std::string::npos ? std::string::npos : pos - start));
         if (pos == std::string::npos) {
             break;
         }
@@ -150,7 +151,8 @@ Result<std::vector<ObjectId>> select_objects(const document::Project& project,
                 std::uint64_t v = 0;
                 const auto [ptr, ec] = std::from_chars(p.data(), p.data() + p.size(), v);
                 if (ec != std::errc{} || ptr != p.data() + p.size()) {
-                    return std::unexpected(bad_criterion(c, "identifiants entiers séparés par des virgules"));
+                    return std::unexpected(
+                        bad_criterion(c, "identifiants entiers séparés par des virgules"));
                 }
                 ids.push_back(v);
             }

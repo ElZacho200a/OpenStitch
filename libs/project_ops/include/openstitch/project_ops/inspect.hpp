@@ -42,7 +42,7 @@ struct InspectOptions {
 
 // Résumé lisible (texte) du même contenu : cadre, totaux, une ligne par objet, avertissements.
 [[nodiscard]] Result<std::string> inspect_project_text(const document::Project& project,
-                                                      const InspectOptions& options = {});
+                                                       const InspectOptions& options = {});
 
 // Un objet de broderie (id d'objet de broderie) : paramètres complets, géométrie source,
 // statistiques de ses points, avertissements qui le concernent. Erreur

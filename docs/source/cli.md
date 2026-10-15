@@ -32,6 +32,9 @@ n'est **pas un contrat stable** (elle peut changer d'une version à l'autre).
 `info`, `stats`, `digitize` (avec `--json`), `dst2svg` et `osp2dst` sont les
 interfaces destinées à être scriptées.
 
+| Projets | `project …` | Interface programmatique `.osp` : `new`, `digitize`, `inspect`, `apply`, `op`, `set`, `operations`, `check`, `select`, `diff`, `validate`, `digitize-batch` (voir [Projets .osp en ligne de commande](cli-project.md)) |
+| Projets | `commands` | Liste machine-lisible des commandes et options (JSON) |
+
 ## Options communes
 
 | Option | Effet |

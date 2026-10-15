@@ -37,6 +37,7 @@
 #include "openstitch/image/ops.hpp"
 #include "openstitch/project_io/machine_file.hpp"
 #include "openstitch/project_io/project_io.hpp"
+#include "openstitch/project_ops/factory.hpp"
 #include "openstitch/segmentation/segmentation.hpp"
 #include "openstitch/stitch/sequence.hpp"
 #include "openstitch/stitch_analysis/metrics.hpp"
@@ -50,7 +51,6 @@
 #include "openstitch/stitch_generation/running_stitch.hpp"
 #include "openstitch/stitch_generation/satin.hpp"
 #include "openstitch/stitch_generation/tatami.hpp"
-#include "openstitch/project_ops/factory.hpp"
 #include "openstitch/vectorization/vectorize.hpp"
 #include "project_cmd.hpp"
 
@@ -733,8 +733,8 @@ int run_digitize(const DigitizeArgs& a) {
 
     document::Project project;
     const auto statusLog = [st](std::string_view line) { fmt::print(st, "{}\n", line); };
-    const auto digitized = project_ops::digitize_image_into(
-        project, std::filesystem::path(a.image), a.values.settings, statusLog);
+    const auto digitized = project_ops::digitize_image_into(project, std::filesystem::path(a.image),
+                                                            a.values.settings, statusLog);
     if (!digitized) {
         return cli_error("digitize", digitized.error().message, digitized.error().detail);
     }
@@ -880,11 +880,12 @@ int run_digitize(const DigitizeArgs& a) {
             "\"color_changes\":{},\"width_mm\":{:.2f},\"height_mm\":{:.2f},\"thread_m\":{:.3f},"
             "\"moves\":{},\"long_moves_without_trim\":{},\"short_stitches\":{},"
             "\"small_objects\":{},\"uncovered_ratio\":{}}}\n",
-            json_str(a.image), json_str(a.dst), svgField, digitizeReport.image_width_px, digitizeReport.image_height_px,
-            regionCount, skipLargest ? "true" : "false", project.embroidery_objects.size(), nSatin,
-            nTatami, nRunning, stats.stitches, stats.jumps, stats.trims, stats.color_changes, wMm,
-            hMm, stats.thread_length_um / 1e6, metrics.moves, metrics.long_moves_without_trim,
-            metrics.short_stitches, quality.small_objects,
+            json_str(a.image), json_str(a.dst), svgField, digitizeReport.image_width_px,
+            digitizeReport.image_height_px, regionCount, skipLargest ? "true" : "false",
+            project.embroidery_objects.size(), nSatin, nTatami, nRunning, stats.stitches,
+            stats.jumps, stats.trims, stats.color_changes, wMm, hMm, stats.thread_length_um / 1e6,
+            metrics.moves, metrics.long_moves_without_trim, metrics.short_stitches,
+            quality.small_objects,
             quality.uncovered_ratio ? fmt::format("{:.4f}", *quality.uncovered_ratio) : "null");
     }
     return kExitOk;

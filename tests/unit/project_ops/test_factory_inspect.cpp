@@ -241,3 +241,13 @@ TEST_CASE("digitize report json lists objects by type", "[project_ops]") {
     CHECK(contains(*json, "ids_by_type"));
     CHECK(contains(*json, "\"decision\": \"automatic\""));
 }
+
+TEST_CASE("inspecting an empty project works and reports an empty sequence", "[project_ops]") {
+    auto created = po::create_empty_project({});
+    REQUIRE(created);
+    const auto json = po::inspect_project_json(*created);
+    REQUIRE(json);
+    CHECK(contains(*json, "\"stitches\": 0"));
+    CHECK(contains(*json, "\"embroidery_objects\": []"));
+    CHECK(po::inspect_project_text(*created));
+}

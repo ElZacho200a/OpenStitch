@@ -36,7 +36,8 @@ Result<std::string> operations_catalog_text(const std::string& catalog_json) {
     }
     std::string out;
     for (const auto& op : j["operations"]) {
-        out += op.value("name", std::string("?")) + " : " + op.value("summary", std::string()) + "\n";
+        out +=
+            op.value("name", std::string("?")) + " : " + op.value("summary", std::string()) + "\n";
         if (op.contains("args") && op["args"].is_array()) {
             for (const auto& a : op["args"]) {
                 out += std::string("    ") + (a.value("required", false) ? "* " : "  ") +
@@ -139,12 +140,9 @@ Result<std::string> digitize_report_json(const document::Project& project,
     for (const auto& e : project.embroidery_objects) {
         ids[stitch_type_name(e)].push_back(e.id.value);
     }
-    j["objects"] = json{{"vector", report.vector_objects},
-                        {"total", report.embroidery_objects},
-                        {"satin", report.satin},
-                        {"tatami", report.tatami},
-                        {"running", report.running},
-                        {"ids_by_type", ids}};
+    j["objects"] = json{{"vector", report.vector_objects}, {"total", report.embroidery_objects},
+                        {"satin", report.satin},           {"tatami", report.tatami},
+                        {"running", report.running},       {"ids_by_type", ids}};
     j["sequence"] = json{{"stitches", stats.stitches},
                          {"jumps", stats.jumps},
                          {"trims", stats.trims},
@@ -160,8 +158,8 @@ Result<std::string> digitize_report_json(const document::Project& project,
                         {"long_moves_without_trim", metrics.long_moves_without_trim},
                         {"short_stitches", metrics.short_stitches},
                         {"small_objects", quality.small_objects},
-                        {"uncovered_ratio", quality.uncovered_ratio ? json(*quality.uncovered_ratio)
-                                                                    : json(nullptr)},
+                        {"uncovered_ratio",
+                         quality.uncovered_ratio ? json(*quality.uncovered_ratio) : json(nullptr)},
                         {"fill_angles_deg", fill}};
     json warnings = json::array();
     for (const auto& w : report.warnings) {
@@ -180,9 +178,8 @@ Result<std::string> digitize_report_json(const document::Project& project,
     }
     if (report.stipple) {
         const auto& s = *report.stipple;
-        j["stipple"] = json{{"points", s.points},
-                            {"polylines", s.polylines},
-                            {"tour_length_mm", s.tour_length_mm}};
+        j["stipple"] = json{
+            {"points", s.points}, {"polylines", s.polylines}, {"tour_length_mm", s.tour_length_mm}};
     }
     return j.dump(2);
 }

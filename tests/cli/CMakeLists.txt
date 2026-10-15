@@ -2,7 +2,8 @@
 # Un cas = un test CTest ; le script check_cli.cmake fait les vérifications.
 set(OPENSTITCH_CLI_CASES
     version help unknown_shape list_shapes usage_errors stitchdebug errors_prefix
-    info_json digitize_json digitize_nothing legacy_technique_alias)
+    info_json digitize_json digitize_nothing legacy_technique_alias
+    project_new_inspect project_cycle project_introspection)
 
 foreach(case IN LISTS OPENSTITCH_CLI_CASES)
     add_test(NAME cli_${case}

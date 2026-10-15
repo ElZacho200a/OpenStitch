@@ -182,9 +182,7 @@ int digitize_one(const DigitizeArgs& a, const DigitizeOptionValues& v, bool json
         return fail_err("digitize", json, po::code::kInternal, created.error());
     }
     openstitch::document::Project project = std::move(*created);
-    const po::StatusLog log = [st](std::string_view line) {
-        fmt::print(st, "{}\n", line);
-    };
+    const po::StatusLog log = [st](std::string_view line) { fmt::print(st, "{}\n", line); };
     auto report = po::digitize_image_into(project, fs::path(a.image), v.settings, log);
     if (!report) {
         return fail_err("digitize", json, po::code::kRefused, report.error());
@@ -295,8 +293,8 @@ int run_batch_flow(const BatchFlow& f, const std::string& text, bool single) {
         }
     }
     if (!report.ok) {
-        const std::string why = report.error_code.empty() ? std::string("lot refusé")
-                                                          : report.error_message;
+        const std::string why =
+            report.error_code.empty() ? std::string("lot refusé") : report.error_message;
         fmt::print(stderr, "openstitch-cli project {} : {} -- aucune modification écrite\n", f.cmd,
                    why);
         return kExitRefused;
@@ -307,8 +305,8 @@ int run_batch_flow(const BatchFlow& f, const std::string& text, bool single) {
         return 0;
     }
     const fs::path target = f.out.empty() ? fs::path(f.osp) : fs::path(f.out);
-    if (auto w = po::write_project(target, opened->project, &opened->info, fs::path(f.osp),
-                                   f.noClobber);
+    if (auto w =
+            po::write_project(target, opened->project, &opened->info, fs::path(f.osp), f.noClobber);
         !w) {
         return fail_err(f.cmd, f.json, po::code::kIo, w.error());
     }
@@ -445,7 +443,8 @@ CLI::App* register_project_commands(CLI::App& app, bool& jsonOut) {
     add_digitize_options(c, *dzValues);
     c->add_option("--dst", dzArgs->dst, "Exporte aussi un DST (export secondaire)");
     c->add_option("--output-svg", dzArgs->svg, "Exporte aussi un SVG de diagnostic");
-    c->add_option("--report", dzArgs->report, "Écrit le rapport de numérisation JSON dans ce fichier");
+    c->add_option("--report", dzArgs->report,
+                  "Écrit le rapport de numérisation JSON dans ce fichier");
     c->add_flag("--no-clobber", dzArgs->noClobber, "Refuse d'écraser les fichiers de sortie");
     c->add_flag("--json", jsonOut, "Rapport JSON unique sur stdout ; états sur stderr");
     c->callback([dzArgs, dzValues, &jsonOut] {
@@ -476,7 +475,8 @@ CLI::App* register_project_commands(CLI::App& app, bool& jsonOut) {
         for (const auto& image : bdArgs->images) {
             DigitizeArgs a;
             a.image = image;
-            a.out = (fs::path(bdArgs->outDir) / (fs::path(image).stem().string() + ".osp")).string();
+            a.out =
+                (fs::path(bdArgs->outDir) / (fs::path(image).stem().string() + ".osp")).string();
             a.noClobber = bdArgs->noClobber;
             std::string report;
             const int rc = digitize_one(a, *bdValues, true, &report);
@@ -484,9 +484,10 @@ CLI::App* register_project_commands(CLI::App& app, bool& jsonOut) {
             if (!items.empty()) {
                 items += ",";
             }
-            items += fmt::format("{{\"image\":{},\"project\":{},\"ok\":{},\"exit\":{},\"report\":{}}}",
-                                 po::json_quote(image), po::json_quote(a.out),
-                                 rc == 0 ? "true" : "false", rc, rc == 0 ? report : "null");
+            items +=
+                fmt::format("{{\"image\":{},\"project\":{},\"ok\":{},\"exit\":{},\"report\":{}}}",
+                            po::json_quote(image), po::json_quote(a.out),
+                            rc == 0 ? "true" : "false", rc, rc == 0 ? report : "null");
         }
         if (jsonOut) {
             fmt::print("{{\"schema\":\"openstitch.digitize-batch/1\",\"ok\":{},\"failed\":{},"
@@ -525,8 +526,8 @@ CLI::App* register_project_commands(CLI::App& app, bool& jsonOut) {
         options.with_stitches = !inArgs->noStitches;
         options.with_geometry = inArgs->geometry;
         if (inArgs->object) {
-            const auto text = po::inspect_object_json(opened->project,
-                                                      openstitch::ObjectId{*inArgs->object}, options);
+            const auto text = po::inspect_object_json(
+                opened->project, openstitch::ObjectId{*inArgs->object}, options);
             if (!text) {
                 g_exit = fail_err("inspect", jsonOut, po::code::kUnknownObject, text.error());
                 return;
@@ -648,9 +649,8 @@ CLI::App* register_project_commands(CLI::App& app, bool& jsonOut) {
                                "ex. --width-mm 120 --lock triangle");
             return;
         }
-        g_exit = run_batch_flow(*setFlow,
-                                "{\"schema\":\"openstitch.batch/1\",\"operations\":[" + ops + "]}",
-                                false);
+        g_exit = run_batch_flow(
+            *setFlow, "{\"schema\":\"openstitch.batch/1\",\"operations\":[" + ops + "]}", false);
     });
 
     // operations ------------------------------------------------------------------------
@@ -857,7 +857,8 @@ namespace {
 
 std::string describe_app(const CLI::App& app) {
     std::string out = "{\"name\":" + po::json_quote(app.get_name()) +
-                      ",\"description\":" + po::json_quote(app.get_description()) + ",\"options\":[";
+                      ",\"description\":" + po::json_quote(app.get_description()) +
+                      ",\"options\":[";
     bool first = true;
     for (const auto* opt : app.get_options()) {
         if (opt->get_name().empty() || opt->get_name() == "-h,--help") {

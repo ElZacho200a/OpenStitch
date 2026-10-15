@@ -58,13 +58,13 @@ struct DigitizeSettings {
     bool hidden_same_color{false};
     std::string hidden_levels{"all"};
     double hidden_max_mm{15.0};
-    std::string mode{"shapes"};       // shapes | contours | stipple
-    double detail{0.5};               // contours
-    std::string technique{"auto"};    // contours : auto | running | legacy-satin
-    double curve_tolerance_mm{0.0};   // shapes
-    bool satin_bands{false};          // shapes
-    bool single_path{false};          // contours
-    bool coherent_lines{false};       // contours : FDoG avant segmentation
+    std::string mode{"shapes"};     // shapes | contours | stipple
+    double detail{0.5};             // contours
+    std::string technique{"auto"};  // contours : auto | running | legacy-satin
+    double curve_tolerance_mm{0.0}; // shapes
+    bool satin_bands{false};        // shapes
+    bool single_path{false};        // contours
+    bool coherent_lines{false};     // contours : FDoG avant segmentation
     int stipple_points{2000};
     int stipple_seed{1};
     bool stipple_invert{false};
@@ -85,7 +85,7 @@ struct DigitizeReport {
     std::size_t running{0};
     std::optional<autodigitize::ContourMetrics> contour; // mode contours
     std::optional<autodigitize::StippleMetrics> stipple; // mode stipple
-    std::vector<std::string> warnings; // avertissements non bloquants du moteur
+    std::vector<std::string> warnings;                   // avertissements non bloquants du moteur
 };
 
 // Journal d'état optionnel (une ligne lisible par étape) : la CLI le branche sur stderr/stdout.

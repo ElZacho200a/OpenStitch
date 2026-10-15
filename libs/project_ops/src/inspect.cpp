@@ -109,8 +109,7 @@ const char* project_lock_name(document::LockStitch v) {
     return "none";
 }
 const char* intent_name(document::EmbroideryIntent v) {
-    return v == document::EmbroideryIntent::ForcedUserChoice ? "forced_user_choice"
-                                                              : "auto_choice";
+    return v == document::EmbroideryIntent::ForcedUserChoice ? "forced_user_choice" : "auto_choice";
 }
 const char* join_name(document::JoinMode v) {
     switch (v) {
@@ -491,14 +490,25 @@ Result<json> build_project_doc(const document::Project& project, const InspectOp
 
     std::map<std::uint64_t, ObjectStitches> stitches;
     std::optional<stitch::StitchStats> stats;
+    // `effective_sequence` refuse un projet sans objet visible : inspecter un projet vide (ou
+    // dont tout est masqué) reste légitime, la séquence est alors simplement vide.
+    const bool anyVisible =
+        std::any_of(project.embroidery_objects.begin(), project.embroidery_objects.end(),
+                    [](const auto& e) { return e.visible; });
     if (options.with_stitches) {
-        const auto seq = stitch_generation::effective_sequence(project);
-        if (!seq) {
-            return std::unexpected(seq.error());
+        stitch::StitchSequence generated;
+        if (anyVisible) {
+            auto seq = stitch_generation::effective_sequence(project);
+            if (!seq) {
+                return std::unexpected(seq.error());
+            }
+            generated = std::move(*seq);
         }
-        stitches = per_object_stitches(*seq);
-        stats = stitch::compute_stats(*seq);
-        doc["sequence"] = json{{"commands", seq->commands.size()},
+        const auto* seqPtr = &generated;
+        const stitch::StitchSequence& seqRef = *seqPtr;
+        stitches = per_object_stitches(seqRef);
+        stats = stitch::compute_stats(seqRef);
+        doc["sequence"] = json{{"commands", seqRef.commands.size()},
                                {"stitches", stats->stitches},
                                {"jumps", stats->jumps},
                                {"trims", stats->trims},
@@ -638,9 +648,9 @@ Result<std::string> inspect_project_text(const document::Project& project,
 
 Result<std::string> inspect_object_json(const document::Project& project, ObjectId embroideryId,
                                         const InspectOptions& options) {
-    const auto it = std::find_if(project.embroidery_objects.begin(),
-                                 project.embroidery_objects.end(),
-                                 [&](const auto& e) { return e.id == embroideryId; });
+    const auto it =
+        std::find_if(project.embroidery_objects.begin(), project.embroidery_objects.end(),
+                     [&](const auto& e) { return e.id == embroideryId; });
     if (it == project.embroidery_objects.end()) {
         return fail(ErrorCategory::OperationImpossible,
                     "objet de broderie " + std::to_string(embroideryId.value) + " introuvable",
@@ -657,8 +667,8 @@ Result<std::string> inspect_object_json(const document::Project& project, Object
     }
     json doc = json::object();
     doc["schema"] = kObjectSchema;
-    doc["object"] = embroidery_json(project, *it, rank, options,
-                                    options.with_stitches ? &stitches : nullptr);
+    doc["object"] =
+        embroidery_json(project, *it, rank, options, options.with_stitches ? &stitches : nullptr);
     if (const auto* v = project.findObject(it->source_vector)) {
         json geometry = json::object();
         geometry["pieces"] = v->paths.size();

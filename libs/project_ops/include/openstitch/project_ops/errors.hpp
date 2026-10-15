@@ -16,12 +16,12 @@ inline constexpr const char* kUnknownObject = "E_UNKNOWN_OBJECT"; // identifiant
 inline constexpr const char* kUnknownAlias = "E_UNKNOWN_ALIAS";   // alias `$x` jamais défini
 inline constexpr const char* kOutOfRange = "E_OUT_OF_RANGE";      // valeur hors plage métier
 inline constexpr const char* kWrongType = "E_WRONG_STITCH_TYPE";  // champ absent du type de points
-inline constexpr const char* kRefused = "E_REFUSED";              // refus métier (message du moteur)
-inline constexpr const char* kSchema = "E_SCHEMA";                // JSON de lot invalide
-inline constexpr const char* kIo = "E_IO";                        // fichier illisible/non écrit
+inline constexpr const char* kRefused = "E_REFUSED"; // refus métier (message du moteur)
+inline constexpr const char* kSchema = "E_SCHEMA";   // JSON de lot invalide
+inline constexpr const char* kIo = "E_IO";           // fichier illisible/non écrit
 inline constexpr const char* kInvalidProject = "E_INVALID_PROJECT"; // .osp invalide
-inline constexpr const char* kNothingToDo = "E_NOTHING_TO_DO";    // rien produit (aucun objet)
-inline constexpr const char* kInternal = "E_INTERNAL";            // défaut interne
+inline constexpr const char* kNothingToDo = "E_NOTHING_TO_DO";      // rien produit (aucun objet)
+inline constexpr const char* kInternal = "E_INTERNAL";              // défaut interne
 } // namespace code
 
 // Erreur structurée montrable telle quelle (texte) ou en JSON.

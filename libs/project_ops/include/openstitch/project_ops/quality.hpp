@@ -21,9 +21,9 @@ struct QualityOptions {
 };
 
 struct QualityReport {
-    std::string json;          // schéma `openstitch.quality/1`
-    std::size_t errors{0};     // constats de gravité Error (hors cadre, séquence vide…)
-    std::size_t warnings{0};   // constats de gravité Warning
+    std::string json;        // schéma `openstitch.quality/1`
+    std::size_t errors{0};   // constats de gravité Error (hors cadre, séquence vide…)
+    std::size_t warnings{0}; // constats de gravité Warning
     [[nodiscard]] bool passed() const { return errors == 0; }
 };
 
@@ -37,10 +37,10 @@ struct QualityReport {
                                                          const QualityOptions& options = {});
 
 struct QualitySvgOptions {
-    bool outlines{true};          // contour des régions d'origine (vecteurs sources), en gris
-    bool directions{false};       // flèches de direction de broderie (angle des rangées)
-    bool findings{true};          // marqueurs des constats (points courts, longs, sauts…)
-    ObjectId only_object{};       // 0 = tous les objets
+    bool outlines{true};    // contour des régions d'origine (vecteurs sources), en gris
+    bool directions{false}; // flèches de direction de broderie (angle des rangées)
+    bool findings{true};    // marqueurs des constats (points courts, longs, sauts…)
+    ObjectId only_object{}; // 0 = tous les objets
 };
 
 // SVG de diagnostic (mm, Y vers le bas) : séquence effective par objet (couleur du fil),

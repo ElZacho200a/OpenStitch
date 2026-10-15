@@ -136,6 +136,7 @@ table and "where do I change X" shortcuts):
 | `commands` | undo/redo (Command pattern) |
 | `formats` | DST codec, diagnostic SVG export |
 | `project_io` | `.osp` project format (JSON + ZIP) |
+| `project_ops` | Programmatic API behind `openstitch-cli project …`: project factory, JSON inspection, transactional operations/batches, quality report, auto-satin service (see `docs/source/cli-project.md`) |
 
 **No coordinate is ever a raw `double`.** Internal geometry is `Micrometers`
 (`int32`) / `Vec2um`, Y axis pointing up. Convert at boundaries only: px→µm on
