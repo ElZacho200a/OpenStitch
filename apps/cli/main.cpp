@@ -38,6 +38,7 @@
 #include "openstitch/image/ops.hpp"
 #include "openstitch/project_io/machine_file.hpp"
 #include "openstitch/project_io/project_io.hpp"
+#include "openstitch/project_ops/factory.hpp"
 #include "openstitch/segmentation/segmentation.hpp"
 #include "openstitch/stitch/sequence.hpp"
 #include "openstitch/stitch_analysis/metrics.hpp"
@@ -52,6 +53,7 @@
 #include "openstitch/stitch_generation/satin.hpp"
 #include "openstitch/stitch_generation/tatami.hpp"
 #include "openstitch/vectorization/vectorize.hpp"
+#include "project_cmd.hpp"
 
 #ifdef _WIN32
 #include <windows.h>
@@ -703,35 +705,7 @@ struct DigitizeArgs {
     std::string image;
     std::string dst;
     std::string outSvg;
-    std::string lock = "backforth";
-    std::string mode = "shapes";
-    std::string technique = "auto";
-    double dpi = 96.0;
-    double trimMm = 3.0;
-    bool darkLines = false;           // HP-AUTO-005 : traits sombres cousus par-dessus
-    double darkLinesWidthMm = 1.6;    // largeur maximale d'un trait, en mm
-    double darkLinesLightness = 25.0; // clarté CIELAB L* maximale d'un pixel de trait
-    bool hiddenTravel = false;        // HP-SEQ-006.a : coupes remplacées par des ponts cachés
-    bool hiddenSameColor = false;     // HP-SEQ-006.b : surface déjà cousue du même fil = cachée
-    std::string hiddenLevels = "all"; // niveaux : between, within, underlay
-    double hiddenMaxMm = 15.0;        // longueur maximale d'un pont, en mm
-    double detail = 0.5;
-    int maxColors = 8;
-    int minRegionPx = 16;
-    int smoothingPx = 3;
-    int skipBg = -1; // -1 = auto (segmentation::background_candidate), 0 = non, 1 = oui
-    double curveToleranceMm = 0.0; // mode formes : > 0 -> contours en courbes de Bézier
-    bool satinBands = false;       // mode formes : bandes étroites en auto-satin
-    // Nettoyage des fragments avant numérisation (mode formes) ; absent = défaut de la lib.
-    std::optional<double> minFeatureMm; // largeur minimale d'un détail ; 0 = désactivé
-    std::optional<double> minRegionMm2; // aire minimale d'une région ; 0 = désactivé
-    double islandMm2 = 0.0;             // nettoyage des îlots (voisine de couleur la plus proche)
-    double islandMaxDeltaE = 0.0;       // ΔE maximal d'une fusion d'îlot ; 0 = sans limite
-    bool singlePath = false;            // mode contours : parcours eulérien (moins de coupes)
-    bool coherentLines = false;         // mode contours : photo -> traits (FDoG) avant segmentation
-    int stipplePoints = 2000;           // mode stipple : nombre de points du semis
-    int stippleSeed = 1;                // mode stipple : graine du tirage initial
-    bool stippleInvert = false;         // mode stipple : densité sur les zones claires
+    openstitch_cli::DigitizeOptionValues values; // réglages partagés avec `project digitize`
     bool json = false;
     bool noClobber = false;
 };
@@ -758,171 +732,28 @@ int run_digitize(const DigitizeArgs& a) {
         return *refused;
     }
 
-    const auto loaded = image::load_image(std::filesystem::path(a.image));
-    if (!loaded) {
-        return cli_error(
-            "digitize",
-            fmt::format("chargement de l'image impossible : {}", loaded.error().message),
-            kImageFormatsHint);
-    }
-    fmt::print(st, "Image : {} x {} px (alpha source : {})\n", loaded->width, loaded->height,
-               loaded->source_had_alpha ? "oui" : "non");
-
     document::Project project;
-    project.mm_per_px = Millimeters{25.4 / a.dpi};
-    project.original = *loaded;
-    // Lignes cohérentes (FDoG) : la photo devient des traits noirs sur fond
-    // blanc ; la segmentation et le mode contours travaillent ensuite dessus.
-    if (a.coherentLines) {
-        const auto lines = image::apply_op(project.original, image::CoherentLinesOp{});
-        if (!lines) {
-            return cli_error(
-                "digitize",
-                fmt::format("extraction des lignes impossible : {}", lines.error().message),
-                "retirez --coherent-lines ou essayez une image plus grande");
-        }
-        project.original = *lines;
-        fmt::print(st, "Lignes cohérentes (FDoG) appliquées avant la segmentation\n");
+    const auto statusLog = [st](std::string_view line) { fmt::print(st, "{}\n", line); };
+    const auto digitized = project_ops::digitize_image_into(project, std::filesystem::path(a.image),
+                                                            a.values.settings, statusLog);
+    if (!digitized) {
+        return cli_error("digitize", digitized.error().message, digitized.error().detail);
     }
-    // Finitions (Lots E/F) : nouveau projet -> activées ; réglables ici.
-    project.finishing.trim_threshold =
-        Micrometers{static_cast<std::int32_t>(std::lround(a.trimMm * 1000.0))};
-    project.finishing.lock_type = a.lock == "none"       ? document::LockStitch::None
-                                  : a.lock == "triangle" ? document::LockStitch::Triangle
-                                  : a.lock == "zigzag"   ? document::LockStitch::MicroZigzag
-                                                         : document::LockStitch::BackAndForth;
-
-    project.finishing.hidden_travel.enabled = a.hiddenTravel;
-    project.finishing.hidden_travel.allow_same_color_surface = a.hiddenSameColor;
-    {
-        std::string levelError;
-        if (!parse_route_levels(a.hiddenLevels, project.finishing.hidden_travel, levelError)) {
-            return cli_error("digitize", levelError);
-        }
-    }
-    project.finishing.hidden_travel.max_bridge_length =
-        Micrometers{static_cast<std::int32_t>(std::lround(a.hiddenMaxMm * 1000.0))};
-
-    // Stippling : pas de segmentation, l'image est lue comme une carte de tons.
-    const bool stippling = a.mode == "stipple";
-    std::size_t regionCount = 0;
-    std::optional<segmentation::BackgroundCandidate> candidate;
-    if (!stippling) {
-        auto seg = segmentation::segment(project.original, {.max_colors = a.maxColors,
-                                                            .min_region_px = a.minRegionPx,
-                                                            .smoothing_radius_px = a.smoothingPx});
-        if (!seg) {
-            return cli_error("digitize",
-                             fmt::format("segmentation impossible : {}", seg.error().message),
-                             "essayez une image plus grande ou --max-colors différent");
-        }
-        regionCount = seg->region_count();
-        fmt::print(st, "Régions segmentées : {}\n", regionCount);
-        project.segmentation = std::move(*seg);
-        candidate = segmentation::background_candidate(*project.segmentation);
-    }
-
-    // Même règle que le dialogue desktop (Lot A) : jamais sur le seul
-    // critère « pas d'alpha ».
-    if (candidate) {
-        fmt::print(st,
-                   "Région candidate au fond : #{:02X}{:02X}{:02X}, {:.1f} % de l'image, L* "
-                   "{:.0f}, {} bord(s) touché(s)\n",
-                   candidate->rgb[0], candidate->rgb[1], candidate->rgb[2],
-                   candidate->area_ratio * 100.0, candidate->lightness, candidate->sides_touched);
-    }
-    const bool skipLargest =
-        stippling ? false
-                  : (a.skipBg < 0 ? (candidate && candidate->recommended) : (a.skipBg != 0));
-    autodigitize::AutoOptions opts;
-    opts.mm_per_px = project.mm_per_px;
-    opts.skip_largest_region = skipLargest;
-    opts.satin_bands = a.satinBands;
-    opts.curve_tolerance =
-        Micrometers{static_cast<std::int32_t>(std::lround(a.curveToleranceMm * 1000.0))};
-    if (a.minFeatureMm) {
-        opts.min_feature_width_mm = *a.minFeatureMm;
-    }
-    if (a.minRegionMm2) {
-        opts.min_region_area_mm2 = *a.minRegionMm2;
-    }
-    opts.island_area_mm2 = a.islandMm2;
-    opts.island_max_delta_e = a.islandMaxDeltaE;
-    fmt::print(st, "Ignorer la plus grande région (fond) : {}{}\n", skipLargest ? "oui" : "non",
-               a.skipBg < 0 ? " (automatique)" : " (option explicite)");
-
-    // Strategie « contours / dessin au trait » : lignes medianes cousues en
-    // point droit (satin legacy degrade en point droit). « satin » est l'ancien
-    // nom de « legacy-satin » (accepté pour compatibilité).
-    const bool contours = a.mode == "contours";
-    autodigitize::ContourMetrics cm;
-    autodigitize::ContourOptions co;
-    co.mm_per_px = project.mm_per_px;
-    co.skip_largest_region = skipLargest;
-    co.detail = a.detail;
-    co.routing = a.singlePath ? autodigitize::ContourRouting::SinglePath
-                              : autodigitize::ContourRouting::Chains;
-    co.technique = a.technique == "running" ? autodigitize::ContourTechnique::Running
-                   : (a.technique == "legacy-satin" || a.technique == "satin")
-                       ? autodigitize::ContourTechnique::Satin
-                       : autodigitize::ContourTechnique::Automatic;
-    if (contours) {
-        fmt::print(st, "Mode : contours (detail {:.2f}, technique {})\n", a.detail, a.technique);
-    }
-    autodigitize::StippleMetrics sm;
-    autodigitize::LineLayerMetrics lm;
-    auto result = [&]() -> Result<autodigitize::AutoResult> {
-        if (stippling) {
-            autodigitize::StippleObjectOptions so;
-            so.mm_per_px = project.mm_per_px;
-            so.density.invert = a.stippleInvert;
-            so.stipple.point_count = a.stipplePoints;
-            so.stipple.seed = static_cast<std::uint32_t>(a.stippleSeed);
-            fmt::print(st, "Mode : stippling ({} points, graine {})\n", a.stipplePoints,
-                       a.stippleSeed);
-            return autodigitize::auto_digitize_stipple(project.original, project.object_ids, so,
-                                                       &sm);
-        }
-        if (!contours && a.darkLines) {
-            autodigitize::LineLayerOptions lo;
-            lo.enabled = true;
-            lo.max_line_width_mm = a.darkLinesWidthMm;
-            lo.dark_max_lightness = a.darkLinesLightness;
-            co.technique = autodigitize::ContourTechnique::Running;
-            // Un réseau de traits se coud en parcours eulérien : moins de polylignes, donc moins
-            // de coupes, au prix d'un court repassage.
-            co.routing = autodigitize::ContourRouting::SinglePath;
-            auto layered = autodigitize::auto_digitize_with_lines(
-                *project.segmentation, project.original, project.object_ids, opts, lo, co, &lm);
-            if (layered) {
-                fmt::print(st,
-                           "Traits sombres : {} px séparés des remplissages, {} objet(s) de ligne "
-                           "({} segment(s), {:.0f} mm de point droit)\n",
-                           lm.line_pixels, lm.line_objects, lm.contours.segments,
-                           lm.contours.running_length_mm);
-            }
-            return layered;
-        }
-        return contours
-                   ? autodigitize::auto_digitize_contours(*project.segmentation, project.object_ids,
-                                                          co, &cm)
-                   : autodigitize::auto_digitize(*project.segmentation, project.object_ids, opts);
-    }();
-    if (!result) {
-        return cli_error("digitize",
-                         fmt::format("numérisation impossible : {}", result.error().message),
-                         "image trop uniforme, ou seul le fond a été détecté : essayez "
-                         "--skip-background no, --max-colors plus grand ou --min-region-px plus "
-                         "petit");
-    }
-    if (stippling) {
+    const auto& digitizeReport = *digitized;
+    const std::size_t regionCount = digitizeReport.regions;
+    const bool skipLargest = digitizeReport.background_skipped;
+    const auto& candidate = digitizeReport.background_candidate;
+    const auto& dz = a.values.settings;
+    if (digitizeReport.stipple) {
+        const auto& sm = *digitizeReport.stipple;
         fmt::print(st,
                    "Stippling : {} points, {} polyligne(s), tour {:.0f} mm (initial {:.0f} mm), "
                    "{} relaxation(s)\n",
                    sm.points, sm.polylines, sm.tour_length_mm, sm.initial_tour_length_mm,
                    sm.lloyd_iterations);
     }
-    if (contours) {
+    if (digitizeReport.contour) {
+        const auto& cm = *digitizeReport.contour;
         fmt::print(st, "Contours : composantes={} segments={} jonctions={} extremites={}\n",
                    cm.components, cm.segments, cm.junctions, cm.endpoints);
         fmt::print(st, "  elagage : branches courtes={} elements petits={}\n",
@@ -934,14 +765,8 @@ int run_digitize(const DigitizeArgs& a) {
         fmt::print(st, "  replis legacy->point droit={} rejets={}\n", cm.fallbacks, cm.rejected);
         fmt::print(st, "  polylignes={} repassage={:.1f} mm\n", cm.trails, cm.retraced_mm);
     }
-    for (const auto& w : result->warnings) {
+    for (const auto& w : digitizeReport.warnings) {
         fmt::print(stderr, "  ! {}\n", w);
-    }
-    for (auto& v : result->vectors) {
-        project.vector_objects.push_back(std::move(v));
-    }
-    for (auto& e : result->embroideries) {
-        project.embroidery_objects.push_back(std::move(e));
     }
     if (project.embroidery_objects.empty()) {
         return cli_error(
@@ -953,15 +778,9 @@ int run_digitize(const DigitizeArgs& a) {
             "--max-colors plus grand, ou --skip-background no si le fond a été ignoré");
     }
 
-    int nSatin = 0, nTatami = 0, nRunning = 0;
-    for (const auto& e : project.embroidery_objects) {
-        if (e.is_satin() || e.is_auto_satin())
-            ++nSatin;
-        else if (e.is_tatami())
-            ++nTatami;
-        else if (std::holds_alternative<document::RunningStitchParams>(e.params))
-            ++nRunning;
-    }
+    const int nSatin = static_cast<int>(digitizeReport.satin);
+    const int nTatami = static_cast<int>(digitizeReport.tatami);
+    const int nRunning = static_cast<int>(digitizeReport.running);
     fmt::print(st, "Objets brodés : {} (satin={} tatami={} running={})\n",
                project.embroidery_objects.size(), nSatin, nTatami, nRunning);
 
@@ -983,7 +802,7 @@ int run_digitize(const DigitizeArgs& a) {
                stats.stitches, stats.jumps, stats.trims, stats.color_changes);
     fmt::print(st, "Dimensions : {:.1f} x {:.1f} mm  |  fil : {:.2f} m\n", wMm, hMm,
                stats.thread_length_um / 1e6);
-    if (a.hiddenTravel) {
+    if (dz.hidden_travel) {
         const auto& r = finished->report;
         fmt::print(st,
                    "Ponts cachés : {} écart(s) candidat(s) -> {} saut(s) recouvert(s), {} pont(s) "
@@ -1062,11 +881,12 @@ int run_digitize(const DigitizeArgs& a) {
             "\"color_changes\":{},\"width_mm\":{:.2f},\"height_mm\":{:.2f},\"thread_m\":{:.3f},"
             "\"moves\":{},\"long_moves_without_trim\":{},\"short_stitches\":{},"
             "\"small_objects\":{},\"uncovered_ratio\":{}}}\n",
-            json_str(a.image), json_str(a.dst), svgField, loaded->width, loaded->height,
-            regionCount, skipLargest ? "true" : "false", project.embroidery_objects.size(), nSatin,
-            nTatami, nRunning, stats.stitches, stats.jumps, stats.trims, stats.color_changes, wMm,
-            hMm, stats.thread_length_um / 1e6, metrics.moves, metrics.long_moves_without_trim,
-            metrics.short_stitches, quality.small_objects,
+            json_str(a.image), json_str(a.dst), svgField, digitizeReport.image_width_px,
+            digitizeReport.image_height_px, regionCount, skipLargest ? "true" : "false",
+            project.embroidery_objects.size(), nSatin, nTatami, nRunning, stats.stitches,
+            stats.jumps, stats.trims, stats.color_changes, wMm, hMm, stats.thread_length_um / 1e6,
+            metrics.moves, metrics.long_moves_without_trim, metrics.short_stitches,
+            quality.small_objects,
             quality.uncovered_ratio ? fmt::format("{:.4f}", *quality.uncovered_ratio) : "null");
     }
     return kExitOk;
@@ -1601,7 +1421,6 @@ int main(int argc, char** argv) {
         ->excludes(svg_nc);
 
     DigitizeArgs dz;
-    std::string dz_skip_bg = "auto";
     bool dz_force = false;
     auto* dz_cmd = app.add_subcommand(
         "digitize", "Pipeline complet image -> DST (segmentation, numérisation automatique, "
@@ -1609,116 +1428,8 @@ int main(int argc, char** argv) {
     dz_cmd->group(kMain);
     dz_cmd->add_option("image", dz.image, "Image source (PNG, JPEG, BMP, TIFF)")->required();
     dz_cmd->add_option("sortie", dz.dst, "Fichier .dst à produire")->required();
-    dz_cmd->add_option("--dpi", dz.dpi, "Résolution supposée pour l'échelle mm/px (défaut : 96)")
-        ->check(CLI::PositiveNumber);
-    dz_cmd->add_option("--max-colors", dz.maxColors, "Nombre maximal de couleurs (défaut : 8)")
-        ->check(CLI::Range(2, 64));
-    dz_cmd
-        ->add_option("--min-region-px", dz.minRegionPx,
-                     "Taille minimale de région en px (défaut : 16)")
-        ->check(CLI::PositiveNumber);
-    dz_cmd->add_option("--smoothing-px", dz.smoothingPx, "Lissage des formes en px (défaut : 3)")
-        ->check(CLI::NonNegativeNumber);
-    dz_cmd
-        ->add_option("--skip-background", dz_skip_bg,
-                     "Ignorer la plus grande région (le fond) : auto (défaut : seulement si c'est "
-                     "un fond quasi blanc touchant au moins 3 bords) | yes | no")
-        ->check(CLI::IsMember({"auto", "yes", "no", "-1", "0", "1"}));
+    add_digitize_options(dz_cmd, dz.values);
     dz_cmd->add_option("--output-svg", dz.outSvg, "SVG de diagnostic à produire en plus du DST");
-    dz_cmd
-        ->add_option("--min-feature-mm", dz.minFeatureMm,
-                     "Mode formes : les détails plus étroits que cette largeur (mm) sont rendus à "
-                     "leur voisin avant numérisation ; 0 = désactivé (défaut : 0)")
-        ->check(CLI::NonNegativeNumber);
-    dz_cmd
-        ->add_option("--min-region-mm2", dz.minRegionMm2,
-                     "Mode formes : les régions plus petites que cette aire (mm²) sont fusionnées "
-                     "avec leur voisine ; 0 = désactivé (défaut : 3)")
-        ->check(CLI::NonNegativeNumber);
-    dz_cmd
-        ->add_option("--island-cleanup", dz.islandMm2,
-                     "Mode formes : les îlots plus petits que cette aire (mm²) sont fusionnés dans "
-                     "la voisine de COULEUR la plus proche (pas la plus longue frontière) ; "
-                     "0 = désactivé (défaut)")
-        ->check(CLI::NonNegativeNumber);
-    dz_cmd
-        ->add_option("--island-max-delta-e", dz.islandMaxDeltaE,
-                     "Avec --island-cleanup : refuse une voisine plus éloignée que cet écart de "
-                     "couleur CIELAB (ΔE) ; 0 = pas de limite (défaut)")
-        ->check(CLI::NonNegativeNumber);
-    dz_cmd
-        ->add_option("--trim-threshold", dz.trimMm,
-                     "Coupe automatique au-delà de ce déplacement, en mm (défaut : 3)")
-        ->check(CLI::PositiveNumber);
-    dz_cmd->add_flag("--dark-lines", dz.darkLines,
-                     "Mode formes : les traits sombres fins (contours noirs, mâts, haubans) sont "
-                     "séparés des remplissages et cousus par-dessus, en dernier, en point droit");
-    dz_cmd
-        ->add_option("--dark-lines-width", dz.darkLinesWidthMm,
-                     "Avec --dark-lines : largeur maximale d'un trait, en mm (défaut : 1.6)")
-        ->check(CLI::Range(0.3, 6.0));
-    dz_cmd
-        ->add_option("--dark-lines-lightness", dz.darkLinesLightness,
-                     "Avec --dark-lines : clarté CIELAB L* maximale d'un pixel de trait "
-                     "(défaut : 25)")
-        ->check(CLI::Range(5.0, 70.0));
-    dz_cmd->add_flag("--hidden-travel", dz.hiddenTravel,
-                     "Remplace les coupes par des sauts ou des ponts cousus cachés sous les points "
-                     "cousus plus tard (passe finale, désactivé par défaut)");
-    dz_cmd->add_option(
-        "--hidden-travel-levels", dz.hiddenLevels,
-        "Avec --hidden-travel : niveaux de l'optimisation, parmi between (ponts entre "
-        "objets), within (liens dans un objet), underlay (ordre de la sous-couche) ; "
-        "liste séparée par des virgules (défaut : all)");
-    dz_cmd->add_flag("--hidden-travel-same-colour", dz.hiddenSameColor,
-                     "Avec --hidden-travel : une surface déjà cousue du même fil compte aussi "
-                     "comme cachée (léger relief possible)");
-    dz_cmd
-        ->add_option("--hidden-travel-max", dz.hiddenMaxMm,
-                     "Avec --hidden-travel : longueur maximale d'un pont, en mm (défaut : 15)")
-        ->check(CLI::Range(0.0, 100.0));
-    dz_cmd
-        ->add_option("--mode", dz.mode,
-                     "Stratégie : shapes (formes pleines, défaut) | contours (dessin au trait) | "
-                     "stipple (semis de points relié en un trait, rendu des tons)")
-        ->check(CLI::IsMember({"shapes", "contours", "stipple"}));
-    dz_cmd
-        ->add_option("--detail", dz.detail, "Mode contours : niveau de détail 0..1 (défaut : 0.5)")
-        ->check(CLI::Range(0.0, 1.0));
-    // « satin » (ancien nom, trompeur : ce n'est pas l'auto-satin) reste accepté mais
-    // n'apparaît plus dans l'aide.
-    dz_cmd
-        ->add_option("--technique", dz.technique,
-                     "Mode contours : auto (défaut) | running | legacy-satin (ancien satin "
-                     "dégradé en point droit, pas l'auto-satin)")
-        ->check(CLI::IsMember({"auto", "running", "legacy-satin", "satin"}));
-    dz_cmd
-        ->add_option("--curve-tolerance", dz.curveToleranceMm,
-                     "Mode formes : contours en courbes de Bézier avec cet écart maximal en mm "
-                     "(0 = polygones, défaut ; prendre ~1,5 px ou plus, ex. 0.4)")
-        ->check(CLI::NonNegativeNumber);
-    dz_cmd->add_flag("--satin-bands", dz.satinBands,
-                     "Mode formes : les bandes étroites (anneaux, rubans, traits épais) deviennent "
-                     "de l'auto-satin au lieu d'un tatami ; repli tatami si la couverture est "
-                     "insuffisante");
-    dz_cmd->add_flag("--single-path", dz.singlePath,
-                     "Mode contours : relie les traits en un minimum de polylignes (parcours "
-                     "eulérien, repasse un court tronçon plutôt que de couper le fil)");
-    dz_cmd->add_flag("--coherent-lines", dz.coherentLines,
-                     "Mode contours : extrait d'abord des traits de la photo (lignes cohérentes, "
-                     "FDoG) avant la segmentation");
-    dz_cmd
-        ->add_option("--stipple-points", dz.stipplePoints,
-                     "Mode stipple : nombre de points (défaut : 2000)")
-        ->check(CLI::Range(1, 200000));
-    dz_cmd
-        ->add_option("--stipple-seed", dz.stippleSeed,
-                     "Mode stipple : graine du tirage initial (défaut : 1)")
-        ->check(CLI::NonNegativeNumber);
-    dz_cmd->add_flag("--stipple-invert", dz.stippleInvert,
-                     "Mode stipple : points denses sur les zones claires (fil clair, fond sombre)");
-    dz_cmd->add_option("--lock", dz.lock, "Point d'arrêt : none|backforth|triangle|zigzag")
-        ->check(CLI::IsMember({"none", "backforth", "triangle", "zigzag"}));
     dz_cmd->add_flag("--json", json_out,
                      "JSON unique sur stdout ; les messages d'état passent sur stderr");
     auto* dz_nc = dz_cmd->add_flag("--no-clobber", dz.noClobber,
@@ -1857,7 +1568,14 @@ int main(int argc, char** argv) {
                    "Avec --osp : utilise le contour brut de la région de segmentation")
         ->needs(sa_osp_opt);
 
+    auto* project_cmd = openstitch_cli::register_project_commands(app, json_out);
+    auto* commands_cmd = openstitch_cli::register_commands_listing(app, json_out);
+
     CLI11_PARSE(app, argc, argv);
+
+    if (project_cmd->parsed() || commands_cmd->parsed()) {
+        return openstitch_cli::project_exit_code();
+    }
 
     if (info_cmd->parsed()) {
         return run_info(image_path, dpi, json_out);
@@ -1874,10 +1592,8 @@ int main(int argc, char** argv) {
     }
     if (dz_cmd->parsed()) {
         dz.json = json_out;
-        dz.skipBg = (dz_skip_bg == "auto" || dz_skip_bg == "-1") ? -1
-                    : (dz_skip_bg == "yes" || dz_skip_bg == "1") ? 1
-                                                                 : 0;
-        if (dz.technique == "satin") {
+        openstitch_cli::finalize_digitize_options(dz.values);
+        if (dz.values.settings.technique == "satin") {
             fmt::print(stderr,
                        "openstitch-cli digitize : --technique satin est un ancien nom, utilisez "
                        "legacy-satin\n");

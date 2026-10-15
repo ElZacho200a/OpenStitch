@@ -38,10 +38,10 @@ Revue partielle du 2026-10-13 (`main` = `4a8088b`) : vague 1 — objets, cadres,
 | Priorité | ☑ Fait | ◐ Partiel | ☐ À faire | Total |
 |---|---|---|---|---|
 | P0 | 12 | 25 | 7 | 44 |
-| P1 | 4 | 44 | 78 | 126 |
+| P1 | 4 | 45 | 78 | 127 |
 | P2 | 0 | 16 | 66 | 82 |
 | P3 | 0 | 0 | 12 | 12 |
-| **Total** | **16** | **85** | **163** | **264** |
+| **Total** | **16** | **86** | **163** | **265** |
 
 **Fait (16)** : FILE-001/002/003/004 (nouveau projet, enregistrer, récents, autosave),
 THR-001/003/004 (bibliothèque de fils, fil le plus proche, fil assigné à chaque objet),
@@ -2592,6 +2592,28 @@ de référence. Restent : progression et annulation, régénération de toute la
 - À faire : corpus de fichiers utilisateurs réels (DST/PES/SVG/images
   étranges : 16 bits, CMJN, énormes, transparents) ouverts en test.
 
+### HP-QA-007 — Interface programmatique `.osp` en ligne de commande (pilotable par un agent) [P1] — ◐ Partiel (en PR #46)
+- État OpenStitch : `openstitch-cli project …` (`libs/project_ops`, Qt-free) : `new`,
+  `digitize` (image → `.osp` natif éditable), `inspect` (JSON stable), `apply` / `op` /
+  `set` (lots d'opérations transactionnels, `--dry-run`, écriture atomique, codes d'erreur
+  stables), `operations`, `check` (couverture par objet `stitch_analysis::object_coverage`,
+  SVG de diagnostic), `export` (DST/PES/JEF/EXP/SVG, mêmes octets que `osp2dst`), `select`,
+  `diff`, `validate`, `digitize-batch`, `commands --json`. 30 opérations : style, paramètres
+  (dont guides, ruptures, dégradés, rails, barreaux), ordre, formes, transformations,
+  fusion/découpe, auto-satin (vrai pipeline), import SVG, lettrage (police fournie par
+  fichier). Documentation : `docs/source/cli-project.md`.
+- Hatch : pas d'équivalent (Hatch n'est pas scriptable) ; différenciant d'OpenStitch.
+- À faire : fusion de la PR #46 sur `main` ; polices intégrées accessibles sans fichier ;
+  édition en ligne de commande des courbes de Bézier des guides/rails (aujourd'hui
+  polylignes) ; couleurs du SVG reprises à l'import ; sélection par lot (`--where`) branchée
+  directement dans `apply` ; essai sur machine réelle d'un projet produit par un agent.
+- Modules : `libs/project_ops` (cœur), `apps/cli/project_cmd.cpp`, `libs/stitch_analysis`.
+- Dépend de : —
+- Acceptation : cycle image → `.osp` → inspection → lot → rechargement → DST testé sur
+  des images du dépôt (`tests/unit/project_ops/test_workflow.cpp`, `tests/cli/`) ; un lot
+  refusé laisse le fichier octet pour octet inchangé (SHA-256 vérifié) ; `project export`
+  == `osp2dst` (SHA-256).
+
 ---
 
 ## 24. Distribution et plateformes (DIST)
@@ -2719,3 +2741,4 @@ ci-dessus doit les respecter :
 | 2026-10-13 | Claude (session pilotée) | **Manipulation d'objets** (en PR) : OBJ-002 copier/couper/coller, OBJ-004 rotation, OBJ-006 miroir, OBJ-012 dupliquer avec broderie, OBJ-014 design entier, OBJ-018 couleur libre, OBJ-001 tout sélectionner / même couleur ; HOOP-001/005/006 ◐ (PR #25) ; PERF-003 ◐ (PR #26) ; STI-011 corrigé. Tableau de bord recalculé. |
 | 2026-10-13 | Claude (session pilotée) | **Second lot** (en PR) : OBJ-018 pastille de couleur dans l'inspecteur, OBJ-004 poignée de rotation sur le canevas, VEC-002 tracé ouvert, VEC-003 Exclure, VEC-005 trous. Constaté sur `main` : OBJ-003 ☑, VEC-004 ☑ (statuts en retard). Tableau recalculé. |
 | 2026-10-13 | Claude (session pilotée) | PR #25, #26 et #27 fusionnées : mentions « en PR » retirées du premier lot ; OBJ-014 ☑ et PERF-003 ☑ (critères remplis sur `main`). |
+| 2026-10-15 | Claude (session CLI agent) | **HP-QA-007** ajoutée (◐, PR #46) : interface programmatique `.osp` en ligne de commande (`project …`, lots transactionnels, import SVG, lettrage, export, contrôle qualité). Total 264 → 265. |
