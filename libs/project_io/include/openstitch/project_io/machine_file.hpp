@@ -46,6 +46,12 @@ struct ExportOptimizations {
 [[nodiscard]] Result<stitch_generation::FinishResult>
 export_sequence(const document::Project& project, const ExportOptimizations& optimizations = {});
 
+// Séquence précédée des deux sauts qui placent l'origine machine sur `start` (voir
+// `formats::ExportStart`). Identité pour `StartMode::FirstPoint`. Les commandes d'origine ne sont
+// ni modifiées ni réordonnées.
+[[nodiscard]] stitch::StitchSequence with_start_point(stitch::StitchSequence sequence,
+                                                      const formats::ExportStart& start);
+
 [[nodiscard]] Result<void> export_machine_file(const document::Project& project,
                                                const std::string& format_id,
                                                const std::filesystem::path& path,

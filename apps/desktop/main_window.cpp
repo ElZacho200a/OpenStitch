@@ -8110,7 +8110,9 @@ void MainWindow::exportDst() {
         }
         // Limites du format cible (couleurs, étendue, cadres de la marque, déplacements découpés).
         QString limits;
-        for (const auto& issue : formats::check_export_limits(shown, format, options)) {
+        // Le saut d'approche vers le point de départ compte dans l'étendue et les déplacements.
+        const auto exported = project_io::with_start_point(shown, options.start);
+        for (const auto& issue : formats::check_export_limits(exported, format, options)) {
             const QString text = QString::fromStdString(issue.message);
             switch (issue.severity) {
             case formats::ExportIssueSeverity::Error:
