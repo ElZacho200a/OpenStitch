@@ -814,6 +814,8 @@ void measure_coverage(const geometry::PathSet& region, SkeletonSatinResult& resu
     std::size_t inside = 0;
     std::size_t covered = 0;
     std::size_t total = 0;
+    int peak = 0;
+    int gap_x0 = m.width, gap_x1 = -1, gap_y0 = m.height, gap_y1 = -1;
     for (int y = 0; y < m.height; ++y) {
         for (int x = 0; x < m.width; ++x) {
             if (!m.at(x, y) || !m.at(x - 1, y) || !m.at(x + 1, y) || !m.at(x, y - 1) ||
@@ -825,6 +827,13 @@ void measure_coverage(const geometry::PathSet& region, SkeletonSatinResult& resu
             ++inside;
             covered += v > 0 ? 1 : 0;
             total += v;
+            peak = std::max(peak, static_cast<int>(v));
+            if (v == 0) {
+                gap_x0 = std::min(gap_x0, x);
+                gap_x1 = std::max(gap_x1, x);
+                gap_y0 = std::min(gap_y0, y);
+                gap_y1 = std::max(gap_y1, y);
+            }
         }
     }
     auto& d = result.diagnostics;
@@ -835,6 +844,18 @@ void measure_coverage(const geometry::PathSet& region, SkeletonSatinResult& resu
     d.coverage_ratio = static_cast<double>(covered) / static_cast<double>(inside);
     d.overlap_ratio = static_cast<double>(total) / static_cast<double>(inside);
     d.uncovered_area_mm2 = static_cast<double>(inside - covered) * pix * pix / 1e6;
+    d.overlap_peak = peak;
+    if (gap_x1 >= gap_x0) {
+        // Boîte des pixels non couverts, en µm (les rangées croissent vers le bas).
+        const auto xum = [&](int col) {
+            return static_cast<std::int32_t>(std::lround(m.transform.min_x_um + col * pix));
+        };
+        const auto yum = [&](int row) {
+            return static_cast<std::int32_t>(std::lround(m.transform.max_y_um - row * pix));
+        };
+        d.uncovered_min = Vec2um{Micrometers{xum(gap_x0)}, Micrometers{yum(gap_y1 + 1)}};
+        d.uncovered_max = Vec2um{Micrometers{xum(gap_x1 + 1)}, Micrometers{yum(gap_y0)}};
+    }
 }
 
 } // namespace
@@ -998,6 +1019,9 @@ Result<SkeletonSatinResult> generate_skeleton_satin(const geometry::PathSet& reg
                 out.diagnostics.coverage_ratio = 0.0;
                 out.diagnostics.overlap_ratio = 0.0;
                 out.diagnostics.uncovered_area_mm2 = 0.0;
+                out.diagnostics.overlap_peak = 0;
+                out.diagnostics.uncovered_min = Vec2um{};
+                out.diagnostics.uncovered_max = Vec2um{};
             }
             return out;
         }

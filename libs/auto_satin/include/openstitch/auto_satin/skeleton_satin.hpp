@@ -94,6 +94,12 @@ struct SkeletonSatinDiagnostics {
     double coverage_ratio{0.0};
     double overlap_ratio{0.0};
     double uncovered_area_mm2{0.0};
+    // Densité et localisation, aussi sur demande : nombre maximal de triangles de fil sur un
+    // même pixel de 100 µm (pic de densité), et boîte englobante des pixels non couverts
+    // (`uncovered_min` / `uncovered_max`, repère modèle, valides si `uncovered_area_mm2 > 0`).
+    int overlap_peak{0};
+    Vec2um uncovered_min{};
+    Vec2um uncovered_max{};
 };
 
 struct SkeletonSatinResult {

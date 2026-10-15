@@ -13,6 +13,7 @@ add_library(openstitch_auto_satin
     src/axis.cpp
     src/axis_sampler.cpp
     src/skeleton_satin.cpp
+    src/satin_strategy.cpp
 )
 add_library(openstitch::auto_satin ALIAS openstitch_auto_satin)
 
