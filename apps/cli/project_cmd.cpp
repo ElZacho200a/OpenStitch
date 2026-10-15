@@ -2,6 +2,7 @@
 #include "project_cmd.hpp"
 
 #include <fmt/core.h>
+#include <fmt/format.h>
 
 #include <algorithm>
 #include <filesystem>
@@ -869,7 +870,7 @@ std::string describe_app(const CLI::App& app) {
         out += "{\"name\":" + po::json_quote(opt->get_name()) +
                ",\"description\":" + po::json_quote(opt->get_description()) +
                ",\"required\":" + (opt->get_required() ? "true" : "false") +
-               ",\"positional\":" + (opt->get_positionals() ? "true" : "false") + "}";
+               ",\"positional\":" + (opt->get_positional() ? "true" : "false") + "}";
     }
     out += "],\"subcommands\":[";
     first = true;

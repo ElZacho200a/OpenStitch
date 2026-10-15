@@ -36,8 +36,7 @@ Result<std::string> operations_catalog_text(const std::string& catalog_json) {
     }
     std::string out;
     for (const auto& op : j["operations"]) {
-        out += op.value("name", std::string("?")) + " : " + op.value("summary", std::string()) + "
-";
+        out += op.value("name", std::string("?")) + " : " + op.value("summary", std::string()) + "\n";
         if (op.contains("args") && op["args"].is_array()) {
             for (const auto& a : op["args"]) {
                 out += std::string("    ") + (a.value("required", false) ? "* " : "  ") +
@@ -49,8 +48,7 @@ Result<std::string> operations_catalog_text(const std::string& catalog_json) {
                 if (!a.value("range", std::string()).empty()) {
                     out += " " + a.value("range", std::string());
                 }
-                out += " - " + a.value("description", std::string()) + "
-";
+                out += " - " + a.value("description", std::string()) + "\n";
             }
         }
     }
@@ -66,13 +64,11 @@ Result<std::string> quality_report_text(const std::string& quality_json) {
     std::string out = "Contrôle qualité : " + std::to_string(sum.value("errors", 0)) +
                       " erreur(s), " + std::to_string(sum.value("warnings", 0)) +
                       " avertissement(s) -> " + (sum.value("passed", false) ? "OK" : "ÉCHEC") +
-                      "
-";
+                      "\n";
     for (const auto& f : j["findings"]) {
         out += "  [" + f.value("severity", std::string("?")) + "] " +
                f.value("category", std::string("?")) + " : " + f.value("message", std::string()) +
-               "
-";
+               "\n";
     }
     return out;
 }
