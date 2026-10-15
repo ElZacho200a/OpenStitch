@@ -63,11 +63,13 @@ TEST_CASE("full cycle image to osp to edit to reload to dst", "[project_ops][wor
     auto opened = po::open_project(osp);
     REQUIRE(opened);
     const auto id = opened->project.embroidery_objects.front().id.value;
-    const std::string batch =
-        R"({"schema":"openstitch.batch/1","operations":[)"
-        R"({"op":"set_color","object":)" + std::to_string(id) + R"(,"rgb":"#102030"},)"
-        R"({"op":"set_params","object":)" + std::to_string(id) +
-        R"(,"params":{"row_spacing_mm":0.5,"angle_deg":33}}]})";
+    const std::string batch = R"({"schema":"openstitch.batch/1","operations":[)"
+                              R"({"op":"set_color","object":)" +
+                              std::to_string(id) +
+                              R"(,"rgb":"#102030"},)"
+                              R"({"op":"set_params","object":)" +
+                              std::to_string(id) +
+                              R"(,"params":{"row_spacing_mm":0.5,"angle_deg":33}}]})";
     const auto report = po::apply_batch(opened->project, batch);
     REQUIRE(report.ok);
     CHECK(report.applied);
@@ -110,10 +112,12 @@ TEST_CASE("a failing batch leaves memory and file untouched", "[project_ops][wor
     REQUIRE(inspectBefore);
 
     const auto id = project.embroidery_objects.front().id.value;
-    const std::string batch =
-        R"({"schema":"openstitch.batch/1","operations":[)"
-        R"({"op":"set_color","object":)" + std::to_string(id) + R"(,"rgb":"#FF0000"},)"
-        R"({"op":"set_params","object":)" + std::to_string(id) + R"(,"params":{"row_spacing_mm":999}}]})";
+    const std::string batch = R"({"schema":"openstitch.batch/1","operations":[)"
+                              R"({"op":"set_color","object":)" +
+                              std::to_string(id) +
+                              R"(,"rgb":"#FF0000"},)"
+                              R"({"op":"set_params","object":)" +
+                              std::to_string(id) + R"(,"params":{"row_spacing_mm":999}}]})";
     const auto report = po::apply_batch(project, batch);
     CHECK_FALSE(report.ok);
     CHECK_FALSE(report.applied);
@@ -146,8 +150,7 @@ TEST_CASE("inspect parameter names are accepted by set_params", "[project_ops][w
         for (const auto& [k, v] : doc["object"]["params"].items()) {
             if (v.is_number() || v.is_boolean() || v.is_string()) {
                 if (k == "guides" || k == "break_lines" || k == "rungs" ||
-                    k.rfind("rail_", 0) == 0 || k == "density_gradient" ||
-                    k == "border_width_mm") {
+                    k.rfind("rail_", 0) == 0 || k == "density_gradient" || k == "border_width_mm") {
                     continue;
                 }
                 params[k] = v;
@@ -186,10 +189,9 @@ TEST_CASE("auto_satin on a narrow band goes through the real engine", "[project_
     REQUIRE(created);
     auto project = std::move(*created);
     const auto report = po::apply_batch(
-        project,
-        R"({"schema":"openstitch.batch/1","operations":[)"
-        R"({"op":"add_shape","as":"b","shape":"rect","width_mm":30,"height_mm":3},)"
-        R"({"op":"auto_satin","object":"$b"}]})");
+        project, R"({"schema":"openstitch.batch/1","operations":[)"
+                 R"({"op":"add_shape","as":"b","shape":"rect","width_mm":30,"height_mm":3},)"
+                 R"({"op":"auto_satin","object":"$b"}]})");
     INFO(report.to_json());
     REQUIRE(report.ok);
     CHECK(project.embroidery_objects.front().is_auto_satin());
@@ -197,17 +199,17 @@ TEST_CASE("auto_satin on a narrow band goes through the real engine", "[project_
     // Un disque est refuse par le moteur : message de refus, projet inchange.
     auto other = std::move(*po::create_empty_project({}));
     const auto refused = po::apply_batch(
-        other,
-        R"({"schema":"openstitch.batch/1","operations":[)"
-        R"({"op":"add_shape","as":"c","shape":"ellipse","width_mm":20,"height_mm":20},)"
-        R"({"op":"auto_satin","object":"$c"}]})");
+        other, R"({"schema":"openstitch.batch/1","operations":[)"
+               R"({"op":"add_shape","as":"c","shape":"ellipse","width_mm":20,"height_mm":20},)"
+               R"({"op":"auto_satin","object":"$c"}]})");
     CHECK_FALSE(refused.ok);
     CHECK(other.embroidery_objects.empty());
 }
 
 TEST_CASE("an unknown object or operation is a named refusal", "[project_ops][workflow]") {
     auto project = digitize(fixtures() / "cli" / "logo_small.png");
-    const auto r1 = po::apply_operation(project, R"({"op":"set_color","object":987654,"rgb":"#000000"})");
+    const auto r1 =
+        po::apply_operation(project, R"({"op":"set_color","object":987654,"rgb":"#000000"})");
     CHECK_FALSE(r1.ok);
     CHECK(r1.to_json().find("E_UNKNOWN_OBJECT") != std::string::npos);
     const auto r2 = po::apply_operation(project, R"({"op":"explode"})");
