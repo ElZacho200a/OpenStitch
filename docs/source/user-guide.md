@@ -456,7 +456,9 @@ d'annulation** et garde les objets de broderie de la forme conservée.
   sélectionnées, ou seulement ceux sous une aire donnée en mm² ;
 - **Unir** (Ctrl+Maj+U) — fusionne au moins deux formes sélectionnées (Maj + clic) en une seule ;
   la dernière sélectionnée garde son identité, ses réglages de point et son nom. Les autres formes
-  (et leurs broderies) disparaissent.
+  (et leurs broderies) disparaissent. Deux formes juxtaposées séparées par un écart d'au plus
+  0,05 mm (par exemple deux morceaux issus du Couteau) sont soudées en un seul contour ; les trous
+  plus étroits que 0,05 mm sont comblés au passage.
 - **Soustraire** (Ctrl+Alt+S) — retire de la forme la plus **basse** du document toutes les autres
   formes sélectionnées, qui sont supprimées. Un résultat vide est refusé.
 - **Intersecter** (Ctrl+Alt+I) — ne garde que la partie commune à toutes les formes.
