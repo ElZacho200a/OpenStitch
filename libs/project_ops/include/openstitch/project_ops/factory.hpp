@@ -66,21 +66,54 @@ struct DigitizeSettings {
     bool satin_bands{false};        // shapes
     bool single_path{false};        // contours
     bool coherent_lines{false};     // contours : FDoG avant segmentation
+    // Traitements d'image AVANT la segmentation (non destructifs : stockés dans `project.ops`,
+    // `original` reste la source). Opérations séparées par `+`, chacune `nom[:arg[:arg…]]` :
+    // median[:1|2], bilateral[:1..3], flatten[:1..3], clahe[:C], sharpen[:A], quantize[:N],
+    // contrast:B:C, gray, crop:x:y:w:h, flip:h|v, rotate:1..3. Exemple : « bilateral:2+median:1 ».
+    // Vide = aucun.
+    std::string pre;
     // HP-AUTO-005 : traits sombres fins cousus par-dessus les remplissages (mode formes).
     bool dark_lines{false};
     double dark_lines_width_mm{1.6};
     double dark_lines_lightness{25.0};
+    double dark_lines_bars_mm{
+        0.0}; // barres sombres jusqu'à cette largeur : bandes (satin), 0 = non
+    double dark_lines_min_length_mm{0.0}; // fragments de trait isolés plus courts : non cousus
+    bool dark_lines_objects_only{false};  // ne coudre que les vrais objets, pas les séparations
     // Nettoyage des îlots (voisine de couleur la plus proche) ; 0 = désactivé.
     double island_cleanup_mm2{0.0};
+    // Retrait du bord des tatami (mm) ; absent = défaut du document (0,2 mm).
+    std::optional<double> fill_inset_mm;
+    // Débord de chaque tatami sur ses voisins brodés (mm) ; 0 = désactivé (défaut du moteur).
+    double fill_overlap_mm{0.0};
+    // Liaisons cousues entre les morceaux de rangées d'un tatami
+    // (`AutoOptions::fill_hidden_underpath`).
+    bool fill_hidden_underpath{true};
     double island_max_delta_e{0.0}; // 0 = sans limite
     // Mode formes : bloc uni sans tissu visible entre zones voisines (voir
     // `autodigitize::apply_solid_block`). `solid_block_overlap_mm` : débord sous les voisins.
     bool solid_block{false};
     double solid_block_overlap_mm{0.5};
+    // « Suivre le mouvement » : les grandes formes allongées (tentacules, rubans, nuages, fumée)
+    // passent en remplissage directionnel dont les guides suivent l'axe médian de la forme, au
+    // lieu d'un tatami à angle fixe. La couleur la plus sombre (traits) reste en tatami.
+    // Cercles et ellipses épaissis (hublots, ventouses, bulles, yeux) : détectés sur le masque des
+    // pixels sombres (trou enclos entouré d'une bande sombre d'épaisseur régulière), cousus en
+    // auto-satin avec un contour exact. Nécessite `dark_lines`.
+    bool rings_satin{false};
+    bool flow_fill{false};
+    double flow_min_area_mm2{10.0};
+    double flow_min_elongation{2.5}; // (plus long guide)² / aire : un disque ~0, une bande >= 5
+    // Diagnostic : non vide, dossier où écrire les masques de décision (régions, traits, barres,
+    // séparations), la couverture réelle des fils, la carte d'erreurs et `decisions.json`.
+    std::string debug_dir;
     int stipple_points{2000};
     int stipple_seed{1};
     bool stipple_invert{false};
 };
+
+// Valide la grammaire de `DigitizeSettings::pre` sans toucher d'image.
+[[nodiscard]] Result<void> validate_pre_spec(const std::string& spec);
 
 struct DigitizeReport {
     std::size_t image_width_px{0};
@@ -94,6 +127,8 @@ struct DigitizeReport {
     std::size_t embroidery_objects{0};
     std::size_t satin{0};
     std::size_t tatami{0};
+    std::size_t rings_satin{0}; // anneaux cousus en satin (--rings-satin)
+    std::size_t flow_fill{0};   // tatami passés en directionnel (--flow-fill)
     std::size_t running{0};
     std::optional<autodigitize::ContourMetrics> contour;      // mode contours
     std::optional<autodigitize::StippleMetrics> stipple;      // mode stipple

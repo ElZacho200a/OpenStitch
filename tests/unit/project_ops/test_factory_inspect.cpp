@@ -6,6 +6,7 @@
 
 #include "openstitch/formats/dst.hpp"
 #include "openstitch/project_io/machine_file.hpp"
+#include "openstitch/project_ops/analysis.hpp"
 #include "openstitch/project_ops/factory.hpp"
 #include "openstitch/project_ops/inspect.hpp"
 #include "openstitch/project_ops/project_file.hpp"
@@ -250,4 +251,83 @@ TEST_CASE("inspecting an empty project works and reports an empty sequence", "[p
     CHECK(contains(*json, "\"stitches\": 0"));
     CHECK(contains(*json, "\"embroidery_objects\": []"));
     CHECK(po::inspect_project_text(*created));
+}
+
+TEST_CASE("digitize applies fill inset, overlap and underpath settings to created tatami",
+          "[project_ops]") {
+    const auto tatamiParams = [](const document::Project& project) {
+        std::vector<document::TatamiParams> out;
+        for (const auto& e : project.embroidery_objects) {
+            if (const auto* tp = std::get_if<document::TatamiParams>(&e.params)) {
+                out.push_back(*tp);
+            }
+        }
+        return out;
+    };
+    const auto make = [&](const po::DigitizeSettings& settings) {
+        auto created = po::create_empty_project({});
+        REQUIRE(created);
+        document::Project project = std::move(*created);
+        REQUIRE(po::digitize_image_into(project, logo(), settings));
+        return tatamiParams(project);
+    };
+    const auto defaults = make({});
+    REQUIRE_FALSE(defaults.empty());
+    CHECK(std::all_of(defaults.begin(), defaults.end(),
+                      [](const auto& t) { return t.inset.value == 200 && t.hidden_underpath; }));
+
+    po::DigitizeSettings custom;
+    custom.fill_inset_mm = 0.0;
+    custom.fill_hidden_underpath = false;
+    const auto changed = make(custom);
+    REQUIRE_FALSE(changed.empty());
+    CHECK(std::all_of(changed.begin(), changed.end(),
+                      [](const auto& t) { return t.inset.value == 0 && !t.hidden_underpath; }));
+}
+
+TEST_CASE("pre spec grammar accepts valid chains and rejects malformed ones", "[project_ops]") {
+    for (const char* ok : {"", "median", "median:2", "bilateral:2+median:1", "flatten", "flatten:3",
+                           "clahe:3.5", "sharpen:0.5", "quantize:12", "gray", "contrast:10:-20",
+                           "crop:0:0:10:10", "flip:h", "rotate:3"}) {
+        INFO(ok);
+        CHECK(po::validate_pre_spec(ok));
+    }
+    for (const char* bad :
+         {"median:3", "bilateral:0", "quantize:1", "crop:1:2:3", "flip:x", "rotate:4", "blur",
+          "median:1+", "contrast:200:0", "median:1x", "flatten:4", "clahe:9", "sharpen:-1"}) {
+        INFO(bad);
+        CHECK_FALSE(po::validate_pre_spec(bad));
+    }
+}
+
+TEST_CASE("digitize pre-processing is stored non destructively and drives the working frame",
+          "[project_ops]") {
+    po::DigitizeSettings settings;
+    settings.pre = "median:1";
+    auto created = po::create_empty_project({});
+    REQUIRE(created);
+    document::Project project = std::move(*created);
+    REQUIRE(po::digitize_image_into(project, logo(), settings));
+    REQUIRE(project.ops.size() == 1);
+    CHECK(std::holds_alternative<image::MedianDenoiseOp>(project.ops[0]));
+    CHECK(project.original.width > 0);
+
+    // Un recadrage change le repère : les outils d'analyse doivent suivre l'image de travail.
+    po::DigitizeSettings crop;
+    crop.pre = "crop:0:0:40:30";
+    auto c2 = po::create_empty_project({});
+    REQUIRE(c2);
+    document::Project cropped = std::move(*c2);
+    const auto res = po::digitize_image_into(cropped, logo(), crop);
+    REQUIRE(res);
+    CHECK(po::working_size(cropped) == std::pair<int, int>{40, 30});
+    CHECK(cropped.original.width > 40);
+
+    po::DigitizeSettings invalid;
+    invalid.pre = "median:9";
+    auto c3 = po::create_empty_project({});
+    REQUIRE(c3);
+    document::Project untouched = std::move(*c3);
+    CHECK_FALSE(po::digitize_image_into(untouched, logo(), invalid));
+    CHECK(untouched.embroidery_objects.empty());
 }

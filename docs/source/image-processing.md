@@ -30,6 +30,9 @@ Chaque opération est une alternative du variant `image::ImageOp` :
 | Débruitage | `MedianDenoiseOp` | force 1–2 (noyau 3/5) | Médian |
 | Quantification | `QuantizeOp` | 2–64 couleurs | k-means déterministe (RGB) |
 | Lissage bilatéral | `BilateralDenoiseOp` | force 1–3 (noyau 5/7/9 px, tolérance de couleur 20/40/60) | Adoucit aplats et dégradés en gardant les contours ; alpha conservé |
+| Aplat des zones | `FlattenOp` | force 1–3 (rayon spatial 4/6/8 px, colorimétrique 8/14/20) | Mean-shift : fond les teintes proches, contours conservés ; réduit îlots et grain avant segmentation ; alpha conservé |
+| Contraste local | `ClaheOp` | limite 1–8 | CLAHE sur la luminance CIELAB (tuiles 8×8) : sépare des zones voisines de luminance proche ; alpha conservé |
+| Netteté | `SharpenOp` | 0–3 | Masque flou (σ 1,5 px) sur le RGB ; alpha conservé |
 | Lignes cohérentes | `CoherentLinesOp` | `sigma_c` 0,3–5 · `sigma_m` 0–10 · `rho` 0,9–1 · `tau` 0,5–1 · ETF : 0–10 passes, rayon 1–15 | Photo/dessin → traits noirs sur fond blanc (FDoG) ; alpha conservé |
 
 Le lissage bilatéral est la 8ᵉ alternative du variant (ajoutée **en fin** :

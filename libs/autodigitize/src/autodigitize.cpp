@@ -185,6 +185,7 @@ void classify_and_build_embroidery(const geometry::PathSet& main, const RegionSo
         // Toute zone remplissable -> tatami. L'orientation des fils reste
         // éditable ensuite.
         document::TatamiParams tp;
+        tp.inset = options.fill_inset;
         emb.params = tp;
         emb.name = "Remplissage " + source.label;
     } else {

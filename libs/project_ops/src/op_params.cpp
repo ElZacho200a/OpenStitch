@@ -1115,6 +1115,67 @@ OpSpec op_set_stitch_type() {
     return s;
 }
 
+OpSpec op_directional_guides() {
+    OpSpec s;
+    s.name = "directional_guides";
+    s.summary = "Remplissage directionnel guidé par la forme : convertit l'objet (tatami ou "
+                "directionnel) et REMPLACE ses guides par ceux de l'axe médian de sa forme (même "
+                "algorithme que « Générer un guide depuis la forme » du bureau). Les lignes de "
+                "rupture sont conservées.";
+    s.args = {arg("object", "object_id", "objet de broderie (tatami ou directionnel)", true)};
+    s.example = R"({"op":"directional_guides","object":28})";
+    s.apply = guarded([](OpContext& ctx) {
+        const auto& emb = need_emb(ctx, "object");
+        const ObjectId id = emb.id;
+        if (!(emb.is_tatami() || emb.is_directional())) {
+            refuse(code::kRefused,
+                   "seul un tatami ou un remplissage directionnel reçoit des guides",
+                   "convertir d'abord avec set_stitch_type");
+        }
+        const auto* source = ctx.project.findObject(emb.source_vector);
+        if (source == nullptr || source->paths.empty()) {
+            refuse(code::kRefused, "aucun contour source pour le remplissage directionnel");
+        }
+        std::vector<geometry::Path> guides;
+        for (const auto& set : source->paths) {
+            auto g = stitch_generation::directional_guides_from_region(set);
+            guides.insert(guides.end(), std::make_move_iterator(g.begin()),
+                          std::make_move_iterator(g.end()));
+        }
+        if (guides.empty()) {
+            refuse(code::kRefused, "aucun axe exploitable pour cette forme",
+                   "forme trop compacte ou trop étroite : garder le guide par défaut");
+        }
+        const bool wasDirectional = emb.is_directional();
+        document::DirectionalFillParams params;
+        if (const auto* d = std::get_if<document::DirectionalFillParams>(&emb.params)) {
+            params = *d;
+        } else {
+            document::TatamiParams base;
+            if (const auto* t = std::get_if<document::TatamiParams>(&emb.params)) {
+                base = *t;
+            }
+            params = stitch_generation::directional_from_tatami(
+                base, source->paths, static_cast<std::uint32_t>(id.value));
+        }
+        params.guides = std::move(guides);
+        const std::size_t count = params.guides.size();
+        if (wasDirectional) {
+            ctx.stack.execute(std::make_unique<commands::EditDirectionalFillCommand>(
+                                  id, std::move(params), "Générer un guide de direction"),
+                              ctx.project);
+        } else {
+            ctx.stack.execute(std::make_unique<commands::ConvertFillGroupCommand>(
+                                  id, document::StitchParams{std::move(params)},
+                                  "Type : remplissage directionnel"),
+                              ctx.project);
+        }
+        return OpStatus::success(
+            {{"id", id.value}, {"guides", count}, {"converted", !wasDirectional}});
+    });
+    return s;
+}
+
 OpSpec op_set_params() {
     OpSpec s;
     s.name = "set_params";
@@ -1542,6 +1603,7 @@ void register_param_ops(std::vector<OpSpec>& out) {
     out.push_back(op_set_join());
     out.push_back(op_set_connector());
     out.push_back(op_set_stitch_type());
+    out.push_back(op_directional_guides());
     out.push_back(op_set_params());
     out.push_back(op_set_order());
     out.push_back(op_optimize_order());

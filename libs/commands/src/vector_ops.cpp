@@ -12,6 +12,7 @@
 #include "openstitch/commands/project_commands.hpp"
 #include "openstitch/geometry/boolean.hpp"
 #include "openstitch/geometry/cut.hpp"
+#include "openstitch/geometry/offset.hpp"
 
 namespace openstitch::commands {
 
@@ -70,6 +71,9 @@ Box box_of(const PathSet& set) {
     }
     return box;
 }
+
+// Écart maximal soudé par l'union : 0,05 mm, soit plus que la bande du Couteau (0,02 mm).
+constexpr Micrometers kUnionGap{50};
 
 VectorOpResult failure(std::string message) {
     VectorOpResult result;
@@ -195,7 +199,7 @@ VectorOpResult make_boolean_command(document::Project& project, BooleanOp op,
         for (const auto* object : objects) {
             all.insert(all.end(), object->paths.begin(), object->paths.end());
         }
-        auto united = geometry::union_polygons(all);
+        auto united = geometry::union_polygons_closing(all, kUnionGap);
         if (!united) {
             return failure(united.error().message);
         }
@@ -394,11 +398,14 @@ VectorOpResult make_split_command(document::Project& project, const std::vector<
             targets.push_back(*object);
         }
     }
+    // La coupe se limite au segment [a,b] tracé (bande centrée sur son milieu, demi-portée
+    // |ab|/2) : une forme que le trait ne traverse pas de part en part n'est pas touchée.
+    const double reach = length_um(b - a) / 2.0;
     for (const auto& object : targets) {
         std::vector<PathSet> pieces;
         bool crossed = false;
         for (const PathSet& set : object.paths) {
-            auto cut = geometry::cut_path_set(set, a, b);
+            auto cut = geometry::cut_path_set_bounded(set, a, b, reach);
             if (!cut) {
                 return failure(cut.error().message);
             }

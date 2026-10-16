@@ -354,6 +354,40 @@ TEST_CASE("vector ops: intersect keeps the common part and refuses disjoint shap
     CHECK_FALSE(empty.error.empty());
 }
 
+TEST_CASE("vector ops: union welds juxtaposed shapes separated by a knife-width gap",
+          "[vector_ops]") {
+    document::Project project;
+    const ObjectId a = add_object(project, rect(0, 0, 10'000, 10'000), true);
+    const ObjectId b = add_object(project, rect(10'020, 0, 20'000, 10'000), true);
+
+    auto result = make_boolean_command(project, BooleanOp::Union, {a, b});
+    REQUIRE(result.command);
+    UndoStack stack;
+    stack.execute(std::move(result.command), project);
+
+    REQUIRE(project.vector_objects.size() == 1);
+    CHECK(project.vector_objects[0].paths.size() == 1);
+    CHECK(project.embroidery_objects.size() == 1);
+    const double area = area_mm2(project.vector_objects[0]);
+    CHECK(area > 199.9);
+    CHECK(area < 200.1);
+}
+
+TEST_CASE("vector ops: union keeps distant shapes as separate pieces", "[vector_ops]") {
+    document::Project project;
+    const ObjectId a = add_object(project, rect(0, 0, 10'000, 10'000), false);
+    const ObjectId b = add_object(project, rect(11'000, 0, 21'000, 10'000), false);
+
+    auto result = make_boolean_command(project, BooleanOp::Union, {a, b});
+    REQUIRE(result.command);
+    UndoStack stack;
+    stack.execute(std::move(result.command), project);
+
+    REQUIRE(project.vector_objects.size() == 1);
+    CHECK(project.vector_objects[0].paths.size() == 2);
+    CHECK(area_mm2(project.vector_objects[0]) == 200.0);
+}
+
 TEST_CASE("vector ops: boolean needs two shapes", "[vector_ops]") {
     document::Project project;
     const ObjectId a = add_object(project, rect(0, 0, 10'000, 10'000), false);
@@ -391,6 +425,27 @@ TEST_CASE("vector ops: split refuses a line that misses the shape", "[vector_ops
     CHECK_FALSE(result.command);
     auto degenerate = make_split_command(project, {id}, pt(1, 1), pt(1, 1));
     CHECK_FALSE(degenerate.command);
+}
+
+TEST_CASE("vector ops: split only cuts shapes the drawn segment crosses", "[vector_ops]") {
+    document::Project project;
+    const ObjectId near = add_object(project, rect(0, 0, 20'000, 10'000), false);
+    // Alignee avec le trait (meme x) mais loin de lui : ne doit pas etre coupee.
+    const ObjectId far = add_object(project, rect(0, 100'000, 20'000, 110'000), false);
+
+    auto result = make_split_command(project, {near, far}, pt(10'000, -5'000), pt(10'000, 15'000));
+    REQUIRE(result.command);
+    UndoStack stack;
+    stack.execute(std::move(result.command), project);
+    CHECK(project.vector_objects.size() == 3);
+    CHECK(area_mm2(*project.findObject(far)) == 200.0);
+}
+
+TEST_CASE("vector ops: split ignores a segment that stops inside the shape", "[vector_ops]") {
+    document::Project project;
+    const ObjectId id = add_object(project, rect(0, 0, 20'000, 10'000), false);
+    auto result = make_split_command(project, {id}, pt(10'000, -5'000), pt(10'000, 5'000));
+    CHECK_FALSE(result.command);
 }
 
 TEST_CASE("vector ops: break apart separates disjoint pieces", "[vector_ops]") {

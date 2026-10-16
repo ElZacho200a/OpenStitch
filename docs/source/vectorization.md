@@ -3,6 +3,17 @@
 Public : utilisateur avancé, développeur. État : **Implémenté** (édition de nœuds
 limitée au déplacement).
 
+## Correctif : poignées de Bézier bornées (2026-10-16)
+
+`geometry::fit_curves` (Schneider) calculait la longueur des poignées par moindres carrés sans borne
+haute. Sur une petite boucle irrégulière (contour de pixels dense), le système est presque singulier
+et les poignées atteignaient plusieurs mètres : avec `--curve-tolerance 0.4 --dark-lines`, un tatami
+envoyait des points à 2 m du motif (largeur du DST 2 130 mm au lieu de 291 mm). Une poignée est
+désormais bornée par la longueur d'arc de la polyligne ajustée ; au-delà, repli sur l'heuristique de
+Wu/Barsky (corde/3, ou arc/6 pour une boucle sans corde). Test de propriété : 6 000 silhouettes en
+escalier x 3 tolérances, aucune poignée plus longue que le périmètre (avant : 6 506 violations, jusqu'à
+6,6 fois le périmètre). Navire : largeur 2 130 mm -> 290,6 mm.
+
 ## But
 
 Transformer une région (masque de pixels) en **contours vectoriels propres** :
