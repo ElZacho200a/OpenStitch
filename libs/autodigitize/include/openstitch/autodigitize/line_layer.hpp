@@ -34,6 +34,13 @@ struct LineLayerOptions {
     // (contour du motif). Désactivé par défaut (comportement historique : tout trait sombre est
     // cousu).
     bool objects_only{false};
+    // Niveau intermédiaire : les barres sombres PLUS LARGES qu'un trait mais plus étroites que
+    // cette largeur (mât, vergues : 1,6 à ~4 mm) ne sont ni des traits (un point droit les amincit)
+    // ni des remplissages (le réseau mât + vergues + coque en un seul bloc ressort hachuré) : elles
+    // sont retirées des remplissages et cousues comme bandes (satin par squelette si la couverture
+    // est suffisante, sinon tatami), AVANT les traits fins. 0 = désactivé (comportement
+    // historique).
+    double bars_max_width_mm{0.0};
 };
 
 struct LineLayerMetrics {
@@ -42,6 +49,8 @@ struct LineLayerMetrics {
     ContourMetrics contours;          // analyse des traits (composantes, segments, longueur)
     std::size_t line_objects{0};
     std::size_t separation_pixels{0}; // pixels de séparation non cousus (`objects_only`)
+    std::size_t bar_pixels{0};  // pixels de barres retirés des remplissages (`bars_max_width_mm`)
+    std::size_t bar_objects{0}; // objets créés pour les barres
 };
 
 // Segmentation -> objets : remplissages (`auto_digitize`) PUIS traits. Les objets de traits sont

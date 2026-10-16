@@ -364,6 +364,12 @@ void add_digitize_options(CLI::App* cmd, DigitizeOptionValues& v) {
     cmd->add_flag("--dark-lines", s.dark_lines,
                   "Mode formes : les traits sombres fins (contours noirs, mâts, haubans) sont "
                   "séparés des remplissages et cousus par-dessus, en dernier, en point droit");
+    cmd->add_option(
+           "--dark-lines-bars", s.dark_lines_bars_mm,
+           "Avec --dark-lines : les barres sombres plus larges qu'un trait mais de moins de "
+           "cette largeur (mm ; mât, vergues, essayer 4) sont cousues en bandes (satin) au "
+           "lieu de rester dans le remplissage noir ; 0 = désactivé (défaut)")
+        ->check(CLI::NonNegativeNumber);
     cmd->add_flag("--dark-lines-objects-only", s.dark_lines_objects_only,
                   "Avec --dark-lines : ne coud que les vrais objets (haubans, mâts, cordages) ; un "
                   "trait entre deux zones de couleurs différentes est une séparation, laissée aux "

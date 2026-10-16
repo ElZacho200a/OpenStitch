@@ -9,6 +9,17 @@ namespace openstitch::autodigitize {
 
 namespace {
 
+// Clarté CIELAB L* d'une couleur sRGB (D65).
+double cielab_lightness(const std::array<std::uint8_t, 3>& rgb) {
+    const auto lin = [](double v) {
+        v /= 255.0;
+        return v > 0.04045 ? std::pow((v + 0.055) / 1.055, 2.4) : v / 12.92;
+    };
+    const double y = 0.2126 * lin(rgb[0]) + 0.7152 * lin(rgb[1]) + 0.0722 * lin(rgb[2]);
+    const double f = y > 0.008856 ? std::cbrt(y) : 7.787 * y + 16.0 / 116.0;
+    return 116.0 * f - 16.0;
+}
+
 // Pixels de `mask` dont le voisinage (fenêtre de rayon `radius`, pixels hors `mask`) contient au
 // moins deux régions de couleurs différentes : séparations entre deux zones, pas des objets.
 // Un voisin « fond » (label 0) ne compte pas : le contour du motif reste un trait.
@@ -115,8 +126,40 @@ Result<AutoResult> auto_digitize_with_lines(const segmentation::Segmentation& se
         segmentation::dark_thin_mask(source, lines.dark_max_lightness, diameter, &lineRgb);
     const std::size_t linePixels =
         static_cast<std::size_t>(std::count(mask.begin(), mask.end(), char{1}));
-    if (mask.size() != seg.labels.size() || linePixels == 0) {
+    // Barres : parties sombres plus larges qu'un trait mais plus étroites que `bars_max_width_mm`
+    // (mât, vergues) : ni trait (un point droit les amincit), ni remplissage (le réseau mât +
+    // vergues
+    // + coque en un seul bloc ressort hachuré). Seuil SERRÉ : la couleur réelle des traits (noir)
+    // plus une marge, car le seuil large (L* <= 25) englobe le bleu marine (L* ~ 16) dont les
+    // parties étroites seraient recolorées en noir. Sont exclus ce qui est déjà un trait et ce qui
+    // est fin au même seuil serré (contour noir collé à un aplat marine : laissé au remplissage).
+    std::vector<char> barsMask;
+    std::size_t barsPixels = 0;
+    if (lines.bars_max_width_mm > 0.0 && mask.size() == seg.labels.size()) {
+        const int barsDiameter =
+            std::max(diameter + 2, static_cast<int>(std::lround(lines.bars_max_width_mm / px_mm)));
+        const double tightLightness =
+            std::min(lines.dark_max_lightness, cielab_lightness(lineRgb) + 8.0);
+        barsMask = segmentation::dark_thin_mask(source, tightLightness, barsDiameter);
+        const std::vector<char> thinTight =
+            segmentation::dark_thin_mask(source, tightLightness, diameter);
+        if (barsMask.size() == mask.size() && thinTight.size() == mask.size()) {
+            for (std::size_t i = 0; i < mask.size(); ++i) {
+                barsMask[i] = (barsMask[i] != 0 && mask[i] == 0 && thinTight[i] == 0) ? 1 : 0;
+            }
+            barsPixels =
+                static_cast<std::size_t>(std::count(barsMask.begin(), barsMask.end(), char{1}));
+        } else {
+            barsMask.clear();
+        }
+    }
+    if (mask.size() != seg.labels.size() || (linePixels == 0 && barsPixels == 0)) {
         return auto_digitize(seg, ids, options); // aucun trait sombre : rien à séparer
+    }
+    // Pixels à rendre aux zones voisines : traits ET barres.
+    std::vector<char> fillMask = mask;
+    for (std::size_t i = 0; i < barsMask.size(); ++i) {
+        fillMask[i] = (fillMask[i] != 0 || barsMask[i] != 0) ? 1 : 0;
     }
 
     // Pixels réellement cousus en lignes. Par défaut tous les pixels de trait ; avec
@@ -184,21 +227,22 @@ Result<AutoResult> auto_digitize_with_lines(const segmentation::Segmentation& se
     // alors que des lignes et quitte les remplissages.
     segmentation::Segmentation fills = seg;
     std::size_t reassigned =
-        segmentation::reassign_to_neighbours(fills, mask, /*leftover_to_background=*/false);
+        segmentation::reassign_to_neighbours(fills, fillMask, /*leftover_to_background=*/false);
     {
         std::vector<std::size_t> total(seg.region_slots.size() + 1, 0);
         std::vector<std::size_t> inMask(seg.region_slots.size() + 1, 0);
         for (std::size_t i = 0; i < seg.labels.size(); ++i) {
             if (seg.labels[i] != 0) {
                 ++total[seg.labels[i]];
-                inMask[seg.labels[i]] += mask[i] != 0 ? 1 : 0;
+                inMask[seg.labels[i]] += fillMask[i] != 0 ? 1 : 0;
             }
         }
         std::vector<char> lineOnly(mask.size(), 0);
         bool any = false;
         for (std::size_t i = 0; i < mask.size(); ++i) {
             const std::uint32_t l = seg.labels[i];
-            if (mask[i] != 0 && l != 0 && fills.labels[i] == l && inMask[l] * 10 >= total[l] * 9) {
+            if (fillMask[i] != 0 && l != 0 && fills.labels[i] == l &&
+                inMask[l] * 10 >= total[l] * 9) {
                 lineOnly[i] = 1;
                 any = true;
             }
@@ -230,44 +274,73 @@ Result<AutoResult> auto_digitize_with_lines(const segmentation::Segmentation& se
     if (!fillResult) {
         return fillResult;
     }
-    if (stitchPixels == 0) {
-        // Tous les traits étaient des séparations : rien à coudre par-dessus.
-        if (metrics != nullptr) {
-            metrics->line_pixels = 0;
-            metrics->reassigned_pixels = reassigned;
-            metrics->separation_pixels = separationPixels;
-        }
-        return fillResult;
-    }
-    ContourOptions co = contour_options;
-    co.mm_per_px = options.mm_per_px;
-    co.skip_largest_region = false;
-    ContourMetrics cm;
-    auto lineResult = auto_digitize_contours(lineSeg, ids, co, &cm);
-    if (!lineResult) {
-        return lineResult;
-    }
     AutoResult out = std::move(*fillResult);
     // Les remplissages de la couleur des traits passent en dernier (ordre relatif conservé) :
-    // les traits s'enchaînent alors sur le même fil, sans changement de fil supplémentaire.
+    // barres et traits s'enchaînent alors sur le même fil, sans changement de fil supplémentaire.
     std::stable_partition(out.embroideries.begin(), out.embroideries.end(),
                           [&](const document::EmbroideryObject& e) { return e.rgb != lineRgb; });
     const std::size_t fillObjects = out.embroideries.size();
-    for (auto& v : lineResult->vectors) {
-        out.vectors.push_back(std::move(v));
+    const auto append = [&out](AutoResult& r) {
+        for (auto& v : r.vectors) {
+            out.vectors.push_back(std::move(v));
+        }
+        for (auto& e : r.embroideries) {
+            out.embroideries.push_back(std::move(e)); // à la suite : cousus après les remplissages
+        }
+        for (auto& w : r.warnings) {
+            out.warnings.push_back(std::move(w));
+        }
+    };
+
+    // Barres : une région d'une seule couleur, cousue en bandes (satin si la couverture le permet).
+    if (barsPixels > 0) {
+        segmentation::Segmentation barSeg;
+        barSeg.width = seg.width;
+        barSeg.height = seg.height;
+        barSeg.labels.assign(seg.labels.size(), 0);
+        segmentation::Region barRegion;
+        barRegion.id = RegionId{1};
+        barRegion.rgb = lineRgb;
+        barRegion.pixel_count = barsPixels;
+        barSeg.region_slots.push_back(barRegion);
+        for (std::size_t i = 0; i < barsMask.size(); ++i) {
+            if (barsMask[i] != 0) {
+                barSeg.labels[i] = 1;
+            }
+        }
+        AutoOptions bo = options;
+        bo.satin_bands = true;
+        bo.skip_largest_region = false;
+        bo.satin_max_width = Micrometers{
+            static_cast<std::int32_t>(std::lround(lines.bars_max_width_mm * 1000.0)) + 1000};
+        auto barResult = auto_digitize(barSeg, ids, bo);
+        if (!barResult) {
+            return barResult;
+        }
+        append(*barResult);
     }
-    for (auto& e : lineResult->embroideries) {
-        out.embroideries.push_back(std::move(e)); // à la suite : cousus après les remplissages
-    }
-    for (auto& w : lineResult->warnings) {
-        out.warnings.push_back(std::move(w));
+    const std::size_t barObjectsEnd = out.embroideries.size();
+
+    // Traits fins : lignes médianes en point droit.
+    ContourMetrics cm;
+    if (stitchPixels > 0) {
+        ContourOptions co = contour_options;
+        co.mm_per_px = options.mm_per_px;
+        co.skip_largest_region = false;
+        auto lineResult = auto_digitize_contours(lineSeg, ids, co, &cm);
+        if (!lineResult) {
+            return lineResult;
+        }
+        append(*lineResult);
     }
     if (metrics != nullptr) {
         metrics->line_pixels = stitchPixels;
         metrics->separation_pixels = separationPixels;
+        metrics->bar_pixels = barsPixels;
+        metrics->bar_objects = barObjectsEnd - fillObjects;
         metrics->reassigned_pixels = reassigned;
         metrics->contours = cm;
-        metrics->line_objects = out.embroideries.size() - fillObjects;
+        metrics->line_objects = out.embroideries.size() - barObjectsEnd;
     }
     return out;
 }

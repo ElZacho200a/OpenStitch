@@ -504,6 +504,23 @@ rendu plus propre. Quelques haubans fins entre voile et ciel sont perdus. Test :
 `couche de traits : objects_only ne coud pas les separations entre deux zones`. Option du CLI
 seulement (pas encore dans la boîte de dialogue du bureau).
 
+**Barres épaisses (`--dark-lines-bars MM`).** Entre le trait fin (<= 1,6 mm, point droit) et le
+remplissage il manquait un niveau : le mât et les vergues (2 à 3 mm) sont plus larges qu'un trait,
+donc restaient dans le remplissage noir, où le réseau mât + vergues + coque en un seul bloc ressortait
+**hachuré et déchiqueté** (franges retirées, cœur en tatami). Avec cette option, les parties sombres
+plus étroites que MM (essayer 4) mais plus larges qu'un trait sont retirées des remplissages (rendues
+aux zones voisines), regroupées en une région de la couleur des traits et cousues comme **bandes**
+(`satin_bands` : auto-satin par squelette si la couverture est >= 90 %, sinon tatami), AVANT les
+traits fins, sur le même fil. Le seuil de clarté des barres est **serré** (L* du trait + 8, soit ~12) :
+au seuil large (L* <= 25) le bleu marine (L* ~ 16) passait pour une barre et ses parties étroites
+étaient recolorées en noir (réseau géant de 1 963 mm2 sur toute l'image, détails perdus 2,3 % -> 5,5 %).
+Les pixels fins à ce seuil serré sont exclus des barres. Mesuré sur le navire
+(`--island-cleanup 0 --min-region-mm2 1`) : détails perdus 0,76 % -> 0,79 % (inchangé), coupes
+1 989 -> 2 076 (+4 %), objets de ligne conservés ; mât et vergues passent d'un amas hachuré à des barres
+pleines. Test : `couche de traits : bars_max_width_mm coud les barres epaisses a part`.
+Hypothèse ÉCARTÉE par la mesure : détecter aussi les traits fins au seuil serré (contours noirs collés
+à un aplat marine) ajoutait 21 % de fil noir et 17 % de coupes sans gain de fidélité (0,76 % -> 0,81 %).
+
 Limites : un seul fil pour tous les traits ; point droit seulement (pas de satin à largeur
 constante) ; un trait contre un aplat sombre de même teinte n'est pas détecté (il serait invisible).
 Chaque trait étant un tracé séparé, la couche ajoute des coupes (+486 sur l'illustration de test) ;

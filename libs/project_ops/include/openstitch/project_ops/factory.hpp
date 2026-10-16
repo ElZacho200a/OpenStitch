@@ -70,6 +70,8 @@ struct DigitizeSettings {
     bool dark_lines{false};
     double dark_lines_width_mm{1.6};
     double dark_lines_lightness{25.0};
+    double dark_lines_bars_mm{
+        0.0}; // barres sombres jusqu'à cette largeur : bandes (satin), 0 = non
     bool dark_lines_objects_only{false}; // ne coudre que les vrais objets, pas les séparations
     // Nettoyage des îlots (voisine de couleur la plus proche) ; 0 = désactivé.
     double island_cleanup_mm2{0.0};

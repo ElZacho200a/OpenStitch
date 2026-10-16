@@ -290,3 +290,68 @@ TEST_CASE("couche de traits : objects_only ne coud pas les separations entre deu
     REQUIRE(again.has_value());
     CHECK(again->embroideries.size() == rOnly->embroideries.size());
 }
+
+namespace {
+
+// 120 x 80 : fond beige, zone bleue, une barre noire verticale de 10 px (2,5 mm : plus large qu'un
+// trait de 1,6 mm, plus étroite que 4 mm) et un trait noir horizontal de 3 px.
+image::Image scene_bar() {
+    image::Image img;
+    img.width = 120;
+    img.height = 80;
+    img.rgba.assign(static_cast<std::size_t>(img.width) * img.height * 4, 0);
+    fill_rect(img, 0, 0, 120, 80, 230, 220, 200);
+    fill_rect(img, 10, 10, 110, 70, 30, 80, 170);
+    fill_rect(img, 30, 12, 40, 68, 5, 5, 15);  // barre : 10 x 56 px
+    fill_rect(img, 50, 38, 100, 41, 5, 5, 15); // trait : 50 x 3 px
+    return img;
+}
+
+} // namespace
+
+TEST_CASE("couche de traits : bars_max_width_mm coud les barres epaisses a part") {
+    const auto img = scene_bar();
+    const auto seg = segmentation::segment(img, {.max_colors = 4, .min_region_px = 4});
+    REQUIRE(seg.has_value());
+    ContourOptions co;
+    co.technique = ContourTechnique::Running;
+
+    LineLayerOptions off;
+    off.enabled = true;
+    LineLayerMetrics mOff;
+    IdGenerator<ObjectId> idsA;
+    const auto rOff = auto_digitize_with_lines(*seg, img, idsA, options(), off, co, &mOff);
+    REQUIRE(rOff.has_value());
+    CHECK(mOff.bar_pixels == 0);
+    CHECK(mOff.bar_objects == 0);
+
+    LineLayerOptions on = off;
+    on.bars_max_width_mm = 4.0;
+    LineLayerMetrics mOn;
+    IdGenerator<ObjectId> idsB;
+    const auto rOn = auto_digitize_with_lines(*seg, img, idsB, options(), on, co, &mOn);
+    REQUIRE(rOn.has_value());
+    INFO("barres=" << mOn.bar_pixels << " objets=" << mOn.bar_objects
+                   << " traits=" << mOn.line_pixels);
+    CHECK(mOn.bar_pixels >= 400); // la barre : ~560 px, aux bords près
+    CHECK(mOn.bar_objects >= 1);
+    CHECK(mOn.line_pixels >= 100); // le trait fin reste un trait
+    CHECK(mOn.line_pixels < 250);  // et la barre n'y est pas comptée
+    // Les objets de barre sont de la couleur des traits et passent AVANT les traits en point droit.
+    const std::size_t total = rOn->embroideries.size();
+    REQUIRE(total >= mOn.bar_objects + mOn.line_objects);
+    const std::size_t firstBar = total - mOn.line_objects - mOn.bar_objects;
+    for (std::size_t i = firstBar; i < firstBar + mOn.bar_objects; ++i) {
+        CHECK_FALSE(
+            std::holds_alternative<document::RunningStitchParams>(rOn->embroideries[i].params));
+        CHECK(near_rgb(rOn->embroideries[i].rgb, {5, 5, 15}));
+    }
+    for (std::size_t i = total - mOn.line_objects; i < total; ++i) {
+        CHECK(std::holds_alternative<document::RunningStitchParams>(rOn->embroideries[i].params));
+    }
+    // Déterminisme.
+    IdGenerator<ObjectId> idsC;
+    const auto again = auto_digitize_with_lines(*seg, img, idsC, options(), on, co);
+    REQUIRE(again.has_value());
+    CHECK(again->embroideries.size() == rOn->embroideries.size());
+}

@@ -31,8 +31,8 @@ contrôle → palette réelle → rendu, en une commande ; il encode les pièges
 
 ```bash
 CLI=/chemin/openstitch-cli .claude/skills/openstitch-digitize/scripts/workflow.sh \
-    img.png $SCRATCH/v1 300 210 122.6 --max-colors 12 --dark-lines --dark-lines-objects-only \
-    --min-region-mm2 1 --fill-inset 0
+    img.png $SCRATCH/v1 300 210 122.6 --max-colors 12 --dark-lines --dark-lines-bars 4 \
+    --min-region-mm2 1 --fill-inset 0 --satin-bands
 python3 -I scripts/fidelity.py img.png $SCRATCH/v1/out.dst $SCRATCH/v1/pal.json 0.2072 $SCRATCH/v1/fid
 ```
 
@@ -246,6 +246,29 @@ Traits : `--dark-lines-objects-only` (séparation ou vrai objet, voir la doc) : 
 327 -> 135, coupes -12 %, voiles plus propres ; détails perdus 0,76 % -> 2,31 % (traits non cousus
 par choix) et quelques haubans fins perdus. Défaut restant, commun aux deux : autour du mât et de la
 coque le noir devient un amas de passes superposées, plus épais que les traits de la source.
+
+**Essai 6 (2026-10-16) : l'amas noir du mât, corrigé par un niveau « barres ».**
+
+Constat (comparaison source sombre / fil noir réel) : cordages fins corrects, mais le mât et les
+vergues (barres de 2 à 3 mm) sortaient en amas hachuré. Cause : plus larges que le trait (1,6 mm), donc
+laissées au remplissage noir (réseau mât + vergues + coque d'un seul bloc). Correctif :
+`--dark-lines-bars 4` (barres cousues en bandes, avant les traits). Voir la doc pour le détail.
+
+| Variante (base : `--island-cleanup 0 --min-region-mm2 1`) | Objets | Points | Coupes | Manquant | Détails perdus |
+|---|---|---|---|---|---|
+| tous les traits (avant) | 587 | 121 698 | 1 989 | 0,30 % | 0,76 % |
+| + `--dark-lines-bars 4` | 562 | 125 993 | 2 076 | 0,29 % | **0,79 %** |
+| + barres + `--dark-lines-objects-only` | 370 | 120 382 | 1 840 | 0,92 % | 2,35 % |
+| barres, seuil large L* <= 25 (essai raté) | 310 | 124 012 | 1 894 | 1,10 % | 5,53 % |
+| traits fins aussi au seuil serré (hypothèse écartée) | 631 | 129 959 | 2 318 | 0,33 % | 0,81 % |
+
+Erreurs de méthode : (1) un seuil « sombre » de L* <= 25 inclut le bleu marine : toute mesure de
+« noir » doit se faire au seuil du trait réel (noir, L* ~ 4) plus une marge ; (2) un score de fidélité
+baisse mécaniquement quand on retire des traits voulus (`--dark-lines-objects-only`) : ne jamais le
+comparer à une variante sans ce filtre sans le dire ; (3) un objet de 1 963 mm2 sur 290 mm de large
+est le signe d'un réseau connecté géant : toujours lister les objets les plus grands d'une couleur.
+Sur ce navire `--dark-lines-objects-only` perd trop de cordages : à réserver aux images où les
+séparations sont nombreuses ; le niveau barres est le gain net.
 
 **Essai 4 (2026-10-16) : les trois méthodes d'auto-satin de `main` (PR #50, #51).**
 
