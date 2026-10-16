@@ -6,6 +6,7 @@
 
 #include <algorithm>
 
+#include "openstitch/geometry/boolean.hpp"
 #include "openstitch/geometry/clean.hpp"
 
 namespace openstitch::geometry {
@@ -80,6 +81,39 @@ Result<std::vector<PathSet>> inset_path_set(const PathSet& set, Micrometers delt
         raw.push_back(std::move(path));
     }
     return clean_to_path_sets(raw);
+}
+
+Result<std::vector<PathSet>> union_polygons_closing(const std::vector<PathSet>& sets,
+                                                    Micrometers max_gap) {
+    auto united = union_polygons(sets);
+    if (!united || max_gap.value <= 0 || united->size() < 2) {
+        return united;
+    }
+    const Micrometers half{(max_gap.value + 1) / 2};
+    std::vector<PathSet> grown;
+    for (const PathSet& set : *united) {
+        auto out = inset_path_set(set, Micrometers{-half.value});
+        if (!out) {
+            return std::unexpected(out.error());
+        }
+        grown.insert(grown.end(), out->begin(), out->end());
+    }
+    auto merged = union_polygons(grown);
+    if (!merged) {
+        return merged;
+    }
+    std::vector<PathSet> closed;
+    for (const PathSet& set : *merged) {
+        auto out = inset_path_set(set, half);
+        if (!out) {
+            return std::unexpected(out.error());
+        }
+        closed.insert(closed.end(), out->begin(), out->end());
+    }
+    if (closed.empty()) {
+        return united; // garde-fou : ne jamais perdre la forme
+    }
+    return closed;
 }
 
 } // namespace openstitch::geometry

@@ -456,14 +456,18 @@ d'annulation** et garde les objets de broderie de la forme conservée.
   sélectionnées, ou seulement ceux sous une aire donnée en mm² ;
 - **Unir** (Ctrl+Maj+U) — fusionne au moins deux formes sélectionnées (Maj + clic) en une seule ;
   la dernière sélectionnée garde son identité, ses réglages de point et son nom. Les autres formes
-  (et leurs broderies) disparaissent.
+  (et leurs broderies) disparaissent. Deux formes juxtaposées séparées par un écart d'au plus
+  0,05 mm (par exemple deux morceaux issus du Couteau) sont soudées en un seul contour ; les trous
+  plus étroits que 0,05 mm sont comblés au passage.
 - **Soustraire** (Ctrl+Alt+S) — retire de la forme la plus **basse** du document toutes les autres
   formes sélectionnées, qui sont supprimées. Un résultat vide est refusé.
 - **Intersecter** (Ctrl+Alt+I) — ne garde que la partie commune à toutes les formes.
 - **Séparer les morceaux** (Ctrl+Maj+B) — une forme composée de plusieurs morceaux disjoints
   devient autant d'objets.
 - **Couteau** (touche **K**) — cliquez-glissez une ligne à travers une ou plusieurs formes pour
-  les découper. Sans sélection, toutes les formes visibles traversées sont coupées ; avec une
+  les découper. Seul le segment tracé coupe : une forme n'est découpée que si le trait la
+  traverse de part en part (il doit dépasser de chaque côté) ; un trait qui s'arrête dans la forme
+  ou qui passe à côté ne fait rien. Sans sélection, toutes les formes visibles traversées sont coupées ; avec une
   sélection, seules les formes sélectionnées le sont. Le plus grand morceau garde l'identité de la
   forme d'origine ; chaque autre morceau devient un nouvel objet, avec une **copie des réglages de
   broderie** (tatami, directionnel, auto-satin ; les satins à rails et les retouches manuelles
