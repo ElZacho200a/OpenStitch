@@ -129,7 +129,8 @@ std::size_t drop_short_components(std::vector<char>& m, int w, int h, double min
                     }
                 }
             }
-            const double diag = std::hypot(double{maxX - minX + 1}, double{maxY - minY + 1});
+            const double diag = std::hypot(static_cast<double>(maxX - minX + 1),
+                                           static_cast<double>(maxY - minY + 1));
             if (diag < min_diag_px) {
                 for (const std::size_t i : comp) {
                     m[i] = 0;
