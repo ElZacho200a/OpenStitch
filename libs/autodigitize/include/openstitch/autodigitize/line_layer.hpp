@@ -41,6 +41,11 @@ struct LineLayerOptions {
     // est suffisante, sinon tatami), AVANT les traits fins. 0 = désactivé (comportement
     // historique).
     double bars_max_width_mm{0.0};
+    // Les fragments de trait isolés dont l'étendue (diagonale de la boîte englobante) est
+    // inférieure à cette longueur ne sont pas cousus : ce sont des éclats de vagues ou de bruit,
+    // redressés en petits tirets plats sur le motif (un objet et une coupe chacun). Les pixels
+    // restent rendus aux zones voisines. 0 = désactivé (comportement historique).
+    double min_line_length_mm{0.0};
 };
 
 struct LineLayerMetrics {
@@ -51,6 +56,7 @@ struct LineLayerMetrics {
     std::size_t separation_pixels{0}; // pixels de séparation non cousus (`objects_only`)
     std::size_t bar_pixels{0};  // pixels de barres retirés des remplissages (`bars_max_width_mm`)
     std::size_t bar_objects{0}; // objets créés pour les barres
+    std::size_t short_fragment_pixels{0}; // pixels de fragments trop courts non cousus
 };
 
 // Segmentation -> objets : remplissages (`auto_digitize`) PUIS traits. Les objets de traits sont

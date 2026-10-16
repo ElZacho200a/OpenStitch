@@ -370,6 +370,10 @@ void add_digitize_options(CLI::App* cmd, DigitizeOptionValues& v) {
            "cette largeur (mm ; mât, vergues, essayer 4) sont cousues en bandes (satin) au "
            "lieu de rester dans le remplissage noir ; 0 = désactivé (défaut)")
         ->check(CLI::NonNegativeNumber);
+    cmd->add_option("--dark-lines-min-length", s.dark_lines_min_length_mm,
+                    "Avec --dark-lines : les fragments de trait isolés plus courts que cette "
+                    "longueur (mm, essayer 8) ne sont pas cousus ; 0 = désactivé (défaut)")
+        ->check(CLI::NonNegativeNumber);
     cmd->add_flag("--dark-lines-objects-only", s.dark_lines_objects_only,
                   "Avec --dark-lines : ne coud que les vrais objets (haubans, mâts, cordages) ; un "
                   "trait entre deux zones de couleurs différentes est une séparation, laissée aux "

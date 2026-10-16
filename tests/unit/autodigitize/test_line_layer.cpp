@@ -355,3 +355,30 @@ TEST_CASE("couche de traits : bars_max_width_mm coud les barres epaisses a part"
     REQUIRE(again.has_value());
     CHECK(again->embroideries.size() == rOn->embroideries.size());
 }
+
+TEST_CASE("couche de traits : min_line_length_mm ecarte les fragments isoles trop courts") {
+    image::Image img = scene();               // un trait de 100 px (25 mm) et un bloc épais
+    fill_rect(img, 20, 20, 32, 23, 5, 5, 15); // fragment isolé : 12 x 3 px (3 mm)
+    const auto seg = segmentation::segment(img, {.max_colors = 4, .min_region_px = 4});
+    REQUIRE(seg.has_value());
+    ContourOptions co;
+    co.technique = ContourTechnique::Running;
+
+    LineLayerOptions keep;
+    keep.enabled = true;
+    LineLayerMetrics mKeep;
+    IdGenerator<ObjectId> idsA;
+    REQUIRE(auto_digitize_with_lines(*seg, img, idsA, options(), keep, co, &mKeep).has_value());
+    CHECK(mKeep.short_fragment_pixels == 0);
+
+    LineLayerOptions drop = keep;
+    drop.min_line_length_mm = 5.0; // 20 px
+    LineLayerMetrics mDrop;
+    IdGenerator<ObjectId> idsB;
+    REQUIRE(auto_digitize_with_lines(*seg, img, idsB, options(), drop, co, &mDrop).has_value());
+    INFO("retires=" << mDrop.short_fragment_pixels << " cousus=" << mDrop.line_pixels);
+    CHECK(mDrop.short_fragment_pixels >= 30); // le fragment : ~36 px
+    CHECK(mDrop.short_fragment_pixels <= 60);
+    CHECK(mDrop.line_pixels >= 250); // le long trait reste
+    CHECK(mDrop.line_pixels + mDrop.short_fragment_pixels <= mKeep.line_pixels + 5);
+}

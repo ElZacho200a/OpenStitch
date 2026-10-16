@@ -521,6 +521,23 @@ pleines. Test : `couche de traits : bars_max_width_mm coud les barres epaisses a
 Hypothèse ÉCARTÉE par la mesure : détecter aussi les traits fins au seuil serré (contours noirs collés
 à un aplat marine) ajoutait 21 % de fil noir et 17 % de coupes sans gain de fidélité (0,76 % -> 0,81 %).
 
+**Seuil de clarté des traits (correctif, 2026-10-16).** Le seuil `--dark-lines-lightness` (25) n'est
+plus qu'un plafond : le seuil effectif est la clarté de la couleur la plus SOMBRE réellement présente
+dans la segmentation (régions d'au moins 0,05 % des pixels) plus 8, plafonné par `--dark-lines-lightness`.
+Avant, L* <= 25 englobait le bleu marine (`#022655`, L* ~ 16) : les parties étroites des vagues
+marine passaient pour des traits, étaient retirées du remplissage marine (**trou** : seul un trait fin
+les recouvrait, le tissu apparaissait) puis cousues en noir (traits noirs plats posés dans la mer) ;
+les petites zones recolorées en taches noires sur la coque en venaient aussi. Mesuré sur le navire
+(`--island-cleanup 0 --min-region-mm2 1 --dark-lines-bars 4`) : détails perdus 0,79 % -> 0,35 %, trous
+intérieurs 522 -> 330 px (24 -> 18 trous, tous <= 1,5 mm2), fil noir posé hors zone sombre 15 % -> 12 %,
+coupes 2 076 -> 2 319 (+12 %). Une image dont les traits ne sont pas noirs (traits marine) garde un
+seuil plus haut (son pixel le plus sombre le fixe).
+
+**Fragments isolés (`--dark-lines-min-length MM`).** Les composantes de trait dont la diagonale de
+boîte englobante est inférieure à MM ne sont pas cousues (éclats de vagues redressés en tirets plats :
+un objet et une coupe chacun). Navire : 6 mm retire 37 objets (-1,6 % de coupes, détails perdus +0,07
+point) ; 10 mm retire 66 objets (+0,18 point). Test : `min_line_length_mm ecarte les fragments isoles`.
+
 Limites : un seul fil pour tous les traits ; point droit seulement (pas de satin à largeur
 constante) ; un trait contre un aplat sombre de même teinte n'est pas détecté (il serait invisible).
 Chaque trait étant un tracé séparé, la couche ajoute des coupes (+486 sur l'illustration de test) ;

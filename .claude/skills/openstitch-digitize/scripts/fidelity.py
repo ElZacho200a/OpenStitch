@@ -32,6 +32,8 @@ ap.add_argument("--de", type=float, default=30.0, help="écart de couleur à par
 ap.add_argument("--min-px", type=int, default=12, help="aire minimale (px) d'une composante d'erreur retenue")
 ap.add_argument("--near", type=float, default=18.0, help="ΔE maximal entre un pixel source et une couleur de la palette pour compter son erreur")
 ap.add_argument("--thread-mm", type=float, default=0.5)
+ap.add_argument("--close", type=int, default=2, help="fermeture (px) de la couverture ; 0 = aucune (révèle les petits trous que l'application affiche)")
+ap.add_argument("--open", type=int, default=1, dest="open_r", help="ouverture (px) des composantes d'erreur")
 args = ap.parse_args()
 os.makedirs(args.out, exist_ok=True)
 
@@ -132,7 +134,8 @@ def erode(m, r):
     return ~dilate(~m, r)
 
 
-cov_fg = erode(dilate(cov_fg, 2), 2)
+if args.close > 0:
+    cov_fg = erode(dilate(cov_fg, args.close), args.close)
 dcol = np.linalg.norm(labsrc - lab(cov), axis=-1)
 missing = src_fg & ~cov_fg
 # Un détail perdu : le pixel source est proche (ΔE < --near) d'une couleur de la palette mais la
@@ -149,8 +152,9 @@ wrong = src_fg & cov_fg & near_pal & (nearest != cov_idx) & (dcol > args.de)
 extra = ~src_fg & cov_fg
 
 
-def opening(m, r=1):
-    return dilate(erode(m, r), r)
+def opening(m, r=None):
+    r = args.open_r if r is None else r
+    return m if r <= 0 else dilate(erode(m, r), r)
 
 
 def components(mask):
@@ -178,7 +182,15 @@ def components(mask):
     return out
 
 
-visible = {"manquant": opening(missing), "mauvaise": opening(wrong), "en trop": opening(extra)}
+# Trous INTÉRIEURS : manquant à plus de 8 px du fond extérieur (le tissu qui apparaît au milieu du motif,
+# bien plus grave qu'un liseré au bord).
+edge_zone = np.zeros_like(src_fg)
+grow = ~src_fg
+for _ in range(8):
+    grow = grow | np.roll(grow, 1, 0) | np.roll(grow, -1, 0) | np.roll(grow, 1, 1) | np.roll(grow, -1, 1)
+edge_zone = grow
+interior = missing & ~edge_zone
+visible = {"manquant": opening(missing), "trou interieur": opening(interior), "mauvaise": opening(wrong), "en trop": opening(extra)}
 total_fg = int(src_fg.sum())
 lines = []
 summary = []
@@ -203,6 +215,7 @@ vis[src_fg | cov_fg] = (200, 200, 200)
 vis[visible["en trop"]] = (255, 0, 255)
 vis[visible["mauvaise"]] = (255, 210, 0)
 vis[visible["manquant"]] = (255, 0, 0)
+vis[visible["trou interieur"]] = (0, 160, 0)
 Image.fromarray(vis).save(os.path.join(args.out, "erreurs.png"))
 print(f"alignement: boite source ({xs.min()},{ys.min()})-({xs.max()},{ys.max()}), stitches {maxx - minx}x{maxy - miny} (0,1 mm)")
 print("\n".join(summary))

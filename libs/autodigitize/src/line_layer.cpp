@@ -74,6 +74,60 @@ std::vector<char> separation_mask(const segmentation::Segmentation& seg,
     return sep;
 }
 
+// Retire de `m` les composantes 8-connexes dont la diagonale de boîte englobante est inférieure à
+// `min_diag_px`. Renvoie le nombre de pixels retirés. Déterministe (parcours en ordre de lecture).
+std::size_t drop_short_components(std::vector<char>& m, int w, int h, double min_diag_px) {
+    std::size_t dropped = 0;
+    std::vector<char> seen(m.size(), 0);
+    std::vector<std::size_t> stack;
+    std::vector<std::size_t> comp;
+    for (int y0 = 0; y0 < h; ++y0) {
+        for (int x0 = 0; x0 < w; ++x0) {
+            const std::size_t start = static_cast<std::size_t>(y0) * w + x0;
+            if (m[start] == 0 || seen[start] != 0) {
+                continue;
+            }
+            comp.clear();
+            stack.assign(1, start);
+            seen[start] = 1;
+            int minX = x0, maxX = x0, minY = y0, maxY = y0;
+            while (!stack.empty()) {
+                const std::size_t cur = stack.back();
+                stack.pop_back();
+                comp.push_back(cur);
+                const int cx = static_cast<int>(cur % static_cast<std::size_t>(w));
+                const int cy = static_cast<int>(cur / static_cast<std::size_t>(w));
+                minX = std::min(minX, cx);
+                maxX = std::max(maxX, cx);
+                minY = std::min(minY, cy);
+                maxY = std::max(maxY, cy);
+                for (int dy = -1; dy <= 1; ++dy) {
+                    for (int dx = -1; dx <= 1; ++dx) {
+                        const int nx = cx + dx;
+                        const int ny = cy + dy;
+                        if (nx < 0 || nx >= w || ny < 0 || ny >= h) {
+                            continue;
+                        }
+                        const std::size_t ni = static_cast<std::size_t>(ny) * w + nx;
+                        if (m[ni] != 0 && seen[ni] == 0) {
+                            seen[ni] = 1;
+                            stack.push_back(ni);
+                        }
+                    }
+                }
+            }
+            const double diag = std::hypot(double{maxX - minX + 1}, double{maxY - minY + 1});
+            if (diag < min_diag_px) {
+                for (const std::size_t i : comp) {
+                    m[i] = 0;
+                }
+                dropped += comp.size();
+            }
+        }
+    }
+    return dropped;
+}
+
 // Fermeture morphologique (dilatation puis érosion, carré de rayon `r`) de `m`, limitée à `limit` :
 // comble les coupures d'un trait qui traverse une frontière entre deux zones.
 std::vector<char> close_within(const std::vector<char>& m, const std::vector<char>& limit, int w,
@@ -122,8 +176,28 @@ Result<AutoResult> auto_digitize_with_lines(const segmentation::Segmentation& se
     const int diameter =
         std::max(2, static_cast<int>(std::lround(lines.max_line_width_mm / px_mm)));
     std::array<std::uint8_t, 3> lineRgb{10, 10, 20};
+    // Seuil de clarté des traits : la couleur la plus SOMBRE réellement présente (le noir des
+    // traits) plus une marge, plafonné par `dark_max_lightness`. Le plafond seul (L* <= 25) englobe
+    // aussi le bleu marine (L* ~ 16) : ses parties étroites passaient pour des traits, étaient
+    // retirées du remplissage marine (trou : seul un trait fin les recouvrait) puis cousues en
+    // noir.
+    double lineLightness = lines.dark_max_lightness;
+    {
+        std::size_t labelled = 0;
+        for (const std::uint32_t l : seg.labels) {
+            labelled += l != 0 ? 1 : 0;
+        }
+        const std::size_t minPixels = std::max<std::size_t>(30, labelled / 2000);
+        double darkest = lines.dark_max_lightness;
+        for (const auto& slot : seg.region_slots) {
+            if (slot && slot->pixel_count >= minPixels) {
+                darkest = std::min(darkest, cielab_lightness(slot->rgb));
+            }
+        }
+        lineLightness = std::min(lines.dark_max_lightness, darkest + 8.0);
+    }
     const std::vector<char> mask =
-        segmentation::dark_thin_mask(source, lines.dark_max_lightness, diameter, &lineRgb);
+        segmentation::dark_thin_mask(source, lineLightness, diameter, &lineRgb);
     const std::size_t linePixels =
         static_cast<std::size_t>(std::count(mask.begin(), mask.end(), char{1}));
     // Barres : parties sombres plus larges qu'un trait mais plus étroites que `bars_max_width_mm`
@@ -138,14 +212,10 @@ Result<AutoResult> auto_digitize_with_lines(const segmentation::Segmentation& se
     if (lines.bars_max_width_mm > 0.0 && mask.size() == seg.labels.size()) {
         const int barsDiameter =
             std::max(diameter + 2, static_cast<int>(std::lround(lines.bars_max_width_mm / px_mm)));
-        const double tightLightness =
-            std::min(lines.dark_max_lightness, cielab_lightness(lineRgb) + 8.0);
-        barsMask = segmentation::dark_thin_mask(source, tightLightness, barsDiameter);
-        const std::vector<char> thinTight =
-            segmentation::dark_thin_mask(source, tightLightness, diameter);
-        if (barsMask.size() == mask.size() && thinTight.size() == mask.size()) {
+        barsMask = segmentation::dark_thin_mask(source, lineLightness, barsDiameter);
+        if (barsMask.size() == mask.size()) {
             for (std::size_t i = 0; i < mask.size(); ++i) {
-                barsMask[i] = (barsMask[i] != 0 && mask[i] == 0 && thinTight[i] == 0) ? 1 : 0;
+                barsMask[i] = (barsMask[i] != 0 && mask[i] == 0) ? 1 : 0;
             }
             barsPixels =
                 static_cast<std::size_t>(std::count(barsMask.begin(), barsMask.end(), char{1}));
@@ -178,6 +248,11 @@ Result<AutoResult> auto_digitize_with_lines(const segmentation::Segmentation& se
         separationPixels =
             linePixels -
             static_cast<std::size_t>(std::count(stitchMask.begin(), stitchMask.end(), char{1}));
+    }
+    std::size_t shortPixels = 0;
+    if (lines.min_line_length_mm > 0.0) {
+        shortPixels = drop_short_components(stitchMask, seg.width, seg.height,
+                                            lines.min_line_length_mm / px_mm);
     }
     const std::size_t stitchPixels =
         static_cast<std::size_t>(std::count(stitchMask.begin(), stitchMask.end(), char{1}));
@@ -337,6 +412,7 @@ Result<AutoResult> auto_digitize_with_lines(const segmentation::Segmentation& se
         metrics->line_pixels = stitchPixels;
         metrics->separation_pixels = separationPixels;
         metrics->bar_pixels = barsPixels;
+        metrics->short_fragment_pixels = shortPixels;
         metrics->bar_objects = barObjectsEnd - fillObjects;
         metrics->reassigned_pixels = reassigned;
         metrics->contours = cm;

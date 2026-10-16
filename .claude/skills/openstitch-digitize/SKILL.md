@@ -32,7 +32,7 @@ contrôle → palette réelle → rendu, en une commande ; il encode les pièges
 ```bash
 CLI=/chemin/openstitch-cli .claude/skills/openstitch-digitize/scripts/workflow.sh \
     img.png $SCRATCH/v1 300 210 122.6 --max-colors 12 --dark-lines --dark-lines-bars 4 \
-    --min-region-mm2 1 --fill-inset 0 --satin-bands
+    --dark-lines-min-length 6 --min-region-mm2 1 --fill-inset 0 --satin-bands
 python3 -I scripts/fidelity.py img.png $SCRATCH/v1/out.dst $SCRATCH/v1/pal.json 0.2072 $SCRATCH/v1/fid
 ```
 
@@ -246,6 +246,32 @@ Traits : `--dark-lines-objects-only` (séparation ou vrai objet, voir la doc) : 
 327 -> 135, coupes -12 %, voiles plus propres ; détails perdus 0,76 % -> 2,31 % (traits non cousus
 par choix) et quelques haubans fins perdus. Défaut restant, commun aux deux : autour du mât et de la
 coque le noir devient un amas de passes superposées, plus épais que les traits de la source.
+
+**Essai 7 (2026-10-16) : capture de l'application (fond vert) de l'essai 6 : « pas besoin d'expliquer ».**
+Lecture de la capture (zoom navire et mer) : (1) taches noires rondes sur la coque ; (2) trous verts
+(tissu visible) partout, surtout dans la mer à côté des bouts de trait noir ; (3) tirets noirs plats
+dans la mer ; (4) mer en mosaïque d'angles de fil. La métrique de bord (0,3 % manquant) ne voyait RIEN :
+les trous sont à l'intérieur ; `fidelity.py` donne maintenant « trou interieur » (`--close 1 --open 0
+--min-px 12 --thread-mm 0.6` pour voir les trous de 1 mm2 ; sans fermeture le tatami lui-même passe
+pour 11 % de trous, inutilisable).
+
+Cause racine commune de (1), (2), (3) : le seuil `--dark-lines-lightness` 25 englobait le bleu marine
+(L* ~ 16). Voir la doc (« Seuil de clarté des traits »). Correctif : seuil effectif = pixel le plus sombre
+de la palette + 8.
+
+| Variante (`--island-cleanup 0 --min-region-mm2 1 --dark-lines-bars 4`) | Objets | Points | Coupes | Détails perdus | Trous intérieurs |
+|---|---|---|---|---|---|
+| seuil 25 (avant) | 562 | 125 993 | 2 076 | 0,79 % | 522 px, 24 trous |
+| **seuil = noir + 8** | 558 | 130 319 | 2 319 | **0,35 %** | 330 px, 18 trous |
+| + `--dark-lines-min-length 6` | 521 | 129 844 | 2 282 | 0,42 % | — |
+| + `--dark-lines-min-length 10` | 492 | 129 358 | 2 251 | 0,53 % | — |
+
+Erreurs de méthode : (a) j'avais jugé « 0,3 % manquant » acceptable sans regarder où : toujours
+séparer bord et intérieur ; (b) mes zooms de script ne montraient pas les trous que l'application
+affiche (rendu réaliste + fond vert) : le fond vert de l'utilisateur est le meilleur révélateur de
+trous, le reproduire (`fidelity.py` ou rendu sur fond vert) avant d'annoncer un résultat.
+Non traité : (4) angles de remplissage (`AutoOptions::auto_fill_angle` suit l'axe de chaque forme : choix
+esthétique à trancher avec l'utilisateur) ; jonctions entre trois zones (<= 1,5 mm2).
 
 **Essai 6 (2026-10-16) : l'amas noir du mât, corrigé par un niveau « barres ».**
 

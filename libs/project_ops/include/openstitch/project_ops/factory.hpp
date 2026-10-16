@@ -72,7 +72,8 @@ struct DigitizeSettings {
     double dark_lines_lightness{25.0};
     double dark_lines_bars_mm{
         0.0}; // barres sombres jusqu'à cette largeur : bandes (satin), 0 = non
-    bool dark_lines_objects_only{false}; // ne coudre que les vrais objets, pas les séparations
+    double dark_lines_min_length_mm{0.0}; // fragments de trait isolés plus courts : non cousus
+    bool dark_lines_objects_only{false};  // ne coudre que les vrais objets, pas les séparations
     // Nettoyage des îlots (voisine de couleur la plus proche) ; 0 = désactivé.
     double island_cleanup_mm2{0.0};
     // Retrait du bord des tatami (mm) ; absent = défaut du document (0,2 mm).
