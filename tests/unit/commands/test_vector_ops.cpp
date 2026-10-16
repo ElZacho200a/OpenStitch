@@ -373,6 +373,31 @@ TEST_CASE("vector ops: union welds juxtaposed shapes separated by a knife-width 
     CHECK(area < 200.1);
 }
 
+TEST_CASE("vector ops: union gap parameter 0 keeps knife-width neighbours apart", "[vector_ops]") {
+    document::Project project;
+    const ObjectId a = add_object(project, rect(0, 0, 10'000, 10'000), false);
+    const ObjectId b = add_object(project, rect(10'020, 0, 20'000, 10'000), false);
+
+    auto result = make_boolean_command(project, BooleanOp::Union, {a, b}, Micrometers{0});
+    REQUIRE(result.command);
+    UndoStack stack;
+    stack.execute(std::move(result.command), project);
+    CHECK(project.vector_objects[0].paths.size() == 2);
+}
+
+TEST_CASE("vector ops: split honours the cut width parameter", "[vector_ops]") {
+    document::Project project;
+    const ObjectId id = add_object(project, rect(0, 0, 20'000, 10'000), false);
+    auto result = make_split_command(project, {id}, pt(10'000, -5'000), pt(10'000, 15'000),
+                                     Micrometers{1'000});
+    REQUIRE(result.command);
+    UndoStack stack;
+    stack.execute(std::move(result.command), project);
+    REQUIRE(project.vector_objects.size() == 2);
+    const double total = area_mm2(project.vector_objects[0]) + area_mm2(project.vector_objects[1]);
+    CHECK(total < 191.0); // bande de 1 mm retirée (~10 mm2), non plus 0,02 mm
+}
+
 TEST_CASE("vector ops: union keeps distant shapes as separate pieces", "[vector_ops]") {
     document::Project project;
     const ObjectId a = add_object(project, rect(0, 0, 10'000, 10'000), false);

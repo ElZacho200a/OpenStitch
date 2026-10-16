@@ -6,6 +6,7 @@
 #include <QTimer>
 #include <QTranslator>
 
+#include "app_settings.hpp"
 #include "app_theme.hpp"
 #include "main_window.hpp"
 #include "openstitch/core/app_info.hpp"
@@ -19,6 +20,10 @@ int main(int argc, char** argv) {
     QApplication::setOrganizationName(QStringLiteral("OpenStitch"));
     QApplication::setApplicationName(QString::fromUtf8(openstitch::kAppName));
     QApplication::setApplicationVersion(QString::fromUtf8(openstitch::kAppVersion));
+
+    // Réglages dans un fichier INI (conservés d'une instance à l'autre) ; anciennes clés du
+    // registre importées une fois. Avant toute lecture de QSettings (thème compris).
+    openstitch::desktop::configureSettingsStorage();
 
     QApplication::setWindowIcon(openstitch::desktop::icons::appIcon());
 
