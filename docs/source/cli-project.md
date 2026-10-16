@@ -335,7 +335,7 @@ Un objet est désigné par `object` = **identifiant d'objet de broderie**.
 | Famille | Opérations |
 |---|---|
 | Style | `set_color` (`rgb` ou `chart`+`code`), `rename`, `set_visible`, `set_locked`, `set_join`, `set_connector` |
-| Type et paramètres | `set_stitch_type` (running, tatami, directional), `set_params` (mise à jour partielle : angle, densité, espacement, longueur de point, retrait, sous-couches, compensation du tirage… par type), `discard_overrides` |
+| Type et paramètres | `set_stitch_type` (running, tatami, directional), `directional_guides` (convertit en directionnel et pose des guides suivant l'axe médian de la forme, comme « Générer un guide depuis la forme » du bureau ; sans lui un objet converti n'a qu'un guide droit), `set_params` (mise à jour partielle : angle, densité, espacement, longueur de point, retrait, sous-couches, compensation du tirage… par type), `discard_overrides` |
 | Ordre | `set_order` (position, before, after, to_front, to_back), `optimize_order` (document, by_color, by_proximity, color_then_proximity, layered ; objets verrouillés immobiles) |
 | Création / suppression | `add_shape` (rect, ellipse, polygone), `duplicate_object`, `remove_object` |
 | Géométrie | `translate`, `rotate`, `scale`, `mirror`, `set_geometry`, `merge` (union, subtract, intersect, exclude), `split`, `break_apart`, `remove_holes` |

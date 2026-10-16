@@ -441,6 +441,16 @@ surépaisseur, détails perdus au niveau de la référence). `clahe` et `sharpen
 déjà contrastée (ils fabriquent des régions parasites : +300 objets) ; à réserver aux photos pâles ou floues,
 et toujours après mesure par `sweep`.
 
+### Essai 12 — fumée en remplissage directionnel (affiche rouge, fumée cyan)
+
+Besoin : la fumée suit sa forme, le reste en tatami. Manque trouvé : le CLI convertissait en directionnel
+(`set_stitch_type`) mais seulement avec un guide droit ; l'action « Générer un guide depuis la forme » du
+bureau n'avait pas d'équivalent. Ajout de l'opération `directional_guides`. Recette :
+`digitize … --pre flatten:2+median:1 --min-region-mm2 1`, repérer les couleurs de la fumée
+(`project inspect --json`, objets tatami cyan / bleu-gris), puis lot `directional_guides` sur ces objets
+(`scripts/directional_by_color.py CLI p.osp out.osp '#1C7F8F,#295C6C,…'`). Piège : les couleurs viennent de
+la quantification, les lire dans la palette du projet, ne pas les deviner.
+
 ## 9. Ce skill s'enrichit
 
 Quand une nouvelle image révèle un échec ou une règle (seuil, option, ordre), l'ajouter au
