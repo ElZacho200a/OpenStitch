@@ -488,6 +488,22 @@ cousus par-dessus » (largeur maximale en mm et clarté L\* maximale, mémorisé
 les dimensions de la segmentation, sinon l'image d'origine. Même routage que le CLI : point droit,
 parcours eulérien.
 
+**Séparation ou vrai objet (`--dark-lines-objects-only`).** Une illustration à contours noirs a deux
+sortes de traits sombres : ceux qui **séparent deux zones** (contour d'un nuage entre ciel et nuage,
+bord d'une voile) et ceux qui sont de **vrais objets** (hauban, mât, cordage sur une zone unie).
+Coudre les premiers par-dessus double la frontière et salit les voiles. Le critère se lit dans la
+segmentation : autour d'un pixel de trait (fenêtre de rayon largeur/2 + 1 px, pixels de trait
+exclus), au moins **deux régions de couleurs différentes** -> séparation, non cousue (le pixel reste
+rendu aux zones voisines, qui se rejoignent) ; une seule couleur -> objet, cousu. Le fond ignoré
+(label 0) ne compte pas : le contour du motif contre le fond reste un trait. Une fermeture de 2 px
+(limitée aux pixels de trait) comble les petites coupures d'un cordage qui traverse une frontière.
+Mesuré sur le navire (`--island-cleanup 0 --min-region-mm2 1`) : objets de ligne 327 -> 135, coupes
+1 989 -> 1 753 (-12 %), points 121 698 -> 116 087 ; la fidélité mesurée baisse (détails perdus 0,76 % ->
+2,31 %) puisque des traits présents dans la source ne sont plus cousus : c'est le prix, voulu, d'un
+rendu plus propre. Quelques haubans fins entre voile et ciel sont perdus. Test :
+`couche de traits : objects_only ne coud pas les separations entre deux zones`. Option du CLI
+seulement (pas encore dans la boîte de dialogue du bureau).
+
 Limites : un seul fil pour tous les traits ; point droit seulement (pas de satin à largeur
 constante) ; un trait contre un aplat sombre de même teinte n'est pas détecté (il serait invisible).
 Chaque trait étant un tracé séparé, la couche ajoute des coupes (+486 sur l'illustration de test) ;

@@ -27,6 +27,13 @@ struct LineLayerOptions {
     double max_line_width_mm{1.6};
     // Un pixel est « sombre » si sa clarté CIELAB L* est au plus égale à cette valeur.
     double dark_max_lightness{25.0};
+    // Ne coudre que les traits qui sont de VRAIS objets (haubans, mâts, cordages : leur voisinage
+    // est une seule zone de remplissage). Un trait dont le voisinage contient au moins deux zones
+    // de couleurs différentes est une SÉPARATION (contour entre deux aplats) : il n'est pas cousu,
+    // les deux zones se rejoignent. Le contour entre une zone et le fond ignoré reste un trait
+    // (contour du motif). Désactivé par défaut (comportement historique : tout trait sombre est
+    // cousu).
+    bool objects_only{false};
 };
 
 struct LineLayerMetrics {
@@ -34,6 +41,7 @@ struct LineLayerMetrics {
     std::size_t reassigned_pixels{0}; // dont rendus à une région voisine
     ContourMetrics contours;          // analyse des traits (composantes, segments, longueur)
     std::size_t line_objects{0};
+    std::size_t separation_pixels{0}; // pixels de séparation non cousus (`objects_only`)
 };
 
 // Segmentation -> objets : remplissages (`auto_digitize`) PUIS traits. Les objets de traits sont

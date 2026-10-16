@@ -231,3 +231,62 @@ TEST_CASE("auto_digitize : fill_inset regle le retrait des tatami crees") {
     REQUIRE(zero.size() == byDefault.size());
     CHECK(std::all_of(zero.begin(), zero.end(), [](auto v) { return v == 0; }));
 }
+
+namespace {
+
+// 120 x 80 : fond beige, zone rouge à gauche, zone bleue à droite séparées par un trait noir
+// vertical de 3 px (SÉPARATION), et un trait noir horizontal de 3 px entièrement dans la zone
+// rouge (VRAI OBJET : son voisinage est une seule zone).
+image::Image scene_separation_and_object() {
+    image::Image img;
+    img.width = 120;
+    img.height = 80;
+    img.rgba.assign(static_cast<std::size_t>(img.width) * img.height * 4, 0);
+    fill_rect(img, 0, 0, 120, 80, 230, 220, 200);
+    fill_rect(img, 10, 10, 59, 70, 200, 60, 40);
+    fill_rect(img, 62, 10, 110, 70, 30, 80, 170);
+    fill_rect(img, 59, 10, 62, 70, 5, 5, 15); // séparation : 3 x 60 = 180 px
+    fill_rect(img, 18, 38, 48, 41, 5, 5, 15); // objet : 30 x 3 = 90 px
+    return img;
+}
+
+} // namespace
+
+TEST_CASE("couche de traits : objects_only ne coud pas les separations entre deux zones") {
+    const auto img = scene_separation_and_object();
+    const auto seg = segmentation::segment(img, {.max_colors = 4, .min_region_px = 4});
+    REQUIRE(seg.has_value());
+    ContourOptions co;
+    co.technique = ContourTechnique::Running;
+
+    LineLayerOptions all;
+    all.enabled = true;
+    LineLayerMetrics mAll;
+    IdGenerator<ObjectId> idsA;
+    const auto rAll = auto_digitize_with_lines(*seg, img, idsA, options(), all, co, &mAll);
+    REQUIRE(rAll.has_value());
+    CHECK(mAll.separation_pixels == 0);
+    CHECK(mAll.line_pixels >= 250); // séparation + objet
+
+    LineLayerOptions only = all;
+    only.objects_only = true;
+    LineLayerMetrics mOnly;
+    IdGenerator<ObjectId> idsB;
+    const auto rOnly = auto_digitize_with_lines(*seg, img, idsB, options(), only, co, &mOnly);
+    REQUIRE(rOnly.has_value());
+    INFO("separation=" << mOnly.separation_pixels << " cousus=" << mOnly.line_pixels);
+    CHECK(mOnly.separation_pixels >= 150); // le trait vertical
+    CHECK(mOnly.line_pixels >= 60);        // le trait horizontal reste
+    CHECK(mOnly.line_pixels <= 120);
+    CHECK(mOnly.line_objects >= 1);
+    CHECK(mOnly.line_objects <= mAll.line_objects);
+    // Les zones restent d'un seul morceau de chaque côté de la séparation non cousue.
+    CHECK(count_rgb(*rOnly, {200, 60, 40}) == 1);
+    CHECK(count_rgb(*rOnly, {30, 80, 170}) == 1);
+
+    // Déterminisme.
+    IdGenerator<ObjectId> idsC;
+    const auto again = auto_digitize_with_lines(*seg, img, idsC, options(), only, co);
+    REQUIRE(again.has_value());
+    CHECK(again->embroideries.size() == rOnly->embroideries.size());
+}

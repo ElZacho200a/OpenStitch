@@ -7,6 +7,96 @@
 
 namespace openstitch::autodigitize {
 
+namespace {
+
+// Pixels de `mask` dont le voisinage (fenêtre de rayon `radius`, pixels hors `mask`) contient au
+// moins deux régions de couleurs différentes : séparations entre deux zones, pas des objets.
+// Un voisin « fond » (label 0) ne compte pas : le contour du motif reste un trait.
+std::vector<char> separation_mask(const segmentation::Segmentation& seg,
+                                  const std::vector<char>& mask, int radius) {
+    const int w = seg.width;
+    const int h = seg.height;
+    std::vector<std::uint32_t> colour(seg.region_slots.size() + 1, 0);
+    for (std::size_t i = 0; i < seg.region_slots.size(); ++i) {
+        if (seg.region_slots[i]) {
+            const auto& c = seg.region_slots[i]->rgb;
+            colour[i + 1] =
+                0x1000000u | (std::uint32_t{c[0]} << 16) | (std::uint32_t{c[1]} << 8) | c[2];
+        }
+    }
+    std::vector<char> sep(mask.size(), 0);
+    for (int y = 0; y < h; ++y) {
+        for (int x = 0; x < w; ++x) {
+            const std::size_t idx = static_cast<std::size_t>(y) * w + x;
+            if (mask[idx] == 0) {
+                continue;
+            }
+            std::uint32_t first = 0;
+            bool found = false;
+            for (int dy = -radius; dy <= radius && !found; ++dy) {
+                const int yy = y + dy;
+                if (yy < 0 || yy >= h) {
+                    continue;
+                }
+                for (int dx = -radius; dx <= radius; ++dx) {
+                    const int xx = x + dx;
+                    if (xx < 0 || xx >= w) {
+                        continue;
+                    }
+                    const std::size_t j = static_cast<std::size_t>(yy) * w + xx;
+                    const std::uint32_t label = seg.labels[j];
+                    if (mask[j] != 0 || label == 0 || label >= colour.size() ||
+                        colour[label] == 0) {
+                        continue;
+                    }
+                    if (first == 0) {
+                        first = colour[label];
+                    } else if (colour[label] != first) {
+                        found = true;
+                        break;
+                    }
+                }
+            }
+            sep[idx] = found ? 1 : 0;
+        }
+    }
+    return sep;
+}
+
+// Fermeture morphologique (dilatation puis érosion, carré de rayon `r`) de `m`, limitée à `limit` :
+// comble les coupures d'un trait qui traverse une frontière entre deux zones.
+std::vector<char> close_within(const std::vector<char>& m, const std::vector<char>& limit, int w,
+                               int h, int r) {
+    const auto pass = [&](const std::vector<char>& in, bool dilate) {
+        std::vector<char> out(in.size(), dilate ? 0 : 1);
+        for (int y = 0; y < h; ++y) {
+            for (int x = 0; x < w; ++x) {
+                bool any = false;
+                bool all = true;
+                for (int dy = -r; dy <= r; ++dy) {
+                    for (int dx = -r; dx <= r; ++dx) {
+                        const int yy = y + dy;
+                        const int xx = x + dx;
+                        const bool v = yy >= 0 && yy < h && xx >= 0 && xx < w &&
+                                       in[static_cast<std::size_t>(yy) * w + xx] != 0;
+                        any = any || v;
+                        all = all && v;
+                    }
+                }
+                out[static_cast<std::size_t>(y) * w + x] = (dilate ? any : all) ? 1 : 0;
+            }
+        }
+        return out;
+    };
+    std::vector<char> closed = pass(pass(m, true), false);
+    for (std::size_t i = 0; i < closed.size(); ++i) {
+        closed[i] = (closed[i] != 0 && limit[i] != 0) ? 1 : 0;
+    }
+    return closed;
+}
+
+} // namespace
+
 Result<AutoResult> auto_digitize_with_lines(const segmentation::Segmentation& seg,
                                             const image::Image& source, IdGenerator<ObjectId>& ids,
                                             const AutoOptions& options,
@@ -28,6 +118,26 @@ Result<AutoResult> auto_digitize_with_lines(const segmentation::Segmentation& se
     if (mask.size() != seg.labels.size() || linePixels == 0) {
         return auto_digitize(seg, ids, options); // aucun trait sombre : rien à séparer
     }
+
+    // Pixels réellement cousus en lignes. Par défaut tous les pixels de trait ; avec
+    // `objects_only`, les séparations entre deux zones sont exclues (elles restent retirées des
+    // remplissages, rendues aux zones voisines, mais ne sont pas cousues).
+    std::vector<char> stitchMask = mask;
+    std::size_t separationPixels = 0;
+    if (lines.objects_only) {
+        const int radius = std::max(2, diameter / 2 + 1);
+        const std::vector<char> sep = separation_mask(seg, mask, radius);
+        std::vector<char> kept(mask.size(), 0);
+        for (std::size_t i = 0; i < mask.size(); ++i) {
+            kept[i] = (mask[i] != 0 && sep[i] == 0) ? 1 : 0;
+        }
+        stitchMask = close_within(kept, mask, seg.width, seg.height, 2);
+        separationPixels =
+            linePixels -
+            static_cast<std::size_t>(std::count(stitchMask.begin(), stitchMask.end(), char{1}));
+    }
+    const std::size_t stitchPixels =
+        static_cast<std::size_t>(std::count(stitchMask.begin(), stitchMask.end(), char{1}));
 
     // La couleur moyenne des traits est presque toujours à quelques unités d'un noir déjà
     // présent dans la palette (mesuré : #0C121C contre #08080F) : un fil de plus pour rien.
@@ -60,10 +170,10 @@ Result<AutoResult> auto_digitize_with_lines(const segmentation::Segmentation& se
     segmentation::Region lineRegion;
     lineRegion.id = RegionId{1};
     lineRegion.rgb = lineRgb;
-    lineRegion.pixel_count = linePixels;
+    lineRegion.pixel_count = stitchPixels;
     lineSeg.region_slots.push_back(lineRegion);
-    for (std::size_t i = 0; i < mask.size(); ++i) {
-        if (mask[i] != 0) {
+    for (std::size_t i = 0; i < stitchMask.size(); ++i) {
+        if (stitchMask[i] != 0) {
             lineSeg.labels[i] = 1;
         }
     }
@@ -120,6 +230,15 @@ Result<AutoResult> auto_digitize_with_lines(const segmentation::Segmentation& se
     if (!fillResult) {
         return fillResult;
     }
+    if (stitchPixels == 0) {
+        // Tous les traits étaient des séparations : rien à coudre par-dessus.
+        if (metrics != nullptr) {
+            metrics->line_pixels = 0;
+            metrics->reassigned_pixels = reassigned;
+            metrics->separation_pixels = separationPixels;
+        }
+        return fillResult;
+    }
     ContourOptions co = contour_options;
     co.mm_per_px = options.mm_per_px;
     co.skip_largest_region = false;
@@ -144,7 +263,8 @@ Result<AutoResult> auto_digitize_with_lines(const segmentation::Segmentation& se
         out.warnings.push_back(std::move(w));
     }
     if (metrics != nullptr) {
-        metrics->line_pixels = linePixels;
+        metrics->line_pixels = stitchPixels;
+        metrics->separation_pixels = separationPixels;
         metrics->reassigned_pixels = reassigned;
         metrics->contours = cm;
         metrics->line_objects = out.embroideries.size() - fillObjects;

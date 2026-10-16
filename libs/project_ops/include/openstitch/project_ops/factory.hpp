@@ -70,6 +70,7 @@ struct DigitizeSettings {
     bool dark_lines{false};
     double dark_lines_width_mm{1.6};
     double dark_lines_lightness{25.0};
+    bool dark_lines_objects_only{false}; // ne coudre que les vrais objets, pas les séparations
     // Nettoyage des îlots (voisine de couleur la plus proche) ; 0 = désactivé.
     double island_cleanup_mm2{0.0};
     // Retrait du bord des tatami (mm) ; absent = défaut du document (0,2 mm).

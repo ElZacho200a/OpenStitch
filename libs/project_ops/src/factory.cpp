@@ -266,6 +266,7 @@ Result<DigitizeReport> digitize_image_into(document::Project& project,
             lo.enabled = true;
             lo.max_line_width_mm = s.dark_lines_width_mm;
             lo.dark_max_lightness = s.dark_lines_lightness;
+            lo.objects_only = s.dark_lines_objects_only;
             co.technique = autodigitize::ContourTechnique::Running;
             // Un réseau de traits se coud en parcours eulérien : moins de polylignes, donc moins
             // de coupes, au prix d'un court repassage.

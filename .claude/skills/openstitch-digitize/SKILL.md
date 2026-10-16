@@ -31,7 +31,9 @@ contrôle → palette réelle → rendu, en une commande ; il encode les pièges
 
 ```bash
 CLI=/chemin/openstitch-cli .claude/skills/openstitch-digitize/scripts/workflow.sh \
-    img.png $SCRATCH/v1 300 210 122.6 --max-colors 12 --dark-lines --island-cleanup 20 --fill-inset 0
+    img.png $SCRATCH/v1 300 210 122.6 --max-colors 12 --dark-lines --dark-lines-objects-only \
+    --min-region-mm2 1 --fill-inset 0
+python3 -I scripts/fidelity.py img.png $SCRATCH/v1/out.dst $SCRATCH/v1/pal.json 0.2072 $SCRATCH/v1/fid
 ```
 
 Arguments : image, dossier de sortie, largeur et hauteur du cadre (mm), dpi, puis les options de
@@ -214,6 +216,36 @@ Pièges d'environnement (build apt, pas de régression) : `cli_help` attend `POS
 majuscules, le CLI11 d'apt (2.4.1) écrit `Positionals` ; deux tests `project_ops` (`ops malformed
 or unknown batches…`, `param ops set_order modes`) ont échoué en `ctest -j4` et passent seuls et en
 série (cause non investiguée). Lancer `ctest` sans `-j` pour juger.
+
+**Essai 5 (2026-10-16) : retour de l'utilisateur sur le rendu de l'application (fond vert).**
+Défauts signalés : (a) des détails disparaissent, (b) les traits noirs sont posés même quand ils ne
+font que séparer deux zones.
+
+Nouvel outil `scripts/fidelity.py` (source contre couverture réelle des points, même échelle, vraie
+palette) : classe chaque pixel manquant / mauvaise couleur / en trop et liste les plus grosses
+composantes. Erreurs de méthode corrigées en chemin : (1) le crème est à ΔE 10,8 du beige : une
+tolérance de fond de 14 le prenait pour du fond (tolérance 6 requise) ; (2) un trou de la couleur
+exacte du tissu entre deux nuages n'est PAS un défaut (456 mm2 « manquants » = faux positif) ;
+(3) les pixels de transition anti-crénelés ne sont proches d'aucun fil : ne compter une erreur que si
+le pixel source est proche (ΔE < 18) d'une couleur de la palette et cousu avec une autre.
+
+Balayage (un réglage à la fois, base `--max-colors 12 --dark-lines --fill-inset 0 --satin-bands`) :
+
+| Variante | Objets | Points | Coupes | Manquant | Détails perdus |
+|---|---|---|---|---|---|
+| `--island-cleanup 20` | 369 | 114 623 | 1 675 | 0,29 % | 1,60 % |
+| `--island-cleanup 0` | 492 | 119 086 | 1 855 | 0,29 % | 0,90 % |
+| `--island-cleanup 5` | 458 | 118 526 | 1 865 | 0,29 % | 0,86 % |
+| `0` + `--min-region-mm2 1` | 587 | 121 698 | 1 989 | 0,30 % | **0,76 %** |
+| idem + `--smoothing-px 1` | 609 | 128 347 | 2 109 | 0,30 % | 0,92 % (pire : bruit) |
+
+Lecture : `--island-cleanup 20` DOUBLE les détails perdus (reflets du soleil sur la mer, petites
+formes) ; le gain en coupes (-10 %) se paie en fidélité, à ne pas utiliser par défaut sur une
+illustration riche en petits détails. Baisser `--smoothing-px` n'aide pas.
+Traits : `--dark-lines-objects-only` (séparation ou vrai objet, voir la doc) : objets de ligne
+327 -> 135, coupes -12 %, voiles plus propres ; détails perdus 0,76 % -> 2,31 % (traits non cousus
+par choix) et quelques haubans fins perdus. Défaut restant, commun aux deux : autour du mât et de la
+coque le noir devient un amas de passes superposées, plus épais que les traits de la source.
 
 **Essai 4 (2026-10-16) : les trois méthodes d'auto-satin de `main` (PR #50, #51).**
 
