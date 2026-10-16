@@ -6,6 +6,7 @@
 #include <cstdio>
 #include <utility>
 
+#include "debug_dump.hpp"
 #include "openstitch/autodigitize/autodigitize.hpp"
 #include "openstitch/image/image.hpp"
 #include "openstitch/image/ops.hpp"
@@ -250,6 +251,7 @@ Result<DigitizeReport> digitize_image_into(document::Project& project,
     autodigitize::ContourMetrics cm;
     autodigitize::StippleMetrics sm;
     autodigitize::LineLayerMetrics lm;
+    autodigitize::LineLayerMasks debugMasks;
     bool usedDarkLines = false;
     auto result = [&]() -> Result<autodigitize::AutoResult> {
         if (stippling) {
@@ -271,6 +273,7 @@ Result<DigitizeReport> digitize_image_into(document::Project& project,
             lo.objects_only = s.dark_lines_objects_only;
             lo.bars_max_width_mm = s.dark_lines_bars_mm;
             lo.min_line_length_mm = s.dark_lines_min_length_mm;
+            lo.masks = s.debug_dir.empty() ? nullptr : &debugMasks;
             co.technique = autodigitize::ContourTechnique::Running;
             // Un réseau de traits se coud en parcours eulérien : moins de polylignes, donc moins
             // de coupes, au prix d'un court repassage.
@@ -322,6 +325,15 @@ Result<DigitizeReport> digitize_image_into(document::Project& project,
             ++report.tatami;
         } else if (std::holds_alternative<document::RunningStitchParams>(e.params)) {
             ++report.running;
+        }
+    }
+    if (!s.debug_dir.empty()) {
+        if (auto dumped = detail::write_debug_dir(std::filesystem::path(s.debug_dir), project,
+                                                  report, s, debugMasks);
+            !dumped) {
+            report.warnings.push_back("diagnostic non écrit : " + dumped.error().message);
+        } else {
+            say(log, "Diagnostic écrit dans " + s.debug_dir);
         }
     }
     return report;

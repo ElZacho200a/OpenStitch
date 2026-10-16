@@ -18,6 +18,10 @@ add_library(openstitch_project_ops
     src/auto_satin_service.cpp
     src/quality.cpp
     src/render.cpp
+    src/thread_model.cpp
+    src/analysis.cpp
+    src/sweep.cpp
+    src/debug_dump.cpp
 )
 add_library(openstitch::project_ops ALIAS openstitch_project_ops)
 

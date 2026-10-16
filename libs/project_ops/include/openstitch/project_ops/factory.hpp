@@ -84,6 +84,9 @@ struct DigitizeSettings {
     // (`AutoOptions::fill_hidden_underpath`).
     bool fill_hidden_underpath{true};
     double island_max_delta_e{0.0}; // 0 = sans limite
+    // Diagnostic : non vide, dossier où écrire les masques de décision (régions, traits, barres,
+    // séparations), la couverture réelle des fils, la carte d'erreurs et `decisions.json`.
+    std::string debug_dir;
     int stipple_points{2000};
     int stipple_seed{1};
     bool stipple_invert{false};
