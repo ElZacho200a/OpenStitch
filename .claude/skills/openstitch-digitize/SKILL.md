@@ -402,6 +402,27 @@ squelette et couvre les formes compactes qu'il refuse (`circle`, `disc_15mm`, `p
 Pour des bandes étroites et régulières (rayons de nuages), `parallel_sweep` suffit ; pour des formes
 ramifiées ou compactes, `medial_axis`.
 
+### Essai 10 — traiter l'image avant la segmentation (`--pre`)
+
+Idée de l'utilisateur : OpenStitch sait déjà débruiter l'image avant la segmentation (pile `project.ops`
+du bureau). Le CLI l'ignorait : ajout de `--pre` (`median:1`, `bilateral:2+median:1`, `quantize:12`…),
+non destructif, et les outils d'analyse lisent désormais l'image de travail (un `crop` ne les désaligne plus).
+Mesure sur le navire (`project sweep --vary "pre=…"`, 12 couleurs, `--dark-lines --satin-bands`) :
+
+| pre | objets | points | coupes | tissu visible % | détails perdus % |
+|---|---|---|---|---|---|
+| aucun | 493 | 125 097 | 2 162 | 0,35 | 0,27 |
+| median:1 | 549 | 119 545 | 1 926 | 0,33 | 0,35 |
+| bilateral:2 | 482 | 121 543 | 1 962 | 0,40 | 0,31 |
+| bilateral:3 | 502 | 121 953 | 1 887 | 0,39 | 0,35 |
+| bilateral:2+median:1 | 545 | 120 145 | 1 930 | 0,45 | 0,37 |
+| quantize:12 | 429 | 124 643 | 2 006 | 0,38 | 0,48 |
+
+Lecture : l'image est déjà un aplat illustré (peu de bruit) ; le gain est modeste : −9 à −13 % de coupes,
+−3 à −4 % de points, mais détails perdus +0,04 à +0,2 point et tissu visible stable ou pire. `median:1`
+est le meilleur compromis (moins de coupes, tissu visible inchangé) ; `quantize` fait perdre des détails.
+Règle : prétraiter les photos / JPEG bruités ; sur une illustration propre, mesurer d'abord avec `sweep`.
+
 ## 9. Ce skill s'enrichit
 
 Quand une nouvelle image révèle un échec ou une règle (seuil, option, ordre), l'ajouter au

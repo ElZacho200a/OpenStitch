@@ -9,6 +9,7 @@
 
 #include "openstitch/core/error.hpp"
 #include "openstitch/document/project.hpp"
+#include "openstitch/image/ops.hpp"
 #include "openstitch/stitch/sequence.hpp"
 
 namespace openstitch::project_ops::detail {
@@ -35,6 +36,10 @@ struct ThreadModel {
                                                            std::uint32_t id) const;
     [[nodiscard]] std::size_t rank_of(std::uint32_t id) const; // rang dans le document, ou SIZE_MAX
 };
+
+// Image de travail : `original` passée par `project.ops` (vide si l'étape échoue). Repère de tous
+// les outils d'analyse, comme la segmentation.
+[[nodiscard]] image::Image working_image(const document::Project& project);
 
 [[nodiscard]] Result<ThreadModel> build_thread_model(const document::Project& project);
 

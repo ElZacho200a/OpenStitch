@@ -433,6 +433,11 @@ void add_digitize_options(CLI::App* cmd, DigitizeOptionValues& v) {
     cmd->add_flag("--single-path", s.single_path,
                   "Mode contours : relie les traits en un minimum de polylignes (parcours "
                   "eulérien, repasse un court tronçon plutôt que de couper le fil)");
+    cmd->add_option(
+        "--pre", s.pre,
+        "Traitements d'image AVANT la segmentation (non destructifs, enregistrés dans "
+        "le projet), séparés par « + » : median[:1|2] bilateral[:1..3] quantize[:N] "
+        "contrast:B:C gray crop:x:y:w:h flip:h|v rotate:1..3. Ex. : bilateral:2+median:1");
     cmd->add_flag("--coherent-lines", s.coherent_lines,
                   "Mode contours : extrait d'abord des traits de la photo (lignes cohérentes, "
                   "FDoG) avant la segmentation");
@@ -1016,16 +1021,16 @@ CLI::App* register_project_commands(CLI::App& app, bool& jsonOut) {
             }
         } else {
             double px = 0.0, py = 0.0;
-            if (std::sscanf(atArgs->px.c_str(), "%lf,%lf", &px, &py) != 2 ||
-                opened->project.original.empty()) {
+            const auto [workW, workH] = po::working_size(opened->project);
+            if (std::sscanf(atArgs->px.c_str(), "%lf,%lf", &px, &py) != 2 || workW == 0) {
                 g_exit = fail_with("at", jsonOut, po::code::kUsage,
                                    "point en pixels invalide ou projet sans image source",
                                    "format : X,Y ; utiliser --mm sans image");
                 return;
             }
             const double mmpp = opened->project.mm_per_px.value;
-            x = (px - opened->project.original.width / 2.0) * mmpp;
-            y = (opened->project.original.height / 2.0 - py) * mmpp;
+            x = (px - workW / 2.0) * mmpp;
+            y = (workH / 2.0 - py) * mmpp;
         }
         po::LocateQuery q;
         q.x_mm = x;

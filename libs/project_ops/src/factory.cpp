@@ -28,6 +28,129 @@ void say(const StatusLog& log, const std::string& line) {
 
 } // namespace
 
+namespace {
+
+std::vector<std::string> split_on(const std::string& text, char sep) {
+    std::vector<std::string> parts;
+    std::string cur;
+    for (const char c : text) {
+        if (c == sep) {
+            parts.push_back(cur);
+            cur.clear();
+        } else {
+            cur.push_back(c);
+        }
+    }
+    parts.push_back(cur);
+    return parts;
+}
+
+// Entier strict (« 3 », pas « 3x »).
+std::optional<int> parse_int_strict(const std::string& t) {
+    if (t.empty()) {
+        return std::nullopt;
+    }
+    try {
+        std::size_t used = 0;
+        const int v = std::stoi(t, &used);
+        return used == t.size() ? std::optional<int>{v} : std::nullopt;
+    } catch (...) {
+        return std::nullopt;
+    }
+}
+
+std::optional<double> parse_double_strict(const std::string& t) {
+    if (t.empty()) {
+        return std::nullopt;
+    }
+    try {
+        std::size_t used = 0;
+        const double v = std::stod(t, &used);
+        return used == t.size() ? std::optional<double>{v} : std::nullopt;
+    } catch (...) {
+        return std::nullopt;
+    }
+}
+
+Result<std::vector<image::ImageOp>> parse_pre_spec(const std::string& spec) {
+    std::vector<image::ImageOp> ops;
+    if (spec.empty()) {
+        return ops;
+    }
+    const auto bad = [&](const std::string& item, const std::string& why) {
+        return fail(ErrorCategory::UserInput,
+                    "traitement d'image invalide « " + item + " » : " + why,
+                    "grammaire : median[:1|2] bilateral[:1..3] quantize[:N] contrast:B:C "
+                    "gray crop:x:y:w:h flip:h|v rotate:1..3, séparés par « + »");
+    };
+    for (const auto& item : split_on(spec, '+')) {
+        const auto f = split_on(item, ':');
+        const std::string& name = f[0];
+        const auto argc = f.size() - 1;
+        const auto intArg = [&](std::size_t i, int def) -> std::optional<int> {
+            return i < f.size() ? parse_int_strict(f[i]) : std::optional<int>{def};
+        };
+        if (name == "median" && argc <= 1) {
+            const auto v = intArg(1, 1);
+            if (!v || *v < 1 || *v > 2) {
+                return bad(item, "force 1 ou 2");
+            }
+            ops.emplace_back(image::MedianDenoiseOp{*v});
+        } else if (name == "bilateral" && argc <= 1) {
+            const auto v = intArg(1, 2);
+            if (!v || *v < 1 || *v > 3) {
+                return bad(item, "force 1 à 3");
+            }
+            ops.emplace_back(image::BilateralDenoiseOp{*v});
+        } else if (name == "quantize" && argc <= 1) {
+            const auto v = intArg(1, 8);
+            if (!v || *v < 2 || *v > 64) {
+                return bad(item, "nombre de couleurs 2 à 64");
+            }
+            ops.emplace_back(image::QuantizeOp{*v});
+        } else if (name == "contrast" && argc == 2) {
+            const auto b = parse_double_strict(f[1]);
+            const auto c = parse_double_strict(f[2]);
+            if (!b || !c || *b < -100 || *b > 100 || *c < -100 || *c > 100) {
+                return bad(item, "luminosité et contraste entre -100 et 100");
+            }
+            ops.emplace_back(image::BrightnessContrastOp{*b, *c});
+        } else if (name == "gray" && argc == 0) {
+            ops.emplace_back(image::GrayscaleOp{});
+        } else if (name == "crop" && argc == 4) {
+            const auto x = parse_int_strict(f[1]);
+            const auto y = parse_int_strict(f[2]);
+            const auto w = parse_int_strict(f[3]);
+            const auto h = parse_int_strict(f[4]);
+            if (!x || !y || !w || !h || *x < 0 || *y < 0 || *w <= 0 || *h <= 0) {
+                return bad(item, "x:y:largeur:hauteur en pixels, positifs");
+            }
+            ops.emplace_back(image::CropOp{*x, *y, *w, *h});
+        } else if (name == "flip" && argc == 1 && (f[1] == "h" || f[1] == "v")) {
+            ops.emplace_back(image::FlipOp{f[1] == "h"});
+        } else if (name == "rotate" && argc == 1) {
+            const auto v = parse_int_strict(f[1]);
+            if (!v || *v < 1 || *v > 3) {
+                return bad(item, "quarts de tour 1 à 3");
+            }
+            ops.emplace_back(image::Rotate90Op{*v});
+        } else {
+            return bad(item, "opération inconnue ou arguments incorrects");
+        }
+    }
+    return ops;
+}
+
+} // namespace
+
+Result<void> validate_pre_spec(const std::string& spec) {
+    auto ops = parse_pre_spec(spec);
+    if (!ops) {
+        return std::unexpected(ops.error());
+    }
+    return {};
+}
+
 Result<void> apply_basic_finishing(document::Project& project, double trim_threshold_mm,
                                    std::string_view lock) {
     document::LockStitch type{};
@@ -160,6 +283,27 @@ Result<DigitizeReport> digitize_image_into(document::Project& project,
         say(log, "Lignes cohérentes (FDoG) appliquées avant la segmentation");
     }
 
+    // Traitements d'image avant segmentation : non destructifs (`project.ops`), la segmentation et
+    // les analyses travaillent sur l'image de travail.
+    auto preOps = parse_pre_spec(s.pre);
+    if (!preOps) {
+        return std::unexpected(preOps.error());
+    }
+    image::Image working = project.original;
+    if (!preOps->empty()) {
+        auto processed = image::apply_pipeline(project.original, *preOps);
+        if (!processed) {
+            return fail(ErrorCategory::OperationImpossible,
+                        "traitement d'image impossible : " + processed.error().message,
+                        "vérifier --pre (recadrage dans l'image, forces valides)");
+        }
+        working = std::move(*processed);
+        project.ops = *preOps;
+        say(log, "Traitement d'image avant segmentation : " + s.pre + " (" +
+                     std::to_string(working.width) + " x " + std::to_string(working.height) +
+                     " px)");
+    }
+
     // Finitions (Lots E/F) : nouveau projet -> activées ; réglables.
     if (auto finishing = apply_basic_finishing(project, s.trim_threshold_mm, s.lock); !finishing) {
         return std::unexpected(finishing.error());
@@ -175,9 +319,9 @@ Result<DigitizeReport> digitize_image_into(document::Project& project,
     // Stippling : pas de segmentation, l'image est lue comme une carte de tons.
     std::optional<segmentation::BackgroundCandidate> candidate;
     if (!stippling) {
-        auto seg = segmentation::segment(project.original, {.max_colors = s.max_colors,
-                                                            .min_region_px = s.min_region_px,
-                                                            .smoothing_radius_px = s.smoothing_px});
+        auto seg = segmentation::segment(working, {.max_colors = s.max_colors,
+                                                   .min_region_px = s.min_region_px,
+                                                   .smoothing_radius_px = s.smoothing_px});
         if (!seg) {
             return fail(ErrorCategory::OperationImpossible,
                         "segmentation impossible : " + seg.error().message,
@@ -262,8 +406,7 @@ Result<DigitizeReport> digitize_image_into(document::Project& project,
             so.stipple.seed = static_cast<std::uint32_t>(s.stipple_seed);
             say(log, "Mode : stippling (" + std::to_string(s.stipple_points) + " points, graine " +
                          std::to_string(s.stipple_seed) + ")");
-            return autodigitize::auto_digitize_stipple(project.original, project.object_ids, so,
-                                                       &sm);
+            return autodigitize::auto_digitize_stipple(working, project.object_ids, so, &sm);
         }
         if (!contours && s.dark_lines) {
             autodigitize::LineLayerOptions lo;
@@ -279,7 +422,7 @@ Result<DigitizeReport> digitize_image_into(document::Project& project,
             // de coupes, au prix d'un court repassage.
             co.routing = autodigitize::ContourRouting::SinglePath;
             usedDarkLines = true;
-            return autodigitize::auto_digitize_with_lines(*project.segmentation, project.original,
+            return autodigitize::auto_digitize_with_lines(*project.segmentation, working,
                                                           project.object_ids, opts, lo, co, &lm);
         }
         return contours

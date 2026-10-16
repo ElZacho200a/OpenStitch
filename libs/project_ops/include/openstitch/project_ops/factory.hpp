@@ -66,6 +66,11 @@ struct DigitizeSettings {
     bool satin_bands{false};        // shapes
     bool single_path{false};        // contours
     bool coherent_lines{false};     // contours : FDoG avant segmentation
+    // Traitements d'image AVANT la segmentation (non destructifs : stockés dans `project.ops`,
+    // `original` reste la source). Opérations séparées par `+`, chacune `nom[:arg[:arg…]]` :
+    // median[:1|2], bilateral[:1..3], quantize[:N], contrast:B:C, gray, crop:x:y:w:h, flip:h|v,
+    // rotate:1..3. Exemple : « bilateral:2+median:1 ». Vide = aucun.
+    std::string pre;
     // HP-AUTO-005 : traits sombres fins cousus par-dessus les remplissages (mode formes).
     bool dark_lines{false};
     double dark_lines_width_mm{1.6};
@@ -91,6 +96,9 @@ struct DigitizeSettings {
     int stipple_seed{1};
     bool stipple_invert{false};
 };
+
+// Valide la grammaire de `DigitizeSettings::pre` sans toucher d'image.
+[[nodiscard]] Result<void> validate_pre_spec(const std::string& spec);
 
 struct DigitizeReport {
     std::size_t image_width_px{0};

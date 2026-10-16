@@ -133,7 +133,7 @@ struct FidelityData {
 
 Result<FidelityData> compute_fidelity(const document::Project& project, const ThreadModel& model,
                                       const ThreadRaster& raster, const FidelityOptions& opt) {
-    const image::Image& src = project.original;
+    const image::Image src = detail::working_image(project);
     if (src.empty()) {
         return std::unexpected(
             make_error(ErrorCategory::OperationImpossible,
@@ -332,6 +332,7 @@ struct DensityData {
 
 Result<DensityData> compute_density(const document::Project& project, const ThreadModel& model,
                                     const DensityOptions& opt) {
+    const image::Image work = detail::working_image(project);
     if (!(opt.cell_mm > 0.05) || !(opt.reference_spacing_mm > 0.0)) {
         return std::unexpected(
             make_error(ErrorCategory::UserInput,
@@ -442,9 +443,9 @@ Result<DensityData> compute_density(const document::Project& project, const Thre
                   {"x_mm", round_to(x_mm, 2)},
                   {"y_mm", round_to(y_mm, 2)},
                   {"objects", ids}};
-        if (!project.original.empty()) {
-            h["x_px"] = static_cast<int>(detail::mm_to_px_x(x_mm, project.original.width, mmpp));
-            h["y_px"] = static_cast<int>(detail::mm_to_px_y(y_mm, project.original.height, mmpp));
+        if (!work.empty()) {
+            h["x_px"] = static_cast<int>(detail::mm_to_px_x(x_mm, work.width, mmpp));
+            h["y_px"] = static_cast<int>(detail::mm_to_px_y(y_mm, work.height, mmpp));
         }
         out.hotspots.push_back(h);
         hotspots.push_back(h);
@@ -546,18 +547,18 @@ double angle_deviation(double a, double b) {
 
 Result<FidelityReport> measure_fidelity(const document::Project& project,
                                         const FidelityOptions& options) {
+    const image::Image work = detail::working_image(project);
     auto model = detail::build_thread_model(project);
     if (!model) {
         return std::unexpected(model.error());
     }
-    if (project.original.empty()) {
+    if (work.empty()) {
         return std::unexpected(
             make_error(ErrorCategory::OperationImpossible,
                        "fidélité impossible : le projet n'a pas d'image source"));
     }
-    const auto raster =
-        detail::rasterize_threads(*model, project.original.width, project.original.height,
-                                  project.mm_per_px.value, options.thread_mm);
+    const auto raster = detail::rasterize_threads(*model, work.width, work.height,
+                                                  project.mm_per_px.value, options.thread_mm);
     auto data = compute_fidelity(project, *model, raster, options);
     if (!data) {
         return std::unexpected(data.error());
@@ -567,6 +568,7 @@ Result<FidelityReport> measure_fidelity(const document::Project& project,
 
 Result<DensityReport> measure_density(const document::Project& project,
                                       const DensityOptions& options) {
+    const image::Image work = detail::working_image(project);
     auto model = detail::build_thread_model(project);
     if (!model) {
         return std::unexpected(model.error());
@@ -578,7 +580,13 @@ Result<DensityReport> measure_density(const document::Project& project,
     return std::move(data->report);
 }
 
+std::pair<int, int> working_size(const document::Project& project) {
+    const image::Image work = detail::working_image(project);
+    return {work.width, work.height};
+}
+
 Result<LocateReport> locate_objects(const document::Project& project, const LocateQuery& query) {
+    const image::Image work = detail::working_image(project);
     auto model = detail::build_thread_model(project);
     if (!model) {
         return std::unexpected(model.error());
@@ -634,9 +642,9 @@ Result<LocateReport> locate_objects(const document::Project& project, const Loca
     }
     const double mmpp = project.mm_per_px.value;
     json q = {{"x_mm", query.x_mm}, {"y_mm", query.y_mm}, {"radius_mm", query.radius_mm}};
-    if (!project.original.empty()) {
-        q["x_px"] = round_to(detail::mm_to_px_x(query.x_mm, project.original.width, mmpp), 1);
-        q["y_px"] = round_to(detail::mm_to_px_y(query.y_mm, project.original.height, mmpp), 1);
+    if (!work.empty()) {
+        q["x_px"] = round_to(detail::mm_to_px_x(query.x_mm, work.width, mmpp), 1);
+        q["y_px"] = round_to(detail::mm_to_px_y(query.y_mm, work.height, mmpp), 1);
     }
     json doc = {{"schema", kLocateSchema},
                 {"query", q},
@@ -663,6 +671,7 @@ Result<LocateReport> locate_objects(const document::Project& project, const Loca
 }
 
 Result<DiagnoseReport> diagnose_project(const document::Project& project) {
+    const image::Image work = detail::working_image(project);
     auto model = detail::build_thread_model(project);
     if (!model) {
         return std::unexpected(model.error());
@@ -675,7 +684,7 @@ Result<DiagnoseReport> diagnose_project(const document::Project& project) {
         report.findings.push_back(std::move(f));
     };
     const double mmpp = project.mm_per_px.value;
-    const bool hasImage = !project.original.empty();
+    const bool hasImage = !work.empty();
     const double motifW = model->max_x - model->min_x;
     const double motifH = model->max_y - model->min_y;
     const double motifDiag = std::hypot(motifW, motifH);
@@ -690,8 +699,8 @@ Result<DiagnoseReport> diagnose_project(const document::Project& project) {
     // 1. Motif plus grand que l'image source : points aberrants (défaut des poignées de Bézier,
     //    trouvé à 2 m du motif).
     if (hasImage) {
-        const double halfW = project.original.width * mmpp / 2.0 + 3.0;
-        const double halfH = project.original.height * mmpp / 2.0 + 3.0;
+        const double halfW = work.width * mmpp / 2.0 + 3.0;
+        const double halfH = work.height * mmpp / 2.0 + 3.0;
         std::set<std::uint64_t> out;
         for (const auto& s : model->segs) {
             if (std::fabs(s.ax) > halfW || std::fabs(s.bx) > halfW || std::fabs(s.ay) > halfH ||
@@ -706,8 +715,8 @@ Result<DiagnoseReport> diagnose_project(const document::Project& project) {
             f.message = "Des points sortent de l'image source (motif de " +
                         std::to_string(static_cast<int>(motifW)) + " x " +
                         std::to_string(static_cast<int>(motifH)) + " mm pour une image de " +
-                        std::to_string(static_cast<int>(project.original.width * mmpp)) + " x " +
-                        std::to_string(static_cast<int>(project.original.height * mmpp)) +
+                        std::to_string(static_cast<int>(work.width * mmpp)) + " x " +
+                        std::to_string(static_cast<int>(work.height * mmpp)) +
                         " mm) : géométrie aberrante.";
             f.suggestion = "Inspecter ces objets (`project inspect --object ID --geometry`) ; "
                            "essayer sans --curve-tolerance.";
@@ -796,8 +805,7 @@ Result<DiagnoseReport> diagnose_project(const document::Project& project) {
 
     // 4. Tissu visible à l'intérieur du motif.
     if (hasImage) {
-        const auto raster = detail::rasterize_threads(*model, project.original.width,
-                                                      project.original.height, mmpp, 0.55);
+        const auto raster = detail::rasterize_threads(*model, work.width, work.height, mmpp, 0.55);
         FidelityOptions fo;
         auto fid = compute_fidelity(project, *model, raster, fo);
         if (fid) {
@@ -817,8 +825,8 @@ Result<DiagnoseReport> diagnose_project(const document::Project& project) {
                                "--min-region-mm2 plus bas.";
                 if (!fid->holes.empty()) {
                     f.at_mm = std::array<double, 2>{
-                        detail::px_to_mm_x(fid->holes[0].cx, project.original.width, mmpp),
-                        detail::px_to_mm_y(fid->holes[0].cy, project.original.height, mmpp)};
+                        detail::px_to_mm_x(fid->holes[0].cx, work.width, mmpp),
+                        detail::px_to_mm_y(fid->holes[0].cy, work.height, mmpp)};
                 }
                 add(std::move(f));
             }
@@ -921,10 +929,9 @@ Result<DiagnoseReport> diagnose_project(const document::Project& project) {
         if (f.at_mm) {
             j["at_mm"] = {round_to((*f.at_mm)[0], 2), round_to((*f.at_mm)[1], 2)};
             if (hasImage) {
-                j["at_px"] = {static_cast<int>(
-                                  detail::mm_to_px_x((*f.at_mm)[0], project.original.width, mmpp)),
-                              static_cast<int>(detail::mm_to_px_y((*f.at_mm)[1],
-                                                                  project.original.height, mmpp))};
+                j["at_px"] = {
+                    static_cast<int>(detail::mm_to_px_x((*f.at_mm)[0], work.width, mmpp)),
+                    static_cast<int>(detail::mm_to_px_y((*f.at_mm)[1], work.height, mmpp))};
             }
         }
         arr.push_back(std::move(j));

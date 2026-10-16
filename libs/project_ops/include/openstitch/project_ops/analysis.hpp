@@ -73,6 +73,10 @@ struct DensityReport {
 [[nodiscard]] Result<DensityReport> measure_density(const document::Project& project,
                                                     const DensityOptions& options = {});
 
+// Dimensions (px) de l'image de travail (source passée par `project.ops`) : le repère de la
+// segmentation et de tous les outils d'analyse. {0, 0} sans image.
+[[nodiscard]] std::pair<int, int> working_size(const document::Project& project);
+
 // --- Qui a cousu ce point ? -------------------------------------------------------------------
 struct LocateQuery {
     double x_mm{0.0}; // repère modèle (Y vers le haut), origine au centre de l'image source

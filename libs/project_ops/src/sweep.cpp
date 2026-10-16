@@ -123,6 +123,16 @@ const std::vector<Setting>& settings_table() {
         {"hidden-travel-max", number(&DigitizeSettings::hidden_max_mm)},
         {"single-path", flag(&DigitizeSettings::single_path)},
         {"coherent-lines", flag(&DigitizeSettings::coherent_lines)},
+        {"pre",
+         [](DigitizeSettings& s, const std::string& v) {
+             // `none` = aucun ; `+` enchaîne les opérations (la virgule sépare les valeurs).
+             const std::string spec = v == "none" ? std::string{} : v;
+             if (!validate_pre_spec(spec)) {
+                 return false;
+             }
+             s.pre = spec;
+             return true;
+         }},
         {"stipple-points", number(&DigitizeSettings::stipple_points)},
         {"mode", choice(&DigitizeSettings::mode, {"shapes", "contours", "stipple"})},
         {"technique",

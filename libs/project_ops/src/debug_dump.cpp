@@ -55,7 +55,7 @@ Result<void> write_debug_dir(const std::filesystem::path& dir, const document::P
                                      "dossier de diagnostic impossible : " + dir.string(),
                                      {}});
     }
-    const image::Image& src = project.original;
+    const image::Image src = detail::working_image(project);
     if (src.empty()) {
         return {};
     }

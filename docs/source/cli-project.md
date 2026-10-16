@@ -90,7 +90,11 @@ Numérise l'image (mêmes réglages et défauts que `digitize` : `--mode
 shapes|contours|stipple`, `--max-colors`, `--min-region-px`, `--smoothing-px`,
 `--skip-background auto|yes|no`, `--min-feature-mm`, `--min-region-mm2`,
 `--curve-tolerance`, `--satin-bands`, `--detail`, `--technique`, `--single-path`,
-`--coherent-lines`, `--island-cleanup`, `--island-max-delta-e`, `--dark-lines`
+`--coherent-lines`, `--pre` (traitements d'image avant segmentation : `median[:1|2]`,
+`bilateral[:1..3]`, `quantize[:N]`, `contrast:B:C`, `gray`, `crop:x:y:w:h`, `flip:h|v`, `rotate:1..3`,
+enchaînés par `+` ; stockés dans `project.ops`, `original` reste la source ; les outils d'analyse
+et `at --px` travaillent sur l'image de travail ; axe de balayage `pre=none,median:1,…`),
+`--island-cleanup`, `--island-max-delta-e`, `--dark-lines`
 (`--dark-lines-width`, `--dark-lines-lightness`, `--dark-lines-bars`, `--dark-lines-min-length`,
 `--dark-lines-objects-only`), `--fill-inset`, `--fill-overlap`, `--no-underpath`, `--stipple-*`,
 `--trim-threshold`, `--lock`, `--hidden-travel*`, `--dpi`). En plus : `--debug-dir DOSSIER`

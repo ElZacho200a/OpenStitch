@@ -26,6 +26,14 @@ std::size_t ThreadModel::rank_of(std::uint32_t id) const {
                                                        : it->second;
 }
 
+image::Image working_image(const document::Project& project) {
+    if (project.ops.empty()) {
+        return project.original;
+    }
+    auto out = image::apply_pipeline(project.original, project.ops);
+    return out ? std::move(*out) : image::Image{};
+}
+
 Result<ThreadModel> build_thread_model(const document::Project& project) {
     auto sequence = stitch_generation::effective_sequence(project);
     if (!sequence) {
