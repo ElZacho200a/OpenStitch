@@ -382,3 +382,42 @@ TEST_CASE("couche de traits : min_line_length_mm ecarte les fragments isoles tro
     CHECK(mDrop.line_pixels >= 250); // le long trait reste
     CHECK(mDrop.line_pixels + mDrop.short_fragment_pixels <= mKeep.line_pixels + 5);
 }
+
+namespace {
+
+// 120 x 80 : fond beige, grande zone rouge, un trait noir horizontal de 3 px DANS la zone, bordé de
+// deux rangées de pixels sombres un peu moins foncés (anti-crénelage) : trop clairs pour le seuil
+// des traits mais étiquetés dans la région noire par la quantification.
+image::Image scene_rope_with_halo() {
+    image::Image img;
+    img.width = 120;
+    img.height = 80;
+    img.rgba.assign(static_cast<std::size_t>(img.width) * img.height * 4, 0);
+    fill_rect(img, 0, 0, 120, 80, 230, 220, 200);
+    fill_rect(img, 10, 10, 110, 70, 200, 60, 40);
+    fill_rect(img, 20, 38, 100, 41, 5, 5, 15);   // le trait
+    fill_rect(img, 20, 37, 100, 38, 60, 45, 65); // halo anti-crénelé
+    fill_rect(img, 20, 41, 100, 42, 60, 45, 65);
+    return img;
+}
+
+} // namespace
+
+TEST_CASE("couche de traits : objects_only garde un hauban dont le halo est dans la region noire") {
+    const auto img = scene_rope_with_halo();
+    const auto seg = segmentation::segment(img, {.max_colors = 3, .min_region_px = 4});
+    REQUIRE(seg.has_value());
+    ContourOptions co;
+    co.technique = ContourTechnique::Running;
+    LineLayerOptions only;
+    only.enabled = true;
+    only.objects_only = true;
+    LineLayerMetrics m;
+    IdGenerator<ObjectId> ids;
+    REQUIRE(auto_digitize_with_lines(*seg, img, ids, options(), only, co, &m).has_value());
+    INFO("cousus=" << m.line_pixels << " separation=" << m.separation_pixels);
+    // Un seul voisin réel (la zone rouge) : c'est un objet, pas une séparation. Avant le correctif,
+    // « rouge + région noire » suffisait à l'écarter.
+    CHECK(m.line_pixels >= 200);
+    CHECK(m.separation_pixels * 4 <= m.line_pixels);
+}

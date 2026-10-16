@@ -23,14 +23,23 @@ double cielab_lightness(const std::array<std::uint8_t, 3>& rgb) {
 // Pixels de `mask` dont le voisinage (fenêtre de rayon `radius`, pixels hors `mask`) contient au
 // moins deux régions de couleurs différentes : séparations entre deux zones, pas des objets.
 // Un voisin « fond » (label 0) ne compte pas : le contour du motif reste un trait.
+//
+// Les régions de la couleur des traits eux-mêmes (clarté <= `line_lightness`) ne comptent pas comme
+// zone voisine : les pixels anti-crénelés d'un trait y sont étiquetés, si bien qu'un hauban sur le
+// ciel aurait vu « ciel + noir » et passé pour une séparation (mesuré : presque tous les cordages
+// d'un navire étaient écartés).
 std::vector<char> separation_mask(const segmentation::Segmentation& seg,
-                                  const std::vector<char>& mask, int radius) {
+                                  const std::vector<char>& mask, int radius,
+                                  double line_lightness) {
     const int w = seg.width;
     const int h = seg.height;
     std::vector<std::uint32_t> colour(seg.region_slots.size() + 1, 0);
     for (std::size_t i = 0; i < seg.region_slots.size(); ++i) {
         if (seg.region_slots[i]) {
             const auto& c = seg.region_slots[i]->rgb;
+            if (cielab_lightness(c) <= line_lightness + 1.0) {
+                continue; // la couleur des traits eux-mêmes : pas une zone voisine
+            }
             colour[i + 1] =
                 0x1000000u | (std::uint32_t{c[0]} << 16) | (std::uint32_t{c[1]} << 8) | c[2];
         }
@@ -236,13 +245,17 @@ Result<AutoResult> auto_digitize_with_lines(const segmentation::Segmentation& se
     // `objects_only`, les séparations entre deux zones sont exclues (elles restent retirées des
     // remplissages, rendues aux zones voisines, mais ne sont pas cousues).
     std::vector<char> stitchMask = mask;
+    std::vector<char> sepDebug;
     std::size_t separationPixels = 0;
     if (lines.objects_only) {
         const int radius = std::max(2, diameter / 2 + 1);
-        const std::vector<char> sep = separation_mask(seg, mask, radius);
+        const std::vector<char> sep = separation_mask(seg, mask, radius, lineLightness);
         std::vector<char> kept(mask.size(), 0);
         for (std::size_t i = 0; i < mask.size(); ++i) {
             kept[i] = (mask[i] != 0 && sep[i] == 0) ? 1 : 0;
+        }
+        if (lines.masks != nullptr) {
+            sepDebug = sep;
         }
         stitchMask = close_within(kept, mask, seg.width, seg.height, 2);
         separationPixels =
@@ -250,9 +263,26 @@ Result<AutoResult> auto_digitize_with_lines(const segmentation::Segmentation& se
             static_cast<std::size_t>(std::count(stitchMask.begin(), stitchMask.end(), char{1}));
     }
     std::size_t shortPixels = 0;
+    std::vector<char> beforeShort;
+    if (lines.masks != nullptr) {
+        beforeShort = stitchMask;
+    }
     if (lines.min_line_length_mm > 0.0) {
         shortPixels = drop_short_components(stitchMask, seg.width, seg.height,
                                             lines.min_line_length_mm / px_mm);
+    }
+    if (lines.masks != nullptr) {
+        LineLayerMasks& m = *lines.masks;
+        m.width = seg.width;
+        m.height = seg.height;
+        m.thin = mask;
+        m.bars = barsMask;
+        m.separation = sepDebug;
+        m.stitched = stitchMask;
+        m.short_frag.assign(mask.size(), 0);
+        for (std::size_t i = 0; i < beforeShort.size(); ++i) {
+            m.short_frag[i] = (beforeShort[i] != 0 && stitchMask[i] == 0) ? 1 : 0;
+        }
     }
     const std::size_t stitchPixels =
         static_cast<std::size_t>(std::count(stitchMask.begin(), stitchMask.end(), char{1}));
@@ -410,6 +440,8 @@ Result<AutoResult> auto_digitize_with_lines(const segmentation::Segmentation& se
     }
     if (metrics != nullptr) {
         metrics->line_pixels = stitchPixels;
+        metrics->line_lightness = lineLightness;
+        metrics->line_rgb = lineRgb;
         metrics->separation_pixels = separationPixels;
         metrics->bar_pixels = barsPixels;
         metrics->short_fragment_pixels = shortPixels;
