@@ -1,4 +1,6 @@
 find_package(OpenCV CONFIG REQUIRED COMPONENTS core imgproc)
+# Boost.Polygon (BSL-1.0) : diagramme de Voronoi de segments, encapsulé dans medial_axis.cpp.
+find_package(boost_polygon CONFIG REQUIRED)
 
 add_library(openstitch_auto_satin
     src/raster.cpp
@@ -14,6 +16,7 @@ add_library(openstitch_auto_satin
     src/axis_sampler.cpp
     src/skeleton_satin.cpp
     src/coverage.cpp
+    src/medial_axis.cpp
     src/parallel_sweep.cpp
     src/satin_strategy.cpp
 )
@@ -23,5 +26,5 @@ target_include_directories(openstitch_auto_satin PUBLIC include)
 # OpenCV en PRIVATE : rasterisation + transformée de distance encapsulées.
 target_link_libraries(openstitch_auto_satin
     PUBLIC openstitch::core openstitch::geometry
-    PRIVATE opencv_core opencv_imgproc openstitch::warnings
+    PRIVATE opencv_core opencv_imgproc Boost::polygon openstitch::warnings
 )

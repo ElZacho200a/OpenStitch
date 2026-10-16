@@ -123,3 +123,35 @@ TEST_CASE("auto_satin_service est deterministe", "[project_ops][auto_satin]") {
     CHECK(a->messages == b->messages);
     CHECK(a->params == b->params);
 }
+
+TEST_CASE("auto_satin_service : la methode choisie accepte un disque sans axe compact",
+          "[project_ops][auto_satin]") {
+    for (const auto strategy :
+         {document::AutoSatinStrategy::ParallelSweep, document::AutoSatinStrategy::MedialAxis}) {
+        INFO(document::auto_satin_strategy_id(strategy));
+        document::Project project;
+        const ObjectId vec = add_vector(project, true, 10.0, 10.0);
+        project_ops::AutoSatinPlanRequest request;
+        request.strategy = strategy;
+        const auto plan = project_ops::plan_auto_satin(project, vec, request);
+        REQUIRE(plan.has_value());
+        CHECK(plan->accepted);
+        CHECK(plan->columns > 0);
+        CHECK(plan->params.strategy == strategy); // la methode est posee sur l'objet
+        CHECK(plan->coverage_ratio > 0.9);
+    }
+}
+
+TEST_CASE("auto_satin_service : l'angle de balayage est transmis a l'objet",
+          "[project_ops][auto_satin]") {
+    document::Project project;
+    const ObjectId vec = add_vector(project, false, 30.0, 6.0);
+    project_ops::AutoSatinPlanRequest request;
+    request.strategy = document::AutoSatinStrategy::ParallelSweep;
+    request.sweep_angle = Angle{0.5};
+    const auto plan = project_ops::plan_auto_satin(project, vec, request);
+    REQUIRE(plan.has_value());
+    REQUIRE(plan->accepted);
+    REQUIRE(plan->params.sweep_angle.has_value());
+    CHECK(plan->params.sweep_angle->radians == 0.5);
+}

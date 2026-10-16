@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <cmath>
 
+#include "openstitch/auto_satin/medial_axis_satin.hpp"
 #include "openstitch/auto_satin/parallel_sweep.hpp"
 
 namespace openstitch::auto_satin {
@@ -40,6 +41,8 @@ std::string_view strategy_id(SatinStrategy strategy) {
         return "skeleton";
     case SatinStrategy::ParallelSweep:
         return "parallel_sweep";
+    case SatinStrategy::MedialAxis:
+        return "medial_axis";
     }
     return "skeleton";
 }
@@ -50,12 +53,14 @@ std::string_view strategy_label(SatinStrategy strategy) {
         return "Squelette (actuel)";
     case SatinStrategy::ParallelSweep:
         return "Balayage parallèle";
+    case SatinStrategy::MedialAxis:
+        return "Axe médian vectoriel";
     }
     return "Squelette (actuel)";
 }
 
 std::vector<SatinStrategy> available_strategies() {
-    return {SatinStrategy::Skeleton, SatinStrategy::ParallelSweep};
+    return {SatinStrategy::Skeleton, SatinStrategy::ParallelSweep, SatinStrategy::MedialAxis};
 }
 
 Result<SkeletonSatinResult> generate_satin(const geometry::PathSet& region,
@@ -65,6 +70,8 @@ Result<SkeletonSatinResult> generate_satin(const geometry::PathSet& region,
         return generate_skeleton_satin(region, params);
     case SatinStrategy::ParallelSweep:
         return generate_parallel_sweep(region, params);
+    case SatinStrategy::MedialAxis:
+        return generate_medial_axis_satin(region, params);
     }
     return generate_skeleton_satin(region, params);
 }

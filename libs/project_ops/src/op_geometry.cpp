@@ -912,6 +912,26 @@ OpStatus op_auto_satin(OpContext& ctx) {
         }
         request.compact_axis = it->get<bool>();
     }
+    if (const auto it = ctx.args.find("strategy"); it != ctx.args.end() && !it->is_null()) {
+        const auto parsed = it->is_string()
+                                ? document::parse_auto_satin_strategy(it->get<std::string>())
+                                : std::nullopt;
+        if (!parsed) {
+            return usage("argument « strategy » : « skeleton », « parallel_sweep » ou "
+                         "« medial_axis » attendu");
+        }
+        request.strategy = *parsed;
+    }
+    double sweep_deg = 0.0;
+    bool sweep_present = false;
+    if (auto st =
+            read_number(ctx, "sweep_angle_deg", -360.0, 360.0, false, sweep_deg, sweep_present);
+        !st.ok) {
+        return st;
+    }
+    if (sweep_present) {
+        request.sweep_angle = Angle{sweep_deg * std::numbers::pi / 180.0};
+    }
     if (auto st = read_guides(ctx, request.guides); !st.ok) {
         return st;
     }
@@ -1087,6 +1107,13 @@ void register_geometry_ops(std::vector<OpSpec>& out) {
           "[0.1 ; 1.5]"},
          {"compact_axis", "boolean", "", "forme compacte : axe synthétique au lieu d'un refus",
           false, ""},
+         {"strategy", "string", "",
+          "méthode : skeleton (défaut), parallel_sweep (balayage parallèle) ou medial_axis "
+          "(axe médian vectoriel)",
+          false, "skeleton | parallel_sweep | medial_axis"},
+         {"sweep_angle_deg", "number", "°",
+          "balayage parallèle : angle des traversées (défaut : automatique)", false,
+          "[-360 ; 360]"},
          {"guides", "array", "", "guides [{anchor_mm:[x,y], angle_deg, absolute?}] d'orientation",
           false, "au plus 64"}},
         R"({"op":"auto_satin","object":1,"spacing_mm":0.4})",

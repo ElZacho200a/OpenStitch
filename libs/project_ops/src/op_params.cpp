@@ -188,6 +188,13 @@ const EnumTable<document::UnderlayMode>& underlay_mode_table() {
                                                      {"auto", document::UnderlayMode::Auto}};
     return t;
 }
+const EnumTable<document::AutoSatinStrategy>& auto_satin_strategy_table() {
+    static const EnumTable<document::AutoSatinStrategy> t{
+        {"skeleton", document::AutoSatinStrategy::Skeleton},
+        {"parallel_sweep", document::AutoSatinStrategy::ParallelSweep},
+        {"medial_axis", document::AutoSatinStrategy::MedialAxis}};
+    return t;
+}
 const EnumTable<optimization::OrderStrategy>& strategy_table() {
     static const EnumTable<optimization::OrderStrategy> t{
         {"document", optimization::OrderStrategy::Document},
@@ -328,6 +335,29 @@ Field<P> deg_field(std::string name, Proj proj, double lo, double hi) {
     };
     f.get = [=](const P& p) {
         return json(round6(std::invoke(proj, p).radians * 180.0 / std::numbers::pi));
+    };
+    return f;
+}
+
+// Angle facultatif en degrés : `null` l'efface (comportement automatique).
+template <class P, class Proj>
+Field<P> optional_deg_field(std::string name, Proj proj, double lo, double hi) {
+    Field<P> f;
+    f.name = name;
+    f.type = "number|null";
+    f.unit = "deg";
+    f.range = "[" + num(lo) + " ; " + num(hi) + "] ou null (automatique)";
+    f.set = [=](P& p, const json& v) {
+        if (v.is_null()) {
+            std::invoke(proj, p).reset();
+            return;
+        }
+        const double d = number_in_range(name, v, lo, hi, "deg");
+        std::invoke(proj, p) = Angle{d * std::numbers::pi / 180.0};
+    };
+    f.get = [=](const P& p) {
+        const auto& a = std::invoke(proj, p);
+        return a ? json(round6(a->radians * 180.0 / std::numbers::pi)) : json(nullptr);
     };
     return f;
 }
@@ -778,6 +808,8 @@ const std::vector<Field<document::AutoSatinParams>>& fields_of<document::AutoSat
         v.push_back(mm_field<P>("split_threshold_mm", &P::split_threshold, 1.0, 20.0));
         v.push_back(mm_field<P>("split_length_mm", &P::split_length, 0.5, 20.0));
         v.push_back(bool_field<P>("compact_axis", &P::compact_axis));
+        v.push_back(enum_field<P>("strategy", &P::strategy, auto_satin_strategy_table()));
+        v.push_back(optional_deg_field<P>("sweep_angle_deg", &P::sweep_angle, -360.0, 360.0));
         v.push_back(auto_satin_guides_field<P>("guides"));
         add_satin_common<P>(v);
         return v;

@@ -47,6 +47,7 @@ inline AutoSatinParameters stable_skeleton_analysis() {
 enum class SatinStrategy {
     Skeleton,      // Zhang-Suen, axes, traversées orientées (moteur actuel)
     ParallelSweep, // balayage parallèle : droites à angle constant, bandes continues
+    MedialAxis,    // axe médian vectoriel (Voronoï des segments du contour)
 };
 
 struct SkeletonSatinParameters {

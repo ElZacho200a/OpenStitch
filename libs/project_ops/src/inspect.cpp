@@ -269,6 +269,8 @@ json params_json(const document::StitchParams& params, bool full) {
                 j["lock_passes"] = p.lock_passes;
                 j["underlay_mode"] = underlay_mode_name(p.underlay_mode);
                 j["compact_axis"] = p.compact_axis;
+                j["strategy"] = std::string(document::auto_satin_strategy_id(p.strategy));
+                j["sweep_angle_deg"] = p.sweep_angle ? json(deg(*p.sweep_angle)) : json(nullptr);
                 json guides = json::array();
                 for (const auto& g : p.guides) {
                     guides.push_back(json{{"anchor_mm", point_mm(g.anchor)},

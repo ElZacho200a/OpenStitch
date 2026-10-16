@@ -14,14 +14,16 @@ namespace openstitch::project_ops {
 
 // Service Qt-free équivalent de ce que fait le bureau (`MainWindow::stitchParamsForType`,
 // type « satin ») : même contour source (`pristine` = contour brut de la région quand il
-// existe), même moteur (`auto_satin::generate_skeleton_satin` avec ses diagnostics), mêmes
+// existe), même moteur (`auto_satin::generate_satin` avec ses diagnostics), mêmes
 // refus nommés. AUCUNE seconde implémentation, aucun repli silencieux sur une géométrie de
 // moindre qualité : si le moteur ne construit aucune colonne, le plan est refusé avec ses
 // messages.
 struct AutoSatinPlanRequest {
     std::optional<Micrometers> spacing; // défaut : celui d'`AutoSatinParams` (0,4 mm)
     bool compact_axis{false};           // formes compactes : axe synthétique (cf. moteur)
-    bool use_pristine_contour{true};    // contour brut de la région source si disponible
+    document::AutoSatinStrategy strategy{document::AutoSatinStrategy::Skeleton}; // méthode
+    std::optional<Angle> sweep_angle; // balayage parallèle : angle explicite (sinon auto)
+    bool use_pristine_contour{true};  // contour brut de la région source si disponible
     std::vector<document::AutoSatinGuide> guides;
 };
 

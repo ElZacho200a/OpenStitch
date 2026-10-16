@@ -8,6 +8,7 @@
     "spdlog",
     "cli11",
     "clipper2",
+    "boost-polygon",
     "nlohmann-json",
     "minizip-ng",
     "pugixml",
