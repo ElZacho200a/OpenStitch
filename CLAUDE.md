@@ -44,7 +44,8 @@ build\msvc\tests\unit\stitch\Debug\test_stitch.exe "some name"   # run one Catch
 build\msvc\tests\unit\stitch\Debug\test_stitch.exe "[tag]"       # or by Catch2 tag
 ```
 
-`linux-core` preset builds the core libs + CLI **without Qt** — a portability
+`linux-core` preset builds the core libs + CLI **without Qt** (without vcpkg, e.g. in a sandbox that
+blocks GitHub archives: `scripts/linux-core-setup.sh` — apt + git clones + a Boost.Polygon shim) — a portability
 guard, not a full app build; there is no desktop build on Linux yet.
 
 Format check (matches CI, does not modify files):

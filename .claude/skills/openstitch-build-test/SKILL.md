@@ -118,32 +118,17 @@ n'a pas été faite (Release, desktop, format), le dire.
 ## 6. Compiler le CLI dans le conteneur cloud Linux (sans vcpkg)
 
 Le preset `linux-core` suppose `VCPKG_ROOT`, mais dans l'environnement cloud le proxy répond
-**403 sur `github.com/.../archive/*.tar.gz`** (utilisé par vcpkg) : `cmake --preset linux-core`
-échoue au téléchargement de CLI11. Ne pas réessayer ni contourner ; à la place (vérifié le
-2026-10-15, g++ 13, CLI compilé en ~3 min, 138 cibles) :
+**403 sur `github.com/.../archive/*.tar.gz`** (utilisé par vcpkg) : `cmake --preset linux-core` échoue
+au téléchargement de CLI11. Ne pas réessayer ni contourner. Un script reproductible fait le travail
+(vérifié de zéro le 2026-10-16) :
 
 ```bash
-apt-get install -y libopencv-dev libspdlog-dev libfmt-dev nlohmann-json3-dev libcli11-dev \
-    libpugixml-dev catch2 libfreetype-dev zlib1g-dev libzstd-dev liblzma-dev libbz2-dev libssl-dev
-# Absents d'apt : Clipper2 et minizip-ng, depuis un clone git (git est autorisé), dans le scratchpad
-git clone --depth 1 --branch Clipper2_2.0.1 https://github.com/AngusJohnson/Clipper2
-cmake -S Clipper2/CPP -B c2b -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=$P \
-    -DCLIPPER2_UTILS=OFF -DCLIPPER2_EXAMPLES=OFF -DCLIPPER2_TESTS=OFF -DCMAKE_POSITION_INDEPENDENT_CODE=ON
-git clone --depth 1 --branch 4.1.0 https://github.com/zlib-ng/minizip-ng
-cmake -S minizip-ng -B mzb -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=$P \
-    -DMZ_COMPAT=OFF -DMZ_FETCH_LIBS=OFF -DMZ_LIBCOMP=OFF -DMZ_ICONV=OFF -DMZ_OPENSSL=OFF -DMZ_BUILD_TESTS=OFF
-# (build + install chacun avec cmake --build / --install)
-cmake -S . -B $SCRATCH/build -G Ninja -DCMAKE_BUILD_TYPE=Release -DOPENSTITCH_BUILD_DESKTOP=OFF \
-    -DCMAKE_PREFIX_PATH=$P
-cmake --build $SCRATCH/build --target openstitch-cli -j4
+scripts/linux-core-setup.sh --prefix $SCRATCH/deps --build $SCRATCH/build --jobs 4
+# -> $SCRATCH/build/apps/cli/openstitch-cli ; --tests pour construire et lancer ctest
 ```
 
-Depuis la fusion de `main` du 2026-10-16 (lot B auto-satin), `libs/auto_satin` exige
-`find_package(boost_polygon CONFIG)` : `apt-get install -y libboost-dev` fournit les en-têtes mais
-pas ce fichier de configuration (propre à vcpkg). Cale d'environnement, hors dépôt :
-`$P/lib/cmake/boost_polygon/boost_polygon-config.cmake` créant `Boost::polygon` en cible
-INTERFACE avec `INTERFACE_INCLUDE_DIRECTORIES /usr/include`.
-
-Le build va dans le scratchpad, pas dans `build/` du dépôt. Versions apt (OpenCV 4.6, fmt 9)
-différentes de celles de vcpkg : le CLI compile et ses mesures reproduisent celles du skill
-`openstitch-digitize`, mais les tests complets n'ont pas été lancés dans cette configuration.
+Il installe les paquets apt, clone Clipper2 (2.0.1) et minizip-ng (4.1.0) depuis git (autorisé),
+les installe dans le préfixe, crée la cale `boost_polygon` (apt fournit les en-têtes mais pas le fichier
+de configuration CMake par composant de vcpkg) puis configure et compile le CLI. Idempotent. Versions
+d'apt (OpenCV 4.6, fmt 9, CLI11 2.4) différentes de vcpkg : les mesures sont identiques, mais le test
+`cli_help` échoue (CLI11 écrit « Positionals », attendu « POSITIONALS »). Lancer `ctest` **sans `-j`**.

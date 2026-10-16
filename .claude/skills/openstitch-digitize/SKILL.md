@@ -26,34 +26,49 @@ automatique. Chaque règle porte la mesure qui la justifie. Documentation de ré
 Binaire : `openstitch-cli` (voir `openstitch-build-test` pour le build). Sorties dans le
 **scratchpad**, jamais à la racine du dépôt.
 
-**Méthode recommandée : le script `scripts/workflow.sh`** (image → `.osp` → DST → cadre →
-contrôle → palette réelle → rendu, en une commande ; il encode les pièges de la section 8) :
+**Boucle de travail (tout est dans le CLI, déterministe, sans script maison) :**
+
+1. **Comparer des réglages d'un coup** : `project sweep` (grille d'options → tableau objectif + planche de
+   zooms réalistes). C'est le point d'entrée, avant tout essai à la main.
+2. **Numériser la variante retenue** : `workflow.sh` (ci-dessous) ou `project digitize … --debug-dir`.
+3. **Chercher les défauts** : `project diagnose` (détecteurs avec objets et option conseillée), puis
+   `project fidelity --map`, `project density --heatmap`.
+4. **Voir comme l'utilisateur** : `project render` (réaliste, fond vert), zoom avec `--crop`.
+5. **Pourquoi cet endroit est-il ainsi ?** `project at --px X,Y` (quel objet, quel type, quels
+   paramètres) et `digitize --debug-dir` (`traits.png` : rouge = trait cousu, bleu = barre, vert =
+   séparation non cousue, orange = fragment trop court).
 
 ```bash
+# 1. balayage : 8 variantes en ~40 s, tableau + planche
+openstitch-cli project sweep img.png --dpi 122.6 --max-colors 12 --dark-lines --dark-lines-bars 4 \
+    --min-region-mm2 1 --fill-inset 0 --satin-bands --vary island-cleanup=0,20 \
+    --vary curve-tolerance=0,0.4 --vary no-underpath=0,1 --sheet $SCRATCH/planche.png \
+    --sheet-crop 0.12,0.3,0.46,0.72 --journal docs/journal.md --title "Mon image"
+# 2. variante retenue, de bout en bout (cadre, contrôle, diagnostic, fidélité, densité, rendu)
 CLI=/chemin/openstitch-cli .claude/skills/openstitch-digitize/scripts/workflow.sh \
     img.png $SCRATCH/v1 300 210 122.6 --max-colors 12 --dark-lines --dark-lines-bars 4 \
     --dark-lines-min-length 6 --min-region-mm2 1 --fill-inset 0 --satin-bands \
     --curve-tolerance 0.4 --no-underpath --hidden-travel
-python3 -I scripts/fidelity.py img.png $SCRATCH/v1/out.dst $SCRATCH/v1/pal.json 0.2072 $SCRATCH/v1/fid
 ```
 
-Arguments : image, dossier de sortie, largeur et hauteur du cadre (mm), dpi, puis les options de
-`digitize`. Une variante = un nouveau dossier ; comparer les blocs `stats` à la main.
+`workflow.sh` : image, dossier de sortie, largeur et hauteur du cadre (mm), dpi, puis les options de
+`digitize`. Il écrit `p.osp`, `out.dst`, `debug/` (masques), `realiste.png`, `fidelite.png`,
+`densite.png` et imprime les chiffres. Une variante = un nouveau dossier.
 
-Commandes unitaires (si besoin de plus fin) :
+Commandes unitaires :
 
 ```bash
-openstitch-cli digitize img.png sortie.dst --dpi 122.6 --max-colors 12 --output-svg diag.svg
 openstitch-cli stats sortie.dst        # points, sauts, coupes, changements de fil, dimensions
-openstitch-cli project digitize img.png -o p.osp --dst sortie.dst --dpi 122.6 ...   # .osp éditable
-openstitch-cli project inspect p.osp --json | python3 -I scripts/osp_palette.py pal.json --report
-python3 -I scripts/render_dst.py sortie.dst rendu.png --palette pal.json
+openstitch-cli project digitize img.png -o p.osp --dst sortie.dst --dpi 122.6 --debug-dir dbg
+openstitch-cli project diagnose p.osp                # défauts connus
+openstitch-cli project fidelity p.osp --map err.png  # tissu visible, détails perdus
+openstitch-cli project density p.osp --heatmap d.png # épaisseurs de fil
+openstitch-cli project at p.osp --px 640,410         # qui a cousu ce point ?
+openstitch-cli project render p.osp -o r.png --px-per-mm 14 --crop 0.1,0.25,0.5,0.75
 ```
 
-**Le rendu doit se faire avec `--palette` (vraie palette de l'`.osp`), pas avec `--source`** : la
-couleur déduite de l'image source est fausse dès que le DST est recadré ou que deux fils
-voisins se ressemblent, et un crème sur le fond beige du rendu est quasi invisible (voir §8,
-fausse alerte « le crème a disparu »).
+**Ne jamais juger sur un rendu de script en lignes** (fausses alertes de l'essai 1 : crème « disparu »,
+trous invisibles) : `project render` est le moteur de l'aperçu de l'application.
 
 Lire **dans cet ordre** :
 
@@ -146,6 +161,11 @@ juste avant l'export, jamais avant : il ne modifie ni l'ordre des couleurs ni la
 - Écrire des fichiers de travail dans le dépôt (les `.dst`, `.png` d'essai vont au scratchpad).
 
 ## 8. Journal d'apprentissage (erreurs faites, règles qui en sortent)
+
+> Les entrées ci-dessous citent des scripts Python écrits à la volée (`fidelity.py`, `green_holes.py`,
+> `render_dst.py` en lignes). Ils sont **remplacés par les commandes du CLI** (`project fidelity`,
+> `density`, `render`, `diagnose`, `sweep`, `digitize --debug-dir`), plus fiables : repère exact de
+> l'image source, plus de calage par boîte englobante.
 
 Chaque entrée : ce qui s'est passé, ce qui l'a corrigé, la mesure. Image de référence : le navire
 au soleil couchant (1448 × 1086 px, 7 teintes + fond beige `#E3D4BB`, `--dpi 122.6` → 290 × 201 mm).
@@ -247,6 +267,29 @@ Traits : `--dark-lines-objects-only` (séparation ou vrai objet, voir la doc) : 
 327 -> 135, coupes -12 %, voiles plus propres ; détails perdus 0,76 % -> 2,31 % (traits non cousus
 par choix) et quelques haubans fins perdus. Défaut restant, commun aux deux : autour du mât et de la
 coque le noir devient un amas de passes superposées, plus épais que les traits de la source.
+
+**Essai 9 (2026-10-16) : les outils d'analyse sont dans le CLI.**
+Bilan demandé : qu'est-ce qui aurait simplifié ma tâche ? Les tâches répétées sont devenues des
+commandes (`project sweep`, `fidelity`, `density`, `at`, `diagnose`, `render`, `digitize --debug-dir`,
+`scripts/linux-core-setup.sh`) et le corpus `[invariants]`. Gain mesuré : le balayage de 8 variantes qui
+demandait une quinzaine d'allers-retours est UNE commande de 40 s.
+
+Ce que les outils ont trouvé immédiatement, sans effort :
+- `digitize --debug-dir` (`traits.png`) : en mode `--dark-lines-objects-only`, presque tous les cordages
+  étaient classés « séparation » (vert) : les pixels anti-crénelés d'un trait sont étiquetés dans la
+  région noire, donc « ciel + noir » = deux zones. **Défaut corrigé** (voir la doc), avec un test qui
+  échoue sans le correctif. Cela explique pourquoi ce mode « perdait trop de cordages » (essai 5).
+- `project density --heatmap` : les surépaisseurs (rouge) ne sont pas dans les aplats (vert = 1 épaisseur)
+  mais le long des frontières entre zones, dans le gréement et dans la mer : c'est la mesure objective
+  du « chaotique ». 1 007 mm2 à >= 4 épaisseurs sur le navire (objet 468, satin crème, en tête).
+- `project diagnose` sur les anciens projets défectueux : bug des 2 m (erreur), 8e fil noir (info),
+  réseau géant de barres (avertissement), liaisons visibles (1,58 % contre 0,00 % avec `--no-underpath`).
+
+Erreurs de méthode : (a) mon test de classification passait avec ET sans le correctif : toujours
+vérifier qu'un test échoue sans le correctif (remplacer temporairement la ligne) ; (b) mon corpus
+d'invariants (fixture + image synthétique) passait AVEC le bug des poignées réintroduit : il fallait une
+image de stress (centaines de petits contours) ; (c) lancer une tâche longue dans un sous-shell détaché
+(`( … ) &`) la tue quand la commande se termine : utiliser `run_in_background` directement.
 
 **Essai 8 (2026-10-16) : « c'est bien mais c'est pas mal chaotique » + rendu réaliste headless.**
 Je jugeais à l'aveugle (rendu de script en lignes, mesure de bord). Ajout de `openstitch-cli project

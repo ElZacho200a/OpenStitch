@@ -510,6 +510,15 @@ cousus par-dessus » (largeur maximale en mm et clarté L\* maximale, mémorisé
 les dimensions de la segmentation, sinon l'image d'origine. Même routage que le CLI : point droit,
 parcours eulérien.
 
+**Correctif de la détection des séparations (2026-10-16).** `digitize --debug-dir` (image
+`traits.png`) a montré que presque tous les cordages d'un navire étaient classés « séparation » : les
+pixels anti-crénelés d'un trait sont étiquetés dans la région NOIRE par la quantification, donc un
+hauban sur le ciel voyait « ciel + noir » (deux couleurs) et était écarté. Les régions dont la clarté
+est celle des traits ne comptent plus comme zone voisine. Test (échoue sans le correctif :
+`cousus=0 separation=240`) : `objects_only garde un hauban dont le halo est dans la region noire`.
+Avec `--dark-lines-objects-only`, utiliser une longueur minimale plus faible (3 mm) : les cordages
+coupés aux frontières de voile donnent des fragments courts.
+
 **Séparation ou vrai objet (`--dark-lines-objects-only`).** Une illustration à contours noirs a deux
 sortes de traits sombres : ceux qui **séparent deux zones** (contour d'un nuage entre ciel et nuage,
 bord d'une voile) et ceux qui sont de **vrais objets** (hauban, mât, cordage sur une zone unie).
