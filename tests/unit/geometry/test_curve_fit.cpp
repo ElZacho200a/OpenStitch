@@ -173,3 +173,71 @@ TEST_CASE(
     CHECK(tight.nodes.size() >= loose.nodes.size());
     CHECK(hausdorff_distance_um(tight, stair) <= hausdorff_distance_um(loose, stair) + 1.0);
 }
+
+// Non-régression : les poignées d'une courbe ajustée restent bornées par le périmètre du contour.
+// Sur de minuscules boucles irrégulières (contours de pixels de 0,2 mm, tolérance bornée à
+// périmètre/16 comme le fait la vectorisation), la solution des moindres carrés de Schneider était
+// presque singulière et les poignées explosaient (jusqu'à plusieurs mètres), ce qui envoyait des
+// points de broderie à 2 m du motif. Trouvé par `--curve-tolerance 0.4 --dark-lines` sur un navire.
+TEST_CASE("fit_curves : les poignees ne depassent jamais le perimetre du contour") {
+    std::uint64_t state = 0x9E3779B97F4A7C15ULL;
+    const auto next = [&state] {
+        state = state * 6364136223846793005ULL + 1442695040888963407ULL;
+        return static_cast<std::uint32_t>(state >> 33);
+    };
+    constexpr double kPixel = 207.0; // µm
+    std::size_t violations = 0;
+    double worstRatio = 0.0;
+    for (int trial = 0; trial < 6000; ++trial) {
+        // Silhouette en escalier : colonnes de hauteurs aléatoires posées sur une base plate ; un
+        // nœud à chaque coin de pixel, comme un contour vectorisé non simplifié.
+        const int width = 1 + static_cast<int>(next() % 7);
+        std::vector<int> heights(static_cast<std::size_t>(width));
+        for (int& h : heights) {
+            h = 1 + static_cast<int>(next() % 7);
+        }
+        std::vector<std::pair<int, int>> corners{{0, 0}, {width, 0}};
+        for (int i = width - 1; i >= 0; --i) {
+            const int h = heights[static_cast<std::size_t>(i)];
+            corners.emplace_back(i + 1, h);
+            corners.emplace_back(i, h);
+        }
+        Path loop;
+        loop.closed = true;
+        for (const auto& [cx, cy] : corners) {
+            PathNode n;
+            n.pos = Vec2um{Micrometers{static_cast<std::int32_t>(cx * kPixel)},
+                           Micrometers{static_cast<std::int32_t>(cy * kPixel)}};
+            if (loop.nodes.empty() || !(loop.nodes.back().pos == n.pos)) {
+                loop.nodes.push_back(n);
+            }
+        }
+        if (loop.nodes.size() < 4) {
+            continue;
+        }
+        double perimeter = 0.0;
+        for (std::size_t i = 0; i < loop.nodes.size(); ++i) {
+            const auto d = loop.nodes[(i + 1) % loop.nodes.size()].pos - loop.nodes[i].pos;
+            perimeter += std::hypot(static_cast<double>(d.x.value), static_cast<double>(d.y.value));
+        }
+        for (const double tolMm : {0.05, 0.2, 0.4}) {
+            const auto tol = Micrometers{static_cast<std::int32_t>(
+                std::max(1.0, std::min(tolMm * 1000.0, perimeter / 16.0)))};
+            const Path fitted = fit_curves(loop, {.tolerance = tol});
+            for (const auto& n : fitted.nodes) {
+                for (const auto& h : {n.tan_in, n.tan_out}) {
+                    if (!h) {
+                        continue;
+                    }
+                    const double mag = std::hypot(static_cast<double>(h->x.value),
+                                                  static_cast<double>(h->y.value));
+                    worstRatio = std::max(worstRatio, mag / std::max(perimeter, 1.0));
+                    violations += mag > perimeter ? 1 : 0;
+                }
+            }
+        }
+    }
+    INFO("poignees plus longues que le perimetre : " << violations
+                                                     << ", pire rapport : " << worstRatio);
+    CHECK(violations == 0);
+}

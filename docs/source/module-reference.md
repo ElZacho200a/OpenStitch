@@ -24,7 +24,7 @@ fonctionnalité. Chaque module est une cible `openstitch::<nom>` sous `libs/`.
 | `auto_satin` | squelette → satinabilité → auto-satin par traversées orientées (axe, chord, guides) | core, geometry (+OpenCV) | `tests/unit/auto_satin` |
 | `commands` | undo/redo | document | `tests/unit/commands` |
 | `formats` | codec DST, import DXF/SVG, export DXF/SVG diagnostic | core, geometry, stitch (+pugixml) | `tests/unit/formats` |
-| `project_ops` | API programmatique de la CLI (`project …`) : fabrique de projets, inspection JSON, opérations et lots transactionnels, contrôle qualité, service auto-satin ; voir cli-project.md | core, document, commands, project_io, autodigitize, stitch_analysis, auto_satin | `tests/unit/project_ops` |
+| `project_ops` | API programmatique de la CLI (`project …`) : fabrique de projets, inspection JSON, opérations et lots transactionnels, contrôle qualité, service auto-satin, **outils d'analyse** (rendu réaliste `project render`, fidélité, épaisseurs de fil, localisation, diagnostic, balayage d'options) ; voir cli-project.md | core, document, commands, project_io, autodigitize, stitch_analysis, auto_satin | `tests/unit/project_ops` |
 | `project_io` | format `.osp` | core, document, image | `tests/unit/project_io` |
 
 ## Points d'extension

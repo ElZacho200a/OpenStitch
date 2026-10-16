@@ -1383,6 +1383,27 @@ SAM via un worker **WSL**. ~18 s sur l'image de référence.
   aux formes vectorielles (sans passer par l'image).
 - Modules : `libs/autodigitize`.
 
+### HP-AUTO-013 — Outils d'analyse de la qualité d'une numérisation [P1] — ◐ Partiel (2026-10-16)
+- État OpenStitch : **fait en CLI** (`libs/project_ops`, Qt-free, déterministe) : `project render`
+  (rendu réaliste sur fond vert), `project fidelity` (tissu visible, détails perdus), `project
+  density` (épaisseurs de fil, carte de chaleur), `project at` (quel objet a cousu un point),
+  `project diagnose` (7 détecteurs avec objets et option conseillée), `project sweep` (balayage
+  d'options, tableau objectif, variantes non dominées, planche de zooms), `digitize --debug-dir`
+  (masques de décision), script `scripts/linux-core-setup.sh`, corpus d'invariants en test.
+  Voir `docs/source/cli-project.md`, section *Outils d'analyse de la qualité*.
+- Hatch : contrôle de densité et de chevauchement, simulateur de points, avertissements de
+  conception ; pas d'équivalent de balayage automatique d'options.
+- À faire : (1) exposer fidélité, densité (carte de chaleur superposable) et diagnostic dans le
+  bureau, avec clic sur un défaut -> objet sélectionné (`project at`) ; (2) options de numérisation
+  `--dark-lines-bars`, `--no-underpath`, `--fill-overlap`, `--dark-lines-objects-only` dans la boîte
+  *Numérisation automatique* ; (3) sélecteur `--where` pour `project op` (changer un réglage sur tous
+  les objets d'un type) ; (4) animation de l'ordre de couture et carte des angles de fil.
+- Modules : `libs/project_ops` (fait), `apps/cli` (fait), `apps/desktop` (à faire).
+- Dépend de : HP-AUTO-005 (couche de traits sombres).
+- Acceptation : en CLI, chaque détecteur est validé sur un projet au défaut connu (tests
+  `[analysis]`), l'image de stress `[invariants]` échoue si les poignées de Bézier ne sont plus bornées ;
+  dans le bureau : un clic sur « tissu visible » centre la vue sur le plus gros trou.
+
 ---
 
 ## 8. Dessin et édition vectorielle (VEC)

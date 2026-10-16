@@ -92,6 +92,11 @@ struct AutoOptions {
     // une valeur > 0 réactive le comportement historique (le paramètre `inset` des
     // tatamis voisins passe alors à 0).
     Micrometers fill_overlap{0};
+    // Retrait du bord de chaque tatami créé (`TatamiParams::inset`). 0,2 mm par défaut, comme
+    // `TatamiParams` : deux zones voisines laissent alors ~0,4 mm de vide (filet clair visible).
+    // 0 ferme ces interstices (mesuré sur le navire : non-couvert 0,366 -> 0,325, +16 % de
+    // points, coupes inchangées) ; sans effet sur les objets existants ni manuels.
+    Micrometers fill_inset{200};
     // Ordre de couture du résultat en « couches » (`optimization::
     // OrderStrategy::LayeredColorThenProximity`) : grandes zones de fond
     // d'abord, détails posés dessus ensuite, couleurs toujours regroupées.

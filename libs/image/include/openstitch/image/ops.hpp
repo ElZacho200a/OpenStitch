@@ -80,9 +80,31 @@ struct CoherentLinesOp {
     bool operator==(const CoherentLinesOp&) const = default;
 };
 
+// Aplat des zones (mean-shift) : fond les pixels voisins de teinte proche en une couleur
+// moyenne, contours conservés. Avant la quantification, il réduit les îlots et le grain des
+// dégradés mieux qu'un médian sur une illustration ; alpha conservé.
+struct FlattenOp {
+    int strength{2}; // 1..3 : rayon spatial 4/6/8 px, rayon colorimétrique 8/14/20
+    bool operator==(const FlattenOp&) const = default;
+};
+
+// Égalisation locale du contraste (CLAHE) sur la luminance CIELAB : sépare des zones sombres
+// ou claires voisines que la quantification fusionnerait. Les couleurs ne bougent pas.
+struct ClaheOp {
+    double clip_limit{2.0}; // 1..8 ; plus haut = plus de contraste local
+    bool operator==(const ClaheOp&) const = default;
+};
+
+// Netteté (masque flou) : renforce les traits fins avant l'extraction des traits sombres.
+struct SharpenOp {
+    double amount{1.0}; // 0..3
+    bool operator==(const SharpenOp&) const = default;
+};
+
 // Nouvelles alternatives toujours AJOUTÉES EN FIN (index stables).
-using ImageOp = std::variant<CropOp, FlipOp, Rotate90Op, GrayscaleOp, BrightnessContrastOp,
-                             MedianDenoiseOp, QuantizeOp, BilateralDenoiseOp, CoherentLinesOp>;
+using ImageOp =
+    std::variant<CropOp, FlipOp, Rotate90Op, GrayscaleOp, BrightnessContrastOp, MedianDenoiseOp,
+                 QuantizeOp, BilateralDenoiseOp, CoherentLinesOp, FlattenOp, ClaheOp, SharpenOp>;
 
 // Nom lisible de l'opération (menus, historique d'annulation).
 [[nodiscard]] std::string op_name(const ImageOp& op);
