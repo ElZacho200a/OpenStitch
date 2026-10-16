@@ -393,6 +393,27 @@ TEST_CASE("vector ops: split refuses a line that misses the shape", "[vector_ops
     CHECK_FALSE(degenerate.command);
 }
 
+TEST_CASE("vector ops: split only cuts shapes the drawn segment crosses", "[vector_ops]") {
+    document::Project project;
+    const ObjectId near = add_object(project, rect(0, 0, 20'000, 10'000), false);
+    // Alignee avec le trait (meme x) mais loin de lui : ne doit pas etre coupee.
+    const ObjectId far = add_object(project, rect(0, 100'000, 20'000, 110'000), false);
+
+    auto result = make_split_command(project, {near, far}, pt(10'000, -5'000), pt(10'000, 15'000));
+    REQUIRE(result.command);
+    UndoStack stack;
+    stack.execute(std::move(result.command), project);
+    CHECK(project.vector_objects.size() == 3);
+    CHECK(area_mm2(*project.findObject(far)) == 200.0);
+}
+
+TEST_CASE("vector ops: split ignores a segment that stops inside the shape", "[vector_ops]") {
+    document::Project project;
+    const ObjectId id = add_object(project, rect(0, 0, 20'000, 10'000), false);
+    auto result = make_split_command(project, {id}, pt(10'000, -5'000), pt(10'000, 5'000));
+    CHECK_FALSE(result.command);
+}
+
 TEST_CASE("vector ops: break apart separates disjoint pieces", "[vector_ops]") {
     document::Project project;
     const ObjectId id = add_object(project, rect(0, 0, 10'000, 10'000), true);

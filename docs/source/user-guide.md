@@ -463,7 +463,9 @@ d'annulation** et garde les objets de broderie de la forme conservée.
 - **Séparer les morceaux** (Ctrl+Maj+B) — une forme composée de plusieurs morceaux disjoints
   devient autant d'objets.
 - **Couteau** (touche **K**) — cliquez-glissez une ligne à travers une ou plusieurs formes pour
-  les découper. Sans sélection, toutes les formes visibles traversées sont coupées ; avec une
+  les découper. Seul le segment tracé coupe : une forme n'est découpée que si le trait la
+  traverse de part en part (il doit dépasser de chaque côté) ; un trait qui s'arrête dans la forme
+  ou qui passe à côté ne fait rien. Sans sélection, toutes les formes visibles traversées sont coupées ; avec une
   sélection, seules les formes sélectionnées le sont. Le plus grand morceau garde l'identité de la
   forme d'origine ; chaque autre morceau devient un nouvel objet, avec une **copie des réglages de
   broderie** (tatami, directionnel, auto-satin ; les satins à rails et les retouches manuelles
