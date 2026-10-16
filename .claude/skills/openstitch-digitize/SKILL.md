@@ -178,6 +178,27 @@ Constats à retenir :
 - Non fait : comparaison pixel à pixel avec l'image source (pas d'outil de score de fidélité) ;
   le jugement reste visuel. Idée : script qui reprojette les régions brodées et mesure l'écart ΔE.
 
+**Essai 2 (2026-10-16) : les interstices entre couleurs voisines.**
+
+Hypothèse (vérifiée) : chaque tatami est rétréci de `inset_mm` (0,2 mm par défaut), donc deux
+objets voisins laissent ~0,4 mm de vide, visible comme un filet clair autour de chaque zone.
+Test sur la variante `--dark-lines --island-cleanup 20` (151 tatami), lot `set_params` via
+`scripts/set_params_all.py`, mesure `project check --json` → `project_metrics.uncovered_ratio`
+(inclut la part du fond ignoré, ici 0,324 : seul l'écart à cette valeur compte) :
+
+| `inset_mm` | Points | Coupes | `uncovered_ratio` | Lecture |
+|---|---|---|---|---|
+| 0,2 (défaut) | 91 755 | 1 359 | 0,366 | ~4 % d'interstices, filets clairs visibles |
+| 0,1 | 96 706 | 1 362 | 0,342 | ~2 % |
+| **0,0** | 106 764 | 1 368 | **0,325** | interstices quasi nuls, rendu net (zoom navire) |
+| 0,0 + `pull_compensation_mm` 0,15 | 112 137 | 1 559 | 0,321 | recouvrement, +5 % de points et +14 % de coupes pour rien de plus |
+| −0,1 | — | — | — | refusé : `inset_mm` ≥ 0 |
+
+Règle : sur une numérisation multi-couleurs aux zones jointives, **`inset_mm = 0`** (≈ +16 % de
+points, coupes inchangées) ; `0,1` si le poids compte. Ne pas ajouter de compensation de tirage
+sans raison. À reporter à terme dans le défaut de `digitize` (point à décider avec l'utilisateur :
+cela change la sortie de toutes les numérisations).
+
 ## 9. Ce skill s'enrichit
 
 Quand une nouvelle image révèle un échec ou une règle (seuil, option, ordre), l'ajouter au
