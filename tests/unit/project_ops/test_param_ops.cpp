@@ -618,7 +618,8 @@ TEST_CASE("param ops directional_guides converts and guides a long shape",
             std::get_if<document::DirectionalFillParams>(&p.findEmbroidery(ObjectId{2})->params);
         REQUIRE(d != nullptr);
         REQUIRE_FALSE(d->guides.empty());
-        const std::size_t guideCount = d->guides.size(); // `d` est invalidé par l'opération suivante
+        const std::size_t guideCount =
+            d->guides.size(); // `d` est invalidé par l'opération suivante
         CHECK(result_of(r)["converted"] == true);
         // Le guide suit la grande dimension de la bande.
         const auto& g = d->guides.front().nodes;
