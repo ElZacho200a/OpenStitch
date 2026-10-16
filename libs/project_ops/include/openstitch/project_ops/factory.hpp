@@ -90,6 +90,16 @@ struct DigitizeSettings {
     // (`AutoOptions::fill_hidden_underpath`).
     bool fill_hidden_underpath{true};
     double island_max_delta_e{0.0}; // 0 = sans limite
+    // « Suivre le mouvement » : les grandes formes allongées (tentacules, rubans, nuages, fumée)
+    // passent en remplissage directionnel dont les guides suivent l'axe médian de la forme, au
+    // lieu d'un tatami à angle fixe. La couleur la plus sombre (traits) reste en tatami.
+    // Cercles et ellipses épaissis (hublots, ventouses, bulles, yeux) : détectés sur le masque des
+    // pixels sombres (trou enclos entouré d'une bande sombre d'épaisseur régulière), cousus en
+    // auto-satin avec un contour exact. Nécessite `dark_lines`.
+    bool rings_satin{false};
+    bool flow_fill{false};
+    double flow_min_area_mm2{10.0};
+    double flow_min_elongation{2.5}; // (plus long guide)² / aire : un disque ~0, une bande >= 5
     // Diagnostic : non vide, dossier où écrire les masques de décision (régions, traits, barres,
     // séparations), la couverture réelle des fils, la carte d'erreurs et `decisions.json`.
     std::string debug_dir;
@@ -113,6 +123,8 @@ struct DigitizeReport {
     std::size_t embroidery_objects{0};
     std::size_t satin{0};
     std::size_t tatami{0};
+    std::size_t rings_satin{0}; // anneaux cousus en satin (--rings-satin)
+    std::size_t flow_fill{0};   // tatami passés en directionnel (--flow-fill)
     std::size_t running{0};
     std::optional<autodigitize::ContourMetrics> contour;      // mode contours
     std::optional<autodigitize::StippleMetrics> stipple;      // mode stipple

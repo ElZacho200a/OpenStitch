@@ -466,6 +466,22 @@ points, ×9 de surépaisseur). Résultat : 72 827 points, 1 861 coupes, 3 fils, 
 Règle : le lissage par défaut est calibré pour des peintures ; pour du vectoriel à bords nets, partir
 de `--smoothing-px 0` et vérifier le nombre de fils (`project inspect`) avant tout autre réglage.
 
+### Essai 14 — suivre le mouvement (`--flow-fill`) et les ronds en satin (`--rings-satin`)
+
+Retour : « les cercles se mettent en satin pour un joli rond ; la broderie doit suggérer le mouvement
+dans le sens de la couture ». Deux outils manquaient à `digitize` :
+- `--flow-fill` : tentacules, corps, rubans (forme allongée : plus long guide² / aire ≥ 2,5, aire ≥ 10 mm²)
+  passent en remplissage directionnel dont les guides suivent l'axe médian ; la couleur la plus sombre
+  (contours) reste en tatami. Avant : tout en tatami à un seul angle, aspect « tapis ».
+- `--rings-satin` (avec `--dark-lines`) : un trou enclos quasi elliptique entouré d'une bande sombre
+  d'épaisseur régulière est un anneau ; il est cousu en auto-satin avec une ellipse exacte (rond net,
+  pas un polygone facetté) et retiré des traits et du remplissage marine (sinon marine + satin + lignes =
+  surépaisseur). 75 anneaux sur le kraken (ventouses, bulles, hublot, œil). Un test géométrique sur les
+  trous des objets vectoriels (tentative 1) ne trouvait que 3 anneaux : les anneaux des ventouses touchent
+  le contour marine et ne sont jamais des trous isolés ; la détection se fait donc sur l'image.
+Piège évité : satin sur un « trou dans une grande zone » (halos en éventail autour des petits points) ;
+l'anneau doit avoir un bord extérieur net et une épaisseur bornée.
+
 ## 9. Ce skill s'enrichit
 
 Quand une nouvelle image révèle un échec ou une règle (seuil, option, ordre), l'ajouter au

@@ -207,8 +207,10 @@ int digitize_one(const DigitizeArgs& a, const DigitizeOptionValues& v, bool json
                          "plus petit, --max-colors plus grand, ou --skip-background no si le fond "
                          "a été ignoré");
     }
-    fmt::print(st, "Objets brodés : {} (satin={} tatami={} running={})\n",
-               report->embroidery_objects, report->satin, report->tatami, report->running);
+    fmt::print(st,
+               "Objets brodés : {} (satin={} tatami={} running={} directionnel={} anneaux={})\n",
+               report->embroidery_objects, report->satin, report->tatami, report->running,
+               report->flow_fill, report->rings_satin);
 
     const auto seq = openstitch::stitch_generation::effective_sequence(project);
     if (!seq) {
@@ -368,6 +370,19 @@ void add_digitize_options(CLI::App* cmd, DigitizeOptionValues& v) {
                     "la voisine de COULEUR la plus proche (pas la plus longue frontière) ; 0 = "
                     "désactivé (défaut)")
         ->check(CLI::NonNegativeNumber);
+    cmd->add_flag("--rings-satin", s.rings_satin,
+                  "Mode formes : les cercles et ellipses épaissis (hublots, ventouses, bulles, "
+                  "yeux) sont reconnus par leurs deux bords concentriques et cousus en auto-satin "
+                  "(un rond net), retirés du remplissage qui les portait");
+    cmd->add_flag("--flow-fill", s.flow_fill,
+                  "Mode formes : les grandes formes allongées (tentacules, rubans, nuages, fumée) "
+                  "passent en remplissage directionnel dont les guides suivent l'axe médian : les "
+                  "rangées suggèrent le mouvement. La couleur la plus sombre reste en tatami");
+    cmd->add_option("--flow-min-area", s.flow_min_area_mm2,
+                    "Avec --flow-fill : aire minimale (mm2) d'une forme (défaut : 10)");
+    cmd->add_option("--flow-min-elongation", s.flow_min_elongation,
+                    "Avec --flow-fill : allongement minimal (plus long guide au carré / aire ; "
+                    "défaut : 2.5, un disque vaut ~0, une bande >= 5)");
     cmd->add_option("--island-max-delta-e", s.island_max_delta_e,
                     "Avec --island-cleanup : refuse une voisine plus éloignée que cet écart de "
                     "couleur CIELAB (ΔE) ; 0 = pas de limite (défaut)")

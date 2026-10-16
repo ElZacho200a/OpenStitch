@@ -421,3 +421,79 @@ TEST_CASE("couche de traits : objects_only garde un hauban dont le halo est dans
     CHECK(m.line_pixels >= 200);
     CHECK(m.separation_pixels * 4 <= m.line_pixels);
 }
+
+namespace {
+
+// Disque plein (couleur c) de rayon r centré en (cx, cy).
+void fill_disc(image::Image& img, int cx, int cy, int r, std::uint8_t cr, std::uint8_t cg,
+               std::uint8_t cb) {
+    for (int y = cy - r; y <= cy + r; ++y) {
+        for (int x = cx - r; x <= cx + r; ++x) {
+            if ((x - cx) * (x - cx) + (y - cy) * (y - cy) <= r * r) {
+                fill_rect(img, x, y, x + 1, y + 1, cr, cg, cb);
+            }
+        }
+    }
+}
+
+// Fond beige, zone rouge, un anneau marine (rayon 20, épaisseur 5 px) sur la zone rouge, et un
+// disque marine plein (pas un anneau) à l'écart.
+image::Image ring_scene() {
+    image::Image img;
+    img.width = 160;
+    img.height = 100;
+    img.rgba.assign(static_cast<std::size_t>(img.width) * img.height * 4, 0);
+    fill_rect(img, 0, 0, 160, 100, 230, 220, 200);
+    fill_rect(img, 10, 10, 150, 90, 200, 60, 40);
+    fill_disc(img, 50, 50, 20, 5, 5, 15);
+    fill_disc(img, 50, 50, 15, 200, 60, 40);
+    fill_disc(img, 120, 50, 14, 5, 5, 15);
+    return img;
+}
+
+std::size_t count_satin(const AutoResult& r) {
+    return static_cast<std::size_t>(
+        std::count_if(r.embroideries.begin(), r.embroideries.end(), [](const auto& e) {
+            return std::holds_alternative<document::AutoSatinParams>(e.params);
+        }));
+}
+
+} // namespace
+
+TEST_CASE("couche de traits : un anneau sombre devient un auto-satin, un disque plein non") {
+    const auto img = ring_scene();
+    const auto seg = segmentation::segment(img, {.max_colors = 4, .min_region_px = 4});
+    REQUIRE(seg.has_value());
+    ContourOptions co;
+    co.technique = ContourTechnique::Running;
+
+    IdGenerator<ObjectId> idsOff;
+    LineLayerOptions off;
+    off.enabled = true;
+    LineLayerMetrics mOff;
+    const auto without = auto_digitize_with_lines(*seg, img, idsOff, options(), off, co, &mOff);
+    REQUIRE(without.has_value());
+    CHECK(mOff.ring_objects == 0);
+
+    IdGenerator<ObjectId> ids;
+    LineLayerOptions on = off;
+    on.rings_satin = true;
+    LineLayerMetrics m;
+    const auto result = auto_digitize_with_lines(*seg, img, ids, options(), on, co, &m);
+    REQUIRE(result.has_value());
+    CHECK(m.ring_objects == 1);
+    CHECK(count_satin(*result) == count_satin(*without) + 1);
+    // L'anneau est un vrai anneau géométrique : un contour extérieur et un trou, de l'ordre de 5 px
+    // (1,25 mm) d'épaisseur.
+    const auto& vec = result->vectors.back();
+    REQUIRE(vec.paths.size() == 1);
+    CHECK(vec.paths[0].holes.size() == 1);
+    CHECK(near_rgb(vec.rgb, {5, 5, 15}));
+
+    IdGenerator<ObjectId> ids2;
+    LineLayerMetrics again;
+    const auto second = auto_digitize_with_lines(*seg, img, ids2, options(), on, co, &again);
+    REQUIRE(second.has_value());
+    CHECK(second->embroideries.size() == result->embroideries.size());
+    CHECK(second->vectors.back().paths == result->vectors.back().paths);
+}

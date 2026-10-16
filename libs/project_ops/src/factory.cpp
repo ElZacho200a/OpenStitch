@@ -2,15 +2,18 @@
 #include "openstitch/project_ops/factory.hpp"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstdio>
 #include <utility>
 
 #include "debug_dump.hpp"
 #include "openstitch/autodigitize/autodigitize.hpp"
+#include "openstitch/geometry/polyline.hpp"
 #include "openstitch/image/image.hpp"
 #include "openstitch/image/ops.hpp"
 #include "openstitch/segmentation/segmentation.hpp"
+#include "openstitch/stitch_generation/directional_fill.hpp"
 
 namespace openstitch::project_ops {
 
@@ -169,6 +172,84 @@ Result<void> validate_pre_spec(const std::string& spec) {
     }
     return {};
 }
+
+namespace {
+
+// Aire (mm²) d'un jeu de chemins : contour extérieur moins les trous (nœuds, sans courbure).
+double path_set_area_mm2(const geometry::PathSet& set) {
+    const auto shoelace = [](const geometry::Path& p) {
+        double a = 0.0;
+        const auto& n = p.nodes;
+        for (std::size_t i = 0; i < n.size(); ++i) {
+            const auto& u = n[i].pos;
+            const auto& v = n[(i + 1) % n.size()].pos;
+            a += static_cast<double>(u.x.value) * v.y.value -
+                 static_cast<double>(v.x.value) * u.y.value;
+        }
+        return std::abs(a) / 2.0 / 1e6; // µm² -> mm²
+    };
+    double area = shoelace(set.outer);
+    for (const auto& h : set.holes) {
+        area -= shoelace(h);
+    }
+    return area;
+}
+
+double guide_length_mm(const geometry::Path& guide) {
+    std::vector<Vec2um> pts;
+    pts.reserve(guide.nodes.size());
+    for (const auto& n : guide.nodes) {
+        pts.push_back(n.pos);
+    }
+    return geometry::polyline_length(pts) / 1000.0;
+}
+
+std::size_t apply_flow_fill(document::Project& project, const DigitizeSettings& s) {
+    // Couleur la plus sombre = traits et contours : ils gardent leur tatami.
+    const auto lum = [](const std::array<std::uint8_t, 3>& c) { return c[0] + c[1] + c[2]; };
+    int darkest = 3 * 255 + 1;
+    for (const auto& e : project.embroidery_objects) {
+        if (e.is_tatami()) {
+            darkest = std::min(darkest, lum(e.rgb));
+        }
+    }
+    std::size_t converted = 0;
+    for (auto& e : project.embroidery_objects) {
+        const auto* tatami = std::get_if<document::TatamiParams>(&e.params);
+        const auto* source = project.findObject(e.source_vector);
+        if (tatami == nullptr || source == nullptr || lum(e.rgb) <= darkest) {
+            continue;
+        }
+        double area = 0.0;
+        for (const auto& set : source->paths) {
+            area += path_set_area_mm2(set);
+        }
+        if (area < s.flow_min_area_mm2) {
+            continue;
+        }
+        std::vector<geometry::Path> guides;
+        for (const auto& set : source->paths) {
+            auto g = stitch_generation::directional_guides_from_region(set);
+            guides.insert(guides.end(), std::make_move_iterator(g.begin()),
+                          std::make_move_iterator(g.end()));
+        }
+        double longest = 0.0;
+        for (const auto& g : guides) {
+            longest = std::max(longest, guide_length_mm(g));
+        }
+        if (guides.empty() || longest * longest / area < s.flow_min_elongation) {
+            continue;
+        }
+        auto params = stitch_generation::directional_from_tatami(
+            *tatami, source->paths, static_cast<std::uint32_t>(e.id.value));
+        params.guides = std::move(guides);
+        e.params = std::move(params);
+        ++converted;
+    }
+    return converted;
+}
+
+} // namespace
 
 Result<void> apply_basic_finishing(document::Project& project, double trim_threshold_mm,
                                    std::string_view lock) {
@@ -435,6 +516,7 @@ Result<DigitizeReport> digitize_image_into(document::Project& project,
             lo.objects_only = s.dark_lines_objects_only;
             lo.bars_max_width_mm = s.dark_lines_bars_mm;
             lo.min_line_length_mm = s.dark_lines_min_length_mm;
+            lo.rings_satin = s.rings_satin;
             lo.masks = s.debug_dir.empty() ? nullptr : &debugMasks;
             co.technique = autodigitize::ContourTechnique::Running;
             // Un réseau de traits se coud en parcours eulérien : moins de polylignes, donc moins
@@ -463,6 +545,7 @@ Result<DigitizeReport> digitize_image_into(document::Project& project,
     }
     if (usedDarkLines) {
         report.dark_lines = lm;
+        report.rings_satin = lm.ring_objects;
         char buf[200];
         std::snprintf(buf, sizeof buf,
                       "Traits sombres : %zu px séparés des remplissages, %zu objet(s) de ligne "
@@ -477,6 +560,11 @@ Result<DigitizeReport> digitize_image_into(document::Project& project,
     }
     for (auto& e : result->embroideries) {
         project.embroidery_objects.push_back(std::move(e));
+    }
+    if (s.flow_fill && !stippling) {
+        report.flow_fill = apply_flow_fill(project, s);
+        say(log, "Remplissage directionnel (mouvement) : " + std::to_string(report.flow_fill) +
+                     " forme(s) allongée(s)");
     }
     report.vector_objects = project.vector_objects.size();
     report.embroidery_objects = project.embroidery_objects.size();

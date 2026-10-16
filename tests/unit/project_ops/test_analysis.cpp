@@ -404,3 +404,40 @@ TEST_CASE("invariants : fixture du depot, 16 combinaisons d'options", "[project_
     base.dpi = 150.0;
     check_invariants(fixture, info->width_px * 25.4 / 150.0, info->height_px * 25.4 / 150.0, base);
 }
+
+TEST_CASE("flow fill converts elongated fills to directional with guides",
+          "[project_ops][analysis]") {
+    const auto count_directional = [](const document::Project& p) {
+        std::size_t n = 0;
+        for (const auto& e : p.embroidery_objects) {
+            n += std::holds_alternative<document::DirectionalFillParams>(e.params) ? 1 : 0;
+        }
+        return n;
+    };
+    const auto digitize = [&](bool flow, double elongation) {
+        auto settings = test_settings();
+        settings.flow_fill = flow;
+        settings.flow_min_area_mm2 = 1.0;
+        settings.flow_min_elongation = elongation;
+        auto created = create_empty_project({});
+        REQUIRE(created.has_value());
+        document::Project project = std::move(*created);
+        const auto report = digitize_image_into(project, write_test_image("flow"), settings);
+        REQUIRE(report.has_value());
+        return std::pair{std::move(project), report->flow_fill};
+    };
+    const auto [off, offCount] = digitize(false, 0.0);
+    CHECK(offCount == 0);
+    CHECK(count_directional(off) == 0);
+
+    const auto [forced, forcedCount] = digitize(true, 0.0);
+    CHECK(forcedCount >= 1);
+    CHECK(count_directional(forced) == forcedCount);
+    for (const auto& e : forced.embroidery_objects) {
+        if (const auto* d = std::get_if<document::DirectionalFillParams>(&e.params)) {
+            CHECK_FALSE(d->guides.empty());
+        }
+    }
+    const auto [strict, strictCount] = digitize(true, 1e9);
+    CHECK(strictCount == 0);
+}

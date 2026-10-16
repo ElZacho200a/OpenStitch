@@ -59,6 +59,10 @@ struct LineLayerOptions {
     // redressés en petits tirets plats sur le motif (un objet et une coupe chacun). Les pixels
     // restent rendus aux zones voisines. 0 = désactivé (comportement historique).
     double min_line_length_mm{0.0};
+    // Anneaux sombres (hublots, ventouses, bulles, yeux) : un trou enclos quasi elliptique entouré
+    // d'une bande sombre d'épaisseur régulière est cousu en auto-satin (un rond net, exact) au
+    // lieu d'un tracé de lignes facetté ; ses pixels ne sont plus cousus en traits.
+    bool rings_satin{false};
     // Diagnostic : si non nul, reçoit les masques de décision (aucun effet sur le résultat).
     LineLayerMasks* masks{nullptr};
 };
@@ -73,6 +77,7 @@ struct LineLayerMetrics {
     std::size_t bar_objects{0}; // objets créés pour les barres
     double line_lightness{0.0}; // seuil de clarté L* effectivement utilisé pour les traits
     std::array<std::uint8_t, 3> line_rgb{}; // couleur de fil des traits (après calage palette)
+    std::size_t ring_objects{0};            // anneaux cousus en satin (`rings_satin`)
     std::size_t short_fragment_pixels{0};   // pixels de fragments trop courts non cousus
 };
 

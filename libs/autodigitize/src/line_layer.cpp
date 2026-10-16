@@ -4,6 +4,10 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <numbers>
+
+#include "openstitch/geometry/boolean.hpp"
+#include "ring_detect.hpp"
 
 namespace openstitch::autodigitize {
 
@@ -262,6 +266,32 @@ Result<AutoResult> auto_digitize_with_lines(const segmentation::Segmentation& se
             linePixels -
             static_cast<std::size_t>(std::count(stitchMask.begin(), stitchMask.end(), char{1}));
     }
+    // Anneaux : retirés des traits cousus, cousus à part en satin (objets créés en fin de
+    // fonction).
+    std::vector<detail::RingSpec> rings;
+    if (lines.rings_satin) {
+        std::vector<char> dark(mask.size(), 0);
+        for (std::size_t i = 0; i < dark.size(); ++i) {
+            const std::uint8_t* px = &source.rgba[i * 4];
+            dark[i] =
+                (px[3] >= 128 && cielab_lightness({px[0], px[1], px[2]}) <= lineLightness) ? 1 : 0;
+        }
+        detail::RingDetectOptions ro;
+        ro.min_inner_diameter_px = std::max(4.0, 1.0 / px_mm);
+        ro.max_inner_diameter_px = 25.0 / px_mm;
+        ro.min_width_px = std::max(2.0, 0.35 / px_mm);
+        ro.max_width_px = 4.5 / px_mm;
+        rings = detail::detect_rings(dark, seg.width, seg.height, ro);
+        std::vector<char> band(mask.size(), 0);
+        for (const auto& r : rings) {
+            detail::paint_ring_band(r, dark, seg.width, seg.height, band);
+        }
+        for (std::size_t i = 0; i < stitchMask.size(); ++i) {
+            if (band[i] != 0) {
+                stitchMask[i] = 0;
+            }
+        }
+    }
     std::size_t shortPixels = 0;
     std::vector<char> beforeShort;
     if (lines.masks != nullptr) {
@@ -438,7 +468,72 @@ Result<AutoResult> auto_digitize_with_lines(const segmentation::Segmentation& se
         }
         append(*lineResult);
     }
+    // Anneaux en auto-satin : contour exact (ellipse extérieure moins ellipse intérieure), cousus
+    // après les traits dans la couleur des traits (aucun changement de fil).
+    const std::size_t beforeRings = out.embroideries.size();
+    std::vector<geometry::PathSet> ringSets;
+    for (const auto& r : rings) {
+        const double ca = std::cos(r.angle), sa = std::sin(r.angle);
+        const auto ellipse = [&](double a, double b, bool reversed) {
+            constexpr int kSegments = 96;
+            geometry::Path path;
+            path.closed = true;
+            for (int i = 0; i < kSegments; ++i) {
+                const double t =
+                    2.0 * std::numbers::pi * (reversed ? kSegments - i : i) / kSegments;
+                const double ex = a * std::cos(t), ey = b * std::sin(t);
+                const double ix = r.cx + ex * ca - ey * sa;
+                const double iy = r.cy + ex * sa + ey * ca;
+                geometry::PathNode node;
+                node.pos = Vec2um{Micrometers{static_cast<std::int32_t>(
+                                      std::lround((ix - seg.width / 2.0) * px_mm * 1000.0))},
+                                  Micrometers{static_cast<std::int32_t>(
+                                      std::lround((seg.height / 2.0 - iy) * px_mm * 1000.0))}};
+                path.nodes.push_back(node);
+            }
+            return path;
+        };
+        document::VectorObject vec;
+        vec.id = ids.next();
+        vec.name = "Anneau " + std::to_string(out.embroideries.size() - beforeRings + 1);
+        vec.rgb = lineRgb;
+        geometry::PathSet set;
+        set.outer = ellipse(r.a + r.width, r.b + r.width, false);
+        set.holes.push_back(ellipse(r.a, r.b, true));
+        vec.paths.push_back(std::move(set));
+        document::EmbroideryObject emb;
+        emb.id = ids.next();
+        emb.name = "Satin " + vec.name;
+        emb.source_vector = vec.id;
+        emb.rgb = lineRgb;
+        emb.intent = document::EmbroideryIntent::AutoChoice;
+        emb.params = document::AutoSatinParams{};
+        ringSets.push_back(vec.paths.front());
+        out.vectors.push_back(std::move(vec));
+        out.embroideries.push_back(std::move(emb));
+    }
+    // L'anneau remplace la matière de la couleur des traits sous lui : on le retire des
+    // remplissages de cette couleur (sinon marine + satin + lignes = surépaisseur).
+    if (!ringSets.empty()) {
+        std::vector<ObjectId> fillSources;
+        for (const auto& e : out.embroideries) {
+            if (e.rgb == lineRgb) {
+                fillSources.push_back(e.source_vector);
+            }
+        }
+        for (auto& v : out.vectors) {
+            if (v.rgb != lineRgb || v.name.rfind("Anneau", 0) == 0 ||
+                std::find(fillSources.begin(), fillSources.end(), v.id) == fillSources.end()) {
+                continue;
+            }
+            auto cut = geometry::difference_polygons(v.paths, ringSets);
+            if (cut && !cut->empty()) {
+                v.paths = std::move(*cut);
+            }
+        }
+    }
     if (metrics != nullptr) {
+        metrics->ring_objects = out.embroideries.size() - beforeRings;
         metrics->line_pixels = stitchPixels;
         metrics->line_lightness = lineLightness;
         metrics->line_rgb = lineRgb;
@@ -448,7 +543,7 @@ Result<AutoResult> auto_digitize_with_lines(const segmentation::Segmentation& se
         metrics->bar_objects = barObjectsEnd - fillObjects;
         metrics->reassigned_pixels = reassigned;
         metrics->contours = cm;
-        metrics->line_objects = out.embroideries.size() - barObjectsEnd;
+        metrics->line_objects = beforeRings - barObjectsEnd;
     }
     return out;
 }
