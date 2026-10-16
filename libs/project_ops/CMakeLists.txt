@@ -17,6 +17,7 @@ add_library(openstitch_project_ops
     src/op_import.cpp
     src/auto_satin_service.cpp
     src/quality.cpp
+    src/render.cpp
 )
 add_library(openstitch::project_ops ALIAS openstitch_project_ops)
 
@@ -27,5 +28,6 @@ target_link_libraries(openstitch_project_ops
     PRIVATE nlohmann_json::nlohmann_json openstitch::image openstitch::segmentation
             openstitch::autodigitize openstitch::stitch_generation openstitch::auto_satin
             openstitch::optimization openstitch::lettering openstitch::formats openstitch::stitch
-            openstitch::geometry openstitch::thread_palette openstitch::warnings
+            openstitch::geometry openstitch::thread_palette openstitch::stitch_render
+            openstitch::warnings
 )

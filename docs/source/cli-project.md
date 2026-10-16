@@ -164,6 +164,17 @@ partenaires de fondu, compteur d'identifiants) puis contrôle qualité. Code 2 s
 Liste machine-lisible de toutes les commandes et options de la CLI
 (`openstitch.commands/1`, générée par introspection de CLI11 : toujours à jour).
 
+### `project render <projet.osp> -o <rendu.png> [--px-per-mm N] [--fabric #RRGGBB] [--thread-mm MM] [--crop x0,y0,x1,y1]`
+
+Rendu **réaliste** (fils texturés, ombres, torsion : le moteur `stitch_render` de l'aperçu de
+l'application, sans Qt) en PNG, sur la séquence EFFECTIVE (objets masqués exclus). Le tissu est un
+**aplat vert vif** par défaut : tout ce qui n'est pas brodé (trous, interstices entre zones, dentelure
+des bouts de rangées) se voit, comme dans l'application sur fond vert. `--crop` donne une zone en
+fractions de la boîte du motif (origine en haut à gauche), p. ex. `--crop 0.1,0.25,0.5,0.75
+--px-per-mm 14` pour zoomer sur un détail. Déterministe (mêmes octets). Résolution abaissée si l'image
+dépasserait 40 millions de pixels. Code : `project_ops::render_realistic_png`.
+Mesure associée : `scripts/green_holes.py` du skill `openstitch-digitize` (part du vert intérieur).
+
 ### `project export <projet.osp> -o <sortie>`
 
 Exporte en `dst`, `pes`, `jef`, `exp` ou `svg` (format déduit de l'extension, ou

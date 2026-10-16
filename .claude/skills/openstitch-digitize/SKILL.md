@@ -32,7 +32,8 @@ contrôle → palette réelle → rendu, en une commande ; il encode les pièges
 ```bash
 CLI=/chemin/openstitch-cli .claude/skills/openstitch-digitize/scripts/workflow.sh \
     img.png $SCRATCH/v1 300 210 122.6 --max-colors 12 --dark-lines --dark-lines-bars 4 \
-    --dark-lines-min-length 6 --min-region-mm2 1 --fill-inset 0 --satin-bands
+    --dark-lines-min-length 6 --min-region-mm2 1 --fill-inset 0 --satin-bands \
+    --curve-tolerance 0.4
 python3 -I scripts/fidelity.py img.png $SCRATCH/v1/out.dst $SCRATCH/v1/pal.json 0.2072 $SCRATCH/v1/fid
 ```
 
@@ -246,6 +247,37 @@ Traits : `--dark-lines-objects-only` (séparation ou vrai objet, voir la doc) : 
 327 -> 135, coupes -12 %, voiles plus propres ; détails perdus 0,76 % -> 2,31 % (traits non cousus
 par choix) et quelques haubans fins perdus. Défaut restant, commun aux deux : autour du mât et de la
 coque le noir devient un amas de passes superposées, plus épais que les traits de la source.
+
+**Essai 8 (2026-10-16) : « c'est bien mais c'est pas mal chaotique » + rendu réaliste headless.**
+Je jugeais à l'aveugle (rendu de script en lignes, mesure de bord). Ajout de `openstitch-cli project
+render` (moteur `stitch_render` de l'application, fond vert) : on voit désormais ce que voit
+l'utilisateur, au niveau du fil. **Toujours regarder le rendu réaliste (`workflow.sh` le produit) avant
+de conclure.** Mesure : `scripts/green_holes.py` = tissu visible à l'INTÉRIEUR du motif (1,43 % du
+motif sur le navire, alors que `fidelity.py` n'en voyait que 0,03 %).
+
+Constat au fil : (1) dents de scie vertes le long des frontières (bouts de rangées de deux zones
+voisines qui ne se recouvrent pas) ; (2) gréement noir en amas : barres satin et triples passes
+superposées près des mâts ; (3) contours anguleux (polygones) ; (4) mosaïque d'angles dans la mer.
+
+BUG trouvé en testant `--curve-tolerance` : avec `--dark-lines`, un tatami envoyait des points à 2 m
+(DST de 2 130 mm de large). Cause racine : `fit_curves` (Schneider) sans borne haute sur la longueur des
+poignées (voir `docs/source/vectorization.md`). Corrigé, test de propriété. Méthode : bissection par
+`set_visible` des objets -> un seul tatami -> ses anneaux à 2 nœuds -> poignées.
+
+Compensation de tirage (`pull_compensation_mm`, tatami + satin) contre le vert intérieur : 0 -> 1,43 % ;
+0,1 -> 1,18 % ; 0,2 -> 1,24 % ; 0,35 -> 0,98 % (+4 % de points) : aide peu, ne ferme pas la dentelure.
+Contours lisses (`--curve-tolerance`, base `--island-cleanup 0 --min-region-mm2 1 --dark-lines-bars 4
+--dark-lines-min-length 6`) :
+
+| Variante | Points | Coupes | Vert intérieur | Détails perdus |
+|---|---|---|---|---|
+| polygones (défaut) | 129 844 | 2 282 | 1,43 % | 0,42 % |
+| `--curve-tolerance 0.4` | 117 553 | 1 906 | 1,52 % | 0,50 % |
+| `--curve-tolerance 0.8` | 109 219 | 1 758 | 2,20 % | 1,41 % |
+
+Lecture : 0,4 donne des bords de nuages plus lisses, -9 % de points et -16 % de coupes pour un peu plus
+de détails perdus ; 0,8 perd trop. Recommandé : 0,4. Non résolu : amas noir du gréement, dentelure verte,
+angles de la mer.
 
 **Essai 7 (2026-10-16) : capture de l'application (fond vert) de l'essai 6 : « pas besoin d'expliquer ».**
 Lecture de la capture (zoom navire et mer) : (1) taches noires rondes sur la coque ; (2) trous verts

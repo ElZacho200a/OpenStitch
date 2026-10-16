@@ -32,4 +32,9 @@ grep -E "Région candidate|Ignorer|Objets brodés" "$out/digitize.log" || true
 "$CLI" project inspect "$out/p.osp" --json 2>/dev/null \
     | python3 -I "$here/osp_palette.py" "$out/pal.json" --report
 python3 -I "$here/render_dst.py" "$out/out.dst" "$out/rendu.png" --palette "$out/pal.json" | tail -1
-echo "Rendu approximatif (pas le rendu réaliste de l'application) : $out/rendu.png"
+echo "Rendu approximatif de script (lignes) : $out/rendu.png"
+
+# 6. Rendu RÉALISTE (même moteur que l'application) sur fond vert + tissu visible à l'intérieur du motif.
+"$CLI" project render "$out/p.osp" -o "$out/realiste.png" --px-per-mm 5 | tail -1
+python3 -I "$here/green_holes.py" "$out/realiste.png" --px-per-mm 5 --out "$out/trous.png"
+echo "Zoom : $CLI project render $out/p.osp -o zoom.png --px-per-mm 14 --crop 0.1,0.25,0.5,0.75"

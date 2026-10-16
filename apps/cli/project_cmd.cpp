@@ -25,6 +25,7 @@
 #include "openstitch/project_ops/operations.hpp"
 #include "openstitch/project_ops/project_file.hpp"
 #include "openstitch/project_ops/quality.hpp"
+#include "openstitch/project_ops/render.hpp"
 #include "openstitch/project_ops/report.hpp"
 #include "openstitch/stitch/sequence.hpp"
 #include "openstitch/stitch_generation/overrides.hpp"
@@ -835,6 +836,84 @@ CLI::App* register_project_commands(CLI::App& app, bool& jsonOut) {
                        po::json_quote(format), po::json_quote(a.out), ec ? 0 : bytes, extra);
         } else {
             fmt::print("Exporté ({}) : {}\n", format, a.out);
+        }
+        g_exit = 0;
+    });
+
+    // render ----------------------------------------------------------------------------
+    struct RenderArgs {
+        std::string osp, out, fabric{"#00FF00"}, crop{"0,0,1,1"};
+        double pxPerMm{5.0}, thread{0.35};
+        bool noClobber{false};
+    };
+    auto rdArgs = std::make_shared<RenderArgs>();
+    c = project->add_subcommand("render", "Rendu RÉALISTE (fils texturés, le moteur de l'aperçu de "
+                                          "l'application) en PNG, sur fond de couleur franche "
+                                          "(vert par défaut : trous et interstices visibles)");
+    c->add_option("osp", rdArgs->osp, "Projet .osp")->required();
+    c->add_option("--output,-o", rdArgs->out, "PNG à produire")->required();
+    c->add_option("--px-per-mm", rdArgs->pxPerMm, "Résolution en pixels par mm (défaut : 5)")
+        ->check(CLI::Range(0.5, 40.0));
+    c->add_option("--fabric", rdArgs->fabric, "Couleur du tissu #RRGGBB (défaut : #00FF00)");
+    c->add_option("--thread-mm", rdArgs->thread, "Diamètre apparent du fil en mm (défaut : 0.35)")
+        ->check(CLI::Range(0.1, 1.0));
+    c->add_option("--crop", rdArgs->crop,
+                  "Zone rendue : x0,y0,x1,y1 en fractions de la boîte du motif, origine en haut à "
+                  "gauche (défaut : 0,0,1,1 = tout)");
+    c->add_flag("--no-clobber", rdArgs->noClobber, "Refuse d'écraser le fichier de sortie");
+    c->add_flag("--json", jsonOut, "Rapport JSON sur stdout");
+    c->callback([rdArgs, &jsonOut] {
+        const auto& a = *rdArgs;
+        if (const auto refused = check_output("render", jsonOut, a.out, a.noClobber)) {
+            g_exit = *refused;
+            return;
+        }
+        po::RenderOptions ro;
+        ro.px_per_mm = a.pxPerMm;
+        ro.thread_width_mm = a.thread;
+        unsigned r = 0, g = 0, b = 0;
+        if (a.fabric.size() != 7 || a.fabric[0] != '#' ||
+            std::sscanf(a.fabric.c_str() + 1, "%2x%2x%2x", &r, &g, &b) != 3) {
+            g_exit = fail_with("render", jsonOut, po::code::kUsage,
+                               "couleur de tissu invalide : « " + a.fabric + " »",
+                               "format attendu : #RRGGBB");
+            return;
+        }
+        ro.fabric_rgb = {static_cast<std::uint8_t>(r), static_cast<std::uint8_t>(g),
+                         static_cast<std::uint8_t>(b)};
+        if (std::sscanf(a.crop.c_str(), "%lf,%lf,%lf,%lf", &ro.crop[0], &ro.crop[1], &ro.crop[2],
+                        &ro.crop[3]) != 4) {
+            g_exit =
+                fail_with("render", jsonOut, po::code::kUsage, "zone invalide : « " + a.crop + " »",
+                          "format attendu : x0,y0,x1,y1");
+            return;
+        }
+        int rc = 0;
+        auto opened = load("render", jsonOut, a.osp, rc);
+        if (!opened) {
+            g_exit = rc;
+            return;
+        }
+        const auto rendered = po::render_realistic_png(opened->project, ro);
+        if (!rendered) {
+            g_exit = fail_err("render", jsonOut, po::code::kRefused, rendered.error());
+            return;
+        }
+        std::ofstream file(a.out, std::ios::binary);
+        file.write(reinterpret_cast<const char*>(rendered->png.data()),
+                   static_cast<std::streamsize>(rendered->png.size()));
+        if (!file) {
+            g_exit = fail_with("render", jsonOut, po::code::kIo, "écriture impossible : " + a.out);
+            return;
+        }
+        if (jsonOut) {
+            fmt::print("{{\"schema\":\"openstitch.render/1\",\"ok\":true,\"output\":{},"
+                       "\"width\":{},\"height\":{},\"px_per_mm\":{}}}\n",
+                       po::json_quote(a.out), rendered->width, rendered->height,
+                       rendered->px_per_mm);
+        } else {
+            fmt::print("Rendu écrit : {} ({} x {} px, {:.2f} px/mm)\n", a.out, rendered->width,
+                       rendered->height, rendered->px_per_mm);
         }
         g_exit = 0;
     });
