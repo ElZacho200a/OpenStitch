@@ -12,7 +12,8 @@ namespace {
 bool dark_at(const std::vector<char>& dark, int w, int h, double x, double y) {
     const int ix = static_cast<int>(std::floor(x));
     const int iy = static_cast<int>(std::floor(y));
-    return ix >= 0 && iy >= 0 && ix < w && iy < h && dark[static_cast<std::size_t>(iy) * w + ix] != 0;
+    return ix >= 0 && iy >= 0 && ix < w && iy < h &&
+           dark[static_cast<std::size_t>(iy) * w + ix] != 0;
 }
 
 double median(std::vector<double> v) {
@@ -32,10 +33,10 @@ std::vector<RingSpec> detect_rings(const std::vector<char>& dark, int w, int h,
     std::vector<std::size_t> stack;
     int next = 0;
     const auto at = [&](int x, int y) { return static_cast<std::size_t>(y) * w + x; };
-    const double minArea = std::numbers::pi * 0.25 * options.min_inner_diameter_px *
-                           options.min_inner_diameter_px;
-    const double maxArea = std::numbers::pi * 0.25 * options.max_inner_diameter_px *
-                           options.max_inner_diameter_px;
+    const double minArea =
+        std::numbers::pi * 0.25 * options.min_inner_diameter_px * options.min_inner_diameter_px;
+    const double maxArea =
+        std::numbers::pi * 0.25 * options.max_inner_diameter_px * options.max_inner_diameter_px;
     for (int y0 = 0; y0 < h; ++y0) {
         for (int x0 = 0; x0 < w; ++x0) {
             if (dark[at(x0, y0)] != 0 || label[at(x0, y0)] != 0) {
@@ -135,8 +136,7 @@ std::vector<RingSpec> detect_rings(const std::vector<char>& dark, int w, int h,
             for (const double v : widths) {
                 dev.push_back(std::abs(v - wm));
             }
-            if (wm < options.min_width_px || wm > options.max_width_px ||
-                median(dev) > 0.3 * wm) {
+            if (wm < options.min_width_px || wm > options.max_width_px || median(dev) > 0.3 * wm) {
                 continue;
             }
             const double shift = median(starts); // le bord sombre commence un peu au-delà
