@@ -9,6 +9,7 @@ add_executable(test_project_io
     test_load_robustness.cpp
     test_engine_persistence.cpp
     test_text_persistence.cpp
+    test_auto_satin_strategy_persistence.cpp
 )
 target_link_libraries(test_project_io
     PRIVATE openstitch::project_io openstitch::formats openstitch::stitch_generation

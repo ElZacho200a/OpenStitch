@@ -6,32 +6,42 @@
 // ici : le squelette, l'orientation et les traversées viennent de libs/auto_satin,
 // et toute mutation du document passe par une commande annulable.
 #include <QCheckBox>
+#include <QComboBox>
 #include <QDialog>
 #include <QDialogButtonBox>
 #include <QDoubleSpinBox>
 #include <QFormLayout>
 #include <QGraphicsScene>
+#include <QHeaderView>
 #include <QLabel>
 #include <QMenu>
 #include <QMessageBox>
 #include <QPainterPath>
 #include <QPen>
+#include <QPushButton>
 #include <QStatusBar>
+#include <QTableWidget>
 #include <QTimer>
+#include <QVBoxLayout>
 
 #include <algorithm>
 #include <cmath>
+#include <functional>
 #include <limits>
 #include <numbers>
 
 #include "app_theme.hpp"
+#include "auto_satin_strategy_ui.hpp"
+#include "busy_indicator.hpp"
 #include "main_window.hpp"
 #include "node_handle.hpp"
+#include "openstitch/auto_satin/satin_strategy.hpp"
 #include "openstitch/auto_satin/skeleton_satin.hpp"
 #include "openstitch/commands/composite_command.hpp"
 #include "openstitch/commands/project_commands.hpp"
 #include "openstitch/geometry/boolean.hpp"
 #include "openstitch/geometry/path.hpp"
+#include "openstitch/stitch_generation/auto_satin_engine.hpp"
 #include "openstitch/vectorization/vectorize.hpp"
 
 namespace openstitch::desktop {
@@ -47,15 +57,12 @@ Vec2um toModel(QPointF s) {
     return Vec2um{to_micrometers(Millimeters{s.x()}), to_micrometers(Millimeters{-s.y()})};
 }
 
+// Une seule correspondance réglages -> moteur pour tout le programme (génération, aperçu,
+// inspecteur, API) : voir stitch_generation::auto_satin_engine.
 auto_satin::SkeletonSatinParameters engine_parameters(const document::AutoSatinParams& p,
                                                       bool measureCoverage) {
-    auto_satin::SkeletonSatinParameters e;
-    e.spacing = p.spacing;
-    e.compact_axis = p.compact_axis;
+    auto e = stitch_generation::auto_satin_engine(p);
     e.measure_coverage = measureCoverage;
-    for (const auto& g : p.guides) {
-        e.guides.push_back({g.anchor, g.angle.radians, g.absolute});
-    }
     return e;
 }
 
@@ -82,6 +89,12 @@ std::uint64_t summary_key(const document::VectorObject& source,
         }
     }
     mix(p.spacing.value);
+    // Méthode et réglages propres à une méthode : sans eux, changer de méthode ne rafraîchirait
+    // pas le résumé de l'inspecteur (et `compact_axis` n'y figurait pas non plus).
+    mix(static_cast<std::int64_t>(p.strategy));
+    mix(p.sweep_angle ? static_cast<std::int64_t>(std::llround(p.sweep_angle->radians * 1e6))
+                      : std::numeric_limits<std::int64_t>::min());
+    mix(p.compact_axis ? 1 : 0);
     for (const auto& g : p.guides) {
         mix(g.anchor.x.value);
         mix(g.anchor.y.value);
@@ -102,12 +115,119 @@ double wrap_half_pi(double a) {
     return a;
 }
 
+using DescribeFn = std::function<QString(const document::AutoSatinParams&)>;
+using CompareFn =
+    std::function<std::vector<AutoSatinStrategyComparison>(const document::AutoSatinParams&)>;
+
+// Tableau « Comparer les méthodes » : une ligne par méthode, mesures géométriques des traversées
+// (avant finitions). Aucun choix automatique : l'utilisateur désigne la méthode ; fermer ne
+// change rien. Renvoie la méthode choisie, ou rien si le dialogue est fermé.
+std::optional<document::AutoSatinStrategy>
+showStrategyComparison(QWidget* parent, const std::vector<AutoSatinStrategyComparison>& rows,
+                       document::AutoSatinStrategy current) {
+    QDialog dialog(parent);
+    dialog.setWindowTitle(QObject::tr("Comparer les méthodes de satin"));
+    dialog.resize(900, 320);
+    auto* layout = new QVBoxLayout(&dialog);
+    auto* intro = new QLabel(
+        QObject::tr("Mesures géométriques des traversées, avant finitions (sous-couches, points "
+                    "courts, fractionnement). Une bonne couverture ne remplace pas un essai sur "
+                    "machine : le choix esthétique et textile vous revient."),
+        &dialog);
+    intro->setWordWrap(true);
+    layout->addWidget(intro);
+
+    auto* table = new QTableWidget(static_cast<int>(rows.size()), 8, &dialog);
+    table->setObjectName(QStringLiteral("table_autoSatinCompare"));
+    table->setAccessibleName(QObject::tr("Comparaison des méthodes de satin"));
+    table->setHorizontalHeaderLabels({QObject::tr("Méthode"), QObject::tr("Colonnes"),
+                                      QObject::tr("Couverture"), QObject::tr("Fil en double"),
+                                      QObject::tr("Non couvert (mm²)"), QObject::tr("Croisements"),
+                                      QObject::tr("Plus long fil (mm)"), QObject::tr("Remarques")});
+    table->setEditTriggers(QAbstractItemView::NoEditTriggers);
+    table->setSelectionBehavior(QAbstractItemView::SelectRows);
+    table->setSelectionMode(QAbstractItemView::SingleSelection);
+    table->verticalHeader()->setVisible(false);
+    table->horizontalHeader()->setStretchLastSection(true);
+    int selectRow = 0;
+    for (std::size_t i = 0; i < rows.size(); ++i) {
+        const auto& r = rows[i];
+        const int row = static_cast<int>(i);
+        const auto text = [&](int col, const QString& value, bool right = true) {
+            auto* item = new QTableWidgetItem(value);
+            if (right) {
+                item->setTextAlignment(Qt::AlignRight | Qt::AlignVCenter);
+            }
+            item->setToolTip(autoSatinStrategyTip(r.strategy));
+            table->setItem(row, col, item);
+        };
+        text(0,
+             (r.strategy == current ? QObject::tr("✓ ") : QString()) +
+                 autoSatinStrategyLabel(r.strategy),
+             false);
+        if (r.strategy == current) {
+            selectRow = row;
+        }
+        if (!r.ok) {
+            text(1, QObject::tr("refusée"));
+            for (int col = 2; col <= 6; ++col) {
+                text(col, QStringLiteral("—"));
+            }
+        } else {
+            text(1, QString::number(r.columns));
+            text(2, QStringLiteral("%1 %").arg(r.coverage * 100.0, 0, 'f', 1));
+            text(3, QStringLiteral("×%1").arg(r.overlap, 0, 'f', 2));
+            text(4, QString::number(r.uncoveredMm2, 'f', 1));
+            text(5, QString::number(r.crossingPairs));
+            text(6, QString::number(r.maxThreadMm, 'f', 1));
+        }
+        text(7, r.messages.join(QStringLiteral(" · ")), false);
+    }
+    table->resizeColumnsToContents();
+    table->selectRow(selectRow);
+    layout->addWidget(table);
+
+    auto* buttons = new QDialogButtonBox(&dialog);
+    auto* use =
+        buttons->addButton(QObject::tr("Utiliser cette méthode"), QDialogButtonBox::AcceptRole);
+    use->setObjectName(QStringLiteral("button_autoSatinCompareUse"));
+    buttons->addButton(QObject::tr("Fermer"), QDialogButtonBox::RejectRole);
+    layout->addWidget(buttons);
+    const auto syncUse = [&] {
+        const int row = table->currentRow();
+        use->setEnabled(row >= 0 && row < static_cast<int>(rows.size()) &&
+                        rows[static_cast<std::size_t>(row)].ok);
+    };
+    syncUse();
+    QObject::connect(table, &QTableWidget::currentCellChanged, &dialog, syncUse);
+    QObject::connect(table, &QTableWidget::cellDoubleClicked, &dialog, [&](int row, int) {
+        if (rows[static_cast<std::size_t>(row)].ok) {
+            dialog.accept();
+        }
+    });
+    QObject::connect(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
+    QObject::connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
+    if (dialog.exec() != QDialog::Accepted) {
+        return std::nullopt;
+    }
+    const int row = table->currentRow();
+    if (row < 0 || row >= static_cast<int>(rows.size()) ||
+        !rows[static_cast<std::size_t>(row)].ok) {
+        return std::nullopt;
+    }
+    return rows[static_cast<std::size_t>(row)].strategy;
+}
+
 // Réglages du satin automatique (une fenêtre pour une ou plusieurs formes) ; faux si annulé.
-bool askAutoSatinParams(QWidget* parent, const QString& info, document::AutoSatinParams& params) {
+// `describe` recalcule le résumé (couverture, colonnes) quand la méthode change ; `compare`
+// calcule le tableau de toutes les méthodes (hors du fil d'interface, sans toucher au document).
+bool askAutoSatinParams(QWidget* parent, const QString& info, document::AutoSatinParams& params,
+                        const DescribeFn& describe, const CompareFn& compare) {
     QDialog dialog(parent);
     dialog.setWindowTitle(QObject::tr("Satin"));
     auto* layout = new QFormLayout(&dialog);
     auto* infoLabel = new QLabel(info, &dialog);
+    infoLabel->setObjectName(QStringLiteral("label_autoSatinInfo"));
     infoLabel->setWordWrap(true);
     layout->addRow(infoLabel);
     auto* warn = new QLabel(QObject::tr("⚠ Le satin automatique n'a pas été validé sur machine. "
@@ -118,6 +238,31 @@ bool askAutoSatinParams(QWidget* parent, const QString& info, document::AutoSati
     warn->setStyleSheet(
         QStringLiteral("color:%1;").arg(AppTheme::instance().tokens().warning.name()));
     layout->addRow(warn);
+
+    // Méthode de calcul des traversées : le choix revient à l'utilisateur, jamais à l'outil.
+    auto* method = new QComboBox(&dialog);
+    method->setObjectName(QStringLiteral("combo_autoSatinStrategy"));
+    method->addItems(autoSatinStrategyItems());
+    for (std::size_t i = 0; i < kAutoSatinStrategies.size(); ++i) {
+        method->setItemData(static_cast<int>(i), autoSatinStrategyTip(kAutoSatinStrategies[i]),
+                            Qt::ToolTipRole);
+    }
+    method->setCurrentIndex(static_cast<int>(params.strategy));
+    method->setToolTip(QObject::tr("Méthode de calcul des traversées de ce satin."));
+    auto* sweepAuto = new QCheckBox(QObject::tr("Angle des fils automatique"), &dialog);
+    sweepAuto->setObjectName(QStringLiteral("check_autoSatinSweepAuto"));
+    sweepAuto->setChecked(!params.sweep_angle.has_value());
+    auto* sweepAngle = new QDoubleSpinBox(&dialog);
+    sweepAngle->setObjectName(QStringLiteral("spin_autoSatinSweepAngle"));
+    sweepAngle->setRange(-179.9, 179.9);
+    sweepAngle->setDecimals(1);
+    sweepAngle->setSuffix(QObject::tr(" °"));
+    sweepAngle->setValue(params.sweep_angle ? params.sweep_angle->radians * 180.0 / std::numbers::pi
+                                            : 0.0);
+    auto* compareButton = new QPushButton(QObject::tr("Comparer les méthodes…"), &dialog);
+    compareButton->setObjectName(QStringLiteral("button_autoSatinCompare"));
+    compareButton->setEnabled(static_cast<bool>(compare));
+
     auto* spacingSpin = new QDoubleSpinBox(&dialog);
     spacingSpin->setRange(0.1, 1.5);
     spacingSpin->setDecimals(2);
@@ -133,6 +278,10 @@ bool askAutoSatinParams(QWidget* parent, const QString& info, document::AutoSati
     auto* splitCheck =
         new QCheckBox(QObject::tr("Fractionner les traversées longues (> 7 mm)"), &dialog);
     splitCheck->setChecked(params.split_stitch != document::SatinSplit::Disabled);
+    layout->addRow(QObject::tr("Méthode :"), method);
+    layout->addRow(QString(), sweepAuto);
+    layout->addRow(QObject::tr("Angle des fils :"), sweepAngle);
+    layout->addRow(QString(), compareButton);
     layout->addRow(QObject::tr("Espacement :"), spacingSpin);
     layout->addRow(QObject::tr("Compensation de tirage :"), compSpin);
     layout->addRow(underlayCheck);
@@ -141,9 +290,59 @@ bool askAutoSatinParams(QWidget* parent, const QString& info, document::AutoSati
     QObject::connect(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
     QObject::connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
     layout->addRow(buttons);
+
+    // Réglages courants du formulaire (méthode, angle, espacement) : résumé et comparaison.
+    const auto current = [&] {
+        document::AutoSatinParams p = params;
+        const int index = std::clamp(method->currentIndex(), 0,
+                                     static_cast<int>(kAutoSatinStrategies.size()) - 1);
+        p.strategy = kAutoSatinStrategies[static_cast<std::size_t>(index)];
+        p.spacing = to_micrometers(Millimeters{spacingSpin->value()});
+        if (sweepAuto->isChecked()) {
+            p.sweep_angle.reset();
+        } else {
+            p.sweep_angle = Angle{sweepAngle->value() * std::numbers::pi / 180.0};
+        }
+        return p;
+    };
+    const auto syncSweep = [&] {
+        const bool sweep =
+            method->currentIndex() == static_cast<int>(document::AutoSatinStrategy::ParallelSweep);
+        sweepAuto->setEnabled(sweep);
+        sweepAngle->setEnabled(sweep && !sweepAuto->isChecked());
+    };
+    syncSweep();
+    // Résumé recalculé avec un petit délai : une rafale de changements (molette du spinbox)
+    // ne lance qu'un calcul.
+    auto* refresh = new QTimer(&dialog);
+    refresh->setSingleShot(true);
+    refresh->setInterval(180);
+    QObject::connect(refresh, &QTimer::timeout, &dialog, [&] {
+        if (describe) {
+            infoLabel->setText(describe(current()));
+        }
+    });
+    const auto changed = [&](auto&&...) {
+        syncSweep();
+        refresh->start();
+    };
+    QObject::connect(method, &QComboBox::currentIndexChanged, &dialog, changed);
+    QObject::connect(sweepAuto, &QCheckBox::toggled, &dialog, changed);
+    QObject::connect(sweepAngle, &QDoubleSpinBox::valueChanged, &dialog, changed);
+    QObject::connect(spacingSpin, &QDoubleSpinBox::valueChanged, &dialog, changed);
+    QObject::connect(compareButton, &QPushButton::clicked, &dialog, [&] {
+        const auto rows = compare(current());
+        if (const auto chosen = showStrategyComparison(&dialog, rows, current().strategy)) {
+            method->setCurrentIndex(static_cast<int>(*chosen));
+        }
+    });
+
     if (dialog.exec() != QDialog::Accepted) {
         return false;
     }
+    const auto chosen = current();
+    params.strategy = chosen.strategy;
+    params.sweep_angle = chosen.sweep_angle;
     params.spacing = to_micrometers(Millimeters{spacingSpin->value()});
     params.pull_compensation = to_micrometers(Millimeters{compSpin->value()});
     params.center_underlay = underlayCheck->isChecked();
@@ -189,7 +388,7 @@ MainWindow::previewAutoSatin(const document::VectorObject& source,
     double coveredSum = 0.0;
     double overlapSum = 0.0;
     for (const auto& set : source.paths) {
-        const auto res = auto_satin::generate_skeleton_satin(set, engine_parameters(params, true));
+        const auto res = auto_satin::generate_satin(set, engine_parameters(params, true));
         if (!res) {
             out.messages << QString::fromStdString(res.error().message);
             continue;
@@ -252,9 +451,107 @@ QString MainWindow::autoSatinSummary(const document::EmbroideryObject& emb) {
         autoSatinSummaryCache_.valid) {
         return autoSatinSummaryCache_.text;
     }
+    const QString method = tr("Méthode : %1").arg(autoSatinStrategyLabel(params->strategy));
     autoSatinSummaryCache_ = {emb.id, key,
-                              describeAutoSatinPreview(previewAutoSatin(*source, *params)), true};
+                              method + QLatin1Char('\n') +
+                                  describeAutoSatinPreview(previewAutoSatin(*source, *params)),
+                              true};
     return autoSatinSummaryCache_.text;
+}
+
+std::vector<AutoSatinStrategyComparison>
+MainWindow::compareAutoSatinStrategies(const std::vector<geometry::PathSet>& paths,
+                                       const document::AutoSatinParams& base) {
+    BusyIndicator busy(this, tr("Comparaison des méthodes de satin…"));
+    // Instantané : le calcul n'accède qu'à des copies, jamais au document ni à l'interface.
+    return busy.run([paths, base] {
+        std::vector<AutoSatinStrategyComparison> rows;
+        for (const auto strategy : kAutoSatinStrategies) {
+            AutoSatinStrategyComparison row;
+            row.strategy = strategy;
+            document::AutoSatinParams p = base;
+            p.strategy = strategy;
+            const auto engine = engine_parameters(p, true);
+            double areaSum = 0.0;
+            double coveredSum = 0.0;
+            double overlapSum = 0.0;
+            for (const auto& set : paths) {
+                const auto res = auto_satin::generate_satin(set, engine);
+                if (!res) {
+                    const QString msg = QString::fromStdString(res.error().message);
+                    if (!row.messages.contains(msg)) {
+                        row.messages << msg;
+                    }
+                    continue;
+                }
+                const auto m = auto_satin::measure_result(*res);
+                row.columns += m.columns;
+                row.crossings += m.crossings;
+                row.crossingPairs += m.crossing_pairs;
+                row.maxThreadMm = std::max(row.maxThreadMm, m.max_crossing_mm);
+                row.uncoveredMm2 += m.uncovered_area_mm2;
+                for (const auto& message : res->diagnostics.messages) {
+                    const QString msg = QString::fromStdString(message);
+                    if (!row.messages.contains(msg)) {
+                        row.messages << msg;
+                    }
+                }
+                double area = std::abs(geometry::signed_area_um2(set.outer));
+                for (const auto& hole : set.holes) {
+                    area -= std::abs(geometry::signed_area_um2(hole));
+                }
+                area = std::max(area, 0.0) / 1e6;
+                areaSum += area;
+                coveredSum += area * m.coverage_ratio;
+                overlapSum += area * m.overlap_ratio;
+            }
+            row.ok = row.columns > 0;
+            if (areaSum > 0.0) {
+                row.coverage = coveredSum / areaSum;
+                row.overlap = overlapSum / areaSum;
+            }
+            rows.push_back(std::move(row));
+        }
+        return rows;
+    });
+}
+
+std::optional<document::AutoSatinStrategy>
+MainWindow::firstWorkingAutoSatinStrategy(const document::VectorObject& source,
+                                          const document::AutoSatinParams& params) const {
+    std::vector<document::AutoSatinStrategy> order{params.strategy};
+    for (const auto s : kAutoSatinStrategies) {
+        if (s != params.strategy) {
+            order.push_back(s);
+        }
+    }
+    for (const auto s : order) {
+        document::AutoSatinParams p = params;
+        p.strategy = s;
+        if (previewAutoSatin(source, p).columns > 0) {
+            return s;
+        }
+    }
+    return std::nullopt;
+}
+
+void MainWindow::compareAutoSatinMethods(ObjectId id) {
+    const auto* emb = project_.findEmbroidery(id);
+    const auto* sat =
+        emb != nullptr ? std::get_if<document::AutoSatinParams>(&emb->params) : nullptr;
+    const auto* source = emb != nullptr ? project_.findObject(emb->source_vector) : nullptr;
+    if (sat == nullptr || source == nullptr) {
+        return;
+    }
+    const auto rows = compareAutoSatinStrategies(source->paths, *sat);
+    const auto chosen = showStrategyComparison(this, rows, sat->strategy);
+    if (!chosen || *chosen == sat->strategy) {
+        return; // fermer ou garder la méthode actuelle ne change rien
+    }
+    document::AutoSatinParams params = *sat;
+    params.strategy = *chosen;
+    applyAutoSatinEdit(id, std::move(params),
+                       tr("Changer la méthode de satin : %1").arg(autoSatinStrategyLabel(*chosen)));
 }
 
 void MainWindow::createAutoSatin(bool askParameters) {
@@ -281,10 +578,29 @@ void MainWindow::createAutoSatin(bool askParameters) {
     }
 
     document::AutoSatinParams params;
-    const AutoSatinPreview preview = previewAutoSatin(*source, params);
+    AutoSatinPreview preview = previewAutoSatin(*source, params);
+
+    // Le squelette n'a produit aucune colonne : avant de refuser, on essaie les autres méthodes
+    // (disque, pétale, bloc large). La méthode retenue est PROPOSÉE puis montrée à
+    // l'utilisateur (dialogue ou question) ; jamais appliquée à son insu.
+    QString suggestion;
+    if (preview.columns == 0) {
+        if (const auto alt = firstWorkingAutoSatinStrategy(*source, params);
+            alt && *alt != params.strategy) {
+            const QString skeletonRefusal = preview.messages.isEmpty()
+                                                ? tr("forme non exploitable")
+                                                : preview.messages.join(QLatin1Char('\n'));
+            params.strategy = *alt;
+            preview = previewAutoSatin(*source, params);
+            suggestion = tr("La méthode « %1 » ne peut pas traiter cette forme (%2).\n"
+                            "Méthode proposée : « %3 ».\n\n")
+                             .arg(autoSatinStrategyLabel(document::AutoSatinStrategy::Skeleton),
+                                  skeletonRefusal, autoSatinStrategyLabel(*alt));
+        }
+    }
 
     if (preview.columns == 0) {
-        // Le moteur n'a produit aucune colonne : refus nommé, jamais contourné par
+        // Aucune méthode n'a produit de colonne : refus nommé, jamais contourné par
         // une géométrie de moindre qualité. Seul choix actionnable : un tatami.
         const auto answer = QMessageBox::question(
             this, tr("Satin impossible"),
@@ -313,17 +629,28 @@ void MainWindow::createAutoSatin(bool askParameters) {
     }
 
     if (askParameters) {
-        if (!askAutoSatinParams(this, describeAutoSatinPreview(preview), params)) {
+        const auto describe = [this, source](const document::AutoSatinParams& p) {
+            return describeAutoSatinPreview(previewAutoSatin(*source, p));
+        };
+        const auto compare = [this, source](const document::AutoSatinParams& p) {
+            return compareAutoSatinStrategies(source->paths, p);
+        };
+        if (!askAutoSatinParams(this, suggestion + describeAutoSatinPreview(preview), params,
+                                describe, compare)) {
             return;
         }
     } else {
-        const auto answer = QMessageBox::question(
-            this, tr("Convertir en satin"),
-            tr("%1\n\nCréer le satin ? (annulable)").arg(describeAutoSatinPreview(preview)));
+        const auto answer =
+            QMessageBox::question(this, tr("Convertir en satin"),
+                                  tr("%1%2\n\nCréer le satin ? (annulable)")
+                                      .arg(suggestion, describeAutoSatinPreview(preview)));
         if (answer != QMessageBox::Yes) {
             return;
         }
     }
+    // Les réglages du dialogue (méthode comprise) décident : on recalcule le résumé affiché
+    // dans la barre d'état pour la méthode finalement retenue.
+    preview = previewAutoSatin(*source, params);
 
     document::EmbroideryObject object;
     object.id = project_.object_ids.next();
@@ -450,7 +777,7 @@ void MainWindow::renderAutoSatinOverlay(const document::EmbroideryObject& obj,
     QPainterPath axes;
     std::vector<std::vector<Vec2um>> axisList;
     for (const auto& set : source.paths) {
-        const auto res = auto_satin::generate_skeleton_satin(set, engine_parameters(params, false));
+        const auto res = auto_satin::generate_satin(set, engine_parameters(params, false));
         if (!res) {
             continue;
         }
@@ -487,7 +814,7 @@ void MainWindow::renderAutoSatinOverlay(const document::EmbroideryObject& obj,
     axisPen.setStyle(Qt::DashLine);
     auto* axisItem = scene_->addPath(axes, axisPen, Qt::NoBrush);
     axisItem->setZValue(97);
-    axisItem->setToolTip(tr("Squelette (axe de référence des traversées)"));
+    axisItem->setToolTip(tr("Axe de référence des traversées"));
     baseItems_.append(axisItem);
 
     // 3) Guides : un trait indiquant la direction des fils et une poignée
@@ -589,7 +916,9 @@ void MainWindow::createAutoSatinForSelection(bool askParameters) {
     struct Candidate {
         const document::VectorObject* source{nullptr};
         std::optional<std::vector<geometry::PathSet>> restored;
-        bool ok{false};
+        std::vector<geometry::PathSet> paths; // contours réellement utilisés (bruts si restaurés)
+        bool ok{false};                       // au moins une méthode produit des colonnes
+        std::optional<document::AutoSatinStrategy> strategy; // méthode retenue pour cette forme
     };
     std::vector<Candidate> candidates;
     document::AutoSatinParams params;
@@ -606,7 +935,19 @@ void MainWindow::createAutoSatinForSelection(bool askParameters) {
         if (c.restored) {
             copy.paths = *c.restored;
         }
-        const AutoSatinPreview preview = previewAutoSatin(copy, params);
+        c.paths = copy.paths;
+        AutoSatinPreview preview = previewAutoSatin(copy, params);
+        c.strategy = params.strategy;
+        if (preview.columns == 0) {
+            // Le squelette refuse cette forme : on essaie les autres méthodes avant de la
+            // déclarer impossible (la méthode retenue est montrée dans le dialogue).
+            if (const auto alt = firstWorkingAutoSatinStrategy(copy, params)) {
+                document::AutoSatinParams p = params;
+                p.strategy = *alt;
+                preview = previewAutoSatin(copy, p);
+                c.strategy = *alt;
+            }
+        }
         c.ok = preview.columns > 0;
         if (c.ok && firstInfo.isEmpty()) {
             firstInfo = describeAutoSatinPreview(preview);
@@ -638,8 +979,37 @@ void MainWindow::createAutoSatinForSelection(bool askParameters) {
         if (askParameters) {
             const QString info =
                 tr("%1 forme(s) : mêmes réglages pour toutes.\n%2").arg(okCount).arg(firstInfo);
-            if (!askAutoSatinParams(this, info, params)) {
+            const Candidate* first = nullptr;
+            for (const Candidate& c : candidates) {
+                if (c.ok) {
+                    first = &c;
+                    break;
+                }
+            }
+            if (first != nullptr && first->strategy) {
+                params.strategy = *first->strategy;
+            }
+            const auto describe = [this, first](const document::AutoSatinParams& p) {
+                document::VectorObject v;
+                v.paths = first->paths;
+                return describeAutoSatinPreview(previewAutoSatin(v, p));
+            };
+            const auto compare = [this, first](const document::AutoSatinParams& p) {
+                return compareAutoSatinStrategies(first->paths, p);
+            };
+            if (!askAutoSatinParams(this, info, params, describe, compare)) {
                 return;
+            }
+            // La méthode choisie vaut pour toutes les formes où elle fonctionne ; sinon la
+            // première qui fonctionne pour cette forme (jamais un satin sans colonne).
+            for (Candidate& c : candidates) {
+                if (!c.ok) {
+                    continue;
+                }
+                document::VectorObject v;
+                v.paths = c.paths;
+                c.strategy = firstWorkingAutoSatinStrategy(v, params);
+                c.ok = c.strategy.has_value();
             }
         } else {
             const auto answer = QMessageBox::question(
@@ -667,7 +1037,9 @@ void MainWindow::createAutoSatinForSelection(bool askParameters) {
         if (c.ok) {
             object.name =
                 tr("Satin de %1").arg(QString::fromStdString(c.source->name)).toStdString();
-            object.params = params;
+            document::AutoSatinParams perShape = params;
+            perShape.strategy = c.strategy.value_or(params.strategy);
+            object.params = perShape;
             if (c.restored) {
                 group->add(std::make_unique<commands::SetVectorPathsCommand>(
                     c.source->id, *c.restored, "Contour brut de la région"));

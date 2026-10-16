@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 #include "properties_panel.hpp"
+
 #include "app_theme.hpp"
+#include "auto_satin_strategy_ui.hpp"
 #include "ui_icons.hpp"
 
 #include <QCheckBox>
@@ -785,9 +787,10 @@ void PropertiesPanel::buildEmbroideryForm(const document::EmbroideryObject& obje
 
     const QString typeName = object.is_tatami()        ? tr("Remplissage tatami")
                              : object.is_directional() ? tr("Remplissage directionnel")
-                             : object.is_auto_satin()  ? tr("Satin (squelette et traversées)")
-                             : object.is_satin()       ? tr("Colonne satin à rails (manuelle)")
-                                                       : tr("Contour cousu");
+                             : object.is_auto_satin()
+                                 ? tr("Satin automatique (traversées orientées)")
+                             : object.is_satin() ? tr("Colonne satin à rails (manuelle)")
+                                                 : tr("Contour cousu");
     form->addRow(tr("Type :"), new QLabel(typeName, body_));
     if (!group) {
         // En-tête : pastille de couleur de l'objet et pastille de type.
@@ -1401,6 +1404,45 @@ void PropertiesPanel::buildEmbroideryForm(const document::EmbroideryObject& obje
                 lockEnd->addItems(lockItems());
                 lockEnd->setCurrentIndex(static_cast<int>(p.lock_end));
 
+                // --- Méthode de calcul des traversées (choix de l'utilisateur) ---
+                auto* method = new QComboBox(body_);
+                method->setObjectName(QStringLiteral("combo_autoSatinStrategy"));
+                method->setAccessibleName(tr("Méthode de satin"));
+                method->addItems(autoSatinStrategyItems());
+                for (std::size_t i = 0; i < kAutoSatinStrategies.size(); ++i) {
+                    method->setItemData(static_cast<int>(i),
+                                        autoSatinStrategyTip(kAutoSatinStrategies[i]),
+                                        Qt::ToolTipRole);
+                }
+                method->setCurrentIndex(static_cast<int>(p.strategy));
+                method->setToolTip(autoSatinStrategyTip(p.strategy));
+                auto* sweepAuto = new QCheckBox(tr("Angle des fils automatique"), body_);
+                sweepAuto->setObjectName(QStringLiteral("check_autoSatinSweepAuto"));
+                sweepAuto->setChecked(!p.sweep_angle.has_value());
+                auto* sweepAngle = new QDoubleSpinBox(body_);
+                sweepAngle->setObjectName(QStringLiteral("spin_autoSatinSweepAngle"));
+                sweepAngle->setKeyboardTracking(false);
+                sweepAngle->setRange(-179.9, 179.9);
+                sweepAngle->setDecimals(1);
+                sweepAngle->setSuffix(tr(" °"));
+                sweepAngle->setValue(p.sweep_angle ? to_deg(*p.sweep_angle) : 0.0);
+                sweepAngle->setToolTip(tr("Direction des fils (0° = horizontal, sens "
+                                          "trigonométrique), valable pour toute la forme."));
+                auto* methodNote = new QLabel(
+                    tr("Cette méthode utilise un angle global : les guides locaux ne s'appliquent "
+                       "pas."),
+                    body_);
+                methodNote->setObjectName(QStringLiteral("label_autoSatinMethodNote"));
+                methodNote->setWordWrap(true);
+                QPushButton* compareMethods = nullptr;
+                if (!group) {
+                    compareMethods = new QPushButton(tr("Comparer les méthodes…"), body_);
+                    compareMethods->setObjectName(QStringLiteral("button_autoSatinCompare"));
+                    compareMethods->setToolTip(
+                        tr("Calcule toutes les méthodes sur cette forme et affiche leurs "
+                           "mesures (couverture, fil en double, croisements) ; vous choisissez."));
+                }
+
                 // --- Guides d'orientation ---
                 auto* guideList = new QListWidget(body_);
                 guideList->setObjectName(QStringLiteral("list_satinGuides"));
@@ -1450,6 +1492,47 @@ void PropertiesPanel::buildEmbroideryForm(const document::EmbroideryObject& obje
                     form->addRow(QString(), summary);
                 } else {
                     delete summary;
+                }
+                section(tr("Méthode"));
+                form->addRow(tr("Méthode :"), method);
+                form->addRow(QString(), sweepAuto);
+                form->addRow(tr("Angle des fils :"), sweepAngle);
+                form->addRow(QString(), methodNote);
+                if (compareMethods != nullptr) {
+                    form->addRow(QString(), compareMethods);
+                }
+                const auto syncMethod = [form, method, sweepAuto, sweepAngle, methodNote] {
+                    const bool sweep = method->currentIndex() ==
+                                       static_cast<int>(document::AutoSatinStrategy::ParallelSweep);
+                    sweepAuto->setEnabled(sweep);
+                    setRowEnabled(form, sweepAngle, sweep && !sweepAuto->isChecked());
+                    methodNote->setVisible(sweep);
+                    method->setToolTip(
+                        autoSatinStrategyTip(kAutoSatinStrategies[static_cast<std::size_t>(
+                            std::clamp(method->currentIndex(), 0,
+                                       static_cast<int>(kAutoSatinStrategies.size()) - 1))]));
+                };
+                syncMethod();
+                connect(method, &QComboBox::currentIndexChanged, this,
+                        [syncMethod](int) { syncMethod(); });
+                connect(sweepAuto, &QCheckBox::toggled, this, [syncMethod](bool) { syncMethod(); });
+                bindEnumField<T>(this, edit, method, tr("Méthode de satin"), &T::strategy);
+                connect(sweepAuto, &QCheckBox::toggled, this, [edit, sweepAngle](bool on) {
+                    const double deg = sweepAngle->value();
+                    edit(tr("Angle des fils"), [on, deg](T& t) {
+                        if (on) {
+                            t.sweep_angle.reset();
+                        } else {
+                            t.sweep_angle = from_deg(deg);
+                        }
+                    });
+                });
+                connect(sweepAngle, &QDoubleSpinBox::valueChanged, this, [edit](double v) {
+                    edit(tr("Angle des fils"), [v](T& t) { t.sweep_angle = from_deg(v); });
+                });
+                if (compareMethods != nullptr) {
+                    connect(compareMethods, &QPushButton::clicked, this,
+                            [this, id] { emit compareSatinMethodsRequested(id); });
                 }
                 section(tr("Remplissage"));
                 form->addRow(tr("Espacement :"), spacing);

@@ -5027,7 +5027,18 @@ bool MainWindow::stitchParamsForType(const document::EmbroideryObject& emb, int 
             source = &restoredCopy;
         }
         document::AutoSatinParams sp;
-        const AutoSatinPreview preview = previewAutoSatin(*source, sp);
+        AutoSatinPreview preview = previewAutoSatin(*source, sp);
+        QString methodNote;
+        if (preview.columns == 0) {
+            // Le squelette refuse la forme : on essaie les autres méthodes. La méthode retenue
+            // est écrite sur l'objet (visible dans l'inspecteur) et nommée dans l'historique.
+            if (const auto alt = firstWorkingAutoSatinStrategy(*source, sp);
+                alt && *alt != sp.strategy) {
+                sp.strategy = *alt;
+                preview = previewAutoSatin(*source, sp);
+                methodNote = autoSatinStrategyLabel(*alt);
+            }
+        }
         if (preview.columns == 0) {
             // Refus nommé, jamais contourné par une géométrie de moindre qualité.
             error = tr("Aucune colonne satin n'a pu être construite pour cette région :\n%1\n\n"
@@ -5037,7 +5048,8 @@ bool MainWindow::stitchParamsForType(const document::EmbroideryObject& emb, int 
             return false;
         }
         params = sp;
-        label = "Type : satin";
+        label = methodNote.isEmpty() ? std::string("Type : satin")
+                                     : ("Type : satin (" + methodNote.toStdString() + ")");
         return true;
     }
     default:
@@ -6785,6 +6797,8 @@ void MainWindow::buildPropertiesPanel() {
     connectInspectorEditing();
     connect(propertiesPanel_, &PropertiesPanel::satinGuideRemoveRequested, this,
             &MainWindow::removeAutoSatinGuide);
+    connect(propertiesPanel_, &PropertiesPanel::compareSatinMethodsRequested, this,
+            &MainWindow::compareAutoSatinMethods);
     connect(propertiesPanel_, &PropertiesPanel::editDirectionGuidesRequested, this,
             [this](ObjectId id) {
                 if (auto* emb = project_.findEmbroidery(id);

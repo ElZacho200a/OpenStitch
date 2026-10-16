@@ -19,6 +19,7 @@
 #include <set>
 #include <vector>
 
+#include "auto_satin_strategy_ui.hpp"
 #include "interaction_map.hpp"
 #include "openstitch/commands/transform_ops.hpp"
 #include "openstitch/commands/undo_stack.hpp"
@@ -614,6 +615,20 @@ private:
     [[nodiscard]] AutoSatinPreview previewAutoSatin(const document::VectorObject& source,
                                                     const document::AutoSatinParams& params) const;
     [[nodiscard]] QString describeAutoSatinPreview(const AutoSatinPreview& preview) const;
+    // Mesures de CHAQUE méthode d'auto-satin sur ces contours (tableau « Comparer les
+    // méthodes ») : calculées hors du fil d'interface sur un instantané, sans toucher au
+    // document. Les réglages de `base` (espacement, angle, guides) sont ceux de chaque essai.
+    [[nodiscard]] std::vector<AutoSatinStrategyComparison>
+    compareAutoSatinStrategies(const std::vector<geometry::PathSet>& paths,
+                               const document::AutoSatinParams& base);
+    // Bouton « Comparer les méthodes… » de l'inspecteur : tableau, puis, si l'utilisateur en
+    // désigne une autre, UNE commande annulable (« Changer la méthode de satin »).
+    void compareAutoSatinMethods(ObjectId id);
+    // Méthode d'un auto-satin qui produit au moins une colonne pour cette forme, en essayant
+    // d'abord celle des réglages puis les autres dans l'ordre du sélecteur ; rien si aucune.
+    [[nodiscard]] std::optional<document::AutoSatinStrategy>
+    firstWorkingAutoSatinStrategy(const document::VectorObject& source,
+                                  const document::AutoSatinParams& params) const;
     // Contour brut de la région de segmentation d'un vecteur, si le contour actuel le dépasse
     // nettement (le recouvrement des tatamis voisins y a été intégré à l'auto-numérisation :
     // utile au tatami, mais un satin y déborderait de sa région). Aucun si pas de région.

@@ -5,6 +5,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <numbers>
 
 #include "openstitch/auto_satin/shapes.hpp"
 #include "openstitch/stitch_generation/generate.hpp"
@@ -209,4 +210,44 @@ TEST_CASE("generation: un guide absolu incline les traversees", "[skeleton_satin
     };
     CHECK(slant(plain) < 5);
     CHECK(slant(guided) > 500);
+}
+
+TEST_CASE("generation: la methode choisie sur l'objet pilote les points", "[satin_strategy]") {
+    // Un disque : le squelette le refuse (aucun point), le balayage et l'axe median le couvrent.
+    document::AutoSatinParams skeleton;
+    const auto none = sg::generate_sequence(project_with("circle", skeleton));
+    CHECK((!none.has_value() || top_stitches(*none).empty()));
+
+    for (const auto strategy :
+         {document::AutoSatinStrategy::ParallelSweep, document::AutoSatinStrategy::MedialAxis}) {
+        INFO(static_cast<int>(strategy));
+        document::AutoSatinParams p;
+        p.strategy = strategy;
+        const auto a = sg::generate_sequence(project_with("circle", p));
+        const auto b = sg::generate_sequence(project_with("circle", p));
+        REQUIRE(a.has_value());
+        REQUIRE(b.has_value());
+        CHECK(top_stitches(*a).size() > 50);
+        const auto sa = top_stitches(*a);
+        const auto sb = top_stitches(*b);
+        REQUIRE(sa.size() == sb.size());
+        for (std::size_t i = 0; i < sa.size(); ++i) {
+            CHECK(sa[i] == sb[i]); // deterministe
+        }
+    }
+}
+
+TEST_CASE("generation: l'angle de balayage explicite oriente les fils", "[satin_strategy]") {
+    document::AutoSatinParams p;
+    p.strategy = document::AutoSatinStrategy::ParallelSweep;
+    p.sweep_angle = Angle{std::numbers::pi / 2.0}; // traversees verticales
+    const auto seq = sg::generate_sequence(project_with("rectangle", p));
+    REQUIRE(seq.has_value());
+    const auto top = top_stitches(*seq);
+    REQUIRE(top.size() > 20);
+    int vertical = 0;
+    for (std::size_t i = 1; i < top.size(); ++i) {
+        vertical += top[i].x == top[i - 1].x ? 1 : 0;
+    }
+    CHECK(vertical > static_cast<int>(top.size()) / 4);
 }

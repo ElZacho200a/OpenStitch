@@ -131,6 +131,11 @@ private:
                 guide.angle = Angle{wrap_half_turn(-guide.angle.radians)};
             }
         }
+        // Angle des fils du balayage parallèle : direction du repère, comme un guide absolu.
+        // (Absent = automatique, perpendiculaire à l'axe principal : suit déjà la forme.)
+        if (p.sweep_angle) {
+            p.sweep_angle = transform_.apply_direction(*p.sweep_angle);
+        }
         transformPoint(p.entry_point);
         transformPoint(p.exit_point);
     }

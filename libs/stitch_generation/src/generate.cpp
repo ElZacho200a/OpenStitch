@@ -5,10 +5,12 @@
 #include <cmath>
 #include <variant>
 
+#include "openstitch/auto_satin/satin_strategy.hpp"
 #include "openstitch/auto_satin/skeleton_satin.hpp"
 #include "openstitch/core/parallel.hpp"
 #include "openstitch/geometry/offset.hpp"
 #include "openstitch/geometry/polyline.hpp"
+#include "openstitch/stitch_generation/auto_satin_engine.hpp"
 #include "openstitch/stitch_generation/directional_fill.hpp"
 #include "openstitch/stitch_generation/join.hpp"
 #include "openstitch/stitch_generation/lock.hpp"
@@ -331,15 +333,6 @@ void generate_satin(stitch::StitchSequence& sequence, const document::Embroidery
 // (`finish_satin_stations`) ; les colonnes sont enchaînées au plus proche.
 // Paramètres du moteur de squelette pour un auto-satin (partagés entre la génération et le
 // préchauffage parallèle du cache : mêmes entrées exactes, donc mêmes entrées de cache).
-auto_satin::SkeletonSatinParameters auto_satin_engine(const document::AutoSatinParams& params) {
-    auto_satin::SkeletonSatinParameters engine;
-    engine.spacing = params.spacing;
-    engine.compact_axis = params.compact_axis;
-    for (const auto& g : params.guides) {
-        engine.guides.push_back({g.anchor, g.angle.radians, g.absolute});
-    }
-    return engine;
-}
 
 void generate_auto_satin(stitch::StitchSequence& sequence, const document::VectorObject& source,
                          const document::EmbroideryObject& object,
@@ -384,7 +377,7 @@ void generate_auto_satin(stitch::StitchSequence& sequence, const document::Vecto
     std::vector<std::vector<SatinStation>> columns;
     for (const geometry::PathSet& rawSet : source.paths) {
         const geometry::PathSet set = geometry::flatten_to_polygon(rawSet, kFillFlattenTolerance);
-        const auto result = auto_satin::generate_skeleton_satin(set, engine);
+        const auto result = auto_satin::generate_satin(set, engine);
         if (!result) {
             continue; // région non analysable : aucun point pour ce morceau
         }
@@ -835,9 +828,12 @@ Result<stitch::StitchSequence> generate_sequence(const document::Project& projec
         const document::EmbroideryObject& object = objects[unit.first];
         if (unit.kind == Kind::AutoSatin) {
             const auto& params = std::get<document::AutoSatinParams>(object.params);
+            if (params.strategy != document::AutoSatinStrategy::Skeleton) {
+                return; // seul le squelette a un cache de résultats à préchauffer
+            }
             const auto engine = auto_satin_engine(params);
             for (const geometry::PathSet& rawSet : unit.source->paths) {
-                (void)auto_satin::generate_skeleton_satin(
+                (void)auto_satin::generate_satin(
                     geometry::flatten_to_polygon(rawSet, kFillFlattenTolerance), engine);
             }
             return;
@@ -943,6 +939,31 @@ Result<stitch::StitchSequence> generate_sequence(const document::Project& projec
     sequence.commands.push_back(
         {sequence.commands.back().pos, stitch::CommandType::End, ObjectId{}});
     return sequence;
+}
+
+auto_satin::SkeletonSatinParameters auto_satin_engine(const document::AutoSatinParams& params) {
+    auto_satin::SkeletonSatinParameters engine;
+    engine.spacing = params.spacing;
+    engine.compact_axis = params.compact_axis;
+    switch (params.strategy) {
+    case document::AutoSatinStrategy::Skeleton:
+        engine.strategy = auto_satin::SatinStrategy::Skeleton;
+        break;
+    case document::AutoSatinStrategy::ParallelSweep:
+        engine.strategy = auto_satin::SatinStrategy::ParallelSweep;
+        break;
+    case document::AutoSatinStrategy::MedialAxis:
+        engine.strategy = auto_satin::SatinStrategy::MedialAxis;
+        break;
+    }
+    if (params.sweep_angle) {
+        engine.sweep_auto_angle = false;
+        engine.sweep_angle_rad = params.sweep_angle->radians;
+    }
+    for (const auto& g : params.guides) {
+        engine.guides.push_back({g.anchor, g.angle.radians, g.absolute});
+    }
+    return engine;
 }
 
 } // namespace openstitch::stitch_generation
