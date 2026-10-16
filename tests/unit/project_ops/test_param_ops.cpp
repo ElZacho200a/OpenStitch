@@ -618,6 +618,7 @@ TEST_CASE("param ops directional_guides converts and guides a long shape",
             std::get_if<document::DirectionalFillParams>(&p.findEmbroidery(ObjectId{2})->params);
         REQUIRE(d != nullptr);
         REQUIRE_FALSE(d->guides.empty());
+        const std::size_t guideCount = d->guides.size(); // `d` est invalidé par l'opération suivante
         CHECK(result_of(r)["converted"] == true);
         // Le guide suit la grande dimension de la bande.
         const auto& g = d->guides.front().nodes;
@@ -629,7 +630,7 @@ TEST_CASE("param ops directional_guides converts and guides a long shape",
         CHECK(result_of(again)["converted"] == false);
         const auto* d2 =
             std::get_if<document::DirectionalFillParams>(&p.findEmbroidery(ObjectId{2})->params);
-        CHECK(d2->guides.size() == d->guides.size());
+        CHECK(d2->guides.size() == guideCount);
     }
     SECTION("a running object is refused") {
         expect_refused(p, R"({"op":"directional_guides","object":4})", project_ops::code::kRefused);
