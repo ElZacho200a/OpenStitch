@@ -398,6 +398,9 @@ void add_digitize_options(CLI::App* cmd, DigitizeOptionValues& v) {
                   "Mode formes : les bandes étroites (anneaux, rubans, traits épais) deviennent "
                   "de l'auto-satin au lieu d'un tatami ; repli tatami si la couverture est "
                   "insuffisante");
+    cmd->add_flag("--solid-block", s.solid_block,
+                  "Mode formes : bloc plein sans jour entre les couleurs (tatami sans retrait, "
+                  "débord sur les voisines, compensation du tirage, petites zones remplies)");
     cmd->add_flag("--single-path", s.single_path,
                   "Mode contours : relie les traits en un minimum de polylignes (parcours "
                   "eulérien, repasse un court tronçon plutôt que de couper le fil)");

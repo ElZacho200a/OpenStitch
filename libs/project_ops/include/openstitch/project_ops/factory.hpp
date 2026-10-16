@@ -64,6 +64,7 @@ struct DigitizeSettings {
     std::string technique{"auto"};  // contours : auto | running | legacy-satin
     double curve_tolerance_mm{0.0}; // shapes
     bool satin_bands{false};        // shapes
+    bool solid_block{false};        // shapes : bloc plein sans jour (AutoOptions::solid_block)
     bool single_path{false};        // contours
     bool coherent_lines{false};     // contours : FDoG avant segmentation
     // HP-AUTO-005 : traits sombres fins cousus par-dessus les remplissages (mode formes).

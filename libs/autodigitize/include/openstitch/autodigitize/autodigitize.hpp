@@ -99,6 +99,26 @@ struct AutoOptions {
     bool order_by_layers{true};
     double layer_large_area_ratio{0.25};
 
+    // --- Bloc plein, sans jour (« solid block ») ---
+    // Vrai : l'image doit devenir UNE pièce compacte où les couleurs se touchent sans que le
+    // tissu transparaisse entre elles. Les jours viennent de trois causes cumulées : le retrait
+    // `inset` (0,2 mm) de chaque tatami sur TOUS ses bords, les contours vectorisés qui passent
+    // par les centres de pixels (un pixel d'écart entre deux voisines) et le tirage du fil, qui
+    // rétrécit chaque remplissage dans l'axe des rangées. Ce mode, appliqué aux seuls objets créés
+    // ici :
+    //  - tatami sans retrait (`inset` = 0) ;
+    //  - débord sur les voisines brodées d'au moins `solid_overlap` (le plus grand de
+    //    `fill_overlap` et `solid_overlap`) ; l'ordre en couches pose les grandes zones d'abord,
+    //    les détails recouvrent le débord ;
+    //  - compensation du tirage `solid_pull_compensation` sur chaque tatami ;
+    //  - les zones jusqu'à `solid_min_fill_area_mm2` sont REMPLIES (au lieu d'un simple contour qui
+    //    laisserait leur intérieur nu).
+    // Le fond ignoré (`skip_largest_region`) reste ignoré. Désactivé par défaut.
+    bool solid_block{false};
+    Micrometers solid_overlap{300};
+    Micrometers solid_pull_compensation{200};
+    double solid_min_fill_area_mm2{1.0};
+
     // --- Fragments (Lot D) ---
     // Nettoyage d'une copie de travail de la segmentation avant numérisation.
     // Isthmes et lamelles plus étroits que cette largeur (ouverture

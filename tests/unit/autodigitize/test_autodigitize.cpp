@@ -794,6 +794,55 @@ TEST_CASE("Par defaut aucun recouvrement : le contour vectoriel reste celui de l
     CHECK(redParams->inset.value == 200);
 }
 
+TEST_CASE("bloc plein : tatami sans retrait, debord sur le voisin, tirage compense") {
+    const auto seg =
+        segmentation::segment(paint(50, 30, {{5, 5, 25, 25, kRed}, {25, 5, 45, 25, kBlue}}),
+                              {.max_colors = 2, .min_region_px = 1});
+    REQUIRE(seg.has_value());
+    AutoOptions solid = tatami_only_opts();
+    solid.solid_block = true;
+    IdGenerator<ObjectId> ids;
+    const auto r = auto_digitize(*seg, ids, solid);
+    REQUIRE(r.has_value());
+    const document::TatamiParams* redParams = nullptr;
+    const auto* red = tatami_vector(*r, kRed, &redParams);
+    REQUIRE(red != nullptr);
+    const auto b = bounds_mm(*red);
+    CHECK(b.x1 >= 0.25);  // debord d'au moins 0,3 mm (moins la tolerance) sur le bleu
+    CHECK(b.x0 == -19.5); // bord exterieur : contour brut, sans retrait
+    CHECK(redParams->inset.value == 0);
+    CHECK(redParams->pull_compensation.value == 200);
+
+    // Deterministe, et le mode est desactive par defaut.
+    IdGenerator<ObjectId> ids2;
+    const auto r2 = auto_digitize(*seg, ids2, solid);
+    REQUIRE(r2.has_value());
+    CHECK(bounds_mm(*tatami_vector(*r2, kRed)).x1 == b.x1);
+    CHECK_FALSE(AutoOptions{}.solid_block);
+}
+
+TEST_CASE("bloc plein : une petite zone est remplie au lieu d'un simple contour") {
+    // Carre vert 3x3 mm (9 mm2) : sous min_fill_area_mm2 = 20 -> contour ; en bloc plein, rempli.
+    image::Image img = blank(9, 9);
+    for (int y = 3; y < 6; ++y) {
+        for (int x = 3; x < 6; ++x) {
+            set_px(img, x, y, 30, 200, 30);
+        }
+    }
+    const auto seg = segmentation::segment(img, {.max_colors = 2, .min_region_px = 1});
+    REQUIRE(seg.has_value());
+    AutoOptions o = opts();
+    o.solid_block = true;
+    IdGenerator<ObjectId> ids;
+    const auto r = auto_digitize(*seg, ids, o);
+    REQUIRE(r.has_value());
+    bool anyTatami = false;
+    for (const auto& e : r->embroideries) {
+        anyTatami = anyTatami || e.is_tatami();
+    }
+    CHECK(anyTatami);
+}
+
 TEST_CASE("Lot C : pas de debord vers le fond ignore") {
     // Fond blanc ignoré (skip_largest_region) autour d'un carré rouge : le
     // fond n'est pas brodé, le carré garde son retrait sur tous ses bords.

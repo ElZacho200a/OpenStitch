@@ -173,6 +173,18 @@ d'annulation).
 
 **Réglage dans l'interface (2026-10)** : la boîte *Numérisation automatique* (mode formes) propose « Chevauchement des remplissages » (0 à 1 mm, par pas de 0,05 mm, 0 par défaut) ; la valeur est mémorisée entre les sessions (`autoDigitize/fillOverlapUm`) et alimente `AutoOptions::fill_overlap`. Même réserve que ci-dessus : le débord fait partie de la forme vectorielle.
 
+**Bloc plein, sans jour (2026-10, `AutoOptions::solid_block`).** Pour une broderie d'une seule
+pièce où le tissu ne doit jamais transparaître entre deux couleurs. Trois causes de jours se
+cumulaient : le retrait `inset` (0,2 mm) de chaque tatami sur tous ses bords, les contours
+vectorisés par les centres de pixels (un pixel d'écart entre voisines) et le tirage du fil. Le
+mode, appliqué aux seuls objets créés par l'auto-numérisation : tatami sans retrait
+(`inset` = 0), débord d'au moins `solid_overlap` (0,3 mm) sur les voisines brodées (le plus grand
+de `fill_overlap` et `solid_overlap`, ordre en couches inchangé : grandes zones dessous),
+compensation du tirage `solid_pull_compensation` (0,2 mm) et zones jusqu'à
+`solid_min_fill_area_mm2` (1 mm²) remplies plutôt que contournées. Le fond ignoré reste ignoré.
+Interface : case « Bloc plein » (mémorisée, `autoDigitize/solidBlock`) ; CLI :
+`openstitch-cli project new … --solid-block`. Désactivé par défaut.
+
 Les remplissages de repli d'un satin incomplet ne sont pas concernés : ils
 recouvrent déjà leurs bandes satin (`kCoverageOverlap`).
 

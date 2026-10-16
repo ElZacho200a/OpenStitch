@@ -4408,6 +4408,18 @@ void MainWindow::autoDigitize() {
                "Les petits disques (jusqu'à 12 mm) sont cousus en cordes parallèles ; les formes "
                "plus larges restent en tatami."));
         optsLayout->addWidget(satinBandsCheck);
+        auto* solidBlockCheck =
+            new QCheckBox(tr("Bloc plein (aucun jour entre les couleurs)"), &optsDialog);
+        solidBlockCheck->setObjectName("solidBlockCheck");
+        solidBlockCheck->setChecked(
+            ui_memory::intValue(QStringLiteral("autoDigitize/solidBlock"), 0, 0, 1) != 0);
+        solidBlockCheck->setToolTip(
+            tr("Mode formes : pour une broderie d'une seule pièce où le tissu ne doit pas "
+               "transparaître. Les remplissages vont jusqu'au bord de leur forme, débordent d'au "
+               "moins 0,3 mm sous leurs voisins (les grandes zones sont cousues d'abord), "
+               "compensent le tirage du fil, et les petites zones sont remplies au lieu d'être "
+               "simplement contournées."));
+        optsLayout->addWidget(solidBlockCheck);
         if (candidate) {
             auto* row = new QHBoxLayout;
             auto* swatch = new QLabel(&optsDialog);
@@ -4663,6 +4675,9 @@ void MainWindow::autoDigitize() {
         opts.max_threads = static_cast<std::size_t>(maxThreadsSpin->value());
         opts.skip_largest_region = skipBgCheck->isChecked();
         opts.satin_bands = satinBandsCheck->isChecked();
+        opts.solid_block = solidBlockCheck->isChecked();
+        ui_memory::setIntValue(QStringLiteral("autoDigitize/solidBlock"),
+                               solidBlockCheck->isChecked() ? 1 : 0);
         ui_memory::setIntValue(QStringLiteral("autoDigitize/satinBands"),
                                satinBandsCheck->isChecked() ? 1 : 0);
         opts.simplify_tolerance = vectorize_tolerance_from_detail(shapeDetailSlider->value());

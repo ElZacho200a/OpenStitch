@@ -211,6 +211,7 @@ Result<DigitizeReport> digitize_image_into(document::Project& project,
     opts.mm_per_px = project.mm_per_px;
     opts.skip_largest_region = skipLargest;
     opts.satin_bands = s.satin_bands;
+    opts.solid_block = s.solid_block;
     opts.curve_tolerance = mm_to_um(s.curve_tolerance_mm);
     if (s.min_feature_mm) {
         opts.min_feature_width_mm = *s.min_feature_mm;

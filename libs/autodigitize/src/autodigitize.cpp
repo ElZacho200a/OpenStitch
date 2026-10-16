@@ -50,6 +50,19 @@ void limit_thread_count(segmentation::Segmentation& seg, std::size_t maxThreads,
     }
 }
 
+// Options effectives : le mode « bloc plein » (`AutoOptions::solid_block`) relève le débord sur les
+// voisines et abaisse le seuil de remplissage ; le reste (retrait et tirage des tatami) est
+// appliqué dans `configure_tatami_fills`. Sans le mode, les options sont rendues inchangées.
+AutoOptions effective_options(AutoOptions options) {
+    if (options.solid_block) {
+        options.fill_overlap.value =
+            std::max(options.fill_overlap.value, options.solid_overlap.value);
+        options.min_fill_area_mm2 =
+            std::min(options.min_fill_area_mm2, options.solid_min_fill_area_mm2);
+    }
+    return options;
+}
+
 // Aire nette d'un PathSet (extérieur moins trous), en µm².
 double net_area_um2(const geometry::PathSet& set) {
     double area = std::abs(geometry::signed_area_um2(set.outer));
@@ -275,8 +288,13 @@ void configure_tatami_fills(AutoResult& result, const std::vector<document::Vect
     }
 
     for (const Fill& f : fills) {
-        std::get<document::TatamiParams>(result.embroideries[f.index].params).hidden_underpath =
-            options.fill_hidden_underpath;
+        auto& p = std::get<document::TatamiParams>(result.embroideries[f.index].params);
+        p.hidden_underpath = options.fill_hidden_underpath;
+        if (options.solid_block) {
+            // Bloc plein : le remplissage va jusqu'au bord de sa forme et compense le tirage.
+            p.inset = Micrometers{0};
+            p.pull_compensation = options.solid_pull_compensation;
+        }
     }
     if (options.auto_fill_underlay) {
         for (const Fill& f : fills) {
@@ -542,7 +560,8 @@ void order_in_layers(AutoResult& result, const std::vector<document::VectorObjec
 } // namespace
 
 Result<AutoResult> auto_digitize(const segmentation::Segmentation& input,
-                                 IdGenerator<ObjectId>& ids, const AutoOptions& options) {
+                                 IdGenerator<ObjectId>& ids, const AutoOptions& userOptions) {
+    const AutoOptions options = effective_options(userOptions);
     AutoResult result;
 
     // Régions vivantes, triées par identifiant pour un résultat déterministe.
@@ -679,7 +698,9 @@ Result<AutoResult> auto_digitize(const segmentation::Segmentation& input,
 }
 
 Result<AutoResult> auto_digitize_vectors(const std::vector<document::VectorObject>& vectors,
-                                         IdGenerator<ObjectId>& ids, const AutoOptions& options) {
+                                         IdGenerator<ObjectId>& ids,
+                                         const AutoOptions& userOptions) {
+    const AutoOptions options = effective_options(userOptions);
     if (vectors.empty()) {
         return fail(ErrorCategory::UserInput, "Aucun objet vectoriel à numériser");
     }
