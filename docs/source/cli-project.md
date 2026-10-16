@@ -90,9 +90,15 @@ Numérise l'image (mêmes réglages et défauts que `digitize` : `--mode
 shapes|contours|stipple`, `--max-colors`, `--min-region-px`, `--smoothing-px`,
 `--skip-background auto|yes|no`, `--min-feature-mm`, `--min-region-mm2`,
 `--curve-tolerance`, `--satin-bands`, `--detail`, `--technique`, `--single-path`,
-`--coherent-lines`, `--island-cleanup`, `--island-max-delta-e`, `--dark-lines`
-(`--dark-lines-width`, `--dark-lines-lightness`), `--stipple-*`, `--trim-threshold`, `--lock`, `--hidden-travel*`,
-`--dpi`). En plus : `--dst f.dst` et `--output-svg f.svg` (exports secondaires),
+`--coherent-lines`, `--pre` (traitements d'image avant segmentation : `median[:1|2]`,
+`bilateral[:1..3]`, `flatten[:1..3]`, `clahe[:C]`, `sharpen[:A]`, `quantize[:N]`, `contrast:B:C`, `gray`, `crop:x:y:w:h`, `flip:h|v`, `rotate:1..3`,
+enchaînés par `+` ; stockés dans `project.ops`, `original` reste la source ; les outils d'analyse
+et `at --px` travaillent sur l'image de travail ; axe de balayage `pre=none,median:1,…`),
+`--island-cleanup`, `--island-max-delta-e`, `--dark-lines`
+(`--dark-lines-width`, `--dark-lines-lightness`, `--dark-lines-bars`, `--dark-lines-min-length`,
+`--dark-lines-objects-only`), `--rings-satin` (avec `--dark-lines` : les anneaux sombres — hublots, ventouses, bulles, yeux — sont reconnus sur le masque des pixels sombres, cousus en auto-satin à contour exact, et retirés des traits et du remplissage marine), `--flow-fill` (`--flow-min-area`, `--flow-min-elongation` : les grandes formes allongées passent en remplissage directionnel guidé par leur axe médian ; la couleur la plus sombre reste en tatami), `--fill-inset`, `--fill-overlap`, `--no-underpath`, `--stipple-*`,
+`--trim-threshold`, `--lock`, `--hidden-travel*`, `--dpi`). En plus : `--debug-dir DOSSIER`
+(masques et décisions, voir *Outils d'analyse*), `--dst f.dst` et `--output-svg f.svg` (exports secondaires),
 `--report rapport.json` (rapport de numérisation, schéma
 `openstitch.digitize-report/1`), `--no-clobber`.
 
@@ -140,6 +146,83 @@ le dispatcher.
 Contrôle qualité (`openstitch.quality/1`), code 2 si au moins une erreur.
 Voir *Contrôle qualité*.
 
+### Outils d'analyse de la qualité
+
+Cinq commandes mesurent un résultat **sur la séquence effective**, dans le repère exact de l'image
+source (`x = (px + 0,5 − L/2) × mm/px`, Y vers le haut : aucun calage heuristique). Elles sont
+déterministes et Qt-free (`libs/project_ops/src/analysis.cpp`, `sweep.cpp`). Chaque commande accepte
+`--json` (schéma stable) ; sans lui, un résumé lisible. Elles regardent ce que le fil recouvre
+réellement (fil de 0,55 mm), pas ce que les contours promettent : un trou vu à l'écran y est visible.
+
+#### `project fidelity <projet.osp> [--map carte.png] [--thread-mm 0.55] [--hole-zone-mm 1.6] [-o rapport.json]`
+
+Compare l'image source à la couverture des fils (`openstitch.fidelity/1`). Le fond ignoré est la plus
+grande région dont la couleur n'est celle d'aucun fil. Mesures :
+
+- **tissu visible à l'intérieur du motif** (`interior_holes`) : pixel à broder sans fil, à plus de
+  `--hole-zone-mm` du fond extérieur ; liste des plus gros trous avec position en mm et en pixels source ;
+- **sans fil** (`missing`) : idem, bords compris ;
+- **détails perdus** (`lost_detail`) : un pixel proche (ΔE < 18) d'une couleur de fil mais cousu d'une
+  autre (écart > 30), après ouverture 3x3 qui écarte le liseré anti-crénelé d'un pixel ;
+- `--map` : carte d'erreurs PNG (rouge = trou intérieur, rose = manque de bord, jaune = détail perdu).
+
+#### `project density <projet.osp> [--heatmap carte.png] [--cell-mm 1] [--hotspot-layers 4]`
+
+Épaisseurs de fil par cellule (`openstitch.density/1`) : 1 épaisseur = la longueur de fil par mm² d'un
+remplissage à 0,4 mm. Donne moyenne, p99, max, la surface à ≥ 2, 3 et 4 épaisseurs et les **zones
+chaudes** (composantes de cellules au-dessus du seuil) avec leur position et les objets qui y
+contribuent le plus. `--heatmap` : carte PNG (bleu = peu, vert = 1, jaune = 2, orange = 3, rouge ≥ 4).
+
+#### `project at <projet.osp> (--mm X,Y | --px X,Y) [--radius-mm 0.4]`
+
+Quel objet a cousu ce point ? (`openstitch.locate/1`) Objets dont un brin passe près du point, **du
+dernier cousu (visible dessus) au premier**, avec type, couleur, passes, angle et espacement pour un
+tatami. `--px` prend un pixel de l'image source (ce qu'on lit sur une capture), `--mm` le repère modèle.
+
+#### `project diagnose <projet.osp>`
+
+Détecteurs de défauts connus (`openstitch.diagnose/1`, code 2 si au moins une erreur), chacun avec
+les objets en cause, la position et l'option conseillée :
+
+| Code | Niveau | Détecte |
+|---|---|---|
+| `motif-hors-image` | erreur | points à plus de 3 mm de l'image source (géométrie aberrante, ex. poignées de Bézier non bornées) |
+| `objet-etale` | avertissement | objet de plus de 300 mm² à moins de 8 % de remplissage de sa boîte et d'au moins 45 % de la diagonale du motif (réseau de barres relié en un objet) |
+| `fils-quasi-identiques` | info | deux fils à ΔE < 12 : un changement de fil pour rien |
+| `tissu-visible` | info ≥ 0,15 %, avertissement > 0,8 % | tissu visible à l'intérieur du motif |
+| `details-perdus` | avertissement > 1 % | couleurs absorbées par une voisine |
+| `surepaisseur` | avertissement ≥ 20 mm² | zones à ≥ 4 épaisseurs de fil |
+| `liaisons-visibles` | avertissement > 0,5 % | brins de remplissage s'écartant de plus de 25° de l'angle des rangées (liaisons posées par-dessus) |
+
+Le rapport JSON contient aussi un bloc `metrics` (tissu visible %, détails perdus %, surépaisseur
+mm², épaisseurs max, liaisons %, dimensions, points, sauts, coupes, fils) que `sweep` réutilise.
+
+#### `project sweep <image> [options de digitize] --vary option=v1,v2 … [--sheet planche.png]`
+
+Balayage de réglages de numérisation. Les options de `digitize` donnent la base ; chaque `--vary`
+est un axe (nom de l'option sans `--`, ex. `island-cleanup=0,20`) ; le produit cartésien (64
+variantes au plus) est numérisé et mesuré. Sortie : tableau comparatif (points, coupes, fils, tissu
+visible, détails perdus, surépaisseur, liaisons, défauts) et colonne **non dominée** (aucune autre
+variante n'est au moins aussi bonne sur coupes, tissu visible, détails perdus et surépaisseur et
+meilleure sur l'une). `--sheet` : planche de vignettes réalistes (une par variante, ordre du
+tableau), `--sheet-crop x0,y0,x1,y1` pour zoomer. `--markdown`, `--csv`, `--keep-dir` (chaque variante
+en `.osp`), `--journal FICHIER --title TITRE` (**ajoute** le tableau à un journal). Une option ou une
+valeur inconnue est refusée avant tout calcul, avec la liste des options valides. Exemple :
+
+```bash
+openstitch-cli project sweep navire.png --dpi 122.6 --max-colors 12 --dark-lines \
+    --vary island-cleanup=0,20 --vary curve-tolerance=0,0.4 --vary no-underpath=0,1 \
+    --sheet planche.png --sheet-crop 0.12,0.3,0.46,0.72 --journal docs/journal.md --title "Navire"
+```
+
+#### `digitize … --debug-dir DOSSIER`
+
+Écrit dans le dossier : `regions.png` (segmentation), `traits.png` (décisions de la couche de traits
+sur la source atténuée : **rouge** = trait cousu, **bleu** = barre, **vert** = séparation non cousue,
+**orange** = fragment trop court), `couverture.png` (fils réellement posés, vert = tissu),
+`fidelite.png` (carte d'erreurs) et `decisions.json` (seuil de clarté effectif, couleur de fil,
+compteurs de pixels). Sans effet sur la sortie.
+
 ### `project select <projet.osp> --where clé=valeur…` *(initiative)*
 
 Sélection d'objets de broderie (critères combinés en ET) : `id`, `color=#RRGGBB`,
@@ -163,6 +246,17 @@ partenaires de fondu, compteur d'identifiants) puis contrôle qualité. Code 2 s
 
 Liste machine-lisible de toutes les commandes et options de la CLI
 (`openstitch.commands/1`, générée par introspection de CLI11 : toujours à jour).
+
+### `project render <projet.osp> -o <rendu.png> [--px-per-mm N] [--fabric #RRGGBB] [--thread-mm MM] [--crop x0,y0,x1,y1]`
+
+Rendu **réaliste** (fils texturés, ombres, torsion : le moteur `stitch_render` de l'aperçu de
+l'application, sans Qt) en PNG, sur la séquence EFFECTIVE (objets masqués exclus). Le tissu est un
+**aplat vert vif** par défaut : tout ce qui n'est pas brodé (trous, interstices entre zones, dentelure
+des bouts de rangées) se voit, comme dans l'application sur fond vert. `--crop` donne une zone en
+fractions de la boîte du motif (origine en haut à gauche), p. ex. `--crop 0.1,0.25,0.5,0.75
+--px-per-mm 14` pour zoomer sur un détail. Déterministe (mêmes octets). Résolution abaissée si l'image
+dépasserait 40 millions de pixels. Code : `project_ops::render_realistic_png`.
+Mesure associée : `scripts/green_holes.py` du skill `openstitch-digitize` (part du vert intérieur).
 
 ### `project export <projet.osp> -o <sortie>`
 
@@ -241,7 +335,7 @@ Un objet est désigné par `object` = **identifiant d'objet de broderie**.
 | Famille | Opérations |
 |---|---|
 | Style | `set_color` (`rgb` ou `chart`+`code`), `rename`, `set_visible`, `set_locked`, `set_join`, `set_connector` |
-| Type et paramètres | `set_stitch_type` (running, tatami, directional), `set_params` (mise à jour partielle : angle, densité, espacement, longueur de point, retrait, sous-couches, compensation du tirage… par type), `discard_overrides` |
+| Type et paramètres | `set_stitch_type` (running, tatami, directional), `directional_guides` (convertit en directionnel et pose des guides suivant l'axe médian de la forme, comme « Générer un guide depuis la forme » du bureau ; sans lui un objet converti n'a qu'un guide droit), `set_params` (mise à jour partielle : angle, densité, espacement, longueur de point, retrait, sous-couches, compensation du tirage… par type), `discard_overrides` |
 | Ordre | `set_order` (position, before, after, to_front, to_back), `optimize_order` (document, by_color, by_proximity, color_then_proximity, layered ; objets verrouillés immobiles) |
 | Création / suppression | `add_shape` (rect, ellipse, polygone), `duplicate_object`, `remove_object` |
 | Géométrie | `translate`, `rotate`, `scale`, `mirror`, `set_geometry`, `merge` (union, subtract, intersect, exclude), `split`, `break_apart`, `remove_holes` |

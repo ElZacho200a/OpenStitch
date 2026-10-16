@@ -601,3 +601,39 @@ TEST_CASE("param ops set_finishing", "[project_ops][params]") {
     expect_refused(p, R"({"op":"set_finishing","lock":"knot"})", project_ops::code::kOutOfRange);
     expect_refused(p, R"({"op":"set_finishing","lock_passes":9})", project_ops::code::kOutOfRange);
 }
+
+TEST_CASE("param ops directional_guides converts and guides a long shape",
+          "[project_ops][params]") {
+    auto p = make_project();
+    // Bande 60 x 8 mm : l'axe médian donne un guide le long de la forme.
+    auto& nodes = p.vector_objects[0].paths[0].outer.nodes;
+    nodes[1].pos.x = Micrometers{60'000};
+    nodes[2].pos = Vec2um{Micrometers{60'000}, Micrometers{8'000}};
+    nodes[3].pos.y = Micrometers{8'000};
+
+    SECTION("a tatami becomes a directional fill with generated guides") {
+        const auto r = run(p, R"({"op":"directional_guides","object":2})");
+        REQUIRE(r.ok);
+        const auto* d =
+            std::get_if<document::DirectionalFillParams>(&p.findEmbroidery(ObjectId{2})->params);
+        REQUIRE(d != nullptr);
+        REQUIRE_FALSE(d->guides.empty());
+        const std::size_t guideCount =
+            d->guides.size(); // `d` est invalidé par l'opération suivante
+        CHECK(result_of(r)["converted"] == true);
+        // Le guide suit la grande dimension de la bande.
+        const auto& g = d->guides.front().nodes;
+        CHECK(std::abs(g.back().pos.x.value - g.front().pos.x.value) > 30'000);
+
+        // Idempotent sur un objet déjà directionnel : mêmes guides, pas de conversion.
+        const auto again = run(p, R"({"op":"directional_guides","object":2})");
+        REQUIRE(again.ok);
+        CHECK(result_of(again)["converted"] == false);
+        const auto* d2 =
+            std::get_if<document::DirectionalFillParams>(&p.findEmbroidery(ObjectId{2})->params);
+        CHECK(d2->guides.size() == guideCount);
+    }
+    SECTION("a running object is refused") {
+        expect_refused(p, R"({"op":"directional_guides","object":4})", project_ops::code::kRefused);
+    }
+}
