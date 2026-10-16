@@ -219,6 +219,8 @@ Result<DigitizeReport> digitize_image_into(document::Project& project,
         opts.min_region_area_mm2 = *s.min_region_mm2;
     }
     opts.island_area_mm2 = s.island_cleanup_mm2;
+    opts.fill_overlap = mm_to_um(s.fill_overlap_mm);
+    opts.fill_hidden_underpath = s.fill_hidden_underpath;
     if (s.fill_inset_mm) {
         opts.fill_inset = mm_to_um(*s.fill_inset_mm);
     }

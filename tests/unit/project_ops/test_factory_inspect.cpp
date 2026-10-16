@@ -251,3 +251,35 @@ TEST_CASE("inspecting an empty project works and reports an empty sequence", "[p
     CHECK(contains(*json, "\"embroidery_objects\": []"));
     CHECK(po::inspect_project_text(*created));
 }
+
+TEST_CASE("digitize applies fill inset, overlap and underpath settings to created tatami",
+          "[project_ops]") {
+    const auto tatamiParams = [](const document::Project& project) {
+        std::vector<document::TatamiParams> out;
+        for (const auto& e : project.embroidery_objects) {
+            if (const auto* tp = std::get_if<document::TatamiParams>(&e.params)) {
+                out.push_back(*tp);
+            }
+        }
+        return out;
+    };
+    const auto make = [&](const po::DigitizeSettings& settings) {
+        auto created = po::create_empty_project({});
+        REQUIRE(created);
+        document::Project project = std::move(*created);
+        REQUIRE(po::digitize_image_into(project, logo(), settings));
+        return tatamiParams(project);
+    };
+    const auto defaults = make({});
+    REQUIRE_FALSE(defaults.empty());
+    CHECK(std::all_of(defaults.begin(), defaults.end(),
+                      [](const auto& t) { return t.inset.value == 200 && t.hidden_underpath; }));
+
+    po::DigitizeSettings custom;
+    custom.fill_inset_mm = 0.0;
+    custom.fill_hidden_underpath = false;
+    const auto changed = make(custom);
+    REQUIRE_FALSE(changed.empty());
+    CHECK(std::all_of(changed.begin(), changed.end(),
+                      [](const auto& t) { return t.inset.value == 0 && !t.hidden_underpath; }));
+}

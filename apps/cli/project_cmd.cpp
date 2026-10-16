@@ -346,6 +346,17 @@ void add_digitize_options(CLI::App* cmd, DigitizeOptionValues& v) {
                     "Mode formes : les régions plus petites que cette aire (mm²) sont fusionnées "
                     "avec leur voisine ; 0 = désactivé (défaut : 3)")
         ->check(CLI::NonNegativeNumber);
+    cmd->add_option(
+           "--fill-overlap", s.fill_overlap_mm,
+           "Mode formes : débord (mm) de chaque tatami sur ses voisins brodés, le long des "
+           "bords partagés (ferme la dentelure de tissu entre zones) ; 0 = désactivé "
+           "(défaut)")
+        ->check(CLI::NonNegativeNumber);
+    cmd->add_flag(
+        "--no-underpath{false}", s.fill_hidden_underpath,
+        "Mode formes : pas de liaison cousue entre les morceaux de rangées d'un tatami (elles "
+        "restent visibles par-dessus le remplissage en brins obliques) : plus de sauts et "
+        "de coupes, remplissages propres ; à associer à --hidden-travel");
     cmd->add_option("--fill-inset", s.fill_inset_mm,
                     "Mode formes : retrait du bord de chaque tatami en mm (défaut : 0.2) ; 0 ferme "
                     "les interstices entre zones voisines (+~16 % de points)")

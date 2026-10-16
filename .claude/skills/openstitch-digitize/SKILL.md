@@ -33,7 +33,7 @@ contrôle → palette réelle → rendu, en une commande ; il encode les pièges
 CLI=/chemin/openstitch-cli .claude/skills/openstitch-digitize/scripts/workflow.sh \
     img.png $SCRATCH/v1 300 210 122.6 --max-colors 12 --dark-lines --dark-lines-bars 4 \
     --dark-lines-min-length 6 --min-region-mm2 1 --fill-inset 0 --satin-bands \
-    --curve-tolerance 0.4
+    --curve-tolerance 0.4 --no-underpath --hidden-travel
 python3 -I scripts/fidelity.py img.png $SCRATCH/v1/out.dst $SCRATCH/v1/pal.json 0.2072 $SCRATCH/v1/fid
 ```
 
@@ -266,6 +266,10 @@ poignées (voir `docs/source/vectorization.md`). Corrigé, test de propriété. 
 
 Compensation de tirage (`pull_compensation_mm`, tatami + satin) contre le vert intérieur : 0 -> 1,43 % ;
 0,1 -> 1,18 % ; 0,2 -> 1,24 % ; 0,35 -> 0,98 % (+4 % de points) : aide peu, ne ferme pas la dentelure.
+**Brins diagonaux dans les fills (cause du « chaotique » en vue normale)** : liaisons `hidden_underpath`
+cousues par-dessus. `--no-underpath --hidden-travel` : coupes 1 906 -> 2 653 (+39 %), fills propres
+(`--no-underpath` seul : 3 222). Leviers écartés par la mesure du vert intérieur : `--fill-overlap`
+(1,52 -> 1,30 % pour +13 % de points), compensation de tirage, filtre des points courts.
 Contours lisses (`--curve-tolerance`, base `--island-cleanup 0 --min-region-mm2 1 --dark-lines-bars 4
 --dark-lines-min-length 6`) :
 

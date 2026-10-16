@@ -196,6 +196,28 @@ ensemble que des sections contiguës. Avant ce lot, aucune numérisation
 automatique (desktop ou CLI) n'ordonnait son résultat : les objets suivaient
 l'ordre des identifiants de région (classe k-means puis balayage de l'image).
 
+### Brins diagonaux dans les remplissages (`--no-underpath`)
+
+Vu au rendu réaliste (`project render --px-per-mm 36`) : les **liaisons entre morceaux de rangées**
+d'un tatami (`hidden_underpath`, vrai par défaut) sont cousues PAR-DESSUS les rangées, en brins obliques
+de la couleur du remplissage qui traversent la zone : c'est l'aspect « brouillon » des grandes zones.
+`--no-underpath` (`AutoOptions::fill_hidden_underpath = false`) les remplace par des sauts et des coupes :
+remplissages propres, au prix de coupes. Mesuré sur le navire (`--island-cleanup 0 --min-region-mm2 1
+--dark-lines-bars 4 --dark-lines-min-length 6 --curve-tolerance 0.4`) :
+
+| | points | sauts | coupes |
+|---|---|---|---|
+| liaisons (défaut) | 117 553 | 5 681 | 1 906 |
+| `--no-underpath` | 116 574 | 10 687 | 3 222 |
+| `--no-underpath --hidden-travel` | 113 172 | 10 293 | 2 653 |
+
+`--hidden-travel` (ponts cousus sous des points cousus plus tard) récupère 569 coupes sans rien laisser
+voir. Le vert intérieur (tissu visible, `scripts/green_holes.py`) ne bouge pas (1,52 % -> 1,59 %) : il
+vient d'ailleurs. Écartés par la mesure : `--fill-overlap` (0,3 mm : 1,52 % -> 1,30 % pour +13 % de points
+et des détails perdus 0,50 % -> 1,48 %), la compensation de tirage (1,43 % -> 0,98 % à 0,35 mm) et le
+filtre des points courts (1,52 % -> 1,42 %). Test : `digitize applies fill inset, overlap and underpath
+settings to created tatami`.
+
 ### Retrait du bord des tatami (`--fill-inset`)
 
 Chaque tatami est rentré de `TatamiParams::inset` (0,2 mm) : deux zones jointives laissent ~0,4 mm

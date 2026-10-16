@@ -78,6 +78,11 @@ struct DigitizeSettings {
     double island_cleanup_mm2{0.0};
     // Retrait du bord des tatami (mm) ; absent = défaut du document (0,2 mm).
     std::optional<double> fill_inset_mm;
+    // Débord de chaque tatami sur ses voisins brodés (mm) ; 0 = désactivé (défaut du moteur).
+    double fill_overlap_mm{0.0};
+    // Liaisons cousues entre les morceaux de rangées d'un tatami
+    // (`AutoOptions::fill_hidden_underpath`).
+    bool fill_hidden_underpath{true};
     double island_max_delta_e{0.0}; // 0 = sans limite
     int stipple_points{2000};
     int stipple_seed{1};
