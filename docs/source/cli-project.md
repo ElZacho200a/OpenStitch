@@ -23,7 +23,7 @@ Règles tenues par la CLI :
 
 - **Aucun algorithme réimplémenté.** La numérisation appelle la même chaîne
   que `digitize` et le bureau (`segmentation` → `autodigitize`) ; l'auto-satin
-  est le vrai moteur par squelette (`auto_satin::generate_skeleton_satin`) avec
+  passe par la façade `auto_satin::generate_satin` (squelette, balayage parallèle ou axe médian vectoriel, au choix) avec
   ses refus nommés ; le contrôle qualité réutilise `stitch_analysis`.
 - **Toute mutation du document passe par une `commands::ICommand`.** Les
   opérations sont des assemblages des commandes du bureau (`SetStitchParamsCommand`,
@@ -246,7 +246,7 @@ Un objet est désigné par `object` = **identifiant d'objet de broderie**.
 | Création / suppression | `add_shape` (rect, ellipse, polygone), `duplicate_object`, `remove_object` |
 | Géométrie | `translate`, `rotate`, `scale`, `mirror`, `set_geometry`, `merge` (union, subtract, intersect, exclude), `split`, `break_apart`, `remove_holes` |
 | Import et texte | `import_svg` (path, rect, circle, ellipse, line, polyline, polygon), `add_text`, `set_text`, `remove_text` |
-| Auto-satin | `auto_satin` (espacement, `compact_axis`, guides) : vrai pipeline, refus nommé si aucune colonne |
+| Auto-satin | `auto_satin` (espacement, `compact_axis`, `strategy` = `skeleton` \| `parallel_sweep` \| `medial_axis`, `sweep_angle_deg`, guides) : vrai pipeline, refus nommé si aucune colonne ; `strategy` et `sweep_angle_deg` se règlent ensuite par `set_params` |
 | Projet | `set_canvas`, `set_finishing` |
 
 Détail exact des arguments : `openstitch-cli project operations` (texte) ou

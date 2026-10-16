@@ -110,9 +110,27 @@ conservée, comme pour les autres migrations). Un `thread` sans `chart` ou `code
 texte est refusé (`InvalidFile`). Les **nuanciers eux-mêmes** ne sont jamais
 stockés dans le `.osp` (voir *Palettes et fils*).
 
+### Méthode de l'auto-satin (schéma v7, conditionnel)
+
+L'objet `autoSatin` porte la **méthode de calcul de ses traversées**, choisie par
+l'utilisateur pour sa région :
+
+- `strategy` : **nom** de la méthode, jamais un entier : `parallel_sweep` (balayage parallèle)
+  ou `medial_axis` (axe médian vectoriel). Clé **absente** = squelette (le défaut) ;
+- `sweepAngle` (radians, repère du modèle) : angle des traversées du balayage parallèle ;
+  absent = automatique (perpendiculaire à l'axe principal de la forme).
+
+**Règle de version** : le fichier n'est écrit en `schemaVersion` **7** que s'il contient au
+moins un auto-satin dont la méthode n'est pas le squelette ; sinon il reste en **6** et se lit
+dans les versions précédentes. Raison : un lecteur v6 ignorerait la clé `strategy` et
+régénérerait un **autre** satin à l'export, à l'insu de l'utilisateur ; mieux vaut qu'il
+refuse le fichier v7. Une méthode **inconnue** (fichier d'une version plus récente) est
+refusée au chargement avec un message nommé : elle n'est jamais remplacée par le squelette.
+Le presse-papiers d'objets transporte la méthode comme le fichier.
+
 ## Versionnement et validation
 
-`schemaVersion` vaut **6** (v5 → v6 : fil de nuancier `thread` des objets de broderie (`{chart, code}`, voir *Palettes et fils*) ; objets texte du lettrage, clé `textObjects`
+`schemaVersion` vaut **6**, ou **7** si un auto-satin utilise une méthode autre que le squelette (v6 → v7 : clé `strategy` et `sweepAngle` de l'auto-satin, voir plus haut ; v5 → v6 : fil de nuancier `thread` des objets de broderie (`{chart, code}`, voir *Palettes et fils*) ; objets texte du lettrage, clé `textObjects`
 (id, text, fontFamily/fontFile/fontBuiltin/faceIndex, capHeight, letterSpacing, wordSpacing,
 lineSpacing, kerning, align, justifyWidth, origin, rotation, rgb, fill, maxSatinWidth, density ;
 µm entiers, rotation en radians) et `textOwner` sur les objets vectoriels, voir `lettering.md` ;

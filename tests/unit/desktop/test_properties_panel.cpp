@@ -10,6 +10,7 @@
 #include <QTest>
 #include <QWheelEvent>
 
+#include <cmath>
 #include <optional>
 #include <variant>
 
@@ -82,6 +83,9 @@ private slots:
     void showsParamsTracksTheDocumentCopy();
     void autoSatinSplitLengthIsBoundedByLmaxAndFollowsIt();
     void selectingAGuideRowAsksForCanvasHighlight();
+    void autoSatinMethodChoiceEmitsTheStrategy();
+    void autoSatinSweepAngleIsOnlyEditableForTheSweepMethod();
+    void autoSatinCompareButtonAsksMainWindowAndIsAbsentForAGroup();
 };
 
 void PropertiesPanelTest::showEmbroideryPopulatesSpinBoxesWithoutEmittingWhileBuilding() {
@@ -285,10 +289,11 @@ void PropertiesPanelTest::autoSatinInspectorListsGuidesAndEditsScalars() {
     std::optional<StitchParams> emitted;
     QObject::connect(&panel, &PropertiesPanel::paramsEdited, &panel,
                      [&](openstitch::ObjectId, StitchParams params) { emitted = params; });
-    // Premier QDoubleSpinBox du formulaire : l'espacement.
-    const auto spins = panel.findChildren<QDoubleSpinBox*>();
-    QVERIFY(!spins.isEmpty());
-    spins.at(0)->setValue(0.55);
+    // L'espacement se retrouve par son nom : l'ordre des enfants suit celui du formulaire, qui
+    // commence maintenant par la section « Méthode » (angle des fils).
+    auto* spacingSpin = panel.findChild<QDoubleSpinBox*>(QStringLiteral("spin_rowSpacing"));
+    QVERIFY(spacingSpin != nullptr);
+    spacingSpin->setValue(0.55);
     QVERIFY(emitted.has_value());
     const auto& out = std::get<AutoSatinParams>(*emitted);
     QCOMPARE(out.spacing.value, 550);
@@ -620,6 +625,77 @@ void PropertiesPanelTest::headerShowsColorDotAndTypePillOnlyForAnEmbroideryObjec
 
     panel.showInfo(QStringLiteral("Info"), QStringLiteral("details"));
     QVERIFY(!dot->isVisible() && !pill->isVisible());
+}
+
+void PropertiesPanelTest::autoSatinMethodChoiceEmitsTheStrategy() {
+    PropertiesPanel panel;
+    panel.showEmbroidery(autoSatinObject(40));
+    auto* combo = panel.findChild<QComboBox*>(QStringLiteral("combo_autoSatinStrategy"));
+    QVERIFY(combo != nullptr);
+    QCOMPARE(combo->count(), 3);
+    QCOMPARE(combo->currentIndex(), 0); // le squelette reste le défaut
+    for (int i = 0; i < combo->count(); ++i) {
+        QVERIFY(!combo->itemData(i, Qt::ToolTipRole).toString().isEmpty());
+    }
+
+    std::optional<StitchParams> emitted;
+    QObject::connect(&panel, &PropertiesPanel::paramsEdited, &panel,
+                     [&](openstitch::ObjectId, StitchParams params) { emitted = params; });
+    combo->setCurrentIndex(1);
+    QVERIFY(emitted.has_value());
+    QCOMPARE(std::get<AutoSatinParams>(*emitted).strategy,
+             openstitch::document::AutoSatinStrategy::ParallelSweep);
+    emitted.reset();
+    combo->setCurrentIndex(2);
+    QVERIFY(emitted.has_value());
+    QCOMPARE(std::get<AutoSatinParams>(*emitted).strategy,
+             openstitch::document::AutoSatinStrategy::MedialAxis);
+}
+
+void PropertiesPanelTest::autoSatinSweepAngleIsOnlyEditableForTheSweepMethod() {
+    PropertiesPanel panel;
+    panel.showEmbroidery(autoSatinObject(41));
+    auto* combo = panel.findChild<QComboBox*>(QStringLiteral("combo_autoSatinStrategy"));
+    auto* automatic = panel.findChild<QCheckBox*>(QStringLiteral("check_autoSatinSweepAuto"));
+    auto* angle = panel.findChild<QDoubleSpinBox*>(QStringLiteral("spin_autoSatinSweepAngle"));
+    QVERIFY(combo != nullptr && automatic != nullptr && angle != nullptr);
+    // Squelette : l'angle n'a pas de sens.
+    QVERIFY(!automatic->isEnabled());
+    QVERIFY(!angle->isEnabled());
+
+    combo->setCurrentIndex(1);
+    QVERIFY(automatic->isEnabled());
+    QVERIFY(automatic->isChecked());
+    QVERIFY(!angle->isEnabled()); // automatique : pas d'angle fixe
+
+    std::optional<StitchParams> emitted;
+    QObject::connect(&panel, &PropertiesPanel::paramsEdited, &panel,
+                     [&](openstitch::ObjectId, StitchParams params) { emitted = params; });
+    automatic->setChecked(false);
+    QVERIFY(angle->isEnabled());
+    QVERIFY(emitted.has_value());
+    QVERIFY(std::get<AutoSatinParams>(*emitted).sweep_angle.has_value());
+    angle->setValue(30.0);
+    QVERIFY(emitted.has_value());
+    const auto& out = std::get<AutoSatinParams>(*emitted);
+    QVERIFY(out.sweep_angle.has_value());
+    QVERIFY(std::abs(out.sweep_angle->radians - 30.0 * 3.14159265358979 / 180.0) < 1e-6);
+    // Retour à l'automatique : l'angle est effacé.
+    automatic->setChecked(true);
+    QVERIFY(!std::get<AutoSatinParams>(*emitted).sweep_angle.has_value());
+}
+
+void PropertiesPanelTest::autoSatinCompareButtonAsksMainWindowAndIsAbsentForAGroup() {
+    PropertiesPanel panel;
+    panel.showEmbroidery(autoSatinObject(42));
+    auto* compare = panel.findChild<QPushButton*>(QStringLiteral("button_autoSatinCompare"));
+    QVERIFY(compare != nullptr);
+    std::optional<openstitch::ObjectId> asked;
+    QObject::connect(&panel, &PropertiesPanel::compareSatinMethodsRequested, &panel,
+                     [&](openstitch::ObjectId id) { asked = id; });
+    compare->click();
+    QVERIFY(asked.has_value());
+    QCOMPARE(asked->value, std::uint64_t{42});
 }
 
 QTEST_MAIN(PropertiesPanelTest)

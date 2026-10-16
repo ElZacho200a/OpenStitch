@@ -187,6 +187,20 @@ Point droit sur une forme de référence ; `--repeats` : 1 simple, 2 aller-retou
 2 parallèle ; `--underpath` : liaisons cousues cachées) et **compte les coutures
 qui traversent le trou** : il sort avec le code **2** si ce nombre n'est pas 0.
 
+### satin-compare
+
+```powershell
+openstitch-cli satin-compare [--shape NOM ...] [--spacing MM] [--format md|csv]
+                             [--svg-dir DOSSIER] [--timing]
+```
+
+Compare **toutes les méthodes d'auto-satin livrées** (squelette, balayage parallèle, axe
+médian vectoriel) sur le corpus de formes ou sur les formes demandées : colonnes, traversées,
+croisements, plus long fil, couverture, fil en double, pic de densité, aire et zone des
+manques. `--svg-dir` écrit un SVG par forme et par méthode. Sans `--timing` la sortie est
+déterministe (diffusable avant/après un changement du moteur). Mesures **géométriques, avant
+finitions** : elles ne remplacent pas un essai sur machine.
+
 ### satin-auto-debug
 
 ```

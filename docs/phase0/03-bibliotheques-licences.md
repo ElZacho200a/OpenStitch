@@ -17,6 +17,7 @@ Critères (§2 du cahier des charges) : maintenance, Windows/MSVC, licence, int�
 | Bibliothèque | Licence | Windows/CMake | Décision | Justification |
 |---|---|---|---|---|
 | **Clipper2** | BSL-1.0 | Très bon, vcpkg | **OUI** | Offsets, booléens, robustesse par coordonnées entières — exactement notre besoin (compensation, sous-couches, nettoyage de polygones). Activement maintenu. Encapsulé dans `libs/geometry` (ADR-005). |
+| **Boost.Polygon** (en-têtes seulement, via le port vcpkg `boost-polygon`) | BSL-1.0 | Bon | **OUI (2026-10-15)** | Diagramme de Voronoï de segments pour l'axe médian vectoriel de l'auto-satin (`docs/auto-satin-research.md`, lot B). Ne fournit ni l'axe médian ni le satin : sélection des arêtes, arcs paraboliques, rayon inscrit et conversion en µm sont écrits dans `libs/auto_satin/src/medial_axis.cpp`. Encapsulée : aucun type Boost ne franchit la frontière de la lib. N'annule pas la décision sur Boost.Geometry ci-dessous. |
 | Boost.Geometry | BSL-1.0 | Bon | **NON** | Recouvre Clipper2 avec plus de complexité ; éviter la dépendance Boost entière. |
 | CGAL | GPLv3/LGPLv3 selon modules | Lourd | **NON** | Puissant mais complexité (nombres exacts, temps de compilation) non justifiée pour le MVP. Réévaluable si besoin de squelettes droits (axe médian pour satin auto, Phase 13). |
 | Eigen | MPL-2.0 | Header-only | **PLUS TARD** | Pas de besoin d'algèbre linéaire dense au MVP. Éventuellement pour les champs de direction (remplissages courbes). |

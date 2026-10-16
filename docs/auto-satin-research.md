@@ -206,12 +206,18 @@ Les noms des primitives (Zhang-Suen, Voronoï) peuvent rester dans les infobulle
    `satin-compare`) ; mesures sur séquence (sauts, coupes, points) restantes.*
 2. **Lot B — Voronoï** : extraction vectorielle et déterminisme, sans changement
    du défaut ; comparaison chiffrée avant de l'exposer comme amélioration.
+   *Livré le 2026-10-15 (`SatinStrategy::MedialAxis`, dépendance Boost.Polygon) ; voir `satin-squelette.md`.*
 3. **Lot C — choix utilisateur** : paramètre, `.osp`, commande, inspecteur,
    tests du chemin UI et de l'export, documentation utilisateur.
+   *Livré le 2026-10-15 (`AutoSatinParams::strategy`, `.osp` v7 conditionnel, inspecteur, dialogue de
+   création, API) ; voir `satin-squelette.md`.*
 4. **Lot D — balayage direct** : bandes, trous et concavités, angle global,
    réutilisation des finitions et comparaison au squelette sur formes compactes.
    *Livré le 2026-10-15 (`SatinStrategy::ParallelSweep`) ; voir `satin-squelette.md`.*
 5. **Lot E — aperçus comparatifs** : calculs sans mutation, application annulable.
+   *Livré le 2026-10-15 : tableau « Comparer les méthodes » (dialogue de création et inspecteur),
+   calcul hors du fil d'interface, application en une commande annulable. Pas de SVG/aperçu
+   superposé des variantes sur le canevas : restant éventuel.*
 
 Comparer couverture **et localisation des manques**, recouvrement et pics de
 densité, croisements, longueur maximale des points de couture (y compris les

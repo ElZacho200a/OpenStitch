@@ -30,6 +30,15 @@ namespace openstitch::project_io {
 // remplacés par leurs valeurs par défaut).
 inline constexpr int kSchemaVersion = 6;
 
+// v6 -> v7 (2026-10-15) : méthode de l'auto-satin (clé `strategy` : `parallel_sweep` ou
+// `medial_axis`, et `sweepAngle`). Un lecteur v6 ignorerait la clé et régénérerait un AUTRE
+// satin à l'export : le fichier n'est donc écrit en v7 QUE s'il contient une méthode autre que
+// le squelette ; sinon il reste en v6 et lisible par les versions précédentes.
+inline constexpr int kSchemaVersionAutoSatinStrategy = 7;
+
+// Plus récente version que cette version sait lire.
+inline constexpr int kMaxReadableSchemaVersion = kSchemaVersionAutoSatinStrategy;
+
 // Enregistre le projet dans une archive .osp (ZIP : project.json + image
 // originale PNG + carte de segmentation binaire). Écriture atomique :
 // fichier temporaire puis renommage — un crash pendant l'écriture ne

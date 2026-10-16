@@ -10,6 +10,7 @@ Ce fichier est mis à jour à **chaque** ajout ou retrait de dépendance.
 | OpenCV (core, imgproc, imgcodecs) | via vcpkg | Apache-2.0 | Chargement et traitement d'images | https://opencv.org |
 | libpng, libjpeg-turbo, libtiff, zlib | transitives (OpenCV) | zlib / IJG / libtiff / zlib | Codecs d'images | — |
 | Clipper2 | via vcpkg | BSL-1.0 | Opérations booléennes et offsets de polygones (encapsulée dans libs/geometry) | https://github.com/AngusJohnson/Clipper2 |
+| Boost.Polygon (boost-polygon) | via vcpkg | BSL-1.0 | Diagramme de Voronoï de segments pour l'axe médian vectoriel de l'auto-satin (en-têtes seulement, encapsulée dans libs/auto_satin/src/medial_axis.cpp) | https://www.boost.org/doc/libs/latest/libs/polygon/doc/index.htm |
 | nlohmann/json | via vcpkg | MIT | Sérialisation du format projet (encapsulée dans libs/project_io) | https://github.com/nlohmann/json |
 | minizip-ng | via vcpkg | zlib | Archive ZIP du format projet .osp (encapsulée dans libs/project_io) | https://github.com/zlib-ng/minizip-ng |
 | FreeType | via vcpkg (sans fonctionnalités optionnelles) | **FTL** (FreeType License, BSD-like ; l'option GPLv2 n'est pas utilisée) | Lecture des contours de glyphes TrueType/OpenType (encapsulée dans libs/lettering) | https://freetype.org |

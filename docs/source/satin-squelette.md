@@ -329,6 +329,72 @@ passaient exactement par les échantillons et étaient comptées deux fois (faux
 de 1,2 sur un rectangle) ou plus du tout. L'échantillon est désormais décalé d'un sous-pixel
 fixe et irrégulier. Les planchers du corpus et leurs tests sont inchangés.
 
+## Axe médian vectoriel (lot B, 2026-10-15)
+
+`SatinStrategy::MedialAxis` (`medial_axis_satin.hpp`, `medial_axis.cpp`) change seulement
+l'**axe** : le squelette de pixels de Zhang-Suen est remplacé par l'axe médian du polygone,
+lu dans le diagramme de Voronoï de ses segments (Boost.Polygon, BSL-1.0, encapsulé). Tout
+l'aval est commun (`finish_from_chains` dans `skeleton_satin.cpp`) : coupe aux coudes,
+guides, cellules, éventails, croisements, couverture. Les guides s'appliquent donc comme
+pour le squelette.
+
+- **Axe** : on garde les arêtes primaires finies dont le milieu est dans la région (pas dans
+  un trou), moins celles dont une extrémité est sur le contour (rayon inscrit < 0,75 µm) :
+  ce sont les rayons vers les coins convexes. Les arcs paraboliques (sommet réflexe contre
+  segment) sont échantillonnés à 8 µm de flèche (128 points au plus). Les sommets confondus
+  au micromètre sont fusionnés.
+- **Graphe** : jonctions, extrémités, continuations, comme le graphe du squelette raster ;
+  mêmes règles de chaîne. Un cycle sans noeud (anneau) devient une **colonne fermée**.
+- **Élagage** : le même élagage à erreur bornée que le squelette (`prune_graph` avec
+  `analysis.cleanup`). L'axe médian est exact mais sensible au bruit du contour : chaque
+  sommet convexe y porte un rameau.
+- **Refus nommés, sans repli silencieux** : contour qui s'auto-intersecte (le diagramme de
+  segments exige des segments qui ne se coupent qu'à leurs extrémités) ; plus de 6000
+  segments.
+- Pas de cache (comparable au squelette en temps : 1 à 480 ms sur le corpus).
+
+Mesures du 2026-10-15 (`satin-compare`, 0,4 mm) : couverture égale à celle du squelette à
+1 point près sur la plupart du corpus, **sans croisement**, et les formes compactes que le
+squelette refuse sont couvertes (`circle`, `disc_15mm`, `petal` : 99,8 à 99,9 %).
+`deep_channel` passe de 65 à 93 %. Moins bon sur `comb` (97,1 contre 99,5 %, 9 colonnes
+contre 11) et `trident` (1 colonne contre 3, 98,3 contre 99 %). Non validé sur machine.
+
+## Choix de la méthode par l'utilisateur (lot C) et comparaison (lot E)
+
+Une région auto-satin porte sa méthode : `document::AutoSatinParams::strategy`
+(`Skeleton`, `ParallelSweep`, `MedialAxis`) et, pour le balayage, `sweep_angle` facultatif.
+**Le squelette reste le défaut**, y compris pour un `.osp` sans la nouvelle clé (voir
+`project-format.md` pour la persistance par nom et la version v7 conditionnelle).
+
+- **Une seule correspondance réglages → moteur** : `stitch_generation::auto_satin_engine`,
+  utilisée par la génération de points, l'aperçu, l'inspecteur, l'API programmatique et
+  l'export ; tous appellent `auto_satin::generate_satin` (jamais `generate_skeleton_satin`).
+  Le préchauffage du cache de squelette est ignoré pour les autres méthodes (sans cache).
+- **Inspecteur** : section « Méthode » (liste déroulante avec infobulle par méthode, angle des
+  fils automatique ou fixe pour le balayage, avertissement que les guides locaux ne
+  s'appliquent pas au balayage) et bouton **« Comparer les méthodes… »**. Changer de méthode
+  est une modification annulable comme les autres réglages.
+- **Création** (« Convertir en satin ») : si le squelette ne produit aucune colonne, les autres
+  méthodes sont essayées **avant** le refus (disque, pétale, bloc large). La première qui
+  fonctionne est *proposée* et nommée dans le dialogue ou la question ; rien n'est appliqué à
+  l'insu de l'utilisateur. Le dialogue permet de changer de méthode (résumé recalculé) et
+  de comparer. Sélection multiple : une méthode par forme, la préférée de l'utilisateur d'abord.
+  Conversion par le type de points : même repli, nommé dans l'historique.
+- **Comparer les méthodes** : tableau (colonnes, couverture, fil en double, aire non couverte,
+  croisements, plus long fil, remarques) calculé **hors du fil d'interface** sur un instantané
+  des contours, sans toucher au document ; fermer ne change rien ; « Utiliser cette méthode »
+  ne crée **qu'une seule commande annulable**. **Aucun « meilleur automatique »** : le choix
+  esthétique et textile revient à l'utilisateur ; une recommandation ne viendra qu'après
+  mesures et essais sur machine.
+- **API programmatique** : argument `strategy` (et `sweep_angle_deg`) de l'opération
+  `auto_satin` ; champs `strategy` et `sweep_angle_deg` de `set_params` ; relus par `inspect`.
+  Un nom inconnu est une erreur d'usage, document intact.
+- **Clés de cache** : le résumé de l'inspecteur inclut désormais la méthode, l'angle et
+  `compact_axis` (ce dernier en était absent).
+
+Limites : l'auto-numérisation (`autodigitize::choose_satin`) et le lettrage continuent
+d'utiliser le squelette ; non validé sur machine.
+
 ## Fichiers
 
 | Fichier | Contenu |
@@ -341,6 +407,7 @@ fixe et irrégulier. Les planchers du corpus et leurs tests sont inchangés.
 | `libs/stitch_generation/src/generate.cpp` | `generate_auto_satin` |
 | `libs/auto_satin/src/satin_strategy.cpp` | façade des stratégies, mesures comparables |
 | `libs/auto_satin/src/parallel_sweep.cpp` | balayage parallèle |
+| `libs/auto_satin/src/medial_axis.cpp` | axe médian vectoriel (Voronoï de segments) |
 | `libs/auto_satin/src/coverage.cpp` | mesure de couverture partagée par les stratégies |
 | `apps/desktop/main_window_satin_auto.cpp` | création, guides, aperçu, squelette |
 

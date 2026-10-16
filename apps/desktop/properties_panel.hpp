@@ -167,6 +167,10 @@ signals:
     void editSatinGuidesRequested(ObjectId id);
     void satinGuideChangeRequested(ObjectId id, int index, double angleDeg, bool absolute);
     void satinGuideRemoveRequested(ObjectId id, int index);
+    // Bouton « Comparer les méthodes… » d'un auto-satin : MainWindow calcule le tableau hors du
+    // fil d'interface puis, si l'utilisateur désigne une autre méthode, exécute UNE commande
+    // annulable.
+    void compareSatinMethodsRequested(ObjectId id);
     // HP-ENG-010 : mode d'entrée/sortie automatiques d'un objet (0 = hérite du projet,
     // 1 = automatique, 2 = désactivé) ; MainWindow exécute SetEmbroideryJoinModeCommand.
     void joinModeEdited(ObjectId id, int mode);

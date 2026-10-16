@@ -126,6 +126,8 @@ TEST_CASE("transform: mirror flips shape, row angle, guides and satin rails") {
     document::AutoSatinParams autoSatin;
     autoSatin.guides.push_back({pt(4'000, 2'000), Angle{0.3}, false});
     autoSatin.guides.push_back({pt(4'000, 2'000), Angle{30.0 * kPi / 180.0}, true});
+    autoSatin.strategy = document::AutoSatinStrategy::ParallelSweep;
+    autoSatin.sweep_angle = Angle{30.0 * kPi / 180.0}; // direction fixe du balayage parallèle
     const ObjectId autoColumn = add_shape(project, rect(0, 0, 20'000, 4'000), autoSatin);
 
     const std::vector<ObjectId> all = all_object_ids(project);
@@ -159,6 +161,11 @@ TEST_CASE("transform: mirror flips shape, row angle, guides and satin rails") {
     CHECK(a.guides[0].anchor == pt(16'000, 2'000));
     CHECK(a.guides[0].angle.radians == Catch::Approx(kPi - 0.3));       // relatif : écart inversé
     CHECK(deg(a.guides[1].angle) == Catch::Approx(150.0).margin(1e-9)); // absolu : direction
+    // L'angle du balayage est une direction du repère : il suit le retournement. La méthode
+    // n'est pas touchée.
+    REQUIRE(a.sweep_angle.has_value());
+    CHECK(deg(*a.sweep_angle) == Catch::Approx(150.0).margin(1e-9));
+    CHECK(a.strategy == document::AutoSatinStrategy::ParallelSweep);
 
     // Deux retournements = identité ; une annulation restaure exactement.
     stack.undo(project);
