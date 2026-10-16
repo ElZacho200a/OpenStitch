@@ -678,6 +678,12 @@ Result<AutoResult> auto_digitize(const segmentation::Segmentation& input,
     return result;
 }
 
+void apply_solid_block(AutoOptions& options, double overlap_mm) {
+    const auto overlapUm = static_cast<std::int32_t>(std::lround(overlap_mm * 1000.0));
+    options.fill_overlap = Micrometers{std::max(options.fill_overlap.value, overlapUm)};
+    options.min_region_area_mm2 = std::max(options.min_region_area_mm2, options.min_fill_area_mm2);
+}
+
 Result<AutoResult> auto_digitize_vectors(const std::vector<document::VectorObject>& vectors,
                                          IdGenerator<ObjectId>& ids, const AutoOptions& options) {
     if (vectors.empty()) {

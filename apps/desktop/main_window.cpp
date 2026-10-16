@@ -4568,6 +4568,17 @@ void MainWindow::autoDigitize() {
         islandRow->addWidget(islandSpin);
         islandRow->addStretch(1);
         shapesPanelLayout->addLayout(islandRow);
+        // Bloc uni (autodigitize::apply_solid_block) : aucun tissu visible entre zones voisines.
+        auto* solidBlockCheck = new QCheckBox(tr("Bloc uni (sans tissu visible)"), shapesPanel);
+        solidBlockCheck->setObjectName("solidBlockCheck");
+        solidBlockCheck->setChecked(
+            ui_memory::intValue(QStringLiteral("autoDigitize/solidBlock"), 0, 0, 1) != 0);
+        solidBlockCheck->setToolTip(
+            tr("Pour une broderie pleine d'un seul tenant : les remplissages débordent d'au moins "
+               "0,5 mm sous leurs voisins et les petites régions sont fusionnées dans leur voisine "
+               "au lieu d'être cousues en simple contour. Les réglages plus élevés ci-dessus "
+               "(débord, aire minimale) sont conservés."));
+        shapesPanelLayout->addWidget(solidBlockCheck);
         // Couche de traits sombres (HP-AUTO-005) : contours noirs, mâts, haubans, séparés des
         // remplissages et cousus par-dessus, en dernier.
         auto* darkLinesCheck = new QCheckBox(tr("Traits sombres cousus par-dessus"), shapesPanel);
@@ -4678,6 +4689,11 @@ void MainWindow::autoDigitize() {
         const int islandCmm2 = static_cast<int>(std::lround(islandSpin->value() * 100.0));
         ui_memory::setIntValue(QStringLiteral("autoDigitize/islandAreaCmm2"), islandCmm2);
         opts.island_area_mm2 = islandCmm2 / 100.0;
+        ui_memory::setIntValue(QStringLiteral("autoDigitize/solidBlock"),
+                               solidBlockCheck->isChecked() ? 1 : 0);
+        if (solidBlockCheck->isChecked()) {
+            autodigitize::apply_solid_block(opts);
+        }
         useDarkLines = darkLinesCheck->isChecked();
         ui_memory::setIntValue(QStringLiteral("autoDigitize/darkLines"), useDarkLines ? 1 : 0);
         const int darkWidthUm = static_cast<int>(std::lround(darkWidthSpin->value() * 1000.0));

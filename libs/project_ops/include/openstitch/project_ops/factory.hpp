@@ -73,6 +73,10 @@ struct DigitizeSettings {
     // Nettoyage des îlots (voisine de couleur la plus proche) ; 0 = désactivé.
     double island_cleanup_mm2{0.0};
     double island_max_delta_e{0.0}; // 0 = sans limite
+    // Mode formes : bloc uni sans tissu visible entre zones voisines (voir
+    // `autodigitize::apply_solid_block`). `solid_block_overlap_mm` : débord sous les voisins.
+    bool solid_block{false};
+    double solid_block_overlap_mm{0.5};
     int stipple_points{2000};
     int stipple_seed{1};
     bool stipple_invert{false};

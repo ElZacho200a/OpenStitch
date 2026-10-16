@@ -90,7 +90,8 @@ Numérise l'image (mêmes réglages et défauts que `digitize` : `--mode
 shapes|contours|stipple`, `--max-colors`, `--min-region-px`, `--smoothing-px`,
 `--skip-background auto|yes|no`, `--min-feature-mm`, `--min-region-mm2`,
 `--curve-tolerance`, `--satin-bands`, `--detail`, `--technique`, `--single-path`,
-`--coherent-lines`, `--island-cleanup`, `--island-max-delta-e`, `--dark-lines`
+`--coherent-lines`, `--island-cleanup`, `--island-max-delta-e`, `--solid-block`
+(`--solid-block-overlap`), `--dark-lines`
 (`--dark-lines-width`, `--dark-lines-lightness`), `--stipple-*`, `--trim-threshold`, `--lock`, `--hidden-travel*`,
 `--dpi`). En plus : `--dst f.dst` et `--output-svg f.svg` (exports secondaires),
 `--report rapport.json` (rapport de numérisation, schéma

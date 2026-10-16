@@ -497,6 +497,48 @@ bouton dans le desktop pour l'instant ; le trait reste un tour de points, pas
 une trame de lignes de densité variable (PhotoStitch complet = HP-STI-017
 partiel) ; un tour TSP heuristique est ~5 % au-dessus de l'optimum.
 
+## Bloc uni (`--solid-block`)
+
+**Besoin** : une broderie pleine d'un seul tenant, où seules les couleurs changent d'une zone à
+l'autre, sans jamais voir le tissu entre deux zones voisines.
+
+**Cause des interstices** : chaque tatami est rentré de `inset` (0,2 mm) sur tous ses bords et
+`fill_overlap` vaut 0 par défaut (voir Lot C : le débord, porté par l'objet vectoriel, faisait
+déborder les autres types de points créés ensuite). Deux zones voisines laissent donc une bande de
+tissu. Une région sous `min_fill_area_mm2` (4 mm²) devient en plus un simple contour, ce qui crée des
+trous.
+
+**Réglage** : `autodigitize::apply_solid_block(options, overlap_mm = 0,5)`.
+
+- `fill_overlap` passe à au moins `overlap_mm` : débord sous les voisins BRODÉS uniquement. Le bord
+  extérieur du motif et le contact avec le fond ignoré gardent le retrait.
+- `min_region_area_mm2` passe à au moins `min_fill_area_mm2` : une petite région est fusionnée dans sa
+  voisine (aucun trou) au lieu d'être cousue en contour.
+- Jamais de réglage à la baisse : une valeur déjà plus élevée est conservée. Désactivé par défaut,
+  sortie inchangée sans l'option.
+- **CLI** : `digitize --solid-block [--solid-block-overlap MM]` (`DigitizeSettings::solid_block`,
+  `solid_block_overlap_mm`). **Bureau** : case *Bloc uni (sans tissu visible)* du dialogue de
+  numérisation (mode formes).
+
+**Mesures** (illustration de voilier 321 mm, `--max-colors 12 --dark-lines`, binaire Debug) :
+
+| Réglage | points | sauts | points < 0,5 mm | surface non couverte |
+|---|---|---|---|---|
+| sans option | 130 189 | 1 902 | 1,1 % | 6,19 % |
+| `--solid-block-overlap 0` (fusion seule) | 129 590 | 1 843 | 1,0 % | 6,14 % |
+| 0,15 mm | 213 309 | 25 703 | 20,6 % | 2,24 % |
+| 0,3 mm | 227 863 | 8 473 | 5,9 % | 0,67 % |
+| **0,5 mm (défaut)** | 165 355 | 1 102 | 3,3 % | 0,29 % |
+| 0,8 mm | 169 376 | 960 | 3,1 % | 0,22 % |
+
+Un débord inférieur à environ un pixel de l'image (0,3 mm ici) fragmente les remplissages (lamelles,
+rangées très courtes, sauts) : d'où le défaut de 0,5 mm. La fusion des petites régions est neutre ;
+tout le gain vient du débord.
+
+**Limite connue** : le débord reste porté par l'objet vectoriel (conception du Lot C) ; un satin ou un
+contour créé ensuite sur une région ainsi élargie déborde aussi. Rendu visuel non vérifié (pas de
+rendu raster en ligne de commande) : contrôle à faire dans le bureau.
+
 ## Implémentation associée
 
 - `libs/segmentation/include/openstitch/segmentation/segmentation.hpp` —
