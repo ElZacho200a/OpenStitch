@@ -9,14 +9,21 @@
 #include <QStatusBar>
 
 #include <algorithm>
+#include <cmath>
+#include <cstdint>
 #include <memory>
 
+#include "app_settings.hpp"
 #include "main_window.hpp"
 #include "openstitch/commands/vector_ops.hpp"
 
 namespace openstitch::desktop {
 
 namespace {
+
+Micrometers mmToUm(double mm) {
+    return Micrometers{static_cast<std::int32_t>(std::lround(mm * 1000.0))};
+}
 
 void setShapeActionEnabled(QAction* act, bool enabled, const QString& why) {
     if (act == nullptr) {
@@ -161,7 +168,8 @@ void MainWindow::runBooleanOp(commands::BooleanOp op) {
                                                                  : tr("Formes exclues.");
     // Le principal (dernier sélectionné) d'abord : c'est lui qui est retenu s'il survit.
     std::vector<ObjectId> keep(ids.rbegin(), ids.rend());
-    applyShapeCommand(commands::make_boolean_command(project_, op, ids),
+    applyShapeCommand(commands::make_boolean_command(project_, op, ids,
+                                                     mmToUm(loadEditSettings().unionGapMm)),
                       label + tr(" Ctrl+Z pour annuler."), keep);
 }
 
@@ -192,7 +200,8 @@ void MainWindow::finishCut() {
     const Vec2um a = pendingFreeformPoints_.front();
     const Vec2um b = pendingFreeformPoints_.back();
     cancelFreeformDraw();
-    if (length_um(b - a) < 500.0) {
+    const EditSettings settings = loadEditSettings();
+    if (length_um(b - a) < settings.knifeMinLengthMm * 1000.0) {
         statusBar()->showMessage(tr("Couteau : tracez une ligne plus longue (glisser)."), 6000);
         return;
     }
@@ -205,7 +214,8 @@ void MainWindow::finishCut() {
             }
         }
     }
-    applyShapeCommand(commands::make_split_command(project_, ids, a, b),
+    applyShapeCommand(commands::make_split_command(project_, ids, a, b,
+                                                   mmToUm(settings.knifeWidthMm)),
                       tr("Forme découpée. Ctrl+Z pour annuler."), ids);
 }
 
