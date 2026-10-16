@@ -196,6 +196,24 @@ ensemble que des sections contiguës. Avant ce lot, aucune numérisation
 automatique (desktop ou CLI) n'ordonnait son résultat : les objets suivaient
 l'ordre des identifiants de région (classe k-means puis balayage de l'image).
 
+### Retrait du bord des tatami (`--fill-inset`)
+
+Chaque tatami est rentré de `TatamiParams::inset` (0,2 mm) : deux zones jointives laissent ~0,4 mm
+de vide, visible comme un filet clair autour de chaque zone. `AutoOptions::fill_inset` (CLI :
+`--fill-inset MM`, défaut 0,2 inchangé, donc ni objets existants ni dorés modifiés) fixe ce retrait
+pour les tatami créés. Mesure sur le navire (`--dark-lines --island-cleanup 20`,
+`project check` -> `uncovered_ratio`, dont 0,324 de fond ignoré) :
+
+| `--fill-inset` | points | coupes | non couvert |
+|---|---|---|---|
+| 0,2 (défaut) | 91 755 | 1 359 | 0,366 |
+| 0,1 | 96 706 | 1 362 | 0,342 |
+| 0 | 106 764 | 1 368 | 0,325 |
+
+`inset` négatif refusé. Une compensation de tirage en plus (0,15 mm) n'apporte rien (0,321) et coûte
++14 % de coupes. Alternative à `fill_overlap` (désactivé, voir ci-dessus) : elle n'élargit pas la
+surface vectorielle, donc pas de débord des autres types de points.
+
 ## Fragments (Lot D)
 
 Avant ce lot, le seul seuil de taille était `SegmentationOptions::
@@ -452,10 +470,17 @@ amas de blocs. `auto_digitize_with_lines` (`line_layer.cpp`) sépare les traits 
    4-connexe), les aplats que le trait coupait en deux sont refusionnés (même couleur, redevenus
    adjacents), et une région presque entièrement faite de pixels de trait quitte les remplissages.
    Les remplissages passent donc sous le trait, sans trou.
-3. **Traits** : une segmentation à une seule couleur (la moyenne des pixels de trait) passe par
+3. **Traits** : une segmentation à une seule couleur passe par
    `analyze_contours` et `build_contour_objects` : lignes médianes en point droit, parcours
    eulérien, mêmes garde-fous que le mode contours. Les objets de ligne sont ajoutés **après** tous
    les remplissages : ils sont cousus en dernier.
+   **Couleur du fil** : la moyenne des pixels de trait tombe presque toujours à quelques unités
+   d'un noir déjà présent dans la palette (navire : `#0C121C` contre `#08080F`), ce qui ajoutait un
+   fil pour rien. Elle est donc **calée sur la couleur de région la plus proche** quand la distance
+   RGB est <= 30, et les remplissages de cette couleur sont placés en dernier (avant les traits, ordre
+   relatif conservé) pour que le noir ne soit cousu qu'une fois. Mesuré sur le navire : 8 blocs et 7
+   changements de fil -> 7 blocs et 6, points et coupes identiques. Tests :
+   `couche de traits : la couleur des traits reprend le noir de la palette`.
 
 **Dans le bureau** : la boîte *Numérisation automatique* (mode formes) propose « Traits sombres
 cousus par-dessus » (largeur maximale en mm et clarté L\* maximale, mémorisées entre les sessions) et

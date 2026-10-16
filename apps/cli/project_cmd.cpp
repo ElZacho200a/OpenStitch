@@ -345,6 +345,10 @@ void add_digitize_options(CLI::App* cmd, DigitizeOptionValues& v) {
                     "Mode formes : les régions plus petites que cette aire (mm²) sont fusionnées "
                     "avec leur voisine ; 0 = désactivé (défaut : 3)")
         ->check(CLI::NonNegativeNumber);
+    cmd->add_option("--fill-inset", s.fill_inset_mm,
+                    "Mode formes : retrait du bord de chaque tatami en mm (défaut : 0.2) ; 0 ferme "
+                    "les interstices entre zones voisines (+~16 % de points)")
+        ->check(CLI::NonNegativeNumber);
     cmd->add_option("--island-cleanup", s.island_cleanup_mm2,
                     "Mode formes : les îlots plus petits que cette aire (mm²) sont fusionnés dans "
                     "la voisine de COULEUR la plus proche (pas la plus longue frontière) ; 0 = "

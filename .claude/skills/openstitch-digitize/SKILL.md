@@ -31,7 +31,7 @@ contrôle → palette réelle → rendu, en une commande ; il encode les pièges
 
 ```bash
 CLI=/chemin/openstitch-cli .claude/skills/openstitch-digitize/scripts/workflow.sh \
-    img.png $SCRATCH/v1 300 210 122.6 --max-colors 12 --dark-lines --island-cleanup 20
+    img.png $SCRATCH/v1 300 210 122.6 --max-colors 12 --dark-lines --island-cleanup 20 --fill-inset 0
 ```
 
 Arguments : image, dossier de sortie, largeur et hauteur du cadre (mm), dpi, puis les options de
@@ -85,6 +85,7 @@ n'est pas le bon choix : `--skip-background yes|no`. Cas vécu : fond beige non 
 |---|---|---|
 | Traits noirs fins lisibles (mâts, haubans, contours) | `--dark-lines` (`--dark-lines-width 1.6`, `--dark-lines-lightness 25`) ; dans l'application : case « Traits sombres cousus par-dessus » de la boîte *Numérisation automatique* | +40 à +60 % de coupes mesurées (1 181 → 1 675 ; 941 → 1 499) : chaque trait est un tracé séparé, cousu en dernier. Point droit seulement. |
 | **Îlots collés à de grands aplats** (enclaves) | `--island-cleanup MM2` (essayer 20 ; `--island-max-delta-e` pour limiter l'écart de couleur) ; dans l'application : *Segmentation → Nettoyer les petits îlots…* | Fusionne dans la voisine de **couleur** la plus proche. Mesuré : 344 → 173 objets, 887 → 681 coupes à 20 mm². Les traits fins sombres (haubans) sont aussi des îlots : **associer à `--dark-lines`**. |
+| Filets clairs entre zones jointives (interstices) | `--fill-inset 0` (défaut 0,2) | +16 % de points (91 755 -> 106 764), coupes inchangées ; `0.1` = compromis (+5 %). Mesure : §8 essai 2 |
 | Petites zones parasites | `--min-region-mm2` (défaut 3), `--min-feature-mm` (défaut 0 = désactivé ; une valeur retire les détails plus étroits que cette largeur, à essayer par petits pas) | Trop haut : on perd des détails voulus. |
 | Bandes étroites en satin (rayons de nuages, écume, rubans) | `--satin-bands` | **Désactivé par défaut volontairement** : la décision par génération d'essai est un point à faire relire au regard du brevet US8851001B2 (`docs/revue-brevets-optimisation-trajets-2026-10.md`). Ne pas l'activer par défaut sans cette relecture ; l'activer sur demande explicite de l'utilisateur pour son propre projet est possible. |
 | Moins de coupes avant export | `--hidden-travel` (et niveaux) | Gain surtout en longueur de saut, peu en nombre de coupes sur des régions juxtaposées. |
@@ -169,9 +170,8 @@ Mesures de l'essai 1 (même `--dpi 122.6`, `--max-colors 12`, fond ignoré autom
 
 Constats à retenir :
 
-- `--dark-lines` ajoute **un fil quasi noir distinct** (`#0C121C`) du noir déjà segmenté
-  (`#08080F`) : 8 blocs au lieu de 7, un changement de fil de plus. Piste d'amélioration non
-  traitée : fusionner ces deux noirs.
+- `--dark-lines` ajoutait **un fil quasi noir distinct** (`#0C121C`) du noir déjà segmenté
+  (`#08080F`) : corrigé à l'essai 3 (ci-dessous).
 - `project check` plafonne l'affichage à 100 avertissements (sauts longs, points très courts) ;
   seul le verdict de la première ligne est fiable pour un résumé.
 - Non testé volontairement : `--satin-bands` (point brevet, §4). À essayer sur demande explicite.
@@ -198,6 +198,22 @@ Règle : sur une numérisation multi-couleurs aux zones jointives, **`inset_mm =
 points, coupes inchangées) ; `0,1` si le poids compte. Ne pas ajouter de compensation de tirage
 sans raison. À reporter à terme dans le défaut de `digitize` (point à décider avec l'utilisateur :
 cela change la sortie de toutes les numérisations).
+
+**Essai 3 (2026-10-16) : défauts corrigés dans le code, plus seulement contournés.**
+
+| Défaut | Cause racine | Correctif | Preuve |
+|---|---|---|---|
+| 8e fil : noir des traits `#0C121C` à côté de `#08080F` | `line_layer.cpp` : couleur des traits = moyenne des pixels de trait, jamais comparée à la palette ; et les remplissages noirs étaient cousus avant un bleu, donc le noir deux fois | couleur calée sur la région la plus proche (RGB <= 30) ; remplissages de cette couleur placés en dernier (`stable_partition`) | 7 -> 6 changements de fil, points/coupes identiques ; le test échoue sans le correctif (2 assertions) |
+| Filets clairs entre zones | `inset_mm` 0,2 sur chaque tatami | option `AutoOptions::fill_inset` + `--fill-inset` (défaut inchangé) | 106 764 points, non couvert 0,325 ; test `fill_inset regle le retrait` |
+
+Résultat de référence (navire, `--max-colors 12 --dark-lines --island-cleanup 20 --fill-inset 0`) :
+106 764 points, 1 368 coupes, 6 changements de fil, 290,6 x 200,9 mm, 0 erreur de contrôle.
+Suite complète en série (`ctest`) : 1 257 tests sur 1 258 ; seul `cli_help` échoue (environnement, ci-dessous).
+
+Pièges d'environnement (build apt, pas de régression) : `cli_help` attend `POSITIONALS` en
+majuscules, le CLI11 d'apt (2.4.1) écrit `Positionals` ; deux tests `project_ops` (`ops malformed
+or unknown batches…`, `param ops set_order modes`) ont échoué en `ctest -j4` et passent seuls et en
+série (cause non investiguée). Lancer `ctest` sans `-j` pour juger.
 
 ## 9. Ce skill s'enrichit
 

@@ -153,3 +153,81 @@ TEST_CASE("couche de traits : remplissages sans trou, traits cousus en dernier")
     CHECK(again->embroideries.size() == result->embroideries.size());
     CHECK(again->vectors.size() == result->vectors.size());
 }
+
+namespace {
+
+// Comme scene(), mais le trait est un noir bleuté proche du bloc épais sans lui être identique :
+// la couleur moyenne des traits diffère de quelques unités du noir quantifié.
+image::Image scene_near_black_line() {
+    image::Image img = scene();
+    fill_rect(img, 10, 38, 110, 41, 14, 20, 32);
+    return img;
+}
+
+std::vector<std::array<std::uint8_t, 3>> dark_colours(const AutoResult& r) {
+    std::vector<std::array<std::uint8_t, 3>> out;
+    for (const auto& e : r.embroideries) {
+        if (e.rgb[0] < 60 && e.rgb[1] < 60 && e.rgb[2] < 60 &&
+            std::find(out.begin(), out.end(), e.rgb) == out.end()) {
+            out.push_back(e.rgb);
+        }
+    }
+    return out;
+}
+
+} // namespace
+
+TEST_CASE("couche de traits : la couleur des traits reprend le noir de la palette") {
+    const auto img = scene_near_black_line();
+    const auto seg = segmentation::segment(img, {.max_colors = 4, .min_region_px = 4});
+    REQUIRE(seg.has_value());
+    IdGenerator<ObjectId> ids;
+    LineLayerOptions lines;
+    lines.enabled = true;
+    LineLayerMetrics metrics;
+    ContourOptions co;
+    co.technique = ContourTechnique::Running;
+    const auto result = auto_digitize_with_lines(*seg, img, ids, options(), lines, co, &metrics);
+    REQUIRE(result.has_value());
+    REQUIRE(metrics.line_objects >= 1);
+    // Un seul fil sombre : pas de quasi-doublon (changement de fil de plus pour rien).
+    CHECK(dark_colours(*result).size() == 1);
+    // Les remplissages de cette couleur sont cousus juste avant les traits : un seul bloc de fil.
+    const std::size_t firstLine = result->embroideries.size() - metrics.line_objects;
+    const auto darkRgb = dark_colours(*result).front();
+    std::size_t lastOther = 0;
+    for (std::size_t i = 0; i < firstLine; ++i) {
+        if (result->embroideries[i].rgb != darkRgb) {
+            lastOther = i + 1;
+        }
+    }
+    for (std::size_t i = lastOther; i < result->embroideries.size(); ++i) {
+        CHECK(result->embroideries[i].rgb == darkRgb);
+    }
+}
+
+TEST_CASE("auto_digitize : fill_inset regle le retrait des tatami crees") {
+    const auto img = scene();
+    const auto seg = segmentation::segment(img, {.max_colors = 4, .min_region_px = 4});
+    REQUIRE(seg.has_value());
+    const auto insets = [&](AutoOptions o) {
+        IdGenerator<ObjectId> ids;
+        const auto r = auto_digitize(*seg, ids, o);
+        REQUIRE(r.has_value());
+        std::vector<std::int32_t> out;
+        for (const auto& e : r->embroideries) {
+            if (const auto* tp = std::get_if<document::TatamiParams>(&e.params)) {
+                out.push_back(tp->inset.value);
+            }
+        }
+        return out;
+    };
+    const auto byDefault = insets(options());
+    REQUIRE_FALSE(byDefault.empty());
+    CHECK(std::all_of(byDefault.begin(), byDefault.end(), [](auto v) { return v == 200; }));
+    AutoOptions closed = options();
+    closed.fill_inset = Micrometers{0};
+    const auto zero = insets(closed);
+    REQUIRE(zero.size() == byDefault.size());
+    CHECK(std::all_of(zero.begin(), zero.end(), [](auto v) { return v == 0; }));
+}

@@ -29,6 +29,29 @@ Result<AutoResult> auto_digitize_with_lines(const segmentation::Segmentation& se
         return auto_digitize(seg, ids, options); // aucun trait sombre : rien à séparer
     }
 
+    // La couleur moyenne des traits est presque toujours à quelques unités d'un noir déjà
+    // présent dans la palette (mesuré : #0C121C contre #08080F) : un fil de plus pour rien.
+    // On reprend alors la couleur de la région existante la plus proche (déterministe : plus
+    // petite distance, premier slot en cas d'égalité).
+    {
+        constexpr int kSnapMaxDistSq = 30 * 30; // distance RGB euclidienne <= 30
+        int best = kSnapMaxDistSq + 1;
+        for (const auto& slot : seg.region_slots) {
+            if (!slot) {
+                continue;
+            }
+            int d = 0;
+            for (std::size_t c = 0; c < 3; ++c) {
+                const int diff = int{slot->rgb[c]} - int{lineRgb[c]};
+                d += diff * diff;
+            }
+            if (d < best) {
+                best = d;
+                lineRgb = slot->rgb;
+            }
+        }
+    }
+
     // Segmentation des traits : une seule région (la couleur moyenne des pixels de trait).
     segmentation::Segmentation lineSeg;
     lineSeg.width = seg.width;
@@ -106,6 +129,10 @@ Result<AutoResult> auto_digitize_with_lines(const segmentation::Segmentation& se
         return lineResult;
     }
     AutoResult out = std::move(*fillResult);
+    // Les remplissages de la couleur des traits passent en dernier (ordre relatif conservé) :
+    // les traits s'enchaînent alors sur le même fil, sans changement de fil supplémentaire.
+    std::stable_partition(out.embroideries.begin(), out.embroideries.end(),
+                          [&](const document::EmbroideryObject& e) { return e.rgb != lineRgb; });
     const std::size_t fillObjects = out.embroideries.size();
     for (auto& v : lineResult->vectors) {
         out.vectors.push_back(std::move(v));

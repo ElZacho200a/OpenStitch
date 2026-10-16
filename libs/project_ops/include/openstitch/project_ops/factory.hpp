@@ -72,6 +72,8 @@ struct DigitizeSettings {
     double dark_lines_lightness{25.0};
     // Nettoyage des îlots (voisine de couleur la plus proche) ; 0 = désactivé.
     double island_cleanup_mm2{0.0};
+    // Retrait du bord des tatami (mm) ; absent = défaut du document (0,2 mm).
+    std::optional<double> fill_inset_mm;
     double island_max_delta_e{0.0}; // 0 = sans limite
     int stipple_points{2000};
     int stipple_seed{1};

@@ -219,6 +219,9 @@ Result<DigitizeReport> digitize_image_into(document::Project& project,
         opts.min_region_area_mm2 = *s.min_region_mm2;
     }
     opts.island_area_mm2 = s.island_cleanup_mm2;
+    if (s.fill_inset_mm) {
+        opts.fill_inset = mm_to_um(*s.fill_inset_mm);
+    }
     opts.island_max_delta_e = s.island_max_delta_e;
     say(log, std::string("Ignorer la plus grande région (fond) : ") +
                  (skipLargest ? "oui" : "non") +
