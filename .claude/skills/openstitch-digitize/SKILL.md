@@ -215,6 +215,33 @@ majuscules, le CLI11 d'apt (2.4.1) écrit `Positionals` ; deux tests `project_op
 or unknown batches…`, `param ops set_order modes`) ont échoué en `ctest -j4` et passent seuls et en
 série (cause non investiguée). Lancer `ctest` sans `-j` pour juger.
 
+**Essai 4 (2026-10-16) : les trois méthodes d'auto-satin de `main` (PR #50, #51).**
+
+Fusion de `main` sans conflit. `--satin-bands` (auto-numérisation) utilise **toujours le squelette**
+(`autodigitize::choose_satin`) : pour tester les autres méthodes, numériser avec `--satin-bands`
+puis convertir les objets `auto_satin` avec
+`scripts/set_params_all.py CLI p.osp auto_satin '{"strategy":"medial_axis"}'`
+(valeurs : `skeleton` | `parallel_sweep` | `medial_axis`). Un nom inconnu est refusé, document intact.
+Navire, `--max-colors 12 --dark-lines --island-cleanup 20 --fill-inset 0 --satin-bands`
+(71 objets auto-satin, 80 tatami, 218 traits) :
+
+| Méthode des 71 satin | Points | Coupes | Fil m | Non couvert | Points courts | Erreurs |
+|---|---|---|---|---|---|---|
+| (sans `--satin-bands`) | 106 764 | 1 368 | — | 0,325 | — | 0 |
+| `skeleton` | 114 623 | 1 675 | 211,8 | 0,3253 | 6 543 | 0 |
+| `parallel_sweep` | 104 077 | 1 469 | 199,9 | 0,3249 | 5 682 | 0 |
+| `medial_axis` | 105 822 | 1 429 | 204,4 | **0,3337** | 5 554 | 0 |
+
+Lecture : à couverture égale, `parallel_sweep` économise 9 % de points et 12 % de coupes sur le
+squelette ; `medial_axis` coupe le plus mais **couvre moins** (+0,8 point de non-couvert). Le rendu
+de script ne distingue presque pas les trois (le satin y ressemble à un aplat dense) : seules les
+mesures tranchent, pas de recommandation avant essai machine (consigne de la doc `satin-squelette.md`).
+`satin-compare` (corpus de formes) : `parallel_sweep` génère des fils très longs sur les formes
+ramifiées (36 à 40 mm sur `t`, `cross`, `h`) et couvre moins (95,7 à 98,6 %) ; `medial_axis` égale le
+squelette et couvre les formes compactes qu'il refuse (`circle`, `disc_15mm`, `petal` : 99,5 à 99,9 %).
+Pour des bandes étroites et régulières (rayons de nuages), `parallel_sweep` suffit ; pour des formes
+ramifiées ou compactes, `medial_axis`.
+
 ## 9. Ce skill s'enrichit
 
 Quand une nouvelle image révèle un échec ou une règle (seuil, option, ordre), l'ajouter au

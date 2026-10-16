@@ -138,6 +138,12 @@ cmake -S . -B $SCRATCH/build -G Ninja -DCMAKE_BUILD_TYPE=Release -DOPENSTITCH_BU
 cmake --build $SCRATCH/build --target openstitch-cli -j4
 ```
 
+Depuis la fusion de `main` du 2026-10-16 (lot B auto-satin), `libs/auto_satin` exige
+`find_package(boost_polygon CONFIG)` : `apt-get install -y libboost-dev` fournit les en-têtes mais
+pas ce fichier de configuration (propre à vcpkg). Cale d'environnement, hors dépôt :
+`$P/lib/cmake/boost_polygon/boost_polygon-config.cmake` créant `Boost::polygon` en cible
+INTERFACE avec `INTERFACE_INCLUDE_DIRECTORIES /usr/include`.
+
 Le build va dans le scratchpad, pas dans `build/` du dépôt. Versions apt (OpenCV 4.6, fmt 9)
 différentes de celles de vcpkg : le CLI compile et ses mesures reproduisent celles du skill
 `openstitch-digitize`, mais les tests complets n'ont pas été lancés dans cette configuration.
