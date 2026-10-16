@@ -110,6 +110,65 @@ Result<Image> apply_bilateral_denoise(const Image& in, const BilateralDenoiseOp&
     return image_from_mat_rgba(dst, in.source_had_alpha);
 }
 
+Result<Image> apply_flatten(const Image& in, const FlattenOp& op) {
+    if (op.strength < 1 || op.strength > 3) {
+        return fail(ErrorCategory::UserInput, "Force de l'aplat invalide (1 à 3)");
+    }
+    const cv::Mat src = mat_view_rgba(in);
+    std::vector<cv::Mat> planes;
+    cv::split(src, planes);
+    cv::Mat rgb;
+    cv::merge(std::vector<cv::Mat>{planes[0], planes[1], planes[2]}, rgb);
+    cv::Mat filtered;
+    cv::pyrMeanShiftFiltering(rgb, filtered, 2.0 + 2.0 * op.strength, 2.0 + 6.0 * op.strength, 1);
+    std::vector<cv::Mat> out;
+    cv::split(filtered, out);
+    cv::Mat dst;
+    cv::merge(std::vector<cv::Mat>{out[0], out[1], out[2], planes[3]}, dst);
+    return image_from_mat_rgba(dst, in.source_had_alpha);
+}
+
+Result<Image> apply_clahe(const Image& in, const ClaheOp& op) {
+    if (!(op.clip_limit >= 1.0 && op.clip_limit <= 8.0)) {
+        return fail(ErrorCategory::UserInput, "Limite de contraste invalide (1 à 8)");
+    }
+    const cv::Mat src = mat_view_rgba(in);
+    std::vector<cv::Mat> planes;
+    cv::split(src, planes);
+    cv::Mat rgb;
+    cv::merge(std::vector<cv::Mat>{planes[0], planes[1], planes[2]}, rgb);
+    cv::Mat lab;
+    cv::cvtColor(rgb, lab, cv::COLOR_RGB2Lab);
+    std::vector<cv::Mat> lp;
+    cv::split(lab, lp);
+    cv::createCLAHE(op.clip_limit, cv::Size(8, 8))->apply(lp[0], lp[0]);
+    cv::merge(lp, lab);
+    cv::cvtColor(lab, rgb, cv::COLOR_Lab2RGB);
+    std::vector<cv::Mat> out;
+    cv::split(rgb, out);
+    cv::Mat dst;
+    cv::merge(std::vector<cv::Mat>{out[0], out[1], out[2], planes[3]}, dst);
+    return image_from_mat_rgba(dst, in.source_had_alpha);
+}
+
+Result<Image> apply_sharpen(const Image& in, const SharpenOp& op) {
+    if (!(op.amount >= 0.0 && op.amount <= 3.0)) {
+        return fail(ErrorCategory::UserInput, "Netteté invalide (0 à 3)");
+    }
+    const cv::Mat src = mat_view_rgba(in);
+    std::vector<cv::Mat> planes;
+    cv::split(src, planes);
+    for (int i = 0; i < 3; ++i) { // l'alpha n'est pas touché
+        cv::Mat blur;
+        auto& p = planes[static_cast<std::size_t>(i)];
+        cv::GaussianBlur(p, blur, cv::Size(0, 0), 1.5);
+        cv::addWeighted(p, 1.0 + op.amount, blur, -op.amount, 0.0, p);
+    }
+    cv::Mat dst;
+    cv::merge(planes, dst);
+    return image_from_mat_rgba(dst, in.source_had_alpha);
+}
+
 // Quantification simple par k-means sur un échantillon de pixels (RGB, alpha
 // conservé tel quel). Version de base : la segmentation perceptuelle (CIELAB,
 // régions connexes) est l'objet de la Phase 4.
@@ -188,6 +247,12 @@ std::string op_name(const ImageOp& op) {
                 return "Lissage bilatéral";
             if constexpr (std::is_same_v<T, CoherentLinesOp>)
                 return "Lignes cohérentes";
+            if constexpr (std::is_same_v<T, FlattenOp>)
+                return "Aplat des zones";
+            if constexpr (std::is_same_v<T, ClaheOp>)
+                return "Contraste local";
+            if constexpr (std::is_same_v<T, SharpenOp>)
+                return "Netteté";
         },
         op);
 }
@@ -217,6 +282,12 @@ Result<Image> apply_op(const Image& input, const ImageOp& op) {
                 return apply_bilateral_denoise(input, o);
             if constexpr (std::is_same_v<T, CoherentLinesOp>)
                 return detail::apply_coherent_lines(input, o);
+            if constexpr (std::is_same_v<T, FlattenOp>)
+                return apply_flatten(input, o);
+            if constexpr (std::is_same_v<T, ClaheOp>)
+                return apply_clahe(input, o);
+            if constexpr (std::is_same_v<T, SharpenOp>)
+                return apply_sharpen(input, o);
         },
         op);
 }

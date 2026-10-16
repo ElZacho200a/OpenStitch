@@ -423,6 +423,24 @@ Lecture : l'image est déjà un aplat illustré (peu de bruit) ; le gain est mod
 est le meilleur compromis (moins de coupes, tissu visible inchangé) ; `quantize` fait perdre des détails.
 Règle : prétraiter les photos / JPEG bruités ; sur une illustration propre, mesurer d'abord avec `sweep`.
 
+### Essai 11 — nouveaux prétraitements : `flatten`, `clahe`, `sharpen`
+
+Ajoutés à `image::ImageOp` (fin du variant, sérialisés dans le `.osp`, menu *Image* du bureau) puis mesurés
+sur le navire comme l'Essai 10 :
+
+| pre | points | coupes | tissu visible % | détails perdus % | surépaisseur mm² |
+|---|---|---|---|---|---|
+| aucun | 125 097 | 2 162 | 0,35 | 0,27 | 1 617 |
+| flatten:2 | 121 328 | 2 001 | 0,40 | 0,29 | 1 482 |
+| flatten:2+median:1 | 118 679 | 1 891 | 0,37 | 0,28 | 1 411 |
+| clahe:2 | 136 405 | 2 555 | 0,67 | 0,93 | 1 832 |
+| sharpen:1 | 137 829 | 2 647 | 0,67 | 0,81 | 1 656 |
+
+Lecture : `flatten:2+median:1` est le meilleur réglage mesuré (−12,5 % de coupes, −5 % de points, moins de
+surépaisseur, détails perdus au niveau de la référence). `clahe` et `sharpen` **dégradent** une illustration
+déjà contrastée (ils fabriquent des régions parasites : +300 objets) ; à réserver aux photos pâles ou floues,
+et toujours après mesure par `sweep`.
+
 ## 9. Ce skill s'enrichit
 
 Quand une nouvelle image révèle un échec ou une règle (seuil, option, ordre), l'ajouter au

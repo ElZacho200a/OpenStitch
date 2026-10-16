@@ -80,7 +80,8 @@ Result<std::vector<image::ImageOp>> parse_pre_spec(const std::string& spec) {
     const auto bad = [&](const std::string& item, const std::string& why) {
         return fail(ErrorCategory::UserInput,
                     "traitement d'image invalide « " + item + " » : " + why,
-                    "grammaire : median[:1|2] bilateral[:1..3] quantize[:N] contrast:B:C "
+                    "grammaire : median[:1|2] bilateral[:1..3] flatten[:1..3] clahe[:C] "
+                    "sharpen[:A] quantize[:N] contrast:B:C "
                     "gray crop:x:y:w:h flip:h|v rotate:1..3, séparés par « + »");
     };
     for (const auto& item : split_on(spec, '+')) {
@@ -115,6 +116,24 @@ Result<std::vector<image::ImageOp>> parse_pre_spec(const std::string& spec) {
                 return bad(item, "luminosité et contraste entre -100 et 100");
             }
             ops.emplace_back(image::BrightnessContrastOp{*b, *c});
+        } else if (name == "flatten" && argc <= 1) {
+            const auto v = intArg(1, 2);
+            if (!v || *v < 1 || *v > 3) {
+                return bad(item, "force 1 à 3");
+            }
+            ops.emplace_back(image::FlattenOp{*v});
+        } else if (name == "clahe" && argc <= 1) {
+            const auto v = argc == 1 ? parse_double_strict(f[1]) : std::optional<double>{2.0};
+            if (!v || *v < 1.0 || *v > 8.0) {
+                return bad(item, "limite de contraste 1 à 8");
+            }
+            ops.emplace_back(image::ClaheOp{*v});
+        } else if (name == "sharpen" && argc <= 1) {
+            const auto v = argc == 1 ? parse_double_strict(f[1]) : std::optional<double>{1.0};
+            if (!v || *v < 0.0 || *v > 3.0) {
+                return bad(item, "netteté 0 à 3");
+            }
+            ops.emplace_back(image::SharpenOp{*v});
         } else if (name == "gray" && argc == 0) {
             ops.emplace_back(image::GrayscaleOp{});
         } else if (name == "crop" && argc == 4) {

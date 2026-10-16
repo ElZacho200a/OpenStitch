@@ -131,6 +131,12 @@ json op_to_json(const image::ImageOp& op) {
                      {"tau", o.tau},
                      {"etfIterations", o.etf_iterations},
                      {"etfRadius", o.etf_radius}};
+            } else if constexpr (std::is_same_v<T, image::FlattenOp>) {
+                j = {{"type", "flatten"}, {"strength", o.strength}};
+            } else if constexpr (std::is_same_v<T, image::ClaheOp>) {
+                j = {{"type", "clahe"}, {"clipLimit", o.clip_limit}};
+            } else if constexpr (std::is_same_v<T, image::SharpenOp>) {
+                j = {{"type", "sharpen"}, {"amount", o.amount}};
             }
             return j;
         },
@@ -171,6 +177,15 @@ Result<image::ImageOp> op_from_json(const json& j) {
                                       j.value("tau", d.tau),
                                       j.value("etfIterations", d.etf_iterations),
                                       j.value("etfRadius", d.etf_radius)};
+    }
+    if (type == "flatten") {
+        return image::FlattenOp{j.value("strength", 2)};
+    }
+    if (type == "clahe") {
+        return image::ClaheOp{j.value("clipLimit", 2.0)};
+    }
+    if (type == "sharpen") {
+        return image::SharpenOp{j.value("amount", 1.0)};
     }
     return fail(ErrorCategory::InvalidFile, "Opération d'image inconnue : " + type);
 }

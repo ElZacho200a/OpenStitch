@@ -286,13 +286,15 @@ TEST_CASE("digitize applies fill inset, overlap and underpath settings to create
 }
 
 TEST_CASE("pre spec grammar accepts valid chains and rejects malformed ones", "[project_ops]") {
-    for (const char* ok : {"", "median", "median:2", "bilateral:2+median:1", "quantize:12", "gray",
-                           "contrast:10:-20", "crop:0:0:10:10", "flip:h", "rotate:3"}) {
+    for (const char* ok : {"", "median", "median:2", "bilateral:2+median:1", "flatten", "flatten:3",
+                           "clahe:3.5", "sharpen:0.5", "quantize:12", "gray", "contrast:10:-20",
+                           "crop:0:0:10:10", "flip:h", "rotate:3"}) {
         INFO(ok);
         CHECK(po::validate_pre_spec(ok));
     }
-    for (const char* bad : {"median:3", "bilateral:0", "quantize:1", "crop:1:2:3", "flip:x",
-                            "rotate:4", "blur", "median:1+", "contrast:200:0", "median:1x"}) {
+    for (const char* bad :
+         {"median:3", "bilateral:0", "quantize:1", "crop:1:2:3", "flip:x", "rotate:4", "blur",
+          "median:1+", "contrast:200:0", "median:1x", "flatten:4", "clahe:9", "sharpen:-1"}) {
         INFO(bad);
         CHECK_FALSE(po::validate_pre_spec(bad));
     }

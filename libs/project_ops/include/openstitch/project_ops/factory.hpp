@@ -68,8 +68,9 @@ struct DigitizeSettings {
     bool coherent_lines{false};     // contours : FDoG avant segmentation
     // Traitements d'image AVANT la segmentation (non destructifs : stockés dans `project.ops`,
     // `original` reste la source). Opérations séparées par `+`, chacune `nom[:arg[:arg…]]` :
-    // median[:1|2], bilateral[:1..3], quantize[:N], contrast:B:C, gray, crop:x:y:w:h, flip:h|v,
-    // rotate:1..3. Exemple : « bilateral:2+median:1 ». Vide = aucun.
+    // median[:1|2], bilateral[:1..3], flatten[:1..3], clahe[:C], sharpen[:A], quantize[:N],
+    // contrast:B:C, gray, crop:x:y:w:h, flip:h|v, rotate:1..3. Exemple : « bilateral:2+median:1 ».
+    // Vide = aucun.
     std::string pre;
     // HP-AUTO-005 : traits sombres fins cousus par-dessus les remplissages (mode formes).
     bool dark_lines{false};

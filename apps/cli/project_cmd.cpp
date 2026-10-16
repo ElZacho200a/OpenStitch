@@ -436,7 +436,8 @@ void add_digitize_options(CLI::App* cmd, DigitizeOptionValues& v) {
     cmd->add_option(
         "--pre", s.pre,
         "Traitements d'image AVANT la segmentation (non destructifs, enregistrés dans "
-        "le projet), séparés par « + » : median[:1|2] bilateral[:1..3] quantize[:N] "
+        "le projet), séparés par « + » : median[:1|2] bilateral[:1..3] flatten[:1..3] clahe[:C] "
+        "sharpen[:A] quantize[:N] "
         "contrast:B:C gray crop:x:y:w:h flip:h|v rotate:1..3. Ex. : bilateral:2+median:1");
     cmd->add_flag("--coherent-lines", s.coherent_lines,
                   "Mode contours : extrait d'abord des traits de la photo (lignes cohérentes, "

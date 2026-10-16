@@ -91,7 +91,7 @@ shapes|contours|stipple`, `--max-colors`, `--min-region-px`, `--smoothing-px`,
 `--skip-background auto|yes|no`, `--min-feature-mm`, `--min-region-mm2`,
 `--curve-tolerance`, `--satin-bands`, `--detail`, `--technique`, `--single-path`,
 `--coherent-lines`, `--pre` (traitements d'image avant segmentation : `median[:1|2]`,
-`bilateral[:1..3]`, `quantize[:N]`, `contrast:B:C`, `gray`, `crop:x:y:w:h`, `flip:h|v`, `rotate:1..3`,
+`bilateral[:1..3]`, `flatten[:1..3]`, `clahe[:C]`, `sharpen[:A]`, `quantize[:N]`, `contrast:B:C`, `gray`, `crop:x:y:w:h`, `flip:h|v`, `rotate:1..3`,
 enchaînés par `+` ; stockés dans `project.ops`, `original` reste la source ; les outils d'analyse
 et `at --px` travaillent sur l'image de travail ; axe de balayage `pre=none,median:1,…`),
 `--island-cleanup`, `--island-max-delta-e`, `--dark-lines`
