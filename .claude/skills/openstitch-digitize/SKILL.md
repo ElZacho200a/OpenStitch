@@ -451,6 +451,21 @@ bureau n'avait pas d'équivalent. Ajout de l'opération `directional_guides`. Re
 (`scripts/directional_by_color.py CLI p.osp out.osp '#1C7F8F,#295C6C,…'`). Piège : les couleurs viennent de
 la quantification, les lire dans la palette du projet, ne pas les deviner.
 
+### Essai 13 — logo vectoriel (kraken + sous-marin, 3 couleurs, fond transparent)
+
+Premier jet « fidèle » aux réglages du navire : trop de petites erreurs (contours marine dentelés et
+interrompus, facettes sur les cercles, liserés verts, traits parasites, 2,6 % de tissu visible). Cause :
+les réglages du navire (illustration peinte) lissent trop un dessin vectoriel net. Balayages (`sweep`,
+planche zoomée sur la tête) → réglages retenus pour un logo / dessin à plats :
+`--smoothing-px 0` (le lissage de 3 px arrondissait et morcelait les contours épais : −60 % de tissu
+visible à lui seul), `--curve-tolerance 0.1` (cercles sans facettes), `--fill-overlap 0.15` (ferme les
+liserés sans perdre de détails ; 0,3 en perd 5 %), `--island-cleanup 6` (les pixels anti-crénelés
+créent 2 fils parasites : supprimés, 5 → 3 fils), pas de `--pre` (flatten/median n'aident pas un aplat
+déjà net), ni `--satin-bands` ni `--dark-lines-bars` (éventails radiaux aux coins sombres, +25–40 % de
+points, ×9 de surépaisseur). Résultat : 72 827 points, 1 861 coupes, 3 fils, 0,93 % de tissu visible.
+Règle : le lissage par défaut est calibré pour des peintures ; pour du vectoriel à bords nets, partir
+de `--smoothing-px 0` et vérifier le nombre de fils (`project inspect`) avant tout autre réglage.
+
 ## 9. Ce skill s'enrichit
 
 Quand une nouvelle image révèle un échec ou une règle (seuil, option, ordre), l'ajouter au
