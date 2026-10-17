@@ -6,6 +6,7 @@
 #include <cmath>
 #include <numbers>
 #include <thread>
+#include <utility>
 
 namespace openstitch::stitch_render {
 
@@ -88,6 +89,21 @@ struct Prepared {
     float soft{};
     float shadow_alpha{};
     int sx0{}, sy0{}, sx1{}, sy1{};
+    // Ombre de contact : liseré serré et sombre au pied du fil, en plus de la
+    // pénombre large (`shadow_*`).
+    float contact_dx{};
+    float contact_dy{};
+    float contact_soft{};
+    float contact_alpha{};
+    // Irrégularités le long du fil (qualité High) : ondulation de brillance,
+    // phase de la torsion, trou de pénétration d'aiguille aux extrémités.
+    float wob_freq{};
+    float wob_phase{};
+    float wob_phase2{};
+    float wob_amp{};
+    float twist_phase{};
+    float hole_r{};
+    float hole_strength{};
 };
 
 // Intersection fenêtre/boîte : coordonnées pixel, bornes hautes exclues.
@@ -98,6 +114,45 @@ bool clip_box(float x0, float y0, float x1, float y1, int w, int h, int& ox0, in
     ox1 = std::min(w, static_cast<int>(std::ceil(x1)));
     oy1 = std::min(h, static_cast<int>(std::ceil(y1)));
     return ox0 < ox1 && oy0 < oy1;
+}
+
+// Colonnes [x0, x1) de la ligne `y` susceptibles d'être à moins de `reach` de la
+// capsule d'origine (cx, cy) : rectangle orienté englobant la capsule, avec une
+// marge d'un pixel. Conservatif -- les pixels écartés auraient une couverture
+// nulle -- donc sans effet sur le résultat, mais un long brin diagonal ne
+// parcourt plus toute sa boîte englobante. Faux si la ligne ne la coupe pas.
+bool row_span(const Prepared& p, float cx, float cy, float reach, int y, int& x0, int& x1) {
+    float lo = -1.0e30F;
+    float hi = 1.0e30F;
+    const float py = static_cast<float>(y) + 0.5F - cy;
+    // t = abscisse du centre du pixel relative à cx ; a * t + c doit rester
+    // dans [vlo, vhi].
+    const auto slab = [&](float a, float c, float vlo, float vhi) {
+        if (std::fabs(a) < 1e-6F) {
+            return c >= vlo && c <= vhi;
+        }
+        float t0 = (vlo - c) / a;
+        float t1 = (vhi - c) / a;
+        if (t0 > t1) {
+            std::swap(t0, t1);
+        }
+        lo = std::max(lo, t0);
+        hi = std::min(hi, t1);
+        return lo <= hi;
+    };
+    // d = -dy * t + dx * py ; s = dx * t + dy * py.
+    if (!slab(-p.dy, p.dx * py, -reach, reach) || !slab(p.dx, p.dy * py, -reach, p.len + reach)) {
+        return false;
+    }
+    x0 = static_cast<int>(std::floor(lo + cx - 0.5F)) - 1;
+    x1 = static_cast<int>(std::ceil(hi + cx - 0.5F)) + 2;
+    return true;
+}
+
+// Ondulation lisse et déterministe le long du fil, dans [-1, 1].
+float wobble(const std::array<float, kSinLut>& table, const Prepared& p, float s) {
+    return 0.6F * sin_turns(table, s * p.wob_freq + p.wob_phase) +
+           0.4F * sin_turns(table, s * p.wob_freq * 2.7F + p.wob_phase2);
 }
 
 // Prépare un brin : géométrie en pixels, tables d'ombrage cylindrique, boîtes
@@ -138,7 +193,7 @@ bool prepare(const ThreadSegment& seg, std::size_t index, const RenderParams& pa
     int sy1 = 0;
     const bool shadow_in =
         shadow_dist > 0.0F &&
-        clip_box(minx + sdx - reach - soft, miny + sdy - reach - soft, maxx + sdx + reach + soft,
+        clip_box(minx - reach - soft, miny - reach - soft, maxx + sdx + reach + soft,
                  maxy + sdy + reach + soft, view.width, view.height, sx0, sy0, sx1, sy1);
     if (!thread_in && !shadow_in) {
         return false;
@@ -167,24 +222,58 @@ bool prepare(const ThreadSegment& seg, std::size_t index, const RenderParams& pa
     out.shadow_dx = sdx;
     out.shadow_dy = sdy;
     out.soft = soft;
-    out.shadow_alpha = 0.55F * static_cast<float>(params.shadow);
+    // Pénombre large + liseré de contact serré au pied du fil.
+    out.shadow_alpha = 0.45F * static_cast<float>(params.shadow);
+    const float contact_dist = 0.3F * shadow_dist;
+    out.contact_dx = 0.6F * contact_dist;
+    out.contact_dy = 0.8F * contact_dist;
+    out.contact_soft = 0.35F + 0.15F * half;
+    out.contact_alpha = 0.40F * static_cast<float>(params.shadow);
 
     // Variation d'un brin à l'autre (déterministe, fonction de l'indice) : sans
     // elle, un satin dense paraît artificiellement uniforme.
-    out.variation = 1.0F + (hash01(static_cast<std::int32_t>(index), 7, 0x51edU) - 0.5F) * 0.07F;
+    const auto idx = static_cast<std::int32_t>(index);
+    out.variation = 1.0F + (hash01(idx, 7, 0x51edU) - 0.5F) * 0.10F;
     out.rgb = {static_cast<float>(seg.rgb[0]), static_cast<float>(seg.rgb[1]),
                static_cast<float>(seg.rgb[2])};
+    out.wob_amp = 0.0F;
+    out.hole_r = 0.0F;
+    out.hole_strength = 0.0F;
+    out.twist_phase = 0.0F;
+    if (high) {
+        // Léger décalage chaud/froid d'un brin à l'autre (±1,5 %).
+        const float tint = (hash01(idx, 9, 0x7a3U) - 0.5F) * 0.03F;
+        out.rgb[0] *= 1.0F + tint;
+        out.rgb[2] *= 1.0F - tint;
+        // Ondulation de brillance le long du fil (longueur d'onde ~1,3 à 2,1 mm),
+        // estompée quand elle approche la taille du pixel.
+        const float wavelength_px =
+            static_cast<float>(1.3 * ppm) * (1.0F + 0.6F * hash01(idx, 11, 0xa17U));
+        out.wob_freq = 1.0F / std::max(wavelength_px, 1.0F);
+        out.wob_phase = hash01(idx, 13, 0x2bU);
+        out.wob_phase2 = hash01(idx, 17, 0x9dU);
+        out.wob_amp = 0.06F * std::clamp((wavelength_px - 6.0F) / 6.0F, 0.0F, 1.0F);
+        // Trou de pénétration d'aiguille : visible seulement si le fil couvre
+        // quelques pixels.
+        if (half >= 2.0F) {
+            out.hole_r = 0.75F * half;
+            out.hole_strength = 0.5F * (0.4F + 0.6F * static_cast<float>(params.relief));
+        }
+    }
 
-    // Torsion : stries obliques de pas ~1,3 diamètre ; estompées quand le pas
-    // approche la taille du pixel (repliement).
+    // Torsion : stries obliques de pas ~1,3 diamètre (±15 % d'un brin à l'autre,
+    // phase propre à chaque brin) ; estompées quand le pas approche la taille du
+    // pixel (repliement).
     out.turns_per_px = 0.0F;
     out.twist_amp = 0.0F;
     if (high && params.twist > 0.0) {
-        const float pitch_px = static_cast<float>(params.thread_width_mm * 1.3 * ppm);
+        const double pitch_scale = 1.3 * (0.85 + 0.3 * static_cast<double>(hash01(idx, 19, 0x35U)));
+        const float pitch_px = static_cast<float>(params.thread_width_mm * pitch_scale * ppm);
         if (pitch_px >= 3.0F) {
             out.turns_per_px = 1.0F / pitch_px;
             out.twist_amp = static_cast<float>(params.twist) * 0.30F *
                             std::clamp((pitch_px - 3.0F) / 4.0F, 0.0F, 1.0F);
+            out.twist_phase = hash01(idx, 23, 0xc1U);
         }
     }
 
@@ -280,25 +369,59 @@ void draw_shadow(const Prepared& p, const RasterView& view, int row0, int row1,
     if (y_begin >= y_end) {
         return;
     }
+    // Pénombre : capsule décalée de `shadow_d*`, rampe large.
     const float cx = p.ax + p.shadow_dx;
     const float cy = p.ay + p.shadow_dy;
     const float reach = p.half + p.soft;
     const float inv_ramp = 1.0F / (1.2F * p.soft);
+    // Contact : capsule peu décalée, rampe serrée.
+    const float ccx = p.ax + p.contact_dx;
+    const float ccy = p.ay + p.contact_dy;
+    const float creach = p.half + p.contact_soft;
+    const float cinv_ramp = 1.0F / p.contact_soft;
     for (int y = y_begin; y < y_end; ++y) {
         const float py = static_cast<float>(y) + 0.5F - cy;
+        const float cpy = static_cast<float>(y) + 0.5F - ccy;
+        int a0 = 0;
+        int a1 = 0;
+        int b0 = 0;
+        int b1 = 0;
+        const bool pen_row = row_span(p, cx, cy, reach, y, a0, a1);
+        const bool con_row = row_span(p, ccx, ccy, creach, y, b0, b1);
+        if (!pen_row && !con_row) {
+            continue;
+        }
+        int x_begin = p.sx1;
+        int x_end = p.sx0;
+        if (pen_row) {
+            x_begin = std::min(x_begin, a0);
+            x_end = std::max(x_end, a1);
+        }
+        if (con_row) {
+            x_begin = std::min(x_begin, b0);
+            x_end = std::max(x_end, b1);
+        }
+        x_begin = std::max(x_begin, p.sx0);
+        x_end = std::min(x_end, p.sx1);
         std::uint8_t* row =
             rgba.data() + static_cast<std::size_t>(y) * static_cast<std::size_t>(view.width) * 4;
-        for (int x = p.sx0; x < p.sx1; ++x) {
+        for (int x = x_begin; x < x_end; ++x) {
             const float px = static_cast<float>(x) + 0.5F - cx;
             const float s = px * p.dx + py * p.dy;
             const float d = -px * p.dy + py * p.dx;
-            const float ds = s - std::clamp(s, 0.0F, p.len);
-            const float dist = std::sqrt(ds * ds + d * d);
+            const float ds = s < 0.0F ? s : (s > p.len ? s - p.len : 0.0F);
+            const float dist = ds == 0.0F ? std::fabs(d) : std::sqrt(ds * ds + d * d);
             const float cov = std::clamp((reach - dist) * inv_ramp, 0.0F, 1.0F);
-            if (cov <= 0.0F) {
-                continue;
-            }
-            const int a = static_cast<int>(p.shadow_alpha * cov * 255.0F + 0.5F);
+            float alpha = p.shadow_alpha * cov;
+            const float cpx = static_cast<float>(x) + 0.5F - ccx;
+            const float cs = cpx * p.dx + cpy * p.dy;
+            const float cd = -cpx * p.dy + cpy * p.dx;
+            const float cds = cs < 0.0F ? cs : (cs > p.len ? cs - p.len : 0.0F);
+            const float cdist = cds == 0.0F ? std::fabs(cd) : std::sqrt(cds * cds + cd * cd);
+            const float ccov = std::clamp((creach - cdist) * cinv_ramp, 0.0F, 1.0F);
+            // Les deux ombres se composent comme deux couches translucides.
+            alpha = 1.0F - (1.0F - alpha) * (1.0F - p.contact_alpha * ccov);
+            const int a = static_cast<int>(alpha * 255.0F + 0.5F);
             if (a <= 0) {
                 continue;
             }
@@ -320,17 +443,24 @@ void draw_thread(const Prepared& p, const RasterView& view, bool high, int row0,
         return;
     }
     const auto& table = sin_table();
+    const float hole_r2 = p.hole_r * p.hole_r;
     for (int y = y_begin; y < y_end; ++y) {
         const float py = static_cast<float>(y) + 0.5F - p.ay;
+        int x_begin = 0;
+        int x_end = 0;
+        if (!row_span(p, p.ax, p.ay, p.half + 1.0F, y, x_begin, x_end)) {
+            continue;
+        }
+        x_begin = std::max(x_begin, p.bx0);
+        x_end = std::min(x_end, p.bx1);
         std::uint8_t* row =
             rgba.data() + static_cast<std::size_t>(y) * static_cast<std::size_t>(view.width) * 4;
-        for (int x = p.bx0; x < p.bx1; ++x) {
+        for (int x = x_begin; x < x_end; ++x) {
             const float px = static_cast<float>(x) + 0.5F - p.ax;
             const float s = px * p.dx + py * p.dy;
             const float d = -px * p.dy + py * p.dx;
-            const float sc = std::clamp(s, 0.0F, p.len);
-            const float ds = s - sc;
-            const float dist = std::sqrt(ds * ds + d * d);
+            const float ds = s < 0.0F ? s : (s > p.len ? s - p.len : 0.0F);
+            const float dist = ds == 0.0F ? std::fabs(d) : std::sqrt(ds * ds + d * d);
             const float cov = std::min(p.half + 0.5F - dist, 1.0F);
             if (cov <= 0.0F) {
                 continue;
@@ -347,10 +477,33 @@ void draw_thread(const Prepared& p, const RasterView& view, bool high, int row0,
                 // Plongée des extrémités dans le tissu.
                 const float outside = std::min(std::fabs(ds) * p.inv_half, 1.0F);
                 lit *= 1.0F - 0.38F * outside * outside;
+                // Ondulation de brillance le long du fil : casse l'uniformité
+                // des satins denses.
+                const float w = p.wob_amp > 0.0F ? wobble(table, p, s) : 0.0F;
+                lit *= 1.0F + p.wob_amp * w;
+                spec *= 1.0F + 6.0F * p.wob_amp * w;
                 if (p.twist_amp > 0.0F) {
-                    const float m = sin_turns(table, s * p.turns_per_px + u * 0.35F);
-                    lit *= 1.0F + p.twist_amp * m;
-                    spec *= 1.0F + 1.6F * p.twist_amp * m;
+                    const float m =
+                        sin_turns(table, s * p.turns_per_px + u * 0.35F + p.twist_phase);
+                    const float amp = p.twist_amp * (1.0F + 0.5F * w);
+                    lit *= 1.0F + amp * m;
+                    spec *= 1.0F + 1.6F * amp * m;
+                }
+                // Trou de pénétration d'aiguille aux deux extrémités du brin.
+                if (p.hole_r > 0.0F) {
+                    const float sb = s - p.len;
+                    float near2 = hole_r2;
+                    if (s < p.hole_r) {
+                        near2 = std::min(near2, s * s + d * d);
+                    }
+                    if (sb > -p.hole_r) {
+                        near2 = std::min(near2, sb * sb + d * d);
+                    }
+                    if (near2 < hole_r2) {
+                        const float t = 1.0F - near2 / hole_r2;
+                        lit *= 1.0F - p.hole_strength * t * t;
+                        spec *= 1.0F - t;
+                    }
                 }
             }
             spec = std::max(0.0F, spec);
