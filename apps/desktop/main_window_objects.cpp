@@ -103,8 +103,7 @@ void MainWindow::buildObjectEditActions(QMenu* editMenu) {
             const QColor initial = first != nullptr
                                        ? QColor(first->rgb[0], first->rgb[1], first->rgb[2])
                                        : QColor(Qt::black);
-            const QColor chosen =
-                QColorDialog::getColor(initial, this, tr("Couleur de la broderie"));
+            const QColor chosen = pickThreadColor(initial, tr("Couleur de la broderie"));
             if (chosen.isValid()) {
                 setEmbroideryColorForSelection({static_cast<std::uint8_t>(chosen.red()),
                                                 static_cast<std::uint8_t>(chosen.green()),

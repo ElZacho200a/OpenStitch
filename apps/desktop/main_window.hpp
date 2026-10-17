@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 #pragma once
 
+#include <QColor>
 #include <QHash>
 #include <QList>
 #include <QMainWindow>
@@ -407,6 +408,15 @@ private:
     [[nodiscard]] std::vector<ObjectId> selectedEmbroideryIds() const;
     void buildFilterPanel();
     void refreshFilterPanel();
+    // Raccourcis des filtres d'affichage : n'afficher que ce type (index filtre 0..2) / cette
+    // couleur (0xRRGGBB), ou tout réafficher. Mettent à jour le panneau et le rendu.
+    void isolateFilterType(int filterType);
+    void isolateFilterColor(std::uint32_t colorKey);
+    void showAllFilters();
+    // Couleurs distinctes des formes de l'image (première apparition), pour le sélecteur de fil.
+    [[nodiscard]] std::vector<QColor> imageColors() const;
+    // Sélecteur de couleur de fil : les couleurs de l'image y sont proposées en « Custom colors ».
+    [[nodiscard]] QColor pickThreadColor(const QColor& initial, const QString& title);
     // Affiche/masque un dock sur ordre d'un rafraîchissement, sans défaire « Masquer les
     // panneaux » : en mode canevas seul, le dock reste caché et n'est (ré)affiché qu'à la sortie.
     static bool debugMenuEnabled(); // OPENSTITCH_DEBUG=1 ou QSettings « debug/menu »
