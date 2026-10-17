@@ -30,19 +30,17 @@ constexpr int kObjectRole = Qt::UserRole + 2;
 constexpr int kFixKindRole = Qt::UserRole + 10;
 constexpr int kFixLabelRole = Qt::UserRole + 15;
 
-// Un carré de 10 mm décalé de `offsetX`, cousu en point courant de longueur `stitchLength`.
-doc::Project squareProject(std::int32_t offsetX, std::int32_t stitchLength) {
-    doc::Project project;
-    project.original.width = 2;
-    project.original.height = 2;
-    project.original.rgba.assign(16, 255);
+// Ajoute un carré de côté `side` décalé de `offsetX`, cousu en point courant de longueur
+// `stitchLength`.
+void addSquare(doc::Project& project, std::int32_t offsetX, std::int32_t stitchLength,
+               std::int32_t side) {
     doc::VectorObject vector;
     vector.id = project.object_ids.next();
     vector.name = "Carre";
     geo::Path path;
     path.closed = true;
     for (const auto& [x, y] :
-         {std::pair{0, 0}, std::pair{10'000, 0}, std::pair{10'000, 10'000}, std::pair{0, 10'000}}) {
+         {std::pair{0, 0}, std::pair{side, 0}, std::pair{side, side}, std::pair{0, side}}) {
         path.nodes.push_back({Vec2um{Micrometers{offsetX + x}, Micrometers{y}},
                               geo::NodeType::Corner, std::nullopt, std::nullopt});
     }
@@ -56,6 +54,16 @@ doc::Project squareProject(std::int32_t offsetX, std::int32_t stitchLength) {
     emb.params = params;
     project.vector_objects.push_back(std::move(vector));
     project.embroidery_objects.push_back(std::move(emb));
+}
+
+// Un carré (10 mm par défaut) décalé de `offsetX`, cousu en point courant de `stitchLength`.
+doc::Project squareProject(std::int32_t offsetX, std::int32_t stitchLength,
+                           std::int32_t side = 10'000) {
+    doc::Project project;
+    project.original.width = 2;
+    project.original.height = 2;
+    project.original.rgba.assign(16, 255);
+    addSquare(project, offsetX, stitchLength, side);
     return project;
 }
 
@@ -214,7 +222,9 @@ private slots:
 
     void splitLongStitchesEnablesTheFinishingOption() {
         MainWindow window;
-        window.applyLoadedProject(squareProject(0, 9'000));
+        // 18 mm de côté : avec des points de 9 mm, la séquence générée contient de vrais points
+        // de plus de 7 mm (à 10 mm de côté, la génération n'en produit aucun).
+        window.applyLoadedProject(squareProject(0, 9'000, 18'000));
         QVERIFY(!window.project_.finishing.split_long_stitches);
         window.runAnalysis();
         auto* button = selectFix(window, sa::FixKind::SplitLongStitches);
@@ -230,7 +240,10 @@ private slots:
 
     void enableFinishingTurnsTheFinishingOn() {
         MainWindow window;
-        doc::Project project = squareProject(0, 1'000);
+        // Deux carrés éloignés, finitions désactivées : le déplacement entre eux n'a pas de
+        // coupe (« saut-sans-coupe »), seul cas où activer les finitions est proposé.
+        doc::Project project = squareProject(-25'000, 1'000);
+        addSquare(project, 15'000, 1'000, 10'000);
         project.finishing.enabled = false;
         window.applyLoadedProject(project);
         window.runAnalysis();
