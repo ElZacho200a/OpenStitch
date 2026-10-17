@@ -850,6 +850,10 @@ détectés, triés par gravité.
   vue sur lui (y compris quand le problème se trouve à l'origine du canevas). Le clic
   droit propose « Sélectionner l'objet » et « Centrer la vue sur le problème ».
 - Sous la liste, une **piste de correction** accompagne le problème sélectionné.
+- Le bouton **Corriger** applique la correction proposée quand il y en a une (ramener
+  un objet dans le cadre, agrandir un texte à 5 mm, ramener une longueur de point dans
+  la plage du projet, découper les points trop longs, activer les finitions). C'est une
+  commande ordinaire : **Ctrl+Z** l'annule. Il est grisé quand le résultat est périmé.
 - Chaque catégorie est plafonnée à 50 problèmes ; une ligne « … et N autre(s)
   problème(s) » dit combien n'ont pas été listés.
 - Quand le motif change, le résultat est marqué **périmé** puis recalculé après
