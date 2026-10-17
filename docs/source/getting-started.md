@@ -45,8 +45,9 @@ conservé, chaque opération s'annule (Ctrl+Z).
 ## 4. Segmenter en régions
 
 **Segmentation → Segmenter l'image…** : choisissez le nombre maximal de couleurs
-et la taille minimale de région. Le logiciel quantifie en espace perceptuel
-CIELAB puis extrait les **régions connexes**. Activez **Afficher la carte des
+et la taille minimale de région ; l'**aperçu** affiché sur l'image se met à jour à
+chaque réglage, et rien n'est créé avant de cliquer **Segmenter**. Le logiciel quantifie
+en espace perceptuel CIELAB puis extrait les **régions connexes**. Activez **Afficher la carte des
 régions** pour les visualiser. Cliquez une région pour la sélectionner (ses
 infos s'affichent dans la barre d'état) ; vous pouvez la **supprimer** (elle
 redevient du fond), la **recolorer** ou la **fusionner** avec une voisine
