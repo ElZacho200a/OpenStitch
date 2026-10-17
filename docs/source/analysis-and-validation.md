@@ -41,6 +41,40 @@ Chaque problème porte une **gravité** (`Info`/`Warning`/`Error`), un **message
 une **localisation** et l'**objet** concerné. Un plafond par catégorie évite
 l'inondation ; le résultat est **déterministe**.
 
+### Analyse unifiée : `analyze_project`
+
+`analyze_project(project, sequence)` est le **point d'entrée unique** du panneau
+*Analyse*, du pré-export, du dump de débogage et de `project quality` (CLI). Il
+applique les seuils du projet (`options_from_project`, finitions comprises) et le
+cadre brodable `canvas_hoop` (canevas moins la marge), puis enchaîne : règles de
+séquence (`analyze_detailed`), règles de lettrage (`analyze_text_objects`),
+réglages hors limites (`check_stitch_limits`). Avant ce changement, le panneau,
+l'export et le CLI n'exécutaient pas les mêmes règles (UX-10).
+
+`hors-cadre` est **regroupé par objet** (un constat par objet, ordre d'identifiant,
+plafond par catégorie conservé) ; les points sans objet donnent un constat global.
+
+### Corrections proposées : `Finding::fix`
+
+Un constat peut porter un `Fix` : donnée pure (type, valeur, objet), jamais
+appliquée par le moteur. Le bureau la traduit en **une** commande annulable
+(`ICommand`) derrière le bouton *Corriger* du panneau.
+
+| Constat | `FixKind` | Effet |
+|---|---|---|
+| `hors-cadre` | `MoveIntoHoop` | translation minimale (µm entiers) qui fait rentrer la boîte englobante de l'objet dans le cadre ; aucune correction si la boîte dépasse le cadre sur un axe |
+| `texte-trop-petit` | `EnlargeText` | hauteur de capitale portée à 5 mm |
+| `parametre-hors-limites` | `ClampStitchLength` | longueur ramenée dans la plage du projet |
+| `point-long` | `SplitLongStitches` | `finishing.split_long_stitches = true`, proposé seulement si cela résout le constat |
+| `saut-sans-coupe` | `EnableFinishing` | `finishing.enabled = true`, proposé seulement si les finitions sont désactivées **et** si leur simulation supprime le constat |
+
+Il n'existe pas d'interrupteur « coupes seules » : activer les finitions ajoute
+aussi les points d'arrêt, les coupes avant changement de fil et le filtre des
+points courts ; le libellé du bouton le dit. `trait-trop-fin`, `saut-long`,
+`couches-superposees`, `point-court`, `trop-de-points` et `vide` n'ont pas de
+correction automatique (pistes textuelles seulement). `fix` n'est jamais
+sérialisé dans le JSON du CLI.
+
 ## Mesures de qualité (Lot G, audit marine plein cadre)
 
 En plus des règles, deux fonctions **mesurent** une séquence
@@ -101,14 +135,22 @@ d'atterrissage nulle).
 sur un problème centre la vue sur sa localisation. Le cadre utilisé est le cadre
 courant (100 × 100 mm par défaut).
 
-Limitation : l'analyse **spatiale de densité** (carte de chaleur, superposition
-de couches, satin trop large/étroit dédié, alignement excessif des pénétrations)
-et les **corrections automatiques proposées** sont **prévues**, non implémentées.
+Le bouton **Corriger** (sous la piste de correction) applique la correction du
+problème sélectionné quand il en porte une ; il est désactivé tant que le
+résultat est périmé. Annulable d'un Ctrl+Z (une seule entrée d'annulation).
+
+Limitation : l'analyse **spatiale de densité** (carte de chaleur, satin trop
+large/étroit dédié, alignement excessif des pénétrations) est **prévue**, non
+implémentée ; les corrections automatiques ne couvrent que les constats du tableau
+ci-dessus.
 
 ## Implémentation associée
 
 - `libs/stitch_analysis/include/openstitch/stitch_analysis/analyze.hpp` —
-  `Finding`, `Severity`, `AnalysisOptions`.
+  `Finding`, `Fix`, `FixKind`, `Severity`, `AnalysisOptions`, `canvas_hoop`.
 - `libs/stitch_analysis/src/analyze.cpp` — `analyze`.
-- `apps/desktop/main_window.cpp` — `buildAnalysisPanel`, `runAnalysis`.
-- Tests : `tests/unit/stitch_analysis/test_analyze.cpp`.
+- `libs/stitch_analysis/src/project_analysis.cpp` — `analyze_project`, `canvas_hoop`.
+- `apps/desktop/main_window_analysis.cpp` — panneau, bouton *Corriger*.
+- `apps/desktop/main_window.cpp` — pré-export et dump de débogage.
+- Tests : `tests/unit/stitch_analysis/test_analyze.cpp`,
+  `test_analyze_project.cpp`, `tests/unit/desktop/test_analysis_fix.cpp`.

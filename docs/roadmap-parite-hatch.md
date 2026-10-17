@@ -2100,10 +2100,21 @@ hors cadre, déplacement sans coupe), résumé avant export DST.
   cousable de la machine, nombre de couleurs > aiguilles de la machine.
 - Modules : `libs/stitch_analysis`.
 
-### HP-PROD-008 — Corrections automatiques depuis l'analyse [P2] — ☐ À faire
-- À faire : bouton « Corriger » par problème quand une correction sûre existe
-  (ajouter une coupe, découper un point long, supprimer un point court),
-  appliqué par commande annulable.
+### HP-PROD-008 — Corrections automatiques depuis l'analyse [P2] — ◐ Partiel (2026-10-17)
+- État OpenStitch : **fait** : `Finding::fix` (donnée pure, `libs/stitch_analysis`) et bouton
+  « Corriger » du panneau Analyse, une commande annulable par clic : `hors-cadre` (ramener
+  dans le cadre), `texte-trop-petit` (5 mm), `parametre-hors-limites` (ramener dans la plage),
+  `point-long` (découper les points trop longs) et `saut-sans-coupe` (activer les finitions,
+  seulement si leur simulation supprime le constat). Rapport unique `analyze_project` pour le
+  panneau, le pré-export et `project quality`. Voir `docs/source/analysis-and-validation.md`.
+- À faire : `saut-long` (optimiser l'ordre), `couches-superposees` (retirer le remplissage
+  caché, voir RD-PAT-006), `trait-trop-fin` ; application des corrections en CLI
+  (`project op`) ; élagage des règles faibles (`point-court`, `trop-de-points`, `vide`)
+  après mesure sur de vrais motifs.
+- Modules : `libs/stitch_analysis`, `apps/desktop`.
+- Acceptation : un clic sur « Corriger » applique une seule commande annulable (undo
+  rétablit l'état) et le constat disparaît à la ré-analyse (tests `test_analyze_project`,
+  `test_analysis_fix`).
 
 ---
 

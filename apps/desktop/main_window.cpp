@@ -5828,13 +5828,7 @@ QString MainWindow::buildDebugDump(ObjectId embroideryId) const {
     if (!sequence_) {
         out << QStringLiteral("(aucune séquence à analyser)");
     } else {
-        stitch_analysis::AnalysisOptions opts;
-        const document::Canvas& canvas = project_.canvas;
-        opts.hoop = stitch::BoundsUm{Vec2um{Micrometers{-canvas.usable_width().value / 2},
-                                            Micrometers{-canvas.usable_height().value / 2}},
-                                     Vec2um{Micrometers{canvas.usable_width().value / 2},
-                                            Micrometers{canvas.usable_height().value / 2}}};
-        const auto findings = stitch_analysis::analyze(*sequence_, opts);
+        const auto findings = stitch_analysis::analyze_project(project_, *sequence_).findings;
         std::size_t count = 0;
         for (const auto& f : findings) {
             if (f.object != emb->id) {
@@ -8364,12 +8358,7 @@ void MainWindow::exportDst() {
         }
         // Résultat de l'analyse AVANT l'export : l'utilisateur voit les erreurs sans avoir à
         // penser à lancer « Analyser le motif ».
-        stitch_analysis::AnalysisOptions aopts;
-        aopts.hoop = stitch::BoundsUm{Vec2um{Micrometers{-cv.usable_width().value / 2},
-                                             Micrometers{-cv.usable_height().value / 2}},
-                                      Vec2um{Micrometers{cv.usable_width().value / 2},
-                                             Micrometers{cv.usable_height().value / 2}}};
-        const auto findings = stitch_analysis::analyze(shown, aopts);
+        const auto findings = stitch_analysis::analyze_project(project_, shown).findings;
         std::size_t errors = 0;
         std::size_t warnings = 0;
         for (const auto& f : findings) {

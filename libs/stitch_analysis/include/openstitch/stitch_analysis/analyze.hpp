@@ -15,6 +15,25 @@ namespace openstitch::stitch_analysis {
 
 enum class Severity { Info, Warning, Error };
 
+// Correction proposée pour un constat. Donnée pure : le moteur ne modifie jamais le
+// document ; le bureau la traduit en ICommand. `None` = pas de correction automatique.
+enum class FixKind {
+    None,
+    MoveIntoHoop,      // `delta` : translation de l'objet pour rentrer dans le cadre
+    EnlargeText,       // `text` : texte concerné ; `value` : hauteur de capitale visée
+    ClampStitchLength, // `value` : longueur ramenée dans la plage du projet
+    SplitLongStitches, // finishing.split_long_stitches = true (projet entier)
+    EnableFinishing,   // finishing.enabled = true (projet entier)
+};
+
+struct Fix {
+    FixKind kind{FixKind::None};
+    Vec2um delta{};
+    Micrometers value{};
+    ObjectId text{};   // TextObject::id
+    std::string label; // libellé du bouton, ex. « Ramener dans le cadre »
+};
+
 struct Finding {
     Severity severity{Severity::Warning};
     std::string category; // slug court, ex. "point-court"
@@ -22,6 +41,7 @@ struct Finding {
     Vec2um location{};    // où, sur le canevas
     ObjectId object{};    // objet concerné (0 = global)
     std::string hint;     // piste de correction (vide = aucune)
+    Fix fix;              // correction applicable en un clic (vide = aucune)
 };
 
 struct AnalysisOptions {
@@ -74,6 +94,16 @@ struct AnalysisReport {
 // réglé à 9 mm produira des points trop longs, ce que l'on peut dire d'avance.
 // Catégorie « parametre-hors-limites », objet concerné renseigné, ordre du document.
 [[nodiscard]] std::vector<Finding> check_stitch_limits(const document::Project& project);
+
+// Cadre brodable du canevas : repère centre / Y vers le haut, zone utile (canevas moins la
+// marge). Source unique du cadre pour le panneau, `project quality` et `analyze_project`.
+[[nodiscard]] stitch::BoundsUm canvas_hoop(const document::Canvas& canvas);
+
+// Analyse complète d'un projet : options_from_project + cadre du canevas, analyze_detailed,
+// règles de texte et réglages hors limites. Point d'entrée UNIQUE du panneau, du pré-export,
+// du dump debug et de `project quality`.
+[[nodiscard]] AnalysisReport analyze_project(const document::Project& project,
+                                             const stitch::StitchSequence& sequence);
 
 // Nombre de millimètres formaté à la française, une décimale, sans dépendre
 // de la locale : 3500 µm -> « 3,5 ». Troncature vers zéro comme avant.
