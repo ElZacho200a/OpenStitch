@@ -58,6 +58,29 @@ jobs:
       - name: Test (Release)
         run: ctest --preset msvc-release
 
+      # Diagnostic : test_ui_action_workflows échoue par intermittence en Release sans aucun message
+      # (ctest n'affiche que « Failed », ni sortie ni code de sortie). Quand un test échoue, on relance
+      # les tests échoués avec la sortie complète, puis ce test 5 fois directement avec la sortie
+      # écrite dans un fichier (une sortie standard perdue à la sortie du processus ne masque plus
+      # rien) et son code de sortie. N'affecte pas le résultat du job (déjà en échec).
+      - name: Diagnose failed tests (Release)
+        if: failure()
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          ctest --preset msvc-release --rerun-failed -VV
+          $env:PATH = "$env:QT_ROOT_DIR\bin;$env:PATH"
+          $env:QT_QPA_PLATFORM = "offscreen"
+          $exe = "build/msvc/tests/unit/desktop/Release/test_ui_action_workflows.exe"
+          foreach ($i in 1..5) {
+            & $exe -o "diag-run$i.txt,txt" | Out-Null
+            $code = $LASTEXITCODE
+            "run ${i}: code de sortie $code (0x{0:X})" -f $code
+            if ($code -ne 0 -and (Test-Path "diag-run$i.txt")) {
+              Get-Content "diag-run$i.txt" -Tail 80
+            }
+          }
+
   # Garde-fou de portabilité : le cœur et la CLI doivent compiler sans Qt
   # et sans dépendance Windows involontaire.
   linux-core:
