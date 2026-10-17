@@ -32,7 +32,11 @@ struct ColorReduction {
 // aplat garde sa teinte exacte). Les couleurs identiques fusionnent d'abord
 // (distance nulle). Déterministe : égalités départagées par l'ordre d'entrée.
 // `max_colors == 0` = pas de limite (identité, doublons exacts fusionnés).
+//
+// `max_distance` > 0 : on fusionne AUSSI tant que la paire la plus proche est à au plus cette
+// distance CIEDE2000 (teintes quasi identiques, quel que soit leur nombre) ; les deux critères se
+// cumulent. 0 (défaut) = comportement historique.
 [[nodiscard]] ColorReduction reduce_colors(std::span<const WeightedColor> colors,
-                                           std::size_t max_colors);
+                                           std::size_t max_colors, double max_distance = 0.0);
 
 } // namespace openstitch::thread_palette

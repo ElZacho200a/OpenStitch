@@ -61,6 +61,9 @@ add_library(openstitch_desktop_widgets STATIC
     properties_panel.hpp
     document_panel.cpp
     document_panel.hpp
+    segmentation_colors_panel.cpp
+    segmentation_colors_panel.hpp
+    main_window_colors.cpp
     workflow_panel.cpp
     workflow_panel.hpp
     empty_state_widget.cpp

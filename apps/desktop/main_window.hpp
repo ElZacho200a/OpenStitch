@@ -27,6 +27,7 @@
 #include "openstitch/document/object_fragment.hpp"
 #include "openstitch/document/project.hpp"
 #include "openstitch/geometry/path.hpp"
+#include "openstitch/segmentation/color_merge.hpp"
 #include "openstitch/stitch/sequence.hpp"
 #include "openstitch/stitch_generation/overrides.hpp"
 #include "openstitch/thread_palette/thread_library.hpp"
@@ -67,6 +68,7 @@ class GesturesDialog;
 class QuickStartDialog;
 class PropertiesPanel;
 class DocumentPanel;
+class SegmentationColorsPanel;
 class ThreadPanel;
 class ThreadStrip;
 class WorkflowPanel;
@@ -803,6 +805,16 @@ private:
     // Opacité de la carte des régions (0,2 – 1,0) : réglable pour voir la photo dessous.
     void setRegionMapOpacity(double opacity);
     void buildRegionViewControls(QMenu* segMenu);
+    // Fusion de COULEURS (panneau « Couleurs », main_window_colors.cpp) : le panneau liste les
+    // teintes de la segmentation ; les plans (`segmentation::plan_*`) sont prévisualisés sur une
+    // COPIE de la segmentation (le document n'est pas touché) puis appliqués en une commande.
+    void showColorsPanel();
+    void refreshColorsPanel();
+    void previewColorMerge(const segmentation::ColorMergePlan& plan);
+    // Retire l'aperçu ; `redisplay` redessine la carte (faux quand l'appelant va la redessiner).
+    void clearSegmentationPreview(bool redisplay);
+    void applyColorMergePlan(const segmentation::ColorMergePlan& plan);
+    void selectRegionsOfColors(const std::vector<std::array<std::uint8_t, 3>>& colors);
     // Actions grisées avec raison (Numérisation automatique, IA), nombre de régions affiché en
     // permanence : appelé par updateActions().
     void updateSegmentationWorkflowActions();
@@ -868,6 +880,11 @@ private:
     QAction* mergeSelectionAct_{nullptr};
     QAction* absorbAct_{nullptr};
     QAction* cleanIslandsAct_{nullptr};
+    QAction* mergeColorsAct_{nullptr};
+    QDockWidget* colorsDock_{nullptr};
+    SegmentationColorsPanel* colorsPanel_{nullptr};
+    // Segmentation d'aperçu (fusion de couleurs) affichée à la place de celle du document.
+    std::optional<segmentation::Segmentation> previewSegmentation_;
     QAction* selectSameColorAct_{nullptr};
     QAction* selectNeighboursAct_{nullptr};
     QAction* selectAllRegionsAct_{nullptr};

@@ -10,7 +10,7 @@ fonctionnalité. Chaque module est une cible `openstitch::<nom>` sous `libs/`.
 | `core` | unités fortes, ids, `Result`, logging | — | `tests/unit/core` |
 | `geometry` | chemins, simplification, booléens/offsets, longueur d'arc | core (+Clipper2) | `tests/unit/geometry` |
 | `image` | chargement, prétraitement non destructif | core (+OpenCV) | `tests/unit/image` |
-| `segmentation` | quantification CIELAB, régions connexes | core, image (+OpenCV) | `tests/unit/segmentation` |
+| `segmentation` | quantification CIELAB, régions connexes, fusion de couleurs | core, image, thread_palette (+OpenCV) | `tests/unit/segmentation` |
 | `vectorization` | régions → contours vectoriels | core, geometry, segmentation | `tests/unit/vectorization` |
 | `document` | modèle métier (projet, objets) | core, geometry, image, segmentation | via commands/project_io |
 | `stitch` | commandes machine, statistiques | core | `tests/unit/stitch` |
