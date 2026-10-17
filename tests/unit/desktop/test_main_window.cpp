@@ -4830,6 +4830,7 @@ void MainWindowTest::twoColorBlendCreatesBackgroundAndTopInOneUndoStep() {
         auto* dialog =
             qobject_cast<openstitch::desktop::ColorBlendDialog*>(QApplication::activeModalWidget());
         QVERIFY(dialog != nullptr);
+        dialog->setComplementary(false); // profil « fond uniforme » : le fond reste tatami
         dialog->findChild<QPushButton*>(QStringLiteral("button_blendAnalyze"))->click();
         dialog->accept();
     });
@@ -7037,6 +7038,7 @@ void MainWindowTest::blendZonesActionMakesBaseAndGradedTopInOneUndoStep() {
         auto* dialog =
             qobject_cast<openstitch::desktop::ColorBlendDialog*>(QApplication::activeModalWidget());
         QVERIFY(dialog != nullptr);
+        dialog->setComplementary(false); // profil « fond uniforme » : le fond reste tatami
         dialog->findChild<QLineEdit*>(QStringLiteral("edit_blendForeground"))->setText("#2244cc");
         dialog->findChild<QDialogButtonBox*>()->button(QDialogButtonBox::Ok)->click();
     });

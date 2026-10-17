@@ -278,8 +278,12 @@ analyse, puis choisit la paire de fils dans le nuancier fourni.
 **Action de l'interface** (`MainWindow::applyTwoColorBlend`, menu Broderie,
 barre contextuelle et inspecteur d'un objet tatami ou directionnel) : le dialogue
 **Fondu de couleurs · deux fils** propose les couleurs du fond et du dessus,
-l'angle, les écarts au début/à la fin (0,1 à 4 mm), l'inversion et un **aperçu
-schématique** (pas une simulation des points ni du tissu). Il fonctionne **sans
+l'angle, les écarts au début/à la fin (0,1 à 4 mm), l'inversion, le profil (**complémentaire** par défaut : rampes opposées sur les deux
+couches ; ou fond uniforme) et un **aperçu des points** : séquence effective d'un
+instantané du projet (`MainWindow::createColorBlend`, `blendLayersFor`), jamais le
+document, avec les mêmes couches que celles qui seront créées (pas une simulation du
+tissu). Création et aperçu partagent `make_color_blend_layers` ; les deux couches
+sont liées (`SetColorBlendLinkCommand`). Il fonctionne **sans
 image**, avec des couleurs manuelles. Avec une image, **Proposer les couleurs
 depuis l'image** lance l'analyse hors du fil d'interface, avec le nuancier actif
 du panneau Fils. La proposition reste modifiable et l'analyse ne crée rien.
