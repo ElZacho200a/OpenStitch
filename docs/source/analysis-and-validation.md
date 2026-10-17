@@ -14,9 +14,10 @@ appliquer de correction automatique silencieuse.
 | Catégorie | Condition (par défaut) | Gravité |
 |---|---|---|
 | `vide` | aucun point | Erreur |
-| `point-court` | segment cousu < 0,5 mm, hors points d'arrêt (passe `Lock`) | Avertissement |
+| `point-court` | segment cousu < `near_zero_stitch` (0,1 mm : probable doublon), hors points d'arrêt (passe `Lock`) ; un constat par point | Avertissement |
+| `points-courts` | segments cousus de 0,1 à 0,5 mm (`min_stitch`), hors points d'arrêt ; **un seul constat par objet** (nombre, plus court, premier point) | Information |
 | `point-long` | segment cousu > 7 mm | Avertissement |
-| `saut-long` | déplacement > 30 mm | Avertissement |
+| `saut-long` | saut > 30 mm **dont le déplacement ne contient aucune coupe** (une coupe avant ou après le saut suffit à ne rien signaler) | Avertissement |
 | `saut-sans-coupe` | déplacement > `trim_threshold` (3 mm) sans `Trim` | Avertissement |
 | `hors-cadre` | point hors du cadre (si fourni) | Erreur |
 | `trop-de-points` | > 100 000 points | Avertissement |
@@ -71,9 +72,46 @@ appliquée par le moteur. Le bureau la traduit en **une** commande annulable
 Il n'existe pas d'interrupteur « coupes seules » : activer les finitions ajoute
 aussi les points d'arrêt, les coupes avant changement de fil et le filtre des
 points courts ; le libellé du bouton le dit. `trait-trop-fin`, `saut-long`,
-`couches-superposees`, `point-court`, `trop-de-points` et `vide` n'ont pas de
-correction automatique (pistes textuelles seulement). `fix` n'est jamais
+`couches-superposees`, `point-court`, `points-courts`, `trop-de-points` et `vide`
+n'ont pas de correction automatique (pistes textuelles seulement). `fix` n'est jamais
 sérialisé dans le JSON du CLI.
+
+### Mesure sur corpus et élagage (2026-10-17)
+
+Mesure avec `openstitch-cli project check` sur les trois images du dépôt
+(`tentabrode`, `sample`, `logo_small`) × cinq variantes de numérisation (défaut,
+`--satin-bands`, `--dark-lines`, `--flow-fill`, `--satin-bands --dark-lines`) ×
+trois états de finitions (activées, désactivées, filtre des points courts retiré),
+soit 45 projets, avec un `--dpi` qui fait tenir le dessin dans le cadre. Limite : ni
+texte ni réglage de longueur fait à la main, donc les règles correspondantes ne sont
+**pas exercées** (zéro constat ne prouve pas qu'une règle est inutile).
+
+Avec les finitions par défaut (15 projets), avant la correction :
+
+| Règle | Constats | Projets | Constat |
+|---|---|---|---|
+| `point-court` | 1 835 | 15/15 | le filtre des points courts retire ~90 % des cas mais épargne le premier et le dernier point d'un tracé, les voisins d'un point d'arrêt et toute fusion qui sortirait de la région (`finish.cpp`) |
+| `saut-long` | 312 | 15/15 | `long_moves_without_trim` vaut 0 partout : chaque grand déplacement a déjà sa coupe, donc « envisagez une coupe » était faux dans 100 % des cas |
+| `couches-superposees` | 6 | 4/15 | seulement avec `--satin-bands` (3,3 à 4,3 couches) ; règle conservée |
+| `saut-sans-coupe` | 0 | 0/15 | 2 072 constats avec les finitions désactivées : c'est un détecteur « finitions éteintes » |
+| `point-long` | 0 | 0/15 | y compris sur un auto-satin de 12 mm : le moteur fractionne ses traversées ; règle conservée (longueurs réglées à la main) |
+
+`trop-de-points` : maximum observé 17 052 points pour un seuil de 100 000 ; aucune
+estimation de durée n'existe dans le code (il faudrait une vitesse machine).
+
+Décisions appliquées : `saut-long` ne signale plus un déplacement qui contient une
+coupe (avant ou après le saut) ; `point-court` est scindé en `point-court`
+(< `near_zero_stitch`, 0,1 mm, un avertissement par point) et `points-courts` (de
+0,1 à 0,5 mm, un constat d'information par objet). Après correction, mêmes 15 projets :
+`saut-long` 312 → 0 ; `point-court` 1 835 → 414 (10/15 projets) ; `points-courts` 336
+constats d'information (un par objet) ; `couches-superposees` inchangé (6). Finitions
+désactivées : `saut-sans-coupe` (2 072) et `saut-long` (312) inchangés, ce qui est
+voulu (aucune coupe dans ces séquences).
+
+Reste ouvert : les 414 points sous 0,1 mm ne sont pas expliqués. Ils pourraient être
+des doublons de la génération (cause non confirmée) ; à instruire avant toute
+décision sur cette règle. Le seuil de 0,1 mm vient de cette mesure, pas d'une limite
+physique.
 
 ## Mesures de qualité (Lot G, audit marine plein cadre)
 
