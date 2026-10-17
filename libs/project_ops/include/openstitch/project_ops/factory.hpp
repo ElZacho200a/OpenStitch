@@ -14,7 +14,10 @@
 #include "openstitch/autodigitize/line_layer.hpp"
 #include "openstitch/autodigitize/stipple_objects.hpp"
 #include "openstitch/core/error.hpp"
+#include "openstitch/core/ids.hpp"
+#include "openstitch/core/units.hpp"
 #include "openstitch/document/project.hpp"
+#include "openstitch/image/image.hpp"
 #include "openstitch/segmentation/segmentation.hpp"
 
 namespace openstitch::project_ops {
@@ -107,6 +110,11 @@ struct DigitizeSettings {
     // Diagnostic : non vide, dossier où écrire les masques de décision (régions, traits, barres,
     // séparations), la couverture réelle des fils, la carte d'erreurs et `decisions.json`.
     std::string debug_dir;
+    // Palette de fils : fusionne les couleurs les plus proches jusqu'à n'en garder que ce nombre
+    // (`AutoOptions::max_threads`) ; 0 = pas de limite.
+    std::size_t max_threads{0};
+    // Tolérance de simplification des contours de formes (µm) ; absent = défaut du moteur.
+    std::optional<int> simplify_tolerance_um;
     int stipple_points{2000};
     int stipple_seed{1};
     bool stipple_invert{false};
@@ -138,6 +146,35 @@ struct DigitizeReport {
 
 // Journal d'état optionnel (une ligne lisible par étape) : la CLI le branche sur stderr/stdout.
 using StatusLog = std::function<void(std::string_view)>;
+
+// Entrée de `digitize_objects` : segmentation (nulle en mode stipple) et image de travail (celle
+// que la segmentation a lue ; traits sombres et stipple s'y appuient).
+struct DigitizeSource {
+    const segmentation::Segmentation* segmentation{nullptr};
+    const image::Image* image{nullptr};
+    Millimeters mm_per_px{25.4 / 96.0};
+};
+
+struct DigitizedObjects {
+    autodigitize::AutoResult objects;
+    std::optional<autodigitize::ContourMetrics> contour;
+    std::optional<autodigitize::StippleMetrics> stipple;
+    std::optional<autodigitize::LineLayerMetrics> dark_lines;
+    std::size_t flow_fill{0}; // tatami passés en directionnel (`flow_fill`)
+};
+
+// `DigitizeSettings` -> `AutoOptions` du mode formes (bloc uni compris).
+[[nodiscard]] autodigitize::AutoOptions make_auto_options(const DigitizeSettings& settings,
+                                                          Millimeters mm_per_px,
+                                                          bool skip_largest_region);
+
+// Cœur partagé de la CLI et du bureau : choisit le mode (`settings.mode`), numérise et applique le
+// remplissage directionnel. Ne touche à aucun document : l'appelant insère les objets (commande
+// annulable côté bureau, ajout direct côté CLI). `ids` alloue les identifiants.
+[[nodiscard]] Result<DigitizedObjects>
+digitize_objects(const DigitizeSource& source, IdGenerator<ObjectId>& ids,
+                 const DigitizeSettings& settings, bool skip_largest_region,
+                 const StatusLog& log = {}, autodigitize::LineLayerMasks* debug_masks = nullptr);
 
 // Charge l'image, la place dans `project` (original, résolution), segmente et numérise :
 // `project` reçoit image, segmentation, objets vectoriels et de broderie dans l'ordre de

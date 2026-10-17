@@ -5,13 +5,20 @@
 // signalé et ré-analyse différée quand le document change.
 #include <QAction>
 #include <QComboBox>
+#include <QDialog>
+#include <QDialogButtonBox>
 #include <QDockWidget>
+#include <QFile>
+#include <QFileDialog>
+#include <QFontDatabase>
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QListWidget>
 #include <QMenu>
 #include <QMenuBar>
 #include <QMessageBox>
+#include <QPlainTextEdit>
+#include <QPushButton>
 #include <QStatusBar>
 #include <QTimer>
 #include <QVBoxLayout>
@@ -19,9 +26,12 @@
 #include <map>
 
 #include "app_theme.hpp"
+#include "busy_indicator.hpp"
 #include "canvas_view.hpp"
 #include "document_panel.hpp"
 #include "main_window.hpp"
+#include "openstitch/project_ops/analysis.hpp"
+#include "openstitch/project_ops/render.hpp"
 #include "openstitch/stitch_analysis/analyze.hpp"
 #include "openstitch/stitch_analysis/text_rules.hpp"
 
@@ -155,6 +165,156 @@ void MainWindow::buildAnalysisPanel() {
     analyseMenu->addAction(statsAct_);
     analyzeAct_->setShortcut(QKeySequence(Qt::Key_F5));
     connect(analyzeAct_, &QAction::triggered, this, &MainWindow::runAnalysis);
+    // Mêmes mesures que `openstitch-cli project fidelity | density | diagnose` (libs/project_ops).
+    analyseMenu->addSeparator();
+    auto* fidelityAct = analyseMenu->addAction(tr("&Fidélité à l'image…"));
+    fidelityAct->setObjectName(QStringLiteral("action_fidelityReport"));
+    connect(fidelityAct, &QAction::triggered, this, &MainWindow::showFidelityReport);
+    auto* densityAct = analyseMenu->addAction(tr("&Épaisseurs de fil (densité)…"));
+    densityAct->setObjectName(QStringLiteral("action_densityReport"));
+    connect(densityAct, &QAction::triggered, this, &MainWindow::showDensityReport);
+    auto* diagnoseAct = analyseMenu->addAction(tr("&Diagnostic des défauts connus…"));
+    diagnoseAct->setObjectName(QStringLiteral("action_diagnoseReport"));
+    connect(diagnoseAct, &QAction::triggered, this, &MainWindow::showDiagnoseReport);
+}
+
+namespace {
+
+void reportError(QWidget* parent, const QString& title, const QString& explanation,
+                 const std::string& detail) {
+    QMessageBox box(QMessageBox::Warning, title, explanation, QMessageBox::Ok, parent);
+    box.setInformativeText(QString::fromStdString(detail));
+    box.exec();
+}
+
+// Rapport texte (police fixe) et, si fournie, carte PNG enregistrable.
+void showReportDialog(QWidget* parent, const QString& title, const QString& text,
+                      const std::vector<std::uint8_t>& png, const QString& pngDefaultName) {
+    QDialog dialog(parent);
+    dialog.setWindowTitle(title);
+    dialog.resize(720, 520);
+    auto* layout = new QVBoxLayout(&dialog);
+    auto* view = new QPlainTextEdit(&dialog);
+    view->setObjectName(QStringLiteral("reportText"));
+    view->setReadOnly(true);
+    view->setFont(QFontDatabase::systemFont(QFontDatabase::FixedFont));
+    view->setPlainText(text);
+    layout->addWidget(view, 1);
+    auto* buttons = new QDialogButtonBox(QDialogButtonBox::Close, &dialog);
+    if (!png.empty()) {
+        auto* saveBtn = buttons->addButton(QObject::tr("Enregistrer la carte (PNG)…"),
+                                           QDialogButtonBox::ActionRole);
+        QObject::connect(saveBtn, &QPushButton::clicked, &dialog, [&] {
+            const QString path =
+                QFileDialog::getSaveFileName(&dialog, QObject::tr("Enregistrer la carte"),
+                                             pngDefaultName, QObject::tr("Image PNG (*.png)"));
+            if (path.isEmpty()) {
+                return;
+            }
+            QFile file(path);
+            if (!file.open(QIODevice::WriteOnly) ||
+                file.write(reinterpret_cast<const char*>(png.data()),
+                           static_cast<qint64>(png.size())) != static_cast<qint64>(png.size())) {
+                QMessageBox::warning(&dialog, QObject::tr("Enregistrer la carte"),
+                                     QObject::tr("Le fichier %1 n'a pas pu être écrit.").arg(path));
+            }
+        });
+    }
+    QObject::connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
+    layout->addWidget(buttons);
+    dialog.exec();
+}
+
+} // namespace
+
+bool MainWindow::requireEmbroideryForReport(const QString& title) {
+    if (project_.embroidery_objects.empty()) {
+        QMessageBox::information(this, title, tr("Le projet ne contient aucun objet de broderie."));
+        return false;
+    }
+    return true;
+}
+
+void MainWindow::showFidelityReport() {
+    const QString title = tr("Fidélité à l'image");
+    if (!requireEmbroideryForReport(title)) {
+        return;
+    }
+    BusyIndicator busy(this, tr("Mesure de la fidélité…"), {autosaveTimer_, simTimer_});
+    const document::Project snapshot = project_;
+    project_ops::FidelityOptions options;
+    options.error_map = true;
+    auto report = busy.run([&] { return project_ops::measure_fidelity(snapshot, options); });
+    if (!report) {
+        reportError(this, title, tr("La mesure n'a pas pu être faite."), report.error().message);
+        return;
+    }
+    showReportDialog(this, title, QString::fromStdString(report->text), report->error_map_png,
+                     QStringLiteral("fidelite.png"));
+}
+
+void MainWindow::showDensityReport() {
+    const QString title = tr("Épaisseurs de fil");
+    if (!requireEmbroideryForReport(title)) {
+        return;
+    }
+    BusyIndicator busy(this, tr("Mesure des épaisseurs…"), {autosaveTimer_, simTimer_});
+    const document::Project snapshot = project_;
+    project_ops::DensityOptions options;
+    options.heatmap = true;
+    auto report = busy.run([&] { return project_ops::measure_density(snapshot, options); });
+    if (!report) {
+        reportError(this, title, tr("La mesure n'a pas pu être faite."), report.error().message);
+        return;
+    }
+    showReportDialog(this, title, QString::fromStdString(report->text), report->heatmap_png,
+                     QStringLiteral("densite.png"));
+}
+
+void MainWindow::showDiagnoseReport() {
+    const QString title = tr("Diagnostic des défauts connus");
+    if (!requireEmbroideryForReport(title)) {
+        return;
+    }
+    BusyIndicator busy(this, tr("Recherche des défauts…"), {autosaveTimer_, simTimer_});
+    const document::Project snapshot = project_;
+    auto report = busy.run([&] { return project_ops::diagnose_project(snapshot); });
+    if (!report) {
+        reportError(this, title, tr("Le diagnostic n'a pas pu être fait."), report.error().message);
+        return;
+    }
+    showReportDialog(this, title, QString::fromStdString(report->text), {}, QString());
+}
+
+void MainWindow::exportRealisticPng() {
+    const QString title = tr("Exporter le rendu réaliste");
+    if (!requireEmbroideryForReport(title)) {
+        return;
+    }
+    const QString path = QFileDialog::getSaveFileName(this, title, QStringLiteral("rendu.png"),
+                                                      tr("Image PNG (*.png)"));
+    if (path.isEmpty()) {
+        return;
+    }
+    BusyIndicator busy(this, tr("Rendu réaliste en cours…"), {autosaveTimer_, simTimer_});
+    const document::Project snapshot = project_;
+    auto rendered = busy.run([&] { return project_ops::render_realistic_png(snapshot); });
+    if (!rendered) {
+        reportError(this, title, tr("Le rendu n'a pas pu être fait."), rendered.error().message);
+        return;
+    }
+    QFile file(path);
+    if (!file.open(QIODevice::WriteOnly) ||
+        file.write(reinterpret_cast<const char*>(rendered->png.data()),
+                   static_cast<qint64>(rendered->png.size())) !=
+            static_cast<qint64>(rendered->png.size())) {
+        QMessageBox::warning(this, title, tr("Le fichier %1 n'a pas pu être écrit.").arg(path));
+        return;
+    }
+    statusBar()->showMessage(tr("Rendu enregistré : %1 (%2 × %3 px)")
+                                 .arg(path)
+                                 .arg(rendered->width)
+                                 .arg(rendered->height));
 }
 
 void MainWindow::runAnalysis() {

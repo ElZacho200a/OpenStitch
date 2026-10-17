@@ -606,6 +606,7 @@ class MainWindowTest : public QObject {
 
 private slots:
     void initTestCase();
+    void qualityReportActionsExistAndNeedEmbroidery();
 
     void clickingVectorObjectSyncsDocumentPanelAndInspector();
     void regionAndVectorSelectionToggleContextActionsOppositely();
@@ -1006,6 +1007,14 @@ void MainWindowTest::initTestCase() {
     // d'évènements du premier test venu.
     QStandardPaths::setTestModeEnabled(true);
     clearAutosaveDir();
+}
+
+void MainWindowTest::qualityReportActionsExistAndNeedEmbroidery() {
+    MainWindow window;
+    for (const char* name : {"action_fidelityReport", "action_densityReport",
+                             "action_diagnoseReport", "action_exportRealisticPng"}) {
+        QVERIFY2(window.findChild<QAction*>(QString::fromLatin1(name)) != nullptr, name);
+    }
 }
 
 void MainWindowTest::clickingVectorObjectSyncsDocumentPanelAndInspector() {

@@ -19,6 +19,10 @@ void MainWindow::buildProductionMenu(QMenu* fileMenu) {
         tr("Aperçu, impression ou export PDF d'une fiche : dimensions, "
            "points, temps estimé, blocs de couleur, avertissements, notes."));
     connect(productionAct_, &QAction::triggered, this, &MainWindow::showProductionSheet);
+    auto* renderPngAct = fileMenu->addAction(tr("Exporter le rendu réalis&te (PNG)…"));
+    renderPngAct->setObjectName(QStringLiteral("action_exportRealisticPng"));
+    renderPngAct->setToolTip(tr("Image du rendu réaliste (fils texturés) du motif complet."));
+    connect(renderPngAct, &QAction::triggered, this, &MainWindow::exportRealisticPng);
 }
 
 void MainWindow::showProductionSheet() {

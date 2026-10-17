@@ -109,7 +109,7 @@ target_link_libraries(openstitch_desktop_widgets
            openstitch::stitch_generation openstitch::formats openstitch::project_io
            openstitch::stitch_analysis openstitch::optimization openstitch::autodigitize
            openstitch::auto_satin openstitch::segmentation openstitch::lettering
-           openstitch::ai_segmentation
+           openstitch::ai_segmentation openstitch::project_ops
     PRIVATE openstitch::warnings
 )
 
