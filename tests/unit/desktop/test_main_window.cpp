@@ -18,6 +18,7 @@
 #include <QMenu>
 #include <QMessageBox>
 #include <QMouseEvent>
+#include <QPointer>
 #include <QPushButton>
 #include <QRadioButton>
 #include <QScopeGuard>
@@ -721,6 +722,7 @@ private slots:
     // Remplissage directionnel : conversion, outil de guides, undo/redo.
     void convertingTatamiToDirectionalIsUndoable();
     void densityGradientIsUndoableAndSpansTheShape();
+    void editingGradientEndSpacingKeepsTheInspectorAlive();
     void twoColorBlendCreatesBackgroundAndTopInOneUndoStep();
     void inspectorRebuildsAfterUndoOfAParameterEdit();
     void inspectorRebuildsAfterTypeChangeKeepingTheSameId();
@@ -4768,6 +4770,35 @@ void MainWindowTest::densityGradientIsUndoableAndSpansTheShape() {
     QVERIFY(!gradientOf().has_value());
 }
 
+void MainWindowTest::editingGradientEndSpacingKeepsTheInspectorAlive() {
+    // Régression : modifier « Écart de fin » reconstruisait l'inspecteur (formulaire
+    // périmé) pendant le signal du spinbox : le widget émetteur était supprimé en
+    // pleine émission, d'où un crash dans Qt6Widgets.
+    MainWindow window;
+    const Fixture fx = buildTatamiSquareFixture();
+    window.applyLoadedProject(fx.project);
+    window.selectedEmbroidery_ = fx.embroideryId;
+    window.updateActions();
+    window.convertToDirectional(fx.embroideryId);
+    auto* panel = window.propertiesPanel_;
+    auto* on = panel->findChild<QCheckBox*>(QStringLiteral("check_densityGradient"));
+    QPointer<QDoubleSpinBox> end =
+        panel->findChild<QDoubleSpinBox*>(QStringLiteral("spin_gradientEndSpacing"));
+    QVERIFY(on != nullptr);
+    QVERIFY(end);
+    on->setChecked(true); // active le dégradé depuis l'inspecteur
+    QVERIFY(end);
+    end->setValue(2.5);
+    QVERIFY(end); // le spinbox émetteur n'a pas été supprimé pendant son signal
+    const auto* emb = window.project_.findEmbroidery(fx.embroideryId);
+    const auto gradient =
+        std::get<openstitch::document::DirectionalFillParams>(emb->params).density_gradient;
+    QVERIFY(gradient.has_value());
+    QCOMPARE(gradient->spacing_to.value, 2'500);
+    // Le formulaire montre toujours les paramètres du document : pas de reconstruction.
+    QVERIFY(panel->showsParams(emb->params));
+}
+
 void MainWindowTest::twoColorBlendCreatesBackgroundAndTopInOneUndoStep() {
     MainWindow window;
     Fixture fx = buildTatamiSquareFixture();
@@ -4799,6 +4830,7 @@ void MainWindowTest::twoColorBlendCreatesBackgroundAndTopInOneUndoStep() {
         auto* dialog =
             qobject_cast<openstitch::desktop::ColorBlendDialog*>(QApplication::activeModalWidget());
         QVERIFY(dialog != nullptr);
+        dialog->setComplementary(false); // profil « fond uniforme » : le fond reste tatami
         dialog->findChild<QPushButton*>(QStringLiteral("button_blendAnalyze"))->click();
         dialog->accept();
     });
@@ -7006,6 +7038,7 @@ void MainWindowTest::blendZonesActionMakesBaseAndGradedTopInOneUndoStep() {
         auto* dialog =
             qobject_cast<openstitch::desktop::ColorBlendDialog*>(QApplication::activeModalWidget());
         QVERIFY(dialog != nullptr);
+        dialog->setComplementary(false); // profil « fond uniforme » : le fond reste tatami
         dialog->findChild<QLineEdit*>(QStringLiteral("edit_blendForeground"))->setText("#2244cc");
         dialog->findChild<QDialogButtonBox*>()->button(QDialogButtonBox::Ok)->click();
     });

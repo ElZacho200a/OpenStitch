@@ -801,7 +801,13 @@ void bounds(const std::vector<Poly>& polys, P2& lo, P2& hi) {
 
 // Construit les secteurs de `region` et leur champ.
 std::vector<Sector> build_sectors(const geometry::PathSet& region,
-                                  const document::DirectionalFillParams& params) {
+                                  const document::DirectionalFillParams& declared) {
+    // Un dégradé de densité ne module l'écart que perpendiculairement aux
+    // lignes : des guides courbes qui longent l'axe de couleur écrasent le
+    // fondu (lignes parasites). Les guides déclarés sont donc remplacés par un
+    // guide droit perpendiculaire à l'axe (sans effet sans dégradé utile).
+    auto params = declared;
+    align_guides_across_density_gradient(params, {region});
     std::vector<Sector> sectors;
     const double spacing = clamp_spacing(params);
     const double indexCell = std::clamp(spacing, 250.0, 1'000.0);
@@ -1773,11 +1779,21 @@ std::vector<FillStitch> fill_directional(const geometry::PathSet& region,
     // Liaison cousue « normale » (comme la liaison de rangée du tatami) si
     // courte et intérieure ; trajet caché jusqu'au plafond du tatami ; au-delà,
     // saut.
-    const double sewMax = std::max(4.0 * spacing, 1'500.0);
-    const double underpathCap = std::max(6.0 * spacing, 8'000.0);
+    // L'écart est local sous un dégradé de densité : une liaison cousue de
+    // 4 × l'écart MAXIMAL traverserait la zone dense (long fil parasite).
+    const SpacingField field = make_spacing_field(params);
+    const auto sewLimit = [&](P2 p) { return std::max(4.0 * field.at(p), 1'500.0); };
+    const auto underpathLimit = [&](P2 p) { return std::max(6.0 * field.at(p), 8'000.0); };
 
     const auto polys = region_polys(region);
     const RegionIndex whole(polys, std::clamp(spacing, 250.0, 1'000.0));
+    // Liaison intérieure : le segment reste dans la région, ou il est assez court
+    // (≤ 1,5 mm) pour être cousu par-dessus un vide étroit — marche d'un contour
+    // en escalier, fente de moins de 1,5 mm. Un saut y laissait un fil coupé et
+    // un déplacement parasite entre deux rangées voisines.
+    const auto linkInside = [&](P2 a, P2 b) {
+        return dist(a, b) <= 3.0 * kMinStitch || whole.segment_inside(a, b);
+    };
 
     // Autoroute d'underpath : contour extérieur rentré (comme le tatami).
     std::vector<P2> highway;
@@ -1808,7 +1824,7 @@ std::vector<FillStitch> fill_directional(const geometry::PathSet& region,
         const int ia = nearest(a);
         const int ib = nearest(b);
         std::vector<P2> bestPath;
-        double bestLen = underpathCap;
+        double bestLen = underpathLimit(b);
         for (const bool fwd : {true, false}) {
             std::vector<P2> v{a};
             int i = ia;
@@ -1892,13 +1908,13 @@ std::vector<FillStitch> fill_directional(const geometry::PathSet& region,
         // Voisinage : deux lignes sont voisines si une extrémité de l'une est
         // à portée de liaison cousue d'une extrémité de l'autre.
         std::vector<std::vector<std::size_t>> neighbors(n);
-        const double sew2 = sewMax * sewMax;
         for (std::size_t a = 0; a < n; ++a) {
             for (std::size_t b = a + 1; b < n; ++b) {
                 bool close = false;
                 for (const P2 ea : {stitched[a].front(), stitched[a].back()}) {
                     for (const P2 eb : {stitched[b].front(), stitched[b].back()}) {
-                        close = close || dist2(ea, eb) <= sew2;
+                        const double sew = sewLimit(ea);
+                        close = close || dist2(ea, eb) <= sew * sew;
                     }
                 }
                 if (close) {
@@ -1947,7 +1963,8 @@ std::vector<FillStitch> fill_directional(const geometry::PathSet& region,
                         continue;
                     }
                     const double d = dist2(cur, e);
-                    const bool sewable = d <= sew2 && whole.segment_inside(cur, e);
+                    const double sew = sewLimit(e);
+                    const bool sewable = d <= sew * sew && linkInside(cur, e);
                     const std::ptrdiff_t degree = sewable ? freeDegree(li) : 0;
                     bool better = false;
                     if (sewable != bestSewable) {
@@ -1979,14 +1996,14 @@ std::vector<FillStitch> fill_directional(const geometry::PathSet& region,
                         jump = true;
                     } else {
                         const double d = dist(cur, rp);
-                        const bool direct = whole.segment_inside(cur, rp);
+                        const bool direct = linkInside(cur, rp);
                         if (d < 1.0) {
                             continue; // même position : rien à émettre
                         }
-                        if (!(direct && d <= sewMax)) {
+                        if (!(direct && d <= sewLimit(rp))) {
                             jump = true;
                             if (params.hidden_underpath) {
-                                if (direct && d <= underpathCap) {
+                                if (direct && d <= underpathLimit(rp)) {
                                     emitTravel({cur, rp});
                                     jump = false;
                                 } else if (auto route = routeHighway(cur, rp); !route.empty()) {
