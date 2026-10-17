@@ -188,6 +188,12 @@ const EnumTable<document::UnderlayMode>& underlay_mode_table() {
                                                      {"auto", document::UnderlayMode::Auto}};
     return t;
 }
+const EnumTable<document::DensityCurve>& density_curve_table() {
+    static const EnumTable<document::DensityCurve> t{{"linear", document::DensityCurve::Linear},
+                                                     {"smooth", document::DensityCurve::Smooth},
+                                                     {"steep", document::DensityCurve::Steep}};
+    return t;
+}
 const EnumTable<document::AutoSatinStrategy>& auto_satin_strategy_table() {
     static const EnumTable<document::AutoSatinStrategy> t{
         {"skeleton", document::AutoSatinStrategy::Skeleton},
@@ -635,7 +641,7 @@ template <class P> Field<P> gradient_field(std::string name) {
     f.type = "object";
     f.unit = "mm";
     f.range = "{from_mm:[x,y], to_mm:[x,y], spacing_from_mm, spacing_to_mm [0,1 ; 5], "
-              "interpolate_density?} ou null";
+              "interpolate_density?, curve? (linear | smooth | steep)} ou null";
     f.set = [=](P& p, const json& v) {
         if (v.is_null()) {
             p.density_gradient.reset();
@@ -657,6 +663,13 @@ template <class P> Field<P> gradient_field(std::string name) {
         g.spacing_to =
             to_micrometers(Millimeters{number_in_range(name, v["spacing_to_mm"], 0.1, 5.0, "mm")});
         g.interpolate_density = v.value("interpolate_density", false);
+        if (v.contains("curve")) {
+            if (!v["curve"].is_string()) {
+                refuse(code::kUsage, "champ « " + name + " » : « curve » doit être une chaîne");
+            }
+            g.curve = parse_enum(density_curve_table(), v["curve"].get<std::string>(),
+                                 "champ « " + name + " » : curve");
+        }
         p.density_gradient = g;
     };
     f.get = [=](const P& p) {
@@ -668,7 +681,8 @@ template <class P> Field<P> gradient_field(std::string name) {
                     {"to_mm", point_json(g.to)},
                     {"spacing_from_mm", to_millimeters(g.spacing_from).value},
                     {"spacing_to_mm", to_millimeters(g.spacing_to).value},
-                    {"interpolate_density", g.interpolate_density}};
+                    {"interpolate_density", g.interpolate_density},
+                    {"curve", enum_name(density_curve_table(), g.curve)}};
     };
     return f;
 }

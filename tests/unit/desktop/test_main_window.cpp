@@ -723,6 +723,7 @@ private slots:
     void convertingTatamiToDirectionalIsUndoable();
     void densityGradientIsUndoableAndSpansTheShape();
     void editingGradientEndSpacingKeepsTheInspectorAlive();
+    void gradientEndSpacingKeepsNarrowedZoneUntilTheAngleChanges();
     void twoColorBlendCreatesBackgroundAndTopInOneUndoStep();
     void inspectorRebuildsAfterUndoOfAParameterEdit();
     void inspectorRebuildsAfterTypeChangeKeepingTheSameId();
@@ -4797,6 +4798,51 @@ void MainWindowTest::editingGradientEndSpacingKeepsTheInspectorAlive() {
     QCOMPARE(gradient->spacing_to.value, 2'500);
     // Le formulaire montre toujours les paramètres du document : pas de reconstruction.
     QVERIFY(panel->showsParams(emb->params));
+}
+
+void MainWindowTest::gradientEndSpacingKeepsNarrowedZoneUntilTheAngleChanges() {
+    MainWindow window;
+    const Fixture fx = buildTatamiSquareFixture();
+    window.applyLoadedProject(fx.project);
+    window.selectedEmbroidery_ = fx.embroideryId;
+    window.updateActions();
+    window.convertToDirectional(fx.embroideryId);
+    const auto gradientOf = [&] {
+        const auto* emb = window.project_.findEmbroidery(fx.embroideryId);
+        return std::get<openstitch::document::DirectionalFillParams>(emb->params).density_gradient;
+    };
+    window.setDensityGradient(fx.embroideryId, true, 90.0, 1.2);
+    const auto full = gradientOf();
+    QVERIFY(full.has_value());
+
+    // Zone de transition réduite (comme un fondu à 30 % - 70 %).
+    auto params = std::get<openstitch::document::DirectionalFillParams>(
+        window.project_.findEmbroidery(fx.embroideryId)->params);
+    auto narrowed = *full;
+    narrowed.from.y.value = full->from.y.value + (full->to.y.value - full->from.y.value) * 3 / 10;
+    narrowed.to.y.value = full->from.y.value + (full->to.y.value - full->from.y.value) * 7 / 10;
+    narrowed.curve = openstitch::document::DensityCurve::Smooth;
+    params.density_gradient = narrowed;
+    window.undoStack_.execute(std::make_unique<openstitch::commands::EditDirectionalFillCommand>(
+                                  fx.embroideryId, params, "zone"),
+                              window.project_);
+
+    // Même angle : seul l'écart de fin change, l'axe réduit est conservé.
+    window.setDensityGradient(fx.embroideryId, true, 90.0, 2.0);
+    const auto kept = gradientOf();
+    QVERIFY(kept.has_value());
+    QCOMPARE(kept->from, narrowed.from);
+    QCOMPARE(kept->to, narrowed.to);
+    QCOMPARE(kept->spacing_to.value, 2'000);
+    QCOMPARE(kept->curve, openstitch::document::DensityCurve::Smooth);
+
+    // Angle différent : l'axe est recalculé sur toute la forme, la courbe reste.
+    window.setDensityGradient(fx.embroideryId, true, 0.0, 2.0);
+    const auto turned = gradientOf();
+    QVERIFY(turned.has_value());
+    QCOMPARE(turned->curve, openstitch::document::DensityCurve::Smooth);
+    QVERIFY(turned->from.x.value != turned->to.x.value);
+    QCOMPARE(turned->from.y.value, turned->to.y.value);
 }
 
 void MainWindowTest::twoColorBlendCreatesBackgroundAndTopInOneUndoStep() {

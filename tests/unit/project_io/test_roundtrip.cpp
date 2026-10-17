@@ -215,6 +215,39 @@ TEST_CASE("blend core: legacy JSON omits relation and keeps spacing interpolatio
     CHECK(project_io::detail::project_to_json(*loaded) == json);
 }
 
+TEST_CASE("density curve is persisted only when not linear", "[blend_core]") {
+    auto project = rich_project();
+    document::DirectionalFillParams params;
+    params.density_gradient =
+        document::DensityGradient{um(0, 0),           um(5'000, 0), Micrometers{400},
+                                  Micrometers{1'600}, false,        document::DensityCurve::Steep};
+    project.embroidery_objects[1].params = params;
+    auto json = project_io::detail::project_to_json(project);
+    auto& stored = json["embroideryObjects"][1]["params"]["densityGradient"];
+    CHECK(stored["curve"] == 2);
+
+    const auto loaded = project_io::detail::project_from_json(json);
+    REQUIRE(loaded);
+    CHECK(loaded->embroidery_objects[1].params == project.embroidery_objects[1].params);
+    CHECK(project_io::detail::project_to_json(*loaded) == json);
+
+    // Valeur inconnue (fichier édité ou plus récent) : relue comme linéaire.
+    stored["curve"] = 9;
+    const auto unknown = project_io::detail::project_from_json(json);
+    REQUIRE(unknown);
+    const auto& gradient =
+        std::get<document::DirectionalFillParams>(unknown->embroidery_objects[1].params)
+            .density_gradient;
+    REQUIRE(gradient);
+    CHECK(gradient->curve == document::DensityCurve::Linear);
+
+    // Linéaire : la clé est absente, le fichier reste identique à l'ancien format.
+    std::get<document::DirectionalFillParams>(project.embroidery_objects[1].params)
+        .density_gradient->curve = document::DensityCurve::Linear;
+    const auto linear = project_io::detail::project_to_json(project);
+    CHECK_FALSE(linear["embroideryObjects"][1]["params"]["densityGradient"].contains("curve"));
+}
+
 TEST_CASE("blend core: malformed JSON links and non boolean interpolation are rejected",
           "[blend_core]") {
     const auto project = rich_project();

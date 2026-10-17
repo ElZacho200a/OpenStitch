@@ -10,7 +10,7 @@ fonctionnalité, vérifié dans le code.
 | Import PNG/JPEG/BMP/TIFF | Implémenté | Fichier | image | oui | — |
 | Prétraitement non destructif | Implémenté | Image | image | oui | pas de resize |
 | Taille physique d'import raster | Présent · testé | dialogue d'import | document/desktop | QTest bout en bout | proportions imposées : résolution unique, pas d'étirement anisotrope |
-| Fondu à deux fils | Présent · testé | Broderie/Forme/Propriétés | autodigitize/stitch_generation/desktop | QTest + Catch2 | rampe linéaire, paramètres des couches non liés, aperçu schématique, pas de preuve sur machine |
+| Fondu à deux fils | Présent · testé | Broderie/Forme/Propriétés | autodigitize/stitch_generation/desktop | QTest + Catch2 | une seule rampe (zone de transition réglable, 3 courbes prédéfinies), paramètres des couches non liés, aperçu schématique, pas de preuve sur machine |
 | Segmentation CIELAB + régions | Implémenté | Segmentation | segmentation | oui | 4-connexité |
 | Édition de régions | Implémenté | Segmentation | segmentation | oui | — |
 | Vectorisation | Implémenté | Segmentation | vectorization | oui | — |
