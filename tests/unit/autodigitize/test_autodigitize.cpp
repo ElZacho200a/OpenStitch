@@ -116,8 +116,7 @@ TEST_CASE("bande fine -> tatami par defaut") {
     CHECK(result->embroideries.front().is_tatami());
 }
 
-TEST_CASE("bande fine -> tatami meme quand use_naive_satin est active") {
-    // Option legacy ignoree : un vieux appel ne doit plus recreer de satin auto.
+TEST_CASE("bande fine -> tatami par defaut (satin_bands desactive)") {
     image::Image img = blank(44, 8);
     for (int y = 2; y < 5; ++y) {
         for (int x = 2; x < 42; ++x) {
@@ -128,30 +127,6 @@ TEST_CASE("bande fine -> tatami meme quand use_naive_satin est active") {
     REQUIRE(seg.has_value());
     IdGenerator<ObjectId> ids;
     AutoOptions o = opts();
-    o.use_auto_satin = false;
-    o.use_naive_satin = true;
-    const auto result = auto_digitize(*seg, ids, o);
-    REQUIRE(result.has_value());
-    REQUIRE(result->embroideries.size() == 1);
-    for (const auto& e : result->embroideries) {
-        CHECK_FALSE(e.is_satin());
-    }
-    CHECK(result->embroideries.front().is_tatami());
-}
-
-TEST_CASE("bande fine -> tatami si les deux moteurs satin sont desactives") {
-    image::Image img = blank(44, 8);
-    for (int y = 2; y < 5; ++y) {
-        for (int x = 2; x < 42; ++x) {
-            set_px(img, x, y, 30, 30, 220);
-        }
-    }
-    const auto seg = segmentation::segment(img, {.max_colors = 2, .min_region_px = 1});
-    REQUIRE(seg.has_value());
-    IdGenerator<ObjectId> ids;
-    AutoOptions o = opts();
-    o.use_auto_satin = false;
-    o.use_naive_satin = false;
     const auto result = auto_digitize(*seg, ids, o);
     REQUIRE(result.has_value());
     REQUIRE(result->embroideries.size() == 1);
@@ -517,7 +492,6 @@ image::Image paint(int w, int h, const std::vector<Rect>& rects) {
 
 AutoOptions tatami_only_opts() {
     AutoOptions o = opts();
-    o.use_auto_satin = false; // formes de test « tatami » quelle que soit leur largeur
     o.min_fill_area_mm2 = 4.0;
     return o;
 }

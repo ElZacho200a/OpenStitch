@@ -104,8 +104,6 @@ machine_export_dialog.hpp
     wsl_path_converter.hpp
     sam_worker_client.cpp
     sam_worker_client.hpp
-    sam_model_manager.cpp
-    sam_model_manager.hpp
     ai_preferences.cpp
     ai_preferences.hpp
     ai_preferences_dialog.cpp
