@@ -96,7 +96,7 @@ enchaînés par `+` ; stockés dans `project.ops`, `original` reste la source ; 
 et `at --px` travaillent sur l'image de travail ; axe de balayage `pre=none,median:1,…`),
 `--island-cleanup`, `--island-max-delta-e`, `--dark-lines`
 (`--dark-lines-width`, `--dark-lines-lightness`, `--dark-lines-bars`, `--dark-lines-min-length`,
-`--dark-lines-objects-only`), `--rings-satin` (avec `--dark-lines` : les anneaux sombres — hublots, ventouses, bulles, yeux — sont reconnus sur le masque des pixels sombres, cousus en auto-satin à contour exact, et retirés des traits et du remplissage marine), `--flow-fill` (`--flow-min-area`, `--flow-min-elongation` : les grandes formes allongées passent en remplissage directionnel guidé par leur axe médian ; la couleur la plus sombre reste en tatami), `--fill-inset`, `--fill-overlap`, `--no-underpath`, `--stipple-*`,
+`--dark-lines-objects-only`), `--rings-satin` (avec `--dark-lines` : les anneaux sombres — hublots, ventouses, bulles, yeux — sont reconnus sur le masque des pixels sombres, cousus en auto-satin à contour exact, et retirés des traits et du remplissage marine), `--flow-fill` (`--flow-min-area`, `--flow-min-elongation` : les grandes formes allongées passent en remplissage directionnel guidé par leur axe médian ; la couleur la plus sombre reste en tatami), `--fill-inset`, `--fill-overlap`, `--solid-block` (`--solid-block-overlap` : bloc uni, voir *Auto-numérisation*), `--no-underpath`, `--stipple-*`,
 `--trim-threshold`, `--lock`, `--hidden-travel*`, `--dpi`). En plus : `--debug-dir DOSSIER`
 (masques et décisions, voir *Outils d'analyse*), `--dst f.dst` et `--output-svg f.svg` (exports secondaires),
 `--report rapport.json` (rapport de numérisation, schéma

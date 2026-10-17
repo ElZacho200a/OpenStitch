@@ -90,6 +90,10 @@ struct DigitizeSettings {
     // (`AutoOptions::fill_hidden_underpath`).
     bool fill_hidden_underpath{true};
     double island_max_delta_e{0.0}; // 0 = sans limite
+    // Mode formes : bloc uni sans tissu visible entre zones voisines (voir
+    // `autodigitize::apply_solid_block`). `solid_block_overlap_mm` : débord sous les voisins.
+    bool solid_block{false};
+    double solid_block_overlap_mm{0.5};
     // « Suivre le mouvement » : les grandes formes allongées (tentacules, rubans, nuages, fumée)
     // passent en remplissage directionnel dont les guides suivent l'axe médian de la forme, au
     // lieu d'un tatami à angle fixe. La couleur la plus sombre (traits) reste en tatami.

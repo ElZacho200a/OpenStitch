@@ -387,6 +387,13 @@ void add_digitize_options(CLI::App* cmd, DigitizeOptionValues& v) {
                     "Avec --island-cleanup : refuse une voisine plus éloignée que cet écart de "
                     "couleur CIELAB (ΔE) ; 0 = pas de limite (défaut)")
         ->check(CLI::NonNegativeNumber);
+    cmd->add_flag(
+        "--solid-block", s.solid_block,
+        "Mode formes : bloc uni, sans tissu visible entre zones voisines (les "
+        "remplissages débordent sous leurs voisins, les petites régions sont fusionnées)");
+    cmd->add_option("--solid-block-overlap", s.solid_block_overlap_mm,
+                    "Avec --solid-block : débord sous les voisins, en mm (défaut : 0.5)")
+        ->check(CLI::NonNegativeNumber);
     cmd->add_option("--trim-threshold", s.trim_threshold_mm,
                     "Coupe automatique au-delà de ce déplacement, en mm (défaut : 3)")
         ->check(CLI::PositiveNumber);

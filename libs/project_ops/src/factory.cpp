@@ -470,6 +470,9 @@ Result<DigitizeReport> digitize_image_into(document::Project& project,
         opts.fill_inset = mm_to_um(*s.fill_inset_mm);
     }
     opts.island_max_delta_e = s.island_max_delta_e;
+    if (s.solid_block) {
+        autodigitize::apply_solid_block(opts, s.solid_block_overlap_mm);
+    }
     say(log, std::string("Ignorer la plus grande région (fond) : ") +
                  (skipLargest ? "oui" : "non") +
                  (report.background_auto ? " (automatique)" : " (option explicite)"));
