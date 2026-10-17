@@ -50,13 +50,13 @@ std::string_view strategy_id(SatinStrategy strategy) {
 std::string_view strategy_label(SatinStrategy strategy) {
     switch (strategy) {
     case SatinStrategy::Skeleton:
-        return "Squelette (actuel)";
+        return "Squelette";
     case SatinStrategy::ParallelSweep:
         return "Balayage parallèle";
     case SatinStrategy::MedialAxis:
         return "Axe médian vectoriel";
     }
-    return "Squelette (actuel)";
+    return "Squelette";
 }
 
 std::vector<SatinStrategy> available_strategies() {

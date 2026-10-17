@@ -45,13 +45,26 @@ TEST_CASE("auto_satin_service accepte une bande etroite", "[project_ops][auto_sa
 TEST_CASE("auto_satin_service refuse un disque sans repli", "[project_ops][auto_satin]") {
     document::Project project;
     const ObjectId vec = add_vector(project, true, 10.0, 10.0);
-    const auto plan = project_ops::plan_auto_satin(project, vec);
+    // Le squelette refuse un disque (le balayage, methode par defaut, le couvre).
+    project_ops::AutoSatinPlanRequest request;
+    request.strategy = document::AutoSatinStrategy::Skeleton;
+    const auto plan = project_ops::plan_auto_satin(project, vec, request);
     REQUIRE(plan.has_value());
     CHECK_FALSE(plan->accepted);
     CHECK(plan->columns == 0);
     CHECK_FALSE(plan->refusal.empty());
     CHECK(plan->refusal.find("Aucune colonne satin") != std::string::npos);
     CHECK_FALSE(plan->messages.empty()); // le refus est nomme par le moteur
+}
+
+TEST_CASE("auto_satin_service propose le balayage par defaut", "[project_ops][auto_satin]") {
+    document::Project project;
+    const ObjectId vec = add_vector(project, true, 10.0, 10.0);
+    const auto plan = project_ops::plan_auto_satin(project, vec);
+    REQUIRE(plan.has_value());
+    CHECK(plan->accepted);
+    CHECK(plan->columns > 0);
+    CHECK(plan->params.strategy == document::AutoSatinStrategy::ParallelSweep);
 }
 
 TEST_CASE("auto_satin_service axe compact accepte un disque", "[project_ops][auto_satin]") {

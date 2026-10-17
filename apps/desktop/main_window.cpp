@@ -5161,6 +5161,7 @@ bool MainWindow::stitchParamsForType(const document::EmbroideryObject& emb, int 
             source = &restoredCopy;
         }
         document::AutoSatinParams sp;
+        sp.strategy = document::kDefaultAutoSatinStrategy;
         AutoSatinPreview preview = previewAutoSatin(*source, sp);
         QString methodNote;
         if (preview.columns == 0) {

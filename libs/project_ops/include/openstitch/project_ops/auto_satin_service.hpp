@@ -21,7 +21,7 @@ namespace openstitch::project_ops {
 struct AutoSatinPlanRequest {
     std::optional<Micrometers> spacing; // défaut : celui d'`AutoSatinParams` (0,4 mm)
     bool compact_axis{false};           // formes compactes : axe synthétique (cf. moteur)
-    document::AutoSatinStrategy strategy{document::AutoSatinStrategy::Skeleton}; // méthode
+    document::AutoSatinStrategy strategy{document::kDefaultAutoSatinStrategy}; // méthode
     std::optional<Angle> sweep_angle; // balayage parallèle : angle explicite (sinon auto)
     bool use_pristine_contour{true};  // contour brut de la région source si disponible
     std::vector<document::AutoSatinGuide> guides;
