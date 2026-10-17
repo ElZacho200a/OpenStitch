@@ -823,6 +823,60 @@ TEST_CASE("density_gradient_between runs from zone A to zone B over both zones")
     CHECK_FALSE(density_gradient_between({}, b, Micrometers{4'000}, Micrometers{400}));
 }
 
+TEST_CASE("narrow_gradient_zone shrinks the axis and keeps the other fields") {
+    auto g = vertical_gradient(Micrometers{400}, Micrometers{1'600});
+    g.interpolate_density = true;
+    const auto narrowed = narrow_gradient_zone(g, 0.25, 0.75);
+    REQUIRE(narrowed.has_value());
+    CHECK(narrowed->from == um(15, 5));
+    CHECK(narrowed->to == um(15, 15));
+    CHECK(narrowed->spacing_from == g.spacing_from);
+    CHECK(narrowed->spacing_to == g.spacing_to);
+    CHECK(narrowed->interpolate_density);
+
+    // 0 -> 1 : identité exacte.
+    CHECK(narrow_gradient_zone(g, 0.0, 1.0) == g);
+    // Axe orienté en sens inverse : les fractions suivent from -> to.
+    auto reversed = g;
+    std::swap(reversed.from, reversed.to);
+    const auto back = narrow_gradient_zone(reversed, 0.0, 0.5);
+    REQUIRE(back.has_value());
+    CHECK(back->from == um(15, 20));
+    CHECK(back->to == um(15, 10));
+
+    const double nan = std::numeric_limits<double>::quiet_NaN();
+    CHECK_FALSE(narrow_gradient_zone(g, 0.5, 0.5));
+    CHECK_FALSE(narrow_gradient_zone(g, 0.7, 0.3));
+    CHECK_FALSE(narrow_gradient_zone(g, -0.1, 0.5));
+    CHECK_FALSE(narrow_gradient_zone(g, 0.5, 1.1));
+    CHECK_FALSE(narrow_gradient_zone(g, nan, 0.5));
+    CHECK_FALSE(narrow_gradient_zone(g, 0.5, nan));
+}
+
+TEST_CASE("narrowed gradient zone gives constant spacing on both plateaus") {
+    const auto region = rect_mm(0, 0, 30, 20);
+    auto dp = base_params();
+    dp.guides.push_back(line_mm(0, 10, 30, 10)); // champ horizontal
+    const auto full = vertical_gradient(Micrometers{400}, Micrometers{1'600});
+    dp.density_gradient = narrow_gradient_zone(full, 0.3, 0.7);
+    REQUIRE(dp.density_gradient.has_value());
+
+    const auto ys = crossings_at_x(trace_directional_streamlines(region, dp), 15.0);
+    REQUIRE(ys.size() > 15);
+    // Plateau de début (0-6 mm) : écart constant de 0,4 mm ; plateau de fin (14-20 mm) : 1,6 mm.
+    const double startPlateau = mean_gap_mm(ys, 0.0, 5.5);
+    const double endPlateau = mean_gap_mm(ys, 14.5, 20.0);
+    CHECK(startPlateau > 0.38);
+    CHECK(startPlateau < 0.5);
+    CHECK(endPlateau > 1.4);
+    CHECK(endPlateau < 1.8);
+    // La rampe reste monotone entre les deux.
+    CHECK(mean_gap_mm(ys, 6.0, 10.0) < mean_gap_mm(ys, 10.0, 14.0));
+
+    // Déterminisme : deux générations identiques.
+    CHECK(fill_directional(region, dp) == fill_directional(region, dp));
+}
+
 // --- Régularité de l'espacement ------------------------------------------------
 
 namespace {

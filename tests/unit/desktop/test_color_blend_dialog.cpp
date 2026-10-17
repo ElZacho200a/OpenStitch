@@ -73,6 +73,7 @@ private slots:
     void editingAndProfile();
     void initialPreviewIsDeferredAndSettingsAreDebounced();
     void proposalIsGroupedAndKeepsAnalyzedExtent();
+    void transitionZoneDefaultsAndMinimumExtent();
     void stitchPreviewAndLayerFilter();
     void changesInvalidatePreviewAndInvalidColorsStopRequests();
     void previewMessageClearsCurrentDisplay();
@@ -208,6 +209,27 @@ void ColorBlendDialogTest::proposalIsGroupedAndKeepsAnalyzedExtent() {
     QCOMPARE(dialog.proposedGradient()->spacing_to, Micrometers{3'000});
     dialog.findChild<QDoubleSpinBox*>("spin_blendAngle")->setValue(91.0);
     QVERIFY(!dialog.proposedGradient().has_value());
+}
+
+void ColorBlendDialogTest::transitionZoneDefaultsAndMinimumExtent() {
+    ColorBlendDialog dialog(backgroundRgb, foregroundRgb, false, false);
+    auto* start = dialog.findChild<QDoubleSpinBox*>("spin_blendZoneStart");
+    auto* end = dialog.findChild<QDoubleSpinBox*>("spin_blendZoneEnd");
+    QVERIFY(start != nullptr && end != nullptr);
+    // Par défaut : toute la forme, comme avant l'ajout de la zone.
+    QCOMPARE(dialog.transitionStart(), 0.0);
+    QCOMPARE(dialog.transitionEnd(), 1.0);
+
+    start->setValue(30.0);
+    end->setValue(70.0);
+    QCOMPARE(dialog.transitionStart(), 0.3);
+    QCOMPARE(dialog.transitionEnd(), 0.7);
+
+    // Les bornes se resserrent : jamais moins de 5 % d'étendue.
+    start->setValue(100.0);
+    QCOMPARE(dialog.transitionStart(), 65.0 / 100.0);
+    end->setValue(0.0);
+    QVERIFY(dialog.transitionEnd() - dialog.transitionStart() >= 0.05 - 1e-9);
 }
 
 void ColorBlendDialogTest::stitchPreviewAndLayerFilter() {

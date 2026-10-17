@@ -30,6 +30,9 @@
 
 namespace openstitch::desktop {
 namespace {
+// Étendue minimale de la zone de transition, en % de l'axe.
+constexpr double kMinZonePercent = 5.0;
+
 QColor color(ColorBlendDialog::Rgb rgb) {
     return QColor(rgb[0], rgb[1], rgb[2]);
 }
@@ -271,6 +274,26 @@ ColorBlendDialog::ColorBlendDialog(Rgb background, Rgb foreground, bool canAnaly
     angle_->setToolTip(tr("Sens début → fin dans le document : 0° vers la droite, "
                           "90° vers le haut. Les lignes du dessus sont perpendiculaires."));
     rampForm->addRow(tr("Angle du fondu :"), angle_);
+    const auto zone = [this, rampForm](const QString& title, const char* name, double value,
+                                       const QString& tip) {
+        auto* spin = new QDoubleSpinBox(this);
+        spin->setObjectName(QString::fromLatin1(name));
+        spin->setRange(0.0, 100.0);
+        spin->setDecimals(0);
+        spin->setSingleStep(5.0);
+        spin->setSuffix(tr(" %"));
+        spin->setKeyboardTracking(false);
+        spin->setValue(value);
+        spin->setToolTip(tip);
+        rampForm->addRow(title, spin);
+        return spin;
+    };
+    zoneStart_ = zone(tr("Début de la transition :"), "spin_blendZoneStart", 0.0,
+                      tr("Position sur l'axe où l'écart commence à varier (0 % = bord de départ). "
+                         "Avant ce point, l'écart du début reste constant : aplat net."));
+    zoneEnd_ = zone(tr("Fin de la transition :"), "spin_blendZoneEnd", 100.0,
+                    tr("Position sur l'axe où l'écart atteint sa valeur de fin (100 % = bord "
+                       "d'arrivée). Après ce point, l'écart de fin reste constant : aplat net."));
     rampLayout->addLayout(rampForm);
 
     auto* reverse = new QPushButton(tr("Inverser le sens du fondu"), this);
@@ -354,9 +377,17 @@ ColorBlendDialog::ColorBlendDialog(Rgb background, Rgb foreground, bool canAnaly
     for (auto* edit : {background_, foreground_}) {
         connect(edit, &QLineEdit::textChanged, this, &ColorBlendDialog::settingsChanged);
     }
-    for (auto* spin : {start_, end_, angle_}) {
+    for (auto* spin : {start_, end_, angle_, zoneStart_, zoneEnd_}) {
         connect(spin, &QDoubleSpinBox::valueChanged, this, &ColorBlendDialog::settingsChanged);
     }
+    // La zone garde toujours au moins kMinZonePercent d'étendue : les bornes
+    // se resserrent mutuellement plutôt que d'accepter une zone vide.
+    connect(zoneStart_, &QDoubleSpinBox::valueChanged, this,
+            [this](double value) { zoneEnd_->setMinimum(value + kMinZonePercent); });
+    connect(zoneEnd_, &QDoubleSpinBox::valueChanged, this,
+            [this](double value) { zoneStart_->setMaximum(value - kMinZonePercent); });
+    zoneEnd_->setMinimum(kMinZonePercent);
+    zoneStart_->setMaximum(100.0 - kMinZonePercent);
     auto* guard = new WheelGuard(this);
     guard->guardAll(this);
     setEditing(false);
@@ -535,6 +566,12 @@ Micrometers ColorBlendDialog::startSpacing() const {
 }
 Micrometers ColorBlendDialog::endSpacing() const {
     return to_micrometers(Millimeters{end_->value()});
+}
+double ColorBlendDialog::transitionStart() const {
+    return zoneStart_->value() / 100.0;
+}
+double ColorBlendDialog::transitionEnd() const {
+    return zoneEnd_->value() / 100.0;
 }
 std::optional<document::DensityGradient> ColorBlendDialog::proposedGradient() const {
     if (!proposal_) {

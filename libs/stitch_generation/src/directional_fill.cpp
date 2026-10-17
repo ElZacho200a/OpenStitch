@@ -2187,6 +2187,19 @@ density_gradient_between(const std::vector<geometry::PathSet>& zone_a,
     return density_gradient_across(both, Angle{std::atan2(d.y, d.x)}, spacing_a, spacing_b);
 }
 
+std::optional<document::DensityGradient>
+narrow_gradient_zone(const document::DensityGradient& gradient, double start, double end) {
+    if (!std::isfinite(start) || !std::isfinite(end) || start < 0.0 || end > 1.0 || start >= end) {
+        return std::nullopt;
+    }
+    const P2 from = to_p2(gradient.from);
+    const P2 axis = to_p2(gradient.to) - from;
+    auto narrowed = gradient;
+    narrowed.from = to_um(from + axis * start);
+    narrowed.to = to_um(from + axis * end);
+    return narrowed;
+}
+
 void align_guides_across_density_gradient(document::DirectionalFillParams& params,
                                           const std::vector<geometry::PathSet>& shape) {
     if (!params.density_gradient) {

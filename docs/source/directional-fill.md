@@ -320,9 +320,24 @@ voisines était refusée dès que son segment sortait de la région, or un conto
 en escalier (vectorisation pixel) ou une fente de moins de 1,5 mm le fait sortir
 d'un cheveu ; elle devenait un saut. Une liaison de 1,5 mm au plus est désormais
 cousue (`linkInside`). `TheyAskedForIT.osp` : 811 → 360 sauts (fond 410 → 57,
-dessus 150 → 52). Déterministe : aucune
-graine, itération dans l'ordre d'entrée. Limites : un seul plan (un dégradé
-linéaire par région, pas de courbe), deux couleurs maximum par région.
+dessus 150 → 52).
+
+**Zone de transition** : par défaut la rampe d'écart couvre toute l'étendue de
+la forme le long de l'axe. Les champs **Début / Fin de la transition** (en % de
+l'axe, 0 → 100 %, au moins 5 % d'étendue) la restreignent à une portion :
+`stitch_generation::narrow_gradient_zone` rapproche `from` et `to` le long de
+l'axe, et le générateur bornant la position sur l'axe (`SpacingField::at`), l'écart
+reste égal à `spacing_from` avant la zone et à `spacing_to` après : deux **aplats
+nets** aux extrémités, sans champ de plus dans le document ni dans le `.osp`. La
+zone s'applique dans `blendLayersFor`, donc à l'aperçu comme à la création, y
+compris à la proposition issue de l'image. Valeurs par défaut (0 % et 100 %) :
+sortie identique à l'ancienne. Dans l'inspecteur, modifier l'écart de fin d'un
+dégradé existant **conserve son axe** (donc sa zone) tant que l'angle affiché ne
+change pas ; changer l'angle recalcule l'axe sur toute la forme.
+
+Déterministe : aucune graine, itération dans l'ordre d'entrée. Limites : un seul
+plan (un dégradé linéaire par région, pas de courbe), deux couleurs maximum par
+région.
 
 ### Fondre deux zones voisines
 
@@ -339,8 +354,8 @@ zones**, sans analyse de l'image. Les couleurs, l'angle et les écarts sont
 modifiables avant l'union ; Annuler préserve les deux zones. Les couleurs doivent
 être distinctes. Chaque forme doit avoir un seul remplissage compatible ; une
 forme non remplie ou un couple de couches déjà créé désactive l'action.
-Une seule annulation défait l'ensemble. Limite : rampe linéaire sur
-toute l'étendue (pas de zone de transition réglable).
+Une seule annulation défait l'ensemble. La zone de transition (début / fin en %
+de l'axe) se règle dans le même dialogue ; limite : rampe linéaire (pas de courbe).
 
 ### Éditer les couches et preuve des correctifs UI (2026-10-13)
 
