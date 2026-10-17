@@ -24,16 +24,24 @@
 #include <QVBoxLayout>
 
 #include <map>
+#include <memory>
+#include <type_traits>
+#include <variant>
 
 #include "app_theme.hpp"
 #include "busy_indicator.hpp"
 #include "canvas_view.hpp"
 #include "document_panel.hpp"
+#include "font_catalog.hpp"
 #include "main_window.hpp"
+#include "openstitch/commands/finishing_commands.hpp"
+#include "openstitch/commands/project_commands.hpp"
+#include "openstitch/lettering/lettering.hpp"
 #include "openstitch/project_ops/analysis.hpp"
 #include "openstitch/project_ops/render.hpp"
 #include "openstitch/stitch_analysis/analyze.hpp"
 #include "openstitch/stitch_analysis/text_rules.hpp"
+#include "properties_panel.hpp"
 
 namespace openstitch::desktop {
 
@@ -43,6 +51,13 @@ constexpr int kSeverityRole = Qt::UserRole + 1; // 0 info, 1 avertissement, 2 er
 constexpr int kObjectRole = Qt::UserRole + 2;   // id de l'objet de broderie (0 = global)
 constexpr int kHintRole = Qt::UserRole + 3;     // piste de correction
 constexpr int kHasLocationRole = Qt::UserRole + 4;
+// Correction portée par le constat (stitch_analysis::Fix), recopiée champ par champ.
+constexpr int kFixKindRole = Qt::UserRole + 10; // int(FixKind), 0 = aucune
+constexpr int kFixDxRole = Qt::UserRole + 11;
+constexpr int kFixDyRole = Qt::UserRole + 12;
+constexpr int kFixValueRole = Qt::UserRole + 13;
+constexpr int kFixTextRole = Qt::UserRole + 14;
+constexpr int kFixLabelRole = Qt::UserRole + 15;
 
 int severityRank(stitch_analysis::Severity v) {
     switch (v) {
@@ -113,6 +128,14 @@ void MainWindow::buildAnalysisPanel() {
     markSecondaryText(analysisHint_);
     layout->addWidget(analysisHint_);
 
+    // Bouton « Corriger » : applique la correction du constat sélectionné. Sans membre de
+    // MainWindow : le bouton appartient au conteneur et les lambdas le captent par pointeur.
+    auto* fixButton = new QPushButton(tr("Corriger"), container);
+    fixButton->setObjectName(QStringLiteral("analysisFixButton"));
+    fixButton->setAccessibleName(tr("Corriger le problème sélectionné"));
+    fixButton->setEnabled(false);
+    layout->addWidget(fixButton);
+
     analysisDock_->setWidget(container);
     addDockWidget(Qt::RightDockWidgetArea, analysisDock_);
     analysisDock_->hide();
@@ -136,11 +159,119 @@ void MainWindow::buildAnalysisPanel() {
     connect(analysisList_, &QListWidget::itemActivated, this,
             [this](QListWidgetItem* item) { activateAnalysisItem(item, true); });
     connect(analysisList_, &QListWidget::currentItemChanged, this,
-            [this](QListWidgetItem* current, QListWidgetItem*) {
+            [this, fixButton](QListWidgetItem* current, QListWidgetItem*) {
                 const QString hint =
                     current != nullptr ? current->data(kHintRole).toString() : QString();
                 analysisHint_->setText(hint.isEmpty() ? QString() : tr("Piste : %1").arg(hint));
+                const bool hasFix =
+                    current != nullptr && current->data(kFixKindRole).toInt() !=
+                                              static_cast<int>(stitch_analysis::FixKind::None);
+                fixButton->setEnabled(hasFix && !analysisIsStale_);
+                fixButton->setText(
+                    hasFix ? tr("Corriger : %1").arg(current->data(kFixLabelRole).toString())
+                           : tr("Corriger"));
             });
+    // Le widget ne fait que traduire le `Fix` du constat en commande existante (annulable).
+    connect(fixButton, &QPushButton::clicked, this, [this, fixButton] {
+        QListWidgetItem* item = analysisList_->currentItem();
+        if (item == nullptr || analysisIsStale_) {
+            return;
+        }
+        using stitch_analysis::FixKind;
+        const auto kind = static_cast<FixKind>(item->data(kFixKindRole).toInt());
+        const ObjectId object{item->data(kObjectRole).toULongLong()};
+        const Micrometers value{item->data(kFixValueRole).toInt()};
+        bool applied = false;
+        switch (kind) {
+        case FixKind::None:
+            return;
+        case FixKind::MoveIntoHoop: {
+            const auto* emb = project_.findEmbroidery(object);
+            if (emb == nullptr || project_.findObject(emb->source_vector) == nullptr) {
+                break;
+            }
+            const Vec2um delta{Micrometers{item->data(kFixDxRole).toInt()},
+                               Micrometers{item->data(kFixDyRole).toInt()}};
+            undoStack_.execute(
+                std::make_unique<commands::TranslateVectorObjectCommand>(emb->source_vector, delta),
+                project_);
+            applied = true;
+            break;
+        }
+        case FixKind::EnlargeText: {
+            const ObjectId textId{item->data(kFixTextRole).toULongLong()};
+            const auto* current = project_.findText(textId);
+            if (current == nullptr) {
+                break;
+            }
+            document::TextObject text = *current;
+            // Comme l'édition du texte : repartir de la position visible des lettres.
+            QString ignored;
+            if (const auto font = FontCatalog::instance().load(text.font, &ignored)) {
+                if (const auto moved = lettering::text_displacement(project_, text, *font)) {
+                    text.origin = text.origin + *moved;
+                }
+            }
+            text.cap_height = value;
+            applied = applyText(std::move(text), /*isNew=*/false); // refresh + actions inclus
+            if (applied) {
+                fixButton->setEnabled(false);
+                return;
+            }
+            break;
+        }
+        case FixKind::ClampStitchLength: {
+            const auto* emb = project_.findEmbroidery(object);
+            if (emb == nullptr) {
+                break;
+            }
+            document::StitchParams params = emb->params;
+            std::visit(
+                [&](auto& p) {
+                    using T = std::decay_t<decltype(p)>;
+                    if constexpr (std::is_same_v<T, document::RunningStitchParams> ||
+                                  std::is_same_v<T, document::TatamiParams> ||
+                                  std::is_same_v<T, document::DirectionalFillParams>) {
+                        p.stitch_length = value;
+                    } else if constexpr (std::is_same_v<T, document::SatinParams>) {
+                        p.max_stitch_length = value;
+                    } else if constexpr (std::is_same_v<T, document::AutoSatinParams>) {
+                        p.split_threshold = value;
+                    }
+                },
+                params);
+            undoStack_.execute(std::make_unique<commands::SetStitchParamsCommand>(
+                                   object, params, tr("Longueur de point").toStdString()),
+                               project_);
+            if (const auto* now = project_.findEmbroidery(object)) {
+                propertiesPanel_->adoptParams(object, now->params);
+            }
+            applied = true;
+            break;
+        }
+        case FixKind::SplitLongStitches:
+        case FixKind::EnableFinishing: {
+            document::SequenceFinishing finishing = project_.finishing;
+            if (kind == FixKind::SplitLongStitches) {
+                finishing.split_long_stitches = true;
+            } else {
+                finishing.enabled = true;
+            }
+            undoStack_.execute(std::make_unique<commands::SetFinishingCommand>(finishing),
+                               project_);
+            applied = true;
+            break;
+        }
+        }
+        if (!applied) {
+            statusBar()->showMessage(tr("Cette correction n'est plus applicable."), 6000);
+            return;
+        }
+        fixButton->setEnabled(false); // le résultat devient périmé et sera recalculé
+        refreshImage();
+        updateActions();
+        statusBar()->showMessage(tr("Correction appliquée. Ctrl+Z pour annuler."), 8000);
+    });
     connect(analysisList_, &QListWidget::customContextMenuRequested, this, [this](QPoint pos) {
         QListWidgetItem* item = analysisList_->itemAt(pos);
         if (item == nullptr || item->data(kSeverityRole).toInt() < 0) {
@@ -338,20 +469,14 @@ void MainWindow::runAnalysisInternal(bool explicitRequest) {
         analysisHint_->clear();
         return;
     }
-    stitch_analysis::AnalysisOptions opts;
-    const document::Canvas& canvas = project_.canvas; // cadre défini par l'utilisateur
-    // Zone BRODABLE : le cadre moins la marge de sécurité.
-    opts.hoop = stitch::BoundsUm{Vec2um{Micrometers{-canvas.usable_width().value / 2},
-                                        Micrometers{-canvas.usable_height().value / 2}},
-                                 Vec2um{Micrometers{canvas.usable_width().value / 2},
-                                        Micrometers{canvas.usable_height().value / 2}}};
-    auto report = stitch_analysis::analyze_detailed(*sequence_, opts);
-    // Règles du lettrage (texte trop petit, trait trop fin) : elles lisent l'intention du texte.
-    for (auto& finding : stitch_analysis::analyze_text_objects(project_)) {
-        report.findings.push_back(std::move(finding));
-    }
+    // Point d'entrée unique : options du projet, cadre, règles de texte, réglages hors limites.
+    const auto report = stitch_analysis::analyze_project(project_, *sequence_);
 
     analysisList_->clear();
+    if (auto* fix = analysisDock_->findChild<QPushButton*>(QStringLiteral("analysisFixButton"))) {
+        fix->setEnabled(false);
+        fix->setText(tr("Corriger"));
+    }
     std::map<std::string, int> severityOfCategory;
     for (const auto& f : report.findings) {
         const int rank = severityRank(f.severity);
@@ -374,6 +499,12 @@ void MainWindow::runAnalysisInternal(bool explicitRequest) {
         item->setData(kSeverityRole, rank);
         item->setData(kObjectRole, static_cast<qulonglong>(f.object.value));
         item->setData(kHintRole, QString::fromStdString(f.hint));
+        item->setData(kFixKindRole, static_cast<int>(f.fix.kind));
+        item->setData(kFixDxRole, f.fix.delta.x.value);
+        item->setData(kFixDyRole, f.fix.delta.y.value);
+        item->setData(kFixValueRole, f.fix.value.value);
+        item->setData(kFixTextRole, static_cast<qulonglong>(f.fix.text.value));
+        item->setData(kFixLabelRole, QString::fromStdString(f.fix.label));
         // (0, 0) est une position légitime : « sans position » = ni objet ni coordonnée.
         item->setData(kHasLocationRole,
                       f.object.value != 0 || f.location.x.value != 0 || f.location.y.value != 0);
@@ -449,6 +580,10 @@ void MainWindow::markAnalysisStale() {
     }
     analysisIsStale_ = true;
     analysisStale_->show();
+    // Les corrections portent sur l'ancien motif : plus applicables avant la ré-analyse.
+    if (auto* fix = analysisDock_->findChild<QPushButton*>(QStringLiteral("analysisFixButton"))) {
+        fix->setEnabled(false);
+    }
     // Dock visible : ré-analyse différée de 300 ms (regroupe les rafales de modifications) ;
     // sinon le résultat reste marqué périmé et sera recalculé à l'ouverture du dock.
     if (analysisDock_->isVisible()) {
