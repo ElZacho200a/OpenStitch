@@ -185,6 +185,7 @@ void classify_and_build_embroidery(const geometry::PathSet& main, const RegionSo
         // Toute zone remplissable -> tatami. L'orientation des fils reste
         // éditable ensuite.
         document::TatamiParams tp;
+        tp.inset = options.fill_inset;
         emb.params = tp;
         emb.name = "Remplissage " + source.label;
     } else {
@@ -676,6 +677,12 @@ Result<AutoResult> auto_digitize(const segmentation::Segmentation& input,
     overlap_neighbor_fills(result, regionVector, borders, options);
     order_in_layers(result, {}, options);
     return result;
+}
+
+void apply_solid_block(AutoOptions& options, double overlap_mm) {
+    const auto overlapUm = static_cast<std::int32_t>(std::lround(overlap_mm * 1000.0));
+    options.fill_overlap = Micrometers{std::max(options.fill_overlap.value, overlapUm)};
+    options.min_region_area_mm2 = std::max(options.min_region_area_mm2, options.min_fill_area_mm2);
 }
 
 Result<AutoResult> auto_digitize_vectors(const std::vector<document::VectorObject>& vectors,

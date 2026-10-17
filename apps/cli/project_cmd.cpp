@@ -19,13 +19,16 @@
 #include "openstitch/formats/machine_design.hpp"
 #include "openstitch/formats/svg.hpp"
 #include "openstitch/project_io/machine_file.hpp"
+#include "openstitch/project_ops/analysis.hpp"
 #include "openstitch/project_ops/errors.hpp"
 #include "openstitch/project_ops/factory.hpp"
 #include "openstitch/project_ops/inspect.hpp"
 #include "openstitch/project_ops/operations.hpp"
 #include "openstitch/project_ops/project_file.hpp"
 #include "openstitch/project_ops/quality.hpp"
+#include "openstitch/project_ops/render.hpp"
 #include "openstitch/project_ops/report.hpp"
+#include "openstitch/project_ops/sweep.hpp"
 #include "openstitch/stitch/sequence.hpp"
 #include "openstitch/stitch_generation/overrides.hpp"
 
@@ -204,8 +207,10 @@ int digitize_one(const DigitizeArgs& a, const DigitizeOptionValues& v, bool json
                          "plus petit, --max-colors plus grand, ou --skip-background no si le fond "
                          "a été ignoré");
     }
-    fmt::print(st, "Objets brodés : {} (satin={} tatami={} running={})\n",
-               report->embroidery_objects, report->satin, report->tatami, report->running);
+    fmt::print(st,
+               "Objets brodés : {} (satin={} tatami={} running={} directionnel={} anneaux={})\n",
+               report->embroidery_objects, report->satin, report->tatami, report->running,
+               report->flow_fill, report->rings_satin);
 
     const auto seq = openstitch::stitch_generation::effective_sequence(project);
     if (!seq) {
@@ -345,14 +350,49 @@ void add_digitize_options(CLI::App* cmd, DigitizeOptionValues& v) {
                     "Mode formes : les régions plus petites que cette aire (mm²) sont fusionnées "
                     "avec leur voisine ; 0 = désactivé (défaut : 3)")
         ->check(CLI::NonNegativeNumber);
+    cmd->add_option(
+           "--fill-overlap", s.fill_overlap_mm,
+           "Mode formes : débord (mm) de chaque tatami sur ses voisins brodés, le long des "
+           "bords partagés (ferme la dentelure de tissu entre zones) ; 0 = désactivé "
+           "(défaut)")
+        ->check(CLI::NonNegativeNumber);
+    cmd->add_flag(
+        "--no-underpath{false}", s.fill_hidden_underpath,
+        "Mode formes : pas de liaison cousue entre les morceaux de rangées d'un tatami (elles "
+        "restent visibles par-dessus le remplissage en brins obliques) : plus de sauts et "
+        "de coupes, remplissages propres ; à associer à --hidden-travel");
+    cmd->add_option("--fill-inset", s.fill_inset_mm,
+                    "Mode formes : retrait du bord de chaque tatami en mm (défaut : 0.2) ; 0 ferme "
+                    "les interstices entre zones voisines (+~16 % de points)")
+        ->check(CLI::NonNegativeNumber);
     cmd->add_option("--island-cleanup", s.island_cleanup_mm2,
                     "Mode formes : les îlots plus petits que cette aire (mm²) sont fusionnés dans "
                     "la voisine de COULEUR la plus proche (pas la plus longue frontière) ; 0 = "
                     "désactivé (défaut)")
         ->check(CLI::NonNegativeNumber);
+    cmd->add_flag("--rings-satin", s.rings_satin,
+                  "Mode formes : les cercles et ellipses épaissis (hublots, ventouses, bulles, "
+                  "yeux) sont reconnus par leurs deux bords concentriques et cousus en auto-satin "
+                  "(un rond net), retirés du remplissage qui les portait");
+    cmd->add_flag("--flow-fill", s.flow_fill,
+                  "Mode formes : les grandes formes allongées (tentacules, rubans, nuages, fumée) "
+                  "passent en remplissage directionnel dont les guides suivent l'axe médian : les "
+                  "rangées suggèrent le mouvement. La couleur la plus sombre reste en tatami");
+    cmd->add_option("--flow-min-area", s.flow_min_area_mm2,
+                    "Avec --flow-fill : aire minimale (mm2) d'une forme (défaut : 10)");
+    cmd->add_option("--flow-min-elongation", s.flow_min_elongation,
+                    "Avec --flow-fill : allongement minimal (plus long guide au carré / aire ; "
+                    "défaut : 2.5, un disque vaut ~0, une bande >= 5)");
     cmd->add_option("--island-max-delta-e", s.island_max_delta_e,
                     "Avec --island-cleanup : refuse une voisine plus éloignée que cet écart de "
                     "couleur CIELAB (ΔE) ; 0 = pas de limite (défaut)")
+        ->check(CLI::NonNegativeNumber);
+    cmd->add_flag(
+        "--solid-block", s.solid_block,
+        "Mode formes : bloc uni, sans tissu visible entre zones voisines (les "
+        "remplissages débordent sous leurs voisins, les petites régions sont fusionnées)");
+    cmd->add_option("--solid-block-overlap", s.solid_block_overlap_mm,
+                    "Avec --solid-block : débord sous les voisins, en mm (défaut : 0.5)")
         ->check(CLI::NonNegativeNumber);
     cmd->add_option("--trim-threshold", s.trim_threshold_mm,
                     "Coupe automatique au-delà de ce déplacement, en mm (défaut : 3)")
@@ -360,6 +400,20 @@ void add_digitize_options(CLI::App* cmd, DigitizeOptionValues& v) {
     cmd->add_flag("--dark-lines", s.dark_lines,
                   "Mode formes : les traits sombres fins (contours noirs, mâts, haubans) sont "
                   "séparés des remplissages et cousus par-dessus, en dernier, en point droit");
+    cmd->add_option(
+           "--dark-lines-bars", s.dark_lines_bars_mm,
+           "Avec --dark-lines : les barres sombres plus larges qu'un trait mais de moins de "
+           "cette largeur (mm ; mât, vergues, essayer 4) sont cousues en bandes (satin) au "
+           "lieu de rester dans le remplissage noir ; 0 = désactivé (défaut)")
+        ->check(CLI::NonNegativeNumber);
+    cmd->add_option("--dark-lines-min-length", s.dark_lines_min_length_mm,
+                    "Avec --dark-lines : les fragments de trait isolés plus courts que cette "
+                    "longueur (mm, essayer 8) ne sont pas cousus ; 0 = désactivé (défaut)")
+        ->check(CLI::NonNegativeNumber);
+    cmd->add_flag("--dark-lines-objects-only", s.dark_lines_objects_only,
+                  "Avec --dark-lines : ne coud que les vrais objets (haubans, mâts, cordages) ; un "
+                  "trait entre deux zones de couleurs différentes est une séparation, laissée aux "
+                  "remplissages (le contour du motif contre le fond reste cousu)");
     cmd->add_option("--dark-lines-width", s.dark_lines_width_mm,
                     "Avec --dark-lines : largeur maximale d'un trait, en mm (défaut : 1.6)")
         ->check(CLI::Range(0.3, 6.0));
@@ -401,6 +455,12 @@ void add_digitize_options(CLI::App* cmd, DigitizeOptionValues& v) {
     cmd->add_flag("--single-path", s.single_path,
                   "Mode contours : relie les traits en un minimum de polylignes (parcours "
                   "eulérien, repasse un court tronçon plutôt que de couper le fil)");
+    cmd->add_option(
+        "--pre", s.pre,
+        "Traitements d'image AVANT la segmentation (non destructifs, enregistrés dans "
+        "le projet), séparés par « + » : median[:1|2] bilateral[:1..3] flatten[:1..3] clahe[:C] "
+        "sharpen[:A] quantize[:N] "
+        "contrast:B:C gray crop:x:y:w:h flip:h|v rotate:1..3. Ex. : bilateral:2+median:1");
     cmd->add_flag("--coherent-lines", s.coherent_lines,
                   "Mode contours : extrait d'abord des traits de la photo (lignes cohérentes, "
                   "FDoG) avant la segmentation");
@@ -412,6 +472,11 @@ void add_digitize_options(CLI::App* cmd, DigitizeOptionValues& v) {
         ->check(CLI::NonNegativeNumber);
     cmd->add_flag("--stipple-invert", s.stipple_invert,
                   "Mode stipple : points denses sur les zones claires (fil clair, fond sombre)");
+    cmd->add_option(
+        "--debug-dir", s.debug_dir,
+        "Diagnostic : écrit dans ce dossier les masques de décision (regions.png, "
+        "traits.png), la couverture réelle des fils (couverture.png), la carte d'erreurs "
+        "(fidelite.png) et decisions.json");
     cmd->add_option("--lock", s.lock, "Point d'arrêt : none|backforth|triangle|zigzag")
         ->check(CLI::IsMember({"none", "backforth", "triangle", "zigzag"}));
 }
@@ -817,6 +882,413 @@ CLI::App* register_project_commands(CLI::App& app, bool& jsonOut) {
                        po::json_quote(format), po::json_quote(a.out), ec ? 0 : bytes, extra);
         } else {
             fmt::print("Exporté ({}) : {}\n", format, a.out);
+        }
+        g_exit = 0;
+    });
+
+    // fidelity / density / at / diagnose : analyses sur la séquence EFFECTIVE ---------------
+    struct AnalysisArgs {
+        std::string osp, output, map, mm, px;
+        double a{0.0}, b{0.0}, c{0.0};
+        bool noClobber{false};
+    };
+    const auto write_bytes = [](const std::string& path, const std::vector<std::uint8_t>& bytes,
+                                std::string& err) {
+        std::ofstream f(path, std::ios::binary);
+        f.write(reinterpret_cast<const char*>(bytes.data()),
+                static_cast<std::streamsize>(bytes.size()));
+        if (!f) {
+            err = "écriture impossible : " + path;
+            return false;
+        }
+        return true;
+    };
+
+    auto fiArgs = std::make_shared<AnalysisArgs>();
+    fiArgs->a = 0.55;
+    fiArgs->b = 1.6;
+    c = project->add_subcommand("fidelity",
+                                "Fidélité à l'image source : détails perdus, manques et "
+                                "TISSU VISIBLE à l'intérieur du motif (repère exact)");
+    c->add_option("osp", fiArgs->osp, "Projet .osp (avec son image source)")->required();
+    c->add_option("--thread-mm", fiArgs->a,
+                  "Diamètre de fil retenu pour la couverture (défaut 0.55)")
+        ->check(CLI::Range(0.1, 2.0));
+    c->add_option("--hole-zone-mm", fiArgs->b,
+                  "Distance au fond en deçà de laquelle un manque est un bord (défaut 1.6)")
+        ->check(CLI::Range(0.2, 10.0));
+    c->add_option("--map", fiArgs->map, "Carte d'erreurs PNG (rouge = trou intérieur)");
+    c->add_option("--output,-o", fiArgs->output, "Écrit le rapport JSON dans ce fichier");
+    c->add_flag("--no-clobber", fiArgs->noClobber, "Refuse d'écraser les fichiers de sortie");
+    c->add_flag("--json", jsonOut, "Rapport JSON (openstitch.fidelity/1) sur stdout");
+    c->callback([fiArgs, &jsonOut, write_bytes] {
+        for (const auto* p : {&fiArgs->map, &fiArgs->output}) {
+            if (const auto refused = check_output("fidelity", jsonOut, *p, fiArgs->noClobber)) {
+                g_exit = *refused;
+                return;
+            }
+        }
+        int rc = 0;
+        auto opened = load("fidelity", jsonOut, fiArgs->osp, rc);
+        if (!opened) {
+            g_exit = rc;
+            return;
+        }
+        po::FidelityOptions fo;
+        fo.thread_mm = fiArgs->a;
+        fo.hole_zone_mm = fiArgs->b;
+        fo.error_map = !fiArgs->map.empty();
+        const auto report = po::measure_fidelity(opened->project, fo);
+        if (!report) {
+            g_exit = fail_err("fidelity", jsonOut, po::code::kRefused, report.error());
+            return;
+        }
+        std::string err;
+        if (!fiArgs->output.empty() && !write_text(fs::path(fiArgs->output), report->json, err)) {
+            g_exit = fail_with("fidelity", jsonOut, po::code::kIo, err);
+            return;
+        }
+        if (!fiArgs->map.empty() && !write_bytes(fiArgs->map, report->error_map_png, err)) {
+            g_exit = fail_with("fidelity", jsonOut, po::code::kIo, err);
+            return;
+        }
+        fmt::print("{}", jsonOut ? report->json + "\n" : report->text);
+        g_exit = 0;
+    });
+
+    auto deArgs = std::make_shared<AnalysisArgs>();
+    deArgs->a = 1.0;
+    deArgs->b = 4.0;
+    c = project->add_subcommand("density",
+                                "Épaisseurs de fil par zone (1 = un remplissage normal) : "
+                                "surépaisseurs, carte de chaleur PNG, objets en cause");
+    c->add_option("osp", deArgs->osp, "Projet .osp")->required();
+    c->add_option("--cell-mm", deArgs->a, "Côté d'une cellule d'analyse en mm (défaut 1)")
+        ->check(CLI::Range(0.1, 10.0));
+    c->add_option("--hotspot-layers", deArgs->b,
+                  "Nombre d'épaisseurs à partir duquel une zone est signalée (défaut 4)")
+        ->check(CLI::Range(1.0, 20.0));
+    c->add_option("--heatmap", deArgs->map, "Carte de chaleur PNG (bleu clair -> vert -> rouge)");
+    c->add_option("--output,-o", deArgs->output, "Écrit le rapport JSON dans ce fichier");
+    c->add_flag("--no-clobber", deArgs->noClobber, "Refuse d'écraser les fichiers de sortie");
+    c->add_flag("--json", jsonOut, "Rapport JSON (openstitch.density/1) sur stdout");
+    c->callback([deArgs, &jsonOut, write_bytes] {
+        for (const auto* p : {&deArgs->map, &deArgs->output}) {
+            if (const auto refused = check_output("density", jsonOut, *p, deArgs->noClobber)) {
+                g_exit = *refused;
+                return;
+            }
+        }
+        int rc = 0;
+        auto opened = load("density", jsonOut, deArgs->osp, rc);
+        if (!opened) {
+            g_exit = rc;
+            return;
+        }
+        po::DensityOptions dopt;
+        dopt.cell_mm = deArgs->a;
+        dopt.hotspot_layers = deArgs->b;
+        dopt.heatmap = !deArgs->map.empty();
+        const auto report = po::measure_density(opened->project, dopt);
+        if (!report) {
+            g_exit = fail_err("density", jsonOut, po::code::kRefused, report.error());
+            return;
+        }
+        std::string err;
+        if (!deArgs->output.empty() && !write_text(fs::path(deArgs->output), report->json, err)) {
+            g_exit = fail_with("density", jsonOut, po::code::kIo, err);
+            return;
+        }
+        if (!deArgs->map.empty() && !write_bytes(deArgs->map, report->heatmap_png, err)) {
+            g_exit = fail_with("density", jsonOut, po::code::kIo, err);
+            return;
+        }
+        fmt::print("{}", jsonOut ? report->json + "\n" : report->text);
+        g_exit = 0;
+    });
+
+    auto atArgs = std::make_shared<AnalysisArgs>();
+    atArgs->a = 0.4;
+    c = project->add_subcommand("at",
+                                "Quel objet a cousu ce point ? Objets dont un brin passe près "
+                                "d'un point, du dernier cousu (visible) au premier");
+    c->add_option("osp", atArgs->osp, "Projet .osp")->required();
+    c->add_option("--mm", atArgs->mm,
+                  "Point X,Y en mm (repère modèle : Y vers le haut, origine au "
+                  "centre de l'image source)");
+    c->add_option("--px", atArgs->px,
+                  "Point X,Y en pixels de l'image source (origine en haut à "
+                  "gauche)");
+    c->add_option("--radius-mm", atArgs->a, "Rayon de recherche en mm (défaut 0.4)")
+        ->check(CLI::Range(0.05, 50.0));
+    c->add_flag("--json", jsonOut, "Rapport JSON (openstitch.locate/1) sur stdout");
+    c->callback([atArgs, &jsonOut] {
+        double x = 0.0, y = 0.0;
+        int rc = 0;
+        auto opened = load("at", jsonOut, atArgs->osp, rc);
+        if (!opened) {
+            g_exit = rc;
+            return;
+        }
+        if (!atArgs->mm.empty() == !atArgs->px.empty()) {
+            g_exit = fail_with("at", jsonOut, po::code::kUsage,
+                               "indiquer exactement un point : --mm X,Y ou --px X,Y",
+                               "exemple : project at p.osp --px 640,410");
+            return;
+        }
+        if (!atArgs->mm.empty()) {
+            if (std::sscanf(atArgs->mm.c_str(), "%lf,%lf", &x, &y) != 2) {
+                g_exit = fail_with("at", jsonOut, po::code::kUsage,
+                                   "point invalide : « " + atArgs->mm + " »", "format : X,Y");
+                return;
+            }
+        } else {
+            double px = 0.0, py = 0.0;
+            const auto [workW, workH] = po::working_size(opened->project);
+            if (std::sscanf(atArgs->px.c_str(), "%lf,%lf", &px, &py) != 2 || workW == 0) {
+                g_exit = fail_with("at", jsonOut, po::code::kUsage,
+                                   "point en pixels invalide ou projet sans image source",
+                                   "format : X,Y ; utiliser --mm sans image");
+                return;
+            }
+            const double mmpp = opened->project.mm_per_px.value;
+            x = (px - workW / 2.0) * mmpp;
+            y = (workH / 2.0 - py) * mmpp;
+        }
+        po::LocateQuery q;
+        q.x_mm = x;
+        q.y_mm = y;
+        q.radius_mm = atArgs->a;
+        const auto report = po::locate_objects(opened->project, q);
+        if (!report) {
+            g_exit = fail_err("at", jsonOut, po::code::kRefused, report.error());
+            return;
+        }
+        fmt::print("{}", jsonOut ? report->json + "\n" : report->text);
+        g_exit = 0;
+    });
+
+    auto dgArgs = std::make_shared<AnalysisArgs>();
+    c = project->add_subcommand("diagnose",
+                                "Détecteurs de défauts connus (points hors image, objet "
+                                "étalé, fils quasi identiques, tissu visible, "
+                                "surépaisseurs, liaisons visibles) avec objets et "
+                                "option conseillée (code 2 si erreurs)");
+    c->add_option("osp", dgArgs->osp, "Projet .osp")->required();
+    c->add_option("--output,-o", dgArgs->output, "Écrit le rapport JSON dans ce fichier");
+    c->add_flag("--no-clobber", dgArgs->noClobber, "Refuse d'écraser le fichier de sortie");
+    c->add_flag("--json", jsonOut, "Rapport JSON (openstitch.diagnose/1) sur stdout");
+    c->callback([dgArgs, &jsonOut] {
+        if (const auto refused =
+                check_output("diagnose", jsonOut, dgArgs->output, dgArgs->noClobber)) {
+            g_exit = *refused;
+            return;
+        }
+        int rc = 0;
+        auto opened = load("diagnose", jsonOut, dgArgs->osp, rc);
+        if (!opened) {
+            g_exit = rc;
+            return;
+        }
+        const auto report = po::diagnose_project(opened->project);
+        if (!report) {
+            g_exit = fail_err("diagnose", jsonOut, po::code::kRefused, report.error());
+            return;
+        }
+        std::string err;
+        if (!dgArgs->output.empty() && !write_text(fs::path(dgArgs->output), report->json, err)) {
+            g_exit = fail_with("diagnose", jsonOut, po::code::kIo, err);
+            return;
+        }
+        fmt::print("{}", jsonOut ? report->json + "\n" : report->text);
+        g_exit = report->errors == 0 ? 0 : kExitQuality;
+    });
+
+    // sweep -----------------------------------------------------------------------------
+    struct SweepArgs {
+        std::string image, sheet, sheetCrop{"0,0,1,1"}, markdown, csv, journal, title, keepDir;
+        std::vector<std::string> vary;
+        int cols{3}, tile{480};
+        bool noClobber{false};
+    };
+    auto swArgs = std::make_shared<SweepArgs>();
+    auto swValues = std::make_shared<DigitizeOptionValues>();
+    c = project->add_subcommand(
+        "sweep",
+        "Balayage d'options de numérisation : une grille de réglages, un tableau comparatif "
+        "OBJECTIF (coupes, tissu visible, détails perdus, surépaisseurs, défauts) avec les "
+        "variantes non dominées, et une planche de zooms réalistes");
+    c->add_option("image", swArgs->image, "Image source (PNG, JPEG, BMP, TIFF)")->required();
+    add_digitize_options(c, *swValues);
+    c->add_option("--vary,-V", swArgs->vary,
+                  "Axe du balayage « option=v1,v2,… » (nom d'une option de digitize sans « -- » ; "
+                  "ex. island-cleanup=0,20) ; répétable, produit cartésien (64 variantes au plus)");
+    c->add_option("--sheet", swArgs->sheet,
+                  "Planche PNG de vignettes réalistes (une par variante)");
+    c->add_option("--sheet-crop", swArgs->sheetCrop,
+                  "Zone de chaque vignette x0,y0,x1,y1 en fractions du motif (défaut 0,0,1,1)");
+    c->add_option("--sheet-cols", swArgs->cols, "Colonnes de la planche (défaut 3)")
+        ->check(CLI::Range(1, 12));
+    c->add_option("--sheet-tile", swArgs->tile, "Largeur d'une vignette en pixels (défaut 480)")
+        ->check(CLI::Range(120, 2000));
+    c->add_option("--keep-dir", swArgs->keepDir, "Écrit chaque variante en .osp dans ce dossier");
+    c->add_option("--markdown", swArgs->markdown, "Écrit le tableau en Markdown dans ce fichier");
+    c->add_option("--csv", swArgs->csv, "Écrit le tableau en CSV dans ce fichier");
+    c->add_option("--journal", swArgs->journal,
+                  "AJOUTE le tableau (Markdown) à la fin de ce fichier, sous --title");
+    c->add_option("--title", swArgs->title, "Titre de la section ajoutée au journal");
+    c->add_flag("--no-clobber", swArgs->noClobber, "Refuse d'écraser les fichiers de sortie");
+    c->add_flag("--json", jsonOut, "Rapport JSON (openstitch.sweep/1) sur stdout");
+    c->callback([swArgs, swValues, &jsonOut, write_bytes] {
+        finalize_digitize_options(*swValues);
+        for (const auto* p : {&swArgs->sheet, &swArgs->markdown, &swArgs->csv}) {
+            if (const auto refused = check_output("sweep", jsonOut, *p, swArgs->noClobber)) {
+                g_exit = *refused;
+                return;
+            }
+        }
+        po::SweepOptions so;
+        so.base = swValues->settings;
+        for (const auto& spec : swArgs->vary) {
+            const auto eq = spec.find('=');
+            if (eq == std::string::npos || eq == 0 || eq + 1 >= spec.size()) {
+                g_exit = fail_with(
+                    "sweep", jsonOut, po::code::kUsage, "axe invalide : « " + spec + " »",
+                    "format : option=v1,v2 (options : " + po::digitize_setting_keys() + ")");
+                return;
+            }
+            po::SweepAxis axis;
+            axis.key = spec.substr(0, eq);
+            std::stringstream values(spec.substr(eq + 1));
+            for (std::string v; std::getline(values, v, ',');) {
+                axis.values.push_back(v);
+            }
+            so.axes.push_back(std::move(axis));
+        }
+        so.sheet = !swArgs->sheet.empty();
+        so.sheet_columns = swArgs->cols;
+        so.sheet_tile_px = swArgs->tile;
+        so.keep_dir = swArgs->keepDir;
+        if (std::sscanf(swArgs->sheetCrop.c_str(), "%lf,%lf,%lf,%lf", &so.sheet_crop[0],
+                        &so.sheet_crop[1], &so.sheet_crop[2], &so.sheet_crop[3]) != 4) {
+            g_exit =
+                fail_with("sweep", jsonOut, po::code::kUsage,
+                          "zone invalide : « " + swArgs->sheetCrop + " »", "format : x0,y0,x1,y1");
+            return;
+        }
+        if (!so.keep_dir.empty()) {
+            std::error_code ec;
+            fs::create_directories(so.keep_dir, ec);
+        }
+        const po::StatusLog log = [](std::string_view line) { fmt::print(stderr, "{}\n", line); };
+        const auto report = po::run_sweep(fs::path(swArgs->image), so, log);
+        if (!report) {
+            g_exit = fail_err("sweep", jsonOut, po::code::kRefused, report.error());
+            return;
+        }
+        std::string err;
+        if (!swArgs->markdown.empty() &&
+            !write_text(fs::path(swArgs->markdown), report->markdown, err)) {
+            g_exit = fail_with("sweep", jsonOut, po::code::kIo, err);
+            return;
+        }
+        if (!swArgs->csv.empty() && !write_text(fs::path(swArgs->csv), report->csv, err)) {
+            g_exit = fail_with("sweep", jsonOut, po::code::kIo, err);
+            return;
+        }
+        if (!swArgs->sheet.empty() && !write_bytes(swArgs->sheet, report->sheet_png, err)) {
+            g_exit = fail_with("sweep", jsonOut, po::code::kIo, err);
+            return;
+        }
+        if (!swArgs->journal.empty()) {
+            std::ofstream journal(swArgs->journal, std::ios::app);
+            journal << "\n### " << (swArgs->title.empty() ? "Balayage" : swArgs->title) << "\n\n"
+                    << "Image : `" << swArgs->image << "`\n\n"
+                    << report->markdown;
+            if (!journal) {
+                g_exit = fail_with("sweep", jsonOut, po::code::kIo,
+                                   "écriture impossible : " + swArgs->journal);
+                return;
+            }
+        }
+        fmt::print("{}", jsonOut ? report->json + "\n" : report->markdown);
+        g_exit = 0;
+    });
+
+    // render ----------------------------------------------------------------------------
+    struct RenderArgs {
+        std::string osp, out, fabric{"#00FF00"}, crop{"0,0,1,1"};
+        double pxPerMm{5.0}, thread{0.35};
+        bool noClobber{false};
+    };
+    auto rdArgs = std::make_shared<RenderArgs>();
+    c = project->add_subcommand("render", "Rendu RÉALISTE (fils texturés, le moteur de l'aperçu de "
+                                          "l'application) en PNG, sur fond de couleur franche "
+                                          "(vert par défaut : trous et interstices visibles)");
+    c->add_option("osp", rdArgs->osp, "Projet .osp")->required();
+    c->add_option("--output,-o", rdArgs->out, "PNG à produire")->required();
+    c->add_option("--px-per-mm", rdArgs->pxPerMm, "Résolution en pixels par mm (défaut : 5)")
+        ->check(CLI::Range(0.5, 40.0));
+    c->add_option("--fabric", rdArgs->fabric, "Couleur du tissu #RRGGBB (défaut : #00FF00)");
+    c->add_option("--thread-mm", rdArgs->thread, "Diamètre apparent du fil en mm (défaut : 0.35)")
+        ->check(CLI::Range(0.1, 1.0));
+    c->add_option("--crop", rdArgs->crop,
+                  "Zone rendue : x0,y0,x1,y1 en fractions de la boîte du motif, origine en haut à "
+                  "gauche (défaut : 0,0,1,1 = tout)");
+    c->add_flag("--no-clobber", rdArgs->noClobber, "Refuse d'écraser le fichier de sortie");
+    c->add_flag("--json", jsonOut, "Rapport JSON sur stdout");
+    c->callback([rdArgs, &jsonOut] {
+        const auto& a = *rdArgs;
+        if (const auto refused = check_output("render", jsonOut, a.out, a.noClobber)) {
+            g_exit = *refused;
+            return;
+        }
+        po::RenderOptions ro;
+        ro.px_per_mm = a.pxPerMm;
+        ro.thread_width_mm = a.thread;
+        unsigned r = 0, g = 0, b = 0;
+        if (a.fabric.size() != 7 || a.fabric[0] != '#' ||
+            std::sscanf(a.fabric.c_str() + 1, "%2x%2x%2x", &r, &g, &b) != 3) {
+            g_exit = fail_with("render", jsonOut, po::code::kUsage,
+                               "couleur de tissu invalide : « " + a.fabric + " »",
+                               "format attendu : #RRGGBB");
+            return;
+        }
+        ro.fabric_rgb = {static_cast<std::uint8_t>(r), static_cast<std::uint8_t>(g),
+                         static_cast<std::uint8_t>(b)};
+        if (std::sscanf(a.crop.c_str(), "%lf,%lf,%lf,%lf", &ro.crop[0], &ro.crop[1], &ro.crop[2],
+                        &ro.crop[3]) != 4) {
+            g_exit =
+                fail_with("render", jsonOut, po::code::kUsage, "zone invalide : « " + a.crop + " »",
+                          "format attendu : x0,y0,x1,y1");
+            return;
+        }
+        int rc = 0;
+        auto opened = load("render", jsonOut, a.osp, rc);
+        if (!opened) {
+            g_exit = rc;
+            return;
+        }
+        const auto rendered = po::render_realistic_png(opened->project, ro);
+        if (!rendered) {
+            g_exit = fail_err("render", jsonOut, po::code::kRefused, rendered.error());
+            return;
+        }
+        std::ofstream file(a.out, std::ios::binary);
+        file.write(reinterpret_cast<const char*>(rendered->png.data()),
+                   static_cast<std::streamsize>(rendered->png.size()));
+        if (!file) {
+            g_exit = fail_with("render", jsonOut, po::code::kIo, "écriture impossible : " + a.out);
+            return;
+        }
+        if (jsonOut) {
+            fmt::print("{{\"schema\":\"openstitch.render/1\",\"ok\":true,\"output\":{},"
+                       "\"width\":{},\"height\":{},\"px_per_mm\":{}}}\n",
+                       po::json_quote(a.out), rendered->width, rendered->height,
+                       rendered->px_per_mm);
+        } else {
+            fmt::print("Rendu écrit : {} ({} x {} px, {:.2f} px/mm)\n", a.out, rendered->width,
+                       rendered->height, rendered->px_per_mm);
         }
         g_exit = 0;
     });

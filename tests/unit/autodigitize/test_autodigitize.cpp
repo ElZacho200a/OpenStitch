@@ -794,6 +794,31 @@ TEST_CASE("Par defaut aucun recouvrement : le contour vectoriel reste celui de l
     CHECK(redParams->inset.value == 200);
 }
 
+TEST_CASE("Bloc uni : debord sous les voisins, reglages plus forts conserves") {
+    const auto seg =
+        segmentation::segment(paint(50, 30, {{5, 5, 25, 25, kRed}, {25, 5, 45, 25, kBlue}}),
+                              {.max_colors = 2, .min_region_px = 1});
+    REQUIRE(seg.has_value());
+    AutoOptions solid = tatami_only_opts();
+    apply_solid_block(solid);
+    CHECK(solid.fill_overlap.value == 500);
+    CHECK(solid.min_region_area_mm2 >= solid.min_fill_area_mm2);
+    IdGenerator<ObjectId> ids;
+    const auto r = auto_digitize(*seg, ids, solid);
+    REQUIRE(r.has_value());
+    const auto* red = tatami_vector(*r, kRed);
+    REQUIRE(red != nullptr);
+    CHECK(bounds_mm(*red).x1 >= 0.25);   // deborde sous le bleu
+    CHECK(bounds_mm(*red).x0 >= -19.35); // bord exterieur : retrait conserve
+
+    AutoOptions stronger = tatami_only_opts();
+    stronger.fill_overlap = Micrometers{800};
+    stronger.min_region_area_mm2 = 9.0;
+    apply_solid_block(stronger);
+    CHECK(stronger.fill_overlap.value == 800);
+    CHECK(stronger.min_region_area_mm2 == 9.0);
+}
+
 TEST_CASE("Lot C : pas de debord vers le fond ignore") {
     // Fond blanc ignoré (skip_largest_region) autour d'un carré rouge : le
     // fond n'est pas brodé, le carré garde son retrait sur tous ses bords.

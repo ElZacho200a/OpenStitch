@@ -196,6 +196,46 @@ ensemble que des sections contiguës. Avant ce lot, aucune numérisation
 automatique (desktop ou CLI) n'ordonnait son résultat : les objets suivaient
 l'ordre des identifiants de région (classe k-means puis balayage de l'image).
 
+### Brins diagonaux dans les remplissages (`--no-underpath`)
+
+Vu au rendu réaliste (`project render --px-per-mm 36`) : les **liaisons entre morceaux de rangées**
+d'un tatami (`hidden_underpath`, vrai par défaut) sont cousues PAR-DESSUS les rangées, en brins obliques
+de la couleur du remplissage qui traversent la zone : c'est l'aspect « brouillon » des grandes zones.
+`--no-underpath` (`AutoOptions::fill_hidden_underpath = false`) les remplace par des sauts et des coupes :
+remplissages propres, au prix de coupes. Mesuré sur le navire (`--island-cleanup 0 --min-region-mm2 1
+--dark-lines-bars 4 --dark-lines-min-length 6 --curve-tolerance 0.4`) :
+
+| | points | sauts | coupes |
+|---|---|---|---|
+| liaisons (défaut) | 117 553 | 5 681 | 1 906 |
+| `--no-underpath` | 116 574 | 10 687 | 3 222 |
+| `--no-underpath --hidden-travel` | 113 172 | 10 293 | 2 653 |
+
+`--hidden-travel` (ponts cousus sous des points cousus plus tard) récupère 569 coupes sans rien laisser
+voir. Le vert intérieur (tissu visible, `scripts/green_holes.py`) ne bouge pas (1,52 % -> 1,59 %) : il
+vient d'ailleurs. Écartés par la mesure : `--fill-overlap` (0,3 mm : 1,52 % -> 1,30 % pour +13 % de points
+et des détails perdus 0,50 % -> 1,48 %), la compensation de tirage (1,43 % -> 0,98 % à 0,35 mm) et le
+filtre des points courts (1,52 % -> 1,42 %). Test : `digitize applies fill inset, overlap and underpath
+settings to created tatami`.
+
+### Retrait du bord des tatami (`--fill-inset`)
+
+Chaque tatami est rentré de `TatamiParams::inset` (0,2 mm) : deux zones jointives laissent ~0,4 mm
+de vide, visible comme un filet clair autour de chaque zone. `AutoOptions::fill_inset` (CLI :
+`--fill-inset MM`, défaut 0,2 inchangé, donc ni objets existants ni dorés modifiés) fixe ce retrait
+pour les tatami créés. Mesure sur le navire (`--dark-lines --island-cleanup 20`,
+`project check` -> `uncovered_ratio`, dont 0,324 de fond ignoré) :
+
+| `--fill-inset` | points | coupes | non couvert |
+|---|---|---|---|
+| 0,2 (défaut) | 91 755 | 1 359 | 0,366 |
+| 0,1 | 96 706 | 1 362 | 0,342 |
+| 0 | 106 764 | 1 368 | 0,325 |
+
+`inset` négatif refusé. Une compensation de tirage en plus (0,15 mm) n'apporte rien (0,321) et coûte
++14 % de coupes. Alternative à `fill_overlap` (désactivé, voir ci-dessus) : elle n'élargit pas la
+surface vectorielle, donc pas de débord des autres types de points.
+
 ## Fragments (Lot D)
 
 Avant ce lot, le seul seuil de taille était `SegmentationOptions::
@@ -452,16 +492,82 @@ amas de blocs. `auto_digitize_with_lines` (`line_layer.cpp`) sépare les traits 
    4-connexe), les aplats que le trait coupait en deux sont refusionnés (même couleur, redevenus
    adjacents), et une région presque entièrement faite de pixels de trait quitte les remplissages.
    Les remplissages passent donc sous le trait, sans trou.
-3. **Traits** : une segmentation à une seule couleur (la moyenne des pixels de trait) passe par
+3. **Traits** : une segmentation à une seule couleur passe par
    `analyze_contours` et `build_contour_objects` : lignes médianes en point droit, parcours
    eulérien, mêmes garde-fous que le mode contours. Les objets de ligne sont ajoutés **après** tous
    les remplissages : ils sont cousus en dernier.
+   **Couleur du fil** : la moyenne des pixels de trait tombe presque toujours à quelques unités
+   d'un noir déjà présent dans la palette (navire : `#0C121C` contre `#08080F`), ce qui ajoutait un
+   fil pour rien. Elle est donc **calée sur la couleur de région la plus proche** quand la distance
+   RGB est <= 30, et les remplissages de cette couleur sont placés en dernier (avant les traits, ordre
+   relatif conservé) pour que le noir ne soit cousu qu'une fois. Mesuré sur le navire : 8 blocs et 7
+   changements de fil -> 7 blocs et 6, points et coupes identiques. Tests :
+   `couche de traits : la couleur des traits reprend le noir de la palette`.
 
 **Dans le bureau** : la boîte *Numérisation automatique* (mode formes) propose « Traits sombres
 cousus par-dessus » (largeur maximale en mm et clarté L\* maximale, mémorisées entre les sessions) et
 « Nettoyage des îlots » (mm²). L'image lue est l'image de travail (opérations appliquées) quand elle a
 les dimensions de la segmentation, sinon l'image d'origine. Même routage que le CLI : point droit,
 parcours eulérien.
+
+**Correctif de la détection des séparations (2026-10-16).** `digitize --debug-dir` (image
+`traits.png`) a montré que presque tous les cordages d'un navire étaient classés « séparation » : les
+pixels anti-crénelés d'un trait sont étiquetés dans la région NOIRE par la quantification, donc un
+hauban sur le ciel voyait « ciel + noir » (deux couleurs) et était écarté. Les régions dont la clarté
+est celle des traits ne comptent plus comme zone voisine. Test (échoue sans le correctif :
+`cousus=0 separation=240`) : `objects_only garde un hauban dont le halo est dans la region noire`.
+Avec `--dark-lines-objects-only`, utiliser une longueur minimale plus faible (3 mm) : les cordages
+coupés aux frontières de voile donnent des fragments courts.
+
+**Séparation ou vrai objet (`--dark-lines-objects-only`).** Une illustration à contours noirs a deux
+sortes de traits sombres : ceux qui **séparent deux zones** (contour d'un nuage entre ciel et nuage,
+bord d'une voile) et ceux qui sont de **vrais objets** (hauban, mât, cordage sur une zone unie).
+Coudre les premiers par-dessus double la frontière et salit les voiles. Le critère se lit dans la
+segmentation : autour d'un pixel de trait (fenêtre de rayon largeur/2 + 1 px, pixels de trait
+exclus), au moins **deux régions de couleurs différentes** -> séparation, non cousue (le pixel reste
+rendu aux zones voisines, qui se rejoignent) ; une seule couleur -> objet, cousu. Le fond ignoré
+(label 0) ne compte pas : le contour du motif contre le fond reste un trait. Une fermeture de 2 px
+(limitée aux pixels de trait) comble les petites coupures d'un cordage qui traverse une frontière.
+Mesuré sur le navire (`--island-cleanup 0 --min-region-mm2 1`) : objets de ligne 327 -> 135, coupes
+1 989 -> 1 753 (-12 %), points 121 698 -> 116 087 ; la fidélité mesurée baisse (détails perdus 0,76 % ->
+2,31 %) puisque des traits présents dans la source ne sont plus cousus : c'est le prix, voulu, d'un
+rendu plus propre. Quelques haubans fins entre voile et ciel sont perdus. Test :
+`couche de traits : objects_only ne coud pas les separations entre deux zones`. Option du CLI
+seulement (pas encore dans la boîte de dialogue du bureau).
+
+**Barres épaisses (`--dark-lines-bars MM`).** Entre le trait fin (<= 1,6 mm, point droit) et le
+remplissage il manquait un niveau : le mât et les vergues (2 à 3 mm) sont plus larges qu'un trait,
+donc restaient dans le remplissage noir, où le réseau mât + vergues + coque en un seul bloc ressortait
+**hachuré et déchiqueté** (franges retirées, cœur en tatami). Avec cette option, les parties sombres
+plus étroites que MM (essayer 4) mais plus larges qu'un trait sont retirées des remplissages (rendues
+aux zones voisines), regroupées en une région de la couleur des traits et cousues comme **bandes**
+(`satin_bands` : auto-satin par squelette si la couverture est >= 90 %, sinon tatami), AVANT les
+traits fins, sur le même fil. Le seuil de clarté des barres est **serré** (L* du trait + 8, soit ~12) :
+au seuil large (L* <= 25) le bleu marine (L* ~ 16) passait pour une barre et ses parties étroites
+étaient recolorées en noir (réseau géant de 1 963 mm2 sur toute l'image, détails perdus 2,3 % -> 5,5 %).
+Les pixels fins à ce seuil serré sont exclus des barres. Mesuré sur le navire
+(`--island-cleanup 0 --min-region-mm2 1`) : détails perdus 0,76 % -> 0,79 % (inchangé), coupes
+1 989 -> 2 076 (+4 %), objets de ligne conservés ; mât et vergues passent d'un amas hachuré à des barres
+pleines. Test : `couche de traits : bars_max_width_mm coud les barres epaisses a part`.
+Hypothèse ÉCARTÉE par la mesure : détecter aussi les traits fins au seuil serré (contours noirs collés
+à un aplat marine) ajoutait 21 % de fil noir et 17 % de coupes sans gain de fidélité (0,76 % -> 0,81 %).
+
+**Seuil de clarté des traits (correctif, 2026-10-16).** Le seuil `--dark-lines-lightness` (25) n'est
+plus qu'un plafond : le seuil effectif est la clarté de la couleur la plus SOMBRE réellement présente
+dans la segmentation (régions d'au moins 0,05 % des pixels) plus 8, plafonné par `--dark-lines-lightness`.
+Avant, L* <= 25 englobait le bleu marine (`#022655`, L* ~ 16) : les parties étroites des vagues
+marine passaient pour des traits, étaient retirées du remplissage marine (**trou** : seul un trait fin
+les recouvrait, le tissu apparaissait) puis cousues en noir (traits noirs plats posés dans la mer) ;
+les petites zones recolorées en taches noires sur la coque en venaient aussi. Mesuré sur le navire
+(`--island-cleanup 0 --min-region-mm2 1 --dark-lines-bars 4`) : détails perdus 0,79 % -> 0,35 %, trous
+intérieurs 522 -> 330 px (24 -> 18 trous, tous <= 1,5 mm2), fil noir posé hors zone sombre 15 % -> 12 %,
+coupes 2 076 -> 2 319 (+12 %). Une image dont les traits ne sont pas noirs (traits marine) garde un
+seuil plus haut (son pixel le plus sombre le fixe).
+
+**Fragments isolés (`--dark-lines-min-length MM`).** Les composantes de trait dont la diagonale de
+boîte englobante est inférieure à MM ne sont pas cousues (éclats de vagues redressés en tirets plats :
+un objet et une coupe chacun). Navire : 6 mm retire 37 objets (-1,6 % de coupes, détails perdus +0,07
+point) ; 10 mm retire 66 objets (+0,18 point). Test : `min_line_length_mm ecarte les fragments isoles`.
 
 Limites : un seul fil pour tous les traits ; point droit seulement (pas de satin à largeur
 constante) ; un trait contre un aplat sombre de même teinte n'est pas détecté (il serait invisible).
@@ -496,6 +602,48 @@ points). Résultat déterministe pour une graine donnée.
 bouton dans le desktop pour l'instant ; le trait reste un tour de points, pas
 une trame de lignes de densité variable (PhotoStitch complet = HP-STI-017
 partiel) ; un tour TSP heuristique est ~5 % au-dessus de l'optimum.
+
+## Bloc uni (`--solid-block`)
+
+**Besoin** : une broderie pleine d'un seul tenant, où seules les couleurs changent d'une zone à
+l'autre, sans jamais voir le tissu entre deux zones voisines.
+
+**Cause des interstices** : chaque tatami est rentré de `inset` (0,2 mm) sur tous ses bords et
+`fill_overlap` vaut 0 par défaut (voir Lot C : le débord, porté par l'objet vectoriel, faisait
+déborder les autres types de points créés ensuite). Deux zones voisines laissent donc une bande de
+tissu. Une région sous `min_fill_area_mm2` (4 mm²) devient en plus un simple contour, ce qui crée des
+trous.
+
+**Réglage** : `autodigitize::apply_solid_block(options, overlap_mm = 0,5)`.
+
+- `fill_overlap` passe à au moins `overlap_mm` : débord sous les voisins BRODÉS uniquement. Le bord
+  extérieur du motif et le contact avec le fond ignoré gardent le retrait.
+- `min_region_area_mm2` passe à au moins `min_fill_area_mm2` : une petite région est fusionnée dans sa
+  voisine (aucun trou) au lieu d'être cousue en contour.
+- Jamais de réglage à la baisse : une valeur déjà plus élevée est conservée. Désactivé par défaut,
+  sortie inchangée sans l'option.
+- **CLI** : `digitize --solid-block [--solid-block-overlap MM]` (`DigitizeSettings::solid_block`,
+  `solid_block_overlap_mm`). **Bureau** : case *Bloc uni (sans tissu visible)* du dialogue de
+  numérisation (mode formes).
+
+**Mesures** (illustration de voilier 321 mm, `--max-colors 12 --dark-lines`, binaire Debug) :
+
+| Réglage | points | sauts | points < 0,5 mm | surface non couverte |
+|---|---|---|---|---|
+| sans option | 130 189 | 1 902 | 1,1 % | 6,19 % |
+| `--solid-block-overlap 0` (fusion seule) | 129 590 | 1 843 | 1,0 % | 6,14 % |
+| 0,15 mm | 213 309 | 25 703 | 20,6 % | 2,24 % |
+| 0,3 mm | 227 863 | 8 473 | 5,9 % | 0,67 % |
+| **0,5 mm (défaut)** | 165 355 | 1 102 | 3,3 % | 0,29 % |
+| 0,8 mm | 169 376 | 960 | 3,1 % | 0,22 % |
+
+Un débord inférieur à environ un pixel de l'image (0,3 mm ici) fragmente les remplissages (lamelles,
+rangées très courtes, sauts) : d'où le défaut de 0,5 mm. La fusion des petites régions est neutre ;
+tout le gain vient du débord.
+
+**Limite connue** : le débord reste porté par l'objet vectoriel (conception du Lot C) ; un satin ou un
+contour créé ensuite sur une région ainsi élargie déborde aussi. Rendu visuel non vérifié (pas de
+rendu raster en ligne de commande) : contrôle à faire dans le bureau.
 
 ## Implémentation associée
 

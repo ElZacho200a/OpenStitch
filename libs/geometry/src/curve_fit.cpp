@@ -160,9 +160,20 @@ Cubic generate_bezier(const Pts& pts, std::size_t first, std::size_t last,
         a1 = (x0 * c11 - x1 * c01) / det;
         a2 = (c00 * x1 - c01 * x0) / det;
     }
+    // Une poignée n'a aucune raison d'être plus longue que l'arc qu'elle approche : sur un système
+    // presque singulier (petite boucle presque fermée, tangentes quasi opposées) les moindres
+    // carrés renvoient des longueurs gigantesques (mesuré : jusqu'à plusieurs mètres, soit des
+    // points de broderie à 2 m du motif). `arc` est la longueur de la polyligne ajustée.
+    double arc = 0.0;
+    for (std::size_t i = first + 1; i <= last; ++i) {
+        arc += len(pts[i] - pts[i - 1]);
+    }
     const double eps = 1e-6 * seg;
-    if (std::fabs(det) <= 1e-12 || a1 < eps || a2 < eps) {
-        a1 = a2 = seg / 3.0; // heuristique de Wu/Barsky
+    if (std::fabs(det) <= 1e-12 || a1 < eps || a2 < eps || a1 > arc || a2 > arc) {
+        // Heuristique de Wu/Barsky ; une boucle (départ == arrivée) n'a pas de corde : on prend
+        // la moitié de l'arc.
+        const double base = seg > 1e-9 ? seg : arc / 2.0;
+        a1 = a2 = base / 3.0;
     }
     Cubic cb;
     cb.c[0] = p0;

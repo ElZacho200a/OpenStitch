@@ -7,6 +7,8 @@ add_executable(test_project_ops
     test_params_geometry.cpp
     test_import_text.cpp
     test_quality.cpp
+    test_render.cpp
+    test_analysis.cpp
     test_auto_satin_service.cpp
 )
 target_link_libraries(test_project_ops
