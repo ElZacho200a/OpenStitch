@@ -187,9 +187,41 @@ AnalysisReport analyze_detailed(const stitch::StitchSequence& sequence,
     bool inMove = false;
     bool trimmed = false;
 
+    // Points courts entre `near_zero_stitch` et `min_stitch` : un constat d'information par
+    // objet (clé = id d'objet, ordre croissant donc déterministe) au lieu d'un par point.
+    struct ShortGroup {
+        std::size_t count{0};
+        double shortest{0.0};
+        Vec2um first{};
+    };
+    std::map<std::uint64_t, ShortGroup> shortGroups;
+    const double nearZero =
+        static_cast<double>(std::min(options.near_zero_stitch.value, options.min_stitch.value));
+
+    // Sauts longs du déplacement en cours : signalés seulement si le déplacement s'achève sans
+    // coupe (une coupe avant OU après le saut rend le message « envisagez une coupe » faux).
+    struct PendingJump {
+        double len;
+        Vec2um pos;
+        ObjectId object;
+    };
+    std::vector<PendingJump> pendingJumps;
+    const auto flushJumps = [&](bool hadTrim) {
+        if (!hadTrim) {
+            for (const PendingJump& j : pendingJumps) {
+                add(Severity::Warning, "saut-long",
+                    "Saut long (" + format_mm_fr(j.len) + " mm) : envisagez une coupe.", j.pos,
+                    j.object,
+                    "Réordonnez les objets pour réduire les sauts, ou ajoutez une coupe.");
+            }
+        }
+        pendingJumps.clear();
+    };
+
     for (const auto& cmd : sequence.commands) {
         switch (cmd.type) {
         case stitch::CommandType::Stitch: {
+            flushJumps(trimmed); // le déplacement s'achève ici
             if (inMove && hasLastStitch && !trimmed) {
                 const double moved = length_um(cmd.pos - lastStitch);
                 if (moved > static_cast<double>(options.trim_threshold.value)) {
@@ -207,12 +239,20 @@ AnalysisReport analyze_detailed(const stitch::StitchSequence& sequence,
             // Les points d'arrêt sont courts par construction : jamais signalés.
             if (hasPrevStitch && cmd.pass != stitch::StitchPass::Lock) {
                 const double len = length_um(cmd.pos - prevStitch);
-                if (len < static_cast<double>(options.min_stitch.value)) {
+                if (len < nearZero) {
                     add(Severity::Warning, "point-court",
-                        "Point très court (" + format_mm_fr(len) +
-                            " mm) : risque de casse du fil et de sur-densité.",
+                        "Point quasi nul (moins de " + format_mm_fr(nearZero) +
+                            " mm) : probable doublon, risque de casse du fil.",
                         cmd.pos, cmd.source,
                         "Augmentez l'espacement ou simplifiez le contour de l'objet.");
+                } else if (len < static_cast<double>(options.min_stitch.value)) {
+                    ShortGroup& g = shortGroups[cmd.source.value];
+                    if (g.count == 0) {
+                        g.first = cmd.pos;
+                        g.shortest = len;
+                    }
+                    g.shortest = std::min(g.shortest, len);
+                    ++g.count;
                 } else if (len > static_cast<double>(options.max_stitch.value)) {
                     add(Severity::Warning, "point-long",
                         "Point long (" + format_mm_fr(len) + " mm) : risque d'accrochage.", cmd.pos,
@@ -232,10 +272,7 @@ AnalysisReport analyze_detailed(const stitch::StitchSequence& sequence,
             if (hasPrevPos) {
                 const double len = length_um(cmd.pos - prevPos);
                 if (len > static_cast<double>(options.max_jump.value)) {
-                    add(Severity::Warning, "saut-long",
-                        "Saut long (" + format_mm_fr(len) + " mm) : envisagez une coupe.", cmd.pos,
-                        cmd.source,
-                        "Réordonnez les objets pour réduire les sauts, ou ajoutez une coupe.");
+                    pendingJumps.push_back({len, cmd.pos, cmd.source});
                 }
             }
             // Un saut lève l'aiguille : le fil n'est plus continu. Sans ce
@@ -258,6 +295,17 @@ AnalysisReport analyze_detailed(const stitch::StitchSequence& sequence,
         }
         prevPos = cmd.pos;
         hasPrevPos = true;
+    }
+    flushJumps(trimmed); // déplacement non terminé en fin de séquence
+
+    for (const auto& [object, g] : shortGroups) {
+        add(Severity::Info, "points-courts",
+            std::to_string(g.count) + " point(s) de " + format_mm_fr(nearZero) + " à " +
+                format_mm_fr(static_cast<double>(options.min_stitch.value)) +
+                " mm (le plus court : " + format_mm_fr(g.shortest) + " mm).",
+            g.first, ObjectId{object},
+            "Les finitions fusionnent les points courts quand elles le peuvent ; augmentez "
+            "l'espacement de l'objet si la densité est excessive.");
     }
 
     if (stats.stitches > options.max_stitches) {

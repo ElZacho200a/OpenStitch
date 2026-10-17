@@ -280,6 +280,23 @@ TEST_CASE("analyze_project: point-long non decoupable (apres une coupe), pas de 
     CHECK(found[0].fix.kind == FixKind::None);
 }
 
+TEST_CASE(
+    "analyze_project: projet genere, finitions par defaut : ni saut-long ni saut-sans-coupe") {
+    // Deux carres tres eloignes : la generation pose une coupe sur le grand deplacement, donc
+    // « envisagez une coupe » serait faux (mesure sur corpus : 312 faux avertissements).
+    document::Project project;
+    add_square(project, -40'000, 0, 5'000, document::RunningStitchParams{});
+    add_square(project, 40'000, 0, 5'000, document::RunningStitchParams{});
+
+    const stitch::StitchSequence sequence = effective(project);
+    const stitch::StitchStats stats = stitch::compute_stats(sequence);
+    REQUIRE(stats.trims > 0); // la coupe existe bien dans la sequence effective
+
+    const AnalysisReport report = analyze_project(project, sequence);
+    CHECK(of_category(report.findings, "saut-long").empty());
+    CHECK(of_category(report.findings, "saut-sans-coupe").empty());
+}
+
 TEST_CASE("analyze_project: saut-sans-coupe propose les finitions et cela resout") {
     document::Project project;
     project.finishing = document::SequenceFinishing::legacy();
