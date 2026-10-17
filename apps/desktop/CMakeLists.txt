@@ -68,6 +68,9 @@ add_library(openstitch_desktop_widgets STATIC
     segmentation_colors_panel.cpp
     segmentation_colors_panel.hpp
     main_window_colors.cpp
+    main_window_segment_preview.cpp
+    segmentation_dialog.cpp
+    segmentation_dialog.hpp
     workflow_panel.cpp
     workflow_panel.hpp
     empty_state_widget.cpp

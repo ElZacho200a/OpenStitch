@@ -338,7 +338,13 @@ l'original) :
 ## Menu Segmentation
 
 - Segmenter l'image… (**F6** ; nombre de couleurs, taille min de région avec son équivalent en
-  mm², lissage — les derniers réglages sont mémorisés) ;
+  mm², lissage — les derniers réglages sont mémorisés). Le dialogue reste **ouvert pendant que vous
+  travaillez** : chaque changement de réglage affiche, après un court délai, un **aperçu** de la
+  carte des régions sur l'image, avec le nombre de régions et de couleurs et celles trop petites
+  pour un remplissage. Rien n'est modifié tant que vous ne cliquez pas **Segmenter** ; fermer le
+  dialogue abandonne l'aperçu. La case *Aperçu sur l'image* le masque ;
+- **Fusionner les couleurs…** — panneau des couleurs de la segmentation (voir la page
+  *Segmentation*) : fusionne des teintes ou réduit la palette à N couleurs, avec aperçu ;
 - Segmenter avec l'IA… (régions proposées par un modèle ; grisée tant qu'aucune image n'est
   ouverte) ;
 - Afficher la carte des régions (bascule) et **Opacité de la carte** (glissière 20–100 %,
