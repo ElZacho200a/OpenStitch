@@ -821,6 +821,8 @@ void MainWindow::buildMenus() {
 
     showSegAct_ = segMenu->addAction(tr("&Afficher la carte des régions"));
     showSegAct_->setCheckable(true);
+    showSegAct_->setShortcut(QKeySequence(Qt::Key_W));
+    showSegAct_->setToolTip(tr("Affiche ou masque la carte des régions par-dessus l'image (W)."));
     connect(showSegAct_, &QAction::toggled, this, [this] { displayImage(processed_); });
     buildRegionViewControls(segMenu);
 
@@ -840,16 +842,19 @@ void MainWindow::buildMenus() {
     regionActions_.append(mergeAct_);
     mergeSelectionAct_ = segMenu->addAction(tr("Fusionner la sélecti&on"));
     mergeSelectionAct_->setObjectName(QStringLiteral("action_mergeSelection"));
-    mergeSelectionAct_->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_M));
-    mergeSelectionAct_->setToolTip(
-        tr("Fusionne toutes les régions sélectionnées dans la dernière cliquée (Ctrl+M)."));
+    // J (« joindre ») : la touche seule, une main restant sur la souris.
+    mergeSelectionAct_->setShortcuts({QKeySequence(Qt::CTRL | Qt::Key_M), QKeySequence(Qt::Key_J)});
+    mergeSelectionAct_->setToolTip(tr("Fusionne toutes les régions sélectionnées dans la dernière "
+                                      "cliquée (Ctrl+M ou J)."));
     connect(mergeSelectionAct_, &QAction::triggered, this, &MainWindow::mergeSelectedRegions);
     absorbAct_ = segMenu->addAction(tr("Fusionner dans la voisine &principale"));
     absorbAct_->setObjectName(QStringLiteral("action_absorbIntoNeighbour"));
-    absorbAct_->setShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_M));
+    // A (« absorber »).
+    absorbAct_->setShortcuts(
+        {QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_M), QKeySequence(Qt::Key_A)});
     absorbAct_->setToolTip(
         tr("Fusionne la région dans la voisine avec laquelle elle partage la plus longue "
-           "frontière (Ctrl+Maj+M)."));
+           "frontière (Ctrl+Maj+M ou A)."));
     connect(absorbAct_, &QAction::triggered, this, &MainWindow::absorbSelectedRegionIntoNeighbour);
     cleanIslandsAct_ = segMenu->addAction(tr("Nettoyer les petits &îlots…"));
     cleanIslandsAct_->setObjectName(QStringLiteral("action_cleanIslands"));
@@ -860,17 +865,36 @@ void MainWindow::buildMenus() {
     segMenu->addSeparator();
     selectSameColorAct_ = segMenu->addAction(tr("Sélectionner la &même couleur"));
     selectSameColorAct_->setObjectName(QStringLiteral("action_selectSameColor"));
+    selectSameColorAct_->setShortcut(QKeySequence(Qt::Key_C));
+    selectSameColorAct_->setToolTip(
+        tr("Sélectionne toutes les régions qui ont la couleur de la région active (C)."));
     connect(selectSameColorAct_, &QAction::triggered, this,
             &MainWindow::selectRegionsWithSameColor);
     regionActions_.append(selectSameColorAct_);
     selectNeighboursAct_ = segMenu->addAction(tr("Sélectionner les voisi&nes"));
     selectNeighboursAct_->setObjectName(QStringLiteral("action_selectNeighbours"));
+    selectNeighboursAct_->setShortcut(QKeySequence(Qt::Key_N));
+    selectNeighboursAct_->setToolTip(
+        tr("Ajoute à la sélection les régions voisines de la sélection (N)."));
     connect(selectNeighboursAct_, &QAction::triggered, this, &MainWindow::selectNeighbourRegions);
     regionActions_.append(selectNeighboursAct_);
     selectAllRegionsAct_ = segMenu->addAction(tr("&Tout sélectionner"));
     selectAllRegionsAct_->setObjectName(QStringLiteral("action_selectAllRegions"));
     selectAllRegionsAct_->setShortcut(QKeySequence::SelectAll);
     connect(selectAllRegionsAct_, &QAction::triggered, this, &MainWindow::selectAllRegions);
+    // Parcours des régions au clavier (ordre des identifiants, avec retour au début). Ni Tab (il
+    // sert à la navigation entre les panneaux) ni Entrée (réservée à la validation d'un champ et
+    // à la fin d'un tracé) : Alt + flèches gauche / droite.
+    nextRegionAct_ = segMenu->addAction(tr("Région suivante"));
+    nextRegionAct_->setObjectName(QStringLiteral("action_nextRegion"));
+    nextRegionAct_->setShortcut(QKeySequence(Qt::ALT | Qt::Key_Right));
+    nextRegionAct_->setToolTip(tr("Sélectionne la région suivante (Alt+→)."));
+    connect(nextRegionAct_, &QAction::triggered, this, [this] { selectAdjacentRegion(+1); });
+    previousRegionAct_ = segMenu->addAction(tr("Région précédente"));
+    previousRegionAct_->setObjectName(QStringLiteral("action_previousRegion"));
+    previousRegionAct_->setShortcut(QKeySequence(Qt::ALT | Qt::Key_Left));
+    previousRegionAct_->setToolTip(tr("Sélectionne la région précédente (Alt+←)."));
+    connect(previousRegionAct_, &QAction::triggered, this, [this] { selectAdjacentRegion(-1); });
 
     // Suppr universel (L5-T4a) : l'objectName historique « action_deleteRegion »
     // est conservé (tests, snapshot d'actions) ; l'action est activée par
@@ -6415,6 +6439,16 @@ void MainWindow::buildToolPalette() {
     auto* escape = new QShortcut(QKeySequence(Qt::Key_Escape), this);
     escapeShortcut_ = escape;
     connect(escape, &QShortcut::activated, this, [this] {
+        // Rien à annuler (aucun mode, outil de sélection) : Échap désélectionne les régions.
+        const bool nothingToCancel =
+            !mergeAct_->isChecked() && !stitchEditModeAct_->isChecked() &&
+            !satinEditModeAct_->isChecked() && !satinGuideModeAct_->isChecked() &&
+            !railEditModeAct_->isChecked() && !directionGuideModeAct_->isChecked() &&
+            currentTool_ == Tool::Select;
+        if (nothingToCancel && !selectedRegionIds().empty()) {
+            selectRegions({}, SelectMode::Replace);
+            return;
+        }
         if (mergeAct_->isChecked()) {
             mergeAct_->setChecked(false);
         }
@@ -9223,6 +9257,10 @@ void MainWindow::updateActions() {
     setEnabledWithReason(showSegAct_, project_.segmentation.has_value(),
                          tr("Segmentez d'abord l'image (menu Segmentation)."));
     setEnabledWithReason(mergeColorsAct_, project_.segmentation.has_value(),
+                         tr("Segmentez d'abord l'image (menu Segmentation)."));
+    setEnabledWithReason(nextRegionAct_, project_.segmentation.has_value(),
+                         tr("Segmentez d'abord l'image (menu Segmentation)."));
+    setEnabledWithReason(previousRegionAct_, project_.segmentation.has_value(),
                          tr("Segmentez d'abord l'image (menu Segmentation)."));
     const QString noVectors = tr("Aucun objet vectoriel : vectorisez une région ou dessinez.");
     setEnabledWithReason(showVectorsAct_, !project_.vector_objects.empty(), noVectors);

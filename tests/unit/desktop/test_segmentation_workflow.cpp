@@ -987,6 +987,121 @@ private slots:
         }
     }
 
+    // ---- raccourcis clavier de la segmentation --------------------------------------------
+
+    void segmentationActionsCarryTheirShortcuts() {
+        MainWindow window;
+        window.applyLoadedProject(threeBandProject());
+        const auto has = [](const QAction* action, const QKeySequence& key) {
+            return action->shortcuts().contains(key);
+        };
+        QVERIFY(has(window.showSegAct_, QKeySequence(Qt::Key_W)));
+        QVERIFY(has(window.mergeSelectionAct_, QKeySequence(Qt::CTRL | Qt::Key_M))); // inchangé
+        QVERIFY(has(window.mergeSelectionAct_, QKeySequence(Qt::Key_J)));
+        QVERIFY(has(window.absorbAct_, QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_M)));
+        QVERIFY(has(window.absorbAct_, QKeySequence(Qt::Key_A)));
+        QVERIFY(has(window.selectSameColorAct_, QKeySequence(Qt::Key_C)));
+        QVERIFY(has(window.selectNeighboursAct_, QKeySequence(Qt::Key_N)));
+        QVERIFY(has(window.nextRegionAct_, QKeySequence(Qt::ALT | Qt::Key_Right)));
+        QVERIFY(has(window.previousRegionAct_, QKeySequence(Qt::ALT | Qt::Key_Left)));
+    }
+
+    void regionNavigationCyclesThroughAllRegionsAndWraps() {
+        MainWindow window;
+        window.applyLoadedProject(threeBandProject());
+        const auto all = openstitch::segmentation::all_regions(*window.project_.segmentation);
+        QCOMPARE(all.size(), std::size_t{3});
+        QVERIFY(window.selectedRegionIds().empty());
+
+        window.selectAdjacentRegion(+1); // sans sélection : la première
+        QCOMPARE(window.selectedRegion_->value, all[0].value);
+        window.selectAdjacentRegion(+1);
+        QCOMPARE(window.selectedRegion_->value, all[1].value);
+        window.selectAdjacentRegion(+1);
+        window.selectAdjacentRegion(+1); // retour au début
+        QCOMPARE(window.selectedRegion_->value, all[0].value);
+        window.selectAdjacentRegion(-1); // depuis la première : la dernière
+        QCOMPARE(window.selectedRegion_->value, all[2].value);
+        QCOMPARE(window.selectedRegionIds().size(), std::size_t{1}); // toujours une seule région
+
+        window.selectRegions({}, SelectMode::Replace);
+        window.selectAdjacentRegion(-1); // sans sélection : la dernière
+        QCOMPARE(window.selectedRegion_->value, all[2].value);
+
+        window.project_.segmentation.reset();
+        window.selectAdjacentRegion(+1); // sans segmentation : sans effet, sans plantage
+    }
+
+    void realKeyPressesDriveTheSegmentationShortcuts() {
+        MainWindow window;
+        window.applyLoadedProject(threeBandProject());
+        window.resize(1400, 900);
+        window.show();
+        QVERIFY(QTest::qWaitForWindowExposed(&window));
+        window.activateWindow();
+        QVERIFY(QTest::qWaitForWindowActive(&window));
+        const auto all = openstitch::segmentation::all_regions(*window.project_.segmentation);
+
+        // W : la carte des régions s'affiche et se masque.
+        const bool shown = window.showSegAct_->isChecked();
+        QTest::keyClick(&window, Qt::Key_W);
+        QCOMPARE(window.showSegAct_->isChecked(), !shown);
+        QTest::keyClick(&window, Qt::Key_W);
+        QCOMPARE(window.showSegAct_->isChecked(), shown);
+
+        // Alt+→ / Alt+← : parcours des régions.
+        QTest::keyClick(&window, Qt::Key_Right, Qt::AltModifier);
+        QCOMPARE(window.selectedRegion_->value, all[0].value);
+        QTest::keyClick(&window, Qt::Key_Right, Qt::AltModifier);
+        QCOMPARE(window.selectedRegion_->value, all[1].value);
+        QTest::keyClick(&window, Qt::Key_Left, Qt::AltModifier);
+        QCOMPARE(window.selectedRegion_->value, all[0].value);
+
+        // N : les voisines s'ajoutent ; C : la même couleur (ici chaque teinte est unique).
+        QTest::keyClick(&window, Qt::Key_N);
+        QVERIFY(window.selectedRegionIds().size() >= 2);
+        window.selectRegions({all[0]}, SelectMode::Replace);
+        QTest::keyClick(&window, Qt::Key_C);
+        QCOMPARE(window.selectedRegionIds().size(), std::size_t{1});
+
+        // J : fusionne les régions sélectionnées (comme Ctrl+M).
+        window.selectRegions({all[0], all[1]}, SelectMode::Replace);
+        QTest::keyClick(&window, Qt::Key_J);
+        QCOMPARE(window.project_.segmentation->region_count(), std::size_t{2});
+        window.undo();
+        QCOMPARE(window.project_.segmentation->region_count(), std::size_t{3});
+
+        // A : la région rejoint sa voisine principale (comme Ctrl+Maj+M).
+        window.selectRegions({all[0]}, SelectMode::Replace);
+        QTest::keyClick(&window, Qt::Key_A);
+        QCOMPARE(window.project_.segmentation->region_count(), std::size_t{2});
+        window.undo();
+        QCOMPARE(window.project_.segmentation->region_count(), std::size_t{3});
+    }
+
+    void escapeClearsTheRegionSelectionOnlyWhenNothingElseIsActive() {
+        MainWindow window;
+        window.applyLoadedProject(threeBandProject());
+        window.resize(1400, 900);
+        window.show();
+        QVERIFY(QTest::qWaitForWindowExposed(&window));
+        window.activateWindow();
+        QVERIFY(QTest::qWaitForWindowActive(&window));
+        const auto all = openstitch::segmentation::all_regions(*window.project_.segmentation);
+
+        // Mode « Fusionner avec… » actif : Échap l'annule et GARDE la sélection.
+        window.selectRegions({all[0]}, SelectMode::Replace);
+        window.mergeAct_->setChecked(true);
+        QTest::keyClick(&window, Qt::Key_Escape);
+        QVERIFY(!window.mergeAct_->isChecked());
+        QCOMPARE(window.selectedRegionIds().size(), std::size_t{1});
+
+        // Rien à annuler : Échap désélectionne.
+        QTest::keyClick(&window, Qt::Key_Escape);
+        QVERIFY(window.selectedRegionIds().empty());
+        QCOMPARE(window.currentTool_, openstitch::desktop::Tool::Select);
+    }
+
     // ---- fusion de couleurs (panneau « Couleurs ») ------------------------------------------
 
     void colorMergePreviewNeverTouchesTheDocument() {

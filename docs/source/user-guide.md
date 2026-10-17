@@ -347,17 +347,23 @@ l'original) :
   *Segmentation*) : fusionne des teintes ou réduit la palette à N couleurs, avec aperçu ;
 - Segmenter avec l'IA… (régions proposées par un modèle ; grisée tant qu'aucune image n'est
   ouverte) ;
-- Afficher la carte des régions (bascule) et **Opacité de la carte** (glissière 20–100 %,
+- Afficher la carte des régions (bascule, **W**) et **Opacité de la carte** (glissière 20–100 %,
   mémorisée) : baissez-la pour juger les régions d'après la photo dessous ;
-- **Fusionner la sélection** (Ctrl+M) — fusionne toutes les régions sélectionnées dans la
+- **Fusionner la sélection** (Ctrl+M ou **J**) — fusionne toutes les régions sélectionnées dans la
   dernière cliquée (la **région active**, qui garde sa couleur), en un seul pas d'annulation ;
-- **Fusionner dans la voisine principale** (Ctrl+Maj+M) — la région rejoint la voisine avec
-  laquelle elle partage la plus longue frontière ;
+- **Fusionner dans la voisine principale** (Ctrl+Maj+M ou **A**) — la région rejoint la voisine
+  avec laquelle elle partage la plus longue frontière (aussi dans le menu contextuel d'une
+  région) ;
 - Fusionner avec… (puis clic sur la région cible) — absorbe toute la sélection dans la région
   cliquée. Le mode s'annonce dans la barre d'état et par un curseur « main » ; un clic sur une
   région déjà sélectionnée ou dans le vide n'annule pas le mode mais explique quoi cliquer
   (Échap annule) ;
-- **Sélectionner la même couleur**, **Sélectionner les voisines**, **Tout sélectionner** (Ctrl+A) ;
+- **Sélectionner la même couleur** (**C**), **Sélectionner les voisines** (**N**), **Tout
+  sélectionner** (Ctrl+A) ;
+- **Région suivante** / **Région précédente** (**Alt+→** / **Alt+←**) — parcourent les régions
+  dans l'ordre de leurs numéros, avec retour au début, et sélectionnent chacune à son tour (ses
+  infos s'affichent dans la barre d'état). Ni `Tab` (il sert à passer d'un panneau à l'autre) ni
+  `Entrée` (valide un champ, termine un tracé) ne sont pris ;
 - **Recolorer la sélection…** — un sélecteur de couleur, appliqué à toutes les régions
   sélectionnées (un pas d'annulation) ;
 - **Rétablir la couleur d'origine** — rend à chaque région sa couleur moyenne dans l'image ;
@@ -976,7 +982,11 @@ la liste complète et filtrable est dans **Aide ▸ Gestes souris et clavier** (
 | F6 / F7 / F8 | Segmenter l'image / Vectoriser la sélection / Numérisation automatique |
 | F9 | Statistiques de broderie |
 | V / H / M | Outils : Sélection / Déplacer la vue / Recadrer l'image |
-| Échap | Revenir à la Sélection (annule la fusion, le tracé ou le geste en cours) |
+| Échap | Revenir à la Sélection (annule la fusion, le tracé ou le geste en cours) ; s'il n'y a rien à annuler, **désélectionne les régions** |
+| W | Afficher / masquer la carte des régions |
+| J / A | Régions : fusionner la sélection / fusionner dans la voisine principale (aussi Ctrl+M / Ctrl+Maj+M) |
+| C / N | Régions : sélectionner la même couleur / les voisines |
+| Alt+→ / Alt+← | Région suivante / précédente |
 | Entrée / Retour arrière | Terminer le tracé en cours / retirer le dernier point (actifs seulement pendant un tracé ; sinon ils servent aux champs et aux listes) |
 | R / O / P / G / B / L | Dessin : rectangle / ellipse / polygone / polygone régulier / Bézier / main levée |
 | S | Outil Colonne satin (rails manuels) |
