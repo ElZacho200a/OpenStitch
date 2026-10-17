@@ -20,6 +20,28 @@ Réduire l'image de travail en **régions de couleur connexes**, sélectionnable
 6. les régions plus petites que la taille minimale sont **absorbées** par leur
    voisine majoritaire (nettoyage).
 
+## Aperçu avant de segmenter (bureau)
+
+Le dialogue *Segmentation → Segmenter l'image…* (F6) est **non modal** et affiche un **aperçu en
+direct** : chaque changement de réglage (nombre de couleurs, taille minimale, lissage) relance
+`segmentation::segment` après un court délai (250 ms), et la carte des régions résultante s'affiche
+sur le canevas avec le nombre de régions, de couleurs et de régions plus petites que le seuil de
+remplissage de l'auto-numérisation (`AutoOptions::min_fill_area_mm2`, qui ne seront cousues qu'en
+contour).
+
+- **Le document n'est pas touché** : le calcul tourne dans un fil, sur une **copie** de l'image de
+  travail prise à l'ouverture du dialogue, et l'aperçu s'affiche à la place de la segmentation du
+  document (`previewSegmentation_`) sans aucune commande ni pas d'annulation. Fermer le dialogue
+  abandonne l'aperçu.
+- **Un seul calcul à la fois** : les changements faits pendant un calcul sont coalescés en un seul
+  calcul suivant ; seul le résultat correspondant aux réglages courants est affiché.
+- **« Segmenter » valide** : confirmation d'écrasement (si la segmentation a été éditée) puis
+  `SetSegmentationCommand`, en un seul pas d'annulation. Si l'aperçu correspond aux réglages et à
+  l'image, il est **réutilisé** (pas de second calcul) ; sinon la segmentation est recalculée.
+- **Coût mesuré** : `segment` sur l'illustration du voilier (1254 × 1254 px, 8 couleurs, lissage 3)
+  prend **0,09 à 0,22 s** en Debug (0,6 s au premier appel), de sorte que l'aperçu se fait sur
+  l'image entière, sans version réduite.
+
 ## Identifiants stables
 
 Chaque région a un `RegionId` = index de slot + 1. Les slots ne sont **jamais**
@@ -98,8 +120,11 @@ une copie de la carte entière), ce qui rend l'annulation exacte et peu coûteus
 - `libs/commands/.../project_commands.hpp` — commandes de segmentation (dont `MergeColorsCommand`).
 - `apps/desktop/segmentation_colors_panel.*`, `apps/desktop/main_window_colors.cpp` — panneau
   « Couleurs » et aperçu.
+- `apps/desktop/segmentation_dialog.*`, `apps/desktop/main_window_segment_preview.cpp` — dialogue
+  « Segmenter » non modal et aperçu en direct.
 - Tests : `tests/unit/segmentation/test_segmentation.cpp`,
   `tests/unit/segmentation/test_color_merge.cpp`,
   `tests/unit/commands/test_undo_stack.cpp`, `tests/unit/commands/test_command_merge.cpp`,
   `tests/unit/desktop/test_segmentation_colors_panel.cpp`,
+  `tests/unit/desktop/test_segmentation_dialog.cpp`,
   `tests/unit/desktop/test_segmentation_workflow.cpp`.
