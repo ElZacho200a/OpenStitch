@@ -6,6 +6,7 @@
 #include <QDialog>
 #include <QDialogButtonBox>
 #include <QDoubleSpinBox>
+#include <QLabel>
 #include <QLineEdit>
 #include <QPushButton>
 #include <QSettings>
@@ -96,7 +97,71 @@ private slots:
     void inspectorButtonUsesSharedAction();
     void layerTypeConversionKeepsOtherLayer();
     void explicitLayerThreadSelectionDoesNotIncludeBackground();
+    void dialogPreviewShowsTheStitchesOfBothLayers();
+    void createdLayersFollowTheChosenProfile();
 };
+
+void MainWindowTest::dialogPreviewShowsTheStitchesOfBothLayers() {
+    // Régression : MainWindow ne répondait jamais à previewRequested ; l'aperçu
+    // restait sur « Aucun aperçu actuel des points ».
+    MainWindow w;
+    w.applyLoadedProject(blendFixture());
+    w.setSelection({.embroidery = w.project_.embroidery_objects.front().id});
+    w.updateActions();
+    QString stats;
+    QString legend;
+    QTimer::singleShot(0, &w, [&] {
+        auto* d = qobject_cast<ColorBlendDialog*>(QApplication::activeModalWidget());
+        QVERIFY(d != nullptr);
+        auto* timer = d->findChild<QTimer*>(QStringLiteral("timer_blendPreview"));
+        QVERIFY(timer != nullptr);
+        QMetaObject::invokeMethod(timer, "timeout"); // sans attendre les 180 ms
+        stats = d->findChild<QLabel*>(QStringLiteral("blend_previewStats"))->text();
+        legend = d->findChild<QLabel*>(QStringLiteral("blend_previewLegend"))->text();
+        d->reject();
+    });
+    w.twoColorBlendAct_->trigger();
+    QVERIFY2(stats.contains(QStringLiteral("points cousus")), qPrintable(stats));
+    QVERIFY(legend.contains(QStringLiteral("Fond")));
+    QVERIFY(legend.contains(QStringLiteral("Dessus")));
+    QCOMPARE(w.project_.embroidery_objects.size(), std::size_t{1}); // aucune mutation
+}
+
+void MainWindowTest::createdLayersFollowTheChosenProfile() {
+    // Ce que l'aperçu montre (profil complémentaire par défaut) est ce qui est créé :
+    // rampes opposées, couches liées, sous-couches désactivées.
+    MainWindow w;
+    w.applyLoadedProject(blendFixture());
+    const ObjectId baseId = w.project_.embroidery_objects.front().id;
+    w.setSelection({.embroidery = baseId});
+    w.updateActions();
+    QTimer::singleShot(0, &w, [] {
+        auto* d = qobject_cast<ColorBlendDialog*>(QApplication::activeModalWidget());
+        QVERIFY(d != nullptr);
+        QVERIFY(d->complementary());
+        d->findChild<QDoubleSpinBox*>(QStringLiteral("spin_blendStart"))->setValue(3.0);
+        d->findChild<QDoubleSpinBox*>(QStringLiteral("spin_blendEnd"))->setValue(0.5);
+        auto* ok = d->findChild<QDialogButtonBox*>()->button(QDialogButtonBox::Ok);
+        QTest::mouseClick(ok, Qt::LeftButton);
+    });
+    w.twoColorBlendAct_->trigger();
+    QCOMPARE(w.project_.embroidery_objects.size(), std::size_t{2});
+    const auto* base = w.project_.findEmbroidery(baseId);
+    const auto top = w.project_.embroidery_objects.back();
+    const auto* baseParams = std::get_if<document::DirectionalFillParams>(&base->params);
+    const auto* topParams = std::get_if<document::DirectionalFillParams>(&top.params);
+    QVERIFY(baseParams != nullptr && topParams != nullptr);
+    QVERIFY(baseParams->density_gradient && topParams->density_gradient);
+    QCOMPARE(baseParams->density_gradient->spacing_from, topParams->density_gradient->spacing_to);
+    QCOMPARE(baseParams->density_gradient->spacing_to, topParams->density_gradient->spacing_from);
+    QVERIFY(base->color_blend && top.color_blend);
+    QCOMPARE(base->color_blend->partner, top.id);
+    QVERIFY(top.color_blend->foreground && !base->color_blend->foreground);
+    QVERIFY(!baseParams->underlay_edge && !topParams->underlay_edge);
+    w.undo(); // une seule annulation défait tout
+    QCOMPARE(w.project_.embroidery_objects.size(), std::size_t{1});
+    QVERIFY(!w.project_.embroidery_objects.front().color_blend);
+}
 
 void MainWindowTest::noRasterBlendActionAvailable() {
     MainWindow w;
@@ -204,6 +269,7 @@ void MainWindowTest::manualBlendSettingsAreUndoableAndSurviveSaveLoad() {
     QTimer::singleShot(0, &w, [] {
         auto* d = qobject_cast<ColorBlendDialog*>(QApplication::activeModalWidget());
         QVERIFY(d != nullptr);
+        d->setComplementary(false); // profil « fond uniforme » : le fond reste inchangé
         d->findChild<QLineEdit*>(QStringLiteral("edit_blendBackground"))->setText("#cc3322");
         d->findChild<QLineEdit*>(QStringLiteral("edit_blendForeground"))->setText("#2244cc");
         d->findChild<QDoubleSpinBox*>(QStringLiteral("spin_blendStart"))->setValue(2.5);

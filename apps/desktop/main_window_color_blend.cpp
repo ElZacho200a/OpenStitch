@@ -9,13 +9,50 @@
 #include "color_blend_dialog.hpp"
 #include "main_window.hpp"
 #include "openstitch/autodigitize/two_color_blend.hpp"
+#include "openstitch/commands/color_blend_commands.hpp"
 #include "openstitch/commands/composite_command.hpp"
 #include "openstitch/commands/project_commands.hpp"
 #include "openstitch/commands/thread_commands.hpp"
+#include "openstitch/stitch_generation/color_blend.hpp"
 #include "openstitch/stitch_generation/directional_fill.hpp"
+#include "openstitch/stitch_generation/overrides.hpp"
 #include "thread_panel.hpp"
 
 namespace openstitch::desktop {
+
+namespace {
+
+struct BlendLayers {
+    document::EmbroideryObject base;
+    document::EmbroideryObject top;
+};
+
+// Les deux couches du fondu telles que le dialogue les décrit : source UNIQUE de
+// l'aperçu et de la création, pour que l'aperçu montre ce qui sera créé.
+std::optional<BlendLayers> blendLayersFor(const ColorBlendDialog& dialog,
+                                          const document::EmbroideryObject& baseBefore,
+                                          const document::EmbroideryObject& secondBefore,
+                                          const std::vector<geometry::PathSet>& shape) {
+    auto gradient = dialog.proposedGradient();
+    if (!gradient) {
+        gradient = stitch_generation::density_gradient_across(
+            shape, Angle{dialog.angleDegrees() * std::numbers::pi / 180.0}, dialog.startSpacing(),
+            dialog.endSpacing());
+    }
+    if (!gradient) {
+        return std::nullopt;
+    }
+    auto layers = stitch_generation::make_color_blend_layers(baseBefore, secondBefore, shape,
+                                                             *gradient, dialog.complementary());
+    if (!layers) {
+        return std::nullopt;
+    }
+    layers->first.rgb = dialog.backgroundColor();
+    layers->second.rgb = dialog.foregroundColor();
+    return BlendLayers{std::move(layers->first), std::move(layers->second)};
+}
+
+} // namespace
 
 // Un fondu se crée sur une seule couche de remplissage, jamais sur un couple déjà créé
 // ni sur un réseau de sections ambigu. Les couches existantes restent éditables séparément.
@@ -131,40 +168,64 @@ void MainWindow::createColorBlend(ObjectId baseId, std::optional<ObjectId> secon
                                       : tr("Proposition en couleurs libres ; associez les fils "
                                            "dans le panneau Fils après création."));
     });
+    // Aperçu des points : séquence EFFECTIVE d'un instantané du projet (jamais le
+    // document), calculée de façon synchrone avec un indicateur d'attente.
+    connect(&dialog, &ColorBlendDialog::previewRequested, this, [&] {
+        if (generation != documentGeneration_) {
+            dialog.reject();
+            return;
+        }
+        const auto layers = blendLayersFor(dialog, baseBefore, secondBefore, allPaths);
+        if (!layers) {
+            dialog.setPreviewMessage(
+                tr("Aperçu indisponible : la forme ou les réglages sont invalides."));
+            return;
+        }
+        auto snapshot = project_;
+        auto base = layers->base;
+        auto top = layers->top;
+        top.id = snapshot.object_ids.next();
+        top.source_vector = baseBefore.source_vector;
+        top.thread.reset();
+        top.overrides.clear();
+        top.edited_fingerprint = 0;
+        top.edited_point_count = 0;
+        top.color_blend.reset();
+        for (auto& vector : snapshot.vector_objects) {
+            if (vector.id == baseBefore.source_vector) {
+                vector.paths = allPaths; // deux zones : forme réunie (sans l'union exacte)
+            }
+        }
+        const ObjectId topId = top.id;
+        const auto rgbBase = base.rgb;
+        const auto rgbTop = top.rgb;
+        snapshot.embroidery_objects = {std::move(base), std::move(top)};
+        BusyIndicator busy(&dialog, tr("Calcul de l'aperçu des points…"),
+                           {autosaveTimer_, simTimer_, analysisTimer_});
+        const auto sequence =
+            busy.run([&] { return stitch_generation::effective_sequence(snapshot); });
+        if (!sequence) {
+            dialog.setPreviewMessage(QString::fromStdString(sequence.error().message));
+            return;
+        }
+        dialog.setStitchPreview(*sequence, baseId, topId, rgbBase, rgbTop);
+    });
     if (dialog.exec() != QDialog::Accepted || generation != documentGeneration_) {
         return;
     }
-    auto gradient = dialog.proposedGradient();
-    if (!gradient) {
-        gradient = stitch_generation::density_gradient_across(
-            allPaths, Angle{dialog.angleDegrees() * std::numbers::pi / 180.0},
-            dialog.startSpacing(), dialog.endSpacing());
-    }
-    if (!gradient) {
-        statusBar()->showMessage(tr("Fondu impossible : la forme n'a pas d'étendue."), 8000);
+    const auto layers = blendLayersFor(dialog, baseBefore, secondBefore, allPaths);
+    if (!layers) {
+        statusBar()->showMessage(
+            tr("Fondu impossible : la forme n'a pas d'étendue ou les réglages sont invalides."),
+            8000);
         return;
     }
-    document::DirectionalFillParams topParams;
-    if (const auto* dir = std::get_if<document::DirectionalFillParams>(&secondBefore.params)) {
-        topParams = *dir;
-    } else if (auto converted = directionalParamsFor(secondBefore)) {
-        topParams = std::move(*converted);
-    } else {
-        return;
-    }
-    topParams.row_spacing = gradient->spacing_from;
-    topParams.density_gradient = gradient;
-    topParams.underlay_mode = document::UnderlayMode::Manual;
-    topParams.underlay_edge = false;
-    topParams.underlay_parallel = false;
-    stitch_generation::align_guides_across_density_gradient(topParams, allPaths);
-    document::EmbroideryObject top = secondBefore;
+    document::EmbroideryObject top = layers->top;
     top.id = project_.object_ids.next();
     top.source_vector = baseBefore.source_vector;
     top.name = secondBefore.name + " (dessus du fondu)";
-    top.params = topParams;
-    top.rgb = dialog.foregroundColor();
     top.thread.reset();
+    top.color_blend.reset();
     top.overrides.clear();
     top.edited_fingerprint = 0;
     top.edited_point_count = 0;
@@ -197,16 +258,15 @@ void MainWindow::createColorBlend(ObjectId baseId, std::optional<ObjectId> secon
         }
         batch->add(std::move(merged.command));
     }
-    if (const auto* dir = std::get_if<document::DirectionalFillParams>(&baseBefore.params);
-        dir != nullptr && dir->density_gradient) {
-        auto uniform = *dir;
-        uniform.density_gradient.reset();
-        batch->add(std::make_unique<commands::SetStitchParamsCommand>(baseId, uniform, "Fond uni"));
+    if (layers->base.params != baseBefore.params) {
+        batch->add(std::make_unique<commands::SetStitchParamsCommand>(baseId, layers->base.params,
+                                                                      "Fond du fondu"));
     }
     batch->add(std::make_unique<commands::SetObjectThreadCommand>(std::vector<ObjectId>{baseId},
                                                                   baseThread, baseRgb));
     const ObjectId topId = top.id;
     batch->add(std::make_unique<commands::AddEmbroideryObjectCommand>(std::move(top)));
+    batch->add(std::make_unique<commands::SetColorBlendLinkCommand>(baseId, topId));
     std::vector<ObjectId> order;
     order.reserve(project_.embroidery_objects.size() + 1);
     for (const auto& e : project_.embroidery_objects) {

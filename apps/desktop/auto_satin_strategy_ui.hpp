@@ -22,7 +22,7 @@ inline constexpr std::array<document::AutoSatinStrategy, 3> kAutoSatinStrategies
 [[nodiscard]] inline QString autoSatinStrategyLabel(document::AutoSatinStrategy strategy) {
     switch (strategy) {
     case document::AutoSatinStrategy::Skeleton:
-        return QCoreApplication::translate("AutoSatinStrategy", "Squelette (actuel)");
+        return QCoreApplication::translate("AutoSatinStrategy", "Squelette");
     case document::AutoSatinStrategy::ParallelSweep:
         return QCoreApplication::translate("AutoSatinStrategy", "Balayage parallèle");
     case document::AutoSatinStrategy::MedialAxis:
@@ -42,9 +42,9 @@ inline constexpr std::array<document::AutoSatinStrategy, 3> kAutoSatinStrategies
     case document::AutoSatinStrategy::ParallelSweep:
         return QCoreApplication::translate(
             "AutoSatinStrategy",
-            "Fils parallèles à un angle unique, par bandes continues. Couvre les formes "
-            "compactes et les blocs larges ; les concavités et trous coupent la bande. Les "
-            "guides locaux ne s'appliquent pas (angle global).");
+            "Fils parallèles, par bandes continues. Couvre les formes compactes et les blocs "
+            "larges ; les concavités et trous coupent la bande. Un guide change l'orientation "
+            "des fils à son endroit : l'angle varie progressivement d'un guide à l'autre.");
     case document::AutoSatinStrategy::MedialAxis:
         return QCoreApplication::translate(
             "AutoSatinStrategy",

@@ -821,6 +821,8 @@ void MainWindow::buildMenus() {
 
     showSegAct_ = segMenu->addAction(tr("&Afficher la carte des régions"));
     showSegAct_->setCheckable(true);
+    showSegAct_->setShortcut(QKeySequence(Qt::Key_W));
+    showSegAct_->setToolTip(tr("Affiche ou masque la carte des régions par-dessus l'image (W)."));
     connect(showSegAct_, &QAction::toggled, this, [this] { displayImage(processed_); });
     buildRegionViewControls(segMenu);
 
@@ -840,16 +842,19 @@ void MainWindow::buildMenus() {
     regionActions_.append(mergeAct_);
     mergeSelectionAct_ = segMenu->addAction(tr("Fusionner la sélecti&on"));
     mergeSelectionAct_->setObjectName(QStringLiteral("action_mergeSelection"));
-    mergeSelectionAct_->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_M));
-    mergeSelectionAct_->setToolTip(
-        tr("Fusionne toutes les régions sélectionnées dans la dernière cliquée (Ctrl+M)."));
+    // J (« joindre ») : la touche seule, une main restant sur la souris.
+    mergeSelectionAct_->setShortcuts({QKeySequence(Qt::CTRL | Qt::Key_M), QKeySequence(Qt::Key_J)});
+    mergeSelectionAct_->setToolTip(tr("Fusionne toutes les régions sélectionnées dans la dernière "
+                                      "cliquée (Ctrl+M ou J)."));
     connect(mergeSelectionAct_, &QAction::triggered, this, &MainWindow::mergeSelectedRegions);
     absorbAct_ = segMenu->addAction(tr("Fusionner dans la voisine &principale"));
     absorbAct_->setObjectName(QStringLiteral("action_absorbIntoNeighbour"));
-    absorbAct_->setShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_M));
+    // A (« absorber »).
+    absorbAct_->setShortcuts(
+        {QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_M), QKeySequence(Qt::Key_A)});
     absorbAct_->setToolTip(
         tr("Fusionne la région dans la voisine avec laquelle elle partage la plus longue "
-           "frontière (Ctrl+Maj+M)."));
+           "frontière (Ctrl+Maj+M ou A)."));
     connect(absorbAct_, &QAction::triggered, this, &MainWindow::absorbSelectedRegionIntoNeighbour);
     cleanIslandsAct_ = segMenu->addAction(tr("Nettoyer les petits &îlots…"));
     cleanIslandsAct_->setObjectName(QStringLiteral("action_cleanIslands"));
@@ -860,17 +865,36 @@ void MainWindow::buildMenus() {
     segMenu->addSeparator();
     selectSameColorAct_ = segMenu->addAction(tr("Sélectionner la &même couleur"));
     selectSameColorAct_->setObjectName(QStringLiteral("action_selectSameColor"));
+    selectSameColorAct_->setShortcut(QKeySequence(Qt::Key_C));
+    selectSameColorAct_->setToolTip(
+        tr("Sélectionne toutes les régions qui ont la couleur de la région active (C)."));
     connect(selectSameColorAct_, &QAction::triggered, this,
             &MainWindow::selectRegionsWithSameColor);
     regionActions_.append(selectSameColorAct_);
     selectNeighboursAct_ = segMenu->addAction(tr("Sélectionner les voisi&nes"));
     selectNeighboursAct_->setObjectName(QStringLiteral("action_selectNeighbours"));
+    selectNeighboursAct_->setShortcut(QKeySequence(Qt::Key_N));
+    selectNeighboursAct_->setToolTip(
+        tr("Ajoute à la sélection les régions voisines de la sélection (N)."));
     connect(selectNeighboursAct_, &QAction::triggered, this, &MainWindow::selectNeighbourRegions);
     regionActions_.append(selectNeighboursAct_);
     selectAllRegionsAct_ = segMenu->addAction(tr("&Tout sélectionner"));
     selectAllRegionsAct_->setObjectName(QStringLiteral("action_selectAllRegions"));
     selectAllRegionsAct_->setShortcut(QKeySequence::SelectAll);
     connect(selectAllRegionsAct_, &QAction::triggered, this, &MainWindow::selectAllRegions);
+    // Parcours des régions au clavier (ordre des identifiants, avec retour au début). Ni Tab (il
+    // sert à la navigation entre les panneaux) ni Entrée (réservée à la validation d'un champ et
+    // à la fin d'un tracé) : Alt + flèches gauche / droite.
+    nextRegionAct_ = segMenu->addAction(tr("Région suivante"));
+    nextRegionAct_->setObjectName(QStringLiteral("action_nextRegion"));
+    nextRegionAct_->setShortcut(QKeySequence(Qt::ALT | Qt::Key_Right));
+    nextRegionAct_->setToolTip(tr("Sélectionne la région suivante (Alt+→)."));
+    connect(nextRegionAct_, &QAction::triggered, this, [this] { selectAdjacentRegion(+1); });
+    previousRegionAct_ = segMenu->addAction(tr("Région précédente"));
+    previousRegionAct_->setObjectName(QStringLiteral("action_previousRegion"));
+    previousRegionAct_->setShortcut(QKeySequence(Qt::ALT | Qt::Key_Left));
+    previousRegionAct_->setToolTip(tr("Sélectionne la région précédente (Alt+←)."));
+    connect(previousRegionAct_, &QAction::triggered, this, [this] { selectAdjacentRegion(-1); });
 
     // Suppr universel (L5-T4a) : l'objectName historique « action_deleteRegion »
     // est conservé (tests, snapshot d'actions) ; l'action est activée par
@@ -5137,6 +5161,7 @@ bool MainWindow::stitchParamsForType(const document::EmbroideryObject& emb, int 
             source = &restoredCopy;
         }
         document::AutoSatinParams sp;
+        sp.strategy = document::kDefaultAutoSatinStrategy;
         AutoSatinPreview preview = previewAutoSatin(*source, sp);
         QString methodNote;
         if (preview.columns == 0) {
@@ -5207,6 +5232,14 @@ void MainWindow::setStitchType(ObjectId embroideryId, int type) {
     refreshImage();
     updateActions();
 }
+
+namespace {
+// Clé 0xRRGGBB des filtres de couleur d'affichage.
+std::uint32_t colorKeyOf(const std::array<std::uint8_t, 3>& rgb) {
+    return (static_cast<std::uint32_t>(rgb[0]) << 16) | (static_cast<std::uint32_t>(rgb[1]) << 8) |
+           static_cast<std::uint32_t>(rgb[2]);
+}
+} // namespace
 
 void MainWindow::onCanvasContextMenu(QPointF posMm, QPoint globalPos) {
     const auto hit = objectAt(posMm);
@@ -5295,6 +5328,13 @@ void MainWindow::onCanvasContextMenu(QPointF posMm, QPoint globalPos) {
             });
         }
         menu.addSeparator();
+        const std::uint32_t embColorKey = colorKeyOf(emb->rgb);
+        const int embFilterType = stitchTypeIndex(*emb) == 3 ? 1 : stitchTypeIndex(*emb);
+        connect(menu.addAction(tr("Afficher uniquement cette couleur")), &QAction::triggered, this,
+                [this, embColorKey] { isolateFilterColor(embColorKey); });
+        connect(menu.addAction(tr("Afficher uniquement ce type de points")), &QAction::triggered,
+                this, [this, embFilterType] { isolateFilterType(embFilterType); });
+        menu.addSeparator();
         // Supprimer la broderie seule n'a de sens que si la forme source
         // reste utilisable après (cas d'un vrai objet vectoriel visible,
         // convertible en un autre type) — pas pour le proxy caché du satin
@@ -5329,6 +5369,18 @@ void MainWindow::onCanvasContextMenu(QPointF posMm, QPoint globalPos) {
         auto* deleteAct = menu.addAction(tr("&Supprimer"));
         connect(deleteAct, &QAction::triggered, this,
                 [this, targetVecId] { deleteVectorObject(targetVecId); });
+    }
+
+    // Filtres d'affichage actifs : toujours pouvoir tout réafficher, même sur le fond vide.
+    const bool filtersActive =
+        !hiddenColors_.empty() || minAreaMm2_ > 0.0 ||
+        std::find(showType_.begin(), showType_.end(), false) != showType_.end();
+    if (filtersActive) {
+        if (!menu.isEmpty()) {
+            menu.addSeparator();
+        }
+        connect(menu.addAction(tr("Tout afficher (filtres)")), &QAction::triggered, this,
+                &MainWindow::showAllFilters);
     }
 
     if (!menu.isEmpty()) {
@@ -6409,6 +6461,16 @@ void MainWindow::buildToolPalette() {
     auto* escape = new QShortcut(QKeySequence(Qt::Key_Escape), this);
     escapeShortcut_ = escape;
     connect(escape, &QShortcut::activated, this, [this] {
+        // Rien à annuler (aucun mode, outil de sélection) : Échap désélectionne les régions.
+        const bool nothingToCancel =
+            !mergeAct_->isChecked() && !stitchEditModeAct_->isChecked() &&
+            !satinEditModeAct_->isChecked() && !satinGuideModeAct_->isChecked() &&
+            !railEditModeAct_->isChecked() && !directionGuideModeAct_->isChecked() &&
+            currentTool_ == Tool::Select;
+        if (nothingToCancel && !selectedRegionIds().empty()) {
+            selectRegions({}, SelectMode::Replace);
+            return;
+        }
         if (mergeAct_->isChecked()) {
             mergeAct_->setChecked(false);
         }
@@ -7359,11 +7421,28 @@ void MainWindow::buildFilterPanel() {
     auto* panel = new QWidget(filterDock_);
     auto* layout = new QVBoxLayout(panel);
 
+    auto* showAllBtn = new QPushButton(tr("Tout afficher"), panel);
+    showAllBtn->setObjectName(QStringLiteral("filterShowAll"));
+    showAllBtn->setToolTip(
+        tr("Réaffiche tous les types, toutes les couleurs et toutes les tailles. "
+           "Clic droit sur un type ou une couleur : n'afficher que celui-ci."));
+    connect(showAllBtn, &QPushButton::clicked, this, &MainWindow::showAllFilters);
+    layout->addWidget(showAllBtn);
+
     layout->addWidget(new QLabel(tr("Types de points :"), panel));
     const QString names[] = {tr("Contour"), tr("Tatami"), tr("Satin")};
     for (int t = 0; t < 3; ++t) {
         auto* check = new QCheckBox(names[t], panel);
         check->setChecked(true);
+        check->setContextMenuPolicy(Qt::CustomContextMenu);
+        connect(check, &QCheckBox::customContextMenuRequested, this, [this, t, check](QPoint pos) {
+            QMenu menu(this);
+            connect(menu.addAction(tr("Afficher uniquement ce type")), &QAction::triggered, this,
+                    [this, t] { isolateFilterType(t); });
+            connect(menu.addAction(tr("Tout afficher")), &QAction::triggered, this,
+                    &MainWindow::showAllFilters);
+            menu.exec(check->mapToGlobal(pos));
+        });
         connect(check, &QCheckBox::toggled, this, [this, t](bool on) {
             showType_[static_cast<std::size_t>(t)] = on;
             displayImage(processed_);
@@ -7430,6 +7509,16 @@ void MainWindow::refreshFilterPanel() {
                            .arg(rgb[0], 2, 16, QLatin1Char('0'))
                            .arg(rgb[1], 2, 16, QLatin1Char('0'))
                            .arg(rgb[2], 2, 16, QLatin1Char('0')));
+        check->setContextMenuPolicy(Qt::CustomContextMenu);
+        connect(check, &QCheckBox::customContextMenuRequested, this,
+                [this, key, check](QPoint pos) {
+                    QMenu menu(this);
+                    connect(menu.addAction(tr("Afficher uniquement cette couleur")),
+                            &QAction::triggered, this, [this, key] { isolateFilterColor(key); });
+                    connect(menu.addAction(tr("Tout afficher")), &QAction::triggered, this,
+                            &MainWindow::showAllFilters);
+                    menu.exec(check->mapToGlobal(pos));
+                });
         connect(check, &QCheckBox::toggled, this, [this, key](bool on) {
             if (on) {
                 hiddenColors_.erase(key);
@@ -7441,6 +7530,71 @@ void MainWindow::refreshFilterPanel() {
         colorFilterLayout_->addWidget(check);
     }
     setDockAutoVisible(filterDock_, !project_.embroidery_objects.empty());
+}
+
+void MainWindow::isolateFilterType(int filterType) {
+    for (std::size_t t = 0; t < showType_.size(); ++t) {
+        showType_[t] = static_cast<int>(t) == filterType;
+        if (typeChecks_[t] != nullptr) {
+            const QSignalBlocker blocker(typeChecks_[t]);
+            typeChecks_[t]->setChecked(showType_[t]);
+        }
+    }
+    displayImage(processed_);
+}
+
+void MainWindow::isolateFilterColor(std::uint32_t colorKey) {
+    hiddenColors_.clear();
+    for (const auto& emb : project_.embroidery_objects) {
+        if (colorKeyOf(emb.rgb) != colorKey) {
+            hiddenColors_.insert(colorKeyOf(emb.rgb));
+        }
+    }
+    refreshFilterPanel(); // recoche les cases de couleur
+    displayImage(processed_);
+}
+
+void MainWindow::showAllFilters() {
+    showType_ = {true, true, true};
+    hiddenColors_.clear();
+    minAreaMm2_ = 0.0;
+    for (QCheckBox* check : typeChecks_) {
+        if (check != nullptr) {
+            const QSignalBlocker blocker(check);
+            check->setChecked(true);
+        }
+    }
+    if (minAreaSpin_ != nullptr) {
+        const QSignalBlocker blocker(minAreaSpin_);
+        minAreaSpin_->setValue(0.0);
+    }
+    refreshFilterPanel();
+    displayImage(processed_);
+}
+
+std::vector<QColor> MainWindow::imageColors() const {
+    std::vector<std::uint32_t> seen;
+    std::vector<QColor> colors;
+    for (const auto& vec : project_.vector_objects) {
+        const std::uint32_t key = colorKeyOf(vec.rgb);
+        if (std::find(seen.begin(), seen.end(), key) == seen.end()) {
+            seen.push_back(key);
+            colors.emplace_back(vec.rgb[0], vec.rgb[1], vec.rgb[2]);
+        }
+    }
+    return colors;
+}
+
+QColor MainWindow::pickThreadColor(const QColor& initial, const QString& title) {
+    // Les « Custom colors » du sélecteur Qt sont globales à l'application : on les remplace par
+    // les couleurs de l'image courante (16 emplacements).
+    const std::vector<QColor> colors = imageColors();
+    for (int i = 0; i < QColorDialog::customCount(); ++i) {
+        QColorDialog::setCustomColor(i, static_cast<std::size_t>(i) < colors.size()
+                                            ? colors[static_cast<std::size_t>(i)]
+                                            : QColor(Qt::white));
+    }
+    return QColorDialog::getColor(initial, this, title);
 }
 
 void MainWindow::moveObjectUp() {
@@ -9212,6 +9366,10 @@ void MainWindow::updateActions() {
     setEnabledWithReason(showSegAct_, project_.segmentation.has_value(),
                          tr("Segmentez d'abord l'image (menu Segmentation)."));
     setEnabledWithReason(mergeColorsAct_, project_.segmentation.has_value(),
+                         tr("Segmentez d'abord l'image (menu Segmentation)."));
+    setEnabledWithReason(nextRegionAct_, project_.segmentation.has_value(),
+                         tr("Segmentez d'abord l'image (menu Segmentation)."));
+    setEnabledWithReason(previousRegionAct_, project_.segmentation.has_value(),
                          tr("Segmentez d'abord l'image (menu Segmentation)."));
     const QString noVectors = tr("Aucun objet vectoriel : vectorisez une région ou dessinez.");
     setEnabledWithReason(showVectorsAct_, !project_.vector_objects.empty(), noVectors);

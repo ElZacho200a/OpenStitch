@@ -179,6 +179,27 @@ void MainWindow::selectNeighbourRegions() {
     selectRegions(ordered, SelectMode::Add);
 }
 
+void MainWindow::selectAdjacentRegion(int step) {
+    if (!project_.segmentation || (step != 1 && step != -1)) {
+        return;
+    }
+    const std::vector<RegionId> all = segmentation::all_regions(*project_.segmentation);
+    if (all.empty()) {
+        return;
+    }
+    const auto count = static_cast<std::ptrdiff_t>(all.size());
+    // Sans région active : on part de la fin (+1 -> la première) ou du début (-1 -> la dernière).
+    std::ptrdiff_t index = step > 0 ? count - 1 : 0;
+    if (selectedRegion_) {
+        const auto it = std::find(all.begin(), all.end(), *selectedRegion_);
+        if (it != all.end()) {
+            index = it - all.begin();
+        }
+    }
+    index = (index + step + count) % count;
+    selectRegions({all[static_cast<std::size_t>(index)]}, SelectMode::Replace);
+}
+
 void MainWindow::mergeSelectedRegions() {
     if (!project_.segmentation) {
         return;
@@ -497,6 +518,9 @@ void MainWindow::showRegionContextMenu(RegionId clicked, QPoint globalPos) {
                         [this, n, source] { mergeRegions({source}, n); });
             }
         }
+    }
+    if (ids.size() == 1) {
+        menu.addAction(absorbAct_); // fusion dans la voisine principale (A, Ctrl+Maj+M)
     }
     auto* recolor = menu.addAction(tr("&Recolorer…"));
     connect(recolor, &QAction::triggered, this, &MainWindow::recolorSelectedRegion);

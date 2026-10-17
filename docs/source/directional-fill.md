@@ -278,8 +278,12 @@ analyse, puis choisit la paire de fils dans le nuancier fourni.
 **Action de l'interface** (`MainWindow::applyTwoColorBlend`, menu Broderie,
 barre contextuelle et inspecteur d'un objet tatami ou directionnel) : le dialogue
 **Fondu de couleurs · deux fils** propose les couleurs du fond et du dessus,
-l'angle, les écarts au début/à la fin (0,1 à 4 mm), l'inversion et un **aperçu
-schématique** (pas une simulation des points ni du tissu). Il fonctionne **sans
+l'angle, les écarts au début/à la fin (0,1 à 4 mm), l'inversion, le profil (**complémentaire** par défaut : rampes opposées sur les deux
+couches ; ou fond uniforme) et un **aperçu des points** : séquence effective d'un
+instantané du projet (`MainWindow::createColorBlend`, `blendLayersFor`), jamais le
+document, avec les mêmes couches que celles qui seront créées (pas une simulation du
+tissu). Création et aperçu partagent `make_color_blend_layers` ; les deux couches
+sont liées (`SetColorBlendLinkCommand`). Il fonctionne **sans
 image**, avec des couleurs manuelles. Avec une image, **Proposer les couleurs
 depuis l'image** lance l'analyse hors du fil d'interface, avec le nuancier actif
 du panneau Fils. La proposition reste modifiable et l'analyse ne crée rien.
@@ -299,7 +303,24 @@ trouvé 2026-10 : sur une rampe horizontale avec un guide horizontal, il restait
 plus de 80 % des lignes d'un remplissage uniforme). L'action remplace donc les
 guides du dessus par un guide droit perpendiculaire à l'axe
 (`stitch_generation::align_guides_across_density_gradient`, test
-`blend: rows are turned across the colour axis…`). Déterministe : aucune
+`blend: rows are turned across the colour axis…`). Le même alignement est
+appliqué **à la génération** (`build_sectors`) pour tout remplissage portant un
+`density_gradient` utile : des guides courbes conservés ou ajoutés après coup
+(cas `TheyAskedForIT.osp`, 14 guides longeant l'axe vertical, rangées non
+espacées et « fils parasites » sombres sur le fond) sont ignorés au profit du
+guide perpendiculaire à l'axe (test `directional density gradient ignores guides
+running along its axis`). Conséquence : un remplissage à dégradé ne suit plus
+ses guides manuels. Les liaisons cousues entre
+lignes (`sewMax`, 4 × l'écart) suivent l'écart **local** du dégradé et non son
+maximum : avec 4 mm → 0,4 mm, une liaison de 16 mm traversait la zone dense
+(`TheyAskedForIT.osp` : 50 → 11 avertissements « point long », au prix de plus
+de sauts, donc de coupes, invisibles une fois le fil coupé).
+Cause racine des petits sauts parasites : une liaison entre deux fins de rangées
+voisines était refusée dès que son segment sortait de la région, or un contour
+en escalier (vectorisation pixel) ou une fente de moins de 1,5 mm le fait sortir
+d'un cheveu ; elle devenait un saut. Une liaison de 1,5 mm au plus est désormais
+cousue (`linkInside`). `TheyAskedForIT.osp` : 811 → 360 sauts (fond 410 → 57,
+dessus 150 → 52). Déterministe : aucune
 graine, itération dans l'ordre d'entrée. Limites : un seul plan (un dégradé
 linéaire par région, pas de courbe), deux couleurs maximum par région.
 

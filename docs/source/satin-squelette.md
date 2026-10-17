@@ -308,8 +308,24 @@ trous inclus). Chaque intervalle intérieur est une traversée.
   traversées sont dans la région, sur dix formes dont `E`, `comb`, `star5`, `two_holes`).
 - **Angle global** : par défaut perpendiculaire à l'axe principal d'inertie quand la forme
   est allongée (anisotropie > 1,3), horizontal sinon ; ou `sweep_angle_rad` si
-  `sweep_auto_angle` est faux. Les **guides locaux ne sont pas appliqués** : ils sont
-  comptés dans `orphan_guides` et signalés dans `messages`, jamais ignorés en silence.
+  `sweep_auto_angle` est faux. C'est l'angle de référence α₀ et le chemin **sans guide** :
+  droites parallèles, sortie inchangée par rapport à avant les guides.
+- **Guides (2026-10-17)** : un guide fixe l'orientation des fils *à sa position le long de
+  l'axe de balayage* (projection de son ancre sur la direction du balayage). Un guide relatif
+  donne un écart à α₀ (0 = α₀), un guide absolu un angle du dessin (ramené en écart à α₀,
+  modulo π, ±90° exact dans le sens positif). L'écart est interpolé linéairement entre guides
+  (valeur du guide le plus proche au-delà). Les droites ne sont plus parallèles : chacune
+  passe par l'axe de balayage (centre du contour extérieur) et pivote de l'écart local. Trois
+  garde-fous, chacun compté dans `clamped_angle` :
+  1. écart borné à ±60° (au-delà les fils ne progressent plus le long de la forme) ;
+  2. pas le long de l'axe agrandi de 1/cos(écart) pour garder l'espacement perpendiculaire
+     (les droites sont réparties à égalité sur l'intégrale de cos(écart)/`spacing`) ;
+  3. taux de rotation d'une droite à la suivante limité à `0,25·spacing / demi-étendue des
+     fils` (aller-retour), de sorte que deux droites voisines ne se coupent pas dans la forme.
+  Un guide peut donc n'être atteint qu'en partie si deux guides contrastés sont rapprochés.
+  Les bandes se raccordent par recouvrement dans la coordonnée commune α₀ (le paramètre `t`
+  de deux droites d'angles différents n'est pas comparable). Un guide dont l'ancre sort de
+  l'étendue de la forme (± `spacing`) est orphelin : compté dans `orphan_guides` et signalé.
 - **Pas de cache** : coût linéaire, aucun raster (le raster de la couverture reste à la
   demande).
 - Les colonnes d'un seul fil sont ignorées (pas de zigzag possible) et comptées.
@@ -363,16 +379,19 @@ contre 11) et `trident` (1 colonne contre 3, 98,3 contre 99 %). Non validé sur 
 
 Une région auto-satin porte sa méthode : `document::AutoSatinParams::strategy`
 (`Skeleton`, `ParallelSweep`, `MedialAxis`) et, pour le balayage, `sweep_angle` facultatif.
-**Le squelette reste le défaut**, y compris pour un `.osp` sans la nouvelle clé (voir
-`project-format.md` pour la persistance par nom et la version v7 conditionnelle).
+**Depuis le 2026-10-17, le balayage parallèle est la méthode proposée aux nouveaux
+auto-satins créés par l'utilisateur** (bureau, CLI, API : `document::kDefaultAutoSatinStrategy`).
+`AutoSatinParams{}` garde le squelette : un `.osp` sans la clé `strategy`, le lettrage et
+l'auto-numérisation ne changent donc pas de méthode (voir `project-format.md` pour la
+persistance par nom et la version v7 conditionnelle).
 
 - **Une seule correspondance réglages → moteur** : `stitch_generation::auto_satin_engine`,
   utilisée par la génération de points, l'aperçu, l'inspecteur, l'API programmatique et
   l'export ; tous appellent `auto_satin::generate_satin` (jamais `generate_skeleton_satin`).
   Le préchauffage du cache de squelette est ignoré pour les autres méthodes (sans cache).
 - **Inspecteur** : section « Méthode » (liste déroulante avec infobulle par méthode, angle des
-  fils automatique ou fixe pour le balayage, avertissement que les guides locaux ne
-  s'appliquent pas au balayage) et bouton **« Comparer les méthodes… »**. Changer de méthode
+  fils automatique ou fixe pour le balayage, les guides faisant tourner les fils localement)
+  et bouton **« Comparer les méthodes… »**. Changer de méthode
   est une modification annulable comme les autres réglages.
 - **Création** (« Convertir en satin ») : si le squelette ne produit aucune colonne, les autres
   méthodes sont essayées **avant** le refus (disque, pétale, bloc large). La première qui

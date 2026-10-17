@@ -14,10 +14,13 @@
 
 namespace openstitch::auto_satin {
 
-// Utilise `spacing`, `min_thread_length`, `sweep_auto_angle` et `sweep_angle_rad` ; les
-// autres champs (guides, squelette) n'ont pas d'effet. Les guides ne sont pas appliqués :
-// le balayage a son propre angle global et le signale (`orphan_guides` = nombre de
-// guides ignorés). Déterministe, sans cache (coût linéaire, pas de raster).
+// Utilise `spacing`, `min_thread_length`, `sweep_auto_angle`, `sweep_angle_rad` et `guides` ;
+// les champs du squelette n'ont pas d'effet. Sans guide : droites parallèles à l'angle global.
+// Avec guides : chaque guide fixe l'angle des fils à sa position le long de l'axe de balayage,
+// l'angle est interpolé linéairement entre guides (constant au-delà), l'écart à l'angle global
+// est borné à ±60° et son taux de variation limité pour que deux droites voisines ne se
+// coupent pas dans la forme (`clamped_angle` compte les droites touchées). Un guide hors de la
+// forme est compté dans `orphan_guides`. Déterministe, sans cache (coût linéaire, pas de raster).
 [[nodiscard]] Result<SkeletonSatinResult>
 generate_parallel_sweep(const geometry::PathSet& region, const SkeletonSatinParameters& params);
 
