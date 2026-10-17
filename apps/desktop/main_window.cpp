@@ -817,6 +817,12 @@ void MainWindow::buildMenus() {
     connect(showSegAct_, &QAction::toggled, this, [this] { displayImage(processed_); });
     buildRegionViewControls(segMenu);
 
+    mergeColorsAct_ = segMenu->addAction(tr("Fusionner les co&uleurs…"));
+    mergeColorsAct_->setObjectName(QStringLiteral("action_mergeColors"));
+    mergeColorsAct_->setToolTip(
+        tr("Panneau des couleurs de la segmentation : fusionne des teintes entre elles, ou réduit "
+           "la palette à N couleurs avec aperçu."));
+    connect(mergeColorsAct_, &QAction::triggered, this, &MainWindow::showColorsPanel);
     segMenu->addSeparator();
     mergeAct_ = segMenu->addAction(tr("&Fusionner avec… (cliquer la région cible)"));
     mergeAct_->setCheckable(true);
@@ -2946,6 +2952,7 @@ void MainWindow::refreshImage() {
     // suppression, rechargement) ; le dernier objet restant devient le principal.
     pruneSelection();
     Q_ASSERT(checkSelectionInvariants());
+    refreshColorsPanel(); // le document a changé : liste des teintes à jour, aperçu caduc
     // Le raster est facultatif : SVG, dessin, texte et design machine doivent
     // eux aussi régénérer leurs points et rafraîchir tous les panneaux.
     if (!project_.hasImage()) {
@@ -3855,8 +3862,12 @@ void MainWindow::renderBase(const image::Image& img) {
     // Carte des régions par-dessus l'image (mode d'affichage segmentation).
     if (showSegAct_ != nullptr && showSegAct_->isChecked() && project_.segmentation) {
         const double mmPerPx = project_.mm_per_px.value;
+        // Aperçu d'une fusion de couleurs : la copie modifiée remplace la segmentation du
+        // document (sans surbrillance : les identifiants de sélection n'y ont plus cours).
         const auto map =
-            segmentation::render_map_multi(*project_.segmentation, selectedRegionIds());
+            previewSegmentation_
+                ? segmentation::render_map_multi(*previewSegmentation_, {})
+                : segmentation::render_map_multi(*project_.segmentation, selectedRegionIds());
         const QImage mapImg(map.rgba.data(), map.width, map.height, map.width * 4,
                             QImage::Format_RGBA8888);
         auto* mapItem = scene_->addPixmap(QPixmap::fromImage(mapImg.copy()));
@@ -9150,6 +9161,8 @@ void MainWindow::updateActions() {
     // Outil Recadrer de la palette : sans image il ne peut rien faire (le glisser serait ignoré).
     setEnabledWithReason(toolRectAct_, hasImage, tr("Ouvrez d'abord une image."));
     setEnabledWithReason(showSegAct_, project_.segmentation.has_value(),
+                         tr("Segmentez d'abord l'image (menu Segmentation)."));
+    setEnabledWithReason(mergeColorsAct_, project_.segmentation.has_value(),
                          tr("Segmentez d'abord l'image (menu Segmentation)."));
     const QString noVectors = tr("Aucun objet vectoriel : vectorisez une région ou dessinez.");
     setEnabledWithReason(showVectorsAct_, !project_.vector_objects.empty(), noVectors);
