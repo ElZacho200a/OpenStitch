@@ -25,8 +25,8 @@ struct SettingsSandbox {
 };
 
 QSettings sandboxSettings() {
-    return QSettings(QSettings::defaultFormat(), QSettings::UserScope,
-                     QStringLiteral("OpenStitch"), QStringLiteral("OpenStitch Studio"));
+    return QSettings(QSettings::defaultFormat(), QSettings::UserScope, QStringLiteral("OpenStitch"),
+                     QStringLiteral("OpenStitch Studio"));
 }
 
 } // namespace

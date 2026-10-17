@@ -168,9 +168,9 @@ void MainWindow::runBooleanOp(commands::BooleanOp op) {
                                                                  : tr("Formes exclues.");
     // Le principal (dernier sélectionné) d'abord : c'est lui qui est retenu s'il survit.
     std::vector<ObjectId> keep(ids.rbegin(), ids.rend());
-    applyShapeCommand(commands::make_boolean_command(project_, op, ids,
-                                                     mmToUm(loadEditSettings().unionGapMm)),
-                      label + tr(" Ctrl+Z pour annuler."), keep);
+    applyShapeCommand(
+        commands::make_boolean_command(project_, op, ids, mmToUm(loadEditSettings().unionGapMm)),
+        label + tr(" Ctrl+Z pour annuler."), keep);
 }
 
 void MainWindow::removeHolesOfSelection(double maxAreaMm2) {
@@ -214,9 +214,9 @@ void MainWindow::finishCut() {
             }
         }
     }
-    applyShapeCommand(commands::make_split_command(project_, ids, a, b,
-                                                   mmToUm(settings.knifeWidthMm)),
-                      tr("Forme découpée. Ctrl+Z pour annuler."), ids);
+    applyShapeCommand(
+        commands::make_split_command(project_, ids, a, b, mmToUm(settings.knifeWidthMm)),
+        tr("Forme découpée. Ctrl+Z pour annuler."), ids);
 }
 
 } // namespace openstitch::desktop

@@ -62,7 +62,8 @@ SettingsDialog::SettingsDialog(QWidget* parent) : QDialog(parent) {
     knifeWidthMm_->setToolTip(tr("Largeur de la bande retirée par le Couteau."));
     editForm->addRow(tr("Largeur de la coupe du Couteau"), knifeWidthMm_);
     knifeMinLengthMm_ = mmSpin(0.1, 10.0, 0.1, 2);
-    knifeMinLengthMm_->setToolTip(tr("Un trait de Couteau plus court que cette longueur est ignoré."));
+    knifeMinLengthMm_->setToolTip(
+        tr("Un trait de Couteau plus court que cette longueur est ignoré."));
     editForm->addRow(tr("Longueur minimale du trait de Couteau"), knifeMinLengthMm_);
     tabs->addTab(editPage, tr("Édition"));
 

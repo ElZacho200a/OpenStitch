@@ -19,7 +19,8 @@ struct EditSettings {
     int longPressMs{500};         // délai de l'appui long
 
     [[nodiscard]] static EditSettings defaults() { return {}; }
-    // Même réglages ramenés dans leurs bornes (une valeur hors bornes lue du fichier ne plante pas).
+    // Même réglages ramenés dans leurs bornes (une valeur hors bornes lue du fichier ne plante
+    // pas).
     [[nodiscard]] EditSettings clamped() const;
 
     bool operator==(const EditSettings&) const = default;

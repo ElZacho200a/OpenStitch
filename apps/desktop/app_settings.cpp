@@ -29,8 +29,7 @@ double readDouble(const QSettings& s, const char* key, double fallback) {
 }
 
 QSettings userSettings() {
-    return QSettings(QSettings::defaultFormat(), QSettings::UserScope, kOrganization,
-                     kApplication);
+    return QSettings(QSettings::defaultFormat(), QSettings::UserScope, kOrganization, kApplication);
 }
 
 } // namespace
