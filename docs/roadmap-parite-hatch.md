@@ -2109,8 +2109,11 @@ hors cadre, déplacement sans coupe), résumé avant export DST.
   panneau, le pré-export et `project quality`. Voir `docs/source/analysis-and-validation.md`.
 - À faire : `saut-long` (optimiser l'ordre), `couches-superposees` (retirer le remplissage
   caché, voir RD-PAT-006), `trait-trop-fin` ; application des corrections en CLI
-  (`project op`) ; élagage des règles faibles (`point-court`, `trop-de-points`, `vide`)
-  après mesure sur de vrais motifs.
+  (`project op`) ; instruire les 414 points sous 0,1 mm mesurés (probables doublons de la
+  génération, cause non confirmée) ; mesurer sur de vrais motifs (le corpus du dépôt n'a ni
+  texte ni réglage manuel). Fait le 2026-10-17 après mesure : `saut-long` ne signale plus un
+  déplacement qui contient une coupe, `point-court` scindé (avertissement < 0,1 mm,
+  information par objet de 0,1 à 0,5 mm) ; `vide` et `trop-de-points` conservés.
 - Modules : `libs/stitch_analysis`, `apps/desktop`.
 - Acceptation : un clic sur « Corriger » applique une seule commande annulable (undo
   rétablit l'état) et le constat disparaît à la ré-analyse (tests `test_analyze_project`,
