@@ -387,6 +387,10 @@ void add_digitize_options(CLI::App* cmd, DigitizeOptionValues& v) {
                     "Avec --island-cleanup : refuse une voisine plus éloignée que cet écart de "
                     "couleur CIELAB (ΔE) ; 0 = pas de limite (défaut)")
         ->check(CLI::NonNegativeNumber);
+    cmd->add_option("--max-threads", s.max_threads,
+                    "Mode formes : limite le nombre de couleurs (fils) du résultat en fusionnant "
+                    "les plus proches ; 0 = pas de limite (défaut)")
+        ->check(CLI::NonNegativeNumber);
     cmd->add_flag(
         "--solid-block", s.solid_block,
         "Mode formes : bloc uni, sans tissu visible entre zones voisines (les "

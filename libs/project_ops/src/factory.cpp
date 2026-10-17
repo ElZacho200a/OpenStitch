@@ -204,19 +204,29 @@ double guide_length_mm(const geometry::Path& guide) {
     return geometry::polyline_length(pts) / 1000.0;
 }
 
-std::size_t apply_flow_fill(document::Project& project, const DigitizeSettings& s) {
+std::size_t apply_flow_fill(const std::vector<document::VectorObject>& vectors,
+                            std::vector<document::EmbroideryObject>& embroideries,
+                            const DigitizeSettings& s) {
     // Couleur la plus sombre = traits et contours : ils gardent leur tatami.
     const auto lum = [](const std::array<std::uint8_t, 3>& c) { return c[0] + c[1] + c[2]; };
+    const auto findVector = [&](ObjectId id) -> const document::VectorObject* {
+        for (const auto& v : vectors) {
+            if (v.id == id) {
+                return &v;
+            }
+        }
+        return nullptr;
+    };
     int darkest = 3 * 255 + 1;
-    for (const auto& e : project.embroidery_objects) {
+    for (const auto& e : embroideries) {
         if (e.is_tatami()) {
             darkest = std::min(darkest, lum(e.rgb));
         }
     }
     std::size_t converted = 0;
-    for (auto& e : project.embroidery_objects) {
+    for (auto& e : embroideries) {
         const auto* tatami = std::get_if<document::TatamiParams>(&e.params);
-        const auto* source = project.findObject(e.source_vector);
+        const auto* source = findVector(e.source_vector);
         if (tatami == nullptr || source == nullptr || lum(e.rgb) <= darkest) {
             continue;
         }
@@ -333,6 +343,136 @@ Result<document::Project> create_empty_project(const NewProjectOptions& options)
         return std::unexpected(finishing.error());
     }
     return project;
+}
+
+autodigitize::AutoOptions make_auto_options(const DigitizeSettings& s, Millimeters mm_per_px,
+                                            bool skipLargest) {
+    autodigitize::AutoOptions opts;
+    opts.mm_per_px = mm_per_px;
+    opts.skip_largest_region = skipLargest;
+    opts.satin_bands = s.satin_bands;
+    opts.curve_tolerance = mm_to_um(s.curve_tolerance_mm);
+    if (s.simplify_tolerance_um) {
+        opts.simplify_tolerance = Micrometers{*s.simplify_tolerance_um};
+    }
+    opts.max_threads = s.max_threads;
+    if (s.min_feature_mm) {
+        opts.min_feature_width_mm = *s.min_feature_mm;
+    }
+    if (s.min_region_mm2) {
+        opts.min_region_area_mm2 = *s.min_region_mm2;
+    }
+    opts.island_area_mm2 = s.island_cleanup_mm2;
+    opts.fill_overlap = mm_to_um(s.fill_overlap_mm);
+    opts.fill_hidden_underpath = s.fill_hidden_underpath;
+    if (s.fill_inset_mm) {
+        opts.fill_inset = mm_to_um(*s.fill_inset_mm);
+    }
+    opts.island_max_delta_e = s.island_max_delta_e;
+    if (s.solid_block) {
+        autodigitize::apply_solid_block(opts, s.solid_block_overlap_mm);
+    }
+    return opts;
+}
+
+Result<DigitizedObjects> digitize_objects(const DigitizeSource& source, IdGenerator<ObjectId>& ids,
+                                          const DigitizeSettings& s, bool skipLargest,
+                                          const StatusLog& log,
+                                          autodigitize::LineLayerMasks* debugMasks) {
+    const bool stippling = s.mode == "stipple";
+    const bool contours = s.mode == "contours";
+    if (!stippling && !contours && s.mode != "shapes") {
+        return fail(ErrorCategory::UserInput, "mode inconnu : « " + s.mode + " »",
+                    "valeurs : shapes, contours, stipple");
+    }
+    if ((stippling ? source.image == nullptr : source.segmentation == nullptr) ||
+        (s.dark_lines && !contours && source.image == nullptr)) {
+        return fail(ErrorCategory::OperationImpossible,
+                    "numérisation impossible : segmentation ou image de travail manquante");
+    }
+    const autodigitize::AutoOptions opts = make_auto_options(s, source.mm_per_px, skipLargest);
+
+    // Stratégie « contours / dessin au trait » : lignes médianes cousues en point droit
+    // (satin legacy dégradé en point droit).
+    autodigitize::ContourOptions co;
+    co.mm_per_px = source.mm_per_px;
+    co.skip_largest_region = skipLargest;
+    co.detail = s.detail;
+    co.routing = s.single_path ? autodigitize::ContourRouting::SinglePath
+                               : autodigitize::ContourRouting::Chains;
+    co.technique = s.technique == "running" ? autodigitize::ContourTechnique::Running
+                   : (s.technique == "legacy-satin" || s.technique == "satin")
+                       ? autodigitize::ContourTechnique::Satin
+                       : autodigitize::ContourTechnique::Automatic;
+    if (contours) {
+        char buf[120];
+        std::snprintf(buf, sizeof buf, "Mode : contours (detail %.2f, technique %s)", s.detail,
+                      s.technique.c_str());
+        say(log, buf);
+    }
+    DigitizedObjects out;
+    autodigitize::ContourMetrics cm;
+    autodigitize::StippleMetrics sm;
+    autodigitize::LineLayerMetrics lm;
+    bool usedDarkLines = false;
+    auto result = [&]() -> Result<autodigitize::AutoResult> {
+        if (stippling) {
+            autodigitize::StippleObjectOptions so;
+            so.mm_per_px = source.mm_per_px;
+            so.density.invert = s.stipple_invert;
+            so.stipple.point_count = s.stipple_points;
+            so.stipple.seed = static_cast<std::uint32_t>(s.stipple_seed);
+            say(log, "Mode : stippling (" + std::to_string(s.stipple_points) + " points, graine " +
+                         std::to_string(s.stipple_seed) + ")");
+            return autodigitize::auto_digitize_stipple(*source.image, ids, so, &sm);
+        }
+        if (!contours && s.dark_lines) {
+            autodigitize::LineLayerOptions lo;
+            lo.enabled = true;
+            lo.max_line_width_mm = s.dark_lines_width_mm;
+            lo.dark_max_lightness = s.dark_lines_lightness;
+            lo.objects_only = s.dark_lines_objects_only;
+            lo.bars_max_width_mm = s.dark_lines_bars_mm;
+            lo.min_line_length_mm = s.dark_lines_min_length_mm;
+            lo.rings_satin = s.rings_satin;
+            lo.masks = debugMasks;
+            co.technique = autodigitize::ContourTechnique::Running;
+            // Un réseau de traits se coud en parcours eulérien : moins de polylignes, donc moins
+            // de coupes, au prix d'un court repassage.
+            co.routing = autodigitize::ContourRouting::SinglePath;
+            usedDarkLines = true;
+            return autodigitize::auto_digitize_with_lines(*source.segmentation, *source.image, ids,
+                                                          opts, lo, co, &lm);
+        }
+        return contours ? autodigitize::auto_digitize_contours(*source.segmentation, ids, co, &cm)
+                        : autodigitize::auto_digitize(*source.segmentation, ids, opts);
+    }();
+    if (!result) {
+        return std::unexpected(result.error());
+    }
+    out.objects = std::move(*result);
+    if (stippling) {
+        out.stipple = sm;
+    }
+    if (contours) {
+        out.contour = cm;
+    }
+    if (usedDarkLines) {
+        out.dark_lines = lm;
+        char buf[200];
+        std::snprintf(buf, sizeof buf,
+                      "Traits sombres : %zu px séparés des remplissages, %zu objet(s) de ligne "
+                      "(%zu segment(s), %.0f mm de point droit)",
+                      lm.line_pixels, lm.line_objects, lm.contours.segments,
+                      lm.contours.running_length_mm);
+        say(log, buf);
+    }
+    if (s.flow_fill && !stippling) {
+        out.flow_fill = apply_flow_fill(out.objects.vectors, out.objects.embroideries, s);
+        say(log, "Remplissage directionnel (mouvement) : " + std::to_string(out.flow_fill) +
+                     " forme(s) allongée(s)");
+    }
+    return out;
 }
 
 Result<DigitizeReport> digitize_image_into(document::Project& project,
@@ -452,122 +592,34 @@ Result<DigitizeReport> digitize_image_into(document::Project& project,
                                                           : (s.skip_background != 0));
     report.background_skipped = skipLargest;
 
-    autodigitize::AutoOptions opts;
-    opts.mm_per_px = project.mm_per_px;
-    opts.skip_largest_region = skipLargest;
-    opts.satin_bands = s.satin_bands;
-    opts.curve_tolerance = mm_to_um(s.curve_tolerance_mm);
-    if (s.min_feature_mm) {
-        opts.min_feature_width_mm = *s.min_feature_mm;
-    }
-    if (s.min_region_mm2) {
-        opts.min_region_area_mm2 = *s.min_region_mm2;
-    }
-    opts.island_area_mm2 = s.island_cleanup_mm2;
-    opts.fill_overlap = mm_to_um(s.fill_overlap_mm);
-    opts.fill_hidden_underpath = s.fill_hidden_underpath;
-    if (s.fill_inset_mm) {
-        opts.fill_inset = mm_to_um(*s.fill_inset_mm);
-    }
-    opts.island_max_delta_e = s.island_max_delta_e;
-    if (s.solid_block) {
-        autodigitize::apply_solid_block(opts, s.solid_block_overlap_mm);
-    }
     say(log, std::string("Ignorer la plus grande région (fond) : ") +
                  (skipLargest ? "oui" : "non") +
                  (report.background_auto ? " (automatique)" : " (option explicite)"));
 
-    // Stratégie « contours / dessin au trait » : lignes médianes cousues en point droit
-    // (satin legacy dégradé en point droit).
-    autodigitize::ContourOptions co;
-    co.mm_per_px = project.mm_per_px;
-    co.skip_largest_region = skipLargest;
-    co.detail = s.detail;
-    co.routing = s.single_path ? autodigitize::ContourRouting::SinglePath
-                               : autodigitize::ContourRouting::Chains;
-    co.technique = s.technique == "running" ? autodigitize::ContourTechnique::Running
-                   : (s.technique == "legacy-satin" || s.technique == "satin")
-                       ? autodigitize::ContourTechnique::Satin
-                       : autodigitize::ContourTechnique::Automatic;
-    if (contours) {
-        char buf[120];
-        std::snprintf(buf, sizeof buf, "Mode : contours (detail %.2f, technique %s)", s.detail,
-                      s.technique.c_str());
-        say(log, buf);
-    }
-    autodigitize::ContourMetrics cm;
-    autodigitize::StippleMetrics sm;
-    autodigitize::LineLayerMetrics lm;
     autodigitize::LineLayerMasks debugMasks;
-    bool usedDarkLines = false;
-    auto result = [&]() -> Result<autodigitize::AutoResult> {
-        if (stippling) {
-            autodigitize::StippleObjectOptions so;
-            so.mm_per_px = project.mm_per_px;
-            so.density.invert = s.stipple_invert;
-            so.stipple.point_count = s.stipple_points;
-            so.stipple.seed = static_cast<std::uint32_t>(s.stipple_seed);
-            say(log, "Mode : stippling (" + std::to_string(s.stipple_points) + " points, graine " +
-                         std::to_string(s.stipple_seed) + ")");
-            return autodigitize::auto_digitize_stipple(working, project.object_ids, so, &sm);
-        }
-        if (!contours && s.dark_lines) {
-            autodigitize::LineLayerOptions lo;
-            lo.enabled = true;
-            lo.max_line_width_mm = s.dark_lines_width_mm;
-            lo.dark_max_lightness = s.dark_lines_lightness;
-            lo.objects_only = s.dark_lines_objects_only;
-            lo.bars_max_width_mm = s.dark_lines_bars_mm;
-            lo.min_line_length_mm = s.dark_lines_min_length_mm;
-            lo.rings_satin = s.rings_satin;
-            lo.masks = s.debug_dir.empty() ? nullptr : &debugMasks;
-            co.technique = autodigitize::ContourTechnique::Running;
-            // Un réseau de traits se coud en parcours eulérien : moins de polylignes, donc moins
-            // de coupes, au prix d'un court repassage.
-            co.routing = autodigitize::ContourRouting::SinglePath;
-            usedDarkLines = true;
-            return autodigitize::auto_digitize_with_lines(*project.segmentation, working,
-                                                          project.object_ids, opts, lo, co, &lm);
-        }
-        return contours
-                   ? autodigitize::auto_digitize_contours(*project.segmentation, project.object_ids,
-                                                          co, &cm)
-                   : autodigitize::auto_digitize(*project.segmentation, project.object_ids, opts);
-    }();
-    if (!result) {
+    const DigitizeSource src{project.segmentation ? &*project.segmentation : nullptr, &working,
+                             project.mm_per_px};
+    auto outcome = digitize_objects(src, project.object_ids, s, skipLargest, log,
+                                    s.debug_dir.empty() ? nullptr : &debugMasks);
+    if (!outcome) {
         return fail(ErrorCategory::OperationImpossible,
-                    "numérisation impossible : " + result.error().message,
+                    "numérisation impossible : " + outcome.error().message,
                     "image trop uniforme, ou seul le fond a été détecté : essayez "
                     "--skip-background no, --max-colors plus grand ou --min-region-px plus petit");
     }
-    if (stippling) {
-        report.stipple = sm;
+    report.stipple = outcome->stipple;
+    report.contour = outcome->contour;
+    report.dark_lines = outcome->dark_lines;
+    if (outcome->dark_lines) {
+        report.rings_satin = outcome->dark_lines->ring_objects;
     }
-    if (contours) {
-        report.contour = cm;
-    }
-    if (usedDarkLines) {
-        report.dark_lines = lm;
-        report.rings_satin = lm.ring_objects;
-        char buf[200];
-        std::snprintf(buf, sizeof buf,
-                      "Traits sombres : %zu px séparés des remplissages, %zu objet(s) de ligne "
-                      "(%zu segment(s), %.0f mm de point droit)",
-                      lm.line_pixels, lm.line_objects, lm.contours.segments,
-                      lm.contours.running_length_mm);
-        say(log, buf);
-    }
-    report.warnings = std::move(result->warnings);
-    for (auto& v : result->vectors) {
+    report.flow_fill = outcome->flow_fill;
+    report.warnings = std::move(outcome->objects.warnings);
+    for (auto& v : outcome->objects.vectors) {
         project.vector_objects.push_back(std::move(v));
     }
-    for (auto& e : result->embroideries) {
+    for (auto& e : outcome->objects.embroideries) {
         project.embroidery_objects.push_back(std::move(e));
-    }
-    if (s.flow_fill && !stippling) {
-        report.flow_fill = apply_flow_fill(project, s);
-        say(log, "Remplissage directionnel (mouvement) : " + std::to_string(report.flow_fill) +
-                     " forme(s) allongée(s)");
     }
     report.vector_objects = project.vector_objects.size();
     report.embroidery_objects = project.embroidery_objects.size();

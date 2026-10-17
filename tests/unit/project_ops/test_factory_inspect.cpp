@@ -331,3 +331,54 @@ TEST_CASE("digitize pre-processing is stored non destructively and drives the wo
     CHECK_FALSE(po::digitize_image_into(untouched, logo(), invalid));
     CHECK(untouched.embroidery_objects.empty());
 }
+
+TEST_CASE("digitize_objects reproduces the digitize_image_into objects from a segmentation",
+          "[project_ops]") {
+    const auto project = digitized();
+    po::DigitizeSettings settings;
+    IdGenerator<ObjectId> ids;
+    const po::DigitizeSource source{&*project.segmentation, &project.original, project.mm_per_px};
+    // Même décision de fond que `digitize_image_into` (réglage automatique).
+    const auto candidate = segmentation::background_candidate(*project.segmentation);
+    const bool skip = candidate && candidate->recommended;
+    const auto out = po::digitize_objects(source, ids, settings, skip);
+    REQUIRE(out);
+    CHECK(out->objects.embroideries.size() == project.embroidery_objects.size());
+    CHECK(out->objects.vectors.size() == project.vector_objects.size());
+    CHECK(out->flow_fill == 0);
+}
+
+TEST_CASE("digitize_objects applies the flow fill and the stipple mode without a document",
+          "[project_ops]") {
+    const auto project = digitized();
+    IdGenerator<ObjectId> ids;
+    po::DigitizeSettings settings;
+    settings.flow_fill = true;
+    settings.flow_min_area_mm2 = 0.0;
+    settings.flow_min_elongation = 0.0;
+    const po::DigitizeSource source{&*project.segmentation, &project.original, project.mm_per_px};
+    const auto flow = po::digitize_objects(source, ids, settings, false);
+    REQUIRE(flow);
+    CHECK(flow->flow_fill > 0);
+
+    po::DigitizeSettings stipple;
+    stipple.mode = "stipple";
+    stipple.stipple_points = 300;
+    const po::DigitizeSource image_only{nullptr, &project.original, project.mm_per_px};
+    const auto dots = po::digitize_objects(image_only, ids, stipple, false);
+    REQUIRE(dots);
+    CHECK(dots->stipple.has_value());
+    CHECK_FALSE(dots->objects.embroideries.empty());
+}
+
+TEST_CASE("digitize_objects rejects an unknown mode and a missing segmentation", "[project_ops]") {
+    const auto project = digitized();
+    IdGenerator<ObjectId> ids;
+    po::DigitizeSettings settings;
+    settings.mode = "inconnu";
+    const po::DigitizeSource source{&*project.segmentation, &project.original, project.mm_per_px};
+    CHECK_FALSE(po::digitize_objects(source, ids, settings, false));
+    settings.mode = "shapes";
+    const po::DigitizeSource none{nullptr, &project.original, project.mm_per_px};
+    CHECK_FALSE(po::digitize_objects(none, ids, settings, false));
+}

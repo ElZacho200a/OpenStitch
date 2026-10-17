@@ -98,6 +98,7 @@
 #include "openstitch/optimization/order.hpp"
 #include "openstitch/project_io/machine_file.hpp"
 #include "openstitch/project_io/project_io.hpp"
+#include "openstitch/project_ops/factory.hpp"
 #include "openstitch/stitch_analysis/analyze.hpp"
 #include "openstitch/stitch_generation/generate.hpp"
 #include "openstitch/stitch_generation/overrides.hpp"
@@ -4303,14 +4304,12 @@ void MainWindow::autoDigitize() {
 
     autodigitize::AutoOptions opts;
     opts.mm_per_px = project_.mm_per_px;
-    // Strategie « Contours / dessin au trait » (choisie dans le dialogue,
-    // segmentation uniquement) : la logique vit dans libs/autodigitize.
+    // Chemin segmentation : les réglages du dialogue alimentent `project_ops::digitize_objects`,
+    // le même cœur que `openstitch-cli digitize` (formes, contours, traits sombres, pointillé).
+    project_ops::DigitizeSettings ds;
     bool contoursMode = false;
-    autodigitize::ContourOptions contourOpts;
-    contourOpts.mm_per_px = project_.mm_per_px;
-    // Couche de traits sombres (mode formes, option du dialogue ; HP-AUTO-005).
-    bool useDarkLines = false;
-    autodigitize::LineLayerOptions lineOpts;
+    bool stippleMode = false;
+    bool skipLargest = false;
 
     if (hasSegmentation) {
         // Fond présumé (Lot A, audit marine plein cadre 2026-09-22) : la
@@ -4398,8 +4397,14 @@ void MainWindow::autoDigitize() {
         contoursRadio->setToolTip(
             tr("Coud les traits du dessin (lignes médianes) en point droit, au lieu de remplir "
                "les formes."));
+        auto* stippleRadio = new QRadioButton(tr("Pointillé (stippling)"), &optsDialog);
+        stippleRadio->setObjectName("strategyStippleRadio");
+        stippleRadio->setToolTip(
+            tr("Coud des points répartis selon les tons de l'image (clair = peu de points, "
+               "sombre = beaucoup), sans segmentation."));
         optsLayout->addWidget(shapesRadio);
         optsLayout->addWidget(contoursRadio);
+        optsLayout->addWidget(stippleRadio);
 
         auto* shapesPanel = new QWidget(&optsDialog);
         shapesPanel->setObjectName("shapesPanel");
@@ -4564,6 +4569,88 @@ void MainWindow::autoDigitize() {
         darkLightSpin->setEnabled(darkLinesCheck->isChecked());
         connect(darkLinesCheck, &QCheckBox::toggled, darkWidthSpin, &QWidget::setEnabled);
         connect(darkLinesCheck, &QCheckBox::toggled, darkLightSpin, &QWidget::setEnabled);
+        // Réglages avancés des traits sombres (mêmes options que la CLI : --dark-lines-*).
+        auto* darkMinLenSpin = new QDoubleSpinBox(shapesPanel);
+        darkMinLenSpin->setObjectName("darkLinesMinLengthSpin");
+        darkMinLenSpin->setRange(0.0, 50.0);
+        darkMinLenSpin->setSingleStep(0.5);
+        darkMinLenSpin->setDecimals(1);
+        darkMinLenSpin->setSuffix(tr(" mm"));
+        darkMinLenSpin->setSpecialValueText(tr("aucune"));
+        darkMinLenSpin->setValue(
+            ui_memory::intValue(QStringLiteral("autoDigitize/darkLinesMinLenUm"), 0, 0, 50000) /
+            1000.0);
+        darkMinLenSpin->setToolTip(
+            tr("Les fragments de trait isolés plus courts que cette longueur ne sont pas cousus."));
+        auto* darkObjectsOnlyCheck = new QCheckBox(tr("Seulement les vrais objets"), shapesPanel);
+        darkObjectsOnlyCheck->setObjectName("darkLinesObjectsOnlyCheck");
+        darkObjectsOnlyCheck->setChecked(
+            ui_memory::intValue(QStringLiteral("autoDigitize/darkLinesObjectsOnly"), 0, 0, 1) != 0);
+        darkObjectsOnlyCheck->setToolTip(tr(
+            "Ne coud que les traits qui sont de vrais objets, pas les séparations entre zones."));
+        auto* ringsSatinCheck = new QCheckBox(tr("Anneaux en satin"), shapesPanel);
+        ringsSatinCheck->setObjectName("ringsSatinCheck");
+        ringsSatinCheck->setChecked(
+            ui_memory::intValue(QStringLiteral("autoDigitize/ringsSatin"), 0, 0, 1) != 0);
+        ringsSatinCheck->setToolTip(
+            tr("Les cercles et ellipses épaissis (hublots, ventouses, bulles, yeux) sont reconnus "
+               "sur le masque des traits sombres et cousus en auto-satin avec un contour exact."));
+        auto* darkAdvRow = new QHBoxLayout;
+        darkAdvRow->addWidget(new QLabel(tr("Longueur min. :"), shapesPanel));
+        darkAdvRow->addWidget(darkMinLenSpin);
+        darkAdvRow->addWidget(darkObjectsOnlyCheck);
+        darkAdvRow->addWidget(ringsSatinCheck);
+        darkAdvRow->addStretch(1);
+        shapesPanelLayout->addLayout(darkAdvRow);
+        for (QWidget* w : std::initializer_list<QWidget*>{darkMinLenSpin, darkObjectsOnlyCheck,
+                                                          ringsSatinCheck}) {
+            w->setEnabled(darkLinesCheck->isChecked());
+            connect(darkLinesCheck, &QCheckBox::toggled, w, &QWidget::setEnabled);
+        }
+        // Courbes de Bézier, plafond de ΔE des îlots, remplissage qui suit le mouvement.
+        auto* curveSpin = new QDoubleSpinBox(shapesPanel);
+        curveSpin->setObjectName("curveToleranceSpin");
+        curveSpin->setRange(0.0, 2.0);
+        curveSpin->setSingleStep(0.05);
+        curveSpin->setDecimals(2);
+        curveSpin->setSuffix(tr(" mm"));
+        curveSpin->setSpecialValueText(tr("polygones"));
+        curveSpin->setValue(
+            ui_memory::intValue(QStringLiteral("autoDigitize/curveToleranceUm"), 0, 0, 2000) /
+            1000.0);
+        curveSpin->setToolTip(
+            tr("Contours des formes en courbes de Bézier (tolérance d'ajustement) "
+               "au lieu de polygones ; 0 = polygones."));
+        auto* islandDeSpin = new QDoubleSpinBox(shapesPanel);
+        islandDeSpin->setObjectName("islandMaxDeltaESpin");
+        islandDeSpin->setRange(0.0, 100.0);
+        islandDeSpin->setSingleStep(1.0);
+        islandDeSpin->setDecimals(0);
+        islandDeSpin->setSpecialValueText(tr("sans limite"));
+        islandDeSpin->setValue(
+            ui_memory::intValue(QStringLiteral("autoDigitize/islandMaxDeltaE"), 0, 0, 100));
+        islandDeSpin->setToolTip(
+            tr("Avec le nettoyage des îlots : refuse une voisine plus éloignée que cet écart de "
+               "couleur (ΔE CIELAB)."));
+        auto* curveRow = new QHBoxLayout;
+        curveRow->addWidget(new QLabel(tr("Contours :"), shapesPanel));
+        curveRow->addWidget(curveSpin);
+        curveRow->addWidget(new QLabel(tr("ΔE max. des îlots :"), shapesPanel));
+        curveRow->addWidget(islandDeSpin);
+        curveRow->addStretch(1);
+        shapesPanelLayout->addLayout(curveRow);
+        islandDeSpin->setEnabled(islandSpin->value() > 0.0);
+        connect(islandSpin, &QDoubleSpinBox::valueChanged, islandDeSpin,
+                [islandDeSpin](double v) { islandDeSpin->setEnabled(v > 0.0); });
+        auto* flowFillCheck = new QCheckBox(tr("Remplissage qui suit le mouvement"), shapesPanel);
+        flowFillCheck->setObjectName("flowFillCheck");
+        flowFillCheck->setChecked(
+            ui_memory::intValue(QStringLiteral("autoDigitize/flowFill"), 0, 0, 1) != 0);
+        flowFillCheck->setToolTip(
+            tr("Les grandes formes allongées (tentacules, rubans, nuages, fumée) passent en "
+               "remplissage directionnel dont les guides suivent l'axe médian : les rangées "
+               "suggèrent le mouvement. La couleur la plus sombre reste en tatami."));
+        shapesPanelLayout->addWidget(flowFillCheck);
         connect(shapesRadio, &QRadioButton::toggled, shapesPanel, &QWidget::setEnabled);
         optsLayout->addWidget(shapesPanel);
 
@@ -4603,6 +4690,37 @@ void MainWindow::autoDigitize() {
         connect(contoursRadio, &QRadioButton::toggled, contoursPanel, &QWidget::setEnabled);
         optsLayout->addWidget(contoursPanel);
 
+        auto* stipplePanel = new QWidget(&optsDialog);
+        stipplePanel->setObjectName("stipplePanel");
+        auto* stippleLayout = new QHBoxLayout(stipplePanel);
+        stippleLayout->setContentsMargins(0, 0, 0, 0);
+        auto* stipplePointsSpin = new QSpinBox(stipplePanel);
+        stipplePointsSpin->setObjectName("stipplePointsSpin");
+        stipplePointsSpin->setRange(100, 200000);
+        stipplePointsSpin->setSingleStep(100);
+        stipplePointsSpin->setSuffix(tr(" points"));
+        stipplePointsSpin->setValue(
+            ui_memory::intValue(QStringLiteral("autoDigitize/stipplePoints"), 2000, 100, 200000));
+        auto* stippleSeedSpin = new QSpinBox(stipplePanel);
+        stippleSeedSpin->setObjectName("stippleSeedSpin");
+        stippleSeedSpin->setRange(0, 999999);
+        stippleSeedSpin->setValue(
+            ui_memory::intValue(QStringLiteral("autoDigitize/stippleSeed"), 1, 0, 999999));
+        stippleSeedSpin->setToolTip(tr("Graine : même graine, même répartition."));
+        auto* stippleInvertCheck = new QCheckBox(tr("Inverser les tons"), stipplePanel);
+        stippleInvertCheck->setObjectName("stippleInvertCheck");
+        stippleInvertCheck->setChecked(
+            ui_memory::intValue(QStringLiteral("autoDigitize/stippleInvert"), 0, 0, 1) != 0);
+        stippleLayout->addWidget(new QLabel(tr("Nombre :"), stipplePanel));
+        stippleLayout->addWidget(stipplePointsSpin);
+        stippleLayout->addWidget(new QLabel(tr("Graine :"), stipplePanel));
+        stippleLayout->addWidget(stippleSeedSpin);
+        stippleLayout->addWidget(stippleInvertCheck);
+        stippleLayout->addStretch(1);
+        stipplePanel->setEnabled(false);
+        connect(stippleRadio, &QRadioButton::toggled, stipplePanel, &QWidget::setEnabled);
+        optsLayout->addWidget(stipplePanel);
+
         auto* optsButtons =
             new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &optsDialog);
         connect(optsButtons, &QDialogButtonBox::accepted, &optsDialog, &QDialog::accept);
@@ -4615,77 +4733,91 @@ void MainWindow::autoDigitize() {
                                shapeDetailSlider->value());
         ui_memory::setIntValue(QStringLiteral("autoDigitize/contourDetail"), detailSlider->value());
         ui_memory::setIntValue(QStringLiteral("autoDigitize/maxThreads"), maxThreadsSpin->value());
-        opts.max_threads = static_cast<std::size_t>(maxThreadsSpin->value());
-        opts.skip_largest_region = skipBgCheck->isChecked();
-        opts.satin_bands = satinBandsCheck->isChecked();
-        ui_memory::setIntValue(QStringLiteral("autoDigitize/satinBands"),
-                               satinBandsCheck->isChecked() ? 1 : 0);
-        opts.simplify_tolerance = vectorize_tolerance_from_detail(shapeDetailSlider->value());
+        const auto remember = [](const char* key, int value) {
+            ui_memory::setIntValue(QString::fromLatin1(key), value);
+        };
+        skipLargest = skipBgCheck->isChecked();
+        ds.max_threads = static_cast<std::size_t>(maxThreadsSpin->value());
+        ds.satin_bands = satinBandsCheck->isChecked();
+        remember("autoDigitize/satinBands", ds.satin_bands ? 1 : 0);
+        ds.simplify_tolerance_um =
+            vectorize_tolerance_from_detail(shapeDetailSlider->value()).value;
         const int overlapUm = static_cast<int>(std::lround(overlapSpin->value() * 1000.0));
-        ui_memory::setIntValue(QStringLiteral("autoDigitize/fillOverlapUm"), overlapUm);
-        opts.fill_overlap = Micrometers{overlapUm};
+        remember("autoDigitize/fillOverlapUm", overlapUm);
+        ds.fill_overlap_mm = overlapUm / 1000.0;
         const int featureUm = static_cast<int>(std::lround(featureSpin->value() * 1000.0));
-        ui_memory::setIntValue(QStringLiteral("autoDigitize/minFeatureWidthUm"), featureUm);
-        opts.min_feature_width_mm = featureUm / 1000.0;
+        remember("autoDigitize/minFeatureWidthUm", featureUm);
+        ds.min_feature_mm = featureUm / 1000.0;
         const int minAreaCmm2 = static_cast<int>(std::lround(minAreaSpin->value() * 100.0));
-        ui_memory::setIntValue(QStringLiteral("autoDigitize/minRegionAreaCmm2"), minAreaCmm2);
-        opts.min_region_area_mm2 = minAreaCmm2 / 100.0;
+        remember("autoDigitize/minRegionAreaCmm2", minAreaCmm2);
+        ds.min_region_mm2 = minAreaCmm2 / 100.0;
         const int islandCmm2 = static_cast<int>(std::lround(islandSpin->value() * 100.0));
-        ui_memory::setIntValue(QStringLiteral("autoDigitize/islandAreaCmm2"), islandCmm2);
-        opts.island_area_mm2 = islandCmm2 / 100.0;
-        ui_memory::setIntValue(QStringLiteral("autoDigitize/solidBlock"),
-                               solidBlockCheck->isChecked() ? 1 : 0);
-        if (solidBlockCheck->isChecked()) {
-            autodigitize::apply_solid_block(opts);
-        }
-        useDarkLines = darkLinesCheck->isChecked();
-        ui_memory::setIntValue(QStringLiteral("autoDigitize/darkLines"), useDarkLines ? 1 : 0);
+        remember("autoDigitize/islandAreaCmm2", islandCmm2);
+        ds.island_cleanup_mm2 = islandCmm2 / 100.0;
+        const int islandDe = static_cast<int>(std::lround(islandDeSpin->value()));
+        remember("autoDigitize/islandMaxDeltaE", islandDe);
+        ds.island_max_delta_e = islandDe;
+        const int curveUm = static_cast<int>(std::lround(curveSpin->value() * 1000.0));
+        remember("autoDigitize/curveToleranceUm", curveUm);
+        ds.curve_tolerance_mm = curveUm / 1000.0;
+        ds.solid_block = solidBlockCheck->isChecked();
+        remember("autoDigitize/solidBlock", ds.solid_block ? 1 : 0);
+        ds.flow_fill = flowFillCheck->isChecked();
+        remember("autoDigitize/flowFill", ds.flow_fill ? 1 : 0);
+        ds.dark_lines = darkLinesCheck->isChecked();
+        remember("autoDigitize/darkLines", ds.dark_lines ? 1 : 0);
         const int darkWidthUm = static_cast<int>(std::lround(darkWidthSpin->value() * 1000.0));
-        ui_memory::setIntValue(QStringLiteral("autoDigitize/darkLinesWidthUm"), darkWidthUm);
-        lineOpts.max_line_width_mm = darkWidthUm / 1000.0;
-        lineOpts.dark_max_lightness = darkLightSpin->value();
-        ui_memory::setIntValue(QStringLiteral("autoDigitize/darkLinesLightness"),
-                               static_cast<int>(std::lround(darkLightSpin->value())));
+        remember("autoDigitize/darkLinesWidthUm", darkWidthUm);
+        ds.dark_lines_width_mm = darkWidthUm / 1000.0;
+        ds.dark_lines_lightness = darkLightSpin->value();
+        remember("autoDigitize/darkLinesLightness",
+                 static_cast<int>(std::lround(darkLightSpin->value())));
+        const int darkMinLenUm = static_cast<int>(std::lround(darkMinLenSpin->value() * 1000.0));
+        remember("autoDigitize/darkLinesMinLenUm", darkMinLenUm);
+        ds.dark_lines_min_length_mm = darkMinLenUm / 1000.0;
+        ds.dark_lines_objects_only = darkObjectsOnlyCheck->isChecked();
+        remember("autoDigitize/darkLinesObjectsOnly", ds.dark_lines_objects_only ? 1 : 0);
+        ds.rings_satin = ringsSatinCheck->isChecked();
+        remember("autoDigitize/ringsSatin", ds.rings_satin ? 1 : 0);
         contoursMode = contoursRadio->isChecked();
-        contourOpts.skip_largest_region = skipBgCheck->isChecked();
-        contourOpts.detail = static_cast<double>(detailSlider->value()) / 100.0;
-        contourOpts.technique = techRunningRadio->isChecked()
-                                    ? autodigitize::ContourTechnique::Running
-                                    : autodigitize::ContourTechnique::Automatic;
+        stippleMode = stippleRadio->isChecked();
+        ds.mode = contoursMode ? "contours" : stippleMode ? "stipple" : "shapes";
+        ds.detail = static_cast<double>(detailSlider->value()) / 100.0;
+        ds.technique = techRunningRadio->isChecked() ? "running" : "auto";
+        ds.stipple_points = stipplePointsSpin->value();
+        ds.stipple_seed = stippleSeedSpin->value();
+        ds.stipple_invert = stippleInvertCheck->isChecked();
+        remember("autoDigitize/stipplePoints", ds.stipple_points);
+        remember("autoDigitize/stippleSeed", ds.stipple_seed);
+        remember("autoDigitize/stippleInvert", ds.stipple_invert ? 1 : 0);
+        opts = project_ops::make_auto_options(ds, project_.mm_per_px, skipLargest);
     }
 
     std::optional<BusyIndicator> busy;
     busy.emplace(this, tr("Numérisation automatique en cours…"),
                  std::initializer_list<QTimer*>{autosaveTimer_, simTimer_});
-    autodigitize::ContourMetrics contourMetrics;
-    auto result = busy->run([&] {
-        return contoursMode ? autodigitize::auto_digitize_contours(*project_.segmentation,
-                                                                   project_.object_ids, contourOpts,
-                                                                   &contourMetrics)
-               : hasSegmentation && useDarkLines
-                   ? [&] {
-                         // Même image que la segmentation (opérations appliquées) si les
-                         // dimensions concordent, sinon l'image d'origine.
-                         const image::Image& lineSource =
-                             processed_.width == project_.segmentation->width &&
-                                     processed_.height == project_.segmentation->height
-                                 ? processed_
-                                 : project_.original;
-                         lineOpts.enabled = true;
-                         // Un réseau de traits se coud en parcours eulérien : moins de polylignes,
-                         // donc moins de coupes, au prix d'un court repassage.
-                         autodigitize::ContourOptions lineContour = contourOpts;
-                         lineContour.technique = autodigitize::ContourTechnique::Running;
-                         lineContour.routing = autodigitize::ContourRouting::SinglePath;
-                         lineContour.skip_largest_region = opts.skip_largest_region;
-                         return autodigitize::auto_digitize_with_lines(
-                             *project_.segmentation, lineSource, project_.object_ids, opts,
-                             lineOpts, lineContour);
-                     }()
-               : hasSegmentation
-                   ? autodigitize::auto_digitize(*project_.segmentation, project_.object_ids, opts)
-                   : autodigitize::auto_digitize_vectors(project_.vector_objects,
-                                                         project_.object_ids, opts);
+    std::optional<autodigitize::ContourMetrics> contourMetrics;
+    std::size_t flowFillCount = 0;
+    auto result = busy->run([&]() -> Result<autodigitize::AutoResult> {
+        if (!hasSegmentation) {
+            return autodigitize::auto_digitize_vectors(project_.vector_objects, project_.object_ids,
+                                                       opts);
+        }
+        // Même image que la segmentation (opérations appliquées) si les dimensions concordent,
+        // sinon l'image d'origine (traits sombres et pointillé s'y appuient).
+        const image::Image& workImage = processed_.width == project_.segmentation->width &&
+                                                processed_.height == project_.segmentation->height
+                                            ? processed_
+                                            : project_.original;
+        const project_ops::DigitizeSource source{&*project_.segmentation, &workImage,
+                                                 project_.mm_per_px};
+        auto outcome = project_ops::digitize_objects(source, project_.object_ids, ds, skipLargest);
+        if (!outcome) {
+            return std::unexpected(outcome.error());
+        }
+        contourMetrics = outcome->contour;
+        flowFillCount = outcome->flow_fill;
+        return std::move(outcome->objects);
     });
     busy.reset();
     if (!result) {
@@ -4728,18 +4860,18 @@ void MainWindow::autoDigitize() {
     showStitchesAct_->setChecked(true);
     refreshImage();
     updateActions();
-    if (contoursMode) {
+    if (contoursMode && contourMetrics) {
         // Metriques et avertissements viennent tels quels de la lib (aucune
         // logique metier ici) : resume en barre d'etat, details en dialogue.
         statusBar()->showMessage(
             tr("Contours : %1 objet(s), %2 segment(s), %3 jonction(s) — point droit %4 mm, "
                "%5 repli(s), %6 rejet(s)")
                 .arg(embCount)
-                .arg(contourMetrics.segments)
-                .arg(contourMetrics.junctions)
-                .arg(QLocale().toString(contourMetrics.running_length_mm, 'f', 1))
-                .arg(contourMetrics.fallbacks)
-                .arg(contourMetrics.rejected));
+                .arg(contourMetrics->segments)
+                .arg(contourMetrics->junctions)
+                .arg(QLocale().toString(contourMetrics->running_length_mm, 'f', 1))
+                .arg(contourMetrics->fallbacks)
+                .arg(contourMetrics->rejected));
         if (!warnings.empty()) {
             constexpr std::size_t kMaxShown = 12;
             QString text =
@@ -4755,11 +4887,15 @@ void MainWindow::autoDigitize() {
         }
         return;
     }
-    statusBar()->showMessage(
+    QString summary =
         tr("Numérisation automatique : %1 objet(s) vectoriel(s), %2 objet(s) de broderie — "
            "tous éditables")
             .arg(vecCount)
-            .arg(embCount));
+            .arg(embCount);
+    if (flowFillCount > 0) {
+        summary += tr(" (%1 forme(s) en remplissage directionnel)").arg(flowFillCount);
+    }
+    statusBar()->showMessage(summary);
     warnAboutSkippedAutoSatinBranches(warnings);
 }
 

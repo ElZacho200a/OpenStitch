@@ -276,6 +276,12 @@ private:
     void rebuildAnalysisList();
     void markAnalysisStale();
     void runAnalysisInternal(bool explicitRequest);
+    // Mesures de qualité de libs/project_ops (mêmes rapports que la CLI `project …`).
+    bool requireEmbroideryForReport(const QString& title);
+    void showFidelityReport();
+    void showDensityReport();
+    void showDiagnoseReport();
+    void exportRealisticPng();
     void activateAnalysisItem(QListWidgetItem* item, bool selectObject);
     // Simulation (rendu incrémental, cf. main_window.cpp).
     struct SimWalkState {
