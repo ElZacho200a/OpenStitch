@@ -21,7 +21,8 @@ struct Cluster {
 
 } // namespace
 
-ColorReduction reduce_colors(std::span<const WeightedColor> colors, std::size_t max_colors) {
+ColorReduction reduce_colors(std::span<const WeightedColor> colors, std::size_t max_colors,
+                             double max_distance) {
     std::vector<Cluster> clusters;
     clusters.reserve(colors.size());
     for (std::size_t i = 0; i < colors.size(); ++i) {
@@ -60,7 +61,11 @@ ColorReduction reduce_colors(std::span<const WeightedColor> colors, std::size_t 
         }
     }
 
-    while (max_colors > 0 && clusters.size() > max_colors && clusters.size() > 1) {
+    while (clusters.size() > 1) {
+        const bool tooMany = max_colors > 0 && clusters.size() > max_colors;
+        if (!tooMany && max_distance <= 0.0) {
+            break;
+        }
         double best = std::numeric_limits<double>::infinity();
         std::size_t bi = 0;
         std::size_t bj = 1;
@@ -73,6 +78,9 @@ ColorReduction reduce_colors(std::span<const WeightedColor> colors, std::size_t 
                     bj = j;
                 }
             }
+        }
+        if (!tooMany && best > max_distance) {
+            break; // plus de paire assez proche
         }
         merge(bi, bj);
     }

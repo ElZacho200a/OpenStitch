@@ -3,6 +3,7 @@
 // sélection, régions déjà vectorisées, mode « Fusionner avec… », survol des régions, actions
 // grisées avec raison, aperçu de quantification, dialogues d'import et IA.
 #include <QAbstractButton>
+#include <QAction>
 #include <QApplication>
 #include <QCheckBox>
 #include <QDialog>
@@ -15,6 +16,7 @@
 #include <QItemSelectionModel>
 #include <QLabel>
 #include <QLineEdit>
+#include <QListWidget>
 #include <QMessageBox>
 #include <QPainter>
 #include <QPushButton>
@@ -42,7 +44,9 @@
 #include "openstitch/commands/project_commands.hpp"
 #include "openstitch/document/project.hpp"
 #include "openstitch/image/ops.hpp"
+#include "openstitch/segmentation/color_merge.hpp"
 #include "openstitch/segmentation/segmentation.hpp"
+#include "segmentation_colors_panel.hpp"
 
 using openstitch::RegionId;
 using openstitch::desktop::AiPreferences;
@@ -910,6 +914,73 @@ private slots:
             QVERIFY(!dialog.hasResult());
             QVERIFY(validate->isEnabled());
         }
+    }
+
+    // ---- fusion de couleurs (panneau « Couleurs ») ------------------------------------------
+
+    void colorMergePreviewNeverTouchesTheDocument() {
+        MainWindow window;
+        window.applyLoadedProject(threeBandProject());
+        const auto labels = window.project_.segmentation->labels;
+        const auto plan = openstitch::segmentation::plan_reduce_colors(
+            *window.project_.segmentation, 2, 0.0, true);
+        QVERIFY(!plan.empty());
+
+        window.previewColorMerge(plan);
+        QVERIFY(window.previewSegmentation_.has_value());
+        // L'aperçu n'a plus que deux teintes ; le document garde ses trois : c'est une copie.
+        QCOMPARE(openstitch::segmentation::color_classes(*window.previewSegmentation_).size(),
+                 std::size_t{2});
+        QCOMPARE(openstitch::segmentation::color_classes(*window.project_.segmentation).size(),
+                 std::size_t{3});
+        QCOMPARE(window.project_.segmentation->labels, labels);
+        QVERIFY(window.undoStack_.isClean());
+
+        window.clearSegmentationPreview(true);
+        QVERIFY(!window.previewSegmentation_.has_value());
+        QCOMPARE(window.project_.segmentation->labels, labels);
+    }
+
+    void colorMergeApplyIsOneUndoStepAndRefreshesThePanel() {
+        MainWindow window;
+        window.applyLoadedProject(threeBandProject());
+        const auto labels = window.project_.segmentation->labels;
+        auto* open = window.findChild<QAction*>(QStringLiteral("action_mergeColors"));
+        QVERIFY(open != nullptr);
+        open->trigger();
+        QVERIFY(window.colorsPanel_ != nullptr);
+        auto* list = window.colorsPanel_->findChild<QListWidget*>(QStringLiteral("segColorsList"));
+        QVERIFY(list != nullptr);
+        QCOMPARE(list->count(), 3);
+
+        const auto plan = openstitch::segmentation::plan_reduce_colors(
+            *window.project_.segmentation, 2, 0.0, true);
+        window.previewColorMerge(plan);
+        window.applyColorMergePlan(plan);
+        QVERIFY(!window.previewSegmentation_.has_value()); // l'aperçu cède la place au résultat
+        const auto distinctColors = [&window] {
+            return openstitch::segmentation::color_classes(*window.project_.segmentation).size();
+        };
+        QCOMPARE(distinctColors(), std::size_t{2});
+        QCOMPARE(list->count(), 2); // la liste suit le document
+
+        window.undo(); // UN seul pas pour toute la fusion
+        QCOMPARE(distinctColors(), std::size_t{3});
+        QCOMPARE(window.project_.segmentation->region_count(), std::size_t{3});
+        QCOMPARE(window.project_.segmentation->labels, labels);
+        QCOMPARE(list->count(), 3);
+        window.redo();
+        QCOMPARE(distinctColors(), std::size_t{2});
+    }
+
+    void selectingAColorSelectsAllItsRegions() {
+        MainWindow window;
+        window.applyLoadedProject(threeBandProject());
+        const auto classes = openstitch::segmentation::color_classes(*window.project_.segmentation);
+        window.selectRegionsOfColors({classes.front().rgb});
+        QCOMPARE(window.selectedRegionIds().size(), classes.front().regions.size());
+        window.selectRegionsOfColors({});
+        QVERIFY(window.selectedRegionIds().empty());
     }
 
 private:
