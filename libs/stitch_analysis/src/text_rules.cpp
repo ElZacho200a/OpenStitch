@@ -25,17 +25,19 @@ std::vector<Finding> analyze_text_objects(const document::Project& project) {
             }
         }
 
+        const Fix enlarge{
+            FixKind::EnlargeText, {}, document::kTextSatinMinCapHeight, text.id, "Agrandir à 5 mm"};
         const std::string mm = format_mm_fr(static_cast<double>(text.cap_height.value));
         if (text.cap_height < document::kTextMinCapHeight) {
             findings.push_back({Severity::Warning, "texte-trop-petit",
                                 "Texte de " + mm + " mm : illisible une fois brodé.", text.origin,
-                                first, "Agrandissez le texte (5 mm minimum conseillé)."});
+                                first, "Agrandissez le texte (5 mm minimum conseillé).", enlarge});
         } else if (text.cap_height < document::kTextSatinMinCapHeight &&
                    text.fill != document::TextFill::Contour) {
-            findings.push_back({Severity::Warning, "texte-trop-petit",
-                                "Texte de " + mm + " mm : en dessous de 5 mm le satin est fragile.",
-                                text.origin, first,
-                                "Agrandissez le texte ou choisissez une police à traits épais."});
+            findings.push_back(
+                {Severity::Warning, "texte-trop-petit",
+                 "Texte de " + mm + " mm : en dessous de 5 mm le satin est fragile.", text.origin,
+                 first, "Agrandissez le texte ou choisissez une police à traits épais.", enlarge});
         }
         if (thin_contours > 0) {
             findings.push_back({Severity::Warning, "trait-trop-fin",

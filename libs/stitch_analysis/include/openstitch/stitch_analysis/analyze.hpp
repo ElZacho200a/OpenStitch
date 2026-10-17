@@ -95,6 +95,10 @@ struct AnalysisReport {
 // Catégorie « parametre-hors-limites », objet concerné renseigné, ordre du document.
 [[nodiscard]] std::vector<Finding> check_stitch_limits(const document::Project& project);
 
+// Cadre brodable du canevas : repère centre / Y vers le haut, zone utile (canevas moins la
+// marge). Source unique du cadre pour le panneau, `project quality` et `analyze_project`.
+[[nodiscard]] stitch::BoundsUm canvas_hoop(const document::Canvas& canvas);
+
 // Analyse complète d'un projet : options_from_project + cadre du canevas, analyze_detailed,
 // règles de texte et réglages hors limites. Point d'entrée UNIQUE du panneau, du pré-export,
 // du dump debug et de `project quality`.

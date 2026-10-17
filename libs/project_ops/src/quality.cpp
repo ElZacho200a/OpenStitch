@@ -69,14 +69,6 @@ const char* type_name(const document::EmbroideryObject& o) {
     return "running";
 }
 
-// Cadre brodable du canevas : repère centre / Y vers le haut, zone réduite de la marge
-// (même règle que le bureau, `main_window_analysis.cpp`).
-stitch::BoundsUm hoop_of(const document::Canvas& canvas) {
-    const std::int32_t hw = canvas.usable_width().value / 2;
-    const std::int32_t hh = canvas.usable_height().value / 2;
-    return {Vec2um{Micrometers{-hw}, Micrometers{-hh}}, Vec2um{Micrometers{hw}, Micrometers{hh}}};
-}
-
 Json finding_json(const stitch_analysis::Finding& f) {
     Json j;
     j["severity"] = severity_name(f.severity);
@@ -125,25 +117,23 @@ Result<QualityReport> build_quality_report(const document::Project& project,
         return std::unexpected(sequence.error());
     }
 
-    stitch_analysis::AnalysisOptions analysis = stitch_analysis::options_from_project(project);
-    analysis.hoop = hoop_of(project.canvas);
+    const stitch_analysis::AnalysisOptions analysis =
+        stitch_analysis::options_from_project(project);
 
+    const stitch::BoundsUm hoop = stitch_analysis::canvas_hoop(project.canvas);
     const stitch::StitchStats stats = stitch::compute_stats(*sequence);
     const bool empty = stats.stitches == 0;
 
-    auto detailed = stitch_analysis::analyze_detailed(*sequence, analysis);
+    // Point d'entrée unique de l'analyse (séquence, texte, réglages). Le JSON garde deux
+    // listes : les vérifications de réglages (« parametre-hors-limites ») à part, le reste en
+    // constats. Séquence sans point : l'Error « vide » est produite quand même.
+    auto analyzed = stitch_analysis::analyze_project(project, *sequence);
     std::vector<stitch_analysis::Finding> findings;
-    for (auto& f : detailed.findings) {
-        if (keep(f, options.only_object)) {
-            findings.push_back(std::move(f));
-        }
-    }
-    // Séquence sans point : `analyze_detailed` signale déjà l'Error « vide » (catégorie
-    // « vide », objet global) ; le rapport est produit quand même, avec ce constat.
     std::vector<stitch_analysis::Finding> paramChecks;
-    for (auto& f : stitch_analysis::check_stitch_limits(project)) {
+    for (auto& f : analyzed.findings) {
         if (keep(f, options.only_object)) {
-            paramChecks.push_back(std::move(f));
+            (f.category == "parametre-hors-limites" ? paramChecks : findings)
+                .push_back(std::move(f));
         }
     }
 
@@ -222,10 +212,10 @@ Result<QualityReport> build_quality_report(const document::Project& project,
     frame["width_mm"] = rnd(mm(project.canvas.usable_width()));
     frame["height_mm"] = rnd(mm(project.canvas.usable_height()));
     frame["margin_mm"] = rnd(mm(project.canvas.margin));
-    frame["fits"] = empty || (stats.bounds.min.x.value >= analysis.hoop->min.x.value &&
-                              stats.bounds.min.y.value >= analysis.hoop->min.y.value &&
-                              stats.bounds.max.x.value <= analysis.hoop->max.x.value &&
-                              stats.bounds.max.y.value <= analysis.hoop->max.y.value);
+    frame["fits"] = empty || (stats.bounds.min.x.value >= hoop.min.x.value &&
+                              stats.bounds.min.y.value >= hoop.min.y.value &&
+                              stats.bounds.max.x.value <= hoop.max.x.value &&
+                              stats.bounds.max.y.value <= hoop.max.y.value);
     root["frame"] = frame;
 
     Json findingsJson = Json::array();
@@ -234,7 +224,7 @@ Result<QualityReport> build_quality_report(const document::Project& project,
     }
     root["findings"] = findingsJson;
     Json suppressed = Json::object();
-    for (const auto& [category, count] : detailed.suppressed) {
+    for (const auto& [category, count] : analyzed.suppressed) {
         suppressed[category] = count;
     }
     root["suppressed"] = suppressed;
@@ -502,12 +492,7 @@ Result<std::string> render_quality_svg(const document::Project& project,
     }
 
     if (options.findings) {
-        stitch_analysis::AnalysisOptions analysis = stitch_analysis::options_from_project(project);
-        analysis.hoop = hoop_of(project.canvas);
-        auto all = stitch_analysis::analyze_detailed(*full, analysis).findings;
-        for (auto& f : stitch_analysis::check_stitch_limits(project)) {
-            all.push_back(std::move(f));
-        }
+        const auto all = stitch_analysis::analyze_project(project, *full).findings;
         for (const auto& f : all) {
             if (!keep(f, options.only_object)) {
                 continue;
