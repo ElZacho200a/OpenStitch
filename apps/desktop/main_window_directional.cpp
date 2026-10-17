@@ -140,6 +140,9 @@ void MainWindow::setDensityGradient(ObjectId embroideryId, bool enabled, double 
                 source->paths, Angle{angleDeg * std::numbers::pi / 180.0},
                 next.density_gradient ? next.density_gradient->spacing_from : next.row_spacing,
                 endSpacing);
+            if (gradient && next.density_gradient) {
+                gradient->curve = next.density_gradient->curve; // seul l'axe est recalculé
+            }
         }
         if (!gradient) {
             statusBar()->showMessage(tr("Dégradé impossible : la forme n'a pas d'étendue."));

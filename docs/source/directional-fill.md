@@ -56,7 +56,8 @@ trajet caché), non du tracé.
 **Format `.osp`** : type `"directional"`, toutes les clés sauf `type` sont
 optionnelles (défauts du modèle) ; le dégradé est l'objet optionnel
 `densityGradient` (`fromX`, `fromY`, `toX`, `toY`, `spacingFrom`, `spacingTo`,
-µm entiers). `schemaVersion` n'a pas changé : un projet
+µm entiers ; `curve` entier 0 linéaire / 1 douce / 2 marquée, absent = 0, valeur
+inconnue relue comme 0). `schemaVersion` n'a pas changé : un projet
 ancien se relit à l'identique. Un projet contenant un remplissage directionnel
 n'est pas lisible par une version antérieure (« Type de point inconnu »).
 
@@ -335,9 +336,26 @@ sortie identique à l'ancienne. Dans l'inspecteur, modifier l'écart de fin d'un
 dégradé existant **conserve son axe** (donc sa zone) tant que l'angle affiché ne
 change pas ; changer l'angle recalcule l'axe sur toute la forme.
 
+**Courbe de transition** : par défaut l'écart varie linéairement entre `spacing_from`
+et `spacing_to`. Le menu **Courbe de transition** du dialogue choisit un profil
+(`document::DensityCurve`, champ `DensityGradient::curve`) qui remappe la position
+`t` sur l'axe avant l'interpolation (`SpacingField::shaped`) : **Linéaire** (`t`,
+comportement historique), **Douce** (`3t² − 2t³` : départ et arrivée adoucis) et
+**Marquée** (`6t⁵ − 15t⁴ + 10t³` : aplats plus longs, changement plus rapide au
+milieu). Les trois valent 0, 0,5 et 1 en t = 0, 0,5 et 1 et sont monotones : les
+écarts restent entre `spacing_from` et `spacing_to`, donc la grille et la fenêtre
+d'auto-proximité du générateur sont inchangées. En profil complémentaire
+(`interpolate_density`), le fond reçoit la même courbe avec les écarts échangés :
+la somme des densités des deux couches reste constante quelle que soit la courbe
+(`make_color_blend_layers`). La clé `.osp` n'est écrite que hors linéaire : un
+fichier sans courbe est identique octet pour octet. Dans l'inspecteur, la courbe
+d'un dégradé existant est conservée quand on modifie l'écart de fin ou l'angle (il
+n'y expose pas encore de réglage de courbe) ; `set_params` et `inspect` la
+nomment `curve` (`linear | smooth | steep`).
+
 Déterministe : aucune graine, itération dans l'ordre d'entrée. Limites : un seul
-plan (un dégradé linéaire par région, pas de courbe), deux couleurs maximum par
-région.
+plan (un dégradé par région, trois courbes prédéfinies, pas de points de contrôle),
+deux couleurs maximum par région.
 
 ### Fondre deux zones voisines
 
@@ -355,7 +373,7 @@ modifiables avant l'union ; Annuler préserve les deux zones. Les couleurs doive
 être distinctes. Chaque forme doit avoir un seul remplissage compatible ; une
 forme non remplie ou un couple de couches déjà créé désactive l'action.
 Une seule annulation défait l'ensemble. La zone de transition (début / fin en %
-de l'axe) se règle dans le même dialogue ; limite : rampe linéaire (pas de courbe).
+de l'axe) et la courbe de transition se règlent dans le même dialogue.
 
 ### Éditer les couches et preuve des correctifs UI (2026-10-13)
 

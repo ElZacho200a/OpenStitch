@@ -294,6 +294,15 @@ ColorBlendDialog::ColorBlendDialog(Rgb background, Rgb foreground, bool canAnaly
     zoneEnd_ = zone(tr("Fin de la transition :"), "spin_blendZoneEnd", 100.0,
                     tr("Position sur l'axe où l'écart atteint sa valeur de fin (100 % = bord "
                        "d'arrivée). Après ce point, l'écart de fin reste constant : aplat net."));
+    curve_ = new QComboBox(this);
+    curve_->setObjectName(QStringLiteral("combo_blendCurve"));
+    curve_->addItem(tr("Linéaire"), static_cast<int>(document::DensityCurve::Linear));
+    curve_->addItem(tr("Douce"), static_cast<int>(document::DensityCurve::Smooth));
+    curve_->addItem(tr("Marquée"), static_cast<int>(document::DensityCurve::Steep));
+    curve_->setToolTip(tr("Forme de la transition entre les deux écarts. Linéaire : régulière. "
+                          "Douce : départ et arrivée adoucis. Marquée : aplats plus longs, "
+                          "changement plus rapide au milieu."));
+    rampForm->addRow(tr("Courbe de transition :"), curve_);
     rampLayout->addLayout(rampForm);
 
     auto* reverse = new QPushButton(tr("Inverser le sens du fondu"), this);
@@ -370,6 +379,7 @@ ColorBlendDialog::ColorBlendDialog(Rgb background, Rgb foreground, bool canAnaly
         preview_->setLayer(layer);
         updatePreviewDetails();
     });
+    connect(curve_, &QComboBox::currentIndexChanged, this, &ColorBlendDialog::settingsChanged);
     connect(profile_, &QComboBox::currentIndexChanged, this, [this] {
         updateExplanation();
         settingsChanged();
@@ -536,7 +546,9 @@ void ColorBlendDialog::updateExplanation() {
 
 void ColorBlendDialog::setProposal(Rgb background, Rgb foreground,
                                    const document::DensityGradient& gradient) {
-    const QSignalBlocker b1(background_), b2(foreground_), b3(start_), b4(end_), b5(angle_);
+    const QSignalBlocker b1(background_), b2(foreground_), b3(start_), b4(end_), b5(angle_),
+        b6(curve_);
+    curve_->setCurrentIndex(std::max(0, curve_->findData(static_cast<int>(gradient.curve))));
     background_->setText(color(background).name());
     foreground_->setText(color(foreground).name());
     start_->setValue(to_millimeters(gradient.spacing_from).value);
@@ -566,6 +578,9 @@ Micrometers ColorBlendDialog::startSpacing() const {
 }
 Micrometers ColorBlendDialog::endSpacing() const {
     return to_micrometers(Millimeters{end_->value()});
+}
+document::DensityCurve ColorBlendDialog::curve() const {
+    return static_cast<document::DensityCurve>(curve_->currentData().toInt());
 }
 double ColorBlendDialog::transitionStart() const {
     return zoneStart_->value() / 100.0;

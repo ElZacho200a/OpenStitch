@@ -2,6 +2,7 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <limits>
 #include <numbers>
@@ -877,6 +878,49 @@ TEST_CASE("narrowed gradient zone gives constant spacing on both plateaus") {
     CHECK(fill_directional(region, dp) == fill_directional(region, dp));
 }
 
+TEST_CASE("density curve reshapes the ramp without moving its midpoint") {
+    const auto region = rect_mm(0, 0, 30, 20);
+    const auto gaps = [&](document::DensityCurve curve) {
+        auto dp = base_params();
+        dp.guides.push_back(line_mm(0, 10, 30, 10)); // champ horizontal
+        auto gradient = vertical_gradient(Micrometers{400}, Micrometers{1'600});
+        gradient.curve = curve;
+        dp.density_gradient = gradient;
+        const auto ys = crossings_at_x(trace_directional_streamlines(region, dp), 15.0);
+        REQUIRE(ys.size() > 15);
+        return std::array<double, 3>{mean_gap_mm(ys, 0.0, 5.0), mean_gap_mm(ys, 7.5, 12.5),
+                                     mean_gap_mm(ys, 15.0, 20.0)};
+    };
+    const auto linear = gaps(document::DensityCurve::Linear);
+    const auto smooth = gaps(document::DensityCurve::Smooth);
+    const auto steep = gaps(document::DensityCurve::Steep);
+    // Début serré plus longtemps, fin lâche plus longtemps, d'autant plus que la courbe est
+    // marquée.
+    CHECK(smooth[0] < linear[0]);
+    CHECK(steep[0] < smooth[0]);
+    CHECK(smooth[2] > linear[2]);
+    CHECK(steep[2] > smooth[2]);
+    // Les trois courbes valent 0,5 en t = 0,5 : même écart au milieu (10 % près).
+    CHECK(std::abs(smooth[1] - linear[1]) < 0.1 * linear[1]);
+    CHECK(std::abs(steep[1] - linear[1]) < 0.1 * linear[1]);
+    // Jamais en dehors de [spacing_from ; spacing_to].
+    for (const auto& g : {linear, smooth, steep}) {
+        CHECK(g[0] > 0.38);
+        CHECK(g[2] < 1.65);
+    }
+
+    // Linéaire explicite = comportement historique ; déterminisme de chaque courbe.
+    auto legacy = base_params();
+    legacy.guides.push_back(line_mm(0, 10, 30, 10));
+    legacy.density_gradient = vertical_gradient(Micrometers{400}, Micrometers{1'600});
+    auto explicit_linear = legacy;
+    explicit_linear.density_gradient->curve = document::DensityCurve::Linear;
+    CHECK(fill_directional(region, legacy) == fill_directional(region, explicit_linear));
+    auto steepParams = legacy;
+    steepParams.density_gradient->curve = document::DensityCurve::Steep;
+    CHECK(fill_directional(region, steepParams) == fill_directional(region, steepParams));
+}
+
 // --- Régularité de l'espacement ------------------------------------------------
 
 namespace {
@@ -1258,6 +1302,31 @@ TEST_CASE("blend core: complementary helper preserves metadata and removes both 
             ->second.params == result->second.params);
     CHECK(background.params == document::StitchParams{document::TatamiParams{}});
     CHECK(foreground.params == document::StitchParams{params});
+}
+
+TEST_CASE("blend core: the transition curve reaches both layers", "[blend_core]") {
+    const auto background = blend_layer(ObjectId{2});
+    const auto foreground = blend_layer(ObjectId{3});
+    const std::vector<geometry::PathSet> shape{rect_mm(0, 0, 30, 20)};
+    auto gradient = vertical_gradient(Micrometers{1'600}, Micrometers{400});
+    gradient.curve = document::DensityCurve::Steep;
+    const auto curveOf = [](const document::EmbroideryObject& layer) {
+        const auto* params = std::get_if<document::DirectionalFillParams>(&layer.params);
+        REQUIRE(params != nullptr);
+        REQUIRE(params->density_gradient.has_value());
+        return params->density_gradient->curve;
+    };
+    // Complémentaire : les deux rampes opposées partagent la même courbe, donc la somme
+    // des densités reste constante.
+    const auto complementary =
+        make_color_blend_layers(background, foreground, shape, gradient, true);
+    REQUIRE(complementary);
+    CHECK(curveOf(complementary->first) == document::DensityCurve::Steep);
+    CHECK(curveOf(complementary->second) == document::DensityCurve::Steep);
+    // Fond uniforme : seul le dessus porte la rampe, avec sa courbe.
+    const auto uniform = make_color_blend_layers(background, foreground, shape, gradient, false);
+    REQUIRE(uniform);
+    CHECK(curveOf(uniform->second) == document::DensityCurve::Steep);
 }
 
 TEST_CASE("blend core: legacy helper clears only the base gradient and keeps requested mode",
