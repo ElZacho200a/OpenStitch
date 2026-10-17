@@ -15,6 +15,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <functional>
+#include <memory>
 #include <optional>
 #include <set>
 #include <vector>
@@ -27,6 +28,7 @@
 #include "openstitch/document/object_fragment.hpp"
 #include "openstitch/document/project.hpp"
 #include "openstitch/geometry/path.hpp"
+#include "openstitch/segmentation/color_merge.hpp"
 #include "openstitch/stitch/sequence.hpp"
 #include "openstitch/stitch_generation/overrides.hpp"
 #include "openstitch/thread_palette/thread_library.hpp"
@@ -45,6 +47,7 @@ class QListWidget;
 class QPushButton;
 class QDockWidget;
 class QSlider;
+class QThread;
 class QTimer;
 class QToolBar;
 class QComboBox;
@@ -67,6 +70,8 @@ class GesturesDialog;
 class QuickStartDialog;
 class PropertiesPanel;
 class DocumentPanel;
+class SegmentationColorsPanel;
+class SegmentationDialog;
 class ThreadPanel;
 class ThreadStrip;
 class WorkflowPanel;
@@ -155,6 +160,7 @@ private slots:
     // plus bloquantes pour le reste de l'import.
     void warnAboutSkippedSvgFeatures(const std::vector<std::string>& warnings);
     void openAiPreferences();
+    void openSettings(); // onglet « Paramètres » (EditSettings, fichier INI)
     void createRunningStitchObject();
     void createTatamiObject();
     void createSatinObject();
@@ -809,6 +815,28 @@ private:
     // Opacité de la carte des régions (0,2 – 1,0) : réglable pour voir la photo dessous.
     void setRegionMapOpacity(double opacity);
     void buildRegionViewControls(QMenu* segMenu);
+    // Fusion de COULEURS (panneau « Couleurs », main_window_colors.cpp) : le panneau liste les
+    // teintes de la segmentation ; les plans (`segmentation::plan_*`) sont prévisualisés sur une
+    // COPIE de la segmentation (le document n'est pas touché) puis appliqués en une commande.
+    void showColorsPanel();
+    void refreshColorsPanel();
+    void previewColorMerge(const segmentation::ColorMergePlan& plan);
+    // Retire l'aperçu ; `redisplay` redessine la carte (faux quand l'appelant va la redessiner).
+    void clearSegmentationPreview(bool redisplay);
+    void applyColorMergePlan(const segmentation::ColorMergePlan& plan);
+    void selectRegionsOfColors(const std::vector<std::array<std::uint8_t, 3>>& colors);
+    // « Segmenter l'image… » non modal avec aperçu (main_window_segment_preview.cpp) : le calcul
+    // tourne dans un fil, un seul à la fois (les changements de réglage pendant un calcul sont
+    // coalescés en un seul calcul suivant) ; seul le résultat de la dernière demande est affiché.
+    void openSegmentationDialog();
+    void requestSegmentationPreview(const segmentation::SegmentationOptions& options);
+    void startSegmentationPreview(const segmentation::SegmentationOptions& options);
+    void onSegmentationPreviewReady();
+    // Affiche l'aperçu sur le canevas et met à jour les chiffres du dialogue.
+    void showSegmentationPreview(const segmentation::Segmentation& seg, double seconds);
+    void hideSegmentationPreview();
+    void applySegmentationFromDialog(const segmentation::SegmentationOptions& options);
+    void onSegmentationDialogClosed();
     // Actions grisées avec raison (Numérisation automatique, IA), nombre de régions affiché en
     // permanence : appelé par updateActions().
     void updateSegmentationWorkflowActions();
@@ -874,6 +902,23 @@ private:
     QAction* mergeSelectionAct_{nullptr};
     QAction* absorbAct_{nullptr};
     QAction* cleanIslandsAct_{nullptr};
+    QAction* mergeColorsAct_{nullptr};
+    QDockWidget* colorsDock_{nullptr};
+    SegmentationColorsPanel* colorsPanel_{nullptr};
+    // Segmentation d'aperçu (fusion de couleurs) affichée à la place de celle du document.
+    std::optional<segmentation::Segmentation> previewSegmentation_;
+    // Dialogue « Segmenter » et son calcul d'aperçu (voir requestSegmentationPreview).
+    struct SegmentationJob;
+    QPointer<SegmentationDialog> segmentDialog_;
+    QPointer<QThread> segmentThread_;
+    std::shared_ptr<SegmentationJob> segmentJob_;
+    std::optional<segmentation::SegmentationOptions> segmentPending_;
+    std::shared_ptr<const image::Image> segmentSnapshot_; // image de travail à l'ouverture
+    std::optional<segmentation::SegmentationOptions> segmentCachedOptions_;
+    std::optional<segmentation::Segmentation> segmentCached_; // dernier aperçu calculé
+    double segmentCachedSeconds_{0.0};                        // durée de ce calcul
+    std::uint64_t segmentGeneration_{0};
+    bool segmentAutoShownMap_{false}; // l'aperçu a affiché la carte (à masquer à la fermeture)
     QAction* selectSameColorAct_{nullptr};
     QAction* selectNeighboursAct_{nullptr};
     QAction* selectAllRegionsAct_{nullptr};

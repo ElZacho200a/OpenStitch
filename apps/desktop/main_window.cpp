@@ -38,6 +38,7 @@
 #include <QStandardPaths>
 #include <QStatusBar>
 #include <QTextStream>
+#include <QThread>
 #include <QTimer>
 #include <QUrl>
 
@@ -59,6 +60,7 @@
 #include "ai_preferences.hpp"
 #include "ai_preferences_dialog.hpp"
 #include "ai_segmentation_dialog.hpp"
+#include "app_settings.hpp"
 #include "app_theme.hpp"
 #include "autosave.hpp"
 #include "brightness_dialog.hpp"
@@ -108,6 +110,7 @@
 #include "ruler.hpp"
 #include "satin_guide_item.hpp"
 #include "selection_hit_test.hpp"
+#include "settings_dialog.hpp"
 #include "ui_icons.hpp"
 #include "ui_memory.hpp"
 #include "workflow_panel.hpp"
@@ -655,6 +658,11 @@ MainWindow::MainWindow() {
 }
 
 MainWindow::~MainWindow() {
+    // Un calcul d'aperçu de segmentation en cours travaille sur une copie de l'image, mais son
+    // résultat est livré à cette fenêtre : on le laisse finir avant de la détruire.
+    if (segmentThread_ != nullptr) {
+        segmentThread_->wait();
+    }
     // Les actions et la scène sont des enfants QObject détruits après la
     // partie MainWindow. Aucune de leurs notifications tardives ne doit
     // rappeler un slot du type dérivé dont le destructeur a déjà commencé.
@@ -760,6 +768,10 @@ void MainWindow::buildMenus() {
     editMenu->addSeparator();
     auto* aiPrefsAct = editMenu->addAction(tr("Préférences — &Intelligence artificielle…"));
     connect(aiPrefsAct, &QAction::triggered, this, &MainWindow::openAiPreferences);
+    auto* settingsAct = editMenu->addAction(tr("Paramètres…"));
+    settingsAct->setObjectName(QStringLiteral("action_settings"));
+    settingsAct->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_Comma));
+    connect(settingsAct, &QAction::triggered, this, &MainWindow::openSettings);
 
     auto* imageMenu = menuBar()->addMenu(tr("&Image"));
     const auto addOpAction = [this, imageMenu](const QString& text, image::ImageOp op) {
@@ -812,6 +824,12 @@ void MainWindow::buildMenus() {
     connect(showSegAct_, &QAction::toggled, this, [this] { displayImage(processed_); });
     buildRegionViewControls(segMenu);
 
+    mergeColorsAct_ = segMenu->addAction(tr("Fusionner les co&uleurs…"));
+    mergeColorsAct_->setObjectName(QStringLiteral("action_mergeColors"));
+    mergeColorsAct_->setToolTip(
+        tr("Panneau des couleurs de la segmentation : fusionne des teintes entre elles, ou réduit "
+           "la palette à N couleurs avec aperçu."));
+    connect(mergeColorsAct_, &QAction::triggered, this, &MainWindow::showColorsPanel);
     segMenu->addSeparator();
     mergeAct_ = segMenu->addAction(tr("&Fusionner avec… (cliquer la région cible)"));
     mergeAct_->setCheckable(true);
@@ -2941,6 +2959,7 @@ void MainWindow::refreshImage() {
     // suppression, rechargement) ; le dernier objet restant devient le principal.
     pruneSelection();
     Q_ASSERT(checkSelectionInvariants());
+    refreshColorsPanel(); // le document a changé : liste des teintes à jour, aperçu caduc
     // Le raster est facultatif : SVG, dessin, texte et design machine doivent
     // eux aussi régénérer leurs points et rafraîchir tous les panneaux.
     if (!project_.hasImage()) {
@@ -3848,10 +3867,15 @@ void MainWindow::renderBase(const image::Image& img) {
     }
 
     // Carte des régions par-dessus l'image (mode d'affichage segmentation).
-    if (showSegAct_ != nullptr && showSegAct_->isChecked() && project_.segmentation) {
+    if (showSegAct_ != nullptr && showSegAct_->isChecked() &&
+        (project_.segmentation || previewSegmentation_)) {
         const double mmPerPx = project_.mm_per_px.value;
+        // Aperçu d'une fusion de couleurs : la copie modifiée remplace la segmentation du
+        // document (sans surbrillance : les identifiants de sélection n'y ont plus cours).
         const auto map =
-            segmentation::render_map_multi(*project_.segmentation, selectedRegionIds());
+            previewSegmentation_
+                ? segmentation::render_map_multi(*previewSegmentation_, {})
+                : segmentation::render_map_multi(*project_.segmentation, selectedRegionIds());
         const QImage mapImg(map.rgba.data(), map.width, map.height, map.width * 4,
                             QImage::Format_RGBA8888);
         auto* mapItem = scene_->addPixmap(QPixmap::fromImage(mapImg.copy()));
@@ -4087,91 +4111,8 @@ std::optional<QPoint> MainWindow::mmToImagePixel(QPointF mm) const {
 }
 
 void MainWindow::segmentImage() {
-    if (!project_.hasImage() || processed_.empty()) {
-        return;
-    }
-    QDialog dialog(this);
-    dialog.setWindowTitle(tr("Segmenter l'image"));
-    auto* layout = new QFormLayout(&dialog);
-    auto* colorsSpin = new QSpinBox(&dialog);
-    colorsSpin->setRange(2, 64);
-    colorsSpin->setValue(ui_memory::intValue(QStringLiteral("segment/colors"), 8, 2, 64));
-    auto* minSizeSpin = new QSpinBox(&dialog);
-    minSizeSpin->setRange(1, 100'000);
-    minSizeSpin->setValue(ui_memory::intValue(QStringLiteral("segment/minSize"), 16, 1, 100'000));
-    minSizeSpin->setSuffix(tr(" px"));
-    // Équivalent physique de la taille minimale (l'échelle de l'image est connue depuis
-    // l'import) : l'IA raisonne en mm², la même unité ici évite de convertir de tête.
-    auto* minSizeMm = new QLabel(&dialog);
-    minSizeMm->setObjectName(QStringLiteral("segmentMinSizeMm"));
-    minSizeMm->setEnabled(false);
-    const auto refreshMinSizeMm = [this, minSizeSpin, minSizeMm] {
-        const double mm = project_.mm_per_px.value;
-        minSizeMm->setText(tr("≈ %1 mm²").arg(minSizeSpin->value() * mm * mm, 0, 'f', 2));
-    };
-    connect(minSizeSpin, &QSpinBox::valueChanged, &dialog, refreshMinSizeMm);
-    refreshMinSizeMm();
-    auto* minSizeRow = new QWidget(&dialog);
-    auto* minSizeLayout = new QHBoxLayout(minSizeRow);
-    minSizeLayout->setContentsMargins(0, 0, 0, 0);
-    minSizeLayout->addWidget(minSizeSpin);
-    minSizeLayout->addWidget(minSizeMm);
-    // L'affectation pixel-à-pixel au centre de couleur le plus proche est
-    // intrinsèquement bruitée (effet « poivre et sel » sur les photos,
-    // dégradés, artefacts JPEG) : lissée par défaut par vote local
-    // majoritaire (cf. segmentation::segment) pour obtenir des formes
-    // nettes directement exploitables, sans étape de nettoyage manuel.
-    auto* smoothingSpin = new QSpinBox(&dialog);
-    smoothingSpin->setRange(0, 20);
-    smoothingSpin->setValue(ui_memory::intValue(QStringLiteral("segment/smoothing"), 3, 0, 20));
-    smoothingSpin->setSuffix(tr(" px"));
-    smoothingSpin->setToolTip(
-        tr("0 = désactivé. Arrondit les frontières et absorbe le bruit pixel à pixel ; "
-           "une valeur trop élevée efface les détails plus fins qu'elle."));
-    layout->addRow(tr("Nombre maximal de couleurs :"), colorsSpin);
-    layout->addRow(tr("Taille minimale de région :"), minSizeRow);
-    layout->addRow(tr("Lissage des formes :"), smoothingSpin);
-    auto* buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dialog);
-    connect(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
-    connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
-    layout->addRow(buttons);
-    if (dialog.exec() != QDialog::Accepted) {
-        return;
-    }
-    ui_memory::setIntValue(QStringLiteral("segment/colors"), colorsSpin->value());
-    ui_memory::setIntValue(QStringLiteral("segment/minSize"), minSizeSpin->value());
-    ui_memory::setIntValue(QStringLiteral("segment/smoothing"), smoothingSpin->value());
-    // Resegmenter remplace les régions existantes (fusions, couleurs, régions
-    // supprimées à la main comprises) : confirmation avant de les écraser.
-    if (!confirmDestroySegmentation(tr("Segmenter à nouveau"))) {
-        return;
-    }
-
-    // Calcul synchrone (curseur d'attente) : le passage en tâche de fond est
-    // prévu quand les images de travail deviendront grandes.
-    std::optional<BusyIndicator> busy;
-    busy.emplace(this, tr("Segmentation de l'image en cours…"),
-                 std::initializer_list<QTimer*>{autosaveTimer_, simTimer_});
-    const segmentation::SegmentationOptions segmentOptions{.max_colors = colorsSpin->value(),
-                                                           .min_region_px = minSizeSpin->value(),
-                                                           .smoothing_radius_px =
-                                                               smoothingSpin->value()};
-    auto seg = busy->run([&] { return segmentation::segment(processed_, segmentOptions); });
-    busy.reset();
-    if (!seg) {
-        showFriendlyError(this, tr("Segmentation impossible"),
-                          tr("L'image n'a pas pu être segmentée avec ces réglages."),
-                          seg.error().message);
-        return;
-    }
-    const auto regionCount = seg->region_count();
-    undoStack_.execute(std::make_unique<commands::SetSegmentationCommand>(std::move(*seg)),
-                       project_);
-    editSelection([](Selection& sel) { sel.region.reset(); });
-    showSegAct_->setChecked(true);
-    refreshImage();
-    updateActions();
-    statusBar()->showMessage(tr("Segmentation : %1 régions").arg(regionCount));
+    // Dialogue non modal avec aperçu en direct : voir main_window_segment_preview.cpp.
+    openSegmentationDialog();
 }
 
 QPainterPath MainWindow::objectPainterPath(const document::VectorObject& object) {
@@ -5006,6 +4947,20 @@ void MainWindow::openAiPreferences() {
     if (dialog.exec() == QDialog::Accepted) {
         saveAiPreferences(dialog.preferences());
     }
+}
+
+void MainWindow::openSettings() {
+    SettingsDialog dialog(this);
+    dialog.setSettings(loadEditSettings());
+    if (dialog.exec() != QDialog::Accepted) {
+        return;
+    }
+    const EditSettings applied = dialog.settings();
+    saveEditSettings(applied);
+    // Les réglages d'action (Unir, Couteau) sont relus à chaque geste ; ceux-ci sont portés par
+    // l'état de la fenêtre.
+    snapNodesAct_->setChecked(applied.snapNodesOnDrag);
+    setRegionMapOpacity(applied.regionMapOpacity);
 }
 
 void MainWindow::createSatinObject() {
@@ -9266,6 +9221,8 @@ void MainWindow::updateActions() {
     // Outil Recadrer de la palette : sans image il ne peut rien faire (le glisser serait ignoré).
     setEnabledWithReason(toolRectAct_, hasImage, tr("Ouvrez d'abord une image."));
     setEnabledWithReason(showSegAct_, project_.segmentation.has_value(),
+                         tr("Segmentez d'abord l'image (menu Segmentation)."));
+    setEnabledWithReason(mergeColorsAct_, project_.segmentation.has_value(),
                          tr("Segmentez d'abord l'image (menu Segmentation)."));
     const QString noVectors = tr("Aucun objet vectoriel : vectorisez une région ou dessinez.");
     setEnabledWithReason(showVectorsAct_, !project_.vector_objects.empty(), noVectors);

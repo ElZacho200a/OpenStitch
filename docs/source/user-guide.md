@@ -287,7 +287,24 @@ en `.osp` ; s'il est modifié, il entre aussi dans la sauvegarde automatique.
 | Dupliquer la forme | — | Duplique la forme sélectionnée |
 | Décaler la forme… | — | Décale ou rétrécit la forme sélectionnée |
 | Préférences — Intelligence artificielle… | — | Configure la segmentation par IA (voir *Menu Segmentation*) |
+| Paramètres… | Ctrl+, | Ouvre l'onglet **Paramètres** (réglages d'interface et d'édition, voir ci-dessous) |
 | Aligner la sélection | — | À gauche, centrés, à droite, en haut, centrés verticalement, en bas : range les formes sélectionnées (au moins deux) sur la boîte de la sélection, en un seul pas d'annulation |
+
+### Paramètres et fichier de réglages
+
+**Édition ▸ Paramètres…** (Ctrl+,) regroupe les réglages d'interface et de gestes d'édition :
+opacité de la carte des régions, délai de l'appui long, accrochage des nœuds au glisser, écart
+soudé par **Unir** (0,05 mm par défaut), largeur de la coupe du **Couteau** (0,02 mm) et longueur
+minimale de son trait (0,5 mm). **Rétablir les défauts** remet les valeurs d'origine ; chaque
+valeur est bornée. Ces réglages ne changent pas les points de broderie générés.
+
+Tous les réglages de l'application (ceux-ci, la disposition des panneaux et la taille de la
+fenêtre, le thème, les fichiers récents, les préférences IA) sont conservés dans un fichier INI,
+`OpenStitch Studio.ini`, dans le dossier de configuration de l'utilisateur
+(`%APPDATA%\OpenStitch` sous Windows ; le chemin exact est affiché en bas du dialogue). La
+fenêtre retrouve donc son dernier cadre d'une session à l'autre. Au premier lancement, les
+anciennes valeurs enregistrées dans le registre sont importées une fois dans ce fichier, qui n'est
+jamais écrasé ensuite.
 
 L'annulation couvre les opérations d'image, la segmentation (segmenter, fusionner,
 supprimer, recolorer), la création et le déplacement de nœuds vectoriels, la
@@ -321,7 +338,13 @@ l'original) :
 ## Menu Segmentation
 
 - Segmenter l'image… (**F6** ; nombre de couleurs, taille min de région avec son équivalent en
-  mm², lissage — les derniers réglages sont mémorisés) ;
+  mm², lissage — les derniers réglages sont mémorisés). Le dialogue reste **ouvert pendant que vous
+  travaillez** : chaque changement de réglage affiche, après un court délai, un **aperçu** de la
+  carte des régions sur l'image, avec le nombre de régions et de couleurs et celles trop petites
+  pour un remplissage. Rien n'est modifié tant que vous ne cliquez pas **Segmenter** ; fermer le
+  dialogue abandonne l'aperçu. La case *Aperçu sur l'image* le masque ;
+- **Fusionner les couleurs…** — panneau des couleurs de la segmentation (voir la page
+  *Segmentation*) : fusionne des teintes ou réduit la palette à N couleurs, avec aperçu ;
 - Segmenter avec l'IA… (régions proposées par un modèle ; grisée tant qu'aucune image n'est
   ouverte) ;
 - Afficher la carte des régions (bascule) et **Opacité de la carte** (glissière 20–100 %,

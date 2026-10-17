@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 #include <catch2/catch_test_macros.hpp>
 
+#include <algorithm>
 #include <cmath>
 #include <cstddef>
 #include <vector>
@@ -219,6 +220,60 @@ TEST_CASE("weave and felt fabrics add deterministic texture", "[stitch_render]")
     CHECK(distinct(render_threads({}, weave, view400())) > 5);
     CHECK(distinct(render_threads({}, felt, view400())) > 3);
     CHECK(render_threads({}, weave, view400()).rgba == render_threads({}, weave, view400()).rgba);
+}
+
+TEST_CASE("every pixel inside a thread is painted whatever its orientation", "[stitch_render]") {
+    // Le tracé ne parcourt que le rectangle orienté du brin : aucun pixel de
+    // son corps ne doit être oublié, quelle que soit l'inclinaison.
+    RenderParams p = plain();
+    p.shadow = 0.0;
+    const std::vector<ThreadSegment> cases{
+        {10.0F, 10.0F, 30.0F, 30.0F, {200, 30, 30}}, // 45 degrés
+        {10.0F, 30.0F, 30.0F, 12.0F, {200, 30, 30}}, // diagonale montante
+        {20.0F, 5.0F, 20.0F, 35.0F, {200, 30, 30}},  // verticale
+        {5.0F, 20.0F, 35.0F, 22.0F, {200, 30, 30}},  // presque horizontale
+        {20.0F, 5.0F, 23.0F, 35.0F, {200, 30, 30}},  // presque verticale
+    };
+    const RasterView view = view400();
+    for (const ThreadSegment& seg : cases) {
+        const RasterImage img = render_threads({seg}, p, view);
+        const double ax = seg.ax * 10.0;
+        const double ay = seg.ay * 10.0;
+        const double bx = seg.bx * 10.0;
+        const double by = seg.by * 10.0;
+        const double len2 = (bx - ax) * (bx - ax) + (by - ay) * (by - ay);
+        int checked = 0;
+        for (int y = 0; y < img.height; ++y) {
+            for (int x = 0; x < img.width; ++x) {
+                const double px = x + 0.5 - ax;
+                const double py = y + 0.5 - ay;
+                const double t = std::clamp(((bx - ax) * px + (by - ay) * py) / len2, 0.0, 1.0);
+                const double dist = std::hypot(px - t * (bx - ax), py - t * (by - ay));
+                if (dist <= 2.0) { // demi-largeur 3 px : bien à l'intérieur
+                    const Px q = pixel(img, x, y);
+                    CHECK((q.r != p.fabric_rgb[0] || q.g != p.fabric_rgb[1]));
+                    ++checked;
+                }
+            }
+        }
+        CHECK(checked > 100);
+    }
+}
+
+TEST_CASE("needle holes darken both ends of a thread in high quality only", "[stitch_render]") {
+    RenderParams p = plain();
+    p.shadow = 0.0;
+    p.twist = 0.0;
+    const auto at = [](const RasterImage& img, int x) { return luma(pixel(img, x, 200)); };
+    const RasterImage high = render_threads(horizontal_thread(), p, view400());
+    // Fil de x = 50 à 350 px, demi-largeur 3 px, trou de rayon 2,25 px : les
+    // pixels au ras de chaque extrémité sont dans le trou.
+    CHECK(at(high, 50) < at(high, 200) - 15);
+    CHECK(at(high, 349) < at(high, 200) - 15);
+
+    p.quality = Quality::Fast;
+    const RasterImage fast = render_threads(horizontal_thread(), p, view400());
+    CHECK(at(fast, 50) >= at(fast, 200) - 5);
 }
 
 TEST_CASE("large render with many segments completes and is deterministic across runs",

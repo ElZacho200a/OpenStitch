@@ -15,6 +15,7 @@
 #include "openstitch/commands/command.hpp"
 #include "openstitch/geometry/path.hpp"
 #include "openstitch/image/ops.hpp"
+#include "openstitch/segmentation/color_merge.hpp"
 #include "openstitch/segmentation/segmentation.hpp"
 
 namespace openstitch::commands {
@@ -178,6 +179,48 @@ private:
     double maxDeltaE_;
     double boundaryWeight_;
     std::size_t merges_{0};
+    std::vector<std::uint32_t> changed_;
+    std::vector<std::uint32_t> oldLabels_;
+    std::vector<std::optional<segmentation::Region>> slots_;
+};
+
+// Fusion de COULEURS : applique un plan (`segmentation::plan_reduce_colors` /
+// `plan_merge_colors`) -- recolorations puis fusion des régions voisines devenues de même couleur
+// -- en UN pas d'annulation. Comme pour `CleanIslandsCommand`, l'annulation restaure les étiquettes
+// modifiées et les emplacements de régions (copie des seuls emplacements, peu volumineuse).
+class MergeColorsCommand final : public ICommand {
+public:
+    explicit MergeColorsCommand(segmentation::ColorMergePlan plan) : plan_(std::move(plan)) {}
+
+    void apply(document::Project& project) override {
+        auto& seg = *project.segmentation;
+        const std::vector<std::uint32_t> before = seg.labels;
+        slots_ = seg.region_slots;
+        applied_ = segmentation::apply_color_merge(seg, plan_).has_value();
+        changed_.clear();
+        oldLabels_.clear();
+        for (std::size_t i = 0; i < before.size(); ++i) {
+            if (before[i] != seg.labels[i]) {
+                changed_.push_back(static_cast<std::uint32_t>(i));
+                oldLabels_.push_back(before[i]);
+            }
+        }
+    }
+    void revert(document::Project& project) override {
+        auto& seg = *project.segmentation;
+        for (std::size_t k = 0; k < changed_.size(); ++k) {
+            seg.labels[changed_[k]] = oldLabels_[k];
+        }
+        seg.region_slots = slots_;
+    }
+    [[nodiscard]] std::string name() const override { return "Fusionner des couleurs"; }
+    // Faux si le plan ne correspondait pas à la segmentation (région introuvable) au dernier
+    // `apply`.
+    [[nodiscard]] bool applied() const { return applied_; }
+
+private:
+    segmentation::ColorMergePlan plan_;
+    bool applied_{false};
     std::vector<std::uint32_t> changed_;
     std::vector<std::uint32_t> oldLabels_;
     std::vector<std::optional<segmentation::Region>> slots_;

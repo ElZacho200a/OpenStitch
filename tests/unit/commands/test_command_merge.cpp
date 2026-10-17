@@ -1,8 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 #include <catch2/catch_test_macros.hpp>
 
+#include <array>
 #include <chrono>
 #include <memory>
+#include <span>
 #include <variant>
 
 #include "openstitch/commands/composite_command.hpp"
@@ -203,4 +205,45 @@ TEST_CASE(
 
     stack.redo(project);
     CHECK(project.segmentation->labels[4] == 2U);
+}
+
+TEST_CASE("fusion de couleurs : un seul pas d'annulation, undo et redo exacts") {
+    document::Project project;
+    segmentation::Segmentation seg;
+    seg.width = 9;
+    seg.height = 4;
+    seg.labels.assign(36, 0);
+    for (int y = 0; y < 4; ++y) {
+        for (int x = 0; x < 9; ++x) {
+            seg.labels[static_cast<std::size_t>(y * 9 + x)] = static_cast<std::uint32_t>(x / 3 + 1);
+        }
+    }
+    seg.region_slots.resize(3);
+    seg.region_slots[0] = segmentation::Region{RegionId{1}, {220, 30, 30}, 12};
+    seg.region_slots[1] = segmentation::Region{RegionId{2}, {210, 40, 35}, 12};
+    seg.region_slots[2] = segmentation::Region{RegionId{3}, {30, 30, 220}, 12};
+    project.segmentation = seg;
+    const auto original = *project.segmentation;
+
+    const std::array<std::uint8_t, 3> source{210, 40, 35};
+    const auto plan = segmentation::plan_merge_colors(
+        original, std::span<const std::array<std::uint8_t, 3>>(&source, 1), {220, 30, 30}, true);
+    REQUIRE_FALSE(plan.empty());
+
+    UndoStack stack;
+    stack.execute(std::make_unique<MergeColorsCommand>(plan), project);
+    CHECK(project.segmentation->region_count() == 2);
+    CHECK(project.segmentation->find(RegionId{1})->pixel_count == 24);
+    CHECK(project.segmentation->labels[4] == 1U); // la bande 2 est devenue la region 1
+
+    stack.undo(project);
+    CHECK(project.segmentation->labels == original.labels);
+    REQUIRE(project.segmentation->region_slots[1].has_value());
+    CHECK(project.segmentation->region_slots[1]->rgb == std::array<std::uint8_t, 3>{210, 40, 35});
+    CHECK(project.segmentation->region_slots[0]->pixel_count == 12);
+    CHECK(project.segmentation->region_count() == 3);
+
+    stack.redo(project);
+    CHECK(project.segmentation->region_count() == 2);
+    CHECK(project.segmentation->labels[4] == 1U);
 }
