@@ -32,6 +32,7 @@
 #include "openstitch/geometry/primitives.hpp"
 #include "openstitch/image/ops.hpp"
 #include "openstitch/stitch_generation/directional_fill.hpp"
+#include "properties_panel.hpp"
 #include "thread_panel.hpp"
 
 namespace openstitch::desktop {
@@ -135,7 +136,18 @@ void MainWindow::setDensityGradient(ObjectId embroideryId, bool enabled, double 
     if (next == *params) {
         return;
     }
-    applyDirectionalEdit(embroideryId, std::move(next), tr("Dégradé de densité"));
+    undoStack_.execute(std::make_unique<commands::EditDirectionalFillCommand>(
+                           embroideryId, std::move(next), tr("Dégradé de densité").toStdString()),
+                       project_);
+    // Appelé depuis un widget de l'inspecteur (écart de fin, angle, case) : le
+    // formulaire montre déjà ces valeurs. S'il passait pour périmé, updateInspector()
+    // le reconstruirait en supprimant le widget émetteur pendant son propre signal
+    // (crash dans Qt6Widgets).
+    if (const auto* now = project_.findEmbroidery(embroideryId)) {
+        propertiesPanel_->adoptParams(embroideryId, now->params);
+    }
+    refreshImage();
+    updateActions();
 }
 
 void MainWindow::buildDirectionalActions(QMenu* embMenu) {

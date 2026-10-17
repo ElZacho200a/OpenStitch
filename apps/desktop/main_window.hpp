@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 #pragma once
 
+#include <QColor>
 #include <QHash>
 #include <QList>
 #include <QMainWindow>
@@ -407,6 +408,15 @@ private:
     [[nodiscard]] std::vector<ObjectId> selectedEmbroideryIds() const;
     void buildFilterPanel();
     void refreshFilterPanel();
+    // Raccourcis des filtres d'affichage : n'afficher que ce type (index filtre 0..2) / cette
+    // couleur (0xRRGGBB), ou tout réafficher. Mettent à jour le panneau et le rendu.
+    void isolateFilterType(int filterType);
+    void isolateFilterColor(std::uint32_t colorKey);
+    void showAllFilters();
+    // Couleurs distinctes des formes de l'image (première apparition), pour le sélecteur de fil.
+    [[nodiscard]] std::vector<QColor> imageColors() const;
+    // Sélecteur de couleur de fil : les couleurs de l'image y sont proposées en « Custom colors ».
+    [[nodiscard]] QColor pickThreadColor(const QColor& initial, const QString& title);
     // Affiche/masque un dock sur ordre d'un rafraîchissement, sans défaire « Masquer les
     // panneaux » : en mode canevas seul, le dock reste caché et n'est (ré)affiché qu'à la sortie.
     static bool debugMenuEnabled(); // OPENSTITCH_DEBUG=1 ou QSettings « debug/menu »
@@ -825,6 +835,9 @@ private:
     void clearSegmentationPreview(bool redisplay);
     void applyColorMergePlan(const segmentation::ColorMergePlan& plan);
     void selectRegionsOfColors(const std::vector<std::array<std::uint8_t, 3>>& colors);
+    // Parcours des régions au clavier : `step` = +1 (suivante) ou -1 (précédente), dans l'ordre des
+    // identifiants avec retour au début ; sans sélection, la première (+1) ou la dernière (-1).
+    void selectAdjacentRegion(int step);
     // « Segmenter l'image… » non modal avec aperçu (main_window_segment_preview.cpp) : le calcul
     // tourne dans un fil, un seul à la fois (les changements de réglage pendant un calcul sont
     // coalescés en un seul calcul suivant) ; seul le résultat de la dernière demande est affiché.
@@ -903,6 +916,8 @@ private:
     QAction* absorbAct_{nullptr};
     QAction* cleanIslandsAct_{nullptr};
     QAction* mergeColorsAct_{nullptr};
+    QAction* nextRegionAct_{nullptr};
+    QAction* previousRegionAct_{nullptr};
     QDockWidget* colorsDock_{nullptr};
     SegmentationColorsPanel* colorsPanel_{nullptr};
     // Segmentation d'aperçu (fusion de couleurs) affichée à la place de celle du document.

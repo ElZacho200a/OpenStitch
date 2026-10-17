@@ -578,6 +578,7 @@ void MainWindow::createAutoSatin(bool askParameters) {
     }
 
     document::AutoSatinParams params;
+    params.strategy = document::kDefaultAutoSatinStrategy;
     AutoSatinPreview preview = previewAutoSatin(*source, params);
 
     // Le squelette n'a produit aucune colonne : avant de refuser, on essaie les autres méthodes
@@ -594,7 +595,7 @@ void MainWindow::createAutoSatin(bool askParameters) {
             preview = previewAutoSatin(*source, params);
             suggestion = tr("La méthode « %1 » ne peut pas traiter cette forme (%2).\n"
                             "Méthode proposée : « %3 ».\n\n")
-                             .arg(autoSatinStrategyLabel(document::AutoSatinStrategy::Skeleton),
+                             .arg(autoSatinStrategyLabel(document::kDefaultAutoSatinStrategy),
                                   skeletonRefusal, autoSatinStrategyLabel(*alt));
         }
     }
@@ -922,6 +923,7 @@ void MainWindow::createAutoSatinForSelection(bool askParameters) {
     };
     std::vector<Candidate> candidates;
     document::AutoSatinParams params;
+    params.strategy = document::kDefaultAutoSatinStrategy;
     QString firstInfo;
     for (const ObjectId id : selectedObjectIds()) {
         const auto* current = project_.findObject(id);

@@ -18,6 +18,7 @@
 #include <QMenu>
 #include <QMessageBox>
 #include <QMouseEvent>
+#include <QPointer>
 #include <QPushButton>
 #include <QRadioButton>
 #include <QScopeGuard>
@@ -624,6 +625,7 @@ private slots:
     void shapeUnionActionIsOneUndoStep();
     void blendZonesActionMakesBaseAndGradedTopInOneUndoStep();
     void displayFiltersApplyToVectorShapes();
+    void displayFilterShortcutsIsolateAndRestore();
     void hoopMarginReachesTheCanvasView();
     void sidebarToolButtonsActivateTheirTool();
     void sidebarDrawRectangleRealGesture();
@@ -720,6 +722,7 @@ private slots:
     // Remplissage directionnel : conversion, outil de guides, undo/redo.
     void convertingTatamiToDirectionalIsUndoable();
     void densityGradientIsUndoableAndSpansTheShape();
+    void editingGradientEndSpacingKeepsTheInspectorAlive();
     void twoColorBlendCreatesBackgroundAndTopInOneUndoStep();
     void inspectorRebuildsAfterUndoOfAParameterEdit();
     void inspectorRebuildsAfterTypeChangeKeepingTheSameId();
@@ -4767,6 +4770,35 @@ void MainWindowTest::densityGradientIsUndoableAndSpansTheShape() {
     QVERIFY(!gradientOf().has_value());
 }
 
+void MainWindowTest::editingGradientEndSpacingKeepsTheInspectorAlive() {
+    // Régression : modifier « Écart de fin » reconstruisait l'inspecteur (formulaire
+    // périmé) pendant le signal du spinbox : le widget émetteur était supprimé en
+    // pleine émission, d'où un crash dans Qt6Widgets.
+    MainWindow window;
+    const Fixture fx = buildTatamiSquareFixture();
+    window.applyLoadedProject(fx.project);
+    window.selectedEmbroidery_ = fx.embroideryId;
+    window.updateActions();
+    window.convertToDirectional(fx.embroideryId);
+    auto* panel = window.propertiesPanel_;
+    auto* on = panel->findChild<QCheckBox*>(QStringLiteral("check_densityGradient"));
+    QPointer<QDoubleSpinBox> end =
+        panel->findChild<QDoubleSpinBox*>(QStringLiteral("spin_gradientEndSpacing"));
+    QVERIFY(on != nullptr);
+    QVERIFY(end);
+    on->setChecked(true); // active le dégradé depuis l'inspecteur
+    QVERIFY(end);
+    end->setValue(2.5);
+    QVERIFY(end); // le spinbox émetteur n'a pas été supprimé pendant son signal
+    const auto* emb = window.project_.findEmbroidery(fx.embroideryId);
+    const auto gradient =
+        std::get<openstitch::document::DirectionalFillParams>(emb->params).density_gradient;
+    QVERIFY(gradient.has_value());
+    QCOMPARE(gradient->spacing_to.value, 2'500);
+    // Le formulaire montre toujours les paramètres du document : pas de reconstruction.
+    QVERIFY(panel->showsParams(emb->params));
+}
+
 void MainWindowTest::twoColorBlendCreatesBackgroundAndTopInOneUndoStep() {
     MainWindow window;
     Fixture fx = buildTatamiSquareFixture();
@@ -4798,6 +4830,7 @@ void MainWindowTest::twoColorBlendCreatesBackgroundAndTopInOneUndoStep() {
         auto* dialog =
             qobject_cast<openstitch::desktop::ColorBlendDialog*>(QApplication::activeModalWidget());
         QVERIFY(dialog != nullptr);
+        dialog->setComplementary(false); // profil « fond uniforme » : le fond reste tatami
         dialog->findChild<QPushButton*>(QStringLiteral("button_blendAnalyze"))->click();
         dialog->accept();
     });
@@ -7005,6 +7038,7 @@ void MainWindowTest::blendZonesActionMakesBaseAndGradedTopInOneUndoStep() {
         auto* dialog =
             qobject_cast<openstitch::desktop::ColorBlendDialog*>(QApplication::activeModalWidget());
         QVERIFY(dialog != nullptr);
+        dialog->setComplementary(false); // profil « fond uniforme » : le fond reste tatami
         dialog->findChild<QLineEdit*>(QStringLiteral("edit_blendForeground"))->setText("#2244cc");
         dialog->findChild<QDialogButtonBox*>()->button(QDialogButtonBox::Ok)->click();
     });
@@ -7067,6 +7101,45 @@ void MainWindowTest::displayFiltersApplyToVectorShapes() {
     window.minAreaMm2_ = 150.0;
     QVERIFY(!window.vectorPassesFilter(withFill));
     QVERIFY(!window.vectorPassesFilter(bare));
+}
+
+void MainWindowTest::displayFilterShortcutsIsolateAndRestore() {
+    MainWindow window;
+    window.applyLoadedProject(twoOverlappingRectangles());
+    const ObjectId a = window.project_.vector_objects[0].id;
+    const ObjectId b = window.project_.vector_objects[1].id;
+    window.setSelection({.region = std::nullopt, .embroidery = std::nullopt, .objects = {a}});
+    window.setStitchTypeForSelection(1);
+    window.setEmbroideryColorForSelection({200, 10, 10});
+    window.setSelection({.region = std::nullopt, .embroidery = std::nullopt, .objects = {b}});
+    window.setStitchTypeForSelection(2);
+    window.setEmbroideryColorForSelection({10, 10, 200});
+    window.setSelection({});
+    const auto& embA = *window.embroideryForVector(a);
+    const auto& embB = *window.embroideryForVector(b);
+
+    // Couleur : n'afficher que celle de A cache B (et seulement B).
+    window.isolateFilterColor(0xC80A0A);
+    QVERIFY(window.objectPassesFilter(embA));
+    QVERIFY(!window.objectPassesFilter(embB));
+
+    // Tout afficher rétablit couleurs, types et taille minimale.
+    window.minAreaMm2_ = 50.0;
+    window.showAllFilters();
+    QVERIFY(window.hiddenColors_.empty());
+    QCOMPARE(window.minAreaMm2_, 0.0);
+    QVERIFY(window.objectPassesFilter(embA));
+    QVERIFY(window.objectPassesFilter(embB));
+
+    // Type : n'afficher que le satin (index 2) cache le tatami de A.
+    window.isolateFilterType(2);
+    QVERIFY(!window.objectPassesFilter(embA));
+    QVERIFY(window.objectPassesFilter(embB));
+    window.showAllFilters();
+    QVERIFY(window.objectPassesFilter(embA));
+
+    // Les couleurs de l'image sont proposées au sélecteur de fil.
+    QVERIFY(!window.imageColors().empty());
 }
 
 void MainWindowTest::hoopMarginReachesTheCanvasView() {

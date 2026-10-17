@@ -196,12 +196,13 @@ TEST_CASE("auto_satin on a narrow band goes through the real engine", "[project_
     REQUIRE(report.ok);
     CHECK(project.embroidery_objects.front().is_auto_satin());
 
-    // Un disque est refuse par le moteur : message de refus, projet inchange.
+    // Un disque est refuse par le squelette (le balayage par defaut le couvre) : message de
+    // refus, projet inchange.
     auto other = std::move(*po::create_empty_project({}));
     const auto refused = po::apply_batch(
         other, R"({"schema":"openstitch.batch/1","operations":[)"
                R"({"op":"add_shape","as":"c","shape":"ellipse","width_mm":20,"height_mm":20},)"
-               R"({"op":"auto_satin","object":"$c"}]})");
+               R"({"op":"auto_satin","object":"$c","strategy":"skeleton"}]})");
     CHECK_FALSE(refused.ok);
     CHECK(other.embroidery_objects.empty());
 }
