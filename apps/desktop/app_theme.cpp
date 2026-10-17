@@ -19,7 +19,8 @@ namespace openstitch::desktop {
 namespace {
 
 QSettings settings() {
-    return QSettings(QStringLiteral("OpenStitch"), QStringLiteral("OpenStitch Studio"));
+    return QSettings(QSettings::defaultFormat(), QSettings::UserScope, QStringLiteral("OpenStitch"),
+                     QStringLiteral("OpenStitch Studio"));
 }
 
 QPalette build_palette(const Tokens& t) {

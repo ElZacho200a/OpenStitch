@@ -59,6 +59,7 @@
 #include "ai_preferences.hpp"
 #include "ai_preferences_dialog.hpp"
 #include "ai_segmentation_dialog.hpp"
+#include "app_settings.hpp"
 #include "app_theme.hpp"
 #include "autosave.hpp"
 #include "brightness_dialog.hpp"
@@ -107,6 +108,7 @@
 #include "ruler.hpp"
 #include "satin_guide_item.hpp"
 #include "selection_hit_test.hpp"
+#include "settings_dialog.hpp"
 #include "ui_icons.hpp"
 #include "ui_memory.hpp"
 #include "workflow_panel.hpp"
@@ -759,6 +761,10 @@ void MainWindow::buildMenus() {
     editMenu->addSeparator();
     auto* aiPrefsAct = editMenu->addAction(tr("Préférences — &Intelligence artificielle…"));
     connect(aiPrefsAct, &QAction::triggered, this, &MainWindow::openAiPreferences);
+    auto* settingsAct = editMenu->addAction(tr("Paramètres…"));
+    settingsAct->setObjectName(QStringLiteral("action_settings"));
+    settingsAct->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_Comma));
+    connect(settingsAct, &QAction::triggered, this, &MainWindow::openSettings);
 
     auto* imageMenu = menuBar()->addMenu(tr("&Image"));
     const auto addOpAction = [this, imageMenu](const QString& text, image::ImageOp op) {
@@ -4870,6 +4876,20 @@ void MainWindow::openAiPreferences() {
     if (dialog.exec() == QDialog::Accepted) {
         saveAiPreferences(dialog.preferences());
     }
+}
+
+void MainWindow::openSettings() {
+    SettingsDialog dialog(this);
+    dialog.setSettings(loadEditSettings());
+    if (dialog.exec() != QDialog::Accepted) {
+        return;
+    }
+    const EditSettings applied = dialog.settings();
+    saveEditSettings(applied);
+    // Les réglages d'action (Unir, Couteau) sont relus à chaque geste ; ceux-ci sont portés par
+    // l'état de la fenêtre.
+    snapNodesAct_->setChecked(applied.snapNodesOnDrag);
+    setRegionMapOpacity(applied.regionMapOpacity);
 }
 
 void MainWindow::createSatinObject() {
