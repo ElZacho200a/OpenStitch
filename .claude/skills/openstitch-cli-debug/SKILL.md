@@ -1,6 +1,6 @@
 ---
 name: openstitch-cli-debug
-description: Reproduire et inspecter visuellement un comportement du moteur de broderie sans l'IHM, avec openstitch-cli (stitchdebug, auto-satin-debug, sgsd-debug, digitize, dst2svg, stats), et régénérer les SVG dorés de tests/golden/. À utiliser pour diagnostiquer un rendu de points bizarre (satin, tatami, sous-couches, routage, jonctions), comparer avant/après un changement de génération, tester l'auto-numérisation sur une image, ou quand l'utilisateur parle de « golden », « SVG de debug » ou d'un DST produit.
+description: Reproduire et inspecter visuellement un comportement du moteur de broderie sans l'IHM, avec openstitch-cli (stitchdebug, satin-auto-debug, digitize, dst2svg, stats), et régénérer les SVG dorés de tests/golden/. À utiliser pour diagnostiquer un rendu de points bizarre (satin, tatami, sous-couches, routage, jonctions), comparer avant/après un changement de génération, tester l'auto-numérisation sur une image, ou quand l'utilisateur parle de « golden », « SVG de debug » ou d'un DST produit.
 ---
 
 # Diagnostic visuel via openstitch-cli
@@ -28,7 +28,6 @@ ne pas en ajouter).
 |---|---|
 | Points courants / tatami sur forme de référence | `stitchdebug --shape line\|corner\|circle\|bezier\|star\|ring --length 3 --repeats 1\|2\|3 [--underlay 1\|2\|3] [--underpath] --output-svg f.svg` |
 | Satin auto : squelette, satinabilité, rails/barreaux | `auto-satin-debug --shape rectangle\|capsule\|ribbon\|s\|y\|t\|cross\|h\|circle\|ring\|wide\|tiny\|notch\|pinch\|trident [--pixel-size 0.05] [--cap-end 0\|1\|2] [--short 0\|2\|3] [--split 0..3] [--underlay masque 1/2/4] [--lock 0..3] [--route] [--satin-geometry legacy\|parametric] --output-svg f.svg [--coverage-svg c.svg]` |
-| Décomposition SGSD (satin_planning, phases 1–9) | `sgsd-debug --shape trident [--beam-width 3]` (rapport texte : couverture SGSD vs direct) |
 | Pipeline image → DST complet | `digitize image.png sortie.dst [--dpi 96] [--max-colors 8] [--min-region-px 16] [--smoothing-px 3] [--skip-background -1\|0\|1] [--output-svg f.svg]` |
 | Lire un DST | `stats f.dst` (points, sauts, couleurs, dimensions) ; `dst2svg f.dst f.svg` |
 | Métadonnées image | `info image.png [--dpi 96]` |

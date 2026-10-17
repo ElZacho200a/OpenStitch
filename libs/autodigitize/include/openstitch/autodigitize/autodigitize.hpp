@@ -33,11 +33,6 @@ struct AutoOptions {
     // image carrée). Particulièrement utile sur une image SANS canal alpha :
     // sans transparence, le fond devient une région opaque comme les autres.
     bool skip_largest_region{false};
-    // Deprecated/ignore : l'auto-broderie ne cree plus de satin automatiquement.
-    // Ces champs restent pour ne pas casser les vieux appels/options, mais la
-    // classification force maintenant tatami (zones) ou contour (petites zones).
-    bool use_auto_satin{false};
-    bool use_naive_satin{false};
 
     // --- Satin sur les bandes (anneaux, rubans, traits épais) ---
     // Vrai : une région ÉTROITE et allongée (largeur moyenne >= 0,8 mm, largeur
