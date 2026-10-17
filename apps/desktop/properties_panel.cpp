@@ -1429,8 +1429,9 @@ void PropertiesPanel::buildEmbroideryForm(const document::EmbroideryObject& obje
                 sweepAngle->setToolTip(tr("Direction des fils (0° = horizontal, sens "
                                           "trigonométrique), valable pour toute la forme."));
                 auto* methodNote = new QLabel(
-                    tr("Cette méthode utilise un angle global : les guides locaux ne s'appliquent "
-                       "pas."),
+                    tr("Sans guide, cet angle s'applique à toute la forme. Les guides ci-dessous "
+                       "changent l'orientation des fils à leur endroit (angle interpolé entre "
+                       "guides)."),
                     body_);
                 methodNote->setObjectName(QStringLiteral("label_autoSatinMethodNote"));
                 methodNote->setWordWrap(true);

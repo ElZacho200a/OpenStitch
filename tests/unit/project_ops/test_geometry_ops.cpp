@@ -503,16 +503,33 @@ TEST_CASE("auto_satin refuse un disque avec le refus du moteur",
     REQUIRE(shape.ok);
     const std::uint64_t id = shape.result["id"].get<std::uint64_t>();
     const std::string original = signature(env.project);
-    const auto r = env.run("auto_satin", json{{"object", id}});
+    // Le squelette refuse un disque ; le balayage (methode par defaut) le couvre.
+    const auto r = env.run("auto_satin", json{{"object", id}, {"strategy", "skeleton"}});
     CHECK_FALSE(r.ok);
     CHECK(r.error.code == "E_REFUSED");
     CHECK(r.error.message.find("Aucune colonne satin") != std::string::npos);
     CHECK(signature(env.project) == original); // jamais de repli silencieux
     CHECK(env.project.findEmbroidery(ObjectId{id})->is_tatami());
 
-    const auto compact = env.run("auto_satin", json{{"object", id}, {"compact_axis", true}});
+    const auto compact = env.run(
+        "auto_satin", json{{"object", id}, {"strategy", "skeleton"}, {"compact_axis", true}});
     REQUIRE(compact.ok);
     CHECK(env.project.findEmbroidery(ObjectId{id})->is_auto_satin());
+}
+
+TEST_CASE("auto_satin utilise le balayage par defaut et couvre un disque",
+          "[project_ops][geometry][auto_satin]") {
+    Env env;
+    const auto shape =
+        env.run("add_shape", json{{"shape", "ellipse"}, {"width_mm", 10.0}, {"height_mm", 10.0}});
+    REQUIRE(shape.ok);
+    const std::uint64_t id = shape.result["id"].get<std::uint64_t>();
+    const auto r = env.run("auto_satin", json{{"object", id}});
+    REQUIRE(r.ok);
+    const auto* emb = env.project.findEmbroidery(ObjectId{id});
+    REQUIRE(emb != nullptr);
+    const auto& params = std::get<document::AutoSatinParams>(emb->params);
+    CHECK(params.strategy == document::AutoSatinStrategy::ParallelSweep);
 }
 
 TEST_CASE("auto_satin valide ses arguments", "[project_ops][geometry][auto_satin]") {

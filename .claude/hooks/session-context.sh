@@ -230,6 +230,9 @@ if [[ -z "$agent_id_value" ]]; then
   done
 fi
 context+=". Only after those reads, answer the user."
+if [[ -z "$agent_id_value" ]]; then
+  context+=" Workflow de ce dépôt (habitude de travail validée par l'utilisateur) : tout travail abouti se termine par un commit conventionnel en français sur la branche du worktree puis une pull request vers main (gh pr create), jamais un commit direct sur main."
+fi
 
 hook_path=$(repo_brand_index_hook_path)
 

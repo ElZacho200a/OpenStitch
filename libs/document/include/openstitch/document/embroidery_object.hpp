@@ -266,6 +266,12 @@ parse_auto_satin_strategy(std::string_view id) {
     return std::nullopt;
 }
 
+// Méthode proposée aux NOUVEAUX auto-satins créés par l'utilisateur (bureau, CLI, API). Ce n'est
+// pas le défaut d'`AutoSatinParams{}` : le squelette y reste (anciens `.osp` sans clé `strategy`,
+// lettrage, auto-numérisation), pour que rien d'existant ne change de méthode à l'insu de
+// l'utilisateur.
+inline constexpr AutoSatinStrategy kDefaultAutoSatinStrategy = AutoSatinStrategy::ParallelSweep;
+
 struct AutoSatinParams {
     // Choix de l'utilisateur pour cette région. Un changement régénère le satin : annulable.
     AutoSatinStrategy strategy{AutoSatinStrategy::Skeleton};

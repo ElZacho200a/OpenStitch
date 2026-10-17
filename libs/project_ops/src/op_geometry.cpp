@@ -1108,7 +1108,7 @@ void register_geometry_ops(std::vector<OpSpec>& out) {
          {"compact_axis", "boolean", "", "forme compacte : axe synthétique au lieu d'un refus",
           false, ""},
          {"strategy", "string", "",
-          "méthode : skeleton (défaut), parallel_sweep (balayage parallèle) ou medial_axis "
+          "méthode : parallel_sweep (balayage parallèle, défaut), skeleton ou medial_axis "
           "(axe médian vectoriel)",
           false, "skeleton | parallel_sweep | medial_axis"},
          {"sweep_angle_deg", "number", "°",
