@@ -8,12 +8,12 @@
 #include <optional>
 #include <vector>
 
+#include "blend_region_fixture.hpp"
 #include "openstitch/stitch_generation/color_blend.hpp"
 #include "openstitch/stitch_generation/directional_fill.hpp"
 #include "openstitch/stitch_generation/generate.hpp"
 #include "openstitch/stitch_generation/overrides.hpp"
 #include "openstitch/stitch_generation/tatami.hpp"
-#include "blend_region_fixture.hpp"
 
 using namespace openstitch;
 using namespace openstitch::stitch_generation;
@@ -1364,8 +1364,7 @@ TEST_CASE("blend core: helper retains overrides and pipeline invalidates changed
     CHECK(dirty->commands == clean->commands);
 }
 
-TEST_CASE("directional density gradient ignores guides running along its axis",
-          "[blend_core]") {
+TEST_CASE("directional density gradient ignores guides running along its axis", "[blend_core]") {
     // Cas du projet TheyAskedForIT.osp : le dessus du fondu garde des guides
     // courbes qui longent l'axe (vertical) du dégradé. Les rangées couraient
     // alors le long de l'axe, l'écart ne variait pas et le fondu était écrasé.
@@ -1398,13 +1397,14 @@ TEST_CASE("directional fill does not jump between neighbouring rows across a sta
     geometry::PathSet region;
     region.outer.closed = true;
     for (const auto& p : blend_fixture::kOuter) {
-        region.outer.nodes.push_back({um(p[0] / 1000.0, p[1] / 1000.0), geometry::NodeType::Corner,
-                                      {}, {}});
+        region.outer.nodes.push_back(
+            {um(p[0] / 1000.0, p[1] / 1000.0), geometry::NodeType::Corner, {}, {}});
     }
     geometry::Path hole;
     hole.closed = true;
     for (const auto& p : blend_fixture::kHole) {
-        hole.nodes.push_back({um(p[0] / 1000.0, p[1] / 1000.0), geometry::NodeType::Corner, {}, {}});
+        hole.nodes.push_back(
+            {um(p[0] / 1000.0, p[1] / 1000.0), geometry::NodeType::Corner, {}, {}});
     }
     region.holes.push_back(std::move(hole));
     auto params = base_params();
