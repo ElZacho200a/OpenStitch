@@ -160,6 +160,7 @@ private slots:
     // plus bloquantes pour le reste de l'import.
     void warnAboutSkippedSvgFeatures(const std::vector<std::string>& warnings);
     void openAiPreferences();
+    void openSettings(); // onglet « Paramètres » (EditSettings, fichier INI)
     void createRunningStitchObject();
     void createTatamiObject();
     void createSatinObject();

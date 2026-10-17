@@ -36,16 +36,20 @@ struct VectorOpResult {
 // (et donc les objets de broderie) de l'objet RETENU : le dernier de `ids` (le principal) pour
 // l'union et l'intersection, la forme la plus basse du document pour la soustraction. Les autres
 // objets, et leurs broderies, sont supprimés. Résultat vide : refusé.
+// `union_gap` (Union seulement) : écart maximal soudé entre deux formes juxtaposées ; 0 = union
+// stricte. Les trous plus étroits que cet écart sont comblés.
 [[nodiscard]] VectorOpResult make_boolean_command(document::Project& project, BooleanOp op,
-                                                  const std::vector<ObjectId>& ids);
+                                                  const std::vector<ObjectId>& ids,
+                                                  Micrometers union_gap = Micrometers{50});
 
-// Découpe chaque objet de `ids` le long de la droite (a, b) (prolongée au-delà des formes).
+// Découpe chaque objet de `ids` le long du segment (a, b) : seules les formes que le segment
+// traverse de part en part sont coupées. `cut_width` : largeur de la bande retirée.
 // Chaque morceau devient un objet : le plus grand garde l'identité d'origine, les autres sont
 // de nouveaux objets, et leurs broderies de remplissage sont clonées (réglages identiques,
 // retouches manuelles non copiées). Refusé si aucune forme n'est réellement traversée.
 [[nodiscard]] VectorOpResult make_split_command(document::Project& project,
                                                 const std::vector<ObjectId>& ids, Vec2um a,
-                                                Vec2um b);
+                                                Vec2um b, Micrometers cut_width = Micrometers{20});
 
 // Retire les trous des objets `ids` (HP-VEC-005) : tous si `max_area_um2` <= 0, sinon
 // seulement ceux dont l'aire ne dépasse pas ce seuil (« combler les petits trous »). Une seule

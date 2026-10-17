@@ -51,6 +51,10 @@ add_library(openstitch_desktop_widgets STATIC
     text_dialog.hpp
     lettering_fonts.qrc
     main_window.hpp
+    app_settings.cpp
+    app_settings.hpp
+    settings_dialog.cpp
+    settings_dialog.hpp
     app_theme.cpp
     app_theme.hpp
     design_tokens.cpp

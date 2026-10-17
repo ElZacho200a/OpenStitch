@@ -72,9 +72,6 @@ Box box_of(const PathSet& set) {
     return box;
 }
 
-// Écart maximal soudé par l'union : 0,05 mm, soit plus que la bande du Couteau (0,02 mm).
-constexpr Micrometers kUnionGap{50};
-
 VectorOpResult failure(std::string message) {
     VectorOpResult result;
     result.error = std::move(message);
@@ -166,7 +163,7 @@ void add_piece_commands(document::Project& project, CompositeCommand& group,
 } // namespace
 
 VectorOpResult make_boolean_command(document::Project& project, BooleanOp op,
-                                    const std::vector<ObjectId>& ids) {
+                                    const std::vector<ObjectId>& ids, Micrometers union_gap) {
     std::vector<const document::VectorObject*> objects;
     for (const ObjectId id : ids) {
         const auto* object = project.findObject(id);
@@ -199,7 +196,7 @@ VectorOpResult make_boolean_command(document::Project& project, BooleanOp op,
         for (const auto* object : objects) {
             all.insert(all.end(), object->paths.begin(), object->paths.end());
         }
-        auto united = geometry::union_polygons_closing(all, kUnionGap);
+        auto united = geometry::union_polygons_closing(all, union_gap);
         if (!united) {
             return failure(united.error().message);
         }
@@ -385,7 +382,7 @@ VectorOpResult make_remove_holes_command(const document::Project& project,
 }
 
 VectorOpResult make_split_command(document::Project& project, const std::vector<ObjectId>& ids,
-                                  Vec2um a, Vec2um b) {
+                                  Vec2um a, Vec2um b, Micrometers cut_width) {
     if (a == b) {
         return failure("La ligne de coupe est réduite à un point.");
     }
@@ -405,7 +402,7 @@ VectorOpResult make_split_command(document::Project& project, const std::vector<
         std::vector<PathSet> pieces;
         bool crossed = false;
         for (const PathSet& set : object.paths) {
-            auto cut = geometry::cut_path_set_bounded(set, a, b, reach);
+            auto cut = geometry::cut_path_set_bounded(set, a, b, reach, cut_width);
             if (!cut) {
                 return failure(cut.error().message);
             }
