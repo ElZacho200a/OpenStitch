@@ -283,8 +283,9 @@ TEST_CASE("blend: rows are turned across the colour axis so the density can vary
     uniform.density_gradient.reset();
     const auto dense = stitch_generation::trace_directional_streamlines(shape[0], uniform);
     const auto along = stitch_generation::trace_directional_streamlines(shape[0], params);
-    // Lignes le long de l'axe : le dégradé n'espace presque rien.
-    CHECK(along.size() * 10 > dense.size() * 8);
+    // Guide le long de l'axe : la génération le tourne elle-même à 90 deg, le
+    // dégradé espace donc les rangées (avant : écrasé, > 80 % des lignes).
+    CHECK(along.size() * 10 < dense.size() * 7);
 
     auto across = params;
     stitch_generation::align_guides_across_density_gradient(across, shape);

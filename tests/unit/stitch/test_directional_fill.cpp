@@ -13,6 +13,7 @@
 #include "openstitch/stitch_generation/generate.hpp"
 #include "openstitch/stitch_generation/overrides.hpp"
 #include "openstitch/stitch_generation/tatami.hpp"
+#include "blend_region_fixture.hpp"
 
 using namespace openstitch;
 using namespace openstitch::stitch_generation;
@@ -357,7 +358,10 @@ TEST_CASE("directional: stitches stay inside the region and avoid holes") {
         if (fill[i].jump) {
             continue;
         }
-        CHECK(segment_stays_in_region(region, fill[i - 1].pos, fill[i].pos));
+        // Exception documentée : une liaison de 1,5 mm au plus peut franchir un vide
+        // étroit (marche, fente) au lieu de devenir un saut.
+        CHECK((length_um(fill[i].pos - fill[i - 1].pos) <= 1'500.0 ||
+               segment_stays_in_region(region, fill[i - 1].pos, fill[i].pos)));
     }
 }
 
@@ -1358,4 +1362,61 @@ TEST_CASE("blend core: helper retains overrides and pipeline invalidates changed
     const auto clean = effective_sequence(project);
     REQUIRE(clean);
     CHECK(dirty->commands == clean->commands);
+}
+
+TEST_CASE("directional density gradient ignores guides running along its axis",
+          "[blend_core]") {
+    // Cas du projet TheyAskedForIT.osp : le dessus du fondu garde des guides
+    // courbes qui longent l'axe (vertical) du dégradé. Les rangées couraient
+    // alors le long de l'axe, l'écart ne variait pas et le fondu était écrasé.
+    const auto region = rect_mm(0, 0, 30, 20);
+    auto params = base_params();
+    params.inset = Micrometers{0};
+    params.density_gradient = vertical_gradient(Micrometers{4'000}, Micrometers{400});
+    params.guides = {line_mm(15, 1, 15, 19)};
+    auto curved = params;
+    curved.guides = {polygon({um(8, 1), um(11, 7), um(7, 13), um(10, 19)}, false)};
+
+    auto aligned = params;
+    align_guides_across_density_gradient(aligned, {region});
+    auto uniform = params;
+    uniform.density_gradient.reset();
+
+    const auto expected = trace_directional_streamlines(region, aligned);
+    const auto dense = trace_directional_streamlines(region, uniform);
+    REQUIRE(!expected.empty());
+    CHECK(expected.size() * 10 < dense.size() * 7); // le dégradé espace bien les rangées
+    CHECK(trace_directional_streamlines(region, params).size() == expected.size());
+    CHECK(trace_directional_streamlines(region, curved).size() == expected.size());
+}
+
+TEST_CASE("directional fill does not jump between neighbouring rows across a stair-step contour",
+          "[blend_core]") {
+    // Région de TheyAskedForIT.osp (contour pixelisé) : le lien entre deux fins
+    // de rangées voisines mord sur une marche ou une fente étroite ; refusé, il
+    // devenait un saut (260 sauts < 1 mm sur 410 pour le fond du fondu).
+    geometry::PathSet region;
+    region.outer.closed = true;
+    for (const auto& p : blend_fixture::kOuter) {
+        region.outer.nodes.push_back({um(p[0] / 1000.0, p[1] / 1000.0), geometry::NodeType::Corner,
+                                      {}, {}});
+    }
+    geometry::Path hole;
+    hole.closed = true;
+    for (const auto& p : blend_fixture::kHole) {
+        hole.nodes.push_back({um(p[0] / 1000.0, p[1] / 1000.0), geometry::NodeType::Corner, {}, {}});
+    }
+    region.holes.push_back(std::move(hole));
+    auto params = base_params();
+    params.row_spacing = Micrometers{400};
+    params.guides = {};
+    const auto stitches = fill_directional(region, params);
+    REQUIRE(stitches.size() > 500);
+    std::size_t shortJumps = 0;
+    for (std::size_t i = 1; i < stitches.size(); ++i) {
+        if (stitches[i].jump && length_um(stitches[i].pos - stitches[i - 1].pos) < 1'500.0) {
+            ++shortJumps;
+        }
+    }
+    CHECK(shortJumps <= 2);
 }
