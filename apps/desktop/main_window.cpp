@@ -5232,6 +5232,14 @@ void MainWindow::setStitchType(ObjectId embroideryId, int type) {
     updateActions();
 }
 
+namespace {
+// Clé 0xRRGGBB des filtres de couleur d'affichage.
+std::uint32_t colorKeyOf(const std::array<std::uint8_t, 3>& rgb) {
+    return (static_cast<std::uint32_t>(rgb[0]) << 16) | (static_cast<std::uint32_t>(rgb[1]) << 8) |
+           static_cast<std::uint32_t>(rgb[2]);
+}
+} // namespace
+
 void MainWindow::onCanvasContextMenu(QPointF posMm, QPoint globalPos) {
     const auto hit = objectAt(posMm);
     // Carte des régions affichée, aucun objet sous le curseur : menu de la région pointée.
@@ -5319,6 +5327,13 @@ void MainWindow::onCanvasContextMenu(QPointF posMm, QPoint globalPos) {
             });
         }
         menu.addSeparator();
+        const std::uint32_t embColorKey = colorKeyOf(emb->rgb);
+        const int embFilterType = stitchTypeIndex(*emb) == 3 ? 1 : stitchTypeIndex(*emb);
+        connect(menu.addAction(tr("Afficher uniquement cette couleur")), &QAction::triggered, this,
+                [this, embColorKey] { isolateFilterColor(embColorKey); });
+        connect(menu.addAction(tr("Afficher uniquement ce type de points")), &QAction::triggered,
+                this, [this, embFilterType] { isolateFilterType(embFilterType); });
+        menu.addSeparator();
         // Supprimer la broderie seule n'a de sens que si la forme source
         // reste utilisable après (cas d'un vrai objet vectoriel visible,
         // convertible en un autre type) — pas pour le proxy caché du satin
@@ -5353,6 +5368,18 @@ void MainWindow::onCanvasContextMenu(QPointF posMm, QPoint globalPos) {
         auto* deleteAct = menu.addAction(tr("&Supprimer"));
         connect(deleteAct, &QAction::triggered, this,
                 [this, targetVecId] { deleteVectorObject(targetVecId); });
+    }
+
+    // Filtres d'affichage actifs : toujours pouvoir tout réafficher, même sur le fond vide.
+    const bool filtersActive =
+        !hiddenColors_.empty() || minAreaMm2_ > 0.0 ||
+        std::find(showType_.begin(), showType_.end(), false) != showType_.end();
+    if (filtersActive) {
+        if (!menu.isEmpty()) {
+            menu.addSeparator();
+        }
+        connect(menu.addAction(tr("Tout afficher (filtres)")), &QAction::triggered, this,
+                &MainWindow::showAllFilters);
     }
 
     if (!menu.isEmpty()) {
@@ -7399,11 +7426,28 @@ void MainWindow::buildFilterPanel() {
     auto* panel = new QWidget(filterDock_);
     auto* layout = new QVBoxLayout(panel);
 
+    auto* showAllBtn = new QPushButton(tr("Tout afficher"), panel);
+    showAllBtn->setObjectName(QStringLiteral("filterShowAll"));
+    showAllBtn->setToolTip(
+        tr("Réaffiche tous les types, toutes les couleurs et toutes les tailles. "
+           "Clic droit sur un type ou une couleur : n'afficher que celui-ci."));
+    connect(showAllBtn, &QPushButton::clicked, this, &MainWindow::showAllFilters);
+    layout->addWidget(showAllBtn);
+
     layout->addWidget(new QLabel(tr("Types de points :"), panel));
     const QString names[] = {tr("Contour"), tr("Tatami"), tr("Satin")};
     for (int t = 0; t < 3; ++t) {
         auto* check = new QCheckBox(names[t], panel);
         check->setChecked(true);
+        check->setContextMenuPolicy(Qt::CustomContextMenu);
+        connect(check, &QCheckBox::customContextMenuRequested, this, [this, t, check](QPoint pos) {
+            QMenu menu(this);
+            connect(menu.addAction(tr("Afficher uniquement ce type")), &QAction::triggered, this,
+                    [this, t] { isolateFilterType(t); });
+            connect(menu.addAction(tr("Tout afficher")), &QAction::triggered, this,
+                    &MainWindow::showAllFilters);
+            menu.exec(check->mapToGlobal(pos));
+        });
         connect(check, &QCheckBox::toggled, this, [this, t](bool on) {
             showType_[static_cast<std::size_t>(t)] = on;
             displayImage(processed_);
@@ -7470,6 +7514,16 @@ void MainWindow::refreshFilterPanel() {
                            .arg(rgb[0], 2, 16, QLatin1Char('0'))
                            .arg(rgb[1], 2, 16, QLatin1Char('0'))
                            .arg(rgb[2], 2, 16, QLatin1Char('0')));
+        check->setContextMenuPolicy(Qt::CustomContextMenu);
+        connect(check, &QCheckBox::customContextMenuRequested, this,
+                [this, key, check](QPoint pos) {
+                    QMenu menu(this);
+                    connect(menu.addAction(tr("Afficher uniquement cette couleur")),
+                            &QAction::triggered, this, [this, key] { isolateFilterColor(key); });
+                    connect(menu.addAction(tr("Tout afficher")), &QAction::triggered, this,
+                            &MainWindow::showAllFilters);
+                    menu.exec(check->mapToGlobal(pos));
+                });
         connect(check, &QCheckBox::toggled, this, [this, key](bool on) {
             if (on) {
                 hiddenColors_.erase(key);
@@ -7481,6 +7535,71 @@ void MainWindow::refreshFilterPanel() {
         colorFilterLayout_->addWidget(check);
     }
     setDockAutoVisible(filterDock_, !project_.embroidery_objects.empty());
+}
+
+void MainWindow::isolateFilterType(int filterType) {
+    for (std::size_t t = 0; t < showType_.size(); ++t) {
+        showType_[t] = static_cast<int>(t) == filterType;
+        if (typeChecks_[t] != nullptr) {
+            const QSignalBlocker blocker(typeChecks_[t]);
+            typeChecks_[t]->setChecked(showType_[t]);
+        }
+    }
+    displayImage(processed_);
+}
+
+void MainWindow::isolateFilterColor(std::uint32_t colorKey) {
+    hiddenColors_.clear();
+    for (const auto& emb : project_.embroidery_objects) {
+        if (colorKeyOf(emb.rgb) != colorKey) {
+            hiddenColors_.insert(colorKeyOf(emb.rgb));
+        }
+    }
+    refreshFilterPanel(); // recoche les cases de couleur
+    displayImage(processed_);
+}
+
+void MainWindow::showAllFilters() {
+    showType_ = {true, true, true};
+    hiddenColors_.clear();
+    minAreaMm2_ = 0.0;
+    for (QCheckBox* check : typeChecks_) {
+        if (check != nullptr) {
+            const QSignalBlocker blocker(check);
+            check->setChecked(true);
+        }
+    }
+    if (minAreaSpin_ != nullptr) {
+        const QSignalBlocker blocker(minAreaSpin_);
+        minAreaSpin_->setValue(0.0);
+    }
+    refreshFilterPanel();
+    displayImage(processed_);
+}
+
+std::vector<QColor> MainWindow::imageColors() const {
+    std::vector<std::uint32_t> seen;
+    std::vector<QColor> colors;
+    for (const auto& vec : project_.vector_objects) {
+        const std::uint32_t key = colorKeyOf(vec.rgb);
+        if (std::find(seen.begin(), seen.end(), key) == seen.end()) {
+            seen.push_back(key);
+            colors.emplace_back(vec.rgb[0], vec.rgb[1], vec.rgb[2]);
+        }
+    }
+    return colors;
+}
+
+QColor MainWindow::pickThreadColor(const QColor& initial, const QString& title) {
+    // Les « Custom colors » du sélecteur Qt sont globales à l'application : on les remplace par
+    // les couleurs de l'image courante (16 emplacements).
+    const std::vector<QColor> colors = imageColors();
+    for (int i = 0; i < QColorDialog::customCount(); ++i) {
+        QColorDialog::setCustomColor(i, static_cast<std::size_t>(i) < colors.size()
+                                            ? colors[static_cast<std::size_t>(i)]
+                                            : QColor(Qt::white));
+    }
+    return QColorDialog::getColor(initial, this, title);
 }
 
 void MainWindow::moveObjectUp() {

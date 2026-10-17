@@ -624,6 +624,7 @@ private slots:
     void shapeUnionActionIsOneUndoStep();
     void blendZonesActionMakesBaseAndGradedTopInOneUndoStep();
     void displayFiltersApplyToVectorShapes();
+    void displayFilterShortcutsIsolateAndRestore();
     void hoopMarginReachesTheCanvasView();
     void sidebarToolButtonsActivateTheirTool();
     void sidebarDrawRectangleRealGesture();
@@ -7067,6 +7068,45 @@ void MainWindowTest::displayFiltersApplyToVectorShapes() {
     window.minAreaMm2_ = 150.0;
     QVERIFY(!window.vectorPassesFilter(withFill));
     QVERIFY(!window.vectorPassesFilter(bare));
+}
+
+void MainWindowTest::displayFilterShortcutsIsolateAndRestore() {
+    MainWindow window;
+    window.applyLoadedProject(twoOverlappingRectangles());
+    const ObjectId a = window.project_.vector_objects[0].id;
+    const ObjectId b = window.project_.vector_objects[1].id;
+    window.setSelection({.region = std::nullopt, .embroidery = std::nullopt, .objects = {a}});
+    window.setStitchTypeForSelection(1);
+    window.setEmbroideryColorForSelection({200, 10, 10});
+    window.setSelection({.region = std::nullopt, .embroidery = std::nullopt, .objects = {b}});
+    window.setStitchTypeForSelection(2);
+    window.setEmbroideryColorForSelection({10, 10, 200});
+    window.setSelection({});
+    const auto& embA = *window.embroideryForVector(a);
+    const auto& embB = *window.embroideryForVector(b);
+
+    // Couleur : n'afficher que celle de A cache B (et seulement B).
+    window.isolateFilterColor(0xC80A0A);
+    QVERIFY(window.objectPassesFilter(embA));
+    QVERIFY(!window.objectPassesFilter(embB));
+
+    // Tout afficher rétablit couleurs, types et taille minimale.
+    window.minAreaMm2_ = 50.0;
+    window.showAllFilters();
+    QVERIFY(window.hiddenColors_.empty());
+    QCOMPARE(window.minAreaMm2_, 0.0);
+    QVERIFY(window.objectPassesFilter(embA));
+    QVERIFY(window.objectPassesFilter(embB));
+
+    // Type : n'afficher que le satin (index 2) cache le tatami de A.
+    window.isolateFilterType(2);
+    QVERIFY(!window.objectPassesFilter(embA));
+    QVERIFY(window.objectPassesFilter(embB));
+    window.showAllFilters();
+    QVERIFY(window.objectPassesFilter(embA));
+
+    // Les couleurs de l'image sont proposées au sélecteur de fil.
+    QVERIFY(!window.imageColors().empty());
 }
 
 void MainWindowTest::hoopMarginReachesTheCanvasView() {

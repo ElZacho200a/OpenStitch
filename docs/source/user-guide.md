@@ -761,6 +761,13 @@ Dock (à droite, dès qu'il existe des objets) pour **isoler** ce qu'on regarde 
 - **Couleurs de fil** : une case par couleur distincte, pour n'afficher que
   certains fils.
 
+**Raccourcis** : un clic droit sur un type ou une couleur du panneau (ou sur une
+broderie du canvas) propose *Afficher uniquement ce type / cette couleur* ; le
+bouton **Tout afficher** (ou l'entrée *Tout afficher (filtres)* du menu du canvas,
+présente dès qu'un filtre est actif) réinitialise types, couleurs et taille min.
+Les sélecteurs de couleur de fil (*Couleur de la broderie…*, *Couleur de la
+couche*) proposent les couleurs de l'image dans leurs « Custom colors ».
+
 Ces filtres n'affectent que **l'affichage** (pas l'export ni les points générés).
 Ils s'appliquent aussi aux **formes vectorielles** : une forme est masquée si
 elle est plus petite que la taille minimale, ou si toutes ses broderies sont

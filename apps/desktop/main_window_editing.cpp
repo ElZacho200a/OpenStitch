@@ -94,14 +94,12 @@ void MainWindow::connectInspectorEditing() {
         if (emb == nullptr) {
             return;
         }
-        QColorDialog dialog(QColor(emb->rgb[0], emb->rgb[1], emb->rgb[2]), this);
-        dialog.setObjectName(QStringLiteral("fillColorDialog"));
-        dialog.setWindowTitle(tr("Couleur de la couche"));
         const auto generation = documentGeneration_;
-        if (dialog.exec() != QDialog::Accepted || generation != documentGeneration_) {
+        const QColor chosen = pickThreadColor(QColor(emb->rgb[0], emb->rgb[1], emb->rgb[2]),
+                                              tr("Couleur de la couche"));
+        if (!chosen.isValid() || generation != documentGeneration_) {
             return;
         }
-        const QColor chosen = dialog.selectedColor();
         const std::array<std::uint8_t, 3> rgb{static_cast<std::uint8_t>(chosen.red()),
                                               static_cast<std::uint8_t>(chosen.green()),
                                               static_cast<std::uint8_t>(chosen.blue())};
