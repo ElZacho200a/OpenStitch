@@ -121,6 +121,8 @@ Avertissement : Un DST **ne conserve pas** les objets éditables de haut niveau
 les **couleurs réelles** (seulement des arrêts). Après un export DST, seul le
 **projet `.osp`** permet de retrouver la géométrie et les paramètres.
 
+Les couleurs peuvent être conservées dans un **fichier compagnon** (`.inf` ou `.csv`) écrit à côté du DST et relu à l'ouverture : voir docs/source/formats-pes-jef-exp.md, section « Fichier compagnon de couleurs » (HP-FMT-009).
+
 ## Tests
 
 - **Aller-retour** : séquence → encode → decode → séquence' (mêmes types,
@@ -128,6 +130,7 @@ les **couleurs réelles** (seulement des arrêts). Après un export DST, seul le
 - **Subdivision** d'un déplacement > 12,1 mm.
 - **Fichiers invalides** (vide, tronqué, sans fin) refusés proprement.
 - **Déterminisme** octet à octet.
+- **Fuzzing** déterministe du décodeur (troncatures, octets altérés/aléatoires).
 
 ## Implémentation associée
 
@@ -135,4 +138,4 @@ les **couleurs réelles** (seulement des arrêts). Après un export DST, seul le
 - `libs/formats/src/dst.cpp` — `encode_dst`, `decode_dst`, `write_dst_file`,
   `read_dst_file`.
 - `apps/cli/main.cpp` — `stats`, `dst2svg`.
-- Tests : `tests/unit/formats/test_dst.cpp`.
+- Tests : `tests/unit/formats/test_dst.cpp`, `test_color_companion.cpp` (compagnon de couleurs), `test_fuzz_decoders.cpp` (fuzzing déterministe).

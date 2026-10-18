@@ -10,6 +10,8 @@ add_executable(test_formats
     test_jef.cpp
     test_exp.cpp
     test_export_limits.cpp
+    test_color_companion.cpp
+    test_fuzz_decoders.cpp
 )
 target_link_libraries(test_formats
     PRIVATE openstitch::formats openstitch::stitch_generation Catch2::Catch2WithMain
