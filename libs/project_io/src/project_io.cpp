@@ -18,6 +18,7 @@
 #include "archive.hpp"
 #include "json_serialize.hpp"
 #include "openstitch/image/image.hpp"
+#include "openstitch/project_io/migrations.hpp"
 
 namespace openstitch::project_io {
 
@@ -239,6 +240,16 @@ Result<document::Project> load_project_impl(const std::filesystem::path& path, L
     if (info != nullptr) {
         info->fileVersion = version;
         info->migrated = version < kSchemaVersion;
+    }
+
+    // Migrations versionnées v(n) -> v(n+1) (HP-FMT-021) avant la lecture du document.
+    {
+        auto migrated = migrate_project_json(std::string_view(
+            reinterpret_cast<const char*>(jsonIt->second.data()), jsonIt->second.size()));
+        if (!migrated) {
+            return std::unexpected(migrated.error());
+        }
+        root = nlohmann::json::parse(*migrated);
     }
 
     if (!root.contains("document")) {

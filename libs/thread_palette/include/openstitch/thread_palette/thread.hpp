@@ -29,6 +29,8 @@ struct Thread {
     std::string range;
     std::string name;
     std::array<std::uint8_t, 3> rgb{};
+
+    friend bool operator==(const Thread&, const Thread&) = default;
 };
 
 // Un nuancier de fabricant chargé en mémoire (données compilées, voir
