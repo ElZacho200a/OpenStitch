@@ -268,7 +268,7 @@ graphiques. C'est **le premier mur** : la majorité des machines domestiques
   pré-export (`check_export_limits`), tests Catch2 (octets calculés à la main, aller-retour,
   déterminisme, fuzz). **Reste** : validation par visualiseurs tiers et machine réelle
   (non faite, aucun fichier de référence réel). Voir `docs/source/formats-pes-jef-exp.md`.
-### HP-FMT-005 — EXP (Melco / Bernina) lecture + écriture [P0] — ◐ Partiel
+### HP-FMT-005 — EXP (Melco / Bernina) lecture + écriture [P0] — ◐ Partiel (2026-10-18)
 - **Attend (humain)** : ouverture dans deux visualiseurs tiers et essai sur une machine réelle ; aucun travail de code restant identifié au 2026-10-13.
 - État OpenStitch : absent.
 - Hatch : oui. Format simple, très répandu chez Bernina et en industriel.
@@ -281,6 +281,9 @@ graphiques. C'est **le premier mur** : la majorité des machines domestiques
   pré-export (`check_export_limits`), tests Catch2 (octets calculés à la main, aller-retour,
   déterminisme, fuzz). **Reste** : validation par visualiseurs tiers et machine réelle
   (non faite, aucun fichier de référence réel). Voir `docs/source/formats-pes-jef-exp.md`.
+- Livré (2026-10-18) : le `.inf` d'EXP est écrit et relu par le module compagnon de HP-FMT-009 (`265e4b8`).
+- Reste : câblage bureau/CLI ; validation du `.inf` par un lecteur tiers et d'une machine réelle.
+
 ### HP-FMT-006 — VP3 / VIP / HUS (Husqvarna Viking, Pfaff) [P1] — ☐ À faire
 - État OpenStitch : absent.
 - Hatch : oui.
@@ -307,7 +310,7 @@ graphiques. C'est **le premier mur** : la majorité des machines domestiques
   une documentation d'interopérabilité légitime existe. Sinon marquer
   `✗ Abandonné (format fermé)`.
 
-### HP-FMT-009 — Couleurs à côté du DST (fichier compagnon, en-tête étendu) [P1] — ☐ À faire
+### HP-FMT-009 — Couleurs à côté du DST (fichier compagnon, en-tête étendu) [P1] — ◐ Partiel (2026-10-18)
 - État OpenStitch : le DST n'emporte que des arrêts couleur ; les couleurs
   réelles sont perdues à l'export.
 - Hatch : peut écrire l'ordre des couleurs dans des fichiers d'accompagnement
@@ -317,6 +320,8 @@ graphiques. C'est **le premier mur** : la majorité des machines domestiques
   l'import d'un DST s'il est présent à côté.
 - Modules : `libs/formats`.
 - Dépend de : HP-THR-001.
+- Livré (2026-10-18) : `libs/formats/color_companion.*` : fichier compagnon `.inf` (binaire) ou `.csv` (lisible) des fils par bloc de couleur, écriture déterministe, relecture à détection automatique (`read_color_companion_for` cherche `.inf` puis `.csv` à côté du motif), refus propre des contenus invalides ; `test_color_companion` (`265e4b8`).
+- Reste : option d'export et relecture à l'ouverture dans le bureau et le CLI (câblage `project_io::export_machine_file`) ; le `.inf` est une reconstruction d'après une description publique approximative, non validée par un lecteur tiers.
 
 ### HP-FMT-010 — Reconnaissance d'un fichier de points en objets (« stitch to object ») [P2] — ☐ À faire
 - État OpenStitch : un DST importé reste une séquence brute non régénérable ;
@@ -2640,9 +2645,11 @@ de référence. Restent : progression et annulation, régénération de toute la
   minidump en cas de crash (Windows `MiniDumpWriteDump`), « envoyer le rapport »
   (lien vers un ticket prérempli, jamais d'envoi silencieux).
 
-### HP-QA-003 — Fuzzing des décodeurs [P1] — ☐ À faire
+### HP-QA-003 — Fuzzing des décodeurs [P1] — ◐ Partiel (2026-10-18)
 - À faire : cibles libFuzzer (clang-cl ou job Linux) pour DST, PES, JEF, EXP,
   SVG, DXF, `.osp` ; corpus minimal commité.
+- Livré (2026-10-18) : `test_fuzz_decoders` : DST, PES, JEF, EXP, SVG, DXF et compagnon, graines fixes, toutes les troncatures, octets altérés ou aléatoires, en-têtes saturés, reproductibilité ; un vrai défaut corrigé : boucle infinie de l'import SVG sur un caractère non alphabétique après `Z` (`svg_import.cpp`), avec test de non-régression (`265e4b8`).
+- Reste : cibles libFuzzer/ASan en CI ; `.osp` (`libs/project_io`).
 
 ### HP-QA-004 — Tests bout en bout desktop [P2] — ◐ Partiel
 - À faire : scénarios complets en QTest offscreen (image → numériser → éditer
@@ -2813,3 +2820,4 @@ ci-dessus doit les respecter :
 | 2026-10-18 | Claude (session autonome, agents) | HP-VIEW-005 ◐, HP-PROD-005 ◐, HP-PROD-007 ◐ : `density_map`, `thread_consumption` et quatre règles d'analyse dans `stitch_analysis` ; affichage à faire. |
 | 2026-10-18 | Claude (session autonome, agents) | HP-FMT-021 ◐ (migrations versionnées v1→v7), HP-THR-007 ◐ (stock de fils), HP-THR-012 ◐ (pipette) : cœur livré, IHM à faire. |
 | 2026-10-18 | Claude (session autonome, agents) | HP-TXT-007 ◐ (crénage manuel par paire), HP-TXT-012 ◐ (Unicode sans HarfBuzz : accents, repli, RTL hébreu), HP-TXT-013 ◐ (densité et points des petites lettres) ; champs `TextObject` et inspecteur restent à faire. |
+| 2026-10-18 | Claude (session autonome, agents) | HP-FMT-009 ◐ et HP-FMT-005 ◐ (compagnon de couleurs `.inf`/`.csv`, codec), HP-QA-003 ◐ (fuzzing déterministe des décodeurs, boucle infinie SVG corrigée) ; câblage bureau/CLI à faire. |
