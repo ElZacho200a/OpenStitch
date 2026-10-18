@@ -46,8 +46,30 @@ Flux sans en-tête ni marqueur de fin, paires d'octets signés (dx, dy) en 0,1 m
 **axe Y vers le haut** (comme le DST). Contrôle : `0x80` suivi d'un code : `0x04` saut
 (dx dy), `0x80` coupe (`07 00`), `0x01` changement de couleur ou arrêt (`00 00`).
 Delta max ±127 : les grands déplacements sont découpés en sauts. Pas de couleur dans
-le fichier (le fichier compagnon `.inf` n'est pas écrit, voir HP-FMT-009). Un arrêt
+le fichier : elles voyagent dans un fichier compagnon (section suivante). Un arrêt
 devient un changement de couleur.
+
+## Fichier compagnon de couleurs (HP-FMT-009, HP-FMT-005)
+
+Le DST (arrêts seulement) et l'EXP (rien) ne portent pas les couleurs de fil. Le module
+`openstitch/formats/color_companion.hpp` écrit et relit un fichier **à côté du motif**
+(même dossier, même nom, extension `.inf` ou `.csv`) qui liste les fils **dans l'ordre des
+blocs de couleur** (le même ordre que `MachineExportOptions::block_colors`), un fil par bloc.
+Deux représentations, mêmes données (RVB 8 bits) :
+
+- `.csv` (lisible, tableur) : ligne d'en-tête `index,r,g,b,hex`, puis `1,255,0,0,#FF0000`.
+- `.inf` (binaire, gros-boutiste) : `u32` version (=1), `u32` nombre de fils, puis par fil
+  `u16` longueur de l'enregistrement (octets, champ compris), `u16` réservé (0), `R G B`, un
+  octet 0, `u16` index (base 1), nom ASCII terminé par 0 (`Color N`). Structure retenue d'après
+  la description publique approximative du compagnon Melco : **non validée par un lecteur
+  tiers** (d'où le statut Partiel de HP-FMT-005 sur ce point).
+
+API : `encode_color_companion` / `decode_color_companion` (détection automatique, refus
+propre des contenus invalides, bornes `kMaxCompanionColors`), `companion_path`,
+`write_color_companion_file`, `read_color_companion_for` (cherche `.inf` puis `.csv` ; absence
+= `nullopt`, fichier corrompu = erreur). Sortie déterministe. Le câblage dans
+l'export/l'import du bureau et du CLI (option « écrire le compagnon », relecture à
+l'ouverture d'un DST/EXP) reste à faire côté `project_io`/`apps`.
 
 ## JEF (Janome)
 
@@ -111,13 +133,25 @@ en C++. Les **tables de 64 fils PEC et de 78 fils JEF** (valeurs RGB factuelles)
 sont transcrites : attribution dans `THIRD_PARTY_LICENSES.md`. Les valeurs de nos
 tests sont synthétiques, aucun fichier propriétaire.
 
+## Fuzzing des décodeurs (HP-QA-003)
+
+`tests/unit/formats/test_fuzz_decoders.cpp` : fuzzing **déterministe** (graines fixes,
+`mt19937`, sans dépendance à libFuzzer) de `decode_dst`, `decode_pes`, `decode_jef`,
+`decode_exp`, `decode_svg`, `decode_dxf` et du compagnon de couleurs (`.inf` et `.csv`).
+Corpus minimal = un fichier valide produit par nos encodeurs. Quatre campagnes : toutes les
+troncatures, octets altérés (bits, valeurs, 0x00/0xFF, insertions), octets aléatoires, champs
+d'en-tête saturés à 0xFF. Preuve : aucune exception, aucun plantage, le test se termine (donc
+pas de boucle infinie). Défaut réel trouvé et corrigé : `parse_path_data` (import SVG)
+bouclait indéfiniment sur un caractère non alphabétique après `Z` (`d="… Z;"`) car `Z` n'a pas
+d'argument à consommer ; test de non-régression dédié. Hors périmètre de ce lot : `.osp`
+(`libs/project_io`), cibles libFuzzer/ASan (job dédié).
+
 ## Limites
 
 - **Rien n'est validé sur machine réelle ni avec un visualiseur tiers** (critères
   d'acceptation des HP-FMT-002/004/005, HP-PHYS-001) : conventions d'axe Y (PES bas,
   JEF/EXP haut), centrage, octets de la section PES, ordre des bits des vignettes et
   sens exact des codes sont issus de la documentation publique, non vérifiés ici.
-- PES v6, noms/marques de fils, fichier `.inf` EXP, profil de cadre (HP-HOOP-001) : absents.
+- PES v6, noms/marques de fils, profil de cadre (HP-HOOP-001) : absents. Le compagnon `.inf` est écrit/relu par color_companion mais pas encore branché à l'IHM/CLI.
 - Le code de cadre JEF est déduit de la taille du motif, pas choisi par l'utilisateur.
-- Pas de corpus de fichiers réels ; fuzzing = octets tronqués/altérés/aléatoires
-  (aucun plantage), pas encore HP-QA-003.
+- Pas de corpus de fichiers réels (HP-QA-006).
