@@ -6879,6 +6879,132 @@ void MainWindow::buildDocumentPanel() {
         displayImage(processed_);
         updateActions();
     });
+    // Forme vectorielle non cousue (ligne indépendante de la liste).
+    connect(documentPanel_, &DocumentPanel::vectorSelected, this, [this](ObjectId id) {
+        if (project_.findObject(id) == nullptr) {
+            return;
+        }
+        setSelection({.region = std::nullopt, .embroidery = std::nullopt, .objects = {id}});
+        displayImage(processed_);
+        updateActions();
+    });
+    // Ctrl/Maj + clic : plusieurs lignes = plusieurs formes dans la sélection (l'inspecteur
+    // affiche « N objets »). Une broderie sans forme source valide ne peut pas rejoindre un lot.
+    connect(documentPanel_, &DocumentPanel::objectsSelected, this,
+            [this](const std::vector<ObjectId>& embroidery, const std::vector<ObjectId>& vectors) {
+                std::vector<ObjectId> objects;
+                for (const ObjectId id : embroidery) {
+                    const auto* e = project_.findEmbroidery(id);
+                    if (e != nullptr && project_.findObject(e->source_vector) != nullptr) {
+                        objects.push_back(e->source_vector);
+                    }
+                }
+                for (const ObjectId id : vectors) {
+                    if (project_.findObject(id) != nullptr) {
+                        objects.push_back(id);
+                    }
+                }
+                if (objects.size() < 2 && !embroidery.empty()) {
+                    setSelection({.region = std::nullopt,
+                                  .embroidery = embroidery.back(),
+                                  .objects = objects});
+                } else {
+                    setSelection({.region = std::nullopt,
+                                  .embroidery = std::nullopt,
+                                  .objects = std::move(objects)});
+                }
+                displayImage(processed_);
+                updateActions();
+            });
+    connect(documentPanel_, &DocumentPanel::selectionCleared, this, [this] {
+        setSelection({});
+        displayImage(processed_);
+        updateActions();
+    });
+    // Menu de ligne : mêmes commandes annulables que les cases et les boutons de l'Ordre.
+    connect(documentPanel_, &DocumentPanel::visibilityChangeRequested, this,
+            [this](const std::vector<ObjectId>& ids, bool visible) {
+                auto composite = std::make_unique<commands::CompositeCommand>(
+                    (visible ? tr("Afficher %1 objets") : tr("Masquer %1 objets"))
+                        .arg(ids.size())
+                        .toStdString());
+                for (const ObjectId id : ids) {
+                    composite->add(
+                        std::make_unique<commands::SetEmbroideryVisibleCommand>(id, visible));
+                }
+                undoStack_.execute(std::move(composite), project_);
+                refreshImage();
+                updateActions();
+            });
+    connect(documentPanel_, &DocumentPanel::orderLockChangeRequested, this,
+            [this](const std::vector<ObjectId>& ids, bool locked) {
+                auto composite = std::make_unique<commands::CompositeCommand>(
+                    (locked ? tr("Figer l'ordre de %1 objets") : tr("Libérer l'ordre de %1 objets"))
+                        .arg(ids.size())
+                        .toStdString());
+                for (const ObjectId id : ids) {
+                    composite->add(
+                        std::make_unique<commands::SetEmbroideryLockCommand>(id, locked));
+                }
+                undoStack_.execute(std::move(composite), project_);
+                refreshOrderPanel();
+                refreshImage();
+                updateActions();
+            });
+    connect(documentPanel_, &DocumentPanel::deleteRequested, this,
+            [this](const std::vector<ObjectId>& embroidery, const std::vector<ObjectId>& vectors) {
+                // Même règle que la suppression d'une broderie choisie : la broderie seule, sauf
+                // proxy invisible (colonne satin manuelle) dont la suppression emporte la source.
+                std::vector<ObjectId> removeVectors = vectors;
+                std::vector<ObjectId> removeEmbroideries;
+                for (const ObjectId id : embroidery) {
+                    const auto* e = project_.findEmbroidery(id);
+                    if (e == nullptr) {
+                        continue;
+                    }
+                    const auto* source = project_.findObject(e->source_vector);
+                    if (source != nullptr && !source->visible) {
+                        removeVectors.push_back(source->id);
+                    } else {
+                        removeEmbroideries.push_back(id);
+                    }
+                }
+                const std::size_t total = removeVectors.size() + removeEmbroideries.size();
+                if (total == 0) {
+                    return;
+                }
+                auto composite = std::make_unique<commands::CompositeCommand>(
+                    tr("Supprimer %1 objets").arg(total).toStdString());
+                for (const ObjectId id : removeEmbroideries) {
+                    composite->add(std::make_unique<commands::RemoveEmbroideryObjectCommand>(id));
+                }
+                for (std::size_t i = 0; i < removeVectors.size(); ++i) {
+                    if (std::find(removeVectors.begin(),
+                                  removeVectors.begin() + static_cast<std::ptrdiff_t>(i),
+                                  removeVectors[i]) ==
+                        removeVectors.begin() + static_cast<std::ptrdiff_t>(i)) {
+                        composite->add(std::make_unique<commands::RemoveVectorObjectCommand>(
+                            removeVectors[i]));
+                    }
+                }
+                undoStack_.execute(std::move(composite), project_);
+                setSelection({});
+                refreshImage();
+                updateActions();
+                statusBar()->showMessage(tr("%1 objet(s) supprimé(s).").arg(total));
+            });
+    // Glisser-déposer : nouvel ordre complet via la commande des boutons Monter/Descendre.
+    connect(documentPanel_, &DocumentPanel::orderChangeRequested, this,
+            [this](const std::vector<ObjectId>& order) {
+                if (order.size() != project_.embroidery_objects.size()) {
+                    return; // liste périmée : le document fait foi
+                }
+                undoStack_.execute(std::make_unique<commands::ReorderEmbroideryCommand>(order),
+                                   project_);
+                refreshImage();
+                refreshOrderPanel();
+                updateActions();
+            });
 }
 
 bool MainWindow::debugMenuEnabled() {
@@ -6936,6 +7062,16 @@ void MainWindow::syncDocumentSelection() {
             ids.push_back(r.value);
         }
         documentPanel_->syncRegions(ids, selectedRegion_->value);
+    } else if (hasMultiSelection()) {
+        std::vector<std::uint64_t> ids;
+        for (const ObjectId id : selectedObjectIds()) {
+            ids.push_back(id.value);
+        }
+        documentPanel_->syncObjects(ids);
+    } else if (selectedObject_) {
+        // Forme sans broderie : ligne indépendante de la liste (vide si l'objet est masqué
+        // ailleurs).
+        documentPanel_->syncSelection(DocumentPanel::Kind::Vector, selectedObject_->value);
     } else {
         documentPanel_->syncSelection(DocumentPanel::Kind::None, 0);
     }

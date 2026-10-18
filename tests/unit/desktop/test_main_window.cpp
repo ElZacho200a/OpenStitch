@@ -8261,7 +8261,8 @@ void MainWindowTest::documentPanelCheckBoxesAndRenameAreUndoableCommands() {
     const TrianglesFixture fx = buildTwoTatamiTriangles(embA, embB);
     window.applyLoadedProject(fx.project);
     auto* tree = window.documentPanel_->findChild<QTreeWidget*>();
-    QVERIFY(tree != nullptr && tree->topLevelItemCount() == 2);
+    // 2 objets cousus + la forme « C » non cousue, désormais ligne indépendante (HP-UX-037).
+    QVERIFY(tree != nullptr && tree->topLevelItemCount() == 3);
 
     tree->topLevelItem(0)->setCheckState(1, Qt::Unchecked); // Visible
     QTRY_VERIFY(!window.project_.findEmbroidery(embA)->visible);

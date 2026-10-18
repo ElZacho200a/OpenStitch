@@ -1,8 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 #include <QAction>
+#include <QComboBox>
+#include <QDropEvent>
 #include <QLineEdit>
 #include <QListWidget>
+#include <QMenu>
+#include <QMimeData>
 #include <QPixmap>
+#include <QScrollBar>
 #include <QTabWidget>
 #include <QTest>
 #include <QTreeWidget>
@@ -118,6 +123,14 @@ private slots:
     void doubleClickRenameEmitsRequestAndRestoresTheFormattedLabel();
     void clickingAGroupNodeSelectsAllItsSections();
     void themedFilterHasMagnifierAndRowsRenderWithoutCrash();
+    void ctrlClickOnThreeRowsEmitsThreeIdentifiers();
+    void syncObjectsSelectsRowsByTheirSourceShapeWithoutEmitting();
+    void unsewnVectorShapesAppearAsIndependentRows();
+    void refreshRestoresCollapseSelectionAndScrollByIdentity();
+    void reorderedAfterDropMovesTheBlockBeforeOrAfterTheTarget();
+    void droppingARowOnAnotherRequestsTheNewSewingOrder();
+    void rowContextMenuOffersHideLockAndDeleteAndEmitsRequests();
+    void typeIconDiffersPerStitchTypeAndTheTypeFilterHidesOthers();
 };
 
 void DocumentPanelTest::refreshPopulatesObjectsAndRegionsLists() {
@@ -433,6 +446,328 @@ void DocumentPanelTest::themedFilterHasMagnifierAndRowsRenderWithoutCrash() {
     QVERIFY(!shot.isNull());
     // Les données d'item exploitées par MainWindow restent intactes.
     QCOMPARE(objectsList(panel)->topLevelItem(0)->data(0, Qt::UserRole).toULongLong(), first.value);
+}
+
+// Quatre objets de types différents, chacun avec sa forme source (comme après une numérisation).
+Project projectWithFourTypedObjects(std::vector<openstitch::ObjectId>& embroideryIds,
+                                    std::vector<openstitch::ObjectId>& vectorIds) {
+    Project project;
+    const char* names[] = {"Aile", "Corps", "Tige", "Oeil"};
+    for (int i = 0; i < 4; ++i) {
+        openstitch::document::VectorObject vec;
+        vec.id = project.object_ids.next();
+        vec.name = std::string("Forme ") + names[i];
+        vectorIds.push_back(vec.id);
+        project.vector_objects.push_back(vec);
+
+        openstitch::document::EmbroideryObject e;
+        e.id = project.object_ids.next();
+        e.name = names[i];
+        e.source_vector = vec.id;
+        if (i == 0) {
+            e.params = openstitch::document::TatamiParams{};
+        } else if (i == 1) {
+            e.params = openstitch::document::SatinParams{};
+        } else {
+            e.params = openstitch::document::RunningStitchParams{};
+        }
+        embroideryIds.push_back(e.id);
+        project.embroidery_objects.push_back(e);
+    }
+    return project;
+}
+
+void DocumentPanelTest::ctrlClickOnThreeRowsEmitsThreeIdentifiers() {
+    DocumentPanel panel;
+    std::vector<openstitch::ObjectId> emb;
+    std::vector<openstitch::ObjectId> vec;
+    panel.refresh(projectWithFourTypedObjects(emb, vec));
+    auto* objects = objectsList(panel);
+    QCOMPARE(objects->selectionMode(), QAbstractItemView::ExtendedSelection);
+
+    std::vector<openstitch::ObjectId> gotEmb;
+    int multiEmits = 0;
+    QObject::connect(
+        &panel, &DocumentPanel::objectsSelected, &panel,
+        [&](const std::vector<openstitch::ObjectId>& e, const std::vector<openstitch::ObjectId>&) {
+            ++multiEmits;
+            gotEmb = e;
+        });
+    objects->topLevelItem(0)->setSelected(true);
+    objects->topLevelItem(2)->setSelected(true);
+    objects->topLevelItem(3)->setSelected(true);
+    QVERIFY(multiEmits >= 1);
+    QCOMPARE(gotEmb.size(), std::size_t{3});
+    QCOMPARE(gotEmb[0].value, emb[0].value);
+    QCOMPARE(gotEmb[1].value, emb[2].value);
+    QCOMPARE(gotEmb[2].value, emb[3].value);
+
+    // Désélectionner tout émet l'effacement de la sélection.
+    int cleared = 0;
+    QObject::connect(&panel, &DocumentPanel::selectionCleared, &panel, [&] { ++cleared; });
+    objects->clearSelection();
+    QCOMPARE(cleared, 1);
+}
+
+void DocumentPanelTest::syncObjectsSelectsRowsByTheirSourceShapeWithoutEmitting() {
+    DocumentPanel panel;
+    std::vector<openstitch::ObjectId> emb;
+    std::vector<openstitch::ObjectId> vec;
+    panel.refresh(projectWithFourTypedObjects(emb, vec));
+    int emits = 0;
+    QObject::connect(&panel, &DocumentPanel::objectsSelected, &panel,
+                     [&](const std::vector<openstitch::ObjectId>&,
+                         const std::vector<openstitch::ObjectId>&) { ++emits; });
+    QObject::connect(&panel, &DocumentPanel::selectionCleared, &panel, [&] { ++emits; });
+    panel.syncObjects({vec[1].value, vec[3].value});
+    QCOMPARE(emits, 0);
+    auto* objects = objectsList(panel);
+    QCOMPARE(objects->selectedItems().size(), 2);
+    QVERIFY(objects->topLevelItem(1)->isSelected());
+    QVERIFY(objects->topLevelItem(3)->isSelected());
+    QVERIFY(!objects->topLevelItem(0)->isSelected());
+}
+
+void DocumentPanelTest::unsewnVectorShapesAppearAsIndependentRows() {
+    DocumentPanel panel;
+    std::vector<openstitch::ObjectId> emb;
+    std::vector<openstitch::ObjectId> vec;
+    Project project = projectWithFourTypedObjects(emb, vec);
+    openstitch::document::VectorObject loose;
+    loose.id = project.object_ids.next();
+    loose.name = "Forme libre";
+    project.vector_objects.push_back(loose);
+    panel.refresh(project);
+    auto* objects = objectsList(panel);
+    QCOMPARE(objects->topLevelItemCount(), 5); // 4 coutures + 1 forme non cousue
+    QTreeWidgetItem* row = objects->topLevelItem(4);
+    QVERIFY(row->text(0).contains(QStringLiteral("Forme libre")));
+    QVERIFY(!row->data(0, Qt::UserRole).isValid()); // pas un objet de broderie
+
+    std::optional<std::uint64_t> picked;
+    QObject::connect(&panel, &DocumentPanel::vectorSelected, &panel,
+                     [&](openstitch::ObjectId id) { picked = id.value; });
+    row->setSelected(true);
+    QVERIFY(picked.has_value());
+    QCOMPARE(*picked, loose.id.value);
+
+    // Reflet depuis le canevas : la ligne se coche sans réémettre.
+    picked.reset();
+    panel.syncSelection(DocumentPanel::Kind::None, 0);
+    panel.syncSelection(DocumentPanel::Kind::Vector, loose.id.value);
+    QVERIFY(!picked.has_value());
+    QVERIFY(row->isSelected());
+}
+
+void DocumentPanelTest::refreshRestoresCollapseSelectionAndScrollByIdentity() {
+    DocumentPanel panel;
+    openstitch::ObjectId sourceVectorId{};
+    std::vector<openstitch::ObjectId> sectionIds;
+    openstitch::ObjectId standaloneId{};
+    Project project = projectWithGroupedSatinSections(sourceVectorId, sectionIds, standaloneId);
+    // Beaucoup de lignes autonomes : la liste défile.
+    for (int i = 0; i < 60; ++i) {
+        openstitch::document::EmbroideryObject e;
+        e.id = project.object_ids.next();
+        e.name = "Ligne " + std::to_string(i);
+        e.params = openstitch::document::RunningStitchParams{};
+        project.embroidery_objects.push_back(e);
+    }
+    const openstitch::ObjectId lastId = project.embroidery_objects.back().id;
+    panel.resize(300, 200);
+    panel.show();
+    panel.refresh(project);
+    auto* objects = objectsList(panel);
+
+    QTreeWidgetItem* group = nullptr;
+    for (int i = 0; i < objects->topLevelItemCount(); ++i) {
+        if (objects->topLevelItem(i)->childCount() > 0) {
+            group = objects->topLevelItem(i);
+        }
+    }
+    QVERIFY(group != nullptr);
+    QVERIFY(group->isExpanded());
+    group->setExpanded(false);
+    panel.syncSelection(DocumentPanel::Kind::Embroidery, lastId.value);
+    objects->doItemsLayout();
+    auto* bar = objects->verticalScrollBar();
+    QVERIFY(bar->maximum() > 0);
+    bar->setValue(bar->maximum());
+    const int scrolled = bar->value();
+
+    int emits = 0;
+    QObject::connect(&panel, &DocumentPanel::embroiderySelected, &panel,
+                     [&](openstitch::ObjectId) { ++emits; });
+    QObject::connect(&panel, &DocumentPanel::selectionCleared, &panel, [&] { ++emits; });
+    panel.refresh(project);
+
+    QCOMPARE(emits, 0); // la restauration ne se fait jamais passer pour un clic
+    QTreeWidgetItem* groupAfter = nullptr;
+    for (int i = 0; i < objects->topLevelItemCount(); ++i) {
+        if (objects->topLevelItem(i)->childCount() > 0) {
+            groupAfter = objects->topLevelItem(i);
+        }
+    }
+    QVERIFY(groupAfter != nullptr);
+    QVERIFY(!groupAfter->isExpanded());
+    QCOMPARE(objects->selectedItems().size(), 1);
+    QCOMPARE(objects->selectedItems().front()->data(0, Qt::UserRole).toULongLong(),
+             static_cast<qulonglong>(lastId.value));
+    // La position de lecture est conservée (en bas avant : en bas après, au pixel de rang près).
+    QVERIFY(scrolled > 0);
+    QCOMPARE(objects->verticalScrollBar()->value(), objects->verticalScrollBar()->maximum());
+}
+
+void DocumentPanelTest::reorderedAfterDropMovesTheBlockBeforeOrAfterTheTarget() {
+    using openstitch::ObjectId;
+    const std::vector<ObjectId> order{ObjectId{1}, ObjectId{2}, ObjectId{3}, ObjectId{4}};
+    const auto ids = [](const std::vector<ObjectId>& v) {
+        std::vector<int> out;
+        for (const auto& id : v) {
+            out.push_back(static_cast<int>(id.value));
+        }
+        return out;
+    };
+    QCOMPARE(ids(DocumentPanel::reorderedAfterDrop(order, {ObjectId{4}}, ObjectId{2}, false)),
+             (std::vector<int>{1, 4, 2, 3}));
+    QCOMPARE(ids(DocumentPanel::reorderedAfterDrop(order, {ObjectId{1}}, ObjectId{3}, true)),
+             (std::vector<int>{2, 3, 1, 4}));
+    // Plusieurs lignes : ordre relatif d'origine conservé, quel que soit l'ordre fourni.
+    QCOMPARE(ids(DocumentPanel::reorderedAfterDrop(order, {ObjectId{3}, ObjectId{1}}, ObjectId{4},
+                                                   true)),
+             (std::vector<int>{2, 4, 1, 3}));
+    // Cible invalide = à la fin ; déposer sur soi-même = inchangé.
+    QCOMPARE(ids(DocumentPanel::reorderedAfterDrop(order, {ObjectId{1}}, ObjectId{}, false)),
+             (std::vector<int>{2, 3, 4, 1}));
+    QCOMPARE(ids(DocumentPanel::reorderedAfterDrop(order, {ObjectId{2}}, ObjectId{2}, true)),
+             (std::vector<int>{1, 2, 3, 4}));
+}
+
+void DocumentPanelTest::droppingARowOnAnotherRequestsTheNewSewingOrder() {
+    DocumentPanel panel;
+    std::vector<openstitch::ObjectId> emb;
+    std::vector<openstitch::ObjectId> vec;
+    panel.refresh(projectWithFourTypedObjects(emb, vec));
+    panel.resize(300, 300);
+    panel.show();
+    auto* objects = objectsList(panel);
+    objects->doItemsLayout();
+    std::optional<std::vector<openstitch::ObjectId>> requested;
+    QObject::connect(&panel, &DocumentPanel::orderChangeRequested, &panel,
+                     [&](const std::vector<openstitch::ObjectId>& order) { requested = order; });
+
+    // La dernière ligne glissée sur le haut de la première : elle passe en tête.
+    objects->clearSelection();
+    objects->topLevelItem(3)->setSelected(true);
+    const QRect first = objects->visualItemRect(objects->topLevelItem(0));
+    panel.handleDrop(QPoint(first.center().x(), first.top() + 1));
+    QTRY_VERIFY(requested.has_value());
+    QCOMPARE(requested->size(), std::size_t{4});
+    QCOMPARE((*requested)[0].value, emb[3].value);
+    QCOMPARE((*requested)[1].value, emb[0].value);
+    // La liste ne bouge pas d'elle-même : seul le document, après la commande, la reconstruit.
+    QCOMPARE(objects->topLevelItem(0)->data(0, Qt::UserRole).toULongLong(),
+             static_cast<qulonglong>(emb[0].value));
+}
+
+void DocumentPanelTest::rowContextMenuOffersHideLockAndDeleteAndEmitsRequests() {
+    DocumentPanel panel;
+    std::vector<openstitch::ObjectId> emb;
+    std::vector<openstitch::ObjectId> vec;
+    Project project = projectWithFourTypedObjects(emb, vec);
+    openstitch::document::VectorObject loose;
+    loose.id = project.object_ids.next();
+    loose.name = "Forme libre";
+    project.vector_objects.push_back(loose);
+    panel.refresh(project);
+    panel.resize(300, 300);
+    panel.show();
+    auto* objects = objectsList(panel);
+    objects->doItemsLayout();
+
+    std::optional<std::pair<std::size_t, bool>> hidden;
+    std::optional<std::pair<std::size_t, bool>> locked;
+    std::optional<std::pair<std::size_t, std::size_t>> deleted;
+    QObject::connect(
+        &panel, &DocumentPanel::visibilityChangeRequested, &panel,
+        [&](const std::vector<openstitch::ObjectId>& ids, bool on) { hidden = {ids.size(), on}; });
+    QObject::connect(
+        &panel, &DocumentPanel::orderLockChangeRequested, &panel,
+        [&](const std::vector<openstitch::ObjectId>& ids, bool on) { locked = {ids.size(), on}; });
+    QObject::connect(
+        &panel, &DocumentPanel::deleteRequested, &panel,
+        [&](const std::vector<openstitch::ObjectId>& e,
+            const std::vector<openstitch::ObjectId>& v) { deleted = {e.size(), v.size()}; });
+
+    // Deux lignes sélectionnées : le menu agit sur les deux.
+    objects->clearSelection();
+    objects->topLevelItem(0)->setSelected(true);
+    objects->topLevelItem(1)->setSelected(true);
+    QMenu* menu =
+        panel.createContextMenu(objects->visualItemRect(objects->topLevelItem(0)).center());
+    QVERIFY(menu != nullptr);
+    auto* vis = menu->findChild<QAction*>(QStringLiteral("action_docRowVisibility"));
+    auto* lock = menu->findChild<QAction*>(QStringLiteral("action_docRowLock"));
+    auto* del = menu->findChild<QAction*>(QStringLiteral("action_docRowDelete"));
+    QVERIFY(vis != nullptr && lock != nullptr && del != nullptr);
+    QVERIFY(vis->text().contains(QStringLiteral("Masquer")));
+    QVERIFY(lock->text().contains(QStringLiteral("Figer")));
+    vis->trigger();
+    lock->trigger();
+    del->trigger();
+    delete menu;
+    QVERIFY(hidden.has_value() && locked.has_value() && deleted.has_value());
+    QCOMPARE(*hidden, (std::pair<std::size_t, bool>{2, false}));
+    QCOMPARE(*locked, (std::pair<std::size_t, bool>{2, true}));
+    QCOMPARE(*deleted, (std::pair<std::size_t, std::size_t>{2, 0}));
+
+    // Clic droit sur une forme non cousue : seule la suppression est proposée.
+    deleted.reset();
+    QMenu* vecMenu =
+        panel.createContextMenu(objects->visualItemRect(objects->topLevelItem(4)).center());
+    QVERIFY(vecMenu != nullptr);
+    QVERIFY(vecMenu->findChild<QAction*>(QStringLiteral("action_docRowVisibility")) == nullptr);
+    vecMenu->findChild<QAction*>(QStringLiteral("action_docRowDelete"))->trigger();
+    delete vecMenu;
+    QVERIFY(deleted.has_value());
+    QCOMPARE(*deleted, (std::pair<std::size_t, std::size_t>{0, 1}));
+}
+
+void DocumentPanelTest::typeIconDiffersPerStitchTypeAndTheTypeFilterHidesOthers() {
+    DocumentPanel panel;
+    std::vector<openstitch::ObjectId> emb;
+    std::vector<openstitch::ObjectId> vec;
+    panel.refresh(projectWithFourTypedObjects(emb, vec));
+    auto* objects = objectsList(panel);
+    // Tatami (0), satin (1), contour (2 et 3) : icônes distinctes, identiques entre contours.
+    QVERIFY(!objects->topLevelItem(0)->icon(0).isNull());
+    QVERIFY(objects->topLevelItem(0)->icon(0).cacheKey() !=
+            objects->topLevelItem(1)->icon(0).cacheKey());
+    QVERIFY(objects->topLevelItem(1)->icon(0).cacheKey() !=
+            objects->topLevelItem(2)->icon(0).cacheKey());
+    QCOMPARE(objects->topLevelItem(2)->icon(0).cacheKey(),
+             objects->topLevelItem(3)->icon(0).cacheKey());
+
+    auto* combo = panel.findChild<QComboBox*>(QStringLiteral("combo_documentTypeFilter"));
+    QVERIFY(combo != nullptr);
+    const int satin = combo->findText(QStringLiteral("Satin"));
+    QVERIFY(satin > 0);
+    combo->setCurrentIndex(satin);
+    QVERIFY(objects->topLevelItem(0)->isHidden());
+    QVERIFY(!objects->topLevelItem(1)->isHidden());
+    QVERIFY(objects->topLevelItem(2)->isHidden());
+    // Cumul avec la recherche texte, et survie à un rafraîchissement.
+    auto* filter = panel.findChild<QLineEdit*>(QStringLiteral("edit_documentFilter"));
+    filter->setText(QStringLiteral("absent"));
+    QVERIFY(objects->topLevelItem(1)->isHidden());
+    filter->clear();
+    std::vector<openstitch::ObjectId> emb2;
+    std::vector<openstitch::ObjectId> vec2;
+    panel.refresh(projectWithFourTypedObjects(emb2, vec2));
+    QVERIFY(objects->topLevelItem(0)->isHidden());
+    QVERIFY(!objects->topLevelItem(1)->isHidden());
+    combo->setCurrentIndex(0);
+    QVERIFY(!objects->topLevelItem(0)->isHidden());
 }
 
 QTEST_MAIN(DocumentPanelTest)
