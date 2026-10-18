@@ -7,6 +7,7 @@ add_library(openstitch_stitch_analysis
     src/color_blocks.cpp
     src/production_sheet.cpp
     src/thread_usage.cpp
+    src/thread_consumption.cpp
     src/density_map.cpp
     src/text_rules.cpp
     src/project_analysis.cpp
