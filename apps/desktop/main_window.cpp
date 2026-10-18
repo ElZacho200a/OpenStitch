@@ -970,13 +970,30 @@ void MainWindow::buildMenus() {
            "puis vectoriser) ou directement les objets de broderie, au choix."));
     connect(aiSegmentAct_, &QAction::triggered, this, &MainWindow::segmentWithAi);
     embMenu->addSeparator();
-    createStitchAct_ = embMenu->addAction(tr("Créer un objet de &point de contour…"));
+    // HP-UX-002 : création immédiate au dernier réglage (pas de « … » : aucun dialogue) ; le
+    // sous-menu « Créer avec réglages » garde la saisie des valeurs avant création.
+    createStitchAct_ = embMenu->addAction(tr("Créer un objet de &point de contour"));
     createStitchAct_->setObjectName(QStringLiteral("action_createStitch"));
     connect(createStitchAct_, &QAction::triggered, this, &MainWindow::createRunningStitchObject);
-    createTatamiAct_ = embMenu->addAction(tr("Créer un remplissage &tatami…"));
+    createTatamiAct_ = embMenu->addAction(tr("Créer un remplissage &tatami"));
+    createTatamiAct_->setObjectName(QStringLiteral("action_createTatami"));
     connect(createTatamiAct_, &QAction::triggered, this, &MainWindow::createTatamiObject);
-    createSatinAct_ = embMenu->addAction(tr("Créer un &satin automatique…"));
+    createSatinAct_ = embMenu->addAction(tr("Créer un &satin automatique"));
+    createSatinAct_->setObjectName(QStringLiteral("action_createSatin"));
     connect(createSatinAct_, &QAction::triggered, this, &MainWindow::createSatinObject);
+    auto* createWithSettingsMenu = embMenu->addMenu(tr("Créer avec &réglages"));
+    createStitchWithSettingsAct_ = createWithSettingsMenu->addAction(tr("Point de contour…"));
+    createStitchWithSettingsAct_->setObjectName(QStringLiteral("action_createStitchWithSettings"));
+    connect(createStitchWithSettingsAct_, &QAction::triggered, this,
+            &MainWindow::createRunningStitchObjectWithSettings);
+    createTatamiWithSettingsAct_ = createWithSettingsMenu->addAction(tr("Remplissage tatami…"));
+    createTatamiWithSettingsAct_->setObjectName(QStringLiteral("action_createTatamiWithSettings"));
+    connect(createTatamiWithSettingsAct_, &QAction::triggered, this,
+            &MainWindow::createTatamiObjectWithSettings);
+    createSatinWithSettingsAct_ = createWithSettingsMenu->addAction(tr("Satin automatique…"));
+    createSatinWithSettingsAct_->setObjectName(QStringLiteral("action_createSatinWithSettings"));
+    connect(createSatinWithSettingsAct_, &QAction::triggered, this,
+            &MainWindow::createSatinObjectWithSettings);
     autoSatinAct_ = embMenu->addAction(tr("Convertir automatiquement en satin (expérimental)…"));
     autoSatinAct_->setToolTip(
         tr("Expérimental : construit le satin par squelette et traversées orientées (sans "
@@ -4191,37 +4208,51 @@ QPainterPath MainWindow::objectPainterPath(const document::VectorObject& object)
 }
 
 void MainWindow::createRunningStitchObject() {
-    // Une ou plusieurs formes : un seul dialogue, un objet de contour par forme.
+    createRunningStitchObjectImpl(false);
+}
+
+void MainWindow::createRunningStitchObjectWithSettings() {
+    createRunningStitchObjectImpl(true);
+}
+
+void MainWindow::createRunningStitchObjectImpl(bool askSettings) {
+    // Une ou plusieurs formes : un objet de contour par forme. HP-UX-002 : création immédiate au
+    // dernier réglage mémorisé ; le dialogue n'existe que pour « Créer avec réglages… ».
     const std::vector<ObjectId> sourceIds = selectedObjectIds();
     if (sourceIds.empty() || project_.findObject(sourceIds.front()) == nullptr) {
         return;
     }
 
-    QDialog dialog(this);
-    dialog.setWindowTitle(tr("Objet de point de contour"));
-    auto* layout = new QFormLayout(&dialog);
-    auto* lengthSpin = new QDoubleSpinBox(&dialog);
-    lengthSpin->setRange(0.5, 12.0);
-    lengthSpin->setValue(3.0);
-    lengthSpin->setDecimals(1);
-    lengthSpin->setSuffix(tr(" mm"));
-    auto* typeCombo = new QComboBox(&dialog);
-    typeCombo->addItem(tr("Point simple"), 1);
-    typeCombo->addItem(tr("Aller-retour (double)"), 2);
-    typeCombo->addItem(tr("Point triple"), 3);
-    layout->addRow(tr("Longueur de point :"), lengthSpin);
-    layout->addRow(tr("Type :"), typeCombo);
-    auto* buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dialog);
-    connect(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
-    connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
-    layout->addRow(buttons);
-    if (dialog.exec() != QDialog::Accepted) {
-        return;
-    }
-
     document::RunningStitchParams params;
-    params.stitch_length = to_micrometers(Millimeters{lengthSpin->value()});
-    params.repeats = typeCombo->currentData().toInt();
+    ui_memory::creation::apply(params);
+    if (askSettings) {
+        QDialog dialog(this);
+        dialog.setWindowTitle(tr("Objet de point de contour"));
+        auto* layout = new QFormLayout(&dialog);
+        auto* lengthSpin = new QDoubleSpinBox(&dialog);
+        lengthSpin->setRange(0.5, 12.0);
+        lengthSpin->setValue(to_millimeters(params.stitch_length).value);
+        lengthSpin->setDecimals(1);
+        lengthSpin->setSuffix(tr(" mm"));
+        auto* typeCombo = new QComboBox(&dialog);
+        typeCombo->addItem(tr("Point simple"), 1);
+        typeCombo->addItem(tr("Aller-retour (double)"), 2);
+        typeCombo->addItem(tr("Point triple"), 3);
+        typeCombo->setCurrentIndex(std::clamp(params.repeats, 1, 3) - 1);
+        layout->addRow(tr("Longueur de point :"), lengthSpin);
+        layout->addRow(tr("Type :"), typeCombo);
+        auto* buttons =
+            new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dialog);
+        connect(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
+        connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
+        layout->addRow(buttons);
+        if (dialog.exec() != QDialog::Accepted) {
+            return;
+        }
+        params.stitch_length = to_micrometers(Millimeters{lengthSpin->value()});
+        params.repeats = typeCombo->currentData().toInt();
+        ui_memory::creation::remember(document::StitchParams{params});
+    }
 
     auto group = std::make_unique<commands::CompositeCommand>(
         tr("Créer un contour pour %1 formes").arg(sourceIds.size()).toStdString());
@@ -4251,44 +4282,58 @@ void MainWindow::createRunningStitchObject() {
 }
 
 void MainWindow::createTatamiObject() {
-    // Une ou plusieurs formes : un seul dialogue, un remplissage par forme.
+    createTatamiObjectImpl(false);
+}
+
+void MainWindow::createTatamiObjectWithSettings() {
+    createTatamiObjectImpl(true);
+}
+
+void MainWindow::createTatamiObjectImpl(bool askSettings) {
+    // Une ou plusieurs formes : un remplissage par forme. HP-UX-002 : création immédiate au
+    // dernier réglage mémorisé ; le dialogue n'existe que pour « Créer avec réglages… ».
     const std::vector<ObjectId> sourceIds = selectedObjectIds();
     if (sourceIds.empty() || project_.findObject(sourceIds.front()) == nullptr) {
         return;
     }
 
-    QDialog dialog(this);
-    dialog.setWindowTitle(tr("Remplissage tatami"));
-    auto* layout = new QFormLayout(&dialog);
-    auto* densitySpin = new QDoubleSpinBox(&dialog);
-    densitySpin->setRange(0.1, 2.0);
-    densitySpin->setValue(0.4);
-    densitySpin->setDecimals(2);
-    densitySpin->setSuffix(tr(" mm"));
-    auto* lengthSpin = new QDoubleSpinBox(&dialog);
-    lengthSpin->setRange(1.0, 8.0);
-    lengthSpin->setValue(3.0);
-    lengthSpin->setDecimals(1);
-    lengthSpin->setSuffix(tr(" mm"));
-    auto* angleSpin = new QSpinBox(&dialog);
-    angleSpin->setRange(0, 179);
-    angleSpin->setValue(0);
-    angleSpin->setSuffix(tr(" °"));
-    layout->addRow(tr("Espacement des rangées :"), densitySpin);
-    layout->addRow(tr("Longueur de point :"), lengthSpin);
-    layout->addRow(tr("Angle :"), angleSpin);
-    auto* buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dialog);
-    connect(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
-    connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
-    layout->addRow(buttons);
-    if (dialog.exec() != QDialog::Accepted) {
-        return;
-    }
-
     document::TatamiParams params;
-    params.row_spacing = to_micrometers(Millimeters{densitySpin->value()});
-    params.stitch_length = to_micrometers(Millimeters{lengthSpin->value()});
-    params.angle = Angle{angleSpin->value() * std::numbers::pi / 180.0};
+    ui_memory::creation::apply(params);
+    if (askSettings) {
+        QDialog dialog(this);
+        dialog.setWindowTitle(tr("Remplissage tatami"));
+        auto* layout = new QFormLayout(&dialog);
+        auto* densitySpin = new QDoubleSpinBox(&dialog);
+        densitySpin->setRange(0.1, 2.0);
+        densitySpin->setValue(to_millimeters(params.row_spacing).value);
+        densitySpin->setDecimals(2);
+        densitySpin->setSuffix(tr(" mm"));
+        auto* lengthSpin = new QDoubleSpinBox(&dialog);
+        lengthSpin->setRange(1.0, 8.0);
+        lengthSpin->setValue(to_millimeters(params.stitch_length).value);
+        lengthSpin->setDecimals(1);
+        lengthSpin->setSuffix(tr(" mm"));
+        auto* angleSpin = new QSpinBox(&dialog);
+        angleSpin->setRange(0, 179);
+        angleSpin->setValue(
+            static_cast<int>(std::lround(params.angle.radians * 180.0 / std::numbers::pi)) % 180);
+        angleSpin->setSuffix(tr(" °"));
+        layout->addRow(tr("Espacement des rangées :"), densitySpin);
+        layout->addRow(tr("Longueur de point :"), lengthSpin);
+        layout->addRow(tr("Angle :"), angleSpin);
+        auto* buttons =
+            new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dialog);
+        connect(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
+        connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
+        layout->addRow(buttons);
+        if (dialog.exec() != QDialog::Accepted) {
+            return;
+        }
+        params.row_spacing = to_micrometers(Millimeters{densitySpin->value()});
+        params.stitch_length = to_micrometers(Millimeters{lengthSpin->value()});
+        params.angle = Angle{angleSpin->value() * std::numbers::pi / 180.0};
+        ui_memory::creation::remember(document::StitchParams{params});
+    }
 
     auto group = std::make_unique<commands::CompositeCommand>(
         tr("Créer un remplissage pour %1 formes").arg(sourceIds.size()).toStdString());
@@ -5035,7 +5080,12 @@ void MainWindow::openSettings() {
 }
 
 void MainWindow::createSatinObject() {
-    createAutoSatin(true);
+    // HP-UX-002 : ni dialogue de réglages ni question de confirmation (annulable en un pas).
+    createAutoSatin(/*askParameters=*/false, /*confirm=*/false);
+}
+
+void MainWindow::createSatinObjectWithSettings() {
+    createAutoSatin(/*askParameters=*/true);
 }
 
 document::EmbroideryObject* MainWindow::currentFillObject() {
@@ -6978,6 +7028,7 @@ void MainWindow::buildPropertiesPanel() {
                 // document pour l'auto-satin) : pas de reconstruction ni de perte de focus.
                 if (const auto* now = project_.findEmbroidery(id)) {
                     propertiesPanel_->adoptParams(id, now->params);
+                    pendingCreationMemory_ = now->params; // dernier réglage, mémorisé au débounce
                 }
                 refreshImage();
                 // updateActions() (pas updateInspector() seul) : un changement de
@@ -9500,6 +9551,9 @@ void MainWindow::updateActions() {
     setEnabledWithReason(createStitchAct_, anyObject, needShapes);
     setEnabledWithReason(createTatamiAct_, anyObject, needShapes);
     setEnabledWithReason(createSatinAct_, anyObject, needShapes);
+    setEnabledWithReason(createStitchWithSettingsAct_, anyObject, needShapes);
+    setEnabledWithReason(createTatamiWithSettingsAct_, anyObject, needShapes);
+    setEnabledWithReason(createSatinWithSettingsAct_, anyObject, needShapes);
     setEnabledWithReason(autoSatinAct_, anyObject, needShapes);
     setEnabledWithReason(duplicateSelectionAct_, singleObject, needOneShape);
     setEnabledWithReason(offsetSelectionAct_, singleObject, needOneShape);

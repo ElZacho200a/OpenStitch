@@ -82,6 +82,8 @@ class EmptyStateWidget;
 // applyLoadedProject() sans exposer de méthode de chargement dans l'API
 // publique de production.
 class MainWindowTest;
+class CreationFlowTest; // tests/unit/desktop/test_creation_flow.cpp (HP-UX-002/028/029/038,
+                        // HP-PERF-009)
 
 // Fenêtre principale. Règle du projet : aucune logique métier dans les
 // widgets — chargement (libs/image), placement (libs/document), transformations
@@ -90,6 +92,7 @@ class MainWindowTest;
 class MainWindow : public QMainWindow {
     Q_OBJECT
     friend class MainWindowTest;
+    friend class CreationFlowTest;
 
 public:
     MainWindow();
@@ -164,9 +167,15 @@ private slots:
     void warnAboutSkippedSvgFeatures(const std::vector<std::string>& warnings);
     void openAiPreferences();
     void openSettings(); // onglet « Paramètres » (EditSettings, fichier INI)
+    // HP-UX-002 : création DIRECTE (sans dialogue) d'un objet par forme sélectionnée, au dernier
+    // réglage mémorisé (`ui_memory::creation`). Les variantes `…WithSettings` gardent le dialogue
+    // de saisie (« Créer avec réglages… »).
     void createRunningStitchObject();
     void createTatamiObject();
     void createSatinObject();
+    void createRunningStitchObjectWithSettings();
+    void createTatamiObjectWithSettings();
+    void createSatinObjectWithSettings();
     void autoConvertToSatin();
     void changeFillAngle();
     void convertSatinsToTatami();
@@ -660,8 +669,12 @@ private:
     [[nodiscard]] std::optional<std::vector<geometry::PathSet>>
     pristineSatinContour(const document::VectorObject& vector) const;
     [[nodiscard]] QString autoSatinSummary(const document::EmbroideryObject& emb);
-    void createAutoSatinForSelection(bool askParameters);
-    void createAutoSatin(bool askParameters);
+    // `askParameters` : dialogue de réglages ; sinon `confirm` : simple question Oui/Non ; ni l'un
+    // ni l'autre : création immédiate au dernier réglage (HP-UX-002).
+    void createAutoSatinForSelection(bool askParameters, bool confirm = true);
+    void createAutoSatin(bool askParameters, bool confirm = true);
+    void createRunningStitchObjectImpl(bool askSettings);
+    void createTatamiObjectImpl(bool askSettings);
     void applyAutoSatinEdit(ObjectId id, document::AutoSatinParams params, const QString& label,
                             const QString& mergeTag = {});
     void addAutoSatinGuideFromStroke(ObjectId id, Vec2um from, Vec2um to);
@@ -952,6 +965,9 @@ private:
     QAction* createStitchAct_{nullptr};
     QAction* createTatamiAct_{nullptr};
     QAction* createSatinAct_{nullptr};
+    QAction* createStitchWithSettingsAct_{nullptr};
+    QAction* createTatamiWithSettingsAct_{nullptr};
+    QAction* createSatinWithSettingsAct_{nullptr};
     QAction* autoSatinAct_{nullptr};
     QAction* fillAngleAct_{nullptr};
     QAction* convertSatinAct_{nullptr};

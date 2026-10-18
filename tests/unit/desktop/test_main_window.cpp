@@ -2725,14 +2725,18 @@ void MainWindowTest::createSatinObjectOnSuitableRectangleProducesOneSatinWithSti
 
     const std::size_t embroideryCountBefore = window.project_.embroidery_objects.size();
 
-    // createSatinObject() ouvre une QDialog modale (espacement/compensation/
-    // sous-couche) : programmée avant l'appel, exec() pompe la boucle d'événements.
-    QTimer::singleShot(0, &window, [] {
+    // HP-UX-002 : createSatinObject() crée tout de suite, au dernier réglage, sans AUCUN
+    // dialogue (le dialogue de réglages n'existe plus que pour « Créer avec réglages… »).
+    bool modalOpened = false;
+    QTimer::singleShot(0, &window, [&modalOpened] {
         if (auto* dlg = qobject_cast<QDialog*>(QApplication::activeModalWidget())) {
-            dlg->accept();
+            modalOpened = true;
+            dlg->reject();
         }
     });
     window.createSatinObject();
+    QCoreApplication::processEvents();
+    QVERIFY(!modalOpened);
 
     QCOMPARE(window.project_.embroidery_objects.size(), embroideryCountBefore + 1);
     const auto& emb = window.project_.embroidery_objects.back();
@@ -2764,8 +2768,18 @@ void MainWindowTest::createSatinObjectOnBranchedShapeProducesMultipleSatinSectio
 
     const std::size_t embroideryCountBefore = window.project_.embroidery_objects.size();
 
-    autoDismissModalDialogs(&window);
+    // Création directe (HP-UX-002) : aucun dialogue ; s'il en apparaissait un, il serait refermé
+    // ici pour ne pas bloquer le test, et la vérification ci-dessous le signalerait.
+    bool modalOpened = false;
+    QTimer::singleShot(0, &window, [&modalOpened] {
+        if (auto* dlg = qobject_cast<QDialog*>(QApplication::activeModalWidget())) {
+            modalOpened = true;
+            dlg->reject();
+        }
+    });
     window.createSatinObject();
+    QCoreApplication::processEvents();
+    QVERIFY(!modalOpened);
 
     // Forme branchée : UN seul objet auto-satin couvre toute la forme (plus de sections
     // séparées à ordonner et à convertir une à une).
@@ -3236,13 +3250,13 @@ void MainWindowTest::createSatinObjectCancelLeavesDocumentUnchanged() {
     const std::size_t vectorCountBefore = window.project_.vector_objects.size();
     const bool couldUndoBefore = window.undoStack_.canUndo();
 
-    // La boîte de dialogue des réglages est refusée : rien ne doit être créé.
+    // « Créer avec réglages… » garde le dialogue (HP-UX-002) : refusé, rien ne doit être créé.
     QTimer::singleShot(0, &window, [] {
         if (auto* dlg = qobject_cast<QDialog*>(QApplication::activeModalWidget())) {
             dlg->reject();
         }
     });
-    window.createSatinObject();
+    window.createSatinObjectWithSettings();
 
     QCOMPARE(window.project_.embroidery_objects.size(), embroideryCountBefore);
     QCOMPARE(window.project_.vector_objects.size(), vectorCountBefore);

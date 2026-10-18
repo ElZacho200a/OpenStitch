@@ -26,6 +26,7 @@
 #include "openstitch/commands/thread_commands.hpp"
 #include "openstitch/stitch_generation/directional_fill.hpp"
 #include "properties_panel.hpp"
+#include "ui_memory.hpp"
 
 namespace openstitch::desktop {
 
@@ -384,6 +385,9 @@ void MainWindow::setStitchTypeForSelection(
                 firstError = error;
             }
             continue;
+        }
+        if (existing == nullptr) {
+            ui_memory::creation::apply(params); // HP-UX-002 : forme neuve = dernier réglage
         }
         if (tweak) {
             tweak(params);

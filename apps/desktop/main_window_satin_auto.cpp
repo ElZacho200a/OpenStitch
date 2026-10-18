@@ -43,6 +43,7 @@
 #include "openstitch/geometry/path.hpp"
 #include "openstitch/stitch_generation/auto_satin_engine.hpp"
 #include "openstitch/vectorization/vectorize.hpp"
+#include "ui_memory.hpp"
 
 namespace openstitch::desktop {
 
@@ -554,9 +555,9 @@ void MainWindow::compareAutoSatinMethods(ObjectId id) {
                        tr("Changer la méthode de satin : %1").arg(autoSatinStrategyLabel(*chosen)));
 }
 
-void MainWindow::createAutoSatin(bool askParameters) {
+void MainWindow::createAutoSatin(bool askParameters, bool confirm) {
     if (hasMultiSelection()) {
-        createAutoSatinForSelection(askParameters);
+        createAutoSatinForSelection(askParameters, confirm);
         return;
     }
     if (!selectedObject_) {
@@ -579,6 +580,7 @@ void MainWindow::createAutoSatin(bool askParameters) {
 
     document::AutoSatinParams params;
     params.strategy = document::kDefaultAutoSatinStrategy;
+    ui_memory::creation::apply(params); // HP-UX-002 : dernier espacement mémorisé
     AutoSatinPreview preview = previewAutoSatin(*source, params);
 
     // Le squelette n'a produit aucune colonne : avant de refuser, on essaie les autres méthodes
@@ -640,7 +642,8 @@ void MainWindow::createAutoSatin(bool askParameters) {
                                 describe, compare)) {
             return;
         }
-    } else {
+        ui_memory::creation::remember(document::StitchParams{params});
+    } else if (confirm) {
         const auto answer =
             QMessageBox::question(this, tr("Convertir en satin"),
                                   tr("%1%2\n\nCréer le satin ? (annulable)")
@@ -913,7 +916,7 @@ void MainWindow::renderAutoSatinOverlay(const document::EmbroideryObject& obj,
 // Satin automatique pour toutes les formes sélectionnées : un seul réglage, un satin par forme
 // (contour brut de la région, comme pour une forme seule). Les formes sans colonne possible
 // reçoivent un tatami si l'utilisateur l'accepte ; tout est un seul pas d'annulation.
-void MainWindow::createAutoSatinForSelection(bool askParameters) {
+void MainWindow::createAutoSatinForSelection(bool askParameters, bool confirm) {
     struct Candidate {
         const document::VectorObject* source{nullptr};
         std::optional<std::vector<geometry::PathSet>> restored;
@@ -924,6 +927,7 @@ void MainWindow::createAutoSatinForSelection(bool askParameters) {
     std::vector<Candidate> candidates;
     document::AutoSatinParams params;
     params.strategy = document::kDefaultAutoSatinStrategy;
+    ui_memory::creation::apply(params); // HP-UX-002 : dernier espacement mémorisé
     QString firstInfo;
     for (const ObjectId id : selectedObjectIds()) {
         const auto* current = project_.findObject(id);
@@ -1013,7 +1017,8 @@ void MainWindow::createAutoSatinForSelection(bool askParameters) {
                 c.strategy = firstWorkingAutoSatinStrategy(v, params);
                 c.ok = c.strategy.has_value();
             }
-        } else {
+            ui_memory::creation::remember(document::StitchParams{params});
+        } else if (confirm) {
             const auto answer = QMessageBox::question(
                 this, tr("Convertir en satin"),
                 tr("Créer un satin pour %1 forme(s) ? (annulable en une étape)").arg(okCount));
