@@ -332,7 +332,7 @@ graphiques. C'est **le premier mur** : la majorité des machines domestiques
 - Acceptation : un design OpenStitch exporté en DST puis réimporté est
   reconnu avec ≥ 90 % des points dans des objets du bon type (corpus de test).
 
-### HP-FMT-011 — Export image (PNG/JPG) du rendu brodé [P1] — ☐ À faire
+### HP-FMT-011 — Export image (PNG/JPG) du rendu brodé [P1] — ◐ Partiel (2026-10-18)
 - État OpenStitch : pas d'export image ; seul le SVG diagnostic existe (trait
   noir, pas de couleurs de fil).
 - Hatch : export d'une image réaliste pour montrer au client.
@@ -341,6 +341,8 @@ graphiques. C'est **le premier mur** : la majorité des machines domestiques
 - Modules : `apps/desktop` (le rendu Qt), éventuellement un rendu cœur
   simplifié dans `formats` pour la CLI.
 - Dépend de : HP-VIEW-001.
+- Livré (2026-10-18) : rendu « présentation » Qt-free (`libs/stitch_render/presentation.*` : séquence entière, marge, résolution bornée par un plafond de pixels, fond tissu opaque ou transparent, alpha droit pour le PNG) et commande `openstitch-cli render <dst|pes|jef|exp|osp> <png>` (`--px-per-mm`, `--transparent`, `--fast`, `--json`). Un `.osp` utilise la séquence effective et les couleurs des objets ; un fichier machine, des couleurs de repli par bloc de fil. Tests : 6 cas `presentation :`, cas CLI `cli_render_png` ; rendu de `tentabrode` vérifié à l'écran.
+- Reste : export JPEG, entrée Fichier ▸ Exporter l'image dans le bureau (dialogue résolution/fond), couleurs réelles pour les fichiers machine (dépend de HP-FMT-009).
 
 ### HP-FMT-012 — Export SVG « présentation » (couleurs de fil, épaisseur) [P2] — ☐ À faire
 - État OpenStitch : `to_diagnostic_svg` seulement (noir + sauts orange).
@@ -2777,3 +2779,4 @@ ci-dessus doit les respecter :
 | 2026-10-13 | Claude (session pilotée) | PR #25, #26 et #27 fusionnées : mentions « en PR » retirées du premier lot ; OBJ-014 ☑ et PERF-003 ☑ (critères remplis sur `main`). |
 | 2026-10-15 | Claude (session CLI agent) | **HP-QA-007** ajoutée (◐, PR #46) : interface programmatique `.osp` en ligne de commande (`project …`, lots transactionnels, import SVG, lettrage, export, contrôle qualité). Total 264 → 265. |
 | 2026-10-18 | Claude (session autonome) | HP-PERF-002 ◐ : cache de régénération par objet (`chunk_cache`), `effective_sequence` 63 → 7/8 ms sur `tentabrode` ; reste le gros objet unique et les satins routés. |
+| 2026-10-18 | Claude (session autonome) | HP-FMT-011 ◐ : `stitch_render::render_sequence` + commande `openstitch-cli render` (PNG réaliste, fond transparent, résolution choisie) ; reste JPEG et dialogue du bureau. |
