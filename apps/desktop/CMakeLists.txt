@@ -32,6 +32,11 @@ add_library(openstitch_desktop_widgets STATIC
     main_window_realistic.cpp
     main_window_production.cpp
     # [cablage-A:debut]
+    main_window_export_image.cpp
+    export_image.cpp
+    export_image.hpp
+    export_image_dialog.cpp
+    export_image_dialog.hpp
     # [cablage-A:fin]
     # [cablage-B:debut]
     main_window_vector_tools.cpp

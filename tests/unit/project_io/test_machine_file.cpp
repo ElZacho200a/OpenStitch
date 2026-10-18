@@ -281,3 +281,74 @@ TEST_CASE("export_machine_file : optimisation des coupes a la demande, projet in
     fs::remove(path);
     fs::remove(plainPath);
 }
+
+TEST_CASE("export_machine_file : fichier compagnon de couleurs ecrit puis relu a l'import") {
+    const document::Project project = square_project();
+    for (const auto kind : {formats::CompanionKind::Csv, formats::CompanionKind::Inf}) {
+        for (const char* id : {"dst", "exp"}) {
+            const auto path =
+                fs::temp_directory_path() / (std::string("openstitch_companion_roundtrip.") + id);
+            const auto companionFile = formats::companion_path(path, kind);
+            fs::remove(companionFile);
+            project_io::ColorCompanionExport companion;
+            companion.write = true;
+            companion.kind = kind;
+            REQUIRE(project_io::export_machine_file(project, id, path, {}, {}, nullptr, &companion)
+                        .has_value());
+            CHECK(companion.error.empty());
+            CHECK(companion.written == companionFile);
+            REQUIRE(fs::exists(companionFile));
+
+            const auto imported = project_io::import_machine_file(path);
+            REQUIRE(imported.has_value());
+            REQUIRE_FALSE(imported->color_blocks.empty());
+            CHECK(imported->color_blocks.front().rgb == std::array<std::uint8_t, 3>{10, 20, 30});
+            fs::remove(path);
+            fs::remove(companionFile);
+        }
+    }
+}
+
+TEST_CASE("export_machine_file : sans option ou format colore, aucun compagnon") {
+    const document::Project project = square_project();
+    const auto dst = fs::temp_directory_path() / "openstitch_companion_none.dst";
+    const auto csv = formats::companion_path(dst, formats::CompanionKind::Csv);
+    fs::remove(csv);
+    REQUIRE(project_io::export_machine_file(project, "dst", dst).has_value());
+    CHECK_FALSE(fs::exists(csv));
+    project_io::ColorCompanionExport off; // write = false
+    REQUIRE(
+        project_io::export_machine_file(project, "dst", dst, {}, {}, nullptr, &off).has_value());
+    CHECK_FALSE(fs::exists(csv));
+    CHECK(off.written.empty());
+
+    // PES porte ses couleurs : le compagnon demande est ignore.
+    const auto pes = fs::temp_directory_path() / "openstitch_companion_none.pes";
+    const auto pesCsv = formats::companion_path(pes, formats::CompanionKind::Csv);
+    project_io::ColorCompanionExport wanted;
+    wanted.write = true;
+    REQUIRE(
+        project_io::export_machine_file(project, "pes", pes, {}, {}, nullptr, &wanted).has_value());
+    CHECK_FALSE(fs::exists(pesCsv));
+    CHECK(wanted.written.empty());
+    CHECK(wanted.error.empty());
+    fs::remove(dst);
+    fs::remove(pes);
+}
+
+TEST_CASE("import_machine_file : compagnon invalide ignore, import reussi en noir") {
+    const document::Project project = square_project();
+    const auto path = fs::temp_directory_path() / "openstitch_companion_bad.dst";
+    REQUIRE(project_io::export_machine_file(project, "dst", path).has_value());
+    const auto csv = formats::companion_path(path, formats::CompanionKind::Csv);
+    {
+        std::ofstream bad(csv, std::ios::binary);
+        bad << "ceci n'est pas un fichier de couleurs";
+    }
+    const auto imported = project_io::import_machine_file(path);
+    REQUIRE(imported.has_value());
+    REQUIRE_FALSE(imported->color_blocks.empty());
+    CHECK(imported->color_blocks.front().rgb == std::array<std::uint8_t, 3>{0, 0, 0});
+    fs::remove(path);
+    fs::remove(csv);
+}

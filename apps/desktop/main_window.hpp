@@ -1117,6 +1117,10 @@ private:
     QAction* productionAct_{nullptr};
     // Zones réservées au câblage des entrées livrées en cœur (une zone par lot, ne pas mélanger).
     // [cablage-A:debut]
+    // Exporter l'image (HP-FMT-011, main_window_export_image.cpp).
+    void buildExportImageAction(QMenu* fileMenu);
+    void exportImage();
+    QAction* exportImageAct_{nullptr};
     // [cablage-A:fin]
     // [cablage-B:debut]
     // Outils de tracé : Lisser, Convertir en courbes, formes prédéfinies

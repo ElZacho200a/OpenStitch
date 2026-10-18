@@ -23,6 +23,7 @@ void MainWindow::buildProductionMenu(QMenu* fileMenu) {
     renderPngAct->setObjectName(QStringLiteral("action_exportRealisticPng"));
     renderPngAct->setToolTip(tr("Image du rendu réaliste (fils texturés) du motif complet."));
     connect(renderPngAct, &QAction::triggered, this, &MainWindow::exportRealisticPng);
+    buildExportImageAction(fileMenu); // HP-FMT-011 (main_window_export_image.cpp)
 }
 
 void MainWindow::showProductionSheet() {

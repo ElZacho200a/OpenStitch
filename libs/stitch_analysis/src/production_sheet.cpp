@@ -13,11 +13,11 @@ namespace openstitch::stitch_analysis {
 
 namespace {
 
-std::string thread_label_of(const stitch::ColorBlock& block) {
-    if (!block.thread_key) {
+std::string thread_label_of(const std::optional<thread_palette::ThreadKey>& thread_key) {
+    if (!thread_key) {
         return {};
     }
-    const auto& key = *block.thread_key;
+    const auto& key = *thread_key;
     if (const auto thread = thread_palette::find_by_code(key.chart_id, key.code)) {
         std::string label = thread->brand;
         if (!thread->range.empty()) {
@@ -186,7 +186,7 @@ ProductionSheet make_production_sheet(const document::Project& project,
         ProductionBlock out;
         out.number = b + 1;
         out.rgb = cb.rgb;
-        out.thread_label = thread_label_of(cb);
+        out.thread_label = thread_label_of(cb.thread_key);
 
         double lengthUm = 0.0;
         bool hasPrev = false;
@@ -248,6 +248,24 @@ ProductionSheet make_production_sheet(const document::Project& project,
         sheet.estimated_minutes += out.minutes;
         sheet.blocks.push_back(std::move(out));
     }
+
+    // HP-PROD-005 : consommation de fil (dérivée de thread_usage, jamais recalculée ici).
+    const ThreadConsumptionReport consumption =
+        thread_consumption(project, sequence, options.consumption);
+    for (const auto& c : consumption.per_thread) {
+        ProductionThreadConsumption out;
+        out.rgb = c.identity.rgb;
+        out.thread_label = thread_label_of(c.identity.key);
+        out.sewn_m = c.sewn_m;
+        out.top_m = c.top_m;
+        out.bobbin_m = c.bobbin_m;
+        sheet.consumption.push_back(std::move(out));
+    }
+    sheet.total_top_m = consumption.total_top_m;
+    sheet.total_bobbin_m = consumption.total_bobbin_m;
+    sheet.bobbins_needed = consumption.bobbins_needed;
+    sheet.last_bobbin_fill = consumption.last_bobbin_fill;
+    sheet.bobbin_capacity_m = options.consumption.bobbin_capacity_m;
 
     const AnalysisReport report = analyze_detailed(sequence, analysis);
     for (const auto& f : report.findings) {
@@ -333,7 +351,21 @@ std::string production_to_json(const ProductionSheet& s) {
         j += fmt::format("{}{}:{}", first ? "" : ",", jstr(cat), n);
         first = false;
     }
-    j += "}}\n";
+    j += "},";
+    // Ajout HP-PROD-005 : clé additive, les clés existantes sont inchangées.
+    j += fmt::format("\"consumption\":{{\"total_top_m\":{:.3f},\"total_bobbin_m\":{:.3f},"
+                     "\"bobbin_capacity_m\":{:.1f},\"bobbins_needed\":{},"
+                     "\"last_bobbin_fill\":{:.3f},\"threads\":[",
+                     s.total_top_m, s.total_bobbin_m, s.bobbin_capacity_m, s.bobbins_needed,
+                     s.last_bobbin_fill);
+    for (std::size_t i = 0; i < s.consumption.size(); ++i) {
+        const auto& c = s.consumption[i];
+        j += fmt::format("{}{{\"color\":\"{}\",\"thread_label\":{},\"sewn_m\":{:.3f},"
+                         "\"top_m\":{:.3f},\"bobbin_m\":{:.3f}}}",
+                         i ? "," : "", hex_of(c.rgb), jstr(c.thread_label), c.sewn_m, c.top_m,
+                         c.bobbin_m);
+    }
+    j += "]}}\n";
     return j;
 }
 
@@ -478,6 +510,35 @@ std::string production_to_html(const ProductionSheet& s, const ProductionHtmlOpt
                  "</td></tr>\n";
         }
         h += "</table>\n";
+    }
+
+    // Consommation de fil (HP-PROD-005) : section absente d'un motif sans fil.
+    if (!s.consumption.empty()) {
+        h += "<h2>Consommation de fil (estimation)</h2>\n"
+             "<table border=\"1\" cellspacing=\"0\" width=\"100%\">\n<tr>"
+             "<th>Couleur</th><th>Fil</th><th>Cousu</th><th>Fil du dessus</th>"
+             "<th>Fil de canette</th></tr>\n";
+        for (const auto& c : s.consumption) {
+            const std::string hex = hex_of(c.rgb);
+            h += "<tr><td><table border=\"1\" cellspacing=\"0\"><tr><td bgcolor=\"" + hex +
+                 "\" width=\"22\" height=\"14\">&nbsp;</td></tr></table> " + hex + "</td>";
+            h += "<td>" +
+                 (c.thread_label.empty() ? std::string("&mdash;") : html_escape(c.thread_label)) +
+                 "</td>";
+            h += "<td align=\"right\">" + fmt_fr(c.sewn_m, 2) + " m</td>";
+            h += "<td align=\"right\">" + fmt_fr(c.top_m, 2) + " m</td>";
+            h += "<td align=\"right\">" + fmt_fr(c.bobbin_m, 2) + " m</td></tr>\n";
+        }
+        h += "<tr><th colspan=\"3\">Total</th><th align=\"right\">" + fmt_fr(s.total_top_m, 2) +
+             " m</th><th align=\"right\">" + fmt_fr(s.total_bobbin_m, 2) + " m</th></tr>\n";
+        h += "</table>\n";
+        h += "<p>Canettes nécessaires : <b>" + std::to_string(s.bobbins_needed) +
+             "</b> (capacité supposée " + fmt_fr(s.bobbin_capacity_m, 0) +
+             " m ; dernière canette remplie à " + fmt_fr(s.last_bobbin_fill * 100.0, 0) +
+             " %).</p>\n";
+        h += "<p class=\"small\">Ordres de grandeur : le fil du dessus compte la longueur cousue "
+             "majorée et une perte à chaque passage de couleur ; la consommation réelle dépend du "
+             "fil, de la tension, du point et du tissu.</p>\n";
     }
 
     // Avertissements.

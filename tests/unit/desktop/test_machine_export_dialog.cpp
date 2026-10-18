@@ -150,6 +150,35 @@ private slots:
         QVERIFY(reduce->isEnabled());
     }
 
+    void colorCompanionIsOfferedForDstAndExpOnly() {
+        // HP-FMT-009 / HP-FMT-005 : le fichier de couleurs n'a de sens que pour les formats sans
+        // vraies couleurs ; la demande n'atteint l'appelant que dans ce cas.
+        MachineExportDialog dialog(summarizeNothing(), QStringLiteral("dst"), nullptr);
+        auto* companion =
+            dialog.findChild<QCheckBox*>(QStringLiteral("check_exportColorCompanion"));
+        auto* kind = dialog.findChild<QComboBox*>(QStringLiteral("combo_exportColorCompanionKind"));
+        auto* format = dialog.findChild<QComboBox*>(QStringLiteral("combo_exportFormat"));
+        QVERIFY(companion != nullptr && kind != nullptr && format != nullptr);
+        QVERIFY(!companion->isChecked()); // jamais sans demande
+        QVERIFY(!dialog.companion().write);
+        QVERIFY(companion->isEnabled());
+
+        companion->setChecked(true);
+        QVERIFY(dialog.companion().write);
+        QCOMPARE(dialog.companion().kind, openstitch::formats::CompanionKind::Csv);
+        kind->setCurrentIndex(
+            kind->findData(static_cast<int>(openstitch::formats::CompanionKind::Inf)));
+        QCOMPARE(dialog.companion().kind, openstitch::formats::CompanionKind::Inf);
+
+        format->setCurrentIndex(format->findData(QStringLiteral("exp")));
+        QVERIFY(companion->isEnabled());
+        QVERIFY(dialog.companion().write);
+
+        format->setCurrentIndex(format->findData(QStringLiteral("pes")));
+        QVERIFY(!companion->isEnabled());
+        QVERIFY(!dialog.companion().write); // PES emporte ses couleurs
+    }
+
 private:
     static MachineExportDialog::SummaryFn summarizeNothing() {
         return

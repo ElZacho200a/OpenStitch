@@ -75,6 +75,7 @@ openstitch_add_qt_test(test_machine_export_dialog test_machine_export_dialog.cpp
 
 # Tests du câblage des entrées livrées en cœur (une zone par lot).
 # [cablage-A:debut]
+openstitch_add_qt_test(test_export_image test_export_image.cpp)
 # [cablage-A:fin]
 # [cablage-B:debut]
 openstitch_add_qt_test(test_vector_tools test_vector_tools.cpp)

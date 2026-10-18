@@ -43,6 +43,10 @@ public:
     // séquence exportée seulement -- le projet n'est pas modifié.
     [[nodiscard]] project_io::ExportOptimizations optimizations() const;
     [[nodiscard]] bool viewProblemsRequested() const { return viewProblems_; }
+    // HP-FMT-009 / HP-FMT-005 : « écrire le fichier de couleurs à côté » (DST, EXP). Le champ
+    // `write` n'est vrai que si la case est cochée ET que le format n'emporte pas ses couleurs ;
+    // `written` / `error` sont remplis par `project_io::export_machine_file`.
+    [[nodiscard]] project_io::ColorCompanionExport companion() const;
 
 private:
     void refresh();
@@ -52,6 +56,8 @@ private:
     QCheckBox* trims_{nullptr};
     QComboBox* stops_{nullptr};
     QCheckBox* colorChanges_{nullptr};
+    QCheckBox* companion_{nullptr};
+    QComboBox* companionKind_{nullptr};
     QComboBox* startMode_{nullptr};
     QDoubleSpinBox* startX_{nullptr};
     QDoubleSpinBox* startY_{nullptr};

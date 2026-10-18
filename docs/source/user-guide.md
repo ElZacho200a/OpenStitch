@@ -224,8 +224,9 @@ Précisions sur les gestes du tableau :
 | Ouvrir un projet… | — | Recharge un `.osp` |
 | Récents | — | Sous-menu des 10 derniers projets ouverts ou enregistrés (voir ci-dessous) |
 | Vider la liste des récents | — | Efface la liste |
-| Exporter une broderie machine… | Ctrl+E | Dialogue : format (DST, PES, JEF, EXP), options (coupes, arrêts, changements de couleur) et résumé pré-export (dimensions, points, analyse, limites du format) ; puis le fichier, avec l'extension du format (points uniquement) |
-| Importer une broderie machine… | — | Relit un `.dst`, `.pes`, `.jef` ou `.exp` comme séquence de points, avec les couleurs de fil pour PES et JEF (propose d'enregistrer le projet en cours) ; le glisser-déposer accepte les mêmes extensions |
+| Exporter une broderie machine… | Ctrl+E | Dialogue : format (DST, PES, JEF, EXP), options (coupes, arrêts, changements de couleur) et résumé pré-export (dimensions, points, analyse, limites du format) ; puis le fichier, avec l'extension du format (points uniquement). Pour un **DST** ou un **EXP**, la case « Écrire aussi le fichier de couleurs à côté » écrit un second fichier de même nom (`.csv` lisible dans un tableur, ou `.inf` binaire) qui liste les fils, un par bloc de couleur |
+| Importer une broderie machine… | — | Relit un `.dst`, `.pes`, `.jef` ou `.exp` comme séquence de points, avec les couleurs de fil pour PES et JEF, ou pour DST et EXP celles d'un fichier de couleurs voisin (`.inf` puis `.csv`, même nom) s'il existe ; un fichier de couleurs absent ou invalide n'empêche jamais l'import (propose d'enregistrer le projet en cours) ; le glisser-déposer accepte les mêmes extensions |
+| Exporter l'image (PNG, JPEG)… | — | Image du motif brodé pour un devis ou un client (HP-FMT-011). Dialogue : résolution (px/mm), marge, fond de tissu opaque ou transparent (PNG), qualité Rapide ou Haute, format PNG ou JPEG (qualité réglable) ; la taille de l'image en pixels est annoncée et la résolution est abaissée si l'image serait trop grande. Le rendu est celui du rendu réaliste (fils texturés) de la séquence effective, avec la couleur des objets ; un gros motif est calculé derrière une fenêtre d'attente. L'écriture est atomique |
 | Fiche de production… | — | Aperçu, impression ou export PDF A4 d'une fiche (dimensions, points, temps estimé, blocs de couleur, avertissements, notes) ; voir [fiche de production](production-sheet.md) |
 | Importer un DXF… / Exporter en DXF… | — | Échange de contours vectoriels avec un logiciel de dessin (les points ne sont pas concernés) |
 | Quitter | Ctrl+Q | Ferme l'application |
@@ -252,6 +253,13 @@ de hauteur indépendante était ignoré). Le dossier du dernier import est mémo
 **Export DST** : un **résumé** (dimensions, points, sauts,
 coupes, changements de couleur, fil estimé, cadre, dépassement éventuel) est
 présenté avant écriture, avec un rappel que le DST ne conserve pas les objets.
+**Fichier de couleurs** (HP-FMT-009, HP-FMT-005) : le DST n'emporte que des arrêts
+couleur et l'EXP aucune couleur ; le fichier compagnon écrit à côté conserve les RVB des fils
+dans l'ordre des blocs. Il n'est écrit que sur demande, jamais pour PES/JEF (qui portent leurs
+couleurs), et un échec d'écriture du compagnon est signalé sans invalider le motif déjà écrit.
+En ligne de commande : `openstitch-cli osp2dst projet.osp motif.dst --color-file csv|inf`.
+La structure du `.inf` n'est pas validée par un logiciel tiers (voir
+[formats PES, JEF, EXP](formats-pes-jef-exp.md)) ; le `.csv` est le choix prudent.
 
 **Enregistrer** : le document retient le fichier `.osp` auquel il est rattaché
 (celui qu'on vient d'ouvrir ou d'enregistrer). Ctrl+S réécrit ce fichier
