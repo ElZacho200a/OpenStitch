@@ -38,14 +38,14 @@ Revue partielle du 2026-10-13 (`main` = `4a8088b`) : vague 1 — objets, cadres,
 | Priorité | ☑ Fait | ◐ Partiel | ☐ À faire | Total |
 |---|---|---|---|---|
 | P0 | 12 | 26 | 6 | 44 |
-| P1 | 10 | 48 | 82 | 140 |
-| P2 | 3 | 17 | 77 | 97 |
+| P1 | 10 | 51 | 79 | 140 |
+| P2 | 3 | 18 | 76 | 97 |
 | P3 | 0 | 0 | 15 | 15 |
-| **Total** | **25** | **91** | **180** | **296** |
+| **Total** | **25** | **95** | **176** | **296** |
 
 Ajoutés le 2026-10-18 (audit UX/UI, `docs/ux/`) : **+30 entrées ☐** (12 P1, 15 P2, 3 P3) :
 HP-UX-017 à HP-UX-044, HP-PERF-009 et HP-QA-008 (§20, §22, §23). Aucun statut existant n'a été
-modifié ; HP-UX-001/002/003/004/009/012/016 sont seulement précisés.
+modifié ; HP-UX-001/002/003/004/009/012/016 sont seulement précisés. Quatre entrées passent ◐ dans la foulée (HP-UX-017, 018, 021, 022 : voir le journal §28).
 
 **Fait (25)** : FILE-001/002/003/004 (nouveau projet, enregistrer, récents, autosave),
 THR-001/003/004 (bibliothèque de fils, fil le plus proche, fil assigné à chaque objet),
@@ -2630,21 +2630,23 @@ Prérequis commun des lots B et C : **HP-QA-008** (garde de taille minimale, §2
 
 #### Lot A — Quick wins et gestes (P1/P2, complexité S)
 
-### HP-UX-017 — Ctrl+O ouvre tout (projet, image, SVG, fichier machine) [P1] — ☐ À faire
+### HP-UX-017 — Ctrl+O ouvre tout (projet, image, SVG, fichier machine) [P1] — ◐ Partiel (2026-10-18, branche `claude/ux-lot-a-quickwins`)
 - Problème : Ctrl+O n'ouvre que des images (`main_window.cpp:699-701`) ; `openPath` sait déjà router `.osp/.dst/.svg/image` (`main_window_ux.cpp:83-89`). Constat PAR-01.
 - Comportement attendu : Ctrl+O = « Ouvrir… » universel (filtre « Tous les fichiers pris en charge ») ; « Importer une image… » garde Ctrl+Maj+I ; l'entrée « Ouvrir un projet… » reste. Le garde des modifications non enregistrées s'applique comme aujourd'hui.
 - Complexité : S. Composants : `apps/desktop/main_window.cpp`, `main_window_ux.cpp`.
 - Dépend de : —
 - Acceptation : un test QTest ouvre via l'action un `.osp`, un `.dst`, un `.svg` et un PNG et vérifie la bonne branche ; le raccourci Ctrl+O est unique (aucun conflit `QAction`). Décision utilisateur du 2026-10-18 : changement de raccourci accepté.
 - Non-régression : garde de remplacement (Enregistrer / Ne pas enregistrer / Annuler), récents, glisser-déposer.
+- Livré : action « Ouvrir… » (Ctrl+O, `openAnyAct_`) qui route par extension via `openPath` (`.osp`, fichier machine, SVG, image) ; « Importer une image ou un SVG… » passe sur Ctrl+Maj+I ; test `ctrlOIsTheUniversalOpenAndImportHasItsOwnShortcut` (Ctrl+O unique). Reste : test de routage par extension à travers le dialogue de fichier (non automatisable sans dialogue natif), filtre mémorisé, mention dans l'aide.
 
-### HP-UX-018 — Échap remonte d'un niveau, jusqu'à la sélection d'objets [P1] — ☐ À faire
+### HP-UX-018 — Échap remonte d'un niveau, jusqu'à la sélection d'objets [P1] — ◐ Partiel (2026-10-18, branche `claude/ux-lot-a-quickwins`)
 - Problème : Échap ne désélectionne que les régions et ferme tous les modes d'un coup (`main_window.cpp:6479-6509`). Constat BRO-04. Voir HP-UX-001.
 - Comportement attendu : un appui remonte d'un niveau : mode d'édition → outil → sélection d'objets → sélection de régions. Quitter un mode conserve la sélection.
 - Complexité : S. Composants : `apps/desktop/main_window.cpp` (raccourci Échap).
 - Dépend de : —
 - Acceptation : objet sélectionné en outil Sélection, Échap vide `currentSelection()` ; dans un mode d'édition, un premier Échap quitte le mode et garde la sélection, un second la vide.
 - Non-régression : Échap pendant un tracé multi-clics, fusion de régions, champs de saisie (Échap y reste local).
+- Livré : quand il n'y a plus de mode ni d'outil à relâcher, Échap désélectionne la broderie ou les objets (après les régions, comme avant) ; test `escapeDropsToolThenObjectSelection`. Reste : niveaux « mode d'édition » puis « outil » encore relâchés ensemble par un seul Échap (comportement d'origine conservé pour ne pas casser les tests d'outils) ; aide des gestes.
 
 ### HP-UX-019 — Un seul prédicat de sélection et tolérance de clic [P1] — ☐ À faire
 - Problème : trois règles pour le même geste (clic simple filtré ; Maj/Ctrl/Alt non ; rectangle filtré) et aucune tolérance de clic : un tracé ouvert ou un détail de 1 mm est presque inclicable (`selection_hit_test.cpp:16, 71-73, 94-100`, `main_window.cpp:8723-8727, 8879, 8918-8926, 8984`). Constats BRO-02, BRO-03.
@@ -2661,19 +2663,21 @@ Prérequis commun des lots B et C : **HP-QA-008** (garde de taille minimale, §2
 - Dépend de : HP-UX-019.
 - Acceptation : trois formes superposées, trois clics identiques sélectionnent haut, milieu, bas, puis reviennent en haut ; un clic ailleurs remet le cycle à zéro.
 
-### HP-UX-021 — Vectorisation (F7) sans modale [P2] — ☐ À faire
+### HP-UX-021 — Vectorisation (F7) sans modale [P2] — ◐ Partiel (2026-10-18, branche `claude/ux-lot-a-quickwins`)
 - Problème : chaque F7 ouvre une modale « Détail » pour un curseur déjà mémorisé (`main_window_workflow.cpp:175-206`). Constat PAR-07.
 - Comportement attendu : F7 applique la dernière valeur (`ui_memory`) ; Maj+F7 ouvre le réglage.
 - Complexité : S. Composants : `apps/desktop/main_window_workflow.cpp`.
 - Dépend de : —
 - Acceptation : F7 n'ouvre aucun `QDialog` ; Maj+F7 en ouvre un et mémorise la valeur ; sortie identique à l'actuelle pour une même valeur.
+- Livré : F7 réutilise le dernier détail (`ui_memory`) sans dialogue ; l'entrée de menu et Maj+F7 ouvrent le réglage ; `askVectorizeDetail` extrait ; test `quickVectorizeOpensNoDialogAndMenuStillAsks`. Reste : afficher le détail utilisé dans la barre d'état.
 
-### HP-UX-022 — Sortir de la simulation ; rendu réaliste après lecture [P1] — ☐ À faire
+### HP-UX-022 — Sortir de la simulation ; rendu réaliste après lecture [P1] — ◐ Partiel (2026-10-18, branche `claude/ux-lot-a-quickwins`)
 - Problème : `simStep_ >= 0` désactive le rendu réaliste (`main_window_realistic.cpp:140`) et ne revient à −1 qu'à la régénération (`main_window.cpp:1229, 7790, 7796`) ; aucun bouton de sortie. Constat PAR-10 (chemin lu, effet non exécuté).
 - Comportement attendu : bouton « Quitter la simulation » et sortie automatique en fin de lecture ; Ctrl+Maj+R affiche alors le rendu complet. Alternative : tracer les segments réalistes jusqu'à `simStep_`.
 - Complexité : S (sortie) / M (réaliste progressif). Composants : `apps/desktop/main_window.cpp`, `main_window_realistic.cpp`.
 - Dépend de : —
 - Acceptation : lecture jusqu'au bout puis activation du rendu réaliste → rendu complet affiché ; le bouton remet `simStep_ = -1` sans régénérer.
+- Livré : bouton « ⏹ Fin » (`simExitAct_`), sortie automatique en fin de lecture et quand le curseur atteint la fin (`exitSimulation()` : `simStep_ = -1` puis `renderStitches()`) ; tests `simulationExitButtonAndEndOfSliderLeaveSimulationMode`, `endOfPlaybackLeavesSimulationMode` ; l'assertion de `simulationPlayPauseResumeAndSeekChangesRenderedPoints` est adaptée (fin de curseur = hors simulation, couture complète toujours vérifiée). Reste : rendu réaliste progressif jusqu'à `simStep_` (variante M), test du rendu réaliste réellement affiché après lecture.
 
 ### HP-UX-023 — Ctrl+A selon la couche, touches de couches, zoom sur la sélection [P2] — ☐ À faire
 - Problème : Ctrl+A sélectionne des régions (objets sur Ctrl+Maj+A, `main_window.cpp:895-898`) ; aucun raccourci de couche ; aucun zoom sur la sélection. Constats BRO-05, BRO-08, BRO-22.
@@ -3152,3 +3156,4 @@ ci-dessus doit les respecter :
 | 2026-10-18 | Claude (session autonome, agents) | Câblage bureau (5 lots, agents) : HP-VEC-007/008/010/014 ☑ (menu Forme, outil Règle), HP-FMT-011 ☑ (Exporter l'image), HP-FMT-009 ☑ et HP-FMT-005 ◐ (compagnon de couleurs à l'export et à l'import, `osp2dst --color-file`), HP-PROD-005 ☑ (consommation sur la fiche), HP-THR-007 ☑ (Mes fils), HP-TXT-007 ☑ (crénage manuel, `.osp` v8 conditionnel), HP-TXT-012 ◐ (ligatures), HP-VIEW-005 ◐ (carte de densité), HP-PROD-007 ◐ (règles optionnelles), HP-THR-012 ◐ (outil Pipette). |
 | 2026-10-18 | Claude (session autonome, agents) | Règle ajoutée : sauf demande explicite, toute fonctionnalité est câblée dans le bureau (hook, skills, `CLAUDE.md`). |
 | 2026-10-18 | Claude (audit UX/UI, 4 analyses en lecture seule) | **Audit UX/UI** : `docs/ux/` (rapport, parcours, stratégie, synthèse). +30 entrées ☐ : HP-UX-017…044 (lots A à E, §20), HP-PERF-009 (§22), HP-QA-008 (§23) ; HP-UX-001/002/003/004/009/012/016 précisés ; les constats `UX-xx` de `docs/ui-ux-audit-2026-10-13.md` sont enfin reliés à des tâches. Décisions : verrou d'édition = mode Isoler de session (pas de champ `.osp`), Ctrl+O universel, dialogues de création supprimés (option « Créer avec réglages… »). Total 266 → 296. Aucun code modifié. |
+| 2026-10-18 | Claude (lot A, quick wins) | HP-UX-017, 018, 021, 022 ◐ (branche `claude/ux-lot-a-quickwins`, PR empilée sur #71) : Ctrl+O universel, Échap désélectionne les objets, F7 sans modale (Maj+F7 règle), sortie de simulation. Quatre tests QTest ajoutés + deux tests existants adaptés (mnémonique, fin de curseur) ; suite desktop Release 37/37. Total ◐ 91 → 95, ☐ 180 → 176. |

@@ -696,9 +696,15 @@ void MainWindow::buildMenus() {
     newAct->setShortcut(QKeySequence::New);
     connect(newAct, &QAction::triggered, this, &MainWindow::newProject);
     fileMenu->addSeparator();
-    openImageAct_ = fileMenu->addAction(tr("&Ouvrir une image…"));
+    // Ctrl+O ouvre tout (projet, fichier machine, SVG, image) en routant sur l'extension, comme
+    // le glisser-déposer (HP-UX-017) ; l'import d'image garde son entrée et un autre raccourci.
+    openAnyAct_ = fileMenu->addAction(tr("&Ouvrir…"));
+    openAnyAct_->setObjectName(QStringLiteral("action_openAny"));
+    openAnyAct_->setShortcut(QKeySequence::Open);
+    connect(openAnyAct_, &QAction::triggered, this, &MainWindow::openAny);
+    openImageAct_ = fileMenu->addAction(tr("Im&porter une image ou un SVG…"));
     auto* openAct = openImageAct_;
-    openAct->setShortcut(QKeySequence::Open);
+    openAct->setShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_I));
     connect(openAct, &QAction::triggered, this, &MainWindow::openImage);
     fileMenu->addSeparator();
     // Pas de « … » sur Enregistrer : il n'ouvre un dialogue que pour un
@@ -933,12 +939,19 @@ void MainWindow::buildMenus() {
 
     segMenu->addSeparator();
     vectorizeRegionAct_ = segMenu->addAction(tr("&Vectoriser la sélection"));
-    vectorizeRegionAct_->setShortcut(QKeySequence(Qt::Key_F7));
+    vectorizeRegionAct_->setShortcut(QKeySequence(Qt::SHIFT | Qt::Key_F7));
     vectorizeRegionAct_->setToolTip(
         tr("Convertit la ou les régions sélectionnées en objets vectoriels éditables "
-           "(un seul pas d'annulation) — F7."));
+           "(un seul pas d'annulation). Maj+F7 règle le détail ; F7 réutilise le dernier."));
     auto* vectorizeAct = vectorizeRegionAct_;
-    connect(vectorizeAct, &QAction::triggered, this, &MainWindow::vectorizeSelectedRegion);
+    connect(vectorizeAct, &QAction::triggered, this, [this] { vectorizeSelectedRegion(true); });
+    // F7 : même action sans dialogue, avec le dernier détail (HP-UX-021).
+    auto* quickVectorize = new QShortcut(QKeySequence(Qt::Key_F7), this);
+    connect(quickVectorize, &QShortcut::activated, this, [this] {
+        if (vectorizeRegionAct_->isEnabled()) {
+            vectorizeSelectedRegion(false);
+        }
+    });
     regionActions_.append(vectorizeAct);
 
     buildShapeMenu();
@@ -1368,6 +1381,25 @@ void MainWindow::openImage() {
     }
     QSettings().setValue(QStringLiteral("ui/lastImportDir"), QFileInfo(file).absolutePath());
     openImageFile(file);
+}
+
+void MainWindow::openAny() {
+    const QString start = currentProjectPath_.isEmpty()
+                              ? QSettings().value(QStringLiteral("ui/lastImportDir")).toString()
+                              : QFileInfo(currentProjectPath_).absolutePath();
+    const QString file = QFileDialog::getOpenFileName(
+        this, tr("Ouvrir"), start,
+        tr("Tous les formats pris en charge (*.osp *.dst *.pes *.jef *.exp *.svg *.png *.jpg "
+           "*.jpeg *.bmp *.tif *.tiff);;"
+           "Projets OpenStitch (*.osp);;"
+           "Fichiers de broderie (*.dst *.pes *.jef *.exp);;"
+           "Images et SVG (*.png *.jpg *.jpeg *.bmp *.tif *.tiff *.svg);;"
+           "Tous les fichiers (*)"));
+    if (file.isEmpty()) {
+        return;
+    }
+    // La garde « modifications non enregistrées » est celle de chaque chemin d'ouverture.
+    openPath(file);
 }
 
 void MainWindow::openImageFile(const QString& file) {
@@ -6487,6 +6519,17 @@ void MainWindow::buildToolPalette() {
             selectRegions({}, SelectMode::Replace);
             return;
         }
+        // Rien d'autre à relâcher : Échap désélectionne aussi les objets (HP-UX-018), sans
+        // avoir à cliquer dans un « vide » souvent rempli de formes.
+        if (nothingToCancel) {
+            const Selection current = currentSelection();
+            if (current.embroidery.has_value() || !current.objects.empty()) {
+                setSelection({});
+                displayImage(processed_);
+                updateActions();
+                return;
+            }
+        }
         if (mergeAct_->isChecked()) {
             mergeAct_->setChecked(false);
         }
@@ -7700,6 +7743,14 @@ void MainWindow::buildSimulationToolbar() {
     simPlayAct_->setCheckable(true);
     simPlayAct_->setToolTip(tr("Lit la couture point par point."));
     connect(simPlayAct_, &QAction::toggled, this, &MainWindow::toggleSimulation);
+    // Sortie explicite : tant que la simulation est « en cours » (même en pause ou arrivée à la
+    // fin), le rendu réaliste reste désactivé (HP-UX-022).
+    simExitAct_ = simToolbar_->addAction(tr("⏹ Fin"));
+    simExitAct_->setObjectName(QStringLiteral("action_simExit"));
+    simExitAct_->setToolTip(
+        tr("Quitte la simulation et affiche la couture complète (le rendu réaliste redevient "
+           "disponible)."));
+    connect(simExitAct_, &QAction::triggered, this, &MainWindow::exitSimulation);
 
     simSlider_ = new QSlider(Qt::Horizontal, simToolbar_);
     simSlider_->setMinimum(0);
@@ -7775,6 +7826,7 @@ void MainWindow::updateSimulationInfo(int step) {
 void MainWindow::updateSimulationRange() {
     const bool hasSeq = sequence_ && !sequence_->commands.empty();
     simPlayAct_->setEnabled(hasSeq);
+    simExitAct_->setEnabled(hasSeq);
     simSlider_->setEnabled(hasSeq);
     simSpeedCombo_->setEnabled(hasSeq);
     // Le document a changé (cette fonction suit chaque régénération de la séquence) : une
@@ -7851,15 +7903,43 @@ void MainWindow::onSimTick() {
     updateSimulationInfo(simStep_);
     appendSimulation(simStep_); // seule la couche points change, et seulement le tronçon neuf
     if (simStep_ >= n) {
-        simTimer_->stop();
-        simPlayAct_->setChecked(false);
-        simPlayAct_->setText(tr("▶ Lecture"));
+        // Fin de lecture : on sort de la simulation (couture complète, rendu réaliste possible).
+        exitSimulation();
     }
 }
 
+void MainWindow::exitSimulation() {
+    if (!simulating()) {
+        return;
+    }
+    simTimer_->stop();
+    if (simPlayAct_->isChecked()) {
+        QSignalBlocker block(simPlayAct_);
+        simPlayAct_->setChecked(false);
+    }
+    simPlayAct_->setText(tr("▶ Lecture"));
+    simStep_ = -1;
+    simWalkValid_ = false;
+    if (sequence_ && !sequence_->commands.empty()) {
+        const int n = static_cast<int>(sequence_->commands.size()) - 1;
+        QSignalBlocker block(simSlider_);
+        simSlider_->setValue(n);
+        simLabel_->setText(tr("%1 / %2").arg(n).arg(n));
+    }
+    updateSimulationInfo(-1);
+    renderStitches();
+}
+
 void MainWindow::onSimSliderMoved(int value) {
-    simStep_ = value;
     const int n = static_cast<int>(sequence_ ? sequence_->commands.size() : 1) - 1;
+    if (value >= n) {
+        // Curseur tout à droite : c'est la couture complète, pas une simulation en cours.
+        if (simulating()) {
+            exitSimulation();
+        }
+        return;
+    }
+    simStep_ = value;
     simLabel_->setText(tr("%1 / %2").arg(value).arg(n));
     updateSimulationInfo(value);
     appendSimulation(value);

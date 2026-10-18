@@ -65,7 +65,7 @@ Le **mode d'interaction** vient de la palette d'outils (à gauche) :
 - **Tracé ouvert** (`U`) : option, pas un outil. Cochée, le **Polygone** devient une ligne brisée ouverte (2 points suffisent) et la **Courbe de Bézier** une courbe ouverte : rien ne relie le dernier point au premier. À utiliser pour un point de contour ou un satin de bordure le long d'une ligne.
 - **Couteau** (`K`) : trace une ligne qui découpe les formes traversées (voir *Menu Forme*).
 - **Zoom** : molette (ancrée sous le curseur) ou barre d'outils / menu Affichage.
-- **Échap** : revient à la Sélection et annule le mode fusion en cours.
+- **Échap** : revient à la Sélection et annule le mode fusion en cours. Quand il n'y a plus rien à annuler, Échap désélectionne les objets.
 
 ### Sélection multiple
 
@@ -218,7 +218,8 @@ Précisions sur les gestes du tableau :
 | Action | Raccourci | Effet |
 |---|---|---|
 | Nouveau projet | Ctrl+N | Repart d'un document vierge (voir ci-dessous) |
-| Ouvrir une image… | Ctrl+O | Charge PNG/JPEG/BMP/TIFF ou SVG puis demande la taille physique ; propose d'enregistrer le projet en cours |
+| Ouvrir… | Ctrl+O | Ouvre un projet `.osp`, un fichier de broderie (DST/PES/JEF/EXP), un SVG ou une image selon l'extension ; propose d'enregistrer le projet en cours |
+| Importer une image ou un SVG… | Ctrl+Maj+I | Charge PNG/JPEG/BMP/TIFF ou SVG puis demande la taille physique ; propose d'enregistrer le projet en cours |
 | Enregistrer le projet | Ctrl+S | Réécrit le `.osp` courant (demande où enregistrer la première fois) |
 | Enregistrer le projet sous… | Ctrl+Maj+S | Écrit le document dans un nouveau `.osp`, qui devient le fichier courant |
 | Ouvrir un projet… | — | Recharge un `.osp` |
@@ -395,7 +396,7 @@ l'original) :
   sélectionnées (un pas d'annulation) ;
 - **Rétablir la couleur d'origine** — rend à chaque région sa couleur moyenne dans l'image ;
 - Supprimer : voir le menu Édition (Suppr) — les régions supprimées redeviennent du fond ;
-- **Vectoriser la sélection** (**F7**) — convertit **toutes** les régions sélectionnées en objets
+- **Vectoriser la sélection** (**F7** : dernier détail utilisé, sans dialogue ; **Maj+F7** ou le menu : règle le détail) — convertit **toutes** les régions sélectionnées en objets
   vectoriels, en un seul pas d'annulation (le niveau de détail demandé s'applique à toutes et
   est mémorisé). Une région déjà vectorisée n'est jamais dupliquée : la boîte propose de
   **remplacer** son objet, de l'**ignorer** (ou de sélectionner l'objet existant) ou d'annuler.
@@ -1059,7 +1060,8 @@ la liste complète et filtrable est dans **Aide ▸ Gestes souris et clavier** (
 | Raccourci | Action |
 |---|---|
 | Ctrl+N | Nouveau projet (garde des modifications non enregistrées) |
-| Ctrl+O / Ctrl+S | Ouvrir une image / Enregistrer le projet (sans redemander le chemin) |
+| Ctrl+O / Ctrl+S | Ouvrir (projet, fichier de broderie, SVG ou image) / Enregistrer le projet (sans redemander le chemin) |
+| Ctrl+Maj+I | Importer une image ou un SVG |
 | Ctrl+Maj+S | Enregistrer le projet sous… |
 | Ctrl+Z | Annuler |
 | Ctrl+Y ou Ctrl+Maj+Z | Rétablir |
@@ -1068,7 +1070,7 @@ la liste complète et filtrable est dans **Aide ▸ Gestes souris et clavier** (
 | Ctrl++ / Ctrl+- / Ctrl+0 | Zoom avant / arrière / ajuster |
 | F | Ajuster au canevas |
 | F5 | Analyser le motif |
-| F6 / F7 / F8 | Segmenter l'image / Vectoriser la sélection / Numérisation automatique |
+| F6 / F7 / F8 | Segmenter l'image / Vectoriser la sélection (Maj+F7 : régler le détail) / Numérisation automatique |
 | F9 | Statistiques de broderie |
 | V / H / M | Outils : Sélection / Déplacer la vue / Recadrer l'image |
 | Échap | Revenir à la Sélection (annule la fusion, le tracé ou le geste en cours) ; s'il n'y a rien à annuler, **désélectionne les régions** |
