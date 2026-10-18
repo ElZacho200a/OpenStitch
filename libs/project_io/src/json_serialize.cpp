@@ -332,6 +332,10 @@ json params_to_json(const document::StitchParams& params) {
                     if (g.interpolate_density) {
                         j["densityGradient"]["interpolateDensity"] = true;
                     }
+                    // Absent = linéaire : un .osp sans courbe reste identique octet pour octet.
+                    if (g.curve != document::DensityCurve::Linear) {
+                        j["densityGradient"]["curve"] = static_cast<int>(g.curve);
+                    }
                 }
             } else if constexpr (std::is_same_v<T, document::AutoSatinParams>) {
                 json guides = json::array();
@@ -559,6 +563,13 @@ Result<document::StitchParams> params_from_json(const json& j) {
             grad.spacing_from = Micrometers{g.value("spacingFrom", 400)};
             grad.spacing_to = Micrometers{g.value("spacingTo", 400)};
             grad.interpolate_density = g.value("interpolateDensity", false);
+            // Valeur inconnue (fichier édité à la main ou plus récent) : linéaire.
+            const int curve = g.value("curve", 0);
+            grad.curve = curve == static_cast<int>(document::DensityCurve::Smooth)
+                             ? document::DensityCurve::Smooth
+                         : curve == static_cast<int>(document::DensityCurve::Steep)
+                             ? document::DensityCurve::Steep
+                             : document::DensityCurve::Linear;
             p.density_gradient = grad;
         }
         if (j.contains("seed")) {

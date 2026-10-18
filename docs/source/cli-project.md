@@ -354,7 +354,8 @@ Détail exact des arguments : `openstitch-cli project operations` (texte) ou
   d'annulation par opération. Champs géométriques (coordonnées en mm, repère du
   modèle) : remplissage directionnel `guides` et `break_lines` (liste de polylignes
   `[[x,y],...]`), `density_gradient` (`{from_mm,to_mm,spacing_from_mm,spacing_to_mm,
-  interpolate_density}` ou `null`) ; satin `rail_a`, `rail_b` (polyligne), `rungs`
+  interpolate_density?,curve?}` avec `curve` = `linear` (défaut) / `smooth` / `steep`,
+  ou `null`) ; satin `rail_a`, `rail_b` (polyligne), `rungs`
   (`[{a_mm,b_mm}]`) ; auto-satin `guides` (`[{anchor_mm,angle_deg,absolute?}]`).
   `inspect` publie ces champs sous les **mêmes noms et formes** : relire puis réécrire
   ne change rien, et un chemin dont les sommets sont inchangés garde ses tangentes de

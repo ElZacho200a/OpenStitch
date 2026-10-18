@@ -625,16 +625,31 @@ struct SpacingField {
     double from{400.0};
     double to{400.0};
     bool interpolateDensity{false};
+    document::DensityCurve curve{document::DensityCurve::Linear};
     double densityFrom{1.0 / 400.0};
     double densityTo{1.0 / 400.0};
 
     [[nodiscard]] bool uniform() const { return invLen2 == 0.0 || from == to; }
 
+    // Remappe t ∈ [0 ; 1] ; monotone, 0 → 0 et 1 → 1 : les écarts restent entre
+    // `lo` et `hi`, donc la grille et la fenêtre d'auto-proximité restent valides.
+    [[nodiscard]] static double shaped(document::DensityCurve curve, double t) {
+        switch (curve) {
+        case document::DensityCurve::Smooth:
+            return t * t * (3.0 - 2.0 * t);
+        case document::DensityCurve::Steep:
+            return t * t * t * (t * (6.0 * t - 15.0) + 10.0);
+        case document::DensityCurve::Linear:
+            break;
+        }
+        return t;
+    }
+
     [[nodiscard]] double at(P2 p) const {
         if (uniform()) {
             return lo;
         }
-        const double t = std::clamp(dot(p - origin, axis) * invLen2, 0.0, 1.0);
+        const double t = shaped(curve, std::clamp(dot(p - origin, axis) * invLen2, 0.0, 1.0));
         if (interpolateDensity) {
             // Rampes opposées : rho_A(t) + rho_B(t) = rho_from + rho_to.
             return 1.0 / (densityFrom + (densityTo - densityFrom) * t);
@@ -661,6 +676,7 @@ SpacingField make_spacing_field(const document::DirectionalFillParams& p) {
     f.from = bound(g.spacing_from);
     f.to = bound(g.spacing_to);
     f.interpolateDensity = g.interpolate_density;
+    f.curve = g.curve;
     f.densityFrom = 1.0 / f.from;
     f.densityTo = 1.0 / f.to;
     f.lo = std::min(f.from, f.to);
@@ -2185,6 +2201,19 @@ density_gradient_between(const std::vector<geometry::PathSet>& zone_a,
     std::vector<geometry::PathSet> both = zone_a;
     both.insert(both.end(), zone_b.begin(), zone_b.end());
     return density_gradient_across(both, Angle{std::atan2(d.y, d.x)}, spacing_a, spacing_b);
+}
+
+std::optional<document::DensityGradient>
+narrow_gradient_zone(const document::DensityGradient& gradient, double start, double end) {
+    if (!std::isfinite(start) || !std::isfinite(end) || start < 0.0 || end > 1.0 || start >= end) {
+        return std::nullopt;
+    }
+    const P2 from = to_p2(gradient.from);
+    const P2 axis = to_p2(gradient.to) - from;
+    auto narrowed = gradient;
+    narrowed.from = to_um(from + axis * start);
+    narrowed.to = to_um(from + axis * end);
+    return narrowed;
 }
 
 void align_guides_across_density_gradient(document::DirectionalFillParams& params,

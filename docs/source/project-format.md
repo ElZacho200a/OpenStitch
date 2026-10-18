@@ -53,7 +53,8 @@ Compression (2026-10) : l'image PNG, déjà compressée, est stockée telle quel
   `hiddenUnderpath`, `sectorOverlap`, `handmade`, `handmadeIntensity`,
   `seed`, `spacingRegularity` (réel [0 ; 1], absent = 0 ; borné à la
   lecture) et l'objet `densityGradient` (`fromX`, `fromY`, `toX`, `toY`,
-  `spacingFrom`, `spacingTo`, µm entiers ; absent = écart uniforme) — tous
+  `spacingFrom`, `spacingTo`, µm entiers ; `curve` entier 0 linéaire / 1 douce /
+  2 marquée, absent = 0 ; absent = écart uniforme) — tous
   optionnels (défauts du modèle) ; son ajout n'a pas changé
   `schemaVersion`. Depuis le schéma v3, un objet
   peut aussi porter ses **retouches manuelles** (Lot 8.1, ADR-014) :

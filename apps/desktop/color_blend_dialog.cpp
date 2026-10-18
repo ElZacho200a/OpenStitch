@@ -30,6 +30,9 @@
 
 namespace openstitch::desktop {
 namespace {
+// Étendue minimale de la zone de transition, en % de l'axe.
+constexpr double kMinZonePercent = 5.0;
+
 QColor color(ColorBlendDialog::Rgb rgb) {
     return QColor(rgb[0], rgb[1], rgb[2]);
 }
@@ -271,6 +274,35 @@ ColorBlendDialog::ColorBlendDialog(Rgb background, Rgb foreground, bool canAnaly
     angle_->setToolTip(tr("Sens début → fin dans le document : 0° vers la droite, "
                           "90° vers le haut. Les lignes du dessus sont perpendiculaires."));
     rampForm->addRow(tr("Angle du fondu :"), angle_);
+    const auto zone = [this, rampForm](const QString& title, const char* name, double value,
+                                       const QString& tip) {
+        auto* spin = new QDoubleSpinBox(this);
+        spin->setObjectName(QString::fromLatin1(name));
+        spin->setRange(0.0, 100.0);
+        spin->setDecimals(0);
+        spin->setSingleStep(5.0);
+        spin->setSuffix(tr(" %"));
+        spin->setKeyboardTracking(false);
+        spin->setValue(value);
+        spin->setToolTip(tip);
+        rampForm->addRow(title, spin);
+        return spin;
+    };
+    zoneStart_ = zone(tr("Début de la transition :"), "spin_blendZoneStart", 0.0,
+                      tr("Position sur l'axe où l'écart commence à varier (0 % = bord de départ). "
+                         "Avant ce point, l'écart du début reste constant : aplat net."));
+    zoneEnd_ = zone(tr("Fin de la transition :"), "spin_blendZoneEnd", 100.0,
+                    tr("Position sur l'axe où l'écart atteint sa valeur de fin (100 % = bord "
+                       "d'arrivée). Après ce point, l'écart de fin reste constant : aplat net."));
+    curve_ = new QComboBox(this);
+    curve_->setObjectName(QStringLiteral("combo_blendCurve"));
+    curve_->addItem(tr("Linéaire"), static_cast<int>(document::DensityCurve::Linear));
+    curve_->addItem(tr("Douce"), static_cast<int>(document::DensityCurve::Smooth));
+    curve_->addItem(tr("Marquée"), static_cast<int>(document::DensityCurve::Steep));
+    curve_->setToolTip(tr("Forme de la transition entre les deux écarts. Linéaire : régulière. "
+                          "Douce : départ et arrivée adoucis. Marquée : aplats plus longs, "
+                          "changement plus rapide au milieu."));
+    rampForm->addRow(tr("Courbe de transition :"), curve_);
     rampLayout->addLayout(rampForm);
 
     auto* reverse = new QPushButton(tr("Inverser le sens du fondu"), this);
@@ -347,6 +379,7 @@ ColorBlendDialog::ColorBlendDialog(Rgb background, Rgb foreground, bool canAnaly
         preview_->setLayer(layer);
         updatePreviewDetails();
     });
+    connect(curve_, &QComboBox::currentIndexChanged, this, &ColorBlendDialog::settingsChanged);
     connect(profile_, &QComboBox::currentIndexChanged, this, [this] {
         updateExplanation();
         settingsChanged();
@@ -354,9 +387,17 @@ ColorBlendDialog::ColorBlendDialog(Rgb background, Rgb foreground, bool canAnaly
     for (auto* edit : {background_, foreground_}) {
         connect(edit, &QLineEdit::textChanged, this, &ColorBlendDialog::settingsChanged);
     }
-    for (auto* spin : {start_, end_, angle_}) {
+    for (auto* spin : {start_, end_, angle_, zoneStart_, zoneEnd_}) {
         connect(spin, &QDoubleSpinBox::valueChanged, this, &ColorBlendDialog::settingsChanged);
     }
+    // La zone garde toujours au moins kMinZonePercent d'étendue : les bornes
+    // se resserrent mutuellement plutôt que d'accepter une zone vide.
+    connect(zoneStart_, &QDoubleSpinBox::valueChanged, this,
+            [this](double value) { zoneEnd_->setMinimum(value + kMinZonePercent); });
+    connect(zoneEnd_, &QDoubleSpinBox::valueChanged, this,
+            [this](double value) { zoneStart_->setMaximum(value - kMinZonePercent); });
+    zoneEnd_->setMinimum(kMinZonePercent);
+    zoneStart_->setMaximum(100.0 - kMinZonePercent);
     auto* guard = new WheelGuard(this);
     guard->guardAll(this);
     setEditing(false);
@@ -505,7 +546,9 @@ void ColorBlendDialog::updateExplanation() {
 
 void ColorBlendDialog::setProposal(Rgb background, Rgb foreground,
                                    const document::DensityGradient& gradient) {
-    const QSignalBlocker b1(background_), b2(foreground_), b3(start_), b4(end_), b5(angle_);
+    const QSignalBlocker b1(background_), b2(foreground_), b3(start_), b4(end_), b5(angle_),
+        b6(curve_);
+    curve_->setCurrentIndex(std::max(0, curve_->findData(static_cast<int>(gradient.curve))));
     background_->setText(color(background).name());
     foreground_->setText(color(foreground).name());
     start_->setValue(to_millimeters(gradient.spacing_from).value);
@@ -535,6 +578,15 @@ Micrometers ColorBlendDialog::startSpacing() const {
 }
 Micrometers ColorBlendDialog::endSpacing() const {
     return to_micrometers(Millimeters{end_->value()});
+}
+document::DensityCurve ColorBlendDialog::curve() const {
+    return static_cast<document::DensityCurve>(curve_->currentData().toInt());
+}
+double ColorBlendDialog::transitionStart() const {
+    return zoneStart_->value() / 100.0;
+}
+double ColorBlendDialog::transitionEnd() const {
+    return zoneEnd_->value() / 100.0;
 }
 std::optional<document::DensityGradient> ColorBlendDialog::proposedGradient() const {
     if (!proposal_) {

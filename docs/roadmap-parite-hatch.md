@@ -880,6 +880,19 @@ plus.
   angle/écarts/inversion ; dessus inséré après le fond ; choix et édition des
   couches dans Propriétés. Tests des gestes, conversion et round-trip `.osp`.
   Le couple à dégradés complémentaires liés reste à faire.
+- 2026-10-17 : **zone de transition réglable** (début / fin en % de l'axe, aplats
+  aux extrémités ; `narrow_gradient_zone`, dialogue du fondu ; l'inspecteur
+  conserve l'axe quand seul l'écart de fin change). Aucun changement du `.osp`.
+  Critère : sur un rectangle, avec une zone 30 % – 70 %, écarts constants
+  (début puis fin) hors de la zone (test `narrowed gradient zone gives constant
+  spacing on both plateaus`).
+- 2026-10-18 : **courbe de transition** (linéaire / douce / marquée ;
+  `DensityGradient::curve`, clé `.osp` `curve` écrite hors linéaire, `set_params`
+  et `inspect` ; la même courbe sur les deux couches du profil complémentaire).
+  Critère : début plus serré et fin plus lâche plus longtemps, écart identique au
+  milieu (test `density curve reshapes the ramp without moving its midpoint`).
+  Reste : points de contrôle, réglage de la largeur de fil, courbe dans
+  l'inspecteur.
 - 2026-10-13 (PR #25, fusionnée le 2026-10-13) : correction du fondu écrasé (lignes du dessus orientées perpendiculairement à l'axe de couleur) et nouvelle action **Forme ▸ Fondre deux zones**.
 - Fait : `autodigitize::analyze_two_color_blend` (ACP en CMY → deux couleurs,
   plan de proportion → `DensityGradient`), `thread_palette::best_thread_pair`
