@@ -7234,6 +7234,17 @@ void MainWindow::updateInspector() {
         const EmbroideryGroup group = selectedEmbroideryGroup();
         const auto* rep = group.sameType ? project_.findEmbroidery(group.ids.front()) : nullptr;
         formStale = rep != nullptr && !propertiesPanel_->showsGroupParams(rep->params);
+        // HP-UX-038 : une valeur d'un AUTRE objet du groupe (annulation, glisser…) change
+        // l'affichage « — » : le formulaire est reconstruit quand les valeurs mixtes ont changé.
+        if (!formStale && rep != nullptr) {
+            std::vector<document::StitchParams> members;
+            for (const ObjectId memberId : group.ids) {
+                if (const auto* m = project_.findEmbroidery(memberId)) {
+                    members.push_back(m->params);
+                }
+            }
+            formStale = !propertiesPanel_->showsGroupMembers(members);
+        }
     }
     if (kind == 1) {
         // Boîte X/Y/L/H : reconstruite si la forme a changé (annulation, glisser, flèches...).
@@ -7262,8 +7273,16 @@ void MainWindow::updateInspector() {
         }
         const EmbroideryGroup group = selectedEmbroideryGroup();
         const auto* rep = group.sameType ? project_.findEmbroidery(group.ids.front()) : nullptr;
+        std::vector<document::StitchParams> members;
+        if (rep != nullptr) {
+            for (const ObjectId memberId : group.ids) {
+                if (const auto* m = project_.findEmbroidery(memberId)) {
+                    members.push_back(m->params);
+                }
+            }
+        }
         propertiesPanel_->showMultiSelection(static_cast<int>(multiSelection_.size()), withStitches,
-                                             rep, static_cast<int>(group.ids.size()));
+                                             rep, static_cast<int>(group.ids.size()), members);
     } else if (kind == 1) {
         const auto* vec = project_.findObject(*selectedObject_);
         int nodes = 0;

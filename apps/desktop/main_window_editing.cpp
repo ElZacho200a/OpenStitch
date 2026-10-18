@@ -233,6 +233,12 @@ void MainWindow::applyGroupParams(const QString& field,
     if (composite->empty()) {
         return;
     }
+    // Une rafale (flèches, molette) sur le même champ du même groupe = un seul pas d'annulation.
+    std::string mergeKey = "groupparams:" + field.toStdString();
+    for (const ObjectId id : group.ids) {
+        mergeKey += ":" + std::to_string(id.value);
+    }
+    composite->setMergeKey(std::move(mergeKey));
     undoStack_.execute(std::move(composite), project_);
     // Le formulaire montre le représentant : il reste cohérent sans reconstruction. La
     // régénération des points est différée de 150 ms (HP-PERF-009), comme pour un seul objet.
@@ -571,6 +577,12 @@ void MainWindow::applyToSelection(int stitchType, bool setSpacing, double spacin
                                     "appliqués ou ne concernent pas ces objets."));
         return;
     }
+    std::string mergeKey =
+        std::string("applysel:") + (setSpacing ? "s" : "-") + (setAngle ? "a" : "-");
+    for (const ObjectId id : ids) {
+        mergeKey += ":" + std::to_string(id.value);
+    }
+    composite->setMergeKey(std::move(mergeKey)); // rafale = un seul pas d'annulation
     undoStack_.execute(std::move(composite), project_);
     scheduleParamsRefresh(); // champs en direct : une rafale = une régénération (HP-PERF-009)
     statusBar()->showMessage(

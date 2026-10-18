@@ -8,6 +8,7 @@
 
 #include <functional>
 #include <optional>
+#include <vector>
 
 #include "openstitch/document/project.hpp"
 #include "openstitch/stitch_generation/overrides.hpp"
@@ -65,9 +66,18 @@ public:
     // type, un exemplaire représentatif ; le formulaire de ce type s'ajoute sous le bloc « type de
     // points » et chaque champ modifié est appliqué à `groupCount` objets (champ par champ : les
     // autres valeurs de chaque objet restent intactes).
+    // `groupMembers` (HP-UX-038) : paramètres de CHAQUE couture du groupe, représentant en tête ;
+    // un champ dont les valeurs diffèrent s'affiche « — » (indéterminé) et seul le champ édité
+    // est uniformisé.
     void showMultiSelection(int objectCount, int embroideryCount,
                             const document::EmbroideryObject* groupRep = nullptr,
-                            int groupCount = 0);
+                            int groupCount = 0,
+                            const std::vector<document::StitchParams>& groupMembers = {});
+    // Vrai si le formulaire de groupe montre exactement ces paramètres membre par membre (valeurs
+    // mixtes à jour ; sinon MainWindow le reconstruit).
+    [[nodiscard]] bool showsGroupMembers(const std::vector<document::StitchParams>& members) const {
+        return groupCount_ > 1 && groupMembers_ == members;
+    }
     // Vrai si le formulaire montre un groupe dont le représentant a ces paramètres.
     [[nodiscard]] bool showsGroupParams(const document::StitchParams& params) const {
         return groupCount_ > 1 && showsParams(params);

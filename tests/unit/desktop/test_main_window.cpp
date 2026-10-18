@@ -8125,27 +8125,26 @@ void MainWindowTest::multiSelectionBlockAppliesSettingsToAllObjectsInOneStep() {
     auto* panel = window.findChild<PropertiesPanel*>();
     QVERIFY(panel != nullptr);
 
-    auto* useSpacing = panel->findChild<QCheckBox*>(QStringLiteral("check_multiSpacing"));
-    auto* spacing = panel->findChild<QDoubleSpinBox*>(QStringLiteral("spin_multiSpacing"));
-    auto* useAngle = panel->findChild<QCheckBox*>(QStringLiteral("check_multiAngle"));
-    auto* angle = panel->findChild<QDoubleSpinBox*>(QStringLiteral("spin_multiAngle"));
-    auto* apply = panel->findChild<QPushButton*>(QStringLiteral("button_multiApply"));
-    QVERIFY(useSpacing && spacing && useAngle && angle && apply);
-    QVERIFY(!spacing->isEnabled()); // grisé tant que la case est décochée
-    useSpacing->setChecked(true);
-    spacing->setValue(0.7);
-    useAngle->setChecked(true);
-    angle->setValue(30.0);
+    // HP-UX-038 : un seul modèle d'édition (en direct, une commande composite par édition) ; les
+    // champs du formulaire de groupe remplacent l'ancien bloc « Appliquer à N objets ».
+    auto* spacing = panel->findChild<QDoubleSpinBox*>(QStringLiteral("spin_rowSpacing"));
+    auto* angle = panel->findChild<QDoubleSpinBox*>(QStringLiteral("spin_tatamiAngle"));
+    QVERIFY(spacing && angle);
+    QCOMPARE(spacing->value(), 0.4); // valeurs identiques : valeur commune, pas « — »
 
     const auto stepsBefore = window.undoStack_.undoNames().size();
-    apply->click();
+    spacing->setValue(0.7);
     QCOMPARE(window.undoStack_.undoNames().size(), stepsBefore + 1); // un seul pas
+    angle->setValue(30.0);
+    QCOMPARE(window.undoStack_.undoNames().size(), stepsBefore + 2); // un pas par édition
+    window.flushPendingRefresh();
     for (const ObjectId id : {embA, embB}) {
         const auto& t = std::get<openstitch::document::TatamiParams>(
             window.project_.findEmbroidery(id)->params);
         QCOMPARE(t.row_spacing.value, 700);
         QVERIFY(std::abs(t.angle.radians - 30.0 * std::numbers::pi / 180.0) < 1e-9);
     }
+    window.undo();
     window.undo();
     for (const ObjectId id : {embA, embB}) {
         const auto& t = std::get<openstitch::document::TatamiParams>(

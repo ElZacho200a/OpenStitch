@@ -24,6 +24,7 @@
 #include <algorithm>
 #include <cmath>
 #include <functional>
+#include <limits>
 #include <numbers>
 #include <type_traits>
 #include <utility>
@@ -108,34 +109,170 @@ std::function<void(document::StitchParams&)> toGroupApply(const std::function<vo
 template <class T>
 using EditFn = std::function<void(const QString&, const std::function<void(T&)>&)>;
 
+// --- Valeurs mixtes (HP-UX-038) ---------------------------------------------------------------
+// Un champ de groupe dont les valeurs diffèrent entre les objets s'affiche « — » :
+//  - champ numérique : jeton sous le minimum (texte spécial « — ») ; la propriété `kMixedProp`
+//    mémorise le vrai minimum et `takeMixed` rejette le jeton, borne les valeurs saisies entre le
+//    jeton et le vrai minimum, puis rend le champ normal dès la première vraie valeur ;
+//  - case à cocher : état intermédiaire (tristate), supprimé à la première vraie valeur ;
+//  - liste : aucun choix courant, texte indicatif « — ».
+// Éditer un champ ne touche que ce champ (l'application reste champ par champ).
+constexpr const char* kMixedProp = "mixedRealMin";
+
+QString mixedText() {
+    return QObject::tr("—");
+}
+
+void markMixed(QDoubleSpinBox* spin) {
+    const double realMin = spin->minimum();
+    spin->setProperty(kMixedProp, realMin);
+    spin->setMinimum(realMin - spin->singleStep());
+    spin->setSpecialValueText(mixedText());
+    spin->setValue(spin->minimum());
+    spin->setToolTip(spin->toolTip() + QLatin1Char('\n') +
+                     QObject::tr("Valeurs différentes selon les objets (« — »)."));
+}
+void markMixed(QSpinBox* spin) {
+    const int realMin = spin->minimum();
+    spin->setProperty(kMixedProp, realMin);
+    spin->setMinimum(realMin - spin->singleStep());
+    spin->setSpecialValueText(mixedText());
+    spin->setValue(spin->minimum());
+    spin->setToolTip(spin->toolTip() + QLatin1Char('\n') +
+                     QObject::tr("Valeurs différentes selon les objets (« — »)."));
+}
+void markMixed(QCheckBox* box) {
+    box->setTristate(true);
+    box->setCheckState(Qt::PartiallyChecked);
+    box->setToolTip(box->toolTip() + (box->toolTip().isEmpty() ? QString() : QStringLiteral("\n")) +
+                    QObject::tr("Valeurs différentes selon les objets (« — »)."));
+}
+void markMixed(QComboBox* combo) {
+    combo->setPlaceholderText(mixedText());
+    combo->setCurrentIndex(-1);
+    combo->setToolTip(combo->toolTip() +
+                      (combo->toolTip().isEmpty() ? QString() : QStringLiteral("\n")) +
+                      QObject::tr("Valeurs différentes selon les objets (« — »)."));
+}
+
+// Faux si `v` est le jeton « — » (rien à émettre). Sinon `v` est borné au vrai minimum et le champ
+// redevient normal.
+bool takeMixed(QDoubleSpinBox* spin, double& v) {
+    const QVariant prop = spin->property(kMixedProp);
+    if (!prop.isValid()) {
+        return true;
+    }
+    const double realMin = prop.toDouble();
+    if (v <= spin->minimum() + 1e-9) {
+        return false;
+    }
+    v = std::max(v, realMin);
+    const QSignalBlocker block(spin);
+    spin->setProperty(kMixedProp, QVariant());
+    spin->setSpecialValueText(QString());
+    spin->setMinimum(realMin);
+    spin->setValue(v);
+    return true;
+}
+bool takeMixed(QSpinBox* spin, int& v) {
+    const QVariant prop = spin->property(kMixedProp);
+    if (!prop.isValid()) {
+        return true;
+    }
+    const int realMin = prop.toInt();
+    if (v <= spin->minimum()) {
+        return false;
+    }
+    v = std::max(v, realMin);
+    const QSignalBlocker block(spin);
+    spin->setProperty(kMixedProp, QVariant());
+    spin->setSpecialValueText(QString());
+    spin->setMinimum(realMin);
+    spin->setValue(v);
+    return true;
+}
+
+// Vrai si `members` (représentant en tête) ne partagent pas la même valeur de `member`.
+template <class T, class M> bool differs(const std::vector<T>& members, M T::*member) {
+    return members.size() > 1 && std::any_of(members.begin() + 1, members.end(), [&](const T& t) {
+               return !(t.*member == members.front().*member);
+           });
+}
+// Variante pour un champ calculé (angle, optionnel, pourcentage…).
+template <class T, class F> bool differsBy(const std::vector<T>& members, F&& key) {
+    return members.size() > 1 && std::any_of(members.begin() + 1, members.end(), [&](const T& t) {
+               return !(key(t) == key(members.front()));
+           });
+}
+
 // Liaisons widget -> champ : chaque widget ne modifie QUE son champ (cf. showEmbroidery).
+// `members` : paramètres de tout le groupe (vide hors groupe) pour afficher « — » si mixte.
 template <class T>
 void bindMmField(QObject* ctx, const EditFn<T>& edit, QDoubleSpinBox* spin, const QString& label,
-                 Micrometers T::*member) {
-    QObject::connect(spin, &QDoubleSpinBox::valueChanged, ctx, [edit, label, member](double v) {
-        edit(label, [v, member](T& t) { t.*member = to_um(v); });
-    });
+                 Micrometers T::*member, const std::vector<T>& members = {}) {
+    QObject::connect(spin, &QDoubleSpinBox::valueChanged, ctx,
+                     [edit, label, member, spin](double v) {
+                         if (!takeMixed(spin, v)) {
+                             return;
+                         }
+                         edit(label, [v, member](T& t) { t.*member = to_um(v); });
+                     });
+    if (differs(members, member)) {
+        markMixed(spin);
+    }
 }
 template <class T>
 void bindIntField(QObject* ctx, const EditFn<T>& edit, QSpinBox* spin, const QString& label,
-                  int T::*member) {
-    QObject::connect(spin, &QSpinBox::valueChanged, ctx, [edit, label, member](int v) {
+                  int T::*member, const std::vector<T>& members = {}) {
+    QObject::connect(spin, &QSpinBox::valueChanged, ctx, [edit, label, member, spin](int v) {
+        if (!takeMixed(spin, v)) {
+            return;
+        }
         edit(label, [v, member](T& t) { t.*member = v; });
     });
+    if (differs(members, member)) {
+        markMixed(spin);
+    }
 }
 template <class T>
 void bindBoolField(QObject* ctx, const EditFn<T>& edit, QCheckBox* box, const QString& label,
-                   bool T::*member) {
-    QObject::connect(box, &QCheckBox::toggled, ctx, [edit, label, member](bool v) {
+                   bool T::*member, const std::vector<T>& members = {}) {
+    QObject::connect(box, &QCheckBox::toggled, ctx, [edit, label, member, box](bool v) {
+        if (box->isTristate()) {
+            return; // « — » en attente d'une première valeur : géré ci-dessous
+        }
         edit(label, [v, member](T& t) { t.*member = v; });
     });
+    if (differs(members, member)) {
+        markMixed(box);
+        // Depuis l'état intermédiaire, `toggled` ne part pas (la case reste « cochée » pour Qt) :
+        // le premier vrai choix est lu sur l'état, puis la case redevient normale.
+        QObject::connect(box, &QCheckBox::checkStateChanged, ctx,
+                         [edit, label, member, box](Qt::CheckState state) {
+                             if (state == Qt::PartiallyChecked || !box->isTristate()) {
+                                 return;
+                             }
+                             {
+                                 const QSignalBlocker block(box);
+                                 box->setTristate(false);
+                             }
+                             const bool v = state == Qt::Checked;
+                             edit(label, [v, member](T& t) { t.*member = v; });
+                         });
+    }
 }
 template <class T, class E>
 void bindEnumField(QObject* ctx, const EditFn<T>& edit, QComboBox* combo, const QString& label,
-                   E T::*member) {
+                   E T::*member, const std::vector<T>& members = {}) {
     QObject::connect(combo, &QComboBox::currentIndexChanged, ctx, [edit, label, member](int index) {
+        if (index < 0) {
+            return; // « — » : aucune valeur choisie
+        }
         edit(label, [index, member](T& t) { t.*member = static_cast<E>(index); });
     });
+    if (differs(members, member)) {
+        markMixed(combo);
+    }
 }
 
 // Grise `field` (et son libellé de ligne) tant que `box` est décochée.
@@ -642,10 +779,11 @@ bool PropertiesPanel::showsVectorBox(ObjectId id, QRectF boxMm) const {
 }
 
 void PropertiesPanel::showMultiSelection(int objectCount, int embroideryCount,
-                                         const document::EmbroideryObject* groupRep,
-                                         int groupCount) {
+                                         const document::EmbroideryObject* groupRep, int groupCount,
+                                         const std::vector<document::StitchParams>& groupMembers) {
     clearBody();
     groupCount_ = 1;
+    groupMembers_ = groupMembers;
     header_->setText(tr("%1 objets").arg(objectCount));
     setEditState(std::nullopt, stitch_generation::ObjectEditState::Clean);
     auto* label = new QLabel(
@@ -674,6 +812,39 @@ void PropertiesPanel::showMultiSelection(int objectCount, int embroideryCount,
             tr("Réglages communs (%1 couture(s) de même type)").arg(groupCount), body_));
         groupCount_ = groupCount;
         buildEmbroideryForm(*groupRep);
+    } else {
+        // Types différents (ou sans couture) : seuls l'espacement et l'angle ont un sens commun.
+        // Champs indéterminés (« — ») ; éditer l'un l'applique à tous, champ par champ.
+        auto* form = new QFormLayout();
+        styleForm(form);
+        auto* spacing =
+            mmSpin(0.4, 5.0, 0.1, tr("Écart entre rangées (tatami, directionnel, satin)."));
+        spacing->setObjectName(QStringLiteral("spin_multiSpacing"));
+        auto* angle = new QDoubleSpinBox(body_);
+        angle->setObjectName(QStringLiteral("spin_multiAngle"));
+        angle->setKeyboardTracking(false);
+        angle->setRange(0.0, 179.9);
+        angle->setDecimals(1);
+        angle->setWrapping(true);
+        angle->setSuffix(tr(" °"));
+        angle->setToolTip(tr("0° = horizontal, sens trigonométrique. Plage : 0 – 179,9°."));
+        markMixed(spacing);
+        markMixed(angle);
+        form->addRow(tr("Espacement des rangées :"), spacing);
+        form->addRow(tr("Angle (tatami) :"), angle);
+        connect(spacing, &QDoubleSpinBox::valueChanged, this, [this, spacing](double v) {
+            if (takeMixed(spacing, v)) {
+                emit applyToSelectionRequested(-1, true, v, false, 0.0);
+            }
+        });
+        connect(angle, &QDoubleSpinBox::valueChanged, this, [this, angle](double v) {
+            if (takeMixed(angle, v)) {
+                emit applyToSelectionRequested(-1, false, 0.0, true, v);
+            }
+        });
+        auto* holder = new QWidget(body_);
+        holder->setLayout(form);
+        body_->layout()->addWidget(holder);
     }
     wheelGuard_->guardAll(body_);
 }
@@ -807,6 +978,7 @@ void PropertiesPanel::setAutoSatinState(std::optional<ObjectId> id,
 void PropertiesPanel::showEmbroidery(const document::EmbroideryObject& object) {
     clearBody();
     groupCount_ = 1;
+    groupMembers_.clear();
     header_->setText(QString::fromStdString(object.name));
     buildEmbroideryForm(object);
 }
@@ -828,6 +1000,19 @@ void PropertiesPanel::buildEmbroideryForm(const document::EmbroideryObject& obje
 
     auto* form = new QFormLayout();
     styleForm(form);
+    // HP-UX-038 : en groupe, les contrôles à portée INDIVIDUELLE (ils n'agissent que sur l'objet
+    // actif, jamais sur toute la sélection) sont isolés sous « Objet actif seulement ».
+    QFormLayout* activeForm = nullptr;
+    const auto scoped = [&]() -> QFormLayout* {
+        if (!group) {
+            return form;
+        }
+        if (activeForm == nullptr) {
+            activeForm = new QFormLayout();
+            styleForm(activeForm);
+        }
+        return activeForm;
+    };
 
     const QString typeName = object.is_tatami()        ? tr("Remplissage tatami")
                              : object.is_directional() ? tr("Remplissage directionnel")
@@ -874,7 +1059,7 @@ void PropertiesPanel::buildEmbroideryForm(const document::EmbroideryObject& obje
            "de la fin de l'objet précédent (moins de sauts et de coupes). « Réglage du projet » "
            "suit Broderie > Options de génération ; « Désactivée » garde le sens naturel."));
     joinCombo_ = joinCombo;
-    form->addRow(tr("Entrée/sortie :"), joinCombo);
+    scoped()->addRow(tr("Entrée/sortie :"), joinCombo);
     connect(joinCombo, &QComboBox::currentIndexChanged, this, [this, id](int index) {
         if (!building_) {
             emit joinModeEdited(id, index);
@@ -893,7 +1078,7 @@ void PropertiesPanel::buildEmbroideryForm(const document::EmbroideryObject& obje
            "coupe ni point d'arrêt, le fil reste tendu jusqu'à l'objet suivant ; vérifiez qu'il "
            "sera caché. Sans effet avant un changement de fil."));
     connectorCombo_ = connectorCombo;
-    form->addRow(tr("Connecteur suivant :"), connectorCombo);
+    scoped()->addRow(tr("Connecteur suivant :"), connectorCombo);
     connect(connectorCombo, &QComboBox::currentIndexChanged, this, [this, id](int index) {
         if (!building_) {
             emit connectorModeEdited(id, index);
@@ -904,6 +1089,17 @@ void PropertiesPanel::buildEmbroideryForm(const document::EmbroideryObject& obje
     std::visit(
         [&](const auto& p) {
             using T = std::decay_t<decltype(p)>;
+
+            // HP-UX-038 : paramètres de TOUT le groupe (représentant en tête) pour repérer les
+            // champs dont les valeurs diffèrent (affichés « — »).
+            std::vector<T> members;
+            if (group) {
+                for (const auto& sp : groupMembers_) {
+                    if (const auto* t = std::get_if<T>(&sp)) {
+                        members.push_back(*t);
+                    }
+                }
+            }
 
             // --- Émission champ par champ -------------------------------------------
             // Chaque widget ne modifie QUE son champ de la copie `shown_` : les autres
@@ -917,24 +1113,31 @@ void PropertiesPanel::buildEmbroideryForm(const document::EmbroideryObject& obje
                 if (auto* t = std::get_if<T>(&shown_)) {
                     fn(*t);
                     if (groupCount_ > 1) {
-                        // Groupe : seul ce champ est appliqué, à chaque objet du groupe.
+                        // Groupe : seul ce champ est appliqué, à chaque objet du groupe (et à la
+                        // copie des valeurs de chaque membre, pour l'affichage « — »).
+                        for (auto& member : groupMembers_) {
+                            if (auto* tm = std::get_if<T>(&member)) {
+                                fn(*tm);
+                            }
+                        }
                         emit groupParamsEdited(label, toGroupApply<T>(fn));
                     } else {
                         emit paramsEdited(id, shown_, label);
                     }
                 }
             };
-            [[maybe_unused]] const auto bindMm =
-                [this, &edit](QDoubleSpinBox* spin, const QString& label, Micrometers T::*member) {
-                    bindMmField<T>(this, edit, spin, label, member);
-                };
+            [[maybe_unused]] const auto bindMm = [this, &edit, &members](QDoubleSpinBox* spin,
+                                                                         const QString& label,
+                                                                         Micrometers T::*member) {
+                bindMmField<T>(this, edit, spin, label, member, members);
+            };
             [[maybe_unused]] const auto bindInt =
-                [this, &edit](QSpinBox* spin, const QString& label, int T::*member) {
-                    bindIntField<T>(this, edit, spin, label, member);
+                [this, &edit, &members](QSpinBox* spin, const QString& label, int T::*member) {
+                    bindIntField<T>(this, edit, spin, label, member, members);
                 };
             [[maybe_unused]] const auto bindBool =
-                [this, &edit](QCheckBox* box, const QString& label, bool T::*member) {
-                    bindBoolField<T>(this, edit, box, label, member);
+                [this, &edit, &members](QCheckBox* box, const QString& label, bool T::*member) {
+                    bindBoolField<T>(this, edit, box, label, member, members);
                 };
             // Grise `field` (et son libellé) tant que `box` est décochée (Mo8).
             [[maybe_unused]] const auto dependOn = [form](QCheckBox* box, QWidget* field) {
@@ -1027,13 +1230,22 @@ void PropertiesPanel::buildEmbroideryForm(const document::EmbroideryObject& obje
                 syncUnderlay();
                 connect(uMode, &QComboBox::currentIndexChanged, this,
                         [syncUnderlay](int) { syncUnderlay(); });
-                bindEnumField<T>(this, edit, uMode, tr("Sous-couche"), &T::underlay_mode);
+                bindEnumField<T>(this, edit, uMode, tr("Sous-couche"), &T::underlay_mode, members);
                 bindMm(pull, tr("Compensation du tirage"), &T::pull_compensation);
                 bindMm(spacing, tr("Espacement des rangées"), &T::row_spacing);
                 bindMm(len, tr("Longueur de point"), &T::stitch_length);
-                connect(angle, &QDoubleSpinBox::valueChanged, this, [edit](double v) {
+                connect(angle, &QDoubleSpinBox::valueChanged, this, [edit, angle](double v) {
+                    if (!takeMixed(angle, v)) {
+                        return;
+                    }
                     edit(tr("Angle"), [v](T& t) { t.angle = from_deg(v); });
                 });
+                if (differsBy(members, [](const T& t) {
+                        return std::lround(
+                            std::fmod(std::fmod(to_deg(t.angle), 180.0) + 180.0, 180.0) * 10.0);
+                    })) {
+                    markMixed(angle);
+                }
                 bindMm(inset, tr("Retrait de bord"), &T::inset);
                 bindInt(stagger, tr("Décalage"), &T::stagger);
                 bindBool(uEdge, tr("Sous-couche de contour"), &T::underlay_edge);
@@ -1190,9 +1402,9 @@ void PropertiesPanel::buildEmbroideryForm(const document::EmbroideryObject& obje
                 form->addRow(p.density_gradient ? tr("Écart au début du dégradé :")
                                                 : tr("Espacement des lignes :"),
                              spacing);
-                form->addRow(QString(), gradOn);
-                form->addRow(tr("Écart de fin :"), gradEnd);
-                form->addRow(tr("Angle du dégradé :"), gradAngle);
+                scoped()->addRow(QString(), gradOn);
+                scoped()->addRow(tr("Écart de fin :"), gradEnd);
+                scoped()->addRow(tr("Angle du dégradé :"), gradAngle);
                 auto* regular = new QSpinBox(body_);
                 regular->setObjectName(QStringLiteral("spin_spacingRegularity"));
                 regular->setKeyboardTracking(false);
@@ -1204,10 +1416,18 @@ void PropertiesPanel::buildEmbroideryForm(const document::EmbroideryObject& obje
                                        "de la direction. 0 % = tracé brut ; autour de 50 % : "
                                        "compromis. Calcul plus long."));
                 form->addRow(tr("Régularité de l'espacement :"), regular);
-                connect(regular, &QSpinBox::valueChanged, this, [edit](int v) {
+                connect(regular, &QSpinBox::valueChanged, this, [edit, regular](int v) {
+                    if (!takeMixed(regular, v)) {
+                        return;
+                    }
                     edit(tr("Régularité de l'espacement"),
                          [v](T& t) { t.spacing_regularity = v / 100.0; });
                 });
+                if (differsBy(members, [](const T& t) {
+                        return std::lround(t.spacing_regularity * 100.0);
+                    })) {
+                    markMixed(regular);
+                }
                 form->addRow(tr("Longueur de point :"), len);
                 form->addRow(tr("Influence des bords :"), edge);
                 form->addRow(tr("Retrait de bord :"), inset);
@@ -1235,9 +1455,12 @@ void PropertiesPanel::buildEmbroideryForm(const document::EmbroideryObject& obje
                 syncUnderlay();
                 connect(uMode, &QComboBox::currentIndexChanged, this,
                         [syncUnderlay](int) { syncUnderlay(); });
-                bindEnumField<T>(this, edit, uMode, tr("Sous-couche"), &T::underlay_mode);
+                bindEnumField<T>(this, edit, uMode, tr("Sous-couche"), &T::underlay_mode, members);
                 // Le début du dégradé suit l'espacement de référence.
-                connect(spacing, &QDoubleSpinBox::valueChanged, this, [edit](double v) {
+                connect(spacing, &QDoubleSpinBox::valueChanged, this, [edit, spacing](double v) {
+                    if (!takeMixed(spacing, v)) {
+                        return;
+                    }
                     edit(tr("Espacement des lignes"), [v](T& t) {
                         t.row_spacing = to_um(v);
                         if (t.density_gradient) {
@@ -1245,6 +1468,13 @@ void PropertiesPanel::buildEmbroideryForm(const document::EmbroideryObject& obje
                         }
                     });
                 });
+                if (differsBy(members, [](const T& t) {
+                        return (t.density_gradient ? t.density_gradient->spacing_from
+                                                   : t.row_spacing)
+                            .value;
+                    })) {
+                    markMixed(spacing);
+                }
                 const auto requestGradient = [this, id, gradOn, gradEnd, gradAngle] {
                     if (!building_) {
                         emit densityGradientRequested(id, gradOn->isChecked(), gradAngle->value(),
@@ -1262,9 +1492,16 @@ void PropertiesPanel::buildEmbroideryForm(const document::EmbroideryObject& obje
                 connect(gradAngle, &QDoubleSpinBox::valueChanged, this,
                         [requestGradient](double) { requestGradient(); });
                 bindMm(len, tr("Longueur de point"), &T::stitch_length);
-                connect(edge, &QSpinBox::valueChanged, this, [edit](int v) {
+                connect(edge, &QSpinBox::valueChanged, this, [edit, edge](int v) {
+                    if (!takeMixed(edge, v)) {
+                        return;
+                    }
                     edit(tr("Influence des bords"), [v](T& t) { t.edge_weight = v / 100.0; });
                 });
+                if (differsBy(members,
+                              [](const T& t) { return std::lround(t.edge_weight * 100.0); })) {
+                    markMixed(edge);
+                }
                 bindMm(inset, tr("Retrait de bord"), &T::inset);
                 bindInt(stagger, tr("Décalage"), &T::stagger);
                 bindMm(overlap, tr("Chevauchement des secteurs"), &T::sector_overlap);
@@ -1324,7 +1561,7 @@ void PropertiesPanel::buildEmbroideryForm(const document::EmbroideryObject& obje
                 // HP-STI-004 : satin de bordure -- largeur, côté et coins régénèrent les rails
                 // depuis le contour source (signal dédié, MainWindow exécute la commande).
                 if (p.border) {
-                    form->addRow(makeSectionLabel(tr("Satin de bordure"), body_));
+                    scoped()->addRow(makeSectionLabel(tr("Satin de bordure"), body_));
                     auto* bWidth =
                         mmSpin(to_millimeters(p.border->width).value, 20.0, 0.5,
                                tr("Largeur constante de la colonne le long du contour."));
@@ -1340,9 +1577,9 @@ void PropertiesPanel::buildEmbroideryForm(const document::EmbroideryObject& obje
                     bCorner->setCurrentIndex(static_cast<int>(p.border->corner));
                     bCorner->setToolTip(tr("Vifs : jointure en onglet. Arrondis : le bord "
                                            "extérieur décrit un arc dans les coins."));
-                    form->addRow(tr("Largeur de la bordure :"), bWidth);
-                    form->addRow(tr("Côté :"), bSide);
-                    form->addRow(tr("Coins :"), bCorner);
+                    scoped()->addRow(tr("Largeur de la bordure :"), bWidth);
+                    scoped()->addRow(tr("Côté :"), bSide);
+                    scoped()->addRow(tr("Coins :"), bCorner);
                     const auto emitBorder = [this, id, bWidth, bSide, bCorner] {
                         if (!building_) {
                             emit borderSatinEdited(id, bWidth->value(), bSide->currentIndex(),
@@ -1369,7 +1606,7 @@ void PropertiesPanel::buildEmbroideryForm(const document::EmbroideryObject& obje
                 syncUnderlay();
                 connect(uMode, &QComboBox::currentIndexChanged, this,
                         [syncUnderlay](int) { syncUnderlay(); });
-                bindEnumField<T>(this, edit, uMode, tr("Sous-couche"), &T::underlay_mode);
+                bindEnumField<T>(this, edit, uMode, tr("Sous-couche"), &T::underlay_mode, members);
                 form->addRow(tr("Compensation gauche :"), pullL);
                 form->addRow(tr("Compensation droite :"), pullR);
                 form->addRow(tr("Points courts dans les virages :"), shortCombo);
@@ -1387,15 +1624,20 @@ void PropertiesPanel::buildEmbroideryForm(const document::EmbroideryObject& obje
                 bindBool(zigU, tr("Sous-couche zigzag"), &T::underlay_zigzag);
                 bindMm(pullL, tr("Compensation gauche"), &T::pull_left);
                 bindMm(pullR, tr("Compensation droite"), &T::pull_right);
-                bindEnumField<T>(this, edit, shortCombo, tr("Points courts"), &T::short_stitch);
-                bindEnumField<T>(this, edit, splitCombo, tr("Fractionnement"), &T::split_stitch);
+                bindEnumField<T>(this, edit, shortCombo, tr("Points courts"), &T::short_stitch,
+                                 members);
+                bindEnumField<T>(this, edit, splitCombo, tr("Fractionnement"), &T::split_stitch,
+                                 members);
                 bindMm(maxLen, tr("Longueur max de point"), &T::max_stitch_length);
                 bindMm(maxHard, tr("Largeur max dure"), &T::max_width_hard);
-                bindEnumField<T>(this, edit, capStart, tr("Forme du bout (début)"), &T::cap_start);
-                bindEnumField<T>(this, edit, capEnd, tr("Forme du bout (fin)"), &T::cap_end);
-                bindEnumField<T>(this, edit, lockStart, tr("Point d'arrêt (début)"),
-                                 &T::lock_start);
-                bindEnumField<T>(this, edit, lockEnd, tr("Point d'arrêt (fin)"), &T::lock_end);
+                bindEnumField<T>(this, edit, capStart, tr("Forme du bout (début)"), &T::cap_start,
+                                 members);
+                bindEnumField<T>(this, edit, capEnd, tr("Forme du bout (fin)"), &T::cap_end,
+                                 members);
+                bindEnumField<T>(this, edit, lockStart, tr("Point d'arrêt (début)"), &T::lock_start,
+                                 members);
+                bindEnumField<T>(this, edit, lockEnd, tr("Point d'arrêt (fin)"), &T::lock_end,
+                                 members);
             } else if constexpr (std::is_same_v<T, document::AutoSatinParams>) {
                 // Guides : édités par signaux dédiés (liste ci-dessous, rafraîchie par
                 // setAutoSatinState). Les réglages scalaires passent par paramsEdited ;
@@ -1561,7 +1803,7 @@ void PropertiesPanel::buildEmbroideryForm(const document::EmbroideryObject& obje
                 connect(method, &QComboBox::currentIndexChanged, this,
                         [syncMethod](int) { syncMethod(); });
                 connect(sweepAuto, &QCheckBox::toggled, this, [syncMethod](bool) { syncMethod(); });
-                bindEnumField<T>(this, edit, method, tr("Méthode de satin"), &T::strategy);
+                bindEnumField<T>(this, edit, method, tr("Méthode de satin"), &T::strategy, members);
                 connect(sweepAuto, &QCheckBox::toggled, this, [edit, sweepAngle](bool on) {
                     const double deg = sweepAngle->value();
                     edit(tr("Angle des fils"), [on, deg](T& t) {
@@ -1572,9 +1814,25 @@ void PropertiesPanel::buildEmbroideryForm(const document::EmbroideryObject& obje
                         }
                     });
                 });
-                connect(sweepAngle, &QDoubleSpinBox::valueChanged, this, [edit](double v) {
-                    edit(tr("Angle des fils"), [v](T& t) { t.sweep_angle = from_deg(v); });
-                });
+                connect(sweepAngle, &QDoubleSpinBox::valueChanged, this,
+                        [edit, sweepAngle](double v) {
+                            if (!takeMixed(sweepAngle, v)) {
+                                return;
+                            }
+                            edit(tr("Angle des fils"), [v](T& t) { t.sweep_angle = from_deg(v); });
+                        });
+                if (differsBy(members, [](const T& t) { return t.split_threshold.value; })) {
+                    markMixed(threshold);
+                }
+                if (differsBy(members, [](const T& t) { return t.sweep_angle.has_value(); })) {
+                    markMixed(sweepAuto);
+                }
+                if (differsBy(members, [](const T& t) {
+                        return t.sweep_angle ? std::lround(to_deg(*t.sweep_angle) * 10.0)
+                                             : std::numeric_limits<long>::min();
+                    })) {
+                    markMixed(sweepAngle);
+                }
                 if (compareMethods != nullptr) {
                     connect(compareMethods, &QPushButton::clicked, this,
                             [this, id] { emit compareSatinMethodsRequested(id); });
@@ -1604,7 +1862,7 @@ void PropertiesPanel::buildEmbroideryForm(const document::EmbroideryObject& obje
                 syncUnderlay();
                 connect(uMode, &QComboBox::currentIndexChanged, this,
                         [syncUnderlay](int) { syncUnderlay(); });
-                bindEnumField<T>(this, edit, uMode, tr("Sous-couche"), &T::underlay_mode);
+                bindEnumField<T>(this, edit, uMode, tr("Sous-couche"), &T::underlay_mode, members);
                 section(tr("Extrémités"));
                 form->addRow(tr("Forme du bout (début) :"), capStart);
                 form->addRow(tr("Forme du bout (fin) :"), capEnd);
@@ -1675,34 +1933,48 @@ void PropertiesPanel::buildEmbroideryForm(const document::EmbroideryObject& obje
                 syncSplitFields();
                 connect(splitCombo, &QComboBox::currentIndexChanged, this,
                         [syncSplitFields](int) { syncSplitFields(); });
-                connect(threshold, &QDoubleSpinBox::valueChanged, this, [splitLen](double lmax) {
-                    // Abaisser Lmax ramène y dessous : la modification de y qui en résulte
-                    // est émise par son propre signal (un pas d'annulation fusionné).
-                    splitLen->setMaximum(lmax);
-                });
+                connect(threshold, &QDoubleSpinBox::valueChanged, this,
+                        [splitLen, threshold](double lmax) {
+                            if (threshold->property(kMixedProp).isValid() &&
+                                lmax <= threshold->minimum() + 1e-9) {
+                                return; // « — » : ne borne pas y
+                            }
+                            // Abaisser Lmax ramène y dessous : la modification de y qui en résulte
+                            // est émise par son propre signal (un pas d'annulation fusionné).
+                            splitLen->setMaximum(lmax);
+                        });
 
                 bindMm(spacing, tr("Espacement"), &T::spacing);
-                connect(threshold, &QDoubleSpinBox::valueChanged, this, [edit](double v) {
-                    edit(tr("Seuil de fractionnement (Lmax)"), [v](T& t) {
-                        t.split_threshold = to_um(v);
-                        t.split_length =
-                            Micrometers{std::min(t.split_length.value, t.split_threshold.value)};
-                    });
-                });
+                connect(threshold, &QDoubleSpinBox::valueChanged, this,
+                        [edit, threshold](double v) {
+                            if (!takeMixed(threshold, v)) {
+                                return;
+                            }
+                            edit(tr("Seuil de fractionnement (Lmax)"), [v](T& t) {
+                                t.split_threshold = to_um(v);
+                                t.split_length = Micrometers{
+                                    std::min(t.split_length.value, t.split_threshold.value)};
+                            });
+                        });
                 bindMm(splitLen, tr("Longueur des segments (y)"), &T::split_length);
-                bindEnumField<T>(this, edit, splitCombo, tr("Fractionnement"), &T::split_stitch);
-                bindEnumField<T>(this, edit, shortCombo, tr("Points courts"), &T::short_stitch);
+                bindEnumField<T>(this, edit, splitCombo, tr("Fractionnement"), &T::split_stitch,
+                                 members);
+                bindEnumField<T>(this, edit, shortCombo, tr("Points courts"), &T::short_stitch,
+                                 members);
                 bindMm(comp, tr("Compensation de tirage"), &T::pull_compensation);
                 bindBool(underlay, tr("Sous-couche centrale"), &T::center_underlay);
                 bindBool(edgeU, tr("Sous-couche de bord"), &T::underlay_edge);
                 bindBool(zigU, tr("Sous-couche zigzag"), &T::underlay_zigzag);
                 bindMm(pullL, tr("Compensation gauche"), &T::pull_left);
                 bindMm(pullR, tr("Compensation droite"), &T::pull_right);
-                bindEnumField<T>(this, edit, capStart, tr("Forme du bout (début)"), &T::cap_start);
-                bindEnumField<T>(this, edit, capEnd, tr("Forme du bout (fin)"), &T::cap_end);
-                bindEnumField<T>(this, edit, lockStart, tr("Point d'arrêt (début)"),
-                                 &T::lock_start);
-                bindEnumField<T>(this, edit, lockEnd, tr("Point d'arrêt (fin)"), &T::lock_end);
+                bindEnumField<T>(this, edit, capStart, tr("Forme du bout (début)"), &T::cap_start,
+                                 members);
+                bindEnumField<T>(this, edit, capEnd, tr("Forme du bout (fin)"), &T::cap_end,
+                                 members);
+                bindEnumField<T>(this, edit, lockStart, tr("Point d'arrêt (début)"), &T::lock_start,
+                                 members);
+                bindEnumField<T>(this, edit, lockEnd, tr("Point d'arrêt (fin)"), &T::lock_end,
+                                 members);
 
                 if (!group) {
                     connect(guideAdd, &QPushButton::clicked, this,
@@ -1758,6 +2030,17 @@ void PropertiesPanel::buildEmbroideryForm(const document::EmbroideryObject& obje
     auto* holder = new QWidget(body_);
     holder->setLayout(form);
     body_->layout()->addWidget(holder);
+    if (activeForm != nullptr) {
+        auto* title = makeSectionLabel(tr("Objet actif seulement"), body_);
+        title->setToolTip(tr("Ces réglages n'agissent que sur « %1 » (le premier objet du groupe), "
+                             "pas sur toute la sélection.")
+                              .arg(QString::fromStdString(object.name)));
+        body_->layout()->addWidget(title);
+        auto* activeHolder = new QWidget(body_);
+        activeHolder->setObjectName(QStringLiteral("group_activeObjectOnly"));
+        activeHolder->setLayout(activeForm);
+        body_->layout()->addWidget(activeHolder);
+    }
     // Molette : ne change une valeur que sur un champ ayant le focus.
     wheelGuard_->guardAll(body_);
 }
