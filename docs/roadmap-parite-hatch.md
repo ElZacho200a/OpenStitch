@@ -38,10 +38,10 @@ Revue partielle du 2026-10-13 (`main` = `4a8088b`) : vague 1 — objets, cadres,
 | Priorité | ☑ Fait | ◐ Partiel | ☐ À faire | Total |
 |---|---|---|---|---|
 | P0 | 12 | 26 | 6 | 44 |
-| P1 | 10 | 56 | 74 | 140 |
+| P1 | 10 | 61 | 69 | 140 |
 | P2 | 3 | 30 | 64 | 97 |
 | P3 | 0 | 3 | 12 | 15 |
-| **Total** | **25** | **115** | **156** | **296** |
+| **Total** | **25** | **120** | **151** | **296** |
 
 Ajoutés le 2026-10-18 (audit UX/UI, `docs/ux/`) : **+30 entrées ☐** (12 P1, 15 P2, 3 P3) :
 HP-UX-017 à HP-UX-044, HP-PERF-009 et HP-QA-008 (§20, §22, §23). Aucun statut existant n'a été
@@ -2512,7 +2512,7 @@ les paramètres avant de créer) et par des **modes** distincts (édition satin,
   quitte sans changer la sélection.
 - Modules : `apps/desktop`.
 
-### HP-UX-002 — Création directe sans dialogue [P1] — ☐ À faire
+### HP-UX-002 — Création directe sans dialogue [P1] — ◐ Partiel (2026-10-18, branche `ux-lot-c1-pr`)
 - À faire : « Créer un tatami » crée immédiatement avec les défauts (ou le
   dernier réglage) ; les paramètres se règlent ensuite dans l'inspecteur.
 - Audit 2026-10-18 (BRO-19, PAR-03) : **décision du 2026-10-18 : les dialogues de création
@@ -2522,6 +2522,7 @@ les paramètres avant de créer) et par des **modes** distincts (édition satin,
   HP-PERF-009 (l'inspecteur règle en direct sans geler l'interface). Voir HP-UX-028.
   Acceptation : `createTatamiAct_` ne laisse aucun `QDialog` ouvert et pousse un pas
   d'annulation.
+- Livré : « Créer un contour / tatami / satin » créent tout de suite au dernier réglage mémorisé (`ui_memory::creation`, `QSettings`, aucun champ de document ni `.osp`), en une `ICommand` ; le sous-menu « Créer avec réglages » garde les dialogues, préremplis et mémorisés ; la question « satin impossible, utiliser un tatami ? » reste (refus honnête). Tests : `test_creation_flow` (aucune modale, un pas d'annulation, réutilisation du dernier réglage). Tests existants adaptés (`createSatinObject…`) : l'acceptation de dialogue est remplacée par la vérification qu'aucune modale ne s'ouvre.
 
 ### HP-UX-003 — Inspecteur homogène pour tous les types [P1] — ◐ Partiel
 - À faire : mêmes sections pour tous (Général : nom, fil, visible ; Points ;
@@ -2729,21 +2730,23 @@ Prérequis commun des lots B et C : **HP-QA-008** (garde de taille minimale, §2
 #### Lot C — Workflows de broderie (P1/P2)
 - Livré : action « Mode portable » (menu Panneaux) : Document, Ordre, Workflow et Propriétés en une colonne d'onglets, persistée, proposée une fois sous 1000 px de large, annulée par « Réinitialiser la disposition » ; `WrapLongRows` dans l'inspecteur.
 
-### HP-UX-028 — Type de point identique pour une ou N formes, aussi au clic droit [P1] — ☐ À faire
+### HP-UX-028 — Type de point identique pour une ou N formes, aussi au clic droit [P1] — ◐ Partiel (2026-10-18, branche `ux-lot-c1-pr`)
 - Problème : une forme sans couture n'a aucun choix de type dans l'inspecteur ; 2 formes ou plus ont un combo + « Appliquer » ; le menu contextuel n'offre pas le type ; « Directionnel » absent pour une forme neuve (`properties_panel.cpp:452-550, 597-634`, `main_window.cpp:5317-5328, 5374-5386, 6232-6301`). Constats PAR-02, PAR-03, PAR-04.
 - Comportement attendu : mêmes quatre boutons (Contour, Tatami, Satin, Directionnel) pour toute sélection de formes, en tête de l'inspecteur, dans la barre contextuelle et le clic droit ; un clic crée la couture avec le dernier réglage, en **une** `ICommand` annulable (réutiliser `setStitchTypeForSelection`).
 - Complexité : M. Composants : `apps/desktop/properties_panel.cpp`, `main_window*.cpp`.
 - Dépend de : HP-UX-002 ; HP-OBJ-019.
 - Acceptation : forme neuve, un clic sur chacun des quatre types → couture créée, zéro modale, un pas d'annulation ; clic droit sur forme non cousue → sous-menu à quatre entrées.
 - Non-régression : retouches manuelles (ADR-014), conversion de groupe, `check_no_raw_sequence_bypass`.
+- Livré : les quatre boutons Contour / Tatami / Satin / Directionnel (signal `stitchTypeRequested` vers `setStitchTypeForSelection`) en tête de l'inspecteur (forme neuve, couture, N formes), dans la barre contextuelle (1 ou N formes) et dans un sous-menu « Type de points » du clic droit sur une forme non cousue. Test existant adapté : `inspectorShowsNObjets` (le combo `combo_multiType` n'existe plus).
 
-### HP-UX-029 — Avertir avant d'invalider des retouches manuelles [P1] — ☐ À faire
+### HP-UX-029 — Avertir avant d'invalider des retouches manuelles [P1] — ◐ Partiel (2026-10-18, branche `ux-lot-c1-pr`)
 - Problème : `paramsEdited` s'exécute sans tester l'état de l'objet (`main_window.cpp:6931-6948`) : une modification de paramètre rend les retouches de points obsolètes (signalé après coup par ⚠, `document_panel.cpp:43-56`). Les retouches ne sont pas perdues (ADR-014) mais plus appliquées. Constat BRO-20.
 - Comportement attendu : à la première modification d'un objet « ✎ », bandeau non modal dans l'inspecteur « Cette modification désactive N retouches (Ctrl+Z pour annuler) » ; N dans l'info-bulle de ⚠ ; bouton « Réappliquer les retouches » quand c'est possible. Pas de confirmation bloquante.
 - Complexité : M (comptage en lecture seule via `classify_all_edit_states`, aucun changement de cœur). Composants : `apps/desktop/properties_panel.*`, `main_window.cpp`.
 - Dépend de : —
 - Acceptation : objet « ✎ » à 14 retouches → `paramsEdited` affiche l'étiquette avec « 14 » ; annuler restaure l'état « ✎ » ; objet propre → aucun bandeau.
 - Non-régression : `docs/lot8-manual-editing-design.md` (états Clean/ManuallyEdited/Dirty), fusion de commandes scalaires.
+- Livré : bandeau non modal `label_overridesWarning` « Cette modification désactive N retouches » avec bouton « Réappliquer les retouches », qui suit annulation, rétablissement et abandon ; N repris dans l'info-bulle de ⚠ de l'inspecteur. Reste : bandeau pour un groupe d'objets retouchés (limité à l'objet unique), ⚠ du panneau Document inchangé.
 
 ### HP-UX-030 — Préréglages de numérisation automatique et résumé chiffré [P2] — ◐ Partiel (2026-10-18, branche `ux-lot-d2`)
 - Problème : F8 ouvre deux modales puis ~25 réglages d'expert ; le résumé final ne donne que le nombre d'objets (`main_window.cpp:4320-4342, 4369-4768, 4929-4937`). Constat PAR-06. Voir HP-UX-012.
@@ -2778,7 +2781,7 @@ Prérequis commun des lots B et C : **HP-QA-008** (garde de taille minimale, §2
 - Acceptation : le cadre choisi dans l'import est celui du projet ; Annuler restaure l'ancien cadre.
 - Livré : sélecteur de cadre dans `ImportDialog` (le cadre ne devient celui du projet qu'à la validation), bouton « Cadre L × H mm » dans la barre d'état. Reste : validation visuelle.
 
-### HP-UX-038 — Valeurs mixtes et portées honnêtes en multi-sélection [P1] — ☐ À faire
+### HP-UX-038 — Valeurs mixtes et portées honnêtes en multi-sélection [P1] — ◐ Partiel (2026-10-18, branche `ux-lot-c1-pr`)
 - Problème : le formulaire de groupe affiche la valeur d'un représentant comme commune ; deux modèles coexistent (« Appliquer à N objets » et champs en direct) ; entrée/sortie, dégradé et bordure n'agissent que sur un objet (`properties_panel.cpp:597-643, 836, 1206, 1304`). Constats BRO-17, UX-33, UX-34.
 - Comportement attendu : « — » par champ quand les valeurs diffèrent ; éditer un champ n'uniformise que ce champ ; un seul modèle (édition en direct, commande composite) ; contrôles à portée individuelle isolés dans « Objet actif seulement ».
 - Complexité : M. Composants : `apps/desktop/properties_panel.*`, `main_window_editing.cpp`.
@@ -2788,6 +2791,7 @@ Prérequis commun des lots B et C : **HP-QA-008** (garde de taille minimale, §2
 Le lot C comprend aussi **HP-PERF-009** (régénération différée à l'édition de paramètres, §22).
 
 #### Lot D — Cohérence et productivité (P2)
+- Livré : « — » pour les champs de contenu mixte (nombres, cases tri-état, listes sans choix courant), éditer un champ n'uniformise que ce champ, plus de bouton « Appliquer à N », rafales d'édition de groupe fusionnées en un pas d'annulation, contrôles à portée individuelle isolés sous « Objet actif seulement » (entrée/sortie, connecteur, dégradé, bordure). Tests existants adaptés : `multiSelectionBlockAppliesSettingsToAllObjectsInOneStep`, `multiSelectionBlockCanConvertEveryObjectToContourInOneStep` (l'ancien bloc « Appliquer » est remplacé par les champs en direct et les boutons de type).
 
 ### HP-UX-034 — Mode « Isoler » (protection de session) [P2] — ◐ Partiel (2026-10-18, branche `ux-lot-d2`)
 - Problème : `EmbroideryObject::locked` fige l'ordre de couture, il ne protège pas l'objet (`embroidery_object.hpp:393`, `selection_hit_test.cpp:97`) ; un glisser accidentel de 3 mm sur un fond fini casse l'alignement. Constat BRO-15.
@@ -2960,7 +2964,7 @@ de référence. Restent : progression et annulation, régénération de toute la
 - État OpenStitch : `openstitch-bench` hors CTest.
 - À faire : exécution périodique en CI (non bloquante), historique des mesures.
 
-### HP-PERF-009 — Régénération différée à l'édition de paramètres [P1] — ☐ À faire
+### HP-PERF-009 — Régénération différée à l'édition de paramètres [P1] — ◐ Partiel (2026-10-18, branche `ux-lot-c1-pr`)
 - Problème : chaque pas d'un champ de l'inspecteur pousse une `SetStitchParamsCommand` (fusionnée en un pas d'annulation) puis régénère **sur le fil UI** (`main_window.cpp:6931-6948`) : un grand remplissage gèle l'interface à chaque pas de molette ou de flèche. Constat BRO-18 (UX-04, UX-11). Condition de la création directe (HP-UX-002).
 - Comportement attendu : la commande est appliquée immédiatement ; la régénération est différée de 150 ms d'inactivité et exécutée hors fil UI (`BusyIndicator::run` ou la tâche de `HP-PERF-001`) ; pendant le calcul l'aperçu précédent reste affiché ; un résultat périmé est rejeté. Option : aperçu basse résolution pendant le glisser.
 - Complexité : M. Composants : `apps/desktop/main_window.cpp`, `properties_panel.cpp`. **Aucun changement du moteur de points** : la sortie reste octet pour octet identique à la régénération synchrone.
@@ -2971,6 +2975,7 @@ de référence. Restent : progression et annulation, régénération de toute la
 ---
 
 ## 23. Robustesse et qualité logicielle (QA)
+- Livré : `scheduleParamsRefresh()` (débounce 150 ms), régénération hors fil UI sur un instantané du projet (`std::async` + timer de scrutation ; `BusyIndicator::run` écarté car modal), résultat périmé rejeté par numéro de série (incrémenté à chaque édition et à chaque `refreshImage`), `flushPendingRefresh()` avant export, analyse, statistiques, simulation, image et fiche de production, éditions de groupe incluses. Tests : cinq éditions en moins de 150 ms = une régénération, séquence différée identique à `effective_sequence`, événement UI traité pendant le calcul, résultat périmé rejeté, undo restaure paramètres et aperçu. Reste : mesure de latence sur un très gros remplissage ; échec intermittent de `test_main_window` sous charge (watchdog 300 s) observé aussi sans ce lot.
 
 ### HP-QA-001 — Découper `main_window.cpp` [P1] — ☐ À faire
 - État OpenStitch : `apps/desktop/main_window.cpp` ≈ 324 Ko (2026-10-06), un seul fichier
@@ -3180,3 +3185,4 @@ ci-dessus doit les respecter :
 | 2026-10-18 | Claude (lot A2, sélection) | HP-UX-019, 020, 023 ◐ (branche `ux-lot-a2`) : prédicat de sélection unique avec tolérance de clic en repli, cyclage au re-clic, Ctrl+A selon la couche, touches 1 à 4, zoom sur la sélection. Tests ajoutés dans `test_selection_hit_test` et `test_ux_global`. Total ◐ 95 → 98, ☐ 176 → 173. |
 | 2026-10-18 | Claude (lot D, partie 1) | HP-UX-034, 036, 039 ◐ (branche `ux-lot-d2`) : mode Isoler de session, sauts de couleur et « fil k/m » en simulation, message de couche masquée, heure d'enregistrement fixe. Tests dans `test_ux_global`. Total ◐ 98 → 101, ☐ 173 → 170. |
 | 2026-10-18 | Claude (lots B, C/E et liste Document, 4 agents) | HP-QA-008, HP-UX-024, 025, 026, 027, 030, 031, 032, 033, 037, 041, 042, 043, 044 ◐ (branche `ux-lot-d2`) : responsive (fenêtre 1291 × 1443 → 701 × 373 de minimum, dialogues bornés, mode portable), numérisation à préréglages, export rapide, dock Qualité, barre Fils au clavier, liste Document étendue. Tests : `test_ui_responsive`, `test_workflow_ux`, `test_thread_strip`, `test_document_panel`. Total ◐ 101 → 115, ☐ 170 → 156. |
+| 2026-10-18 | Claude (lot C édition, agent) | HP-UX-002, 028, 029, 038 et HP-PERF-009 ◐ (branche `ux-lot-c1-pr`) : création directe sans modale, quatre boutons de type pour 1 ou N formes, bandeau de retouches, valeurs mixtes, régénération différée hors fil UI. Tests : `test_creation_flow` (19 cas). Total ◐ 115 → 120, ☐ 156 → 151. |
