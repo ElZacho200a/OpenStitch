@@ -1333,8 +1333,12 @@ void MainWindowTest::inspectorShowsNObjets() {
 
     window.applySelectionClick(fx.b, SelectMode::Add);
     QVERIFY(hasText(QStringLiteral("2 objets")));
-    // Bloc « type de points » pour toute la sélection.
-    QVERIFY(propsPanel->findChild<QComboBox*>(QStringLiteral("combo_multiType")) != nullptr);
+    // Bloc « type de points » pour toute la sélection : les quatre mêmes boutons que pour une
+    // forme seule (HP-UX-028, remplace l'ancienne liste « Appliquer à N »).
+    for (int type = 0; type < 4; ++type) {
+        QVERIFY(propsPanel->findChild<QToolButton*>(
+                    QStringLiteral("button_stitchType%1").arg(type)) != nullptr);
+    }
 
     window.applySelectionClick(fx.c, SelectMode::Add);
     QVERIFY(hasText(QStringLiteral("3 objets")));
@@ -8160,11 +8164,10 @@ void MainWindowTest::multiSelectionBlockCanConvertEveryObjectToContourInOneStep(
     window.applySelectionClick(fx.a, SelectMode::Replace);
     window.applySelectionClick(fx.b, SelectMode::Add);
     auto* panel = window.findChild<PropertiesPanel*>();
-    auto* type = panel->findChild<QComboBox*>(QStringLiteral("combo_multiType"));
-    auto* apply = panel->findChild<QPushButton*>(QStringLiteral("button_multiApply"));
-    QVERIFY(type && apply);
-    type->setCurrentIndex(1); // contour cousu
-    apply->click();
+    auto* contour = panel->findChild<QToolButton*>(QStringLiteral("button_stitchType0"));
+    QVERIFY(contour != nullptr);
+    contour
+        ->click(); // HP-UX-028 : un clic, la couture est convertie (remplace liste + « Appliquer »)
     QVERIFY(!window.project_.findEmbroidery(embA)->is_tatami());
     QVERIFY(!window.project_.findEmbroidery(embB)->is_tatami());
     window.undo();

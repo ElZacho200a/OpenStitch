@@ -119,6 +119,11 @@ public:
     void setBlendActions(QAction* single, QAction* zones, bool singleContext, bool zonesContext);
 
 signals:
+    // HP-UX-028 : un des quatre boutons « Type de points » (0 contour, 1 tatami, 2 satin,
+    // 3 directionnel), identique pour une forme neuve, une couture ou N formes.
+    void stitchTypeRequested(int type);
+    // HP-UX-029 : « Réappliquer les retouches » (rétablit les paramètres d'avant l'édition).
+    void reapplyOverridesRequested(ObjectId id);
     void fillLayerSelected(ObjectId id);
     void fillColorRequested(ObjectId id);
     // Bouton « Modifier le texte… » du bandeau lettrage (cf. setTextInfo) : MainWindow rouvre
@@ -186,6 +191,8 @@ signals:
 
 private:
     void clearBody();
+    // Rangée de quatre boutons « Type de points » ; `current` = -1 si indéterminé ou aucun.
+    void addStitchTypeRow(int current);
     // Feuille de style locale (depuis les jetons), rafraîchie sur AppTheme::changed.
     void applyTheme();
     // Corps du formulaire d'une couture (champs du type), sans effacer ni titrer.

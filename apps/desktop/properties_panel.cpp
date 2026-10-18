@@ -361,6 +361,51 @@ bool PropertiesPanel::textInfoVisible() const {
     return !textInfoLabel_->isHidden();
 }
 
+void PropertiesPanel::setOverrideWarning(std::optional<ObjectId> id, int count) {
+    overrideWarningId_ = (id && count > 0) ? id : std::nullopt;
+    const bool show = overrideWarningId_.has_value();
+    overrideWarningLabel_->setVisible(show);
+    reapplyButton_->setVisible(show);
+    if (show) {
+        overrideWarningLabel_->setText(
+            count == 1 ? tr("Cette modification désactive 1 retouche (Ctrl+Z pour annuler).")
+                       : tr("Cette modification désactive %1 retouches (Ctrl+Z pour annuler).")
+                             .arg(count));
+    }
+}
+
+bool PropertiesPanel::overrideWarningVisible() const {
+    return !overrideWarningLabel_->isHidden();
+}
+
+void PropertiesPanel::addStitchTypeRow(int current) {
+    // HP-UX-028 : les mêmes quatre boutons pour une forme neuve, une couture ou N formes.
+    auto* row = new QWidget(body_);
+    row->setObjectName(QStringLiteral("row_stitchType"));
+    auto* layout = new QHBoxLayout(row);
+    layout->setContentsMargins(0, 0, 0, 0);
+    layout->setSpacing(4);
+    const QString names[] = {tr("Contour"), tr("Tatami"), tr("Satin"), tr("Directionnel")};
+    for (int t = 0; t < 4; ++t) {
+        auto* button = new QToolButton(row);
+        button->setObjectName(QStringLiteral("button_stitchType%1").arg(t));
+        button->setText(names[t]);
+        button->setAccessibleName(tr("Type de points : %1").arg(names[t]));
+        button->setToolTip(tr("Donne le type de points « %1 » à la sélection, au dernier "
+                              "réglage (annulable en un pas).")
+                               .arg(names[t]));
+        button->setCheckable(true);
+        button->setChecked(t == current);
+        connect(button, &QToolButton::clicked, this, [this, t, button, current] {
+            button->setChecked(t == current); // l'état suit le document, pas le clic
+            emit stitchTypeRequested(t);
+        });
+        layout->addWidget(button);
+    }
+    layout->addStretch(1);
+    body_->layout()->addWidget(row);
+}
+
 void PropertiesPanel::clearBody() {
     currentId_.reset();
     vectorId_.reset();
@@ -460,6 +505,7 @@ void PropertiesPanel::showVectorObject(ObjectId id, const QString& title, const 
     label->setWordWrap(true);
     label->setTextInteractionFlags(Qt::TextSelectableByMouse);
     body_->layout()->addWidget(label);
+    addStitchTypeRow(-1); // HP-UX-028 : forme sans couture, mêmes quatre types que partout
     if (boxMm.width() <= 0.0 || boxMm.height() <= 0.0) {
         return; // forme dégénérée : pas de redimensionnement possible
     }
@@ -592,49 +638,18 @@ void PropertiesPanel::showMultiSelection(int objectCount, int embroideryCount,
         body_);
     label->setWordWrap(true);
     body_->layout()->addWidget(label);
-    auto* form = new QFormLayout();
-    styleForm(form);
-    auto* type = new QComboBox(body_);
-    type->setObjectName(QStringLiteral("combo_multiType"));
-    type->addItems({tr("(inchangé)"), tr("Contour cousu"), tr("Tatami"), tr("Satin automatique"),
-                    tr("Remplissage directionnel")});
-    type->setToolTip(
-        tr("Donne ce type de points à toutes les formes sélectionnées, comme le choix "
-           "de type d'une forme seule. Les formes sans couture en reçoivent une ; "
-           "celles qui ne peuvent pas être cousues en satin sont ignorées et listées."));
-    auto* useSpacing = new QCheckBox(tr("Espacement des rangées"), body_);
-    useSpacing->setObjectName(QStringLiteral("check_multiSpacing"));
-    auto* spacing = mmSpin(0.4, 5.0, 0.1, tr("Écart entre rangées (tatami, directionnel, satin)."));
-    spacing->setObjectName(QStringLiteral("spin_multiSpacing"));
-    spacing->setEnabled(false);
-    auto* useAngle = new QCheckBox(tr("Angle (tatami)"), body_);
-    useAngle->setObjectName(QStringLiteral("check_multiAngle"));
-    auto* angle = new QDoubleSpinBox(body_);
-    angle->setObjectName(QStringLiteral("spin_multiAngle"));
-    angle->setKeyboardTracking(false);
-    angle->setRange(0.0, 179.9);
-    angle->setDecimals(1);
-    angle->setWrapping(true);
-    angle->setSuffix(tr(" °"));
-    angle->setEnabled(false);
-    angle->setToolTip(tr("0° = horizontal, sens trigonométrique. Plage : 0 – 179,9°."));
-    connect(useSpacing, &QCheckBox::toggled, spacing, &QWidget::setEnabled);
-    connect(useAngle, &QCheckBox::toggled, angle, &QWidget::setEnabled);
-    auto* apply = new QPushButton(tr("Appliquer à %1 objets").arg(objectCount), body_);
-    apply->setObjectName(QStringLiteral("button_multiApply"));
-    apply->setToolTip(tr("Applique les réglages cochés aux coutures des objets sélectionnés, "
-                         "en une seule étape annulable."));
-    form->addRow(tr("Type de points :"), type);
-    form->addRow(useSpacing, spacing);
-    form->addRow(useAngle, angle);
-    form->addRow(QString(), apply);
-    connect(apply, &QPushButton::clicked, this, [this, type, useSpacing, spacing, useAngle, angle] {
-        emit applyToSelectionRequested(type->currentIndex() - 1, useSpacing->isChecked(),
-                                       spacing->value(), useAngle->isChecked(), angle->value());
-    });
-    auto* holder = new QWidget(body_);
-    holder->setLayout(form);
-    body_->layout()->addWidget(holder);
+
+    // HP-UX-028/038 : mêmes quatre boutons que pour une forme seule ; un seul modèle d'édition
+    // (en direct, une commande composite par édition) -- plus de bouton « Appliquer à N ».
+    int commonType = -1;
+    if (groupRep != nullptr && groupCount >= 2) {
+        commonType = groupRep->is_tatami()                                 ? 1
+                     : groupRep->is_directional()                          ? 3
+                     : (groupRep->is_satin() || groupRep->is_auto_satin()) ? 2
+                                                                           : 0;
+    }
+    addStitchTypeRow(commonType);
+
     if (groupRep != nullptr && groupCount >= 2) {
         body_->layout()->addWidget(makeSectionLabel(
             tr("Réglages communs (%1 couture(s) de même type)").arg(groupCount), body_));
@@ -781,6 +796,14 @@ void PropertiesPanel::buildEmbroideryForm(const document::EmbroideryObject& obje
     hasShown_ = true;
     const ObjectId id = object.id;
     const bool group = groupCount_ > 1;
+    if (!group) {
+        // HP-UX-028 : les quatre types en tête de l'inspecteur (en groupe : posés par
+        // showMultiSelection).
+        addStitchTypeRow(object.is_tatami()                              ? 1
+                         : object.is_directional()                       ? 3
+                         : (object.is_satin() || object.is_auto_satin()) ? 2
+                                                                         : 0);
+    }
 
     auto* form = new QFormLayout();
     styleForm(form);

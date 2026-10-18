@@ -5447,6 +5447,17 @@ void MainWindow::onCanvasContextMenu(QPointF posMm, QPoint globalPos) {
             auto* debugAct = menu.addAction(tr("&Déboguer : afficher toutes les données…"));
             connect(debugAct, &QAction::triggered, this, [this, embId] { showDebugDump(embId); });
         }
+    } else if (hit && vecId) {
+        // HP-UX-028 : une forme sans couture propose les mêmes quatre types de points (création
+        // immédiate, un pas d'annulation, zéro dialogue).
+        auto* typeMenu = menu.addMenu(tr("Type de points"));
+        typeMenu->setObjectName(QStringLiteral("contextStitchTypeMenu"));
+        const char* labels[] = {"Contour cousu", "Remplissage tatami", "Colonne satin",
+                                "Remplissage directionnel"};
+        for (int t = 0; t < 4; ++t) {
+            auto* act = typeMenu->addAction(tr(labels[t]));
+            connect(act, &QAction::triggered, this, [this, t] { setStitchTypeForSelection(t); });
+        }
     }
 
     if (vecId) {
@@ -6368,19 +6379,26 @@ void MainWindow::updateContextToolbar() {
             auto* discard = contextToolbar_->addAction(tr("Abandonner les retouches"));
             connect(discard, &QAction::triggered, this, [this, id] { discardOverrides(id); });
         }
-    } else if (hasMulti) {
-        contextToolbar_->addWidget(
-            new QLabel(tr("%1 objets sélectionnés").arg(multiSelection_.size()), contextToolbar_));
-    } else if (hasVec) {
-        contextToolbar_->addWidget(
-            new QLabel(tr("Objet vectoriel  ·  créer un objet de broderie :  "), contextToolbar_));
-        const auto addCreate = [this](const QString& text, void (MainWindow::*slot)()) {
-            auto* act = contextToolbar_->addAction(text);
-            connect(act, &QAction::triggered, this, slot);
-        };
-        addCreate(tr("Contour"), &MainWindow::createRunningStitchObject);
-        addCreate(tr("Tatami"), &MainWindow::createTatamiObject);
-        addCreate(tr("Satin"), &MainWindow::createSatinObject);
+    } else if (hasMulti || hasVec) {
+        // HP-UX-028 : les mêmes quatre boutons « Type de points » pour une ou N formes ; un clic
+        // crée (ou convertit) la couture au dernier réglage, en un pas d'annulation, sans dialogue.
+        if (hasMulti) {
+            contextToolbar_->addWidget(new QLabel(
+                tr("%1 objets sélectionnés  ·  type de points :  ").arg(multiSelection_.size()),
+                contextToolbar_));
+        } else {
+            contextToolbar_->addWidget(
+                new QLabel(tr("Objet vectoriel  ·  type de points :  "), contextToolbar_));
+        }
+        const QString names[] = {tr("Contour"), tr("Tatami"), tr("Satin"), tr("Directionnel")};
+        for (int t = 0; t < 4; ++t) {
+            auto* btn = new QToolButton(contextToolbar_);
+            btn->setText(names[t]);
+            btn->setObjectName(QStringLiteral("button_contextStitchType%1").arg(t));
+            btn->setAccessibleName(tr("Type de points : %1").arg(names[t]));
+            connect(btn, &QToolButton::clicked, this, [this, t] { setStitchTypeForSelection(t); });
+            contextToolbar_->addWidget(btn);
+        }
     } else if (hasReg) {
         const auto* region = project_.segmentation->find(*selectedRegion_);
         if (region != nullptr) {

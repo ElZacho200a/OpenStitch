@@ -117,6 +117,23 @@ void MainWindow::connectInspectorEditing() {
     });
     connect(propertiesPanel_, &PropertiesPanel::vectorBoxEdited, this,
             [this](ObjectId id, QRectF want) { applyVectorBox(id, want); });
+    connect(propertiesPanel_, &PropertiesPanel::stitchTypeRequested, this,
+            [this](int type) { setStitchTypeForSelection(type); });
+    connect(propertiesPanel_, &PropertiesPanel::reapplyOverridesRequested, this,
+            [this](ObjectId id) {
+                // HP-UX-029 : rétablit les paramètres d'avant l'édition (nouveau pas annulable) ;
+                // les retouches, dont l'empreinte redevient valide, sont de nouveau appliquées.
+                if (!overrideWarning_ || overrideWarning_->id != id ||
+                    project_.findEmbroidery(id) == nullptr) {
+                    return;
+                }
+                undoStack_.execute(std::make_unique<commands::SetStitchParamsCommand>(
+                                       id, overrideWarning_->before,
+                                       tr("Réappliquer les retouches").toStdString()),
+                                   project_);
+                scheduleParamsRefresh();
+                refreshOverrideWarning();
+            });
     connect(propertiesPanel_, &PropertiesPanel::applyToSelectionRequested, this,
             &MainWindow::applyToSelection);
     connect(propertiesPanel_, &PropertiesPanel::groupParamsEdited, this,
