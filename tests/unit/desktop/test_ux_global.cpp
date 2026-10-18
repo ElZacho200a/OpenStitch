@@ -491,6 +491,91 @@ private slots:
         QVERIFY(!window.simSwatch_->pixmap(Qt::ReturnByValue).isNull());
     }
 
+    // ---- HP-UX-017 : Ctrl+O ouvre tout ------------------------------------------------------
+
+    void ctrlOIsTheUniversalOpenAndImportHasItsOwnShortcut() {
+        MainWindow window;
+        QCOMPARE(window.openAnyAct_->shortcut(), QKeySequence(QKeySequence::Open));
+        QCOMPARE(window.openImageAct_->shortcut(), QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_I));
+        // Aucun autre raccourci d'action ne réutilise Ctrl+O.
+        int uses = 0;
+        for (const QAction* action : window.findChildren<QAction*>()) {
+            for (const QKeySequence& sequence : action->shortcuts()) {
+                uses += sequence == QKeySequence(QKeySequence::Open) ? 1 : 0;
+            }
+        }
+        QCOMPARE(uses, 1);
+    }
+
+    // ---- HP-UX-018 : Échap remonte d'un niveau -----------------------------------------------
+
+    void escapeDropsToolThenObjectSelection() {
+        MainWindow window;
+        doc::Project project = imageOnlyProject();
+        const ObjectId emb = addEmbroidery(project, addSquareVector(project));
+        window.applyLoadedProject(project);
+        window.show();
+        window.activateWindow();
+        QVERIFY(QTest::qWaitForWindowActive(&window));
+
+        window.setSelection({.region = std::nullopt, .embroidery = emb, .objects = {}});
+        window.updateActions();
+        window.setTool(Tool::DrawPolygon);
+
+        // 1er Échap : quitte l'outil, la sélection est conservée.
+        QTest::keyClick(&window, Qt::Key_Escape);
+        QCOMPARE(window.currentTool_, Tool::Select);
+        QVERIFY(window.currentSelection().embroidery.has_value());
+        // 2e Échap : plus rien à relâcher, les objets sont désélectionnés.
+        QTest::keyClick(&window, Qt::Key_Escape);
+        QVERIFY(!window.currentSelection().embroidery.has_value());
+        QVERIFY(window.currentSelection().objects.empty());
+        // 3e Échap sur une sélection vide : sans effet ni erreur.
+        QTest::keyClick(&window, Qt::Key_Escape);
+        QCOMPARE(window.currentTool_, Tool::Select);
+    }
+
+    // ---- HP-UX-022 : sortie de simulation ----------------------------------------------------
+
+    void simulationExitButtonAndEndOfSliderLeaveSimulationMode() {
+        MainWindow window;
+        doc::Project project = imageOnlyProject();
+        addEmbroidery(project, addSquareVector(project));
+        window.applyLoadedProject(project);
+        QVERIFY(window.sequence_.has_value());
+        const int last = window.simSlider_->maximum();
+        QVERIFY(last > 3);
+
+        window.simSlider_->setValue(3); // simulation en cours : le rendu réaliste est coupé
+        QVERIFY(window.simulating());
+        window.simExitAct_->trigger();
+        QVERIFY(!window.simulating());
+        QCOMPARE(window.simSlider_->value(), last);
+
+        window.simSlider_->setValue(3);
+        QVERIFY(window.simulating());
+        window.simSlider_->setValue(last); // curseur tout à droite = couture complète
+        QVERIFY(!window.simulating());
+    }
+
+    void endOfPlaybackLeavesSimulationMode() {
+        MainWindow window;
+        doc::Project project = imageOnlyProject();
+        addEmbroidery(project, addSquareVector(project));
+        window.applyLoadedProject(project);
+        QVERIFY(window.sequence_.has_value());
+        window.simSlider_->setValue(2);
+        QVERIFY(window.simulating());
+        window.simStep_ = static_cast<int>(window.sequence_->commands.size()) - 2;
+        window.simSpeedCombo_->setCurrentIndex(3); // ×16 : le tick suivant atteint la fin
+        window.simPlayAct_->setChecked(true);
+        for (int i = 0; i < 4000 && window.simulating(); ++i) {
+            window.onSimTick();
+        }
+        QVERIFY(!window.simulating());
+        QVERIFY(!window.simPlayAct_->isChecked());
+    }
+
 private:
     QTemporaryDir settingsDir_;
 };

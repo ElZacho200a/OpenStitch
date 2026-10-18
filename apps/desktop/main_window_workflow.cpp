@@ -94,7 +94,43 @@ void setActionEnabledWithReason(QAction* act, bool enabled, const QString& whyDi
 
 } // namespace
 
-void MainWindow::vectorizeSelectedRegion() {
+std::optional<int> MainWindow::askVectorizeDetail(qsizetype regionCount) {
+    QDialog dialog(this);
+    dialog.setWindowTitle(tr("Vectorisation"));
+    auto* layout = new QFormLayout(&dialog);
+    if (regionCount > 1) {
+        layout->addRow(new QLabel(
+            tr("%1 régions seront vectorisées avec ce réglage.").arg(regionCount), &dialog));
+    }
+    auto* detailSlider = new QSlider(Qt::Horizontal, &dialog);
+    detailSlider->setObjectName("vectorizeDetailSlider");
+    detailSlider->setRange(0, 100);
+    detailSlider->setValue(ui_memory::intValue(QStringLiteral("vectorize/detail"), 50, 0, 100));
+    detailSlider->setToolTip(tr("Niveau de détail conservé dans le contour vectoriel."));
+    auto* detailValue = new QLabel(QString::number(detailSlider->value()), &dialog);
+    detailValue->setObjectName("vectorizeDetailValue");
+    connect(detailSlider, &QSlider::valueChanged, detailValue,
+            [detailValue](int value) { detailValue->setText(QString::number(value)); });
+    auto* detailRow = new QWidget(&dialog);
+    auto* detailLayout = new QHBoxLayout(detailRow);
+    detailLayout->setContentsMargins(0, 0, 0, 0);
+    detailLayout->addWidget(new QLabel(tr("Faible"), detailRow));
+    detailLayout->addWidget(detailSlider, 1);
+    detailLayout->addWidget(new QLabel(tr("Élevé"), detailRow));
+    detailLayout->addWidget(detailValue);
+    layout->addRow(tr("Détail :"), detailRow);
+    auto* buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dialog);
+    connect(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
+    connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
+    layout->addRow(buttons);
+    if (dialog.exec() != QDialog::Accepted) {
+        return std::nullopt;
+    }
+    ui_memory::setIntValue(QStringLiteral("vectorize/detail"), detailSlider->value());
+    return detailSlider->value();
+}
+
+void MainWindow::vectorizeSelectedRegion(bool askDetail) {
     if (!selectedRegion_ || !project_.segmentation) {
         return;
     }
@@ -172,40 +208,18 @@ void MainWindow::vectorizeSelectedRegion() {
         return;
     }
 
-    QDialog dialog(this);
-    dialog.setWindowTitle(tr("Vectorisation"));
-    auto* layout = new QFormLayout(&dialog);
-    if (todo.size() > 1) {
-        layout->addRow(new QLabel(
-            tr("%1 régions seront vectorisées avec ce réglage.").arg(todo.size()), &dialog));
+    // F7 applique le dernier détail mémorisé, sans dialogue (HP-UX-021) ; Maj+F7 et l'entrée de
+    // menu ouvrent le réglage.
+    int detail = ui_memory::intValue(QStringLiteral("vectorize/detail"), 50, 0, 100);
+    if (askDetail) {
+        const std::optional<int> chosen = askVectorizeDetail(todo.size());
+        if (!chosen) {
+            return;
+        }
+        detail = *chosen;
     }
-    auto* detailSlider = new QSlider(Qt::Horizontal, &dialog);
-    detailSlider->setObjectName("vectorizeDetailSlider");
-    detailSlider->setRange(0, 100);
-    detailSlider->setValue(ui_memory::intValue(QStringLiteral("vectorize/detail"), 50, 0, 100));
-    detailSlider->setToolTip(tr("Niveau de détail conservé dans le contour vectoriel."));
-    auto* detailValue = new QLabel(QString::number(detailSlider->value()), &dialog);
-    detailValue->setObjectName("vectorizeDetailValue");
-    connect(detailSlider, &QSlider::valueChanged, detailValue,
-            [detailValue](int value) { detailValue->setText(QString::number(value)); });
-    auto* detailRow = new QWidget(&dialog);
-    auto* detailLayout = new QHBoxLayout(detailRow);
-    detailLayout->setContentsMargins(0, 0, 0, 0);
-    detailLayout->addWidget(new QLabel(tr("Faible"), detailRow));
-    detailLayout->addWidget(detailSlider, 1);
-    detailLayout->addWidget(new QLabel(tr("Élevé"), detailRow));
-    detailLayout->addWidget(detailValue);
-    layout->addRow(tr("Détail :"), detailRow);
-    auto* buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dialog);
-    connect(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
-    connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
-    layout->addRow(buttons);
-    if (dialog.exec() != QDialog::Accepted) {
-        return;
-    }
-    ui_memory::setIntValue(QStringLiteral("vectorize/detail"), detailSlider->value());
 
-    const Micrometers simplifyTolerance = vectorize_tolerance_from_detail(detailSlider->value());
+    const Micrometers simplifyTolerance = vectorize_tolerance_from_detail(detail);
 
     std::vector<document::VectorObject> objects;
     QStringList failures;

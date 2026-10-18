@@ -20,7 +20,7 @@ automatique** (objets éditables) → **satin automatique** pour les formes allo
 
 ## 1. Ouvrir une image
 
-**Fichier → Ouvrir une image…** (Ctrl+O). Choisissez un PNG, JPEG, BMP, TIFF ou
+**Fichier → Importer une image ou un SVG…** (Ctrl+Maj+I ; Ctrl+O ouvre aussi une image, un projet ou un fichier de broderie). Choisissez un PNG, JPEG, BMP, TIFF ou
 SVG. Un logo simple à quelques couleurs franches donne les meilleurs résultats.
 Les fichiers récents sont dans **Fichier → Récents**.
 

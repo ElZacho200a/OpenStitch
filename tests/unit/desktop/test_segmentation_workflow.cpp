@@ -21,6 +21,7 @@
 #include <QPainter>
 #include <QPushButton>
 #include <QSettings>
+#include <QShortcut>
 #include <QSignalSpy>
 #include <QSlider>
 #include <QSpinBox>
@@ -301,6 +302,44 @@ private slots:
         }});
         window.vectorizeSelectedRegion();
         QCOMPARE(seen, 80);
+    }
+
+    // HP-UX-021 : F7 réutilise le dernier détail sans dialogue ; Maj+F7 / le menu règlent.
+    void quickVectorizeOpensNoDialogAndMenuStillAsks() {
+        MainWindow window;
+        window.applyLoadedProject(threeBandProject());
+        window.selectRegions({regionAt(window, 5, 5)}, SelectMode::Replace);
+
+        bool dialogSeen = false;
+        QTimer guard; // referme un éventuel dialogue pour ne jamais bloquer le test
+        guard.setSingleShot(true);
+        connect(&guard, &QTimer::timeout, &window, [&dialogSeen] {
+            // Seul le dialogue de réglage du détail compte (l'indicateur de travail est modal
+            // aussi).
+            auto* modal = QApplication::activeModalWidget();
+            if (modal != nullptr && modal->findChild<QSlider*>("vectorizeDetailSlider")) {
+                dialogSeen = true;
+                static_cast<QDialog*>(modal)->reject();
+            }
+        });
+        guard.start(0);
+        window.vectorizeSelectedRegion(false);
+        guard.stop();
+        QVERIFY(!dialogSeen);
+        QCOMPARE(window.project_.vector_objects.size(), std::size_t{1});
+        window.undo();
+        QCOMPARE(window.project_.vector_objects.size(), std::size_t{0});
+
+        // F7 est un raccourci sans dialogue ; l'action (menu, Maj+F7) garde le réglage du détail.
+        QCOMPARE(window.vectorizeRegionAct_->shortcut(), QKeySequence(Qt::SHIFT | Qt::Key_F7));
+        bool hasF7 = false;
+        for (const auto* shortcut : window.findChildren<QShortcut*>()) {
+            hasF7 = hasF7 || shortcut->key() == QKeySequence(Qt::Key_F7);
+        }
+        QVERIFY(hasF7);
+        runModalScript(&window, {acceptDialog()});
+        window.vectorizeRegionAct_->trigger();
+        QCOMPARE(window.project_.vector_objects.size(), std::size_t{1});
     }
 
     void vectorizingAnAlreadyVectorizedRegionDoesNotDuplicate() {

@@ -119,6 +119,7 @@ private slots:
     // survivrait au nouveau document.
     void newProject();
     void openImage();
+    void openAny();
     void undo();
     void redo();
     void adjustBrightnessContrast();
@@ -145,7 +146,8 @@ private slots:
     // d'annulation (CompositeCommand) pour la multi-sélection.
     void deleteSelection();
     void recolorSelectedRegion();
-    void vectorizeSelectedRegion();
+    void vectorizeSelectedRegion(bool askDetail = true);
+    [[nodiscard]] std::optional<int> askVectorizeDetail(qsizetype regionCount);
     void autoDigitize();
     void segmentWithAi();
     // Rend visibles les rejets internes de l'auto-satin (ex. branche de
@@ -206,6 +208,7 @@ private slots:
     void toggleSimulation();
     void onSimSliderMoved(int value);
     void onSimTick();
+    void exitSimulation();
     void moveObjectUp();
     void moveObjectDown();
     void toggleObjectLock();
@@ -1232,6 +1235,7 @@ private:
     QAction* aboutAct_{nullptr};
     // Actions du guide de prise en main (étapes construites à partir d'elles).
     QAction* openImageAct_{nullptr};
+    QAction* openAnyAct_{nullptr};
     QAction* segmentAct_{nullptr};
     QAction* vectorizeRegionAct_{nullptr};
     QAction* autoDigitizeAct_{nullptr};
@@ -1384,6 +1388,7 @@ private:
     bool simWalkValid_{false}; // simWalk_ décrit exactement ce qui est dessiné
     QGraphicsItem* simMarker_{nullptr};
     QAction* simPlayAct_{nullptr};
+    QAction* simExitAct_{nullptr};
     QTimer* simTimer_{nullptr};
     int simStep_{-1}; // -1 = simulation inactive (tout affiché)
 
